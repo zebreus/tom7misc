@@ -24,6 +24,19 @@ static void TestCreateAndDestroy() {
   }
 }
 
+static ImageRGB RandomRGB(ArcFour *rc, int width, int height) {
+  ImageRGB img(width, height);
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      uint8 r = rc->Byte();
+      uint8 g = rc->Byte();
+      uint8 b = rc->Byte();
+      img.SetPixel(x, y, r, g, b);
+    }
+  }
+  return img;
+}
+
 // Overload std::hash to show how to put images in unordered_set, etc.
 // TODO: Consider promoting this to the header; it's not that bad.
 // (Overloading std:: functions is allowed if they involve user-defined
@@ -83,10 +96,10 @@ static void TestBilinearResize() {
   }
 
   in.BlendText(1, 9, 0xCC, ":)");
-  in.GreyscaleRGBA().Save("test-bilinear-resize-in.png");
+  in.GreyscaleRGBA().Save("image-test-bilinear-resize-in.png");
 
   ImageRGBA big = in.ResizeBilinear(120, 120).GreyscaleRGBA();
-  big.Save("test-bilinear-resize-out.png");
+  big.Save("image-test-bilinear-resize-out.png");
 }
 
 // XXX this just tests clipping; actually test the sampling!
@@ -126,9 +139,9 @@ static void TestScaleDown() {
   img.BlendText32(2, 2, 0xFFFFFFFF, ":)");
   img.BlendLine32(9, 0, 0, 9, 0x00FFFFCC);
   img.BlendLine32(0, 4, 9, 9, 0xFFFF00EE);
-  img.Save("test-scaledown-in.png");
+  img.Save("image-test-scaledown-in.png");
   ImageRGBA out = img.ScaleDownBy(2);
-  out.Save("test-scaledown-out.png");
+  out.Save("image-test-scaledown-out.png");
 
   CHECK(out.Width() == img.Width() / 2);
   CHECK(out.Height() == img.Height() / 2);
@@ -250,6 +263,31 @@ static void TestVerticalText() {
   img.Save("image-test-vertical-text.png");
 }
 
+static void TestConvertRGB() {
+  ArcFour rc("convert");
+  ImageRGB img24 = RandomRGB(&rc, 128, 100);
+
+  ImageRGBA img32 = img24.AddAlpha();
+
+  ImageRGB img24_b = img32.IgnoreAlpha();
+
+  CHECK(img24 == img24_b);
+}
+
+static void TestSaveRGB() {
+  ArcFour rc("save");
+  ImageRGB img24 = RandomRGB(&rc, 128, 100);
+
+  for (int y = 0; y < 64; y++) {
+    for (int x = 0; x < 51; x++) {
+      img24.SetPixel(x + 18, y + 6, x * 5, y * 4, 0x00);
+    }
+  }
+
+  img24.SavePNG("image-test-rgb.png");
+  img24.SaveJPG("image-test-rgb.jpg", 50);
+}
+
 int main(int argc, char **argv) {
   TestCreateAndDestroy();
   TestCopies();
@@ -262,6 +300,9 @@ int main(int argc, char **argv) {
   TestCopyImage();
 
   TestVerticalText();
+
+  TestConvertRGB();
+  TestSaveRGB();
 
   // TODO: Test SaveToVec / LoadFromMemory round trip
 

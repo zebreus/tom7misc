@@ -39,7 +39,7 @@ static void TestHSV() {
       out.SetPixel32(x, y, color);
     }
   }
-  out.Save("hsv.png");
+  out.Save("color-util-test-hsv.png");
 }
 
 static void TestRGBToHSV() {
@@ -152,7 +152,7 @@ static void BenchLinearGradient() {
   printf("LinearGradient: %d passes in %.3fs = %.3f p/s\n",
          ITERS, sec, ITERS / sec);
 
-  out.Save("bench-lineargradient.png");
+  out.Save("color-util-test-bench-lineargradient.png");
 }
 
 int main () {

@@ -12,6 +12,7 @@
           there are still some obviously thread-unsafe extern ints below)
      - Break into header and CC file separately.
      - Clean up warnings
+     - Add simple interface for saving to memory
 
 Sean notes:
 
@@ -198,5 +199,8 @@ extern int stbi_write_png_rgba(const char *filename,
 // Same but generate the file in-memory.
 extern std::vector<uint8_t> stbi_make_png_rgba(int w, int h,
                                                const uint8_t *rgba);
+// for 24-bit RGB images.
+extern std::vector<uint8_t> stbi_make_png_rgb(int w, int h,
+                                              const uint8_t *rgb);
 
 #endif // INCLUDE_STB_IMAGE_WRITE_H

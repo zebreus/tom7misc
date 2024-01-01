@@ -911,6 +911,20 @@ ImageRGBA ImageRGBA::FromChannels(const ImageA &red,
   return out;
 }
 
+ImageRGB ImageRGBA::IgnoreAlpha() const {
+  const int size = width * height;
+  std::vector<uint8_t> rgb(size * 3, 0);
+  for (int i = 0; i < size; i++) {
+    uint32_t c = rgba[i];
+
+    const auto &[r, g, b, a_] = Unpack32(c);
+    rgb[i * 3 + 0] = r;
+    rgb[i * 3 + 1] = g;
+    rgb[i * 3 + 2] = b;
+  }
+  return ImageRGB(std::move(rgb), width, height);
+}
+
 std::tuple<float, float, float, float>
 ImageRGBA::SampleBilinear(float x, float y) const {
   // Truncate to integer pixels.
@@ -973,8 +987,84 @@ ImageRGBA::SampleBilinear(float x, float y) const {
 }
 
 
-ImageA::ImageA(const vector<uint8> &alpha, int width, int height)
-    : width(width), height(height), alpha(alpha) {
+ImageRGB::ImageRGB(vector<uint8> rgb_in, int width, int height) :
+  width(width), height(height), rgb(std::move(rgb_in)) {
+  CHECK((int)rgb.size() == width * height * 3);
+}
+
+ImageRGB::ImageRGB(int width, int height) : width(width), height(height),
+                                            rgb(width * height * 3, 0) {
+}
+
+bool ImageRGB::operator==(const ImageRGB &other) const {
+  return other.Width() == Width() &&
+    other.Height() == Height() &&
+    other.rgb == rgb;
+}
+
+std::size_t ImageRGB::Hash() const {
+  uint64_t h = (uint64_t)width * 14683501877134127867ULL;
+  for (uint8 v : rgb) {
+    // PERF: Work on 64 bits at a time...
+    h = (h << 13) | (h >> (64 - 13));
+    h ^= v;
+    h *= 65537;
+  }
+  return (std::size_t)h;
+}
+
+void ImageRGB::Clear(uint8 r, uint8 g, uint8 b) {
+  for (int i = 0; i < width * height; i++) {
+    rgb[i * 3 + 0] = r;
+    rgb[i * 3 + 1] = g;
+    rgb[i * 3 + 2] = b;
+  }
+}
+
+ImageRGBA ImageRGB::AddAlpha(uint8_t a) const {
+  const int size = width * height;
+  std::vector<uint32_t> rgba(size, 0);
+  for (int i = 0; i < size; i++) {
+    uint8_t r = rgb[i * 3 + 0];
+    uint8_t g = rgb[i * 3 + 1];
+    uint8_t b = rgb[i * 3 + 2];
+    uint32_t c = Pack32(r, g, b, a);
+    rgba[i] = c;
+  }
+  return ImageRGBA(std::move(rgba), width, height);
+}
+
+bool ImageRGB::SavePNG(const std::string &filename) const {
+  CHECK((int)rgb.size() == width * height * 3);
+  return !!stbi_write_png(filename.c_str(),
+                          width, height, 3, rgb.data(), 3 * width);
+}
+
+vector<uint8> ImageRGB::SavePNGToVec() const {
+  CHECK((int)rgb.size() == width * height * 3);
+  return stbi_make_png_rgb(width, height, rgb.data());
+}
+
+string ImageRGB::SavePNGToString() const {
+  CHECK((int)rgb.size() == width * height * 3);
+  const vector<uint8> v = stbi_make_png_rgb(width, height, rgb.data());
+  string ret;
+  ret.resize(v.size());
+  memcpy(ret.data(), v.data(), v.size());
+  return ret;
+}
+
+bool ImageRGB::SaveJPG(const std::string &filename, int quality) const {
+  CHECK((int)rgb.size() == width * height * 3);
+  CHECK(quality >= 0 && quality <= 100) << quality;
+  return !!stbi_write_jpg(filename.c_str(),
+                          width, height, 3, rgb.data(), quality);
+}
+
+
+
+ImageA::ImageA(vector<uint8> alpha_in, int width, int height)
+  : width(width), height(height), alpha(std::move(alpha_in)) {
   CHECK((int)alpha.size() == width * height);
 }
 

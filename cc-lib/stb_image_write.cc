@@ -1426,6 +1426,20 @@ stbi_make_png_rgba(int w, int h, const uint8_t *data) {
   return ret;
 }
 
+std::vector<uint8_t>
+stbi_make_png_rgb(int w, int h, const uint8_t *data) {
+  int len;
+  uint8_t *png = stbi_write_png_to_mem(data, 3 * w, w, h, 3, &len);
+  if (!png) return {};
+
+  std::vector<uint8_t> ret;
+  ret.resize(len);
+  memcpy(ret.data(), png, len);
+  free(png);
+  return ret;
+}
+
+
 /* Revision history
       1.14  (2020-02-02) updated JPEG writer to downsample chroma channels
       1.13

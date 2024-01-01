@@ -13,7 +13,11 @@
 
 #include "base/logging.h"
 
+// ImageRGBA is recommended for most uses, but other formats are
+// supported below.
+struct ImageRGB;
 struct ImageA;
+struct ImageF;
 
 // 4-channel image in R-G-B-A order.
 // uint32s are represented like 0xRRGGBBAA irrespective of native
@@ -22,6 +26,7 @@ struct ImageRGBA {
   using uint8 = uint8_t;
   using uint32 = uint32_t;
   ImageRGBA(const std::vector<uint8> &rgba8, int width, int height);
+  // PERF: This can move the vector.
   ImageRGBA(const std::vector<uint32> &rgba32, int width, int height);
   ImageRGBA(int width, int height);
   ImageRGBA() : width(0), height(0) {}
@@ -37,10 +42,11 @@ struct ImageRGBA {
   int Width() const { return width; }
   int Height() const { return height; }
 
-
+  // Supports PNG, JPEG, GIF, others (see stb_image.h).
   static ImageRGBA *Load(const std::string &filename);
   static ImageRGBA *LoadFromMemory(const std::vector<uint8> &bytes);
   static ImageRGBA *LoadFromMemory(const char *data, size_t size);
+
   // Saves in RGBA PNG format. Returns true if successful.
   bool Save(const std::string &filename) const;
   std::vector<uint8> SaveToVec() const;
@@ -166,6 +172,10 @@ struct ImageRGBA {
   ImageA Blue() const;
   ImageA Alpha() const;
 
+  // Ignore the alpha channel.
+  ImageRGB IgnoreAlpha() const;
+  // TODO: Remove alpha with matte.
+
   // Images must all be the same dimensions.
   static ImageRGBA FromChannels(const ImageA &red,
                                 const ImageA &green,
@@ -180,10 +190,59 @@ private:
   std::vector<uint32_t> rgba;
 };
 
+// 24-bit image with alpha=0xFF. This is primarily used as a
+// conversion format; if you want to draw on it, use ImageRGBA.
+struct ImageRGB {
+  using uint8 = uint8_t;
+  ImageRGB(std::vector<uint8> rgb, int width, int height);
+  ImageRGB(int width, int height);
+  // Empty image sometimes useful for filling vectors, etc.
+  ImageRGB() : ImageRGB(0, 0) {}
+  // Value semantics.
+  ImageRGB(const ImageRGB &other) = default;
+  ImageRGB(ImageRGB &&other) = default;
+  ImageRGB &operator =(const ImageRGB &other) = default;
+  ImageRGB &operator =(ImageRGB &&other) = default;
+
+  bool operator ==(const ImageRGB &other) const;
+  // Deterministic hash, but not intended to be stable across
+  // invocations.
+  std::size_t Hash() const;
+
+  // TODO: maybe loading?
+  bool SavePNG(const std::string &filename) const;
+  std::vector<uint8> SavePNGToVec() const;
+  std::string SavePNGToString() const;
+
+  // TODO: Save JPG to memory.
+  bool SaveJPG(const std::string &filename, int quality) const;
+
+  void Clear(uint8 r, uint8 g, uint8 b);
+
+  // Clipped.
+  inline void SetPixel(int x, int y, uint8 r, uint8 g, uint8 b);
+  // x/y must be in bounds.
+  inline std::tuple<uint8, uint8, uint8> GetPixel(int x, int y) const;
+
+  int Width() const { return width; }
+  int Height() const { return height; }
+
+  // Convert to RGBA format with a constant alpha value; typically 0xFF.
+  ImageRGBA AddAlpha(uint8_t a = 0xFF) const;
+
+  // TODO: Extract individual channels, or build from channels.
+
+private:
+  // Bytes are packed RR,GG,BB, RR,GG,BB, ... regardless of host
+  // endianness.
+  int width = 0, height = 0;
+  std::vector<uint8_t> rgb;
+};
+
 // Single-channel 8-bit bitmap.
 struct ImageA {
   using uint8 = uint8_t;
-  ImageA(const std::vector<uint8> &alpha, int width, int height);
+  ImageA(std::vector<uint8> alpha, int width, int height);
   ImageA(int width, int height);
   // Empty image sometimes useful for filling vectors, etc.
   ImageA() : ImageA(0, 0) {}
@@ -328,6 +387,27 @@ void ImageRGBA::SetPixel32(int x, int y, uint32 color) {
   if ((unsigned)y >= (unsigned)height) return;
   rgba[y * width + x] = color;
 }
+
+
+void ImageRGB::SetPixel(int x, int y, uint8 r, uint8 g, uint8 b) {
+  if ((unsigned)x >= (unsigned)width) return;
+  if ((unsigned)y >= (unsigned)height) return;
+  const int idx = ((y * width) + x) * 3;
+  rgb[idx + 0] = r;
+  rgb[idx + 1] = g;
+  rgb[idx + 2] = b;
+}
+
+std::tuple<uint8_t, uint8_t, uint8_t> ImageRGB::GetPixel(int x, int y) const {
+  // Treat out-of-bounds reads as containing 00,00,00.
+  if ((unsigned)x >= (unsigned)width ||
+      (unsigned)y >= (unsigned)height) return std::make_tuple(0, 0, 0);
+  const int idx = ((y * width) + x) * 3;
+  return std::make_tuple(rgb[idx + 0],
+                         rgb[idx + 1],
+                         rgb[idx + 2]);
+}
+
 
 uint8_t ImageA::GetPixel(int x, int y) const {
   if ((unsigned)x >= (unsigned)width) return 0;
