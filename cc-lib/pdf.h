@@ -11,6 +11,8 @@
 #include <string>
 #include <vector>
 
+#include "image.h"
+
 // Allows for quick generation of simple PDF documents.
 // This is useful for producing easily printed output from C code, where
 // advanced formatting is not required
@@ -136,7 +138,7 @@ public:
   // Port note: This originally used the "stream" entry in the union.
   struct Image : public Object {
     Image() : Object(OBJ_image) {}
-    Object *page = nullptr;
+    Page *page = nullptr;
     std::string stream;
   };
 
@@ -154,14 +156,14 @@ public:
   struct Link : public Object {
     Link() : Object(OBJ_link) {}
     // Page containing link.
-    Object *page = nullptr;
+    Page *page = nullptr;
     // Clickable rectangle.
     float llx = 0.0f;
     float lly = 0.0f;
     float urx = 0.0f;
     float ury = 0.0f;
     // Target page.
-    Object *target_page = nullptr;
+    Page *target_page = nullptr;
     // Target location.
     float target_x = 0.0f;
     float target_y = 0.0f;
@@ -210,6 +212,7 @@ public:
     PNG_COLOR_INVALID = 255
   };
 
+  // XXX retire
   // Header of a PNG file.
   struct png_header {
     // Dimensions in pixels.
@@ -552,28 +555,26 @@ public:
   // Returns the non-negative bookmark id.
   int AddBookmark(const std::string &name, int parent, Page *page);
 
-#if 0
+  bool AddLink(
+      // The clickable rectangle.
+      float x, float y,
+      float width, float height,
+      // Page that link should jump to.
+      Page *target_page,
+      // Point to place at the top left of the view.
+      float target_x, float target_y,
+      Page *page);
 
+  bool AddImageRGB(float x, float y,
+                   // If one of width or height is negative, then the
+                   // value is determined from the other, preserving the
+                   // aspect ratio.
+                   float width, float height,
+                   const ImageRGB &img,
+                   // XXX compression format
+                   Page *page = nullptr);
 
-/**
- * Add a link annotation to the document
- * @param pdf PDF document to add link to
- * @param page Page that holds the clickable rectangle
-               (or NULL for the most recently added page)
- * @param x X coordinate of bottom LHS corner of clickable rectangle
- * @param y Y coordinate of bottom LHS corner of clickable rectangle
- * @param width width of clickable rectangle
- * @param height height of clickable rectangle
- * @param target_page Page to jump to for link
- * @param target_x X coordinate to position at the left of the view
- * @param target_y Y coordinate to position at the top of the view
- * @return < 0 on failure, new bookmark id on success
- */
-int pdf_add_link(struct pdf_doc *pdf, struct Object *page, float x,
-                 float y, float width, float height,
-                 struct Object *target_page, float target_x,
-                 float target_y);
-
+  #if 0
 /**
  * Add image data as an image to the document.
  * Image data must be one of: JPEG, PNG, PPM, PGM or BMP formats
@@ -721,6 +722,19 @@ private:
                               float x_width, float height,
                               uint32_t color, GuardPattern guard_type,
                               float *new_x, Page *page);
+
+  bool pdf_add_image(Image *image, float x, float y,
+                     float width, float height, Page *page);
+
+  PDF::Image *pdf_add_raw_grayscale8(const uint8_t *data,
+                                     uint32_t width,
+                                     uint32_t height);
+
+  bool pdf_add_png_data(float x, float y,
+                        float display_width,
+                        float display_height,
+                        const uint8_t *png_data,
+                        size_t png_data_length, Page *page);
 
   char errstr[128] = {};
   int errval = 0;

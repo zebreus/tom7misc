@@ -10,6 +10,9 @@
 
 #include "base/logging.h"
 #include "ansi.h"
+#include "image.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 static std::vector<std::pair<float, float>> Star(
     float x, float y,
@@ -29,7 +32,22 @@ static std::vector<std::pair<float, float>> Star(
   return ret;
 }
 
+static ImageRGB RandomRGB(ArcFour *rc, int width, int height) {
+  ImageRGB img(width, height);
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      uint8_t r = rc->Byte();
+      uint8_t g = rc->Byte();
+      uint8_t b = rc->Byte();
+      img.SetPixel(x, y, r, g, b);
+    }
+  }
+  return img;
+}
+
 static void MakeSimplePDF() {
+  ArcFour rc("pdf");
+
   PDF::Info info;
   sprintf(info.creator, "pdf_test.cc");
   sprintf(info.producer, "Tom 7");
@@ -155,6 +173,25 @@ static void MakeSimplePDF() {
     CHECK(pdf.AddBarcodeUPCE(45, y, BARCODE_WIDTH, BARCODE_HEIGHT,
                              "042100005264", PDF_RGB(0, 0, 0))) <<
       "Error: " << pdf.GetErr();
+  }
+
+  {
+    printf(AWHITE("Image page") ".\n");
+    // Barcode page.
+    PDF::Page *page = pdf.AppendNewPage();
+
+    ImageRGBA img(160, 80);
+    img.Clear32(0xFFFFFFFF);
+    img.BlendFilledCircleAA32(50, 40, 31.1, 0x903090AA);
+
+    CHECK(pdf.AddImageRGB(300, 300, 72.0, -1.0,
+                          img.IgnoreAlpha())) << "Error: " <<
+      pdf.GetErr();
+
+    ImageRGB rand = RandomRGB(&rc, 384, 256);
+    CHECK(pdf.AddImageRGB(100, PDF::PDF_LETTER_HEIGHT - 72 * 3, -1.0, 72 * 2,
+                          rand, page)) << "Error: " <<
+      pdf.GetErr();
   }
 
   printf("Save it...\n");
