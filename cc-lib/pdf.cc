@@ -25,6 +25,7 @@
 
 #endif
 
+#include <array>
 #include <cstdint>
 #include <ctype.h>
 #include <errno.h>
@@ -47,8 +48,6 @@
 #include "base/stringprintf.h"
 #include "image.h"
 
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
-
 #define PDF_RGB_R(c) (float)((((c) >> 16) & 0xff) / 255.0f)
 #define PDF_RGB_G(c) (float)((((c) >> 8) & 0xff) / 255.0f)
 #define PDF_RGB_B(c) (float)((((c) >> 0) & 0xff) / 255.0f)
@@ -69,27 +68,9 @@
 // Enable for copious debugging information.
 static constexpr bool VERBOSE = false;
 
-static inline constexpr uint32_t bswap32(uint32_t x) {
-  if constexpr (std::endian::native == std::endian::little) {
-    return (((x & 0xff000000u) >> 24) | ((x & 0x00ff0000u) >> 8) |
-            ((x & 0x0000ff00u) << 8) | ((x & 0x000000ffu) << 24));
-  } else {
-    return x;
-  }
-}
-
-// Limits on image sizes for sanity checking & to avoid plausible overflow
-// issues
-static constexpr int MAX_IMAGE_WIDTH = (16 * 1024);
-static constexpr int MAX_IMAGE_HEIGHT = (16 * 1024);
-
-// Signatures for various image formats
-static const uint8_t bmp_signature[] = {'B', 'M'};
 static const uint8_t png_signature[] = {0x89, 0x50, 0x4E, 0x47,
                                         0x0D, 0x0A, 0x1A, 0x0A};
 static const uint8_t jpeg_signature[] = {0xff, 0xd8};
-static const uint8_t ppm_signature[] = {'P', '6'};
-static const uint8_t pgm_signature[] = {'P', '5'};
 
 // Special signatures for PNG chunks
 static const char png_chunk_header[] = "IHDR";
@@ -97,15 +78,7 @@ static const char png_chunk_palette[] = "PLTE";
 static const char png_chunk_data[] = "IDAT";
 static const char png_chunk_end[] = "IEND";
 
-
-// XXX use standard stuff
-#pragma pack(push, 1)
-struct png_chunk {
-    uint32_t length;
-    // chunk type, see png_chunk_header, png_chunk_data, png_chunk_end
-    char type[4];
-};
-#pragma pack(pop)
+namespace {
 
 // Prefer this one, which is already converted into native byte order.
 struct PNGChunk {
@@ -113,12 +86,78 @@ struct PNGChunk {
   char type[4];
 };
 
+// As defined by https://www.w3.org/TR/2003/REC-PNG-20031110/#6Colour-values
+enum PNGColorType : uint8_t {
+  // Greyscale
+  PNG_COLOR_GREYSCALE = 0,
+  // Truecolor
+  PNG_COLOR_RGB = 2,
+  // Indexed-color
+  PNG_COLOR_INDEXED = 3,
+  // Greyscale with alpha
+  PNG_COLOR_GREYSCALE_A = 4,
+  // Truecolor with alpha
+  PNG_COLOR_RGBA = 6,
+
+  PNG_COLOR_INVALID = 255
+};
+
+// Header of a PNG file.
+// Prefer this one, already converted into native byte order.
+struct PNGHeader {
+  // Dimensions in pixels.
+  uint32_t width;
+  uint32_t height;
+  uint8_t bitDepth;
+  PNGColorType colorType;
+  uint8_t deflate;
+  uint8_t filtering;
+  uint8_t interlace;
+};
+
+// Data should point at the beginning of the PNG file.
+// Assumes that it is at least the minimum size. Doesn't
+// check anything about the format.
+static constexpr size_t PNG_FILE_MIN_SIZE = 67;
+
+// This is not exact. But we just need it to rule out invalid headers.
+static constexpr size_t JPG_FILE_MIN_SIZE = 100;
+struct JPGHeader {
+  uint32_t width = 0;
+  uint32_t height = 0;
+  int ncolors = 0;
+};
+
+// Simple data container to store a single 24 Bit RGB value, used for
+// processing PNG images
+struct rgb_value {
+  uint8_t red;
+  uint8_t blue;
+  uint8_t green;
+};
+
+}  // namespace
+
 // Read 4 bytes in big-endian; no checks.
 inline static uint32_t Read32(const uint8_t *data) {
   return ((uint32_t)data[0] << 24) |
     ((uint32_t)data[1] << 16) |
     ((uint32_t)data[2] << 8) |
     (uint32_t)data[3];
+}
+
+inline static PNGHeader ReadPngHeader(const uint8_t *data) {
+  const uint8_t *header = data + 16;
+
+  PNGHeader ret;
+  ret.width = Read32(header + 0);
+  ret.height = Read32(header + 4);
+  ret.bitDepth = header[8];
+  ret.colorType = (PNGColorType)header[9];
+  ret.deflate = header[10];
+  ret.filtering = header[11];
+  ret.interlace = header[12];
+  return ret;
 }
 
 // data should point at the next chunk.
@@ -135,44 +174,6 @@ inline static PNGChunk ReadPngChunk(const uint8_t *data) {
   return ret;
 }
 
-// Header of a PNG file.
-// Prefer this one, already converted into native byte order.
-struct PNGHeader {
-  // Dimensions in pixels.
-  uint32_t width;
-  uint32_t height;
-  uint8_t bitDepth;
-  PDF::PNGColorType colorType;
-  uint8_t deflate;
-  uint8_t filtering;
-  uint8_t interlace;
-};
-
-// Data should point at the beginning of the PNG file.
-// Assumes that it is at least the minimum size. Doesn't
-// check anything about the format.
-static constexpr size_t PNG_FILE_MIN_SIZE = 67;
-inline static PNGHeader ReadPngHeader(const uint8_t *data) {
-  const uint8_t *header = data + 16;
-
-  PNGHeader ret;
-  ret.width = Read32(header + 0);
-  ret.height = Read32(header + 4);
-  ret.bitDepth = header[8];
-  ret.colorType = (PDF::PNGColorType)header[9];
-  ret.deflate = header[10];
-  ret.filtering = header[11];
-  ret.interlace = header[12];
-  return ret;
-}
-
-// This is not exact. But we just need it to rule out invalid headers.
-static constexpr size_t JPG_FILE_MIN_SIZE = 100;
-struct JPGHeader {
-  uint32_t width = 0;
-  uint32_t height = 0;
-  int ncolors = 0;
-};
 
 const char *PDF::ObjTypeName(ObjType t) {
   switch (t) {
@@ -191,14 +192,6 @@ const char *PDF::ObjTypeName(ObjType t) {
   }
   return "???";
 }
-
-// Simple data container to store a single 24 Bit RGB value, used for
-// processing PNG images
-struct rgb_value {
-  uint8_t red;
-  uint8_t blue;
-  uint8_t green;
-};
 
 // Locales can replace the decimal character with a ','.
 // This breaks the PDF output, so we force a 'safe' locale.
@@ -220,10 +213,6 @@ static void restore_locale(char *buf)
 {
     setlocale(LC_ALL, buf);
 }
-
-/**
- * PDF Implementation
- */
 
 // XXX just use StringPrintf.
 int PDF::SetErr(int errval, const char *buffer, ...) {
@@ -328,7 +317,7 @@ PDF::PDF(float width, float height,
   width(width), height(height) {
 
   /* We don't want to use ID 0 */
-  (void)AddObject(new None);
+  (void)AddObject(new NoneObj);
 
   /* Create the 'info' object */
   InfoObj *obj = AddObject(new InfoObj);
@@ -359,8 +348,8 @@ PDF::PDF(float width, float height,
              &tm);
   }
 
-  CHECK(AddObject(new Pages) != nullptr);
-  CHECK(AddObject(new Catalog) != nullptr);
+  CHECK(AddObject(new PagesObj) != nullptr);
+  CHECK(AddObject(new CatalogObj) != nullptr);
   SetFont("Times-Roman");
 }
 
@@ -440,7 +429,7 @@ void PDF::Page::SetSize(float w, float h) {
 int PDF::pdf_get_bookmark_count(const Object *obj) {
   int count = 0;
   if (obj->type == OBJ_bookmark) {
-    Bookmark *bobj = (Bookmark*)obj;
+    BookmarkObj *bobj = (BookmarkObj*)obj;
     int nchildren = (int)bobj->children.size();
     count += nchildren;
     for (int i = 0; i < nchildren; i++) {
@@ -470,7 +459,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
   switch (object->type) {
   case OBJ_stream: {
-    Stream *sobj = (Stream*)object;
+    StreamObj *sobj = (StreamObj*)object;
     fwrite(sobj->stream.data(),
            sobj->stream.size(),
            1, fp);
@@ -478,7 +467,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_image: {
-    Image *iobj = (Image*)object;
+    ImageObj *iobj = (ImageObj *)object;
     fwrite(iobj->stream.data(),
            iobj->stream.size(),
            1, fp);
@@ -540,7 +529,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
     for (Object *image = pdf_find_first_object(OBJ_image);
          image; image = image->next) {
-      Stream *iobj = (Stream*)image;
+      StreamObj *iobj = (StreamObj *)image;
       if (iobj->page == object) {
         if (!printed_xobjects) {
           fprintf(fp, "    /XObject <<");
@@ -574,7 +563,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_bookmark: {
-    Bookmark *bobj = (Bookmark *)object;
+    BookmarkObj *bobj = (BookmarkObj *)object;
 
     Object *parent = bobj->parent;
     if (!parent)
@@ -601,9 +590,9 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
     {
       // Find the previous bookmark with the same parent
-      Bookmark *other = (Bookmark*)object->prev;
+      BookmarkObj *other = (BookmarkObj*)object->prev;
       while (other && other->parent != bobj->parent) {
-        other = (Bookmark*)other->prev;
+        other = (BookmarkObj*)other->prev;
       }
 
       if (other != nullptr) {
@@ -613,9 +602,9 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
     {
       // Find the next bookmark with the same parent
-      Bookmark *other = (Bookmark*)object->next;
+      BookmarkObj *other = (BookmarkObj *)object->next;
       while (other && other->parent != bobj->parent) {
-        other = (Bookmark*)other->next;
+        other = (BookmarkObj *)other->next;
       }
 
       if (other != nullptr) {
@@ -633,12 +622,12 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
     if (first && last) {
       int count = 0;
-      Bookmark *cur = (Bookmark*)first;
+      BookmarkObj *cur = (BookmarkObj *)first;
       while (cur) {
         if (!cur->parent) {
           count += pdf_get_bookmark_count(cur) + 1;
         }
-        cur = (Bookmark*)cur->next;
+        cur = (BookmarkObj *)cur->next;
       }
 
       /* Bookmark outline */
@@ -703,7 +692,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_link: {
-    Link *lobj = (Link*)object;
+    LinkObj *lobj = (LinkObj *)object;
     fprintf(fp,
             "<<\r\n"
             "  /Type /Annot\r\n"
@@ -834,7 +823,7 @@ void PDF::pdf_add_stream(Page *page, std::string str) {
     str.resize(str.size() - 1);
   }
 
-  Stream *sobj = AddObject(new Stream);
+  StreamObj *sobj = AddObject(new StreamObj);
   CHECK(sobj != nullptr);
 
   sobj->stream = StringPrintf("<< /Length %d >>stream\r\n", (int)str.size());
@@ -844,11 +833,16 @@ void PDF::pdf_add_stream(Page *page, std::string str) {
   page->children.push_back(sobj);
 }
 
-static constexpr const struct {
-    uint32_t code;
-    char ch;
-} code_128a_encoding[] = {
-    {0x212222, ' '},  {0x222122, '!'},  {0x222221, '"'},   {0x121223, '#'},
+namespace {
+struct Encoding128a {
+  uint32_t code;
+  char ch;
+};
+}
+
+static std::array<Encoding128a, 107> code_128a_encoding = {
+    Encoding128a{0x212222, ' '},
+    {0x222122, '!'},  {0x222221, '"'},   {0x121223, '#'},
     {0x121322, '$'},  {0x131222, '%'},  {0x122213, '&'},   {0x122312, '\''},
     {0x132212, '('},  {0x221213, ')'},  {0x221312, '*'},   {0x231212, '+'},
     {0x112232, ','},  {0x122132, '-'},  {0x122231, '.'},   {0x113222, '/'},
@@ -874,13 +868,13 @@ static constexpr const struct {
     {0x111143, '|'},  {0x111341, '}'},  {0x131141, '~'},   {0x114113, '\0'},
     {0x114311, '\0'}, {0x411113, '\0'}, {0x411311, '\0'},  {0x113141, '\0'},
     {0x114131, '\0'}, {0x311141, '\0'}, {0x411131, '\0'},  {0x211412, '\0'},
-    {0x211214, '\0'}, {0x211232, '\0'}, {0x2331112, '\0'},
+    {0x211214, '\0'}, {0x211232, '\0'}, {0x2331112, '\0'}
 };
 
 // PERF: Linear lookup! We can just invert the mapping and use the
 // char as an index.
 static int find_128_encoding(char ch) {
-  for (int i = 0; i < (int)ARRAY_SIZE(code_128a_encoding); i++) {
+  for (int i = 0; i < (int)code_128a_encoding.size(); i++) {
     if (code_128a_encoding[i].ch == ch)
       return i;
   }
@@ -943,15 +937,19 @@ bool PDF::AddBarcode128a(float x, float y, float width, float height,
   return true;
 }
 
+namespace {
 // Code 39 character encoding. Each 4-bit value indicates:
 // 0 => wide bar
 // 1 => narrow bar
 // 2 => wide space
-static constexpr const struct {
-    int code;
-    char ch;
-} code_39_encoding[] = {
-    {0x012110, '1'}, {0x102110, '2'}, {0x002111, '3'},
+struct Encoding39 {
+  int code;
+  char ch;
+};
+}  // namespace
+
+static constexpr std::array<Encoding39, 40> code_39_encoding = {
+  Encoding39{0x012110, '1'}, {0x102110, '2'}, {0x002111, '3'},
     {0x112010, '4'}, {0x012011, '5'}, {0x102011, '6'},
     {0x112100, '7'}, {0x012101, '8'}, {0x102101, '9'},
     {0x112001, '0'}, {0x011210, 'A'}, {0x101210, 'B'},
@@ -969,7 +967,7 @@ static constexpr const struct {
 
 // PERF As above.
 static int find_39_encoding(char ch) {
-  for (int i = 0; i < (int)ARRAY_SIZE(code_39_encoding); i++) {
+  for (int i = 0; i < (int)code_39_encoding.size(); i++) {
     if (code_39_encoding[i].ch == ch) {
       return code_39_encoding[i].code;
     }
@@ -1642,15 +1640,15 @@ int PDF::AddBookmark(const std::string &name, int parent, Page *page) {
 
   Object *outline = nullptr;
   if (!(outline = pdf_find_first_object(OBJ_outline))) {
-    outline = AddObject(new Outline);
+    outline = AddObject(new OutlineObj);
   }
 
-  Bookmark *bobj = AddObject(new Bookmark);
+  BookmarkObj *bobj = AddObject(new BookmarkObj);
 
   bobj->name = name;
   bobj->page = page;
   if (parent >= 0) {
-    Bookmark *parent_obj = (Bookmark*)pdf_get_object(parent);
+    BookmarkObj *parent_obj = (BookmarkObj *)pdf_get_object(parent);
     if (!parent_obj) {
       SetErr(-EINVAL, "Invalid parent ID %d supplied", parent);
       return false;
@@ -1680,7 +1678,7 @@ bool PDF::AddLink(float x, float y,
     return false;
   }
 
-  Link *lobj = AddObject(new Link);
+  LinkObj *lobj = AddObject(new LinkObj);
   lobj->target_page = target_page;
   lobj->target_x = target_x;
   lobj->target_y = target_y;
@@ -2629,9 +2627,9 @@ bool PDF::AddTextWrap(const std::string &text,
   return true;
 }
 
-PDF::Image *PDF::pdf_add_raw_grayscale8(const uint8_t *data,
-                                        uint32_t width,
-                                        uint32_t height) {
+PDF::ImageObj *PDF::pdf_add_raw_grayscale8(const uint8_t *data,
+                                           uint32_t width,
+                                           uint32_t height) {
   const size_t data_len = (size_t)width * (size_t)height;
 
   const int idx = (int)objects.size();
@@ -2652,7 +2650,7 @@ PDF::Image *PDF::pdf_add_raw_grayscale8(const uint8_t *data,
   str.append((const char *)data, width * height);
   StringAppendF(&str, ">\r\nendstream\r\n");
 
-  Image *iobj = AddObject(new Image);
+  ImageObj *iobj = AddObject(new ImageObj);
   CHECK(iobj);
   iobj->stream = std::move(str);
 
@@ -2686,7 +2684,7 @@ static void get_img_display_dimensions(uint32_t img_width,
   }
 }
 
-bool PDF::pdf_add_image(Image *image, float x, float y,
+bool PDF::pdf_add_image(ImageObj *image, float x, float y,
                         float width, float height, Page *page) {
 
   if (!page)
@@ -2724,8 +2722,8 @@ bool PDF::pdf_add_image(Image *image, float x, float y,
 #if 0
 
 static Object *pdf_add_raw_rgb24(pdf_doc *pdf,
-                                            const uint8_t *data,
-                                            uint32_t width, uint32_t height)
+                                 const uint8_t *data,
+                                 uint32_t width, uint32_t height)
 {
     Object *obj;
     size_t len;
@@ -2768,176 +2766,7 @@ static Object *pdf_add_raw_rgb24(pdf_doc *pdf,
     return obj;
 }
 
-static uint8_t *get_file(pdf_doc *pdf, const char *file_name,
-                         size_t *length)
-{
-    FILE *fp;
-    uint8_t *file_data;
-    struct stat buf;
-    off_t len;
-
-    if ((fp = fopen(file_name, "rb")) == nullptr) {
-        SetErr(-errno, "Unable to open %s: %s", file_name,
-                    strerror(errno));
-        return nullptr;
-    }
-
-    if (fstat(fileno(fp), &buf) < 0) {
-        SetErr(-errno, "Unable to access %s: %s", file_name,
-                    strerror(errno));
-        fclose(fp);
-        return nullptr;
-    }
-
-    len = buf.st_size;
-
-    file_data = (uint8_t *)malloc(len);
-    CHECK(file_data != nullptr);
-
-    if (fread(file_data, len, 1, fp) != 1) {
-        SetErr(-errno, "Unable to read full data: %s", file_name);
-        free(file_data);
-        fclose(fp);
-        return nullptr;
-    }
-
-    fclose(fp);
-
-    *length = len;
-
-    return file_data;
-}
-
-// Works like fgets, except it's for a fixed in-memory buffer of data
-static size_t dgets(const uint8_t *data, size_t *pos, size_t len, char *line,
-                    size_t line_len)
-{
-    size_t line_pos = 0;
-
-    if (*pos >= len)
-        return 0;
-
-    while ((*pos) < len) {
-        if (line_pos < line_len) {
-            // Reject non-ascii data
-            if (data[*pos] & 0x80) {
-                return 0;
-            }
-            line[line_pos] = data[*pos];
-            line_pos++;
-        }
-        if (data[*pos] == '\n') {
-            (*pos)++;
-            break;
-        }
-        (*pos)++;
-    }
-
-    if (line_pos < line_len) {
-        line[line_pos] = '\0';
-    }
-
-    return *pos;
-}
-
-static int parse_ppm_header(struct pdf_img_info *info, const uint8_t *data,
-                            size_t length, char *err_msg,
-                            size_t err_msg_length)
-{
-    char line[1024];
-    memset(line, '\0', sizeof(line));
-    size_t pos = 0;
-
-    // Load the PPM file
-    if (!dgets(data, &pos, length, line, sizeof(line) - 1)) {
-        snprintf(err_msg, err_msg_length, "Invalid PPM file");
-        return -EINVAL;
-    }
-
-    // Determine number of color channels (Also, we only support binary ppms)
-    int ncolors;
-    if (strncmp(line, "P6", 2) == 0) {
-        info->ppm.color_space = PPM_BINARY_COLOR_RGB;
-        ncolors = 3;
-    } else if (strncmp(line, "P5", 2) == 0) {
-        info->ppm.color_space = PPM_BINARY_COLOR_GRAY;
-        ncolors = 1;
-    } else {
-        snprintf(err_msg, err_msg_length,
-                 "Only binary PPM files (grayscale, RGB) supported");
-        return -EINVAL;
-    }
-
-    // Skip comments before header
-    do {
-        if (!dgets(data, &pos, length, line, sizeof(line) - 1)) {
-            snprintf(err_msg, err_msg_length, "Unable to find PPM header");
-            return -EINVAL;
-        }
-    } while (line[0] == '#');
-
-    // Read image dimensions
-    if (sscanf(line, "%u %u\n", &(info->width), &(info->height)) != 2) {
-        snprintf(err_msg, err_msg_length, "Unable to find PPM size");
-        return -EINVAL;
-    }
-    if (info->width > MAX_IMAGE_WIDTH || info->height > MAX_IMAGE_HEIGHT) {
-        snprintf(err_msg, err_msg_length, "Invalid width/height: %ux%u",
-                 info->width, info->height);
-        return -EINVAL;
-    }
-    info->ppm.size = (size_t)(info->width * info->height * ncolors);
-    info->ppm.data_begin_pos = pos;
-
-    return 0;
-}
-
-static int pdf_add_ppm_data(pdf_doc *pdf, Object *page,
-                            float x, float y, float display_width,
-                            float display_height,
-                            const struct pdf_img_info *info,
-                            const uint8_t *ppm_data, size_t len)
-{
-    char line[1024];
-    // We start reading at the position delivered by parse_ppm_header,
-    // since we already parsed the header of the file there.
-    size_t pos = info->ppm.data_begin_pos;
-
-    /* Skip over the byte-size line */
-    if (!dgets(ppm_data, &pos, len, line, sizeof(line) - 1))
-        return SetErr(-EINVAL, "No byte-size line in PPM file");
-
-    /* Try and limit the memory usage to sane images */
-    if (info->width > MAX_IMAGE_WIDTH || info->height > MAX_IMAGE_HEIGHT) {
-        return SetErr(-EINVAL,
-                           "Invalid width/height in PPM file: %ux%u",
-                           info->width, info->height);
-    }
-
-    if (info->ppm.size > len - pos) {
-        return SetErr(-EINVAL, "Insufficient image data available");
-    }
-
-    switch (info->ppm.color_space) {
-    case PPM_BINARY_COLOR_GRAY:
-        return pdf_add_grayscale8(pdf, page, x, y, display_width,
-                                  display_height, &ppm_data[pos], info->width,
-                                  info->height);
-        break;
-
-    case PPM_BINARY_COLOR_RGB:
-        return pdf_add_rgb24(pdf, page, x, y, display_width, display_height,
-                             &ppm_data[pos], info->width, info->height);
-        break;
-
-    default:
-        return SetErr(-EINVAL,
-                           "Invalid color space in ppm file: %i",
-                           info->ppm.color_space);
-        break;
-    }
-}
-
+// Probably unnecessary--we would always use PNG?
 int pdf_add_rgb24(pdf_doc *pdf, Object *page, float x,
                   float y, float display_width, float display_height,
                   const uint8_t *data, uint32_t width, uint32_t height)
@@ -2953,6 +2782,7 @@ int pdf_add_rgb24(pdf_doc *pdf, Object *page, float x,
     return pdf_add_image(pdf, page, obj, x, y, display_width, display_height);
 }
 
+// Probably unnecessary--we would always use PNG?
 int pdf_add_grayscale8(pdf_doc *pdf, Object *page, float x,
                        float y, float display_width, float display_height,
                        const uint8_t *data, uint32_t width, uint32_t height)
@@ -2969,6 +2799,7 @@ int pdf_add_grayscale8(pdf_doc *pdf, Object *page, float x,
     return pdf_add_image(pdf, page, obj, x, y, display_width, display_height);
 }
 
+// Probably can get rid of this...
 static int parse_png_header(struct pdf_img_info *info, const uint8_t *data,
                             size_t length, char *err_msg,
                             size_t err_msg_length)
@@ -3066,37 +2897,6 @@ static std::optional<JPGHeader> parse_jpeg_header(
   return std::nullopt;
 }
 
-
-#if 0
-PDF::Image *PDF::pdf_add_raw_jpeg_data(const JPGHeader &header,
-                                       const uint8_t *jpeg_data,
-                                       size_t len) {
-  Image *obj = pdf_add_object(new Image);
-  CHECK(obj != nullptr);
-
-  int index = (int)objects.size();
-  StringAppendF(&obj->stream,
-                "<<\r\n"
-                "  /Type /XObject\r\n"
-                "  /Name /Image%d\r\n"
-                "  /Subtype /Image\r\n"
-                "  /ColorSpace %s\r\n"
-                "  /Width %d\r\n"
-                "  /Height %d\r\n"
-                "  /BitsPerComponent 8\r\n"
-                "  /Filter /DCTDecode\r\n"
-                "  /Length %lu\r\n"
-                ">>stream\r\n",
-                index,
-                (header.ncolors == 1) ? "/DeviceGray" : "/DeviceRGB",
-                header.width, header.height, (unsigned long) len);
-  obj->stream.append(jpeg_data, len);
-  StringAppendF(&obj->stream, "\r\nendstream\r\n");
-
-  return obj;
-}
-#endif
-
 bool PDF::pdf_add_jpeg_data(float x, float y, float display_width,
                             float display_height,
                             const uint8_t *jpeg_data,
@@ -3111,7 +2911,7 @@ bool PDF::pdf_add_jpeg_data(float x, float y, float display_width,
 
   const JPGHeader &header = oheader.value();
 
-  Image *obj = AddObject(new Image);
+  ImageObj *obj = AddObject(new ImageObj);
   CHECK(obj != nullptr);
 
   int index = (int)objects.size();
@@ -3162,7 +2962,7 @@ bool PDF::pdf_add_png_data(float x, float y,
   // into the pdf
   std::string color_space;
 
-  Image *obj = nullptr;
+  ImageObj *obj = nullptr;
   uint8_t *final_data = nullptr;
   int written = 0;
   uint32_t pos = 0;
@@ -3358,7 +3158,7 @@ bool PDF::pdf_add_png_data(float x, float y,
     written += sprintf((char *)&final_data[written], "\r\nendstream\r\n");
   }
 
-  obj = AddObject(new Image);
+  obj = AddObject(new ImageObj);
 
   obj->stream = std::string((const char *)final_data, written);
 
@@ -3381,241 +3181,6 @@ bool PDF::pdf_add_png_data(float x, float y,
     return false;
   }
 }
-
-#if 0
-
-static int parse_bmp_header(struct pdf_img_info *info, const uint8_t *data,
-                            size_t data_length, char *err_msg,
-                            size_t err_msg_length)
-{
-    if (data_length < sizeof(bmp_signature) + sizeof(struct bmp_header)) {
-        snprintf(err_msg, err_msg_length, "File is too short");
-        return -EINVAL;
-    }
-
-    if (memcmp(data, bmp_signature, sizeof(bmp_signature))) {
-        snprintf(err_msg, err_msg_length, "File is not correct BMP file");
-        return -EINVAL;
-    }
-    memcpy(&info->bmp, &data[sizeof(bmp_signature)],
-           sizeof(struct bmp_header));
-    if (info->bmp.biWidth < 0) {
-        snprintf(err_msg, err_msg_length, "BMP has negative width");
-        return -EINVAL;
-    }
-    if (info->bmp.biHeight == INT_MIN) {
-        snprintf(err_msg, err_msg_length, "BMP height overflow");
-        return -EINVAL;
-    }
-    info->width = info->bmp.biWidth;
-    // biHeight might be negative (positive indicates vertically mirrored
-    // lines)
-    info->height = abs(info->bmp.biHeight);
-    return 0;
-}
-
-static int pdf_add_bmp_data(pdf_doc *pdf, Object *page,
-                            float x, float y, float display_width,
-                            float display_height,
-                            const struct pdf_img_info *info,
-                            const uint8_t *data, const size_t len)
-{
-    const struct bmp_header *header = &info->bmp;
-    uint8_t *bmp_data = nullptr;
-    uint8_t row_padding;
-    uint32_t bpp;
-    size_t data_len;
-    int retval;
-    const uint32_t width = info->width;
-    const uint32_t height = info->height;
-
-    if (header->bfSize != len)
-        return SetErr(-EINVAL,
-                           "BMP file seems to have wrong length");
-    if (header->biSize != 40)
-        return SetErr(-EINVAL, "Wrong BMP header: biSize");
-    if (header->biCompression != 0)
-        return SetErr(-EINVAL, "Wrong BMP compression value: %d",
-                           header->biCompression);
-    if (header->biWidth > MAX_IMAGE_WIDTH || header->biWidth <= 0 ||
-        width > MAX_IMAGE_WIDTH || width == 0)
-        return SetErr(-EINVAL, "BMP has invalid width: %d",
-                           header->biWidth);
-    if (header->biHeight > MAX_IMAGE_HEIGHT ||
-        header->biHeight < -MAX_IMAGE_HEIGHT || header->biHeight == 0 ||
-        height > MAX_IMAGE_HEIGHT || height == 0)
-        return SetErr(-EINVAL, "BMP has invalid height: %d",
-                           header->biHeight);
-    if (header->biBitCount != 24 && header->biBitCount != 32)
-        return SetErr(-EINVAL, "Unsupported BMP bitdepth: %d",
-                           header->biBitCount);
-    bpp = header->biBitCount / 8;
-    /* BMP rows are 4-bytes padded! */
-    row_padding = (width * bpp) & 3;
-    data_len = (size_t)width * (size_t)height * 3;
-
-    if (header->bfOffBits >= len)
-        return SetErr(-EINVAL, "Invalid BMP image offset");
-
-    if (len - header->bfOffBits <
-        (size_t)height * (width + row_padding) * bpp)
-        return SetErr(-EINVAL, "Wrong BMP image size");
-
-    if (bpp == 3) {
-        /* 24 bits: change R and B colors */
-        bmp_data = (uint8_t *)malloc(data_len);
-        CHECK(bmp_data != nullptr);
-
-        for (uint32_t pos = 0; pos < width * height; pos++) {
-            uint32_t src_pos =
-                header->bfOffBits + 3 * (pos + (pos / width) * row_padding);
-
-            bmp_data[pos * 3] = data[src_pos + 2];
-            bmp_data[pos * 3 + 1] = data[src_pos + 1];
-            bmp_data[pos * 3 + 2] = data[src_pos];
-        }
-    } else if (bpp == 4) {
-        /* 32 bits: change R and B colors, remove key color */
-        int offs = 0;
-        bmp_data = (uint8_t *)malloc(data_len);
-        CHECK(bmp_data != nullptr);
-
-        for (uint32_t pos = 0; pos < width * height * 4; pos += 4) {
-            bmp_data[offs] = data[header->bfOffBits + pos + 2];
-            bmp_data[offs + 1] = data[header->bfOffBits + pos + 1];
-            bmp_data[offs + 2] = data[header->bfOffBits + pos];
-            offs += 3;
-        }
-    } else {
-        return SetErr(-EINVAL, "Unsupported BMP bitdepth: %d",
-                           header->biBitCount);
-    }
-    if (header->biHeight >= 0) {
-        // BMP has vertically mirrored representation of lines, so swap them
-        uint8_t *line = (uint8_t *)malloc(width * 3);
-        CHECK(line != nullptr);
-
-        for (uint32_t pos = 0; pos < (height / 2); pos++) {
-            memcpy(line, &bmp_data[pos * width * 3], width * 3);
-            memcpy(&bmp_data[pos * width * 3],
-                   &bmp_data[(height - pos - 1) * width * 3], width * 3);
-            memcpy(&bmp_data[(height - pos - 1) * width * 3], line,
-                   width * 3);
-        }
-        free(line);
-    }
-
-    retval = pdf_add_rgb24(pdf, page, x, y, display_width, display_height,
-                           bmp_data, width, height);
-    free(bmp_data);
-
-    return retval;
-}
-
-static int determine_image_format(const uint8_t *data, size_t length)
-{
-    if (length >= sizeof(png_signature) &&
-        memcmp(data, png_signature, sizeof(png_signature)) == 0)
-        return IMAGE_PNG;
-    if (length >= sizeof(bmp_signature) &&
-        memcmp(data, bmp_signature, sizeof(bmp_signature)) == 0)
-        return IMAGE_BMP;
-    if (length >= sizeof(jpeg_signature) &&
-        memcmp(data, jpeg_signature, sizeof(jpeg_signature)) == 0)
-        return IMAGE_JPG;
-    if (length >= sizeof(ppm_signature) &&
-        memcmp(data, ppm_signature, sizeof(ppm_signature)) == 0)
-        return IMAGE_PPM;
-    if (length >= sizeof(pgm_signature) &&
-        memcmp(data, pgm_signature, sizeof(pgm_signature)) == 0)
-        return IMAGE_PPM;
-
-    return IMAGE_UNKNOWN;
-}
-
-int pdf_parse_image_header(struct pdf_img_info *info, const uint8_t *data,
-                           size_t length, char *err_msg,
-                           size_t err_msg_length)
-
-{
-    const int image_format = determine_image_format(data, length);
-    info->image_format = image_format;
-    switch (image_format) {
-    case IMAGE_PNG:
-        return parse_png_header(info, data, length, err_msg, err_msg_length);
-    case IMAGE_BMP:
-        return parse_bmp_header(info, data, length, err_msg, err_msg_length);
-    case IMAGE_JPG:
-        return parse_jpeg_header(info, data, length, err_msg, err_msg_length);
-    case IMAGE_PPM:
-        return parse_ppm_header(info, data, length, err_msg, err_msg_length);
-
-    case IMAGE_UNKNOWN:
-    default:
-        snprintf(err_msg, err_msg_length, "Unknown file format");
-        return -EINVAL;
-    }
-}
-
-int pdf_add_image_data(pdf_doc *pdf, Object *page, float x,
-                       float y, float display_width, float display_height,
-                       const uint8_t *data, size_t len)
-{
-    struct pdf_img_info info = {
-        .image_format = IMAGE_UNKNOWN,
-        .width = 0,
-        .height = 0,
-        .jpeg = {0},
-    };
-
-    int ret = pdf_parse_image_header(&info, data, len, pdf->errstr,
-                                     sizeof(pdf->errstr));
-    if (ret)
-        return ret;
-
-    // Try and determine which image format it is based on the content
-    switch (info.image_format) {
-    case IMAGE_PNG:
-        return pdf_add_png_data(pdf, page, x, y, display_width,
-                                display_height, &info, data, len);
-    case IMAGE_BMP:
-        return pdf_add_bmp_data(pdf, page, x, y, display_width,
-                                display_height, &info, data, len);
-    case IMAGE_JPG:
-        return pdf_add_jpeg_data(pdf, page, x, y, display_width,
-                                 display_height, &info, data, len);
-    case IMAGE_PPM:
-        return pdf_add_ppm_data(pdf, page, x, y, display_width,
-                                display_height, &info, data, len);
-
-    // This case should be caught in parse_image_header, but is checked
-    // here again for safety
-    case IMAGE_UNKNOWN:
-    default:
-        return SetErr(-EINVAL, "Unable to determine image format");
-    }
-}
-
-int pdf_add_image_file(pdf_doc *pdf, Object *page, float x,
-                       float y, float display_width, float display_height,
-                       const char *image_filename)
-{
-    size_t len;
-    uint8_t *data;
-    int ret = 0;
-
-    data = get_file(pdf, image_filename, &len);
-    if (data == nullptr)
-        return pdf_get_errval(pdf);
-
-
-    ret = pdf_add_image_data(pdf, page, x, y, display_width, display_height,
-                             data, len);
-    free(data);
-    return ret;
-}
-
-#endif
 
 bool PDF::AddImageRGB(float x, float y,
                       // If one of width or height is negative, then the
