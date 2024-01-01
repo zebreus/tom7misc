@@ -565,13 +565,28 @@ public:
       float target_x, float target_y,
       Page *page);
 
+  enum class CompressionType {
+    PNG,
+    JPG_0,
+    JPG_10,
+    JPG_20,
+    JPG_30,
+    JPG_40,
+    JPG_50,
+    JPG_60,
+    JPG_70,
+    JPG_80,
+    JPG_90,
+    JPG_100,
+  };
+
   bool AddImageRGB(float x, float y,
                    // If one of width or height is negative, then the
                    // value is determined from the other, preserving the
                    // aspect ratio.
                    float width, float height,
                    const ImageRGB &img,
-                   // XXX compression format
+                   CompressionType compression = CompressionType::PNG,
                    Page *page = nullptr);
 
   #if 0
@@ -735,6 +750,13 @@ private:
                         float display_height,
                         const uint8_t *png_data,
                         size_t png_data_length, Page *page);
+
+  bool pdf_add_jpeg_data(float x, float y,
+                         float display_width,
+                         float display_height,
+                         const uint8_t *jpeg_data,
+                         size_t len,
+                         Page *page);
 
   char errstr[128] = {};
   int errval = 0;

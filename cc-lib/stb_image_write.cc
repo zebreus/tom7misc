@@ -1439,6 +1439,23 @@ stbi_make_png_rgb(int w, int h, const uint8_t *data) {
   return ret;
 }
 
+std::vector<uint8_t>
+stbi_make_jpg_rgb(int w, int h, const uint8_t *data, int quality) {
+  std::vector<uint8_t> ret;
+
+  auto write_to_vec = [](void *context, void *data_void, int size) {
+      std::vector<uint8_t> *vec = (std::vector<uint8_t> *)context;
+      const uint8_t *data = (const uint8_t *)data_void;
+      vec->reserve(vec->size() + size);
+      for (int i = 0; i < size; i++) {
+        vec->push_back(data[i]);
+      }
+    };
+
+  stbi_write_jpg_to_func(write_to_vec, &ret, w, h, 3, data, quality);
+  return ret;
+}
+
 
 /* Revision history
       1.14  (2020-02-02) updated JPEG writer to downsample chroma channels

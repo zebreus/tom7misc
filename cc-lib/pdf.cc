@@ -166,6 +166,14 @@ inline static PNGHeader ReadPngHeader(const uint8_t *data) {
   return ret;
 }
 
+// This is not exact. But we just need it to rule out invalid headers.
+static constexpr size_t JPG_FILE_MIN_SIZE = 100;
+struct JPGHeader {
+  uint32_t width = 0;
+  uint32_t height = 0;
+  int ncolors = 0;
+};
+
 const char *PDF::ObjTypeName(ObjType t) {
   switch (t) {
   case OBJ_none: return "none";
@@ -187,9 +195,9 @@ const char *PDF::ObjTypeName(ObjType t) {
 // Simple data container to store a single 24 Bit RGB value, used for
 // processing PNG images
 struct rgb_value {
-    uint8_t red;
-    uint8_t blue;
-    uint8_t green;
+  uint8_t red;
+  uint8_t blue;
+  uint8_t green;
 };
 
 // Locales can replace the decimal character with a ','.
@@ -2800,36 +2808,6 @@ static uint8_t *get_file(pdf_doc *pdf, const char *file_name,
     return file_data;
 }
 
-static Object *
-pdf_add_raw_jpeg_data(pdf_doc *pdf, const struct pdf_img_info *info,
-                      const uint8_t *jpeg_data, size_t len)
-{
-    Object *obj = pdf_add_object(pdf, OBJ_image);
-    if (!obj)
-        return nullptr;
-
-    StringAppendF(&obj->stream.stream,
-                "<<\r\n"
-                "  /Type /XObject\r\n"
-                "  /Name /Image%d\r\n"
-                "  /Subtype /Image\r\n"
-                "  /ColorSpace %s\r\n"
-                "  /Width %d\r\n"
-                "  /Height %d\r\n"
-                "  /BitsPerComponent 8\r\n"
-                "  /Filter /DCTDecode\r\n"
-                "  /Length %lu\r\n"
-                ">>stream\r\n",
-                flexarray_size(&pdf->objects),
-                (info->jpeg.ncolors == 1) ? "/DeviceGray" : "/DeviceRGB",
-                info->width, info->height, (unsigned long) len);
-    dstr_append_data(&obj->stream.stream, jpeg_data, len);
-
-    StringAppendF(&obj->stream.stream, "\r\nendstream\r\n");
-
-    return obj;
-}
-
 // Works like fgets, except it's for a fixed in-memory buffer of data
 static size_t dgets(const uint8_t *data, size_t *pos, size_t len, char *line,
                     size_t line_len)
@@ -2960,56 +2938,6 @@ static int pdf_add_ppm_data(pdf_doc *pdf, Object *page,
     }
 }
 
-static int parse_jpeg_header(struct pdf_img_info *info, const uint8_t *data,
-                             size_t length, char *err_msg,
-                             size_t err_msg_length)
-{
-    // See http://www.videotechnology.com/jpeg/j1.html for details
-    if (length >= 4 && data[0] == 0xFF && data[1] == 0xD8) {
-        for (size_t i = 2; i < length; i++) {
-            if (data[i] != 0xff) {
-                break;
-            }
-            while (++i < length && data[i] == 0xff)
-                ;
-            if (i + 2 >= length) {
-                break;
-            }
-            int len = data[i + 1] * 256 + data[i + 2];
-            /* Search for SOFn marker and decode jpeg details */
-            if ((data[i] & 0xf4) == 0xc0) {
-                if (len >= 9 && i + len + 1 < length) {
-                    info->height = data[i + 4] * 256 + data[i + 5];
-                    info->width = data[i + 6] * 256 + data[i + 7];
-                    info->jpeg.ncolors = data[i + 8];
-                    return 0;
-                }
-                break;
-            }
-            i += len;
-        }
-    }
-    snprintf(err_msg, err_msg_length, "Error parsing JPEG header");
-    return -EINVAL;
-}
-
-static int pdf_add_jpeg_data(pdf_doc *pdf, Object *page,
-                             float x, float y, float display_width,
-                             float display_height, struct pdf_img_info *info,
-                             const uint8_t *jpeg_data, size_t len)
-{
-    Object *obj;
-
-    obj = pdf_add_raw_jpeg_data(pdf, info, jpeg_data, len);
-    if (!obj)
-        return pdf->errval;
-
-    get_img_display_dimensions(info->width, info->height,
-                               &display_width, &display_height);
-
-    return pdf_add_image(pdf, page, obj, x, y, display_width, display_height);
-}
-
 int pdf_add_rgb24(pdf_doc *pdf, Object *page, float x,
                   float y, float display_width, float display_height,
                   const uint8_t *data, uint32_t width, uint32_t height)
@@ -3094,6 +3022,124 @@ static int parse_png_header(struct pdf_img_info *info, const uint8_t *data,
 }
 
 #endif
+
+static std::optional<JPGHeader> parse_jpeg_header(
+    const uint8_t *data, size_t length, std::string *error) {
+  if (length < JPG_FILE_MIN_SIZE) {
+    if (error != nullptr) {
+      *error = "Too small to be a JPEG file.";
+    }
+    return std::nullopt;
+  }
+
+  JPGHeader header;
+
+  // See http://www.videotechnology.com/jpeg/j1.html for details
+  if (length >= 4 && data[0] == 0xFF && data[1] == 0xD8) {
+    for (size_t i = 2; i < length; i++) {
+      if (data[i] != 0xff) {
+        break;
+      }
+      while (++i < length && data[i] == 0xff)
+        ;
+      if (i + 2 >= length) {
+        break;
+      }
+      int len = data[i + 1] * 256 + data[i + 2];
+      /* Search for SOFn marker and decode jpeg details */
+      if ((data[i] & 0xf4) == 0xc0) {
+        if (len >= 9 && i + len + 1 < length) {
+          header.height = data[i + 4] * 256 + data[i + 5];
+          header.width = data[i + 6] * 256 + data[i + 7];
+          header.ncolors = data[i + 8];
+          return {header};
+        }
+        break;
+      }
+      i += len;
+    }
+  }
+
+  if (error != nullptr) {
+    *error = "Invalid JPEG header.";
+  }
+  return std::nullopt;
+}
+
+
+#if 0
+PDF::Image *PDF::pdf_add_raw_jpeg_data(const JPGHeader &header,
+                                       const uint8_t *jpeg_data,
+                                       size_t len) {
+  Image *obj = pdf_add_object(new Image);
+  CHECK(obj != nullptr);
+
+  int index = (int)objects.size();
+  StringAppendF(&obj->stream,
+                "<<\r\n"
+                "  /Type /XObject\r\n"
+                "  /Name /Image%d\r\n"
+                "  /Subtype /Image\r\n"
+                "  /ColorSpace %s\r\n"
+                "  /Width %d\r\n"
+                "  /Height %d\r\n"
+                "  /BitsPerComponent 8\r\n"
+                "  /Filter /DCTDecode\r\n"
+                "  /Length %lu\r\n"
+                ">>stream\r\n",
+                index,
+                (header.ncolors == 1) ? "/DeviceGray" : "/DeviceRGB",
+                header.width, header.height, (unsigned long) len);
+  obj->stream.append(jpeg_data, len);
+  StringAppendF(&obj->stream, "\r\nendstream\r\n");
+
+  return obj;
+}
+#endif
+
+bool PDF::pdf_add_jpeg_data(float x, float y, float display_width,
+                            float display_height,
+                            const uint8_t *jpeg_data,
+                            size_t len,
+                            Page *page) {
+  std::string error;
+  std::optional<JPGHeader> oheader = parse_jpeg_header(jpeg_data, len, &error);
+  if (!oheader.has_value()) {
+    SetErr(-EINVAL, "Couldn't parse jpeg: %s", error.c_str());
+    return false;
+  }
+
+  const JPGHeader &header = oheader.value();
+
+  Image *obj = AddObject(new Image);
+  CHECK(obj != nullptr);
+
+  int index = (int)objects.size();
+  StringAppendF(&obj->stream,
+                "<<\r\n"
+                "  /Type /XObject\r\n"
+                "  /Name /Image%d\r\n"
+                "  /Subtype /Image\r\n"
+                "  /ColorSpace %s\r\n"
+                "  /Width %d\r\n"
+                "  /Height %d\r\n"
+                "  /BitsPerComponent 8\r\n"
+                "  /Filter /DCTDecode\r\n"
+                "  /Length %lu\r\n"
+                ">>stream\r\n",
+                index,
+                (header.ncolors == 1) ? "/DeviceGray" : "/DeviceRGB",
+                header.width, header.height, (unsigned long) len);
+  obj->stream.append((const char*)jpeg_data, len);
+  StringAppendF(&obj->stream, "\r\nendstream\r\n");
+
+  get_img_display_dimensions(header.width,
+                             header.height,
+                             &display_width, &display_height);
+
+  return pdf_add_image(obj, x, y, display_width, display_height, page);
+}
+
 
 bool PDF::pdf_add_png_data(float x, float y,
                            float display_width,
@@ -3577,16 +3623,39 @@ bool PDF::AddImageRGB(float x, float y,
                       // aspect ratio.
                       float display_width, float display_height,
                       const ImageRGB &img,
+                      CompressionType compression,
                       Page *page) {
 
   // Also easy to support JPG here.
-  std::vector<uint8> png = img.SavePNGToVec();
+  if (compression == CompressionType::PNG) {
+    std::vector<uint8_t> png = img.SavePNGToVec();
+    return pdf_add_png_data(x, y,
+                            display_width, display_height,
+                            png.data(), png.size(),
+                            page);
+  }
 
-  return
-    pdf_add_png_data(x, y,
-                     display_width, display_height,
-                     png.data(), png.size(),
-                     page);
+  int jpeg_level = 100;
+  switch (compression) {
+  default:
+  case CompressionType::JPG_0: jpeg_level = 0; break;
+  case CompressionType::JPG_10: jpeg_level = 10; break;
+  case CompressionType::JPG_20: jpeg_level = 20; break;
+  case CompressionType::JPG_30: jpeg_level = 30; break;
+  case CompressionType::JPG_40: jpeg_level = 40; break;
+  case CompressionType::JPG_50: jpeg_level = 50; break;
+  case CompressionType::JPG_60: jpeg_level = 60; break;
+  case CompressionType::JPG_70: jpeg_level = 70; break;
+  case CompressionType::JPG_80: jpeg_level = 80; break;
+  case CompressionType::JPG_90: jpeg_level = 90; break;
+  case CompressionType::JPG_100: jpeg_level = 100; break;
+  }
+
+  std::vector<uint8_t> jpg = img.SaveJPGToVec(jpeg_level);
+  return pdf_add_jpeg_data(x, y,
+                           display_width, display_height,
+                           jpg.data(), jpg.size(),
+                           page);
 }
 
 

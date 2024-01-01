@@ -131,6 +131,13 @@ inline static constexpr uint32 Pack32(uint8 r, uint8 g, uint8 b, uint8 a) {
     ((uint32)r << 24) | ((uint32)g << 16) | ((uint32)b << 8) | (uint32)a;
 }
 
+static inline std::string VecToString(const std::vector<uint8_t> &v) {
+  string ret;
+  ret.resize(v.size());
+  memcpy(ret.data(), v.data(), v.size());
+  return ret;
+}
+
 // TODO: Duplicate code between the different Load routines..
 
 ImageRGBA::ImageRGBA(const std::vector<uint32> &rgba32,
@@ -219,13 +226,7 @@ vector<uint8> ImageRGBA::SaveToVec() const {
 }
 
 string ImageRGBA::SaveToString() const {
-  std::vector<uint8> buffer = ToBuffer8();
-  CHECK((int)buffer.size() == width * height * 4);
-  const vector<uint8> v = stbi_make_png_rgba(width, height, buffer.data());
-  string ret;
-  ret.resize(v.size());
-  memcpy(ret.data(), v.data(), v.size());
-  return ret;
+  return VecToString(SaveToVec());
 }
 
 bool ImageRGBA::SaveJPG(const std::string &filename, int quality) const {
@@ -1046,12 +1047,7 @@ vector<uint8> ImageRGB::SavePNGToVec() const {
 }
 
 string ImageRGB::SavePNGToString() const {
-  CHECK((int)rgb.size() == width * height * 3);
-  const vector<uint8> v = stbi_make_png_rgb(width, height, rgb.data());
-  string ret;
-  ret.resize(v.size());
-  memcpy(ret.data(), v.data(), v.size());
-  return ret;
+  return VecToString(SavePNGToVec());
 }
 
 bool ImageRGB::SaveJPG(const std::string &filename, int quality) const {
@@ -1059,6 +1055,15 @@ bool ImageRGB::SaveJPG(const std::string &filename, int quality) const {
   CHECK(quality >= 0 && quality <= 100) << quality;
   return !!stbi_write_jpg(filename.c_str(),
                           width, height, 3, rgb.data(), quality);
+}
+
+vector<uint8> ImageRGB::SaveJPGToVec(int quality) const {
+  CHECK((int)rgb.size() == width * height * 3);
+  return stbi_make_jpg_rgb(width, height, rgb.data(), quality);
+}
+
+string ImageRGB::SaveJPGToString(int quality) const {
+  return VecToString(SaveJPGToVec(quality));
 }
 
 

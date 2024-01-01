@@ -190,7 +190,12 @@ static void MakeSimplePDF() {
 
     ImageRGB rand = RandomRGB(&rc, 384, 256);
     CHECK(pdf.AddImageRGB(100, PDF::PDF_LETTER_HEIGHT - 72 * 3, -1.0, 72 * 2,
-                          rand, page)) << "Error: " <<
+                          rand, PDF::CompressionType::PNG, page)) << "Error: " <<
+      pdf.GetErr();
+
+    ImageRGB rand2 = RandomRGB(&rc, 384, 256);
+    CHECK(pdf.AddImageRGB(320, PDF::PDF_LETTER_HEIGHT - 72 * 3, -1.0, 72 * 2,
+                          rand2, PDF::CompressionType::JPG_10, page)) << "Error: " <<
       pdf.GetErr();
   }
 

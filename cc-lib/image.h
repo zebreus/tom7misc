@@ -214,8 +214,9 @@ struct ImageRGB {
   std::vector<uint8> SavePNGToVec() const;
   std::string SavePNGToString() const;
 
-  // TODO: Save JPG to memory.
-  bool SaveJPG(const std::string &filename, int quality) const;
+  bool SaveJPG(const std::string &filename, int quality = 90) const;
+  std::vector<uint8> SaveJPGToVec(int quality = 90) const;
+  std::string SaveJPGToString(int quality = 90) const;
 
   void Clear(uint8 r, uint8 g, uint8 b);
 

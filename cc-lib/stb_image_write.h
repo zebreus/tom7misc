@@ -203,4 +203,8 @@ extern std::vector<uint8_t> stbi_make_png_rgba(int w, int h,
 extern std::vector<uint8_t> stbi_make_png_rgb(int w, int h,
                                               const uint8_t *rgb);
 
+// for 24-bit RGB images.
+extern std::vector<uint8_t> stbi_make_jpg_rgb(int w, int h,
+                                              const uint8_t *rgb, int quality);
+
 #endif // INCLUDE_STB_IMAGE_WRITE_H
