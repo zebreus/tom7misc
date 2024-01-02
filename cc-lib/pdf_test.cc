@@ -62,6 +62,8 @@ static void MakeSimplePDF() {
           PDF::PDF_LETTER_HEIGHT,
           info);
 
+  std::string pasement_name = pdf.AddTTF("fonts/DFXPasement9px.ttf");
+
   {
     printf(AWHITE("Shapes page") ".\n");
     PDF::Page *page = pdf.AppendNewPage();
@@ -134,8 +136,7 @@ static void MakeSimplePDF() {
               3.0,
               PDF_RGB(0x70, 0, 0)));
 
-    std::string name = pdf.AddTTF("fonts/DFXPasement9px.ttf");
-    pdf.SetFont(name);
+    pdf.SetFont(pasement_name);
 
     pdf.AddText("Embedded font text", 16,
                 36, 150, PDF_RGB(0, 0, 40));
@@ -204,6 +205,27 @@ static void MakeSimplePDF() {
     CHECK(pdf.AddImageRGB(320, PDF::PDF_LETTER_HEIGHT - 72 * 3, -1.0, 72 * 2,
                           rand2, PDF::CompressionType::JPG_10, page)) << "Error: " <<
       pdf.GetErr();
+
+    pdf.SetFont(pasement_name);
+
+    static constexpr char insist_utf8[4] = "\u2014";
+    static_assert((uint8_t)insist_utf8[0] == 0xE2);
+    static_assert((uint8_t)insist_utf8[1] == 0x80);
+    static_assert((uint8_t)insist_utf8[2] == 0x94);
+    static_assert((uint8_t)insist_utf8[3] == 0x00);
+
+    CHECK(pdf.AddTextWrap(
+              "WELCOME TO THE WWW INTERNET. One of the finest interns of all "
+              "time: E.T.. It is illicitly lilliputian. "
+              "'lillili.' "
+              "@WASTE@ #NOT#. &WANT& !NOT!. ,FONT, \u2014NAUGHT\u2014. "
+              "!@#$%^&*()-=",
+              18,
+              36, 72 * 3,
+              0.0f,
+              PDF_RGB(0, 0, 0),
+              PDF_INCH_TO_POINT(7.0f),
+              PDF::PDF_ALIGN_JUSTIFY)) << "Error: " << pdf.GetErr();
   }
 
   printf("Save it...\n");

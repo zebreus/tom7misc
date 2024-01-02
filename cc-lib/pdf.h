@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 #include "image.h"
 
@@ -66,6 +67,8 @@ private:
     Object *next = nullptr;
   };
 
+  class StreamObj;
+
 public:
 
   // Metadata to be inserted into the header of the output PDF.
@@ -100,6 +103,26 @@ public:
     float height = 0.0f;
     std::vector<Object *> children;
     std::vector<Object *> annotations;
+    friend class PDF;
+  };
+
+  // Just kidding. There's also FontObj!
+  struct FontObj : public Object {
+    FontObj() : Object(OBJ_font) {}
+
+    std::string BaseFont() const;
+
+  private:
+    // The name of the font. Might be a base font.
+    std::string name;
+    // The font's index, like 3 for /F3.
+    int font_index = 0;
+
+    // For embedded fonts, the data stream.
+    StreamObj *ttf = nullptr;
+    // For embedded fonts, the table of widths.
+    std::vector<uint16_t> widths;
+
     friend class PDF;
   };
 
@@ -367,13 +390,17 @@ public:
                    float *height = nullptr,
                    Page *page = nullptr);
 
+  // Returns nullptr if the font has not yet been loaded
+  // with SetFont (for built-in fonts) or AddTTF.
+  FontObj *GetFontByName(const std::string &name) const;
+
   // Returns true upon success.
   bool GetTextWidth(const std::string &text,
                     float size,
                     // Out parameter.
                     float *text_width,
-                    // If nullopt, use current font.
-                    const std::optional<std::string> &font_name = std::nullopt);
+                    // If null, use current font.
+                    FontObj *font = nullptr);
 
   // Add a bookmark to the document.
   // The page is the page to jump to (or nullptr for the most recent one).
@@ -454,19 +481,6 @@ private:
   struct InfoObj : public Object {
     InfoObj() : Object(OBJ_info) {}
     Info info;
-  };
-
-  struct FontObj : public Object {
-    FontObj() : Object(OBJ_font) {}
-    // The name of the font. Might be a base font.
-    std::string name;
-    // The font's index, like 3 for /F3.
-    int font_index = 0;
-
-    // For embedded fonts, the data stream.
-    StreamObj *ttf = nullptr;
-
-    std::string BaseFont() const;
   };
 
   struct LinkObj : public Object {
@@ -578,6 +592,10 @@ private:
 
   FontObj *current_font = nullptr;
   int next_font_index = 1;
+
+  // Indexed by font name. Font objects are not owned; they
+  // are from the objects vector.
+  std::unordered_map<std::string, FontObj *> fonts;
 
   Object *last_objects[OBJ_count] = {};
   Object *first_objects[OBJ_count] = {};

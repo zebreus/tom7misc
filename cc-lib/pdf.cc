@@ -375,14 +375,20 @@ PDF::Object *PDF::pdf_find_last_object(int type) {
   return last_objects[type];
 }
 
+// Or returns nullptr if the font has not been loaded.
+PDF::FontObj *PDF::GetFontByName(const std::string &font_name) const {
+  auto it = fonts.find(font_name);
+  if (it != fonts.end())
+    return it->second;
+
+  return nullptr;
+}
+
 void PDF::SetFont(const std::string &font_name) {
   // See if we've used this font before.
-  for (Object *obj = pdf_find_first_object(OBJ_font); obj; obj = obj->next) {
-    FontObj *fobj = (FontObj*)obj;
-    if (font_name == fobj->name) {
-      current_font = fobj;
-      return;
-    }
+  if (FontObj *fobj = GetFontByName(font_name)) {
+    current_font = fobj;
+    return;
   }
 
   // Create a new font object, then.
@@ -392,6 +398,7 @@ void PDF::SetFont(const std::string &font_name) {
   fobj->font_index = next_font_index;
   next_font_index++;
   current_font = fobj;
+  fonts[font_name] = fobj;
 }
 
 PDF::Page *PDF::AppendNewPage() {
@@ -1758,6 +1765,85 @@ static int utf8_to_utf32(const char *utf8, int len, uint32_t *utf32) {
   return len;
 }
 
+// Codepoints aside from 0-128 that are mapped.
+static constexpr std::initializer_list<uint16_t> MAPPED_CODEPOINTS = {
+  0x152, 0x153, 0x160, 0x161, 0x178, 0x17d, 0x17e, 0x192, 0x2c6, 0x2dc,
+  0x2013, 0x2014, 0x2018, 0x2019, 0x201a, 0x201c, 0x201d, 0x201e, 0x2020,
+  0x2021, 0x2022, 0x2026, 0x2030, 0x2039, 0x203a, 0x20ac, 0x2122,
+};
+
+static constexpr std::optional<int> MapCodepoint(int codepoint) {
+  // Note this does not match the code below, which I think is a bug.
+  if (codepoint < 128) return {codepoint};
+  switch (codepoint) {
+    // TODO: Include a more complete mapping, or use UTF-8 encoding (later
+    // pdf versions support it).
+    // We support *some* minimal UTF-8 characters.
+    // See Appendix D of
+    // opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.7old.pdf
+    // These are all in WinAnsiEncoding
+  case 0x152: // Latin Capital Ligature OE
+    return {0214};
+  case 0x153: // Latin Small Ligature oe
+    return {0234};
+  case 0x160: // Latin Capital Letter S with caron
+    return {0212};
+  case 0x161: // Latin Small Letter S with caron
+    return {0232};
+  case 0x178: // Latin Capital Letter y with diaeresis
+    return {0237};
+  case 0x17d: // Latin Capital Letter Z with caron
+    return {0216};
+  case 0x17e: // Latin Small Letter Z with caron
+    return {0236};
+  case 0x192: // Latin Small Letter F with hook
+    return {0203};
+  case 0x2c6: // Modifier Letter Circumflex Accent
+    return {0210};
+  case 0x2dc: // Small Tilde
+    return {0230};
+  case 0x2013: // Endash
+    return {0226};
+  case 0x2014: // Emdash
+    return {0227};
+  case 0x2018: // Left Single Quote
+    return {0221};
+  case 0x2019: // Right Single Quote
+    return {0222};
+  case 0x201a: // Single low-9 Quotation Mark
+    return {0202};
+  case 0x201c: // Left Double Quote
+    return {0223};
+  case 0x201d: // Right Double Quote
+    return {0224};
+  case 0x201e: // Double low-9 Quotation Mark
+    return {0204};
+  case 0x2020: // Dagger
+    return {0206};
+  case 0x2021: // Double Dagger
+    return {0207};
+  case 0x2022: // Bullet
+    return {0225};
+  case 0x2026: // Horizontal Ellipsis
+    return {0205};
+  case 0x2030: // Per Mille Sign
+    return {0211};
+  case 0x2039: // Single Left-pointing Angle Quotation Mark
+    return {0213};
+  case 0x203a: // Single Right-pointing Angle Quotation Mark
+    return {0233};
+  case 0x20ac: // Euro
+    return {0200};
+  case 0x2122: // Trade Mark Sign
+    return {0231};
+  default:
+    break;
+  }
+
+  return std::nullopt;
+}
+// XXX HERE!
+
 static int utf8_to_pdfencoding(const char *utf8, int len, uint8_t *res) {
   *res = 0;
 
@@ -1765,100 +1851,13 @@ static int utf8_to_pdfencoding(const char *utf8, int len, uint8_t *res) {
   int code_len = utf8_to_utf32(utf8, len, &code);
   CHECK(code_len >= 0) << "Invalid UTF-8 encoding";
 
+  // XXX Bug? Does this encoding really map U+0080 to U+00FF?
   if (code > 255) {
-    // TODO: Include a more complete mapping, or use UTF-8 encoding (later
-    // pdf versions support it).
-    // We support *some* minimal UTF-8 characters.
-    // See Appendix D of
-    // opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.7old.pdf
-    // These are all in WinAnsiEncoding
-    switch (code) {
-    case 0x152: // Latin Capital Ligature OE
-      *res = 0214;
-      break;
-    case 0x153: // Latin Small Ligature oe
-      *res = 0234;
-      break;
-    case 0x160: // Latin Capital Letter S with caron
-      *res = 0212;
-      break;
-    case 0x161: // Latin Small Letter S with caron
-      *res = 0232;
-      break;
-    case 0x178: // Latin Capital Letter y with diaeresis
-      *res = 0237;
-      break;
-    case 0x17d: // Latin Capital Letter Z with caron
-      *res = 0216;
-      break;
-    case 0x17e: // Latin Small Letter Z with caron
-      *res = 0236;
-      break;
-    case 0x192: // Latin Small Letter F with hook
-      *res = 0203;
-      break;
-    case 0x2c6: // Modifier Letter Circumflex Accent
-      *res = 0210;
-      break;
-    case 0x2dc: // Small Tilde
-      *res = 0230;
-      break;
-    case 0x2013: // Endash
-      *res = 0226;
-      break;
-    case 0x2014: // Emdash
-      *res = 0227;
-      break;
-    case 0x2018: // Left Single Quote
-      *res = 0221;
-      break;
-    case 0x2019: // Right Single Quote
-      *res = 0222;
-      break;
-    case 0x201a: // Single low-9 Quotation Mark
-      *res = 0202;
-      break;
-    case 0x201c: // Left Double Quote
-      *res = 0223;
-      break;
-    case 0x201d: // Right Double Quote
-      *res = 0224;
-      break;
-    case 0x201e: // Double low-9 Quotation Mark
-      *res = 0204;
-      break;
-    case 0x2020: // Dagger
-      *res = 0206;
-      break;
-    case 0x2021: // Double Dagger
-      *res = 0207;
-      break;
-    case 0x2022: // Bullet
-      *res = 0225;
-      break;
-    case 0x2026: // Horizontal Ellipsis
-      *res = 0205;
-      break;
-    case 0x2030: // Per Mille Sign
-      *res = 0211;
-      break;
-    case 0x2039: // Single Left-pointing Angle Quotation Mark
-      *res = 0213;
-      break;
-    case 0x203a: // Single Right-pointing Angle Quotation Mark
-      *res = 0233;
-      break;
-    case 0x20ac: // Euro
-      *res = 0200;
-      break;
-    case 0x2122: // Trade Mark Sign
-      *res = 0231;
-      break;
-    default:
-      CHECK(false) <<
-        StringPrintf("Unsupported UTF-8 character: 0x%x 0o%o %s",
-                     code, code, utf8);
-    }
+    const auto co = MapCodepoint(code);
+    CHECK(co.has_value()) <<
+      StringPrintf("Unsupported UTF-8 character: 0x%x 0o%o %s",
+                   code, code, utf8);
+    *res = co.value();
   } else {
     *res = code;
   }
@@ -2498,17 +2497,25 @@ static const uint16_t *find_font_widths(const std::string &font_name) {
 
 bool PDF::GetTextWidth(const std::string &text,
                        float size, float *text_width,
-                       const std::optional<std::string> &font_name_opt) {
-  const std::string *font_name =
-    font_name_opt.has_value() ? &font_name_opt.value() : &current_font->name;
-  const uint16_t *widths = find_font_widths(*font_name);
+                       FontObj *font) {
+  if (font == nullptr) font = current_font;
+  CHECK(font != nullptr);
 
-  if (!widths) {
-    SetErr(-EINVAL,
-           "Unable to determine width for font '%s'",
-           font_name->c_str());
-    return false;
+  // Is it a built-in font?
+  // XXX use an enum or something for this
+  const uint16_t *widths = find_font_widths(font->name);
+  if (widths == nullptr) {
+    if (font->widths.size() < 256) {
+      SetErr(-EINVAL,
+             "Unable to determine width for font '%s'",
+             font->name.c_str());
+      return false;
+    } else {
+      widths = font->widths.data();
+    }
   }
+
+  CHECK(widths != nullptr);
 
   return pdf_text_point_width(text.c_str(), -1, size, widths, text_width);
 }
@@ -2537,14 +2544,21 @@ bool PDF::AddTextWrap(const std::string &text,
   char line[512];
   float orig_yoff = yoff;
 
+  // Is it a built-in font?
+  // XXX use an enum or something for this
   const uint16_t *widths = find_font_widths(current_font->name);
-
   if (widths == nullptr) {
-    SetErr(-EINVAL,
-           "Unable to determine width for font '%s'",
-           current_font->name);
-    return false;
+    if (current_font->widths.size() < 256) {
+      SetErr(-EINVAL,
+             "Unable to determine width for font '%s'",
+             current_font->name.c_str());
+      return false;
+    } else {
+      widths = current_font->widths.data();
+    }
   }
+
+  CHECK(widths != nullptr);
 
   while (start && *start) {
     const char *new_end = find_word_break(end + 1);
@@ -3277,6 +3291,55 @@ std::string PDF::AddTTF(const std::string &filename) {
   fobj->font_index = next_font_index;
   fobj->name = StringPrintf("Font%d", next_font_index);
   next_font_index++;
+  fonts[fobj->name] = fobj;
+
+  int space_width = 0;
+  stbtt_GetCodepointHMetrics(&font, ' ', &space_width, nullptr);
+
+  const float scale_14pt = stbtt_ScaleForMappingEmToPixels(&font,
+                                                           14.0f * 72.0f);
+  printf("Scale 14pt: %.6f\n", scale_14pt);
+
+  // Get widths for mapped codepoints.
+  fobj->widths.resize(256, (uint16_t)std::round(space_width * scale_14pt));
+
+  auto GetWidth = [&font, space_width](int codepoint) {
+      // Treat missing glyphs as the space character.
+      // (Perhaps should be space/2?)
+      if (stbtt_FindGlyphIndex(&font, codepoint) == 0)
+        return space_width;
+
+      int width = 0;
+      stbtt_GetCodepointHMetrics(&font, codepoint, &width, nullptr);
+      return width;
+    };
+
+  auto SetCodepointWidth = [&](int codepoint) {
+      if (std::optional<int> co = MapCodepoint(codepoint)) {
+        int pdf_idx = co.value();
+        CHECK(pdf_idx >= 0 && pdf_idx < 256) << codepoint << " " << pdf_idx;
+        int width_unscaled = GetWidth(codepoint);
+        float width = scale_14pt * width_unscaled;
+        fobj->widths[pdf_idx] = (uint16_t)std::round(width);
+        if (isalnum(codepoint)) {
+          printf("'%c' (%d): %d -> %.5f\n",
+                 codepoint, codepoint, width_unscaled, width);
+        }
+      }
+    };
+
+  for (int cp = 0; cp < 128; cp++)
+    SetCodepointWidth(cp);
+
+  for (uint16_t cp : MAPPED_CODEPOINTS)
+    SetCodepointWidth(cp);
+
+  // XXX
+  printf("Widths:\n");
+  for (int i = 0; i < 256; i++) {
+    printf("%d ", fobj->widths[i]);
+  }
+  printf("\n");
 
   // Create the stream for the embedded data.
   // const int stream_index = (int)objects.size();
