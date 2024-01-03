@@ -71,6 +71,24 @@ private:
 
 public:
 
+  // PDF has 14 built-in fonts.
+  enum BuiltInFont {
+    HELVETICA,
+    HELVETICA_BOLD,
+    HELVETICA_OBLIQUE,
+    HELVETICA_BOLD_OBLIQUE,
+    COURIER,
+    COURIER_BOLD,
+    COURIER_OBLIQUE,
+    COURIER_BOLD_OBLIQUE,
+    TIMES_ROMAN,
+    TIMES_BOLD,
+    TIMES_ITALIC,
+    TIMES_BOLD_ITALIC,
+    SYMBOL,
+    ZAPF_DINGBATS,
+  };
+
   // Metadata to be inserted into the header of the output PDF.
   // Because these fields must be null-terminated, the maximum
   // length is actually 63.
@@ -110,18 +128,25 @@ public:
   struct FontObj : public Object {
     FontObj() : Object(OBJ_font) {}
 
+    // Returns the font's name as known to PDF.
+    // For built-in fonts, this is something like "Helvetica-Bold".
+    // For embedded fonts, it is something unique that need not
+    // have anything to do with the font itself (e.g. "Font3").
     std::string BaseFont() const;
 
   private:
-    // The name of the font. Might be a base font.
-    std::string name;
     // The font's index, like 3 for /F3.
     int font_index = 0;
+
+    // For built-in fonts, the font.
+    std::optional<BuiltInFont> builtin_font = std::nullopt;
 
     // For embedded fonts, the data stream.
     StreamObj *ttf = nullptr;
     // For embedded fonts, the table of widths.
     std::vector<uint16_t> widths;
+
+    const uint16_t *GetWidths() const;
 
     friend class PDF;
   };
@@ -197,36 +222,16 @@ public:
   // Acknowledge an outstanding error.
   void ClearErr();
 
-  /**
-   * Sets the font to use for text objects. Default value is Times-Roman if
-   * this function is not called.
-   * Note: The font selection should be done before text is output,
-   * and will remain until pdf_set_font is called again.
-   * @param pdf PDF document to update font on
-   * @param font New font to use. This must be one of the standard PDF fonts:
-   *  Courier, Courier-Bold, Courier-BoldOblique, Courier-Oblique,
-   *  Helvetica, Helvetica-Bold, Helvetica-BoldOblique, Helvetica-Oblique,
-   *  Times-Roman, Times-Bold, Times-Italic, Times-BoldItalic,
-   *  Symbol or ZapfDingbats
-   */
-  void SetFont(const std::string &font_name);
+  // Set font to a font previously embedded with AddTTF.
+  bool SetFont(const std::string &font_name);
 
-  /**
-   * Calculate the width of a given string in the current font
-   * @param pdf PDF document
-   * @param font_name Name of the font to get the width of.
-   *  This must be one of the standard PDF fonts:
-   *  Courier, Courier-Bold, Courier-BoldOblique, Courier-Oblique,
-   *  Helvetica, Helvetica-Bold, Helvetica-BoldOblique, Helvetica-Oblique,
-   *  Times-Roman, Times-Bold, Times-Italic, Times-BoldItalic,
-   *  Symbol or ZapfDingbats
-   * @param text Text to determine width of
-   * @param size Size of the text, in points
-   * @param text_width area to store calculated width in
-   * @return < 0 on failure, 0 on success
-   */
-  int GetFontTextWidth(const char *font_name,
-                       const char *text, float size, float *text_width);
+  // Set font to one of the 14 built-ins.
+  void SetFont(BuiltInFont font);
+
+  // Must be a font previously added to this PDF object.
+  void SetFont(FontObj *font);
+
+  FontObj *GetCurrentFont() const { return current_font; }
 
   // Dimensions of the document, in points.
   float Width() const;
@@ -393,6 +398,7 @@ public:
   // Returns nullptr if the font has not yet been loaded
   // with SetFont (for built-in fonts) or AddTTF.
   FontObj *GetFontByName(const std::string &name) const;
+  FontObj *GetBuiltInFont(BuiltInFont font) const;
 
   // Returns true upon success.
   bool GetTextWidth(const std::string &text,
@@ -595,7 +601,8 @@ private:
 
   // Indexed by font name. Font objects are not owned; they
   // are from the objects vector.
-  std::unordered_map<std::string, FontObj *> fonts;
+  std::unordered_map<std::string, FontObj *> embedded_fonts;
+  std::unordered_map<BuiltInFont, FontObj *> builtin_fonts;
 
   Object *last_objects[OBJ_count] = {};
   Object *first_objects[OBJ_count] = {};

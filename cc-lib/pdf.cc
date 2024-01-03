@@ -355,7 +355,7 @@ PDF::PDF(float width, float height,
 
   CHECK(AddObject(new PagesObj) != nullptr);
   CHECK(AddObject(new CatalogObj) != nullptr);
-  SetFont("Times-Roman");
+  SetFont(TIMES_ROMAN);
 }
 
 float PDF::Width() const { return width; }
@@ -377,16 +377,37 @@ PDF::Object *PDF::pdf_find_last_object(int type) {
 
 // Or returns nullptr if the font has not been loaded.
 PDF::FontObj *PDF::GetFontByName(const std::string &font_name) const {
-  auto it = fonts.find(font_name);
-  if (it != fonts.end())
+  auto it = embedded_fonts.find(font_name);
+  if (it != embedded_fonts.end())
     return it->second;
 
   return nullptr;
 }
 
-void PDF::SetFont(const std::string &font_name) {
+PDF::FontObj *PDF::GetBuiltInFont(BuiltInFont f) const {
+  auto it = builtin_fonts.find(f);
+  if (it != builtin_fonts.end())
+    return it->second;
+
+  return nullptr;
+}
+
+bool PDF::SetFont(const std::string &font_name) {
   // See if we've used this font before.
   if (FontObj *fobj = GetFontByName(font_name)) {
+    current_font = fobj;
+    return true;
+  }
+
+  SetErr(-ENOENT,
+         "The font '%s' has not been loaded. "
+         "For built-in fonts, use the version of SetFont "
+         "that takes an enum.", font_name.c_str());
+  return false;
+}
+
+void PDF::SetFont(BuiltInFont f) {
+  if (FontObj *fobj = GetBuiltInFont(f)) {
     current_font = fobj;
     return;
   }
@@ -394,11 +415,15 @@ void PDF::SetFont(const std::string &font_name) {
   // Create a new font object, then.
   FontObj *fobj = AddObject(new FontObj);
   CHECK(fobj);
-  fobj->name = font_name;
+  fobj->builtin_font.emplace(f);
   fobj->font_index = next_font_index;
   next_font_index++;
   current_font = fobj;
-  fonts[font_name] = fobj;
+  builtin_fonts[f] = fobj;
+}
+
+void PDF::SetFont(FontObj *font) {
+  current_font = font;
 }
 
 PDF::Page *PDF::AppendNewPage() {
@@ -447,6 +472,28 @@ int PDF::pdf_get_bookmark_count(const Object *obj) {
     }
   }
   return count;
+}
+
+static const char *BuiltInFontName(PDF::BuiltInFont f) {
+  switch (f) {
+  case PDF::HELVETICA: return "Helvetica";
+  case PDF::HELVETICA_BOLD: return "Helvetica-Bold";
+  case PDF::HELVETICA_OBLIQUE: return "Helvetica-Oblique";
+  case PDF::HELVETICA_BOLD_OBLIQUE: return "Helvetica-BoldOblique";
+  case PDF::COURIER: return "Courier";
+  case PDF::COURIER_BOLD: return "Courier-Bold";
+  case PDF::COURIER_OBLIQUE: return "Courier-Oblique";
+  case PDF::COURIER_BOLD_OBLIQUE: return "Courier-BoldOblique";
+  case PDF::TIMES_ROMAN: return "Times-Roman";
+  case PDF::TIMES_BOLD: return "Times-Bold";
+  case PDF::TIMES_ITALIC: return "Times-Italic";
+  case PDF::TIMES_BOLD_ITALIC: return "Times-BoldItalic";
+  case PDF::SYMBOL: return "Symbol";
+  case PDF::ZAPF_DINGBATS: return "ZapfDingbats";
+  default:
+    LOG(FATAL) << "Unknown builtin font";
+    return "";
+  }
 }
 
 int PDF::pdf_save_object(FILE *fp, int index) {
@@ -523,7 +570,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     fprintf(fp, "    /Font <<\r\n");
     for (Object *font = pdf_find_first_object(OBJ_font);
          font; font = font->next) {
-      const FontObj *fobj = (FontObj*)font;
+      const FontObj *fobj = (FontObj *)font;
       fprintf(fp, "      /F%d %d 0 R\r\n",
               fobj->font_index,
               font->index);
@@ -656,9 +703,6 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   case OBJ_font: {
     FontObj *fobj = (FontObj*)object;
     if (fobj->ttf != nullptr) {
-      // FIXME
-      const char *font_name = "Fixme";
-
       // An embedded font.
       fprintf(fp,
               "<<\r\n"
@@ -668,17 +712,20 @@ int PDF::pdf_save_object(FILE *fp, int index) {
               "  /Encoding /WinAnsiEncoding\r\n"
               "  /FontDescriptor <<\r\n"
               "    /Type /FontDescriptor\r\n"
-              "    /FontName %s\r\n"
+              "    /FontName FontName%d\r\n"
               "    /FontFile2 %d 0 R\r\n"
               "  >>\r\n"
               ">>\r\n",
               // Basefont: Just needs a unique name.
               fobj->index,
-              font_name,
+              // FontName; we just FontName<id>
+              fobj->index,
               // Refers to the embedded file in its own stream.
               fobj->ttf->index);
 
     } else {
+      CHECK(fobj->builtin_font.has_value()) << "A FontObj should "
+        "be either an embedded font or built-in one?";
       // A built-in font (BaseFont).
       fprintf(fp,
               "<<\r\n"
@@ -687,7 +734,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
               "  /BaseFont /%s\r\n"
               "  /Encoding /WinAnsiEncoding\r\n"
               ">>\r\n",
-              fobj->name.c_str());
+              BuiltInFontName(fobj->builtin_font.value()));
     }
     break;
   }
@@ -1249,6 +1296,23 @@ void PDF::pdf_barcode_eanupc_aux(float x, float y,
     *new_x = x;
 }
 
+namespace {
+// Barcode routines need to switch the font to Courier temporarily.
+// This object restores the font when it goes out of scope.
+struct ScopedRestoreFont {
+  ScopedRestoreFont(PDF *pdf) : pdf(pdf),
+                                old_font(pdf->GetCurrentFont()) {
+  }
+
+  ~ScopedRestoreFont() {
+    pdf->SetFont(old_font);
+  }
+
+  PDF *pdf = nullptr;
+  PDF::FontObj *old_font = nullptr;
+};
+}  // namespace
+
 bool PDF::AddBarcodeEAN13(float x, float y, float width, float height,
                           const std::string &str, uint32_t color, Page *page) {
   if (str.empty()) {
@@ -1287,16 +1351,14 @@ bool PDF::AddBarcodeEAN13(float x, float y, float width, float height,
   y += y_off;
   float bar_y = y + new_height - bar_height;
 
-  std::string save_font = current_font->name;
-  // XXX Test pdf shows in Times Roman?
+  ScopedRestoreFont restore_font(this);
   // built-in monospace font.
-  SetFont("Courier");
+  SetFont(COURIER);
 
   char text[2];
   text[1] = 0;
   text[0] = lead + '0';
   if (!AddText(text, font, x, y, color, page)) {
-    SetFont(save_font);
     return false;
   }
 
@@ -1310,14 +1372,12 @@ bool PDF::AddBarcodeEAN13(float x, float y, float width, float height,
     text[0] = *s;
     if (!AddTextWrap(text, font, x, y, 0, color,
                      7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
-      SetFont(save_font);
       return false;
     }
 
     int set = (set_ean13_encoding[lead] & 1 << i) ? 1 : 0;
     if (!pdf_barcode_eanupc_ch(x, bar_y, x_width, bar_height,
                                color, *s, set, &x, page)) {
-      SetFont(save_font);
       return false;
     }
     s++;
@@ -1331,13 +1391,11 @@ bool PDF::AddBarcodeEAN13(float x, float y, float width, float height,
     text[0] = *s;
     if (!AddTextWrap(text, font, x, y, 0, color,
                      7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
-      SetFont(save_font);
       return false;
     }
 
     if (!pdf_barcode_eanupc_ch(x, bar_y, x_width, bar_height,
                                color, *s, 2, &x, page)) {
-      SetFont(save_font);
       return false;
     }
     s++;
@@ -1351,11 +1409,9 @@ bool PDF::AddBarcodeEAN13(float x, float y, float width, float height,
   x += eanupc_dimensions[0].quiet_right * x_width -
     604.0f * font / (14.0f * 72.0f);
   if (!AddText(text, font, x, y, color, page)) {
-    SetFont(save_font);
     return false;
   }
 
-  SetFont(save_font);
   return true;
 }
 
@@ -1379,8 +1435,9 @@ bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
   y += y_off;
   float bar_y = y + new_height - bar_height;
 
-  std::string save_font = current_font->name;
-  SetFont("Courier");
+  ScopedRestoreFont restore_font(this);
+  // built-in monospace font.
+  SetFont(COURIER);
 
   const char *string = str.data();
 
@@ -1388,7 +1445,6 @@ bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
   text[1] = 0;
   text[0] = *string;
   if (!AddText(text, font * 4.0f / 7.0f, x, y, color, page)) {
-    SetFont(save_font);
     return false;
   }
 
@@ -1402,7 +1458,6 @@ bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
     if (i) {
       if (!AddTextWrap(text, font, x, y, 0, color,
                        7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
-        SetFont(save_font);
         return false;
       }
     }
@@ -1410,7 +1465,6 @@ bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
     if (!pdf_barcode_eanupc_ch(x, bar_y - (i ? 0 : bar_ext),
                                x_width, bar_height + (i ? 0 : bar_ext),
                                color, *string, 0, &x, page)) {
-      SetFont(save_font);
       return false;
     }
     string++;
@@ -1425,7 +1479,6 @@ bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
     if (i != 5) {
       if (!AddTextWrap(text, font, x, y, 0, color,
                        7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
-        SetFont(save_font);
         return false;
       }
     }
@@ -1434,7 +1487,6 @@ bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
             x, bar_y - (i != 5 ? 0 : bar_ext), x_width,
             bar_height + (i != 5 ? 0 : bar_ext), color, *string, 2, &x,
             page)) {
-      SetFont(save_font);
       return false;
     }
     string++;
@@ -1449,11 +1501,9 @@ bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
   x += eanupc_dimensions[1].quiet_right * x_width -
     604.0f * font * 4.0f / 7.0f / (14.0f * 72.0f);
   if (!AddText(text, font * 4.0f / 7.0f, x, y, color)) {
-    SetFont(save_font);
     return false;
   }
 
-  SetFont(save_font);
   return true;
 }
 
@@ -1482,14 +1532,14 @@ bool PDF::AddBarcodeEAN8(float x, float y, float width, float height,
   y += y_off;
   float bar_y = y + new_height - bar_height;
 
-  const std::string save_font = current_font->name;
-  SetFont("Courier");
+  ScopedRestoreFont restore_font(this);
+  // built-in monospace font.
+  SetFont(COURIER);
 
   char text[2];
   text[1] = 0;
   text[0] = '<';
   if (!AddText(text, font, x, y, color, page)) {
-    SetFont(save_font);
     return false;
   }
 
@@ -1502,13 +1552,11 @@ bool PDF::AddBarcodeEAN8(float x, float y, float width, float height,
     text[0] = *string;
     if (!AddTextWrap(text, font, x, y, 0, color,
                      7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
-      SetFont(save_font);
       return false;
     }
 
     if (!pdf_barcode_eanupc_ch(x, bar_y, x_width, bar_height,
                                color, *string, 0, &x, page)) {
-      SetFont(save_font);
       return false;
     }
     string++;
@@ -1522,13 +1570,11 @@ bool PDF::AddBarcodeEAN8(float x, float y, float width, float height,
     text[0] = *string;
     if (!AddTextWrap(text, font, x, y, 0, color,
                      7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
-      SetFont(save_font);
       return false;
     }
 
     if (!pdf_barcode_eanupc_ch(x, bar_y, x_width, bar_height,
                                color, *string, 2, &x, page)) {
-      SetFont(save_font);
       return false;
     }
     string++;
@@ -1542,11 +1588,9 @@ bool PDF::AddBarcodeEAN8(float x, float y, float width, float height,
   x += eanupc_dimensions[0].quiet_right * x_width -
     604.0f * font / (14.0f * 72.0f);
   if (!AddText(text, font, x, y, color, page)) {
-    SetFont(save_font);
     return false;
   }
 
-  SetFont(save_font);
   return true;
 }
 
@@ -1588,15 +1632,15 @@ bool PDF::AddBarcodeUPCE(float x, float y, float width, float height,
   y += y_off;
   float bar_y = y + new_height - bar_height;
 
-  const std::string save_font = current_font->name;
-  SetFont("Courier");
+  ScopedRestoreFont restore_font(this);
+  // built-in monospace font.
+  SetFont(COURIER);
 
   char text[2];
   text[1] = 0;
   text[0] = string[0];
 
   if (!AddText(text, font * 4.0f / 7.0f, x, y, color, page)) {
-    SetFont(save_font);
     return false;
   }
 
@@ -1629,7 +1673,6 @@ bool PDF::AddBarcodeUPCE(float x, float y, float width, float height,
     X[5] = 3;
   } else {
     SetErr(-EINVAL, "Invalid UPCE string format");
-    SetFont(save_font);
     return false;
   }
 
@@ -1637,14 +1680,12 @@ bool PDF::AddBarcodeUPCE(float x, float y, float width, float height,
     text[0] = X[i];
     if (!AddTextWrap(text, font, x, y, 0, color,
                      7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
-      SetFont(save_font);
       return false;
     }
 
     int set = (set_upce_encoding[string[11] - '0'] & 1 << i) ? 1 : 0;
     if (!pdf_barcode_eanupc_ch(x, bar_y, x_width, bar_height,
                                color, X[i], set, &x, page)) {
-      SetFont(save_font);
       return false;
     }
   }
@@ -1656,11 +1697,9 @@ bool PDF::AddBarcodeUPCE(float x, float y, float width, float height,
   x += eanupc_dimensions[0].quiet_right * x_width -
     604.0f * font * 4.0f / 7.0f / (14.0f * 72.0f);
   if (!AddText(text, font * 4.0f / 7.0f, x, y, color, page)) {
-    SetFont(save_font);
     return false;
   }
 
-  SetFont(save_font);
   return true;
 }
 
@@ -2300,7 +2339,7 @@ static constexpr const uint16_t symbol_widths[256] = {
   497, 497, 497, 0,
 };
 
-static constexpr const uint16_t times_widths[256] = {
+static constexpr const uint16_t times_roman_widths[256] = {
   252, 252, 252, 252, 252, 252, 252, 252,  252, 252, 252, 252,  252, 252,
   252, 252, 252, 252, 252, 252, 252, 252,  252, 252, 252, 252,  252, 252,
   252, 252, 252, 252, 252, 335, 411, 504,  504, 839, 784, 181,  335, 335,
@@ -2389,7 +2428,7 @@ static constexpr const uint16_t times_italic_widths[256] = {
   504, 447, 504, 447,
 };
 
-static constexpr const uint16_t zapfdingbats_widths[256] = {
+static constexpr const uint16_t zapf_dingbats_widths[256] = {
   0,   0,   0,   0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,
   0,   0,   0,   0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,
   0,   0,   0,   0,   280,  981, 968, 981, 987, 724, 795, 796, 797, 695,
@@ -2465,34 +2504,37 @@ bool PDF::pdf_text_point_width(const char *text,
 
 // PERF use enum for built-in fonts.
 // PERF for fixed-width fonts, no need for table.
-static const uint16_t *find_font_widths(const std::string &font_name) {
-  if (font_name == "Helvetica")
-    return helvetica_widths;
-  if (font_name == "Helvetica-Bold")
-    return helvetica_bold_widths;
-  if (font_name == "Helvetica-BoldOblique")
-    return helvetica_bold_oblique_widths;
-  if (font_name == "Helvetica-Oblique")
-    return helvetica_oblique_widths;
-  if (font_name == "Courier" ||
-      font_name == "Courier-Bold" ||
-      font_name == "Courier-BoldOblique" ||
-      font_name == "Courier-Oblique")
+static const uint16_t *find_font_widths(PDF::BuiltInFont font) {
+  switch (font) {
+  case PDF::HELVETICA: return helvetica_widths;
+  case PDF::HELVETICA_BOLD: return helvetica_bold_widths;
+  case PDF::HELVETICA_OBLIQUE: return helvetica_oblique_widths;
+  case PDF::HELVETICA_BOLD_OBLIQUE: return helvetica_bold_oblique_widths;
+  case PDF::COURIER:
+  case PDF::COURIER_BOLD:
+  case PDF::COURIER_OBLIQUE:
+  case PDF::COURIER_BOLD_OBLIQUE:
     return courier_widths;
-  if (font_name == "Times-Roman")
-    return times_widths;
-  if (font_name == "Times-Bold")
-    return times_bold_widths;
-  if (font_name == "Times-Italic")
-    return times_italic_widths;
-  if (font_name == "Times-BoldItalic")
-    return times_bold_italic_widths;
-  if (font_name == "Symbol")
-    return symbol_widths;
-  if (font_name == "ZapfDingbats")
-    return zapfdingbats_widths;
+  case PDF::TIMES_ROMAN: return times_roman_widths;
+  case PDF::TIMES_BOLD: return times_bold_widths;
+  case PDF::TIMES_ITALIC: return times_italic_widths;
+  case PDF::TIMES_BOLD_ITALIC: return times_bold_italic_widths;
+  case PDF::SYMBOL: return symbol_widths;
+  case PDF::ZAPF_DINGBATS: return zapf_dingbats_widths;
+  default:
+    LOG(FATAL) << "Unknown built-in font";
+    return nullptr;
+  }
+}
 
-  return nullptr;
+const uint16_t *PDF::FontObj::GetWidths() const {
+  if (builtin_font.has_value()) {
+    // Built-in fonts get their widths from compiled-in tables.
+    return find_font_widths(builtin_font.value());
+  } else {
+    CHECK(widths.size() >= 256) << "Bug: Font missing widths?";
+    return widths.data();
+  }
 }
 
 bool PDF::GetTextWidth(const std::string &text,
@@ -2501,20 +2543,7 @@ bool PDF::GetTextWidth(const std::string &text,
   if (font == nullptr) font = current_font;
   CHECK(font != nullptr);
 
-  // Is it a built-in font?
-  // XXX use an enum or something for this
-  const uint16_t *widths = find_font_widths(font->name);
-  if (widths == nullptr) {
-    if (font->widths.size() < 256) {
-      SetErr(-EINVAL,
-             "Unable to determine width for font '%s'",
-             font->name.c_str());
-      return false;
-    } else {
-      widths = font->widths.data();
-    }
-  }
-
+  const uint16_t *widths = font->GetWidths();
   CHECK(widths != nullptr);
 
   return pdf_text_point_width(text.c_str(), -1, size, widths, text_width);
@@ -2544,20 +2573,7 @@ bool PDF::AddTextWrap(const std::string &text,
   char line[512];
   float orig_yoff = yoff;
 
-  // Is it a built-in font?
-  // XXX use an enum or something for this
-  const uint16_t *widths = find_font_widths(current_font->name);
-  if (widths == nullptr) {
-    if (current_font->widths.size() < 256) {
-      SetErr(-EINVAL,
-             "Unable to determine width for font '%s'",
-             current_font->name.c_str());
-      return false;
-    } else {
-      widths = current_font->widths.data();
-    }
-  }
-
+  const uint16_t *widths = current_font->GetWidths();
   CHECK(widths != nullptr);
 
   while (start && *start) {
@@ -3266,10 +3282,6 @@ bool PDF::AddImageRGB(float x, float y,
                            page);
 }
 
-std::string PDF::FontObj::BaseFont() const {
-  return StringPrintf("Font%d\n", index);
-}
-
 std::string PDF::AddTTF(const std::string &filename) {
   std::vector<uint8_t> ttf_bytes = Util::ReadFileBytes(filename);
   CHECK(!ttf_bytes.empty()) << filename;
@@ -3289,16 +3301,18 @@ std::string PDF::AddTTF(const std::string &filename) {
 
   FontObj *fobj = AddObject(new FontObj);
   fobj->font_index = next_font_index;
-  fobj->name = StringPrintf("Font%d", next_font_index);
+  std::string font_name = StringPrintf("Font%d", next_font_index);
   next_font_index++;
-  fonts[fobj->name] = fobj;
+  embedded_fonts[font_name] = fobj;
 
   int space_width = 0;
   stbtt_GetCodepointHMetrics(&font, ' ', &space_width, nullptr);
 
   const float scale_14pt = stbtt_ScaleForMappingEmToPixels(&font,
                                                            14.0f * 72.0f);
-  printf("Scale 14pt: %.6f\n", scale_14pt);
+  if (VERBOSE) {
+    printf("Scale 14pt: %.6f\n", scale_14pt);
+  }
 
   // Get widths for mapped codepoints.
   fobj->widths.resize(256, (uint16_t)std::round(space_width * scale_14pt));
@@ -3321,7 +3335,7 @@ std::string PDF::AddTTF(const std::string &filename) {
         int width_unscaled = GetWidth(codepoint);
         float width = scale_14pt * width_unscaled;
         fobj->widths[pdf_idx] = (uint16_t)std::round(width);
-        if (isalnum(codepoint)) {
+        if (VERBOSE && isalnum(codepoint)) {
           printf("'%c' (%d): %d -> %.5f\n",
                  codepoint, codepoint, width_unscaled, width);
         }
@@ -3334,12 +3348,14 @@ std::string PDF::AddTTF(const std::string &filename) {
   for (uint16_t cp : MAPPED_CODEPOINTS)
     SetCodepointWidth(cp);
 
-  // XXX
-  printf("Widths:\n");
-  for (int i = 0; i < 256; i++) {
-    printf("%d ", fobj->widths[i]);
+  if (VERBOSE) {
+    // XXX
+    printf("%s Widths:\n", filename.c_str());
+    for (int i = 0; i < 256; i++) {
+      printf("%d ", fobj->widths[i]);
+    }
+    printf("\n");
   }
-  printf("\n");
 
   // Create the stream for the embedded data.
   // const int stream_index = (int)objects.size();
@@ -3363,7 +3379,15 @@ std::string PDF::AddTTF(const std::string &filename) {
 
   fobj->ttf = obj;
 
-  return fobj->name;
+  return font_name;
+}
+
+std::string PDF::FontObj::BaseFont() const {
+  if (builtin_font.has_value()) {
+    return BuiltInFontName(builtin_font.value());
+  } else {
+    return StringPrintf("Font%d", font_index);
+  }
 }
 
 /**
