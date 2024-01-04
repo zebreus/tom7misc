@@ -43,6 +43,8 @@
 #include <time.h>
 #include <bit>
 #include <numbers>
+#include <unordered_map>
+#include <utility>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -576,6 +578,12 @@ int PDF::pdf_save_object(FILE *fp, int index) {
               font->index);
     }
     fprintf(fp, "    >>\r\n");
+    // TODO: The way alpha is implemented is to always generate 16
+    // different graphics states on each page, for 4-bit transparency.
+    // (/GS0 ... /GS15). Better would be to register the actual
+    // transparency levels used as we draw stuff, and allow
+    // arbitrarily metter.
+    //
     // We trim transparency to just 4-bits
     fprintf(fp, "    /ExtGState <<\r\n");
     for (int i = 0; i < 16; i++) {
@@ -2148,40 +2156,15 @@ bool PDF::AddFilledPolygon(
   return true;
 }
 
-
-bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
-                               float yoff, uint32_t color, float spacing,
-                               float angle, Page *page) {
-  const size_t len = text.size();
-  const int alpha = (color >> 24) >> 4;
-
-  if (text.empty())
-    return true;
-
-  std::string str = "BT ";
-
-  StringAppendF(&str, "/GS%d gs ", alpha);
-  if (angle != 0.0f) {
-    StringAppendF(&str, "%f %f %f %f %f %f Tm ",
-                  cosf(angle), sinf(angle),
-                  -sinf(angle), cosf(angle), xoff, yoff);
-  } else {
-    StringAppendF(&str, "%f %f TD ", xoff, yoff);
-  }
-
-  StringAppendF(&str, "/F%d %f Tf ", current_font->font_index, size);
-  StringAppendF(&str, "%f %f %f rg ",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
-  StringAppendF(&str, "%f Tc ", spacing);
-  StringAppendF(&str, "(");
-
-  // Escape magic characters properly.
-  for (size_t i = 0; i < len;) {
+static std::optional<std::string> EncodePDFText(const std::string &text) {
+  std::string ret;
+  ret.reserve(text.size());
+  for (int i = 0; i < (int)text.size(); /* in loop */) {
     uint8_t pdf_char = 0;
     const int code_len =
-      utf8_to_pdfencoding(text.data() + i, len - i, &pdf_char);
+      utf8_to_pdfencoding(text.data() + i, text.size() - i, &pdf_char);
     if (code_len < 0) {
-      return false;
+      return std::nullopt;
     }
 
     switch (pdf_char) {
@@ -2189,8 +2172,8 @@ bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
     case ')':
     case '\\':
       // Escape these.
-      str.push_back('\\');
-      str.push_back(pdf_char);
+      ret.push_back('\\');
+      ret.push_back(pdf_char);
       break;
     case '\n':
     case '\r':
@@ -2200,10 +2183,49 @@ bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
       // Skip over these characters.
       break;
     default:
-      str.push_back(pdf_char);
+      ret.push_back(pdf_char);
     }
 
     i += code_len;
+  }
+  return ret;
+}
+
+static void SetTextPositionAndAngle(std::string *str,
+                                    float xoff, float yoff, float angle) {
+  if (angle != 0.0f) {
+    StringAppendF(str, "%f %f %f %f %f %f Tm ",
+                  cosf(angle), sinf(angle),
+                  -sinf(angle), cosf(angle), xoff, yoff);
+  } else {
+    StringAppendF(str, "%f %f TD ", xoff, yoff);
+  }
+}
+
+bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
+                               float yoff, uint32_t color, float spacing,
+                               float angle, Page *page) {
+  const int alpha = (color >> 24) >> 4;
+
+  if (text.empty())
+    return true;
+
+  std::string str = "BT ";
+
+  StringAppendF(&str, "/GS%d gs ", alpha);
+  SetTextPositionAndAngle(&str, xoff, yoff, angle);
+
+  StringAppendF(&str, "/F%d %f Tf ", current_font->font_index, size);
+  StringAppendF(&str, "%f %f %f rg ",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+  StringAppendF(&str, "%f Tc ", spacing);
+  StringAppendF(&str, "(");
+
+  if (const std::optional<std::string> encoded_text = EncodePDFText(text)) {
+    str.append(encoded_text.value());
+  } else {
+    SetErr(-EINVAL, "Could not encode text in PDF encoding.");
+    return false;
   }
 
   StringAppendF(&str,
@@ -2224,6 +2246,56 @@ bool PDF::AddTextRotate(const std::string &text,
                         float size, float xoff, float yoff,
                         float angle, uint32_t color, Page *page) {
   return pdf_add_text_spacing(text, size, xoff, yoff, color, 0, angle, page);
+}
+
+bool PDF::AddSpacedLine(const SpacedLine &line,
+                        float size,
+                        float xoff, float yoff,
+                        uint32_t color,
+                        float angle,
+                        Page *page) {
+  const int alpha = (color >> 24) >> 4;
+
+  if (line.empty())
+    return true;
+
+  std::string str = "BT ";
+
+  StringAppendF(&str, "/GS%d gs ", alpha);
+  SetTextPositionAndAngle(&str, xoff, yoff, angle);
+
+  StringAppendF(&str, "/F%d %f Tf ", current_font->font_index, size);
+  StringAppendF(&str, "%f %f %f rg ",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+  // StringAppendF(&str, "%f Tc ", spacing);
+
+  StringAppendF(&str, "[ ");
+
+  // PDF uses 1/1000ths of a unit here, and defaults to negative space
+  // (this is typically used for kerning). The arguments are relative
+  // to the font size.
+  const double gap_scale = size * -1000.0;
+
+  for (int i = 0; i < (int)line.size(); i++) {
+    const auto &[text, gap] = line[i];
+    if (const std::optional<std::string> encoded_text = EncodePDFText(text)) {
+      StringAppendF(&str, "(%s) ", encoded_text.value().c_str());
+    } else {
+      SetErr(-EINVAL, "Could not encode text in PDF encoding.");
+      return false;
+    }
+
+    // The last spacing is ignored (and the syntax does not allow it).
+    if (i != (int)line.size() - 1) {
+      StringAppendF(&str, "%f ", gap * gap_scale);
+    }
+  }
+  StringAppendF(&str,
+                "] TJ\n"
+                "ET");
+
+  pdf_add_stream(page, std::move(str));
+  return true;
 }
 
 // The width of each character, in points, at size 14.
@@ -3282,6 +3354,12 @@ bool PDF::AddImageRGB(float x, float y,
                            page);
 }
 
+PDF::SpacedLine PDF::FontObj::KernText(const std::string &text) const {
+  // HERE
+  return {{"FIXME", 0.0f}};
+}
+
+
 std::string PDF::AddTTF(const std::string &filename) {
   std::vector<uint8_t> ttf_bytes = Util::ReadFileBytes(filename);
   CHECK(!ttf_bytes.empty()) << filename;
@@ -3308,8 +3386,11 @@ std::string PDF::AddTTF(const std::string &filename) {
   int space_width = 0;
   stbtt_GetCodepointHMetrics(&font, ' ', &space_width, nullptr);
 
-  const float scale_14pt = stbtt_ScaleForMappingEmToPixels(&font,
-                                                           14.0f * 72.0f);
+  const float scale = stbtt_ScaleForMappingEmToPixels(&font, 72.0f);
+
+  // width tables use 14 points.
+  const float scale_14pt = scale * 14.0f;
+
   if (VERBOSE) {
     printf("Scale 14pt: %.6f\n", scale_14pt);
   }
@@ -3344,7 +3425,6 @@ std::string PDF::AddTTF(const std::string &filename) {
 
   for (int cp = 0; cp < 128; cp++)
     SetCodepointWidth(cp);
-
   for (uint16_t cp : MAPPED_CODEPOINTS)
     SetCodepointWidth(cp);
 
@@ -3356,6 +3436,49 @@ std::string PDF::AddTTF(const std::string &filename) {
     }
     printf("\n");
   }
+
+  // Glyph -> codepoint(s) map. We just use this temporarily to
+  // load the kerning table in terms of codepoints.
+  std::unordered_map<int, std::vector<int>> codepoints_from_glyph;
+  {
+    // Would be nice to add something to stb_truetype that told us
+    // all the codepoints defined. But we know what's supported in
+    // the PDF encoding, so just try those.
+
+    auto InvertGlyphs = [&font, &codepoints_from_glyph](int cp) {
+        if (int glyph = stbtt_FindGlyphIndex(&font, cp)) {
+          codepoints_from_glyph[glyph].push_back(cp);
+        }
+      };
+
+    for (int cp = 0; cp < 128; cp++)
+      InvertGlyphs(cp);
+    for (uint16_t cp : MAPPED_CODEPOINTS)
+      InvertGlyphs(cp);
+  }
+
+  // Load the Kerning table.
+  std::unordered_map<std::pair<int, int>, double,
+    Hashing<std::pair<int, int>>> kerning;
+  {
+    const int table_size = stbtt_GetKerningTableLength(&font);
+    printf("TTF kerning table: %d.\n", table_size);
+    std::vector<stbtt_kerningentry> table;
+    table.resize(table.size());
+    CHECK(table_size ==
+          stbtt_GetKerningTable(&font, table.data(), table_size));
+    // The kerning table is given using glyphs. Convert to
+    // codepoints.
+    for (const stbtt_kerningentry &kern : table) {
+      double advance = scale * kern.advance;
+      for (int c1 : codepoints_from_glyph[kern.glyph1]) {
+        for (int c2 : codepoints_from_glyph[kern.glyph2]) {
+          kerning[std::make_pair(c1, c2)] = advance;
+        }
+      }
+    }
+  }
+  printf("There are %d (codepoint) kerning pairs.\n", (int)kerning.size());
 
   // Create the stream for the embedded data.
   // const int stream_index = (int)objects.size();
@@ -3378,6 +3501,7 @@ std::string PDF::AddTTF(const std::string &filename) {
   StringAppendF(&obj->stream, "\r\nendstream\r\n");
 
   fobj->ttf = obj;
+  fobj->kerning = std::move(kerning);
 
   return font_name;
 }

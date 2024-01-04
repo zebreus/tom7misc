@@ -11,8 +11,11 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <utility>
+#include <cstdint>
 
 #include "image.h"
+#include "hashing.h"
 
 // Allows for quick generation of simple PDF documents.
 // This is useful for producing easily printed output from C code, where
@@ -124,6 +127,17 @@ public:
     friend class PDF;
   };
 
+  // For fine-grained control over spacing.
+  // Each substring has additional space after it (can be negative).
+  // The final space does nothing and can take any value.
+  //
+  // Spacing is relative: It is simply scaled by the font size.
+  //
+  // Implementation note: Spacing here is nominally positive (larger
+  // values mean more space) and in point units, but the underlying
+  // TJ command uses -1/1000 points.
+  using SpacedLine = std::vector<std::pair<std::string, float>>;
+
   // Just kidding. There's also FontObj!
   struct FontObj : public Object {
     FontObj() : Object(OBJ_font) {}
@@ -133,6 +147,18 @@ public:
     // For embedded fonts, it is something unique that need not
     // have anything to do with the font itself (e.g. "Font3").
     std::string BaseFont() const;
+
+    // Return the kerning for the pair, if defined in the font. This
+    // kerning value is the amount of additional space to add, but is
+    // typically negative. Here, units are for the unscaled font
+    // ("1pt"), so they are already appropriate for AddSpacedLine.
+    //
+    // Note that built-in fonts have no kerning tables, but you could
+    // make your own.
+    std::optional<double> GetKerning(int codepoint1, int codepoint2) const;
+
+    // Kerns a single line of text.
+    SpacedLine KernText(const std::string &text) const;
 
   private:
     // The font's index, like 3 for /F3.
@@ -144,7 +170,12 @@ public:
     // For embedded fonts, the data stream.
     StreamObj *ttf = nullptr;
     // For embedded fonts, the table of widths.
+    // These widths are scaled to "14pt".
     std::vector<uint16_t> widths;
+    // Map from a pair of codepoints to the additional space.
+    // This space is scaled to "1pt".
+    std::unordered_map<std::pair<int, int>, double,
+      Hashing<std::pair<int, int>>> kerning;
 
     const uint16_t *GetWidths() const;
 
@@ -394,6 +425,13 @@ public:
                    // Height used, if non-null.
                    float *height = nullptr,
                    Page *page = nullptr);
+
+  bool AddSpacedLine(const SpacedLine &line,
+                     float size,
+                     float xoff, float yoff,
+                     uint32_t color,
+                     float angle = 0.0f,
+                     Page *page = nullptr);
 
   // Returns nullptr if the font has not yet been loaded
   // with SetFont (for built-in fonts) or AddTTF.

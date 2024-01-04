@@ -15,6 +15,8 @@
 #include "randutil.h"
 #include "util.h"
 
+#define PALATINO_TTF "c:\\windows\\fonts\\pala.ttf"
+
 static std::vector<std::pair<float, float>> Star(
     float x, float y,
     float r1, float r2,
@@ -106,11 +108,11 @@ static void MakeSimplePDF() {
     CHECK(pdf.AddFilledPolygon(Star(500, 150, 25, 75, 9), 1.0f,
                                PDF_RGB(0x70, 0x70, 0)));
 
-    pdf.SetFont("Times-Roman");
+    pdf.SetFont(PDF::TIMES_ROMAN);
     CHECK(pdf.AddText("Title of PDF", 72,
                       30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
                       PDF_RGB(0, 0, 0)));
-    pdf.SetFont("Helvetica");
+    pdf.SetFont(PDF::HELVETICA);
     CHECK(pdf.AddTextWrap(
               "Lorem ipsum dolor sit amet, consectetur adipiscing elit, "
               "sed do eiusmod tempor incididunt ut labore et dolore magna "
@@ -127,7 +129,7 @@ static void MakeSimplePDF() {
               PDF_INCH_TO_POINT(3.4f),
               PDF::PDF_ALIGN_JUSTIFY));
 
-    pdf.SetFont("Times-Roman");
+    pdf.SetFont(PDF::TIMES_ROMAN);
     CHECK(pdf.AddTextRotate(
               "Camera-Ready Copy",
               12,
@@ -139,12 +141,37 @@ static void MakeSimplePDF() {
     pdf.SetFont(pasement_name);
 
     pdf.AddText("Embedded font text", 16,
-                36, 150, PDF_RGB(0, 0, 40));
+                36, 150, PDF_RGB(0, 0, 70));
+
+    pdf.SetFont(PDF::HELVETICA_OBLIQUE);
+    pdf.AddSpacedLine({{"Over", -1.0f / 16.0f}, {"lapping", 100.0f}},
+                      16,
+                      36, 200, PDF_RGB(80, 0, 0));
+  }
+
+  {
+    printf(AWHITE("Kerning page") ".\n");
+    [[maybe_unused]]
+    PDF::Page *page = pdf.AppendNewPage();
+    if (Util::ExistsFile(PALATINO_TTF)) {
+      const std::string palatino_name = pdf.AddTTF(PALATINO_TTF);
+      PDF::FontObj *palatino = pdf.GetFontByName(palatino_name);
+      CHECK(palatino != nullptr) << PALATINO_TTF << " exists but can't be "
+        "loaded?";
+
+      CHECK(pdf.AddText(PALATINO_TTF, 36,
+                        30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
+                        PDF_RGB(0, 0, 0)));
+
+    } else {
+      CHECK(pdf.AddText("Missing " PALATINO_TTF, 36,
+                        30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
+                        PDF_RGB(0, 0, 0)));
+    }
   }
 
   {
     printf(AWHITE("Barcode page") ".\n");
-    // Barcode page.
     PDF::Page *page = pdf.AppendNewPage();
 
     static constexpr float GAP = 38.0f;
