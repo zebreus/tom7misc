@@ -158,6 +158,7 @@ static void MakeSimplePDF() {
       PDF::FontObj *palatino = pdf.GetFontByName(palatino_name);
       CHECK(palatino != nullptr) << PALATINO_TTF << " exists but can't be "
         "loaded?";
+      pdf.SetFont(palatino_name);
 
       CHECK(pdf.AddText(PALATINO_TTF, 36,
                         30, PDF::PDF_LETTER_HEIGHT - 72 - 36,

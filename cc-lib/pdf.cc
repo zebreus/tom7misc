@@ -3464,7 +3464,7 @@ std::string PDF::AddTTF(const std::string &filename) {
     const int table_size = stbtt_GetKerningTableLength(&font);
     printf("TTF kerning table: %d.\n", table_size);
     std::vector<stbtt_kerningentry> table;
-    table.resize(table.size());
+    table.resize(table_size);
     CHECK(table_size ==
           stbtt_GetKerningTable(&font, table.data(), table_size));
     // The kerning table is given using glyphs. Convert to
