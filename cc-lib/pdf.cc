@@ -44,6 +44,7 @@
 #include <bit>
 #include <numbers>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "base/logging.h"
@@ -1793,8 +1794,9 @@ static int utf8_to_utf32(const char *utf8, int len, uint32_t *utf32) {
   } else if ((ch & 0xf8) == 0xf0 && len >= 4) {
     len = 4;
     mask = 0x7;
-  } else
+  } else {
     return -EINVAL;
+  }
 
   ch = 0;
   for (int i = 0; i < len; i++) {
@@ -1889,7 +1891,6 @@ static constexpr std::optional<int> MapCodepoint(int codepoint) {
 
   return std::nullopt;
 }
-// XXX HERE!
 
 static int utf8_to_pdfencoding(const char *utf8, int len, uint8_t *res) {
   *res = 0;
@@ -2272,9 +2273,9 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
   StringAppendF(&str, "[ ");
 
   // PDF uses 1/1000ths of a unit here, and defaults to negative space
-  // (this is typically used for kerning). The arguments are relative
-  // to the font size.
-  const double gap_scale = size * -1000.0;
+  // (this is typically used for kerning). This is independent of the
+  // font size.
+  const double gap_scale = -1000.0 / 72.0;
 
   for (int i = 0; i < (int)line.size(); i++) {
     const auto &[text, gap] = line[i];
@@ -3354,9 +3355,86 @@ bool PDF::AddImageRGB(float x, float y,
                            page);
 }
 
+namespace {
+struct UTF8Codepoints {
+  UTF8Codepoints(const std::string &s) :
+    begin_it(s.data(), s.data() + s.size()),
+    end_it(s.data() + s.size(), s.data() + s.size()) {}
+
+  struct const_iterator {
+    constexpr const_iterator(const char *ptr, const char *limit) :
+      ptr(ptr), limit(limit) {}
+    constexpr bool operator =(const const_iterator &other) const {
+      return other.ptr == ptr;
+    }
+    constexpr bool operator !=(const const_iterator &other) const {
+      return other.ptr != ptr;
+    }
+    const_iterator &operator ++() {
+      // prefix.
+      uint32_t code_unused = 0;
+      const int code_len = utf8_to_utf32(ptr, limit - ptr, &code_unused);
+      CHECK(code_len > 0) << "Invalid UTF-8 encoding.";
+      ptr += code_len;
+      return *this;
+    }
+    const_iterator operator ++(int postfix) {
+      auto old = *this;
+      uint32_t code_unused = 0;
+      const int code_len = utf8_to_utf32(ptr, limit - ptr, &code_unused);
+      CHECK(code_len > 0) << "Invalid UTF-8 encoding.";
+      ptr += code_len;
+      return old;
+    }
+
+    uint32_t operator *() const {
+      uint32_t code = 0;
+      (void)utf8_to_utf32(ptr, limit - ptr, &code);
+      return code;
+    }
+
+  private:
+    const char *ptr = nullptr;
+    const char *limit = nullptr;
+  };
+
+  constexpr const_iterator begin() const {
+    return begin_it;
+  }
+
+  constexpr const_iterator end() const {
+    return end_it;
+  }
+
+private:
+  const const_iterator begin_it, end_it;
+};
+}  // namespace
+
 PDF::SpacedLine PDF::FontObj::KernText(const std::string &text) const {
-  // HERE
-  return {{"FIXME", 0.0f}};
+  PDF::SpacedLine ret;
+
+  uint32_t prev_cp = 0;
+  std::string chunk;
+  for (uint32_t cp : UTF8Codepoints(text)) {
+    auto kit = kerning.find(std::make_pair((int)prev_cp, (int)cp));
+    if (kit == kerning.end()) {
+      // Keep accumulating with the default spacing.
+    } else {
+      // kern.
+      float k = kit->second;
+      ret.emplace_back(chunk, k);
+      chunk.clear();
+    }
+    chunk += Util::EncodeUTF8(cp);
+    prev_cp = cp;
+  }
+
+  if (!chunk.empty()) {
+    ret.emplace_back(chunk, 0.0f);
+  }
+
+  return ret;
 }
 
 
@@ -3437,32 +3515,44 @@ std::string PDF::AddTTF(const std::string &filename) {
     printf("\n");
   }
 
+  if (VERBOSE) {
+    printf("[%s] font tables:\n", filename.c_str());
+    stbtt__print_tables(&font);
+  }
+
   // Glyph -> codepoint(s) map. We just use this temporarily to
   // load the kerning table in terms of codepoints.
   std::unordered_map<int, std::vector<int>> codepoints_from_glyph;
+  // The set of all glyphs we can access with the PDF-supported codepoints.
+  std::unordered_set<int> all_glyphs;
   {
     // Would be nice to add something to stb_truetype that told us
     // all the codepoints defined. But we know what's supported in
     // the PDF encoding, so just try those.
-
-    auto InvertGlyphs = [&font, &codepoints_from_glyph](int cp) {
+    auto GetGlyphs = [&font, &codepoints_from_glyph, &all_glyphs](int cp) {
         if (int glyph = stbtt_FindGlyphIndex(&font, cp)) {
           codepoints_from_glyph[glyph].push_back(cp);
+          all_glyphs.insert(glyph);
         }
       };
 
     for (int cp = 0; cp < 128; cp++)
-      InvertGlyphs(cp);
+      GetGlyphs(cp);
     for (uint16_t cp : MAPPED_CODEPOINTS)
-      InvertGlyphs(cp);
+      GetGlyphs(cp);
   }
 
   // Load the Kerning table.
   std::unordered_map<std::pair<int, int>, double,
     Hashing<std::pair<int, int>>> kerning;
-  {
+
+  static constexpr bool KERNING_TABLE_ONLY = false;
+  if constexpr (KERNING_TABLE_ONLY) {
+    // TODO: This is only the first kerning table.
     const int table_size = stbtt_GetKerningTableLength(&font);
-    printf("TTF kerning table: %d.\n", table_size);
+    if (VERBOSE) {
+      printf("TTF kerning table: %d.\n", table_size);
+    }
     std::vector<stbtt_kerningentry> table;
     table.resize(table_size);
     CHECK(table_size ==
@@ -3474,17 +3564,55 @@ std::string PDF::AddTTF(const std::string &filename) {
       for (int c1 : codepoints_from_glyph[kern.glyph1]) {
         for (int c2 : codepoints_from_glyph[kern.glyph2]) {
           kerning[std::make_pair(c1, c2)] = advance;
+          if (VERBOSE) {
+            printf("'%c' '%c': %d (= %.5f)\n", c1, c2, kern.advance, advance);
+          }
+        }
+      }
+    }
+  } else {
+    // This approach accesses both the kerning table and GPOS data, which
+    // is used in a lot of more modern fonts.
+    //
+    // TODO PERF: It would be better if stb_truetype gave us access to the GPOS
+    // table directly. In addition to this being an n^2 loop over glyph pairs
+    // (even in the common situation that a character has no kerning data),
+    // the call is looping over the table internally to find the glyphs.
+    for (int g1 : all_glyphs) {
+      for (int g2 : all_glyphs) {
+        int kern = stbtt_GetGlyphKernAdvance(&font, g1, g2);
+
+        // In principle there could be a kerning entry with 0, but we treat
+        // this as no kerning entry.
+        if (kern != 0) {
+          double advance = scale * kern;
+          for (int c1 : codepoints_from_glyph[g1]) {
+            for (int c2 : codepoints_from_glyph[g2]) {
+              kerning[std::make_pair(c1, c2)] = advance;
+              if (VERBOSE) {
+                printf("U+%04x U+%04x = '%s' '%s': %d (= %.5f)\n",
+                       c1, c2,
+                       Util::EncodeUTF8(c1).c_str(),
+                       Util::EncodeUTF8(c2).c_str(),
+                       kern, advance);
+              }
+            }
+          }
         }
       }
     }
   }
-  printf("There are %d (codepoint) kerning pairs.\n", (int)kerning.size());
+
+  printf("[%s] There are %d (codepoint) kerning pairs.\n",
+         filename.c_str(),
+         (int)kerning.size());
 
   // Create the stream for the embedded data.
   // const int stream_index = (int)objects.size();
   StreamObj *obj = AddObject(new StreamObj);
 
-  // PERF: We could deflate the font data here.
+  // PERF: We could deflate the font data here; we'd probably
+  // save about 50%.
   std::string str;
   StringAppendF(&obj->stream,
                 "<<\r\n"

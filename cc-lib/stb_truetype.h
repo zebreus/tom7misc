@@ -857,4 +857,8 @@ enum { // languageID for STBTT_PLATFORM_ID_MAC
    STBTT_MAC_LANG_ITALIAN      =3 ,   STBTT_MAC_LANG_CHINESE_TRAD =19
 };
 
+// Additional stuff by tom7.
+// Dumps the font's tables to stdout.
+void stbtt__print_tables(stbtt_fontinfo *info);
+
 #endif

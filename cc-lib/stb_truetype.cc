@@ -4,6 +4,9 @@
 
 #include "stb_truetype.h"
 
+// XXX just for debugging output
+#include <stdio.h>
+
 #define STB_TRUETYPE_IMPLEMENTATION 1
 // #define STBTT_RASTERIZER_VERSION 1
 
@@ -287,6 +290,21 @@ static int stbtt__isfont(stbtt_uint8 *font)
    if (stbtt_tag4(font, 0,1,0,0)) return 1; // OpenType 1.0
    if (stbtt_tag(font, "true"))   return 1; // Apple specification for TrueType fonts
    return 0;
+}
+
+void stbtt__print_tables(stbtt_fontinfo *info) {
+  stbtt_uint8 *data = info->data;
+  stbtt_uint32 fontstart = info->fontstart;
+  stbtt_int32 num_tables = ttUSHORT(data+fontstart+4);
+  stbtt_uint32 tabledir = fontstart + 12;
+  for (int i=0; i < num_tables; ++i) {
+    stbtt_uint32 loc = tabledir + 16*i;
+    const char *tag = (const char*)data + loc;
+    stbtt_uint32 pos = ttULONG(data+loc+8);
+    printf("%c%c%c%c at %d\n",
+           tag[0], tag[1], tag[2], tag[3],
+           pos);
+  }
 }
 
 // @OPTIMIZE: binary search
@@ -1478,11 +1496,13 @@ static stbtt_int32  stbtt__GetGlyphClass(stbtt_uint8 *classDefTable, int glyph)
 }
 
 // Define to STBTT_assert(x) if you want to break on unimplemented formats.
-#define STBTT_GPOS_TODO_assert(x)
+#define STBTT_GPOS_TODO_assert(x) STBTT_assert(x)
 
 static stbtt_int32 stbtt__GetGlyphGPOSInfoAdvance(const stbtt_fontinfo *info, int glyph1, int glyph2)
 {
-   stbtt_uint16 lookupListOffset;
+  const bool GPOS_VERBOSE = false;
+
+  stbtt_uint16 lookupListOffset;
    stbtt_uint8 *lookupList;
    stbtt_uint16 lookupCount;
    stbtt_uint8 *data;
@@ -1499,6 +1519,7 @@ static stbtt_int32 stbtt__GetGlyphGPOSInfoAdvance(const stbtt_fontinfo *info, in
    lookupList = data + lookupListOffset;
    lookupCount = ttUSHORT(lookupList);
 
+   if (GPOS_VERBOSE) printf("GPOS. lookupCount %d\n", lookupCount);
    for (i=0; i<lookupCount; ++i) {
       stbtt_uint16 lookupOffset = ttUSHORT(lookupList + 2 + 2 * i);
       stbtt_uint8 *lookupTable = lookupList + lookupOffset;
@@ -1509,13 +1530,19 @@ static stbtt_int32 stbtt__GetGlyphGPOSInfoAdvance(const stbtt_fontinfo *info, in
       if (lookupType != 2) // Pair Adjustment Positioning Subtable
          continue;
 
+      if (GPOS_VERBOSE) printf("  [%d] subtableCount: %d\n", i, subTableCount);
+
       for (sti=0; sti<subTableCount; sti++) {
+        if (GPOS_VERBOSE) printf("    [%d][%d]\n", i, sti);
          stbtt_uint16 subtableOffset = ttUSHORT(subTableOffsets + 2 * sti);
          stbtt_uint8 *table = lookupTable + subtableOffset;
          stbtt_uint16 posFormat = ttUSHORT(table);
          stbtt_uint16 coverageOffset = ttUSHORT(table + 2);
          stbtt_int32 coverageIndex = stbtt__GetCoverageIndex(table + coverageOffset, glyph1);
-         if (coverageIndex == -1) continue;
+         if (coverageIndex == -1) {
+           if (GPOS_VERBOSE) printf("      .. coverageIndex -1\n");
+           continue;
+         }
 
          switch (posFormat) {
             case 1: {
@@ -1523,6 +1550,7 @@ static stbtt_int32 stbtt__GetGlyphGPOSInfoAdvance(const stbtt_fontinfo *info, in
                int straw, needle;
                stbtt_uint16 valueFormat1 = ttUSHORT(table + 4);
                stbtt_uint16 valueFormat2 = ttUSHORT(table + 6);
+               // printf("(1) %02x.%02x\n", valueFormat1, valueFormat2);
                if (valueFormat1 == 4 && valueFormat2 == 0) { // Support more formats?
                   stbtt_int32 valueRecordPairSizeInBytes = 2;
                   stbtt_uint16 pairSetCount = ttUSHORT(table + 8);
@@ -1554,14 +1582,17 @@ static stbtt_int32 stbtt__GetGlyphGPOSInfoAdvance(const stbtt_fontinfo *info, in
                         return xAdvance;
                      }
                   }
-               } else
+               } else {
+                 if (GPOS_VERBOSE) printf("Wrong format. Returning...\n");
                   return 0;
+               }
                break;
             }
 
             case 2: {
                stbtt_uint16 valueFormat1 = ttUSHORT(table + 4);
                stbtt_uint16 valueFormat2 = ttUSHORT(table + 6);
+               if (GPOS_VERBOSE) printf("(2) %02x.%02x\n", valueFormat1, valueFormat2);
                if (valueFormat1 == 4 && valueFormat2 == 0) { // Support more formats?
                   stbtt_uint16 classDef1Offset = ttUSHORT(table + 8);
                   stbtt_uint16 classDef2Offset = ttUSHORT(table + 10);
@@ -1586,6 +1617,7 @@ static stbtt_int32 stbtt__GetGlyphGPOSInfoAdvance(const stbtt_fontinfo *info, in
             }
 
             default:
+              if (GPOS_VERBOSE) printf("(u) %d\n", posFormat);
                return 0; // Unsupported position format
          }
       }

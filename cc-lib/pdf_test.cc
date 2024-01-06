@@ -15,7 +15,10 @@
 #include "randutil.h"
 #include "util.h"
 
-#define PALATINO_TTF "c:\\windows\\fonts\\pala.ttf"
+static constexpr std::initializer_list<const char *> FONTS = {
+  "cmunrm.ttf",
+  "c:\\windows\\fonts\\pala.ttf",
+};
 
 static std::vector<std::pair<float, float>> Star(
     float x, float y,
@@ -153,21 +156,48 @@ static void MakeSimplePDF() {
     printf(AWHITE("Kerning page") ".\n");
     [[maybe_unused]]
     PDF::Page *page = pdf.AppendNewPage();
-    if (Util::ExistsFile(PALATINO_TTF)) {
-      const std::string palatino_name = pdf.AddTTF(PALATINO_TTF);
-      PDF::FontObj *palatino = pdf.GetFontByName(palatino_name);
-      CHECK(palatino != nullptr) << PALATINO_TTF << " exists but can't be "
-        "loaded?";
-      pdf.SetFont(palatino_name);
 
-      CHECK(pdf.AddText(PALATINO_TTF, 36,
-                        30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
-                        PDF_RGB(0, 0, 0)));
+    float ypos = PDF::PDF_LETTER_HEIGHT - 72 - 36;
 
-    } else {
-      CHECK(pdf.AddText("Missing " PALATINO_TTF, 36,
-                        30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
-                        PDF_RGB(0, 0, 0)));
+    for (const char *filename : FONTS) {
+      if (Util::ExistsFile(filename)) {
+        const std::string embedded_name = pdf.AddTTF(filename);
+        PDF::FontObj *embedded = pdf.GetFontByName(embedded_name);
+        CHECK(embedded != nullptr) << filename << " exists but can't be "
+          "loaded?";
+        pdf.SetFont(embedded_name);
+
+        CHECK(pdf.AddText(filename, 36,
+                          30, ypos,
+                          PDF_RGB(0, 0, 0)));
+        ypos -= 42.0;
+
+        auto CompareKern = [&](const std::string &s, float size) {
+            CHECK(pdf.AddText(s, size,
+                              30, ypos,
+                              PDF_RGB(0, 0, 0)));
+
+            ypos -= size * 1.1;
+
+            PDF::SpacedLine kerned = embedded->KernText(s);
+            CHECK(pdf.AddSpacedLine(kerned, size,
+                                    30, ypos,
+                                    PDF_RGB(0, 0, 0),
+                                    0.0f));
+            ypos -= size * 1.2;
+          };
+
+        CompareKern("To Await Is To Worry.", 36);
+        CompareKern("Mr. Jock, T.V. Quiz Ph.D., bags few lynx.", 18);
+
+        ypos -= 72.0f;
+
+      } else {
+        printf("Missing " ARED("%s") "\n", filename);
+        CHECK(pdf.AddText("Missing " + std::string(filename), 36,
+                          30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
+                          PDF_RGB(0, 0, 0)));
+      }
     }
   }
 
