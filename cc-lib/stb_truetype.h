@@ -1,5 +1,8 @@
-// stb_truetype.h - v1.24 - public domain
-// authored from 2009-2020 by Sean Barrett / RAD Game Tools
+// stb_truetype.h - v1.26 - public domain
+// authored from 2009-2021 by Sean Barrett / RAD Game Tools
+// Minor local modifications by Tom 7 for cc-lib:
+//  - Split into header, cc, test.
+//  - Assume C++
 //
 // =======================================================================
 //
@@ -58,6 +61,8 @@
 //
 // VERSION HISTORY
 //
+//   1.26 (2021-08-28) fix broken rasterizer
+//   1.25 (2021-07-11) many fixes
 //   1.24 (2020-02-05) fix warning
 //   1.23 (2020-02-02) query SVG data for glyphs; query whole kerning table (but only kern not GPOS)
 //   1.22 (2019-08-11) minimize missing-glyph duplication; fix kerning if both 'GPOS' and 'kern' are defined
@@ -262,10 +267,14 @@
 ////
 ////
 
-#ifndef __STB_INCLUDE_STB_TRUETYPE_H__
-#define __STB_INCLUDE_STB_TRUETYPE_H__
+#ifndef _CC_LIB_STB_TRUETYPE_H
+#define _CC_LIB_STB_TRUETYPE_H
 
+#ifdef STBTT_STATIC
+#define STBTT_DEF static
+#else
 #define STBTT_DEF extern
+#endif
 
 // private structure
 typedef struct
@@ -615,6 +624,7 @@ STBTT_DEF int stbtt_GetGlyphShape(const stbtt_fontinfo *info, int glyph_index, s
 STBTT_DEF void stbtt_FreeShape(const stbtt_fontinfo *info, stbtt_vertex *vertices);
 // frees the data allocated above
 
+STBTT_DEF unsigned char *stbtt_FindSVGDoc(const stbtt_fontinfo *info, int gl);
 STBTT_DEF int stbtt_GetCodepointSVG(const stbtt_fontinfo *info, int unicode_codepoint, const char **svg);
 STBTT_DEF int stbtt_GetGlyphSVG(const stbtt_fontinfo *info, int gl, const char **svg);
 // fills svg with the character's SVG data.
@@ -847,5 +857,4 @@ enum { // languageID for STBTT_PLATFORM_ID_MAC
    STBTT_MAC_LANG_ITALIAN      =3 ,   STBTT_MAC_LANG_CHINESE_TRAD =19
 };
 
-#endif // __STB_INCLUDE_STB_TRUETYPE_H__
-
+#endif
