@@ -1,5 +1,5 @@
 
-default: fontmetrics.exe testpdf.exe
+default: fontmetrics.exe testpdf.exe testssl.exe testpdfgen.exe
 
 CC_LIB=../cc-lib
 FLTO=-flto=auto
@@ -12,7 +12,7 @@ ifeq ($(UNAME),Cygwin)
   # XXX necessary?
   PLATFORM_CXXFLAGS=-D__MINGW32__
   # without static, can't find lz or lstdcxx maybe?
-  PLATFORM_LFLAGS=-lpsapi -Wl,--subsystem,console -static
+  PLATFORM_LFLAGS=-lcrypto -lgdi32 -lpsapi -Wl,--subsystem,console -static
 else
   # Linux, Mac, etc.
   CXX=g++
@@ -33,7 +33,7 @@ LFLAGS= -L. -m64 -lz $(OPT) $(FLTO) $(PLATFORM_LFLAGS) $(GMP_LFLAGS)
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/ansi.o $(CC_LIB)/bounds.o
+UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/ansi.o $(CC_LIB)/bounds.o $(CC_LIB)/pdfgen.o
 
 %.o : %.cc *.h makefile ../cc-lib/fonts/*.h
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -49,5 +49,13 @@ testpdf.exe : testpdf.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+testssl.exe : testssl.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 clean:
 	rm -f $(OBJECTS) *.o *.exe
+
+testpdfgen.exe : testpdfgen.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
