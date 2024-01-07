@@ -160,6 +160,13 @@ public:
     // Kerns a single line of text.
     SpacedLine KernText(const std::string &text) const;
 
+    // Get the width of the codepoint when the font is at 1pt. You can
+    // multiply by the font size to get the width at that size.
+    double CharWidth(int codepoint) const;
+
+    // The width of the string at 1pt.
+    double GetKernedWidth(const std::string &text) const;
+
   private:
     // The font's index, like 3 for /F3.
     int font_index = 0;
@@ -425,6 +432,17 @@ public:
                    // Height used, if non-null.
                    float *height = nullptr,
                    Page *page = nullptr);
+
+
+  // Wrap the text into lines, splitting only at spaces.
+  // Uses a dynamic programming algorithm to minimize the
+  // total amount of "wasted" space.
+  //
+  // The width here is for a 1pt font. You can just divide
+  // the actual width by the font size.
+  std::vector<SpacedLine> SpaceLines(const std::string &text,
+                                     double width_at_1pt,
+                                     FontObj *font = nullptr) const;
 
   bool AddSpacedLine(const SpacedLine &line,
                      float size,

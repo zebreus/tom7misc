@@ -87,6 +87,13 @@ static void TestWhitespace() {
   CHECK_EQ("hello world", Util::NormalizeWhitespace("\thello\tworld\t"));
   string s;
   CHECK_EQ("", Util::NormalizeWhitespace(s));
+
+  CHECK(Util::IsWhitespace(' '));
+  CHECK(Util::IsWhitespace('\r'));
+  CHECK(Util::IsWhitespace('\n'));
+  CHECK(Util::IsWhitespace('\t'));
+  CHECK(!Util::IsWhitespace('_'));
+  CHECK(!Util::IsWhitespace('\0'));
 }
 
 static void TestNormalizeLines() {

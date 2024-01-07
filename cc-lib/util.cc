@@ -1065,6 +1065,18 @@ string Util::LoseWhiteR(string s) {
   return "";
 }
 
+bool Util::IsWhitespace(char c) {
+  switch (c) {
+  case ' ':
+  case '\n':
+  case '\r':
+  case '\t':
+    return true;
+  default:
+    return false;
+  }
+}
+
 string Util::NormalizeWhitespace(const string &s) {
   string ret;
   // Skip at beginning.
@@ -1359,9 +1371,9 @@ bool Util::MatchesWildcard(string_view wildcard_, string_view s) {
   // Need to consume the entire wildcard, unless it
   // ends with a *.
   auto Contains = [&pos](size_t p) {
-		    return pos.find(p) != pos.end();
-		  };
-  
+        return pos.find(p) != pos.end();
+      };
+
   return Contains(wildcard.size()) ||
     (!wildcard.empty() && wildcard[wildcard.size() - 1] == '*' &&
      Contains(wildcard.size() - 1));

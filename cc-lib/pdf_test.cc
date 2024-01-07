@@ -20,6 +20,8 @@ static constexpr std::initializer_list<const char *> FONTS = {
   "c:\\windows\\fonts\\pala.ttf",
 };
 
+using SpacedLine = PDF::SpacedLine;
+
 static std::vector<std::pair<float, float>> Star(
     float x, float y,
     float r1, float r2,
@@ -161,6 +163,8 @@ static void MakeSimplePDF() {
 
     for (const char *filename : FONTS) {
       if (Util::ExistsFile(filename)) {
+        float ycolumn2 = ypos;
+
         const std::string embedded_name = pdf.AddTTF(filename);
         PDF::FontObj *embedded = pdf.GetFontByName(embedded_name);
         CHECK(embedded != nullptr) << filename << " exists but can't be "
@@ -192,7 +196,41 @@ static void MakeSimplePDF() {
 
         ypos -= 72.0f;
 
-      } else {
+        // Now some narrow text.
+        // Built-in-wrapping.
+        const char *text = "The story: These large sheets of polarizing "
+          "material were made specifically for the optical industry. The "
+          "manufacturer who made them maintains very high quality "
+          "standards. Whenever defects, even minute ones, appear in any "
+          "portion of a sheet, the entire piece is rejected. Thus, these "
+          "are rejects, because of very minor imperfections, which we can "
+          "offer at a fraction of their normal price. The polarizing "
+          "material is sandwiched between two clear sheets of butyrate "
+          "plastic. It is rigid, easily cut with scissors, and measures "
+          ".030\" thick.";
+
+        constexpr double width = 72.0 * 1.5;
+        constexpr double size = 12.0f;
+
+        pdf.AddTextWrap(text, size,
+                        5 * 72, ycolumn2,
+                        0.0f,
+                        PDF_RGB(0, 0, 0),
+                        width, PDF::PDF_ALIGN_LEFT);
+
+        std::vector<SpacedLine> spaced =
+          pdf.SpaceLines(text, width / size, embedded);
+        // TODO: Function that applies standard leading!
+        float yy = ycolumn2;
+        const float xx = 6.1 * 72;
+        for (const auto &line : spaced) {
+          CHECK(pdf.AddSpacedLine(line, size, xx, yy,
+                                  PDF_RGB(0, 0, 0),
+                                  0.0f, page)) << filename;
+          yy += size;
+        }
+
+       } else {
         printf("Missing " ARED("%s") "\n", filename);
         CHECK(pdf.AddText("Missing " + std::string(filename), 36,
                           30, PDF::PDF_LETTER_HEIGHT - 72 - 36,

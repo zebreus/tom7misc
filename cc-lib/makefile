@@ -210,5 +210,8 @@ csv_test.exe : csv.o csv_test.o $(BASE)
 pdf_test.exe : pdf.o pdf_test.o ansi.o image.o stb_image.o stb_image_write.o stb_truetype.o arcfour.o util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+recurse_test.exe : recurse_test.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f base/*.o bignum/*.o *.o *.exe *.deleteme test-*.png $(BASE) $(RE2_OBJECTS)

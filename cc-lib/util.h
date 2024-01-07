@@ -230,6 +230,8 @@ struct Util {
   // whitespace is dropped.
   static string NormalizeWhitespace(const string &s);
 
+  static bool IsWhitespace(char c);
+
   /* try to remove the file. If it
      doesn't exist or is successfully
      removed, then return true. */

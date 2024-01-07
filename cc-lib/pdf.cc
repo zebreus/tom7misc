@@ -2299,6 +2299,188 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
   return true;
 }
 
+std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
+                                             double line_width,
+                                             FontObj *font) const {
+  if (font == nullptr) font = current_font;
+  CHECK(current_font);
+
+  // First, split into words with their widths.
+  std::vector<std::string> words = Util::Tokens(text, Util::IsWhitespace);
+  std::vector<double> sizes;
+  sizes.reserve(words.size());
+
+  double space_width = font->CharWidth(' ');
+  for (int i = 0; i < (int)words.size(); i++) {
+    sizes.push_back(font->GetKernedWidth(text));
+  }
+
+  // Value is a pair: The penalty, and a bool indicating that it is
+  // better to break after the word.
+  std::unordered_map<std::pair<int, int>, std::pair<double, bool>,
+    Hashing<std::pair<int, int>>> memo_table;
+
+  // Same arguments as the penalty function below. Gets the width
+  // of the text up to and including word_idx on this line.
+  auto GetWidthSoFar = [&](int word_idx, int words_before) -> double {
+      // Otherwise, solve recursively.
+      double width_used = 0.0;
+      const int before_start = word_idx - words_before;
+      CHECK(before_start >= 0);
+      for (int b = 0; b < words_before; b++) {
+        // Add the word's length and the space after it.
+        width_used += sizes[before_start + b];
+        width_used += space_width;
+      }
+
+      // And always add the word.
+      width_used += sizes[word_idx];
+      return width_used;
+    };
+
+  // Since the recursion depth can get kinda high here, we need to solve
+  // this one bottom-up.
+  for (int word_idx = (int)words.size() - 1; word_idx >= 0; word_idx++) {
+    // As a loop invariant, we have memo_table filled in for every greater
+    // word_idx.
+
+    auto Get = [&words, &memo_table](int w, int b) {
+        // Base case is no penalty; no breaks.
+        if (w >= (int)words.size()) return std::make_pair(0.0, false);
+        auto mit = memo_table.find(std::make_pair(w, b));
+        CHECK(mit != memo_table.end()) << "Later table entries should "
+          "be filled in!" << w << "," << b;
+      };
+
+    auto Set = [&memo_table](int w, int b, double p, bool brk) {
+        auto mit = memo_table.find(std::make_pair(w, b));
+        CHECK(mit == memo_table.end()) << "Duplicate entries?";
+        mit->second = std::make_pair(p, brk);
+      };
+
+    // PERF: We can (and should) cut this off once we exceed the
+    // length of a line.
+    for (int words_before = 0; words_before < word_idx; words_before++) {
+
+      // PERF: Can compute this incrementally in the loop.
+      double width_used = GetWidthSoFar(word_idx, words_before);
+
+      // Now we can either break here, or continue.
+
+      // If we break, then the penalty is the amount of space left.
+      double penalty_break = line_width - width_used;
+      // Worse to go over than under.
+      if (penalty_break < 0.0)
+        penalty_break = abs(penalty_break * penalty_break * penalty_break);
+      // ... plus the penalty for the remainder, starting on a new line.
+      penalty_break += Get(word_idx + 1, 0).first;
+
+      // The case where we do not break. We only consider this if
+      // we still have space on the line.
+      if (width_used < line_width) {
+        double penalty_nobreak = Get(word_idx + 1, words_before + 1).first;
+
+        if (penalty_break < penalty_nobreak) {
+          Set(word_idx, words_before, penalty_break, true);
+        } else {
+          Set(word_idx, words_before, penalty_nobreak, false);
+        }
+
+      } else {
+        Set(word_idx, words_before, penalty_break, true);
+      }
+    }
+  }
+
+  #if 0
+  // Get the total penalty when we lay out the word, with words_before
+  // of the preceding words of text on the line before it.
+  std::function<double(int, int)> Penalty =
+    std::function<double(int, int)>([&](int word_idx, int words_before) -> double {
+        if (word_idx >= (int)words.size()) return 0.0;
+
+        // See if we have a memo entry.
+        const std::pair<int, int> key(word_idx, words_before);
+        auto mit = memo_table.find(key);
+        if (mit != memo_table.end()) return mit->second.first;
+
+        double width_used = GetWidthSoFar(word_idx, words_before);
+
+        // Now we can either break here, or continue.
+
+        // If we break, then the penalty is the amount of space left.
+        double penalty_break = line_width - width_used;
+        // Worse to go over than under.
+        if (penalty_break < 0.0)
+          penalty_break = abs(penalty_break * penalty_break * penalty_break);
+        // ... plus the penalty for the remainder, starting on a new line.
+        penalty_break += Penalty(word_idx + 1, 0);
+
+        // The case where we do not break. We only consider this if
+        // we still have space on the line.
+        if (width_used < line_width) {
+          double penalty_nobreak = Penalty(word_idx + 1, words_before + 1);
+
+          if (penalty_break < penalty_nobreak) {
+            mit->second = std::make_pair(penalty_break, true);
+            return penalty_break;
+          } else {
+            mit->second = std::make_pair(penalty_nobreak, false);
+            return penalty_nobreak;
+          }
+
+        } else {
+          // Then the only choice is to break.
+          mit->second = std::make_pair(penalty_break, true);
+          return penalty_break;
+        }
+      });
+
+  double penalty = Penalty(0, 0);
+  printf("Best penalty: %.4f\n", penalty);
+  #endif
+
+
+  // Now lay it out using the memo table we already computed.
+  std::vector<SpacedLine> ret;
+  int before = 0;
+  SpacedLine current_line;
+  for (int w = 0; w < (int)words.size(); w++) {
+    // Get the data from the table.
+    const auto mit = memo_table.find(std::make_pair(w, before));
+    CHECK(mit != memo_table.end()) << "Bug: This should have been computed by "
+      "the recursive procedure above; we're retracing its steps here.";
+
+    // We always put the word.
+    if (before > 0) {
+      CHECK(!current_line.empty());
+      // Add the space char; no kerning here.
+      current_line.emplace_back(" ", 0);
+    } else {
+      CHECK(current_line.empty());
+    }
+
+    SpacedLine spaced_word = font->KernText(words[w]);
+    for (const auto &part : spaced_word)
+      current_line.push_back(part);
+
+    // Now, do we break or not?
+    if (mit->second.second) {
+      ret.push_back(std::move(current_line));
+      current_line.clear();
+      before = 0;
+    } else {
+      before++;
+    }
+  }
+
+  if (!current_line.empty())
+    ret.push_back(std::move(current_line));
+
+  return ret;
+}
+
+
 // The width of each character, in points, at size 14.
 static constexpr const uint16_t helvetica_widths[256] = {
   280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
@@ -2607,6 +2789,17 @@ const uint16_t *PDF::FontObj::GetWidths() const {
   } else {
     CHECK(widths.size() >= 256) << "Bug: Font missing widths?";
     return widths.data();
+  }
+}
+
+double PDF::FontObj::CharWidth(int codepoint) const {
+  const uint16_t *ws = GetWidths();
+
+  if (const auto co = MapCodepoint(codepoint)) {
+    return ws[co.value()] * (1.0 / (14.0 * 72.0));
+  } else {
+    // Unmapped codepoint.
+    return 0.0;
   }
 }
 
@@ -3410,6 +3603,21 @@ private:
   const const_iterator begin_it, end_it;
 };
 }  // namespace
+
+double PDF::FontObj::GetKernedWidth(const std::string &text) const {
+  uint32_t prev_cp = 0;
+  double width = 0.0;
+  for (uint32_t cp : UTF8Codepoints(text)) {
+    width += CharWidth(cp);
+    auto kit = kerning.find(std::make_pair((int)prev_cp, (int)cp));
+    if (kit != kerning.end()) {
+      width += kit->second;
+    }
+    prev_cp = cp;
+  }
+
+  return width;
+}
 
 PDF::SpacedLine PDF::FontObj::KernText(const std::string &text) const {
   PDF::SpacedLine ret;
