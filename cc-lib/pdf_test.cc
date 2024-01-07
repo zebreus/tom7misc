@@ -17,10 +17,12 @@
 
 static constexpr std::initializer_list<const char *> FONTS = {
   "cmunrm.ttf",
-  "c:\\windows\\fonts\\pala.ttf",
+  // "c:\\windows\\fonts\\pala.ttf",
+  "cour.ttf",
 };
 
 using SpacedLine = PDF::SpacedLine;
+using FontObj = PDF::FontObj;
 
 static std::vector<std::pair<float, float>> Star(
     float x, float y,
@@ -51,6 +53,59 @@ static ImageRGB RandomRGB(ArcFour *rc, int width, int height) {
     }
   }
   return img;
+}
+
+static void SpaceLine() {
+  PDF::Info info;
+  sprintf(info.creator, "pdf_test.cc");
+  sprintf(info.producer, "Tom 7");
+  sprintf(info.title, "It is a test");
+  sprintf(info.author, "None");
+  sprintf(info.author, "No subject");
+  sprintf(info.date, "30 Dec 2023");
+
+  PDF pdf(PDF::PDF_LETTER_WIDTH,
+          PDF::PDF_LETTER_HEIGHT,
+          info);
+
+  FontObj *times = pdf.GetBuiltInFont(PDF::TIMES_ROMAN);
+
+  if (true) {
+  {
+    std::vector<PDF::SpacedLine> lines =
+      pdf.SpaceLines("simple", 1000, times);
+    CHECK(lines.size() == 1);
+    const SpacedLine &line = lines[0];
+    CHECK(line.size() == 1);
+    CHECK(line[0].first == "simple");
+  }
+
+  {
+    std::vector<PDF::SpacedLine> lines =
+      pdf.SpaceLines("simple one", 1000, times);
+    CHECK(lines.size() == 1);
+    const SpacedLine &line = lines[0];
+    CHECK(line.size() == 3);
+    CHECK(line[0].first == "simple");
+    CHECK(line[1].first == " ");
+    CHECK(line[2].first == "one");
+  }
+
+  {
+    double width = 0.9 * times->GetKernedWidth("simple one");
+    std::vector<PDF::SpacedLine> lines =
+      pdf.SpaceLines("simple one", width, times);
+    CHECK(lines.size() == 2) << lines.size();
+    const SpacedLine &line1 = lines[0];
+    CHECK(line1.size() == 1);
+    CHECK(line1[0].first == "simple");
+    const SpacedLine &line2 = lines[1];
+    CHECK(line2.size() == 1);
+    CHECK(line2[0].first == "one");
+  }
+  }
+
+  printf("SpaceLine " AGREEN("OK") ".\n");
 }
 
 static void MakeSimplePDF() {
@@ -149,7 +204,7 @@ static void MakeSimplePDF() {
                 36, 150, PDF_RGB(0, 0, 70));
 
     pdf.SetFont(PDF::HELVETICA_OBLIQUE);
-    pdf.AddSpacedLine({{"Over", -1.0f / 16.0f}, {"lapping", 100.0f}},
+    pdf.AddSpacedLine({{"Over", -16.0f}, {"lapping", 100.0f}},
                       16,
                       36, 200, PDF_RGB(80, 0, 0));
   }
@@ -191,14 +246,15 @@ static void MakeSimplePDF() {
             ypos -= size * 1.2;
           };
 
-        CompareKern("To Await Is To Worry.", 36);
-        CompareKern("Mr. Jock, T.V. Quiz Ph.D., bags few lynx.", 18);
+        CompareKern("To Await Is To Worry.", 24);
+        CompareKern("Mr. Jock, T.V. Quiz Ph.D., bags few lynx.", 12);
 
-        ypos -= 72.0f;
+        ypos -= 96.0f;
 
         // Now some narrow text.
         // Built-in-wrapping.
-        const char *text = "The story: These large sheets of polarizing "
+        const char *text =
+          "The story: These large sheets of polarizing "
           "material were made specifically for the optical industry. The "
           "manufacturer who made them maintains very high quality "
           "standards. Whenever defects, even minute ones, appear in any "
@@ -208,12 +264,30 @@ static void MakeSimplePDF() {
           "material is sandwiched between two clear sheets of butyrate "
           "plastic. It is rigid, easily cut with scissors, and measures "
           ".030\" thick.";
-
         constexpr double width = 72.0 * 1.5;
-        constexpr double size = 12.0f;
+        constexpr double size = 9.0f;
+
+        const double left = 4.9 * 72;
+        const double padding = 0.10 * 72;
+        const double gutter = 0.25 * 72;
+        const double right = left + width + gutter;
+
+        auto Rules = [&](float x) {
+            pdf.AddLine(x - padding, ycolumn2 + 14,
+                        x - padding, 150,
+                        1.0f, PDF_RGB(180, 180, 180));
+
+            pdf.AddLine(x + width + padding, ycolumn2 + 14,
+                        x + width + padding, 150,
+                        1.0f, PDF_RGB(180, 180, 180));
+
+          };
+
+        Rules(left);
+        Rules(right);
 
         pdf.AddTextWrap(text, size,
-                        5 * 72, ycolumn2,
+                        left, ycolumn2,
                         0.0f,
                         PDF_RGB(0, 0, 0),
                         width, PDF::PDF_ALIGN_LEFT);
@@ -222,12 +296,12 @@ static void MakeSimplePDF() {
           pdf.SpaceLines(text, width / size, embedded);
         // TODO: Function that applies standard leading!
         float yy = ycolumn2;
-        const float xx = 6.1 * 72;
+        const float xx = right;
         for (const auto &line : spaced) {
           CHECK(pdf.AddSpacedLine(line, size, xx, yy,
                                   PDF_RGB(0, 0, 0),
                                   0.0f, page)) << filename;
-          yy += size;
+          yy -= size;
         }
 
        } else {
@@ -332,6 +406,8 @@ static void MakeSimplePDF() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  SpaceLine();
 
   MakeSimplePDF();
 

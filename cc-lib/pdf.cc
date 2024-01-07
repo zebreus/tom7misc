@@ -56,6 +56,9 @@
 // need to read file to a vector.
 #include "util.h"
 
+// XXX just for debugging output
+#include "ansi.h"
+
 #define PDF_RGB_R(c) (float)((((c) >> 16) & 0xff) / 255.0f)
 #define PDF_RGB_G(c) (float)((((c) >> 8) & 0xff) / 255.0f)
 #define PDF_RGB_B(c) (float)((((c) >> 0) & 0xff) / 255.0f)
@@ -2275,7 +2278,7 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
   // PDF uses 1/1000ths of a unit here, and defaults to negative space
   // (this is typically used for kerning). This is independent of the
   // font size.
-  const double gap_scale = -1000.0 / 72.0;
+  const double gap_scale = -1000.0;
 
   for (int i = 0; i < (int)line.size(); i++) {
     const auto &[text, gap] = line[i];
@@ -2302,6 +2305,8 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
 std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
                                              double line_width,
                                              FontObj *font) const {
+  static constexpr bool LOCAL_VERBOSE = false;
+
   if (font == nullptr) font = current_font;
   CHECK(current_font);
 
@@ -2310,9 +2315,27 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
   std::vector<double> sizes;
   sizes.reserve(words.size());
 
-  double space_width = font->CharWidth(' ');
+  const double space_width = font->CharWidth(' ');
   for (int i = 0; i < (int)words.size(); i++) {
-    sizes.push_back(font->GetKernedWidth(text));
+    sizes.push_back(font->GetKernedWidth(words[i]));
+  }
+
+  if (LOCAL_VERBOSE) {
+    printf("\n"
+           ABGCOLOR(60, 60, 180,
+                    AFGCOLOR(255, 255, 255, "=== SpaceLines ===")) "\n"
+           "Space into " ABLUE("%.6f") ":  (' ' is " AYELLOW("%.6f") ")\n"
+           "[", line_width, space_width);
+    double total = 0.0;
+    for (int i = 0; i < (int)words.size(); i++) {
+      printf(AWHITE("%s") " " APURPLE("%.4f") " ",
+             words[i].c_str(), sizes[i]);
+      total += sizes[i];
+    }
+    printf("]\n"
+           "Total word width: " ACYAN("%.6f")
+           " w/ space: " AYELLOW("%.6f") "\n",
+           total, total + ((int)words.size() - 1) * space_width);
   }
 
   // Value is a pair: The penalty, and a bool indicating that it is
@@ -2322,7 +2345,7 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
 
   // Same arguments as the penalty function below. Gets the width
   // of the text up to and including word_idx on this line.
-  auto GetWidthSoFar = [&](int word_idx, int words_before) -> double {
+  auto GetWidthBefore = [&](int word_idx, int words_before) -> double {
       // Otherwise, solve recursively.
       double width_used = 0.0;
       const int before_start = word_idx - words_before;
@@ -2333,11 +2356,6 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
         width_used += sizes[before_start + b];
         width_used += space_width;
       }
-
-      // And always add the word.
-      CHECK(word_idx < (int)sizes.size()) << word_idx
-                                          << " vs " << sizes.size();
-      width_used += sizes[word_idx];
       return width_used;
     };
 
@@ -2358,9 +2376,16 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
         return mit->second;
       };
 
-    auto Set = [&memo_table](int w, int b, double p, bool brk) {
+    auto Set = [&words, &sizes,
+                &memo_table](int w, int b, double p, bool brk) {
         CHECK(!memo_table.contains(std::make_pair(w, b))) <<
           "Duplicate entries?";
+        if (LOCAL_VERBOSE) {
+          if (w < (int)words.size()) {
+            printf("  Penalty ..%d.. [" AWHITE("%s") "] = " ARED("%.4f") " %s\n",
+                   b, words[w].c_str(), p, brk ? AYELLOW("break") : "no");
+          }
+        }
         memo_table[std::make_pair(w, b)] =
           std::make_pair(p, brk);
       };
@@ -2369,24 +2394,90 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
     // length of a line.
     for (int words_before = 0; words_before <= word_idx; words_before++) {
 
+      if (LOCAL_VERBOSE) {
+        printf("[%d,%d] Check", word_idx, words_before);
+        const int before_start = word_idx - words_before;
+        CHECK(before_start >= 0);
+        for (int b = 0; b < words_before; b++) {
+          // Add the word's length and the space after it.
+          CHECK(before_start + b < (int)words.size());
+          printf(" " AGREY("%s"), words[before_start + b].c_str());
+        }
+        printf(" " AWHITE("%s") "\n", words[word_idx].c_str());
+      }
+
       // PERF: Can compute this incrementally in the loop.
       CHECK(word_idx >= 0 && word_idx < (int)sizes.size()) << word_idx;
-      double width_used = GetWidthSoFar(word_idx, words_before);
+      // This includes trailing space, unless we're at the beginning of
+      // the line.
+      const double width_before = GetWidthBefore(word_idx, words_before);
+      // And always add the word.
+      CHECK(word_idx < (int)sizes.size()) << word_idx
+                                          << " vs " << sizes.size();
+      const double width_word = sizes[word_idx];
+
+      double penalty_word = 0.0;
+      // Add the penalty for the word, which applies whether we break
+      // or not.
+      const double total_width = width_before + width_word;
+      if (LOCAL_VERBOSE) {
+        printf("  %.4f > %.4f? ",
+               total_width, line_width);
+      }
+      if (total_width > line_width) {
+        if (LOCAL_VERBOSE) {
+          printf(ABGCOLOR(255,0,0, "OVER"));
+        }
+        if (width_before > line_width) {
+          // We were already over. So just add the word's size.
+          // This might be wrong wrt the trailing space, although
+          // in this case these details just amount to tweaks to the
+          // multiplier.
+          penalty_word += width_word;
+          if (LOCAL_VERBOSE) printf(" full penalty %.3f", width_word);
+        } else {
+          // Since this is the word that puts us over, only count
+          // the amount that it's over.
+          penalty_word += (total_width - line_width);
+          if (LOCAL_VERBOSE) printf(" part penalty %.3f", penalty_word);
+        }
+      }
+      // But the overage penalty is scaled.
+      if (penalty_word > 0.0) {
+        penalty_word = (1.0 + penalty_word);
+        penalty_word = penalty_word * penalty_word * penalty_word;
+      }
+      if (LOCAL_VERBOSE) {
+        printf("\n");
+      }
+
 
       // Now we can either break here, or continue.
-
       // If we break, then the penalty is the amount of space left.
-      double penalty_break = line_width - width_used;
-      // Worse to go over than under.
-      if (penalty_break < 0.0)
-        penalty_break = abs(penalty_break * penalty_break * penalty_break);
-      // ... plus the penalty for the remainder, starting on a new line.
-      penalty_break += Get(word_idx + 1, 0).first;
 
-      // The case where we do not break. We only consider this if
-      // we still have space on the line.
-      if (width_used < line_width) {
-        double penalty_nobreak = Get(word_idx + 1, words_before + 1).first;
+      const double penalty_slack = std::max(line_width - total_width, 0.0);
+      // ... plus the penalty for the remainder, starting on a new line.
+      const double p_rest = Get(word_idx + 1, 0).first;
+
+      const double penalty_break = penalty_word + penalty_slack + p_rest;
+
+      if (LOCAL_VERBOSE) {
+        printf("  width used " ABLUE("%.4f") ". Word penalty " APURPLE("%.4f") ".\n"
+               "    w/break " AORANGE("%.4f")
+               " " AGREY("(slack)") " + " AYELLOW("%.4f")
+               " " AGREY("(rest)") " = " ARED("%.4f") "\n",
+               total_width, penalty_word,
+               penalty_slack, p_rest, penalty_break);
+      }
+
+      // The case where we do not break.
+      if (true || total_width < line_width) {
+        const double p_rest_nobreak = Get(word_idx + 1, words_before + 1).first;
+        const double penalty_nobreak = penalty_word + p_rest_nobreak;
+        if (LOCAL_VERBOSE) {
+          printf("    or without break: " AGREEN("%.4f") " = " ARED("%.4f") "\n",
+                 p_rest_nobreak, penalty_nobreak);
+        }
 
         if (penalty_break < penalty_nobreak) {
           Set(word_idx, words_before, penalty_break, true);
@@ -2420,7 +2511,7 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
         double penalty_break = line_width - width_used;
         // Worse to go over than under.
         if (penalty_break < 0.0)
-          penalty_break = abs(penalty_break * penalty_break * penalty_break);
+          penalty_break = 16.0 * abs(penalty_break); // (penalty_break * penalty_break);
         // ... plus the penalty for the remainder, starting on a new line.
         penalty_break += Penalty(word_idx + 1, 0);
 
@@ -2474,7 +2565,13 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
       current_line.push_back(part);
 
     // Now, do we break or not?
-    if (mit->second.second) {
+    const auto &[p, brk] = mit->second;
+    if (LOCAL_VERBOSE) {
+      printf("After [" AWHITE("%s") "]? Penalty " ARED("%.4f") " %s\n",
+             words[w].c_str(), p, brk ? AYELLOW("break") : AGREY("no"));
+    }
+    if (brk) {
+      // current_line.push_back(std::make_pair("\\n", 0.0f));
       ret.push_back(std::move(current_line));
       current_line.clear();
       before = 0;
@@ -3620,6 +3717,9 @@ double PDF::FontObj::GetKernedWidth(const std::string &text) const {
     width += CharWidth(cp);
     auto kit = kerning.find(std::make_pair((int)prev_cp, (int)cp));
     if (kit != kerning.end()) {
+      if (VERBOSE) {
+        printf("kern %c+%c with %.6f\n", prev_cp, cp, kit->second);
+      }
       width += kit->second;
     }
     prev_cp = cp;
@@ -3763,6 +3863,8 @@ std::string PDF::AddTTF(const std::string &filename) {
   std::unordered_map<std::pair<int, int>, double,
     Hashing<std::pair<int, int>>> kerning;
 
+  double kerning_scale = scale / 72.0;
+
   static constexpr bool KERNING_TABLE_ONLY = false;
   if constexpr (KERNING_TABLE_ONLY) {
     // TODO: This is only the first kerning table.
@@ -3777,7 +3879,7 @@ std::string PDF::AddTTF(const std::string &filename) {
     // The kerning table is given using glyphs. Convert to
     // codepoints.
     for (const stbtt_kerningentry &kern : table) {
-      double advance = scale * kern.advance;
+      double advance = kerning_scale * kern.advance;
       for (int c1 : codepoints_from_glyph[kern.glyph1]) {
         for (int c2 : codepoints_from_glyph[kern.glyph2]) {
           kerning[std::make_pair(c1, c2)] = advance;
@@ -3802,7 +3904,7 @@ std::string PDF::AddTTF(const std::string &filename) {
         // In principle there could be a kerning entry with 0, but we treat
         // this as no kerning entry.
         if (kern != 0) {
-          double advance = scale * kern;
+          double advance = kerning_scale * kern;
           for (int c1 : codepoints_from_glyph[g1]) {
             for (int c2 : codepoints_from_glyph[g2]) {
               kerning[std::make_pair(c1, c2)] = advance;
