@@ -2329,18 +2329,23 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
       CHECK(before_start >= 0);
       for (int b = 0; b < words_before; b++) {
         // Add the word's length and the space after it.
+        CHECK(before_start + b < (int)sizes.size());
         width_used += sizes[before_start + b];
         width_used += space_width;
       }
 
       // And always add the word.
+      CHECK(word_idx < (int)sizes.size()) << word_idx
+                                          << " vs " << sizes.size();
       width_used += sizes[word_idx];
       return width_used;
     };
 
+  CHECK(words.size() == sizes.size());
+
   // Since the recursion depth can get kinda high here, we need to solve
   // this one bottom-up.
-  for (int word_idx = (int)words.size() - 1; word_idx >= 0; word_idx++) {
+  for (int word_idx = (int)words.size() - 1; word_idx >= 0; word_idx--) {
     // As a loop invariant, we have memo_table filled in for every greater
     // word_idx.
 
@@ -2350,19 +2355,22 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
         auto mit = memo_table.find(std::make_pair(w, b));
         CHECK(mit != memo_table.end()) << "Later table entries should "
           "be filled in!" << w << "," << b;
+        return mit->second;
       };
 
     auto Set = [&memo_table](int w, int b, double p, bool brk) {
-        auto mit = memo_table.find(std::make_pair(w, b));
-        CHECK(mit == memo_table.end()) << "Duplicate entries?";
-        mit->second = std::make_pair(p, brk);
+        CHECK(!memo_table.contains(std::make_pair(w, b))) <<
+          "Duplicate entries?";
+        memo_table[std::make_pair(w, b)] =
+          std::make_pair(p, brk);
       };
 
     // PERF: We can (and should) cut this off once we exceed the
     // length of a line.
-    for (int words_before = 0; words_before < word_idx; words_before++) {
+    for (int words_before = 0; words_before <= word_idx; words_before++) {
 
       // PERF: Can compute this incrementally in the loop.
+      CHECK(word_idx >= 0 && word_idx < (int)sizes.size()) << word_idx;
       double width_used = GetWidthSoFar(word_idx, words_before);
 
       // Now we can either break here, or continue.
@@ -2422,16 +2430,16 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
           double penalty_nobreak = Penalty(word_idx + 1, words_before + 1);
 
           if (penalty_break < penalty_nobreak) {
-            mit->second = std::make_pair(penalty_break, true);
+            memo_table[key] = std::make_pair(penalty_break, true);
             return penalty_break;
           } else {
-            mit->second = std::make_pair(penalty_nobreak, false);
+            memo_table[key] = std::make_pair(penalty_nobreak, false);
             return penalty_nobreak;
           }
 
         } else {
           // Then the only choice is to break.
-          mit->second = std::make_pair(penalty_break, true);
+          memo_table[key] = std::make_pair(penalty_break, true);
           return penalty_break;
         }
       });
@@ -2449,7 +2457,8 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
     // Get the data from the table.
     const auto mit = memo_table.find(std::make_pair(w, before));
     CHECK(mit != memo_table.end()) << "Bug: This should have been computed by "
-      "the recursive procedure above; we're retracing its steps here.";
+      "the recursive procedure above; we're retracing its steps here: " <<
+      w << "," << before;
 
     // We always put the word.
     if (before > 0) {
