@@ -1,5 +1,5 @@
 
-// Simple greedy experiment.
+// Simple greedy experiment; fixed widths.
 
 #include "llama.h"
 

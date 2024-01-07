@@ -844,7 +844,9 @@ void LLM::AnsiPrintCandidates(const Candidates &candidates,
     };
 
   std::vector<std::pair<std::string, float>> toks;
+  double logit_total = 0.0;
   for (const llama_token_data &tok : candidates) {
+    logit_total += tok.logit;
     if (tok.id == llama_token_nl(context.model)) {
       toks.emplace_back("\\n", tok.logit);
     } else {
@@ -865,7 +867,10 @@ void LLM::AnsiPrintCandidates(const Candidates &candidates,
   for (int i = 0;
        (maximum < 0 || i < maximum) && i < (int)toks.size();
        i++) {
-    printf("  [%s] %.9f\n", toks[i].first.c_str(), toks[i].second);
+    const auto &[s, logit] = toks[i];
+    double prob = logit / logit_total;
+    printf("  [%s] %.9f (%.4f%%)\n",
+           s.c_str(), logit, prob);
   }
 }
 
