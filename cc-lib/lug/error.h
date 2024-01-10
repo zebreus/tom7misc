@@ -2,13 +2,12 @@
 // Copyright (c) 2017 Jesse W. Towner
 // See LICENSE.md file for license details
 
-#ifndef LUG_ERROR_HPP__
-#define LUG_ERROR_HPP__
+#ifndef LUG_ERROR_HPP_
+#define LUG_ERROR_HPP_
 
 #include <stdexcept>
 
-namespace lug
-{
+namespace lug {
 
 class lug_error : public std::runtime_error { using std::runtime_error::runtime_error; };
 class program_limit_error : public lug_error { public: program_limit_error() : lug_error{"length or offset of program exceeds internal limit"} {} };
