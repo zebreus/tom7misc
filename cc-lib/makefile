@@ -10,7 +10,8 @@ ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
-  CXXFLAGS=-march=native -pipe -Wall -I. --std=c++20 -O3 -static -flto=auto
+  # FLTO=-flto=auto
+  CXXFLAGS=-march=native -pipe -Wall -I. --std=c++20 -O3 -static $(FLTO)
   SOCK_LFLAGS= -lws2_32
 else
   # Linux

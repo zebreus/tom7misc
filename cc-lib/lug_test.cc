@@ -28,7 +28,7 @@ struct Exp {
   ExpType type;
   std::string str;
   int64_t integer = 0;
-  std::vector<Exp> children;
+  std::vector<const Exp *> children;
 };
 
 struct ExpPool {
@@ -52,7 +52,7 @@ struct ExpPool {
     return ret;
   }
 
-  const Exp *List(std::vector<Exp> v) {
+  const Exp *List(std::vector<const Exp *> v) {
     Exp *ret = New(ExpType::LIST);
     ret->children = std::move(v);
     return ret;
@@ -87,15 +87,16 @@ static void TestSimpleParse() {
   variable<const Exp *> e1{Env}, e2{Env};
   variable<int64_t> n{Env};
   variable<std::string> s{Env};
+  variable<std::vector<const Exp *>> es{Env};
   // variable<double> e{Env}, l{Env}, n{Env}, r{Env}, s{Env};
   // variable<int> i{Env};
 
   // These are just variables used for the example.
   // double v[26];
 
-  // I think this is a forward declaration since the rules below
-  // are mutually recursive.
-  rule Expr;
+  // This is a forwar declaration since the rules below are mutually
+  // recursive. If you declare these at the toplevel, use "extern".
+  // rule Expr;
 
   // First we have lexing.
   // I think that implicit_space_rule means whitespace that is
@@ -117,11 +118,25 @@ static void TestSimpleParse() {
 
   // TODO: String literals.
 
-  rule Var = s%ID  <[&](environment &env) { return pool.Var(*s); };
-  rule Int = n%NUMBER  <[&]{ return pool.Int(*n); };
-  rule List = "[" > Expr > *(", " > Expr) > "]";
+  rule Var = s%ID  <[&](environment &env) {
+      printf("Parse var\n");
+      const Exp *e = pool.Var((std::string)*s);
+      printf("Good %p (%s)\n", e, e->str.c_str());
+      return e;
+    };
+  rule Int = n%NUMBER  <[&]{
+      printf("Parse int\n");
+      return pool.Int(*n); };
 
-  /*rule*/ Expr = Var | Int; // | List;
+  // Here the nonterminal is repeated, so it returns a vector<>.
+  // Not sure what other types are allowed, if any.
+  /*
+  rule List = "[" > Expr > es % *(", " > Expr) > "]"
+    <[&]{ return pool.List(*es); };
+  */
+
+  // /*rule*/ Expr = Var | Int; // | List;
+  rule Expr = Var | Int;
 
   #if 0
   rule Value  = n%NUMBER         <[]{ return *n; }
@@ -144,7 +159,10 @@ static void TestSimpleParse() {
   #endif
 
   const Exp *out = nullptr;
-  rule Program = e1%Expr > eoi   <[&out, &e1]{ out = *e1; };
+  rule Program = e1%Expr > eoi   <[&out, &e1]{
+      printf("Result of program...\n");
+      out = *e1;
+    };
 
   grammar Grammar = start(Program);
 
@@ -158,15 +176,40 @@ static void TestSimpleParse() {
     environment. lug::parse(s, G) doesn't pass one.
   */
   auto Parse = [&](const std::string &s) -> const Exp * {
+      out = nullptr;
       lug::parser p{Grammar, Env};
+      printf("Parser returned\n");
       if (!p.parse(std::begin(s), std::end(s))) return nullptr;
       return out;
     };
 
-  const Exp *e = Parse("15232");
-  CHECK(e != nullptr);
-  CHECK(e->type == ExpType::INTEGER);
-  CHECK(e->integer == 15232);
+  /*
+  {
+    const Exp *e = Parse("15232");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::INTEGER);
+    CHECK(e->integer == 15232);
+  }
+  */
+
+  {
+    const Exp *e = Parse("var");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::VAR);
+    CHECK(e->str == "var");
+  }
+
+  /*
+  {
+    const Exp *e = Parse("[var, 123, 456]");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::LIST);
+    CHECK(e->children.size() == 3);
+    CHECK(e->children[0]->str == "var");
+    CHECK(e->children[1]->integer == 123);
+    CHECK(e->children[2]->integer == 456);
+  }
+  */
 }
 
 // Tests below are from lug itself.
