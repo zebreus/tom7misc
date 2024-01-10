@@ -104,6 +104,16 @@ struct ColorUtil {
     GradRGB( 1.0f, 0x00FF00),
   };
 
+  // Like heated metal, but for text on a black background,
+  // where even the darkest text is still readable.
+  static constexpr Gradient HEATED_TEXT{
+    GradRGB(0.0f, 0x222222),
+    GradRGB(0.2f, 0x7722BB),
+    GradRGB(0.5f, 0xFF2222),
+    GradRGB(0.8f, 0xFFFF22),
+    GradRGB(1.0f, 0xFFFFFF)
+  };
+
 };
 
 

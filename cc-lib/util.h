@@ -90,8 +90,12 @@ struct Util {
 
   // Split the string on the given character. Consecutive separators
   // will yield empty elements. The output always contains at least
-  // one element; split("", "x") returns {""}.
+  // one element; Split("", 'x') returns {""}.
   static std::vector<string> Split(const std::string &s, char sep);
+  // The separator must be non-empty. This takes the first occurrence
+  // of the separator in case of self-overlap.
+  static std::vector<string> SplitWith(std::string_view str,
+                                       std::string_view sep);
 
   // Like Split, but with an arbitrary function (char -> bool) determining
   // the separator.

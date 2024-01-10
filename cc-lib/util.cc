@@ -11,6 +11,7 @@
 #include <optional>
 #include <ctime>
 #include <unordered_set>
+#include <cassert>
 
 #include "util.h"
 
@@ -1543,6 +1544,24 @@ string Util::Join(const vector<string> &parts,
 vector<string> Util::Split(const string &s, char sep) {
   return Fields(s, [sep](char c) { return c == sep; });
 }
+
+vector<string> Util::SplitWith(std::string_view str,
+                               std::string_view sep) {
+  assert(!sep.empty());
+  size_t pos = 0;
+  vector<string> ret;
+  for (;;) {
+    auto next = str.find(sep, pos);
+    if (next == std::string_view::npos) {
+      ret.emplace_back(str.substr(pos, std::string_view::npos));
+      return ret;
+    } else {
+      ret.emplace_back(str.substr(pos, next - pos));
+      pos = next + sep.size();
+    }
+  }
+}
+
 
 string Util::Replace(string src,
                      const string &findme,

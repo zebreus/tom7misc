@@ -22,7 +22,7 @@ using namespace std;
   auto aa = (a); \
   auto bb = (b); \
   CHECK(aa == bb) << "Expected equal vectors:\n" << #a << "\n" << #b \
-                  << "Values: " << Util::Join(aa, "|") << "\n" \
+                  << "\nValues:\n" << Util::Join(aa, "|") << "\n" \
                   << Util::Join(bb, "|") << "\n";              \
   } while (false)
 
@@ -137,6 +137,20 @@ static void TestSplit() {
              Util::Split("hello  world", ' '));
   CHECK_SVEQ((vector<string>{"", ""}), Util::Split(" ", ' '));
   CHECK_SVEQ(vector<string>{""}, Util::Split("", 'x'));
+}
+
+static void TestSplitWith() {
+  CHECK_SVEQ((vector<string>{"hello", "", "world"}),
+             Util::SplitWith("hello  world", " "));
+
+  CHECK_SVEQ((vector<string>{"hello", ".world"}),
+             Util::SplitWith("hello...world", ".."));
+
+  CHECK_SVEQ((vector<string>{"", "face", "first"}),
+             Util::SplitWith("\\nface\\nfirst", "\\n"));
+
+  CHECK_SVEQ((vector<string>{"face", "last", ""}),
+             Util::SplitWith("face\\nlast\\n", "\\n"));
 }
 
 static void TestSplitToLines() {
@@ -494,6 +508,7 @@ int main(int argc, char **argv) {
   TestPad();
   TestJoin();
   TestSplit();
+  TestSplitWith();
   TestSplitToLines();
   TestTokens();
   TestCdup();
