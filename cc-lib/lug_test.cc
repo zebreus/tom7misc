@@ -58,21 +58,30 @@ struct ExpPool {
     return ret;
   }
 
+  ~ExpPool() {
+    for (const Exp *e : arena) delete e;
+    arena.clear();
+  }
+
 private:
   Exp *New(ExpType t) {
     Exp *exp = new Exp;
     exp->type = t;
+    arena.push_back(exp);
     return exp;
   }
   std::vector<Exp *> arena;
 };
 
-// Looks like the grammar should be defined at the top-level.
-// Most of this stuff works inside a function, but:
-//   - Need to explicitly capture various stuff (use default capture).
-//   - Don't know how to do mutually recursive rules ("extern" trick
-//     doesn't work inside a function scope).
+// You can define a grammar at the top-level (and then you don't have
+// to do so much capturing in lambdas), but it seems cleaner to put
+// it inside a function like this.
 
+// Some hints:
+//   You can easily get std::any_cast<> exceptions (or crashes) if
+//   the types of variables don't match the semantic actions. For
+//   example, I accidentally had an unused argument of "environment &env"
+//   to an action and that caused it to crash. :(
 static void TestSimpleParse() {
   using namespace lug::language;
 
@@ -96,7 +105,7 @@ static void TestSimpleParse() {
 
   // This is a forwar declaration since the rules below are mutually
   // recursive. If you declare these at the toplevel, use "extern".
-  // rule Expr;
+  rule Expr;
 
   // First we have lexing.
   // I think that implicit_space_rule means whitespace that is
@@ -118,7 +127,7 @@ static void TestSimpleParse() {
 
   // TODO: String literals.
 
-  rule Var = s%ID  <[&](environment &env) {
+  rule Var = s%ID  <[&]() -> const Exp * {
       printf("Parse var\n");
       const Exp *e = pool.Var((std::string)*s);
       printf("Good %p (%s)\n", e, e->str.c_str());
@@ -136,7 +145,7 @@ static void TestSimpleParse() {
   */
 
   // /*rule*/ Expr = Var | Int; // | List;
-  rule Expr = Var | Int;
+  Expr = Var | Int;
 
   #if 0
   rule Value  = n%NUMBER         <[]{ return *n; }
