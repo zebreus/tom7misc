@@ -38,7 +38,7 @@ using Glyph = FontImage::Glyph;
 constexpr int MAPPED_CHARS_ACROSS = 16;
 constexpr int MAPPED_CHARS_DOWN = 22;
 
-static constexpr array<int, MAPPED_CHARS_ACROSS * MAPPED_CHARS_DOWN>
+static constexpr array<uint32_t, MAPPED_CHARS_ACROSS * MAPPED_CHARS_DOWN>
 CODEPOINTS = {
   // First line
   // BLACK HEART SUIT
@@ -76,11 +76,10 @@ CODEPOINTS = {
   0x2026,
   // EMOJI: CLOUD
   0x2601,
-
-  // These used to be left and right half-blocks, but those are
-  // now moved to the block elements group
-  // Free to a good home:
-  -1, -1,
+  // EMOJI: ROCKET
+  0x1F680,
+  // EMOJI: NO ENTRY
+  0x26D4,
 
   // dagger, double-dagger
   0x2020, 0x2021,
@@ -111,8 +110,10 @@ CODEPOINTS = {
   // black
   0x265A, 0x265B, 0x265C, 0x265D, 0x265E, 0x265F,
 
-  // Rest of chess piece line
-  -1, -1, -1, -1,
+  // Three free before replacement char
+  -1, -1, -1,
+  // <?> replacement char
+  0xFFFD,
 
   // Black circle, black square
   0x25CF, 0x25A0,

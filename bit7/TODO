@@ -2,14 +2,10 @@
 common from wikipedia: ../acronymine/unicode.cc
 Transform the input images to make them wider, and make more space for greek etc.
 
-U+26D4 "no entry"
-is used by emacs sometimes
-
 U+1F37A beer mug emoji
 is used by cask
 
-Replacement char <?>
-and maybe .notdef?
+maybe .notdef?
 
 Check mark:
 On windows we get some glyph substitution for unicode characters that
