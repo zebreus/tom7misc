@@ -8,9 +8,11 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <initializer_list>
 
 #include "lug/lug.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
 LUG_DIAGNOSTIC_PUSH_AND_IGNORE;
 
@@ -73,6 +75,29 @@ private:
   std::vector<Exp *> arena;
 };
 
+static std::string ExpString(const Exp *e) {
+  switch (e->type) {
+  case ExpType::STRING:
+    // XXX escaping
+    return StringPrintf("\"%s\"", e->str.c_str());
+  case ExpType::VAR:
+    return e->str;
+  case ExpType::INTEGER:
+    return StringPrintf("%lld", e->integer);
+  case ExpType::LIST: {
+    std::string ret = "[";
+    for (int i = 0; i < (int)e->children.size(); i++) {
+      if (i != 0) StringAppendF(&ret, ", ");
+      ret += ExpString(e->children[i]);
+    }
+    ret += "]";
+    return ret;
+  }
+  default:
+    return "ILLEGAL EXPRESSION";
+  }
+}
+
 // You can define a grammar at the top-level (and then you don't have
 // to do so much capturing in lambdas), but it seems cleaner to put
 // it inside a function like this.
@@ -97,11 +122,19 @@ static void TestSimpleParse() {
   variable<int64_t> n{Env};
   variable<std::string> s{Env};
   variable<std::vector<const Exp *>> es{Env};
+
+  variable<const Exp *> exp_node{Env};
+  variable<std::vector<const Exp *>> exp_nodes{Env};
+
+  // Seems like you need to do this kind of thing to get
+  // a vector. Yuck?
+  // Could be a combinator?
+#define ExpVec(rule) ((eps < [&] { exp_nodes->clear(); }) >         \
+    *(exp_node % (rule)                                             \
+      < [&] { exp_nodes->push_back(*exp_node); }))
+
   // variable<double> e{Env}, l{Env}, n{Env}, r{Env}, s{Env};
   // variable<int> i{Env};
-
-  // These are just variables used for the example.
-  // double v[26];
 
   // This is a forwar declaration since the rules below are mutually
   // recursive. If you declare these at the toplevel, use "extern".
@@ -139,13 +172,18 @@ static void TestSimpleParse() {
 
   // Here the nonterminal is repeated, so it returns a vector<>.
   // Not sure what other types are allowed, if any.
-  /*
-  rule List = "[" > Expr > es % *(", " > Expr) > "]"
-    <[&]{ return pool.List(*es); };
-  */
+  rule List = "[" > e1 % Expr > ExpVec("," > Expr) > "]"
+    <[&](){
+        printf("Parse list\n");
+        std::vector<const Exp *> v;
+        v.push_back(*e1);
+        for (const Exp *e : *exp_nodes) {
+          v.push_back(e);
+        }
+        return pool.List(std::move(v));
+      };
 
-  // /*rule*/ Expr = Var | Int; // | List;
-  Expr = Var | Int;
+  Expr = Var | Int | List;
 
   #if 0
   rule Value  = n%NUMBER         <[]{ return *n; }
@@ -185,21 +223,22 @@ static void TestSimpleParse() {
     environment. lug::parse(s, G) doesn't pass one.
   */
   auto Parse = [&](const std::string &s) -> const Exp * {
+      printf("Try parsing \"%s\"\n", s.c_str());
       out = nullptr;
       lug::parser p{Grammar, Env};
-      printf("Parser returned\n");
+      printf("Parser created\n");
       if (!p.parse(std::begin(s), std::end(s))) return nullptr;
+      CHECK(out != nullptr);
+      printf("Parsed: %s\n", ExpString(out).c_str());
       return out;
     };
 
-  /*
   {
     const Exp *e = Parse("15232");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::INTEGER);
     CHECK(e->integer == 15232);
   }
-  */
 
   {
     const Exp *e = Parse("var");
@@ -208,7 +247,6 @@ static void TestSimpleParse() {
     CHECK(e->str == "var");
   }
 
-  /*
   {
     const Exp *e = Parse("[var, 123, 456]");
     CHECK(e != nullptr);
@@ -218,7 +256,20 @@ static void TestSimpleParse() {
     CHECK(e->children[1]->integer == 123);
     CHECK(e->children[2]->integer == 456);
   }
-  */
+
+  {
+    const Exp *e = Parse("[xar, [333, 777], 888]");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::LIST);
+    CHECK(e->children.size() == 3);
+    CHECK(e->children[0]->str == "xar");
+    CHECK(e->children[1]->type == ExpType::LIST);
+    CHECK(e->children[1]->children.size() == 2);
+    CHECK(e->children[1]->children[0]->integer == 333);
+    CHECK(e->children[1]->children[1]->integer == 777);
+    CHECK(e->children[2]->integer == 888);
+  }
+
 }
 
 // Tests below are from lug itself.

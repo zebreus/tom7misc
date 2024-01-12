@@ -702,9 +702,9 @@ BeginChars: 1114112 %d
           if (codepoint <= 0xFFFF) {
             char_name = StringPrintf("U+%04x", codepoint);
           } else {
-            // Just need to figure out how fontForge writes these.
-            LOG(FATAL) << "Codepoints > 16 bits are not supported, but this is "
-              "probably easy to fix?";
+            // This is what FontForge output for U+1F680 (rocket emoji),
+            // at least.
+            char_name = StringPrintf("u%X", codepoint);
           }
         } else {
           // In map; use the preferred name.
