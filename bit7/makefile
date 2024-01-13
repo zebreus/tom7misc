@@ -1,7 +1,7 @@
 
 all: default
 
-default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe fixedersys1x.sfd fixedersys2x.sfd
+default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe fixedersys1x.sfd fixedersys2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd addrow.exe
 
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-gcc
@@ -48,13 +48,19 @@ normalize.exe : normalize.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 merge2x.exe : merge2x.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
+addrow.exe : addrow.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
+	$(CXX) $(LFLAGS) $^ -o $@
+
 dfx-pasement.sfd : dfx-pasement.png dfx-pasement.cfg makesfd.exe
 	./makesfd.exe dfx-pasement.cfg $@
 
 dfx-snooty.sfd : dfx-snooty.png dfx-snooty.cfg makesfd.exe
 	./makesfd.exe dfx-snooty.cfg $@
 
-fixedersys1x.sfd : fixedersys.png fixedersys1x.cfg makesfd.exe
+pacman.sfd : pacman.png pacman.cfg makesfd.exe
+	./makesfd.exe pacman.cfg $@
+
+fixedersys1x.sfd : fixedersys1x.png fixedersys1x.cfg makesfd.exe
 	./makesfd.exe fixedersys1x.cfg $@
 
 fixedersys2x.sfd : fixedersys2x.png fixedersys2x.cfg makesfd.exe

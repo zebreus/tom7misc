@@ -36,9 +36,9 @@ using Glyph = FontImage::Glyph;
 // is unclaimed. Should be fine to extend past this many
 // characters by increasing CHARS_DOWN too.
 constexpr int MAPPED_CHARS_ACROSS = 16;
-constexpr int MAPPED_CHARS_DOWN = 22;
+constexpr int MAPPED_CHARS_DOWN = 24;
 
-static constexpr array<uint32_t, MAPPED_CHARS_ACROSS * MAPPED_CHARS_DOWN>
+static constexpr array<int, MAPPED_CHARS_ACROSS * MAPPED_CHARS_DOWN>
 CODEPOINTS = {
   // First line
   // BLACK HEART SUIT
@@ -97,7 +97,44 @@ CODEPOINTS = {
   // turnstile (a.k.a. right tack)
   0x22A2,
 
-  // ASCII, mapped to itself
+  // space for emoji
+  // EMOJI: LIGHT BULB
+  0x1F4A1,
+  // EMOJI: BEER MUG
+  0x1F37A,
+  // EMOJI: WASTEBASKET
+  0x1F5D1,
+  // EMOJI: MOAI HEAD
+  0x1F5FF,
+  // EMOJI: HIGH VOLTAGE
+  0x26A1,
+  // EMOJI: MAGNET
+  0x1F9F2,
+  // EMOJI: SKULL
+  0x1F480,
+  // EMOJI: SKULL AND CROSSBONES
+  0x2620,
+  // EMOJI: DROPLET
+  0x1F4A7,
+  // EMOJI: HUNDRED POINTS
+  0x1F4AF,
+  // EMOJI: ANGER SYMBOL
+  0x1F4A2,
+  // EMOJI: ZZZ
+  0x1F4A4,
+  // EMOJI: PAGE FACING UP
+  0x1F4C4,
+  // EMOJI: BOMB
+  0x1F4A3,
+  // EMOJI: GLOBE WITH MERIDIANS
+  0x1F310,
+  // EMOJI: EYES
+  0x1F440,
+
+  // Space for more emoji
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+  // ASCII, in order
   0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
   0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
   0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,

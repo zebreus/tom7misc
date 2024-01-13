@@ -192,6 +192,12 @@ void FontImage::SaveImage(const std::string &filename,
           }
         }
         glyph_width = glyph.pic.Width();
+      } else {
+        // for missing glyphs in proportional fonts, make
+        // a blank full-width character so that the grid is
+        // visible. Could use some "default width" from
+        // config, if we had it.
+        glyph_width = config.charbox_width - 1;
       }
 
       if (config.fixed_width)
