@@ -10,6 +10,8 @@
 // TODO:
 enum class LayoutType {
   TEXT,
+  JOIN,
+  EXP,
 };
 
 enum class ExpType {
@@ -21,9 +23,14 @@ enum class ExpType {
   LAYOUT,
 };
 
+struct Exp;
+
 struct Layout {
   LayoutType type;
   std::string str;
+  std::vector<const Layout *> children;
+  const Exp *exp = nullptr;
+  Layout(LayoutType t) : type(t) {}
 };
 
 struct Exp {
@@ -97,10 +104,40 @@ struct AstPool {
     return ret;
   }
 
+
+  const Layout *TextLayout(std::string s) {
+    Layout *ret = NewLayout(LayoutType::TEXT);
+    ret->str = std::move(s);
+    return ret;
+  }
+
+  const Layout *JoinLayout(std::vector<const Layout *> v) {
+    Layout *ret = NewLayout(LayoutType::JOIN);
+    ret->children = std::move(v);
+    return ret;
+  }
+
+  const Layout *ExpLayout(const Exp *e) {
+    Layout *ret = NewLayout(LayoutType::EXP);
+    ret->exp = e;
+    return ret;
+  }
+
 private:
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }
+  Layout *NewLayout(LayoutType t) { return layout_arena.New(t); }
   AstArena<Exp> exp_arena;
+  AstArena<Layout> layout_arena;
 };
+
+static std::string LayoutString(const Layout *lay) {
+  switch (lay->type) {
+    case LayoutType::TEXT:
+      return lay->str;
+    default:
+      return "TODO LAYOUT TYPE";
+  }
+}
 
 static std::string ExpString(const Exp *e) {
   switch (e->type) {
@@ -130,7 +167,7 @@ static std::string ExpString(const Exp *e) {
     return ret;
   }
   case ExpType::LAYOUT:
-    return "TODO LAYOUT";
+    return StringPrintf("[%s]", LayoutString(e->layout).c_str());
   default:
     return "ILLEGAL EXPRESSION";
   }
