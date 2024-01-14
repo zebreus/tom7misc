@@ -39,19 +39,20 @@ static void TestLoad() {
   printf("test-load\n");
   const char *FILENAME = "sample.exr";
   ImageFRGBA *fimg = ImageFRGBA::Load(FILENAME);
-  CHECK(fimg != nullptr) << FILENAME;
+  CHECK(fimg != nullptr) << FILENAME << " (it's not checked in "
+    "so you need to find it somewhere).";
   ImageRGBA img = fimg->ToRGBA();
-  img.Save("sample.png");
+  img.Save("image-frgba-test-sample.png");
   delete fimg;
   printf("done test-load\n");
 }
 
 static void TestLoadHuge() {
   printf("load-huge\n");
-  ImageFRGBA *fimg =
-    ImageFRGBA::Load("starmap_2020_64k.exr");
-  CHECK(fimg != nullptr);
-  printf("no I'm here\n");
+  const char *FILENAME = "starmap_2020_64k.exr";
+  ImageFRGBA *fimg = ImageFRGBA::Load(FILENAME);
+  CHECK(fimg != nullptr) << FILENAME << " (it's not checked in "
+    "so you need to find it somewhere).";
   printf("Loaded %lld x %lld\n", fimg->Width(), fimg->Height());
   delete fimg;
 }

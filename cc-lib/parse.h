@@ -9,41 +9,25 @@
 #include <optional>
 #include <functional>
 #include <concepts>
+#include <utility>
 
 #include "base/logging.h"
 
-// A Parser transforms a sequence (span) of Tokens into
-// the Out type, or fails (returning nullopt).
-#if 0
-template<class Token, class Out>
-concept Parser = requires(Token t) {
-
-};
-#endif
-
-/*
-struct Parser {
-
-};
-*/
-
 struct Unit { };
 
-// Like std::optional<T>, but with position information.
+// Like std::optional<T>, but with the length of the match
+// (number of tokens at the start of the span).
 template<class T>
 struct Parsed {
   constexpr Parsed() {}
   static constexpr Parsed<T> None = Parsed();
-  Parsed(T t, size_t length) : ot_(t), start_(0), length_(length) {}
-  Parsed(T t, size_t start, size_t length) :
-    ot_(t), start_(start), length_(length) {}
+  Parsed(T t, size_t length) : ot_(t), length_(length) {}
   bool HasValue() const { return ot_.has_value(); }
   const T &Value() const { return ot_.value(); }
-  size_t Start() const { return start_; }
   size_t Length() const { return length_; }
 private:
   std::optional<T> ot_;
-  size_t start_ = 0, length_ = 0;
+  size_t length_ = 0;
 };
 
 template <typename P>
@@ -116,18 +100,30 @@ struct Any {
   }
 };
 
-// Shifts the position of a parsed result forward by the
-// given amount.
+// Matches only the argument token.
+template<class Token>
+struct Is {
+  using token_type = Token;
+  using out_type = Token;
+  explicit Is(Token r) : r(r) {}
+  Parsed<Token> operator()(std::span<const Token> toks) const {
+    if (toks.empty()) return Parsed<Token>::None;
+    if (toks[0] == r) return Parsed(toks[0], 1);
+    else return Parsed<Token>::None;
+  }
+  const Token r;
+};
+
+// Expands the length of a parsed result forward by the given amount.
 // If the parse failed, also fails.
 template<class Out>
-Parsed<Out> ShiftForward(Parsed<Out> o, size_t pos) {
+Parsed<Out> ExpandLength(Parsed<Out> o, size_t len) {
   if (o.HasValue()) {
-    return Parsed<Out>(o.Value(), o.Start() + pos, o.Length());
+    return Parsed<Out>(o.Value(), o.Length() + len);
   } else {
     return o;
   }
 }
-
 
 // A >> B
 // parses A then B, and fails if either fails.
@@ -137,15 +133,15 @@ template<Parser A, Parser B>
 requires std::same_as<typename A::token_type,
                       typename B::token_type>
 inline auto operator >>(const A &a, const B &b) {
-  using in1 = A::token_type;
+  using in = A::token_type;
   using out = B::out_type;
-  return ParserWrapper<in1, out>(
-      [a, b](std::span<const in1> toks) -> Parsed<out> {
+  return ParserWrapper<in, out>(
+      [a, b](std::span<const in> toks) -> Parsed<out> {
         auto o1 = a(toks);
         if (!o1.HasValue()) return Parsed<out>::None;
-        const size_t start = o1.Start() + o1.Length();
+        const size_t start = o1.Length();
         auto o2 = b(toks.subspan(start));
-        return ShiftForward(o2, start);
+        return ExpandLength(o2, start);
       });
 }
 
@@ -156,17 +152,149 @@ requires std::same_as<typename A::token_type,
                       typename B::token_type>
 inline auto operator <<(const A &a,
                         const B &b) {
-  using in1 = A::token_type;
+  using in = A::token_type;
   using out = A::out_type;
-  return ParserWrapper<in1, out>(
-      [a, b](std::span<const in1> toks) -> Parsed<out> {
+  return ParserWrapper<in, out>(
+      [a, b](std::span<const in> toks) -> Parsed<out> {
         auto o1 = a(toks);
         if (!o1.HasValue()) return Parsed<out>::None;
-        const size_t start = o1.Start() + o1.Length();
+        const size_t start = o1.Length();
         auto o2 = b(toks.subspan(start));
         if (!o2.HasValue()) return Parsed<out>::None;
-        return o1;
+        return ExpandLength(o1, o2.Length());
       });
 }
+
+template<Parser A, Parser B>
+requires std::same_as<typename A::token_type,
+                      typename B::token_type>
+inline auto operator &&(const A &a,
+                        const B &b) {
+  using in = A::token_type;
+  using out1 = A::out_type;
+  using out2 = B::out_type;
+  return ParserWrapper<in, std::pair<out1, out2>>(
+      [a, b](std::span<const in> toks) ->
+      Parsed<std::pair<out1, out2>> {
+        auto o1 = a(toks);
+        if (!o1.HasValue())
+          return Parsed<std::pair<out1, out2>>::None;
+        const size_t start = o1.Length();
+        auto o2 = b(toks.subspan(start));
+        if (!o2.HasValue())
+          return Parsed<std::pair<out1, out2>>::None;
+        return Parsed<std::pair<out1, out2>>(
+            std::make_pair(o1.Value(), o2.Value()),
+            start + o2.Length());
+      });
+}
+
+// One or zero. Always succeeds with std::optional<>.
+template<Parser A>
+inline auto Opt(const A &a) {
+  using in = A::token_type;
+  using out = std::optional<typename A::out_type>;
+  return ParserWrapper<in, out>(
+      [a](std::span<const in> toks) ->
+      Parsed<out> {
+        auto o = a(toks);
+        if (!o.HasValue())
+          return Parsed<out>(std::nullopt, 0);
+        return Parsed<out>(
+            std::make_optional(o.Value()),
+            o.Length());
+      });
+}
+
+// Zero or more times.
+// If A accepts the empty sequence, this will
+// loop forever.
+template<Parser A>
+inline auto operator*(const A &a) {
+  using in = A::token_type;
+  using out = std::vector<typename A::out_type>;
+  return ParserWrapper<in, out>(
+      [a](std::span<const in> toks) ->
+      Parsed<out> {
+        std::vector<typename A::out_type> ret;
+        size_t total_len = 0;
+        for (;;) {
+          auto o = a(toks);
+          if (!o.HasValue())
+            return Parsed<out>(ret, total_len);
+          const size_t one_len = o.Length();
+          total_len += one_len;
+          ret.push_back(o.Value());
+          toks = toks.subspan(one_len);
+        }
+      });
+}
+
+// A >f
+// Maps the function f to the result of A if
+// it was successful.
+template<Parser A, class F>
+requires std::invocable<F, typename A::out_type>
+inline auto operator>(const A &a, const F &f) {
+  using in = A::token_type;
+  using a_out = A::out_type;
+  // Get the result type of applying f to the result of a.
+  using out = decltype(f(std::declval<a_out>()));
+  return ParserWrapper<in, out>(
+      [a, f](std::span<const in> toks) ->
+      Parsed<out> {
+        auto o = a(toks);
+        if (!o.HasValue()) return Parsed<out>::None;
+        else return Parsed<out>(f(o.Value()), o.Length());
+      });
+}
+
+#if 0
+// A >=f
+// Calls f on the result of A, whether successful or not.
+template<Parser A, class F>
+requires std::invocable<F, Parsed<typename A::out_type>>
+inline auto operator>=(const A &a, const F &f) {
+  using in = A::token_type;
+  using a_out = A::out_type;
+  // Get the result type of applying f to the result of a.
+  using f_arg_type = std::declval<Parsed<a_out>>();
+  using out = decltype(f());
+  return ParserWrapper<in, out>(
+      [a, f](std::span<const in> toks) ->
+      Parsed<out> {
+        return f(a)(toks);
+      });
+}
+#endif
+
+// Parse one or more A; returns vector.
+template<Parser A>
+inline auto operator+(const A &a) {
+  return (a && *a) >[](const auto &p) {
+      const auto &[x, xs] = p;
+      std::vector<typename A::out_type> ret;
+      ret.reserve(xs.size() + 1);
+      ret.push_back(x);
+      for (const auto &y : xs)
+        ret.push_back(y);
+      return ret;
+    };
+}
+
+#if 0
+requires(P p, std::span<const typename P::token_type> toks) {
+  typename P::token_type;
+  typename P::out_type;
+  { p(toks) } -> std::convertible_to<Parsed<typename P::out_type>>;
+};
+#endif
+
+// TODO:
+// failure handler
+// Alternation
+// sequence, making tuple
+// separate, separate0
+// parsefixity
 
 #endif
