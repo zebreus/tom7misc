@@ -470,7 +470,7 @@ void PDF::Page::SetSize(float w, float h) {
 int PDF::pdf_get_bookmark_count(const Object *obj) {
   int count = 0;
   if (obj->type == OBJ_bookmark) {
-    BookmarkObj *bobj = (BookmarkObj*)obj;
+    const BookmarkObj *bobj = (const BookmarkObj*)obj;
     int nchildren = (int)bobj->children.size();
     count += nchildren;
     for (int i = 0; i < nchildren; i++) {
@@ -1784,7 +1784,7 @@ static int utf8_to_utf32(const char *utf8, int len, uint32_t *utf32) {
   if (len <= 0 || !utf8 || !utf32)
     return -EINVAL;
 
-  uint32_t ch = *(uint8_t *)utf8;
+  uint32_t ch = *(const uint8_t *)utf8;
   if ((ch & 0x80) == 0) {
     len = 1;
     mask = 0x7f;
@@ -3663,6 +3663,7 @@ struct UTF8Codepoints {
   struct const_iterator {
     constexpr const_iterator(const char *ptr, const char *limit) :
       ptr(ptr), limit(limit) {}
+    constexpr const_iterator(const const_iterator &other) = default;
     constexpr bool operator =(const const_iterator &other) const {
       return other.ptr == ptr;
     }

@@ -10,6 +10,10 @@
 #define STB_TRUETYPE_IMPLEMENTATION 1
 // #define STBTT_RASTERIZER_VERSION 1
 
+// This code was not written with these warnings in mind!
+#pragma GCC diagnostic ignored "-Wcast-qual"
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 ////

@@ -60,6 +60,8 @@
 
 #define STBI_EXTERN extern
 
+// This code was not written with these warnings in mind!
+#pragma GCC diagnostic ignored "-Wcast-qual"
 
 #ifndef _MSC_VER
    #ifdef __cplusplus
