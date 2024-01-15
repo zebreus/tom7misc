@@ -252,12 +252,42 @@ static std::vector<Token> Lex(const std::string &input_string) {
         // XXX get line info
         CHECK(false) <<
           StringPrintf("%s '%c' (0x%02x) at offset %zu\n",
-                       msg, c, c, start);
+                       msg, c, c, start) << "\nIn input: "
+                     << input_string;
       }
       }
     }
   }
   return ret;
+}
+
+static std::string UnescapeStrLit(const std::string &s) {
+  std::string out;
+  out.reserve(s.size());
+  for (int i = 0; i < (int)s.size(); i++) {
+    const char c = s[i];
+    if (c == '\\') {
+      CHECK(i < (int)s.size() - 1) << "Trailing escape character "
+        "in string literal.";
+      i++;
+      const char d = s[i];
+      switch (d) {
+      case 'n': out.push_back('\n'); break;
+      case 'r': out.push_back('\r'); break;
+      case 't': out.push_back('\t'); break;
+      case '\\': out.push_back('\\'); break;
+      case '\"': out.push_back('\"'); break;
+      default:
+        // TODO: Implement \x and \u{1234} stuff.
+        CHECK(false) << "Unimplemented or illegal escape "
+                     << StringPrintf("\\%c", d)
+                     << " in string literal.";
+      }
+    } else {
+      out.push_back(c);
+    }
+  }
+  return out;
 }
 
 template<TokenType t>
@@ -295,31 +325,58 @@ static const Exp *Parse(AstPool *pool, const std::string &input) {
     };
 
   const auto Id = IsToken<ID>() >[&](Token t) { return TokenStr(t); };
+  const auto StrLit = IsToken<STR_LIT>() >[&](Token t) {
+      // Remove leading and trailing double quotes. Process escapes.
+      std::string s = TokenStr(t);
+      CHECK(s.size() >= 2) << "Bug: The double quotes are included "
+        "in the token.";
+      return UnescapeStrLit(s.substr(1, s.size() - 2));
+    };
 
-  const auto IntExp = Int >[&](int64_t i) { return pool->Int(i); };
-  const auto VarExp = Id >[&](const std::string &s) {
+  const auto IntExpr = Int >[&](int64_t i) { return pool->Int(i); };
+  const auto VarExpr = Id >[&](const std::string &s) {
       return pool->Var(s);
+    };
+  const auto StrLitExpr = StrLit >[&](const std::string &s) {
+      return pool->Str(s);
+    };
+
+  // Either (), or (e) or (e1, e2, ...).
+  const auto TupleExpr = [&](const auto &Expr) {
+      return ((IsToken<LPAREN>() >>
+               Separate0(Expr, IsToken<COMMA>()) <<
+               IsToken<RPAREN>())
+              >[&](const std::vector<const Exp *> &es) {
+                  if (es.size() == 1) {
+                    // Then this is just a parenthesized expression.
+                    return es[0];
+                  } else {
+                    return pool->Tuple(es);
+                  }
+                });
     };
 
 
+  /*
+  const auto LayoutExpr = [&](const auto &Expr) {
+      return
+        IsToken<LBRACKET>() >>
+    IsToken<
+    << IsToken<RBRACKET>()
+    };
+  */
 
+  // XXX probably will need a FixN for exp/dec...
   // XXX or other types...
   const auto Expr =
-    Fix<Token, const Exp *>([&](const auto &Expr) {
+    Fix<Token, const Exp *>([&](const auto &Self) {
         return
-          IntExp ||
-          VarExp ||
-          ((IsToken<LPAREN>() >>
-            Separate(Expr, IsToken<COMMA>()) <<
-            IsToken<RPAREN>())
-           >[&](const std::vector<const Exp *> &es) {
-               if (es.size() == 1) {
-                 // Then this is just a parenthesized expression.
-                 return es[0];
-               } else {
-                 return pool->Tuple(es);
-               }
-             });
+          IntExpr ||
+          VarExpr ||
+          StrLitExpr ||
+          TupleExpr(Self) ||
+          // Just here for convenience of writing a || b || ...
+          Fail<Token, const Exp *>();
       });
 
   #if 0
@@ -476,20 +533,17 @@ static void Test() {
   }
 
   {
-    const Exp *e = Parse(&pool, "()");
+    const Exp *e = Parse(&pool, " \"a string\" ");
     CHECK(e != nullptr);
-    CHECK(e->type == ExpType::TUPLE);
-    CHECK(e->children.size() == 0);
+    CHECK(e->type == ExpType::STRING);
+    CHECK(e->str == "a string");
   }
 
   {
-    const Exp *e = Parse(&pool, "(var,123,456)");
+    const Exp *e = Parse(&pool, R"( "now:\nwith \\ \"escapes\"" )");
     CHECK(e != nullptr);
-    CHECK(e->type == ExpType::TUPLE);
-    CHECK(e->children.size() == 3);
-    CHECK(e->children[0]->str == "var");
-    CHECK(e->children[1]->integer == 123);
-    CHECK(e->children[2]->integer == 456);
+    CHECK(e->type == ExpType::STRING);
+    CHECK(e->str == "now:\nwith \\ \"escapes\"");
   }
 
   {
@@ -497,6 +551,23 @@ static void Test() {
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::INTEGER);
     CHECK(e->integer == 123);
+  }
+
+  {
+    const Exp *e = Parse(&pool, "()");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::TUPLE);
+    CHECK(e->children.size() == 0);
+  }
+
+  {
+    const Exp *e = Parse(&pool, "(var,123,\"yeah\")");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::TUPLE);
+    CHECK(e->children.size() == 3);
+    CHECK(e->children[0]->str == "var");
+    CHECK(e->children[1]->integer == 123);
+    CHECK(e->children[2]->str == "yeah");
   }
 
   {
@@ -511,6 +582,7 @@ static void Test() {
     CHECK(e->children[1]->children[1]->integer == 777);
     CHECK(e->children[2]->integer == 888);
   }
+
 
 #if 0
   {

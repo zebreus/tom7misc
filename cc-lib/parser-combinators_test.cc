@@ -197,6 +197,15 @@ static void TestSimple() {
     CHECK(v[2] == 'c');
   }
 
+  {
+    auto abc = Is('a') || Is('b') || Is('c');
+    auto parser = Separate0(abc, Is(','));
+    std::string s = "x";
+    Parsed<std::vector<char>> po = parser(CharSpan(s));
+    CHECK(po.HasValue());
+    CHECK(po.Value().empty());
+  }
+
 }
 
 int main(int argc, char **argv) {

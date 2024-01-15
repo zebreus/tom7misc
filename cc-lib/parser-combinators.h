@@ -65,6 +65,8 @@ struct Fail {
   }
 };
 
+// Always succeeds, consuming no tokens and returning the given
+// output.
 template<class Token, class Out>
 struct Succeed {
   using token_type = Token;
@@ -305,18 +307,48 @@ inline auto operator +(const A &a) {
 // Creates a parser that can refer to itself via Self.
 // TODO: I get crashes (infinite loop?) if f doesn't take
 // Self by const reference. Rule this out statically.
+// TODO: requirements on f
+#if 0
 template<class Token, class Out, class F>
 requires std::invocable<F, ParserWrapper<Token, Out>>
-// TODO: requirements on f
 inline auto Fix(const F &f) -> ParserWrapper<Token, Out> {
   ParserWrapper<Token, Out> self(
-      [&self, &f](std::span<const Token> toks) {
+      [self, f](std::span<const Token> toks) {
         decltype(f(std::declval<ParserWrapper<Token, Out>>()))
           parser = f(self);
         return parser(toks);
       });
   return self;
 };
+#endif
+
+
+// Declaring this as a separate struct:
+//  - Allows us to write a requires clause below without
+//    (here it would need to reference the class being defined)
+//  - Simpler to capture the state as "this"
+//  - Helps with deducing the F template arg (I don't understand
+//    this part).
+template<class Token, class Out, class F>
+struct RecursiveParser {
+  using token_type = Token;
+  using out_type = Out;
+
+  template<class F_>
+  RecursiveParser(F_ &&f) : f(std::forward<F_>(f)) {}
+  Parsed<Out> operator()(std::span<const Token> toks) const {
+    return f(*this)(toks);
+  }
+private:
+  F f;
+};
+
+template<class Token, class Out, class F>
+requires std::invocable<F, RecursiveParser<Token, Out, F>>
+inline auto Fix(const F &f) {
+  return RecursiveParser<Token, Out, F>(f);
+};
+
 
 // Parses a b a b .... b a.
 // Returns the vector of a's results.
@@ -337,6 +369,18 @@ inline auto Separate(const A &a, const B &b) {
       };
 }
 
+// Same as Separate, but allowing 0 occurrences.
+template<Parser A, Parser B>
+requires std::same_as<typename A::token_type,
+                      typename B::token_type>
+inline auto Separate0(const A &a, const B &b) {
+  using in = A::token_type;
+  using out = A::out_type;
+  return Separate(a, b) ||
+    Succeed<in, std::vector<out>>(std::vector<out>{});
+}
+
+
 #if 0
 requires(P p, std::span<const typename P::token_type> toks) {
   typename P::token_type;
@@ -347,9 +391,8 @@ requires(P p, std::span<const typename P::token_type> toks) {
 
 // TODO:
 // failure handler
-// Alternation
+// list of alternates
 // sequence, making tuple
-// separate, separate0
 // parsefixity
 
 #endif
