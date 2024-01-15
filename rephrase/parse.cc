@@ -158,12 +158,14 @@ static std::vector<Token> Lex(const std::string &input_string) {
   // Unlike string literals, which include their quotation
   // marks in the token, when we lex a layout literal we
   // also output tokens for LBRACKET and RBRACKET as appropriate.
+  //
+  // We don't actually have an escape character inside layout.
+  // The way to write a ] or [ is to use expression mode, like ["["].
 #define ANY_BRACKET R"([\[\]])"
   static const RE2 layoutlit(
       ANY_BRACKET
       "(?:"
-      R"([^\[\]\\])" "|"
-      R"(\\.)"
+      R"([^\[\]])" "*"
       ")*"
       ANY_BRACKET);
 
@@ -267,8 +269,8 @@ static std::string UnescapeStrLit(const std::string &s) {
   for (int i = 0; i < (int)s.size(); i++) {
     const char c = s[i];
     if (c == '\\') {
-      CHECK(i < (int)s.size() - 1) << "Trailing escape character "
-        "in string literal.";
+      CHECK(i < (int)s.size() - 1) << "Bug: Trailing escape "
+        "character in string literal.";
       i++;
       const char d = s[i];
       switch (d) {
@@ -288,6 +290,11 @@ static std::string UnescapeStrLit(const std::string &s) {
     }
   }
   return out;
+}
+
+// Nothing to do: There are no escaped characters in layout.
+static inline std::string UnescapeLayoutLit(const std::string &s) {
+  return s;
 }
 
 template<TokenType t>
@@ -333,6 +340,10 @@ static const Exp *Parse(AstPool *pool, const std::string &input) {
       return UnescapeStrLit(s.substr(1, s.size() - 2));
     };
 
+  const auto LayoutLit = IsToken<LAYOUT_LIT>() >[&](Token t) {
+      return UnescapeLayoutLit(TokenStr(t));
+    };
+
   const auto IntExpr = Int >[&](int64_t i) { return pool->Int(i); };
   const auto VarExpr = Id >[&](const std::string &s) {
       return pool->Var(s);
@@ -357,14 +368,36 @@ static const Exp *Parse(AstPool *pool, const std::string &input) {
     };
 
 
-  /*
   const auto LayoutExpr = [&](const auto &Expr) {
-      return
-        IsToken<LBRACKET>() >>
-    IsToken<
-    << IsToken<RBRACKET>()
+      const auto Lay =
+        Fix<Token, const Layout *>([&](const auto &Self) {
+            return (LayoutLit &&
+              *((IsToken<LBRACKET>() >> Expr << IsToken<RBRACKET>()) &&
+                LayoutLit))
+              >[&](const auto &p) {
+                  const auto &[l1, v] = p;
+                  const Layout *x1 = pool->TextLayout(l1);
+                  if (v.empty()) {
+                    // No need for a join node.
+                    return x1;
+                  } else {
+                    std::vector<const Layout *> joinme;
+                    joinme.reserve(1 + 2 * v.size());
+                    joinme.push_back(x1);
+                    for (const auto &[e, t] : v) {
+                      joinme.push_back(pool->ExpLayout(e));
+                      joinme.push_back(pool->TextLayout(t));
+                    }
+                    return pool->JoinLayout(std::move(joinme));
+                  }
+                };
+          });
+
+      return (IsToken<LBRACKET>() >> Lay << IsToken<RBRACKET>())
+          >[&](const Layout *lay) {
+              return pool->LayoutExp(lay);
+            };
     };
-  */
 
   // XXX probably will need a FixN for exp/dec...
   // XXX or other types...
@@ -375,129 +408,10 @@ static const Exp *Parse(AstPool *pool, const std::string &input) {
           VarExpr ||
           StrLitExpr ||
           TupleExpr(Self) ||
+          LayoutExpr(Self) ||
           // Just here for convenience of writing a || b || ...
           Fail<Token, const Exp *>();
       });
-
-  #if 0
-  static constexpr nterm<const Exp *> exp("exp");
-  static constexpr nterm<std::deque<const Exp *>>
-    comma_separated_exp("comma_separated_exp");
-  static constexpr nterm<std::deque<const Exp *>>
-    comma_continued_exp("comma_continued_exp");
-
-  static constexpr nterm<const Layout *> layout("layout");
-  static constexpr nterm<const Layout *> after_layout("after_layout");
-
-  static constexpr char digits_pattern[] = "[1-9][0-9]*";
-  static constexpr regex_term<digits_pattern> digits("digits");
-
-  static constexpr char id_pattern[] = "[A-Za-z_][A-Za-z0-9_]*";
-  static constexpr regex_term<id_pattern> id("id");
-
-  static constexpr parser p(
-      // This is the grammar root. We're parsing an expression.
-      exp,
-      // All the terminal symbols. Characters and strings implicitly
-      // stand for themselves.
-      terms(',', '(', ')', leading_layout, trailing_layout,
-            // must be lower precedence than the layout tokens
-            '[', ']',
-            digits, id, strlit),
-      nterms(exp, comma_separated_exp, comma_continued_exp,
-             layout, after_layout),
-
-      rules(
-          comma_continued_exp() >= []() {
-              return std::deque<const Exp *>({});
-            },
-          comma_continued_exp(',', exp, comma_continued_exp) >=
-          [](auto, const Exp *e, std::deque<const Exp *> &&v) {
-            v.push_front(e);
-            return std::move(v);
-          },
-
-          comma_separated_exp() >= []() {
-              return std::deque<const Exp *>({});
-            },
-          comma_separated_exp(exp, comma_continued_exp) >=
-          [](const Exp *e, std::deque<const Exp *> &&v) {
-              v.push_front(e);
-              return std::move(v);
-            },
-
-          exp(digits) >>= [](auto &ctx, std::string_view d) {
-              return ctx->Int(std::stoll(std::string(d)));
-            },
-          exp(id) >>= [](auto &ctx, std::string_view d) {
-              return ctx->Var(std::string(d));
-            },
-          exp(strlit) >>= [](auto &ctx,
-                             std::string_view s) {
-              // XXX interpret escapes here?
-              CHECK(s.size() >= 2);
-              return ctx->Str((std::string)s.substr(1, s.size() - 2));
-            },
-
-          exp('(', comma_separated_exp, ')')
-          >>= [](auto &ctx, auto _l,
-                 std::deque<const Exp *> &&d,
-                 auto _r) {
-              std::vector<const Exp *> v(d.begin(), d.end());
-              return ctx->Tuple(std::move(v));
-            },
-
-          // [layoutAFTER
-          // where AFTER is defined below...
-          exp(leading_layout, after_layout)
-          >>= [](auto &ctx, std::string_view d, const Layout *lay1) {
-              // Skip leading [.
-              const std::string s = (std::string)d.substr(1);
-              printf("Leading layout: __%s__\n", s.c_str());
-              const Layout *lay2 = ctx->TextLayout(std::move(s));
-              return ctx->LayoutExp(ctx->JoinLayout({lay1, lay2}));
-            },
-
-          // AFTER can either just end the layout,
-          after_layout(']') >>= [](auto &ctx, auto) {
-              return ctx->TextLayout("");
-            }
-
-          #if 0
-          ,
-          // or enter another nested expression, and continue
-          after_layout('[', exp, trailing_layout, after_layout)
-          >>= [](auto &ctx, auto, const Exp *exp,
-                 std::string_view d, const Layout *lay2) {
-              // skip the trailing ]
-              std::string s = (std::string)d.substr(1);
-              return ctx->JoinLayout(
-                  {ctx->ExpLayout(exp),
-                   ctx->TextLayout(std::move(s)),
-                   lay2});
-            }
-          #endif
-     )
-  );
-
-  printf(ABGCOLOR(60, 60, 200, "==== GRAMMAR ====") "\n");
-  p.write_diag_str(std::cout);
-  printf(ABGCOLOR(60, 60, 200, "==== END ====") "\n");
-
-  auto Parse = [&](std::string s) {
-      printf("Parsing %s...\n", s.c_str());
-      auto res = p.context_parse(pool,
-                                 parse_options{}.set_skip_whitespace(true).
-                                 set_verbose(),
-                                 string_buffer(std::move(s)),
-                                 std::cerr);
-      CHECK(res.has_value());
-      printf("  Got: %s\n", ExpString(res.value()).c_str());
-      return res.value();
-    };
-
-  return Parse(input);
-#endif
 
   auto Program = Expr << End<Token>();
 
@@ -584,8 +498,9 @@ static void Test() {
   }
 
 
-#if 0
   {
+    // Note that this is three tokens: an empty LAYOUT_LIT is
+    // tokenized between the bracketse.
     const Exp *e = Parse(&pool, "[]");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LAYOUT);
@@ -599,13 +514,26 @@ static void Test() {
     CHECK(e->children.size() == 3);
     CHECK(e->children[0]->str == "xyz");
     CHECK(e->children[1]->type == ExpType::LAYOUT);
-    const Layout *lay =e->children[1]->layout;
+    const Layout *lay = e->children[1]->layout;
     CHECK(lay->type == LayoutType::TEXT);
     CHECK(lay->str == "layout");
     CHECK(e->children[2]->integer == 888);
   }
-#endif
 
+  {
+    const Exp *e = Parse(&pool, "[layout[b]after]");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::LAYOUT);
+    const std::vector<const Layout *> v =
+      FlattenLayout(e->layout);
+    CHECK(v.size() == 3) << v.size();
+    CHECK(v[0]->type == LayoutType::TEXT);
+    CHECK(v[0]->str == "layout");
+    CHECK(v[1]->type == LayoutType::EXP);
+    CHECK(v[1]->exp->type == ExpType::VAR);
+    CHECK(v[1]->exp->str == "b");
+    CHECK(v[2]->str == "after");
+  }
 }
 
 

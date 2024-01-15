@@ -130,47 +130,11 @@ private:
   AstArena<Layout> layout_arena;
 };
 
-static std::string LayoutString(const Layout *lay) {
-  switch (lay->type) {
-    case LayoutType::TEXT:
-      return lay->str;
-    default:
-      return "TODO LAYOUT TYPE";
-  }
-}
+std::string LayoutString(const Layout *lay);
+std::string ExpString(const Exp *e);
 
-static std::string ExpString(const Exp *e) {
-  switch (e->type) {
-  case ExpType::STRING:
-    // XXX escaping
-    return StringPrintf("\"%s\"", e->str.c_str());
-  case ExpType::VAR:
-    return e->str;
-  case ExpType::INTEGER:
-    return StringPrintf("%lld", e->integer);
-  case ExpType::TUPLE: {
-    std::string ret = "(";
-    for (int i = 0; i < (int)e->children.size(); i++) {
-      if (i != 0) StringAppendF(&ret, ", ");
-      ret += ExpString(e->children[i]);
-    }
-    ret += ")";
-    return ret;
-  }
-  case ExpType::JOIN: {
-    std::string ret = "[";
-    for (int i = 0; i < (int)e->children.size(); i++) {
-      if (i != 0) StringAppendF(&ret, ", ");
-      ret += ExpString(e->children[i]);
-    }
-    ret += "]";
-    return ret;
-  }
-  case ExpType::LAYOUT:
-    return StringPrintf("[%s]", LayoutString(e->layout).c_str());
-  default:
-    return "ILLEGAL EXPRESSION";
-  }
-}
+// In-order flattening of the layout without any JOIN-type nodes,
+// and dropping empty text nodes.
+std::vector<const Layout *> FlattenLayout(const Layout *lay);
 
 #endif
