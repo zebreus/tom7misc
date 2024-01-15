@@ -34,9 +34,16 @@ void TestReplace() {
   CHECK_EQ(title, "Aph<e>x Tw<i>n") << title;
 }
 
+void TestObject() {
+  static const RE2 liz("Li*z Ph[aeiou]+r");
+  CHECK(RE2::FullMatch("Liiiz Phair", liz));
+  CHECK(!RE2::FullMatch("Lz Phr", liz));
+}
+
 int main(int argc, char **argv) {
   TestSimple();
   TestReplace();
+  TestObject();
   printf("OK\n");
   return 0;
 }

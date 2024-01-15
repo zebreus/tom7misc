@@ -1,5 +1,5 @@
 
-default : heap_test.exe minmax-heap_test.exe rle_test.exe interval-tree_test.exe threadutil_test.exe color-util_test.exe textsvg_test.exe lines_test.exe image_test.exe util_test.exe randutil_test.exe json_test.exe arcfour_test.exe lastn-buffer_test.exe list-util_test.exe edit-distance_test.exe re2_test.exe webserver_test.exe stb_image_bench.exe process-util_test.exe stb_truetype_test.exe packrect_test.exe xml_test.exe mp3_test.exe top_test.exe bounds_test.exe optional-iterator_test.exe tuple-util_test.exe bitbuffer_test.exe ansi_test.exe factorization_test.exe atomic-util_test.exe interval-cover_test.exe set-util_test.exe hashing_test.exe subprocess_test.exe city_test.exe autoparallel_test.exe int128_test.exe do-not-optimize_test.exe pcg_test.exe montgomery64_test.exe numbers_test.exe work-queue_test.exe csv_test.exe pdf_test.exe lug_test.exe ctpg_test.exe parse_test.exe $(TESTCOMPILE)
+default : heap_test.exe minmax-heap_test.exe rle_test.exe interval-tree_test.exe threadutil_test.exe color-util_test.exe textsvg_test.exe lines_test.exe image_test.exe util_test.exe randutil_test.exe json_test.exe arcfour_test.exe lastn-buffer_test.exe list-util_test.exe edit-distance_test.exe re2_test.exe webserver_test.exe stb_image_bench.exe process-util_test.exe stb_truetype_test.exe packrect_test.exe xml_test.exe mp3_test.exe top_test.exe bounds_test.exe optional-iterator_test.exe tuple-util_test.exe bitbuffer_test.exe ansi_test.exe factorization_test.exe atomic-util_test.exe interval-cover_test.exe set-util_test.exe hashing_test.exe subprocess_test.exe city_test.exe autoparallel_test.exe int128_test.exe do-not-optimize_test.exe pcg_test.exe montgomery64_test.exe numbers_test.exe work-queue_test.exe csv_test.exe pdf_test.exe lug_test.exe ctpg_test.exe parser-combinators_test.exe $(TESTCOMPILE)
 
 TESTCOMPILE=stb_image_write.o stb_image.o dr_wav.o bounds.o simpledxf.o bitbuffer.o
 
@@ -220,7 +220,7 @@ lug_test.exe : lug_test.o $(BASE)
 ctpg_test.exe : ctpg_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-parse_test.exe : parse_test.o $(BASE)
+parser-combinators_test.exe : parser-combinators_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :

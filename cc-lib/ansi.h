@@ -97,6 +97,9 @@ struct ANSI {
   // Without ANSI_RESET.
   static std::string ForegroundRGB(uint8_t r, uint8_t g, uint8_t b);
   static std::string BackgroundRGB(uint8_t r, uint8_t g, uint8_t b);
+  // In RGBA format, but the alpha component is ignored.
+  static std::string ForegroundRGB32(uint32_t rgba);
+  static std::string BackgroundRGB32(uint32_t rgba);
 
   // Strip ANSI codes. Only CSI codes are supported (which is everything
   // in this file), and they are not validated. There are many nonstandard

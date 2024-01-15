@@ -1,7 +1,8 @@
 
-#include "parse.h"
+#include "parser-combinators.h"
 
 #include <span>
+#include <string>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -168,6 +169,32 @@ static void TestSimple() {
     std::string empty;
     Parsed<std::vector<char>> po = parser(CharSpan(empty));
     CHECK(!po.HasValue());
+  }
+
+  {
+    auto parser = Fix<char, char>([](const auto &Self) {
+        return (Is('(') >> Self << Is(')')) || Is('x');
+      });
+
+    for (const char *c : {"x", "(x)", "(((((x)))))"}) {
+      std::string s = c;
+      Parsed<char> po = parser(CharSpan(s));
+      CHECK(po.HasValue());
+      CHECK(po.Value() == 'x');
+    }
+  }
+
+  {
+    auto abc = Is('a') || Is('b') || Is('c');
+    auto parser = Separate(abc, Is(','));
+    std::string s = "a,b,c,x";
+    Parsed<std::vector<char>> po = parser(CharSpan(s));
+    CHECK(po.HasValue());
+    const auto &v = po.Value();
+    CHECK(v.size() == 3);
+    CHECK(v[0] == 'a');
+    CHECK(v[1] == 'b');
+    CHECK(v[2] == 'c');
   }
 
 }

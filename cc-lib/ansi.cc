@@ -66,6 +66,28 @@ void CPrintf(const char* format, ...) {
   #endif
 }
 
+// Unpack 0xRRGGBB.
+inline constexpr std::tuple<uint8_t, uint8_t, uint8_t>
+Unpack24(uint32_t color) {
+  return {(uint8_t)((color >> 16) & 255),
+          (uint8_t)((color >> 8) & 255),
+          (uint8_t)(color & 255)};
+}
+
+// and 0xRRGGBBAA
+inline static constexpr std::tuple<uint8, uint8, uint8, uint8>
+Unpack32(uint32 color) {
+  return {(uint8)((color >> 24) & 255),
+          (uint8)((color >> 16) & 255),
+          (uint8)((color >> 8) & 255),
+          (uint8)(color & 255)};
+}
+
+inline static constexpr uint32 Pack32(uint8 r, uint8 g, uint8 b, uint8 a) {
+  return
+    ((uint32)r << 24) | ((uint32)g << 16) | ((uint32)b << 8) | (uint32)a;
+}
+
 std::string ANSI::ForegroundRGB(uint8_t r, uint8_t g, uint8_t b) {
   char escape[24] = {};
   snprintf(escape, 24, "\x1B[38;2;%d;%d;%dm", r, g, b);
@@ -77,6 +99,16 @@ std::string ANSI::BackgroundRGB(uint8_t r, uint8_t g, uint8_t b) {
   char escape[24] = {};
   snprintf(escape, 24, "\x1B[48;2;%d;%d;%dm", r, g, b);
   return escape;
+}
+
+std::string ANSI::ForegroundRGB32(uint32_t rgba) {
+  const auto [r, g, b, a_] = Unpack32(rgba);
+  return ForegroundRGB(r, g, b);
+}
+
+std::string ANSI::BackgroundRGB32(uint32_t rgba) {
+  const auto [r, g, b, a_] = Unpack32(rgba);
+  return BackgroundRGB(r, g, b);
 }
 
 std::string ANSI::Time(double seconds) {
@@ -132,28 +164,6 @@ std::string ANSI::StripCodes(const std::string &s) {
 int ANSI::StringWidth(const std::string &s) {
   // PERF could do this without copying.
   return StripCodes(s).size();
-}
-
-// Unpack 0xRRGGBB.
-inline constexpr std::tuple<uint8_t, uint8_t, uint8_t>
-Unpack24(uint32_t color) {
-  return {(uint8_t)((color >> 16) & 255),
-          (uint8_t)((color >> 8) & 255),
-          (uint8_t)(color & 255)};
-}
-
-// and 0xRRGGBBAA
-inline static constexpr std::tuple<uint8, uint8, uint8, uint8>
-Unpack32(uint32 color) {
-  return {(uint8)((color >> 24) & 255),
-          (uint8)((color >> 16) & 255),
-          (uint8)((color >> 8) & 255),
-          (uint8)(color & 255)};
-}
-
-inline static constexpr uint32 Pack32(uint8 r, uint8 g, uint8 b, uint8 a) {
-  return
-    ((uint32)r << 24) | ((uint32)g << 16) | ((uint32)b << 8) | (uint32)a;
 }
 
 
