@@ -206,6 +206,76 @@ static void TestSimple() {
     CHECK(po.Value().empty());
   }
 
+  #if 0
+  TupleLike<std::string> like;
+  const auto &[x, y] = like;
+  CHECK(x == 8);
+  CHECK(y == 10);
+  #endif
+
+  {
+    const auto &[E, D] =
+      Fix2<char, char, char>(
+        [](const auto &EE, const auto &DD) {
+          return Is('x');
+        },
+        [](const auto &EE, const auto &DD) {
+          return Is('y');
+        });
+  }
+
+#if 1
+  {
+    // just using the first characters
+    // 'l'et D
+    // 'i'n E
+    // 'e'nd
+    // or 0
+    using exp_out = std::string;
+    using dec_out = std::pair<std::string, std::string>;
+    const auto &[E, D] =
+      Fix2<char, exp_out, dec_out>(
+        [](const auto &EE, const auto &DD) {
+          auto zero = Is<char>('0') >> Succeed<char, std::string>("0");
+          auto let =
+            (((Is<char>('l') >> DD) && (Is('i') >> EE)) << Is('e')) >
+              [](const auto &p) -> std::string {
+                  const auto &[var, exp] = p.first;
+                  return StringPrintf("let val %s = %s in %s end",
+                                      var.c_str(),
+                                      exp.c_str(),
+                                      p.second.c_str());
+              };
+          return zero || let;
+        },
+      // 'v'al x = E
+        [](const auto &EE, const auto &DD) {
+          return (Is('v') >> Is('x') >> Is('=') >> EE) >
+            [](const std::string &e) -> std::pair<std::string, std::string> {
+            return std::make_pair("x", e);
+            };
+        });
+
+    {
+      Parsed<std::string> po = E(CharSpan(""));
+      CHECK(!po.HasValue());
+    }
+
+    {
+      Parsed<std::string> po = E(CharSpan("0"));
+      CHECK(po.HasValue());
+      CHECK(po.Value() == "0");
+    }
+
+    {
+      Parsed<std::string> po = E(CharSpan("lvx=0i0e"));
+      CHECK(po.HasValue());
+      CHECK(po.Value() == "let val x = 0 in 0 end");
+    }
+
+  }
+#endif
+
 }
 
 int main(int argc, char **argv) {

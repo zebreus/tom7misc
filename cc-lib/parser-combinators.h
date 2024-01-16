@@ -303,25 +303,6 @@ inline auto operator +(const A &a) {
     };
 }
 
-// Fix<Token, Out>([](const auto &Self) { ...  Self ... })
-// Creates a parser that can refer to itself via Self.
-// TODO: I get crashes (infinite loop?) if f doesn't take
-// Self by const reference. Rule this out statically.
-// TODO: requirements on f
-#if 0
-template<class Token, class Out, class F>
-requires std::invocable<F, ParserWrapper<Token, Out>>
-inline auto Fix(const F &f) -> ParserWrapper<Token, Out> {
-  ParserWrapper<Token, Out> self(
-      [self, f](std::span<const Token> toks) {
-        decltype(f(std::declval<ParserWrapper<Token, Out>>()))
-          parser = f(self);
-        return parser(toks);
-      });
-  return self;
-};
-#endif
-
 
 // Declaring this as a separate struct:
 //  - Allows us to write a requires clause below without
@@ -336,6 +317,7 @@ struct RecursiveParser {
 
   template<class F_>
   RecursiveParser(F_ &&f) : f(std::forward<F_>(f)) {}
+
   Parsed<Out> operator()(std::span<const Token> toks) const {
     return f(*this)(toks);
   }
@@ -349,6 +331,120 @@ inline auto Fix(const F &f) {
   return RecursiveParser<Token, Out, F>(f);
 };
 
+#if 0
+// structured binding example
+template<class T>
+struct TupleLike {
+private:
+  bool test = false;
+  T x;
+};
+
+namespace std {
+template<class T>
+struct tuple_size<TupleLike<T>> : integral_constant<size_t, 2> {};
+
+template<class T>
+struct tuple_element<0, TupleLike<T>> {
+  using type = int;
+};
+
+template<class T>
+struct tuple_element<1, TupleLike<T>> {
+  using type = int;
+};
+}
+
+template <std::size_t I, class T>
+inline auto get(const TupleLike<T> &like) {
+  if constexpr (I == 0) return 8;
+  else if constexpr (I == 1) return 10;
+  else throw std::out_of_range("Invalid index");
+}
+#endif
+
+template<class Token, class Out1, class Out2, class F1, class F2>
+struct RecursiveParsers2 {
+
+  template<class F1_, class F2_>
+  RecursiveParsers2(F1_ &&f1_in, F2_ &&f2_in) :
+    f1(std::forward<F1_>(f1_in)),
+    f2(std::forward<F2_>(f2_in)),
+    p1(ParserWrapper<Token, Out1>([this](
+           std::span<const Token> toks) {
+        return this->f1(p1, p2)(toks);
+      })),
+    p2(ParserWrapper<Token, Out2>([this](
+           std::span<const Token> toks) {
+        return this->f2(p1, p2)(toks);
+      })) {
+
+  }
+
+  static constexpr size_t tuple_size = 2;
+
+  ParserWrapper<Token, Out1> Get1() const { return p1; }
+  ParserWrapper<Token, Out2> Get2() const { return p2; }
+
+  template <std::size_t Idx>
+  auto get() const {
+    if constexpr (Idx == 0) return p1;
+    else if constexpr (Idx == 1) return p2;
+    else throw std::out_of_range("Invalid index");
+  }
+
+private:
+  int padding1, padding2, paddgin3;
+  F1 f1;
+  F2 f2;
+  ParserWrapper<Token, Out1> p1;
+  ParserWrapper<Token, Out2> p2;
+};
+
+namespace std {
+template<class Token, class Out1, class Out2, class F1, class F2>
+struct tuple_size<RecursiveParsers2<Token, Out1, Out2, F1, F2>> :
+    integral_constant<size_t, 2> {};
+
+template<class Token, class Out1, class Out2, class F1, class F2>
+struct tuple_element<0, RecursiveParsers2<Token, Out1, Out2, F1, F2>> {
+  using type = ParserWrapper<Token, Out1>;
+};
+
+template<class Token, class Out1, class Out2, class F1, class F2>
+struct tuple_element<1, RecursiveParsers2<Token, Out1, Out2, F1, F2>> {
+  using type = ParserWrapper<Token, Out2>;
+};
+}
+
+template <std::size_t Idx,
+          class Token, class Out1, class Out2, class F1, class F2>
+inline auto get(const RecursiveParsers2<Token, Out1, Out2, F1, F2> &r) {
+  if constexpr (Idx == 0) return r.Get1();
+  else if constexpr (Idx == 1) return r.Get2();
+  else throw std::out_of_range("Invalid index");
+}
+
+
+// Here, f takes two parsers and returns a tuple-like object.
+// const auto &[Expr, Decr] =
+//   Fix2<Token, Exp *, Dec *>(
+//   // expression parser
+//   [](const auto &ExpParser,
+//      const auto &DecParser) {
+//    return ... ExpParser && DecParser ...
+//   },
+//   // declaration parser
+//   [](const auto &ExpParser,
+//      const auto &DecParser) {
+//    return ... ExpParser && DecParser ...
+// });
+
+template<class Token, class Out1, class Out2, class F1, class F2>
+// requires ...
+inline auto Fix2(const F1 &f1, const F2 &f2) {
+  return RecursiveParsers2<Token, Out1, Out2, F1, F2>(f1, f2);
+};
 
 // Parses a b a b .... b a.
 // Returns the vector of a's results.
