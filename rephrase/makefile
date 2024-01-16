@@ -239,7 +239,7 @@ LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_
 
 LANG_OBJECTS=ast.o parse.o lex.o
 
-%.o : %.cc $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
+%.o : %.cc *.h $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 

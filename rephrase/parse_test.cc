@@ -125,6 +125,21 @@ static void TestParse() {
     CHECK(v[1]->exp->str == "b");
     CHECK(v[2]->str == "after");
   }
+
+  {
+    const Exp *e = Parse(&pool, "let do u in 7 end");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::LET);
+    CHECK(e->decs.size() == 1);
+    // DO is syntactic sugar for var _
+    CHECK(e->decs[0]->type == DecType::VAL);
+    CHECK(e->decs[0]->pat->type == PatType::WILD);
+    CHECK(e->decs[0]->exp->type == ExpType::VAR);
+    CHECK(e->decs[0]->exp->str == "u");
+    CHECK(e->a != nullptr);
+    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->integer == 7);
+  }
 }
 
 

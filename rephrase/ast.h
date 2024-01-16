@@ -21,9 +21,22 @@ enum class ExpType {
   INTEGER,
   VAR,
   LAYOUT,
+  LET,
+};
+
+enum class DecType {
+  VAL,
+  FUN,
+};
+
+enum class PatType {
+  VAR,
+  WILD,
+  TUPLE,
 };
 
 struct Exp;
+struct Dec;
 
 struct Layout {
   LayoutType type;
@@ -38,8 +51,25 @@ struct Exp {
   std::string str;
   const Layout *layout = nullptr;
   int64_t integer = 0;
+  const Exp *a = nullptr;
+  const Exp *b = nullptr;
+  std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
   Exp(ExpType t) : type(t) {}
+};
+
+struct Pat {
+  PatType type;
+  std::string var;
+  std::vector<const Pat *> children;
+  Pat(PatType t) : type(t) {}
+};
+
+struct Dec {
+  DecType type;
+  const Pat *pat = nullptr;
+  const Exp *exp = nullptr;
+  Dec(DecType t) : type(t) {}
 };
 
 template<class T>
@@ -67,6 +97,8 @@ private:
 
 struct AstPool {
   AstPool() = default;
+
+  // Expressions
 
   const Exp *Str(const std::string &s) {
     Exp *ret = NewExp(ExpType::STRING);
@@ -104,6 +136,14 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *Let(std::vector<const Dec *> ds, const Exp *e) {
+    Exp *ret = NewExp(ExpType::LET);
+    ret->decs = std::move(ds);
+    ret->a = e;
+    return ret;
+  }
+
+  // Layout
 
   const Layout *TextLayout(std::string s) {
     Layout *ret = NewLayout(LayoutType::TEXT);
@@ -123,11 +163,51 @@ struct AstPool {
     return ret;
   }
 
+  // Declarations
+
+  const Dec *ValDec(const Pat *pat, const Exp *rhs) {
+    Dec *ret = NewDec(DecType::VAL);
+    ret->pat = pat;
+    ret->exp = rhs;
+    return ret;
+  }
+
+  const Dec *FunDec(const std::string &name,
+                    const Pat *args, const Exp *body) {
+    Dec *ret = NewDec(DecType::FUN);
+    ret->pat = args;
+    ret->exp = body;
+    return ret;
+  }
+
+  // Patterns
+
+  const Pat *VarPat(const std::string &v) {
+    Pat *ret = NewPat(PatType::VAR);
+    ret->var = v;
+    return ret;
+  }
+
+  const Pat *WildPat() {
+    // PERF can be singleton
+    return NewPat(PatType::WILD);
+  }
+
+  const Pat *TuplePat(std::vector<const Pat *> &v) {
+    Pat *ret = NewPat(PatType::WILD);
+    ret->children = std::move(v);
+    return ret;
+  }
+
 private:
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }
   Layout *NewLayout(LayoutType t) { return layout_arena.New(t); }
+  Dec *NewDec(DecType t) { return dec_arena.New(t); }
+  Pat *NewPat(PatType t) { return pat_arena.New(t); }
   AstArena<Exp> exp_arena;
   AstArena<Layout> layout_arena;
+  AstArena<Dec> dec_arena;
+  AstArena<Pat> pat_arena;
 };
 
 std::string LayoutString(const Layout *lay);

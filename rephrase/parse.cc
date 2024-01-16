@@ -147,19 +147,46 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
             };
     };
 
+  const auto LetExpr = [&](const auto &Expr, const auto &Decl) {
+      return ((IsToken<LET>() >> *Decl << IsToken<IN>()) &&
+              // TODO: Can allow sequence here
+              (Expr << IsToken<END>())) >[&](const auto &p) {
+                  const auto &[ds, e] = p;
+                  return pool->Let(ds, e);
+                };
+    };
+
+  // This is syntactic sugar for val _ = e
+  const auto DoDecl = [&](const auto &Expr) {
+      return (IsToken<DO>() >> Expr)
+        >[&](const Exp *e) {
+            return pool->ValDec(pool->WildPat(), e);
+          };
+    };
+
   // XXX probably will need a FixN for exp/dec...
   // XXX or other types...
-  const auto Expr =
-    Fix<Token, const Exp *>([&](const auto &Self) {
-        return
-          IntExpr ||
-          VarExpr ||
-          StrLitExpr ||
-          TupleExpr(Self) ||
-          LayoutExpr(Self) ||
-          // Just here for convenience of writing a || b || ...
-          Fail<Token, const Exp *>();
-      });
+  const auto &[Expr, Decl] =
+    Fix2<Token, const Exp *, const Dec *>(
+        [&](const auto &Expr, const auto &Decl) {
+          // Expression parser.
+          return
+            IntExpr ||
+            VarExpr ||
+            StrLitExpr ||
+            TupleExpr(Expr) ||
+            LayoutExpr(Expr) ||
+            LetExpr(Expr, Decl) ||
+            // Just here for convenience of writing a || b || ...
+            Fail<Token, const Exp *>();
+        },
+        [&](const auto &Expr, const auto &Decl) {
+          // Declaration parser.
+          return
+            DoDecl(Expr) ||
+            // Just here for convenience of writing a || b || ...
+            Fail<Token, const Dec *>();
+        });
 
   auto Program = Expr << End<Token>();
 

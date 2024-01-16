@@ -19,11 +19,19 @@ enum TokenType {
   RBRACKET,
   COMMA,
   PERIOD,
+  UNDERSCORE,
+  EQUALS,
 
   DIGITS,
 
   // Keywords.
   FN,
+  FUN,
+  VAL,
+  DO,
+  LET,
+  IN,
+  END,
 
   // Identifier.
   ID,

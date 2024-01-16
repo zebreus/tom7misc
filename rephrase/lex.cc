@@ -18,11 +18,19 @@ const char *TokenTypeString(TokenType tok) {
   case RBRACKET: return "RBRACKET";
   case COMMA: return "COMMA";
   case PERIOD: return "PERIOD";
+  case UNDERSCORE: return "UNDERSCORE";
+  case EQUALS: return "EQUALS";
 
   case DIGITS: return "DIGITS";
 
   // Keywords.
   case FN: return "FN";
+  case VAL: return "VAL";
+  case DO: return "DO";
+  case FUN: return "FUN";
+  case LET: return "LET";
+  case IN: return "IN";
+  case END: return "END";
 
   // Identifier.
   case ID: return "ID";
@@ -129,7 +137,13 @@ std::vector<Token> Lex(const std::string &input_string) {
       ANY_BRACKET);
 
   static const std::unordered_map<std::string, TokenType> keywords = {
+    {"let", LET},
+    {"do", DO},
+    {"end", END},
+    {"in", IN},
     {"fn", FN},
+    {"fun", FUN},
+    {"val", VAL},
   };
 
   re2::StringPiece input(input_string);
@@ -199,6 +213,14 @@ std::vector<Token> Lex(const std::string &input_string) {
         continue;
       case '.':
         ret.emplace_back(PERIOD, start, 1);
+        input.remove_prefix(1);
+        continue;
+      case '_':
+        ret.emplace_back(UNDERSCORE, start, 1);
+        input.remove_prefix(1);
+        continue;
+      case '=':
+        ret.emplace_back(EQUALS, start, 1);
         input.remove_prefix(1);
         continue;
 
