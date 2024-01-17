@@ -249,6 +249,9 @@ monospace.exe : monospace.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 rephrase.exe : rephrase.o $(LANG_OBJECTS) $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
+lex_test.exe : lex_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 parse_test.exe : parse_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 

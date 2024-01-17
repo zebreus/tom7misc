@@ -22,6 +22,7 @@ enum class ExpType {
   VAR,
   LAYOUT,
   LET,
+  IF,
 };
 
 enum class DecType {
@@ -53,6 +54,7 @@ struct Exp {
   int64_t integer = 0;
   const Exp *a = nullptr;
   const Exp *b = nullptr;
+  const Exp *c = nullptr;
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
   Exp(ExpType t) : type(t) {}
@@ -143,6 +145,14 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *If(const Exp *cond, const Exp *t, const Exp *f) {
+    Exp *ret = NewExp(ExpType::IF);
+    ret->a = cond;
+    ret->b = t;
+    ret->c = f;
+    return ret;
+  }
+
   // Layout
 
   const Layout *TextLayout(std::string s) {
@@ -193,8 +203,8 @@ struct AstPool {
     return NewPat(PatType::WILD);
   }
 
-  const Pat *TuplePat(std::vector<const Pat *> &v) {
-    Pat *ret = NewPat(PatType::WILD);
+  const Pat *TuplePat(std::vector<const Pat *> v) {
+    Pat *ret = NewPat(PatType::TUPLE);
     ret->children = std::move(v);
     return ret;
   }
@@ -210,6 +220,8 @@ private:
   AstArena<Pat> pat_arena;
 };
 
+std::string PatString(const Pat *p);
+std::string DecString(const Dec *d);
 std::string LayoutString(const Layout *lay);
 std::string ExpString(const Exp *e);
 

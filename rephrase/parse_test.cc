@@ -140,6 +140,79 @@ static void TestParse() {
     CHECK(e->a->type == ExpType::INTEGER);
     CHECK(e->a->integer == 7);
   }
+
+  {
+    // Same as previous, but explicit wildcard.
+    const Exp *e = Parse(&pool, "let val _ = u in 7 end");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::LET);
+    CHECK(e->decs.size() == 1);
+    CHECK(e->decs[0]->type == DecType::VAL);
+    CHECK(e->decs[0]->pat->type == PatType::WILD);
+    CHECK(e->decs[0]->exp->type == ExpType::VAR);
+    CHECK(e->decs[0]->exp->str == "u");
+    CHECK(e->a != nullptr);
+    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->integer == 7);
+  }
+
+  {
+    const Exp *e = Parse(&pool, "let val x = u in 7 end");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::LET);
+    CHECK(e->decs.size() == 1);
+    CHECK(e->decs[0]->type == DecType::VAL);
+    CHECK(e->decs[0]->pat->type == PatType::VAR);
+    CHECK(e->decs[0]->pat->var == "x");
+    CHECK(e->decs[0]->exp->type == ExpType::VAR);
+    CHECK(e->decs[0]->exp->str == "u");
+    CHECK(e->a != nullptr);
+    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->integer == 7);
+  }
+
+  {
+    const Exp *e = Parse(&pool,
+                         "let val ((x, _), (y), zzz) = u in 7 end");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::LET);
+    CHECK(e->decs.size() == 1);
+    CHECK(e->decs[0]->type == DecType::VAL);
+    const Pat *pat = e->decs[0]->pat;
+    CHECK(pat != nullptr);
+    CHECK(pat->type == PatType::TUPLE) << PatString(pat);
+    CHECK(pat->children.size() == 3);
+    const Pat *a = pat->children[0];
+    const Pat *b = pat->children[1];
+    const Pat *c = pat->children[2];
+    CHECK(a->type == PatType::TUPLE);
+    CHECK(a->children.size() == 2);
+    CHECK(a->children[0]->type == PatType::VAR);
+    CHECK(a->children[0]->var == "x");
+    CHECK(a->children[1]->type == PatType::WILD);
+    CHECK(b->type == PatType::VAR);
+    CHECK(b->var == "y");
+    CHECK(c->type == PatType::VAR);
+    CHECK(c->var == "zzz");
+
+    CHECK(e->decs[0]->exp->type == ExpType::VAR);
+    CHECK(e->decs[0]->exp->str == "u");
+    CHECK(e->a != nullptr);
+    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->integer == 7);
+  }
+
+  {
+    const Exp *e = Parse(&pool, "if 1 then 2 else 3");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::IF);
+    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->integer == 1);
+    CHECK(e->b->type == ExpType::INTEGER);
+    CHECK(e->b->integer == 2);
+    CHECK(e->c->type == ExpType::INTEGER);
+    CHECK(e->c->integer == 3);
+  }
 }
 
 

@@ -92,6 +92,34 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
       return UnescapeLayoutLit(TokenStr(t));
     };
 
+  // Patterns.
+
+  const auto TuplePat = [&](const auto &Pattern) {
+      return ((IsToken<LPAREN>() >>
+               Separate0(Pattern, IsToken<COMMA>()) <<
+               IsToken<RPAREN>())
+              >[&](const std::vector<const Pat *> &ps) -> const Pat * {
+                  if (ps.size() == 1) {
+                    // Then this is just a parenthesized pattern.
+                    return ps[0];
+                  } else {
+                    return pool->TuplePat(ps);
+                  }
+                });
+    };
+
+
+  const auto Pattern =
+    Fix<Token, const Pat *>([&](const auto &Self) {
+        return
+          (Id >[&](const std::string &s) { return pool->VarPat(s); }) ||
+          (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
+          TuplePat(Self);
+      });
+
+
+  // Expressions.
+
   const auto IntExpr = Int >[&](int64_t i) { return pool->Int(i); };
   const auto VarExpr = Id >[&](const std::string &s) {
       return pool->Var(s);
@@ -156,11 +184,31 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
                 };
     };
 
+  const auto IfExpr = [&](const auto &Expr) {
+      return ((IsToken<IF>() >> Expr) &&
+              (IsToken<THEN>() >> Expr) &&
+              (IsToken<ELSE>() >> Expr))
+        >[&](const auto &p) {
+            const auto &[pp, f] = p;
+            const auto &[cond, t] = pp;
+            return pool->If(cond, t, f);
+          };
+    };
+
+
   // This is syntactic sugar for val _ = e
   const auto DoDecl = [&](const auto &Expr) {
       return (IsToken<DO>() >> Expr)
         >[&](const Exp *e) {
             return pool->ValDec(pool->WildPat(), e);
+          };
+    };
+
+  const auto ValDecl = [&](const auto &Expr) {
+      return ((IsToken<VAL>() >> Pattern) &&
+              (IsToken<EQUALS>() >> Expr))
+        >[&](const auto &p) {
+            return pool->ValDec(p.first, p.second);
           };
     };
 
@@ -177,6 +225,7 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
             TupleExpr(Expr) ||
             LayoutExpr(Expr) ||
             LetExpr(Expr, Decl) ||
+            IfExpr(Expr) ||
             // Just here for convenience of writing a || b || ...
             Fail<Token, const Exp *>();
         },
@@ -184,6 +233,7 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
           // Declaration parser.
           return
             DoDecl(Expr) ||
+            ValDecl(Expr) ||
             // Just here for convenience of writing a || b || ...
             Fail<Token, const Dec *>();
         });

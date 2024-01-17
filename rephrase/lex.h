@@ -22,8 +22,6 @@ enum TokenType {
   UNDERSCORE,
   EQUALS,
 
-  DIGITS,
-
   // Keywords.
   FN,
   FUN,
@@ -33,9 +31,22 @@ enum TokenType {
   IN,
   END,
 
+  IF,
+  THEN,
+  ELSE,
+  ANDALSO,
+  ORELSE,
+
   // Identifier.
   ID,
 
+  // like 1234
+  DIGITS,
+
+  // like 0x2A03 or 0u09DE
+  NUMERIC_LIT,
+  // like 1e100 or .4
+  FLOAT_LIT,
   LAYOUT_LIT,
   STR_LIT,
 

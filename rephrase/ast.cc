@@ -2,6 +2,7 @@
 #include "ast.h"
 
 #include "base/logging.h"
+#include "util.h"
 
 std::string LayoutString(const Layout *lay) {
   switch (lay->type) {
@@ -12,6 +13,44 @@ std::string LayoutString(const Layout *lay) {
   }
 }
 
+std::string PatString(const Pat *p) {
+  switch (p->type) {
+  case PatType::WILD: return "_";
+  case PatType::VAR: return p->var;
+  case PatType::TUPLE: {
+    std::string ret = "(";
+    for (int i = 0; i < (int)p->children.size(); i++) {
+      const Pat *child = p->children[i];
+      if (i != 0)
+        StringAppendF(&ret, ", ");
+      StringAppendF(&ret, "%s", PatString(child).c_str());
+    }
+    ret.push_back(')');
+    return ret;
+  }
+  default:
+    return "unknown pat type??";
+  }
+}
+
+std::string DecString(const Dec *d) {
+  switch (d->type) {
+  case DecType::VAL:
+    return StringPrintf("val %s = %s",
+                        PatString(d->pat).c_str(),
+                        ExpString(d->exp).c_str());
+  case DecType::FUN:
+    return "TODO FUN";
+  default:
+    return "TODO DECTYPE";
+  }
+}
+
+// TODO: Make destructuring bind for each expression type,
+// so you can do like
+//    const auto &[code, t, f] = exp->If();
+// ... which also lets us use better representations internally.
+// TODO: Some kind of pretty-printing
 std::string ExpString(const Exp *e) {
   switch (e->type) {
   case ExpType::STRING:
@@ -38,6 +77,22 @@ std::string ExpString(const Exp *e) {
     }
     ret += "]";
     return ret;
+  }
+  case ExpType::LET: {
+    std::vector<std::string> decs;
+    for (const Dec *d : e->decs) {
+      decs.push_back(DecString(d));
+    }
+
+    return StringPrintf("let %s in %s end",
+                        Util::Join(decs, " ").c_str(),
+                        ExpString(e->a).c_str());
+  }
+  case ExpType::IF: {
+    return StringPrintf("(if %s then %s else %s)",
+                        ExpString(e->a).c_str(),
+                        ExpString(e->b).c_str(),
+                        ExpString(e->c).c_str());
   }
   case ExpType::LAYOUT:
     return StringPrintf("[%s]", LayoutString(e->layout).c_str());

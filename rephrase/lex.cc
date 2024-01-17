@@ -21,8 +21,6 @@ const char *TokenTypeString(TokenType tok) {
   case UNDERSCORE: return "UNDERSCORE";
   case EQUALS: return "EQUALS";
 
-  case DIGITS: return "DIGITS";
-
   // Keywords.
   case FN: return "FN";
   case VAL: return "VAL";
@@ -32,9 +30,18 @@ const char *TokenTypeString(TokenType tok) {
   case IN: return "IN";
   case END: return "END";
 
+  case IF: return "IF";
+  case THEN: return "THEN";
+  case ELSE: return "ELSE";
+  case ANDALSO: return "ANDALSO";
+  case ORELSE: return "ORELSE";
+
   // Identifier.
   case ID: return "ID";
 
+  case NUMERIC_LIT: return "NUMERIC_LIT";
+  case FLOAT_LIT: return "FLOAT_LIT";
+  case DIGITS: return "DIGITS";
   case LAYOUT_LIT: return "LAYOUT_LIT";
   case STR_LIT: return "STR_LIT";
 
@@ -101,6 +108,44 @@ std::pair<std::string, std::string> ColorTokens(
 // Lexing.
 std::vector<Token> Lex(const std::string &input_string) {
   static const RE2 whitespace("[ \r\n\t]+");
+
+  // Numeric literals of various sorts.
+  // When a 0 prefix, we have hex (x), binary (b),
+  // decimal (d) and octal (o). We also have unicode
+  // character literals (u). Note that octal is not
+  // allowed with just a leading 0, as C does.
+  // In each case, the . character is allowed (and
+  // ignored) as a separator.
+  static const RE2 explicit_numeric_lit(
+      "(?:"
+      // hex prefix
+      "(?:0[Xx][0-9A-Fa-f.]+)"
+      "|"
+      // binary prefix
+      "(?:0[Bb][01.]+)"
+      "|"
+      // octal prefix.
+      "(?:0[Oo][0-7.]+)"
+      "|"
+      // unicode prefix (char literal)
+      "(?:0[Uu][0-9A-Fa-f.]+)"
+      ")");
+
+  // In 1e100, the "e100" part.
+#define EXPONENT_SUFFIX "(?:[Ee][-+]?[0-9]+)"
+
+  static const RE2 float_lit(
+      "(?:"
+      // with optional leading digits
+      "[-+]?[0-9]*[.][0-9]+" EXPONENT_SUFFIX "?"
+      "|"
+      // with optional trailing digits
+      "[-+]?[0-9]+[.][0-9]*" EXPONENT_SUFFIX "?"
+      "|"
+      // with no decimal point, but required suffix
+      "[-+]?[0-9]+" EXPONENT_SUFFIX
+      ")");
+
   static const RE2 digits("[0-9]+");
   // TODO: Allow UTF-8
   static const RE2 ident("([A-Za-z][-'_A-Za-z0-9]*)");
@@ -144,6 +189,11 @@ std::vector<Token> Lex(const std::string &input_string) {
     {"fn", FN},
     {"fun", FUN},
     {"val", VAL},
+    {"if", IF},
+    {"then", THEN},
+    {"else", ELSE},
+    {"andalso", ANDALSO},
+    {"orelse", ORELSE},
   };
 
   re2::StringPiece input(input_string);
@@ -163,7 +213,16 @@ std::vector<Token> Lex(const std::string &input_string) {
     if (RE2::Consume(&input, whitespace)) {
       /* no tokens. */
       // printf("Saw whitespace at %zu for %zu\n", start, Pos() - start);
+    } else if (RE2::Consume(&input, explicit_numeric_lit)) {
+      // Must come before digits so that we don't parse the
+      // 0 prefix as digits.
+      ret.emplace_back(NUMERIC_LIT, start, Pos() - start);
+    } else if (RE2::Consume(&input, float_lit)) {
+      ret.emplace_back(FLOAT_LIT, start, Pos() - start);
     } else if (RE2::Consume(&input, digits)) {
+      // Digits must come AFTER floats and prefixed stuff like 0x and
+      // 0u, since otherwise we'd parse the leading 0 or integer part
+      // as digits.
       ret.emplace_back(DIGITS, start, Pos() - start);
     } else if (RE2::Consume(&input, ident, &match)) {
       const auto kit = keywords.find(match);
