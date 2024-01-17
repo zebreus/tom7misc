@@ -213,6 +213,23 @@ static void TestParse() {
     CHECK(e->c->type == ExpType::INTEGER);
     CHECK(e->c->integer == 3);
   }
+
+  {
+    // Same as previous, but explicit wildcard.
+    const Exp *e = Parse(&pool, "let fun f(x) = x in 7 end");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::LET);
+    CHECK(e->decs.size() == 1);
+    CHECK(e->decs[0]->type == DecType::FUN);
+    CHECK(e->decs[0]->str == "f");
+    CHECK(e->decs[0]->pat->type == PatType::VAR);
+    CHECK(e->decs[0]->pat->var == "x");
+    CHECK(e->decs[0]->exp->type == ExpType::VAR);
+    CHECK(e->decs[0]->exp->str == "x");
+    CHECK(e->a != nullptr);
+    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->integer == 7);
+  }
 }
 
 

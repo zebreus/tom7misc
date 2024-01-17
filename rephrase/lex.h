@@ -21,6 +21,12 @@ enum TokenType {
   PERIOD,
   UNDERSCORE,
   EQUALS,
+  BAR,
+  TIMES,
+  // ->
+  ARROW,
+  // =>
+  DARROW,
 
   // Keywords.
   FN,
@@ -36,6 +42,10 @@ enum TokenType {
   ELSE,
   ANDALSO,
   ORELSE,
+
+  DATATYPE,
+  OF,
+  CASE,
 
   // Identifier.
   ID,

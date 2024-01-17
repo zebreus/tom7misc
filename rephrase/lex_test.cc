@@ -19,10 +19,10 @@ static void PrintTokens(const std::string &input,
          source.c_str(), ctokens.c_str());
 }
 
-#define CHECK_LEX(str, toks) do { \
+#define CHECK_LEX(str, ...) do { \
     const std::string input = str; \
     const std::vector<Token> tokens = Lex(input); \
-    const std::vector<TokenType> expected = toks; \
+    const std::vector<TokenType> expected = {__VA_ARGS__};  \
     bool ok = tokens.size() == expected.size();   \
     for (int i = 0; i < (int)tokens.size() &&     \
            i < (int)expected.size(); i++) {           \
@@ -40,26 +40,28 @@ static void TestLex() {
   {
     const std::string input =
       "the   cat fn() went to 1234 the \"string\" store\n"
-      "where he \"\\\\slashed\\n\" t-i-r-e-s\n"
-      "Here is a [nested [123] expression].\n";
+      "where he \"\\\\slashed\\n\" t-i-r-e-s=>\n"
+      "Here -> is a [nested [123] expression].\n";
     const std::vector<Token> tokens =
       Lex(input);
     const auto &[source, ctokens] = ColorTokens(input, tokens);
     printf("%s\n%s\n", source.c_str(), ctokens.c_str());
   }
 
-  CHECK_LEX("15232", {DIGITS});
-  CHECK_LEX("0x15232", {NUMERIC_LIT});
-  CHECK_LEX("0x0000.0000.0000.0000", {NUMERIC_LIT});
-  CHECK_LEX("0b1010100", {NUMERIC_LIT});
-  CHECK_LEX("0u2A03", {NUMERIC_LIT});
-  CHECK_LEX("0o1234", {NUMERIC_LIT});
+  CHECK_LEX("15232", DIGITS);
+  CHECK_LEX("0x15232", NUMERIC_LIT);
+  CHECK_LEX("0x0000.0000.0000.0000", NUMERIC_LIT);
+  CHECK_LEX("0b1010100", NUMERIC_LIT);
+  CHECK_LEX("0u2A03", NUMERIC_LIT);
+  CHECK_LEX("0o1234", NUMERIC_LIT);
 
-  CHECK_LEX("1e100", {FLOAT_LIT});
-  CHECK_LEX("1e-100", {FLOAT_LIT});
-  CHECK_LEX(".1e-100", {FLOAT_LIT});
-  CHECK_LEX("1.e+100", {FLOAT_LIT});
+  CHECK_LEX("1e100", FLOAT_LIT);
+  CHECK_LEX("1e-100", FLOAT_LIT);
+  CHECK_LEX(".1e-100", FLOAT_LIT);
+  CHECK_LEX("1.e+100", FLOAT_LIT);
 
+  CHECK_LEX("->|", ARROW, BAR);
+  CHECK_LEX("==>", EQUALS, DARROW);
 }
 
 

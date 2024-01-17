@@ -20,6 +20,10 @@ const char *TokenTypeString(TokenType tok) {
   case PERIOD: return "PERIOD";
   case UNDERSCORE: return "UNDERSCORE";
   case EQUALS: return "EQUALS";
+  case BAR: return "BAR";
+  case TIMES: return "*";
+  case ARROW: return "->";
+  case DARROW: return "=>";
 
   // Keywords.
   case FN: return "FN";
@@ -35,6 +39,10 @@ const char *TokenTypeString(TokenType tok) {
   case ELSE: return "ELSE";
   case ANDALSO: return "ANDALSO";
   case ORELSE: return "ORELSE";
+
+  case DATATYPE: return "DATATYPE";
+  case OF: return "OF";
+  case CASE: return "CASE";
 
   // Identifier.
   case ID: return "ID";
@@ -181,12 +189,18 @@ std::vector<Token> Lex(const std::string &input_string) {
       ")*"
       ANY_BRACKET);
 
+  static const RE2 arrow("->");
+  static const RE2 darrow("=>");
+
   static const std::unordered_map<std::string, TokenType> keywords = {
     {"let", LET},
     {"do", DO},
     {"end", END},
     {"in", IN},
     {"fn", FN},
+    {"of", OF},
+    {"datatype", DATATYPE},
+    {"case", CASE},
     {"fun", FUN},
     {"val", VAL},
     {"if", IF},
@@ -254,7 +268,12 @@ std::vector<Token> Lex(const std::string &input_string) {
       ret.emplace_back(brack1, start, 1);
       ret.emplace_back(LAYOUT_LIT, start + 1, len - 2);
       ret.emplace_back(brack2, start + len - 1, 1);
+    } else if (RE2::Consume(&input, arrow)) {
+      ret.emplace_back(ARROW, start, Pos() - start);
+    } else if (RE2::Consume(&input, darrow)) {
+      ret.emplace_back(DARROW, start, Pos() - start);
     } else {
+
       char c = input[0];
       switch (c) {
         // Could use a table for this...
@@ -280,6 +299,14 @@ std::vector<Token> Lex(const std::string &input_string) {
         continue;
       case '=':
         ret.emplace_back(EQUALS, start, 1);
+        input.remove_prefix(1);
+        continue;
+      case '|':
+        ret.emplace_back(BAR, start, 1);
+        input.remove_prefix(1);
+        continue;
+      case '*':
+        ret.emplace_back(TIMES, start, 1);
         input.remove_prefix(1);
         continue;
 

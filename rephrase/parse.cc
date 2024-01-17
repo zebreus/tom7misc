@@ -212,6 +212,15 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
           };
     };
 
+  const auto FunDecl = [&](const auto &Expr) {
+      return ((IsToken<FUN>() >> (Id && Pattern)) &&
+              (IsToken<EQUALS>() >> Expr))
+        >[&](const auto &p) {
+            const auto &[f, pat] = p.first;
+            return pool->FunDec(f, pat, p.second);
+          };
+    };
+
   // XXX probably will need a FixN for exp/dec...
   // XXX or other types...
   const auto &[Expr, Decl] =
@@ -234,6 +243,7 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
           return
             DoDecl(Expr) ||
             ValDecl(Expr) ||
+            FunDecl(Expr) ||
             // Just here for convenience of writing a || b || ...
             Fail<Token, const Dec *>();
         });

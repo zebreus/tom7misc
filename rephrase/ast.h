@@ -28,6 +28,7 @@ enum class ExpType {
 enum class DecType {
   VAL,
   FUN,
+  DATATYPE,
 };
 
 enum class PatType {
@@ -36,8 +37,26 @@ enum class PatType {
   TUPLE,
 };
 
+enum class TypeType {
+  // This includes base types like int.
+  // It also includes n child types in application,
+  // like for "int list".
+  VAR,
+  ARROW,
+  PRODUCT,
+};
+
 struct Exp;
 struct Dec;
+
+struct Type {
+  TypeType type;
+  std::string var;
+  const Type *a = nullptr;
+  const Type *b = nullptr;
+  std::vector<const Type *> children;
+  Type(TypeType t) : type(t) {}
+};
 
 struct Layout {
   LayoutType type;
@@ -69,6 +88,7 @@ struct Pat {
 
 struct Dec {
   DecType type;
+  std::string str;
   const Pat *pat = nullptr;
   const Exp *exp = nullptr;
   Dec(DecType t) : type(t) {}
@@ -99,6 +119,28 @@ private:
 
 struct AstPool {
   AstPool() = default;
+
+  // Types
+  const Type *VarType(const std::string &s,
+                      std::vector<const Type *> v) {
+    Type *ret = NewType(TypeType::VAR);
+    ret->var = s;
+    ret->children = std::move(v);
+    return ret;
+  }
+
+  const Type *Product(std::vector<const Type *> v) {
+    Type *ret = NewType(TypeType::PRODUCT);
+    ret->children = std::move(v);
+    return ret;
+  }
+
+  const Type *Arrow(const Type *dom, const Type *cod) {
+    Type *ret = NewType(TypeType::PRODUCT);
+    ret->a = dom;
+    ret->b = cod;
+    return ret;
+  }
 
   // Expressions
 
@@ -185,6 +227,7 @@ struct AstPool {
   const Dec *FunDec(const std::string &name,
                     const Pat *args, const Exp *body) {
     Dec *ret = NewDec(DecType::FUN);
+    ret->str = name;
     ret->pat = args;
     ret->exp = body;
     return ret;
@@ -210,6 +253,7 @@ struct AstPool {
   }
 
 private:
+  Type *NewType(TypeType t) { return type_arena.New(t); }
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }
   Layout *NewLayout(LayoutType t) { return layout_arena.New(t); }
   Dec *NewDec(DecType t) { return dec_arena.New(t); }
@@ -218,12 +262,15 @@ private:
   AstArena<Layout> layout_arena;
   AstArena<Dec> dec_arena;
   AstArena<Pat> pat_arena;
+  AstArena<Type> type_arena;
 };
 
+std::string TypeString(const Type *t);
 std::string PatString(const Pat *p);
 std::string DecString(const Dec *d);
 std::string LayoutString(const Layout *lay);
 std::string ExpString(const Exp *e);
+
 
 // In-order flattening of the layout without any JOIN-type nodes,
 // and dropping empty text nodes.

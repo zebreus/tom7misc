@@ -4,6 +4,34 @@
 #include "base/logging.h"
 #include "util.h"
 
+std::string TypeString(const Type *t) {
+  switch (t->type) {
+  case TypeType::VAR:
+    if (t->children.empty()) {
+      return t->var;
+    } else {
+      return StringPrintf("(?TODO?) %s", t->var.c_str());
+    }
+  case TypeType::ARROW:
+    return StringPrintf("(%s -> %s)",
+                        TypeString(t->a).c_str(),
+                        TypeString(t->b).c_str());
+  case TypeType::PRODUCT: {
+    std::string ret = "(";
+    for (int i = 0; i < (int)t->children.size(); i++) {
+      const Type *child = t->children[i];
+      if (i != 0)
+        StringAppendF(&ret, " * ");
+      StringAppendF(&ret, "%s", TypeString(child).c_str());
+    }
+    ret.push_back(')');
+    return ret;
+  }
+  default:
+    return "unknown type type??";
+  }
+}
+
 std::string LayoutString(const Layout *lay) {
   switch (lay->type) {
     case LayoutType::TEXT:
@@ -40,7 +68,10 @@ std::string DecString(const Dec *d) {
                         PatString(d->pat).c_str(),
                         ExpString(d->exp).c_str());
   case DecType::FUN:
-    return "TODO FUN";
+    return StringPrintf("fun %s %s = %s",
+                        d->str.c_str(),
+                        PatString(d->pat).c_str(),
+                        ExpString(d->exp).c_str());
   default:
     return "TODO DECTYPE";
   }
