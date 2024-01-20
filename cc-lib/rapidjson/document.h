@@ -176,7 +176,7 @@ public:
     //@{
     bool operator==(ConstIterator that) const { return ptr_ == that.ptr_; }
   // creates ambiguity in c++20 -tom7
-  // bool operator!=(ConstIterator that) const { return ptr_ != that.ptr_; }
+    bool operator!=(ConstIterator that) const { return ptr_ != that.ptr_; }
     bool operator<=(ConstIterator that) const { return ptr_ <= that.ptr_; }
     bool operator>=(ConstIterator that) const { return ptr_ >= that.ptr_; }
     bool operator< (ConstIterator that) const { return ptr_ < that.ptr_; }

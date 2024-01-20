@@ -24,21 +24,25 @@ int main(int argc, char **argv) {
 
   } else {
 
+#ifdef __MINGW64__
+  fprintf(stderr, "\n\nNote: This is known to fail on Windows.\n\n");
+#endif
+
     {
       string cmd1 = StringPrintf("%s -child", argv[0]);
       printf("running self: [%s]\n", cmd1.c_str());
-    
+
       std::optional<string> reso =
         ProcessUtil::GetOutput(cmd1);
 
       CHECK(reso.has_value());
-      CHECK_EQ(reso.value(), "i am child (:\n");
+      CHECK_EQ(reso.value(), "i am child (:\n") << reso.value();
     }
 
     {
       string cmd2 = StringPrintf("%s -longchild", argv[0]);
       printf("running self: [%s]\n", cmd2.c_str());
-    
+
       std::optional<string> reso =
         ProcessUtil::GetOutput(cmd2);
 
@@ -49,7 +53,7 @@ int main(int argc, char **argv) {
         CHECK_EQ(res[i], i & 255) << i;
       }
     }
-    
+
     printf("OK!\n");
     return 0;
   }

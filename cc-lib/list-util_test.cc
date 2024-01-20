@@ -70,4 +70,6 @@ static void TestMoveToBack() {
 
 int main(int argc, char **argv) {
   TestMoveToBack();
+  printf("OK\n");
+  return 0;
 }

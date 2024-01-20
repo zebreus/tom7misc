@@ -33,15 +33,15 @@ static void Basic() {
 
 static void Signed() {
   uint128_t x = 14;
-  int128_t y = x;
+  int128_t y = (int128_t)x;
   CHECK(y > 0);
-
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   Basic();
+  Signed();
 
   printf("OK\n");
   return 0;

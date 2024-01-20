@@ -10,6 +10,8 @@
 #include "base/logging.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "timer.h"
+#include "ansi.h"
 
 using uint8 = uint8_t;
 
@@ -72,7 +74,8 @@ static void EncoderTests() {
                   RLE::Compress({42, 42, 42, 42, 0, 99, 99, 8}));
 }
 
-int main() {
+int main(int argc, char **argv) {
+  ANSI::Init();
   ArcFour rc{"rle_test"};
 
   DecoderTests();
@@ -80,7 +83,7 @@ int main() {
 
   int64_t compressed_bytes = 0, uncompressed_bytes = 0;
   #define NUM_TESTS 2000
-  const uint64 start_time = time(nullptr);
+  Timer timer;
   for (int cutoff = 0; cutoff < 256; cutoff++) {
     if (cutoff % 10 == 0) {
       printf("%.1f%% ... ", (100.0 * cutoff) / 256);
@@ -122,18 +125,17 @@ int main() {
       }
     }
   }
-  const uint64 end_time = time(nullptr);
-  const uint64 elapsed = end_time - start_time;
+  double elapsed = timer.Seconds();
   printf("\n"
          "Total uncompressed: %lld\n"
          "Total compressed:   %lld\n"
          "Average ratio: %.3f:1\n"
-         "Seconds: %llu\n"
+         "Time: %s\n"
          "kB/sec (round trip plus validation): %.1f\n",
          uncompressed_bytes,
          compressed_bytes,
          (double)uncompressed_bytes / compressed_bytes,
-         elapsed,
+         ANSI::Time(elapsed).c_str(),
          (uncompressed_bytes / 1000.0) / elapsed);
 
   return 0;

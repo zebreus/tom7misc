@@ -58,7 +58,7 @@ string TextSVG::Rtos(double d) {
   const bool negative = std::signbit(d);
   if (negative) d = abs(d);
 
-  char out[16];
+  char out[17];
   // Make sure there is always room for a minus sign.
   snprintf(out + 1, 16, "%.5f", d);
 

@@ -43,6 +43,7 @@ int main(int argc, char **argv) {
 
   EXPECT_EQ(TextSVG::Rtos(800.0), "800");
   EXPECT_EQ(TextSVG::Rtos(-800.0), "-800");
-  
+
+  printf("OK\n");
   return 0;
 }

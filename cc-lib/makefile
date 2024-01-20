@@ -1,5 +1,5 @@
 
-default : heap_test.exe minmax-heap_test.exe rle_test.exe interval-tree_test.exe threadutil_test.exe color-util_test.exe textsvg_test.exe lines_test.exe image_test.exe util_test.exe randutil_test.exe json_test.exe arcfour_test.exe lastn-buffer_test.exe list-util_test.exe edit-distance_test.exe re2_test.exe webserver_test.exe stb_image_bench.exe process-util_test.exe stb_truetype_test.exe packrect_test.exe xml_test.exe mp3_test.exe top_test.exe bounds_test.exe optional-iterator_test.exe tuple-util_test.exe bitbuffer_test.exe ansi_test.exe factorization_test.exe atomic-util_test.exe interval-cover_test.exe set-util_test.exe hashing_test.exe subprocess_test.exe city_test.exe autoparallel_test.exe int128_test.exe do-not-optimize_test.exe pcg_test.exe montgomery64_test.exe numbers_test.exe work-queue_test.exe csv_test.exe pdf_test.exe lug_test.exe ctpg_test.exe parser-combinators_test.exe $(TESTCOMPILE)
+default : heap_test.exe minmax-heap_test.exe rle_test.exe interval-tree_test.exe threadutil_test.exe color-util_test.exe textsvg_test.exe lines_test.exe image_test.exe util_test.exe randutil_test.exe json_test.exe arcfour_test.exe lastn-buffer_test.exe list-util_test.exe edit-distance_test.exe re2_test.exe webserver_test.exe stb_image_bench.exe process-util_test.exe stb_truetype_test.exe packrect_test.exe xml_test.exe mp3_test.exe top_test.exe bounds_test.exe optional-iterator_test.exe tuple-util_test.exe bitbuffer_test.exe ansi_test.exe factorization_test.exe atomic-util_test.exe interval-cover_test.exe set-util_test.exe hashing_test.exe subprocess_test.exe city_test.exe autoparallel_test.exe int128_test.exe do-not-optimize_test.exe pcg_test.exe montgomery64_test.exe numbers_test.exe work-queue_test.exe csv_test.exe pdf_test.exe parser-combinators_test.exe $(TESTCOMPILE)
 
 TESTCOMPILE=stb_image_write.o stb_image.o dr_wav.o bounds.o simpledxf.o bitbuffer.o
 
@@ -14,6 +14,15 @@ ifeq ($(UNAME),Cygwin)
   CXXFLAGS=-march=native -pipe -Wall -I. --std=c++20 -O3 -static $(FLTO)
   SOCK_LFLAGS= -lws2_32
 else
+ifeq ($(UNAME),Msys)
+  # for 64 bits on windows (msys2).
+  CXX=clang++
+  CC=clang
+  # FLTO=-flto=thin
+  # CXXFLAGS=-fsanitize=address -march=native -Wall -I. --std=c++20 -O3 $(FLTO)
+  CXXFLAGS=-fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -march=native -g -O -Wall -I. --std=c++20
+  SOCK_LFLAGS= -lws2_32
+else
   # Linux
   CXX=g++
   CC=gcc
@@ -22,8 +31,11 @@ else
   CXXFLAGS=-fsanitize=address -fsanitize=undefined -march=native -g -Wall -I. --std=c++20 -O3 -Wno-psabi
   SOCK_LFLAGS=
 endif
+endif
 
 RE2_OBJECTS=re2/bitstate.o re2/compile.o re2/dfa.o re2/filtered_re2.o re2/mimics_pcre.o re2/nfa.o re2/onepass.o re2/parse.o re2/perl_groups.o re2/prefilter.o re2/prefilter_tree.o re2/prog.o re2/re2.o re2/regexp.o re2/set.o re2/simplify.o re2/stringpiece.o re2/tostring.o re2/unicode_casefold.o re2/unicode_groups.o re2/util/rune.o re2/util/strutil.o
+
+TEST_UTIL=ansi.o util.o arcfour.o
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -68,7 +80,7 @@ tuple-util_test.exe : tuple-util_test.o $(BASE)
 rle_test.o : rle_test.cc rle.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-rle_test.exe : rle_test.o rle.o $(BASE) arcfour.o
+rle_test.exe : rle_test.o rle.o $(BASE) $(TEST_UTIL) arcfour.o
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 arcfour_test.exe : arcfour_test.o arcfour.o $(BASE)
@@ -89,8 +101,8 @@ interval-tree_test.exe : interval-tree_test.o $(BASE) arcfour.o
 simpledxf.o : simpledxf.cc simpledxf.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-threadutil_test.exe : threadutil.h threadutil_test.o ansi.o util.o $(BASE)
-	$(CXX) $(CXXFLAGS) threadutil_test.o ansi.o util.o $(BASE) -o $@ -lpthread
+threadutil_test.exe : threadutil.h threadutil_test.o $(TEST_UTIL) $(BASE)
+	$(CXX) $(CXXFLAGS) threadutil_test.o $(TEST_UTIL) $(BASE) -o $@ -lpthread
 
 color-util_test.exe : color-util.o color-util_test.o stb_image.o image.o stb_image_write.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
@@ -158,16 +170,16 @@ image-frgba_test.exe : image-frgba.o image-frgba_test.o tinyexr.o image.o stb_im
 vector-util_test.exe : vector-util_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-atomic-util_test.exe : atomic-util_test.o atomic-util.o ansi.o util.o $(BASE)
+atomic-util_test.exe : atomic-util_test.o atomic-util.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-interval-cover_test.exe : interval-cover.o interval-cover_test.o ansi.o util.o arcfour.o $(BASE)
+interval-cover_test.exe : interval-cover.o interval-cover_test.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-factorization_test.exe : factorization.o factorization_test.o ansi.o util.o arcfour.o $(BASE)
+factorization_test.exe : factorization.o factorization_test.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-set-util_test.exe : set-util_test.o ansi.o util.o $(BASE)
+set-util_test.exe : set-util_test.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 hashing_test.exe : hashing_test.o $(BASE)
@@ -179,10 +191,10 @@ city_test.exe : city_test.o city/city.o $(BASE)
 autoparallel_test.exe : autoparallel_test.o arcfour.o util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-divbench.exe : divbench.o ansi.o util.o $(BASE)
+divbench.exe : divbench.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-int128_test.exe : int128_test.o base/int128.o ansi.o $(BASE)
+int128_test.exe : int128_test.o base/int128.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 # Note: Only implemented on windows.
@@ -196,10 +208,10 @@ pcg_test.exe : pcg_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 
-montgomery64_test.exe : montgomery64_test.o arcfour.o ansi.o $(BASE)
+montgomery64_test.exe : montgomery64_test.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-numbers_test.exe : numbers_test.o numbers.o ansi.o arcfour.o base/int128.o factorization.o bignum/big.o bignum/bigz.o bignum/bign.o $(BASE)
+numbers_test.exe : numbers_test.o numbers.o base/int128.o factorization.o bignum/big.o bignum/bigz.o bignum/bign.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 work-queue_test.exe : work-queue_test.o $(BASE)
@@ -208,16 +220,10 @@ work-queue_test.exe : work-queue_test.o $(BASE)
 csv_test.exe : csv.o csv_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-pdf_test.exe : pdf.o pdf_test.o ansi.o image.o stb_image.o stb_image_write.o stb_truetype.o arcfour.o util.o $(BASE)
+pdf_test.exe : pdf.o pdf_test.o image.o stb_image.o stb_image_write.o stb_truetype.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 recurse_test.exe : recurse_test.o $(BASE)
-	$(CXX) $(CXXFLAGS) $^ -o $@
-
-lug_test.exe : lug_test.o $(BASE)
-	$(CXX) $(CXXFLAGS) $^ -o $@
-
-ctpg_test.exe : ctpg_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 parser-combinators_test.exe : parser-combinators_test.o $(BASE)

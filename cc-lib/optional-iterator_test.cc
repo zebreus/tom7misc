@@ -61,5 +61,6 @@ int main(int argc, char **argv) {
   TestMutable();
   TestConst();
 
+  printf("OK\n");
   return 0;
 }
