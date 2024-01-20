@@ -1,12 +1,21 @@
 
 default : aes_test.exe sha256_test.exe cryptrand_test.exe md5_test.exe hash_bench.exe
 
-CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o
+CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o ../util.o
 
-# for 64 bits on windows
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-g++
-CXXFLAGS=-march=native -I. -I.. --std=c++20 -O2 -static
+UNAME := $(shell uname -o)
+ifeq ($(UNAME),Cygwin)
+  # for 64 bits on windows (mingw).
+  CXX=x86_64-w64-mingw32-g++
+  CC=x86_64-w64-mingw32-g++
+  FLTO=-flto=auto
+else
+  # Linux and msys2
+  CXX=g++
+  CC=gcc
+endif
+
+CXXFLAGS=-march=native -pipe -Wall -I. -I.. --std=c++20 -O3 -static $(FLTO)
 
 # For linux, others...
 # CXX=g++

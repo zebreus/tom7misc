@@ -506,6 +506,6 @@ void AES<KEYBITS>::XcryptCTR(struct Ctx *ctx, uint8 *buf, uint32 length) {
   }
 }
 
-template class AES<128>;
-template class AES<192>;
-template class AES<256>;
+template struct AES<128>;
+template struct AES<192>;
+template struct AES<256>;
