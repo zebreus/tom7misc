@@ -224,7 +224,6 @@ static void TestSimple() {
         });
   }
 
-#if 1
   {
     // just using the first characters
     // 'l'et D
@@ -274,12 +273,113 @@ static void TestSimple() {
     }
 
   }
-#endif
+}
 
+static void TestFixity() {
+  // Parse a bunch of operators and expressions in a sequence.
+  using Item = FixityItem<std::string>;
+  Item plus;
+  plus.fixity = Fixity::Infix;
+  plus.assoc = Associativity::Left;
+  plus.item = "UNUSED";
+  plus.precedence = 3;
+  plus.binop = [](const std::string &a, const std::string &b) {
+      return StringPrintf("Plus(%s, %s)", a.c_str(), b.c_str());
+    };
+
+  Item minus;
+  minus.fixity = Fixity::Infix;
+  minus.assoc = Associativity::Left;
+  minus.item = "UNUSED";
+  minus.precedence = 3;
+  minus.binop = [](const std::string &a, const std::string &b) {
+      return StringPrintf("Minus(%s, %s)", a.c_str(), b.c_str());
+    };
+
+  Item times;
+  times.fixity = Fixity::Infix;
+  times.assoc = Associativity::Left;
+  times.item = "UNUSED";
+  times.precedence = 5;
+  times.binop = [](const std::string &a, const std::string &b) {
+      return StringPrintf("Times(%s, %s)", a.c_str(), b.c_str());
+    };
+
+  Item bang;
+  bang.fixity = Fixity::Prefix;
+  bang.item = "UNUSED";
+  bang.precedence = 7;
+  bang.unop = [](const std::string &a) {
+      return StringPrintf("Bang(%s)", a.c_str());
+    };
+
+  Item huh;
+  huh.fixity = Fixity::Postfix;
+  huh.item = "UNUSED";
+  huh.precedence = 7;
+  huh.unop = [](const std::string &a) {
+      return StringPrintf("Huh(%s)", a.c_str());
+    };
+
+  auto Atom = [](const std::string &var) {
+      Item atom;
+      atom.fixity = Fixity::Atom;
+      atom.item = var;
+      return atom;
+    };
+
+#define CHECK_FIXITY(expected_, ...) do { \
+    const std::string expected = expected_; \
+    const std::vector<Item> items = {__VA_ARGS__}; \
+    std::string parse_error;                        \
+    const std::optional<std::string> got =          \
+      FixityResolver<std::string>().Resolve(items, &parse_error);  \
+    const char *err = # __VA_ARGS__ ; \
+  if (expected == "FAIL") {                            \
+    CHECK(!got.has_value()) << "For:\n" << err         \
+                            << "\nExpected failure!\n"   \
+                            << got.value();              \
+    } else {                                           \
+    CHECK(got.has_value()) << "For:\n" << err \
+                           << "\nExpected success:\n"         \
+                           << expected                        \
+                           << "\nBut it did not parse:\n"     \
+                           << parse_error << "\n";            \
+    CHECK(got.value() == expected) << "For:\n" << err            \
+                                   << "\nExpected:\n"            \
+                                   << expected                \
+                                   << "\nBut got:\n"          \
+                                   << got.value();            \
+    }                                                         \
+ } while (0)
+
+ CHECK_FIXITY("x", Atom("x"));
+ CHECK_FIXITY("FAIL", Atom("x"), Atom("y"));
+ CHECK_FIXITY("FAIL", plus, plus);
+ CHECK_FIXITY("FAIL", plus);
+ CHECK_FIXITY("FAIL", huh);
+ CHECK_FIXITY("FAIL", huh, Atom("x"));
+ CHECK_FIXITY("FAIL", bang);
+ CHECK_FIXITY("FAIL", Atom("x"), bang);
+ CHECK_FIXITY("Bang(x)", bang, Atom("x"));
+ CHECK_FIXITY("Huh(x)", Atom("x"), huh);
+ CHECK_FIXITY("Plus(x, y)", Atom("x"), plus, Atom("y"));
+ CHECK_FIXITY("Minus(x, y)", Atom("x"), minus, Atom("y"));
+ CHECK_FIXITY("Times(x, y)", Atom("x"), times, Atom("y"));
+ CHECK_FIXITY("Times(x, Bang(y))", Atom("x"), times, bang, Atom("y"));
+ CHECK_FIXITY("Times(Huh(x), Bang(y))",
+              Atom("x"), huh, times, bang, Atom("y"));
+ CHECK_FIXITY("Plus(Times(x, y), z)",
+              Atom("x"), times, Atom("y"), plus, Atom("z"));
+ CHECK_FIXITY("Plus(x, Times(y, z))",
+              Atom("x"), plus, Atom("y"), times, Atom("z"));
+ CHECK_FIXITY("Plus(Plus(x, y), z)",
+              Atom("x"), plus, Atom("y"), plus, Atom("z"));
 }
 
 int main(int argc, char **argv) {
   TestSimple();
+  TestFixity();
 
   printf("OK\n");
   return 0;

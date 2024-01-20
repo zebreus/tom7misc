@@ -227,7 +227,7 @@ void Prog::Optimize() {
   // Insert kInstAltMatch instructions
   // Look for
   //   ip: Alt -> j | k
-  //	  j: ByteRange [00-FF] -> ip
+  //    j: ByteRange [00-FF] -> ip
   //    k: Match
   // or the reverse (the above is the greedy one).
   // Rewrite Alt to AltMatch.
@@ -611,7 +611,7 @@ void Prog::Flatten() {
     inst_count_[ip->opcode()]++;
   }
 
-  int total = 0;
+  [[maybe_unused]] int total = 0;
   for (int i = 0; i < kNumInst; i++)
     total += inst_count_[i];
   DCHECK_EQ(total, static_cast<int>(flat.size()));

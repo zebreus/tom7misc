@@ -10,6 +10,7 @@
 #include <functional>
 #include <concepts>
 #include <utility>
+#include <deque>
 
 #include "base/logging.h"
 
@@ -487,13 +488,227 @@ inline auto Separate0(const A &a, const B &b) {
 }
 
 
-#if 0
-requires(P p, std::span<const typename P::token_type> toks) {
-  typename P::token_type;
-  typename P::out_type;
-  { p(toks) } -> std::convertible_to<Parsed<typename P::out_type>>;
+// For infix operators, directly parsing with combinators
+// is not great. So the technique we typically use (from sml-lib,
+// perhaps due to Okasaki?) is to parse a list of items
+// (like: expressions and operators) using the combinators,
+// and then resolve the infix precedence / associativity /
+// adjacency using this routine, which is a little shift-reduce
+// parser.
+//
+// Another benefit of this is that it makes it easier to
+// reconfigure the infix operators at runtime, since the
+// caller can decide how to dynamically wrap items at the
+// time this is called.
+enum class Associativity {
+  Left,
+  Right,
+  Non,
 };
-#endif
+enum class Fixity {
+  // Atoms are the leaves of the parse tree;
+  // typically they are like "const Exp *" in the AST
+  // being parsed.
+  Atom,
+  // Operators combine two nodes of the parse tree.
+  Prefix,
+  Infix,
+  Postfix,
+};
+
+template<class Item>
+struct FixityItem {
+  Fixity fixity = Fixity::Atom;
+  // For infix.
+  Associativity assoc = Associativity::Non;
+  // Higher means tighter binding.
+  int precedence = 0;
+  // For atom.
+  Item item;
+  // For prefix, postfix.
+  std::function<Item(Item)> unop;
+  // For infix.
+  std::function<Item(Item, Item)> binop;
+
+  static FixityItem MakeAtom(Item item) {
+    FixityItem ret;
+    ret.fixity = Fixity::Atom;
+    ret.item = std::move(item);
+    return ret;
+  }
+};
+
+template<class Out>
+struct FixityResolver {
+  using Item = FixityItem<Out>;
+
+  std::optional<Out> Resolve(std::vector<Item> items,
+                             std::string *error_arg = nullptr) {
+    error = error_arg;
+
+    for (const Item &item : items) ys.push_back(item);
+
+    for (;;) {
+      // Port note: This is the code called "next" in
+      // sml-lib's resolvefixity.
+      if (ys.empty() &&
+          xs.size() == 1 && xs[0].fixity == Fixity::Atom) {
+        // Reduced to one item; done.
+        return std::make_optional<Out>(xs[0].item);
+      } else if (ys.empty()) {
+        if (!Reduce()) {
+          return std::nullopt;
+        }
+      } else {
+        CHECK(!ys.empty());
+        Item y = std::move(ys.front());
+        ys.pop_front();
+        if (!Resolve(y)) {
+          return std::nullopt;
+        }
+      }
+    }
+  }
+
+private:
+  bool Reduce() {
+    // Reduce the top of the stack, noting that the items are in reverse.
+    if (xs.size() >= 2 &&
+        xs[0].fixity == Fixity::Atom &&
+        xs[1].fixity == Fixity::Prefix) {
+      // atom :: prefix op :: rest
+      Item x = std::move(xs.front());
+      xs.pop_front();
+      Item f = std::move(xs.front());
+      xs.pop_front();
+      CHECK(f.unop) << "Unary operator must be given for "
+        "a Prefix item.";
+
+      xs.push_front(Item::MakeAtom(f.unop(x.item)));
+      return true;
+    } else if (xs.size() >= 3 &&
+               xs[0].fixity == Fixity::Atom &&
+               xs[1].fixity == Fixity::Infix &&
+               xs[2].fixity == Fixity::Atom) {
+      // atom b :: infix op :: atom a :: rest
+      FixityItem b = std::move(xs.front());
+      xs.pop_front();
+      FixityItem f = std::move(xs.front());
+      xs.pop_front();
+      FixityItem a = std::move(xs.front());
+      xs.pop_front();
+
+      CHECK(f.binop) << "Binary operator must be given for "
+        "an Infix item.";
+      xs.push_front(Item::MakeAtom(f.binop(a.item, b.item)));
+      return true;
+    } else if (xs.size() >= 2 &&
+               xs[0].fixity == Fixity::Postfix &&
+               xs[1].fixity == Fixity::Atom) {
+      // postfix op :: atom :: rest
+      FixityItem f = std::move(xs.front());
+      xs.pop_front();
+      FixityItem x = std::move(xs.front());
+      xs.pop_front();
+
+      CHECK(f.unop) << "Unary operator must be given for "
+        "a Postfix item.";
+
+      xs.push_front(Item::MakeAtom(f.unop(x.item)));
+      return true;
+    } else {
+      if (error != nullptr)
+        *error = "No reduction applies.";
+      return false;
+    }
+  }
+
+  bool Resolve(Item item) {
+    if (item.fixity == Fixity::Atom) {
+      xs.push_front(item);
+      return true;
+    } else if (item.fixity == Fixity::Prefix) {
+      xs.push_front(item);
+      return true;
+    } else if (xs.size() == 1 &&
+               item.fixity == Fixity::Infix) {
+      xs.push_front(item);
+      return true;
+    } else if (xs.size() >= 2 &&
+               xs[1].fixity != Fixity::Atom &&
+               item.fixity == Fixity::Infix) {
+      // PERF: We always put x1 and x2 right back on!
+      // Do like I did in the postfix case below.
+      FixityItem x1 = std::move(xs.front());
+      xs.pop_front();
+      FixityItem x2 = std::move(xs.front());
+      xs.pop_front();
+
+      if (item.precedence > x2.precedence) {
+        xs.push_front(x2);
+        xs.push_front(x1);
+        xs.push_front(item);
+        return true;
+      } else if (x2.precedence > item.precedence) {
+        xs.push_front(x2);
+        xs.push_front(x1);
+        ys.push_front(item);
+        return Reduce();
+      } else if (x2.assoc == Associativity::Left &&
+                 item.assoc == Associativity::Left) {
+        xs.push_front(x2);
+        xs.push_front(x1);
+        ys.push_front(item);
+        return Reduce();
+      } else if (x2.assoc == Associativity::Right &&
+                 item.assoc == Associativity::Right) {
+        xs.push_front(x2);
+        xs.push_front(x1);
+        xs.push_front(item);
+      } else {
+        // Ambiguous: Same precedence and incompatible (or no)
+        // associativity.
+        if (error != nullptr)
+          *error = "Ambiguous parse: Infix operators have "
+            "the same precedence and incompatible associativity.";
+        return false;
+      }
+    } else if (xs.size() == 1 &&
+               item.fixity == Fixity::Postfix) {
+      xs.push_front(item);
+      return Reduce();
+    } else if (xs.size() >= 2 &&
+               xs[1].fixity != Fixity::Atom &&
+               item.fixity == Fixity::Postfix) {
+      const Item &x2 = xs[1];
+      if (item.precedence > x2.precedence) {
+        xs.push_front(item);
+        return Reduce();
+      } else if (x2.precedence > item.precedence) {
+        ys.push_front(item);
+        return Reduce();
+      } else {
+        // Ambiguous.
+        if (error != nullptr)
+          *error = "Ambiguous parse (postfix).";
+        return false;
+      }
+    } else {
+      // Atom / operator mismatch.
+      if (error != nullptr)
+        *error = "Parse error: Invalid operands";
+      return false;
+    }
+
+    LOG(FATAL) << "Should be unreachable.";
+  }
+
+
+private:
+  std::deque<Item> xs;
+  std::deque<Item> ys;
+  std::string *error = nullptr;
+};
 
 // TODO:
 // failure handler

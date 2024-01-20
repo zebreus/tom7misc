@@ -431,7 +431,7 @@ void ParallelCompND(
 
   int64_t total_num = 1;
   for (int64_t d : dims) total_num *= d;
-  for (int64_t d : dims) {
+  for ([[maybe_unused]] int64_t d : dims) {
     assert(d != 0);
   }
   ParallelComp(total_num,
