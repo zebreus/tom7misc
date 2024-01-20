@@ -167,8 +167,7 @@ Problem LoadCodeProblem(const string &filename) {
   string output;
   string code;
   std::map<string, string> parts;
-  auto EmitQuestion = [&filename,
-                       &problem, &lang, &thought, &output, &code]() {
+  auto EmitQuestion = [&problem, &lang, &thought, &output, &code]() {
       // But thought is optional.
       CHECK(!lang.empty());
       CHECK(!output.empty());

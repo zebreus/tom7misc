@@ -76,17 +76,23 @@ struct LineInProgress {
   // ...
 };
 
-static std::string MakeParticipantRegex(
+static std::string MakeParticipantRegexOne(
     const std::vector<std::string> &ppts) {
   string user_alt = Util::Join(ppts, "|");
-  return StringPrintf("((<(%s)>| \\* (%s)) [^ \n][^\n]*\n)*",
+  return StringPrintf("((<(%s)>| \\* (%s)) [^ \n][^\n]*\n)",
                       user_alt.c_str(), user_alt.c_str());
+}
+
+static std::string MakeParticipantRegex(
+    const std::vector<std::string> &ppts) {
+  return StringPrintf("(%s)*",
+                      MakeParticipantRegexOne(ppts).c_str());
 }
 
 struct Chatting {
   ArcFour rc;
   LLM *llm = nullptr;
-  const std::vector<std::string> participants;
+  std::vector<std::string> participants;
   const string user;
   const string prompt;
   Console console;
@@ -245,146 +251,192 @@ struct Chatting {
     FinishLine(full_line);
   }
 
+  // Return false if we should immediately re-enter input processing.
+  bool DoOneUserInput(std::string input) {
+    if (input.empty()) {
+      // This is allowed so that we can just interrupt at any time
+      // by sending a full (empty) line. We just loop again to
+      // get another useful line.
+      return false;
+    } else if (Util::TryStripPrefix("/raw ", &input)) {
+      // This means we want to remove the predicted prefix and
+      // then insert the input verbatim.
+      ForceLine(input);
+      return true;
+    } else if (Util::TryStripPrefix("/me ", &input)) {
+      // This means to remove the predicted prefix and
+      // insert " * User ...".
+
+      ForceLine(StringPrintf("* %s %s", user.c_str(), input.c_str()));
+      return true;
+    } else if (Util::TryStripPrefix("/say ", &input)) {
+      // This means to remove the predicted prefix and
+      // insert " <User> ...".
+
+      ForceLine(StringPrintf("<%s> %s", user.c_str(), input.c_str()));
+      return true;
+
+    } else if (Util::TryStripPrefix("/undo", &input)) {
+      // /undo N means discard the current line, and
+      // remove N of the last chat lines.
+
+      input = Util::NormalizeWhitespace(input);
+      int num = input.empty() ? 1 : atoi(input.c_str());
+      if (!lines.empty() && num > 0) {
+
+        // Index of the element we rewind to.
+        int new_size = std::max(0, (int)lines.size() - num);
+        printf(AGREY("New size %d") "\n", new_size);
+        for (int i = new_size; i < (int)lines.size(); i++) {
+          printf(AGREY("Struck [%s]") "\n", lines[i].text.c_str());
+        }
+
+        // Reset to the beginning of the next line.
+        CHECK(new_size <= (int)lines.size()) << "Bug";
+        llm->LoadState(lines[new_size].state);
+        start_line_state = std::move(lines[new_size].state);
+        // And truncate everything after.
+        lines.resize(new_size);
+
+        if (!lines.empty()) {
+          printf("%s\n", ANSILine(lines[lines.size() - 1]).c_str());
+        }
+
+        current_line.clear();
+        // XXX: This should not be necessary, but state save/load
+        // has a bug with a stale reference from matcher to parent nfa :(
+        ResetRegex();
+
+        // Don't predict the exact same thing!
+        llm->NewRNG();
+        return true;
+      }
+
+    } else if (Util::TryStripPrefix("/pass", &input)) {
+      // This means to force a different user to speak.
+
+      input = Util::NormalizeWhitespace(input);
+
+      std::vector<string> others =
+        input.empty() ? GetOtherParticipants() : std::vector({input});
+      std::string others_regex = MakeParticipantRegexOne(others) +
+        // But we only exclude self for one line!
+        // This may be unnecessary if we explicitly reset
+        // after each line.
+        MakeParticipantRegex(participants);
+
+      printf(ABLUE("Regex: /%s/") "\n", others_regex.c_str());
+
+      current_line.clear();
+      llm->LoadState(start_line_state);
+      // Might be wise to get new RNG since we previously rolled
+      // the "wrong" dice.
+      llm->NewRNG();
+      // Here we're actually changing the regex to constrain the
+      // output.
+      llm->sampler.SetRegEx(others_regex);
+      return true;
+
+    } else if (Util::TryStripPrefix("/invite ", &input)) {
+      input = Util::NormalizeWhitespace(input);
+
+      participants.push_back(input);
+      printf(ABLUE(" * %s joined") "\n", input.c_str());
+      llm->sampler.SetRegEx(
+          MakeParticipantRegex(participants));
+      return false;
+
+      // TODO: /kick
+
+    } else if (Util::TryStripPrefix("/save ", &input)) {
+      // /save file
+
+      input = Util::NormalizeWhitespace(input);
+      if (input.empty()) input = "chat.txt";
+      std::string contents;
+      for (const ChatLine &line : lines) {
+        if (line.is_action) {
+          StringAppendF(&contents, " * %s %s\n",
+                        line.participant.c_str(),
+                        line.text.c_str());
+        } else {
+          StringAppendF(&contents, "<%s> %s\n",
+                        line.participant.c_str(),
+                        line.text.c_str());
+        }
+      }
+      Util::WriteFile(input, contents);
+      printf(AGREY("Wrote %s") "\n", input.c_str());
+      // allow next command...
+
+      return false;
+    } else if (Util::TryStripPrefix("/dump", &input)) {
+      // /dump
+
+      for (int idx = 0; idx < (int)lines.size(); idx++) {
+        printf(AGREY("[%d]") " %s\n", idx,
+               ANSILine(lines[idx]).c_str());
+      }
+
+      // allow next command...
+      return false;
+
+    } else {
+      // Normal chat, continuing the prompt (whether it's <User> or * User).
+      CHECK(!current_line.empty()) << "Bug";
+
+      // If last token didn't include the space, insert it.
+      if (current_line.back() != ' ') {
+        input = " " + input;
+      }
+      input += "\n";
+
+      llm->InsertString(input);
+
+      current_line += input;
+
+      FinishLine(current_line);
+      return true;
+    }
+
+    CHECK(false) << "Everything above should return true or false.";
+  }
+
   void DoUserInput() {
     for (;;) {
       // TODO: Support multiple commands with \n or something.
       printf(AWHITE(":") AGREEN("> "));
       fflush(stdout);
-      string input = console.WaitLine();
+      string input_line = console.WaitLine();
       // printf("Returned [%s]\n", input.c_str());
       // getline(cin, input);
 
-      if (input.empty()) {
-        // This is allowed so that we can just interrupt at any time
-        // by sending a full (empty) line. We just loop again to
-        // get another useful line.
+      std::vector<std::string> inputs =
+        Util::SplitWith(input_line, "\\n");
+      CHECK(!inputs.empty());
 
-      } else if (Util::TryStripPrefix("/raw ", &input)) {
-        // This means we want to remove the predicted prefix and
-        // then insert the input verbatim.
-        ForceLine(input);
-        return;
-      } else if (Util::TryStripPrefix("/me ", &input)) {
-        // This means to remove the predicted prefix and
-        // insert " * User ...".
+      if (inputs.size() == 1) {
 
-        ForceLine(StringPrintf("* %s %s", user.c_str(), input.c_str()));
-        return;
-      } else if (Util::TryStripPrefix("/say ", &input)) {
-        // This means to remove the predicted prefix and
-        // insert " <User> ...".
-
-        ForceLine(StringPrintf("<%s> %s", user.c_str(), input.c_str()));
-        return;
-
-      } else if (Util::TryStripPrefix("/undo", &input)) {
-        // /undo N means discard the current line, and
-        // remove N of the last chat lines.
-
-        input = Util::NormalizeWhitespace(input);
-        int num = input.empty() ? 1 : atoi(input.c_str());
-        if (!lines.empty() && num > 0) {
-
-          // Index of the element we rewind to.
-          int new_size = std::max(0, (int)lines.size() - num);
-          printf(AGREY("New size %d") "\n", new_size);
-          for (int i = new_size; i < (int)lines.size(); i++) {
-            printf(AGREY("Struck [%s]") "\n", lines[i].text.c_str());
-          }
-
-          // Reset to the beginning of the next line.
-          CHECK(new_size <= (int)lines.size()) << "Bug";
-          llm->LoadState(lines[new_size].state);
-          start_line_state = std::move(lines[new_size].state);
-          // And truncate everything after.
-          lines.resize(new_size);
-
-          if (!lines.empty()) {
-            printf("%s\n", ANSILine(lines[lines.size() - 1]).c_str());
-          }
-
-          current_line.clear();
-          // XXX: This should not be necessary, but state save/load
-          // has a bug with a stale reference from matcher to parent nfa :(
-          ResetRegex();
-
-          // Don't predict the exact same thing!
-          llm->NewRNG();
+        if (DoOneUserInput(inputs[0]))
           return;
-        }
-
-      } else if (Util::TryStripPrefix("/pass", &input)) {
-        // This means to force a different user to speak.
-
-        input = Util::NormalizeWhitespace(input);
-
-        std::vector<string> others =
-          input.empty() ? GetOtherParticipants() : std::vector({input});
-        std::string others_regex = MakeParticipantRegex(others) +
-          // But we only exclude self for one line!
-          // This may be unnecessary if we explicitly reset
-          // after each line.
-          MakeParticipantRegex(participants);
-
-        printf(ABLUE("Regex: /%s/") "\n", others_regex.c_str());
-
-        current_line.clear();
-        llm->LoadState(start_line_state);
-        // Might be wise to get new RNG since we previously rolled
-        // the "wrong" dice.
-        llm->NewRNG();
-        // Here we're actually changing the regex to constrain the
-        // output.
-        llm->sampler.SetRegEx(others_regex);
-        return;
-
-      } else if (Util::TryStripPrefix("/save ", &input)) {
-        // /save file
-
-        input = Util::NormalizeWhitespace(input);
-        if (input.empty()) input = "chat.txt";
-        std::string contents;
-        for (const ChatLine &line : lines) {
-          if (line.is_action) {
-            StringAppendF(&contents, " * %s %s\n",
-                          line.participant.c_str(),
-                          line.text.c_str());
-          } else {
-            StringAppendF(&contents, "<%s> %s\n",
-                          line.participant.c_str(),
-                          line.text.c_str());
-          }
-        }
-        Util::WriteFile(input, contents);
-        printf(AGREY("Wrote %s") "\n", input.c_str());
-        // allow next command...
-
-      } else if (Util::TryStripPrefix("/dump", &input)) {
-        // /dump
-
-        for (int idx = 0; idx < (int)lines.size(); idx++) {
-          printf(AGREY("[%d]") " %s\n", idx,
-                 ANSILine(lines[idx]).c_str());
-        }
-
-        // allow next command...
 
       } else {
-        // Normal chat, continuing the prompt (whether it's <User> or * User).
-        CHECK(!current_line.empty()) << "Bug";
-
-        // If last token didn't include the space, insert it.
-        if (current_line.back() != ' ') {
-          input = " " + input;
+        // The first input can be unprefixed, since we're at some
+        // prompt like <User>. But subsequent commands need to
+        // be explicit since there's nothing to continue.
+        for (int i = 1; i < (int)inputs.size(); i++) {
+          if (inputs[i][0] != '/') {
+            inputs[i] = StringPrintf("/say %s", inputs[i].c_str());
+          }
         }
-        input += "\n";
 
-        llm->InsertString(input);
+        bool done = false;
+        for (const std::string &input : inputs) {
+          printf(AWHITE("%s") "\n", input.c_str());
+          done = DoOneUserInput(input);
+        }
 
-        current_line += input;
-
-        FinishLine(current_line);
-        return;
+        if (done) return;
       }
 
       printf(ARED("REDO FROM START") "\n");
@@ -461,8 +513,10 @@ int main(int argc, char ** argv) {
   ContextParams cparams;
   // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
   // cparams.model = "e:\\llama2\\7b\\ggml-model-q8_0.gguf";
-  cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
+  // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
   // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
+
+  cparams.model = "llama2\\7b\\ggml-model-q8_0.gguf";
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

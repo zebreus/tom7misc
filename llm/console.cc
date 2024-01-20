@@ -20,7 +20,7 @@ using namespace std;
 // TODO: Unbuffered IO.
 // TODO: Way to destroy console!
 
-Console::Console() : read_thread(ReadThread, this) {}
+Console::Console() : read_thread(&Console::ReadThread, this) {}
 Console::~Console() {}
 
 // Asynchronous console.

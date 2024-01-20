@@ -43,7 +43,7 @@ static std::vector<std::string> ReadFileToNormalizedLines(
     line = Util::LoseWhiteL(Util::LoseWhiteR(std::move(line)));
   }
 
-  FilterVector(&lines, [](const std::string &line) {
+  VectorFilter(&lines, [](const std::string &line) {
       if (line.empty()) return false;
       if (line[0] == '#') return false;
       return true;

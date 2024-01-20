@@ -1,5 +1,5 @@
 
-default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe run-um.exe llum.exe nfa_test.exe llm_test.exe dump-tokens.exe ranker_test.exe console_test.exe rephrase.exe
+default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe run-um.exe llum.exe nfa_test.exe llm_test.exe dump-tokens.exe ranker_test.exe console_test.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -23,8 +23,10 @@ else
   # Linux
   CXX=g++
   CC=gcc
-  PLATFORM_CFLAGS=-fsanitize=address -g -D_GNU_SOURCE
-  OPTFLAGS=-O
+  # PLATFORM_CFLAGS=-fsanitize=address -g -D_GNU_SOURCE
+  # OPTFLAGS=-O
+  PLATFORM_CFLAGS=-g -D_GNU_SOURCE
+  OPTFLAGS=-O3 -march=native -mtune=native
 endif
 
 
@@ -34,7 +36,7 @@ LLAMA_DIR=../llama
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(RE2_OBJECTS)
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(RE2_OBJECTS)
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -288,9 +290,6 @@ generate.exe : generate.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 continue.exe : continue.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
-
-rephrase.exe : rephrase.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 dump-tokens.exe : dump-tokens.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)

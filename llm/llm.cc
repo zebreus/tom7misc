@@ -19,6 +19,7 @@
 
 #include "timer.h"
 #include "ansi.h"
+#include "color-util.h"
 #include "periodically.h"
 
 static void LogLLM(enum ggml_log_level level,
@@ -55,8 +56,6 @@ Context::Context(const ContextParams &params) {
              progress_data.name.c_str(),
              ANSI::Time(progress_data.timer.Seconds()).c_str());
     };
-
-
 
   // PERF need to tell llama about this now
   num_threads = params.num_threads;
@@ -835,7 +834,7 @@ void LLM::LoadState(const State &state) {
 }
 
 void LLM::AnsiPrintCandidates(const Candidates &candidates,
-                              int maximum) {
+                              int maximum) const {
   auto IsAscii = [](const std::string &s) {
       for (char c : s) {
         if (c < ' ' || c > '~') return false;
@@ -843,34 +842,49 @@ void LLM::AnsiPrintCandidates(const Candidates &candidates,
       return true;
     };
 
-  std::vector<std::pair<std::string, float>> toks;
-  double logit_total = 0.0;
+  // Need the max to do softmax. Since they might not be
+  // sorted, scan for the max.
+  float max_logit = candidates[0].logit;
   for (const llama_token_data &tok : candidates) {
-    logit_total += tok.logit;
+    max_logit = std::max(max_logit, tok.logit);
+  }
+
+  std::vector<std::tuple<std::string, float, float>> toks;
+  double sum = 0.0;
+  for (const llama_token_data &tok : candidates) {
+    const float p = expf(tok.logit - max_logit);
+    sum += p;
+
     if (tok.id == llama_token_nl(context.model)) {
-      toks.emplace_back("\\n", tok.logit);
+      toks.emplace_back("\\n", tok.logit, p);
     } else {
       std::string s = context.TokenString(tok.id);
       if (IsAscii(s)) {
-        toks.emplace_back(s, tok.logit);
+        toks.emplace_back(s, tok.logit, p);
       } else {
-        toks.emplace_back("??", tok.logit);
+        toks.emplace_back("??", tok.logit, p);
       }
     }
   }
 
   std::sort(toks.begin(), toks.end(),
-            [](const std::pair<std::string, float> &a,
-               const std::pair<std::string, float> &b) {
-              return a.second > b.second;
+            [](const std::tuple<std::string, float, float> &a,
+               const std::tuple<std::string, float, float> &b) {
+              return std::get<1>(a) > std::get<1>(b);
             });
   for (int i = 0;
        (maximum < 0 || i < maximum) && i < (int)toks.size();
        i++) {
-    const auto &[s, logit] = toks[i];
-    double prob = logit / logit_total;
-    printf("  [%s] %.9f (%.4f%%)\n",
-           s.c_str(), logit, prob);
+    const auto &[s, logit, p] = toks[i];
+    const double prob = p / sum;
+    const auto &[r, g, b, a_] =
+      ColorUtil::Unpack32(
+          ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, prob));
+
+    printf("  " AGREY("[") "%s" AGREY("]") " %s%.9f (%.4f%%)" ANSI_RESET "\n",
+           s.c_str(),
+           ANSI::ForegroundRGB(r, g, b).c_str(),
+           logit, prob * 100.0);
   }
 }
 

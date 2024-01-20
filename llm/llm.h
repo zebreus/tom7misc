@@ -156,6 +156,13 @@ struct Context {
     // The data pointer in here is owned by the Candidates object.
     llama_token_data_array ltda;
 
+    llama_token_data &operator [](size_t idx) {
+      return ltda.data[idx];
+    }
+    const llama_token_data &operator [](size_t idx) const {
+      return ltda.data[idx];
+    }
+
     // Cheap "iterator" (for ranged for loops).
     llama_token_data *begin() { return ltda.data; }
     llama_token_data *end() { return ltda.data + ltda.size; }
@@ -176,7 +183,7 @@ struct Context {
     }
 
   private:
-    friend class Context;
+    friend struct Context;
     // Only move. (XXX test)
     Candidates(const Candidates &other) = delete;
     Candidates &operator=(const Candidates &other) = delete;
@@ -216,8 +223,8 @@ struct Context {
   void LoadState(const State &state);
 
 private:
-  friend class Sampler;
-  friend class LLM;
+  friend struct Sampler;
+  friend struct LLM;
 
   // Number of tokens that have been evaluated.
   // Should be in [0, llama_n_ctx()).
@@ -442,7 +449,7 @@ struct LLM {
   // Print up 'maximum' (or all of them, if -1) candidates,
   // using ANSI color codes.
   void AnsiPrintCandidates(const Candidates &candidates,
-                           int maximum);
+                           int maximum) const;
 
   // Debugging only.
 
