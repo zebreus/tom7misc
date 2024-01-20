@@ -6615,6 +6615,7 @@ namespace csv {
      *
      *  @param  precision   Number of decimal places
      */
+    [[maybe_unused]]
     inline static void set_decimal_places(int precision) {
         internals::DECIMAL_PLACES = precision;
     }

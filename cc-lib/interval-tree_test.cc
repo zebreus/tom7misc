@@ -121,6 +121,6 @@ int main(int argc, char *argv[]) {
     Shuffle(&rc, &data);
   }
 
-  printf("IntervalTree tests OK.\n");
+  printf("OK\n");
   return 0;
 }

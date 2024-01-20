@@ -79,10 +79,6 @@
 // Enable for copious debugging information.
 static constexpr bool VERBOSE = false;
 
-static const uint8_t png_signature[] = {0x89, 0x50, 0x4E, 0x47,
-                                        0x0D, 0x0A, 0x1A, 0x0A};
-static const uint8_t jpeg_signature[] = {0xff, 0xd8};
-
 // Special signatures for PNG chunks
 static const char png_chunk_header[] = "IHDR";
 static const char png_chunk_palette[] = "PLTE";
@@ -243,7 +239,7 @@ int PDF::SetErr(int errval, const char *buffer, ...) {
     len = (int)(sizeof(errstr) - 1);
 
   errstr[len] = '\0';
-  errval = errval;
+  this->errval = errval;
 
   return errval;
 }
@@ -2376,14 +2372,15 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
         return mit->second;
       };
 
-    auto Set = [&words, &sizes,
+    auto Set = [&words,
                 &memo_table](int w, int b, double p, bool brk) {
         CHECK(!memo_table.contains(std::make_pair(w, b))) <<
           "Duplicate entries?";
         if (LOCAL_VERBOSE) {
           if (w < (int)words.size()) {
-            printf("  Penalty ..%d.. [" AWHITE("%s") "] = " ARED("%.4f") " %s\n",
-                   b, words[w].c_str(), p, brk ? AYELLOW("break") : "no");
+            printf(
+                "  Penalty ..%d.. [" AWHITE("%s") "] = " ARED("%.4f") " %s\n",
+                b, words[w].c_str(), p, brk ? AYELLOW("break") : "no");
           }
         }
         memo_table[std::make_pair(w, b)] =
@@ -3230,59 +3227,6 @@ int pdf_add_grayscale8(pdf_doc *pdf, Object *page, float x,
     return pdf_add_image(pdf, page, obj, x, y, display_width, display_height);
 }
 
-// Probably can get rid of this...
-static int parse_png_header(struct pdf_img_info *info, const uint8_t *data,
-                            size_t length, char *err_msg,
-                            size_t err_msg_length)
-{
-    if (length <= sizeof(png_signature)) {
-        snprintf(err_msg, err_msg_length, "PNG file too short");
-        return -EINVAL;
-    }
-
-    if (memcmp(data, png_signature, sizeof(png_signature))) {
-        snprintf(err_msg, err_msg_length, "File is not correct PNG file");
-        return -EINVAL;
-    }
-
-    // process first PNG chunk
-    uint32_t pos = sizeof(png_signature);
-    const struct png_chunk *chunk = (const struct png_chunk *)&data[pos];
-    pos += sizeof(struct png_chunk);
-    if (pos > length) {
-        snprintf(err_msg, err_msg_length, "PNG file too short");
-        return -EINVAL;
-    }
-    if (strncmp(chunk->type, png_chunk_header, 4) == 0) {
-        // header found, process width and height, check errors
-        struct png_header *header = &info->png;
-
-        if (pos + sizeof(struct png_header) > length) {
-            snprintf(err_msg, err_msg_length, "PNG file too short");
-            return -EINVAL;
-        }
-
-        memcpy(header, &data[pos], sizeof(struct png_header));
-        if (header->deflate != 0) {
-            snprintf(err_msg, err_msg_length, "Deflate wrong in PNG header");
-            return -EINVAL;
-        }
-        if (header->bitDepth == 0) {
-            snprintf(err_msg, err_msg_length, "PNG file has zero bit depth");
-            return -EINVAL;
-        }
-        // ensure the width and height values have the proper byte order
-        // and copy them into the info struct.
-        header->width = ntoh32(header->width);
-        header->height = ntoh32(header->height);
-        info->width = header->width;
-        info->height = header->height;
-        return 0;
-    }
-    snprintf(err_msg, err_msg_length, "Failed to read PNG file header");
-    return -EINVAL;
-}
-
 #endif
 
 static std::optional<JPGHeader> parse_jpeg_header(
@@ -3425,7 +3369,8 @@ bool PDF::pdf_add_png_data(float x, float y,
   }
 
   /* process PNG chunks */
-  pos = sizeof(png_signature);
+  static constexpr int PNG_MAGIC_SIZE = 8;
+  pos = PNG_MAGIC_SIZE;
 
   while (1) {
     if (pos + 8 > png_data_length - 4) {

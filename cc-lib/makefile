@@ -208,7 +208,7 @@ pcg_test.exe : pcg_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 
-montgomery64_test.exe : montgomery64_test.o $(TEST_UTIL) $(BASE)
+montgomery64_test.exe : montgomery64_test.o base/int128.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 numbers_test.exe : numbers_test.o numbers.o base/int128.o factorization.o bignum/big.o bignum/bigz.o bignum/bign.o $(TEST_UTIL) $(BASE)

@@ -20,7 +20,7 @@ struct Unit { };
 template<class T>
 struct Parsed {
   constexpr Parsed() {}
-  static constexpr Parsed<T> None = Parsed();
+  static constexpr Parsed<T> None() { return Parsed(); }
   Parsed(T t, size_t length) : ot_(t), length_(length) {}
   bool HasValue() const { return ot_.has_value(); }
   const T &Value() const { return ot_.value(); }
@@ -61,7 +61,7 @@ struct Fail {
   using token_type = Token;
   using out_type = Out;
   Parsed<Out> operator ()(std::span<const Token> unused_) const {
-    return Parsed<Out>::None;
+    return Parsed<Out>::None();
   }
 };
 
@@ -86,7 +86,7 @@ struct End {
   explicit End() {}
   Parsed<Unit> operator ()(std::span<const Token> toks) const {
     if (toks.empty()) return Parsed(Unit{}, 0);
-    return Parsed<Unit>::None;
+    return Parsed<Unit>::None();
   }
 };
 
@@ -97,7 +97,7 @@ struct Any {
   using out_type = Token;
   explicit Any() {}
   Parsed<Token> operator ()(std::span<const Token> toks) const {
-    if (toks.empty()) return Parsed<Token>::None;
+    if (toks.empty()) return Parsed<Token>::None();
     return Parsed(toks[0], 1);
   }
 };
@@ -109,9 +109,9 @@ struct Is {
   using out_type = Token;
   explicit Is(Token r) : r(r) {}
   Parsed<Token> operator ()(std::span<const Token> toks) const {
-    if (toks.empty()) return Parsed<Token>::None;
+    if (toks.empty()) return Parsed<Token>::None();
     if (toks[0] == r) return Parsed(toks[0], 1);
-    else return Parsed<Token>::None;
+    else return Parsed<Token>::None();
   }
   const Token r;
 };
@@ -140,7 +140,7 @@ inline auto operator >>(const A &a, const B &b) {
   return ParserWrapper<in, out>(
       [a, b](std::span<const in> toks) -> Parsed<out> {
         auto o1 = a(toks);
-        if (!o1.HasValue()) return Parsed<out>::None;
+        if (!o1.HasValue()) return Parsed<out>::None();
         const size_t start = o1.Length();
         auto o2 = b(toks.subspan(start));
         return ExpandLength(o2, start);
@@ -158,10 +158,10 @@ inline auto operator <<(const A &a, const B &b) {
   return ParserWrapper<in, out>(
       [a, b](std::span<const in> toks) -> Parsed<out> {
         auto o1 = a(toks);
-        if (!o1.HasValue()) return Parsed<out>::None;
+        if (!o1.HasValue()) return Parsed<out>::None();
         const size_t start = o1.Length();
         auto o2 = b(toks.subspan(start));
-        if (!o2.HasValue()) return Parsed<out>::None;
+        if (!o2.HasValue()) return Parsed<out>::None();
         return ExpandLength(o1, o2.Length());
       });
 }
@@ -179,11 +179,11 @@ inline auto operator &&(const A &a,
       Parsed<std::pair<out1, out2>> {
         auto o1 = a(toks);
         if (!o1.HasValue())
-          return Parsed<std::pair<out1, out2>>::None;
+          return Parsed<std::pair<out1, out2>>::None();
         const size_t start = o1.Length();
         auto o2 = b(toks.subspan(start));
         if (!o2.HasValue())
-          return Parsed<std::pair<out1, out2>>::None;
+          return Parsed<std::pair<out1, out2>>::None();
         return Parsed<std::pair<out1, out2>>(
             std::make_pair(o1.Value(), o2.Value()),
             start + o2.Length());
@@ -265,7 +265,7 @@ inline auto operator >(const A &a, const F &f) {
       [a, f](std::span<const in> toks) ->
       Parsed<out> {
         auto o = a(toks);
-        if (!o.HasValue()) return Parsed<out>::None;
+        if (!o.HasValue()) return Parsed<out>::None();
         else return Parsed<out>(f(o.Value()), o.Length());
       });
 }
@@ -305,18 +305,28 @@ inline auto operator +(const A &a) {
 
 
 // Declaring this as a separate struct:
-//  - Allows us to write a requires clause below without
+//  - Allows us to write a requires clause below
 //    (here it would need to reference the class being defined)
 //  - Simpler to capture the state as "this"
 //  - Helps with deducing the F template arg (I don't understand
 //    this part).
+// TODO: I had to fiddle with this to get it to compile with g++
+// and clang. This version is simple but it might not be the
+// most robust?
 template<class Token, class Out, class F>
 struct RecursiveParser {
   using token_type = Token;
   using out_type = Out;
 
+  RecursiveParser(RecursiveParser &&other) = default;
+  RecursiveParser(const RecursiveParser &other) = default;
+  RecursiveParser &operator=(const RecursiveParser &other) = default;
+
+  /*
   template<class F_>
-  RecursiveParser(F_ &&f) : f(std::forward<F_>(f)) {}
+  RecursiveParser(F_ &&f_) : f(std::forward<F_>(f_)) {}
+  */
+  RecursiveParser(const F &f) : f(f) {}
 
   Parsed<Out> operator()(std::span<const Token> toks) const {
     return f(*this)(toks);

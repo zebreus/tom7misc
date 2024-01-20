@@ -37,11 +37,20 @@ static void Signed() {
   CHECK(y > 0);
 }
 
+static void SignedMod() {
+  int128_t x = 131072;
+  int128_t y = 42;
+
+  int128_t z = x % y;
+  CHECK(z == (int128_t)32);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   Basic();
   Signed();
+  SignedMod();
 
   printf("OK\n");
   return 0;

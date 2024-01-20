@@ -70,7 +70,7 @@ private:
     Object *next = nullptr;
   };
 
-  class StreamObj;
+  struct StreamObj;
 
 public:
 
@@ -124,7 +124,7 @@ public:
     float height = 0.0f;
     std::vector<Object *> children;
     std::vector<Object *> annotations;
-    friend class PDF;
+    friend struct PDF;
   };
 
   // For fine-grained control over spacing.
@@ -186,7 +186,7 @@ public:
 
     const uint16_t *GetWidths() const;
 
-    friend class PDF;
+    friend struct PDF;
   };
 
   // A drawing operation within a path.
