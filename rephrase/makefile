@@ -1,11 +1,12 @@
 
-default: monospace.exe
+default: monospace.exe parse_test.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
 # Also add /c/code/openblas/include to
 
 UNAME := $(shell uname -o)
+
 ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
   CC=x86_64-w64-mingw32-gcc
@@ -20,13 +21,14 @@ ifeq ($(UNAME),Cygwin)
   OPTFLAGS= -O3 -flto=auto -march=native -mtune=native
 #  OPTFLAGS=-O -g
 else
-  # Linux
+# Linux (and msys2)
   CXX=g++
   CC=gcc
-  PLATFORM_CFLAGS=-fsanitize=address -g -D_GNU_SOURCE
-  OPTFLAGS=-O
+  # PLATFORM_CFLAGS=-fsanitize=address -g -D_GNU_SOURCE
+  # OPTFLAGS=-O
+  PLATFORM_CFLAGS=-g -D_GNU_SOURCE
+  OPTFLAGS=-O3 -march=native -mtune=native
 endif
-
 
 CC_LIB=../cc-lib
 LLM_DIR=../llm
