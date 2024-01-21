@@ -3,17 +3,13 @@
 
 #include <string>
 #include <vector>
-#include <deque>
-#include <cstdint>
 
-#include "ast.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
 
 static void PrintTokens(const std::string &input,
                         const std::vector<Token> &tokens) {
-  const auto &[source, ctokens] = ColorTokens(input, tokens);
+  const auto &[source, ctokens] = Lexing::ColorTokens(input, tokens);
   printf("Got:\n"
          "%s\n%s\n",
          source.c_str(), ctokens.c_str());
@@ -21,7 +17,11 @@ static void PrintTokens(const std::string &input,
 
 #define CHECK_LEX(str, ...) do { \
     const std::string input = str; \
-    const std::vector<Token> tokens = Lex(input); \
+    std::string error; \
+    const std::optional<std::vector<Token>> otokens = \
+      Lexing::Lex(input, &error);                           \
+    CHECK(otokens.has_value()) << "Did not lex: " << error; \
+    const auto &tokens = otokens.value(); \
     const std::vector<TokenType> expected = {__VA_ARGS__};  \
     bool ok = tokens.size() == expected.size();   \
     for (int i = 0; i < (int)tokens.size() &&     \
@@ -42,9 +42,11 @@ static void TestLex() {
       "the   cat fn() went to 1234 the \"string\" store\n"
       "where he \"\\\\slashed\\n\" t-i-r-e-s=>\n"
       "Here -> is a [nested [123] expression].\n";
-    const std::vector<Token> tokens =
-      Lex(input);
-    const auto &[source, ctokens] = ColorTokens(input, tokens);
+    const std::optional<std::vector<Token>> tokens =
+      Lexing::Lex(input, nullptr);
+    CHECK(tokens.has_value());
+    const auto &[source, ctokens] =
+      Lexing::ColorTokens(input, tokens.value());
     printf("%s\n%s\n", source.c_str(), ctokens.c_str());
   }
 
@@ -73,6 +75,6 @@ int main(int argc, char **argv) {
   ANSI::Init();
   TestLex();
 
-  printf("OK");
+  printf("OK\n");
   return 0;
 }

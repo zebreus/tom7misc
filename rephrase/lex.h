@@ -5,6 +5,7 @@
 #include <utility>
 #include <string>
 #include <vector>
+#include <optional>
 
 // A token, associated with some span of bytes in the input. Sometimes
 // the contents of the span is obvious, like LPAREN always refers to a
@@ -75,13 +76,19 @@ struct Token {
 
 const char *TokenTypeString(TokenType tok);
 
-std::vector<Token> Lex(const std::string &input_string);
+struct Lexing {
 
-// Returns the source string (with ANSI colors) and the sequence of
-// tokens (with ANSI colors).
-std::pair<std::string, std::string> ColorTokens(
-    const std::string &input_string,
-    const std::vector<Token> &tokens);
+  static std::optional<std::vector<Token>>
+  Lex(const std::string &input_string,
+      std::string *error_message = nullptr);
+
+  // Returns the source string (with ANSI colors) and the sequence of
+  // tokens (with ANSI colors).
+  static std::pair<std::string, std::string> ColorTokens(
+      const std::string &input_string,
+      const std::vector<Token> &tokens);
+
+};
 
 
 #endif

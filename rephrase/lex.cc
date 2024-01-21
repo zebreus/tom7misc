@@ -74,7 +74,7 @@ static std::array<uint32_t, 6> COLORS = {
   0x666600FF,
 };
 
-std::pair<std::string, std::string> ColorTokens(
+std::pair<std::string, std::string> Lexing::ColorTokens(
     const std::string &input_string,
     const std::vector<Token> &tokens) {
   std::string source, ctokens;
@@ -118,7 +118,8 @@ std::pair<std::string, std::string> ColorTokens(
 }
 
 // Lexing.
-std::vector<Token> Lex(const std::string &input_string) {
+std::optional<std::vector<Token>> Lexing::Lex(
+    const std::string &input_string, std::string *error) {
   static const RE2 whitespace("[ \r\n\t]+");
 
   // Numeric literals of various sorts.
@@ -312,13 +313,15 @@ std::vector<Token> Lex(const std::string &input_string) {
         default: break;
         }
         // XXX get line info
-        CHECK(false) <<
-          StringPrintf("%s '%c' (0x%02x) at offset %zu\n",
-                       msg, c, c, start) << "\nIn input: "
-                     << input_string;
+        if (error != nullptr) {
+          *error =
+            StringPrintf("%s '%c' (0x%02x) at offset %zu",
+                         msg, c, c, start);
+        }
+        return std::nullopt;
       }
       }
     }
   }
-  return ret;
+  return {ret};
 }

@@ -3,61 +3,65 @@
 
 #include <string>
 #include <vector>
-#include <deque>
-#include <cstdint>
 
 #include "ast.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
 
 static void TestParse() {
   AstPool pool;
+  auto Parse = [&](const std::string &s) {
+      std::string error;
+      std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
+      CHECK(tokens.has_value()) << "Did not lex: " << error;
+      // print tokens?
+      return Parsing::Parse(&pool, s, tokens.value());
+    };
 
   {
-    const Exp *e = Parse(&pool, "15232");
+    const Exp *e = Parse("15232");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::INTEGER);
     CHECK(e->integer == 15232);
   }
 
   {
-    const Exp *e = Parse(&pool, "var");
+    const Exp *e = Parse("var");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::VAR);
     CHECK(e->str == "var");
   }
 
   {
-    const Exp *e = Parse(&pool, " \"a string\" ");
+    const Exp *e = Parse(" \"a string\" ");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::STRING);
     CHECK(e->str == "a string");
   }
 
   {
-    const Exp *e = Parse(&pool, R"( "now:\nwith \\ \"escapes\"" )");
+    const Exp *e = Parse(R"( "now:\nwith \\ \"escapes\"" )");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::STRING);
     CHECK(e->str == "now:\nwith \\ \"escapes\"");
   }
 
   {
-    const Exp *e = Parse(&pool, "(123)");
+    const Exp *e = Parse("(123)");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::INTEGER);
     CHECK(e->integer == 123);
   }
 
   {
-    const Exp *e = Parse(&pool, "()");
+    const Exp *e = Parse("()");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::TUPLE);
     CHECK(e->children.size() == 0);
   }
 
   {
-    const Exp *e = Parse(&pool, "(var,123,\"yeah\")");
+    const Exp *e = Parse("(var,123,\"yeah\")");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::TUPLE);
     CHECK(e->children.size() == 3);
@@ -67,7 +71,7 @@ static void TestParse() {
   }
 
   {
-    const Exp *e = Parse(&pool, "( xar , (333 ,777 ), 888)");
+    const Exp *e = Parse("( xar , (333 ,777 ), 888)");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::TUPLE);
     CHECK(e->children.size() == 3);
@@ -83,14 +87,14 @@ static void TestParse() {
   {
     // Note that this is three tokens: an empty LAYOUT_LIT is
     // tokenized between the bracketse.
-    const Exp *e = Parse(&pool, "[]");
+    const Exp *e = Parse("[]");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LAYOUT);
     CHECK(LayoutString(e->layout) == "");
   }
 
   {
-    const Exp *e = Parse(&pool, "(xyz, [layout], 888)");
+    const Exp *e = Parse("(xyz, [layout], 888)");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::TUPLE);
     CHECK(e->children.size() == 3);
@@ -103,7 +107,7 @@ static void TestParse() {
   }
 
   {
-    const Exp *e = Parse(&pool, "[layout[b]after]");
+    const Exp *e = Parse("[layout[b]after]");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LAYOUT);
     const std::vector<const Layout *> v =
@@ -118,7 +122,7 @@ static void TestParse() {
   }
 
   {
-    const Exp *e = Parse(&pool, "let do u in 7 end");
+    const Exp *e = Parse("let do u in 7 end");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LET);
     CHECK(e->decs.size() == 1);
@@ -134,7 +138,7 @@ static void TestParse() {
 
   {
     // Same as previous, but explicit wildcard.
-    const Exp *e = Parse(&pool, "let val _ = u in 7 end");
+    const Exp *e = Parse("let val _ = u in 7 end");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LET);
     CHECK(e->decs.size() == 1);
@@ -148,7 +152,7 @@ static void TestParse() {
   }
 
   {
-    const Exp *e = Parse(&pool, "let val x = u in 7 end");
+    const Exp *e = Parse("let val x = u in 7 end");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LET);
     CHECK(e->decs.size() == 1);
@@ -163,8 +167,7 @@ static void TestParse() {
   }
 
   {
-    const Exp *e = Parse(&pool,
-                         "let val ((x, _), (y), zzz) = u in 7 end");
+    const Exp *e = Parse("let val ((x, _), (y), zzz) = u in 7 end");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LET);
     CHECK(e->decs.size() == 1);
@@ -194,7 +197,7 @@ static void TestParse() {
   }
 
   {
-    const Exp *e = Parse(&pool, "if 1 then 2 else 3");
+    const Exp *e = Parse("if 1 then 2 else 3");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::IF);
     CHECK(e->a->type == ExpType::INTEGER);
@@ -207,7 +210,7 @@ static void TestParse() {
 
   {
     // Same as previous, but explicit wildcard.
-    const Exp *e = Parse(&pool, "let fun f(x) = x in 7 end");
+    const Exp *e = Parse("let fun f(x) = x in 7 end");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LET);
     CHECK(e->decs.size() == 1);
@@ -224,7 +227,7 @@ static void TestParse() {
 
   {
     for (const char *s : {"f(x)", "f x", "(f)x"}) {
-      const Exp *e = Parse(&pool, s);
+      const Exp *e = Parse(s);
       CHECK(e != nullptr);
       CHECK(e->type == ExpType::APP);
       CHECK(e->a->type == ExpType::VAR);
@@ -236,7 +239,7 @@ static void TestParse() {
 
   {
     const char *s = "x + y";
-    const Exp *e = Parse(&pool, s);
+    const Exp *e = Parse(s);
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::APP);
     CHECK(e->a->type == ExpType::VAR);
@@ -251,7 +254,7 @@ static void TestParse() {
 
   {
     const char *s = "f x + 100";
-    const Exp *e = Parse(&pool, s);
+    const Exp *e = Parse(s);
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::APP);
     CHECK(e->a->type == ExpType::VAR);
@@ -274,6 +277,6 @@ int main(int argc, char **argv) {
   ANSI::Init();
   TestParse();
 
-  printf("OK");
+  printf("OK\n");
   return 0;
 }

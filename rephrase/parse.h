@@ -5,8 +5,15 @@
 #include <string>
 
 #include "ast.h"
+#include "lex.h"
 
-const Exp *Parse(AstPool *pool, const std::string &input);
+struct Parsing {
+  static const Exp *Parse(AstPool *pool,
+                          // Raw input string.
+                          const std::string &input,
+                          // Tokenization of the input (via Lexing::Lex).
+                          const std::vector<Token> &tokens);
+};
 
 #endif
 

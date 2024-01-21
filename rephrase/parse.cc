@@ -1,6 +1,7 @@
 
 #include "parse.h"
 
+#include <span>
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -91,10 +92,9 @@ GetFixity(const std::string &sym) {
   }
 }
 
-const Exp *Parse(AstPool *pool, const std::string &input) {
-  std::vector<Token> tokens = Lex(input);
-  const auto &[source, ctokens] = ColorTokens(input, tokens);
-  printf("%s\n%s\n", source.c_str(), ctokens.c_str());
+const Exp *Parsing::Parse(AstPool *pool,
+                          const std::string &input,
+                          const std::vector<Token> &tokens) {
 
   auto TokenStr = [&input](Token t) {
       CHECK(t.start <= input.size());
@@ -153,9 +153,6 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
   // Expressions.
 
   const auto IntExpr = Int >[&](int64_t i) { return pool->Int(i); };
-  const auto VarExpr = Id >[&](const std::string &s) {
-      return pool->Var(s);
-    };
   const auto StrLitExpr = StrLit >[&](const std::string &s) {
       return pool->Str(s);
     };
@@ -346,7 +343,7 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
 
   auto Program = Expr << End<Token>();
 
-  auto po = Program(std::span<Token>(tokens.data(), tokens.size()));
+  auto po = Program(std::span<const Token>(tokens.data(), tokens.size()));
   CHECK(po.HasValue()) << "Could not parse program.";
   return po.Value();
 }
