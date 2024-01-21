@@ -270,6 +270,33 @@ inline auto operator >(const A &a, const F &f) {
       });
 }
 
+template <typename T>
+concept IsOptional = std::is_constructible_v<std::optional<T>, T>;
+
+// A /= f
+// Maps the function f to the result of A, if it
+// was successful. f must return std::optional<>, which determines
+// whether the whole parse succeeds.
+template<Parser A, class F>
+requires std::invocable<F, typename A::out_type> &&
+         IsOptional<std::invoke_result_t<F, typename A::out_type>>
+inline auto operator /=(const A &a, const F &f) {
+  using in = A::token_type;
+  using a_out = A::out_type;
+  // Get the result type of applying f to the result of a.
+  using out = decltype(f(std::declval<a_out>()))::value_type;
+  return ParserWrapper<in, out>(
+      [a, f](std::span<const in> toks) ->
+      Parsed<out> {
+        auto o = a(toks);
+        if (!o.HasValue()) return Parsed<out>::None();
+        auto fo = f(o.Value());
+        if (!fo.has_value()) return Parsed<out>::None();
+        else return Parsed<out>(fo.value(), o.Length());
+      });
+}
+
+
 #if 0
 // A >=f
 // Calls f on the result of A, whether successful or not.

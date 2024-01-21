@@ -206,6 +206,28 @@ static void TestSimple() {
     CHECK(po.Value().empty());
   }
 
+  {
+    auto parser = (Is('a') || Is('b')) /=
+      [](char c) -> std::optional<char> {
+        if (c == 'a') return std::make_optional('y');
+        else return std::nullopt;
+      };
+
+    {
+      std::string s = "a";
+      Parsed<char> po = parser(CharSpan(s));
+      CHECK(po.HasValue());
+      CHECK(po.Value() == 'y');
+    }
+
+    {
+      std::string s = "b";
+      Parsed<char> po = parser(CharSpan(s));
+      CHECK(!po.HasValue());
+    }
+
+  }
+
   #if 0
   TupleLike<std::string> like;
   const auto &[x, y] = like;
