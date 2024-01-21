@@ -5,7 +5,6 @@
 #define _CC_LIB_PARSE_H
 
 #include <span>
-#include <variant>
 #include <optional>
 #include <functional>
 #include <concepts>
@@ -538,13 +537,33 @@ struct FixityItem {
   }
 };
 
+// Easier to call one of the helpers below.
 template<class Out>
 struct FixityResolver {
   using Item = FixityItem<Out>;
+  // TODO: PERF: We can just work with pointers (or indices) into the
+  // items argument, and not do so much copying.
 
-  std::optional<Out> Resolve(std::vector<Item> items,
-                             std::string *error_arg = nullptr) {
+  // The "operator" to apply to combine adjacent atoms. Used
+  // to parse languages where function application is just
+  // adjacency, like in ML (e.g. "f x + map f l").
+  // For many grammars, this is not a valid parse; without
+  // setting this, the parse will fail.
+  // Associativity must be Left or Right.
+  // This always has infinite precedence.
+  void SetAdjacentOp(Associativity assoc,
+                     std::function<Out(Out, Out)> op) {
+    CHECK(assoc != Associativity::Non) << "Adjacency must "
+      "be Left or Right associativity.";
+    adj_assoc = assoc;
+    adj_op = std::move(op);
+  }
+
+  std::optional<Out> Resolve(const std::vector<Item> &items,
+                             std::string *error_arg) {
     error = error_arg;
+    xs.clear();
+    ys.clear();
 
     for (const Item &item : items) ys.push_back(item);
 
@@ -623,8 +642,24 @@ private:
     }
   }
 
-  bool Resolve(Item item) {
-    if (item.fixity == Fixity::Atom) {
+  bool Resolve(const Item &item) {
+    if (adj_assoc != Associativity::Non &&
+        item.fixity == Fixity::Atom &&
+        !xs.empty() &&
+        xs.front().fixity == Fixity::Atom) {
+
+      // This is the case that we have two atoms adjacent to one
+      // another. As a trick, we hallucinate an infix operator
+      // here that implements the requested adjacency.
+      Item adj;
+      adj.fixity = Fixity::Infix;
+      adj.assoc = adj_assoc;
+      adj.precedence = 9999;
+      adj.binop = adj_op;
+      ys.push_front(item);
+      return Resolve(adj);
+
+    } else if (item.fixity == Fixity::Atom) {
       xs.push_front(item);
       return true;
     } else if (item.fixity == Fixity::Prefix) {
@@ -665,6 +700,7 @@ private:
         xs.push_front(x2);
         xs.push_front(x1);
         xs.push_front(item);
+        return true;
       } else {
         // Ambiguous: Same precedence and incompatible (or no)
         // associativity.
@@ -705,15 +741,40 @@ private:
 
 
 private:
+  // Normal for these to be unset.
+  Associativity adj_assoc = Associativity::Non;
+  std::function<Out(Out, Out)> adj_op;
+
+  // State while parsing.
   std::deque<Item> xs;
   std::deque<Item> ys;
+
+  // Optional error message for caller.
   std::string *error = nullptr;
 };
+
+template<class Out>
+std::optional<Out> ResolveFixity(
+    const std::vector<FixityItem<Out>> &items,
+    std::string *error_arg = nullptr) {
+  FixityResolver<Out> resolver;
+  return resolver.Resolve(items, error_arg);
+}
+
+template<class Out>
+std::optional<Out> ResolveFixityAdj(
+    const std::vector<FixityItem<Out>> &items,
+    Associativity adj_assoc,
+    std::function<Out(Out, Out)> adj_op,
+    std::string *error_arg = nullptr) {
+  FixityResolver<Out> resolver;
+  resolver.SetAdjacentOp(adj_assoc, std::move(adj_op));
+  return resolver.Resolve(items, error_arg);
+}
 
 // TODO:
 // failure handler
 // list of alternates
 // sequence, making tuple
-// parsefixity
 
 #endif

@@ -328,12 +328,13 @@ static void TestFixity() {
       return atom;
     };
 
+  /*
 #define CHECK_FIXITY(expected_, ...) do { \
     const std::string expected = expected_; \
     const std::vector<Item> items = {__VA_ARGS__}; \
     std::string parse_error;                        \
     const std::optional<std::string> got =          \
-      FixityResolver<std::string>().Resolve(items, &parse_error);  \
+      ResolveFixity<std::string>(items, &parse_error);  \
     const char *err = # __VA_ARGS__ ; \
   if (expected == "FAIL") {                            \
     CHECK(!got.has_value()) << "For:\n" << err         \
@@ -352,29 +353,85 @@ static void TestFixity() {
                                    << got.value();            \
     }                                                         \
  } while (0)
+  */
 
- CHECK_FIXITY("x", Atom("x"));
- CHECK_FIXITY("FAIL", Atom("x"), Atom("y"));
- CHECK_FIXITY("FAIL", plus, plus);
- CHECK_FIXITY("FAIL", plus);
- CHECK_FIXITY("FAIL", huh);
- CHECK_FIXITY("FAIL", huh, Atom("x"));
- CHECK_FIXITY("FAIL", bang);
- CHECK_FIXITY("FAIL", Atom("x"), bang);
- CHECK_FIXITY("Bang(x)", bang, Atom("x"));
- CHECK_FIXITY("Huh(x)", Atom("x"), huh);
- CHECK_FIXITY("Plus(x, y)", Atom("x"), plus, Atom("y"));
- CHECK_FIXITY("Minus(x, y)", Atom("x"), minus, Atom("y"));
- CHECK_FIXITY("Times(x, y)", Atom("x"), times, Atom("y"));
- CHECK_FIXITY("Times(x, Bang(y))", Atom("x"), times, bang, Atom("y"));
- CHECK_FIXITY("Times(Huh(x), Bang(y))",
-              Atom("x"), huh, times, bang, Atom("y"));
- CHECK_FIXITY("Plus(Times(x, y), z)",
-              Atom("x"), times, Atom("y"), plus, Atom("z"));
- CHECK_FIXITY("Plus(x, Times(y, z))",
-              Atom("x"), plus, Atom("y"), times, Atom("z"));
- CHECK_FIXITY("Plus(Plus(x, y), z)",
-              Atom("x"), plus, Atom("y"), plus, Atom("z"));
+  auto NoAdj = [](const std::string &a, const std::string &b) ->
+    std::string {
+      LOG(FATAL) << "Adj should not be called";
+    };
+
+#define CHECK_FIXITY_ADJ(expected_, adj_assoc_, adj_op, ...) do { \
+    const Associativity adj_assoc = (adj_assoc_);                 \
+  const std::string expected = (expected_);                      \
+    const std::vector<Item> items = {__VA_ARGS__};               \
+    std::string parse_error;                                     \
+    const std::optional<std::string> got =                       \
+      (adj_assoc == Associativity::Non) ?                        \
+      ResolveFixity<std::string>(items, &parse_error) :          \
+      ResolveFixityAdj<std::string>(items, adj_assoc,            \
+                                    adj_op, &parse_error);       \
+    const char *err = # __VA_ARGS__ ;                            \
+    if (expected == "FAIL") {                                    \
+      CHECK(!got.has_value()) << "For:\n" << err                 \
+                              << "\nExpected failure!\n"         \
+                              << got.value();                    \
+    } else {                                                     \
+      CHECK(got.has_value()) << "For:\n" << err                  \
+                             << "\nExpected success:\n"          \
+                             << expected                         \
+                             << "\nBut it did not parse:\n"      \
+                             << parse_error << "\n";             \
+      CHECK(got.value() == expected) << "For:\n" << err          \
+                                     << "\nExpected:\n"          \
+                                     << expected                 \
+                                     << "\nBut got:\n"           \
+                                     << got.value();             \
+    }                                                            \
+  } while (0)
+
+#define CHECK_FIXITY(expected_, ...) do { \
+    CHECK_FIXITY_ADJ(expected_, Associativity::Non, NoAdj, __VA_ARGS__); \
+  } while (0)
+
+  CHECK_FIXITY("x", Atom("x"));
+  CHECK_FIXITY("FAIL", Atom("x"), Atom("y"));
+  CHECK_FIXITY("FAIL", plus, plus);
+  CHECK_FIXITY("FAIL", plus);
+  CHECK_FIXITY("FAIL", huh);
+  CHECK_FIXITY("FAIL", huh, Atom("x"));
+  CHECK_FIXITY("FAIL", bang);
+  CHECK_FIXITY("FAIL", Atom("x"), bang);
+  CHECK_FIXITY("Bang(x)", bang, Atom("x"));
+  CHECK_FIXITY("Huh(x)", Atom("x"), huh);
+  CHECK_FIXITY("Plus(x, y)", Atom("x"), plus, Atom("y"));
+  CHECK_FIXITY("Minus(x, y)", Atom("x"), minus, Atom("y"));
+  CHECK_FIXITY("Times(x, y)", Atom("x"), times, Atom("y"));
+  CHECK_FIXITY("Times(x, Bang(y))", Atom("x"), times, bang, Atom("y"));
+  CHECK_FIXITY("Times(Huh(x), Bang(y))",
+               Atom("x"), huh, times, bang, Atom("y"));
+  CHECK_FIXITY("Plus(Times(x, y), z)",
+               Atom("x"), times, Atom("y"), plus, Atom("z"));
+  CHECK_FIXITY("Plus(x, Times(y, z))",
+               Atom("x"), plus, Atom("y"), times, Atom("z"));
+  CHECK_FIXITY("Plus(Plus(x, y), z)",
+               Atom("x"), plus, Atom("y"), plus, Atom("z"));
+
+  auto Adj = [&](const std::string &a, const std::string &b) {
+      return StringPrintf("App(%s, %s)", a.c_str(), b.c_str());
+    };
+
+  CHECK_FIXITY_ADJ("App(f, x)", Associativity::Left, Adj,
+                   Atom("f"), Atom("x"));
+  CHECK_FIXITY_ADJ("App(f, x)", Associativity::Right, Adj,
+                   Atom("f"), Atom("x"));
+  CHECK_FIXITY_ADJ("App(App(map, f), l)", Associativity::Left, Adj,
+                   Atom("map"), Atom("f"), Atom("l"));
+  CHECK_FIXITY_ADJ("App(map, App(f, l))", Associativity::Right, Adj,
+                   Atom("map"), Atom("f"), Atom("l"));
+  CHECK_FIXITY_ADJ("Plus(App(f, x), App(g, y))", Associativity::Left, Adj,
+                   Atom("f"), Atom("x"), plus, Atom("g"), Atom("y"));
+
+
 }
 
 int main(int argc, char **argv) {
