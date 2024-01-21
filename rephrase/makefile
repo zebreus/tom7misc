@@ -1,5 +1,5 @@
 
-default: monospace.exe parse_test.exe
+default: monospace.exe lex_test.exe parse_test.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -258,5 +258,5 @@ parse_test.exe : parse_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
-	rm -f *.o monospace.exe
+	rm -f *.o $(CC_LIB_OBJECTS) monospace.exe lex_test.exe parse_test.exe
 

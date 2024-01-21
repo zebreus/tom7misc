@@ -1,0 +1,7 @@
+-xc++
+-Wall
+--std=c++20
+-I
+.
+-I
+../cc-lib

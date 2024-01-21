@@ -3,7 +3,6 @@
 
 #include <string>
 #include <vector>
-#include <deque>
 #include <cstdint>
 
 #include "parser-combinators.h"
@@ -221,22 +220,58 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
           };
     };
 
-  // XXX probably will need a FixN for exp/dec...
-  // XXX or other types...
+  const auto AdjApp = [&](const Exp *f, const Exp *arg) -> const Exp * {
+      return pool->App(f, arg);
+    };
+
+  // TODO: This currently just parses a sequence of function
+  // applications in a convoluted way. Need to also pass
+  // operators with fixity information in this list!
+  const auto ResolveExprFixity = [&](const std::vector<const Exp *> &exps) -> std::optional<const Exp *> {
+      // We'd get the same result from the code below, but with
+      // more work in this very common case.
+      if (exps.size() == 1) return exps[0];
+
+      using Item = FixityItem<const Exp *>;
+      std::vector<Item> items;
+      items.reserve(exps.size());
+      for (const Exp *exp : exps) {
+        Item item;
+        item.fixity = Fixity::Atom;
+        item.item = exp;
+        items.push_back(std::move(item));
+      }
+
+      std::optional<const Exp *> resolved =
+        ResolveFixityAdj<const Exp *>(
+            items, Associativity::Left,
+            std::function<const Exp *(const Exp *, const Exp *)>(AdjApp),
+            nullptr);
+
+      return resolved;
+    };
+
+  // Expression and Declaration are mutually recursive.
   const auto &[Expr, Decl] =
     Fix2<Token, const Exp *, const Dec *>(
         [&](const auto &Expr, const auto &Decl) {
+
           // Expression parser.
-          return
+          auto AtomicExpr =
             IntExpr ||
             VarExpr ||
             StrLitExpr ||
+            // Includes parenthesized expression.
             TupleExpr(Expr) ||
             LayoutExpr(Expr) ||
             LetExpr(Expr, Decl) ||
-            IfExpr(Expr) ||
             // Just here for convenience of writing a || b || ...
             Fail<Token, const Exp *>();
+
+          auto AppExpr =
+            +AtomicExpr /= ResolveExprFixity;
+
+          return IfExpr(Expr) || AppExpr;
         },
         [&](const auto &Expr, const auto &Decl) {
           // Declaration parser.

@@ -1,7 +1,11 @@
 
 #include "ast.h"
 
+#include <string>
+#include <vector>
+
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "util.h"
 
 std::string TypeString(const Type *t) {
@@ -124,6 +128,11 @@ std::string ExpString(const Exp *e) {
                         ExpString(e->a).c_str(),
                         ExpString(e->b).c_str(),
                         ExpString(e->c).c_str());
+  }
+  case ExpType::APP: {
+    return StringPrintf("(%s %s)",
+                        ExpString(e->a).c_str(),
+                        ExpString(e->b).c_str());
   }
   case ExpType::LAYOUT:
     return StringPrintf("[%s]", LayoutString(e->layout).c_str());

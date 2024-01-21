@@ -5,8 +5,6 @@
 #include <cstdint>
 #include <vector>
 
-#include "base/stringprintf.h"
-
 // TODO:
 enum class LayoutType {
   TEXT,
@@ -23,6 +21,7 @@ enum class ExpType {
   LAYOUT,
   LET,
   IF,
+  APP,
 };
 
 enum class DecType {
@@ -192,6 +191,13 @@ struct AstPool {
     ret->a = cond;
     ret->b = t;
     ret->c = f;
+    return ret;
+  }
+
+  const Exp *App(const Exp *f, const Exp *arg) {
+    Exp *ret = NewExp(ExpType::APP);
+    ret->a = f;
+    ret->b = arg;
     return ret;
   }
 
