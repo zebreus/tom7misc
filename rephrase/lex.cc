@@ -23,9 +23,6 @@ const char *TokenTypeString(TokenType tok) {
   case UNDERSCORE: return "UNDERSCORE";
   case EQUALS: return "EQUALS";
   case BAR: return "BAR";
-  case TIMES: return "*";
-  case ARROW: return "->";
-  case DARROW: return "=>";
 
   // Keywords.
   case FN: return "FN";
@@ -35,6 +32,11 @@ const char *TokenTypeString(TokenType tok) {
   case LET: return "LET";
   case IN: return "IN";
   case END: return "END";
+
+  // Symbolic keywords.
+  case TIMES: return "*";
+  case ARROW: return "->";
+  case DARROW: return "=>";
 
   case IF: return "IF";
   case THEN: return "THEN";
@@ -158,7 +160,11 @@ std::vector<Token> Lex(const std::string &input_string) {
 
   static const RE2 digits("[0-9]+");
   // TODO: Allow UTF-8
-  static const RE2 ident("([A-Za-z][-'_A-Za-z0-9]*)");
+  // Note that - and _ can appear in alphanumeric-identifiers
+  // as well as symbolic ones.
+  #define ALPHA_IDENT "(?:[A-Za-z][-'_A-Za-z0-9]*)"
+  #define SYMBOLIC_IDENT "(?:[-~`!@#$%^&*=_+|<>?/]+)"
+  static const RE2 ident("(" ALPHA_IDENT "|" SYMBOLIC_IDENT ")");
   static const RE2 strlit(
     // Starting with double quote
     "\""
@@ -191,9 +197,6 @@ std::vector<Token> Lex(const std::string &input_string) {
       ")*"
       ANY_BRACKET);
 
-  static const RE2 arrow("->");
-  static const RE2 darrow("=>");
-
   static const std::unordered_map<std::string, TokenType> keywords = {
     {"let", LET},
     {"do", DO},
@@ -210,6 +213,14 @@ std::vector<Token> Lex(const std::string &input_string) {
     {"else", ELSE},
     {"andalso", ANDALSO},
     {"orelse", ORELSE},
+
+    // Symbolic
+    {"=>", DARROW},
+    {"->", ARROW},
+    {"_", UNDERSCORE},
+    {"=", EQUALS},
+    {"|", BAR},
+    {"*", TIMES},
   };
 
   re2::StringPiece input(input_string);
@@ -270,10 +281,6 @@ std::vector<Token> Lex(const std::string &input_string) {
       ret.emplace_back(brack1, start, 1);
       ret.emplace_back(LAYOUT_LIT, start + 1, len - 2);
       ret.emplace_back(brack2, start + len - 1, 1);
-    } else if (RE2::Consume(&input, arrow)) {
-      ret.emplace_back(ARROW, start, Pos() - start);
-    } else if (RE2::Consume(&input, darrow)) {
-      ret.emplace_back(DARROW, start, Pos() - start);
     } else {
 
       char c = input[0];
@@ -293,22 +300,6 @@ std::vector<Token> Lex(const std::string &input_string) {
         continue;
       case '.':
         ret.emplace_back(PERIOD, start, 1);
-        input.remove_prefix(1);
-        continue;
-      case '_':
-        ret.emplace_back(UNDERSCORE, start, 1);
-        input.remove_prefix(1);
-        continue;
-      case '=':
-        ret.emplace_back(EQUALS, start, 1);
-        input.remove_prefix(1);
-        continue;
-      case '|':
-        ret.emplace_back(BAR, start, 1);
-        input.remove_prefix(1);
-        continue;
-      case '*':
-        ret.emplace_back(TIMES, start, 1);
         input.remove_prefix(1);
         continue;
 

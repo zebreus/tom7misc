@@ -48,6 +48,7 @@ enum TokenType {
   CASE,
 
   // Identifier.
+  // This can be alphanumeric or symbolic.
   ID,
 
   // like 1234

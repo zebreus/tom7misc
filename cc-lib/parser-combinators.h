@@ -542,6 +542,16 @@ enum class Fixity {
   Postfix,
 };
 
+inline const char *FixityString(Fixity f) {
+  switch (f) {
+  case Fixity::Atom: return "Atom";
+  case Fixity::Prefix: return "Prefix";
+  case Fixity::Infix: return "Infix";
+  case Fixity::Postfix: return "Postfix";
+  default: return "ILLEGAL FIXITY";
+  }
+}
+
 template<class Item>
 struct FixityItem {
   Fixity fixity = Fixity::Atom;

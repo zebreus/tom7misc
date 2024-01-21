@@ -57,6 +57,39 @@ struct IsToken {
   }
 };
 
+// For built-in identifiers, get their fixity, associativity, and precedence.
+// TODO: Make it possible to declare new fixity.
+static std::tuple<Fixity, Associativity, int>
+GetFixity(const std::string &sym) {
+  static const std::unordered_map<std::string,
+                                  std::tuple<Fixity, Associativity, int>>
+    builtin = {
+    {"o", {Fixity::Infix, Associativity::Left, 2}},
+    // Maybe add explicit floating-point versions
+    {"+", {Fixity::Infix, Associativity::Left, 4}},
+    {"-", {Fixity::Infix, Associativity::Left, 4}},
+    {"*", {Fixity::Infix, Associativity::Left, 6}},
+    // int * int -> float
+    {"/", {Fixity::Infix, Associativity::Left, 6}},
+    {"div", {Fixity::Infix, Associativity::Left, 6}},
+    {"mod", {Fixity::Infix, Associativity::Left, 6}},
+
+  };
+  auto it = builtin.find(sym);
+  if (it != builtin.end()) return it->second;
+
+  // Defaults based on what characters it uses.
+  CHECK(!sym.empty()) << "Invalid empty symbol.";
+  char c = sym[0];
+  if ((c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z')) {
+    // Alpha identifiers are atoms.
+    return std::make_tuple(Fixity::Atom, Associativity::Non, 0);
+  } else {
+    // Symbolic identifiers are infix.
+    return std::make_tuple(Fixity::Infix, Associativity::Left, 5);
+  }
+}
 
 const Exp *Parse(AstPool *pool, const std::string &input) {
   std::vector<Token> tokens = Lex(input);
@@ -227,29 +260,24 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
   // TODO: This currently just parses a sequence of function
   // applications in a convoluted way. Need to also pass
   // operators with fixity information in this list!
-  const auto ResolveExprFixity = [&](const std::vector<const Exp *> &exps) -> std::optional<const Exp *> {
+  using FixityElt = FixityItem<const Exp *>;
+  const auto ResolveExprFixity = [&](const std::vector<FixityElt> &elts) ->
+    std::optional<const Exp *> {
       // We'd get the same result from the code below, but with
       // more work in this very common case.
-      if (exps.size() == 1) return exps[0];
+    if (elts.size() == 1) {
+      CHECK(elts[0].fixity == Fixity::Atom) << FixityString(elts[0].fixity);
+      return elts[0].item;
+    }
 
-      using Item = FixityItem<const Exp *>;
-      std::vector<Item> items;
-      items.reserve(exps.size());
-      for (const Exp *exp : exps) {
-        Item item;
-        item.fixity = Fixity::Atom;
-        item.item = exp;
-        items.push_back(std::move(item));
-      }
+    std::optional<const Exp *> resolved =
+      ResolveFixityAdj<const Exp *>(
+          elts, Associativity::Left,
+          std::function<const Exp *(const Exp *, const Exp *)>(AdjApp),
+          nullptr);
 
-      std::optional<const Exp *> resolved =
-        ResolveFixityAdj<const Exp *>(
-            items, Associativity::Left,
-            std::function<const Exp *(const Exp *, const Exp *)>(AdjApp),
-            nullptr);
-
-      return resolved;
-    };
+    return resolved;
+  };
 
   // Expression and Declaration are mutually recursive.
   const auto &[Expr, Decl] =
@@ -259,7 +287,6 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
           // Expression parser.
           auto AtomicExpr =
             IntExpr ||
-            VarExpr ||
             StrLitExpr ||
             // Includes parenthesized expression.
             TupleExpr(Expr) ||
@@ -268,8 +295,42 @@ const Exp *Parse(AstPool *pool, const std::string &input) {
             // Just here for convenience of writing a || b || ...
             Fail<Token, const Exp *>();
 
+          // To parse infix ops and function application, like
+          // "f x + g y", we parse a series of fixity items,
+          // which in this case would be "f", "x", "+", "g", "y",
+          // where everything is an "atom" except for "+", which
+          // is an infix operator.
+          auto FixityElement =
+            (Id >[&](const std::string &v) {
+                // TODO: Should be able to change this in the
+                // input source.
+                const auto [fixity, assoc, prec] = GetFixity(v);
+                FixityElt item;
+                item.fixity = fixity;
+                item.assoc = assoc;
+                item.precedence = prec;
+                // A symbol can only be a var or a binary infix operator.
+                if (fixity == Fixity::Atom) {
+                  item.item = pool->Var(v);
+                } else {
+                  CHECK(fixity == Fixity::Infix);
+                  item.binop = [&, v](const Exp *a, const Exp *b) {
+                      return pool->App(pool->Var(v),
+                                       pool->Tuple({a, b}));
+                    };
+                }
+                return item;
+              }) ||
+            (AtomicExpr
+             >[&](const Exp *e) {
+                FixityElt item;
+                item.fixity = Fixity::Atom;
+                item.item = e;
+                return item;
+               });
+
           auto AppExpr =
-            +AtomicExpr /= ResolveExprFixity;
+            +FixityElement /= ResolveExprFixity;
 
           return IfExpr(Expr) || AppExpr;
         },

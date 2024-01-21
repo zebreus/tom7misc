@@ -14,15 +14,6 @@
 static void TestParse() {
   AstPool pool;
 
-  #if 0
-  Parse(&pool,
-        "the   cat fn() went to 1234 the \"string\" store\n"
-        "where he \"\\\\slashed\\n\" t-i-r-e-s\n"
-        "Here is a [nested [123] expression].\n"
-        );
-#endif
-
-
   {
     const Exp *e = Parse(&pool, "15232");
     CHECK(e != nullptr);
@@ -230,6 +221,52 @@ static void TestParse() {
     CHECK(e->a->type == ExpType::INTEGER);
     CHECK(e->a->integer == 7);
   }
+
+  {
+    for (const char *s : {"f(x)", "f x", "(f)x"}) {
+      const Exp *e = Parse(&pool, s);
+      CHECK(e != nullptr);
+      CHECK(e->type == ExpType::APP);
+      CHECK(e->a->type == ExpType::VAR);
+      CHECK(e->a->str == "f");
+      CHECK(e->b->type == ExpType::VAR);
+      CHECK(e->b->str == "x");
+    }
+  }
+
+  {
+    const char *s = "x + y";
+    const Exp *e = Parse(&pool, s);
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::APP);
+    CHECK(e->a->type == ExpType::VAR);
+    CHECK(e->a->str == "+");
+    CHECK(e->b->type == ExpType::TUPLE);
+    CHECK(e->b->children.size() == 2);
+    CHECK(e->b->children[0]->type == ExpType::VAR);
+    CHECK(e->b->children[0]->str == "x");
+    CHECK(e->b->children[1]->type == ExpType::VAR);
+    CHECK(e->b->children[1]->str == "y");
+  }
+
+  {
+    const char *s = "f x + 100";
+    const Exp *e = Parse(&pool, s);
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::APP);
+    CHECK(e->a->type == ExpType::VAR);
+    CHECK(e->a->str == "+");
+    CHECK(e->b->type == ExpType::TUPLE);
+    CHECK(e->b->children.size() == 2);
+    const Exp *lhs = e->b->children[0];
+    const Exp *rhs = e->b->children[1];
+    CHECK(lhs->type == ExpType::APP);
+    CHECK(lhs->a->str == "f");
+    CHECK(lhs->b->str == "x");
+    CHECK(rhs->type == ExpType::INTEGER);
+    CHECK(rhs->integer == 100);
+  }
+
 }
 
 

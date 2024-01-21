@@ -60,8 +60,12 @@ static void TestLex() {
   CHECK_LEX(".1e-100", FLOAT_LIT);
   CHECK_LEX("1.e+100", FLOAT_LIT);
 
-  CHECK_LEX("->|", ARROW, BAR);
-  CHECK_LEX("==>", EQUALS, DARROW);
+  CHECK_LEX("-> |", ARROW, BAR);
+  CHECK_LEX("= =>", EQUALS, DARROW);
+
+  CHECK_LEX("->|", ID);
+  CHECK_LEX("==>", ID);
+  CHECK_LEX("add-to-alist", ID);
 }
 
 
