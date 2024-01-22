@@ -13,8 +13,14 @@ struct Context {
 
   // Empty context.
   Context() = default;
+  // Initialize with a set of bindings.
+  Context(const std::vector<std::pair<std::string, const il::Type *>> &exp,
+          const std::vector<std::pair<std::string, int>> &typ);
 
-  // Expression variables
+  // When inserting, the returned context refers to the existing one,
+  // so it must have a shorter lifespan!
+
+  // Expression variables.
   Context Insert(const std::string &s, const il::Type *type) const {
     return Context(fm.Insert(std::make_pair(s, V::EXP),
                              {.type = type}));
@@ -24,7 +30,6 @@ struct Context {
     return Context(fm.Insert(std::make_pair(s, V::TYPE),
                              {.kind = arity}));
   }
-
 
 private:
   enum class V {
@@ -38,12 +43,14 @@ private:
 
   struct VarInfo {
     // More here, e.g. constructor status
+    // XXX this should probably be "poly type"
     const il::Type *type = nullptr;
     // Arity for type constructors.
     int kind = 0;
   };
 
-  using FM = FunctionalMap<std::pair<std::string, V>, VarInfo>;
+  using KeyType = std::pair<std::string, V>;
+  using FM = FunctionalMap<KeyType, VarInfo>;
 
   explicit Context(FM &&fm) : fm(fm) {}
 

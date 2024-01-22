@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "ast-arena.h"
+#include "base/stringprintf.h"
 
 namespace il {
 
@@ -77,7 +78,7 @@ struct AstPool {
 
   // Types
   const Type *VarType(const std::string &s,
-                      std::vector<const Type *> v) {
+                      std::vector<const Type *> v = {}) {
     Type *ret = NewType(TypeType::VAR);
     ret->var = s;
     ret->children = std::move(v);
@@ -89,6 +90,9 @@ struct AstPool {
     ret->labeled_children = std::move(v);
     return ret;
   }
+
+  // Derived form for Record {1: t1, 2: t2, ...}.
+  const Type *Tuple(const std::vector<const Type *> &v);
 
   const Type *Arrow(const Type *dom, const Type *cod) {
     Type *ret = NewType(TypeType::ARROW);

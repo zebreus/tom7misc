@@ -10,6 +10,16 @@
 
 namespace il {
 
+const Type *AstPool::Tuple(const std::vector<const Type *> &v) {
+  std::vector<std::pair<std::string, const Type *>> record_type;
+  record_type.reserve(v.size());
+  for (int i = 0; i < (int)v.size(); i++) {
+    record_type.emplace_back(StringPrintf("%d", i), v[i]);
+  }
+  return Record(std::move(record_type));
+}
+
+
 std::string TypeString(const Type *t) {
   switch (t->type) {
   case TypeType::VAR:
