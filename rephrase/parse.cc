@@ -12,6 +12,8 @@
 #include "base/stringprintf.h"
 #include "lex.h"
 
+namespace el {
+
 static std::string UnescapeStrLit(const std::string &s) {
   std::string out;
   out.reserve(s.size());
@@ -347,3 +349,5 @@ const Exp *Parsing::Parse(AstPool *pool,
   CHECK(po.HasValue()) << "Could not parse program.";
   return po.Value();
 }
+
+}  // namespace el

@@ -8,6 +8,8 @@
 #include "base/logging.h"
 #include "ansi.h"
 
+namespace el {
+
 static void TestParse() {
   AstPool pool;
   auto Parse = [&](const std::string &s) {
@@ -272,10 +274,11 @@ static void TestParse() {
 
 }
 
+}  // namespace el
 
 int main(int argc, char **argv) {
   ANSI::Init();
-  TestParse();
+  el::TestParse();
 
   printf("OK\n");
   return 0;

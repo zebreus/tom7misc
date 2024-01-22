@@ -239,7 +239,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=ast.o parse.o lex.o frontend.o
+LANG_OBJECTS=ast.o parse.o lex.o frontend.o il.o elaboration.o
 
 %.o : %.cc *.h $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -255,6 +255,9 @@ lex_test.exe : lex_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 parse_test.exe : parse_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+context_test.exe : context_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 bovex.exe : bovex.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)

@@ -7,6 +7,8 @@
 #include "ast.h"
 #include "lex.h"
 
+namespace el {
+
 struct Parsing {
   static const Exp *Parse(AstPool *pool,
                           // Raw input string.
@@ -14,6 +16,8 @@ struct Parsing {
                           // Tokenization of the input (via Lexing::Lex).
                           const std::vector<Token> &tokens);
 };
+
+}  // namespace el
 
 #endif
 

@@ -12,6 +12,8 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
+namespace el {
+
 const char *TokenTypeString(TokenType tok) {
   switch (tok) {
   case LPAREN: return "LPAREN";
@@ -325,3 +327,5 @@ std::optional<std::vector<Token>> Lexing::Lex(
   }
   return {ret};
 }
+
+}  // namespace el

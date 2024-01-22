@@ -7,6 +7,8 @@
 #include "base/logging.h"
 #include "ansi.h"
 
+namespace el {
+
 static void PrintTokens(const std::string &input,
                         const std::vector<Token> &tokens) {
   const auto &[source, ctokens] = Lexing::ColorTokens(input, tokens);
@@ -70,11 +72,13 @@ static void TestLex() {
   CHECK_LEX("add-to-alist", ID);
 }
 
+}  // namespace el
 
 int main(int argc, char **argv) {
   ANSI::Init();
-  TestLex();
+  el::TestLex();
 
   printf("OK\n");
   return 0;
 }
+

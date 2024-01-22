@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "ast.h"
+#include "il.h"
 
 struct Frontend {
   Frontend() = default;
@@ -14,12 +15,13 @@ struct Frontend {
   void AddIncludePath(const std::string &s);
 
   // Load, lex, parse, and elaborate.
-  const Exp *RunFrontend(const std::string &filename);
+  const il::Exp *RunFrontend(const std::string &filename);
 
 private:
   int verbose = 0;
   std::vector<std::string> includepaths;
-  AstPool pool;
+  el::AstPool el_pool;
+  il::AstPool il_pool;
 };
 
 #endif

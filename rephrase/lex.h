@@ -7,6 +7,8 @@
 #include <vector>
 #include <optional>
 
+namespace el {
+
 // A token, associated with some span of bytes in the input. Sometimes
 // the contents of the span is obvious, like LPAREN always refers to a
 // single ( byte. In the case of something like a string literal, the
@@ -90,5 +92,6 @@ struct Lexing {
 
 };
 
+}  // namespace el
 
 #endif

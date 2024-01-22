@@ -2,8 +2,8 @@
 #include <string>
 #include <string_view>
 
-#include "ast.h"
 #include "frontend.h"
+#include "il.h"
 
 #include "util.h"
 #include "base/logging.h"
@@ -48,13 +48,12 @@ static int Bovex(const std::vector<std::string> &args) {
   CHECK(leftover.size() == 1) << "Expected exactly one .bovex file "
     "on the command-line.";
 
-  const Exp *e = frontend.RunFrontend(leftover[0]);
+  const il::Exp *e = frontend.RunFrontend(leftover[0]);
 
   CHECK(e != nullptr);
 
   return 0;
 }
-
 
 int main(int argc, char **argv) {
   ANSI::Init();

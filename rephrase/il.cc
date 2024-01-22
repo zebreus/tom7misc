@@ -1,5 +1,5 @@
 
-#include "ast.h"
+#include "il.h"
 
 #include <string>
 #include <vector>
@@ -8,7 +8,7 @@
 #include "base/stringprintf.h"
 #include "util.h"
 
-namespace el {
+namespace il {
 
 std::string TypeString(const Type *t) {
   switch (t->type) {
@@ -22,15 +22,17 @@ std::string TypeString(const Type *t) {
     return StringPrintf("(%s -> %s)",
                         TypeString(t->a).c_str(),
                         TypeString(t->b).c_str());
-  case TypeType::PRODUCT: {
-    std::string ret = "(";
-    for (int i = 0; i < (int)t->children.size(); i++) {
-      const Type *child = t->children[i];
+  case TypeType::RECORD: {
+    std::string ret = "{";
+    for (int i = 0; i < (int)t->labeled_children.size(); i++) {
+      const auto &[lab, child] = t->labeled_children[i];
       if (i != 0)
-        StringAppendF(&ret, " * ");
-      StringAppendF(&ret, "%s", TypeString(child).c_str());
+        StringAppendF(&ret, ", ");
+      StringAppendF(&ret, "%s: %s",
+                    lab.c_str(),
+                    TypeString(child).c_str());
     }
-    ret.push_back(')');
+    ret.push_back('}');
     return ret;
   }
   default:
@@ -38,45 +40,15 @@ std::string TypeString(const Type *t) {
   }
 }
 
-std::string LayoutString(const Layout *lay) {
-  switch (lay->type) {
-    case LayoutType::TEXT:
-      return lay->str;
-    default:
-      return "TODO LAYOUT TYPE";
-  }
-}
-
-std::string PatString(const Pat *p) {
-  switch (p->type) {
-  case PatType::WILD: return "_";
-  case PatType::VAR: return p->var;
-  case PatType::TUPLE: {
-    std::string ret = "(";
-    for (int i = 0; i < (int)p->children.size(); i++) {
-      const Pat *child = p->children[i];
-      if (i != 0)
-        StringAppendF(&ret, ", ");
-      StringAppendF(&ret, "%s", PatString(child).c_str());
-    }
-    ret.push_back(')');
-    return ret;
-  }
-  default:
-    return "unknown pat type??";
-  }
-}
-
 std::string DecString(const Dec *d) {
   switch (d->type) {
   case DecType::VAL:
     return StringPrintf("val %s = %s",
-                        PatString(d->pat).c_str(),
+                        d->str.c_str(),
                         ExpString(d->exp).c_str());
   case DecType::FUN:
-    return StringPrintf("fun %s %s = %s",
+    return StringPrintf("fun %s (XXX) = %s",
                         d->str.c_str(),
-                        PatString(d->pat).c_str(),
                         ExpString(d->exp).c_str());
   default:
     return "TODO DECTYPE";
@@ -136,34 +108,8 @@ std::string ExpString(const Exp *e) {
                         ExpString(e->a).c_str(),
                         ExpString(e->b).c_str());
   }
-  case ExpType::LAYOUT:
-    return StringPrintf("[%s]", LayoutString(e->layout).c_str());
   default:
     return "ILLEGAL EXPRESSION";
-  }
-}
-
-
-std::vector<const Layout *> FlattenLayout(const Layout *lay) {
-  switch (lay->type) {
-  case LayoutType::TEXT:
-    if (lay->str.empty()) return {};
-    else return {lay};
-  case LayoutType::JOIN: {
-    std::vector<const Layout *> ret;
-    ret.reserve(lay->children.size());
-    for (const Layout *child : lay->children) {
-      for (const Layout *f : FlattenLayout(child)) {
-        ret.push_back(f);
-      }
-    }
-    return ret;
-  }
-  case LayoutType::EXP:
-    return {lay};
-  default:
-    CHECK(false) << "Unimplemented layout type.";
-    return {};
   }
 }
 
