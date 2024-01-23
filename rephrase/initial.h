@@ -6,9 +6,14 @@
 #include "il.h"
 
 struct Initial {
+  explicit Initial(il::AstPool *pool);
 
-  static Context InitialContext(il::AstPool *pool);
+  const Context &InitialContext() const;
 
+  // Types needed by elaboration.
+
+private:
+  Context ctx;
 };
 
 #endif

@@ -78,7 +78,7 @@ std::string ExpString(const Exp *e) {
   case ExpType::VAR:
     return e->str;
   case ExpType::INTEGER:
-    return StringPrintf("%lld", e->integer);
+    return e->integer.ToString();
   case ExpType::TUPLE: {
     std::string ret = "(";
     for (int i = 0; i < (int)e->children.size(); i++) {

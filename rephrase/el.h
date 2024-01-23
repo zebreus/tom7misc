@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "ast-arena.h"
+#include "bignum/big.h"
 
 namespace el {
 
@@ -73,7 +74,7 @@ struct Exp {
   ExpType type;
   std::string str;
   const Layout *layout = nullptr;
-  int64_t integer = 0;
+  BigInt integer;
   const Exp *a = nullptr;
   const Exp *b = nullptr;
   const Exp *c = nullptr;
@@ -124,7 +125,7 @@ struct AstPool {
 
   // Expressions
 
-  const Exp *Str(const std::string &s) {
+  const Exp *String(const std::string &s) {
     Exp *ret = NewExp(ExpType::STRING);
     ret->str = s;
     return ret;
@@ -144,7 +145,7 @@ struct AstPool {
 
   const Exp *Int(int64_t i) {
     Exp *ret = NewExp(ExpType::INTEGER);
-    ret->integer = i;
+    ret->integer = BigInt(i);
     return ret;
   }
 

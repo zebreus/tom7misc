@@ -7,7 +7,7 @@
 #include <cstdint>
 
 #include "parser-combinators.h"
-#include "ast.h"
+#include "el.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "lex.h"
@@ -105,6 +105,7 @@ const Exp *Parsing::Parse(AstPool *pool,
     };
 
   // TODO: Support other integer literals.
+  // TODO: Parse bigint
   const auto Int = IsToken<DIGITS>() >[&](Token t) {
       std::string s = TokenStr(t);
       int64_t i = std::stoll(s);
@@ -156,7 +157,7 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   const auto IntExpr = Int >[&](int64_t i) { return pool->Int(i); };
   const auto StrLitExpr = StrLit >[&](const std::string &s) {
-      return pool->Str(s);
+      return pool->String(s);
     };
 
   // Either (), or (e) or (e1, e2, ...).

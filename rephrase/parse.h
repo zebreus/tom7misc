@@ -4,7 +4,7 @@
 
 #include <string>
 
-#include "ast.h"
+#include "el.h"
 #include "lex.h"
 
 namespace el {

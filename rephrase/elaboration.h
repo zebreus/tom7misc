@@ -2,14 +2,15 @@
 #ifndef _REPHRASE_ELABORATION_H
 #define _REPHRASE_ELABORATION_H
 
-#include "ast.h"
+#include "el.h"
 #include "il.h"
 
 #include "context.h"
+#include "initial.h"
 
 struct Elaboration {
 
-  Elaboration(il::AstPool *pool) : pool(pool) {}
+  Elaboration(il::AstPool *pool) : pool(pool), init(pool) {}
 
   void SetVerbose(int v) { verbose = v; }
 
@@ -17,12 +18,13 @@ struct Elaboration {
 
 private:
 
-  const std::pair<const il::Exp *, il::Type *> Elab(
+  const std::pair<const il::Exp *, const il::Type *> Elab(
       const Context &ctx,
       const el::Exp *el_exp);
 
   int verbose = 0;
   il::AstPool *pool;
+  Initial init;
 };
 
 #endif

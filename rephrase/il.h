@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "ast-arena.h"
-#include "base/stringprintf.h"
+#include "bignum/big.h"
 
 namespace il {
 
@@ -41,6 +41,8 @@ enum class TypeType {
   RECORD,
   // There is no "app"; primitive tycons
   // are to be added here.
+  STRING,
+  INT,
 };
 
 struct Type {
@@ -57,7 +59,7 @@ struct Type {
 struct Exp {
   ExpType type;
   std::string str;
-  int64_t integer = 0;
+  BigInt integer;
   const Exp *a = nullptr;
   const Exp *b = nullptr;
   const Exp *c = nullptr;
@@ -91,6 +93,14 @@ struct AstPool {
     return ret;
   }
 
+  const Type *StringType() {
+    return NewType(TypeType::STRING);
+  }
+
+  const Type *IntType() {
+    return NewType(TypeType::INT);
+  }
+
   // Derived form for Record {1: t1, 2: t2, ...}.
   const Type *Tuple(const std::vector<const Type *> &v);
 
@@ -103,7 +113,7 @@ struct AstPool {
 
   // Expressions
 
-  const Exp *Str(const std::string &s) {
+  const Exp *String(const std::string &s) {
     Exp *ret = NewExp(ExpType::STRING);
     ret->str = s;
     return ret;
@@ -117,7 +127,13 @@ struct AstPool {
 
   const Exp *Int(int64_t i) {
     Exp *ret = NewExp(ExpType::INTEGER);
-    ret->integer = i;
+    ret->integer = BigInt(i);
+    return ret;
+  }
+
+  const Exp *Int(BigInt i) {
+    Exp *ret = NewExp(ExpType::INTEGER);
+    ret->integer = std::move(i);
     return ret;
   }
 
