@@ -2,8 +2,13 @@
 common from wikipedia: ../acronymine/unicode.cc
 Transform the input images to make them wider, and make more space for greek etc.
 
-U+1F37A beer mug emoji
-is used by cask
+Glyphs todo:
+ - Fly (for flymake modeline)
+ U+1FAB0 is the emoji, U+131A6 is the Egyptian hieroglyph
+
+
+TODO:
+ - improve 2x versions of some new emoji
 
 maybe .notdef?
 

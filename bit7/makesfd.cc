@@ -131,8 +131,45 @@ CODEPOINTS = {
   // EMOJI: EYES
   0x1F440,
 
-  // Space for more emoji
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  // Emoji line 2.
+
+  // EMOJI: TOOTHBRUSH
+  0x1FAA5,
+  // EMOJI: HEADSTONE
+  0x1FAA6,
+  // EMOJI: PLACARD (Signpost)
+  0x1FAA7,
+  // EMOJI: ROCK
+  0x1FAA8,
+  // EMJOI: FLY
+  0x1FAB0,
+
+  // EMOJI: MAGIC WAND
+  0x1FA84,
+  // EMOJI: COIN
+  0x1FA99,
+  // EMOJI: LADDER
+  0x1FA9C,
+
+  // EMOJI: HOT PEPPER
+  0x1F336,
+
+  // EMOJI: GHOST
+  0x1F47B,
+
+  // EMOJI: KEY
+  0x1F511,
+
+  // EMOJI: LOCK (LOCKED)
+  0x1F512,
+  // EMOJI: OPEN LOCK
+  0x1F512,
+
+  // EMOJI: HEAVY DOLLAR SIGN
+  0x1F4B2,
+
+  -1, -1,
+
 
   // ASCII, in order
   0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
