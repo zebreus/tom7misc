@@ -7,12 +7,14 @@
 #include "functional-map.h"
 #include "il.h"
 
+namespace il {
+
 // Polymorphic types only exist at the outermost level of the type
 // language (and only for bound variables). tyvars may be empty for
 // simple variables.
 struct PolyType {
   std::vector<std::string> tyvars;
-  const il::Type *type = nullptr;
+  const Type *type = nullptr;
 };
 
 // Elaboration context.
@@ -21,6 +23,7 @@ struct Context {
 
   // Empty context.
   Context() = default;
+  ~Context() = default;
   // Initialize with a set of bindings.
   Context(const std::vector<std::pair<std::string, PolyType>> &exp,
           const std::vector<std::pair<std::string, int>> &typ);
@@ -64,5 +67,7 @@ private:
   // Otherwise, it's just a functional map.
   FM fm;
 };
+
+}  // il
 
 #endif

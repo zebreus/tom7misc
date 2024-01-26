@@ -1,5 +1,10 @@
 #include "context.h"
 
+#include <utility>
+#include <vector>
+
+namespace il {
+
 Context::Context(
     const std::vector<std::pair<std::string, PolyType>> &exp,
     const std::vector<std::pair<std::string, int>> &typ) {
@@ -15,3 +20,5 @@ Context::Context(
             std::make_pair(s, V::TYPE), VarInfo{.kind = i}));
   }
 }
+
+}  // il

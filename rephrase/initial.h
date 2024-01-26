@@ -5,8 +5,10 @@
 #include "context.h"
 #include "il.h"
 
+namespace il {
+
 struct Initial {
-  explicit Initial(il::AstPool *pool);
+  explicit Initial(AstPool *pool);
 
   const Context &InitialContext() const;
 
@@ -15,5 +17,7 @@ struct Initial {
 private:
   Context ctx;
 };
+
+}  // il
 
 #endif

@@ -8,6 +8,7 @@
 #include "context.h"
 #include "initial.h"
 
+// Elaboration is a recursive transformation from EL to IL.
 struct Elaboration {
 
   Elaboration(il::AstPool *pool) : pool(pool), init(pool) {}
@@ -19,12 +20,12 @@ struct Elaboration {
 private:
 
   const std::pair<const il::Exp *, const il::Type *> Elab(
-      const Context &ctx,
+      const il::Context &ctx,
       const el::Exp *el_exp);
 
   int verbose = 0;
   il::AstPool *pool;
-  Initial init;
+  il::Initial init;
 };
 
 #endif

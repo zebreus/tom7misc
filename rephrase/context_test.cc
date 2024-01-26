@@ -2,6 +2,10 @@
 #include "context.h"
 
 #include <string>
+#include "base/logging.h"
+#include "ansi.h"
+
+namespace il {
 
 static void CreateAndDestroy() {
   [[maybe_unused]]
@@ -9,15 +13,16 @@ static void CreateAndDestroy() {
 }
 
 static void Simple() {
-  Context context;
-
-
-
+  // Context context;
+  // TODO!
 }
 
+}  // il
+
 int main(int argc, char **argv) {
-  CreateAndDestroy();
-  Simple();
+  ANSI::Init();
+  il::CreateAndDestroy();
+  il::Simple();
 
   printf("OK\n");
   return 0;

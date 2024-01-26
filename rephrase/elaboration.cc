@@ -6,10 +6,11 @@
 
 #include "el.h"
 #include "il.h"
-#include "ansi.h"
 #include "initial.h"
 
-// Elaboration is a recursive transformation
+#include "base/stringprintf.h"
+
+using Context = il::Context;
 
 const il::Exp *Elaboration::Elaborate(const el::Exp *el_exp) {
   Context G = init.InitialContext();
@@ -25,7 +26,7 @@ const il::Exp *Elaboration::Elaborate(const el::Exp *el_exp) {
 }
 
 const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
-    const Context &ctx,
+    const Context &G,
     const el::Exp *el_exp) {
 
   switch (el_exp->type) {
@@ -34,8 +35,23 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
                           pool->StringType());
   case el::ExpType::JOIN:
     break;
-  case el::ExpType::TUPLE:
-    break;
+  case el::ExpType::TUPLE: {
+    // This means a record expression with fields {1: e1, 2: e2, ...}.
+    std::vector<std::pair<std::string, const il::Type *>> lct;
+    std::vector<std::pair<std::string, const il::Exp *>> lce;
+    lct.reserve(el_exp->children.size());
+    lce.reserve(el_exp->children.size());
+
+    for (int i = 0; i < (int)el_exp->children.size(); i++) {
+      std::string lab = StringPrintf("%d", i + 1);
+      const auto &[e, t] = Elab(G, el_exp->children[i]);
+      lce.emplace_back(lab, e);
+      lct.emplace_back(lab, t);
+    }
+
+    return std::make_pair(pool->Record(std::move(lce)),
+                          pool->RecordType(std::move(lct)));
+  }
   case el::ExpType::INTEGER:
     return std::make_pair(pool->Int(el_exp->integer),
                           pool->IntType());

@@ -1,12 +1,16 @@
 
 #include "initial.h"
 
-using namespace il;
+#include <vector>
+#include <string>
+#include <utility>
+
+namespace il {
 
 Initial::Initial(AstPool *pool) {
 
   auto PairType = [&](const Type *a, const Type *b) {
-      return pool->Tuple({a, b});
+      return pool->Product({a, b});
     };
 
   auto BinOpType = [&](const Type *a, const Type *b, const Type *ret) ->
@@ -18,7 +22,7 @@ Initial::Initial(AstPool *pool) {
       return PolyType{.tyvars = {}, .type = t};
     };
 
-  const il::Type *Unit = pool->Record({});
+  const il::Type *Unit = pool->RecordType({});
   const il::Type *Alpha = pool->VarType("a");
   const il::Type *Int = pool->VarType("int");
   auto List = [&](const Type *a) { return pool->VarType("list", {a}); };
@@ -63,3 +67,5 @@ Initial::Initial(AstPool *pool) {
 }
 
 const Context &Initial::InitialContext() const { return ctx; }
+
+}  // il

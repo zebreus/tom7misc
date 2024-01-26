@@ -7,13 +7,14 @@
 
 #include "ast-arena.h"
 #include "bignum/big.h"
+#include "unification.h"
 
 namespace il {
 
 enum class ExpType {
   STRING,
   JOIN,
-  TUPLE,
+  RECORD,
   INTEGER,
   VAR,
   LAYOUT,
@@ -31,14 +32,13 @@ enum class DecType {
 struct Exp;
 struct Dec;
 
-
 enum class TypeType {
   VAR,
   SUM,
   ARROW,
   MU,
-  EVAR,
   RECORD,
+  EVAR,
   // There is no "app"; primitive tycons
   // are to be added here.
   STRING,
@@ -50,8 +50,9 @@ struct Type {
   std::string var;
   const Type *a = nullptr;
   const Type *b = nullptr;
-  // sum stores its
+  EVar evar;
   std::vector<const Type *> children;
+  // For sums and products.
   std::vector<std::pair<std::string, const Type *>> labeled_children;
   Type(TypeType t) : type(t) {}
 };
@@ -65,6 +66,8 @@ struct Exp {
   const Exp *c = nullptr;
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
+  // The order here gives the evaluation order.
+  std::vector<std::pair<std::string, const Exp *>> labeled_children;
   Exp(ExpType t) : type(t) {}
 };
 
@@ -87,7 +90,7 @@ struct AstPool {
     return ret;
   }
 
-  const Type *Record(std::vector<std::pair<std::string, const Type *>> v) {
+  const Type *RecordType(std::vector<std::pair<std::string, const Type *>> v) {
     Type *ret = NewType(TypeType::RECORD);
     ret->labeled_children = std::move(v);
     return ret;
@@ -101,8 +104,14 @@ struct AstPool {
     return NewType(TypeType::INT);
   }
 
+  const Type *EVar(EVar a) {
+    Type *ret = NewType(TypeType::EVAR);
+    ret->evar = std::move(a);
+    return ret;
+  }
+
   // Derived form for Record {1: t1, 2: t2, ...}.
-  const Type *Tuple(const std::vector<const Type *> &v);
+  const Type *Product(const std::vector<const Type *> &v);
 
   const Type *Arrow(const Type *dom, const Type *cod) {
     Type *ret = NewType(TypeType::ARROW);
@@ -137,9 +146,9 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Tuple(std::vector<const Exp *> v) {
-    Exp *ret = NewExp(ExpType::TUPLE);
-    ret->children = std::move(v);
+  const Exp *Record(std::vector<std::pair<std::string, const Exp *>> lv) {
+    Exp *ret = NewExp(ExpType::RECORD);
+    ret->labeled_children = std::move(lv);
     return ret;
   }
 
@@ -189,6 +198,7 @@ private:
   AstArena<Type> type_arena;
 };
 
+const char *TypeTypeString(const TypeType t);
 std::string TypeString(const Type *t);
 std::string DecString(const Dec *d);
 std::string ExpString(const Exp *e);

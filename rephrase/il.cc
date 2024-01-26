@@ -10,13 +10,27 @@
 
 namespace il {
 
-const Type *AstPool::Tuple(const std::vector<const Type *> &v) {
+const char *TypeTypeString(TypeType t) {
+  switch (t) {
+  case TypeType::VAR: return "VAR";
+  case TypeType::SUM: return "SUM";
+  case TypeType::ARROW: return "ARROW";
+  case TypeType::MU: return "MU";
+  case TypeType::RECORD: return "RECORD";
+  case TypeType::EVAR: return "EVAR";
+  case TypeType::STRING: return "STRING";
+  case TypeType::INT: return "INT";
+  default: return "???MISSING???";
+  }
+}
+
+const Type *AstPool::Product(const std::vector<const Type *> &v) {
   std::vector<std::pair<std::string, const Type *>> record_type;
   record_type.reserve(v.size());
   for (int i = 0; i < (int)v.size(); i++) {
-    record_type.emplace_back(StringPrintf("%d", i), v[i]);
+    record_type.emplace_back(StringPrintf("%d", i + 1), v[i]);
   }
-  return Record(std::move(record_type));
+  return RecordType(std::move(record_type));
 }
 
 
@@ -79,13 +93,14 @@ std::string ExpString(const Exp *e) {
     return e->str;
   case ExpType::INTEGER:
     return e->integer.ToString();
-  case ExpType::TUPLE: {
-    std::string ret = "(";
-    for (int i = 0; i < (int)e->children.size(); i++) {
+  case ExpType::RECORD: {
+    std::string ret = "{";
+    for (int i = 0; i < (int)e->labeled_children.size(); i++) {
       if (i != 0) StringAppendF(&ret, ", ");
-      ret += ExpString(e->children[i]);
+      const auto &[l, v] = e->labeled_children[i];
+      StringAppendF(&ret, "%s: %s", l.c_str(), ExpString(v).c_str());
     }
-    ret += ")";
+    ret += "}";
     return ret;
   }
   case ExpType::JOIN: {
