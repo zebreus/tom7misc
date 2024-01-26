@@ -7,6 +7,7 @@
 #include "el.h"
 #include "base/logging.h"
 #include "ansi.h"
+#include "bignum/big-overloads.h"
 
 namespace el {
 

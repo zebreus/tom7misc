@@ -1,6 +1,7 @@
 #ifndef _REPHRASE_IL_H
 #define _REPHRASE_IL_H
 
+#include <algorithm>
 #include <string>
 #include <cstdint>
 #include <vector>
@@ -52,7 +53,8 @@ struct Type {
   const Type *b = nullptr;
   EVar evar;
   std::vector<const Type *> children;
-  // For sums and products.
+  // For sums and products. For types, these are always sorted
+  // by the labels.
   std::vector<std::pair<std::string, const Type *>> labeled_children;
   Type(TypeType t) : type(t) {}
 };
@@ -66,7 +68,7 @@ struct Exp {
   const Exp *c = nullptr;
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
-  // The order here gives the evaluation order.
+  // Not necessarily sorted: The order here gives the evaluation order.
   std::vector<std::pair<std::string, const Exp *>> labeled_children;
   Exp(ExpType t) : type(t) {}
 };
@@ -93,6 +95,14 @@ struct AstPool {
   const Type *RecordType(std::vector<std::pair<std::string, const Type *>> v) {
     Type *ret = NewType(TypeType::RECORD);
     ret->labeled_children = std::move(v);
+    SortLabeled(&ret->labeled_children);
+    return ret;
+  }
+
+  const Type *SumType(std::vector<std::pair<std::string, const Type *>> v) {
+    Type *ret = NewType(TypeType::SUM);
+    ret->labeled_children = std::move(v);
+    SortLabeled(&ret->labeled_children);
     return ret;
   }
 
@@ -187,6 +197,14 @@ struct AstPool {
     ret->str = v;
     ret->exp = rhs;
     return ret;
+  }
+
+  template<class T>
+  void SortLabeled(std::vector<std::pair<std::string, T>> *v) {
+    std::sort(v->begin(), v->end(),
+              [&](const auto &a, const auto &b) {
+                return a.first < b.first;
+              });
   }
 
 private:

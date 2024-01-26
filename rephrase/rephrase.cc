@@ -4,17 +4,9 @@
 // sample randomly, we sample according to the probability
 // distribution.
 
-#include "llama.h"
-
-#include <algorithm>
-#include <cassert>
-#include <cinttypes>
-#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
-#include <fstream>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -23,10 +15,6 @@
 #include "ansi.h"
 #include "timer.h"
 #include "util.h"
-#include "vector-util.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "auto-histo.h"
 #include "gtl/top_n.h"
 #include "color-util.h"
 
@@ -34,8 +22,6 @@
 #include "llm-util.h"
 
 using namespace std;
-
-static constexpr int WIDTH = 70;
 
 static void PrintGreyParity(const std::string &tok) {
   static bool odd = 0;

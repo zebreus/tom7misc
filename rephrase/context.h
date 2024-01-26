@@ -37,10 +37,27 @@ struct Context {
                              {.type = std::move(pt)}));
   }
 
+  const PolyType *Find(const std::string &s) const {
+    if (const VarInfo *vi = fm.FindPtr(std::make_pair(s, V::EXP))) {
+      return &vi->type;
+    } else {
+      return nullptr;
+    }
+  }
+
   Context InsertType(const std::string &s, int arity) const {
     return Context(fm.Insert(std::make_pair(s, V::TYPE),
                              {.kind = arity}));
   }
+
+  const int *FindType(const std::string &s) const {
+    if (const VarInfo *vi = fm.FindPtr(std::make_pair(s, V::TYPE))) {
+      return &vi->kind;
+    } else {
+      return nullptr;
+    }
+  }
+
 
 private:
   enum class V {

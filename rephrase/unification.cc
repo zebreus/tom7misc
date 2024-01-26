@@ -127,6 +127,24 @@ static void UnifyEx(const VMap &vmap,
     " and the other was " << TypeTypeString(t2->type) << ". Full "
     "types:\n" << TypeString(t1) << "\n(vs)\n" << TypeString(t2);
 
+  auto RecordOrSum = [&vmap](const char *what,
+                             const Type *t1, const Type *t2) {
+      CHECK(t1->labeled_children.size() == t2->labeled_children.size()) <<
+        "Labels in " << what << " type do not match during unification.\n"
+        "There are a different number:\n" <<
+        TypeString(t1) << "\nvs\n" << TypeString(t2);
+
+      for (int i = 0; i < (int)t1->labeled_children.size(); i++) {
+        const auto &[l1, c1] = t1->labeled_children[i];
+        const auto &[l2, c2] = t2->labeled_children[i];
+        CHECK(l1 == l2) <<
+          "Labels in " << what << " type do not match during unification.\n"
+          "The label " << l1 << " did not match " << l2 << " in:\n" <<
+          TypeString(t1) << "\nvs\n" << TypeString(t2);
+        UnifyEx(vmap, c1, c2);
+      }
+    };
+
   switch (t1->type) {
   case TypeType::EVAR:
     LOG(FATAL) << "Bug: This is checked above.\n";
@@ -137,8 +155,8 @@ static void UnifyEx(const VMap &vmap,
     break;
 
   case TypeType::SUM:
-    LOG(FATAL) << "Unimplemented";
-    break;
+    RecordOrSum("sum", t1, t2);
+    return;
 
   case TypeType::ARROW:
     UnifyEx(vmap, t1->a, t2->a);
@@ -150,8 +168,8 @@ static void UnifyEx(const VMap &vmap,
     break;
 
   case TypeType::RECORD:
-    LOG(FATAL) << "Unimplemented";
-    break;
+    RecordOrSum("record", t1, t2);
+    return;
 
   case TypeType::STRING:
     return;

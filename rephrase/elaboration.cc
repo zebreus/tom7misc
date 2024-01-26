@@ -10,7 +10,11 @@
 
 #include "base/stringprintf.h"
 
+// This code has to mention both el and il stuff with the same
+// name. But there are many things that are unambiguous.
 using Context = il::Context;
+using PolyType = il::PolyType;
+using Unification = il::Unification;
 
 const il::Exp *Elaboration::Elaborate(const el::Exp *el_exp) {
   Context G = init.InitialContext();
@@ -55,8 +59,14 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
   case el::ExpType::INTEGER:
     return std::make_pair(pool->Int(el_exp->integer),
                           pool->IntType());
-  case el::ExpType::VAR:
+  case el::ExpType::VAR: {
+    const il::PolyType *pt = G.Find(el_exp->str);
+    CHECK(pt != nullptr) << "Unbound variable: " << el_exp->str;
+    // If the variable is polymorphic, then instantiate it with
+    // evars.
+    LOG(FATAL) << "Unimplemented";
     break;
+  }
   case el::ExpType::LAYOUT:
     break;
   case el::ExpType::LET:
