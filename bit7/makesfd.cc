@@ -8,16 +8,11 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <memory>
 #include <set>
 #include <map>
-#include <unordered_map>
 
 #include "util.h"
 #include "image.h"
-#include "bit7chars.h"
-#include "bitmap-font.h"
-#include "base/stringprintf.h"
 #include "base/logging.h"
 #include "fonts/island-finder.h"
 #include "fonts/ttf.h"
@@ -163,7 +158,7 @@ CODEPOINTS = {
   // EMOJI: LOCK (LOCKED)
   0x1F512,
   // EMOJI: OPEN LOCK
-  0x1F512,
+  0x1F513,
 
   // EMOJI: HEAVY DOLLAR SIGN
   0x1F4B2,
@@ -206,10 +201,23 @@ CODEPOINTS = {
   // unclaimed
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
-  // TODO: Greek; in progress
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  // unclaimed - more greek / cyrillic here
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  // Greek. We skip the characters that look the same in the Latin
+  // alphabet: A B E Z H I K M N O P T Y X v u x.
+
+  // Gamma, Delta, Theta, Lambda, Xi
+  0x0393, 0x0394, 0x0398, 0x039B, 0x039E,
+  // Pi, Sigma, Phi, Psi, Omega,
+  0x03A0, 0x03A3, 0x03A6, 0x03A8, 0x03A9,
+  // alpha, beta, gamma, delta, epsilon, zeta
+  0x03B1, 0x03B2, 0x03B3, 0x03B4, 0x03B5, 0x03B6,
+
+  // Line 2:
+  // eta, theta, iota, kappa, lambda, mu, (no nu), xi, (no omicron)
+  0x03B7, 0x03B8, 0x03B9, 0x03BA, 0x03BB, 0x03BC, 0x03BE,
+  // pi, rho, (final) sigma, sigma, tau, (no upsilon), phi, (no chi), omega
+  0x03C0, 0x03C1, 0x03C2, 0x03C3, 0x03C4, 0x03C6, 0x03C8, 0x03C9,
+  // one unclaimed spot at the end of greek
+  -1,
 
   // math
   // exists, forall
@@ -252,6 +260,27 @@ REUSE_FOR = {
   {'i', 0x0456},
   {'j', 0x0458},
   // TODO: More cyrillic can be copied from Latin-1, Greek.
+
+  // ascii -> greek
+  {'J', 0x037F},
+  {'A', 0x0391},
+  {'B', 0x0392},
+  {'E', 0x0395},
+  {'Z', 0x0396},
+  {'H', 0x0397},
+  {'I', 0x0399},
+  {'K', 0x039A},
+  {'M', 0x039C},
+  {'N', 0x039D},
+  {'O', 0x039F},
+  {'P', 0x03A1},
+  {'T', 0x03A4},
+  {'Y', 0x03A5},
+  {'X', 0x03A7},
+  {'v', 0x03BD},
+  {'o', 0x03BF},
+  {'u', 0x03C5},
+  {'x', 0x03C7},
 
   // Full-width comma
   {',', 0xFF0C},
@@ -665,8 +694,8 @@ int main(int argc, char **argv) {
     #define PLUSMINUS "\x03"
     #define DEG    "\x04"
     vector<string> testpattern = {
-      "  Welcome to my font!  it is cozy here " HEART "  (ok) ",
-      "  Now is the FALL-TIME of our DISCONTENT !!|1Il ",
+     "  Welcome to my font!  it is cozy here " HEART "  (ok) ",
+     "  Now is the FALL-TIME of our DISCONTENT !!|1Il ",
      "",
      "",
      "  " NOTES " Enable hyper-drive      for (;;) {",

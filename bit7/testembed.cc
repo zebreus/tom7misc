@@ -2,9 +2,7 @@
 
 #include <cstdint>
 #include <string>
-#include <vector>
 
-#include "util.h"
 #include "image.h"
 #include "bit7chars.h"
 
@@ -14,9 +12,6 @@ using namespace std;
 using uint8 = uint8_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
-
-constexpr int CHARS_ACROSS = 16;
-constexpr int CHARS_DOWN = 8;
 
 constexpr int CH_WIDTH = EmbeddedFont::WIDTH;
 constexpr int CH_HEIGHT = EmbeddedFont::HEIGHT;

@@ -3,8 +3,8 @@ all: default
 
 default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe fixedersys1x.sfd fixedersys2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd addrow.exe
 
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
 
 CXXFLAGS=--std=c++20 -O2 -Wall -I../cc-lib/
 LFLAGS=-static
