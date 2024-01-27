@@ -1,9 +1,11 @@
 
-default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe run-um.exe llum.exe nfa_test.exe llm_test.exe dump-tokens.exe ranker_test.exe console_test.exe
+default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe run-um.exe llum.exe nfa_test.exe llm_test.exe dump-tokens.exe ranker_test.exe console_test.exe tune.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
 # Also add /c/code/openblas/include to
+
+LLAMA_CLBLAST=true
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -36,7 +38,7 @@ LLAMA_DIR=../llama
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(RE2_OBJECTS)
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/color-util.o $(RE2_OBJECTS) $(CC_LIB)/image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -177,7 +179,10 @@ ggml-cuda.o: $(LLAMA_DIR)/ggml-cuda.cu $(LLAMA_DIR)/ggml-cuda.h
 	$(NVCC) $(NVCCFLAGS) $(CXXFLAGS) -Wno-pedantic -c $< -o $@
 endif
 ifdef LLAMA_CLBLAST
+# This part was edited by tom7. Probably we can just simplify all these
+# conditionals for my setup?
 	CFLAGS  += -DGGML_USE_CLBLAST
+	CXXFLAGS  += -DGGML_USE_CLBLAST
 	# Mac provides OpenCL as a framework
 	ifeq ($(UNAME_S),Darwin)
 		LDFLAGS += -lclblast -framework OpenCL
@@ -185,8 +190,7 @@ ifdef LLAMA_CLBLAST
 		LDFLAGS += -lclblast -lOpenCL
 	endif
 	OBJS    += ggml-opencl.o
-ggml-opencl.o: $(LLAMA_DIR)/ggml-opencl.c $(LLAMA_DIR)/ggml-opencl.h
-	$(CC) $(CFLAGS) -c $< -o $@
+# There was formerly a rule for compiling ggml-opencl.o here. -tom7
 endif
 ifneq ($(filter aarch64%,$(UNAME_M)),)
 	# Apple M1, M2, etc.
@@ -226,8 +230,10 @@ endif
 # Build library
 #
 
-LLAMA_HEADERS = $(LLAMA_DIR)/build-info.h $(LLAMA_DIR)/ggml-alloc.h $(LLAMA_DIR)/ggml-backend-impl.h $(LLAMA_DIR)/ggml-backend.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/ggml-impl.h $(LLAMA_DIR)/ggml-metal.h $(LLAMA_DIR)/ggml-mpi.h $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-quants.h $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/unicode.h
+LLAMA_HEADERS = $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-alloc.h $(LLAMA_DIR)/ggml-backend-impl.h $(LLAMA_DIR)/ggml-backend.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/ggml-impl.h $(LLAMA_DIR)/ggml-metal.h $(LLAMA_DIR)/ggml-mpi.h $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-quants.h $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/unicode.h
 
+ggml-opencl.o: $(LLAMA_DIR)/ggml-opencl.cpp $(LLAMA_HEADERS)
+	$(CXX) $(CXXFLAGS)   -c $< -o $@
 
 ggml-alloc.o: $(LLAMA_DIR)/ggml-alloc.c $(LLAMA_HEADERS)
 	$(CC) $(CFLAGS)   -c $< -o $@
@@ -307,6 +313,9 @@ ranker_test.exe : ranker_test.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 console_test.exe : console_test.o console.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
+tune.exe : tune.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 clean:
-	rm -f *.o acronymy.exe benchmark.exe test.exe chat.exe run-um.exe extract-codex.exe llum.exe generate.exe
+	rm -f *.o acronymy.exe benchmark.exe llm_test.exe chat.exe run-um.exe extract-codex.exe llum.exe generate.exe
 

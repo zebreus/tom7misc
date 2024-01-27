@@ -25,7 +25,11 @@
 static void LogLLM(enum ggml_log_level level,
                    const char * text,
                    void * user_data) {
-  // Ignored. Could print if if verbose is on?
+  static constexpr bool LOCAL_VERBOSE = false;
+  // Ignored.
+  if (LOCAL_VERBOSE) {
+    printf(ACYAN("%s"), text);
+  }
 }
 
 Context::Context(const ContextParams &params) {
@@ -61,7 +65,11 @@ Context::Context(const ContextParams &params) {
   num_threads = params.num_threads;
 
   llama_model_params mparams = llama_model_default_params();
-  // TODO progress_callback?
+  // XXX this needs to be configurable or tuned! for the 70b_q8
+  // model, it's 21GB VRAM with 22 layers. Maybe we could squeeze
+  // more. With small models, we can just fit the whole thing.
+  mparams.n_gpu_layers = params.num_gpu_layers;
+
   mparams.use_mmap = true;
   // TODO: Experiment with this
   mparams.use_mlock = false;
@@ -74,6 +82,10 @@ Context::Context(const ContextParams &params) {
   // lparams.n_ctx        = params.context_size;
   // "from model"
   lparams.n_ctx = 0;
+
+  // XXX make these independently settable?
+  lparams.n_threads = num_threads;
+  lparams.n_threads_batch = num_threads;
 
   // Note: We have our own seed because we do our own sampling.
   // XXX make this deterministic, then!
@@ -105,7 +117,9 @@ std::vector<llama_token> Context::Tokenize(
   // (For llama2, adding 1, since tokenizing just "\n" yields two tokens??)
   const int max_tokens = text.size() + 1 + (int)add_bos;
   std::vector<llama_token> res(max_tokens);
-  const int n = llama_tokenize(
+  // Note: This function is not in head llama.cpp. I needed to add support
+  // for suppressing the leading space that it inserts by default.
+  const int n = llama_tokenize_ex(
       model, text.c_str(), text.size(), res.data(), res.size(), add_bos,
       // TODO: what is "special"?
       false,

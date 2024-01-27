@@ -1,0 +1,17 @@
+
+You need llama.cpp (just grab the git repository) in ../llama.
+I made some local changes to add a parameter to llama_tokenize. Hopefully
+they will address this upstream as there are some open bugs.
+
+On msys2/clang there are packages for openblas:
+
+mingw-w64-clang-x86_64-openblas
+mingw-w64-clang-x86_64-openblas64
+
+I didn't really try these, as when I was investigating I realized
+they are CPU only (they may outperform the native CPU implementations though!).
+
+
+clblast is necessary to use the GPU, but it worked out of the box:
+
+pacman -S mingw-w64-clang-x86_64-clblast

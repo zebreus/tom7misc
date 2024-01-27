@@ -12,13 +12,15 @@ using namespace std;
 
 static constexpr bool VERBOSE = false;
 
+#define MODEL_DIR "llama2"
+
 static void BasicPredict() {
   string prompt = "Please excuse my";
   Timer model_timer;
   ContextParams cparams;
   // Fastest model for test.
   // cparams.model = "llama2/7b/ggml-model-Q2_K.gguf";
-  cparams.model = "llama2/7b/ggml-model-f16.gguf";
+  cparams.model = MODEL_DIR "/7b/ggml-model-f16.gguf";
 
   SamplerParams sparams;
   // Get determinism for test.
@@ -81,7 +83,7 @@ static void Rewind() {
   Timer model_timer;
   ContextParams cparams;
   // Fastest model for test.
-  cparams.model = "e:\\llama2\\7b\\ggml-model-Q2_K.gguf";
+  cparams.model = MODEL_DIR "/7b/ggml-model-Q2_K.gguf";
   // cparams.model = "llama2/7b/ggml-model-f16.gguf";
 
   SamplerParams sparams;
@@ -167,7 +169,7 @@ static void TokenizeInContext() {
   Timer model_timer;
   ContextParams cparams;
   // Fastest model for test.
-  cparams.model = "e:\\llama2\\7b\\ggml-model-Q2_K.gguf";
+  cparams.model = MODEL_DIR "/7b/ggml-model-Q2_K.gguf";
   // cparams.model = "llama2/7b/ggml-model-f16.gguf";
 
   SamplerParams sparams;
@@ -282,7 +284,7 @@ static void RewindAfterSample() {
   Timer model_timer;
   ContextParams cparams;
   // Fastest model for test.
-  cparams.model = "e:\\llama2\\7b\\ggml-model-Q2_K.gguf";
+  cparams.model = MODEL_DIR "/7b/ggml-model-Q2_K.gguf";
   // cparams.model = "llama2/7b/ggml-model-f16.gguf";
 
   SamplerParams sparams;

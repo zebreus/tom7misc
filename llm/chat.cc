@@ -165,6 +165,9 @@ struct Chatting {
   // No need to parse this until we have a complete line.
   std::string current_line;
   LLM::State start_line_state;
+  Timer line_timer;
+  int line_token_count = 0;
+  bool verbose = true;
 
   // Render the line (no trailing newline) in color.
   std::string ANSILine(const ChatLine &line) const {
@@ -230,6 +233,8 @@ struct Chatting {
     current_line.clear();
     start_line_state = llm->SaveState();
     ResetRegex();
+    line_timer.Reset();
+    line_token_count = 0;
   }
 
   // Clear anything in the current line and force the argument.
@@ -261,7 +266,14 @@ struct Chatting {
     } else if (Util::TryStripPrefix("/raw ", &input)) {
       // This means we want to remove the predicted prefix and
       // then insert the input verbatim.
+      //
+      // Even though it is "Raw" we insert a space before "*" because
+      // the syntax expects a space there and it is awkward to
+      // write "/raw  * Computer reboots itself."
+      if (input.size() > 2 &&
+          input[0] == '*' && input[1] == ' ') input = " " + input;
       ForceLine(input);
+
       return true;
     } else if (Util::TryStripPrefix("/me ", &input)) {
       // This means to remove the predicted prefix and
@@ -478,11 +490,20 @@ struct Chatting {
           llm->TakeTokenBatch({tok_id});
           string tok = llm->context.TokenString(tok_id);
           current_line += tok;
+          line_token_count++;
 
           printf("%s", tok.c_str());
           fflush(stdout);
 
           if (tok_id == llm->context.NewlineToken()) {
+            if (verbose) {
+              double sec = line_timer.Seconds();
+              double tps = line_token_count / sec;
+              printf("[%s, %d tok, %.2f tok/sec]\n",
+                     ANSI::Time(sec).c_str(),
+                     line_token_count,
+                     tps);
+            }
             FinishLine(current_line);
           }
         }
@@ -516,7 +537,7 @@ int main(int argc, char ** argv) {
   // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
   // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
 
-  cparams.model = "llama2\\7b\\ggml-model-q8_0.gguf";
+  cparams.model = "llama2\\70b\\ggml-model-q8_0.gguf";
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

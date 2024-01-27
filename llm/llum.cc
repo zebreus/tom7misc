@@ -26,12 +26,6 @@
 #include "um.h"
 #include "llm-util.h"
 
-// Prevent runaway (no correct answer can be longer).
-static constexpr int MAX_ANSWER = 80;
-static constexpr int MAX_THOUGHT = 160;
-
-static constexpr bool USE_THOUGHT = true;
-
 using namespace std;
 
 // With a function that generates tokens for the input, buffer them

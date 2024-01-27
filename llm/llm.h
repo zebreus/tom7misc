@@ -29,7 +29,9 @@ struct ContextParams {
   std::string model = "d:\\llama2\\llama-2-7b\\ggml-model-f16.gguf";
   // params.model = "../llama/models/7B/ggml-model-q4_0.bin";
   int context_size = 4096;
-  int num_threads = 8;
+  // XXX tune! This definitely makes a difference for CPU inference.
+  int num_threads = 24;
+  int num_gpu_layers = 0;
 };
 
 enum class SampleType {
