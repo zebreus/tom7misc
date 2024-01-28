@@ -16,15 +16,21 @@ namespace el {
 // tokenizer skips whitespace except where it is meaningful (e.g. inside
 // layout or string literals).
 enum TokenType {
+  // ()
   LPAREN,
   RPAREN,
+  // []
   LBRACKET,
   RBRACKET,
+  // {}
+  LBRACE,
+  RBRACE,
   COMMA,
   PERIOD,
   UNDERSCORE,
   EQUALS,
   BAR,
+  COLON,
   TIMES,
   // ->
   ARROW,

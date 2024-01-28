@@ -127,6 +127,121 @@ const Exp *Parsing::Parse(AstPool *pool,
       return UnescapeLayoutLit(TokenStr(t));
     };
 
+  // Types.
+
+
+  // Parse infix operators, e.g. T -> T * T
+  using TypeFixityElt = FixityItem<const Type *>;
+  const auto ResolveTypeFixity = [&](const std::vector<TypeFixityElt> &elts) ->
+    std::optional<const Type *> {
+    // Type application is handled below, so we do not need an "adj" case.
+    return ResolveFixity<const Type *>(elts, nullptr);
+  };
+
+  const TypeFixityElt ArrowElement = {
+    .fixity = Fixity::Infix,
+    // a -> b -> c  is a -> (b -> c)
+    .assoc = Associativity::Right,
+    .precedence = 9,
+    .binop = [&](const Type *a, const Type *b) {
+        return pool->Arrow(a, b);
+      },
+  };
+
+  const auto TypeExpr =
+    Fix<Token, const Type *>([&](const auto &Self) {
+        auto RecordType =
+          (IsToken<LBRACE>() >>
+           Separate0(
+               (Id && (IsToken<COLON>() >> Self)),
+               IsToken<COMMA>()) << IsToken<RBRACE>())
+          >[&](const std::vector<std::pair<std::string, const Type *>> &v) {
+              // We don't do any normalization in EL.
+              return pool->RecordType(v);
+            };
+
+        // This returns a vector of comma-separated types.
+        // Non-degenerate comma-separated types are only used
+        // in "(int, string) map" situations, but we also
+        // parse degenerate parenthesized types here, which can
+        // include "(int)" and "()".
+        auto CommaType =
+          (IsToken<LPAREN>() >>
+           Separate0(Self, IsToken<COMMA>()) <<
+           IsToken<RPAREN>());
+
+        // An atomic type that doesn't start with (.
+        auto UnparenthesizedAtomicType =
+          RecordType ||
+          Id >[&](const std::string &s) { return pool->VarType(s, {}); };
+
+        auto AtomicType =
+          // Use CommaType to parse parenthesized expressions.
+          // We don't allow () for the empty tuple, but we could.
+          (CommaType /=[&](const std::vector<const Type *> &v) ->
+           std::optional<const Type *> {
+            if (v.size() == 1) return v[0];
+            else return std::nullopt;
+          }) ||
+          UnparenthesizedAtomicType;
+
+        // Vector of type args for type application.
+        auto AppArg =
+          CommaType ||
+          UnparenthesizedAtomicType >[&](const Type *t) {
+              return std::vector<const Type *>{t};
+            };
+
+        // This can be "(int, string) t1 t2 t3"
+        // or int t1 t2
+        // or int
+        // but not (int, string)
+        auto AppType =
+          (AppArg && *Id) /=[&](const auto &pair) ->
+          std::optional<const Type *>{
+              const auto &[varg, vapps] = pair;
+              if (vapps.empty()) {
+                // then this may just be a single type with
+                // no applications
+                if (varg.size() == 1) {
+                  return {varg[0]};
+                } else {
+                  // Otherwise we have something like (int, string)
+                  // on its own, which is not allowed.
+                  return std::nullopt;
+                }
+              } else {
+                // Postfix applications.
+                const Type *t = pool->VarType(vapps[0], varg);
+                for (int i = 1; i < (int)vapps.size(); i++) {
+                  t = pool->VarType(vapps[i], std::vector<const Type *>{t});
+                }
+                return {t};
+              }
+            };
+
+        // Could do this as part of the fixity parse if we had support
+        // for n-ary operators.
+        auto ProductType =
+          Separate(AppType, IsToken<TIMES>())
+          >[&](const std::vector<const Type *> &v) {
+              if (v.size() == 1) return v[0];
+              else return pool->Product(v);
+            };
+
+        auto FixityElement =
+          (IsToken<ARROW>() >>
+           Succeed<Token, TypeFixityElt>(ArrowElement)) ||
+          (ProductType >[&](const Type *t) {
+              TypeFixityElt item;
+              item.fixity = Fixity::Atom;
+              item.item = t;
+              return item;
+            });
+
+        return +FixityElement /= ResolveTypeFixity;
+      });
+
   // Patterns.
 
   const auto TuplePat = [&](const auto &Pattern) {
@@ -146,10 +261,20 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   const auto Pattern =
     Fix<Token, const Pat *>([&](const auto &Self) {
-        return
+        auto AtomicPattern =
           (Id >[&](const std::string &s) { return pool->VarPat(s); }) ||
           (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
           TuplePat(Self);
+
+        return (AtomicPattern && Opt(IsToken<COLON>() >> TypeExpr))
+          >[&](const auto &pair) -> const Pat * {
+              const auto &[pat, typ] = pair;
+              if (typ.has_value()) {
+                return pool->AnnPat(pat, typ.value());
+              } else {
+                return pat;
+              }
+            };
       });
 
 
@@ -226,6 +351,10 @@ const Exp *Parsing::Parse(AstPool *pool,
             return pool->If(cond, t, f);
           };
     };
+
+
+  // Declarations.
+
 
 
   // This is syntactic sugar for val _ = e
@@ -332,7 +461,20 @@ const Exp *Parsing::Parse(AstPool *pool,
           auto AppExpr =
             +FixityElement /= ResolveExprFixity;
 
-          return IfExpr(Expr) || AppExpr;
+          auto AnnotatableExpr = IfExpr(Expr) || AppExpr;
+
+          auto AnnExpr =
+            (AnnotatableExpr && Opt(IsToken<COLON>() >> TypeExpr))
+            >[&](const auto &pair) {
+                const auto &[e, ot] = pair;
+                if (ot.has_value()) {
+                  return pool->AnnExp(e, ot.value());
+                } else {
+                  return e;
+                }
+              };
+
+          return AnnExpr;
         },
         [&](const auto &Expr, const auto &Decl) {
           // Declaration parser.

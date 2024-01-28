@@ -34,6 +34,19 @@ std::string TypeString(const Type *t) {
     ret.push_back(')');
     return ret;
   }
+  case TypeType::RECORD: {
+    std::string ret = "{";
+    for (int i = 0; i < (int)t->str_children.size(); i++) {
+      const auto &child = t->str_children[i];
+      if (i != 0)
+        StringAppendF(&ret, ", ");
+      StringAppendF(&ret, "%s: %s",
+                    child.first.c_str(),
+                    TypeString(child.second).c_str());
+    }
+    ret.push_back('}');
+    return ret;
+  }
   default:
     return "unknown type type??";
   }
@@ -139,6 +152,10 @@ std::string ExpString(const Exp *e) {
   }
   case ExpType::LAYOUT:
     return StringPrintf("[%s]", LayoutString(e->layout).c_str());
+  case ExpType::ANN:
+    return StringPrintf("(%s : %s)",
+                        ExpString(e->a).c_str(),
+                        TypeString(e->t).c_str());
   default:
     return "ILLEGAL EXPRESSION";
   }

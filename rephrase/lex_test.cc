@@ -17,25 +17,28 @@ static void PrintTokens(const std::string &input,
          source.c_str(), ctokens.c_str());
 }
 
-#define CHECK_LEX(str, ...) do { \
-    const std::string input = str; \
-    std::string error; \
-    const std::optional<std::vector<Token>> otokens = \
-      Lexing::Lex(input, &error);                           \
-    CHECK(otokens.has_value()) << "Did not lex: " << error; \
-    const auto &tokens = otokens.value(); \
-    const std::vector<TokenType> expected = {__VA_ARGS__};  \
-    bool ok = tokens.size() == expected.size();   \
-    for (int i = 0; i < (int)tokens.size() &&     \
-           i < (int)expected.size(); i++) {           \
-      if (tokens[i].type != expected[i]) ok = false;  \
-    }                                               \
-    if (!ok) {                                      \
-      PrintTokens(input, tokens);                       \
-      /* XXX print expected tokens too */                   \
-      CHECK(false) << "Did not get expected token types.";  \
-    }                                                       \
-    } while (0)
+#define CHECK_LEX(str, ...)                                    \
+  do {                                                         \
+    const std::string input = str;                             \
+    std::string error;                                         \
+    const std::optional<std::vector<Token>> otokens =          \
+        Lexing::Lex(input, &error);                            \
+    CHECK(otokens.has_value()) << "Did not lex: " << error;    \
+    const auto &tokens = otokens.value();                      \
+    const std::vector<TokenType> expected = {__VA_ARGS__};     \
+    bool ok = tokens.size() == expected.size();                \
+    for (int i = 0;                                            \
+         i < (int)tokens.size() && i < (int)expected.size();   \
+         i++) {                                                \
+      if (tokens[i].type != expected[i])                       \
+        ok = false;                                            \
+    }                                                          \
+    if (!ok) {                                                 \
+      PrintTokens(input, tokens);                              \
+      /* XXX print expected tokens too */                      \
+      CHECK(false) << "Did not get expected token types.";     \
+    }                                                          \
+  } while (0)
 
 static void TestLex() {
 
@@ -70,6 +73,9 @@ static void TestLex() {
   CHECK_LEX("->|", ID);
   CHECK_LEX("==>", ID);
   CHECK_LEX("add-to-alist", ID);
+
+  CHECK_LEX("::", ID);
+  CHECK_LEX("a:b", ID, COLON, ID);
 }
 
 }  // namespace el

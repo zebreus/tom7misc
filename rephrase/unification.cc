@@ -44,7 +44,7 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
   case TypeType::VAR:
     return false;
   case TypeType::SUM:
-    for (const auto &[l_, c] : t->labeled_children) {
+    for (const auto &[l_, c] : t->str_children) {
       if (Occurs(e, c)) return true;
     }
     return false;
@@ -54,7 +54,7 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
     LOG(FATAL) << "Unimplemented: Mu in Occurs";
     return false;
   case TypeType::RECORD:
-    for (const auto &[l_, c] : t->labeled_children) {
+    for (const auto &[l_, c] : t->str_children) {
       if (Occurs(e, c)) return true;
     }
     return false;
@@ -129,14 +129,14 @@ static void UnifyEx(const VMap &vmap,
 
   auto RecordOrSum = [&vmap](const char *what,
                              const Type *t1, const Type *t2) {
-      CHECK(t1->labeled_children.size() == t2->labeled_children.size()) <<
+      CHECK(t1->str_children.size() == t2->str_children.size()) <<
         "Labels in " << what << " type do not match during unification.\n"
         "There are a different number:\n" <<
         TypeString(t1) << "\nvs\n" << TypeString(t2);
 
-      for (int i = 0; i < (int)t1->labeled_children.size(); i++) {
-        const auto &[l1, c1] = t1->labeled_children[i];
-        const auto &[l2, c2] = t2->labeled_children[i];
+      for (int i = 0; i < (int)t1->str_children.size(); i++) {
+        const auto &[l1, c1] = t1->str_children[i];
+        const auto &[l2, c2] = t2->str_children[i];
         CHECK(l1 == l2) <<
           "Labels in " << what << " type do not match during unification.\n"
           "The label " << l1 << " did not match " << l2 << " in:\n" <<

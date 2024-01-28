@@ -27,6 +27,7 @@ enum class ExpType {
   LET,
   IF,
   APP,
+  ANN,
 };
 
 enum class DecType {
@@ -39,6 +40,7 @@ enum class PatType {
   VAR,
   WILD,
   TUPLE,
+  ANN,
 };
 
 enum class TypeType {
@@ -48,6 +50,7 @@ enum class TypeType {
   VAR,
   ARROW,
   PRODUCT,
+  RECORD,
 };
 
 struct Exp;
@@ -59,6 +62,7 @@ struct Type {
   const Type *a = nullptr;
   const Type *b = nullptr;
   std::vector<const Type *> children;
+  std::vector<std::pair<std::string, const Type *>> str_children;
   Type(TypeType t) : type(t) {}
 };
 
@@ -78,6 +82,7 @@ struct Exp {
   const Exp *a = nullptr;
   const Exp *b = nullptr;
   const Exp *c = nullptr;
+  const Type *t = nullptr;
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
   Exp(ExpType t) : type(t) {}
@@ -86,6 +91,8 @@ struct Exp {
 struct Pat {
   PatType type;
   std::string var;
+  const Pat *a;
+  const Type *ann;
   std::vector<const Pat *> children;
   Pat(PatType t) : type(t) {}
 };
@@ -116,8 +123,15 @@ struct AstPool {
     return ret;
   }
 
+  const Type *RecordType(
+      std::vector<std::pair<std::string, const Type *>> v) {
+    Type *ret = NewType(TypeType::RECORD);
+    ret->str_children = std::move(v);
+    return ret;
+  }
+
   const Type *Arrow(const Type *dom, const Type *cod) {
-    Type *ret = NewType(TypeType::PRODUCT);
+    Type *ret = NewType(TypeType::ARROW);
     ret->a = dom;
     ret->b = cod;
     return ret;
@@ -183,6 +197,13 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *AnnExp(const Exp *e, const Type *t) {
+    Exp *ret = NewExp(ExpType::ANN);
+    ret->a = e;
+    ret->t = t;
+    return ret;
+  }
+
   // Layout
 
   const Layout *TextLayout(std::string s) {
@@ -226,6 +247,13 @@ struct AstPool {
   const Pat *VarPat(const std::string &v) {
     Pat *ret = NewPat(PatType::VAR);
     ret->var = v;
+    return ret;
+  }
+
+  const Pat *AnnPat(const Pat *p, const Type *t) {
+    Pat *ret = NewPat(PatType::ANN);
+    ret->a = p;
+    ret->ann = t;
     return ret;
   }
 

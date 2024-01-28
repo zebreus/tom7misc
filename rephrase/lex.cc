@@ -16,15 +16,15 @@ namespace el {
 
 const char *TokenTypeString(TokenType tok) {
   switch (tok) {
+  // These characters can't be part of identifiers.
   case LPAREN: return "LPAREN";
   case RPAREN: return "RPAREN";
   case LBRACKET: return "LBRACKET";
   case RBRACKET: return "RBRACKET";
+  case LBRACE: return "LBRACE";
+  case RBRACE: return "RBRACE";
   case COMMA: return "COMMA";
   case PERIOD: return "PERIOD";
-  case UNDERSCORE: return "UNDERSCORE";
-  case EQUALS: return "EQUALS";
-  case BAR: return "BAR";
 
   // Keywords.
   case FN: return "FN";
@@ -39,6 +39,10 @@ const char *TokenTypeString(TokenType tok) {
   case TIMES: return "*";
   case ARROW: return "->";
   case DARROW: return "=>";
+  case COLON: return ":";
+  case UNDERSCORE: return "UNDERSCORE";
+  case EQUALS: return "EQUALS";
+  case BAR: return "BAR";
 
   case IF: return "IF";
   case THEN: return "THEN";
@@ -166,7 +170,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
   // Note that - and _ can appear in alphanumeric-identifiers
   // as well as symbolic ones.
   #define ALPHA_IDENT "(?:[A-Za-z][-'_A-Za-z0-9]*)"
-  #define SYMBOLIC_IDENT "(?:[-~`!@#$%^&*=_+|<>?/]+)"
+  #define SYMBOLIC_IDENT "(?:[-~`!@#$%^&*=_+|:<>?/]+)"
   static const RE2 ident("(" ALPHA_IDENT "|" SYMBOLIC_IDENT ")");
   static const RE2 strlit(
     // Starting with double quote
@@ -224,6 +228,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"=", EQUALS},
     {"|", BAR},
     {"*", TIMES},
+    {":", COLON},
   };
 
   re2::StringPiece input(input_string);
@@ -303,6 +308,14 @@ std::optional<std::vector<Token>> Lexing::Lex(
         continue;
       case '.':
         ret.emplace_back(PERIOD, start, 1);
+        input.remove_prefix(1);
+        continue;
+      case '{':
+        ret.emplace_back(LBRACE, start, 1);
+        input.remove_prefix(1);
+        continue;
+      case '}':
+        ret.emplace_back(RBRACE, start, 1);
         input.remove_prefix(1);
         continue;
 

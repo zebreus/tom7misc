@@ -35,6 +35,20 @@ const Type *AstPool::Product(const std::vector<const Type *> &v) {
 
 
 std::string TypeString(const Type *t) {
+  auto RecordOrSumBody = [](const Type *t) {
+      std::string ret = "{";
+      for (int i = 0; i < (int)t->str_children.size(); i++) {
+        const auto &[lab, child] = t->str_children[i];
+        if (i != 0)
+          StringAppendF(&ret, ", ");
+        StringAppendF(&ret, "%s: %s",
+                      lab.c_str(),
+                      TypeString(child).c_str());
+      }
+      ret.push_back('}');
+      return ret;
+    };
+
   switch (t->type) {
   case TypeType::VAR:
     if (t->children.empty()) {
@@ -46,18 +60,30 @@ std::string TypeString(const Type *t) {
     return StringPrintf("(%s -> %s)",
                         TypeString(t->a).c_str(),
                         TypeString(t->b).c_str());
-  case TypeType::RECORD: {
-    std::string ret = "{";
-    for (int i = 0; i < (int)t->labeled_children.size(); i++) {
-      const auto &[lab, child] = t->labeled_children[i];
-      if (i != 0)
-        StringAppendF(&ret, ", ");
-      StringAppendF(&ret, "%s: %s",
-                    lab.c_str(),
-                    TypeString(child).c_str());
+  case TypeType::RECORD:
+    // Might want to special case tuple types; unit type?
+    return StringPrintf("{%s}", RecordOrSumBody(t).c_str());
+  case TypeType::SUM:
+    // Might want to special case void?
+    return StringPrintf("[%s]", RecordOrSumBody(t).c_str());
+
+  case TypeType::MU: {
+    CHECK(!t->str_children.empty());
+    if (t->str_children.size() == 1) {
+      return StringPrintf("(μ %s. %s)",
+                          t->str_children[0].first.c_str(),
+                          TypeString(t->str_children[0].second).c_str());
+    } else {
+      std::string ret = StringPrintf("#%d(μ", t->idx);
+      for (int i = 0; i < (int)t->str_children.size(); i++) {
+        if (i != 0) StringAppendF(&ret, ";");
+        const auto &[v, c] = t->str_children[i];
+        StringAppendF(&ret,
+                      " %d=%s. %s", i, v.c_str(), TypeString(c).c_str());
+      }
+      ret += ")";
+      return ret;
     }
-    ret.push_back('}');
-    return ret;
   }
   default:
     return "unknown type type??";
@@ -138,4 +164,4 @@ std::string ExpString(const Exp *e) {
   }
 }
 
-}  // namespace el
+}  // namespace il

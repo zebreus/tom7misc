@@ -5,6 +5,9 @@ default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.
 # Also add -static to LFLAGS below
 # Also add /c/code/openblas/include to
 
+LLAMA_CLBLAST=true
+ASAN=true
+
 UNAME := $(shell uname -o)
 
 ifeq ($(UNAME),Cygwin)
@@ -27,7 +30,11 @@ else
   # PLATFORM_CFLAGS=-fsanitize=address -g -D_GNU_SOURCE
   # OPTFLAGS=-O
   PLATFORM_CFLAGS=-g -D_GNU_SOURCE
+  ifdef ASAN
+  OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
+  else
   OPTFLAGS=-O3 -march=native -mtune=native
+  endif
 endif
 
 CC_LIB=../cc-lib
@@ -178,15 +185,13 @@ ggml-cuda.o: $(LLAMA_DIR)/ggml-cuda.cu $(LLAMA_DIR)/ggml-cuda.h
 endif
 ifdef LLAMA_CLBLAST
 	CFLAGS  += -DGGML_USE_CLBLAST
+	CXXFLAGS  += -DGGML_USE_CLBLAST
 	# Mac provides OpenCL as a framework
 	ifeq ($(UNAME_S),Darwin)
 		LDFLAGS += -lclblast -framework OpenCL
 	else
 		LDFLAGS += -lclblast -lOpenCL
 	endif
-	OBJS    += ggml-opencl.o
-ggml-opencl.o: $(LLAMA_DIR)/ggml-opencl.c $(LLAMA_DIR)/ggml-opencl.h
-	$(CC) $(CFLAGS) -c $< -o $@
 endif
 ifneq ($(filter aarch64%,$(UNAME_M)),)
 	# Apple M1, M2, etc.
@@ -207,8 +212,10 @@ ifneq ($(filter armv8%,$(UNAME_M)),)
 	CFLAGS += -mfp16-format=ieee -mno-unaligned-access
 endif
 
-LLAMA_HEADERS = $(LLAMA_DIR)/build-info.h $(LLAMA_DIR)/ggml-alloc.h $(LLAMA_DIR)/ggml-backend-impl.h $(LLAMA_DIR)/ggml-backend.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/ggml-impl.h $(LLAMA_DIR)/ggml-metal.h $(LLAMA_DIR)/ggml-mpi.h $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-quants.h $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/unicode.h
+LLAMA_HEADERS = $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-alloc.h $(LLAMA_DIR)/ggml-backend-impl.h $(LLAMA_DIR)/ggml-backend.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/ggml-impl.h $(LLAMA_DIR)/ggml-metal.h $(LLAMA_DIR)/ggml-mpi.h $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-quants.h $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/unicode.h
 
+ggml-opencl.o: $(LLAMA_DIR)/ggml-opencl.cpp $(LLAMA_HEADERS)
+	$(CXX) $(CXXFLAGS)   -c $< -o $@
 
 ggml-alloc.o: $(LLAMA_DIR)/ggml-alloc.c $(LLAMA_HEADERS)
 	$(CC) $(CFLAGS)   -c $< -o $@
@@ -235,7 +242,7 @@ build-info.o: $(LLAMA_DIR)/common/build-info.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # ggml-mpi.o
-LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llama.o common.o
+LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llama.o common.o ggml-opencl.o
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 

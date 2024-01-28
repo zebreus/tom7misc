@@ -34,9 +34,26 @@ struct Exp;
 struct Dec;
 
 enum class TypeType {
+  // Type variables are applied to 0 or more args
   VAR,
   SUM,
   ARROW,
+  /* A bundle of mutually-recursive datatypes.
+     The idx field projects one of the bundle out.
+     Each type in the bundle has its own recursive
+     name, which is in scope for all the types.
+
+     pi_n (mu  v_0 . typ_0
+           and v_1 . typ_1
+           and ...)
+       0 <= n < length l, length l > 0.
+
+     when unrolling, choose nth arm and
+     substitute:
+
+     typ_n [ (pi_0 mu .. and ..) / v_0,
+             (pi_1 mu .. and ..) / v_1,
+             ... ] */
   MU,
   RECORD,
   EVAR,
@@ -53,9 +70,11 @@ struct Type {
   const Type *b = nullptr;
   EVar evar;
   std::vector<const Type *> children;
-  // For sums and products. For types, these are always sorted
-  // by the labels.
-  std::vector<std::pair<std::string, const Type *>> labeled_children;
+  int idx = 0;
+  // For types, these are always sorted by the strings.
+  // For sums and products, the strings are the labels.
+  // For mu, the strings are bound type variables.
+  std::vector<std::pair<std::string, const Type *>> str_children;
   Type(TypeType t) : type(t) {}
 };
 
@@ -94,15 +113,15 @@ struct AstPool {
 
   const Type *RecordType(std::vector<std::pair<std::string, const Type *>> v) {
     Type *ret = NewType(TypeType::RECORD);
-    ret->labeled_children = std::move(v);
-    SortLabeled(&ret->labeled_children);
+    ret->str_children = std::move(v);
+    SortLabeled(&ret->str_children);
     return ret;
   }
 
   const Type *SumType(std::vector<std::pair<std::string, const Type *>> v) {
     Type *ret = NewType(TypeType::SUM);
-    ret->labeled_children = std::move(v);
-    SortLabeled(&ret->labeled_children);
+    ret->str_children = std::move(v);
+    SortLabeled(&ret->str_children);
     return ret;
   }
 
