@@ -60,6 +60,8 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
     return false;
   case TypeType::EVAR:
     return SameEVar(e, t->evar);
+  case TypeType::REF:
+    return Occurs(e, t->a);
   case TypeType::STRING:
     return false;
   case TypeType::INT:
@@ -67,7 +69,8 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
   }
 }
 
-static void UnifyEx(const VMap &vmap,
+static void UnifyEx(std::string_view what,
+                    const VMap &vmap,
                     const Type *t1, const Type *t2) {
   // First, handle existential variables.
   if (t1->type == TypeType::EVAR || t2->type == TypeType::EVAR) {
@@ -79,12 +82,12 @@ static void UnifyEx(const VMap &vmap,
       };
 
     if (const Type *at = IsBoundEvar(t1)) {
-      UnifyEx(vmap, at, t2);
+      UnifyEx(what, vmap, at, t2);
       return;
     }
 
     if (const Type *bt = IsBoundEvar(t2)) {
-      UnifyEx(vmap, t1, bt);
+      UnifyEx(what, vmap, t1, bt);
       return;
     }
 
@@ -108,7 +111,9 @@ static void UnifyEx(const VMap &vmap,
       CHECK(t->type != TypeType::EVAR);
 
       if (EVar::Occurs(e, t)) {
-        LOG(FATAL) << "Type mismatch (circularity):\n"
+        LOG(FATAL) <<
+          "(" << what << ") "
+          "Type mismatch (circularity):\n"
           "During unification, an existential variable occurred "
           "in the type that it needed to be unified with. The "
           "type was:\n" <<
@@ -121,16 +126,19 @@ static void UnifyEx(const VMap &vmap,
   }
 
   // Otherwise, the types need to have the same constructor.
-  CHECK(t1->type == t2->type) << "Tycon mismatch:\n"
+  CHECK(t1->type == t2->type) <<
+    "(" << what << ") "
+    "Tycon mismatch:\n"
     "During unification, the types did not have the same "
     "outer constructor. One was " << TypeTypeString(t1->type) <<
     " and the other was " << TypeTypeString(t2->type) << ". Full "
     "types:\n" << TypeString(t1) << "\n(vs)\n" << TypeString(t2);
 
-  auto RecordOrSum = [&vmap](const char *what,
-                             const Type *t1, const Type *t2) {
+  auto RecordOrSum = [what, &vmap](const char *record_what,
+                                   const Type *t1, const Type *t2) {
       CHECK(t1->str_children.size() == t2->str_children.size()) <<
-        "Labels in " << what << " type do not match during unification.\n"
+        "(" << what << ") Labels in " << record_what <<
+        " type do not match during unification.\n"
         "There are a different number:\n" <<
         TypeString(t1) << "\nvs\n" << TypeString(t2);
 
@@ -138,10 +146,12 @@ static void UnifyEx(const VMap &vmap,
         const auto &[l1, c1] = t1->str_children[i];
         const auto &[l2, c2] = t2->str_children[i];
         CHECK(l1 == l2) <<
-          "Labels in " << what << " type do not match during unification.\n"
+          "(" << what << ") "
+          "Labels in " << record_what <<
+          " type do not match during unification.\n"
           "The label " << l1 << " did not match " << l2 << " in:\n" <<
           TypeString(t1) << "\nvs\n" << TypeString(t2);
-        UnifyEx(vmap, c1, c2);
+        UnifyEx(what, vmap, c1, c2);
       }
     };
 
@@ -159,8 +169,8 @@ static void UnifyEx(const VMap &vmap,
     return;
 
   case TypeType::ARROW:
-    UnifyEx(vmap, t1->a, t2->a);
-    UnifyEx(vmap, t1->b, t2->b);
+    UnifyEx(what, vmap, t1->a, t2->a);
+    UnifyEx(what, vmap, t1->b, t2->b);
     break;
 
   case TypeType::MU:
@@ -171,16 +181,22 @@ static void UnifyEx(const VMap &vmap,
     RecordOrSum("record", t1, t2);
     return;
 
+  case TypeType::REF:
+    UnifyEx(what, vmap, t1->a, t2->a);
+    return;
+
   case TypeType::STRING:
     return;
 
   case TypeType::INT:
     return;
+
   }
 }
 
-void Unification::Unify(const Type *t1, const Type *t2) {
-  UnifyEx({}, t1, t2);
+void Unification::Unify(std::string_view what,
+                        const Type *t1, const Type *t2) {
+  UnifyEx(what, {}, t1, t2);
 }
 
 }  // namespace il

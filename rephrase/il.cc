@@ -18,6 +18,7 @@ const char *TypeTypeString(TypeType t) {
   case TypeType::MU: return "MU";
   case TypeType::RECORD: return "RECORD";
   case TypeType::EVAR: return "EVAR";
+  case TypeType::REF: return "REF";
   case TypeType::STRING: return "STRING";
   case TypeType::INT: return "INT";
   default: return "???MISSING???";
@@ -85,6 +86,14 @@ std::string TypeString(const Type *t) {
       return ret;
     }
   }
+
+  case TypeType::REF:
+    return StringPrintf("(%s ref)", TypeString(t->a).c_str());
+  case TypeType::STRING:
+    return "string";
+  case TypeType::INT:
+    return "int";
+
   default:
     return "unknown type type??";
   }

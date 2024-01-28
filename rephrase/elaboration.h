@@ -23,6 +23,10 @@ private:
       const il::Context &ctx,
       const el::Exp *el_exp);
 
+  const il::Type *ElabType(
+      const il::Context &ctx,
+      const el::Type *el_type);
+
   int verbose = 0;
   il::AstPool *pool;
   il::Initial init;

@@ -24,9 +24,11 @@ Initial::Initial(AstPool *pool) {
 
   const il::Type *Unit = pool->RecordType({});
   const il::Type *Alpha = pool->VarType("a");
-  const il::Type *Int = pool->VarType("int");
+  const il::Type *Int = pool->IntType();
+  auto Ref = [&](const Type *a) { return pool->RefType(a); };
+  // This is probably wrong: We need to expand the type of list,
+  // or better
   auto List = [&](const Type *a) { return pool->VarType("list", {a}); };
-  auto Ref = [&](const Type *a) { return pool->VarType("ref", {a}); };
 
   const std::vector<std::pair<std::string, PolyType>> exp_vars = {
     {"+", Mono(BinOpType(Int, Int, Int))},
@@ -54,13 +56,19 @@ Initial::Initial(AstPool *pool) {
 
   };
 
-  const std::vector<std::pair<std::string, int>> type_vars = {
-    {"list", 1},
-    {"option", 1},
-    {"bool", 0},
-    {"int", 0},
-    {"string", 0},
-    {"ref", 1},
+  const il::Type *String = pool->StringType();
+  auto Kind0 = [&](const Type *t) {
+      return SingletonKind{.tyvars = {}, .type = t};
+    };
+
+  const std::vector<std::pair<std::string, SingletonKind>> type_vars = {
+    // These need datatype declarations.
+    //    {"list", 1},
+    //    {"option", 1},
+    //    {"bool", 0},
+    {"int", Kind0(Int)},
+    {"string", Kind0(String)},
+    {"ref", SingletonKind{.tyvars = {"a"}, .type = Ref(Alpha)}},
   };
 
   ctx = Context(exp_vars, type_vars);

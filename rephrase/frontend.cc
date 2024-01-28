@@ -28,11 +28,18 @@ const il::Exp *Frontend::RunFrontend(const std::string &filename) {
   Timer read_timer;
   const std::string contents = Util::ReadFile(filename);
   const double read_sec = read_timer.Seconds();
-
   if (verbose > 0) {
     printf(AWHITE("Loaded %s") " in %s.\n",
            filename.c_str(),
            ANSI::Time(read_sec).c_str());
+  }
+
+  return RunFrontendOn(filename, contents);
+}
+
+const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
+                                       const std::string &contents) {
+  if (verbose > 0) {
     printf(AWHITE("Lexing...") "\n");
     fflush(stdout);
   }

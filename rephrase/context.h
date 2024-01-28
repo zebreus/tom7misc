@@ -17,6 +17,11 @@ struct PolyType {
   const Type *type = nullptr;
 };
 
+// Conveniently (or confusingly), a transparent type variable is also
+// given a (singleton) kind that has the same exact shape. There are
+// bound type variables and a body.
+using SingletonKind = PolyType;
+
 // Elaboration context.
 //
 struct Context {
@@ -26,7 +31,7 @@ struct Context {
   ~Context() = default;
   // Initialize with a set of bindings.
   Context(const std::vector<std::pair<std::string, PolyType>> &exp,
-          const std::vector<std::pair<std::string, int>> &typ);
+          const std::vector<std::pair<std::string, SingletonKind>> &typ);
 
   // When inserting, the returned context refers to the existing one,
   // so it must have a shorter lifespan!
@@ -34,25 +39,25 @@ struct Context {
   // Expression variables.
   Context Insert(const std::string &s, PolyType pt) const {
     return Context(fm.Insert(std::make_pair(s, V::EXP),
-                             {.type = std::move(pt)}));
+                             {.data = std::move(pt)}));
   }
 
   const PolyType *Find(const std::string &s) const {
     if (const VarInfo *vi = fm.FindPtr(std::make_pair(s, V::EXP))) {
-      return &vi->type;
+      return &vi->data;
     } else {
       return nullptr;
     }
   }
 
-  Context InsertType(const std::string &s, int arity) const {
+  Context InsertType(const std::string &s, SingletonKind kind) const {
     return Context(fm.Insert(std::make_pair(s, V::TYPE),
-                             {.kind = arity}));
+                             {.data = std::move(kind)}));
   }
 
-  const int *FindType(const std::string &s) const {
+  const SingletonKind *FindType(const std::string &s) const {
     if (const VarInfo *vi = fm.FindPtr(std::make_pair(s, V::TYPE))) {
-      return &vi->kind;
+      return &vi->data;
     } else {
       return nullptr;
     }
@@ -70,10 +75,11 @@ private:
   };
 
   struct VarInfo {
-    // More here, e.g. constructor status
-    PolyType type;
-    // Arity for type constructors.
-    int kind = 0;
+    // Since they have the same structure, this does dual
+    // duty as the type (of an expression variable) or kind
+    // (of a type).
+    // TODO: More here, e.g. constructor status
+    PolyType data;
   };
 
   using KeyType = std::pair<std::string, V>;

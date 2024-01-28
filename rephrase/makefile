@@ -1,5 +1,5 @@
 
-default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe
+default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -268,6 +268,9 @@ context_test.exe : context_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 unification_test.exe : unification_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+frontend_test.exe : frontend_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 bovex.exe : bovex.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)

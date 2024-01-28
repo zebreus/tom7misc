@@ -17,6 +17,12 @@ struct Frontend {
   // Load, lex, parse, and elaborate.
   const il::Exp *RunFrontend(const std::string &filename);
 
+  // Mostly for testing: Run the frontend on source code directly.
+  // The error context is usually the filename, but it is just
+  // used in error messages so it can be anything.
+  const il::Exp *RunFrontendOn(const std::string &error_context,
+                               const std::string &source);
+
 private:
   int verbose = 0;
   std::vector<std::string> includepaths;

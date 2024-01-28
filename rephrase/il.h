@@ -57,6 +57,8 @@ enum class TypeType {
   MU,
   RECORD,
   EVAR,
+  // Primitive reference type
+  REF,
   // There is no "app"; primitive tycons
   // are to be added here.
   STRING,
@@ -127,6 +129,12 @@ struct AstPool {
 
   const Type *StringType() {
     return NewType(TypeType::STRING);
+  }
+
+  const Type *RefType(const Type *t) {
+    Type *ret = NewType(TypeType::REF);
+    ret->a = t;
+    return ret;
   }
 
   const Type *IntType() {
@@ -218,6 +226,9 @@ struct AstPool {
     return ret;
   }
 
+  // Sort labels in the canonical order. Beware that since this
+  // is lexicographic, a tuple with 10 or more elements actually
+  // has an unintuitive order {"1", "10", "2", "3", ...}.
   template<class T>
   void SortLabeled(std::vector<std::pair<std::string, T>> *v) {
     std::sort(v->begin(), v->end(),
