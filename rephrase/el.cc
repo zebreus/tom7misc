@@ -14,10 +14,21 @@ namespace el {
 std::string TypeString(const Type *t) {
   switch (t->type) {
   case TypeType::VAR:
-    if (t->children.empty()) {
+    switch (t->children.size()) {
+    case 0:
       return t->var;
-    } else {
-      return StringPrintf("(?TODO?) %s", t->var.c_str());
+    case 1:
+      return StringPrintf("%s %s",
+                          TypeString(t->children[0]).c_str(),
+                          t->var.c_str());
+    default: {
+      std::string args;
+      for (int i = 0; i < (int)t->children.size(); i++) {
+        if (i != 0) StringAppendF(&args, ", ");
+        StringAppendF(&args, "%s", TypeString(t->children[i]).c_str());
+      }
+      return StringPrintf("(%s) %s", args.c_str(), t->var.c_str());
+    }
     }
   case TypeType::ARROW:
     return StringPrintf("(%s -> %s)",

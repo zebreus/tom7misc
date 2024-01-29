@@ -9,6 +9,7 @@
 #include "ast-arena.h"
 #include "bignum/big.h"
 #include "unification.h"
+#include "primop.h"
 
 namespace il {
 
@@ -22,6 +23,9 @@ enum class ExpType {
   LET,
   IF,
   APP,
+  FN,
+  // Apply a primop to the types and children.
+  PRIMOP,
 };
 
 enum class DecType {
@@ -82,16 +86,89 @@ struct Type {
 
 struct Exp {
   ExpType type;
+  Exp(ExpType t) : type(t) {}
+
+  // Accessors.
+  /*
+    TODO:
+
+  VAR,
+  LAYOUT,
+  IF,
+  // Apply a primop to the types and children.
+  PRIMOP,
+  */
+
+  std::tuple<const std::vector<const Type *> &, const std::string &>
+  Var() const {
+    CHECK(type == ExpType::VAR);
+    return std::tie(types, str);
+  }
+
+  const BigInt &Integer() const {
+    CHECK(type == ExpType::INTEGER);
+    return integer;
+  }
+  const std::string &String() const {
+    CHECK(type == ExpType::STRING);
+    return str;
+  }
+
+  std::tuple<const Exp *, const Exp *> App() const {
+    CHECK(type == ExpType::APP);
+    return std::tie(a, b);
+  }
+
+  const std::vector<const Exp *> &Join() const {
+    CHECK(type == ExpType::JOIN);
+    return children;
+  }
+
+  const std::vector<std::pair<std::string, const Exp *>> &Record() const {
+    CHECK(type == ExpType::RECORD);
+    return str_children;
+  }
+
+  std::tuple<const std::vector<const Dec *> &, const Exp *> Let() const {
+    CHECK(type == ExpType::LET);
+    return std::tie(decs, a);
+  }
+
+  // cond, true, false
+  std::tuple<const Exp *, const Exp *, const Exp *> If() const {
+    CHECK(type == ExpType::IF);
+    return std::tie(a, b, c);
+  }
+
+  // self, x, body
+  std::tuple<const std::string &, const std::string &, const Exp *>
+  Fn() const {
+    CHECK(type == ExpType::FN);
+    return std::tie(self, str, a);
+  }
+
+  std::tuple<const Primop &, const std::vector<const Exp *> &>
+  Primop() const {
+    CHECK(type == ExpType::PRIMOP);
+    return std::tie(primop, children);
+  }
+
+private:
+  // PERF: Experiment with std::variant, at least.
+  friend struct AstPool;
   std::string str;
+  // For recursive functions, the name of the function.
+  std::string self;
   BigInt integer;
+  enum Primop primop;
   const Exp *a = nullptr;
   const Exp *b = nullptr;
   const Exp *c = nullptr;
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
+  std::vector<const Type *> types;
   // Not necessarily sorted: The order here gives the evaluation order.
-  std::vector<std::pair<std::string, const Exp *>> labeled_children;
-  Exp(ExpType t) : type(t) {}
+  std::vector<std::pair<std::string, const Exp *>> str_children;
 };
 
 struct Dec {
@@ -165,9 +242,11 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Var(const std::string &v) {
+  const Exp *Var(const std::string &v,
+                 std::vector<const Type *> ts = {}) {
     Exp *ret = NewExp(ExpType::VAR);
     ret->str = v;
+    ret->types = std::move(ts);
     return ret;
   }
 
@@ -185,7 +264,7 @@ struct AstPool {
 
   const Exp *Record(std::vector<std::pair<std::string, const Exp *>> lv) {
     Exp *ret = NewExp(ExpType::RECORD);
-    ret->labeled_children = std::move(lv);
+    ret->str_children = std::move(lv);
     return ret;
   }
 
@@ -217,6 +296,27 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *Primop(Primop po,
+                    std::vector<const Type *> ts,
+                    std::vector<const Exp *> es) {
+    Exp *ret = NewExp(ExpType::PRIMOP);
+    ret->primop = po;
+    ret->types = std::move(ts);
+    ret->children = std::move(es);
+    return ret;
+  }
+
+  // self may be empty to indicate a non-recursive function.
+  const Exp *Fn(const std::string &self,
+                const std::string &x,
+                const Exp *body) {
+    Exp *ret = NewExp(ExpType::FN);
+    ret->self = self;
+    ret->str = x;
+    ret->a = body;
+    return ret;
+  }
+
   // Declarations
 
   const Dec *ValDec(const std::string &v, const Exp *rhs) {
@@ -225,6 +325,10 @@ struct AstPool {
     ret->exp = rhs;
     return ret;
   }
+
+  // SubstType(T, v, T') is [T/v]T'
+  const Type *SubstType(const Type *t, const std::string &v,
+                        const Type *u);
 
   // Sort labels in the canonical order. Beware that since this
   // is lexicographic, a tuple with 10 or more elements actually

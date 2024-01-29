@@ -13,9 +13,14 @@
 // This code has to mention both el and il stuff with the same
 // name. But there are many things that are unambiguous.
 using Context = il::Context;
-using PolyType = il::PolyType;
+using VarInfo = il::VarInfo;
 using Unification = il::Unification;
-using SingletonKind = il::SingletonKind;
+using TypeVarInfo = il::TypeVarInfo;
+using EVar = il::EVar;
+
+const il::Type *Elaboration::NewEVar() {
+  return pool->EVar(EVar());
+}
 
 const il::Exp *Elaboration::Elaborate(const el::Exp *el_exp) {
   Context G = init.InitialContext();
@@ -34,7 +39,7 @@ const il::Type *Elaboration::ElabType(const Context &G,
                                       const el::Type *el_type) {
   switch (el_type->type) {
   case el::TypeType::VAR: {
-    const SingletonKind *k = G.FindType(el_type->var);
+    const TypeVarInfo *k = G.FindType(el_type->var);
     CHECK(k != nullptr) << "Unbound (type) variable: " << el_type->var;
     CHECK(k->tyvars.empty()) << "Unimplemented kind>0";
     return k->type;
@@ -108,22 +113,51 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     return std::make_pair(pool->Int(el_exp->integer),
                           pool->IntType());
   case el::ExpType::VAR: {
-    const il::PolyType *pt = G.Find(el_exp->str);
-    CHECK(pt != nullptr) << "Unbound variable: " << el_exp->str;
+    const il::VarInfo *vi = G.Find(el_exp->str);
+    CHECK(vi != nullptr) << "Unbound variable: " << el_exp->str;
+
     // If the variable is polymorphic, then instantiate it with
     // evars.
-    LOG(FATAL) << "Unimplemented";
-    break;
+    const il::Type *t = vi->type;
+    std::vector<const il::Type *> tvs;
+    tvs.reserve(vi->tyvars.size());
+    for (int i = 0; i < (int)vi->tyvars.size(); i++) {
+      const il::Type *w = NewEVar();
+      tvs.push_back(w);
+      t = pool->SubstType(w, vi->tyvars[i], t);
+    }
+
+    if (vi->primop.has_value()) {
+      Primop po = vi->primop.value();
+      // In the case of a primop, we need to eta expand it with
+      // a lambda.
+      // HERE
+      LOG(FATAL) << "Primops unimplemented: " << PrimopString(po);
+    } else {
+
+      return std::make_pair(pool->Var(vi->var, std::move(tvs)),
+                            vi->type);
+    }
   }
   case el::ExpType::LET:
     break;
   case el::ExpType::IF:
     break;
-  case el::ExpType::APP:
-    break;
+  case el::ExpType::APP: {
+    const auto &[fe, ft] = Elab(G, el_exp->a);
+    const auto &[xe, xt] = Elab(G, el_exp->b);
+
+    const il::Type *dom = NewEVar();
+    const il::Type *cod = NewEVar();
+    Unification::Unify("application-fn", ft, pool->Arrow(dom, cod));
+    Unification::Unify("application-arg", xt, dom);
+
+    return std::make_pair(pool->App(fe, xe), cod);
+  }
   default:
     break;
   }
+
   LOG(FATAL) << "Unimplemented exp type: " << el::ExpString(el_exp);
   return std::make_pair(nullptr, nullptr);
 }

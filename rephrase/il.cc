@@ -52,10 +52,21 @@ std::string TypeString(const Type *t) {
 
   switch (t->type) {
   case TypeType::VAR:
-    if (t->children.empty()) {
+    switch (t->children.size()) {
+    case 0:
       return t->var;
-    } else {
-      return StringPrintf("(?TODO?) %s", t->var.c_str());
+    case 1:
+      return StringPrintf("%s %s",
+                          TypeString(t->children[0]).c_str(),
+                          t->var.c_str());
+    default: {
+      std::string args;
+      for (int i = 0; i < (int)t->children.size(); i++) {
+        if (i != 0) StringAppendF(&args, ", ");
+        StringAppendF(&args, "%s", TypeString(t->children[i]).c_str());
+      }
+      return StringPrintf("(%s) %s", args.c_str(), t->var.c_str());
+    }
     }
   case TypeType::ARROW:
     return StringPrintf("(%s -> %s)",
@@ -102,10 +113,12 @@ std::string TypeString(const Type *t) {
 std::string DecString(const Dec *d) {
   switch (d->type) {
   case DecType::VAL:
+    // TODO: Type vars
     return StringPrintf("val %s = %s",
                         d->str.c_str(),
                         ExpString(d->exp).c_str());
   case DecType::FUN:
+    // TODO: Type vars
     return StringPrintf("fun %s (XXX) = %s",
                         d->str.c_str(),
                         ExpString(d->exp).c_str());
@@ -114,63 +127,155 @@ std::string DecString(const Dec *d) {
   }
 }
 
-// TODO: Make destructuring bind for each expression type,
-// so you can do like
-//    const auto &[code, t, f] = exp->If();
-// ... which also lets us use better representations internally.
 // TODO: Some kind of pretty-printing
 std::string ExpString(const Exp *e) {
   switch (e->type) {
   case ExpType::STRING:
     // XXX escaping
-    return StringPrintf("\"%s\"", e->str.c_str());
-  case ExpType::VAR:
-    return e->str;
+    return StringPrintf("\"%s\"", e->String().c_str());
+
+  case ExpType::VAR: {
+    const auto &[types, x] = e->Var();
+    if (types.empty()) {
+      return x;
+    } else {
+      std::string args;
+      for (int i = 0; i < (int)types.size(); i++) {
+        if (i != 0) StringAppendF(&args, ", ");
+        StringAppendF(&args, "%s", TypeString(types[i]).c_str());
+      }
+      return StringPrintf("%s<%s>", x.c_str(), args.c_str());
+    }
+  }
+
+  case ExpType::FN: {
+    const auto &[self, x, body] = e->Fn();
+    const std::string as =
+      self.empty() ? "" : StringPrintf(" as %s", self.c_str());
+    return StringPrintf("(fn%s %s => %s)",
+                        as.c_str(), x.c_str(), ExpString(body).c_str());
+  }
+
   case ExpType::INTEGER:
-    return e->integer.ToString();
+    return e->Integer().ToString();
+
   case ExpType::RECORD: {
+    const auto &fields = e->Record();
     std::string ret = "{";
-    for (int i = 0; i < (int)e->labeled_children.size(); i++) {
+    for (int i = 0; i < (int)fields.size(); i++) {
       if (i != 0) StringAppendF(&ret, ", ");
-      const auto &[l, v] = e->labeled_children[i];
+      const auto &[l, v] = fields[i];
       StringAppendF(&ret, "%s: %s", l.c_str(), ExpString(v).c_str());
     }
     ret += "}";
     return ret;
   }
+
   case ExpType::JOIN: {
+    const auto &children = e->Join();
     std::string ret = "[";
-    for (int i = 0; i < (int)e->children.size(); i++) {
+    for (int i = 0; i < (int)children.size(); i++) {
       if (i != 0) StringAppendF(&ret, ", ");
-      ret += ExpString(e->children[i]);
+      ret += ExpString(children[i]);
     }
     ret += "]";
     return ret;
   }
-  case ExpType::LET: {
-    std::vector<std::string> decs;
-    for (const Dec *d : e->decs) {
-      decs.push_back(DecString(d));
-    }
 
+  case ExpType::LET: {
+    const auto &[decs, body] = e->Let();
+    std::vector<std::string> dstrs;
+    dstrs.reserve(decs.size());
+    for (const Dec *d : decs) {
+      dstrs.push_back(DecString(d));
+    }
     return StringPrintf("let %s in %s end",
-                        Util::Join(decs, " ").c_str(),
-                        ExpString(e->a).c_str());
+                        Util::Join(dstrs, " ").c_str(),
+                        ExpString(body).c_str());
   }
+
   case ExpType::IF: {
+    const auto &[cond, t, f] = e->If();
     return StringPrintf("(if %s then %s else %s)",
-                        ExpString(e->a).c_str(),
-                        ExpString(e->b).c_str(),
-                        ExpString(e->c).c_str());
+                        ExpString(cond).c_str(),
+                        ExpString(t).c_str(),
+                        ExpString(f).c_str());
   }
+
   case ExpType::APP: {
+    const auto &[f, x] = e->App();
     return StringPrintf("(%s %s)",
-                        ExpString(e->a).c_str(),
-                        ExpString(e->b).c_str());
+                        ExpString(f).c_str(),
+                        ExpString(x).c_str());
   }
+
+  case ExpType::PRIMOP: {
+    const auto &[po, children] = e->Primop();
+    std::string args;
+    for (int i = 0; i < (int)children.size(); i++) {
+      if (i != 0)
+        StringAppendF(&args, ", ");
+      StringAppendF(&args, "%s", ExpString(children[i]).c_str());
+    }
+    return StringPrintf("%s(%s)", PrimopString(po), args.c_str());
+  }
+
   default:
     return "ILLEGAL EXPRESSION";
   }
 }
+
+const Type *AstPool::SubstType(const Type *t, const std::string &v,
+                               const Type *u) {
+  auto RecordOrSum = [this](
+      const Type *t, const std::string &v,
+      const std::vector<std::pair<std::string, const Type *>> &sch) {
+      std::vector<std::pair<std::string, const Type *>> ret;
+      ret.reserve(sch.size());
+      for (const auto &[l, u] : sch)
+        ret.emplace_back(l, SubstType(t, v, u));
+      return ret;
+    };
+
+  switch (u->type) {
+  case TypeType::VAR:
+    LOG(FATAL) << "Unimplemented: Substitution into type variable";
+    return nullptr;
+  case TypeType::SUM: {
+    std::vector<std::pair<std::string, const Type *>> sch =
+      RecordOrSum(t, v, u->str_children);
+    return SumType(std::move(sch));
+  }
+  case TypeType::ARROW:
+    return Arrow(SubstType(t, v, u->a), SubstType(t, v, u->b));
+  case TypeType::MU:
+    LOG(FATAL) << "Unimplemented: Substitution into mu type";
+    return nullptr;
+  case TypeType::RECORD: {
+    std::vector<std::pair<std::string, const Type *>> sch =
+      RecordOrSum(t, v, u->str_children);
+    return RecordType(std::move(sch));
+  }
+  case TypeType::EVAR: {
+    if (const Type *uu = u->evar.GetBound()) {
+      return SubstType(t, v, uu);
+    } else {
+      // I think? Another point of view is that we should keep
+      // a delayed substitution here.
+      return u;
+    }
+  }
+  case TypeType::REF:
+    return RefType(SubstType(t, v, u->a));
+  case TypeType::STRING:
+    return u;
+  case TypeType::INT:
+    return u;
+  default:
+    LOG(FATAL) << "Unimplemented typetype in subst";
+    return nullptr;
+  }
+}
+
 
 }  // namespace il

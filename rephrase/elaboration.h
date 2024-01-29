@@ -27,6 +27,8 @@ private:
       const il::Context &ctx,
       const el::Type *el_type);
 
+  const il::Type *NewEVar();
+
   int verbose = 0;
   il::AstPool *pool;
   il::Initial init;

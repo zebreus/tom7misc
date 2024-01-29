@@ -32,20 +32,23 @@ static void Simple() {
 
   {
     const Exp *e = Run("42");
-    CHECK(e->type == ExpType::INTEGER);
-    CHECK(e->integer == 42);
+    CHECK(e->Integer() == 42);
   }
 
   {
     const Exp *e = Run("42 : int");
-    CHECK(e->type == ExpType::INTEGER);
-    CHECK(e->integer == 42);
+    CHECK(e->Integer() == 42);
   }
 
   {
     const Exp *e = Run("\"hi\" : string");
-    CHECK(e->type == ExpType::STRING);
-    CHECK(e->str == "hi");
+    CHECK(e->String() == "hi");
+  }
+
+  {
+    const Exp *e = Run("ref 7 : int ref");
+    CHECK(e != nullptr);
+    // ...
   }
 
 }
