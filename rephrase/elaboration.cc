@@ -41,8 +41,23 @@ const il::Type *Elaboration::ElabType(const Context &G,
   case el::TypeType::VAR: {
     const TypeVarInfo *k = G.FindType(el_type->var);
     CHECK(k != nullptr) << "Unbound (type) variable: " << el_type->var;
-    CHECK(k->tyvars.empty()) << "Unimplemented kind>0";
-    return k->type;
+
+    const il::Type *t = k->type;
+    CHECK(k->tyvars.size() == el_type->children.size()) <<
+      "Type constructor '" << el_type->var << "' applied to the "
+      "wrong number of arguments (want " << k->tyvars.size() <<
+      "; got " << el_type->children.size() << ").\nIn:\n" <<
+      el::TypeString(el_type);
+
+    // XXX should project out tuple elements; we want the primop to
+    // just take the flat arguments.
+    for (int i = 0; i < (int)k->tyvars.size(); i++) {
+      const std::string &v = k->tyvars[i];
+      const il::Type *u = ElabType(G, el_type->children[i]);
+      t = pool->SubstType(u, v, t);
+    }
+
+    return t;
   }
   case el::TypeType::ARROW: {
     const il::Type *dom = ElabType(G, el_type->a);
@@ -131,15 +146,16 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       Primop po = vi->primop.value();
       // In the case of a primop, we need to eta expand it with
       // a lambda.
-      // HERE
-      LOG(FATAL) << "Primops unimplemented: " << PrimopString(po);
-
-
+      std::string x = pool->NewVar();
+      const il::Exp *lambda =
+        pool->Fn("", x,
+                 pool->Primop(po, std::move(tvs), {pool->Var(x)}));
+      return std::make_pair(lambda, t);
 
     } else {
 
       return std::make_pair(pool->Var(vi->var, std::move(tvs)),
-                            vi->type);
+                            t);
     }
   }
   case el::ExpType::LET:

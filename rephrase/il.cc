@@ -25,6 +25,11 @@ const char *TypeTypeString(TypeType t) {
   }
 }
 
+std::string AstPool::NewVar() {
+  next_var++;
+  return StringPrintf("x$%d", next_var);
+}
+
 const Type *AstPool::Product(const std::vector<const Type *> &v) {
   std::vector<std::pair<std::string, const Type *>> record_type;
   record_type.reserve(v.size());
@@ -98,6 +103,17 @@ std::string TypeString(const Type *t) {
     }
   }
 
+  case TypeType::EVAR: {
+    if (const Type *u = t->evar.GetBound()) {
+      // We treat bound evars transparently, although for some
+      // uses it might be good to be able to see it?
+      return TypeString(u).c_str();
+    } else {
+      // TODO: Would be good to distinguish these with something
+      // more pleasant than a pointer
+      return t->evar.ToString();
+    }
+  }
   case TypeType::REF:
     return StringPrintf("(%s ref)", TypeString(t->a).c_str());
   case TypeType::STRING:

@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "il.h"
 
 namespace il {
@@ -16,6 +17,12 @@ EVar::EVar() : cell(std::make_shared<EVarCell>()) {
   // could be useful for identity tests or debugging output. But
   // we actually just need the pointer.
 }
+
+// TODO: Improve, probably by keeping some counter?
+std::string EVar::ToString() const {
+  return StringPrintf("_EVAR_%p_", GetCell().get());
+}
+
 
 // When we descend under a quantifier, we need to keep track of
 // the correspondence of the bound variable on each side.

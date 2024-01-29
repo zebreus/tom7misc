@@ -14,6 +14,24 @@ static constexpr bool VERBOSE = true;
 
 namespace il {
 
+
+#define CHECK_TYPETYPE(t_, tt_) do {              \
+    const TypeType tt = (tt_);                    \
+    const Type *orig_t = (t_);                    \
+    const Type *t = orig_t;                       \
+    while (t->type == TypeType::EVAR) {           \
+      const Type *u = t->evar.GetBound();         \
+      CHECK(u != nullptr) << "Unbound evar: "     \
+                          << TypeString(orig_t)   \
+                          << "\nWanted: "         \
+                          << TypeTypeString(tt);  \
+      t = u;                                      \
+    }                                             \
+    CHECK(t->type == tt) <<                       \
+      TypeString(orig_t) << "\nBut wanted: " <<   \
+      TypeTypeString(t->type);                    \
+  } while (0)
+
 static void Simple() {
   Frontend front;
   if (VERBOSE) {
@@ -47,8 +65,15 @@ static void Simple() {
 
   {
     const Exp *e = Run("ref 7 : int ref");
-    CHECK(e != nullptr);
-    // ...
+    const auto &[f, arg] = e->App();
+    CHECK(arg->Integer() == 7);
+    const auto &[self, x, body] = f->Fn();
+    CHECK(self.empty());
+    const auto &[po, ts, es] = body->Primop();
+    CHECK(po == Primop::REF);
+    CHECK(ts.size() == 1);
+    CHECK_TYPETYPE(ts[0], TypeType::INT);
+    // CHECK(es.size() == 1);
   }
 
 }

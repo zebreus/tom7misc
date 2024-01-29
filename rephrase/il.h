@@ -343,6 +343,8 @@ struct AstPool {
               });
   }
 
+  std::string NewVar();
+
 private:
   Type *NewType(TypeType t) { return type_arena.New(t); }
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }
@@ -350,6 +352,7 @@ private:
   AstArena<Exp> exp_arena;
   AstArena<Dec> dec_arena;
   AstArena<Type> type_arena;
+  int next_var = 0;
 };
 
 const char *TypeTypeString(const TypeType t);

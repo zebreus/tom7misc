@@ -26,6 +26,9 @@ struct EVar {
   static bool SameEVar(const EVar &a, const EVar &b);
   static bool Occurs(const EVar &a, const Type *t);
 
+  // For debugging output.
+  std::string ToString() const;
+
  private:
   struct EVarCell {
     const Type *GetBound() const {
