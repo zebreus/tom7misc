@@ -22,7 +22,7 @@ static void Simple() {
   CHECK(t1->b->type == TypeType::EVAR);
   CHECK(t2->a->type == TypeType::EVAR);
 
-  Unification::Unify(t1, t2);
+  Unification::Unify("test", t1, t2);
 
   CHECK(t1->type == TypeType::ARROW);
   CHECK(t2->type == TypeType::ARROW);

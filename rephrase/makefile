@@ -1,6 +1,13 @@
 
 default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe
 
+test : lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe
+	./lex_test.exe
+	./context_test.exe
+	./unification_test.exe
+	./parse_test.exe
+	./frontend_test.exe
+
 # Changes by tom7.
 # Also add -static to LFLAGS below
 # Also add /c/code/openblas/include to

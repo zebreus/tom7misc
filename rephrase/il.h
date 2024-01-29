@@ -147,10 +147,12 @@ struct Exp {
     return std::tie(self, str, a);
   }
 
-  std::tuple<const Primop &, const std::vector<const Exp *> &>
+  std::tuple<const Primop &,
+             const std::vector<const Type *> &,
+             const std::vector<const Exp *> &>
   Primop() const {
     CHECK(type == ExpType::PRIMOP);
-    return std::tie(primop, children);
+    return std::tie(primop, types, children);
   }
 
 private:

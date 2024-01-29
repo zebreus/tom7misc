@@ -133,6 +133,9 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       // a lambda.
       // HERE
       LOG(FATAL) << "Primops unimplemented: " << PrimopString(po);
+
+
+
     } else {
 
       return std::make_pair(pool->Var(vi->var, std::move(tvs)),

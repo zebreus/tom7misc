@@ -210,14 +210,26 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::PRIMOP: {
-    const auto &[po, children] = e->Primop();
+    const auto &[po, types, children] = e->Primop();
+
+    std::string targs;
+    for (int i = 0; i < (int)types.size(); i++) {
+      if (i != 0)
+        StringAppendF(&targs, ", ");
+      StringAppendF(&targs, "%s", TypeString(types[i]).c_str());
+    }
+    if (!types.empty()) targs = StringPrintf("<%s>", targs.c_str());
+
     std::string args;
     for (int i = 0; i < (int)children.size(); i++) {
       if (i != 0)
         StringAppendF(&args, ", ");
       StringAppendF(&args, "%s", ExpString(children[i]).c_str());
     }
-    return StringPrintf("%s(%s)", PrimopString(po), args.c_str());
+    return StringPrintf("%s%s(%s)",
+                        PrimopString(po),
+                        targs.c_str(),
+                        args.c_str());
   }
 
   default:
@@ -239,23 +251,39 @@ const Type *AstPool::SubstType(const Type *t, const std::string &v,
 
   switch (u->type) {
   case TypeType::VAR:
-    LOG(FATAL) << "Unimplemented: Substitution into type variable";
-    return nullptr;
+    if (u->var == v) {
+      // A variable can be v<t1, t2, ...>.
+      // The substituted type t has kind 0, so if this variable is
+      // applied to type args, something is wrong.
+      // XXX We probably do need to support substitution of something
+      // like Λα.(1 + α) for "option", though.
+      CHECK(u->children.empty()) << "Unimplemented: Substitution at "
+        "kind > 0. (Or there's a bug!)";
+
+      return t;
+    } else {
+      return u;
+    }
+
   case TypeType::SUM: {
     std::vector<std::pair<std::string, const Type *>> sch =
       RecordOrSum(t, v, u->str_children);
     return SumType(std::move(sch));
   }
+
   case TypeType::ARROW:
     return Arrow(SubstType(t, v, u->a), SubstType(t, v, u->b));
+
   case TypeType::MU:
     LOG(FATAL) << "Unimplemented: Substitution into mu type";
     return nullptr;
+
   case TypeType::RECORD: {
     std::vector<std::pair<std::string, const Type *>> sch =
       RecordOrSum(t, v, u->str_children);
     return RecordType(std::move(sch));
   }
+
   case TypeType::EVAR: {
     if (const Type *uu = u->evar.GetBound()) {
       return SubstType(t, v, uu);
@@ -265,12 +293,16 @@ const Type *AstPool::SubstType(const Type *t, const std::string &v,
       return u;
     }
   }
+
   case TypeType::REF:
     return RefType(SubstType(t, v, u->a));
+
   case TypeType::STRING:
     return u;
+
   case TypeType::INT:
     return u;
+
   default:
     LOG(FATAL) << "Unimplemented typetype in subst";
     return nullptr;
