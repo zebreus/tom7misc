@@ -29,6 +29,7 @@ Initial::Initial(AstPool *pool) {
   const il::Type *Unit = pool->RecordType({});
   const il::Type *Alpha = pool->VarType("a");
   const il::Type *Int = pool->IntType();
+  const il::Type *Float = pool->FloatType();
   auto Ref = [&](const Type *a) { return pool->RefType(a); };
   // This is probably wrong: We need to expand the type of list,
   // or better
@@ -37,6 +38,11 @@ Initial::Initial(AstPool *pool) {
   const std::vector<std::pair<std::string, VarInfo>> exp_vars = {
     {"+", BinOp(Int, Int, Int, Primop::INT_PLUS)},
     {"-", BinOp(Int, Int, Int, Primop::INT_MINUS)},
+    {"*", BinOp(Int, Int, Int, Primop::INT_TIMES)},
+    {"/", BinOp(Int, Int, Float, Primop::INT_DIV_TO_FLOAT)},
+    {"div", BinOp(Int, Int, Int, Primop::INT_DIV)},
+    {"mod", BinOp(Int, Int, Int, Primop::INT_MOD)},
+
     {":=", VarInfo{
         .tyvars = {"a"},
         .type = BinOpType(Ref(Alpha), Alpha, Unit),
@@ -79,6 +85,7 @@ Initial::Initial(AstPool *pool) {
     //    {"option", 1},
     //    {"bool", 0},
     {"int", Kind0(Int)},
+    {"float", Kind0(Float)},
     {"string", Kind0(String)},
     {"ref", TypeVarInfo{.tyvars = {"a"}, .type = Ref(Alpha)}},
   };

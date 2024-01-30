@@ -29,7 +29,7 @@ std::string TypeString(const Type *t) {
       }
       return StringPrintf("(%s) %s", args.c_str(), t->var.c_str());
     }
-    }
+  }
 
   case TypeType::ARROW:
     return StringPrintf("(%s -> %s)",
@@ -180,15 +180,6 @@ std::string ExpString(const Exp *e) {
                         PatString(e->pat).c_str(),
                         ExpString(e->a).c_str());
   }
-
-    /*
-  case ExpType::PROJECT: {
-    return StringPrintf("#%s/{%s}(%s)",
-                        e->str.c_str(),
-                        Util::Join(e->labels, ",").c_str(),
-                        ExpString(e->a).c_str());
-  }
-    */
 
   case ExpType::LAYOUT:
     return StringPrintf("[%s]", LayoutString(e->layout).c_str());

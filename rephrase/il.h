@@ -15,6 +15,7 @@ namespace il {
 
 enum class ExpType {
   STRING,
+  FLOAT,
   JOIN,
   RECORD,
   INTEGER,
@@ -68,6 +69,7 @@ enum class TypeType {
   // There is no "app"; primitive tycons
   // are to be added here.
   STRING,
+  FLOAT,
   INT,
 };
 
@@ -98,10 +100,16 @@ struct Exp {
     return std::tie(types, str);
   }
 
+  double Float() const {
+    CHECK(type == ExpType::FLOAT);
+    return d;
+  }
+
   const BigInt &Integer() const {
     CHECK(type == ExpType::INTEGER);
     return integer;
   }
+
   const std::string &String() const {
     CHECK(type == ExpType::STRING);
     return str;
@@ -161,10 +169,11 @@ private:
   // For recursive functions, the name of the function.
   std::string self;
   BigInt integer;
-  enum Primop primop;
+  enum Primop primop = Primop::REF;
   const Exp *a = nullptr;
   const Exp *b = nullptr;
   const Exp *c = nullptr;
+  double d = 0.0;
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
   std::vector<const Type *> types;
@@ -209,6 +218,10 @@ struct AstPool {
     return NewType(TypeType::STRING);
   }
 
+  const Type *FloatType() {
+    return NewType(TypeType::FLOAT);
+  }
+
   const Type *RefType(const Type *t) {
     Type *ret = NewType(TypeType::REF);
     ret->a = t;
@@ -240,6 +253,12 @@ struct AstPool {
   const Exp *String(const std::string &s) {
     Exp *ret = NewExp(ExpType::STRING);
     ret->str = s;
+    return ret;
+  }
+
+  const Exp *Float(double d) {
+    Exp *ret = NewExp(ExpType::FLOAT);
+    ret->d = d;
     return ret;
   }
 

@@ -29,7 +29,7 @@ enum class ExpType {
   APP,
   ANN,
   FN,
-  // PROJECT,
+  // TODO: Float literals
 };
 
 enum class DecType {
@@ -89,7 +89,6 @@ struct Exp {
   const Pat *pat = nullptr;
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
-  // std::vector<std::string> labels;
   Exp(ExpType t) : type(t) {}
 };
 
@@ -181,18 +180,6 @@ struct AstPool {
     ret->a = body;
     return ret;
   }
-
-  /*
-  const Exp *Project(std::string lab,
-                     std::vector<std::string> labels,
-                     const Exp *e) {
-    Exp *ret = NewExp(ExpType::PROJECT);
-    ret->str = std::move(lab);
-    ret->labels = std::move(labels);
-    ret->a = e;
-    return ret;
-  }
-  */
 
   const Exp *Join(std::vector<const Exp *> v) {
     Exp *ret = NewExp(ExpType::JOIN);

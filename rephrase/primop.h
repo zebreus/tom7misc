@@ -24,6 +24,12 @@ enum class Primop {
 
   INT_NEG,
 
+  INT_DIV_TO_FLOAT,
+  FLOAT_TIMES,
+  FLOAT_PLUS,
+  FLOAT_MINUS,
+  FLOAT_DIV,
+
   STRING_EQ,
 };
 

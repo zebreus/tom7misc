@@ -21,6 +21,7 @@ const char *TypeTypeString(TypeType t) {
   case TypeType::REF: return "REF";
   case TypeType::STRING: return "STRING";
   case TypeType::INT: return "INT";
+  case TypeType::FLOAT: return "FLOAT";
   default: return "???MISSING???";
   }
 }
@@ -124,6 +125,9 @@ std::string TypeString(const Type *t) {
   case TypeType::INT:
     return "int";
 
+  case TypeType::FLOAT:
+    return "float";
+
   default:
     return "unknown type type??";
   }
@@ -177,6 +181,9 @@ std::string ExpString(const Exp *e) {
 
   case ExpType::INTEGER:
     return e->Integer().ToString();
+
+  case ExpType::FLOAT:
+    return StringPrintf("%.17g", e->Float());
 
   case ExpType::RECORD: {
     const auto &fields = e->Record();
@@ -325,6 +332,9 @@ const Type *AstPool::SubstType(const Type *t, const std::string &v,
     return u;
 
   case TypeType::INT:
+    return u;
+
+  case TypeType::FLOAT:
     return u;
 
   default:

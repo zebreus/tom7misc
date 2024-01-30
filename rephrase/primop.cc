@@ -23,6 +23,11 @@ const char *PrimopString(Primop p) {
   case Primop::INT_MOD: return "INT_MOD";
   case Primop::INT_NEG: return "INT_NEG";
   case Primop::STRING_EQ: return "STRING_EQ";
+  case Primop::INT_DIV_TO_FLOAT: return "INT_DIV_TO_FLOAT";
+  case Primop::FLOAT_TIMES: return "FLOAT_TIMES";
+  case Primop::FLOAT_PLUS: return "FLOAT_PLUS";
+  case Primop::FLOAT_MINUS: return "FLOAT_MINUS";
+  case Primop::FLOAT_DIV: return "FLOAT_DIV";
   default: return "?? UNKNOWN PRIMOP ??";
   }
 }
@@ -45,6 +50,11 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::INT_MOD: return std::make_tuple(0, 2);
   case Primop::INT_NEG: return std::make_tuple(0, 1);
   case Primop::STRING_EQ: return std::make_tuple(0, 2);
+  case Primop::INT_DIV_TO_FLOAT: return std::make_tuple(0, 2);
+  case Primop::FLOAT_TIMES: return std::make_tuple(0, 2);
+  case Primop::FLOAT_PLUS: return std::make_tuple(0, 2);
+  case Primop::FLOAT_MINUS: return std::make_tuple(0, 2);
+  case Primop::FLOAT_DIV: return std::make_tuple(0, 2);
   default:
     LOG(FATAL) << "Unknown primop: " << PrimopString(po);
     return std::make_tuple(0, 0);

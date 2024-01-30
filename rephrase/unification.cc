@@ -73,6 +73,8 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
     return false;
   case TypeType::INT:
     return false;
+  case TypeType::FLOAT:
+    return false;
   }
 }
 
@@ -196,6 +198,9 @@ static void UnifyEx(std::string_view what,
     return;
 
   case TypeType::INT:
+    return;
+
+  case TypeType::FLOAT:
     return;
 
   }
