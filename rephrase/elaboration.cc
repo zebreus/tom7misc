@@ -49,8 +49,6 @@ const il::Type *Elaboration::ElabType(const Context &G,
       "; got " << el_type->children.size() << ").\nIn:\n" <<
       el::TypeString(el_type);
 
-    // XXX should project out tuple elements; we want the primop to
-    // just take the flat arguments.
     for (int i = 0; i < (int)k->tyvars.size(); i++) {
       const std::string &v = k->tyvars[i];
       const il::Type *u = ElabType(G, el_type->children[i]);
@@ -59,11 +57,13 @@ const il::Type *Elaboration::ElabType(const Context &G,
 
     return t;
   }
+
   case el::TypeType::ARROW: {
     const il::Type *dom = ElabType(G, el_type->a);
     const il::Type *cod = ElabType(G, el_type->b);
     return pool->Arrow(dom, cod);
   }
+
   case el::TypeType::PRODUCT: {
     // Translate into the equivalent record.
     std::vector<std::pair<std::string, const il::Type *>> rec;
@@ -75,6 +75,7 @@ const il::Type *Elaboration::ElabType(const Context &G,
     }
     return pool->RecordType(std::move(rec));
   }
+
   case el::TypeType::RECORD: {
     std::vector<std::pair<std::string, const il::Type *>> rec;
     rec.reserve(el_type->str_children.size());
@@ -95,6 +96,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
   case el::ExpType::STRING:
     return std::make_pair(pool->String(el_exp->str),
                           pool->StringType());
+
   case el::ExpType::ANN: {
     // Type annotations are erased during elaboration, after
     // ensuring they hold through unification.
@@ -103,6 +105,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     Unification::Unify("type annotation", t, tann);
     return std::make_pair(e, t);
   }
+
   case el::ExpType::JOIN:
     LOG(FATAL) << "Unimplemented in elaboration: JOIN";
     break;
@@ -124,9 +127,11 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     return std::make_pair(pool->Record(std::move(lce)),
                           pool->RecordType(std::move(lct)));
   }
+
   case el::ExpType::INTEGER:
     return std::make_pair(pool->Int(el_exp->integer),
                           pool->IntType());
+
   case el::ExpType::VAR: {
     const il::VarInfo *vi = G.Find(el_exp->str);
     CHECK(vi != nullptr) << "Unbound variable: " << el_exp->str;
@@ -144,24 +149,73 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
 
     if (vi->primop.has_value()) {
       Primop po = vi->primop.value();
-      // In the case of a primop, we need to eta expand it with
-      // a lambda.
-      std::string x = pool->NewVar();
-      const il::Exp *lambda =
-        pool->Fn("", x,
-                 pool->Primop(po, std::move(tvs), {pool->Var(x)}));
-      return std::make_pair(lambda, t);
+      const auto &[type_arity, val_arity] = PrimopArity(po);
+      CHECK((int)tvs.size() == type_arity) << "Bug: Wrong number of type "
+        "arguments to primop. This is probably a mistake in "
+        "PrimopArity or Initial.";
 
+      // In the case of a primop, we need to eta expand it with
+      // a lambda. Since the primop takes a list of arguments,
+      // we also need to project the elements from the tuple.
+      std::string x = pool->NewVar();
+      const il::Exp *vx = pool->Var(x);
+
+      std::vector<const il::Exp *> args;
+      args.reserve(val_arity);
+      CHECK(val_arity < 10) << "This can be supported, but I need to "
+        "be careful about the order of two-digit numbers.";
+      if (val_arity == 1) {
+        // Don't make a tuple of length 1.
+        args.push_back(vx);
+      } else {
+        for (int i = 0; i < val_arity; i++) {
+          args.push_back(pool->Project(StringPrintf("%d", i + 1), vx));
+        }
+      }
+
+      // λx.primop<t1, t2, ...>(x)                 (when val_arity = 1)
+      // λx.primop<t1, t2, ...>(#1 x, #2 x, ...)   (otherwise)
+      const il::Exp *lambda =
+        pool->Fn("", x, pool->Primop(po, std::move(tvs), std::move(args)));
+      return std::make_pair(lambda, t);
     } else {
 
-      return std::make_pair(pool->Var(vi->var, std::move(tvs)),
-                            t);
+      return std::make_pair(pool->Var(vi->var, std::move(tvs)), t);
     }
   }
+
   case el::ExpType::LET:
+    LOG(FATAL) << "Unimplemented LET";
     break;
+
   case el::ExpType::IF:
+    LOG(FATAL) << "Unimplemented IF";
     break;
+
+  case el::ExpType::FN: {
+    // TODO: This is directly analogous, except that we need
+    // to compile the pattern.
+
+    // Pattern first.
+    // Pattern compilation should take an argument (can assume
+    // it's a value), pattern, and type, with the job of matching
+    // the pattern against the value (binding as necessary) and
+    // unifying with the type; it should call some continuation
+    // with the new context. The continuation returns an expression
+    // and type, which gets wrapped by the pattern compiler.
+    //
+    // Then bind self (if present)
+    //    e->str
+    // Then translate body.
+
+    #if 0
+    return StringPrintf("(fn%s %s => %s)",
+                        as.c_str(),
+                        PatString(e->pat).c_str(),
+                        ExpString(e->a).c_str());
+    #endif
+  }
+
   case el::ExpType::APP: {
     const auto &[fe, ft] = Elab(G, el_exp->a);
     const auto &[xe, xt] = Elab(G, el_exp->b);

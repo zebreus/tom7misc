@@ -114,6 +114,7 @@ const Exp *Parsing::Parse(AstPool *pool,
       return i;
     };
 
+  // XXX Probably need to add some keywords like * and /
   const auto Id = IsToken<ID>() >[&](Token t) { return TokenStr(t); };
   const auto StrLit = IsToken<STR_LIT>() >[&](Token t) {
       // Remove leading and trailing double quotes. Process escapes.
@@ -352,6 +353,31 @@ const Exp *Parsing::Parse(AstPool *pool,
           };
     };
 
+  const auto ProjectExpr =
+    // #1/3 is syntactic sugar for (fn (x, _, _) => x)
+    ((IsToken<HASH>() >> Int) && (IsToken<SLASH>() >> Int))
+    >[&](const auto &pair) {
+        const auto &[lab, num] = pair;
+        CHECK(lab > 0 && num > 0 && lab <= num) << "In the syntactic "
+          "sugar #l/n, l must be a numeric label that's in range "
+          "for a tuple with n elements. Got: " << lab << "/" << num;
+
+        std::string v = "x";
+        std::vector<const Pat *> args;
+        args.reserve(num);
+        for (int i = 0; i < num; i++) {
+          if (i + 1 == lab) {
+            args.push_back(pool->VarPat(v));
+          } else {
+            args.push_back(pool->WildPat());
+          }
+        }
+        return pool->Fn(
+            // Not recursive
+            "",
+            pool->TuplePat(args),
+            pool->Var(v));
+      };
 
   // Declarations.
 
@@ -421,6 +447,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             TupleExpr(Expr) ||
             LayoutExpr(Expr) ||
             LetExpr(Expr, Decl) ||
+            ProjectExpr ||
             // Just here for convenience of writing a || b || ...
             Fail<Token, const Exp *>();
 
@@ -488,9 +515,10 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   auto Program = Expr << End<Token>();
 
-  auto po = Program(std::span<const Token>(tokens.data(), tokens.size()));
-  CHECK(po.HasValue()) << "Could not parse program.";
-  return po.Value();
+  auto parseopt = Program(std::span<const Token>(tokens.data(),
+                                                 tokens.size()));
+  CHECK(parseopt.HasValue()) << "Could not parse program.";
+  return parseopt.Value();
 }
 
 }  // namespace el

@@ -114,10 +114,13 @@ std::string TypeString(const Type *t) {
       return t->evar.ToString();
     }
   }
+
   case TypeType::REF:
     return StringPrintf("(%s ref)", TypeString(t->a).c_str());
+
   case TypeType::STRING:
     return "string";
+
   case TypeType::INT:
     return "int";
 
@@ -185,6 +188,11 @@ std::string ExpString(const Exp *e) {
     }
     ret += "}";
     return ret;
+  }
+
+  case ExpType::PROJECT: {
+    const auto &[lab, r] = e->Project();
+    return StringPrintf("#%s(%s)", lab.c_str(), ExpString(r).c_str());
   }
 
   case ExpType::JOIN: {

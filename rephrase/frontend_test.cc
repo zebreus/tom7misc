@@ -73,7 +73,39 @@ static void Simple() {
     CHECK(po == Primop::REF);
     CHECK(ts.size() == 1);
     CHECK_TYPETYPE(ts[0], TypeType::INT);
-    // CHECK(es.size() == 1);
+    CHECK(es.size() == 1);
+
+    // Since the primop has arity 1, the argument is used
+    // directly (not a tuple).
+    const auto &[tv, xx] = es[0]->Var();
+    CHECK(tv.empty());
+    CHECK(xx == x);
+   }
+
+  {
+    const Exp *e = Run("3 + 4");
+    const auto &[f, arg] = e->App();
+    const auto &str_children = arg->Record();
+    CHECK(str_children.size() == 2);
+    // A record with labels "1" and "2".
+    CHECK(str_children[0].first == "1");
+    CHECK(str_children[1].first == "2");
+    CHECK(str_children[0].second->Integer() == 3);
+    CHECK(str_children[1].second->Integer() == 4);
+
+    // The function should apply a primop to projections
+    // from the tuple.
+    const auto &[self, x, body] = f->Fn();
+    CHECK(self.empty()) << "Not recursive.";
+    const auto &[po, ts, es] = body->Primop();
+    CHECK(ts.empty()) << "Plus should take no type args.";
+    CHECK(es.size() == 2);
+    const auto &[l1, e1] = es[0]->Project();
+    const auto &[l2, e2] = es[1]->Project();
+    CHECK(l1 == "1");
+    CHECK(l2 == "2");
+    CHECK(std::get<1>(e1->Var()) == x);
+    CHECK(std::get<1>(e2->Var()) == x);
   }
 
 }

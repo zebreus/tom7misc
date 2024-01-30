@@ -229,6 +229,8 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"|", BAR},
     {"*", TIMES},
     {":", COLON},
+    {"#", HASH},
+    {"/", SLASH},
   };
 
   re2::StringPiece input(input_string);

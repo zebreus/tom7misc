@@ -20,14 +20,24 @@ struct Elaboration {
 private:
 
   const std::pair<const il::Exp *, const il::Type *> Elab(
-      const il::Context &ctx,
+      const il::Context &G,
       const el::Exp *el_exp);
 
   const il::Type *ElabType(
-      const il::Context &ctx,
+      const il::Context &G,
       const el::Type *el_type);
 
   const il::Type *NewEVar();
+
+  const std::pair<const il::Exp *, const il::Type *> ElabPat(
+      const il::Exp *target,
+      const el::Pat *pat,
+      const il::Type *type,
+      std::function<
+        std::pair<const il::Exp *, const il::Type *>(const il::Context &G)>
+      cont
+      // TODO: failure continuation?
+                                                             );
 
   int verbose = 0;
   il::AstPool *pool;

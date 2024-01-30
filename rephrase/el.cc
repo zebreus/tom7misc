@@ -30,10 +30,12 @@ std::string TypeString(const Type *t) {
       return StringPrintf("(%s) %s", args.c_str(), t->var.c_str());
     }
     }
+
   case TypeType::ARROW:
     return StringPrintf("(%s -> %s)",
                         TypeString(t->a).c_str(),
                         TypeString(t->b).c_str());
+
   case TypeType::PRODUCT: {
     std::string ret = "(";
     for (int i = 0; i < (int)t->children.size(); i++) {
@@ -45,6 +47,7 @@ std::string TypeString(const Type *t) {
     ret.push_back(')');
     return ret;
   }
+
   case TypeType::RECORD: {
     std::string ret = "{";
     for (int i = 0; i < (int)t->str_children.size(); i++) {
@@ -118,10 +121,13 @@ std::string ExpString(const Exp *e) {
   case ExpType::STRING:
     // XXX escaping
     return StringPrintf("\"%s\"", e->str.c_str());
+
   case ExpType::VAR:
     return e->str;
+
   case ExpType::INTEGER:
     return e->integer.ToString();
+
   case ExpType::TUPLE: {
     std::string ret = "(";
     for (int i = 0; i < (int)e->children.size(); i++) {
@@ -131,6 +137,7 @@ std::string ExpString(const Exp *e) {
     ret += ")";
     return ret;
   }
+
   case ExpType::JOIN: {
     std::string ret = "[";
     for (int i = 0; i < (int)e->children.size(); i++) {
@@ -140,6 +147,7 @@ std::string ExpString(const Exp *e) {
     ret += "]";
     return ret;
   }
+
   case ExpType::LET: {
     std::vector<std::string> decs;
     for (const Dec *d : e->decs) {
@@ -150,19 +158,41 @@ std::string ExpString(const Exp *e) {
                         Util::Join(decs, " ").c_str(),
                         ExpString(e->a).c_str());
   }
+
   case ExpType::IF: {
     return StringPrintf("(if %s then %s else %s)",
                         ExpString(e->a).c_str(),
                         ExpString(e->b).c_str(),
                         ExpString(e->c).c_str());
   }
+
   case ExpType::APP: {
     return StringPrintf("(%s %s)",
                         ExpString(e->a).c_str(),
                         ExpString(e->b).c_str());
   }
+
+  case ExpType::FN: {
+    const std::string as =
+      e->str.empty() ? "" : StringPrintf(" as %s", e->str.c_str());
+    return StringPrintf("(fn%s %s => %s)",
+                        as.c_str(),
+                        PatString(e->pat).c_str(),
+                        ExpString(e->a).c_str());
+  }
+
+    /*
+  case ExpType::PROJECT: {
+    return StringPrintf("#%s/{%s}(%s)",
+                        e->str.c_str(),
+                        Util::Join(e->labels, ",").c_str(),
+                        ExpString(e->a).c_str());
+  }
+    */
+
   case ExpType::LAYOUT:
     return StringPrintf("[%s]", LayoutString(e->layout).c_str());
+
   case ExpType::ANN:
     return StringPrintf("(%s : %s)",
                         ExpString(e->a).c_str(),
@@ -178,6 +208,7 @@ std::vector<const Layout *> FlattenLayout(const Layout *lay) {
   case LayoutType::TEXT:
     if (lay->str.empty()) return {};
     else return {lay};
+
   case LayoutType::JOIN: {
     std::vector<const Layout *> ret;
     ret.reserve(lay->children.size());
@@ -188,8 +219,10 @@ std::vector<const Layout *> FlattenLayout(const Layout *lay) {
     }
     return ret;
   }
+
   case LayoutType::EXP:
     return {lay};
+
   default:
     CHECK(false) << "Unimplemented layout type.";
     return {};

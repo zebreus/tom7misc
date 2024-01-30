@@ -32,6 +32,8 @@ enum TokenType {
   BAR,
   COLON,
   TIMES,
+  SLASH,
+  HASH,
   // ->
   ARROW,
   // =>

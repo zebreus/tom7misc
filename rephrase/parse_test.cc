@@ -308,6 +308,13 @@ static void TestParse() {
     CHECK(rhs->integer == 100);
   }
 
+  {
+    const Exp *e = Parse("#1/2 y");
+    CHECK(e->type == ExpType::APP);
+    CHECK(e->a->type == ExpType::FN);
+    CHECK(e->b->type == ExpType::VAR);
+  }
+
   printf("Exp parsing " AGREEN("OK") "\n");
 }
 

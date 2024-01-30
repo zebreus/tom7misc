@@ -24,6 +24,8 @@ enum class ExpType {
   IF,
   APP,
   FN,
+  // Project a field from a record.
+  PROJECT,
   // Apply a primop to the types and children.
   PRIMOP,
 };
@@ -89,15 +91,6 @@ struct Exp {
   Exp(ExpType t) : type(t) {}
 
   // Accessors.
-  /*
-    TODO:
-
-  VAR,
-  LAYOUT,
-  IF,
-  // Apply a primop to the types and children.
-  PRIMOP,
-  */
 
   std::tuple<const std::vector<const Type *> &, const std::string &>
   Var() const {
@@ -153,6 +146,12 @@ struct Exp {
   Primop() const {
     CHECK(type == ExpType::PRIMOP);
     return std::tie(primop, types, children);
+  }
+
+  std::tuple<const std::string &, const Exp *>
+  Project() const {
+    CHECK(type == ExpType::PROJECT);
+    return std::tie(str, a);
   }
 
 private:
@@ -270,6 +269,13 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *Project(std::string s, const Exp *e) {
+    Exp *ret = NewExp(ExpType::PROJECT);
+    ret->str = std::move(s);
+    ret->a = e;
+    return ret;
+  }
+
   const Exp *Join(std::vector<const Exp *> v) {
     Exp *ret = NewExp(ExpType::JOIN);
     ret->children = std::move(v);
@@ -309,12 +315,12 @@ struct AstPool {
   }
 
   // self may be empty to indicate a non-recursive function.
-  const Exp *Fn(const std::string &self,
-                const std::string &x,
+  const Exp *Fn(std::string self,
+                std::string x,
                 const Exp *body) {
     Exp *ret = NewExp(ExpType::FN);
-    ret->self = self;
-    ret->str = x;
+    ret->self = std::move(self);
+    ret->str = std::move(x);
     ret->a = body;
     return ret;
   }

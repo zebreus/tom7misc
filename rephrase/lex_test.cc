@@ -76,6 +76,7 @@ static void TestLex() {
 
   CHECK_LEX("::", ID);
   CHECK_LEX("a:b", ID, COLON, ID);
+  CHECK_LEX("#1/2", HASH, DIGITS, SLASH, DIGITS);
 }
 
 }  // namespace el

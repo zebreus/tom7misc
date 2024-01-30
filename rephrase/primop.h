@@ -1,6 +1,8 @@
 #ifndef _REPHRASE_PRIMOP_H
 #define _REPHRASE_PRIMOP_H
 
+#include <tuple>
+
 enum class Primop {
   REF,
   GET,
@@ -24,6 +26,9 @@ enum class Primop {
 
   STRING_EQ,
 };
+
+// Number of type args, number of value args.
+std::tuple<int, int> PrimopArity(Primop p);
 
 const char *PrimopString(Primop p);
 
