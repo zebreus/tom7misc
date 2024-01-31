@@ -381,8 +381,6 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // Declarations.
 
-
-
   // This is syntactic sugar for val _ = e
   const auto DoDecl = [&](const auto &Expr) {
       return (IsToken<DO>() >> Expr)

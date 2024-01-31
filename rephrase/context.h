@@ -79,6 +79,10 @@ struct Context {
     }
   }
 
+  // True if the context has the (free) EVar inside the type of any
+  // expression variable. This is used to determine what type
+  // variables can be generalized in a val declaration.
+  bool HasEVar(const EVar &e) const;
 
 private:
   enum class V {

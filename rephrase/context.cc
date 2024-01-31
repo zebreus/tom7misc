@@ -23,4 +23,24 @@ Context::Context(
   fm = FunctionalMap(init);
 }
 
+bool Context::HasEVar(const EVar &e) const {
+  // PERF: This is linear+ in the size of the context.
+  // We could at least do it without copying. We will
+  // also check multiple free EVars in the same term,
+  // so we might want to only do the export once.
+  const auto &m = fm.Export();
+  for (const auto &[k, v] : m) {
+    if (k.second == V::EXP) {
+      // Only expression variables.
+      const VarInfo *vi = std::get_if<VarInfo>(&v);
+      CHECK(vi != nullptr) << "Bug: Expression vars always hold VarInfo.";
+      if (EVar::Occurs(e, vi->type)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 }  // il

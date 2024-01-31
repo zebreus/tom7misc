@@ -29,12 +29,14 @@ enum class ExpType {
   PROJECT,
   // Apply a primop to the types and children.
   PRIMOP,
+  // Abort with a string message. Should be
+  // replaced with generic exception mechanism.
+  FAIL,
 };
 
 enum class DecType {
+  DO,
   VAL,
-  FUN,
-  DATATYPE,
 };
 
 struct Exp;
@@ -90,6 +92,7 @@ struct Type {
 
 struct Exp {
   ExpType type;
+  // (XXX should be able to make these private?)
   Exp(ExpType t) : type(t) {}
 
   // Accessors.
@@ -162,6 +165,11 @@ struct Exp {
     return std::tie(str, a);
   }
 
+  const std::string &Fail() const {
+    CHECK(type == ExpType::FAIL);
+    return str;
+  }
+
 private:
   // PERF: Experiment with std::variant, at least.
   friend struct AstPool;
@@ -183,9 +191,22 @@ private:
 
 struct Dec {
   DecType type;
+  Dec(DecType t) : type(t) {}
+
+  std::tuple<const std::string &, const Exp *> Val() const {
+    CHECK(type == DecType::VAL);
+    return std::tie(str, exp);
+  }
+
+  const Exp *Do() const {
+    CHECK(type == DecType::DO);
+    return exp;
+  }
+
+private:
+  friend struct AstPool;
   std::string str;
   const Exp *exp = nullptr;
-  Dec(DecType t) : type(t) {}
 };
 
 struct AstPool {
@@ -308,6 +329,10 @@ struct AstPool {
     return ret;
   }
 
+  // Like Let, but flattens d into the declaration list if e
+  // is already a LET.
+  const Exp *LetFlat(const Dec *d, const Exp *e);
+
   const Exp *If(const Exp *cond, const Exp *t, const Exp *f) {
     Exp *ret = NewExp(ExpType::IF);
     ret->a = cond;
@@ -344,12 +369,24 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *Fail(std::string msg) {
+    Exp *ret = NewExp(ExpType::FAIL);
+    ret->str = std::move(msg);
+    return ret;
+  }
+
   // Declarations
 
   const Dec *ValDec(const std::string &v, const Exp *rhs) {
     Dec *ret = NewDec(DecType::VAL);
     ret->str = v;
     ret->exp = rhs;
+    return ret;
+  }
+
+  const Dec *DoDec(const Exp *e) {
+    Dec *ret = NewDec(DecType::DO);
+    ret->exp = e;
     return ret;
   }
 
@@ -368,9 +405,9 @@ struct AstPool {
               });
   }
 
-  std::string NewVar();
+  std::string NewVar(std::string hint = "");
 
-private:
+ private:
   Type *NewType(TypeType t) { return type_arena.New(t); }
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }
   Dec *NewDec(DecType t) { return dec_arena.New(t); }

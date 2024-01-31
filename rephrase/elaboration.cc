@@ -7,6 +7,7 @@
 #include "el.h"
 #include "il.h"
 #include "initial.h"
+#include "pattern-compilation.h"
 
 #include "base/stringprintf.h"
 
@@ -17,6 +18,19 @@ using VarInfo = il::VarInfo;
 using Unification = il::Unification;
 using TypeVarInfo = il::TypeVarInfo;
 using EVar = il::EVar;
+using PatternCompilation = il::PatternCompilation;
+
+Elaboration::Elaboration(el::AstPool *el_pool, il::AstPool *il_pool) :
+  el_pool(el_pool), pool(il_pool), init(pool) {
+  fail_match = pool->Fail("match");
+  pattern_compilation.reset(new PatternCompilation(this));
+}
+
+Elaboration::~Elaboration() {}
+
+std::pair<const il::Exp *, const il::Type *> Elaboration::FailMatch() {
+  return std::make_pair(fail_match, NewEVar());
+}
 
 const il::Type *Elaboration::NewEVar() {
   return pool->EVar(EVar());
@@ -88,9 +102,61 @@ const il::Type *Elaboration::ElabType(const Context &G,
   }
 }
 
+const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
+    const il::Context &G,
+    const std::vector<const el::Dec *> &decs,
+    const el::Exp *el_exp) {
+  if (el_exp->decs.empty()) {
+    return Elab(G, el_exp->a);
+  } else {
+    const el::Dec *dec = decs[0];
+    std::vector<const el::Dec *> rest_decs;
+    rest_decs.reserve(decs.size() - 1);
+    for (int i = 1; i < (int)decs.size(); i++) {
+      rest_decs.push_back(decs[i]);
+    }
+
+    const el::Exp *rest = rest_decs.empty() ? el_exp :
+      el_pool->Let(std::move(rest_decs), el_exp);
+
+    switch (dec->type) {
+    case el::DecType::VAL: {
+      // TODO: Let's only allow irrefutable patterns.
+      // Basically this is tuples, variables, wildcards, singleton sums,
+      // ... that kind of thing. Pattern compiler can have its own
+      // irrefutable pattern routine?
+
+      // Need to generalize if free evars.
+      // All this is handled in the pattern compiler.
+      return pattern_compilation->CompileIrrefutable(
+          G, dec->pat, dec->exp, rest);
+
+      /*
+      const Context GG = G.Insert(
+      const auto &[re, rt] = Elab(G, rest);
+      return pool->LetFlat(pool->Do(
+      */
+    }
+    case el::DecType::FUN:
+      LOG(FATAL) << "Unimplemented FUN";
+      break;
+    case el::DecType::DATATYPE:
+      LOG(FATAL) << "Unimplemented DATATYPE";
+      break;
+    default:;
+    }
+
+    LOG(FATAL) << "Unimplemented in ElabDecs";
+    return std::make_pair(nullptr, nullptr);
+  }
+}
+
+
 const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const Context &G,
     const el::Exp *el_exp) {
+
+  CHECK(el_exp != nullptr) << "Bug: null el_exp";
 
   switch (el_exp->type) {
   case el::ExpType::STRING:
@@ -185,8 +251,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
   }
 
   case el::ExpType::LET:
-    LOG(FATAL) << "Unimplemented LET";
-    break;
+    return ElabDecs(G, el_exp->decs, el_exp->a);
 
   case el::ExpType::IF:
     LOG(FATAL) << "Unimplemented IF";
@@ -195,6 +260,9 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
   case el::ExpType::FN: {
     // TODO: This is directly analogous, except that we need
     // to compile the pattern.
+
+    // TODO: Need to handle fn pat1 => e1 | pat2 => e2, perhaps
+    // by treating that as syntactic sugar in the parser.
 
     // Pattern first.
     // Pattern compilation should take an argument (can assume

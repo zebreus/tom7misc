@@ -8,16 +8,20 @@
 #include "context.h"
 #include "initial.h"
 
+namespace il { struct PatternCompilation; }
+
 // Elaboration is a recursive transformation from EL to IL.
 struct Elaboration {
 
-  Elaboration(il::AstPool *pool) : pool(pool), init(pool) {}
+  Elaboration(el::AstPool *el_pool, il::AstPool *il_pool);
+  ~Elaboration();
 
   void SetVerbose(int v) { verbose = v; }
 
   const il::Exp *Elaborate(const el::Exp *el_exp);
 
 private:
+  friend struct il::PatternCompilation;
 
   const std::pair<const il::Exp *, const il::Type *> Elab(
       const il::Context &G,
@@ -29,19 +33,32 @@ private:
 
   const il::Type *NewEVar();
 
-  const std::pair<const il::Exp *, const il::Type *> ElabPat(
+  /*
+  const std::pair<const il::Exp *, const il::Type *> Elab(
       const il::Exp *target,
       const el::Pat *pat,
       const il::Type *type,
       std::function<
         std::pair<const il::Exp *, const il::Type *>(const il::Context &G)>
-      cont
-      // TODO: failure continuation?
-                                                             );
+      success_cont,
+      const il::Exp *failure_exp);
+  */
+
+  const std::pair<const il::Exp *, const il::Type *> ElabDecs(
+      const il::Context &G,
+      const std::vector<const el::Dec *> &decs,
+      const el::Exp *exp);
+
+  // Some expressions that are repeatedly used.
+  const il::Exp *fail_match = nullptr;
+  // But the type (a new evar) must be allocated each time!
+  std::pair<const il::Exp *, const il::Type *> FailMatch();
 
   int verbose = 0;
-  il::AstPool *pool;
+  el::AstPool *el_pool = nullptr;
+  il::AstPool *pool = nullptr;
   il::Initial init;
+  std::unique_ptr<il::PatternCompilation> pattern_compilation;
 };
 
 #endif

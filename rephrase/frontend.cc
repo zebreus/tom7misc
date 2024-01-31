@@ -83,7 +83,7 @@ const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
   }
 
   Timer elab_timer;
-  Elaboration elaboration(&il_pool);
+  Elaboration elaboration(&el_pool, &il_pool);
   const il::Exp *il_pgm = elaboration.Elaborate(el_pgm);
   const double elab_sec = elab_timer.Seconds();
 

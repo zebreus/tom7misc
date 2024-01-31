@@ -33,6 +33,7 @@ enum class ExpType {
 };
 
 enum class DecType {
+  DO,
   VAL,
   FUN,
   DATATYPE,
@@ -43,6 +44,7 @@ enum class PatType {
   WILD,
   TUPLE,
   ANN,
+  AS,
 };
 
 enum class TypeType {
@@ -255,6 +257,13 @@ struct AstPool {
   }
 
   // Patterns
+
+  const Pat *AsPat(const Pat *p, const std::string &v) {
+    Pat *ret = NewPat(PatType::AS);
+    ret->var = v;
+    ret->a = p;
+    return ret;
+  }
 
   const Pat *VarPat(const std::string &v) {
     Pat *ret = NewPat(PatType::VAR);

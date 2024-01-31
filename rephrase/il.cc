@@ -26,9 +26,14 @@ const char *TypeTypeString(TypeType t) {
   }
 }
 
-std::string AstPool::NewVar() {
+std::string AstPool::NewVar(std::string hint) {
   next_var++;
-  return StringPrintf("x$%d", next_var);
+  hint = hint.substr(0, hint.find('$'));
+  if (hint.empty()) {
+    return StringPrintf("x$%d", next_var);
+  } else {
+    return StringPrintf("%s$%d", hint.c_str(), next_var);
+  }
 }
 
 const Type *AstPool::Product(const std::vector<const Type *> &v) {
@@ -38,6 +43,19 @@ const Type *AstPool::Product(const std::vector<const Type *> &v) {
     record_type.emplace_back(StringPrintf("%d", i + 1), v[i]);
   }
   return RecordType(std::move(record_type));
+}
+
+const Exp *AstPool::LetFlat(const Dec *d, const Exp *e) {
+  if (e->type == ExpType::LET) {
+    const auto &[decs, body] = e->Let();
+    std::vector<const Dec *> new_decs;
+    new_decs.reserve(decs.size() + 1);
+    new_decs.push_back(d);
+    for (const Dec *dd : decs) new_decs.push_back(dd);
+    return Let(std::move(new_decs), body);
+  } else {
+    return Let({d}, e);
+  }
 }
 
 
@@ -73,7 +91,8 @@ std::string TypeString(const Type *t) {
       }
       return StringPrintf("(%s) %s", args.c_str(), t->var.c_str());
     }
-    }
+  }
+
   case TypeType::ARROW:
     return StringPrintf("(%s -> %s)",
                         TypeString(t->a).c_str(),
@@ -81,6 +100,7 @@ std::string TypeString(const Type *t) {
   case TypeType::RECORD:
     // Might want to special case tuple types; unit type?
     return StringPrintf("{%s}", RecordOrSumBody(t).c_str());
+
   case TypeType::SUM:
     // Might want to special case void?
     return StringPrintf("[%s]", RecordOrSumBody(t).c_str());
@@ -135,16 +155,19 @@ std::string TypeString(const Type *t) {
 
 std::string DecString(const Dec *d) {
   switch (d->type) {
-  case DecType::VAL:
-    // TODO: Type vars
+  case DecType::VAL: {
+    const auto &[x, e] = d->Val();
     return StringPrintf("val %s = %s",
-                        d->str.c_str(),
-                        ExpString(d->exp).c_str());
-  case DecType::FUN:
-    // TODO: Type vars
-    return StringPrintf("fun %s (XXX) = %s",
-                        d->str.c_str(),
-                        ExpString(d->exp).c_str());
+                        x.c_str(),
+                        ExpString(e).c_str());
+  }
+
+  case DecType::DO: {
+    const Exp *e = d->Do();
+    return StringPrintf("do %s",
+                        ExpString(e).c_str());
+  }
+
   default:
     return "TODO DECTYPE";
   }
@@ -261,6 +284,11 @@ std::string ExpString(const Exp *e) {
                         PrimopString(po),
                         targs.c_str(),
                         args.c_str());
+  }
+
+  case ExpType::FAIL: {
+    const std::string &msg = e->Fail();
+    return StringPrintf("fail \"%s\"", msg.c_str());
   }
 
   default:

@@ -108,6 +108,13 @@ static void Simple() {
     CHECK(std::get<1>(e2->Var()) == x);
   }
 
+  {
+    const Exp *e = Run("let val x = 3 in x end");
+    const auto &[decs, body] = e->Let();
+    CHECK(decs.size() == 1);
+    printf("... %s\n", ExpString(e).c_str());
+  }
+
 }
 
 }  // il
