@@ -1,10 +1,14 @@
 
 #include "unification.h"
 
+#include <set>
 #include <vector>
 #include <memory>
 #include <string>
 #include <utility>
+#include <mutex>
+#include <cstdint>
+#include <cinttypes>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -12,15 +16,21 @@
 
 namespace il {
 
-EVar::EVar() : cell(std::make_shared<EVarCell>()) {
-  // Hemlock/Aphasia frontend keeps an integer counter here, which
-  // could be useful for identity tests or debugging output. But
-  // we actually just need the pointer.
+static int64_t NextEVarCounter() {
+  static std::mutex m;
+  // 0 is an invalid id.
+  static int64_t counter = 0;
+  std::unique_lock<std::mutex> ml(m);
+  counter++;
+  return counter;
 }
 
-// TODO: Improve, probably by keeping some counter?
+EVar::EVar() : cell(std::make_shared<EVarCell>(NextEVarCounter())) {
+}
+
+// TODO: Should probably distinguish bound/free?
 std::string EVar::ToString() const {
-  return StringPrintf("_EVAR_%p_", GetCell().get());
+  return StringPrintf("_EVAR_" PRIi64 "_", GetCell()->id);
 }
 
 
@@ -41,9 +51,12 @@ std::shared_ptr<EVar::EVarCell> EVar::GetCell() const {
   return cell;
 }
 
-bool EVar::SameEVar(const EVar &a,
-                    const EVar &b) {
+bool EVar::SameEVar(const EVar &a, const EVar &b) {
   return a.GetCell().get() == b.GetCell().get();
+}
+
+bool EVar::LessEVar(const EVar &a, const EVar &b) {
+  return a.GetCell()->id < b.GetCell()->id;
 }
 
 bool EVar::Occurs(const EVar &e, const Type *t) {
@@ -76,6 +89,64 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
   case TypeType::FLOAT:
     return false;
   }
+}
+
+// PERF: We can actually use hash set on the ids, especially
+// since we're keeping this implementation-private. But it
+// would be unusual for a type to have lots of free evars
+// during generalization.
+namespace {
+struct LessEVar {
+  bool operator() (const EVar &a, const EVar &b) {
+    return EVar::LessEVar(a, b);
+  }
+};
+}
+
+using EVarSet = std::set<EVar, LessEVar>;
+
+std::vector<EVar> EVar::FreeEVarsInType(const Type *t) {
+  EVarSet s;
+
+  std::function<void(const Type *)> Rec =
+    [&](const Type *t) -> void {
+    switch (t->type) {
+    case TypeType::VAR:
+      return;
+    case TypeType::SUM:
+      for (const auto &[l_, c] : t->str_children)
+        Rec(c);
+      return;
+    case TypeType::ARROW:
+      Rec(t->a);
+      Rec(t->b);
+      return;
+    case TypeType::MU:
+      LOG(FATAL) << "Unimplemented: Mu in FreeEVarsInType";
+      return;
+    case TypeType::RECORD:
+      for (const auto &[l_, c] : t->str_children)
+        Rec(c);
+      return;
+    case TypeType::EVAR:
+      if (t->evar.GetBound() == nullptr) {
+        s.insert(t->evar);
+      }
+      return;
+    case TypeType::REF:
+      Rec(t->a);
+      return;
+    case TypeType::STRING:
+      return;
+    case TypeType::INT:
+      return;
+    case TypeType::FLOAT:
+      return;
+    }
+  };
+
+  Rec(t);
+  return std::vector<EVar>(s.begin(), s.end());
 }
 
 static void UnifyEx(std::string_view what,

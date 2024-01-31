@@ -105,9 +105,9 @@ const il::Type *Elaboration::ElabType(const Context &G,
 const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
     const il::Context &G,
     const std::vector<const el::Dec *> &decs,
-    const el::Exp *el_exp) {
-  if (el_exp->decs.empty()) {
-    return Elab(G, el_exp->a);
+    const el::Exp *el_body) {
+  if (decs.empty()) {
+    return Elab(G, el_body);
   } else {
     const el::Dec *dec = decs[0];
     std::vector<const el::Dec *> rest_decs;
@@ -116,8 +116,8 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
       rest_decs.push_back(decs[i]);
     }
 
-    const el::Exp *rest = rest_decs.empty() ? el_exp :
-      el_pool->Let(std::move(rest_decs), el_exp);
+    const el::Exp *rest = rest_decs.empty() ? el_body :
+      el_pool->Let(std::move(rest_decs), el_body);
 
     switch (dec->type) {
     case el::DecType::VAL: {

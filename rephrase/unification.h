@@ -23,14 +23,22 @@ struct EVar {
   const Type *GetBound() const { return GetCell()->GetBound(); }
   void Set(const Type *t) const { return GetCell()->Set(t); }
 
-  static bool SameEVar(const EVar &a, const EVar &b);
   static bool Occurs(const EVar &a, const Type *t);
+
+  // Get the set of distinct free EVars in the type t.
+  static std::vector<EVar> FreeEVarsInType(const Type *t);
+
+  // It typically only makes sense to compare free EVars.
+  static bool SameEVar(const EVar &a, const EVar &b);
+  static bool LessEVar(const EVar &a, const EVar &b);
 
   // For debugging output.
   std::string ToString() const;
 
  private:
   struct EVarCell {
+    EVarCell() = delete;
+    EVarCell(int64_t id) : id(id) {}
     const Type *GetBound() const {
       std::unique_lock ml(m);
       return type;
@@ -47,6 +55,10 @@ struct EVar {
     // If null, then this is Free; otherwise it
     // is Bound to the type.
     mutable const Type *type = nullptr;
+    // If free, then this nonzero counter can be used to uniquely
+    // identify the EVar (will be 1:1 with the pointer, but
+    // deterministic). If bound, it is generally ignored.
+    const int64_t id = 1;
   };
 
   // Get the deepest EVar that is free or bound to
