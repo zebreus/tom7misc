@@ -317,5 +317,5 @@ tune.exe : tune.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
-	rm -f *.o acronymy.exe benchmark.exe llm_test.exe chat.exe run-um.exe extract-codex.exe llum.exe generate.exe
+	rm -f *.o $(CC_LIB_OBJECTS) acronymy.exe benchmark.exe llm_test.exe chat.exe run-um.exe extract-codex.exe llum.exe generate.exe
 

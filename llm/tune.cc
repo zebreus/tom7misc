@@ -15,7 +15,11 @@
 #include "color-util.h"
 
 static constexpr int MAX_THREADS = 64;
-static constexpr int MAX_LAYERS_GPU = 32;
+static constexpr int MAX_LAYERS_GPU = 20;
+
+static constexpr int HINT_MIN_THREADS = 4;
+static constexpr int HINT_MAX_THREADS = 32;
+static constexpr int HINT_MAX_GPU = 11;
 
 struct Database {
   static constexpr int MODEL_LOAD = 0;
@@ -44,12 +48,12 @@ struct Database {
   }
 
   int NumTrials(int num_threads,
-                int num_layers_gpu) {
+                int num_layers_gpu) const {
     if (num_threads >= 0 && num_threads < MAX_THREADS &&
         num_layers_gpu >= 0 && num_layers_gpu < MAX_LAYERS_GPU) {
-      return 0;
-    } else {
       return cells[num_layers_gpu * MAX_THREADS + num_threads].trials;
+    } else {
+      return 0;
     }
   }
 
@@ -95,8 +99,11 @@ struct Database {
 
   // Lower times are better.
   static constexpr ColorUtil::Gradient BEST_WORST{
-    GradRGB(0.0f, 0x00FF00),
-    GradRGB(1.0f, 0xFF0000),
+    GradRGB(0.00f, 0xFFFFFF),
+    GradRGB(0.01f, 0xFFFF00),
+    GradRGB(0.05f, 0x00FF00),
+    GradRGB(0.50f, 0x2222FF),
+    GradRGB(1.00f, 0xFF0000),
   };
 
   void SaveImages(const std::string &load,
@@ -108,30 +115,44 @@ struct Database {
                                const std::string &file,
                                int field) {
         if (file.empty()) return;
-        ImageRGBA img(MAX_THREADS, MAX_LAYERS_GPU);
+        int RC = 2;
+        ImageRGBA img(MAX_THREADS + 1 + RC, MAX_LAYERS_GPU + 1 + RC);
         img.Clear32(0x000000FF);
 
-        // Get min/max
-        std::optional<double> minv, maxv;
+        // Get all values so we can compute rank.
+        std::vector<double> values;
+
         for (const Cell &cell : cells) {
           if (cell.trials > 0) {
             double f = cell.results[field] / cell.trials;
-            minv = std::min(f, minv.value_or(f));
-            maxv = std::max(f, maxv.value_or(f));
+            values.push_back(f);
           }
         }
 
-        // No data?
-        if (!minv.has_value()) return;
+        // No data...
+        if (values.empty()) return;
 
-        const double range = maxv.value() - minv.value();
+        std::sort(values.begin(), values.end());
+
+        // Get a value's rank as a number in [0, 1].
+        auto Rank = [&values](double v) {
+            const int idx = std::lower_bound(values.begin(),
+                                             values.end(),
+                                             v) - values.begin();
+            return std::clamp(idx / (double)values.size(), 0.0, 1.0);
+          };
+
+        auto MapValue = [&Rank](double v) {
+            // (v - minv.value()) / range;
+            return Rank(v);
+          };
 
         for (int y = 0; y < MAX_LAYERS_GPU; y++) {
           for (int x = 0; x < MAX_THREADS; x++) {
             const Cell &cell = cells[y * MAX_THREADS + x];
             if (cell.trials > 0) {
               double v = cell.results[field] / cell.trials;
-              double f = (v - minv.value()) / range;
+              double f = MapValue(v);
 
               uint32_t color = ColorUtil::LinearGradient32(
                   BEST_WORST, f);
@@ -140,22 +161,112 @@ struct Database {
           }
         }
 
-        int SCALE = 8;
-        int TOP = 36;
-        ImageRGBA full(img.Width() * SCALE + TOP,
-                       img.Height() * SCALE);
+        // Now averages of rows
+        for (int y = 0; y < MAX_LAYERS_GPU; y++) {
+          double num = 0.0;
+          int den = 0;
+          for (int x = 0; x < MAX_THREADS; x++) {
+            const Cell &cell = cells[y * MAX_THREADS + x];
+            if (cell.trials > 0) {
+              num += cell.results[field] / cell.trials;
+              den++;
+            }
+          }
+
+          if (den > 0) {
+            double v = num / den;
+            double f = MapValue(v);
+
+            uint32_t color = ColorUtil::LinearGradient32(
+                BEST_WORST, f);
+            for (int i = 0; i < RC; i++) {
+              img.SetPixel32(MAX_THREADS + 1 + i, y, color);
+            }
+          }
+        }
+
+        // And columns
+        for (int x = 0; x < MAX_THREADS; x++) {
+          double num = 0.0;
+          int den = 0;
+          for (int y = 0; y < MAX_LAYERS_GPU; y++) {
+            const Cell &cell = cells[y * MAX_THREADS + x];
+            if (cell.trials > 0) {
+              num += cell.results[field] / cell.trials;
+              den++;
+            }
+          }
+
+          if (den > 0) {
+            double v = num / den;
+            double f = MapValue(v);
+
+            uint32_t color = ColorUtil::LinearGradient32(
+                BEST_WORST, f);
+            for (int i = 0; i < RC; i++) {
+              img.SetPixel32(x, MAX_LAYERS_GPU + 1 + i, color);
+            }
+          }
+        }
+
+        int SCALE = 11;
+        ImageRGBA scaled = img.ScaleBy(SCALE);
+        // label
+        for (int y = 0; y < MAX_LAYERS_GPU; y++) {
+          scaled.BlendText32(
+              (MAX_THREADS + 1) * SCALE + 1,
+              y * SCALE + 1, 0x000000AA,
+              StringPrintf("%02d", y));
+        }
+
+        for (int x = 0; x < MAX_THREADS; x++) {
+          scaled.BlendTextVert32(
+              x * SCALE - 1,
+              (MAX_LAYERS_GPU + 1) * SCALE + 1,
+              false, 0x000000AA,
+              StringPrintf("%02d", x));
+        }
+
+        for (int y = 0; y < MAX_LAYERS_GPU; y++) {
+          for (int x = 0; x < MAX_THREADS; x++) {
+            const Cell &cell = cells[y * MAX_THREADS + x];
+            if (cell.trials > 0) {
+              scaled.BlendText32(
+                  x * SCALE + 1, y * SCALE + 2,
+                  0x00000033,
+                  StringPrintf("%d",
+                               std::clamp(cell.trials, 0, 9)));
+            }
+          }
+        }
+
+        int TOP = 22;
+        ImageRGBA full(scaled.Width(),
+                       scaled.Height() + TOP);
         full.Clear32(0x000033FF);
-        full.CopyImage(0, TOP, img.ScaleBy(SCALE));
+        full.CopyImage(0, TOP, scaled);
 
-        full.BlendText32(1, 1, 0xFFFFFFFF,
-                         StringPrintf("%s. x: num_threads. y: num_gpu_layers",
-                                      name));
 
+        const int total = TotalTrials();
+        full.BlendText32(
+            1, 1, 0xFFFFFFFF,
+            StringPrintf("%s. x: threads. y: gpu layers. "
+                         "%d total trials",
+                         name, total));
+
+        auto GetQuantile = [&values](float f) -> double {
+            int idx = std::clamp((int)std::round(f * values.size()),
+                                 0,
+                                 (int)values.size() - 1);
+            return values[idx];
+          };
         int xx = 1;
-        for (float f : {0.0, 0.25, 0.55, 0.75, 1.0}) {
-          std::string value = StringPrintf("%.4f", f * range + minv.value());
+        const int yy = ImageRGBA::TEXT_HEIGHT + 4;
+        for (float f : {0.0, 0.125, 0.25, 0.375, 0.50,
+                        0.625, 0.75, 0.875, 1.0}) {
+          std::string value = StringPrintf("%.4f", GetQuantile(f));
           uint32_t color = ColorUtil::LinearGradient32(BEST_WORST, f);
-          full.BlendText32(xx, ImageRGBA::TEXT_HEIGHT + 2, color, value);
+          full.BlendText32(xx, yy, color, value);
           xx += (value.size() + 2) * ImageRGBA::TEXT_WIDTH;
         }
 
@@ -213,8 +324,8 @@ static Database::Cell RunOne(const std::string &model,
   printf("\n\n"
          ABGCOLOR(80, 10, 80,
                   AFGCOLOR(255, 255, 120,
-                           " == Run %d gpu, %d threads == ")) "\n\n",
-         num_gpu_layers, num_threads);
+                           " == Run %d threads, %d gpu == ")) "\n\n",
+         num_threads, num_gpu_layers);
   Timer expt_timer;
 
   Database::Cell cell;
@@ -302,25 +413,70 @@ static void Tune(const std::string &model, const std::string &tunefile) {
 
   Database db;
   db.Load(tunefile);
+  printf("Loaded " AGREEN("%d") " previous trials.\n",
+         db.TotalTrials());
 
-  ArcFour rc("tune");
+  ArcFour rc(StringPrintf("tune.%lld", time(nullptr)));
 
   // Run one for warm start.
   (void)RunOne(model, 16, 3);
 
-  Periodically save_per(120.0);
+  Periodically save_per(60.0);
+
+  std::vector<std::pair<int, int>> todo;
+#if 0
+  todo.emplace_back(25, 14);
+  // Redo the best region, to reduce noise
+  for (int th = 25; th <= 33; th++)
+    for (int gpu = 19; gpu <= 25; gpu++)
+      todo.emplace_back(th, gpu);
+
+  for (int th = 25; th <= 37; th++)
+    for (int gpu = 19; gpu <= 27; gpu++)
+      todo.emplace_back(th, gpu);
+
+  for (int th = 4; th < 32; th++) {
+    for (int gpu = 0; gpu < 25; gpu++) {
+      if (db.NumTrials(th, gpu) == 0) {
+        printf("Needed (%d,%d)\n", th, gpu);
+        todo.emplace_back(th, gpu);
+      }
+    }
+  }
+#endif
+  Shuffle(&rc, &todo);
 
   Timer run_timer;
-  while (db.MinNumTrials() < 2) {
-    // PERF: Should not do random samples once the grid is
-    // pretty full.
-    int gpu = RandTo(&rc, MAX_LAYERS_GPU);
-    int th = RandTo(&rc, MAX_THREADS);
+  for (;;) {
+    int min_trials = db.MinNumTrials();
+    if (min_trials == 3) break;
 
-    if (db.NumTrials(th, gpu) < 2) {
+    bool force = false;
+    int th, gpu;
+    if (todo.empty()) {
+      // PERF: Should not do random samples once the grid is
+      // pretty full.
+      th = RandTo(&rc, MAX_THREADS);
+      gpu = RandTo(&rc, MAX_LAYERS_GPU);
+
+      if (gpu > HINT_MAX_GPU && RandTo(&rc, 5) > 0) continue;
+      if (gpu > HINT_MAX_GPU + 2 && RandTo(&rc, 20) > 0) continue;
+      if (th < HINT_MIN_THREADS && RandTo(&rc, 5) > 0) continue;
+      if (th > HINT_MAX_THREADS && RandTo(&rc, 5) > 0) continue;
+    } else {
+      std::tie(th, gpu) = todo.back();
+      todo.pop_back();
+      force = true;
+    }
+
+    printf("Run %d,%d which has %d already.\n",
+           th, gpu, db.NumTrials(th, gpu));
+
+    if (force || db.NumTrials(th, gpu) == min_trials) {
       Database::Cell cell = RunOne(model, th, gpu);
       db.MergeCell(th, gpu, cell);
     }
+
 
     if (save_per.ShouldRun()) {
       printf("Total trials: " AYELLOW("%d") "/" AWHITE("%d") " in %s\n",

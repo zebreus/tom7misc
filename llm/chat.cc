@@ -11,14 +11,8 @@
 #include "llama.h"
 
 #include <algorithm>
-#include <cassert>
-#include <cinttypes>
-#include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <ctime>
-#include <fstream>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -324,6 +318,8 @@ struct Chatting {
         return true;
       }
 
+      return false;
+
     } else if (Util::TryStripPrefix("/pass", &input)) {
       // This means to force a different user to speak.
 
@@ -390,9 +386,21 @@ struct Chatting {
                ANSILine(lines[idx]).c_str());
       }
 
+      printf("Tokens used: " AWHITE("%d") "\n",
+             llm->context.NumLast());
+
       // allow next command...
       return false;
 
+    } else if (Util::TryStripPrefix("/", &input)) {
+      string cmd = Util::chopto(' ', input);
+      printf("Unknown command starting with " ARED("/%s") ".\n",
+             cmd.c_str());
+
+      return false;
+    } else if (input.empty()) {
+      printf(AGREY("Ignoring blank line.") "\n");
+      return false;
     } else {
       // Normal chat, continuing the prompt (whether it's <User> or * User).
       CHECK(!current_line.empty()) << "Bug";
@@ -537,7 +545,21 @@ int main(int argc, char ** argv) {
   // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
   // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
 
+  /*
   cparams.model = "llama2\\70b\\ggml-model-q8_0.gguf";
+  cparams.num_threads = 22;
+  cparams.num_gpu_layers = 19;
+  */
+
+  cparams.model = "llama2\\70b\\ggml-model-f16.gguf";
+  cparams.num_threads = 24;
+  cparams.num_gpu_layers = 11;
+
+  /*
+  cparams.model = "llama2\\7b\\ggml-model-q4_0.gguf";
+  cparams.num_threads = 24;
+  cparams.num_gpu_layers = 32;
+  */
 
   SamplerParams sparams;
   // cparams.mirostat = 2;
