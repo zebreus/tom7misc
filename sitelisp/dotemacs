@@ -13,6 +13,11 @@
 ;; pro-tip!
 ;; Put some examples you want to match in the buffer, then use
 ;; M-x re-builder to work on your regex string. NICE
+;;
+;; Pro-tip!
+;; C-x = explains the character at the cursor. C-u C-x = gives
+;; lots of nice data, like the unicode codepoint; how to type
+;; it; semantic properties in the mode, etc.
 
 ;; I prevent Fundamental mode from having font-lock turned on, so that I
 ;; can set text properties in the message window.
@@ -26,6 +31,45 @@
 ; (load "c:\\code\\sitelisp\\lost.el")
 
 (add-to-list 'load-path "/Users/twm/tom7misc/sitelisp")
+
+;; use "clangd --help". TODO: --path-mappings may be helpful here
+(with-eval-after-load 'eglot
+  ;; configure paths for windows
+  (if (eq window-system 'w32)
+      (add-to-list 'eglot-server-programs
+                   '(c++-mode . ("c:\\msys64\\clang64\\bin\\clangd.exe"
+                                 ;; try to avoid writing to disk
+                                 "--pch-storage=memory"
+                                 ;; use 12 cores
+                                 "-j"
+                                 "12"
+                                 ))))
+  (message "add to list")
+  ;; should be okay to support eldoc if I can figure out how to make
+  ;; it quieter while it's running. But it's too much noise for me...
+  (add-to-list 'eglot-stay-out-of 'eldoc)
+  (add-to-list 'eglot-stay-out-of 'abbrev)
+  (message "add hook")
+  (add-hook 'eglot-managed-mode-hook
+            (lambda ()
+              (progn
+                ;; shows stuff like derived types and parameter
+                ;; names, but it's too much to have it jumping
+                ;; around all the time!
+                ;; maybe if I could make them less intrusive?
+                ;; (or a key to toggle them would be fine)
+                (eglot-inlay-hints-mode -1)
+                ;; don't show me all these syntax errors while
+                ;; I'm typing!
+                (setq flymake-no-changes-timeout 30)
+
+                (global-set-key [M-down] 'flymake-goto-next-error)
+                (global-set-key [M-up] 'flymake-goto-prev-error)
+                ;; rebind alt-/ to take the quickfix at cursor
+                (global-set-key [?\M-/] 'eglot-code-action-quickfix)
+                )))
+  )
+
 
 
 (defun frame-settings (f)
@@ -90,6 +134,12 @@
          ;; huge!
          ; "FixederSys 2x-48:antialias=none"
          )
+
+        ;; without this, emacs thinks my font doesn't have greek :(
+        ;; XXX need to figure out a better way to specify this,
+        ;; including switching it when we change the zoom
+        (set-fontset-font t 'greek-iso8859-7
+                          "FixederSys 2x-24:antialias=none")
 
          (modify-frame-parameters nil
            (list '(top . 40) '(width . 80) '(height . 64))) ;; XX to 99
@@ -209,7 +259,7 @@
 ;; this is 2^26 + 61, which is the non-ascii \C-=
 ;; there's probably a nicer way to represent this, but
 ;; the elisp manual does not really explain it?
-(global-set-key [67108925] 'toggle-zoom)
+(global-set-key (kbd "C-=") 'toggle-zoom)
 ;; aquamacs redefines these??
 (global-set-key [C-right] 'forward-word)
 (global-set-key [C-left] 'backward-word)
@@ -1009,6 +1059,16 @@
  '(tom7-longword ((t (:foreground "#CCDDCC"))))
  '(tom7-preposition ((t (:foreground "#AACCAA"))))
  '(tom7-subtle-text ((t (:foreground "grey60"))))
+ '(eglot-diagnostic-tag-unnecessary-face ((t (:background "#3C2C00"))))
+ '(eglot-highlight-symbol-face ((t (:background "#448"))))
+ '(eglot-inlay-hint-face ((t (:foreground "#444"))))
+ '(eglot-mode-line ((t (:foreground "#11A"))))
+ '(flymake-error ((t (:background "#622" :underline (:color "#f00" :style line :position t)))))
+ '(flymake-warning ((t (:background "#531"))))
+ '(flyspell-duplicate-face ((t (:foreground "#DDDDAA"))) t)
+ '(flyspell-incorrect-face ((t (:foreground "#EE6666"))) t)
+ '(warning ((t (:foreground "#A70"))))
+ '(error ((t (:foreground "#900"))))
  '(twelf-font-comment ((t (:foreground "Grey50"))))
  '(twelf-font-comment-face ((t (:foreground "Grey50"))))
  '(twelf-font-constant ((t (:foreground "#AABBCC"))))
@@ -1046,6 +1106,7 @@
   ;; Your init file should contain only one such instance.
  '(comint-input-ignoredups t)
  '(echo-keystrokes 0.5)
+ '(flymake-mode-line-lighter "🪰")
  '(flyspell-issue-welcome-flag nil)
  '(show-paren-delay 0.0)
  '(show-paren-style (quote expression)))
