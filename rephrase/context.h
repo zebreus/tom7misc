@@ -18,6 +18,11 @@ struct VarInfo {
 
   // The il variable that the el var refers to.
   // This will be blank if a primop (below).
+  //
+  // XXX: This makes sense as an elaboration context, but we
+  // probably will want a "regular il context" so that we can do
+  // stuff like type-checking and optimization? That should just
+  // be indexed by il vars.
   std::string var;
 
   // As an implementation detail, some identifiers have special status
@@ -44,9 +49,6 @@ struct Context {
   // Initialize with a set of bindings.
   Context(const std::vector<std::pair<std::string, VarInfo>> &exp,
           const std::vector<std::pair<std::string, TypeVarInfo>> &typ);
-
-  // When inserting, the returned context refers to the existing one,
-  // so it must have a shorter lifespan!
 
   // Expression variables.
   Context Insert(const std::string &s, VarInfo vi) const {

@@ -193,9 +193,11 @@ struct Dec {
   DecType type;
   Dec(DecType t) : type(t) {}
 
-  std::tuple<const std::string &, const Exp *> Val() const {
+  std::tuple<const std::vector<std::string> &,
+             const std::string &,
+             const Exp *> Val() const {
     CHECK(type == DecType::VAL);
-    return std::tie(str, exp);
+    return std::tie(tyvars, str, exp);
   }
 
   const Exp *Do() const {
@@ -206,6 +208,7 @@ struct Dec {
 private:
   friend struct AstPool;
   std::string str;
+  std::vector<std::string> tyvars;
   const Exp *exp = nullptr;
 };
 
@@ -377,9 +380,12 @@ struct AstPool {
 
   // Declarations
 
-  const Dec *ValDec(const std::string &v, const Exp *rhs) {
+  const Dec *ValDec(std::vector<std::string> tyvars,
+                    std::string v,
+                    const Exp *rhs) {
     Dec *ret = NewDec(DecType::VAL);
-    ret->str = v;
+    ret->tyvars = std::move(tyvars);
+    ret->str = std::move(v);
     ret->exp = rhs;
     return ret;
   }

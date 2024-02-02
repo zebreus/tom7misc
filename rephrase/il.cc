@@ -156,8 +156,13 @@ std::string TypeString(const Type *t) {
 std::string DecString(const Dec *d) {
   switch (d->type) {
   case DecType::VAL: {
-    const auto &[x, e] = d->Val();
-    return StringPrintf("val %s = %s",
+    const auto &[tv, x, e] = d->Val();
+    std::string tyvars;
+    if (!tv.empty()) {
+      tyvars = "(" + Util::Join(tv, ",") + ") ";
+    }
+    return StringPrintf("val %s%s = %s",
+                        tyvars.c_str(),
                         x.c_str(),
                         ExpString(e).c_str());
   }

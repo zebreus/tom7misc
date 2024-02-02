@@ -312,6 +312,10 @@ std::string ExpString(const Exp *e);
 // In-order flattening of the layout without any JOIN-type nodes,
 // and dropping empty text nodes.
 std::vector<const Layout *> FlattenLayout(const Layout *lay);
+// True if the expression syntactically passes the value
+// restriction.
+bool IsValuable(const Exp *e);
+bool IsLayoutValuable(const Layout *lay);
 
 }  // namespace el
 

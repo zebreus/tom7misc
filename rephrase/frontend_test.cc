@@ -115,6 +115,23 @@ static void Simple() {
     printf("... %s\n", ExpString(e).c_str());
   }
 
+  {
+    const Exp *e = Run("let val (x, y) = (7, \"hi\") in x end");
+    const auto &[decs, body] = e->Let();
+    // Should bind tuple, and the two vars.
+    CHECK(decs.size() == 3);
+    printf("... %s\n", ExpString(e).c_str());
+  }
+
+  /*
+    // XXX need to parse AS patterns!
+  {
+    const Exp *e = Run("let val (x as z, _) = (7, \"hi\") in x end");
+    const auto &[decs, body] = e->Let();
+    printf("... %s\n", ExpString(e).c_str());
+  }
+  */
+
 }
 
 }  // il

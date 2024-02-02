@@ -33,17 +33,6 @@ private:
 
   const il::Type *NewEVar();
 
-  /*
-  const std::pair<const il::Exp *, const il::Type *> Elab(
-      const il::Exp *target,
-      const el::Pat *pat,
-      const il::Type *type,
-      std::function<
-        std::pair<const il::Exp *, const il::Type *>(const il::Context &G)>
-      success_cont,
-      const il::Exp *failure_exp);
-  */
-
   const std::pair<const il::Exp *, const il::Type *> ElabDecs(
       const il::Context &G,
       const std::vector<const el::Dec *> &decs,

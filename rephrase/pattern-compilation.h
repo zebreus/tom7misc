@@ -36,6 +36,7 @@ struct PatternCompilation {
       const el::Exp *rhs,
       const el::Exp *body);
 
+
 private:
   struct Matrix;
   std::pair<const Exp *, const Type *> Comp(
@@ -45,6 +46,22 @@ private:
   void CheckAffine(const Matrix &m) const;
   const el::Exp *SimpleBind(std::string nv, std::string objv,
                             const el::Exp *body);
+
+  std::pair<Context, std::vector<const Dec *>>
+  CompileIrrefutableRec(
+      const Context &G,
+      const el::Pat *pat,
+      const il::Exp *rhs,
+      const il::Type *rhs_type,
+      bool rhs_valuable);
+
+  std::pair<Context, std::vector<const Dec *>>
+  GeneralizeOne(
+      const Context &G,
+      const std::vector<std::string> &vars,
+      const il::Exp *rhs,
+      const il::Type *type,
+      bool rhs_valuable);
 
   Elaboration *elab = nullptr;
 };

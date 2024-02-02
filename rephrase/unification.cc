@@ -97,7 +97,7 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
 // during generalization.
 namespace {
 struct LessEVar {
-  bool operator() (const EVar &a, const EVar &b) {
+  bool operator() (const EVar &a, const EVar &b) const {
     return EVar::LessEVar(a, b);
   }
 };

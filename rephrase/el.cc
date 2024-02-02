@@ -220,4 +220,67 @@ std::vector<const Layout *> FlattenLayout(const Layout *lay) {
   }
 }
 
+bool IsLayoutValuable(const Layout *lay) {
+  switch (lay->type) {
+  case LayoutType::TEXT:
+    return true;
+
+  case LayoutType::JOIN:
+    for (const Layout *child : lay->children)
+      if (!IsLayoutValuable(child))
+        return false;
+    return true;
+
+  case LayoutType::EXP:
+    return IsValuable(lay->exp);
+
+  default:
+    CHECK(false) << "Unimplemented layout type.";
+    return false;
+  }
+}
+
+bool IsValuable(const Exp *e) {
+  switch (e->type) {
+  case ExpType::STRING: return true;
+  case ExpType::VAR: return true;
+  case ExpType::INTEGER: return true;
+
+  case ExpType::TUPLE:
+    for (const Exp *child : e->children)
+      if (!IsValuable(child))
+        return false;
+    return true;
+
+  case ExpType::JOIN:
+    for (const Exp *child : e->children)
+      if (!IsValuable(child))
+        return false;
+    return true;
+
+  case ExpType::LET:
+    return false;
+
+  case ExpType::IF:
+    return false;
+
+  case ExpType::APP:
+    // TODO: Could allow constructor application if
+    // we could determine it at parse time!
+    return false;
+
+  case ExpType::FN:
+    return true;
+
+  case ExpType::LAYOUT:
+    return IsLayoutValuable(e->layout);
+
+  case ExpType::ANN:
+    return true;
+
+  default:
+    return "ILLEGAL EXPRESSION";
+  }
+}
+
 }  // namespace el

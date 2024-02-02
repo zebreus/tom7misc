@@ -267,6 +267,8 @@ const Exp *Parsing::Parse(AstPool *pool,
           (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
           TuplePat(Self);
 
+        // TODO: add AsPattern
+
         return (AtomicPattern && Opt(IsToken<COLON>() >> TypeExpr))
           >[&](const auto &pair) -> const Pat * {
               const auto &[pat, typ] = pair;
@@ -353,6 +355,8 @@ const Exp *Parsing::Parse(AstPool *pool,
           };
     };
 
+  // TODO: For purposes of the value restriction, it would be good if
+  // we could mark this internally as a total function.
   const auto ProjectExpr =
     // #1/3 is syntactic sugar for (fn (x, _, _) => x)
     ((IsToken<HASH>() >> Int) && (IsToken<SLASH>() >> Int))
