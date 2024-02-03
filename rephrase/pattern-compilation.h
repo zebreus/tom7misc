@@ -58,7 +58,7 @@ private:
   std::pair<Context, std::vector<const Dec *>>
   GeneralizeOne(
       const Context &G,
-      const std::vector<std::string> &vars,
+      std::vector<std::string> vars,
       const il::Exp *rhs,
       const il::Type *type,
       bool rhs_valuable);

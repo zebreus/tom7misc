@@ -123,14 +123,11 @@ static void Simple() {
     printf("... %s\n", ExpString(e).c_str());
   }
 
-  /*
-    // XXX need to parse AS patterns!
   {
     const Exp *e = Run("let val (x as z, _) = (7, \"hi\") in x end");
     const auto &[decs, body] = e->Let();
     printf("... %s\n", ExpString(e).c_str());
   }
-  */
 
 }
 

@@ -267,9 +267,18 @@ const Exp *Parsing::Parse(AstPool *pool,
           (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
           TuplePat(Self);
 
-        // TODO: add AsPattern
+        auto AsPattern =
+          (AtomicPattern && Opt(IsToken<AS>() >> Id))
+          >[&](const auto &pair) -> const Pat * {
+              const auto &[pat, v] = pair;
+              if (v.has_value()) {
+                return pool->AsPat(pat, v.value());
+              } else {
+                return pat;
+              }
+            };
 
-        return (AtomicPattern && Opt(IsToken<COLON>() >> TypeExpr))
+        return (AsPattern && Opt(IsToken<COLON>() >> TypeExpr))
           >[&](const auto &pair) -> const Pat * {
               const auto &[pat, typ] = pair;
               if (typ.has_value()) {

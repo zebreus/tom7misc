@@ -456,12 +456,57 @@ static void TestParseType() {
   printf("Type parsing " AGREEN("OK") "\n");
 }
 
+static void TestParsePat() {
+  AstPool pool;
+  auto ParsePat = [&](const std::string &spat) -> const Pat * {
+      std::string s = StringPrintf("let val %s = 0 in 1 end",
+                                   spat.c_str());
+      std::string error;
+      std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
+      CHECK(tokens.has_value()) << "Did not lex: " << error;
+      // print tokens?
+      printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      const Exp *e = Parsing::Parse(&pool, s, tokens.value());
+      CHECK(e != nullptr) << spat;
+      CHECK(e->type == ExpType::LET) << spat;
+      CHECK(e->decs.size() == 1) << spat;
+      CHECK(e->decs[0]->type == DecType::VAL) << spat;
+      CHECK(e->a->integer == 1);
+      return e->decs[0]->pat;
+    };
+
+  {
+    const Pat *pat = ParsePat("x");
+    CHECK(pat->type == PatType::VAR);
+    CHECK(pat->var == "x");
+  }
+
+  {
+    const Pat *pat = ParsePat("(_, y)");
+    CHECK(pat->type == PatType::TUPLE);
+    CHECK(pat->children.size() == 2);
+    CHECK(pat->children[0]->type == PatType::WILD);
+    CHECK(pat->children[1]->type == PatType::VAR);
+    CHECK(pat->children[1]->var == "y");
+  }
+
+  {
+    const Pat *pat = ParsePat("x as y : int");
+    CHECK(pat->type == PatType::ANN);
+    CHECK(pat->a->type == PatType::AS);
+    CHECK(pat->a->var == "y");
+    CHECK(pat->a->a->type == PatType::VAR);
+    CHECK(pat->a->a->var == "x");
+  }
+}
+
 }  // namespace el
 
 int main(int argc, char **argv) {
   ANSI::Init();
   el::TestParse();
   el::TestParseType();
+  el::TestParsePat();
 
   printf("OK\n");
   return 0;

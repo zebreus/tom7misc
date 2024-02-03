@@ -121,21 +121,12 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
 
     switch (dec->type) {
     case el::DecType::VAL: {
-      // TODO: Let's only allow irrefutable patterns.
-      // Basically this is tuples, variables, wildcards, singleton sums,
-      // ... that kind of thing. Pattern compiler can have its own
-      // irrefutable pattern routine?
+      // Only irrefutable patterns are allowed in a val decl.
 
       // Need to generalize if free evars.
       // All this is handled in the pattern compiler.
       return pattern_compilation->CompileIrrefutable(
           G, dec->pat, dec->exp, rest);
-
-      /*
-      const Context GG = G.Insert(
-      const auto &[re, rt] = Elab(G, rest);
-      return pool->LetFlat(pool->Do(
-      */
     }
     case el::DecType::FUN:
       LOG(FATAL) << "Unimplemented FUN";

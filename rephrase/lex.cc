@@ -220,6 +220,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"else", ELSE},
     {"andalso", ANDALSO},
     {"orelse", ORELSE},
+    {"as", AS},
 
     // Symbolic
     {"=>", DARROW},

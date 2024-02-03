@@ -61,7 +61,7 @@ const Exp *AstPool::LetFlat(const Dec *d, const Exp *e) {
 
 std::string TypeString(const Type *t) {
   auto RecordOrSumBody = [](const Type *t) {
-      std::string ret = "{";
+      std::string ret;
       for (int i = 0; i < (int)t->str_children.size(); i++) {
         const auto &[lab, child] = t->str_children[i];
         if (i != 0)
@@ -70,7 +70,6 @@ std::string TypeString(const Type *t) {
                       lab.c_str(),
                       TypeString(child).c_str());
       }
-      ret.push_back('}');
       return ret;
     };
 
@@ -94,7 +93,7 @@ std::string TypeString(const Type *t) {
   }
 
   case TypeType::ARROW:
-    return StringPrintf("(%s -> %s)",
+    return StringPrintf("(%s → %s)",
                         TypeString(t->a).c_str(),
                         TypeString(t->b).c_str());
   case TypeType::RECORD:

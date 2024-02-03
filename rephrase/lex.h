@@ -47,6 +47,7 @@ enum TokenType {
   LET,
   IN,
   END,
+  AS,
 
   IF,
   THEN,

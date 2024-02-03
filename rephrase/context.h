@@ -86,6 +86,9 @@ struct Context {
   // variables can be generalized in a val declaration.
   bool HasEVar(const EVar &e) const;
 
+  // For debugging.
+  std::string ToString() const;
+
 private:
   enum class V {
     // e.g. 'int' or 'list'

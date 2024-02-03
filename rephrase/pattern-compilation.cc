@@ -185,6 +185,14 @@ PatternCompilation::CompileIrrefutable(
   const auto &[GG, decs] =
     CompileIrrefutableRec(G, pat, re, rt, valuable);
 
+  printf("Decs:\n");
+  for (const Dec *dec : decs) {
+    printf("  %s\n", DecString(dec).c_str());
+  }
+
+  printf("New context:\n%s\n(end)\n",
+         GG.ToString().c_str());
+
   const auto &[be, bt] = elab->Elab(GG, body);
   return std::make_pair(elab->pool->Let(decs, be), bt);
 }
@@ -318,10 +326,17 @@ PatternCompilation::CompileIrrefutableRec(
 std::pair<Context, std::vector<const Dec *>>
 PatternCompilation::GeneralizeOne(
     const Context &G,
-    const std::vector<std::string> &vars,
+    std::vector<std::string> vars,
     const il::Exp *rhs,
     const il::Type *type,
     bool rhs_valuable) {
+
+  il::AstPool *pool = elab->pool;
+
+  // The bound type variables.
+  std::vector<std::string> gen_tyvars;
+  // Used for instantiating a copy of the variable.
+  std::vector<const Type *> gen_tyvar_args;
 
   if (rhs_valuable && !vars.empty()) {
     // Then we are attempting to do polymorphic generalization.
@@ -340,10 +355,6 @@ PatternCompilation::GeneralizeOne(
 
     // Create a new type variable for abstraction and set the evar to
     // it.
-    il::AstPool *pool = elab->pool;
-    std::vector<std::string> gen_tyvars;
-    // Used for instantiating a copy of the variable.
-    std::vector<const Type *> gen_tyvar_args;
     for (int i = 0; i < (int)gen_evars.size(); i++) {
       std::string a = pool->NewVar("gen");
       gen_tyvars.push_back(a);
@@ -352,46 +363,55 @@ PatternCompilation::GeneralizeOne(
       gen_evars[i].Set(av);
     }
 
-    // Now bind one of the variables. We already checked that we
-    // have at least one in the vector.
-    const std::string &ov = vars[0];
-    const std::string &ilov = pool->NewVar(ov);
-    const Dec *odec = pool->ValDec(gen_tyvars, ilov, rhs);
-    VarInfo oinfo{
-      .tyvars = gen_tyvars,
-      .type = type,
-      .var = ilov,
-    };
-
-    std::vector<const Dec *> decs = {odec};
-    Context GG = G.Insert(ov, oinfo);
-
-    // Now bind the rest of the variables as copies. Most of the
-    // time there are none, so we don't worry about simplifying.
-    for (int i = 1; i < (int)vars.size(); i++) {
-      const std::string &v = vars[0];
-      const std::string &ilv = pool->NewVar(v);
-      // ... but importantly we reuse the variable above as the
-      // rhs.
-      const Dec *dec = pool->ValDec(gen_tyvars, ilv,
-                                    pool->Var(ov, gen_tyvar_args));
-      VarInfo info{
-        .tyvars = gen_tyvars,
-        .type = type,
-        .var = ilov,
-      };
-
-      GG = G.Insert(v, info);
-      decs.push_back(dec);
-    }
-
-    return std::make_pair(GG, decs);
   } else {
 
-    CHECK(false) << "Unimplemented: easy case!";
+    // No generalization, either because there are no variables
+    // being bound, or because the rhs is not valuable. We just
+    // generate a basic val dec with no type variables. Just
+    // make sure we have a variable to bind.
 
-    return std::make_pair(Context(), std::vector<const Dec *>{});
+    if (vars.empty()) {
+      // XXX maybe would be cleaner of we had NewVar for EL as
+      // well? But it's just a string.
+      vars.push_back(pool->NewVar("unused"));
+    }
   }
+
+  // Now bind one of the variables. We already checked that we
+  // have at least one in the vector.
+  CHECK(!vars.empty());
+  const std::string &ov = vars[0];
+  const std::string &ilov = pool->NewVar(ov);
+  const Dec *odec = pool->ValDec(gen_tyvars, ilov, rhs);
+  VarInfo oinfo{
+    .tyvars = gen_tyvars,
+    .type = type,
+    .var = ilov,
+  };
+
+  std::vector<const Dec *> decs = {odec};
+  Context GG = G.Insert(ov, oinfo);
+
+  // Now bind the rest of the variables as copies. Most of the
+  // time there are none, so we don't worry about simplifying.
+  for (int i = 1; i < (int)vars.size(); i++) {
+    const std::string &v = vars[i];
+    const std::string &ilv = pool->NewVar(v);
+    // ... but importantly we reuse the variable above as the
+    // rhs.
+    const Dec *dec = pool->ValDec(gen_tyvars, ilv,
+                                  pool->Var(ilv, gen_tyvar_args));
+    VarInfo info{
+      .tyvars = gen_tyvars,
+      .type = type,
+      .var = ilv,
+    };
+
+    GG = GG.Insert(v, info);
+    decs.push_back(dec);
+  }
+
+  return std::make_pair(GG, decs);
 }
 
 }  // namespace il

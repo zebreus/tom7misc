@@ -90,6 +90,17 @@ std::string PatString(const Pat *p) {
     ret.push_back(')');
     return ret;
   }
+  case PatType::ANN: {
+    return StringPrintf("%s : %s",
+                        PatString(p->a).c_str(),
+                        TypeString(p->ann).c_str());
+  }
+  case PatType::AS: {
+    return StringPrintf("%s as %s",
+                        PatString(p->a).c_str(),
+                        p->var.c_str());
+  }
+
   default:
     return "unknown pat type??";
   }

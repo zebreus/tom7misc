@@ -2,6 +2,14 @@
 
 #include <utility>
 #include <vector>
+#include <string>
+#include <variant>
+
+#include "functional-map.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "util.h"
+#include "il.h"
 
 namespace il {
 
@@ -28,7 +36,7 @@ bool Context::HasEVar(const EVar &e) const {
   // We could at least do it without copying. We will
   // also check multiple free EVars in the same term,
   // so we might want to only do the export once.
-  const auto &m = fm.Export();
+  const auto m = fm.Export();
   for (const auto &[k, v] : m) {
     if (k.second == V::EXP) {
       // Only expression variables.
@@ -41,6 +49,42 @@ bool Context::HasEVar(const EVar &e) const {
   }
 
   return false;
+}
+
+std::string Context::ToString() const {
+  const auto m = fm.Export();
+  std::string ret;
+  for (const auto &[k, v] : m) {
+    switch (k.second) {
+    case V::EXP: {
+      const VarInfo *vi = std::get_if<VarInfo>(&v);
+      CHECK(vi != nullptr) << "Bug: Expression vars always hold VarInfo.";
+      if (vi->primop.has_value()) {
+        StringAppendF(&ret, "%s primop\n", k.first.c_str());
+      } else {
+        std::string tyvars;
+        if (!vi->tyvars.empty()) {
+          tyvars = "(" + Util::Join(vi->tyvars, ", ") + ") ";
+        }
+        StringAppendF(&ret, "%s => %s : %s%s\n",
+                      k.first.c_str(),
+                      vi->var.c_str(),
+                      tyvars.c_str(),
+                      TypeString(vi->type).c_str());
+      }
+      break;
+    }
+    case V::TYPE:
+      StringAppendF(&ret, "Unimplemented type var binding. %s\n",
+                    k.first.c_str());
+      break;
+
+    default:
+      StringAppendF(&ret, "Unimplemented variable type!");
+      break;
+    }
+  }
+  return ret;
 }
 
 }  // il
