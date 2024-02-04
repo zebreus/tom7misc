@@ -109,6 +109,18 @@ static void Simple() {
   }
 
   {
+    const Exp *e = Run("{lab = 0, 2=\"hi\"}");
+    const auto &str_children = e->Record();
+    CHECK(str_children.size() == 2);
+    CHECK(str_children[0].first == "lab");
+    CHECK(str_children[0].second->Integer() == 0);
+    CHECK(str_children[1].first == "2");
+    CHECK(str_children[1].second->String() == "hi");
+    printf("... %s\n", ExpString(e).c_str());
+  }
+
+
+  {
     const Exp *e = Run("let val x = 3 in x end");
     const auto &[decs, body] = e->Let();
     CHECK(decs.size() == 1);
@@ -120,13 +132,29 @@ static void Simple() {
     const auto &[decs, body] = e->Let();
     // Should bind tuple, and the two vars.
     CHECK(decs.size() == 3);
-    printf("... %s\n", ExpString(e).c_str());
+    printf("%s\n", ExpString(e).c_str());
   }
 
   {
     const Exp *e = Run("let val (x as z, _) = (7, \"hi\") in x end");
     const auto &[decs, body] = e->Let();
-    printf("... %s\n", ExpString(e).c_str());
+    printf("%s\n", ExpString(e).c_str());
+    const auto &[tv, body_var] = body->Var();
+    CHECK(tv.empty()) << "Should not be polymorphic!";
+    bool is_declared = false;
+    for (const Dec *dec : decs) {
+      if (dec->type == DecType::VAL &&
+          std::get<1>(dec->Val()) == body_var)
+        is_declared = true;
+    }
+    CHECK(is_declared) << body_var;
+  }
+
+  {
+    const Exp *e = Run("fn x => x");
+    const auto &[self, x, body] = e->Fn();
+
+    printf("%s\n", ExpString(body).c_str());
   }
 
 }

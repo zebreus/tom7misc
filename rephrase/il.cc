@@ -247,8 +247,13 @@ std::string ExpString(const Exp *e) {
     for (const Dec *d : decs) {
       dstrs.push_back(DecString(d));
     }
-    return StringPrintf("let %s in %s end",
-                        Util::Join(dstrs, " ").c_str(),
+
+    return StringPrintf("let\n"
+                        "  %s\n"
+                        "in\n"
+                        "  %s\n"
+                        "end",
+                        Util::Join(dstrs, "\n  ").c_str(),
                         ExpString(body).c_str());
   }
 

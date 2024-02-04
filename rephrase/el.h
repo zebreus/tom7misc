@@ -21,7 +21,9 @@ enum class ExpType {
   STRING,
   JOIN,
   TUPLE,
+  RECORD,
   INTEGER,
+  // TODO: Float literals
   VAR,
   LAYOUT,
   LET,
@@ -29,7 +31,9 @@ enum class ExpType {
   APP,
   ANN,
   FN,
-  // TODO: Float literals
+  // Fail with a string error message.
+  // Should be replaced with exceptions.
+  FAIL,
 };
 
 enum class DecType {
@@ -43,6 +47,7 @@ enum class PatType {
   VAR,
   WILD,
   TUPLE,
+  RECORD,
   ANN,
   AS,
 };
@@ -91,6 +96,7 @@ struct Exp {
   const Pat *pat = nullptr;
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
+  std::vector<std::pair<std::string, const Exp *>> str_children;
   Exp(ExpType t) : type(t) {}
 };
 
@@ -100,7 +106,16 @@ struct Pat {
   const Pat *a;
   const Type *ann;
   std::vector<const Pat *> children;
+  std::vector<std::pair<std::string, const Pat *>> str_children;
   Pat(PatType t) : type(t) {}
+};
+
+// One arm of a datatype declaration.
+struct DatatypeDec {
+  // datatype (a) list = Nil | Cons of a * list
+  std::string name;
+  // Type may be null if absent!
+  std::vector<std::pair<std::string, const Type *>> arms;
 };
 
 struct Dec {
@@ -108,6 +123,10 @@ struct Dec {
   std::string str;
   const Pat *pat = nullptr;
   const Exp *exp = nullptr;
+  // Explicit tyvars, used for datatype decl.
+  std::vector<std::string> tyvars;
+  // All arms in the bundle must use the same tyvars.
+  std::vector<DatatypeDec> datatypes;
   Dec(DecType t) : type(t) {}
 };
 
@@ -175,6 +194,12 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *Record(std::vector<std::pair<std::string, const Exp *>> v) {
+    Exp *ret = NewExp(ExpType::RECORD);
+    ret->str_children = std::move(v);
+    return ret;
+  }
+
   const Exp *Fn(std::string self, const Pat *arg, const Exp *body) {
     Exp *ret = NewExp(ExpType::FN);
     ret->str = self;
@@ -211,10 +236,16 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *AnnExp(const Exp *e, const Type *t) {
+  const Exp *Ann(const Exp *e, const Type *t) {
     Exp *ret = NewExp(ExpType::ANN);
     ret->a = e;
     ret->t = t;
+    return ret;
+  }
+
+  const Exp *Fail(const Exp *e) {
+    Exp *ret = NewExp(ExpType::FAIL);
+    ret->a = e;
     return ret;
   }
 
@@ -256,6 +287,16 @@ struct AstPool {
     return ret;
   }
 
+  const Dec *DatatypeDec(
+      std::vector<std::string> tyvars,
+      std::vector<DatatypeDec> datatypes) {
+    Dec *ret = NewDec(DecType::DATATYPE);
+    ret->tyvars = std::move(tyvars);
+    ret->datatypes = std::move(datatypes);
+    return ret;
+  }
+
+
   // Patterns
 
   const Pat *AsPat(const Pat *p, const std::string &v) {
@@ -286,6 +327,12 @@ struct AstPool {
   const Pat *TuplePat(std::vector<const Pat *> v) {
     Pat *ret = NewPat(PatType::TUPLE);
     ret->children = std::move(v);
+    return ret;
+  }
+
+  const Pat *RecordPat(std::vector<std::pair<std::string, const Pat *>> v) {
+    Pat *ret = NewPat(PatType::RECORD);
+    ret->str_children = std::move(v);
     return ret;
   }
 

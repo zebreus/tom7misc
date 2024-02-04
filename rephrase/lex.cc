@@ -221,6 +221,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"andalso", ANDALSO},
     {"orelse", ORELSE},
     {"as", AS},
+    {"and", AND},
 
     // Symbolic
     {"=>", DARROW},
@@ -244,6 +245,8 @@ std::optional<std::vector<Token>> Lexing::Lex(
     };
 
   std::vector<Token> ret;
+
+  // TODO: (* Comments. *) and [* layout comments *]
 
   while (!input.empty()) {
     const size_t start = Pos();

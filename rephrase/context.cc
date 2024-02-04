@@ -74,10 +74,24 @@ std::string Context::ToString() const {
       }
       break;
     }
-    case V::TYPE:
-      StringAppendF(&ret, "Unimplemented type var binding. %s\n",
-                    k.first.c_str());
+    case V::TYPE: {
+      const TypeVarInfo *tvi = std::get_if<TypeVarInfo>(&v);
+      CHECK(tvi != nullptr) << "Bug: Type variables always hold TypeVarInfo.";
+      std::string tyvars;
+      if (!tvi->tyvars.empty()) {
+        if (tvi->tyvars.size() == 1) {
+          tyvars = "Λ" + tvi->tyvars[0] + ".";
+        } else {
+          tyvars = "Λ(" + Util::Join(tvi->tyvars, ", ") + ").";
+        }
+      }
+
+      StringAppendF(&ret, "type %s = %s%s\n",
+                    k.first.c_str(),
+                    tyvars.c_str(),
+                    TypeString(tvi->type).c_str());
       break;
+    }
 
     default:
       StringAppendF(&ret, "Unimplemented variable type!");

@@ -90,6 +90,21 @@ std::string PatString(const Pat *p) {
     ret.push_back(')');
     return ret;
   }
+
+  case PatType::RECORD: {
+    std::string ret = "{";
+    for (int i = 0; i < (int)p->str_children.size(); i++) {
+      const auto [lab, child] = p->str_children[i];
+      if (i != 0)
+        StringAppendF(&ret, ", ");
+      StringAppendF(&ret, "%s = %s",
+                    lab.c_str(),
+                    PatString(child).c_str());
+    }
+    ret.push_back('}');
+    return ret;
+  }
+
   case PatType::ANN: {
     return StringPrintf("%s : %s",
                         PatString(p->a).c_str(),
@@ -117,6 +132,30 @@ std::string DecString(const Dec *d) {
                         d->str.c_str(),
                         PatString(d->pat).c_str(),
                         ExpString(d->exp).c_str());
+
+  case DecType::DATATYPE: {
+    std::string tyvars;
+    if (!d->tyvars.empty()) {
+      tyvars = "(" + Util::Join(d->tyvars, ",") + ") ";
+    }
+    std::string ret = StringPrintf("datatype %s", tyvars.c_str());
+    for (int i = 0; i < (int)d->datatypes.size(); i++) {
+      const DatatypeDec &dd = d->datatypes[i];
+      if (i != 0) StringAppendF(&ret, "\nand");
+      StringAppendF(&ret, " %s =\n", dd.name.c_str());
+      for (int j = 0; j < (int)dd.arms.size(); j++) {
+        const auto &arm = dd.arms[j];
+        if (j == 0) StringAppendF(&ret, "\n    ");
+        else StringAppendF(&ret, "\n  | ");
+        StringAppendF(&ret, "%s", arm.first.c_str());
+        if (arm.second != nullptr){
+          StringAppendF(&ret, " of %s", TypeString(arm.second).c_str());
+        }
+      }
+    }
+    return ret;
+  }
+
   default:
     return "TODO DECTYPE";
   }
@@ -144,6 +183,18 @@ std::string ExpString(const Exp *e) {
     for (int i = 0; i < (int)e->children.size(); i++) {
       if (i != 0) StringAppendF(&ret, ", ");
       ret += ExpString(e->children[i]);
+    }
+    ret += ")";
+    return ret;
+  }
+
+  case ExpType::RECORD: {
+    std::string ret = "(";
+    for (int i = 0; i < (int)e->str_children.size(); i++) {
+      const auto &[lab, child] = e->str_children[i];
+      if (i != 0) StringAppendF(&ret, ", ");
+      StringAppendF(&ret, "%s = %s",
+                    lab.c_str(), ExpString(child).c_str());
     }
     ret += ")";
     return ret;
@@ -191,6 +242,9 @@ std::string ExpString(const Exp *e) {
                         PatString(e->pat).c_str(),
                         ExpString(e->a).c_str());
   }
+
+  case ExpType::FAIL:
+    return StringPrintf("(fail %s)", ExpString(e->a).c_str());
 
   case ExpType::LAYOUT:
     return StringPrintf("[%s]", LayoutString(e->layout).c_str());

@@ -43,7 +43,8 @@ private:
       const Context &G,
       Matrix m);
 
-  void CheckAffine(const Matrix &m) const;
+  void CheckAffine(const el::Pat *orig_pat) const;
+
   const el::Exp *SimpleBind(std::string nv, std::string objv,
                             const el::Exp *body);
 
@@ -63,6 +64,7 @@ private:
       const il::Type *type,
       bool rhs_valuable);
 
+  int verbose = 0;
   Elaboration *elab = nullptr;
 };
 

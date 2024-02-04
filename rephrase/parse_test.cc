@@ -315,6 +315,24 @@ static void TestParse() {
     CHECK(e->b->type == ExpType::VAR);
   }
 
+  {
+    const Exp *e = Parse("{lab = 5, 2 = \"hi\"}");
+    CHECK(e->type == ExpType::RECORD);
+    CHECK(e->str_children.size() == 2);
+    CHECK(e->str_children[0].first == "lab");
+    CHECK(e->str_children[0].second->integer == 5);
+    CHECK(e->str_children[1].first == "2");
+    CHECK(e->str_children[1].second->str == "hi");
+  }
+
+  {
+    const Exp *e = Parse("fn _ => 7");
+    CHECK(e->type == ExpType::FN);
+    CHECK(e->str.empty());
+    CHECK(e->pat->type == PatType::WILD);
+    CHECK(e->a->integer == 7);
+  }
+
   printf("Exp parsing " AGREEN("OK") "\n");
 }
 
@@ -498,6 +516,50 @@ static void TestParsePat() {
     CHECK(pat->a->a->type == PatType::VAR);
     CHECK(pat->a->a->var == "x");
   }
+
+  {
+    const Pat *pat = ParsePat("{ lab = x, 2 = _ }");
+    CHECK(pat->type == PatType::RECORD);
+    CHECK(pat->str_children.size() == 2);
+    // Might want to do unordered compare here?
+    CHECK(pat->str_children[0].first == "lab");
+    CHECK(pat->str_children[0].second->var == "x");
+    CHECK(pat->str_children[1].first == "2");
+    CHECK(pat->str_children[1].second->type == PatType::WILD);
+  }
+}
+
+static void TestParseDec() {
+  AstPool pool;
+  auto ParseDec = [&](const std::string &sdec) -> const Dec * {
+      std::string s = StringPrintf("let %s in 7 end",
+                                   sdec.c_str());
+      std::string error;
+      std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
+      CHECK(tokens.has_value()) << "Did not lex: " << error;
+      // print tokens?
+      printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      const Exp *e = Parsing::Parse(&pool, s, tokens.value());
+      CHECK(e != nullptr) << sdec;
+      CHECK(e->type == ExpType::LET) << sdec;
+      CHECK(e->decs.size() == 1) << sdec;
+      return e->decs[0];
+    };
+
+  {
+    const auto *dec = ParseDec("datatype dir = Left | Right");
+    CHECK(dec->type == DecType::DATATYPE);
+    CHECK(dec->tyvars.empty());
+    CHECK(dec->datatypes.size() == 1);
+    const DatatypeDec &dd = dec->datatypes[0];
+    CHECK(dd.name == "dir");
+    CHECK(dd.arms.size() == 2);
+    CHECK(dd.arms[0].first == "Left");
+    CHECK(dd.arms[0].second == nullptr);
+    CHECK(dd.arms[1].first == "Right");
+    CHECK(dd.arms[1].second == nullptr);
+  }
+
 }
 
 }  // namespace el
@@ -507,6 +569,7 @@ int main(int argc, char **argv) {
   el::TestParse();
   el::TestParseType();
   el::TestParsePat();
+  el::TestParseDec();
 
   printf("OK\n");
   return 0;

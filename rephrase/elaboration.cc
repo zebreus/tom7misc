@@ -185,6 +185,22 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
                           pool->RecordType(std::move(lct)));
   }
 
+  case el::ExpType::RECORD: {
+    std::vector<std::pair<std::string, const il::Type *>> lct;
+    std::vector<std::pair<std::string, const il::Exp *>> lce;
+    lct.reserve(el_exp->str_children.size());
+    lce.reserve(el_exp->str_children.size());
+
+    for (const auto &[lab, child] : el_exp->str_children) {
+      const auto &[e, t] = Elab(G, child);
+      lce.emplace_back(lab, e);
+      lct.emplace_back(lab, t);
+    }
+
+    return std::make_pair(pool->Record(std::move(lce)),
+                          pool->RecordType(std::move(lct)));
+  }
+
   case el::ExpType::INTEGER:
     return std::make_pair(pool->Int(el_exp->integer),
                           pool->IntType());
@@ -245,34 +261,49 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     return ElabDecs(G, el_exp->decs, el_exp->a);
 
   case el::ExpType::IF:
+    // TODO: Defer to case on a built-in datatype decl?
     LOG(FATAL) << "Unimplemented IF";
     break;
 
   case el::ExpType::FN: {
-    // TODO: This is directly analogous, except that we need
-    // to compile the pattern.
+    // TODO: Need to handle fn pat1 => e1 | pat2 => e2.
 
-    // TODO: Need to handle fn pat1 => e1 | pat2 => e2, perhaps
-    // by treating that as syntactic sugar in the parser.
+    // Function type is an arrow. We may need this for the recursive
+    // variable, so create it up front.
+    const il::Type *dom = NewEVar();
+    const il::Type *cod = NewEVar();
+    const il::Type *fntype = pool->Arrow(dom, cod);
 
-    // Pattern first.
-    // Pattern compilation should take an argument (can assume
-    // it's a value), pattern, and type, with the job of matching
-    // the pattern against the value (binding as necessary) and
-    // unifying with the type; it should call some continuation
-    // with the new context. The continuation returns an expression
-    // and type, which gets wrapped by the pattern compiler.
-    //
-    // Then bind self (if present)
-    //    e->str
-    // Then translate body.
+    const std::string self =
+      el_exp->str.empty() ? pool->NewVar("self") : el_exp->str;
+    const std::string iself = pool->NewVar(self);
+    Context GG = G.Insert(self,
+                          VarInfo{
+                            .tyvars = {},
+                            .type = fntype,
+                            .var = iself
+                              });
 
-    #if 0
-    return StringPrintf("(fn%s %s => %s)",
-                        as.c_str(),
-                        PatString(e->pat).c_str(),
-                        ExpString(e->a).c_str());
-    #endif
+    // Bind an argument variable.
+    const std::string arg = pool->NewVar("x");
+    const std::string iarg = pool->NewVar(arg);
+    GG = GG.Insert(arg, VarInfo{.tyvars = {}, .type = dom, .var = iarg});
+
+    // TODO: Can easily support multiple patterns if the parser parses it.
+    std::vector<std::pair<const el::Pat *, const el::Exp *>> rows;
+    rows.emplace_back(el_exp->pat, el_exp->a);
+    rows.emplace_back(
+        el_pool->WildPat(),
+        // Could include location info here.
+        el_pool->Fail(el_pool->String("unhandled match")));
+
+    // Now translate the pattern.
+    const auto [body, body_type] =
+      pattern_compilation->Compile(GG, arg, dom, rows);
+
+    Unification::Unify("fn body", body_type, cod);
+
+    return std::make_pair(pool->Fn(iself, iarg, body), fntype);
   }
 
   case el::ExpType::APP: {

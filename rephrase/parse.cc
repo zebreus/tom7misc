@@ -116,6 +116,10 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // XXX Probably need to add some keywords like * and /
   const auto Id = IsToken<ID>() >[&](Token t) { return TokenStr(t); };
+  // Labels can also be numeric.
+  const auto Label = Id || (IsToken<DIGITS>() >[&](Token t) {
+      return TokenStr(t);
+    });
   const auto StrLit = IsToken<STR_LIT>() >[&](Token t) {
       // Remove leading and trailing double quotes. Process escapes.
       std::string s = TokenStr(t);
@@ -154,7 +158,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         auto RecordType =
           (IsToken<LBRACE>() >>
            Separate0(
-               (Id && (IsToken<COLON>() >> Self)),
+               (Label && (IsToken<COLON>() >> Self)),
                IsToken<COMMA>()) << IsToken<RBRACE>())
           >[&](const std::vector<std::pair<std::string, const Type *>> &v) {
               // We don't do any normalization in EL.
@@ -259,12 +263,25 @@ const Exp *Parsing::Parse(AstPool *pool,
                 });
     };
 
+  const auto RecordPat = [&](const auto &Pattern) {
+      return
+        ((IsToken<LBRACE>() >>
+          Separate0(Label && (IsToken<EQUALS>() >> Pattern),
+                    IsToken<COMMA>()) <<
+          IsToken<RBRACE>())
+         >[&](const std::vector<std::pair<std::string, const Pat *>> &lps) ->
+         const Pat * {
+             return pool->RecordPat(lps);
+           });
+    };
+
 
   const auto Pattern =
     Fix<Token, const Pat *>([&](const auto &Self) {
         auto AtomicPattern =
           (Id >[&](const std::string &s) { return pool->VarPat(s); }) ||
           (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
+          RecordPat(Self) ||
           TuplePat(Self);
 
         auto AsPattern =
@@ -312,6 +329,16 @@ const Exp *Parsing::Parse(AstPool *pool,
                 });
     };
 
+  const auto RecordExpr = [&](const auto &Expr) {
+      return
+        ((IsToken<LBRACE>() >>
+          Separate0(Label && (IsToken<EQUALS>() >> Expr),
+                    IsToken<COMMA>()) <<
+          IsToken<RBRACE>())
+         >[&](const std::vector<std::pair<std::string, const Exp *>> &les) {
+             return pool->Record(les);
+           });
+    };
 
   const auto LayoutExpr = [&](const auto &Expr) {
       const auto Lay =
@@ -361,6 +388,19 @@ const Exp *Parsing::Parse(AstPool *pool,
             const auto &[pp, f] = p;
             const auto &[cond, t] = pp;
             return pool->If(cond, t, f);
+          };
+    };
+
+  const auto FnExpr = [&](const auto &Expr) {
+      return
+        ((IsToken<FN>() >> Opt(IsToken<AS>() >> Id)) &&
+         (Pattern &&
+          (IsToken<DARROW>() >> Expr)))
+        >[&](const auto &pp) {
+            const auto &[aso, pb] = pp;
+            const auto &[pat, body] = pb;
+            std::string self = aso.has_value() ? aso.value() : "";
+            return pool->Fn(self, pat, body);
           };
     };
 
@@ -419,6 +459,39 @@ const Exp *Parsing::Parse(AstPool *pool,
           };
     };
 
+  // This is like "Nil" or "Cons of a * list".
+  // We use null for the type in the first case.
+  const auto DatatypeArm =
+    (Id && Opt(IsToken<OF>() >> TypeExpr))
+    >[&](const auto &p) {
+        const auto &[name, otype] = p;
+        return std::pair(name, otype.has_value() ? otype.value() : nullptr);
+      };
+
+  const auto DatatypeDecl =
+    (IsToken<DATATYPE>() >>
+     (Opt(IsToken<LPAREN>() >> Separate(Id, IsToken<COMMA>()) <<
+          IsToken<RPAREN>()) &&
+      Separate(
+          Id && (IsToken<EQUALS>() >> Separate(DatatypeArm, IsToken<BAR>())),
+          IsToken<AND>())))
+    >[&](const auto &p) {
+        const auto &[otyvars, dts] = p;
+        // Treat absent as empty list.
+        std::vector<std::string> tyvars;
+        if (otyvars.has_value()) tyvars = otyvars.value();
+
+        std::vector<DatatypeDec> datadecs;
+        datadecs.reserve(dts.size());
+        for (const auto &[name, arms] : dts) {
+          DatatypeDec dd;
+          dd.name = name;
+          dd.arms = arms;
+          datadecs.push_back(dd);
+        }
+        return pool->DatatypeDec(std::move(tyvars), datadecs);
+      };
+
   const auto AdjApp = [&](const Exp *f, const Exp *arg) -> const Exp * {
       return pool->App(f, arg);
     };
@@ -456,6 +529,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             StrLitExpr ||
             // Includes parenthesized expression.
             TupleExpr(Expr) ||
+            RecordExpr(Expr) ||
             LayoutExpr(Expr) ||
             LetExpr(Expr, Decl) ||
             ProjectExpr ||
@@ -499,14 +573,15 @@ const Exp *Parsing::Parse(AstPool *pool,
           auto AppExpr =
             +FixityElement /= ResolveExprFixity;
 
-          auto AnnotatableExpr = IfExpr(Expr) || AppExpr;
+          // XXX get the precedence of these correct.
+          auto AnnotatableExpr = FnExpr(Expr) || IfExpr(Expr) || AppExpr;
 
           auto AnnExpr =
             (AnnotatableExpr && Opt(IsToken<COLON>() >> TypeExpr))
             >[&](const auto &pair) {
                 const auto &[e, ot] = pair;
                 if (ot.has_value()) {
-                  return pool->AnnExp(e, ot.value());
+                  return pool->Ann(e, ot.value());
                 } else {
                   return e;
                 }
@@ -520,6 +595,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             DoDecl(Expr) ||
             ValDecl(Expr) ||
             FunDecl(Expr) ||
+            DatatypeDecl ||
             // Just here for convenience of writing a || b || ...
             Fail<Token, const Dec *>();
         });

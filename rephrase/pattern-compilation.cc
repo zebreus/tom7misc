@@ -2,11 +2,14 @@
 #include "pattern-compilation.h"
 
 #include <vector>
+#include <string>
+#include <unordered_set>
 
 #include "il.h"
 #include "elaboration.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "ansi.h"
 
 namespace il {
 
@@ -45,6 +48,52 @@ struct PatternCompilation::Matrix {
     return pats[y * Width() + x];
   }
 
+  bool ColWild(int x) const {
+    CHECK(x >= 0 && x < Width());
+    for (int y = 0; y < Height(); y++) {
+      if (Cell(x, y)->type != PatType::WILD)
+        return false;
+    }
+    return true;
+  }
+
+  // Changes widths. Invalidates pointers.
+  void DeleteColumn(int x_target) {
+    const int old_width = Width();
+    const int old_height = Height();
+    CHECK(x_target >= 0 && x_target < old_width);
+
+    std::vector<std::string> new_objs;
+    std::vector<const il::Type *> new_types;
+    for (int x = 0; x < Width(); x++) {
+      if (x != x_target) {
+        new_objs.push_back(std::move(objs[x]));
+        new_types.push_back(types[x]);
+      }
+    }
+    objs = std::move(new_objs);
+    types = std::move(new_types);
+    new_objs.clear();
+    new_types.clear();
+
+    std::vector<const el::Pat *> new_pats;
+    for (int y = 0; y < old_height; y++) {
+      for (int x = 0; x < old_width; x++) {
+        const Pat *pat = pats[y * old_width + x];
+        if (x != x_target) {
+          new_pats.push_back(pat);
+        }
+      }
+    }
+
+    CHECK((int)new_pats.size() == (old_width - 1) * old_height);
+    pats = std::move(new_pats);
+
+    // Rows and defaults stay the same.
+    CHECK((int)new_pats.size() == Width() * Height());
+    CHECK((int)objs.size() == Width());
+    CHECK((int)types.size() == Width());
+  }
 
   // The expression for each case.
   std::vector<const el::Exp *> rows;
@@ -69,6 +118,11 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     const std::vector<std::pair<const el::Pat *, const el::Exp *>> &rows_in) {
 
   CHECK(!rows_in.empty()) << "There must be rows.";
+
+  // Check that no row binds a variable more than once.
+  for (const auto &[p, e_] : rows_in) {
+    CheckAffine(p);
+  }
 
   // Since pattern compilation generates new trivial patterns of the form
   //  let val x = y
@@ -115,13 +169,46 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     matrix.rows.push_back(exp);
   }
 
-  CheckAffine(matrix);
-
   return Comp(G, matrix);
 }
 
-void PatternCompilation::CheckAffine(const Matrix &m) const {
-  // TODO: Check that no row binds a variable more than once.
+void PatternCompilation::CheckAffine(const Pat *orig_pat) const {
+  // Quick success for common cases.
+  if (orig_pat->type == PatType::VAR || orig_pat->type == PatType::WILD)
+    return;
+
+  std::unordered_set<std::string> vars;
+  std::function<void(const Pat *)> Rec =
+      [orig_pat, &vars, &Rec](const Pat *pat) {
+      switch (pat->type) {
+      case PatType::VAR:
+        CHECK(!vars.contains(pat->var)) << "The same variable " <<
+          pat->var << " is bound more than once in the pattern:\n" <<
+          PatString(orig_pat);
+        vars.insert(pat->var);
+        break;
+      case PatType::WILD:
+        break;
+      case PatType::AS:
+        CHECK(!vars.contains(pat->var)) << "The same variable " <<
+          pat->var << " is bound more than once in the pattern:\n" <<
+          PatString(orig_pat);
+        Rec(pat->a);
+        break;
+      case PatType::ANN:
+        Rec(pat->a);
+        break;
+      case PatType::TUPLE:
+        for (const Pat *child : pat->children) {
+          Rec(child);
+        }
+        break;
+      default:
+        LOG(FATAL) << "Pattern type not handled in CheckAffine.";
+      }
+    };
+
+  Rec(orig_pat);
 }
 
 // let nv = objv in body
@@ -154,7 +241,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
         matrix.Cell(x, y) = op->a;
       }
 
-      // z is just "_ as z".
+      // z is just "_ as z", so treat it the same way.
       while (matrix.Cell(x, y)->type == PatType::VAR) {
         const Pat *op = matrix.Cell(x, y);
         const std::string nv = op->var;
@@ -164,7 +251,16 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
     }
   }
 
-  // Next,
+  // Next, remove columns that just consist of wildcards.
+  for (int x = 0; x < matrix.Width(); /* in loop */) {
+    if (matrix.ColWild(x)) {
+      matrix.DeleteColumn(x);
+      // And try again on the new x.
+    } else {
+      x++;
+    }
+  }
+
   LOG(FATAL) << "Unimplemented";
 
   return std::make_pair(nullptr, nullptr);
@@ -176,6 +272,9 @@ PatternCompilation::CompileIrrefutable(
       const el::Pat *pat,
       const el::Exp *rhs,
       const el::Exp *body) {
+  // All patterns must be affine.
+  CheckAffine(pat);
+
   const auto &[re, rt] = elab->Elab(G, rhs);
 
   // TODO: We'd probably get better error messages if we first do
@@ -185,14 +284,16 @@ PatternCompilation::CompileIrrefutable(
   const auto &[GG, decs] =
     CompileIrrefutableRec(G, pat, re, rt, valuable);
 
-  printf("Decs:\n");
+  printf(AWHITE("Decs") ":\n");
   for (const Dec *dec : decs) {
     printf("  %s\n", DecString(dec).c_str());
   }
 
-  printf("New context:\n%s\n(end)\n",
+  printf(AWHITE("New context") ":\n%s\n(end)\n",
          GG.ToString().c_str());
 
+  printf(AWHITE("Elaborating body") ":\n%s\n",
+         ExpString(body).c_str());
   const auto &[be, bt] = elab->Elab(GG, body);
   return std::make_pair(elab->pool->Let(decs, be), bt);
 }
@@ -208,8 +309,11 @@ PatternCompilation::CompileIrrefutableRec(
   el::AstPool *el_pool = elab->el_pool;
   il::AstPool *pool = elab->pool;
 
-  // Dispense with type constraints on the pattern.
-  // All these vars are bound to the case object.
+  // Initial rewrites:
+  //  - Dispense with type constraints on the pattern.
+  //    All these vars are bound to the case object.
+  //  - Transform variables into wildcards.
+  //  - Transform tuple patterns into record patterns.
   std::vector<std::string> vars;
   ([&]() {
       for (;;) {
@@ -230,14 +334,32 @@ PatternCompilation::CompileIrrefutableRec(
           break;
         case el::PatType::WILD:
           return;
-        case el::PatType::TUPLE:
+        case el::PatType::TUPLE: {
+          // Transform into the equivalent record.
+          std::vector<std::pair<std::string, const Pat *>> lpat;
+          lpat.reserve(pat->children.size());
+          for (int i = 0; i < (int)pat->children.size(); i++) {
+            lpat.emplace_back(StringPrintf("%d", i + 1),
+                              pat->children[i]);
+            printf(APURPLE("%d = %s") "\n",
+                   i + 1,
+                   PatString(pat->children[i]).c_str());
+          }
+          pat = el_pool->RecordPat(std::move(lpat));
+          return;
+        }
+        case el::PatType::RECORD:
           return;
         }
       }
     }());
 
+  if (verbose >= 2) {
+    printf("Cleaned irrefutable pat: %s\n", PatString(pat).c_str());
+  }
+
   CHECK(pat->type == el::PatType::WILD ||
-        pat->type == el::PatType::TUPLE);
+        pat->type == el::PatType::RECORD);
 
   if (pat->type == el::PatType::WILD) {
     // The base case. This covers variable bindings too, which we
@@ -245,16 +367,18 @@ PatternCompilation::CompileIrrefutableRec(
     return GeneralizeOne(G, vars, rhs, rhs_type, rhs_valuable);
 
   } else {
-    // TODO: This should actually compile record patterns.
-    CHECK(pat->type == el::PatType::TUPLE);
+    // TODO HERE!: This should actually compile record patterns.
 
-    std::vector<const il::Type *> shape;
-    for (int i = 0; i < (int)pat->children.size(); i++) {
-      shape.push_back(elab->NewEVar());
+    CHECK(pat->type == el::PatType::RECORD);
+
+    std::vector<std::pair<std::string, const il::Type *>> shape;
+    shape.reserve(pat->str_children.size());
+    for (const auto &[lab, child] : pat->str_children) {
+      shape.push_back(std::make_pair(lab, elab->NewEVar()));
     }
-    Unification::Unify("tuple pattern",
+    Unification::Unify("record pattern",
                        // Don't move; we use shape again below.
-                       pool->Product(shape),
+                       pool->RecordType(shape),
                        rhs_type);
 
     // val {l1: p1, l2: p2, l3: p3} as [v1, v2, ...] = rhs
@@ -264,9 +388,9 @@ PatternCompilation::CompileIrrefutableRec(
     // val r = rhs
     // val v1 = r
     // val v2 = r
-    // val p1 = #1 r
-    // val p2 = #2 r
-    // val p3 = #3 r
+    // val p1 = #l1 r
+    // val p2 = #l2 r
+    // val p3 = #l3 r
 
     std::string r = pool->NewVar("r");
     // PERF: Could use one of the variables in here, if non-empty.
@@ -291,18 +415,18 @@ PatternCompilation::CompileIrrefutableRec(
     std::vector<const il::Dec *> decs = rdecs;
 
     Context GGG = GG;
-    for (int i = 0; i < (int)pat->children.size(); i++) {
-      const Pat *p = pat->children[i];
-      std::string label = StringPrintf("%d", i + 1);
+    for (int i = 0; i < (int)pat->str_children.size(); i++) {
+      const auto &[label, p] = pat->str_children[i];
       const auto &[rec_rhs, rec_rhs_type] = elab->Elab(GG, el_rexp);
       // but we are projecting a label. We checked above
-      // that the rhs conforms to the tuple type, so we
+      // that the rhs conforms to the record type, so we
       // do not need another unification.
       //
       // If the RHS was valuable, then projecting from it remains
       // valuable.
       const il::Exp *rhs = pool->Project(label, rec_rhs);
-      const il::Type *rhs_type = shape[i];
+      CHECK(label == shape[i].first);
+      const il::Type *rhs_type = shape[i].second;
 
       const auto &[Gi, decsi] = CompileIrrefutableRec(
           GGG, p, rhs, rhs_type, rhs_valuable);
@@ -400,7 +524,7 @@ PatternCompilation::GeneralizeOne(
     // ... but importantly we reuse the variable above as the
     // rhs.
     const Dec *dec = pool->ValDec(gen_tyvars, ilv,
-                                  pool->Var(ilv, gen_tyvar_args));
+                                  pool->Var(ilov, gen_tyvar_args));
     VarInfo info{
       .tyvars = gen_tyvars,
       .type = type,
