@@ -1,8 +1,9 @@
 
-default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe
+default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe
 
-test : lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe
+test : lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe
 	./lex_test.exe
+	./il_test.exe
 	./context_test.exe
 	./unification_test.exe
 	./parse_test.exe
@@ -266,6 +267,9 @@ rephrase.exe : rephrase.o $(LANG_OBJECTS) $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 lex_test.exe : lex_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+il_test.exe : il_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 parse_test.exe : parse_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)

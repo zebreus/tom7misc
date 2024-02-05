@@ -243,6 +243,20 @@ std::string ExpString(const Exp *e) {
                         ExpString(e->a).c_str());
   }
 
+  case ExpType::CASE: {
+    std::vector<std::string> arms;
+    arms.reserve(e->clauses.size());
+    for (const auto &[pat, exp] : e->clauses) {
+      arms.push_back(StringPrintf("%s => %s",
+                                  PatString(pat).c_str(),
+                                  ExpString(exp).c_str()));
+    }
+    return StringPrintf("(case %s of\n"
+                        "   %s)",
+                        ExpString(e->a).c_str(),
+                        Util::Join(arms, "\n | ").c_str());
+  }
+
   case ExpType::FAIL:
     return StringPrintf("(fail %s)", ExpString(e->a).c_str());
 

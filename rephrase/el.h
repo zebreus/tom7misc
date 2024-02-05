@@ -30,6 +30,8 @@ enum class ExpType {
   IF,
   APP,
   ANN,
+  CASE,
+  // TODO: Should take multiple clauses
   FN,
   // Fail with a string error message.
   // Should be replaced with exceptions.
@@ -94,6 +96,7 @@ struct Exp {
   const Exp *c = nullptr;
   const Type *t = nullptr;
   const Pat *pat = nullptr;
+  std::vector<std::pair<const Pat *, const Exp *>> clauses;
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
   std::vector<std::pair<std::string, const Exp *>> str_children;
@@ -197,6 +200,14 @@ struct AstPool {
   const Exp *Record(std::vector<std::pair<std::string, const Exp *>> v) {
     Exp *ret = NewExp(ExpType::RECORD);
     ret->str_children = std::move(v);
+    return ret;
+  }
+
+  const Exp *Case(const Exp *obj,
+                  std::vector<std::pair<const Pat *, const Exp *>> clauses) {
+    Exp *ret = NewExp(ExpType::CASE);
+    ret->a = obj;
+    ret->clauses = std::move(clauses);
     return ret;
   }
 

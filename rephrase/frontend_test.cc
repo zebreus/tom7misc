@@ -153,8 +153,17 @@ static void Simple() {
   {
     const Exp *e = Run("fn x => x");
     const auto &[self, x, body] = e->Fn();
-
     printf("%s\n", ExpString(body).c_str());
+  }
+
+  {
+    const Exp *e = Run("(fn x => x) 0");
+    (void)e->App();
+  }
+
+  {
+    const Exp *e = Run("case 7 of x => x");
+    printf("%s\n", ExpString(e).c_str());
   }
 
 }

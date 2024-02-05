@@ -36,13 +36,14 @@ std::string AstPool::NewVar(std::string hint) {
   }
 }
 
-const Type *AstPool::Product(const std::vector<const Type *> &v) {
+const Type *AstPool::Product(const std::vector<const Type *> &v,
+                             const Type *guess) {
   std::vector<std::pair<std::string, const Type *>> record_type;
   record_type.reserve(v.size());
   for (int i = 0; i < (int)v.size(); i++) {
     record_type.emplace_back(StringPrintf("%d", i + 1), v[i]);
   }
-  return RecordType(std::move(record_type));
+  return RecordType(record_type, guess);
 }
 
 const Exp *AstPool::LetFlat(const Dec *d, const Exp *e) {
@@ -336,11 +337,11 @@ const Type *AstPool::SubstType(const Type *t, const std::string &v,
   case TypeType::SUM: {
     std::vector<std::pair<std::string, const Type *>> sch =
       RecordOrSum(t, v, u->str_children);
-    return SumType(std::move(sch));
+    return SumType(std::move(sch), u);
   }
 
   case TypeType::ARROW:
-    return Arrow(SubstType(t, v, u->a), SubstType(t, v, u->b));
+    return Arrow(SubstType(t, v, u->a), SubstType(t, v, u->b), u);
 
   case TypeType::MU:
     LOG(FATAL) << "Unimplemented: Substitution into mu type";
@@ -349,7 +350,7 @@ const Type *AstPool::SubstType(const Type *t, const std::string &v,
   case TypeType::RECORD: {
     std::vector<std::pair<std::string, const Type *>> sch =
       RecordOrSum(t, v, u->str_children);
-    return RecordType(std::move(sch));
+    return RecordType(std::move(sch), u);
   }
 
   case TypeType::EVAR: {
@@ -363,7 +364,7 @@ const Type *AstPool::SubstType(const Type *t, const std::string &v,
   }
 
   case TypeType::REF:
-    return RefType(SubstType(t, v, u->a));
+    return RefType(SubstType(t, v, u->a), u);
 
   case TypeType::STRING:
     return u;

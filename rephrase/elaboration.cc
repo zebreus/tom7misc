@@ -306,6 +306,31 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     return std::make_pair(pool->Fn(iself, iarg, body), fntype);
   }
 
+  case el::ExpType::CASE: {
+
+    const auto &[oe, ot] = Elab(G, el_exp->a);
+    std::string obj_var = pool->NewVar("obj");
+    std::string obj_ilvar = pool->NewVar("obj");
+
+    Context GG = G.Insert(obj_var,
+                          VarInfo{
+                              .tyvars = {},
+                              .type = ot,
+                              .var = obj_ilvar});
+
+    std::vector<std::pair<const el::Pat *, const el::Exp *>> rows =
+      el_exp->clauses;
+    rows.emplace_back(el_pool->WildPat(),
+                      el_pool->Fail(el_pool->String("unhandled match")));
+
+    const auto &[cexp, ctype] =
+      pattern_compilation->Compile(GG, obj_var, ot, rows);
+    return std::make_pair(
+        pool->Let({pool->ValDec({}, obj_ilvar, oe)},
+                  cexp),
+        ctype);
+  }
+
   case el::ExpType::APP: {
     const auto &[fe, ft] = Elab(G, el_exp->a);
     const auto &[xe, xt] = Elab(G, el_exp->b);

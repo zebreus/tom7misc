@@ -263,6 +263,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
 
   LOG(FATAL) << "Unimplemented";
 
+  // TODO: Unify all the arms together!
+
   return std::make_pair(nullptr, nullptr);
 }
 

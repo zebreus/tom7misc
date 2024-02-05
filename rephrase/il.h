@@ -212,26 +212,55 @@ private:
   const Exp *exp = nullptr;
 };
 
+// The AST pool has constructors for all the IL forms. Each takes
+// a final "guess" parameter; if non-null and equal to the object
+// that would be allocated, we return the guess instead. This
+// helps prevent duplicating lots of syntax nodes
 struct AstPool {
   AstPool() = default;
 
   // Types
+
   const Type *VarType(const std::string &s,
-                      std::vector<const Type *> v = {}) {
+                      std::vector<const Type *> v = {},
+                      const Type *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == TypeType::VAR &&
+        guess->var == s &&
+        guess->children == v) {
+      return guess;
+    }
+
     Type *ret = NewType(TypeType::VAR);
     ret->var = s;
     ret->children = std::move(v);
     return ret;
   }
 
-  const Type *RecordType(std::vector<std::pair<std::string, const Type *>> v) {
+  const Type *RecordType(
+      const std::vector<std::pair<std::string, const Type *>> &v,
+      const Type *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == TypeType::RECORD &&
+        guess->str_children == v) {
+      return guess;
+    }
+
     Type *ret = NewType(TypeType::RECORD);
-    ret->str_children = std::move(v);
+    ret->str_children = v;
     SortLabeled(&ret->str_children);
     return ret;
   }
 
-  const Type *SumType(std::vector<std::pair<std::string, const Type *>> v) {
+  const Type *SumType(
+      const std::vector<std::pair<std::string, const Type *>> &v,
+      const Type *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == TypeType::SUM &&
+        guess->str_children == v) {
+      return guess;
+    }
+
     Type *ret = NewType(TypeType::SUM);
     ret->str_children = std::move(v);
     SortLabeled(&ret->str_children);
@@ -239,33 +268,54 @@ struct AstPool {
   }
 
   const Type *StringType() {
-    return NewType(TypeType::STRING);
+    return &string_type;
   }
 
   const Type *FloatType() {
-    return NewType(TypeType::FLOAT);
+    return &float_type;
   }
 
-  const Type *RefType(const Type *t) {
+  const Type *IntType() {
+    return &int_type;
+  }
+
+  const Type *RefType(const Type *t, const Type *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == TypeType::REF &&
+        t == guess->a) {
+      return guess;
+    }
+
     Type *ret = NewType(TypeType::REF);
     ret->a = t;
     return ret;
   }
 
-  const Type *IntType() {
-    return NewType(TypeType::INT);
-  }
+  const Type *EVar(EVar a, const Type *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == TypeType::EVAR &&
+        EVar::SameEVar(a, guess->evar)) {
+      return guess;
+    }
 
-  const Type *EVar(EVar a) {
     Type *ret = NewType(TypeType::EVAR);
     ret->evar = std::move(a);
     return ret;
   }
 
   // Derived form for Record {1: t1, 2: t2, ...}.
-  const Type *Product(const std::vector<const Type *> &v);
+  const Type *Product(const std::vector<const Type *> &v,
+                      const Type *guess = nullptr);
 
-  const Type *Arrow(const Type *dom, const Type *cod) {
+  const Type *Arrow(const Type *dom, const Type *cod,
+                    const Type *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == TypeType::ARROW &&
+        guess->a == dom &&
+        guess->b == cod) {
+      return guess;
+    }
+
     Type *ret = NewType(TypeType::ARROW);
     ret->a = dom;
     ret->b = cod;
@@ -274,60 +324,116 @@ struct AstPool {
 
   // Expressions
 
-  const Exp *String(const std::string &s) {
+  const Exp *String(const std::string &s,
+                    const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::STRING &&
+        guess->str == s) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::STRING);
     ret->str = s;
     return ret;
   }
 
-  const Exp *Float(double d) {
+  const Exp *Float(double d, const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::FLOAT &&
+        guess->d == d) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::FLOAT);
     ret->d = d;
     return ret;
   }
 
   const Exp *Var(const std::string &v,
-                 std::vector<const Type *> ts = {}) {
+                 std::vector<const Type *> ts = {},
+                 const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::VAR &&
+        guess->str == v &&
+        guess->types == ts) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::VAR);
     ret->str = v;
     ret->types = std::move(ts);
     return ret;
   }
 
-  const Exp *Int(int64_t i) {
-    Exp *ret = NewExp(ExpType::INTEGER);
-    ret->integer = BigInt(i);
-    return ret;
+  const Exp *Int(int64_t i, const Exp *guess = nullptr) {
+    return Int(BigInt(i), guess);
   }
 
-  const Exp *Int(BigInt i) {
+  const Exp *Int(BigInt i, const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::INTEGER &&
+        BigInt::Eq(guess->integer, i)) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::INTEGER);
     ret->integer = std::move(i);
     return ret;
   }
 
-  const Exp *Record(std::vector<std::pair<std::string, const Exp *>> lv) {
+  const Exp *Record(
+      const std::vector<std::pair<std::string, const Exp *>> &lv,
+      const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::RECORD &&
+        guess->str_children == lv) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::RECORD);
     ret->str_children = std::move(lv);
     return ret;
   }
 
-  const Exp *Project(std::string s, const Exp *e) {
+  const Exp *Project(std::string s, const Exp *e, const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::PROJECT &&
+        guess->str == s &&
+        guess->a == e) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::PROJECT);
     ret->str = std::move(s);
     ret->a = e;
     return ret;
   }
 
-  const Exp *Join(std::vector<const Exp *> v) {
+  const Exp *Join(const std::vector<const Exp *> &v,
+                  const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::JOIN &&
+        guess->children == v) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::JOIN);
-    ret->children = std::move(v);
+    ret->children = v;
     return ret;
   }
 
-  const Exp *Let(std::vector<const Dec *> ds, const Exp *e) {
+  const Exp *Let(const std::vector<const Dec *> &ds,
+                 const Exp *e,
+                 const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::LET &&
+        guess->decs == ds &&
+        guess->a == e) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::LET);
-    ret->decs = std::move(ds);
+    ret->decs = ds;
     ret->a = e;
     return ret;
   }
@@ -336,7 +442,16 @@ struct AstPool {
   // is already a LET.
   const Exp *LetFlat(const Dec *d, const Exp *e);
 
-  const Exp *If(const Exp *cond, const Exp *t, const Exp *f) {
+  const Exp *If(const Exp *cond, const Exp *t, const Exp *f,
+                const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::IF &&
+        guess->a == cond &&
+        guess->b == t &&
+        guess->c == f) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::IF);
     ret->a = cond;
     ret->b = t;
@@ -344,7 +459,15 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *App(const Exp *f, const Exp *arg) {
+  const Exp *App(const Exp *f, const Exp *arg,
+                 const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::APP &&
+        guess->a == f &&
+        guess->b == arg) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::APP);
     ret->a = f;
     ret->b = arg;
@@ -352,45 +475,84 @@ struct AstPool {
   }
 
   const Exp *Primop(Primop po,
-                    std::vector<const Type *> ts,
-                    std::vector<const Exp *> es) {
+                    const std::vector<const Type *> &ts,
+                    const std::vector<const Exp *> &es,
+                    const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::PRIMOP &&
+        guess->primop == po &&
+        guess->types == ts &&
+        guess->children == es) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::PRIMOP);
     ret->primop = po;
-    ret->types = std::move(ts);
-    ret->children = std::move(es);
+    ret->types = ts;
+    ret->children = es;
     return ret;
   }
 
   // self may be empty to indicate a non-recursive function.
-  const Exp *Fn(std::string self,
-                std::string x,
-                const Exp *body) {
+  const Exp *Fn(const std::string &self,
+                const std::string &x,
+                const Exp *body,
+                const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::FN &&
+        guess->self == self &&
+        guess->str == x &&
+        guess->a == body) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::FN);
-    ret->self = std::move(self);
-    ret->str = std::move(x);
+    ret->self = self;
+    ret->str = x;
     ret->a = body;
     return ret;
   }
 
-  const Exp *Fail(std::string msg) {
+  const Exp *Fail(const std::string &msg, const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::FAIL &&
+        guess->str == msg) {
+      return guess;
+    }
+
     Exp *ret = NewExp(ExpType::FAIL);
-    ret->str = std::move(msg);
+    ret->str = msg;
     return ret;
   }
 
   // Declarations
 
-  const Dec *ValDec(std::vector<std::string> tyvars,
-                    std::string v,
-                    const Exp *rhs) {
+  const Dec *ValDec(const std::vector<std::string> &tyvars,
+                    const std::string &v,
+                    const Exp *rhs,
+                    const Dec *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == DecType::VAL &&
+        guess->tyvars == tyvars &&
+        guess->str == v &&
+        guess->exp == rhs) {
+      return guess;
+    }
+
     Dec *ret = NewDec(DecType::VAL);
-    ret->tyvars = std::move(tyvars);
-    ret->str = std::move(v);
+    ret->tyvars = tyvars;
+    ret->str = v;
     ret->exp = rhs;
     return ret;
   }
 
-  const Dec *DoDec(const Exp *e) {
+  const Dec *DoDec(const Exp *e, const Dec *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == DecType::DO &&
+        guess->exp == e) {
+      return guess;
+    }
+
     Dec *ret = NewDec(DecType::DO);
     ret->exp = e;
     return ret;
@@ -414,6 +576,10 @@ struct AstPool {
   std::string NewVar(std::string hint = "");
 
  private:
+  const Type string_type = Type(TypeType::STRING);
+  const Type int_type = Type(TypeType::INT);
+  const Type float_type = Type(TypeType::FLOAT);
+
   Type *NewType(TypeType t) { return type_arena.New(t); }
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }
   Dec *NewDec(DecType t) { return dec_arena.New(t); }

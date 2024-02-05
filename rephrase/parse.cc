@@ -404,6 +404,19 @@ const Exp *Parsing::Parse(AstPool *pool,
           };
     };
 
+  const auto CaseExpr = [&](const auto &Expr) {
+      return
+        ((IsToken<CASE>() >> Expr << IsToken<OF>()) &&
+         (Opt(IsToken<BAR>()) >>
+          Separate(
+              Pattern && (IsToken<DARROW>() >> Expr),
+              IsToken<BAR>())))
+        >[&](const auto &pair) {
+            const auto &[obj, clauses] = pair;
+            return pool->Case(obj, clauses);
+          };
+    };
+
   // TODO: For purposes of the value restriction, it would be good if
   // we could mark this internally as a total function.
   const auto ProjectExpr =
@@ -574,7 +587,10 @@ const Exp *Parsing::Parse(AstPool *pool,
             +FixityElement /= ResolveExprFixity;
 
           // XXX get the precedence of these correct.
-          auto AnnotatableExpr = FnExpr(Expr) || IfExpr(Expr) || AppExpr;
+          auto AnnotatableExpr = FnExpr(Expr) ||
+            IfExpr(Expr) ||
+            CaseExpr(Expr) ||
+            AppExpr;
 
           auto AnnExpr =
             (AnnotatableExpr && Opt(IsToken<COLON>() >> TypeExpr))

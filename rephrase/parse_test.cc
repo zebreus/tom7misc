@@ -333,6 +333,24 @@ static void TestParse() {
     CHECK(e->a->integer == 7);
   }
 
+  {
+    const Exp *e = Parse("case y of (x, z) => 7 | u => 8");
+    CHECK(e->type == ExpType::CASE);
+    CHECK(e->a->type == ExpType::VAR);
+    CHECK(e->a->str == "y");
+    CHECK(e->clauses.size() == 2);
+    const auto &[pat1, exp1] = e->clauses[0];
+    const auto &[pat2, exp2] = e->clauses[1];
+    CHECK(pat1->type == PatType::TUPLE);
+    CHECK(pat1->children.size() == 2);
+    CHECK(pat1->children[0]->var == "x");
+    CHECK(pat1->children[1]->var == "z");
+    CHECK(exp1->integer == 7);
+    CHECK(pat2->type == PatType::VAR);
+    CHECK(pat2->var == "u");
+    CHECK(exp2->integer == 8);
+  }
+
   printf("Exp parsing " AGREEN("OK") "\n");
 }
 
