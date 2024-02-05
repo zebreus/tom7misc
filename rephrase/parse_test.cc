@@ -351,6 +351,19 @@ static void TestParse() {
     CHECK(exp2->integer == 8);
   }
 
+  {
+    // Here we use two floats that can be represented exactly.
+    const Exp *e = Parse("1.5 + 1e100");
+    CHECK(e->type == ExpType::APP);
+    CHECK(e->b->children.size() == 2);
+    const Exp *l = e->b->children[0];
+    const Exp *r = e->b->children[1];
+    CHECK(l->type == ExpType::FLOAT);
+    CHECK(l->d == 1.5);
+    CHECK(r->type == ExpType::FLOAT);
+    CHECK(r->d == 1e100);
+  }
+
   printf("Exp parsing " AGREEN("OK") "\n");
 }
 

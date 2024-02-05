@@ -166,6 +166,18 @@ static void Simple() {
     printf("%s\n", ExpString(e).c_str());
   }
 
+  {
+    const Exp *e = Run("1e100");
+    double d = e->Float();
+    CHECK(d == 1e100);
+  }
+
+  {
+    const Exp *e = Run("2.25");
+    double d = e->Float();
+    CHECK(d == 2.25);
+  }
+
 }
 
 }  // il

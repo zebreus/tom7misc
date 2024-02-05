@@ -178,6 +178,9 @@ std::string ExpString(const Exp *e) {
   case ExpType::INTEGER:
     return e->integer.ToString();
 
+  case ExpType::FLOAT:
+    return StringPrintf("%.17g", e->d);
+
   case ExpType::TUPLE: {
     std::string ret = "(";
     for (int i = 0; i < (int)e->children.size(); i++) {

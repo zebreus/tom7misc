@@ -23,7 +23,7 @@ enum class ExpType {
   TUPLE,
   RECORD,
   INTEGER,
-  // TODO: Float literals
+  FLOAT,
   VAR,
   LAYOUT,
   LET,
@@ -91,6 +91,7 @@ struct Exp {
   std::string str;
   const Layout *layout = nullptr;
   BigInt integer;
+  double d = 0.0;
   const Exp *a = nullptr;
   const Exp *b = nullptr;
   const Exp *c = nullptr;
@@ -188,6 +189,12 @@ struct AstPool {
   const Exp *Int(int64_t i) {
     Exp *ret = NewExp(ExpType::INTEGER);
     ret->integer = BigInt(i);
+    return ret;
+  }
+
+  const Exp *Float(double d) {
+    Exp *ret = NewExp(ExpType::FLOAT);
+    ret->d = d;
     return ret;
   }
 

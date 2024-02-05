@@ -154,6 +154,14 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     return std::make_pair(pool->String(el_exp->str),
                           pool->StringType());
 
+  case el::ExpType::INTEGER:
+    return std::make_pair(pool->Int(el_exp->integer),
+                          pool->IntType());
+
+  case el::ExpType::FLOAT:
+    return std::make_pair(pool->Float(el_exp->d),
+                          pool->FloatType());
+
   case el::ExpType::ANN: {
     // Type annotations are erased during elaboration, after
     // ensuring they hold through unification.
@@ -200,10 +208,6 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     return std::make_pair(pool->Record(std::move(lce)),
                           pool->RecordType(std::move(lct)));
   }
-
-  case el::ExpType::INTEGER:
-    return std::make_pair(pool->Int(el_exp->integer),
-                          pool->IntType());
 
   case el::ExpType::VAR: {
     const il::VarInfo *vi = G.Find(el_exp->str);

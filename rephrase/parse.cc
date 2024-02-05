@@ -6,11 +6,12 @@
 #include <vector>
 #include <cstdint>
 
-#include "parser-combinators.h"
-#include "el.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "el.h"
 #include "lex.h"
+#include "parser-combinators.h"
+#include "util.h"
 
 namespace el {
 
@@ -104,7 +105,7 @@ const Exp *Parsing::Parse(AstPool *pool,
       return std::string(input.substr(t.start, t.length));
     };
 
-  // TODO: Support other integer literals.
+  // TODO: Support other integer literals. (NUMERIC_LIT)
   // TODO: Parse bigint
   const auto Int = IsToken<DIGITS>() >[&](Token t) {
       std::string s = TokenStr(t);
@@ -114,12 +115,24 @@ const Exp *Parsing::Parse(AstPool *pool,
       return i;
     };
 
+  const auto Float = IsToken<FLOAT_LIT>() >[&](Token t) -> double {
+      std::string s = TokenStr(t);
+      std::optional<double> od = Util::ParseDoubleOpt(s);
+      if (od.has_value()) {
+        return od.value();
+      } else {
+        LOG(FATAL) << "Illegal float literal: " << s;
+        return 0.0;
+      }
+    };
+
   // XXX Probably need to add some keywords like * and /
   const auto Id = IsToken<ID>() >[&](Token t) { return TokenStr(t); };
   // Labels can also be numeric.
   const auto Label = Id || (IsToken<DIGITS>() >[&](Token t) {
       return TokenStr(t);
     });
+
   const auto StrLit = IsToken<STR_LIT>() >[&](Token t) {
       // Remove leading and trailing double quotes. Process escapes.
       std::string s = TokenStr(t);
@@ -310,6 +323,7 @@ const Exp *Parsing::Parse(AstPool *pool,
   // Expressions.
 
   const auto IntExpr = Int >[&](int64_t i) { return pool->Int(i); };
+  const auto FloatExpr = Float >[&](double d) { return pool->Float(d); };
   const auto StrLitExpr = StrLit >[&](const std::string &s) {
       return pool->String(s);
     };
@@ -539,6 +553,7 @@ const Exp *Parsing::Parse(AstPool *pool,
           // Expression parser.
           auto AtomicExpr =
             IntExpr ||
+            FloatExpr ||
             StrLitExpr ||
             // Includes parenthesized expression.
             TupleExpr(Expr) ||
