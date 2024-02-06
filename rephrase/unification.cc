@@ -9,6 +9,7 @@
 #include <mutex>
 #include <cstdint>
 #include <cinttypes>
+#include <functional>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -41,7 +42,7 @@ using VMap = std::vector<std::pair<std::string, std::string>>;
 std::shared_ptr<EVar::EVarCell> EVar::GetCell() const {
   if (const Type *next = cell->GetBound()) {
     if (next->type == TypeType::EVAR) {
-      std::shared_ptr<EVar::EVarCell> ptd = next->evar.GetCell();
+      std::shared_ptr<EVar::EVarCell> ptd = next->EVar().GetCell();
       cell = ptd;
     }
   }
@@ -61,31 +62,48 @@ bool EVar::LessEVar(const EVar &a, const EVar &b) {
 
 bool EVar::Occurs(const EVar &e, const Type *t) {
   switch (t->type) {
-  case TypeType::VAR:
+
+  case TypeType::VAR: {
+    const auto &[var, args] = t->Var();
+    for (const Type *child : args) {
+      if (Occurs(e, child)) return true;
+    }
     return false;
+  }
+
   case TypeType::SUM:
-    for (const auto &[l_, c] : t->str_children) {
+    for (const auto &[l_, c] : t->Sum()) {
       if (Occurs(e, c)) return true;
     }
     return false;
-  case TypeType::ARROW:
-    return Occurs(e, t->a) || Occurs(e, t->b);
+
+  case TypeType::ARROW: {
+    const auto &[dom, cod] = t->Arrow();
+    return Occurs(e, dom) || Occurs(e, cod);
+  }
+
   case TypeType::MU:
     LOG(FATAL) << "Unimplemented: Mu in Occurs";
     return false;
+
   case TypeType::RECORD:
-    for (const auto &[l_, c] : t->str_children) {
+    for (const auto &[l_, c] : t->Record()) {
       if (Occurs(e, c)) return true;
     }
     return false;
+
   case TypeType::EVAR:
-    return SameEVar(e, t->evar);
+    return SameEVar(e, t->EVar());
+
   case TypeType::REF:
-    return Occurs(e, t->a);
+    return Occurs(e, t->Ref());
+
   case TypeType::STRING:
     return false;
+
   case TypeType::INT:
     return false;
+
   case TypeType::FLOAT:
     return false;
   }
@@ -111,35 +129,52 @@ std::vector<EVar> EVar::FreeEVarsInType(const Type *t) {
   std::function<void(const Type *)> Rec =
     [&](const Type *t) -> void {
     switch (t->type) {
-    case TypeType::VAR:
+
+    case TypeType::VAR: {
+      const auto &[var, args] = t->Var();
+      for (const Type *child : args) {
+        Rec(child);
+      }
       return;
+    }
+
     case TypeType::SUM:
-      for (const auto &[l_, c] : t->str_children)
+      for (const auto &[l_, c] : t->Sum())
         Rec(c);
       return;
-    case TypeType::ARROW:
-      Rec(t->a);
-      Rec(t->b);
+
+    case TypeType::ARROW: {
+      const auto &[dom, cod] = t->Arrow();
+      Rec(dom);
+      Rec(cod);
       return;
+    }
+
     case TypeType::MU:
       LOG(FATAL) << "Unimplemented: Mu in FreeEVarsInType";
       return;
+
     case TypeType::RECORD:
-      for (const auto &[l_, c] : t->str_children)
+      for (const auto &[l_, c] : t->Record())
         Rec(c);
       return;
+
     case TypeType::EVAR:
-      if (t->evar.GetBound() == nullptr) {
-        s.insert(t->evar);
+      if (t->EVar().GetBound() == nullptr) {
+        s.insert(t->EVar());
       }
       return;
+
     case TypeType::REF:
-      Rec(t->a);
+      Rec(t->Ref());
       return;
+
     case TypeType::STRING:
       return;
+
     case TypeType::INT:
       return;
+
     case TypeType::FLOAT:
       return;
     }
@@ -158,7 +193,7 @@ static void UnifyEx(std::string_view what,
     // recurse into them.
     auto IsBoundEvar = [](const Type *t) -> const Type * {
         if (t->type != TypeType::EVAR) return nullptr;
-        return t->evar.GetBound();
+        return t->EVar().GetBound();
       };
 
     if (const Type *at = IsBoundEvar(t1)) {
@@ -174,8 +209,8 @@ static void UnifyEx(std::string_view what,
     // Now we know that at least one of them is a free evar.
     if (t1->type == TypeType::EVAR && t2->type == TypeType::EVAR) {
       // Both evars.
-      const EVar &a = t1->evar;
-      const EVar &b = t2->evar;
+      const EVar &a = t1->EVar();
+      const EVar &b = t2->EVar();
       // Nothing to do if it's the same variable.
       if (EVar::SameEVar(a, b))
         return;
@@ -186,7 +221,7 @@ static void UnifyEx(std::string_view what,
     } else {
       const bool evar_left = t1->type == TypeType::EVAR;
       if (!evar_left) { CHECK(t2->type == TypeType::EVAR); }
-      const EVar &e = evar_left ? t1->evar : t2->evar;
+      const EVar &e = evar_left ? t1->EVar() : t2->EVar();
       const Type *t = evar_left ? t2 : t1;
       CHECK(t->type != TypeType::EVAR);
 
@@ -214,17 +249,26 @@ static void UnifyEx(std::string_view what,
     " and the other was " << TypeTypeString(t2->type) << ". Full "
     "types:\n" << TypeString(t1) << "\n(vs)\n" << TypeString(t2);
 
-  auto RecordOrSum = [what, &vmap](const char *record_what,
-                                   const Type *t1, const Type *t2) {
-      CHECK(t1->str_children.size() == t2->str_children.size()) <<
+  typedef
+    const std::vector<std::pair<std::string, const Type *>> &
+    (il::Type::*RecordOrSumField)() const;
+
+  auto RecordOrSum = [what, &vmap](
+      const char *record_what,
+      // XXX pass member
+      RecordOrSumField Field,
+      const Type *t1, const Type *t2) {
+      const auto &field1 = std::invoke(Field, t1);
+      const auto &field2 = std::invoke(Field, t2);
+      CHECK(field1.size() == field2.size()) <<
         "(" << what << ") Labels in " << record_what <<
         " type do not match during unification.\n"
         "There are a different number:\n" <<
         TypeString(t1) << "\nvs\n" << TypeString(t2);
 
-      for (int i = 0; i < (int)t1->str_children.size(); i++) {
-        const auto &[l1, c1] = t1->str_children[i];
-        const auto &[l2, c2] = t2->str_children[i];
+      for (int i = 0; i < (int)field1.size(); i++) {
+        const auto &[l1, c1] = field1[i];
+        const auto &[l2, c2] = field2[i];
         CHECK(l1 == l2) <<
           "(" << what << ") "
           "Labels in " << record_what <<
@@ -245,24 +289,27 @@ static void UnifyEx(std::string_view what,
     break;
 
   case TypeType::SUM:
-    RecordOrSum("sum", t1, t2);
+    RecordOrSum("sum", &Type::Sum, t1, t2);
     return;
 
-  case TypeType::ARROW:
-    UnifyEx(what, vmap, t1->a, t2->a);
-    UnifyEx(what, vmap, t1->b, t2->b);
+  case TypeType::ARROW: {
+    const auto &[dom1, cod1] = t1->Arrow();
+    const auto &[dom2, cod2] = t2->Arrow();
+    UnifyEx(what, vmap, dom1, dom2);
+    UnifyEx(what, vmap, cod1, cod2);
     break;
+  }
 
   case TypeType::MU:
-    LOG(FATAL) << "Unimplemented";
+    LOG(FATAL) << "Unimplemented: Unify mu";
     break;
 
   case TypeType::RECORD:
-    RecordOrSum("record", t1, t2);
+    RecordOrSum("record", &Type::Record, t1, t2);
     return;
 
   case TypeType::REF:
-    UnifyEx(what, vmap, t1->a, t2->a);
+    UnifyEx(what, vmap, t1->Ref(), t2->Ref());
     return;
 
   case TypeType::STRING:
@@ -273,7 +320,6 @@ static void UnifyEx(std::string_view what,
 
   case TypeType::FLOAT:
     return;
-
   }
 }
 

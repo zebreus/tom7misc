@@ -20,7 +20,7 @@ namespace il {
     const Type *orig_t = (t_);                    \
     const Type *t = orig_t;                       \
     while (t->type == TypeType::EVAR) {           \
-      const Type *u = t->evar.GetBound();         \
+      const Type *u = t->EVar().GetBound();       \
       CHECK(u != nullptr) << "Unbound evar: "     \
                           << TypeString(orig_t)   \
                           << "\nWanted: "         \

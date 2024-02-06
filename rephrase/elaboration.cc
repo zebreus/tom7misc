@@ -3,6 +3,7 @@
 
 #include <utility>
 #include <string>
+#include <unordered_set>
 
 #include "el.h"
 #include "il.h"
@@ -19,6 +20,8 @@ using Unification = il::Unification;
 using TypeVarInfo = il::TypeVarInfo;
 using EVar = il::EVar;
 using PatternCompilation = il::PatternCompilation;
+
+using DatatypeDec = el::DatatypeDec;
 
 Elaboration::Elaboration(el::AstPool *el_pool, il::AstPool *il_pool) :
   el_pool(el_pool), pool(il_pool), init(pool) {
@@ -102,6 +105,7 @@ const il::Type *Elaboration::ElabType(const Context &G,
   }
 }
 
+// XXX return context instead of requiring let?
 const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
     const il::Context &G,
     const std::vector<const el::Dec *> &decs,
@@ -128,12 +132,70 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
       return pattern_compilation->CompileIrrefutable(
           G, dec->pat, dec->exp, rest);
     }
+
     case el::DecType::FUN:
+      // Easy, except for mutual recursion (use ref? globalize?)
       LOG(FATAL) << "Unimplemented FUN";
       break;
-    case el::DecType::DATATYPE:
-      LOG(FATAL) << "Unimplemented DATATYPE";
+
+    case el::DecType::DATATYPE: {
+      {
+        std::unordered_set<std::string> unique_tyvars;
+        for (const std::string &eltv : dec->tyvars) {
+          CHECK(!unique_tyvars.contains(eltv)) << "Duplicate type "
+            "variable " << eltv << " in datatype declaration.";
+          unique_tyvars.insert(eltv);
+        }
+
+        std::unordered_set<std::string> unique_names;
+        std::unordered_set<std::string> unique_ctors;
+        for (const DatatypeDec &dd : dec->datatypes) {
+          CHECK(!unique_names.contains(dd.name)) << "Duplicate datatype " <<
+            dd.name << " in mutually recurisve datatype declaration.";
+          unique_names.insert(dd.name);
+          for (const auto &[ctor, t_] : dd.arms) {
+            CHECK(!unique_ctors.contains(ctor)) << "Duplicate constructor " <<
+              ctor << " in mutually recursive datatype declaration. The "
+              "constructors must be distinct across all datatypes.";
+            unique_ctors.insert(ctor);
+          }
+        }
+      }
+
+      // Generate
+      std::vector<std::pair<std::string, std::string>> tyvars;
+      for (const std::string &eltv : dec->tyvars) {
+        tyvars.emplace_back(eltv, pool->NewVar(eltv));
+      }
+
+      // Bind tyvars: The explicit type variables written by the
+      // programmer.
+      Context GG = G;
+      for (const auto &[eltv, iltv] : tyvars) {
+        GG = GG.InsertType(eltv, TypeVarInfo{.type = pool->VarType(iltv, {})});
+      }
+
+      // Bind the muvars: One recursive variable for each datatype
+      // in the bundle.
+      std::vector<std::pair<std::string, std::string>> recvars;
+      for (const DatatypeDec &dd : dec->datatypes) {
+        recvars.emplace_back(dd.name, pool->NewVar(dd.name));
+      }
+
+      for (const auto &[eltv, iltv] : recvars) {
+        GG = GG.InsertType(eltv, TypeVarInfo{.type = pool->VarType(iltv, {})});
+      }
+
+      // XXX HERE.
+
+      // Bind the declared types to different projections from the mu.
+      // Unlike SML, you refer to the datatype recursively as "list",
+      // not "a list".
+
+
       break;
+    }
+
     default:;
     }
 

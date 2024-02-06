@@ -77,17 +77,71 @@ enum class TypeType {
 
 struct Type {
   TypeType type;
+  // XXX private
+  Type(TypeType t) : type(t) {}
+
+  const std::vector<std::pair<std::string, const Type *>> &Record() const {
+    CHECK(type == TypeType::RECORD);
+    return str_children;
+  }
+
+  const std::vector<std::pair<std::string, const Type *>> &Sum() const {
+    CHECK(type == TypeType::SUM);
+    return str_children;
+  }
+
+  std::tuple<int, const std::vector<std::pair<std::string, const Type *>> &>
+  Mu() const {
+    CHECK(type == TypeType::MU);
+    return std::tie(idx, str_children);
+  }
+
+  std::pair<const Type *, const Type *> Arrow() const {
+    CHECK(type == TypeType::ARROW);
+    return std::tie(a, b);
+  }
+
+  std::pair<const std::string &, const std::vector<const Type *> &>
+  Var() const {
+    CHECK(type == TypeType::VAR);
+    return std::tie(var, children);
+  }
+
+
+  const struct EVar &EVar() const {
+    CHECK(type == TypeType::EVAR);
+    return evar;
+  }
+
+  const Type *Ref() const {
+    CHECK(type == TypeType::REF);
+    return a;
+  }
+
+  void String() const {
+    CHECK(type == TypeType::STRING);
+  }
+
+  void Float() const {
+    CHECK(type == TypeType::FLOAT);
+  }
+
+  void Int() const {
+    CHECK(type == TypeType::INT);
+  }
+
+private:
+  friend struct AstPool;
   std::string var;
   const Type *a = nullptr;
   const Type *b = nullptr;
-  EVar evar;
+  struct EVar evar;
   std::vector<const Type *> children;
   int idx = 0;
   // For types, these are always sorted by the strings.
   // For sums and products, the strings are the labels.
   // For mu, the strings are bound type variables.
   std::vector<std::pair<std::string, const Type *>> str_children;
-  Type(TypeType t) : type(t) {}
 };
 
 struct Exp {

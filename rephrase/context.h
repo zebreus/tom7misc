@@ -32,11 +32,22 @@ struct VarInfo {
 };
 
 struct TypeVarInfo {
-  // Conveniently (or confusingly), a transparent type variable is also
-  // given a (singleton) kind that has the same exact shape. There are
-  // bound type variables and a body.
+  // Conveniently (or confusingly), a transparent bound type variable
+  // is also given a (singleton) kind that has the same shape:
+  //  Λ(α, β, ...).τ
+  //
+  // For a simple type variable (like those bound by the programmer
+  // in a datatype declaration), we just have type = Var(α). These
+  // always have kind 0.
   std::vector<std::string> tyvars;
   const Type *type = nullptr;
+
+  #if 0
+  // We also have explicit type variables, like in a datatype declaration.
+  // These always have kind 0. This is the il type variable that the
+  // identifier refers to. The type pointer above will be null.
+  std::string var;
+  #endif
 };
 
 // Elaboration context.

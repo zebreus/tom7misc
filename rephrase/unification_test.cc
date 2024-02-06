@@ -17,24 +17,31 @@ static void Simple() {
   const il::Type *t1 = pool.Arrow(pool.StringType(), pool.EVar(B));
   const il::Type *t2 = pool.Arrow(pool.EVar(A), pool.IntType());
 
-  CHECK(t1->type == TypeType::ARROW);
-  CHECK(t2->type == TypeType::ARROW);
-  CHECK(t1->b->type == TypeType::EVAR);
-  CHECK(t2->a->type == TypeType::EVAR);
+  {
+    const auto &[dom1, cod1] = t1->Arrow();
+    const auto &[dom2, cod2] = t2->Arrow();
+    CHECK(cod1->type == TypeType::EVAR);
+    CHECK(dom2->type == TypeType::EVAR);
+  }
 
   Unification::Unify("test", t1, t2);
 
-  CHECK(t1->type == TypeType::ARROW);
-  CHECK(t2->type == TypeType::ARROW);
-  CHECK(t1->b->type == TypeType::EVAR);
-  CHECK(t2->a->type == TypeType::EVAR);
+  {
+    const auto &[dom1, cod1] = t1->Arrow();
+    const auto &[dom2, cod2] = t2->Arrow();
+    CHECK(cod1->type == TypeType::EVAR);
+    CHECK(dom2->type == TypeType::EVAR);
 
-  const il::Type *dom = t2->a->evar.GetBound();
-  const il::Type *cod = t1->b->evar.GetBound();
-  CHECK(dom->type == TypeType::STRING);
-  CHECK(cod->type == TypeType::INT);
+    const il::Type *dom = dom2->EVar().GetBound();
+    const il::Type *cod = cod1->EVar().GetBound();
+
+    CHECK(dom->type == TypeType::STRING);
+    CHECK(cod->type == TypeType::INT);
+  }
 
   CHECK(C.GetBound() == nullptr);
+  CHECK(A.GetBound()->type == TypeType::STRING);
+  CHECK(B.GetBound()->type == TypeType::INT);
 }
 
 }  // il

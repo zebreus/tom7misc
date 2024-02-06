@@ -61,10 +61,11 @@ const Exp *AstPool::LetFlat(const Dec *d, const Exp *e) {
 
 
 std::string TypeString(const Type *t) {
-  auto RecordOrSumBody = [](const Type *t) {
+  auto RecordOrSumBody = [](
+      const std::vector<std::pair<std::string, const Type *>> &v) {
       std::string ret;
-      for (int i = 0; i < (int)t->str_children.size(); i++) {
-        const auto &[lab, child] = t->str_children[i];
+      for (int i = 0; i < (int)v.size(); i++) {
+        const auto &[lab, child] = v[i];
         if (i != 0)
           StringAppendF(&ret, ", ");
         StringAppendF(&ret, "%s: %s",
@@ -75,47 +76,53 @@ std::string TypeString(const Type *t) {
     };
 
   switch (t->type) {
-  case TypeType::VAR:
-    switch (t->children.size()) {
+  case TypeType::VAR: {
+    const auto &[var, args] = t->Var();
+    switch (args.size()) {
     case 0:
-      return t->var;
+      return var;
     case 1:
       return StringPrintf("%s %s",
-                          TypeString(t->children[0]).c_str(),
-                          t->var.c_str());
+                          TypeString(args[0]).c_str(),
+                          var.c_str());
     default: {
-      std::string args;
-      for (int i = 0; i < (int)t->children.size(); i++) {
-        if (i != 0) StringAppendF(&args, ", ");
-        StringAppendF(&args, "%s", TypeString(t->children[i]).c_str());
+      std::string sargs;
+      for (int i = 0; i < (int)args.size(); i++) {
+        if (i != 0) StringAppendF(&sargs, ", ");
+        StringAppendF(&sargs, "%s", TypeString(args[i]).c_str());
       }
-      return StringPrintf("(%s) %s", args.c_str(), t->var.c_str());
+      return StringPrintf("(%s) %s", sargs.c_str(), var.c_str());
     }
   }
+  }
 
-  case TypeType::ARROW:
+  case TypeType::ARROW: {
+    const auto &[dom, cod] = t->Arrow();
     return StringPrintf("(%s → %s)",
-                        TypeString(t->a).c_str(),
-                        TypeString(t->b).c_str());
+                        TypeString(dom).c_str(),
+                        TypeString(cod).c_str());
+  }
+
   case TypeType::RECORD:
     // Might want to special case tuple types; unit type?
-    return StringPrintf("{%s}", RecordOrSumBody(t).c_str());
+    return StringPrintf("{%s}", RecordOrSumBody(t->Record()).c_str());
 
   case TypeType::SUM:
     // Might want to special case void?
-    return StringPrintf("[%s]", RecordOrSumBody(t).c_str());
+    return StringPrintf("[%s]", RecordOrSumBody(t->Sum()).c_str());
 
   case TypeType::MU: {
-    CHECK(!t->str_children.empty());
-    if (t->str_children.size() == 1) {
+    const auto &[idx, bundle] = t->Mu();
+    CHECK(!bundle.empty());
+    if (bundle.size() == 1) {
       return StringPrintf("(μ %s. %s)",
-                          t->str_children[0].first.c_str(),
-                          TypeString(t->str_children[0].second).c_str());
+                          bundle[0].first.c_str(),
+                          TypeString(bundle[0].second).c_str());
     } else {
-      std::string ret = StringPrintf("#%d(μ", t->idx);
-      for (int i = 0; i < (int)t->str_children.size(); i++) {
+      std::string ret = StringPrintf("#%d(μ", idx);
+      for (int i = 0; i < (int)bundle.size(); i++) {
         if (i != 0) StringAppendF(&ret, ";");
-        const auto &[v, c] = t->str_children[i];
+        const auto &[v, c] = bundle[i];
         StringAppendF(&ret,
                       " %d=%s. %s", i, v.c_str(), TypeString(c).c_str());
       }
@@ -125,19 +132,20 @@ std::string TypeString(const Type *t) {
   }
 
   case TypeType::EVAR: {
-    if (const Type *u = t->evar.GetBound()) {
+    const auto &evar = t->EVar();
+    if (const Type *u = evar.GetBound()) {
       // We treat bound evars transparently, although for some
       // uses it might be good to be able to see it?
       return TypeString(u).c_str();
     } else {
       // TODO: Would be good to distinguish these with something
       // more pleasant than a pointer
-      return t->evar.ToString();
+      return evar.ToString();
     }
   }
 
   case TypeType::REF:
-    return StringPrintf("(%s ref)", TypeString(t->a).c_str());
+    return StringPrintf("(%s ref)", TypeString(t->Ref()).c_str());
 
   case TypeType::STRING:
     return "string";
