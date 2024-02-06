@@ -11,8 +11,8 @@ namespace il {
 
 struct VarInfo {
   // Polymorphic types only exist at the outermost level of the type
-  // language (and only for bound variables). tyvars may be empty for
-  // simple variables.
+  // language (and only for bound variables and constructors). tyvars
+  // may be empty for simple variables.
   std::vector<std::string> tyvars;
   const Type *type = nullptr;
 
@@ -29,6 +29,12 @@ struct VarInfo {
   // because they reference builtins. This is only set by the
   // initial context.
   std::optional<Primop> primop;
+
+  // Some identifiers are datatype constructors. These do not have
+  // il variables because they are not translated into variables;
+  // they are an injection into a sum and then into a mu.
+  // pair of mu index, sum label.
+  std::optional<std::pair<int, std::string>> ctor;
 };
 
 struct TypeVarInfo {
@@ -104,12 +110,8 @@ private:
   enum class V {
     // e.g. 'int' or 'list'
     TYPE,
-    // e.g. 'x' or '+'
+    // e.g. 'x' or '+' or 'SOME'
     EXP,
-    // e.g. 'nil' or '::'
-    // XXX: These should probably just be vars, but be marked as
-    // constructors in VarInfo.
-    CTOR,
   };
 
   using AnyVarInfo = std::variant<VarInfo, TypeVarInfo>;

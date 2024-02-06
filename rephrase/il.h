@@ -376,6 +376,24 @@ struct AstPool {
     return ret;
   }
 
+
+  const Type *Mu(int idx,
+                 const std::vector<std::pair<std::string, const Type *>> &v,
+                 const Type *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == TypeType::MU &&
+        guess->idx == idx &&
+        guess->str_children == v) {
+      return guess;
+    }
+
+    Type *ret = NewType(TypeType::MU);
+    ret->idx = idx;
+    ret->str_children = v;
+    return ret;
+  }
+
+
   // Expressions
 
   const Exp *String(const std::string &s,

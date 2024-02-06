@@ -164,8 +164,11 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
 
       // Generate
       std::vector<std::pair<std::string, std::string>> tyvars;
+      std::vector<std::string> il_tyvars;
       for (const std::string &eltv : dec->tyvars) {
-        tyvars.emplace_back(eltv, pool->NewVar(eltv));
+        std::string iltv = pool->NewVar(eltv);
+        tyvars.emplace_back(eltv, iltv);
+        il_tyvars.emplace_back(iltv);
       }
 
       // Bind tyvars: The explicit type variables written by the
@@ -185,6 +188,61 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
       for (const auto &[eltv, iltv] : recvars) {
         GG = GG.InsertType(eltv, TypeVarInfo{.type = pool->VarType(iltv, {})});
       }
+
+      // Each arm of the mu is the bound recursive type variable (il)
+      // and the type, which is a sum.
+      std::vector<std::pair<std::string, const il::Type *>> sum_types;
+      for (int i = 0; i < (int)dec->datatypes.size(); i++) {
+        const DatatypeDec &dd = dec->datatypes[i];
+        // codomain of constructors; the instantiated datatype.
+        std::vector<std::pair<std::string, const il::Type *>> sum_arms;
+        for (const auto &[ctor, el_type] : dd.arms) {
+          const il::Type *t = ElabType(GG, el_type);
+          sum_arms.emplace_back(ctor, t);
+        }
+        sum_types.emplace_back(recvars[i].second, pool->SumType(sum_arms));
+      }
+
+      //      pi_n (mu  v_0 . [ctor11: t11, ctor12: t12, ...]
+      //            and v_1 . [ctor21: t21, ctor22: t22, ...]
+      //            and ...)
+
+      // Bind the datatypes themselves, e.g. 'list' and 'option'.
+      // Each is a function over the same IL type variables,
+      // Λ(tyvars). pi_n (... same mu body ...)
+      std::vector<const il::Type *> mu_types;
+      for (int i = 0; i < (int)dec->datatypes.size(); i++) {
+        const DatatypeDec &dd = dec->datatypes[i];
+        const il::Type *mu = pool->Mu(i, sum_types);
+        mu_types.push_back(mu);
+        GG = GG.InsertType(dd.name, TypeVarInfo{
+            .tyvars = il_tyvars,
+            .type = mu,
+          });
+      }
+
+      // Now, bind the expression-level constructors.
+
+        /*
+      for (const DatatypeDec &dd : dec->datatypes) {
+        // codomain of constructors; the instantiated datatype.
+        std::vector<std::pair<std::string, const il::Type *>> sum_arms;
+        for (const auto &[ctor, el_type] : dd.arms) {
+          const il::Type *t = ElabType(GG, el_type);
+          sum_arms.emplace_back(ctor, t);
+          const il::Type *dom = t;
+          // Also, bind the constructor. This is an expression variable
+          // so it doesn't affect the elaboration of the types. (They
+          // are not technically in scope for the later types.)
+          GG = GG.Insert(ctor, VarInfo{
+              .tyvars = il_tyvars,
+              .type = pool->Arrow(dom, cod)
+        }
+
+      }
+
+        const il::Type *cod =
+        */
 
       // XXX HERE.
 
