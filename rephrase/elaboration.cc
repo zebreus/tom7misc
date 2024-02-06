@@ -192,20 +192,25 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
       // Each arm of the mu is the bound recursive type variable (il)
       // and the type, which is a sum.
       std::vector<std::pair<std::string, const il::Type *>> sum_types;
+      // For each datatype declaration, for each arm, its arg type ("of ...").
+      // This is used below to bind the constructors.
+      std::vector<std::vector<const il::Type *>> oftypes;
       for (int i = 0; i < (int)dec->datatypes.size(); i++) {
         const DatatypeDec &dd = dec->datatypes[i];
-        // codomain of constructors; the instantiated datatype.
+        // Construct the sum over all arms of this datatype.
         std::vector<std::pair<std::string, const il::Type *>> sum_arms;
+        oftypes.push_back({});
         for (const auto &[ctor, el_type] : dd.arms) {
-          const il::Type *t = ElabType(GG, el_type);
-          sum_arms.emplace_back(ctor, t);
+          const il::Type *cod = ElabType(GG, el_type);
+          sum_arms.emplace_back(ctor, cod);
+          oftypes.back().push_back(cod);
         }
         sum_types.emplace_back(recvars[i].second, pool->SumType(sum_arms));
       }
 
-      //      pi_n (mu  v_0 . [ctor11: t11, ctor12: t12, ...]
-      //            and v_1 . [ctor21: t21, ctor22: t22, ...]
-      //            and ...)
+      //      π_n (μ   v_0 . [ctor11: t11, ctor12: t12, ...]
+      //           and v_1 . [ctor21: t21, ctor22: t22, ...]
+      //           and ...)
 
       // Bind the datatypes themselves, e.g. 'list' and 'option'.
       // Each is a function over the same IL type variables,
@@ -223,35 +228,28 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
 
       // Now, bind the expression-level constructors.
 
-        /*
-      for (const DatatypeDec &dd : dec->datatypes) {
-        // codomain of constructors; the instantiated datatype.
-        std::vector<std::pair<std::string, const il::Type *>> sum_arms;
-        for (const auto &[ctor, el_type] : dd.arms) {
-          const il::Type *t = ElabType(GG, el_type);
-          sum_arms.emplace_back(ctor, t);
-          const il::Type *dom = t;
-          // Also, bind the constructor. This is an expression variable
-          // so it doesn't affect the elaboration of the types. (They
-          // are not technically in scope for the later types.)
+      CHECK(oftypes.size() == dec->datatypes.size());
+      CHECK(mu_types.size() == dec->datatypes.size());
+      for (int y = 0; y < (int)dec->datatypes.size(); y++) {
+        const DatatypeDec &dd = dec->datatypes[y];
+        CHECK(oftypes[y].size() == dd.arms.size());
+        const il::Type *mu_type = mu_types[y];
+        for (int x = 0; x < (int)dd.arms.size(); x++) {
+          const std::string &ctor = dd.arms[x].first;
+          const il::Type *dom = oftypes[y][x];
+          const il::Type *cod = mu_type;
+
           GG = GG.Insert(ctor, VarInfo{
               .tyvars = il_tyvars,
-              .type = pool->Arrow(dom, cod)
+              .type = pool->Arrow(dom, cod),
+              .ctor = std::make_optional(std::make_pair(y, ctor)),
+            });
         }
-
       }
 
-        const il::Type *cod =
-        */
-
-      // XXX HERE.
-
-      // Bind the declared types to different projections from the mu.
-      // Unlike SML, you refer to the datatype recursively as "list",
-      // not "a list".
-
-
-      break;
+      // There are no actual declarations generated; all the bindings
+      // are transparent. So just elaborate the body in the new context.
+      return Elab(GG, el_body);
     }
 
     default:;

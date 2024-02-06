@@ -178,6 +178,22 @@ static void Simple() {
     CHECK(d == 2.25);
   }
 
+  {
+    const Exp *e = Run("let datatype (a) option = SOME of a | NONE of {}\n"
+                       "in 7\n"
+                       "end");
+    // Datatype declarations are transparent, so this should just be the
+    // body.
+    CHECK(e->Integer() == 7);
+  }
+
+  {
+    const Exp *e = Run("let datatype (a) option = SOME of a | NONE of {}\n"
+                       "in SOME 7\n"
+                       "end");
+    printf("%s\n", ExpString(e).c_str());
+  }
+
 }
 
 }  // il

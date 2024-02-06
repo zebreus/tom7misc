@@ -66,14 +66,21 @@ std::string Context::ToString() const {
         if (!vi->tyvars.empty()) {
           tyvars = "(" + Util::Join(vi->tyvars, ", ") + ") ";
         }
-        StringAppendF(&ret, "%s => %s : %s%s\n",
+        StringAppendF(&ret, "%s => %s : %s%s",
                       k.first.c_str(),
                       vi->var.c_str(),
                       tyvars.c_str(),
                       TypeString(vi->type).c_str());
+
+        if (vi->ctor.has_value()) {
+          const auto &[idx, lab] = vi->ctor.value();
+          StringAppendF(&ret, " ctor #%d, %s\n", idx, lab.c_str());
+        }
+        ret.push_back('\n');
       }
       break;
     }
+
     case V::TYPE: {
       const TypeVarInfo *tvi = std::get_if<TypeVarInfo>(&v);
       CHECK(tvi != nullptr) << "Bug: Type variables always hold TypeVarInfo.";
