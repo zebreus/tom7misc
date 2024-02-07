@@ -314,15 +314,29 @@ std::string ExpString(const Exp *e) {
   }
 }
 
+const std::pair<std::string, const Type *>
+AstPool::AlphaVaryType(const std::string &x, const Type *t) {
+  std::string xx = NewVar(x);
+  // [x'/x]t, where we assert x' does not appear in t.
+  return std::make_pair(xx, SubstTypeInternal(VarType(xx, {}), x, t, true));
+}
+
 const Type *AstPool::SubstType(const Type *t, const std::string &v,
                                const Type *u) {
-  auto RecordOrSum = [this](
+  return SubstTypeInternal(t, v, u, false);
+}
+
+// If is_simple, then t is assumed to have no free variables that occur
+// in u (or v). This is typically because it is a fresh variable.
+const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
+                                       const Type *u, bool is_simple) {
+  auto RecordOrSum = [this, is_simple](
       const Type *t, const std::string &v,
       const std::vector<std::pair<std::string, const Type *>> &sch) {
       std::vector<std::pair<std::string, const Type *>> ret;
       ret.reserve(sch.size());
       for (const auto &[l, u] : sch)
-        ret.emplace_back(l, SubstType(t, v, u));
+        ret.emplace_back(l, SubstTypeInternal(t, v, u, is_simple));
       return ret;
     };
 
@@ -349,11 +363,36 @@ const Type *AstPool::SubstType(const Type *t, const std::string &v,
   }
 
   case TypeType::ARROW:
-    return Arrow(SubstType(t, v, u->a), SubstType(t, v, u->b), u);
+    return Arrow(SubstTypeInternal(t, v, u->a, is_simple),
+                 SubstTypeInternal(t, v, u->b, is_simple), u);
 
-  case TypeType::MU:
-    LOG(FATAL) << "Unimplemented: Substitution into mu type";
-    return nullptr;
+  case TypeType::MU: {
+    const auto &[idx, bundle] = u->Mu();
+
+    std::vector<std::pair<std::string, const Type *>> new_bundle;
+    for (const auto &[a, body] : bundle) {
+      // Target variable is shadowed so it cannot occur.
+      if (a == v) {
+        new_bundle.emplace_back(a, body);
+      } else {
+        // PERF: Only do this if a occurs in t and would cause capture.
+        // Also, we could probably get rid of the complexity of is_simple
+        // if we did an explicit check, since we would avoid the
+        // infinite regress by construction (the fresh variable will not
+        // appear).
+        if (is_simple) {
+          new_bundle.emplace_back(
+              a, SubstTypeInternal(t, v, body, is_simple));
+        } else {
+          const auto &[new_a, new_body] = AlphaVaryType(a, body);
+          new_bundle.emplace_back(
+              new_a, SubstTypeInternal(t, v, body, is_simple));
+        }
+      }
+    }
+
+    return Mu(idx, new_bundle, u);
+  }
 
   case TypeType::RECORD: {
     std::vector<std::pair<std::string, const Type *>> sch =
@@ -363,7 +402,7 @@ const Type *AstPool::SubstType(const Type *t, const std::string &v,
 
   case TypeType::EVAR: {
     if (const Type *uu = u->evar.GetBound()) {
-      return SubstType(t, v, uu);
+      return SubstTypeInternal(t, v, uu, is_simple);
     } else {
       // I think? Another point of view is that we should keep
       // a delayed substitution here.
@@ -372,7 +411,7 @@ const Type *AstPool::SubstType(const Type *t, const std::string &v,
   }
 
   case TypeType::REF:
-    return RefType(SubstType(t, v, u->a), u);
+    return RefType(SubstTypeInternal(t, v, u->a, is_simple), u);
 
   case TypeType::STRING:
     return u;

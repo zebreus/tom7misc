@@ -634,6 +634,10 @@ struct AstPool {
   const Type *SubstType(const Type *t, const std::string &v,
                         const Type *u);
 
+  // Rename x.t to an alpha-equivalent x'.t' with x' fresh.
+  const std::pair<std::string, const Type *>
+  AlphaVaryType(const std::string &x, const Type *t);
+
   // Sort labels in the canonical order. Beware that since this
   // is lexicographic, a tuple with 10 or more elements actually
   // has an unintuitive order {"1", "10", "2", "3", ...}.
@@ -652,6 +656,9 @@ struct AstPool {
   const Type int_type = Type(TypeType::INT);
   const Type float_type = Type(TypeType::FLOAT);
 
+  const Type *SubstTypeInternal(const Type *t, const std::string &v,
+                                const Type *u, bool is_simple);
+
   Type *NewType(TypeType t) { return type_arena.New(t); }
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }
   Dec *NewDec(DecType t) { return dec_arena.New(t); }
@@ -666,6 +673,6 @@ std::string TypeString(const Type *t);
 std::string DecString(const Dec *d);
 std::string ExpString(const Exp *e);
 
-}  // namespace ei
+}  // namespace il
 
 #endif

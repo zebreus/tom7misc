@@ -373,8 +373,10 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       const il::Exp *lambda =
         pool->Fn("", x, pool->Primop(po, std::move(tvs), std::move(args)));
       return std::make_pair(lambda, t);
+    } else if (vi->ctor.has_value()) {
+      LOG(FATAL) << "Unimplemented: ctors: " << el_exp->str;
     } else {
-
+      // Otherwise, a simple variable.
       return std::make_pair(pool->Var(vi->var, std::move(tvs)), t);
     }
   }
