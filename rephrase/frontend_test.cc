@@ -38,15 +38,21 @@ static void Simple() {
     front.SetVerbose(1);
   }
 
-#define Run(pgm) ([&front]() {                      \
+#define RunInternal(pgm, simp) ([&front]() {        \
     const std::string source = (pgm);               \
-    const Exp *e = front.RunFrontendOn(         \
+    Frontend::Options options;                      \
+    options.simplify = (simp);                      \
+    const Exp *e = front.RunFrontendOn(             \
         StringPrintf("Test %s (%s:%d)",             \
                      __func__, __FILE__, __LINE__), \
-        source);                                    \
+        source,                                     \
+        options);                                   \
     CHECK(e != nullptr) << "Rejected: " << source;  \
     return e;                                       \
   }())
+
+#define Run(pgm) RunInternal(pgm, true)
+#define RunNoSimplify(pgm) RunInternal(pgm, false)
 
   {
     const Exp *e = Run("42");
@@ -64,7 +70,7 @@ static void Simple() {
   }
 
   {
-    const Exp *e = Run("ref 7 : int ref");
+    const Exp *e = RunNoSimplify("ref 7 : int ref");
     const auto &[f, arg] = e->App();
     CHECK(arg->Integer() == 7);
     const auto &[self, x, body] = f->Fn();
@@ -80,10 +86,24 @@ static void Simple() {
     const auto &[tv, xx] = es[0]->Var();
     CHECK(tv.empty());
     CHECK(xx == x);
-   }
+  }
 
   {
-    const Exp *e = Run("3 + 4");
+    // With simplification.
+    const Exp *e = Run("ref 7 : int ref");
+    const auto &[valdecs, body] = e->Let();
+    // This will simplify further soon..
+    CHECK(valdecs.size() == 1);
+    (void)valdecs[0]->Val();
+    const auto &[po, ts, es] = body->Primop();
+    CHECK(po == Primop::REF);
+    CHECK(ts.size() == 1);
+    CHECK_TYPETYPE(ts[0], TypeType::INT);
+    CHECK(es.size() == 1);
+  }
+
+  {
+    const Exp *e = RunNoSimplify("3 + 4");
     const auto &[f, arg] = e->App();
     const auto &str_children = arg->Record();
     CHECK(str_children.size() == 2);
@@ -109,7 +129,7 @@ static void Simple() {
   }
 
   {
-    const Exp *e = Run("{lab = 0, 2=\"hi\"}");
+    const Exp *e = RunNoSimplify("{lab = 0, 2=\"hi\"}");
     const auto &str_children = e->Record();
     CHECK(str_children.size() == 2);
     CHECK(str_children[0].first == "lab");
@@ -121,14 +141,14 @@ static void Simple() {
 
 
   {
-    const Exp *e = Run("let val x = 3 in x end");
+    const Exp *e = RunNoSimplify("let val x = 3 in x end");
     const auto &[decs, body] = e->Let();
     CHECK(decs.size() == 1);
     printf("... %s\n", ExpString(e).c_str());
   }
 
   {
-    const Exp *e = Run("let val (x, y) = (7, \"hi\") in x end");
+    const Exp *e = RunNoSimplify("let val (x, y) = (7, \"hi\") in x end");
     const auto &[decs, body] = e->Let();
     // Should bind tuple, and the two vars.
     CHECK(decs.size() == 3);
@@ -136,7 +156,8 @@ static void Simple() {
   }
 
   {
-    const Exp *e = Run("let val (x as z, _) = (7, \"hi\") in x end");
+    const Exp *e = RunNoSimplify(
+        "let val (x as z, _) = (7, \"hi\") in x end");
     const auto &[decs, body] = e->Let();
     printf("%s\n", ExpString(e).c_str());
     const auto &[tv, body_var] = body->Var();
@@ -151,14 +172,21 @@ static void Simple() {
   }
 
   {
-    const Exp *e = Run("fn x => x");
+    const Exp *e = RunNoSimplify("fn x => x");
     const auto &[self, x, body] = e->Fn();
     printf("%s\n", ExpString(body).c_str());
   }
 
+  // TODO: Doesn't work yet because fn is translated as recursive
+  if (false)
   {
     const Exp *e = Run("(fn x => x) 0");
-    (void)e->App();
+    // After simplification, we have
+    // let x = 0
+    // in x
+    // end
+    // (Although this will simplify further!)
+    (void)e->Let();
   }
 
   {

@@ -21,10 +21,19 @@ struct Pass {
 
   virtual const Type *DoType(const Type *t, Args... args) {
     switch (t->type) {
-    case TypeType::VAR: LOG(FATAL) << "Unimplemented";
-    case TypeType::SUM: LOG(FATAL) << "Unimplemented";
-    case TypeType::ARROW: LOG(FATAL) << "Unimplemented";
-    case TypeType::MU: LOG(FATAL) << "Unimplemented";
+    case TypeType::VAR: {
+      const auto &[x, tv] = t->Var();
+      return DoVarType(x, tv, t, args...);
+    }
+    case TypeType::ARROW: {
+      const auto &[dom, cod] = t->Arrow();
+      return DoArrow(dom, cod, t, args...);
+    }
+    case TypeType::MU: {
+      const auto &[idx, v] = t->Mu();
+      return DoMu(idx, v, t, args...);
+    }
+    case TypeType::SUM: return DoSum(t->Sum(), t, args...);
     case TypeType::RECORD: return DoRecordType(t->Record(), t, args...);
     case TypeType::EVAR: return DoEVar(t->EVar(), t, args...);
     case TypeType::REF: return DoRefType(t->Ref(), t, args...);
@@ -46,7 +55,9 @@ struct Pass {
       const auto &[ts, v] = e->Var();
       return DoVar(ts, v, e, args...);
     }
-    case ExpType::LAYOUT: LOG(FATAL) << "Unimplemented";
+    case ExpType::LAYOUT: {
+      LOG(FATAL) << "Unimplemented";
+    }
     case ExpType::LET: {
       const auto &[decs, body] = e->Let();
       return DoLet(decs, body, e, args...);
@@ -64,7 +75,7 @@ struct Pass {
       return DoFn(self, x, body, e, args...);
     }
     case ExpType::PROJECT: {
-      const auto &[lab, exp] = e->Inject();
+      const auto &[lab, exp] = e->Project();
       return DoProject(lab, exp, e, args...);
     }
     case ExpType::INJECT: {
@@ -75,8 +86,13 @@ struct Pass {
       const auto &[type, exp] = e->Roll();
       return DoRoll(type, exp, e, args...);
     }
-    case ExpType::PRIMOP: LOG(FATAL) << "Unimplemented";
-    case ExpType::FAIL: return DoFail(e->Fail(), e, args...);
+    case ExpType::PRIMOP: {
+      const auto &[p, ts, es] = e->Primop();
+      return DoPrimop(p, ts, es, e, args...);
+    }
+    case ExpType::FAIL: {
+      return DoFail(e->Fail(), e, args...);
+    }
     default:
       LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
     }
@@ -103,8 +119,16 @@ struct Pass {
   virtual const Type *DoEVar(EVar a,
                              const Type *guess,
                              Args... args) {
-    // XXX should recurse inside bound evars, right?
-    return pool->EVar(a, guess);
+    // Recurse inside bound evars.
+    if (const Type *t = a.GetBound()) {
+      // Supposing we did nothing to t, it's unclear whether it's
+      // better to return the guess (which keeps the indirection
+      // from the evar around) or collapse it away (now we can't
+      // share up the tree).
+      return DoType(t, args...);
+    } else {
+      return pool->EVar(a, guess);
+    }
   }
 
   virtual const Type *DoVarType(const std::string &s,
@@ -129,6 +153,13 @@ struct Pass {
     return pool->RecordType(vv, guess);
   }
 
+  virtual const Type *DoArrow(const Type *dom, const Type *cod,
+                              const Type *guess,
+                              Args... args) {
+    return pool->Arrow(DoType(dom, args...), DoType(cod, args...),
+                       guess);
+  }
+
   virtual const Type *DoSum(
       const std::vector<std::pair<std::string, const Type *>> &v,
       const Type *guess,
@@ -139,6 +170,19 @@ struct Pass {
       vv.emplace_back(lab, DoType(t, args...));
     }
     return pool->SumType(vv, guess);
+  }
+
+  virtual const Type *DoMu(
+      int idx,
+      const std::vector<std::pair<std::string, const Type *>> &v,
+      const Type *guess,
+      Args... args) {
+    std::vector<std::pair<std::string, const Type *>> vv;
+    vv.reserve(v.size());
+    for (const auto &[lab, t] : v) {
+      vv.emplace_back(lab, DoType(t, args...));
+    }
+    return pool->Mu(idx, vv, guess);
   }
 
   virtual const Type *DoRefType(const Type *body, const Type *guess,
@@ -265,7 +309,6 @@ struct Pass {
     return pool->Primop(po, tts, ees, guess);
   }
 
-  // self may be empty to indicate a non-recursive function.
   virtual const Exp *DoFn(const std::string &self,
                           const std::string &x,
                           const Exp *body,

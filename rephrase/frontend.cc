@@ -11,10 +11,12 @@
 #include "ansi.h"
 #include "elaboration.h"
 #include "timer.h"
+#include "simplification.h"
 
 using Token = el::Token;
 using Lexing = el::Lexing;
 using Parsing = el::Parsing;
+using Simplification = il::Simplification;
 
 void Frontend::SetVerbose(int v) {
   verbose = v;
@@ -24,7 +26,8 @@ void Frontend::AddIncludePath(const std::string &s) {
   includepaths.push_back(s);
 }
 
-const il::Exp *Frontend::RunFrontend(const std::string &filename) {
+const il::Exp *Frontend::RunFrontend(const std::string &filename,
+                                     Options options) {
   Timer read_timer;
   const std::string contents = Util::ReadFile(filename);
   const double read_sec = read_timer.Seconds();
@@ -38,7 +41,8 @@ const il::Exp *Frontend::RunFrontend(const std::string &filename) {
 }
 
 const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
-                                       const std::string &contents) {
+                                       const std::string &contents,
+                                       Options options) {
   if (verbose > 0) {
     printf(AWHITE("Lexing...") "\n");
     fflush(stdout);
@@ -93,7 +97,22 @@ const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
            ANSI::Time(elab_sec).c_str(),
            il::ExpString(il_pgm).c_str());
     fflush(stdout);
-    printf("\n" AWHITE("Elaborating...") "\n");
+  }
+
+  if (options.simplify) {
+    printf("\n" AWHITE("Simplifying...") "\n");
+    Timer simplify_timer;
+    Simplification simplification(&il_pool);
+    il_pgm = simplification.Simplify(il_pgm);
+    double simplify_sec = simplify_timer.Seconds();
+
+    if (verbose > 0) {
+      printf(AWHITE("Simplified") " in %s:\n"
+             "%s\n",
+             ANSI::Time(simplify_sec).c_str(),
+             il::ExpString(il_pgm).c_str());
+      fflush(stdout);
+    }
   }
 
   return il_pgm;
