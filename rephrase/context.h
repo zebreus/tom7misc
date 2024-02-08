@@ -33,8 +33,9 @@ struct VarInfo {
   // Some identifiers are datatype constructors. These do not have
   // il variables because they are not translated into variables;
   // they are an injection into a sum and then into a mu.
-  // pair of mu index, sum label.
-  std::optional<std::pair<int, std::string>> ctor;
+  // Components are: mu index (XXX needed?),
+  //   full mu type (XXX needed? it's in the arrow), sum label
+  std::optional<std::tuple<int, const Type *, std::string>> ctor;
 };
 
 struct TypeVarInfo {

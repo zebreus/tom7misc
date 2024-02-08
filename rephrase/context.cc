@@ -73,8 +73,9 @@ std::string Context::ToString() const {
                       TypeString(vi->type).c_str());
 
         if (vi->ctor.has_value()) {
-          const auto &[idx, lab] = vi->ctor.value();
-          StringAppendF(&ret, " ctor #%d, %s\n", idx, lab.c_str());
+          const auto &[idx, mu_type, lab] = vi->ctor.value();
+          StringAppendF(&ret, " ctor #%d(%s) %s\n",
+                        idx, TypeString(mu_type).c_str(), lab.c_str());
         }
         ret.push_back('\n');
       }

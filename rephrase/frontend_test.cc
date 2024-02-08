@@ -194,6 +194,16 @@ static void Simple() {
     printf("%s\n", ExpString(e).c_str());
   }
 
+  {
+    const Exp *e = Run("let\n"
+                       "   datatype dir = Up of {} | Down of {}\n"
+                       "   val x = 9\n"
+                       "   val f = fn x => x\n"
+                       "in f 7\n"
+                       "end");
+    printf("%s\n", ExpString(e).c_str());
+  }
+
 }
 
 }  // il

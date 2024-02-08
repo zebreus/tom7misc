@@ -242,14 +242,14 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
           GG = GG.Insert(ctor, VarInfo{
               .tyvars = il_tyvars,
               .type = pool->Arrow(dom, cod),
-              .ctor = std::make_optional(std::make_pair(y, ctor)),
+              .ctor = std::make_optional(std::make_tuple(y, mu_type, ctor)),
             });
         }
       }
 
       // There are no actual declarations generated; all the bindings
       // are transparent. So just elaborate the body in the new context.
-      return Elab(GG, el_body);
+      return Elab(GG, rest);
     }
 
     default:;
@@ -353,7 +353,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       // a lambda. Since the primop takes a list of arguments,
       // we also need to project the elements from the tuple.
       std::string x = pool->NewVar();
-      const il::Exp *vx = pool->Var(x);
+      const il::Exp *vx = pool->Var({}, x);
 
       std::vector<const il::Exp *> args;
       args.reserve(val_arity);
@@ -373,11 +373,28 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       const il::Exp *lambda =
         pool->Fn("", x, pool->Primop(po, std::move(tvs), std::move(args)));
       return std::make_pair(lambda, t);
+
     } else if (vi->ctor.has_value()) {
-      LOG(FATAL) << "Unimplemented: ctors: " << el_exp->str;
+      const auto &[mu_idx_, mu_type_, sum_lab] = vi->ctor.value();
+
+      // As with a primop, we eta-expand. This is a bit simpler because
+      // the constructor just takes a single argument.
+      // λx.roll(μ type..., inj[lab](x))
+
+      const il::Type *dom = NewEVar(), *cod = NewEVar();
+      Unification::Unify("ctor application", pool->Arrow(dom, cod), t);
+
+      std::string x = pool->NewVar();
+      const il::Exp *vx = pool->Var(tvs, x);
+      const il::Exp *lambda =
+        pool->Fn("", x,
+                 pool->Roll(cod,
+                            pool->Inject(sum_lab, vx)));
+
+      return std::make_pair(lambda, t);
     } else {
       // Otherwise, a simple variable.
-      return std::make_pair(pool->Var(vi->var, std::move(tvs)), t);
+      return std::make_pair(pool->Var(tvs, vi->var), t);
     }
   }
 

@@ -138,8 +138,6 @@ std::string TypeString(const Type *t) {
       // uses it might be good to be able to see it?
       return TypeString(u).c_str();
     } else {
-      // TODO: Would be good to distinguish these with something
-      // more pleasant than a pointer
       return evar.ToString();
     }
   }
@@ -236,6 +234,18 @@ std::string ExpString(const Exp *e) {
   case ExpType::PROJECT: {
     const auto &[lab, r] = e->Project();
     return StringPrintf("#%s(%s)", lab.c_str(), ExpString(r).c_str());
+  }
+
+  case ExpType::INJECT: {
+    const auto &[lab, r] = e->Inject();
+    return StringPrintf("[%s = %s]", lab.c_str(), ExpString(r).c_str());
+  }
+
+  case ExpType::ROLL: {
+    const auto &[t, child] = e->Roll();
+    return StringPrintf("roll<%s>(%s)",
+                        TypeString(t).c_str(),
+                        ExpString(child).c_str());
   }
 
   case ExpType::JOIN: {
@@ -423,7 +433,8 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
     return u;
 
   default:
-    LOG(FATAL) << "Unimplemented typetype in subst";
+    LOG(FATAL) << "Unimplemented typetype in subst: "
+               << TypeTypeString(u->type);
     return nullptr;
   }
 }

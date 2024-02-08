@@ -526,7 +526,7 @@ PatternCompilation::GeneralizeOne(
     // ... but importantly we reuse the variable above as the
     // rhs.
     const Dec *dec = pool->ValDec(gen_tyvars, ilv,
-                                  pool->Var(ilov, gen_tyvar_args));
+                                  pool->Var(gen_tyvar_args, ilov));
     VarInfo info{
       .tyvars = gen_tyvars,
       .type = type,

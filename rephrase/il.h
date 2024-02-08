@@ -27,6 +27,10 @@ enum class ExpType {
   FN,
   // Project a field from a record.
   PROJECT,
+  // Construct an element of a sum type.
+  INJECT,
+  // Construct a recursive type (mu bundle).
+  ROLL,
   // Apply a primop to the types and children.
   PRIMOP,
   // Abort with a string message. Should be
@@ -219,6 +223,18 @@ struct Exp {
     return std::tie(str, a);
   }
 
+  std::tuple<const std::string &, const Exp *>
+  Inject() const {
+    CHECK(type == ExpType::INJECT);
+    return std::tie(str, a);
+  }
+
+  std::tuple<const Type *, const Exp *>
+  Roll() const {
+    CHECK(type == ExpType::ROLL);
+    return std::tie(t, a);
+  }
+
   const std::string &Fail() const {
     CHECK(type == ExpType::FAIL);
     return str;
@@ -235,6 +251,7 @@ private:
   const Exp *a = nullptr;
   const Exp *b = nullptr;
   const Exp *c = nullptr;
+  const Type *t = nullptr;
   double d = 0.0;
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
@@ -421,8 +438,8 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Var(const std::string &v,
-                 std::vector<const Type *> ts = {},
+  const Exp *Var(const std::vector<const Type *> &ts,
+                 const std::string &v,
                  const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::VAR &&
@@ -467,7 +484,8 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Project(std::string s, const Exp *e, const Exp *guess = nullptr) {
+  const Exp *Project(const std::string &s, const Exp *e,
+                     const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::PROJECT &&
         guess->str == s &&
@@ -476,7 +494,36 @@ struct AstPool {
     }
 
     Exp *ret = NewExp(ExpType::PROJECT);
-    ret->str = std::move(s);
+    ret->str = s;
+    ret->a = e;
+    return ret;
+  }
+
+  const Exp *Inject(const std::string &s, const Exp *e,
+                    const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::INJECT &&
+        guess->str == s &&
+        guess->a == e) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::INJECT);
+    ret->str = s;
+    ret->a = e;
+    return ret;
+  }
+
+  const Exp *Roll(const Type *t, const Exp *e, const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::ROLL &&
+        guess->t == t &&
+        guess->a == e) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::ROLL);
+    ret->t = t;
     ret->a = e;
     return ret;
   }

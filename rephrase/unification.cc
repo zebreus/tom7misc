@@ -82,9 +82,13 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
     return Occurs(e, dom) || Occurs(e, cod);
   }
 
-  case TypeType::MU:
-    LOG(FATAL) << "Unimplemented: Mu in Occurs";
+  case TypeType::MU: {
+    const auto &[idx_, v] = t->Mu();
+    for (const auto &[a, sum_type] : v) {
+      if (Occurs(e, sum_type)) return true;
+    }
     return false;
+  }
 
   case TypeType::RECORD:
     for (const auto &[l_, c] : t->Record()) {
