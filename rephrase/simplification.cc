@@ -4,6 +4,7 @@
 #include "il.h"
 
 #include "il-pass.h"
+#include "il-util.h"
 
 namespace il {
 
@@ -15,6 +16,19 @@ void Simplification::SetVerbose(int v) {
 
 struct PeepholePass : public il::Pass<> {
   using Pass::Pass;
+
+  // For fn expressions, if the function's self variable is not used,
+  // it is not actually recursive.
+  const Exp *DoFn(const std::string &self,
+                  const std::string &x,
+                  const Exp *body,
+                  const Exp *guess) override {
+    if (!self.empty() && !ILUtil::IsExpVarFree(body, self)) {
+      return pool->Fn("", x, DoExp(body), guess);
+    }
+
+    return pool->Fn(self, x, DoExp(body), guess);
+  }
 
   // If we have App(fn x => body, arg), with the function not recursive,
   // then this is equivalent to

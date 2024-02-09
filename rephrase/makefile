@@ -1,9 +1,10 @@
 
-default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe
+default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe
 
-test : lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe
+test : lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe
 	./lex_test.exe
 	./il_test.exe
+	./il-util_test.exe
 	./context_test.exe
 	./unification_test.exe
 	./parse_test.exe
@@ -14,7 +15,7 @@ test : lex_test.exe context_test.exe unification_test.exe parse_test.exe fronten
 # Also add -static to LFLAGS below
 # Also add /c/code/openblas/include to
 
-LLAMA_CLBLAST=true
+# LLAMA_CLBLAST=true
 # ASAN=true
 
 UNAME := $(shell uname -o)
@@ -257,7 +258,8 @@ LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_
 
 LANG_OBJECTS=el.o parse.o lex.o frontend.o il.o elaboration.o initial.o context.o unification.o primop.o pattern-compilation.o simplification.o il-util.o
 
-%.o : %.cc *.h $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
+# XXX add back: $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
+%.o : %.cc *.h
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
@@ -286,6 +288,9 @@ frontend_test.exe : frontend_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 il-pass_test.exe : il-pass_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+il-util_test.exe : il-util_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 bovex.exe : bovex.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)

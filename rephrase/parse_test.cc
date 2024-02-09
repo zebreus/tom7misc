@@ -12,6 +12,8 @@
 
 namespace el {
 
+static constexpr bool VERBOSE = false;
+
 static void TestParse() {
   AstPool pool;
   auto Parse = [&](const std::string &s) {
@@ -19,12 +21,16 @@ static void TestParse() {
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
       // print tokens?
-      printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      if (VERBOSE) {
+        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      }
       return Parsing::Parse(&pool, s, tokens.value());
     };
 
-  printf("Start parser tests...\n");
-  fflush(stdout);
+  if (VERBOSE) {
+    printf("Start parser tests...\n");
+    fflush(stdout);
+  }
 
   {
     const Exp *e = Parse("15232");
@@ -33,8 +39,10 @@ static void TestParse() {
     CHECK(e->integer == 15232);
   }
 
-  printf("Trivial parsing OK.\n");
-  fflush(stdout);
+  if (VERBOSE) {
+    printf("Trivial parsing OK.\n");
+    fflush(stdout);
+  }
 
   {
     const Exp *e = Parse("var");
@@ -375,7 +383,9 @@ static void TestParseType() {
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
       // print tokens?
-      printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      if (VERBOSE) {
+        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      }
       const Exp *e = Parsing::Parse(&pool, s, tokens.value());
       CHECK(e != nullptr) << stype;
       CHECK(e->type == ExpType::ANN) << stype;
@@ -514,7 +524,9 @@ static void TestParsePat() {
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
       // print tokens?
-      printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      if (VERBOSE) {
+        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      }
       const Exp *e = Parsing::Parse(&pool, s, tokens.value());
       CHECK(e != nullptr) << spat;
       CHECK(e->type == ExpType::LET) << spat;
@@ -569,7 +581,9 @@ static void TestParseDec() {
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
       // print tokens?
-      printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      if (VERBOSE) {
+        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      }
       const Exp *e = Parsing::Parse(&pool, s, tokens.value());
       CHECK(e != nullptr) << sdec;
       CHECK(e->type == ExpType::LET) << sdec;
