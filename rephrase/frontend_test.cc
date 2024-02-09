@@ -2,6 +2,7 @@
 #include "frontend.h"
 
 #include <string>
+#include <unordered_set>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -91,8 +92,16 @@ static void Simple() {
   {
     // With simplification.
     const Exp *e = Run("ref 7 : int ref");
-    const auto &[valdecs, body] = e->Let();
+    const auto &[tyvars, x, rhs, body] = e->Let();
+
     // This will simplify further soon..
+    const auto &[po, ts, es] = body->Primop();
+    CHECK(po == Primop::REF);
+    CHECK(ts.size() == 1);
+    CHECK_TYPETYPE(ts[0], TypeType::INT);
+    CHECK(es.size() == 1);
+
+    /*
     CHECK(valdecs.size() == 1);
     (void)valdecs[0]->Val();
     const auto &[po, ts, es] = body->Primop();
@@ -100,6 +109,7 @@ static void Simple() {
     CHECK(ts.size() == 1);
     CHECK_TYPETYPE(ts[0], TypeType::INT);
     CHECK(es.size() == 1);
+    */
   }
 
   {
@@ -142,33 +152,44 @@ static void Simple() {
 
   {
     const Exp *e = RunNoSimplify("let val x = 3 in x end");
-    const auto &[decs, body] = e->Let();
-    CHECK(decs.size() == 1);
+    const auto &[tyvars, x, rhs, body] = e->Let();
+    CHECK(tyvars.empty());
     printf("... %s\n", ExpString(e).c_str());
   }
 
   {
     const Exp *e = RunNoSimplify("let val (x, y) = (7, \"hi\") in x end");
-    const auto &[decs, body] = e->Let();
+    if (VERBOSE) {
+      printf("%s\n", ExpString(e).c_str());
+    }
     // Should bind tuple, and the two vars.
-    CHECK(decs.size() == 3);
-    printf("%s\n", ExpString(e).c_str());
+    const auto &[tyvars, x, rhs, body] = e->Let();
+    CHECK(tyvars.empty());
+    CHECK(body->type == ExpType::LET);
+    const Exp *body2 = std::get<3>(body->Let());
+    CHECK(body2->type == ExpType::LET);
+    const Exp *body3 = std::get<3>(body2->Let());
+    CHECK(body3->type == ExpType::VAR);
   }
 
   {
     const Exp *e = RunNoSimplify(
         "let val (x as z, _) = (7, \"hi\") in x end");
-    const auto &[decs, body] = e->Let();
-    printf("%s\n", ExpString(e).c_str());
-    const auto &[tv, body_var] = body->Var();
-    CHECK(tv.empty()) << "Should not be polymorphic!";
-    bool is_declared = false;
-    for (const Dec *dec : decs) {
-      if (dec->type == DecType::VAL &&
-          std::get<1>(dec->Val()) == body_var)
-        is_declared = true;
+    if (VERBOSE) {
+      printf("%s\n", ExpString(e).c_str());
     }
-    CHECK(is_declared) << body_var;
+    const auto &[tyvars, x, rhs, body] = e->Let();
+    CHECK(tyvars.empty()) << "Should not be polymorphic!";
+
+    std::unordered_set<std::string> declared;
+    while (e->type == ExpType::LET) {
+      const auto &[tyvars_, xx, rhs_, bbody] = e->Let();
+      declared.insert(xx);
+      e = bbody;
+    }
+    CHECK(e->type == ExpType::VAR);
+    const std::string v = std::get<1>(e->Var());
+    CHECK(declared.contains(v)) << v;
   }
 
   {

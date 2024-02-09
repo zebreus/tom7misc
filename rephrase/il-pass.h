@@ -59,8 +59,8 @@ struct Pass {
       LOG(FATAL) << "Unimplemented";
     }
     case ExpType::LET: {
-      const auto &[decs, body] = e->Let();
-      return DoLet(decs, body, e, args...);
+      const auto &[tyvars, x, rhs, body] = e->Let();
+      return DoLet(tyvars, x, rhs, body, e, args...);
     }
     case ExpType::IF: {
       const auto &[cond, t, f] = e->If();
@@ -97,20 +97,6 @@ struct Pass {
       LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
     }
   }
-
-  virtual const Dec *DoDec(const Dec *d, Args... args) {
-    switch (d->type) {
-    case DecType::DO:
-      return DoDo(d->Do(), d, args...);
-    case DecType::VAL: {
-      const auto &[tyvars, x, e] = d->Val();
-      return DoVal(tyvars, x, e, d, args...);
-    }
-    default:
-      LOG(FATAL) << "Unhandled declaration type in Pass:DoDec!";
-    }
-  }
-
 
   // All the cases take the AST node's components as arguments,
   // followed by the node itself (the "guess" for the constructors)
@@ -268,14 +254,14 @@ struct Pass {
     return pool->Join(vv, guess);
   }
 
-  virtual const Exp *DoLet(const std::vector<const Dec *> &ds,
-                           const Exp *e,
+  virtual const Exp *DoLet(const std::vector<std::string> &tyvars,
+                           const std::string &x,
+                           const Exp *rhs,
+                           const Exp *body,
                            const Exp *guess,
                            Args... args) {
-    std::vector<const Dec *> dds;
-    dds.reserve(ds.size());
-    for (const Dec *d : ds) dds.push_back(DoDec(d, args...));
-    return pool->Let(dds, DoExp(e, args...), guess);
+    return pool->Let(tyvars, x, DoExp(rhs, args...),
+                     DoExp(body, args...), guess);
   }
 
   virtual const Exp *DoIf(const Exp *cond, const Exp *t, const Exp *f,
@@ -322,22 +308,6 @@ struct Pass {
                             Args... args) {
     return pool->Fail(msg, guess);
   }
-
-
-  // Declarations
-
-  virtual const Dec *DoVal(const std::vector<std::string> &tyvars,
-                           const std::string &v,
-                           const Exp *rhs,
-                           const Dec *guess,
-                           Args... args) {
-    return pool->ValDec(tyvars, v, DoExp(rhs, args...), guess);
-  }
-
-  virtual const Dec *DoDo(const Exp *e, const Dec *guess, Args... args) {
-    return pool->DoDec(DoExp(e, args...), guess);
-  }
-
 
 protected:
   AstPool *pool = nullptr;

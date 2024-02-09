@@ -30,27 +30,27 @@ static void TestFreeVars() {
 
   const Exp *e =
     pool.Let(
-        {
           // x is free in the rhs here
-          pool.ValDec({}, "x", Var("x")),
-          pool.ValDec({}, "y", pool.Int(0)),
+        {}, "x", Var("x"),
+        pool.Let(
+          {}, "y", pool.Int(0),
           // y is not free here
-          pool.ValDec({}, "z", Var("y")),
-          pool.ValDec({}, "w", pool.Int(1))
-        },
-        pool.Fn("self", "u",
-                 pool.Record(
-                     {
-                       // Bound by fn
-                       {"1", Var("self")},
-                       // Bound by fn
-                       {"2", Var("u")},
-                       // Bound by val
-                       {"3", Var("z")},
-                       // Free
-                       {"4", Var("m")}
-                     }))
-              );
+          pool.Let(
+              {}, "z", Var("y"),
+              pool.Let(
+                  {}, "w", pool.Int(1),
+                  pool.Fn("self", "u",
+                          pool.Record(
+                              {
+                                // Bound by fn
+                                {"1", Var("self")},
+                                // Bound by fn
+                                {"2", Var("u")},
+                                // Bound by val
+                                {"3", Var("z")},
+                                // Free
+                                {"4", Var("m")}
+                              }))))));
 
   std::unordered_set<std::string> fvs = ILUtil::FreeExpVars(e);
   CHECK(fvs.size() == 2) << StringSetString(fvs);

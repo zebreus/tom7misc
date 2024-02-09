@@ -10,6 +10,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "ansi.h"
+#include "util.h"
 
 namespace il {
 
@@ -140,7 +141,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     const auto &[ve, vt] = elab->Elab(G, el_pool->Var(obj));
     std::string var = rows_in[0].first->var;
     std::string il_var = var;
-    const il::Dec *dec = pool->ValDec({}, var, ve);
+    Dec dec = Dec{.x = var, .rhs = ve};
 
     Context GG = G.Insert(var,
                           VarInfo{
@@ -150,7 +151,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
                               .primop = std::nullopt});
 
     const auto &[body_exp, body_type] = elab->Elab(GG, rows_in[0].second);
-    return std::make_pair(pool->Let({dec}, body_exp), body_type);
+    return std::make_pair(pool->Let(dec.tyvars, dec.x, dec.rhs,
+                                    body_exp), body_type);
   }
 
   // Prepare the pattern matrix. We work with a rectangular matrix,
@@ -287,8 +289,9 @@ PatternCompilation::CompileIrrefutable(
     CompileIrrefutableRec(G, pat, re, rt, valuable);
 
   printf(AWHITE("Decs") ":\n");
-  for (const Dec *dec : decs) {
-    printf("  %s\n", DecString(dec).c_str());
+  for (const Dec &dec : decs) {
+    printf("  (%s) %s = %s\n", Util::Join(dec.tyvars, ",").c_str(),
+           dec.x.c_str(), ExpString(dec.rhs).c_str());
   }
 
   printf(AWHITE("New context") ":\n%s\n(end)\n",
@@ -297,11 +300,20 @@ PatternCompilation::CompileIrrefutable(
   printf(AWHITE("Elaborating body") ":\n%s\n",
          ExpString(body).c_str());
   const auto &[be, bt] = elab->Elab(GG, body);
-  return std::make_pair(elab->pool->Let(decs, be), bt);
+  return std::make_pair(LetDecs(decs, be), bt);
 }
 
+const il::Exp *PatternCompilation::LetDecs(const std::vector<Dec> &decs,
+                                           const il::Exp *body) {
+  const il::Exp *ret = body;
+  for (int i = decs.size() - 1; i >= 0; i--) {
+    const Dec &dec = decs[i];
+    ret = elab->pool->Let(dec.tyvars, dec.x, dec.rhs, ret);
+  }
+  return ret;
+}
 
-std::pair<Context, std::vector<const Dec *>>
+std::pair<Context, std::vector<PatternCompilation::Dec>>
 PatternCompilation::CompileIrrefutableRec(
     const Context &G,
     const el::Pat *pat,
@@ -414,7 +426,7 @@ PatternCompilation::CompileIrrefutableRec(
 
     // Now, for each subpattern, compile it recursively.
 
-    std::vector<const il::Dec *> decs = rdecs;
+    std::vector<Dec> decs = rdecs;
 
     Context GGG = GG;
     for (int i = 0; i < (int)pat->str_children.size(); i++) {
@@ -433,7 +445,7 @@ PatternCompilation::CompileIrrefutableRec(
       const auto &[Gi, decsi] = CompileIrrefutableRec(
           GGG, p, rhs, rhs_type, rhs_valuable);
 
-      for (const Dec *d : decsi) decs.push_back(d);
+      for (const Dec &d : decsi) decs.push_back(d);
 
       GGG = Gi;
     }
@@ -449,7 +461,7 @@ PatternCompilation::CompileIrrefutableRec(
 // This is the base case of irrefutable patterns. The vector
 // of variables may be empty. Importantly, this is the one
 // case where we may perform polymorphic generalization.
-std::pair<Context, std::vector<const Dec *>>
+std::pair<Context, std::vector<PatternCompilation::Dec>>
 PatternCompilation::GeneralizeOne(
     const Context &G,
     std::vector<std::string> vars,
@@ -508,14 +520,14 @@ PatternCompilation::GeneralizeOne(
   CHECK(!vars.empty());
   const std::string &ov = vars[0];
   const std::string &ilov = pool->NewVar(ov);
-  const Dec *odec = pool->ValDec(gen_tyvars, ilov, rhs);
+  Dec odec{.tyvars = gen_tyvars, .x = ilov, .rhs = rhs};
   VarInfo oinfo{
     .tyvars = gen_tyvars,
     .type = type,
     .var = ilov,
   };
 
-  std::vector<const Dec *> decs = {odec};
+  std::vector<Dec> decs = {odec};
   Context GG = G.Insert(ov, oinfo);
 
   // Now bind the rest of the variables as copies. Most of the
@@ -525,8 +537,11 @@ PatternCompilation::GeneralizeOne(
     const std::string &ilv = pool->NewVar(v);
     // ... but importantly we reuse the variable above as the
     // rhs.
-    const Dec *dec = pool->ValDec(gen_tyvars, ilv,
-                                  pool->Var(gen_tyvar_args, ilov));
+    Dec dec{
+      .tyvars = gen_tyvars,
+      .x = ilv,
+      .rhs = pool->Var(gen_tyvar_args, ilov),
+    };
     VarInfo info{
       .tyvars = gen_tyvars,
       .type = type,
@@ -534,7 +549,7 @@ PatternCompilation::GeneralizeOne(
     };
 
     GG = GG.Insert(v, info);
-    decs.push_back(dec);
+    decs.push_back(std::move(dec));
   }
 
   return std::make_pair(GG, decs);

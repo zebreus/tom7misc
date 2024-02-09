@@ -36,15 +36,11 @@ enum class ExpType {
   // Abort with a string message. Should be
   // replaced with generic exception mechanism.
   FAIL,
-};
 
-enum class DecType {
-  DO,
-  VAL,
+  SEQ,
 };
 
 struct Exp;
-struct Dec;
 
 enum class TypeType {
   // Type variables are applied to 0 or more args
@@ -191,9 +187,13 @@ struct Exp {
     return str_children;
   }
 
-  std::tuple<const std::vector<const Dec *> &, const Exp *> Let() const {
+  std::tuple<const std::vector<std::string> &,
+             const std::string &,
+             const Exp *,
+             const Exp *>
+  Let() const {
     CHECK(type == ExpType::LET);
-    return std::tie(decs, a);
+    return std::tie(tyvars, str, a, b);
   }
 
   // cond, true, false
@@ -253,34 +253,11 @@ private:
   const Exp *c = nullptr;
   const Type *t = nullptr;
   double d = 0.0;
-  std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
   std::vector<const Type *> types;
+  std::vector<std::string> tyvars;
   // Not necessarily sorted: The order here gives the evaluation order.
   std::vector<std::pair<std::string, const Exp *>> str_children;
-};
-
-struct Dec {
-  DecType type;
-  Dec(DecType t) : type(t) {}
-
-  std::tuple<const std::vector<std::string> &,
-             const std::string &,
-             const Exp *> Val() const {
-    CHECK(type == DecType::VAL);
-    return std::tie(tyvars, str, exp);
-  }
-
-  const Exp *Do() const {
-    CHECK(type == DecType::DO);
-    return exp;
-  }
-
-private:
-  friend struct AstPool;
-  std::string str;
-  std::vector<std::string> tyvars;
-  const Exp *exp = nullptr;
 };
 
 // The AST pool has constructors for all the IL forms. Each takes
@@ -541,25 +518,28 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Let(const std::vector<const Dec *> &ds,
-                 const Exp *e,
+
+  const Exp *Let(const std::vector<std::string> &tyvars,
+                 const std::string &x,
+                 const Exp *rhs,
+                 const Exp *body,
                  const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::LET &&
-        guess->decs == ds &&
-        guess->a == e) {
+        guess->tyvars == tyvars &&
+        guess->str == x &&
+        guess->a == rhs &&
+        guess->b == body) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::LET);
-    ret->decs = ds;
-    ret->a = e;
+    ret->tyvars = tyvars;
+    ret->str = x;
+    ret->a = rhs;
+    ret->b = body;
     return ret;
   }
-
-  // Like Let, but flattens d into the declaration list if e
-  // is already a LET.
-  const Exp *LetFlat(const Dec *d, const Exp *e);
 
   const Exp *If(const Exp *cond, const Exp *t, const Exp *f,
                 const Exp *guess = nullptr) {
@@ -644,39 +624,6 @@ struct AstPool {
     return ret;
   }
 
-  // Declarations
-
-  const Dec *ValDec(const std::vector<std::string> &tyvars,
-                    const std::string &v,
-                    const Exp *rhs,
-                    const Dec *guess = nullptr) {
-    if (guess != nullptr &&
-        guess->type == DecType::VAL &&
-        guess->tyvars == tyvars &&
-        guess->str == v &&
-        guess->exp == rhs) {
-      return guess;
-    }
-
-    Dec *ret = NewDec(DecType::VAL);
-    ret->tyvars = tyvars;
-    ret->str = v;
-    ret->exp = rhs;
-    return ret;
-  }
-
-  const Dec *DoDec(const Exp *e, const Dec *guess = nullptr) {
-    if (guess != nullptr &&
-        guess->type == DecType::DO &&
-        guess->exp == e) {
-      return guess;
-    }
-
-    Dec *ret = NewDec(DecType::DO);
-    ret->exp = e;
-    return ret;
-  }
-
   // SubstType(T, v, T') is [T/v]T'
   const Type *SubstType(const Type *t, const std::string &v,
                         const Type *u);
@@ -708,16 +655,13 @@ struct AstPool {
 
   Type *NewType(TypeType t) { return type_arena.New(t); }
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }
-  Dec *NewDec(DecType t) { return dec_arena.New(t); }
   AstArena<Exp> exp_arena;
-  AstArena<Dec> dec_arena;
   AstArena<Type> type_arena;
   int next_var = 0;
 };
 
 const char *TypeTypeString(const TypeType t);
 std::string TypeString(const Type *t);
-std::string DecString(const Dec *d);
 std::string ExpString(const Exp *e);
 
 }  // namespace il

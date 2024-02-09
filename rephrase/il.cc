@@ -46,20 +46,6 @@ const Type *AstPool::Product(const std::vector<const Type *> &v,
   return RecordType(record_type, guess);
 }
 
-const Exp *AstPool::LetFlat(const Dec *d, const Exp *e) {
-  if (e->type == ExpType::LET) {
-    const auto &[decs, body] = e->Let();
-    std::vector<const Dec *> new_decs;
-    new_decs.reserve(decs.size() + 1);
-    new_decs.push_back(d);
-    for (const Dec *dd : decs) new_decs.push_back(dd);
-    return Let(std::move(new_decs), body);
-  } else {
-    return Let({d}, e);
-  }
-}
-
-
 std::string TypeString(const Type *t) {
   auto RecordOrSumBody = [](
       const std::vector<std::pair<std::string, const Type *>> &v) {
@@ -159,31 +145,6 @@ std::string TypeString(const Type *t) {
   }
 }
 
-std::string DecString(const Dec *d) {
-  switch (d->type) {
-  case DecType::VAL: {
-    const auto &[tv, x, e] = d->Val();
-    std::string tyvars;
-    if (!tv.empty()) {
-      tyvars = "(" + Util::Join(tv, ",") + ") ";
-    }
-    return StringPrintf("val %s%s = %s",
-                        tyvars.c_str(),
-                        x.c_str(),
-                        ExpString(e).c_str());
-  }
-
-  case DecType::DO: {
-    const Exp *e = d->Do();
-    return StringPrintf("do %s",
-                        ExpString(e).c_str());
-  }
-
-  default:
-    return "TODO DECTYPE";
-  }
-}
-
 // TODO: Some kind of pretty-printing
 std::string ExpString(const Exp *e) {
   switch (e->type) {
@@ -260,19 +221,17 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::LET: {
-    const auto &[decs, body] = e->Let();
-    std::vector<std::string> dstrs;
-    dstrs.reserve(decs.size());
-    for (const Dec *d : decs) {
-      dstrs.push_back(DecString(d));
+    const auto &[tvs, x, rhs, body] = e->Let();
+    std::string tyvars;
+    if (!tvs.empty()) {
+      tyvars = "(" + Util::Join(tvs, ",") + ") ";
     }
-
-    return StringPrintf("let\n"
-                        "  %s\n"
-                        "in\n"
-                        "  %s\n"
+    return StringPrintf("let val %s%s = %s\n"
+                        "in %s\n"
                         "end",
-                        Util::Join(dstrs, "\n  ").c_str(),
+                        tyvars.c_str(),
+                        x.c_str(),
+                        ExpString(rhs).c_str(),
                         ExpString(body).c_str());
   }
 

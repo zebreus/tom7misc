@@ -467,7 +467,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const auto &[cexp, ctype] =
       pattern_compilation->Compile(GG, obj_var, ot, rows);
     return std::make_pair(
-        pool->Let({pool->ValDec({}, obj_ilvar, oe)},
+        pool->Let({}, obj_ilvar, oe,
                   cexp),
         ctype);
   }

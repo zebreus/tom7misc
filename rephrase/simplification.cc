@@ -41,7 +41,7 @@ struct PeepholePass : public il::Pass<> {
     if (f->type == ExpType::FN) {
       const auto &[self, x, body] = f->Fn();
       if (self.empty()) {
-        return pool->LetFlat(pool->ValDec({}, x, arg), DoExp(body));
+        return pool->Let({}, x, arg, DoExp(body));
       }
     }
     return pool->App(DoExp(f), arg, guess);

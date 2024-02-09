@@ -20,23 +20,15 @@ struct FreeVarsPass : public Pass<FunctionalSet> {
   // set, so we can detect that it's not free. Only a few constructs
   // bind expression variables.
 
-  // Need to collect the vars for the body, so we can't just do
-  // this by overriding DoDec.
-  const Exp *DoLet(const std::vector<const Dec *> &ds,
-                   const Exp *e,
+  const Exp *DoLet(const std::vector<std::string> &tyvars,
+                   const std::string &x,
+                   const Exp *rhs,
+                   const Exp *body,
                    const Exp *guess,
                    FunctionalSet bound) override {
-    std::vector<const Dec *> dds;
-    dds.reserve(ds.size());
-    for (const Dec *d : ds) {
-      const Dec *dd = DoDec(d, bound);
-      dds.push_back(dd);
-      if (dd->type == DecType::VAL) {
-        const auto &[tvs, x, rhs] = dd->Val();
-        bound = bound.Insert(x, {});
-      }
-    }
-    return pool->Let(dds, DoExp(e, bound), guess);
+    return pool->Let(tyvars, x, DoExp(rhs, bound),
+                     DoExp(body, bound.Insert(x, {})),
+                     guess);
   }
 
   const Exp *DoFn(const std::string &self,

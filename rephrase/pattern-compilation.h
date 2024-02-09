@@ -43,12 +43,23 @@ private:
       const Context &G,
       Matrix m);
 
+  // This could probably be simplified away; it's a remnant of
+  // when we used to have Dec as a separate syntactic class in
+  // IL.
+  struct Dec {
+    std::vector<std::string> tyvars;
+    std::string x;
+    const il::Exp *rhs = nullptr;
+  };
+  const il::Exp *LetDecs(const std::vector<Dec> &decs,
+                         const il::Exp *body);
+
   void CheckAffine(const el::Pat *orig_pat) const;
 
   const el::Exp *SimpleBind(std::string nv, std::string objv,
                             const el::Exp *body);
 
-  std::pair<Context, std::vector<const Dec *>>
+  std::pair<Context, std::vector<Dec>>
   CompileIrrefutableRec(
       const Context &G,
       const el::Pat *pat,
@@ -56,7 +67,7 @@ private:
       const il::Type *rhs_type,
       bool rhs_valuable);
 
-  std::pair<Context, std::vector<const Dec *>>
+  std::pair<Context, std::vector<Dec>>
   GeneralizeOne(
       const Context &G,
       std::vector<std::string> vars,
