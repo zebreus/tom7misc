@@ -6,20 +6,21 @@
 #include <time.h>
 #include <stdio.h>
 
-#include "../cc-lib/crypt/aes.h"
-#include "../cc-lib/crypt/sha256.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/crypt/cryptrand.h"
+#include "crypt/aes.h"
+#include "crypt/sha256.h"
+#include "arcfour.h"
+#include "crypt/cryptrand.h"
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 
-#include "../cc-lib/base64.h"
-#include "../cc-lib/util.h"
+#include "base64.h"
+#include "util.h"
 
 using namespace std;
 using uint8 = uint8_t;
 using uint64 = uint64_t;
+using int64 = int64_t;
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #define byte win_byte_override
@@ -86,7 +87,8 @@ static std::vector<uint8> CryptRandom(int bytes) {
 }
 
 static bool WipeFile(const string &filename) {
-  // Careful on the mode here; some modes will
+  // Careful on the mode here; some modes will truncate the file
+  // (which will prevent us from overwriting the bytes)!
   FILE *f = fopen(filename.c_str(), "rb+");
   if (!f) return false;
   struct OnReturn {
@@ -376,15 +378,15 @@ static bool Decrypt(const string &passphrase, const string &contents,
     // attacker too) but admits no "known plaintext."
     if (lineno == 1) {
       if (!IsBase64String(decoded)) {
-  fprintf(stderr, "Preimage not base64.\n");
-  return false;
+        fprintf(stderr, "Preimage not base64.\n");
+        return false;
       }
 
       std::vector<uint8> preimage = Base64::DecodeV(decoded);
       std::vector<uint8> image = SHA256::HashVector(preimage);
       if (image != salt) {
-  fprintf(stderr, "Preimage does not hash to salt.\n");
-  return false;
+        fprintf(stderr, "Preimage does not hash to salt.\n");
+        return false;
       }
     }
   }
@@ -447,28 +449,28 @@ static string RandomChunks(int chunks,
   CryptRand cr;
 
   auto CharFrom = [&cr](const string &s) -> char {
-    auto RandTo8 = [&cr](int n) -> uint8 {
-  CHECK(n > 0) << "Must be non-empty!";
-  CHECK(n <= 256) << "Only implemented for one-byte stream";
-        // e.g. for seps = ".", avoid possibly expensive
-        // rand generation
-        if (n == 1) return 0;
-  uint8 mask = (uint8)(n - 1);
-  mask |= mask >> 1;
-  mask |= mask >> 2;
-  mask |= mask >> 4;
-  mask |= mask >> 8;
+      auto RandTo8 = [&cr](int n) -> uint8 {
+          CHECK(n > 0) << "Must be non-empty!";
+          CHECK(n <= 256) << "Only implemented for one-byte stream";
+          // e.g. for seps = ".", avoid possibly expensive
+          // rand generation
+          if (n == 1) return 0;
+          uint8 mask = (uint8)(n - 1);
+          mask |= mask >> 1;
+          mask |= mask >> 2;
+          mask |= mask >> 4;
+          mask |= mask >> 8;
 
-  for (;;) {
-    const uint32 x = cr.Byte() & mask;
-    if (x < n) return x;
-  }
-      };
+          for (;;) {
+            const uint32 x = cr.Byte() & mask;
+            if (x < n) return x;
+          }
+        };
 
-    int idx = RandTo8(s.size());
-    CHECK(idx >= 0 && idx < s.size()) << idx;
-    return s[idx];
-  };
+      int idx = RandTo8(s.size());
+      CHECK(idx >= 0 && idx < s.size()) << idx;
+      return s[idx];
+    };
 
   string out;
   out.reserve((chunk_len + 1) * chunks);
@@ -559,15 +561,15 @@ int main(int argc, char **argv) {
   } else if (cmd == "emacs") {
     const string pass = ReadPass();
     OpenWithEditor(pass, file,
-       "emacs -nw "
-       // Disable some default emacs behavior that can make
-       // temporary of permanent copies of the plaintext
-       // file! Good chance of emacs leaking data via some
-       // other means, so perhaps better to avoid complex
-       // editors like this.
-       "--execute=\"(setq create-lockfiles nil)\" "
-       "--execute=\"(setq auto-save-default nil)\" "
-       "--execute=\"(setq make-backup-files nil)\" ");
+                   "emacs -nw "
+                   // Disable some default emacs behavior that can make
+                   // temporary or permanent copies of the plaintext
+                   // file! Good chance of emacs leaking data via some
+                   // other means, so perhaps better to avoid complex
+                   // editors like this.
+                   "--execute=\"(setq create-lockfiles nil)\" "
+                   "--execute=\"(setq auto-save-default nil)\" "
+                   "--execute=\"(setq make-backup-files nil)\" ");
 
   } else if (cmd == "notepad") {
     const string pass = ReadPass();

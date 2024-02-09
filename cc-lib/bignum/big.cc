@@ -743,6 +743,7 @@ static constexpr array<uint16_t, 1000> PRIMES = {
   7841,7853,7867,7873,7877,7879,7883,7901,7907,7919,
 };
 
+[[maybe_unused]]
 static constexpr int FIRST_OMITTED_PRIME = 7927;
 
 

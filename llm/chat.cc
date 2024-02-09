@@ -4,9 +4,9 @@
 //
 // After the preamble (prompt) the chat is a series of lines. Each one
 // is of the form
-// <Participant> Some text they say.\n
+// "<Participant> Some text they say.\n"
 // or
-//  * Participant does some action.\n"
+// " * Participant does some action.\n"
 
 #include "llama.h"
 

@@ -6,6 +6,7 @@ default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe genera
 # Also add /c/code/openblas/include to
 
 LLAMA_CLBLAST=true
+# LLAMA_OPENBLAS=true
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -16,8 +17,6 @@ ifeq ($(UNAME),Cygwin)
   # TOM7_INCLUDES=-I../../openblas/include -I../../cuda/include
   # TOM7_LIBS=-L../../openblas/lib -L$(CUDA_PATH)/lib/x64 -static
   PLATFORM_LDFLAGS=-Wl,--subsystem,console -lpsapi -static
-  # LLAMA_OPENBLAS=1
-  # LLAMA_CUBLAS=1
   PLATFORM_CFLAGS=
   OPTFLAGS= -O3 -flto=auto -march=native -mtune=native
 #  OPTFLAGS=-O -g
@@ -75,7 +74,7 @@ endif
 # keep standard at C11 and C++11
 
 CFLAGS   = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) $(TOM7_INCLUDES) -std=c11   -fPIC $(PLATFORM_CFLAGS)
-CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I./examples -std=c++20 -fPIC $(PLATFORM_CFLAGS)
+CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -std=c++20 -fPIC $(PLATFORM_CFLAGS)
 LDFLAGS  = $(OPTFLAGS) $(TOM7_LIBS) -m64 $(PLATFORM_LDFLAGS)
 
 ifndef LLAMA_DEBUG
@@ -158,14 +157,20 @@ ifndef LLAMA_NO_ACCELERATE
 		LDFLAGS += -framework Accelerate
 	endif
 endif
+
 ifdef LLAMA_OPENBLAS
-	CFLAGS  += -DGGML_USE_OPENBLAS -I/usr/local/include/openblas -I/usr/include/openblas
+# tom7 added changed these includes
+	CFLAGS  += -DGGML_USE_OPENBLAS -I/clang64/include/openblas
+    CXXFLAGS  += -DGGML_USE_OPENBLAS -I/clang64/include/openblas
+# was:
+# -I/usr/local/include/openblas -I/usr/include/openblas
 	ifneq ($(shell grep -e "Arch Linux" -e "ID_LIKE=arch" /etc/os-release 2>/dev/null),)
 		LDFLAGS += -lopenblas -lcblas
 	else
 		LDFLAGS += -lopenblas
 	endif
 endif
+
 ifdef LLAMA_CUBLAS
 	CFLAGS    += -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I$(CUDA_PATH)/targets/x86_64-linux/include
 	CXXFLAGS  += -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I$(CUDA_PATH)/targets/x86_64-linux/include
@@ -178,6 +183,7 @@ ifdef LLAMA_CUBLAS
 ggml-cuda.o: $(LLAMA_DIR)/ggml-cuda.cu $(LLAMA_DIR)/ggml-cuda.h
 	$(NVCC) $(NVCCFLAGS) $(CXXFLAGS) -Wno-pedantic -c $< -o $@
 endif
+
 ifdef LLAMA_CLBLAST
 # This part was edited by tom7. Probably we can just simplify all these
 # conditionals for my setup?
@@ -192,20 +198,24 @@ ifdef LLAMA_CLBLAST
 	OBJS    += ggml-opencl.o
 # There was formerly a rule for compiling ggml-opencl.o here. -tom7
 endif
+
 ifneq ($(filter aarch64%,$(UNAME_M)),)
 	# Apple M1, M2, etc.
 	# Raspberry Pi 3, 4, Zero 2 (64-bit)
 	CFLAGS   += -mcpu=native
 	CXXFLAGS += -mcpu=native
 endif
+
 ifneq ($(filter armv6%,$(UNAME_M)),)
 	# Raspberry Pi 1, Zero
 	CFLAGS += -mfpu=neon-fp-armv8 -mfp16-format=ieee -mno-unaligned-access
 endif
+
 ifneq ($(filter armv7%,$(UNAME_M)),)
 	# Raspberry Pi 2
 	CFLAGS += -mfpu=neon-fp-armv8 -mfp16-format=ieee -mno-unaligned-access -funsafe-math-optimizations
 endif
+
 ifneq ($(filter armv8%,$(UNAME_M)),)
 	# Raspberry Pi 3, 4, Zero 2 (32-bit)
 	CFLAGS += -mfp16-format=ieee -mno-unaligned-access

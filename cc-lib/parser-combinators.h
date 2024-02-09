@@ -166,6 +166,7 @@ inline auto operator <<(const A &a, const B &b) {
       });
 }
 
+// Parse both A and B. Produce a pair of the results.
 template<Parser A, Parser B>
 requires std::same_as<typename A::token_type,
                       typename B::token_type>
@@ -526,6 +527,9 @@ inline auto Separate0(const A &a, const B &b) {
 // reconfigure the infix operators at runtime, since the
 // caller can decide how to dynamically wrap items at the
 // time this is called.
+//
+// TODO: It would be nice to support n-ary operators, which
+// reduce a vector of inputs (e.g. * in type expressions).
 enum class Associativity {
   Left,
   Right,

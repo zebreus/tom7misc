@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <variant>
 #include <functional>
+#include <memory>
 
 #include "hashing.h"
 #include "base/logging.h"
@@ -17,6 +18,8 @@
 //
 // Values can be copied, so they should be wrapped somehow if their
 // identity needs to be preserved.
+//
+// Value semantics. It is a shared_ptr under the hood.
 template<
   class Key_, class Value_,
   // These must be efficiently default-constructible.
@@ -29,22 +32,28 @@ struct FunctionalMap {
   using KeyEqual = KeyEqual_;
 
   // Empty.
-  FunctionalMap() : depth(0), data(HashMap{}) {}
+  FunctionalMap() : depth(0) {}
+  // Value semantics.
+  FunctionalMap(const FunctionalMap &other) = default;
+  FunctionalMap(FunctionalMap &&other) = default;
+  FunctionalMap &operator =(const FunctionalMap &other) = default;
+  FunctionalMap &operator =(FunctionalMap &&other) = default;
 
   // Or returns null if not present.
   const Value *FindPtr(const Key &k) const {
     const FunctionalMap *f = this;
     for (;;) {
-      if (const Cell *cell = std::get_if<Cell>(&f->data)) {
+      if (f->data.get() == nullptr) return nullptr;
+      else if (const Cell *cell = std::get_if<Cell>(f->data.get())) {
         const auto &[kk, vv, pp] = *cell;
         if (KeyEqual()(k, kk)) {
           return &vv;
         } else {
-          f = pp;
+          f = &pp;
         }
       } else {
-        CHECK(std::holds_alternative<HashMap>(f->data));
-        const HashMap &m = std::get<HashMap>(f->data);
+        CHECK(std::holds_alternative<HashMap>(*f->data));
+        const HashMap &m = std::get<HashMap>(*f->data);
         auto it = m.find(k);
         if (it == m.end()) return nullptr;
         else return &it->second;
@@ -60,52 +69,74 @@ struct FunctionalMap {
   // this object must outlive the copy.
   FunctionalMap Insert(const Key &k, Value v) const {
     if (depth > kLinearDepth) {
-      CHECK(std::holds_alternative<HashMap>(data)) << "Bug: Depth implies "
+      CHECK(std::holds_alternative<HashMap>(*data)) << "Bug: Depth implies "
         "pointer representation.";
-      HashMap m = GetAll(this);
+      HashMap m = GetAll(*this);
       m[k] = std::move(v);
       return FunctionalMap(std::move(m));
     } else {
       return FunctionalMap(
-          std::make_tuple(k, std::move(v), this),
+          std::make_tuple(k, std::move(v), *this),
           depth + 1);
     }
   }
 
+  // Initialize with a set of bindings. Later bindings shadow
+  // earlier ones, in the case of duplicates.
+  FunctionalMap(const std::vector<std::pair<Key, Value>> &vec) {
+    HashMap hm;
+    for (const auto &[k, v] : vec) {
+      hm[k] = v;
+    }
+    data = std::make_shared<variant_type>(std::move(hm));
+  }
+
+  // Flatten to a single map, where inner bindings shadow outer
+  // ones as expected. Copies the whole map, so this is linear time.
+  std::unordered_map<Key, Value, Hash, KeyEqual>
+  Export() const {
+    return GetAll(*this);
+  }
+
  private:
-  using Ptr = const FunctionalMap *;
-  using Cell = std::tuple<Key, Value, Ptr>;
-  using HashMap =
-    std::unordered_map<Key, Value, Hash, KeyEqual>;
+  using Cell = std::tuple<Key, Value, FunctionalMap>;
+  using HashMap = std::unordered_map<Key, Value, Hash, KeyEqual>;
+  using variant_type = std::variant<Cell, HashMap>;
   int depth = 0;
 
-  // XXX tune
-  // Every 10 we create a cell with a hash map of
-  // everything beneath it.
-  // PERF: Perhaps better to actually flatten the nodes
-  // in place, but we have to deal with "mutable" and
-  // type safety then.
+  // Every 10 we create a cell with a hash map of everything beneath
+  // it. PERF: Other ideas would work here. For example, we could just
+  // flatten chunks (and still do a search through a linked list of
+  // hash maps), rather than consolidating the whole thing each time.
+  //
+  // Perhaps better would be to actually flatten the nodes in place,
+  // but we have to deal with "mutable" and thread safety then.
+  //
+  // XXX tune this parameter, at least
   static constexpr int kLinearDepth = 10;
 
-  static HashMap GetAll(const FunctionalMap *f) {
-    if (const Cell *cell = std::get_if<Cell>(&f->data)) {
+  static HashMap GetAll(const FunctionalMap &f) {
+    if (f.data.get() == nullptr) return HashMap();
+    if (const Cell *cell = std::get_if<Cell>(f.data.get())) {
       const auto &[kk, vv, pp] = *cell;
       HashMap ret = GetAll(pp);
       ret[kk] = vv;
       return ret;
     } else {
-      CHECK(std::holds_alternative<HashMap>(f->data));
-      return std::get<HashMap>(f->data);
+      CHECK(std::holds_alternative<HashMap>(*f.data));
+      return std::get<HashMap>(*f.data);
     }
   }
 
-  explicit FunctionalMap(HashMap m) : depth(0), data(std::move(m)) {}
+  explicit FunctionalMap(HashMap m) :
+    depth(0), data(std::make_shared<variant_type>(std::move(m))) {}
 
   // Make a new list cell.
   FunctionalMap(Cell cell, int depth) :
-    depth(depth), data(std::move(cell)) {}
+    depth(depth), data(std::make_shared<variant_type>(cell)) {}
 
-  std::variant<Cell, HashMap> data;
+  // Or null means empty.
+  std::shared_ptr<variant_type> data;
 };
 
 #endif

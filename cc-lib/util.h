@@ -323,6 +323,10 @@ struct Util {
   // Prime factorization with trial division (not fast). Input must be > 1.
   // Output in sorted order.
   static std::vector<int> Factorize(int n);
+
+  // this is memmem, which is in glibc but not std C or C++.
+  static const uint8_t *MemMem(const uint8_t *haystack, size_t n,
+                               const uint8_t *needle, size_t m);
 };
 
 // Deprecated: Call the ones in the Util class please!

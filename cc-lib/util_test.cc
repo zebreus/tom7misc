@@ -499,6 +499,22 @@ static void TestCommas() {
             Util::UnsignedWithCommas(7'111'222'333'444ULL));
 }
 
+static void TestMemMem() {
+  const char *s1 = "the quick brown quack foxed";
+  const uint8_t *s2 = Util::MemMem((const uint8_t*)s1, strlen(s1),
+                                   (const uint8_t*)"quack", 5);
+  CHECK(s1 != nullptr);
+  CHECK(0 == memcmp(s2, "quack", 5));
+
+  CHECK(Util::MemMem((const uint8_t*)s1, strlen(s1),
+                     (const uint8_t*)"quark", 5) == nullptr);
+
+  CHECK((const uint8_t*)s1 == Util::MemMem((const uint8_t*)s1, strlen(s1),
+                                           (const uint8_t*)"", 0));
+  CHECK((const uint8_t*)s1 == Util::MemMem((const uint8_t*)s1, strlen(s1),
+                                           (const uint8_t*)"t", 1));
+}
+
 int main(int argc, char **argv) {
   TestItos();
   TestStoi();
@@ -523,6 +539,7 @@ int main(int argc, char **argv) {
   TestReplace();
   TestCommas();
   TestNormalizeLines();
+  TestMemMem();
 
   printf("OK\n");
   return 0;

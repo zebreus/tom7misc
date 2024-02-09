@@ -21,10 +21,10 @@ struct WeightedObjectives::Info {
   double weight;
 
   // Sorted, ascending.
-  double is_sorted;  
-  vector< vector<uint8> > observations;
+  double is_sorted;
+  vector<vector<uint8>> observations;
 
-  const vector< vector<uint8> > &GetObservations() {
+  const vector<vector<uint8>> &GetObservations() {
     if (!is_sorted) {
       std::sort(observations.begin(), observations.end());
       is_sorted = true;
@@ -65,9 +65,9 @@ WeightedObjectives::LoadFromFile(const string &filename) {
       ss >> d;
       vector<int> locs;
       while (!ss.eof()) {
-	int i;
-	ss >> i;
-	locs.push_back(i);
+        int i;
+        ss >> i;
+        locs.push_back(i);
       }
       wo->weighted.insert(make_pair(locs, new Info(d)));
     }
@@ -78,22 +78,22 @@ WeightedObjectives::LoadFromFile(const string &filename) {
 
 vector< pair<const vector<int> *, double> > WeightedObjectives::GetAll() const {
   vector< pair<const vector<int> *, double> > v;
-  for (Weighted::const_iterator it = weighted.begin(); 
+  for (Weighted::const_iterator it = weighted.begin();
        it != weighted.end(); ++it) {
     v.push_back(make_pair(&it->first, it->second->weight));
   }
   return v;
 }
-  
+
 void WeightedObjectives::SaveToFile(const string &filename) const {
   string out;
-  for (Weighted::const_iterator it = weighted.begin(); 
+  for (Weighted::const_iterator it = weighted.begin();
        it != weighted.end(); ++it) {
     if (it->second->weight > 0) {
       const vector<int> &obj = it->first;
       const Info &info = *it->second;
       out += StringPrintf("%f %s\n", info.weight,
-			  ObjectiveToString(obj).c_str());
+        ObjectiveToString(obj).c_str());
     }
   }
   Util::WriteFile(filename, out);
@@ -131,9 +131,9 @@ void WeightedObjectives::Observe(const vector<uint8> &memory) {
   }
 }
 
-static bool LessObjective(const vector<uint8> &mem1, 
-			  const vector<uint8> &mem2,
-			  const vector<int> &order) {
+static bool LessObjective(const vector<uint8> &mem1,
+        const vector<uint8> &mem2,
+        const vector<int> &order) {
   for (int i = 0; i < order.size(); i++) {
     int p = order[i];
     if (mem1[p] > mem2[p])
@@ -149,9 +149,9 @@ static bool LessObjective(const vector<uint8> &mem1,
 // Order 1 means mem1 < mem2, -1 means mem1 > mem2, 0 means equal.
 // (note this is backwards from strcmp. Think of if like a multiplier
 // for the weight.)
-static int Order(const vector<uint8> &mem1, 
-		 const vector<uint8> &mem2,
-		 const vector<int> &order) {
+static int Order(const vector<uint8> &mem1,
+     const vector<uint8> &mem2,
+     const vector<int> &order) {
   for (int i = 0; i < order.size(); i++) {
     int p = order[i];
     if (mem1[p] > mem2[p])
@@ -165,7 +165,7 @@ static int Order(const vector<uint8> &mem1,
 }
 
 double WeightedObjectives::WeightedLess(const vector<uint8> &mem1,
-					const vector<uint8> &mem2) const {
+          const vector<uint8> &mem2) const {
   double score = 0.0;
   for (Weighted::const_iterator it = weighted.begin();
        it != weighted.end(); ++it) {
@@ -179,7 +179,7 @@ double WeightedObjectives::WeightedLess(const vector<uint8> &mem1,
 }
 
 double WeightedObjectives::Evaluate(const vector<uint8> &mem1,
-				    const vector<uint8> &mem2) const {
+            const vector<uint8> &mem2) const {
   double score = 0.0;
   for (Weighted::const_iterator it = weighted.begin();
        it != weighted.end(); ++it) {
@@ -198,7 +198,7 @@ double WeightedObjectives::Evaluate(const vector<uint8> &mem1,
 #if 0
 // XXX can probably simplify this, but should probably just remove it.
 double WeightedObjectives::BuggyEvaluate(const vector<uint8> &mem1,
-					 const vector<uint8> &mem2) const {
+           const vector<uint8> &mem2) const {
   double score = 0.0;
   for (Weighted::const_iterator it = weighted.begin();
        it != weighted.end(); ++it) {
@@ -217,7 +217,7 @@ double WeightedObjectives::BuggyEvaluate(const vector<uint8> &mem1,
 #endif
 
 static vector<uint8> GetValues(const vector<uint8> &mem,
-			       const vector<int> &objective) {
+             const vector<int> &objective) {
   vector<uint8> out;
   out.resize(objective.size());
   for (int i = 0; i < objective.size(); i++) {
@@ -227,15 +227,15 @@ static vector<uint8> GetValues(const vector<uint8> &mem,
   return out;
 }
 
-static vector< vector<uint8> >
-GetUniqueValues(const vector< vector<uint8 > > &memories,
-		const vector<int> &objective) {
-  set< vector<uint8> > values;
+static vector<vector<uint8>>
+GetUniqueValues(const vector<vector<uint8>> &memories,
+    const vector<int> &objective) {
+  set<vector<uint8>> values;
   for (int i = 0; i < memories.size(); i++) {
     values.insert(GetValues(memories[i], objective));
   }
-    
-  vector< vector<uint8> > uvalues;
+
+  vector<vector<uint8>> uvalues;
   uvalues.insert(uvalues.begin(), values.begin(), values.end());
   return uvalues;
 }
@@ -243,12 +243,12 @@ GetUniqueValues(const vector< vector<uint8 > > &memories,
 // Find the index of the vector now within the values
 // array, which is sorted and unique.
 static inline int GetValueIndex(const vector< vector<uint8> > &values,
-				const vector<uint8> &now) {
+        const vector<uint8> &now) {
   return lower_bound(values.begin(), values.end(), now) - values.begin();
 }
 
 static inline double GetValueFrac(const vector< vector<uint8> > &values,
-				  const vector<uint8> &now) {
+          const vector<uint8> &now) {
   int idx = GetValueIndex(values, now);
   // -1, since it can never be the size itself?
   // and what should the value be if values is empty or singleton?
@@ -261,7 +261,7 @@ double WeightedObjectives::GetNormalizedValue(const vector<uint8> &mem) {
   for (Weighted::iterator it = weighted.begin(); it != weighted.end(); ++it) {
     const vector<int> &obj = it->first;
     Info *info = &*it->second;
-    
+
     vector<uint8> cur;
     cur.reserve(obj.size());
     for (int i = 0; i < obj.size(); i++) {
@@ -281,7 +281,7 @@ GetNormalizedValues(const vector<uint8> &mem) {
   for (Weighted::iterator it = weighted.begin(); it != weighted.end(); ++it) {
     const vector<int> &obj = it->first;
     Info *info = &*it->second;
-    
+
     vector<uint8> cur;
     cur.reserve(obj.size());
     for (int i = 0; i < obj.size(); i++) {
@@ -295,7 +295,7 @@ GetNormalizedValues(const vector<uint8> &mem) {
 }
 
 void WeightedObjectives::WeightByExamples(const vector< vector<uint8> >
-					  &memories) {
+            &memories) {
   for (Weighted::iterator it = weighted.begin();
        it != weighted.end(); ++it) {
     const vector<int> &obj = it->first;
@@ -308,7 +308,7 @@ void WeightedObjectives::WeightByExamples(const vector< vector<uint8> >
     CHECK(memories.size() > 0);
     double score_end =
       GetValueFrac(values, GetValues(memories[memories.size() - 1], obj));
-    double score_begin = 
+    double score_begin =
       GetValueFrac(values, GetValues(memories[0], obj));
     CHECK(score_end >= 0 && score_end <= 1);
     CHECK(score_begin >= 0 && score_begin <= 1);
@@ -328,7 +328,7 @@ void WeightedObjectives::WeightByExamples(const vector< vector<uint8> >
 
     if (score <= 0.0) {
       printf("Bad objective lost more than gained: %f / %s\n",
-	     score, ObjectiveToString(obj).c_str());
+       score, ObjectiveToString(obj).c_str());
       info->weight = 0.0;
     } else {
       info->weight = score;
@@ -337,7 +337,7 @@ void WeightedObjectives::WeightByExamples(const vector< vector<uint8> >
 }
 
 void WeightedObjectives::SaveSVG(const vector< vector<uint8> > &memories,
-				 const string &filename) const {
+         const string &filename) const {
   static const int WIDTH = 2048;
   static const int HEIGHT = 1204;
 
@@ -359,14 +359,14 @@ void WeightedObjectives::SaveSVG(const vector< vector<uint8> > &memories,
     const string color = RandomColor(&rc);
     const string startpolyline =
       StringPrintf("  <polyline fill=\"none\" "
-		   "opacity=\"0.5\" "
-		   "stroke=\"%s\""
-		   " stroke-width=\"%d\" points=\"", 
-		   // (info.weight <= 0) ? "#f00" : "#0f0",
-		   color.c_str(),
-		   1
-		   // (info.weight <= 0) ? 3 : 1
-		   );
+       "opacity=\"0.5\" "
+       "stroke=\"%s\""
+       " stroke-width=\"%d\" points=\"",
+       // (info.weight <= 0) ? "#f00" : "#0f0",
+       color.c_str(),
+       1
+       // (info.weight <= 0) ? 3 : 1
+       );
     const string endpolyline = "\" />\n";
     out += "<g>\n";
     out += startpolyline;
@@ -381,26 +381,26 @@ void WeightedObjectives::SaveSVG(const vector< vector<uint8> > &memories,
 
       // Allow drawing horizontal lines without interstitial points.
       if (valueindex == lastvalueindex) {
-	while (i < memories.size() - 1) {
-	  vector<uint8> next = GetValues(memories[i + 1], obj);
-	  int nextvalueindex = GetValueIndex(values, next);
-	  if (nextvalueindex != valueindex)
-	    break;
-	  i++;
-	  skipped++;
-	}
+        while (i < memories.size() - 1) {
+          vector<uint8> next = GetValues(memories[i + 1], obj);
+          int nextvalueindex = GetValueIndex(values, next);
+          if (nextvalueindex != valueindex)
+            break;
+          i++;
+          skipped++;
+        }
       }
       lastvalueindex = valueindex;
 
-	// Fraction in [0, 1]
+  // Fraction in [0, 1]
       double yf = (double)valueindex / (double)values.size();
       double xf = (double)i / (double)memories.size();
       out += Coords(WIDTH * xf, HEIGHT * (1.0 - yf)) + " ";
       if (numleft-- == 0) {
-	out += endpolyline;
-	out += startpolyline;
-	out += Coords(WIDTH * xf, HEIGHT * (1.0 - yf)) + " ";
-	numleft = MAXLEN;
+        out += endpolyline;
+        out += startpolyline;
+        out += Coords(WIDTH * xf, HEIGHT * (1.0 - yf)) + " ";
+        numleft = MAXLEN;
       }
 
     }
@@ -414,8 +414,8 @@ void WeightedObjectives::SaveSVG(const vector< vector<uint8> > &memories,
   out += TextSVG::Footer();
   Util::WriteFile(filename, out);
 
-  printf("Wrote %lld objectives, skipping %lld points, to %s\n", 
-	 weighted.size(), skipped, filename.c_str());
+  printf("Wrote %lld objectives, skipping %lld points, to %s\n",
+   weighted.size(), skipped, filename.c_str());
 }
 
 // My apologies. I don't know lua and it's the night before a demo!
@@ -461,16 +461,16 @@ void WeightedObjectives::SaveLua(int n, const string &filename) const {
   {
     int i = 0;
     for (map<double, const vector<int> *>::const_iterator it = sorted.begin();
-	 i < n && it != sorted.end(); ++it, i++) {
+         i < n && it != sorted.end(); ++it, i++) {
       out += StringPrintf("\n"
-			  "  -- score %f\n", it->first);
+        "  -- score %f\n", it->first);
       out +=
-	"  xpos = XSTART;\n"
-	"  ypos = ypos + 10;\n"
-	"  color = \"" + (string)colors[i % num_colors] + "\"\n";
+        "  xpos = XSTART;\n"
+        "  ypos = ypos + 10;\n"
+        "  color = \"" + (string)colors[i % num_colors] + "\"\n";
       const vector<int> &v = *it->second;
       for(int j = 0; j < v.size(); j++) {
-	out += StringPrintf("  wb(%d);\n", v[j]);
+        out += StringPrintf("  wb(%d);\n", v[j]);
       }
       actual++;
     }
@@ -480,6 +480,6 @@ void WeightedObjectives::SaveLua(int n, const string &filename) const {
   out += "end;\n";
   Util::WriteFile(filename, out);
 
-  printf("Wrote %d objectives to %s\n", 
-	 actual, filename.c_str());
+  printf("Wrote %d objectives to %s\n",
+         actual, filename.c_str());
 }

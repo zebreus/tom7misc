@@ -306,6 +306,21 @@
 (defvar compile-command "make"
   "*Default command to compile with `shell-make'")
 
+(defun greek ()
+  "Create a temporary buffer with useful symbols for copy-paste."
+  (interactive "*")
+  (let ((b (switch-to-buffer "*greek*")))
+    (erase-buffer)
+    (insert
+     (concat
+      "Α α  Β β  Γ γ  Δ δ  Ε ε  Ζ ζ    Η η  Θ θ  Ι ι  Κ κ  Λ λ  Μ μ\n"
+      "Ν ν  Ξ ξ  Ο ο  Π π  Ρ ρ  Σ σ/ς  Τ τ  Υ υ  Φ φ  Χ χ  Ψ ψ  Ω ω\n"
+      "\n"
+      "Note that these are all the unicode codepoints for the Greek\n"
+      "alphabet, even if they look exactly the same as an ASCII character.\n"
+      ))
+    ))
+
 ;; used to put a unique identifier in a source file, based on its
 ;; character position (like, change all "oops!" messages to include
 ;; the position in the file where it was generated)
