@@ -30,6 +30,19 @@ struct PeepholePass : public il::Pass<> {
     return pool->Fn(self, x, DoExp(body), guess);
   }
 
+  #if 0
+  const Exp *DoLet(const std::vector<std::string> tyvars,
+                   const std::string &x,
+                   const Exp *body,
+                   const Exp *guess) override {
+    if (!self.empty() && !ILUtil::IsExpVarFree(body, self)) {
+      return pool->Fn("", x, DoExp(body), guess);
+    }
+
+    return pool->Fn(self, x, DoExp(body), guess);
+  }
+  #endif
+
   // If we have App(fn x => body, arg), with the function not recursive,
   // then this is equivalent to
   // let x = arg in body

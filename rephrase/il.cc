@@ -278,6 +278,12 @@ std::string ExpString(const Exp *e) {
     return StringPrintf("fail \"%s\"", msg.c_str());
   }
 
+  case ExpType::SEQ: {
+    std::vector<std::string> v;
+    for (const Exp *c : e->Seq()) v.push_back(ExpString(c));
+    return StringPrintf("seq(%s)", Util::Join(v, ";\n").c_str());
+  }
+
   default:
     return "ILLEGAL EXPRESSION";
   }

@@ -93,6 +93,9 @@ struct Pass {
     case ExpType::FAIL: {
       return DoFail(e->Fail(), e, args...);
     }
+    case ExpType::SEQ: {
+      return DoSeq(e->Seq(), e, args...);
+    }
     default:
       LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
     }
@@ -289,7 +292,7 @@ struct Pass {
     for (const Type *t : ts) tts.push_back(DoType(t, args...));
 
     std::vector<const Exp *> ees;
-    ees.reserve(ees.size());
+    ees.reserve(es.size());
     for (const Exp *e : es) ees.push_back(DoExp(e, args...));
 
     return pool->Primop(po, tts, ees, guess);
@@ -307,6 +310,16 @@ struct Pass {
                             const Exp *guess,
                             Args... args) {
     return pool->Fail(msg, guess);
+  }
+
+  virtual const Exp *DoSeq(const std::vector<const Exp *> &es,
+                           const Exp *guess,
+                           Args... args) {
+    std::vector<const Exp *> ees;
+    ees.reserve(es.size());
+    for (const Exp *e : es) ees.push_back(DoExp(e, args...));
+
+    return pool->Seq(ees, guess);
   }
 
 protected:

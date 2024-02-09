@@ -36,7 +36,7 @@ enum class ExpType {
   // Abort with a string message. Should be
   // replaced with generic exception mechanism.
   FAIL,
-
+  // n-ary sequence
   SEQ,
 };
 
@@ -238,6 +238,11 @@ struct Exp {
   const std::string &Fail() const {
     CHECK(type == ExpType::FAIL);
     return str;
+  }
+
+  const std::vector<const Exp *> Seq() const {
+    CHECK(type == ExpType::SEQ);
+    return children;
   }
 
 private:
@@ -621,6 +626,19 @@ struct AstPool {
 
     Exp *ret = NewExp(ExpType::FAIL);
     ret->str = msg;
+    return ret;
+  }
+
+  const Exp *Seq(const std::vector<const Exp *> &v,
+                 const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::SEQ &&
+        guess->children == v) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::SEQ);
+    ret->children = v;
     return ret;
   }
 
