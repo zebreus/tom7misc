@@ -12,6 +12,8 @@
 #include "ansi.h"
 #include "util.h"
 
+static constexpr bool VERBOSE = false;
+
 namespace il {
 
 using Pat = el::Pat;
@@ -288,17 +290,18 @@ PatternCompilation::CompileIrrefutable(
   const auto &[GG, decs] =
     CompileIrrefutableRec(G, pat, re, rt, valuable);
 
-  printf(AWHITE("Decs") ":\n");
-  for (const Dec &dec : decs) {
-    printf("  (%s) %s = %s\n", Util::Join(dec.tyvars, ",").c_str(),
-           dec.x.c_str(), ExpString(dec.rhs).c_str());
-  }
+  if (VERBOSE) {
+    printf(AWHITE("Decs") ":\n");
+    for (const Dec &dec : decs) {
+      printf("  (%s) %s = %s\n", Util::Join(dec.tyvars, ",").c_str(),
+             dec.x.c_str(), ExpString(dec.rhs).c_str());
+    }
 
-  printf(AWHITE("New context") ":\n%s\n(end)\n",
-         GG.ToString().c_str());
-
-  printf(AWHITE("Elaborating body") ":\n%s\n",
+    printf(AWHITE("New context") ":\n%s\n(end)\n",
+           GG.ToString().c_str());
+    printf(AWHITE("Elaborating body") ":\n%s\n",
          ExpString(body).c_str());
+  }
   const auto &[be, bt] = elab->Elab(GG, body);
   return std::make_pair(LetDecs(decs, be), bt);
 }

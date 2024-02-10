@@ -30,18 +30,45 @@ struct PeepholePass : public il::Pass<> {
     return pool->Fn(self, x, DoExp(body), guess);
   }
 
-  #if 0
-  const Exp *DoLet(const std::vector<std::string> tyvars,
+  const Exp *DoLet(const std::vector<std::string> &tyvars,
                    const std::string &x,
+                   const Exp *rhs,
                    const Exp *body,
                    const Exp *guess) override {
-    if (!self.empty() && !ILUtil::IsExpVarFree(body, self)) {
-      return pool->Fn("", x, DoExp(body), guess);
+    if (body->type == ExpType::VAR) {
+      const auto &[vtv, xx] = body->Var();
+      if (x == xx) {
+        // let (a, b, ...) x = rhs in x<t1, t2, ...> end -->
+        // [t1/a][t2/b]rhs
+        CHECK(tyvars.size() == vtv.size());
+
+        for (int i = 0; i < (int)tyvars.size(); i++) {
+          // make sure the bound tyvar is fresh (not appearing in any
+          // t1..tn).
+          const auto &[a, nrhs] =
+            ILUtil::AlphaVaryTypeInExp(pool, tyvars[i], rhs);
+          rhs = nrhs;
+          // and substitute for it
+          rhs = ILUtil::SubstTypeInExp(pool, vtv[i], a, rhs);
+        }
+
+        return DoExp(rhs);
+      } else {
+        // This is handled by the below since x is not free in xx.
+      }
     }
 
-    return pool->Fn(self, x, DoExp(body), guess);
+    // TODO A polymorphic declaration can be free too. But
+    // we would need to substitute through the tyvars in
+    // the rhs with dummy types so that they remain well-formed.
+    // (Or drop the whole binding.)
+    if (tyvars.empty() && !ILUtil::IsExpVarFree(body, x)) {
+      return pool->Seq({DoExp(rhs), DoExp(body)});
+    }
+
+    return pool->Let(tyvars, x, DoExp(rhs), DoExp(body), guess);
   }
-  #endif
+
 
   // If we have App(fn x => body, arg), with the function not recursive,
   // then this is equivalent to

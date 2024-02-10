@@ -64,12 +64,35 @@ static void TestFreeVars() {
   CHECK(!ILUtil::IsExpVarFree(e, "huh"));
 }
 
+static void TestSubstType() {
+  AstPool pool;
+  const Exp *e = pool.Var(
+      {
+        pool.IntType(),
+        pool.VarType("x", {}),
+      },
+      "z");
+
+  const Exp *e2 = ILUtil::SubstTypeInExp(&pool,
+                                         pool.StringType(),
+                                         "x",
+                                         e);
+  CHECK(e2->type == ExpType::VAR);
+  const auto [ts, z] = e2->Var();
+  CHECK(z == "z");
+  CHECK(ts.size() == 2);
+  CHECK(ts[0]->type == TypeType::INT);
+  // Result of substitution
+  CHECK(ts[1]->type == TypeType::STRING);
+}
+
 }  // il
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   il::TestFreeVars();
+  il::TestSubstType();
 
   printf("OK\n");
   return 0;

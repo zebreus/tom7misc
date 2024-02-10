@@ -77,8 +77,8 @@ bool ILUtil::IsExpVarFree(const Exp *e, const std::string &x) {
 #if 0
 namespace {
 // Could perhaps do this as a multiple substitution?
-struct FreeVarsPass : public Pass<> {
-  FreeVarsPass(AstPool *pool, const Exp *e1, const std::string &x)
+struct SubstPass : public Pass<> {
+  SubstPass(AstPool *pool, const Exp *e1, const std::string &x)
     : pool(pool), e1(e1), x(x), freevars(FreeExpVars(e1)) {
 
   }
@@ -149,5 +149,41 @@ const Exp *ILUtil::SubstExp(AstPool *pool,
   return pass.DoExp(e2);
 }
 #endif
+
+// Could perhaps do this as a multiple substitution?
+struct SubstTypePass : public Pass<> {
+  SubstTypePass(AstPool *pool, const Type *t1, const std::string &x)
+    : Pass(pool), t1(t1), x(x) {
+  }
+
+  // When we get to any type, we just defer to native substitution.
+  const Type *DoType(const Type *t) override {
+    return pool->SubstType(t1, x, t);
+  }
+
+  // Type being substituted.
+  const Type *t1 = nullptr;
+  // Target variable.
+  const std::string x;
+};
+
+const Exp *ILUtil::SubstTypeInExp(
+    AstPool *pool,
+    const Type *t, const std::string &x,
+    const Exp *e) {
+  SubstTypePass pass(pool, t, x);
+  return pass.DoExp(e);
+}
+
+std::pair<std::string, const Exp *> ILUtil::AlphaVaryTypeInExp(
+    AstPool *pool,
+    const std::string &a,
+    const Exp *e) {
+  std::string newa = pool->NewVar(a);
+  return std::make_pair(
+      newa,
+      SubstTypeInExp(pool, pool->VarType(newa, {}), a, e));
+}
+
 
 }  // namespace il

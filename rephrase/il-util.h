@@ -18,6 +18,17 @@ struct ILUtil {
                              const Exp *e1, const std::string &x,
                              const Exp *e2);
 
+  // [t/x]e.
+  static const Exp *SubstTypeInExp(
+      AstPool *pool,
+      const Type *t, const std::string &x,
+      const Exp *e);
+
+  static std::pair<std::string, const Exp *> AlphaVaryTypeInExp(
+      AstPool *pool,
+      const std::string &a,
+      const Exp *e);
+
 };
 
 }  // namespace il
