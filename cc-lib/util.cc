@@ -1,4 +1,9 @@
 
+#ifdef __APPLE__
+// fstat64 is deprecated; force fstat to be 64-bit
+#define _DARWIN_USE_64_BIT_INODE 1
+#endif
+
 #include <sys/stat.h>
 #include <cstring>
 #include <string.h>
@@ -52,6 +57,12 @@
 #  include <ctype.h>
    /* directory stuff */
 #  include <dirent.h>
+#endif
+
+#ifdef __APPLE__
+// fstat64 is deprecated; force fstat to be 64-bit
+#define stat64 stat
+#define fstat64 fstat
 #endif
 
 using namespace std;
@@ -415,11 +426,12 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
   // when stat returns nonsense (such as 0 or 4096).
 
   // TODO: Not sure how portable fstat64 is. OS X marks it as
-  // deprecated since 10.6. An alternative is to compile with
-  // -D_FILE_OFFSET_BITS=64. Another alternative is to only do
-  // gigabyte-size reads, although reading a file that's a significant
-  // fraction of all available memory is one of the main points of
-  // going through all this complexity!
+  // deprecated since 10.6, and we define it to be the equivalent
+  // "stat" after forcing it to use 64-bit inodes
+  // (_DARWIN_USE_64_BIT_INODE). On other platforms, an alternative is
+  // to only do gigabyte-size reads, although reading a file that's a
+  // significant fraction of all available memory is one of the main
+  // points of going through all this complexity!
   int fd = fileno(f);
   struct stat64 st;
   if (0 != fstat64(fd, &st)) {
@@ -1681,7 +1693,7 @@ const uint8_t *Util::MemMem(const uint8_t *haystack, size_t n,
     }
   } else {
     /* degenerate case */
-    return (const uint8_t*)memchr(haystack, ((uint8_t*)needle)[0], n);
+    return (const uint8_t*)memchr(haystack, ((const uint8_t*)needle)[0], n);
   }
   return nullptr;
 }
