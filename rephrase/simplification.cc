@@ -5,6 +5,7 @@
 
 #include "il-pass.h"
 #include "il-util.h"
+#include "bignum/big-overloads.h"
 
 namespace il {
 
@@ -12,6 +13,55 @@ Simplification::Simplification(AstPool *pool) : pool(pool) {}
 
 void Simplification::SetVerbose(int v) {
   verbose = v;
+}
+
+// True if the expression is a value and cheaper/smaller than
+// a variable lookup, and so it should always be inlined.
+static bool IsSmallValue(const Exp *e) {
+  switch (e->type) {
+  case ExpType::FLOAT:
+    return true;
+  case ExpType::INTEGER:
+    // Since we use bigint, avoid substituting huge numbers.
+    // (This could probably be increased a lot without problems!)
+    return e->Integer() < 4'000'000ULL;
+  case ExpType::STRING:
+    // PERF: Should consider inlining small strings by other means?
+    return e->String().empty();
+  case ExpType::VAR:
+    return true;
+  case ExpType::RECORD:
+    return e->Record().size() == 0;
+  default:
+    return false;
+  }
+}
+
+static bool IsEffectless(const Exp *e) {
+  switch (e->type) {
+  case ExpType::FLOAT: return true;
+  case ExpType::INTEGER: return true;
+  case ExpType::STRING: return true;
+  case ExpType::VAR: return true;
+  case ExpType::FN: return true;
+
+  case ExpType::RECORD: {
+    for (const auto &[lab, child] : e->Record()) {
+      if (!IsEffectless(child)) return false;
+    }
+    return true;
+  }
+
+  case ExpType::PROJECT:
+    return IsEffectless(std::get<1>(e->Project()));
+  case ExpType::INJECT:
+    return IsEffectless(std::get<1>(e->Inject()));
+
+    // TODO: More stuff like roll, many primops, etc.
+
+  default:
+    return false;
+  }
 }
 
 struct PeepholePass : public il::Pass<> {
@@ -24,6 +74,7 @@ struct PeepholePass : public il::Pass<> {
                   const Exp *body,
                   const Exp *guess) override {
     if (!self.empty() && !ILUtil::IsExpVarFree(body, self)) {
+      Simplified("remove recursive fn var");
       return pool->Fn("", x, DoExp(body), guess);
     }
 
@@ -52,18 +103,30 @@ struct PeepholePass : public il::Pass<> {
           rhs = ILUtil::SubstTypeInExp(pool, vtv[i], a, rhs);
         }
 
+        Simplified("eta-contracted let x = e in x");
         return DoExp(rhs);
       } else {
         // This is handled by the below since x is not free in xx.
       }
     }
 
+    int count = ILUtil::ExpVarCount(body, x);
+
     // TODO A polymorphic declaration can be free too. But
     // we would need to substitute through the tyvars in
     // the rhs with dummy types so that they remain well-formed.
     // (Or drop the whole binding.)
-    if (tyvars.empty() && !ILUtil::IsExpVarFree(body, x)) {
+    if (tyvars.empty() && count == 0) {
+      Simplified("remove unused binding");
       return pool->Seq({DoExp(rhs), DoExp(body)});
+    }
+
+    const bool small_value = IsSmallValue(rhs);
+    const bool effectless = small_value || IsEffectless(rhs);
+
+    if (count == 1) {
+      // Inline any effectless expression that occurs just once.
+
     }
 
     return pool->Let(tyvars, x, DoExp(rhs), DoExp(body), guess);
@@ -81,19 +144,60 @@ struct PeepholePass : public il::Pass<> {
     if (f->type == ExpType::FN) {
       const auto &[self, x, body] = f->Fn();
       if (self.empty()) {
+        Simplified("reduce app");
         return pool->Let({}, x, arg, DoExp(body));
       }
     }
     return pool->App(DoExp(f), arg, guess);
   }
 
+  const Exp *DoSeq(const std::vector<const Exp *> &v,
+                   const Exp *guess) override {
+    // First process them all recursively, so that they are flat.
+    std::vector<const Exp *> vv;
+    vv.reserve(v.size());
+    for (const Exp *c : v) vv.push_back(DoExp(c));
+    std::vector<const Exp *> vflat;
+    for (const Exp *c : vv) {
+      // printf("IsEffectless %s?\n", ExpString(c).c_str());
+      if (IsEffectless(c)) {
+        // FIXME: We shouldn't drop every item in the seq"
+        Simplified("dropped effectless seq");
+      } else {
+        if (c->type == ExpType::SEQ) {
+          Simplified("flattened nested seq");
+          for (const Exp *cc : c->Seq()) {
+            vflat.push_back(cc);
+          }
+        } else {
+          vflat.push_back(c);
+        }
+      }
+    }
+
+    return pool->Seq(vflat, guess);
+  }
+
+  // Call this whenever the expression definitely got smaller.
+  void Simplified(const char *msg) {
+    simplified++;
+  }
+
+  void Reset() {
+    simplified = 0;
+  }
+
+  int simplified = 0;
 };
 
 
 const il::Exp *Simplification::Simplify(const Exp *exp) {
   PeepholePass peephole(pool);
 
-  exp = peephole.DoExp(exp);
+  do {
+    peephole.Reset();
+    exp = peephole.DoExp(exp);
+  } while (peephole.simplified > 0);
 
   return exp;
 }

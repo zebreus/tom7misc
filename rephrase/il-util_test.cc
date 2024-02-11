@@ -86,6 +86,34 @@ static void TestSubstType() {
   CHECK(ts[1]->type == TypeType::STRING);
 }
 
+static void TestSubstExp() {
+  AstPool pool;
+  const Exp *efn = pool.Fn("rec", "x",
+                           pool.Record({{"1", pool.Var({}, "x")},
+                                        {"2", pool.Var({}, "y")}}));
+  const Exp *ewithx = pool.Inject("SOME", pool.Var({}, "x"));
+  // This should avoid capturing x.
+  // (SOME x)/y (fn x => (x, y))
+  const Exp *e2 = ILUtil::SubstExp(&pool, ewithx, "y", efn);
+
+
+  {
+    const auto &[self, newx, body] = e2->Fn();
+    CHECK(self == "rec") << "Technically correct for this to alpha-vary "
+      "the recursive variable, but it is not expected.";
+    CHECK(newx != "x") << "No way to do this correctly without "
+      "alpha-varying the bound x.";
+    const auto &labe = body->Record();
+    CHECK(labe.size() == 2);
+    CHECK(labe[0].first == "1");
+    CHECK(std::get<1>(labe[0].second->Var()) == newx);
+    CHECK(labe[1].second->type == ExpType::INJECT) << "Not substituted?";
+    const auto &[lab, e] = labe[1].second->Inject();
+    CHECK(lab == "SOME");
+    CHECK(std::get<1>(e->Var()) == "x");
+  }
+}
+
 }  // il
 
 int main(int argc, char **argv) {
