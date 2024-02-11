@@ -46,6 +46,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <string_view>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -3338,12 +3339,11 @@ bool PDF::pdf_add_png_data(float x, float y,
   std::string color_space;
 
   ImageObj *obj = nullptr;
-  uint8_t *final_data = nullptr;
-  int written = 0;
   uint32_t pos = 0;
   uint8_t *png_data_temp = nullptr;
   size_t png_data_total_length = 0;
   uint8_t ncolors = 0;
+  std::string final_data;
 
   // Stores palette information for indexed PNGs
   struct rgb_value *palette_buffer = nullptr;
@@ -3502,15 +3502,16 @@ bool PDF::pdf_add_png_data(float x, float y,
     break;
   }
 
-  final_data = (uint8_t *)malloc(png_data_total_length + 1024 +
-                                 color_space.size());
-  CHECK(final_data != nullptr);
+  final_data.reserve(png_data_total_length + 1024 + color_space.size());
+  // final_data = (uint8_t *)malloc(png_data_total_length + 1024 +
+  // color_space.size());
+  // CHECK(final_data != nullptr);
 
   // Write image information to PDF
   {
     const int idx = (int)objects.size();
-    written =
-      sprintf((char *)final_data,
+    final_data =
+      StringPrintf(
               "<<\r\n"
               "  /Type /XObject\r\n"
               "  /Name /Image%d\r\n"
@@ -3529,14 +3530,14 @@ bool PDF::pdf_add_png_data(float x, float y,
               header.width, header.height, header.bitDepth, ncolors,
               header.bitDepth, header.width, png_data_total_length);
 
-    memcpy(&final_data[written], png_data_temp, png_data_total_length);
-    written += png_data_total_length;
-    written += sprintf((char *)&final_data[written], "\r\nendstream\r\n");
+    final_data.append(std::string_view((const char*)png_data_temp,
+                                       png_data_total_length));
+    StringAppendF(&final_data, "\r\nendstream\r\n");
   }
 
   obj = AddObject(new ImageObj);
 
-  obj->stream = std::string((const char *)final_data, written);
+  obj->stream = std::move(final_data);
 
   get_img_display_dimensions(header.width, header.height,
                              &display_width, &display_height);
@@ -3544,8 +3545,6 @@ bool PDF::pdf_add_png_data(float x, float y,
   success = true;
 
  free_buffers:
-  if (final_data)
-    free(final_data);
   if (palette_buffer)
     free(palette_buffer);
   if (png_data_temp)
