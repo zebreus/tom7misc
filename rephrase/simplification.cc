@@ -124,9 +124,18 @@ struct PeepholePass : public il::Pass<> {
     const bool small_value = IsSmallValue(rhs);
     const bool effectless = small_value || IsEffectless(rhs);
 
-    if (count == 1) {
+    // TODO: support inlining of polymorphic variables.
+    // I think we just want to extend substitution with support for
+    // this.
+    if (count == 1 && effectless && tyvars.empty()) {
       // Inline any effectless expression that occurs just once.
+      Simplified("inlined single-use binding");
+      return ILUtil::SubstExp(pool, DoExp(rhs), x, DoExp(body));
+    }
 
+    if (small_value && tyvars.empty()) {
+      Simplified("inlined small value");
+      return ILUtil::SubstExp(pool, DoExp(rhs), x, DoExp(body));
     }
 
     return pool->Let(tyvars, x, DoExp(rhs), DoExp(body), guess);
@@ -161,7 +170,7 @@ struct PeepholePass : public il::Pass<> {
     for (const Exp *c : vv) {
       // printf("IsEffectless %s?\n", ExpString(c).c_str());
       if (IsEffectless(c)) {
-        // FIXME: We shouldn't drop every item in the seq"
+        // FIXME: We shouldn't drop every item in the seq
         Simplified("dropped effectless seq");
       } else {
         if (c->type == ExpType::SEQ) {

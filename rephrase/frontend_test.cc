@@ -92,24 +92,13 @@ static void Simple() {
   {
     // With simplification.
     const Exp *e = Run("ref 7 : int ref");
-    const auto &[tyvars, x, rhs, body] = e->Let();
-
-    // This will simplify further soon..
-    const auto &[po, ts, es] = body->Primop();
+    // Simplifier should be able to make this into
+    // a direct primop application.
+    const auto &[po, ts, es] = e->Primop();
     CHECK(po == Primop::REF);
     CHECK(ts.size() == 1);
     CHECK_TYPETYPE(ts[0], TypeType::INT);
     CHECK(es.size() == 1);
-
-    /*
-    CHECK(valdecs.size() == 1);
-    (void)valdecs[0]->Val();
-    const auto &[po, ts, es] = body->Primop();
-    CHECK(po == Primop::REF);
-    CHECK(ts.size() == 1);
-    CHECK_TYPETYPE(ts[0], TypeType::INT);
-    CHECK(es.size() == 1);
-    */
   }
 
   {
@@ -251,6 +240,21 @@ static void Simple() {
                        "in f 7\n"
                        "end");
     printf("%s\n", ExpString(e).c_str());
+  }
+
+  {
+    const Exp *e = Run("let\n"
+                       "  val x = 7\n"
+                       "in\n"
+                       "  (x, x)\n"
+                       "end\n");
+    CHECK(e->type == ExpType::RECORD) << "Should be able to simplify "
+      "this to the record (7, 7) since integers are small values.";
+    const auto &labe = e->Record();
+    CHECK(labe[0].first == "1");
+    CHECK(labe[0].second->Integer() == 7);
+    CHECK(labe[1].first == "2");
+    CHECK(labe[1].second->Integer() == 7);
   }
 
 }
