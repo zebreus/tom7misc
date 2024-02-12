@@ -37,6 +37,9 @@ enum class Primop {
 // with any other code, discarded, duplicated; it never fails and always
 // has the same result.
 bool IsPrimopTotal(Primop p);
+// A weaker condition: Application of the primop can be discarded
+// if its result is unused. For example, GET.
+bool IsPrimopDiscardable(Primop p);
 
 // Number of type args, number of value args.
 std::tuple<int, int> PrimopArity(Primop p);

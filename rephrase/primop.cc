@@ -65,8 +65,7 @@ bool IsPrimopTotal(Primop p) {
   switch (p) {
   case Primop::REF: return false;
   case Primop::GET: return false;
-  case Primop::SET: return false;;
-
+  case Primop::SET: return false;
   // Since we use BigInt, integer arithmetic cannot overflow.
   case Primop::INT_EQ: return true;
   case Primop::INT_NEQ: return true;
@@ -97,6 +96,19 @@ bool IsPrimopTotal(Primop p) {
   default:
     printf("Uknown primop in IsPrimopTotal");
     return false;
+  }
+}
+
+bool IsPrimopDiscardable(Primop p) {
+  switch (p) {
+  case Primop::REF:
+    // Creating a reference is not itself observable.
+    return true;
+  case Primop::GET: return true;
+  case Primop::SET: return false;
+
+  default:
+    return IsPrimopTotal(p);
   }
 }
 

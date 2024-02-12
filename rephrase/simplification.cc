@@ -79,10 +79,51 @@ static bool IsEffectless(const Exp *e) {
   }
 }
 
+// This is almost the same as effectless except that some primops can
+// be dropped (e.g. GET) despite not being formally total. We have to
+// do the whole thing instead of appealing to IsEffectless for other
+// cases, since we want something like (GET, GET) to be considered
+// discardable.
 static bool IsDiscardable(const Exp *e) {
-  // TODO: Can include some primops here that are not formally total,
-  // like GET.
-  return IsEffectless(e);
+  switch (e->type) {
+  case ExpType::FLOAT: return true;
+  case ExpType::INTEGER: return true;
+  case ExpType::STRING: return true;
+  case ExpType::VAR: return true;
+  case ExpType::FN: return true;
+
+  case ExpType::RECORD: {
+    for (const auto &[lab, child] : e->Record()) {
+      if (!IsDiscardable(child)) return false;
+    }
+    return true;
+  }
+
+  case ExpType::PROJECT:
+    return IsDiscardable(std::get<1>(e->Project()));
+  case ExpType::INJECT:
+    return IsDiscardable(std::get<1>(e->Inject()));
+
+  case ExpType::ROLL:
+    return IsDiscardable(std::get<1>(e->Roll()));
+
+  case ExpType::PRIMOP: {
+    const auto &[po, ts, es] = e->Primop();
+    if (IsPrimopDiscardable(po)) {
+      for (const Exp *child : es) {
+        if (!IsDiscardable(child)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+  default:
+    return false;
+  }
 }
 
 struct PeepholePass : public il::Pass<> {
