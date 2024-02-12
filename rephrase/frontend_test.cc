@@ -184,24 +184,26 @@ static void Simple() {
   {
     const Exp *e = RunNoSimplify("fn x => x");
     const auto &[self, x, body] = e->Fn();
-    printf("%s\n", ExpString(body).c_str());
+    if (VERBOSE) {
+      printf("%s\n", ExpString(body).c_str());
+    }
   }
 
-  // TODO: Doesn't work yet because fn is translated as recursive
-  if (false)
   {
-    const Exp *e = Run("(fn x => x) 0");
+    const Exp *e = Run("(fn x => x) 7");
     // After simplification, we have
-    // let x = 0
+    // let x = 7
     // in x
     // end
-    // (Although this will simplify further!)
-    (void)e->Let();
+    CHECK(e->Integer() == 7) << "Should be able to simplify this to "
+      "a let and then just an integer. Tests making a function not "
+      "recursive.";
   }
 
   {
     const Exp *e = Run("case 7 of x => x");
-    printf("%s\n", ExpString(e).c_str());
+    CHECK(e->Integer() == 7) << "Should be able to simplify this "
+      "to just an integer.";
   }
 
   {
@@ -229,7 +231,13 @@ static void Simple() {
     const Exp *e = Run("let datatype (a) option = SOME of a | NONE of {}\n"
                        "in SOME 7\n"
                        "end");
-    printf("%s\n", ExpString(e).c_str());
+    CHECK(e->type == ExpType::ROLL);
+    // roll<(μ opt. [NONE: {}, SOME: int])>([SOME = 7])
+    const auto &[t, body] = e->Roll();
+    CHECK(t->type == TypeType::MU);
+    const auto &[lab, bbody] = body->Inject();
+    CHECK(bbody->Integer() == 7);
+    CHECK(lab == "SOME");
   }
 
   {
@@ -239,7 +247,9 @@ static void Simple() {
                        "   val f = fn x => x\n"
                        "in f 7\n"
                        "end");
-    printf("%s\n", ExpString(e).c_str());
+    CHECK(e->type == ExpType::INTEGER) << "Should be able to simplify "
+      "this to just 7 because the bindings are trivially "
+      "inlinable. Tests polymorphic inlining.";
   }
 
   {
@@ -255,6 +265,30 @@ static void Simple() {
     CHECK(labe[0].second->Integer() == 7);
     CHECK(labe[1].first == "2");
     CHECK(labe[1].second->Integer() == 7);
+  }
+
+  if (false) {
+    const Exp *e = Run("let\n"
+                       "  val id = fn x => x\n"
+                       "  val x = 7\n"
+                       "in\n"
+                       "  (fn x, fn x)\n"
+                       "end\n");
+    CHECK(e->type == ExpType::RECORD) << "Should be able to simplify "
+      "this to (7, 7) by inlining into application positions where "
+      "the argument and body are small enough. (Unimplemented! And "
+      "perhaps this should just be part of a proper optimization pass.)";
+    const auto &labe = e->Record();
+    CHECK(labe[0].first == "1");
+    CHECK(labe[0].second->Integer() == 7);
+    CHECK(labe[1].first == "2");
+    CHECK(labe[1].second->Integer() == 7);
+  }
+
+  {
+    const Exp *e = Run("case 7 of x => x | y => 8 | z => 9");
+    CHECK(e->Integer() == 7) << "Should be able to simplify this "
+      "to just an integer.";
   }
 
 }

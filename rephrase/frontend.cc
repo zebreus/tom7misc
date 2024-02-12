@@ -108,7 +108,7 @@ const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
 
     if (verbose > 0) {
       printf(AWHITE("Simplified") " in %s:\n"
-             "%s\n",
+             AFGCOLOR(200, 230, 200, "%s") "\n",
              ANSI::Time(simplify_sec).c_str(),
              il::ExpString(il_pgm).c_str());
       fflush(stdout);

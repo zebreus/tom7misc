@@ -189,10 +189,11 @@ struct PeepholePass : public il::Pass<> {
     // TODO: support inlining of polymorphic variables.
     // I think we just want to extend substitution with support for
     // this.
-    if (count == 1 && effectless && tyvars.empty()) {
-      // Inline any effectless expression that occurs just once.
+    if (count == 1 && effectless) {
+      // Inline any effectless expression that occurs just once,
+      // regardless of its size.
       Simplified("inlined single-use binding");
-      return ILUtil::SubstExp(pool, DoExp(rhs), x, DoExp(body));
+      return ILUtil::SubstPolyExp(pool, tyvars, DoExp(rhs), x, DoExp(body));
     }
 
     if (small_value && tyvars.empty()) {

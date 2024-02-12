@@ -187,9 +187,9 @@ const Exp *ILUtil::SubstPolyExp(AstPool *pool,
                                 const Exp *e1, const std::string &x,
                                 const Exp *e2) {
   if (VERBOSE) {
-    printf("Subst [Λ(%s).%s/x](%s).\n",
+    printf("Subst [Λ(%s).%s/%s](%s).\n",
            Util::Join(tyvars, ",").c_str(),
-           ExpString(e1).c_str(),
+           ExpString(e1).c_str(), x.c_str(),
            ExpString(e2).c_str());
   }
   SubstPass pass(pool, tyvars, e1, x);

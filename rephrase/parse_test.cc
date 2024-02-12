@@ -570,6 +570,14 @@ static void TestParsePat() {
     CHECK(pat->str_children[1].first == "2");
     CHECK(pat->str_children[1].second->type == PatType::WILD);
   }
+
+  {
+    const Pat *pat = ParsePat("(_, 7)");
+    CHECK(pat->type == PatType::TUPLE);
+    CHECK(pat->children.size() == 2);
+    CHECK(pat->children[1]->type == PatType::INT);
+    CHECK(pat->children[1]->integer == 7);
+  }
 }
 
 static void TestParseDec() {

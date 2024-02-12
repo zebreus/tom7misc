@@ -77,6 +77,7 @@ std::string LayoutString(const Layout *lay) {
 
 std::string PatString(const Pat *p) {
   switch (p->type) {
+  case PatType::INT: return p->integer.ToString();
   case PatType::WILD: return "_";
   case PatType::VAR: return p->var;
   case PatType::TUPLE: {

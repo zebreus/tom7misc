@@ -30,6 +30,10 @@ struct PatternCompilation::Matrix {
     return (int)rows.size();
   }
 
+  bool Empty() const {
+    return Width() == 0 && Height() == 0;
+  }
+
   // The pattern objects. These are always EL variables.
   std::vector<std::string> objs;
   // Parallel array of the types.
@@ -263,6 +267,20 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
     } else {
       x++;
     }
+  }
+
+  // If there are no rows, then we just have the default.
+  if (matrix.Height() == 0) {
+    return elab->Elab(G, matrix.def);
+  }
+
+  // If there are no case objects, then we just have the first
+  // row.
+  if (matrix.Width() == 0) {
+    if (matrix.Height() != 1) {
+      printf("Redundant match?\n");
+    }
+    return elab->Elab(G, matrix.rows[0]);
   }
 
   LOG(FATAL) << "Unimplemented";

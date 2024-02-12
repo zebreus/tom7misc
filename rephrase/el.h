@@ -52,6 +52,7 @@ enum class PatType {
   RECORD,
   ANN,
   AS,
+  INT,
 };
 
 enum class TypeType {
@@ -109,6 +110,7 @@ struct Pat {
   std::string var;
   const Pat *a;
   const Type *ann;
+  BigInt integer;
   std::vector<const Pat *> children;
   std::vector<std::pair<std::string, const Pat *>> str_children;
   Pat(PatType t) : type(t) {}
@@ -189,6 +191,12 @@ struct AstPool {
   const Exp *Int(int64_t i) {
     Exp *ret = NewExp(ExpType::INTEGER);
     ret->integer = BigInt(i);
+    return ret;
+  }
+
+  const Exp *Int(BigInt i) {
+    Exp *ret = NewExp(ExpType::INTEGER);
+    ret->integer = std::move(i);
     return ret;
   }
 
@@ -316,6 +324,12 @@ struct AstPool {
 
 
   // Patterns
+
+  const Pat *IntPat(BigInt i) {
+    Pat *ret = NewPat(PatType::INT);
+    ret->integer = std::move(i);
+    return ret;
+  }
 
   const Pat *AsPat(const Pat *p, const std::string &v) {
     Pat *ret = NewPat(PatType::AS);

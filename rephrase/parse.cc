@@ -105,14 +105,18 @@ const Exp *Parsing::Parse(AstPool *pool,
       return std::string(input.substr(t.start, t.length));
     };
 
-  // TODO: Support other integer literals. (NUMERIC_LIT)
-  // TODO: Parse bigint
   const auto Int = IsToken<DIGITS>() >[&](Token t) {
       std::string s = TokenStr(t);
       int64_t i = std::stoll(s);
       CHECK(StringPrintf("%lld", i) == s) << "Invalid integer "
         "literal " << s;
       return i;
+    };
+
+  // TODO: Support other integer literals. (NUMERIC_LIT)
+  // TODO: Parse bigint
+  const auto BigInteger = Int >[&](int64_t i) {
+      return BigInt(i);
     };
 
   const auto Float = IsToken<FLOAT_LIT>() >[&](Token t) -> double {
@@ -294,6 +298,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         auto AtomicPattern =
           (Id >[&](const std::string &s) { return pool->VarPat(s); }) ||
           (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
+          (BigInteger >[&](const BigInt &i) { return pool->IntPat(i); }) ||
           RecordPat(Self) ||
           TuplePat(Self);
 
@@ -322,7 +327,9 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // Expressions.
 
-  const auto IntExpr = Int >[&](int64_t i) { return pool->Int(i); };
+  const auto IntExpr = BigInteger >[&](const BigInt &i) {
+      return pool->Int(i);
+    };
   const auto FloatExpr = Float >[&](double d) { return pool->Float(d); };
   const auto StrLitExpr = StrLit >[&](const std::string &s) {
       return pool->String(s);
