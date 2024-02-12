@@ -1,6 +1,7 @@
 
 #include "pattern-compilation.h"
 
+#include <set>
 #include <vector>
 #include <string>
 #include <unordered_set>
@@ -22,6 +23,8 @@ using PatType = el::PatType;
 
 // The pattern matrix.
 struct PatternCompilation::Matrix {
+  Matrix(el::AstPool *pool) : pool(pool) {}
+
   int Width() const {
     return (int)objs.size();
   }
@@ -32,6 +35,38 @@ struct PatternCompilation::Matrix {
 
   bool Empty() const {
     return Width() == 0 && Height() == 0;
+  }
+
+  // Add a column at the end. The cells will be initialized
+  // to WILD patterns, but can be modified.
+  void AddColumn(const std::string &obj_var,
+                 const il::Type *obj_type) {
+    const int old_width = Width();
+    const int old_height = Height();
+
+    objs.push_back(obj_var);
+    types.push_back(obj_type);
+
+    std::vector<const el::Pat *> new_pats;
+    new_pats.reserve((old_width + 1) * old_height);
+    for (int y = 0; y < old_height; y++) {
+      for (int x = 0; x < old_width + 1; x++) {
+        const Pat *pat = pats[y * old_width + x];
+        if (x < old_width) {
+          new_pats.push_back(pat);
+        } else {
+          new_pats.push_back(pool->WildPat());
+        }
+      }
+    }
+
+    CHECK((int)new_pats.size() == (old_width + 1) * old_height);
+    pats = std::move(new_pats);
+
+    // Rows and defaults stay the same.
+    CHECK((int)new_pats.size() == Width() * Height());
+    CHECK((int)objs.size() == Width());
+    CHECK((int)types.size() == Width());
   }
 
   // The pattern objects. These are always EL variables.
@@ -120,6 +155,9 @@ struct PatternCompilation::Matrix {
     CHECK((int)types.size() == Width());
   }
 
+  // Not owned.
+  el::AstPool *pool = nullptr;
+
   // The expression for each case.
   std::vector<const el::Exp *> rows;
 
@@ -184,7 +222,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
   //    case (a, b, c) of
   //       (x, y, 0)    => e1
   //     | (w as z : t) => e2
-  Matrix matrix;
+  Matrix matrix(elab->el_pool);
   matrix.objs = {obj};
   matrix.types = {obj_type};
 
@@ -257,7 +295,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
   // matrix to make it "clean," then perform some kind of
   // interesting split.
 
-  // First, we remove "as" patterns and "var" patterns.
+  // First, we remove AS, VAR, and TUPLE patterns by rewriting them.
   for (int y = 0; y < matrix.Height(); y++) {
     for (int x = 0; x < matrix.Width(); x++) {
       while (matrix.Cell(x, y)->type == PatType::AS) {
@@ -274,8 +312,18 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
         matrix.rows[y] = SimpleBind(nv, matrix.objs[x], matrix.rows[y]);
         matrix.Cell(x, y) = elab->el_pool->WildPat();
       }
+
+      if (matrix.Cell(x, y)->type == PatType::TUPLE) {
+        const Pat *op = matrix.Cell(x, y);
+        std::vector<std::pair<std::string, const Pat *>> rp;
+        for (int i = 0; i < (int)op->children.size(); i++) {
+          rp.emplace_back(StringPrintf("%d", i + 1), op->children[i]);
+        }
+        matrix.Cell(x, y) = elab->el_pool->RecordPat(std::move(rp));
+      }
     }
   }
+
 
   // Next, remove columns that just consist of wildcards.
   for (int x = 0; x < matrix.Width(); /* in loop */) {
@@ -301,21 +349,143 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
     return elab->Elab(G, matrix.rows[0]);
   }
 
+  // Split record patterns first.
+  for (int x = 0; x < matrix.Width(); x++) {
+    const std::optional<PatType> col_type = matrix.GetColumnType(x);
+    CHECK(col_type.has_value()) << "Just cleaned the pattern, so it "
+      "should not be entirely trivial.";
+    if (col_type == PatType::RECORD) {
+      // Split it eagerly and recurse.
+      // All the record patterns have to have the same set of labels.
+      // In the first pass, get those labels. (We could just take the
+      // first one since record patterns are always complete, but this
+      // approach would let us add ... decorations in the future.)
+      std::set<std::string> label_set;
+      for (int y = 0; y < matrix.Height(); y++) {
+        const Pat *cell = matrix.Cell(x, y);
+        switch (cell->type) {
+        case PatType::RECORD: {
+          std::unordered_set<std::string> labs;
+          for (const auto &[lab, pat_] : cell->str_children) {
+            CHECK(!labs.contains(lab)) << "Duplicate label " << lab <<
+              " in record pattern: " << PatString(cell);
+            label_set.insert(lab);
+          }
+          break;
+        }
+        case PatType::WILD:
+          break;
+        default:
+          LOG(FATAL) << "Bug: A column of record patterns should only "
+            "have WILD and RECORD after cleaning. But got: " <<
+            PatString(cell);
+        }
+      }
+
+      // Now we make a submatrix with labels.size() columns and the
+      // same number of rows.
+      std::vector<std::string> labels;
+      std::vector<std::pair<std::string, const Type *>> record_type;
+      std::vector<const Type *> types;
+      std::vector<std::string> el_objs;
+      for (const std::string &l : label_set) {
+        labels.push_back(l);
+        types.push_back(elab->NewEVar());
+        record_type.emplace_back(labels.back(), types.back());
+        std::string v = elab->pool->NewVar(
+            elab->pool->BaseVar(matrix.objs[x]) + "_" + l);
+        el_objs.emplace_back(v);
+      }
+
+      // Old object variable must be this record type.
+      Unification::Unify("record pattern column",
+                         matrix.types[x],
+                         elab->pool->RecordType(record_type));
+
+      auto GetLabel = [](const Pat *pat, const std::string &lab) {
+          CHECK(pat->type == PatType::RECORD);
+          for (const auto &[plab, p] : pat->str_children) {
+            if (plab == lab) return p;
+          }
+          CHECK(false) << "Expected to find label " << lab << " in "
+            "record pattern (due to its presence in other patterns from "
+            "the same column): " << PatString(pat);
+        };
+
+      // We temporarily leave the old column in place so that we can
+      // refer to it while populating the new ones. Since these are
+      // added at the end, it doesn't disturb existing coordinates.
+      for (int xx = 0; xx < (int)labels.size(); xx++) {
+        int new_x = matrix.Width();
+        matrix.AddColumn(el_objs[xx], types[xx]);
+        for (int y = 0; y < matrix.Height(); y++) {
+          const Pat *old_cell = matrix.Cell(x, y);
+          if (old_cell->type == PatType::WILD) {
+            // New column's cells default to WILD, so there's
+            // nothing to do.
+            CHECK(matrix.Cell(new_x, y)->type == PatType::WILD);
+          } else if (old_cell->type == PatType::RECORD) {
+            // Get the pattern for this label in the original record
+            // pattern.
+            const Pat *p = GetLabel(old_cell, labels[xx]);
+            matrix.Cell(new_x, y) = p;
+          } else {
+            LOG(FATAL) << "Bug: We already checked that this column "
+              "is all WILD and RECORD patterns.";
+          }
+        }
+      }
+
+      // Now we can delete the original column.
+      std::string original_var = matrix.objs[x];
+      matrix.DeleteColumn(x);
+
+      // Update context with new bindings.
+      Context GG = G;
+      std::vector<std::string> il_objs;
+      for (int xx = 0; xx < (int)el_objs.size(); xx++) {
+        const std::string &elv = el_objs[xx];
+        const std::string ilv = elab->pool->NewVar(elv);
+        il_objs.push_back(ilv);
+        GG = GG.Insert(elv,
+                       VarInfo{
+                         .tyvars = {},
+                         .type = types[xx],
+                         .var = ilv
+                       });
+        // XXX do binding
+      }
+
+      // So now we should translate the new pattern recursively,
+      // then wrap with bindings that project the labels from original_var
+      // and bind to objs. Easy but except we need to deal with the
+      // el/il var stuff.
+
+
+      // XXX HERE
+      LOG(FATAL) << "Unimplemented";
+    }
+  }
+
   // Now, pick some column to split on. It makes sense to use some
   // heuristic here in the future, but for now I just take the first.
   CHECK(matrix.Width() > 0) << "Just checked this above.";
-
-  // TODO: Split record and tuple patterns first.
 
   const std::optional<PatType> col_type = matrix.GetColumnType(0);
   CHECK(col_type.has_value()) << "Just cleaned the pattern, so it "
     "should not be entirely trivial.";
 
   switch (col_type.value()) {
+  case PatType::VAR:
+  case PatType::AS:
+  case PatType::ANN:
+  case PatType::WILD:
+    LOG(FATAL) << "Bug: This is a trivial pattern.";
   case PatType::TUPLE:
-    LOG(FATAL) << "Unimplemented";
+    LOG(FATAL) << "Bug: This should have been transformed into the "
+      "equivalent record pattern already.";
   case PatType::RECORD:
-    LOG(FATAL) << "Unimplemented";
+    LOG(FATAL) << "Bug: This should have been handled above.";
   case PatType::INT:
     LOG(FATAL) << "Unimplemented";
   }
@@ -406,6 +576,10 @@ PatternCompilation::CompileIrrefutableRec(
           break;
         case el::PatType::WILD:
           return;
+        case el::PatType::INT:
+          LOG(FATAL) << "Pattern must be irrefutable, but got int: " <<
+            PatString(pat);
+          return;
         case el::PatType::TUPLE: {
           // Transform into the equivalent record.
           std::vector<std::pair<std::string, const Pat *>> lpat;
@@ -439,8 +613,6 @@ PatternCompilation::CompileIrrefutableRec(
     return GeneralizeOne(G, vars, rhs, rhs_type, rhs_valuable);
 
   } else {
-    // TODO HERE!: This should actually compile record patterns.
-
     CHECK(pat->type == el::PatType::RECORD);
 
     std::vector<std::pair<std::string, const il::Type *>> shape;

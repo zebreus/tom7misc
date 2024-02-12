@@ -664,7 +664,11 @@ struct AstPool {
               });
   }
 
-  std::string NewVar(std::string hint = "");
+  // Create a new variable.
+  std::string NewVar(const std::string &hint = "");
+  // Get an unspecified string from a variable;
+  // typically BaseVar(NewVar(s)) == s.
+  std::string BaseVar(const std::string &x);
 
  private:
   const Type string_type = Type(TypeType::STRING);

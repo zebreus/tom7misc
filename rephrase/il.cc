@@ -26,14 +26,18 @@ const char *TypeTypeString(TypeType t) {
   }
 }
 
-std::string AstPool::NewVar(std::string hint) {
+std::string AstPool::NewVar(const std::string &hint_in) {
   next_var++;
-  hint = hint.substr(0, hint.find('$'));
+  std::string hint = BaseVar(hint_in);
   if (hint.empty()) {
     return StringPrintf("x$%d", next_var);
   } else {
     return StringPrintf("%s$%d", hint.c_str(), next_var);
   }
+}
+
+std::string AstPool::BaseVar(const std::string &hint) {
+  return hint.substr(0, hint.find('$'));
 }
 
 const Type *AstPool::Product(const std::vector<const Type *> &v,
