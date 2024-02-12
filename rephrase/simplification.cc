@@ -57,11 +57,32 @@ static bool IsEffectless(const Exp *e) {
   case ExpType::INJECT:
     return IsEffectless(std::get<1>(e->Inject()));
 
-    // TODO: More stuff like roll, many primops, etc.
+  case ExpType::ROLL:
+    return IsEffectless(std::get<1>(e->Roll()));
+
+  case ExpType::PRIMOP: {
+    const auto &[po, ts, es] = e->Primop();
+    if (IsPrimopTotal(po)) {
+      for (const Exp *child : es) {
+        if (!IsEffectless(child)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    return false;
+  }
 
   default:
     return false;
   }
+}
+
+static bool IsDiscardable(const Exp *e) {
+  // TODO: Can include some primops here that are not formally total,
+  // like GET.
+  return IsEffectless(e);
 }
 
 struct PeepholePass : public il::Pass<> {
@@ -169,7 +190,7 @@ struct PeepholePass : public il::Pass<> {
     std::vector<const Exp *> vflat;
     for (const Exp *c : vv) {
       // printf("IsEffectless %s?\n", ExpString(c).c_str());
-      if (IsEffectless(c)) {
+      if (IsDiscardable(c)) {
         // FIXME: We shouldn't drop every item in the seq
         Simplified("dropped effectless seq");
       } else {

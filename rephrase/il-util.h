@@ -21,16 +21,27 @@ struct ILUtil {
                              const Exp *e1, const std::string &x,
                              const Exp *e2);
 
-  // [t/x]e.
+  // subst Λ(α1, α2, ... αn).e1 for x<τ1, τ2, ... τn> in e2;
+  // The types τ1..τn are substituted for the α1..αn at each occurrence.
+  static const Exp *SubstPolyExp(AstPool *pool,
+                                 // α1, α2, ... αn
+                                 const std::vector<std::string> &tyvars,
+                                 const Exp *e1,
+                                 const std::string &x,
+                                 const Exp *e2);
+
+  // [τ/x]e.
   static const Exp *SubstTypeInExp(
       AstPool *pool,
       const Type *t, const std::string &x,
       const Exp *e);
 
   // Return an equivalent x.e (for x an expression variable) where x
-  // is fresh.
+  // is fresh. x may be polymorphic, taking num_tyvars tyvars (0 for a
+  // monomorphic variable).
   static std::pair<std::string, const Exp *> AlphaVaryExp(
       AstPool *pool,
+      int num_tyvars,
       const std::string &x,
       const Exp *e);
 

@@ -61,3 +61,42 @@ std::tuple<int, int> PrimopArity(Primop po) {
   }
 };
 
+bool IsPrimopTotal(Primop p) {
+  switch (p) {
+  case Primop::REF: return false;
+  case Primop::GET: return false;
+  case Primop::SET: return false;;
+
+  // Since we use BigInt, integer arithmetic cannot overflow.
+  case Primop::INT_EQ: return true;
+  case Primop::INT_NEQ: return true;
+  case Primop::INT_LESS: return true;
+  case Primop::INT_LESSEQ: return true;
+  case Primop::INT_GREATER: return true;
+  case Primop::INT_GREATEREQ: return true;
+  case Primop::INT_TIMES: return true;
+  case Primop::INT_PLUS: return true;
+  case Primop::INT_MINUS: return true;
+  case Primop::INT_DIV:
+    // Because of divide by zero.
+    return false;
+  case Primop::INT_MOD:
+    // Because of divide by zero.
+    return false;
+  case Primop::INT_NEG:
+    return true;
+  case Primop::STRING_EQ:
+    return true;
+  case Primop::INT_DIV_TO_FLOAT:
+    // Here, division by zero produces nan or +/- inf.
+    return true;
+  case Primop::FLOAT_TIMES: return true;
+  case Primop::FLOAT_PLUS: return true;
+  case Primop::FLOAT_MINUS: return true;
+  case Primop::FLOAT_DIV: return true;
+  default:
+    printf("Uknown primop in IsPrimopTotal");
+    return false;
+  }
+}
+

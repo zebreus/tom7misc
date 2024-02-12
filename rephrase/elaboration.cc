@@ -384,8 +384,10 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       const il::Type *dom = NewEVar(), *cod = NewEVar();
       Unification::Unify("ctor application", pool->Arrow(dom, cod), t);
 
+      // A function argument is never polymorphic, even if the constructor
+      // is!
       std::string x = pool->NewVar();
-      const il::Exp *vx = pool->Var(tvs, x);
+      const il::Exp *vx = pool->Var({}, x);
       const il::Exp *lambda =
         pool->Fn("", x,
                  pool->Roll(cod,

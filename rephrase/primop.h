@@ -33,6 +33,11 @@ enum class Primop {
   STRING_EQ,
 };
 
+// Total is the most stringent category: It can be freely reordered
+// with any other code, discarded, duplicated; it never fails and always
+// has the same result.
+bool IsPrimopTotal(Primop p);
+
 // Number of type args, number of value args.
 std::tuple<int, int> PrimopArity(Primop p);
 

@@ -7,6 +7,9 @@
 #include "il.h"
 #include "il-pass.h"
 #include "functional-map.h"
+#include "util.h"
+
+static constexpr bool VERBOSE = true;
 
 namespace { struct Unit { }; }
 using FunctionalSet = FunctionalMap<std::string, Unit>;
@@ -74,7 +77,6 @@ std::unordered_set<std::string> ILUtil::FreeExpVars(const Exp *e) {
   return vars;
 }
 
-
 bool ILUtil::IsExpVarFree(const Exp *e, const std::string &x) {
   // PERF: We can avoid allocating the set (and managing the "bound"
   // set in the pass) when we're just checking for one free variable.
@@ -88,15 +90,22 @@ int ILUtil::ExpVarCount(const Exp *e, const std::string &x) {
 namespace {
 // Could perhaps do this as a multiple substitution?
 struct SubstPass : public Pass<> {
-  SubstPass(AstPool *pool, const Exp *e1, const std::string &x)
-    : Pass(pool), e1(e1), target_var(x), freevars(ILUtil::FreeExpVars(e1)) {
+  SubstPass(AstPool *pool,
+            const std::vector<std::string> &tyvars,
+            const Exp *e1,
+            const std::string &x)
+    : Pass(pool),
+      tyvars(tyvars),
+      e1(e1),
+      target_var(x),
+      freevars(ILUtil::FreeExpVars(e1)) {
   }
 
   // Note: When we hit a binding equal to the target var, we alpha
   // vary the binding, since this is correct and uniform. But it
   // would be more efficient to just stop.
 
-  const Exp *DoLet(const std::vector<std::string> &tyvars,
+  const Exp *DoLet(const std::vector<std::string> &let_tyvars,
                    const std::string &x_in,
                    const Exp *rhs,
                    const Exp *body,
@@ -104,10 +113,11 @@ struct SubstPass : public Pass<> {
 
     std::string x = x_in;
     if (x_in == target_var || freevars.contains(x_in)) {
-      std::tie(x, body) = ILUtil::AlphaVaryExp(pool, x_in, body);
+      std::tie(x, body) =
+        ILUtil::AlphaVaryExp(pool, let_tyvars.size(), x_in, body);
     }
 
-    return pool->Let(tyvars, x, DoExp(rhs), DoExp(body), guess);
+    return pool->Let(let_tyvars, x, DoExp(rhs), DoExp(body), guess);
   }
 
   const Exp *DoFn(const std::string &self_in,
@@ -118,12 +128,14 @@ struct SubstPass : public Pass<> {
     // be weird, but technically valid?)
     std::string x = x_in;
     if (x_in == target_var || freevars.contains(x_in)) {
-      std::tie(x, body) = ILUtil::AlphaVaryExp(pool, x_in, body);
+      // These variables cannot be polymorphic, so 0 tyvars.
+      std::tie(x, body) = ILUtil::AlphaVaryExp(pool, 0, x_in, body);
     }
 
     std::string self = self_in;
     if (self_in == target_var || freevars.contains(self_in)) {
-      std::tie(self, body) = ILUtil::AlphaVaryExp(pool, self_in, body);
+      // These variables cannot be polymorphic, so 0 tyvars.
+      std::tie(self, body) = ILUtil::AlphaVaryExp(pool, 0, self_in, body);
     }
 
     return pool->Fn(self, x, DoExp(body), guess);
@@ -134,6 +146,17 @@ struct SubstPass : public Pass<> {
                    const Exp *guess) override {
     if (v == target_var) {
       // The target variable.
+      CHECK(ts.size() == tyvars.size()) << "Internal type error: When "
+        "substituting for " << v << ", expected the number of type "
+        "variables in the substitution (" << tyvars.size() << ") to "
+        "be the same as the number of types in the variable's occurrence "
+        "(" << ts.size() << ").";
+      const Exp *result = e1;
+      // Now we are substituting Λ(α1 ... αn).e1 for v<τ1 ... τn>, so
+      // compute [τ1/α1]...[τn/αn]e1.
+      for (int i = (int)ts.size() - 1; i >= 0; i--) {
+        result = ILUtil::SubstTypeInExp(pool, ts[i], tyvars[i], result);
+      }
       return e1;
     } else {
       // Types are unaffected by substitution for expression variables.
@@ -141,6 +164,8 @@ struct SubstPass : public Pass<> {
     }
   }
 
+  // The type variables bound in e1.
+  const std::vector<std::string> &tyvars;
   // Term being substituted.
   const Exp *e1 = nullptr;
   // Target variable.
@@ -154,12 +179,26 @@ struct SubstPass : public Pass<> {
 const Exp *ILUtil::SubstExp(AstPool *pool,
                             const Exp *e1, const std::string &x,
                             const Exp *e2) {
-  SubstPass pass(pool, e1, x);
+  return SubstPolyExp(pool, {}, e1, x, e2);
+}
+
+const Exp *ILUtil::SubstPolyExp(AstPool *pool,
+                                const std::vector<std::string> &tyvars,
+                                const Exp *e1, const std::string &x,
+                                const Exp *e2) {
+  if (VERBOSE) {
+    printf("Subst [Λ(%s).%s/x](%s).\n",
+           Util::Join(tyvars, ",").c_str(),
+           ExpString(e1).c_str(),
+           ExpString(e2).c_str());
+  }
+  SubstPass pass(pool, tyvars, e1, x);
   return pass.DoExp(e2);
 }
 
 std::pair<std::string, const Exp *> ILUtil::AlphaVaryExp(
     AstPool *pool,
+    int num_tyvars,
     const std::string &x,
     const Exp *e) {
 
@@ -167,8 +206,18 @@ std::pair<std::string, const Exp *> ILUtil::AlphaVaryExp(
   // will not lead to infinite regress because the variable
   // is fresh (so it will not equal any bound variable).
   std::string xnew = pool->NewVar(x);
-  const Exp *vnew = pool->Var({}, xnew);
-  SubstPass pass(pool, vnew, x);
+  std::vector<std::string> tyvars;
+  std::vector<const Type *> types;
+  // n distinct type variables (often zero).
+  for (int i = 0; i < num_tyvars; i++) {
+    std::string a = pool->NewVar("a");
+    tyvars.push_back(a);
+    types.push_back(pool->VarType(a));
+  }
+  // Substitute the expression Λ(α1 ... αn).y<α1 ... αn> where y
+  // is the fresh variable.
+  const Exp *vnew = pool->Var(types, xnew);
+  SubstPass pass(pool, tyvars, vnew, x);
 
   return std::make_pair(xnew, pass.DoExp(e));
 }
