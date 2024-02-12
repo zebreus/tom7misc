@@ -64,6 +64,24 @@ struct PatternCompilation::Matrix {
     return true;
   }
 
+  // Get the type of the first nontrivial pattern in this column.
+  // Trivial patterns are WILD, VAR, ANN, AS.
+  std::optional<PatType> GetColumnType(int x_target) {
+    for (int y = 0; y < Height(); y++) {
+      PatType pt = Cell(x_target, y)->type;
+      switch (pt) {
+      case PatType::WILD:
+      case PatType::VAR:
+      case PatType::ANN:
+      case PatType::AS:
+        continue;
+      default:
+        return {pt};
+      }
+    }
+    return std::nullopt;
+  }
+
   // Changes widths. Invalidates pointers.
   void DeleteColumn(int x_target) {
     const int old_width = Width();
@@ -281,6 +299,25 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
       printf("Redundant match?\n");
     }
     return elab->Elab(G, matrix.rows[0]);
+  }
+
+  // Now, pick some column to split on. It makes sense to use some
+  // heuristic here in the future, but for now I just take the first.
+  CHECK(matrix.Width() > 0) << "Just checked this above.";
+
+  // TODO: Split record and tuple patterns first.
+
+  const std::optional<PatType> col_type = matrix.GetColumnType(0);
+  CHECK(col_type.has_value()) << "Just cleaned the pattern, so it "
+    "should not be entirely trivial.";
+
+  switch (col_type.value()) {
+  case PatType::TUPLE:
+    LOG(FATAL) << "Unimplemented";
+  case PatType::RECORD:
+    LOG(FATAL) << "Unimplemented";
+  case PatType::INT:
+    LOG(FATAL) << "Unimplemented";
   }
 
   LOG(FATAL) << "Unimplemented";
