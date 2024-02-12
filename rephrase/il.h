@@ -240,9 +240,9 @@ struct Exp {
     return str;
   }
 
-  const std::vector<const Exp *> Seq() const {
+  std::tuple<const std::vector<const Exp *> &, const Exp *> Seq() const {
     CHECK(type == ExpType::SEQ);
-    return children;
+    return std::tie(children, a);
   }
 
 private:
@@ -630,15 +630,18 @@ struct AstPool {
   }
 
   const Exp *Seq(const std::vector<const Exp *> &v,
+                 const Exp *body,
                  const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::SEQ &&
-        guess->children == v) {
+        guess->children == v &&
+        guess->a == body) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::SEQ);
     ret->children = v;
+    ret->a = body;
     return ret;
   }
 

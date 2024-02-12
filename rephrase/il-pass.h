@@ -94,7 +94,8 @@ struct Pass {
       return DoFail(e->Fail(), e, args...);
     }
     case ExpType::SEQ: {
-      return DoSeq(e->Seq(), e, args...);
+      const auto &[es, body] = e->Seq();
+      return DoSeq(es, body, e, args...);
     }
     default:
       LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
@@ -313,13 +314,13 @@ struct Pass {
   }
 
   virtual const Exp *DoSeq(const std::vector<const Exp *> &es,
+                           const Exp *body,
                            const Exp *guess,
                            Args... args) {
     std::vector<const Exp *> ees;
     ees.reserve(es.size());
     for (const Exp *e : es) ees.push_back(DoExp(e, args...));
-
-    return pool->Seq(ees, guess);
+    return pool->Seq(ees, DoExp(body, args...), guess);
   }
 
 protected:

@@ -180,7 +180,7 @@ struct PeepholePass : public il::Pass<> {
     // (Or drop the whole binding.)
     if (tyvars.empty() && count == 0) {
       Simplified("remove unused binding");
-      return pool->Seq({DoExp(rhs), DoExp(body)});
+      return pool->Seq({DoExp(rhs)}, DoExp(body));
     }
 
     const bool small_value = IsSmallValue(rhs);
@@ -223,6 +223,7 @@ struct PeepholePass : public il::Pass<> {
   }
 
   const Exp *DoSeq(const std::vector<const Exp *> &v,
+                   const Exp *body,
                    const Exp *guess) override {
     // First process them all recursively, so that they are flat.
     std::vector<const Exp *> vv;
@@ -232,21 +233,27 @@ struct PeepholePass : public il::Pass<> {
     for (const Exp *c : vv) {
       // printf("IsEffectless %s?\n", ExpString(c).c_str());
       if (IsDiscardable(c)) {
-        // FIXME: We shouldn't drop every item in the seq
         Simplified("dropped effectless seq");
       } else {
         if (c->type == ExpType::SEQ) {
           Simplified("flattened nested seq");
-          for (const Exp *cc : c->Seq()) {
+          const auto &[ces, cbody] = c->Seq();
+          for (const Exp *cc : ces) {
             vflat.push_back(cc);
           }
+          vflat.push_back(cbody);
         } else {
           vflat.push_back(c);
         }
       }
     }
 
-    return pool->Seq(vflat, guess);
+    if (vflat.empty()) {
+      Simplified("empty seq");
+      return DoExp(body);
+    } else {
+      return pool->Seq(vflat, DoExp(body), guess);
+    }
   }
 
   // Call this whenever the expression definitely got smaller.

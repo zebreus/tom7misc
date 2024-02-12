@@ -279,9 +279,14 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::SEQ: {
+    const auto &[es, body] = e->Seq();
     std::vector<std::string> v;
-    for (const Exp *c : e->Seq()) v.push_back(ExpString(c));
-    return StringPrintf("seq(%s)", Util::Join(v, ";\n").c_str());
+
+    std::string ret = "seq(\n";
+    for (const Exp *c : es)
+      StringAppendF(&ret, "  %s;\n", ExpString(c).c_str());
+    StringAppendF(&ret, "  %s)", ExpString(body).c_str());
+    return ret;
   }
 
   default:
