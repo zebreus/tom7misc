@@ -301,6 +301,14 @@ static void Simple() {
                        "  {d = (_, x), a = a, c = _} => x\n");
     CHECK(e->Integer() == 7);
   }
+
+  {
+    const Exp *e = Run("case (1, 2, 3) of\n"
+                       "   (1, 2, 3) => 7\n"
+                       " | _ => 666\n");
+    printf("%s", ExpString(e).c_str());
+  }
+
 }
 
 }  // il

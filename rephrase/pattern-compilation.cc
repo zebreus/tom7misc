@@ -39,6 +39,16 @@ struct PatternCompilation::Matrix {
     return Width() == 0 && Height() == 0;
   }
 
+  // Get the IL expression corresponding to the xth column.
+  std::pair<const Exp *, const Type *> GetObj(il::AstPool *pool,
+                                              const Context &G, int x) {
+    CHECK(x >= 0 && x < Width());
+    const VarInfo *vi = G.Find(objs[x]);
+    CHECK(vi != nullptr) << "Ill-formed pattern: The case object " <<
+      objs[x] << " was not found in the context!";
+    return std::make_pair(pool->Var({}, vi->var), vi->type);
+  }
+
   // For splitting: Create a copy of the matrix where the value in the
   // column is known to be some value, specified by the function Match
   // (should be testing for a specific constant in an INT pattern, for
@@ -179,6 +189,34 @@ struct PatternCompilation::Matrix {
     pats.resize(y_target * old_width);
 
     // Objects and types and defaults stay the same.
+    CHECK((int)pats.size() == Width() * Height());
+    CHECK((int)objs.size() == Width());
+    CHECK((int)types.size() == Width());
+  }
+
+  // Delete the first n rows.
+  void DeleteFirstRows(int n) {
+    const int old_width = Width();
+    const int old_height = Height();
+    CHECK(n >= 0 && n <= old_height);
+
+    const int new_height = old_height - n;
+
+    std::vector<const el::Exp *> new_rows;
+    for (int y = n; y < old_height; y++)
+      new_rows.push_back(rows[y]);
+    std::vector<const Pat *> new_pats;
+    for (int y = n; y < old_height; y++) {
+      for (int x = 0; x < old_width; x++) {
+        new_pats.push_back(Cell(x, y));
+      }
+    }
+
+    rows = std::move(new_rows);
+    pats = std::move(new_pats);
+
+    // Objects and types and defaults stay the same.
+    CHECK((int)rows.size() == new_height);
     CHECK((int)pats.size() == Width() * Height());
     CHECK((int)objs.size() == Width());
     CHECK((int)types.size() == Width());
@@ -375,6 +413,8 @@ void PatternCompilation::CheckAffine(const Pat *orig_pat) const {
           Rec(child);
         }
         break;
+      case PatType::INT:
+        break;
       default:
         LOG(FATAL) << "Pattern type not handled in CheckAffine.";
       }
@@ -556,7 +596,10 @@ PatternCompilation::SplitIntPattern(
   //                                  pn  _  rn  => en
   //                                  pn1 7  rn1 => en1
   //                                  ...)
-  //
+  //     _ => (case (a,  b, c) of
+  //                 pn  _  rn  => en
+  //                 pn1 7  rn1 => en1
+  //                 ...)
   // Note how the default is the same in each case (it means: the object
   // variable doesn't match anything in the prefix), so we hoist
   // this out.
@@ -584,18 +627,66 @@ PatternCompilation::SplitIntPattern(
       }
     } else {
       CHECK(cell->type == PatType::WILD) << "Inconsistent pattern types";
-      constant_height = y;
       break;
     }
+    constant_height++;
   }
 
   CHECK(constant_height > 0);
 
-  // Remove prefix.
-  // Hoist.
-  // Generate intcase.
+  matrix.DeleteFirstRows(constant_height);
 
-  LOG(FATAL) << "Unimplemented";
+  // The failure continuation, if none of the intcases match.
+  const auto &[fexp, ftype] = Comp(G, matrix);
+
+  // Bind hoisted failure continuation.
+  const Exp *fn = elab->pool->Fn("",
+                                 elab->pool->NewVar("unused"),
+                                 fexp);
+  const Type *fn_type = elab->pool->Arrow(elab->pool->RecordType({}),
+                                          ftype);
+  const std::string el_cont_var = elab->pool->NewVar("hoist");
+  const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
+  Context GG = G.Insert(el_cont_var,
+                        VarInfo{
+                          .tyvars = {},
+                          .type = fn_type,
+                          .var = il_cont_var});
+
+  // Failure continuation calls the hoisted expression.
+  const el::Exp *failure_cont =
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var),
+                       elab->el_pool->Record({}));
+
+  const auto &[obj_exp, obj_type] = matrix.GetObj(elab->pool, GG, x);
+  Unification::Unify("int pattern", obj_type, elab->pool->IntType());
+
+  std::vector<std::pair<BigInt, const Exp *>> arms;
+  arms.reserve(int_cases.size());
+
+  // Update the defaults for the arms: It's the same failure
+  // in each case. We could add annotations that mark values as
+  // known, although it's also evident from the intcase itself.
+  for (auto &[bi, mtx] : int_cases) {
+    mtx.def = failure_cont;
+  }
+
+  for (const auto &[bi, mtx] : int_cases) {
+    const auto &[arm_exp, arm_type] = Comp(GG, mtx);
+    Unification::Unify("int pattern result", arm_type, ftype);
+    arms.emplace_back(bi, arm_exp);
+  }
+  const Exp *intcase =
+    elab->pool->IntCase(obj_exp,
+                        std::move(arms),
+                        elab->pool->App(
+                            elab->pool->Var({}, il_cont_var),
+                            elab->pool->Record({})));
+
+  const Exp *ret =
+    elab->pool->Let({}, il_cont_var, fn, intcase);
+
+  return std::make_pair(ret, ftype);
 }
 
 // Split the column x, which must be a record pattern. The column

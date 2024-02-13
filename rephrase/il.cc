@@ -295,8 +295,16 @@ std::string ExpString(const Exp *e) {
 
   case ExpType::INTCASE: {
     const auto &[obj, arms, def] = e->IntCase();
-    return StringPrintf("intcase %s of ...TODO... | _ => %s",
+    std::vector<std::string> sarms;
+    for (const auto &[bi, arm] : arms)
+      sarms.push_back(StringPrintf("%s => %s",
+                                   bi.ToString().c_str(),
+                                   ExpString(arm).c_str()));
+    return StringPrintf("intcase %s of\n"
+                        "   %s\n"
+                        " | _ => %s",
                         ExpString(obj).c_str(),
+                        Util::Join(sarms, "\n | ").c_str(),
                         ExpString(def).c_str());
   }
 

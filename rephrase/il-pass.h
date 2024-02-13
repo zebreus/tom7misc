@@ -97,6 +97,10 @@ struct Pass {
       const auto &[es, body] = e->Seq();
       return DoSeq(es, body, e, args...);
     }
+    case ExpType::INTCASE: {
+      const auto &[obj, arms, def] = e->IntCase();
+      return DoIntCase(obj, arms, def, e, args...);
+    }
     default:
       LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
     }
@@ -321,6 +325,20 @@ struct Pass {
     ees.reserve(es.size());
     for (const Exp *e : es) ees.push_back(DoExp(e, args...));
     return pool->Seq(ees, DoExp(body, args...), guess);
+  }
+
+  virtual const Exp *DoIntCase(
+      const Exp *obj,
+      const std::vector<std::pair<BigInt, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess,
+      Args... args) {
+    std::vector<std::pair<BigInt, const Exp *>> narms;
+    narms.reserve(arms.size());
+    for (const auto &[bi, arm] : arms)
+      narms.emplace_back(bi, DoExp(arm, args...));
+    return pool->IntCase(DoExp(obj, args...), std::move(narms),
+                         DoExp(def, args...), guess);
   }
 
 protected:
