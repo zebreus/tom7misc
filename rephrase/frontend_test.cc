@@ -303,6 +303,15 @@ static void Simple() {
   }
 
   {
+    const Exp *e = Run("case 2 of\n"
+                       "   1 => 111\n"
+                       " | 2 => 222\n"
+                       " | 3 => 333\n"
+                       " | _ => 666");
+    CHECK(e->Integer() == 222);
+  }
+
+  {
     const Exp *e = Run("case (1, 2, 3) of\n"
                        "   (1, 2, 3) => 7\n"
                        " | _ => 666\n");

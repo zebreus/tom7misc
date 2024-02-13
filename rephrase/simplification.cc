@@ -239,6 +239,24 @@ struct PeepholePass : public il::Pass<> {
     return pool->Let(tyvars, x, DoExp(rhs), DoExp(body), guess);
   }
 
+  const Exp *DoIntCase(
+      const Exp *obj,
+      const std::vector<std::pair<BigInt, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess) override {
+    if (obj->type == ExpType::INTEGER) {
+      Simplified("reduce intcase");
+      for (const auto &[bi, arm] : arms) {
+        if (bi == obj->Integer()) {
+          return DoExp(arm);
+        }
+      }
+      // None matched, so it's the default.
+      return DoExp(def);
+    } else {
+      return Pass::DoIntCase(obj, arms, def, guess);
+    }
+  }
 
   // If we have App(fn x => body, arg), with the function not recursive,
   // then this is equivalent to

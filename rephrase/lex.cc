@@ -110,6 +110,7 @@ std::pair<std::string, std::string> Lexing::ColorTokens(
     color_idx++;
     color_idx %= COLORS.size();
 
+    // TODO: Add newlines to color tokens.
     std::string bc = ANSI::BackgroundRGB32(c);
     std::string fc = ANSI::ForegroundRGB32(c | 0x808080FF);
     std::string in = input_string.substr(tok.start, tok.length);
