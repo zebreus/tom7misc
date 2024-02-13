@@ -38,6 +38,8 @@ enum class ExpType {
   FAIL,
   // n-ary sequence
   SEQ,
+  // Match against a series of integers.
+  INTCASE,
 };
 
 struct Exp;
@@ -245,6 +247,12 @@ struct Exp {
     return std::tie(children, a);
   }
 
+  std::tuple<const Exp *, const std::vector<std::pair<BigInt, const Exp *>> &,
+             const Exp *> IntCase() const {
+    CHECK(type == ExpType::INTCASE);
+    return std::tie(a, int_children, b);
+  }
+
 private:
   // PERF: Experiment with std::variant, at least.
   friend struct AstPool;
@@ -263,12 +271,15 @@ private:
   std::vector<std::string> tyvars;
   // Not necessarily sorted: The order here gives the evaluation order.
   std::vector<std::pair<std::string, const Exp *>> str_children;
+  // For intcase. The constants must be distinct.
+  std::vector<std::pair<BigInt, const Exp *>> int_children;
 };
 
 // The AST pool has constructors for all the IL forms. Each takes
 // a final "guess" parameter; if non-null and equal to the object
 // that would be allocated, we return the guess instead. This
-// helps prevent duplicating lots of syntax nodes
+// helps prevent duplicating lots of syntax nodes during recursive
+// traversals that don't actually change anything.
 struct AstPool {
   AstPool() = default;
 
@@ -523,7 +534,6 @@ struct AstPool {
     return ret;
   }
 
-
   const Exp *Let(const std::vector<std::string> &tyvars,
                  const std::string &x,
                  const Exp *rhs,
@@ -645,6 +655,27 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *IntCase(
+      const Exp *obj,
+      const std::vector<std::pair<BigInt, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::INTCASE &&
+        guess->a == obj &&
+        guess->b == def &&
+        IntChildrenEq(guess->int_children, arms)) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::INTCASE);
+    ret->a = obj;
+    ret->int_children = arms;
+    ret->b = def;
+    return ret;
+  }
+
+
   // SubstType(T, v, T') is [T/v]T'
   const Type *SubstType(const Type *t, const std::string &v,
                         const Type *u);
@@ -677,6 +708,18 @@ struct AstPool {
 
   const Type *SubstTypeInternal(const Type *t, const std::string &v,
                                 const Type *u, bool is_simple);
+
+  // Could do this with big-overloads but probably better avoid polluting
+  // the global namespace in a header.
+  bool IntChildrenEq(const std::vector<std::pair<BigInt, const Exp *>> &a,
+                     const std::vector<std::pair<BigInt, const Exp *>> &b) {
+    if (a.size() != b.size()) return false;
+    for (int i = 0; i < (int)a.size(); i++) {
+      if (a[i].second != b[i].second) return false;
+      if (!BigInt::Eq(a[i].first, b[i].first)) return false;
+    }
+    return true;
+  }
 
   Type *NewType(TypeType t) { return type_arena.New(t); }
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }

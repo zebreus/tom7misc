@@ -75,6 +75,18 @@ private:
       const il::Type *type,
       bool rhs_valuable);
 
+  std::pair<const Exp *, const Type *>
+  SplitRecordPattern(
+      const Context &G,
+      Matrix matrix,
+      int x);
+
+  std::pair<const Exp *, const Type *>
+  SplitIntPattern(
+      const Context &G,
+      Matrix matrix,
+      int x);
+
   int verbose = 0;
   Elaboration *elab = nullptr;
 };

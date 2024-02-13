@@ -295,6 +295,12 @@ static void Simple() {
     const Exp *e = Run("case (7, 7) of (x, y) => x");
     CHECK(e->Integer() == 7);
   }
+
+  {
+    const Exp *e = Run("case {d = (2, 7), a = 3, c = \"hi\"} of\n"
+                       "  {d = (_, x), a = a, c = _} => x\n");
+    CHECK(e->Integer() == 7);
+  }
 }
 
 }  // il

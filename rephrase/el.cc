@@ -77,6 +77,18 @@ std::string LayoutString(const Layout *lay) {
   }
 }
 
+const char *PatTypeString(PatType pt) {
+  switch (pt) {
+  case PatType::VAR: return "VAR";
+  case PatType::WILD: return "WILD";
+  case PatType::TUPLE: return "TUPLE";
+  case PatType::RECORD: return "RECORD";
+  case PatType::ANN: return "ANN";
+  case PatType::AS: return "AS";
+  case PatType::INT: return "INT";
+  }
+}
+
 std::string PatString(const Pat *p) {
   if (p == nullptr) return "NULL!?";
   switch (p->type) {

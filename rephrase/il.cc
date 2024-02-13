@@ -293,6 +293,13 @@ std::string ExpString(const Exp *e) {
     return ret;
   }
 
+  case ExpType::INTCASE: {
+    const auto &[obj, arms, def] = e->IntCase();
+    return StringPrintf("intcase %s of ...TODO... | _ => %s",
+                        ExpString(obj).c_str(),
+                        ExpString(def).c_str());
+  }
+
   default:
     return "ILLEGAL EXPRESSION";
   }
