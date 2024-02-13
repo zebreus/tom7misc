@@ -12,6 +12,8 @@
 #include "base/stringprintf.h"
 #include "ansi.h"
 #include "util.h"
+#include "bignum/big.h"
+#include "bignum/big-overloads.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -35,6 +37,48 @@ struct PatternCompilation::Matrix {
 
   bool Empty() const {
     return Width() == 0 && Height() == 0;
+  }
+
+  // For splitting: Create a copy of the matrix where the value in the
+  // column is known to be some value, specified by the function Match
+  // (should be testing for a specific constant in an INT pattern, for
+  // example). Stops when it reaches a WILD pattern. The resulting
+  // matrix removes that column (its value is known so does not need
+  // to be tested). This duplicates the default, so you may want to
+  // hoist that first. (It also duplicates row expressions but it's
+  // expected that those will be discarded from the original matrix,
+  // since they should only match through this path.)
+  Matrix Quotient(int target_x,
+                  std::function<bool(const Pat *)> Match) const {
+    CHECK(target_x >= 0 && target_x < Width());
+    // There will be one fewer column.
+    Matrix quot(pool);
+    quot.def = def;
+    for (int x = 0; x < Width(); x++) {
+      if (x != target_x) {
+        quot.objs.push_back(objs[x]);
+        quot.types.push_back(types[x]);
+      }
+    }
+
+    for (int y = 0; y < Height(); y++) {
+      // First check to see if we're done.
+      if (Cell(target_x, y)->type == PatType::WILD)
+        break;
+
+      // Are we keeping this row?
+      if (Match(Cell(target_x, y))) {
+        quot.rows.push_back(rows[y]);
+        for (int x = 0; x < Width(); x++) {
+          if (x != target_x) {
+            quot.pats.push_back(Cell(x, y));
+          }
+        }
+      }
+    }
+
+    CHECK((int)quot.pats.size() == quot.Width() * quot.Height());
+    return quot;
   }
 
   // Add a column at the end. The cells will be initialized
@@ -481,12 +525,15 @@ PatternCompilation::SplitIntPattern(
   CHECK(x >= 0 && x < matrix.Width());
   CHECK(matrix.Cell(x, 0)->type == PatType::INT);
 
+  Unification::Unify("int pattern", matrix.types[x], elab->pool->IntType());
+
   // The pattern must look like this (here x selecting the second
   // column):
   //
   // case (a,  b, c) of
   //       p1  1  r1  => e1
   //       p2  5  r2  => e2
+  //       p3  1  r3  => e3
   //          ...
   //       pn  _  rn  => en
   //       pn1 7  rn1 => en1
@@ -497,13 +544,14 @@ PatternCompilation::SplitIntPattern(
   //
   // intcase b of
   //     1 => (case (a,  c) of
-  //                 p1  r1 => e1
+  //                 p1  r1 => e1     ;; all the cases for 1
+  //                 p3  r3 => e3
   //                 _      => (case (a,  b, c) of
   //                                  pn  _  rn  => en
   //                                  pn1 7  rn1 => en1
   //                                  ...)
   //     5 => (case (a, c) of
-  //                 p2  r2 => e2
+  //                 p2  r2 => e2     ;; all the cases for 5
   //                 _      => (case (a,  b, c) of
   //                                  pn  _  rn  => en
   //                                  pn1 7  rn1 => en1
@@ -512,6 +560,40 @@ PatternCompilation::SplitIntPattern(
   // Note how the default is the same in each case (it means: the object
   // variable doesn't match anything in the prefix), so we hoist
   // this out.
+
+  int constant_height = 0;
+
+  // The collated matching cases (up until any wildcard), in the original
+  // order, with the matrix that implements the rest of the pattern.
+  std::vector<std::pair<BigInt, Matrix>> int_cases;
+  // Since we get all the matching cases when we see the first one,
+  // keep track of what we've already done.
+  std::set<BigInt> done;
+  for (int y = 0; y < matrix.Height(); y++) {
+    const Pat *cell = matrix.Cell(x, y);
+    if (cell->type == PatType::INT) {
+      if (!done.contains(cell->integer)) {
+        done.insert(cell->integer);
+        int_cases.emplace_back(
+            cell->integer,
+            matrix.Quotient(x,
+                            [&](const Pat *p) {
+                              return p->type == PatType::INT &&
+                                p->integer == cell->integer;
+                            }));
+      }
+    } else {
+      CHECK(cell->type == PatType::WILD) << "Inconsistent pattern types";
+      constant_height = y;
+      break;
+    }
+  }
+
+  CHECK(constant_height > 0);
+
+  // Remove prefix.
+  // Hoist.
+  // Generate intcase.
 
   LOG(FATAL) << "Unimplemented";
 }
