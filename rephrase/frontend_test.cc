@@ -291,6 +291,10 @@ static void Simple() {
       "to just an integer.";
   }
 
+  {
+    const Exp *e = Run("case (7, 7) of (x, y) => x");
+    CHECK(e->Integer() == 7);
+  }
 }
 
 }  // il

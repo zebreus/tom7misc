@@ -41,6 +41,7 @@ struct PatternCompilation::Matrix {
   // to WILD patterns, but can be modified.
   void AddColumn(const std::string &obj_var,
                  const il::Type *obj_type) {
+    printf("AddColumn. current %dx%d\n", Width(), Height());
     const int old_width = Width();
     const int old_height = Height();
 
@@ -51,8 +52,8 @@ struct PatternCompilation::Matrix {
     new_pats.reserve((old_width + 1) * old_height);
     for (int y = 0; y < old_height; y++) {
       for (int x = 0; x < old_width + 1; x++) {
-        const Pat *pat = pats[y * old_width + x];
         if (x < old_width) {
+          const Pat *pat = pats[y * old_width + x];
           new_pats.push_back(pat);
         } else {
           new_pats.push_back(pool->WildPat());
@@ -62,17 +63,14 @@ struct PatternCompilation::Matrix {
 
     CHECK((int)new_pats.size() == (old_width + 1) * old_height);
     pats = std::move(new_pats);
+    new_pats.clear();
 
     // Rows and defaults stay the same.
-    CHECK((int)new_pats.size() == Width() * Height());
     CHECK((int)objs.size() == Width());
     CHECK((int)types.size() == Width());
+    CHECK((int)pats.size() == Width() * Height()) <<
+      pats.size() << " vs " << Width() << " * " << Height();
   }
-
-  // The pattern objects. These are always EL variables.
-  std::vector<std::string> objs;
-  // Parallel array of the types.
-  std::vector<const il::Type *> types;
 
   // This is a 2D array of width * height patterns.
   std::vector<const el::Pat *> pats;
@@ -148,12 +146,46 @@ struct PatternCompilation::Matrix {
 
     CHECK((int)new_pats.size() == (old_width - 1) * old_height);
     pats = std::move(new_pats);
+    new_pats.clear();
 
     // Rows and defaults stay the same.
-    CHECK((int)new_pats.size() == Width() * Height());
+    CHECK((int)pats.size() == Width() * Height());
     CHECK((int)objs.size() == Width());
     CHECK((int)types.size() == Width());
   }
+
+  std::string ToString() const {
+    std::string ret =
+      StringPrintf("case (%s) of\n",
+                   Util::Join(objs, ", ").c_str());
+    // Would be nice to use a table here.
+    for (int y = 0; y < Height(); y++) {
+      StringAppendF(&ret, " |");
+      for (int x = 0; x < Width(); x++) {
+        const Pat *p = Cell(x, y);
+        if (p == nullptr) {
+          StringAppendF(&ret, " NULL?!");
+        } else {
+          StringAppendF(&ret, " %s", PatString(p).c_str());
+        }
+      }
+
+      const el::Exp *exp = rows[y];
+      if (exp == nullptr) {
+        StringAppendF(&ret, " => NULL!?");
+      } else {
+        StringAppendF(&ret, " => %s\n", el::ExpString(exp).c_str());
+      }
+    }
+    StringAppendF(&ret, "   _ => %s\n", el::ExpString(def).c_str());
+
+    return ret;
+  }
+
+  // The pattern objects. These are always EL variables.
+  std::vector<std::string> objs;
+  // Parallel array of the types.
+  std::vector<const il::Type *> types;
 
   // Not owned.
   el::AstPool *pool = nullptr;
@@ -233,6 +265,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     matrix.rows.push_back(exp);
   }
 
+  matrix.def = elab->el_pool->Fail(elab->el_pool->String("match"));
+
   return Comp(G, matrix);
 }
 
@@ -287,6 +321,10 @@ const el::Exp *PatternCompilation::SimpleBind(std::string nv, std::string objv,
 std::pair<const Exp *, const Type *> PatternCompilation::Comp(
     const Context &G,
     Matrix matrix) {
+
+  printf(AWHITE("Comp():") "\n");
+  printf("%s\n",
+         matrix.ToString().c_str());
 
   // This follows the same approach as humlock, itself loosely
   // based on TILT.
@@ -436,8 +474,14 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
         }
       }
 
+
+      // Save the original variable so we can project from it below.
+      const VarInfo *old_vi = G.Find(matrix.objs[x]);
+      CHECK(old_vi != nullptr) << "Bug: Case object not found "
+        "in pattern compilation (Record pattern): " << matrix.objs[x];
+      const il::Exp *original_var = elab->pool->Var({}, old_vi->var);
+
       // Now we can delete the original column.
-      std::string original_var = matrix.objs[x];
       matrix.DeleteColumn(x);
 
       // Update context with new bindings.
@@ -447,23 +491,36 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
         const std::string &elv = el_objs[xx];
         const std::string ilv = elab->pool->NewVar(elv);
         il_objs.push_back(ilv);
+        printf("Bind %s : %s => %s\n", elv.c_str(),
+               TypeString(types[xx]).c_str(),
+               ilv.c_str());
         GG = GG.Insert(elv,
                        VarInfo{
                          .tyvars = {},
                          .type = types[xx],
                          .var = ilv
                        });
-        // XXX do binding
       }
 
-      // So now we should translate the new pattern recursively,
-      // then wrap with bindings that project the labels from original_var
-      // and bind to objs. Easy but except we need to deal with the
-      // el/il var stuff.
+      // Now everything is set up to translate the new matrix
+      // recursively.
+      const auto &[exp, type] = Comp(GG, std::move(matrix));
 
+      // Now wrap the result to put the bindings in place.
+      // We can do this in any order because the variables are
+      // fresh.
+      CHECK(el_objs.size() == il_objs.size());
+      CHECK(el_objs.size() == labels.size());
+      const il::Exp *result = exp;
+      for (int i = 0; i < (int)el_objs.size(); i++) {
+        // let il_var = #lab(old_obj) in result
+        result = elab->pool->Let(
+            {}, il_objs[i],
+            elab->pool->Project(labels[i], original_var),
+            result);
+      }
 
-      // XXX HERE
-      LOG(FATAL) << "Unimplemented";
+      return std::make_pair(result, type);
     }
   }
 

@@ -129,6 +129,41 @@ static bool IsDiscardable(const Exp *e) {
 struct PeepholePass : public il::Pass<> {
   using Pass::Pass;
 
+  const Exp *DoProject(const std::string &label,
+                       const Exp *arg,
+                       const Exp *guess) override {
+    arg = DoExp(arg);
+    if (arg->type == ExpType::RECORD) {
+      // Evaluate all the elements in order, so that
+      // we can preserve evaluation order. We just make a
+      // binding for each and then let other simplifications
+      // throw them away.
+      const auto &le = arg->Record();
+      std::vector<std::string> vars;
+      const Exp *body = nullptr;
+      for (const auto &[lab, exp] : le) {
+        vars.push_back(pool->NewVar(lab));
+        if (lab == label) {
+          CHECK(body == nullptr) << "Duplicate label " << lab;
+          body = pool->Var({}, vars.back());
+        }
+      }
+      CHECK(body != nullptr) << "Bug? Label missing when simplifying "
+        "projection expression. Label: " << label;
+
+      // Now wrap the body.
+      for (int i = le.size() - 1; i >= 0; i--) {
+        const auto &[lab_, exp] = le[i];
+        body = pool->Let({}, vars[i], exp, body);
+      }
+
+      Simplified("reduce project(record)");
+      return body;
+    } else {
+      return pool->Project(label, arg, guess);
+    }
+  }
+
   // For fn expressions, if the function's self variable is not used,
   // it is not actually recursive.
   const Exp *DoFn(const std::string &self,

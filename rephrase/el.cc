@@ -12,6 +12,7 @@
 namespace el {
 
 std::string TypeString(const Type *t) {
+  if (t == nullptr) return "NULL!?";
   switch (t->type) {
   case TypeType::VAR:
     switch (t->children.size()) {
@@ -67,6 +68,7 @@ std::string TypeString(const Type *t) {
 }
 
 std::string LayoutString(const Layout *lay) {
+  if (lay == nullptr) return "NULL!?";
   switch (lay->type) {
     case LayoutType::TEXT:
       return lay->str;
@@ -76,6 +78,7 @@ std::string LayoutString(const Layout *lay) {
 }
 
 std::string PatString(const Pat *p) {
+  if (p == nullptr) return "NULL!?";
   switch (p->type) {
   case PatType::INT: return p->integer.ToString();
   case PatType::WILD: return "_";
@@ -123,6 +126,7 @@ std::string PatString(const Pat *p) {
 }
 
 std::string DecString(const Dec *d) {
+  if (d == nullptr) return "NULL!?";
   switch (d->type) {
   case DecType::VAL:
     return StringPrintf("val %s = %s",
@@ -168,6 +172,7 @@ std::string DecString(const Dec *d) {
 // ... which also lets us use better representations internally.
 // TODO: Some kind of pretty-printing
 std::string ExpString(const Exp *e) {
+  if (e == nullptr) return "NULL!?";
   switch (e->type) {
   case ExpType::STRING:
     // XXX escaping
