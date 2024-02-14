@@ -22,6 +22,15 @@ namespace il {
 using Pat = el::Pat;
 using PatType = el::PatType;
 
+static const Type *SelectLabel(const Type *sum_type,
+                               const std::string &label) {
+  for (const auto &[lab, t] : sum_type->Sum()) {
+    if (lab == label) return t;
+  }
+  LOG(FATAL) << "Label " << label << " not found in sum type: "
+             << TypeString(sum_type);
+  return nullptr;
+}
 
 // The pattern matrix.
 struct PatternCompilation::Matrix {
@@ -58,9 +67,20 @@ struct PatternCompilation::Matrix {
   // hoist that first. (It also duplicates row expressions but it's
   // expected that those will be discarded from the original matrix,
   // since they should only match through this path.)
-  Matrix Quotient(int target_x,
-                  std::function<bool(const Pat *)> Match) const {
+  //
+  // The type E is extracted from each match; return nullopt to reject
+  // the case. The returned value also gives the vector of extracts,
+  // which will be the same height as the returned matrix.
+  // For SumCase, this is used to pull out the subpattern so that
+  // it can be appended to the matrix. It's a trivial type for
+  // intcase/stringcase because we don't need any information other
+  // than the match against the int.
+  template<class E>
+  std::pair<Matrix, std::vector<E>>
+  Quotient(int target_x,
+           std::function<std::optional<E>(const Pat *)> Match) const {
     CHECK(target_x >= 0 && target_x < Width());
+    std::vector<E> extracts;
     // There will be one fewer column.
     Matrix quot(pool);
     quot.def = def;
@@ -77,8 +97,9 @@ struct PatternCompilation::Matrix {
         break;
 
       // Are we keeping this row?
-      if (Match(Cell(target_x, y))) {
+      if (const std::optional<E> ex = Match(Cell(target_x, y))) {
         quot.rows.push_back(rows[y]);
+        extracts.push_back(ex.value());
         for (int x = 0; x < Width(); x++) {
           if (x != target_x) {
             quot.pats.push_back(Cell(x, y));
@@ -88,7 +109,8 @@ struct PatternCompilation::Matrix {
     }
 
     CHECK((int)quot.pats.size() == quot.Width() * quot.Height());
-    return quot;
+    CHECK((int)extracts.size() == quot.Height());
+    return std::make_pair(quot, extracts);
   }
 
   // Add a column at the end. The cells will be initialized
@@ -626,13 +648,18 @@ PatternCompilation::SplitIntPattern(
     if (cell->type == PatType::INT) {
       if (!done.contains(cell->integer)) {
         done.insert(cell->integer);
-        int_cases.emplace_back(
-            cell->integer,
-            matrix.Quotient(x,
-                            [&](const Pat *p) {
-                              return p->type == PatType::INT &&
-                                p->integer == cell->integer;
-                            }));
+        const auto &[mtx, extracts_] =
+          matrix.Quotient<bool>(x,
+                                [&](const Pat *p) -> std::optional<bool> {
+                                  if (p->type == PatType::INT &&
+                                      p->integer == cell->integer) {
+                                    return {true};
+                                  } else {
+                                    return std::nullopt;
+                                  }
+                                });
+
+        int_cases.emplace_back(cell->integer, mtx);
       }
     } else {
       CHECK(cell->type == PatType::WILD) << "Inconsistent pattern types";
@@ -741,13 +768,17 @@ PatternCompilation::SplitStringPattern(
     if (cell->type == PatType::STRING) {
       if (!done.contains(cell->str)) {
         done.insert(cell->str);
-        string_cases.emplace_back(
-            cell->str,
-            matrix.Quotient(x,
-                            [&](const Pat *p) {
-                              return p->type == PatType::STRING &&
-                                p->str == cell->str;
-                            }));
+        const auto &[mtx, extracts_] =
+          matrix.Quotient<bool>(x,
+                                [&](const Pat *p) -> std::optional<bool> {
+                                  if (p->type == PatType::STRING &&
+                                      p->str == cell->str) {
+                                    return {true};
+                                  } else {
+                                    return std::nullopt;
+                                  }
+                                });
+        string_cases.emplace_back(cell->str, mtx);
       }
     } else {
       CHECK(cell->type == PatType::WILD) << "Inconsistent pattern types";
@@ -830,76 +861,103 @@ PatternCompilation::SplitAppPattern(
   //  - We need to destruct the case object (unroll) to get a sum.
   //  - The arms bind a variable for the contents of the sum.
   //
+
+  auto GetConstructor = [&](const Pat *p) {
+      CHECK(p->type == PatType::APP) << "Bug! Precondition.";
+      const std::string &ctor = p->str;
+      const VarInfo *vi = G.Find(ctor);
+      CHECK(vi != nullptr) << "Unbound constructor " << ctor <<
+        " in application pattern: " << PatString(p);
+      CHECK(vi->ctor.has_value()) << "Identifier " << ctor << " is not "
+        "a constructor in application pattern: " << PatString(p);
+      // TODO: This should allow polymorphic constructors, instantiating
+      // them.
+      CHECK(vi->tyvars.empty()) << "Unimplemented polymorphic ctors :(";
+      return vi->ctor.value();
+    };
+
   // First, look up the first constructor to get the mu/sum.
-  const std::string &first_ctor = first_pat->str;
-  const VarInfo *vi = G.Find(first_ctor);
-  CHECK(vi != nullptr) << "Unbound constructor " << first_ctor <<
-    " in application pattern: " << PatString(first_pat);
-  CHECK(vi->ctor.has_value()) << "Identifier " << first_ctor << " is not "
-    "a constructor in application pattern: " << PatString(first_pat);
+  const auto &[first_idx, mu_type, label] = GetConstructor(first_pat);
 
-  const auto &[first_idx, mu_type, label] = vi->ctor.value();
   Unification::Unify("app pattern", matrix.types[x], mu_type);
-
-#if 0
 
   // The pattern must look like this (here x selecting the second
   // column):
   //
-  // case (a,  b, c) of
-  //       p1  1  r1  => e1
-  //       p2  5  r2  => e2
-  //       p3  1  r3  => e3
+  // case (a,  b,     c) of
+  //       p1  (A q1)  r1  => e1
+  //       p2  (B q2)  r2  => e2
+  //       p3  (A q3)  r3  => e3
   //          ...
-  //       pn  _  rn  => en
-  //       pn1 7  rn1 => en1
+  //       pn  _       rn  => en
+  //       pn1 (B qn1) rn1 => en1
   //          ...
   //
-  // where some non-empty prefix of the column is integers.
+  // where some non-empty prefix of the column is application
+  // patterns.
   // We generate:
   //
-  // intcase b of
-  //     1 => (case (a,  c) of
-  //                 p1  r1 => e1     ;; all the cases for 1
-  //                 p3  r3 => e3
-  //                 _      => (case (a,  b, c) of
-  //                                  pn  _  rn  => en
-  //                                  pn1 7  rn1 => en1
-  //                                  ...)
-  //     5 => (case (a, c) of
-  //                 p2  r2 => e2     ;; all the cases for 5
-  //                 _      => (case (a,  b, c) of
-  //                                  pn  _  rn  => en
-  //                                  pn1 7  rn1 => en1
-  //                                  ...)
-  //     _ => (case (a,  b, c) of
-  //                 pn  _  rn  => en
-  //                 pn1 7  rn1 => en1
-  //                 ...)
-  // Note how the default is the same in each case (it means: the object
-  // variable doesn't match anything in the prefix), so we hoist
-  // this out.
+  // sumcase b of
+  //     A va => (case (a, va, c) of
+  //                    p1 q1 r1 => e1     ;; all the cases for A
+  //                    p3 q3 r3 => e3
+  //                    _        => hoisted ()
+  //     B vb => (case (a, vb, c) of
+  //                    p2 q2 => e2        ;; all the cases for B
+  //                    _      => hoisted ()
+  //     _ => hoisted ()
+  //
+  // As in the intcase and stringcase routines, we hoist out the
+  // failure continuation so that it is not duplicated.
 
   int constant_height = 0;
 
-  // The collated matching cases (up until any wildcard), in the original
-  // order, with the matrix that implements the rest of the pattern.
-  std::vector<std::pair<BigInt, Matrix>> int_cases;
-  // Since we get all the matching cases when we see the first one,
-  // keep track of what we've already done.
-  std::set<BigInt> done;
+
+  // The collated matching cases (up until any wildcard), in the
+  // original order. The elements are the sum label, the bound variable,
+  // and the matrix that implements the rest of the pattern.
+  std::vector<std::tuple<std::string, std::string, Matrix>> sum_cases;
+  // Set of labels we've already processed.
+  std::set<std::string> done;
+
   for (int y = 0; y < matrix.Height(); y++) {
     const Pat *cell = matrix.Cell(x, y);
-    if (cell->type == PatType::INT) {
-      if (!done.contains(cell->integer)) {
-        done.insert(cell->integer);
-        int_cases.emplace_back(
-            cell->integer,
-            matrix.Quotient(x,
-                            [&](const Pat *p) {
-                              return p->type == PatType::INT &&
-                                p->integer == cell->integer;
-                            }));
+    if (cell->type == PatType::APP) {
+      if (!done.contains(cell->str)) {
+
+        // Get the constructor type.
+        const auto &[mu_idx, mu_type, label] = GetConstructor(cell);
+
+        Unification::Unify("app pattern", matrix.types[x], mu_type);
+
+        // The variable bound by the sumcase for this case. The el
+        // variable is just used to denote the object in the case
+        // expression.
+        std::string el_var = elab->pool->NewVar(Util::lcase(cell->str));
+        std::string il_var = elab->pool->NewVar(el_var);
+        done.insert(cell->str);
+
+        const auto &[mtx_small, extracts] =
+          matrix.Quotient<const Pat *>(
+              x,
+              [&](const Pat *p) -> std::optional<const Pat *> {
+                if (p->type == PatType::APP &&
+                    p->str == cell->str) {
+                  return std::make_optional(p->a);
+                } else {
+                  return std::nullopt;
+                }
+              });
+
+        // Add a column for the subpatterns.
+        Matrix mtx = mtx_small;
+        const Type *sum_type = elab->pool->UnrollType(mu_type);
+        const Type *col_type = SelectLabel(sum_type, label);
+        mtx.AddColumn(el_var, col_type);
+        // XXX fill 'em in from the extracts
+
+        // XXX Add the appropriate thing to the sum_cases.
+        // sum_cases.emplace_back(cell->integer,
       }
     } else {
       CHECK(cell->type == PatType::WILD) << "Inconsistent pattern types";
@@ -908,6 +966,7 @@ PatternCompilation::SplitAppPattern(
     constant_height++;
   }
 
+  #if 0
   CHECK(constant_height > 0);
 
   matrix.DeleteFirstRows(constant_height);

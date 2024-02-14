@@ -352,6 +352,15 @@ AstPool::AlphaVaryType(const std::string &x, const Type *t) {
   return std::make_pair(xx, SubstTypeInternal(VarType(xx, {}), x, t, true));
 }
 
+const Type *AstPool::UnrollType(const Type *mu) {
+  CHECK(mu->type == TypeType::MU);
+  const auto &[idx, bundles] = mu->Mu();
+  // std::tuple<int, const std::vector<std::pair<std::string, const Type *>> &>
+  CHECK(idx >= 0 && idx < (int)bundles.size());
+  const auto &[a, t] = bundles[idx];
+  return SubstType(mu, a, t);
+}
+
 const Type *AstPool::SubstType(const Type *t, const std::string &v,
                                const Type *u) {
   return SubstTypeInternal(t, v, u, false);

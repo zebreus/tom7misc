@@ -739,6 +739,8 @@ struct AstPool {
     return ret;
   }
 
+  const Type *UnrollType(const Type *mu);
+
   // SubstType(T, v, T') is [T/v]T'
   const Type *SubstType(const Type *t, const std::string &v,
                         const Type *u);
