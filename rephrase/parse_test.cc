@@ -177,7 +177,7 @@ static void TestParse() {
     CHECK(e->decs.size() == 1);
     CHECK(e->decs[0]->type == DecType::VAL);
     CHECK(e->decs[0]->pat->type == PatType::VAR);
-    CHECK(e->decs[0]->pat->var == "x");
+    CHECK(e->decs[0]->pat->str == "x");
     CHECK(e->decs[0]->exp->type == ExpType::VAR);
     CHECK(e->decs[0]->exp->str == "u");
     CHECK(e->a != nullptr);
@@ -201,12 +201,12 @@ static void TestParse() {
     CHECK(a->type == PatType::TUPLE);
     CHECK(a->children.size() == 2);
     CHECK(a->children[0]->type == PatType::VAR);
-    CHECK(a->children[0]->var == "x");
+    CHECK(a->children[0]->str == "x");
     CHECK(a->children[1]->type == PatType::WILD);
     CHECK(b->type == PatType::VAR);
-    CHECK(b->var == "y");
+    CHECK(b->str == "y");
     CHECK(c->type == PatType::VAR);
-    CHECK(c->var == "zzz");
+    CHECK(c->str == "zzz");
 
     CHECK(e->decs[0]->exp->type == ExpType::VAR);
     CHECK(e->decs[0]->exp->str == "u");
@@ -235,7 +235,7 @@ static void TestParse() {
     CHECK(e->decs[0]->type == DecType::FUN);
     CHECK(e->decs[0]->str == "f");
     CHECK(e->decs[0]->pat->type == PatType::VAR);
-    CHECK(e->decs[0]->pat->var == "x");
+    CHECK(e->decs[0]->pat->str == "x");
     CHECK(e->a != nullptr);
     CHECK(e->a->type == ExpType::INTEGER);
     CHECK(e->a->integer == 7);
@@ -351,11 +351,11 @@ static void TestParse() {
     const auto &[pat2, exp2] = e->clauses[1];
     CHECK(pat1->type == PatType::TUPLE);
     CHECK(pat1->children.size() == 2);
-    CHECK(pat1->children[0]->var == "x");
-    CHECK(pat1->children[1]->var == "z");
+    CHECK(pat1->children[0]->str == "x");
+    CHECK(pat1->children[1]->str == "z");
     CHECK(exp1->integer == 7);
     CHECK(pat2->type == PatType::VAR);
-    CHECK(pat2->var == "u");
+    CHECK(pat2->str == "u");
     CHECK(exp2->integer == 8);
   }
 
@@ -539,7 +539,7 @@ static void TestParsePat() {
   {
     const Pat *pat = ParsePat("x");
     CHECK(pat->type == PatType::VAR);
-    CHECK(pat->var == "x");
+    CHECK(pat->str == "x");
   }
 
   {
@@ -548,16 +548,16 @@ static void TestParsePat() {
     CHECK(pat->children.size() == 2);
     CHECK(pat->children[0]->type == PatType::WILD);
     CHECK(pat->children[1]->type == PatType::VAR);
-    CHECK(pat->children[1]->var == "y");
+    CHECK(pat->children[1]->str == "y");
   }
 
   {
     const Pat *pat = ParsePat("x as y : int");
     CHECK(pat->type == PatType::ANN);
     CHECK(pat->a->type == PatType::AS);
-    CHECK(pat->a->var == "y");
+    CHECK(pat->a->str == "y");
     CHECK(pat->a->a->type == PatType::VAR);
-    CHECK(pat->a->a->var == "x");
+    CHECK(pat->a->a->str == "x");
   }
 
   {
@@ -566,7 +566,7 @@ static void TestParsePat() {
     CHECK(pat->str_children.size() == 2);
     // Might want to do unordered compare here?
     CHECK(pat->str_children[0].first == "lab");
-    CHECK(pat->str_children[0].second->var == "x");
+    CHECK(pat->str_children[0].second->str == "x");
     CHECK(pat->str_children[1].first == "2");
     CHECK(pat->str_children[1].second->type == PatType::WILD);
   }

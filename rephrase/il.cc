@@ -7,6 +7,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "util.h"
+#include "pp.h"
 
 namespace il {
 
@@ -301,6 +302,21 @@ std::string ExpString(const Exp *e) {
                                    bi.ToString().c_str(),
                                    ExpString(arm).c_str()));
     return StringPrintf("intcase %s of\n"
+                        "   %s\n"
+                        " | _ => %s",
+                        ExpString(obj).c_str(),
+                        Util::Join(sarms, "\n | ").c_str(),
+                        ExpString(def).c_str());
+  }
+
+  case ExpType::STRINGCASE: {
+    const auto &[obj, arms, def] = e->StringCase();
+    std::vector<std::string> sarms;
+    for (const auto &[s, arm] : arms)
+      sarms.push_back(StringPrintf("%s => %s",
+                                   EscapeString(s).c_str(),
+                                   ExpString(arm).c_str()));
+    return StringPrintf("stringcase %s of\n"
                         "   %s\n"
                         " | _ => %s",
                         ExpString(obj).c_str(),

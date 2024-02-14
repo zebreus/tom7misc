@@ -8,6 +8,7 @@
 #include "base/stringprintf.h"
 #include "util.h"
 #include "bignum/big.h"
+#include "pp.h"
 
 namespace el {
 
@@ -86,15 +87,17 @@ const char *PatTypeString(PatType pt) {
   case PatType::ANN: return "ANN";
   case PatType::AS: return "AS";
   case PatType::INT: return "INT";
+  case PatType::STRING: return "STRING";
   }
 }
 
 std::string PatString(const Pat *p) {
   if (p == nullptr) return "NULL!?";
   switch (p->type) {
+  case PatType::STRING: return EscapeString(p->str);
   case PatType::INT: return p->integer.ToString();
   case PatType::WILD: return "_";
-  case PatType::VAR: return p->var;
+  case PatType::VAR: return p->str;
   case PatType::TUPLE: {
     std::string ret = "(";
     for (int i = 0; i < (int)p->children.size(); i++) {
@@ -129,7 +132,7 @@ std::string PatString(const Pat *p) {
   case PatType::AS: {
     return StringPrintf("%s as %s",
                         PatString(p->a).c_str(),
-                        p->var.c_str());
+                        p->str.c_str());
   }
 
   default:
@@ -187,8 +190,7 @@ std::string ExpString(const Exp *e) {
   if (e == nullptr) return "NULL!?";
   switch (e->type) {
   case ExpType::STRING:
-    // XXX escaping
-    return StringPrintf("\"%s\"", e->str.c_str());
+    return EscapeString(e->str);
 
   case ExpType::VAR:
     return e->str;

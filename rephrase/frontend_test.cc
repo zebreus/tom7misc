@@ -315,7 +315,16 @@ static void Simple() {
     const Exp *e = Run("case (1, 2, 3) of\n"
                        "   (1, 2, 3) => 7\n"
                        " | _ => 666\n");
+    // TODO: Optimize this so that we know it's just 7?
     printf("%s", ExpString(e).c_str());
+  }
+
+  {
+    const Exp *e = Run("case \"hello\" of\n"
+                       "   \"world\" => 1234\n"
+                       " | \"hello\" => 7\n"
+                       " | _ => 9\n");
+    CHECK(e->Integer() == 7);
   }
 
 }

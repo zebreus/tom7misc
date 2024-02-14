@@ -258,6 +258,25 @@ struct PeepholePass : public il::Pass<> {
     }
   }
 
+  const Exp *DoStringCase(
+      const Exp *obj,
+      const std::vector<std::pair<std::string, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess) override {
+    if (obj->type == ExpType::STRING) {
+      Simplified("reduce stringcase");
+      for (const auto &[s, arm] : arms) {
+        if (s == obj->String()) {
+          return DoExp(arm);
+        }
+      }
+      // None matched, so it's the default.
+      return DoExp(def);
+    } else {
+      return Pass::DoStringCase(obj, arms, def, guess);
+    }
+  }
+
   // If we have App(fn x => body, arg), with the function not recursive,
   // then this is equivalent to
   // let x = arg in body

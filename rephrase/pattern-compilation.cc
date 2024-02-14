@@ -340,7 +340,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     el::AstPool *el_pool = elab->el_pool;
     il::AstPool *pool = elab->pool;
     const auto &[ve, vt] = elab->Elab(G, el_pool->Var(obj));
-    std::string var = rows_in[0].first->var;
+    std::string var = rows_in[0].first->str;
     std::string il_var = var;
     Dec dec = Dec{.x = var, .rhs = ve};
 
@@ -387,16 +387,16 @@ void PatternCompilation::CheckAffine(const Pat *orig_pat) const {
       [orig_pat, &vars, &Rec](const Pat *pat) {
       switch (pat->type) {
       case PatType::VAR:
-        CHECK(!vars.contains(pat->var)) << "The same variable " <<
-          pat->var << " is bound more than once in the pattern:\n" <<
+        CHECK(!vars.contains(pat->str)) << "The same variable " <<
+          pat->str << " is bound more than once in the pattern:\n" <<
           PatString(orig_pat);
-        vars.insert(pat->var);
+        vars.insert(pat->str);
         break;
       case PatType::WILD:
         break;
       case PatType::AS:
-        CHECK(!vars.contains(pat->var)) << "The same variable " <<
-          pat->var << " is bound more than once in the pattern:\n" <<
+        CHECK(!vars.contains(pat->str)) << "The same variable " <<
+          pat->str << " is bound more than once in the pattern:\n" <<
           PatString(orig_pat);
         Rec(pat->a);
         break;
@@ -414,6 +414,8 @@ void PatternCompilation::CheckAffine(const Pat *orig_pat) const {
         }
         break;
       case PatType::INT:
+        break;
+      case PatType::STRING:
         break;
       default:
         LOG(FATAL) << "Pattern type not handled in CheckAffine.";
@@ -452,7 +454,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
     for (int x = 0; x < matrix.Width(); x++) {
       while (matrix.Cell(x, y)->type == PatType::AS) {
         const Pat *op = matrix.Cell(x, y);
-        const std::string nv = op->var;
+        const std::string nv = op->str;
         matrix.rows[y] = SimpleBind(nv, matrix.objs[x], matrix.rows[y]);
         matrix.Cell(x, y) = op->a;
       }
@@ -460,7 +462,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
       // z is just "_ as z", so treat it the same way.
       while (matrix.Cell(x, y)->type == PatType::VAR) {
         const Pat *op = matrix.Cell(x, y);
-        const std::string nv = op->var;
+        const std::string nv = op->str;
         matrix.rows[y] = SimpleBind(nv, matrix.objs[x], matrix.rows[y]);
         matrix.Cell(x, y) = elab->el_pool->WildPat();
       }
@@ -539,6 +541,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
       continue;
     case PatType::INT:
       return SplitIntPattern(G, matrix, x);
+    case PatType::STRING:
+      return SplitStringPattern(G, matrix, x);
     default:
       LOG(FATAL) << "Unhandled pattern type when looking for "
         "a split: " << PatTypeString(matrix.Cell(x, 0)->type);
@@ -688,6 +692,122 @@ PatternCompilation::SplitIntPattern(
 
   return std::make_pair(ret, ftype);
 }
+
+// Split the column x, which must begin with a string pattern. The
+// column must be cleaned, meaning it only has STRING and WILD.
+std::pair<const Exp *, const Type *>
+PatternCompilation::SplitStringPattern(
+    const Context &G,
+    Matrix matrix,
+    int x) {
+
+  CHECK(x >= 0 && x < matrix.Width());
+  CHECK(matrix.Cell(x, 0)->type == PatType::STRING);
+
+  Unification::Unify("string pattern",
+                     matrix.types[x], elab->pool->StringType());
+
+  // The pattern must look like this (here x selecting the second
+  // column):
+  //
+  // case (a,  b, c) of
+  //       p1  "x"  r1  => e1
+  //       p2  "y"  r2  => e2
+  //       p3  "x"  r3  => e3
+  //          ...
+  //       pn   _   rn  => en
+  //       pn1 "x"  rn1 => en1
+  //          ...
+  //
+  // where some non-empty prefix of the column is constant strings.
+  // This is just like the approach taken in intcase; so see that
+  // code above.
+
+  int constant_height = 0;
+
+  // The collated matching cases (up until any wildcard), in the original
+  // order, with the matrix that implements the rest of the pattern.
+  std::vector<std::pair<std::string, Matrix>> string_cases;
+  // Since we get all the matching cases when we see the first one,
+  // keep track of what we've already done.
+  std::unordered_set<std::string> done;
+  for (int y = 0; y < matrix.Height(); y++) {
+    const Pat *cell = matrix.Cell(x, y);
+    if (cell->type == PatType::STRING) {
+      if (!done.contains(cell->str)) {
+        done.insert(cell->str);
+        string_cases.emplace_back(
+            cell->str,
+            matrix.Quotient(x,
+                            [&](const Pat *p) {
+                              return p->type == PatType::STRING &&
+                                p->str == cell->str;
+                            }));
+      }
+    } else {
+      CHECK(cell->type == PatType::WILD) << "Inconsistent pattern types";
+      break;
+    }
+    constant_height++;
+  }
+
+  CHECK(constant_height > 0);
+
+  matrix.DeleteFirstRows(constant_height);
+
+  // The failure continuation, if none of the stringcases match.
+  const auto &[fexp, ftype] = Comp(G, matrix);
+
+  // Bind hoisted failure continuation.
+  const Exp *fn = elab->pool->Fn("",
+                                 elab->pool->NewVar("unused"),
+                                 fexp);
+  const Type *fn_type = elab->pool->Arrow(elab->pool->RecordType({}),
+                                          ftype);
+  const std::string el_cont_var = elab->pool->NewVar("hoist");
+  const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
+  Context GG = G.Insert(el_cont_var,
+                        VarInfo{
+                          .tyvars = {},
+                          .type = fn_type,
+                          .var = il_cont_var});
+
+  // Failure continuation calls the hoisted expression.
+  const el::Exp *failure_cont =
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var),
+                       elab->el_pool->Record({}));
+
+  const auto &[obj_exp, obj_type] = matrix.GetObj(elab->pool, GG, x);
+  Unification::Unify("string pattern", obj_type, elab->pool->StringType());
+
+  std::vector<std::pair<std::string, const Exp *>> arms;
+  arms.reserve(string_cases.size());
+
+  // Update the defaults for the arms: It's the same failure
+  // in each case. We could add annotations that mark values as
+  // known, although it's also evident from the stringcase itself.
+  for (auto &[s, mtx] : string_cases) {
+    mtx.def = failure_cont;
+  }
+
+  for (const auto &[s, mtx] : string_cases) {
+    const auto &[arm_exp, arm_type] = Comp(GG, mtx);
+    Unification::Unify("int pattern result", arm_type, ftype);
+    arms.emplace_back(s, arm_exp);
+  }
+  const Exp *stringcase =
+    elab->pool->StringCase(obj_exp,
+                           std::move(arms),
+                           elab->pool->App(
+                               elab->pool->Var({}, il_cont_var),
+                               elab->pool->Record({})));
+
+  const Exp *ret =
+    elab->pool->Let({}, il_cont_var, fn, stringcase);
+
+  return std::make_pair(ret, ftype);
+}
+
 
 // Split the column x, which must be a record pattern. The column
 // must be cleaned, meaning it is just WILD and RECORD patterns.
@@ -897,17 +1017,21 @@ PatternCompilation::CompileIrrefutableRec(
           break;
         }
         case el::PatType::AS:
-          vars.push_back(pat->var);
+          vars.push_back(pat->str);
           pat = pat->a;
           break;
         case el::PatType::VAR:
-          vars.push_back(pat->var);
+          vars.push_back(pat->str);
           pat = el_pool->WildPat();
           break;
         case el::PatType::WILD:
           return;
         case el::PatType::INT:
           LOG(FATAL) << "Pattern must be irrefutable, but got int: " <<
+            PatString(pat);
+          return;
+        case el::PatType::STRING:
+          LOG(FATAL) << "Pattern must be irrefutable, but got string: " <<
             PatString(pat);
           return;
         case el::PatType::TUPLE: {

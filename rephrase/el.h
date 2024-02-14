@@ -53,6 +53,7 @@ enum class PatType {
   ANN,
   AS,
   INT,
+  STRING
 };
 
 enum class TypeType {
@@ -107,7 +108,7 @@ struct Exp {
 
 struct Pat {
   PatType type;
-  std::string var;
+  std::string str;
   const Pat *a;
   const Type *ann;
   BigInt integer;
@@ -325,6 +326,12 @@ struct AstPool {
 
   // Patterns
 
+  const Pat *StringPat(std::string s) {
+    Pat *ret = NewPat(PatType::STRING);
+    ret->str = std::move(s);
+    return ret;
+  }
+
   const Pat *IntPat(BigInt i) {
     Pat *ret = NewPat(PatType::INT);
     ret->integer = std::move(i);
@@ -333,14 +340,14 @@ struct AstPool {
 
   const Pat *AsPat(const Pat *p, const std::string &v) {
     Pat *ret = NewPat(PatType::AS);
-    ret->var = v;
+    ret->str = v;
     ret->a = p;
     return ret;
   }
 
   const Pat *VarPat(const std::string &v) {
     Pat *ret = NewPat(PatType::VAR);
-    ret->var = v;
+    ret->str = v;
     return ret;
   }
 
@@ -387,7 +394,6 @@ std::string PatString(const Pat *p);
 std::string DecString(const Dec *d);
 std::string LayoutString(const Layout *lay);
 std::string ExpString(const Exp *e);
-
 
 // In-order flattening of the layout without any JOIN-type nodes,
 // and dropping empty text nodes.

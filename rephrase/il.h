@@ -40,6 +40,8 @@ enum class ExpType {
   SEQ,
   // Match against a series of integers.
   INTCASE,
+  // ... or strings.
+  STRINGCASE,
 };
 
 struct Exp;
@@ -251,6 +253,13 @@ struct Exp {
              const Exp *> IntCase() const {
     CHECK(type == ExpType::INTCASE);
     return std::tie(a, int_children, b);
+  }
+
+  std::tuple<const Exp *,
+             const std::vector<std::pair<std::string, const Exp *>> &,
+             const Exp *> StringCase() const {
+    CHECK(type == ExpType::STRINGCASE);
+    return std::tie(a, str_children, b);
   }
 
 private:
@@ -671,6 +680,26 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::INTCASE);
     ret->a = obj;
     ret->int_children = arms;
+    ret->b = def;
+    return ret;
+  }
+
+  const Exp *StringCase(
+      const Exp *obj,
+      const std::vector<std::pair<std::string, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::STRINGCASE &&
+        guess->a == obj &&
+        guess->b == def &&
+        guess->str_children == arms) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::STRINGCASE);
+    ret->a = obj;
+    ret->str_children = arms;
     ret->b = def;
     return ret;
   }

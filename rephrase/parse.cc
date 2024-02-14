@@ -299,6 +299,9 @@ const Exp *Parsing::Parse(AstPool *pool,
           (Id >[&](const std::string &s) { return pool->VarPat(s); }) ||
           (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
           (BigInteger >[&](const BigInt &i) { return pool->IntPat(i); }) ||
+          (StrLit >[&](const std::string &s) {
+              return pool->StringPat(s);
+            }) ||
           RecordPat(Self) ||
           TuplePat(Self);
 
