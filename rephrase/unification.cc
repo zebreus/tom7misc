@@ -154,9 +154,13 @@ std::vector<EVar> EVar::FreeEVarsInType(const Type *t) {
       return;
     }
 
-    case TypeType::MU:
-      LOG(FATAL) << "Unimplemented: Mu in FreeEVarsInType";
+    case TypeType::MU: {
+      const auto &[idx_, arms] = t->Mu();
+      for (const auto &[a_, typ] : arms) {
+        Rec(typ);
+      }
       return;
+    }
 
     case TypeType::RECORD:
       for (const auto &[l_, c] : t->Record())
@@ -259,7 +263,7 @@ static void UnifyEx(std::string_view what,
 
   auto RecordOrSum = [what, &vmap](
       const char *record_what,
-      // XXX pass member
+      // Member function to extract the field.
       RecordOrSumField Field,
       const Type *t1, const Type *t2) {
       const auto &field1 = std::invoke(Field, t1);
@@ -288,9 +292,40 @@ static void UnifyEx(std::string_view what,
     LOG(FATAL) << "Bug: This is checked above.\n";
     break;
 
-  case TypeType::VAR:
-    LOG(FATAL) << "Unimplemented";
-    break;
+  case TypeType::VAR: {
+    const auto &[v1, ts1] = t1->Var();
+    const auto &[v2, ts2] = t2->Var();
+
+    // When would we have kind > 0?
+    CHECK(ts1.empty() && ts2.empty()) << "Unimplemented";
+
+    // If the variable appears in the map, it must have the
+    // corresponding value.
+    for (const auto &[a1, a2] : vmap) {
+      if (a1 == v1) {
+        CHECK(a2 == v2) << "(" << what << ") Bound type variables "
+          "are not equal. On one side, the type was " << a1 << " and "
+          "we expected to see " << a2 << " on the other, but we got " <<
+          v2 << ".";
+        return;
+      } else {
+        CHECK(a2 != v2) << "(" << what << ") Bound type variables "
+          "are not equal. On one side, the type was " << a2 << " and "
+          "we expected to see " << a1 << " on the other, but we got " <<
+          v1 << ".";
+        // (But keep searching.)
+      }
+    }
+
+    // If we get here, then the type variable must be free on both
+    // sides. Then it has to be exactly equal.
+
+    // XXX actually in this case we could easily support higher kinds?
+    CHECK(v1 == v2) << "(" << what << ") Free type variables "
+      "are not equal. Got " << v1 << " and " << v2 << ".";
+
+    return;
+  }
 
   case TypeType::SUM:
     RecordOrSum("sum", &Type::Sum, t1, t2);
@@ -304,9 +339,43 @@ static void UnifyEx(std::string_view what,
     break;
   }
 
-  case TypeType::MU:
-    LOG(FATAL) << "Unimplemented: Unify mu";
+  case TypeType::MU: {
+    const auto &[idx1, arms1] = t1->Mu();
+    const auto &[idx2, arms2] = t2->Mu();
+    CHECK(idx1 == idx2) << "(" << what << ") Indices in two mu types do "
+      "not match. They may be different types from a mutually-recursive "
+      "bundle or just unrelated.\nIn:\n" <<
+      TypeString(t1) << "\nvs\n" << TypeString(t2);
+
+    CHECK(arms1.size() == arms2.size()) <<
+      "(" << what << ") The lengths of two mu types do not agree; this "
+      "means they must be from different mutually-recursive bundles:"
+      "\nIn:\n" <<
+      TypeString(t1) << "\nvs\n" << TypeString(t2);
+
+    // Order here is important (that's what the index denotes), so we just
+    // do a pairwise comparison of arms.
+
+    VMap vmap_rec = vmap;
+    for (int i = 0; i < (int)arms1.size(); i++) {
+      const auto &[a1, arm1_in] = arms1[i];
+      const auto &[a2, arm2_in] = arms2[i];
+
+      vmap_rec.emplace_back(a1, a2);
+      UnifyEx(what, vmap_rec, arm1_in, arm2_in);
+      vmap_rec.pop_back();
+
+      /*
+      // Rename both type variables to the same thing.
+      const auto &[a, arm1] = elab->pool->AlphaVaryType(a1, arm1_in);
+      const Type *arm2 = elab->pool->SubstType(
+          elab->pool->VarType(a, {}), a2, arm2_in);
+      UnifyEx(what, vmap, arm1, arm2);
+      */
+    }
+
     break;
+  }
 
   case TypeType::RECORD:
     RecordOrSum("record", &Type::Record, t1, t2);

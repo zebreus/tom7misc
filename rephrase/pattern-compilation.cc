@@ -822,10 +822,26 @@ PatternCompilation::SplitAppPattern(
     int x) {
 
   CHECK(x >= 0 && x < matrix.Width());
-  CHECK(matrix.Cell(x, 0)->type == PatType::APP);
+  const Pat *first_pat = matrix.Cell(x, 0);
+  CHECK(first_pat->type == PatType::APP);
+
+  // This is just like int/stringcase except for the following:
+  //  - The (finite) domain comes from the datatype that is being destructed.
+  //  - We need to destruct the case object (unroll) to get a sum.
+  //  - The arms bind a variable for the contents of the sum.
+  //
+  // First, look up the first constructor to get the mu/sum.
+  const std::string &first_ctor = first_pat->str;
+  const VarInfo *vi = G.Find(first_ctor);
+  CHECK(vi != nullptr) << "Unbound constructor " << first_ctor <<
+    " in application pattern: " << PatString(first_pat);
+  CHECK(vi->ctor.has_value()) << "Identifier " << first_ctor << " is not "
+    "a constructor in application pattern: " << PatString(first_pat);
+
+  const auto &[first_idx, mu_type, label] = vi->ctor.value();
+  Unification::Unify("app pattern", matrix.types[x], mu_type);
 
 #if 0
-  Unification::Unify("int pattern", matrix.types[x], elab->pool->IntType());
 
   // The pattern must look like this (here x selecting the second
   // column):

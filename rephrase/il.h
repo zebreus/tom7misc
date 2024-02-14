@@ -743,6 +743,7 @@ struct AstPool {
   const Type *SubstType(const Type *t, const std::string &v,
                         const Type *u);
 
+  // TODO: Move to il-util with its friends?
   // Rename x.t to an alpha-equivalent x'.t' with x' fresh.
   const std::pair<std::string, const Type *>
   AlphaVaryType(const std::string &x, const Type *t);

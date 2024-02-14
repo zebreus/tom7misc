@@ -316,6 +316,8 @@ static void Simple() {
                        "   (1, 2, 3) => 7\n"
                        " | _ => 666\n");
     // TODO: Optimize this so that we know it's just 7?
+    // Need some kind of known-value optimization, or inlining
+    // tuple values into projections.
     printf("%s", ExpString(e).c_str());
   }
 
@@ -325,6 +327,17 @@ static void Simple() {
                        " | \"hello\" => 7\n"
                        " | _ => 9\n");
     CHECK(e->Integer() == 7);
+  }
+
+  {
+    const Exp *e = Run("let\n"
+                       "  datatype sss = AAA of int | BBB of string\n"
+                       "in\n"
+                       "  case AAA 7 of\n"
+                       "    AAA x => x\n"
+                       "  | BBB s => 666\n"
+                       "end\n");
+    printf("%s", ExpString(e).c_str());
   }
 
 }
