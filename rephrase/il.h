@@ -42,6 +42,9 @@ enum class ExpType {
   INTCASE,
   // ... or strings.
   STRINGCASE,
+  // Match against a sum. Binds the same variable
+  // for all arms.
+  SUMCASE,
 };
 
 struct Exp;
@@ -262,6 +265,15 @@ struct Exp {
     return std::tie(a, str_children, b);
   }
 
+  std::tuple<
+    const Exp *,
+    // label, variable, arm
+    const std::vector<std::tuple<std::string, std::string, const Exp *>> &,
+    const Exp *> SumCase() const {
+    CHECK(type == ExpType::STRINGCASE);
+    return std::tie(a, sumcase_arms, b);
+  }
+
 private:
   // PERF: Experiment with std::variant, at least.
   friend struct AstPool;
@@ -282,6 +294,8 @@ private:
   std::vector<std::pair<std::string, const Exp *>> str_children;
   // For intcase. The constants must be distinct.
   std::vector<std::pair<BigInt, const Exp *>> int_children;
+  // For sumcase. Labels must be distinct.
+  std::vector<std::tuple<std::string, std::string, const Exp *>> sumcase_arms;
 };
 
 // The AST pool has constructors for all the IL forms. Each takes
@@ -704,6 +718,26 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *SumCase(
+      const Exp *obj,
+      const std::vector<
+          std::tuple<std::string, std::string, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::SUMCASE &&
+        guess->a == obj &&
+        guess->b == def &&
+        guess->sumcase_arms == arms) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::SUMCASE);
+    ret->a = obj;
+    ret->sumcase_arms = arms;
+    ret->b = def;
+    return ret;
+  }
 
   // SubstType(T, v, T') is [T/v]T'
   const Type *SubstType(const Type *t, const std::string &v,

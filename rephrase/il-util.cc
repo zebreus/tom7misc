@@ -23,15 +23,18 @@ struct CountVarsPass : public Pass<FunctionalSet> {
   // set, so we can detect that it's not free. Only a few constructs
   // bind expression variables.
 
+  // Since we know that this pass does nothing, we can just always return
+  // the guess instead of calling constructors.
+
   const Exp *DoLet(const std::vector<std::string> &tyvars,
                    const std::string &x,
                    const Exp *rhs,
                    const Exp *body,
                    const Exp *guess,
                    FunctionalSet bound) override {
-    return pool->Let(tyvars, x, DoExp(rhs, bound),
-                     DoExp(body, bound.Insert(x, {})),
-                     guess);
+    DoExp(rhs, bound);
+    DoExp(body, bound.Insert(x, {}));
+    return guess;
   }
 
   const Exp *DoFn(const std::string &self,
@@ -40,10 +43,8 @@ struct CountVarsPass : public Pass<FunctionalSet> {
                   const Exp *guess,
                   FunctionalSet bound) override {
     FunctionalSet bbound = self.empty() ? bound : bound.Insert(self, {});
-    return pool->Fn(self, x,
-                    DoExp(body,
-                          bbound.Insert(x, {})),
-                    guess);
+    DoExp(body, bbound.Insert(x, {}));
+    return guess;
   }
 
   const Exp *DoVar(const std::vector<const Type *> &ts,
@@ -58,6 +59,22 @@ struct CountVarsPass : public Pass<FunctionalSet> {
     // don't bother recursing on those.
     return guess;
   }
+
+  const Exp *DoSumCase(
+      const Exp *obj,
+      const std::vector<
+          std::tuple<std::string, std::string, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess,
+      FunctionalSet bound) override {
+    DoExp(obj, bound);
+    for (const auto &[s, x, arm] : arms) {
+      DoExp(arm, bound.Insert(x, {}));
+    }
+    DoExp(def, bound);
+    return guess;
+  }
+
 
   std::unordered_map<std::string, int> counts;
 };
@@ -163,6 +180,30 @@ struct SubstPass : public Pass<> {
       return guess;
     }
   }
+
+  const Exp *DoSumCase(
+      const Exp *obj,
+      const std::vector<
+          std::tuple<std::string, std::string, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess) override {
+    std::vector<
+      std::tuple<std::string, std::string, const Exp *>> narms;
+    narms.reserve(arms.size());
+    for (const auto &[s, x, arm] : arms) {
+      // Arms bind variables, so we may need to rename to avoid capture.
+      if (x == target_var || freevars.contains(x)) {
+        // These variables cannot be polymorphic, so 0 tyvars.
+        const auto &[nx, narm] = ILUtil::AlphaVaryExp(pool, 0, x, arm);
+        narms.emplace_back(s, nx, DoExp(narm));
+      } else {
+        narms.emplace_back(s, x, DoExp(arm));
+      }
+    }
+    return pool->SumCase(DoExp(obj), std::move(narms),
+                         DoExp(def), guess);
+  }
+
 
   // The type variables bound in e1.
   const std::vector<std::string> &tyvars;

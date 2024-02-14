@@ -313,10 +313,26 @@ std::string ExpString(const Exp *e) {
     const auto &[obj, arms, def] = e->StringCase();
     std::vector<std::string> sarms;
     for (const auto &[s, arm] : arms)
-      sarms.push_back(StringPrintf("%s => %s",
+      sarms.push_back(StringPrintf("\"%s\" => %s",
                                    EscapeString(s).c_str(),
                                    ExpString(arm).c_str()));
     return StringPrintf("stringcase %s of\n"
+                        "   %s\n"
+                        " | _ => %s",
+                        ExpString(obj).c_str(),
+                        Util::Join(sarms, "\n | ").c_str(),
+                        ExpString(def).c_str());
+  }
+
+  case ExpType::SUMCASE: {
+    const auto &[obj, arms, def] = e->SumCase();
+    std::vector<std::string> sarms;
+    for (const auto &[s, x, arm] : arms)
+      sarms.push_back(StringPrintf("%s (%s) => %s",
+                                   s.c_str(),
+                                   x.c_str(),
+                                   ExpString(arm).c_str()));
+    return StringPrintf("sumcase %s of\n"
                         "   %s\n"
                         " | _ => %s",
                         ExpString(obj).c_str(),

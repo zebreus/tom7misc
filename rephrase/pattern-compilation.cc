@@ -417,6 +417,9 @@ void PatternCompilation::CheckAffine(const Pat *orig_pat) const {
         break;
       case PatType::STRING:
         break;
+      case PatType::APP:
+        Rec(pat->a);
+        break;
       default:
         LOG(FATAL) << "Pattern type not handled in CheckAffine.";
       }
@@ -543,6 +546,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
       return SplitIntPattern(G, matrix, x);
     case PatType::STRING:
       return SplitStringPattern(G, matrix, x);
+    case PatType::APP:
+      return SplitAppPattern(G, matrix, x);
     default:
       LOG(FATAL) << "Unhandled pattern type when looking for "
         "a split: " << PatTypeString(matrix.Cell(x, 0)->type);
@@ -808,6 +813,145 @@ PatternCompilation::SplitStringPattern(
   return std::make_pair(ret, ftype);
 }
 
+// Split the column x, which must begin with an app pattern. The
+// column must be cleaned, meaning it only has APP and WILD.
+std::pair<const Exp *, const Type *>
+PatternCompilation::SplitAppPattern(
+    const Context &G,
+    Matrix matrix,
+    int x) {
+
+  CHECK(x >= 0 && x < matrix.Width());
+  CHECK(matrix.Cell(x, 0)->type == PatType::APP);
+
+#if 0
+  Unification::Unify("int pattern", matrix.types[x], elab->pool->IntType());
+
+  // The pattern must look like this (here x selecting the second
+  // column):
+  //
+  // case (a,  b, c) of
+  //       p1  1  r1  => e1
+  //       p2  5  r2  => e2
+  //       p3  1  r3  => e3
+  //          ...
+  //       pn  _  rn  => en
+  //       pn1 7  rn1 => en1
+  //          ...
+  //
+  // where some non-empty prefix of the column is integers.
+  // We generate:
+  //
+  // intcase b of
+  //     1 => (case (a,  c) of
+  //                 p1  r1 => e1     ;; all the cases for 1
+  //                 p3  r3 => e3
+  //                 _      => (case (a,  b, c) of
+  //                                  pn  _  rn  => en
+  //                                  pn1 7  rn1 => en1
+  //                                  ...)
+  //     5 => (case (a, c) of
+  //                 p2  r2 => e2     ;; all the cases for 5
+  //                 _      => (case (a,  b, c) of
+  //                                  pn  _  rn  => en
+  //                                  pn1 7  rn1 => en1
+  //                                  ...)
+  //     _ => (case (a,  b, c) of
+  //                 pn  _  rn  => en
+  //                 pn1 7  rn1 => en1
+  //                 ...)
+  // Note how the default is the same in each case (it means: the object
+  // variable doesn't match anything in the prefix), so we hoist
+  // this out.
+
+  int constant_height = 0;
+
+  // The collated matching cases (up until any wildcard), in the original
+  // order, with the matrix that implements the rest of the pattern.
+  std::vector<std::pair<BigInt, Matrix>> int_cases;
+  // Since we get all the matching cases when we see the first one,
+  // keep track of what we've already done.
+  std::set<BigInt> done;
+  for (int y = 0; y < matrix.Height(); y++) {
+    const Pat *cell = matrix.Cell(x, y);
+    if (cell->type == PatType::INT) {
+      if (!done.contains(cell->integer)) {
+        done.insert(cell->integer);
+        int_cases.emplace_back(
+            cell->integer,
+            matrix.Quotient(x,
+                            [&](const Pat *p) {
+                              return p->type == PatType::INT &&
+                                p->integer == cell->integer;
+                            }));
+      }
+    } else {
+      CHECK(cell->type == PatType::WILD) << "Inconsistent pattern types";
+      break;
+    }
+    constant_height++;
+  }
+
+  CHECK(constant_height > 0);
+
+  matrix.DeleteFirstRows(constant_height);
+
+  // The failure continuation, if none of the intcases match.
+  const auto &[fexp, ftype] = Comp(G, matrix);
+
+  // Bind hoisted failure continuation.
+  const Exp *fn = elab->pool->Fn("",
+                                 elab->pool->NewVar("unused"),
+                                 fexp);
+  const Type *fn_type = elab->pool->Arrow(elab->pool->RecordType({}),
+                                          ftype);
+  const std::string el_cont_var = elab->pool->NewVar("hoist");
+  const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
+  Context GG = G.Insert(el_cont_var,
+                        VarInfo{
+                          .tyvars = {},
+                          .type = fn_type,
+                          .var = il_cont_var});
+
+  // Failure continuation calls the hoisted expression.
+  const el::Exp *failure_cont =
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var),
+                       elab->el_pool->Record({}));
+
+  const auto &[obj_exp, obj_type] = matrix.GetObj(elab->pool, GG, x);
+  Unification::Unify("int pattern", obj_type, elab->pool->IntType());
+
+  std::vector<std::pair<BigInt, const Exp *>> arms;
+  arms.reserve(int_cases.size());
+
+  // Update the defaults for the arms: It's the same failure
+  // in each case. We could add annotations that mark values as
+  // known, although it's also evident from the intcase itself.
+  for (auto &[bi, mtx] : int_cases) {
+    mtx.def = failure_cont;
+  }
+
+  for (const auto &[bi, mtx] : int_cases) {
+    const auto &[arm_exp, arm_type] = Comp(GG, mtx);
+    Unification::Unify("int pattern result", arm_type, ftype);
+    arms.emplace_back(bi, arm_exp);
+  }
+  const Exp *intcase =
+    elab->pool->IntCase(obj_exp,
+                        std::move(arms),
+                        elab->pool->App(
+                            elab->pool->Var({}, il_cont_var),
+                            elab->pool->Record({})));
+
+  const Exp *ret =
+    elab->pool->Let({}, il_cont_var, fn, intcase);
+
+  return std::make_pair(ret, ftype);
+#endif
+  LOG(FATAL) << "unimplemented";
+  return std::make_pair(nullptr, nullptr);
+}
+
 
 // Split the column x, which must be a record pattern. The column
 // must be cleaned, meaning it is just WILD and RECORD patterns.
@@ -1033,6 +1177,10 @@ PatternCompilation::CompileIrrefutableRec(
         case el::PatType::STRING:
           LOG(FATAL) << "Pattern must be irrefutable, but got string: " <<
             PatString(pat);
+          return;
+        case el::PatType::APP:
+          LOG(FATAL) << "Pattern must be irrefutable, but got constructor "
+            "application: " << PatString(pat);
           return;
         case el::PatType::TUPLE: {
           // Transform into the equivalent record.

@@ -296,7 +296,6 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto Pattern =
     Fix<Token, const Pat *>([&](const auto &Self) {
         auto AtomicPattern =
-          (Id >[&](const std::string &s) { return pool->VarPat(s); }) ||
           (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
           (BigInteger >[&](const BigInt &i) { return pool->IntPat(i); }) ||
           (StrLit >[&](const std::string &s) {
@@ -305,8 +304,42 @@ const Exp *Parsing::Parse(AstPool *pool,
           RecordPat(Self) ||
           TuplePat(Self);
 
+        // Allows "x" and "SOME SOME SOME p". Since the head pattern p
+        // may itself be an identifier (var pattern), there are
+        // several cases to consider.
+        auto AppPattern =
+          // Must have at least one or the other.
+          ((+Id && Opt(AtomicPattern)) ||
+           (*Id && (AtomicPattern >[&](const Pat *p) {
+               return std::make_optional(p);
+             })))
+          >[&](const auto &pair) -> const Pat * {
+            const auto &[ids, head] = pair;
+            CHECK(!ids.empty() || head.has_value());
+            if (ids.size() == 1 && !head.has_value()) {
+              // This is a simple variable pattern.
+              return pool->VarPat(ids[0]);
+            }
+
+            std::vector<std::string> spine = ids;
+            const Pat *pat = nullptr;
+            if (head.has_value()) {
+              pat = head.value();
+            } else {
+              pat = pool->VarPat(spine.back());
+              spine.pop_back();
+            }
+
+            for (int i = (int)spine.size() - 1;
+                 i >= 0;
+                 i--) {
+              pat = pool->AppPat(spine[i], pat);
+            }
+            return pat;
+          };
+
         auto AsPattern =
-          (AtomicPattern && Opt(IsToken<AS>() >> Id))
+          (AppPattern && Opt(IsToken<AS>() >> Id))
           >[&](const auto &pair) -> const Pat * {
               const auto &[pat, v] = pair;
               if (v.has_value()) {

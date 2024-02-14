@@ -578,6 +578,35 @@ static void TestParsePat() {
     CHECK(pat->children[1]->type == PatType::INT);
     CHECK(pat->children[1]->integer == 7);
   }
+
+  {
+    const Pat *pat = ParsePat("SOME x");
+    CHECK(pat->type == PatType::APP) << PatTypeString(pat->type);
+    CHECK(pat->a->type == PatType::VAR);
+
+    CHECK(pat->str == "SOME");
+    CHECK(pat->a->str == "x");
+  }
+
+  {
+    const Pat *pat = ParsePat("SOME 7");
+    CHECK(pat->type == PatType::APP);
+    CHECK(pat->a->type == PatType::INT);
+
+    CHECK(pat->str == "SOME");
+    CHECK(pat->a->integer == 7);
+  }
+
+  {
+    const Pat *pat = ParsePat("HYPER SOME x");
+    CHECK(pat->type == PatType::APP);
+    CHECK(pat->a->type == PatType::APP);
+    CHECK(pat->a->a->type == PatType::VAR);
+    CHECK(pat->str == "HYPER");
+    CHECK(pat->a->str == "SOME");
+    CHECK(pat->a->a->str == "x");
+  }
+
 }
 
 static void TestParseDec() {

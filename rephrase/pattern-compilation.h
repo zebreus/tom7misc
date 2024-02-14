@@ -93,6 +93,12 @@ private:
       Matrix matrix,
       int x);
 
+  std::pair<const Exp *, const Type *>
+  SplitAppPattern(
+      const Context &G,
+      Matrix matrix,
+      int x);
+
   int verbose = 0;
   Elaboration *elab = nullptr;
 };

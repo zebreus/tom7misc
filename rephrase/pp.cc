@@ -9,5 +9,5 @@
 std::string EscapeString(const std::string &s) {
   // TODO: Escape other characters...
   return StringPrintf(
-      "\"%s\"", Util::Replace(s, "\"", "\\\"").c_str());
+      "%s", Util::Replace(s, "\"", "\\\"").c_str());
 }

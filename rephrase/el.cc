@@ -88,6 +88,7 @@ const char *PatTypeString(PatType pt) {
   case PatType::AS: return "AS";
   case PatType::INT: return "INT";
   case PatType::STRING: return "STRING";
+  case PatType::APP: return "APP";
   }
 }
 
@@ -133,6 +134,12 @@ std::string PatString(const Pat *p) {
     return StringPrintf("%s as %s",
                         PatString(p->a).c_str(),
                         p->str.c_str());
+  }
+
+  case PatType::APP: {
+    return StringPrintf("%s %s",
+                        p->str.c_str(),
+                        PatString(p->a).c_str());
   }
 
   default:
@@ -190,7 +197,7 @@ std::string ExpString(const Exp *e) {
   if (e == nullptr) return "NULL!?";
   switch (e->type) {
   case ExpType::STRING:
-    return EscapeString(e->str);
+    return StringPrintf("\"%s\"", EscapeString(e->str).c_str());
 
   case ExpType::VAR:
     return e->str;

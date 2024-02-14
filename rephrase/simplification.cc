@@ -221,9 +221,6 @@ struct PeepholePass : public il::Pass<> {
     const bool small_value = IsSmallValue(rhs);
     const bool effectless = small_value || IsEffectless(rhs);
 
-    // TODO: support inlining of polymorphic variables.
-    // I think we just want to extend substitution with support for
-    // this.
     if (count == 1 && effectless) {
       // Inline any effectless expression that occurs just once,
       // regardless of its size.
@@ -231,6 +228,7 @@ struct PeepholePass : public il::Pass<> {
       return ILUtil::SubstPolyExp(pool, tyvars, DoExp(rhs), x, DoExp(body));
     }
 
+    // TODO: support inlining of polymorphic values.
     if (small_value && tyvars.empty()) {
       Simplified("inlined small value");
       return ILUtil::SubstExp(pool, DoExp(rhs), x, DoExp(body));

@@ -53,7 +53,8 @@ enum class PatType {
   ANN,
   AS,
   INT,
-  STRING
+  STRING,
+  APP,
 };
 
 enum class TypeType {
@@ -325,6 +326,13 @@ struct AstPool {
 
 
   // Patterns
+
+  const Pat *AppPat(std::string s, const Pat *p) {
+    Pat *ret = NewPat(PatType::APP);
+    ret->str = std::move(s);
+    ret->a = p;
+    return ret;
+  }
 
   const Pat *StringPat(std::string s) {
     Pat *ret = NewPat(PatType::STRING);
