@@ -13,6 +13,8 @@
 #include "parser-combinators.h"
 #include "util.h"
 
+static constexpr bool VERBOSE = true;
+
 namespace el {
 
 static std::string UnescapeStrLit(const std::string &s) {
@@ -130,12 +132,19 @@ const Exp *Parsing::Parse(AstPool *pool,
       }
     };
 
-  // XXX Probably need to add some keywords like * and /
-  const auto Id = IsToken<ID>() >[&](Token t) { return TokenStr(t); };
-  // Labels can also be numeric.
-  const auto Label = Id || (IsToken<DIGITS>() >[&](Token t) {
+  // Use IdAny for expressions, which adds * and others.
+  const auto IdType = IsToken<ID>() >[&](Token t) { return TokenStr(t); };
+  // Labels can also be numeric. Since they also appear in types (or
+  // nearby like in the #1/5 construct), we only allow type
+  // identifiers.
+  const auto Label = IdType || (IsToken<DIGITS>() >[&](Token t) {
       return TokenStr(t);
     });
+
+  // Strings that can be identifiers outside of the type language.
+  auto Id = IdType ||
+    (IsToken<TIMES>() >[&](auto&&) -> std::string { return "*"; }) ||
+    (IsToken<SLASH>() >[&](auto&&) -> std::string { return "/"; });
 
   const auto StrLit = IsToken<STR_LIT>() >[&](Token t) {
       // Remove leading and trailing double quotes. Process escapes.
@@ -195,7 +204,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         // An atomic type that doesn't start with (.
         auto UnparenthesizedAtomicType =
           RecordType ||
-          Id >[&](const std::string &s) { return pool->VarType(s, {}); };
+          IdType >[&](const std::string &s) { return pool->VarType(s, {}); };
 
         auto AtomicType =
           // Use CommaType to parse parenthesized expressions.
@@ -219,7 +228,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         // or int
         // but not (int, string)
         auto AppType =
-          (AppArg && *Id) /=[&](const auto &pair) ->
+          (AppArg && *IdType) /=[&](const auto &pair) ->
           std::optional<const Type *>{
               const auto &[varg, vapps] = pair;
               if (vapps.empty()) {
@@ -264,6 +273,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         return +FixityElement /= ResolveTypeFixity;
       });
 
+
   // Patterns.
 
   const auto TuplePat = [&](const auto &Pattern) {
@@ -307,6 +317,8 @@ const Exp *Parsing::Parse(AstPool *pool,
         // Allows "x" and "SOME SOME SOME p". Since the head pattern p
         // may itself be an identifier (var pattern), there are
         // several cases to consider.
+        //
+        // Fixity is not allowed here, but we could add it...
         auto AppPattern =
           // Must have at least one or the other.
           ((+Id && Opt(AtomicPattern)) ||
@@ -520,12 +532,44 @@ const Exp *Parsing::Parse(AstPool *pool,
           };
     };
 
+  const auto OneFunDec = [&](const auto &clauses) -> FunDec {
+      CHECK(!clauses.empty()) << "Bug: shouldn't even parse "
+        "empty fun clauses";
+      const std::string &fname = std::get<0>(std::get<0>(clauses[0]));
+      printf("OneFunDec: %s\n", fname.c_str());
+      FunDec ret;
+      ret.name = fname;
+      for (const auto &ppp : clauses) {
+        const auto &[pp, e] = ppp;
+        const auto &[id, pat] = pp;
+        CHECK(id == fname) << "Inconsistent name for function in "
+          "function clauses: Saw " << fname << " and then " << id;
+        ret.clauses.emplace_back(pat, e);
+      }
+      return ret;
+  };
+
+  // fun f p1 = e1
+  //   | f p2 = e2
+  //   | ...
+  // and g q1 = ee1
+  //   | g q2 = ee2
+  //   | ...
   const auto FunDecl = [&](const auto &Expr) {
-      return ((IsToken<FUN>() >> (Id && Pattern)) &&
-              (IsToken<EQUALS>() >> Expr))
+      return
+        (((IsToken<FUN>() >>
+           Separate(Id && Pattern && (IsToken<EQUALS>() >> Expr),
+                    IsToken<BAR>())) >OneFunDec) &&
+         *((IsToken<AND>() >>
+            Separate(Id && Pattern && (IsToken<EQUALS>() >> Expr),
+                     IsToken<BAR>())) >OneFunDec))
         >[&](const auto &p) {
-            const auto &[f, pat] = p.first;
-            return pool->FunDec(f, pat, p.second);
+            const FunDec &f = p.first;
+            if (VERBOSE) { printf("Fundec %s\n", f.name.c_str()); }
+            const std::vector<FunDec> &fs = p.second;
+            std::vector<FunDec> funs = {f};
+            for (const FunDec &d : fs) funs.push_back(d);
+            return pool->FunDec(std::move(funs));
           };
     };
 
@@ -540,10 +584,13 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   const auto DatatypeDecl =
     (IsToken<DATATYPE>() >>
-     (Opt(IsToken<LPAREN>() >> Separate(Id, IsToken<COMMA>()) <<
+     // Type variables appear in the type language, so don't allow
+     // non-type identifiers.
+     (Opt(IsToken<LPAREN>() >> Separate(IdType, IsToken<COMMA>()) <<
           IsToken<RPAREN>()) &&
       Separate(
-          Id && (IsToken<EQUALS>() >> Separate(DatatypeArm, IsToken<BAR>())),
+          IdType && (IsToken<EQUALS>() >>
+                     Separate(DatatypeArm, IsToken<BAR>())),
           IsToken<AND>())))
     >[&](const auto &p) {
         const auto &[otyvars, dts] = p;

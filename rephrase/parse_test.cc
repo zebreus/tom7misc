@@ -12,7 +12,7 @@
 
 namespace el {
 
-static constexpr bool VERBOSE = false;
+static constexpr bool VERBOSE = true;
 
 static void TestParse() {
   AstPool pool;
@@ -228,47 +228,64 @@ static void TestParse() {
   }
 
   {
-    const Exp *e = Parse("let fun f(x) = x in 7 end");
+    const Exp *e = Parse("let fun f(x) = y in 7 end");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LET);
     CHECK(e->decs.size() == 1);
-    CHECK(e->decs[0]->type == DecType::FUN);
-    CHECK(e->decs[0]->str == "f");
-    CHECK(e->decs[0]->pat->type == PatType::VAR);
-    CHECK(e->decs[0]->pat->str == "x");
-    CHECK(e->a != nullptr);
-    CHECK(e->a->type == ExpType::INTEGER);
-    CHECK(e->a->integer == 7);
+    const Dec *d = e->decs[0];
+    CHECK(d->type == DecType::FUN);
+    CHECK(d->funs.size() == 1);
+    const FunDec &fd = d->funs[0];
+    CHECK(fd.name == "f");
+    CHECK(fd.clauses.size() == 1);
+    CHECK(fd.clauses[0].first->type == PatType::VAR);
+    CHECK(fd.clauses[0].first->str == "x");
+    CHECK(fd.clauses[0].second != nullptr);
+    CHECK(fd.clauses[0].second->type == ExpType::VAR);
+    CHECK(fd.clauses[0].second->str == "y");
   }
 
   {
-    const Exp *e = Parse("let fun f _ = x in 7 end");
+    const Exp *e = Parse("let fun f 1 = x | f _ = 7 in 8 end");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LET);
     CHECK(e->decs.size() == 1);
-    CHECK(e->decs[0]->type == DecType::FUN);
-    CHECK(e->decs[0]->str == "f");
-    CHECK(e->decs[0]->pat->type == PatType::WILD);
-    CHECK(e->a != nullptr);
+    const Dec *d = e->decs[0];
+    CHECK(d->type == DecType::FUN);
+    CHECK(d->funs.size() == 1);
+    const FunDec &fd = d->funs[0];
+    CHECK(fd.name == "f");
+    CHECK(fd.clauses.size() == 2);
+    CHECK(fd.clauses[0].first->type == PatType::INT);
+    CHECK(fd.clauses[0].second->type == ExpType::VAR);
+    CHECK(fd.clauses[1].first->type == PatType::WILD);
+    CHECK(fd.clauses[1].second->type == ExpType::INTEGER);
     CHECK(e->a->type == ExpType::INTEGER);
-    CHECK(e->a->integer == 7);
+    CHECK(e->a->integer == 8);
   }
 
   {
-    const Exp *e = Parse("let fun f (u : {}) = x in 7 end");
+    const Exp *e = Parse("let fun f (u : {}) = x\n"
+                         "      | f _ = 0\n"
+                         "    and g 1 = 2\n"
+                         "      | g x = 3\n"
+                         "in 7 end");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::LET);
     CHECK(e->decs.size() == 1);
-    CHECK(e->decs[0]->type == DecType::FUN);
-    CHECK(e->decs[0]->str == "f");
-    const Pat *pat = e->decs[0]->pat;
-    CHECK(pat->type == PatType::ANN);
-    CHECK(pat->a->type == PatType::VAR);
-    CHECK(pat->ann->type == TypeType::RECORD);
-    CHECK(pat->ann->str_children.empty());
-    CHECK(e->a != nullptr);
-    CHECK(e->a->type == ExpType::INTEGER);
-    CHECK(e->a->integer == 7);
+    const Dec *d = e->decs[0];
+    CHECK(d->type == DecType::FUN);
+    CHECK(d->funs.size() == 2);
+    const FunDec &fd0 = d->funs[0];
+    CHECK(fd0.name == "f");
+    CHECK(fd0.clauses.size() == 2);
+    CHECK(fd0.clauses[0].first->type == PatType::ANN);
+    CHECK(fd0.clauses[1].first->type == PatType::WILD);
+    const FunDec &fd1 = d->funs[1];
+    CHECK(fd1.name == "g");
+    CHECK(fd1.clauses.size() == 2);
+    CHECK(fd1.clauses[0].first->type == PatType::INT);
+    CHECK(fd1.clauses[1].first->type == PatType::VAR);
   }
 
   {

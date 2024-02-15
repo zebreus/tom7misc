@@ -79,57 +79,6 @@ static bool IsEffectless(const Exp *e) {
   }
 }
 
-// This is almost the same as effectless except that some primops can
-// be dropped (e.g. GET) despite not being formally total. We have to
-// do the whole thing instead of appealing to IsEffectless for other
-// cases, since we want something like (GET, GET) to be considered
-// discardable.
-//
-// TODO: This is probably inferior to PushSeqs, which lets us drop
-// parts of the expression that are not effectful. We could also implement
-// this in terms of that function, if we wanted.
-static bool IsDiscardable(const Exp *e) {
-  switch (e->type) {
-  case ExpType::FLOAT: return true;
-  case ExpType::INTEGER: return true;
-  case ExpType::STRING: return true;
-  case ExpType::VAR: return true;
-  case ExpType::FN: return true;
-
-  case ExpType::RECORD: {
-    for (const auto &[lab, child] : e->Record()) {
-      if (!IsDiscardable(child)) return false;
-    }
-    return true;
-  }
-
-  case ExpType::PROJECT:
-    return IsDiscardable(std::get<1>(e->Project()));
-  case ExpType::INJECT:
-    return IsDiscardable(std::get<1>(e->Inject()));
-
-  case ExpType::ROLL:
-    return IsDiscardable(std::get<1>(e->Roll()));
-
-  case ExpType::PRIMOP: {
-    const auto &[po, ts, es] = e->Primop();
-    if (IsPrimopDiscardable(po)) {
-      for (const Exp *child : es) {
-        if (!IsDiscardable(child)) {
-          return false;
-        }
-      }
-      return true;
-    }
-
-    return false;
-  }
-
-  default:
-    return false;
-  }
-}
-
 static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
   switch (e->type) {
   case ExpType::FAIL:
@@ -176,12 +125,33 @@ static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
   }
 
     // TODO: Several more here.
-
+  case ExpType::INTCASE: {
+    // const auto &[obj, arms, def] = e->IntCase();
+    // Actually, can we eve throw this away? We'd have to
+    // know whether an arm is going to match. If all of them
+    // are discardable (and the default), then ok.
+    //
+  }
 
   default:
     vflat->push_back(e);
     break;
   }
+}
+
+// This is almost the same as effectless except that some primops can
+// be dropped (e.g. GET) despite not being formally total. We have to
+// do the whole thing instead of appealing to IsEffectless for other
+// cases, since we want something like (GET, GET) to be considered
+// discardable.
+//
+// TODO: This is probably inferior to PushSeqs, which lets us drop
+// parts of the expression that are not effectful. We defer to that
+// function now anyway.
+static bool IsDiscardable(const Exp *e) {
+  std::vector<const Exp *> tmp;
+  PushSeqs(e, &tmp);
+  return tmp.empty();
 }
 
 struct PeepholePass : public il::Pass<> {

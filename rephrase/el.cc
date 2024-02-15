@@ -154,11 +154,26 @@ std::string DecString(const Dec *d) {
     return StringPrintf("val %s = %s",
                         PatString(d->pat).c_str(),
                         ExpString(d->exp).c_str());
-  case DecType::FUN:
-    return StringPrintf("fun %s %s = %s",
-                        d->str.c_str(),
-                        PatString(d->pat).c_str(),
-                        ExpString(d->exp).c_str());
+
+  case DecType::FUN: {
+    std::string ret;
+    for (int i = 0; i < (int)d->funs.size(); i++) {
+      const FunDec &fd = d->funs[i];
+      StringAppendF(&ret, "%s ", i == 0 ? "fun" : "and");
+      bool first = true;
+      for (const auto &[cpat, cexp] : fd.clauses) {
+        if (!first) {
+          StringAppendF(&ret, " | ");
+        }
+        StringAppendF(&ret, "%s %s = %s\n",
+                      fd.name.c_str(),
+                      PatString(cpat).c_str(),
+                      ExpString(cexp).c_str());
+        first = false;
+      }
+    }
+    return ret;
+  }
 
   case DecType::DATATYPE: {
     std::string tyvars;

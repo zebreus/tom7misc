@@ -126,6 +126,11 @@ struct DatatypeDec {
   std::vector<std::pair<std::string, const Type *>> arms;
 };
 
+struct FunDec {
+  std::string name;
+  std::vector<std::pair<const Pat *, const Exp *>> clauses;
+};
+
 struct Dec {
   DecType type;
   std::string str;
@@ -135,6 +140,7 @@ struct Dec {
   std::vector<std::string> tyvars;
   // All arms in the bundle must use the same tyvars.
   std::vector<DatatypeDec> datatypes;
+  std::vector<FunDec> funs;
   Dec(DecType t) : type(t) {}
 };
 
@@ -306,12 +312,9 @@ struct AstPool {
     return ret;
   }
 
-  const Dec *FunDec(const std::string &name,
-                    const Pat *args, const Exp *body) {
+  const Dec *FunDec(std::vector<FunDec> funs) {
     Dec *ret = NewDec(DecType::FUN);
-    ret->str = name;
-    ret->pat = args;
-    ret->exp = body;
+    ret->funs = std::move(funs);
     return ret;
   }
 

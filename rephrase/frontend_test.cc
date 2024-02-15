@@ -356,8 +356,7 @@ static void Simple() {
                        "  val fact = fn as fact x =>\n"
                        "     (case x of\n"
                        "       0 => 1\n"
-                       // XXX should be *, but it's not implemented
-                       "     | n => n + fact (n - 1))\n"
+                       "     | n => n * fact (n - 1))\n"
                        "  do (6, fact 7)\n"
                        "in\n"
                        "  7\n"
@@ -368,6 +367,34 @@ static void Simple() {
     const auto &[es, body] = e->Seq();
     CHECK(es.size() == 1);
     CHECK(es[0]->type == ExpType::APP);
+    CHECK(body->Integer() == 7);
+  }
+
+  {
+    const Exp *e = Run("let\n"
+                       " val rec = fn as rec x => "
+                       "   case x of\n"
+                       "     0 => 0\n"
+                       "   | n => rec (n - 1)\n"
+                       " do case rec 9 of\n"
+                       "      0 => 1 div 0\n"
+                       "    | 1 => 666\n"
+                       "    | _ => 444 + 111\n"
+                       "in\n"
+                       " 7\n"
+                       "end");
+    // Inline the function, but we have to keep the intcase
+    // because we would enter the 1 div 0 arm, which has an effect.
+    CHECK(e->type == ExpType::SEQ);
+    const auto &[es, body] = e->Seq();
+    CHECK(es.size() == 1);
+    // TODO: This doesn't work yet because we need to simplify something
+    // like
+    // let x = ..effectful expression..
+    // in intcase x of ...
+    // end
+    // Which is a bit tricky; need to understand what effects intervene.
+    // CHECK(es[0]->type == ExpType::INTCASE) << ExpString(es[0]);
     CHECK(body->Integer() == 7);
   }
 
