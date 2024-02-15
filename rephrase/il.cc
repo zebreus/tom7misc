@@ -214,6 +214,10 @@ std::string ExpString(const Exp *e) {
                         ExpString(child).c_str());
   }
 
+  case ExpType::UNROLL:
+    return StringPrintf("unroll(%s)",
+                        ExpString(e->Unroll()).c_str());
+
   case ExpType::JOIN: {
     const auto &children = e->Join();
     std::string ret = "[";
@@ -279,8 +283,8 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::FAIL: {
-    const std::string &msg = e->Fail();
-    return StringPrintf("fail \"%s\"", msg.c_str());
+    const Exp *msg = e->Fail();
+    return StringPrintf("fail %s", ExpString(msg).c_str());
   }
 
   case ExpType::SEQ: {

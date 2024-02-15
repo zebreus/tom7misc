@@ -31,6 +31,8 @@ enum class ExpType {
   INJECT,
   // Construct a recursive type (mu bundle).
   ROLL,
+  // ... and the reverse.
+  UNROLL,
   // Apply a primop to the types and children.
   PRIMOP,
   // Abort with a string message. Should be
@@ -242,9 +244,14 @@ struct Exp {
     return std::tie(t, a);
   }
 
-  const std::string &Fail() const {
+  const Exp *Unroll() const {
+    CHECK(type == ExpType::UNROLL);
+    return a;
+  }
+
+  const Exp *Fail() const {
     CHECK(type == ExpType::FAIL);
-    return str;
+    return a;
   }
 
   std::tuple<const std::vector<const Exp *> &, const Exp *> Seq() const {
@@ -270,7 +277,7 @@ struct Exp {
     // label, variable, arm
     const std::vector<std::tuple<std::string, std::string, const Exp *>> &,
     const Exp *> SumCase() const {
-    CHECK(type == ExpType::STRINGCASE);
+    CHECK(type == ExpType::SUMCASE);
     return std::tie(a, sumcase_arms, b);
   }
 
@@ -544,6 +551,18 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *Unroll(const Exp *e, const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::UNROLL &&
+        guess->a == e) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::UNROLL);
+    ret->a = e;
+    return ret;
+  }
+
   const Exp *Join(const std::vector<const Exp *> &v,
                   const Exp *guess = nullptr) {
     if (guess != nullptr &&
@@ -650,15 +669,15 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Fail(const std::string &msg, const Exp *guess = nullptr) {
+  const Exp *Fail(const Exp *msg, const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::FAIL &&
-        guess->str == msg) {
+        guess->a == msg) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::FAIL);
-    ret->str = msg;
+    ret->a = msg;
     return ret;
   }
 
@@ -721,6 +740,7 @@ struct AstPool {
   const Exp *SumCase(
       const Exp *obj,
       const std::vector<
+          // label, variable, arm
           std::tuple<std::string, std::string, const Exp *>> &arms,
       const Exp *def,
       const Exp *guess = nullptr) {

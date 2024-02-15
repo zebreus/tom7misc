@@ -25,7 +25,7 @@ using DatatypeDec = el::DatatypeDec;
 
 Elaboration::Elaboration(el::AstPool *el_pool, il::AstPool *il_pool) :
   el_pool(el_pool), pool(il_pool), init(pool) {
-  fail_match = pool->Fail("match");
+  fail_match = pool->Fail(pool->String("match"));
   pattern_compilation.reset(new PatternCompilation(this));
 }
 
@@ -485,6 +485,15 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
 
     return std::make_pair(pool->App(fe, xe), cod);
   }
+
+  case el::ExpType::FAIL: {
+    const auto &[e, t] = Elab(G, el_exp->a);
+    Unification::Unify("fail", t, pool->StringType());
+    // Can have any return type, as it does not return.
+    const il::Type *ret = NewEVar();
+    return std::make_pair(pool->Fail(e), ret);
+  }
+
   default:
     break;
   }

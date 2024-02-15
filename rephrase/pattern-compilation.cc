@@ -701,8 +701,9 @@ PatternCompilation::SplitIntPattern(
   arms.reserve(int_cases.size());
 
   // Update the defaults for the arms: It's the same failure
-  // in each case. We could add annotations that mark values as
-  // known, although it's also evident from the intcase itself.
+  // continuation in each case. We could add annotations that mark
+  // values as known, although it's also evident from the intcase
+  // itself.
   for (auto &[bi, mtx] : int_cases) {
     mtx.def = failure_cont;
   }
@@ -820,8 +821,9 @@ PatternCompilation::SplitStringPattern(
   arms.reserve(string_cases.size());
 
   // Update the defaults for the arms: It's the same failure
-  // in each case. We could add annotations that mark values as
-  // known, although it's also evident from the stringcase itself.
+  // continuation in each case. We could add annotations that mark
+  // values as known, although it's also evident from the stringcase
+  // itself.
   for (auto &[s, mtx] : string_cases) {
     mtx.def = failure_cont;
   }
@@ -914,9 +916,13 @@ PatternCompilation::SplitAppPattern(
 
 
   // The collated matching cases (up until any wildcard), in the
-  // original order. The elements are the sum label, the bound variable,
-  // and the matrix that implements the rest of the pattern.
-  std::vector<std::tuple<std::string, std::string, Matrix>> sum_cases;
+  // original order. The elements are the sum label, the bound el
+  // variable and bound il variable, its type, and the matrix that
+  // implements the rest of the pattern.
+  std::vector<std::tuple<std::string,
+                         std::string, std::string,
+                         const il::Type *,
+                         Matrix>> sum_cases;
   // Set of labels we've already processed.
   std::set<std::string> done;
 
@@ -953,11 +959,15 @@ PatternCompilation::SplitAppPattern(
         Matrix mtx = mtx_small;
         const Type *sum_type = elab->pool->UnrollType(mu_type);
         const Type *col_type = SelectLabel(sum_type, label);
+        const int new_x = mtx.Width();
         mtx.AddColumn(el_var, col_type);
-        // XXX fill 'em in from the extracts
 
-        // XXX Add the appropriate thing to the sum_cases.
-        // sum_cases.emplace_back(cell->integer,
+        CHECK(mtx.Height() == (int)extracts.size());
+        for (int y = 0; y < mtx.Height(); y++)
+          mtx.Cell(new_x, y) = extracts[y];
+
+        sum_cases.emplace_back(
+            label, el_var, il_var, col_type, std::move(mtx));
       }
     } else {
       CHECK(cell->type == PatType::WILD) << "Inconsistent pattern types";
@@ -966,12 +976,11 @@ PatternCompilation::SplitAppPattern(
     constant_height++;
   }
 
-  #if 0
   CHECK(constant_height > 0);
 
   matrix.DeleteFirstRows(constant_height);
 
-  // The failure continuation, if none of the intcases match.
+  // The failure continuation, if none of the sumcases match.
   const auto &[fexp, ftype] = Comp(G, matrix);
 
   // Bind hoisted failure continuation.
@@ -994,37 +1003,43 @@ PatternCompilation::SplitAppPattern(
                        elab->el_pool->Record({}));
 
   const auto &[obj_exp, obj_type] = matrix.GetObj(elab->pool, GG, x);
-  Unification::Unify("int pattern", obj_type, elab->pool->IntType());
+  Unification::Unify("sum pattern", obj_type, mu_type);
 
-  std::vector<std::pair<BigInt, const Exp *>> arms;
-  arms.reserve(int_cases.size());
+  std::vector<std::tuple<std::string, std::string, const Exp *>> arms;
+  arms.reserve(sum_cases.size());
 
   // Update the defaults for the arms: It's the same failure
-  // in each case. We could add annotations that mark values as
-  // known, although it's also evident from the intcase itself.
-  for (auto &[bi, mtx] : int_cases) {
+  // continuation in each case.
+  for (auto &[label, el, il, typ, mtx] : sum_cases) {
     mtx.def = failure_cont;
   }
 
-  for (const auto &[bi, mtx] : int_cases) {
-    const auto &[arm_exp, arm_type] = Comp(GG, mtx);
-    Unification::Unify("int pattern result", arm_type, ftype);
-    arms.emplace_back(bi, arm_exp);
+  for (const auto &[label, el_var, il_var, typ, mtx] : sum_cases) {
+    // Recursively compile the arm. It has a new variable
+    // bound, which is the variable in the sumcase.
+    Context GGG = GG.Insert(el_var,
+                            VarInfo{
+                              .tyvars = {},
+                              .type = typ,
+                              .var = il_var,
+                            });
+
+    const auto &[arm_exp, arm_type] = Comp(GGG, mtx);
+    Unification::Unify("sum pattern result", arm_type, ftype);
+    arms.emplace_back(label, il_var, arm_exp);
   }
-  const Exp *intcase =
-    elab->pool->IntCase(obj_exp,
+
+  const Exp *sumcase =
+    elab->pool->SumCase(elab->pool->Unroll(obj_exp),
                         std::move(arms),
                         elab->pool->App(
                             elab->pool->Var({}, il_cont_var),
                             elab->pool->Record({})));
 
   const Exp *ret =
-    elab->pool->Let({}, il_cont_var, fn, intcase);
+    elab->pool->Let({}, il_cont_var, fn, sumcase);
 
   return std::make_pair(ret, ftype);
-#endif
-  LOG(FATAL) << "unimplemented";
-  return std::make_pair(nullptr, nullptr);
 }
 
 

@@ -86,6 +86,8 @@ struct Pass {
       const auto &[type, exp] = e->Roll();
       return DoRoll(type, exp, e, args...);
     }
+    case ExpType::UNROLL:
+      return DoUnroll(e->Unroll(), e, args...);
     case ExpType::PRIMOP: {
       const auto &[p, ts, es] = e->Primop();
       return DoPrimop(p, ts, es, e, args...);
@@ -261,6 +263,12 @@ struct Pass {
     return pool->Roll(DoType(t, args...), DoExp(e, args...), guess);
   }
 
+  virtual const Exp *DoUnroll(const Exp *e,
+                              const Exp *guess,
+                              Args... args) {
+    return pool->Unroll(DoExp(e, args...), guess);
+  }
+
   virtual const Exp *DoJoin(const std::vector<const Exp *> &v,
                             const Exp *guess,
                             Args... args) {
@@ -319,10 +327,10 @@ struct Pass {
     return pool->Fn(self, x, DoExp(body, args...), guess);
   }
 
-  virtual const Exp *DoFail(const std::string &msg,
+  virtual const Exp *DoFail(const Exp *msg,
                             const Exp *guess,
                             Args... args) {
-    return pool->Fail(msg, guess);
+    return pool->Fail(DoExp(msg, args...), guess);
   }
 
   virtual const Exp *DoSeq(const std::vector<const Exp *> &es,

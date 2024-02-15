@@ -129,6 +129,15 @@ static bool IsDiscardable(const Exp *e) {
 struct PeepholePass : public il::Pass<> {
   using Pass::Pass;
 
+  const Exp *DoUnroll(const Exp *e, const Exp *guess) override {
+    e = DoExp(e);
+    if (e->type == ExpType::ROLL) {
+      const auto &[tt, ee] = e->Roll();
+      return ee;
+    }
+    return pool->Unroll(e, guess);
+  }
+
   const Exp *DoProject(const std::string &label,
                        const Exp *arg,
                        const Exp *guess) override {
