@@ -337,7 +337,38 @@ static void Simple() {
                        "    AAA x => x\n"
                        "  | BBB s => 666\n"
                        "end\n");
-    printf("%s", ExpString(e).c_str());
+    CHECK(e->Integer() == 7);
+  }
+
+  {
+    const Exp *e = Run("let\n"
+                       "  val loop = fn as loop x =>\n"
+                       " loop 0\n"
+                       "in\n"
+                       "  7\n"
+                       "end\n");
+    CHECK(e->Integer() == 7) << "Tests whether we can drop an unused "
+      "polymorphic value (val binding).";
+  }
+
+  {
+    const Exp *e = Run("let\n"
+                       "  val fact = fn as fact x =>\n"
+                       "     (case x of\n"
+                       "       0 => 1\n"
+                       // XXX should be *, but it's not implemented
+                       "     | n => n + fact (n - 1))\n"
+                       "  do (6, fact 7)\n"
+                       "in\n"
+                       "  7\n"
+                       "end\n");
+    // Should be able to inline 'fact', and remove the unnecessary tuple
+    // despite having an effectful element.
+    CHECK(e->type == ExpType::SEQ);
+    const auto &[es, body] = e->Seq();
+    CHECK(es.size() == 1);
+    CHECK(es[0]->type == ExpType::APP);
+    CHECK(body->Integer() == 7);
   }
 
 }

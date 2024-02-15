@@ -34,12 +34,14 @@ const char *TokenTypeString(TokenType tok) {
   case LET: return "LET";
   case IN: return "IN";
   case END: return "END";
+  case AS: return "AS";
+  case AND: return "AND";
 
   // Symbolic keywords.
-  case TIMES: return "*";
-  case ARROW: return "->";
-  case DARROW: return "=>";
-  case COLON: return ":";
+  case TIMES: return "TIMES";
+  case ARROW: return "ARROW";
+  case DARROW: return "DARROW";
+  case COLON: return "COLON";
   case UNDERSCORE: return "UNDERSCORE";
   case EQUALS: return "EQUALS";
   case BAR: return "BAR";

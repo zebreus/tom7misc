@@ -84,6 +84,10 @@ static bool IsEffectless(const Exp *e) {
 // do the whole thing instead of appealing to IsEffectless for other
 // cases, since we want something like (GET, GET) to be considered
 // discardable.
+//
+// TODO: This is probably inferior to PushSeqs, which lets us drop
+// parts of the expression that are not effectful. We could also implement
+// this in terms of that function, if we wanted.
 static bool IsDiscardable(const Exp *e) {
   switch (e->type) {
   case ExpType::FLOAT: return true;
@@ -123,6 +127,60 @@ static bool IsDiscardable(const Exp *e) {
 
   default:
     return false;
+  }
+}
+
+static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
+  switch (e->type) {
+  case ExpType::FAIL:
+    vflat->push_back(e);
+    return;
+  case ExpType::APP:
+    // TODO: Maybe constructor applications?
+    vflat->push_back(e);
+    return;
+
+  case ExpType::FLOAT: return;
+  case ExpType::INTEGER: return;
+  case ExpType::STRING: return;
+  case ExpType::VAR: return;
+  case ExpType::FN: return;
+
+  case ExpType::RECORD: {
+    for (const auto &[lab, child] : e->Record()) {
+      PushSeqs(child, vflat);
+    }
+    return;
+  }
+
+  case ExpType::PROJECT:
+    return PushSeqs(std::get<1>(e->Project()), vflat);
+  case ExpType::INJECT:
+    return PushSeqs(std::get<1>(e->Inject()), vflat);
+
+  case ExpType::ROLL:
+    return PushSeqs(std::get<1>(e->Roll()), vflat);
+  case ExpType::UNROLL:
+    return PushSeqs(e->Unroll(), vflat);
+
+  case ExpType::PRIMOP: {
+    const auto &[po, ts, es] = e->Primop();
+    if (IsPrimopDiscardable(po)) {
+      for (const Exp *child : es) {
+        PushSeqs(child, vflat);
+      }
+    } else {
+      vflat->push_back(e);
+    }
+    return;
+  }
+
+    // TODO: Several more here.
+
+
+  default:
+    vflat->push_back(e);
+    break;
   }
 }
 
@@ -218,7 +276,7 @@ struct PeepholePass : public il::Pass<> {
 
     int count = ILUtil::ExpVarCount(body, x);
 
-    // TODO A polymorphic declaration can be free too. But
+    // TODO A polymorphic declaration can be unused too. But
     // we would need to substitute through the tyvars in
     // the rhs with dummy types so that they remain well-formed.
     // (Or drop the whole binding.)
@@ -230,7 +288,7 @@ struct PeepholePass : public il::Pass<> {
     const bool small_value = IsSmallValue(rhs);
     const bool effectless = small_value || IsEffectless(rhs);
 
-    if (count == 1 && effectless) {
+    if (count <= 1 && effectless) {
       // Inline any effectless expression that occurs just once,
       // regardless of its size.
       Simplified("inlined single-use binding");
@@ -284,6 +342,29 @@ struct PeepholePass : public il::Pass<> {
     }
   }
 
+  const Exp *DoSumCase(
+      const Exp *obj,
+      const std::vector<
+          std::tuple<std::string, std::string, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess) override {
+    if (obj->type == ExpType::INJECT) {
+      Simplified("reduce sumcase");
+      const auto &[label, e] = obj->Inject();
+      for (const auto &[lab, v, arm] : arms) {
+        if (label == lab) {
+          return pool->Let({}, v, DoExp(e), arm);
+        }
+      }
+      // No match, so it is the default.
+      // Here the body of the inject could still have effects,
+      // so sequence that.
+      return pool->Seq({DoExp(e)}, DoExp(def));
+    } else {
+      return Pass::DoSumCase(obj, arms, def, guess);
+    }
+  }
+
   // If we have App(fn x => body, arg), with the function not recursive,
   // then this is equivalent to
   // let x = arg in body
@@ -319,11 +400,11 @@ struct PeepholePass : public il::Pass<> {
           Simplified("flattened nested seq");
           const auto &[ces, cbody] = c->Seq();
           for (const Exp *cc : ces) {
-            vflat.push_back(cc);
+            PushSeqs(cc, &vflat);
           }
-          vflat.push_back(cbody);
+          PushSeqs(cbody, &vflat);
         } else {
-          vflat.push_back(c);
+          PushSeqs(c, &vflat);
         }
       }
     }
@@ -332,7 +413,18 @@ struct PeepholePass : public il::Pass<> {
       Simplified("empty seq");
       return DoExp(body);
     } else {
-      return pool->Seq(vflat, DoExp(body), guess);
+      // The body could also be a Seq; then append the
+      // sequences.
+      const Exp *bbody = DoExp(body);
+      if (bbody->type == ExpType::SEQ) {
+        const auto &[fff, bbb] = bbody->Seq();
+        for (const Exp *f : fff) {
+          vflat.push_back(f);
+        }
+        return pool->Seq(vflat, bbb, guess);
+      } else {
+        return pool->Seq(vflat, bbody, guess);
+      }
     }
   }
 
