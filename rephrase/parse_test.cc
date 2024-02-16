@@ -354,8 +354,19 @@ static void TestParse() {
     const Exp *e = Parse("fn _ => 7");
     CHECK(e->type == ExpType::FN);
     CHECK(e->str.empty());
-    CHECK(e->pat->type == PatType::WILD);
-    CHECK(e->a->integer == 7);
+    CHECK(e->clauses.size() == 1);
+    const auto &[pat, body] = e->clauses[0];
+    CHECK(pat->type == PatType::WILD);
+    CHECK(body->integer == 7);
+  }
+
+  {
+    const Exp *e = Parse("fn as f 0 => 0 | x => f (x - 1)");
+    CHECK(e->type == ExpType::FN);
+    CHECK(e->str == "f");
+    CHECK(e->clauses.size() == 2);
+    CHECK(e->clauses[0].first->type == PatType::INT);
+    CHECK(e->clauses[1].first->type == PatType::VAR);
   }
 
   {

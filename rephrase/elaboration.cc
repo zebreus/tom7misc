@@ -409,8 +409,6 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     break;
 
   case el::ExpType::FN: {
-    // TODO: Need to handle fn pat1 => e1 | pat2 => e2.
-
     // Function type is an arrow. We may need this for the recursive
     // variable, so create it up front.
     const il::Type *dom = NewEVar();
@@ -432,9 +430,10 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const std::string iarg = pool->NewVar(arg);
     GG = GG.Insert(arg, VarInfo{.tyvars = {}, .type = dom, .var = iarg});
 
-    // TODO: Can easily support multiple patterns if the parser parses it.
+
     std::vector<std::pair<const el::Pat *, const el::Exp *>> rows;
-    rows.emplace_back(el_exp->pat, el_exp->a);
+    for (const auto &[p, e] : el_exp->clauses)
+      rows.emplace_back(p, e);
     rows.emplace_back(
         el_pool->WildPat(),
         // Could include location info here.

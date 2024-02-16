@@ -234,11 +234,11 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Fn(std::string self, const Pat *arg, const Exp *body) {
+  const Exp *Fn(std::string self,
+                std::vector<std::pair<const Pat *, const Exp *>> clauses) {
     Exp *ret = NewExp(ExpType::FN);
     ret->str = self;
-    ret->pat = arg;
-    ret->a = body;
+    ret->clauses = std::move(clauses);
     return ret;
   }
 

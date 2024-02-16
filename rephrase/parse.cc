@@ -463,13 +463,12 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto FnExpr = [&](const auto &Expr) {
       return
         ((IsToken<FN>() >> Opt(IsToken<AS>() >> Id)) &&
-         (Pattern &&
-          (IsToken<DARROW>() >> Expr)))
+         Separate(Pattern && (IsToken<DARROW>() >> Expr),
+                  IsToken<BAR>()))
         >[&](const auto &pp) {
-            const auto &[aso, pb] = pp;
-            const auto &[pat, body] = pb;
+            const auto &[aso, clauses] = pp;
             std::string self = aso.has_value() ? aso.value() : "";
-            return pool->Fn(self, pat, body);
+            return pool->Fn(self, clauses);
           };
     };
 
@@ -491,7 +490,7 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto ProjectExpr =
     // #1/3 is syntactic sugar for (fn (x, _, _) => x)
     ((IsToken<HASH>() >> Int) && (IsToken<SLASH>() >> Int))
-    >[&](const auto &pair) {
+    >[&](const auto &pair) -> const Exp * {
         const auto &[lab, num] = pair;
         CHECK(lab > 0 && num > 0 && lab <= num) << "In the syntactic "
           "sugar #l/n, l must be a numeric label that's in range "
@@ -510,8 +509,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         return pool->Fn(
             // Not recursive
             "",
-            pool->TuplePat(args),
-            pool->Var(v));
+            {{pool->TuplePat(args), pool->Var(v)}});
       };
 
   // Declarations.

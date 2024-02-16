@@ -282,10 +282,16 @@ std::string ExpString(const Exp *e) {
   case ExpType::FN: {
     const std::string as =
       e->str.empty() ? "" : StringPrintf(" as %s", e->str.c_str());
-    return StringPrintf("(fn%s %s => %s)",
-                        as.c_str(),
-                        PatString(e->pat).c_str(),
-                        ExpString(e->a).c_str());
+    std::string ret = StringPrintf("(fn%s ", as.c_str());
+    bool first = true;
+    for (const auto &[pat, body] : e->clauses) {
+      if (!first) StringAppendF(&ret, "\n | ");
+      StringAppendF(&ret, "%s => %s",
+                    PatString(pat).c_str(),
+                    ExpString(body).c_str());
+      first = false;
+    }
+    return ret + ")";
   }
 
   case ExpType::CASE: {
