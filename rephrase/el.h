@@ -31,7 +31,6 @@ enum class ExpType {
   APP,
   ANN,
   CASE,
-  // TODO: Should take multiple clauses
   FN,
   // Fail with a string error message.
   // Should be replaced with exceptions.
@@ -304,6 +303,12 @@ struct AstPool {
   }
 
   // Declarations
+
+  const Dec *DoDec(const Exp *rhs) {
+    Dec *ret = NewDec(DecType::DO);
+    ret->exp = rhs;
+    return ret;
+  }
 
   const Dec *ValDec(const Pat *pat, const Exp *rhs) {
     Dec *ret = NewDec(DecType::VAL);

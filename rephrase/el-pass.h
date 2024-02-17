@@ -31,23 +31,49 @@ struct Pass {
 
   virtual const Exp *DoExp(const Exp *e, Args... args) {
     switch (e->type) {
-      // TODO!
+    case ExpType::STRING: return DoString(e->str, args...);
+    case ExpType::JOIN: return DoJoin(e->children, args...);
+    case ExpType::TUPLE: return DoTuple(e->children, args...);
+    case ExpType::RECORD: return DoRecord(e->str_children, args...);
+    case ExpType::INTEGER: return DoInt(e->integer, args...);
+    case ExpType::FLOAT: return DoFloat(e->d, args...);
+    case ExpType::VAR: return DoVar(e->str, args...);
+    case ExpType::LAYOUT: return DoLayoutExp(e->layout, args...);
+    case ExpType::LET: return DoLet(e->decs, e->a, args...);
+    case ExpType::IF: return DoIf(e->a, e->b, e->c, args...);
+    case ExpType::APP: return DoApp(e->a, e->b, args...);
+    case ExpType::ANN: return DoAnn(e->a, e->t, args...);
+    case ExpType::CASE: return DoCase(e->a, e->clauses, args...);
+    case ExpType::FN: return DoFn(e->str, e->clauses, args...);
+    case ExpType::FAIL: return DoFail(e->a, args...);
     default:
       LOG(FATAL) << "Unhandled type in el::Pass::DoExp!";
     }
   }
 
-  virtual const Dec *DoDec(const Dec *e, Args... args) {
-    switch (e->type) {
-      // TODO!
+  virtual const Dec *DoDec(const Dec *d, Args... args) {
+    switch (d->type) {
+    case DecType::DO: return DoDoDec(d->exp, args...);
+    case DecType::VAL: return DoValDec(d->pat, d->exp, args...);
+    case DecType::FUN: return DoFunDec(d->funs, args...);
+    case DecType::DATATYPE: return DoDatatypeDec(
+        d->tyvars, d->datatypes, args...);
     default:
       LOG(FATAL) << "Unhandled type in el::Pass::DoDec!";
     }
   }
 
-  virtual const Pat *DoPat(const Pat *e, Args... args) {
-    switch (e->type) {
-      // TODO!
+  virtual const Pat *DoPat(const Pat *p, Args... args) {
+    switch (p->type) {
+    case PatType::VAR: return DoVarPat(p->str, args...);
+    case PatType::WILD: return DoWildPat(args...);
+    case PatType::TUPLE: return DoTuplePat(p->children, args...);
+    case PatType::RECORD: return DoRecordPat(p->str_children, args...);
+    case PatType::ANN: return DoAnnPat(p->a, p->ann, args...);
+    case PatType::AS: return DoAsPat(p->a, p->str, args...);
+    case PatType::INT: return DoIntPat(p->integer, args...);
+    case PatType::STRING: return DoStringPat(p->str, args...);
+    case PatType::APP: return DoAppPat(p->str, p->a, args...);
     default:
       LOG(FATAL) << "Unhandled type in el::Pass::DoPat!";
     }
@@ -193,9 +219,98 @@ struct Pass {
 
   // Declarations.
 
+  virtual const Dec *DoDoDec(const Exp *e, Args... args) {
+    return pool->DoDec(DoExp(e, args...));
+  }
+
+  virtual const Dec *DoValDec(const Pat *pat, const Exp *rhs, Args... args) {
+    return pool->ValDec(DoPat(pat, args...), DoExp(rhs, args...));
+  }
+
+  virtual const Dec *DoFunDec(const std::vector<FunDec> &funs, Args... args) {
+    std::vector<FunDec> ffs;
+    ffs.reserve(funs.size());
+    for (const auto &fd : funs) {
+      FunDec ffd;
+      ffd.name = fd.name;
+      for (const auto &[p, e] : fd.clauses) {
+        ffd.clauses.emplace_back(DoPat(p, args...), DoExp(e, args...));
+      }
+      ffs.push_back(std::move(ffd));
+    }
+    return pool->FunDec(std::move(ffs));
+  }
+
+  virtual const Dec *DoDatatypeDec(const std::vector<std::string> &tyvars,
+                                   const std::vector<DatatypeDec> &ds,
+                                   Args... args) {
+    std::vector<DatatypeDec> dds;
+    dds.reserve(ds.size());
+    for (const auto &dd : ds) {
+      DatatypeDec ddd;
+      ddd.name = dd.name;
+      for (const auto &[lab, t] : dd.arms) {
+        ddd.arms.emplace_back(lab, DoType(t, args...));
+      }
+      dds.push_back(std::move(ddd));
+    }
+    return pool->DatatypeDec(tyvars, std::move(dds));
+  }
+
   // Patterns.
 
+  virtual const Pat *DoVarPat(const std::string &v, Args... args) {
+    return pool->VarPat(v);
+  }
+
+  virtual const Pat *DoWildPat(Args... args) {
+    return pool->WildPat();
+  }
+
+  virtual const Pat *DoTuplePat(const std::vector<const Pat *> &v,
+                                Args... args) {
+    std::vector<const Pat *> ps;
+    for (const Pat *p : v) {
+      ps.push_back(DoPat(p, args...));
+    }
+    return pool->TuplePat(std::move(ps));
+  }
+
+  virtual const Pat *DoRecordPat(
+      const std::vector<std::pair<std::string, const Pat *>> &v,
+      Args... args) {
+    std::vector<std::pair<std::string, const Pat *>> ps;
+    for (const auto &[lab, p] : v) {
+      ps.emplace_back(lab, DoPat(p, args...));
+    }
+    return pool->RecordPat(std::move(ps));
+  }
+
+  virtual const Pat *DoAnnPat(const Pat *a, const Type *t, Args... args) {
+    return pool->AnnPat(DoPat(a, args...), DoType(t, args...));
+  }
+
+  virtual const Pat *DoAsPat(const Pat *a, const std::string &v,
+                             Args... args) {
+    return pool->AsPat(DoPat(a, args...), v);
+  }
+
+  virtual const Pat *DoIntPat(const BigInt &bi, Args... args) {
+    return pool->IntPat(bi);
+  }
+
+  virtual const Pat *DoStringPat(const std::string &s, Args... args) {
+    return pool->StringPat(s);
+  }
+
+  virtual const Pat *DoAppPat(const std::string &s, const Pat *p,
+                              Args... args) {
+    return pool->AppPat(s, DoPat(p, args...));
+  }
+
   // Layout.
+
+  // TODO
 
 protected:
   AstPool *pool = nullptr;
