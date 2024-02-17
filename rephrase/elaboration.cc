@@ -135,6 +135,29 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
 
     case el::DecType::FUN:
       // Easy, except for mutual recursion (use ref? globalize?)
+      //
+      //   fun f x = g (x, x)
+      //   and g (y, z) = f z
+      //
+      // can be like
+      //
+      //   val (α, β) fr = ref (fn _ => fail "")
+      //   val (α, β) gr = ref (fn _ => fail "")
+      //
+      //   fr := (fn x => ... actual body ... (!gr) (x, x))
+      //   gr := (fn x => ... actual body ... (!fr) z)
+      //
+      //   val (α, β) f = !fr
+      //   val (α, β) g = !gr
+      //
+      // This would not be allowed in the source language because
+      // of the value restriction. But it is safe.
+      //
+      // I think cleaner is to hoist function declarations out as
+      // globals. It is easier to say that all globals can be mutually
+      // recursive. In order to do that, we just need to abstract over
+      // the
+
       LOG(FATAL) << "Unimplemented FUN";
       break;
 
