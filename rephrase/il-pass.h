@@ -21,8 +21,13 @@ struct Pass {
   virtual const Program DoProgram(const Program &program, Args... args) {
     Program out;
     out.globals.reserve(program.globals.size());
-    for (const auto &[sym, t, e] : program.globals) {
-      out.globals.emplace_back(sym, DoType(t, args...), DoExp(e, args...));
+    for (const Global &glob : program.globals) {
+      Global gg;
+      gg.tyvars = glob.tyvars;
+      gg.sym = glob.sym;
+      gg.type = DoType(glob.type, args...);
+      gg.exp = DoExp(glob.exp, args...);
+      out.globals.push_back(glob);
     }
     out.body = DoExp(program.body, args...);
     return out;

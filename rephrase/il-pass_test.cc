@@ -38,7 +38,10 @@ static void TestIdentity() {
   CHECK(p1.globals.size() == p2.globals.size());
   bool equal = p1.body == p2.body;
   for (int i = 0; i < (int)p1.globals.size(); i++) {
-    equal = equal && p1.globals[i] == p2.globals[i];
+    const auto &[tv1, sym1, ty1, exp1] = p1.globals[i];
+    const auto &[tv2, sym2, ty2, exp2] = p2.globals[i];
+    equal = equal && tv1 == tv2 && sym1 == sym2 &&
+                 ty1 == ty2 && exp1 == exp2;
   }
 
   CHECK(equal) << "The guesses should always be correct, so we "

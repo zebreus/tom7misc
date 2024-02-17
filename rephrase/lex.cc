@@ -36,6 +36,7 @@ const char *TokenTypeString(TokenType tok) {
   case END: return "END";
   case AS: return "AS";
   case AND: return "AND";
+  case FAIL: return "FAIL";
 
   // Symbolic keywords.
   case TIMES: return "TIMES";

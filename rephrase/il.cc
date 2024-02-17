@@ -475,9 +475,16 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
 
 std::string ProgramString(const Program &pgm) {
   std::string ret = "globals\n";
-  for (const auto &[sym, t, e] : pgm.globals) {
-    StringAppendF(&ret, "  val %s : %s = %s\n",
-                  sym.c_str(), TypeString(t).c_str(), ExpString(e).c_str());
+  for (const Global &glob : pgm.globals) {
+    std::string tyvars;
+    if (!glob.tyvars.empty()) {
+      tyvars = StringPrintf("(%s) ", Util::Join(glob.tyvars, ",").c_str());
+    }
+    StringAppendF(&ret, "  val %s%s : %s = %s\n",
+                  tyvars.c_str(),
+                  glob.sym.c_str(),
+                  TypeString(glob.type).c_str(),
+                  ExpString(glob.exp).c_str());
   }
   StringAppendF(&ret,
                 "in\n"

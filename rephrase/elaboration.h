@@ -43,6 +43,10 @@ private:
   // But the type (a new evar) must be allocated each time!
   std::pair<const il::Exp *, const il::Type *> FailMatch();
 
+  // Globals collected during elaboration. They all have global
+  // scope (including each other's bodies) and distinct names.
+  std::vector<il::Global> globals;
+
   int verbose = 0;
   el::AstPool *el_pool = nullptr;
   il::AstPool *pool = nullptr;

@@ -411,11 +411,11 @@ static void Simple() {
   }
 
   {
-    const Program pgm = RunNoSimplify("fn x => x");
+    const Program pgm = Run("fn x => x");
     const auto &[self, x, body] = pgm.body->Fn();
-    if (VERBOSE) {
-      printf("%s\n", ProgramString(pgm).c_str());
-    }
+    CHECK(self.empty()) << "Not recursive.";
+    CHECK(x == std::get<1>(body->Var())) << "Should be able to "
+      "simplify this to just a variable.";
   }
 
 
@@ -431,12 +431,24 @@ static void Simple() {
   {
     // Test nullary rewrite.
     const Program pgm = Run("let\n"
-                       "  datatype sss = AAA | BBB of int\n"
-                       "in\n"
-                       "  case AAA of\n"
-                       "    BBB x => x\n"
-                       "  | AAA => 7\n"
-                       "end\n");
+                            "  datatype sss = AAA | BBB of int\n"
+                            "in\n"
+                            "  case AAA of\n"
+                            "    BBB x => x\n"
+                            "  | AAA => 7\n"
+                            "end\n");
+    CHECK(pgm.body->Integer() == 7);
+  }
+
+  {
+    const Program pgm = Run("let\n"
+                            "  fun seven() = 7\n"
+                            "  fun call (f, _) = f (seven ())\n"
+                            "    | call _ = fail \"no\"\n"
+                            "  fun f y = y\n"
+                            "in\n"
+                            "  call (f, 3)\n"
+                            "end\n");
     CHECK(pgm.body->Integer() == 7);
   }
 
@@ -450,7 +462,7 @@ int main(int argc, char **argv) {
   il::TestLiterals();
   il::TestPrimops();
   il::TestSimplify();
-  // il::Simple();
+  il::Simple();
 
   printf("OK\n");
   return 0;

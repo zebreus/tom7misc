@@ -485,6 +485,13 @@ const Exp *Parsing::Parse(AstPool *pool,
           };
     };
 
+  const auto FailExpr = [&](const auto &Expr) {
+      return (IsToken<FAIL>() >> Expr)
+        >[&](const Exp *msg) {
+            return pool->Fail(msg);
+          };
+    };
+
   // TODO: For purposes of the value restriction, it would be good if
   // we could mark this internally as a total function.
   const auto ProjectExpr =
@@ -693,6 +700,7 @@ const Exp *Parsing::Parse(AstPool *pool,
           auto AnnotatableExpr = FnExpr(Expr) ||
             IfExpr(Expr) ||
             CaseExpr(Expr) ||
+            FailExpr(Expr) ||
             AppExpr;
 
           auto AnnExpr =

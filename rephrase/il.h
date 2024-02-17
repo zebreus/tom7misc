@@ -305,9 +305,16 @@ private:
   std::vector<std::tuple<std::string, std::string, const Exp *>> sumcase_arms;
 };
 
+struct Global {
+  std::vector<std::string> tyvars;
+  std::string sym;
+  const Type *type = nullptr;
+  const Exp *exp = nullptr;
+};
+
 struct Program {
-  std::vector<std::tuple<std::string, const Type *, const Exp *>> globals;
-  const Exp *body;
+  std::vector<Global> globals;
+  const Exp *body = nullptr;
 };
 
 // The AST pool has constructors for all the IL forms. Each takes

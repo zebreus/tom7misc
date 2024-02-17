@@ -49,6 +49,7 @@ enum TokenType {
   END,
   AS,
   AND,
+  FAIL,
 
   IF,
   THEN,

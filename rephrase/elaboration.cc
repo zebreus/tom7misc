@@ -11,6 +11,7 @@
 #include "il.h"
 #include "initial.h"
 #include "pattern-compilation.h"
+#include "il-util.h"
 
 #include "base/stringprintf.h"
 
@@ -23,6 +24,7 @@ using TypeVarInfo = il::TypeVarInfo;
 using EVar = il::EVar;
 using PatternCompilation = il::PatternCompilation;
 using Program = il::Program;
+using ILUtil = il::ILUtil;
 
 using DatatypeDec = el::DatatypeDec;
 
@@ -53,6 +55,8 @@ Program Elaboration::Elaborate(const el::Exp *el_exp) {
   }
 
   Program pgm;
+  pgm.globals = std::move(globals);
+  globals.clear();
   pgm.body = e;
   return pgm;
 }
@@ -129,41 +133,129 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
       el_pool->Let(std::move(rest_decs), el_body);
 
     switch (dec->type) {
-    case el::DecType::VAL: {
+    case el::DecType::VAL:
       // Only irrefutable patterns are allowed in a val decl.
 
       // Need to generalize if free evars.
       // All this is handled in the pattern compiler.
       return pattern_compilation->CompileIrrefutable(
           G, dec->pat, dec->exp, rest);
-    }
 
     case el::DecType::FUN:
-      // Easy, except for mutual recursion (use ref? globalize?)
-      //
-      //   fun f x = g (x, x)
-      //   and g (y, z) = f z
-      //
-      // can be like
-      //
-      //   val (α, β) fr = ref (fn _ => fail "")
-      //   val (α, β) gr = ref (fn _ => fail "")
-      //
-      //   fr := (fn x => ... actual body ... (!gr) (x, x))
-      //   gr := (fn x => ... actual body ... (!fr) z)
-      //
-      //   val (α, β) f = !fr
-      //   val (α, β) g = !gr
-      //
-      // This would not be allowed in the source language because
-      // of the value restriction. But it is safe.
-      //
-      // I think cleaner is to hoist function declarations out as
-      // globals. It is easier to say that all globals can be mutually
-      // recursive. In order to do that, we just need to abstract over
-      // the
+      // TODO: Support curried notation.
+      CHECK(!dec->funs.empty()) << "Bug: Should not parse empty funs.";
+      if (dec->funs.size() == 1) {
+        const el::FunDec &fun = dec->funs[0];
+        // If not mutually recursive, do this the easy way.
+        return pattern_compilation->CompileIrrefutable(
+            G,
+            el_pool->VarPat(fun.name),
+            el_pool->Fn(fun.name, fun.clauses),
+            rest);
+      } else {
+        // For mutually recursive functions, we hoist them out to
+        // globals so that they can reference each other. First,
+        // type-check and translate the bodies.
+        std::vector<std::string> il_vars;
+        std::vector<std::pair<const il::Type *, const il::Type *>> dom_cods;
+        Context GG = G;
+        for (const el::FunDec &fun : dec->funs) {
+          std::string il_var = pool->NewVar(fun.name);
+          il_vars.push_back(il_var);
+          const il::Type *dom = NewEVar();
+          const il::Type *cod = NewEVar();
+          dom_cods.emplace_back(dom, cod);
+          GG = GG.Insert(fun.name, VarInfo{
+              // We only support uniform recursion, so each function
+              // will have just one type here; if there are free evars
+              // at the end, those are the only ones we abstract over.
+              .tyvars = {},
+              .type = pool->Arrow(dom, cod),
+              .var = il_var,
+            });
+        }
 
-      LOG(FATAL) << "Unimplemented FUN";
+        std::vector<std::pair<const il::Exp *, const il::Type *>> fns;
+        for (int i = 0; i < (int)dec->funs.size(); i++) {
+          const el::FunDec &fun = dec->funs[i];
+          // In the generated code we could perform the recursion
+          // through the fn's recursive name or through the global.
+          // The fn name is a little better because its type variables
+          // are already instantiated, but if there ends up being a
+          // reason to prefer the global, it would be easy to switch
+          // it right here.
+          const auto &[e, t] =
+            Elab(GG, el_pool->Fn(il_vars[i], fun.clauses));
+          const auto &[dom, cod] = dom_cods[i];
+          Unification::Unify("fun..and decl", pool->Arrow(dom, cod), t);
+          fns.emplace_back(e, t);
+        }
+
+        // The declared functions may mention local variables that prevent
+        // them from being hoisted to top-level. These present as
+        // free variables that are not in the mutually-recursive bundle
+        // and are not globals.
+        for (int i = 0; i < (int)dec->funs.size(); i++) {
+          const auto &[oexp, otype] = fns[i];
+          std::unordered_set<std::string> fvs =
+            ILUtil::FreeExpVars(oexp);
+
+          // FIXME: We actually need to use one environment for the
+          // whole bundle. So do this same thing, but for all fns at once.
+
+          // The other functions in the bundle will look syntactically
+          // free, but they are being bound as part of this declaration.
+          // Remove them from the set.
+          for (const std::string &ilv : il_vars) {
+            fvs.erase(ilv);
+          }
+
+          // If the function is f : d->c = (fn x => e), with free variables
+          // x1 : t1, x2 : t2, ... then we generate the global
+          // global_f : (t1*t2*...) -> d -> c =
+          //    (fn (x1=x1, x2=x2, ...) => fn x => e)
+
+          // The free variables must be bound in the context, so get
+          // those types.
+          std::vector<std::pair<std::string, const il::Type *>> fvts;
+          for (const std::string &s : fvs) {
+            const VarInfo *vi = G.Find(s);
+            CHECK(vi != nullptr) << "Bug: When compiling a "
+              "mutually-recursive bundle of functions (fun...and), "
+              "found a free variable " << s << " that's not bound in "
+              "the context.\n";
+            CHECK(vi->type != nullptr) << "Bug: Maybe this happens "
+              "for primops or ctors?";
+            fvts.emplace_back(s, vi->type);
+          }
+
+          std::sort(fvts.begin(), fvts.end(),
+                    [](const std::pair<std::string, const il::Type *> &a,
+                       const std::pair<std::string, const il::Type *> &b) {
+                      return a.first < b.first;
+                    });
+
+          // Now the curried function. Unpack the argument record; the
+          // labels have the same names as the variables for convenience.
+          // This means that the record type is just the fvts set we just
+          // created.
+          const il::Type *env_type = pool->RecordType(fvts);
+          const il::Exp *gbody = oexp;
+          const std::string gx = pool->NewVar("env");
+          const il::Exp *gxv = pool->Var({}, gx);
+          for (const auto &[fv, t] : fvts) {
+            gbody = pool->Let({}, fv, pool->Project(fv, gxv), gbody);
+          }
+
+
+          const il::Exp *glob_fn = pool->Fn("", gx, gbody);
+          const il::Type *glob_typ = pool->Arrow(env_type, otype);
+
+          LOG(FATAL) << "Oops this is not right. See remark above.";
+        }
+
+        LOG(FATAL) << "Unimplemented: Mutually-recursive FUN";
+      }
       break;
 
     case el::DecType::DATATYPE: {
