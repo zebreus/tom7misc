@@ -219,7 +219,7 @@ static void Simple() {
   }
 
   {
-    const Exp *e = Run("let datatype (a) option = SOME of a | NONE of {}\n"
+    const Exp *e = Run("let datatype (a) option = SOME of a | NONE\n"
                        "in 7\n"
                        "end");
     // Datatype declarations are transparent, so this should just be the
@@ -228,7 +228,7 @@ static void Simple() {
   }
 
   {
-    const Exp *e = Run("let datatype (a) option = SOME of a | NONE of {}\n"
+    const Exp *e = Run("let datatype (a) option = SOME of a | NONE\n"
                        "in SOME 7\n"
                        "end");
     CHECK(e->type == ExpType::ROLL);
@@ -242,7 +242,7 @@ static void Simple() {
 
   {
     const Exp *e = Run("let\n"
-                       "   datatype dir = Up of {} | Down of {}\n"
+                       "   datatype dir = Up | Down\n"
                        "   val x = 9\n"
                        "   val f = fn x => x\n"
                        "in f 7\n"
@@ -396,6 +396,18 @@ static void Simple() {
     // Which is a bit tricky; need to understand what effects intervene.
     // CHECK(es[0]->type == ExpType::INTCASE) << ExpString(es[0]);
     CHECK(body->Integer() == 7);
+  }
+
+  {
+    // Test nullary rewrite.
+    const Exp *e = Run("let\n"
+                       "  datatype sss = AAA | BBB of int\n"
+                       "in\n"
+                       "  case AAA of\n"
+                       "    BBB x => x\n"
+                       "  | AAA => 7\n"
+                       "end\n");
+    CHECK(e->Integer() == 7);
   }
 
 }

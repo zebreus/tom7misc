@@ -12,6 +12,7 @@
 #include "elaboration.h"
 #include "timer.h"
 #include "simplification.h"
+#include "nullary.h"
 
 using Token = el::Token;
 using Lexing = el::Lexing;
@@ -83,6 +84,22 @@ const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
            ANSI::Time(parse_sec).c_str(),
            el::ExpString(el_pgm).c_str());
     fflush(stdout);
+  }
+
+  Timer nullary_timer;
+  el::Nullary nullary(&el_pool);
+  el_pgm = nullary.Rewrite(el_pgm);
+  const double nullary_sec = nullary_timer.Seconds();
+  if (verbose > 0) {
+    printf(AWHITE("Nullary rewrite") " in %s:\n"
+           "%s\n",
+           ANSI::Time(nullary_sec).c_str(),
+           el::ExpString(el_pgm).c_str());
+    fflush(stdout);
+  }
+
+
+  if (verbose > 0) {
     printf("\n" AWHITE("Elaborating...") "\n");
   }
 

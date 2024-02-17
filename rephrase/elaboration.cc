@@ -1,4 +1,6 @@
 
+// TODO: Don't allow constructors to be shadowed by regular variables.
+
 #include "elaboration.h"
 
 #include <utility>

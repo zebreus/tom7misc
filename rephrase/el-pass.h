@@ -250,7 +250,8 @@ struct Pass {
       DatatypeDec ddd;
       ddd.name = dd.name;
       for (const auto &[lab, t] : dd.arms) {
-        ddd.arms.emplace_back(lab, DoType(t, args...));
+        ddd.arms.emplace_back(lab,
+                              t == nullptr ? nullptr : DoType(t, args...));
       }
       dds.push_back(std::move(ddd));
     }
