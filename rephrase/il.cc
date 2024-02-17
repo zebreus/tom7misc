@@ -473,5 +473,17 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
   }
 }
 
+std::string ProgramString(const Program &pgm) {
+  std::string ret = "globals\n";
+  for (const auto &[sym, t, e] : pgm.globals) {
+    StringAppendF(&ret, "  val %s : %s = %s\n",
+                  sym.c_str(), TypeString(t).c_str(), ExpString(e).c_str());
+  }
+  StringAppendF(&ret,
+                "in\n"
+                "  %s\n"
+                "end\n", ExpString(pgm.body).c_str());
+  return ret;
+}
 
 }  // namespace il

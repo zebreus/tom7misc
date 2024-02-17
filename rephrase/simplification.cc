@@ -411,15 +411,16 @@ struct PeepholePass : public il::Pass<> {
 };
 
 
-const il::Exp *Simplification::Simplify(const Exp *exp) {
+Program Simplification::Simplify(const Program &program_in) {
+  Program program = program_in;
   PeepholePass peephole(pool);
 
   do {
     peephole.Reset();
-    exp = peephole.DoExp(exp);
+    program = peephole.DoProgram(program);
   } while (peephole.simplified > 0);
 
-  return exp;
+  return program;
 }
 
 }  // namespace il

@@ -305,6 +305,11 @@ private:
   std::vector<std::tuple<std::string, std::string, const Exp *>> sumcase_arms;
 };
 
+struct Program {
+  std::vector<std::tuple<std::string, const Type *, const Exp *>> globals;
+  const Exp *body;
+};
+
 // The AST pool has constructors for all the IL forms. Each takes
 // a final "guess" parameter; if non-null and equal to the object
 // that would be allocated, we return the guess instead. This
@@ -817,6 +822,7 @@ struct AstPool {
 const char *TypeTypeString(const TypeType t);
 std::string TypeString(const Type *t);
 std::string ExpString(const Exp *e);
+std::string ProgramString(const Program &pgm);
 
 }  // namespace il
 

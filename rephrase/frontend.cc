@@ -18,6 +18,7 @@ using Token = el::Token;
 using Lexing = el::Lexing;
 using Parsing = el::Parsing;
 using Simplification = il::Simplification;
+using Program = il::Program;
 
 void Frontend::SetVerbose(int v) {
   verbose = v;
@@ -27,8 +28,8 @@ void Frontend::AddIncludePath(const std::string &s) {
   includepaths.push_back(s);
 }
 
-const il::Exp *Frontend::RunFrontend(const std::string &filename,
-                                     Options options) {
+Program Frontend::RunFrontend(const std::string &filename,
+                              Options options) {
   Timer read_timer;
   const std::string contents = Util::ReadFile(filename);
   const double read_sec = read_timer.Seconds();
@@ -41,9 +42,9 @@ const il::Exp *Frontend::RunFrontend(const std::string &filename,
   return RunFrontendOn(filename, contents);
 }
 
-const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
-                                       const std::string &contents,
-                                       Options options) {
+Program Frontend::RunFrontendOn(const std::string &filename,
+                                const std::string &contents,
+                                Options options) {
   if (verbose > 0) {
     printf(AWHITE("Lexing...") "\n");
     fflush(stdout);
@@ -72,9 +73,9 @@ const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
   }
 
   Timer parse_timer;
-  const el::Exp *el_pgm = Parsing::Parse(&el_pool, contents, tokens);
+  const el::Exp *el_exp = Parsing::Parse(&el_pool, contents, tokens);
   // Parser reports its own errors.
-  CHECK(el_pgm != nullptr);
+  CHECK(el_exp != nullptr);
   const double parse_sec = parse_timer.Seconds();
 
   // Maybe only at higher verbosity...
@@ -82,19 +83,19 @@ const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
     printf(AWHITE("Parsed") " in %s:\n"
            "%s\n",
            ANSI::Time(parse_sec).c_str(),
-           el::ExpString(el_pgm).c_str());
+           el::ExpString(el_exp).c_str());
     fflush(stdout);
   }
 
   Timer nullary_timer;
   el::Nullary nullary(&el_pool);
-  el_pgm = nullary.Rewrite(el_pgm);
+  el_exp = nullary.Rewrite(el_exp);
   const double nullary_sec = nullary_timer.Seconds();
   if (verbose > 0) {
     printf(AWHITE("Nullary rewrite") " in %s:\n"
            "%s\n",
            ANSI::Time(nullary_sec).c_str(),
-           el::ExpString(el_pgm).c_str());
+           el::ExpString(el_exp).c_str());
     fflush(stdout);
   }
 
@@ -105,14 +106,14 @@ const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
 
   Timer elab_timer;
   Elaboration elaboration(&el_pool, &il_pool);
-  const il::Exp *il_pgm = elaboration.Elaborate(el_pgm);
+  Program il_pgm = elaboration.Elaborate(el_exp);
   const double elab_sec = elab_timer.Seconds();
 
   if (verbose > 0) {
     printf(AWHITE("Elaborated") " in %s:\n"
            "%s\n",
            ANSI::Time(elab_sec).c_str(),
-           il::ExpString(il_pgm).c_str());
+           il::ProgramString(il_pgm).c_str());
     fflush(stdout);
   }
 
@@ -127,7 +128,7 @@ const il::Exp *Frontend::RunFrontendOn(const std::string &filename,
       printf(AWHITE("Simplified") " in %s:\n"
              AFGCOLOR(200, 230, 200, "%s") "\n",
              ANSI::Time(simplify_sec).c_str(),
-             il::ExpString(il_pgm).c_str());
+             il::ProgramString(il_pgm).c_str());
       fflush(stdout);
     }
   }

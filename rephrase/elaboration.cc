@@ -22,6 +22,7 @@ using Unification = il::Unification;
 using TypeVarInfo = il::TypeVarInfo;
 using EVar = il::EVar;
 using PatternCompilation = il::PatternCompilation;
+using Program = il::Program;
 
 using DatatypeDec = el::DatatypeDec;
 
@@ -41,7 +42,7 @@ const il::Type *Elaboration::NewEVar() {
   return pool->EVar(EVar());
 }
 
-const il::Exp *Elaboration::Elaborate(const el::Exp *el_exp) {
+Program Elaboration::Elaborate(const el::Exp *el_exp) {
   Context G = init.InitialContext();
 
   const auto &[e, t] = Elab(G, el_exp);
@@ -51,7 +52,9 @@ const il::Exp *Elaboration::Elaborate(const el::Exp *el_exp) {
     printf("Program type: %s\n", TypeString(t).c_str());
   }
 
-  return e;
+  Program pgm;
+  pgm.body = e;
+  return pgm;
 }
 
 const il::Type *Elaboration::ElabType(const Context &G,

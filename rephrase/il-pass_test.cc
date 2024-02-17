@@ -16,7 +16,7 @@ static void TestIdentity() {
   if (VERBOSE) {
     frontend.SetVerbose(2);
   }
-  const il::Exp *e = frontend.RunFrontendOn(
+  const il::Program pgm = frontend.RunFrontendOn(
       "il-pass_test",
       "let\n"
       "    datatype dir = Up of {} | Down of {}\n"
@@ -31,16 +31,22 @@ static void TestIdentity() {
   // On the first pass, we should get the correct guesses, but by
   // default it simplifies bound enums, so this does actually do
   // some allocations.
-  const il::Exp *e1 = pass.DoExp(e);
+  const il::Program p1 = pass.DoProgram(pgm);
   // But now there should be no evars, and thus no copying.
-  const il::Exp *e2 = pass.DoExp(e1);
+  const il::Program p2 = pass.DoProgram(p1);
 
-  CHECK(e1 == e2) << "The guesses should always be correct, so we "
+  CHECK(p1.globals.size() == p2.globals.size());
+  bool equal = p1.body == p2.body;
+  for (int i = 0; i < (int)p1.globals.size(); i++) {
+    equal = equal && p1.globals[i] == p2.globals[i];
+  }
+
+  CHECK(equal) << "The guesses should always be correct, so we "
     "should get back the same object:"
     ABLUE("\ne1") ":\n" <<
-    ExpString(e1) <<
+    ProgramString(p1) <<
     APURPLE("\ne2") ":\n" <<
-    ExpString(e2);
+    ProgramString(p2);
 }
 
 int main(int argc, char **argv) {

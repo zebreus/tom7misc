@@ -14,7 +14,7 @@ struct Simplification {
 
   void SetVerbose(int verbose);
 
-  const Exp *Simplify(const Exp *);
+  Program Simplify(const Program &);
 
 private:
   int verbose = 0;

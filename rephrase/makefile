@@ -16,7 +16,7 @@ test : lex_test.exe context_test.exe unification_test.exe parse_test.exe fronten
 # Also add /c/code/openblas/include to
 
 # LLAMA_CLBLAST=true
-# ASAN=true
+ASAN=true
 
 UNAME := $(shell uname -o)
 

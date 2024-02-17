@@ -18,7 +18,7 @@ struct Elaboration {
 
   void SetVerbose(int v) { verbose = v; }
 
-  const il::Exp *Elaborate(const el::Exp *el_exp);
+  il::Program Elaborate(const el::Exp *el_exp);
 
 private:
   friend struct il::PatternCompilation;

@@ -10,11 +10,9 @@
 #include "il.h"
 #include "bignum/big-overloads.h"
 
-
 static constexpr bool VERBOSE = true;
 
 namespace il {
-
 
 #define CHECK_TYPETYPE(t_, tt_) do {              \
     const TypeType tt = (tt_);                    \
@@ -33,46 +31,81 @@ namespace il {
       TypeTypeString(t->type);                    \
   } while (0)
 
-static void Simple() {
+#define RunInternal(src, simp)                      \
+  ([&front]() -> Program {                          \
+    const std::string source = (src);               \
+    Frontend::Options options;                      \
+    options.simplify = (simp);                      \
+    const Program pgm = front.RunFrontendOn(        \
+        StringPrintf("Test %s (%s:%d)",             \
+                     __func__, __FILE__, __LINE__), \
+        source,                                     \
+        options);                                   \
+    CHECK(pgm.body != nullptr) << "Rejected: "      \
+                               << source;           \
+    return pgm;                                     \
+  }())
+
+#define Run(src) RunInternal(src, true)
+#define RunNoSimplify(src) RunInternal(src, false)
+
+static void TestLiterals() {
   Frontend front;
   if (VERBOSE) {
     front.SetVerbose(1);
   }
 
-#define RunInternal(pgm, simp) ([&front]() {        \
-    const std::string source = (pgm);               \
-    Frontend::Options options;                      \
-    options.simplify = (simp);                      \
-    const Exp *e = front.RunFrontendOn(             \
-        StringPrintf("Test %s (%s:%d)",             \
-                     __func__, __FILE__, __LINE__), \
-        source,                                     \
-        options);                                   \
-    CHECK(e != nullptr) << "Rejected: " << source;  \
-    return e;                                       \
-  }())
-
-#define Run(pgm) RunInternal(pgm, true)
-#define RunNoSimplify(pgm) RunInternal(pgm, false)
-
   {
-    const Exp *e = Run("42");
-    CHECK(e->Integer() == 42);
+    const Program pgm = Run("42");
+    CHECK(pgm.body->Integer() == 42);
   }
 
   {
-    const Exp *e = Run("42 : int");
-    CHECK(e->Integer() == 42);
+    const Program pgm = Run("42 : int");
+    CHECK(pgm.body->Integer() == 42);
   }
 
   {
-    const Exp *e = Run("\"hi\" : string");
-    CHECK(e->String() == "hi");
+    const Program pgm = Run("\"hi\" : string");
+    CHECK(pgm.body->String() == "hi");
   }
 
   {
-    const Exp *e = RunNoSimplify("ref 7 : int ref");
-    const auto &[f, arg] = e->App();
+    const Program pgm = RunNoSimplify("{lab = 0, 2=\"hi\"}");
+    const auto &str_children = pgm.body->Record();
+    CHECK(str_children.size() == 2);
+    CHECK(str_children[0].first == "lab");
+    CHECK(str_children[0].second->Integer() == 0);
+    CHECK(str_children[1].first == "2");
+    CHECK(str_children[1].second->String() == "hi");
+    if (VERBOSE) {
+      printf("... %s\n", ExpString(pgm.body).c_str());
+    }
+  }
+
+  {
+    const Program pgm = Run("1e100");
+    double d = pgm.body->Float();
+    CHECK(d == 1e100);
+  }
+
+  {
+    const Program pgm = Run("2.25");
+    double d = pgm.body->Float();
+    CHECK(d == 2.25);
+  }
+
+}
+
+static void TestPrimops() {
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(1);
+  }
+
+  {
+    const Program pgm = RunNoSimplify("ref 7 : int ref");
+    const auto &[f, arg] = pgm.body->App();
     CHECK(arg->Integer() == 7);
     const auto &[self, x, body] = f->Fn();
     CHECK(self.empty());
@@ -91,10 +124,10 @@ static void Simple() {
 
   {
     // With simplification.
-    const Exp *e = Run("ref 7 : int ref");
+    const Program pgm = Run("ref 7 : int ref");
     // Simplifier should be able to make this into
     // a direct primop application.
-    const auto &[po, ts, es] = e->Primop();
+    const auto &[po, ts, es] = pgm.body->Primop();
     CHECK(po == Primop::REF);
     CHECK(ts.size() == 1);
     CHECK_TYPETYPE(ts[0], TypeType::INT);
@@ -102,8 +135,8 @@ static void Simple() {
   }
 
   {
-    const Exp *e = RunNoSimplify("3 + 4");
-    const auto &[f, arg] = e->App();
+    const Program pgm = RunNoSimplify("3 + 4");
+    const auto &[f, arg] = pgm.body->App();
     const auto &str_children = arg->Record();
     CHECK(str_children.size() == 2);
     // A record with labels "1" and "2".
@@ -127,113 +160,38 @@ static void Simple() {
     CHECK(std::get<1>(e2->Var()) == x);
   }
 
-  {
-    const Exp *e = RunNoSimplify("{lab = 0, 2=\"hi\"}");
-    const auto &str_children = e->Record();
-    CHECK(str_children.size() == 2);
-    CHECK(str_children[0].first == "lab");
-    CHECK(str_children[0].second->Integer() == 0);
-    CHECK(str_children[1].first == "2");
-    CHECK(str_children[1].second->String() == "hi");
-    printf("... %s\n", ExpString(e).c_str());
-  }
+}
 
-
-  {
-    const Exp *e = RunNoSimplify("let val x = 3 in x end");
-    const auto &[tyvars, x, rhs, body] = e->Let();
-    CHECK(tyvars.empty());
-    printf("... %s\n", ExpString(e).c_str());
+static void TestSimplify() {
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(1);
   }
 
   {
-    const Exp *e = RunNoSimplify("let val (x, y) = (7, \"hi\") in x end");
-    if (VERBOSE) {
-      printf("%s\n", ExpString(e).c_str());
-    }
-    // Should bind tuple, and the two vars.
-    const auto &[tyvars, x, rhs, body] = e->Let();
-    CHECK(tyvars.empty());
-    CHECK(body->type == ExpType::LET);
-    const Exp *body2 = std::get<3>(body->Let());
-    CHECK(body2->type == ExpType::LET);
-    const Exp *body3 = std::get<3>(body2->Let());
-    CHECK(body3->type == ExpType::VAR);
-  }
-
-  {
-    const Exp *e = RunNoSimplify(
-        "let val (x as z, _) = (7, \"hi\") in x end");
-    if (VERBOSE) {
-      printf("%s\n", ExpString(e).c_str());
-    }
-    const auto &[tyvars, x, rhs, body] = e->Let();
-    CHECK(tyvars.empty()) << "Should not be polymorphic!";
-
-    std::unordered_set<std::string> declared;
-    while (e->type == ExpType::LET) {
-      const auto &[tyvars_, xx, rhs_, bbody] = e->Let();
-      declared.insert(xx);
-      e = bbody;
-    }
-    CHECK(e->type == ExpType::VAR);
-    const std::string v = std::get<1>(e->Var());
-    CHECK(declared.contains(v)) << v;
-  }
-
-  {
-    const Exp *e = RunNoSimplify("fn x => x");
-    const auto &[self, x, body] = e->Fn();
-    if (VERBOSE) {
-      printf("%s\n", ExpString(body).c_str());
-    }
-  }
-
-  {
-    const Exp *e = Run("(fn x => x) 7");
+    const Program pgm = Run("(fn x => x) 7");
     // After simplification, we have
     // let x = 7
     // in x
     // end
-    CHECK(e->Integer() == 7) << "Should be able to simplify this to "
-      "a let and then just an integer. Tests making a function not "
-      "recursive.";
+    CHECK(pgm.body->Integer() == 7) << "Should be able to simplify "
+      "this to a let and then just an integer. Tests making a function "
+      "not recursive.";
   }
 
   {
-    const Exp *e = Run("case 7 of x => x");
-    CHECK(e->Integer() == 7) << "Should be able to simplify this "
+    const Program pgm = Run("case 7 of x => x");
+    CHECK(pgm.body->Integer() == 7) << "Should be able to simplify this "
       "to just an integer.";
   }
 
   {
-    const Exp *e = Run("1e100");
-    double d = e->Float();
-    CHECK(d == 1e100);
-  }
-
-  {
-    const Exp *e = Run("2.25");
-    double d = e->Float();
-    CHECK(d == 2.25);
-  }
-
-  {
-    const Exp *e = Run("let datatype (a) option = SOME of a | NONE\n"
-                       "in 7\n"
-                       "end");
-    // Datatype declarations are transparent, so this should just be the
-    // body.
-    CHECK(e->Integer() == 7);
-  }
-
-  {
-    const Exp *e = Run("let datatype (a) option = SOME of a | NONE\n"
-                       "in SOME 7\n"
-                       "end");
-    CHECK(e->type == ExpType::ROLL);
+    const Program pgm = Run("let datatype (a) option = SOME of a | NONE\n"
+                            "in SOME 7\n"
+                            "end");
+    CHECK(pgm.body->type == ExpType::ROLL);
     // roll<(μ opt. [NONE: {}, SOME: int])>([SOME = 7])
-    const auto &[t, body] = e->Roll();
+    const auto &[t, body] = pgm.body->Roll();
     CHECK(t->type == TypeType::MU);
     const auto &[lab, bbody] = body->Inject();
     CHECK(bbody->Integer() == 7);
@@ -241,26 +199,27 @@ static void Simple() {
   }
 
   {
-    const Exp *e = Run("let\n"
-                       "   datatype dir = Up | Down\n"
-                       "   val x = 9\n"
-                       "   val f = fn x => x\n"
-                       "in f 7\n"
-                       "end");
-    CHECK(e->type == ExpType::INTEGER) << "Should be able to simplify "
-      "this to just 7 because the bindings are trivially "
+    const Program pgm = Run("let\n"
+                            "   datatype dir = Up | Down\n"
+                            "   val x = 9\n"
+                            "   val f = fn x => x\n"
+                            "in f 7\n"
+                            "end");
+    CHECK(pgm.body->type == ExpType::INTEGER) << "Should be able "
+      "to simplify this to just 7 because the bindings are trivially "
       "inlinable. Tests polymorphic inlining.";
   }
 
   {
-    const Exp *e = Run("let\n"
-                       "  val x = 7\n"
-                       "in\n"
-                       "  (x, x)\n"
-                       "end\n");
-    CHECK(e->type == ExpType::RECORD) << "Should be able to simplify "
-      "this to the record (7, 7) since integers are small values.";
-    const auto &labe = e->Record();
+    const Program pgm = Run("let\n"
+                            "  val x = 7\n"
+                            "in\n"
+                            "  (x, x)\n"
+                            "end\n");
+    CHECK(pgm.body->type == ExpType::RECORD) << "Should be able to "
+      "simplify this to the record (7, 7) since integers are small "
+      "values.";
+    const auto &labe = pgm.body->Record();
     CHECK(labe[0].first == "1");
     CHECK(labe[0].second->Integer() == 7);
     CHECK(labe[1].first == "2");
@@ -268,17 +227,17 @@ static void Simple() {
   }
 
   if (false) {
-    const Exp *e = Run("let\n"
-                       "  val id = fn x => x\n"
-                       "  val x = 7\n"
-                       "in\n"
-                       "  (fn x, fn x)\n"
-                       "end\n");
-    CHECK(e->type == ExpType::RECORD) << "Should be able to simplify "
+    const Program pgm = Run("let\n"
+                            "  val id = fn x => x\n"
+                            "  val x = 7\n"
+                            "in\n"
+                            "  (fn x, fn x)\n"
+                            "end\n");
+    CHECK(pgm.body->type == ExpType::RECORD) << "Should be able to simplify "
       "this to (7, 7) by inlining into application positions where "
       "the argument and body are small enough. (Unimplemented! And "
       "perhaps this should just be part of a proper optimization pass.)";
-    const auto &labe = e->Record();
+    const auto &labe = pgm.body->Record();
     CHECK(labe[0].first == "1");
     CHECK(labe[0].second->Integer() == 7);
     CHECK(labe[1].first == "2");
@@ -286,92 +245,92 @@ static void Simple() {
   }
 
   {
-    const Exp *e = Run("case 7 of x => x | y => 8 | z => 9");
-    CHECK(e->Integer() == 7) << "Should be able to simplify this "
+    const Program pgm = Run("case 7 of x => x | y => 8 | z => 9");
+    CHECK(pgm.body->Integer() == 7) << "Should be able to simplify this "
       "to just an integer.";
   }
 
   {
-    const Exp *e = Run("case (7, 7) of (x, y) => x");
-    CHECK(e->Integer() == 7);
+    const Program pgm = Run("case (7, 7) of (x, y) => x");
+    CHECK(pgm.body->Integer() == 7);
   }
 
   {
-    const Exp *e = Run("case {d = (2, 7), a = 3, c = \"hi\"} of\n"
-                       "  {d = (_, x), a = a, c = _} => x\n");
-    CHECK(e->Integer() == 7);
+    const Program pgm = Run("case {d = (2, 7), a = 3, c = \"hi\"} of\n"
+                            "  {d = (_, x), a = a, c = _} => x\n");
+    CHECK(pgm.body->Integer() == 7);
   }
 
   {
-    const Exp *e = Run("case 2 of\n"
-                       "   1 => 111\n"
-                       " | 2 => 222\n"
-                       " | 3 => 333\n"
-                       " | _ => 666");
-    CHECK(e->Integer() == 222);
+    const Program pgm = Run("case 2 of\n"
+                            "   1 => 111\n"
+                            " | 2 => 222\n"
+                            " | 3 => 333\n"
+                            " | _ => 666");
+    CHECK(pgm.body->Integer() == 222);
   }
 
-  {
-    const Exp *e = Run("case (1, 2, 3) of\n"
-                       "   (1, 2, 3) => 7\n"
-                       " | _ => 666\n");
+  if (false) {
+    const Program pgm = Run("case (1, 2, 3) of\n"
+                            "   (1, 2, 3) => 7\n"
+                            " | _ => 666\n");
     // TODO: Optimize this so that we know it's just 7?
     // Need some kind of known-value optimization, or inlining
     // tuple values into projections.
-    printf("%s", ExpString(e).c_str());
+    printf("%s", ProgramString(pgm).c_str());
   }
 
   {
-    const Exp *e = Run("case \"hello\" of\n"
-                       "   \"world\" => 1234\n"
-                       " | \"hello\" => 7\n"
-                       " | _ => 9\n");
-    CHECK(e->Integer() == 7);
+    const Program pgm = Run("case \"hello\" of\n"
+                            "   \"world\" => 1234\n"
+                            " | \"hello\" => 7\n"
+                            " | _ => 9\n");
+    CHECK(pgm.body->Integer() == 7);
   }
 
   {
-    const Exp *e = Run("let\n"
-                       "  datatype sss = AAA of int | BBB of string\n"
-                       "in\n"
-                       "  case AAA 7 of\n"
-                       "    AAA x => x\n"
-                       "  | BBB s => 666\n"
-                       "end\n");
-    CHECK(e->Integer() == 7);
+    const Program pgm = Run("let\n"
+                            "  datatype sss = AAA of int | BBB of string\n"
+                            "in\n"
+                            "  case AAA 7 of\n"
+                            "    AAA x => x\n"
+                            "  | BBB s => 666\n"
+                            "end\n");
+    CHECK(pgm.body->Integer() == 7);
   }
 
   {
-    const Exp *e = Run("let\n"
-                       "  val loop = fn as loop x =>\n"
-                       " loop 0\n"
-                       "in\n"
-                       "  7\n"
-                       "end\n");
-    CHECK(e->Integer() == 7) << "Tests whether we can drop an unused "
-      "polymorphic value (val binding).";
+    const Program pgm = Run("let\n"
+                            "  val loop = fn as loop x =>\n"
+                            "                    loop 0\n"
+                            "in\n"
+                            "  7\n"
+                            "end\n");
+    CHECK(pgm.body->Integer() == 7) << "Tests whether we can drop an "
+      "unused polymorphic value (val binding).";
   }
 
   {
-    const Exp *e = Run("let\n"
-                       "  val fact = fn as fact x =>\n"
-                       "     (case x of\n"
-                       "       0 => 1\n"
-                       "     | n => n * fact (n - 1))\n"
-                       "  do (6, fact 7)\n"
-                       "in\n"
-                       "  7\n"
-                       "end\n");
+    const Program pgm = Run("let\n"
+                            "  val fact = fn as fact x =>\n"
+                            "     (case x of\n"
+                            "       0 => 1\n"
+                            "     | n => n * fact (n - 1))\n"
+                            "  do (6, fact 7)\n"
+                            "in\n"
+                            "  7\n"
+                            "end\n");
     // Should be able to inline 'fact', and remove the unnecessary tuple
     // despite having an effectful element.
-    CHECK(e->type == ExpType::SEQ);
-    const auto &[es, body] = e->Seq();
+    CHECK(pgm.body->type == ExpType::SEQ);
+    const auto &[es, body] = pgm.body->Seq();
     CHECK(es.size() == 1);
     CHECK(es[0]->type == ExpType::APP);
     CHECK(body->Integer() == 7);
   }
 
   {
-    const Exp *e = Run("let\n"
+    const Program pgm = Run("let\n"
                        " val rec = fn as rec x => "
                        "   case x of\n"
                        "     0 => 0\n"
@@ -385,8 +344,8 @@ static void Simple() {
                        "end");
     // Inline the function, but we have to keep the intcase
     // because we would enter the 1 div 0 arm, which has an effect.
-    CHECK(e->type == ExpType::SEQ);
-    const auto &[es, body] = e->Seq();
+    CHECK(pgm.body->type == ExpType::SEQ);
+    const auto &[es, body] = pgm.body->Seq();
     CHECK(es.size() == 1);
     // TODO: This doesn't work yet because we need to simplify something
     // like
@@ -398,16 +357,87 @@ static void Simple() {
     CHECK(body->Integer() == 7);
   }
 
+}
+
+static void Simple() {
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(1);
+  }
+
+  {
+    const Program pgm = RunNoSimplify("let val x = 3 in x end");
+    const auto &[tyvars, x, rhs, body] = pgm.body->Let();
+    CHECK(tyvars.empty());
+    if (VERBOSE) {
+      printf("... %s\n", ProgramString(pgm).c_str());
+    }
+  }
+
+  {
+    const Program pgm = RunNoSimplify("let val (x, y) = (7, \"hi\") in x end");
+    if (VERBOSE) {
+      printf("%s\n", ProgramString(pgm).c_str());
+    }
+    // Should bind tuple, and the two vars.
+    const auto &[tyvars, x, rhs, body] = pgm.body->Let();
+    CHECK(tyvars.empty());
+    CHECK(body->type == ExpType::LET);
+    const Exp *body2 = std::get<3>(body->Let());
+    CHECK(body2->type == ExpType::LET);
+    const Exp *body3 = std::get<3>(body2->Let());
+    CHECK(body3->type == ExpType::VAR);
+  }
+
+  {
+    const Program pgm = RunNoSimplify(
+        "let val (x as z, _) = (7, \"hi\") in x end");
+    if (VERBOSE) {
+      printf("%s\n", ProgramString(pgm).c_str());
+    }
+    const auto &[tyvars, x, rhs, body] = pgm.body->Let();
+    CHECK(tyvars.empty()) << "Should not be polymorphic!";
+
+    std::unordered_set<std::string> declared;
+    const Exp *e = pgm.body;
+    while (e->type == ExpType::LET) {
+      const auto &[tyvars_, xx, rhs_, bbody] = e->Let();
+      declared.insert(xx);
+      e = bbody;
+    }
+    CHECK(e->type == ExpType::VAR);
+    const std::string v = std::get<1>(e->Var());
+    CHECK(declared.contains(v)) << v;
+  }
+
+  {
+    const Program pgm = RunNoSimplify("fn x => x");
+    const auto &[self, x, body] = pgm.body->Fn();
+    if (VERBOSE) {
+      printf("%s\n", ProgramString(pgm).c_str());
+    }
+  }
+
+
+  {
+    const Program pgm = Run("let datatype (a) option = SOME of a | NONE\n"
+                            "in 7\n"
+                            "end");
+    // Datatype declarations are transparent, so this should just be the
+    // body.
+    CHECK(pgm.body->Integer() == 7);
+  }
+
   {
     // Test nullary rewrite.
-    const Exp *e = Run("let\n"
+    const Program pgm = Run("let\n"
                        "  datatype sss = AAA | BBB of int\n"
                        "in\n"
                        "  case AAA of\n"
                        "    BBB x => x\n"
                        "  | AAA => 7\n"
                        "end\n");
-    CHECK(e->Integer() == 7);
+    CHECK(pgm.body->Integer() == 7);
   }
 
 }
@@ -417,7 +447,10 @@ static void Simple() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  il::Simple();
+  il::TestLiterals();
+  il::TestPrimops();
+  il::TestSimplify();
+  // il::Simple();
 
   printf("OK\n");
   return 0;

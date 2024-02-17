@@ -18,6 +18,15 @@ template<typename... Args>
 struct Pass {
   explicit Pass(AstPool *pool) : pool(pool) {}
 
+  virtual const Program DoProgram(const Program &program, Args... args) {
+    Program out;
+    out.globals.reserve(program.globals.size());
+    for (const auto &[sym, t, e] : program.globals) {
+      out.globals.emplace_back(sym, DoType(t, args...), DoExp(e, args...));
+    }
+    out.body = DoExp(program.body, args...);
+    return out;
+  }
 
   virtual const Type *DoType(const Type *t, Args... args) {
     switch (t->type) {
