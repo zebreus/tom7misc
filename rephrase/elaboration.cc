@@ -1,5 +1,6 @@
 
 // TODO: Don't allow constructors to be shadowed by regular variables.
+// Nullary assumes this.
 
 #include "elaboration.h"
 
@@ -12,6 +13,7 @@
 #include "initial.h"
 #include "pattern-compilation.h"
 #include "il-util.h"
+#include "util.h"
 
 #include "base/stringprintf.h"
 
@@ -25,8 +27,11 @@ using EVar = il::EVar;
 using PatternCompilation = il::PatternCompilation;
 using Program = il::Program;
 using ILUtil = il::ILUtil;
+using Global = il::Global;
 
 using DatatypeDec = el::DatatypeDec;
+
+static constexpr bool VERBOSE = true;
 
 Elaboration::Elaboration(el::AstPool *el_pool, il::AstPool *il_pool) :
   el_pool(el_pool), pool(il_pool), init(pool) {
@@ -141,7 +146,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
       return pattern_compilation->CompileIrrefutable(
           G, dec->pat, dec->exp, rest);
 
-    case el::DecType::FUN:
+    case el::DecType::FUN: {
       // TODO: Support curried notation.
       CHECK(!dec->funs.empty()) << "Bug: Should not parse empty funs.";
       if (dec->funs.size() == 1) {
@@ -176,6 +181,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
         }
 
         std::vector<std::pair<const il::Exp *, const il::Type *>> fns;
+        fns.reserve(dec->funs.size());
         for (int i = 0; i < (int)dec->funs.size(); i++) {
           const el::FunDec &fun = dec->funs[i];
           // In the generated code we could perform the recursion
@@ -194,69 +200,169 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
         // The declared functions may mention local variables that prevent
         // them from being hoisted to top-level. These present as
         // free variables that are not in the mutually-recursive bundle
-        // and are not globals.
+        // and are not globals. We use the same environment for the
+        // entire bundle.
+        std::unordered_set<std::string> fvs_all;
         for (int i = 0; i < (int)dec->funs.size(); i++) {
           const auto &[oexp, otype] = fns[i];
-          std::unordered_set<std::string> fvs =
-            ILUtil::FreeExpVars(oexp);
-
-          // FIXME: We actually need to use one environment for the
-          // whole bundle. So do this same thing, but for all fns at once.
-
-          // The other functions in the bundle will look syntactically
-          // free, but they are being bound as part of this declaration.
-          // Remove them from the set.
-          for (const std::string &ilv : il_vars) {
-            fvs.erase(ilv);
+          for (const std::string &fv : ILUtil::FreeExpVars(oexp)) {
+            fvs_all.insert(fv);
           }
+        }
+
+        // The other functions in the bundle will look syntactically
+        // free, but they are being bound as part of this declaration.
+        // Remove them from the set.
+        for (const std::string &ilv : il_vars) {
+          fvs_all.erase(ilv);
+        }
+
+        // The free variables must be bound in the context, so get
+        // those types.
+        std::vector<std::pair<std::string, const il::Type *>> fvts;
+        for (const std::string &s : fvs_all) {
+          const VarInfo *vi = G.Find(s);
+          CHECK(vi != nullptr) << "Bug: When compiling a "
+            "mutually-recursive bundle of functions (fun...and), "
+            "found a free variable " << s << " that's not bound in "
+            "the context.\n";
+          CHECK(vi->type != nullptr) << "Bug: Maybe this happens "
+            "for primops or ctors?";
+          fvts.emplace_back(s, vi->type);
+        }
+
+        std::sort(fvts.begin(), fvts.end(),
+                  [](const std::pair<std::string, const il::Type *> &a,
+                     const std::pair<std::string, const il::Type *> &b) {
+                    return a.first < b.first;
+                  });
+
+        if (VERBOSE) {
+          printf("Environment for mutually recursive fun dec:\n");
+          for (const auto &[x, t] : fvts) {
+            printf("  %s : %s\n", x.c_str(), TypeString(t).c_str());
+          }
+        }
+
+        // The labels have the same names as the variables for our
+        // convenience. This means that the record type is just the
+        // fvts set we just created.
+        const il::Type *env_type = pool->RecordType(fvts);
+        const std::string gx = pool->NewVar("env");
+        const il::Exp *gxv = pool->Var({}, gx);
+
+        auto UnpackEnv = [&](const il::Exp *body) {
+            for (const auto &[fv, t] : fvts) {
+              body = pool->Let({}, fv, pool->Project(fv, gxv), body);
+            }
+            return body;
+          };
+
+        // Names for the globals.
+        std::vector<std::string> global_syms;
+        global_syms.reserve(dec->funs.size());
+        for (const el::FunDec &fun : dec->funs) {
+          global_syms.push_back(
+              pool->NewVar(StringPrintf("g_%s", fun.name.c_str())));
+        }
+
+        // Now we can generate the global for each function.
+        CHECK(dec->funs.size() == fns.size());
+        for (int i = 0; i < (int)dec->funs.size(); i++) {
+          const el::FunDec &fun = dec->funs[i];
+          const auto &[obody, otype] = fns[i];
 
           // If the function is f : d->c = (fn x => e), with free variables
           // x1 : t1, x2 : t2, ... then we generate the global
           // global_f : (t1*t2*...) -> d -> c =
           //    (fn (x1=x1, x2=x2, ...) => fn x => e)
+          //
+          // With appropriate substitutions for calls to friends in the
+          // bundle.
+          const il::Exp *gbody = obody;
 
-          // The free variables must be bound in the context, so get
-          // those types.
-          std::vector<std::pair<std::string, const il::Type *>> fvts;
-          for (const std::string &s : fvs) {
-            const VarInfo *vi = G.Find(s);
-            CHECK(vi != nullptr) << "Bug: When compiling a "
-              "mutually-recursive bundle of functions (fun...and), "
-              "found a free variable " << s << " that's not bound in "
-              "the context.\n";
-            CHECK(vi->type != nullptr) << "Bug: Maybe this happens "
-              "for primops or ctors?";
-            fvts.emplace_back(s, vi->type);
+          // To call self, we're just using the recursive variable. It's
+          // already bound so there's nothing to do for it.
+          // To call a friend f, we just call (glob_f env) to get the
+          // function of the correct type.
+          for (int j = 0; j < (int)dec->funs.size(); j++) {
+            const el::FunDec &friend_fun = dec->funs[j];
+            if (friend_fun.name == fun.name) {
+              // Substitution would do nothing, but is also not free.
+            } else {
+              // XXX tyvars? We may need to eta expand polymorphic calls
+              // and use SubstPolyExp?
+              const il::Exp *friend_exp =
+                pool->App(pool->Var({}, global_syms[j]), gxv);
+              gbody = ILUtil::SubstExp(pool, friend_exp, il_vars[j], gbody);
+            }
           }
 
-          std::sort(fvts.begin(), fvts.end(),
-                    [](const std::pair<std::string, const il::Type *> &a,
-                       const std::pair<std::string, const il::Type *> &b) {
-                      return a.first < b.first;
-                    });
 
-          // Now the curried function. Unpack the argument record; the
-          // labels have the same names as the variables for convenience.
-          // This means that the record type is just the fvts set we just
-          // created.
-          const il::Type *env_type = pool->RecordType(fvts);
-          const il::Exp *gbody = oexp;
-          const std::string gx = pool->NewVar("env");
-          const il::Exp *gxv = pool->Var({}, gx);
-          for (const auto &[fv, t] : fvts) {
-            gbody = pool->Let({}, fv, pool->Project(fv, gxv), gbody);
-          }
-
+          // Now wrap the body with the projections from the environment.
+          // We could have done this before the substitutions above, since
+          // the symbols should be disjoint, but that just makes more work
+          // copying these.
+          gbody = UnpackEnv(gbody);
 
           const il::Exp *glob_fn = pool->Fn("", gx, gbody);
           const il::Type *glob_typ = pool->Arrow(env_type, otype);
 
-          LOG(FATAL) << "Oops this is not right. See remark above.";
+          // Now add it to the table.
+          Global global;
+          // XXX surely we should have polymorphism here. Perhaps we
+          // can just evarize the glob_type? This would then also give
+          // us the arity for friend calls above.
+          global.tyvars = {};
+          global.sym = global_syms[i];
+          global.type = glob_typ;
+          global.exp = glob_fn;
+          globals.push_back(std::move(global));
         }
 
-        LOG(FATAL) << "Unimplemented: Mutually-recursive FUN";
+        // Now the globals are emitted and can access one another. Next
+        // we need to bind callable functions for the body of the let.
+        // These can just be
+        //   val env = {x1=x1, x2=x2, ...}
+        //   val (α1, α2) f1 = (g_f1 env)
+        //   val (α1, α2) f2 = (g_f2 env)
+
+        // XXX generalize
+        Context GGG = GG;
+
+        const auto &[let_exp, let_type] = Elab(GGG, rest);
+
+        // Get a name (cosmetic) for the environment that involves
+        // the functions declared.
+        std::vector<std::string> fnames;
+        for (const el::FunDec &fun : dec->funs)
+          fnames.push_back(fun.name);
+
+        std::string aenv_var = pool->NewVar(
+            StringPrintf("%s_env", Util::Join(fnames, "_").c_str()));
+        const il::Exp *ret_exp = let_exp;
+        // Now wrap with the function bindings as described above.
+        for (int i = 0; i < (int)dec->funs.size(); i++) {
+          ret_exp = pool->Let({}, il_vars[i],
+                              pool->App(pool->Var({}, global_syms[i]),
+                                        pool->Var({}, aenv_var)),
+                              ret_exp);
+        }
+
+        // And bind the environment itself.
+        std::vector<std::pair<std::string, const il::Exp *>> env_fields;
+        env_fields.reserve(fvts.size());
+        for (const auto &[lab_var, t_] : fvts) {
+          // Label and variable are the same.
+          env_fields.emplace_back(lab_var, pool->Var({}, lab_var));
+        }
+        ret_exp = pool->Let({}, aenv_var, pool->Record(env_fields),
+                            ret_exp);
+
+        return std::make_pair(ret_exp, let_type);
       }
       break;
+    }
 
     case el::DecType::DATATYPE: {
       {

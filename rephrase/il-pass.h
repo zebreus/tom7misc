@@ -27,7 +27,7 @@ struct Pass {
       gg.sym = glob.sym;
       gg.type = DoType(glob.type, args...);
       gg.exp = DoExp(glob.exp, args...);
-      out.globals.push_back(glob);
+      out.globals.push_back(std::move(gg));
     }
     out.body = DoExp(program.body, args...);
     return out;

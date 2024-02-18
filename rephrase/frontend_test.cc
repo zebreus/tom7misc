@@ -439,7 +439,15 @@ static void Simple() {
                             "end\n");
     CHECK(pgm.body->Integer() == 7);
   }
+}
 
+static void TestFun() {
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(1);
+  }
+
+  // No mutual recursion.
   {
     const Program pgm = Run("let\n"
                             "  fun seven() = 7\n"
@@ -452,6 +460,29 @@ static void Simple() {
     CHECK(pgm.body->Integer() == 7);
   }
 
+  {
+    const Program pgm = Run("let\n"
+                            "  fun f 0 = 1\n"
+                            "    | f x = g (x - 1)\n"
+                            "  and g y = f y\n"
+                            "in\n"
+                            "  f 7\n"
+                            "end\n");
+    // CHECK(pgm.body->Integer() == 7);
+    printf("%s\n", ProgramString(pgm).c_str());
+  }
+
+}
+
+
+// Former bugs.
+static void Regression() {
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(1);
+  }
+
+  // Zarro boogs.
 }
 
 }  // il
@@ -463,6 +494,11 @@ int main(int argc, char **argv) {
   il::TestPrimops();
   il::TestSimplify();
   il::Simple();
+  il::Regression();
+
+  il::TestFun();
+
+
 
   printf("OK\n");
   return 0;

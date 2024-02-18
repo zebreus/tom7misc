@@ -15,7 +15,7 @@ test : lex_test.exe context_test.exe unification_test.exe parse_test.exe fronten
 # Also add -static to LFLAGS below
 # Also add /c/code/openblas/include to
 
-# LLAMA_CLBLAST=true
+LLAMA_CLBLAST=true
 # ASAN=true
 
 UNAME := $(shell uname -o)
@@ -258,8 +258,7 @@ LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_
 
 LANG_OBJECTS=el.o parse.o lex.o frontend.o il.o elaboration.o initial.o context.o unification.o primop.o pattern-compilation.o simplification.o il-util.o pp.o nullary.o
 
-# XXX add back: $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
-%.o : %.cc *.h
+%.o : %.cc *.h $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 

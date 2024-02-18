@@ -6,8 +6,11 @@
 #include "il-pass.h"
 #include "il-util.h"
 #include "bignum/big-overloads.h"
+#include "ansi.h"
 
 namespace il {
+
+static constexpr bool VERBOSE = true;
 
 Simplification::Simplification(AstPool *pool) : pool(pool) {}
 
@@ -209,6 +212,9 @@ struct PeepholePass : public il::Pass<> {
                   const Exp *guess) override {
     if (!self.empty() && !ILUtil::IsExpVarFree(body, self)) {
       Simplified("remove recursive fn var");
+      if (VERBOSE) {
+        printf("Removed var is " APURPLE("%s") "\n", self.c_str());
+      }
       return pool->Fn("", x, DoExp(body), guess);
     }
 
@@ -400,6 +406,10 @@ struct PeepholePass : public il::Pass<> {
 
   // Call this whenever the expression definitely got smaller.
   void Simplified(const char *msg) {
+    if (VERBOSE) {
+      printf(AWHITE("S %d") " " AGREEN("%s") "\n",
+             simplified, msg);
+    }
     simplified++;
   }
 
@@ -418,6 +428,12 @@ Program Simplification::Simplify(const Program &program_in) {
   do {
     peephole.Reset();
     program = peephole.DoProgram(program);
+
+    if (VERBOSE) {
+      printf("\n" AYELLOW("After simplification:\n"));
+      printf("%s\n", ProgramString(program).c_str());
+    }
+
   } while (peephole.simplified > 0);
 
   return program;
