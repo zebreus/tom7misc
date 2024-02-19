@@ -52,6 +52,12 @@ struct ILUtil {
       const std::string &a,
       const Exp *e);
 
+  // Substitution does not affect global symbols. But we have parallel
+  // functions for globals.
+  // (TODO: as needed)
+
+  static std::unordered_map<std::string, int> LabelCounts(const Exp *e);
+
 };
 
 }  // namespace il

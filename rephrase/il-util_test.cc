@@ -38,7 +38,7 @@ static void TestFreeVars() {
           pool.Let(
               {}, "z", Var("y"),
               pool.Let(
-                  {}, "w", pool.Int(1),
+                  {}, "w", pool.GlobalSym({}, "GLOBAL"),
                   pool.Fn("self", "u",
                           pool.Record(
                               {
@@ -62,6 +62,12 @@ static void TestFreeVars() {
   CHECK(!ILUtil::IsExpVarFree(e, "z"));
   CHECK(!ILUtil::IsExpVarFree(e, "self"));
   CHECK(!ILUtil::IsExpVarFree(e, "huh"));
+  CHECK(!ILUtil::IsExpVarFree(e, "GLOBAL"));
+
+  std::unordered_map<std::string, int> labs = ILUtil::LabelCounts(e);
+  CHECK(labs.size() == 1);
+  CHECK(labs["GLOBAL"] == 1);
+  CHECK(!labs.contains("x"));
 }
 
 static void TestSubstType() {

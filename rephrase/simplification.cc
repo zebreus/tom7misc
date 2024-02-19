@@ -8,9 +8,31 @@
 #include "bignum/big-overloads.h"
 #include "ansi.h"
 
-namespace il {
-
 static constexpr bool VERBOSE = true;
+
+namespace {
+struct Progress {
+  // Call this whenever the expression definitely got smaller.
+  void Simplified(const char *msg) {
+    if (VERBOSE) {
+      printf(AWHITE("S %d") " " AGREEN("%s") "\n",
+             simplified, msg);
+    }
+    simplified++;
+  }
+
+  void Reset() {
+    simplified = 0;
+  }
+
+  bool MadeProgress() const { return simplified > 0; }
+
+private:
+  int simplified = 0;
+};
+}  // namespace
+
+namespace il {
 
 Simplification::Simplification(AstPool *pool) : pool(pool) {}
 
@@ -157,8 +179,11 @@ static bool IsDiscardable(const Exp *e) {
   return tmp.empty();
 }
 
+namespace {
 struct PeepholePass : public il::Pass<> {
-  using Pass::Pass;
+  PeepholePass(AstPool *pool, Progress *progress) :
+    Pass(pool),
+    progress(progress) {}
 
   const Exp *DoUnroll(const Exp *e, const Exp *guess) override {
     e = DoExp(e);
@@ -268,13 +293,21 @@ struct PeepholePass : public il::Pass<> {
       // Inline any effectless expression that occurs just once,
       // regardless of its size.
       Simplified("inlined single-use binding");
+      if (VERBOSE) {
+        printf("Inlined var is " APURPLE("%s") "\n", x.c_str());
+      }
       return ILUtil::SubstPolyExp(pool, tyvars, DoExp(rhs), x, DoExp(body));
     }
 
     // TODO: support inlining of polymorphic values.
     if (small_value && tyvars.empty()) {
       Simplified("inlined small value");
-      return ILUtil::SubstExp(pool, DoExp(rhs), x, DoExp(body));
+      const Exp *value = DoExp(rhs);
+      if (VERBOSE) {
+        printf("Inlined var is " APURPLE("%s") " = " ABLUE("%s") "\n",
+               x.c_str(), ExpString(value).c_str());
+      }
+      return ILUtil::SubstExp(pool, value, x, DoExp(body));
     }
 
     return pool->Let(tyvars, x, DoExp(rhs), DoExp(body), guess);
@@ -404,37 +437,82 @@ struct PeepholePass : public il::Pass<> {
     }
   }
 
-  // Call this whenever the expression definitely got smaller.
   void Simplified(const char *msg) {
-    if (VERBOSE) {
-      printf(AWHITE("S %d") " " AGREEN("%s") "\n",
-             simplified, msg);
-    }
-    simplified++;
+    progress->Simplified(msg);
   }
 
-  void Reset() {
-    simplified = 0;
-  }
-
-  int simplified = 0;
+private:
+  Progress *progress = nullptr;
 };
 
+// Inlines globals, or drops unused ones.
+struct GlobalInlining {
+  GlobalInlining(AstPool *pool, Progress *progress) :
+    pool(pool),
+    progress(progress) {}
+
+  Program Run(const Program &program) {
+    Program out;
+    // one for each global in the original program, and then one for
+    // the body.
+    std::vector<std::unordered_map<std::string, int>> mentioned;
+    for (const Global &global : program.globals) {
+      mentioned.push_back(ILUtil::LabelCounts(global.exp));
+    }
+    mentioned.push_back(ILUtil::LabelCounts(program.body));
+
+    for (int global_idx = 0;
+         global_idx < (int)program.globals.size();
+         global_idx++) {
+      const Global &global = program.globals[global_idx];
+      // Get the total count of occurrences outside the symbol itself.
+      int total_count = 0;
+      for (const auto &sym_count : mentioned) {
+        auto it = sym_count.find(global.sym);
+        if (it != sym_count.end()) {
+          total_count += it->second;
+        }
+      }
+
+      // TODO: Or if a small value?
+      if (total_count <= 1) {
+        progress->Simplified("drop/inline global");
+        if (VERBOSE) {
+          printf("Inlined sym is " APURPLE("%s") " = " ABLUE("%s") "\n",
+                 global.sym.c_str(), ExpString(global.exp).c_str());
+        }
+        // HERE
+      } else {
+        out.globals.push_back(global);
+      }
+    }
+    return out;
+  }
+
+ private:
+  AstPool *pool = nullptr;
+  Progress *progress = nullptr;
+};
+}  // namespace
 
 Program Simplification::Simplify(const Program &program_in) {
+  Progress progress;
   Program program = program_in;
-  PeepholePass peephole(pool);
+  PeepholePass peephole(pool, &progress);
+  GlobalInlining global_inlining(pool, &progress);
 
   do {
-    peephole.Reset();
+    progress.Reset();
     program = peephole.DoProgram(program);
+
+    // TODO: Also call global inlining, when it's finished
 
     if (VERBOSE) {
       printf("\n" AYELLOW("After simplification:\n"));
       printf("%s\n", ProgramString(program).c_str());
     }
 
-  } while (peephole.simplified > 0);
+  } while (progress.MadeProgress());
 
   return program;
 }

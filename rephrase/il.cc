@@ -84,7 +84,7 @@ std::string TypeString(const Type *t) {
       }
       return StringPrintf("(%s) %s", sargs.c_str(), var.c_str());
     }
-  }
+    }
   }
 
   case TypeType::ARROW: {
@@ -159,6 +159,21 @@ std::string ExpString(const Exp *e) {
 
   case ExpType::VAR: {
     const auto &[types, x] = e->Var();
+    if (types.empty()) {
+      return x;
+    } else {
+      std::string args;
+      for (int i = 0; i < (int)types.size(); i++) {
+        if (i != 0) StringAppendF(&args, ", ");
+        StringAppendF(&args, "%s", TypeString(types[i]).c_str());
+      }
+      return StringPrintf("%s<%s>", x.c_str(), args.c_str());
+    }
+  }
+
+  case ExpType::GLOBAL_SYM: {
+    const auto &[types, sym] = e->GlobalSym();
+    std::string x = StringPrintf("global.%s", sym.c_str());
     if (types.empty()) {
       return x;
     } else {

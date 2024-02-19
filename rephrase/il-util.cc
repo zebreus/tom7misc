@@ -26,6 +26,11 @@ struct CountVarsPass : public Pass<FunctionalSet> {
   // Since we know that this pass does nothing, we can just always return
   // the guess instead of calling constructors.
 
+  // Exp vars can't appear in types, so don't even recurse into them.
+  const Type *DoType(const Type *guess, FunctionalSet bound) override {
+    return guess;
+  }
+
   const Exp *DoLet(const std::vector<std::string> &tyvars,
                    const std::string &x,
                    const Exp *rhs,
@@ -299,5 +304,31 @@ std::pair<std::string, const Exp *> ILUtil::AlphaVaryTypeInExp(
       SubstTypeInExp(pool, pool->VarType(newa, {}), a, e));
 }
 
+namespace {
+struct CountLabelsPass : public Pass<> {
+  using Pass::Pass;
+
+  // Labels can't appear in types. Don't recurse into them.
+  const Type *DoType(const Type *guess) override {
+    return guess;
+  }
+
+  const Exp *DoGlobalSym(const std::vector<const Type *> &ts,
+                         const std::string &sym,
+                         const Exp *guess) override {
+    counts[sym]++;
+    return guess;
+  }
+
+  std::unordered_map<std::string, int> counts;
+};
+}  // namespace
+
+std::unordered_map<std::string, int> ILUtil::LabelCounts(const Exp *e) {
+  AstPool pool;
+  CountLabelsPass pass(&pool);
+  pass.DoExp(e);
+  return pass.counts;
+}
 
 }  // namespace il

@@ -293,7 +293,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
               // XXX tyvars? We may need to eta expand polymorphic calls
               // and use SubstPolyExp?
               const il::Exp *friend_exp =
-                pool->App(pool->Var({}, global_syms[j]), gxv);
+                pool->App(pool->GlobalSym({}, global_syms[j]), gxv);
               gbody = ILUtil::SubstExp(pool, friend_exp, il_vars[j], gbody);
             }
           }
@@ -344,7 +344,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
         // Now wrap with the function bindings as described above.
         for (int i = 0; i < (int)dec->funs.size(); i++) {
           ret_exp = pool->Let({}, il_vars[i],
-                              pool->App(pool->Var({}, global_syms[i]),
+                              pool->App(pool->GlobalSym({}, global_syms[i]),
                                         pool->Var({}, aenv_var)),
                               ret_exp);
         }

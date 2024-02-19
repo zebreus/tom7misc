@@ -69,6 +69,10 @@ struct Pass {
       const auto &[ts, v] = e->Var();
       return DoVar(ts, v, e, args...);
     }
+    case ExpType::GLOBAL_SYM: {
+      const auto &[ts, sym] = e->GlobalSym();
+      return DoGlobalSym(ts, sym, e, args...);
+    }
     case ExpType::LAYOUT: {
       LOG(FATAL) << "Unimplemented";
     }
@@ -242,6 +246,16 @@ struct Pass {
     tts.reserve(ts.size());
     for (const Type *t : ts) tts.push_back(DoType(t, args...));
     return pool->Var(tts, v, guess);
+  }
+
+  virtual const Exp *DoGlobalSym(const std::vector<const Type *> &ts,
+                                 const std::string &sym,
+                                 const Exp *guess,
+                                 Args... args) {
+    std::vector<const Type *> tts;
+    tts.reserve(ts.size());
+    for (const Type *t : ts) tts.push_back(DoType(t, args...));
+    return pool->GlobalSym(tts, sym, guess);
   }
 
   virtual const Exp *DoInt(BigInt i, const Exp *guess,

@@ -20,6 +20,9 @@ enum class ExpType {
   RECORD,
   INTEGER,
   VAR,
+  // Like var, but not a variable occurrence: A reference to
+  // a global symbol.
+  GLOBAL_SYM,
   LAYOUT,
   LET,
   IF,
@@ -116,7 +119,6 @@ struct Type {
     return std::tie(var, children);
   }
 
-
   const struct EVar &EVar() const {
     CHECK(type == TypeType::EVAR);
     return evar;
@@ -163,6 +165,12 @@ struct Exp {
   std::tuple<const std::vector<const Type *> &, const std::string &>
   Var() const {
     CHECK(type == ExpType::VAR);
+    return std::tie(types, str);
+  }
+
+  std::tuple<const std::vector<const Type *> &, const std::string &>
+  GlobalSym() const {
+    CHECK(type == ExpType::GLOBAL_SYM);
     return std::tie(types, str);
   }
 
@@ -484,6 +492,22 @@ struct AstPool {
     }
 
     Exp *ret = NewExp(ExpType::VAR);
+    ret->str = v;
+    ret->types = std::move(ts);
+    return ret;
+  }
+
+  const Exp *GlobalSym(const std::vector<const Type *> &ts,
+                       const std::string &v,
+                       const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::GLOBAL_SYM &&
+        guess->str == v &&
+        guess->types == ts) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::GLOBAL_SYM);
     ret->str = v;
     ret->types = std::move(ts);
     return ret;
