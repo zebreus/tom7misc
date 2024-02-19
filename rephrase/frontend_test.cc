@@ -472,6 +472,18 @@ static void TestFun() {
     printf("%s\n", ProgramString(pgm).c_str());
   }
 
+  {
+    const Program pgm = Run("let\n"
+                            "  fun one x = x\n"
+                            "  and two z = z + 1\n"
+                            "  and three (x, y) = (y, x)\n"
+                            "in\n"
+                            "  two 6\n"
+                            "end\n");
+    CHECK(pgm.globals.empty()) << "Should be able to drop or inline "
+      "all the globals in this case.";
+  }
+
 }
 
 

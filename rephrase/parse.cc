@@ -541,7 +541,7 @@ const Exp *Parsing::Parse(AstPool *pool,
       CHECK(!clauses.empty()) << "Bug: shouldn't even parse "
         "empty fun clauses";
       const std::string &fname = std::get<0>(std::get<0>(clauses[0]));
-      printf("OneFunDec: %s\n", fname.c_str());
+      // printf("OneFunDec: %s\n", fname.c_str());
       FunDec ret;
       ret.name = fname;
       for (const auto &ppp : clauses) {

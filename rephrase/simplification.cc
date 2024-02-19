@@ -452,22 +452,23 @@ struct GlobalInlining {
     progress(progress) {}
 
   Program Run(const Program &program) {
-    Program out;
+    Program out = program;
     // one for each global in the original program, and then one for
-    // the body.
-    std::vector<std::unordered_map<std::string, int>> mentioned;
+    // the body (empty key).
+    std::unordered_map<std::string,
+                       std::unordered_map<std::string, int>> mentioned;
     for (const Global &global : program.globals) {
-      mentioned.push_back(ILUtil::LabelCounts(global.exp));
+      mentioned[global.sym] = ILUtil::LabelCounts(global.exp);
     }
-    mentioned.push_back(ILUtil::LabelCounts(program.body));
+    mentioned[""] = ILUtil::LabelCounts(program.body);
 
     for (int global_idx = 0;
-         global_idx < (int)program.globals.size();
-         global_idx++) {
-      const Global &global = program.globals[global_idx];
+         global_idx < (int)out.globals.size();
+         /* in loop */) {
+      const Global &global = out.globals[global_idx];
       // Get the total count of occurrences outside the symbol itself.
       int total_count = 0;
-      for (const auto &sym_count : mentioned) {
+      for (const auto &[sym_, sym_count] : mentioned) {
         auto it = sym_count.find(global.sym);
         if (it != sym_count.end()) {
           total_count += it->second;
@@ -478,12 +479,31 @@ struct GlobalInlining {
       if (total_count <= 1) {
         progress->Simplified("drop/inline global");
         if (VERBOSE) {
-          printf("Inlined sym is " APURPLE("%s") " = " ABLUE("%s") "\n",
+          printf("  There were " AYELLOW("%d") " occurrences.\n",
+                 total_count);
+          printf("  Inlined sym is " APURPLE("%s") " = " ABLUE("%s") "\n",
                  global.sym.c_str(), ExpString(global.exp).c_str());
         }
-        // HERE
+
+        // Update all the globals in place.
+        for (int i = 0; i < (int)out.globals.size(); i++) {
+          if (i != global_idx) {
+            out.globals[i].exp = ILUtil::SubstPolyExpForLabel(
+                pool, global.tyvars, global.exp, global.sym,
+                out.globals[i].exp);
+          }
+        }
+
+        // And the body.
+        out.body = ILUtil::SubstPolyExpForLabel(
+            pool, global.tyvars, global.exp, global.sym,
+            out.body);
+
+        // Now this global is unused.
+        out.globals.erase(out.globals.begin() + global_idx);
+        // And don't increment.
       } else {
-        out.globals.push_back(global);
+        global_idx++;
       }
     }
     return out;
@@ -505,7 +525,7 @@ Program Simplification::Simplify(const Program &program_in) {
     progress.Reset();
     program = peephole.DoProgram(program);
 
-    // TODO: Also call global inlining, when it's finished
+    program = global_inlining.Run(program);
 
     if (VERBOSE) {
       printf("\n" AYELLOW("After simplification:\n"));

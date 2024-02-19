@@ -331,4 +331,65 @@ std::unordered_map<std::string, int> ILUtil::LabelCounts(const Exp *e) {
   return pass.counts;
 }
 
+namespace {
+struct SubstForLabelPass : public Pass<> {
+  SubstForLabelPass(AstPool *pool,
+                    const std::vector<std::string> &tyvars,
+                    const Exp *e1,
+                    const std::string &sym)
+    : Pass(pool),
+      tyvars(tyvars),
+      e1(e1),
+      target_sym(sym) {
+    CHECK(ILUtil::FreeExpVars(e1).empty()) << "Expression being substituted "
+      "for a label (" << sym << ") must be closed:\n" << ExpString(e1);
+  }
+
+  // Labels can't appear in types. Don't recurse into them.
+  const Type *DoType(const Type *guess) override {
+    return guess;
+  }
+
+  const Exp *DoGlobalSym(const std::vector<const Type *> &ts,
+                         const std::string &sym,
+                         const Exp *guess) override {
+    if (sym == target_sym) {
+      // The target variable.
+      CHECK(ts.size() == tyvars.size()) << "Internal type error: When "
+        "substituting for the label " << sym << ", expected the number "
+        "of type variables in the substitution (" << tyvars.size() <<
+        ") to be the same as the number of types in the symbol's "
+        "occurrence (" << ts.size() << ").";
+      const Exp *result = e1;
+      // Now we are substituting Λ(α1 ... αn).e1 for v<τ1 ... τn>, so
+      // compute [τ1/α1]...[τn/αn]e1.
+      for (int i = (int)ts.size() - 1; i >= 0; i--) {
+        result = ILUtil::SubstTypeInExp(pool, ts[i], tyvars[i], result);
+      }
+      return e1;
+    } else {
+      // Types are unaffected by substitution for expression variables.
+      return guess;
+    }
+  }
+
+  // The type variables bound in e1.
+  const std::vector<std::string> &tyvars;
+  // Term being substituted.
+  const Exp *e1 = nullptr;
+  // Target variable.
+  const std::string target_sym;
+};
+}  // namespace
+
+const Exp *ILUtil::SubstPolyExpForLabel(
+    AstPool *pool,
+    // α1, α2, ... αn
+    const std::vector<std::string> &tyvars,
+    const Exp *e1,
+    const std::string &sym,
+    const Exp *e2) {
+  return SubstForLabelPass(pool, tyvars, e1, sym).DoExp(e2);
+}
+
 }  // namespace il

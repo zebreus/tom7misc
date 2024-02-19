@@ -58,6 +58,17 @@ struct ILUtil {
 
   static std::unordered_map<std::string, int> LabelCounts(const Exp *e);
 
+  // subst Λ(α1, α2, ... αn).e1 for sym<τ1, τ2, ... τn> in e2;
+  // The types τ1..τn are substituted for the α1..αn at each occurrence.
+  static const Exp *SubstPolyExpForLabel(
+      AstPool *pool,
+      // α1, α2, ... αn
+      const std::vector<std::string> &tyvars,
+      // Expression must be closed.
+      const Exp *e1,
+      const std::string &sym,
+      const Exp *e2);
+
 };
 
 }  // namespace il
