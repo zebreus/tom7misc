@@ -444,7 +444,7 @@ static void Simple() {
 static void TestFun() {
   Frontend front;
   if (VERBOSE) {
-    front.SetVerbose(1);
+    front.SetVerbose(2);
   }
 
   // No mutual recursion.
@@ -483,6 +483,45 @@ static void TestFun() {
     CHECK(pgm.globals.empty()) << "Should be able to drop or inline "
       "all the globals in this case.";
   }
+
+  // Simple polymorphic function.
+  (void)RunNoSimplify(
+      "let\n"
+      "  fun id x = x\n"
+      "  do id \"hello\"\n"
+      "in\n"
+      "  id 7\n"
+      "end\n");
+
+  // Same with fn.
+  (void)RunNoSimplify(
+      "let\n"
+      "  val id = fn x => x\n"
+      "  do id \"hello\"\n"
+      "in\n"
+      "  id 7\n"
+      "end\n");
+
+  // Mutually-recursive, polymorphic.
+  (void)Run(
+      "let\n"
+      "  fun id0 x = x\n"
+      "  and id1 y = y\n"
+      "  do id0 \"hi\"\n"
+      "in\n"
+      "  id0 7\n"
+      "end\n");
+
+  // Nontrivial environment.
+  (void)Run(
+      "let\n"
+      "  val seven = 7\n"
+      "  fun id0 x = seven\n"
+      "  and id1 y = seven\n"
+      "  do id0 \"hi\"\n"
+      "in\n"
+      "  id0 5\n"
+      "end\n");
 
 }
 

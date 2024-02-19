@@ -277,12 +277,22 @@ struct PeepholePass : public il::Pass<> {
 
     int count = ILUtil::ExpVarCount(body, x);
 
-    // TODO A polymorphic declaration can be unused too. But
-    // we would need to substitute through the tyvars in
-    // the rhs with dummy types so that they remain well-formed.
-    // (Or drop the whole binding.)
-    if (tyvars.empty() && count == 0) {
+    if (count == 0) {
       Simplified("remove unused binding");
+      if (VERBOSE) {
+        printf("  Unused var is " APURPLE("%s") "\n", x.c_str());
+      }
+
+      // Substitute away any tyvars, since they will no longer be
+      // bound. We can use anything since the generalized symbol
+      // was never used.
+      if (!tyvars.empty()) {
+        const Type *ovoid = pool->SumType({});
+        for (const std::string &alpha : tyvars) {
+          rhs = ILUtil::SubstTypeInExp(pool, ovoid, alpha, rhs);
+        }
+      }
+
       return pool->Seq({DoExp(rhs)}, DoExp(body));
     }
 
@@ -294,7 +304,7 @@ struct PeepholePass : public il::Pass<> {
       // regardless of its size.
       Simplified("inlined single-use binding");
       if (VERBOSE) {
-        printf("Inlined var is " APURPLE("%s") "\n", x.c_str());
+        printf("  Inlined var is " APURPLE("%s") "\n", x.c_str());
       }
       return ILUtil::SubstPolyExp(pool, tyvars, DoExp(rhs), x, DoExp(body));
     }
@@ -304,7 +314,7 @@ struct PeepholePass : public il::Pass<> {
       Simplified("inlined small value");
       const Exp *value = DoExp(rhs);
       if (VERBOSE) {
-        printf("Inlined var is " APURPLE("%s") " = " ABLUE("%s") "\n",
+        printf("  Inlined var is " APURPLE("%s") " = " ABLUE("%s") "\n",
                x.c_str(), ExpString(value).c_str());
       }
       return ILUtil::SubstExp(pool, value, x, DoExp(body));

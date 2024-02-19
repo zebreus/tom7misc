@@ -197,6 +197,49 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
           fns.emplace_back(e, t);
         }
 
+        // Once the function bodies are elaborated, we've finished with
+        // any constraints on their types, so we can generalize. We only
+        // support uniform recursion, so we get the same set of type
+        // variables for all of them. Get that set.
+        std::vector<EVar> free_evars = [&]() {
+            std::vector<const il::Type *> all_types;
+            for (const auto &[dom, cod] : dom_cods) {
+              all_types.push_back(dom);
+              all_types.push_back(cod);
+            }
+
+            std::vector<EVar> gen_evars;
+            for (const EVar &v : EVar::FreeEVarsInTypes(all_types)) {
+              // Only generalize evars that cannot still be accessed
+              // through the context. (The context to consider here
+              // is G, the one for the outer scope.)
+              if (!G.HasEVar(v)) {
+                gen_evars.push_back(v);
+              }
+            }
+            return gen_evars;
+          }();
+
+        if (VERBOSE) {
+          printf("Free type variables:\n");
+          for (const EVar &ev : free_evars) {
+            printf("  %s\n", ev.ToString().c_str());
+          }
+        }
+
+        // Generalize, setting the evars to new type variables.
+        std::vector<std::string> tyvars;
+        std::vector<const il::Type *> tyvar_args;
+        tyvars.reserve(free_evars.size());
+        tyvar_args.reserve(free_evars.size());
+        for (const EVar &ev : free_evars) {
+          std::string alpha_var = pool->NewVar("gen");
+          const il::Type *alpha = pool->VarType(alpha_var, {});
+          tyvars.push_back(alpha_var);
+          tyvar_args.push_back(alpha);
+          ev.Set(alpha);
+        }
+
         // The declared functions may mention local variables that prevent
         // them from being hoisted to top-level. These present as
         // free variables that are not in the mutually-recursive bundle
@@ -221,6 +264,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
         // those types.
         std::vector<std::pair<std::string, const il::Type *>> fvts;
         for (const std::string &s : fvs_all) {
+          // XXX: Hmm, I actually wanted to look this up by its el name?
           const VarInfo *vi = G.Find(s);
           CHECK(vi != nullptr) << "Bug: When compiling a "
             "mutually-recursive bundle of functions (fun...and), "
@@ -288,16 +332,17 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
           for (int j = 0; j < (int)dec->funs.size(); j++) {
             const el::FunDec &friend_fun = dec->funs[j];
             if (friend_fun.name == fun.name) {
-              // Substitution would do nothing, but is also not free.
+              // Substitution would do nothing, but skip it to do fewer
+              // allocations.
             } else {
-              // XXX tyvars? We may need to eta expand polymorphic calls
-              // and use SubstPolyExp?
+              // The symbol is applied to the same type variables that
+              // were passed into it, since each function in the bundle
+              // is abstracted over the same set and recursion is uniform.
               const il::Exp *friend_exp =
-                pool->App(pool->GlobalSym({}, global_syms[j]), gxv);
+                pool->App(pool->GlobalSym(tyvar_args, global_syms[j]), gxv);
               gbody = ILUtil::SubstExp(pool, friend_exp, il_vars[j], gbody);
             }
           }
-
 
           // Now wrap the body with the projections from the environment.
           // We could have done this before the substitutions above, since
@@ -310,10 +355,8 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
 
           // Now add it to the table.
           Global global;
-          // XXX surely we should have polymorphism here. Perhaps we
-          // can just evarize the glob_type? This would then also give
-          // us the arity for friend calls above.
-          global.tyvars = {};
+          // Same tyvars for each.
+          global.tyvars = tyvars;
           global.sym = global_syms[i];
           global.type = glob_typ;
           global.exp = glob_fn;
@@ -327,8 +370,21 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
         //   val (α1, α2) f1 = (g_f1 env)
         //   val (α1, α2) f2 = (g_f2 env)
 
-        // XXX generalize
-        Context GGG = GG;
+        // The context used for elaboration of the let's body is almost
+        // the same as what we used to evaluate the function bodies, but
+        // now we've generalized. So build a new context.
+
+        Context GGG = G;
+        for (int i = 0; i < (int)dec->funs.size(); i++) {
+          const el::FunDec &fun = dec->funs[i];
+          std::string il_var = il_vars[i];
+          const auto &[dom, cod] = dom_cods[i];
+          GGG = GGG.Insert(fun.name, VarInfo{
+              .tyvars = tyvars,
+              .type = pool->Arrow(dom, cod),
+              .var = il_var,
+            });
+        }
 
         const auto &[let_exp, let_type] = Elab(GGG, rest);
 
@@ -343,10 +399,16 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
         const il::Exp *ret_exp = let_exp;
         // Now wrap with the function bindings as described above.
         for (int i = 0; i < (int)dec->funs.size(); i++) {
-          ret_exp = pool->Let({}, il_vars[i],
-                              pool->App(pool->GlobalSym({}, global_syms[i]),
-                                        pool->Var({}, aenv_var)),
-                              ret_exp);
+          // Generalize using the same type variable bindings and
+          // occurrences. Note that since the body is an application,
+          // this violates the value restriction, but that is an EL
+          // concept, not an IL one.
+          ret_exp = pool->Let(
+              tyvars, il_vars[i],
+              pool->App(pool->GlobalSym(tyvar_args, global_syms[i]),
+                        // Environment is not polymorphic.
+                        pool->Var({}, aenv_var)),
+              ret_exp);
         }
 
         // And bind the environment itself.

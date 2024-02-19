@@ -13,12 +13,14 @@
 #include "timer.h"
 #include "simplification.h"
 #include "nullary.h"
+#include "il-util.h"
 
 using Token = el::Token;
 using Lexing = el::Lexing;
 using Parsing = el::Parsing;
 using Simplification = il::Simplification;
 using Program = il::Program;
+using ILUtil = il::ILUtil;
 
 void Frontend::SetVerbose(int v) {
   verbose = v;
@@ -91,7 +93,7 @@ Program Frontend::RunFrontendOn(const std::string &filename,
   el::Nullary nullary(&el_pool);
   el_exp = nullary.Rewrite(el_exp);
   const double nullary_sec = nullary_timer.Seconds();
-  if (verbose > 0) {
+  if (verbose > 1) {
     printf(AWHITE("Nullary rewrite") " in %s:\n"
            "%s\n",
            ANSI::Time(nullary_sec).c_str(),
@@ -113,6 +115,17 @@ Program Frontend::RunFrontendOn(const std::string &filename,
     printf(AWHITE("Elaborated") " in %s:\n"
            "%s\n",
            ANSI::Time(elab_sec).c_str(),
+           il::ProgramString(il_pgm).c_str());
+    fflush(stdout);
+  }
+
+  Timer finalize_evars_timer;
+  il_pgm = ILUtil::FinalizeEVars(&il_pool, il_pgm);
+  const double finalize_evars_sec = finalize_evars_timer.Seconds();
+  if (verbose > 1) {
+    printf(AWHITE("Finalized evars") " in %s:\n"
+           "%s\n",
+           ANSI::Time(finalize_evars_sec).c_str(),
            il::ProgramString(il_pgm).c_str());
     fflush(stdout);
   }

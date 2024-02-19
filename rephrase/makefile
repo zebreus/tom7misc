@@ -8,8 +8,9 @@ test : lex_test.exe context_test.exe unification_test.exe parse_test.exe fronten
 	./context_test.exe
 	./unification_test.exe
 	./parse_test.exe
-	./frontend_test.exe
 	./il-pass_test.exe
+	./frontend_test.exe
+
 
 # Changes by tom7.
 # Also add -static to LFLAGS below

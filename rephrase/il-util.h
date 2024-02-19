@@ -52,6 +52,11 @@ struct ILUtil {
       const std::string &a,
       const Exp *e);
 
+  // Once we're done with elaboration, assign all free EVars to
+  // something arbitrary. We use void (empty sum type) since in
+  // principle this would help with type-directed optimizations.
+  static Program FinalizeEVars(AstPool *pool, const Program &program);
+
   // Substitution does not affect global symbols. But we have parallel
   // functions for globals.
   // (TODO: as needed)

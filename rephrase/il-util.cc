@@ -392,4 +392,33 @@ const Exp *ILUtil::SubstPolyExpForLabel(
   return SubstForLabelPass(pool, tyvars, e1, sym).DoExp(e2);
 }
 
+
+namespace {
+struct FinalizeEVarsPass : public Pass<> {
+  FinalizeEVarsPass(AstPool *pool, const Type *replacement_type)
+    : Pass(pool),
+      replacement_type(replacement_type) {
+  }
+
+  const Type *DoEVar(EVar a, const Type *guess) override {
+    // Recurse inside bound evars.
+    if (const Type *t = a.GetBound()) {
+      return DoType(t);
+    } else {
+      // And set free ones.
+      a.Set(replacement_type);
+      return replacement_type;
+    }
+  }
+
+  // Type being assigned to each evar.
+  const Type *replacement_type = nullptr;
+};
+}  // namespace
+
+Program ILUtil::FinalizeEVars(AstPool *pool, const Program &program) {
+  FinalizeEVarsPass pass(pool, pool->SumType({}));
+  return pass.DoProgram(program);
+}
+
 }  // namespace il

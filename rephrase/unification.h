@@ -27,6 +27,8 @@ struct EVar {
 
   // Get the set of distinct free EVars in the type t.
   static std::vector<EVar> FreeEVarsInType(const Type *t);
+  static std::vector<EVar> FreeEVarsInTypes(
+      const std::vector<const Type *> &tv);
 
   // It typically only makes sense to compare free EVars.
   static bool SameEVar(const EVar &a, const EVar &b);
@@ -73,6 +75,7 @@ struct Unification {
 
   static void Unify(std::string_view what,
                     const Type *t1, const Type *t2);
+
 };
 
 }  // unification

@@ -31,7 +31,7 @@ EVar::EVar() : cell(std::make_shared<EVarCell>(NextEVarCounter())) {
 
 // TODO: Should probably distinguish bound/free?
 std::string EVar::ToString() const {
-  return StringPrintf("_EVAR_" PRIi64 "_", GetCell()->id);
+  return StringPrintf("_EVAR_%" PRIi64 "_", GetCell()->id);
 }
 
 
@@ -128,6 +128,11 @@ struct LessEVar {
 using EVarSet = std::set<EVar, LessEVar>;
 
 std::vector<EVar> EVar::FreeEVarsInType(const Type *t) {
+  return FreeEVarsInTypes({t});
+}
+
+std::vector<EVar> EVar::FreeEVarsInTypes(
+    const std::vector<const Type *> &tv) {
   EVarSet s;
 
   std::function<void(const Type *)> Rec =
@@ -188,7 +193,7 @@ std::vector<EVar> EVar::FreeEVarsInType(const Type *t) {
     }
   };
 
-  Rec(t);
+  for (const Type *t : tv) Rec(t);
   return std::vector<EVar>(s.begin(), s.end());
 }
 
