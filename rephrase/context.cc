@@ -51,6 +51,21 @@ bool Context::HasEVar(const EVar &e) const {
   return false;
 }
 
+const VarInfo *Context::FindByILVar(const std::string &s) const {
+  // PERF: As in HasEVar. In this case, we might want to keep a
+  // parallel map indexed by il vars? In any case, just do the
+  // export once.
+  const auto m = fm.Export();
+  for (const auto &[k, v] : m) {
+    if (k.second == V::EXP) {
+      const VarInfo *vi = std::get_if<VarInfo>(&v);
+      CHECK(vi != nullptr) << "Bug: Expression vars always hold VarInfo.";
+      if (vi->var == s) return vi;
+    }
+  }
+  return nullptr;
+}
+
 std::string Context::ToString() const {
   const auto m = fm.Export();
   std::string ret;

@@ -17,40 +17,6 @@ static constexpr bool VERBOSE = true;
 
 namespace el {
 
-static std::string UnescapeStrLit(const std::string &s) {
-  std::string out;
-  out.reserve(s.size());
-  for (int i = 0; i < (int)s.size(); i++) {
-    const char c = s[i];
-    if (c == '\\') {
-      CHECK(i < (int)s.size() - 1) << "Bug: Trailing escape "
-        "character in string literal.";
-      i++;
-      const char d = s[i];
-      switch (d) {
-      case 'n': out.push_back('\n'); break;
-      case 'r': out.push_back('\r'); break;
-      case 't': out.push_back('\t'); break;
-      case '\\': out.push_back('\\'); break;
-      case '\"': out.push_back('\"'); break;
-      default:
-        // TODO: Implement \x and \u{1234} stuff.
-        CHECK(false) << "Unimplemented or illegal escape "
-                     << StringPrintf("\\%c", d)
-                     << " in string literal.";
-      }
-    } else {
-      out.push_back(c);
-    }
-  }
-  return out;
-}
-
-// Nothing to do: There are no escaped characters in layout.
-static inline std::string UnescapeLayoutLit(const std::string &s) {
-  return s;
-}
-
 template<TokenType t>
 struct IsToken {
   using token_type = Token;
@@ -151,11 +117,11 @@ const Exp *Parsing::Parse(AstPool *pool,
       std::string s = TokenStr(t);
       CHECK(s.size() >= 2) << "Bug: The double quotes are included "
         "in the token.";
-      return UnescapeStrLit(s.substr(1, s.size() - 2));
+      return Lexing::UnescapeStrLit(s.substr(1, s.size() - 2));
     };
 
   const auto LayoutLit = IsToken<LAYOUT_LIT>() >[&](Token t) {
-      return UnescapeLayoutLit(TokenStr(t));
+      return Lexing::UnescapeLayoutLit(TokenStr(t));
     };
 
   // Types.

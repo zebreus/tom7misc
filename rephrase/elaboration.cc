@@ -264,8 +264,10 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
         // those types.
         std::vector<std::pair<std::string, const il::Type *>> fvts;
         for (const std::string &s : fvs_all) {
-          // XXX: Hmm, I actually wanted to look this up by its el name?
-          const VarInfo *vi = G.Find(s);
+          // Since we've already elaborated the expression, its
+          // free variables are IL variables. Look them up in the
+          // context to get their types.
+          const VarInfo *vi = G.FindByILVar(s);
           CHECK(vi != nullptr) << "Bug: When compiling a "
             "mutually-recursive bundle of functions (fun...and), "
             "found a free variable " << s << " that's not bound in "
@@ -450,7 +452,6 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
         }
       }
 
-      // Generate
       std::vector<std::pair<std::string, std::string>> tyvars;
       std::vector<std::string> il_tyvars;
       for (const std::string &eltv : dec->tyvars) {

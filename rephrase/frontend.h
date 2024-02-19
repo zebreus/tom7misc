@@ -8,6 +8,9 @@
 #include "el.h"
 #include "il.h"
 
+struct SourceMap;
+namespace el { struct Token; }
+
 struct Frontend {
   Frontend() = default;
 
@@ -31,6 +34,13 @@ struct Frontend {
                             Options options = Options());
 
 private:
+
+  il::Program RunFrontendInternal(
+    const std::string &contents,
+    const std::vector<el::Token> &tokens,
+    const SourceMap &source_map,
+    Options options);
+
   int verbose = 0;
   std::vector<std::string> includepaths;
   el::AstPool el_pool;

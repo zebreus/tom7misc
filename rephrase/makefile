@@ -257,7 +257,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=el.o parse.o lex.o frontend.o il.o elaboration.o initial.o context.o unification.o primop.o pattern-compilation.o simplification.o il-util.o pp.o nullary.o
+LANG_OBJECTS=el.o parse.o lex.o inclusion.o nullary.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o
 
 %.o : %.cc *.h $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -295,6 +295,9 @@ il-util_test.exe : il-util_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 
 bovex.exe : bovex.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+paper.pdf : bovex.exe paper.bovex
+	./bovex.exe paper.bovex -o paper.pdf
 
 clean:
 	rm -f *.o $(CC_LIB_OBJECTS) monospace.exe lex_test.exe parse_test.exe

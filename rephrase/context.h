@@ -102,7 +102,12 @@ struct Context {
   // True if the context has the (free) EVar inside the type of any
   // expression variable. This is used to determine what type
   // variables can be generalized in a val declaration.
+  // Linear time.
   bool HasEVar(const EVar &e) const;
+
+  // Find the VarInfo for an il variable. Returns nullptr if not
+  // bound. Linear time.
+  const VarInfo *FindByILVar(const std::string &s) const;
 
   // For debugging.
   std::string ToString() const;

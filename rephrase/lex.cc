@@ -351,4 +351,39 @@ std::optional<std::vector<Token>> Lexing::Lex(
   return {ret};
 }
 
+std::string Lexing::UnescapeStrLit(const std::string &s) {
+  std::string out;
+  out.reserve(s.size());
+  for (int i = 0; i < (int)s.size(); i++) {
+    const char c = s[i];
+    if (c == '\\') {
+      CHECK(i < (int)s.size() - 1) << "Bug: Trailing escape "
+        "character in string literal.";
+      i++;
+      const char d = s[i];
+      switch (d) {
+      case 'n': out.push_back('\n'); break;
+      case 'r': out.push_back('\r'); break;
+      case 't': out.push_back('\t'); break;
+      case '\\': out.push_back('\\'); break;
+      case '\"': out.push_back('\"'); break;
+      default:
+        // TODO: Implement \x and \u{1234} stuff.
+        CHECK(false) << "Unimplemented or illegal escape "
+                     << StringPrintf("\\%c", d)
+                     << " in string literal.";
+      }
+    } else {
+      out.push_back(c);
+    }
+  }
+  return out;
+}
+
+std::string Lexing::UnescapeLayoutLit(const std::string &s) {
+  // Nothing to do: There are no escaped characters in layout.
+  return s;
+}
+
 }  // namespace el
+

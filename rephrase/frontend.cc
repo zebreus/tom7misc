@@ -14,6 +14,8 @@
 #include "simplification.h"
 #include "nullary.h"
 #include "il-util.h"
+#include "inclusion.h"
+#include "interval-cover.h"
 
 using Token = el::Token;
 using Lexing = el::Lexing;
@@ -32,44 +34,66 @@ void Frontend::AddIncludePath(const std::string &s) {
 
 Program Frontend::RunFrontend(const std::string &filename,
                               Options options) {
-  Timer read_timer;
-  const std::string contents = Util::ReadFile(filename);
-  const double read_sec = read_timer.Seconds();
+  Timer load_timer;
   if (verbose > 0) {
-    printf(AWHITE("Loaded %s") " in %s.\n",
-           filename.c_str(),
-           ANSI::Time(read_sec).c_str());
+    printf(AWHITE("Loading/lexing...") "\n");
+    fflush(stdout);
   }
 
-  return RunFrontendOn(filename, contents);
+  const auto &[source, tokens, source_map] =
+    Inclusion::Process(includepaths, filename);
+
+  const double load_sec = load_timer.Seconds();
+  if (verbose > 0) {
+    printf(AWHITE("Loaded/lexed %s") " in %s.\n",
+           filename.c_str(),
+           ANSI::Time(load_sec).c_str());
+  }
+
+  return RunFrontendInternal(source, tokens, source_map, options);
 }
 
-Program Frontend::RunFrontendOn(const std::string &filename,
+Program Frontend::RunFrontendOn(const std::string &error_context,
                                 const std::string &contents,
                                 Options options) {
+  // Directly lex.
   if (verbose > 0) {
     printf(AWHITE("Lexing...") "\n");
     fflush(stdout);
   }
 
-  Timer tokenize_timer;
-  const std::vector<Token> tokens = [&]{
+  Timer lex_timer;
+  std::vector<Token> tokens = [&]{
     std::string lex_error;
     std::optional<std::vector<Token>> otokens =
       Lexing::Lex(contents, &lex_error);
-    CHECK(otokens.has_value()) << "Lexing " << filename << ":\n"
+    CHECK(otokens.has_value()) << "Lexing " << error_context << ":\n"
             "Invalid syntax: " << lex_error;
     return std::move(otokens.value());
   }();
-  const double tokenize_sec = tokenize_timer.Seconds();
 
+  SourceMap source_map{.cover = IntervalCover<std::string>{error_context}};
+
+  const double lex_sec = lex_timer.Seconds();
   if (verbose > 0) {
     const auto &[source, ctokens] =
       Lexing::ColorTokens(contents, tokens);
     printf(AWHITE("Lexed") " in %s:\n"
            "%s\n%s\n",
-           ANSI::Time(tokenize_sec).c_str(),
+           ANSI::Time(lex_sec).c_str(),
            source.c_str(), ctokens.c_str());
+  }
+
+  return RunFrontendInternal(contents, tokens, source_map, options);
+}
+
+Program Frontend::RunFrontendInternal(
+    const std::string &contents,
+    const std::vector<Token> &tokens,
+    const SourceMap &source_map,
+    Options options) {
+
+  if (verbose > 0) {
     printf("\n" AWHITE("Parsing...") "\n");
     fflush(stdout);
   }

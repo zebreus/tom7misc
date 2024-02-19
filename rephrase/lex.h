@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <functional>
 
 namespace el {
 
@@ -50,6 +51,7 @@ enum TokenType {
   AS,
   AND,
   FAIL,
+  INCLUDE,
 
   IF,
   THEN,
@@ -91,6 +93,7 @@ const char *TokenTypeString(TokenType tok);
 
 struct Lexing {
 
+  // Lex a string into tokens.
   static std::optional<std::vector<Token>>
   Lex(const std::string &input_string,
       std::string *error_message = nullptr);
@@ -101,6 +104,12 @@ struct Lexing {
       const std::string &input_string,
       const std::vector<Token> &tokens);
 
+  // Interpret the contents of a string literal as a raw string (or
+  // abort if it is ill-formed). Note that the STR_LIT token contains
+  // the "" characters, so the caller should extract the substring.
+  static std::string UnescapeStrLit(const std::string &s);
+
+  static std::string UnescapeLayoutLit(const std::string &s);
 };
 
 }  // namespace el
