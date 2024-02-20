@@ -13,6 +13,8 @@
 using Token = el::Token;
 using Lexing = el::Lexing;
 
+static constexpr bool VERBOSE = true;
+
 namespace {
 struct InclusionImpl {
 
@@ -26,7 +28,11 @@ struct InclusionImpl {
   }
 
   void Append(const std::string &filename) {
-    const size_t start_pos = source.size();
+    if (VERBOSE) {
+      printf("Append %s\n", filename.c_str());
+    }
+
+    size_t this_file_pos = source.size();
     CHECK(!stack.contains(filename)) << "Cycle in includes: " << filename;
 
     // Effectively the empty file.
@@ -63,18 +69,35 @@ struct InclusionImpl {
         return Lexing::UnescapeStrLit(s.substr(1, s.size() - 2));
       };
 
-    // Shift a token to refer to the source appended at
-    // start_pos instead of 0.
-    const auto ShiftToken = [start_pos](Token t) {
-        t.start += start_pos;
+    // Shift the coordinates of a token to refer to the source appended at
+    // this_file_pos instead of 0.
+    const auto ShiftToken = [&this_file_pos](Token t) {
+        t.start += this_file_pos;
         return t;
     };
+
+    const auto AppendByte = [this, &filename](uint8_t c) {
+        source_map.cover.SetPoint(source.size(), filename);
+        source.push_back(c);
+      };
 
     size_t input_pos = 0;
     // Now append, processing recursively.
     for (int i = 0; i < (int)ftokens.size(); i++) {
       const Token &token = ftokens[i];
+
       if (token.type == el::INCLUDE) [[unlikely]] {
+
+        // Copy any leading whitespace.
+        while (input_pos < import_start) {
+          AppendByte(contents[input_pos]);
+          input_pos++;
+        }
+
+        // We remove the import statement from the source, so
+        // we need to know its length to adjust the offsets.
+        const size_t import_start = token.start;
+
         i++;
         CHECK(i < (int)ftokens.size()) << "Lexing " << filename
                                        << ": File ends with INCLUDE.";
@@ -86,19 +109,37 @@ struct InclusionImpl {
           ResolveInclude(ReadStringLit(target));
 
         // Append recursively here.
+        const size_t size_before = source.size();
         Append(included_file);
+        const size_t size_after = source.size();
+        CHECK(size_after >= size_before);
+
 
         // Skip the tokens and source characters corresponding to
         // the import.
         input_pos = target.start + target.length;
+        const size_t bytes_deleted = input_pos - import_start;
+        // For the remainder of this file, account for additional
+        // shift due to the inserted text from the included file, and
+        // also the text deleted from the include statement.
+        printf("before %d, after %d.\n"
+               "deleted %d bytes\n"
+               "this_file was %d\n",
+               (int)size_before, (int)size_after,
+               (int)bytes_deleted,
+               (int)this_file_pos);
+        this_file_pos += (size_after - size_before);
+        CHECK(this_file_pos >= bytes_deleted);
+        this_file_pos -= bytes_deleted;
+        printf("Now input_pos %d, this_file %d\n",
+               (int)input_pos, (int)this_file_pos);
 
       } else {
         // Normal tokens.
 
         // Copy the token, including any leading whitespace.
         while (input_pos < token.start + token.length) {
-          source_map.cover.SetPoint(source.size(), filename);
-          source.push_back(contents[input_pos]);
+          AppendByte(contents[input_pos]);
           input_pos++;
         }
 

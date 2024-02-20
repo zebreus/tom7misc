@@ -1,3 +1,6 @@
 
 datatype (a) option = SOME of a | NONE
 
+fun option-map f (SOME x) = SOME (f x)
+  | option-map f NONE = NONE
+

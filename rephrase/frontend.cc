@@ -42,12 +42,19 @@ Program Frontend::RunFrontend(const std::string &filename,
 
   const auto &[source, tokens, source_map] =
     Inclusion::Process(includepaths, filename);
+  printf("%s\nBytes: %d\n", source.c_str(), (int)source.size());
 
   const double load_sec = load_timer.Seconds();
   if (verbose > 0) {
-    printf(AWHITE("Loaded/lexed %s") " in %s.\n",
+    const auto &[csource, ctokens] =
+      Lexing::ColorTokens(source, tokens);
+    printf(AWHITE("Loaded/lexed %s") " in %s:\n"
+           "%s\n"
+           "%s\n",
            filename.c_str(),
-           ANSI::Time(load_sec).c_str());
+           ANSI::Time(load_sec).c_str(),
+           csource.c_str(),
+           ctokens.c_str());
   }
 
   return RunFrontendInternal(source, tokens, source_map, options);

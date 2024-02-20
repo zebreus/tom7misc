@@ -12,6 +12,8 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
+static constexpr bool VERBOSE = true;
+
 namespace el {
 
 const char *TokenTypeString(TokenType tok) {
@@ -56,6 +58,7 @@ const char *TokenTypeString(TokenType tok) {
   case DATATYPE: return "DATATYPE";
   case OF: return "OF";
   case CASE: return "CASE";
+  case INCLUDE: return "INCLUDE";
 
   // Identifier.
   case ID: return "ID";
@@ -91,13 +94,17 @@ std::pair<std::string, std::string> Lexing::ColorTokens(
   size_t input_pos = 0;
   for (int t = 0; t < (int)tokens.size(); t++) {
     const Token &tok = tokens[t];
-    /*
-    printf("pos %zu. tok %d from %zu for %zu\n", input_pos,
-           t, tok.start, tok.length);
-    */
+
+    if (VERBOSE) {
+      printf("in_pos %zu. tok %d %s from %zu for %zu\n", input_pos,
+             t, TokenTypeString(tok.type),
+             tok.start, tok.length);
+    }
+
     CHECK(input_pos <= tok.start);
-    CHECK(tok.start < input_string.size());
-    CHECK(tok.start + tok.length <= input_string.size());
+    CHECK(tok.start < input_string.size()) << input_string.size();
+    CHECK(tok.start + tok.length <= input_string.size()) <<
+      input_string.size();
     // If there is whitespace to skip, emit it with black bg.
     if (input_pos < tok.start) {
       source += ANSI::BackgroundRGB(0x22, 0x22, 0x22);
@@ -226,6 +233,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"orelse", ORELSE},
     {"as", AS},
     {"and", AND},
+    {"include", INCLUDE},
 
     // Symbolic
     {"=>", DARROW},
