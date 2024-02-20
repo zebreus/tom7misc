@@ -21,7 +21,6 @@
 #define _CC_LIB_INTERVAL_COVER_H
 
 #include <optional>
-#include <vector>
 #include <map>
 #include <cstdint>
 #include <cstdio>
@@ -69,6 +68,7 @@ struct IntervalCover {
   // Set the supplied span, overwriting anything underneath.
   // Might still merge with adjacent intervals, of course.
   void SetSpan(uint64_t start, uint64_t end, Data d);
+  void SetPoint(uint64_t pt, Data d) { SetSpan(pt, pt + 1, d); }
 
   // Get the start of the very first span, which is always 0.
   constexpr uint64_t First() const;

@@ -876,13 +876,11 @@ int PDF::pdf_save_file(FILE *fp) {
   return 0;
 }
 
-bool PDF::Save(const char *filename) {
-  FILE *fp = nullptr;
+bool PDF::Save(const std::string &filename) {
+  FILE *fp = fopen(filename.c_str(), "wb");
 
-  if (filename == nullptr)
-    fp = stdout;
-  else if ((fp = fopen(filename, "wb")) == nullptr) {
-    SetErr(-errno, "Unable to open '%s': %s", filename,
+  if (fp == nullptr) {
+    SetErr(-errno, "Unable to open '%s': %s", filename.c_str(),
            strerror(errno));
     return false;
   }
@@ -892,7 +890,7 @@ bool PDF::Save(const char *filename) {
   if (fp != stdout) {
     if (fclose(fp) != 0 && e >= 0) {
       SetErr(-errno, "Unable to close '%s': %s",
-             filename, strerror(errno));
+             filename.c_str(), strerror(errno));
       return false;
     }
   }

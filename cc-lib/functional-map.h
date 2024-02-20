@@ -65,11 +65,9 @@ struct FunctionalMap {
     return FindPtr(k) != nullptr;
   }
 
-  // The returned instance may refer to 'this', and so
-  // this object must outlive the copy.
   FunctionalMap Insert(const Key &k, Value v) const {
     if (depth > kLinearDepth) {
-      CHECK(std::holds_alternative<HashMap>(*data)) << "Bug: Depth implies "
+      CHECK(!std::holds_alternative<HashMap>(*data)) << "Bug: Depth implies "
         "pointer representation.";
       HashMap m = GetAll(*this);
       m[k] = std::move(v);
@@ -104,16 +102,18 @@ struct FunctionalMap {
   using variant_type = std::variant<Cell, HashMap>;
   int depth = 0;
 
-  // Every 10 we create a cell with a hash map of everything beneath
-  // it. PERF: Other ideas would work here. For example, we could just
-  // flatten chunks (and still do a search through a linked list of
-  // hash maps), rather than consolidating the whole thing each time.
+  // Every certain number of pointers, we create a cell with a hash
+  // map of everything beneath it. PERF: Other ideas would work here.
+  // For example, we could just flatten chunks (and still do a search
+  // through a linked list of hash maps), rather than consolidating
+  // the whole thing each time.
   //
   // Perhaps better would be to actually flatten the nodes in place,
   // but we have to deal with "mutable" and thread safety then.
   //
-  // XXX tune this parameter, at least
-  static constexpr int kLinearDepth = 10;
+  // XXX tune this. In the insert-only case, it's much faster to
+  // set this really high (unsurprising).
+  static constexpr int kLinearDepth = 100;
 
   static HashMap GetAll(const FunctionalMap &f) {
     if (f.data.get() == nullptr) return HashMap();

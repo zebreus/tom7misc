@@ -287,7 +287,7 @@ public:
   // Pass the name of the file to store the PDF into (NULL for stdout)
   // Returns < 0 on failure, >= 0 on success
   // int pdf_save(struct pdf_doc *pdf, const char *filename);
-  bool Save(const char *filename);
+  bool Save(const std::string &filename);
 
   // Add a line to the document. If page is null, then use the most
   // recently added page.

@@ -70,7 +70,6 @@ static void SpaceLine() {
 
   FontObj *times = pdf.GetBuiltInFont(PDF::TIMES_ROMAN);
 
-  if (true) {
   {
     std::vector<PDF::SpacedLine> lines =
       pdf.SpaceLines("simple", 1000, times);
@@ -102,7 +101,6 @@ static void SpaceLine() {
     const SpacedLine &line2 = lines[1];
     CHECK(line2.size() == 1);
     CHECK(line2[0].first == "one");
-  }
   }
 
   printf("SpaceLine " AGREEN("OK") ".\n");
@@ -367,13 +365,15 @@ static void MakeSimplePDF() {
       pdf.GetErr();
 
     ImageRGB rand = RandomRGB(&rc, 384, 256);
-    CHECK(pdf.AddImageRGB(100, PDF::PDF_LETTER_HEIGHT - 72 * 3, -1.0, 72 * 2,
-                          rand, PDF::CompressionType::PNG, page)) << "Error: " <<
+    CHECK(pdf.AddImageRGB(
+              100, PDF::PDF_LETTER_HEIGHT - 72 * 3, -1.0, 72 * 2,
+              rand, PDF::CompressionType::PNG, page)) << "Error: " <<
       pdf.GetErr();
 
     ImageRGB rand2 = RandomRGB(&rc, 384, 256);
-    CHECK(pdf.AddImageRGB(320, PDF::PDF_LETTER_HEIGHT - 72 * 3, -1.0, 72 * 2,
-                          rand2, PDF::CompressionType::JPG_10, page)) << "Error: " <<
+    CHECK(pdf.AddImageRGB(
+              320, PDF::PDF_LETTER_HEIGHT - 72 * 3, -1.0, 72 * 2,
+              rand2, PDF::CompressionType::JPG_10, page)) << "Error: " <<
       pdf.GetErr();
 
     pdf.SetFont(pasement_name);

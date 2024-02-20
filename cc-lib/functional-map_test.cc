@@ -40,9 +40,29 @@ static void SimpleTest() {
   CHECK(fm11.Contains("hi") && *fm11.FindPtr("hi") == 13);
 }
 
+static void Deep() {
+  using FM = FunctionalMap<int, int>;
+
+  FM fm;
+  for (int i = 0; i < 10000; i++) {
+    fm = fm.Insert((i & 1) ? -i : i, i * 10000);
+  }
+
+  {
+    const int *f = fm.FindPtr(0);
+    CHECK(f != nullptr && *f == 0);
+  }
+
+  {
+    const int *f = fm.FindPtr(9000);
+    CHECK(f != nullptr && *f == 9000 * 10000);
+  }
+}
+
 int main(int argc, char **argv) {
 
   SimpleTest();
+  Deep();
 
   printf("OK\n");
   return 0;
