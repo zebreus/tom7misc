@@ -13,7 +13,7 @@
 using Token = el::Token;
 using Lexing = el::Lexing;
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 namespace {
 struct InclusionImpl {
@@ -27,6 +27,9 @@ struct InclusionImpl {
     return filename;
   }
 
+  // Yuck! If I have to do any more with manipulating token streams,
+  // I should instead build some more high-level routines for
+  // tokens and their associated bytes.
   void Append(const std::string &filename) {
     if (VERBOSE) {
       printf("Append %s\n", filename.c_str());
@@ -88,15 +91,15 @@ struct InclusionImpl {
 
       if (token.type == el::INCLUDE) [[unlikely]] {
 
+        // We remove the import statement from the source, so
+        // we need to know its length to adjust the offsets.
+        const size_t import_start = token.start;
+
         // Copy any leading whitespace.
         while (input_pos < import_start) {
           AppendByte(contents[input_pos]);
           input_pos++;
         }
-
-        // We remove the import statement from the source, so
-        // we need to know its length to adjust the offsets.
-        const size_t import_start = token.start;
 
         i++;
         CHECK(i < (int)ftokens.size()) << "Lexing " << filename
@@ -122,18 +125,21 @@ struct InclusionImpl {
         // For the remainder of this file, account for additional
         // shift due to the inserted text from the included file, and
         // also the text deleted from the include statement.
-        printf("before %d, after %d.\n"
-               "deleted %d bytes\n"
-               "this_file was %d\n",
-               (int)size_before, (int)size_after,
-               (int)bytes_deleted,
-               (int)this_file_pos);
+        if (VERBOSE) {
+          printf("before %d, after %d.\n"
+                 "deleted %d bytes\n"
+                 "this_file was %d\n",
+                 (int)size_before, (int)size_after,
+                 (int)bytes_deleted,
+                 (int)this_file_pos);
+        }
         this_file_pos += (size_after - size_before);
         CHECK(this_file_pos >= bytes_deleted);
         this_file_pos -= bytes_deleted;
-        printf("Now input_pos %d, this_file %d\n",
-               (int)input_pos, (int)this_file_pos);
-
+        if (VERBOSE) {
+          printf("Now input_pos %d, this_file %d\n",
+                 (int)input_pos, (int)this_file_pos);
+        }
       } else {
         // Normal tokens.
 

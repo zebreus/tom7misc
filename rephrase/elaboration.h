@@ -33,6 +33,11 @@ private:
 
   const il::Type *NewEVar();
 
+  // Instantiate a polymorphic type at new fresh evars, so that
+  // it can be used at any consistent type.
+  const il::Type *EVarize(const std::vector<std::string> &tyvars,
+                          const il::Type *t);
+
   const std::pair<const il::Exp *, const il::Type *> ElabDecs(
       const il::Context &G,
       const std::vector<const el::Dec *> &decs,

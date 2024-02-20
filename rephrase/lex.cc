@@ -12,7 +12,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 namespace el {
 

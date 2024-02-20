@@ -872,10 +872,11 @@ PatternCompilation::SplitAppPattern(
         " in application pattern: " << PatString(p);
       CHECK(vi->ctor.has_value()) << "Identifier " << ctor << " is not "
         "a constructor in application pattern: " << PatString(p);
-      // TODO: This should allow polymorphic constructors, instantiating
-      // them.
-      CHECK(vi->tyvars.empty()) << "Unimplemented polymorphic ctors :(";
-      return vi->ctor.value();
+
+      const auto &[first_idx, mu_type, label] = vi->ctor.value();
+      return std::make_tuple(first_idx,
+                             elab->EVarize(vi->tyvars, mu_type),
+                             label);
     };
 
   // First, look up the first constructor to get the mu/sum.

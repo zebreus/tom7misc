@@ -418,6 +418,13 @@ static void Simple() {
       "simplify this to just a variable.";
   }
 
+}
+
+static void TestDatatypes() {
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(2);
+  }
 
   {
     const Program pgm = Run("let datatype (a) option = SOME of a | NONE\n"
@@ -439,6 +446,18 @@ static void Simple() {
                             "end\n");
     CHECK(pgm.body->Integer() == 7);
   }
+
+  {
+    // Tests that we can compile polymorphic constructors and patterns.
+    const Program pgm = Run("let datatype (a) option = SOME of a | NONE\n"
+                            "  fun option-map f (SOME x) = SOME (f x)\n"
+                            "    | option-map f NONE = NONE\n"
+                            "in SOME 7\n"
+                            "end");
+    // Should be a constructor application.
+    CHECK(pgm.body->type == ExpType::ROLL);
+  }
+
 }
 
 static void TestFun() {
@@ -566,7 +585,7 @@ int main(int argc, char **argv) {
   il::TestSimplify();
   il::Simple();
   il::Regression();
-
+  il::TestDatatypes();
   il::TestFun();
 
 

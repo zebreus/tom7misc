@@ -49,6 +49,14 @@ const il::Type *Elaboration::NewEVar() {
   return pool->EVar(EVar());
 }
 
+const il::Type *Elaboration::EVarize(const std::vector<std::string> &tyvars,
+                                     const il::Type *type) {
+  for (const std::string &alpha : tyvars) {
+    type = pool->SubstType(NewEVar(), alpha, type);
+  }
+  return type;
+}
+
 Program Elaboration::Elaborate(const el::Exp *el_exp) {
   Context G = init.InitialContext();
 

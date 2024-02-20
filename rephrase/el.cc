@@ -237,14 +237,14 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::RECORD: {
-    std::string ret = "(";
+    std::string ret = "{";
     for (int i = 0; i < (int)e->str_children.size(); i++) {
       const auto &[lab, child] = e->str_children[i];
       if (i != 0) StringAppendF(&ret, ", ");
       StringAppendF(&ret, "%s = %s",
                     lab.c_str(), ExpString(child).c_str());
     }
-    ret += ")";
+    ret += "}";
     return ret;
   }
 
