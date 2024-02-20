@@ -127,7 +127,9 @@ struct DatatypeDec {
 
 struct FunDec {
   std::string name;
-  std::vector<std::pair<const Pat *, const Exp *>> clauses;
+  // Each clause can have many arguments (currying sugar), but they
+  // are expected to be rectangular.
+  std::vector<std::pair<std::vector<const Pat *>, const Exp *>> clauses;
 };
 
 struct Dec {
@@ -391,7 +393,9 @@ struct AstPool {
     return ret;
   }
 
-private:
+  std::string NewInternalVar(const std::string &hint);
+
+ private:
   Type *NewType(TypeType t) { return type_arena.New(t); }
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }
   Layout *NewLayout(LayoutType t) { return layout_arena.New(t); }
@@ -402,6 +406,7 @@ private:
   AstArena<Dec> dec_arena;
   AstArena<Pat> pat_arena;
   AstArena<Type> type_arena;
+  int next_internal_var = 0;
 };
 
 const char *PatTypeString(PatType pt);

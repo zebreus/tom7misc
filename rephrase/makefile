@@ -17,7 +17,7 @@ test : lex_test.exe context_test.exe unification_test.exe parse_test.exe fronten
 # Also add /c/code/openblas/include to
 
 LLAMA_CLBLAST=true
-# ASAN=true
+ASAN=true
 
 UNAME := $(shell uname -o)
 
@@ -257,7 +257,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=el.o parse.o lex.o inclusion.o nullary.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o
+LANG_OBJECTS=el.o parse.o lex.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o
 
 %.o : %.cc *.h $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@

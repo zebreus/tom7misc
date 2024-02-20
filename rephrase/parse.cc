@@ -269,75 +269,89 @@ const Exp *Parsing::Parse(AstPool *pool,
     };
 
 
-  const auto Pattern =
-    Fix<Token, const Pat *>([&](const auto &Self) {
-        auto AtomicPattern =
-          (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
-          (BigInteger >[&](const BigInt &i) { return pool->IntPat(i); }) ||
-          (StrLit >[&](const std::string &s) {
-              return pool->StringPat(s);
-            }) ||
-          RecordPat(Self) ||
-          TuplePat(Self);
+  // Need to also expose AtomicPattern, since "fun f p1 p2 p3 = ..."
+  // uses it.
+  const auto &[AtomicPattern, Pattern] =
+    Fix2<Token, const Pat *, const Pat *>(
 
-        // Allows "x" and "SOME SOME SOME p". Since the head pattern p
-        // may itself be an identifier (var pattern), there are
-        // several cases to consider.
-        //
-        // Fixity is not allowed here, but we could add it...
-        auto AppPattern =
-          // Must have at least one or the other.
-          ((+Id && Opt(AtomicPattern)) ||
-           (*Id && (AtomicPattern >[&](const Pat *p) {
-               return std::make_optional(p);
-             })))
-          >[&](const auto &pair) -> const Pat * {
-            const auto &[ids, head] = pair;
-            CHECK(!ids.empty() || head.has_value());
-            if (ids.size() == 1 && !head.has_value()) {
-              // This is a simple variable pattern.
-              return pool->VarPat(ids[0]);
-            }
+        [&](const auto &AtomicSelf, const auto &Self) {
+          // Atomic patterns.
+          return
+            (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
+            (BigInteger >[&](const BigInt &i) { return pool->IntPat(i); }) ||
+            (StrLit >[&](const std::string &s) {
+                return pool->StringPat(s);
+              }) ||
+            RecordPat(Self) ||
+            TuplePat(Self);
+        },
 
-            std::vector<std::string> spine = ids;
-            const Pat *pat = nullptr;
-            if (head.has_value()) {
-              pat = head.value();
-            } else {
-              pat = pool->VarPat(spine.back());
-              spine.pop_back();
-            }
-
-            for (int i = (int)spine.size() - 1;
-                 i >= 0;
-                 i--) {
-              pat = pool->AppPat(spine[i], pat);
-            }
-            return pat;
-          };
-
-        auto AsPattern =
-          (AppPattern && Opt(IsToken<AS>() >> Id))
-          >[&](const auto &pair) -> const Pat * {
-              const auto &[pat, v] = pair;
-              if (v.has_value()) {
-                return pool->AsPat(pat, v.value());
-              } else {
-                return pat;
+        [&](const auto &AtomicSelf, const auto &Self) {
+          // Full patterns.
+          //
+          // Allows "x" and "SOME SOME SOME p". Since the head pattern p
+          // may itself be an identifier (var pattern), there are
+          // several cases to consider.
+          //
+          // Fixity is not allowed here, but we could add it...
+          auto AppPattern =
+            // Must have at least one or the other.
+            ((+Id && Opt(AtomicSelf)) ||
+             (*Id && (AtomicSelf >[&](const Pat *p) {
+                 return std::make_optional(p);
+               })))
+            >[&](const auto &pair) -> const Pat * {
+              const auto &[ids, head] = pair;
+              CHECK(!ids.empty() || head.has_value());
+              if (ids.size() == 1 && !head.has_value()) {
+                // This is a simple variable pattern.
+                return pool->VarPat(ids[0]);
               }
+
+              std::vector<std::string> spine = ids;
+              const Pat *pat = nullptr;
+              if (head.has_value()) {
+                pat = head.value();
+              } else {
+                pat = pool->VarPat(spine.back());
+                spine.pop_back();
+              }
+
+              for (int i = (int)spine.size() - 1;
+                   i >= 0;
+                   i--) {
+                pat = pool->AppPat(spine[i], pat);
+              }
+              return pat;
             };
 
-        return (AsPattern && Opt(IsToken<COLON>() >> TypeExpr))
-          >[&](const auto &pair) -> const Pat * {
-              const auto &[pat, typ] = pair;
-              if (typ.has_value()) {
-                return pool->AnnPat(pat, typ.value());
-              } else {
-                return pat;
-              }
-            };
-      });
+          auto AsPattern =
+            (AppPattern && Opt(IsToken<AS>() >> Id))
+            >[&](const auto &pair) -> const Pat * {
+                const auto &[pat, v] = pair;
+                if (v.has_value()) {
+                  return pool->AsPat(pat, v.value());
+                } else {
+                  return pat;
+                }
+              };
 
+          return (AsPattern && Opt(IsToken<COLON>() >> TypeExpr))
+            >[&](const auto &pair) -> const Pat * {
+                const auto &[pat, typ] = pair;
+                if (typ.has_value()) {
+                  return pool->AnnPat(pat, typ.value());
+                } else {
+                  return pat;
+                }
+              };
+        });
+
+  // Because AppPattern is actually where var patterns are parsed (as
+  // the singleton instance of app patterns), we ned to re-add that
+  // case to atomic patterns for fun decls.
+  auto CurryPattern = AtomicPattern ||
+    (Id >[&](const std::string &v) { return pool->VarPat(v); });
 
   // Expressions.
 
@@ -505,23 +519,25 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   const auto OneFunDec = [&](const auto &clauses) -> FunDec {
       CHECK(!clauses.empty()) << "Bug: shouldn't even parse "
-        "empty fun clauses";
+        "empty fun clauses!";
       const std::string &fname = std::get<0>(std::get<0>(clauses[0]));
       // printf("OneFunDec: %s\n", fname.c_str());
       FunDec ret;
       ret.name = fname;
       for (const auto &ppp : clauses) {
         const auto &[pp, e] = ppp;
-        const auto &[id, pat] = pp;
+        const auto &[id, curry_pats] = pp;
         CHECK(id == fname) << "Inconsistent name for function in "
           "function clauses: Saw " << fname << " and then " << id;
-        ret.clauses.emplace_back(pat, e);
+        CHECK(!curry_pats.empty()) << "Shouldn't parse empty curry "
+          "patterns!";
+        ret.clauses.emplace_back(curry_pats, e);
       }
       return ret;
   };
 
-  // fun f p1 = e1
-  //   | f p2 = e2
+  // fun f p11 p12 p13 = e1
+  //   | f p21 p22 p23 = e2
   //   | ...
   // and g q1 = ee1
   //   | g q2 = ee2
@@ -529,15 +545,16 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto FunDecl = [&](const auto &Expr) {
       return
         (((IsToken<FUN>() >>
-           Separate(Id && Pattern && (IsToken<EQUALS>() >> Expr),
+           Separate(Id && +CurryPattern && (IsToken<EQUALS>() >> Expr),
                     IsToken<BAR>())) >OneFunDec) &&
          *((IsToken<AND>() >>
-            Separate(Id && Pattern && (IsToken<EQUALS>() >> Expr),
+            Separate(Id && +CurryPattern && (IsToken<EQUALS>() >> Expr),
                      IsToken<BAR>())) >OneFunDec))
         >[&](const auto &p) {
             const FunDec &f = p.first;
-            if (VERBOSE) { printf("Fundec %s\n", f.name.c_str()); }
             const std::vector<FunDec> &fs = p.second;
+            if (VERBOSE) { printf("Fundec %s + %d\n", f.name.c_str(),
+                                  (int)fs.size()); }
             std::vector<FunDec> funs = {f};
             for (const FunDec &d : fs) funs.push_back(d);
             return pool->FunDec(std::move(funs));

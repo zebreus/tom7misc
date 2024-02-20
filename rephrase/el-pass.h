@@ -233,8 +233,11 @@ struct Pass {
     for (const auto &fd : funs) {
       FunDec ffd;
       ffd.name = fd.name;
-      for (const auto &[p, e] : fd.clauses) {
-        ffd.clauses.emplace_back(DoPat(p, args...), DoExp(e, args...));
+      for (const auto &[ps, e] : fd.clauses) {
+        std::vector<const Pat *> pps;
+        pps.reserve(ps.size());
+        for (const Pat *p : ps) pps.push_back(DoPat(p, args...));
+        ffd.clauses.emplace_back(std::move(pps), DoExp(e, args...));
       }
       ffs.push_back(std::move(ffd));
     }

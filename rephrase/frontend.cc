@@ -7,7 +7,6 @@
 #include "lex.h"
 #include "parse.h"
 #include "el.h"
-#include "util.h"
 #include "ansi.h"
 #include "elaboration.h"
 #include "timer.h"
@@ -16,6 +15,7 @@
 #include "il-util.h"
 #include "inclusion.h"
 #include "interval-cover.h"
+#include "uncurry.h"
 
 using Token = el::Token;
 using Lexing = el::Lexing;
@@ -113,14 +113,16 @@ Program Frontend::RunFrontendInternal(
     fflush(stdout);
   }
 
-  Timer nullary_timer;
+  Timer rewrite_timer;
   el::Nullary nullary(&el_pool);
   el_exp = nullary.Rewrite(el_exp);
-  const double nullary_sec = nullary_timer.Seconds();
+  el::Uncurry uncurry(&el_pool);
+  el_exp = uncurry.Rewrite(el_exp);
+  const double rewrite_sec = rewrite_timer.Seconds();
   if (verbose > 1) {
-    printf(AWHITE("Nullary rewrite") " in %s:\n"
+    printf(AWHITE("EL rewrites") " in %s:\n"
            "%s\n",
-           ANSI::Time(nullary_sec).c_str(),
+           ANSI::Time(rewrite_sec).c_str(),
            el::ExpString(el_exp).c_str());
     fflush(stdout);
   }

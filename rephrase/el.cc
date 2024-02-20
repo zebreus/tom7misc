@@ -165,9 +165,12 @@ std::string DecString(const Dec *d) {
         if (!first) {
           StringAppendF(&ret, " | ");
         }
-        StringAppendF(&ret, "%s %s = %s\n",
-                      fd.name.c_str(),
-                      PatString(cpat).c_str(),
+        StringAppendF(&ret, "%s",
+                      fd.name.c_str());
+        for (const Pat *p : cpat) {
+          StringAppendF(&ret, " (%s)", PatString(p).c_str());
+        }
+        StringAppendF(&ret, " = %s\n",
                       ExpString(cexp).c_str());
         first = false;
       }
@@ -411,6 +414,16 @@ bool IsValuable(const Exp *e) {
   default:
     return "ILLEGAL EXPRESSION";
   }
+}
+
+std::string AstPool::NewInternalVar(const std::string &hint) {
+  next_internal_var++;
+  // Need something that's different from the IL's reserved symbol ($)
+  // -- or else we would need to coordinate the counter with IL --
+  // and can't be written by the user.
+  return StringPrintf("%s#%d",
+                      hint.empty() ? "internal" : hint.c_str(),
+                      next_internal_var);
 }
 
 }  // namespace el

@@ -60,7 +60,11 @@ const VarInfo *Context::FindByILVar(const std::string &s) const {
     if (k.second == V::EXP) {
       const VarInfo *vi = std::get_if<VarInfo>(&v);
       CHECK(vi != nullptr) << "Bug: Expression vars always hold VarInfo.";
-      if (vi->var == s) return vi;
+      // Look up the VarInfo in the original context, since Export
+      // makes a copy.
+      if (vi->var == s) {
+        return Find(k.first);
+      }
     }
   }
   return nullptr;

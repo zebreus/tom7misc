@@ -238,8 +238,9 @@ static void TestParse() {
     const FunDec &fd = d->funs[0];
     CHECK(fd.name == "f");
     CHECK(fd.clauses.size() == 1);
-    CHECK(fd.clauses[0].first->type == PatType::VAR);
-    CHECK(fd.clauses[0].first->str == "x");
+    CHECK(fd.clauses[0].first.size() == 1);
+    CHECK(fd.clauses[0].first[0]->type == PatType::VAR);
+    CHECK(fd.clauses[0].first[0]->str == "x");
     CHECK(fd.clauses[0].second != nullptr);
     CHECK(fd.clauses[0].second->type == ExpType::VAR);
     CHECK(fd.clauses[0].second->str == "y");
@@ -256,9 +257,11 @@ static void TestParse() {
     const FunDec &fd = d->funs[0];
     CHECK(fd.name == "f");
     CHECK(fd.clauses.size() == 2);
-    CHECK(fd.clauses[0].first->type == PatType::INT);
+    CHECK(fd.clauses[0].first.size() == 1);
+    CHECK(fd.clauses[0].first[0]->type == PatType::INT);
     CHECK(fd.clauses[0].second->type == ExpType::VAR);
-    CHECK(fd.clauses[1].first->type == PatType::WILD);
+    CHECK(fd.clauses[1].first.size() == 1);
+    CHECK(fd.clauses[1].first[0]->type == PatType::WILD);
     CHECK(fd.clauses[1].second->type == ExpType::INTEGER);
     CHECK(e->a->type == ExpType::INTEGER);
     CHECK(e->a->integer == 8);
@@ -279,13 +282,17 @@ static void TestParse() {
     const FunDec &fd0 = d->funs[0];
     CHECK(fd0.name == "f");
     CHECK(fd0.clauses.size() == 2);
-    CHECK(fd0.clauses[0].first->type == PatType::ANN);
-    CHECK(fd0.clauses[1].first->type == PatType::WILD);
+    CHECK(fd0.clauses[0].first.size() == 1);
+    CHECK(fd0.clauses[0].first[0]->type == PatType::ANN);
+    CHECK(fd0.clauses[1].first.size() == 1);
+    CHECK(fd0.clauses[1].first[0]->type == PatType::WILD);
     const FunDec &fd1 = d->funs[1];
     CHECK(fd1.name == "g");
     CHECK(fd1.clauses.size() == 2);
-    CHECK(fd1.clauses[0].first->type == PatType::INT);
-    CHECK(fd1.clauses[1].first->type == PatType::VAR);
+    CHECK(fd1.clauses[0].first.size() == 1);
+    CHECK(fd1.clauses[0].first[0]->type == PatType::INT);
+    CHECK(fd1.clauses[1].first.size() == 1);
+    CHECK(fd1.clauses[1].first[0]->type == PatType::VAR);
   }
 
   {

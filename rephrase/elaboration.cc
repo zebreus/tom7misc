@@ -128,14 +128,16 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
     return Elab(G, el_body);
   } else {
     const el::Dec *dec = decs[0];
-    std::vector<const el::Dec *> rest_decs;
-    rest_decs.reserve(decs.size() - 1);
-    for (int i = 1; i < (int)decs.size(); i++) {
-      rest_decs.push_back(decs[i]);
-    }
 
-    const el::Exp *rest = rest_decs.empty() ? el_body :
-      el_pool->Let(std::move(rest_decs), el_body);
+    const el::Exp *rest = [&]() {
+        std::vector<const el::Dec *> rest_decs;
+        rest_decs.reserve(decs.size() - 1);
+        for (int i = 1; i < (int)decs.size(); i++) {
+          rest_decs.push_back(decs[i]);
+        }
+        return rest_decs.empty() ? el_body :
+          el_pool->Let(std::move(rest_decs), el_body);
+      }();
 
     switch (dec->type) {
     case el::DecType::VAL:
@@ -149,13 +151,28 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
     case el::DecType::FUN: {
       // TODO: Support curried notation.
       CHECK(!dec->funs.empty()) << "Bug: Should not parse empty funs.";
+
+      auto GetSimpleClauses = [](const el::FunDec &fun) {
+          std::vector<std::pair<const el::Pat *, const el::Exp *>>
+            simple_clauses;
+          simple_clauses.reserve(fun.clauses.size());
+          for (const auto &[ps, e] : fun.clauses) {
+            CHECK(ps.size() == 1) << "Function " << fun.name <<
+              " should have been rewritten already by the Uncurry "
+              "phase.";
+            simple_clauses.emplace_back(ps[0], e);
+          }
+          return simple_clauses;
+        };
+
       if (dec->funs.size() == 1) {
         const el::FunDec &fun = dec->funs[0];
+
         // If not mutually recursive, do this the easy way.
         return pattern_compilation->CompileIrrefutable(
             G,
             el_pool->VarPat(fun.name),
-            el_pool->Fn(fun.name, fun.clauses),
+            el_pool->Fn(fun.name, GetSimpleClauses(fun)),
             rest);
       } else {
         // For mutually recursive functions, we hoist them out to
@@ -191,7 +208,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
           // reason to prefer the global, it would be easy to switch
           // it right here.
           const auto &[e, t] =
-            Elab(GG, el_pool->Fn(il_vars[i], fun.clauses));
+            Elab(GG, el_pool->Fn(il_vars[i], GetSimpleClauses(fun)));
           const auto &[dom, cod] = dom_cods[i];
           Unification::Unify("fun..and decl", pool->Arrow(dom, cod), t);
           fns.emplace_back(e, t);

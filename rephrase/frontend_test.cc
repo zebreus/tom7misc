@@ -523,6 +523,26 @@ static void TestFun() {
       "  id0 5\n"
       "end\n");
 
+  // Currying, simple.
+  {
+    const Program pgm =
+      Run("let fun K x y = x\n"
+          "in K 7 \"hi\"\n"
+          "end");
+    CHECK(pgm.globals.empty());
+    CHECK(pgm.body->Integer() == 7);
+  }
+
+  (void)Run("let\n"
+            "  fun mult 0 x = 0\n"
+            "    | mult x 0 = 0\n"
+            "    | mult 1 x = x\n"
+            "    | mult x 1 = x\n"
+            "    | mult x y = x + mult (y - 1) x\n"
+            "in\n"
+            "  mult 3 3 - 2\n"
+            "end\n");
+
 }
 
 
