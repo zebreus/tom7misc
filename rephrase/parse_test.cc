@@ -642,6 +642,18 @@ static void TestParsePat() {
     CHECK(pat->a->a->str == "x");
   }
 
+  {
+    const Pat *pat = ParsePat("x :: y");
+    CHECK(pat->type == PatType::APP);
+    CHECK(pat->a->type == PatType::TUPLE);
+    CHECK(pat->a->children.size() == 2);
+    CHECK(pat->a->children[0]->type == PatType::VAR);
+    CHECK(pat->a->children[1]->type == PatType::VAR);
+    CHECK(pat->str == "::");
+    CHECK(pat->a->children[0]->str == "x");
+    CHECK(pat->a->children[1]->str == "y");
+  }
+
 }
 
 static void TestParseDec() {

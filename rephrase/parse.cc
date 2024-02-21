@@ -271,6 +271,31 @@ const Exp *Parsing::Parse(AstPool *pool,
            });
     };
 
+  const auto PatAdjApp = [&](const Pat *f, const Pat *arg) -> const Pat * {
+      CHECK(f->type == PatType::VAR) << "Only a constructor (identifier) "
+        "can be applied in an app pattern. But got: " << PatString(f);
+      return pool->AppPat(f->str, arg);
+    };
+
+  using PatFixityElt = FixityItem<const Pat *>;
+  const auto ResolvePatFixity = [&](const std::vector<PatFixityElt> &elts) ->
+    std::optional<const Pat *> {
+    if (elts.size() == 1) {
+      CHECK(elts[0].fixity == Fixity::Atom) << FixityString(elts[0].fixity);
+      return elts[0].item;
+    }
+
+    std::optional<const Pat *> resolved =
+      ResolveFixityAdj<const Pat *>(
+          // ... but we use right associative application, since
+          // (SOME SOME) x is useless.
+          elts, Associativity::Right,
+          std::function<const Pat *(const Pat *, const Pat *)>(PatAdjApp),
+          nullptr);
+
+    return resolved;
+  };
+
 
   // Need to also expose AtomicPattern, since "fun f p1 p2 p3 = ..."
   // uses it.
@@ -297,6 +322,7 @@ const Exp *Parsing::Parse(AstPool *pool,
           // several cases to consider.
           //
           // Fixity is not allowed here, but we could add it...
+          #if 0
           auto AppPattern =
             // Must have at least one or the other.
             ((+Id && Opt(AtomicSelf)) ||
@@ -327,6 +353,38 @@ const Exp *Parsing::Parse(AstPool *pool,
               }
               return pat;
             };
+          #endif
+
+          // This is just like parsing fixity expressions.
+          auto FixityElement =
+            (Id >[&](const std::string &v) {
+                const auto [fixity, assoc, prec] = GetFixity(v);
+                PatFixityElt item;
+                item.fixity = fixity;
+                item.assoc = assoc;
+                item.precedence = prec;
+                // A symbol can only be a var or a binary infix operator.
+                if (fixity == Fixity::Atom) {
+                  item.item = pool->VarPat(v);
+                } else {
+                  CHECK(fixity == Fixity::Infix);
+                  item.binop = [&, v](const Pat *a, const Pat *b) {
+                      return pool->AppPat(v,
+                                          pool->TuplePat({a, b}));
+                    };
+                }
+                return item;
+              }) ||
+            (AtomicSelf
+             >[&](const Pat *p) {
+                PatFixityElt item;
+                item.fixity = Fixity::Atom;
+                item.item = p;
+                return item;
+               });
+
+          auto AppPattern =
+            +FixityElement /= ResolvePatFixity;
 
           auto AsPattern =
             (AppPattern && Opt(IsToken<AS>() >> Id))
@@ -600,15 +658,15 @@ const Exp *Parsing::Parse(AstPool *pool,
         return pool->DatatypeDec(std::move(tyvars), datadecs);
       };
 
-  const auto AdjApp = [&](const Exp *f, const Exp *arg) -> const Exp * {
+  const auto ExpAdjApp = [&](const Exp *f, const Exp *arg) -> const Exp * {
       return pool->App(f, arg);
     };
 
   // TODO: This currently just parses a sequence of function
   // applications in a convoluted way. Need to also pass
   // operators with fixity information in this list!
-  using FixityElt = FixityItem<const Exp *>;
-  const auto ResolveExprFixity = [&](const std::vector<FixityElt> &elts) ->
+  using ExpFixityElt = FixityItem<const Exp *>;
+  const auto ResolveExprFixity = [&](const std::vector<ExpFixityElt> &elts) ->
     std::optional<const Exp *> {
       // We'd get the same result from the code below, but with
       // more work in this very common case.
@@ -620,7 +678,7 @@ const Exp *Parsing::Parse(AstPool *pool,
     std::optional<const Exp *> resolved =
       ResolveFixityAdj<const Exp *>(
           elts, Associativity::Left,
-          std::function<const Exp *(const Exp *, const Exp *)>(AdjApp),
+          std::function<const Exp *(const Exp *, const Exp *)>(ExpAdjApp),
           nullptr);
 
     return resolved;
@@ -655,7 +713,7 @@ const Exp *Parsing::Parse(AstPool *pool,
                 // TODO: Should be able to change this in the
                 // input source.
                 const auto [fixity, assoc, prec] = GetFixity(v);
-                FixityElt item;
+                ExpFixityElt item;
                 item.fixity = fixity;
                 item.assoc = assoc;
                 item.precedence = prec;
@@ -673,7 +731,7 @@ const Exp *Parsing::Parse(AstPool *pool,
               }) ||
             (AtomicExpr
              >[&](const Exp *e) {
-                FixityElt item;
+                ExpFixityElt item;
                 item.fixity = Fixity::Atom;
                 item.item = e;
                 return item;
