@@ -1,6 +1,175 @@
 
 datatype (a) option = SOME of a | NONE
 
+fun o(f, g) = fn x => f(g(x))
+
 fun option-map f (SOME x) = SOME (f x)
   | option-map f NONE = NONE
 
+datatype order = LESS | EQUAL | GREATER
+
+datatype (a) list = :: of a * list | nil
+
+(*
+
+fun list-append (h::t, l2) = h :: list-append(t, l2)
+  | list-append (nil, l2) = l2
+
+val @ = list-append
+
+fun list-eq _ (nil, nil) = true
+  | list-eq f (a :: at, b :: bt) =
+    if f (a, b)
+    then list-eq f (at, bt)
+    else false
+  | list-eq _ _ = false
+
+fun list-concat nil = nil
+  | list-concat (l::t) = list-append(l, list-concat t)
+
+fun list-rev l =
+  let
+    fun go (nil, acc) = acc
+      | go (h::t, acc) = go(t, h::acc)
+  in
+    go (l, nil)
+  end
+
+fun list-tabulate (i, f) =
+  let
+    fun go n =
+      if n < i
+      then f n :: go (n + 1)
+      else nil
+  in
+    go 0
+  end
+
+fun list-empty nil = true
+  | list-empty _ = false
+
+fun list-nth _ nil = raise List
+  | list-nth 0 (h :: _) = h
+  | list-nth n (_ :: t) = list-nth (n - 1) t
+
+(* PERF should be optimized to do less consing. (split mainly) *)
+fun list-sort cmp l =
+  let
+    fun split l =
+      let fun s (a1, a2, nil) = (a1, a2)
+            | s (a1, a2, (h::t)) = s (a2, h::a1, t)
+      in s (nil, nil, l)
+      end
+
+    fun merge (a, nil) = a
+      | merge (nil, b) = b
+      | merge (aa as (a :: ta), bb as (b :: tb)) =
+      case cmp (a, b) of
+        EQUAL => (a :: b :: merge (ta, tb))
+      | LESS => (a :: merge (ta, bb))
+      | GREATER => (b :: merge (aa, tb))
+
+    fun ms nil = nil
+      | ms (l as (s :: nil)) = l
+      | ms (a :: b :: nil) = merge (a :: nil, b :: nil)
+      | ms ll =
+      let val (a,b) = split ll
+      in merge (ms a, ms b)
+      end
+  in
+    ms l
+  end
+
+fun list-map f l = map(l, f)
+
+fun list-mapi f l =
+  let
+    fun m (_, nil) = nil
+      | m (i, h :: t) =
+      f (h, i) :: m (i + 1, t)
+  in
+    m (0, l)
+  end
+
+fun list-app f l = app(l, f)
+
+fun list-appi f l =
+  let
+    fun m (_, nil) = ()
+      | m (i, h :: t) =
+      (f (h, i); m (i + 1, t))
+  in
+    m (0, l)
+  end
+
+(* partition into (trues, falses) *)
+fun list-partition f l =
+  let
+    fun pa (ta, fa, nil) = (list-rev ta, list-rev fa)
+      | pa (ta, fa, h :: t) =
+      if f h
+      then pa (h :: ta, fa, t)
+      else pa (ta, h :: fa, t)
+  in
+    pa (nil, nil, l)
+  end
+
+fun list-map-partial f nil = nil
+  | list-map-partial f (h :: t) =
+    case f h of
+        NONE => list-map-partial f t
+      | SOME h' => h' :: list-map-partial f t
+
+fun list-find _ nil = NONE
+  | list-find f (h :: t) = if f h then SOME h
+                           else list-find f t
+
+fun list-filter _ nil = nil
+  | list-filter f (h :: t) = if f h then h :: (list-filter f t)
+                             else list-filter f t
+
+fun list-exists _ nil = false
+  | list-exists f (h :: t) = if f h then true
+                             else list-exists f t
+
+fun list-all f nil = true
+  | list-all f (h :: t) = f h andalso list-all f t
+
+fun list-length l =
+  let
+    fun ll (acc, nil) = acc
+      | ll (acc, h :: t) = ll (1 + acc, t)
+  in
+    ll (0, l)
+  end
+
+fun list-head (h :: t) = h
+  | list-head nil = raise List
+
+fun list-tail (h :: t) = t
+  | list-tail nil = raise List
+
+fun list-foldl f b l = foldl (l, b, f)
+fun list-foldr f b l = foldr (l, b, f)
+
+
+(* Given a comparison function on a's and an (a * b) list,
+   return (a * b list) list, where the outer list is in
+   ascending order by a and the inner lists are b's (in
+   arbitrary order) that occurred with each a. *)
+fun list-stratify cmp nil = nil
+  | list-stratify cmp ((aa, bb) :: t) =
+  let
+    val ls = list-stratify cmp t
+
+    fun ins (a, b) nil = (a, b :: nil) :: nil
+      | ins (a, b) ((h, elems) :: rest) =
+      (case cmp (a, h) of
+         EQUAL => (h, b :: elems) :: rest
+       | LESS => (a, b :: nil) :: (h, elems) :: rest
+       | GREATER => (h, elems) :: ins (a, b) rest)
+  in
+    ins (aa, bb) ls
+  end
+
+*)

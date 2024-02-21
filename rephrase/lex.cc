@@ -198,6 +198,8 @@ std::optional<std::vector<Token>> Lexing::Lex(
     ")*"
     "\"");
 
+  static const RE2 start_comment("\\(\\*");
+
   // Regex for the interior of a [layout literal].
   // When we use antiquote for a nested expression, like
   // [aaa[exp]bbb], aaa and bbb are lexed as separate tokens.
@@ -264,8 +266,37 @@ std::optional<std::vector<Token>> Lexing::Lex(
     const size_t start = Pos();
     std::string match;
     if (RE2::Consume(&input, whitespace)) {
-      /* no tokens. */
+      // No tokens.
       // printf("Saw whitespace at %zu for %zu\n", start, Pos() - start);
+    } else if (RE2::Consume(&input, start_comment)) {
+      // No tokens.
+      int depth = 1;
+      for (;;) {
+        // Must be enough room for the closing comment.
+        if (input.size() < 2) {
+          if (error != nullptr) {
+            *error = "Unterminated comment";
+          }
+          return std::nullopt;
+        }
+
+        if (input[0] == '(' &&
+            input[1] == '*') {
+          depth++;
+          input.remove_prefix(2);
+        } else if (input[0] == '*' &&
+                   input[1] == ')') {
+          depth--;
+          input.remove_prefix(2);
+          if (depth == 0) {
+            // Outermost comment ends; back to regular lexing.
+            break;
+          }
+        } else {
+          input.remove_prefix(1);
+        }
+      }
+
     } else if (RE2::Consume(&input, explicit_numeric_lit)) {
       // Must come before digits so that we don't parse the
       // 0 prefix as digits.

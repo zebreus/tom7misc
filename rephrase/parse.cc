@@ -36,15 +36,18 @@ GetFixity(const std::string &sym) {
   static const std::unordered_map<std::string,
                                   std::tuple<Fixity, Associativity, int>>
     builtin = {
-    {"o", {Fixity::Infix, Associativity::Left, 2}},
+    {"o", {Fixity::Infix, Associativity::Left, 4}},
     // Maybe add explicit floating-point versions
-    {"+", {Fixity::Infix, Associativity::Left, 4}},
-    {"-", {Fixity::Infix, Associativity::Left, 4}},
-    {"*", {Fixity::Infix, Associativity::Left, 6}},
+    {"+", {Fixity::Infix, Associativity::Left, 6}},
+    {"-", {Fixity::Infix, Associativity::Left, 6}},
+    {"*", {Fixity::Infix, Associativity::Left, 8}},
     // int * int -> float
-    {"/", {Fixity::Infix, Associativity::Left, 6}},
-    {"div", {Fixity::Infix, Associativity::Left, 6}},
-    {"mod", {Fixity::Infix, Associativity::Left, 6}},
+    {"/", {Fixity::Infix, Associativity::Left, 8}},
+    {"div", {Fixity::Infix, Associativity::Left, 8}},
+    {"mod", {Fixity::Infix, Associativity::Left, 8}},
+
+    {"@", {Fixity::Infix, Associativity::Right, 2}},
+    {"::", {Fixity::Infix, Associativity::Right, 2}},
 
   };
   auto it = builtin.find(sym);

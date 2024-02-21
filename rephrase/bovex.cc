@@ -32,6 +32,9 @@ static void GeneratePDF(const std::string &filename) {
           PDF::PDF_LETTER_HEIGHT,
           info);
 
+  [[maybe_unused]]
+  PDF::Page *page = pdf.AppendNewPage();
+
   pdf.SetFont(PDF::TIMES_ROMAN);
   CHECK(pdf.AddTextWrap(
             "This is just test output. I need to make BoVeX "
