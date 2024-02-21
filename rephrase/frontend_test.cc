@@ -10,7 +10,8 @@
 #include "il.h"
 #include "bignum/big-overloads.h"
 
-static constexpr bool VERBOSE = true;
+// Make all tests verbose.
+static constexpr bool VERBOSE = false;
 
 namespace il {
 
@@ -331,17 +332,17 @@ static void TestSimplify() {
 
   {
     const Program pgm = Run("let\n"
-                       " val rec = fn as rec x => "
-                       "   case x of\n"
-                       "     0 => 0\n"
-                       "   | n => rec (n - 1)\n"
-                       " do case rec 9 of\n"
-                       "      0 => 1 div 0\n"
-                       "    | 1 => 666\n"
-                       "    | _ => 444 + 111\n"
-                       "in\n"
-                       " 7\n"
-                       "end");
+                            " val rec = fn as rec x => "
+                            "   case x of\n"
+                            "     0 => 0\n"
+                            "   | n => rec (n - 1)\n"
+                            " do case rec 9 of\n"
+                            "      0 => 1 div 0\n"
+                            "    | 1 => 666\n"
+                            "    | _ => 444 + 111\n"
+                            "in\n"
+                            " 7\n"
+                            "end");
     // Inline the function, but we have to keep the intcase
     // because we would enter the 1 div 0 arm, which has an effect.
     CHECK(pgm.body->type == ExpType::SEQ);
@@ -421,6 +422,8 @@ static void Simple() {
 }
 
 static void TestDatatypes() {
+  constexpr bool VERBOSE = true;
+
   Frontend front;
   if (VERBOSE) {
     front.SetVerbose(2);
@@ -456,6 +459,41 @@ static void TestDatatypes() {
                             "end");
     // Should be a constructor application.
     CHECK(pgm.body->type == ExpType::ROLL);
+  }
+
+  {
+    // Tests that we can compile polymorphic constructors and patterns.
+    const Program pgm = Run("let datatype (a) option = SOME of a | NONE\n"
+                            "  fun option-map f (SOME x) = SOME (f x)\n"
+                            "    | option-map f NONE = NONE\n"
+                            "in SOME 7\n"
+                            "end");
+    // Should be a constructor application.
+    CHECK(pgm.body->type == ExpType::ROLL);
+  }
+
+  {
+    // Polymorphic, recursive datatype with infix constructor.
+    const Program pgm = Run(
+        "let\n"
+        "datatype (a) list = :: of a * list | nil\n"
+        "\n"
+        "fun id (h :: t) = id(t)\n"
+        "  | id (nil) = nil\n"
+        "in 7 end\n");
+    CHECK(pgm.body->type == ExpType::INTEGER);
+  }
+
+  if (false) {
+    // Polymorphic, recursive datatype with infix constructor.
+    const Program pgm = Run(
+        "let\n"
+        "datatype (a) list = :: of a * list | nil\n"
+        "\n"
+        "fun list-append (h :: t, l2) = h :: list-append(t, l2)\n"
+        "  | list-append (nil, l2) = l2\n"
+        "in 7 end\n");
+    CHECK(pgm.body->type == ExpType::INTEGER);
   }
 
 }

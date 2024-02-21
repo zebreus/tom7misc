@@ -16,6 +16,8 @@ using FunctionalSet = FunctionalMap<std::string, Unit>;
 
 namespace il {
 
+// Expression variables.
+namespace {
 struct CountVarsPass : public Pass<FunctionalSet> {
   using Pass::Pass;
 
@@ -83,6 +85,7 @@ struct CountVarsPass : public Pass<FunctionalSet> {
 
   std::unordered_map<std::string, int> counts;
 };
+}  // namespace
 
 std::unordered_map<std::string, int> ILUtil::FreeExpVarCounts(const Exp *e) {
   AstPool temp;
@@ -419,6 +422,69 @@ struct FinalizeEVarsPass : public Pass<> {
 Program ILUtil::FinalizeEVars(AstPool *pool, const Program &program) {
   FinalizeEVarsPass pass(pool, pool->SumType({}));
   return pass.DoProgram(program);
+}
+
+
+// Type variables.
+// Exactly analogous to the expression variable version above, but
+// the type language is smaller.
+namespace {
+struct CountTypeVarsPass : public Pass<FunctionalSet> {
+  using Pass::Pass;
+
+  const Type *DoEVar(EVar a,
+                     const Type *guess,
+                     FunctionalSet bound) override {
+    // Recurse inside bound evars.
+    if (const Type *t = a.GetBound()) {
+      DoType(t, bound);
+    }
+    // Here we always return the guess since we want complete
+    // sharing.
+    return guess;
+  }
+
+  const Type *DoVarType(const std::string &s,
+                        const std::vector<const Type *> &v,
+                        const Type *guess,
+                        FunctionalSet bound) override {
+    for (const Type *t : v) (void)DoType(t, bound);
+    if (bound.FindPtr(s) == nullptr) {
+      // Then it is free.
+      counts[s]++;
+    }
+    return guess;
+  }
+
+  // This is currently the only type constructor that binds a
+  // type variable.
+  const Type *DoMu(
+      int idx,
+      const std::vector<std::pair<std::string, const Type *>> &v,
+      const Type *guess,
+      FunctionalSet bound) override {
+    for (const auto &[alpha, t] : v) {
+      DoType(t, bound.Insert(alpha, {}));
+    }
+    return guess;
+  }
+
+  std::unordered_map<std::string, int> counts;
+};
+}  // namespace
+
+std::unordered_map<std::string, int> ILUtil::FreeTypeVarCounts(const Type *t) {
+  AstPool temp;
+  CountTypeVarsPass pass(&temp);
+  (void)pass.DoType(t, {});
+  return pass.counts;
+}
+
+std::unordered_set<std::string> ILUtil::FreeTypeVars(const Type *t) {
+  std::unordered_set<std::string> vars;
+  for (const auto &[v, c] : FreeTypeVarCounts(t))
+    vars.insert(v);
+  return vars;
 }
 
 }  // namespace il

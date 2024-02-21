@@ -117,7 +117,9 @@ struct PatternCompilation::Matrix {
   // to WILD patterns, but can be modified.
   void AddColumn(const std::string &obj_var,
                  const il::Type *obj_type) {
-    printf("AddColumn. current %dx%d\n", Width(), Height());
+    if (VERBOSE) {
+      printf("AddColumn. current %dx%d\n", Width(), Height());
+    }
     const int old_width = Width();
     const int old_height = Height();
 
@@ -463,9 +465,11 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
     const Context &G,
     Matrix matrix) {
 
-  printf(AWHITE("Comp():") "\n");
-  printf("%s\n",
-         matrix.ToString().c_str());
+  if (VERBOSE) {
+    printf(AWHITE("Comp():") "\n");
+    printf("%s\n",
+           matrix.ToString().c_str());
+  }
 
   // This follows the same approach as humlock, itself loosely
   // based on TILT.
@@ -1151,9 +1155,11 @@ PatternCompilation::SplitRecordPattern(
     const std::string &elv = el_objs[xx];
     const std::string ilv = elab->pool->NewVar(elv);
     il_objs.push_back(ilv);
-    printf("Bind %s : %s => %s\n", elv.c_str(),
-           TypeString(types[xx]).c_str(),
-           ilv.c_str());
+    if (VERBOSE) {
+      printf("Bind %s : %s => %s\n", elv.c_str(),
+             TypeString(types[xx]).c_str(),
+             ilv.c_str());
+    }
     GG = GG.Insert(elv,
                    VarInfo{
                      .tyvars = {},

@@ -201,8 +201,8 @@ struct Pass {
       Args... args) {
     std::vector<std::pair<std::string, const Type *>> vv;
     vv.reserve(v.size());
-    for (const auto &[lab, t] : v) {
-      vv.emplace_back(lab, DoType(t, args...));
+    for (const auto &[alpha, t] : v) {
+      vv.emplace_back(alpha, DoType(t, args...));
     }
     return pool->Mu(idx, vv, guess);
   }

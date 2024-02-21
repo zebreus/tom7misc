@@ -112,6 +112,8 @@ struct Context {
   // For debugging.
   std::string ToString() const;
 
+  static std::string VarInfoString(const VarInfo &vi);
+
 private:
   enum class V {
     // e.g. 'int' or 'list'

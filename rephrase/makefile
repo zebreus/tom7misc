@@ -19,7 +19,11 @@ test.pdf : bovex.exe test.bovex stdlib.bovex
 # Also add /c/code/openblas/include to
 
 LLAMA_CLBLAST=true
-ASAN=true
+# ASAN=true
+
+# Pro-tip:
+#  -ftime-trace
+# then load the .json file at ui.perfetto.dev.
 
 UNAME := $(shell uname -o)
 

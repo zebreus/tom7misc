@@ -57,6 +57,14 @@ struct ILUtil {
   // principle this would help with type-directed optimizations.
   static Program FinalizeEVars(AstPool *pool, const Program &program);
 
+
+  // Free type variables in a type.
+  // Note that in the presence of EVars, we can't know that a type
+  // will remain closed, as its evar may be unified with a free
+  // variable.
+  static std::unordered_map<std::string, int> FreeTypeVarCounts(const Type *t);
+  static std::unordered_set<std::string> FreeTypeVars(const Type *t);
+
   // Substitution does not affect global symbols. But we have parallel
   // functions for globals.
   // (TODO: as needed)
@@ -73,6 +81,7 @@ struct ILUtil {
       const Exp *e1,
       const std::string &sym,
       const Exp *e2);
+
 
 };
 

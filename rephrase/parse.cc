@@ -316,46 +316,10 @@ const Exp *Parsing::Parse(AstPool *pool,
 
         [&](const auto &AtomicSelf, const auto &Self) {
           // Full patterns.
-          //
-          // Allows "x" and "SOME SOME SOME p". Since the head pattern p
-          // may itself be an identifier (var pattern), there are
-          // several cases to consider.
-          //
-          // Fixity is not allowed here, but we could add it...
-          #if 0
-          auto AppPattern =
-            // Must have at least one or the other.
-            ((+Id && Opt(AtomicSelf)) ||
-             (*Id && (AtomicSelf >[&](const Pat *p) {
-                 return std::make_optional(p);
-               })))
-            >[&](const auto &pair) -> const Pat * {
-              const auto &[ids, head] = pair;
-              CHECK(!ids.empty() || head.has_value());
-              if (ids.size() == 1 && !head.has_value()) {
-                // This is a simple variable pattern.
-                return pool->VarPat(ids[0]);
-              }
 
-              std::vector<std::string> spine = ids;
-              const Pat *pat = nullptr;
-              if (head.has_value()) {
-                pat = head.value();
-              } else {
-                pat = pool->VarPat(spine.back());
-                spine.pop_back();
-              }
-
-              for (int i = (int)spine.size() - 1;
-                   i >= 0;
-                   i--) {
-                pat = pool->AppPat(spine[i], pat);
-              }
-              return pat;
-            };
-          #endif
-
-          // This is just like parsing fixity expressions.
+          // This is just like parsing fixity expressions. The elements
+          // are either identifiers (with the appropriate fixity) or
+          // atomic patterns (atoms).
           auto FixityElement =
             (Id >[&](const std::string &v) {
                 const auto [fixity, assoc, prec] = GetFixity(v);

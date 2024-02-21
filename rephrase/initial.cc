@@ -59,19 +59,6 @@ Initial::Initial(AstPool *pool) {
         .primop = {Primop::REF}
       }},
 
-#if 0
-    /*
-    {"SOME", PolyType{
-        .tyvars = {"a"},
-        .type = pool->Arrow(Alpha, Option(Alpha))}},
-    */
-
-    // TODO: List stuff can just be introduced by a preamble.
-    {"::", PolyType{
-        .tyvars = {"a"},
-        .type = BinOpType(Alpha, List(Alpha), List(Alpha))}},
-#endif
-
   };
 
   const il::Type *String = pool->StringType();

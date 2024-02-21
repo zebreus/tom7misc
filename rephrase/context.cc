@@ -70,6 +70,30 @@ const VarInfo *Context::FindByILVar(const std::string &s) const {
   return nullptr;
 }
 
+std::string Context::VarInfoString(const VarInfo &vi) {
+  std::string ret;
+  if (vi.primop.has_value()) {
+    StringAppendF(&ret, "%primop\n");
+  } else {
+    std::string tyvars;
+    if (!vi.tyvars.empty()) {
+      tyvars = "(" + Util::Join(vi.tyvars, ", ") + ") ";
+    }
+    StringAppendF(&ret, "%s : %s%s",
+                  vi.var.c_str(),
+                  tyvars.c_str(),
+                  TypeString(vi.type).c_str());
+
+    if (vi.ctor.has_value()) {
+      const auto &[idx, mu_type, lab] = vi.ctor.value();
+      StringAppendF(&ret, " ctor #%d(%s) %s\n",
+                    idx, TypeString(mu_type).c_str(), lab.c_str());
+    }
+    ret.push_back('\n');
+  }
+  return ret;
+}
+
 std::string Context::ToString() const {
   const auto m = fm.Export();
   std::string ret;
@@ -78,26 +102,7 @@ std::string Context::ToString() const {
     case V::EXP: {
       const VarInfo *vi = std::get_if<VarInfo>(&v);
       CHECK(vi != nullptr) << "Bug: Expression vars always hold VarInfo.";
-      if (vi->primop.has_value()) {
-        StringAppendF(&ret, "%s primop\n", k.first.c_str());
-      } else {
-        std::string tyvars;
-        if (!vi->tyvars.empty()) {
-          tyvars = "(" + Util::Join(vi->tyvars, ", ") + ") ";
-        }
-        StringAppendF(&ret, "%s => %s : %s%s",
-                      k.first.c_str(),
-                      vi->var.c_str(),
-                      tyvars.c_str(),
-                      TypeString(vi->type).c_str());
-
-        if (vi->ctor.has_value()) {
-          const auto &[idx, mu_type, lab] = vi->ctor.value();
-          StringAppendF(&ret, " ctor #%d(%s) %s\n",
-                        idx, TypeString(mu_type).c_str(), lab.c_str());
-        }
-        ret.push_back('\n');
-      }
+      StringAppendF(&ret, "%s ", VarInfoString(*vi).c_str());
       break;
     }
 

@@ -70,6 +70,42 @@ static void TestFreeVars() {
   CHECK(!labs.contains("x"));
 }
 
+static void TestFreeTypeVars() {
+  AstPool pool;
+
+  CHECK(ILUtil::FreeTypeVarCounts(pool.VarType("w", {}))["w"] == 1);
+
+  {
+    // (μ α.α -> β) -> α
+    const Type *t =
+      pool.Arrow(
+          pool.Mu(0, {{"x", pool.Arrow(pool.VarType("x", {}),
+                                       pool.VarType("y", {}))}}),
+          pool.VarType("x", {}));
+
+    std::unordered_map<std::string, int> ftvs =
+      ILUtil::FreeTypeVarCounts(t);
+    CHECK(ftvs["x"] == 1) << "This occurs once, in the codomain: " <<
+      ftvs["x"];
+    CHECK(ftvs["y"] == 1) << "In the body of the mu.";
+  }
+
+  {
+    // (μ ρ.α -> β) -> α
+    const Type *t =
+      pool.Arrow(
+          pool.Mu(0, {{"r", pool.Arrow(pool.VarType("x", {}),
+                                       pool.VarType("y", {}))}}),
+          pool.VarType("x", {}));
+
+    std::unordered_map<std::string, int> ftvs =
+      ILUtil::FreeTypeVarCounts(t);
+    CHECK(ftvs["x"] == 2) << ftvs["x"];
+    CHECK(ftvs["y"] == 1) << "In the body of the mu.";
+  }
+}
+
+
 static void TestSubstType() {
   AstPool pool;
   const Exp *e = pool.Var(
@@ -127,6 +163,8 @@ int main(int argc, char **argv) {
 
   il::TestFreeVars();
   il::TestSubstType();
+  il::TestSubstExp();
+  il::TestFreeTypeVars();
 
   printf("OK\n");
   return 0;

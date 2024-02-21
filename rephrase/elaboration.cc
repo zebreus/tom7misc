@@ -16,6 +16,7 @@
 #include "util.h"
 
 #include "base/stringprintf.h"
+#include "ansi.h"
 
 // This code has to mention both el and il stuff with the same
 // name. But there are many things that are unambiguous.
@@ -645,6 +646,12 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const il::VarInfo *vi = G.Find(el_exp->str);
     CHECK(vi != nullptr) << "Unbound variable: " << el_exp->str;
 
+    if (VERBOSE) {
+      printf("Look up " ABLUE("%s") " : %s\n",
+             el_exp->str.c_str(),
+             Context::VarInfoString(*vi).c_str());
+    }
+
     // If the variable is polymorphic, then instantiate it with
     // evars.
     const il::Type *t = vi->type;
@@ -793,6 +800,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
 
     const il::Type *dom = NewEVar();
     const il::Type *cod = NewEVar();
+
     Unification::Unify("application-fn", ft, pool->Arrow(dom, cod));
     Unification::Unify("application-arg", xt, dom);
 
