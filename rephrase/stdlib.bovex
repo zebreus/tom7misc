@@ -13,27 +13,50 @@ datatype (a) list = :: of a * list | nil
 fun list-append (h :: t, l2) = h :: list-append(t, l2)
   | list-append (nil, l2) = l2
 
-(*
+(* val @ = list-append *)
 
-val @ = list-append
+fun list-concat nil = nil
+  | list-concat (l::t) = list-append(l, list-concat t)
 
+fun list-length l =
+  let
+    fun ll (acc, nil) = acc
+      | ll (acc, h :: t) = ll (1 + acc, t)
+  in
+    ll (0, l)
+  end
+
+fun list-head (h :: t) = h
+  | list-head nil = fail "empty list"
+
+fun list-tail (h :: t) = t
+  | list-tail nil = fail "empty list"
+
+fun list-foldl f b nil = b
+  | list-foldl f b (h :: t) = list-foldl f (f (h, b)) t
+
+fun list-foldr f b nil = b
+  | list-foldr f b (h :: t) = f (h, list-foldr f b t)
+
+fun list-rev l =
+  let
+    fun go (nil, acc) = acc
+      | go (h :: t, acc) = go(t, h :: acc)
+  in
+    go (l, nil)
+  end
+
+fun list-nth _ nil = fail "bounds"
+  | list-nth 0 (h :: _) = h
+  | list-nth n (_ :: t) = list-nth (n - 1) t
+
+  (*
 fun list-eq _ (nil, nil) = true
   | list-eq f (a :: at, b :: bt) =
     if f (a, b)
     then list-eq f (at, bt)
     else false
   | list-eq _ _ = false
-
-fun list-concat nil = nil
-  | list-concat (l::t) = list-append(l, list-concat t)
-
-fun list-rev l =
-  let
-    fun go (nil, acc) = acc
-      | go (h::t, acc) = go(t, h::acc)
-  in
-    go (l, nil)
-  end
 
 fun list-tabulate (i, f) =
   let
@@ -44,13 +67,30 @@ fun list-tabulate (i, f) =
   in
     go 0
   end
+*)
 
+(*
 fun list-empty nil = true
   | list-empty _ = false
+*)
 
-fun list-nth _ nil = raise List
-  | list-nth 0 (h :: _) = h
-  | list-nth n (_ :: t) = list-nth (n - 1) t
+fun list-map f l = nil
+  | list-map f (h :: t) = f h :: list-map f h t
+
+fun list-mapi f l =
+  let
+    fun m (_, nil) = nil
+      | m (i, h :: t) =
+      f (h, i) :: m (i + 1, t)
+  in
+    m (0, l)
+  end
+
+fun list-map-partial f nil = nil
+  | list-map-partial f (h :: t) =
+    case f h of
+        NONE => list-map-partial f t
+      | SOME hh => hh :: list-map-partial f t
 
 (* PERF should be optimized to do less consing. (split mainly) *)
 fun list-sort cmp l =
@@ -63,14 +103,14 @@ fun list-sort cmp l =
 
     fun merge (a, nil) = a
       | merge (nil, b) = b
-      | merge (aa as (a :: ta), bb as (b :: tb)) =
+      | merge ((a :: ta) as aa, (b :: tb) as bb) =
       case cmp (a, b) of
         EQUAL => (a :: b :: merge (ta, tb))
       | LESS => (a :: merge (ta, bb))
       | GREATER => (b :: merge (aa, tb))
 
     fun ms nil = nil
-      | ms (l as (s :: nil)) = l
+      | ms ((s :: nil) as l) = l
       | ms (a :: b :: nil) = merge (a :: nil, b :: nil)
       | ms ll =
       let val (a,b) = split ll
@@ -80,17 +120,7 @@ fun list-sort cmp l =
     ms l
   end
 
-fun list-map f l = map(l, f)
-
-fun list-mapi f l =
-  let
-    fun m (_, nil) = nil
-      | m (i, h :: t) =
-      f (h, i) :: m (i + 1, t)
-  in
-    m (0, l)
-  end
-
+(*
 fun list-app f l = app(l, f)
 
 fun list-appi f l =
@@ -114,12 +144,6 @@ fun list-partition f l =
     pa (nil, nil, l)
   end
 
-fun list-map-partial f nil = nil
-  | list-map-partial f (h :: t) =
-    case f h of
-        NONE => list-map-partial f t
-      | SOME h' => h' :: list-map-partial f t
-
 fun list-find _ nil = NONE
   | list-find f (h :: t) = if f h then SOME h
                            else list-find f t
@@ -134,23 +158,6 @@ fun list-exists _ nil = false
 
 fun list-all f nil = true
   | list-all f (h :: t) = f h andalso list-all f t
-
-fun list-length l =
-  let
-    fun ll (acc, nil) = acc
-      | ll (acc, h :: t) = ll (1 + acc, t)
-  in
-    ll (0, l)
-  end
-
-fun list-head (h :: t) = h
-  | list-head nil = raise List
-
-fun list-tail (h :: t) = t
-  | list-tail nil = raise List
-
-fun list-foldl f b l = foldl (l, b, f)
-fun list-foldr f b l = foldr (l, b, f)
 
 
 (* Given a comparison function on a's and an (a * b) list,

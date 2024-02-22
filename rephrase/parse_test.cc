@@ -35,7 +35,7 @@ static void TestParse() {
   {
     const Exp *e = Parse("15232");
     CHECK(e != nullptr);
-    CHECK(e->type == ExpType::INTEGER);
+    CHECK(e->type == ExpType::INT);
     CHECK(e->integer == 15232);
   }
 
@@ -49,6 +49,20 @@ static void TestParse() {
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::VAR);
     CHECK(e->str == "var");
+  }
+
+  {
+    const Exp *e = Parse("true");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::BOOL);
+    CHECK(e->boolean == true);
+  }
+
+  {
+    const Exp *e = Parse("false");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::BOOL);
+    CHECK(e->boolean == false);
   }
 
   {
@@ -68,7 +82,7 @@ static void TestParse() {
   {
     const Exp *e = Parse("(123)");
     CHECK(e != nullptr);
-    CHECK(e->type == ExpType::INTEGER);
+    CHECK(e->type == ExpType::INT);
     CHECK(e->integer == 123);
   }
 
@@ -151,7 +165,7 @@ static void TestParse() {
     CHECK(e->decs[0]->exp->type == ExpType::VAR);
     CHECK(e->decs[0]->exp->str == "u");
     CHECK(e->a != nullptr);
-    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->type == ExpType::INT);
     CHECK(e->a->integer == 7);
   }
 
@@ -166,7 +180,7 @@ static void TestParse() {
     CHECK(e->decs[0]->exp->type == ExpType::VAR);
     CHECK(e->decs[0]->exp->str == "u");
     CHECK(e->a != nullptr);
-    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->type == ExpType::INT);
     CHECK(e->a->integer == 7);
   }
 
@@ -181,7 +195,7 @@ static void TestParse() {
     CHECK(e->decs[0]->exp->type == ExpType::VAR);
     CHECK(e->decs[0]->exp->str == "u");
     CHECK(e->a != nullptr);
-    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->type == ExpType::INT);
     CHECK(e->a->integer == 7);
   }
 
@@ -211,7 +225,7 @@ static void TestParse() {
     CHECK(e->decs[0]->exp->type == ExpType::VAR);
     CHECK(e->decs[0]->exp->str == "u");
     CHECK(e->a != nullptr);
-    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->type == ExpType::INT);
     CHECK(e->a->integer == 7);
   }
 
@@ -219,11 +233,11 @@ static void TestParse() {
     const Exp *e = Parse("if 1 then 2 else 3");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::IF);
-    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(e->a->type == ExpType::INT);
     CHECK(e->a->integer == 1);
-    CHECK(e->b->type == ExpType::INTEGER);
+    CHECK(e->b->type == ExpType::INT);
     CHECK(e->b->integer == 2);
-    CHECK(e->c->type == ExpType::INTEGER);
+    CHECK(e->c->type == ExpType::INT);
     CHECK(e->c->integer == 3);
   }
 
@@ -262,8 +276,8 @@ static void TestParse() {
     CHECK(fd.clauses[0].second->type == ExpType::VAR);
     CHECK(fd.clauses[1].first.size() == 1);
     CHECK(fd.clauses[1].first[0]->type == PatType::WILD);
-    CHECK(fd.clauses[1].second->type == ExpType::INTEGER);
-    CHECK(e->a->type == ExpType::INTEGER);
+    CHECK(fd.clauses[1].second->type == ExpType::INT);
+    CHECK(e->a->type == ExpType::INT);
     CHECK(e->a->integer == 8);
   }
 
@@ -336,7 +350,7 @@ static void TestParse() {
     CHECK(lhs->type == ExpType::APP);
     CHECK(lhs->a->str == "f");
     CHECK(lhs->b->str == "x");
-    CHECK(rhs->type == ExpType::INTEGER);
+    CHECK(rhs->type == ExpType::INT);
     CHECK(rhs->integer == 100);
   }
 
@@ -407,6 +421,12 @@ static void TestParse() {
     CHECK(r->d == 1e100);
   }
 
+  {
+    const Exp *e = Parse("fail \"yes\"");
+    CHECK(e->type == ExpType::FAIL);
+    CHECK(e->a->type == ExpType::STRING);
+  }
+
   printf("Exp parsing " AGREEN("OK") "\n");
 }
 
@@ -424,7 +444,7 @@ static void TestParseType() {
       const Exp *e = Parsing::Parse(&pool, s, tokens.value());
       CHECK(e != nullptr) << stype;
       CHECK(e->type == ExpType::ANN) << stype;
-      CHECK(e->a->type == ExpType::INTEGER);
+      CHECK(e->a->type == ExpType::INT);
       CHECK(e->a->integer == 0);
       return e->t;
     };
@@ -630,6 +650,12 @@ static void TestParsePat() {
 
     CHECK(pat->str == "SOME");
     CHECK(pat->a->integer == 7);
+  }
+
+  {
+    const Pat *pat = ParsePat("true");
+    CHECK(pat->type == PatType::BOOL);
+    CHECK(pat->boolean == true);
   }
 
   {

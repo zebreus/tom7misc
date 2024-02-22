@@ -101,6 +101,10 @@ const Exp *Parsing::Parse(AstPool *pool,
       }
     };
 
+  const auto Bool =
+    (IsToken<TRUE>() >> Succeed<Token, bool>(true)) ||
+    (IsToken<FALSE>() >> Succeed<Token, bool>(false));
+
   // Use IdAny for expressions, which adds * and others.
   const auto IdType = IsToken<ID>() >[&](Token t) { return TokenStr(t); };
   // Labels can also be numeric. Since they also appear in types (or
@@ -307,6 +311,7 @@ const Exp *Parsing::Parse(AstPool *pool,
           return
             (IsToken<UNDERSCORE>() >[&](auto) { return pool->WildPat(); }) ||
             (BigInteger >[&](const BigInt &i) { return pool->IntPat(i); }) ||
+            (Bool >[&](bool b) { return pool->BoolPat(b); }) ||
             (StrLit >[&](const std::string &s) {
                 return pool->StringPat(s);
               }) ||
@@ -350,6 +355,9 @@ const Exp *Parsing::Parse(AstPool *pool,
           auto AppPattern =
             +FixityElement /= ResolvePatFixity;
 
+          // XXX this is actually backwards from what SML does.
+          // Probably I should swap it back, or allow "p1 as p2"
+          // which just matches both?
           auto AsPattern =
             (AppPattern && Opt(IsToken<AS>() >> Id))
             >[&](const auto &pair) -> const Pat * {
@@ -387,6 +395,7 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto StrLitExpr = StrLit >[&](const std::string &s) {
       return pool->String(s);
     };
+  const auto BoolExpr = Bool >[&](bool b) { return pool->Bool(b); };
 
   // Either (), or (e) or (e1, e2, ...).
   const auto TupleExpr = [&](const auto &Expr) {
@@ -658,6 +667,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             IntExpr ||
             FloatExpr ||
             StrLitExpr ||
+            BoolExpr ||
             // Includes parenthesized expression.
             TupleExpr(Expr) ||
             RecordExpr(Expr) ||

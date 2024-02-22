@@ -35,7 +35,8 @@ struct Pass {
     case ExpType::JOIN: return DoJoin(e->children, args...);
     case ExpType::TUPLE: return DoTuple(e->children, args...);
     case ExpType::RECORD: return DoRecord(e->str_children, args...);
-    case ExpType::INTEGER: return DoInt(e->integer, args...);
+    case ExpType::INT: return DoInt(e->integer, args...);
+    case ExpType::BOOL: return DoBool(e->boolean, args...);
     case ExpType::FLOAT: return DoFloat(e->d, args...);
     case ExpType::VAR: return DoVar(e->str, args...);
     case ExpType::LAYOUT: return DoLayoutExp(e->layout, args...);
@@ -73,6 +74,7 @@ struct Pass {
     case PatType::AS: return DoAsPat(p->a, p->str, args...);
     case PatType::INT: return DoIntPat(p->integer, args...);
     case PatType::STRING: return DoStringPat(p->str, args...);
+    case PatType::BOOL: return DoBoolPat(p->boolean, args...);
     case PatType::APP: return DoAppPat(p->str, p->a, args...);
     default:
       LOG(FATAL) << "Unhandled type in el::Pass::DoPat!";
@@ -139,6 +141,10 @@ struct Pass {
 
   virtual const Exp *DoInt(const BigInt &i, Args... args) {
     return pool->Int(i);
+  }
+
+  virtual const Exp *DoBool(bool b, Args... args) {
+    return pool->Bool(b);
   }
 
   virtual const Exp *DoFloat(double d, Args... args) {
@@ -301,6 +307,10 @@ struct Pass {
 
   virtual const Pat *DoIntPat(const BigInt &bi, Args... args) {
     return pool->IntPat(bi);
+  }
+
+  virtual const Pat *DoBoolPat(bool b, Args... args) {
+    return pool->BoolPat(b);
   }
 
   virtual const Pat *DoStringPat(const std::string &s, Args... args) {

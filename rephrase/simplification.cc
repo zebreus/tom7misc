@@ -46,10 +46,12 @@ static bool IsSmallValue(const Exp *e) {
   switch (e->type) {
   case ExpType::FLOAT:
     return true;
-  case ExpType::INTEGER:
+  case ExpType::BOOL:
+    return true;
+  case ExpType::INT:
     // Since we use bigint, avoid substituting huge numbers.
     // (This could probably be increased a lot without problems!)
-    return e->Integer() < 4'000'000ULL;
+    return e->Int() < 4'000'000ULL;
   case ExpType::STRING:
     // PERF: Should consider inlining small strings by other means?
     return e->String().empty();
@@ -65,7 +67,8 @@ static bool IsSmallValue(const Exp *e) {
 static bool IsEffectless(const Exp *e) {
   switch (e->type) {
   case ExpType::FLOAT: return true;
-  case ExpType::INTEGER: return true;
+  case ExpType::BOOL: return true;
+  case ExpType::INT: return true;
   case ExpType::STRING: return true;
   case ExpType::VAR: return true;
   case ExpType::FN: return true;
@@ -115,7 +118,8 @@ static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
     return;
 
   case ExpType::FLOAT: return;
-  case ExpType::INTEGER: return;
+  case ExpType::BOOL: return;
+  case ExpType::INT: return;
   case ExpType::STRING: return;
   case ExpType::VAR: return;
   case ExpType::FN: return;
@@ -152,7 +156,7 @@ static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
     // TODO: Several more here.
   case ExpType::INTCASE: {
     // const auto &[obj, arms, def] = e->IntCase();
-    // Actually, can we eve throw this away? We'd have to
+    // Actually, can we ever throw this away? We'd have to
     // know whether an arm is going to match. If all of them
     // are discardable (and the default), then ok.
     //
@@ -323,15 +327,30 @@ struct PeepholePass : public il::Pass<> {
     return pool->Let(tyvars, x, DoExp(rhs), DoExp(body), guess);
   }
 
+  const Exp *DoIf(
+      const Exp *cond,
+      const Exp *true_branch,
+      const Exp *false_branch,
+      const Exp *guess) override {
+    if (cond->type == ExpType::BOOL) {
+      Simplified("reduced if");
+      return DoExp(cond->Bool() ? true_branch : false_branch);
+    } else {
+      // TODO: if true and false branches are syntactically equal
+      // TODO: if condition is a negation
+      return Pass::DoIf(cond, true_branch, false_branch, guess);
+    }
+  }
+
   const Exp *DoIntCase(
       const Exp *obj,
       const std::vector<std::pair<BigInt, const Exp *>> &arms,
       const Exp *def,
       const Exp *guess) override {
-    if (obj->type == ExpType::INTEGER) {
+    if (obj->type == ExpType::INT) {
       Simplified("reduce intcase");
       for (const auto &[bi, arm] : arms) {
-        if (bi == obj->Integer()) {
+        if (bi == obj->Int()) {
           return DoExp(arm);
         }
       }

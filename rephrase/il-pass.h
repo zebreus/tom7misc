@@ -54,6 +54,7 @@ struct Pass {
     case TypeType::STRING: return DoStringType(t, args...);
     case TypeType::FLOAT: return DoFloatType(t, args...);
     case TypeType::INT: return DoIntType(t, args...);
+    case TypeType::BOOL: return DoBoolType(t, args...);
       LOG(FATAL) << "Unhandled type type in Pass::DoExp!";
     }
   }
@@ -64,7 +65,8 @@ struct Pass {
     case ExpType::FLOAT: return DoFloat(e->Float(), e, args...);
     case ExpType::JOIN: return DoJoin(e->Join(), e, args...);
     case ExpType::RECORD: return DoRecord(e->Record(), e, args...);
-    case ExpType::INTEGER: return DoInt(e->Integer(), e, args...);
+    case ExpType::INT: return DoInt(e->Int(), e, args...);
+    case ExpType::BOOL: return DoBool(e->Bool(), e, args...);
     case ExpType::VAR: {
       const auto &[ts, v] = e->Var();
       return DoVar(ts, v, e, args...);
@@ -224,6 +226,10 @@ struct Pass {
     return guess;
   }
 
+  virtual const Type *DoBoolType(const Type *guess, Args... args) {
+    return guess;
+  }
+
 
   // Expressions
 
@@ -261,6 +267,11 @@ struct Pass {
   virtual const Exp *DoInt(BigInt i, const Exp *guess,
                            Args... args) {
     return pool->Int(i, guess);
+  }
+
+  virtual const Exp *DoBool(bool b, const Exp *guess,
+                            Args... args) {
+    return pool->Bool(b, guess);
   }
 
   virtual const Exp *DoRecord(

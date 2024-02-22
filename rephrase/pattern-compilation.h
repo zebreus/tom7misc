@@ -88,6 +88,12 @@ private:
       int x);
 
   std::pair<const Exp *, const Type *>
+  SplitBoolPattern(
+      const Context &G,
+      Matrix matrix,
+      int x);
+
+  std::pair<const Exp *, const Type *>
   SplitStringPattern(
       const Context &G,
       Matrix matrix,

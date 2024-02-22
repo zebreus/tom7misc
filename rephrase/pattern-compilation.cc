@@ -15,7 +15,7 @@
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 namespace il {
 
@@ -441,6 +441,8 @@ void PatternCompilation::CheckAffine(const Pat *orig_pat) const {
         break;
       case PatType::STRING:
         break;
+      case PatType::BOOL:
+        break;
       case PatType::APP:
         Rec(pat->a);
         break;
@@ -570,6 +572,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
       continue;
     case PatType::INT:
       return SplitIntPattern(G, matrix, x);
+    case PatType::BOOL:
+      return SplitBoolPattern(G, matrix, x);
     case PatType::STRING:
       return SplitStringPattern(G, matrix, x);
     case PatType::APP:
@@ -729,6 +733,125 @@ PatternCompilation::SplitIntPattern(
 
   return std::make_pair(ret, ftype);
 }
+
+// As above, but it's just a finite radix.
+std::pair<const Exp *, const Type *>
+PatternCompilation::SplitBoolPattern(
+    const Context &G,
+    Matrix matrix,
+    int x) {
+
+  CHECK(x >= 0 && x < matrix.Width());
+  CHECK(matrix.Cell(x, 0)->type == PatType::BOOL);
+
+  Unification::Unify("bool pattern", matrix.types[x],
+                     elab->pool->BoolType());
+
+  int constant_height = 0;
+
+  // The collated matching cases (up until any wildcard), in the original
+  // order, with the matrix that implements the rest of the pattern.
+  std::vector<std::pair<bool, Matrix>> bool_cases;
+  // Since we get all the matching cases when we see the first one,
+  // keep track of what we've already done.
+  std::set<bool> done;
+  for (int y = 0; y < matrix.Height(); y++) {
+    const Pat *cell = matrix.Cell(x, y);
+    if (cell->type == PatType::BOOL) {
+      if (!done.contains(cell->boolean)) {
+        done.insert(cell->boolean);
+        const auto &[mtx, extracts_] =
+          matrix.Quotient<bool>(x,
+                                [&](const Pat *p) -> std::optional<bool> {
+                                  if (p->type == PatType::BOOL &&
+                                      p->boolean == cell->boolean) {
+                                    return {true};
+                                  } else {
+                                    return std::nullopt;
+                                  }
+                                });
+
+        bool_cases.emplace_back(cell->boolean, mtx);
+      }
+    } else {
+      CHECK(cell->type == PatType::WILD) << "Inconsistent pattern types";
+      break;
+    }
+    constant_height++;
+  }
+
+  CHECK(constant_height > 0);
+
+  matrix.DeleteFirstRows(constant_height);
+
+  // The failure continuation, if we don't have both a true and false
+  // branch.
+  const auto &[fail_exp, fail_type] = Comp(G, matrix);
+
+  const Exp *fn = elab->pool->Fn("",
+                                 elab->pool->NewVar("unused"),
+                                 fail_exp);
+  const Type *fn_type = elab->pool->Arrow(elab->pool->RecordType({}),
+                                          fail_type);
+  const std::string el_cont_var = elab->pool->NewVar("hoist");
+  const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
+  Context GG = G.Insert(el_cont_var,
+                        VarInfo{
+                          .tyvars = {},
+                          .type = fn_type,
+                          .var = il_cont_var});
+
+  // Failure continuation calls the hoisted expression.
+  const el::Exp *failure_cont =
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var),
+                       elab->el_pool->Record({}));
+
+  const auto &[obj_exp, obj_type] = matrix.GetObj(elab->pool, G, x);
+  Unification::Unify("bool pattern", obj_type, elab->pool->BoolType());
+
+  const Exp *true_arm = nullptr;
+  const Exp *false_arm = nullptr;
+
+  // Update the defaults for the arms: It's the same failure
+  // continuation in each case.
+  for (auto &[b, mtx] : bool_cases) {
+    mtx.def = failure_cont;
+  }
+
+  for (const auto &[b, mtx] : bool_cases) {
+    const auto &[arm_exp, arm_type] = Comp(GG, mtx);
+    Unification::Unify("bool pattern result", arm_type, fail_type);
+    if (b) {
+      CHECK(true_arm == nullptr);
+      true_arm = arm_exp;
+    } else {
+      CHECK(false_arm == nullptr);
+      false_arm = arm_exp;
+    }
+  }
+
+  CHECK(true_arm != nullptr || false_arm != nullptr);
+  if (true_arm == nullptr || false_arm == nullptr) {
+    const il::Exp *il_failure_cont =
+      elab->pool->App(
+          elab->pool->Var({}, il_cont_var),
+          elab->pool->Record({}));
+    if (true_arm == nullptr) true_arm = il_failure_cont;
+    if (false_arm == nullptr) false_arm = il_failure_cont;
+  }
+
+  // "boolcase" is just "if"
+  const Exp *boolcase =
+    elab->pool->If(obj_exp,
+                   true_arm,
+                   false_arm);
+
+  const Exp *ret =
+    elab->pool->Let({}, il_cont_var, fn, boolcase);
+
+  return std::make_pair(ret, fail_type);
+}
+
 
 // Split the column x, which must begin with a string pattern. The
 // column must be cleaned, meaning it only has STRING and WILD.
@@ -1294,7 +1417,12 @@ PatternCompilation::CompileIrrefutableRec(
           LOG(FATAL) << "Pattern must be irrefutable, but got string: " <<
             PatString(pat);
           return;
+        case el::PatType::BOOL:
+          LOG(FATAL) << "Pattern must be irrefutable, but got bool: " <<
+            PatString(pat);
+          return;
         case el::PatType::APP:
+          // TODO: Could allow this for singleton datatypes.
           LOG(FATAL) << "Pattern must be irrefutable, but got constructor "
             "application: " << PatString(pat);
           return;

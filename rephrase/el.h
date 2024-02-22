@@ -22,8 +22,9 @@ enum class ExpType {
   JOIN,
   TUPLE,
   RECORD,
-  INTEGER,
+  INT,
   FLOAT,
+  BOOL,
   VAR,
   LAYOUT,
   LET,
@@ -54,6 +55,7 @@ enum class PatType {
   INT,
   STRING,
   APP,
+  BOOL,
 };
 
 enum class TypeType {
@@ -103,6 +105,7 @@ struct Exp {
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
   std::vector<std::pair<std::string, const Exp *>> str_children;
+  bool boolean = false;
   Exp(ExpType t) : type(t) {}
 };
 
@@ -114,6 +117,7 @@ struct Pat {
   BigInt integer;
   std::vector<const Pat *> children;
   std::vector<std::pair<std::string, const Pat *>> str_children;
+  bool boolean = false;
   Pat(PatType t) : type(t) {}
 };
 
@@ -197,14 +201,20 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *Bool(bool b) {
+    Exp *ret = NewExp(ExpType::BOOL);
+    ret->boolean = b;
+    return ret;
+  }
+
   const Exp *Int(int64_t i) {
-    Exp *ret = NewExp(ExpType::INTEGER);
+    Exp *ret = NewExp(ExpType::INT);
     ret->integer = BigInt(i);
     return ret;
   }
 
   const Exp *Int(BigInt i) {
-    Exp *ret = NewExp(ExpType::INTEGER);
+    Exp *ret = NewExp(ExpType::INT);
     ret->integer = std::move(i);
     return ret;
   }
@@ -353,6 +363,12 @@ struct AstPool {
   const Pat *IntPat(BigInt i) {
     Pat *ret = NewPat(PatType::INT);
     ret->integer = std::move(i);
+    return ret;
+  }
+
+  const Pat *BoolPat(bool b) {
+    Pat *ret = NewPat(PatType::BOOL);
+    ret->boolean = b;
     return ret;
   }
 

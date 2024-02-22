@@ -147,6 +147,9 @@ std::string TypeString(const Type *t) {
   case TypeType::FLOAT:
     return "float";
 
+  case TypeType::BOOL:
+    return "bool";
+
   default:
     return "unknown type type??";
   }
@@ -196,8 +199,11 @@ std::string ExpString(const Exp *e) {
                         as.c_str(), x.c_str(), ExpString(body).c_str());
   }
 
-  case ExpType::INTEGER:
-    return e->Integer().ToString();
+  case ExpType::INT:
+    return e->Int().ToString();
+
+  case ExpType::BOOL:
+    return e->Bool() ? "true" : "false";
 
   case ExpType::FLOAT:
     return StringPrintf("%.17g", e->Float());
@@ -487,6 +493,9 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
     return u;
 
   case TypeType::FLOAT:
+    return u;
+
+  case TypeType::BOOL:
     return u;
 
   default:

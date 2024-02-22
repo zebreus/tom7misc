@@ -18,7 +18,8 @@ enum class ExpType {
   FLOAT,
   JOIN,
   RECORD,
-  INTEGER,
+  INT,
+  BOOL,
   VAR,
   // Like var, but not a variable occurrence: A reference to
   // a global symbol.
@@ -85,6 +86,7 @@ enum class TypeType {
   STRING,
   FLOAT,
   INT,
+  BOOL,
 };
 
 struct Type {
@@ -141,6 +143,10 @@ struct Type {
     CHECK(type == TypeType::INT);
   }
 
+  void Bool() const {
+    CHECK(type == TypeType::BOOL);
+  }
+
 private:
   friend struct AstPool;
   std::string var;
@@ -179,9 +185,14 @@ struct Exp {
     return d;
   }
 
-  const BigInt &Integer() const {
-    CHECK(type == ExpType::INTEGER);
+  const BigInt &Int() const {
+    CHECK(type == ExpType::INT);
     return integer;
+  }
+
+  bool Bool() const {
+    CHECK(type == ExpType::BOOL);
+    return !BigInt::Eq(integer, 0);
   }
 
   const std::string &String() const {
@@ -393,6 +404,10 @@ struct AstPool {
     return &int_type;
   }
 
+  const Type *BoolType() {
+    return &bool_type;
+  }
+
   const Type *RefType(const Type *t, const Type *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == TypeType::REF &&
@@ -519,14 +534,18 @@ struct AstPool {
 
   const Exp *Int(BigInt i, const Exp *guess = nullptr) {
     if (guess != nullptr &&
-        guess->type == ExpType::INTEGER &&
+        guess->type == ExpType::INT &&
         BigInt::Eq(guess->integer, i)) {
       return guess;
     }
 
-    Exp *ret = NewExp(ExpType::INTEGER);
+    Exp *ret = NewExp(ExpType::INT);
     ret->integer = std::move(i);
     return ret;
+  }
+
+  const Exp *Bool(bool b, const Exp *guess = nullptr) {
+    return b ? &true_exp : &false_exp;
   }
 
   const Exp *Record(
@@ -827,6 +846,18 @@ struct AstPool {
   const Type string_type = Type(TypeType::STRING);
   const Type int_type = Type(TypeType::INT);
   const Type float_type = Type(TypeType::FLOAT);
+  const Type bool_type = Type(TypeType::BOOL);
+
+  const Exp true_exp = []() {
+      Exp t(ExpType::BOOL);
+      t.integer = BigInt(1);
+      return t;
+    }();
+  const Exp false_exp = []() {
+      Exp t(ExpType::BOOL);
+      t.integer = BigInt(0);
+      return t;
+    }();
 
   const Type *SubstTypeInternal(const Type *t, const std::string &v,
                                 const Type *u, bool is_simple);

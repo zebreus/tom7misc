@@ -30,10 +30,8 @@ Initial::Initial(AstPool *pool) {
   const il::Type *Alpha = pool->VarType("a");
   const il::Type *Int = pool->IntType();
   const il::Type *Float = pool->FloatType();
+  const il::Type *Bool = pool->BoolType();
   auto Ref = [&](const Type *a) { return pool->RefType(a); };
-  // This is probably wrong: We need to expand the type of list,
-  // or better
-  // auto List = [&](const Type *a) { return pool->VarType("list", {a}); };
 
   const std::vector<std::pair<std::string, VarInfo>> exp_vars = {
     {"+", BinOp(Int, Int, Int, Primop::INT_PLUS)},
@@ -70,7 +68,7 @@ Initial::Initial(AstPool *pool) {
     // These need datatype declarations.
     //    {"list", 1},
     //    {"option", 1},
-    //    {"bool", 0},
+    {"bool", Kind0(Bool)},
     {"int", Kind0(Int)},
     {"float", Kind0(Float)},
     {"string", Kind0(String)},

@@ -49,6 +49,8 @@ const char *TokenTypeString(TokenType tok) {
   case EQUALS: return "EQUALS";
   case BAR: return "BAR";
 
+  case TRUE: return "TRUE";
+  case FALSE: return "FALSE";
   case IF: return "IF";
   case THEN: return "THEN";
   case ELSE: return "ELSE";
@@ -228,6 +230,8 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"case", CASE},
     {"fun", FUN},
     {"val", VAL},
+    {"true", TRUE},
+    {"false", FALSE},
     {"if", IF},
     {"then", THEN},
     {"else", ELSE},
@@ -236,6 +240,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"as", AS},
     {"and", AND},
     {"include", INCLUDE},
+    {"fail", FAIL},
 
     // Symbolic
     {"=>", DARROW},

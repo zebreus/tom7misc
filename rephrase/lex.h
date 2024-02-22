@@ -53,6 +53,8 @@ enum TokenType {
   FAIL,
   INCLUDE,
 
+  TRUE,
+  FALSE,
   IF,
   THEN,
   ELSE,

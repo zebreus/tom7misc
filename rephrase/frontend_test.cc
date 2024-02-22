@@ -58,12 +58,12 @@ static void TestLiterals() {
 
   {
     const Program pgm = Run("42");
-    CHECK(pgm.body->Integer() == 42);
+    CHECK(pgm.body->Int() == 42);
   }
 
   {
     const Program pgm = Run("42 : int");
-    CHECK(pgm.body->Integer() == 42);
+    CHECK(pgm.body->Int() == 42);
   }
 
   {
@@ -76,7 +76,7 @@ static void TestLiterals() {
     const auto &str_children = pgm.body->Record();
     CHECK(str_children.size() == 2);
     CHECK(str_children[0].first == "lab");
-    CHECK(str_children[0].second->Integer() == 0);
+    CHECK(str_children[0].second->Int() == 0);
     CHECK(str_children[1].first == "2");
     CHECK(str_children[1].second->String() == "hi");
     if (VERBOSE) {
@@ -96,6 +96,16 @@ static void TestLiterals() {
     CHECK(d == 2.25);
   }
 
+  {
+    const Program pgm = Run("true");
+    CHECK(pgm.body->Bool() == true);
+  }
+
+  {
+    const Program pgm = Run("false");
+    CHECK(pgm.body->Bool() == false);
+  }
+
 }
 
 static void TestPrimops() {
@@ -107,7 +117,7 @@ static void TestPrimops() {
   {
     const Program pgm = RunNoSimplify("ref 7 : int ref");
     const auto &[f, arg] = pgm.body->App();
-    CHECK(arg->Integer() == 7);
+    CHECK(arg->Int() == 7);
     const auto &[self, x, body] = f->Fn();
     CHECK(self.empty());
     const auto &[po, ts, es] = body->Primop();
@@ -143,8 +153,8 @@ static void TestPrimops() {
     // A record with labels "1" and "2".
     CHECK(str_children[0].first == "1");
     CHECK(str_children[1].first == "2");
-    CHECK(str_children[0].second->Integer() == 3);
-    CHECK(str_children[1].second->Integer() == 4);
+    CHECK(str_children[0].second->Int() == 3);
+    CHECK(str_children[1].second->Int() == 4);
 
     // The function should apply a primop to projections
     // from the tuple.
@@ -175,14 +185,14 @@ static void TestSimplify() {
     // let x = 7
     // in x
     // end
-    CHECK(pgm.body->Integer() == 7) << "Should be able to simplify "
+    CHECK(pgm.body->Int() == 7) << "Should be able to simplify "
       "this to a let and then just an integer. Tests making a function "
       "not recursive.";
   }
 
   {
     const Program pgm = Run("case 7 of x => x");
-    CHECK(pgm.body->Integer() == 7) << "Should be able to simplify this "
+    CHECK(pgm.body->Int() == 7) << "Should be able to simplify this "
       "to just an integer.";
   }
 
@@ -195,7 +205,7 @@ static void TestSimplify() {
     const auto &[t, body] = pgm.body->Roll();
     CHECK(t->type == TypeType::MU);
     const auto &[lab, bbody] = body->Inject();
-    CHECK(bbody->Integer() == 7);
+    CHECK(bbody->Int() == 7);
     CHECK(lab == "SOME");
   }
 
@@ -206,7 +216,7 @@ static void TestSimplify() {
                             "   val f = fn x => x\n"
                             "in f 7\n"
                             "end");
-    CHECK(pgm.body->type == ExpType::INTEGER) << "Should be able "
+    CHECK(pgm.body->type == ExpType::INT) << "Should be able "
       "to simplify this to just 7 because the bindings are trivially "
       "inlinable. Tests polymorphic inlining.";
   }
@@ -222,9 +232,9 @@ static void TestSimplify() {
       "values.";
     const auto &labe = pgm.body->Record();
     CHECK(labe[0].first == "1");
-    CHECK(labe[0].second->Integer() == 7);
+    CHECK(labe[0].second->Int() == 7);
     CHECK(labe[1].first == "2");
-    CHECK(labe[1].second->Integer() == 7);
+    CHECK(labe[1].second->Int() == 7);
   }
 
   if (false) {
@@ -240,26 +250,26 @@ static void TestSimplify() {
       "perhaps this should just be part of a proper optimization pass.)";
     const auto &labe = pgm.body->Record();
     CHECK(labe[0].first == "1");
-    CHECK(labe[0].second->Integer() == 7);
+    CHECK(labe[0].second->Int() == 7);
     CHECK(labe[1].first == "2");
-    CHECK(labe[1].second->Integer() == 7);
+    CHECK(labe[1].second->Int() == 7);
   }
 
   {
     const Program pgm = Run("case 7 of x => x | y => 8 | z => 9");
-    CHECK(pgm.body->Integer() == 7) << "Should be able to simplify this "
+    CHECK(pgm.body->Int() == 7) << "Should be able to simplify this "
       "to just an integer.";
   }
 
   {
     const Program pgm = Run("case (7, 7) of (x, y) => x");
-    CHECK(pgm.body->Integer() == 7);
+    CHECK(pgm.body->Int() == 7);
   }
 
   {
     const Program pgm = Run("case {d = (2, 7), a = 3, c = \"hi\"} of\n"
                             "  {d = (_, x), a = a, c = _} => x\n");
-    CHECK(pgm.body->Integer() == 7);
+    CHECK(pgm.body->Int() == 7);
   }
 
   {
@@ -268,7 +278,7 @@ static void TestSimplify() {
                             " | 2 => 222\n"
                             " | 3 => 333\n"
                             " | _ => 666");
-    CHECK(pgm.body->Integer() == 222);
+    CHECK(pgm.body->Int() == 222);
   }
 
   if (false) {
@@ -286,7 +296,7 @@ static void TestSimplify() {
                             "   \"world\" => 1234\n"
                             " | \"hello\" => 7\n"
                             " | _ => 9\n");
-    CHECK(pgm.body->Integer() == 7);
+    CHECK(pgm.body->Int() == 7);
   }
 
   {
@@ -297,7 +307,7 @@ static void TestSimplify() {
                             "    AAA x => x\n"
                             "  | BBB s => 666\n"
                             "end\n");
-    CHECK(pgm.body->Integer() == 7);
+    CHECK(pgm.body->Int() == 7);
   }
 
   {
@@ -307,7 +317,7 @@ static void TestSimplify() {
                             "in\n"
                             "  7\n"
                             "end\n");
-    CHECK(pgm.body->Integer() == 7) << "Tests whether we can drop an "
+    CHECK(pgm.body->Int() == 7) << "Tests whether we can drop an "
       "unused polymorphic value (val binding).";
   }
 
@@ -327,7 +337,7 @@ static void TestSimplify() {
     const auto &[es, body] = pgm.body->Seq();
     CHECK(es.size() == 1);
     CHECK(es[0]->type == ExpType::APP);
-    CHECK(body->Integer() == 7);
+    CHECK(body->Int() == 7);
   }
 
   {
@@ -355,7 +365,20 @@ static void TestSimplify() {
     // end
     // Which is a bit tricky; need to understand what effects intervene.
     // CHECK(es[0]->type == ExpType::INTCASE) << ExpString(es[0]);
-    CHECK(body->Integer() == 7);
+    CHECK(body->Int() == 7);
+  }
+
+  {
+    const Program pgm =
+      Run("case true of\n"
+          "   false => 666\n"
+          " | true => 777\n");
+    CHECK(pgm.body->Int() == 777) << "Should simplify.";
+  }
+
+  {
+    const Program pgm = Run("if false then 666 else 777");
+    CHECK(pgm.body->Int() == 777) << "Should simplify.";
   }
 
 }
@@ -435,7 +458,7 @@ static void TestDatatypes() {
                             "end");
     // Datatype declarations are transparent, so this should just be the
     // body.
-    CHECK(pgm.body->Integer() == 7);
+    CHECK(pgm.body->Int() == 7);
   }
 
   {
@@ -447,7 +470,7 @@ static void TestDatatypes() {
                             "    BBB x => x\n"
                             "  | AAA => 7\n"
                             "end\n");
-    CHECK(pgm.body->Integer() == 7);
+    CHECK(pgm.body->Int() == 7);
   }
 
   {
@@ -481,7 +504,7 @@ static void TestDatatypes() {
         "fun id (h :: t) = id(t)\n"
         "  | id (nil) = nil\n"
         "in 7 end\n");
-    CHECK(pgm.body->type == ExpType::INTEGER);
+    CHECK(pgm.body->type == ExpType::INT);
   }
 
   {
@@ -493,7 +516,7 @@ static void TestDatatypes() {
         "fun list-append (h :: t, l2) = h :: list-append(t, l2)\n"
         "  | list-append (nil, l2) = l2\n"
         "in 7 end\n");
-    CHECK(pgm.body->type == ExpType::INTEGER);
+    CHECK(pgm.body->type == ExpType::INT);
   }
 
 }
@@ -514,7 +537,7 @@ static void TestFun() {
                             "in\n"
                             "  call (f, 3)\n"
                             "end\n");
-    CHECK(pgm.body->Integer() == 7);
+    CHECK(pgm.body->Int() == 7);
   }
 
   {
@@ -587,7 +610,7 @@ static void TestFun() {
           "in K 7 \"hi\"\n"
           "end");
     CHECK(pgm.globals.empty());
-    CHECK(pgm.body->Integer() == 7);
+    CHECK(pgm.body->Int() == 7);
   }
 
   (void)Run("let\n"
@@ -599,7 +622,6 @@ static void TestFun() {
             "in\n"
             "  mult 3 3 - 2\n"
             "end\n");
-
 }
 
 
@@ -625,8 +647,6 @@ int main(int argc, char **argv) {
   il::Regression();
   il::TestDatatypes();
   il::TestFun();
-
-
 
   printf("OK\n");
   return 0;

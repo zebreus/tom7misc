@@ -110,6 +110,9 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
 
   case TypeType::FLOAT:
     return false;
+
+  case TypeType::BOOL:
+    return false;
   }
 }
 
@@ -189,6 +192,9 @@ std::vector<EVar> EVar::FreeEVarsInTypes(
       return;
 
     case TypeType::FLOAT:
+      return;
+
+    case TypeType::BOOL:
       return;
     }
   };
@@ -397,6 +403,9 @@ static void UnifyEx(std::string_view what,
     return;
 
   case TypeType::FLOAT:
+    return;
+
+  case TypeType::BOOL:
     return;
   }
 }

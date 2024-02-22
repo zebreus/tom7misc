@@ -625,9 +625,13 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     return std::make_pair(pool->String(el_exp->str),
                           pool->StringType());
 
-  case el::ExpType::INTEGER:
+  case el::ExpType::INT:
     return std::make_pair(pool->Int(el_exp->integer),
                           pool->IntType());
+
+  case el::ExpType::BOOL:
+    return std::make_pair(pool->Bool(el_exp->boolean),
+                          pool->BoolType());
 
   case el::ExpType::FLOAT:
     return std::make_pair(pool->Float(el_exp->d),
@@ -762,10 +766,17 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
   case el::ExpType::LET:
     return ElabDecs(G, el_exp->decs, el_exp->a);
 
-  case el::ExpType::IF:
-    // TODO: Defer to case on a built-in datatype decl?
-    LOG(FATAL) << "Unimplemented IF";
-    break;
+  case el::ExpType::IF: {
+    const auto &[cond_exp, cond_type] = Elab(G, el_exp->a);
+    const auto &[true_exp, true_type] = Elab(G, el_exp->b);
+    const auto &[false_exp, false_type] = Elab(G, el_exp->c);
+
+    Unification::Unify("if cond", cond_type, pool->BoolType());
+    Unification::Unify("if branches", true_type, false_type);
+
+    return std::make_pair(pool->If(cond_exp, true_exp, false_exp),
+                          true_type);
+  }
 
   case el::ExpType::FN: {
     // Function type is an arrow. We may need this for the recursive

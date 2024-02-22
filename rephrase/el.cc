@@ -87,6 +87,7 @@ const char *PatTypeString(PatType pt) {
   case PatType::ANN: return "ANN";
   case PatType::AS: return "AS";
   case PatType::INT: return "INT";
+  case PatType::BOOL: return "BOOL";
   case PatType::STRING: return "STRING";
   case PatType::APP: return "APP";
   }
@@ -97,6 +98,7 @@ std::string PatString(const Pat *p) {
   switch (p->type) {
   case PatType::STRING: return EscapeString(p->str);
   case PatType::INT: return p->integer.ToString();
+  case PatType::BOOL: return p->boolean ? "true" : "false";
   case PatType::WILD: return "_";
   case PatType::VAR: return p->str;
   case PatType::TUPLE: {
@@ -220,8 +222,11 @@ std::string ExpString(const Exp *e) {
   case ExpType::VAR:
     return e->str;
 
-  case ExpType::INTEGER:
+  case ExpType::INT:
     return e->integer.ToString();
+
+  case ExpType::BOOL:
+    return e->boolean ? "true" : "false";
 
   case ExpType::FLOAT:
     return StringPrintf("%.17g", e->d);
@@ -377,7 +382,8 @@ bool IsValuable(const Exp *e) {
   switch (e->type) {
   case ExpType::STRING: return true;
   case ExpType::VAR: return true;
-  case ExpType::INTEGER: return true;
+  case ExpType::INT: return true;
+  case ExpType::BOOL: return true;
 
   case ExpType::TUPLE:
     for (const Exp *child : e->children)
