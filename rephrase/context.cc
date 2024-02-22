@@ -73,7 +73,7 @@ const VarInfo *Context::FindByILVar(const std::string &s) const {
 std::string Context::VarInfoString(const VarInfo &vi) {
   std::string ret;
   if (vi.primop.has_value()) {
-    StringAppendF(&ret, "%primop\n");
+    StringAppendF(&ret, "primop\n");
   } else {
     std::string tyvars;
     if (!vi.tyvars.empty()) {
@@ -102,7 +102,9 @@ std::string Context::ToString() const {
     case V::EXP: {
       const VarInfo *vi = std::get_if<VarInfo>(&v);
       CHECK(vi != nullptr) << "Bug: Expression vars always hold VarInfo.";
-      StringAppendF(&ret, "%s ", VarInfoString(*vi).c_str());
+      StringAppendF(&ret, "%s => %s ",
+                    k.first.c_str(),
+                    VarInfoString(*vi).c_str());
       break;
     }
 

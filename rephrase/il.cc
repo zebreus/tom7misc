@@ -11,6 +11,8 @@
 
 namespace il {
 
+static constexpr bool VERBOSE = false;
+
 const char *TypeTypeString(TypeType t) {
   switch (t) {
   case TypeType::VAR: return "VAR";
@@ -429,6 +431,7 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
     const auto &[idx, bundle] = u->Mu();
 
     std::vector<std::pair<std::string, const Type *>> new_bundle;
+    new_bundle.reserve(bundle.size());
     for (const auto &[a, body] : bundle) {
       // Target variable is shadowed so it cannot occur.
       if (a == v) {
@@ -444,8 +447,13 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
               a, SubstTypeInternal(t, v, body, is_simple));
         } else {
           const auto &[new_a, new_body] = AlphaVaryType(a, body);
+          if (VERBOSE) {
+            printf("Alpha vary %s.%s to %s.%s\n",
+                   a.c_str(), TypeString(body).c_str(),
+                   new_a.c_str(), TypeString(new_body).c_str());
+          }
           new_bundle.emplace_back(
-              new_a, SubstTypeInternal(t, v, body, is_simple));
+              new_a, SubstTypeInternal(t, v, new_body, is_simple));
         }
       }
     }
