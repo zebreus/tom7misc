@@ -36,7 +36,18 @@ GetFixity(const std::string &sym) {
   static const std::unordered_map<std::string,
                                   std::tuple<Fixity, Associativity, int>>
     builtin = {
-    {"o", {Fixity::Infix, Associativity::Left, 4}},
+    {"@", {Fixity::Infix, Associativity::Right, 2}},
+    {"::", {Fixity::Infix, Associativity::Right, 2}},
+
+    {"o", {Fixity::Infix, Associativity::Left, 3}},
+
+    {"==", {Fixity::Infix, Associativity::Non, 4}},
+    {"!=", {Fixity::Infix, Associativity::Non, 4}},
+    {"<", {Fixity::Infix, Associativity::Non, 5}},
+    {"<=", {Fixity::Infix, Associativity::Non, 5}},
+    {">", {Fixity::Infix, Associativity::Non, 5}},
+    {">=", {Fixity::Infix, Associativity::Non, 5}},
+
     // Maybe add explicit floating-point versions
     {"+", {Fixity::Infix, Associativity::Left, 6}},
     {"-", {Fixity::Infix, Associativity::Left, 6}},
@@ -46,8 +57,6 @@ GetFixity(const std::string &sym) {
     {"div", {Fixity::Infix, Associativity::Left, 8}},
     {"mod", {Fixity::Infix, Associativity::Left, 8}},
 
-    {"@", {Fixity::Infix, Associativity::Right, 2}},
-    {"::", {Fixity::Infix, Associativity::Right, 2}},
 
   };
   auto it = builtin.find(sym);
@@ -357,7 +366,9 @@ const Exp *Parsing::Parse(AstPool *pool,
 
           // XXX this is actually backwards from what SML does.
           // Probably I should swap it back, or allow "p1 as p2"
-          // which just matches both?
+          // which just matches both? (I think it's actually
+          // pretty easy with the matrix approach. You just duplicate
+          // the object variable and split the column.)
           auto AsPattern =
             (AppPattern && Opt(IsToken<AS>() >> Id))
             >[&](const auto &pair) -> const Pat * {
@@ -381,7 +392,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         });
 
   // Because AppPattern is actually where var patterns are parsed (as
-  // the singleton instance of app patterns), we ned to re-add that
+  // the singleton instance of app patterns), we need to re-add that
   // case to atomic patterns for fun decls.
   auto CurryPattern = AtomicPattern ||
     (Id >[&](const std::string &v) { return pool->VarPat(v); });
@@ -635,9 +646,6 @@ const Exp *Parsing::Parse(AstPool *pool,
       return pool->App(f, arg);
     };
 
-  // TODO: This currently just parses a sequence of function
-  // applications in a convoluted way. Need to also pass
-  // operators with fixity information in this list!
   using ExpFixityElt = FixityItem<const Exp *>;
   const auto ResolveExprFixity = [&](const std::vector<ExpFixityElt> &elts) ->
     std::optional<const Exp *> {
@@ -732,7 +740,30 @@ const Exp *Parsing::Parse(AstPool *pool,
                 }
               };
 
-          return AnnExpr;
+          // These should probably be in AnnotatableExpr?
+          auto AndalsoExpr =
+            (AnnExpr && Opt(IsToken<ANDALSO>() >> AnnExpr))
+            >[&](const auto &pair) {
+                const auto &[e, oand] = pair;
+                if (oand.has_value()) {
+                  return pool->Andalso(e, oand.value());
+                } else {
+                  return e;
+                }
+              };
+
+          auto OrelseExpr =
+            (AndalsoExpr && Opt(IsToken<ORELSE>() >> AndalsoExpr))
+            >[&](const auto &pair) {
+                const auto &[e, oand] = pair;
+                if (oand.has_value()) {
+                  return pool->Orelse(e, oand.value());
+                } else {
+                  return e;
+                }
+              };
+
+          return OrelseExpr;
         },
         [&](const auto &Expr, const auto &Decl) {
           // Declaration parser.

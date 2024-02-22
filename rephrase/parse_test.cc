@@ -427,6 +427,20 @@ static void TestParse() {
     CHECK(e->a->type == ExpType::STRING);
   }
 
+  {
+    const Exp *e = Parse("1 andalso 2 orelse 3 andalso 4");
+    CHECK(e->type == ExpType::ORELSE);
+    const Exp *l = e->a;
+    const Exp *r = e->b;
+    CHECK(l->type == ExpType::ANDALSO);
+    CHECK(r->type == ExpType::ANDALSO);
+    CHECK(l->a->integer == 1);
+    CHECK(l->b->integer == 2);
+    CHECK(r->a->integer == 3);
+    CHECK(r->b->integer == 4);
+  }
+
+
   printf("Exp parsing " AGREEN("OK") "\n");
 }
 

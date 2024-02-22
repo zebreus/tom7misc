@@ -33,8 +33,7 @@ namespace il {
   } while (0)
 
 #define RunInternal(src, simp)                      \
-  ([&front]() -> Program {                          \
-    const std::string source = (src);               \
+  ([&front](const std::string source) -> Program {  \
     Frontend::Options options;                      \
     options.simplify = (simp);                      \
     const Program pgm = front.RunFrontendOn(        \
@@ -45,7 +44,7 @@ namespace il {
     CHECK(pgm.body != nullptr) << "Rejected: "      \
                                << source;           \
     return pgm;                                     \
-  }())
+  }(src))
 
 #define Run(src) RunInternal(src, true)
 #define RunNoSimplify(src) RunInternal(src, false)
@@ -379,6 +378,23 @@ static void TestSimplify() {
   {
     const Program pgm = Run("if false then 666 else 777");
     CHECK(pgm.body->Int() == 777) << "Should simplify.";
+  }
+
+  {
+    for (uint8 bits = 0; bits < 8; bits++) {
+      bool a = !!(bits & 4);
+      bool b = !!(bits & 2);
+      bool c = !!(bits & 1);
+      bool expected_result = (a && b) || c;
+      const std::string source_string =
+        StringPrintf("%s andalso %s orelse %s\n",
+                     a ? "true" : "false",
+                     b ? "true" : "false",
+                     c ? "true" : "false");
+
+      const Program pgm = Run(source_string);
+      CHECK(pgm.body->Bool() == expected_result) << source_string;
+    }
   }
 
 }

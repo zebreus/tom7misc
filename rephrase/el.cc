@@ -231,6 +231,15 @@ std::string ExpString(const Exp *e) {
   case ExpType::FLOAT:
     return StringPrintf("%.17g", e->d);
 
+  case ExpType::ANDALSO:
+    return StringPrintf("(%s) andalso (%s)",
+                        ExpString(e->a).c_str(),
+                        ExpString(e->b).c_str());
+  case ExpType::ORELSE:
+    return StringPrintf("(%s) orelse (%s)",
+                        ExpString(e->a).c_str(),
+                        ExpString(e->b).c_str());
+
   case ExpType::TUPLE: {
     std::string ret = "(";
     for (int i = 0; i < (int)e->children.size(); i++) {

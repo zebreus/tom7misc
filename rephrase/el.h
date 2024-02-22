@@ -33,6 +33,8 @@ enum class ExpType {
   ANN,
   CASE,
   FN,
+  ANDALSO,
+  ORELSE,
   // Fail with a string error message.
   // Should be replaced with exceptions.
   FAIL,
@@ -222,6 +224,20 @@ struct AstPool {
   const Exp *Float(double d) {
     Exp *ret = NewExp(ExpType::FLOAT);
     ret->d = d;
+    return ret;
+  }
+
+  const Exp *Andalso(const Exp *a, const Exp *b) {
+    Exp *ret = NewExp(ExpType::ANDALSO);
+    ret->a = a;
+    ret->b = b;
+    return ret;
+  }
+
+  const Exp *Orelse(const Exp *a, const Exp *b) {
+    Exp *ret = NewExp(ExpType::ORELSE);
+    ret->a = a;
+    ret->b = b;
     return ret;
   }
 

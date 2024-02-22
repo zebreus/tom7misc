@@ -50,7 +50,6 @@ fun list-nth _ nil = fail "bounds"
   | list-nth 0 (h :: _) = h
   | list-nth n (_ :: t) = list-nth (n - 1) t
 
-  (*
 fun list-eq _ (nil, nil) = true
   | list-eq f (a :: at, b :: bt) =
     if f (a, b)
@@ -67,12 +66,9 @@ fun list-tabulate (i, f) =
   in
     go 0
   end
-*)
 
-(*
 fun list-empty nil = true
   | list-empty _ = false
-*)
 
 fun list-map f l = nil
   | list-map f (h :: t) = f h :: list-map f h t
@@ -120,6 +116,7 @@ fun list-sort cmp l =
     ms l
   end
 
+(* need SEQ in EL *)
 (*
 fun list-app f l = app(l, f)
 
@@ -131,6 +128,7 @@ fun list-appi f l =
   in
     m (0, l)
   end
+*)
 
 (* partition into (trues, falses) *)
 fun list-partition f l =
@@ -178,5 +176,3 @@ fun list-stratify cmp nil = nil
   in
     ins (aa, bb) ls
   end
-
-*)

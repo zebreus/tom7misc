@@ -1002,12 +1002,11 @@ PatternCompilation::SplitAppPattern(
 
       const auto &[first_idx, mu_type, label] = vi->ctor.value();
 
-      printf(APURPLE("Mu type") ": %s\n",
-             TypeString(mu_type).c_str());
-
       const Type *monotype = elab->EVarize(vi->tyvars, mu_type);
-      printf(AORANGE("Monotype") ": %s\n",
-             TypeString(monotype).c_str());
+      if (VERBOSE) {
+        printf("Mu Monotype: %s\n",
+               TypeString(monotype).c_str());
+      }
 
       return std::make_tuple(first_idx,
                              monotype,
@@ -1094,10 +1093,10 @@ PatternCompilation::SplitAppPattern(
         // Add a column for the subpatterns.
         Matrix mtx = mtx_small;
         const Type *sum_type = elab->pool->UnrollType(mu_type);
-        printf(AWHITE("Original type") ": %s\n",
-               TypeString(mu_type).c_str());
-        printf(AYELLOW("Unrolled type") ": %s\n",
-               TypeString(sum_type).c_str());
+        if (VERBOSE) {
+          printf("Unrolled type: %s\n",
+                 TypeString(sum_type).c_str());
+        }
         const Type *col_type = SelectLabel(sum_type, label);
         const int new_x = mtx.Width();
         mtx.AddColumn(el_var, col_type);

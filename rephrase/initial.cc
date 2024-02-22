@@ -41,6 +41,15 @@ Initial::Initial(AstPool *pool) {
     {"div", BinOp(Int, Int, Int, Primop::INT_DIV)},
     {"mod", BinOp(Int, Int, Int, Primop::INT_MOD)},
 
+    // Perhaps these should just be overloaded α * α -> bool,
+    // with some hack to resolve them?
+    {"==", BinOp(Int, Int, Bool, Primop::INT_EQ)},
+    {"!=", BinOp(Int, Int, Bool, Primop::INT_NEQ)},
+    {"<", BinOp(Int, Int, Bool, Primop::INT_LESS)},
+    {"<=", BinOp(Int, Int, Bool, Primop::INT_LESSEQ)},
+    {">", BinOp(Int, Int, Bool, Primop::INT_GREATER)},
+    {">=", BinOp(Int, Int, Bool, Primop::INT_GREATEREQ)},
+
     {":=", VarInfo{
         .tyvars = {"a"},
         .type = BinOpType(Ref(Alpha), Alpha, Unit),

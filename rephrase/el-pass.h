@@ -46,6 +46,8 @@ struct Pass {
     case ExpType::ANN: return DoAnn(e->a, e->t, args...);
     case ExpType::CASE: return DoCase(e->a, e->clauses, args...);
     case ExpType::FN: return DoFn(e->str, e->clauses, args...);
+    case ExpType::ANDALSO: return DoAndalso(e->a, e->b, args...);
+    case ExpType::ORELSE: return DoOrelse(e->a, e->b, args...);
     case ExpType::FAIL: return DoFail(e->a, args...);
     default:
       LOG(FATAL) << "Unhandled type in el::Pass::DoExp!";
@@ -216,6 +218,18 @@ struct Pass {
 
   virtual const Exp *DoAnn(const Exp *e, const Type *t, Args... args) {
     return pool->Ann(DoExp(e, args...), DoType(t, args...));
+  }
+
+  virtual const Exp *DoAndalso(
+      const Exp *a, const Exp *b,
+      Args... args) {
+    return pool->Andalso(DoExp(a, args...), DoExp(b, args...));
+  }
+
+  virtual const Exp *DoOrelse(
+      const Exp *a, const Exp *b,
+      Args... args) {
+    return pool->Orelse(DoExp(a, args...), DoExp(b, args...));
   }
 
   virtual const Exp *DoFail(const Exp *e, Args... args) {

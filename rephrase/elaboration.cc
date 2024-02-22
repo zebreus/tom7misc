@@ -766,6 +766,26 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
   case el::ExpType::LET:
     return ElabDecs(G, el_exp->decs, el_exp->a);
 
+  case el::ExpType::ANDALSO: {
+    const auto &[ae, at] = Elab(G, el_exp->a);
+    const auto &[be, bt] = Elab(G, el_exp->b);
+    Unification::Unify("andalso lhs", at, pool->BoolType());
+    Unification::Unify("andalso rhs", bt, pool->BoolType());
+
+    return std::make_pair(pool->If(ae, be, pool->Bool(false)),
+                          pool->BoolType());
+  }
+
+  case el::ExpType::ORELSE: {
+    const auto &[ae, at] = Elab(G, el_exp->a);
+    const auto &[be, bt] = Elab(G, el_exp->b);
+    Unification::Unify("orelse lhs", at, pool->BoolType());
+    Unification::Unify("orelse rhs", bt, pool->BoolType());
+
+    return std::make_pair(pool->If(ae, pool->Bool(true), be),
+                          pool->BoolType());
+  }
+
   case el::ExpType::IF: {
     const auto &[cond_exp, cond_type] = Elab(G, el_exp->a);
     const auto &[true_exp, true_type] = Elab(G, el_exp->b);
