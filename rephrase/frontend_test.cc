@@ -484,7 +484,7 @@ static void TestDatatypes() {
     CHECK(pgm.body->type == ExpType::INTEGER);
   }
 
-  if (false) {
+  {
     // Polymorphic, recursive datatype with infix constructor.
     const Program pgm = Run(
         "let\n"

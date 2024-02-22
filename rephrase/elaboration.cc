@@ -32,7 +32,7 @@ using Global = il::Global;
 
 using DatatypeDec = el::DatatypeDec;
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 Elaboration::Elaboration(el::AstPool *el_pool, il::AstPool *il_pool) :
   el_pool(el_pool), pool(il_pool), init(pool) {
@@ -79,10 +79,17 @@ const il::Type *Elaboration::ElabType(const Context &G,
                                       const el::Type *el_type) {
   switch (el_type->type) {
   case el::TypeType::VAR: {
+
     const TypeVarInfo *k = G.FindType(el_type->var);
     CHECK(k != nullptr) << "Unbound (type) variable: " << el_type->var;
 
     const il::Type *t = k->type;
+    if (VERBOSE) {
+      printf(AORANGE("Look up") " type var " APURPLE("%s") ": %s\n",
+             el_type->var.c_str(),
+             TypeString(t).c_str());
+    }
+
     CHECK(k->tyvars.size() == el_type->children.size()) <<
       "Type constructor '" << el_type->var << "' applied to the "
       "wrong number of arguments (want " << k->tyvars.size() <<
@@ -551,9 +558,40 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
         const il::Type *mu_type = mu_types[y];
         for (int x = 0; x < (int)dd.arms.size(); x++) {
           const std::string &ctor = dd.arms[x].first;
+
           const il::Type *dom = oftypes[y][x];
           const il::Type *cod = mu_type;
 
+          // The mu constructor binds the recursive type variables, so
+          // they will not be free in the codomain. But in the domain,
+          // they are outside that binding. Substitute the actual mu
+          // type for all datatypes being declared.
+          // (e.g. for :: we have α * list -> (μ list. ...), but list
+          // is an unbound il variable).
+          for (int yother = 0; yother < (int)dec->datatypes.size(); yother++) {
+            const il::Type *mu_other = mu_types[yother];
+            // e.g. "list$1"
+            const std::string il_tyvar = recvars[yother].second;
+            if (VERBOSE) {
+              printf("[%s/%s]%s\n",
+                     TypeString(mu_other).c_str(),
+                     il_tyvar.c_str(),
+                     TypeString(dom).c_str());
+            }
+            dom = pool->SubstType(mu_other, il_tyvar, dom);
+          }
+
+          if (VERBOSE) {
+            printf("Binding constructor " ABLUE("%s") " : "
+                   "(tyvars) %s -> %s\n"
+                   "   with .ctor = %d  %s  %s\n",
+                   ctor.c_str(),
+                   TypeString(dom).c_str(),
+                   TypeString(cod).c_str(),
+                   y,
+                   TypeString(mu_type).c_str(),
+                   ctor.c_str());
+          }
           GG = GG.Insert(ctor, VarInfo{
               .tyvars = il_tyvars,
               .type = pool->Arrow(dom, cod),
