@@ -30,7 +30,7 @@
 #include "nfa-util.h"
 
 #include "llm.h"
-
+#include "models.h"
 #include "llm-util.h"
 
 #include "console.h"

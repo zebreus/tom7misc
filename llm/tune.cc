@@ -15,11 +15,17 @@
 #include "color-util.h"
 
 static constexpr int MAX_THREADS = 64;
-static constexpr int MAX_LAYERS_GPU = 20;
+// If the number of layers is too high to fit, performance drops off
+// dramatically (or it will just fail). It's fine to increase this
+// after tuning has started. You want to include a little past the
+// performance drop off, or up to the total number of layers (which
+// is printed at startup).
+static constexpr int MAX_LAYERS_GPU = 34;
 
+// Outside this region, sample less often.
 static constexpr int HINT_MIN_THREADS = 4;
 static constexpr int HINT_MAX_THREADS = 32;
-static constexpr int HINT_MAX_GPU = 11;
+static constexpr int HINT_MAX_GPU = 32;
 
 struct Database {
   static constexpr int MODEL_LOAD = 0;
@@ -39,6 +45,9 @@ struct Database {
   // Major axis is num_gpu_layers.
   // Minor axis is num_threads.
   std::vector<Cell> cells;
+  // The model name is just presentational; it gets written
+  // as a comment in the database.
+  std::string model;
 
   int MinNumTrials() const {
     int min_trials = cells[0].trials;
@@ -76,8 +85,14 @@ struct Database {
     }
   }
 
+  void SetModelName(std::string model_in) {
+    model = std::move(model_in);
+  }
+
   void Save(const std::string &tunefile) const {
-    std::string contents;
+    std::string contents =
+      StringPrintf("# %s\n", model.c_str());
+
     for (int y = 0; y < MAX_LAYERS_GPU; y++) {
       for (int x = 0; x < MAX_THREADS; x++) {
         const Cell &cell = cells[y * MAX_THREADS + x];
@@ -240,16 +255,22 @@ struct Database {
           }
         }
 
-        int TOP = 22;
+        constexpr int HEADER_LINES = 3;
+        int TOP = HEADER_LINES * (ImageRGBA::TEXT_HEIGHT + 2) + 4;
         ImageRGBA full(scaled.Width(),
                        scaled.Height() + TOP);
         full.Clear32(0x000033FF);
         full.CopyImage(0, TOP, scaled);
 
+        int yy = 1;
+        full.BlendText32(
+            1, yy, 0xCCCCCCFF,
+            StringPrintf("Model: %s.", model.c_str()));
 
         const int total = TotalTrials();
+        yy += ImageRGBA::TEXT_HEIGHT + 2;
         full.BlendText32(
-            1, 1, 0xFFFFFFFF,
+            1, yy, 0xFFFFFFFF,
             StringPrintf("%s. x: threads. y: gpu layers. "
                          "%d total trials",
                          name, total));
@@ -260,8 +281,9 @@ struct Database {
                                  (int)values.size() - 1);
             return values[idx];
           };
+
         int xx = 1;
-        const int yy = ImageRGBA::TEXT_HEIGHT + 4;
+        yy += ImageRGBA::TEXT_HEIGHT + 2;
         for (float f : {0.0, 0.125, 0.25, 0.375, 0.50,
                         0.625, 0.75, 0.875, 1.0}) {
           std::string value = StringPrintf("%.4f", GetQuantile(f));
@@ -287,6 +309,9 @@ struct Database {
     std::vector<std::string> lines = Util::ReadFileToLines(tunefile);
     for (std::string &line : lines) {
       line = Util::NormalizeWhitespace(line);
+      if (line.empty()) continue;
+      if (line[0] == '#') continue;
+
       Cell cell;
       int x, y;
       #define INT "([0-9]+)"
@@ -310,6 +335,7 @@ struct Database {
 
   }
 
+  // Doesn't reset the model name.
   void Reset() {
     cells.clear();
     cells.resize(MAX_LAYERS_GPU * MAX_THREADS);
@@ -344,6 +370,7 @@ static Database::Cell RunOne(const std::string &model,
 
   Timer load_timer;
   LLM llm(cparams, sparams);
+
   // We consider this part of model loading, because some loading
   // may be lazy.
   llm.DoPrompt("Go.", false);
@@ -387,6 +414,27 @@ static Database::Cell RunOne(const std::string &model,
   return cell;
 }
 
+static int GetModelLayers(const std::string &model) {
+  ContextParams cparams;
+  cparams.model = model;
+  // We're just going to throw it away, so use the fastest method.
+  cparams.num_threads = 6;
+  cparams.num_gpu_layers = 0;
+
+  SamplerParams sparams;
+
+  Timer load_timer;
+  LLM llm(cparams, sparams);
+  auto md = llm.GetModelMetadata();
+  for (const auto &[k, v] : md) {
+    printf(AWHITE("%s") ": %s\n", k.c_str(), v.c_str());
+  }
+  CHECK(md.contains("llama.block_count"));
+  int layers = atoi(md["llama.block_count"].c_str());
+  CHECK(layers > 0);
+  return layers;
+}
+
 static void Tune(const std::string &model, const std::string &tunefile) {
 
   // The main parameters we can tune are:
@@ -410,8 +458,12 @@ static void Tune(const std::string &model, const std::string &tunefile) {
   // like [0, 64]. So we can actually run every cell of the experiment,
   // which will also help us visualize.
 
+  const int actual_num_layers = GetModelLayers(model);
+  printf("Model " ABLUE("%s") " appears to have " AYELLOW("%d")
+         " actual layers.\n", model.c_str(), actual_num_layers);
 
   Database db;
+  db.SetModelName(model);
   db.Load(tunefile);
   printf("Loaded " AGREEN("%d") " previous trials.\n",
          db.TotalTrials());
@@ -446,6 +498,9 @@ static void Tune(const std::string &model, const std::string &tunefile) {
 #endif
   Shuffle(&rc, &todo);
 
+  const int max_gpu_sample =
+    std::min(MAX_LAYERS_GPU, actual_num_layers);
+
   Timer run_timer;
   for (;;) {
     int min_trials = db.MinNumTrials();
@@ -457,7 +512,7 @@ static void Tune(const std::string &model, const std::string &tunefile) {
       // PERF: Should not do random samples once the grid is
       // pretty full.
       th = RandTo(&rc, MAX_THREADS);
-      gpu = RandTo(&rc, MAX_LAYERS_GPU);
+      gpu = RandTo(&rc, max_gpu_sample + 1);
 
       if (gpu > HINT_MAX_GPU && RandTo(&rc, 5) > 0) continue;
       if (gpu > HINT_MAX_GPU + 2 && RandTo(&rc, 20) > 0) continue;
@@ -481,7 +536,7 @@ static void Tune(const std::string &model, const std::string &tunefile) {
     if (save_per.ShouldRun()) {
       printf("Total trials: " AYELLOW("%d") "/" AWHITE("%d") " in %s\n",
              db.TotalTrials(),
-             2 * MAX_LAYERS_GPU * MAX_THREADS,
+             2 * (max_gpu_sample + 1) * MAX_THREADS,
              ANSI::Time(run_timer.Seconds()).c_str());
       db.Save(tunefile);
       db.SaveImages("tune-load.png",

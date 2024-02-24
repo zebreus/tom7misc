@@ -1,6 +1,7 @@
 
 #include "llm.h"
 
+#include <unordered_map>
 #include <cstdint>
 #include <string>
 #include <memory>
@@ -83,9 +84,10 @@ Context::Context(const ContextParams &params) {
   // "from model"
   lparams.n_ctx = 0;
 
-  // XXX make these independently settable?
-  lparams.n_threads = num_threads;
-  lparams.n_threads_batch = num_threads;
+  lparams.n_threads = params.num_threads;
+  lparams.n_threads_batch = params.num_threads_batch > 0 ?
+    params.num_threads_batch :
+    params.num_threads;
 
   // Note: We have our own seed because we do our own sampling.
   // XXX make this deterministic, then!
@@ -95,11 +97,12 @@ Context::Context(const ContextParams &params) {
   lparams.logits_all = false;
   lparams.embedding = false;
 
-  model = llama_load_model_from_file(params.model.c_str(), mparams);
-  CHECK(model != nullptr) << params.model;
+  const std::string model_name = std::string(params.model);
+  model = llama_load_model_from_file(model_name.c_str(), mparams);
+  CHECK(model != nullptr) << model_name;
 
   lctx = llama_new_context_with_model(model, lparams);
-  CHECK(lctx != nullptr) << params.model;
+  CHECK(lctx != nullptr) << model_name;
   Reset();
   Done();
 }
@@ -1035,4 +1038,25 @@ void LLM::PrintKV() const {
          cells.c_str());
 
   llama_kv_cache_view_free(&kcv);
+}
+
+std::unordered_map<std::string, std::string>
+LLM::GetModelMetadata() const {
+  const int num = llama_model_meta_count(context.model);
+
+  std::unordered_map<std::string, std::string> ret;
+  ret.reserve(num);
+  for (int i = 0; i < num; i++) {
+    // XXX would be nice if llama exposed the lengths of these. Could
+    // send a patch...
+    std::string key(256, 0);
+    std::string value(256, 0);
+
+    key.resize(llama_model_meta_key_by_index(
+                   context.model, i, key.data(), 255));
+    value.resize(llama_model_meta_val_str_by_index(
+                     context.model, i, value.data(), 255));
+    ret.insert(std::make_pair(std::move(key), std::move(value)));
+  }
+  return ret;
 }

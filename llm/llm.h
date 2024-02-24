@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <string>
 #include <memory>
+#include <string_view>
+#include <unordered_map>
 
 #include "llama.h"
 
@@ -26,12 +28,17 @@
 // Parameters for creating an LLM context instance.
 struct ContextParams {
   // std::string model = "../llama/models/65B/ggml-model-q4_0.bin";
-  std::string model = "d:\\llama2\\llama-2-7b\\ggml-model-f16.gguf";
+  std::string_view model = "d:\\llama2\\llama-2-7b\\ggml-model-f16.gguf";
   // params.model = "../llama/models/7B/ggml-model-q4_0.bin";
   int context_size = 4096;
-  // XXX tune! This definitely makes a difference for CPU inference.
-  int num_threads = 24;
+
+  // See models.h for tuned values (for my particular machine in
+  // 2024), or tune.exe to tune for yourself.
   int num_gpu_layers = 0;
+  int num_threads = 24;
+  // If nonzero, use a different number of threads for batch inference.
+  // (Fewer threads is typically a bit better.)
+  int num_threads_batch = 0;
 };
 
 enum class SampleType {
@@ -452,6 +459,8 @@ struct LLM {
   // using ANSI color codes.
   void AnsiPrintCandidates(const Candidates &candidates,
                            int maximum) const;
+
+  std::unordered_map<std::string, std::string> GetModelMetadata() const;
 
   // Debugging only.
 
