@@ -42,17 +42,21 @@ Program Frontend::RunFrontend(const std::string &filename,
 
   const auto &[source, tokens, source_map] =
     Inclusion::Process(includepaths, filename);
-  printf("%s\nBytes: %d\n", source.c_str(), (int)source.size());
+  if (verbose > 1) {
+    printf("%s\nBytes: %d\n", source.c_str(), (int)source.size());
+  }
 
   const double load_sec = load_timer.Seconds();
   if (verbose > 0) {
+    printf(AWHITE("Loaded/lexed %s") " in %s.\n",
+           filename.c_str(), ANSI::Time(load_sec).c_str());
+  }
+  if (verbose > 1) {
     const auto &[csource, ctokens] =
       Lexing::ColorTokens(source, tokens);
-    printf(AWHITE("Loaded/lexed %s") " in %s:\n"
+    printf("Tokenization:\n"
            "%s\n"
            "%s\n",
-           filename.c_str(),
-           ANSI::Time(load_sec).c_str(),
            csource.c_str(),
            ctokens.c_str());
   }
@@ -82,7 +86,7 @@ Program Frontend::RunFrontendOn(const std::string &error_context,
   SourceMap source_map{.cover = IntervalCover<std::string>{error_context}};
 
   const double lex_sec = lex_timer.Seconds();
-  if (verbose > 0) {
+  if (verbose > 1) {
     const auto &[source, ctokens] =
       Lexing::ColorTokens(contents, tokens);
     printf(AWHITE("Lexed") " in %s:\n"
@@ -111,11 +115,13 @@ Program Frontend::RunFrontendInternal(
   CHECK(el_exp != nullptr);
   const double parse_sec = parse_timer.Seconds();
 
-  // Maybe only at higher verbosity...
   if (verbose > 0) {
-    printf(AWHITE("Parsed") " in %s:\n"
-           "%s\n",
-           ANSI::Time(parse_sec).c_str(),
+    printf(AWHITE("Parsed") " in %s.\n",
+           ANSI::Time(parse_sec).c_str());
+  }
+
+  if (verbose > 1) {
+    printf("%s\n",
            el::ExpString(el_exp).c_str());
     fflush(stdout);
   }
@@ -145,11 +151,13 @@ Program Frontend::RunFrontendInternal(
   const double elab_sec = elab_timer.Seconds();
 
   if (verbose > 0) {
-    printf(AWHITE("Elaborated") " in %s:\n"
-           "%s\n",
-           ANSI::Time(elab_sec).c_str(),
-           il::ProgramString(il_pgm).c_str());
-    fflush(stdout);
+    printf(AWHITE("Elaborated") " in %s.\n",
+           ANSI::Time(elab_sec).c_str());
+    if (verbose > 1) {
+      printf("%s\n",
+             il::ProgramString(il_pgm).c_str());
+      fflush(stdout);
+    }
   }
 
   Timer finalize_evars_timer;
@@ -164,20 +172,28 @@ Program Frontend::RunFrontendInternal(
   }
 
   if (options.simplify) {
-    printf("\n" AWHITE("Simplifying...") "\n");
+    if (verbose > 0) {
+      printf("\n" AWHITE("Simplifying...") "\n");
+    }
     Timer simplify_timer;
     Simplification simplification(&il_pool);
     il_pgm = simplification.Simplify(il_pgm);
     double simplify_sec = simplify_timer.Seconds();
 
     if (verbose > 0) {
-      printf(AWHITE("Simplified") " in %s:\n"
-             AFGCOLOR(200, 230, 200, "%s") "\n",
-             ANSI::Time(simplify_sec).c_str(),
-             il::ProgramString(il_pgm).c_str());
-      fflush(stdout);
+      // TODO: Get stats.
+      printf(AWHITE("Simplified") " in %s:\n",
+             ANSI::Time(simplify_sec).c_str());
+
+      if (verbose > 1) {
+        printf(AFGCOLOR(200, 230, 200, "%s") "\n",
+               il::ProgramString(il_pgm).c_str());
+        fflush(stdout);
+      }
     }
   }
+
+  // Timing summary?
 
   return il_pgm;
 }

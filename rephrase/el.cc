@@ -68,12 +68,30 @@ std::string TypeString(const Type *t) {
   }
 }
 
+const char *LayoutTypeString(LayoutType lt) {
+  switch (lt) {
+  case LayoutType::EXP: return "EXP";
+  case LayoutType::TEXT: return "TEXT";
+  case LayoutType::JOIN: return "JOIN";
+  default: return "??LAYOUT TYPE??";
+  }
+}
+
 std::string LayoutString(const Layout *lay) {
   if (lay == nullptr) return "NULL!?";
   switch (lay->type) {
     case LayoutType::TEXT:
       return lay->str;
-    default:
+  case LayoutType::EXP:
+    return StringPrintf("[%s]", ExpString(lay->exp).c_str());
+  case LayoutType::JOIN: {
+    std::vector<std::string> body;
+    for (const Layout *child : lay->children) {
+      body.push_back(LayoutString(child));
+    }
+    return StringPrintf("JOIN[%s]", Util::Join(body, ",").c_str());
+  }
+  default:
       return "TODO LAYOUT TYPE";
   }
 }
@@ -92,6 +110,7 @@ const char *PatTypeString(PatType pt) {
   case PatType::APP: return "APP";
   }
 }
+
 
 std::string PatString(const Pat *p) {
   if (p == nullptr) return "NULL!?";

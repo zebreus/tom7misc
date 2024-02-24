@@ -84,6 +84,11 @@ static void TestLex() {
   CHECK_LEX("(_ as x)", LPAREN, UNDERSCORE, AS, ID, RPAREN);
   CHECK_LEX("the (* comment *) 777", ID, DIGITS);
   CHECK_LEX("and (* a (* nested *)*) 1", AND, DIGITS);
+
+  CHECK_LEX("[Here is some layout with [* a comment *].]",
+            LBRACKET, LAYOUT_LIT,
+            LBRACKET, LAYOUT_COMMENT, RBRACKET,
+            LAYOUT_LIT, RBRACKET);
 }
 
 }  // namespace el

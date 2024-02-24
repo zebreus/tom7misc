@@ -78,6 +78,7 @@ enum TokenType {
   FLOAT_LIT,
   LAYOUT_LIT,
   STR_LIT,
+  LAYOUT_COMMENT,
 
   INVALID,
 };

@@ -731,6 +731,59 @@ static void TestParseDec() {
 
 }
 
+static void TestParseLayout() {
+  AstPool pool;
+
+  auto Parse = [&](const std::string &s) -> const Layout * {
+      std::string error;
+      std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
+      CHECK(tokens.has_value()) << "Did not lex: " << error;
+      // print tokens?
+      if (VERBOSE) {
+        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      }
+      const Exp *e = Parsing::Parse(&pool, s, tokens.value());
+      CHECK(e->type == ExpType::LAYOUT);
+      CHECK(e->layout != nullptr);
+      return e->layout;
+    };
+
+  {
+    const Layout *lay = Parse("[easy]");
+    CHECK(lay->type == LayoutType::TEXT);
+    CHECK(lay->str == "easy");
+  }
+
+  {
+    const Layout *lay = Parse("[easy [x] it]");
+    CHECK(lay->type == LayoutType::JOIN);
+    CHECK(lay->children.size() == 3);
+    const Layout *a = lay->children[0];
+    const Layout *b = lay->children[1];
+    const Layout *c = lay->children[2];
+    printf("Layout: [%s]\n", LayoutString(lay).c_str());
+    CHECK(a->type == LayoutType::TEXT);
+    CHECK(a->str == "easy ");
+    CHECK(b->type == LayoutType::EXP);
+    CHECK(b->exp->type == ExpType::VAR);
+    CHECK(b->exp->str == "x");
+    CHECK(c->type == LayoutType::TEXT) << LayoutTypeString(c->type);
+    CHECK(c->str == " it");
+  }
+
+  {
+    const Layout *lay = Parse("[easy [* does *] it]");
+    CHECK(lay->type == LayoutType::JOIN);
+    CHECK(lay->children.size() == 2);
+    const Layout *a = lay->children[0];
+    const Layout *b = lay->children[1];
+    CHECK(a->type == LayoutType::TEXT);
+    CHECK(a->str == "easy ");
+    CHECK(b->type == LayoutType::TEXT);
+    CHECK(b->str == " it");
+  }
+}
+
 }  // namespace el
 
 int main(int argc, char **argv) {
@@ -739,6 +792,7 @@ int main(int argc, char **argv) {
   el::TestParseType();
   el::TestParsePat();
   el::TestParseDec();
+  el::TestParseLayout();
 
   printf("OK\n");
   return 0;

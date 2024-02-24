@@ -71,6 +71,8 @@ const char *TokenTypeString(TokenType tok) {
   case LAYOUT_LIT: return "LAYOUT_LIT";
   case STR_LIT: return "STR_LIT";
 
+  case LAYOUT_COMMENT: return "LAYOUT_COMMENT";
+
   case INVALID: return "INVALID";
 
   default: return "???UNHANDLED???";
@@ -211,6 +213,10 @@ std::optional<std::vector<Token>> Lexing::Lex(
   //
   // We don't actually have an escape character inside layout.
   // The way to write a ] or [ is to use expression mode, like ["["].
+  //
+  // As a result, a layout literal is just any text (not containing
+  // square brackets) between any square brackets. We have special
+  // handling to ignore [* layout comments *], however.
 #define ANY_BRACKET R"([\[\]])"
   static const RE2 layoutlit(
       ANY_BRACKET
@@ -264,8 +270,6 @@ std::optional<std::vector<Token>> Lexing::Lex(
     };
 
   std::vector<Token> ret;
-
-  // TODO: (* Comments. *) and [* layout comments *]
 
   while (!input.empty()) {
     const size_t start = Pos();
@@ -343,6 +347,36 @@ std::optional<std::vector<Token>> Lexing::Lex(
       ret.emplace_back(brack1, start, 1);
       ret.emplace_back(LAYOUT_LIT, start + 1, len - 2);
       ret.emplace_back(brack2, start + len - 1, 1);
+
+      // Now, if we just lexed [one of these[
+      //                    or ]one of these[
+      // then optionally lex a trailing [* layout comment *].
+
+      if (!input.empty() && input[0] == '*') {
+        // the position of the *
+        const size_t comment_start = Pos();
+        input.remove_prefix(1);
+        // The only thing that ends this is *].
+        auto comment_len = input.find("*]");
+
+        if (comment_len == re2::StringPiece::npos) {
+          if (error != nullptr) {
+            *error =
+              StringPrintf("Unterminated [* layout comment *] "
+                           "at offset %zu",
+                           comment_start);
+          }
+          return std::nullopt;
+        }
+
+        // comment_len is to the beginning of *], but we want to
+        // include the trailing *. We don't include the ] so that
+        // it can be picked up as part of a LAYOUT_LIT on the
+        // next iteration.
+        ret.emplace_back(LAYOUT_COMMENT, comment_start, comment_len + 1);
+        input.remove_prefix(comment_len + 1);
+      }
+
     } else {
 
       char c = input[0];

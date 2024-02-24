@@ -12,7 +12,7 @@ test : lex_test.exe context_test.exe unification_test.exe parse_test.exe fronten
 	./frontend_test.exe
 
 test.pdf : bovex.exe test.bovex stdlib.bovex
-	./bovex.exe -v2 test.bovex -o test.pdf
+	./bovex.exe test.bovex -o test.pdf
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -273,6 +273,9 @@ monospace.exe : monospace.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 rephrase.exe : rephrase.o $(LANG_OBJECTS) $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+variations.exe : variations.o $(LANG_OBJECTS) $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 lex_test.exe : lex_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)

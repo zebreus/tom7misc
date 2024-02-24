@@ -442,6 +442,7 @@ struct AstPool {
 };
 
 const char *PatTypeString(PatType pt);
+const char *LayoutTypeString(LayoutType pt);
 std::string TypeString(const Type *t);
 std::string PatString(const Pat *p);
 std::string DecString(const Dec *d);

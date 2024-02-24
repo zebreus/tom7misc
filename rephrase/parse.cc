@@ -437,8 +437,17 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto LayoutExpr = [&](const auto &Expr) {
       const auto Lay =
         Fix<Token, const Layout *>([&](const auto &Self) {
+            // This is the contents of [brackets] inside a layout
+            // expression. It can either be a regular expression,
+            // or a [* layout comment *] token. In the latter case,
+            // we return nullptr and ignore it in the Join.
+            auto Nested =
+              Expr ||
+              (IsToken<LAYOUT_COMMENT>() >>
+               Succeed<Token, const Exp *>(nullptr));
+
             return (LayoutLit &&
-              *((IsToken<LBRACKET>() >> Expr << IsToken<RBRACKET>()) &&
+              *((IsToken<LBRACKET>() >> Nested << IsToken<RBRACKET>()) &&
                 LayoutLit))
               >[&](const auto &p) {
                   const auto &[l1, v] = p;
@@ -451,7 +460,10 @@ const Exp *Parsing::Parse(AstPool *pool,
                     joinme.reserve(1 + 2 * v.size());
                     joinme.push_back(x1);
                     for (const auto &[e, t] : v) {
-                      joinme.push_back(pool->ExpLayout(e));
+                      // For layout comments, there is no expression.
+                      if (e != nullptr) {
+                        joinme.push_back(pool->ExpLayout(e));
+                      }
                       joinme.push_back(pool->TextLayout(t));
                     }
                     return pool->JoinLayout(std::move(joinme));
