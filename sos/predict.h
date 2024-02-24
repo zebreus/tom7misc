@@ -1,4 +1,11 @@
 
+// I wrote this before I realized the very simple reason (they're all
+// multiples of a single base square) for the patterns in the
+// "interesting" output of SOS. This code predicts where they would
+// both intersect, so that I could prioritize searching those regions.
+// It does work, but we can also just find these spots through
+// simple analytical means. So this is just a historic curiosity.
+
 #ifndef _SOS_PREDICT_H
 #define _SOS_PREDICT_H
 

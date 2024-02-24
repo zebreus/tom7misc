@@ -6,26 +6,17 @@
 // if it is to have a rational solution that's close to zero, it would
 // be a rational close to one of these.
 
-#include "sos-util.h"
-
-#include <vector>
 #include <string>
 #include <cstdint>
 
 #include "atomic-util.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "image.h"
-#include "bounds.h"
-#include "threadutil.h"
 #include "periodically.h"
 #include "ansi.h"
 #include "timer.h"
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 #include "bhaskara-util.h"
-#include "util.h"
-#include "color-util.h"
 
 using namespace std;
 

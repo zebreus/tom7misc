@@ -11,8 +11,7 @@
 #include "bignum/big-overloads.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-
-#include "sos-util.h"
+#include "numbers.h"
 
 using namespace std;
 
@@ -569,7 +568,7 @@ int main(int argc, char **argv) {
           };
 
         std::optional<std::pair<BigInt, Sol>> best;
-        auto Consider = [&sols, &other, &best, &Distance](const Sol &sol) {
+        auto Consider = [&sols, &best, &Distance](const Sol &sol) {
             // Don't allow degenerate solutions.
             if (sol.first == 0_b)
               return;

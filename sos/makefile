@@ -5,8 +5,6 @@ CC_LIB=../cc-lib
 ALPERTRON64=../alpertron64
 ALPERTRON=../alpertron
 
-FLTO=-flto=auto
-
 # Note, this builds against AMD's distribution of OpenCL, since that's
 # the card I had when I started. It also works fine with an NVIDIA GPU,
 # and nvidia libs are a bit hard to find since they love CUDA.
@@ -27,6 +25,7 @@ ifeq ($(UNAME),Cygwin)
   CL_CFLAGS="-I$(AMDSDK)/include"
   CL_LFLAGS='-L${AMDSDK}/lib/${AMD_ARCH}' -lOpenCL
 
+  FLTO=-flto=auto
   LIBGMP=../../gmp-6.3.0
   GMP_LFLAGS=$(LIBGMP)/.libs/libgmp.a
   GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
@@ -34,15 +33,16 @@ else
   # Linux
   CXX=g++
   CC=gcc
-  GMP_LFLAGS=-lgmp
+  GMP_LFLAGS=-lgmp -lOpenCL
   GMP_CFLAGS=-DBIG_USE_GMP
+  FLTO=
 endif
 
 OPT=-O3
 
 # Avoid -ffast-math, which assumes std::isnan is false, for example!
 # We also rely on sqrt(double) producing exact values.
-CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) $(OPT) $(FLTO) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -I$(ALPERTRON64) -I$(ALPERTRON) -std=c++20
+CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) $(OPT) $(FLTO) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(ALPERTRON64) -I$(ALPERTRON) -std=c++20
 
 # CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -DHAVE_ALLOCA -DNOWINSTUFF $(FLTO) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 

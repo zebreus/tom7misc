@@ -98,9 +98,16 @@ struct Database {
   const std::map<uint64_t, Square> Almost2() const { return almost2; }
   const IntervalCover<bool> Done() const { return done; }
 
-  // void ForEveryIntercept(std::function<void> );
+  // Obsolete!
+  std::pair<uint64_t, uint64_t> PredictNextNewton(
+      uint64_t max_epoch_size);
+  std::pair<uint64_t, uint64_t> PredictNextRegression(
+      uint64_t max_epoch_size,
+      bool predict_h);
+  std::pair<uint64_t, uint64_t> PredictNextClose(
+      uint64_t max_epoch_size);
 
-private:
+ private:
   // Set to true if done.
   IntervalCover<bool> done;
   // Key is the inner sum.

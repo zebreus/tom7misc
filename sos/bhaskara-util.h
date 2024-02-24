@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <vector>
 #include <utility>
-#include <memory>
 #include <unordered_set>
 
 #include "hashing.h"
@@ -61,7 +60,7 @@ template <> struct hash<Triple> {
 };
 }
 
-static inline bool operator ==(const Triple &x, const Triple &y) {
+inline bool operator ==(const Triple &x, const Triple &y) {
   return x.k == y.k &&
     x.a == y.a &&
     x.b == y.b;
@@ -76,7 +75,7 @@ using TriplePairSet = std::unordered_set<std::pair<Triple, Triple>,
 
 // Map a bigint to a reasonable range for plotting in graphics.
 // (or a.ToDouble(), or some hybrid?)
-static double MapBig(BigInt z) {
+inline double MapBig(BigInt z) {
   if (z == 0) return 0.0;
   double sign = 1.0;
   if (z < BigInt{0}) {

@@ -11,6 +11,7 @@
 #include <memory>
 #include <cstdint>
 
+#include "util.h"
 #include "image.h"
 #include "montgomery64.h"
 #include "base/logging.h"
@@ -18,10 +19,11 @@
 // #define ECHECK(s) CHECK(s)
 #define ECHECK(s) if (0) std::cout << ""
 
-// TODO: A better name!
-// Since we already have a solution with overall error (|m| + |n|) 333,
-// we only try candidates in [-333, 333].
-struct Work {
+// The diamond is the array of m,n values that are in scope for testing.
+// Since we already have a solution with overall error (|m| + |n|) = 333,
+// we only try candidates in [-333, 333], and we're only really
+// interested in the diamond where (|m| + |n|) < 333.
+struct Diamond {
   // This sentinel is used when Alpertron determines one or the other
   // equation is not solvable at all. Since it's composite, it can be
   // distguished from any valid entry (would be prime) for a modulus
@@ -78,7 +80,7 @@ struct Work {
     return nosol[y * WIDTH + x];
   }
 
-  Work() {
+  Diamond() {
     prime.resize(WIDTH * HEIGHT);
     nosol.resize(WIDTH * HEIGHT);
     for (int y = 0; y < HEIGHT; y++) {

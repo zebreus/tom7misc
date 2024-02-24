@@ -3,6 +3,7 @@
 
 #include "bignum/big.h"
 #include "ansi.h"
+#include "base/logging.h"
 
 static void TestLongNum() {
   CHECK(LongNum(BigInt{1234567}) == "1,234,567") << LongNum(BigInt{1234567});

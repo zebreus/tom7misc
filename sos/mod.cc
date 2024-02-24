@@ -13,16 +13,12 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-#include "image.h"
 #include "threadutil.h"
 #include "ansi.h"
 #include "timer.h"
 #include "periodically.h"
 #include "factorization.h"
 #include "atomic-util.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "numbers.h"
 #include "vector-util.h"
 #include "work-queue.h"
 #include "util.h"
@@ -131,7 +127,7 @@ struct Mod {
   // New version of the above that runs a "small" set of remaining
   // cells, all of which have the same p.
   void DoWorkBatch(
-      Work *work,
+      Diamond *diamond,
       uint64_t p, std::vector<std::pair<int, int>> batch) {
 
     CHECK(p >= ModQuickPassGPU::MIN_PRIME) << p << " vs "
@@ -156,9 +152,9 @@ struct Mod {
 
     // Check that the work is as expected.
     for (const auto &[m, n] : batch) {
-      CHECK(work->GetNoSolAt(m, n) == 0);
-      CHECK(Work::Eligible(m, n));
-      CHECK(p == work->PrimeAt(m, n));
+      CHECK(diamond->GetNoSolAt(m, n) == 0);
+      CHECK(Diamond::Eligible(m, n));
+      CHECK(p == diamond->PrimeAt(m, n));
     }
 
     int current_width = 0;
@@ -178,7 +174,7 @@ struct Mod {
 
       if (batch.empty()) {
         printf("Eliminated everything!\n");
-        work->Save();
+        diamond->Save();
         break;
       }
 
@@ -203,11 +199,11 @@ struct Mod {
                  full_histo.SimpleANSI(20).c_str());
           */
 
-          work->Save();
+          diamond->Save();
           printf(AWHITE("Saved") ".\n");
         });
 
-      status_per.RunIf([&work, &run_time, &dps_done, &dps_timer, &batch,
+      status_per.RunIf([&run_time, &dps_done, &dps_timer, &batch,
                         full_seconds, recent_prime]() {
           double sec = run_time.Seconds();
           uint64_t dq = done_quick.Read();
@@ -271,7 +267,7 @@ struct Mod {
                      APURPLE("%llu") "\n",
                      full_run.m, full_run.n, full_run.prime);
 
-              if (work->GetNoSolAt(full_run.m, full_run.n) != 0) {
+              if (diamond->GetNoSolAt(full_run.m, full_run.n) != 0) {
                 printf(ARED(" ... already solved?") "\n");
               }
             }
@@ -285,9 +281,9 @@ struct Mod {
               printf("\n\nNO SOL!\n");
               // Could be a duplicate in the batch of primes; keep
               // the first one.
-              if (work->GetNoSolAt(full_run.m, full_run.n) == 0) {
+              if (diamond->GetNoSolAt(full_run.m, full_run.n) == 0) {
                 done.emplace_back(full_run.m, full_run.n);
-                work->SetNoSolAt(full_run.m, full_run.n, full_run.prime);
+                diamond->SetNoSolAt(full_run.m, full_run.n, full_run.prime);
                 eliminated++;
               }
             }
@@ -300,7 +296,7 @@ struct Mod {
       recent_prime = primes.back();
 
       for (const auto &[m, n] : batch) {
-        work->PrimeAt(m, n) = primes.back();
+        diamond->PrimeAt(m, n) = primes.back();
       }
 
       if (!done.empty()) {
@@ -337,16 +333,16 @@ struct Mod {
 // Transition routine. Makes sure every non-eliminated cell is at the
 // same prime p. Get that p and the remaining cells.
 static std::pair<uint64_t, std::vector<std::pair<int, int>>> CatchUp(
-    Work *work) {
-  CHECK(work->Remaining() > 0) << "Work is already totally done!";
+    Diamond *diamond) {
+  CHECK(diamond->Remaining() > 0) << "Work is already totally done!";
 
   Timer timer;
   // Get the maximum p.
   std::optional<uint64_t> catch_up_p = 0;
   for (int m = -333; m <= 333; m++) {
     for (int n = -333; n <= 333; n++) {
-      if (work->GetNoSolAt(m, n) == 0 && Work::Eligible(m, n)) {
-        uint64_t p = work->PrimeAt(m, n);
+      if (diamond->GetNoSolAt(m, n) == 0 && Diamond::Eligible(m, n)) {
+        uint64_t p = diamond->PrimeAt(m, n);
         if (!catch_up_p.has_value() || p > catch_up_p.value()) {
           catch_up_p.emplace(p);
         }
@@ -367,8 +363,8 @@ static std::pair<uint64_t, std::vector<std::pair<int, int>>> CatchUp(
   int64_t caught_up = 0;
   for (int m = -333; m <= 333; m++) {
     for (int n = -333; n <= 333; n++) {
-      if (work->GetNoSolAt(m, n) == 0 && Work::Eligible(m, n)) {
-        uint64_t p = work->PrimeAt(m, n);
+      if (diamond->GetNoSolAt(m, n) == 0 && Diamond::Eligible(m, n)) {
+        uint64_t p = diamond->PrimeAt(m, n);
         while (p < target_p) {
           p = Factorization::NextPrime(p);
 
@@ -379,12 +375,12 @@ static std::pair<uint64_t, std::vector<std::pair<int, int>>> CatchUp(
           if (!finder.HasSolutionModP(m, n)) {
             // What luck!
 
-            work->SetNoSolAt(m, n, p);
-            work->PrimeAt(m, n) = p;
+            diamond->SetNoSolAt(m, n, p);
+            diamond->PrimeAt(m, n) = p;
             break;
           }
 
-          work->PrimeAt(m, n) = p;
+          diamond->PrimeAt(m, n) = p;
         }
       }
     }
@@ -399,8 +395,8 @@ static std::pair<uint64_t, std::vector<std::pair<int, int>>> CatchUp(
   std::vector<std::pair<int, int>> todo;
   for (int m = -333; m <= 333; m++) {
     for (int n = -333; n <= 333; n++) {
-      if (work->GetNoSolAt(m, n) == 0 && Work::Eligible(m, n)) {
-        uint64_t p = work->PrimeAt(m, n);
+      if (diamond->GetNoSolAt(m, n) == 0 && Diamond::Eligible(m, n)) {
+        uint64_t p = diamond->PrimeAt(m, n);
         CHECK(p == target_p) << p << " vs " << target_p;
         todo.emplace_back(m, n);
       }
@@ -414,7 +410,7 @@ static std::pair<uint64_t, std::vector<std::pair<int, int>>> CatchUp(
 
 // Old, slower routine that is only useful for getting started on the
 // CPU.
-static void DoWorkCPU(Work *work,
+static void DoWorkCPU(Diamond *diamond,
                       uint64_t p,
                       std::vector<std::pair<int, int>> batch) {
   printf("Do CPU Work. p=%llu\n", p);
@@ -425,29 +421,29 @@ static void DoWorkCPU(Work *work,
   std::vector<std::pair<int, int>> todo;
 
   Timer run_time;
-  while (work->Remaining() > 0) {
+  while (diamond->Remaining() > 0) {
 
     // Maybe shrink the list if we eliminated something.
-    if (todo.empty() || work->Remaining() < todo.size()) {
+    if (todo.empty() || diamond->Remaining() < todo.size()) {
       todo.clear();
       for (int m = -333; m <= 333; m++) {
         for (int n = -333; n <= 333; n++) {
-          if (work->GetNoSolAt(m, n) == 0) {
+          if (diamond->GetNoSolAt(m, n) == 0) {
             todo.emplace_back(m, n);
           }
         }
       }
     }
 
-    save_per.RunIf([&work]() {
-        work->Save();
+    save_per.RunIf([&diamond]() {
+        diamond->Save();
         printf(AWHITE("Saved") ".\n");
       });
 
-    status_per.RunIf([&work, &run_time, &todo]() {
+    status_per.RunIf([&diamond, &run_time, &todo]() {
         std::optional<uint64_t> recent_min;
         for (const auto &[m, n] : todo) {
-          const uint64_t p = work->PrimeAt(m, n);
+          const uint64_t p = diamond->PrimeAt(m, n);
           if (!recent_min.has_value() ||
               p < recent_min.value()) {
             recent_min.emplace(p);
@@ -467,19 +463,19 @@ static void DoWorkCPU(Work *work,
                eliminated.Read(),
                ANSI::Time(sec).c_str(),
                recent_min.value_or(0),
-               work->Remaining());
+               diamond->Remaining());
       });
 
     static constexpr int DEPTH = 12;
 
     std::vector<std::pair<int, int>> res =
-      ParallelMap(todo, [&work](const std::pair<int, int> &mn) ->
+      ParallelMap(todo, [&diamond](const std::pair<int, int> &mn) ->
       std::pair<int, int> {
           const auto &[m, n] = mn;
           // Already ruled this one out.
-          if (work->GetNoSolAt(m, n)) return {-1, -1};
+          if (diamond->GetNoSolAt(m, n)) return {-1, -1};
 
-          uint64_t last_p = work->PrimeAt(m, n);
+          uint64_t last_p = diamond->PrimeAt(m, n);
           for (int i = 0; i < DEPTH; i++) {
             // Otherwise, get old upper bound.
             const uint64_t p = Factorization::NextPrime(last_p);
@@ -503,8 +499,8 @@ static void DoWorkCPU(Work *work,
     for (int i = 0; i < todo.size(); i++) {
       const auto &[m, n] = todo[i];
       const auto &[sol, p] = res[i];
-      if (sol != -1) work->SetNoSolAt(m, n, sol);
-      if (p != -1) work->PrimeAt(m, n) = p;
+      if (sol != -1) diamond->SetNoSolAt(m, n, sol);
+      if (p != -1) diamond->PrimeAt(m, n) = p;
     }
   }
 }
@@ -524,8 +520,8 @@ inline int64_t Rem(int64_t a, int64_t b) {
 // but we do end up eliminating a lot of points by using non-prime
 // moduli.
 constexpr int64_t COLD_START_TO = 997;
-static Work ColdStart() {
-  Work work;
+static Diamond ColdStart() {
+  Diamond diamond;
 
   Timer timer;
   Periodically save_per(60.0, false);
@@ -541,7 +537,7 @@ static Work ColdStart() {
        modulus++) {
 
     save_per.RunIf([&]() {
-        work.Save();
+        diamond.Save();
         printf("\nSaved.\n\n");
       });
     status_per.RunIf([&]() {
@@ -555,16 +551,17 @@ static Work ColdStart() {
       });
 
 
-    const int64_t max_coord = Work::MAXIMUM;
+    const int64_t max_coord = Diamond::MAXIMUM;
     // Note that for negative coordinates, this will
     // actually be a "large" residue.
-    const int64_t min_coord = Rem(Work::MINIMUM, modulus);
+    const int64_t min_coord = Rem(Diamond::MINIMUM, modulus);
 
     const bool verbose = false; // modulus == 7;
 
-    if (verbose)
-    printf("For modulus %lld, max %lld, min %lld\n",
-           modulus, max_coord, min_coord);
+    if (verbose) {
+      printf("For modulus %lld, max %lld, min %lld\n",
+             modulus, max_coord, min_coord);
+    }
 
     // We'll loop over every pair, so it is helpful to
     // avoid duplicates, even though this takes a few
@@ -588,8 +585,7 @@ static Work ColdStart() {
 
     ParallelApp(
         squares_mod,
-        [modulus, min_coord, max_coord, verbose,
-         &mutex, &squares_mod, &reachable_mn](int64_t xx) {
+        [modulus, min_coord, &mutex, &reachable_mn](int64_t xx) {
           // We're really trying b=y and c=y at the
           // same time here, with a=x.
           // It's easy to have sign errors on m,n. This is the
@@ -673,14 +669,14 @@ static Work ColdStart() {
     }
 
     // Now are there are any m,n that were never reachable?
-    for (int64_t m = Work::MINIMUM; m <= Work::MAXIMUM; m++) {
+    for (int64_t m = Diamond::MINIMUM; m <= Diamond::MAXIMUM; m++) {
       const int64_t mres = Rem(m, modulus);
-      for (int64_t n = Work::MINIMUM; n <= Work::MAXIMUM; n++) {
-        if (work.GetNoSolAt(m, n) == 0) {
+      for (int64_t n = Diamond::MINIMUM; n <= Diamond::MAXIMUM; n++) {
+        if (diamond.GetNoSolAt(m, n) == 0) {
           const int64_t nres = Rem(n, modulus);
 
           if (!reachable_mn.contains(std::make_pair(mres, nres))) {
-            work.SetNoSolAt(m, n, modulus);
+            diamond.SetNoSolAt(m, n, modulus);
 
             if (verbose) {
               printf("Rejected %lld,%lld (res %lld,%lld) with modulus %lld\n",
@@ -725,7 +721,7 @@ static Work ColdStart() {
     }
 
     {
-      const uint64_t wrong_mod = work.GetNoSolAt(269, -64);
+      const uint64_t wrong_mod = diamond.GetNoSolAt(269, -64);
       if (wrong_mod != 0) {
         auto so = SimpleSolve(269, -64, wrong_mod);
         CHECK(so.has_value()) << wrong_mod;
@@ -739,20 +735,20 @@ static Work ColdStart() {
   // Once we finish this loop, everything that's still eligible
   // is at MIN_PRIME.
   int64_t remain = 0, eligible_remain = 0;
-  for (int64_t m = Work::MINIMUM; m <= Work::MAXIMUM; m++) {
-    for (int64_t n = Work::MINIMUM; n <= Work::MAXIMUM; n++) {
-      if (work.GetNoSolAt(m, n) == 0) {
-        work.PrimeAt(m, n) = COLD_START_TO;
+  for (int64_t m = Diamond::MINIMUM; m <= Diamond::MAXIMUM; m++) {
+    for (int64_t n = Diamond::MINIMUM; n <= Diamond::MAXIMUM; n++) {
+      if (diamond.GetNoSolAt(m, n) == 0) {
+        diamond.PrimeAt(m, n) = COLD_START_TO;
         remain++;
-        if (Work::Eligible(m, n)) eligible_remain++;
+        if (Diamond::Eligible(m, n)) eligible_remain++;
       }
     }
   }
 
   printf("Remaining: %lld. Eligible: %lld\n", remain, eligible_remain);
 
-  work.Save();
-  return work;
+  diamond.Save();
+  return diamond;
 }
 
 int main(int argc, char **argv) {
@@ -760,19 +756,19 @@ int main(int argc, char **argv) {
 
   cl = new CL;
 
-  Work work;
-  if (!Work::Exists()) {
+  Diamond diamond;
+  if (!Diamond::Exists()) {
     printf(AYELLOW("Note: ") "No previous files; cold start!\n");
-    work = ColdStart();
+    diamond = ColdStart();
   } else {
-    work.Load();
+    diamond.Load();
   }
 
   #if DEPTH_HISTO
   depth_histo = new AutoHisto(1000000);
   #endif
 
-  const auto &[p, todo] = CatchUp(&work);
+  const auto &[p, todo] = CatchUp(&diamond);
   printf("Points remaining: %d\n", (int)todo.size());
   printf("Next prime: %llu\n", p);
 
@@ -780,11 +776,11 @@ int main(int argc, char **argv) {
 
   if (p < ModQuickPassGPU::MIN_PRIME) {
     // XXX this should skip/exit if we reach GPU_PRIME.
-    DoWorkCPU(&work, p, todo);
+    DoWorkCPU(&diamond, p, todo);
   }
 
   Mod mod;
-  mod.DoWorkBatch(&work, p, todo);
+  mod.DoWorkBatch(&diamond, p, todo);
 
   return 0;
 }

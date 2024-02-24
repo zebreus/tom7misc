@@ -8,10 +8,8 @@
 
 #include "base/logging.h"
 #include "ansi.h"
-#include "periodically.h"
 #include "arcfour.h"
 #include "randutil.h"
-#include "threadutil.h"
 #include "factorization.h"
 #include "timer.h"
 

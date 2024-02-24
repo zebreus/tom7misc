@@ -2,6 +2,8 @@
 // Another attempt (following orbit.cc) of solving two simultaneously.
 // Here, since we know we want a to be the same in each equation,
 // we simply maintain that to be true.
+//
+// (This doesn't compile... did I break it? Or was it never born?)
 
 #include <string>
 #include <vector>
@@ -17,12 +19,9 @@
 #include "base/stringprintf.h"
 #include "hashing.h"
 #include "opt/opt.h"
-#include "image.h"
-#include "bounds.h"
 #include "arcfour.h"
 #include "randutil.h"
 
-#include "sos-util.h"
 #include "bhaskara-util.h"
 
 using namespace std;
@@ -154,7 +153,7 @@ Comet(BigInt nleft, BigInt nright,
           printf(ANSI_PREVLINE
                  ANSI_CLEARLINE);
         }
-        printf("%d its, dig: ks: %d max-b: %d\n"
+        printf("%d its, dig: ks: %d max-b: %d\n",
                iters, k_digits,
                max_b_digits);
         double ips = iters / timer.Seconds();

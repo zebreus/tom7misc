@@ -12,7 +12,6 @@
 #include "factorization.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"
-#include "ansi.h"
 
 using namespace std;
 

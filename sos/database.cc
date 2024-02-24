@@ -9,12 +9,13 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
+#include "numbers.h"
 #include "ansi.h"
-#include "sos-util.h"
 #include "util.h"
 #include "interval-cover.h"
 #include "re2/re2.h"
 #include "vector-util.h"
+#include "predict.h"
 
 using namespace std;
 using Square = Database::Square;
@@ -478,4 +479,308 @@ Database::IslandZero Database::IslandAZero(int64_t pt) {
   else if (!has_points) return IslandZero::NO_POINTS;
 
   return extend_right ? IslandZero::GO_RIGHT : IslandZero::GO_LEFT;
+}
+
+
+static void PrintGaps(const Database &db) {
+  int64_t max_agap = 0, max_hgap = 0;
+  db.ForEveryZeroVec(
+      [&max_agap](int64_t x0, int64_t y0,
+                  int64_t x1, int64_t y1,
+                  int64_t iceptx) {
+        max_agap = std::max(max_agap, x1 - x0);
+      },
+      [&max_hgap](int64_t x0, int64_t y0,
+                  int64_t x1, int64_t y1,
+                  int64_t iceptx) {
+        max_hgap = std::max(max_hgap, x1 - x0);
+      });
+
+  printf("Max agap: %lld.\n"
+         "Max hgap: %lld.\n",
+         max_agap, max_hgap);
+}
+
+std::pair<uint64_t, uint64_t> Database::PredictNextNewton(
+    uint64_t max_epoch_size) {
+  // This uses the (as yet unexplained) observation that every fifth
+  // error on the h term follows a nice curve which is nearly linear.
+  // Use these to predict zeroes and explore regions near the predicted
+  // zeroes that haven't yet been explored.
+
+  // To predict zeroes, we need 6 *consecutive* almost2 squares.
+  // We should get smarter about this, as we'd always rather explore
+  // smaller numbers. But for now we just look at the last ones that
+  // were processed, since the database is dense as of starting this
+  // idea out.
+
+  // PERF not all of them!
+  printf("db ranges:\n%s\n", Epochs().c_str());
+
+  // XXX improve heuristics so I don't need to keep increasing this
+  static constexpr int64_t INTERCEPT_LB = 8'000'000'000'000;
+
+  const auto &almost2 = Almost2();
+  auto it = almost2.begin();
+  while (it->first < INTERCEPT_LB) ++it;
+
+  // Iterator ahead by five.
+  auto it5 = it;
+  for (int i = 0; i < 5; i++) {
+    if (it5 == almost2.end()) {
+      printf("Don't even have 5 squares yet?\n");
+      return NextToDo(max_epoch_size);
+    }
+    it5 = std::next(it5);
+  }
+
+  int64_t best_score = 99999999999999;
+  int64_t best_start = 0;
+  uint64_t best_size = 0;
+  auto Consider = [&best_score, &best_start, &best_size](
+      int64_t score, int64_t start, uint64_t size) {
+      printf("Consider score " ACYAN("%lld") " @" APURPLE("%lld") "\n",
+             score, start);
+      if (score < best_score) {
+        best_score = score;
+        best_start = start;
+        best_size = size;
+      }
+    };
+
+  while (it5 != almost2.end()) {
+    const int64_t x0 = it->first;
+    const int64_t x1 = it5->first;
+
+    // Must be dense here or else we don't know if these are on
+    // the same arc.
+    if (CompleteBetween(x0, x1)) {
+      const int64_t y0 = Database::GetHerr(it->second);
+      const int64_t y1 = Database::GetHerr(it5->second);
+
+      // The closer we are to the axis, the better the
+      // prediction will be. This also keeps us from going
+      // way out on the number line.
+      // (Another option would be to just prefer lower x.)
+      const int64_t dist = std::min(std::abs(y0), std::abs(y1));
+
+      // Predicted intercept.
+      double dx = x1 - x0;
+      double dy = y1 - y0;
+      double m = dy / dx;
+      int64_t iceptx = x0 + std::round(-y0 / m);
+
+      auto PrVec = [&](const char *msg) {
+          if (dist < 200000) {
+            printf("(%lld, %lld) -> (%lld, %lld)\n"
+                   "  slope %.8f icept "
+                   AWHITE("%lld") " score " ACYAN("%lld") " %s\n",
+                   x0, y0, x1, y1, m, iceptx, dist, msg);
+          }
+        };
+
+      // Consider the appropriate action on the island unless it's
+      // already done.
+      using enum Database::IslandZero;
+      if (iceptx > 0) {
+        switch (IslandHZero(iceptx)) {
+        case NONE: {
+          // If none, explore that point.
+
+          // Round to avoid fragmentation.
+          int64_t c = iceptx;
+          c /= max_epoch_size;
+          c *= max_epoch_size;
+
+          Consider(dist, c, max_epoch_size);
+          PrVec("NEW");
+          break;
+        }
+        case HAS_ZERO:
+          PrVec("REALLY DONE");
+          break;
+
+        case NO_POINTS:
+        case GO_LEFT: {
+          auto go = NextGapBefore(iceptx, max_epoch_size);
+          if (go.has_value()) {
+            Consider(dist, go.value().first, go.value().second);
+            PrVec("BEFORE");
+          }
+          break;
+        }
+
+        case GO_RIGHT: {
+          auto nga = NextGapAfter(iceptx, max_epoch_size);
+          Consider(dist, nga.first, nga.second);
+          PrVec("AFTER");
+          break;
+        }
+        }
+      }
+    }
+
+    ++it;
+    ++it5;
+  }
+
+  if (best_start <= 0 || best_size == 0) {
+    printf("\n" ARED("No valid intercepts?") "\n");
+    return NextToDo(max_epoch_size);
+
+  } else {
+    printf("\nNext guess: " APURPLE("%llu") " +" ACYAN("%llu") "\n",
+           best_start, best_size);
+
+    CHECK(best_size <= max_epoch_size);
+
+    // The above is supposed to produce an interval that still
+    // remains to be done, but skip to the next if not.
+    return NextGapAfter(best_start, best_size);
+  }
+}
+
+std::pair<uint64_t, uint64_t> Database::PredictNextRegression(
+    uint64_t max_epoch_size,
+    bool predict_h) {
+  PrintGaps(*this);
+
+  printf("Get zero for " AWHITE("%s") " using regression...\n",
+         predict_h ? "H" : "A");
+  const auto &[azeroes, hzeroes] = GetZeroes();
+  const int64_t iceptx = predict_h ?
+    Predict::NextInDenseSeries(hzeroes) :
+    Predict::NextInDensePrefixSeries(*this, azeroes);
+  printf("Predict next zero at: " ABLUE("%lld") "\n", iceptx);
+
+  if (!IsComplete(iceptx)) {
+    // If none, explore that point.
+
+    // Round to avoid fragmentation.
+    int64_t c = iceptx;
+    c /= max_epoch_size;
+    c *= max_epoch_size;
+
+    printf("Haven't done it yet, so run " APURPLE("%lld") "+\n", c);
+    return make_pair(c, max_epoch_size);
+  } else {
+
+    bool really_done = false;
+    // Prefer extending to the left until we have some evidence, since
+    // this seems to usually be an overestimate.
+    bool extend_right = false;
+    int64_t closest_dist = 999999999999;
+
+    // XXX this is wrong for predict_h = false. ForEverVec is specifically
+    // looping over h vecs.
+    // TODO: Use Island
+    ForEveryHVec(iceptx,
+                    [&](int64_t x0, int64_t y0,
+                        int64_t x1, int64_t y1,
+                        int64_t iceptx) {
+                      if (y0 > 0 && y1 < 0) {
+                        really_done = true;
+                      } else {
+                        if (y1 > 0) {
+                          // above the axis, so we'd
+                          // extend to the right to find zero.
+                          if (y1 < closest_dist) {
+                            extend_right = true;
+                            closest_dist = y1;
+                          }
+                        } else {
+                          CHECK(y0 < 0);
+                          if (-y0 < closest_dist) {
+                            extend_right = false;
+                            closest_dist = -y0;
+                          }
+                        }
+                      }
+                    });
+
+    // a has an upward slope, so we need to reverse the direction
+    // if we are looking for a zeroes.
+    // XXX clean this up
+    if (!predict_h) extend_right = !extend_right;
+
+    if (really_done) {
+      // ???
+      printf(ARED("Unexpected") ": We have a zero here but regression "
+             "predicted it elsewhere?");
+      return NextGapAfter(0, max_epoch_size);
+    }
+
+    if (extend_right) {
+      printf("Extend " AGREEN("right") ". Closest %lld\n", closest_dist);
+      return NextGapAfter(iceptx, max_epoch_size);
+    } else {
+      auto go = NextGapBefore(iceptx, max_epoch_size);
+      if (go.has_value()) {
+        printf("Extend " AGREEN("left") ". Closest %lld\n", closest_dist);
+        return go.value();
+      } else {
+        printf("Extend " AORANGE("right") " (no space). "
+               "Closest %lld\n", closest_dist);
+        return NextGapAfter(iceptx, max_epoch_size);
+      }
+    }
+  }
+}
+
+std::pair<uint64_t, uint64_t> Database::PredictNextClose(
+    uint64_t max_epoch_size) {
+  PrintGaps(*this);
+
+  const auto &[azeroes, hzeroes] = GetZeroes();
+  printf("Get close calls...\n");
+  static constexpr int64_t MAX_INNER_SUM = 10'000'000'000'000'000LL;
+  std::vector<std::pair<int64_t, double>> close =
+    Predict::FutureCloseCalls(*this, azeroes, hzeroes, MAX_INNER_SUM);
+
+  // Top close calls..
+  printf("Closest:\n");
+  for (int i = 0; i < close.size(); i++) {
+    const auto [iceptx, score] = close[i];
+
+    using enum Database::IslandZero;
+    if (iceptx > 0) {
+      printf("  %s (dist %f) ",
+             Util::UnsignedWithCommas(iceptx).c_str(), score);
+
+      switch (IslandHZero(iceptx)) {
+      case NONE: {
+        // If none, explore that point.
+
+        // Round to avoid fragmentation.
+        int64_t c = iceptx;
+        c /= max_epoch_size;
+        c *= max_epoch_size;
+
+        printf(AGREEN("NEW") "\n");
+        return make_pair(c, max_epoch_size);
+      }
+      case HAS_ZERO:
+        printf(AGREY("DONE") "\n");
+        break;
+
+      case NO_POINTS:
+      case GO_LEFT: {
+        auto go = NextGapBefore(iceptx, max_epoch_size);
+        if (go.has_value()) {
+          printf(ABLUE("BEFORE") "\n");
+          return go.value();
+        }
+        break;
+      }
+
+      case GO_RIGHT: {
+        printf(AYELLOW("AFTER") "\n");
+        return NextGapAfter(iceptx, max_epoch_size);
+      }
+      }
+    }
+  }
+
+  printf(ARED("No candidates beneath %lld!") "\n", MAX_INNER_SUM);
+  return NextGapAfter(0, max_epoch_size);
 }

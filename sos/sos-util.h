@@ -206,8 +206,8 @@ BruteGetWays(uint64_t sum, int num_expected,
              // These aren't used, but each of the functions should
              // have the same signature.
              int num_factors,
-             uint64_t *bases,
-             uint8_t *exponents);
+             const uint64_t *bases,
+             const uint8_t *exponents);
 
 
 // Another algorithm for the above (based on some Maple code), which

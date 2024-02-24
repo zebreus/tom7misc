@@ -15,23 +15,18 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "hashing.h"
-#include "opt/opt.h"
 #include "image.h"
-#include "bounds.h"
 #include "arcfour.h"
 #include "randutil.h"
 #include "threadutil.h"
 #include "color-util.h"
 #include "atomic-util.h"
 
-#include "sos-util.h"
-
 using namespace std;
 
 static constexpr bool CHECK_INVARIANTS = false;
 static constexpr bool VERBOSE = false;
 static constexpr bool VERY_VERBOSE = VERBOSE && false;
-static constexpr bool GENERATE_IMAGE = true;
 
 static constexpr int STUCK_ITERS = 10000;
 static constexpr int MAX_ITERS = 1'000'000;
@@ -231,7 +226,6 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
   std::optional<BigInt> recent_best_score;
   int recent_best_iter = 0;
 
-  int valid_since_reset = 0;
   std::optional<BigInt> best_valid_since_reset;
   for (int iters = 0; true; iters ++) {
     if (CHECK_INVARIANTS) {
@@ -254,7 +248,6 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
       // Only care about small k.
       std::optional<int64_t> total_ko = total_k.ToInt();
 
-      valid_since_reset++;
       if (!best_valid_since_reset.has_value() ||
           total_k < best_valid_since_reset.value()) {
         best_valid_since_reset = {total_k};

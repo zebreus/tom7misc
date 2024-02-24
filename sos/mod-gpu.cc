@@ -4,7 +4,6 @@
 #include <vector>
 #include <utility>
 #include <cstdint>
-#include <mutex>
 
 #include "base/logging.h"
 #include "threadutil.h"

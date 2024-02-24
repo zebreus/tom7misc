@@ -22,6 +22,7 @@ using namespace std;
 
 // TODO: Test sqrt against this
 // https://www.nuprl.org/MathLibrary/integer_sqrt/
+[[maybe_unused]]
 static uint64_t Sqrt64Nuprl(uint64_t xx) {
   if (xx <= 1) return xx;
   // z = xx / 4
@@ -161,15 +162,13 @@ static void TestCWW() {
 }
 
 static void TestCWWBrute() {
-  std::mutex m;
-  int wrong = 0;
   Timer timer;
   Periodically bar(1.0);
   static constexpr int START = 10000000;
   static constexpr int NUM =   10000000;
   ParallelComp(
       NUM,
-      [&timer, &bar, &wrong, &m](int idx) {
+      [&timer, &bar](int idx) {
         int sum = START + idx;
         int num = ChaiWahWu(sum);
 
@@ -353,12 +352,11 @@ static void TestSimple(const char * name, F f) {
 static void TestMaybeSumOfSquares() {
   Timer timer;
   Periodically bar(1.0);
-  std::mutex m;
   static constexpr int MAX_X = 100000;
   printf("MaybeSumOfSquares...\n\n");
   ParallelComp(
       MAX_X,
-      [&m, &bar, &timer](uint64_t x) {
+      [&bar, &timer](uint64_t x) {
         uint64_t xx = x * x;
         for (uint64_t y = 0; y < 100000; y++) {
           uint64_t sum = xx + (y * y);
@@ -456,11 +454,10 @@ static void MaybeSumOfSquaresRecall() {
 static void TestMaybe() {
   Timer timer;
   Periodically bar(1.0);
-  std::mutex m;
   static constexpr int BATCHES = 50000;
   ParallelComp(
       BATCHES,
-      [&m, &bar, &timer](uint64_t batch) {
+      [&bar, &timer](uint64_t batch) {
         ArcFour rc(StringPrintf("testmaybe.%llu", batch));
         for (int i = 0; i < 10000; i++) {
           // check numbers in the current range
@@ -508,7 +505,6 @@ int main(int argc, char **argv) {
 
   GetNWaysExamples(10);
 
-  /*
   TestCWWBrute();
   TestCWW();
   BenchCWW();
@@ -520,16 +516,15 @@ int main(int argc, char **argv) {
 
   BenchMSOSFancy();
   MaybeSumOfSquaresRecall();
-  */
 
-  // TestSimple("brute", BruteGetWays);
+  TestSimple("brute", BruteGetWays);
   TestSimple("nsoks2", NSoks2);
-  // TestSimple("merge", GetWaysMerge);
+  TestSimple("merge", GetWaysMerge);
   TestSimple("quad", GetWaysQuad);
 
-  // TestGetWays("brute", BruteGetWays);
+  TestGetWays("brute", BruteGetWays);
   TestGetWays("nsoks2", NSoks2);
-  // TestGetWays("merge", GetWaysMerge);
+  TestGetWays("merge", GetWaysMerge);
   TestGetWays("quad", GetWaysQuad);
 
   printf("OK\n");

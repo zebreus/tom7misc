@@ -1,5 +1,8 @@
 #include "clutil.h"
 
+#include <optional>
+#include <string>
+
 #include "timer.h"
 #include <CL/cl.h>
 #include "base/logging.h"

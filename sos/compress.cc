@@ -3,7 +3,6 @@
 #include <utility>
 #include <vector>
 #include <set>
-#include <unordered_map>
 #include <unordered_set>
 #include <mutex>
 
@@ -12,8 +11,6 @@
 #include "ansi.h"
 #include "timer.h"
 #include "periodically.h"
-#include "arcfour.h"
-#include "randutil.h"
 #include "factorization.h"
 #include "threadutil.h"
 

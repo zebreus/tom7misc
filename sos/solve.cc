@@ -8,21 +8,13 @@
 // (via algebraic methods).
 
 #include <cstdint>
-#include <array>
+#include <map>
 
-#include "image.h"
-#include "threadutil.h"
 #include "ansi.h"
 #include "timer.h"
 #include "periodically.h"
-#include "factorization.h"
 #include "atomic-util.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "numbers.h"
-#include "vector-util.h"
 
-#include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
@@ -228,7 +220,7 @@ int64_t HasNontrivialZeroResidue(int64_t modulus) {
 }
 
 // Ran first million; no dice.
-static void EliminateNegation(Work *work) {
+static void EliminateNegation(Diamond *work) {
   // If m = -n, then we have
   // 222121 a^2 - b^2 + z = 0
   // 360721 a^2 - c^2 - z = 0
@@ -281,7 +273,7 @@ static void EliminateNegation(Work *work) {
 
 // Alas, ran this to 1 million; can't exclude it.
 [[maybe_unused]]
-static void EliminateEqual(Work *work) {
+static void EliminateEqual(Diamond *work) {
   // If m = n, then we have
   // 222121 a^2 - b^2 + z = 0
   // 360721 a^2 - c^2 + z = 0
@@ -340,7 +332,7 @@ static void EliminateEqual(Work *work) {
 static void DoWork() {
   printf("Startup..\n");
 
-  Work work;
+  Diamond work;
   work.Load();
 
   // EliminateEqual(&work);
@@ -351,7 +343,7 @@ static void DoWork() {
   std::vector<std::pair<int, int>> todo;
   for (int m = -333; m <= 333; m++) {
     for (int n = -333; n <= 333; n++) {
-      if (work.GetNoSolAt(m, n) == 0 && Work::Eligible(m, n)) {
+      if (work.GetNoSolAt(m, n) == 0 && Diamond::Eligible(m, n)) {
         todo.emplace_back(m, n);
       }
     }
@@ -420,7 +412,7 @@ static void DoWork() {
     if (!HasSolutions(*msol) ||
         !HasSolutions(*nsol)) {
       printf("\n\nNo solutions for (%d, %d)!\n\n", m, n);
-      work.SetNoSolAt(m, n, Work::NOSOL_ALPERTRON);
+      work.SetNoSolAt(m, n, Diamond::NOSOL_ALPERTRON);
       eliminated++;
       dirty = true;
     }

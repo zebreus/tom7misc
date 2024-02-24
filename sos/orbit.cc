@@ -5,7 +5,6 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-#include <unordered_set>
 
 #include "ansi.h"
 #include "timer.h"
@@ -14,13 +13,10 @@
 #include "bignum/big-overloads.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "hashing.h"
 #include "opt/opt.h"
-#include "bounds.h"
 #include "arcfour.h"
 #include "randutil.h"
 
-#include "sos-util.h"
 #include "bhaskara-util.h"
 
 using namespace std;
@@ -309,7 +305,6 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
   Periodically bar_per(5.0);
   bool first_progress = true;
   const BigInt start_metric = Metric(left, right);
-  const int start_metric_size = start_metric.ToString().size();
 
   Timer timer;
 
@@ -355,7 +350,7 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
              right.k.ToString().c_str());
     } else {
       // Only output progress bar when verbose mode is off.
-      bar_per.RunIf([&first_progress, &start_metric, start_metric_size,
+      bar_per.RunIf([&first_progress, &start_metric,
                      &last_repeats, &last_attempts, &restarts,
                      &recent_best_score, &recent_best_iter, &a_diff,
                      &last_compass_dir, &last_compass_count, &last_restart,

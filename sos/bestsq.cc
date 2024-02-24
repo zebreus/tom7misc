@@ -1,6 +1,4 @@
 
-#include "sos-util.h"
-
 #include <vector>
 #include <string>
 #include <cstdint>

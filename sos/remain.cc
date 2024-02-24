@@ -2,29 +2,17 @@
 // Prints stats about mod.exe's progress.
 
 #include <cstdint>
-#include <array>
-#include <memory>
 #include <optional>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
-#include "image.h"
-#include "threadutil.h"
 #include "ansi.h"
-#include "timer.h"
-#include "periodically.h"
-#include "factorization.h"
-#include "numbers.h"
-#include "util.h"
-
 #include "mod-util.h"
-#include "auto-histo.h"
 
-static void VerifySmall(const Work &work) {
-  for (int m = Work::MINIMUM; m <= Work::MAXIMUM; m++) {
-    for (int n = Work::MINIMUM; n <= Work::MAXIMUM; n++) {
-      if (Work::Eligible(m, n)) {
+static void VerifySmall(const Diamond &work) {
+  for (int m = Diamond::MINIMUM; m <= Diamond::MAXIMUM; m++) {
+    for (int n = Diamond::MINIMUM; n <= Diamond::MAXIMUM; n++) {
+      if (Diamond::Eligible(m, n)) {
         uint64_t no_sol_at = work.GetNoSolAt(m, n);
         if (no_sol_at > 0) {
           if (no_sol_at < 100) {
@@ -48,16 +36,16 @@ static void VerifySmall(const Work &work) {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  CHECK(Work::Exists());
+  CHECK(Diamond::Exists());
 
-  Work work;
+  Diamond work;
   work.Load();
 
   VerifySmall(work);
 
-  for (int m = Work::MINIMUM; m <= Work::MAXIMUM; m++) {
-    for (int n = Work::MINIMUM; n <= Work::MAXIMUM; n++) {
-      if (Work::Eligible(m, n)) {
+  for (int m = Diamond::MINIMUM; m <= Diamond::MAXIMUM; m++) {
+    for (int n = Diamond::MINIMUM; n <= Diamond::MAXIMUM; n++) {
+      if (Diamond::Eligible(m, n)) {
         uint64_t no_sol_at = work.GetNoSolAt(m, n);
         if (no_sol_at > 0) {
           if (no_sol_at > 1000) {

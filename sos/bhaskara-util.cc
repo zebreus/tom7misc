@@ -10,7 +10,6 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bounds.h"
-#include "color-util.h"
 #include "image.h"
 
 using namespace std;
