@@ -1,14 +1,17 @@
 
-#include "il-pass.h"
+#include "il-typed-pass.h"
 
 #include "frontend.h"
 #include "ansi.h"
 #include "base/logging.h"
+#include "context.h"
 
 static constexpr bool VERBOSE = false;
 
-struct IdentityPass : public il::Pass<> {
-  using Pass::Pass;
+using il::Context;
+
+struct IdentityPass : public il::TypedPass<> {
+  using TypedPass::TypedPass;
 };
 
 static void TestIdentity() {
@@ -22,18 +25,17 @@ static void TestIdentity() {
       "    datatype dir = Up of {} | Down of {}\n"
       "    val (x : int) = 7\n"
       "    val f = fn x => x\n"
-      "in (f x, f Down)\n"
+      "    fun g z = (z, z)\n"
+      "in (f x, g (f Down))\n"
       "end\n");
 
   il::AstPool pool;
 
+  // Just like il-pass.
   IdentityPass pass(&pool);
-  // On the first pass, we should get the correct guesses, but by
-  // default it simplifies bound evars, so this does actually do
-  // some allocations.
-  const il::Program p1 = pass.DoProgram(pgm);
+  const il::Program p1 = pass.DoProgram(Context(), pgm);
   // But now there should be no evars, and thus no copying.
-  const il::Program p2 = pass.DoProgram(p1);
+  const il::Program p2 = pass.DoProgram(Context(), p1);
 
   CHECK(p1.globals.size() == p2.globals.size());
   bool equal = p1.body == p2.body;

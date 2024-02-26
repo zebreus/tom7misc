@@ -230,11 +230,13 @@ struct Exp {
     return std::tie(a, b, c);
   }
 
-  // self, x, body
-  std::tuple<const std::string &, const std::string &, const Exp *>
+  // TODO: Needs arg and return types.
+  // self, x, arrow_type, body
+  std::tuple<const std::string &, const std::string &, const Type *,
+             const Exp *>
   Fn() const {
     CHECK(type == ExpType::FN);
-    return std::tie(self, str, a);
+    return std::tie(self, str, t, a);
   }
 
   std::tuple<const Primop &,
@@ -251,10 +253,10 @@ struct Exp {
     return std::tie(str, a);
   }
 
-  std::tuple<const std::string &, const Exp *>
+  std::tuple<const std::string &, const Type *, const Exp *>
   Inject() const {
     CHECK(type == ExpType::INJECT);
-    return std::tie(str, a);
+    return std::tie(str, t, a);
   }
 
   std::tuple<const Type *, const Exp *>
@@ -268,9 +270,9 @@ struct Exp {
     return a;
   }
 
-  const Exp *Fail() const {
+  std::tuple<const Exp *, const Type *> Fail() const {
     CHECK(type == ExpType::FAIL);
-    return a;
+    return std::tie(a, t);
   }
 
   std::tuple<const std::vector<const Exp *> &, const Exp *> Seq() const {
@@ -577,17 +579,21 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Inject(const std::string &s, const Exp *e,
+  const Exp *Inject(const std::string &s,
+                    const Type *sum_type,
+                    const Exp *e,
                     const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::INJECT &&
         guess->str == s &&
+        guess->t == sum_type &&
         guess->a == e) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::INJECT);
     ret->str = s;
+    ret->t = sum_type;
     ret->a = e;
     return ret;
   }
@@ -707,12 +713,14 @@ struct AstPool {
   // self may be empty to indicate a non-recursive function.
   const Exp *Fn(const std::string &self,
                 const std::string &x,
+                const Type *arrow_type,
                 const Exp *body,
                 const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::FN &&
         guess->self == self &&
         guess->str == x &&
+        guess->t == arrow_type &&
         guess->a == body) {
       return guess;
     }
@@ -720,19 +728,23 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::FN);
     ret->self = self;
     ret->str = x;
+    ret->t = arrow_type;
     ret->a = body;
     return ret;
   }
 
-  const Exp *Fail(const Exp *msg, const Exp *guess = nullptr) {
+  // t is the return type of the fail (which doesn't actually return)
+  const Exp *Fail(const Exp *msg, const Type *t, const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::FAIL &&
-        guess->a == msg) {
+        guess->a == msg &&
+        guess->t == t) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::FAIL);
     ret->a = msg;
+    ret->t = t;
     return ret;
   }
 

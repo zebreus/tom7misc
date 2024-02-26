@@ -148,15 +148,23 @@ struct Context {
 
   // Expression variables.
   Context Insert(const std::string &s, PolyType pt) const {
-    return Context(expmap.Insert(s, std::move(pt)), typeset);
+    return Context(expmap.Insert(s, std::move(pt)), symmap, typeset);
   }
 
   const PolyType *Find(const std::string &s) const {
     return expmap.FindPtr(s);
   }
 
+  Context InsertSym(const std::string &s, PolyType pt) const {
+    return Context(expmap, symmap.Insert(s, std::move(pt)), typeset);
+  }
+
+  const PolyType *FindSym(const std::string &s) const {
+    return symmap.FindPtr(s);
+  }
+
   Context InsertType(const std::string &s) const {
-    return Context(expmap, typeset.Insert(s, {}));
+    return Context(expmap, symmap, typeset.Insert(s, {}));
   }
 
   bool FindType(const std::string &s) const {
@@ -173,11 +181,12 @@ private:
   using FunctionalSet = FunctionalMap<T, Unit>;
 
   Context(FunctionalMap<std::string, PolyType> e,
+          FunctionalMap<std::string, PolyType> s,
           FunctionalSet<std::string> t) : expmap(std::move(e)),
+                                          symmap(std::move(s)),
                                           typeset(std::move(t)) {}
 
-  // Otherwise, it's just a functional map.
-  FunctionalMap<std::string, PolyType> expmap;
+  FunctionalMap<std::string, PolyType> expmap, symmap;
   FunctionalSet<std::string> typeset;
 };
 

@@ -28,9 +28,15 @@ static void TestFreeVars() {
       return pool.Var({}, x);
     };
 
+  // This function is actually ill-typed, because it tries
+  // to return itself. But the free vars functions should
+  // still work on ill-typed ASTs!
+  const Type *wrong_fntype =
+    pool.Arrow(pool.BoolType(), pool.IntType());
+
   const Exp *e =
     pool.Let(
-          // x is free in the rhs here
+        // x is free in the rhs here
         {}, "x", Var("x"),
         pool.Let(
           {}, "y", pool.Int(0),
@@ -40,6 +46,7 @@ static void TestFreeVars() {
               pool.Let(
                   {}, "w", pool.GlobalSym({}, "GLOBAL"),
                   pool.Fn("self", "u",
+                          wrong_fntype,
                           pool.Record(
                               {
                                 // Bound by fn
@@ -130,17 +137,31 @@ static void TestSubstType() {
 
 static void TestSubstExp() {
   AstPool pool;
+  const Type *sumtype =
+    pool.SumType({{"SOME", pool.IntType()},
+                  {"NONE", pool.RecordType({})}});
+
+  const Type *fntype = pool.Arrow(
+      pool.BoolType(),
+      pool.RecordType({{"1", pool.BoolType()},
+                       {"2", sumtype}}));
+
   const Exp *efn = pool.Fn("rec", "x",
+                           fntype,
                            pool.Record({{"1", pool.Var({}, "x")},
                                         {"2", pool.Var({}, "y")}}));
-  const Exp *ewithx = pool.Inject("SOME", pool.Var({}, "x"));
+  const Exp *ewithx = pool.Inject(
+      "SOME",
+      pool.SumType({{"SOME", pool.IntType()},
+                    {"NONE", pool.RecordType({})}}),
+      pool.Var({}, "x"));
   // This should avoid capturing x.
   // (SOME x)/y (fn x => (x, y))
   const Exp *e2 = ILUtil::SubstExp(&pool, ewithx, "y", efn);
 
 
   {
-    const auto &[self, newx, body] = e2->Fn();
+    const auto &[self, newx, t, body] = e2->Fn();
     CHECK(self == "rec") << "Technically correct for this to alpha-vary "
       "the recursive variable, but it is not expected.";
     CHECK(newx != "x") << "No way to do this correctly without "
@@ -150,9 +171,13 @@ static void TestSubstExp() {
     CHECK(labe[0].first == "1");
     CHECK(std::get<1>(labe[0].second->Var()) == newx);
     CHECK(labe[1].second->type == ExpType::INJECT) << "Not substituted?";
-    const auto &[lab, e] = labe[1].second->Inject();
+    const auto &[lab, sum_type, e] = labe[1].second->Inject();
+    CHECK(sum_type->type == TypeType::SUM);
     CHECK(lab == "SOME");
     CHECK(std::get<1>(e->Var()) == "x");
+
+    CHECK(t == fntype) << "The types should be equal, but we also "
+      "expect that we can do this without even allocating.";
   }
 }
 

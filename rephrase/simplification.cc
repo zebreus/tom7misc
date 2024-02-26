@@ -83,7 +83,7 @@ static bool IsEffectless(const Exp *e) {
   case ExpType::PROJECT:
     return IsEffectless(std::get<1>(e->Project()));
   case ExpType::INJECT:
-    return IsEffectless(std::get<1>(e->Inject()));
+    return IsEffectless(std::get<2>(e->Inject()));
 
   case ExpType::ROLL:
     return IsEffectless(std::get<1>(e->Roll()));
@@ -134,7 +134,7 @@ static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
   case ExpType::PROJECT:
     return PushSeqs(std::get<1>(e->Project()), vflat);
   case ExpType::INJECT:
-    return PushSeqs(std::get<1>(e->Inject()), vflat);
+    return PushSeqs(std::get<2>(e->Inject()), vflat);
 
   case ExpType::ROLL:
     return PushSeqs(std::get<1>(e->Roll()), vflat);
@@ -237,6 +237,7 @@ struct PeepholePass : public il::Pass<> {
   // it is not actually recursive.
   const Exp *DoFn(const std::string &self,
                   const std::string &x,
+                  const Type *arrow_type,
                   const Exp *body,
                   const Exp *guess) override {
     if (!self.empty() && !ILUtil::IsExpVarFree(body, self)) {
@@ -244,10 +245,10 @@ struct PeepholePass : public il::Pass<> {
       if (VERBOSE) {
         printf("Removed var is " APURPLE("%s") "\n", self.c_str());
       }
-      return pool->Fn("", x, DoExp(body), guess);
+      return pool->Fn("", x, DoType(arrow_type), DoExp(body), guess);
     }
 
-    return pool->Fn(self, x, DoExp(body), guess);
+    return pool->Fn(self, x, DoType(arrow_type), DoExp(body), guess);
   }
 
   const Exp *DoLet(const std::vector<std::string> &tyvars,
@@ -388,7 +389,7 @@ struct PeepholePass : public il::Pass<> {
       const Exp *guess) override {
     if (obj->type == ExpType::INJECT) {
       Simplified("reduce sumcase");
-      const auto &[label, e] = obj->Inject();
+      const auto &[label, sum_type, e] = obj->Inject();
       for (const auto &[lab, v, arm] : arms) {
         if (label == lab) {
           return pool->Let({}, v, DoExp(e), arm);
@@ -412,7 +413,7 @@ struct PeepholePass : public il::Pass<> {
     arg = DoExp(arg);
 
     if (f->type == ExpType::FN) {
-      const auto &[self, x, body] = f->Fn();
+      const auto &[self, x, t, body] = f->Fn();
       if (self.empty()) {
         Simplified("reduce app");
         return pool->Let({}, x, arg, DoExp(body));

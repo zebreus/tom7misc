@@ -13,7 +13,7 @@
 #include "parser-combinators.h"
 #include "util.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 namespace el {
 

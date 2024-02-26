@@ -192,11 +192,13 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::FN: {
-    const auto &[self, x, body] = e->Fn();
+    const auto &[self, x, t, body] = e->Fn();
     const std::string as =
       self.empty() ? "" : StringPrintf(" as %s", self.c_str());
-    return StringPrintf("(fn%s %s => %s)",
-                        as.c_str(), x.c_str(), ExpString(body).c_str());
+    return StringPrintf("(fn%s %s : (%s) => %s)",
+                        as.c_str(), x.c_str(),
+                        TypeString(t).c_str(),
+                        ExpString(body).c_str());
   }
 
   case ExpType::INT:
@@ -226,8 +228,10 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::INJECT: {
-    const auto &[lab, r] = e->Inject();
-    return StringPrintf("[%s = %s]", lab.c_str(), ExpString(r).c_str());
+    const auto &[lab, t, r] = e->Inject();
+    return StringPrintf("([%s = %s] : %s)",
+                        lab.c_str(), ExpString(r).c_str(),
+                        TypeString(t).c_str());
   }
 
   case ExpType::ROLL: {
@@ -306,8 +310,10 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::FAIL: {
-    const Exp *msg = e->Fail();
-    return StringPrintf("fail %s", ExpString(msg).c_str());
+    const auto &[msg, t] = e->Fail();
+    return StringPrintf("fail<%s> %s",
+                        TypeString(t).c_str(),
+                        ExpString(msg).c_str());
   }
 
   case ExpType::SEQ: {

@@ -9,7 +9,7 @@
 #include "functional-map.h"
 #include "util.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 namespace { struct Unit { }; }
 using FunctionalSet = FunctionalMap<std::string, Unit>;
@@ -46,6 +46,7 @@ struct CountVarsPass : public Pass<FunctionalSet> {
 
   const Exp *DoFn(const std::string &self,
                   const std::string &x,
+                  const Type *arrow_type,
                   const Exp *body,
                   const Exp *guess,
                   FunctionalSet bound) override {
@@ -126,6 +127,11 @@ struct SubstPass : public Pass<> {
       freevars(ILUtil::FreeExpVars(e1)) {
   }
 
+  // Expression variables can't appear in types. Don't recurse into them.
+  const Type *DoType(const Type *guess) override {
+    return guess;
+  }
+
   // Note: When we hit a binding equal to the target var, we alpha
   // vary the binding, since this is correct and uniform. But it
   // would be more efficient to just stop.
@@ -147,6 +153,7 @@ struct SubstPass : public Pass<> {
 
   const Exp *DoFn(const std::string &self_in,
                   const std::string &x_in,
+                  const Type *arrow_type,
                   const Exp *body,
                   const Exp *guess) override {
     // Alpha vary inner binding first in case self == x. (This would
@@ -163,7 +170,7 @@ struct SubstPass : public Pass<> {
       std::tie(self, body) = ILUtil::AlphaVaryExp(pool, 0, self_in, body);
     }
 
-    return pool->Fn(self, x, DoExp(body), guess);
+    return pool->Fn(self, x, DoType(arrow_type), DoExp(body), guess);
   }
 
   const Exp *DoVar(const std::vector<const Type *> &ts,

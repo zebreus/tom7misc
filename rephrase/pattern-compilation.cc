@@ -720,11 +720,12 @@ PatternCompilation::SplitIntPattern(
   const auto &[fexp, ftype] = Comp(G, matrix);
 
   // Bind hoisted failure continuation.
-  const Exp *fn = elab->pool->Fn("",
-                                 elab->pool->NewVar("unused"),
-                                 fexp);
   const Type *fn_type = elab->pool->Arrow(elab->pool->RecordType({}),
                                           ftype);
+  const Exp *fn = elab->pool->Fn("",
+                                 elab->pool->NewVar("unused"),
+                                 fn_type,
+                                 fexp);
   const std::string el_cont_var = elab->pool->NewVar("hoist");
   const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
   ElabContext GG = G.Insert(el_cont_var,
@@ -824,11 +825,12 @@ PatternCompilation::SplitBoolPattern(
   // branch.
   const auto &[fail_exp, fail_type] = Comp(G, matrix);
 
-  const Exp *fn = elab->pool->Fn("",
-                                 elab->pool->NewVar("unused"),
-                                 fail_exp);
   const Type *fn_type = elab->pool->Arrow(elab->pool->RecordType({}),
                                           fail_type);
+  const Exp *fn = elab->pool->Fn("",
+                                 elab->pool->NewVar("unused"),
+                                 fn_type,
+                                 fail_exp);
   const std::string el_cont_var = elab->pool->NewVar("hoist");
   const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
   ElabContext GG = G.Insert(el_cont_var,
@@ -959,11 +961,12 @@ PatternCompilation::SplitStringPattern(
   const auto &[fexp, ftype] = Comp(G, matrix);
 
   // Bind hoisted failure continuation.
-  const Exp *fn = elab->pool->Fn("",
-                                 elab->pool->NewVar("unused"),
-                                 fexp);
   const Type *fn_type = elab->pool->Arrow(elab->pool->RecordType({}),
                                           ftype);
+  const Exp *fn = elab->pool->Fn("",
+                                 elab->pool->NewVar("unused"),
+                                 fn_type,
+                                 fexp);
   const std::string el_cont_var = elab->pool->NewVar("hoist");
   const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
   ElabContext GG = G.Insert(el_cont_var,
@@ -1159,11 +1162,12 @@ PatternCompilation::SplitAppPattern(
   const auto &[fexp, ftype] = Comp(G, matrix);
 
   // Bind hoisted failure continuation.
-  const Exp *fn = elab->pool->Fn("",
-                                 elab->pool->NewVar("unused"),
-                                 fexp);
   const Type *fn_type = elab->pool->Arrow(elab->pool->RecordType({}),
                                           ftype);
+  const Exp *fn = elab->pool->Fn("",
+                                 elab->pool->NewVar("unused"),
+                                 fn_type,
+                                 fexp);
   const std::string el_cont_var = elab->pool->NewVar("hoist");
   const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
   ElabContext GG = G.Insert(el_cont_var,
@@ -1528,9 +1532,11 @@ PatternCompilation::CompileIrrefutableRec(
           for (int i = 0; i < (int)pat->children.size(); i++) {
             lpat.emplace_back(StringPrintf("%d", i + 1),
                               pat->children[i]);
-            printf(APURPLE("%d = %s") "\n",
-                   i + 1,
-                   PatString(pat->children[i]).c_str());
+            if (VERBOSE) {
+              printf("%d = %s\n",
+                     i + 1,
+                     PatString(pat->children[i]).c_str());
+            }
           }
           pat = el_pool->RecordPat(std::move(lpat));
           return;

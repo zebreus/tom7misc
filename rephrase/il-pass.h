@@ -91,16 +91,16 @@ struct Pass {
       return DoApp(f, x, e, args...);
     }
     case ExpType::FN: {
-      const auto &[self, x, body] = e->Fn();
-      return DoFn(self, x, body, e, args...);
+      const auto &[self, x, arrow_type, body] = e->Fn();
+      return DoFn(self, x, arrow_type, body, e, args...);
     }
     case ExpType::PROJECT: {
       const auto &[lab, exp] = e->Project();
       return DoProject(lab, exp, e, args...);
     }
     case ExpType::INJECT: {
-      const auto &[lab, exp] = e->Inject();
-      return DoInject(lab, exp, e, args...);
+      const auto &[lab, t, exp] = e->Inject();
+      return DoInject(lab, t, exp, e, args...);
     }
     case ExpType::ROLL: {
       const auto &[type, exp] = e->Roll();
@@ -113,7 +113,8 @@ struct Pass {
       return DoPrimop(p, ts, es, e, args...);
     }
     case ExpType::FAIL: {
-      return DoFail(e->Fail(), e, args...);
+      const auto &[msg, t] = e->Fail();
+      return DoFail(msg, t, e, args...);
     }
     case ExpType::SEQ: {
       const auto &[es, body] = e->Seq();
@@ -290,10 +291,12 @@ struct Pass {
     return pool->Project(s, DoExp(e, args...), guess);
   }
 
-  virtual const Exp *DoInject(const std::string &s, const Exp *e,
+  virtual const Exp *DoInject(const std::string &s,
+                              const Type *t,
+                              const Exp *e,
                               const Exp *guess,
                               Args... args) {
-    return pool->Inject(s, DoExp(e, args...), guess);
+    return pool->Inject(s, DoType(t, args...), DoExp(e, args...), guess);
   }
 
   virtual const Exp *DoRoll(const Type *t, const Exp *e,
@@ -360,16 +363,19 @@ struct Pass {
 
   virtual const Exp *DoFn(const std::string &self,
                           const std::string &x,
+                          const Type *arrow_type,
                           const Exp *body,
                           const Exp *guess,
                           Args... args) {
-    return pool->Fn(self, x, DoExp(body, args...), guess);
+    return pool->Fn(self, x, DoType(arrow_type, args...),
+                    DoExp(body, args...), guess);
   }
 
   virtual const Exp *DoFail(const Exp *msg,
+                            const Type *t,
                             const Exp *guess,
                             Args... args) {
-    return pool->Fail(DoExp(msg, args...), guess);
+    return pool->Fail(DoExp(msg, args...), DoType(t, args...), guess);
   }
 
   virtual const Exp *DoSeq(const std::vector<const Exp *> &es,

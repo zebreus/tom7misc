@@ -36,14 +36,14 @@ static constexpr bool VERBOSE = false;
 
 Elaboration::Elaboration(el::AstPool *el_pool, il::AstPool *il_pool) :
   el_pool(el_pool), pool(il_pool), init(pool) {
-  fail_match = pool->Fail(pool->String("match"));
   pattern_compilation.reset(new PatternCompilation(this));
 }
 
 Elaboration::~Elaboration() {}
 
 std::pair<const il::Exp *, const il::Type *> Elaboration::FailMatch() {
-  return std::make_pair(fail_match, NewEVar());
+  const il::Type *any = NewEVar();
+  return std::make_pair(pool->Fail(pool->String("match"), any), any);
 }
 
 const il::Type *Elaboration::NewEVar() {
@@ -385,15 +385,15 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
           // copying these.
           gbody = UnpackEnv(gbody);
 
-          const il::Exp *glob_fn = pool->Fn("", gx, gbody);
-          const il::Type *glob_typ = pool->Arrow(env_type, otype);
+          const il::Type *glob_type = pool->Arrow(env_type, otype);
+          const il::Exp *glob_fn = pool->Fn("", gx, glob_type, gbody);
 
           // Now add it to the table.
           Global global;
           // Same tyvars for each.
           global.tyvars = tyvars;
           global.sym = global_syms[i];
-          global.type = glob_typ;
+          global.type = glob_type;
           global.exp = glob_fn;
           globals.push_back(std::move(global));
         }
@@ -734,11 +734,22 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       // λx.primop<t1, t2, ...>(x)                 (when val_arity = 1)
       // λx.primop<t1, t2, ...>(#1 x, #2 x, ...)   (otherwise)
       const il::Exp *lambda =
-        pool->Fn("", x, pool->Primop(po, std::move(tvs), std::move(args)));
+        pool->Fn("", x, t, pool->Primop(po, std::move(tvs), std::move(args)));
       return std::make_pair(lambda, t);
 
     } else if (vi->ctor.has_value()) {
-      const auto &[mu_idx_, mu_type_, sum_lab] = vi->ctor.value();
+      const auto &[mu_idx_, mu_type, sum_lab] = vi->ctor.value();
+
+      const auto &[mu_idx_2_, arms] = mu_type->Mu();
+      CHECK(mu_idx_ == mu_idx_2_);
+      // const std::vector<std::pair<std::string, const Type *>> &arms;
+      CHECK(mu_idx_ >= 0 && mu_idx_ < (int)arms.size());
+      const auto &[alpha, unrolled_sum_type] = arms[mu_idx_];
+      CHECK(unrolled_sum_type->type == il::TypeType::SUM);
+
+      // sum type needs to be closed.
+      const il::Type *sum_type =
+        pool->SubstType(mu_type, alpha, unrolled_sum_type);
 
       // As with a primop, we eta-expand. This is a bit simpler because
       // the constructor just takes a single argument.
@@ -752,9 +763,9 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       std::string x = pool->NewVar();
       const il::Exp *vx = pool->Var({}, x);
       const il::Exp *lambda =
-        pool->Fn("", x,
+        pool->Fn("", x, t,
                  pool->Roll(cod,
-                            pool->Inject(sum_lab, vx)));
+                            pool->Inject(sum_lab, sum_type, vx)));
 
       return std::make_pair(lambda, t);
     } else {
@@ -835,7 +846,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
 
     Unification::Unify("fn body", body_type, cod);
 
-    return std::make_pair(pool->Fn(iself, iarg, body), fntype);
+    return std::make_pair(pool->Fn(iself, iarg, fntype, body), fntype);
   }
 
   case el::ExpType::CASE: {
@@ -880,8 +891,10 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const auto &[e, t] = Elab(G, el_exp->a);
     Unification::Unify("fail", t, pool->StringType());
     // Can have any return type, as it does not return.
+    // We annotate the fail with that type, since we need to be able
+    // to synthesize the types of IL expressions.
     const il::Type *ret = NewEVar();
-    return std::make_pair(pool->Fail(e), ret);
+    return std::make_pair(pool->Fail(e, ret), ret);
   }
 
   default:

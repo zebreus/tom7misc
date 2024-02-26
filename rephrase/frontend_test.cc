@@ -123,7 +123,10 @@ static void TestPrimops() {
     const Program pgm = RunNoSimplify("ref 7 : int ref");
     const auto &[f, arg] = pgm.body->App();
     CHECK(arg->Int() == 7);
-    const auto &[self, x, body] = f->Fn();
+    const auto &[self, x, t, body] = f->Fn();
+    const auto &[dom, cod] = t->Arrow();
+    CHECK_TYPETYPE(dom, TypeType::INT);
+    CHECK_TYPETYPE(cod, TypeType::REF);
     CHECK(self.empty());
     const auto &[po, ts, es] = body->Primop();
     CHECK(po == Primop::REF);
@@ -163,7 +166,7 @@ static void TestPrimops() {
 
     // The function should apply a primop to projections
     // from the tuple.
-    const auto &[self, x, body] = f->Fn();
+    const auto &[self, x, arrow_type, body] = f->Fn();
     CHECK(self.empty()) << "Not recursive.";
     const auto &[po, ts, es] = body->Primop();
     CHECK(ts.empty()) << "Plus should take no type args.";
@@ -209,7 +212,8 @@ static void TestSimplify() {
     // roll<(μ opt. [NONE: {}, SOME: int])>([SOME = 7])
     const auto &[t, body] = pgm.body->Roll();
     CHECK(t->type == TypeType::MU);
-    const auto &[lab, bbody] = body->Inject();
+    const auto &[lab, sum_type, bbody] = body->Inject();
+    CHECK(sum_type->type == TypeType::SUM);
     CHECK(bbody->Int() == 7);
     CHECK(lab == "SOME");
   }
@@ -460,8 +464,9 @@ static void Simple() {
 
   {
     const Program pgm = Run("fn x => x");
-    const auto &[self, x, body] = pgm.body->Fn();
+    const auto &[self, x, arrow_type, body] = pgm.body->Fn();
     CHECK(self.empty()) << "Not recursive.";
+    (void)arrow_type->Arrow();
     CHECK(x == std::get<1>(body->Var())) << "Should be able to "
       "simplify this to just a variable.";
   }

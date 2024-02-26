@@ -43,9 +43,7 @@ private:
       const std::vector<const el::Dec *> &decs,
       const el::Exp *exp);
 
-  // Some expressions that are repeatedly used.
-  const il::Exp *fail_match = nullptr;
-  // But the type (a new evar) must be allocated each time!
+  // This is repeatedly used.
   std::pair<const il::Exp *, const il::Type *> FailMatch();
 
   // Globals collected during elaboration. They all have global
