@@ -13,7 +13,7 @@ struct PatternCompilation {
   explicit PatternCompilation(Elaboration *elab);
 
   std::pair<const Exp *, const Type *> Compile(
-      const Context &G,
+      const ElabContext &G,
       // The case object (EL variable).
       const std::string &obj,
       // The type of the case object.
@@ -31,7 +31,7 @@ struct PatternCompilation {
   // let pat = rhs
   // in body
   std::pair<const Exp *, const Type *> CompileIrrefutable(
-      const Context &G,
+      const ElabContext &G,
       const el::Pat *pat,
       const el::Exp *rhs,
       const el::Exp *body);
@@ -40,7 +40,7 @@ struct PatternCompilation {
 private:
   struct Matrix;
   std::pair<const Exp *, const Type *> Comp(
-      const Context &G,
+      const ElabContext &G,
       Matrix m);
 
   // This could probably be simplified away; it's a remnant of
@@ -59,17 +59,17 @@ private:
   const el::Exp *SimpleBind(std::string nv, std::string objv,
                             const el::Exp *body);
 
-  std::pair<Context, std::vector<Dec>>
+  std::pair<ElabContext, std::vector<Dec>>
   CompileIrrefutableRec(
-      const Context &G,
+      const ElabContext &G,
       const el::Pat *pat,
       const il::Exp *rhs,
       const il::Type *rhs_type,
       bool rhs_valuable);
 
-  std::pair<Context, std::vector<Dec>>
+  std::pair<ElabContext, std::vector<Dec>>
   GeneralizeOne(
-      const Context &G,
+      const ElabContext &G,
       std::vector<std::string> vars,
       const il::Exp *rhs,
       const il::Type *type,
@@ -77,31 +77,37 @@ private:
 
   std::pair<const Exp *, const Type *>
   SplitRecordPattern(
-      const Context &G,
+      const ElabContext &G,
+      Matrix matrix,
+      int x);
+
+  std::pair<const Exp *, const Type *>
+  SplitAsPattern(
+      const ElabContext &G,
       Matrix matrix,
       int x);
 
   std::pair<const Exp *, const Type *>
   SplitIntPattern(
-      const Context &G,
+      const ElabContext &G,
       Matrix matrix,
       int x);
 
   std::pair<const Exp *, const Type *>
   SplitBoolPattern(
-      const Context &G,
+      const ElabContext &G,
       Matrix matrix,
       int x);
 
   std::pair<const Exp *, const Type *>
   SplitStringPattern(
-      const Context &G,
+      const ElabContext &G,
       Matrix matrix,
       int x);
 
   std::pair<const Exp *, const Type *>
   SplitAppPattern(
-      const Context &G,
+      const ElabContext &G,
       Matrix matrix,
       int x);
 

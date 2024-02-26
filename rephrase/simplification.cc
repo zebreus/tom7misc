@@ -8,7 +8,7 @@
 #include "bignum/big-overloads.h"
 #include "ansi.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 namespace {
 struct Progress {

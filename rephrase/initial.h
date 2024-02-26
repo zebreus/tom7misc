@@ -10,12 +10,12 @@ namespace il {
 struct Initial {
   explicit Initial(AstPool *pool);
 
-  const Context &InitialContext() const;
+  const ElabContext &InitialContext() const;
 
   // Types needed by elaboration.
 
 private:
-  Context ctx;
+  ElabContext ctx;
 };
 
 }  // il

@@ -34,6 +34,12 @@ namespace il {
 
 #define RunInternal(src, simp)                      \
   ([&front](const std::string source) -> Program {  \
+    if (VERBOSE) {                                  \
+      printf(                                       \
+          ABGCOLOR(200, 0, 200,                     \
+                   AFGCOLOR(0, 0, 0, "TEST:"))      \
+          "\n%s\n", source.c_str());                \
+    }                                               \
     Frontend::Options options;                      \
     options.simplify = (simp);                      \
     const Program pgm = front.RunFrontendOn(        \
@@ -431,7 +437,9 @@ static void Simple() {
 
   {
     const Program pgm = RunNoSimplify(
-        "let val (x as z, _) = (7, \"hi\") in x end");
+        // TODO: We no longer support AS patterns in irrefutable
+        // positions like this. But we could add support back.
+        "let val (x (* as z *), _) = (7, \"hi\") in x end");
     if (VERBOSE) {
       printf("%s\n", ProgramString(pgm).c_str());
     }
@@ -456,6 +464,24 @@ static void Simple() {
     CHECK(self.empty()) << "Not recursive.";
     CHECK(x == std::get<1>(body->Var())) << "Should be able to "
       "simplify this to just a variable.";
+  }
+
+}
+
+static void TestPatternCompilation() {
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(1);
+  }
+
+  {
+    const Program pgm =
+      Run("case 777 of\n"
+          "   (777 as y) as ((_ : int) as 444) => 666\n"
+          " | (777 as y) as ((z : int) as 777) => 7\n"
+          " | (777 as y) as ((_ : int) as 555) => 666\n"
+          " | _ => 666\n");
+    CHECK(pgm.body->Int() == 7) << "Should simplify.";
   }
 
 }
@@ -659,6 +685,7 @@ int main(int argc, char **argv) {
   il::TestLiterals();
   il::TestPrimops();
   il::TestSimplify();
+  il::TestPatternCompilation();
   il::Simple();
   il::Regression();
   il::TestDatatypes();

@@ -15,11 +15,23 @@ using namespace std;
 static void Vary(LLM *llm, const string &prompt, const string &original) {
   Timer startup_timer;
   llm->Reset();
-  printf(AGREY("%s"), prompt.c_str());
 
-  llm->DoPrompt(prompt);
+  // Prompt is instructions + original text + header:
+  std::string full_prompt =
+    StringPrintf("%s\n"
+                 "\n"
+                 "Original text:\n\n"
+                 "<P>%s</P>\n"
+                 "\n"
+                 "Rephrased text:\n\n"
+                 "<P>",
+                 prompt.c_str(), original.c_str());
+
+  printf(AGREY("Full prompt: [%s]") "\n", full_prompt.c_str());
+
+  llm->DoPrompt(full_prompt);
   // Reset regex, since the prompt may not have followed it.
-  llm->sampler.ResetRegEx();
+  llm->sampler.SetRegEx(".*</P>");
 
   printf("(finished the prompt)\n");
 
@@ -33,6 +45,8 @@ static void Vary(LLM *llm, const string &prompt, const string &original) {
     if (id == llm->context.EOSToken())
       break;
     printf("%s", tok.c_str());
+    if (llm->sampler.Accepting() || llm->sampler.Stuck())
+      break;
 
     tokens++;
     if (tokens % 3 == 0) fflush(stdout);
@@ -60,7 +74,7 @@ int main(int argc, char ** argv) {
 
   SamplerParams sparams;
   sparams.type = SampleType::MIN_P;
-  sparams.min_p = 0.05;
+  sparams.min_p = 0.10;
   sparams.regex = ".*";
 
   LLM llm(cparams, sparams);

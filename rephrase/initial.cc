@@ -84,9 +84,9 @@ Initial::Initial(AstPool *pool) {
     {"ref", TypeVarInfo{.tyvars = {"a"}, .type = Ref(Alpha)}},
   };
 
-  ctx = Context(exp_vars, type_vars);
+  ctx = ElabContext(exp_vars, type_vars);
 }
 
-const Context &Initial::InitialContext() const { return ctx; }
+const ElabContext &Initial::InitialContext() const { return ctx; }
 
 }  // il

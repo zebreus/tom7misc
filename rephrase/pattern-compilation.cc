@@ -48,9 +48,21 @@ struct PatternCompilation::Matrix {
     return Width() == 0 && Height() == 0;
   }
 
+  // Get the object (EL variable) in the xth column.
+  const std::string &Obj(int x) const {
+    CHECK(x >= 0 && x < Width());
+    return objs[x];
+  }
+
+  const il::Type *Type(int x) const {
+    CHECK(x >= 0 && x < Width());
+    return types[x];
+  }
+
+
   // Get the IL expression corresponding to the xth column.
-  std::pair<const Exp *, const Type *> GetObj(il::AstPool *pool,
-                                              const Context &G, int x) {
+  std::pair<const Exp *, const il::Type *>
+  GetObjIL(il::AstPool *pool, const ElabContext &G, int x) {
     CHECK(x >= 0 && x < Width());
     const VarInfo *vi = G.Find(objs[x]);
     CHECK(vi != nullptr) << "Ill-formed pattern: The case object " <<
@@ -182,6 +194,13 @@ struct PatternCompilation::Matrix {
         return false;
     }
     return true;
+  }
+
+  bool ColHasAs(int x) const{
+    for (int y = 0; y < Height(); y++)
+      if (Cell(x, y)->type == PatType::AS)
+        return true;
+    return false;
   }
 
   // Get the type of the first nontrivial pattern in this column.
@@ -338,7 +357,7 @@ PatternCompilation::PatternCompilation(Elaboration *elab) : elab(elab) {
 }
 
 std::pair<const Exp *, const Type *> PatternCompilation::Compile(
-    const Context &G,
+    const ElabContext &G,
     const std::string &obj,
     const Type *obj_type,
     const std::vector<std::pair<const el::Pat *, const el::Exp *>> &rows_in) {
@@ -368,7 +387,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     std::string il_var = var;
     Dec dec = Dec{.x = var, .rhs = ve};
 
-    Context GG = G.Insert(var,
+    ElabContext GG = G.Insert(var,
                           VarInfo{
                             .tyvars = {},
                               .type = vt,
@@ -419,10 +438,8 @@ void PatternCompilation::CheckAffine(const Pat *orig_pat) const {
       case PatType::WILD:
         break;
       case PatType::AS:
-        CHECK(!vars.contains(pat->str)) << "The same variable " <<
-          pat->str << " is bound more than once in the pattern:\n" <<
-          PatString(orig_pat);
         Rec(pat->a);
+        Rec(pat->b);
         break;
       case PatType::ANN:
         Rec(pat->a);
@@ -464,7 +481,7 @@ const el::Exp *PatternCompilation::SimpleBind(std::string nv, std::string objv,
 }
 
 std::pair<const Exp *, const Type *> PatternCompilation::Comp(
-    const Context &G,
+    const ElabContext &G,
     Matrix matrix) {
 
   if (VERBOSE) {
@@ -480,20 +497,24 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
   // matrix to make it "clean," then perform some kind of
   // interesting split.
 
-  // First, we remove AS, VAR, and TUPLE patterns by rewriting them.
+  // First, we remove VAR and TUPLE patterns by rewriting them.
   for (int y = 0; y < matrix.Height(); y++) {
     for (int x = 0; x < matrix.Width(); x++) {
-      while (matrix.Cell(x, y)->type == PatType::AS) {
+      while (matrix.Cell(x, y)->type == PatType::ANN) {
         const Pat *op = matrix.Cell(x, y);
-        const std::string nv = op->str;
-        matrix.rows[y] = SimpleBind(nv, matrix.objs[x], matrix.rows[y]);
+        const il::Type *at = elab->ElabType(G, op->ann);
+        Unification::Unify("pattern type constraint", at, matrix.Type(x));
         matrix.Cell(x, y) = op->a;
       }
 
-      // z is just "_ as z", so treat it the same way.
-      while (matrix.Cell(x, y)->type == PatType::VAR) {
+      // Transform a variable z into a wildcard match, but bind that
+      // variable to the corresponding case object.
+      if (matrix.Cell(x, y)->type == PatType::VAR) {
         const Pat *op = matrix.Cell(x, y);
         const std::string nv = op->str;
+        if (VERBOSE) {
+          printf("Cleaned var " ABLUE("%s") "\n", nv.c_str());
+        }
         matrix.rows[y] = SimpleBind(nv, matrix.objs[x], matrix.rows[y]);
         matrix.Cell(x, y) = elab->el_pool->WildPat();
       }
@@ -507,6 +528,12 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
         matrix.Cell(x, y) = elab->el_pool->RecordPat(std::move(rp));
       }
     }
+  }
+
+  if (VERBOSE) {
+    printf(APURPLE("Cleaned") ":\n");
+    printf("%s\n",
+           matrix.ToString().c_str());
   }
 
   // Once we find a row with all wildcards, the row and all following it
@@ -543,11 +570,20 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
     return elab->Elab(G, matrix.rows[0]);
   }
 
+  // Split any columns with AS patterns, by duplicating the case
+  // object. To avoid messes, we split all the AS patterns in a column
+  // at once.
+  for (int x = 0; x < matrix.Width(); x++) {
+    if (matrix.ColHasAs(x)) {
+      return SplitAsPattern(G, matrix, x);
+    }
+  }
+
   // First, split any record patterns.
   for (int x = 0; x < matrix.Width(); x++) {
     const std::optional<PatType> col_type = matrix.GetColumnType(x);
     CHECK(col_type.has_value()) << "Just cleaned the pattern, so it "
-      "should not be entirely trivial.";
+      "should not be entirely trivial. Column: " << x;
     if (col_type == PatType::RECORD) {
       return SplitRecordPattern(G, matrix, x);
     }
@@ -597,7 +633,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
 // column must be cleaned, meaning it only has INT and WILD.
 std::pair<const Exp *, const Type *>
 PatternCompilation::SplitIntPattern(
-    const Context &G,
+    const ElabContext &G,
     Matrix matrix,
     int x) {
 
@@ -691,7 +727,7 @@ PatternCompilation::SplitIntPattern(
                                           ftype);
   const std::string el_cont_var = elab->pool->NewVar("hoist");
   const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
-  Context GG = G.Insert(el_cont_var,
+  ElabContext GG = G.Insert(el_cont_var,
                         VarInfo{
                           .tyvars = {},
                           .type = fn_type,
@@ -702,7 +738,7 @@ PatternCompilation::SplitIntPattern(
     elab->el_pool->App(elab->el_pool->Var(el_cont_var),
                        elab->el_pool->Record({}));
 
-  const auto &[obj_exp, obj_type] = matrix.GetObj(elab->pool, GG, x);
+  const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
   Unification::Unify("int pattern", obj_type, elab->pool->IntType());
 
   std::vector<std::pair<BigInt, const Exp *>> arms;
@@ -737,7 +773,7 @@ PatternCompilation::SplitIntPattern(
 // As above, but it's just a finite radix.
 std::pair<const Exp *, const Type *>
 PatternCompilation::SplitBoolPattern(
-    const Context &G,
+    const ElabContext &G,
     Matrix matrix,
     int x) {
 
@@ -795,7 +831,7 @@ PatternCompilation::SplitBoolPattern(
                                           fail_type);
   const std::string el_cont_var = elab->pool->NewVar("hoist");
   const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
-  Context GG = G.Insert(el_cont_var,
+  ElabContext GG = G.Insert(el_cont_var,
                         VarInfo{
                           .tyvars = {},
                           .type = fn_type,
@@ -806,7 +842,7 @@ PatternCompilation::SplitBoolPattern(
     elab->el_pool->App(elab->el_pool->Var(el_cont_var),
                        elab->el_pool->Record({}));
 
-  const auto &[obj_exp, obj_type] = matrix.GetObj(elab->pool, G, x);
+  const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, G, x);
   Unification::Unify("bool pattern", obj_type, elab->pool->BoolType());
 
   const Exp *true_arm = nullptr;
@@ -857,7 +893,7 @@ PatternCompilation::SplitBoolPattern(
 // column must be cleaned, meaning it only has STRING and WILD.
 std::pair<const Exp *, const Type *>
 PatternCompilation::SplitStringPattern(
-    const Context &G,
+    const ElabContext &G,
     Matrix matrix,
     int x) {
 
@@ -930,7 +966,7 @@ PatternCompilation::SplitStringPattern(
                                           ftype);
   const std::string el_cont_var = elab->pool->NewVar("hoist");
   const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
-  Context GG = G.Insert(el_cont_var,
+  ElabContext GG = G.Insert(el_cont_var,
                         VarInfo{
                           .tyvars = {},
                           .type = fn_type,
@@ -941,7 +977,7 @@ PatternCompilation::SplitStringPattern(
     elab->el_pool->App(elab->el_pool->Var(el_cont_var),
                        elab->el_pool->Record({}));
 
-  const auto &[obj_exp, obj_type] = matrix.GetObj(elab->pool, GG, x);
+  const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
   Unification::Unify("string pattern", obj_type, elab->pool->StringType());
 
   std::vector<std::pair<std::string, const Exp *>> arms;
@@ -977,7 +1013,7 @@ PatternCompilation::SplitStringPattern(
 // column must be cleaned, meaning it only has APP and WILD.
 std::pair<const Exp *, const Type *>
 PatternCompilation::SplitAppPattern(
-    const Context &G,
+    const ElabContext &G,
     Matrix matrix,
     int x) {
 
@@ -1130,7 +1166,7 @@ PatternCompilation::SplitAppPattern(
                                           ftype);
   const std::string el_cont_var = elab->pool->NewVar("hoist");
   const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
-  Context GG = G.Insert(el_cont_var,
+  ElabContext GG = G.Insert(el_cont_var,
                         VarInfo{
                           .tyvars = {},
                           .type = fn_type,
@@ -1141,7 +1177,7 @@ PatternCompilation::SplitAppPattern(
     elab->el_pool->App(elab->el_pool->Var(el_cont_var),
                        elab->el_pool->Record({}));
 
-  const auto &[obj_exp, obj_type] = matrix.GetObj(elab->pool, GG, x);
+  const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
   Unification::Unify("sum pattern", obj_type, mu_type);
 
   std::vector<std::tuple<std::string, std::string, const Exp *>> arms;
@@ -1163,7 +1199,7 @@ PatternCompilation::SplitAppPattern(
              TypeString(typ).c_str());
     }
 
-    Context GGG = GG.Insert(el_var,
+    ElabContext GGG = GG.Insert(el_var,
                             VarInfo{
                               .tyvars = {},
                               .type = typ,
@@ -1188,12 +1224,69 @@ PatternCompilation::SplitAppPattern(
   return std::make_pair(ret, ftype);
 }
 
+// Split the column x, which has at least one AS pattern in it,
+// and is otherwise clean.
+std::pair<const Exp *, const Type *>
+PatternCompilation::SplitAsPattern(
+    const ElabContext &G,
+    Matrix matrix,
+    int x) {
+  std::vector<const Pat *> leftcol, rightcol;
+  leftcol.reserve(matrix.Height());
+  rightcol.reserve(matrix.Height());
+  for (int y = 0; y < matrix.Height(); y++) {
+    const Pat *cell = matrix.Cell(x, y);
+    switch (cell->type) {
+    case PatType::AS:
+      leftcol.push_back(cell->a);
+      rightcol.push_back(cell->b);
+      break;
+    default:
+      leftcol.push_back(cell);
+      rightcol.push_back(elab->el_pool->WildPat());
+    }
+  }
+
+  // PERF: We can swap the left and right column anywhere.
+  // It could be helpful to try to match the AS patterns
+  // with eachother and with the wildcards, e.g. if we had
+  //    case x of
+  //       (1 as _) => e1
+  //       (_ as 2) => e2
+  //       3 => e3
+  // it's better to make a wild column and a int column
+  // than two heterogeneous columns. But as patterns are
+  // rare and this situation is artificial.
+  //
+  // Probably a better way to implement this would be to
+  // have an optimization as part of the general Comp()
+  // routine, which finds columns that act on the same
+  // object and simplifies them. Then it would not matter
+  // what we generate here, and we'd benefit other situations
+  // like when the user just writes "case (x, x) of ...".
+
+  const int left_x = x;
+  const int right_x = matrix.Width();
+  // Use the same object to make a new column.
+  matrix.AddColumn(matrix.Obj(x), matrix.Type(x));
+  for (int y = 0; y < matrix.Height(); y++) {
+    // Now replace the cells. The left column is overwriting
+    // the original column that had AS in it; the right column
+    // is a new one.
+    matrix.Cell(left_x, y) = leftcol[y];
+    matrix.Cell(right_x, y) = rightcol[y];
+  }
+
+  // Now just recurse on the simpler matrix. Since the objects
+  // were already bound, there's no wrapping to do.
+  return Comp(G, std::move(matrix));
+}
 
 // Split the column x, which must be a record pattern. The column
 // must be cleaned, meaning it is just WILD and RECORD patterns.
 std::pair<const Exp *, const Type *>
 PatternCompilation::SplitRecordPattern(
-    const Context &G,
+    const ElabContext &G,
     Matrix matrix,
     int x) {
 
@@ -1246,14 +1339,15 @@ PatternCompilation::SplitRecordPattern(
                      matrix.types[x],
                      elab->pool->RecordType(record_type));
 
-  auto GetLabel = [](const Pat *pat, const std::string &lab) {
+  auto GetLabel = [&matrix](const Pat *pat, const std::string &lab) {
       CHECK(pat->type == PatType::RECORD);
       for (const auto &[plab, p] : pat->str_children) {
         if (plab == lab) return p;
       }
       CHECK(false) << "Expected to find label " << lab << " in "
         "record pattern (due to its presence in other patterns from "
-        "the same column): " << PatString(pat);
+        "the same column): " << PatString(pat) << "\nMatrix:\n" <<
+        matrix.ToString();
     };
 
   // We temporarily leave the old column in place so that we can
@@ -1290,7 +1384,7 @@ PatternCompilation::SplitRecordPattern(
   matrix.DeleteColumn(x);
 
   // Update context with new bindings.
-  Context GG = G;
+  ElabContext GG = G;
   std::vector<std::string> il_objs;
   for (int xx = 0; xx < (int)el_objs.size(); xx++) {
     const std::string &elv = el_objs[xx];
@@ -1331,7 +1425,7 @@ PatternCompilation::SplitRecordPattern(
 
 std::pair<const Exp *, const Type *>
 PatternCompilation::CompileIrrefutable(
-      const Context &G,
+      const ElabContext &G,
       const el::Pat *pat,
       const el::Exp *rhs,
       const el::Exp *body) {
@@ -1373,9 +1467,9 @@ const il::Exp *PatternCompilation::LetDecs(const std::vector<Dec> &decs,
   return ret;
 }
 
-std::pair<Context, std::vector<PatternCompilation::Dec>>
+std::pair<ElabContext, std::vector<PatternCompilation::Dec>>
 PatternCompilation::CompileIrrefutableRec(
-    const Context &G,
+    const ElabContext &G,
     const el::Pat *pat,
     const il::Exp *rhs,
     const il::Type *rhs_type,
@@ -1399,8 +1493,10 @@ PatternCompilation::CompileIrrefutableRec(
           break;
         }
         case el::PatType::AS:
-          vars.push_back(pat->str);
-          pat = pat->a;
+          // TODO: This can be supported (with both sides are irrefutable),
+          // but we would need to change the approach.
+          LOG(FATAL) << "Pattern must be irrefutable, but got as: " <<
+            PatString(pat);
           break;
         case el::PatType::VAR:
           vars.push_back(pat->str);
@@ -1503,7 +1599,7 @@ PatternCompilation::CompileIrrefutableRec(
 
     std::vector<Dec> decs = rdecs;
 
-    Context GGG = GG;
+    ElabContext GGG = GG;
     for (int i = 0; i < (int)pat->str_children.size(); i++) {
       const auto &[label, p] = pat->str_children[i];
       const auto &[rec_rhs, rec_rhs_type] = elab->Elab(GG, el_rexp);
@@ -1536,9 +1632,9 @@ PatternCompilation::CompileIrrefutableRec(
 // This is the base case of irrefutable patterns. The vector
 // of variables may be empty. Importantly, this is the one
 // case where we may perform polymorphic generalization.
-std::pair<Context, std::vector<PatternCompilation::Dec>>
+std::pair<ElabContext, std::vector<PatternCompilation::Dec>>
 PatternCompilation::GeneralizeOne(
-    const Context &G,
+    const ElabContext &G,
     std::vector<std::string> vars,
     const il::Exp *rhs,
     const il::Type *type,
@@ -1603,7 +1699,7 @@ PatternCompilation::GeneralizeOne(
   };
 
   std::vector<Dec> decs = {odec};
-  Context GG = G.Insert(ov, oinfo);
+  ElabContext GG = G.Insert(ov, oinfo);
 
   // Now bind the rest of the variables as copies. Most of the
   // time there are none, so we don't worry about simplifying.

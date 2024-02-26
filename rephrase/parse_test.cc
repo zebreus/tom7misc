@@ -624,10 +624,51 @@ static void TestParsePat() {
     const Pat *pat = ParsePat("x as y : int");
     CHECK(pat->type == PatType::ANN);
     CHECK(pat->a->type == PatType::AS);
-    CHECK(pat->a->str == "y");
-    CHECK(pat->a->a->type == PatType::VAR);
-    CHECK(pat->a->a->str == "x");
+    const Pat *a = pat->a->a;
+    const Pat *b = pat->a->b;
+    CHECK(a->type == PatType::VAR);
+    CHECK(a->str == "x");
+    CHECK(b->type == PatType::VAR);
+    CHECK(b->str == "y");
   }
+
+  {
+    const Pat *pat = ParsePat("_ as _");
+    CHECK(pat->type == PatType::AS);
+    const Pat *a = pat->a;
+    const Pat *b = pat->b;
+    CHECK(a->type == PatType::WILD);
+    CHECK(b->type == PatType::WILD);
+  }
+
+  {
+    const Pat *pat = ParsePat("1 as 2");
+    CHECK(pat->type == PatType::AS);
+    const Pat *a = pat->a;
+    const Pat *b = pat->b;
+    CHECK(a->type == PatType::INT);
+    CHECK(a->integer == 1);
+    CHECK(b->type == PatType::INT);
+    CHECK(b->integer == 2);
+  }
+
+  {
+    const Pat *pat = ParsePat("(777 as y) as ((_ : int) as 444)");
+    CHECK(pat->type == PatType::AS);
+    const Pat *a = pat->a;
+    const Pat *b = pat->b;
+    CHECK(a->type == PatType::AS);
+    CHECK(b->type == PatType::AS);
+    const Pat *c = a->a;
+    const Pat *d = a->b;
+    CHECK(c->type == PatType::INT);
+    CHECK(d->type == PatType::VAR);
+    const Pat *e = b->a;
+    const Pat *f = b->b;
+    CHECK(e->type == PatType::ANN);
+    CHECK(f->type == PatType::INT);
+  }
+
 
   {
     const Pat *pat = ParsePat("{ lab = x, 2 = _ }");
@@ -694,6 +735,7 @@ static void TestParsePat() {
     CHECK(pat->a->children[1]->str == "y");
   }
 
+  printf("Pattern parsing " AGREEN("OK") "\n");
 }
 
 static void TestParseDec() {

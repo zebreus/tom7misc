@@ -59,18 +59,18 @@ struct TypeVarInfo {
 
 // Elaboration context.
 //
-struct Context {
+struct ElabContext {
 
   // Empty context.
-  Context() = default;
-  ~Context() = default;
+  ElabContext() = default;
+  ~ElabContext() = default;
   // Initialize with a set of bindings.
-  Context(const std::vector<std::pair<std::string, VarInfo>> &exp,
+  ElabContext(const std::vector<std::pair<std::string, VarInfo>> &exp,
           const std::vector<std::pair<std::string, TypeVarInfo>> &typ);
 
   // Expression variables.
-  Context Insert(const std::string &s, VarInfo vi) const {
-    return Context(fm.Insert(std::make_pair(s, V::EXP),
+  ElabContext Insert(const std::string &s, VarInfo vi) const {
+    return ElabContext(fm.Insert(std::make_pair(s, V::EXP),
                              {std::move(vi)}));
   }
 
@@ -84,8 +84,8 @@ struct Context {
     }
   }
 
-  Context InsertType(const std::string &s, TypeVarInfo tvi) const {
-    return Context(fm.Insert(std::make_pair(s, V::TYPE),
+  ElabContext InsertType(const std::string &s, TypeVarInfo tvi) const {
+    return ElabContext(fm.Insert(std::make_pair(s, V::TYPE),
                              {std::move(tvi)}));
   }
 
@@ -127,11 +127,60 @@ private:
   using KeyType = std::pair<std::string, V>;
   using FM = FunctionalMap<KeyType, AnyVarInfo>;
 
-  explicit Context(FM &&fm) : fm(fm) {}
+  explicit ElabContext(FM &&fm) : fm(fm) {}
 
   // Otherwise, it's just a functional map.
   FM fm;
 };
+
+using PolyType = std::pair<std::vector<std::string>, const Type *>;
+
+// Regular IL context.
+// In the IL type language, we just know what set of type variables
+// are bound (they all have kind 0).
+struct Context {
+
+  // Empty context.
+  Context() = default;
+  ~Context() = default;
+  // Initialize with a set of bindings.
+  Context(const std::vector<std::pair<std::string, PolyType>> &exps);
+
+  // Expression variables.
+  Context Insert(const std::string &s, PolyType pt) const {
+    return Context(expmap.Insert(s, std::move(pt)), typeset);
+  }
+
+  const PolyType *Find(const std::string &s) const {
+    return expmap.FindPtr(s);
+  }
+
+  Context InsertType(const std::string &s) const {
+    return Context(expmap, typeset.Insert(s, {}));
+  }
+
+  bool FindType(const std::string &s) const {
+    return typeset.FindPtr(s) != nullptr;
+  }
+
+  // For debugging.
+  std::string ToString() const;
+
+private:
+
+  struct Unit {};
+  template<class T>
+  using FunctionalSet = FunctionalMap<T, Unit>;
+
+  Context(FunctionalMap<std::string, PolyType> e,
+          FunctionalSet<std::string> t) : expmap(std::move(e)),
+                                          typeset(std::move(t)) {}
+
+  // Otherwise, it's just a functional map.
+  FunctionalMap<std::string, PolyType> expmap;
+  FunctionalSet<std::string> typeset;
+};
+
 
 }  // il
 

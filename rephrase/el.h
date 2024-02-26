@@ -115,6 +115,7 @@ struct Pat {
   PatType type;
   std::string str;
   const Pat *a;
+  const Pat *b;
   const Type *ann;
   BigInt integer;
   std::vector<const Pat *> children;
@@ -388,10 +389,11 @@ struct AstPool {
     return ret;
   }
 
-  const Pat *AsPat(const Pat *p, const std::string &v) {
+  // Unlike in ML, "as" takes patterns on both sides.
+  const Pat *AsPat(const Pat *a, const Pat *b) {
     Pat *ret = NewPat(PatType::AS);
-    ret->str = v;
-    ret->a = p;
+    ret->a = a;
+    ret->b = b;
     return ret;
   }
 
@@ -409,8 +411,7 @@ struct AstPool {
   }
 
   const Pat *WildPat() {
-    // PERF can be singleton
-    return NewPat(PatType::WILD);
+    return &wild_pat_;
   }
 
   const Pat *TuplePat(std::vector<const Pat *> v) {
@@ -428,6 +429,8 @@ struct AstPool {
   std::string NewInternalVar(const std::string &hint);
 
  private:
+  const Pat wild_pat_ = Pat(PatType::WILD);
+
   Type *NewType(TypeType t) { return type_arena.New(t); }
   Exp *NewExp(ExpType t) { return exp_arena.New(t); }
   Layout *NewLayout(LayoutType t) { return layout_arena.New(t); }

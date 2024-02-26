@@ -24,11 +24,11 @@ private:
   friend struct il::PatternCompilation;
 
   const std::pair<const il::Exp *, const il::Type *> Elab(
-      const il::Context &G,
+      const il::ElabContext &G,
       const el::Exp *el_exp);
 
   const il::Type *ElabType(
-      const il::Context &G,
+      const il::ElabContext &G,
       const el::Type *el_type);
 
   const il::Type *NewEVar();
@@ -39,7 +39,7 @@ private:
                           const il::Type *t);
 
   const std::pair<const il::Exp *, const il::Type *> ElabDecs(
-      const il::Context &G,
+      const il::ElabContext &G,
       const std::vector<const el::Dec *> &decs,
       const el::Exp *exp);
 

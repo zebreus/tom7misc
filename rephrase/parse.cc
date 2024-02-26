@@ -364,13 +364,9 @@ const Exp *Parsing::Parse(AstPool *pool,
           auto AppPattern =
             +FixityElement /= ResolvePatFixity;
 
-          // XXX this is actually backwards from what SML does.
-          // Probably I should swap it back, or allow "p1 as p2"
-          // which just matches both? (I think it's actually
-          // pretty easy with the matrix approach. You just duplicate
-          // the object variable and split the column.)
+          // Unlike sml, we allow "p1 as p2".
           auto AsPattern =
-            (AppPattern && Opt(IsToken<AS>() >> Id))
+            (AppPattern && Opt(IsToken<AS>() >> AppPattern))
             >[&](const auto &pair) -> const Pat * {
                 const auto &[pat, v] = pair;
                 if (v.has_value()) {

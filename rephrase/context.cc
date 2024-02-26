@@ -13,7 +13,7 @@
 
 namespace il {
 
-Context::Context(
+ElabContext::ElabContext(
     const std::vector<std::pair<std::string, VarInfo>> &exp,
     const std::vector<std::pair<std::string, TypeVarInfo>> &typ) {
   std::vector<std::pair<KeyType, AnyVarInfo>> init;
@@ -31,7 +31,7 @@ Context::Context(
   fm = FunctionalMap(init);
 }
 
-bool Context::HasEVar(const EVar &e) const {
+bool ElabContext::HasEVar(const EVar &e) const {
   // PERF: This is linear+ in the size of the context.
   // We could at least do it without copying. We will
   // also check multiple free EVars in the same term,
@@ -51,7 +51,7 @@ bool Context::HasEVar(const EVar &e) const {
   return false;
 }
 
-const VarInfo *Context::FindByILVar(const std::string &s) const {
+const VarInfo *ElabContext::FindByILVar(const std::string &s) const {
   // PERF: As in HasEVar. In this case, we might want to keep a
   // parallel map indexed by il vars? In any case, just do the
   // export once.
@@ -70,7 +70,7 @@ const VarInfo *Context::FindByILVar(const std::string &s) const {
   return nullptr;
 }
 
-std::string Context::VarInfoString(const VarInfo &vi) {
+std::string ElabContext::VarInfoString(const VarInfo &vi) {
   std::string ret;
   if (vi.primop.has_value()) {
     StringAppendF(&ret, "primop\n");
@@ -94,7 +94,7 @@ std::string Context::VarInfoString(const VarInfo &vi) {
   return ret;
 }
 
-std::string Context::ToString() const {
+std::string ElabContext::ToString() const {
   const auto m = fm.Export();
   std::string ret;
   for (const auto &[k, v] : m) {

@@ -20,7 +20,7 @@
 
 // This code has to mention both el and il stuff with the same
 // name. But there are many things that are unambiguous.
-using Context = il::Context;
+using Context = il::ElabContext;
 using VarInfo = il::VarInfo;
 using Unification = il::Unification;
 using TypeVarInfo = il::TypeVarInfo;
@@ -137,7 +137,7 @@ const il::Type *Elaboration::ElabType(const Context &G,
 
 // XXX return context instead of requiring let?
 const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
-    const il::Context &G,
+    const il::ElabContext &G,
     const std::vector<const el::Dec *> &decs,
     const el::Exp *el_body) {
   if (decs.empty()) {

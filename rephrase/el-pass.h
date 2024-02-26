@@ -73,7 +73,7 @@ struct Pass {
     case PatType::TUPLE: return DoTuplePat(p->children, args...);
     case PatType::RECORD: return DoRecordPat(p->str_children, args...);
     case PatType::ANN: return DoAnnPat(p->a, p->ann, args...);
-    case PatType::AS: return DoAsPat(p->a, p->str, args...);
+    case PatType::AS: return DoAsPat(p->a, p->b, args...);
     case PatType::INT: return DoIntPat(p->integer, args...);
     case PatType::STRING: return DoStringPat(p->str, args...);
     case PatType::BOOL: return DoBoolPat(p->boolean, args...);
@@ -314,9 +314,8 @@ struct Pass {
     return pool->AnnPat(DoPat(a, args...), DoType(t, args...));
   }
 
-  virtual const Pat *DoAsPat(const Pat *a, const std::string &v,
-                             Args... args) {
-    return pool->AsPat(DoPat(a, args...), v);
+  virtual const Pat *DoAsPat(const Pat *a, const Pat *b, Args... args) {
+    return pool->AsPat(DoPat(a, args...), DoPat(b, args...));
   }
 
   virtual const Pat *DoIntPat(const BigInt &bi, Args... args) {

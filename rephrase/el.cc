@@ -154,7 +154,7 @@ std::string PatString(const Pat *p) {
   case PatType::AS: {
     return StringPrintf("%s as %s",
                         PatString(p->a).c_str(),
-                        p->str.c_str());
+                        PatString(p->b).c_str());
   }
 
   case PatType::APP: {
