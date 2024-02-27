@@ -5,68 +5,55 @@
 #include <string>
 #include <utility>
 
+#include "primop.h"
+#include "il.h"
+
 namespace il {
 
 Initial::Initial(AstPool *pool) {
 
-  auto PairType = [&](const Type *a, const Type *b) {
-      return pool->Product({a, b});
-    };
-
-  auto BinOpType = [&](const Type *a, const Type *b, const Type *ret) ->
-    const Type * {
-      return pool->Arrow(PairType(a, b), ret);
-    };
-
-  auto BinOp = [&](const Type *a, const Type *b, const Type *ret,
-                   Primop po) -> VarInfo {
-      return VarInfo{
-        .tyvars = {},
-        .type = BinOpType(a, b, ret),
-        .primop = {po}};
-    };
-
-  const il::Type *Unit = pool->RecordType({});
   const il::Type *Alpha = pool->VarType("a");
   const il::Type *Int = pool->IntType();
   const il::Type *Float = pool->FloatType();
   const il::Type *Bool = pool->BoolType();
   auto Ref = [&](const Type *a) { return pool->RefType(a); };
 
-  const std::vector<std::pair<std::string, VarInfo>> exp_vars = {
-    {"+", BinOp(Int, Int, Int, Primop::INT_PLUS)},
-    {"-", BinOp(Int, Int, Int, Primop::INT_MINUS)},
-    {"*", BinOp(Int, Int, Int, Primop::INT_TIMES)},
-    {"/", BinOp(Int, Int, Float, Primop::INT_DIV_TO_FLOAT)},
-    {"div", BinOp(Int, Int, Int, Primop::INT_DIV)},
-    {"mod", BinOp(Int, Int, Int, Primop::INT_MOD)},
+  auto LookupPrimop = [&pool](Primop p) {
+      const auto &[tv, t] = PrimopType(pool, p);
+      return VarInfo{
+        .tyvars = tv,
+        .type = t,
+        .primop = {p},
+      };
+    };
+
+  const std::vector<std::pair<std::string, Primop>> primops = {
+    {"+", Primop::INT_PLUS},
+    {"-", Primop::INT_MINUS},
+    {"*", Primop::INT_TIMES},
+    {"/", Primop::INT_DIV_TO_FLOAT},
+    {"div", Primop::INT_DIV},
+    {"mod", Primop::INT_MOD},
 
     // Perhaps these should just be overloaded α * α -> bool,
     // with some hack to resolve them?
-    {"==", BinOp(Int, Int, Bool, Primop::INT_EQ)},
-    {"!=", BinOp(Int, Int, Bool, Primop::INT_NEQ)},
-    {"<", BinOp(Int, Int, Bool, Primop::INT_LESS)},
-    {"<=", BinOp(Int, Int, Bool, Primop::INT_LESSEQ)},
-    {">", BinOp(Int, Int, Bool, Primop::INT_GREATER)},
-    {">=", BinOp(Int, Int, Bool, Primop::INT_GREATEREQ)},
+    {"==", Primop::INT_EQ},
+    {"!=", Primop::INT_NEQ},
+    {"<", Primop::INT_LESS},
+    {"<=", Primop::INT_LESSEQ},
+    {">", Primop::INT_GREATER},
+    {">=", Primop::INT_GREATEREQ},
 
-    {":=", VarInfo{
-        .tyvars = {"a"},
-        .type = BinOpType(Ref(Alpha), Alpha, Unit),
-        .primop = {Primop::SET},
-      }},
-    {"!", VarInfo{
-        .tyvars = {"a"},
-        .type = pool->Arrow(Ref(Alpha), Alpha),
-        .primop = {Primop::GET},
-      }},
-    {"ref", VarInfo{
-        .tyvars = {"a"},
-        .type = pool->Arrow(Alpha, Ref(Alpha)),
-        .primop = {Primop::REF}
-      }},
-
+    {":=", Primop::SET},
+    {"!", Primop::GET},
+    {"ref", Primop::REF},
   };
+
+  std::vector<std::pair<std::string, VarInfo>> exp_vars;
+  exp_vars.reserve(primops.size());
+  for (const auto &[x, p] : primops) {
+    exp_vars.emplace_back(x, LookupPrimop(p));
+  }
 
   const il::Type *String = pool->StringType();
   auto Kind0 = [&](const Type *t) {
@@ -74,9 +61,6 @@ Initial::Initial(AstPool *pool) {
     };
 
   const std::vector<std::pair<std::string, TypeVarInfo>> type_vars = {
-    // These need datatype declarations.
-    //    {"list", 1},
-    //    {"option", 1},
     {"bool", Kind0(Bool)},
     {"int", Kind0(Int)},
     {"float", Kind0(Float)},

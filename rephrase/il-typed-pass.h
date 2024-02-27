@@ -4,6 +4,7 @@
 
 #include "il.h"
 #include "context.h"
+#include "primop.h"
 
 namespace il {
 template<typename... Args>
@@ -34,7 +35,8 @@ struct TypedPass {
       out.globals.push_back(std::move(gg));
     }
 
-    out.body = DoExp(GG, program.body, args...);
+    const auto &[be, bt] = DoExp(GG, program.body, args...);
+    out.body = be;
     return out;
   }
 
@@ -97,8 +99,8 @@ struct TypedPass {
       return DoApp(G, f, x, e, args...);
     }
     case ExpType::FN: {
-      const auto &[self, x, body] = e->Fn();
-      return DoFn(G, self, x, body, e, args...);
+      const auto &[self, x, t, body] = e->Fn();
+      return DoFn(G, self, x, t, body, e, args...);
     }
     case ExpType::PROJECT: {
       const auto &[lab, exp] = e->Project();
@@ -119,7 +121,8 @@ struct TypedPass {
       return DoPrimop(G, p, ts, es, e, args...);
     }
     case ExpType::FAIL: {
-      return DoFail(G, e->Fail(), e, args...);
+      const auto &[fe, ft] = e->Fail();
+      return DoFail(G, fe, ft, e, args...);
     }
     case ExpType::SEQ: {
       const auto &[es, body] = e->Seq();
@@ -355,7 +358,7 @@ struct TypedPass {
             const std::string &s, const Exp *e,
             const Exp *guess,
             Args... args) {
-    const auto &[ee, tt] = DoExp(e, args...);
+    const auto &[ee, tt] = DoExp(G, e, args...);
     CHECK(tt->type == TypeType::RECORD);
     for (const auto &[l, t] : tt->Record()) {
       if (l == s) {
@@ -373,10 +376,9 @@ struct TypedPass {
            const Exp *e,
            const Exp *guess,
            Args... args) {
-    return {
-      pool->Inject(s, DoExp(G, e, args...), guess),
-      DoType(G, sum_type, args...)
-    };
+    const auto &[ee, tt] = DoExp(G, e, args...);
+    return {pool->Inject(s, sum_type, ee, guess),
+            DoType(G, sum_type, args...)};
   }
 
   virtual std::pair<const Exp *, const Type *>
@@ -456,7 +458,6 @@ struct TypedPass {
     return {pool->App(ff, aa, guess), cod};
   }
 
-#if 0
   virtual std::pair<const Exp *, const Type *>
   DoPrimop(Context G,
            Primop po,
@@ -465,48 +466,77 @@ struct TypedPass {
            const Exp *guess,
            Args... args) {
 
-    // XXX somehow we have to get the primop return type here.
+    const auto &[tyvars, po_type] = PrimopType(pool, po);
+    const auto &[dom, cod] = po_type->Arrow();
 
     std::vector<const Type *> tts;
     tts.reserve(ts.size());
-    for (const Type *t : ts) tts.push_back(DoType(t, args...));
+    for (const Type *t : ts) tts.push_back(DoType(G, t, args...));
 
     std::vector<const Exp *> ees;
     ees.reserve(es.size());
-    for (const Exp *e : es) ees.push_back(DoExp(e, args...));
+    for (const Exp *e : es) {
+      const auto &[ee, tt] = DoExp(G, e, args...);
+      ees.push_back(ee);
+    }
 
-    return pool->Primop(po, tts, ees, guess);
+    CHECK(tts.size() == tyvars.size()) << "Type error: Primop " <<
+      PrimopString(po) << " instantiated with " << tts.size() <<
+      " types, but it takes " << tyvars.size();
+
+    const Type *ret_type = cod;
+    for (int i = 0; i < (int)tyvars.size(); i++) {
+      ret_type = pool->SubstType(tts[i], tyvars[i], ret_type);
+    }
+
+    return {pool->Primop(po, tts, ees, guess), ret_type};
   }
 
   virtual std::pair<const Exp *, const Type *>
-  DoFn(const std::string &self,
-                          const std::string &x,
-                          const Exp *body,
-                          const Exp *guess,
-                          Args... args) {
-    return pool->Fn(self, x, DoExp(body, args...), guess);
+  DoFn(Context G,
+       const std::string &self,
+       const std::string &x,
+       const Type *arrow_type,
+       const Exp *body,
+       const Exp *guess,
+       Args... args) {
+    const Type *at = DoType(G, arrow_type, args...);
+    const auto &[dom, cod] = arrow_type->Arrow();
+    Context GG = G.Insert(self, {{}, at}).Insert(x, {{}, dom});
+    const auto &[be, bt] = DoExp(GG, body, args...);
+    return {pool->Fn(self, x, at, be, guess), at};
   }
 
   virtual std::pair<const Exp *, const Type *>
-  DoFail(const Exp *msg,
+  DoFail(Context G,
+         const Exp *msg,
+         const Type *t,
          const Exp *guess,
          Args... args) {
-    return pool->Fail(DoExp(msg, args...), guess);
+    const Type *tt = DoType(G, t, args...);
+    const auto &[me, mt] = DoExp(G, msg, args...);
+    return {pool->Fail(me, tt, guess), tt};
   }
 
   virtual std::pair<const Exp *, const Type *>
-  DoSeq(const std::vector<const Exp *> &es,
-                           const Exp *body,
-                           const Exp *guess,
-                           Args... args) {
+  DoSeq(Context G,
+        const std::vector<const Exp *> &es,
+        const Exp *body,
+        const Exp *guess,
+        Args... args) {
     std::vector<const Exp *> ees;
     ees.reserve(es.size());
-    for (const Exp *e : es) ees.push_back(DoExp(e, args...));
-    return pool->Seq(ees, DoExp(body, args...), guess);
+    for (const Exp *e : es) {
+      const auto &[ee, tt] = DoExp(G, e, args...);
+      ees.push_back(ee);
+    }
+    const auto &[be, bt] = DoExp(G, body, args...);
+    return {pool->Seq(ees, be, guess), bt};
   }
 
   virtual std::pair<const Exp *, const Type *>
   DoIntCase(
+      Context G,
       const Exp *obj,
       const std::vector<std::pair<BigInt, const Exp *>> &arms,
       const Exp *def,
@@ -514,14 +544,18 @@ struct TypedPass {
       Args... args) {
     std::vector<std::pair<BigInt, const Exp *>> narms;
     narms.reserve(arms.size());
-    for (const auto &[bi, arm] : arms)
-      narms.emplace_back(bi, DoExp(arm, args...));
-    return pool->IntCase(DoExp(obj, args...), std::move(narms),
-                         DoExp(def, args...), guess);
+    for (const auto &[bi, arm] : arms) {
+      const auto &[ee, tt] = DoExp(G, arm, args...);
+      narms.emplace_back(bi, ee);
+    }
+    const auto &[oe, ot] = DoExp(G, obj, args...);
+    const auto &[de, dt] = DoExp(G, def, args...);
+    return {pool->IntCase(oe, std::move(narms), de, guess), dt};
   }
 
   virtual std::pair<const Exp *, const Type *>
   DoStringCase(
+      Context G,
       const Exp *obj,
       const std::vector<std::pair<std::string, const Exp *>> &arms,
       const Exp *def,
@@ -529,13 +563,14 @@ struct TypedPass {
       Args... args) {
     std::vector<std::pair<std::string, const Exp *>> narms;
     narms.reserve(arms.size());
-    for (const auto &[s, arm] : arms)
-      narms.emplace_back(s, DoExp(arm, args...));
-    return pool->StringCase(DoExp(obj, args...), std::move(narms),
-                            DoExp(def, args...), guess);
+    for (const auto &[s, arm] : arms) {
+      const auto &[ee, tt] = DoExp(G, arm, args...);
+      narms.emplace_back(s, ee);
+    }
+    const auto &[oe, ot] = DoExp(G, obj, args...);
+    const auto &[de, dt] = DoExp(G, def, args...);
+    return {pool->StringCase(oe, std::move(narms), de, guess), dt};
   }
-
-#endif
 
   virtual std::pair<const Exp *, const Type *>
   DoSumCase(

@@ -2,7 +2,11 @@
 #include "primop.h"
 
 #include <tuple>
+#include <utility>
+#include <string>
+#include <vector>
 
+#include "il.h"
 #include "base/logging.h"
 
 const char *PrimopString(Primop p) {
@@ -112,3 +116,68 @@ bool IsPrimopDiscardable(Primop p) {
   }
 }
 
+std::pair<std::vector<std::string>, const il::Type *>
+PrimopType(il::AstPool *pool, Primop p) {
+  using Type = il::Type;
+
+  const auto Unit = [pool]() { return pool->RecordType({}); };
+  // These are singletons so we can just grab the pointers eagerly.
+  const il::Type *Int = pool->IntType();
+  const il::Type *Float = pool->FloatType();
+  const il::Type *Bool = pool->BoolType();
+  const il::Type *String = pool->StringType();
+  const auto Alpha = [pool]() { return pool->VarType("a"); };
+
+  auto PairType = [&](const Type *a, const Type *b) {
+      return pool->Product({a, b});
+    };
+
+  auto Ref = [pool](const Type *a) { return pool->RefType(a); };
+
+  auto BinOp = [pool, &PairType](
+      const Type *a, const Type *b, const Type *ret) {
+      return pool->Arrow(PairType(a, b), ret);
+    };
+
+  switch (p) {
+  case Primop::REF:
+    return {{"a"}, pool->Arrow(Alpha(), Ref(Alpha()))};
+  case Primop::GET:
+    return {{"a"}, pool->Arrow(Ref(Alpha()), Alpha())};
+  case Primop::SET:
+    return {{"a"}, BinOp(Ref(Alpha()), Alpha(), Unit())};
+
+  // Perhaps these should just be overloaded α * α -> bool,
+  // with some hack to resolve them? (But not here. Elaboration
+  // should do it.)
+  case Primop::INT_EQ: return {{}, BinOp(Int, Int, Bool)};
+  case Primop::INT_NEQ: return {{}, BinOp(Int, Int, Bool)};
+  case Primop::INT_LESS: return {{}, BinOp(Int, Int, Bool)};
+  case Primop::INT_LESSEQ: return {{}, BinOp(Int, Int, Bool)};
+  case Primop::INT_GREATER: return {{}, BinOp(Int, Int, Bool)};
+  case Primop::INT_GREATEREQ: return {{}, BinOp(Int, Int, Bool)};
+
+  case Primop::INT_TIMES: return {{}, BinOp(Int, Int, Int)};
+  case Primop::INT_PLUS: return {{}, BinOp(Int, Int, Int)};
+  case Primop::INT_MINUS: return {{}, BinOp(Int, Int, Int)};
+  case Primop::INT_DIV: return {{}, BinOp(Int, Int, Int)};
+  case Primop::INT_MOD: return {{}, BinOp(Int, Int, Int)};
+
+  case Primop::INT_NEG: return {{}, pool->Arrow(Int, Int)};
+
+  case Primop::INT_DIV_TO_FLOAT: return {{}, BinOp(Int, Int, Float)};
+
+  case Primop::FLOAT_TIMES: return {{}, BinOp(Float, Float, Float)};
+  case Primop::FLOAT_PLUS: return {{}, BinOp(Float, Float, Float)};
+  case Primop::FLOAT_MINUS: return {{}, BinOp(Float, Float, Float)};
+  case Primop::FLOAT_DIV: return {{}, BinOp(Float, Float, Float)};
+
+  case Primop::FLOAT_NEG: return {{}, pool->Arrow(Float, Float)};
+
+  case Primop::STRING_EQ: return {{}, BinOp(String, String, Bool)};
+
+  default:
+    LOG(FATAL) << "Unknown primop in PrimopType";
+    return {{}, nullptr};
+  }
+}

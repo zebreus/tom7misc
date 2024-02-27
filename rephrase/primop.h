@@ -2,6 +2,14 @@
 #define _REPHRASE_PRIMOP_H
 
 #include <tuple>
+#include <utility>
+#include <string>
+#include <vector>
+
+namespace il {
+struct Type;
+struct AstPool;
+};
 
 enum class Primop {
   REF,
@@ -30,6 +38,8 @@ enum class Primop {
   FLOAT_MINUS,
   FLOAT_DIV,
 
+  FLOAT_NEG,
+
   STRING_EQ,
 };
 
@@ -45,5 +55,9 @@ bool IsPrimopDiscardable(Primop p);
 std::tuple<int, int> PrimopArity(Primop p);
 
 const char *PrimopString(Primop p);
+
+// Get the (poly)type of a primop, allocated in the given pool.
+std::pair<std::vector<std::string>, const il::Type *>
+PrimopType(il::AstPool *pool, Primop p);
 
 #endif

@@ -1,7 +1,7 @@
 
 default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe
 
-test : lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe # il-typed-pass_test.exe test.pdf
+test : lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf
 	./lex_test.exe
 	./il_test.exe
 	./il-util_test.exe
@@ -10,7 +10,7 @@ test : lex_test.exe context_test.exe unification_test.exe parse_test.exe fronten
 	./parse_test.exe
 	./il-pass_test.exe
 	./frontend_test.exe
-#	./il-typed-pass_test.exe
+	./il-typed-pass_test.exe
 
 test.pdf : bovex.exe test.bovex stdlib.bovex
 	./bovex.exe test.bovex -o test.pdf
