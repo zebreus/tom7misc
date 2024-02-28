@@ -90,6 +90,11 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
     return false;
   }
 
+  case TypeType::EXISTS: {
+    const auto &[a, tt] = t->Exists();
+    return Occurs(e, tt);
+  }
+
   case TypeType::RECORD:
     for (const auto &[l_, c] : t->Record()) {
       if (Occurs(e, c)) return true;
@@ -167,6 +172,12 @@ std::vector<EVar> EVar::FreeEVarsInTypes(
       for (const auto &[a_, typ] : arms) {
         Rec(typ);
       }
+      return;
+    }
+
+    case TypeType::EXISTS: {
+      const auto &[alpha, tt] = t->Exists();
+      Rec(tt);
       return;
     }
 
@@ -387,6 +398,11 @@ static void UnifyEx(std::string_view what,
 
     break;
   }
+
+  case TypeType::EXISTS:
+    LOG(FATAL) << what << " Not expecting Exists type before closure "
+      "conversion!";
+    return;
 
   case TypeType::RECORD:
     RecordOrSum("record", &Type::Record, t1, t2);

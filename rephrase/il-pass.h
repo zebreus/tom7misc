@@ -47,6 +47,10 @@ struct Pass {
       const auto &[idx, v] = t->Mu();
       return DoMu(idx, v, t, args...);
     }
+    case TypeType::EXISTS: {
+      const auto &[alpha, body] = t->Exists();
+      return DoExists(alpha, body, t, args...);
+    }
     case TypeType::SUM: return DoSum(t->Sum(), t, args...);
     case TypeType::RECORD: return DoRecordType(t->Record(), t, args...);
     case TypeType::EVAR: return DoEVar(t->EVar(), t, args...);
@@ -132,6 +136,14 @@ struct Pass {
       const auto &[obj, arms, def] = e->SumCase();
       return DoSumCase(obj, arms, def, e, args...);
     }
+    case ExpType::UNPACK: {
+      const auto &[alpha, x, rhs, body] = e->Unpack();
+      return DoUnpack(alpha, x, rhs, body, e, args...);
+    }
+    case ExpType::PACK: {
+      const auto &[t_hidden, alpha, t_packed, exp] = e->Pack();
+      return DoPack(t_hidden, alpha, t_packed, exp, e, args...);
+    }
     default:
       LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
     }
@@ -208,6 +220,14 @@ struct Pass {
       vv.emplace_back(alpha, DoType(t, args...));
     }
     return pool->Mu(idx, vv, guess);
+  }
+
+  virtual const Type *DoExists(
+      const std::string &alpha,
+      const Type *body,
+      const Type *guess,
+      Args... args) {
+    return pool->Exists(alpha, DoType(body, args...), guess);
   }
 
   virtual const Type *DoRefType(const Type *body, const Type *guess,
@@ -430,6 +450,24 @@ struct Pass {
       narms.emplace_back(s, x, DoExp(arm, args...));
     return pool->SumCase(DoExp(obj, args...), std::move(narms),
                          DoExp(def, args...), guess);
+  }
+
+  virtual const Exp *DoPack(const Type *t_hidden, const std::string &alpha,
+                            const Type *t_packed, const Exp *body,
+                            const Exp *guess, Args... args) {
+    return pool->Pack(DoType(t_hidden, args...),
+                      alpha,
+                      DoType(t_packed, args...),
+                      DoExp(body, args...),
+                      guess);
+  }
+
+
+  virtual const Exp *DoUnpack(
+      const std::string &alpha, const std::string &x, const Exp *rhs,
+      const Exp *body, const Exp *guess, Args... args) {
+    return pool->Unpack(alpha, x, DoExp(rhs, args...), DoExp(body, args...),
+                        guess);
   }
 
 protected:

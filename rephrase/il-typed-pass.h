@@ -54,6 +54,10 @@ struct TypedPass {
       const auto &[idx, v] = t->Mu();
       return DoMu(G, idx, v, t, args...);
     }
+    case TypeType::EXISTS: {
+      const auto &[alpha, tt] = t->Exists();
+      return DoExists(G, alpha, tt, t, args...);
+    }
     case TypeType::SUM: return DoSum(G, t->Sum(), t, args...);
     case TypeType::RECORD: return DoRecordType(G, t->Record(), t, args...);
     case TypeType::EVAR: return DoEVar(G, t->EVar(), t, args...);
@@ -223,6 +227,17 @@ struct TypedPass {
       vv.emplace_back(alpha, DoType(GG, t, args...));
     }
     return pool->Mu(idx, vv, guess);
+  }
+
+  virtual const Type *DoExists(
+      Context G,
+      const std::string &alpha,
+      const Type *body,
+      const Type *guess,
+      Args... args) {
+    return pool->Exists(alpha,
+                        DoType(G.InsertType(alpha), body, args...),
+                        guess);
   }
 
   virtual const Type *DoRefType(Context G,

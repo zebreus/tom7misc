@@ -83,6 +83,14 @@ struct CountVarsPass : public Pass<FunctionalSet> {
     return guess;
   }
 
+  const Exp *DoUnpack(
+      const std::string &alpha, const std::string &x, const Exp *rhs,
+      const Exp *body, const Exp *guess, FunctionalSet bound) override {
+    DoExp(rhs, bound);
+    DoExp(body, bound.Insert(x, {}));
+    return guess;
+  }
+
 
   std::unordered_map<std::string, int> counts;
 };
@@ -219,6 +227,19 @@ struct SubstPass : public Pass<> {
                          DoExp(def), guess);
   }
 
+  const Exp *DoUnpack(
+      const std::string &alpha, const std::string &x, const Exp *rhs,
+      const Exp *body, const Exp *guess) override {
+    if (x == target_var || freevars.contains(x)) {
+      const auto &[newx, newbody] = ILUtil::AlphaVaryExp(pool, 0, x, body);
+      return pool->Unpack(alpha, newx, DoExp(rhs), DoExp(newbody), guess);
+    } else {
+      return pool->Unpack(alpha, x, DoExp(rhs), DoExp(body), guess);
+    }
+
+    return guess;
+  }
+
 
   // The type variables bound in e1.
   const std::vector<std::string> &tyvars;
@@ -279,28 +300,51 @@ std::pair<std::string, const Exp *> ILUtil::AlphaVaryExp(
 }
 
 
-// Could perhaps do this as a multiple substitution?
+// If is_fresh, then we ignore the possibility of capture; if t1 has
+// any variables in it, they must all be fresh and appear nowhere in the
+// target expression.
+template<bool is_fresh>
 struct SubstTypePass : public Pass<> {
   SubstTypePass(AstPool *pool, const Type *t1, const std::string &x)
-    : Pass(pool), t1(t1), x(x) {
+    : Pass(pool), t1(t1), target_var(x), freevars(ILUtil::FreeTypeVars(t1)) {
   }
 
   // When we get to any type, we just defer to native substitution.
   const Type *DoType(const Type *t) override {
-    return pool->SubstType(t1, x, t);
+    return pool->SubstType(t1, target_var, t);
+  }
+
+  // Avoid capture in the expression constructs that bind type
+  // variables.
+  const Exp *DoUnpack(
+      const std::string &alpha, const std::string &x, const Exp *rhs,
+      const Exp *body, const Exp *guess) override {
+    if constexpr (is_fresh) {
+      return Pass::DoUnpack(alpha, x, rhs, body, guess);
+    } else {
+
+      if (alpha == target_var || freevars.contains(alpha)) {
+        const auto &[newalpha, newbody] =
+          ILUtil::AlphaVaryTypeInExp(pool, alpha, body);
+        return pool->Unpack(newalpha, x, DoExp(rhs), DoExp(newbody), guess);
+      } else {
+        return Pass::DoUnpack(alpha, x, rhs, body, guess);
+      }
+    }
   }
 
   // Type being substituted.
   const Type *t1 = nullptr;
   // Target variable.
-  const std::string x;
+  const std::string target_var;
+  const std::unordered_set<std::string> freevars;
 };
 
 const Exp *ILUtil::SubstTypeInExp(
     AstPool *pool,
     const Type *t, const std::string &x,
     const Exp *e) {
-  SubstTypePass pass(pool, t, x);
+  SubstTypePass<false> pass(pool, t, x);
   return pass.DoExp(e);
 }
 
@@ -309,9 +353,9 @@ std::pair<std::string, const Exp *> ILUtil::AlphaVaryTypeInExp(
     const std::string &a,
     const Exp *e) {
   std::string newa = pool->NewVar(a);
-  return std::make_pair(
-      newa,
-      SubstTypeInExp(pool, pool->VarType(newa, {}), a, e));
+  // Here, newa is fresh so we can use a simple substitution.
+  SubstTypePass<true> pass(pool, pool->VarType(newa, {}), a);
+  return std::make_pair(newa, pass.DoExp(e));
 }
 
 namespace {
@@ -463,8 +507,7 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
     return guess;
   }
 
-  // This is currently the only type constructor that binds a
-  // type variable.
+  // Constructors that bind type variables.
   const Type *DoMu(
       int idx,
       const std::vector<std::pair<std::string, const Type *>> &v,
@@ -474,6 +517,14 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
       DoType(t, bound.Insert(alpha, {}));
     }
     return guess;
+  }
+
+  const Type *DoExists(
+      const std::string &alpha,
+      const Type *body,
+      const Type *guess,
+      FunctionalSet bound) override {
+    return pool->Exists(alpha, DoType(body, bound.Insert(alpha, {})), guess);
   }
 
   std::unordered_map<std::string, int> counts;

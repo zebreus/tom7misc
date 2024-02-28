@@ -19,6 +19,7 @@ const char *TypeTypeString(TypeType t) {
   case TypeType::SUM: return "SUM";
   case TypeType::ARROW: return "ARROW";
   case TypeType::MU: return "MU";
+  case TypeType::EXISTS: return "EXISTS";
   case TypeType::RECORD: return "RECORD";
   case TypeType::EVAR: return "EVAR";
   case TypeType::REF: return "REF";
@@ -122,6 +123,12 @@ std::string TypeString(const Type *t) {
       ret += ")";
       return ret;
     }
+  }
+
+  case TypeType::EXISTS: {
+    const auto &[alpha, body] = t->Exists();
+    return StringPrintf("∃ %s.%s\n", alpha.c_str(),
+                        TypeString(body).c_str());
   }
 
   case TypeType::EVAR: {
@@ -373,6 +380,27 @@ std::string ExpString(const Exp *e) {
                         ExpString(def).c_str());
   }
 
+  case ExpType::PACK: {
+    const auto &[t_hidden, alpha, t_packed, exp] = e->Pack();
+    return StringPrintf("pack %s as %s.%s\n"
+                        "of %s end",
+                        TypeString(t_hidden).c_str(),
+                        alpha.c_str(),
+                        TypeString(t_packed).c_str(),
+                        ExpString(exp).c_str());
+  }
+
+  case ExpType::UNPACK: {
+    const auto &[alpha, x, rhs, body] = e->Unpack();
+    // unpack α,f = e1
+    // in (#2 f){1 = #1 f, 2 = e2}
+    return StringPrintf("unpack %s,%s = %s\n"
+                        "in %s end",
+                        alpha.c_str(), x.c_str(),
+                        ExpString(rhs).c_str(),
+                        ExpString(body).c_str());
+  }
+
   default:
     return "ILLEGAL EXPRESSION";
   }
@@ -471,6 +499,22 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
     }
 
     return Mu(idx, new_bundle, u);
+  }
+
+  case TypeType::EXISTS: {
+    const auto &[alpha, body] = u->Exists();
+    if (alpha == v) {
+      // shadowed; can't occur.
+      return u;
+    } else {
+      // PERF: As above, don't always rename.
+      if (is_simple) {
+        return Exists(alpha, SubstTypeInternal(t, v, body, is_simple));
+      } else {
+        const auto &[new_alpha, new_body] = AlphaVaryType(alpha, body);
+        return Exists(new_alpha, SubstTypeInternal(t, v, new_body, is_simple));
+      }
+    }
   }
 
   case TypeType::RECORD: {

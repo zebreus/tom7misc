@@ -165,7 +165,6 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
           G, dec->pat, dec->exp, rest);
 
     case el::DecType::FUN: {
-      // TODO: Support curried notation.
       CHECK(!dec->funs.empty()) << "Bug: Should not parse empty funs.";
 
       auto GetSimpleClauses = [](const el::FunDec &fun) {

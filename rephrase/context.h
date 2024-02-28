@@ -66,7 +66,7 @@ struct ElabContext {
   ~ElabContext() = default;
   // Initialize with a set of bindings.
   ElabContext(const std::vector<std::pair<std::string, VarInfo>> &exp,
-          const std::vector<std::pair<std::string, TypeVarInfo>> &typ);
+              const std::vector<std::pair<std::string, TypeVarInfo>> &typ);
 
   // Expression variables.
   ElabContext Insert(const std::string &s, VarInfo vi) const {

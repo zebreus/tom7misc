@@ -10,6 +10,11 @@
 
 static constexpr bool VERBOSE = false;
 
+// TODO: Can do some typed simplification, like:
+//   - unit erasure
+//   - transform sums that are just enums into ints
+//   - flatten records
+
 namespace {
 struct Progress {
   // Call this whenever the expression definitely got smaller.
@@ -59,6 +64,8 @@ static bool IsSmallValue(const Exp *e) {
     return true;
   case ExpType::RECORD:
     return e->Record().size() == 0;
+
+  // TODO: Functions that are primops or constructors.
   default:
     return false;
   }
@@ -400,6 +407,8 @@ struct PeepholePass : public il::Pass<> {
       // so sequence that.
       return pool->Seq({DoExp(e)}, DoExp(def));
     } else {
+      // TODO: If it's exhaustive, we can replace the default with
+      // one of the arms (unless we need to bind an inner object).
       return Pass::DoSumCase(obj, arms, def, guess);
     }
   }

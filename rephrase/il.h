@@ -51,6 +51,8 @@ enum class ExpType {
   // Match against a sum. Binds the same variable
   // for all arms.
   SUMCASE,
+  PACK,
+  UNPACK,
 };
 
 struct Exp;
@@ -77,6 +79,8 @@ enum class TypeType {
              (pi_1 mu .. and ..) / v_1,
              ... ] */
   MU,
+  // ∃α.t. This is only used by closure conversion.
+  EXISTS,
   RECORD,
   EVAR,
   // Primitive reference type
@@ -108,6 +112,11 @@ struct Type {
   Mu() const {
     CHECK(type == TypeType::MU);
     return std::tie(idx, str_children);
+  }
+
+  std::tuple<const std::string, const Type *> Exists() const {
+    CHECK(type == TypeType::EXISTS);
+    return std::tie(var, a);
   }
 
   std::pair<const Type *, const Type *> Arrow() const {
@@ -171,13 +180,13 @@ struct Exp {
   std::tuple<const std::vector<const Type *> &, const std::string &>
   Var() const {
     CHECK(type == ExpType::VAR);
-    return std::tie(types, str);
+    return std::tie(types, str1);
   }
 
   std::tuple<const std::vector<const Type *> &, const std::string &>
   GlobalSym() const {
     CHECK(type == ExpType::GLOBAL_SYM);
-    return std::tie(types, str);
+    return std::tie(types, str1);
   }
 
   double Float() const {
@@ -197,7 +206,7 @@ struct Exp {
 
   const std::string &String() const {
     CHECK(type == ExpType::STRING);
-    return str;
+    return str1;
   }
 
   std::tuple<const Exp *, const Exp *> App() const {
@@ -221,7 +230,7 @@ struct Exp {
              const Exp *>
   Let() const {
     CHECK(type == ExpType::LET);
-    return std::tie(tyvars, str, a, b);
+    return std::tie(tyvars, str1, a, b);
   }
 
   // cond, true, false
@@ -236,7 +245,7 @@ struct Exp {
              const Exp *>
   Fn() const {
     CHECK(type == ExpType::FN);
-    return std::tie(self, str, t, a);
+    return std::tie(str2, str1, ta, a);
   }
 
   std::tuple<const Primop &,
@@ -250,19 +259,19 @@ struct Exp {
   std::tuple<const std::string &, const Exp *>
   Project() const {
     CHECK(type == ExpType::PROJECT);
-    return std::tie(str, a);
+    return std::tie(str1, a);
   }
 
   std::tuple<const std::string &, const Type *, const Exp *>
   Inject() const {
     CHECK(type == ExpType::INJECT);
-    return std::tie(str, t, a);
+    return std::tie(str1, ta, a);
   }
 
   std::tuple<const Type *, const Exp *>
   Roll() const {
     CHECK(type == ExpType::ROLL);
-    return std::tie(t, a);
+    return std::tie(ta, a);
   }
 
   const Exp *Unroll() const {
@@ -272,7 +281,7 @@ struct Exp {
 
   std::tuple<const Exp *, const Type *> Fail() const {
     CHECK(type == ExpType::FAIL);
-    return std::tie(a, t);
+    return std::tie(a, ta);
   }
 
   std::tuple<const std::vector<const Exp *> &, const Exp *> Seq() const {
@@ -302,18 +311,31 @@ struct Exp {
     return std::tie(a, sumcase_arms, b);
   }
 
+  std::tuple<const Type *, const std::string &, const Type *, const Exp *>
+  Pack() const {
+    CHECK(type == ExpType::PACK);
+    return std::tie(ta, str1, tb, a);
+  }
+
+  // unpack alpha, x = rhs in body
+  std::tuple<const std::string &, const std::string &, const Exp *, const Exp *>
+  Unpack() const {
+    CHECK(type == ExpType::UNPACK);
+    return std::tie(str1, str2, a, b);
+  }
+
 private:
   // PERF: Experiment with std::variant, at least.
   friend struct AstPool;
-  std::string str;
-  // For recursive functions, the name of the function.
-  std::string self;
+  std::string str1;
+  std::string str2;
   BigInt integer;
   enum Primop primop = Primop::REF;
   const Exp *a = nullptr;
   const Exp *b = nullptr;
   const Exp *c = nullptr;
-  const Type *t = nullptr;
+  const Type *ta = nullptr;
+  const Type *tb = nullptr;
   double d = 0.0;
   std::vector<const Exp *> children;
   std::vector<const Type *> types;
@@ -470,6 +492,23 @@ struct AstPool {
     return ret;
   }
 
+  const Type *Exists(
+      const std::string &alpha,
+      const Type *t,
+      const Type *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == TypeType::EXISTS &&
+        guess->a == t &&
+        guess->var == alpha) {
+      return guess;
+    }
+
+    Type *ret = NewType(TypeType::EXISTS);
+    ret->var = alpha;
+    ret->a = t;
+    return ret;
+  }
+
 
   // Expressions
 
@@ -477,12 +516,12 @@ struct AstPool {
                     const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::STRING &&
-        guess->str == s) {
+        guess->str1 == s) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::STRING);
-    ret->str = s;
+    ret->str1 = s;
     return ret;
   }
 
@@ -503,13 +542,13 @@ struct AstPool {
                  const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::VAR &&
-        guess->str == v &&
+        guess->str1 == v &&
         guess->types == ts) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::VAR);
-    ret->str = v;
+    ret->str1 = v;
     ret->types = std::move(ts);
     return ret;
   }
@@ -519,13 +558,13 @@ struct AstPool {
                        const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::GLOBAL_SYM &&
-        guess->str == v &&
+        guess->str1 == v &&
         guess->types == ts) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::GLOBAL_SYM);
-    ret->str = v;
+    ret->str1 = v;
     ret->types = std::move(ts);
     return ret;
   }
@@ -568,13 +607,13 @@ struct AstPool {
                      const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::PROJECT &&
-        guess->str == s &&
+        guess->str1 == s &&
         guess->a == e) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::PROJECT);
-    ret->str = s;
+    ret->str1 = s;
     ret->a = e;
     return ret;
   }
@@ -585,15 +624,15 @@ struct AstPool {
                     const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::INJECT &&
-        guess->str == s &&
-        guess->t == sum_type &&
+        guess->str1 == s &&
+        guess->ta == sum_type &&
         guess->a == e) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::INJECT);
-    ret->str = s;
-    ret->t = sum_type;
+    ret->str1 = s;
+    ret->ta = sum_type;
     ret->a = e;
     return ret;
   }
@@ -601,13 +640,13 @@ struct AstPool {
   const Exp *Roll(const Type *t, const Exp *e, const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::ROLL &&
-        guess->t == t &&
+        guess->ta == t &&
         guess->a == e) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::ROLL);
-    ret->t = t;
+    ret->ta = t;
     ret->a = e;
     return ret;
   }
@@ -645,7 +684,7 @@ struct AstPool {
     if (guess != nullptr &&
         guess->type == ExpType::LET &&
         guess->tyvars == tyvars &&
-        guess->str == x &&
+        guess->str1 == x &&
         guess->a == rhs &&
         guess->b == body) {
       return guess;
@@ -653,7 +692,7 @@ struct AstPool {
 
     Exp *ret = NewExp(ExpType::LET);
     ret->tyvars = tyvars;
-    ret->str = x;
+    ret->str1 = x;
     ret->a = rhs;
     ret->b = body;
     return ret;
@@ -718,17 +757,17 @@ struct AstPool {
                 const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::FN &&
-        guess->self == self &&
-        guess->str == x &&
-        guess->t == arrow_type &&
+        guess->str2 == self &&
+        guess->str1 == x &&
+        guess->ta == arrow_type &&
         guess->a == body) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::FN);
-    ret->self = self;
-    ret->str = x;
-    ret->t = arrow_type;
+    ret->str2 = self;
+    ret->str1 = x;
+    ret->ta = arrow_type;
     ret->a = body;
     return ret;
   }
@@ -738,13 +777,13 @@ struct AstPool {
     if (guess != nullptr &&
         guess->type == ExpType::FAIL &&
         guess->a == msg &&
-        guess->t == t) {
+        guess->ta == t) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::FAIL);
     ret->a = msg;
-    ret->t = t;
+    ret->ta = t;
     return ret;
   }
 
@@ -825,6 +864,50 @@ struct AstPool {
     ret->b = def;
     return ret;
   }
+
+  const Exp *Pack(const Type *t_hidden, const std::string &alpha,
+                  const Type *t_packed, const Exp *body,
+                  const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::PACK &&
+        guess->ta == t_hidden &&
+        guess->str1 == alpha &&
+        guess->tb == t_packed &&
+        guess->a == body) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::PACK);
+    ret->ta = t_hidden;
+    ret->str1 = alpha;
+    ret->tb = t_packed;
+    ret->a = body;
+    return ret;
+  }
+
+
+  const Exp *Unpack(
+      const std::string &alpha, const std::string &x, const Exp *rhs,
+      const Exp *body, const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::UNPACK &&
+        guess->str1 == alpha &&
+        guess->str2 == x &&
+        guess->a == rhs &&
+        guess->b == body) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::UNPACK);
+    ret->str1 = alpha;
+    ret->str2 = x;
+    ret->a = rhs;
+    ret->b = body;
+    return ret;
+  }
+
+  // Utilities.
+
 
   const Type *UnrollType(const Type *mu);
 
