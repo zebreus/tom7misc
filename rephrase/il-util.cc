@@ -333,6 +333,44 @@ struct SubstTypePass : public Pass<> {
     }
   }
 
+  const Exp *DoPack(const Type *t_hidden, const std::string &alpha,
+                    const Type *t_packed, const Exp *body,
+                    const Exp *guess) override {
+    if constexpr (is_fresh) {
+      return Pass::DoPack(t_hidden, alpha, t_packed, body, guess);
+    } else {
+      if (alpha == target_var || freevars.contains(alpha)) {
+        // Alpha's scope includes both t_packed and body. We use
+        // Fail just to pair those together.
+        const Exp *fail = pool->Fail(body, t_packed);
+        const auto &[newalpha, newfail] =
+          ILUtil::AlphaVaryTypeInExp(pool, alpha, fail);
+        const auto &[newbody, newt_packed] = newfail->Fail();
+
+        return pool->Pack(DoType(t_hidden), newalpha,
+                          DoType(newt_packed), newbody, guess);
+
+      } else {
+        return Pass::DoPack(t_hidden, alpha, t_packed, body, guess);
+      }
+    }
+  }
+
+  const Type *DoMu(
+      int idx,
+      const std::vector<std::pair<std::string, const Type *>> &v,
+      const Type *guess) override {
+    LOG(FATAL) << "This should not be called, because we defer to SubstType.";
+  }
+
+
+  const Type *DoExists(
+      const std::string &alpha,
+      const Type *body,
+      const Type *guess) override {
+    LOG(FATAL) << "This should not be called, because we defer to SubstType.";
+  }
+
   // Type being substituted.
   const Type *t1 = nullptr;
   // Target variable.

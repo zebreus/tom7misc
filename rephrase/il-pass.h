@@ -452,6 +452,13 @@ struct Pass {
                          DoExp(def, args...), guess);
   }
 
+  virtual const Exp *DoUnpack(
+      const std::string &alpha, const std::string &x, const Exp *rhs,
+      const Exp *body, const Exp *guess, Args... args) {
+    return pool->Unpack(alpha, x, DoExp(rhs, args...), DoExp(body, args...),
+                        guess);
+  }
+
   virtual const Exp *DoPack(const Type *t_hidden, const std::string &alpha,
                             const Type *t_packed, const Exp *body,
                             const Exp *guess, Args... args) {
@@ -460,14 +467,6 @@ struct Pass {
                       DoType(t_packed, args...),
                       DoExp(body, args...),
                       guess);
-  }
-
-
-  virtual const Exp *DoUnpack(
-      const std::string &alpha, const std::string &x, const Exp *rhs,
-      const Exp *body, const Exp *guess, Args... args) {
-    return pool->Unpack(alpha, x, DoExp(rhs, args...), DoExp(body, args...),
-                        guess);
   }
 
 protected:

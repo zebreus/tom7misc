@@ -392,8 +392,8 @@ std::string ExpString(const Exp *e) {
 
   case ExpType::UNPACK: {
     const auto &[alpha, x, rhs, body] = e->Unpack();
-    // unpack α,f = e1
-    // in (#2 f){1 = #1 f, 2 = e2}
+    // unpack α,x = rhs
+    // in body
     return StringPrintf("unpack %s,%s = %s\n"
                         "in %s end",
                         alpha.c_str(), x.c_str(),

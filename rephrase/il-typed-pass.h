@@ -5,6 +5,7 @@
 #include "il.h"
 #include "context.h"
 #include "primop.h"
+#include "il-util.h"
 
 namespace il {
 template<typename... Args>
@@ -143,6 +144,14 @@ struct TypedPass {
     case ExpType::SUMCASE: {
       const auto &[obj, arms, def] = e->SumCase();
       return DoSumCase(G, obj, arms, def, e, args...);
+    }
+    case ExpType::UNPACK: {
+      const auto &[alpha, x, rhs, body] = e->Unpack();
+      return DoUnpack(G, alpha, x, rhs, body, e, args...);
+    }
+    case ExpType::PACK: {
+      const auto &[t_hidden, alpha, t_packed, exp] = e->Pack();
+      return DoPack(G, t_hidden, alpha, t_packed, exp, e, args...);
     }
     default:
       LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
@@ -619,6 +628,37 @@ struct TypedPass {
     const auto &[de, dt] = DoExp(G, def, args...);
     return {pool->SumCase(oe, std::move(narms), de, guess), dt};
   }
+
+  virtual std::pair<const Exp *, const Type *> DoUnpack(
+      Context G,
+      const std::string &alpha, const std::string &x, const Exp *rhs,
+      const Exp *body, const Exp *guess) {
+    // unpack α,x = rhs
+    // in body
+    const auto &[rrhs, rhstt] = DoExp(G, rhs);
+    Context GG =
+      G.InsertType(alpha).Insert(x, {{}, pool->VarType(alpha, {})});
+    const auto &[bb, bt] = DoExp(GG, body);
+    CHECK(!ILUtil::FreeTypeVars(bt).contains(alpha)) << "∃-bound type "
+      "variable " << alpha << " is free in the type of the unpack "
+      "expression; this is not allowed. Unpack's type: " <<
+      TypeString(bt).c_str();
+
+    return {pool->Unpack(alpha, x, rrhs, bb, guess), bt};
+  }
+
+  virtual std::pair<const Exp *, const Type *>
+  DoPack(Context G, const Type *t_hidden, const std::string &alpha,
+         const Type *t_packed, const Exp *body,
+         const Exp *guess) {
+
+    const Type *tth = DoType(G, t_hidden);
+    Context GG = G.InsertType(alpha);
+    const Type *ttp = DoType(GG, t_packed);
+    const auto &[bb, bt] = DoExp(GG, body);
+    return {pool->Pack(tth, alpha, ttp, bb, guess), ttp};
+  }
+
 
 protected:
   AstPool *pool = nullptr;

@@ -98,6 +98,7 @@ struct Type {
   // XXX private
   Type(TypeType t) : type(t) {}
 
+  // Labels are always sorted.
   const std::vector<std::pair<std::string, const Type *>> &Record() const {
     CHECK(type == TypeType::RECORD);
     return str_children;
