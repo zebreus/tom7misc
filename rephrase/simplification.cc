@@ -192,14 +192,16 @@ static bool IsDiscardable(const Exp *e) {
 
 namespace {
 struct PeepholePass : public il::Pass<> {
-  PeepholePass(AstPool *pool, Progress *progress) :
+  PeepholePass(uint64_t opts, AstPool *pool, Progress *progress) :
     Pass(pool),
+    opts(opts),
     progress(progress) {}
 
   const Exp *DoUnroll(const Exp *e, const Exp *guess) override {
     e = DoExp(e);
-    if (e->type == ExpType::ROLL) {
+    if ((opts & Simplification::O_REDUCE) && e->type == ExpType::ROLL) {
       const auto &[tt, ee] = e->Roll();
+      Simplified("reduce unroll");
       return ee;
     }
     return pool->Unroll(e, guess);
@@ -209,7 +211,8 @@ struct PeepholePass : public il::Pass<> {
                        const Exp *arg,
                        const Exp *guess) override {
     arg = DoExp(arg);
-    if (arg->type == ExpType::RECORD) {
+    if ((opts & Simplification::O_REDUCE) &&
+        arg->type == ExpType::RECORD) {
       // Evaluate all the elements in order, so that
       // we can preserve evaluation order. We just make a
       // binding for each and then let other simplifications
@@ -247,7 +250,8 @@ struct PeepholePass : public il::Pass<> {
                   const Type *arrow_type,
                   const Exp *body,
                   const Exp *guess) override {
-    if (!self.empty() && !ILUtil::IsExpVarFree(body, self)) {
+    if ((opts & Simplification::O_MAKE_NONRECURSIVE) &&
+        !self.empty() && !ILUtil::IsExpVarFree(body, self)) {
       Simplified("remove recursive fn var");
       if (VERBOSE) {
         printf("Removed var is " APURPLE("%s") "\n", self.c_str());
@@ -263,7 +267,8 @@ struct PeepholePass : public il::Pass<> {
                    const Exp *rhs,
                    const Exp *body,
                    const Exp *guess) override {
-    if (body->type == ExpType::VAR) {
+    if ((opts & Simplification::O_ETA_CONTRACT) &&
+        body->type == ExpType::VAR) {
       const auto &[vtv, xx] = body->Var();
       if (x == xx) {
         // let (a, b, ...) x = rhs in x<t1, t2, ...> end -->
@@ -289,7 +294,7 @@ struct PeepholePass : public il::Pass<> {
 
     int count = ILUtil::ExpVarCount(body, x);
 
-    if (count == 0) {
+    if ((opts & Simplification::O_DEAD_VARS) && count == 0) {
       Simplified("remove unused binding");
       if (VERBOSE) {
         printf("  Unused var is " APURPLE("%s") "\n", x.c_str());
@@ -311,7 +316,7 @@ struct PeepholePass : public il::Pass<> {
     const bool small_value = IsSmallValue(rhs);
     const bool effectless = small_value || IsEffectless(rhs);
 
-    if (count <= 1 && effectless) {
+    if ((opts & Simplification::O_INLINE_EXP) && count <= 1 && effectless) {
       // Inline any effectless expression that occurs just once,
       // regardless of its size.
       Simplified("inlined single-use binding");
@@ -322,7 +327,8 @@ struct PeepholePass : public il::Pass<> {
     }
 
     // TODO: support inlining of polymorphic values.
-    if (small_value && tyvars.empty()) {
+    if ((opts & Simplification::O_INLINE_EXP) &&
+        small_value && tyvars.empty()) {
       Simplified("inlined small value");
       const Exp *value = DoExp(rhs);
       if (VERBOSE) {
@@ -340,7 +346,7 @@ struct PeepholePass : public il::Pass<> {
       const Exp *true_branch,
       const Exp *false_branch,
       const Exp *guess) override {
-    if (cond->type == ExpType::BOOL) {
+    if ((opts & Simplification::O_REDUCE) && cond->type == ExpType::BOOL) {
       Simplified("reduced if");
       return DoExp(cond->Bool() ? true_branch : false_branch);
     } else {
@@ -355,7 +361,8 @@ struct PeepholePass : public il::Pass<> {
       const std::vector<std::pair<BigInt, const Exp *>> &arms,
       const Exp *def,
       const Exp *guess) override {
-    if (obj->type == ExpType::INT) {
+    if ((opts & Simplification::O_REDUCE) &&
+        obj->type == ExpType::INT) {
       Simplified("reduce intcase");
       for (const auto &[bi, arm] : arms) {
         if (bi == obj->Int()) {
@@ -374,7 +381,8 @@ struct PeepholePass : public il::Pass<> {
       const std::vector<std::pair<std::string, const Exp *>> &arms,
       const Exp *def,
       const Exp *guess) override {
-    if (obj->type == ExpType::STRING) {
+    if ((opts & Simplification::O_REDUCE) &&
+        obj->type == ExpType::STRING) {
       Simplified("reduce stringcase");
       for (const auto &[s, arm] : arms) {
         if (s == obj->String()) {
@@ -394,7 +402,8 @@ struct PeepholePass : public il::Pass<> {
           std::tuple<std::string, std::string, const Exp *>> &arms,
       const Exp *def,
       const Exp *guess) override {
-    if (obj->type == ExpType::INJECT) {
+    if ((opts & Simplification::O_REDUCE) &&
+        obj->type == ExpType::INJECT) {
       Simplified("reduce sumcase");
       const auto &[label, sum_type, e] = obj->Inject();
       for (const auto &[lab, v, arm] : arms) {
@@ -421,7 +430,8 @@ struct PeepholePass : public il::Pass<> {
                    const Exp *guess) override {
     arg = DoExp(arg);
 
-    if (f->type == ExpType::FN) {
+    if ((opts & Simplification::O_REDUCE) &&
+        f->type == ExpType::FN) {
       const auto &[self, x, t, body] = f->Fn();
       if (self.empty()) {
         Simplified("reduce app");
@@ -441,10 +451,12 @@ struct PeepholePass : public il::Pass<> {
     std::vector<const Exp *> vflat;
     for (const Exp *c : vv) {
       // printf("IsEffectless %s?\n", ExpString(c).c_str());
-      if (IsDiscardable(c)) {
+      if ((opts & Simplification::O_DEAD_CODE) &&
+          IsDiscardable(c)) {
         Simplified("dropped effectless seq");
       } else {
-        if (c->type == ExpType::SEQ) {
+        if ((opts & Simplification::O_FLATTEN) &&
+            c->type == ExpType::SEQ) {
           Simplified("flattened nested seq");
           const auto &[ces, cbody] = c->Seq();
           for (const Exp *cc : ces) {
@@ -457,14 +469,16 @@ struct PeepholePass : public il::Pass<> {
       }
     }
 
-    if (vflat.empty()) {
+    if ((opts & Simplification::O_FLATTEN) &&
+        vflat.empty()) {
       Simplified("empty seq");
       return DoExp(body);
     } else {
       // The body could also be a Seq; then append the
       // sequences.
       const Exp *bbody = DoExp(body);
-      if (bbody->type == ExpType::SEQ) {
+      if ((opts & Simplification::O_FLATTEN) &&
+          bbody->type == ExpType::SEQ) {
         const auto &[fff, bbb] = bbody->Seq();
         for (const Exp *f : fff) {
           vflat.push_back(f);
@@ -481,12 +495,14 @@ struct PeepholePass : public il::Pass<> {
   }
 
 private:
+  const uint64_t opts = 0;
   Progress *progress = nullptr;
 };
 
 // Inlines globals, or drops unused ones.
 struct GlobalInlining {
-  GlobalInlining(AstPool *pool, Progress *progress) :
+  GlobalInlining(uint64_t opts, AstPool *pool, Progress *progress) :
+    opts(opts),
     pool(pool),
     progress(progress) {}
 
@@ -515,7 +531,8 @@ struct GlobalInlining {
       }
 
       // TODO: Or if a small value?
-      if (total_count <= 1) {
+      if (((opts & Simplification::O_GLOBAL_INLINING) && total_count == 1) ||
+          ((opts & Simplification::O_GLOBAL_DEAD) && total_count == 0)) {
         progress->Simplified("drop/inline global");
         if (VERBOSE) {
           printf("  There were " AYELLOW("%d") " occurrences.\n",
@@ -524,19 +541,21 @@ struct GlobalInlining {
                  global.sym.c_str(), ExpString(global.exp).c_str());
         }
 
-        // Update all the globals in place.
-        for (int i = 0; i < (int)out.globals.size(); i++) {
-          if (i != global_idx) {
-            out.globals[i].exp = ILUtil::SubstPolyExpForLabel(
-                pool, global.tyvars, global.exp, global.sym,
-                out.globals[i].exp);
+        if (total_count > 0) {
+          // Update all the globals in place.
+          for (int i = 0; i < (int)out.globals.size(); i++) {
+            if (i != global_idx) {
+              out.globals[i].exp = ILUtil::SubstPolyExpForLabel(
+                  pool, global.tyvars, global.exp, global.sym,
+                  out.globals[i].exp);
+            }
           }
-        }
 
-        // And the body.
-        out.body = ILUtil::SubstPolyExpForLabel(
-            pool, global.tyvars, global.exp, global.sym,
-            out.body);
+          // And the body.
+          out.body = ILUtil::SubstPolyExpForLabel(
+              pool, global.tyvars, global.exp, global.sym,
+              out.body);
+        }
 
         // Now this global is unused.
         out.globals.erase(out.globals.begin() + global_idx);
@@ -549,22 +568,30 @@ struct GlobalInlining {
   }
 
  private:
+  const uint64_t opts = 0;
   AstPool *pool = nullptr;
   Progress *progress = nullptr;
 };
 }  // namespace
 
-Program Simplification::Simplify(const Program &program_in) {
+Program Simplification::Simplify(const Program &program_in,
+                                 uint64_t opts) {
   Progress progress;
   Program program = program_in;
-  PeepholePass peephole(pool, &progress);
-  GlobalInlining global_inlining(pool, &progress);
+  PeepholePass peephole(opts, pool, &progress);
+  GlobalInlining global_inlining(opts, pool, &progress);
 
   do {
     progress.Reset();
     program = peephole.DoProgram(program);
 
-    program = global_inlining.Run(program);
+    constexpr uint64_t ANY_GLOBAL =
+      O_GLOBAL_INLINING |
+      O_GLOBAL_DEAD;
+
+    if (opts & ANY_GLOBAL) {
+      program = global_inlining.Run(program);
+    }
 
     if (VERBOSE) {
       printf("\n" AYELLOW("After simplification:\n"));

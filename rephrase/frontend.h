@@ -33,6 +33,8 @@ struct Frontend {
                             const std::string &source,
                             Options options = Options());
 
+  il::AstPool *Pool() { return &il_pool; }
+
 private:
 
   il::Program RunFrontendInternal(

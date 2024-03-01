@@ -18,7 +18,10 @@ namespace il {
 
 // Expression variables.
 namespace {
-struct CountVarsPass : public Pass<FunctionalSet> {
+// PERF: We can use different accumulators so that when we're just getting
+// the free variable set, we don't have to maintain a whole vector of
+// all the occurrences.
+struct TallyVarsPass : public Pass<FunctionalSet> {
   using Pass::Pass;
 
   // Anything that binds a variable needs to pass it in the functional
@@ -61,7 +64,7 @@ struct CountVarsPass : public Pass<FunctionalSet> {
                    FunctionalSet bound) override {
     if (bound.FindPtr(v) == nullptr) {
       // Then it is free.
-      counts[v]++;
+      tally[v].push_back(ts);
     }
     // We know we're not actually doing anything to types, so
     // don't bother recursing on those.
@@ -91,30 +94,38 @@ struct CountVarsPass : public Pass<FunctionalSet> {
     return guess;
   }
 
-
-  std::unordered_map<std::string, int> counts;
+  // For each occurrence, the type variables it was applied to.
+  std::unordered_map<std::string, std::vector<std::vector<const Type *>>>
+  tally;
 };
 }  // namespace
 
-std::unordered_map<std::string, int> ILUtil::FreeExpVarCounts(const Exp *e) {
+std::unordered_map<std::string, std::vector<std::vector<const Type *>>>
+ILUtil::FreeExpVarTally(const Exp *e) {
   AstPool temp;
-  CountVarsPass pass(&temp);
+  TallyVarsPass pass(&temp);
   (void)pass.DoExp(e, {});
-  return pass.counts;
+  return pass.tally;
 }
 
+std::unordered_map<std::string, int> ILUtil::FreeExpVarCounts(const Exp *e) {
+  std::unordered_map<std::string, int> ret;
+  for (const auto &[s, v] : FreeExpVarTally(e))
+    ret[s] = (int)v.size();
+  return ret;
+}
 
 std::unordered_set<std::string> ILUtil::FreeExpVars(const Exp *e) {
   std::unordered_set<std::string> vars;
-  for (const auto &[v, c] : FreeExpVarCounts(e))
-    vars.insert(v);
+  for (const auto &[s, v] : FreeExpVarTally(e))
+    vars.insert(s);
   return vars;
 }
 
 bool ILUtil::IsExpVarFree(const Exp *e, const std::string &x) {
   // PERF: We can avoid allocating the set (and managing the "bound"
   // set in the pass) when we're just checking for one free variable.
-  return FreeExpVarCounts(e).contains(x);
+  return FreeExpVarTally(e).contains(x);
 }
 
 int ILUtil::ExpVarCount(const Exp *e, const std::string &x) {
@@ -526,7 +537,7 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
                      FunctionalSet bound) override {
     // Recurse inside bound evars.
     if (const Type *t = a.GetBound()) {
-      DoType(t, bound);
+      (void)DoType(t, bound);
     }
     // Here we always return the guess since we want complete
     // sharing.
@@ -552,7 +563,7 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
       const Type *guess,
       FunctionalSet bound) override {
     for (const auto &[alpha, t] : v) {
-      DoType(t, bound.Insert(alpha, {}));
+      (void)DoType(t, bound.Insert(alpha, {}));
     }
     return guess;
   }
@@ -562,8 +573,58 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
       const Type *body,
       const Type *guess,
       FunctionalSet bound) override {
-    return pool->Exists(alpha, DoType(body, bound.Insert(alpha, {})), guess);
+    (void)DoType(body, bound.Insert(alpha, {}));
+    return guess;
   }
+
+  // Globals can bind type vars.
+
+  const Program DoProgram(const Program &program, FunctionalSet bound)
+    override {
+    for (const Global &glob : program.globals) {
+      FunctionalSet bb = bound;
+      for (const std::string &a : glob.tyvars) bb.Insert(a, {});
+      (void)DoType(glob.type, bb);
+      (void)DoExp(glob.exp, bb);
+    }
+    (void)DoExp(program.body, bound);
+    return program;
+  }
+
+  // Expressions that bind type vars.
+
+  const Exp *DoLet(const std::vector<std::string> &tyvars,
+                   const std::string &x,
+                   const Exp *rhs,
+                   const Exp *body,
+                   const Exp *guess,
+                   FunctionalSet bound) override {
+    FunctionalSet bb = bound;
+    for (const std::string &alpha : tyvars) bb = bb.Insert(alpha, {});
+    (void)DoExp(rhs, bb);
+    (void)DoExp(body, bound);
+    return guess;
+  }
+
+  const Exp *DoUnpack(
+      const std::string &alpha, const std::string &x, const Exp *rhs,
+      const Exp *body, const Exp *guess, FunctionalSet bound) override {
+    (void)DoExp(rhs, bound);
+    FunctionalSet bb = bound.Insert(alpha, {});
+    (void)DoExp(body, bb);
+    return guess;
+  }
+
+  const Exp *DoPack(const Type *t_hidden, const std::string &alpha,
+                    const Type *t_packed, const Exp *body,
+                    const Exp *guess, FunctionalSet bound) override {
+    (void)DoType(t_hidden, bound);
+    FunctionalSet bb = bound.Insert(alpha, {});
+    (void)DoType(t_packed, bb);
+    (void)DoExp(body, bb);
+    return guess;
+  }
+
 
   std::unordered_map<std::string, int> counts;
 };
@@ -579,6 +640,16 @@ std::unordered_map<std::string, int> ILUtil::FreeTypeVarCounts(const Type *t) {
 std::unordered_set<std::string> ILUtil::FreeTypeVars(const Type *t) {
   std::unordered_set<std::string> vars;
   for (const auto &[v, c] : FreeTypeVarCounts(t))
+    vars.insert(v);
+  return vars;
+}
+
+std::unordered_set<std::string> ILUtil::FreeTypeVarsInExp(const Exp *e) {
+  AstPool temp;
+  CountTypeVarsPass pass(&temp);
+  pass.DoExp(e, {});
+  std::unordered_set<std::string> vars;
+  for (const auto &[v, c] : pass.counts)
     vars.insert(v);
   return vars;
 }

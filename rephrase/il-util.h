@@ -12,6 +12,11 @@ struct ILUtil {
   static std::unordered_set<std::string> FreeExpVars(const Exp *e);
   // .. with the number of occurrences.
   static std::unordered_map<std::string, int> FreeExpVarCounts(const Exp *e);
+  // ... or the type variables it is applied to at each occurrence
+  // (including duplicates).
+  static std::unordered_map<
+    std::string, std::vector<std::vector<const Type *>>>
+  FreeExpVarTally(const Exp *e);
 
   static bool IsExpVarFree(const Exp *e, const std::string &x);
   static int ExpVarCount(const Exp *e, const std::string &x);
@@ -64,6 +69,7 @@ struct ILUtil {
   // variable.
   static std::unordered_map<std::string, int> FreeTypeVarCounts(const Type *t);
   static std::unordered_set<std::string> FreeTypeVars(const Type *t);
+  static std::unordered_set<std::string> FreeTypeVarsInExp(const Exp *e);
 
   // Substitution does not affect global symbols. But we have parallel
   // functions for globals.

@@ -5,6 +5,9 @@
 
 #include "il.h"
 #include "il-typed-pass.h"
+#include "base/stringprintf.h"
+#include "base/logging.h"
+#include "simplification.h"
 
 // Closure conversion makes all functions in the program
 // into globals. Globals are closed except for other globals.
@@ -119,44 +122,280 @@ struct ConvertPass : public TypedPass<> {
   DoFn(Context G,
        const std::string &self,
        const std::string &x,
-       const Type *arrow_type,
+       const Type *arrow_type_in,
        const Exp *body,
        const Exp *guess) override {
 
-    // TODO: How do we deal with existing globals that already have
-    // fn type?
-    // The function g itself will appear as a global,
-    //   glob (α, β) g = fn (env, x) => ...
-    // So we just end up translating the body of g like we would
-    // translate a function in a val decl. The function is closed over
-    // expression variables so the environment will be empty! We
-    // can do optimization after this to remove empty args in many cases,
-    // but we need to translate every arrow-type expression uniformly
-    // so that the types match up.
-    //
-    // How to deal with polymorphism though? I guess we can abstract
-    // over any type variables in the context, like we'll be abstracting
-    // over the expression variables to form the environment.
-    //
-    // What about free variables with polymorphic type?
+    // This translates function expressions, which can appear inside
+    // expressions and also as globals.
 
-#if 0
-    const Type *at = DoType(G, arrow_type, args...);
-    const auto &[dom, cod] = arrow_type->Arrow();
-    Context GG = G.Insert(self, {{}, at}).Insert(x, {{}, dom});
-    const auto &[be, bt] = DoExp(GG, body, args...);
-    return {pool->Fn(self, x, at, be, guess), at};
-#endif
+    // First, translate everything recursively, like the base class.
+    // We can't defer to TypedPass::DoFn for this because it would
+    // create an ill-typed Fn (and actually fail because it wants to
+    // extract the components of the arrow type annotation).
+    //
+    //  fn as self (x : int) -> bool =>
+    //     if x = 0 then y
+    //     else self (x - 1)
+    //
+    //  α is the type of the environment.
+    //
+    //  fn (arg : α * int) -> bool =>
+    //     let env = #1 arg
+    //     let self = pack α as α'.(α' * (α' * int) -> bool)
+    //                of (env, g_self)
+    //     let x = #2 arg
+    //     let y = #1 env
+    //     in if x = 0 then y
+    //        else unpack α,ccf = self
+    //             in (#2 ccf){1 = #1 ccf, 2 = (x - 1)}
+
+    const Type *cc_arrow_type = DoType(G, arrow_type_in);
+    // This will be a type like
+    //   ∃α. {1: α, 2: {1: α, 2:a} -> b}
+    // Extract the components.
+    const auto &[cc_alpha_env, cc_fpair] = cc_arrow_type->Exists();
+    const auto &[cc_env_type, cc_fn_type] = GetPairType(cc_fpair);
+    const auto &[cc_fn_dom, cc_fn_cod] = cc_fn_type->Arrow();
+    const auto &[cc_env_type2, cc_actual_dom] = GetPairType(cc_fn_dom);
+
+    // DCHECK(TypeEq(cc_env_type, cc_env_type2));
+
+    // When recursively translating the body, we need to give types
+    // to self and x, which are both in scope. The only good way to
+    // do this is to make sure that they have the translated version
+    // of their old types. For x this is just [[x]]
+    // (which is cc_actual_dom here). For self, this is similarly
+    // [[arrow_type]] (cc_arrow_type here), which is now an existential
+    // type. That means the translation will need to bind an adapter
+    // for the recursive variable.
+
+    Context GG = G.
+      // The type of the environment is bound within the arrow type, etc.
+      InsertType(cc_alpha_env).
+      Insert(self, {{}, cc_arrow_type}).
+      Insert(x, {{}, cc_actual_dom});
+    const auto &[cc_body, cc_body_type] = DoExp(GG, body);
+    // DCHECK(TypeEq(cc_body_type, cc_fn_cod));
+
+
+    // We will hoist out the function and make it a global. This
+    // can be a polymorphic binding: If there are any free *type*
+    // variables in the expression we're translating, we'll abstract
+    // over those at the binding site, and apply the global to the
+    // concrete types (free type variables) here. So, first get
+    // the free type variables.
+    std::unordered_set<std::string> free_tyvars_set =
+      ILUtil::FreeTypeVars(cc_arrow_type);
+    for (const std::string &alpha : ILUtil::FreeTypeVarsInExp(cc_body))
+      free_tyvars_set.insert(alpha);
+    // But we are binding the environment type variable.
+    free_tyvars_set.erase(cc_alpha_env);
+    std::vector<std::string> free_tyvars(free_tyvars_set.begin(),
+                                         free_tyvars_set.end());
+
+    // We also need the free expression variables and their types.
+    // Since these might be polymorphic variables, we also get the
+    // types they're applied to. The same variable might appear
+    // multiple times, applied to different types!
+
+    using Uses = std::vector<std::vector<const Type *>>;
+    std::unordered_map<std::string, Uses> free_expvars_map =
+      ILUtil::FreeExpVarTally(cc_body);
+    // But we will bind 'self' and 'x' as part of translation.
+    free_expvars_map.erase(self);
+    free_expvars_map.erase(x);
+
+    struct EnvEntry {
+      std::string il_var;
+      std::vector<const Type *> type_args;
+      PolyType polytype;
+      std::string env_label;
+    };
+
+    // Get their types from the context.
+    // This flattens each variable with its polytype and uses.
+    std::vector<EnvEntry> env;
+    env.reserve(free_expvars_map.size());
+    std::unordered_set<std::string> labels;
+    for (const auto &[var, uses] : free_expvars_map) {
+      // PERF! We should be deduplicating uses at the same types here,
+      // esepcially when the tyvars are just empty!
+      const PolyType *pt = G.Find(var);
+      CHECK(pt != nullptr) << "Bug: In closure conversion, the free "
+        "variable " << var << " was not bound in the context!";
+      CHECK(!uses.empty());
+      for (const auto &types : uses) {
+        EnvEntry entry;
+        entry.il_var = var;
+        entry.type_args = types;
+        entry.polytype = *pt;
+        CHECK(pt->first.size() == types.size()) << "Internal type error: "
+          "In closue conversion, the variable " << var << " is used with " <<
+          types.size() << " type args, but its type has kind " <<
+          pt->first.size();
+        // just need a unique label, but try to use the variable's
+        // name for clarity.
+        std::string label = pool->BaseVar(var);
+        int suffix = 0;
+        while (labels.contains(label)) {
+          suffix++;
+          label = StringPrintf("%s_%d", pool->BaseVar(var).c_str(), suffix);
+        }
+        entry.env_label = std::move(label);
+        env.push_back(std::move(entry));
+      }
+    }
+
+    // Keep the environment in a stable order.
+    std::sort(env.begin(),
+              env.end(),
+              [](const auto &a, const auto &b) {
+                return a.env_label < b.env_label;
+              });
+
+    // Now, the environment expression itself, along with its actual type.
+    std::vector<std::pair<std::string, const Exp *>> env_components;
+    std::vector<std::pair<std::string, const Type *>> env_type_components;
+    env_components.reserve(env.size());
+    env_type_components.reserve(env.size());
+    for (const EnvEntry &entry : env) {
+      const Type *t = entry.polytype.second;
+      CHECK(entry.polytype.first.size() == entry.type_args.size());
+      for (int i = 0; i < (int)entry.polytype.first.size(); i++) {
+        const std::string &alpha = entry.polytype.first[i];
+        const Type *arg = entry.type_args[i];
+        t = pool->SubstType(arg, alpha, t);
+      }
+      // XXX This might be bogus: What if the type args mention a type
+      // variable that's not free because it's bound in a subexpression?
+      env_components.emplace_back(entry.env_label,
+                                  pool->Var(entry.type_args, entry.il_var));
+      env_type_components.emplace_back(entry.env_label, t);
+    }
+
+    const Exp *env_exp = pool->Record(env_components);
+    const Type *env_type = pool->RecordType(env_type_components);
+
+    // A variable for the environment.
+    const std::string env_var = pool->NewVar("env");
+    const Exp *env_var_exp = pool->Var({}, env_var);
+
+    // The argument to the closure-converted function, which pairs
+    // the environment with the original argument.
+    std::string arg_var = pool->NewVar("cc_arg");
+    const Exp *arg_var_exp = pool->Var({}, arg_var);
+
+    // Wrap the body with projections of each variable from the
+    // environment.
+    const Exp *fn = cc_body;
+    for (const EnvEntry &entry : env) {
+      fn = pool->Let({}, entry.il_var,
+                      pool->Project(entry.env_label, env_var_exp),
+                      fn);
+    }
+
+    // Type variables used in
+
+    const std::string global_sym =
+      pool->NewVar(
+          self.empty() ? "g_fn" : StringPrintf("g_%s", self.c_str()));
+
+    // Since we call the function recursively through the global symbol,
+    // we need to instantiate it again at the same type variables.
+    std::vector<const Type *> free_type_args;
+    for (const std::string &a : free_tyvars)
+      free_type_args.push_back(pool->VarType(a));
+
+    // Bind "self" if the function is recursive.
+    if (!self.empty()) {
+      fn = pool->Pack(
+          // We could use α here, but it seems a little better (?) to
+          // use the actual type, which we do know.
+          env_type,
+          //   α.{1: α, 2: {1: α, 2:a} -> b}
+          cc_alpha_env, cc_fpair,
+          pool->Record({{"1", env_var_exp},
+                        {"2", pool->GlobalSym(free_type_args, global_sym)}}));
+    }
+
+    // Project out the environment and original argument from the
+    // arg pair.
+    fn = pool->Let({}, x,
+                    pool->Project("2", arg_var_exp),
+                    fn);
+    fn = pool->Let({},
+                    env_var, pool->Project("1", arg_var_exp),
+                    fn);
+
+    const Type *closed_fn_type =
+      pool->SubstType(env_type, cc_alpha_env, cc_fn_type);
+
+    // Now wrap with the function. This function is now closed,
+    // and non-recursive.
+    fn = pool->Fn("", arg_var, closed_fn_type, fn);
+
+    // Emit the closure-converted function as a top-level symbol.
+    Global global;
+    global.tyvars = free_tyvars;
+    global.sym = global_sym;
+    global.type = closed_fn_type;
+    global.exp = fn;
+    globals_added.push_back(std::move(global));
+
+    // And then the fn itself is translated as a packed pair
+    // of the environment and the closed function.
+
+    // pack α as α'.(α' * (α' * int) -> bool)
+    // of ({y = , g_self)
+
+    const Exp *ret =
+      pool->Pack(
+          // {x1 : t1, x2 = t2, ...}
+          env_type,
+          // α.(α * (α * dom) -> cod)
+          cc_alpha_env, cc_fpair,
+          // ({x1=x1, x2=x2, ...}, g<types...>)
+          pool->Record({{"1", env_exp},
+                        {"2", pool->GlobalSym(free_type_args, global_sym)}}));
+
+    return {ret, cc_arrow_type};
   }
 
   std::vector<Global> globals_added;
-
 };
 
-Program ClosureConversion::Convert(const Program &pgm) {
-  LOG(FATAL) << "Unimplemented!";
-  return pgm;
+ClosureConversion::ClosureConversion(AstPool *pool) : pool(pool) {
+
 }
 
+void ClosureConversion::SetVerbose(int v) {
+  verbose = v;
+}
+
+Program ClosureConversion::Convert(const Program &pgm) {
+  ConvertPass pass(pool);
+  Context G;
+  Program cc_pgm = pass.DoProgram(G, pgm);
+  for (Global &global : pass.globals_added)
+    cc_pgm.globals.push_back(std::move(global));
+  return cc_pgm;
+}
+
+uint64_t ClosureConversion::SimplificationOpts() {
+  return Simplification::O_DEAD_VARS |
+    Simplification::O_REDUCE |
+    Simplification::O_MAKE_NONRECURSIVE |
+    Simplification::O_ETA_CONTRACT |
+    Simplification::O_INLINE_EXP |
+    Simplification::O_DEAD_CODE |
+    Simplification::O_FLATTEN |
+
+    // We want all functions to be global, so prevent
+    // inlining them back in. We could still allow
+    // some simpler value inlining, though.
+    // Simplification::O_GLOBAL_INLINING |
+    Simplification::O_GLOBAL_DEAD;
+}
 
 }  // namespace il

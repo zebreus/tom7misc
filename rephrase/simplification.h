@@ -12,9 +12,22 @@ namespace il {
 struct Simplification {
   Simplification(AstPool *pool);
 
+  static constexpr uint64_t O_DEAD_VARS = 1ULL << 1;
+  static constexpr uint64_t O_REDUCE = 1ULL << 2;
+  static constexpr uint64_t O_MAKE_NONRECURSIVE = 1ULL << 3;
+  static constexpr uint64_t O_ETA_CONTRACT = 1ULL << 4;
+  static constexpr uint64_t O_INLINE_EXP = 1ULL << 5;
+  static constexpr uint64_t O_DEAD_CODE = 1ULL << 6;
+  static constexpr uint64_t O_FLATTEN = 1ULL << 7;
+
+  static constexpr uint64_t O_GLOBAL_INLINING = 1ULL << 32;
+  static constexpr uint64_t O_GLOBAL_DEAD = 1ULL << 33;
+
+  static constexpr uint64_t O_ALL = ~0ULL;
+
   void SetVerbose(int verbose);
 
-  Program Simplify(const Program &);
+  Program Simplify(const Program &, uint64_t opts = O_ALL);
 
 private:
   int verbose = 0;

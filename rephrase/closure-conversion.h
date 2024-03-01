@@ -13,7 +13,11 @@ struct ClosureConversion {
 
   void SetVerbose(int verbose);
 
-  Program Convert(const Program &);
+  Program Convert(const Program &pgm);
+
+  // Options that can be used for simplification
+  // after closure conversion.
+  static uint64_t SimplificationOpts();
 
 private:
   int verbose = 0;

@@ -5,6 +5,7 @@
 #include <format>
 
 #include "frontend.h"
+#include "closure-conversion.h"
 #include "il.h"
 
 #include "util.h"
@@ -12,6 +13,7 @@
 #include "ansi.h"
 #include "pdf.h"
 #include "timer.h"
+
 
 static std::string DateTimeStamp() {
   return std::format("{:%Y-%m-%d %H:%M:%S}",
@@ -100,9 +102,16 @@ static int Bovex(const std::vector<std::string> &args) {
   CHECK(leftover.size() == 1) << "Expected exactly one .bovex file "
     "on the command-line.";
 
-  const il::Program pgm = frontend.RunFrontend(leftover[0]);
+  il::Program pgm = frontend.RunFrontend(leftover[0]);
 
   CHECK(pgm.body != nullptr);
+
+  // XXX should we copy to a new AstPool?
+  // Note that the variable counter would have to be copied somehow.
+  il::AstPool *pool = frontend.Pool();
+  il::ClosureConversion closure_conversion(pool);
+  closure_conversion.SetVerbose(verbose);
+  pgm = closure_conversion.Convert(pgm);
 
   GeneratePDF(output_file);
 
