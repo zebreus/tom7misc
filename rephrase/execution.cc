@@ -4,6 +4,7 @@
 #include <variant>
 
 #include "bytecode.h"
+#include "base/logging.h"
 
 namespace bc {
 

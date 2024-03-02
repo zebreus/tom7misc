@@ -75,6 +75,11 @@ struct Load {
   std::string out, data_label;
 };
 
+struct Jump {
+  // Unconditional jump within current function.
+  int idx;
+};
+
 struct Fail {
   std::string arg;
 };
@@ -93,6 +98,7 @@ using Inst = std::variant<
   inst::GetLabel,
   inst::Bind,
   inst::Load,
+  inst::Jump,
   inst::Fail
   >;
 
@@ -102,6 +108,12 @@ struct Program {
   // May only be base types; no maps.
   std::unordered_map<std::string, Value> data;
 };
+
+std::string ValueString(const Value &value);
+std::string ColorInstString(const Inst &inst);
+
+// Dump the entire program with ANSI colors codes.
+void PrintProgram(const Program &pgm);
 
 }  // namespace bc
 

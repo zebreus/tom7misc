@@ -6,6 +6,7 @@
 #include "frontend.h"
 #include "closure-conversion.h"
 #include "bytecode.h"
+#include "base/logging.h"
 
 Compiler::Compiler() : closure_conversion(frontend.Pool()) {
 
@@ -26,8 +27,8 @@ bc::Program Compiler::CompileString(const std::string &error_context,
 }
 
 bc::Program Compiler::InternalGuts(il::Program &&pgm_in) {
-  il::Program pgm = closure_conversion.Convert(pgm_in);
-
-  LOG(FATAL) << "Not implemented: bytecode output";
-  return {};
+  il::Program il_pgm = closure_conversion.Convert(pgm_in);
+  // TODO: More simplification here.
+  bc::Program bc_pgm = to_bytecode.Convert(il_pgm);
+  return bc_pgm;
 }

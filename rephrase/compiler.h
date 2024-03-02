@@ -2,9 +2,12 @@
 #ifndef _REPHRASE_COMPILER_H
 #define _REPHRASE_COMPILER_H
 
+#include "il.h"
+#include "bytecode.h"
+
 #include "frontend.h"
 #include "closure-conversion.h"
-#include "bytecode.h"
+#include "to-bytecode.h"
 
 // This is a fairly simple wrapper that pairs together the frontend and
 // later passes. It can produce bytecode from source files.
@@ -12,6 +15,7 @@ struct Compiler {
   Frontend frontend;
 
   il::ClosureConversion closure_conversion;
+  bc::ToBytecode to_bytecode;
 
   Compiler();
 
