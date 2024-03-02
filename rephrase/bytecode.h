@@ -104,7 +104,9 @@ using Inst = std::variant<
 
 
 struct Program {
-  std::unordered_map<std::string, std::vector<Inst>> code;
+  // for each code label, its argument local and instructions
+  std::unordered_map<std::string, std::pair<std::string, std::vector<Inst>>>
+  code;
   // May only be base types; no maps.
   std::unordered_map<std::string, Value> data;
 };

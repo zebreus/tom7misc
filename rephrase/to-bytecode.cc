@@ -35,10 +35,23 @@ struct Converter {
 
   // Maps from IL global name to bytecode global name.
   std::unordered_map<std::string, std::string> from_il_label;
+  const std::string &GetLabel(const std::string &il_label) {
+    const auto it = from_il_label.find(il_label);
+    CHECK(it != from_il_label.end()) << il_label;
+    return it->second;
+  }
+
+  // Since the globals can all refer to each other, first we
+  // translate each label to its bytecode label. These can
+  // be looked up label with GetLabel.
+  void SetLabel(const std::string &il_global_sym) {
+    std::string out_label = NewSymbol(il_global_sym);
+    CHECK(!from_il_label.contains(il_global_sym)) << il_global_sym;
+    from_il_label[il_global_sym] = out_label;
+  }
 
   void ConvertGlobal(const il::Global &global) {
-    std::string out_label = NewSymbol(global.sym);
-    from_il_label[global.sym] = out_label;
+    const std::string label = GetLabel(global.sym);
 
     std::vector<Inst> insts;
 
@@ -71,6 +84,8 @@ struct Converter {
     }
   }
 
+  Program program;
+
   using VarLocalMap = FunctionalMap<std::string, std::string>;
 
   // Reserve the next instruction slot to be overwritten later. Returns
@@ -79,6 +94,27 @@ struct Converter {
     size_t slot = insts->size();
     insts->emplace_back(inst::Fail{.arg = "Bug: Reserved"});
     return (int)slot;
+  }
+
+  void ConvertFn(const std::string &label,
+                 // fn x => body
+                 const std::string &x,
+                 const il::Exp *body) {
+    const std::string code_lab = GetLabel(label);
+    std::vector<Inst> insts;
+    VarLocalMap G;
+    std::string arg_lab = NewSymbol(x);
+
+    G = G.Insert(x, arg_lab);
+
+    // Convert the body to instructions.
+    const std::string res = ConvertExp(G, label + "_ret", body, &insts);
+    // And return the result.
+    insts.emplace_back(inst::Ret{.arg = res});
+
+    CHECK(!program.code.contains(code_lab));
+    program.code[code_lab] =
+      std::make_pair(std::move(arg_lab), std::move(insts));
   }
 
   // Convert the expression by adding instructions at the end
@@ -298,14 +334,13 @@ Program ToBytecode::Convert(const il::Program &pgm) {
   Converter conv;
   il::AstPool tmp_pool;
 
-  // Convert main first, as we want to claim that exact label.
-
   for (const il::Global &global : pgm.globals) {
     CHECK(global.sym != "main") << "The symbol 'main' is special "
       "so there cannot be a global called exactly that. Some upstream "
       "code should just avoid generating it.";
   }
 
+  #if 0
   // For uniformity, we translate every code global as a function.
   il::Global main;
   main.tyvars = {};
@@ -321,9 +356,16 @@ Program ToBytecode::Convert(const il::Program &pgm) {
                 // isn't necessary.
                 tmp_pool.Seq({pgm.body},
                              tmp_pool.Record({})));
+  #endif
 
-  conv.ConvertGlobal(main);
+  // Translate labels first, and main first of those, since we want
+  // co claim that exact label.
+  conv.SetLabel("main");
   CHECK(conv.from_il_label["main"] == "main");
+  for (const il::Global &global : pgm.globals)
+    conv.SetLabel(global.sym);
+
+  conv.ConvertFn("main", "unused", pgm.body);
 
   for (const il::Global &global : pgm.globals) {
     conv.ConvertGlobal(global);

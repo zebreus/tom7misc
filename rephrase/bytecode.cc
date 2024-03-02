@@ -75,8 +75,8 @@ std::string ColorInstString(const Inst &inst) {
 
 void PrintProgram(const Program &pgm) {
   std::map<std::string, Value> data(pgm.data.begin(), pgm.data.end());
-  std::map<std::string, std::vector<Inst>> code(pgm.code.begin(),
-                                                pgm.code.end());
+  std::map<std::string, std::pair<std::string, std::vector<Inst>>>
+    code(pgm.code.begin(), pgm.code.end());
 
   printf(ABGCOLOR(255, 255, 255,
                   AFGCOLOR(0, 0, 0,
@@ -89,8 +89,10 @@ void PrintProgram(const Program &pgm) {
   printf(ABGCOLOR(255, 255, 255,
                   AFGCOLOR(0, 0, 0,
                            " == CODE == ")) "\n");
-  for (const auto &[lab, insts] : code) {
-    printf(" " AYELLOW("%s") ":\n", lab.c_str());
+  for (const auto &[lab, cc] : code) {
+    const auto &[arg, insts] = cc;
+    printf(" " AYELLOW("%s") "(" ABLUE("%s") "):\n",
+           lab.c_str(), arg.c_str());
     for (int i = 0; i < (int)insts.size(); i++) {
       // XXX compute how many digits are needed
       printf("  " AGREY("%05d") " ", i);
