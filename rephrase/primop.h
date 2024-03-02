@@ -41,6 +41,8 @@ enum class Primop {
   FLOAT_NEG,
 
   STRING_EQ,
+
+  INVALID,
 };
 
 // Total is the most stringent category: It can be freely reordered
