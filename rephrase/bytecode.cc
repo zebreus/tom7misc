@@ -29,11 +29,13 @@ std::string ValueString(const Value &value) {
   }
 }
 
-std::string ColorInstString(const Inst &inst) {
+#define ADATA_LAB(s) AFGCOLOR(200, 160, 40, s)
+#define AMAP_LAB(s) AFGCOLOR(160, 200, 40, s)
 #define AOUT(s) ABLUE(s)
 #define AARG(s) APURPLE(s)
 #define AOP(s) AWHITE(s)
 
+std::string ColorInstString(const Inst &inst) {
   if (const inst::Binop *binop = std::get_if<inst::Binop>(&inst)) {
     return StringPrintf(AOUT("%s") " <- "
                         AARG("%s") " " AOP("%s") " " AARG("%s"),
@@ -49,21 +51,28 @@ std::string ColorInstString(const Inst &inst) {
   } else if (const inst::Call *call = std::get_if<inst::Call>(&inst)) {
     return "CALL";
   } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
-    return "RET";
+    return StringPrintf("RET " AARG("%s"), ret->arg.c_str());
   } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
     return "IF";
   } else if (const inst::Alloc *alloc = std::get_if<inst::Alloc>(&inst)) {
-    return "ALLOC";
+    return StringPrintf("ALLOC " AOUT("%s"),
+                        alloc->out.c_str());
   } else if (const inst::SetLabel *setlabel =
              std::get_if<inst::SetLabel>(&inst)) {
-    return "SET_LAB";
+    return StringPrintf("SET " AARG("%s") "." AMAP_LAB("%s") " <- " AARG("%s"),
+                        setlabel->obj.c_str(), setlabel->lab.c_str(),
+                        setlabel->arg.c_str());
   } else if (const inst::GetLabel *getlabel =
              std::get_if<inst::GetLabel>(&inst)) {
-    return "GET_LAB";
+    return StringPrintf("GET " AOUT("%s") " <- " AARG("%s") "." AMAP_LAB("%s"),
+                        getlabel->out.c_str(),
+                        getlabel->obj.c_str(),
+                        getlabel->lab.c_str());
   } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
     return "BIND";
   } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
-    return "LOAD";
+    return StringPrintf("LOAD " AOUT("%s") " <- " ADATA_LAB("%s"),
+                        load->out.c_str(), load->data_label.c_str());
   } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
     return "JUMP";
   } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
@@ -82,7 +91,7 @@ void PrintProgram(const Program &pgm) {
                   AFGCOLOR(0, 0, 0,
                            " == DATA == ")) "\n");
   for (const auto &[lab, value] : data) {
-    printf(" " AWHITE("%s") ": %s\n",
+    printf(" " ADATA_LAB("%s") ": %s\n",
            lab.c_str(), ValueString(value).c_str());
   }
 

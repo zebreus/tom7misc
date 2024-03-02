@@ -1,6 +1,12 @@
 
 #include "to-bytecode.h"
 
+#include <cctype>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <cstdint>
+
 #include "il.h"
 #include "bytecode.h"
 
@@ -18,6 +24,7 @@ struct Converter {
   std::string NewSymbol(const std::string &hint) {
     std::string base = hint.substr(0, hint.find('$'));
     if (base.empty()) base = "l";
+    if (!std::isalpha(base[0])) base = "l" + base;
 
     int &counter = labels[base];
     counter++;
@@ -126,6 +133,17 @@ struct Converter {
       const il::Exp *exp,
       std::vector<Inst> *insts) {
 
+    auto AddValue = [&](const std::string &hint,
+                        const Value &value) {
+      std::string lab = NewSymbol(hint);
+      // TODO: Coalesce if already present!
+      CHECK(!program.data.contains(lab)) << lab;
+      program.data[lab] = value;
+      std::string local = NewSymbol(hint);
+      insts->emplace_back(inst::Load{.out = local, .data_label = lab});
+      return local;
+    };
+
     // This is a loop so that we can get cheap tail calls for
     // common constructs like let and seq.
     for (;;) {
@@ -133,13 +151,13 @@ struct Converter {
 
       switch (exp->type) {
       case il::ExpType::STRING: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
+        const std::string &s = exp->String();
+        return AddValue("str", Value{.v = Value::t(s)});
       }
 
       case il::ExpType::FLOAT: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
+        const double d = exp->Float();
+        return AddValue("b", Value{.v = Value::t(d)});
       }
 
       case il::ExpType::JOIN: {
@@ -148,18 +166,42 @@ struct Converter {
       }
 
       case il::ExpType::RECORD: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
+        const std::vector<std::pair<std::string, const il::Exp *>> &fields =
+          exp->Record();
+
+        // PERF: Should represent empty record as just 0.
+
+        // Evaluate components.
+        std::vector<std::string> locals;
+        locals.reserve(fields.size());
+        for (const auto &[f, e] : fields) {
+          locals.push_back(ConvertExp(G, f, e, insts));
+        }
+
+        // Now allocate the record.
+        std::string r = NewSymbol("rec");
+        insts->emplace_back(inst::Alloc{.out = r});
+
+        // And set fields within it.
+        for (int i = 0; i < (int)locals.size(); i++) {
+          insts->emplace_back(inst::SetLabel{
+              .obj = r,
+              .lab = fields[i].first,
+              .arg = locals[i]
+            });
+        }
+
+        return r;
       }
 
       case il::ExpType::INT: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
+        const auto &bi = exp->Int();
+        return AddValue("i", Value{.v = Value::t(bi)});
       }
 
       case il::ExpType::BOOL: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
+        uint64_t u = exp->Bool() ? 1 : 0;
+        return AddValue("b", Value{.v = Value::t(u)});
       }
 
       case il::ExpType::VAR: {
@@ -226,8 +268,11 @@ struct Converter {
       }
 
       case il::ExpType::PROJECT: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
+        const auto &[lab, e] = exp->Project();
+        const std::string r = ConvertExp(G, "rec", e, insts);
+        const std::string res = NewSymbol(lab);
+        insts->emplace_back(inst::GetLabel{.out = res, .obj = r, .lab = lab});
+        return res;
       }
 
       case il::ExpType::INJECT: {
@@ -371,7 +416,7 @@ Program ToBytecode::Convert(const il::Program &pgm) {
     conv.ConvertGlobal(global);
   }
 
-  return {};
+  return std::move(conv.program);
 }
 
 }  // namespace bc
