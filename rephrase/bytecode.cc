@@ -13,23 +13,6 @@
 
 namespace bc {
 
-std::string ValueString(const Value &value) {
-  if (const BigInt *bi = std::get_if<BigInt>(&value.v)) {
-    return bi->ToString();
-  } else if (const std::string *s = std::get_if<std::string>(&value.v)) {
-    return StringPrintf("\"%s\"", s->c_str());
-  } else if (const uint64_t *u = std::get_if<uint64_t>(&value.v)) {
-    return StringPrintf("%lluLLU", *u);
-  } else if (const double *d = std::get_if<double>(&value.v)) {
-    return StringPrintf("%.17g", d);
-  } else if (const std::unordered_map<std::string, Value *> *m =
-             std::get_if<std::unordered_map<std::string, Value *>>(&value.v)) {
-    return "{map}";
-  } else {
-    return "!!invalid!!";
-  }
-}
-
 #define ADATA_LAB(s) AFGCOLOR(200, 160, 40, s)
 #define AMAP_LAB(s) AFGCOLOR(160, 200, 40, s)
 #define AOUT(s) AFGCOLOR(160, 160, 220, s)
@@ -37,6 +20,36 @@ std::string ValueString(const Value &value) {
 #define AOP(s) AWHITE(s)
 #define AINDEX(s) AGREY(s)
 #define AINDEX_USED(s) AFGCOLOR(120, 120, 140, s)
+
+#define ASTRLIT(s) AFGCOLOR(153, 187, 119, s)
+
+std::string ColorValueString(const Value &value) {
+  if (const BigInt *bi = std::get_if<BigInt>(&value.v)) {
+    return bi->ToString();
+  } else if (const std::string *s = std::get_if<std::string>(&value.v)) {
+    return StringPrintf(ASTRLIT("\"%s\""), s->c_str());
+  } else if (const uint64_t *u = std::get_if<uint64_t>(&value.v)) {
+    return StringPrintf("%lluLLU", *u);
+  } else if (const double *d = std::get_if<double>(&value.v)) {
+    return StringPrintf("%.17g", d);
+  } else if (const std::unordered_map<std::string, Value *> *m =
+             std::get_if<std::unordered_map<std::string, Value *>>(&value.v)) {
+    std::string ret = AWHITE("{");
+    std::vector<std::string> labs;
+    for (const auto &[lab, v_] : *m) {
+      labs.push_back(lab);
+    }
+    std::sort(labs.begin(), labs.end());
+    for (int i = 0; i < (int)labs.size(); i++) {
+      if (i != 0) StringAppendF(&ret, ", ");
+      StringAppendF(&ret, AMAP_LAB("%s"), labs[i].c_str());
+    }
+    return ret + AWHITE("}");
+  } else {
+    return "!!invalid!!";
+  }
+}
+
 
 std::string ColorInstString(const Inst &inst) {
   if (const inst::Binop *binop = std::get_if<inst::Binop>(&inst)) {
@@ -100,7 +113,7 @@ void PrintProgram(const Program &pgm) {
                            " == DATA == ")) "\n");
   for (const auto &[lab, value] : data) {
     printf(" " ADATA_LAB("%s") ": %s\n",
-           lab.c_str(), ValueString(value).c_str());
+           lab.c_str(), ColorValueString(value).c_str());
   }
 
   printf(ABGCOLOR(255, 255, 255,

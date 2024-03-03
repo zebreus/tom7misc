@@ -111,7 +111,7 @@ struct Program {
   std::unordered_map<std::string, Value> data;
 };
 
-std::string ValueString(const Value &value);
+std::string ColorValueString(const Value &value);
 std::string ColorInstString(const Inst &inst);
 
 // Dump the entire program with ANSI colors codes.

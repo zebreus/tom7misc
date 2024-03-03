@@ -46,6 +46,8 @@ struct Execution {
   // Take one step in the program.
   void Step(State *state);
 
+  void RunToCompletion(State *state);
+
   static bool IsDone(const State &state) {
     return state.stack.empty();
   }
@@ -58,6 +60,7 @@ struct Execution {
   void InternalFail(const std::string &msg, State *state);
   static Value *NonceValue();
   Value *DoBinop(Primop primop, Value *a, Value *b, State *state);
+  Value *DoUnop(Primop primop, Value *a, State *state);
 
   const Program &program;
 };

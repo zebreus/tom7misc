@@ -72,10 +72,30 @@ static void TestTrivial() {
 }
 
 static void TestEndToEnd() {
+  using TE = TestExecution;
+
   Compiler compiler;
   // There's pretty much only one way to compile this program.
-  Program prog = compiler.CompileString("test", "7");
-  // XXX execute it!
+  Program prog = compiler.CompileString(
+      "test",
+      R"(
+         let
+           fun dont-fail 0 = fail "wrong"
+             | dont-fail 1 = 777
+             | dont-fail _ = fail "also wrong"
+
+           do dont-fail 1
+         in
+
+           dont-fail 1
+         end
+        )");
+  PrintProgram(prog);
+
+  TE execution(prog);
+  TE::State state = execution.Start();
+  execution.RunToCompletion(&state);
+  CHECK(!execution.Failed());
 }
 
 }

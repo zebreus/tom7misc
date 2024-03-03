@@ -72,6 +72,15 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       return std::tie(*abi, *bbi);
     };
 
+  auto TwoFloats = [a, b](const char *what) ->
+    std::pair<double, double> {
+      const double *ad = std::get_if<double>(&a->v);
+      const double *bd = std::get_if<double>(&b->v);
+      CHECK(ad != nullptr) << "Expected float argument (lhs) to " << what;
+      CHECK(bd != nullptr) << "Expected float argument (rhs) to " << what;
+      return std::make_pair(*ad, *bd);
+    };
+
   auto TwoStrings = [a, b](const char *what) ->
     std::pair<const std::string &, const std::string &> {
     const std::string *as = std::get_if<std::string>(&a->v);
@@ -83,6 +92,10 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   auto Bool = [this, state](bool x) -> Value * {
       return NewValue(&state->heap, uint64_t(x ? 1 : 0));
+    };
+
+  auto Float = [this, state](double d) -> Value * {
+      return NewValue(&state->heap, d);
     };
 
   auto Big = [this, state](BigInt b) -> Value * {
@@ -151,13 +164,35 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return Big(BigInt::CMod(aa, bb));
   }
 
-  case Primop::INT_DIV_TO_FLOAT:
+  case Primop::INT_DIV_TO_FLOAT: {
+    const auto &[aa, bb] = TwoInts("int_mod");
+    if (BigInt::Eq(bb, 0)) {
+      // We can allow division by zero, returning -inf, nan, or +inf
+      LOG(FATAL) << "unimplemented";
+    }
+
     LOG(FATAL) << "unimplemented INT_DIV_TO_FLOAT";
-  case Primop::FLOAT_TIMES:
-  case Primop::FLOAT_PLUS:
-  case Primop::FLOAT_MINUS:
-  case Primop::FLOAT_DIV:
-    LOG(FATAL) << "unimplemented FLOAT ops";
+  }
+
+  case Primop::FLOAT_TIMES: {
+    const auto &[aa, bb] = TwoFloats("float_times");
+    return Float(aa * bb);
+  }
+
+  case Primop::FLOAT_PLUS: {
+    const auto &[aa, bb] = TwoFloats("float_times");
+    return Float(aa + bb);
+  }
+
+  case Primop::FLOAT_MINUS: {
+    const auto &[aa, bb] = TwoFloats("float_times");
+    return Float(aa - bb);
+  }
+
+  case Primop::FLOAT_DIV: {
+    const auto &[aa, bb] = TwoFloats("float_times");
+    return Float(aa / bb);
+  }
 
   case Primop::STRING_EQ: {
     const auto &[aa, bb] = TwoStrings("string_eq");
@@ -172,6 +207,60 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   return NonceValue();
 }
 
+Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
+
+  auto GetInt = [a](const char *what) -> const BigInt & {
+      const BigInt *bi = std::get_if<BigInt>(&a->v);
+      CHECK(bi != nullptr) << "Expected int argument (lhs) to " << what;
+      return *bi;
+    };
+
+  auto GetFloat = [a](const char *what) -> double {
+      const double *d = std::get_if<double>(&a->v);
+      CHECK(d != nullptr) << "Expected float argument (lhs) to " << what;
+      return *d;
+    };
+
+  auto Float = [this, state](double d) -> Value * {
+      return NewValue(&state->heap, d);
+    };
+
+  auto Big = [this, state](BigInt b) -> Value * {
+      return NewValue(&state->heap, std::move(b));
+    };
+
+  switch (primop) {
+  case Primop::REF:
+    LOG(FATAL) << "unimplemented REF";
+
+  case Primop::GET:
+    LOG(FATAL) << "unimplemented GET";
+
+  case Primop::INT_NEG: {
+    const BigInt &bi = GetInt("int_neg");
+    return Big(BigInt::Negate(bi));
+  }
+
+  case Primop::FLOAT_NEG: {
+    const double d = GetFloat("int_neg");
+    return Float(-d);
+  }
+
+  case Primop::INVALID:
+    LOG(FATAL) << "Tried executing INVALID primop as unop.";
+  default:
+    LOG(FATAL) << "Invalid (or non-unop) primop " << PrimopString(primop);
+  }
+  return NonceValue();
+}
+
+void Execution::RunToCompletion(State *state) {
+  // TODO: Call GC with some policy.
+  while (!IsDone(*state)) {
+    Step(state);
+  }
+}
+
 // Take one step in the program.
 void Execution::Step(State *state) {
   CHECK(!state->stack.empty());
@@ -181,29 +270,50 @@ void Execution::Step(State *state) {
     "(this code block has " << frame.insts->size() << ").";
   const Inst &inst = (*frame.insts)[frame.ip];
 
-  auto Load = [&frame](const std::string &local) -> Value * {
+  // Hack: We use this in the "message" of an assertion, but it
+  // prints the stack trace as an effect.
+  auto Error = [state, ip = frame.ip]() -> std::string {
+      fprintf(stderr, "\n\n" ARED("Error") " here:\n");
+      if (state->stack.empty()) {
+        fprintf(stderr, "(stack is empty!)");
+      } else {
+        StackFrame &frame = state->stack.back();
+        for (int i = ip - 3; i < ip + 3; i++) {
+          if (i >= 0 && i < (int)frame.insts->size()) {
+            fprintf(stderr, "%s%05d" ANSI_RESET " %s\n",
+                    // color for line number
+                    (i == ip) ? ARED(">") ANSI_WHITE : " " ANSI_GREY,
+                    i,
+                    ColorInstString((*frame.insts)[i]).c_str());
+          }
+        }
+      }
+      return "";
+    };
+
+  auto Load = [&Error, &frame](const std::string &local) -> Value * {
       auto it = frame.locals.find(local);
-      CHECK(it != frame.locals.end()) << "Tried to load unset local " <<
-        local;
+      CHECK(it != frame.locals.end()) << Error() <<
+        "Tried to load unset local " << local;
       return it->second;
     };
 
-  auto LoadString = [&Load](const std::string &local) ->
+  auto LoadString = [&Error, &Load](const std::string &local) ->
     const std::string & {
       const Value *a = Load(local);
       const std::string *s = std::get_if<std::string>(&a->v);
-      CHECK(s != nullptr) << "Expected " << local << " to have a string "
-        "value.";
+      CHECK(s != nullptr) << Error() << "Expected " << local <<
+        " to have a string value. Got: " << ColorValueString(*a);
       return *s;
     };
 
-  auto LoadRec = [&Load](const std::string &local) ->
+  auto LoadRec = [&Error, &Load](const std::string &local) ->
     std::unordered_map<std::string, Value *> * {
       Value *a = Load(local);
       auto *r =
         std::get_if<std::unordered_map<std::string, Value *>>(&a->v);
-      CHECK(r != nullptr) << "Expected " << local << " to have a record "
-        "value.";
+      CHECK(r != nullptr) << Error() << "Expected " << local <<
+      " to have a record value. Got: " << ColorValueString(*a);
       return r;
     };
 
@@ -216,16 +326,43 @@ void Execution::Step(State *state) {
               Load(binop->arg1),
               Load(binop->arg2),
               state);
+
   } else if (const inst::Unop *unop = std::get_if<inst::Unop>(&inst)) {
-    LOG(FATAL) << "Unop unimplemented";
+    frame.locals[unop->out] =
+      DoUnop(binop->primop,
+             Load(unop->arg),
+             state);
+
   } else if (const inst::Call *call = std::get_if<inst::Call>(&inst)) {
-    LOG(FATAL) << "Call unimplemented";
+    const std::string &fp = LoadString(call->f);
+    const auto it = program.code.find(fp);
+    CHECK(it != program.code.end()) << Error() <<
+      "Call to unknown function " << fp;
+    const auto &[farg, finsts] = it->second;
+
+    // Locals start with just the passed arg.
+    std::unordered_map<std::string, Value *> flocals;
+
+    // New frame.
+    state->stack.push_back(StackFrame{
+        .insts = &finsts,
+        .ip = 0,
+        .locals = std::move(flocals)
+      });
+
   } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
+    // When we make a call, the instruction pointer is already advanced
+    // one past the Call instruction, which is what we want. But we
+    // need to look one previous to get the name of the local that
+    // we are assigning to.
     LOG(FATAL) << "Ret unimplemented";
+
   } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
     LOG(FATAL) << "If unimplemented";
+
   } else if (const inst::Alloc *alloc = std::get_if<inst::Alloc>(&inst)) {
-    LOG(FATAL) << "Alloc unimplemented";
+    frame.locals[alloc->out] =
+      NewValue(&state->heap, std::unordered_map<std::string, Value *>());
   } else if (const inst::SetLabel *setlabel =
              std::get_if<inst::SetLabel>(&inst)) {
     std::unordered_map<std::string, Value *> *rec =
@@ -237,26 +374,31 @@ void Execution::Step(State *state) {
     const std::unordered_map<std::string, Value *> *rec =
       LoadRec(getlabel->obj);
     auto it = rec->find(getlabel->lab);
-    CHECK(it != rec->end()) << "Label " << getlabel->lab << " not found "
-      "in record.";
+    CHECK(it != rec->end()) << Error() <<
+      "Label " << getlabel->lab << " not found in record.";
     frame.locals[getlabel->out] = it->second;
+
   } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
     frame.locals[bind->out] = Load(bind->arg);
+
   } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
     const auto &it = program.data.find(load->data_label);
-    CHECK(it != program.data.end()) << "Data label not found: " <<
-      load->data_label;
+    CHECK(it != program.data.end()) << Error() <<
+      "Data label not found: " << load->data_label;
     // Copying the value to the heap.
     // PERF: We could leave these as globals, but then we need to
     // somehow note them for garbage collection?
     frame.locals[load->out] = NewValue(&state->heap, it->second.v);
+
   } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
     frame.ip = jump->idx;
+
   } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
     InternalFail(LoadString(fail->arg), state);
     return;
+
   } else {
-    LOG(FATAL) << "Invalid/Unimplemented instruction!";
+    LOG(FATAL) << Error() << "Invalid/Unimplemented instruction!";
   }
 
 }
