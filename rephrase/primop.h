@@ -43,6 +43,11 @@ enum class Primop {
   STRING_EQ,
   // TODO: Other string comparisons
 
+  INT_TO_STRING,
+
+  // I/O
+  OUT_STRING,
+
   INVALID,
 };
 

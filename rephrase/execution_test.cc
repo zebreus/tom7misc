@@ -71,11 +71,10 @@ static void TestTrivial() {
   CHECK(execution.fail_message.value() == "Test");
 }
 
-static void TestEndToEnd() {
+static void TestEndToEndEasy() {
   using TE = TestExecution;
 
   Compiler compiler;
-  // There's pretty much only one way to compile this program.
   Program prog = compiler.CompileString(
       "test",
       R"(
@@ -98,13 +97,107 @@ static void TestEndToEnd() {
   CHECK(!execution.Failed());
 }
 
+static std::string RunToString(const std::string &source) {
+  using TE = TestExecution;
+  Compiler compiler;
+  Program prog = compiler.CompileString("test", source);
+  TE execution(prog);
+  TE::State state = execution.Start();
+  execution.RunToCompletion(&state);
+  CHECK(!execution.Failed());
+  return std::move(execution.console_output);
 }
+
+static void ExecTests() {
+  CHECK(RunToString("7") == "") << "No output.";
+  CHECK(RunToString("print \"hi\"") == "hi");
+
+  CHECK(RunToString(R"(
+    let
+      fun f 0 = print "done."
+        | f n =
+          let do print "@"
+          in f (n - 1)
+          end
+    in
+      f 7
+    end
+   )") == "@@@@@@@done.");
+
+  CHECK(RunToString(R"(
+    let
+      fun fact 0 = 1
+        | fact n = n * fact (n - 1)
+    in
+      print (itos (fact 5))
+    end
+   )") == "120");
+
+  CHECK(RunToString(R"(
+  let
+    fun o(f, g) = fn x => f(g(x))
+
+    datatype (a) list = :: of a * list | nil
+
+    datatype order = LESS | EQUAL | GREATER
+
+    fun int-compare (a, b) =
+      if a < b
+      then LESS
+      else if a == b
+           then EQUAL
+           else GREATER
+
+    fun list-sort cmp l =
+      let
+        fun split l =
+          let fun s (a1, a2, nil) = (a1, a2)
+                | s (a1, a2, (h::t)) = s (a2, h::a1, t)
+          in s (nil, nil, l)
+          end
+
+        fun merge (a, nil) = a
+          | merge (nil, b) = b
+          | merge ((a :: ta) as aa, (b :: tb) as bb) =
+          case cmp (a, b) of
+            EQUAL => (a :: b :: merge (ta, tb))
+          | LESS => (a :: merge (ta, bb))
+          | GREATER => (b :: merge (aa, tb))
+
+        fun ms nil = nil
+          | ms ((s :: nil) as l) = l
+          | ms (a :: b :: nil) = merge (a :: nil, b :: nil)
+          | ms ll =
+          let val (a,b) = split ll
+          in merge (ms a, ms b)
+          end
+      in
+        ms l
+      end
+
+    fun list-app f nil = ()
+      | list-app f (h :: t) =
+      let do f h
+      in list-app f t
+      end
+
+    val list = 3 :: 9 :: 1 :: 2 :: 4 :: 8 :: 6 :: 7 :: 5 :: nil
+    val sorted = list-sort int-compare list
+  in
+    list-app (print o itos) sorted
+  end
+  )") == "123456789");
+
+}
+
+}  // namespace bc
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   bc::TestTrivial();
-  bc::TestEndToEnd();
+  bc::TestEndToEndEasy();
+  bc::ExecTests();
 
   printf("OK\n");
   return 0;

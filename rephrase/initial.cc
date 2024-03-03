@@ -47,6 +47,10 @@ Initial::Initial(AstPool *pool) {
     {":=", Primop::SET},
     {"!", Primop::GET},
     {"ref", Primop::REF},
+
+    {"itos", Primop::INT_TO_STRING},
+
+    {"print", Primop::OUT_STRING},
   };
 
   std::vector<std::pair<std::string, VarInfo>> exp_vars;

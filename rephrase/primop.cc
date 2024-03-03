@@ -32,6 +32,8 @@ const char *PrimopString(Primop p) {
   case Primop::FLOAT_PLUS: return "FLOAT_PLUS";
   case Primop::FLOAT_MINUS: return "FLOAT_MINUS";
   case Primop::FLOAT_DIV: return "FLOAT_DIV";
+  case Primop::OUT_STRING: return "OUT_STRING";
+  case Primop::INVALID: return "INVALID";
   default: return "?? UNKNOWN PRIMOP ??";
   }
 }
@@ -59,6 +61,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::FLOAT_PLUS: return std::make_tuple(0, 2);
   case Primop::FLOAT_MINUS: return std::make_tuple(0, 2);
   case Primop::FLOAT_DIV: return std::make_tuple(0, 2);
+  case Primop::INT_TO_STRING: return std::make_tuple(0, 1);
+  case Primop::OUT_STRING: return std::make_tuple(0, 1);
   default:
     LOG(FATAL) << "Unknown primop: " << PrimopString(po);
     return std::make_tuple(0, 0);
@@ -97,6 +101,8 @@ bool IsPrimopTotal(Primop p) {
   case Primop::FLOAT_PLUS: return true;
   case Primop::FLOAT_MINUS: return true;
   case Primop::FLOAT_DIV: return true;
+  case Primop::INT_TO_STRING: return true;
+  case Primop::OUT_STRING: return false;
   default:
     printf("Uknown primop in IsPrimopTotal");
     return false;
@@ -110,6 +116,8 @@ bool IsPrimopDiscardable(Primop p) {
     return true;
   case Primop::GET: return true;
   case Primop::SET: return false;
+
+  case Primop::OUT_STRING: return false;
 
   default:
     return IsPrimopTotal(p);
@@ -175,6 +183,9 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::FLOAT_NEG: return {{}, pool->Arrow(Float, Float)};
 
   case Primop::STRING_EQ: return {{}, BinOp(String, String, Bool)};
+
+  case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
+  case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};
 
   default:
     LOG(FATAL) << "Unknown primop in PrimopType";

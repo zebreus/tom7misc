@@ -219,14 +219,26 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   auto GetInt = [a](const char *what) -> const BigInt & {
       const BigInt *bi = std::get_if<BigInt>(&a->v);
-      CHECK(bi != nullptr) << "Expected int argument (lhs) to " << what;
+      CHECK(bi != nullptr) << "Expected int argument to " << what;
       return *bi;
     };
 
   auto GetFloat = [a](const char *what) -> double {
       const double *d = std::get_if<double>(&a->v);
-      CHECK(d != nullptr) << "Expected float argument (lhs) to " << what;
+      CHECK(d != nullptr) << "Expected float argument to " << what;
       return *d;
+    };
+
+  auto GetString = [a](const char *what) -> const std::string & {
+      const std::string *s = std::get_if<std::string>(&a->v);
+      CHECK(s != nullptr) << "Expected string argument to " << what;
+      return *s;
+  };
+
+  auto Unit = [this, state]() -> Value * {
+      // PERF: Don't represent unit with an allocated record :(
+      return NewValue(&state->heap,
+                      std::unordered_map<std::string, Value *>());
     };
 
   auto Float = [this, state](double d) -> Value * {
@@ -235,6 +247,10 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   auto Big = [this, state](BigInt b) -> Value * {
       return NewValue(&state->heap, std::move(b));
+    };
+
+  auto String = [this, state](std::string s) -> Value * {
+      return NewValue(&state->heap, std::move(s));
     };
 
   switch (primop) {
@@ -250,8 +266,19 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   }
 
   case Primop::FLOAT_NEG: {
-    const double d = GetFloat("int_neg");
+    const double d = GetFloat("float_neg");
     return Float(-d);
+  }
+
+  case Primop::INT_TO_STRING: {
+    const BigInt &bi = GetInt("int_to_string");
+    return String(bi.ToString());
+  }
+
+  case Primop::OUT_STRING: {
+    const std::string &s = GetString("out_string");
+    ConsoleHook(s);
+    return Unit();
   }
 
   case Primop::INVALID:
@@ -355,7 +382,7 @@ void Execution::Step(State *state) {
 
   } else if (const inst::Unop *unop = std::get_if<inst::Unop>(&inst)) {
     frame.locals[unop->out] =
-      DoUnop(binop->primop,
+      DoUnop(unop->primop,
              Load(unop->arg),
              state);
 
