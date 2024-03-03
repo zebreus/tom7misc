@@ -20,6 +20,9 @@ namespace {
 
 struct Converter {
 
+  static constexpr const char *INJ_LABEL = "#";
+  static constexpr const char *INJ_VALUE = "$";
+
   // We actually keep code, data, and local symbols disjoint (even
   // though this is not required) to prevent conclusion.
   std::string NewSymbol(const std::string &hint) {
@@ -326,8 +329,18 @@ struct Converter {
       }
 
       case il::ExpType::INJECT: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
+        const auto &[lab, t, e] = exp->Inject();
+        // Sum is a represented as a map with the label and boxed value.
+        const std::string elocal = ConvertExp(G, "inj", e, insts);
+        const std::string rec = NewSymbol(lab);
+        insts->emplace_back(inst::Alloc{.out = rec});
+        const std::string lab_value =
+          AddValue(lab, Value{.v = Value::t(lab)});
+        insts->emplace_back(inst::SetLabel({
+              .obj = rec, .lab = INJ_LABEL, .arg = lab_value}));
+        insts->emplace_back(inst::SetLabel({
+              .obj = rec, .lab = INJ_VALUE, .arg = elocal}));
+        return rec;
       }
 
       case il::ExpType::PRIMOP: {
@@ -379,18 +392,99 @@ struct Converter {
         continue;
       }
 
+      case il::ExpType::SUMCASE: {
+        // Alas, we cannot decompose this one without adding some
+        // unsafe or ugly primitives to IL, so we have to implement
+        // it here.
+
+        const auto &[obj, arms, def] = exp->SumCase();
+        // std::vector<std::tuple<std::string, std::string, const Exp *>>
+
+        const std::string obj_local = ConvertExp(G, "sc_obj", obj, insts);
+
+        const std::string res = NewSymbol("sc_res");
+
+        // Read the actual label just once.
+        const std::string actual = NewSymbol("lab");
+        insts->emplace_back(inst::GetLabel{
+            .out = actual, .obj = obj_local, .lab = INJ_LABEL});
+        // We could also read the contents once, but that seems
+        // uglier since it would have different types on each branch.
+        // We might do a future optimization where nullary constructors
+        // don't even store data, for example. We also don't need to
+        // load it in the default or (in principle) in arms where
+        // it isn't used.
+
+        // Each arm needs to jump to the code when there's a successful
+        // match, and then back to the join point.
+        std::vector<int> jump_match, jump_joins;
+        jump_match.reserve(arms.size());
+        jump_joins.reserve(arms.size());
+
+        // We keep writing to this same temporary, a bool.
+        const std::string test = NewSymbol("test");
+        for (const auto &[lab, x, e] : arms) {
+          const std::string lab_value =
+            AddValue(lab, Value{.v = Value::t(lab)});
+          // compare labels
+          insts->emplace_back(inst::Binop{
+              .primop = Primop::STRING_EQ,
+              .out = test,
+              .arg1 = actual,
+              .arg2 = lab_value});
+          // the match jump
+          jump_match.push_back(ReserveInstruction(insts));
+        }
+
+        // If we got here, then this is the default.
+        const std::string def_local = ConvertExp(G, "sc_def", def, insts);
+        insts->emplace_back(inst::Bind({.out = res, .arg = def_local}));
+        const int jump_def_join = ReserveInstruction(insts);
+
+        // Code for each arm.
+        for (int i = 0; i < (int)arms.size(); i++) {
+          const auto &[lab, x, e] = arms[i];
+          // Patch in the jump here.
+          const int match_idx = insts->size();
+          (*insts)[jump_match[i]] =
+            Inst(inst::If{.cond = test, .true_idx = match_idx});
+
+          // Unpack contained value.
+          const std::string x_local = NewSymbol(x);
+          insts->emplace_back(inst::GetLabel{
+              .out = x_local,
+              .obj = obj_local,
+              .lab = INJ_VALUE,
+            });
+          // Convert arm's expression, with x bound to the contents.
+          const std::string arm_local =
+            ConvertExp(G.Insert(x, x_local), lab + "_arm", e, insts);
+          insts->emplace_back(inst::Bind({.out = res, .arg = arm_local}));
+          // Reserve slot to jump to join.
+          CHECK((int)jump_joins.size() == i);
+          jump_joins.push_back(ReserveInstruction(insts));
+        }
+
+        // Now the location of the join.
+        const int join_idx = (int)insts->size();
+
+        // So patch in the jumps.
+        for (int i = 0; i < (int)jump_joins.size(); i++)
+          (*insts)[jump_joins[i]] = Inst(inst::Jump({.idx = join_idx}));
+        // including the default.
+        (*insts)[jump_def_join] = Inst(inst::Jump({.idx = join_idx}));
+
+        return res;
+      }
+
+
       case il::ExpType::INTCASE: {
         LOG(FATAL) << "Expecting intcase to be compiled away by now.";
         return "ERROR";
       }
 
       case il::ExpType::STRINGCASE: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
-      }
-
-      case il::ExpType::SUMCASE: {
-        LOG(FATAL) << "Unimplemented";
+        LOG(FATAL) << "Expecting stringcase to be compiled away by now.";
         return "ERROR";
       }
 

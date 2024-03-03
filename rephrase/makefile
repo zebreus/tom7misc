@@ -12,7 +12,7 @@ test : lex_test.exe context_test.exe unification_test.exe parse_test.exe fronten
 	./frontend_test.exe
 	./il-typed-pass_test.exe
 	./closure-conversion_test.exe
-# TODO: compiler test
+	./compiler_test.exe
 # TODO: execution test
 
 test.pdf : bovex.exe test.bovex stdlib.bovex

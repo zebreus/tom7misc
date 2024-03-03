@@ -26,10 +26,11 @@ struct Simplification {
   // We require these optimizations to remove some constructs
   // before bytecode generation.
   static constexpr uint64_t O_DECOMPOSE_INTCASE = 1ULL << 50;
+  static constexpr uint64_t O_DECOMPOSE_STRINGCASE = 1ULL << 51;
 
   static constexpr uint64_t O_ALL = ~0ULL;
   static constexpr uint64_t O_CONSERVATIVE =
-    ~(O_DECOMPOSE_INTCASE);
+    ~(O_DECOMPOSE_INTCASE | O_DECOMPOSE_STRINGCASE);
 
   void SetVerbose(int verbose);
 

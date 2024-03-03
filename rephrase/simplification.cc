@@ -611,6 +611,37 @@ struct DecomposePass : public il::Pass<> {
                      body);
   }
 
+  // Same, for StringCase.
+  const Exp *DoStringCase(
+      const Exp *obj,
+      const std::vector<
+          std::pair<std::string, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess) override {
+    if (!(opts & Simplification::O_DECOMPOSE_STRINGCASE))
+      return Pass::DoStringCase(obj, arms, def, guess);
+
+    std::string objvar = pool->NewVar("strcase_obj");
+    const Exp *objvarexp = pool->Var({}, objvar);
+
+    const Exp *body = DoExp(def);
+    // PERF: If there are many cases, we should at least do
+    // binary search. For sumcase there could be many tricks,
+    // like checking specific informative characters in the
+    // strings.
+    for (const auto &[str, e] : arms) {
+      body = pool->If(pool->Primop(Primop::STRING_EQ,
+                                   {}, {pool->String(str), objvarexp}),
+                      DoExp(e),
+                      body);
+    }
+
+    progress->Simplified("decompose stringcase");
+    return pool->Let({}, objvar, DoExp(obj),
+                     body);
+  }
+
+
  private:
   const uint64_t opts = 0;
   Progress *progress = nullptr;
