@@ -18,8 +18,8 @@ Execution::Execution(const Program &pgm) : program(pgm) {
 
 Execution::~Execution() {}
 
-Value Execution::NonceValue() {
-  return Value{.v = {uint64_t(0xCAFEBABE)}};
+Value *Execution::NonceValue() {
+  return nullptr; // Value{.v = {uint64_t(0xCAFEBABE)}};
 }
 
 Execution::State Execution::Start() const {
@@ -27,7 +27,7 @@ Execution::State Execution::Start() const {
   CHECK(m != program.code.end()) << "There is no 'main'!";
   const auto &[main_arg, main_insts] = m->second;
 
-  std::unordered_map<std::string, Value> locals;
+  std::unordered_map<std::string, Value *> locals;
   locals[main_arg] = NonceValue();
 
   State state;
@@ -61,32 +61,32 @@ void Execution::ConsoleHook(const std::string &msg) {
   printf("%s", msg.c_str());
 }
 
-Value Execution::DoBinop(Primop primop, Value &a, Value &b,
-                         State *state) {
-  auto TwoInts = [&a, &b](const char *what) ->
+Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
+                          State *state) {
+  auto TwoInts = [a, b](const char *what) ->
     std::pair<const BigInt &, const BigInt &> {
-      const BigInt *abi = std::get_if<BigInt>(&a.v);
-      const BigInt *bbi = std::get_if<BigInt>(&b.v);
+      const BigInt *abi = std::get_if<BigInt>(&a->v);
+      const BigInt *bbi = std::get_if<BigInt>(&b->v);
       CHECK(abi != nullptr) << "Expected int argument (lhs) to " << what;
       CHECK(bbi != nullptr) << "Expected int argument (rhs) to " << what;
       return std::tie(*abi, *bbi);
     };
 
-  auto TwoStrings = [&a, &b](const char *what) ->
+  auto TwoStrings = [a, b](const char *what) ->
     std::pair<const std::string &, const std::string &> {
-    const std::string *as = std::get_if<std::string>(&a.v);
-    const std::string *bs = std::get_if<std::string>(&b.v);
+    const std::string *as = std::get_if<std::string>(&a->v);
+    const std::string *bs = std::get_if<std::string>(&b->v);
     CHECK(as != nullptr) << "Expected string argument (lhs) to " << what;
     CHECK(bs != nullptr) << "Expected string argument (rhs) to " << what;
     return std::tie(*as, *bs);
   };
 
-  auto Bool = [](bool x) {
-      return Value{.v = {uint64_t(x ? 1 : 0)}};
+  auto Bool = [this, state](bool x) -> Value * {
+      return NewValue(&state->heap, uint64_t(x ? 1 : 0));
     };
 
-  auto Big = [](BigInt b) {
-      return Value{.v = {std::move(b)}};
+  auto Big = [this, state](BigInt b) -> Value * {
+      return NewValue(&state->heap, std::move(b));
     };
 
   switch (primop) {
@@ -181,11 +181,30 @@ void Execution::Step(State *state) {
     "(this code block has " << frame.insts->size() << ").";
   const Inst &inst = (*frame.insts)[frame.ip];
 
-  auto Load = [&frame](const std::string &local) -> Value & {
+  auto Load = [&frame](const std::string &local) -> Value * {
       auto it = frame.locals.find(local);
       CHECK(it != frame.locals.end()) << "Tried to load unset local " <<
         local;
       return it->second;
+    };
+
+  auto LoadString = [&Load](const std::string &local) ->
+    const std::string & {
+      const Value *a = Load(local);
+      const std::string *s = std::get_if<std::string>(&a->v);
+      CHECK(s != nullptr) << "Expected " << local << " to have a string "
+        "value.";
+      return *s;
+    };
+
+  auto LoadRec = [&Load](const std::string &local) ->
+    std::unordered_map<std::string, Value *> * {
+      Value *a = Load(local);
+      auto *r =
+        std::get_if<std::unordered_map<std::string, Value *>>(&a->v);
+      CHECK(r != nullptr) << "Expected " << local << " to have a record "
+        "value.";
+      return r;
     };
 
   // By default, advance the ip.
@@ -209,18 +228,33 @@ void Execution::Step(State *state) {
     LOG(FATAL) << "Alloc unimplemented";
   } else if (const inst::SetLabel *setlabel =
              std::get_if<inst::SetLabel>(&inst)) {
-    LOG(FATAL) << "SetLabel unimplemented";
+    std::unordered_map<std::string, Value *> *rec =
+      LoadRec(setlabel->obj);
+    (*rec)[setlabel->lab] = Load(setlabel->arg);
+
   } else if (const inst::GetLabel *getlabel =
              std::get_if<inst::GetLabel>(&inst)) {
-    LOG(FATAL) << "GetLabel unimplemented";
+    const std::unordered_map<std::string, Value *> *rec =
+      LoadRec(getlabel->obj);
+    auto it = rec->find(getlabel->lab);
+    CHECK(it != rec->end()) << "Label " << getlabel->lab << " not found "
+      "in record.";
+    frame.locals[getlabel->out] = it->second;
   } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
-    LOG(FATAL) << "Bind unimplemented";
+    frame.locals[bind->out] = Load(bind->arg);
   } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
-    LOG(FATAL) << "Load unimplemented";
+    const auto &it = program.data.find(load->data_label);
+    CHECK(it != program.data.end()) << "Data label not found: " <<
+      load->data_label;
+    // Copying the value to the heap.
+    // PERF: We could leave these as globals, but then we need to
+    // somehow note them for garbage collection?
+    frame.locals[load->out] = NewValue(&state->heap, it->second.v);
   } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
-    LOG(FATAL) << "Jump unimplemented";
+    frame.ip = jump->idx;
   } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
-    LOG(FATAL) << "Fail unimplemented";
+    InternalFail(LoadString(fail->arg), state);
+    return;
   } else {
     LOG(FATAL) << "Invalid/Unimplemented instruction!";
   }
