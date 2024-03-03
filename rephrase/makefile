@@ -1,7 +1,7 @@
 
-default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe
+default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe
 
-test : lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe
+test : lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe
 	./lex_test.exe
 	./il_test.exe
 	./il-util_test.exe
@@ -13,7 +13,7 @@ test : lex_test.exe context_test.exe unification_test.exe parse_test.exe fronten
 	./il-typed-pass_test.exe
 	./closure-conversion_test.exe
 	./compiler_test.exe
-# TODO: execution test
+	./execution_test.exe
 
 test.pdf : bovex.exe test.bovex stdlib.bovex
 	./bovex.exe test.bovex -o test.pdf

@@ -1,31 +1,90 @@
 
 #include "execution.h"
 
+#include <string>
+#include <optional>
+
+#include "compiler.h"
+
 #include "ansi.h"
 #include "base/logging.h"
 
-static void TestTrivial() {
+namespace bc {
 
-  bc::Program program;
-  bc::Inst load = bc::inst::Load{.out = "x", .data_label = "msg"};
-  bc::Inst fail = bc::inst::Fail{.arg = "x"};
+struct TestExecution : public Execution {
+  using Execution::Execution;
+
+  void FailHook(const std::string &msg) override {
+    CHECK(!Failed());
+    fail_message = {msg};
+  }
+
+  void ConsoleHook(const std::string &out) override {
+    console_output += out;
+  }
+
+  bool Failed() const { return fail_message.has_value(); }
+
+  std::optional<std::string> fail_message;
+  std::string console_output;
+};
+
+static void TestTrivial() {
+  using TE = TestExecution;
+
+  Program program;
+  Inst load = inst::Load{.out = "x", .data_label = "msg"};
+  Inst fail = inst::Fail{.arg = "x"};
 
   program.data = {
-    {"msg", {.v = bc::Value::t(std::string("Test"))}}
+    {"msg", {.v = Value::t(std::string("Test"))}}
   };
   program.code = {
-    {"main", {load, fail}}
+    {"main", std::make_pair("unused", std::vector<Inst>{load, fail})}
   };
 
-  bc::Execution execution(program);
+  TE execution(program);
 
-  // TODO: Start, step, etc.
+  TE::State state = execution.Start();
+  {
+    const TE::StackFrame &frame = state.stack.back();
+    CHECK(frame.ip == 0) << "Starts at the first instruction.";
+    CHECK(!frame.locals.contains("x"));
+    CHECK(program.code.contains("main"));
+    const auto &m = program.code["main"];
+    CHECK(frame.insts == &m.second);
+  }
+
+  CHECK(!execution.Failed());
+  execution.Step(&state);
+  CHECK(!state.stack.empty());
+  {
+    const TE::StackFrame &frame = state.stack.back();
+    CHECK(frame.ip == 1) << "Executed one instruction.";
+    CHECK(frame.locals.contains("x"));
+  }
+
+  execution.Step(&state);
+  CHECK(execution.Failed()) << "Should have executed the fail "
+    "instruction.";
+
+  CHECK(execution.fail_message.value() == "Test");
+}
+
+static void TestEndToEnd() {
+  Compiler compiler;
+  // There's pretty much only one way to compile this program.
+  Program prog = compiler.CompileString("test", "7");
+  // XXX execute it!
+}
+
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  TestTrivial();
+  bc::TestTrivial();
+  bc::TestEndToEnd();
 
   printf("OK\n");
   return 0;

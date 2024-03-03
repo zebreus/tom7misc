@@ -41,6 +41,7 @@ enum class Primop {
   FLOAT_NEG,
 
   STRING_EQ,
+  // TODO: Other string comparisons
 
   INVALID,
 };
