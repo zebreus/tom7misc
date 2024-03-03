@@ -280,7 +280,8 @@ void Execution::Step(State *state) {
 
   // Hack: We use this in the "message" of an assertion, but it
   // prints the stack trace as an effect.
-  auto Error = [state, ip = frame.ip]() -> std::string {
+  int error_ip = frame.ip;
+  auto Error = [state, &error_ip]() -> std::string {
       fprintf(stderr, "\n\n" ARED("Error") ":\n");
       if (state->stack.empty()) {
         fprintf(stderr, "(stack is empty!)");
@@ -294,11 +295,11 @@ void Execution::Step(State *state) {
         }
 
         fprintf(stderr, AWHITE("Executing") ":\n");
-        for (int i = ip - 3; i < ip + 3; i++) {
+        for (int i = error_ip - 3; i < error_ip + 3; i++) {
           if (i >= 0 && i < (int)frame.insts->size()) {
             fprintf(stderr, "%s%05d" ANSI_RESET " %s\n",
                     // color for line number
-                    (i == ip) ? ARED(">") ANSI_WHITE : " " ANSI_GREY,
+                    (i == error_ip) ? ARED(">") ANSI_WHITE : " " ANSI_GREY,
                     i,
                     ColorInstString((*frame.insts)[i]).c_str());
           }
@@ -333,6 +334,15 @@ void Execution::Step(State *state) {
       return r;
     };
 
+  auto LoadBool = [&Error, &Load](const std::string &local) ->
+    bool {
+      const Value *a = Load(local);
+      const uint64_t *u = std::get_if<uint64_t>(&a->v);
+      CHECK(u != nullptr) << Error() << "Expected " << local <<
+        " to have a bool (uint64_t) value. Got: " << ColorValuePtrString(a);
+      return *u != 0;
+    };
+
   // By default, advance the ip.
   frame.ip++;
 
@@ -358,6 +368,7 @@ void Execution::Step(State *state) {
 
     // Locals start with just the passed arg.
     std::unordered_map<std::string, Value *> flocals;
+    flocals[farg] = Load(call->arg);
 
     // New frame.
     state->stack.push_back(StackFrame{
@@ -371,14 +382,36 @@ void Execution::Step(State *state) {
     // one past the Call instruction, which is what we want. But we
     // need to look one previous to get the name of the local that
     // we are assigning to.
-    LOG(FATAL) << "Ret unimplemented";
+    Value *rv = Load(ret->arg);
+    state->stack.pop_back();
+    if (state->stack.empty()) {
+      // We allow returning from main, but this ends execution.
+      // The returned value is discarded.
+      return;
+    } else {
+      StackFrame &parent_frame = state->stack.back();
+      error_ip = parent_frame.ip;
+      const int call_idx = parent_frame.ip - 1;
+      CHECK(call_idx >= 0 && call_idx < (int)parent_frame.insts->size()) <<
+        Error() << "Expected to return to one past a CALL instruction.";
+      const inst::Call *call = std::get_if<inst::Call>(
+          &(*parent_frame.insts)[call_idx]);
+      CHECK(call != nullptr) <<
+        Error() << "Expected to return to one past a CALL instruction.";
+      parent_frame.locals[call->out] = rv;
+      // ip already indicates the next instruction.
+    }
 
   } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
-    LOG(FATAL) << "If unimplemented";
+    const bool cond = LoadBool(iff->cond);
+    if (cond) {
+      frame.ip = iff->true_idx;
+    }
 
   } else if (const inst::Alloc *alloc = std::get_if<inst::Alloc>(&inst)) {
     frame.locals[alloc->out] =
       NewValue(&state->heap, std::unordered_map<std::string, Value *>());
+
   } else if (const inst::SetLabel *setlabel =
              std::get_if<inst::SetLabel>(&inst)) {
     std::unordered_map<std::string, Value *> *rec =
