@@ -61,6 +61,14 @@ void Execution::ConsoleHook(const std::string &msg) {
   printf("%s", msg.c_str());
 }
 
+static std::string ColorValuePtrString(const Value *value) {
+  if (value == nullptr) {
+    return AGREY("(null)");
+  } else {
+    return ColorValueString(*value);
+  }
+}
+
 Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
                           State *state) {
   auto TwoInts = [a, b](const char *what) ->
@@ -273,11 +281,19 @@ void Execution::Step(State *state) {
   // Hack: We use this in the "message" of an assertion, but it
   // prints the stack trace as an effect.
   auto Error = [state, ip = frame.ip]() -> std::string {
-      fprintf(stderr, "\n\n" ARED("Error") " here:\n");
+      fprintf(stderr, "\n\n" ARED("Error") ":\n");
       if (state->stack.empty()) {
         fprintf(stderr, "(stack is empty!)");
       } else {
         StackFrame &frame = state->stack.back();
+
+        fprintf(stderr, AWHITE("Locals") ":\n");
+        for (const auto &[local, value] : frame.locals) {
+          fprintf(stderr, " " ABLUE("%s") " = %s\n",
+                  local.c_str(), ColorValuePtrString(value).c_str());
+        }
+
+        fprintf(stderr, AWHITE("Executing") ":\n");
         for (int i = ip - 3; i < ip + 3; i++) {
           if (i >= 0 && i < (int)frame.insts->size()) {
             fprintf(stderr, "%s%05d" ANSI_RESET " %s\n",
@@ -303,7 +319,7 @@ void Execution::Step(State *state) {
       const Value *a = Load(local);
       const std::string *s = std::get_if<std::string>(&a->v);
       CHECK(s != nullptr) << Error() << "Expected " << local <<
-        " to have a string value. Got: " << ColorValueString(*a);
+        " to have a string value. Got: " << ColorValuePtrString(a);
       return *s;
     };
 
@@ -313,7 +329,7 @@ void Execution::Step(State *state) {
       auto *r =
         std::get_if<std::unordered_map<std::string, Value *>>(&a->v);
       CHECK(r != nullptr) << Error() << "Expected " << local <<
-      " to have a record value. Got: " << ColorValueString(*a);
+      " to have a record value. Got: " << ColorValuePtrString(a);
       return r;
     };
 

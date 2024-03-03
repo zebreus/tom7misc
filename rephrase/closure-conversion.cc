@@ -106,8 +106,8 @@ struct ConvertPass : public TypedPass<> {
     // so that we can use types without substitution.
     const std::string fnvar = pool->NewVar("f");
     const Exp *fnexp = pool->Var({}, fnvar);
-    const Exp *extracted_fn  = pool->Project("1", fnexp);
-    const Exp *extracted_env = pool->Project("2", fnexp);
+    const Exp *extracted_env = pool->Project("1", fnexp);
+    const Exp *extracted_fn  = pool->Project("2", fnexp);
     const Exp *ret =
       pool->Unpack(aenv, fnvar, ff,
                    pool->App(extracted_fn,
