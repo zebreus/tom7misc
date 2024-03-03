@@ -79,8 +79,6 @@ struct ILUtil {
 
   // subst Λ(α1, α2, ... αn).e1 for sym<τ1, τ2, ... τn> in e2;
   // The types τ1..τn are substituted for the α1..αn at each occurrence.
-  // The label cannot be used in a CALL expression (all functions
-  // post closure-conversion).
   static const Exp *SubstPolyExpForLabel(
       AstPool *pool,
       // α1, α2, ... αn

@@ -27,8 +27,11 @@ static void SimpleTest() {
   bc::Program prog = compiler.CompileString(
       "test",
       R"(
-let val x = ref 1
-in 6 + !x
+let
+  fun fact 0 = 1
+    | fact n = n * fact (n - 1)
+in
+  fact 6
 end
 )");
 

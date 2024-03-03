@@ -423,15 +423,6 @@ struct CountLabelsPass : public Pass<> {
     return guess;
   }
 
-  const Exp *DoCall(const std::string &sym,
-                    const std::vector<const Type *> &ts,
-                    const Exp *arg,
-                    const Exp *guess) override {
-    counts[sym]++;
-    DoExp(arg);
-    return guess;
-  }
-
   std::unordered_map<std::string, int> counts;
 };
 }  // namespace
@@ -483,15 +474,6 @@ struct SubstForLabelPass : public Pass<> {
       // Types are unaffected by substitution for expression variables.
       return guess;
     }
-  }
-
-  const Exp *DoCall(const std::string &sym,
-                    const std::vector<const Type *> &ts,
-                    const Exp *arg,
-                    const Exp *guess) override {
-    CHECK(sym != target_sym) << "Cannot substitute into a CALL expression "
-      "(post closure-conversion) since it is a literal label.";
-    return Pass::DoCall(sym, ts, arg, guess);
   }
 
   // The type variables bound in e1.

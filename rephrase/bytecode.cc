@@ -49,7 +49,8 @@ std::string ColorInstString(const Inst &inst) {
                         PrimopString(unop->primop),
                         unop->arg.c_str());
   } else if (const inst::Call *call = std::get_if<inst::Call>(&inst)) {
-    return "CALL";
+    return StringPrintf("CALL " AOUT("%s") " <- " AOP("%s") "(" AOP("%s") ")",
+                        call->out.c_str(), call->f.c_str(), call->arg.c_str());
   } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
     return StringPrintf("RET " AARG("%s"), ret->arg.c_str());
   } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {

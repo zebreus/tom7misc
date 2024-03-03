@@ -94,10 +94,6 @@ struct Pass {
       const auto &[f, x] = e->App();
       return DoApp(f, x, e, args...);
     }
-    case ExpType::CALL: {
-      const auto &[f, ts, x] = e->Call();
-      return DoCall(f, ts, x, e, args...);
-    }
     case ExpType::FN: {
       const auto &[self, x, arrow_type, body] = e->Fn();
       return DoFn(self, x, arrow_type, body, e, args...);
@@ -367,17 +363,6 @@ struct Pass {
                            const Exp *guess,
                            Args... args) {
     return pool->App(DoExp(f, args...), DoExp(arg, args...), guess);
-  }
-
-  virtual const Exp *DoCall(const std::string &sym,
-                            const std::vector<const Type *> &ts,
-                            const Exp *arg,
-                            const Exp *guess,
-                            Args... args) {
-    std::vector<const Type *> tts;
-    tts.reserve(ts.size());
-    for (const Type *t : ts) tts.push_back(DoType(t, args...));
-    return pool->App(sym, std::move(tts), DoExp(arg, args...), guess);
   }
 
   virtual const Exp *DoPrimop(Primop po,

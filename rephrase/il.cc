@@ -293,16 +293,6 @@ std::string ExpString(const Exp *e) {
                         ExpString(x).c_str());
   }
 
-  case ExpType::CALL: {
-    const auto &[f, types, x] = e->Call();
-    std::vector<std::string> tys;
-    for (const Type *t : types) tys.push_back(TypeString(t));
-    return StringPrintf("%s<%s>(%s)",
-                        f.c_str(),
-                        Util::Join(tys, ",").c_str(),
-                        ExpString(x).c_str());
-  }
-
   case ExpType::PRIMOP: {
     const auto &[po, types, children] = e->Primop();
 

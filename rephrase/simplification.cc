@@ -576,14 +576,65 @@ struct GlobalInlining {
   AstPool *pool = nullptr;
   Progress *progress = nullptr;
 };
+
+struct DecomposePass : public il::Pass<> {
+  DecomposePass(uint64_t opts, AstPool *pool, Progress *progress) :
+    Pass(pool),
+    opts(opts),
+    progress(progress) {
+  }
+
+  // Decompose an intcase into a series of primop tests.
+  const Exp *DoIntCase(
+      const Exp *obj,
+      const std::vector<std::pair<BigInt, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess) override {
+    if (!(opts & Simplification::O_DECOMPOSE_INTCASE))
+      return Pass::DoIntCase(obj, arms, def, guess);
+
+    std::string objvar = pool->NewVar("intcase_obj");
+    const Exp *objvarexp = pool->Var({}, objvar);
+
+    const Exp *body = DoExp(def);
+    // PERF: If there are many cases, we should at least do
+    // binary search.
+    for (const auto &[bi, e] : arms) {
+      body = pool->If(pool->Primop(Primop::INT_EQ,
+                                   {}, {pool->Int(bi), objvarexp}),
+                      DoExp(e),
+                      body);
+    }
+
+    progress->Simplified("decompose intcase");
+    return pool->Let({}, objvar, DoExp(obj),
+                     body);
+  }
+
+ private:
+  const uint64_t opts = 0;
+  Progress *progress = nullptr;
+};
+
 }  // namespace
 
 Program Simplification::Simplify(const Program &program_in,
                                  uint64_t opts) {
   Progress progress;
   Program program = program_in;
+  DecomposePass decompose(opts, pool, &progress);
   PeepholePass peephole(opts, pool, &progress);
   GlobalInlining global_inlining(opts, pool, &progress);
+
+  // Do decomposition first if enabled. This only needs
+  // to be done once, since other passes should not reintroduce
+  // these (we might want to be explicit about that?).
+  constexpr uint64_t ANY_DECOMPOSE =
+    O_DECOMPOSE_INTCASE;
+
+  if (opts & ANY_DECOMPOSE) {
+    program = decompose.DoProgram(program);
+  }
 
   do {
     progress.Reset();

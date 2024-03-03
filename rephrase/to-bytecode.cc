@@ -3,6 +3,7 @@
 
 #include <cctype>
 #include <string>
+#include <unordered_set>
 #include <unordered_map>
 #include <vector>
 #include <cstdint>
@@ -57,12 +58,47 @@ struct Converter {
     from_il_label[il_global_sym] = out_label;
   }
 
+  std::unordered_set<std::string> il_fn_labels;
+  void MarkGlobalIfFn(const il::Global &global) {
+    if (global.exp->type == il::ExpType::FN) {
+      il_fn_labels.insert(global.sym);
+    }
+  }
+
+  void AddData(const std::string &lab,
+               Value value) {
+    CHECK(!program.data.contains(lab)) << lab;
+    program.data[lab] = std::move(value);
+  }
+
   void ConvertGlobal(const il::Global &global) {
-    const std::string label = GetLabel(global.sym);
-
-    std::vector<Inst> insts;
-
-    // XXX!
+    if (il_fn_labels.contains(global.sym)) {
+      const auto &[self, x, arrow_type, body] = global.exp->Fn();
+      ConvertFn(global.sym, x, body);
+    } else {
+      const il::Exp *exp = global.exp;
+      const std::string label = GetLabel(global.sym);
+      switch (exp->type) {
+      case il::ExpType::STRING:
+        AddData(label, Value{.v = {exp->String()}});
+        break;
+      case il::ExpType::FLOAT:
+        AddData(label, Value{.v = {exp->Float()}});
+        break;
+      case il::ExpType::INT:
+        AddData(label, Value{.v = {exp->Int()}});
+        break;
+      case il::ExpType::BOOL: {
+        const uint64_t u = exp->Bool() ? 1 : 0;
+        AddData(label, Value{.v = {u}});
+        break;
+      }
+      default:
+        LOG(FATAL) << "Unimplemented type of global: "
+                   << global.sym << " = "
+                   << ExpString(global.exp);
+      }
+    }
   }
 
   // Several constructs are just for typing, and have no runtime
@@ -213,8 +249,18 @@ struct Converter {
       }
 
       case il::ExpType::GLOBAL_SYM: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
+        const auto &[ts, sym] = exp->GlobalSym();
+        std::string label = GetLabel(sym);
+
+        if (il_fn_labels.contains(sym)) {
+          // Code labels are treated differently. We load the name of
+          // the function ("function pointer") as the value.
+          return AddValue(sym, Value{.v = Value::t(label)});
+        } else {
+          const std::string out = NewSymbol(sym);
+          insts->emplace_back(inst::Load{.out = out, .data_label = label});
+          return out;
+        }
       }
 
       case il::ExpType::LAYOUT: {
@@ -263,8 +309,12 @@ struct Converter {
       }
 
       case il::ExpType::APP: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
+        const auto &[fn, arg] = exp->App();
+        const std::string f = ConvertExp(G, "f", fn, insts);
+        const std::string x = ConvertExp(G, "arg", arg, insts);
+        const std::string res = NewSymbol("app");
+        insts->emplace_back(inst::Call{.out = res, .f = f, .arg = x});
+        return res;
       }
 
       case il::ExpType::PROJECT: {
@@ -322,12 +372,15 @@ struct Converter {
       }
 
       case il::ExpType::SEQ: {
-        LOG(FATAL) << "Unimplemented";
-        return "ERROR";
+        const auto &[es, e] = exp->Seq();
+        for (const il::Exp *ee : es)
+          (void)ConvertExp(G, "ignore", ee, insts);
+        exp = e;
+        continue;
       }
 
       case il::ExpType::INTCASE: {
-        LOG(FATAL) << "Unimplemented";
+        LOG(FATAL) << "Expecting intcase to be compiled away by now.";
         return "ERROR";
       }
 
@@ -409,6 +462,12 @@ Program ToBytecode::Convert(const il::Program &pgm) {
   CHECK(conv.from_il_label["main"] == "main");
   for (const il::Global &global : pgm.globals)
     conv.SetLabel(global.sym);
+
+  // We don't mark "main" as a function, as there is no corresponding
+  // il symbol, and it is not legal to call it.
+  for (const il::Global &global : pgm.globals) {
+    conv.MarkGlobalIfFn(global);
+  }
 
   conv.ConvertFn("main", "unused", pgm.body);
 

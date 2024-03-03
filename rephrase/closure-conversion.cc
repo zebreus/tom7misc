@@ -118,16 +118,6 @@ struct ConvertPass : public TypedPass<> {
   }
 
   std::pair<const Exp *, const Type *>
-  DoCall(Context G,
-         const std::string &sym,
-         const std::vector<const Type *> &ts,
-         const Exp *arg,
-         const Exp *guess) override {
-    LOG(FATAL) << "Should not see CALL before closure conversion!";
-    return {nullptr, nullptr};
-  }
-
-  std::pair<const Exp *, const Type *>
   DoFn(Context G,
        const std::string &self,
        const std::string &x,
@@ -318,14 +308,19 @@ struct ConvertPass : public TypedPass<> {
 
     // Bind "self" if the function is recursive.
     if (!self.empty()) {
-      fn = pool->Pack(
-          // We could use α here, but it seems a little better (?) to
-          // use the actual type, which we do know.
-          env_type,
-          //   α.{1: α, 2: {1: α, 2:a} -> b}
-          cc_alpha_env, cc_fpair,
-          pool->Record({{"1", env_var_exp},
-                        {"2", pool->GlobalSym(free_type_args, global_sym)}}));
+      fn =
+        pool->Let(
+            {}, self,
+            pool->Pack(
+                // We could use α here, but it seems a little better (?) to
+                // use the actual type, which we do know.
+                env_type,
+                //   α.{1: α, 2: {1: α, 2:a} -> b}
+                cc_alpha_env, cc_fpair,
+                pool->Record(
+                    {{"1", env_var_exp},
+                     {"2", pool->GlobalSym(free_type_args, global_sym)}})),
+            fn);
     }
 
     // Project out the environment and original argument from the

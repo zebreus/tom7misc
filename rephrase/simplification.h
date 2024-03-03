@@ -23,11 +23,17 @@ struct Simplification {
   static constexpr uint64_t O_GLOBAL_INLINING = 1ULL << 32;
   static constexpr uint64_t O_GLOBAL_DEAD = 1ULL << 33;
 
+  // We require these optimizations to remove some constructs
+  // before bytecode generation.
+  static constexpr uint64_t O_DECOMPOSE_INTCASE = 1ULL << 50;
+
   static constexpr uint64_t O_ALL = ~0ULL;
+  static constexpr uint64_t O_CONSERVATIVE =
+    ~(O_DECOMPOSE_INTCASE);
 
   void SetVerbose(int verbose);
 
-  Program Simplify(const Program &, uint64_t opts = O_ALL);
+  Program Simplify(const Program &, uint64_t opts = O_CONSERVATIVE);
 
 private:
   int verbose = 0;
