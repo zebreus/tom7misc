@@ -28,6 +28,8 @@ enum class ExpType {
   LET,
   IF,
   APP,
+  // Post closure-conversion. Direct call to global symbol.
+  CALL,
   FN,
   // Project a field from a record.
   PROJECT,
@@ -213,6 +215,13 @@ struct Exp {
   std::tuple<const Exp *, const Exp *> App() const {
     CHECK(type == ExpType::APP);
     return std::tie(a, b);
+  }
+
+  std::tuple<const std::string &,
+             const std::vector<const Type *> &,
+             const Exp *> Call() const {
+    CHECK(type == ExpType::CALL);
+    return std::tie(str1, types, a);
   }
 
   const std::vector<const Exp *> &Join() const {
@@ -728,6 +737,25 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::APP);
     ret->a = f;
     ret->b = arg;
+    return ret;
+  }
+
+  const Exp *Call(const std::string &lab,
+                  const std::vector<const Type *> &types,
+                  const Exp *arg,
+                  const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::CALL &&
+        guess->str1 == lab &&
+        guess->types == types &&
+        guess->a == arg) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::CALL);
+    ret->str1 = lab;
+    ret->types = types;
+    ret->a = arg;
     return ret;
   }
 

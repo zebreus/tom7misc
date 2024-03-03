@@ -37,14 +37,14 @@ std::string ValueString(const Value &value) {
 
 std::string ColorInstString(const Inst &inst) {
   if (const inst::Binop *binop = std::get_if<inst::Binop>(&inst)) {
-    return StringPrintf(AOUT("%s") " <- "
+    return StringPrintf("BINOP " AOUT("%s") " <- "
                         AARG("%s") " " AOP("%s") " " AARG("%s"),
                         binop->out.c_str(),
                         binop->arg1.c_str(),
                         PrimopString(binop->primop),
                         binop->arg2.c_str());
   } else if (const inst::Unop *unop = std::get_if<inst::Unop>(&inst)) {
-    return StringPrintf(AOUT("%s") " <- " AOP("%s") AARG("%s"),
+    return StringPrintf("UNOP " AOUT("%s") " <- " AOP("%s") " " AARG("%s"),
                         unop->out.c_str(),
                         PrimopString(unop->primop),
                         unop->arg.c_str());

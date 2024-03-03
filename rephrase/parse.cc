@@ -57,6 +57,9 @@ GetFixity(const std::string &sym) {
     {"div", {Fixity::Infix, Associativity::Left, 8}},
     {"mod", {Fixity::Infix, Associativity::Left, 8}},
 
+    // some nonfix symbolic identifiers
+    {"!", {Fixity::Atom, Associativity::Non, 0}},
+    {"~", {Fixity::Atom, Associativity::Non, 0}},
 
   };
   auto it = builtin.find(sym);

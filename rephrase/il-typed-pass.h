@@ -105,6 +105,10 @@ struct TypedPass {
       const auto &[f, x] = e->App();
       return DoApp(G, f, x, e, args...);
     }
+    case ExpType::CALL: {
+      const auto &[f, types, x] = e->Call();
+      return DoCall(G, f, types, x, e, args...);
+    }
     case ExpType::FN: {
       const auto &[self, x, t, body] = e->Fn();
       return DoFn(G, self, x, t, body, e, args...);
@@ -482,6 +486,35 @@ struct TypedPass {
     const auto &[aa, at] = DoExp(G, arg, args...);
     const auto &[dom, cod] = ft->Arrow();
     return {pool->App(ff, aa, guess), cod};
+  }
+
+  virtual std::pair<const Exp *, const Type *>
+  DoCall(Context G,
+         const std::string &sym,
+         const std::vector<const Type *> &ts,
+         const Exp *arg,
+         const Exp *guess,
+         Args... args) {
+    const PolyType *pt = G.Find(sym);
+    CHECK(pt != nullptr) << "Unbound global symbol in call: " << sym;
+
+    std::vector<const Type *> tts;
+    tts.reserve(ts.size());
+    for (const Type *t : ts) tts.push_back(DoType(G, t, args...));
+
+    CHECK(ts.size() == pt->first.size()) << "Type error: Wrong number "
+      "of type arguments to polymorphic symbol (in call) " << sym;
+
+    // Instantiate the symbol's polytype at the provided types.
+    const Type *t = pt->second;
+    for (int i = 0; i < (int)pt->first.size(); i++) {
+      t = pool->SubstType(ts[i], pt->first[i], t);
+    }
+
+    const auto &[aa, at] = DoExp(G, arg, args...);
+    const auto &[dom, cod] = t->Arrow();
+    // DCHECK(TypeEq(at, dom));
+    return {pool->Call(sym, tts, aa, guess), cod};
   }
 
   virtual std::pair<const Exp *, const Type *>

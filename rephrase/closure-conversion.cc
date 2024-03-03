@@ -117,6 +117,15 @@ struct ConvertPass : public TypedPass<> {
     return {ret, cod};
   }
 
+  std::pair<const Exp *, const Type *>
+  DoCall(Context G,
+         const std::string &sym,
+         const std::vector<const Type *> &ts,
+         const Exp *arg,
+         const Exp *guess) override {
+    LOG(FATAL) << "Should not see CALL before closure conversion!";
+    return {nullptr, nullptr};
+  }
 
   std::pair<const Exp *, const Type *>
   DoFn(Context G,

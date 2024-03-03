@@ -530,6 +530,10 @@ struct GlobalInlining {
         }
       }
 
+      // Note: O_GLOBAL_INLINING is not enabled after closure conversion.
+      // We could support it, but we need to avoid substituting functions
+      // since CALL takes a literal label.
+
       // TODO: Or if a small value?
       if (((opts & Simplification::O_GLOBAL_INLINING) && total_count == 1) ||
           ((opts & Simplification::O_GLOBAL_DEAD) && total_count == 0)) {

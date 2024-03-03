@@ -27,7 +27,9 @@ static void SimpleTest() {
   bc::Program prog = compiler.CompileString(
       "test",
       R"(
-7 + 8
+let val x = ref 1
+in 6 + !x
+end
 )");
 
   bc::PrintProgram(prog);
