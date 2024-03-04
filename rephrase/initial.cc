@@ -48,7 +48,8 @@ Initial::Initial(AstPool *pool) {
     {"!", Primop::GET},
     {"ref", Primop::REF},
 
-    {"itos", Primop::INT_TO_STRING},
+    {"int-to-string", Primop::INT_TO_STRING},
+    {"string-concat", Primop::STRING_CONCAT},
 
     {"print", Primop::OUT_STRING},
   };

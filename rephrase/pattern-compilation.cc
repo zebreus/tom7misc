@@ -1133,8 +1133,11 @@ PatternCompilation::SplitAppPattern(
         Matrix mtx = mtx_small;
         const Type *sum_type = elab->pool->UnrollType(mu_type);
         if (VERBOSE) {
-          printf("Unrolled type: %s\n",
-                 TypeString(sum_type).c_str());
+          printf(
+              "Mu type: %s\n"
+              "Unrolled type: %s\n",
+              TypeString(mu_type).c_str(),
+              TypeString(sum_type).c_str());
         }
         const Type *col_type = SelectLabel(sum_type, label);
         const int new_x = mtx.Width();

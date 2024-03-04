@@ -1,6 +1,8 @@
 
 #include "il-util.h"
 
+#include <algorithm>
+#include <vector>
 #include <unordered_set>
 #include <string>
 
@@ -8,6 +10,8 @@
 #include "il-pass.h"
 #include "functional-map.h"
 #include "util.h"
+#include "base/stringprintf.h"
+#include "base/logging.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -562,9 +566,15 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
       const std::vector<std::pair<std::string, const Type *>> &v,
       const Type *guess,
       FunctionalSet bound) override {
+    // All variables are bound in all arms.
     for (const auto &[alpha, t] : v) {
-      (void)DoType(t, bound.Insert(alpha, {}));
+      bound = bound.Insert(alpha, {});
     }
+
+    for (const auto &[alpha, t] : v) {
+      (void)DoType(t, bound);
+    }
+
     return guess;
   }
 
@@ -652,6 +662,12 @@ std::unordered_set<std::string> ILUtil::FreeTypeVarsInExp(const Exp *e) {
   for (const auto &[v, c] : pass.counts)
     vars.insert(v);
   return vars;
+}
+
+std::string ILUtil::VarSetString(const std::unordered_set<std::string> &s) {
+  std::vector<std::string> v(s.begin(), s.end());
+  std::sort(v.begin(), v.end());
+  return StringPrintf("{%s}", Util::Join(v, ", ").c_str());
 }
 
 }  // namespace il

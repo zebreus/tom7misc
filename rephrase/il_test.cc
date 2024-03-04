@@ -4,6 +4,8 @@
 #include "ansi.h"
 #include "base/logging.h"
 
+#include "il-util.h"
+
 namespace il {
 
 static constexpr bool VERBOSE = false;
@@ -47,7 +49,22 @@ static void TestTypeSubst() {
     const std::string xx = std::get<0>(ddom->Var());
     CHECK(xx == x) << xx << " vs " << x;
   }
+}
 
+static void TestUnroll() {
+  AstPool pool;
+
+  const Type *mu = pool.Mu(0, {{"a", pool.VarType("b", {})},
+                               {"b", pool.VarType("a", {})}});
+
+
+  const Type *u = pool.UnrollType(mu);
+  std::unordered_set<std::string> ftvs = ILUtil::FreeTypeVars(mu);
+  CHECK(ftvs.empty()) << TypeString(mu) << "\nWith free vars:" <<
+    ILUtil::VarSetString(ftvs);
+  std::unordered_set<std::string> uftvs = ILUtil::FreeTypeVars(u);
+  CHECK(uftvs.empty()) << TypeString(u) << "\nWith free vars:" <<
+    ILUtil::VarSetString(uftvs);
 
 }
 
@@ -57,6 +74,7 @@ int main(int argc, char **argv) {
   ANSI::Init();
 
   il::TestTypeSubst();
+  il::TestUnroll();
 
   printf("OK\n");
   return 0;

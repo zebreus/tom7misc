@@ -11,6 +11,7 @@
 
 namespace il {
 
+[[maybe_unused]]
 static constexpr bool VERBOSE = false;
 
 const char *TypeTypeString(TypeType t) {
@@ -406,6 +407,27 @@ std::string ExpString(const Exp *e) {
   }
 }
 
+std::pair<std::vector<std::string>, std::vector<const Type *>>
+AstPool::AlphaVaryMultipleTypes(
+    const std::vector<std::string> &xv,
+    const std::vector<const Type *> &tv) {
+  std::vector<std::string> xxv;
+  xxv.reserve(xv.size());
+  std::vector<const Type *> ttv = tv;
+  for (const std::string &x : xv) {
+    const std::string xx = NewVar(x);
+    xxv.push_back(xx);
+    const Type *xxt = VarType(xx, {});
+    for (int i = 0; i < (int)ttv.size(); i++) {
+
+      // [x'/x]t, where we assert x' does not appear in t.
+      ttv[i] = SubstTypeInternal(xxt, x, ttv[i], true);
+    }
+  }
+
+  return std::make_pair(std::move(xxv), std::move(ttv));
+}
+
 const std::pair<std::string, const Type *>
 AstPool::AlphaVaryType(const std::string &x, const Type *t) {
   std::string xx = NewVar(x);
@@ -416,10 +438,15 @@ AstPool::AlphaVaryType(const std::string &x, const Type *t) {
 const Type *AstPool::UnrollType(const Type *mu) {
   CHECK(mu->type == TypeType::MU);
   const auto &[idx, bundles] = mu->Mu();
-  // std::tuple<int, const std::vector<std::pair<std::string, const Type *>> &>
   CHECK(idx >= 0 && idx < (int)bundles.size());
-  const auto &[a, t] = bundles[idx];
-  return SubstType(mu, a, t);
+  const Type *ret = bundles[idx].second;
+  // All type variables are bound recursively, so substitute them all.
+  for (int i = 0; i < (int)bundles.size(); i++) {
+    const auto &[a, t] = bundles[i];
+    const Type *mu_i = Mu(i, bundles);
+    ret = SubstType(mu_i, a, ret);
+  }
+  return ret;
 }
 
 const Type *AstPool::SubstType(const Type *t, const std::string &v,
@@ -470,35 +497,47 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
   case TypeType::MU: {
     const auto &[idx, bundle] = u->Mu();
 
-    std::vector<std::pair<std::string, const Type *>> new_bundle;
-    new_bundle.reserve(bundle.size());
+    // All of the variables are bound in all of the arms. So if
+    // any of them match the target variable, it is shadowed
+    // and cannot occur.
     for (const auto &[a, body] : bundle) {
-      // Target variable is shadowed so it cannot occur.
-      if (a == v) {
-        new_bundle.emplace_back(a, body);
-      } else {
-        // PERF: Only do this if a occurs in t and would cause capture.
-        // Also, we could probably get rid of the complexity of is_simple
-        // if we did an explicit check, since we would avoid the
-        // infinite regress by construction (the fresh variable will not
-        // appear).
-        if (is_simple) {
-          new_bundle.emplace_back(
-              a, SubstTypeInternal(t, v, body, is_simple));
-        } else {
-          const auto &[new_a, new_body] = AlphaVaryType(a, body);
-          if (VERBOSE) {
-            printf("Alpha vary %s.%s to %s.%s\n",
-                   a.c_str(), TypeString(body).c_str(),
-                   new_a.c_str(), TypeString(new_body).c_str());
-          }
-          new_bundle.emplace_back(
-              new_a, SubstTypeInternal(t, v, new_body, is_simple));
-        }
-      }
+      if (a == v) return u;
     }
 
-    return Mu(idx, new_bundle, u);
+    std::vector<std::pair<std::string, const Type *>> new_bundle;
+    new_bundle.reserve(bundle.size());
+
+    if (is_simple) {
+      for (const auto &[a, body] : bundle) {
+        new_bundle.emplace_back(
+            a, SubstTypeInternal(t, v, body, is_simple));
+      }
+      return Mu(idx, new_bundle, u);
+
+    } else {
+
+      // PERF: Only do this if a occurs in t and would cause capture.
+      // Also, we could probably get rid of the complexity of is_simple
+      // if we did an explicit check, since we would avoid the
+      // infinite regress by construction (the fresh variable will not
+      // appear).
+      std::vector<std::string> aa;
+      std::vector<const Type *> bb;
+      for (const auto &[a, body] : bundle) {
+        aa.push_back(a);
+        bb.push_back(body);
+      }
+
+      const auto &[aaa, bbb] = AlphaVaryMultipleTypes(aa, bb);
+
+      CHECK(aaa.size() == bbb.size());
+      for (int i = 0; i < (int)aaa.size(); i++) {
+        new_bundle.emplace_back(aaa[i],
+                                SubstTypeInternal(t, v, bbb[i], is_simple));
+      }
+
+      return Mu(idx, new_bundle, u);
+    }
   }
 
   case TypeType::EXISTS: {

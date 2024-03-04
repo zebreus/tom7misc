@@ -566,6 +566,21 @@ static void TestDatatypes() {
     CHECK(pgm.body->type == ExpType::INT);
   }
 
+  {
+    // Nontrivial mutually-recursive datatype.
+    // Tests that the mu varaibles are bound in all arms!
+    const Program pgm = Run(R"(
+        let
+          datatype exp = AAA of dec
+          and dec = BBB of exp
+
+          fun dtos (BBB e) = e : exp
+
+        in
+          7
+        end)");
+  }
+
 }
 
 static void TestFun() {
@@ -680,6 +695,7 @@ static void Regression() {
   }
 
   // Zarro boogs.
+
 }
 
 }  // il
@@ -692,9 +708,10 @@ int main(int argc, char **argv) {
   il::TestSimplify();
   il::TestPatternCompilation();
   il::Simple();
-  il::Regression();
   il::TestDatatypes();
   il::TestFun();
+
+  il::Regression();
 
   printf("OK\n");
   return 0;

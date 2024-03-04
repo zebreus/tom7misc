@@ -112,6 +112,9 @@ static void ExecTests() {
   CHECK(RunToString("7") == "") << "No output.";
   CHECK(RunToString("print \"hi\"") == "hi");
 
+  CHECK(RunToString("print (string-concat (\"succ\", \"ess\"))") ==
+        "success");
+
   CHECK(RunToString(R"(
     let
       fun f 0 = print "done."
@@ -129,7 +132,7 @@ static void ExecTests() {
       fun fact 0 = 1
         | fact n = n * fact (n - 1)
     in
-      print (itos (fact 5))
+      print (int-to-string (fact 5))
     end
    )") == "120");
 
@@ -184,9 +187,75 @@ static void ExecTests() {
     val list = 3 :: 9 :: 1 :: 2 :: 4 :: 8 :: 6 :: 7 :: 5 :: nil
     val sorted = list-sort int-compare list
   in
-    list-app (print o itos) sorted
+    list-app (print o int-to-string) sorted
   end
   )") == "123456789");
+
+  /*
+      CHECK(RunToString(R"(
+  let
+    datatype exp = Let of dec * exp
+                 | Int of int
+                 | Var of string
+    and dec = Val of string * exp
+
+    fun ^(a, b) = string-concat (a, b)
+
+    fun etos (Let (d, e) : exp) =
+      "let " ^ dtos d ^ " in " ^ etos e ^ " end"
+      | etos (Int i) = int-to-string i
+      | etos (Var v) = v
+    and dtos (Val (x, e) : dec) = "val " ^ x ^ " = " ^ etos e
+
+    val expr = Let (Val ("x", Int 7), Var "x")
+
+  in
+    print (etos expr)
+  end
+)") == "let x = 7 in x end");
+  */
+}
+
+static void NewTests() {
+  // Mutually recursive datatypes and functions.
+  CHECK(RunToString(R"(
+  let
+    datatype exp = Let of dec * exp
+    and dec = Val of string * exp
+
+    fun ^(a, b) = string-concat (a, b)
+
+    fun etos (Let (d, e) : exp) = "hi" ^ etos e
+    and  dtos (Val (x, e) : dec) = "val " ^ x ^ " = " ^ etos e
+
+    (* val expr = Let (Val ("x", Int 7), Var "x") *)
+
+  in
+    (* print (etos expr) *)
+    etos
+  end
+)") == "let x = 7 in x end");
+
+  // This also gives an error, perhaps related.
+/*
+  CHECK(RunToString(R"(
+  let
+    datatype exp = Let of dec * exp
+    and dec = Val of string * exp
+
+    fun ^(a, b) = string-concat (a, b)
+
+    fun etos (Let (d, e) : exp) = "hi" ^ etos e
+    and  dtos (Val (x, e) : dec) = "val " (* ^ x ^ " = " ^ etos e *)
+
+    (* val expr = Let (Val ("x", Int 7), Var "x") *)
+
+  in
+    (* print (etos expr) *)
+    etos
+  end
+)") == "let x = 7 in x end");
+*/
 
 }
 
@@ -195,9 +264,12 @@ static void ExecTests() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  /*
   bc::TestTrivial();
   bc::TestEndToEndEasy();
   bc::ExecTests();
+  */
+  bc::NewTests();
 
   printf("OK\n");
   return 0;

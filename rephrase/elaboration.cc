@@ -880,6 +880,11 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const il::Type *dom = NewEVar();
     const il::Type *cod = NewEVar();
 
+    if (VERBOSE) {
+      printf("App F: %s : %s\n", ExpString(fe).c_str(), TypeString(ft).c_str());
+      printf("App X: %s : %s\n", ExpString(xe).c_str(), TypeString(xt).c_str());
+    }
+
     Unification::Unify("application-fn", ft, pool->Arrow(dom, cod));
     Unification::Unify("application-arg", xt, dom);
 

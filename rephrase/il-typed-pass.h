@@ -32,12 +32,12 @@ struct TypedPass {
       Global gg;
       gg.tyvars = glob.tyvars;
       gg.sym = glob.sym;
-      printf("Do %s\n", glob.sym.c_str());
+      printf("Do global %s\n", glob.sym.c_str());
       std::tie(gg.exp, gg.type) = DoExp(GG, glob.exp, args...);
       out.globals.push_back(std::move(gg));
     }
 
-    printf("Do %s\n", ExpString(program.body).c_str());
+    printf("Do body: %s\n", ExpString(program.body).c_str());
     const auto &[be, bt] = DoExp(GG, program.body, args...);
     out.body = be;
     return out;
@@ -231,10 +231,15 @@ struct TypedPass {
       const std::vector<std::pair<std::string, const Type *>> &v,
       const Type *guess,
       Args... args) {
+    // All variables are bound in all arms.
+    Context GG = G;
+    for (const auto &[alpha, t_] : v) {
+      GG = GG.InsertType(alpha);
+    }
+
     std::vector<std::pair<std::string, const Type *>> vv;
     vv.reserve(v.size());
     for (const auto &[alpha, t] : v) {
-      Context GG = G.InsertType(alpha);
       vv.emplace_back(alpha, DoType(GG, t, args...));
     }
     return pool->Mu(idx, vv, guess);

@@ -921,6 +921,11 @@ struct AstPool {
   const std::pair<std::string, const Type *>
   AlphaVaryType(const std::string &x, const Type *t);
 
+  std::pair<std::vector<std::string>, std::vector<const Type *>>
+  AlphaVaryMultipleTypes(
+      const std::vector<std::string> &xv,
+      const std::vector<const Type *> &tv);
+
   // Sort labels in the canonical order. Beware that since this
   // is lexicographic, a tuple with 10 or more elements actually
   // has an unintuitive order {"1", "10", "2", "3", ...}.

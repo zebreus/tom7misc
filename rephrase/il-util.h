@@ -88,6 +88,7 @@ struct ILUtil {
       const std::string &sym,
       const Exp *e2);
 
+  static std::string VarSetString(const std::unordered_set<std::string> &s);
 
 };
 

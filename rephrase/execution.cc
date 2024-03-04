@@ -110,6 +110,10 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       return NewValue(&state->heap, std::move(b));
     };
 
+  auto String = [this, state](std::string s) -> Value * {
+      return NewValue(&state->heap, std::move(s));
+    };
+
   switch (primop) {
   case Primop::SET:
     LOG(FATAL) << "unimplemented SET";
@@ -205,6 +209,11 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   case Primop::STRING_EQ: {
     const auto &[aa, bb] = TwoStrings("string_eq");
     return Bool(aa == bb);
+  }
+
+  case Primop::STRING_CONCAT: {
+    const auto &[aa, bb] = TwoStrings("string_concat");
+    return String(aa + bb);
   }
 
   case Primop::INVALID:
