@@ -32,7 +32,7 @@ using Global = il::Global;
 
 using DatatypeDec = el::DatatypeDec;
 
-static constexpr bool VERBOSE = false;
+static constexpr bool VERBOSE = true;
 
 Elaboration::Elaboration(el::AstPool *el_pool, il::AstPool *il_pool) :
   el_pool(el_pool), pool(il_pool), init(pool) {
@@ -193,11 +193,14 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
         // For mutually recursive functions, we hoist them out to
         // globals so that they can reference each other. First,
         // type-check and translate the bodies.
+        std::vector<std::string> el_vars;
         std::vector<std::string> il_vars;
         std::vector<std::pair<const il::Type *, const il::Type *>> dom_cods;
         Context GG = G;
         for (const el::FunDec &fun : dec->funs) {
-          std::string il_var = pool->NewVar(fun.name);
+          const std::string &el_var = fun.name;
+          const std::string il_var = pool->NewVar(el_var);
+          el_vars.push_back(el_var);
           il_vars.push_back(il_var);
           const il::Type *dom = NewEVar();
           const il::Type *cod = NewEVar();
@@ -223,7 +226,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
           // reason to prefer the global, it would be easy to switch
           // it right here.
           const auto &[e, t] =
-            Elab(GG, el_pool->Fn(il_vars[i], GetSimpleClauses(fun)));
+            Elab(GG, el_pool->Fn(el_vars[i], GetSimpleClauses(fun)));
           const auto &[dom, cod] = dom_cods[i];
           Unification::Unify("fun..and decl", pool->Arrow(dom, cod), t);
           fns.emplace_back(e, t);

@@ -100,6 +100,7 @@ static void TestEndToEndEasy() {
 static std::string RunToString(const std::string &source) {
   using TE = TestExecution;
   Compiler compiler;
+  compiler.frontend.SetVerbose(2);
   Program prog = compiler.CompileString("test", source);
   TE execution(prog);
   TE::State state = execution.Start();
@@ -225,10 +226,8 @@ static void NewTests() {
 
     fun ^(a, b) = string-concat (a, b)
 
-    fun etos (Let (d, e) : exp) = "hi" ^ etos e
+    fun etos (Let (d, e) : exp) = string-concat("hi", etos e)
     and  dtos (Val (x, e) : dec) = "val " ^ x ^ " = " ^ etos e
-
-    (* val expr = Let (Val ("x", Int 7), Var "x") *)
 
   in
     (* print (etos expr) *)
