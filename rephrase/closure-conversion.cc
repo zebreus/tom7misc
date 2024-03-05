@@ -46,7 +46,7 @@
 
 
 namespace il {
-
+namespace {
 struct ConvertPass : public TypedPass<> {
   using TypedPass::TypedPass;
 
@@ -308,6 +308,7 @@ struct ConvertPass : public TypedPass<> {
 
     // Bind "self" if the function is recursive.
     if (!self.empty()) {
+      CHECK(!global_sym.empty());
       fn =
         pool->Let(
             {}, self,
@@ -353,6 +354,7 @@ struct ConvertPass : public TypedPass<> {
     // pack α as α'.(α' * (α' * int) -> bool)
     // of ({y = , g_self)
 
+    CHECK(!global_sym.empty());
     const Exp *ret =
       pool->Pack(
           // {x1 : t1, x2 = t2, ...}
@@ -368,6 +370,7 @@ struct ConvertPass : public TypedPass<> {
 
   std::vector<Global> globals_added;
 };
+}  // namespace
 
 ClosureConversion::ClosureConversion(AstPool *pool) : pool(pool) {
 

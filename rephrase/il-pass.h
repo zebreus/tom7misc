@@ -18,7 +18,7 @@ template<typename... Args>
 struct Pass {
   explicit Pass(AstPool *pool) : pool(pool) {}
 
-  virtual const Program DoProgram(const Program &program, Args... args) {
+  virtual Program DoProgram(const Program &program, Args... args) {
     Program out;
     out.globals.reserve(program.globals.size());
     for (const Global &glob : program.globals) {
@@ -265,6 +265,16 @@ struct Pass {
     return pool->Float(d, guess);
   }
 
+  virtual const Exp *DoInt(BigInt i, const Exp *guess,
+                           Args... args) {
+    return pool->Int(i, guess);
+  }
+
+  virtual const Exp *DoBool(bool b, const Exp *guess,
+                            Args... args) {
+    return pool->Bool(b, guess);
+  }
+
   virtual const Exp *DoVar(const std::vector<const Type *> &ts,
                            const std::string &v,
                            const Exp *guess,
@@ -283,16 +293,6 @@ struct Pass {
     tts.reserve(ts.size());
     for (const Type *t : ts) tts.push_back(DoType(t, args...));
     return pool->GlobalSym(tts, sym, guess);
-  }
-
-  virtual const Exp *DoInt(BigInt i, const Exp *guess,
-                           Args... args) {
-    return pool->Int(i, guess);
-  }
-
-  virtual const Exp *DoBool(bool b, const Exp *guess,
-                            Args... args) {
-    return pool->Bool(b, guess);
   }
 
   virtual const Exp *DoRecord(

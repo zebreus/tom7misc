@@ -32,13 +32,14 @@ struct Execution {
   struct State {
     Heap heap;
     std::vector<StackFrame> stack;
+    std::unordered_map<std::string, Value *> globals;
   };
 
   static void GC(State *state);
 
   // Calls "new Value" with the args; stores in heap.
   template<typename... Args>
-  Value *NewValue(Heap *heap, Args&&... args);
+  static Value *NewValue(Heap *heap, Args&&... args);
 
   // Start the program with a fresh state.
   State Start() const;

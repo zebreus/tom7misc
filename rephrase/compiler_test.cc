@@ -17,7 +17,7 @@ static void TrivialTest() {
   CHECK(insts.size() == 2);
   const bc::inst::Load *load = std::get_if<bc::inst::Load>(&insts[0]);
   CHECK(load != nullptr);
-  CHECK(load->data_label == data_lab);
+  CHECK(load->global == data_lab);
   const bc::inst::Ret *ret = std::get_if<bc::inst::Ret>(&insts[1]);
   CHECK(ret->arg == load->out);
 }

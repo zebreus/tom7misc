@@ -32,7 +32,7 @@ using Global = il::Global;
 
 using DatatypeDec = el::DatatypeDec;
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 Elaboration::Elaboration(el::AstPool *el_pool, il::AstPool *il_pool) :
   el_pool(el_pool), pool(il_pool), init(pool) {

@@ -71,8 +71,15 @@ struct Bind {
   std::string out, arg;
 };
 
+// Load from a global.
 struct Load {
-  std::string out, data_label;
+  std::string out, global;
+};
+
+// Save to a new global. This is only used
+// during initialization.
+struct Save {
+  std::string global, arg;
 };
 
 struct Jump {
@@ -82,6 +89,11 @@ struct Jump {
 
 struct Fail {
   std::string arg;
+};
+
+struct Note {
+  // No-op for annotations in code.
+  std::string msg;
 };
 
 }  // namespace inst
@@ -98,16 +110,20 @@ using Inst = std::variant<
   inst::GetLabel,
   inst::Bind,
   inst::Load,
+  inst::Save,
   inst::Jump,
-  inst::Fail
+  inst::Fail,
+  inst::Note
   >;
 
 
 struct Program {
-  // for each code label, its argument local and instructions
+  // For each code label, its argument local and instructions.
   std::unordered_map<std::string, std::pair<std::string, std::vector<Inst>>>
   code;
-  // May only be base types; no maps.
+  // Constant data. May only be base types; no maps.
+  // Each of these is allocated as a global at startup time;
+  // other globals are created explicitly during initialization.
   std::unordered_map<std::string, Value> data;
 };
 

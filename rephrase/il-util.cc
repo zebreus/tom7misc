@@ -589,7 +589,7 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
 
   // Globals can bind type vars.
 
-  const Program DoProgram(const Program &program, FunctionalSet bound)
+  Program DoProgram(const Program &program, FunctionalSet bound)
     override {
     for (const Global &glob : program.globals) {
       FunctionalSet bb = bound;

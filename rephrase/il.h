@@ -555,17 +555,17 @@ struct AstPool {
   }
 
   const Exp *GlobalSym(const std::vector<const Type *> &ts,
-                       const std::string &v,
+                       const std::string &sym,
                        const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::GLOBAL_SYM &&
-        guess->str1 == v &&
+        guess->str1 == sym &&
         guess->types == ts) {
       return guess;
     }
-
+    CHECK(!sym.empty());
     Exp *ret = NewExp(ExpType::GLOBAL_SYM);
-    ret->str1 = v;
+    ret->str1 = sym;
     ret->types = std::move(ts);
     return ret;
   }

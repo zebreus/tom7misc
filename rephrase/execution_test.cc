@@ -33,7 +33,7 @@ static void TestTrivial() {
   using TE = TestExecution;
 
   Program program;
-  Inst load = inst::Load{.out = "x", .data_label = "msg"};
+  Inst load = inst::Load{.out = "x", .global = "msg"};
   Inst fail = inst::Fail{.arg = "x"};
 
   program.data = {
@@ -102,6 +102,7 @@ static std::string RunToString(const std::string &source) {
   Compiler compiler;
   compiler.frontend.SetVerbose(2);
   Program prog = compiler.CompileString("test", source);
+  bc::PrintProgram(prog);
   TE execution(prog);
   TE::State state = execution.Start();
   execution.RunToCompletion(&state);

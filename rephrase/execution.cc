@@ -39,6 +39,12 @@ Execution::State Execution::Start() const {
       .locals = std::move(locals),
     });
 
+  // Copy everything from the constant data into globals, allocating
+  // it in the heap.
+  for (const auto &[lab, value] : program.data) {
+    state.globals[lab] = NewValue(&state.heap, Value::t(value.v));
+  }
+
   return state;
 }
 
@@ -98,19 +104,19 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return std::tie(*as, *bs);
   };
 
-  auto Bool = [this, state](bool x) -> Value * {
+  auto Bool = [state](bool x) -> Value * {
       return NewValue(&state->heap, uint64_t(x ? 1 : 0));
     };
 
-  auto Float = [this, state](double d) -> Value * {
+  auto Float = [state](double d) -> Value * {
       return NewValue(&state->heap, d);
     };
 
-  auto Big = [this, state](BigInt b) -> Value * {
+  auto Big = [state](BigInt b) -> Value * {
       return NewValue(&state->heap, std::move(b));
     };
 
-  auto String = [this, state](std::string s) -> Value * {
+  auto String = [state](std::string s) -> Value * {
       return NewValue(&state->heap, std::move(s));
     };
 
@@ -244,21 +250,21 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
       return *s;
   };
 
-  auto Unit = [this, state]() -> Value * {
+  auto Unit = [state]() -> Value * {
       // PERF: Don't represent unit with an allocated record :(
       return NewValue(&state->heap,
                       std::unordered_map<std::string, Value *>());
     };
 
-  auto Float = [this, state](double d) -> Value * {
+  auto Float = [state](double d) -> Value * {
       return NewValue(&state->heap, d);
     };
 
-  auto Big = [this, state](BigInt b) -> Value * {
+  auto Big = [state](BigInt b) -> Value * {
       return NewValue(&state->heap, std::move(b));
     };
 
-  auto String = [this, state](std::string s) -> Value * {
+  auto String = [state](std::string s) -> Value * {
       return NewValue(&state->heap, std::move(s));
     };
 
@@ -323,6 +329,13 @@ void Execution::Step(State *state) {
         fprintf(stderr, "(stack is empty!)");
       } else {
         StackFrame &frame = state->stack.back();
+
+        fprintf(stderr, AWHITE("Globals") ":\n");
+        for (const auto &[global, value] : state->globals) {
+          #define AGLOBAL_LAB(s) AFGCOLOR(200, 160, 40, s)
+          fprintf(stderr, " " AGLOBAL_LAB("%s") " = %s\n",
+                  global.c_str(), ColorValuePtrString(value).c_str());
+        }
 
         fprintf(stderr, AWHITE("Locals") ":\n");
         for (const auto &[local, value] : frame.locals) {
@@ -466,20 +479,29 @@ void Execution::Step(State *state) {
   } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
     frame.locals[bind->out] = Load(bind->arg);
 
+  } else if (const inst::Save *save = std::get_if<inst::Save>(&inst)) {
+    CHECK(!state->globals.contains(save->global)) << "Saving over "
+      "an existing global. There's no reason we can't do this, but it "
+      "is unexpected (initialization code ran twice?). Global: " <<
+      save->global;
+    state->globals[save->global] = Load(save->arg);
+
   } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
-    const auto &it = program.data.find(load->data_label);
-    CHECK(it != program.data.end()) << Error() <<
-      "Data label not found: " << load->data_label;
-    // Copying the value to the heap.
-    // PERF: We could leave these as globals, but then we need to
-    // somehow note them for garbage collection?
-    frame.locals[load->out] = NewValue(&state->heap, it->second.v);
+    const auto &it = state->globals.find(load->global);
+    CHECK(it != state->globals.end()) << Error() <<
+      "Global not found: " << load->global;
+
+    frame.locals[load->out] = it->second;
 
   } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
     frame.ip = jump->idx;
 
   } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
     InternalFail(LoadString(fail->arg), state);
+    return;
+
+  } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
+    // no-op. But we could print the message in super-verbose modes?
     return;
 
   } else {

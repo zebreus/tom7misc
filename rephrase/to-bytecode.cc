@@ -75,11 +75,15 @@ struct Converter {
   }
 
   void ConvertGlobal(const il::Global &global) {
+    CHECK(!global.sym.empty());
+    const il::Exp *exp = EraseTypes(global.exp);
     if (il_fn_labels.contains(global.sym)) {
-      const auto &[self, x, arrow_type, body] = global.exp->Fn();
-      ConvertFn(global.sym, x, body);
+      const auto &[self, x, arrow_type, body] = exp->Fn();
+      ConvertFn(global.sym, x, body, false);
     } else {
-      const il::Exp *exp = global.exp;
+      CHECK(!emitted_main) << "Can't convert a data global after "
+        "emitting main, since we need to insert initialization "
+        "instructions.";
       const std::string label = GetLabel(global.sym);
       switch (exp->type) {
       case il::ExpType::STRING:
@@ -96,13 +100,47 @@ struct Converter {
         AddData(label, Value{.v = {u}});
         break;
       }
+      case il::ExpType::RECORD: {
+        std::string tmp = NewSymbol(label);
+        // Allocate an empty map in the heap. Store it in globals.
+        init_alloc_code.emplace_back(inst::Alloc{.out = tmp});
+        init_alloc_code.emplace_back(
+            inst::Save{.global = label, .arg = tmp});
+        // After everything is allocated, write the fields; these
+        // can form cycles.
+        const std::vector<std::pair<std::string, const il::Exp *>> &fields =
+          exp->Record();
+        std::string tmp_load = NewSymbol(label);
+        for (const auto &[lab, e] : fields) {
+          CHECK(e->type == il::ExpType::GLOBAL_SYM) << "A global record "
+            "may only have global_sym fields. A previous pass is supposed "
+            "to ensure this: " << global.sym;
+          const auto &[ts, other_label] = e->GlobalSym();
+          const std::string other_init_global = GetLabel(other_label);
+          // PERF: This value will already be loaded in a local somewhere,
+          // since we do all the initialization in the same straight-line
+          // code. So we could skip this and reference the local if we
+          // just knew what it was called.
+          init_write_code.emplace_back(
+              inst::Load{.out = tmp_load, .global = other_init_global});
+          init_write_code.emplace_back(
+              inst::SetLabel{.obj = tmp, .lab = lab, .arg = tmp_load});
+        }
+
+        // This does not add anything to the data segment.
+        break;
+      }
+
       default:
         LOG(FATAL) << "Unimplemented type of global: "
                    << global.sym << " = "
-                   << ExpString(global.exp);
+                   << ExpString(exp);
       }
     }
   }
+
+  std::vector<Inst> init_alloc_code;
+  std::vector<Inst> init_write_code;
 
   // Several constructs are just for typing, and have no runtime
   // effect. So they can be completely ignored here.
@@ -142,12 +180,33 @@ struct Converter {
     return (int)slot;
   }
 
+  // Convert the function to code, storing it in the program at the
+  // given label. The function is (fn x => body). If is_main is true,
+  // then we insert the one-time initialization code at the front of
+  // the instruction stream.
+  bool emitted_main = false;
   void ConvertFn(const std::string &label,
                  // fn x => body
                  const std::string &x,
-                 const il::Exp *body) {
+                 const il::Exp *body,
+                 bool is_main) {
     const std::string code_lab = GetLabel(label);
     std::vector<Inst> insts;
+
+    if (is_main) {
+      CHECK(!emitted_main);
+      // emit initialization instructions.
+      for (Inst &inst : init_alloc_code)
+        insts.push_back(std::move(inst));
+      init_alloc_code.clear();
+      for (Inst &inst : init_write_code)
+        insts.push_back(std::move(inst));
+      init_write_code.clear();
+      emitted_main = true;
+
+      insts.emplace_back(inst::Note{.msg = "End initialization"});
+    }
+
     VarLocalMap G;
     std::string arg_lab = NewSymbol(x);
 
@@ -179,7 +238,7 @@ struct Converter {
       CHECK(!program.data.contains(lab)) << lab;
       program.data[lab] = value;
       std::string local = NewSymbol(hint);
-      insts->emplace_back(inst::Load{.out = local, .data_label = lab});
+      insts->emplace_back(inst::Load{.out = local, .global = lab});
       return local;
     };
 
@@ -261,7 +320,7 @@ struct Converter {
           return AddValue(sym, Value{.v = Value::t(label)});
         } else {
           const std::string out = NewSymbol(sym);
-          insts->emplace_back(inst::Load{.out = out, .data_label = label});
+          insts->emplace_back(inst::Load{.out = out, .global = label});
           return out;
         }
       }
@@ -532,24 +591,6 @@ Program ToBytecode::Convert(const il::Program &pgm) {
       "code should just avoid generating it.";
   }
 
-  #if 0
-  // For uniformity, we translate every code global as a function.
-  il::Global main;
-  main.tyvars = {};
-  main.sym = "main";
-  main.type =
-    tmp_pool.Arrow(tmp_pool.RecordType({}),
-                   tmp_pool.RecordType({}));
-  main.exp =
-    tmp_pool.Fn("", "arg$",
-                main.type,
-                // Wrap so that the body is ignored, to match the
-                // type {} -> {} that we just assigned it. This probably
-                // isn't necessary.
-                tmp_pool.Seq({pgm.body},
-                             tmp_pool.Record({})));
-  #endif
-
   // Translate labels first, and main first of those, since we want
   // co claim that exact label.
   conv.SetLabel("main");
@@ -563,11 +604,12 @@ Program ToBytecode::Convert(const il::Program &pgm) {
     conv.MarkGlobalIfFn(global);
   }
 
-  conv.ConvertFn("main", "unused", pgm.body);
-
   for (const il::Global &global : pgm.globals) {
     conv.ConvertGlobal(global);
   }
+
+  // Main has to be last so that it can consume the initialization code.
+  conv.ConvertFn("main", "unused", pgm.body, true);
 
   return std::move(conv.program);
 }

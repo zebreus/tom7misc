@@ -92,12 +92,17 @@ std::string ColorInstString(const Inst &inst) {
                         bind->out.c_str(), bind->arg.c_str());
   } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
     return StringPrintf("LOAD " AOUT("%s") " <- " ADATA_LAB("%s"),
-                        load->out.c_str(), load->data_label.c_str());
+                        load->out.c_str(), load->global.c_str());
+  } else if (const inst::Save *save = std::get_if<inst::Save>(&inst)) {
+    return StringPrintf("SAVE " ADATA_LAB("%s") " <- " AARG("%s"),
+                        save->global.c_str(), save->arg.c_str());
   } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
     return StringPrintf("JUMP " AINDEX_USED("%05d"),
                         jump->idx);
   } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
     return StringPrintf("FAIL " AARG("%s"), fail->arg.c_str());
+  } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
+    return StringPrintf("NOTE " AGREY("%s"), note->msg.c_str());
   } else {
     return ARED("!!INVALID!!");
   }

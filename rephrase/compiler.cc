@@ -9,7 +9,8 @@
 #include "simplification.h"
 #include "base/logging.h"
 
-Compiler::Compiler() : closure_conversion(frontend.Pool()) {
+Compiler::Compiler() : closure_conversion(frontend.Pool()),
+                       flatten_globals(frontend.Pool()) {
 
 }
 
@@ -36,6 +37,11 @@ bc::Program Compiler::InternalGuts(il::Program &&pgm_in) {
   il_pgm = simplification.Simplify(
       il_pgm,
       il::Simplification::O_DECOMPOSE_INTCASE);
+
+  printf("\n\nFlatten this:\n"
+         "%s\n\n", il::ProgramString(il_pgm).c_str());
+
+  il_pgm = flatten_globals.Flatten(il_pgm);
 
   printf("\n\nConvert this:\n"
          "%s\n\n", il::ProgramString(il_pgm).c_str());
