@@ -34,8 +34,8 @@ struct Compiler {
                             Options options = Options());
 
  private:
+  int verbose = 0;
   bc::Program InternalGuts(il::Program &&pgm);
-
 };
 
 #endif

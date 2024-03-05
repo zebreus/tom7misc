@@ -34,6 +34,7 @@ const char *PrimopString(Primop p) {
   case Primop::FLOAT_DIV: return "FLOAT_DIV";
   case Primop::OUT_STRING: return "OUT_STRING";
   case Primop::STRING_CONCAT: return "STRING_CONCAT";
+  case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::INVALID: return "INVALID";
   default: return "?? UNKNOWN PRIMOP ??";
   }

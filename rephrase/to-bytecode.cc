@@ -117,14 +117,27 @@ struct Converter {
             "to ensure this: " << global.sym;
           const auto &[ts, other_label] = e->GlobalSym();
           const std::string other_init_global = GetLabel(other_label);
-          // PERF: This value will already be loaded in a local somewhere,
-          // since we do all the initialization in the same straight-line
-          // code. So we could skip this and reference the local if we
-          // just knew what it was called.
-          init_write_code.emplace_back(
-              inst::Load{.out = tmp_load, .global = other_init_global});
-          init_write_code.emplace_back(
-              inst::SetLabel{.obj = tmp, .lab = lab, .arg = tmp_load});
+          if (il_fn_labels.contains(other_label)) {
+            // (load "function pointer")
+            std::string tmp_fn =
+              AddValue(other_label,
+                       Value{.v = Value::t(other_init_global)},
+                       &init_write_code);
+            init_write_code.emplace_back(
+                inst::SetLabel{.obj = tmp, .lab = lab, .arg = tmp_fn});
+
+          } else {
+            // PERF: This value will already be loaded in a local somewhere,
+            // since we do all the initialization in the same straight-line
+            // code. So we could skip this and reference the local if we
+            // just knew what it was called.
+            init_write_code.emplace_back(
+                inst::Load{.out = tmp_load, .global = other_init_global});
+            init_write_code.emplace_back(
+                inst::SetLabel{.obj = tmp, .lab = lab, .arg = tmp_load});
+
+          }
+
         }
 
         // This does not add anything to the data segment.
@@ -222,6 +235,18 @@ struct Converter {
       std::make_pair(std::move(arg_lab), std::move(insts));
   }
 
+  std::string AddValue(const std::string &hint,
+                       const Value &value,
+                       std::vector<Inst> *insts) {
+    std::string lab = NewSymbol(hint);
+    // TODO: Coalesce if already present!
+    CHECK(!program.data.contains(lab)) << lab;
+    program.data[lab] = value;
+    std::string local = NewSymbol(hint);
+    insts->emplace_back(inst::Load{.out = local, .global = lab});
+    return local;
+  }
+
   // Convert the expression by adding instructions at the end
   // of the instruction stream. Returns the local that contains
   // the expression's value.
@@ -231,17 +256,6 @@ struct Converter {
       const il::Exp *exp,
       std::vector<Inst> *insts) {
 
-    auto AddValue = [&](const std::string &hint,
-                        const Value &value) {
-      std::string lab = NewSymbol(hint);
-      // TODO: Coalesce if already present!
-      CHECK(!program.data.contains(lab)) << lab;
-      program.data[lab] = value;
-      std::string local = NewSymbol(hint);
-      insts->emplace_back(inst::Load{.out = local, .global = lab});
-      return local;
-    };
-
     // This is a loop so that we can get cheap tail calls for
     // common constructs like let and seq.
     for (;;) {
@@ -250,12 +264,12 @@ struct Converter {
       switch (exp->type) {
       case il::ExpType::STRING: {
         const std::string &s = exp->String();
-        return AddValue("str", Value{.v = Value::t(s)});
+        return AddValue("str", Value{.v = Value::t(s)}, insts);
       }
 
       case il::ExpType::FLOAT: {
         const double d = exp->Float();
-        return AddValue("b", Value{.v = Value::t(d)});
+        return AddValue("b", Value{.v = Value::t(d)}, insts);
       }
 
       case il::ExpType::JOIN: {
@@ -294,12 +308,12 @@ struct Converter {
 
       case il::ExpType::INT: {
         const auto &bi = exp->Int();
-        return AddValue("i", Value{.v = Value::t(bi)});
+        return AddValue("i", Value{.v = Value::t(bi)}, insts);
       }
 
       case il::ExpType::BOOL: {
         uint64_t u = exp->Bool() ? 1 : 0;
-        return AddValue("b", Value{.v = Value::t(u)});
+        return AddValue("b", Value{.v = Value::t(u)}, insts);
       }
 
       case il::ExpType::VAR: {
@@ -317,7 +331,7 @@ struct Converter {
         if (il_fn_labels.contains(sym)) {
           // Code labels are treated differently. We load the name of
           // the function ("function pointer") as the value.
-          return AddValue(sym, Value{.v = Value::t(label)});
+          return AddValue(sym, Value{.v = Value::t(label)}, insts);
         } else {
           const std::string out = NewSymbol(sym);
           insts->emplace_back(inst::Load{.out = out, .global = label});
@@ -394,7 +408,7 @@ struct Converter {
         const std::string rec = NewSymbol(lab);
         insts->emplace_back(inst::Alloc{.out = rec});
         const std::string lab_value =
-          AddValue(lab, Value{.v = Value::t(lab)});
+          AddValue(lab, Value{.v = Value::t(lab)}, insts);
         insts->emplace_back(inst::SetLabel({
               .obj = rec, .lab = INJ_LABEL, .arg = lab_value}));
         insts->emplace_back(inst::SetLabel({
@@ -484,7 +498,7 @@ struct Converter {
         const std::string test = NewSymbol("test");
         for (const auto &[lab, x, e] : arms) {
           const std::string lab_value =
-            AddValue(lab, Value{.v = Value::t(lab)});
+            AddValue(lab, Value{.v = Value::t(lab)}, insts);
           // compare labels
           insts->emplace_back(inst::Binop{
               .primop = Primop::STRING_EQ,

@@ -38,13 +38,17 @@ bc::Program Compiler::InternalGuts(il::Program &&pgm_in) {
       il_pgm,
       il::Simplification::O_DECOMPOSE_INTCASE);
 
-  printf("\n\nFlatten this:\n"
-         "%s\n\n", il::ProgramString(il_pgm).c_str());
+  if (verbose > 1) {
+    printf("\n\nFlatten this:\n"
+           "%s\n\n", il::ProgramString(il_pgm).c_str());
+  }
 
   il_pgm = flatten_globals.Flatten(il_pgm);
 
-  printf("\n\nConvert this:\n"
-         "%s\n\n", il::ProgramString(il_pgm).c_str());
+  if (verbose > 1) {
+    printf("\n\nConvert this:\n"
+           "%s\n\n", il::ProgramString(il_pgm).c_str());
+  }
 
   bc::Program bc_pgm = to_bytecode.Convert(il_pgm);
   return bc_pgm;
