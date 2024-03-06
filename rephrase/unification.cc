@@ -262,7 +262,8 @@ static void UnifyEx(std::string_view what,
           "During unification, an existential variable occurred "
           "in the type that it needed to be unified with. The "
           "type was:\n" <<
-          TypeString(t);
+          TypeString(t) <<
+          "\nAnd the evar was: " << e.ToString();
       } else {
         e.Set(t);
       }

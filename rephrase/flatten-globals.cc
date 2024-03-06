@@ -2,40 +2,28 @@
 #include "flatten-globals.h"
 
 #include "il.h"
-#include "il-pass.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
 namespace il {
 namespace {
-// There may be no point in using Pass here, since we need to
-// track the type of the expression; we end up replicating all
-// of the cases that get executed!
-struct FlattenPass : Pass<const Type *,
-                          const std::vector<std::string> &,
-                          const std::vector<const Type *> &,
-                          const std::string &,
-                          bool> {
-  using Pass::Pass;
 
-  virtual const Exp *DoExp(const Exp *e,
-                           const Type *t,
-                           const std::vector<std::string> &tyvars,
-                           const std::vector<const Type *> &tys,
-                           const std::string &hint,
-                           bool toplevel) override {
+struct FlattenPass {
+  FlattenPass(AstPool *pool) : pool(pool) {}
+
+  const Exp *DoExp(const Exp *e,
+                   const Type *t,
+                   const std::vector<std::string> &tyvars,
+                   const std::vector<const Type *> &tys,
+                   const std::string &hint,
+                   bool toplevel) {
 #   define ARGS t, tyvars, tys, hint, toplevel
     switch (e->type) {
     case ExpType::STRING: return DoString(e->String(), e, ARGS);
     case ExpType::FLOAT: return DoFloat(e->Float(), e, ARGS);
-    case ExpType::JOIN: return DoJoin(e->Join(), e, ARGS);
     case ExpType::RECORD: return DoRecord(e->Record(), e, ARGS);
     case ExpType::INT: return DoInt(e->Int(), e, ARGS);
     case ExpType::BOOL: return DoBool(e->Bool(), e, ARGS);
-    case ExpType::VAR: {
-      const auto &[ts, v] = e->Var();
-      return DoVar(ts, v, e, ARGS);
-    }
     case ExpType::GLOBAL_SYM: return e;
 
     case ExpType::INJECT: {
@@ -65,27 +53,26 @@ struct FlattenPass : Pass<const Type *,
                     const std::vector<std::string> &tyvars,
                     const std::vector<const Type *> &tys,
                     const std::string &hint,
-                    bool toplevel) override {
+                    bool toplevel) {
     // DCHECK(TypeEq(t, type_of_guess));
     const Type *unrolled = pool->UnrollType(t);
     return pool->Roll(t, DoExp(e, unrolled, tyvars, tys, hint, toplevel),
                       guess);
   }
 
-  virtual const Exp *DoPack(const Type *t_hidden, const std::string &alpha,
-                            const Type *t_packed, const Exp *body,
-                            const Exp *guess,
-                            const Type *type_of_guess,
-                            const std::vector<std::string> &tyvars,
-                            const std::vector<const Type *> &tys,
-                            const std::string &hint,
-                            bool toplevel) override {
+  const Exp *DoPack(const Type *t_hidden,
+                    const std::string &alpha,
+                    const Type *t_packed,
+                    const Exp *body,
+                    const Exp *guess,
+                    const Type *type_of_guess,
+                    const std::vector<std::string> &tyvars,
+                    const std::vector<const Type *> &tys,
+                    const std::string &hint, bool toplevel) {
     // DCHECK(TypeEq(pool->Exists(alpha, t_packed), type_of_guess));
     const Type *body_type = pool->SubstType(t_hidden, alpha, t_packed);
 
-    return pool->Pack(t_hidden,
-                      alpha,
-                      t_packed,
+    return pool->Pack(t_hidden, alpha, t_packed,
                       DoExp(body, body_type, tyvars, tys, hint, toplevel),
                       guess);
   }
@@ -97,7 +84,7 @@ struct FlattenPass : Pass<const Type *,
       const std::vector<std::string> &tyvars,
       const std::vector<const Type *> &tys,
       const std::string &hint,
-      bool toplevel) override {
+      bool toplevel) {
     CHECK(t->type == TypeType::RECORD);
     auto FieldType = [&](const std::string &lab) -> const Type * {
         for (const auto &[l, ft] : t->Record()) {
@@ -141,7 +128,7 @@ struct FlattenPass : Pass<const Type *,
                       const std::vector<std::string> &tyvars,
                       const std::vector<const Type *> &tys,
                       const std::string &hint,
-                      bool toplevel) override {
+                      bool toplevel) {
     // DCHECK(TypeEq(t, type_of_guess));
     LOG(FATAL) << "Unimplemented: Global inject: " << ExpString(e);
     // return pool->Inject(s, DoType(t, args...), DoExp(e, args...), guess);
@@ -169,7 +156,7 @@ struct FlattenPass : Pass<const Type *,
                       const std::vector<std::string> &tyvars,
                       const std::vector<const Type *> &tys,
                       const std::string &hint,
-                      bool toplevel) override {
+                      bool toplevel) {
     return AddValue(guess, t, tyvars, tys, hint);
   }
 
@@ -178,7 +165,7 @@ struct FlattenPass : Pass<const Type *,
                      const std::vector<std::string> &tyvars,
                      const std::vector<const Type *> &tys,
                      const std::string &hint,
-                     bool toplevel) override {
+                     bool toplevel) {
     return AddValue(guess, t, tyvars, tys, hint);
   }
 
@@ -187,7 +174,7 @@ struct FlattenPass : Pass<const Type *,
                    const std::vector<std::string> &tyvars,
                    const std::vector<const Type *> &tys,
                    const std::string &hint,
-                   bool toplevel) override {
+                   bool toplevel) {
     return AddValue(guess, t, tyvars, tys, hint);
   }
 
@@ -196,33 +183,13 @@ struct FlattenPass : Pass<const Type *,
                     const std::vector<std::string> &tyvars,
                     const std::vector<const Type *> &tys,
                     const std::string &hint,
-                    bool toplevel) override {
+                    bool toplevel) {
     return AddValue(guess, t, tyvars, tys, hint);
   }
 
-
-  Program DoProgram(const Program &program,
-                    const Type *t,
-                    const std::vector<std::string> &tyvars,
-                    const std::vector<const Type *> &tys,
-                    const std::string &hint,
-                    bool toplevel) override {
-    LOG(FATAL) << "Not expecting calls to DoProgram.";
-    return program;
-  }
-
-  // This does not change types, so don't bother recursing on them.
-  const Type *DoType(const Type *t,
-                     const Type *tt,
-                     const std::vector<std::string> &tyvars,
-                     const std::vector<const Type *> &tys,
-                     const std::string &hint,
-                     bool toplevel) override {
-    return t;
-  }
-
-
   std::vector<Global> globals_added;
+ private:
+  AstPool *pool;
 };
 }  // namespace
 

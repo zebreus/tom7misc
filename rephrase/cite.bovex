@@ -1,0 +1,58 @@
+(* Bibliography support.
+
+   To use this, call functions like "bib-website" once per source
+   (typically in the preamble, typically in an included file) and
+   bind the result to a citation name, which can then be cited
+   with the "cite" function.
+
+   e.g.
+
+   (* in "paper.bib" or whatever *)
+   val wikipedia-earth =
+     Website { url = "https://en.wikipedia.org/en/wiki/Earth" }
+
+   (* in "paper.bovex" *)
+   This is the greatest planet on Earth.[cite wikipedia-earth]
+*)
+
+datatype bibsource =
+    Website of { url: string }
+  | Article of { title: string }
+
+
+fun bibsource-compare (Website { url = url1 },
+                       Website { url = url2 }) =
+      string-compare (url1, url2)
+  | bibsource-compare (Website _, _) = LESS
+  | bibsource-compare (_, Website _) = GREATER
+  | bibsource-compare (Article { title = title1 },
+                       Article { title = title2 }) =
+      string-compare (title1, title2)
+  | bibsource-compare (Article _, _) = LESS
+  | bibsource-compare (_, Article _) = GREATER
+
+
+
+(* XXX: should register these in a global data structure. *)
+fun bib-website x = Website
+fun bib-article x = Article
+
+
+
+val citations-used : bibsource set ref = ref (set-empty bibsource-compare)
+fun add-citation (c : bibsource) =
+  citations-used := set-insert (!citations-used, c)
+
+
+(* XXX should do something *)
+fun cite c =
+  let do add-citation c
+  in
+    "citation needed"
+  end
+
+fun nocite c =
+  let do add-citation c
+  in
+    ""
+  end

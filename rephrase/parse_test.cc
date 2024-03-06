@@ -682,6 +682,19 @@ static void TestParsePat() {
   }
 
   {
+    const Pat *pat = ParsePat("{ a, b = _ }");
+    CHECK(pat->type == PatType::RECORD);
+    CHECK(pat->str_children.size() == 2);
+    // Might want to do unordered compare here?
+    CHECK(pat->str_children[0].first == "a");
+    CHECK(pat->str_children[0].second->type == PatType::VAR);
+    CHECK(pat->str_children[0].second->str == "a");
+    CHECK(pat->str_children[1].first == "b");
+    CHECK(pat->str_children[1].second->type == PatType::WILD);
+  }
+
+
+  {
     const Pat *pat = ParsePat("(_, 7)");
     CHECK(pat->type == PatType::TUPLE);
     CHECK(pat->children.size() == 2);

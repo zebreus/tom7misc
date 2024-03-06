@@ -41,6 +41,8 @@ enum class Primop {
   FLOAT_NEG,
 
   STRING_EQ,
+  STRING_LESS,
+  STRING_GREATER,
   STRING_CONCAT,
   // TODO: Other string comparisons
 

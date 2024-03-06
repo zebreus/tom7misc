@@ -51,7 +51,7 @@ enum TokenType {
   AS,
   AND,
   FAIL,
-  INCLUDE,
+  IMPORT,
 
   TRUE,
   FALSE,

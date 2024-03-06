@@ -4,9 +4,10 @@
 #include <chrono>
 #include <format>
 
+#include "compiler.h"
 #include "frontend.h"
-#include "closure-conversion.h"
 #include "il.h"
+#include "execution.h"
 
 #include "util.h"
 #include "base/logging.h"
@@ -55,7 +56,7 @@ static void GeneratePDF(const std::string &filename) {
 
 static int Bovex(const std::vector<std::string> &args) {
   Timer timer;
-  Frontend frontend;
+  Compiler compiler;
   // Parse command-line arguments.
   printf("Date: %s\n", DateTimeStamp().c_str());
 
@@ -71,11 +72,11 @@ static int Bovex(const std::vector<std::string> &args) {
     } else if (Util::TryStripPrefix("-I", &arg)) {
       // Then this is -Istdlib
       if (!arg.empty()) {
-        frontend.AddIncludePath((std::string)arg);
+        compiler.frontend.AddIncludePath((std::string)arg);
       } else {
         CHECK(i + 1 < (int)args.size()) << "Trailing -I argument";
         i++;
-        frontend.AddIncludePath(args[i]);
+        compiler.frontend.AddIncludePath(args[i]);
       }
     } else if (arg == "-o") {
       CHECK(i + 1 < (int)args.size()) << "Trailing -o argument";
@@ -94,7 +95,7 @@ static int Bovex(const std::vector<std::string> &args) {
     printf("\n");
   }
 
-  frontend.SetVerbose(verbose);
+  compiler.frontend.SetVerbose(verbose);
 
   CHECK(!output_file.empty()) << "Need to explicitly specify an "
     "output file with -o output.pdf.\n";
@@ -102,17 +103,13 @@ static int Bovex(const std::vector<std::string> &args) {
   CHECK(leftover.size() == 1) << "Expected exactly one .bovex file "
     "on the command-line.";
 
-  il::Program pgm = frontend.RunFrontend(leftover[0]);
+  bc::Program pgm = compiler.Compile(leftover[0]);
 
-  CHECK(pgm.body != nullptr);
+  bc::Execution execution(pgm);
+  bc::Execution::State state = execution.Start();
+  execution.RunToCompletion(&state);
 
-  // XXX should we copy to a new AstPool?
-  // Note that the variable counter would have to be copied somehow.
-  il::AstPool *pool = frontend.Pool();
-  il::ClosureConversion closure_conversion(pool);
-  closure_conversion.SetVerbose(verbose);
-  pgm = closure_conversion.Convert(pgm);
-
+  // XXX
   GeneratePDF(output_file);
 
   printf("Finished in %s\n", ANSI::Time(timer.Seconds()).c_str());

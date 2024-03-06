@@ -32,12 +32,12 @@ struct TypedPass {
       Global gg;
       gg.tyvars = glob.tyvars;
       gg.sym = glob.sym;
-      printf("Do global %s\n", glob.sym.c_str());
+      // printf("Do global %s\n", glob.sym.c_str());
       std::tie(gg.exp, gg.type) = DoExp(GG, glob.exp, args...);
       out.globals.push_back(std::move(gg));
     }
 
-    printf("Do body: %s\n", ExpString(program.body).c_str());
+    // printf("Do body: %s\n", ExpString(program.body).c_str());
     const auto &[be, bt] = DoExp(GG, program.body, args...);
     out.body = be;
     return out;

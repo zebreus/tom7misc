@@ -60,7 +60,7 @@ const char *TokenTypeString(TokenType tok) {
   case DATATYPE: return "DATATYPE";
   case OF: return "OF";
   case CASE: return "CASE";
-  case INCLUDE: return "INCLUDE";
+  case IMPORT: return "IMPORT";
 
   // Identifier.
   case ID: return "ID";
@@ -245,7 +245,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"orelse", ORELSE},
     {"as", AS},
     {"and", AND},
-    {"include", INCLUDE},
+    {"import", IMPORT},
     {"fail", FAIL},
 
     // Symbolic

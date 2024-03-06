@@ -15,6 +15,13 @@ fun int-compare (a, b) =
        then EQUAL
        else GREATER
 
+fun string-compare (a, b) =
+  if string-less (a, b)
+  then LESS
+  else if string-eq (a, b)
+       then EQUAL
+       else GREATER
+
 datatype (a) list = :: of a * list | nil
 
 fun list-append (h :: t, l2) = h :: list-append(t, l2)
@@ -186,4 +193,34 @@ fun list-stratify cmp nil = nil
        | GREATER => (h, elems) :: ins (a, b) rest)
   in
     ins (aa, bb) ls
+  end
+
+datatype (a) set-tree =
+  SetEmpty
+  | SetNode of set-tree * a * set-tree
+
+datatype (a) set = Set of { cmp: a * a -> order, tree: a set-tree }
+fun set-empty cmp = Set { cmp = cmp, tree = SetEmpty }
+fun set-insert (Set { cmp, tree }, item) =
+  let
+    fun r SetEmpty = SetNode (SetEmpty, item, SetEmpty)
+      | r (node as SetNode (left, x, right)) =
+      case cmp (item, x) of
+        (* Already present. *)
+        EQUAL => node
+      | LESS => SetNode (r left, x, right)
+      | GREATER => SetNode (left, x, r right)
+  in
+    Set { cmp = cmp, tree = r tree }
+  end
+fun set-contains (Set { cmp, tree }, item) =
+  let
+    fun r SetEmpty = false
+      | r (SetNode (left, x, right)) =
+      case cmp (item, x) of
+        EQUAL => true
+      | LESS => r left
+      | GREATER => r right
+  in
+    r tree
   end

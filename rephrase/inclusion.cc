@@ -89,7 +89,7 @@ struct InclusionImpl {
     for (int i = 0; i < (int)ftokens.size(); i++) {
       const Token &token = ftokens[i];
 
-      if (token.type == el::INCLUDE) [[unlikely]] {
+      if (token.type == el::IMPORT) [[unlikely]] {
 
         // We remove the import statement from the source, so
         // we need to know its length to adjust the offsets.
@@ -103,10 +103,10 @@ struct InclusionImpl {
 
         i++;
         CHECK(i < (int)ftokens.size()) << "Lexing " << filename
-                                       << ": File ends with INCLUDE.";
+                                       << ": File ends with IMPORT.";
         const Token &target = ftokens[i];
         CHECK(target.type == el::STR_LIT) << "Lexing " << filename << ": "
-          "Expected string literal immediately after INCLUDE.\n";
+          "Expected string literal immediately after IMPORT.\n";
 
         std::string included_file =
           ResolveInclude(ReadStringLit(target));

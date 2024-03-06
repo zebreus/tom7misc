@@ -27,6 +27,8 @@ const char *PrimopString(Primop p) {
   case Primop::INT_MOD: return "INT_MOD";
   case Primop::INT_NEG: return "INT_NEG";
   case Primop::STRING_EQ: return "STRING_EQ";
+  case Primop::STRING_LESS: return "STRING_LESS";
+  case Primop::STRING_GREATER: return "STRING_GREATER";
   case Primop::INT_DIV_TO_FLOAT: return "INT_DIV_TO_FLOAT";
   case Primop::FLOAT_TIMES: return "FLOAT_TIMES";
   case Primop::FLOAT_PLUS: return "FLOAT_PLUS";
@@ -58,6 +60,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::INT_MOD: return std::make_tuple(0, 2);
   case Primop::INT_NEG: return std::make_tuple(0, 1);
   case Primop::STRING_EQ: return std::make_tuple(0, 2);
+  case Primop::STRING_LESS: return std::make_tuple(0, 2);
+  case Primop::STRING_GREATER: return std::make_tuple(0, 2);
   case Primop::INT_DIV_TO_FLOAT: return std::make_tuple(0, 2);
   case Primop::FLOAT_TIMES: return std::make_tuple(0, 2);
   case Primop::FLOAT_PLUS: return std::make_tuple(0, 2);
@@ -96,6 +100,8 @@ bool IsPrimopTotal(Primop p) {
   case Primop::INT_NEG:
     return true;
   case Primop::STRING_EQ:
+  case Primop::STRING_LESS:
+  case Primop::STRING_GREATER:
     return true;
   case Primop::INT_DIV_TO_FLOAT:
     // Here, division by zero produces nan or +/- inf.
@@ -187,6 +193,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::FLOAT_NEG: return {{}, pool->Arrow(Float, Float)};
 
   case Primop::STRING_EQ: return {{}, BinOp(String, String, Bool)};
+  case Primop::STRING_LESS: return {{}, BinOp(String, String, Bool)};
+  case Primop::STRING_GREATER: return {{}, BinOp(String, String, Bool)};
   case Primop::STRING_CONCAT: return {{}, BinOp(String, String, String)};
 
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
