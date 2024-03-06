@@ -9,7 +9,7 @@
 #include "ansi.h"
 #include "functional-map.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 // TODO: Can do some typed simplification, like:
 //   - unit erasure
@@ -543,6 +543,10 @@ struct ExplodeRecordPass : public il::Pass<Known> {
       // If any of the record's fields are not valuable, pull them
       // out as intermediate variables.
       //
+      // XXX: Need to avoid doing this transformation if we're not
+      // actually going to use them. Otherwise we get into infinite
+      // loops where inlining will try to put them back.
+      //
       // When processing the body, mark the record as known.
       std::vector<std::pair<std::string, const Exp *>> bindings;
       std::vector<std::pair<std::string, const Exp *>> new_fields;
@@ -560,10 +564,6 @@ struct ExplodeRecordPass : public il::Pass<Known> {
 
       rhs = pool->Record(new_fields, rhs);
 
-      // Mark them as known for the body.
-      // for (const auto &[lab, exp] : new_fields) {
-      // known = known.Insert(lab, exp);
-      // }
       known = known.Insert(x, rhs);
 
       const Exp *ret =
@@ -609,8 +609,10 @@ struct ExplodeRecordPass : public il::Pass<Known> {
           // that we replace all of the uses of the record
           // and we don't have to allocate it at all.
           for (const auto &[lab, ee] : rec->Record()) {
-            progress->Simplified("known record field");
-            return ee;
+            if (lab == s) {
+              progress->Simplified("known record field");
+              return ee;
+            }
           }
           LOG(FATAL) << "Projection of field " << s << " from var " <<
             x << ". The value of x is known, and it is "
