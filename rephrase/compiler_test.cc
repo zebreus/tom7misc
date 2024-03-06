@@ -8,17 +8,18 @@ static void TrivialTest() {
   Compiler compiler;
   // There's pretty much only one way to compile this program.
   bc::Program prog = compiler.CompileString("test", "7");
-  // bc::PrintProgram(prog);
+  bc::PrintProgram(prog);
   CHECK(!prog.data.empty());
   CHECK(prog.data.size() == 1);
   const auto &[data_lab, data_value] = *prog.data.begin();
   CHECK(prog.code.contains("main"));
   const auto &[arg, insts] = prog.code.find("main")->second;
-  CHECK(insts.size() == 2);
-  const bc::inst::Load *load = std::get_if<bc::inst::Load>(&insts[0]);
+  CHECK(insts.size() == 3);
+  CHECK(std::holds_alternative<bc::inst::Note>(insts[0]));
+  const bc::inst::Load *load = std::get_if<bc::inst::Load>(&insts[1]);
   CHECK(load != nullptr);
   CHECK(load->global == data_lab);
-  const bc::inst::Ret *ret = std::get_if<bc::inst::Ret>(&insts[1]);
+  const bc::inst::Ret *ret = std::get_if<bc::inst::Ret>(&insts[2]);
   CHECK(ret->arg == load->out);
 }
 

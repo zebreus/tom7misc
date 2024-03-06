@@ -121,9 +121,6 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     };
 
   switch (primop) {
-  case Primop::SET:
-    LOG(FATAL) << "unimplemented SET";
-
   case Primop::INT_EQ: {
     const auto &[aa, bb] = TwoInts("int_eq");
     return Bool(BigInt::Eq(aa, bb));
@@ -222,6 +219,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return String(aa + bb);
   }
 
+  case Primop::SET:
+    LOG(FATAL) << "SET should have been compiled away.";
   case Primop::INVALID:
     LOG(FATAL) << "Tried executing INVALID primop as binop.";
   default:
@@ -269,12 +268,6 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     };
 
   switch (primop) {
-  case Primop::REF:
-    LOG(FATAL) << "unimplemented REF";
-
-  case Primop::GET:
-    LOG(FATAL) << "unimplemented GET";
-
   case Primop::INT_NEG: {
     const BigInt &bi = GetInt("int_neg");
     return Big(BigInt::Negate(bi));
@@ -296,6 +289,10 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Unit();
   }
 
+  case Primop::REF:
+    LOG(FATAL) << "REF should have been compiled away";
+  case Primop::GET:
+    LOG(FATAL) << "GET should have been compiled away";
   case Primop::INVALID:
     LOG(FATAL) << "Tried executing INVALID primop as unop.";
   default:

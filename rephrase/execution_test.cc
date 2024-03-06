@@ -146,99 +146,109 @@ static void ExecTests() {
    )") == "120");
 
   CHECK(RunToString(R"(
-  let
-    fun o(f, g) = fn x => f(g(x))
+    let
+      fun o(f, g) = fn x => f(g(x))
 
-    datatype (a) list = :: of a * list | nil
+      datatype (a) list = :: of a * list | nil
 
-    datatype order = LESS | EQUAL | GREATER
+      datatype order = LESS | EQUAL | GREATER
 
-    fun int-compare (a, b) =
-      if a < b
-      then LESS
-      else if a == b
-           then EQUAL
-           else GREATER
+      fun int-compare (a, b) =
+        if a < b
+        then LESS
+        else if a == b
+             then EQUAL
+             else GREATER
 
-    fun list-sort cmp l =
+      fun list-sort cmp l =
+        let
+          fun split l =
+            let fun s (a1, a2, nil) = (a1, a2)
+                  | s (a1, a2, (h::t)) = s (a2, h::a1, t)
+            in s (nil, nil, l)
+            end
+
+          fun merge (a, nil) = a
+            | merge (nil, b) = b
+            | merge ((a :: ta) as aa, (b :: tb) as bb) =
+            case cmp (a, b) of
+              EQUAL => (a :: b :: merge (ta, tb))
+            | LESS => (a :: merge (ta, bb))
+            | GREATER => (b :: merge (aa, tb))
+
+          fun ms nil = nil
+            | ms ((s :: nil) as l) = l
+            | ms (a :: b :: nil) = merge (a :: nil, b :: nil)
+            | ms ll =
+            let val (a,b) = split ll
+            in merge (ms a, ms b)
+            end
+        in
+          ms l
+        end
+
+      fun list-app f nil = ()
+        | list-app f (h :: t) =
+        let do f h
+        in list-app f t
+        end
+
+      val list = 3 :: 9 :: 1 :: 2 :: 4 :: 8 :: 6 :: 7 :: 5 :: nil
+      val sorted = list-sort int-compare list
+    in
+      list-app (print o int-to-string) sorted
+    end
+    )") == "123456789");
+
+  CHECK_EQ(RunToString(R"(
+    let
+      datatype exp = Let of dec * exp
+                   | Int of int
+                   | Var of string
+      and dec = Val of string * exp
+
+      fun ^(a, b) = string-concat (a, b)
+
+      fun etos (Let (d, e) : exp) =
+        "let " ^ dtos d ^ " in " ^ etos e ^ " end"
+        | etos (Int i) = int-to-string i
+        | etos (Var v) = v
+      and dtos (Val (x, e) : dec) = "val " ^ x ^ " = " ^ etos e
+
+      val expr = Let (Val ("x", Int 7), Var "x")
+
+    in
+      print (etos expr)
+    end
+    )"), "let val x = 7 in x end");
+
+  CHECK_EQ(RunToString(R"(
       let
-        fun split l =
-          let fun s (a1, a2, nil) = (a1, a2)
-                | s (a1, a2, (h::t)) = s (a2, h::a1, t)
-          in s (nil, nil, l)
-          end
-
-        fun merge (a, nil) = a
-          | merge (nil, b) = b
-          | merge ((a :: ta) as aa, (b :: tb) as bb) =
-          case cmp (a, b) of
-            EQUAL => (a :: b :: merge (ta, tb))
-          | LESS => (a :: merge (ta, bb))
-          | GREATER => (b :: merge (aa, tb))
-
-        fun ms nil = nil
-          | ms ((s :: nil) as l) = l
-          | ms (a :: b :: nil) = merge (a :: nil, b :: nil)
-          | ms ll =
-          let val (a,b) = split ll
-          in merge (ms a, ms b)
-          end
+         val r = ref 5
+         do r := !r + 1
+         do r := !r + 1
       in
-        ms l
+         print (int-to-string (!r))
       end
-
-    fun list-app f nil = ()
-      | list-app f (h :: t) =
-      let do f h
-      in list-app f t
-      end
-
-    val list = 3 :: 9 :: 1 :: 2 :: 4 :: 8 :: 6 :: 7 :: 5 :: nil
-    val sorted = list-sort int-compare list
-  in
-    list-app (print o int-to-string) sorted
-  end
-  )") == "123456789");
-
-      CHECK_EQ(RunToString(R"(
-  let
-    datatype exp = Let of dec * exp
-                 | Int of int
-                 | Var of string
-    and dec = Val of string * exp
-
-    fun ^(a, b) = string-concat (a, b)
-
-    fun etos (Let (d, e) : exp) =
-      "let " ^ dtos d ^ " in " ^ etos e ^ " end"
-      | etos (Int i) = int-to-string i
-      | etos (Var v) = v
-    and dtos (Val (x, e) : dec) = "val " ^ x ^ " = " ^ etos e
-
-    val expr = Let (Val ("x", Int 7), Var "x")
-
-  in
-    print (etos expr)
-  end
-)"), "let val x = 7 in x end");
+      )"), "7");
 }
 
 static void NewTests() {
   // Mutually recursive datatypes and functions.
   CHECK(RunToString(R"(
-  let
-    datatype exp = Let of dec * exp
-    and dec = Val of string * exp
+    let
+      datatype exp = Let of dec * exp
+      and dec = Val of string * exp
 
-    fun ^(a, b) = string-concat (a, b)
+      fun ^(a, b) = string-concat (a, b)
 
-    fun etos (Let (d, e) : exp) = string-concat("hi", etos e)
-    and  dtos (Val (x, e) : dec) = "val " ^ x ^ " = " ^ etos e
+      fun etos (Let (d, e) : exp) = string-concat("hi", etos e)
+      and  dtos (Val (x, e) : dec) = "val " ^ x ^ " = " ^ etos e
 
-  in
-    print "OK"
-  end
-)") == "OK");
+    in
+      print "OK"
+    end
+    )") == "OK");
 
   // This also gives an error, perhaps related.
   /*

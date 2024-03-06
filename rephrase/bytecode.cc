@@ -13,7 +13,7 @@
 
 namespace bc {
 
-#define ADATA_LAB(s) AFGCOLOR(200, 160, 40, s)
+#define AGLOBAL_LAB(s) AFGCOLOR(200, 160, 40, s)
 #define AMAP_LAB(s) AFGCOLOR(160, 200, 40, s)
 #define AOUT(s) AFGCOLOR(160, 160, 220, s)
 #define AARG(s) AFGCOLOR(200, 120, 220, s)
@@ -91,10 +91,10 @@ std::string ColorInstString(const Inst &inst) {
     return StringPrintf("BIND " AOUT("%s") " <- " AARG("%s"),
                         bind->out.c_str(), bind->arg.c_str());
   } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
-    return StringPrintf("LOAD " AOUT("%s") " <- " ADATA_LAB("%s"),
+    return StringPrintf("LOAD " AOUT("%s") " <- " AGLOBAL_LAB("%s"),
                         load->out.c_str(), load->global.c_str());
   } else if (const inst::Save *save = std::get_if<inst::Save>(&inst)) {
-    return StringPrintf("SAVE " ADATA_LAB("%s") " <- " AARG("%s"),
+    return StringPrintf("SAVE " AGLOBAL_LAB("%s") " <- " AARG("%s"),
                         save->global.c_str(), save->arg.c_str());
   } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
     return StringPrintf("JUMP " AINDEX_USED("%05d"),
@@ -117,7 +117,7 @@ void PrintProgram(const Program &pgm) {
                   AFGCOLOR(0, 0, 0,
                            " == DATA == ")) "\n");
   for (const auto &[lab, value] : data) {
-    printf(" " ADATA_LAB("%s") ": %s\n",
+    printf(" " AGLOBAL_LAB("%s") ": %s\n",
            lab.c_str(), ColorValueString(value).c_str());
   }
 

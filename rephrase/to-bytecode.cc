@@ -23,6 +23,8 @@ struct Converter {
   static constexpr const char *INJ_LABEL = "#";
   static constexpr const char *INJ_VALUE = "$";
 
+  static constexpr const char *REF_LABEL = "r";
+
   // We actually keep code, data, and local symbols disjoint (even
   // though this is not required) to prevent conclusion.
   std::string NewSymbol(const std::string &hint) {
@@ -428,6 +430,35 @@ struct Converter {
         }
 
         std::string out = NewSymbol("po");
+
+        // Some primops are translated away natively.
+        switch (po) {
+        case Primop::REF: {
+          CHECK(ls.size() == 1);
+          insts->emplace_back(inst::Alloc{.out = out});
+          insts->emplace_back(
+              inst::SetLabel{.obj = out, .lab = REF_LABEL, .arg = ls[0]});
+          return out;
+        }
+
+        case Primop::GET: {
+          CHECK(ls.size() == 1);
+          insts->emplace_back(
+              inst::GetLabel{.out = out, .obj = ls[0], .lab = REF_LABEL});
+          return out;
+        }
+
+        case Primop::SET: {
+          CHECK(ls.size() == 2);
+          insts->emplace_back(
+              inst::SetLabel{.obj = ls[0], .lab = REF_LABEL, .arg = ls[1]});
+          return out;
+        }
+
+        default:
+          // Handled as a generic primop, then.
+          break;
+        }
 
         switch (num_exp_args) {
         case 1:
