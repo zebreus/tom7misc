@@ -31,6 +31,37 @@ const char *TypeTypeString(TypeType t) {
   }
 }
 
+const char *ExpTypeString(ExpType t) {
+  switch (t) {
+  case ExpType::STRING: return "STRING";
+  case ExpType::FLOAT: return "FLOAT";
+  case ExpType::JOIN: return "JOIN";
+  case ExpType::RECORD: return "RECORD";
+  case ExpType::INT: return "INT";
+  case ExpType::BOOL: return "BOOL";
+  case ExpType::VAR: return "VAR";
+  case ExpType::GLOBAL_SYM: return "GLOBAL_SYM";
+  case ExpType::LAYOUT: return "LAYOUT";
+  case ExpType::LET: return "LET";
+  case ExpType::IF: return "IF";
+  case ExpType::APP: return "APP";
+  case ExpType::FN: return "FN";
+  case ExpType::PROJECT: return "PROJECT";
+  case ExpType::INJECT: return "INJECT";
+  case ExpType::ROLL: return "ROLL";
+  case ExpType::UNROLL: return "UNROLL";
+  case ExpType::PRIMOP: return "PRIMOP";
+  case ExpType::FAIL: return "FAIL";
+  case ExpType::SEQ: return "SEQ";
+  case ExpType::INTCASE: return "INTCASE";
+  case ExpType::STRINGCASE: return "STRINGCASE";
+  case ExpType::SUMCASE: return "SUMCASE";
+  case ExpType::PACK: return "PACK";
+  case ExpType::UNPACK: return "UNPACK";
+  default: return "???MISSING???";
+  }
+}
+
 std::string AstPool::NewVar(const std::string &hint_in) {
   next_var++;
   std::string hint = BaseVar(hint_in);

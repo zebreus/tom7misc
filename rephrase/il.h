@@ -982,7 +982,8 @@ struct AstPool {
   int next_var = 0;
 };
 
-const char *TypeTypeString(const TypeType t);
+const char *TypeTypeString(TypeType t);
+const char *ExpTypeString(ExpType t);
 std::string TypeString(const Type *t);
 std::string ExpString(const Exp *e);
 std::string ProgramString(const Program &pgm);

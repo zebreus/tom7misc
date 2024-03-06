@@ -1,13 +1,19 @@
 
 #include "simplification.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "il.h"
 
+#include "ansi.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "bignum/big-overloads.h"
+#include "functional-map.h"
 #include "il-pass.h"
 #include "il-util.h"
-#include "bignum/big-overloads.h"
-#include "ansi.h"
-#include "functional-map.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -17,6 +23,7 @@ static constexpr bool VERBOSE = false;
 //   - flatten records
 
 namespace {
+
 struct Progress {
   // Call this whenever the expression definitely got smaller.
   void Simplified(const char *msg) {
@@ -44,6 +51,14 @@ Simplification::Simplification(AstPool *pool) : pool(pool) {}
 
 void Simplification::SetVerbose(int v) {
   verbose = v;
+}
+
+// A brief (suitable for one-liner), color version of an expression.
+static std::string ExpStringShort(const Exp *e) {
+  switch (e->type) {
+  default:
+    return StringPrintf(ABLUE("%s"), ExpTypeString(e->type));
+  }
 }
 
 // True if the expression is a value and cheaper/smaller than
@@ -193,15 +208,15 @@ static bool IsDiscardable(const Exp *e) {
 
 namespace {
 struct PeepholePass : public il::Pass<> {
-  PeepholePass(uint64_t opts, AstPool *pool, Progress *progress) :
-    Pass(pool),
+  PeepholePass(uint64_t opts, AstPool *p, Progress *progress) :
+    Pass(p),
     opts(opts),
     progress(progress) {}
 
   const Exp *DoUnroll(const Exp *e, const Exp *guess) override {
     e = DoExp(e);
     if ((opts & Simplification::O_REDUCE) && e->type == ExpType::ROLL) {
-      const auto &[tt, ee] = e->Roll();
+          const auto &[tt, ee] = e->Roll();
       Simplified("reduce unroll");
       return ee;
     }
@@ -333,8 +348,8 @@ struct PeepholePass : public il::Pass<> {
       Simplified("inlined small value");
       const Exp *value = DoExp(rhs);
       if (VERBOSE) {
-        printf("  Inlined var is " APURPLE("%s") " = " ABLUE("%s") "\n",
-               x.c_str(), ExpString(value).c_str());
+        printf("  Inlined var is " APURPLE("%s") " = %s\n",
+               x.c_str(), ExpStringShort(value).c_str());
       }
       return ILUtil::SubstExp(pool, value, x, DoExp(body));
     }
@@ -456,7 +471,9 @@ struct PeepholePass : public il::Pass<> {
       if ((opts & Simplification::O_DEAD_CODE) &&
           IsDiscardable(c)) {
         Simplified("dropped effectless seq");
-        printf("  Exp was " ABLUE("%s") "\n", ExpString(c).c_str());
+        if (VERBOSE) {
+          printf("  Exp was %s\n", ExpStringShort(c).c_str());
+        }
       } else {
         if ((opts & Simplification::O_FLATTEN) &&
             c->type == ExpType::SEQ) {
@@ -502,12 +519,19 @@ private:
   Progress *progress = nullptr;
 };
 
-using Known = FunctionalMap<std::string, const Exp *>;
+struct Knowledge {
+  const Exp *value = nullptr;
+  // In some cases (records) we need to do setup work to know the
+  // value, so we only want to do that work if the value will be
+  // used. This bit is modified in place when the knowledge is used.
+  bool was_used = false;
+};
+using Known = FunctionalMap<std::string, std::shared_ptr<Knowledge>>;
 
 // TODO: This could be a general 'known' pass.
 struct ExplodeRecordPass : public il::Pass<Known> {
-  ExplodeRecordPass(uint64_t opts, AstPool *pool, Progress *progress) :
-    Pass(pool),
+  ExplodeRecordPass(uint64_t opts, AstPool *p, Progress *progress) :
+    Pass(p),
     opts(opts),
     progress(progress) {}
 
@@ -541,13 +565,16 @@ struct ExplodeRecordPass : public il::Pass<Known> {
         tyvars.empty() && rhs->type == ExpType::RECORD) {
       const auto &fields = rhs->Record();
       // If any of the record's fields are not valuable, pull them
-      // out as intermediate variables.
+      // out as intermediate variables. That way when processing the
+      // body we can reduce #lab x without moving any effects.
       //
-      // XXX: Need to avoid doing this transformation if we're not
-      // actually going to use them. Otherwise we get into infinite
-      // loops where inlining will try to put them back.
-      //
-      // When processing the body, mark the record as known.
+      // However, we need to avoid doing this transformation if
+      // we're not actually going to use the record's fields (e.g.
+      // if it only escapes). Otherwise we can get into infinite
+      // loops where inlining will try to put them back. So we
+      // provisionally create the knowledge, translate the body,
+      // and then only actually do this if the knowledge was marked
+      // as was_used.
       std::vector<std::pair<std::string, const Exp *>> bindings;
       std::vector<std::pair<std::string, const Exp *>> new_fields;
       for (const auto &[lab, exp] : fields) {
@@ -562,21 +589,37 @@ struct ExplodeRecordPass : public il::Pass<Known> {
         }
       }
 
-      rhs = pool->Record(new_fields, rhs);
+      const Exp *new_rhs = pool->Record(new_fields, rhs);
 
-      known = known.Insert(x, rhs);
+      auto knowledge = std::make_shared<Knowledge>(Knowledge{
+          .value = new_rhs, .was_used = false});
+      known = known.Insert(x, knowledge);
 
-      const Exp *ret =
-        pool->Let(tyvars, x, rhs, DoExp(body, known), guess);
+      // This sets knowledge->was_used if we need the fields to be
+      // pulled out. Otherwise, the original rhs will suffice.
+      const Exp *new_body = DoExp(body, known);
 
-      // And wrap with bindings, preserving evaluation order.
-      for (int i = bindings.size() - 1; i >= 0; i--) {
-        const auto &[var, arm_exp] = bindings[i];
-        printf("  binding " APURPLE("%s") " = ...\n", var.c_str());
-        ret = pool->Let({}, var, arm_exp, ret);
+      if (knowledge->was_used) {
+        // Here we use the new exploded record.
+        const Exp *ret =
+          pool->Let(tyvars, x, new_rhs, DoExp(body, known), guess);
+
+        // And wrap with bindings, preserving evaluation order.
+        for (int i = bindings.size() - 1; i >= 0; i--) {
+          const auto &[var, arm_exp] = bindings[i];
+          if (VERBOSE) {
+            printf("  serialized record field " APURPLE("%s") " = ...\n",
+                   var.c_str());
+          }
+          CHECK(tyvars.empty());
+          ret = pool->Let({}, var, arm_exp, ret);
+        }
+        return ret;
+      } else {
+        // Don't use new_rhs, and so the bindings are also not
+        // to be generated.
+        return pool->Let(tyvars, x, rhs, new_body, guess);
       }
-
-      return ret;
 
     } else {
       return pool->Let(tyvars, x, rhs, DoExp(body, known), guess);
@@ -592,11 +635,13 @@ struct ExplodeRecordPass : public il::Pass<Known> {
         e->type == ExpType::VAR) {
       const auto &[tyvars, x] = e->Var();
       if (tyvars.empty()) {
+        /*
         printf("Check #" ABLUE("%s") " " ACYAN("%s") "?\n",
                s.c_str(),
                x.c_str());
-        if (const Known::Value *kv = known.FindPtr(x)) {
-          const Exp *rec = *kv;
+        */
+        if (std::shared_ptr<Knowledge> *kv = known.FindPtr(x)) {
+          const Exp *rec = (*kv)->value;
           CHECK(rec->type == ExpType::RECORD) << "Projection from a "
             "known value, but it's not a record! Field " << s <<
             " projected from var " << x << " but known exp:\n" <<
@@ -610,6 +655,9 @@ struct ExplodeRecordPass : public il::Pass<Known> {
           // and we don't have to allocate it at all.
           for (const auto &[lab, ee] : rec->Record()) {
             if (lab == s) {
+              // Must mark it so that the requisite bindings are
+              // generated at the site of the let!
+              (*kv)->was_used = true;
               progress->Simplified("known record field");
               return ee;
             }
@@ -672,8 +720,8 @@ struct GlobalInlining {
         if (VERBOSE) {
           printf("  There were " AYELLOW("%d") " occurrences.\n",
                  total_count);
-          printf("  Inlined sym is " APURPLE("%s") " = " ABLUE("%s") "\n",
-                 global.sym.c_str(), ExpString(global.exp).c_str());
+          printf("  Inlined sym is " APURPLE("%s") " = %s\n",
+                 global.sym.c_str(), ExpStringShort(global.exp).c_str());
         }
 
         if (total_count > 0) {
@@ -708,9 +756,61 @@ struct GlobalInlining {
   Progress *progress = nullptr;
 };
 
+struct FlattenLetPass : public il::Pass<> {
+  FlattenLetPass(uint64_t opts, AstPool *p, Progress *progress) :
+    Pass(p),
+    opts(opts),
+    progress(progress) {
+  }
+
+  virtual const Exp *DoLet(const std::vector<std::string> &tyvars,
+                           const std::string &x,
+                           const Exp *rhs_in,
+                           const Exp *body_in,
+                           const Exp *guess) {
+    const Exp *rhs = DoExp(rhs_in);
+    const Exp *body = DoExp(body_in);
+
+    // Transform
+    //   let val x = let val y = e1 in e2 end
+    //   in body
+    //   end
+    // into
+    //   let val y' = e1
+    //   in let val x = [y'/y]e2
+    //      in body
+    //      end
+    //   end
+    // This is more idiomatic and better because we can apply
+    // optimizations to the binding of x now (like known-value).
+    if ((opts & Simplification::O_FLATTEN_LET) &&
+        tyvars.empty() &&
+        rhs->type == ExpType::LET) {
+      const auto &[ytyvars, y, e1, e2] = rhs->Let();
+      // Need to alpha-vary y in e2, in case the name y is also used
+      // in 'body'.
+      const auto &[new_y, new_e2] =
+          ILUtil::AlphaVaryExp(pool, (int)ytyvars.size(), y, e2);
+      progress->Simplified("flatten let");
+      if (VERBOSE) {
+        printf("  on " APURPLE("%s") " and "
+               APURPLE("%s") " -> " APURPLE("%s") "\n",
+               x.c_str(), y.c_str(), new_y.c_str());
+      }
+      return pool->Let(ytyvars, new_y, e1,
+                       pool->Let(tyvars, x, new_e2, body));
+    }
+    return pool->Let(tyvars, x, rhs, body, guess);
+  }
+
+ private:
+  const uint64_t opts = 0;
+  Progress *progress = nullptr;
+};
+
 struct DecomposePass : public il::Pass<> {
-  DecomposePass(uint64_t opts, AstPool *pool, Progress *progress) :
-    Pass(pool),
+  DecomposePass(uint64_t opts, AstPool *p, Progress *progress) :
+    Pass(p),
     opts(opts),
     progress(progress) {
   }
@@ -757,7 +857,7 @@ struct DecomposePass : public il::Pass<> {
 
     const Exp *body = DoExp(def);
     // PERF: If there are many cases, we should at least do
-    // binary search. For sumcase there could be many tricks,
+    // binary search. For stringcase there could be many tricks,
     // like checking specific informative characters in the
     // strings.
     for (const auto &[str, e] : arms) {
@@ -787,6 +887,7 @@ Program Simplification::Simplify(const Program &program_in,
   DecomposePass decompose(opts, pool, &progress);
   PeepholePass peephole(opts, pool, &progress);
   ExplodeRecordPass explode_record(opts, pool, &progress);
+  FlattenLetPass flatten_let(opts, pool, &progress);
   GlobalInlining global_inlining(opts, pool, &progress);
 
   // Do decomposition first if enabled. This only needs
@@ -811,6 +912,11 @@ Program Simplification::Simplify(const Program &program_in,
     if (opts & O_EXPLODE_RECORDS) {
       if (VERBOSE) printf(AWHITE("Explode records") ".\n");
       program = explode_record.DoProgram(program, Known());
+    }
+
+    if (opts & O_FLATTEN_LET) {
+      if (VERBOSE) printf(AWHITE("Flatten let") ".\n");
+      program = flatten_let.DoProgram(program);
     }
 
     if (opts & ANY_GLOBAL) {

@@ -111,7 +111,7 @@ endif
 
 # warnings
 CFLAGS   += -Wall -Wextra -Wcast-qual -Wdouble-promotion -Wshadow -Wstrict-prototypes -Wpointer-arith
-CXXFLAGS += -Wall -Wextra -Wcast-qual -Wno-unused-parameter -Wno-unused-function -Wno-multichar
+CXXFLAGS += -Wall -Wextra -Wcast-qual -Wshadow-field -Wno-unused-parameter -Wno-unused-function -Wno-multichar
 
 # OS specific
 # TODO: support Windows

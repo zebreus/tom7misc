@@ -31,9 +31,7 @@ static void GeneratePDF(const std::string &filename) {
 
   sprintf(info.date, "%s", DateTimeStamp().c_str());
 
-  PDF pdf(PDF::PDF_LETTER_WIDTH,
-          PDF::PDF_LETTER_HEIGHT,
-          info);
+  PDF pdf(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT, info);
 
   [[maybe_unused]]
   PDF::Page *page = pdf.AppendNewPage();
