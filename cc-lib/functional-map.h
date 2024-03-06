@@ -96,6 +96,13 @@ struct FunctionalMap {
     return GetAll(*this);
   }
 
+  // Usually if you are using a "functional map" you want the values
+  // to be immutable, but FunctionalMap also allows mutating
+  // the values. Since the values are copied around, you would likely
+  // need to use a value type like shared_ptr in order for this to
+  // make sense.
+  Value *FindPtr(const Key &k);
+
  private:
   using Cell = std::tuple<Key, Value, FunctionalMap>;
   using HashMap = std::unordered_map<Key, Value, Hash, KeyEqual>;
@@ -138,5 +145,33 @@ struct FunctionalMap {
   // Or null means empty.
   std::shared_ptr<variant_type> data;
 };
+
+
+// Template implementations follow.
+
+template <class Key, class Value, class Hash, class KeyEqual>
+Value *FunctionalMap<Key, Value, Hash, KeyEqual>::FindPtr(const Key &k) {
+  const FunctionalMap *f = this;
+  for (;;) {
+    if (f->data.get() == nullptr) {
+      return nullptr;
+    } else if (Cell *cell = std::get_if<Cell>(f->data.get())) {
+      auto &[kk, vv, pp] = *cell;
+      if (KeyEqual()(k, kk)) {
+        return &vv;
+      } else {
+        f = &pp;
+      }
+    } else {
+      CHECK(std::holds_alternative<HashMap>(*f->data));
+      HashMap &m = std::get<HashMap>(*f->data);
+      auto it = m.find(k);
+      if (it == m.end())
+        return nullptr;
+      else
+        return &it->second;
+    }
+  }
+}
 
 #endif

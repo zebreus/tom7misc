@@ -13,6 +13,8 @@
 //   - Takes space proportional to the number of intervals.
 //   - Most operations are logarithmic in the number of intervals.
 //
+// TODO: Interval-KD-cover for multidimensional data?
+//
 // Value semantics.
 //
 // Not thread safe; clients should manage mutual exclusion.

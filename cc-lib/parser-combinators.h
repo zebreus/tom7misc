@@ -535,6 +535,7 @@ enum class Associativity {
   Right,
   Non,
 };
+
 enum class Fixity {
   // Atoms are the leaves of the parse tree;
   // typically they are like "const Exp *" in the AST

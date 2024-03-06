@@ -1936,7 +1936,9 @@ void PDF::AddCubicBezier(float x1, float y1, float x2, float y2, float xq1,
   StringAppendF(&str, "%f w\r\n", width);
   StringAppendF(&str, "%f %f m\r\n", x1, y1);
   StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%f %f %f RG\r\n", PDF_RGB_R(color_rgb), PDF_RGB_G(color_rgb),
+  StringAppendF(&str, "%f %f %f RG\r\n",
+                PDF_RGB_R(color_rgb),
+                PDF_RGB_G(color_rgb),
                 PDF_RGB_B(color_rgb));
   StringAppendF(&str, "%f %f %f %f %f %f c S\r\n", xq1, yq1, xq2, yq2, x2,
                 y2);
@@ -1962,8 +1964,10 @@ void PDF::AddEllipse(float x, float y,
                      Page *page) {
   std::string str;
 
-  const float lx = (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * xradius;
-  const float ly = (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * yradius;
+  const float lx =
+    (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * xradius;
+  const float ly =
+    (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * yradius;
 
   if (!PDF_IS_TRANSPARENT(fill_color)) {
     StringAppendF(&str, "/DeviceRGB CS\r\n");
