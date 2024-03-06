@@ -19,6 +19,7 @@ struct Simplification {
   static constexpr uint64_t O_INLINE_EXP = 1ULL << 5;
   static constexpr uint64_t O_DEAD_CODE = 1ULL << 6;
   static constexpr uint64_t O_FLATTEN = 1ULL << 7;
+  static constexpr uint64_t O_EXPLODE_RECORDS = 1ULL << 8;
 
   static constexpr uint64_t O_GLOBAL_INLINING = 1ULL << 32;
   static constexpr uint64_t O_GLOBAL_DEAD = 1ULL << 33;

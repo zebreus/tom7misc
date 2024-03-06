@@ -224,7 +224,7 @@ std::string ExpString(const Exp *e) {
     for (int i = 0; i < (int)fields.size(); i++) {
       if (i != 0) StringAppendF(&ret, ", ");
       const auto &[l, v] = fields[i];
-      StringAppendF(&ret, "%s: %s", l.c_str(), ExpString(v).c_str());
+      StringAppendF(&ret, "%s = %s", l.c_str(), ExpString(v).c_str());
     }
     ret += "}";
     return ret;

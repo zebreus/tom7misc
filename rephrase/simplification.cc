@@ -7,8 +7,9 @@
 #include "il-util.h"
 #include "bignum/big-overloads.h"
 #include "ansi.h"
+#include "functional-map.h"
 
-static constexpr bool VERBOSE = false;
+static constexpr bool VERBOSE = true;
 
 // TODO: Can do some typed simplification, like:
 //   - unit erasure
@@ -428,6 +429,7 @@ struct PeepholePass : public il::Pass<> {
   // The let sometimes allows for futher simplification.
   const Exp *DoApp(const Exp *f, const Exp *arg,
                    const Exp *guess) override {
+    f = DoExp(f);
     arg = DoExp(arg);
 
     if ((opts & Simplification::O_REDUCE) &&
@@ -438,7 +440,7 @@ struct PeepholePass : public il::Pass<> {
         return pool->Let({}, x, arg, DoExp(body));
       }
     }
-    return pool->App(DoExp(f), arg, guess);
+    return pool->App(f, arg, guess);
   }
 
   const Exp *DoSeq(const std::vector<const Exp *> &v,
@@ -454,6 +456,7 @@ struct PeepholePass : public il::Pass<> {
       if ((opts & Simplification::O_DEAD_CODE) &&
           IsDiscardable(c)) {
         Simplified("dropped effectless seq");
+        printf("  Exp was " ABLUE("%s") "\n", ExpString(c).c_str());
       } else {
         if ((opts & Simplification::O_FLATTEN) &&
             c->type == ExpType::SEQ) {
@@ -495,6 +498,132 @@ struct PeepholePass : public il::Pass<> {
   }
 
 private:
+  const uint64_t opts = 0;
+  Progress *progress = nullptr;
+};
+
+using Known = FunctionalMap<std::string, const Exp *>;
+
+// TODO: This could be a general 'known' pass.
+struct ExplodeRecordPass : public il::Pass<Known> {
+  ExplodeRecordPass(uint64_t opts, AstPool *pool, Progress *progress) :
+    Pass(pool),
+    opts(opts),
+    progress(progress) {}
+
+  // This pass is designed to find code like this:
+  // let val r = {lab1 = exp1, lab2 = exp2, ...}
+  // in
+  //   ... #lab1 r ...   ... #lab2 r ...
+  // end
+  //
+  // and replace it with
+  //
+  // let
+  //    val r_lab1 = exp1
+  //    val r_lab2 = exp2
+  // in
+  //     r_lab1     ...   r_lab2
+  // end
+  //
+  // This is particularly common with binops whose wrapper functions
+  // have been inlined.
+
+  const Exp *DoLet(const std::vector<std::string> &tyvars,
+                   const std::string &x,
+                   const Exp *rhs_in,
+                   const Exp *body,
+                   const Exp *guess,
+                   Known known) override {
+    // Is this a tuple binding?
+    const Exp *rhs = DoExp(rhs_in, known);
+    if ((opts & Simplification::O_EXPLODE_RECORDS) &&
+        tyvars.empty() && rhs->type == ExpType::RECORD) {
+      const auto &fields = rhs->Record();
+      // If any of the record's fields are not valuable, pull them
+      // out as intermediate variables.
+      //
+      // When processing the body, mark the record as known.
+      std::vector<std::pair<std::string, const Exp *>> bindings;
+      std::vector<std::pair<std::string, const Exp *>> new_fields;
+      for (const auto &[lab, exp] : fields) {
+        if (IsSmallValue(exp)) {
+          // Already okay
+          new_fields.emplace_back(lab, exp);
+        } else {
+          std::string tmp = pool->NewVar(pool->BaseVar(x) + "_" +
+                                         pool->BaseVar(lab));
+          bindings.emplace_back(tmp, exp);
+          new_fields.emplace_back(lab, pool->Var({}, tmp));
+        }
+      }
+
+      rhs = pool->Record(new_fields, rhs);
+
+      // Mark them as known for the body.
+      // for (const auto &[lab, exp] : new_fields) {
+      // known = known.Insert(lab, exp);
+      // }
+      known = known.Insert(x, rhs);
+
+      const Exp *ret =
+        pool->Let(tyvars, x, rhs, DoExp(body, known), guess);
+
+      // And wrap with bindings, preserving evaluation order.
+      for (int i = bindings.size() - 1; i >= 0; i--) {
+        const auto &[var, arm_exp] = bindings[i];
+        printf("  binding " APURPLE("%s") " = ...\n", var.c_str());
+        ret = pool->Let({}, var, arm_exp, ret);
+      }
+
+      return ret;
+
+    } else {
+      return pool->Let(tyvars, x, rhs, DoExp(body, known), guess);
+    }
+  }
+
+  const Exp *DoProject(const std::string &s,
+                       const Exp *e_in,
+                       const Exp *guess,
+                       Known known) override {
+    const Exp *e = DoExp(e_in, known);
+    if ((opts & Simplification::O_EXPLODE_RECORDS) &&
+        e->type == ExpType::VAR) {
+      const auto &[tyvars, x] = e->Var();
+      if (tyvars.empty()) {
+        printf("Check #" ABLUE("%s") " " ACYAN("%s") "?\n",
+               s.c_str(),
+               x.c_str());
+        if (const Known::Value *kv = known.FindPtr(x)) {
+          const Exp *rec = *kv;
+          CHECK(rec->type == ExpType::RECORD) << "Projection from a "
+            "known value, but it's not a record! Field " << s <<
+            " projected from var " << x << " but known exp:\n" <<
+            ExpString(rec);
+
+          // Always use the known value instead.
+          // There may be cases where it's better to just
+          // project from the record (this is cheap), but
+          // it's probably a wash anyway. The hope here is
+          // that we replace all of the uses of the record
+          // and we don't have to allocate it at all.
+          for (const auto &[lab, ee] : rec->Record()) {
+            progress->Simplified("known record field");
+            return ee;
+          }
+          LOG(FATAL) << "Projection of field " << s << " from var " <<
+            x << ". The value of x is known, and it is "
+            "a record, but it doesn't have that field. Exp:\n" <<
+            ExpString(rec);
+          return nullptr;
+        }
+      }
+    }
+    return pool->Project(s, e, guess);
+  }
+
+ private:
   const uint64_t opts = 0;
   Progress *progress = nullptr;
 };
@@ -655,6 +784,7 @@ Program Simplification::Simplify(const Program &program_in,
   Program program = program_in;
   DecomposePass decompose(opts, pool, &progress);
   PeepholePass peephole(opts, pool, &progress);
+  ExplodeRecordPass explode_record(opts, pool, &progress);
   GlobalInlining global_inlining(opts, pool, &progress);
 
   // Do decomposition first if enabled. This only needs
@@ -669,13 +799,20 @@ Program Simplification::Simplify(const Program &program_in,
 
   do {
     progress.Reset();
+    if (VERBOSE) printf(AWHITE("Peephole") ".\n");
     program = peephole.DoProgram(program);
 
     constexpr uint64_t ANY_GLOBAL =
       O_GLOBAL_INLINING |
       O_GLOBAL_DEAD;
 
+    if (opts & O_EXPLODE_RECORDS) {
+      if (VERBOSE) printf(AWHITE("Explode records") ".\n");
+      program = explode_record.DoProgram(program, Known());
+    }
+
     if (opts & ANY_GLOBAL) {
+      if (VERBOSE) printf(AWHITE("Global") ".\n");
       program = global_inlining.Run(program);
     }
 
