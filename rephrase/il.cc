@@ -27,6 +27,8 @@ const char *TypeTypeString(TypeType t) {
   case TypeType::STRING: return "STRING";
   case TypeType::INT: return "INT";
   case TypeType::FLOAT: return "FLOAT";
+  case TypeType::BOOL: return "BOOL";
+  case TypeType::OBJ: return "OBJ";
   default: return "???MISSING???";
   }
 }
@@ -37,6 +39,7 @@ const char *ExpTypeString(ExpType t) {
   case ExpType::FLOAT: return "FLOAT";
   case ExpType::JOIN: return "JOIN";
   case ExpType::RECORD: return "RECORD";
+  case ExpType::OBJECT: return "OBJECT";
   case ExpType::INT: return "INT";
   case ExpType::BOOL: return "BOOL";
   case ExpType::VAR: return "VAR";
@@ -189,6 +192,9 @@ std::string TypeString(const Type *t) {
   case TypeType::BOOL:
     return "bool";
 
+  case TypeType::OBJ:
+    return "obj";
+
   default:
     return "unknown type type??";
   }
@@ -252,6 +258,18 @@ std::string ExpString(const Exp *e) {
   case ExpType::RECORD: {
     const auto &fields = e->Record();
     std::string ret = "{";
+    for (int i = 0; i < (int)fields.size(); i++) {
+      if (i != 0) StringAppendF(&ret, ", ");
+      const auto &[l, v] = fields[i];
+      StringAppendF(&ret, "%s = %s", l.c_str(), ExpString(v).c_str());
+    }
+    ret += "}";
+    return ret;
+  }
+
+  case ExpType::OBJECT: {
+    const auto &[objtype, fields] = e->Object();
+    std::string ret = StringPrintf("{(%s) ", objtype.c_str());
     for (int i = 0; i < (int)fields.size(); i++) {
       if (i != 0) StringAppendF(&ret, ", ");
       const auto &[l, v] = fields[i];
@@ -616,6 +634,9 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
     return u;
 
   case TypeType::BOOL:
+    return u;
+
+  case TypeType::OBJ:
     return u;
 
   default:

@@ -69,6 +69,7 @@ struct TypedPass {
     case TypeType::FLOAT: return DoFloatType(G, t, args...);
     case TypeType::INT: return DoIntType(G, t, args...);
     case TypeType::BOOL: return DoBoolType(G, t, args...);
+    case TypeType::OBJ: return DoObjType(G, t, args...);
       LOG(FATAL) << "Unhandled type type in Pass::DoExp!";
     }
   }
@@ -80,6 +81,10 @@ struct TypedPass {
     case ExpType::FLOAT: return DoFloat(G, e->Float(), e, args...);
     case ExpType::JOIN: return DoJoin(G, e->Join(), e, args...);
     case ExpType::RECORD: return DoRecord(G, e->Record(), e, args...);
+    case ExpType::OBJECT: {
+      const auto &[objtype, fields] = e->Object();
+      return DoObject(G, objtype, fields, e, args...);
+    }
     case ExpType::INT: return DoInt(G, e->Int(), e, args...);
     case ExpType::BOOL: return DoBool(G, e->Bool(), e, args...);
     case ExpType::VAR: {
@@ -282,6 +287,11 @@ struct TypedPass {
     return guess;
   }
 
+  virtual const Type *DoObjType(Context G,
+                                const Type *guess, Args... args) {
+    return guess;
+  }
+
 
   // Expressions.
   // Unlike il-pass, here we return the expression and its synthesized
@@ -382,6 +392,22 @@ struct TypedPass {
       ts.emplace_back(l, tt);
     }
     return {pool->Record(lvv, guess), pool->RecordType(ts)};
+  }
+
+  virtual std::pair<const Exp *, const Type *>
+  DoObject(
+      Context G,
+      const std::string &objtype,
+      const std::vector<std::pair<std::string, const Exp *>> &lv,
+      const Exp *guess,
+      Args... args) {
+    std::vector<std::pair<std::string, const Exp *>> lvv;
+    lvv.reserve(lv.size());
+    for (const auto &[l, e] : lv) {
+      const auto &[ee, tt] = DoExp(G, e, args...);
+      lvv.emplace_back(l, ee);
+    }
+    return {pool->Object(objtype, lvv, guess), pool->ObjType()};
   }
 
   virtual std::pair<const Exp *, const Type *>

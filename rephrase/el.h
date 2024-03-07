@@ -22,6 +22,7 @@ enum class ExpType {
   JOIN,
   TUPLE,
   RECORD,
+  OBJECT,
   INT,
   FLOAT,
   BOOL,
@@ -45,6 +46,7 @@ enum class DecType {
   VAL,
   FUN,
   DATATYPE,
+  OBJECT,
 };
 
 enum class PatType {
@@ -52,6 +54,7 @@ enum class PatType {
   WILD,
   TUPLE,
   RECORD,
+  OBJECT,
   ANN,
   AS,
   INT,
@@ -184,6 +187,7 @@ struct AstPool {
     return ret;
   }
 
+
   // Expressions
 
   const Exp *String(const std::string &s) {
@@ -250,6 +254,14 @@ struct AstPool {
 
   const Exp *Record(std::vector<std::pair<std::string, const Exp *>> v) {
     Exp *ret = NewExp(ExpType::RECORD);
+    ret->str_children = std::move(v);
+    return ret;
+  }
+
+  const Exp *Object(std::string objtype,
+                    std::vector<std::pair<std::string, const Exp *>> v) {
+    Exp *ret = NewExp(ExpType::OBJECT);
+    ret->str = std::move(objtype);
     ret->str_children = std::move(v);
     return ret;
   }
@@ -422,6 +434,14 @@ struct AstPool {
 
   const Pat *RecordPat(std::vector<std::pair<std::string, const Pat *>> v) {
     Pat *ret = NewPat(PatType::RECORD);
+    ret->str_children = std::move(v);
+    return ret;
+  }
+
+  const Pat *ObjectPat(std::string objtype,
+                       std::vector<std::pair<std::string, const Pat *>> v) {
+    Pat *ret = NewPat(PatType::OBJECT);
+    ret->str = std::move(objtype);
     ret->str_children = std::move(v);
     return ret;
   }

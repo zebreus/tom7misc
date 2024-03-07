@@ -59,6 +59,7 @@ struct Pass {
     case TypeType::FLOAT: return DoFloatType(t, args...);
     case TypeType::INT: return DoIntType(t, args...);
     case TypeType::BOOL: return DoBoolType(t, args...);
+    case TypeType::OBJ: return DoObjType(t, args...);
       LOG(FATAL) << "Unhandled type type in Pass::DoExp!";
     }
   }
@@ -69,6 +70,10 @@ struct Pass {
     case ExpType::FLOAT: return DoFloat(e->Float(), e, args...);
     case ExpType::JOIN: return DoJoin(e->Join(), e, args...);
     case ExpType::RECORD: return DoRecord(e->Record(), e, args...);
+    case ExpType::OBJECT: {
+      const auto &[objtype, fields] = e->Object();
+      return DoObject(objtype, fields, e, args...);
+    }
     case ExpType::INT: return DoInt(e->Int(), e, args...);
     case ExpType::BOOL: return DoBool(e->Bool(), e, args...);
     case ExpType::VAR: {
@@ -251,6 +256,10 @@ struct Pass {
     return guess;
   }
 
+  virtual const Type *DoObjType(const Type *guess, Args... args) {
+    return guess;
+  }
+
 
   // Expressions
 
@@ -303,6 +312,17 @@ struct Pass {
     lvv.reserve(lv.size());
     for (const auto &[l, e] : lv) lvv.emplace_back(l, DoExp(e, args...));
     return pool->Record(lvv, guess);
+  }
+
+  virtual const Exp *DoObject(
+      const std::string &objtype,
+      const std::vector<std::pair<std::string, const Exp *>> &lv,
+      const Exp *guess,
+      Args... args) {
+    std::vector<std::pair<std::string, const Exp *>> lvv;
+    lvv.reserve(lv.size());
+    for (const auto &[l, e] : lv) lvv.emplace_back(l, DoExp(e, args...));
+    return pool->Object(objtype, lvv, guess);
   }
 
   virtual const Exp *DoProject(const std::string &s, const Exp *e,

@@ -65,6 +65,10 @@ enum TokenType {
   OF,
   CASE,
 
+  OBJECT,
+  WITH,
+  WITHOUT,
+
   // Identifier.
   // This can be alphanumeric or symbolic.
   ID,

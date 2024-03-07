@@ -16,6 +16,7 @@ Initial::Initial(AstPool *pool) {
   const il::Type *Int = pool->IntType();
   const il::Type *Float = pool->FloatType();
   const il::Type *Bool = pool->BoolType();
+  const il::Type *Obj = pool->ObjType();
   auto Ref = [&](const Type *a) { return pool->RefType(a); };
 
   auto LookupPrimop = [&pool](Primop p) {
@@ -70,6 +71,7 @@ Initial::Initial(AstPool *pool) {
     };
 
   const std::vector<std::pair<std::string, TypeVarInfo>> type_vars = {
+    {"obj", Kind0(Obj)},
     {"bool", Kind0(Bool)},
     {"int", Kind0(Int)},
     {"float", Kind0(Float)},

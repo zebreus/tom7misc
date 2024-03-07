@@ -529,8 +529,8 @@ struct Knowledge {
 using Known = FunctionalMap<std::string, std::shared_ptr<Knowledge>>;
 
 // TODO: This could be a general 'known' pass.
-struct ExplodeRecordPass : public il::Pass<Known> {
-  ExplodeRecordPass(uint64_t opts, AstPool *p, Progress *progress) :
+struct KnownPass : public il::Pass<Known> {
+  KnownPass(uint64_t opts, AstPool *p, Progress *progress) :
     Pass(p),
     opts(opts),
     progress(progress) {}
@@ -886,7 +886,7 @@ Program Simplification::Simplify(const Program &program_in,
   Program program = program_in;
   DecomposePass decompose(opts, pool, &progress);
   PeepholePass peephole(opts, pool, &progress);
-  ExplodeRecordPass explode_record(opts, pool, &progress);
+  KnownPass known(opts, pool, &progress);
   FlattenLetPass flatten_let(opts, pool, &progress);
   GlobalInlining global_inlining(opts, pool, &progress);
 
@@ -905,19 +905,22 @@ Program Simplification::Simplify(const Program &program_in,
     if (VERBOSE) printf(AWHITE("Peephole") ".\n");
     program = peephole.DoProgram(program);
 
-    constexpr uint64_t ANY_GLOBAL =
-      O_GLOBAL_INLINING |
-      O_GLOBAL_DEAD;
+    constexpr uint64_t ANY_KNOWN =
+      O_EXPLODE_RECORDS;
 
-    if (opts & O_EXPLODE_RECORDS) {
-      if (VERBOSE) printf(AWHITE("Explode records") ".\n");
-      program = explode_record.DoProgram(program, Known());
+    if (opts & ANY_KNOWN) {
+      if (VERBOSE) printf(AWHITE("Known") ".\n");
+      program = known.DoProgram(program, Known());
     }
 
     if (opts & O_FLATTEN_LET) {
       if (VERBOSE) printf(AWHITE("Flatten let") ".\n");
       program = flatten_let.DoProgram(program);
     }
+
+    constexpr uint64_t ANY_GLOBAL =
+      O_GLOBAL_INLINING |
+      O_GLOBAL_DEAD;
 
     if (opts & ANY_GLOBAL) {
       if (VERBOSE) printf(AWHITE("Global") ".\n");

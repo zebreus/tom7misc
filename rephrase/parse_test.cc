@@ -440,6 +440,21 @@ static void TestParse() {
     CHECK(r->b->integer == 4);
   }
 
+  {
+    const Exp *e = Parse("{ (Article) }");
+    CHECK(e->type == ExpType::OBJECT);
+    CHECK(e->str == "Article");
+    CHECK(e->str_children.empty());
+  }
+
+  {
+    const Exp *e = Parse("{(Article) title = \"hi\", year = 1997}");
+    CHECK(e->type == ExpType::OBJECT);
+    CHECK(e->str == "Article");
+    CHECK(e->str_children.size() == 2);
+    CHECK(e->str_children[0].first == "title");
+    CHECK(e->str_children[1].first == "year");
+  }
 
   printf("Exp parsing " AGREEN("OK") "\n");
 }
@@ -746,6 +761,13 @@ static void TestParsePat() {
     CHECK(pat->str == "::");
     CHECK(pat->a->children[0]->str == "x");
     CHECK(pat->a->children[1]->str == "y");
+  }
+
+  {
+    const Pat *pat = ParsePat("{(Article) title, author = _}");
+    CHECK(pat->type == PatType::OBJECT);
+    CHECK(pat->str == "Article");
+    CHECK(pat->str_children.size() == 2);
   }
 
   printf("Pattern parsing " AGREEN("OK") "\n");

@@ -18,6 +18,7 @@ enum class ExpType {
   FLOAT,
   JOIN,
   RECORD,
+  OBJECT,
   INT,
   BOOL,
   VAR,
@@ -91,6 +92,7 @@ enum class TypeType {
   FLOAT,
   INT,
   BOOL,
+  OBJ,
 };
 
 struct Type {
@@ -155,6 +157,10 @@ struct Type {
 
   void Bool() const {
     CHECK(type == TypeType::BOOL);
+  }
+
+  void Obj() const {
+    CHECK(type == TypeType::OBJ);
   }
 
 private:
@@ -223,6 +229,13 @@ struct Exp {
   const std::vector<std::pair<std::string, const Exp *>> &Record() const {
     CHECK(type == ExpType::RECORD);
     return str_children;
+  }
+
+  // Do we even need the objtype? The expression always has type obj.
+  std::tuple<const std::string &,
+    const std::vector<std::pair<std::string, const Exp *>> &> Object() const {
+    CHECK(type == ExpType::OBJECT);
+    return std::tie(str1, str_children);
   }
 
   std::tuple<const std::vector<std::string> &,
@@ -433,6 +446,10 @@ struct AstPool {
     return &bool_type;
   }
 
+  const Type *ObjType() {
+    return &obj_type;
+  }
+
   const Type *RefType(const Type *t, const Type *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == TypeType::REF &&
@@ -600,7 +617,24 @@ struct AstPool {
     }
 
     Exp *ret = NewExp(ExpType::RECORD);
-    ret->str_children = std::move(lv);
+    ret->str_children = lv;
+    return ret;
+  }
+
+  const Exp *Object(
+      const std::string &objtype,
+      const std::vector<std::pair<std::string, const Exp *>> &fields,
+      const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::OBJECT &&
+        guess->str1 == objtype &&
+        guess->str_children == fields) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::OBJECT);
+    ret->str1 = objtype;
+    ret->str_children = fields;
     return ret;
   }
 
@@ -948,6 +982,7 @@ struct AstPool {
   const Type int_type = Type(TypeType::INT);
   const Type float_type = Type(TypeType::FLOAT);
   const Type bool_type = Type(TypeType::BOOL);
+  const Type obj_type = Type(TypeType::OBJ);
 
   const Exp true_exp = []() {
       Exp t(ExpType::BOOL);

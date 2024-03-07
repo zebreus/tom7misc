@@ -35,6 +35,7 @@ struct Pass {
     case ExpType::JOIN: return DoJoin(e->children, args...);
     case ExpType::TUPLE: return DoTuple(e->children, args...);
     case ExpType::RECORD: return DoRecord(e->str_children, args...);
+    case ExpType::OBJECT: return DoObject(e->str, e->str_children, args...);
     case ExpType::INT: return DoInt(e->integer, args...);
     case ExpType::BOOL: return DoBool(e->boolean, args...);
     case ExpType::FLOAT: return DoFloat(e->d, args...);
@@ -61,6 +62,7 @@ struct Pass {
     case DecType::FUN: return DoFunDec(d->funs, args...);
     case DecType::DATATYPE: return DoDatatypeDec(
         d->tyvars, d->datatypes, args...);
+      // TODO: Object decl
     default:
       LOG(FATAL) << "Unhandled type in el::Pass::DoDec!";
     }
@@ -72,6 +74,7 @@ struct Pass {
     case PatType::WILD: return DoWildPat(args...);
     case PatType::TUPLE: return DoTuplePat(p->children, args...);
     case PatType::RECORD: return DoRecordPat(p->str_children, args...);
+    case PatType::OBJECT: return DoObjectPat(p->str, p->str_children, args...);
     case PatType::ANN: return DoAnnPat(p->a, p->ann, args...);
     case PatType::AS: return DoAsPat(p->a, p->b, args...);
     case PatType::INT: return DoIntPat(p->integer, args...);
@@ -166,6 +169,15 @@ struct Pass {
     std::vector<std::pair<std::string, const Exp *>> vv;
     for (const auto &[s, e] : v) vv.emplace_back(s, DoExp(e, args...));
     return pool->Record(vv);
+  }
+
+  virtual const Exp *DoObject(
+      const std::string &objtype,
+      const std::vector<std::pair<std::string, const Exp *>> &v,
+      Args... args) {
+    std::vector<std::pair<std::string, const Exp *>> vv;
+    for (const auto &[s, e] : v) vv.emplace_back(s, DoExp(e, args...));
+    return pool->Object(objtype, vv);
   }
 
   virtual const Exp *DoCase(
@@ -308,6 +320,17 @@ struct Pass {
       ps.emplace_back(lab, DoPat(p, args...));
     }
     return pool->RecordPat(std::move(ps));
+  }
+
+  virtual const Pat *DoObjectPat(
+      const std::string &objtype,
+      const std::vector<std::pair<std::string, const Pat *>> &v,
+      Args... args) {
+    std::vector<std::pair<std::string, const Pat *>> ps;
+    for (const auto &[lab, p] : v) {
+      ps.emplace_back(lab, DoPat(p, args...));
+    }
+    return pool->ObjectPat(objtype, std::move(ps));
   }
 
   virtual const Pat *DoAnnPat(const Pat *a, const Type *t, Args... args) {

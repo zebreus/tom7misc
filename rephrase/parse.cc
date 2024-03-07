@@ -31,6 +31,7 @@ struct IsToken {
 
 // For built-in identifiers, get their fixity, associativity, and precedence.
 // TODO: Make it possible to declare new fixity.
+[[maybe_unused]]
 static std::tuple<Fixity, Associativity, int>
 GetFixity(const std::string &sym) {
   static const std::unordered_map<std::string,
@@ -275,30 +276,53 @@ const Exp *Parsing::Parse(AstPool *pool,
                 });
     };
 
-  const auto RecordPat = [&](const auto &Pattern) {
+  // In record or objects, we allow writing just "lab" to mean "lab = lab".
+  const auto MaybeLabelPun =
+    [pool](const std::pair<std::string, std::optional<const Pat *>> &p) {
+      const auto &[lab, opat] = p;
+      if (opat.has_value()) {
+        // XXX check that this is a valid identifier!
+        // we should not allow {1}.
+        return std::make_pair(lab, opat.value());
+      } else {
+        return std::make_pair(lab, pool->VarPat(lab));
+      }
+    };
+
+  const auto RecordPatContents = [&](const auto &Pattern) {
       // lab = pat
       // or
       // lab
       // (which is syntactic sugar for lab = lab).
-      auto OneField =
-        (Label && Opt(IsToken<EQUALS>() >> Pattern))
-        >[&](const std::pair<std::string, std::optional<const Pat *>> &p) {
-        const auto &[lab, opat] = p;
-        if (opat.has_value()) {
-          return std::make_pair(lab, opat.value());
-        } else {
-          return std::make_pair(lab, pool->VarPat(lab));
-        }
-      };
+      auto OneField = (Label && Opt(IsToken<EQUALS>() >> Pattern))
+         >MaybeLabelPun;
+
+      return Separate0(OneField, IsToken<COMMA>())
+        >[&](const std::vector<std::pair<std::string, const Pat *>> &lps) ->
+        const Pat * {
+            return pool->RecordPat(lps);
+          };
+    };
+
+  const auto ObjectPatContents = [&](const auto &Pattern) {
+      // Like above, but object labels have to be proper identifiers.
+      auto OneField = (Id && Opt(IsToken<EQUALS>() >> Pattern))
+         >MaybeLabelPun;
 
       return
-        ((IsToken<LBRACE>() >>
-          Separate0(OneField, IsToken<COMMA>()) <<
-          IsToken<RBRACE>())
-         >[&](const std::vector<std::pair<std::string, const Pat *>> &lps) ->
-         const Pat * {
-             return pool->RecordPat(lps);
-           });
+        ((IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
+        Separate0(OneField, IsToken<COMMA>()))
+        >[&](const auto &p) -> const Pat * {
+            const auto &[objtype, lps] = p;
+            return pool->ObjectPat(objtype, lps);
+          };
+    };
+
+  const auto BracedPat = [&](const auto &Pattern) {
+      return
+        (IsToken<LBRACE>() >>
+         (ObjectPatContents(Pattern) || RecordPatContents(Pattern)) <<
+         IsToken<RBRACE>());
     };
 
   const auto PatAdjApp = [&](const Pat *f, const Pat *arg) -> const Pat * {
@@ -341,7 +365,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             (StrLit >[&](const std::string &s) {
                 return pool->StringPat(s);
               }) ||
-            RecordPat(Self) ||
+            BracedPat(Self) ||
             TuplePat(Self);
         },
 
@@ -436,16 +460,37 @@ const Exp *Parsing::Parse(AstPool *pool,
                 });
     };
 
-  const auto RecordExpr = [&](const auto &Expr) {
+  // contents inside { ... }
+  const auto RecordContents = [&](const auto &Expr) {
+      // Allow just { x } ?
       return
-        ((IsToken<LBRACE>() >>
-          Separate0(Label && (IsToken<EQUALS>() >> Expr),
-                    IsToken<COMMA>()) <<
-          IsToken<RBRACE>())
-         >[&](const std::vector<std::pair<std::string, const Exp *>> &les) {
-             return pool->Record(les);
-           });
+        Separate0(Label && (IsToken<EQUALS>() >> Expr),
+                  IsToken<COMMA>())
+        >[&](const std::vector<std::pair<std::string, const Exp *>> &les) {
+            return pool->Record(les);
+          };
     };
+
+  // other contents inside { ... }
+  const auto ObjectContents = [&](const auto &Expr) {
+      return
+        ((IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
+         // Not using Label here, since we may have some ambiguity
+         // in like "obj.3".
+         Separate0(Id && (IsToken<EQUALS>() >> Expr),
+                   IsToken<COMMA>()))
+        >[&](const auto &p) {
+            const auto &[objtype, fields] = p;
+            return pool->Object(objtype, fields);
+          };
+    };
+
+  const auto BracedExpr = [&](const auto &Expr) {
+    return IsToken<LBRACE>() >>
+      // XXX why doesn't it work to reverse these two?
+      (ObjectContents(Expr) || RecordContents(Expr))
+      << IsToken<RBRACE>();
+  };
 
   const auto LayoutExpr = [&](const auto &Expr) {
       const auto Lay =
@@ -703,7 +748,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             BoolExpr ||
             // Includes parenthesized expression.
             TupleExpr(Expr) ||
-            RecordExpr(Expr) ||
+            BracedExpr(Expr) ||
             LayoutExpr(Expr) ||
             LetExpr(Expr, Decl) ||
             ProjectExpr ||

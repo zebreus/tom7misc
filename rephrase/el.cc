@@ -63,6 +63,7 @@ std::string TypeString(const Type *t) {
     ret.push_back('}');
     return ret;
   }
+
   default:
     return "unknown type type??";
   }
@@ -102,6 +103,7 @@ const char *PatTypeString(PatType pt) {
   case PatType::WILD: return "WILD";
   case PatType::TUPLE: return "TUPLE";
   case PatType::RECORD: return "RECORD";
+  case PatType::OBJECT: return "OBJECT";
   case PatType::ANN: return "ANN";
   case PatType::AS: return "AS";
   case PatType::INT: return "INT";
@@ -134,6 +136,20 @@ std::string PatString(const Pat *p) {
 
   case PatType::RECORD: {
     std::string ret = "{";
+    for (int i = 0; i < (int)p->str_children.size(); i++) {
+      const auto [lab, child] = p->str_children[i];
+      if (i != 0)
+        StringAppendF(&ret, ", ");
+      StringAppendF(&ret, "%s = %s",
+                    lab.c_str(),
+                    PatString(child).c_str());
+    }
+    ret.push_back('}');
+    return ret;
+  }
+
+  case PatType::OBJECT: {
+    std::string ret = StringPrintf("{(%s) ", p->str.c_str());
     for (int i = 0; i < (int)p->str_children.size(); i++) {
       const auto [lab, child] = p->str_children[i];
       if (i != 0)
@@ -271,6 +287,19 @@ std::string ExpString(const Exp *e) {
 
   case ExpType::RECORD: {
     std::string ret = "{";
+    for (int i = 0; i < (int)e->str_children.size(); i++) {
+      const auto &[lab, child] = e->str_children[i];
+      if (i != 0) StringAppendF(&ret, ", ");
+      StringAppendF(&ret, "%s = %s",
+                    lab.c_str(), ExpString(child).c_str());
+    }
+    ret += "}";
+    return ret;
+  }
+
+  case ExpType::OBJECT: {
+    std::string ret =
+      StringPrintf("{(%s) ", e->str.c_str());
     for (int i = 0; i < (int)e->str_children.size(); i++) {
       const auto &[lab, child] = e->str_children[i];
       if (i != 0) StringAppendF(&ret, ", ");

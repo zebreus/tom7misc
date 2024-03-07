@@ -62,6 +62,10 @@ const char *TokenTypeString(TokenType tok) {
   case CASE: return "CASE";
   case IMPORT: return "IMPORT";
 
+  case OBJECT: return "OBJECT";
+  case WITH: return "WITH";
+  case WITHOUT: return "WITHOUT";
+
   // Identifier.
   case ID: return "ID";
 
@@ -247,6 +251,9 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"and", AND},
     {"import", IMPORT},
     {"fail", FAIL},
+    {"object", OBJECT},
+    {"with", WITH},
+    {"without", WITHOUT},
 
     // Symbolic
     {"=>", DARROW},
