@@ -57,15 +57,14 @@ struct Pass {
 
   virtual const Dec *DoDec(const Dec *d, Args... args) {
     switch (d->type) {
-    case DecType::DO: return DoDoDec(d->exp, args...);
     case DecType::VAL: return DoValDec(d->pat, d->exp, args...);
     case DecType::FUN: return DoFunDec(d->funs, args...);
     case DecType::DATATYPE: return DoDatatypeDec(
         d->tyvars, d->datatypes, args...);
-      // TODO: Object decl
-    default:
-      LOG(FATAL) << "Unhandled type in el::Pass::DoDec!";
+    case DecType::OBJECT: return DoObjectDec(d->object, args...);
     }
+    LOG(FATAL) << "Unhandled type in el::Pass::DoDec!";
+    return nullptr;
   }
 
   virtual const Pat *DoPat(const Pat *p, Args... args) {
@@ -251,10 +250,6 @@ struct Pass {
 
   // Declarations.
 
-  virtual const Dec *DoDoDec(const Exp *e, Args... args) {
-    return pool->DoDec(DoExp(e, args...));
-  }
-
   virtual const Dec *DoValDec(const Pat *pat, const Exp *rhs, Args... args) {
     return pool->ValDec(DoPat(pat, args...), DoExp(rhs, args...));
   }
@@ -291,6 +286,18 @@ struct Pass {
       dds.push_back(std::move(ddd));
     }
     return pool->DatatypeDec(tyvars, std::move(dds));
+  }
+
+  virtual const Dec *DoObjectDec(const ObjectDec &objdec, Args... args) {
+    std::vector<std::pair<std::string, const Type *>> fields;
+    fields.reserve(objdec.fields.size());
+    for (const auto &[lab, t] : objdec.fields) {
+      fields.emplace_back(lab, DoType(t, args...));
+    }
+    return pool->ObjectDec(ObjectDec{
+        .name = objdec.name,
+        .fields = std::move(fields)
+      });
   }
 
   // Patterns.

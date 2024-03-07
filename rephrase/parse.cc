@@ -676,6 +676,18 @@ const Exp *Parsing::Parse(AstPool *pool,
           };
     };
 
+  // object Article of { title : string, year : int }
+  // We allow parsing any type, but only accept base types in elaboration.
+  const auto ObjectDecl =
+    ((IsToken<OBJECT>() >> Id << IsToken<OF>() << IsToken<LBRACE>()) &&
+     (Separate0(Id && (IsToken<COLON>() >> TypeExpr),
+                IsToken<COMMA>()) << IsToken<RBRACE>()
+      ))
+    >[&](const auto &p) {
+        const auto &[name, fields] = p;
+        return pool->ObjectDec(ObjectDec({.name = name, .fields = fields}));
+      };
+
   // This is like "Nil" or "Cons of a * list".
   // We use null for the type in the first case.
   const auto DatatypeArm =
@@ -842,6 +854,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             ValDecl(Expr) ||
             FunDecl(Expr) ||
             DatatypeDecl ||
+            ObjectDecl ||
             // Just here for convenience of writing a || b || ...
             Fail<Token, const Dec *>();
         });

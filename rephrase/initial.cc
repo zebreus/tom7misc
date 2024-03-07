@@ -79,7 +79,10 @@ Initial::Initial(AstPool *pool) {
     {"ref", TypeVarInfo{.tyvars = {"a"}, .type = Ref(Alpha)}},
   };
 
-  ctx = ElabContext(exp_vars, type_vars);
+  // No initial object names.
+  std::vector<std::pair<std::string, ObjVarInfo>> obj_vars;
+
+  ctx = ElabContext(exp_vars, type_vars, obj_vars);
 }
 
 const ElabContext &Initial::InitialContext() const { return ctx; }

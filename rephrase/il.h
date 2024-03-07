@@ -245,10 +245,10 @@ struct Exp {
     return std::tie(str1, str_children);
   }
 
-  // has o.field
-  std::tuple<const Exp *, const std::string &> Has() const {
+  // has o.field : int
+  std::tuple<const Exp *, const std::string &, const Type *> Has() const {
     CHECK(type == ExpType::HAS);
-    return std::tie(a, str1);
+    return std::tie(a, str1, ta);
   }
 
   // get o.field : int
@@ -664,17 +664,20 @@ struct AstPool {
 
   // has o.field
   const Exp *Has(const Exp *obj, const std::string &field,
+                 const Type *t,
                  const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::HAS &&
         guess->a == obj &&
-        guess->str1 == field) {
+        guess->str1 == field &&
+        guess->ta == t) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::HAS);
     ret->a = obj;
     ret->str1 = field;
+    ret->ta = t;
     return ret;
   }
 

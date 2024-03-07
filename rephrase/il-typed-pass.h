@@ -161,8 +161,8 @@ struct TypedPass {
       return DoPack(G, t_hidden, alpha, t_packed, exp, e, args...);
     }
     case ExpType::HAS: {
-      const auto &[obj, field] = e->Has();
-      return DoHas(G, obj, field, e, args...);
+      const auto &[obj, field, t] = e->Has();
+      return DoHas(G, obj, field, t, e, args...);
     }
     case ExpType::GET: {
       const auto &[obj, field, t] = e->Get();
@@ -704,9 +704,13 @@ struct TypedPass {
   virtual std::pair<const Exp *, const Type *>
   DoHas(Context G,
         const Exp *obj, const std::string &field,
+        const Type *t,
         const Exp *guess, Args... args) {
     const auto &[oo, tt] = DoExp(G, obj, args...);
-    return {pool->Has(oo, field, guess), pool->BoolType()};
+    return {
+      pool->Has(oo, field, DoType(G, t, args...), guess),
+      pool->BoolType()
+    };
   }
 
   virtual std::pair<const Exp *, const Type *>

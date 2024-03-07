@@ -15,7 +15,8 @@ namespace il {
 
 ElabContext::ElabContext(
     const std::vector<std::pair<std::string, VarInfo>> &exp,
-    const std::vector<std::pair<std::string, TypeVarInfo>> &typ) {
+    const std::vector<std::pair<std::string, TypeVarInfo>> &typ,
+    const std::vector<std::pair<std::string, ObjVarInfo>> &obj) {
   std::vector<std::pair<KeyType, AnyVarInfo>> init;
   for (const auto &[s, pt] : exp) {
     init.push_back(
@@ -26,6 +27,12 @@ ElabContext::ElabContext(
     init.push_back(
         std::make_pair(
             std::make_pair(s, V::TYPE), AnyVarInfo{k}));
+  }
+
+  for (const auto &[s, o] : obj) {
+    init.push_back(
+        std::make_pair(
+            std::make_pair(s, V::OBJ), AnyVarInfo{o}));
   }
 
   fm = FunctionalMap(init);

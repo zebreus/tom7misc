@@ -187,6 +187,7 @@ std::string PatString(const Pat *p) {
 std::string DecString(const Dec *d) {
   if (d == nullptr) return "NULL!?";
   switch (d->type) {
+
   case DecType::VAL:
     return StringPrintf("val %s = %s",
                         PatString(d->pat).c_str(),
@@ -215,6 +216,17 @@ std::string DecString(const Dec *d) {
     return ret;
   }
 
+  case DecType::OBJECT: {
+    std::vector<std::string> fs;
+    for (const auto &[lab, t] : d->object.fields) {
+      fs.push_back(StringPrintf("%s : %s", lab.c_str(),
+                                TypeString(t).c_str()));
+    }
+    return StringPrintf("object %s of { %s }\n",
+                        d->object.name.c_str(),
+                        Util::Join(fs, ", ").c_str());
+  }
+
   case DecType::DATATYPE: {
     std::string tyvars;
     if (!d->tyvars.empty()) {
@@ -237,16 +249,10 @@ std::string DecString(const Dec *d) {
     }
     return ret;
   }
-
-  default:
-    return "TODO DECTYPE";
   }
+  return "Uknown declaration type";
 }
 
-// TODO: Make destructuring bind for each expression type,
-// so you can do like
-//    const auto &[code, t, f] = exp->If();
-// ... which also lets us use better representations internally.
 // TODO: Some kind of pretty-printing
 std::string ExpString(const Exp *e) {
   if (e == nullptr) return "NULL!?";
@@ -383,9 +389,8 @@ std::string ExpString(const Exp *e) {
     return StringPrintf("(%s : %s)",
                         ExpString(e->a).c_str(),
                         TypeString(e->t).c_str());
-  default:
-    return "ILLEGAL EXPRESSION";
   }
+  return "unknown/illegal expression";
 }
 
 

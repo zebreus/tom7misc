@@ -151,8 +151,8 @@ struct Pass {
       return DoPack(t_hidden, alpha, t_packed, exp, e, args...);
     }
     case ExpType::HAS: {
-      const auto &[obj, field] = e->Has();
-      return DoHas(obj, field, e, args...);
+      const auto &[obj, field, t] = e->Has();
+      return DoHas(obj, field, t, e, args...);
     }
     case ExpType::GET: {
       const auto &[obj, field, t] = e->Get();
@@ -500,8 +500,9 @@ struct Pass {
   }
 
   virtual const Exp *DoHas(const Exp *obj, const std::string &field,
+                           const Type *t,
                            const Exp *guess, Args... args) {
-    return pool->Has(DoExp(obj, args...), field, guess);
+    return pool->Has(DoExp(obj, args...), field, DoType(t, args...), guess);
   }
 
   virtual const Exp *DoGet(const Exp *obj, const std::string &field,

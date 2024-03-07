@@ -42,7 +42,6 @@ enum class ExpType {
 };
 
 enum class DecType {
-  DO,
   VAL,
   FUN,
   DATATYPE,
@@ -142,6 +141,12 @@ struct FunDec {
   std::vector<std::pair<std::vector<const Pat *>, const Exp *>> clauses;
 };
 
+// object Article of { title: string, year : int }
+struct ObjectDec {
+  std::string name;
+  std::vector<std::pair<std::string, const Type *>> fields;
+};
+
 struct Dec {
   DecType type;
   std::string str;
@@ -152,6 +157,7 @@ struct Dec {
   // All arms in the bundle must use the same tyvars.
   std::vector<DatatypeDec> datatypes;
   std::vector<FunDec> funs;
+  ObjectDec object;
   Dec(DecType t) : type(t) {}
 };
 
@@ -345,12 +351,6 @@ struct AstPool {
 
   // Declarations
 
-  const Dec *DoDec(const Exp *rhs) {
-    Dec *ret = NewDec(DecType::DO);
-    ret->exp = rhs;
-    return ret;
-  }
-
   const Dec *ValDec(const Pat *pat, const Exp *rhs) {
     Dec *ret = NewDec(DecType::VAL);
     ret->pat = pat;
@@ -370,6 +370,12 @@ struct AstPool {
     Dec *ret = NewDec(DecType::DATATYPE);
     ret->tyvars = std::move(tyvars);
     ret->datatypes = std::move(datatypes);
+    return ret;
+  }
+
+  const Dec *ObjectDec(ObjectDec objdec) {
+    Dec *ret = NewDec(DecType::OBJECT);
+    ret->object = std::move(objdec);
     return ret;
   }
 

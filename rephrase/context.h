@@ -48,13 +48,12 @@ struct TypeVarInfo {
   // always have kind 0.
   std::vector<std::string> tyvars;
   const Type *type = nullptr;
+};
 
-  #if 0
-  // We also have explicit type variables, like in a datatype declaration.
-  // These always have kind 0. This is the il type variable that the
-  // identifier refers to. The type pointer above will be null.
-  std::string var;
-  #endif
+struct ObjVarInfo {
+  // An object declaration just tells us the types of fields that
+  // we might find in the object.
+  std::unordered_map<std::string, const Type *> fields;
 };
 
 // Elaboration context.
@@ -66,12 +65,13 @@ struct ElabContext {
   ~ElabContext() = default;
   // Initialize with a set of bindings.
   ElabContext(const std::vector<std::pair<std::string, VarInfo>> &exp,
-              const std::vector<std::pair<std::string, TypeVarInfo>> &typ);
+              const std::vector<std::pair<std::string, TypeVarInfo>> &typ,
+              const std::vector<std::pair<std::string, ObjVarInfo>> &obj);
 
   // Expression variables.
   ElabContext Insert(const std::string &s, VarInfo vi) const {
     return ElabContext(fm.Insert(std::make_pair(s, V::EXP),
-                             {std::move(vi)}));
+                                 {std::move(vi)}));
   }
 
   const VarInfo *Find(const std::string &s) const {
@@ -86,7 +86,7 @@ struct ElabContext {
 
   ElabContext InsertType(const std::string &s, TypeVarInfo tvi) const {
     return ElabContext(fm.Insert(std::make_pair(s, V::TYPE),
-                             {std::move(tvi)}));
+                                 {std::move(tvi)}));
   }
 
   const TypeVarInfo *FindType(const std::string &s) const {
@@ -98,6 +98,22 @@ struct ElabContext {
       return nullptr;
     }
   }
+
+  ElabContext InsertObj(const std::string &s, ObjVarInfo ovi) const {
+    return ElabContext(fm.Insert(std::make_pair(s, V::OBJ),
+                             {std::move(ovi)}));
+  }
+
+  const ObjVarInfo *FindObj(const std::string &s) const {
+    if (const AnyVarInfo *avi = fm.FindPtr(std::make_pair(s, V::OBJ))) {
+      const ObjVarInfo *ovi = std::get_if<ObjVarInfo>(avi);
+      CHECK(ovi != nullptr) << "Bug: Object vars always hold ObjVarInfo.";
+      return ovi;
+    } else {
+      return nullptr;
+    }
+  }
+
 
   // True if the context has the (free) EVar inside the type of any
   // expression variable. This is used to determine what type
@@ -120,9 +136,11 @@ private:
     TYPE,
     // e.g. 'x' or '+' or 'SOME'
     EXP,
+    // Name declared in an "object" declaration.
+    OBJ,
   };
 
-  using AnyVarInfo = std::variant<VarInfo, TypeVarInfo>;
+  using AnyVarInfo = std::variant<VarInfo, TypeVarInfo, ObjVarInfo>;
 
   using KeyType = std::pair<std::string, V>;
   using FM = FunctionalMap<KeyType, AnyVarInfo>;

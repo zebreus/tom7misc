@@ -2,12 +2,16 @@
 #include "context.h"
 
 #include <string>
+
 #include "base/logging.h"
 #include "ansi.h"
 
 namespace il {
 
 static void CreateAndDestroy() {
+  [[maybe_unused]]
+  ElabContext elab_context;
+
   [[maybe_unused]]
   Context context;
 }

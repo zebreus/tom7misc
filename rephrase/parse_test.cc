@@ -806,6 +806,28 @@ static void TestParseDec() {
     CHECK(dd.arms[1].second == nullptr);
   }
 
+  {
+    const auto *dec = ParseDec(
+        "object Nothing of { }");
+    CHECK(dec->type == DecType::OBJECT);
+    const ObjectDec &od = dec->object;
+    CHECK(od.name == "Nothing");
+    CHECK(od.fields.empty());
+  }
+
+  {
+    const auto *dec = ParseDec(
+        "object Article of { title : string, year : int }");
+    CHECK(dec->type == DecType::OBJECT);
+    const ObjectDec &od = dec->object;
+    CHECK(od.name == "Article");
+    CHECK(od.fields.size() == 2);
+    CHECK(od.fields[0].first == "title");
+    CHECK(od.fields[0].second->var == "string");
+    CHECK(od.fields[1].first == "year");
+    CHECK(od.fields[1].second->var == "int");
+  }
+
 }
 
 static void TestParseLayout() {

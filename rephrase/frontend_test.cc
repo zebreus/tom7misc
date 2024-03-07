@@ -290,14 +290,12 @@ static void TestSimplify() {
     CHECK(pgm.body->Int() == 222);
   }
 
-  if (false) {
+  {
     const Program pgm = Run("case (1, 2, 3) of\n"
                             "   (1, 2, 3) => 7\n"
                             " | _ => 666\n");
-    // TODO: Optimize this so that we know it's just 7?
-    // Need some kind of known-value optimization, or inlining
-    // tuple values into projections.
-    printf("%s", ProgramString(pgm).c_str());
+    // This exercises known value optimizations.
+    CHECK(pgm.body->Int() == 7);
   }
 
   {
@@ -687,6 +685,25 @@ static void TestFun() {
 }
 
 
+static void TestObjects() {
+  constexpr bool VERBOSE = true;
+
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(2);
+  }
+
+  {
+    const Program pgm = Run(
+        "let object Article of { title : string, year : int }\n"
+        "in 7\n"
+        "end");
+    // Object declarations are transparent.
+    CHECK(pgm.body->Int() == 7);
+  }
+
+}
+
 // Former bugs.
 static void Regression() {
   Frontend front;
@@ -710,6 +727,7 @@ int main(int argc, char **argv) {
   il::Simple();
   il::TestDatatypes();
   il::TestFun();
+  il::TestObjects();
 
   il::Regression();
 
