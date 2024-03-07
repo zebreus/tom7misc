@@ -139,11 +139,11 @@ int ILUtil::ExpVarCount(const Exp *e, const std::string &x) {
 namespace {
 // Could perhaps do this as a multiple substitution?
 struct SubstPass : public Pass<> {
-  SubstPass(AstPool *pool,
+  SubstPass(AstPool *p,
             const std::vector<std::string> &tyvars,
             const Exp *e1,
             const std::string &x)
-    : Pass(pool),
+    : Pass(p),
       tyvars(tyvars),
       e1(e1),
       target_var(x),
@@ -320,8 +320,8 @@ std::pair<std::string, const Exp *> ILUtil::AlphaVaryExp(
 // target expression.
 template<bool is_fresh>
 struct SubstTypePass : public Pass<> {
-  SubstTypePass(AstPool *pool, const Type *t1, const std::string &x)
-    : Pass(pool), t1(t1), target_var(x), freevars(ILUtil::FreeTypeVars(t1)) {
+  SubstTypePass(AstPool *p, const Type *t1, const std::string &x)
+    : Pass(p), t1(t1), target_var(x), freevars(ILUtil::FreeTypeVars(t1)) {
   }
 
   // When we get to any type, we just defer to native substitution.
@@ -440,11 +440,11 @@ std::unordered_map<std::string, int> ILUtil::LabelCounts(const Exp *e) {
 
 namespace {
 struct SubstForLabelPass : public Pass<> {
-  SubstForLabelPass(AstPool *pool,
+  SubstForLabelPass(AstPool *p,
                     const std::vector<std::string> &tyvars,
                     const Exp *e1,
                     const std::string &sym)
-    : Pass(pool),
+    : Pass(p),
       tyvars(tyvars),
       e1(e1),
       target_sym(sym) {
@@ -502,8 +502,8 @@ const Exp *ILUtil::SubstPolyExpForLabel(
 
 namespace {
 struct FinalizeEVarsPass : public Pass<> {
-  FinalizeEVarsPass(AstPool *pool, const Type *replacement_type)
-    : Pass(pool),
+  FinalizeEVarsPass(AstPool *p, const Type *replacement_type)
+    : Pass(p),
       replacement_type(replacement_type) {
   }
 

@@ -61,8 +61,12 @@ const char *ExpTypeString(ExpType t) {
   case ExpType::SUMCASE: return "SUMCASE";
   case ExpType::PACK: return "PACK";
   case ExpType::UNPACK: return "UNPACK";
-  default: return "???MISSING???";
+  case ExpType::HAS: return "HAS";
+  case ExpType::GET: return "GET";
+  case ExpType::WITH: return "WITH";
+  case ExpType::WITHOUT: return "WITHOUT";
   }
+  return "???MISSING???";
 }
 
 std::string AstPool::NewVar(const std::string &hint_in) {
@@ -196,7 +200,8 @@ std::string TypeString(const Type *t) {
     return "obj";
 
   default:
-    return "unknown type type??";
+    return StringPrintf("unknown typetype %s??",
+                        TypeTypeString(t->type));
   }
 }
 
@@ -449,6 +454,21 @@ std::string ExpString(const Exp *e) {
                         alpha.c_str(), x.c_str(),
                         ExpString(rhs).c_str(),
                         ExpString(body).c_str());
+  }
+
+  case ExpType::HAS: {
+    const auto &[obj, field] = e->Has();
+    return StringPrintf("has %s.%s",
+                        ExpString(obj).c_str(),
+                        field.c_str());
+  }
+
+  case ExpType::GET: {
+    const auto &[obj, field, t] = e->Get();
+    return StringPrintf("(get %s.%s : %s)",
+                        ExpString(obj).c_str(),
+                        field.c_str(),
+                        TypeString(t).c_str());
   }
 
   default:

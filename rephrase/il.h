@@ -54,6 +54,13 @@ enum class ExpType {
   SUMCASE,
   PACK,
   UNPACK,
+
+  HAS,
+  // This one is tricky; we need to know the type of
+  // the field being extracted.
+  GET,
+  WITH,
+  WITHOUT,
 };
 
 struct Exp;
@@ -237,6 +244,23 @@ struct Exp {
     CHECK(type == ExpType::OBJECT);
     return std::tie(str1, str_children);
   }
+
+  // has o.field
+  std::tuple<const Exp *, const std::string &> Has() const {
+    CHECK(type == ExpType::HAS);
+    return std::tie(a, str1);
+  }
+
+  // get o.field : int
+  std::tuple<const Exp *, const std::string &, const Type *> Get() const {
+    CHECK(type == ExpType::GET);
+    return std::tie(a, str1, ta);
+  }
+
+  #if 0
+  WITH,
+  WITHOUT,
+  #endif
 
   std::tuple<const std::vector<std::string> &,
              const std::string &,
@@ -635,6 +659,41 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::OBJECT);
     ret->str1 = objtype;
     ret->str_children = fields;
+    return ret;
+  }
+
+  // has o.field
+  const Exp *Has(const Exp *obj, const std::string &field,
+                 const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::HAS &&
+        guess->a == obj &&
+        guess->str1 == field) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::HAS);
+    ret->a = obj;
+    ret->str1 = field;
+    return ret;
+  }
+
+  // get o.field : int
+  const Exp *Get(const Exp *obj, const std::string &field,
+                 const Type *t,
+                 const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::GET &&
+        guess->a == obj &&
+        guess->str1 == field &&
+        guess->ta == t) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::GET);
+    ret->a = obj;
+    ret->str1 = field;
+    ret->ta = t;
     return ret;
   }
 

@@ -160,6 +160,15 @@ struct TypedPass {
       const auto &[t_hidden, alpha, t_packed, exp] = e->Pack();
       return DoPack(G, t_hidden, alpha, t_packed, exp, e, args...);
     }
+    case ExpType::HAS: {
+      const auto &[obj, field] = e->Has();
+      return DoHas(G, obj, field, e, args...);
+    }
+    case ExpType::GET: {
+      const auto &[obj, field, t] = e->Get();
+      return DoGet(G, obj, field, t, e, args...);
+    }
+
     default:
       LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
     }
@@ -692,6 +701,26 @@ struct TypedPass {
     return {pool->Pack(tth, alpha, ttp, bb, guess), ttp};
   }
 
+  virtual std::pair<const Exp *, const Type *>
+  DoHas(Context G,
+        const Exp *obj, const std::string &field,
+        const Exp *guess, Args... args) {
+    const auto &[oo, tt] = DoExp(G, obj, args...);
+    return {pool->Has(oo, field, guess), pool->BoolType()};
+  }
+
+  virtual std::pair<const Exp *, const Type *>
+  DoGet(Context G,
+        const Exp *obj, const std::string &field,
+        const Type *t,
+        const Exp *guess, Args... args) {
+    const auto &[oo, tt] = DoExp(G, obj, args...);
+    const Type *ret_type = DoType(G, t, args...);
+    return {
+      pool->Get(oo, field, ret_type, guess),
+      ret_type
+    };
+  }
 
 protected:
   AstPool *pool = nullptr;

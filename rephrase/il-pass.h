@@ -60,8 +60,9 @@ struct Pass {
     case TypeType::INT: return DoIntType(t, args...);
     case TypeType::BOOL: return DoBoolType(t, args...);
     case TypeType::OBJ: return DoObjType(t, args...);
-      LOG(FATAL) << "Unhandled type type in Pass::DoExp!";
     }
+    LOG(FATAL) << "Unhandled type type in Pass::DoExp!";
+    return nullptr;
   }
 
   virtual const Exp *DoExp(const Exp *e, Args... args) {
@@ -149,9 +150,18 @@ struct Pass {
       const auto &[t_hidden, alpha, t_packed, exp] = e->Pack();
       return DoPack(t_hidden, alpha, t_packed, exp, e, args...);
     }
-    default:
-      LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
+    case ExpType::HAS: {
+      const auto &[obj, field] = e->Has();
+      return DoHas(obj, field, e, args...);
     }
+    case ExpType::GET: {
+      const auto &[obj, field, t] = e->Get();
+      return DoGet(obj, field, t, e, args...);
+    }
+
+    }
+    LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
+    return nullptr;
   }
 
   // All the cases take the AST node's components as arguments,
@@ -487,6 +497,17 @@ struct Pass {
                       DoType(t_packed, args...),
                       DoExp(body, args...),
                       guess);
+  }
+
+  virtual const Exp *DoHas(const Exp *obj, const std::string &field,
+                           const Exp *guess, Args... args) {
+    return pool->Has(DoExp(obj, args...), field, guess);
+  }
+
+  virtual const Exp *DoGet(const Exp *obj, const std::string &field,
+                           const Type *t,
+                           const Exp *guess, Args... args) {
+    return pool->Get(DoExp(obj, args...), field, DoType(t, args...), guess);
   }
 
 protected:

@@ -45,9 +45,9 @@ Initial::Initial(AstPool *pool) {
     {">", Primop::INT_GREATER},
     {">=", Primop::INT_GREATEREQ},
 
-    {":=", Primop::SET},
-    {"!", Primop::GET},
     {"ref", Primop::REF},
+    {":=", Primop::REF_SET},
+    {"!", Primop::REF_GET},
 
     {"int-to-string", Primop::INT_TO_STRING},
     // {"int-eq", Primop::INT_EQ},

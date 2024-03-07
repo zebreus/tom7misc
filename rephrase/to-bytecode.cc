@@ -441,14 +441,14 @@ struct Converter {
           return out;
         }
 
-        case Primop::GET: {
+        case Primop::REF_GET: {
           CHECK(ls.size() == 1);
           insts->emplace_back(
               inst::GetLabel{.out = out, .obj = ls[0], .lab = REF_LABEL});
           return out;
         }
 
-        case Primop::SET: {
+        case Primop::REF_SET: {
           CHECK(ls.size() == 2);
           insts->emplace_back(
               inst::SetLabel{.obj = ls[0], .lab = REF_LABEL, .arg = ls[1]});

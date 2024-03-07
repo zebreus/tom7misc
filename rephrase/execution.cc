@@ -219,7 +219,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return String(aa + bb);
   }
 
-  case Primop::SET:
+  case Primop::REF_SET:
     LOG(FATAL) << "SET should have been compiled away.";
   case Primop::INVALID:
     LOG(FATAL) << "Tried executing INVALID primop as binop.";
@@ -291,7 +291,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::REF:
     LOG(FATAL) << "REF should have been compiled away";
-  case Primop::GET:
+  case Primop::REF_GET:
     LOG(FATAL) << "GET should have been compiled away";
   case Primop::INVALID:
     LOG(FATAL) << "Tried executing INVALID primop as unop.";

@@ -12,8 +12,8 @@
 const char *PrimopString(Primop p) {
   switch (p) {
   case Primop::REF: return "REF";
-  case Primop::GET: return "GET";
-  case Primop::SET: return "SET";
+  case Primop::REF_GET: return "REF_GET";
+  case Primop::REF_SET: return "REF_SET";
   case Primop::INT_EQ: return "INT_EQ";
   case Primop::INT_NEQ: return "INT_NEQ";
   case Primop::INT_LESS: return "INT_LESS";
@@ -45,8 +45,8 @@ const char *PrimopString(Primop p) {
 std::tuple<int, int> PrimopArity(Primop po) {
   switch(po) {
   case Primop::REF: return std::make_tuple(1, 1);
-  case Primop::GET: return std::make_tuple(1, 1);
-  case Primop::SET: return std::make_tuple(1, 2);
+  case Primop::REF_GET: return std::make_tuple(1, 1);
+  case Primop::REF_SET: return std::make_tuple(1, 2);
   case Primop::INT_EQ: return std::make_tuple(0, 2);
   case Primop::INT_NEQ: return std::make_tuple(0, 2);
   case Primop::INT_LESS: return std::make_tuple(0, 2);
@@ -79,8 +79,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
 bool IsPrimopTotal(Primop p) {
   switch (p) {
   case Primop::REF: return false;
-  case Primop::GET: return false;
-  case Primop::SET: return false;
+  case Primop::REF_GET: return false;
+  case Primop::REF_SET: return false;
   // Since we use BigInt, integer arithmetic cannot overflow.
   case Primop::INT_EQ: return true;
   case Primop::INT_NEQ: return true;
@@ -124,8 +124,8 @@ bool IsPrimopDiscardable(Primop p) {
   case Primop::REF:
     // Creating a reference is not itself observable.
     return true;
-  case Primop::GET: return true;
-  case Primop::SET: return false;
+  case Primop::REF_GET: return true;
+  case Primop::REF_SET: return false;
 
   case Primop::OUT_STRING: return false;
 
@@ -160,9 +160,9 @@ PrimopType(il::AstPool *pool, Primop p) {
   switch (p) {
   case Primop::REF:
     return {{"a"}, pool->Arrow(Alpha(), Ref(Alpha()))};
-  case Primop::GET:
+  case Primop::REF_GET:
     return {{"a"}, pool->Arrow(Ref(Alpha()), Alpha())};
-  case Primop::SET:
+  case Primop::REF_SET:
     return {{"a"}, BinOp(Ref(Alpha()), Alpha(), Unit())};
 
   // Perhaps these should just be overloaded α * α -> bool,

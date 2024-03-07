@@ -13,8 +13,8 @@ struct AstPool;
 
 enum class Primop {
   REF,
-  GET,
-  SET,
+  REF_GET,
+  REF_SET,
 
   // TODO: Math, comparisons, etc.
   INT_EQ,

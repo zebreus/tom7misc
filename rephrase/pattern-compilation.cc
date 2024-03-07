@@ -378,7 +378,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     // XXX I think we want to use CompileIrrefutable for this.
     if (rows_in.size() > 1) {
       // XXX only for user patterns
-      printf("Warning: redundant match?\n");
+      // printf("Warning: redundant match?\n");
     }
     el::AstPool *el_pool = elab->el_pool;
     il::AstPool *pool = elab->pool;
