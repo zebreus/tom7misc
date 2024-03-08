@@ -670,4 +670,16 @@ std::string ILUtil::VarSetString(const std::unordered_set<std::string> &s) {
   return StringPrintf("{%s}", Util::Join(v, ", ").c_str());
 }
 
+std::optional<const Type *> ILUtil::GetTypeIfKnown(const Type *t) {
+  for (;;) {
+    if (t->type == TypeType::EVAR) {
+      t = t->EVar().GetBound();
+      if (t == nullptr) return std::nullopt;
+      // Otherwise continue on the referent.
+    } else {
+      return {t};
+    }
+  }
+}
+
 }  // namespace il

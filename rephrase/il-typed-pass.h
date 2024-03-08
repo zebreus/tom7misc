@@ -81,10 +81,7 @@ struct TypedPass {
     case ExpType::FLOAT: return DoFloat(G, e->Float(), e, args...);
     case ExpType::JOIN: return DoJoin(G, e->Join(), e, args...);
     case ExpType::RECORD: return DoRecord(G, e->Record(), e, args...);
-    case ExpType::OBJECT: {
-      const auto &[objtype, fields] = e->Object();
-      return DoObject(G, objtype, fields, e, args...);
-    }
+    case ExpType::OBJECT: return DoObject(G, e->Object(), e, args...);
     case ExpType::INT: return DoInt(G, e->Int(), e, args...);
     case ExpType::BOOL: return DoBool(G, e->Bool(), e, args...);
     case ExpType::VAR: {
@@ -406,17 +403,16 @@ struct TypedPass {
   virtual std::pair<const Exp *, const Type *>
   DoObject(
       Context G,
-      const std::string &objtype,
-      const std::vector<std::pair<std::string, const Exp *>> &lv,
+      const std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> &lv,
       const Exp *guess,
       Args... args) {
-    std::vector<std::pair<std::string, const Exp *>> lvv;
+    std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> lvv;
     lvv.reserve(lv.size());
-    for (const auto &[l, e] : lv) {
+    for (const auto &[l, oft, e] : lv) {
       const auto &[ee, tt] = DoExp(G, e, args...);
-      lvv.emplace_back(l, ee);
+      lvv.emplace_back(l, oft, ee);
     }
-    return {pool->Object(objtype, lvv, guess), pool->ObjType()};
+    return {pool->Object(lvv, guess), pool->ObjType()};
   }
 
   virtual std::pair<const Exp *, const Type *>

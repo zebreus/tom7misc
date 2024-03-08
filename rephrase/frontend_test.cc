@@ -702,6 +702,20 @@ static void TestObjects() {
     CHECK(pgm.body->Int() == 7);
   }
 
+  {
+    [[maybe_unused]]
+    const Program pgm = Run(
+        "let object Article of { title : string, year : int }\n"
+        "in case {(Article) title = \"hi\"} of\n"
+        "      {(Article) year = 1997 } => 555\n"
+        "    | {(Article) year = 2024 } => 666\n"
+        "    | {(Article) title } => 7\n"
+        "    | {(Article) year = 42 } => 888\n"
+        "end");
+    // Can't really test this without further simplifications.
+    // But it should elaborate!
+    // printf("%s", ProgramString(pgm).c_str());
+  }
 }
 
 // Former bugs.

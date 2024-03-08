@@ -20,6 +20,7 @@ struct EVar {
 
   EVar();
 
+  // Returns nullptr if not (yet) bound.
   const Type *GetBound() const { return GetCell()->GetBound(); }
   void Set(const Type *t) const { return GetCell()->Set(t); }
 

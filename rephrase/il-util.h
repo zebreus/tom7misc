@@ -1,7 +1,11 @@
 #ifndef _REPHRASE_IL_UTIL_H
 #define _REPHRASE_IL_UTIL_H
 
+#include <optional>
+#include <string>
+#include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "il.h"
 
@@ -89,6 +93,14 @@ struct ILUtil {
       const Exp *e2);
 
   static std::string VarSetString(const std::unordered_set<std::string> &s);
+
+  // In the case that the root of the type is a bound EVar, return what it's
+  // set to (recursively). If (recursively) unset, return nullopt. For
+  // regular types, just return them.
+  //
+  // This is used for some gross parts of elaboration (objects) where the
+  // rule is "it must have a type that is resolved by now."
+  static std::optional<const Type *> GetTypeIfKnown(const Type *);
 
 };
 

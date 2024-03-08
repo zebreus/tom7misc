@@ -69,6 +69,17 @@ const char *ExpTypeString(ExpType t) {
   return "???MISSING???";
 }
 
+const char *ObjFieldTypeString(ObjFieldType oft) {
+  switch (oft) {
+  case ObjFieldType::STRING: return "STRING";
+  case ObjFieldType::FLOAT: return "FLOAT";
+  case ObjFieldType::INT: return "INT";
+  case ObjFieldType::BOOL: return "BOOL";
+  case ObjFieldType::OBJ: return "OBJ";
+  }
+  return "??MISSING??";
+}
+
 std::string AstPool::NewVar(const std::string &hint_in) {
   next_var++;
   std::string hint = BaseVar(hint_in);
@@ -273,12 +284,14 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::OBJECT: {
-    const auto &[objtype, fields] = e->Object();
-    std::string ret = StringPrintf("{(%s) ", objtype.c_str());
+    const auto &fields = e->Object();
+    std::string ret = "{() ";
     for (int i = 0; i < (int)fields.size(); i++) {
       if (i != 0) StringAppendF(&ret, ", ");
-      const auto &[l, v] = fields[i];
-      StringAppendF(&ret, "%s = %s", l.c_str(), ExpString(v).c_str());
+      const auto &[l, oft, v] = fields[i];
+      StringAppendF(&ret, "%s[%s] = %s", l.c_str(),
+                    ObjFieldTypeString(oft),
+                    ExpString(v).c_str());
     }
     ret += "}";
     return ret;

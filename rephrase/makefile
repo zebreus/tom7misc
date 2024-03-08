@@ -25,7 +25,7 @@ test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex
 LLAMA_CLBLAST=true
 # ASAN=true
 
-# Pro-tip:
+# Pro-tip for understanding compilation time:
 #  -ftime-trace
 # then load the .json file at ui.perfetto.dev.
 

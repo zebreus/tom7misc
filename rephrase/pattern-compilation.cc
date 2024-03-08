@@ -221,12 +221,13 @@ struct PatternCompilation::Matrix {
     return std::nullopt;
   }
 
-  // Deletes the row and everything after it. Changes height.
+  // Deletes the row and everything after it. Changes height
+  // to be y_target.
   // Invalidates pointers.
   void DeleteRowsFrom(int y_target) {
     const int old_width = Width();
     const int old_height = Height();
-    CHECK(y_target >= 0 && y_target < old_height);
+    CHECK(y_target >= 0 && y_target <= old_height);
 
     rows.resize(y_target);
     pats.resize(y_target * old_width);
@@ -235,6 +236,7 @@ struct PatternCompilation::Matrix {
     CHECK((int)pats.size() == Width() * Height());
     CHECK((int)objs.size() == Width());
     CHECK((int)types.size() == Width());
+    CHECK(Height() == y_target);
   }
 
   // Delete the first n rows.
@@ -434,38 +436,43 @@ void PatternCompilation::CheckAffine(const Pat *orig_pat) const {
           pat->str << " is bound more than once in the pattern:\n" <<
           PatString(orig_pat);
         vars.insert(pat->str);
-        break;
+        return;
       case PatType::WILD:
-        break;
+        return;
       case PatType::AS:
         Rec(pat->a);
         Rec(pat->b);
-        break;
+        return;
       case PatType::ANN:
         Rec(pat->a);
-        break;
+        return;
       case PatType::RECORD:
         for (const auto &[lab, child] : pat->str_children) {
           Rec(child);
         }
-        break;
+        return;
       case PatType::TUPLE:
         for (const Pat *child : pat->children) {
           Rec(child);
         }
-        break;
+        return;
       case PatType::INT:
-        break;
+        return;
       case PatType::STRING:
-        break;
+        return;
       case PatType::BOOL:
-        break;
+        return;
       case PatType::APP:
         Rec(pat->a);
-        break;
-      default:
-        LOG(FATAL) << "Pattern type not handled in CheckAffine.";
+        return;
+      case PatType::OBJECT:
+        for (const auto &[lab, child] : pat->str_children) {
+          Rec(child);
+        }
+        return;
       }
+      LOG(FATAL) << "Pattern type " << PatTypeString(pat->type)
+                 << " not handled in CheckAffine.";
     };
 
   Rec(orig_pat);
@@ -497,7 +504,11 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
   // matrix to make it "clean," then perform some kind of
   // interesting split.
 
-  // First, we remove VAR and TUPLE patterns by rewriting them.
+  // First, we handle the following types of patterns:
+  //   - VAR is rewritten to WILD after binding a copy of the variable.
+  //   - TUPLE is rewritten to the equivalent record.
+  //   - ANN patterns are unified and replaced with the subpattern.
+  //   - Empty OBJECT patterns are equivalent to (_ : obj).
   for (int y = 0; y < matrix.Height(); y++) {
     for (int x = 0; x < matrix.Width(); x++) {
       while (matrix.Cell(x, y)->type == PatType::ANN) {
@@ -526,6 +537,13 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
           rp.emplace_back(StringPrintf("%d", i + 1), op->children[i]);
         }
         matrix.Cell(x, y) = elab->el_pool->RecordPat(std::move(rp));
+      }
+
+      if (matrix.Cell(x, y)->type == PatType::OBJECT &&
+          matrix.Cell(x, y)->str_children.empty()) {
+        Unification::Unify("object pattern",
+                           matrix.Type(x), elab->pool->ObjType());
+        matrix.Cell(x, y) = elab->el_pool->WildPat();
       }
     }
   }
@@ -1289,20 +1307,31 @@ PatternCompilation::SplitObjectPattern(
       std::unordered_map<std::string, std::pair<const Pat *, const Type *>>
         row_fields = GetFields(pat);
 
-      // Compute the intersection.
-      for (const auto &[lab, info] : fields) {
-        const auto it = row_fields.find(lab);
-        if (it == row_fields.end()) {
-          row_fields.erase(lab);
+      // Compute the intersection, by modifying the new fields in place.
+      std::vector<std::string> ineligible;
+      for (const auto &[lab, info] : row_fields) {
+        const auto it = fields.find(lab);
+        if (it == fields.end()) {
+          // The field isn't in the running set, so delete it.
+          ineligible.emplace_back(lab);
         } else {
-          // If it has a different type, it's a different field.
+          // Field is present in both.
+          // But if it has a different type, it's a different field.
           const auto &[pp1, tt1] = info;
           const auto &[pp2, tt2] = it->second;
+          CHECK(tt1->type != TypeType::EVAR &&
+                tt2->type != TypeType::EVAR) << "Bug: This shouldn't happen, "
+            "but it would be cleaner if we handled EVars here. (e.g. use "
+            "GetObjFieldType.)";
           if (tt1->type != tt2->type) {
-            row_fields.erase(lab);
+            ineligible.push_back(lab);
           }
         }
       }
+
+      for (const std::string &lab : ineligible)
+        row_fields.erase(lab);
+
 
       if (row_fields.empty()) {
         // Then we have to pick from fields.
@@ -1384,7 +1413,10 @@ PatternCompilation::SplitObjectPattern(
           fields.emplace_back(ll, pp);
         }
       }
-      CHECK(found.has_value()) << lab;
+      CHECK(found.has_value()) << "Bug: Tried to remove the field " <<
+      lab << " from the object pattern " << el::PatString(p) << " but "
+      "it wasn't in there.";
+
       return std::make_pair(
           found.value(),
           elab->el_pool->ObjectPat(p->str, std::move(fields)));
@@ -1398,6 +1430,7 @@ PatternCompilation::SplitObjectPattern(
   // Create the pattern match matrix for the success case (where the
   // label is present).
   Matrix matrix_matched = matrix;
+  printf("prefix rows: %d. height: %d\n", prefix_rows, matrix_matched.Height());
   matrix_matched.DeleteRowsFrom(prefix_rows);
 
   // We add a new column to handle the subpattern in the matched field

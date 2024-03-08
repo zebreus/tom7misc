@@ -55,9 +55,8 @@ enum class ExpType {
   PACK,
   UNPACK,
 
+  // Object manipulation.
   HAS,
-  // This one is tricky; we need to know the type of
-  // the field being extracted.
   GET,
   WITH,
   WITHOUT,
@@ -95,6 +94,14 @@ enum class TypeType {
   REF,
   // There is no "app"; primitive tycons
   // are to be added here.
+  STRING,
+  FLOAT,
+  INT,
+  BOOL,
+  OBJ,
+};
+
+enum class ObjFieldType {
   STRING,
   FLOAT,
   INT,
@@ -238,11 +245,10 @@ struct Exp {
     return str_children;
   }
 
-  // Do we even need the objtype? The expression always has type obj.
-  std::tuple<const std::string &,
-    const std::vector<std::pair<std::string, const Exp *>> &> Object() const {
+  const std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> &Object()
+    const {
     CHECK(type == ExpType::OBJECT);
-    return std::tie(str1, str_children);
+    return obj_fields;
   }
 
   // has o.field : int
@@ -384,6 +390,8 @@ private:
   std::vector<std::pair<BigInt, const Exp *>> int_children;
   // For sumcase. Labels must be distinct.
   std::vector<std::tuple<std::string, std::string, const Exp *>> sumcase_arms;
+  // For objects.
+  std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> obj_fields;
 };
 
 struct Global {
@@ -646,19 +654,16 @@ struct AstPool {
   }
 
   const Exp *Object(
-      const std::string &objtype,
-      const std::vector<std::pair<std::string, const Exp *>> &fields,
+      const std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> &fields,
       const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::OBJECT &&
-        guess->str1 == objtype &&
-        guess->str_children == fields) {
+        guess->obj_fields == fields) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::OBJECT);
-    ret->str1 = objtype;
-    ret->str_children = fields;
+    ret->obj_fields = fields;
     return ret;
   }
 
@@ -1081,6 +1086,7 @@ struct AstPool {
 
 const char *TypeTypeString(TypeType t);
 const char *ExpTypeString(ExpType t);
+const char *ObjFieldTypeString(ObjFieldType t);
 std::string TypeString(const Type *t);
 std::string ExpString(const Exp *e);
 std::string ProgramString(const Program &pgm);

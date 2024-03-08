@@ -71,10 +71,7 @@ struct Pass {
     case ExpType::FLOAT: return DoFloat(e->Float(), e, args...);
     case ExpType::JOIN: return DoJoin(e->Join(), e, args...);
     case ExpType::RECORD: return DoRecord(e->Record(), e, args...);
-    case ExpType::OBJECT: {
-      const auto &[objtype, fields] = e->Object();
-      return DoObject(objtype, fields, e, args...);
-    }
+    case ExpType::OBJECT: return DoObject(e->Object(), e, args...);
     case ExpType::INT: return DoInt(e->Int(), e, args...);
     case ExpType::BOOL: return DoBool(e->Bool(), e, args...);
     case ExpType::VAR: {
@@ -325,14 +322,13 @@ struct Pass {
   }
 
   virtual const Exp *DoObject(
-      const std::string &objtype,
-      const std::vector<std::pair<std::string, const Exp *>> &lv,
+      const std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> &lv,
       const Exp *guess,
       Args... args) {
-    std::vector<std::pair<std::string, const Exp *>> lvv;
+    std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> lvv;
     lvv.reserve(lv.size());
-    for (const auto &[l, e] : lv) lvv.emplace_back(l, DoExp(e, args...));
-    return pool->Object(objtype, lvv, guess);
+    for (const auto &[l, oft, e] : lv) lvv.emplace_back(l, oft, DoExp(e, args...));
+    return pool->Object(lvv, guess);
   }
 
   virtual const Exp *DoProject(const std::string &s, const Exp *e,
