@@ -25,6 +25,22 @@ struct Converter {
 
   static constexpr const char *REF_LABEL = "r";
 
+  // Object fields are distinguished by their types. We just encode this in
+  // the field name. We could use anything here, but we use something that's
+  // illegal to begin a user field name and reminiscent of the type.
+  static std::string ObjFieldName(const std::string &f, il::ObjFieldType oft) {
+    const char c = [oft](){
+        switch (oft) {
+        case il::ObjFieldType::STRING: return '\"';
+        case il::ObjFieldType::FLOAT: return '.';
+        case il::ObjFieldType::INT: return '0';
+        case il::ObjFieldType::BOOL: return '?';
+        case il::ObjFieldType::OBJ: return '=';
+        }
+      }();
+    return StringPrintf("%c%s", c, f.c_str());
+  };
+
   // We actually keep code, data, and local symbols disjoint (even
   // though this is not required) to prevent conclusion.
   std::string NewSymbol(const std::string &hint) {
@@ -306,6 +322,49 @@ struct Converter {
         }
 
         return r;
+      }
+
+      case il::ExpType::OBJECT: {
+        const std::vector<std::tuple<std::string,
+                                     il::ObjFieldType,
+                                     const il::Exp *>> &fields = exp->Object();
+
+        // Evaluate components.
+        std::vector<std::string> locals;
+        std::vector<std::string> typed_field_names;
+        locals.reserve(fields.size());
+        typed_field_names.reserve(fields.size());
+        for (const auto &[f, oft, e] : fields) {
+          locals.push_back(ConvertExp(G, f, e, insts));
+
+          typed_field_names.push_back(ObjFieldName(f, oft));
+        }
+
+        // Now allocate the obj.
+        std::string r = NewSymbol("obj");
+        insts->emplace_back(inst::Alloc{.out = r});
+
+        // And set fields within it.
+        CHECK(typed_field_names.size() == locals.size());
+        for (int i = 0; i < (int)locals.size(); i++) {
+          insts->emplace_back(inst::SetLabel{
+              .obj = r,
+              .lab = typed_field_names[i],
+              .arg = locals[i],
+            });
+        }
+
+        return r;
+      }
+
+      case il::ExpType::HAS: {
+        const auto &[e, field, oft] = exp->Has();
+        LOG(FATAL) << "unimplemented!";
+      }
+
+      case il::ExpType::GET: {
+        const auto &[e, field, oft] = exp->Get();
+        LOG(FATAL) << "unimplemented!";
       }
 
       case il::ExpType::INT: {

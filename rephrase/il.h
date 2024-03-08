@@ -252,15 +252,15 @@ struct Exp {
   }
 
   // has o.field : int
-  std::tuple<const Exp *, const std::string &, const Type *> Has() const {
+  std::tuple<const Exp *, const std::string &, ObjFieldType> Has() const {
     CHECK(type == ExpType::HAS);
-    return std::tie(a, str1, ta);
+    return std::tie(a, str1, oft);
   }
 
   // get o.field : int
-  std::tuple<const Exp *, const std::string &, const Type *> Get() const {
+  std::tuple<const Exp *, const std::string &, ObjFieldType> Get() const {
     CHECK(type == ExpType::GET);
-    return std::tie(a, str1, ta);
+    return std::tie(a, str1, oft);
   }
 
   #if 0
@@ -381,6 +381,7 @@ private:
   const Type *ta = nullptr;
   const Type *tb = nullptr;
   double d = 0.0;
+  ObjFieldType oft = ObjFieldType::OBJ;
   std::vector<const Exp *> children;
   std::vector<const Type *> types;
   std::vector<std::string> tyvars;
@@ -669,39 +670,39 @@ struct AstPool {
 
   // has o.field
   const Exp *Has(const Exp *obj, const std::string &field,
-                 const Type *t,
+                 ObjFieldType oft,
                  const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::HAS &&
         guess->a == obj &&
         guess->str1 == field &&
-        guess->ta == t) {
+        guess->oft == oft) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::HAS);
     ret->a = obj;
     ret->str1 = field;
-    ret->ta = t;
+    ret->oft = oft;
     return ret;
   }
 
   // get o.field : int
   const Exp *Get(const Exp *obj, const std::string &field,
-                 const Type *t,
+                 ObjFieldType oft,
                  const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::GET &&
         guess->a == obj &&
         guess->str1 == field &&
-        guess->ta == t) {
+        guess->oft == oft) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::GET);
     ret->a = obj;
     ret->str1 = field;
-    ret->ta = t;
+    ret->oft = oft;
     return ret;
   }
 

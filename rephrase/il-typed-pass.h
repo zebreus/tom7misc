@@ -700,11 +700,11 @@ struct TypedPass {
   virtual std::pair<const Exp *, const Type *>
   DoHas(Context G,
         const Exp *obj, const std::string &field,
-        const Type *t,
+        ObjFieldType oft,
         const Exp *guess, Args... args) {
     const auto &[oo, tt] = DoExp(G, obj, args...);
     return {
-      pool->Has(oo, field, DoType(G, t, args...), guess),
+      pool->Has(oo, field, oft, guess),
       pool->BoolType()
     };
   }
@@ -712,13 +712,12 @@ struct TypedPass {
   virtual std::pair<const Exp *, const Type *>
   DoGet(Context G,
         const Exp *obj, const std::string &field,
-        const Type *t,
+        ObjFieldType oft,
         const Exp *guess, Args... args) {
     const auto &[oo, tt] = DoExp(G, obj, args...);
-    const Type *ret_type = DoType(G, t, args...);
     return {
-      pool->Get(oo, field, ret_type, guess),
-      ret_type
+      pool->Get(oo, field, oft, guess),
+      ILUtil::ObjFieldTypeType(pool, oft)
     };
   }
 

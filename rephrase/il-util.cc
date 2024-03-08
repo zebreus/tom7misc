@@ -670,6 +670,29 @@ std::string ILUtil::VarSetString(const std::unordered_set<std::string> &s) {
   return StringPrintf("{%s}", Util::Join(v, ", ").c_str());
 }
 
+std::optional<il::ObjFieldType> ILUtil::GetObjFieldType(const il::Type *t) {
+  switch (t->type) {
+  case il::TypeType::INT: return {il::ObjFieldType::INT};
+  case il::TypeType::STRING: return {il::ObjFieldType::STRING};
+  case il::TypeType::FLOAT: return {il::ObjFieldType::FLOAT};
+  case il::TypeType::BOOL: return {il::ObjFieldType::BOOL};
+  case il::TypeType::OBJ: return {il::ObjFieldType::OBJ};
+  default: return std::nullopt;
+  }
+}
+
+const Type *ILUtil::ObjFieldTypeType(AstPool *pool, ObjFieldType oft) {
+  switch (oft) {
+  case ObjFieldType::STRING: return pool->StringType();
+  case ObjFieldType::FLOAT: return pool->FloatType();
+  case ObjFieldType::INT: return pool->IntType();
+  case ObjFieldType::BOOL: return pool->BoolType();
+  case ObjFieldType::OBJ: return pool->ObjType();
+  }
+  LOG(FATAL) << "Unimplemented ObjFieldType";
+  return nullptr;
+}
+
 std::optional<const Type *> ILUtil::GetTypeIfKnown(const Type *t) {
   for (;;) {
     if (t->type == TypeType::EVAR) {

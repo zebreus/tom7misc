@@ -470,19 +470,19 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::HAS: {
-    const auto &[obj, field, t] = e->Has();
+    const auto &[obj, field, oft] = e->Has();
     return StringPrintf("(has %s.%s : %s)",
                         ExpString(obj).c_str(),
                         field.c_str(),
-                        TypeString(t).c_str());
+                        ObjFieldTypeString(oft));
   }
 
   case ExpType::GET: {
-    const auto &[obj, field, t] = e->Get();
+    const auto &[obj, field, oft] = e->Get();
     return StringPrintf("(get %s.%s : %s)",
                         ExpString(obj).c_str(),
                         field.c_str(),
-                        TypeString(t).c_str());
+                        ObjFieldTypeString(oft));
   }
 
   default:

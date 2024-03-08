@@ -94,6 +94,11 @@ struct ILUtil {
 
   static std::string VarSetString(const std::unordered_set<std::string> &s);
 
+  // Partial conversion between IL types and ObjFieldType. Only base types
+  // are allowed.
+  static std::optional<il::ObjFieldType> GetObjFieldType(const il::Type *t);
+  static const Type *ObjFieldTypeType(AstPool *pool, ObjFieldType oft);
+
   // In the case that the root of the type is a bound EVar, return what it's
   // set to (recursively). If (recursively) unset, return nullopt. For
   // regular types, just return them.

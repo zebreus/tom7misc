@@ -7,6 +7,7 @@
 #include <unordered_set>
 
 #include "il.h"
+#include "il-util.h"
 #include "elaboration.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -1495,12 +1496,19 @@ PatternCompilation::SplitObjectPattern(
   Unification::Unify("case object (object pattern)", ilobjtyp,
                      elab->pool->ObjType());
 
+  const std::optional<ObjFieldType> ooft = ILUtil::GetObjFieldType(split_type);
+  CHECK(ooft.has_value()) << "The type " << TypeString(split_type) << " is "
+    "not allowed as an object field type. Field name: " << split_field << "\n"
+    "Object pattern: " << PatString(first_pat);
+
+  ObjFieldType split_oft = ooft.value();
+
   const Exp *ret =
     elab->pool->If(
-        elab->pool->Has(ilobj, split_field, split_type),
+        elab->pool->Has(ilobj, split_field, split_oft),
         // Success case.
         elab->pool->Let(
-            {}, il_subvar, elab->pool->Get(ilobj, split_field, split_type),
+            {}, il_subvar, elab->pool->Get(ilobj, split_field, split_oft),
             sexp),
         // Failure case.
         il_failure_cont);

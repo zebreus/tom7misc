@@ -75,19 +75,8 @@ Program Elaboration::Elaborate(const el::Exp *el_exp) {
   return pgm;
 }
 
-static std::optional<il::ObjFieldType> GetObjFieldType(const il::Type *t) {
-  switch (t->type) {
-  case il::TypeType::INT: return {il::ObjFieldType::INT};
-  case il::TypeType::STRING: return {il::ObjFieldType::STRING};
-  case il::TypeType::FLOAT: return {il::ObjFieldType::FLOAT};
-  case il::TypeType::BOOL: return {il::ObjFieldType::BOOL};
-  case il::TypeType::OBJ: return {il::ObjFieldType::OBJ};
-  default: return std::nullopt;
-  }
-}
-
 static bool AllowedInObject(const il::Type *t) {
-  return GetObjFieldType(t).has_value();
+  return ILUtil::GetObjFieldType(t).has_value();
 }
 
 const il::Type *Elaboration::ElabType(const Context &G,
@@ -978,7 +967,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
           "was provided. Object exp: " << ExpString(el_exp);
       }
 
-      const std::optional ftype = GetObjFieldType(oftype.value());
+      const std::optional ftype = ILUtil::GetObjFieldType(oftype.value());
       CHECK(ftype.has_value()) << "In an object expression, the "
         "expression populating the field " << lab << " must have a base "
         "type, but got: " << TypeString(oftype.value()) <<
