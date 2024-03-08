@@ -127,7 +127,7 @@ struct PatternCompilation::Matrix {
 
   // Add a column at the end. The cells will be initialized
   // to WILD patterns, but can be modified.
-  void AddColumn(const std::string &obj_var,
+  void AddColumn(const std::string &el_obj_var,
                  const il::Type *obj_type) {
     if (VERBOSE) {
       printf("AddColumn. current %dx%d\n", Width(), Height());
@@ -135,7 +135,7 @@ struct PatternCompilation::Matrix {
     const int old_width = Width();
     const int old_height = Height();
 
-    objs.push_back(obj_var);
+    objs.push_back(el_obj_var);
     types.push_back(obj_type);
 
     std::vector<const el::Pat *> new_pats;
@@ -614,6 +614,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
       return SplitStringPattern(G, matrix, x);
     case PatType::APP:
       return SplitAppPattern(G, matrix, x);
+    case PatType::OBJECT:
+      return SplitObjectPattern(G, matrix, x);
     default:
       LOG(FATAL) << "Unhandled pattern type when looking for "
         "a split: " << PatTypeString(matrix.Cell(x, 0)->type);
@@ -1231,6 +1233,254 @@ PatternCompilation::SplitAppPattern(
   return std::make_pair(ret, ftype);
 }
 
+// Split the column x, which must begin with a non-empty object pattern.
+// Like in other cases, the column can only have OBJECT and WILD
+// patterns in it.
+std::pair<const Exp *, const Type *>
+PatternCompilation::SplitObjectPattern(
+    const ElabContext &G,
+    Matrix matrix,
+    int x) {
+
+  CHECK(x >= 0 && x < matrix.Width());
+  const Pat *first_pat = matrix.Cell(x, 0);
+  CHECK(first_pat->type == PatType::OBJECT);
+  CHECK(!first_pat->str_children.empty());
+
+  // Object patterns are curious because they are matched incrementally.
+  // When we have something like { (Article} title, year }
+  // we just match one of the fields (e.g. title) and strip it from
+  // all the patterns where it might match.
+  //
+  // So what we do here is find the field that has the longest prefix
+  // (the leading rows that include it), and split on just that.
+
+  // First of all, this implies an obj type.
+  Unification::Unify("obj pattern", matrix.types[x], elab->pool->ObjType());
+
+  auto GetFields = [&](const Pat *p) {
+      CHECK(p->type == PatType::OBJECT);
+      const ObjVarInfo *ovi = G.FindObj(p->str);
+      CHECK(ovi != nullptr) << "Unbound object name " << p->str <<
+        "in object pattern: " << PatString(p);
+
+      std::unordered_map<std::string, std::pair<const Pat *, const Type *>>
+        fields;
+      for (const auto &[lab, pp] : p->str_children) {
+        auto it = ovi->fields.find(lab);
+        CHECK(it != ovi->fields.end()) << "The object " << p->str <<
+          "does not have a field called " << lab << ".\nWhen "
+          "compiling object pattern: " << PatString(p);
+        fields[lab] = std::make_pair(pp, it->second);
+      }
+      return fields;
+    };
+
+  int prefix_rows = 1;
+  // We aren't actually going to use the subpattern in this first
+  // pass, but it is nice to just have one GetFields method.
+  std::unordered_map<std::string, std::pair<const Pat *, const Type *>>
+    fields = GetFields(first_pat);
+  CHECK(!fields.empty()) << "Bug: The pattern was non-empty!";
+
+  for (int y = 1; y < matrix.Height(); y++) {
+    const Pat *pat = matrix.Cell(x, y);
+    if (pat->type == PatType::OBJECT) {
+      std::unordered_map<std::string, std::pair<const Pat *, const Type *>>
+        row_fields = GetFields(pat);
+
+      // Compute the intersection.
+      for (const auto &[lab, info] : fields) {
+        const auto it = row_fields.find(lab);
+        if (it == row_fields.end()) {
+          row_fields.erase(lab);
+        } else {
+          // If it has a different type, it's a different field.
+          const auto &[pp1, tt1] = info;
+          const auto &[pp2, tt2] = it->second;
+          if (tt1->type != tt2->type) {
+            row_fields.erase(lab);
+          }
+        }
+      }
+
+      if (row_fields.empty()) {
+        // Then we have to pick from fields.
+        break;
+
+      } else {
+        // Continue with this subset.
+        fields = std::move(row_fields);
+        prefix_rows++;
+      }
+
+    } else if (pat->type == PatType::WILD) {
+      // We can pick any field in the remaining set.
+      break;
+
+    } else {
+      LOG(FATAL) << "Bug: The column was not clean!";
+    }
+  }
+
+  // We can get to the end by finding an empty intersection,
+  // a wild pattern, or finishing the column. But we will
+  // always have at least one field.
+  CHECK(!fields.empty());
+  CHECK(prefix_rows > 0);
+
+  // Not sure if there is any useful heuristic to pick between
+  // these; like maybe we would prefer one with interesting
+  // subpatterns? Or that *doesn't* appear below in the column?
+  const std::string split_field = std::get<0>(*fields.begin());
+  const Type *split_type = std::get<1>(std::get<1>(*fields.begin()));
+
+  // The pattern must look like this (here x selecting the second
+  // column):
+  //
+  // case (a,  b,                    c) of
+  //       p1  {() field, others1 }  r1  => e1
+  //       p2  {() field, others2 }  r2  => e2
+  //          ...
+  //       pn  _       rn  => en
+  //       pn1 {() field, others3 } rn1 => en1
+  //          ...
+  //
+  // where the first prefix_rows patterns all have the identified
+  // field.
+
+  // We generate:
+  //
+  // if has b.field
+  // then let v = get b.field
+  //      in case (a, b.va, c) of
+  //               p1 {() others1 } r1 => e1
+  //               p2 {() others2 } r2 => e2
+  //                   _        => hoisted ()
+  //      end
+  // else hoisted ()
+  //
+  // Like the rest of the split functions, hoisted() is pulled
+  // out to avoid duplicating code. Here hoisted is
+  //
+  // case (a,  b,                   c) of
+  //       pn  _                    rn  => en
+  //       pn1 {() field, others3 } rn1 => en1
+  //
+  // that is, it's just all the rows after prefix_rows.
+
+  const auto Without = [this](const Pat *p, const std::string &lab) ->
+    // extracted subpattern; remaining fields
+    std::pair<const Pat *, const Pat *> {
+      CHECK(p->type == PatType::OBJECT);
+      std::vector<std::pair<std::string, const Pat *>> fields;
+      fields.reserve(p->str_children.size());
+      std::optional<const Pat *> found;
+      for (const auto &[ll, pp] : p->str_children) {
+        if (ll == lab) {
+          CHECK(!found.has_value()) << "Duplicate label " << ll;
+          found = pp;
+        } else {
+          fields.emplace_back(ll, pp);
+        }
+      }
+      CHECK(found.has_value()) << lab;
+      return std::make_pair(
+          found.value(),
+          elab->el_pool->ObjectPat(p->str, std::move(fields)));
+    };
+
+  // Name for the extracted field, which becomes another case object
+  // in the success branch. It has type split_type.
+  const std::string el_subvar = elab->pool->NewVar(split_field);
+  const std::string il_subvar = elab->pool->NewVar(el_subvar);
+
+  // Create the pattern match matrix for the success case (where the
+  // label is present).
+  Matrix matrix_matched = matrix;
+  matrix_matched.DeleteRowsFrom(prefix_rows);
+
+  // We add a new column to handle the subpattern in the matched field
+  // for each row.
+  const int subpattern_col = matrix_matched.Width();
+  matrix_matched.AddColumn(el_subvar, split_type);
+
+  // Now remove the field from the old column, and write the subpattern
+  // to the new column.
+  CHECK(matrix_matched.Height() == prefix_rows);
+  for (int y = 0; y < matrix_matched.Height(); y++) {
+    // Remove the field.
+    const Pat *p = matrix_matched.Cell(x, y);
+    const auto &[subp, restp] = Without(p, split_field);
+    matrix_matched.Cell(x, y) = restp;
+    matrix_matched.Cell(subpattern_col, y) = subp;
+  }
+
+  // The current matrix becomes the failure case (label not present,
+  // or subpatterns didn't match).
+  matrix.DeleteFirstRows(prefix_rows);
+
+  const auto &[fexp, ftype] = Comp(G, matrix);
+
+  // Bind hoisted failure continuation.
+  const Type *fn_type = elab->pool->Arrow(elab->pool->RecordType({}),
+                                          ftype);
+  const Exp *fn = elab->pool->Fn("",
+                                 elab->pool->NewVar("unused"),
+                                 fn_type,
+                                 fexp);
+  const std::string el_cont_var = elab->pool->NewVar("hoist");
+  const std::string il_cont_var = elab->pool->NewVar(el_cont_var);
+  ElabContext GG = G.Insert(el_cont_var,
+                        VarInfo{
+                          .tyvars = {},
+                          .type = fn_type,
+                          .var = il_cont_var});
+
+  // Failure continuation calls the hoisted expression.
+  const el::Exp *el_failure_cont =
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var),
+                       elab->el_pool->Record({}));
+
+  const il::Exp *il_failure_cont =
+    elab->pool->App(elab->pool->Var({}, il_cont_var),
+                    elab->pool->Record({}));
+
+  matrix_matched.def = el_failure_cont;
+
+  ElabContext GGG = GG.Insert(el_subvar, VarInfo{
+          .tyvars = {},
+          .type = split_type,
+          .var = il_subvar,
+        });
+
+  const auto &[sexp, stype] = Comp(GGG, matrix_matched);
+
+  Unification::Unify("object pattern cases", ftype, stype);
+
+  const auto &[ilobj, ilobjtyp] = matrix.GetObjIL(elab->pool, G, x);
+  Unification::Unify("case object (object pattern)", ilobjtyp,
+                     elab->pool->ObjType());
+
+  const Exp *ret =
+    elab->pool->If(
+        elab->pool->Has(ilobj, split_field, split_type),
+        // Success case.
+        elab->pool->Let(
+            {}, il_subvar, elab->pool->Get(ilobj, split_field, split_type),
+            sexp),
+        // Failure case.
+        il_failure_cont);
+
+
+  ret =
+    elab->pool->Let({},
+                    il_cont_var, fn,
+                    ret);
+
+  return std::make_pair(ret, ftype);
+}
+
 // Split the column x, which has at least one AS pattern in it,
 // and is otherwise clean.
 std::pair<const Exp *, const Type *>
@@ -1288,6 +1538,7 @@ PatternCompilation::SplitAsPattern(
   // were already bound, there's no wrapping to do.
   return Comp(G, std::move(matrix));
 }
+
 
 // Split the column x, which must be a record pattern. The column
 // must be cleaned, meaning it is just WILD and RECORD patterns.
@@ -1521,6 +1772,10 @@ PatternCompilation::CompileIrrefutableRec(
           return;
         case el::PatType::BOOL:
           LOG(FATAL) << "Pattern must be irrefutable, but got bool: " <<
+            PatString(pat);
+          return;
+        case el::PatType::OBJECT:
+          LOG(FATAL) << "Pattern must be irrefutable, but got object: " <<
             PatString(pat);
           return;
         case el::PatType::APP:
