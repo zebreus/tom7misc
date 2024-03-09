@@ -22,7 +22,8 @@ static void TestIdentity() {
       "    datatype dir = Up of {} | Down of {}\n"
       "    val (x : int) = 7\n"
       "    val f = fn x => x\n"
-      "in (f x, f Down)\n"
+      "    object Article of { title : string, year : int }\n"
+      "in (f x, f Down, f ({(Article) year = 1997} without (Article) year))\n"
       "end\n");
 
   il::AstPool pool;

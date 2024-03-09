@@ -155,6 +155,14 @@ struct Pass {
       const auto &[obj, field, oft] = e->Get();
       return DoGet(obj, field, oft, e, args...);
     }
+    case ExpType::WITH: {
+      const auto &[obj, field, oft, rhs] = e->With();
+      return DoWith(obj, field, oft, rhs, e, args...);
+    }
+    case ExpType::WITHOUT: {
+      const auto &[obj, field, oft] = e->Without();
+      return DoWithout(obj, field, oft, e, args...);
+    }
 
     }
     LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
@@ -505,6 +513,19 @@ struct Pass {
                            ObjFieldType oft,
                            const Exp *guess, Args... args) {
     return pool->Get(DoExp(obj, args...), field, oft, guess);
+  }
+
+  virtual const Exp *DoWith(const Exp *obj, const std::string &field,
+                            ObjFieldType oft, const Exp *rhs,
+                            const Exp *guess, Args... args) {
+    return pool->With(DoExp(obj, args...), field, oft, DoExp(rhs, args...),
+                      guess);
+  }
+
+  virtual const Exp *DoWithout(const Exp *obj, const std::string &field,
+                               ObjFieldType oft,
+                               const Exp *guess, Args... args) {
+    return pool->Without(DoExp(obj, args...), field, oft, guess);
   }
 
 protected:

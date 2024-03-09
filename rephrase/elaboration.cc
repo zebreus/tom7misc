@@ -638,6 +638,54 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
   }
 }
 
+static il::ObjFieldType ResolveObjFieldType(
+    // Context for error messages.
+    const char *what,
+    const el::Exp *error_exp,
+    // Can be empty.
+    const std::string &objname,
+    // Can be null, for cases where the objvarinfo wasn't supplied.
+    const il::ObjVarInfo *ovi,
+    const std::string &lab,
+    // Can be null, e.g. for WITHOUT.
+    const il::Type *rhs_type) {
+
+  if (ovi != nullptr) {
+    const auto it = ovi->fields.find(lab);
+    CHECK(it != ovi->fields.end()) << "The field " << lab << " was "
+      "not present in the object named " << objname << ", in "
+      "the object expression: " << ExpString(error_exp);
+    if (rhs_type != nullptr) {
+      Unification::Unify(what, rhs_type, it->second);
+    } else {
+      // e.g. for WITHOUT, where we don't even have an expression.
+      rhs_type = it->second;
+    }
+  }
+
+  // Now, the type must be known.
+  CHECK(rhs_type != nullptr) << "(" << what << "): Bug? There is no "
+    "ObjVarInfo AND no rhs_type, which is unexpected.";
+  std::optional<const il::Type *> oftype = ILUtil::GetTypeIfKnown(rhs_type);
+  if (!oftype.has_value()) {
+    CHECK(ovi == nullptr) << "Bug: The field types should all be "
+      "known if an object name is provided. Object exp: " <<
+      ExpString(error_exp);
+
+    LOG(FATAL) << "(" << what << "): The expression "
+      "populating the field " << lab << " needs to have a known type, "
+      "but it does not. The type may be determined from the expression "
+      "itself (e.g. for literals), or from the object name, but none "
+      "was provided. Object exp: " << ExpString(error_exp);
+  }
+
+  const std::optional ftype = ILUtil::GetObjFieldType(oftype.value());
+  CHECK(ftype.has_value()) << "(" << what << "): The "
+    "expression populating the field " << lab << " must have a base "
+    "type, but got: " << TypeString(oftype.value()) <<
+    "\nObject exp: " << ExpString(error_exp);
+  return ftype.value();
+}
 
 const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const Context &G,
@@ -930,6 +978,47 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
   case el::ExpType::LAYOUT:
     LOG(FATAL) << "unimplemented: Elaboration of LAYOUT";
 
+  case el::ExpType::WITH: {
+    const auto &[oe, ot] = Elab(G, el_exp->a);
+    const std::string &objtype = el_exp->str;
+    const std::string &field = el_exp->str2;
+    const auto &[re, rt] = Elab(G, el_exp->b);
+
+    Unification::Unify("with", ot, pool->ObjType());
+
+    const il::ObjVarInfo *ovi = nullptr;
+    if (!objtype.empty()) {
+      ovi = G.FindObj(objtype);
+      CHECK(ovi != nullptr) << "Unbound object name " << objtype <<
+        "in with expression: " << ExpString(el_exp);
+    }
+
+    const il::ObjFieldType ftype =
+      ResolveObjFieldType("with", el_exp, objtype, ovi, field, rt);
+
+    return {pool->With(oe, field, ftype, re), pool->ObjType()};
+  }
+
+  case el::ExpType::WITHOUT: {
+    const auto &[oe, ot] = Elab(G, el_exp->a);
+    const std::string &objtype = el_exp->str;
+    const std::string &field = el_exp->str2;
+
+    Unification::Unify("without", ot, pool->ObjType());
+
+    const il::ObjVarInfo *ovi = nullptr;
+    if (!objtype.empty()) {
+      ovi = G.FindObj(objtype);
+      CHECK(ovi != nullptr) << "Unbound object name " << objtype <<
+        "in without expression: " << ExpString(el_exp);
+    }
+
+    const il::ObjFieldType ftype =
+      ResolveObjFieldType("without", el_exp, objtype, ovi, field, nullptr);
+
+    return {pool->Without(oe, field, ftype), pool->ObjType()};
+  }
+
   case el::ExpType::OBJECT: {
 
     // We may not have an object name. But if one is given, it has
@@ -945,35 +1034,11 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     fields.reserve(el_exp->str_children.size());
     for (const auto &[lab, e] : el_exp->str_children) {
       const auto &[ee, tt] = Elab(G, e);
-      if (ovi != nullptr) {
-        const auto it = ovi->fields.find(lab);
-        CHECK(it != ovi->fields.end()) << "The field " << lab << " was "
-          "not present in the object named " << el_exp->str << ", in "
-          "the object expression: " << ExpString(el_exp);
-        Unification::Unify("object expression", tt, it->second);
-      }
 
-      // Now, the type must be known.
-      std::optional<const il::Type *> oftype = ILUtil::GetTypeIfKnown(tt);
-      if (!oftype.has_value()) {
-        CHECK(ovi == nullptr) << "Bug: The field types should all be "
-          "known if an object name is provided. Object exp: " <<
-          ExpString(el_exp);
+      const il::ObjFieldType ftype = ResolveObjFieldType(
+          "object literal", el_exp, el_exp->str, ovi, lab, tt);
 
-        LOG(FATAL) << "In an object expression, the expression "
-          "populating the field " << lab << " needs to have a known type, "
-          "but it does not. The type may be determined from the expression "
-          "itself (e.g. for literals), or from the object name, but none "
-          "was provided. Object exp: " << ExpString(el_exp);
-      }
-
-      const std::optional ftype = ILUtil::GetObjFieldType(oftype.value());
-      CHECK(ftype.has_value()) << "In an object expression, the "
-        "expression populating the field " << lab << " must have a base "
-        "type, but got: " << TypeString(oftype.value()) <<
-        "\nObject exp: " << ExpString(el_exp);
-
-      fields.emplace_back(lab, ftype.value(), ee);
+      fields.emplace_back(lab, ftype, ee);
     }
 
     return std::make_pair(pool->Object(fields), pool->ObjType());

@@ -1431,7 +1431,6 @@ PatternCompilation::SplitObjectPattern(
   // Create the pattern match matrix for the success case (where the
   // label is present).
   Matrix matrix_matched = matrix;
-  printf("prefix rows: %d. height: %d\n", prefix_rows, matrix_matched.Height());
   matrix_matched.DeleteRowsFrom(prefix_rows);
 
   // We add a new column to handle the subpattern in the matched field

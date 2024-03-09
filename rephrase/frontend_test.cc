@@ -490,8 +490,7 @@ static void TestPatternCompilation() {
 }
 
 static void TestDatatypes() {
-  constexpr bool VERBOSE = true;
-
+  // constexpr bool VERBOSE = true;
   Frontend front;
   if (VERBOSE) {
     front.SetVerbose(2);
@@ -716,6 +715,25 @@ static void TestObjects() {
     // But it should elaborate!
     // printf("%s", ProgramString(pgm).c_str());
   }
+
+  {
+    const Program pgm = Run(
+        "let object Article of { title : string, year : int }\n"
+        "in\n"
+        "  {(Article) } with title = \"hi\"\n"
+        "end\n");
+    CHECK(pgm.body->type == ExpType::WITH);
+  }
+
+  {
+    const Program pgm = Run(
+        "let object Article of { title : string, year : int }\n"
+        "in\n"
+        "  {(Article) } without (Article) title\n"
+        "end\n");
+    CHECK(pgm.body->type == ExpType::WITHOUT);
+  }
+
 }
 
 // Former bugs.

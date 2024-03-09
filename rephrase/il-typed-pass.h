@@ -721,6 +721,31 @@ struct TypedPass {
     };
   }
 
+  virtual std::pair<const Exp *, const Type *>
+  DoWith(Context G,
+         const Exp *obj, const std::string &field,
+         ObjFieldType oft, const Exp *rhs,
+         const Exp *guess, Args... args) {
+    const auto &[oo, ott] = DoExp(G, obj, args...);
+    const auto &[rr, rtt] = DoExp(G, rhs, args...);
+    return {
+      pool->With(oo, field, oft, rr, guess),
+      pool->ObjType(),
+    };
+  }
+
+  virtual std::pair<const Exp *, const Type *>
+  DoWithout(Context G,
+            const Exp *obj, const std::string &field,
+            ObjFieldType oft,
+            const Exp *guess, Args... args) {
+    const auto &[oo, tt] = DoExp(G, obj, args...);
+    return {
+      pool->Without(oo, field, oft, guess),
+      pool->ObjType(),
+    };
+  }
+
 protected:
   AstPool *pool = nullptr;
 };
