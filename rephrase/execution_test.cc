@@ -11,6 +11,9 @@
 
 namespace bc {
 
+static constexpr int COMPILER_VERBOSE = 2;
+static constexpr int FRONTEND_VERBOSE = 0;
+
 #undef CHECK_EQ
 #define CHECK_EQ(s1, s2) do { \
   const auto ss1 = s1;        \
@@ -101,19 +104,30 @@ static void TestEndToEndEasy() {
   TE execution(prog);
   TE::State state = execution.Start();
   execution.RunToCompletion(&state);
-  CHECK(!execution.Failed());
+  CHECK(!execution.Failed()) << "end to end easy";
 }
 
 static std::string RunToString(const std::string &source) {
   using TE = TestExecution;
   Compiler compiler;
-  compiler.frontend.SetVerbose(2);
+  compiler.SetVerbose(COMPILER_VERBOSE);
+  compiler.frontend.SetVerbose(FRONTEND_VERBOSE);
   Program prog = compiler.CompileString("test", source);
   bc::PrintProgram(prog);
   TE execution(prog);
   TE::State state = execution.Start();
   execution.RunToCompletion(&state);
-  CHECK(!execution.Failed());
+  if (execution.Failed()) {
+    printf(ARED("FAILED") "\n");
+    if (execution.fail_message.has_value()) {
+      printf(AWHITE("message") ": %s\n", execution.fail_message.value().c_str());
+    } else {
+      printf(AWHITE("(no message?)") "\n");
+    }
+    printf(AWHITE("output") ":\n" "%s\n",
+           execution.console_output.c_str());
+    LOG(FATAL) << "Unexpectedly failed";
+  }
   return std::move(execution.console_output);
 }
 
@@ -247,6 +261,37 @@ static void NewTests() {
        print (int-to-string n)
      end
      )"), "7");
+
+  CHECK_EQ(RunToString(R"(
+     let object Article of { title : string, year : int }
+         val x = {(Article) title = "hi"} with title = "bye"
+         val n =
+           case x of
+                {(Article) year = 1997 } => 555
+              | {(Article) year = 2024 } => 666
+              | {(Article) title = "bye" } => 7
+              | {(Article) title = "hi" } => fail "Wrong!"
+              | {(Article) year = 42 } => 888
+     in
+       print (int-to-string n)
+     end
+    )"), "7");
+
+  CHECK_EQ(RunToString(R"(
+     let object Article of { title : string, year : int }
+         val x = ({(Article) title = "hi"} with year = 2024)
+                                          without (Article) title
+         val n =
+           case x of
+                {(Article) year = 1997 } => 555
+              | {(Article) title } => 666
+              | {(Article) year = 2024 } => 7
+              | {(Article) year } => 999
+              | {(Article) year = 42 } => 888
+     in
+       print (int-to-string n)
+     end
+    )"), "7");
 
 }
 

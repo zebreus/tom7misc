@@ -458,6 +458,16 @@ void Execution::Step(State *state) {
     frame.locals[alloc->out] =
       NewValue(&state->heap, std::unordered_map<std::string, Value *>());
 
+  } else if (const inst::Copy *copy = std::get_if<inst::Copy>(&inst)) {
+    std::unordered_map<std::string, Value *> *rec = LoadRec(copy->obj);
+    frame.locals[copy->out] = NewValue(&state->heap, *rec);
+
+  } else if (const inst::DeleteLabel *deletelabel =
+             std::get_if<inst::DeleteLabel>(&inst)) {
+    std::unordered_map<std::string, Value *> *rec = LoadRec(deletelabel->obj);
+    // It is allowed to delete a label that is not present.
+    (void)rec->erase(deletelabel->lab);
+
   } else if (const inst::SetLabel *setlabel =
              std::get_if<inst::SetLabel>(&inst)) {
     std::unordered_map<std::string, Value *> *rec =

@@ -59,56 +59,81 @@ std::string ColorInstString(const Inst &inst) {
                         binop->arg1.c_str(),
                         PrimopString(binop->primop),
                         binop->arg2.c_str());
+
   } else if (const inst::Unop *unop = std::get_if<inst::Unop>(&inst)) {
     return StringPrintf("UNOP " AOUT("%s") " <- " AOP("%s") " " AARG("%s"),
                         unop->out.c_str(),
                         PrimopString(unop->primop),
                         unop->arg.c_str());
+
   } else if (const inst::Call *call = std::get_if<inst::Call>(&inst)) {
     return StringPrintf("CALL " AOUT("%s") " <- " AOP("%s") "(" AOP("%s") ")",
                         call->out.c_str(), call->f.c_str(), call->arg.c_str());
+
   } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
     return StringPrintf("RET " AARG("%s"), ret->arg.c_str());
+
   } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
     // Look at all the "if"s in that line ^_^
     return StringPrintf("IF " AARG("%s") " " AINDEX_USED("%05d"),
                         iff->cond.c_str(), iff->true_idx);
+
   } else if (const inst::Alloc *alloc = std::get_if<inst::Alloc>(&inst)) {
     return StringPrintf("ALLOC " AOUT("%s"),
                         alloc->out.c_str());
+
+  } else if (const inst::Copy *copy = std::get_if<inst::Copy>(&inst)) {
+    return StringPrintf("COPY " AOUT("%s") " <- " AARG("%s"),
+                        copy->out.c_str(), copy->obj.c_str());
+
   } else if (const inst::SetLabel *setlabel =
              std::get_if<inst::SetLabel>(&inst)) {
     return StringPrintf("SET " AARG("%s") "." AMAP_LAB("%s") " <- " AARG("%s"),
                         setlabel->obj.c_str(), setlabel->lab.c_str(),
                         setlabel->arg.c_str());
+
   } else if (const inst::GetLabel *getlabel =
              std::get_if<inst::GetLabel>(&inst)) {
     return StringPrintf("GET " AOUT("%s") " <- " AARG("%s") "." AMAP_LAB("%s"),
                         getlabel->out.c_str(),
                         getlabel->obj.c_str(),
                         getlabel->lab.c_str());
+
+  } else if (const inst::DeleteLabel *deletelabel =
+             std::get_if<inst::DeleteLabel>(&inst)) {
+    return StringPrintf("DELETE " AARG("%s") "." AMAP_LAB("%s"),
+                        deletelabel->obj.c_str(),
+                        deletelabel->lab.c_str());
+
   } else if (const inst::HasLabel *haslabel =
              std::get_if<inst::HasLabel>(&inst)) {
     return StringPrintf("HAS " AOUT("%s") " <- " AARG("%s") "." AMAP_LAB("%s"),
                         haslabel->out.c_str(),
                         haslabel->obj.c_str(),
                         haslabel->lab.c_str());
+
   } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
     return StringPrintf("BIND " AOUT("%s") " <- " AARG("%s"),
                         bind->out.c_str(), bind->arg.c_str());
+
   } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
     return StringPrintf("LOAD " AOUT("%s") " <- " AGLOBAL_LAB("%s"),
                         load->out.c_str(), load->global.c_str());
+
   } else if (const inst::Save *save = std::get_if<inst::Save>(&inst)) {
     return StringPrintf("SAVE " AGLOBAL_LAB("%s") " <- " AARG("%s"),
                         save->global.c_str(), save->arg.c_str());
+
   } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
     return StringPrintf("JUMP " AINDEX_USED("%05d"),
                         jump->idx);
+
   } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
     return StringPrintf("FAIL " AARG("%s"), fail->arg.c_str());
+
   } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
     return StringPrintf("NOTE " AGREY("%s"), note->msg.c_str());
+
   } else {
     return ARED("!!INVALID!!");
   }

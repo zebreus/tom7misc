@@ -34,11 +34,16 @@ bc::Program Compiler::InternalGuts(il::Program &&pgm_in) {
 
   il::Simplification simplification(frontend.Pool());
   // Need to remove some constructs before converting to bytecode.
-  il_pgm = simplification.Simplify(
-      il_pgm,
-      il::Simplification::O_DECOMPOSE_INTCASE);
+  constexpr uint64_t DECOMPOSE = il::Simplification::O_DECOMPOSE_INTCASE |
+    il::Simplification::O_DECOMPOSE_STRINGCASE;
+  il_pgm = simplification.Simplify(il_pgm, DECOMPOSE);
 
-  if (verbose > 1) {
+  // XXX probably should run simplification again after decompose!
+  il_pgm = simplification.Simplify(il_pgm,
+                                   il::Simplification::O_CONSERVATIVE &
+                                   il::ClosureConversion::SimplificationOpts());
+
+  if (verbose > 2) {
     printf("\n\nFlatten this:\n"
            "%s\n\n", il::ProgramString(il_pgm).c_str());
   }

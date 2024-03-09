@@ -845,8 +845,7 @@ struct DecomposePass : public il::Pass<> {
   // Same, for StringCase.
   const Exp *DoStringCase(
       const Exp *obj,
-      const std::vector<
-          std::pair<std::string, const Exp *>> &arms,
+      const std::vector<std::pair<std::string, const Exp *>> &arms,
       const Exp *def,
       const Exp *guess) override {
     if (!(opts & Simplification::O_DECOMPOSE_STRINGCASE))

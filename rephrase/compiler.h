@@ -33,6 +33,10 @@ struct Compiler {
                             const std::string &source,
                             Options options = Options());
 
+  // Compiler itself. Can enable verbosity for phases by calling
+  // e.g. frontend.SetVerbose().
+  void SetVerbose(int v) { verbose = v; }
+
  private:
   int verbose = 0;
   bc::Program InternalGuts(il::Program &&pgm);

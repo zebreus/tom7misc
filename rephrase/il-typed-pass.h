@@ -158,12 +158,20 @@ struct TypedPass {
       return DoPack(G, t_hidden, alpha, t_packed, exp, e, args...);
     }
     case ExpType::HAS: {
-      const auto &[obj, field, t] = e->Has();
-      return DoHas(G, obj, field, t, e, args...);
+      const auto &[obj, field, oft] = e->Has();
+      return DoHas(G, obj, field, oft, e, args...);
     }
     case ExpType::GET: {
-      const auto &[obj, field, t] = e->Get();
-      return DoGet(G, obj, field, t, e, args...);
+      const auto &[obj, field, oft] = e->Get();
+      return DoGet(G, obj, field, oft, e, args...);
+    }
+    case ExpType::WITH: {
+      const auto &[obj, field, oft, rhs] = e->With();
+      return DoWith(G, obj, field, oft, rhs, e, args...);
+    }
+    case ExpType::WITHOUT: {
+      const auto &[obj, field, oft] = e->Without();
+      return DoWithout(G, obj, field, oft, e, args...);
     }
 
     default:

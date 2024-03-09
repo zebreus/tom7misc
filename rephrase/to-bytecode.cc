@@ -357,6 +357,38 @@ struct Converter {
         return r;
       }
 
+      case il::ExpType::WITH: {
+        const auto &[e, field, oft, rhs] = exp->With();
+        const std::string obj = ConvertExp(G, "obj", e, insts);
+        const std::string rlocal = ConvertExp(G, field, rhs, insts);
+        std::string out = NewSymbol("w_" + field);
+        insts->emplace_back(inst::Copy{
+            .out = out,
+            .obj = obj,
+          });
+        insts->emplace_back(inst::SetLabel{
+            .obj = out,
+            .lab = ObjFieldName(field, oft),
+            .arg = rlocal,
+          });
+        return out;
+      }
+
+      case il::ExpType::WITHOUT: {
+        const auto &[e, field, oft] = exp->Without();
+        const std::string obj = ConvertExp(G, "obj", e, insts);
+        std::string out = NewSymbol("wo_" + field);
+        insts->emplace_back(inst::Copy{
+            .out = out,
+            .obj = obj,
+          });
+        insts->emplace_back(inst::DeleteLabel{
+            .obj = out,
+            .lab = ObjFieldName(field, oft),
+          });
+        return out;
+      }
+
       case il::ExpType::HAS: {
         const auto &[e, field, oft] = exp->Has();
         const std::string obj = ConvertExp(G, "obj", e, insts);
@@ -377,7 +409,7 @@ struct Converter {
         const std::string obj = ConvertExp(G, "obj", e, insts);
         std::string out = NewSymbol(field);
         insts->emplace_back(inst::GetLabel{
-            .out = field,
+            .out = out,
             .obj = obj,
             .lab = ObjFieldName(field, oft),
           });

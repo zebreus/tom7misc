@@ -56,6 +56,11 @@ struct Alloc {
   std::string out;
 };
 
+// copy a map
+struct Copy {
+  std::string out, obj;
+};
+
 struct SetLabel {
   // obj[lab] = arg
   std::string obj, lab, arg;
@@ -64,6 +69,10 @@ struct SetLabel {
 struct GetLabel {
   // out = obj[lab]
   std::string out, obj, lab;
+};
+
+struct DeleteLabel {
+  std::string obj, lab;
 };
 
 struct HasLabel {
@@ -111,6 +120,8 @@ using Inst = std::variant<
   inst::Ret,
   inst::If,
   inst::Alloc,
+  inst::Copy,
+  inst::DeleteLabel,
   inst::SetLabel,
   inst::GetLabel,
   inst::HasLabel,
