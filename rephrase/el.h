@@ -36,6 +36,8 @@ enum class ExpType {
   FN,
   ANDALSO,
   ORELSE,
+  WITH,
+  WITHOUT,
   // Fail with a string error message.
   // Should be replaced with exceptions.
   FAIL,
@@ -96,7 +98,7 @@ struct Layout {
 
 struct Exp {
   ExpType type;
-  std::string str;
+  std::string str, str2;
   const Layout *layout = nullptr;
   BigInt integer;
   double d = 0.0;
@@ -249,6 +251,24 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::ORELSE);
     ret->a = a;
     ret->b = b;
+    return ret;
+  }
+
+  const Exp *With(const Exp *a, std::string objname, std::string fieldname,
+                  const Exp *b) {
+    Exp *ret = NewExp(ExpType::WITH);
+    ret->a = a;
+    ret->str = std::move(objname);
+    ret->str2 = std::move(fieldname);
+    ret->b = b;
+    return ret;
+  }
+
+  const Exp *Without(const Exp *a, std::string objname, std::string fieldname) {
+    Exp *ret = NewExp(ExpType::WITHOUT);
+    ret->a = a;
+    ret->str = std::move(objname);
+    ret->str2 = std::move(fieldname);
     return ret;
   }
 

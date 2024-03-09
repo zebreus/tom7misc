@@ -837,15 +837,46 @@ const Exp *Parsing::Parse(AstPool *pool,
           auto OrelseExpr =
             (AndalsoExpr && Opt(IsToken<ORELSE>() >> AndalsoExpr))
             >[&](const auto &pair) {
-                const auto &[e, oand] = pair;
-                if (oand.has_value()) {
-                  return pool->Orelse(e, oand.value());
+                const auto &[e, oor] = pair;
+                if (oor.has_value()) {
+                  return pool->Orelse(e, oor.value());
                 } else {
                   return e;
                 }
               };
 
-          return OrelseExpr;
+          auto WithoutExpr =
+            (OrelseExpr && *(IsToken<WITHOUT>() >>
+                             (IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
+                             Id))
+            >[&](const auto &pair) -> const Exp * {
+                const auto &[e, withouts] = pair;
+                const Exp *ret = e;
+                for (const auto &[objname, field] : withouts) {
+                  ret = pool->Without(ret, objname, field);
+                }
+                return ret;
+              };
+
+          auto WithExpr =
+            (WithoutExpr && *(IsToken<WITH>() >>
+                             Opt(IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
+                             Id &&
+                             (IsToken<EQUALS>() >> WithoutExpr)))
+            >[&](const auto &pair) -> const Exp * {
+                const auto &[e, withs] = pair;
+                const Exp *ret = e;
+                for (const auto &[p1, e2] : withs) {
+                  const auto &[oobjname, field] = p1;
+                  ret = pool->With(ret,
+                                   oobjname.has_value() ? oobjname.value() : "",
+                                   field,
+                                   e2);
+                }
+                return ret;
+              };
+
+          return WithExpr;
         },
         [&](const auto &Expr, const auto &Decl) {
           // Declaration parser.

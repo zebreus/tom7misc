@@ -36,6 +36,8 @@ struct Pass {
     case ExpType::TUPLE: return DoTuple(e->children, args...);
     case ExpType::RECORD: return DoRecord(e->str_children, args...);
     case ExpType::OBJECT: return DoObject(e->str, e->str_children, args...);
+    case ExpType::WITH: return DoWith(e->a, e->str, e->str2, e->b, args...);
+    case ExpType::WITHOUT: return DoWithout(e->a, e->str, e->str2, args...);
     case ExpType::INT: return DoInt(e->integer, args...);
     case ExpType::BOOL: return DoBool(e->boolean, args...);
     case ExpType::FLOAT: return DoFloat(e->d, args...);
@@ -177,6 +179,23 @@ struct Pass {
     std::vector<std::pair<std::string, const Exp *>> vv;
     for (const auto &[s, e] : v) vv.emplace_back(s, DoExp(e, args...));
     return pool->Object(objtype, vv);
+  }
+
+  virtual const Exp *DoWith(
+      const Exp *obj,
+      const std::string &objtype,
+      const std::string &field,
+      const Exp *rhs,
+      Args... args) {
+    return pool->With(DoExp(obj, args...), objtype, field, DoExp(rhs, args...));
+  }
+
+  virtual const Exp *DoWithout(
+      const Exp *obj,
+      const std::string &objtype,
+      const std::string &field,
+      Args... args) {
+    return pool->Without(DoExp(obj, args...), objtype, field);
   }
 
   virtual const Exp *DoCase(

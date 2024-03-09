@@ -456,6 +456,36 @@ static void TestParse() {
     CHECK(e->str_children[1].first == "year");
   }
 
+  {
+    const Exp *e = Parse("{(Article) } with title = \"hi\"");
+    CHECK(e->type == ExpType::WITH);
+    CHECK(e->a->type == ExpType::OBJECT);
+  }
+
+  {
+    const Exp *e = Parse("{(Article) } with title = \"hi\" with year = 1997");
+    CHECK(e->type == ExpType::WITH);
+    CHECK(e->a->type == ExpType::WITH);
+  }
+
+  {
+    const Exp *e = Parse("{(Article) } "
+                         "with title = \"hi\" "
+                         "with (Article) year = 1997");
+    CHECK(e->type == ExpType::WITH);
+    CHECK(e->a->type == ExpType::WITH);
+  }
+
+  {
+    const Exp *e = Parse("{(Article) year = 2001 } "
+                         "without (Article) year "
+                         "with title = \"hi\" "
+                         "with (Article) year = 1997");
+    CHECK(e->type == ExpType::WITH);
+    CHECK(e->a->type == ExpType::WITH);
+  }
+
+
   printf("Exp parsing " AGREEN("OK") "\n");
 }
 
