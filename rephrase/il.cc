@@ -297,6 +297,23 @@ std::string ExpString(const Exp *e) {
     return ret;
   }
 
+  case ExpType::WITH: {
+    const auto &[obj, field, oft, rhs] = e->With();
+    return StringPrintf("(%s with %s:%s = %s)",
+                        ExpString(obj).c_str(),
+                        field.c_str(),
+                        ObjFieldTypeString(oft),
+                        ExpString(rhs).c_str());
+  }
+
+  case ExpType::WITHOUT: {
+    const auto &[obj, field, oft] = e->Without();
+    return StringPrintf("(%s without %s:%s)",
+                        ExpString(obj).c_str(),
+                        field.c_str(),
+                        ObjFieldTypeString(oft));
+  }
+
   case ExpType::PROJECT: {
     const auto &[lab, r] = e->Project();
     return StringPrintf("#%s(%s)", lab.c_str(), ExpString(r).c_str());

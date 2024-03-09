@@ -263,10 +263,16 @@ struct Exp {
     return std::tie(a, str1, oft);
   }
 
-  #if 0
-  WITH,
-  WITHOUT,
-  #endif
+  std::tuple<const Exp *, const std::string &, ObjFieldType, const Exp *> With()
+    const {
+    CHECK(type == ExpType::WITH);
+    return std::tie(a, str1, oft, b);
+  }
+
+  std::tuple<const Exp *, const std::string &, ObjFieldType> Without() const {
+    CHECK(type == ExpType::WITHOUT);
+    return std::tie(a, str1, oft);
+  }
 
   std::tuple<const std::vector<std::string> &,
              const std::string &,
@@ -700,6 +706,42 @@ struct AstPool {
     }
 
     Exp *ret = NewExp(ExpType::GET);
+    ret->a = obj;
+    ret->str1 = field;
+    ret->oft = oft;
+    return ret;
+  }
+
+  const Exp *With(const Exp *obj, const std::string &field, ObjFieldType oft,
+                  const Exp *rhs, const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::WITH &&
+        guess->a == obj &&
+        guess->str1 == field &&
+        guess->oft == oft &&
+        guess->b == rhs) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::WITH);
+    ret->a = obj;
+    ret->str1 = field;
+    ret->oft = oft;
+    ret->b = rhs;
+    return ret;
+  }
+
+  const Exp *Without(const Exp *obj, const std::string &field, ObjFieldType oft,
+                     const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::WITHOUT &&
+        guess->a == obj &&
+        guess->str1 == field &&
+        guess->oft == oft) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::WITHOUT);
     ret->a = obj;
     ret->str1 = field;
     ret->oft = oft;

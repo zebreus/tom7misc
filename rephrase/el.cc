@@ -316,6 +316,19 @@ std::string ExpString(const Exp *e) {
     return ret;
   }
 
+  case ExpType::WITH:
+    return StringPrintf("(%s with (%s) %s = %s)",
+                        ExpString(e->a).c_str(),
+                        e->str.c_str(),
+                        e->str2.c_str(),
+                        ExpString(e->b).c_str());
+
+  case ExpType::WITHOUT:
+    return StringPrintf("(%s without (%s) %s)",
+                        ExpString(e->a).c_str(),
+                        e->str.c_str(),
+                        e->str2.c_str());
+
   case ExpType::JOIN: {
     std::string ret = "[";
     for (int i = 0; i < (int)e->children.size(); i++) {
@@ -477,6 +490,18 @@ bool IsValuable(const Exp *e) {
     return IsLayoutValuable(e->layout);
 
   case ExpType::ANN:
+    return true;
+
+  case ExpType::RECORD:
+    for (const auto &[lab, child] : e->str_children)
+      if (!IsValuable(child))
+        return false;
+    return true;
+
+  case ExpType::OBJECT:
+    for (const auto &[lab, child] : e->str_children)
+      if (!IsValuable(child))
+        return false;
     return true;
 
   default:
