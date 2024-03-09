@@ -4,11 +4,15 @@
 #include "ansi.h"
 #include "base/logging.h"
 
+static constexpr bool VERBOSE = false;
+
 static void TrivialTest() {
   Compiler compiler;
   // There's pretty much only one way to compile this program.
   bc::Program prog = compiler.CompileString("test", "7");
-  bc::PrintProgram(prog);
+  if (VERBOSE) {
+    bc::PrintProgram(prog);
+  }
   CHECK(!prog.data.empty());
   CHECK(prog.data.size() == 1);
   const auto &[data_lab, data_value] = *prog.data.begin();
@@ -36,14 +40,15 @@ in
 end
 )");
 
-  bc::PrintProgram(prog);
+  if (VERBOSE) {
+    bc::PrintProgram(prog);
+  }
 }
 
 // Former bug in closure conversion (internal type error)
 // at r5580 due to double-translating types in sumcases.
 static void Regression5580() {
   Compiler compiler;
-  compiler.SetVerbose(2);
   bc::Program prog = compiler.CompileString(
       "test",
       R"(
@@ -58,7 +63,9 @@ static void Regression5580() {
           set-insert (!sss)
         end)");
 
-  bc::PrintProgram(prog);
+  if (VERBOSE) {
+    bc::PrintProgram(prog);
+  }
 }
 
 

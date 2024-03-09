@@ -53,6 +53,9 @@ enum class Primop {
 
   STRING_TO_LAYOUT,
 
+  // currently internal
+  VEC_SIZE,
+
   INVALID,
 };
 

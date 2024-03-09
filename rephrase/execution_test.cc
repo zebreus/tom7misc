@@ -11,8 +11,9 @@
 
 namespace bc {
 
-static constexpr int COMPILER_VERBOSE = 2;
+static constexpr int COMPILER_VERBOSE = 0;
 static constexpr int FRONTEND_VERBOSE = 0;
+static constexpr bool BYTECODE_VERBOSE = 0;
 
 #undef CHECK_EQ
 #define CHECK_EQ(s1, s2) do { \
@@ -99,7 +100,9 @@ static void TestEndToEndEasy() {
            dont-fail 1
          end
         )");
-  PrintProgram(prog);
+  if (BYTECODE_VERBOSE) {
+    PrintProgram(prog);
+  }
 
   TE execution(prog);
   TE::State state = execution.Start();
@@ -113,7 +116,10 @@ static std::string RunToString(const std::string &source) {
   compiler.SetVerbose(COMPILER_VERBOSE);
   compiler.frontend.SetVerbose(FRONTEND_VERBOSE);
   Program prog = compiler.CompileString("test", source);
-  bc::PrintProgram(prog);
+  if (BYTECODE_VERBOSE) {
+    PrintProgram(prog);
+  }
+
   TE execution(prog);
   TE::State state = execution.Start();
   execution.RunToCompletion(&state);

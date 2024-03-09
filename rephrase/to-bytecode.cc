@@ -24,6 +24,8 @@ struct Converter {
   static constexpr const char *INJ_VALUE = "$";
 
   static constexpr const char *REF_LABEL = "r";
+  static constexpr const char *NODE_ATTRS_LABEL = "a";
+  static constexpr const char *NODE_CHILDREN_LABEL = "c";
 
   // Object fields are distinguished by their types. We just encode this in
   // the field name. We could use anything here, but we use something that's
@@ -292,8 +294,35 @@ struct Converter {
       }
 
       case il::ExpType::NODE: {
-        LOG(FATAL) << "Unimplemented NODE";
-        return "ERROR";
+        const auto &[attrs, children] = exp->Node();
+        const std::string lattrs = ConvertExp(G, "at", attrs, insts);
+
+        // Build up the children vector.
+        std::string v = NewSymbol("ch");
+        insts->emplace_back(inst::AllocVec{.out = v});
+        for (int i = 0; i < (int)children.size(); i++) {
+          const il::Exp *child = children[i];
+          const std::string local = ConvertExp(G, StringPrintf("c%d", i),
+                                               child, insts);
+          uint64_t u = i;
+          const std::string idx = AddValue("idx", Value{.v = Value::t(u)}, insts);
+          insts->emplace_back(inst::SetVec({.vec = v, .idx = idx, .arg = local}));
+        }
+
+        // The node is a pair.
+        std::string r = NewSymbol("node");
+        insts->emplace_back(inst::Alloc{.out = r});
+        insts->emplace_back(inst::SetLabel{
+            .obj = r,
+            .lab = NODE_ATTRS_LABEL,
+            .arg = lattrs,
+          });
+        insts->emplace_back(inst::SetLabel{
+            .obj = r,
+            .lab = NODE_CHILDREN_LABEL,
+            .arg = v,
+          });
+        return r;
       }
 
       case il::ExpType::RECORD: {
@@ -529,6 +558,7 @@ struct Converter {
 
       case il::ExpType::PRIMOP: {
         const auto &[po, ts_, es] = exp->Primop();
+
         const auto &[num_type_args, num_exp_args] = PrimopArity(po);
         CHECK(num_exp_args == (int)es.size());
 
@@ -542,6 +572,12 @@ struct Converter {
 
         // Some primops are translated away natively.
         switch (po) {
+        case Primop::STRING_TO_LAYOUT:
+          // a layout value is either a map (pair of attributes and children)
+          // or a string, so this is transparent. We just return the string.
+          CHECK(ls.size() == 1);
+          return ls[0];
+
         case Primop::REF: {
           CHECK(ls.size() == 1);
           insts->emplace_back(inst::Alloc{.out = out});

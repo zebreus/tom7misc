@@ -2,7 +2,6 @@
 #include "closure-conversion.h"
 
 #include <string>
-// #include <vector>
 
 #include "il.h"
 #include "frontend.h"
@@ -11,7 +10,6 @@
 #include "base/stringprintf.h"
 #include "base/logging.h"
 #include "ansi.h"
-#include "bignum/big.h"
 #include "bignum/big-overloads.h"
 
 static constexpr bool VERBOSE = false;
@@ -72,7 +70,9 @@ static void TestCC() {
   {
     Compiler compiler;
     const Program pgm = Run("(fn x => 7)");
-    printf("%s", ProgramString(pgm).c_str());
+    if (VERBOSE) {
+      printf("%s", ProgramString(pgm).c_str());
+    }
   }
 
 }

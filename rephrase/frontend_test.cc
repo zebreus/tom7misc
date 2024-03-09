@@ -490,7 +490,6 @@ static void TestPatternCompilation() {
 }
 
 static void TestDatatypes() {
-  // constexpr bool VERBOSE = true;
   Frontend front;
   if (VERBOSE) {
     front.SetVerbose(2);
@@ -608,7 +607,9 @@ static void TestFun() {
                             "  f 7\n"
                             "end\n");
     // CHECK(pgm.body->Integer() == 7);
-    printf("%s\n", ProgramString(pgm).c_str());
+    if (VERBOSE) {
+      printf("%s\n", ProgramString(pgm).c_str());
+    }
   }
 
   {
@@ -685,8 +686,6 @@ static void TestFun() {
 
 
 static void TestObjects() {
-  constexpr bool VERBOSE = true;
-
   Frontend front;
   if (VERBOSE) {
     front.SetVerbose(2);

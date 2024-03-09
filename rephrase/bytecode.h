@@ -21,7 +21,8 @@ struct Value {
     std::string,
     uint64_t,
     double,
-    std::unordered_map<std::string, Value *>
+    std::unordered_map<std::string, Value *>,
+    std::vector<Value *>
     >;
   t v;
 };
@@ -49,6 +50,18 @@ struct Ret {
 struct If {
   std::string cond;
   int true_idx = 0;
+};
+
+struct AllocVec {
+  std::string out;
+};
+
+struct SetVec {
+  std::string vec, idx, arg;
+};
+
+struct GetVec {
+  std::string out, vec, idx;
 };
 
 // make empty map
@@ -119,6 +132,9 @@ using Inst = std::variant<
   inst::Call,
   inst::Ret,
   inst::If,
+  inst::AllocVec,
+  inst::SetVec,
+  inst::GetVec,
   inst::Alloc,
   inst::Copy,
   inst::DeleteLabel,

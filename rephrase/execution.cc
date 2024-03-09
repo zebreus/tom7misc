@@ -380,6 +380,16 @@ void Execution::Step(State *state) {
       return r;
     };
 
+  auto LoadVec = [&Error, &Load](const std::string &local) ->
+    std::vector<Value *> * {
+      Value *a = Load(local);
+      auto *r =
+        std::get_if<std::vector<Value *>>(&a->v);
+      CHECK(r != nullptr) << Error() << "Expected " << local <<
+      " to have a vector value. Got: " << ColorValuePtrString(a);
+      return r;
+    };
+
   auto LoadBool = [&Error, &Load](const std::string &local) ->
     bool {
       const Value *a = Load(local);
@@ -387,6 +397,14 @@ void Execution::Step(State *state) {
       CHECK(u != nullptr) << Error() << "Expected " << local <<
         " to have a bool (uint64_t) value. Got: " << ColorValuePtrString(a);
       return *u != 0;
+    };
+
+  auto LoadU64 = [&Error, &Load](const std::string &local) -> uint64_t {
+      const Value *a = Load(local);
+      const uint64_t *u = std::get_if<uint64_t>(&a->v);
+      CHECK(u != nullptr) << Error() << "Expected " << local <<
+        " to have a uint64 value. Got: " << ColorValuePtrString(a);
+      return *u;
     };
 
   // By default, advance the ip.
@@ -457,6 +475,17 @@ void Execution::Step(State *state) {
   } else if (const inst::Alloc *alloc = std::get_if<inst::Alloc>(&inst)) {
     frame.locals[alloc->out] =
       NewValue(&state->heap, std::unordered_map<std::string, Value *>());
+
+  } else if (const inst::AllocVec *allocvec = std::get_if<inst::AllocVec>(&inst)) {
+    frame.locals[allocvec->out] =
+      NewValue(&state->heap, std::vector<Value *>());
+
+  } else if (const inst::SetVec *setvec =
+             std::get_if<inst::SetVec>(&inst)) {
+    std::vector<Value *> *vec = LoadVec(setvec->vec);
+    uint64_t idx = LoadU64(setvec->idx);
+    while (vec->size() <= idx) vec->push_back(nullptr);
+    (*vec)[idx] = Load(setvec->arg);
 
   } else if (const inst::Copy *copy = std::get_if<inst::Copy>(&inst)) {
     std::unordered_map<std::string, Value *> *rec = LoadRec(copy->obj);

@@ -38,6 +38,7 @@ const char *PrimopString(Primop p) {
   case Primop::STRING_CONCAT: return "STRING_CONCAT";
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
+  case Primop::VEC_SIZE: return "VEC_SIZE";
   case Primop::INVALID: return "INVALID";
   default: return "?? UNKNOWN PRIMOP ??";
   }
@@ -71,6 +72,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::INT_TO_STRING: return std::make_tuple(0, 1);
   case Primop::STRING_TO_LAYOUT: return std::make_tuple(0, 1);
   case Primop::STRING_CONCAT: return std::make_tuple(0, 2);
+  case Primop::VEC_SIZE: return std::make_tuple(1, 1);
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
   default:
     LOG(FATAL) << "Unknown primop: " << PrimopString(po);
@@ -115,6 +117,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::INT_TO_STRING: return true;
   case Primop::STRING_TO_LAYOUT: return true;
   case Primop::STRING_CONCAT: return true;
+  case Primop::VEC_SIZE: return true;
   case Primop::OUT_STRING: return false;
   default:
     printf("Uknown primop in IsPrimopTotal");
@@ -204,6 +207,10 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};
+
+  case Primop::VEC_SIZE:
+    LOG(FATAL) << "VEC_SIZE is for internal use in bytecode and should not "
+      "(yet) be seen in IL";
 
   default:
     LOG(FATAL) << "Unknown primop in PrimopType";

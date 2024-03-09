@@ -18,8 +18,9 @@ namespace bc {
 #define AOUT(s) AFGCOLOR(160, 160, 220, s)
 #define AARG(s) AFGCOLOR(200, 120, 220, s)
 #define AOP(s) AWHITE(s)
-#define AINDEX(s) AGREY(s)
-#define AINDEX_USED(s) AFGCOLOR(120, 120, 140, s)
+#define AIDX(s) AFGCOLOR(200, 220, 220, s)
+#define ALINE(s) AGREY(s)
+#define ALINE_USED(s) AFGCOLOR(120, 120, 140, s)
 
 #define ASTRLIT(s) AFGCOLOR(153, 187, 119, s)
 
@@ -75,8 +76,24 @@ std::string ColorInstString(const Inst &inst) {
 
   } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
     // Look at all the "if"s in that line ^_^
-    return StringPrintf("IF " AARG("%s") " " AINDEX_USED("%05d"),
+    return StringPrintf("IF " AARG("%s") " " ALINE_USED("%05d"),
                         iff->cond.c_str(), iff->true_idx);
+
+  } else if (const inst::AllocVec *allocvec = std::get_if<inst::AllocVec>(&inst)) {
+    return StringPrintf("ALLOCVEC " AOUT("%s"),
+                        allocvec->out.c_str());
+
+  } else if (const inst::SetVec *setvec = std::get_if<inst::SetVec>(&inst)) {
+    return StringPrintf("SET " AARG("%s") "[" AIDX("%s") "] <- " AARG("%s"),
+                        setvec->vec.c_str(),
+                        setvec->idx.c_str(),
+                        setvec->arg.c_str());
+
+  } else if (const inst::GetVec *getvec = std::get_if<inst::GetVec>(&inst)) {
+    return StringPrintf("GET " AOUT("%s") " <- " AARG("%s") "[" AIDX("%s") "]",
+                        getvec->out.c_str(),
+                        setvec->arg.c_str(),
+                        setvec->idx.c_str());
 
   } else if (const inst::Alloc *alloc = std::get_if<inst::Alloc>(&inst)) {
     return StringPrintf("ALLOC " AOUT("%s"),
@@ -125,7 +142,7 @@ std::string ColorInstString(const Inst &inst) {
                         save->global.c_str(), save->arg.c_str());
 
   } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
-    return StringPrintf("JUMP " AINDEX_USED("%05d"),
+    return StringPrintf("JUMP " ALINE_USED("%05d"),
                         jump->idx);
 
   } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
@@ -173,9 +190,9 @@ void PrintProgram(const Program &pgm) {
     for (int i = 0; i < (int)insts.size(); i++) {
       // XXX compute how many digits are needed
       if (jump_targets.contains(i)) {
-        printf("  " AINDEX_USED("%05d") " ", i);
+        printf("  " ALINE_USED("%05d") " ", i);
       } else {
-        printf("  " AINDEX("%05d") " ", i);
+        printf("  " ALINE("%05d") " ", i);
       }
       printf("%s\n", ColorInstString(insts[i]).c_str());
     }

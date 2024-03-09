@@ -12,7 +12,7 @@
 
 namespace el {
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 static void TestParse() {
   AstPool pool;
