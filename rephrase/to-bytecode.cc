@@ -359,12 +359,29 @@ struct Converter {
 
       case il::ExpType::HAS: {
         const auto &[e, field, oft] = exp->Has();
-        LOG(FATAL) << "unimplemented!";
+        const std::string obj = ConvertExp(G, "obj", e, insts);
+        std::string out = NewSymbol(field);
+        insts->emplace_back(inst::HasLabel{
+            .out = out,
+            .obj = obj,
+            .lab = ObjFieldName(field, oft),
+          });
+        return out;
       }
 
       case il::ExpType::GET: {
+        // If this isn't protected by a HAS, then we might want
+        // to insert instructions to test, and fail gracefully?
+        // Or do that in the elaboration of a bare "get" construct?
         const auto &[e, field, oft] = exp->Get();
-        LOG(FATAL) << "unimplemented!";
+        const std::string obj = ConvertExp(G, "obj", e, insts);
+        std::string out = NewSymbol(field);
+        insts->emplace_back(inst::GetLabel{
+            .out = field,
+            .obj = obj,
+            .lab = ObjFieldName(field, oft),
+          });
+        return out;
       }
 
       case il::ExpType::INT: {

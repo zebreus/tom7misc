@@ -234,42 +234,19 @@ static void ExecTests() {
 }
 
 static void NewTests() {
-  // Mutually recursive datatypes and functions.
-  CHECK(RunToString(R"(
-    let
-      datatype exp = Let of dec * exp
-      and dec = Val of string * exp
 
-      fun ^(a, b) = string-concat (a, b)
-
-      fun etos (Let (d, e) : exp) = string-concat("hi", etos e)
-      and  dtos (Val (x, e) : dec) = "val " ^ x ^ " = " ^ etos e
-
-    in
-      print "OK"
-    end
-    )") == "OK");
-
-  // This also gives an error, perhaps related.
-  /*
-  CHECK(RunToString(R"(
-  let
-    datatype exp = Let of dec * exp
-    and dec = Val of string * exp
-
-    fun ^(a, b) = string-concat (a, b)
-
-    fun etos (Let (d, e) : exp) = "hi" ^ etos e
-    and  dtos (Val (x, e) : dec) = "val " (* ^ x ^ " = " ^ etos e *)
-
-    (* val expr = Let (Val ("x", Int 7), Var "x") *)
-
-  in
-    (* print (etos expr) *)
-    etos
-  end
-)") == "let x = 7 in x end");
-*/
+  CHECK_EQ(RunToString(R"(
+     let object Article of { title : string, year : int }
+         val n =
+           case {(Article) title = "hi"} of
+                {(Article) year = 1997 } => 555
+              | {(Article) year = 2024 } => 666
+              | {(Article) title } => 7
+              | {(Article) year = 42 } => 888
+     in
+       print (int-to-string n)
+     end
+     )"), "7");
 
 }
 
@@ -282,7 +259,7 @@ int main(int argc, char **argv) {
   bc::TestEndToEndEasy();
   bc::ExecTests();
 
-  // bc::NewTests();
+  bc::NewTests();
 
   printf("OK\n");
   return 0;

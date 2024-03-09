@@ -66,6 +66,11 @@ struct GetLabel {
   std::string out, obj, lab;
 };
 
+struct HasLabel {
+  // out = has obj.lab
+  std::string out, obj, lab;
+};
+
 struct Bind {
   // out = arg
   std::string out, arg;
@@ -108,6 +113,7 @@ using Inst = std::variant<
   inst::Alloc,
   inst::SetLabel,
   inst::GetLabel,
+  inst::HasLabel,
   inst::Bind,
   inst::Load,
   inst::Save,

@@ -473,6 +473,14 @@ void Execution::Step(State *state) {
       "Label " << getlabel->lab << " not found in record.";
     frame.locals[getlabel->out] = it->second;
 
+  } else if (const inst::HasLabel *haslabel =
+             std::get_if<inst::HasLabel>(&inst)) {
+    const std::unordered_map<std::string, Value *> *rec =
+      LoadRec(haslabel->obj);
+    const bool has = rec->contains(haslabel->lab);
+    const uint64_t u = has ? 1 : 0;
+    frame.locals[haslabel->out] = NewValue(&state->heap, Value::t(u));
+
   } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
     frame.locals[bind->out] = Load(bind->arg);
 

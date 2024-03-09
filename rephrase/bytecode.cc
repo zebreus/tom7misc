@@ -87,6 +87,12 @@ std::string ColorInstString(const Inst &inst) {
                         getlabel->out.c_str(),
                         getlabel->obj.c_str(),
                         getlabel->lab.c_str());
+  } else if (const inst::HasLabel *haslabel =
+             std::get_if<inst::HasLabel>(&inst)) {
+    return StringPrintf("HAS " AOUT("%s") " <- " AARG("%s") "." AMAP_LAB("%s"),
+                        haslabel->out.c_str(),
+                        haslabel->obj.c_str(),
+                        haslabel->lab.c_str());
   } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
     return StringPrintf("BIND " AOUT("%s") " <- " AARG("%s"),
                         bind->out.c_str(), bind->arg.c_str());
