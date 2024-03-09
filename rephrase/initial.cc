@@ -17,6 +17,7 @@ Initial::Initial(AstPool *pool) {
   const il::Type *Float = pool->FloatType();
   const il::Type *Bool = pool->BoolType();
   const il::Type *Obj = pool->ObjType();
+  const il::Type *Layout = pool->LayoutType();
   auto Ref = [&](const Type *a) { return pool->RefType(a); };
 
   auto LookupPrimop = [&pool](Primop p) {
@@ -56,7 +57,10 @@ Initial::Initial(AstPool *pool) {
     {"string-less", Primop::STRING_LESS},
     {"string-greater", Primop::STRING_GREATER},
 
+    {"layout", Primop::STRING_TO_LAYOUT},
+
     {"print", Primop::OUT_STRING},
+    {"output", Primop::OUT_LAYOUT},
   };
 
   std::vector<std::pair<std::string, VarInfo>> exp_vars;
@@ -76,6 +80,7 @@ Initial::Initial(AstPool *pool) {
     {"int", Kind0(Int)},
     {"float", Kind0(Float)},
     {"string", Kind0(String)},
+    {"layout", Kind0(Layout)},
     {"ref", TypeVarInfo{.tyvars = {"a"}, .type = Ref(Alpha)}},
   };
 

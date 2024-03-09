@@ -2,15 +2,16 @@ let
   import "stdlib.bovex"
   import "cite.bovex"
   import "paper.bib"
-
-
 in
+  output
   [
    This is my paper!
 
    [cite murphy2013first]
 
    And now it is over.
+
+   [bibliography()]
    ]
 
 end

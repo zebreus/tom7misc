@@ -73,3 +73,20 @@ fun nocite c =
   in
     []
   end
+
+fun bibliography () =
+  let
+    (* XXX obviously use other fields if present! *)
+    fun render-one (Source { t = Website, sort-key = _, fields }) =
+      (case fields of
+         {(Website) url } => [Website: [layout url]])
+      | render-one (Source { t = Article, sort-key = _, fields }) =
+      (case fields of
+         {(Article) author } => [Author: [layout author]])
+      | render-one _ = [Unrenderable citation type?]
+
+  in
+    [Bibliography.
+
+     [layout-concat (list-map render-one (set-tolist (!citations-used)))]]
+  end

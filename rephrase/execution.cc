@@ -67,6 +67,10 @@ void Execution::ConsoleHook(const std::string &msg) {
   printf("%s", msg.c_str());
 }
 
+void Execution::DocumentHook(const Value *doc) {
+  printf("(got document)\n");
+}
+
 static std::string ColorValuePtrString(const Value *value) {
   if (value == nullptr) {
     return AGREY("(null)");
@@ -286,6 +290,11 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::OUT_STRING: {
     const std::string &s = GetString("out_string");
     ConsoleHook(s);
+    return Unit();
+  }
+
+  case Primop::OUT_LAYOUT: {
+    DocumentHook(a);
     return Unit();
   }
 

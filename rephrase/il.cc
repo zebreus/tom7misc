@@ -695,11 +695,12 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
   case TypeType::OBJ:
     return u;
 
-  default:
-    LOG(FATAL) << "Unimplemented typetype in subst: "
-               << TypeTypeString(u->type);
-    return nullptr;
+  case TypeType::LAYOUT:
+    return u;
   }
+  LOG(FATAL) << "Unimplemented typetype in subst: "
+             << TypeTypeString(u->type);
+  return nullptr;
 }
 
 std::string ProgramString(const Program &pgm) {

@@ -224,3 +224,22 @@ fun set-contains (Set { cmp, tree }, item) =
   in
     r tree
   end
+
+fun set-tolist (Set { cmp = _, tree }) =
+  let
+    fun rec SetEmpty = nil
+      | rec (SetNode (l, x, r)) =
+      let
+        val ll = rec l
+        val rr = rec r
+      in
+        list-append (ll, (x :: rr))
+      end
+  in
+    rec tree
+  end
+
+(* Layout stuff. *)
+
+fun layout-concat nil = []
+  | layout-concat (l :: t) = [[l][layout-concat t]]

@@ -56,6 +56,8 @@ struct Execution {
   // Certain hooks are useful for testing.
   virtual void FailHook(const std::string &msg);
   virtual void ConsoleHook(const std::string &msg);
+  // For output of layout
+  virtual void DocumentHook(const Value *doc);
 
  private:
   void InternalFail(const std::string &msg, State *state);

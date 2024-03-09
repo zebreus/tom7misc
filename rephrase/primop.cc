@@ -35,6 +35,7 @@ const char *PrimopString(Primop p) {
   case Primop::FLOAT_MINUS: return "FLOAT_MINUS";
   case Primop::FLOAT_DIV: return "FLOAT_DIV";
   case Primop::OUT_STRING: return "OUT_STRING";
+  case Primop::OUT_LAYOUT: return "OUT_LAYOUT";
   case Primop::STRING_CONCAT: return "STRING_CONCAT";
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
@@ -74,6 +75,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_CONCAT: return std::make_tuple(0, 2);
   case Primop::VEC_SIZE: return std::make_tuple(1, 1);
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
+  case Primop::OUT_LAYOUT: return std::make_tuple(0, 1);
   default:
     LOG(FATAL) << "Unknown primop: " << PrimopString(po);
     return std::make_tuple(0, 0);
@@ -119,6 +121,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::STRING_CONCAT: return true;
   case Primop::VEC_SIZE: return true;
   case Primop::OUT_STRING: return false;
+  case Primop::OUT_LAYOUT: return false;
   default:
     printf("Uknown primop in IsPrimopTotal");
     return false;
@@ -134,6 +137,7 @@ bool IsPrimopDiscardable(Primop p) {
   case Primop::REF_SET: return false;
 
   case Primop::OUT_STRING: return false;
+  case Primop::OUT_LAYOUT: return false;
 
   default:
     return IsPrimopTotal(p);
@@ -207,6 +211,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};
+  case Primop::OUT_LAYOUT: return {{}, pool->Arrow(Layout, Unit())};
 
   case Primop::VEC_SIZE:
     LOG(FATAL) << "VEC_SIZE is for internal use in bytecode and should not "

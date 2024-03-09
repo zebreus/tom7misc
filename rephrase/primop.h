@@ -50,11 +50,13 @@ enum class Primop {
 
   // I/O
   OUT_STRING,
+  OUT_LAYOUT,
 
   STRING_TO_LAYOUT,
 
   // currently internal
   VEC_SIZE,
+
 
   INVALID,
 };
