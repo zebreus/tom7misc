@@ -37,6 +37,7 @@ const char *PrimopString(Primop p) {
   case Primop::OUT_STRING: return "OUT_STRING";
   case Primop::STRING_CONCAT: return "STRING_CONCAT";
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
+  case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
   case Primop::INVALID: return "INVALID";
   default: return "?? UNKNOWN PRIMOP ??";
   }
@@ -68,6 +69,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::FLOAT_MINUS: return std::make_tuple(0, 2);
   case Primop::FLOAT_DIV: return std::make_tuple(0, 2);
   case Primop::INT_TO_STRING: return std::make_tuple(0, 1);
+  case Primop::STRING_TO_LAYOUT: return std::make_tuple(0, 1);
   case Primop::STRING_CONCAT: return std::make_tuple(0, 2);
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
   default:
@@ -111,6 +113,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::FLOAT_MINUS: return true;
   case Primop::FLOAT_DIV: return true;
   case Primop::INT_TO_STRING: return true;
+  case Primop::STRING_TO_LAYOUT: return true;
   case Primop::STRING_CONCAT: return true;
   case Primop::OUT_STRING: return false;
   default:
@@ -144,6 +147,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   const il::Type *Float = pool->FloatType();
   const il::Type *Bool = pool->BoolType();
   const il::Type *String = pool->StringType();
+  const il::Type *Layout = pool->LayoutType();
   const auto Alpha = [pool]() { return pool->VarType("a"); };
 
   auto PairType = [&](const Type *a, const Type *b) {
@@ -198,6 +202,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::STRING_CONCAT: return {{}, BinOp(String, String, String)};
 
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
+  case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};
 
   default:

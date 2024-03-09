@@ -29,15 +29,16 @@ const char *TypeTypeString(TypeType t) {
   case TypeType::FLOAT: return "FLOAT";
   case TypeType::BOOL: return "BOOL";
   case TypeType::OBJ: return "OBJ";
-  default: return "???MISSING???";
+  case TypeType::LAYOUT: return "LAYOUT";
   }
+  return "???MISSING???";
 }
 
 const char *ExpTypeString(ExpType t) {
   switch (t) {
   case ExpType::STRING: return "STRING";
   case ExpType::FLOAT: return "FLOAT";
-  case ExpType::JOIN: return "JOIN";
+  case ExpType::NODE: return "NODE";
   case ExpType::RECORD: return "RECORD";
   case ExpType::OBJECT: return "OBJECT";
   case ExpType::INT: return "INT";
@@ -76,6 +77,7 @@ const char *ObjFieldTypeString(ObjFieldType oft) {
   case ObjFieldType::INT: return "INT";
   case ObjFieldType::BOOL: return "BOOL";
   case ObjFieldType::OBJ: return "OBJ";
+  case ObjFieldType::LAYOUT: return "LAYOUT";
   }
   return "??MISSING??";
 }
@@ -210,6 +212,9 @@ std::string TypeString(const Type *t) {
   case TypeType::OBJ:
     return "obj";
 
+  case TypeType::LAYOUT:
+    return "layout";
+
   default:
     return StringPrintf("unknown typetype %s??",
                         TypeTypeString(t->type));
@@ -337,9 +342,9 @@ std::string ExpString(const Exp *e) {
     return StringPrintf("unroll(%s)",
                         ExpString(e->Unroll()).c_str());
 
-  case ExpType::JOIN: {
-    const auto &children = e->Join();
-    std::string ret = "[";
+  case ExpType::NODE: {
+    const auto &[attrs, children] = e->Node();
+    std::string ret = StringPrintf("[%s| ", ExpString(attrs).c_str());
     for (int i = 0; i < (int)children.size(); i++) {
       if (i != 0) StringAppendF(&ret, ", ");
       ret += ExpString(children[i]);

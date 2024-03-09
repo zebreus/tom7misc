@@ -3,9 +3,14 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-  do cite murphy2013first
-in
 
- option-map (fn x => x + 1) (SOME 6)
+in
+  [
+   This is my paper!
+
+   [cite murphy2013first]
+
+   And now it is over.
+   ]
 
 end

@@ -36,6 +36,7 @@ struct Converter {
         case il::ObjFieldType::INT: return '0';
         case il::ObjFieldType::BOOL: return '?';
         case il::ObjFieldType::OBJ: return '=';
+        case il::ObjFieldType::LAYOUT: return '[';
         }
       }();
     return StringPrintf("%c%s", c, f.c_str());
@@ -290,8 +291,8 @@ struct Converter {
         return AddValue("b", Value{.v = Value::t(d)}, insts);
       }
 
-      case il::ExpType::JOIN: {
-        LOG(FATAL) << "Unimplemented";
+      case il::ExpType::NODE: {
+        LOG(FATAL) << "Unimplemented NODE";
         return "ERROR";
       }
 

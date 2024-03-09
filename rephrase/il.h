@@ -16,7 +16,6 @@ namespace il {
 enum class ExpType {
   STRING,
   FLOAT,
-  JOIN,
   RECORD,
   OBJECT,
   INT,
@@ -60,6 +59,10 @@ enum class ExpType {
   GET,
   WITH,
   WITHOUT,
+
+  // Layout
+  // Since node has multiple children, it is also used for JOIN.
+  NODE,
 };
 
 struct Exp;
@@ -99,6 +102,7 @@ enum class TypeType {
   INT,
   BOOL,
   OBJ,
+  LAYOUT,
 };
 
 enum class ObjFieldType {
@@ -107,6 +111,7 @@ enum class ObjFieldType {
   INT,
   BOOL,
   OBJ,
+  LAYOUT,
 };
 
 struct Type {
@@ -177,6 +182,10 @@ struct Type {
     CHECK(type == TypeType::OBJ);
   }
 
+  void Layout() const {
+    CHECK(type == TypeType::LAYOUT);
+  }
+
 private:
   friend struct AstPool;
   std::string var;
@@ -235,9 +244,10 @@ struct Exp {
     return std::tie(a, b);
   }
 
-  const std::vector<const Exp *> &Join() const {
-    CHECK(type == ExpType::JOIN);
-    return children;
+  // obj (attributes) and children
+  const std::tuple<const Exp *, const std::vector<const Exp *> &> Node() const {
+    CHECK(type == ExpType::NODE);
+    return std::tie(a, children);
   }
 
   const std::vector<std::pair<std::string, const Exp *>> &Record() const {
@@ -487,6 +497,10 @@ struct AstPool {
 
   const Type *ObjType() {
     return &obj_type;
+  }
+
+  const Type *LayoutType() {
+    return &layout_type;
   }
 
   const Type *RefType(const Type *t, const Type *guess = nullptr) {
@@ -808,15 +822,18 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Join(const std::vector<const Exp *> &v,
+  const Exp *Node(const Exp *attrs,
+                  const std::vector<const Exp *> &v,
                   const Exp *guess = nullptr) {
     if (guess != nullptr &&
-        guess->type == ExpType::JOIN &&
+        guess->type == ExpType::NODE &&
+        guess->a == attrs &&
         guess->children == v) {
       return guess;
     }
 
-    Exp *ret = NewExp(ExpType::JOIN);
+    Exp *ret = NewExp(ExpType::NODE);
+    ret->a = attrs;
     ret->children = v;
     return ret;
   }
@@ -1093,6 +1110,7 @@ struct AstPool {
   const Type float_type = Type(TypeType::FLOAT);
   const Type bool_type = Type(TypeType::BOOL);
   const Type obj_type = Type(TypeType::OBJ);
+  const Type layout_type = Type(TypeType::LAYOUT);
 
   const Exp true_exp = []() {
       Exp t(ExpType::BOOL);

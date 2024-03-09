@@ -52,9 +52,9 @@ struct Pass {
     case ExpType::ANDALSO: return DoAndalso(e->a, e->b, args...);
     case ExpType::ORELSE: return DoOrelse(e->a, e->b, args...);
     case ExpType::FAIL: return DoFail(e->a, args...);
-    default:
-      LOG(FATAL) << "Unhandled type in el::Pass::DoExp!";
     }
+    LOG(FATAL) << "Unhandled type in el::Pass::DoExp!";
+    return nullptr;
   }
 
   virtual const Dec *DoDec(const Dec *d, Args... args) {
@@ -82,17 +82,19 @@ struct Pass {
     case PatType::STRING: return DoStringPat(p->str, args...);
     case PatType::BOOL: return DoBoolPat(p->boolean, args...);
     case PatType::APP: return DoAppPat(p->str, p->a, args...);
-    default:
-      LOG(FATAL) << "Unhandled type in el::Pass::DoPat!";
     }
+    LOG(FATAL) << "Unhandled type in el::Pass::DoPat!";
+    return nullptr;
   }
 
-  virtual const Layout *DoLayout(const Layout *lay, Args...) {
+  virtual const Layout *DoLayout(const Layout *lay, Args... args) {
     switch (lay->type) {
-      // TODO!
-    default:
-      LOG(FATAL) << "Unhandled type in el::Pass::DoLayout!";
+    case LayoutType::TEXT: return DoTextLayout(lay->str, args...);
+    case LayoutType::JOIN: return DoJoinLayout(lay->children, args...);
+    case LayoutType::EXP: return DoExpLayout(lay->exp, args...);
     }
+    LOG(FATAL) << "Unhandled type in el::Pass::DoLayout!";
+    return nullptr;
   }
 
   std::vector<const Type *> DoTypes(const std::vector<const Type *> &v,
@@ -386,7 +388,21 @@ struct Pass {
 
   // Layout.
 
-  // TODO
+  virtual const Layout *DoTextLayout(const std::string &content, Args... args) {
+    return pool->TextLayout(content);
+  }
+
+  virtual const Layout *DoJoinLayout(
+      const std::vector<const Layout *> &v, Args... args) {
+    std::vector<const Layout *> vv;
+    vv.reserve(v.size());
+    for (const Layout *lay : v) vv.push_back(DoLayout(lay, args...));
+    return pool->JoinLayout(vv);
+  }
+
+  const Layout *DoExpLayout(const Exp *exp, Args... args) {
+    return pool->ExpLayout(DoExp(exp, args...));
+  }
 
 protected:
   AstPool *pool = nullptr;

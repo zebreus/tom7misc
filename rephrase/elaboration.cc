@@ -975,8 +975,10 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     return std::make_pair(pool->Fail(e, ret), ret);
   }
 
-  case el::ExpType::LAYOUT:
-    LOG(FATAL) << "unimplemented: Elaboration of LAYOUT";
+  case el::ExpType::LAYOUT: {
+    const il::Exp *e = ElabLayout(G, el_exp->layout);
+    return std::make_pair(e, pool->LayoutType());
+  }
 
   case el::ExpType::WITH: {
     const auto &[oe, ot] = Elab(G, el_exp->a);
@@ -1047,4 +1049,41 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
 
   LOG(FATAL) << "Unimplemented exp type: " << el::ExpString(el_exp);
   return std::make_pair(nullptr, nullptr);
+}
+
+// Producing an IL expression of type LayoutType. Unlike EL, we make
+// no syntactic distinction between "layout expressions" and "other
+// expressions".
+const il::Exp *Elaboration::ElabLayout(
+    const il::ElabContext &G,
+    const el::Layout *lay) {
+
+  switch (lay->type) {
+  case el::LayoutType::TEXT: {
+    // This is a literal string.
+    // We should consider calling some user-provided parsing hook, though?
+    return pool->Primop(Primop::STRING_TO_LAYOUT, {},
+                        {pool->String(lay->str)});
+  }
+
+  case el::LayoutType::JOIN: {
+    // An EL join is just a node with no attributes.
+    std::vector<const il::Exp *> v;
+    for (const el::Layout *child : lay->children) {
+      const il::Exp *ee = ElabLayout(G, child);
+      v.push_back(ee);
+    }
+
+    return pool->Node(pool->Object({}), std::move(v));
+  }
+
+  case el::LayoutType::EXP: {
+    const auto &[ee, tt] = Elab(G, lay->exp);
+    Unification::Unify("exp embedded in layout", tt, pool->LayoutType());
+    return ee;
+  }
+  }
+
+  LOG(FATAL) << "Unimplemented layout type.";
+  return nullptr;
 }

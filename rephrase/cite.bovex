@@ -65,11 +65,11 @@ fun add-citation (c : bibsource) =
 fun cite c =
   let do add-citation c
   in
-    "citation needed"
+    [citation needed]
   end
 
 fun nocite c =
   let do add-citation c
   in
-    ""
+    []
   end

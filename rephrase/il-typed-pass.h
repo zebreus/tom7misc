@@ -70,8 +70,9 @@ struct TypedPass {
     case TypeType::INT: return DoIntType(G, t, args...);
     case TypeType::BOOL: return DoBoolType(G, t, args...);
     case TypeType::OBJ: return DoObjType(G, t, args...);
-      LOG(FATAL) << "Unhandled type type in Pass::DoExp!";
+    case TypeType::LAYOUT: return DoLayoutType(G, t, args...);
     }
+    LOG(FATAL) << "Unhandled type type in Pass::DoExp!";
   }
 
   virtual std::pair<const Exp *, const Type *>
@@ -79,7 +80,10 @@ struct TypedPass {
     switch (e->type) {
     case ExpType::STRING: return DoString(G, e->String(), e, args...);
     case ExpType::FLOAT: return DoFloat(G, e->Float(), e, args...);
-    case ExpType::JOIN: return DoJoin(G, e->Join(), e, args...);
+    case ExpType::NODE: {
+      const auto &[attrs, children] = e->Node();
+      return DoNode(G, attrs, children, e, args...);
+    }
     case ExpType::RECORD: return DoRecord(G, e->Record(), e, args...);
     case ExpType::OBJECT: return DoObject(G, e->Object(), e, args...);
     case ExpType::INT: return DoInt(G, e->Int(), e, args...);
@@ -306,6 +310,11 @@ struct TypedPass {
     return guess;
   }
 
+  virtual const Type *DoLayoutType(Context G,
+                                   const Type *guess, Args... args) {
+    return guess;
+  }
+
 
   // Expressions.
   // Unlike il-pass, here we return the expression and its synthesized
@@ -476,7 +485,8 @@ struct TypedPass {
   }
 
   virtual std::pair<const Exp *, const Type *>
-  DoJoin(Context G,
+  DoNode(Context G,
+         const Exp *attrs,
          const std::vector<const Exp *> &v,
          const Exp *guess,
          Args... args) {
@@ -486,8 +496,8 @@ struct TypedPass {
       const auto &[jj, tt] = DoExp(G, j, args...);
       vv.push_back(jj);
     }
-    LOG(FATAL) << "Unimplemented: just tell me what type layout is";
-    return {pool->Join(vv, guess), pool->StringType()};
+    const auto &[aa, tt_] = DoExp(G, attrs, args...);
+    return {pool->Node(aa, vv, guess), pool->LayoutType()};
   }
 
   virtual std::pair<const Exp *, const Type *>

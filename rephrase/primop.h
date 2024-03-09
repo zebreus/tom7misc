@@ -51,6 +51,8 @@ enum class Primop {
   // I/O
   OUT_STRING,
 
+  STRING_TO_LAYOUT,
+
   INVALID,
 };
 

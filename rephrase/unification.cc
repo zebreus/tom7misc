@@ -121,6 +121,9 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
 
   case TypeType::OBJ:
     return false;
+
+  case TypeType::LAYOUT:
+    return false;
   }
 }
 
@@ -212,6 +215,9 @@ std::vector<EVar> EVar::FreeEVarsInTypes(
       return;
 
     case TypeType::OBJ:
+      return;
+
+    case TypeType::LAYOUT:
       return;
     }
   };
@@ -432,6 +438,9 @@ static void UnifyEx(std::string_view what,
     return;
 
   case TypeType::OBJ:
+    return;
+
+  case TypeType::LAYOUT:
     return;
   }
 }

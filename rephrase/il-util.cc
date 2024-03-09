@@ -677,6 +677,7 @@ std::optional<il::ObjFieldType> ILUtil::GetObjFieldType(const il::Type *t) {
   case il::TypeType::FLOAT: return {il::ObjFieldType::FLOAT};
   case il::TypeType::BOOL: return {il::ObjFieldType::BOOL};
   case il::TypeType::OBJ: return {il::ObjFieldType::OBJ};
+  case il::TypeType::LAYOUT: return {il::ObjFieldType::LAYOUT};
   default: return std::nullopt;
   }
 }
@@ -688,6 +689,7 @@ const Type *ILUtil::ObjFieldTypeType(AstPool *pool, ObjFieldType oft) {
   case ObjFieldType::INT: return pool->IntType();
   case ObjFieldType::BOOL: return pool->BoolType();
   case ObjFieldType::OBJ: return pool->ObjType();
+  case ObjFieldType::LAYOUT: return pool->LayoutType();
   }
   LOG(FATAL) << "Unimplemented ObjFieldType";
   return nullptr;

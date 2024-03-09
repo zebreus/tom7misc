@@ -60,6 +60,7 @@ struct Pass {
     case TypeType::INT: return DoIntType(t, args...);
     case TypeType::BOOL: return DoBoolType(t, args...);
     case TypeType::OBJ: return DoObjType(t, args...);
+    case TypeType::LAYOUT: return DoLayoutType(t, args...);
     }
     LOG(FATAL) << "Unhandled type type in Pass::DoExp!";
     return nullptr;
@@ -69,7 +70,10 @@ struct Pass {
     switch (e->type) {
     case ExpType::STRING: return DoString(e->String(), e, args...);
     case ExpType::FLOAT: return DoFloat(e->Float(), e, args...);
-    case ExpType::JOIN: return DoJoin(e->Join(), e, args...);
+    case ExpType::NODE: {
+      const auto &[attrs, v] = e->Node();
+      return DoNode(attrs, v, e, args...);
+    }
     case ExpType::RECORD: return DoRecord(e->Record(), e, args...);
     case ExpType::OBJECT: return DoObject(e->Object(), e, args...);
     case ExpType::INT: return DoInt(e->Int(), e, args...);
@@ -275,6 +279,10 @@ struct Pass {
     return guess;
   }
 
+  virtual const Type *DoLayoutType(const Type *guess, Args... args) {
+    return guess;
+  }
+
 
   // Expressions
 
@@ -365,13 +373,14 @@ struct Pass {
     return pool->Unroll(DoExp(e, args...), guess);
   }
 
-  virtual const Exp *DoJoin(const std::vector<const Exp *> &v,
+  virtual const Exp *DoNode(const Exp *attrs,
+                            const std::vector<const Exp *> &v,
                             const Exp *guess,
                             Args... args) {
     std::vector<const Exp *> vv;
     vv.reserve(v.size());
     for (const Exp *j : v) vv.push_back(DoExp(j, args...));
-    return pool->Join(vv, guess);
+    return pool->Node(DoExp(attrs, args...), vv, guess);
   }
 
   virtual const Exp *DoLet(const std::vector<std::string> &tyvars,

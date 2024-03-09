@@ -31,6 +31,11 @@ private:
       const il::ElabContext &G,
       const el::Type *el_type);
 
+  // Always layout type.
+  const il::Exp *ElabLayout(
+      const il::ElabContext &G,
+      const el::Layout *lay);
+
   const il::Type *NewEVar();
 
   // Instantiate a polymorphic type at new fresh evars, so that
@@ -42,6 +47,7 @@ private:
       const il::ElabContext &G,
       const std::vector<const el::Dec *> &decs,
       const el::Exp *exp);
+
 
   // This is repeatedly used.
   std::pair<const il::Exp *, const il::Type *> FailMatch();
