@@ -119,28 +119,16 @@ std::string ElabContext::ToString() const {
       const TypeVarInfo *tvi = std::get_if<TypeVarInfo>(&v);
       CHECK(tvi != nullptr) << "Bug: Type variables always hold TypeVarInfo.";
       std::string tyvars;
-      /*
-      if (!tvi->var.empty()) {
-        CHECK(tvi->type == nullptr);
-
-        StringAppendF(&ret, "type var %s => %s : 0\n",
-                      k.first.c_str(),
-                      tvi->var.c_str());
-
-                      } else { */
-        if (!tvi->tyvars.empty()) {
-          if (tvi->tyvars.size() == 1) {
-            tyvars = "Λ" + tvi->tyvars[0] + ".";
-          } else {
-            tyvars = "Λ(" + Util::Join(tvi->tyvars, ", ") + ").";
-          }
+      if (!tvi->tyvars.empty()) {
+        if (tvi->tyvars.size() == 1) {
+          tyvars = "Λ" + tvi->tyvars[0] + ".";
+        } else {
+          tyvars = "Λ(" + Util::Join(tvi->tyvars, ", ") + ").";
         }
+      }
 
-        StringAppendF(&ret, "type %s = %s%s\n",
-                      k.first.c_str(),
-                      tyvars.c_str(),
-                      TypeString(tvi->type).c_str());
-        // }
+      StringAppendF(&ret, "type %s = %s%s\n", k.first.c_str(), tyvars.c_str(),
+                    TypeString(tvi->type).c_str());
       break;
     }
 
@@ -148,6 +136,31 @@ std::string ElabContext::ToString() const {
       StringAppendF(&ret, "Unimplemented variable type!");
       break;
     }
+  }
+  return ret;
+}
+
+static std::string PolyTypeString(const PolyType &pt) {
+  return StringPrintf("(%s) %s", Util::Join(pt.first, ",").c_str(),
+                      TypeString(pt.second).c_str());
+}
+
+std::string Context::ToString() const {
+
+  std::string ret;
+  StringAppendF(&ret, "Exp vars:\n");
+  for (const auto &[k, v] : expmap.Export()) {
+    StringAppendF(&ret, "  %s: %s\n", k.c_str(), PolyTypeString(v).c_str());
+  }
+
+  StringAppendF(&ret, "Global symbols:\n");
+  for (const auto &[k, v] : symmap.Export()) {
+    StringAppendF(&ret, "  %s: %s\n", k.c_str(), PolyTypeString(v).c_str());
+  }
+
+  StringAppendF(&ret, "Types:\n");
+  for (const auto &[k, v_] : symmap.Export()) {
+    StringAppendF(&ret, "  %s\n", k.c_str());
   }
   return ret;
 }

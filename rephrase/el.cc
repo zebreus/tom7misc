@@ -74,8 +74,8 @@ const char *LayoutTypeString(LayoutType lt) {
   case LayoutType::EXP: return "EXP";
   case LayoutType::TEXT: return "TEXT";
   case LayoutType::JOIN: return "JOIN";
-  default: return "??LAYOUT TYPE??";
   }
+  return "??LAYOUT TYPE??";
 }
 
 std::string LayoutString(const Layout *lay) {
@@ -92,9 +92,8 @@ std::string LayoutString(const Layout *lay) {
     }
     return StringPrintf("JOIN[%s]", Util::Join(body, ",").c_str());
   }
-  default:
-      return "TODO LAYOUT TYPE";
   }
+  return "??LAYOUT??";
 }
 
 const char *PatTypeString(PatType pt) {
@@ -178,10 +177,8 @@ std::string PatString(const Pat *p) {
                         p->str.c_str(),
                         PatString(p->a).c_str());
   }
-
-  default:
-    return "unknown pat type??";
   }
+  return "??PAT??";
 }
 
 std::string DecString(const Dec *d) {
@@ -250,7 +247,7 @@ std::string DecString(const Dec *d) {
     return ret;
   }
   }
-  return "Uknown declaration type";
+  return "??DEC??";
 }
 
 // TODO: Some kind of pretty-printing
@@ -403,7 +400,7 @@ std::string ExpString(const Exp *e) {
                         ExpString(e->a).c_str(),
                         TypeString(e->t).c_str());
   }
-  return "unknown/illegal expression";
+  return "??EXP??";
 }
 
 
@@ -426,11 +423,10 @@ std::vector<const Layout *> FlattenLayout(const Layout *lay) {
 
   case LayoutType::EXP:
     return {lay};
-
-  default:
-    CHECK(false) << "Unimplemented layout type.";
-    return {};
   }
+
+  LOG(FATAL) << "Unimplemented layout type.";
+  return {};
 }
 
 bool IsLayoutValuable(const Layout *lay) {
@@ -446,12 +442,13 @@ bool IsLayoutValuable(const Layout *lay) {
 
   case LayoutType::EXP:
     return IsValuable(lay->exp);
-
-  default:
-    CHECK(false) << "Unimplemented layout type.";
-    return false;
   }
+
+  LOG(FATAL) << "Unimplemented layout type.";
+  return false;
 }
+
+
 
 bool IsValuable(const Exp *e) {
   switch (e->type) {
@@ -459,6 +456,7 @@ bool IsValuable(const Exp *e) {
   case ExpType::VAR: return true;
   case ExpType::INT: return true;
   case ExpType::BOOL: return true;
+  case ExpType::FLOAT: return true;
 
   case ExpType::TUPLE:
     for (const Exp *child : e->children)
@@ -476,6 +474,13 @@ bool IsValuable(const Exp *e) {
     return false;
 
   case ExpType::IF:
+    return false;
+
+  case ExpType::CASE:
+    return false;
+  case ExpType::ANDALSO:
+    return false;
+  case ExpType::ORELSE:
     return false;
 
   case ExpType::APP:
@@ -504,9 +509,17 @@ bool IsValuable(const Exp *e) {
         return false;
     return true;
 
-  default:
-    return "ILLEGAL EXPRESSION";
+  case ExpType::WITH:
+    return false;
+  case ExpType::WITHOUT:
+    return false;
+
+  case ExpType::FAIL:
+    return false;
   }
+
+  LOG(FATAL) << "ILLEGAL EXPRESSION";
+  return false;
 }
 
 std::string AstPool::NewInternalVar(const std::string &hint) {

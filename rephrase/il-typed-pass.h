@@ -23,7 +23,7 @@ struct TypedPass {
     Context GG = G;
     for (const Global &glob : program.globals) {
       const Type *tt = DoType(G, glob.type, args...);
-      GG = GG.Insert(glob.sym, {glob.tyvars, tt});
+      GG = GG.InsertSym(glob.sym, {glob.tyvars, tt});
     }
 
     Program out;
@@ -358,8 +358,9 @@ struct TypedPass {
               const Exp *guess,
               Args... args) {
 
-    const PolyType *pt = G.Find(sym);
-    CHECK(pt != nullptr) << "Unbound global symbol: " << sym;
+    const PolyType *pt = G.FindSym(sym);
+    CHECK(pt != nullptr) << "Unbound global symbol: " << sym
+                         << "\nContext:\n" << G.ToString();
 
     std::vector<const Type *> tts;
     tts.reserve(ts.size());

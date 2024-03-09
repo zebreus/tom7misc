@@ -38,7 +38,7 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
            "%s\n\n", il::ProgramString(il_pgm).c_str());
   }
 
-  il_pgm = closure_conversion.Convert(pgm_in);
+  il_pgm = closure_conversion.Convert(il_pgm);
 
   il::Simplification simplification(frontend.Pool());
   // Need to remove some constructs before converting to bytecode.

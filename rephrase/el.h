@@ -10,7 +10,6 @@
 
 namespace el {
 
-// TODO:
 enum class LayoutType {
   TEXT,
   JOIN,
