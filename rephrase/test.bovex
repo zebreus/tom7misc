@@ -2,6 +2,8 @@ let
   import "stdlib.bovex"
   import "cite.bovex"
   import "paper.bib"
+
+  do cite murphy2013first
 in
 
  option-map (fn x => x + 1) (SOME 6)

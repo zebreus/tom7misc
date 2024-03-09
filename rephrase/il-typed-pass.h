@@ -524,6 +524,11 @@ struct TypedPass {
         Args... args) {
     const auto &[ff, ft] = DoExp(G, f, args...);
     const auto &[aa, at] = DoExp(G, arg, args...);
+    CHECK(ft->type == TypeType::ARROW) << "Bug: Application of non-function "
+      "type " << TypeString(ft) << "\nWhich was this expression:\n" <<
+      ExpString(ff) << "\nWhich was applied to this arg:\n" <<
+      ExpString(aa);
+
     const auto &[dom, cod] = ft->Arrow();
     return {pool->App(ff, aa, guess), cod};
   }
@@ -537,6 +542,9 @@ struct TypedPass {
            Args... args) {
 
     const auto &[tyvars, po_type] = PrimopType(pool, po);
+    CHECK(po_type->type == TypeType::ARROW) << "Bug: Primop doesn't have "
+      "function type?\nType: " << TypeString(po_type);
+
     const auto &[dom, cod] = po_type->Arrow();
 
     std::vector<const Type *> tts;
@@ -571,6 +579,14 @@ struct TypedPass {
        const Exp *guess,
        Args... args) {
     const Type *at = DoType(G, arrow_type, args...);
+
+    CHECK(at->type == TypeType::ARROW) << "Bug: Function is annotated "
+      "with non-arrow type?"
+      "\nType: " << TypeString(arrow_type) <<
+      "\nBecame: " << TypeString(at) <<
+      "\nFunction  expression:\n" <<
+      ExpString(guess);
+
     const auto &[dom, cod] = arrow_type->Arrow();
     Context GG = G.Insert(self, {{}, at}).Insert(x, {{}, dom});
     const auto &[be, bt] = DoExp(GG, body, args...);
@@ -655,7 +671,9 @@ struct TypedPass {
     const auto &[oe, ot] = DoExp(G, obj, args...);
     std::unordered_map<std::string, const Type *> lab_types;
     for (const auto [lab, t] : ot->Sum()) {
-      lab_types[lab] = DoType(G, t, args...);
+      // Types have already been translated!
+      // lab_types[lab] = DoType(G, t, args...);
+      lab_types[lab] = t;
     }
 
     std::vector<

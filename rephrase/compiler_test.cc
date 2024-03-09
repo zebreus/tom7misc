@@ -39,11 +39,35 @@ end
   bc::PrintProgram(prog);
 }
 
+// Former bug in closure conversion (internal type error)
+// at r5580 due to double-translating types in sumcases.
+static void Regression5580() {
+  Compiler compiler;
+  compiler.SetVerbose(2);
+  bc::Program prog = compiler.CompileString(
+      "test",
+      R"(
+        let
+          datatype set = Set of int * int -> string
+          fun set-empty cmp = fail "NO"
+          fun set-insert (Set cmp) = cmp (1, 2)
+
+          fun bibsource-compare _ = 999
+          val sss = ref (set-empty bibsource-compare)
+        in
+          set-insert (!sss)
+        end)");
+
+  bc::PrintProgram(prog);
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   TrivialTest();
   SimpleTest();
+  Regression5580();
 
   printf("OK\n");
   return 0;

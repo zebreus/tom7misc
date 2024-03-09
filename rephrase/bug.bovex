@@ -1,0 +1,12 @@
+let
+  datatype set = Set of int * int -> string
+  fun set-empty cmp = fail "NO"
+  fun set-insert (Set cmp) = cmp (1, 2)
+
+  fun bibsource-compare _ = 999
+  val sss = ref (set-empty bibsource-compare)
+in
+
+  set-insert (!sss)
+
+end

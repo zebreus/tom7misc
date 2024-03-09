@@ -39,7 +39,7 @@ struct Compiler {
 
  private:
   int verbose = 0;
-  bc::Program InternalGuts(il::Program &&pgm);
+  bc::Program InternalGuts(il::Program pgm);
 };
 
 #endif

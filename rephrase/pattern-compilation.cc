@@ -1281,7 +1281,7 @@ PatternCompilation::SplitObjectPattern(
       CHECK(p->type == PatType::OBJECT);
       const ObjVarInfo *ovi = G.FindObj(p->str);
       CHECK(ovi != nullptr) << "Unbound object name " << p->str <<
-        "in object pattern: " << PatString(p);
+        " in object pattern: " << PatString(p);
 
       std::unordered_map<std::string, std::pair<const Pat *, const Type *>>
         fields;

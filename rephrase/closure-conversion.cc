@@ -100,6 +100,15 @@ struct ConvertPass : public TypedPass<> {
     // so we expect this to be ∃α. {1: α, 2: {1: α, 2:a} -> b}
     const auto &[aenv, body] = ft->Exists();
     const auto &[tenv, tcc_fn] = GetPairType(body);
+
+    CHECK(tcc_fn->type == TypeType::ARROW) << "Bug: Expected arrow type? "
+      "But got: " << TypeString(tcc_fn) << "\nCompiling app of:\n" <<
+      ExpString(f) << "\nWhich became:\n" <<
+      ExpString(ff) << "\nWith type:\n" <<
+      TypeString(ft) << "\nApplied to:\n" <<
+      ExpString(arg) << "\nWhich became:\n" <<
+      ExpString(aa) << "\nWith type:\n" <<
+      TypeString(at);
     const auto &[cc_dom, cod] = tcc_fn->Arrow();
 
     // Now the expression. Use the same variable from the exists
@@ -155,6 +164,7 @@ struct ConvertPass : public TypedPass<> {
     // Extract the components.
     const auto &[cc_alpha_env, cc_fpair] = cc_arrow_type->Exists();
     const auto &[cc_env_type, cc_fn_type] = GetPairType(cc_fpair);
+    CHECK(cc_fn_type->type == TypeType::ARROW);
     const auto &[cc_fn_dom, cc_fn_cod] = cc_fn_type->Arrow();
     const auto &[cc_env_type2, cc_actual_dom] = GetPairType(cc_fn_dom);
 
