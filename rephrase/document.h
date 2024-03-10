@@ -55,8 +55,6 @@ bc::Value *DocTreeToValue(std::vector<bc::Value *> *heap, const DocTree &doc);
 
 void DebugPrintDocTree(const DocTree &doc);
 
-DocTree GetBoxes(const DocTree &doc);
-
 bool IsText(const DocTree &doc);
 
 DocTree JoinDocs(std::vector<DocTree> v);

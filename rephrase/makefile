@@ -23,6 +23,8 @@ test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex
 # Also add /c/code/openblas/include to
 
 LLAMA_CLBLAST=true
+# It's crashing or doing something weird? You're always
+# being too clever with std::move!
 # ASAN=true
 
 # Pro-tip for understanding compilation time:
@@ -53,7 +55,8 @@ else
   PLATFORM_CFLAGS=-g -D_GNU_SOURCE
   ifdef ASAN
   OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
-  else
+  PLATFORM_LDFLAGS += -Wl,--stack,167772160
+else
   OPTFLAGS=-O3 -march=native -mtune=native
   endif
 endif

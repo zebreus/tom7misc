@@ -15,7 +15,9 @@
 static constexpr double INFINITE_PENALTY = 9999999.0;
 
 void DocTree::AddChild(DocTree d) {
+  // printf("Added child (now %d)\n", (int)children.size());
   children.push_back(std::make_shared<DocTree>(std::move(d)));
+  CHECK(children.back().get() != nullptr);
 }
 
 void DocTree::SetStringAttr(const std::string &name, const std::string &value) {
@@ -87,7 +89,7 @@ std::string AttrValString(const AttrVal &val) {
   }
 }
 
-AttrVal ConvertAttrVal(const std::string &field, const bc::Value &val) {
+AttrVal ValueToAttrVal(const std::string &field, const bc::Value &val) {
   if (const std::string *s = std::get_if<std::string>(&val.v)) {
     return AttrVal{.v = *s};
   } else if (const uint64_t *u = std::get_if<uint64_t>(&val.v)) {
@@ -133,7 +135,7 @@ DocTree ValueToDocTree(const bc::Value *v) {
           "a vector.";
 
         for (const auto &[k, v] : *aobj) {
-          doc.attrs[k] = ConvertAttrVal(k, *v);
+          doc.attrs[k] = ValueToAttrVal(k, *v);
         }
 
         for (const bc::Value *v : *cvec) {
@@ -164,6 +166,18 @@ static bc::Value *NewString(std::vector<bc::Value *> *heap,
   return NewValue(heap, std::move(s));
 }
 
+static bc::Value *NewU64(std::vector<bc::Value *> *heap, uint64_t u) {
+  return NewValue(heap, u);
+}
+
+static bc::Value *NewDouble(std::vector<bc::Value *> *heap, double d) {
+  return NewValue(heap, d);
+}
+
+static bc::Value *NewInt(std::vector<bc::Value *> *heap, BigInt b) {
+  return NewValue(heap, std::move(b));
+}
+
 static bc::Value *NewObj(std::vector<bc::Value *> *heap,
                          std::unordered_map<std::string, bc::Value *> m) {
   return NewValue(heap, std::move(m));
@@ -174,6 +188,22 @@ static bc::Value *NewVec(std::vector<bc::Value *> *heap,
   return NewValue(heap, std::move(v));
 }
 
+
+bc::Value *AttrValToValue(std::vector<bc::Value *> *heap, const AttrVal &val) {
+  if (const std::string *s = std::get_if<std::string>(&val.v)) {
+    return NewString(heap, *s);
+  } else if (const uint64_t *u = std::get_if<uint64_t>(&val.v)) {
+    return NewU64(heap, *u);
+  } else if (const double *d = std::get_if<double>(&val.v)) {
+    return NewDouble(heap, *d);
+  } else if (const BigInt *b = std::get_if<BigInt>(&val.v)) {
+    return NewInt(heap, *b);
+  } else {
+    LOG(FATAL) << "Invalid AttrVal when converting to Value";
+  }
+}
+
+
 bc::Value *DocTreeToValue(std::vector<bc::Value *> *heap, const DocTree &doc) {
   std::function<bc::Value *(const DocTree &doc)> Rec =
     [heap, &Rec](const DocTree &doc) -> bc::Value * {
@@ -182,9 +212,17 @@ bc::Value *DocTreeToValue(std::vector<bc::Value *> *heap, const DocTree &doc) {
         return NewString(heap, doc.text);
       } else {
         std::unordered_map<std::string, bc::Value *> attrs;
+
+        // Should this be by construction/allowlist?
+        for (const auto &[key, val] : doc.attrs) {
+          attrs[key] = AttrValToValue(heap, val);
+        }
+
         std::vector<bc::Value *> children;
         children.reserve(doc.children.size());
-        for (const auto &c : doc.children) {
+        for (const std::shared_ptr<DocTree> &c : doc.children) {
+          CHECK(c.get() != nullptr) << doc.children.size() << " and " <<
+            children.size();
           children.push_back(Rec(*c));
         }
 
@@ -209,6 +247,9 @@ bool IsText(const DocTree &doc) {
   return doc.attrs.empty() && doc.children.empty();
 }
 
+#define AATTRNAME(s) AFGCOLOR(200, 200, 160, s)
+#define AATTRVAL(s) AFGCOLOR(160, 200, 160, s)
+
 void DebugPrintDocTree(const DocTree &doc) {
   std::function<void(int, const DocTree &)> Rec =
     [&Rec](int depth, const DocTree &doc) {
@@ -230,7 +271,7 @@ void DebugPrintDocTree(const DocTree &doc) {
         bool first = true;
         for (const auto &[k, v] : doc.attrs) {
           if (!first) printf(", ");
-          printf(AYELLOW("%s") " = " APURPLE("%s"),
+          printf(AATTRNAME("%s") " = " AATTRVAL("%s"),
                  k.c_str(), AttrValString(v).c_str());
           first = false;
         }
@@ -254,7 +295,7 @@ DocTree JoinDocs(std::vector<DocTree> docs) {
   }
 
   DocTree doc;
-  doc.children.resize(docs.size());
+  doc.children.reserve(docs.size());
   for (DocTree &d : docs) {
     doc.AddChild(std::move(d));
   }
@@ -272,6 +313,7 @@ static std::string_view NextWord(std::string_view &text) {
 
   std::string_view ret = text.substr(0, pos);
   text.remove_prefix(pos);
+  while (!text.empty() && text[0] == ' ') text.remove_prefix(1);
   return ret;
 }
 
@@ -299,7 +341,7 @@ BoxifyText(const Font *font, double font_size, std::string_view text) {
     uint32_t prev = ' ';
     std::string chunk;
     double chunk_width = 0.0;
-    for (const uint32_t codepoint : UTF8Codepoints(text)) {
+    for (const uint32_t codepoint : UTF8Codepoints(word)) {
       double char_width = font->CharWidth(codepoint);
       std::optional<double> kern = font->GetKerning(prev, codepoint);
       if (kern.has_value()) {
@@ -308,7 +350,7 @@ BoxifyText(const Font *font, double font_size, std::string_view text) {
         DocTree d;
         d.SetStringAttr("display", "box");
         // XXX chunk height?
-        d.SetDoubleAttr("width", chunk_width);
+        d.SetDoubleAttr("width", chunk_width * font_size);
         // PERF The font is normalized onto every chunk, which may be kinda
         // expensive.
         d.SetDoubleAttr("font-size", font_size);
@@ -324,23 +366,26 @@ BoxifyText(const Font *font, double font_size, std::string_view text) {
         chunk = Util::EncodeUTF8(codepoint);
         chunk_width = char_width;
 
+        printf("Kerned '%c'+'%c'; chunk now '%s'\n", prev, codepoint,
+               chunk.c_str());
       } else {
         // Extend the chunk.
         chunk += Util::EncodeUTF8(codepoint);
         chunk_width += char_width;
+        printf("Added '%c'; chunk now '%s'\n", codepoint, chunk.c_str());
       }
       prev = codepoint;
     }
 
     CHECK(!chunk.empty()) << "We only break on kerning pairs, so the chunk "
-      "is never empty for non-empty words!";
+      "is never empty for non-empty words! Word: [" << word << "]";
 
     // The final chunk, which is frequently the entire word, allows a break
     // after it.
     DocTree d;
     d.SetStringAttr("display", "box");
     // XXX chunk height?
-    d.SetDoubleAttr("width", chunk_width);
+    d.SetDoubleAttr("width", chunk_width * font_size);
     d.SetDoubleAttr("font-size", font_size);
     d.SetStringAttr("font-name", font->Name());
 
@@ -348,7 +393,7 @@ BoxifyText(const Font *font, double font_size, std::string_view text) {
     // penalize certain breaks in the future. (For example, breaking after
     // a comma or semicolon seems better.)
     d.SetDoubleAttr("glue-break-penalty", 0.0);
-    d.SetDoubleAttr("glue-ideal", space_width);
+    d.SetDoubleAttr("glue-ideal", space_width * font_size);
     // Relative penalty for contracting.
     d.SetDoubleAttr("glue-contract", 4.0);
 
@@ -368,6 +413,8 @@ const Font *Document::GetDescribedFont(const TextProps &props) {
 // definite size and glue.
 DocTree Document::GetBoxes(const DocTree &doc) {
   std::vector<DocTree> out;
+
+  printf("GetBoxes...\n");
 
   std::function<void(TextProps props, const DocTree &)> Rec =
     [this, &out, &Rec](TextProps props, const DocTree &doc) {
@@ -416,8 +463,11 @@ DocTree Document::GetBoxes(const DocTree &doc) {
       }
     };
 
+  printf("GetBoxes rec done...\n");
+
   // Get default text props somehow?
   TextProps props;
+  props.font_face = "times";
   Rec(props, doc);
   return JoinDocs(out);
 }

@@ -130,7 +130,6 @@ fun line-break (boxes : layout) =
 (* Generates boxes and glue from text, making this into "AllBox" format. *)
 fun get-boxes (content : layout) =
   internal-get-boxes content
-(*  internal-get-boxes {(GetBoxes) font = font, size = size, content = content} *)
 
 (*
  A pararagraph at a time,
@@ -144,10 +143,15 @@ fun get-boxes (content : layout) =
 
  *)
 
+(* XXX this needs to load the font.  *)
 fun palatino layout =
-  span {(Span) font-face = "Palatino"} layout
+  span {(Span) font-face = "palatino"} layout
+
 fun helvetica layout =
-  span {(Span) font-face = "Helvetica"} layout
+  span {(Span) font-face = "helvetica"} layout
+
+fun times-roman layout =
+  span {(Span) font-face = "times"} layout
 
 fun b layout =
   span {(Span) font-bold = true} layout

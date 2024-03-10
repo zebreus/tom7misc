@@ -4,7 +4,10 @@ let
   import "cite.bovex"
   import "paper.bib"
 in
-  palatino
+
+  output
+  (get-boxes
+  (times-roman
   [
    This is my paper. I have written some filler text in order to get the
    main layout loop working, [helvetica[which]] is the design thing that's stressing
@@ -19,6 +22,6 @@ in
    And now it is over.
 
    [bibliography()]
-   ]
+   ]))
 
 end

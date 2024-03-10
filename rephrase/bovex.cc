@@ -56,6 +56,8 @@ struct BovexExecution : public bc::Execution {
 
   std::vector<DocTree> docs;
 
+  Document *DocumentHook() override { return pdf_document; }
+
   // The defaults for these are fine.
   // virtual void FailHook(const std::string &msg);
   // virtual void ConsoleHook(const std::string &msg);
@@ -130,6 +132,9 @@ static int Bovex(const std::vector<std::string> &args) {
   PDFDocument pdf_document(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);
   BovexExecution execution(pgm, &pdf_document);
   BovexExecution::State state = execution.Start();
+
+  printf(AWHITE("Running") ".\n");
+  fflush(stdout);
   execution.RunToCompletion(&state);
 
   DocTree doc = execution.ExtractDocument();

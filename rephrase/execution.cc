@@ -321,6 +321,12 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return RephraseHook(a);
   }
 
+  case Primop::GET_BOXES: {
+    DocTree doc = ValueToDocTree(a);
+    DocTree boxdoc = DocumentHook()->GetBoxes(doc);
+    return DocTreeToValue(&state->heap.used, boxdoc);
+  }
+
   case Primop::REF:
     LOG(FATAL) << "REF should have been compiled away";
   case Primop::REF_GET:

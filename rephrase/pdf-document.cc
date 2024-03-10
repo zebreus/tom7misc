@@ -72,7 +72,7 @@ const Font *PDFDocument::GetBuiltInFont(PDF::BuiltInFont bif) {
 
 // Get a font from the hash map, maybe by loading and inserting it first.
 const Font *PDFDocument::GetFontByName(const std::string &name) {
-  LOG(FATAL) << "Need to implement font loading!";
+  LOG(FATAL) << "Need to implement font loading: " << name;
 }
 
 std::string PDFFont::Name() const {

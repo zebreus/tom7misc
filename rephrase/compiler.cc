@@ -36,6 +36,7 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
   if (verbose > 1) {
     printf("\n\n" AWHITE("Closure convert this") ":\n"
            "%s\n\n", il::ProgramString(il_pgm).c_str());
+    fflush(stdout);
   }
 
   il_pgm = closure_conversion.Convert(il_pgm);
@@ -53,6 +54,7 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
   if (verbose > 2) {
     printf("\n\n" AWHITE("Flatten this") ":\n"
            "%s\n\n", il::ProgramString(il_pgm).c_str());
+    fflush(stdout);
   }
 
   il_pgm = flatten_globals.Flatten(il_pgm);
@@ -60,6 +62,7 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
   if (verbose > 1) {
     printf("\n\n" AWHITE("Convert this to bytecode") ":\n"
            "%s\n\n", il::ProgramString(il_pgm).c_str());
+    fflush(stdout);
   }
 
   bc::Program bc_pgm = to_bytecode.Convert(il_pgm);
