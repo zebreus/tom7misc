@@ -3900,6 +3900,13 @@ std::string PDF::AddTTF(const std::string &filename) {
   return font_name;
 }
 
+std::optional<double>
+PDF::FontObj::GetKerning(int codepoint1, int codepoint2) const {
+  const auto it = kerning.find(std::make_pair(codepoint1, codepoint2));
+  if (it == kerning.end()) return std::nullopt;
+  return it->second;
+}
+
 std::string PDF::FontObj::BaseFont() const {
   if (builtin_font.has_value()) {
     return BuiltInFontName(builtin_font.value());
