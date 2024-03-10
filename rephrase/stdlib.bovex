@@ -238,29 +238,3 @@ fun set-tolist (Set { cmp = _, tree }) =
   in
     rec tree
   end
-
-(* Layout stuff. *)
-
-(* Dimensions are in points, nominally 1/72 of an inch. *)
-
-fun inch (d : float) = d *. 72.0
-fun point (d : float) = d
-fun mm (d : float) = d *. 2.8346456664
-
-fun layout-concat nil = []
-  | layout-concat (l :: t) = [[l][layout-concat t]]
-
-
-(* Low-level node info. *)
-val NODE_BOX = "box"
-val NODE_SPAN = "span"
-object Node of { display : string }
-
-
-object Box of { width: float, height: float }
-fun box (attrs : obj) (l : layout) =
-  node (attrs with (Node) display = NODE_BOX) l
-
-object Span of { }
-fun span (attrs : obj) (l : layout) =
-  node (attrs with (Node) display = NODE_SPAN) l

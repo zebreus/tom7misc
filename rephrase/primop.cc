@@ -9,8 +9,8 @@
 #include "il.h"
 #include "base/logging.h"
 
-const char *PrimopString(Primop p) {
-  switch (p) {
+const char *PrimopString(Primop po) {
+  switch (po) {
   case Primop::REF: return "REF";
   case Primop::REF_GET: return "REF_GET";
   case Primop::REF_SET: return "REF_SET";
@@ -31,6 +31,7 @@ const char *PrimopString(Primop p) {
   case Primop::STRING_GREATER: return "STRING_GREATER";
   case Primop::INT_DIV_TO_FLOAT: return "INT_DIV_TO_FLOAT";
   case Primop::FLOAT_TIMES: return "FLOAT_TIMES";
+  case Primop::FLOAT_NEG: return "FLOAT_NEG";
   case Primop::FLOAT_PLUS: return "FLOAT_PLUS";
   case Primop::FLOAT_MINUS: return "FLOAT_MINUS";
   case Primop::FLOAT_DIV: return "FLOAT_DIV";
@@ -40,13 +41,15 @@ const char *PrimopString(Primop p) {
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
   case Primop::VEC_SIZE: return "VEC_SIZE";
+  case Primop::REPHRASE: return "REPHRASE";
+  case Primop::GET_BOXES: return "GET_BOXES";
   case Primop::INVALID: return "INVALID";
-  default: return "?? UNKNOWN PRIMOP ??";
   }
+  return "?? UNKNOWN PRIMOP ??";
 }
 
 std::tuple<int, int> PrimopArity(Primop po) {
-  switch(po) {
+  switch (po) {
   case Primop::REF: return std::make_tuple(1, 1);
   case Primop::REF_GET: return std::make_tuple(1, 1);
   case Primop::REF_SET: return std::make_tuple(1, 2);
@@ -66,6 +69,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_LESS: return std::make_tuple(0, 2);
   case Primop::STRING_GREATER: return std::make_tuple(0, 2);
   case Primop::INT_DIV_TO_FLOAT: return std::make_tuple(0, 2);
+  case Primop::FLOAT_NEG: return std::make_tuple(0, 1);
   case Primop::FLOAT_TIMES: return std::make_tuple(0, 2);
   case Primop::FLOAT_PLUS: return std::make_tuple(0, 2);
   case Primop::FLOAT_MINUS: return std::make_tuple(0, 2);
@@ -74,12 +78,14 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_TO_LAYOUT: return std::make_tuple(0, 1);
   case Primop::STRING_CONCAT: return std::make_tuple(0, 2);
   case Primop::VEC_SIZE: return std::make_tuple(1, 1);
+  case Primop::REPHRASE: return std::make_tuple(0, 1);
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
   case Primop::OUT_LAYOUT: return std::make_tuple(0, 1);
-  default:
-    LOG(FATAL) << "Unknown primop: " << PrimopString(po);
-    return std::make_tuple(0, 0);
+  case Primop::GET_BOXES: return std::make_tuple(0, 1);
+  case Primop::INVALID: LOG(FATAL) << "INVALID primop";
   }
+  LOG(FATAL) << "Unknown primop: " << PrimopString(po);
+  return std::make_tuple(0, 0);
 };
 
 bool IsPrimopTotal(Primop p) {
@@ -112,6 +118,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::INT_DIV_TO_FLOAT:
     // Here, division by zero produces nan or +/- inf.
     return true;
+  case Primop::FLOAT_NEG: return true;
   case Primop::FLOAT_TIMES: return true;
   case Primop::FLOAT_PLUS: return true;
   case Primop::FLOAT_MINUS: return true;
@@ -122,10 +129,17 @@ bool IsPrimopTotal(Primop p) {
   case Primop::VEC_SIZE: return true;
   case Primop::OUT_STRING: return false;
   case Primop::OUT_LAYOUT: return false;
-  default:
-    printf("Uknown primop in IsPrimopTotal");
+
+  case Primop::REPHRASE:
+  case Primop::GET_BOXES:
+    // minimally, internal stuff error out on invalid layout
     return false;
+
+  case Primop::INVALID:
+    LOG(FATAL) << "INVALID primop.";
   }
+  printf("Uknown primop in IsPrimopTotal");
+  return false;
 }
 
 bool IsPrimopDiscardable(Primop p) {
@@ -138,6 +152,11 @@ bool IsPrimopDiscardable(Primop p) {
 
   case Primop::OUT_STRING: return false;
   case Primop::OUT_LAYOUT: return false;
+
+  case Primop::REPHRASE:
+    // Does have internal effects and is expensive, but
+    // not itself observable.
+    return true;
 
   default:
     return IsPrimopTotal(p);
@@ -212,6 +231,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};
   case Primop::OUT_LAYOUT: return {{}, pool->Arrow(Layout, Unit())};
+  case Primop::REPHRASE: return {{}, pool->Arrow(Layout, Layout)};
+  case Primop::GET_BOXES: return {{}, pool->Arrow(Layout, Layout)};
 
   case Primop::VEC_SIZE:
     LOG(FATAL) << "VEC_SIZE is for internal use in bytecode and should not "

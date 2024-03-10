@@ -1,0 +1,151 @@
+(* Layout stuff. *)
+
+(* Scores are given as penalties (positive is bad). *)
+(* Dimensions are in points, nominally 1/72 of an inch. *)
+(* Coordinates start at 0.0 at the top left, with y positive meaning
+   down, and x positive meaning right. (Note this is vertically
+   flipped from what pdf.h and the internal PDF format do!) *)
+
+fun inch (d : float) = d *. 72.0
+fun point (d : float) = d
+fun mm (d : float) = d *. 2.8346456664
+
+fun layout-concat nil = []
+  | layout-concat (l :: t) = [[l][layout-concat t]]
+
+(* Types of layout:
+   (It would be nice if we were distinguishing these statically!)
+
+   (A) Doc. What the document contains in [...]. This is the
+   type called "layout" in BoVeX.
+   This is mainly a tree of styled text, but it can also include
+   fixed-size boxes whose positioning has been finalized (this
+   ties the loop with the below).
+   We use <span> to set properties for the subtree, and <box>
+   for existing fixed-size boxes.
+
+   rephrase can work on this kind of text. It might see some
+   kinds of styling, but the nested boxes are treated opaquely.
+   It returns the same type.
+
+   This is generally what the author of the document is thinking about.
+
+   (B) AllBox. Here we apply the text properties to the <span>
+   so that each word (or kerning particle) has its metrics.
+
+   We can process the document all at once to produce the AllBox
+   version.
+
+   (C) Rendered. Here we have figured out the final placement of
+   everything.
+   *)
+
+
+(* Low-level node info. *)
+val NODE_BOX = "box"
+val NODE_SPAN = "span"
+val NODE_SPAN = "stick"
+object Node of { display : string }
+
+(* Glue follows each box. It describes the space between that box and
+   the next one, including in the case that the break spans lines. *)
+object Glue of { (* The ideal width; badness 0. *)
+                 ideal : float,
+
+                 (* TODO: Could support arbitrary functions here? *)
+                 (* Coefficient giving cost of expansion. Linear. Nominal 1.0 *)
+                 expand : float,
+                 (* Coefficient giving cost of contraction. Linear. Nominal 1.0 *)
+                 contract : float,
+
+                 (* Can be positive, negative, zero... *)
+                 break-penalty : float,
+                 (* When breaking at this point, inserts additional layout.
+                    This is typically a hyphen. *)
+                 break-insert : layout }
+
+(* A box is a fixed-size element that can be moved around
+   within a span during the line-breaking algorithm.
+   Its layout contents are the contents of the node.
+   *)
+object Box of { width: float, height: float,
+                (* Transformation for contents.
+                   We could support arbitrary matrices
+                   here? *)
+                dx: float, dy: float, scale: float,
+
+                (* TODO: a way to indicate ascenders and descenders. *)
+                (* TODO: a way to indicate spaces for channel detection. *)
+
+                (* Post-box glue. *)
+                glue: obj }
+fun box (attrs : obj) (l : layout) =
+  node (attrs with (Node) display = NODE_BOX) l
+
+(* A span lays out boxes one after another. Nested spans can be used
+   to set text properties (like the font). *)
+object Span of { line-height: float,
+                 (* base font. *)
+                 font-name: string,
+                 font-size: float,
+                 (* "", "bold", "italic", "bolditalic" *)
+                 font-weight: string }
+fun span (attrs : obj) (l : layout) =
+  node (attrs with (Node) display = NODE_SPAN) l
+
+
+(* The rendered document is presented to the harness as bunch of
+   stickers in fixed locations on the page. *)
+object Sticker of { x: float, y: float }
+
+  (*
+fun emit-sticker { x : float, y : float, box : layout } =
+output (node {(Sticker) }
+*)
+
+(* Run the line breaking algorithm on a sequence of boxes.
+   This takes
+   <b1><b2><b3><b4><b5><b6><b7><b8><b9><b10><b11><b12><b13><b114>...
+   and gives
+   <l1><b1>...<bn><bn*></l1>
+   <l2><bn+1>...<bm></l2>
+   ...
+
+   where <l> are also boxes. It also reifies glue and inserts any
+   break-insert layout from breaks (likewise, dropping any that is not used).
+
+   *)
+fun line-break (boxes : layout) =
+          fail "unimplemented"
+(*
+  let
+    val res = internal-line-break boxes
+  in
+
+  end
+  *)
+
+(* Generates boxes and glue from text, making this into "AllBox" format. *)
+fun get-boxes (content : layout) =
+  internal-get-boxes content
+(*  internal-get-boxes {(GetBoxes) font = font, size = size, content = content} *)
+
+(*
+ A pararagraph at a time,
+
+ First, rephrase text.
+ Then, get boxes from layout.
+ Then, lay out those boxes into lines.
+ Then, emit the lines into the current
+ text column, adding new columns or
+ pages as needed.
+
+ *)
+
+fun palatino layout =
+  span {(Span) font-name = "Palatino"} layout
+fun helvetica layout =
+  span {(Span) font-name = "Helvetica"} layout
+
+fun b layout =
+  span {(Span) font-weight = "bold"} layout

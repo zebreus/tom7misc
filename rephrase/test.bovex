@@ -1,11 +1,18 @@
 let
   import "stdlib.bovex"
+  import "layout.bovex"
   import "cite.bovex"
   import "paper.bib"
 in
-  output
+  palatino
   [
-   This is my paper!
+   This is my paper. I have written some filler text in order to get the
+   main layout loop working, [helvetica[which]] is the design thing that's stressing
+   me out. Makes sense, as it's kind of the [b[core]] of everything.
+
+   [rephrase
+    [This paragraph has some [b[markup]] in it. It's also inside
+     a call to rephrase.]]
 
    [cite murphy2013first]
 

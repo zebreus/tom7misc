@@ -64,6 +64,9 @@ Initial::Initial(AstPool *pool) {
 
     {"layout", Primop::STRING_TO_LAYOUT},
 
+    {"rephrase", Primop::REPHRASE},
+    {"internal-get-boxes", Primop::GET_BOXES},
+
     {"print", Primop::OUT_STRING},
     {"output", Primop::OUT_LAYOUT},
   };

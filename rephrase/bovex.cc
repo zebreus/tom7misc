@@ -228,7 +228,7 @@ static int Bovex(const std::vector<std::string> &args) {
   Timer timer;
   Compiler compiler;
   // Parse command-line arguments.
-  printf("Date: %s\n", DateTimeStamp().c_str());
+  // printf("Date: %s\n", DateTimeStamp().c_str());
 
   int verbose = 0;
 

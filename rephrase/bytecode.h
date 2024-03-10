@@ -168,8 +168,8 @@ void PrintProgram(const Program &pgm);
 
 // The representation of layout nodes needs to be understood by
 // the harness code.
-static constexpr const char *NODE_ATTRS_LABEL = "a";
-static constexpr const char *NODE_CHILDREN_LABEL = "c";
+inline constexpr const char *NODE_ATTRS_LABEL = "a";
+inline constexpr const char *NODE_CHILDREN_LABEL = "c";
 
 }  // namespace bc
 

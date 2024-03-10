@@ -57,6 +57,9 @@ enum class Primop {
   // currently internal
   VEC_SIZE,
 
+  // expensive stuff implemented by harness
+  REPHRASE,
+  GET_BOXES,
 
   INVALID,
 };
