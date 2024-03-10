@@ -9,10 +9,21 @@
 #include "bytecode.h"
 #include "base/logging.h"
 #include "ansi.h"
+#include "document.h"
 
 namespace bc {
 
-Execution::Execution(const Program &pgm) : program(pgm) {
+struct DegenerateDocument : public Document {
+  // This is independent of font size.
+  const Font *GetDescribedFont(const TextProps &props) override {
+    LOG(FATAL) << "Can't get fonts in degenerate document.";
+    return nullptr;
+  }
+};
+
+Execution::Execution(const Program &pgm) :
+  program(pgm),
+  degenerate_document(new DegenerateDocument) {
 
 }
 
@@ -67,8 +78,12 @@ void Execution::ConsoleHook(const std::string &msg) {
   printf("%s", msg.c_str());
 }
 
-void Execution::DocumentHook(const Value *doc) {
-  printf("(got document)\n");
+void Execution::OutputLayoutHook(const Value *doc) {
+  printf("(output layout ignored)\n");
+}
+
+Document *Execution::DocumentHook() {
+  return degenerate_document.get();
 }
 
 static std::string ColorValuePtrString(const Value *value) {
@@ -294,7 +309,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   }
 
   case Primop::OUT_LAYOUT: {
-    DocumentHook(a);
+    OutputLayoutHook(a);
     return Unit();
   }
 

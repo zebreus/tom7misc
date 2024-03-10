@@ -8,6 +8,7 @@
 #include <string>
 
 #include "bytecode.h"
+#include "document.h"
 
 namespace bc {
 
@@ -56,8 +57,13 @@ struct Execution {
   // Certain hooks are useful for testing.
   virtual void FailHook(const std::string &msg);
   virtual void ConsoleHook(const std::string &msg);
+
+  // Get the document. In normal situations we have one of these,
+  // but for tests we sometimes provide a fake one.
+  virtual Document *DocumentHook();
+
   // For output of layout
-  virtual void DocumentHook(const Value *doc);
+  virtual void OutputLayoutHook(const Value *doc);
 
  private:
   void InternalFail(const std::string &msg, State *state);
@@ -66,6 +72,7 @@ struct Execution {
   Value *DoUnop(Primop primop, Value *a, State *state);
 
   const Program &program;
+  const std::unique_ptr<Document> degenerate_document;
 };
 
 

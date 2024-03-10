@@ -8,6 +8,54 @@
 #include "base/logging.h"
 #include "ansi.h"
 #include "util.h"
+#include "bytecode.h"
+
+const AttrVal *DocTree::GetAttr(const std::string &name) const {
+  const auto it = attrs.find(name);
+  if (it == attrs.end()) return nullptr;
+  return &it->second;
+}
+
+const std::string *DocTree::GetStringAttr(const std::string &name) const {
+  if (const AttrVal *a = GetAttr(name)) {
+    if (const std::string *s = std::get_if<std::string>(&a->v)) {
+      return s;
+    } else {
+      LOG(FATAL) << "Attribute " << name << " was present, but expected "
+        "string type.";
+    }
+  }
+  return nullptr;
+}
+
+const double *DocTree::GetDoubleAttr(const std::string &name) const {
+  if (const AttrVal *a = GetAttr(name)) {
+    if (const double *d = std::get_if<double>(&a->v)) {
+      return d;
+    } else {
+      LOG(FATAL) << "Attribute " << name << " was present, but expected "
+        "double type.";
+    }
+  }
+  return nullptr;
+}
+
+static bool TRUE = true;
+static bool FALSE = false;
+const bool *DocTree::GetBoolAttr(const std::string &name) const {
+  if (const AttrVal *a = GetAttr(name)) {
+    if (const uint64_t *u = std::get_if<uint64_t>(&a->v)) {
+      // The attrval doesn't actually store a bool, so point to some
+      // singletons.
+      return *u ? &TRUE : &FALSE;
+    } else {
+      LOG(FATAL) << "Attribute " << name << " was present, but expected "
+        "bool type.";
+    }
+  }
+  return nullptr;
+}
+
 
 std::string AttrValString(const AttrVal &val) {
   if (const std::string *s = std::get_if<std::string>(&val.v)) {
@@ -38,10 +86,10 @@ AttrVal ConvertAttrVal(const std::string &field, const bc::Value &val) {
   }
 }
 
-Document ValueToDoc(const bc::Value *v) {
+DocTree ValueToDocTree(const bc::Value *v) {
   std::unordered_set<const bc::Value *> seen;
-  std::function<Document(const bc::Value *)> Rec =
-      [&seen, &Rec](const bc::Value *v) -> Document {
+  std::function<DocTree(const bc::Value *)> Rec =
+      [&seen, &Rec](const bc::Value *v) -> DocTree {
         CHECK(!seen.contains(v)) << "Cycle in document! "
           "What is this, some kind of joke!?";
         seen.insert(v);
@@ -49,7 +97,7 @@ Document ValueToDoc(const bc::Value *v) {
         using map_type = std::unordered_map<std::string, bc::Value *>;
         using vec_type = std::vector<bc::Value *>;
 
-        Document doc;
+        DocTree doc;
         if (const std::string *s = std::get_if<std::string>(&v->v)) {
           doc.text = *s;
           return doc;
@@ -73,7 +121,7 @@ Document ValueToDoc(const bc::Value *v) {
           }
 
           for (const bc::Value *v : *cvec) {
-            doc.children.emplace_back(std::make_shared<Document>(Rec(v)));
+            doc.children.emplace_back(std::make_shared<DocTree>(Rec(v)));
           }
 
           return doc;
@@ -90,16 +138,19 @@ static std::string Pad(int depth) {
   return std::string(depth, ' ');
 }
 
-void DebugPrintDoc(const Document &doc) {
-  std::function<void(int, const Document &)> Rec =
-    [&Rec](int depth, const Document &doc) {
-      if (doc.attrs.empty() && doc.children.empty()) {
+bool IsText(const DocTree &doc) {
+  // If it has no attrs or children, it is a text node (even if
+  // text is also empty).
+  return doc.attrs.empty() && doc.children.empty();
+}
 
+void DebugPrintDocTree(const DocTree &doc) {
+  std::function<void(int, const DocTree &)> Rec =
+    [&Rec](int depth, const DocTree &doc) {
+      if (IsText(doc)) {
         // We should be careful about normalizing whitespace here,
         // since it sometimes has meaning.
         const std::string t = Util::NormalizeWhitespace(doc.text);
-        // If it has no attrs or children, it is a text node (even if
-        // text is also empty).
         printf("%s" AWHITE("%s") "\n",
                Pad(depth).c_str(),
                t.c_str());
@@ -127,3 +178,103 @@ void DebugPrintDoc(const Document &doc) {
     };
   Rec(0, doc);
 }
+
+DocTree JoinDocs(std::vector<DocTree> docs) {
+  if (docs.empty()) {
+    return DocTree();
+  }
+
+  if (docs.size() == 1) {
+    return std::move(docs[0]);
+  }
+
+  DocTree doc;
+  doc.children.resize(docs.size());
+  for (DocTree &d : docs) {
+    doc.children.emplace_back(std::make_shared<DocTree>(std::move(d)));
+  }
+  docs.clear();
+  return doc;
+}
+
+  #if 0
+  // Kerns
+  // Each substring has additional space after it (can be negative).
+  // The final space does nothing and can take any value.
+  //
+  // Spacing is relative: It is simply scaled by the font size.
+  //
+  // Spacing here is nominally positive (larger values mean more space)
+  // and in point units like everything else.
+  std::vector<std::pair<std::string, float>>
+  KernText(const Font *font, const std::string &text) const;
+#endif
+
+static std::vector<DocTree>
+BoxifyText(const Font *font, double font_size, const std::string &text) {
+  LOG(FATAL) << "Unimplemented";
+  return {};
+}
+
+const Font *Document::GetDescribedFont(const TextProps &props) {
+  LOG(FATAL) << "The abstract base class of Document does not understand "
+    "fonts on its own!";
+}
+
+// Converts layout (spans with style) into boxes that have
+// definite size and glue.
+DocTree Document::GetBoxes(const DocTree &doc) {
+  std::vector<DocTree> out;
+
+  std::function<void(TextProps props, const DocTree &)> Rec =
+    [this, &out, &Rec](TextProps props, const DocTree &doc) {
+        if (IsText(doc)) {
+
+          const Font *font = GetDescribedFont(props);
+
+          std::vector<DocTree> boxes =
+            BoxifyText(font, props.font_size, doc.text);
+          for (DocTree &d : boxes) out.push_back(std::move(d));
+          boxes.clear();
+
+        } else {
+          if (const std::string *display = doc.GetStringAttr("display")) {
+            if (*display == "box") {
+              // This is already a box with a fixed size, so we just copy it.
+              out.push_back(doc);
+              return;
+            } else if (*display == "span") {
+              if (const std::string *f = doc.GetStringAttr("font-face")) {
+                props.font_face = *f;
+              }
+
+              if (const double *d = doc.GetDoubleAttr("font-size")) {
+                props.font_size = *d;
+              }
+
+              if (const bool *b = doc.GetBoolAttr("font-bold")) {
+                props.font_bold = *b;
+              }
+
+              if (const bool *b = doc.GetBoolAttr("font-italic")) {
+                props.font_italic = *b;
+              }
+
+            } else {
+              LOG(FATAL) << "Unknown display: " << *display;
+            }
+          }
+
+          // Process children.
+          for (const std::shared_ptr<DocTree> &child : doc.children) {
+            Rec(props, *child);
+          }
+        }
+      };
+
+  // Get default text props somehow.
+  TextProps props;
+  Rec(props, doc);
+  return JoinDocs(out);
+}
+

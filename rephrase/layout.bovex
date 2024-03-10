@@ -86,10 +86,11 @@ fun box (attrs : obj) (l : layout) =
    to set text properties (like the font). *)
 object Span of { line-height: float,
                  (* base font. *)
-                 font-name: string,
+                 font-face: string,
                  font-size: float,
-                 (* "", "bold", "italic", "bolditalic" *)
-                 font-weight: string }
+                 (* Selects a font variant *)
+                 font-bold: bool,
+                 font-italic: bool }
 fun span (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_SPAN) l
 
@@ -143,9 +144,15 @@ fun get-boxes (content : layout) =
  *)
 
 fun palatino layout =
-  span {(Span) font-name = "Palatino"} layout
+  span {(Span) font-face = "Palatino"} layout
 fun helvetica layout =
-  span {(Span) font-name = "Helvetica"} layout
+  span {(Span) font-face = "Helvetica"} layout
 
 fun b layout =
-  span {(Span) font-weight = "bold"} layout
+  span {(Span) font-bold = true} layout
+
+fun it layout =
+  span {(Span) font-italic = true} layout
+
+fun rm layout =
+  span {(Span) font-bold = false, font-italic = false} layout
