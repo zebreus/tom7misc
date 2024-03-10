@@ -67,6 +67,10 @@ void Execution::InternalFail(const std::string &msg, State *state) {
   state->stack.clear();
 }
 
+Value *Execution::RephraseHook(Value *layout) {
+  return layout;
+}
+
 // Certain hooks are useful for testing.
 void Execution::FailHook(const std::string &msg) {
   fprintf(stderr, AWHITE("[") ARED("FAIL") AWHITE("]")
@@ -311,6 +315,10 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::OUT_LAYOUT: {
     OutputLayoutHook(a);
     return Unit();
+  }
+
+  case Primop::REPHRASE: {
+    return RephraseHook(a);
   }
 
   case Primop::REF:

@@ -5,7 +5,7 @@
 
 #include <utility>
 #include <cstdint>
-#include <string>
+#include <string_view>
 
 struct UTF8 {
 
@@ -19,7 +19,7 @@ struct UTF8 {
 
 // Iterate over the codepoints in a string.
 struct UTF8Codepoints {
-  UTF8Codepoints(const std::string &s);
+  UTF8Codepoints(std::string_view s);
 
   struct const_iterator {
     constexpr const_iterator(const char *ptr, const char *limit) :

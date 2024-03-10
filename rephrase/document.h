@@ -11,7 +11,6 @@
 
 #include "bignum/big.h"
 #include "bytecode.h"
-#include "pdf.h"
 
 struct AttrVal {
   using t = std::variant<
@@ -37,6 +36,12 @@ struct DocTree {
   const std::string *GetStringAttr(const std::string &) const;
   const double *GetDoubleAttr(const std::string &) const;
   const bool *GetBoolAttr(const std::string &) const;
+
+  // Simply overwriting the attribute if already present.
+  void SetStringAttr(const std::string &name, const std::string &value);
+  void SetDoubleAttr(const std::string &name, double d);
+
+  void AddChild(DocTree doc);
 };
 
 std::string AttrValString(const AttrVal &val);
@@ -44,6 +49,10 @@ AttrVal ConvertAttrVal(const std::string &field, const bc::Value &val);
 
 // Copies the value, converting it to DocTree format.
 DocTree ValueToDocTree(const bc::Value *v);
+// Copies the DocTree back into the execution heap, and returns a
+// pointer to it.
+bc::Value *DocTreeToValue(std::vector<bc::Value *> *heap, const DocTree &doc);
+
 void DebugPrintDocTree(const DocTree &doc);
 
 DocTree GetBoxes(const DocTree &doc);

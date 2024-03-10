@@ -1,21 +1,21 @@
 
 #include <string>
 #include <string_view>
-#include <chrono>
-#include <format>
+#include <utility>
+#include <vector>
 
 #include "compiler.h"
 #include "frontend.h"
 #include "execution.h"
 
-#include "timer.h"
-#include "util.h"
-#include "base/logging.h"
 #include "ansi.h"
-#include "pdf.h"
+#include "base/logging.h"
 #include "document.h"
 #include "pdf-document.h"
-
+#include "pdf.h"
+#include "rephrasing.h"
+#include "timer.h"
+#include "util.h"
 
 static void GeneratePDF(const std::string &filename) {
   PDF::Info info;
@@ -121,6 +121,10 @@ static int Bovex(const std::vector<std::string> &args) {
     "on the command-line.";
 
   bc::Program pgm = compiler.Compile(leftover[0]);
+
+  Rephrasing rephrasing;
+
+  // TODO: In a loop!
 
   // Dimensions should be settable from within program!
   PDFDocument pdf_document(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);

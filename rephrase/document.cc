@@ -9,6 +9,22 @@
 #include "ansi.h"
 #include "util.h"
 #include "bytecode.h"
+#include "utf.h"
+
+// Could use actual infinity.
+static constexpr double INFINITE_PENALTY = 9999999.0;
+
+void DocTree::AddChild(DocTree d) {
+  children.push_back(std::make_shared<DocTree>(std::move(d)));
+}
+
+void DocTree::SetStringAttr(const std::string &name, const std::string &value) {
+  attrs[name] = AttrVal{.v = {value}};
+}
+
+void DocTree::SetDoubleAttr(const std::string &name, double d) {
+  attrs[name] = AttrVal{.v = {d}};
+}
 
 const AttrVal *DocTree::GetAttr(const std::string &name) const {
   const auto it = attrs.find(name);
@@ -89,49 +105,98 @@ AttrVal ConvertAttrVal(const std::string &field, const bc::Value &val) {
 DocTree ValueToDocTree(const bc::Value *v) {
   std::unordered_set<const bc::Value *> seen;
   std::function<DocTree(const bc::Value *)> Rec =
-      [&seen, &Rec](const bc::Value *v) -> DocTree {
-        CHECK(!seen.contains(v)) << "Cycle in document! "
-          "What is this, some kind of joke!?";
-        seen.insert(v);
+    [&seen, &Rec](const bc::Value *v) -> DocTree {
+      CHECK(!seen.contains(v)) << "Cycle in document! "
+        "What is this, some kind of joke!?";
+      seen.insert(v);
 
-        using map_type = std::unordered_map<std::string, bc::Value *>;
-        using vec_type = std::vector<bc::Value *>;
+      using map_type = std::unordered_map<std::string, bc::Value *>;
+      using vec_type = std::vector<bc::Value *>;
 
-        DocTree doc;
-        if (const std::string *s = std::get_if<std::string>(&v->v)) {
-          doc.text = *s;
-          return doc;
-        } else if (const map_type *obj = std::get_if<map_type>(&v->v)) {
-          auto ait = obj->find(bc::NODE_ATTRS_LABEL);
-          CHECK(ait != obj->end()) << "Nodes always have an attribute object, "
-            "even if it is empty.";
-          const map_type *aobj = std::get_if<map_type>(&ait->second->v);
-          CHECK(aobj != nullptr) << "In a node, the attribute field is always "
-            "an object, even if it is empty.";
+      DocTree doc;
+      if (const std::string *s = std::get_if<std::string>(&v->v)) {
+        doc.text = *s;
+        return doc;
+      } else if (const map_type *obj = std::get_if<map_type>(&v->v)) {
+        auto ait = obj->find(bc::NODE_ATTRS_LABEL);
+        CHECK(ait != obj->end()) << "Nodes always have an attribute object, "
+          "even if it is empty.";
+        const map_type *aobj = std::get_if<map_type>(&ait->second->v);
+        CHECK(aobj != nullptr) << "In a node, the attribute field is always "
+          "an object, even if it is empty.";
 
-          auto cit = obj->find(bc::NODE_CHILDREN_LABEL);
-          CHECK(cit != obj->end()) << "Nodes always have a children vector, "
-            "even if it is empty.";
-          const vec_type *cvec = std::get_if<vec_type>(&cit->second->v);
-          CHECK(cvec != nullptr) << "In a node, the children field is always "
-            "a vector.";
+        auto cit = obj->find(bc::NODE_CHILDREN_LABEL);
+        CHECK(cit != obj->end()) << "Nodes always have a children vector, "
+          "even if it is empty.";
+        const vec_type *cvec = std::get_if<vec_type>(&cit->second->v);
+        CHECK(cvec != nullptr) << "In a node, the children field is always "
+          "a vector.";
 
-          for (const auto &[k, v] : *aobj) {
-            doc.attrs[k] = ConvertAttrVal(k, *v);
-          }
-
-          for (const bc::Value *v : *cvec) {
-            doc.children.emplace_back(std::make_shared<DocTree>(Rec(v)));
-          }
-
-          return doc;
-        } else {
-          LOG(FATAL) << "Bug: Layout values should be represented as either "
-            "strings or maps (objects).";
-          return doc;
+        for (const auto &[k, v] : *aobj) {
+          doc.attrs[k] = ConvertAttrVal(k, *v);
         }
-      };
+
+        for (const bc::Value *v : *cvec) {
+          doc.AddChild(Rec(v));
+        }
+
+        return doc;
+      } else {
+        LOG(FATAL) << "Bug: Layout values should be represented as either "
+          "strings or maps (objects).";
+        return doc;
+      }
+    };
   return Rec(v);
+}
+
+
+// Calls "new Value" with the args; stores in heap.
+template<typename... Args>
+static bc::Value *NewValue(std::vector<bc::Value *> *heap, Args&&... args) {
+  bc::Value *v = new bc::Value{.v = std::forward<Args>(args)...};
+  heap->push_back(v);
+  return v;
+}
+
+static bc::Value *NewString(std::vector<bc::Value *> *heap,
+                            std::string s) {
+  return NewValue(heap, std::move(s));
+}
+
+static bc::Value *NewObj(std::vector<bc::Value *> *heap,
+                         std::unordered_map<std::string, bc::Value *> m) {
+  return NewValue(heap, std::move(m));
+}
+
+static bc::Value *NewVec(std::vector<bc::Value *> *heap,
+                         std::vector<bc::Value *> v) {
+  return NewValue(heap, std::move(v));
+}
+
+bc::Value *DocTreeToValue(std::vector<bc::Value *> *heap, const DocTree &doc) {
+  std::function<bc::Value *(const DocTree &doc)> Rec =
+    [heap, &Rec](const DocTree &doc) -> bc::Value * {
+      if (IsText(doc)) {
+        // Text is represented as a string.
+        return NewString(heap, doc.text);
+      } else {
+        std::unordered_map<std::string, bc::Value *> attrs;
+        std::vector<bc::Value *> children;
+        children.reserve(doc.children.size());
+        for (const auto &c : doc.children) {
+          children.push_back(Rec(*c));
+        }
+
+        std::unordered_map<std::string, bc::Value *> node = {
+          {bc::NODE_ATTRS_LABEL, NewObj(heap, std::move(attrs))},
+          {bc::NODE_CHILDREN_LABEL, NewVec(heap, std::move(children))},
+        };
+
+        return NewObj(heap, std::move(node));
+      }
+    };
+  return Rec(doc);
 }
 
 static std::string Pad(int depth) {
@@ -191,29 +256,107 @@ DocTree JoinDocs(std::vector<DocTree> docs) {
   DocTree doc;
   doc.children.resize(docs.size());
   for (DocTree &d : docs) {
-    doc.children.emplace_back(std::make_shared<DocTree>(std::move(d)));
+    doc.AddChild(std::move(d));
   }
   docs.clear();
   return doc;
 }
 
-  #if 0
-  // Kerns
-  // Each substring has additional space after it (can be negative).
-  // The final space does nothing and can take any value.
-  //
-  // Spacing is relative: It is simply scaled by the font size.
-  //
-  // Spacing here is nominally positive (larger values mean more space)
-  // and in point units like everything else.
-  std::vector<std::pair<std::string, float>>
-  KernText(const Font *font, const std::string &text) const;
-#endif
+static std::string_view NextWord(std::string_view &text) {
+  auto pos = text.find(' ');
+  if (pos == std::string_view::npos) {
+    std::string_view ret = text;
+    text.remove_prefix(ret.size());
+    return ret;
+  }
+
+  std::string_view ret = text.substr(0, pos);
+  text.remove_prefix(pos);
+  return ret;
+}
+
+DocTree TextDoc(const std::string &s) {
+  DocTree d;
+  d.text = s;
+  return d;
+}
 
 static std::vector<DocTree>
-BoxifyText(const Font *font, double font_size, const std::string &text) {
-  LOG(FATAL) << "Unimplemented";
-  return {};
+BoxifyText(const Font *font, double font_size, std::string_view text) {
+  std::vector<DocTree> out;
+
+  const double space_width = font->CharWidth(' ');
+
+  // Work a word at a time.
+  while (!text.empty()) {
+    std::string_view word = NextWord(text);
+    if (word.empty()) continue;
+
+    // TODO: Here's where we would implement hyphenation.
+
+    // Then to turn the word into boxes, read successive codepoints
+    // from it.
+    uint32_t prev = ' ';
+    std::string chunk;
+    double chunk_width = 0.0;
+    for (const uint32_t codepoint : UTF8Codepoints(text)) {
+      double char_width = font->CharWidth(codepoint);
+      std::optional<double> kern = font->GetKerning(prev, codepoint);
+      if (kern.has_value()) {
+        // If there is a kerning pair, make an unbreakable box to
+        // contain the chunk so far.
+        DocTree d;
+        d.SetStringAttr("display", "box");
+        // XXX chunk height?
+        d.SetDoubleAttr("width", chunk_width);
+        // PERF The font is normalized onto every chunk, which may be kinda
+        // expensive.
+        d.SetDoubleAttr("font-size", font_size);
+        d.SetStringAttr("font-name", font->Name());
+
+        // Since this is inside a word, we disable breaks here by setting
+        // the break penalty "infinite".
+        d.SetDoubleAttr("glue-break-penalty", INFINITE_PENALTY);
+
+        d.AddChild(TextDoc(chunk));
+        out.push_back(std::move(d));
+
+        chunk = Util::EncodeUTF8(codepoint);
+        chunk_width = char_width;
+
+      } else {
+        // Extend the chunk.
+        chunk += Util::EncodeUTF8(codepoint);
+        chunk_width += char_width;
+      }
+      prev = codepoint;
+    }
+
+    CHECK(!chunk.empty()) << "We only break on kerning pairs, so the chunk "
+      "is never empty for non-empty words!";
+
+    // The final chunk, which is frequently the entire word, allows a break
+    // after it.
+    DocTree d;
+    d.SetStringAttr("display", "box");
+    // XXX chunk height?
+    d.SetDoubleAttr("width", chunk_width);
+    d.SetDoubleAttr("font-size", font_size);
+    d.SetStringAttr("font-name", font->Name());
+
+    // No penalty to break between words. We could use some heuristics to
+    // penalize certain breaks in the future. (For example, breaking after
+    // a comma or semicolon seems better.)
+    d.SetDoubleAttr("glue-break-penalty", 0.0);
+    d.SetDoubleAttr("glue-ideal", space_width);
+    // Relative penalty for contracting.
+    d.SetDoubleAttr("glue-contract", 4.0);
+
+    d.AddChild(TextDoc(chunk));
+    out.push_back(std::move(d));
+  }
+
+  return out;
 }
 
 const Font *Document::GetDescribedFont(const TextProps &props) {
@@ -228,51 +371,52 @@ DocTree Document::GetBoxes(const DocTree &doc) {
 
   std::function<void(TextProps props, const DocTree &)> Rec =
     [this, &out, &Rec](TextProps props, const DocTree &doc) {
-        if (IsText(doc)) {
+      if (IsText(doc)) {
 
-          const Font *font = GetDescribedFont(props);
+        const Font *font = GetDescribedFont(props);
 
-          std::vector<DocTree> boxes =
-            BoxifyText(font, props.font_size, doc.text);
-          for (DocTree &d : boxes) out.push_back(std::move(d));
-          boxes.clear();
+        std::vector<DocTree> boxes =
+          BoxifyText(font, props.font_size, doc.text);
+        for (DocTree &d : boxes)
+          out.push_back(std::move(d));
+        boxes.clear();
 
-        } else {
-          if (const std::string *display = doc.GetStringAttr("display")) {
-            if (*display == "box") {
-              // This is already a box with a fixed size, so we just copy it.
-              out.push_back(doc);
-              return;
-            } else if (*display == "span") {
-              if (const std::string *f = doc.GetStringAttr("font-face")) {
-                props.font_face = *f;
-              }
-
-              if (const double *d = doc.GetDoubleAttr("font-size")) {
-                props.font_size = *d;
-              }
-
-              if (const bool *b = doc.GetBoolAttr("font-bold")) {
-                props.font_bold = *b;
-              }
-
-              if (const bool *b = doc.GetBoolAttr("font-italic")) {
-                props.font_italic = *b;
-              }
-
-            } else {
-              LOG(FATAL) << "Unknown display: " << *display;
+      } else {
+        if (const std::string *display = doc.GetStringAttr("display")) {
+          if (*display == "box") {
+            // This is already a box with a fixed size, so we just copy it.
+            out.push_back(doc);
+            return;
+          } else if (*display == "span") {
+            if (const std::string *f = doc.GetStringAttr("font-face")) {
+              props.font_face = *f;
             }
-          }
 
-          // Process children.
-          for (const std::shared_ptr<DocTree> &child : doc.children) {
-            Rec(props, *child);
+            if (const double *d = doc.GetDoubleAttr("font-size")) {
+              props.font_size = *d;
+            }
+
+            if (const bool *b = doc.GetBoolAttr("font-bold")) {
+              props.font_bold = *b;
+            }
+
+            if (const bool *b = doc.GetBoolAttr("font-italic")) {
+              props.font_italic = *b;
+            }
+
+          } else {
+            LOG(FATAL) << "Unknown display: " << *display;
           }
         }
-      };
 
-  // Get default text props somehow.
+        // Process children.
+        for (const std::shared_ptr<DocTree> &child : doc.children) {
+          Rec(props, *child);
+        }
+      }
+    };
+
+  // Get default text props somehow?
   TextProps props;
   Rec(props, doc);
   return JoinDocs(out);

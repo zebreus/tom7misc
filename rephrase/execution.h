@@ -58,12 +58,14 @@ struct Execution {
   virtual void FailHook(const std::string &msg);
   virtual void ConsoleHook(const std::string &msg);
 
+  virtual Value *RephraseHook(Value *layout);
+
   // Get the document. In normal situations we have one of these,
   // but for tests we sometimes provide a fake one.
   virtual Document *DocumentHook();
 
   // For output of layout
-  virtual void OutputLayoutHook(const Value *doc);
+  virtual void OutputLayoutHook(const Value *layout);
 
  private:
   void InternalFail(const std::string &msg, State *state);

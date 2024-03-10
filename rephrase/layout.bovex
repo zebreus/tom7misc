@@ -47,27 +47,13 @@ val NODE_SPAN = "span"
 val NODE_SPAN = "stick"
 object Node of { display : string }
 
-(* Glue follows each box. It describes the space between that box and
+
+(* A box is a fixed-size element that can be moved around within a
+   span during the line-breaking algorithm. Its layout contents are
+   the contents of the node.
+
+   Glue follows each box. It describes the space between that box and
    the next one, including in the case that the break spans lines. *)
-object Glue of { (* The ideal width; badness 0. *)
-                 ideal : float,
-
-                 (* TODO: Could support arbitrary functions here? *)
-                 (* Coefficient giving cost of expansion. Linear. Nominal 1.0 *)
-                 expand : float,
-                 (* Coefficient giving cost of contraction. Linear. Nominal 1.0 *)
-                 contract : float,
-
-                 (* Can be positive, negative, zero... *)
-                 break-penalty : float,
-                 (* When breaking at this point, inserts additional layout.
-                    This is typically a hyphen. *)
-                 break-insert : layout }
-
-(* A box is a fixed-size element that can be moved around
-   within a span during the line-breaking algorithm.
-   Its layout contents are the contents of the node.
-   *)
 object Box of { width: float, height: float,
                 (* Transformation for contents.
                    We could support arbitrary matrices
@@ -77,8 +63,23 @@ object Box of { width: float, height: float,
                 (* TODO: a way to indicate ascenders and descenders. *)
                 (* TODO: a way to indicate spaces for channel detection. *)
 
-                (* Post-box glue. *)
-                glue: obj }
+                (* The ideal width; badness 0. *)
+                glue-ideal : float,
+
+                (* TODO: Could support arbitrary functions here? *)
+                (* Coefficient giving cost of expansion.
+                   Linear. Nominal 1.0 *)
+                glue-expand : float,
+                (* Coefficient giving cost of contraction.
+                   Linear. Nominal 1.0 *)
+                glue-contract : float,
+
+                (* Can be positive, negative, zero... *)
+                glue-break-penalty : float,
+                (* When breaking at this point, inserts additional layout.
+                   This is typically a hyphen. *)
+                glue-break-insert : layout }
+
 fun box (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_BOX) l
 

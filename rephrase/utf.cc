@@ -3,7 +3,7 @@
 
 #include <cstdint>
 #include <utility>
-#include <string>
+#include <string_view>
 
 #include "base/logging.h"
 
@@ -42,7 +42,7 @@ std::pair<int, uint32_t> UTF8::UTF8ToUTF32(const char *utf8, int len) {
   return std::make_pair(len, ch);
 }
 
-UTF8Codepoints::UTF8Codepoints(const std::string &s) :
+UTF8Codepoints::UTF8Codepoints(std::string_view s) :
   begin_it(s.data(), s.data() + s.size()),
   end_it(s.data() + s.size(), s.data() + s.size()) {}
 
