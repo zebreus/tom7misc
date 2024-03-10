@@ -166,6 +166,11 @@ std::string ColorInstString(const Inst &inst);
 // Dump the entire program with ANSI colors codes.
 void PrintProgram(const Program &pgm);
 
+// The representation of layout nodes needs to be understood by
+// the harness code.
+static constexpr const char *NODE_ATTRS_LABEL = "a";
+static constexpr const char *NODE_CHILDREN_LABEL = "c";
+
 }  // namespace bc
 
 #endif

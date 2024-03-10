@@ -24,8 +24,6 @@ struct Converter {
   static constexpr const char *INJ_VALUE = "$";
 
   static constexpr const char *REF_LABEL = "r";
-  static constexpr const char *NODE_ATTRS_LABEL = "a";
-  static constexpr const char *NODE_CHILDREN_LABEL = "c";
 
   // Object fields are distinguished by their types. We just encode this in
   // the field name. We could use anything here, but we use something that's
