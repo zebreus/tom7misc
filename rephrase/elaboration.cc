@@ -778,7 +778,11 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       t = pool->SubstType(w, vi->tyvars[i], t);
     }
 
-    if (vi->primop.has_value()) {
+    if (vi->inlined != nullptr) {
+      CHECK(vi->tyvars.empty()) << "Not expected, but we could support this.";
+      return std::make_pair(vi->inlined, vi->type);
+
+    } else if (vi->primop.has_value()) {
       Primop po = vi->primop.value();
       const auto &[type_arity, val_arity] = PrimopArity(po);
       CHECK((int)tvs.size() == type_arity) << "Bug: Wrong number of type "
@@ -992,7 +996,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     if (!objtype.empty()) {
       ovi = G.FindObj(objtype);
       CHECK(ovi != nullptr) << "Unbound object name " << objtype <<
-        "in with expression: " << ExpString(el_exp);
+        " in with expression: " << ExpString(el_exp);
     }
 
     const il::ObjFieldType ftype =
@@ -1012,7 +1016,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     if (!objtype.empty()) {
       ovi = G.FindObj(objtype);
       CHECK(ovi != nullptr) << "Unbound object name " << objtype <<
-        "in without expression: " << ExpString(el_exp);
+        " in without expression: " << ExpString(el_exp);
     }
 
     const il::ObjFieldType ftype =

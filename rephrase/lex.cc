@@ -188,8 +188,10 @@ std::optional<std::vector<Token>> Lexing::Lex(
   // TODO: Allow UTF-8
   // Note that - and _ can appear in alphanumeric-identifiers
   // as well as symbolic ones.
+  // Note that . can appear in symbolic identifiers, but not as the
+  // first character.
   #define ALPHA_IDENT "(?:[A-Za-z][-'_A-Za-z0-9]*)"
-  #define SYMBOLIC_IDENT "(?:[-~`!@#$%^&*=_+|:<>?/]+)"
+  #define SYMBOLIC_IDENT "(?:[-~`!@#$%^&*=_+|:<>?/][-~`!@#$%^&*=_+|:<>?/.]*)"
   static const RE2 ident("(" ALPHA_IDENT "|" SYMBOLIC_IDENT ")");
   static const RE2 strlit(
     // Starting with double quote

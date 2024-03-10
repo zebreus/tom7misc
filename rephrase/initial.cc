@@ -37,6 +37,11 @@ Initial::Initial(AstPool *pool) {
     {"div", Primop::INT_DIV},
     {"mod", Primop::INT_MOD},
 
+    {"+.", Primop::FLOAT_PLUS},
+    {"-.", Primop::FLOAT_MINUS},
+    {"*.", Primop::FLOAT_TIMES},
+    {"/.", Primop::FLOAT_DIV},
+
     // Perhaps these should just be overloaded α * α -> bool,
     // with some hack to resolve them?
     {"==", Primop::INT_EQ},
@@ -67,6 +72,25 @@ Initial::Initial(AstPool *pool) {
   exp_vars.reserve(primops.size());
   for (const auto &[x, p] : primops) {
     exp_vars.emplace_back(x, LookupPrimop(p));
+  }
+
+  const Type *node_type2 = pool->Arrow(pool->LayoutType(), pool->LayoutType());
+  const Type *node_type1 = pool->Arrow(pool->ObjType(), node_type2);
+  const std::vector<std::tuple<std::string, const Exp *, const Type *>> inlined = {
+    {"node", pool->Fn("", "a", node_type1,
+                      pool->Fn("", "l", node_type2,
+                               pool->Node(pool->Var({}, "a"),
+                                          {pool->Var({}, "l")}))), node_type1},
+  };
+
+  for (const auto &[v, e, t] : inlined) {
+    exp_vars.emplace_back(
+        v,
+        VarInfo{
+          .tyvars = {},
+          .type = t,
+          .inlined = e,
+        });
   }
 
   const il::Type *String = pool->StringType();

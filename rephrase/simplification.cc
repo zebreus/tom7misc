@@ -79,7 +79,10 @@ static bool IsSmallValue(const Exp *e) {
   case ExpType::VAR:
     return true;
   case ExpType::RECORD:
-    return e->Record().size() == 0;
+    return e->Record().empty();
+
+  case ExpType::OBJECT:
+    return e->Object().empty();
 
   // TODO: Functions that are primops or constructors.
   default:
@@ -98,6 +101,13 @@ static bool IsEffectless(const Exp *e) {
 
   case ExpType::RECORD: {
     for (const auto &[lab, child] : e->Record()) {
+      if (!IsEffectless(child)) return false;
+    }
+    return true;
+  }
+
+  case ExpType::OBJECT: {
+    for (const auto &[lab, oft, child] : e->Object()) {
       if (!IsEffectless(child)) return false;
     }
     return true;

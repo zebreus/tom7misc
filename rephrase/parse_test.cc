@@ -337,6 +337,21 @@ static void TestParse() {
   }
 
   {
+    const char *s = "x *. 0.5";
+    const Exp *e = Parse(s);
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::APP);
+    CHECK(e->a->type == ExpType::VAR);
+    CHECK(e->a->str == "*.");
+    CHECK(e->b->type == ExpType::TUPLE);
+    CHECK(e->b->children.size() == 2);
+    CHECK(e->b->children[0]->type == ExpType::VAR);
+    CHECK(e->b->children[0]->str == "x");
+    CHECK(e->b->children[1]->type == ExpType::FLOAT);
+    CHECK(e->b->children[1]->d == 0.5);
+  }
+
+  {
     const char *s = "f x + 100";
     const Exp *e = Parse(s);
     CHECK(e != nullptr);

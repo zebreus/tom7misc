@@ -17,7 +17,7 @@ struct VarInfo {
   const Type *type = nullptr;
 
   // The il variable that the el var refers to.
-  // This will be blank if a primop (below).
+  // This will be blank if a primop, ctor, or inlined (below).
   //
   // XXX: This makes sense as an elaboration context, but we
   // probably will want a "regular il context" so that we can do
@@ -36,6 +36,11 @@ struct VarInfo {
   // Components are: mu index (XXX needed?),
   //   full mu type (XXX needed? it's in the arrow), sum label
   std::optional<std::tuple<int, const Type *, std::string>> ctor;
+
+  // As another implementation detail, some identifiers are built-in
+  // inlined code, like "node". These are only set by the initial
+  // context. nullptr for normal vars, primops, and ctors.
+  const Exp *inlined = nullptr;
 };
 
 struct TypeVarInfo {

@@ -732,6 +732,27 @@ static void TestObjects() {
         "end\n");
     CHECK(pgm.body->type == ExpType::WITHOUT);
   }
+}
+
+static void TestLayout() {
+  constexpr bool VERBOSE = false;
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(2);
+  }
+
+  {
+    const Program pgm = Run(
+        "let object ABC of { x : int }\n"
+        "in node {(ABC) } [hi] end");
+    if (VERBOSE) {
+      printf("%s", ProgramString(pgm).c_str());
+    }
+    CHECK(pgm.body->type == ExpType::NODE);
+    const auto &[attrs, children] = pgm.body->Node();
+    CHECK(attrs->type == ExpType::OBJECT);
+    CHECK(children.size() == 1);
+  }
 
 }
 
@@ -759,6 +780,7 @@ int main(int argc, char **argv) {
   il::TestDatatypes();
   il::TestFun();
   il::TestObjects();
+  il::TestLayout();
 
   il::Regression();
 
