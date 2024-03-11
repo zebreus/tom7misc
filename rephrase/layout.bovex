@@ -131,6 +131,11 @@ fun line-break (boxes : layout) =
 fun get-boxes (content : layout) =
   internal-get-boxes content
 
+(* Generates a series of lines (boxes) with the glue turned into definite
+   padding. Still in "AllBox" format. *)
+fun pack-boxes (width : float, content : layout) =
+  internal-pack-boxes (width, content)
+
 (*
  A pararagraph at a time,
 

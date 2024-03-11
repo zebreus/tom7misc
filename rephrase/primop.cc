@@ -95,7 +95,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
   case Primop::OUT_LAYOUT: return std::make_tuple(0, 1);
   case Primop::GET_BOXES: return std::make_tuple(0, 1);
-  case Primop::PACK_BOXES: return std::make_tuple(0, 1);
+  case Primop::PACK_BOXES: return std::make_tuple(0, 2);
   case Primop::INVALID:
     LOG(FATAL) << "INVALID primop";
   }
@@ -255,7 +255,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::OUT_LAYOUT: return {{}, pool->Arrow(Layout, Unit())};
   case Primop::REPHRASE: return {{}, pool->Arrow(Layout, Layout)};
   case Primop::GET_BOXES: return {{}, pool->Arrow(Layout, Layout)};
-  case Primop::PACK_BOXES: return {{}, pool->Arrow(Layout, Layout)};
+  case Primop::PACK_BOXES: return {{}, BinOp(Float, Layout, Layout)};
 
   case Primop::VEC_SIZE:
     LOG(FATAL) << "VEC_SIZE is for internal use in bytecode and should not "

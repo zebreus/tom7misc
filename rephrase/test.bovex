@@ -6,7 +6,9 @@ let
 in
 
   output
-  (get-boxes
+  (pack-boxes
+   (inch 4.0,
+    get-boxes
   (times-roman
   [
    This is my paper. I have written some filler text in order to get the
@@ -22,6 +24,6 @@ in
    And now it is over.
 
    [bibliography()]
-   ]))
+   ])))
 
 end

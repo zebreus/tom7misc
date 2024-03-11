@@ -41,6 +41,8 @@ struct DocTree {
   void SetStringAttr(const std::string &name, const std::string &value);
   void SetDoubleAttr(const std::string &name, double d);
 
+  void RemoveAttr(const std::string &name);
+
   void AddChild(DocTree doc);
 };
 
@@ -95,6 +97,9 @@ struct Document {
   virtual const Font *GetDescribedFont(const TextProps &props);
 
   DocTree GetBoxes(const DocTree &doc);
+
+  // Pack boxes to lines.
+  DocTree PackBoxes(double width, const DocTree &doc);
 };
 
 #endif

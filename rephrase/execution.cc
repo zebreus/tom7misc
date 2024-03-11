@@ -267,6 +267,14 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return String(aa + bb);
   }
 
+  case Primop::PACK_BOXES: {
+    const double *ad = std::get_if<double>(&a->v);
+    CHECK(ad != nullptr) << "Expected double argument (lhs) to pack_boxes";
+    DocTree doc = ValueToDocTree(b);
+    DocTree packdoc = DocumentHook()->PackBoxes(*ad, doc);
+    return DocTreeToValue(&state->heap.used, packdoc);
+  }
+
   case Primop::REF_SET:
     LOG(FATAL) << "SET should have been compiled away.";
   case Primop::INVALID:

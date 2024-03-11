@@ -20,6 +20,10 @@ void DocTree::AddChild(DocTree d) {
   CHECK(children.back().get() != nullptr);
 }
 
+void DocTree::RemoveAttr(const std::string &name) {
+  attrs.erase(name);
+}
+
 void DocTree::SetStringAttr(const std::string &name, const std::string &value) {
   attrs[name] = AttrVal{.v = {value}};
 }
@@ -247,6 +251,7 @@ bool IsText(const DocTree &doc) {
   return doc.attrs.empty() && doc.children.empty();
 }
 
+#define ATAG(s) AFGCOLOR(160, 160, 200, s)
 #define AATTRNAME(s) AFGCOLOR(200, 200, 160, s)
 #define AATTRVAL(s) AFGCOLOR(160, 200, 160, s)
 
@@ -267,7 +272,7 @@ void DebugPrintDocTree(const DocTree &doc) {
                  doc.text.c_str());
         }
 
-        printf("%s" ABLUE("<"), Pad(depth).c_str());
+        printf("%s" ATAG("<"), Pad(depth).c_str());
         bool first = true;
         for (const auto &[k, v] : doc.attrs) {
           if (!first) printf(", ");
@@ -275,11 +280,11 @@ void DebugPrintDocTree(const DocTree &doc) {
                  k.c_str(), AttrValString(v).c_str());
           first = false;
         }
-        printf(ABLUE(">") "\n");
+        printf(ATAG(">") "\n");
         for (const auto &child : doc.children) {
           Rec(depth + 2, *child);
         }
-        printf("%s" ABLUE("</>") "\n", Pad(depth).c_str());
+        printf("%s" ATAG("</>") "\n", Pad(depth).c_str());
       }
     };
   Rec(0, doc);
@@ -325,6 +330,7 @@ DocTree TextDoc(const std::string &s) {
 
 static std::vector<DocTree>
 BoxifyText(const Font *font, double font_size, std::string_view text) {
+  static constexpr bool VERBOSE = false;
   std::vector<DocTree> out;
 
   const double space_width = font->CharWidth(' ');
@@ -366,13 +372,17 @@ BoxifyText(const Font *font, double font_size, std::string_view text) {
         chunk = Util::EncodeUTF8(codepoint);
         chunk_width = char_width;
 
-        printf("Kerned '%c'+'%c'; chunk now '%s'\n", prev, codepoint,
-               chunk.c_str());
+        if (VERBOSE) {
+          printf("Kerned '%c'+'%c'; chunk now '%s'\n", prev, codepoint,
+                 chunk.c_str());
+        }
       } else {
         // Extend the chunk.
         chunk += Util::EncodeUTF8(codepoint);
         chunk_width += char_width;
-        printf("Added '%c'; chunk now '%s'\n", codepoint, chunk.c_str());
+        if (VERBOSE) {
+          printf("Added '%c'; chunk now '%s'\n", codepoint, chunk.c_str());
+        }
       }
       prev = codepoint;
     }
@@ -409,18 +419,43 @@ const Font *Document::GetDescribedFont(const TextProps &props) {
     "fonts on its own!";
 }
 
+// Like Util::NormalizeWhitespace, but don't remove surrounding whitespace.
+// (We don't want a node with just " " to become empty!)
+// We need to figure out something more rational here.
+static std::string NormalizeWhitespace(const std::string &s) {
+  std::string ret;
+  ret.reserve(s.size());
+  bool skip_ws = false;
+  for (char c : s) {
+    switch (c) {
+    case ' ':
+    case '\n':
+    case '\r':
+    case '\t':
+      if (skip_ws) continue;
+      ret += ' ';
+      skip_ws = true;
+      break;
+    default:
+      skip_ws = false;
+      ret.push_back(c);
+    }
+  }
+  return ret;
+}
+
 // Converts layout (spans with style) into boxes that have
 // definite size and glue.
 DocTree Document::GetBoxes(const DocTree &doc) {
   std::vector<DocTree> out;
-
-  printf("GetBoxes...\n");
 
   std::function<void(TextProps props, const DocTree &)> Rec =
     [this, &out, &Rec](TextProps props, const DocTree &doc) {
       if (IsText(doc)) {
 
         const Font *font = GetDescribedFont(props);
+
+        std::string normtext = NormalizeWhitespace(doc.text);
 
         std::vector<DocTree> boxes =
           BoxifyText(font, props.font_size, doc.text);
@@ -463,8 +498,6 @@ DocTree Document::GetBoxes(const DocTree &doc) {
       }
     };
 
-  printf("GetBoxes rec done...\n");
-
   // Get default text props somehow?
   TextProps props;
   props.font_face = "times";
@@ -472,3 +505,146 @@ DocTree Document::GetBoxes(const DocTree &doc) {
   return JoinDocs(out);
 }
 
+namespace {
+struct Box {
+  // Request from input.
+  double width = 0.0;
+  double glue_ideal = 0.0;
+  // Derived from penalty. Later, we should actually use softer
+  // penalties.
+  bool cannot_break = false;
+
+  // Set during layout.
+  double pad_right = 0.0;
+
+  // TODO: other metrics copied from attributes, like glue!
+  const DocTree *node = nullptr;
+};
+}
+
+DocTree Document::PackBoxes(double width, const DocTree &doc) {
+  static constexpr bool VERBOSE = false;
+  std::vector<DocTree> out;
+  CHECK(!IsText(doc)) << "PackBoxes wants a node that has only box children.";
+
+  auto GetBox = [](const DocTree &doc) -> Box {
+      const double *width = doc.GetDoubleAttr("width");
+      CHECK(width != nullptr) << "In PackBoxes, encountered a top-level box "
+        "that has no width. This probably means that you didn't do GetBoxes "
+        "or you messed up the boxes after that, or there's a bug in "
+        "GetBoxes (could have been anyone?)";
+
+      Box b;
+      b.width = *width;
+      if (const double *glue = doc.GetDoubleAttr("glue-ideal")) {
+        b.glue_ideal = *glue;
+      }
+      if (const double *pen = doc.GetDoubleAttr("glue-break-penalty")) {
+        if (*pen > 0.0) b.cannot_break = true;
+      }
+      b.node = &doc;
+      return b;
+    };
+
+  std::vector<Box> boxes = [&]() {
+      std::vector<Box> boxes;
+      if (const std::string *display = doc.GetStringAttr("display")) {
+        if (*display == "box") {
+          // Just one box.
+          boxes.push_back(GetBox(doc));
+          return boxes;
+        }
+      }
+
+      // Then we expect the direct children (if any) to be the boxes.
+      // XXX perhaps we should be warning if there are attributes
+      // here, as they will be dropped?
+      for (const auto &child : doc.children) {
+        const std::string *display = child->GetStringAttr("display");
+        CHECK(display != nullptr) << "In PackBoxes, expected a series "
+          "of boxes. Probably need to call GetBoxes first?";
+        boxes.push_back(GetBox(*child));
+      }
+      return boxes;
+    }();
+
+  out.push_back(TextDoc(StringPrintf("%d boxes", (int)boxes.size())));
+
+  // Now pack.
+  // Simple first-fit algorithm so we can test the end-to-end.
+  std::vector<Box> current_line;
+  auto EmitLine = [width, &out, &current_line]() {
+      // out.push_back(TextDoc("EmitLine"));
+      if (current_line.empty()) return;
+
+      DocTree line;
+      line.SetStringAttr("display", "box");
+      // Or the actual width?
+      line.SetDoubleAttr("width", width);
+      for (const Box &box : current_line) {
+        // Same box, but extend the width to consume the actually used
+        // glue.
+        DocTree d = *box.node;
+        d.SetDoubleAttr("width", box.width + box.pad_right);
+        d.RemoveAttr("glue-contract");
+        d.RemoveAttr("glue-break-penalty");
+        d.RemoveAttr("glue-ideal");
+        line.AddChild(d);
+      }
+
+      out.push_back(std::move(line));
+    };
+
+  double current_width = 0.0;
+  double current_postwidth = 0.0;
+  bool cannot_break = false;
+  for (const Box &box : boxes) {
+
+    if (VERBOSE) {
+      printf("line: %d boxes, width %.3g. %s"
+             "post %.3g. this box %.3g, target %.3g\n",
+             (int)current_line.size(), current_width,
+             cannot_break ? ARED("NOBRK") " " : "",
+             current_postwidth,
+             box.width, width);
+    }
+
+    if (cannot_break ||
+        current_width + current_postwidth + box.width <= width) {
+      // Take the box.
+
+      // This means the previous box gets is glue turned into padding.
+      if (!current_line.empty()) {
+        current_line.back().pad_right = current_postwidth;
+        current_width += current_postwidth;
+      } else {
+        CHECK(current_postwidth == 0.0);
+      }
+
+      current_line.push_back(box);
+      current_width += box.width;
+      cannot_break = box.cannot_break;
+      current_postwidth = box.glue_ideal;
+
+    } else if (current_line.empty()) {
+      LOG(FATAL) << "This case is not handled yet. I think we just don't "
+        "add the empty line?";
+
+    } else {
+      // Break.
+      EmitLine();
+
+      current_line = {box};
+      current_width = box.width;
+      current_postwidth = box.glue_ideal;
+      cannot_break = box.cannot_break;
+    }
+  }
+
+  // The line usually still has something on it.
+  EmitLine();
+
+  // out.push_back(TextDoc("hi :)"));
+
+  return JoinDocs(out);
+}
