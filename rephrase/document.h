@@ -45,7 +45,8 @@ struct DocTree {
 };
 
 std::string AttrValString(const AttrVal &val);
-AttrVal ConvertAttrVal(const std::string &field, const bc::Value &val);
+AttrVal ValueToAttrVal(const std::string &field, const bc::Value &val);
+bc::Value *AttrValToValue(std::vector<bc::Value *> *heap, const AttrVal &val);
 
 // Copies the value, converting it to DocTree format.
 DocTree ValueToDocTree(const bc::Value *v);

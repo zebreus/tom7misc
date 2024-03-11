@@ -40,6 +40,15 @@ enum class Primop {
 
   FLOAT_NEG,
 
+  // IEEE operation: not an equivalence
+  // relation!
+  FLOAT_EQ,
+  FLOAT_NEQ,
+  FLOAT_LESS,
+  FLOAT_LESSEQ,
+  FLOAT_GREATER,
+  FLOAT_GREATEREQ,
+
   STRING_EQ,
   STRING_LESS,
   STRING_GREATER,
@@ -60,6 +69,7 @@ enum class Primop {
   // expensive stuff implemented by harness
   REPHRASE,
   GET_BOXES,
+  PACK_BOXES,
 
   INVALID,
 };

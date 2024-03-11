@@ -42,6 +42,13 @@ Initial::Initial(AstPool *pool) {
     {"*.", Primop::FLOAT_TIMES},
     {"/.", Primop::FLOAT_DIV},
 
+    {"==.", Primop::FLOAT_EQ},
+    {"!=.", Primop::FLOAT_NEQ},
+    {"<.", Primop::FLOAT_LESS},
+    {"<=.", Primop::FLOAT_LESSEQ},
+    {">.", Primop::FLOAT_GREATER},
+    {">=.", Primop::FLOAT_GREATEREQ},
+
     // Perhaps these should just be overloaded α * α -> bool,
     // with some hack to resolve them?
     {"==", Primop::INT_EQ},
@@ -66,6 +73,7 @@ Initial::Initial(AstPool *pool) {
 
     {"rephrase", Primop::REPHRASE},
     {"internal-get-boxes", Primop::GET_BOXES},
+    {"internal-pack-boxes", Primop::PACK_BOXES},
 
     {"print", Primop::OUT_STRING},
     {"output", Primop::OUT_LAYOUT},

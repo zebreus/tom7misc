@@ -232,6 +232,31 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return Float(aa / bb);
   }
 
+  case Primop::FLOAT_EQ: {
+    const auto &[aa, bb] = TwoFloats("float_eq");
+    return Bool(aa == bb);
+  }
+  case Primop::FLOAT_NEQ: {
+    const auto &[aa, bb] = TwoFloats("float_neq");
+    return Bool(aa != bb);
+  }
+  case Primop::FLOAT_LESS: {
+    const auto &[aa, bb] = TwoFloats("float_less");
+    return Bool(aa < bb);
+  }
+  case Primop::FLOAT_LESSEQ: {
+    const auto &[aa, bb] = TwoFloats("float_lesseq");
+    return Bool(aa <= bb);
+  }
+  case Primop::FLOAT_GREATER: {
+    const auto &[aa, bb] = TwoFloats("float_greater");
+    return Bool(aa > bb);
+  }
+  case Primop::FLOAT_GREATEREQ: {
+    const auto &[aa, bb] = TwoFloats("float_greatereq");
+    return Bool(aa >= bb);
+  }
+
   case Primop::STRING_EQ: {
     const auto &[aa, bb] = TwoStrings("string_eq");
     return Bool(aa == bb);

@@ -35,6 +35,12 @@ const char *PrimopString(Primop po) {
   case Primop::FLOAT_PLUS: return "FLOAT_PLUS";
   case Primop::FLOAT_MINUS: return "FLOAT_MINUS";
   case Primop::FLOAT_DIV: return "FLOAT_DIV";
+  case Primop::FLOAT_EQ: return "FLOAT_EQ";
+  case Primop::FLOAT_NEQ: return "FLOAT_NEQ";
+  case Primop::FLOAT_LESS: return "FLOAT_LESS";
+  case Primop::FLOAT_LESSEQ: return "FLOAT_LESSEQ";
+  case Primop::FLOAT_GREATER: return "FLOAT_GREATER";
+  case Primop::FLOAT_GREATEREQ: return "FLOAT_GREATEREQ";
   case Primop::OUT_STRING: return "OUT_STRING";
   case Primop::OUT_LAYOUT: return "OUT_LAYOUT";
   case Primop::STRING_CONCAT: return "STRING_CONCAT";
@@ -43,6 +49,7 @@ const char *PrimopString(Primop po) {
   case Primop::VEC_SIZE: return "VEC_SIZE";
   case Primop::REPHRASE: return "REPHRASE";
   case Primop::GET_BOXES: return "GET_BOXES";
+  case Primop::PACK_BOXES: return "PACK_BOXES";
   case Primop::INVALID: return "INVALID";
   }
   return "?? UNKNOWN PRIMOP ??";
@@ -74,6 +81,12 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::FLOAT_PLUS: return std::make_tuple(0, 2);
   case Primop::FLOAT_MINUS: return std::make_tuple(0, 2);
   case Primop::FLOAT_DIV: return std::make_tuple(0, 2);
+  case Primop::FLOAT_EQ: return std::make_tuple(0, 2);
+  case Primop::FLOAT_NEQ: return std::make_tuple(0, 2);
+  case Primop::FLOAT_LESS: return std::make_tuple(0, 2);
+  case Primop::FLOAT_LESSEQ: return std::make_tuple(0, 2);
+  case Primop::FLOAT_GREATER: return std::make_tuple(0, 2);
+  case Primop::FLOAT_GREATEREQ: return std::make_tuple(0, 2);
   case Primop::INT_TO_STRING: return std::make_tuple(0, 1);
   case Primop::STRING_TO_LAYOUT: return std::make_tuple(0, 1);
   case Primop::STRING_CONCAT: return std::make_tuple(0, 2);
@@ -82,7 +95,9 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
   case Primop::OUT_LAYOUT: return std::make_tuple(0, 1);
   case Primop::GET_BOXES: return std::make_tuple(0, 1);
-  case Primop::INVALID: LOG(FATAL) << "INVALID primop";
+  case Primop::PACK_BOXES: return std::make_tuple(0, 1);
+  case Primop::INVALID:
+    LOG(FATAL) << "INVALID primop";
   }
   LOG(FATAL) << "Unknown primop: " << PrimopString(po);
   return std::make_tuple(0, 0);
@@ -123,6 +138,13 @@ bool IsPrimopTotal(Primop p) {
   case Primop::FLOAT_PLUS: return true;
   case Primop::FLOAT_MINUS: return true;
   case Primop::FLOAT_DIV: return true;
+  case Primop::FLOAT_EQ: return true;
+  case Primop::FLOAT_NEQ: return true;
+  case Primop::FLOAT_LESS: return true;
+  case Primop::FLOAT_LESSEQ: return true;
+  case Primop::FLOAT_GREATER: return true;
+  case Primop::FLOAT_GREATEREQ: return true;
+
   case Primop::INT_TO_STRING: return true;
   case Primop::STRING_TO_LAYOUT: return true;
   case Primop::STRING_CONCAT: return true;
@@ -132,7 +154,8 @@ bool IsPrimopTotal(Primop p) {
 
   case Primop::REPHRASE:
   case Primop::GET_BOXES:
-    // minimally, internal stuff error out on invalid layout
+  case Primop::PACK_BOXES:
+    // minimally, internal stuff errors out on invalid layout
     return false;
 
   case Primop::INVALID:
@@ -149,14 +172,6 @@ bool IsPrimopDiscardable(Primop p) {
     return true;
   case Primop::REF_GET: return true;
   case Primop::REF_SET: return false;
-
-  case Primop::OUT_STRING: return false;
-  case Primop::OUT_LAYOUT: return false;
-
-  case Primop::REPHRASE:
-    // Does have internal effects and is expensive, but
-    // not itself observable.
-    return true;
 
   default:
     return IsPrimopTotal(p);
@@ -222,6 +237,13 @@ PrimopType(il::AstPool *pool, Primop p) {
 
   case Primop::FLOAT_NEG: return {{}, pool->Arrow(Float, Float)};
 
+  case Primop::FLOAT_EQ: return {{}, BinOp(Float, Float, Bool)};
+  case Primop::FLOAT_NEQ: return {{}, BinOp(Float, Float, Bool)};
+  case Primop::FLOAT_LESS: return {{}, BinOp(Float, Float, Bool)};
+  case Primop::FLOAT_LESSEQ: return {{}, BinOp(Float, Float, Bool)};
+  case Primop::FLOAT_GREATER: return {{}, BinOp(Float, Float, Bool)};
+  case Primop::FLOAT_GREATEREQ: return {{}, BinOp(Float, Float, Bool)};
+
   case Primop::STRING_EQ: return {{}, BinOp(String, String, Bool)};
   case Primop::STRING_LESS: return {{}, BinOp(String, String, Bool)};
   case Primop::STRING_GREATER: return {{}, BinOp(String, String, Bool)};
@@ -233,6 +255,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::OUT_LAYOUT: return {{}, pool->Arrow(Layout, Unit())};
   case Primop::REPHRASE: return {{}, pool->Arrow(Layout, Layout)};
   case Primop::GET_BOXES: return {{}, pool->Arrow(Layout, Layout)};
+  case Primop::PACK_BOXES: return {{}, pool->Arrow(Layout, Layout)};
 
   case Primop::VEC_SIZE:
     LOG(FATAL) << "VEC_SIZE is for internal use in bytecode and should not "
