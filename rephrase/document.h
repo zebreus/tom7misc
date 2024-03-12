@@ -17,6 +17,7 @@ struct AttrVal {
     BigInt,
     std::string,
     uint64_t,
+    bool,
     double
     >;
   t v;
@@ -47,8 +48,12 @@ struct DocTree {
 };
 
 std::string AttrValString(const AttrVal &val);
-AttrVal ValueToAttrVal(const std::string &field, const bc::Value &val);
-bc::Value *AttrValToValue(std::vector<bc::Value *> *heap, const AttrVal &val);
+// Convert the field name (stripping type tags) and value.
+std::pair<std::string, AttrVal>
+ValueToAttrVal(const std::string &field, const bc::Value &val);
+std::pair<std::string, bc::Value *>
+AttrValToValue(std::vector<bc::Value *> *heap,
+               const std::string &field, const AttrVal &val);
 
 // Copies the value, converting it to DocTree format.
 DocTree ValueToDocTree(const bc::Value *v);

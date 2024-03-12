@@ -62,14 +62,10 @@ const double *DocTree::GetDoubleAttr(const std::string &name) const {
   return nullptr;
 }
 
-static bool TRUE = true;
-static bool FALSE = false;
 const bool *DocTree::GetBoolAttr(const std::string &name) const {
   if (const AttrVal *a = GetAttr(name)) {
-    if (const uint64_t *u = std::get_if<uint64_t>(&a->v)) {
-      // The attrval doesn't actually store a bool, so point to some
-      // singletons.
-      return *u ? &TRUE : &FALSE;
+    if (const bool *b = std::get_if<bool>(&a->v)) {
+      return b;
     } else {
       LOG(FATAL) << "Attribute " << name << " was present, but expected "
         "bool type.";
@@ -93,18 +89,32 @@ std::string AttrValString(const AttrVal &val) {
   }
 }
 
-AttrVal ValueToAttrVal(const std::string &field, const bc::Value &val) {
+std::pair<std::string, AttrVal>
+ValueToAttrVal(const std::string &field, const bc::Value &val) {
+  auto CheckStripTag = [&field](bc::ObjectFieldType oft) {
+      char c = ObjectFieldTypeTag(oft);
+      CHECK(!field.empty() && field[0] == c) << "Bug: Field tag did not match "
+        "type in object? field: " << field;
+      return field.substr(1, std::string::npos);
+    };
+
   if (const std::string *s = std::get_if<std::string>(&val.v)) {
-    return AttrVal{.v = *s};
+    return {CheckStripTag(bc::ObjectFieldType::STRING), AttrVal{.v = *s}};
   } else if (const uint64_t *u = std::get_if<uint64_t>(&val.v)) {
-    return AttrVal{.v = *u};
+    // This could either be a boolean or uint64!
+    if (field[0] == ObjectFieldTypeTag(bc::ObjectFieldType::BOOL)) {
+      return {CheckStripTag(bc::ObjectFieldType::BOOL),
+        AttrVal{.v = bool(*u ? true : false)}};
+    } else {
+      return {CheckStripTag(bc::ObjectFieldType::U64), AttrVal{.v = *u}};
+    }
   } else if (const double *d = std::get_if<double>(&val.v)) {
-    return AttrVal{.v = *d};
+    return {CheckStripTag(bc::ObjectFieldType::FLOAT), AttrVal{.v = *d}};
   } else if (const BigInt *b = std::get_if<BigInt>(&val.v)) {
-    return AttrVal{.v = *b};
+    return {CheckStripTag(bc::ObjectFieldType::INT), AttrVal{.v = *b}};
   } else {
     LOG(FATAL) << "Unsupported attribute type in layout. It must be "
-      "BigInt, string, uint64_t, or double. The field was: " << field;
+      "BigInt, string, bool, uint64_t, or double. The field was: " << field;
   }
 }
 
@@ -139,7 +149,8 @@ DocTree ValueToDocTree(const bc::Value *v) {
           "a vector.";
 
         for (const auto &[k, v] : *aobj) {
-          doc.attrs[k] = ValueToAttrVal(k, *v);
+          const auto [key, val] = ValueToAttrVal(k, *v);
+          doc.attrs[key] = val;
         }
 
         for (const bc::Value *v : *cvec) {
@@ -193,15 +204,24 @@ static bc::Value *NewVec(std::vector<bc::Value *> *heap,
 }
 
 
-bc::Value *AttrValToValue(std::vector<bc::Value *> *heap, const AttrVal &val) {
+std::pair<std::string, bc::Value *>
+AttrValToValue(std::vector<bc::Value *> *heap,
+               const std::string &field,
+               const AttrVal &val) {
+  auto MakeField = [&field](const bc::ObjectFieldType oft) {
+      return StringPrintf("%c%s",
+                          ObjectFieldTypeTag(oft), field.c_str());
+    };
   if (const std::string *s = std::get_if<std::string>(&val.v)) {
-    return NewString(heap, *s);
+    return {MakeField(bc::ObjectFieldType::STRING), NewString(heap, *s)};
   } else if (const uint64_t *u = std::get_if<uint64_t>(&val.v)) {
-    return NewU64(heap, *u);
+    return {MakeField(bc::ObjectFieldType::U64), NewU64(heap, *u)};
   } else if (const double *d = std::get_if<double>(&val.v)) {
-    return NewDouble(heap, *d);
+    return {MakeField(bc::ObjectFieldType::FLOAT), NewDouble(heap, *d)};
   } else if (const BigInt *b = std::get_if<BigInt>(&val.v)) {
-    return NewInt(heap, *b);
+    return {MakeField(bc::ObjectFieldType::INT), NewInt(heap, *b)};
+  } else if (const bool *b = std::get_if<bool>(&val.v)) {
+    return {MakeField(bc::ObjectFieldType::BOOL), NewU64(heap, *b ? 1 : 0)};
   } else {
     LOG(FATAL) << "Invalid AttrVal when converting to Value";
   }
@@ -219,7 +239,8 @@ bc::Value *DocTreeToValue(std::vector<bc::Value *> *heap, const DocTree &doc) {
 
         // Should this be by construction/allowlist?
         for (const auto &[key, val] : doc.attrs) {
-          attrs[key] = AttrValToValue(heap, val);
+          const auto &[k, v] = AttrValToValue(heap, key, val);
+          attrs[k] = v;
         }
 
         std::vector<bc::Value *> children;

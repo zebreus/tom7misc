@@ -229,4 +229,20 @@ std::pair<int64_t, int64_t> ProgramSize(const Program &pgm) {
   return {data_bytes, total_insts};
 }
 
+char ObjectFieldTypeTag(ObjectFieldType oft) {
+  switch (oft) {
+  case ObjectFieldType::STRING: return '\"';
+  case ObjectFieldType::FLOAT: return '.';
+  case ObjectFieldType::INT: return '0';
+  case ObjectFieldType::BOOL: return '?';
+  case ObjectFieldType::U64: return '6';
+  case ObjectFieldType::OBJ: return '=';
+  case ObjectFieldType::LAYOUT: return '[';
+  }
+
+  LOG(FATAL) << "Bad bc::ObjectFieldType?";
+  return 0;
+};
+
+
 }  // namespace bc

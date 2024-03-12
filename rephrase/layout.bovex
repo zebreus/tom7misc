@@ -217,6 +217,8 @@ fun layout-tostring l =
     in r 0
     end
 
+fun layout-concat nil = []
+  | layout-concat (h :: t) = [[h][layout-concat t]]
 
 (* This expects
    <span><box><box><box></span>
@@ -244,6 +246,8 @@ fun stick-lines (line-height: float, p : layout) =
         do debug-print-doc line
         do print "^^^^^^^^^^^^^"
 
+        (* XXX this seems wrong! *)
+        do debug-print-doc (node (get-attrs line) [content])
         do (case get-attrs line of
           {(Node) display} => print ("Display: " ^ display ^ "\n")
           | _ => print "no display")
@@ -252,22 +256,24 @@ fun stick-lines (line-height: float, p : layout) =
       case layoutcase line of
         Node (BOX, attrs, words) =>
           let
-            (*
+
             fun r (_, nil) = []
               | r (x, word :: t) =
               let
                 val (width, s) =
                   case layoutcase word of
                     Node (BOX, {(Box) width = width}, content) =>
-                      (width, sticker {(Sticker) x = x, y = start-y} content)
+                      (width,
+                       sticker
+                       {(Sticker) x = x, y = start-y}
+                       (layout-concat content))
                   | _ => fail "need a box with a width!"
               in
-                [[s][r (x + width, t)]]
-                end
-                *)
-            fun r _ = fail "NO"
+                [[s][r (x +. width, t)]]
+              end
+
           in
-            r (0, words)
+            r (0.0, words)
           end
       | Node (GROUP, _, body : layout list) => fail "got group?"
           (*

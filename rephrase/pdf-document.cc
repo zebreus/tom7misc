@@ -59,7 +59,8 @@ const Font *PDFDocument::GetBuiltInFont(PDF::BuiltInFont bif) {
   // Easier to get this directly, but we make sure it's present in
   // the font map anyway.
   const PDF::FontObj *fobj = pdf->GetBuiltInFont(bif);
-  CHECK(fobj != nullptr) << "PDF can't get built-in font?";
+  CHECK(fobj != nullptr) << "PDF can't get built-in font? " <<
+    PDF::BuiltInFontName(bif);
   const std::string name = fobj->BaseFont();
   auto &fptr = fonts[name];
   if (fptr.get() == nullptr) {

@@ -18,6 +18,19 @@
 namespace bc {
 namespace {
 
+static inline bc::ObjectFieldType ILOftToBC(il::ObjFieldType oft) {
+  switch (oft) {
+  case il::ObjFieldType::STRING: return bc::ObjectFieldType::STRING;
+  case il::ObjFieldType::FLOAT: return bc::ObjectFieldType::FLOAT;
+  case il::ObjFieldType::INT: return bc::ObjectFieldType::INT;
+  case il::ObjFieldType::BOOL: return bc::ObjectFieldType::BOOL;
+  case il::ObjFieldType::OBJ: return bc::ObjectFieldType::OBJ;
+  case il::ObjFieldType::LAYOUT: return bc::ObjectFieldType::LAYOUT;
+  }
+  LOG(FATAL) << "Need to update bc::ObjectFieldType and conversion from IL";
+  return bc::ObjectFieldType::STRING;
+}
+
 struct Converter {
 
   static constexpr const char *INJ_LABEL = "#";
@@ -29,16 +42,7 @@ struct Converter {
   // the field name. We could use anything here, but we use something that's
   // illegal to begin a user field name and reminiscent of the type.
   static std::string ObjFieldName(const std::string &f, il::ObjFieldType oft) {
-    const char c = [oft](){
-        switch (oft) {
-        case il::ObjFieldType::STRING: return '\"';
-        case il::ObjFieldType::FLOAT: return '.';
-        case il::ObjFieldType::INT: return '0';
-        case il::ObjFieldType::BOOL: return '?';
-        case il::ObjFieldType::OBJ: return '=';
-        case il::ObjFieldType::LAYOUT: return '[';
-        }
-      }();
+    const char c = ObjectFieldTypeTag(ILOftToBC(oft));
     return StringPrintf("%c%s", c, f.c_str());
   };
 

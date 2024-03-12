@@ -174,6 +174,22 @@ std::pair<int64_t, int64_t> ProgramSize(const Program &pgm);
 inline constexpr const char *NODE_ATTRS_LABEL = "a";
 inline constexpr const char *NODE_CHILDREN_LABEL = "c";
 
+// Similarly the tagging used in field names. These go at the
+// beginning of the map key. This is basically the same as the IL
+// enum, but we don't want to depend on all of IL. Also, we have
+// a U64 type here.
+enum class ObjectFieldType {
+  STRING,
+  FLOAT,
+  INT,
+  BOOL,
+  U64,
+  OBJ,
+  LAYOUT,
+};
+
+char ObjectFieldTypeTag(ObjectFieldType oft);
+
 }  // namespace bc
 
 #endif
