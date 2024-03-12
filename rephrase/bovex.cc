@@ -145,6 +145,9 @@ static int Bovex(const std::vector<std::string> &args) {
   // XXX, using pdf_document
   GeneratePDF(output_file);
 
+  const auto &[data_bytes, total_insts] = ProgramSize(pgm);
+  printf("Program size: " ABLUE("%lld") " bytes data, "
+         APURPLE("%lld") " insts.\n", data_bytes, total_insts);
   printf("Finished in %s\n", ANSI::Time(timer.Seconds()).c_str());
   return 0;
 }

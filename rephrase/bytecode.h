@@ -165,6 +165,9 @@ std::string ColorInstString(const Inst &inst);
 
 // Dump the entire program with ANSI colors codes.
 void PrintProgram(const Program &pgm);
+// Approximate data bytes; total number of instructions.
+// Treats names of data and locals as constant.
+std::pair<int64_t, int64_t> ProgramSize(const Program &pgm);
 
 // The representation of layout nodes needs to be understood by
 // the harness code.

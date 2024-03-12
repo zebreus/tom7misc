@@ -568,7 +568,7 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
       return boxes;
     }();
 
-  out.push_back(TextDoc(StringPrintf("%d boxes", (int)boxes.size())));
+  // out.push_back(TextDoc(StringPrintf("%d boxes", (int)boxes.size())));
 
   // Now pack.
   // Simple first-fit algorithm so we can test the end-to-end.

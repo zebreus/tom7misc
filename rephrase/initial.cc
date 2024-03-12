@@ -76,6 +76,7 @@ Initial::Initial(AstPool *pool) {
     {"rephrase", Primop::REPHRASE},
     {"internal-get-boxes", Primop::GET_BOXES},
     {"internal-pack-boxes", Primop::PACK_BOXES},
+    {"debug-print-doc", Primop::DEBUG_PRINT_DOC},
 
     {"is-text", Primop::IS_TEXT},
     {"get-text", Primop::GET_TEXT},

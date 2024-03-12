@@ -75,6 +75,8 @@ enum class Primop {
   GET_BOXES,
   PACK_BOXES,
 
+  DEBUG_PRINT_DOC,
+
   INVALID,
 };
 

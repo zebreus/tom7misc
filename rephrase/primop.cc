@@ -55,6 +55,8 @@ const char *PrimopString(Primop po) {
   case Primop::LAYOUT_VEC_SIZE: return "LAYOUT_VEC_SIZE";
   case Primop::LAYOUT_VEC_SUB: return "LAYOUT_VEC_SUB";
 
+  case Primop::DEBUG_PRINT_DOC: return "DEBUG_PRINT_DOC";
+
   case Primop::INVALID: return "INVALID";
   }
   return "?? UNKNOWN PRIMOP ??";
@@ -105,6 +107,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::GET_ATTRS: return std::make_tuple(0, 1);
   case Primop::LAYOUT_VEC_SIZE: return std::make_tuple(0, 1);
   case Primop::LAYOUT_VEC_SUB: return std::make_tuple(0, 2);
+
+  case Primop::DEBUG_PRINT_DOC: return std::make_tuple(0, 1);
 
   case Primop::INVALID:
     LOG(FATAL) << "INVALID primop";
@@ -170,6 +174,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::GET_ATTRS:
   case Primop::LAYOUT_VEC_SIZE:
   case Primop::LAYOUT_VEC_SUB:
+  case Primop::DEBUG_PRINT_DOC:
     // minimally, internal layout stuff errors out on invalid layout
     return false;
 
@@ -277,6 +282,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::GET_ATTRS: return {{}, pool->Arrow(Layout, Obj)};
   case Primop::LAYOUT_VEC_SIZE: return {{}, pool->Arrow(Layout, Int)};
   case Primop::LAYOUT_VEC_SUB: return {{}, BinOp(Layout, Int, Layout)};
+
+  case Primop::DEBUG_PRINT_DOC: return {{}, pool->Arrow(Layout, Unit())};
 
   default:
     LOG(FATAL) << "Unknown primop in PrimopType";

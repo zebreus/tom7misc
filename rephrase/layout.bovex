@@ -41,12 +41,21 @@ fun layout-concat nil = []
    *)
 
 
-(* Low-level node info. *)
+(* Low-level node info.
+   Programmers should probably not be looking at or setting the
+   display property. But... I'M a programmer! *)
 val NODE_BOX = "box"
 val NODE_SPAN = "span"
-val NODE_STICKER = "stick"
+val NODE_STICKER = "sticker"
 object Node of { display : string }
 
+datatype display = BOX | SPAN | STICKER | GROUP
+fun display-type (attrs : obj) =
+  case attrs of
+    {(Node) display = "box"} => BOX
+  | {(Node) display = "span"} => SPAN
+  | {(Node) display = "sticker"} => STICKER
+  | _ => GROUP
 
 (* A box is a fixed-size element that can be moved around within a
    span during the line-breaking algorithm. Its layout contents are
@@ -95,15 +104,13 @@ object Span of { line-height: float,
 fun span (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_SPAN) l
 
-
 (* The rendered document is presented to the harness as bunch of
-   stickers in fixed locations on the page. *)
-object Sticker of { x: float, y: float }
-
-  (*
-fun emit-sticker { x : float, y : float, box : layout } =
-output (node {(Sticker) }
-*)
+   stickers, which are positioned (and scaled) relative to their parent.
+   Here the layout contents do not "flow" and can be freely reordered
+   (except that this affects the drawing order). *)
+object Sticker of { x: float, y: float, scale: float }
+fun sticker (attrs : obj) (l : layout) =
+  node (attrs with (Node) display = NODE_STICKER) l
 
 (* Run the line breaking algorithm on a sequence of boxes.
    This takes
@@ -167,10 +174,16 @@ fun it layout =
 fun rm layout =
   span {(Span) font-bold = false, font-italic = false} layout
 
+fun is-empty-layout l =
+  is-text l andalso
+  case get-text l of
+    "" => true
+  | _ => false
 
 datatype layoutcase =
+  (* Includes empty nodes. *)
     Text of string
-  | Node of obj * layout list
+  | Node of display * obj * layout list
 
 fun layoutcase (l : layout) =
   if is-text l
@@ -178,16 +191,17 @@ fun layoutcase (l : layout) =
   else
     let
       val z = layout-vec-size l
-      do print (int-to-string z ^ "\n")
+      (* do print (int-to-string z ^ "\n") *)
       fun r n =
         let
-          do print (int-to-string n ^ "<-\n")
+          (* do print (int-to-string n ^ "<-\n") *)
         in
           if n == z then nil
           else (layout-vec-sub (l, n) :: r (n + 1))
         end
+      val attrs = get-attrs l
     in
-      Node (get-attrs l, r 0)
+      Node (display-type attrs, attrs, r 0)
     end
 
 (* Converts the layout recursively to a string, ignoring any
@@ -202,3 +216,84 @@ fun layout-tostring l =
                        r (n + 1)
     in r 0
     end
+
+
+(* This expects
+   <span><box><box><box></span>
+   <span><box><box><box></span>
+   ...
+
+   and flattens them into a single "column" sticker with
+   stickers as children. *)
+fun stick-lines (line-height: float, p : layout) =
+  let
+    (* TODO: I think this is a generic construct; the opposite of
+       JoinDocs in document.cc. *)
+    fun get-lines p =
+      if is-empty-layout p
+      then nil
+      else
+        case layoutcase p of
+          Node (SPAN, attrs, words) => p :: nil
+        | Node (GROUP, attrs, words) => words
+        | _ => fail "expecting a node with line children, not text or boxes, etc.?"
+
+    fun one-line (start-y : float, line : layout) =
+      let
+        do print "Want LINE:\n"
+        do debug-print-doc line
+        do print "^^^^^^^^^^^^^"
+
+        do (case get-attrs line of
+          {(Node) display} => print ("Display: " ^ display ^ "\n")
+          | _ => print "no display")
+
+      in
+      case layoutcase line of
+        Node (BOX, attrs, words) =>
+          let
+            (*
+            fun r (_, nil) = []
+              | r (x, word :: t) =
+              let
+                val (width, s) =
+                  case layoutcase word of
+                    Node (BOX, {(Box) width = width}, content) =>
+                      (width, sticker {(Sticker) x = x, y = start-y} content)
+                  | _ => fail "need a box with a width!"
+              in
+                [[s][r (x + width, t)]]
+                end
+                *)
+            fun r _ = fail "NO"
+          in
+            r (0, words)
+          end
+      | Node (GROUP, _, body : layout list) => fail "got group?"
+          (*
+          let do print "GROUP:\n"
+            fun f p = let do one-line (start-y, p) in () end
+            do list-app f body
+            (* do list-app (fn p => one-line (start-y, p)) body *)
+          in
+            []
+            (* fail "??" *)
+          end
+        *)
+      | Node (SPAN, _, _) => fail "got group?"
+      | Node (STICKER, _, _) => fail "got group?"
+      | Text _ => fail "got text?"
+      | _ => fail "impossible!"
+      end
+
+    (* Probably should return total height to the caller? *)
+    fun r (_, nil) = []
+      | r (y, h :: t) =
+      let
+        val line = one-line (y, h)
+      in
+        [[line][r (y +. line-height, t)]]
+      end
+  in
+    r (0.0, get-lines p)
+  end

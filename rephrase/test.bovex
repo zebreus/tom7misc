@@ -6,61 +6,43 @@ let
 
   val author = b[Tom 7 [[Murphy]] ]
 
-  fun attrs-string (obj as {(Node) display = "box"}) =
-       (case obj of
-          {(Box) width } => "box-width"
-        | _ => "box")
-    | attrs-string (obj as {(Node) display = "span"}) =
-       (case obj of
-          {(Span) font-face } => "span(" ^ font-face ^ ")"
-        | {(Span) font-bold } => if font-bold then "span-bold" else "span-nobold"
-        | _ => "span")
-    | attrs-string _ = "??"
-
+  fun attrs-string (BOX, {(Box) width }) = "box-width"
+    | attrs-string (BOX, _) = "box"
+    | attrs-string (SPAN, {(Span) font-face}) = "span(" ^ font-face ^ ")"
+    | attrs-string (SPAN, {(Span) font-bold}) =
+    if font-bold then "span-bold" else "span-nobold"
+    | attrs-string (SPAN, _) = "span"
+    | attrs-string (STICKER, _) = "sticker"
+    | attrs-string (GROUP, _) = "group"
 
   fun printlayout l =
-    let
-      do print "[["
-      do get-boxes l
-      do print "]]"
-    in
     case layoutcase l of
       Text s => print (s ^ "\n")
-    | Node (obj, children) =>
+    | Node (display, obj, children) =>
         let
-
           do print "node "
-          do print (attrs-string obj)
-          do print "\n"
-
-          (* FIXME: Some bug here! Either there's a problem with
-             the recursive call (?) or the child is the same
-             as the parent node. *)
-          fun rec nil = ()
-            | rec (h :: t) =
-            let do printlayout h
-            in rec t
-            end
-
-          do print "LEN: "
-          do print (int-to-string (list-length children))
-          do print "\n"
+          do print (attrs-string (display, obj))
+          do print ("with " ^ (int-to-string (list-length children)) ^
+                    " children:\n")
         in
-
-          (* list-app printlayout children *)
-          rec children
-          (* print "OK\n" *)
+          list-app printlayout children
         end
-    end
 
   do printlayout author
 
+
+  fun render-one-column (l : layout) =
+    let
+      val boxes = get-boxes l
+      val packed = pack-boxes (inch 4.0, boxes)
+      val stickers = stick-lines (12.0, packed)
+    in
+      stickers
+    end
 in
-(*
+
   output
-  (pack-boxes
-   (inch 4.0,
-    get-boxes
+  (render-one-column
   (times-roman
   [
    This is my paper. I have written some filler text in order to get the
@@ -76,7 +58,6 @@ in
    And now it is over.
 
    [bibliography()]
-   ])))
-  *)
-  [bye]
+   ]))
+
 end

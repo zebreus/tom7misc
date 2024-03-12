@@ -428,6 +428,12 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Big(BigInt((int)children.size()));
   }
 
+  case Primop::DEBUG_PRINT_DOC: {
+    DocTree doc = ValueToDocTree(a);
+    DebugPrintDocTree(doc);
+    return Unit();
+  }
+
   case Primop::REF:
     LOG(FATAL) << "REF should have been compiled away";
   case Primop::REF_GET:

@@ -200,4 +200,33 @@ void PrintProgram(const Program &pgm) {
   }
 }
 
+std::pair<int64_t, int64_t> ProgramSize(const Program &pgm) {
+  static constexpr int64_t DATA_NAME_SIZE = sizeof (std::string);
+  int64_t total_insts = 0;
+  int64_t data_bytes = 0;
+  for (const auto &[k, val] : pgm.data) {
+    data_bytes += DATA_NAME_SIZE;
+    if (const auto *x = std::get_if<BigInt>(&val.v)) {
+      // XXX measure actual size of bigint
+      data_bytes += 8;
+    } else if (const auto *x = std::get_if<std::string>(&val.v)) {
+      // XXX and overhead?
+      data_bytes += x->size();
+    } else if (const auto *x = std::get_if<uint64_t>(&val.v)) {
+      data_bytes += 8;
+    } else if (const auto *x = std::get_if<double>(&val.v)) {
+      data_bytes += 8;
+    } else {
+      LOG(FATAL) << "Unhandled or illegal data in ProgramSize";
+    }
+  }
+
+  for (const auto &[f, fn] : pgm.code) {
+    const auto &[arg, insts] = fn;
+    total_insts += insts.size();
+  }
+
+  return {data_bytes, total_insts};
+}
+
 }  // namespace bc

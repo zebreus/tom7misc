@@ -1,0 +1,23 @@
+
+object Article of { title : string, author : string, year : int }
+object Website of { url : string, title : string }
+object Website2 of { url : string, title : string }
+object Bad of { url : string, title : bool }
+object (a) Whatever { field : a }
+
+val oh : obj = {(Website) title = "The Twelf Wiki",
+                url = "http://twelf.com" }
+
+val same : obj = {() } with title "The Twelf Wiki"
+                       with url = "http://twelf.com"
+                       with author = 12345
+
+val _ = case oh of
+  {() title = x : string, url = y : string } =>
+  {(Website2) title, url } =>
+  {(Bad) title, url } =>
+
+    obj with(Website) title = x
+    obj with Website.title = "hi"
+    obj with title = "hi"
+    obj without title
