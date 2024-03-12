@@ -401,6 +401,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::GET_BOXES: {
     DocTree doc = ValueToDocTree(a);
+    // DebugPrintDocTree(doc);
     DocTree boxdoc = DocumentHook()->GetBoxes(doc);
     return DocTreeToValue(&state->heap.used, boxdoc);
   }

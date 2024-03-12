@@ -267,8 +267,7 @@ static void ExecTests() {
       )"), "15232");
 }
 
-static void NewTests() {
-
+static void ObjTests() {
   CHECK_EQ(RunToString(R"(
      let object Article of { title : string, year : int }
          val n =
@@ -313,6 +312,118 @@ static void NewTests() {
      end
     )"), "7");
 
+  std::string layout_lib_preamble = R"##(
+       val NODE_BOX = "box"
+       val NODE_SPAN = "span"
+       val NODE_STICKER = "stick"
+       object Node of { display : string }
+
+       object Span of { line-height: float,
+                        (* base font. *)
+                        font-face: string,
+                        font-size: float,
+                        (* Selects a font variant *)
+                        font-bold: bool,
+                        font-italic: bool }
+       fun span (attrs : obj) (l : layout) =
+         node (attrs with (Node) display = NODE_SPAN) l
+
+       fun b layout =
+         span {(Span) font-bold = true} layout
+  )##";
+
+  CHECK_EQ(RunToString(
+     "let\n" +
+     layout_lib_preamble + R"##(
+
+       val author = b[Tom 7 [[Murphy]] ]
+       fun layout-tostring l =
+         if is-text l
+         then get-text l
+         else
+           let
+               val z = layout-vec-size l
+               fun r n = if n == z then "." ^ int-to-string n
+                         else layout-tostring (layout-vec-sub (l, n)) ^
+                              r (n + 1)
+           in r 0
+           end
+      in
+         print (layout-tostring author)
+      end
+      )##"), "Tom 7 Murphy .3.1");
+
+  CHECK_EQ(RunToString(
+     "let\n" +
+     layout_lib_preamble + R"##(
+
+       val author = b[Tom 7 [[Murphy]] ]
+       fun print-layout l =
+         if is-text l
+         then print (get-text l)
+         else
+           let
+               val z = layout-vec-size l
+               fun r n = if n == z then print ("." ^ int-to-string n)
+                         else
+                           let do print-layout (layout-vec-sub (l, n))
+                           in r (n + 1)
+                           end
+           in r 0
+           end
+      in
+         print-layout author
+      end
+      )##"), "Tom 7 Murphy .3.1");
+
+  CHECK_EQ(RunToString(
+     "let\n" +
+     layout_lib_preamble + R"##(
+       datatype (a) list = :: of a * list | nil
+       fun list-app f nil = ()
+         | list-app f (h :: t) =
+         let do f h
+         in list-app f t
+         end
+
+       datatype layoutcase =
+           Text of string
+         | Node of obj * layout list
+
+       fun layoutcase (l : layout) =
+         if is-text l
+         then Text (get-text l)
+         else
+           let
+             val z = layout-vec-size l
+             fun r n =
+               let in
+                 if n == z then nil
+                 else (layout-vec-sub (l, n) :: r (n + 1))
+               end
+           in
+             Node (get-attrs l, r 0)
+           end
+
+       val author = b[Tom 7 [[Murphy]] ]
+       fun print-layout l =
+         case layoutcase l of
+           Text s => print s
+         | Node (attrs, children) =>
+           let
+               do print "<node>"
+               do list-app print-layout children
+           in
+               print "</node>"
+           end
+      in
+        print-layout author
+      end
+      )##"), "<node><node>Tom 7 Murphy </node></node>");
+}
+
+static void NewTests() {
+
 }
 
 }  // namespace bc
@@ -323,7 +434,7 @@ int main(int argc, char **argv) {
   bc::TestTrivial();
   bc::TestEndToEndEasy();
   bc::ExecTests();
-
+  bc::ObjTests();
   bc::NewTests();
 
   printf("OK\n");

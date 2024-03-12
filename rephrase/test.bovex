@@ -19,12 +19,16 @@ let
 
 
   fun printlayout l =
-    let do print "||"
+    let
+      do print "[["
+      do get-boxes l
+      do print "]]"
     in
-    case layoutcase author of
+    case layoutcase l of
       Text s => print (s ^ "\n")
     | Node (obj, children) =>
         let
+
           do print "node "
           do print (attrs-string obj)
           do print "\n"
