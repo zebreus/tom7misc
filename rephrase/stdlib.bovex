@@ -8,6 +8,8 @@ fun option-map f (SOME x) = SOME (f x)
 
 datatype order = LESS | EQUAL | GREATER
 
+object Object of { }
+
 fun int-compare (a, b) =
   if a < b
   then LESS

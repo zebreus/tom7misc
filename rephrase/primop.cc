@@ -46,10 +46,15 @@ const char *PrimopString(Primop po) {
   case Primop::STRING_CONCAT: return "STRING_CONCAT";
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
-  case Primop::VEC_SIZE: return "VEC_SIZE";
   case Primop::REPHRASE: return "REPHRASE";
   case Primop::GET_BOXES: return "GET_BOXES";
   case Primop::PACK_BOXES: return "PACK_BOXES";
+  case Primop::IS_TEXT: return "IS_TEXT";
+  case Primop::GET_TEXT: return "GET_TEXT";
+  case Primop::GET_ATTRS: return "GET_ATTRS";
+  case Primop::LAYOUT_VEC_SIZE: return "LAYOUT_VEC_SIZE";
+  case Primop::LAYOUT_VEC_SUB: return "LAYOUT_VEC_SUB";
+
   case Primop::INVALID: return "INVALID";
   }
   return "?? UNKNOWN PRIMOP ??";
@@ -90,12 +95,17 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::INT_TO_STRING: return std::make_tuple(0, 1);
   case Primop::STRING_TO_LAYOUT: return std::make_tuple(0, 1);
   case Primop::STRING_CONCAT: return std::make_tuple(0, 2);
-  case Primop::VEC_SIZE: return std::make_tuple(1, 1);
   case Primop::REPHRASE: return std::make_tuple(0, 1);
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
   case Primop::OUT_LAYOUT: return std::make_tuple(0, 1);
   case Primop::GET_BOXES: return std::make_tuple(0, 1);
   case Primop::PACK_BOXES: return std::make_tuple(0, 2);
+  case Primop::IS_TEXT: return std::make_tuple(0, 1);
+  case Primop::GET_TEXT: return std::make_tuple(0, 1);
+  case Primop::GET_ATTRS: return std::make_tuple(0, 1);
+  case Primop::LAYOUT_VEC_SIZE: return std::make_tuple(0, 1);
+  case Primop::LAYOUT_VEC_SUB: return std::make_tuple(0, 2);
+
   case Primop::INVALID:
     LOG(FATAL) << "INVALID primop";
   }
@@ -148,14 +158,19 @@ bool IsPrimopTotal(Primop p) {
   case Primop::INT_TO_STRING: return true;
   case Primop::STRING_TO_LAYOUT: return true;
   case Primop::STRING_CONCAT: return true;
-  case Primop::VEC_SIZE: return true;
   case Primop::OUT_STRING: return false;
   case Primop::OUT_LAYOUT: return false;
+
+  case Primop::IS_TEXT: return true;
 
   case Primop::REPHRASE:
   case Primop::GET_BOXES:
   case Primop::PACK_BOXES:
-    // minimally, internal stuff errors out on invalid layout
+  case Primop::GET_TEXT:
+  case Primop::GET_ATTRS:
+  case Primop::LAYOUT_VEC_SIZE:
+  case Primop::LAYOUT_VEC_SUB:
+    // minimally, internal layout stuff errors out on invalid layout
     return false;
 
   case Primop::INVALID:
@@ -189,6 +204,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   const il::Type *Bool = pool->BoolType();
   const il::Type *String = pool->StringType();
   const il::Type *Layout = pool->LayoutType();
+  const il::Type *Obj = pool->ObjType();
   const auto Alpha = [pool]() { return pool->VarType("a"); };
 
   auto PairType = [&](const Type *a, const Type *b) {
@@ -256,10 +272,11 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::REPHRASE: return {{}, pool->Arrow(Layout, Layout)};
   case Primop::GET_BOXES: return {{}, pool->Arrow(Layout, Layout)};
   case Primop::PACK_BOXES: return {{}, BinOp(Float, Layout, Layout)};
-
-  case Primop::VEC_SIZE:
-    LOG(FATAL) << "VEC_SIZE is for internal use in bytecode and should not "
-      "(yet) be seen in IL";
+  case Primop::IS_TEXT: return {{}, pool->Arrow(Layout, Bool)};
+  case Primop::GET_TEXT: return {{}, pool->Arrow(Layout, String)};
+  case Primop::GET_ATTRS: return {{}, pool->Arrow(Layout, Obj)};
+  case Primop::LAYOUT_VEC_SIZE: return {{}, pool->Arrow(Layout, Int)};
+  case Primop::LAYOUT_VEC_SUB: return {{}, BinOp(Layout, Int, Layout)};
 
   default:
     LOG(FATAL) << "Unknown primop in PrimopType";

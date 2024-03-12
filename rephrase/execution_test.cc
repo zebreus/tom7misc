@@ -251,6 +251,20 @@ static void ExecTests() {
          print (int-to-string (!r))
       end
       )"), "7");
+
+  CHECK_EQ(RunToString(R"(
+      let
+        datatype (a) list = :: of a * list | nil
+        fun list-app f nil = ()
+          | list-app f (h :: t) =
+          let do f h
+          in list-app f t
+          end
+        fun pint n = print (int-to-string n)
+      in
+        list-app pint (1 :: 5 :: 2 :: 3 :: 2 :: nil)
+      end
+      )"), "15232");
 }
 
 static void NewTests() {

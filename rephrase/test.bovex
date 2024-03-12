@@ -3,8 +3,56 @@ let
   import "layout.bovex"
   import "cite.bovex"
   import "paper.bib"
-in
 
+  val author = b[Tom 7 [[Murphy]] ]
+
+  fun attrs-string (obj as {(Node) display = "box"}) =
+       (case obj of
+          {(Box) width } => "box-width"
+        | _ => "box")
+    | attrs-string (obj as {(Node) display = "span"}) =
+       (case obj of
+          {(Span) font-face } => "span(" ^ font-face ^ ")"
+        | {(Span) font-bold } => if font-bold then "span-bold" else "span-nobold"
+        | _ => "span")
+    | attrs-string _ = "??"
+
+
+  fun printlayout l =
+    let do print "||"
+    in
+    case layoutcase author of
+      Text s => print (s ^ "\n")
+    | Node (obj, children) =>
+        let
+          do print "node "
+          do print (attrs-string obj)
+          do print "\n"
+
+          (* FIXME: Some bug here! Either there's a problem with
+             the recursive call (?) or the child is the same
+             as the parent node. *)
+          fun rec nil = ()
+            | rec (h :: t) =
+            let do printlayout h
+            in rec t
+            end
+
+          do print "LEN: "
+          do print (int-to-string (list-length children))
+          do print "\n"
+        in
+
+          (* list-app printlayout children *)
+          rec children
+          (* print "OK\n" *)
+        end
+    end
+
+  do printlayout author
+
+in
+(*
   output
   (pack-boxes
    (inch 4.0,
@@ -25,5 +73,6 @@ in
 
    [bibliography()]
    ])))
-
+  *)
+  [bye]
 end

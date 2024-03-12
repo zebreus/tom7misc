@@ -58,6 +58,8 @@ Initial::Initial(AstPool *pool) {
     {">", Primop::INT_GREATER},
     {">=", Primop::INT_GREATEREQ},
 
+    {"^", Primop::STRING_CONCAT},
+
     {"ref", Primop::REF},
     {":=", Primop::REF_SET},
     {"!", Primop::REF_GET},
@@ -74,6 +76,12 @@ Initial::Initial(AstPool *pool) {
     {"rephrase", Primop::REPHRASE},
     {"internal-get-boxes", Primop::GET_BOXES},
     {"internal-pack-boxes", Primop::PACK_BOXES},
+
+    {"is-text", Primop::IS_TEXT},
+    {"get-text", Primop::GET_TEXT},
+    {"get-attrs", Primop::GET_ATTRS},
+    {"layout-vec-size", Primop::LAYOUT_VEC_SIZE},
+    {"layout-vec-sub", Primop::LAYOUT_VEC_SUB},
 
     {"print", Primop::OUT_STRING},
     {"output", Primop::OUT_LAYOUT},

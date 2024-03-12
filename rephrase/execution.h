@@ -16,6 +16,9 @@ struct Execution {
   explicit Execution(const Program &pgm);
   virtual ~Execution();
 
+  using map_type = std::unordered_map<std::string, Value *>;
+  using vec_type = std::vector<bc::Value *>;
+
   struct StackFrame {
     // Pointer to the code block in the program.
     const std::vector<Inst> *insts = nullptr;
@@ -68,6 +71,9 @@ struct Execution {
   virtual void OutputLayoutHook(const Value *layout);
 
  private:
+  static std::pair<Value *, const vec_type &>
+  GetNode(const char *what, Value *a);
+
   void InternalFail(const std::string &msg, State *state);
   static Value *NonceValue();
   Value *DoBinop(Primop primop, Value *a, Value *b, State *state);

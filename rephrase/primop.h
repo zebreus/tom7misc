@@ -63,8 +63,12 @@ enum class Primop {
 
   STRING_TO_LAYOUT,
 
-  // currently internal
-  VEC_SIZE,
+  IS_TEXT,
+  GET_TEXT,
+  // Operations on non-text layout
+  GET_ATTRS,
+  LAYOUT_VEC_SIZE,
+  LAYOUT_VEC_SUB,
 
   // expensive stuff implemented by harness
   REPHRASE,

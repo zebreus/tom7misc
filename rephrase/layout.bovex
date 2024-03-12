@@ -44,7 +44,7 @@ fun layout-concat nil = []
 (* Low-level node info. *)
 val NODE_BOX = "box"
 val NODE_SPAN = "span"
-val NODE_SPAN = "stick"
+val NODE_STICKER = "stick"
 object Node of { display : string }
 
 
@@ -116,9 +116,9 @@ output (node {(Sticker) }
    where <l> are also boxes. It also reifies glue and inserts any
    break-insert layout from breaks (likewise, dropping any that is not used).
 
+   see pack-boxes below.
    *)
-fun line-break (boxes : layout) =
-          fail "unimplemented"
+
 (*
   let
     val res = internal-line-break boxes
@@ -166,3 +166,39 @@ fun it layout =
 
 fun rm layout =
   span {(Span) font-bold = false, font-italic = false} layout
+
+
+datatype layoutcase =
+    Text of string
+  | Node of obj * layout list
+
+fun layoutcase (l : layout) =
+  if is-text l
+  then Text (get-text l)
+  else
+    let
+      val z = layout-vec-size l
+      do print (int-to-string z ^ "\n")
+      fun r n =
+        let
+          do print (int-to-string n ^ "<-\n")
+        in
+          if n == z then nil
+          else (layout-vec-sub (l, n) :: r (n + 1))
+        end
+    in
+      Node (get-attrs l, r 0)
+    end
+
+(* Converts the layout recursively to a string, ignoring any
+   attributes and concatenating all the text nodes. *)
+fun layout-tostring l =
+  if is-text l
+  then get-text l
+  else
+    let val z = layout-vec-size l
+        fun r n = if n == z then ""
+                  else layout-tostring (layout-vec-sub (l, n)) ^
+                       r (n + 1)
+    in r 0
+    end

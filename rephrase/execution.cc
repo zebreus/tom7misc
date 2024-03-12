@@ -275,6 +275,19 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return DocTreeToValue(&state->heap.used, packdoc);
   }
 
+  case Primop::LAYOUT_VEC_SUB: {
+    const BigInt *bb = std::get_if<BigInt>(&b->v);
+    CHECK(bb != nullptr) << "Expected int argument (rhs) to layout-vec-sub";
+    const auto &[attrs, children] = GetNode("layout-vec-sub", a);
+    std::optional<int64_t> io = bb->ToInt();
+    CHECK(io.has_value()) << "Index is way too big! " << bb->ToString();
+    const int64_t idx = io.value();
+    CHECK(idx >= 0 && idx < (int64_t)children.size()) << "Index out of bounds in "
+      "layout-vec-sub.\nIndex: " << idx << "\nVector size: " <<
+      children.size();
+    return children[idx];
+  }
+
   case Primop::REF_SET:
     LOG(FATAL) << "SET should have been compiled away.";
   case Primop::INVALID:
@@ -284,6 +297,33 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
   return NonceValue();
 }
+
+  // Returns the attrs (as a Value *) and the children (as a vector
+std::pair<Value *, const Execution::vec_type &>
+Execution::GetNode(const char *what, Value *a) {
+  map_type *obj = std::get_if<map_type>(&a->v);
+  CHECK(obj != nullptr) << what << " on a (presumably) text node. "
+      "Must check it first with is-text.";
+
+  auto ait = obj->find(bc::NODE_ATTRS_LABEL);
+  CHECK(ait != obj->end()) << "(" << what << ") Nodes always have an "
+      "attribute object, even if it is empty.";
+  Value *attrs = ait->second;
+
+  // Debugging
+  const map_type *aobj = std::get_if<map_type>(&attrs->v);
+  CHECK(aobj != nullptr) << "(" << what << ") In a node, the attribute "
+      "field is always an object, even if it is empty.";
+
+  auto cit = obj->find(bc::NODE_CHILDREN_LABEL);
+  CHECK(cit != obj->end()) << "(" << what << ") Nodes always have a "
+      "children vector, even if it is empty.";
+  vec_type *cvec = std::get_if<vec_type>(&cit->second->v);
+  CHECK(cvec != nullptr) << "(" << what << ") In a node, the children "
+      "field is always a vector.";
+  return std::tie(attrs, *cvec);
+};
+
 
 Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
@@ -305,6 +345,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
       return *s;
   };
 
+
   auto Unit = [state]() -> Value * {
       // PERF: Don't represent unit with an allocated record :(
       return NewValue(&state->heap,
@@ -321,6 +362,10 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   auto String = [state](std::string s) -> Value * {
       return NewValue(&state->heap, std::move(s));
+    };
+
+  auto Bool = [state](bool x) -> Value * {
+      return NewValue(&state->heap, uint64_t(x ? 1 : 0));
     };
 
   switch (primop) {
@@ -358,6 +403,28 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     DocTree doc = ValueToDocTree(a);
     DocTree boxdoc = DocumentHook()->GetBoxes(doc);
     return DocTreeToValue(&state->heap.used, boxdoc);
+  }
+
+  case Primop::IS_TEXT: {
+    const bool is_text = std::holds_alternative<std::string>(a->v);
+    return Bool(is_text);
+  }
+
+  case Primop::GET_TEXT: {
+    const std::string *text = std::get_if<std::string>(&a->v);
+    CHECK(text != nullptr) << "get-text on non-text node. Must check it "
+      "first with is-text.";
+    return String(*text);
+  }
+
+  case Primop::GET_ATTRS: {
+    const auto [attrs, children] = GetNode("get-attrs", a);
+    return attrs;
+  }
+
+  case Primop::LAYOUT_VEC_SIZE: {
+    const auto &[attrs, children] = GetNode("layout-vec-size", a);
+    return Big(BigInt((int)children.size()));
   }
 
   case Primop::REF:
