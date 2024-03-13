@@ -10,8 +10,14 @@
 
 #include "document.h"
 #include "pdf.h"
+#include "ansi.h"
+#include "color-util.h"
 
-PDFFont::PDFFont(const PDF::FontObj *f) : pdf_font(f) {}
+PDFFont::PDFFont(const PDF::FontObj *f) : pdf_font(f) {
+  CHECK(f != nullptr);
+}
+
+using Transform = PDFDocument::Transform;
 
 const Font *PDFDocument::GetDescribedFont(const Document::TextProps &props) {
   auto Variant = [&]() -> int {
@@ -80,7 +86,8 @@ std::string PDFFont::Name() const {
   return pdf_font->BaseFont();
 }
 
-std::optional<double> PDFFont::GetKerning(int codepoint1, int codepoint2) const {
+std::optional<double>
+PDFFont::GetKerning(int codepoint1, int codepoint2) const {
   return pdf_font->GetKerning(codepoint1, codepoint2);
 }
 
@@ -99,6 +106,13 @@ static std::string DateTimeStamp() {
                      std::chrono::system_clock::now());
 }
 
+static inline Transform Translate(Transform t, double dx, double dy) {
+  t.dx += dx;
+  t.dy += dy;
+  return t;
+}
+
+
 PDFDocument::PDFDocument(double width, double height) {
   PDF::Info info;
   // XXX make settable from document.
@@ -112,4 +126,102 @@ PDFDocument::PDFDocument(double width, double height) {
   strncpy(info.date, DateTimeStamp().c_str(), 63);
 
   pdf.reset(new PDF((float)width, (float)height, info));
+}
+
+// These draw routines are just like their counterparts in PDF, except
+// except that the y coordinates are flipped. We only use y-down
+// coordinates ("regular graphics coordinates") in BoVeX, and
+// the PDF library only uses y-up. Both use "points" as the distance
+// unit uniformly.
+double PDFDocument::FlipPageCoordinate(const PDF::Page &page, double y) {
+  const double height = page.Height();
+  return height - y;
+}
+
+// The PDF lib uses (1-A)RGB colors, but we always use RGBA here.
+static uint32_t PDFColor(uint32_t rgba) {
+  const auto &[r, g, b, a] = ColorUtil::Unpack32(rgba);
+  printf("R G B A %02x %02x %02x %02x\n", r, g, b, a);
+  return ColorUtil::Pack32(255 - a, r, g, b);
+}
+
+void PDFDocument::DrawText(const PDFFont &font,
+                           const std::string &text, double size,
+                           double x, double y,
+                           uint32_t color,
+                           PDF::Page *page) {
+  CHECK(page != nullptr);
+  if (text.empty()) return;
+
+  CHECK(font.pdf_font != nullptr);
+  pdf->SetFont(font.pdf_font);
+  pdf->AddText(text, size,
+               x, FlipPageCoordinate(*page, y),
+               PDFColor(color),
+               page);
+}
+
+void PDFDocument::PlaceStickersRec(Context context,
+                                   Transform transform,
+                                   const DocTree &doc,
+                                   PDF::Page *page) {
+  if (doc.IsText()) {
+    // Place the text with the current transform.
+    DrawText(context.font,
+             doc.text,
+             context.font_size,
+             transform.dx, transform.dy,
+             context.color,
+             page);
+    return;
+  }
+
+  if (doc.IsEmpty())
+    return;
+
+  if (doc.IsGroup()) {
+    for (const std::shared_ptr<DocTree> &child : doc.children) {
+      PlaceStickersRec(context, transform, *child, page);
+    }
+    return;
+  }
+
+  // Otherwise, the node should be a sticker.
+  const std::string *display = doc.GetStringAttr("display");
+  CHECK(display != nullptr) << "Any non-group node has to have a display "
+    "when rendering the page.";
+
+  CHECK(*display == "sticker") << "At this point everything should be "
+    "stickers. Got node with display=" << *display;
+
+  const double *x = doc.GetDoubleAttr("x");
+  const double *y = doc.GetDoubleAttr("y");
+  CHECK(x != nullptr && y != nullptr) << "Every sticker should have "
+    "its final x= and y= coordinates.";
+
+  // XXX text props from sticker
+  // XXX scaling
+
+  for (const std::shared_ptr<DocTree> &child : doc.children) {
+    Transform ct = Translate(transform, *x, *y);
+    PlaceStickersRec(context, ct, *child, page);
+  }
+}
+
+void PDFDocument::GeneratePDF(const std::string &filename,
+                              const DocTree &doc) {
+  // XXX: Some way of having multiple pages. Maybe just a newpage
+  // primop.
+  PDF::Page *page = pdf->AppendNewPage();
+
+  Context context;
+  context.font = PDFFont(pdf->GetBuiltInFont(PDF::BuiltInFont::TIMES_ROMAN));
+  Transform identity;
+  // XXX default margins like this should come from the document
+  identity.dx = 72.0 / 2.0;
+  identity.dy = 72.0 / 2.0;
+  PlaceStickersRec(context, identity, doc, page);
+
+  pdf->Save(filename);
+  printf("Wrote " AGREEN("%s") "\n", filename.c_str());
 }

@@ -28,6 +28,13 @@ struct DocTree {
   std::string text;
   std::vector<std::shared_ptr<DocTree>> children;
 
+  // No attributes or children means it's a text node. Could be empty.
+  bool IsText() const;
+  // An empty node is a text node whose text is blank.
+  bool IsEmpty() const;
+  // A group is a real node that has no attributes, but has children.
+  bool IsGroup() const;
+
   // Not allowed on text nodes.
   // Return a pointer to the named attribute, or nullptr if not present.
   const AttrVal *GetAttr(const std::string &) const;
@@ -62,8 +69,6 @@ DocTree ValueToDocTree(const bc::Value *v);
 bc::Value *DocTreeToValue(std::vector<bc::Value *> *heap, const DocTree &doc);
 
 void DebugPrintDocTree(const DocTree &doc);
-
-bool IsText(const DocTree &doc);
 
 DocTree JoinDocs(std::vector<DocTree> v);
 

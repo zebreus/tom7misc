@@ -133,17 +133,24 @@ static int Bovex(const std::vector<std::string> &args) {
   BovexExecution execution(pgm, &pdf_document);
   BovexExecution::State state = execution.Start();
 
-  printf(AWHITE("Running") ".\n");
-  fflush(stdout);
+  if (verbose > 0) {
+    printf(AWHITE("Running") ".\n");
+    fflush(stdout);
+  }
   execution.RunToCompletion(&state);
 
   DocTree doc = execution.ExtractDocument();
+  // Measure final badness?
 
-  printf(AWHITE("The document") ":\n");
-  DebugPrintDocTree(doc);
+  if (verbose > 1) {
+    printf(AWHITE("The document") ":\n");
+    DebugPrintDocTree(doc);
+  }
+
+  pdf_document.GeneratePDF(output_file, doc);
 
   // XXX, using pdf_document
-  GeneratePDF(output_file);
+  // GeneratePDF(output_file);
 
   const auto &[data_bytes, total_insts] = ProgramSize(pgm);
   printf("Program size: " ABLUE("%lld") " bytes data, "

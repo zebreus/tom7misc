@@ -2,7 +2,6 @@
 
 #include <functional>
 #include <string>
-#include <unordered_set>
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
@@ -235,7 +234,7 @@ AttrValToValue(std::vector<bc::Value *> *heap,
 bc::Value *DocTreeToValue(std::vector<bc::Value *> *heap, const DocTree &doc) {
   std::function<bc::Value *(const DocTree &doc)> Rec =
     [heap, &Rec](const DocTree &doc) -> bc::Value * {
-      if (IsText(doc)) {
+      if (doc.IsText()) {
         // Text is represented as a string.
         return NewString(heap, doc.text);
       } else {
@@ -270,10 +269,18 @@ static std::string Pad(int depth) {
   return std::string(depth, ' ');
 }
 
-bool IsText(const DocTree &doc) {
+bool DocTree::IsText() const {
   // If it has no attrs or children, it is a text node (even if
   // text is also empty).
-  return doc.attrs.empty() && doc.children.empty();
+  return attrs.empty() && children.empty();
+}
+
+bool DocTree::IsEmpty() const {
+  return text.empty() && attrs.empty() && children.empty();
+}
+
+bool DocTree::IsGroup() const {
+  return attrs.empty() && !children.empty();
 }
 
 #define ATAG(s) AFGCOLOR(160, 160, 200, s)
@@ -283,7 +290,7 @@ bool IsText(const DocTree &doc) {
 void DebugPrintDocTree(const DocTree &doc) {
   std::function<void(int, const DocTree &)> Rec =
     [&Rec](int depth, const DocTree &doc) {
-      if (IsText(doc)) {
+      if (doc.IsText()) {
         // We should be careful about normalizing whitespace here,
         // since it sometimes has meaning.
         const std::string t = Util::NormalizeWhitespace(doc.text);
@@ -476,7 +483,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
 
   std::function<void(TextProps props, const DocTree &)> Rec =
     [this, &out, &Rec](TextProps props, const DocTree &doc) {
-      if (IsText(doc)) {
+      if (doc.IsText()) {
 
         const Font *font = GetDescribedFont(props);
 
@@ -550,7 +557,7 @@ struct Box {
 DocTree Document::PackBoxes(double width, const DocTree &doc) {
   static constexpr bool VERBOSE = false;
   std::vector<DocTree> out;
-  CHECK(!IsText(doc)) << "PackBoxes wants a node that has only box children.";
+  CHECK(!doc.IsText()) << "PackBoxes wants a node that has only box children.";
 
   auto GetBox = [](const DocTree &doc) -> Box {
       const double *width = doc.GetDoubleAttr("width");
@@ -592,8 +599,6 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
       }
       return boxes;
     }();
-
-  // out.push_back(TextDoc(StringPrintf("%d boxes", (int)boxes.size())));
 
   // Now pack.
   // Simple first-fit algorithm so we can test the end-to-end.
