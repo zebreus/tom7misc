@@ -92,6 +92,8 @@ public:
     ZAPF_DINGBATS,
   };
 
+  static const char *BuiltInFontName(BuiltInFont bif);
+
   // Metadata to be inserted into the header of the output PDF.
   // Because these fields must be null-terminated, the maximum
   // length is actually 63.
@@ -452,9 +454,11 @@ public:
                      Page *page = nullptr);
 
   // Returns nullptr if the font has not yet been loaded
-  // with SetFont (for built-in fonts) or AddTTF.
+  // with AddTTF.
   FontObj *GetFontByName(const std::string &name) const;
-  FontObj *GetBuiltInFont(BuiltInFont font) const;
+  // For built-in fonts, we add it if it hasn't been added already.
+  // Always succeeds.
+  FontObj *GetBuiltInFont(BuiltInFont font);
 
   // Returns true upon success.
   bool GetTextWidth(const std::string &text,

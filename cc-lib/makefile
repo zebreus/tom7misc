@@ -232,5 +232,8 @@ parser-combinators_test.exe : parser-combinators_test.o $(BASE)
 functional-map_test.exe : functional-map_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+functional-set_test.exe : functional-set_test.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f base/*.o bignum/*.o *.o *.exe *.deleteme test-*.png $(BASE) $(RE2_OBJECTS)

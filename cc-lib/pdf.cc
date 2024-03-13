@@ -205,21 +205,21 @@ const char *PDF::ObjTypeName(ObjType t) {
 // This breaks the PDF output, so we force a 'safe' locale.
 static void force_locale(char *buf, int len)
 {
-    char *saved_locale = setlocale(LC_ALL, nullptr);
+  char *saved_locale = setlocale(LC_ALL, nullptr);
 
-    if (!saved_locale) {
-        *buf = '\0';
-    } else {
-        strncpy(buf, saved_locale, len - 1);
-        buf[len - 1] = '\0';
-    }
+  if (!saved_locale) {
+    *buf = '\0';
+  } else {
+    strncpy(buf, saved_locale, len - 1);
+    buf[len - 1] = '\0';
+  }
 
-    setlocale(LC_NUMERIC, "POSIX");
+  setlocale(LC_NUMERIC, "POSIX");
 }
 
 static void restore_locale(char *buf)
 {
-    setlocale(LC_ALL, buf);
+  setlocale(LC_ALL, buf);
 }
 
 // XXX just use StringPrintf.
@@ -309,7 +309,7 @@ void PDF::pdf_del_object(Object *obj) {
 
   if (first_objects[type] == obj) {
     first_objects[type] = nullptr;
-      for (Object *o : objects) {
+    for (Object *o : objects) {
       if (o && o->type == type) {
         first_objects[type] = o;
         break;
@@ -387,12 +387,20 @@ PDF::FontObj *PDF::GetFontByName(const std::string &font_name) const {
   return nullptr;
 }
 
-PDF::FontObj *PDF::GetBuiltInFont(BuiltInFont f) const {
+PDF::FontObj *PDF::GetBuiltInFont(BuiltInFont f) {
   auto it = builtin_fonts.find(f);
   if (it != builtin_fonts.end())
     return it->second;
 
-  return nullptr;
+  // Create a new font object, then.
+  FontObj *fobj = AddObject(new FontObj);
+  CHECK(fobj);
+  fobj->builtin_font.emplace(f);
+  fobj->font_index = next_font_index;
+  next_font_index++;
+  builtin_fonts[f] = fobj;
+
+  return fobj;
 }
 
 bool PDF::SetFont(const std::string &font_name) {
@@ -410,19 +418,7 @@ bool PDF::SetFont(const std::string &font_name) {
 }
 
 void PDF::SetFont(BuiltInFont f) {
-  if (FontObj *fobj = GetBuiltInFont(f)) {
-    current_font = fobj;
-    return;
-  }
-
-  // Create a new font object, then.
-  FontObj *fobj = AddObject(new FontObj);
-  CHECK(fobj);
-  fobj->builtin_font.emplace(f);
-  fobj->font_index = next_font_index;
-  next_font_index++;
-  current_font = fobj;
-  builtin_fonts[f] = fobj;
+  current_font = GetBuiltInFont(f);
 }
 
 void PDF::SetFont(FontObj *font) {
@@ -477,7 +473,7 @@ int PDF::pdf_get_bookmark_count(const Object *obj) {
   return count;
 }
 
-static const char *BuiltInFontName(PDF::BuiltInFont f) {
+const char *PDF::BuiltInFontName(BuiltInFont f) {
   switch (f) {
   case PDF::HELVETICA: return "Helvetica";
   case PDF::HELVETICA_BOLD: return "Helvetica-Bold";
