@@ -13,7 +13,7 @@ namespace bc {
 
 static constexpr int COMPILER_VERBOSE = 0;
 static constexpr int FRONTEND_VERBOSE = 0;
-static constexpr bool BYTECODE_VERBOSE = 1;
+static constexpr int BYTECODE_VERBOSE = 0;
 
 #undef CHECK_EQ
 #define CHECK_EQ(s1, s2) do { \

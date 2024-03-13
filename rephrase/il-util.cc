@@ -8,15 +8,14 @@
 
 #include "il.h"
 #include "il-pass.h"
-#include "functional-map.h"
+#include "functional-set.h"
 #include "util.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"
 
 static constexpr bool VERBOSE = false;
 
-namespace { struct Unit { }; }
-using FunctionalSet = FunctionalMap<std::string, Unit>;
+using StringSet = FunctionalSet<std::string>;
 
 namespace il {
 
@@ -25,7 +24,7 @@ namespace {
 // PERF: We can use different accumulators so that when we're just getting
 // the free variable set, we don't have to maintain a whole vector of
 // all the occurrences.
-struct TallyVarsPass : public Pass<FunctionalSet> {
+struct TallyVarsPass : public Pass<StringSet> {
   using Pass::Pass;
 
   // Anything that binds a variable needs to pass it in the functional
@@ -36,7 +35,7 @@ struct TallyVarsPass : public Pass<FunctionalSet> {
   // the guess instead of calling constructors.
 
   // Exp vars can't appear in types, so don't even recurse into them.
-  const Type *DoType(const Type *guess, FunctionalSet bound) override {
+  const Type *DoType(const Type *guess, StringSet bound) override {
     return guess;
   }
 
@@ -45,9 +44,9 @@ struct TallyVarsPass : public Pass<FunctionalSet> {
                    const Exp *rhs,
                    const Exp *body,
                    const Exp *guess,
-                   FunctionalSet bound) override {
+                   StringSet bound) override {
     DoExp(rhs, bound);
-    DoExp(body, bound.Insert(x, {}));
+    DoExp(body, bound.Insert(x));
     return guess;
   }
 
@@ -56,17 +55,17 @@ struct TallyVarsPass : public Pass<FunctionalSet> {
                   const Type *arrow_type,
                   const Exp *body,
                   const Exp *guess,
-                  FunctionalSet bound) override {
-    FunctionalSet bbound = self.empty() ? bound : bound.Insert(self, {});
-    DoExp(body, bbound.Insert(x, {}));
+                  StringSet bound) override {
+    StringSet bbound = self.empty() ? bound : bound.Insert(self);
+    DoExp(body, bbound.Insert(x));
     return guess;
   }
 
   const Exp *DoVar(const std::vector<const Type *> &ts,
                    const std::string &v,
                    const Exp *guess,
-                   FunctionalSet bound) override {
-    if (bound.FindPtr(v) == nullptr) {
+                   StringSet bound) override {
+    if (!bound.Contains(v)) {
       // Then it is free.
       tally[v].push_back(ts);
     }
@@ -81,10 +80,10 @@ struct TallyVarsPass : public Pass<FunctionalSet> {
           std::tuple<std::string, std::string, const Exp *>> &arms,
       const Exp *def,
       const Exp *guess,
-      FunctionalSet bound) override {
+      StringSet bound) override {
     DoExp(obj, bound);
     for (const auto &[s, x, arm] : arms) {
-      DoExp(arm, bound.Insert(x, {}));
+      DoExp(arm, bound.Insert(x));
     }
     DoExp(def, bound);
     return guess;
@@ -92,9 +91,9 @@ struct TallyVarsPass : public Pass<FunctionalSet> {
 
   const Exp *DoUnpack(
       const std::string &alpha, const std::string &x, const Exp *rhs,
-      const Exp *body, const Exp *guess, FunctionalSet bound) override {
+      const Exp *body, const Exp *guess, StringSet bound) override {
     DoExp(rhs, bound);
-    DoExp(body, bound.Insert(x, {}));
+    DoExp(body, bound.Insert(x));
     return guess;
   }
 
@@ -533,12 +532,12 @@ Program ILUtil::FinalizeEVars(AstPool *pool, const Program &program) {
 // Exactly analogous to the expression variable version above, but
 // the type language is smaller.
 namespace {
-struct CountTypeVarsPass : public Pass<FunctionalSet> {
+struct CountTypeVarsPass : public Pass<StringSet> {
   using Pass::Pass;
 
   const Type *DoEVar(EVar a,
                      const Type *guess,
-                     FunctionalSet bound) override {
+                     StringSet bound) override {
     // Recurse inside bound evars.
     if (const Type *t = a.GetBound()) {
       (void)DoType(t, bound);
@@ -551,9 +550,9 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
   const Type *DoVarType(const std::string &s,
                         const std::vector<const Type *> &v,
                         const Type *guess,
-                        FunctionalSet bound) override {
+                        StringSet bound) override {
     for (const Type *t : v) (void)DoType(t, bound);
-    if (bound.FindPtr(s) == nullptr) {
+    if (!bound.Contains(s)) {
       // Then it is free.
       counts[s]++;
     }
@@ -565,10 +564,10 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
       int idx,
       const std::vector<std::pair<std::string, const Type *>> &v,
       const Type *guess,
-      FunctionalSet bound) override {
+      StringSet bound) override {
     // All variables are bound in all arms.
     for (const auto &[alpha, t] : v) {
-      bound = bound.Insert(alpha, {});
+      bound = bound.Insert(alpha);
     }
 
     for (const auto &[alpha, t] : v) {
@@ -582,18 +581,18 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
       const std::string &alpha,
       const Type *body,
       const Type *guess,
-      FunctionalSet bound) override {
-    (void)DoType(body, bound.Insert(alpha, {}));
+      StringSet bound) override {
+    (void)DoType(body, bound.Insert(alpha));
     return guess;
   }
 
   // Globals can bind type vars.
 
-  Program DoProgram(const Program &program, FunctionalSet bound)
+  Program DoProgram(const Program &program, StringSet bound)
     override {
     for (const Global &glob : program.globals) {
-      FunctionalSet bb = bound;
-      for (const std::string &a : glob.tyvars) bb.Insert(a, {});
+      StringSet bb = bound;
+      for (const std::string &a : glob.tyvars) bb.Insert(a);
       (void)DoType(glob.type, bb);
       (void)DoExp(glob.exp, bb);
     }
@@ -608,9 +607,9 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
                    const Exp *rhs,
                    const Exp *body,
                    const Exp *guess,
-                   FunctionalSet bound) override {
-    FunctionalSet bb = bound;
-    for (const std::string &alpha : tyvars) bb = bb.Insert(alpha, {});
+                   StringSet bound) override {
+    StringSet bb = bound;
+    for (const std::string &alpha : tyvars) bb = bb.Insert(alpha);
     (void)DoExp(rhs, bb);
     (void)DoExp(body, bound);
     return guess;
@@ -618,18 +617,18 @@ struct CountTypeVarsPass : public Pass<FunctionalSet> {
 
   const Exp *DoUnpack(
       const std::string &alpha, const std::string &x, const Exp *rhs,
-      const Exp *body, const Exp *guess, FunctionalSet bound) override {
+      const Exp *body, const Exp *guess, StringSet bound) override {
     (void)DoExp(rhs, bound);
-    FunctionalSet bb = bound.Insert(alpha, {});
+    StringSet bb = bound.Insert(alpha);
     (void)DoExp(body, bb);
     return guess;
   }
 
   const Exp *DoPack(const Type *t_hidden, const std::string &alpha,
                     const Type *t_packed, const Exp *body,
-                    const Exp *guess, FunctionalSet bound) override {
+                    const Exp *guess, StringSet bound) override {
     (void)DoType(t_hidden, bound);
-    FunctionalSet bb = bound.Insert(alpha, {});
+    StringSet bb = bound.Insert(alpha);
     (void)DoType(t_packed, bb);
     (void)DoExp(body, bb);
     return guess;

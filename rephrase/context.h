@@ -5,6 +5,7 @@
 #include <string>
 
 #include "functional-map.h"
+#include "functional-set.h"
 #include "il.h"
 
 namespace il {
@@ -187,11 +188,11 @@ struct Context {
   }
 
   Context InsertType(const std::string &s) const {
-    return Context(expmap, symmap, typeset.Insert(s, {}));
+    return Context(expmap, symmap, typeset.Insert(s));
   }
 
   bool FindType(const std::string &s) const {
-    return typeset.FindPtr(s) != nullptr;
+    return typeset.Contains(s);
   }
 
   // For debugging.
@@ -200,8 +201,6 @@ struct Context {
 private:
 
   struct Unit {};
-  template<class T>
-  using FunctionalSet = FunctionalMap<T, Unit>;
 
   Context(FunctionalMap<std::string, PolyType> e,
           FunctionalMap<std::string, PolyType> s,

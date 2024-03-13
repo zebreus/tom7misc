@@ -70,6 +70,11 @@ Initial::Initial(AstPool *pool) {
     {"string-eq", Primop::STRING_EQ},
     {"string-less", Primop::STRING_LESS},
     {"string-greater", Primop::STRING_GREATER},
+    {"string-empty", Primop::STRING_EMPTY},
+    {"string-size", Primop::STRING_SIZE},
+    // Internal so that we can wrap with option.
+    {"internal-string-find", Primop::STRING_FIND},
+    {"substr", Primop::STRING_SUBSTR},
 
     {"layout", Primop::STRING_TO_LAYOUT},
 

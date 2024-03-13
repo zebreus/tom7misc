@@ -141,7 +141,6 @@ double PDFDocument::FlipPageCoordinate(const PDF::Page &page, double y) {
 // The PDF lib uses (1-A)RGB colors, but we always use RGBA here.
 static uint32_t PDFColor(uint32_t rgba) {
   const auto &[r, g, b, a] = ColorUtil::Unpack32(rgba);
-  printf("R G B A %02x %02x %02x %02x\n", r, g, b, a);
   return ColorUtil::Pack32(255 - a, r, g, b);
 }
 

@@ -43,8 +43,13 @@ const char *PrimopString(Primop po) {
   case Primop::FLOAT_GREATEREQ: return "FLOAT_GREATEREQ";
   case Primop::OUT_STRING: return "OUT_STRING";
   case Primop::OUT_LAYOUT: return "OUT_LAYOUT";
+
   case Primop::STRING_CONCAT: return "STRING_CONCAT";
   case Primop::STRING_EMPTY: return "STRING_EMPTY";
+  case Primop::STRING_SIZE: return "STRING_SIZE";
+  case Primop::STRING_FIND: return "STRING_FIND";
+  case Primop::STRING_SUBSTR: return "STRING_SUBSTR";
+
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
   case Primop::OBJ_EMPTY: return "OBJ_EMPTY";
@@ -100,6 +105,10 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_TO_LAYOUT: return std::make_tuple(0, 1);
   case Primop::STRING_CONCAT: return std::make_tuple(0, 2);
   case Primop::STRING_EMPTY: return std::make_tuple(0, 1);
+  case Primop::STRING_SIZE: return std::make_tuple(0, 1);
+  case Primop::STRING_FIND: return std::make_tuple(0, 2);
+  case Primop::STRING_SUBSTR: return std::make_tuple(0, 3);
+
   case Primop::OBJ_EMPTY: return std::make_tuple(0, 1);
   case Primop::REPHRASE: return std::make_tuple(0, 1);
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
@@ -167,6 +176,12 @@ bool IsPrimopTotal(Primop p) {
   case Primop::STRING_TO_LAYOUT: return true;
   case Primop::STRING_CONCAT: return true;
   case Primop::STRING_EMPTY: return true;
+  case Primop::STRING_SIZE: return true;
+  case Primop::STRING_FIND: return true;
+  case Primop::STRING_SUBSTR:
+    // It can fail.
+    return false;
+
   case Primop::OUT_STRING: return false;
   case Primop::OUT_LAYOUT: return false;
 
@@ -277,6 +292,11 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::STRING_GREATER: return {{}, BinOp(String, String, Bool)};
   case Primop::STRING_CONCAT: return {{}, BinOp(String, String, String)};
   case Primop::STRING_EMPTY: return {{}, pool->Arrow(String, Bool)};
+
+  case Primop::STRING_SIZE: return {{}, pool->Arrow(String, Int)};
+  case Primop::STRING_FIND: return {{}, BinOp(String, String, Int)};
+  case Primop::STRING_SUBSTR:
+    return {{}, pool->Arrow(pool->Product({String, Int, Int}), String)};
 
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};

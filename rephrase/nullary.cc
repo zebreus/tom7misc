@@ -3,20 +3,17 @@
 #include "el.h"
 #include "el-pass.h"
 #include "base/logging.h"
-#include "functional-map.h"
-
-namespace { struct Unit { }; }
-using FunctionalSet = FunctionalMap<std::string, Unit>;
+#include "functional-set.h"
 
 namespace el {
 
 // Argument is the set of nullary constructors.
-struct NullaryPass : public Pass<FunctionalSet> {
+struct NullaryPass : public Pass<FunctionalSet<std::string>> {
   using Pass::Pass;
 
   const Exp *DoLet(const std::vector<const Dec *> &ds,
                    const Exp *e,
-                   FunctionalSet nullary_ctors) override {
+                   FunctionalSet<std::string> nullary_ctors) override {
     std::vector<const Dec *> dd;
     for (const Dec *d : ds) {
       if (d->type == DecType::DATATYPE) {
@@ -31,7 +28,7 @@ struct NullaryPass : public Pass<FunctionalSet> {
           for (const auto &[lab, t] : dd.arms) {
             if (t == nullptr) {
               ddd.arms.emplace_back(lab, pool->RecordType({}));
-              nullary_ctors = nullary_ctors.Insert(lab, {});
+              nullary_ctors = nullary_ctors.Insert(lab);
             } else {
               ddd.arms.emplace_back(lab, DoType(t, nullary_ctors));
             }
@@ -47,15 +44,16 @@ struct NullaryPass : public Pass<FunctionalSet> {
     return pool->Let(dd, DoExp(e, nullary_ctors));
   }
 
-  const Dec *DoDatatypeDec(const std::vector<std::string> &tyvars,
-                           const std::vector<DatatypeDec> &ds,
-                           FunctionalSet nullary_ctors) override {
+  const Dec *DoDatatypeDec(
+      const std::vector<std::string> &tyvars,
+      const std::vector<DatatypeDec> &ds,
+      FunctionalSet<std::string> nullary_ctors) override {
     LOG(FATAL) << "This case should not be reached; we cover datatype "
       "decls in LET.";
   }
 
   const Pat *DoVarPat(const std::string &v,
-                      FunctionalSet nullary_ctors) override {
+                      FunctionalSet<std::string> nullary_ctors) override {
     if (nullary_ctors.Contains(v)) {
       return pool->AppPat(v, pool->RecordPat({}));
     } else {
@@ -64,7 +62,7 @@ struct NullaryPass : public Pass<FunctionalSet> {
   }
 
   const Exp *DoVar(const std::string &v,
-                   FunctionalSet nullary_ctors) override {
+                   FunctionalSet<std::string> nullary_ctors) override {
     if (nullary_ctors.Contains(v)) {
       return pool->App(pool->Var(v), pool->Record({}));
     } else {
@@ -79,7 +77,7 @@ const Exp *Nullary::Rewrite(const Exp *e) {
   NullaryPass pass(pool);
   // Perhaps this should include some initial stuff like
   // true and false, if not introduced via some preamble.
-  return pass.DoExp(e, FunctionalSet());
+  return pass.DoExp(e, FunctionalSet<std::string>());
 }
 
 }  // el

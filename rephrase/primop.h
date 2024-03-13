@@ -56,6 +56,10 @@ enum class Primop {
   STRING_EMPTY,
   // TODO: Other string comparisons
 
+  STRING_SIZE,
+  STRING_FIND,
+  STRING_SUBSTR,
+
   INT_TO_STRING,
 
   // I/O
