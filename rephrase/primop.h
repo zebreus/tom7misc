@@ -53,6 +53,7 @@ enum class Primop {
   STRING_LESS,
   STRING_GREATER,
   STRING_CONCAT,
+  STRING_EMPTY,
   // TODO: Other string comparisons
 
   INT_TO_STRING,

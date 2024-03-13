@@ -402,6 +402,11 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Bool(obj->empty());
   }
 
+  case Primop::STRING_EMPTY: {
+    const std::string &s = GetString("string_empty");
+    return Bool(s.empty());
+  }
+
   case Primop::REPHRASE: {
     return RephraseHook(a);
   }

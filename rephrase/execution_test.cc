@@ -432,10 +432,18 @@ static void ObjTests() {
                "then print \"yeah\"\n"
                "else print \"no\"\n"
                "end\n"), "yeah");
+
+  CHECK_EQ(
+      RunToString(R"(
+         let fun mt _ = []
+         in print (int-to-string (layout-vec-size [[mt ()][mt ()]]))
+         end
+      )"),
+      "0");
+
 }
 
 static void NewTests() {
-
 }
 
 }  // namespace bc

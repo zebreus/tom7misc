@@ -336,7 +336,8 @@ struct Converter {
         const std::string subchild = NewSymbol("cc");
         const std::string child_vec = NewSymbol("cv");
 
-        const std::string child_is_text = NewSymbol("catext");
+        const std::string child_is_text = NewSymbol("ctext");
+        const std::string child_is_blank = NewSymbol("cblank");
         const std::string child_attrs = NewSymbol("cattrs");
         const std::string child_attrs_empty = NewSymbol("caempty");
 
@@ -359,7 +360,7 @@ struct Converter {
                 .out = child_is_text,
                 .arg = local});
           // This will become a forward jump.
-          int text_if_idx = ReserveInstruction(insts);
+          int text_if_loc = ReserveInstruction(insts);
 
           // Get the attributes object.
           insts->emplace_back(
@@ -373,7 +374,7 @@ struct Converter {
                 .out = child_attrs_empty,
                 .arg = child_attrs});
 
-          int trivial_if_idx = ReserveInstruction(insts);
+          int trivial_if_loc = ReserveInstruction(insts);
 
           // If we get here, then it's a normal node. Insert it.
           insts->emplace_back(inst::SetVec{.vec = v, .idx = idx, .arg = local});
@@ -393,8 +394,19 @@ struct Converter {
           // Now emit the code for text nodes.
           int text_loc = insts->size();
           // Patch the jump forward.
-          (*insts)[text_if_idx] =
+          (*insts)[text_if_loc] =
             inst::If{.cond = child_is_text, .true_idx = text_loc};
+
+          // An empty text node is an empty node. These are dropped.
+          insts->emplace_back(
+              inst::Unop{
+                .primop = Primop::STRING_EMPTY,
+                .out = child_is_blank,
+                .arg = local,
+              });
+
+          // if child_is_blank continue
+          int empty_if_loc = ReserveInstruction(insts);
 
           // TODO: If the previous node was text, append this text
           // to it instead of pushing a whole new node.
@@ -408,11 +420,11 @@ struct Converter {
                   .arg1 = idx,
                   .arg2 = inc,
                 });
-          join_jmps = {ReserveInstruction(insts)};
+          join_jmps.push_back(ReserveInstruction(insts));
 
           // Now the code for trivial nodes.
           int trivial_loc = insts->size();
-          (*insts)[trivial_if_idx] =
+          (*insts)[trivial_if_loc] =
             inst::If{.cond = child_attrs_empty, .true_idx = trivial_loc};
 
           // Awkwardly, the vector size comes from the layout object
@@ -493,7 +505,15 @@ struct Converter {
           // And so this is the join point.
           int join_loc = insts->size();
 
-          // Patch in the destination of the while loop (end) as well.
+          // Patch in destination of conditional jumps.
+
+          // Skip blank nodes.
+          (*insts)[empty_if_loc] = inst::If({
+              .cond = child_is_blank,
+              .true_idx = join_loc,
+            });
+
+          // End of while loop.
           (*insts)[while_if_loc] = inst::If({
               .cond = subcond,
               .true_idx = join_loc,
