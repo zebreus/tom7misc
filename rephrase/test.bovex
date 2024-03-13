@@ -19,12 +19,11 @@ let
     case layoutcase l of
       Text s => print (s ^ "\n")
     | Node (display, obj, children) =>
-        let
-          do print "node "
-          do print (attrs-string (display, obj))
-          do print ("with " ^ (int-to-string (list-length children)) ^
-                    " children:\n")
-        in
+        let in
+          print "node ";
+          print (attrs-string (display, obj));
+          print ("with " ^ (int-to-string (list-length children)) ^
+                    " children:\n");
           list-app printlayout children
         end
 

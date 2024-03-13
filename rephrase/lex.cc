@@ -45,6 +45,7 @@ const char *TokenTypeString(TokenType tok) {
   case ARROW: return "ARROW";
   case DARROW: return "DARROW";
   case COLON: return "COLON";
+  case SEMICOLON: return "SEMICOLON";
   case UNDERSCORE: return "UNDERSCORE";
   case EQUALS: return "EQUALS";
   case BAR: return "BAR";
@@ -413,6 +414,10 @@ std::optional<std::vector<Token>> Lexing::Lex(
         continue;
       case '}':
         ret.emplace_back(RBRACE, start, 1);
+        input.remove_prefix(1);
+        continue;
+      case ';':
+        ret.emplace_back(SEMICOLON, start, 1);
         input.remove_prefix(1);
         continue;
 

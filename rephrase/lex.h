@@ -32,6 +32,7 @@ enum TokenType {
   EQUALS,
   BAR,
   COLON,
+  SEMICOLON,
   TIMES,
   SLASH,
   HASH,

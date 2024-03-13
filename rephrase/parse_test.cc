@@ -500,6 +500,28 @@ static void TestParse() {
     CHECK(e->a->type == ExpType::WITH);
   }
 
+  {
+    const Exp *e = Parse("let in\n"
+                         "3; 4; 5\n"
+                         "end");
+    CHECK(e->type == ExpType::LET);
+    CHECK(e->decs.size() == 2) << ExpString(e);
+    CHECK(e->decs[0]->type == DecType::VAL);
+    CHECK(e->decs[0]->exp->integer == 3);
+    CHECK(e->decs[1]->type == DecType::VAL);
+    CHECK(e->decs[1]->exp->integer == 4);
+    CHECK(e->a->type == ExpType::INT);
+    CHECK(e->a->integer == 5);
+  }
+
+  {
+    const Exp *e = Parse("let in\n"
+                         "3;\n"
+                         "end");
+    CHECK(e->type == ExpType::LET);
+    CHECK(e->a->type == ExpType::INT);
+    CHECK(e->a->integer == 3);
+  }
 
   printf("Exp parsing " AGREEN("OK") "\n");
 }

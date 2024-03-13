@@ -537,10 +537,22 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   const auto LetExpr = [&](const auto &Expr, const auto &Decl) {
       return ((IsToken<LET>() >> *Decl << IsToken<IN>()) &&
-              // TODO: Can allow sequence here
-              (Expr << IsToken<END>())) >[&](const auto &p) {
-                  const auto &[ds, e] = p;
-                  return pool->Let(ds, e);
+              // Trailing semicolon is allowed, unlike SML.
+              (Separate(Expr, IsToken<SEMICOLON>()) <<
+               Opt(IsToken<SEMICOLON>())) <<
+              IsToken<END>())
+             >[&](const auto &p) {
+                  const auto &[ds, es] = p;
+                  CHECK(!es.empty()) << "Impossible. Separate must "
+                    "parse at least one exp!";
+                  std::vector<const Dec *> decs = ds;
+                  // parse any leading sequence expressions as
+                  // val _ = e  (but the last one is the body.)
+                  for (int i = 0; i < (int)es.size() - 1; i++) {
+                    decs.push_back(pool->ValDec(pool->WildPat(), es[i]));
+                  }
+
+                  return pool->Let(std::move(decs), es.back());
                 };
     };
 

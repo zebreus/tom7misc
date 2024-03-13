@@ -6,6 +6,8 @@
    down, and x positive meaning right. (Note this is vertically
    flipped from what pdf.h and the internal PDF format do!) *)
 
+val LAYOUT-VERBOSE = false
+
 fun inch (d : float) = d *. 72.0
 fun point (d : float) = d
 fun mm (d : float) = d *. 2.8346456664
@@ -191,14 +193,9 @@ fun layoutcase (l : layout) =
   else
     let
       val z = layout-vec-size l
-      (* do print (int-to-string z ^ "\n") *)
       fun r n =
-        let
-          (* do print (int-to-string n ^ "<-\n") *)
-        in
-          if n == z then nil
-          else (layout-vec-sub (l, n) :: r (n + 1))
-        end
+        if n == z then nil
+        else (layout-vec-sub (l, n) :: r (n + 1))
       val attrs = get-attrs l
     in
       Node (display-type attrs, attrs, r 0)
@@ -229,6 +226,7 @@ fun layout-concat nil = []
    stickers as children. *)
 fun stick-lines (line-height: float, p : layout) =
   let
+
     (* TODO: I think this is a generic construct; the opposite of
        JoinDocs in document.cc. *)
     fun get-lines p =
@@ -242,16 +240,18 @@ fun stick-lines (line-height: float, p : layout) =
 
     fun one-line (start-y : float, line : layout) =
       let
-        do print "Want LINE:\n"
-        do debug-print-doc line
-        do print "^^^^^^^^^^^^^"
+        do if LAYOUT-VERBOSE
+           then let in
+             print "Want LINE:\n";
+             debug-print-doc line;
+             print "^^^^^^^^^^^^^";
 
-        (* XXX this seems wrong! *)
-        do debug-print-doc (node (get-attrs line) [content])
-        do (case get-attrs line of
-          {(Node) display} => print ("Display: " ^ display ^ "\n")
-          | _ => print "no display")
-
+             debug-print-doc (node (get-attrs line) [content]);
+             (case get-attrs line of
+                {(Node) display} => print ("Display: " ^ display ^ "\n")
+              | _ => print "no display");
+                end
+           else ()
       in
       case layoutcase line of
         Node (BOX, attrs, words) =>
