@@ -46,6 +46,7 @@ const char *PrimopString(Primop po) {
   case Primop::STRING_CONCAT: return "STRING_CONCAT";
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
+  case Primop::OBJ_EMPTY: return "OBJ_EMPTY";
   case Primop::REPHRASE: return "REPHRASE";
   case Primop::GET_BOXES: return "GET_BOXES";
   case Primop::PACK_BOXES: return "PACK_BOXES";
@@ -97,6 +98,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::INT_TO_STRING: return std::make_tuple(0, 1);
   case Primop::STRING_TO_LAYOUT: return std::make_tuple(0, 1);
   case Primop::STRING_CONCAT: return std::make_tuple(0, 2);
+  case Primop::OBJ_EMPTY: return std::make_tuple(0, 1);
   case Primop::REPHRASE: return std::make_tuple(0, 1);
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
   case Primop::OUT_LAYOUT: return std::make_tuple(0, 1);
@@ -166,6 +168,8 @@ bool IsPrimopTotal(Primop p) {
   case Primop::OUT_LAYOUT: return false;
 
   case Primop::IS_TEXT: return true;
+
+  case Primop::OBJ_EMPTY: return true;
 
   case Primop::REPHRASE:
   case Primop::GET_BOXES:
@@ -274,6 +278,9 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};
   case Primop::OUT_LAYOUT: return {{}, pool->Arrow(Layout, Unit())};
+
+  case Primop::OBJ_EMPTY: return {{}, pool->Arrow(Obj, Bool)};
+
   case Primop::REPHRASE: return {{}, pool->Arrow(Layout, Layout)};
   case Primop::GET_BOXES: return {{}, pool->Arrow(Layout, Layout)};
   case Primop::PACK_BOXES: return {{}, BinOp(Float, Layout, Layout)};

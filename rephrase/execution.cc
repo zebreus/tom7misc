@@ -275,6 +275,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return DocTreeToValue(&state->heap.used, packdoc);
   }
 
+    // PERF: Could compile this away to GetVec.
   case Primop::LAYOUT_VEC_SUB: {
     const BigInt *bb = std::get_if<BigInt>(&b->v);
     CHECK(bb != nullptr) << "Expected int argument (rhs) to layout-vec-sub";
@@ -393,6 +394,12 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::OUT_LAYOUT: {
     OutputLayoutHook(a);
     return Unit();
+  }
+
+  case Primop::OBJ_EMPTY: {
+    const map_type *obj = std::get_if<map_type>(&a->v);
+    CHECK(obj != nullptr) << "obj_empty on a non-object.";
+    return Bool(obj->empty());
   }
 
   case Primop::REPHRASE: {
@@ -544,12 +551,22 @@ void Execution::Step(State *state) {
       return *u != 0;
     };
 
+#if 0
   auto LoadU64 = [&Error, &Load](const std::string &local) -> uint64_t {
       const Value *a = Load(local);
       const uint64_t *u = std::get_if<uint64_t>(&a->v);
       CHECK(u != nullptr) << Error() << "Expected " << local <<
         " to have a uint64 value. Got: " << ColorValuePtrString(a);
       return *u;
+    };
+#endif
+
+  auto LoadInt = [&Error, &Load](const std::string &local) -> const BigInt & {
+      const Value *a = Load(local);
+      const BigInt *b = std::get_if<BigInt>(&a->v);
+      CHECK(b != nullptr) << Error() << "Expected " << local <<
+        " to have a int value. Got: " << ColorValuePtrString(a);
+      return *b;
     };
 
   // By default, advance the ip.
@@ -628,9 +645,26 @@ void Execution::Step(State *state) {
   } else if (const inst::SetVec *setvec =
              std::get_if<inst::SetVec>(&inst)) {
     std::vector<Value *> *vec = LoadVec(setvec->vec);
-    uint64_t idx = LoadU64(setvec->idx);
-    while (vec->size() <= idx) vec->push_back(nullptr);
+    const BigInt &bidx = LoadInt(setvec->idx);
+
+    std::optional<int64_t> io = bidx.ToInt();
+    CHECK(io.has_value()) << "Index is way too big! " << bidx.ToString();
+    const int64_t idx = io.value();
+    CHECK(idx >= 0) << "SetVec Index cannot be less than zero: " << idx;
+    while ((int64_t)vec->size() <= idx) vec->push_back(nullptr);
     (*vec)[idx] = Load(setvec->arg);
+
+  } else if (const inst::GetVec *getvec =
+             std::get_if<inst::GetVec>(&inst)) {
+    std::vector<Value *> *vec = LoadVec(getvec->vec);
+    const BigInt &bidx = LoadInt(getvec->idx);
+
+    std::optional<int64_t> io = bidx.ToInt();
+    CHECK(io.has_value()) << "Index is way too big! " << bidx.ToString();
+    const int64_t idx = io.value();
+    CHECK(idx >= 0) << "GetVec Index cannot be less than zero: " << idx;
+    while ((int64_t)vec->size() <= idx) vec->push_back(nullptr);
+    frame.locals[getvec->out] = (*vec)[idx];
 
   } else if (const inst::Copy *copy = std::get_if<inst::Copy>(&inst)) {
     std::unordered_map<std::string, Value *> *rec = LoadRec(copy->obj);

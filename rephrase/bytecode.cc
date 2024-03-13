@@ -46,6 +46,9 @@ std::string ColorValueString(const Value &value) {
       StringAppendF(&ret, AMAP_LAB("%s"), labs[i].c_str());
     }
     return ret + AWHITE("}");
+  } else if (const std::vector<Value *> *v =
+             std::get_if<std::vector<Value *>>(&value.v)) {
+    return StringPrintf("vector, size %d", (int)v->size());
   } else {
     return "!!invalid!!";
   }
@@ -92,8 +95,8 @@ std::string ColorInstString(const Inst &inst) {
   } else if (const inst::GetVec *getvec = std::get_if<inst::GetVec>(&inst)) {
     return StringPrintf("GET " AOUT("%s") " <- " AARG("%s") "[" AIDX("%s") "]",
                         getvec->out.c_str(),
-                        setvec->arg.c_str(),
-                        setvec->idx.c_str());
+                        getvec->vec.c_str(),
+                        getvec->idx.c_str());
 
   } else if (const inst::Alloc *alloc = std::get_if<inst::Alloc>(&inst)) {
     return StringPrintf("ALLOC " AOUT("%s"),

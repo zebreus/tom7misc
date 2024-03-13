@@ -73,6 +73,8 @@ Initial::Initial(AstPool *pool) {
 
     {"layout", Primop::STRING_TO_LAYOUT},
 
+    {"obj-empty", Primop::OBJ_EMPTY},
+
     {"rephrase", Primop::REPHRASE},
     {"internal-get-boxes", Primop::GET_BOXES},
     {"internal-pack-boxes", Primop::PACK_BOXES},
@@ -102,6 +104,8 @@ Initial::Initial(AstPool *pool) {
                                pool->Node(pool->Var({}, "a"),
                                           {pool->Var({}, "l")}))), node_type1},
   };
+
+  // TODO: ^^ inlined as join
 
   for (const auto &[v, e, t] : inlined) {
     exp_vars.emplace_back(

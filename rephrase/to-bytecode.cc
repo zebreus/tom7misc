@@ -143,7 +143,7 @@ struct Converter {
           if (il_fn_labels.contains(other_label)) {
             // (load "function pointer")
             std::string tmp_fn =
-              AddValue(other_label,
+              AddAndLoadValue(other_label,
                        Value{.v = Value::t(other_init_global)},
                        &init_write_code);
             init_write_code.emplace_back(
@@ -258,13 +258,22 @@ struct Converter {
       std::make_pair(std::move(arg_lab), std::move(insts));
   }
 
+  // Returns the name of the data global. Maybe reuses one that's already
+  // there.
   std::string AddValue(const std::string &hint,
-                       const Value &value,
-                       std::vector<Inst> *insts) {
+                       const Value &value) {
     std::string lab = NewSymbol(hint);
     // TODO: Coalesce if already present!
     CHECK(!program.data.contains(lab)) << lab;
     program.data[lab] = value;
+    return lab;
+  }
+
+  // Returns the new local which has been loaded with the value.
+  std::string AddAndLoadValue(const std::string &hint,
+                              const Value &value,
+                              std::vector<Inst> *insts) {
+    const std::string lab = AddValue(hint, value);
     std::string local = NewSymbol(hint);
     insts->emplace_back(inst::Load{.out = local, .global = lab});
     return local;
@@ -287,29 +296,218 @@ struct Converter {
       switch (exp->type) {
       case il::ExpType::STRING: {
         const std::string &s = exp->String();
-        return AddValue("str", Value{.v = Value::t(s)}, insts);
+        return AddAndLoadValue("str", Value{.v = Value::t(s)}, insts);
       }
 
       case il::ExpType::FLOAT: {
         const double d = exp->Float();
-        return AddValue("b", Value{.v = Value::t(d)}, insts);
+        return AddAndLoadValue("b", Value{.v = Value::t(d)}, insts);
       }
 
       case il::ExpType::NODE: {
         const auto &[attrs, children] = exp->Node();
         const std::string lattrs = ConvertExp(G, "at", attrs, insts);
 
+        // Node automatically flattens children (i.e., makes their
+        // children part of the vector) if they have no attributes.
+        // We only need to do this once, since nodes within will
+        // also be in this normal form.
+
         // Build up the children vector.
         std::string v = NewSymbol("ch");
         insts->emplace_back(inst::AllocVec{.out = v});
-        for (int i = 0; i < (int)children.size(); i++) {
-          const il::Exp *child = children[i];
-          const std::string local = ConvertExp(G, StringPrintf("c%d", i),
-                                               child, insts);
-          uint64_t u = i;
-          const std::string idx = AddValue("idx", Value{.v = Value::t(u)}, insts);
-          insts->emplace_back(inst::SetVec({.vec = v, .idx = idx, .arg = local}));
+
+        // Current child index as we write elements into the vector.
+        std::string zero = AddValue("zero", Value({.v = Value::t(BigInt(0))}));
+        std::string one = AddValue("one", Value({.v = Value::t(BigInt(1))}));
+        std::string idx = NewSymbol("idx");
+        insts->emplace_back(inst::Load{.out = idx, .global = zero});
+        // Increment. This stays constant and is used for the outer and
+        // inner loops.
+        std::string inc = NewSymbol("inc");
+        insts->emplace_back(inst::Load{.out = inc, .global = one});
+
+        // Index within the child's children when we flatten elements.
+        // We keep reusing this one, so it doesn't get loaded until we
+        // start an inner loop.
+        const std::string num_subchildren = NewSymbol("sn");
+        const std::string subidx = NewSymbol("si");
+        const std::string subcond = NewSymbol("sc");
+        const std::string subchild = NewSymbol("cc");
+        const std::string child_vec = NewSymbol("cv");
+
+        const std::string child_is_text = NewSymbol("catext");
+        const std::string child_attrs = NewSymbol("cattrs");
+        const std::string child_attrs_empty = NewSymbol("caempty");
+
+        int child_idx = 0;
+        for (const il::Exp *child : children) {
+          const std::string local =
+            ConvertExp(G, StringPrintf("c%d", child_idx), child, insts);
+          // Several possibilities:
+          // 1. A text node. Ideally we would merge this into the previous
+          // node if it is a text node, but I'm not doing this yet.
+          //
+          // 2. A node with attributes. This is just copied in as the next
+          // child.
+          //
+          // 3. A trivial node (no attributes). Its children are appended.
+
+          insts->emplace_back(
+              inst::Unop{
+                .primop = Primop::IS_TEXT,
+                .out = child_is_text,
+                .arg = local});
+          // This will become a forward jump.
+          int text_if_idx = ReserveInstruction(insts);
+
+          // Get the attributes object.
+          insts->emplace_back(
+              inst::Unop{
+                .primop = Primop::GET_ATTRS,
+                .out = child_attrs,
+                .arg = local});
+          insts->emplace_back(
+              inst::Unop{
+                .primop = Primop::OBJ_EMPTY,
+                .out = child_attrs_empty,
+                .arg = child_attrs});
+
+          int trivial_if_idx = ReserveInstruction(insts);
+
+          // If we get here, then it's a normal node. Insert it.
+          insts->emplace_back(inst::SetVec{.vec = v, .idx = idx, .arg = local});
+          // PERF: We'll increment the index on multiple branches. Maybe
+          // there's a way to share code. But probably better to spend
+          // the time writing an optimizer?
+          insts->emplace_back(
+              inst::Binop{
+                  .primop = Primop::INT_PLUS,
+                  .out = idx,
+                  .arg1 = idx,
+                  .arg2 = inc,
+                });
+
+          std::vector<int> join_jmps = {ReserveInstruction(insts)};
+
+          // Now emit the code for text nodes.
+          int text_loc = insts->size();
+          // Patch the jump forward.
+          (*insts)[text_if_idx] =
+            inst::If{.cond = child_is_text, .true_idx = text_loc};
+
+          // TODO: If the previous node was text, append this text
+          // to it instead of pushing a whole new node.
+
+          insts->emplace_back(inst::SetVec{.vec = v, .idx = idx, .arg = local});
+          // And increment.
+          insts->emplace_back(
+              inst::Binop{
+                  .primop = Primop::INT_PLUS,
+                  .out = idx,
+                  .arg1 = idx,
+                  .arg2 = inc,
+                });
+          join_jmps = {ReserveInstruction(insts)};
+
+          // Now the code for trivial nodes.
+          int trivial_loc = insts->size();
+          (*insts)[trivial_if_idx] =
+            inst::If{.cond = child_attrs_empty, .true_idx = trivial_loc};
+
+          // Awkwardly, the vector size comes from the layout object
+          // (the pair of attributes and child vector), not the vector
+          // itself.
+          insts->emplace_back(
+              inst::Unop{
+                .primop = Primop::LAYOUT_VEC_SIZE,
+                .out = num_subchildren,
+                .arg = local,
+              });
+
+          // But anyway, we need the vector to subscript from it.
+          insts->emplace_back(
+              inst::GetLabel{
+                .out = child_vec,
+                .obj = local,
+                .lab = NODE_CHILDREN_LABEL,
+              });
+
+          // idx = 0
+          insts->emplace_back(
+              inst::Load{
+                .out = subidx,
+                .global = zero,
+              });
+
+          int while_loc = insts->size();
+
+          // We want while (idx < num_subchildren) but
+          // the if jumps when true, so negate:
+          // cond = idx >= num_subchildren
+          insts->emplace_back(
+              inst::Binop{
+                .primop = Primop::INT_GREATEREQ,
+                .out = subcond,
+                .arg1 = subidx,
+                .arg2 = num_subchildren,
+              });
+
+          // if !cond goto ...
+          int while_if_loc = ReserveInstruction(insts);
+
+          // Read the child.
+          insts->emplace_back(
+              inst::GetVec{
+                .out = subchild,
+                .vec = child_vec,
+                .idx = subidx,
+              });
+          // And write it.
+          insts->emplace_back(
+              inst::SetVec{
+                .vec = v,
+                .idx = idx,
+                .arg = subchild,
+              });
+
+          // Increment each index.
+          insts->emplace_back(
+              inst::Binop{
+                  .primop = Primop::INT_PLUS,
+                  .out = idx,
+                  .arg1 = idx,
+                  .arg2 = inc,
+                });
+          insts->emplace_back(
+              inst::Binop{
+                  .primop = Primop::INT_PLUS,
+                  .out = subidx,
+                  .arg1 = subidx,
+                  .arg2 = inc,
+                });
+
+          // Now loop.
+          insts->emplace_back(inst::Jump{.idx = while_loc});
+
+          // And so this is the join point.
+          int join_loc = insts->size();
+
+          // Patch in the destination of the while loop (end) as well.
+          (*insts)[while_if_loc] = inst::If({
+              .cond = subcond,
+              .true_idx = join_loc,
+            });
+
+          for (const int jidx : join_jmps) {
+            (*insts)[jidx] = inst::Jump({.idx = join_loc});
+          }
+
+          child_idx++;
         }
+
+        // Then, once we've built up the children vector, make the
+        // node.
 
         // The node is a pair.
         std::string r = NewSymbol("node");
@@ -450,12 +648,12 @@ struct Converter {
 
       case il::ExpType::INT: {
         const auto &bi = exp->Int();
-        return AddValue("i", Value{.v = Value::t(bi)}, insts);
+        return AddAndLoadValue("i", Value{.v = Value::t(bi)}, insts);
       }
 
       case il::ExpType::BOOL: {
         uint64_t u = exp->Bool() ? 1 : 0;
-        return AddValue("b", Value{.v = Value::t(u)}, insts);
+        return AddAndLoadValue("b", Value{.v = Value::t(u)}, insts);
       }
 
       case il::ExpType::VAR: {
@@ -473,7 +671,7 @@ struct Converter {
         if (il_fn_labels.contains(sym)) {
           // Code labels are treated differently. We load the name of
           // the function ("function pointer") as the value.
-          return AddValue(sym, Value{.v = Value::t(label)}, insts);
+          return AddAndLoadValue(sym, Value{.v = Value::t(label)}, insts);
         } else {
           const std::string out = NewSymbol(sym);
           insts->emplace_back(inst::Load{.out = out, .global = label});
@@ -550,7 +748,7 @@ struct Converter {
         const std::string rec = NewSymbol(lab);
         insts->emplace_back(inst::Alloc{.out = rec});
         const std::string lab_value =
-          AddValue(lab, Value{.v = Value::t(lab)}, insts);
+          AddAndLoadValue(lab, Value{.v = Value::t(lab)}, insts);
         insts->emplace_back(inst::SetLabel({
               .obj = rec, .lab = INJ_LABEL, .arg = lab_value}));
         insts->emplace_back(inst::SetLabel({
@@ -676,7 +874,7 @@ struct Converter {
         const std::string test = NewSymbol("test");
         for (const auto &[lab, x, e] : arms) {
           const std::string lab_value =
-            AddValue(lab, Value{.v = Value::t(lab)}, insts);
+            AddAndLoadValue(lab, Value{.v = Value::t(lab)}, insts);
           // compare labels
           insts->emplace_back(inst::Binop{
               .primop = Primop::STRING_EQ,

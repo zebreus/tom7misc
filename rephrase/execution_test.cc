@@ -13,7 +13,7 @@ namespace bc {
 
 static constexpr int COMPILER_VERBOSE = 0;
 static constexpr int FRONTEND_VERBOSE = 0;
-static constexpr bool BYTECODE_VERBOSE = 0;
+static constexpr bool BYTECODE_VERBOSE = 1;
 
 #undef CHECK_EQ
 #define CHECK_EQ(s1, s2) do { \
@@ -351,7 +351,11 @@ static void ObjTests() {
       in
          print (layout-tostring author)
       end
-      )##"), "Tom 7 Murphy .3.1");
+      )##"),
+           // This depends on how nodes are collapsed. We should
+           // probably be concatenating the text nodes, giving
+           // "Tom 7 Murphy .1".
+           "Tom 7 Murphy .3");
 
   CHECK_EQ(RunToString(
      "let\n" +
@@ -374,7 +378,7 @@ static void ObjTests() {
       in
          print-layout author
       end
-      )##"), "Tom 7 Murphy .3.1");
+      )##"), "Tom 7 Murphy .3");
 
   CHECK_EQ(RunToString(
      "let\n" +
@@ -419,7 +423,15 @@ static void ObjTests() {
       in
         print-layout author
       end
-      )##"), "<node><node>Tom 7 Murphy </node></node>");
+      )##"), "<node>Tom 7 Murphy </node>");
+
+  CHECK_EQ(RunToString(
+               "let object Nothing of { }\n"
+               "in\n"
+               "if obj-empty {(Nothing) }\n"
+               "then print \"yeah\"\n"
+               "else print \"no\"\n"
+               "end\n"), "yeah");
 }
 
 static void NewTests() {

@@ -63,6 +63,8 @@ enum class Primop {
 
   STRING_TO_LAYOUT,
 
+  OBJ_EMPTY,
+
   IS_TEXT,
   GET_TEXT,
   // Operations on non-text layout
