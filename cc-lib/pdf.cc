@@ -30,7 +30,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <limits.h>
 #include <locale.h>
 #include <math.h>
 #include <stdarg.h>
@@ -41,7 +40,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <bit>
 #include <numbers>
 #include <unordered_map>
 #include <unordered_set>
@@ -379,7 +377,7 @@ PDF::Object *PDF::pdf_find_last_object(int type) {
 }
 
 // Or returns nullptr if the font has not been loaded.
-PDF::FontObj *PDF::GetFontByName(const std::string &font_name) const {
+const PDF::FontObj *PDF::GetFontByName(const std::string &font_name) const {
   auto it = embedded_fonts.find(font_name);
   if (it != embedded_fonts.end())
     return it->second;
@@ -387,7 +385,7 @@ PDF::FontObj *PDF::GetFontByName(const std::string &font_name) const {
   return nullptr;
 }
 
-PDF::FontObj *PDF::GetBuiltInFont(BuiltInFont f) {
+const PDF::FontObj *PDF::GetBuiltInFont(BuiltInFont f) {
   auto it = builtin_fonts.find(f);
   if (it != builtin_fonts.end())
     return it->second;
@@ -405,7 +403,7 @@ PDF::FontObj *PDF::GetBuiltInFont(BuiltInFont f) {
 
 bool PDF::SetFont(const std::string &font_name) {
   // See if we've used this font before.
-  if (FontObj *fobj = GetFontByName(font_name)) {
+  if (const FontObj *fobj = GetFontByName(font_name)) {
     current_font = fobj;
     return true;
   }
@@ -421,7 +419,7 @@ void PDF::SetFont(BuiltInFont f) {
   current_font = GetBuiltInFont(f);
 }
 
-void PDF::SetFont(FontObj *font) {
+void PDF::SetFont(const FontObj *font) {
   current_font = font;
 }
 
@@ -1312,7 +1310,7 @@ struct ScopedRestoreFont {
   }
 
   PDF *pdf = nullptr;
-  PDF::FontObj *old_font = nullptr;
+  const PDF::FontObj *old_font = nullptr;
 };
 }  // namespace
 
@@ -2299,7 +2297,7 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
 
 std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
                                              double line_width,
-                                             FontObj *font) const {
+                                             const FontObj *font) const {
   static constexpr bool LOCAL_VERBOSE = false;
 
   if (font == nullptr) font = current_font;
@@ -2907,7 +2905,7 @@ double PDF::FontObj::CharWidth(int codepoint) const {
 
 bool PDF::GetTextWidth(const std::string &text,
                        float size, float *text_width,
-                       FontObj *font) {
+                       const FontObj *font) {
   if (font == nullptr) font = current_font;
   CHECK(font != nullptr);
 

@@ -269,9 +269,9 @@ public:
   void SetFont(BuiltInFont font);
 
   // Must be a font previously added to this PDF object.
-  void SetFont(FontObj *font);
+  void SetFont(const FontObj *font);
 
-  FontObj *GetCurrentFont() const { return current_font; }
+  const FontObj *GetCurrentFont() const { return current_font; }
 
   // Dimensions of the document, in points.
   float Width() const;
@@ -444,7 +444,7 @@ public:
   // the actual width by the font size.
   std::vector<SpacedLine> SpaceLines(const std::string &text,
                                      double width_at_1pt,
-                                     FontObj *font = nullptr) const;
+                                     const FontObj *font = nullptr) const;
 
   bool AddSpacedLine(const SpacedLine &line,
                      float size,
@@ -455,10 +455,10 @@ public:
 
   // Returns nullptr if the font has not yet been loaded
   // with AddTTF.
-  FontObj *GetFontByName(const std::string &name) const;
+  const FontObj *GetFontByName(const std::string &name) const;
   // For built-in fonts, we add it if it hasn't been added already.
   // Always succeeds.
-  FontObj *GetBuiltInFont(BuiltInFont font);
+  const FontObj *GetBuiltInFont(BuiltInFont font);
 
   // Returns true upon success.
   bool GetTextWidth(const std::string &text,
@@ -466,7 +466,7 @@ public:
                     // Out parameter.
                     float *text_width,
                     // If null, use current font.
-                    FontObj *font = nullptr);
+                    const FontObj *font = nullptr);
 
   // Add a bookmark to the document.
   // The page is the page to jump to (or nullptr for the most recent one).
@@ -656,7 +656,7 @@ private:
   float width = 0.0f;
   float height = 0.0f;
 
-  FontObj *current_font = nullptr;
+  const FontObj *current_font = nullptr;
   int next_font_index = 1;
 
   // Indexed by font name. Font objects are not owned; they

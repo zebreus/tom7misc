@@ -12,7 +12,6 @@
 #include "ansi.h"
 #include "image.h"
 #include "arcfour.h"
-#include "randutil.h"
 #include "util.h"
 
 static constexpr std::initializer_list<const char *> FONTS = {
@@ -68,7 +67,7 @@ static void SpaceLine() {
           PDF::PDF_LETTER_HEIGHT,
           info);
 
-  FontObj *times = pdf.GetBuiltInFont(PDF::TIMES_ROMAN);
+  const FontObj *times = pdf.GetBuiltInFont(PDF::TIMES_ROMAN);
 
   {
     std::vector<PDF::SpacedLine> lines =
@@ -219,7 +218,7 @@ static void MakeSimplePDF() {
         float ycolumn2 = ypos;
 
         const std::string embedded_name = pdf.AddTTF(filename);
-        PDF::FontObj *embedded = pdf.GetFontByName(embedded_name);
+        const PDF::FontObj *embedded = pdf.GetFontByName(embedded_name);
         CHECK(embedded != nullptr) << filename << " exists but can't be "
           "loaded?";
         pdf.SetFont(embedded_name);
