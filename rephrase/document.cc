@@ -10,6 +10,7 @@
 #include "util.h"
 #include "bytecode.h"
 #include "utf.h"
+#include "functional-set.h"
 
 // Could use actual infinity.
 static constexpr double INFINITE_PENALTY = 9999999.0;
@@ -119,12 +120,14 @@ ValueToAttrVal(const std::string &field, const bc::Value &val) {
 }
 
 DocTree ValueToDocTree(const bc::Value *v) {
-  std::unordered_set<const bc::Value *> seen;
-  std::function<DocTree(const bc::Value *)> Rec =
-    [&seen, &Rec](const bc::Value *v) -> DocTree {
-      CHECK(!seen.contains(v)) << "Cycle in document! "
+  using FS = FunctionalSet<const bc::Value *>;
+  // Passing a functional set of seen pointers. We do allow shared nodes
+  // within an input tree; we just don't want cycles.
+  std::function<DocTree(FS seen, const bc::Value *)> Rec =
+    [&Rec](FS seen, const bc::Value *v) -> DocTree {
+      CHECK(!seen.Contains(v)) << "Cycle in document! "
         "What is this, some kind of joke!?";
-      seen.insert(v);
+      seen = seen.Insert(v);
 
       using map_type = std::unordered_map<std::string, bc::Value *>;
       using vec_type = std::vector<bc::Value *>;
@@ -154,7 +157,7 @@ DocTree ValueToDocTree(const bc::Value *v) {
         }
 
         for (const bc::Value *v : *cvec) {
-          doc.AddChild(Rec(v));
+          doc.AddChild(Rec(seen, v));
         }
 
         return doc;
@@ -164,7 +167,8 @@ DocTree ValueToDocTree(const bc::Value *v) {
         return doc;
       }
     };
-  return Rec(v);
+
+  return Rec(FS(), v);
 }
 
 
