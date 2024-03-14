@@ -98,6 +98,47 @@ static std::string ColorValuePtrString(const Value *value) {
   }
 }
 
+static int64_t GetInt64(const char *what, const BigInt &x) {
+  const std::optional<int64_t> xo = x.ToInt();
+  CHECK(xo.has_value()) << "In " << what << ", integer needs to fit "
+    "into 64 bits! Got: " << x.ToString();
+  return xo.value();
+}
+
+Value *Execution::String(std::string s, State *state) {
+  return NewValue(&state->heap, std::move(s));
+}
+
+
+Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
+                          State *state) {
+  switch (primop) {
+  case Primop::STRING_SUBSTR: {
+    const std::string *as = std::get_if<std::string>(&a->v);
+    const BigInt *bi = std::get_if<BigInt>(&b->v);
+    const BigInt *ci = std::get_if<BigInt>(&c->v);
+    CHECK(as != nullptr && bi != nullptr && ci != nullptr) <<
+      "Expected string,int,int to string-substr";
+    const int64_t bb = GetInt64("substr start", *bi);
+    const int64_t cc = GetInt64("substr length", *ci);
+    CHECK(bb >= 0 && cc >= 0 &&
+          bb < (int64_t)as->size() &&
+          bb + cc <= (int64_t)as->size())
+      << "In string-substr, out of range start/length: "
+      << bb << ", " << cc;
+
+    std::string s = as->substr(bb, cc);
+    return String(s, state);
+  }
+
+  default:
+    LOG(FATAL) << "Unimplemented or non-triop primop: "
+               << PrimopString(primop);
+  }
+
+  return NonceValue();
+}
+
 Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
                           State *state) {
   auto TwoInts = [a, b](const char *what) ->
@@ -137,10 +178,6 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   auto Big = [state](BigInt b) -> Value * {
       return NewValue(&state->heap, std::move(b));
-    };
-
-  auto String = [state](std::string s) -> Value * {
-      return NewValue(&state->heap, std::move(s));
     };
 
   switch (primop) {
@@ -264,7 +301,17 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   case Primop::STRING_CONCAT: {
     const auto &[aa, bb] = TwoStrings("string_concat");
-    return String(aa + bb);
+    return String(aa + bb, state);
+  }
+
+  case Primop::STRING_FIND: {
+    const auto &[aa, bb] = TwoStrings("string_concat");
+    const auto pos = aa.find(bb);
+    if (pos == std::string::npos) {
+      return Big(BigInt(-1));
+    } else {
+      return Big(BigInt(pos));
+    }
   }
 
   case Primop::PACK_BOXES: {
@@ -361,10 +408,6 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
       return NewValue(&state->heap, std::move(b));
     };
 
-  auto String = [state](std::string s) -> Value * {
-      return NewValue(&state->heap, std::move(s));
-    };
-
   auto Bool = [state](bool x) -> Value * {
       return NewValue(&state->heap, uint64_t(x ? 1 : 0));
     };
@@ -382,7 +425,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::INT_TO_STRING: {
     const BigInt &bi = GetInt("int_to_string");
-    return String(bi.ToString());
+    return String(bi.ToString(), state);
   }
 
   case Primop::OUT_STRING: {
@@ -407,6 +450,11 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Bool(s.empty());
   }
 
+  case Primop::STRING_SIZE: {
+    const std::string &s = GetString("string_empty");
+    return Big(BigInt(s.size()));
+  }
+
   case Primop::REPHRASE: {
     return RephraseHook(a);
   }
@@ -427,7 +475,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     const std::string *text = std::get_if<std::string>(&a->v);
     CHECK(text != nullptr) << "get-text on non-text node. Must check it "
       "first with is-text.";
-    return String(*text);
+    return String(*text, state);
   }
 
   case Primop::GET_ATTRS: {
@@ -643,7 +691,8 @@ void Execution::Step(State *state) {
     frame.locals[alloc->out] =
       NewValue(&state->heap, std::unordered_map<std::string, Value *>());
 
-  } else if (const inst::AllocVec *allocvec = std::get_if<inst::AllocVec>(&inst)) {
+  } else if (const inst::AllocVec *allocvec =
+             std::get_if<inst::AllocVec>(&inst)) {
     frame.locals[allocvec->out] =
       NewValue(&state->heap, std::vector<Value *>());
 
@@ -731,6 +780,14 @@ void Execution::Step(State *state) {
   } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
     // no-op. But we could print the message in super-verbose modes?
     return;
+
+  } else if (const inst::Triop *triop = std::get_if<inst::Triop>(&inst)) {
+    frame.locals[triop->out] =
+      DoTriop(triop->primop,
+              Load(triop->arg1),
+              Load(triop->arg2),
+              Load(triop->arg3),
+              state);
 
   } else {
     LOG(FATAL) << Error() << "Invalid/Unimplemented instruction!";

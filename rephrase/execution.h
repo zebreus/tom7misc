@@ -76,8 +76,11 @@ struct Execution {
 
   void InternalFail(const std::string &msg, State *state);
   static Value *NonceValue();
+  Value *DoTriop(Primop primop, Value *a, Value *b, Value *c, State *state);
   Value *DoBinop(Primop primop, Value *a, Value *b, State *state);
   Value *DoUnop(Primop primop, Value *a, State *state);
+
+  Value *String(std::string s, State *state);
 
   const Program &program;
   const std::unique_ptr<Document> degenerate_document;

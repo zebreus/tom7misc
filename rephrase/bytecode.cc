@@ -56,7 +56,16 @@ std::string ColorValueString(const Value &value) {
 
 
 std::string ColorInstString(const Inst &inst) {
-  if (const inst::Binop *binop = std::get_if<inst::Binop>(&inst)) {
+  if (const inst::Triop *triop = std::get_if<inst::Triop>(&inst)) {
+    return StringPrintf("BINOP " AOUT("%s") " <- " AOP("%s") "("
+                        AARG("%s") ", " AARG("%s") ", " AARG("%s") ")",
+                        triop->out.c_str(),
+                        PrimopString(triop->primop),
+                        triop->arg1.c_str(),
+                        triop->arg2.c_str(),
+                        triop->arg3.c_str());
+
+  } else if (const inst::Binop *binop = std::get_if<inst::Binop>(&inst)) {
     return StringPrintf("BINOP " AOUT("%s") " <- "
                         AARG("%s") " " AOP("%s") " " AARG("%s"),
                         binop->out.c_str(),

@@ -29,6 +29,13 @@ struct Value {
 
 namespace inst {
 
+// TODO: Consider like "n-op" which takes a vector or
+// something like that.
+struct Triop {
+  Primop primop = Primop::INVALID;
+  std::string out, arg1, arg2, arg3;
+};
+
 struct Binop {
   Primop primop = Primop::INVALID;
   std::string out, arg1, arg2;
@@ -127,6 +134,7 @@ struct Note {
 
 using Inst = std::variant<
   std::monostate,
+  inst::Triop,
   inst::Binop,
   inst::Unop,
   inst::Call,

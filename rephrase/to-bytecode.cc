@@ -836,6 +836,13 @@ struct Converter {
                 .primop = po, .out = out,
                 .arg1 = ls[0], .arg2 = ls[1]});
           return out;
+        case 3:
+          insts->emplace_back(
+              inst::Triop{
+                .primop = po, .out = out,
+                .arg1 = ls[0], .arg2 = ls[1], .arg3 = ls[2]});
+          return out;
+
         default:
           LOG(FATAL) << "Unimplemented primop arity " << num_exp_args;
         }

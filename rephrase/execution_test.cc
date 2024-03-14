@@ -443,7 +443,33 @@ static void ObjTests() {
 
 }
 
+static void StringTests()  {
+  CHECK_EQ(
+      RunToString("print (int-to-string (string-size \"tomatoz\"))"),
+      "7");
+
+  CHECK_EQ(
+      RunToString(
+          "print (int-to-string "
+          "(internal-string-find "
+          "(\"lorem ipsum dolor sit amet\", \"psum do\")))"),
+      "7");
+
+  CHECK_EQ(
+      RunToString(
+          "print (int-to-string "
+          "(internal-string-find "
+          "(\"lorem ipsum dolor sit amet\", \"dolores\")))"),
+      "-1");
+
+  CHECK_EQ(
+      RunToString(
+          "print (substr (\"lorem ipsum dolor sit amet\", 7, 8))"),
+      "psum dol");
+}
+
 static void NewTests() {
+
 }
 
 }  // namespace bc
@@ -455,6 +481,7 @@ int main(int argc, char **argv) {
   bc::TestEndToEndEasy();
   bc::ExecTests();
   bc::ObjTests();
+  bc::StringTests();
   bc::NewTests();
 
   printf("OK\n");
