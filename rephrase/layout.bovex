@@ -303,3 +303,29 @@ fun stick-lines (line-height: float, p : layout) =
   in
     r (0.0, get-lines p)
   end
+
+(* Parse the top-level text nodes. *)
+
+fun parse-text (parse : string -> layout) (l : layout) : layout =
+  (case layoutcase l of
+    Text s => parse s
+  | Node (SPAN, attrs, children : layout list) =>
+      let val nc = list-map parse children
+      in span attrs (layout-concat nc)
+      end
+  | Node (GROUP, _, children : layout list) =>
+      layout-concat (list-map parse children)
+  | Node (BOX, _, _) => l
+  | Node (STICKER, _, _) => l
+  | _ => fail "unimplemented node type")
+
+val () = ()
+
+(* fun parse-text x y = fail "no" *)
+
+(*
+fun parse-text (parse : string -> layout) (l : layout) : layout =
+  case layoutcase l of
+    Text s => parse s
+  | _ => fail "unimplemented node type"
+*)

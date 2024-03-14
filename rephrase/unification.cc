@@ -14,6 +14,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "il.h"
+#include "ansi.h"
 
 namespace il {
 
@@ -226,9 +227,16 @@ std::vector<EVar> EVar::FreeEVarsInTypes(
   return std::vector<EVar>(s.begin(), s.end());
 }
 
-static void UnifyEx(std::string_view what,
+static void UnifyEx(const std::function<std::string()> &error_context,
                     const VMap &vmap,
                     const Type *t1, const Type *t2) {
+  auto Error = [&error_context]() {
+      return StringPrintf(
+          ARED("Unification error") ":\n"
+          "In: %s\n\n",
+          error_context().c_str());
+    };
+
   // First, handle existential variables.
   if (t1->type == TypeType::EVAR || t2->type == TypeType::EVAR) {
     // For bound existential variables we can just
@@ -239,12 +247,12 @@ static void UnifyEx(std::string_view what,
       };
 
     if (const Type *at = IsBoundEvar(t1)) {
-      UnifyEx(what, vmap, at, t2);
+      UnifyEx(error_context, vmap, at, t2);
       return;
     }
 
     if (const Type *bt = IsBoundEvar(t2)) {
-      UnifyEx(what, vmap, t1, bt);
+      UnifyEx(error_context, vmap, t1, bt);
       return;
     }
 
@@ -268,8 +276,7 @@ static void UnifyEx(std::string_view what,
       CHECK(t->type != TypeType::EVAR);
 
       if (EVar::Occurs(e, t)) {
-        LOG(FATAL) <<
-          "(" << what << ") "
+        LOG(FATAL) << Error() <<
           "Type mismatch (circularity):\n"
           "During unification, an existential variable occurred "
           "in the type that it needed to be unified with. The "
@@ -284,8 +291,7 @@ static void UnifyEx(std::string_view what,
   }
 
   // Otherwise, the types need to have the same constructor.
-  CHECK(t1->type == t2->type) <<
-    "(" << what << ") "
+  CHECK(t1->type == t2->type) << Error() <<
     "Tycon mismatch:\n"
     "During unification, the types did not have the same "
     "outer constructor. One was " << TypeTypeString(t1->type) <<
@@ -296,15 +302,15 @@ static void UnifyEx(std::string_view what,
     const std::vector<std::pair<std::string, const Type *>> &
     (il::Type::*RecordOrSumField)() const;
 
-  auto RecordOrSum = [what, &vmap](
+  auto RecordOrSum = [&error_context, &Error, &vmap](
       const char *record_what,
       // Member function to extract the field.
       RecordOrSumField Field,
       const Type *t1, const Type *t2) {
       const auto &field1 = std::invoke(Field, t1);
       const auto &field2 = std::invoke(Field, t2);
-      CHECK(field1.size() == field2.size()) <<
-        "(" << what << ") Labels in " << record_what <<
+      CHECK(field1.size() == field2.size()) << Error() <<
+        "Labels in " << record_what <<
         " type do not match during unification.\n"
         "There are a different number:\n" <<
         TypeString(t1) << "\nvs\n" << TypeString(t2);
@@ -312,13 +318,12 @@ static void UnifyEx(std::string_view what,
       for (int i = 0; i < (int)field1.size(); i++) {
         const auto &[l1, c1] = field1[i];
         const auto &[l2, c2] = field2[i];
-        CHECK(l1 == l2) <<
-          "(" << what << ") "
+        CHECK(l1 == l2) << Error() <<
           "Labels in " << record_what <<
           " type do not match during unification.\n"
           "The label " << l1 << " did not match " << l2 << " in:\n" <<
           TypeString(t1) << "\nvs\n" << TypeString(t2);
-        UnifyEx(what, vmap, c1, c2);
+        UnifyEx(error_context, vmap, c1, c2);
       }
     };
 
@@ -338,13 +343,13 @@ static void UnifyEx(std::string_view what,
     // corresponding value.
     for (const auto &[a1, a2] : vmap) {
       if (a1 == v1) {
-        CHECK(a2 == v2) << "(" << what << ") Bound type variables "
+        CHECK(a2 == v2) << Error() << "Bound type variables "
           "are not equal. On one side, the type was " << a1 << " and "
           "we expected to see " << a2 << " on the other, but we got " <<
           v2 << ".";
         return;
       } else {
-        CHECK(a2 != v2) << "(" << what << ") Bound type variables "
+        CHECK(a2 != v2) << Error() << "Bound type variables "
           "are not equal. On one side, the type was " << a2 << " and "
           "we expected to see " << a1 << " on the other, but we got " <<
           v1 << ".";
@@ -356,7 +361,7 @@ static void UnifyEx(std::string_view what,
     // sides. Then it has to be exactly equal.
 
     // XXX actually in this case we could easily support higher kinds?
-    CHECK(v1 == v2) << "(" << what << ") Free type variables "
+    CHECK(v1 == v2) << Error() << "Free type variables "
       "are not equal. Got " << v1 << " and " << v2 << ".";
 
     return;
@@ -369,21 +374,21 @@ static void UnifyEx(std::string_view what,
   case TypeType::ARROW: {
     const auto &[dom1, cod1] = t1->Arrow();
     const auto &[dom2, cod2] = t2->Arrow();
-    UnifyEx(what, vmap, dom1, dom2);
-    UnifyEx(what, vmap, cod1, cod2);
+    UnifyEx(error_context, vmap, dom1, dom2);
+    UnifyEx(error_context, vmap, cod1, cod2);
     break;
   }
 
   case TypeType::MU: {
     const auto &[idx1, arms1] = t1->Mu();
     const auto &[idx2, arms2] = t2->Mu();
-    CHECK(idx1 == idx2) << "(" << what << ") Indices in two mu types do "
+    CHECK(idx1 == idx2) << Error() << "Indices in two mu types do "
       "not match. They may be different types from a mutually-recursive "
       "bundle or just unrelated.\nIn:\n" <<
       TypeString(t1) << "\nvs\n" << TypeString(t2);
 
     CHECK(arms1.size() == arms2.size()) <<
-      "(" << what << ") The lengths of two mu types do not agree; this "
+      Error() << "The lengths of two mu types do not agree; this "
       "means they must be from different mutually-recursive bundles:"
       "\nIn:\n" <<
       TypeString(t1) << "\nvs\n" << TypeString(t2);
@@ -397,7 +402,7 @@ static void UnifyEx(std::string_view what,
       const auto &[a2, arm2_in] = arms2[i];
 
       vmap_rec.emplace_back(a1, a2);
-      UnifyEx(what, vmap_rec, arm1_in, arm2_in);
+      UnifyEx(error_context, vmap_rec, arm1_in, arm2_in);
       vmap_rec.pop_back();
 
       /*
@@ -413,7 +418,7 @@ static void UnifyEx(std::string_view what,
   }
 
   case TypeType::EXISTS:
-    LOG(FATAL) << what << " Not expecting Exists type before closure "
+    LOG(FATAL) << Error() << "Bug: Not expecting Exists type before closure "
       "conversion!";
     return;
 
@@ -422,7 +427,7 @@ static void UnifyEx(std::string_view what,
     return;
 
   case TypeType::REF:
-    UnifyEx(what, vmap, t1->Ref(), t2->Ref());
+    UnifyEx(error_context, vmap, t1->Ref(), t2->Ref());
     return;
 
   case TypeType::STRING:
@@ -445,9 +450,9 @@ static void UnifyEx(std::string_view what,
   }
 }
 
-void Unification::Unify(std::string_view what,
+void Unification::Unify(const std::function<std::string()> &error_context,
                         const Type *t1, const Type *t2) {
-  UnifyEx(what, {}, t1, t2);
+  UnifyEx(error_context, {}, t1, t2);
 }
 
 }  // namespace il

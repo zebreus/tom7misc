@@ -492,6 +492,14 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
     const ElabContext &G,
     Matrix matrix) {
 
+  auto Error = [](const std::string &construct) {
+      return std::function<std::string()>([construct]() -> std::string {
+          // XXX add matrix string
+          return StringPrintf("Pattern compilation: %s\n",
+                              construct.c_str());
+      });
+    };
+
   if (VERBOSE) {
     printf(AWHITE("Comp():") "\n");
     printf("%s\n",
@@ -515,7 +523,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
       while (matrix.Cell(x, y)->type == PatType::ANN) {
         const Pat *op = matrix.Cell(x, y);
         const il::Type *at = elab->ElabType(G, op->ann);
-        Unification::Unify("pattern type constraint", at, matrix.Type(x));
+        Unification::Unify(Error("pattern type constraint"),
+                           at, matrix.Type(x));
         matrix.Cell(x, y) = op->a;
       }
 
@@ -542,7 +551,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
 
       if (matrix.Cell(x, y)->type == PatType::OBJECT &&
           matrix.Cell(x, y)->str_children.empty()) {
-        Unification::Unify("object pattern",
+        Unification::Unify(Error("object pattern"),
                            matrix.Type(x), elab->pool->ObjType());
         matrix.Cell(x, y) = elab->el_pool->WildPat();
       }
@@ -661,7 +670,8 @@ PatternCompilation::SplitIntPattern(
   CHECK(x >= 0 && x < matrix.Width());
   CHECK(matrix.Cell(x, 0)->type == PatType::INT);
 
-  Unification::Unify("int pattern", matrix.types[x], elab->pool->IntType());
+  Unification::Unify(Error("int pattern"),
+                     matrix.types[x], elab->pool->IntType());
 
   // The pattern must look like this (here x selecting the second
   // column):
@@ -761,7 +771,8 @@ PatternCompilation::SplitIntPattern(
                        elab->el_pool->Record({}));
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
-  Unification::Unify("int pattern", obj_type, elab->pool->IntType());
+  Unification::Unify(Error("int pattern"),
+                     obj_type, elab->pool->IntType());
 
   std::vector<std::pair<BigInt, const Exp *>> arms;
   arms.reserve(int_cases.size());
@@ -776,7 +787,7 @@ PatternCompilation::SplitIntPattern(
 
   for (const auto &[bi, mtx] : int_cases) {
     const auto &[arm_exp, arm_type] = Comp(GG, mtx);
-    Unification::Unify("int pattern result", arm_type, ftype);
+    Unification::Unify(Error("int pattern result"), arm_type, ftype);
     arms.emplace_back(bi, arm_exp);
   }
   const Exp *intcase =
@@ -802,7 +813,7 @@ PatternCompilation::SplitBoolPattern(
   CHECK(x >= 0 && x < matrix.Width());
   CHECK(matrix.Cell(x, 0)->type == PatType::BOOL);
 
-  Unification::Unify("bool pattern", matrix.types[x],
+  Unification::Unify(Error("bool pattern"), matrix.types[x],
                      elab->pool->BoolType());
 
   int constant_height = 0;
@@ -866,7 +877,7 @@ PatternCompilation::SplitBoolPattern(
                        elab->el_pool->Record({}));
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, G, x);
-  Unification::Unify("bool pattern", obj_type, elab->pool->BoolType());
+  Unification::Unify(Error("bool pattern"), obj_type, elab->pool->BoolType());
 
   const Exp *true_arm = nullptr;
   const Exp *false_arm = nullptr;
@@ -879,7 +890,7 @@ PatternCompilation::SplitBoolPattern(
 
   for (const auto &[b, mtx] : bool_cases) {
     const auto &[arm_exp, arm_type] = Comp(GG, mtx);
-    Unification::Unify("bool pattern result", arm_type, fail_type);
+    Unification::Unify(Error("bool pattern result"), arm_type, fail_type);
     if (b) {
       CHECK(true_arm == nullptr);
       true_arm = arm_exp;
@@ -923,7 +934,7 @@ PatternCompilation::SplitStringPattern(
   CHECK(x >= 0 && x < matrix.Width());
   CHECK(matrix.Cell(x, 0)->type == PatType::STRING);
 
-  Unification::Unify("string pattern",
+  Unification::Unify(Error("string pattern"),
                      matrix.types[x], elab->pool->StringType());
 
   // The pattern must look like this (here x selecting the second
@@ -1002,7 +1013,8 @@ PatternCompilation::SplitStringPattern(
                        elab->el_pool->Record({}));
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
-  Unification::Unify("string pattern", obj_type, elab->pool->StringType());
+  Unification::Unify(Error("string pattern"),
+                     obj_type, elab->pool->StringType());
 
   std::vector<std::pair<std::string, const Exp *>> arms;
   arms.reserve(string_cases.size());
@@ -1017,7 +1029,8 @@ PatternCompilation::SplitStringPattern(
 
   for (const auto &[s, mtx] : string_cases) {
     const auto &[arm_exp, arm_type] = Comp(GG, mtx);
-    Unification::Unify("int pattern result", arm_type, ftype);
+    Unification::Unify(Error("int pattern result"),
+                       arm_type, ftype);
     arms.emplace_back(s, arm_exp);
   }
   const Exp *stringcase =
@@ -1076,7 +1089,7 @@ PatternCompilation::SplitAppPattern(
   // First, look up the first constructor to get the mu/sum.
   const auto &[first_idx, mu_type, label] = GetConstructor(first_pat);
 
-  Unification::Unify("app pattern", matrix.types[x], mu_type);
+  Unification::Unify(Error("app pattern"), matrix.types[x], mu_type);
 
   // The pattern must look like this (here x selecting the second
   // column):
@@ -1129,7 +1142,7 @@ PatternCompilation::SplitAppPattern(
         // Get the constructor type.
         const auto &[mu_idx, mu_type, label] = GetConstructor(cell);
 
-        Unification::Unify("app pattern", matrix.types[x], mu_type);
+        Unification::Unify(Error("app pattern"), matrix.types[x], mu_type);
 
         // The variable bound by the sumcase for this case. The el
         // variable is just used to denote the object in the case
@@ -1206,7 +1219,7 @@ PatternCompilation::SplitAppPattern(
                        elab->el_pool->Record({}));
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
-  Unification::Unify("sum pattern", obj_type, mu_type);
+  Unification::Unify(Error("sum pattern"), obj_type, mu_type);
 
   std::vector<std::tuple<std::string, std::string, const Exp *>> arms;
   arms.reserve(sum_cases.size());
@@ -1235,7 +1248,7 @@ PatternCompilation::SplitAppPattern(
                             });
 
     const auto &[arm_exp, arm_type] = Comp(GGG, mtx);
-    Unification::Unify("sum pattern result", arm_type, ftype);
+    Unification::Unify(Error("sum pattern result"), arm_type, ftype);
     arms.emplace_back(label, il_var, arm_exp);
   }
 
@@ -1275,7 +1288,8 @@ PatternCompilation::SplitObjectPattern(
   // (the leading rows that include it), and split on just that.
 
   // First of all, this implies an obj type.
-  Unification::Unify("obj pattern", matrix.types[x], elab->pool->ObjType());
+  Unification::Unify(Error("obj pattern"),
+                     matrix.types[x], elab->pool->ObjType());
 
   auto GetFields = [&](const Pat *p) {
       CHECK(p->type == PatType::OBJECT);
@@ -1489,10 +1503,10 @@ PatternCompilation::SplitObjectPattern(
 
   const auto &[sexp, stype] = Comp(GGG, matrix_matched);
 
-  Unification::Unify("object pattern cases", ftype, stype);
+  Unification::Unify(Error("object pattern cases"), ftype, stype);
 
   const auto &[ilobj, ilobjtyp] = matrix.GetObjIL(elab->pool, G, x);
-  Unification::Unify("case object (object pattern)", ilobjtyp,
+  Unification::Unify(Error("case object (object pattern)"), ilobjtyp,
                      elab->pool->ObjType());
 
   const std::optional<ObjFieldType> ooft = ILUtil::GetObjFieldType(split_type);
@@ -1633,7 +1647,7 @@ PatternCompilation::SplitRecordPattern(
   }
 
   // Old object variable must be this record type.
-  Unification::Unify("record pattern column",
+  Unification::Unify(Error("record pattern column"),
                      matrix.types[x],
                      elab->pool->RecordType(record_type));
 
@@ -1786,7 +1800,7 @@ PatternCompilation::CompileIrrefutableRec(
         switch (pat->type) {
         case el::PatType::ANN: {
           const il::Type *at = elab->ElabType(G, pat->ann);
-          Unification::Unify("pattern type constraint", at, rhs_type);
+          Unification::Unify(Error("pattern type constraint"), at, rhs_type);
           pat = pat->a;
           break;
         }
@@ -1865,7 +1879,7 @@ PatternCompilation::CompileIrrefutableRec(
     for (const auto &[lab, child] : pat->str_children) {
       shape.push_back(std::make_pair(lab, elab->NewEVar()));
     }
-    Unification::Unify("record pattern",
+    Unification::Unify(Error("record pattern"),
                        // Don't move; we use shape again below.
                        pool->RecordType(shape),
                        rhs_type);
@@ -2028,6 +2042,13 @@ PatternCompilation::GeneralizeOne(
   }
 
   return std::make_pair(GG, decs);
+}
+
+
+std::function<std::string()> PatternCompilation::Error(const std::string &e) {
+  return [e]() -> std::string {
+      return StringPrintf("Pattern compilation: %s", e.c_str());
+    };
 }
 
 }  // namespace il

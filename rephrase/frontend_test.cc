@@ -682,6 +682,12 @@ static void TestFun() {
             "in\n"
             "  mult 3 3 - 2\n"
             "end\n");
+
+
+  // Trailing return type annotation
+  (void)Run("let fun f (s : string) : int = string-size s\n"
+            "in f \"hi\"\n"
+            "end\n");
 }
 
 

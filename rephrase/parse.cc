@@ -647,36 +647,49 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto OneFunDec = [&](const auto &clauses) -> FunDec {
       CHECK(!clauses.empty()) << "Bug: shouldn't even parse "
         "empty fun clauses!";
-      const std::string &fname = std::get<0>(std::get<0>(clauses[0]));
+      const std::string &fname =
+        std::get<0>(std::get<0>(std::get<0>(clauses[0])));
       // printf("OneFunDec: %s\n", fname.c_str());
       FunDec ret;
       ret.name = fname;
-      for (const auto &ppp : clauses) {
-        const auto &[pp, e] = ppp;
+      for (const auto &ppte : clauses) {
+        const auto &[ppt, e] = ppte;
+        const auto &[pp, to] = ppt;
         const auto &[id, curry_pats] = pp;
         CHECK(id == fname) << "Inconsistent name for function in "
           "function clauses: Saw " << fname << " and then " << id;
         CHECK(!curry_pats.empty()) << "Shouldn't parse empty curry "
           "patterns!";
-        ret.clauses.emplace_back(curry_pats, e);
+
+        // trailing annotation is syntactic sugar for putting
+        // the annotation on the expression.
+        const Exp *exp = e;
+        if (to.has_value()) {
+          exp = pool->Ann(exp, to.value());
+        }
+        ret.clauses.emplace_back(curry_pats, exp);
       }
       return ret;
   };
 
-  // fun f p11 p12 p13 = e1
-  //   | f p21 p22 p23 = e2
+  // fun f p11 p12 p13 : ann1 = e1
+  //   | f p21 p22 p23 : ann2 = e2
   //   | ...
   // and g q1 = ee1
   //   | g q2 = ee2
   //   | ...
   const auto FunDecl = [&](const auto &Expr) {
+      auto row =
+        (Separate(Id && +CurryPattern &&
+                  // optional type annotation
+                  Opt(IsToken<COLON>() >> TypeExpr) &&
+                  (IsToken<EQUALS>() >> Expr),
+                  IsToken<BAR>()))
+        >OneFunDec;
+
       return
-        (((IsToken<FUN>() >>
-           Separate(Id && +CurryPattern && (IsToken<EQUALS>() >> Expr),
-                    IsToken<BAR>())) >OneFunDec) &&
-         *((IsToken<AND>() >>
-            Separate(Id && +CurryPattern && (IsToken<EQUALS>() >> Expr),
-                     IsToken<BAR>())) >OneFunDec))
+        ((IsToken<FUN>() >> row) &&
+         *(IsToken<AND>() >> row))
         >[&](const auto &p) {
             const FunDec &f = p.first;
             const std::vector<FunDec> &fs = p.second;

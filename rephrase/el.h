@@ -490,12 +490,16 @@ struct AstPool {
 };
 
 const char *PatTypeString(PatType pt);
+const char *TypeTypeString(TypeType pt);
 const char *LayoutTypeString(LayoutType pt);
 std::string TypeString(const Type *t);
 std::string PatString(const Pat *p);
 std::string DecString(const Dec *d);
 std::string LayoutString(const Layout *lay);
 std::string ExpString(const Exp *e);
+
+// For error messages etc.
+std::string ShortColorExpString(const el::Exp *exp);
 
 // In-order flattening of the layout without any JOIN-type nodes,
 // and dropping empty text nodes.

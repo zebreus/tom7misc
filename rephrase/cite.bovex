@@ -15,6 +15,8 @@
    This is the greatest planet on Earth.[cite wikipedia-earth]
 *)
 
+val () = ()
+
 datatype bibsourcetype = Website | Article
 datatype bibsource =
   Source of { t : bibsourcetype,

@@ -144,6 +144,15 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
     const il::ElabContext &G,
     const std::vector<const el::Dec *> &decs,
     const el::Exp *el_body) {
+  // PERF this copies the string, but it seems safer than worrying about
+  // its lifetime. Most of these will be smaller than the SSO.
+  auto Error = [](const std::string &construct) ->
+    std::function<std::string()> {
+    return std::function<std::string()>([construct]() {
+        return StringPrintf("ElabDecs: %s\n", construct.c_str());
+      });
+    };
+
   if (decs.empty()) {
     return Elab(G, el_body);
   } else {
@@ -232,7 +241,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
           const auto &[e, t] =
             Elab(GG, el_pool->Fn(el_vars[i], GetSimpleClauses(fun)));
           const auto &[dom, cod] = dom_cods[i];
-          Unification::Unify("fun..and decl", pool->Arrow(dom, cod), t);
+          Unification::Unify(Error("fun..and decl"), pool->Arrow(dom, cod), t);
           fns.emplace_back(e, t);
         }
 
@@ -656,7 +665,9 @@ static il::ObjFieldType ResolveObjFieldType(
       "not present in the object named " << objname << ", in "
       "the object expression: " << ExpString(error_exp);
     if (rhs_type != nullptr) {
-      Unification::Unify(what, rhs_type, it->second);
+      Unification::Unify([what]() {
+          return StringPrintf("Object field type: %s", what);
+        }, rhs_type, it->second);
     } else {
       // e.g. for WITHOUT, where we don't even have an expression.
       rhs_type = it->second;
@@ -691,6 +702,15 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const Context &G,
     const el::Exp *el_exp) {
 
+  auto Error = [el_exp](const std::string &construct) {
+      return std::function<std::string()>([construct, el_exp]() -> std::string {
+        return StringPrintf("Elab: %s\n"
+                            "Expression: %s\n",
+                            construct.c_str(),
+                            ShortColorExpString(el_exp).c_str());
+      });
+    };
+
   CHECK(el_exp != nullptr) << "Bug: null el_exp";
 
   switch (el_exp->type) {
@@ -715,7 +735,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     // ensuring they hold through unification.
     const auto &[e, t] = Elab(G, el_exp->a);
     const il::Type *tann = ElabType(G, el_exp->t);
-    Unification::Unify("type annotation", t, tann);
+    Unification::Unify(Error("type annotation"), t, tann);
     return std::make_pair(e, t);
   }
 
@@ -833,7 +853,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       // λx.roll(μ type..., inj[lab](x))
 
       const il::Type *dom = NewEVar(), *cod = NewEVar();
-      Unification::Unify("ctor application", pool->Arrow(dom, cod), t);
+      Unification::Unify(Error("ctor application"), pool->Arrow(dom, cod), t);
 
       // A function argument is never polymorphic, even if the constructor
       // is!
@@ -857,8 +877,8 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
   case el::ExpType::ANDALSO: {
     const auto &[ae, at] = Elab(G, el_exp->a);
     const auto &[be, bt] = Elab(G, el_exp->b);
-    Unification::Unify("andalso lhs", at, pool->BoolType());
-    Unification::Unify("andalso rhs", bt, pool->BoolType());
+    Unification::Unify(Error("andalso lhs"), at, pool->BoolType());
+    Unification::Unify(Error("andalso rhs"), bt, pool->BoolType());
 
     return std::make_pair(pool->If(ae, be, pool->Bool(false)),
                           pool->BoolType());
@@ -867,8 +887,8 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
   case el::ExpType::ORELSE: {
     const auto &[ae, at] = Elab(G, el_exp->a);
     const auto &[be, bt] = Elab(G, el_exp->b);
-    Unification::Unify("orelse lhs", at, pool->BoolType());
-    Unification::Unify("orelse rhs", bt, pool->BoolType());
+    Unification::Unify(Error("orelse lhs"), at, pool->BoolType());
+    Unification::Unify(Error("orelse rhs"), bt, pool->BoolType());
 
     return std::make_pair(pool->If(ae, pool->Bool(true), be),
                           pool->BoolType());
@@ -879,8 +899,8 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const auto &[true_exp, true_type] = Elab(G, el_exp->b);
     const auto &[false_exp, false_type] = Elab(G, el_exp->c);
 
-    Unification::Unify("if cond", cond_type, pool->BoolType());
-    Unification::Unify("if branches", true_type, false_type);
+    Unification::Unify(Error("if cond"), cond_type, pool->BoolType());
+    Unification::Unify(Error("if branches"), true_type, false_type);
 
     return std::make_pair(pool->If(cond_exp, true_exp, false_exp),
                           true_type);
@@ -921,7 +941,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const auto [body, body_type] =
       pattern_compilation->Compile(GG, arg, dom, rows);
 
-    Unification::Unify("fn body", body_type, cod);
+    Unification::Unify(Error("fn body"), body_type, cod);
 
     return std::make_pair(pool->Fn(iself, iarg, fntype, body), fntype);
   }
@@ -963,15 +983,15 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       printf("App X: %s : %s\n", ExpString(xe).c_str(), TypeString(xt).c_str());
     }
 
-    Unification::Unify("application-fn", ft, pool->Arrow(dom, cod));
-    Unification::Unify("application-arg", xt, dom);
+    Unification::Unify(Error("application-fn"), ft, pool->Arrow(dom, cod));
+    Unification::Unify(Error("application-arg"), xt, dom);
 
     return std::make_pair(pool->App(fe, xe), cod);
   }
 
   case el::ExpType::FAIL: {
     const auto &[e, t] = Elab(G, el_exp->a);
-    Unification::Unify("fail", t, pool->StringType());
+    Unification::Unify(Error("fail"), t, pool->StringType());
     // Can have any return type, as it does not return.
     // We annotate the fail with that type, since we need to be able
     // to synthesize the types of IL expressions.
@@ -990,7 +1010,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const std::string &field = el_exp->str2;
     const auto &[re, rt] = Elab(G, el_exp->b);
 
-    Unification::Unify("with", ot, pool->ObjType());
+    Unification::Unify(Error("with"), ot, pool->ObjType());
 
     const il::ObjVarInfo *ovi = nullptr;
     if (!objtype.empty()) {
@@ -1010,7 +1030,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const std::string &objtype = el_exp->str;
     const std::string &field = el_exp->str2;
 
-    Unification::Unify("without", ot, pool->ObjType());
+    Unification::Unify(Error("without"), ot, pool->ObjType());
 
     const il::ObjVarInfo *ovi = nullptr;
     if (!objtype.empty()) {
@@ -1083,7 +1103,8 @@ const il::Exp *Elaboration::ElabLayout(
 
   case el::LayoutType::EXP: {
     const auto &[ee, tt] = Elab(G, lay->exp);
-    Unification::Unify("exp embedded in layout", tt, pool->LayoutType());
+    Unification::Unify([](){ return "exp embedded in layout"; },
+                       tt, pool->LayoutType());
     return ee;
   }
   }

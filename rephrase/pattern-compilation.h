@@ -4,8 +4,15 @@
 
 // Pattern compilation (elaboration).
 
+#include <string>
+#include <utility>
+#include <functional>
+#include <vector>
+
 #include "context.h"
 #include "elaboration.h"
+#include "il.h"
+#include "el.h"
 
 namespace il {
 
@@ -116,6 +123,9 @@ private:
       const ElabContext &G,
       Matrix matrix,
       int x);
+
+  // Generic error for unification. Should improve this!
+  std::function<std::string()> Error(const std::string &e);
 
   int verbose = 0;
   Elaboration *elab = nullptr;

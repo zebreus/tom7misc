@@ -3,7 +3,7 @@
 
 #include <mutex>
 #include <memory>
-#include <string_view>
+#include <functional>
 
 #include "base/logging.h"
 
@@ -74,7 +74,7 @@ struct EVar {
 
 struct Unification {
 
-  static void Unify(std::string_view what,
+  static void Unify(const std::function<std::string()> &error_context,
                     const Type *t1, const Type *t2);
 
 };

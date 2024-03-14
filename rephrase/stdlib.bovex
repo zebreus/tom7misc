@@ -207,6 +207,25 @@ fun string-find (big, small) =
     else SOME x
   end
 
+fun substr-rest (s, pos) =
+  substr (s, pos, string-size s - pos)
+
+fun string-split small big =
+  let
+    fun r s =
+      case string-find (s, small) of
+        NONE => s :: nil
+      | SOME pos =>
+          let
+            val h = substr (s, 0, pos)
+            val t = substr-rest (s, pos)
+          in
+            h :: r s
+          end
+  in
+    r big
+  end
+
 datatype (a) set-tree =
   SetEmpty
   | SetNode of set-tree * a * set-tree

@@ -22,7 +22,7 @@ let
         let in
           print "node ";
           print (attrs-string (display, obj));
-          print ("with " ^ (int-to-string (list-length children)) ^
+          print (" with " ^ (int-to-string (list-length children)) ^
                     " children:\n");
           list-app printlayout children
         end
@@ -32,12 +32,17 @@ let
 
   fun render-one-column (l : layout) =
     let
+      do print "-------------------\n"
+      do debug-print-doc l
+      do print "-------------------\n"
       val boxes = get-boxes l
       val packed = pack-boxes (inch 4.0, boxes)
       val stickers = stick-lines (12.0, packed)
     in
       stickers
     end
+
+
 in
 
   output

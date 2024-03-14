@@ -9,6 +9,7 @@
 #include "util.h"
 #include "bignum/big.h"
 #include "pp.h"
+#include "ansi.h"
 
 namespace el {
 
@@ -96,6 +97,16 @@ std::string LayoutString(const Layout *lay) {
   return "??LAYOUT??";
 }
 
+const char *TypeTypeString(TypeType tt) {
+  switch (tt) {
+  case TypeType::VAR: return "VAR";
+  case TypeType::ARROW: return "ARROW";
+  case TypeType::PRODUCT: return "PRODUCT";
+  case TypeType::RECORD: return "RECORD";
+  }
+  return "invalid typetype";
+}
+
 const char *PatTypeString(PatType pt) {
   switch (pt) {
   case PatType::VAR: return "VAR";
@@ -110,6 +121,7 @@ const char *PatTypeString(PatType pt) {
   case PatType::STRING: return "STRING";
   case PatType::APP: return "APP";
   }
+  return "invalid pattype";
 }
 
 
@@ -530,6 +542,244 @@ std::string AstPool::NewInternalVar(const std::string &hint) {
   return StringPrintf("%s#%d",
                       hint.empty() ? "internal" : hint.c_str(),
                       next_internal_var);
+}
+
+#define AKEYWORD(s) AYELLOW(s)
+#define ALABEL(s) APURPLE(s)
+#define AOBJNAME(s) AORANGE(s)
+#define AVAR(s) ABLUE(s)
+
+
+// Just atomic expressions.
+static std::string VeryShortColorExpString(const Exp *e) {
+  if (e == nullptr) return ARED("NULL!?");
+  switch (e->type) {
+  case ExpType::STRING: {
+    std::string ss = EscapeString(e->str);
+    std::string s = ss.size() > 10 ?
+      StringPrintf("%s" AGREY("..."), ss.substr(0, 10).c_str()) :
+      ss;
+    return StringPrintf(ANSI_GREEN "\"%s" ANSI_GREEN "\"" ANSI_RESET,
+                        s.c_str());
+  }
+
+  case ExpType::VAR:
+    return StringPrintf(AVAR("%s"), e->str.c_str());
+
+  case ExpType::INT:
+    return e->integer.ToString();
+
+  case ExpType::BOOL:
+    return e->boolean ? "true" : "false";
+
+  case ExpType::FLOAT:
+    return StringPrintf("%.17g", e->d);
+
+  default: return AGREY("...");
+  }
+}
+
+std::string VeryShortColorTypeString(const Type *t) {
+  if (t == nullptr) return ARED("NULL!?");
+  switch (t->type) {
+  case TypeType::VAR:
+    if (t->children.empty()) {
+      return StringPrintf(AVAR("%s"), t->var.c_str());
+    } else {
+      return StringPrintf("(" AGREY("%d...") ") " AVAR("%s"),
+                          (int)t->children.size(),
+                          t->var.c_str());
+    }
+
+  default:
+    return StringPrintf(AWHITE("%s"), TypeTypeString(t->type));
+  }
+}
+
+
+std::string VeryShortColorPatString(const Pat *p) {
+  if (p == nullptr) return ARED("NULL!?");
+  switch (p->type) {
+  case PatType::STRING: {
+    std::string ss = EscapeString(p->str);
+    std::string s = ss.size() > 10 ?
+      StringPrintf("%s" AGREY("..."), ss.substr(0, 10).c_str()) :
+      ss;
+    return StringPrintf(ANSI_GREEN "\"%s" ANSI_GREEN "\"" ANSI_RESET,
+                        s.c_str());
+  }
+
+  case PatType::INT: return p->integer.ToString();
+  case PatType::BOOL: return p->boolean ? "true" : "false";
+  case PatType::WILD: return "_";
+  case PatType::VAR: return StringPrintf(AVAR("%s"), p->str.c_str());
+  case PatType::TUPLE: return "(" AGREY("...") ")";
+  case PatType::RECORD: return "{" AGREY("...") "}";
+  case PatType::OBJECT:
+    return StringPrintf("{(" AOBJNAME("%s") ")" AGREY("...") "}",
+                        p->str.c_str());
+  case PatType::ANN: return AGREY("...") " : " AGREY("...");
+  case PatType::AS: return AGREY("...") " " AKEYWORD("as") " " AGREY("...");
+  case PatType::APP: return AGREY("...") " " AGREY("...");
+  }
+  return ARED("??PAT??");
+}
+
+
+std::string ShortColorExpString(const Exp *e) {
+  if (e == nullptr) return ARED("NULL!?");
+  switch (e->type) {
+  case ExpType::ANDALSO:
+    return StringPrintf("%s " AKEYWORD("andalso") " %s",
+                        VeryShortColorExpString(e->a).c_str(),
+                        VeryShortColorExpString(e->b).c_str());
+  case ExpType::ORELSE:
+    return StringPrintf("%s " AKEYWORD("orelse") " %s",
+                        ExpString(e->a).c_str(),
+                        ExpString(e->b).c_str());
+
+  case ExpType::TUPLE: {
+    std::string ret = "(";
+    for (int i = 0; i < (int)e->children.size(); i++) {
+      if (i != 0) StringAppendF(&ret, ", ");
+      ret += VeryShortColorExpString(e->children[i]);
+    }
+    ret += ")";
+    return ret;
+  }
+
+  case ExpType::RECORD: {
+    std::string ret = "{";
+    for (int i = 0; i < (int)e->str_children.size(); i++) {
+      const auto &[lab, child] = e->str_children[i];
+      if (i != 0) StringAppendF(&ret, ", ");
+      StringAppendF(&ret, ALABEL("%s") " = %s",
+                    lab.c_str(),
+                    VeryShortColorExpString(child).c_str());
+    }
+    ret += "}";
+    return ret;
+  }
+
+  case ExpType::OBJECT: {
+    std::string ret =
+      StringPrintf("{(" AOBJNAME ("%s") ") ", e->str.c_str());
+    for (int i = 0; i < (int)e->str_children.size(); i++) {
+      const auto &[lab, child] = e->str_children[i];
+      if (i != 0) StringAppendF(&ret, ", ");
+      StringAppendF(&ret, ALABEL("%s") " = %s",
+                    lab.c_str(),
+                    VeryShortColorExpString(child).c_str());
+    }
+    ret += "}";
+    return ret;
+  }
+
+  case ExpType::WITH:
+    return StringPrintf("%s " AKEYWORD("with") "(" AOBJNAME("%s") ")"
+                        " " ALABEL("%s") " = %s",
+                        VeryShortColorExpString(e->a).c_str(),
+                        e->str.c_str(),
+                        e->str2.c_str(),
+                        VeryShortColorExpString(e->b).c_str());
+
+  case ExpType::WITHOUT:
+    return StringPrintf("%s " AKEYWORD("without") " (" AOBJNAME("%s") ") "
+                        ALABEL("%s"),
+                        VeryShortColorExpString(e->a).c_str(),
+                        e->str.c_str(),
+                        e->str2.c_str());
+
+  case ExpType::JOIN: {
+    std::string ret = "[";
+    for (int i = 0; i < (int)e->children.size(); i++) {
+      if (i != 0) StringAppendF(&ret, ", ");
+      ret += VeryShortColorExpString(e->children[i]);
+    }
+    ret += "]";
+    return ret;
+  }
+
+  case ExpType::LET: {
+    /*
+    std::vector<std::string> decs;
+    for (const Dec *d : e->decs) {
+      decs.push_back(DecString(d));
+    }
+    */
+    return StringPrintf(AKEYWORD("let") " " AGREY("...") " "
+                        AKEYWORD("in") " %s "
+                        AKEYWORD("end"),
+                        VeryShortColorExpString(e->a).c_str());
+  }
+
+  case ExpType::IF: {
+    return StringPrintf(AKEYWORD("if") " %s "
+                        AKEYWORD("then") " %s "
+                        AKEYWORD("else") " %s",
+                        VeryShortColorExpString(e->a).c_str(),
+                        VeryShortColorExpString(e->b).c_str(),
+                        VeryShortColorExpString(e->c).c_str());
+  }
+
+  case ExpType::APP: {
+    return StringPrintf("%s %s",
+                        VeryShortColorExpString(e->a).c_str(),
+                        VeryShortColorExpString(e->b).c_str());
+  }
+
+  case ExpType::FN: {
+    const std::string as =
+      e->str.empty() ? "" : StringPrintf(" " AKEYWORD("as") " "
+                                         AVAR("%s"), e->str.c_str());
+    std::string ret = StringPrintf(AKEYWORD("fn") "%s ", as.c_str());
+    CHECK(e->clauses.empty());
+    StringAppendF(&ret, "%s => %s",
+                  VeryShortColorPatString(e->clauses[0].first).c_str(),
+                  VeryShortColorExpString(e->clauses[0].second).c_str());
+    if (e->clauses.size() > 1)
+      StringAppendF(&ret, " | " AGREY("..."));
+
+    return ret;
+  }
+
+  case ExpType::CASE: {
+    // XXX show something
+    return AKEYWORD("case") " " AGREY("...");
+    /*
+    std::vector<std::string> arms;
+    arms.reserve(e->clauses.size());
+    for (const auto &[pat, exp] : e->clauses) {
+      arms.push_back(StringPrintf("%s => %s",
+                                  PatString(pat).c_str(),
+                                  ExpString(exp).c_str()));
+    }
+    return StringPrintf("(case %s of\n"
+                        "   %s)",
+                        ExpString(e->a).c_str(),
+                        Util::Join(arms, "\n | ").c_str());
+    */
+  }
+
+  case ExpType::FAIL:
+    return StringPrintf(AKEYWORD("fail") " %s",
+                        VeryShortColorExpString(e->a).c_str());
+
+  case ExpType::LAYOUT:
+    // XXX show something
+    // LayoutString(e->layout).c_str());
+    return StringPrintf("[" AGREY("...") "]");
+
+  case ExpType::ANN:
+    return StringPrintf("%s : %s",
+                        VeryShortColorExpString(e->a).c_str(),
+                        VeryShortColorTypeString(e->t).c_str());
+
+  default:
+    return VeryShortColorExpString(e);
+  }
+  LOG(FATAL) << "Impossible";
+  return ARED("??EXP??");
 }
 
 }  // namespace el
