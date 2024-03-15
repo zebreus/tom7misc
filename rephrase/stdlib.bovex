@@ -86,8 +86,9 @@ fun list-tabulate (i, f) =
 fun list-empty nil = true
   | list-empty _ = false
 
-fun list-map f l = nil
-  | list-map f (h :: t) = f h :: list-map f h t
+
+fun list-map f nil = nil
+  | list-map f (h :: t) = f h :: list-map f t
 
 fun list-mapi f l =
   let
@@ -98,18 +99,21 @@ fun list-mapi f l =
     m (0, l)
   end
 
+
+
 fun list-map-partial f nil = nil
   | list-map-partial f (h :: t) =
     case f h of
         NONE => list-map-partial f t
       | SOME hh => hh :: list-map-partial f t
 
+
 (* PERF should be optimized to do less consing. (split mainly) *)
 fun list-sort cmp l =
   let
     fun split l =
       let fun s (a1, a2, nil) = (a1, a2)
-            | s (a1, a2, (h::t)) = s (a2, h::a1, t)
+            | s (a1, a2, (h :: t)) = s (a2, h :: a1, t)
       in s (nil, nil, l)
       end
 
@@ -132,11 +136,13 @@ fun list-sort cmp l =
     ms l
   end
 
+(*
+
 (* need SEQ in EL *)
 fun list-app f nil = ()
   | list-app f (h :: t) =
-  let do f h
-  in list-app f t
+  let in
+    f h; list-app f t
   end
 
 fun list-appi f l =
@@ -162,6 +168,8 @@ fun list-partition f l =
     pa (nil, nil, l)
   end
 
+
+
 fun list-find _ nil = NONE
   | list-find f (h :: t) = if f h then SOME h
                            else list-find f t
@@ -176,6 +184,7 @@ fun list-exists _ nil = false
 
 fun list-all f nil = true
   | list-all f (h :: t) = f h andalso list-all f t
+
 
 
 (* Given a comparison function on a's and an (a * b) list,
@@ -231,7 +240,9 @@ datatype (a) set-tree =
   | SetNode of set-tree * a * set-tree
 
 datatype (a) set = Set of { cmp: a * a -> order, tree: a set-tree }
+
 fun set-empty cmp = Set { cmp = cmp, tree = SetEmpty }
+
 fun set-insert (Set { cmp, tree }, item) =
   let
     fun r SetEmpty = SetNode (SetEmpty, item, SetEmpty)
@@ -244,6 +255,7 @@ fun set-insert (Set { cmp, tree }, item) =
   in
     Set { cmp = cmp, tree = r tree }
   end
+
 fun set-contains (Set { cmp, tree }, item) =
   let
     fun r SetEmpty = false
@@ -269,3 +281,4 @@ fun set-tolist (Set { cmp = _, tree }) =
   in
     rec tree
   end
+*)

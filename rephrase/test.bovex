@@ -1,5 +1,6 @@
 let
   import "stdlib.bovex"
+(*
   import "layout.bovex"
   import "cite.bovex"
   import "paper.bib"
@@ -41,10 +42,11 @@ let
     in
       stickers
     end
-
+*)
 
 in
 
+  (*
   output
   (render-one-column
   (times-roman
@@ -65,5 +67,6 @@ in
 
     [bibliography()]
    ]))
-
+  *)
+  output [paper]
 end

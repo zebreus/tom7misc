@@ -636,11 +636,17 @@ const Exp *Parsing::Parse(AstPool *pool,
     };
 
   const auto ValDecl = [&](const auto &Expr) {
-      return ((IsToken<VAL>() >> Pattern) &&
+      return (((IsToken<VAL>() >> Pattern) &&
               (IsToken<EQUALS>() >> Expr))
         >[&](const auto &p) {
             return pool->ValDec(p.first, p.second);
-          };
+          }) ||
+        (Mark(IsToken<VAL>()) >[&](const auto &err) -> const Dec * {
+            const auto &[_, start, length] = err;
+            LOG(FATAL) << "Expected VAL PAT EQUALS EXP after seeing "
+              "VAL. At: " << start << " for " << length;
+            return nullptr;
+          });
     };
 
   const auto OneFunDec = [&](const auto &clauses) -> FunDec {

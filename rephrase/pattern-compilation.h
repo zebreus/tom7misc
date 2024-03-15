@@ -125,7 +125,8 @@ private:
       int x);
 
   // Generic error for unification. Should improve this!
-  std::function<std::string()> Error(const std::string &e);
+  std::function<std::string()> MatrixError(const Matrix &matrix,
+                                           const std::string &e);
 
   int verbose = 0;
   Elaboration *elab = nullptr;

@@ -355,7 +355,7 @@ std::string ExpString(const Exp *e) {
     }
 
     return StringPrintf("let %s in %s end",
-                        Util::Join(decs, " ").c_str(),
+                        Util::Join(decs, "\n").c_str(),
                         ExpString(e->a).c_str());
   }
 
@@ -625,6 +625,10 @@ std::string VeryShortColorPatString(const Pat *p) {
   return ARED("??PAT??");
 }
 
+std::string ShortColorPatString(const Pat *p) {
+  // TODO: Expand some cases.
+  return VeryShortColorPatString(p);
+}
 
 std::string ShortColorExpString(const Exp *e) {
   if (e == nullptr) return ARED("NULL!?");
@@ -733,7 +737,7 @@ std::string ShortColorExpString(const Exp *e) {
       e->str.empty() ? "" : StringPrintf(" " AKEYWORD("as") " "
                                          AVAR("%s"), e->str.c_str());
     std::string ret = StringPrintf(AKEYWORD("fn") "%s ", as.c_str());
-    CHECK(e->clauses.empty());
+    CHECK(!e->clauses.empty());
     StringAppendF(&ret, "%s => %s",
                   VeryShortColorPatString(e->clauses[0].first).c_str(),
                   VeryShortColorExpString(e->clauses[0].second).c_str());

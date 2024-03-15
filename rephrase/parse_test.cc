@@ -523,6 +523,14 @@ static void TestParse() {
     CHECK(e->a->integer == 3);
   }
 
+  // XXX DEATH_TEST?
+  if (false) {
+    (void)Parse("let val x = 3\n"
+                "    val y\n"
+                "in 7 end\n");
+  }
+
+
   printf("Exp parsing " AGREEN("OK") "\n");
 }
 
@@ -948,6 +956,7 @@ static void TestParseLayout() {
     CHECK(b->type == LayoutType::TEXT);
     CHECK(b->str == " it");
   }
+
 }
 
 }  // namespace el

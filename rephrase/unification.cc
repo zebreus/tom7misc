@@ -193,11 +193,17 @@ std::vector<EVar> EVar::FreeEVarsInTypes(
         Rec(c);
       return;
 
-    case TypeType::EVAR:
-      if (t->EVar().GetBound() == nullptr) {
+    case TypeType::EVAR: {
+      const Type *b = t->EVar().GetBound();
+      if (b == nullptr) {
+        // Then this is a free evar.
         s.insert(t->EVar());
+      } else {
+        // but if not, it could have free evars within it!
+        Rec(b);
       }
       return;
+    }
 
     case TypeType::REF:
       Rec(t->Ref());

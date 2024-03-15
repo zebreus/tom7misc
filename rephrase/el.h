@@ -499,6 +499,7 @@ std::string LayoutString(const Layout *lay);
 std::string ExpString(const Exp *e);
 
 // For error messages etc.
+std::string ShortColorPatString(const el::Pat *pat);
 std::string ShortColorExpString(const el::Exp *exp);
 
 // In-order flattening of the layout without any JOIN-type nodes,

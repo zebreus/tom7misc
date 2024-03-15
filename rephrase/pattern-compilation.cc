@@ -16,7 +16,7 @@
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 
-static constexpr bool VERBOSE = false;
+static constexpr int VERBOSE = 0;
 
 namespace il {
 
@@ -335,6 +335,30 @@ struct PatternCompilation::Matrix {
     return ret;
   }
 
+#define AKEYWORD(s) AYELLOW(s)
+
+  std::string ShortColorString() const {
+    std::string ret =
+      StringPrintf(AKEYWORD("case") " %s " AKEYWORD("of") "\n",
+                   Util::Join(objs, AGREY(",") " ").c_str());
+    // Would be nice to use a table here.
+    for (int y = 0; y < Height(); y++) {
+      StringAppendF(&ret, " |");
+      for (int x = 0; x < Width(); x++) {
+        const Pat *p = Cell(x, y);
+        StringAppendF(&ret, " %s", el::ShortColorPatString(p).c_str());
+      }
+
+      const el::Exp *exp = rows[y];
+      StringAppendF(&ret, " => %s\n", el::ShortColorExpString(exp).c_str());
+    }
+    StringAppendF(&ret, "   " AORANGE("_") " => %s\n",
+                  el::ShortColorExpString(def).c_str());
+
+    return ret;
+  }
+
+
   // The pattern objects. These are always EL variables.
   std::vector<std::string> objs;
   // Parallel array of the types.
@@ -492,12 +516,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
     const ElabContext &G,
     Matrix matrix) {
 
-  auto Error = [](const std::string &construct) {
-      return std::function<std::string()>([construct]() -> std::string {
-          // XXX add matrix string
-          return StringPrintf("Pattern compilation: %s\n",
-                              construct.c_str());
-      });
+  auto Error = [this, &matrix](const std::string &msg) {
+      return MatrixError(matrix, msg);
     };
 
   if (VERBOSE) {
@@ -667,6 +687,10 @@ PatternCompilation::SplitIntPattern(
     Matrix matrix,
     int x) {
 
+  auto Error = [this, &matrix](const std::string &msg) {
+      return MatrixError(matrix, msg);
+    };
+
   CHECK(x >= 0 && x < matrix.Width());
   CHECK(matrix.Cell(x, 0)->type == PatType::INT);
 
@@ -810,6 +834,10 @@ PatternCompilation::SplitBoolPattern(
     Matrix matrix,
     int x) {
 
+  auto Error = [this, &matrix](const std::string &msg) {
+      return MatrixError(matrix, msg);
+    };
+
   CHECK(x >= 0 && x < matrix.Width());
   CHECK(matrix.Cell(x, 0)->type == PatType::BOOL);
 
@@ -930,6 +958,10 @@ PatternCompilation::SplitStringPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
+
+  auto Error = [this, &matrix](const std::string &msg) {
+      return MatrixError(matrix, msg);
+    };
 
   CHECK(x >= 0 && x < matrix.Width());
   CHECK(matrix.Cell(x, 0)->type == PatType::STRING);
@@ -1053,6 +1085,10 @@ PatternCompilation::SplitAppPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
+
+  auto Error = [this, &matrix](const std::string &msg) {
+      return MatrixError(matrix, msg);
+    };
 
   CHECK(x >= 0 && x < matrix.Width());
   const Pat *first_pat = matrix.Cell(x, 0);
@@ -1273,6 +1309,10 @@ PatternCompilation::SplitObjectPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
+
+  auto Error = [this, &matrix](const std::string &msg) {
+      return MatrixError(matrix, msg);
+    };
 
   CHECK(x >= 0 && x < matrix.Width());
   const Pat *first_pat = matrix.Cell(x, 0);
@@ -1602,6 +1642,10 @@ PatternCompilation::SplitRecordPattern(
     Matrix matrix,
     int x) {
 
+  auto Error = [this, &matrix](const std::string &msg) {
+      return MatrixError(matrix, msg);
+    };
+
   CHECK(x >= 0 && x < matrix.Width());
 
   // Split it eagerly and recurse.
@@ -1763,7 +1807,7 @@ PatternCompilation::CompileIrrefutable(
     printf(AWHITE("New context") ":\n%s\n(end)\n",
            GG.ToString().c_str());
     printf(AWHITE("Elaborating body") ":\n%s\n",
-         ExpString(body).c_str());
+           ExpString(body).c_str());
   }
   const auto &[be, bt] = elab->Elab(GG, body);
   return std::make_pair(LetDecs(decs, be), bt);
@@ -1788,6 +1832,14 @@ PatternCompilation::CompileIrrefutableRec(
     bool rhs_valuable) {
   el::AstPool *el_pool = elab->el_pool;
   il::AstPool *pool = elab->pool;
+
+  auto Error = [](const std::string &msg) {
+      return std::function<std::string()>(
+          [msg]() {
+            return StringPrintf("Pattern compilation (irrefutable): %s",
+                                msg.c_str());
+          });
+    };
 
   // Initial rewrites:
   //  - Dispense with type constraints on the pattern.
@@ -1965,11 +2017,28 @@ PatternCompilation::GeneralizeOne(
   // Used for instantiating a copy of the variable.
   std::vector<const Type *> gen_tyvar_args;
 
+  if (VERBOSE > 1) {
+    printf(AYELLOW("Maybe generalize") " %s %s\n"
+           "with type %s\n",
+           Util::Join(vars, AGREY(",")).c_str(),
+           rhs_valuable ? AGREEN("valuable") : AORANGE("not valuable"),
+           TypeString(type).c_str());
+  }
+
   if (rhs_valuable && !vars.empty()) {
     // Then we are attempting to do polymorphic generalization.
 
     // Get the free evars in the rhs's type.
     std::vector<EVar> free_evars = EVar::FreeEVarsInType(type);
+    if (VERBOSE > 1) {
+      if (free_evars.empty()) {
+        printf("  " AORANGE("no free evars") "\n");
+      } else {
+        for (const EVar &v : free_evars) {
+          printf("  Free: " ABLUE("%s") "\n", v.ToString().c_str());
+        }
+      }
+    }
 
     // Check each with G.HasEVar. If it's not in the context,
     // then we generalize it.
@@ -2045,9 +2114,17 @@ PatternCompilation::GeneralizeOne(
 }
 
 
-std::function<std::string()> PatternCompilation::Error(const std::string &e) {
-  return [e]() -> std::string {
-      return StringPrintf("Pattern compilation: %s", e.c_str());
+std::function<std::string()> PatternCompilation::MatrixError(
+    const Matrix &matrix,
+    const std::string &e) {
+  // PERF: Copying the matrix here, since (among other things)
+  // we sometimes modify it and temporarily put it in an invalid
+  // state.
+  return [matrix, e]() -> std::string {
+      return StringPrintf("Pattern compilation: %s\n"
+                          AWHITE("Matrix") ":\n%s\n",
+                          e.c_str(),
+                          matrix.ShortColorString().c_str());
     };
 }
 

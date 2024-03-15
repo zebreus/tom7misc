@@ -764,12 +764,74 @@ static void TestLayout() {
 
 // Former bugs.
 static void Regression() {
+  static constexpr int VERBOSE = 0;
   Frontend front;
   if (VERBOSE) {
-    front.SetVerbose(1);
+    front.SetVerbose(VERBOSE);
   }
 
+  // r5668 generalization bug:
+  // Failure to find free evars inside bound evars.
+  const Program pgm = Run(R"(
+        let
+          datatype (a) list = :: of a * list | nil
+          fun list-map f nil = nil
+            | list-map f (h :: t) = (f h) :: (list-map f t)
+          val x : string list = list-map int-to-string (2 :: nil)
+          val y : string list = list-map (fn s => s ^ ",") x
+          fun list-app (g, zz :: _) =
+            let in
+              g zz; ()
+            end
+        in
+          3
+        end)");
+
+
   // Zarro boogs.
+}
+
+static void NewTests() {
+  static constexpr int VERBOSE = 2;
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(VERBOSE);
+  }
+
+
+  // This should typecheck, but doesn't?
+  const Program pgm = Run(R"(
+    let
+      datatype (a) list = :: of a * list | nil
+      datatype order = LESS | EQUAL | GREATER
+      fun list-sort cmp l =
+        let
+          fun split l =
+            let fun s (a1, a2, nil) = (a1, a2)
+                  | s (a1, a2, (h :: t)) = s (a2, h :: a1, t)
+            in s (nil, nil, l)
+            end
+
+          fun merge (a, nil) = a
+            | merge (nil, b) = b
+            | merge ((a :: ta) as aa, (b :: tb) as bb) =
+            case cmp (a, b) of
+              EQUAL => (a :: b :: merge (ta, tb))
+            | LESS => (a :: merge (ta, bb))
+            | GREATER => (b :: merge (aa, tb))
+
+          fun ms nil = nil
+            | ms ((s :: nil) as l) = l
+            | ms (a :: b :: nil) = merge (a :: nil, b :: nil)
+            | ms ll =
+            let val (a,b) = split ll
+            in merge (ms a, ms b)
+            end
+        in
+          ms l
+        end
+    in 0 end
+    )");
 
 }
 
@@ -778,6 +840,7 @@ static void Regression() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  /*
   il::TestLiterals();
   il::TestPrimops();
   il::TestSimplify();
@@ -787,8 +850,9 @@ int main(int argc, char **argv) {
   il::TestFun();
   il::TestObjects();
   il::TestLayout();
-
   il::Regression();
+  */
+  il::NewTests();
 
   printf("OK\n");
   return 0;

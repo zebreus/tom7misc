@@ -306,6 +306,7 @@ fun stick-lines (line-height: float, p : layout) =
 
 (* Parse the top-level text nodes. *)
 
+(*
 fun parse-text (parse : string -> layout) (l : layout) : layout =
   (case layoutcase l of
     Text s => parse s
@@ -318,6 +319,7 @@ fun parse-text (parse : string -> layout) (l : layout) : layout =
   | Node (BOX, _, _) => l
   | Node (STICKER, _, _) => l
   | _ => fail "unimplemented node type")
+  *)
 
 val () = ()
 
