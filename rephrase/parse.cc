@@ -1,7 +1,6 @@
 
 #include "parse.h"
 
-#include <span>
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -22,7 +21,7 @@ struct IsToken {
   using token_type = Token;
   using out_type = Token;
   constexpr IsToken() {}
-  Parsed<Token> operator()(std::span<const Token> toks) const {
+  Parsed<Token> operator()(TokenSpan<Token> toks) const {
     if (toks.empty()) return Parsed<Token>::None();
     if (toks[0].type == t) return Parsed(toks[0], 1);
     else return Parsed<Token>::None();
@@ -917,8 +916,7 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   auto Program = Expr << End<Token>();
 
-  auto parseopt = Program(std::span<const Token>(tokens.data(),
-                                                 tokens.size()));
+  auto parseopt = Program(TokenSpan<Token>(tokens.data(), tokens.size()));
   CHECK(parseopt.HasValue()) << "Could not parse program.";
   return parseopt.Value();
 }

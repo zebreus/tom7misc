@@ -24,7 +24,7 @@ static void Simple() {
     CHECK(dom2->type == TypeType::EVAR);
   }
 
-  Unification::Unify("test", t1, t2);
+  Unification::Unify([]() { return "test"; }, t1, t2);
 
   {
     const auto &[dom1, cod1] = t1->Arrow();
