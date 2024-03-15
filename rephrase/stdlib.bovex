@@ -136,8 +136,6 @@ fun list-sort cmp l =
     ms l
   end
 
-(*
-
 (* need SEQ in EL *)
 fun list-app f nil = ()
   | list-app f (h :: t) =
@@ -281,4 +279,3 @@ fun set-tolist (Set { cmp = _, tree }) =
   in
     rec tree
   end
-*)

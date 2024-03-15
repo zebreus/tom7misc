@@ -772,6 +772,7 @@ static void Regression() {
 
   // r5668 generalization bug:
   // Failure to find free evars inside bound evars.
+  {
   const Program pgm = Run(R"(
         let
           datatype (a) list = :: of a * list | nil
@@ -786,9 +787,23 @@ static void Regression() {
         in
           3
         end)");
+  }
 
+  // r5668 same kind of issue: The occurs check wasn't looking
+  // inside bound evars.
+  {
+  const Program pgm = Run(R"(
+    let
+      datatype (a) option = SOME of a | NONE
 
-  // Zarro boogs.
+      fun ms (r as (SOME _)) = r : int option
+        | ms ll = ms ll
+
+    in 0
+    end
+    )");
+  }
+
 }
 
 static void NewTests() {
@@ -798,41 +813,6 @@ static void NewTests() {
     front.SetVerbose(VERBOSE);
   }
 
-
-  // This should typecheck, but doesn't?
-  const Program pgm = Run(R"(
-    let
-      datatype (a) list = :: of a * list | nil
-      datatype order = LESS | EQUAL | GREATER
-      fun list-sort cmp l =
-        let
-          fun split l =
-            let fun s (a1, a2, nil) = (a1, a2)
-                  | s (a1, a2, (h :: t)) = s (a2, h :: a1, t)
-            in s (nil, nil, l)
-            end
-
-          fun merge (a, nil) = a
-            | merge (nil, b) = b
-            | merge ((a :: ta) as aa, (b :: tb) as bb) =
-            case cmp (a, b) of
-              EQUAL => (a :: b :: merge (ta, tb))
-            | LESS => (a :: merge (ta, bb))
-            | GREATER => (b :: merge (aa, tb))
-
-          fun ms nil = nil
-            | ms ((s :: nil) as l) = l
-            | ms (a :: b :: nil) = merge (a :: nil, b :: nil)
-            | ms ll =
-            let val (a,b) = split ll
-            in merge (ms a, ms b)
-            end
-        in
-          ms l
-        end
-    in 0 end
-    )");
-
 }
 
 }  // il
@@ -840,7 +820,6 @@ static void NewTests() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  /*
   il::TestLiterals();
   il::TestPrimops();
   il::TestSimplify();
@@ -851,7 +830,6 @@ int main(int argc, char **argv) {
   il::TestObjects();
   il::TestLayout();
   il::Regression();
-  */
   il::NewTests();
 
   printf("OK\n");

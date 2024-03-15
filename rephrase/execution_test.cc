@@ -441,6 +441,23 @@ static void ObjTests() {
       )"),
       "0");
 
+  CHECK_EQ(
+      RunToString(R"(
+        let
+          datatype (a) list = :: of a * list | nil
+          fun list-map f nil = nil
+            | list-map f (h :: t) = f h :: list-map f t
+          val x = list-map int-to-string (4 :: 2 :: nil)
+          val y = list-map (fn s => s ^ ",") x
+          fun list-app f nil = ()
+            | list-app f (h :: t) =
+            let in
+              f h; list-app f t
+            end
+        in
+          list-app print y
+        end)"), "4,2,");
+
 }
 
 static void StringTests()  {
@@ -469,24 +486,7 @@ static void StringTests()  {
 }
 
 static void NewTests() {
-  // OK, so here's a real bug. list-map should be generalized
-  // so that we can apply it at two different types.
-  CHECK_EQ(
-      RunToString(R"(
-        let
-          datatype (a) list = :: of a * list | nil
-          fun list-map f l = nil
-            | list-map f (h :: t) = f h :: list-map f h t
-          val x = list-map int-to-string (4 :: 2 :: nil)
-          val y = list-map (fn s => s ^ ",") x
-          fun list-app f nil = ()
-            | list-app f (h :: t) =
-            let in
-              f h; list-app f t
-            end
-        in
-          list-app print y
-        end)"), "4,2,");
+
 }
 
 }  // namespace bc

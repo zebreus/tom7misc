@@ -597,10 +597,17 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
           }
 
           if (VERBOSE) {
+            std::string tyvars;
+            if (!il_tyvars.empty()) {
+              tyvars = StringPrintf(
+                  "(" AYELLOW("%s") ") ",
+                  Util::Join(il_tyvars, ",").c_str());
+            }
             printf("Binding constructor " ABLUE("%s") " : "
-                   "(tyvars) %s -> %s\n"
+                   "%s%s -> %s\n"
                    "   with .ctor = %d  %s  %s\n",
                    ctor.c_str(),
+                   tyvars.c_str(),
                    TypeString(dom).c_str(),
                    TypeString(cod).c_str(),
                    y,

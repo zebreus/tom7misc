@@ -308,9 +308,17 @@ struct PatternCompilation::Matrix {
   }
 
   std::string ToString() const {
-    std::string ret =
-      StringPrintf("case (%s) of\n",
-                   Util::Join(objs, ", ").c_str());
+    std::string ret = "case (";
+    CHECK((int)objs.size() == Width());
+    CHECK((int)types.size() == Width());
+    for (int x = 0; x < Width(); x++) {
+      if (x != 0) StringAppendF(&ret, ", ");
+      StringAppendF(&ret, "%s : %s",
+                    objs[x].c_str(),
+                    TypeString(types[x]).c_str());
+    }
+    StringAppendF(&ret, ") of\n");
+
     // Would be nice to use a table here.
     for (int y = 0; y < Height(); y++) {
       StringAppendF(&ret, " |");
@@ -2044,8 +2052,15 @@ PatternCompilation::GeneralizeOne(
     // then we generalize it.
     std::vector<EVar> gen_evars;
     for (const EVar &v : free_evars) {
-      if (!G.HasEVar(v)) {
+      if (G.HasEVar(v)) {
+        if (VERBOSE > 1) {
+          printf("  " AORANGE("still in context") "\n");
+        }
+      } else {
         gen_evars.push_back(v);
+        if (VERBOSE > 1) {
+          printf("  " AGREEN("generalize") "!\n");
+        }
       }
     }
 

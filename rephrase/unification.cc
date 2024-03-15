@@ -62,6 +62,7 @@ bool EVar::LessEVar(const EVar &a, const EVar &b) {
 }
 
 bool EVar::Occurs(const EVar &e, const Type *t) {
+
   switch (t->type) {
 
   case TypeType::VAR: {
@@ -103,7 +104,13 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
     return false;
 
   case TypeType::EVAR:
-    return SameEVar(e, t->EVar());
+    if (SameEVar(e, t->EVar()))
+      return true;
+    if (const Type *tt = t->EVar().GetBound()) {
+      return Occurs(e, tt);
+      // return SameEVar(e, t->EVar());
+    }
+    return false;
 
   case TypeType::REF:
     return Occurs(e, t->Ref());
