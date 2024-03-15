@@ -1,14 +1,13 @@
 
 #include "parser-combinators.h"
 
-#include <span>
 #include <string>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-std::span<const char> CharSpan(const std::string &s) {
-  return std::span<const char>(s.begin(), s.end());
+TokenSpan<char> CharSpan(const std::string &s) {
+  return TokenSpan<char>(s.data(), s.size());
 }
 
 static void TestSimple() {
@@ -294,17 +293,17 @@ static void TestSimple() {
 static void TestMark() {
   {
     auto abc = Is('a') || Is('b') || Is('c');
-    auto parser = Mark(Separate(abc, Is(',')) >>
-                       Is('z')) >[&](auto sm) {
-                       const auto &[c, m] = sm;
-                       printf("%c / %d\n", c, (int)m);
-                       return 'x';
-                     };
-    std::string s = "a,b,cz";
+    auto parser = Is('_') >>
+      (Mark(Separate(abc, Is(',')) >>
+            Is('z')));
+    std::string s = "_a,b,cz";
     // Parsed<std::vector<char>>
     auto po = parser(CharSpan(s));
     CHECK(po.HasValue());
-    const auto &v = po.Value();
+    const auto &[z, start, len] = po.Value();
+    CHECK(z == 'z');
+    CHECK(start == 1);
+    CHECK(len == 6);
   }
 
 }

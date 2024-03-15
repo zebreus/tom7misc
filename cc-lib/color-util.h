@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <initializer_list>
 #include <tuple>
-#include <vector>
 
 // Convenience for specifying rows in gradients as 0xRRGGBB.
 // This should be a member of ColorUtil but is not allowed, perhaps

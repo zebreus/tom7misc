@@ -4,7 +4,6 @@
 #ifndef _CC_LIB_PARSE_H
 #define _CC_LIB_PARSE_H
 
-#include <span>
 #include <optional>
 #include <functional>
 #include <concepts>
@@ -14,6 +13,68 @@
 #include "base/logging.h"
 
 struct Unit { };
+
+// Like std::span<T>, but rooted at the beginning of the token
+// stream, so that we can ask "what position is this in the
+// input file"? for a subspan. Const view.
+template<class T>
+struct TokenSpan {
+  // The full span.
+  TokenSpan(const T *data, size_t length) : root(data), full_length(length),
+                                            offset(0), length(length) { }
+  // An empty span referring to nothing.
+  TokenSpan() {}
+
+  // Value semantics.
+  TokenSpan(const TokenSpan &other) = default;
+  TokenSpan &operator =(const TokenSpan &other) = default;
+
+  T operator[](size_t idx) const {
+    CHECK(idx < length);
+    return root[offset + idx];
+  }
+
+  bool empty() const {
+    return length == 0;
+  }
+
+  size_t StartOffset() const {
+    return offset;
+  }
+
+  TokenSpan SubSpan(size_t start) const {
+    CHECK(start <= length);
+    return TokenSpan(
+      root, full_length,
+      offset + start, length - start);
+  }
+
+  TokenSpan SubSpan(size_t start, size_t len) const {
+    return SubSpan(start).First(len);
+  }
+
+  TokenSpan First(size_t len) const {
+    CHECK(len <= length);
+    return TokenSpan(
+      root, full_length,
+      offset, len);
+  }
+
+ private:
+  TokenSpan(const T *root, size_t full_length,
+            size_t offset, size_t length) :
+    root(root), full_length(full_length),
+    offset(offset), length(length) { }
+
+  // The input data, e.g. the bytes of the source file being
+  // parsed.
+  const T *root = nullptr;
+  size_t full_length = 0;
+  // The subspan. As a representation invariant, this always
+  // refers to some data in [root, root + full_length).
+  size_t offset = 0;
+  size_t length = 0;
+};
 
 // Like std::optional<T>, but with the length of the match
 // (number of tokens at the start of the span).
@@ -31,7 +92,7 @@ private:
 };
 
 template <typename P>
-concept Parser = requires(P p, std::span<const typename P::token_type> toks) {
+concept Parser = requires(P p, TokenSpan<typename P::token_type> toks) {
   typename P::token_type;
   typename P::out_type;
   { p(toks) } -> std::convertible_to<Parsed<typename P::out_type>>;
@@ -42,7 +103,7 @@ struct ParserWrapper {
   template <typename F>
   ParserWrapper(F&& f) : func(f) {}
 
-  Parsed<Out> operator ()(std::span<const Token> t) const {
+  Parsed<Out> operator ()(TokenSpan<Token> t) const {
     return func(t);
   }
 
@@ -50,7 +111,7 @@ struct ParserWrapper {
   using out_type = Out;
 
  private:
-  std::function<Parsed<Out>(std::span<const Token>)> func;
+  std::function<Parsed<Out>(TokenSpan<Token>)> func;
 };
 
 static_assert(Parser<ParserWrapper<char, double>>);
@@ -60,7 +121,7 @@ template<class Token, class Out>
 struct Fail {
   using token_type = Token;
   using out_type = Out;
-  Parsed<Out> operator ()(std::span<const Token> unused_) const {
+  Parsed<Out> operator ()(TokenSpan<Token> unused_) const {
     return Parsed<Out>::None();
   }
 };
@@ -72,7 +133,7 @@ struct Succeed {
   using token_type = Token;
   using out_type = Out;
   explicit Succeed(Out r) : r(r) {}
-  Parsed<Out> operator ()(std::span<const Token> unused_) const {
+  Parsed<Out> operator ()(TokenSpan<Token> unused_) const {
     // consuming no input
     return Parsed(r, 0);
   }
@@ -84,7 +145,7 @@ struct End {
   using token_type = Token;
   using out_type = Unit;
   explicit End() {}
-  Parsed<Unit> operator ()(std::span<const Token> toks) const {
+  Parsed<Unit> operator ()(TokenSpan<Token> toks) const {
     if (toks.empty()) return Parsed(Unit{}, 0);
     return Parsed<Unit>::None();
   }
@@ -96,7 +157,7 @@ struct Any {
   using token_type = Token;
   using out_type = Token;
   explicit Any() {}
-  Parsed<Token> operator ()(std::span<const Token> toks) const {
+  Parsed<Token> operator ()(TokenSpan<Token> toks) const {
     if (toks.empty()) return Parsed<Token>::None();
     return Parsed(toks[0], 1);
   }
@@ -108,7 +169,7 @@ struct Is {
   using token_type = Token;
   using out_type = Token;
   explicit Is(Token r) : r(r) {}
-  Parsed<Token> operator ()(std::span<const Token> toks) const {
+  Parsed<Token> operator ()(TokenSpan<Token> toks) const {
     if (toks.empty()) return Parsed<Token>::None();
     if (toks[0] == r) return Parsed(toks[0], 1);
     else return Parsed<Token>::None();
@@ -138,11 +199,11 @@ inline auto operator >>(const A &a, const B &b) {
   using in = A::token_type;
   using out = B::out_type;
   return ParserWrapper<in, out>(
-      [a, b](std::span<const in> toks) -> Parsed<out> {
+      [a, b](TokenSpan<in> toks) -> Parsed<out> {
         auto o1 = a(toks);
         if (!o1.HasValue()) return Parsed<out>::None();
         const size_t start = o1.Length();
-        auto o2 = b(toks.subspan(start));
+        auto o2 = b(toks.SubSpan(start));
         return ExpandLength(o2, start);
       });
 }
@@ -156,11 +217,11 @@ inline auto operator <<(const A &a, const B &b) {
   using in = A::token_type;
   using out = A::out_type;
   return ParserWrapper<in, out>(
-      [a, b](std::span<const in> toks) -> Parsed<out> {
+      [a, b](TokenSpan<in> toks) -> Parsed<out> {
         auto o1 = a(toks);
         if (!o1.HasValue()) return Parsed<out>::None();
         const size_t start = o1.Length();
-        auto o2 = b(toks.subspan(start));
+        auto o2 = b(toks.SubSpan(start));
         if (!o2.HasValue()) return Parsed<out>::None();
         return ExpandLength(o1, o2.Length());
       });
@@ -176,13 +237,13 @@ inline auto operator &&(const A &a,
   using out1 = A::out_type;
   using out2 = B::out_type;
   return ParserWrapper<in, std::pair<out1, out2>>(
-      [a, b](std::span<const in> toks) ->
+      [a, b](TokenSpan<in> toks) ->
       Parsed<std::pair<out1, out2>> {
         auto o1 = a(toks);
         if (!o1.HasValue())
           return Parsed<std::pair<out1, out2>>::None();
         const size_t start = o1.Length();
-        auto o2 = b(toks.subspan(start));
+        auto o2 = b(toks.SubSpan(start));
         if (!o2.HasValue())
           return Parsed<std::pair<out1, out2>>::None();
         return Parsed<std::pair<out1, out2>>(
@@ -200,7 +261,7 @@ inline auto operator ||(const A &a, const B &b) {
   using in = A::token_type;
   using out = A::out_type;
   return ParserWrapper<in, out>(
-      [a, b](std::span<const in> toks) ->
+      [a, b](TokenSpan<in> toks) ->
       Parsed<out> {
         auto o1 = a(toks);
         if (o1.HasValue()) {
@@ -217,7 +278,7 @@ inline auto Opt(const A &a) {
   using in = A::token_type;
   using out = std::optional<typename A::out_type>;
   return ParserWrapper<in, out>(
-      [a](std::span<const in> toks) ->
+      [a](TokenSpan<in> toks) ->
       Parsed<out> {
         auto o = a(toks);
         if (!o.HasValue())
@@ -228,23 +289,22 @@ inline auto Opt(const A &a) {
       });
 }
 
-// If successful, pair the result with its position.
-// TODO: This actually returns the length of the parsed
-// thing, which is not what we want. Track the position
-// within the input stream!
+// If successful, pair the result with its position,
+// which is given as a start position and length (in tokens)
+// from the original token stream (its root).
 template<Parser A>
 inline auto Mark(const A &a) {
   using in = A::token_type;
-  using out = std::pair<typename A::out_type, size_t>;
+  using out = std::tuple<typename A::out_type, size_t, size_t>;
   return ParserWrapper<in, out>(
-      [a](std::span<const in> toks) ->
+      [a](TokenSpan<in> toks) ->
       Parsed<out> {
         auto o = a(toks);
         if (!o.HasValue())
           return Parsed<out>::None();
 
         return Parsed<out>(
-            std::make_pair(o.Value(), o.Length()),
+            std::make_tuple(o.Value(), toks.StartOffset(), o.Length()),
             o.Length());
       });
 }
@@ -258,7 +318,7 @@ inline auto operator *(const A &a) {
   using in = A::token_type;
   using out = std::vector<typename A::out_type>;
   return ParserWrapper<in, out>(
-      [a](std::span<const in> toks) ->
+      [a](TokenSpan<in> toks) ->
       Parsed<out> {
         std::vector<typename A::out_type> ret;
         size_t total_len = 0;
@@ -269,7 +329,7 @@ inline auto operator *(const A &a) {
           const size_t one_len = o.Length();
           total_len += one_len;
           ret.push_back(o.Value());
-          toks = toks.subspan(one_len);
+          toks = toks.SubSpan(one_len);
         }
       });
 }
@@ -285,7 +345,7 @@ inline auto operator >(const A &a, const F &f) {
   // Get the result type of applying f to the result of a.
   using out = decltype(f(std::declval<a_out>()));
   return ParserWrapper<in, out>(
-      [a, f](std::span<const in> toks) ->
+      [a, f](TokenSpan<in> toks) ->
       Parsed<out> {
         auto o = a(toks);
         if (!o.HasValue()) return Parsed<out>::None();
@@ -309,7 +369,7 @@ inline auto operator /=(const A &a, const F &f) {
   // Get the result type of applying f to the result of a.
   using out = decltype(f(std::declval<a_out>()))::value_type;
   return ParserWrapper<in, out>(
-      [a, f](std::span<const in> toks) ->
+      [a, f](TokenSpan<in> toks) ->
       Parsed<out> {
         auto o = a(toks);
         if (!o.HasValue()) return Parsed<out>::None();
@@ -332,7 +392,7 @@ inline auto operator >=(const A &a, const F &f) {
   using f_arg_type = std::declval<Parsed<a_out>>();
   using out = decltype(f());
   return ParserWrapper<in, out>(
-      [a, f](std::span<const in> toks) ->
+      [a, f](TokenSpan<in> toks) ->
       Parsed<out> {
         return f(a)(toks);
       });
@@ -378,7 +438,7 @@ struct RecursiveParser {
   */
   RecursiveParser(const F &f) : f(f) {}
 
-  Parsed<Out> operator()(std::span<const Token> toks) const {
+  Parsed<Out> operator()(TokenSpan<Token> toks) const {
     return f(*this)(toks);
   }
 private:
@@ -399,11 +459,11 @@ struct RecursiveParsers2 {
     f1(std::forward<F1_>(f1_in)),
     f2(std::forward<F2_>(f2_in)),
     p1(ParserWrapper<Token, Out1>([this](
-           std::span<const Token> toks) {
+           TokenSpan<Token> toks) {
         return this->f1(p1, p2)(toks);
       })),
     p2(ParserWrapper<Token, Out2>([this](
-           std::span<const Token> toks) {
+           TokenSpan<Token> toks) {
         return this->f2(p1, p2)(toks);
       })) {
 
