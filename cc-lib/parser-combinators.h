@@ -228,6 +228,28 @@ inline auto Opt(const A &a) {
       });
 }
 
+// If successful, pair the result with its position.
+// TODO: This actually returns the length of the parsed
+// thing, which is not what we want. Track the position
+// within the input stream!
+template<Parser A>
+inline auto Mark(const A &a) {
+  using in = A::token_type;
+  using out = std::pair<typename A::out_type, size_t>;
+  return ParserWrapper<in, out>(
+      [a](std::span<const in> toks) ->
+      Parsed<out> {
+        auto o = a(toks);
+        if (!o.HasValue())
+          return Parsed<out>::None();
+
+        return Parsed<out>(
+            std::make_pair(o.Value(), o.Length()),
+            o.Length());
+      });
+}
+
+
 // Zero or more times.
 // If A accepts the empty sequence, this will
 // loop forever.
@@ -368,38 +390,6 @@ requires std::invocable<F, RecursiveParser<Token, Out, F>>
 inline auto Fix(const F &f) {
   return RecursiveParser<Token, Out, F>(f);
 };
-
-#if 0
-// structured binding example
-template<class T>
-struct TupleLike {
-private:
-  bool test = false;
-  T x;
-};
-
-namespace std {
-template<class T>
-struct tuple_size<TupleLike<T>> : integral_constant<size_t, 2> {};
-
-template<class T>
-struct tuple_element<0, TupleLike<T>> {
-  using type = int;
-};
-
-template<class T>
-struct tuple_element<1, TupleLike<T>> {
-  using type = int;
-};
-}
-
-template <std::size_t I, class T>
-inline auto get(const TupleLike<T> &like) {
-  if constexpr (I == 0) return 8;
-  else if constexpr (I == 1) return 10;
-  else throw std::out_of_range("Invalid index");
-}
-#endif
 
 template<class Token, class Out1, class Out2, class F1, class F2>
 struct RecursiveParsers2 {

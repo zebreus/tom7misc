@@ -228,13 +228,6 @@ static void TestSimple() {
 
   }
 
-  #if 0
-  TupleLike<std::string> like;
-  const auto &[x, y] = like;
-  CHECK(x == 8);
-  CHECK(y == 10);
-  #endif
-
   {
     const auto &[E, D] =
       Fix2<char, char, char>(
@@ -269,7 +262,7 @@ static void TestSimple() {
               };
           return zero || let;
         },
-      // 'v'al x = E
+        // 'v'al x = E
         [](const auto &EE, const auto &DD) {
           return (Is('v') >> Is('x') >> Is('=') >> EE) >
             [](const std::string &e) -> std::pair<std::string, std::string> {
@@ -295,6 +288,25 @@ static void TestSimple() {
     }
 
   }
+
+}
+
+static void TestMark() {
+  {
+    auto abc = Is('a') || Is('b') || Is('c');
+    auto parser = Mark(Separate(abc, Is(',')) >>
+                       Is('z')) >[&](auto sm) {
+                       const auto &[c, m] = sm;
+                       printf("%c / %d\n", c, (int)m);
+                       return 'x';
+                     };
+    std::string s = "a,b,cz";
+    // Parsed<std::vector<char>>
+    auto po = parser(CharSpan(s));
+    CHECK(po.HasValue());
+    const auto &v = po.Value();
+  }
+
 }
 
 static void TestFixity() {
@@ -456,9 +468,50 @@ static void TestFixity() {
 
 }
 
+// structured binding example
+template<class T>
+struct TupleLike {
+private:
+  bool test = false;
+  T x;
+};
+
+
+namespace std {
+template<class T>
+struct tuple_size<TupleLike<T>> : integral_constant<size_t, 2> {};
+
+template<class T>
+struct tuple_element<0, TupleLike<T>> {
+  using type = int;
+};
+
+template<class T>
+struct tuple_element<1, TupleLike<T>> {
+  using type = int;
+};
+}
+
+template <std::size_t I, class T>
+inline auto get(const TupleLike<T> &like) {
+  if constexpr (I == 0) return 8;
+  else if constexpr (I == 1) return 10;
+  else throw std::out_of_range("Invalid index");
+}
+
+static void TestStructuredBindings() {
+  TupleLike<std::string> like;
+  const auto &[x, y] = like;
+  CHECK(x == 8);
+  CHECK(y == 10);
+}
+
 int main(int argc, char **argv) {
   TestSimple();
   TestFixity();
+  TestMark();
+
+  TestStructuredBindings();
 
   printf("OK\n");
   return 0;
