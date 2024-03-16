@@ -5,7 +5,7 @@
 
 #include "base/logging.h"
 #include "lex.h"
-#include "parse.h"
+#include "parsing.h"
 #include "el.h"
 #include "ansi.h"
 #include "elaboration.h"
@@ -110,7 +110,8 @@ Program Frontend::RunFrontendInternal(
   }
 
   Timer parse_timer;
-  const el::Exp *el_exp = Parsing::Parse(&el_pool, contents, tokens);
+  const el::Exp *el_exp =
+    Parsing::Parse(&el_pool, source_map, contents, tokens);
   // Parser reports its own errors.
   CHECK(el_exp != nullptr);
   const double parse_sec = parse_timer.Seconds();

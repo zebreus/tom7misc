@@ -1,16 +1,18 @@
 
-#ifndef _REPHRASE_PARSE_H
-#define _REPHRASE_PARSE_H
+#ifndef _REPHRASE_PARSING_H
+#define _REPHRASE_PARSING_H
 
 #include <string>
 
 #include "el.h"
+#include "inclusion.h"
 #include "lex.h"
 
 namespace el {
 
 struct Parsing {
   static const Exp *Parse(AstPool *pool,
+                          const SourceMap &source_map,
                           // Raw input string.
                           const std::string &input,
                           // Tokenization of the input (via Lexing::Lex).

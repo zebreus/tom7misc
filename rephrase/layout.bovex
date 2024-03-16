@@ -308,26 +308,45 @@ fun stick-lines (line-height: float, p : layout) =
 
 (*
 fun parse-text (parse : string -> layout) (l : layout) : layout =
-  (case layoutcase l of
-    Text s => parse s
-  | Node (SPAN, attrs, children : layout list) =>
-      let val nc = list-map parse children
-      in span attrs (layout-concat nc)
-      end
-  | Node (GROUP, _, children : layout list) =>
-      layout-concat (list-map parse children)
-  | Node (BOX, _, _) => l
-  | Node (STICKER, _, _) => l
-  | _ => fail "unimplemented node type")
+  let
+    fun parse-subtext ll =
+      case layoutcase ll of
+        Text s => parse s
+      | _ => fail "expected Text node!"
+  in
+    (case layoutcase l of
+      Text s => parse s
+    | Node (SPAN, attrs, children : layout list) =>
+        let val nc = list-map parse-subtext children
+        in span attrs (layout-concat nc)
+        end
+    | Node (GROUP, _, children : layout list) =>
+        layout-concat (list-map (parse-text parse) children)
+    | Node (BOX, _, _) => l
+    | Node (STICKER, _, _) => l
+    | _ => fail "unimplemented node type")
+  end
   *)
 
-val () = ()
-
-(* fun parse-text x y = fail "no" *)
-
 (*
-fun parse-text (parse : string -> layout) (l : layout) : layout =
-  case layoutcase l of
-    Text s => parse s
-  | _ => fail "unimplemented node type"
-*)
+ Parsing text into paragraphs (and perhaps other stuff).
+ We parse a series (list) of siblings. When it's a box,
+ we copy it verbatim. We treat groups transparently (and
+ I think these are now normalized away?). We accumulate
+ text and spans until we see a paragraph break (two
+ newlines) or something else we're interested in. Spans
+ can be nested within paragraphs, and this is natural.
+ If we have a paragraph inside a span, we have a number
+ of options...
+ - Don't allow it!
+ - Don't do anything special to parse it!
+ - We could perhaps allow for paragraphs *within* paragraphs.
+   Not sure what that means, though!
+ - We could apply the span (duplicating the attributes from it
+   to each paragraph, making them properly nested. This might
+   be what's expected?
+
+   *)
+
+fun get-paragraphs (ls : layout list) : layout list =
+  fail "TODO"

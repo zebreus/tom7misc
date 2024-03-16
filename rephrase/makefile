@@ -1,13 +1,13 @@
 
-default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe
+default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe
 
-test : lex_test.exe context_test.exe unification_test.exe parse_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe
+test : lex_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe
 	./lex_test.exe
 	./il_test.exe
 	./il-util_test.exe
 	./context_test.exe
 	./unification_test.exe
-	./parse_test.exe
+	./parsing_test.exe
 	./il-pass_test.exe
 	./frontend_test.exe
 	./il-typed-pass_test.exe
@@ -270,7 +270,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=utf.o el.o parse.o lex.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o execution.o document.o pdf-document.o rephrasing.o
+LANG_OBJECTS=utf.o el.o parsing.o lex.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o execution.o document.o pdf-document.o rephrasing.o
 
 %.o : %.cc *.h $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -278,7 +278,7 @@ LANG_OBJECTS=utf.o el.o parse.o lex.o inclusion.o nullary.o uncurry.o il.o initi
 
 # Parser takes a uniquely long time to compile, so don't make it
 # depend on every header.
-parse.o : parse.cc parse.h el.h lex.h $(CC_LIB)/parser-combinators.h $(LLAMA_HEADERS)
+parsing.o : parsing.cc parsing.h el.h lex.h $(CC_LIB)/parser-combinators.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
@@ -298,7 +298,7 @@ lex_test.exe : lex_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 il_test.exe : il_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-parse_test.exe : parse_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+parsing_test.exe : parsing_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 context_test.exe : context_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
@@ -335,5 +335,5 @@ paper.pdf : bovex.exe paper.bovex
 	./bovex.exe paper.bovex -o paper.pdf
 
 clean:
-	rm -f *.o $(CC_LIB_OBJECTS) monospace.exe lex_test.exe parse_test.exe
+	rm -f *.o $(CC_LIB_OBJECTS) monospace.exe lex_test.exe parsing_test.exe
 

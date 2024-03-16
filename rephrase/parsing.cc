@@ -1,5 +1,5 @@
 
-#include "parse.h"
+#include "parsing.h"
 
 #include <string>
 #include <vector>
@@ -8,9 +8,11 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "el.h"
+#include "inclusion.h"
 #include "lex.h"
 #include "parser-combinators.h"
 #include "util.h"
+#include "ansi.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -79,8 +81,29 @@ GetFixity(const std::string &sym) {
 }
 
 const Exp *Parsing::Parse(AstPool *pool,
+                          const SourceMap &source_map,
                           const std::string &input,
                           const std::vector<Token> &tokens) {
+
+  auto ErrorAtToken = [&source_map](const Token &token) {
+    size_t byte_pos = token.start;
+    const std::string file = source_map.cover[byte_pos];
+    // TODO: Compute the line in the file.
+    return StringPrintf(
+        "\nAt byte " AYELLOW("%d") " which is in source file "
+        AWHITE("%s") ".\n",
+        byte_pos, file.c_str());
+  };
+
+  // Given as a range of token indices.
+  auto ErrorAtIndex = [&ErrorAtToken, &tokens](size_t start, size_t length) {
+      if (start >= tokens.size()) {
+        return StringPrintf(ARED("token pos %d out of range!"),
+                            (int)start);
+      } else {
+        return ErrorAtToken(tokens[start]);
+      }
+    };
 
   auto TokenStr = [&input](Token t) {
       CHECK(t.start <= input.size());
@@ -91,8 +114,8 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto Int = IsToken<DIGITS>() >[&](Token t) {
       std::string s = TokenStr(t);
       int64_t i = std::stoll(s);
-      CHECK(StringPrintf("%lld", i) == s) << "Invalid integer "
-        "literal " << s;
+      CHECK(StringPrintf("%lld", i) == s) << ErrorAtToken(t) <<
+        "Invalid integer literal " << s;
       return i;
     };
 
@@ -108,7 +131,7 @@ const Exp *Parsing::Parse(AstPool *pool,
       if (od.has_value()) {
         return od.value();
       } else {
-        LOG(FATAL) << "Illegal float literal: " << s;
+        LOG(FATAL) << ErrorAtToken(t) << "Illegal float literal: " << s;
         return 0.0;
       }
     };
@@ -325,7 +348,7 @@ const Exp *Parsing::Parse(AstPool *pool,
     };
 
   const auto PatAdjApp = [&](const Pat *f, const Pat *arg) -> const Pat * {
-      CHECK(f->type == PatType::VAR) << "Only a constructor (identifier) "
+      CHECK(f->type == PatType::VAR) << "Bug: Only a constructor (identifier) "
         "can be applied in an app pattern. But got: " << PatString(f);
       return pool->AppPat(f->str, arg);
     };
@@ -643,7 +666,8 @@ const Exp *Parsing::Parse(AstPool *pool,
           }) ||
         (Mark(IsToken<VAL>()) >[&](const auto &err) -> const Dec * {
             const auto &[_, start, length] = err;
-            LOG(FATAL) << "Expected VAL PAT EQUALS EXP after seeing "
+            LOG(FATAL) << ErrorAtIndex(start, length) <<
+              "Expected VAL PAT EQUALS EXP after seeing "
               "VAL. At: " << start << " for " << length;
             return nullptr;
           });
@@ -693,7 +717,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         >OneFunDec;
 
       return
-        ((IsToken<FUN>() >> row) &&
+        (((IsToken<FUN>() >> row) &&
          *(IsToken<AND>() >> row))
         >[&](const auto &p) {
             const FunDec &f = p.first;
@@ -703,7 +727,14 @@ const Exp *Parsing::Parse(AstPool *pool,
             std::vector<FunDec> funs = {f};
             for (const FunDec &d : fs) funs.push_back(d);
             return pool->FunDec(std::move(funs));
-          };
+          }) ||
+        (Mark(IsToken<FUN>()) >[&](const auto &err) -> const Dec * {
+            const auto &[_, start, length] = err;
+            LOG(FATAL) << ErrorAtIndex(start, length) <<
+              "Expected FUN ID PAT* EQUALS EXP after seeing "
+              "FUN. At: " << start << " for " << length;
+            return nullptr;
+          });
     };
 
   // object Article of { title : string, year : int }

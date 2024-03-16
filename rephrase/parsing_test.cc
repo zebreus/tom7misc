@@ -1,8 +1,9 @@
 
-#include "parse.h"
+#include "parsing.h"
 
 #include <string>
 #include <vector>
+#include <optional>
 
 #include "el.h"
 #include "base/logging.h"
@@ -14,6 +15,10 @@ namespace el {
 
 static constexpr bool VERBOSE = false;
 
+#define SOURCEMAP SourceMap{ \
+    .cover = IntervalCover<std::string>(__func__) \
+      }
+
 static void TestParse() {
   AstPool pool;
   auto Parse = [&](const std::string &s) {
@@ -24,7 +29,7 @@ static void TestParse() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      return Parsing::Parse(&pool, s, tokens.value());
+      return Parsing::Parse(&pool, SOURCEMAP, s, tokens.value());
     };
 
   if (VERBOSE) {
@@ -545,7 +550,7 @@ static void TestParseType() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      const Exp *e = Parsing::Parse(&pool, s, tokens.value());
+      const Exp *e = Parsing::Parse(&pool, SOURCEMAP, s, tokens.value());
       CHECK(e != nullptr) << stype;
       CHECK(e->type == ExpType::ANN) << stype;
       CHECK(e->a->type == ExpType::INT);
@@ -686,7 +691,7 @@ static void TestParsePat() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      const Exp *e = Parsing::Parse(&pool, s, tokens.value());
+      const Exp *e = Parsing::Parse(&pool, SOURCEMAP, s, tokens.value());
       CHECK(e != nullptr) << spat;
       CHECK(e->type == ExpType::LET) << spat;
       CHECK(e->decs.size() == 1) << spat;
@@ -860,7 +865,7 @@ static void TestParseDec() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      const Exp *e = Parsing::Parse(&pool, s, tokens.value());
+      const Exp *e = Parsing::Parse(&pool, SOURCEMAP, s, tokens.value());
       CHECK(e != nullptr) << sdec;
       CHECK(e->type == ExpType::LET) << sdec;
       CHECK(e->decs.size() == 1) << sdec;
@@ -916,7 +921,7 @@ static void TestParseLayout() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      const Exp *e = Parsing::Parse(&pool, s, tokens.value());
+      const Exp *e = Parsing::Parse(&pool, SOURCEMAP, s, tokens.value());
       CHECK(e->type == ExpType::LAYOUT);
       CHECK(e->layout != nullptr);
       return e->layout;
