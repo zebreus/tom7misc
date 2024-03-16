@@ -59,14 +59,14 @@ static void Easy() {
 }
 
 // Check that the span sp is [s,e) with data d.
-#define OKPOINT(s, e, d, sp) do { \
-  const IntervalCover<string>::Span span = (sp); \
-  CHECK(span.start == (s) &&                     \
-        span.end == (e) &&                         \
-        span.data == (d))                                     \
-    "Wanted: " << SpanString(MkSpan((s), (e), (d)))  \
-  << "   but got   " \
-  << SpanString(span); \
+#define OKPOINT(s, e, d, sp) do {                             \
+    const IntervalCover<string>::Span span = (sp);            \
+    CHECK(span.start == (s) &&                                \
+          span.end == (e) &&                                  \
+          span.data == (d))                                   \
+      "Wanted: " << SpanString(MkSpan((s), (e), (d)))         \
+                 << "   but got   "                           \
+                 << SpanString(span);                         \
   } while (0)
 
 static void Copying() {
@@ -105,6 +105,9 @@ static void SimpleSplitting() {
   OKPOINT(0, 1000, "", simple.GetPoint(0));
   OKPOINT(1000, MAX64, "BB", simple.GetPoint(1000));
   OKPOINT(1000, MAX64, "BB", simple.GetPoint(1001));
+
+  CHECK(simple[0] == "");
+  CHECK(simple[1000] == "BB");
 
   // Degenerate split at exactly the same point.
   simple.SplitRight(1000LL, "BB");

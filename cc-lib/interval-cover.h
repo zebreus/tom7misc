@@ -55,6 +55,7 @@ struct IntervalCover {
   // Get the span that covers the specific point. There is always
   // exactly one such span.
   Span GetPoint(uint64_t pt) const;
+  const Data &operator[] (size_t idx) const;
 
   // Split at the point. The right-hand-side of the split gets
   // the supplied data, and the left-hand retains the existing
@@ -247,6 +248,17 @@ auto IntervalCover<D>::GetPoint(uint64_t pt) const -> Span {
   CHECK(it != spans.begin());
   --it;
   return MakeSpan(it);
+}
+
+template<class D>
+auto IntervalCover<D>::operator [](size_t idx) const -> const Data & {
+  // Just like GetPoint, but get a reference to just the data.
+  typename std::map<uint64_t, D>::const_iterator it = spans.upper_bound(idx);
+  // Should never happen, because the first interval starts
+  // at LLONG_MIN.
+  CHECK(it != spans.begin());
+  --it;
+  return it->second;
 }
 
 template<class D>

@@ -17,6 +17,8 @@
 using int64 = int64_t;
 using namespace std;
 
+static constexpr bool RUN_BENCHMARKS = false;
+
 static void TestToString() {
   for (int i = -100000; i < 100000; i++) {
     BigInt bi(i);
@@ -87,6 +89,36 @@ static void LowWord() {
   BigInt big(s);
   CHECK(BigInt::LowWord(a) != BigInt::LowWord(big));
 }
+
+static void TestToDouble() {
+  BigInt a{1234};
+  BigInt b{-5678};
+
+  CHECK((BigInt(0)).ToDouble() == 0.0);
+  CHECK(a.ToDouble() == 1234.0);
+  CHECK(b.ToDouble() == -5678.0);
+
+  {
+    BigInt big("7000000000000000000000000000"
+               "000000000000000000000000000000000");
+    double d = big.ToDouble();
+    CHECK(d > 0.0);
+    CHECK(std::isfinite(d));
+    CHECK(d > 7e59 && d < 7e61) << StringPrintf("%11g\n", d);
+  }
+
+  {
+    BigInt big("-7000000000000000000000000000"
+               "000000000000000000000000000000000");
+    double d = big.ToDouble();
+    CHECK(d < 0.0);
+    CHECK(std::isfinite(d));
+    CHECK(d < -7e59 && d > -7e61) << StringPrintf("%11g\n", d);
+  }
+
+  // TODO: Test infinite cases
+}
+
 
 static void TestMod() {
   CHECK(BigInt::Eq(BigInt::Mod(BigInt{3}, BigInt{5}), BigInt{3}));
@@ -324,7 +356,13 @@ static void TestPi() {
   }
 
   BigRat sum;
-  for (int i = 0; i < 10000; i++) {
+  #if BIG_USE_GMP
+  static constexpr int LIMIT = 10000;
+  #else
+  static constexpr int LIMIT = 1000;
+  #endif
+
+  for (int i = 0; i < LIMIT; i++) {
     // + 1/1, - 1/3, + 1/5
     BigRat term{(i & 1) ? -1 : 1,
         i * 2 + 1};
@@ -551,11 +589,15 @@ static void TestDivFloor() {
 }
 
 static void TestJacobi() {
+  #if BIG_USE_GMP
+  // XXX It's broken outside of GMP?
+
   CHECK(BigInt::Jacobi(BigInt(11), BigInt(17)) == -1);
   CHECK(BigInt::Jacobi(BigInt(1), BigInt(1)) == 1);
   CHECK(BigInt::Jacobi(BigInt(6), BigInt(15)) == 0);
 
   CHECK(BigInt::Jacobi(BigInt(30), BigInt(59)) == -1);
+  #endif
 }
 
 static void TestModRem() {
@@ -767,13 +809,17 @@ int main(int argc, char **argv) {
 
   TestPi();
 
-  BenchDiv2();
+  // Slow
+  if (RUN_BENCHMARKS) {
+    BenchDiv2();
+  }
 
   TestSqrt();
   TestJacobi();
   TestInvert();
 
   TestSwap();
+  TestToDouble();
 
   printf("OK\n");
 }

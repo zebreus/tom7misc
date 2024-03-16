@@ -123,6 +123,10 @@ struct BigInt {
   // the finite size of T in bits for zero).
   inline static uint64_t BitwiseCtz(const BigInt &a);
 
+  // Only when in about -1e300 to 1e300; readily returns +/- inf
+  // for large numbers.
+  inline double ToDouble() const;
+
   // TODO: Implement with bigz too. There is a very straightforward
   // implementation.
   #ifdef BIG_USE_GMP
@@ -130,10 +134,6 @@ struct BigInt {
   // (the "Bezout coefficients".)
   inline static std::tuple<BigInt, BigInt, BigInt>
   ExtendedGCD(const BigInt &a, const BigInt &b);
-
-  // Only when in about -1e300 to 1e300; readily returns +/- inf
-  // for large numbers.
-  inline double ToDouble() const;
 
   // Returns the approximate logarithm, base e.
   inline static double NaturalLog(const BigInt &a);
@@ -1070,6 +1070,27 @@ std::optional<uint64_t> BigInt::ToU64() const {
   }
 }
 
+double BigInt::ToDouble() const {
+  std::optional<int64_t> io = ToInt();
+  if (io.has_value()) return (double)io.value();
+  // There is no doubt a more accurate and faster way to do this!
+
+  const int size = BzGetSize(rep);
+
+  double d = 0.0;
+  // From big end to little
+  for (int idx = size - 1; idx >= 0; idx--) {
+    uint64_t udigit = BzGetDigit(rep, idx);
+    double ddigit = udigit;
+    // printf("d %.17g | u %llu | dd %.17g\n", d, udigit, ddigit);
+    for (int e = 0; e < sizeof (BigNumDigit); e++)
+      d *= 256.0;
+    d += ddigit;
+  }
+
+  if (BzGetSign(rep) == BZ_MINUS) d = -d;
+  return d;
+}
 
 uint64_t BigInt::LowWord(const BigInt &a) {
   if (BzNumDigits(a.rep) == 0) return uint64_t{0};
