@@ -38,26 +38,28 @@ GetFixity(const std::string &sym) {
   static const std::unordered_map<std::string,
                                   std::tuple<Fixity, Associativity, int>>
     builtin = {
-    {"@", {Fixity::Infix, Associativity::Right, 2}},
-    {"::", {Fixity::Infix, Associativity::Right, 2}},
+    {":=", {Fixity::Infix, Associativity::Non, 2}},
 
-    {"o", {Fixity::Infix, Associativity::Left, 3}},
+    {"@", {Fixity::Infix, Associativity::Right, 3}},
+    {"::", {Fixity::Infix, Associativity::Right, 3}},
 
-    {"==", {Fixity::Infix, Associativity::Non, 4}},
-    {"!=", {Fixity::Infix, Associativity::Non, 4}},
-    {"<", {Fixity::Infix, Associativity::Non, 5}},
-    {"<=", {Fixity::Infix, Associativity::Non, 5}},
-    {">", {Fixity::Infix, Associativity::Non, 5}},
-    {">=", {Fixity::Infix, Associativity::Non, 5}},
+    {"o", {Fixity::Infix, Associativity::Left, 4}},
+
+    {"==", {Fixity::Infix, Associativity::Non, 5}},
+    {"!=", {Fixity::Infix, Associativity::Non, 5}},
+    {"<", {Fixity::Infix, Associativity::Non, 6}},
+    {"<=", {Fixity::Infix, Associativity::Non, 6}},
+    {">", {Fixity::Infix, Associativity::Non, 6}},
+    {">=", {Fixity::Infix, Associativity::Non, 6}},
 
     // Maybe add explicit floating-point versions
-    {"+", {Fixity::Infix, Associativity::Left, 6}},
-    {"-", {Fixity::Infix, Associativity::Left, 6}},
-    {"*", {Fixity::Infix, Associativity::Left, 8}},
+    {"+", {Fixity::Infix, Associativity::Left, 7}},
+    {"-", {Fixity::Infix, Associativity::Left, 7}},
+    {"*", {Fixity::Infix, Associativity::Left, 9}},
     // int * int -> float
-    {"/", {Fixity::Infix, Associativity::Left, 8}},
-    {"div", {Fixity::Infix, Associativity::Left, 8}},
-    {"mod", {Fixity::Infix, Associativity::Left, 8}},
+    {"/", {Fixity::Infix, Associativity::Left, 9}},
+    {"div", {Fixity::Infix, Associativity::Left, 9}},
+    {"mod", {Fixity::Infix, Associativity::Left, 9}},
 
     // some nonfix symbolic identifiers
     {"!", {Fixity::Atom, Associativity::Non, 0}},
@@ -732,7 +734,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         (Mark(IsToken<FUN>()) >[&](const auto &err) -> const Dec * {
             const auto &[_, start, length] = err;
             LOG(FATAL) << ErrorAtIndex(start, length) <<
-              "Expected FUN ID PAT* EQUALS EXP after seeing "
+              "Expected FUN ID PAT+ EQUALS EXP after seeing "
               "FUN. At: " << start << " for " << length;
             return nullptr;
           });
@@ -886,22 +888,36 @@ const Exp *Parsing::Parse(AstPool *pool,
 
           // These should probably be in AnnotatableExpr?
           auto AndalsoExpr =
-            (AnnExpr && Opt(IsToken<ANDALSO>() >> AnnExpr))
+            (AnnExpr && Opt((IsToken<ANDALSO>() || IsToken<ANDTHEN>()) &&
+                            AnnExpr))
             >[&](const auto &pair) {
                 const auto &[e, oand] = pair;
                 if (oand.has_value()) {
-                  return pool->Andalso(e, oand.value());
+                  const auto &[kw, rhs] = oand.value();
+                  if (kw.type == ANDALSO) {
+                    return pool->Andalso(e, rhs);
+                  } else {
+                    // This is treated as syntactic sugar, which isn't
+                    // ideal.
+                    return pool->If(e, rhs, pool->Tuple({}));
+                  }
                 } else {
                   return e;
                 }
               };
 
           auto OrelseExpr =
-            (AndalsoExpr && Opt(IsToken<ORELSE>() >> AndalsoExpr))
+            (AndalsoExpr && Opt((IsToken<ORELSE>() || IsToken<OTHERWISE>()) &&
+                                AndalsoExpr))
             >[&](const auto &pair) {
                 const auto &[e, oor] = pair;
                 if (oor.has_value()) {
-                  return pool->Orelse(e, oor.value());
+                  const auto &[kw, rhs] = oor.value();
+                  if (kw.type == ORELSE) {
+                    return pool->Orelse(e, rhs);
+                  } else {
+                    return pool->If(e, pool->Tuple({}), rhs);
+                  }
                 } else {
                   return e;
                 }

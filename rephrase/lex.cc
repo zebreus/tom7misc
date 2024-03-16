@@ -250,6 +250,9 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"else", ELSE},
     {"andalso", ANDALSO},
     {"orelse", ORELSE},
+    {"andthen", ANDTHEN},
+    {"otherwise", OTHERWISE},
+
     {"as", AS},
     {"and", AND},
     {"import", IMPORT},

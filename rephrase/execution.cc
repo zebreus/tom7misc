@@ -10,6 +10,7 @@
 #include "base/logging.h"
 #include "ansi.h"
 #include "document.h"
+#include "util.h"
 
 namespace bc {
 
@@ -105,10 +106,17 @@ static int64_t GetInt64(const char *what, const BigInt &x) {
   return xo.value();
 }
 
+Value *Execution::Bool(bool x, State *state) {
+  return NewValue(&state->heap, uint64_t(x ? 1 : 0));
+}
+
 Value *Execution::String(std::string s, State *state) {
   return NewValue(&state->heap, std::move(s));
 }
 
+Value *Execution::Float(double d, State *state) {
+  return NewValue(&state->heap, d);
+}
 
 Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
                           State *state) {
@@ -129,6 +137,17 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
 
     std::string s = as->substr(bb, cc);
     return String(s, state);
+  }
+
+  case Primop::STRING_REPLACE: {
+    const std::string *as = std::get_if<std::string>(&a->v);
+    const std::string *bs = std::get_if<std::string>(&b->v);
+    const std::string *cs = std::get_if<std::string>(&c->v);
+
+    CHECK(as != nullptr && bs != nullptr && cs != nullptr) <<
+      "Expected string,string,string to string-replace";
+
+    return String(Util::Replace(*as, *bs, *cs), state);
   }
 
   default:
@@ -168,14 +187,6 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return std::tie(*as, *bs);
   };
 
-  auto Bool = [state](bool x) -> Value * {
-      return NewValue(&state->heap, uint64_t(x ? 1 : 0));
-    };
-
-  auto Float = [state](double d) -> Value * {
-      return NewValue(&state->heap, d);
-    };
-
   auto Big = [state](BigInt b) -> Value * {
       return NewValue(&state->heap, std::move(b));
     };
@@ -183,27 +194,32 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   switch (primop) {
   case Primop::INT_EQ: {
     const auto &[aa, bb] = TwoInts("int_eq");
-    return Bool(BigInt::Eq(aa, bb));
+    return Bool(BigInt::Eq(aa, bb), state);
   }
+
   case Primop::INT_NEQ: {
     const auto &[aa, bb] = TwoInts("int_neq");
-    return Bool(!BigInt::Eq(aa, bb));
+    return Bool(!BigInt::Eq(aa, bb), state);
   }
+
   case Primop::INT_LESS: {
     const auto &[aa, bb] = TwoInts("int_less");
-    return Bool(BigInt::Less(aa, bb));
+    return Bool(BigInt::Less(aa, bb), state);
   }
+
   case Primop::INT_LESSEQ: {
     const auto &[aa, bb] = TwoInts("int_lesseq");
-    return Bool(BigInt::LessEq(aa, bb));
+    return Bool(BigInt::LessEq(aa, bb), state);
   }
+
   case Primop::INT_GREATER: {
     const auto &[aa, bb] = TwoInts("int_greater");
-    return Bool(BigInt::Greater(aa, bb));
+    return Bool(BigInt::Greater(aa, bb), state);
   }
+
   case Primop::INT_GREATEREQ: {
     const auto &[aa, bb] = TwoInts("int_greatereq");
-    return Bool(BigInt::GreaterEq(aa, bb));
+    return Bool(BigInt::GreaterEq(aa, bb), state);
   }
 
   case Primop::INT_TIMES: {
@@ -251,52 +267,57 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   case Primop::FLOAT_TIMES: {
     const auto &[aa, bb] = TwoFloats("float_times");
-    return Float(aa * bb);
+    return Float(aa * bb, state);
   }
 
   case Primop::FLOAT_PLUS: {
     const auto &[aa, bb] = TwoFloats("float_times");
-    return Float(aa + bb);
+    return Float(aa + bb, state);
   }
 
   case Primop::FLOAT_MINUS: {
     const auto &[aa, bb] = TwoFloats("float_times");
-    return Float(aa - bb);
+    return Float(aa - bb, state);
   }
 
   case Primop::FLOAT_DIV: {
     const auto &[aa, bb] = TwoFloats("float_times");
-    return Float(aa / bb);
+    return Float(aa / bb, state);
   }
 
   case Primop::FLOAT_EQ: {
     const auto &[aa, bb] = TwoFloats("float_eq");
-    return Bool(aa == bb);
+    return Bool(aa == bb, state);
   }
+
   case Primop::FLOAT_NEQ: {
     const auto &[aa, bb] = TwoFloats("float_neq");
-    return Bool(aa != bb);
+    return Bool(aa != bb, state);
   }
+
   case Primop::FLOAT_LESS: {
     const auto &[aa, bb] = TwoFloats("float_less");
-    return Bool(aa < bb);
+    return Bool(aa < bb, state);
   }
+
   case Primop::FLOAT_LESSEQ: {
     const auto &[aa, bb] = TwoFloats("float_lesseq");
-    return Bool(aa <= bb);
+    return Bool(aa <= bb, state);
   }
+
   case Primop::FLOAT_GREATER: {
     const auto &[aa, bb] = TwoFloats("float_greater");
-    return Bool(aa > bb);
+    return Bool(aa > bb, state);
   }
+
   case Primop::FLOAT_GREATEREQ: {
     const auto &[aa, bb] = TwoFloats("float_greatereq");
-    return Bool(aa >= bb);
+    return Bool(aa >= bb, state);
   }
 
   case Primop::STRING_EQ: {
     const auto &[aa, bb] = TwoStrings("string_eq");
-    return Bool(aa == bb);
+    return Bool(aa == bb, state);
   }
 
   case Primop::STRING_CONCAT: {
@@ -400,16 +421,8 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
                       std::unordered_map<std::string, Value *>());
     };
 
-  auto Float = [state](double d) -> Value * {
-      return NewValue(&state->heap, d);
-    };
-
   auto Big = [state](BigInt b) -> Value * {
       return NewValue(&state->heap, std::move(b));
-    };
-
-  auto Bool = [state](bool x) -> Value * {
-      return NewValue(&state->heap, uint64_t(x ? 1 : 0));
     };
 
   switch (primop) {
@@ -420,12 +433,17 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::FLOAT_NEG: {
     const double d = GetFloat("float_neg");
-    return Float(-d);
+    return Float(-d, state);
   }
 
   case Primop::INT_TO_STRING: {
     const BigInt &bi = GetInt("int_to_string");
     return String(bi.ToString(), state);
+  }
+
+  case Primop::INT_TO_FLOAT: {
+    const BigInt &bi = GetInt("int_to_float");
+    return Float(bi.ToDouble(), state);
   }
 
   case Primop::OUT_STRING: {
@@ -442,12 +460,12 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::OBJ_EMPTY: {
     const map_type *obj = std::get_if<map_type>(&a->v);
     CHECK(obj != nullptr) << "obj_empty on a non-object.";
-    return Bool(obj->empty());
+    return Bool(obj->empty(), state);
   }
 
   case Primop::STRING_EMPTY: {
     const std::string &s = GetString("string_empty");
-    return Bool(s.empty());
+    return Bool(s.empty(), state);
   }
 
   case Primop::STRING_SIZE: {
@@ -468,7 +486,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::IS_TEXT: {
     const bool is_text = std::holds_alternative<std::string>(a->v);
-    return Bool(is_text);
+    return Bool(is_text, state);
   }
 
   case Primop::GET_TEXT: {

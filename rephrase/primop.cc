@@ -29,6 +29,7 @@ const char *PrimopString(Primop po) {
   case Primop::STRING_EQ: return "STRING_EQ";
   case Primop::STRING_LESS: return "STRING_LESS";
   case Primop::STRING_GREATER: return "STRING_GREATER";
+  case Primop::INT_TO_FLOAT: return "INT_TO_FLOAT";
   case Primop::INT_DIV_TO_FLOAT: return "INT_DIV_TO_FLOAT";
   case Primop::FLOAT_TIMES: return "FLOAT_TIMES";
   case Primop::FLOAT_NEG: return "FLOAT_NEG";
@@ -49,6 +50,7 @@ const char *PrimopString(Primop po) {
   case Primop::STRING_SIZE: return "STRING_SIZE";
   case Primop::STRING_FIND: return "STRING_FIND";
   case Primop::STRING_SUBSTR: return "STRING_SUBSTR";
+  case Primop::STRING_REPLACE: return "STRING_REPLACE";
 
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
@@ -89,6 +91,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_EQ: return std::make_tuple(0, 2);
   case Primop::STRING_LESS: return std::make_tuple(0, 2);
   case Primop::STRING_GREATER: return std::make_tuple(0, 2);
+  case Primop::INT_TO_FLOAT: return std::make_tuple(0, 1);
   case Primop::INT_DIV_TO_FLOAT: return std::make_tuple(0, 2);
   case Primop::FLOAT_NEG: return std::make_tuple(0, 1);
   case Primop::FLOAT_TIMES: return std::make_tuple(0, 2);
@@ -108,6 +111,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_SIZE: return std::make_tuple(0, 1);
   case Primop::STRING_FIND: return std::make_tuple(0, 2);
   case Primop::STRING_SUBSTR: return std::make_tuple(0, 3);
+  case Primop::STRING_REPLACE: return std::make_tuple(0, 3);
 
   case Primop::OBJ_EMPTY: return std::make_tuple(0, 1);
   case Primop::REPHRASE: return std::make_tuple(0, 1);
@@ -157,6 +161,8 @@ bool IsPrimopTotal(Primop p) {
   case Primop::STRING_LESS:
   case Primop::STRING_GREATER:
     return true;
+  case Primop::INT_TO_FLOAT:
+    return true;
   case Primop::INT_DIV_TO_FLOAT:
     // Here, division by zero produces nan or +/- inf.
     return true;
@@ -181,6 +187,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::STRING_SUBSTR:
     // It can fail.
     return false;
+  case Primop::STRING_REPLACE: return true;
 
   case Primop::OUT_STRING: return false;
   case Primop::OUT_LAYOUT: return false;
@@ -271,6 +278,7 @@ PrimopType(il::AstPool *pool, Primop p) {
 
   case Primop::INT_NEG: return {{}, pool->Arrow(Int, Int)};
 
+  case Primop::INT_TO_FLOAT: return {{}, pool->Arrow(Int, Float)};
   case Primop::INT_DIV_TO_FLOAT: return {{}, BinOp(Int, Int, Float)};
 
   case Primop::FLOAT_TIMES: return {{}, BinOp(Float, Float, Float)};
@@ -297,6 +305,9 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::STRING_FIND: return {{}, BinOp(String, String, Int)};
   case Primop::STRING_SUBSTR:
     return {{}, pool->Arrow(pool->Product({String, Int, Int}), String)};
+  case Primop::STRING_REPLACE:
+    // string-replace(haystack, needle, replacement)
+    return {{}, pool->Arrow(pool->Product({String, String, String}), String)};
 
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};

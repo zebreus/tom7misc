@@ -60,6 +60,8 @@ enum TokenType {
   ELSE,
   ANDALSO,
   ORELSE,
+  ANDTHEN,
+  OTHERWISE,
 
   DATATYPE,
   OF,

@@ -32,6 +32,7 @@ enum class Primop {
 
   INT_NEG,
 
+  INT_TO_FLOAT,
   INT_DIV_TO_FLOAT,
   FLOAT_TIMES,
   FLOAT_PLUS,
@@ -59,6 +60,7 @@ enum class Primop {
   STRING_SIZE,
   STRING_FIND,
   STRING_SUBSTR,
+  STRING_REPLACE,
 
   INT_TO_STRING,
 

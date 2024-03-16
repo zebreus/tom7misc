@@ -458,6 +458,30 @@ static void TestParse() {
   }
 
   {
+    const Exp *e = Parse("x otherwise fail \"die\"");
+    // It's compiled as syntactic sugar.
+    CHECK(e->type == ExpType::IF) << ExpString(e);
+    const Exp *cond = e->a;
+    const Exp *tru = e->b;
+    const Exp *fal = e->c;
+    CHECK(cond->type == ExpType::VAR);
+    CHECK(tru->type == ExpType::TUPLE);
+    CHECK(fal->type == ExpType::FAIL);
+  }
+
+  {
+    const Exp *e = Parse("x andthen fail \"die\"");
+    // It's compiled as syntactic sugar.
+    CHECK(e->type == ExpType::IF);
+    const Exp *cond = e->a;
+    const Exp *tru = e->b;
+    const Exp *fal = e->c;
+    CHECK(cond->type == ExpType::VAR);
+    CHECK(tru->type == ExpType::FAIL);
+    CHECK(fal->type == ExpType::TUPLE);
+  }
+
+  {
     const Exp *e = Parse("{ (Article) }");
     CHECK(e->type == ExpType::OBJECT);
     CHECK(e->str == "Article");
@@ -908,6 +932,7 @@ static void TestParseDec() {
     CHECK(od.fields[1].second->var == "int");
   }
 
+  printf("Dec parsing " AGREEN("OK") "\n");
 }
 
 static void TestParseLayout() {
@@ -941,7 +966,9 @@ static void TestParseLayout() {
     const Layout *a = lay->children[0];
     const Layout *b = lay->children[1];
     const Layout *c = lay->children[2];
-    printf("Layout: [%s]\n", LayoutString(lay).c_str());
+    if (VERBOSE) {
+      printf("Layout: [%s]\n", LayoutString(lay).c_str());
+    }
     CHECK(a->type == LayoutType::TEXT);
     CHECK(a->str == "easy ");
     CHECK(b->type == LayoutType::EXP);
@@ -963,6 +990,7 @@ static void TestParseLayout() {
     CHECK(b->str == " it");
   }
 
+  printf("Layout parsing " AGREEN("OK") "\n");
 }
 
 }  // namespace el

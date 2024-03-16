@@ -48,6 +48,7 @@ Initial::Initial(AstPool *pool) {
     {"<=.", Primop::FLOAT_LESSEQ},
     {">.", Primop::FLOAT_GREATER},
     {">=.", Primop::FLOAT_GREATEREQ},
+    {"int-to-float", Primop::INT_TO_FLOAT},
 
     // Perhaps these should just be overloaded α * α -> bool,
     // with some hack to resolve them?
@@ -75,6 +76,7 @@ Initial::Initial(AstPool *pool) {
     // Internal so that we can wrap with option.
     {"internal-string-find", Primop::STRING_FIND},
     {"substr", Primop::STRING_SUBSTR},
+    {"string-replace", Primop::STRING_REPLACE},
 
     {"layout", Primop::STRING_TO_LAYOUT},
 
@@ -134,6 +136,7 @@ Initial::Initial(AstPool *pool) {
     {"float", Kind0(Float)},
     {"string", Kind0(String)},
     {"layout", Kind0(Layout)},
+    {"unit", Kind0(pool->RecordType({}))},
     {"ref", TypeVarInfo{.tyvars = {"a"}, .type = Ref(Alpha)}},
   };
 

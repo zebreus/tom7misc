@@ -217,18 +217,29 @@ fun string-find (big, small) =
 fun substr-rest (s, pos) =
   substr (s, pos, string-size s - pos)
 
+(* If the big string is a+small+b (with small not a substring of a;
+   i.e. this is the first occurrence of small), return SOME(a, b).
+   Otherwise, return NONE.  *)
+fun string-chop small big =
+  case string-find (big, small) of
+    NONE => NONE
+  | SOME pos =>
+      let
+        val a = substr (big, 0, pos)
+        val b = substr-rest (big, pos + string-size small)
+      in
+        SOME(a, b)
+      end
+
+(* Split string to a1+small+a2+small+...an where small does
+   not appear in ai. Takes the first match of small. Returns
+   the list of a1 :: a2 :: ... :: an :: nil *)
 fun string-split small big =
   let
     fun r s =
-      case string-find (s, small) of
+      case string-chop small s of
         NONE => s :: nil
-      | SOME pos =>
-          let
-            val h = substr (s, 0, pos)
-            val t = substr-rest (s, pos)
-          in
-            h :: r s
-          end
+      | SOME (h, t) => h :: r t
   in
     r big
   end

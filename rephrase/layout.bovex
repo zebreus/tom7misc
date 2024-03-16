@@ -42,6 +42,16 @@ fun layout-concat nil = []
    everything.
    *)
 
+(* Record that something bad happened. This is used for global
+   optimization. Badness is nominally measured in square points
+   that look bad. For example, if text overflows its container,
+   then this is the area of the bounding box of the part of the
+   text rectangle that's outside its container. Of course this
+   can be scaled as desired.
+
+   TODO: Primop that records this!
+   *)
+fun emit-badness (penalty : float) = ()
 
 (* Low-level node info.
    Programmers should probably not be looking at or setting the
@@ -136,15 +146,6 @@ fun sticker (attrs : obj) (l : layout) =
   end
   *)
 
-(* Generates boxes and glue from text, making this into "AllBox" format. *)
-fun get-boxes (content : layout) =
-  internal-get-boxes content
-
-(* Generates a series of lines (boxes) with the glue turned into definite
-   padding. Still in "AllBox" format. *)
-fun pack-boxes (width : float, content : layout) =
-  internal-pack-boxes (width, content)
-
 (*
  A pararagraph at a time,
 
@@ -187,6 +188,9 @@ datatype layoutcase =
     Text of string
   | Node of display * obj * layout list
 
+fun layout-empty (lay : layout) : bool =
+  is-text lay andalso string-empty (get-text lay)
+
 fun layoutcase (l : layout) =
   if is-text l
   then Text (get-text l)
@@ -217,14 +221,36 @@ fun layout-tostring l =
 fun layout-concat nil = []
   | layout-concat (h :: t) = [[h][layout-concat t]]
 
+
+(* Generates boxes and glue from text, making this into "AllBox" format. *)
+fun get-boxes (content : layout) =
+  internal-get-boxes content
+
+fun unjoin (lay : layout) : layout list =
+  case layoutcase lay of
+    Text s => if string-empty s then nil
+              else lay :: nil
+  | Node (GROUP, attrs, children) =>
+      if obj-empty attrs
+      then children
+      else fail "group may not have attrs"
+  | Node _ => lay :: nil
+
+(* Generates a series of lines (boxes) with the glue turned into definite
+   padding. Still in "AllBox" format. *)
+fun pack-boxes (width : float, content : layout) : layout list =
+  let val packed = internal-pack-boxes (width, content)
+  in unjoin packed
+  end
+
 (* This expects
-   <span><box><box><box></span>
-   <span><box><box><box></span>
+   <box> <box></box><box></box><box></box> </box>
+   <box> <box></box><box></box><box></box> </box>
    ...
 
    and flattens them into a single "column" sticker with
    stickers as children. *)
-fun stick-lines (line-height: float, p : layout) =
+fun stick-lines-column (line-height: float, p : layout) =
   let
 
     (* TODO: I think this is a generic construct; the opposite of
@@ -236,12 +262,13 @@ fun stick-lines (line-height: float, p : layout) =
         case layoutcase p of
           Node (SPAN, attrs, words) => p :: nil
         | Node (GROUP, attrs, words) => words
-        | _ => fail "expecting a node with line children, not text or boxes, etc.?"
+        | _ => fail ("expecting a node with line children, " ^
+                     "not text or boxes, etc.?")
 
     fun one-line (start-y : float, line : layout) =
       let
-        do if LAYOUT-VERBOSE
-           then let in
+        do LAYOUT-VERBOSE andthen
+          let in
              print "Want LINE:\n";
              debug-print-doc line;
              print "^^^^^^^^^^^^^";
@@ -249,9 +276,8 @@ fun stick-lines (line-height: float, p : layout) =
              debug-print-doc (node (get-attrs line) [content]);
              (case get-attrs line of
                 {(Node) display} => print ("Display: " ^ display ^ "\n")
-              | _ => print "no display");
-                end
-           else ()
+              | _ => print "no display")
+          end
       in
       case layoutcase line of
         Node (BOX, attrs, words) =>
@@ -350,12 +376,33 @@ fun parse-text (parse : string -> layout) (l : layout) : layout =
 
 fun get-paragraphs (ls : layout list) : layout list =
   let
+    val rev-paragraphs : layout list ref = ref nil
+
     (* Current paragraph being accumulated. *)
     val acc = ref []
-    fun append lay = acc := [[!acc][lay]]
-    fun one lay =
+    fun append (lay : layout) = acc := [[!acc][lay]]
+
+    (* TODO: normalize whitespace *)
+    fun normalize s = string-replace (s, "\n", " ")
+
+    fun do-one-text s =
+      case string-chop "\n\n" s of
+        NONE => append (layout (normalize s))
+      | SOME (para, rest) =>
+          (* Got a paragraph. *)
+          let
+            do append (layout (normalize para))
+            do if layout-empty (!acc)
+               then ()
+               else rev-paragraphs := !acc :: !rev-paragraphs
+            do acc := []
+          in
+            do-one-text rest
+          end
+
+    fun do-one lay =
       case layoutcase lay of
-        Text s => fail "TODO"
+        Text s => do-one-text s
       | Node (BOX, _, _) => append lay
       | Node (SPAN, attrs, children) =>
           (case get-paragraphs children of
@@ -365,9 +412,11 @@ fun get-paragraphs (ls : layout list) : layout list =
                          "implemented)"))
       | Node (GROUP, attrs, children) =>
           if obj-empty attrs
-          then list-app one children
+          then list-app do-one children
           else fail "this code doesn't preserve attrs on a group"
 
   in
-    fail "TODO"
+    list-app do-one ls;
+
+    list-rev (!rev-paragraphs)
   end

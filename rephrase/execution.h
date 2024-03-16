@@ -80,7 +80,9 @@ struct Execution {
   Value *DoBinop(Primop primop, Value *a, Value *b, State *state);
   Value *DoUnop(Primop primop, Value *a, State *state);
 
+  Value *Bool(bool b, State *state);
   Value *String(std::string s, State *state);
+  Value *Float(double d, State *state);
 
   const Program &program;
   const std::unique_ptr<Document> degenerate_document;

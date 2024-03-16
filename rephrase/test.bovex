@@ -5,6 +5,8 @@ let
   import "cite.bovex"
   import "paper.bib"
 
+  val VERBOSE = true
+
   val author = b[Tom 7 [[Murphy]] ]
 
   fun attrs-string (BOX, {(Box) width }) = "box-width"
@@ -28,25 +30,146 @@ let
           list-app printlayout children
         end
 
-  do printlayout author
+  do VERBOSE andthen printlayout author
 
 
+    (*
   fun render-one-column (l : layout) =
     let
-      do print "-------------------\n"
-      do debug-print-doc l
-      do print "-------------------\n"
+      do VERBOSE andthen
+        let in
+          print "-------------------\n";
+          debug-print-doc l;
+          print "-------------------\n"
+        end
+
       val boxes = get-boxes l
-      val packed = pack-boxes (inch 4.0, boxes)
-      val stickers = stick-lines (12.0, packed)
+      val packed : layout list = pack-boxes (inch 4.0, boxes)
+      (* val stickers = stick-lines (12.0, packed) *)
     in
-      stickers
+    (* stickers *)
+      fail "broken"
     end
+  *)
 
+  (* Generally just one of these, for the toplevel document.
+     This breaks the layout into paragraphs, and then inserts
+     them one by one into columns. *)
+  fun main-text lay =
+    let
+      val PAGE-WIDTH = inch 8.5
+      val PAGE-HEIGHT = inch 11.0
+      val LEFT-MARGIN = inch 0.3
+      val TOP-MARGIN = inch 0.5
+      val GUTTER = inch 0.25
+      val COLUMNS = 2
+      do COLUMNS >= 1 otherwise fail "There must be at least one column!"
+      val RIGHT-MARGIN = inch 0.3
+      val BOTTOM-MARGIN = inch 0.5
+
+      fun int-to-float n = n / 1
+      val BODY-WIDTH = PAGE-WIDTH -. (LEFT-MARGIN +. RIGHT-MARGIN)
+      val BODY-HEIGHT = PAGE-HEIGHT -. (TOP-MARGIN +. BOTTOM-MARGIN)
+      val COLUMN-WIDTH =
+        (BODY-WIDTH -. int-to-float (COLUMNS - 1) *. GUTTER)
+        /. (int-to-float COLUMNS)
+
+      val LEFT-COLUMN-X = LEFT-MARGIN
+      val COLUMN-STRIDE = COLUMN-WIDTH +. GUTTER
+
+      (* Layout state. *)
+      val current-column = ref 0
+      (* y position within column. *)
+      val current-ypos = ref 0.0
+      val column-empty = ref true
+
+      val column-stickers-rev : layout list ref = ref nil
+      fun add-column-sticker s =
+        let in
+          column-empty := false;
+          column-stickers-rev := s :: !column-stickers-rev
+        end
+
+      (* Emits the current column (if non-empty); doesn't clear it. *)
+      fun emit-column () =
+        !column-empty otherwise
+        output (sticker {(Sticker)
+                         x =
+                         LEFT-COLUMN-X +.
+                         (int-to-float (!current-column)) *. COLUMN-STRIDE,
+                         y = TOP-MARGIN }
+                (layout-concat (list-rev (!column-stickers-rev))))
+
+      (* XXX should probably just use pack-boxes for this, but
+         they are vertical boxes. *)
+      fun insert-paragraph (p : layout) : unit =
+        let
+          do VERBOSE andthen
+            let in
+              print "----insert para----\n";
+              debug-print-doc p;
+              print "-------------------\n"
+            end
+
+          val boxes = get-boxes p
+          val lines : layout list = pack-boxes (COLUMN-WIDTH, boxes)
+
+          (* Maybe advance to the next column (or page) to place
+             something. *)
+          fun get-placement height =
+            if !current-ypos +. height <=. BODY-HEIGHT
+            then
+              (* Place here at no cost. *)
+              ()
+            else
+              if !column-empty
+              then
+              (* If we're already at the top of the column, then
+                 we don't have any choice but to place it. *)
+                let
+                  val overrun-height = BODY-HEIGHT -. (!current-ypos +. height)
+                in
+                  (* TODO: We assume it's the full column width. But really
+                     we should be measuring the actual width of the line
+                     that's overflowing. *)
+                  emit-badness (COLUMN-WIDTH *. overrun-height)
+                end
+              else
+                (* New column. *)
+                let in
+                  emit-column ();
+                  current-column := !current-column + 1;
+                  current-ypos := 0.0;
+                  column-empty := true;
+                  !current-column >= COLUMNS
+                  andthen fail "Need to implement pages!";
+                  (* badness from unfilled column? *)
+                  ()
+                end
+
+          fun addline (line : layout) : unit =
+            case layoutcase line of
+              Node (BOX, {(Box) height } as attrs, children) =>
+                let in
+                  get-placement height;
+                  add-column-sticker
+                  (sticker (attrs without (Box)width
+                            without (Box)height
+                            with x = 0.0
+                            with y = !current-ypos) (layout-concat children))
+                end
+            | _ => fail "only expecting boxes with known height in addline"
+
+        in
+          list-app addline lines
+        end
+
+      val paras : layout list = get-paragraphs (lay :: nil)
+    in
+      list-app insert-paragraph paras
+    end
 in
-
-  output
-  (render-one-column
+  (main-text
   (times-roman
    [
     The system goes on-line March 13th, 2024.
@@ -59,7 +182,8 @@ in
       ]]
 
     This is my paper. I have written some filler text in order to get the
-    main layout loop working, [helvetica[which]] is the design thing that's stressing
+    main layout loop working, [helvetica[which]] is the design thing that's
+    stressing
     me out. Makes sense, as it's kind of the [b[core]] of everything.
 
     [rephrase

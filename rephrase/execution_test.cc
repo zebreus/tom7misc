@@ -485,6 +485,13 @@ static void StringTests()  {
       "psum dol");
 }
 
+static void FloatTests() {
+  CHECK_EQ(
+      RunToString(
+          "print (if int-to-float 5 ==. 5.0 then \"OK\" else \"NO\")"),
+      "OK");
+}
+
 static void NewTests() {
 
 }
@@ -499,6 +506,7 @@ int main(int argc, char **argv) {
   bc::ExecTests();
   bc::ObjTests();
   bc::StringTests();
+  bc::FloatTests();
   bc::NewTests();
 
   printf("OK\n");
