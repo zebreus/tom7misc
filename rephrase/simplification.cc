@@ -269,6 +269,57 @@ struct PeepholePass : public il::Pass<> {
     }
   }
 
+  const Exp *DoPrimop(Primop po,
+                      const std::vector<const Type *> &ts,
+                      const std::vector<const Exp *> &es,
+                      const Exp *guess) override {
+    std::vector<const Type *> tts;
+    tts.reserve(ts.size());
+    for (const Type *t : ts) tts.push_back(DoType(t));
+
+    std::vector<const Exp *> ees;
+    ees.reserve(es.size());
+    for (const Exp *e : es) ees.push_back(DoExp(e));
+
+    if (opts & Simplification::O_REDUCE) {
+      const auto &[num_types, num_args] = PrimopArity(po);
+      CHECK((int)ees.size() == num_args &&
+            (int)tts.size() == num_types) << "Internal type error: Wrong "
+        "number of args to primop " << PrimopString(po);
+
+      switch (po) {
+      case Primop::STRING_CONCAT:
+        if (ees[0]->type == ExpType::STRING &&
+            ees[1]->type == ExpType::STRING) {
+          Simplified("string-concat primop");
+          return pool->String(ees[0]->String() + ees[1]->String());
+        }
+        break;
+
+      case Primop::STRING_EMPTY:
+        if (ees[0]->type == ExpType::STRING) {
+          Simplified("string-empty primop");
+          return pool->Bool(ees[0]->String().empty());
+        }
+        break;
+
+      case Primop::STRING_SIZE:
+        if (ees[0]->type == ExpType::STRING) {
+          Simplified("string-size primop");
+          return pool->Int(ees[0]->String().size());
+        }
+        break;
+
+        // TODO: So many more primops can be reduced!
+
+      default:
+        break;
+      }
+    }
+
+    return pool->Primop(po, tts, ees, guess);
+  }
+
   // For fn expressions, if the function's self variable is not used,
   // it is not actually recursive.
   const Exp *DoFn(const std::string &self,

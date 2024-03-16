@@ -51,6 +51,13 @@ in
    [
     The system goes on-line March 13th, 2024.
 
+    [helvetica
+     [
+      Does it make sense to put paragraphs...
+
+      ... inside a span? I guess so?
+      ]]
+
     This is my paper. I have written some filler text in order to get the
     main layout loop working, [helvetica[which]] is the design thing that's stressing
     me out. Makes sense, as it's kind of the [b[core]] of everything.

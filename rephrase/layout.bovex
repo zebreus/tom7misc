@@ -349,4 +349,25 @@ fun parse-text (parse : string -> layout) (l : layout) : layout =
    *)
 
 fun get-paragraphs (ls : layout list) : layout list =
-  fail "TODO"
+  let
+    (* Current paragraph being accumulated. *)
+    val acc = ref []
+    fun append lay = acc := [[!acc][lay]]
+    fun one lay =
+      case layoutcase lay of
+        Text s => fail "TODO"
+      | Node (BOX, _, _) => append lay
+      | Node (SPAN, attrs, children) =>
+          (case get-paragraphs children of
+             nil => append (span attrs [])
+           | p :: nil => append (span attrs p)
+           | ps => fail ("multiple paragraphs in span not yet " ^
+                         "implemented)"))
+      | Node (GROUP, attrs, children) =>
+          if obj-empty attrs
+          then list-app one children
+          else fail "this code doesn't preserve attrs on a group"
+
+  in
+    fail "TODO"
+  end

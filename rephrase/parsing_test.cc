@@ -15,13 +15,10 @@ namespace el {
 
 static constexpr bool VERBOSE = false;
 
-#define SOURCEMAP SourceMap{ \
-    .cover = IntervalCover<std::string>(__func__) \
-      }
-
 static void TestParse() {
   AstPool pool;
   auto Parse = [&](const std::string &s) {
+      SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
       std::string error;
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
@@ -29,7 +26,7 @@ static void TestParse() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      return Parsing::Parse(&pool, SOURCEMAP, s, tokens.value());
+      return Parsing::Parse(&pool, source_map, s, tokens.value());
     };
 
   if (VERBOSE) {
@@ -543,6 +540,7 @@ static void TestParseType() {
   AstPool pool;
   auto ParseType = [&](const std::string &stype) -> const Type * {
       std::string s = StringPrintf("0 : %s", stype.c_str());
+      SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
       std::string error;
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
@@ -550,7 +548,7 @@ static void TestParseType() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      const Exp *e = Parsing::Parse(&pool, SOURCEMAP, s, tokens.value());
+      const Exp *e = Parsing::Parse(&pool, source_map, s, tokens.value());
       CHECK(e != nullptr) << stype;
       CHECK(e->type == ExpType::ANN) << stype;
       CHECK(e->a->type == ExpType::INT);
@@ -684,6 +682,7 @@ static void TestParsePat() {
   auto ParsePat = [&](const std::string &spat) -> const Pat * {
       std::string s = StringPrintf("let val %s = 0 in 1 end",
                                    spat.c_str());
+      SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
       std::string error;
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
@@ -691,7 +690,7 @@ static void TestParsePat() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      const Exp *e = Parsing::Parse(&pool, SOURCEMAP, s, tokens.value());
+      const Exp *e = Parsing::Parse(&pool, source_map, s, tokens.value());
       CHECK(e != nullptr) << spat;
       CHECK(e->type == ExpType::LET) << spat;
       CHECK(e->decs.size() == 1) << spat;
@@ -858,6 +857,7 @@ static void TestParseDec() {
   auto ParseDec = [&](const std::string &sdec) -> const Dec * {
       std::string s = StringPrintf("let %s in 7 end",
                                    sdec.c_str());
+      SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
       std::string error;
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
@@ -865,7 +865,7 @@ static void TestParseDec() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      const Exp *e = Parsing::Parse(&pool, SOURCEMAP, s, tokens.value());
+      const Exp *e = Parsing::Parse(&pool, source_map, s, tokens.value());
       CHECK(e != nullptr) << sdec;
       CHECK(e->type == ExpType::LET) << sdec;
       CHECK(e->decs.size() == 1) << sdec;
@@ -914,6 +914,7 @@ static void TestParseLayout() {
   AstPool pool;
 
   auto Parse = [&](const std::string &s) -> const Layout * {
+      SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
       std::string error;
       std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
       CHECK(tokens.has_value()) << "Did not lex: " << error;
@@ -921,7 +922,7 @@ static void TestParseLayout() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      const Exp *e = Parsing::Parse(&pool, SOURCEMAP, s, tokens.value());
+      const Exp *e = Parsing::Parse(&pool, source_map, s, tokens.value());
       CHECK(e->type == ExpType::LAYOUT);
       CHECK(e->layout != nullptr);
       return e->layout;

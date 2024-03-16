@@ -26,7 +26,11 @@
 // the provenance of the bytes in that string.
 struct SourceMap {
   // For each position in the string, its original source file.
-  IntervalCover<std::string> cover;
+  IntervalCover<std::string> filecover;
+  // For each position in the string, the line (within the source file
+  // above) that contains the byte. These are used for error messages
+  // so they are 1-based by convention.
+  IntervalCover<int> linecover;
 };
 
 struct Inclusion {
@@ -34,6 +38,12 @@ struct Inclusion {
   static std::tuple<std::string, std::vector<el::Token>, SourceMap>
   Process(const std::vector<std::string> &includepaths,
           const std::string &filename);
+
+  // When testing, we often want to work with a literal string. This
+  // lets us generate a working sourcemap for that string (coming from
+  // the "file", which need not be real).
+  static SourceMap SimpleSourceMap(const std::string &file,
+                                   const std::string &content);
 
 };
 

@@ -405,6 +405,15 @@ static void TestSimplify() {
     }
   }
 
+  {
+    const Program pgm = Run("print (\"all you have to do\" ^ \" is do it\")");
+    CHECK(pgm.body->type == ExpType::PRIMOP) << ProgramString(pgm);
+    const auto &[f, targs, eargs] = pgm.body->Primop();
+    CHECK(eargs.size() == 1);
+    CHECK(eargs[0]->type == ExpType::STRING);
+    CHECK(eargs[0]->String() == "all you have to do is do it");
+  }
+
 }
 
 static void Simple() {

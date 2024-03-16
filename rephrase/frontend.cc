@@ -83,7 +83,7 @@ Program Frontend::RunFrontendOn(const std::string &error_context,
     return std::move(otokens.value());
   }();
 
-  SourceMap source_map{.cover = IntervalCover<std::string>{error_context}};
+  SourceMap source_map = Inclusion::SimpleSourceMap(error_context, contents);
 
   const double lex_sec = lex_timer.Seconds();
   if (verbose > 1) {

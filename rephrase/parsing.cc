@@ -87,12 +87,13 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   auto ErrorAtToken = [&source_map](const Token &token) {
     size_t byte_pos = token.start;
-    const std::string file = source_map.cover[byte_pos];
+    const std::string file = source_map.filecover[byte_pos];
+    const int line = source_map.linecover[byte_pos];
     // TODO: Compute the line in the file.
     return StringPrintf(
-        "\nAt byte " AYELLOW("%d") " which is in source file "
-        AWHITE("%s") ".\n",
-        byte_pos, file.c_str());
+        "\nAt byte %d which is "
+        AWHITE("%s") ":" AYELLOW("%d") ".\n",
+        byte_pos, file.c_str(), line);
   };
 
   // Given as a range of token indices.

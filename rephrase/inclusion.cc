@@ -20,7 +20,10 @@ struct InclusionImpl {
 
   InclusionImpl(const std::vector<std::string> &includepaths) :
     includepaths(includepaths),
-    source_map{.cover = IntervalCover<std::string>("OUT_OF_RANGE")} {}
+    source_map{
+      .filecover = IntervalCover<std::string>("OUT_OF_RANGE"),
+      .linecover = IntervalCover<int>(-1),
+    } {}
 
   std::string ResolveInclude(const std::string &filename) {
     // TODO: Use include paths to resolve the file.
@@ -31,6 +34,9 @@ struct InclusionImpl {
   // I should instead build some more high-level routines for
   // tokens and their associated bytes.
   void Append(const std::string &filename) {
+    // Lines are one-based.
+    int current_line = 1;
+
     if (VERBOSE) {
       printf("Append %s\n", filename.c_str());
     }
@@ -79,8 +85,10 @@ struct InclusionImpl {
         return t;
     };
 
-    const auto AppendByte = [this, &filename](uint8_t c) {
-        source_map.cover.SetPoint(source.size(), filename);
+    const auto AppendByte = [this, &filename, &current_line](uint8_t c) {
+        source_map.filecover.SetPoint(source.size(), filename);
+        source_map.linecover.SetPoint(source.size(), current_line);
+        if (c == '\n') current_line++;
         source.push_back(c);
       };
 
@@ -156,8 +164,7 @@ struct InclusionImpl {
 
     // Include untokenized trailing whitespace.
     while (input_pos < contents.size()) {
-      source.push_back(contents[input_pos]);
-      source_map.cover.SetPoint(input_pos, filename);
+      AppendByte(contents[input_pos]);
       input_pos++;
     }
 
@@ -185,4 +192,23 @@ Inclusion::Process(const std::vector<std::string> &includepaths,
   return std::make_tuple(std::move(inc.source),
                          std::move(inc.tokens),
                          std::move(inc.source_map));
+}
+
+SourceMap Inclusion::SimpleSourceMap(const std::string &file,
+                                     const std::string &content) {
+  SourceMap source_map{
+    .filecover = IntervalCover<std::string>{"OUT_OF_RANGE"},
+    .linecover = IntervalCover<int>{-1},
+  };
+
+  source_map.filecover.SetSpan(0, content.size(), file);
+
+  int current_line = 0;
+  for (size_t idx = 0; idx < content.size(); idx++) {
+    char c = content[idx];
+    source_map.linecover.SetPoint(idx, current_line);
+    if (c == '\n') current_line++;
+  }
+
+  return source_map;
 }
