@@ -51,6 +51,11 @@ struct Pass {
       const auto &[alpha, body] = t->Exists();
       return DoExists(alpha, body, t, args...);
     }
+    case TypeType::FORALL: {
+      const auto &[alpha, body] = t->Forall();
+      return DoForall(alpha, body, t, args...);
+    }
+
     case TypeType::SUM: return DoSum(t->Sum(), t, args...);
     case TypeType::RECORD: return DoRecordType(t->Record(), t, args...);
     case TypeType::EVAR: return DoEVar(t->EVar(), t, args...);
@@ -168,6 +173,16 @@ struct Pass {
       return DoWithout(obj, field, oft, e, args...);
     }
 
+    case ExpType::TYPEFN: {
+      const auto &[alpha, exp] = e->TypeFn();
+      return DoTypeFn(alpha, exp, e, args...);
+    }
+
+    case ExpType::TYPEAPP: {
+      const auto &[exp, t] = e->TypeApp();
+      return DoTypeApp(exp, t, e, args...);
+    }
+
     }
     LOG(FATAL) << "Unhandled expression type in Pass::DoExp!";
     return nullptr;
@@ -252,6 +267,14 @@ struct Pass {
       const Type *guess,
       Args... args) {
     return pool->Exists(alpha, DoType(body, args...), guess);
+  }
+
+  virtual const Type *DoForall(
+      const std::string &alpha,
+      const Type *body,
+      const Type *guess,
+      Args... args) {
+    return pool->Forall(alpha, DoType(body, args...), guess);
   }
 
   virtual const Type *DoRefType(const Type *body, const Type *guess,
@@ -536,6 +559,17 @@ struct Pass {
                                const Exp *guess, Args... args) {
     return pool->Without(DoExp(obj, args...), field, oft, guess);
   }
+
+  virtual const Exp *DoTypeFn(const std::string &alpha, const Exp *exp,
+                              const Exp *guess, Args... args) {
+    return pool->TypeFn(alpha, DoExp(exp, args...), guess);
+  }
+
+  virtual const Exp *DoTypeApp(const Exp *exp, const Type *t,
+                               const Exp *guess, Args... args) {
+    return pool->TypeApp(DoExp(exp, args...), DoType(t, args...), guess);
+  }
+
 
 protected:
   AstPool *pool = nullptr;

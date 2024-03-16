@@ -61,6 +61,10 @@ struct TypedPass {
       const auto &[alpha, tt] = t->Exists();
       return DoExists(G, alpha, tt, t, args...);
     }
+    case TypeType::FORALL: {
+      const auto &[alpha, tt] = t->Forall();
+      return DoForall(G, alpha, tt, t, args...);
+    }
     case TypeType::SUM: return DoSum(G, t->Sum(), t, args...);
     case TypeType::RECORD: return DoRecordType(G, t->Record(), t, args...);
     case TypeType::EVAR: return DoEVar(G, t->EVar(), t, args...);
@@ -275,6 +279,17 @@ struct TypedPass {
       const Type *guess,
       Args... args) {
     return pool->Exists(alpha,
+                        DoType(G.InsertType(alpha), body, args...),
+                        guess);
+  }
+
+  virtual const Type *DoForall(
+      Context G,
+      const std::string &alpha,
+      const Type *body,
+      const Type *guess,
+      Args... args) {
+    return pool->Forall(alpha,
                         DoType(G.InsertType(alpha), body, args...),
                         guess);
   }
@@ -782,6 +797,32 @@ struct TypedPass {
       pool->ObjType(),
     };
   }
+
+  virtual std::pair<const Exp *, const Type *>
+  DoTypeFn(Context G,
+           const std::string &alpha, const Exp *exp,
+           const Exp *guess, Args... args) {
+    const auto &[ee, t] = DoExp(G.InsertType(alpha), exp, args...);
+    return {
+      pool->TypeFn(alpha, ee, guess),
+      pool->Forall(alpha, t),
+    };
+  }
+
+  virtual std::pair<const Exp *, const Type *>
+  DoTypeApp(Context G,
+            const Exp *exp, const Type *t,
+            const Exp *guess, Args... args) {
+    const auto &[ee, tforall] = DoExp(G, exp, args...);
+    CHECK(tforall->type == TypeType::FORALL);
+    const auto &[alpha, tbody] = tforall->Forall();
+    const Type *tt = DoType(G, t, args...);
+    return {
+      pool->TypeApp(ee, tt, guess),
+      pool->SubstType(tt, alpha, tbody),
+    };
+  }
+
 
 protected:
   AstPool *pool = nullptr;

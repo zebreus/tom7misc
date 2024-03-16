@@ -370,6 +370,23 @@ struct SubstTypePass : public Pass<> {
     }
   }
 
+  const Exp *DoTypeFn(
+      const std::string &alpha, const Exp *body,
+      const Exp *guess) override {
+    if constexpr (is_fresh) {
+      return Pass::DoTypeFn(alpha, body, guess);
+    } else {
+      if (alpha == target_var || freevars.contains(alpha)) {
+        const auto &[newalpha, newbody] =
+          ILUtil::AlphaVaryTypeInExp(pool, alpha, body);
+        return pool->TypeFn(newalpha, DoExp(body), guess);
+      } else {
+        return Pass::DoTypeFn(alpha, body, guess);
+      }
+    }
+  }
+
+
   const Type *DoMu(
       int idx,
       const std::vector<std::pair<std::string, const Type *>> &v,
@@ -379,6 +396,13 @@ struct SubstTypePass : public Pass<> {
 
 
   const Type *DoExists(
+      const std::string &alpha,
+      const Type *body,
+      const Type *guess) override {
+    LOG(FATAL) << "This should not be called, because we defer to SubstType.";
+  }
+
+  const Type *DoForall(
       const std::string &alpha,
       const Type *body,
       const Type *guess) override {
@@ -586,6 +610,15 @@ struct CountTypeVarsPass : public Pass<StringSet> {
     return guess;
   }
 
+  const Type *DoForall(
+      const std::string &alpha,
+      const Type *body,
+      const Type *guess,
+      StringSet bound) override {
+    (void)DoType(body, bound.Insert(alpha));
+    return guess;
+  }
+
   // Globals can bind type vars.
 
   Program DoProgram(const Program &program, StringSet bound)
@@ -631,6 +664,12 @@ struct CountTypeVarsPass : public Pass<StringSet> {
     StringSet bb = bound.Insert(alpha);
     (void)DoType(t_packed, bb);
     (void)DoExp(body, bb);
+    return guess;
+  }
+
+  const Exp *DoTypeFn(const std::string &alpha, const Exp *body,
+                      const Exp *guess, StringSet bound) override {
+    (void)DoExp(body, bound.Insert(alpha));
     return guess;
   }
 

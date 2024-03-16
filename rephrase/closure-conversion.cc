@@ -282,14 +282,6 @@ struct ConvertPass : public TypedPass<> {
               });
 
     if (VERBOSE) {
-      /*
-      struct EnvEntry {
-      std::string il_var;
-      std::vector<const Type *> type_args;
-      PolyType polytype;
-      std::string env_label;
-    };
-      */
       for (const EnvEntry &entry : env) {
         std::vector<std::string> ts;
         for (const Type *t : entry.type_args) ts.push_back(TypeString(t));
@@ -340,8 +332,8 @@ struct ConvertPass : public TypedPass<> {
     const Exp *fn = cc_body;
     for (const EnvEntry &entry : env) {
       fn = pool->Let({}, entry.il_var,
-                      pool->Project(entry.env_label, env_var_exp),
-                      fn);
+                     pool->Project(entry.env_label, env_var_exp),
+                     fn);
     }
 
     // Type variables used in

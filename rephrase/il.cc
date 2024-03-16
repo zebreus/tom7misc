@@ -21,6 +21,7 @@ const char *TypeTypeString(TypeType t) {
   case TypeType::ARROW: return "ARROW";
   case TypeType::MU: return "MU";
   case TypeType::EXISTS: return "EXISTS";
+  case TypeType::FORALL: return "FORALL";
   case TypeType::RECORD: return "RECORD";
   case TypeType::EVAR: return "EVAR";
   case TypeType::REF: return "REF";
@@ -62,6 +63,8 @@ const char *ExpTypeString(ExpType t) {
   case ExpType::SUMCASE: return "SUMCASE";
   case ExpType::PACK: return "PACK";
   case ExpType::UNPACK: return "UNPACK";
+  case ExpType::TYPEFN: return "TYPEFN";
+  case ExpType::TYPEAPP: return "TYPEAPP";
   case ExpType::HAS: return "HAS";
   case ExpType::GET: return "GET";
   case ExpType::WITH: return "WITH";
@@ -180,6 +183,12 @@ std::string TypeString(const Type *t) {
   case TypeType::EXISTS: {
     const auto &[alpha, body] = t->Exists();
     return StringPrintf("∃ %s.%s\n", alpha.c_str(),
+                        TypeString(body).c_str());
+  }
+
+  case TypeType::FORALL: {
+    const auto &[alpha, body] = t->Forall();
+    return StringPrintf("∀ %s.%s\n", alpha.c_str(),
                         TypeString(body).c_str());
   }
 
@@ -491,6 +500,18 @@ std::string ExpString(const Exp *e) {
                         ExpString(body).c_str());
   }
 
+  case ExpType::TYPEFN: {
+    const auto &[alpha, exp] = e->TypeFn();
+    return StringPrintf("typefn %s => %s",
+                        alpha.c_str(), ExpString(exp).c_str());
+  }
+
+  case ExpType::TYPEAPP: {
+    const auto &[exp, t] = e->TypeApp();
+    return StringPrintf("%s<%s>",
+                        ExpString(exp).c_str(), TypeString(t).c_str());
+  }
+
   case ExpType::HAS: {
     const auto &[obj, field, oft] = e->Has();
     return StringPrintf("(has %s.%s : %s)",
@@ -657,6 +678,22 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
       } else {
         const auto &[new_alpha, new_body] = AlphaVaryType(alpha, body);
         return Exists(new_alpha, SubstTypeInternal(t, v, new_body, is_simple));
+      }
+    }
+  }
+
+  case TypeType::FORALL: {
+    const auto &[alpha, body] = u->Forall();
+    if (alpha == v) {
+      // shadowed; can't occur.
+      return u;
+    } else {
+      // PERF: As above, don't always rename.
+      if (is_simple) {
+        return Forall(alpha, SubstTypeInternal(t, v, body, is_simple));
+      } else {
+        const auto &[new_alpha, new_body] = AlphaVaryType(alpha, body);
+        return Forall(new_alpha, SubstTypeInternal(t, v, new_body, is_simple));
       }
     }
   }

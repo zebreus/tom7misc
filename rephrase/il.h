@@ -51,8 +51,13 @@ enum class ExpType {
   // Match against a sum. Binds the same variable
   // for all arms.
   SUMCASE,
+
+  // Introduce and eliminate exists types.
   PACK,
   UNPACK,
+  // Introduce and eliminate forall types.
+  TYPEFN,
+  TYPEAPP,
 
   // Object manipulation.
   HAS,
@@ -91,6 +96,11 @@ enum class TypeType {
   MU,
   // ∃α.t. This is only used by closure conversion.
   EXISTS,
+  // ∀α.t. Similarly, this is only used for packing
+  //   polymorphic variables inside environments during
+  //   closure conversion. Normally we use prenex
+  //   polymorphism.
+  FORALL,
   RECORD,
   EVAR,
   // Primitive reference type
@@ -138,6 +148,11 @@ struct Type {
 
   std::tuple<const std::string, const Type *> Exists() const {
     CHECK(type == TypeType::EXISTS);
+    return std::tie(var, a);
+  }
+
+  std::tuple<const std::string, const Type *> Forall() const {
+    CHECK(type == TypeType::FORALL);
     return std::tie(var, a);
   }
 
@@ -384,6 +399,20 @@ struct Exp {
     return std::tie(str1, str2, a, b);
   }
 
+  // Λα.e
+  std::tuple<const std::string &, const Exp *>
+  TypeFn() const {
+    CHECK(type == ExpType::TYPEFN);
+    return std::tie(str1, a);
+  }
+
+  std::tuple<const Exp *, const Type *>
+  TypeApp() const {
+    CHECK(type == ExpType::TYPEAPP);
+    return std::tie(a, ta);
+  }
+
+
 private:
   // PERF: Experiment with std::variant, at least.
   friend struct AstPool;
@@ -575,6 +604,23 @@ struct AstPool {
     }
 
     Type *ret = NewType(TypeType::EXISTS);
+    ret->var = alpha;
+    ret->a = t;
+    return ret;
+  }
+
+  const Type *Forall(
+      const std::string &alpha,
+      const Type *t,
+      const Type *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == TypeType::FORALL &&
+        guess->a == t &&
+        guess->var == alpha) {
+      return guess;
+    }
+
+    Type *ret = NewType(TypeType::FORALL);
     ret->var = alpha;
     ret->a = t;
     return ret;
@@ -1067,6 +1113,36 @@ struct AstPool {
     ret->b = body;
     return ret;
   }
+
+  const Exp *TypeFn(const std::string &alpha, const Exp *exp,
+                    const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::TYPEFN &&
+        guess->str1 == alpha &&
+        guess->a == exp) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::TYPEFN);
+    ret->str1 = alpha;
+    ret->a = exp;
+    return ret;
+  }
+
+  const Exp *TypeApp(const Exp *f, const Type *t,
+                     const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::TYPEAPP &&
+        guess->a == f &&
+        guess->ta == t) {
+      return guess;
+    }
+    Exp *ret = NewExp(ExpType::TYPEAPP);
+    ret->a = f;
+    ret->ta = t;
+    return ret;
+  }
+
 
   // Utilities.
 

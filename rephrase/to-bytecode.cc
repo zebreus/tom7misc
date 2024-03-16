@@ -198,6 +198,19 @@ struct Converter {
       case il::ExpType::UNROLL:
         exp = exp->Unroll();
         break;
+
+      case il::ExpType::TYPEFN: {
+        const auto &[alpha, body] = exp->TypeFn();
+        exp = body;
+        break;
+      }
+
+      case il::ExpType::TYPEAPP: {
+        const auto &[e, t] = exp->TypeApp();
+        exp = e;
+        break;
+      }
+
       default:
         return exp;
       }

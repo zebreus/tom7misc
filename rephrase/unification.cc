@@ -97,6 +97,11 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
     return Occurs(e, tt);
   }
 
+  case TypeType::FORALL: {
+    const auto &[a, tt] = t->Forall();
+    return Occurs(e, tt);
+  }
+
   case TypeType::RECORD:
     for (const auto &[l_, c] : t->Record()) {
       if (Occurs(e, c)) return true;
@@ -191,6 +196,12 @@ std::vector<EVar> EVar::FreeEVarsInTypes(
 
     case TypeType::EXISTS: {
       const auto &[alpha, tt] = t->Exists();
+      Rec(tt);
+      return;
+    }
+
+    case TypeType::FORALL: {
+      const auto &[alpha, tt] = t->Forall();
       Rec(tt);
       return;
     }
@@ -432,6 +443,11 @@ static void UnifyEx(const std::function<std::string()> &error_context,
 
   case TypeType::EXISTS:
     LOG(FATAL) << Error() << "Bug: Not expecting Exists type before closure "
+      "conversion!";
+    return;
+
+  case TypeType::FORALL:
+    LOG(FATAL) << Error() << "Bug: Not expecting Forall type before closure "
       "conversion!";
     return;
 
