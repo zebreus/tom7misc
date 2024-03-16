@@ -159,6 +159,8 @@ private:
 
 using PolyType = std::pair<std::vector<std::string>, const Type *>;
 
+std::string PolyTypeString(const PolyType &pt);
+
 // Regular IL context.
 // In the IL type language, we just know what set of type variables
 // are bound (they all have kind 0).

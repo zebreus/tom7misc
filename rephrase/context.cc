@@ -140,7 +140,7 @@ std::string ElabContext::ToString() const {
   return ret;
 }
 
-static std::string PolyTypeString(const PolyType &pt) {
+std::string PolyTypeString(const PolyType &pt) {
   return StringPrintf("(%s) %s", Util::Join(pt.first, ",").c_str(),
                       TypeString(pt.second).c_str());
 }

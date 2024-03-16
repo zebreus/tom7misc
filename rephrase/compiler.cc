@@ -41,6 +41,11 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
 
   il_pgm = closure_conversion.Convert(il_pgm);
 
+  if (verbose > 1) {
+    printf("\n\n" AWHITE("Simplify (post closure-conversion) this") ":\n"
+           "%s\n\n", il::ProgramString(il_pgm).c_str());
+  }
+
   il::Simplification simplification(frontend.Pool());
   // Need to remove some constructs before converting to bytecode.
   constexpr uint64_t DECOMPOSE = il::Simplification::O_DECOMPOSE_INTCASE |

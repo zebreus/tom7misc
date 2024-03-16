@@ -1,5 +1,5 @@
 
-default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe
+default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe
 
 test : lex_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe
 	./lex_test.exe
@@ -333,6 +333,9 @@ bovex.exe : bovex.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 
 paper.pdf : bovex.exe paper.bovex
 	./bovex.exe paper.bovex -o paper.pdf
+
+concat.exe : concat.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
 	rm -f *.o $(CC_LIB_OBJECTS) monospace.exe lex_test.exe parsing_test.exe

@@ -277,7 +277,7 @@ const Exp *ILUtil::SubstPolyExp(AstPool *pool,
                                 const std::vector<std::string> &tyvars,
                                 const Exp *e1, const std::string &x,
                                 const Exp *e2) {
-  if (VERBOSE) {
+  if (true || VERBOSE) {
     printf("Subst [Λ(%s).%s/%s](%s).\n",
            Util::Join(tyvars, ",").c_str(),
            ExpString(e1).c_str(), x.c_str(),

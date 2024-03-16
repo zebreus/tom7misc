@@ -2,12 +2,18 @@
 #include "closure-conversion.h"
 
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "il.h"
-#include "il-typed-pass.h"
-#include "base/stringprintf.h"
+#include "ansi.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
+#include "il-typed-pass.h"
+#include "il.h"
 #include "simplification.h"
+#include "util.h"
+
+static constexpr bool VERBOSE = true;
 
 // Closure conversion makes all functions in the program
 // into globals. Globals are closed except for other globals.
@@ -215,6 +221,18 @@ struct ConvertPass : public TypedPass<> {
     free_expvars_map.erase(self);
     free_expvars_map.erase(x);
 
+    if (VERBOSE) {
+      printf(AWHITE("Free expvars") ":\n");
+      for (const auto &[v, uses] : free_expvars_map) {
+        printf("  %s:\n", v.c_str());
+        for (const auto &types : uses) {
+          std::vector<std::string> ts;
+          for (const Type *t : types) ts.push_back(TypeString(t));
+          printf("    (%s)\n", Util::Join(ts, ",").c_str());
+        }
+      }
+    }
+
     struct EnvEntry {
       std::string il_var;
       std::vector<const Type *> type_args;
@@ -229,7 +247,7 @@ struct ConvertPass : public TypedPass<> {
     std::unordered_set<std::string> labels;
     for (const auto &[var, uses] : free_expvars_map) {
       // PERF! We should be deduplicating uses at the same types here,
-      // esepcially when the tyvars are just empty!
+      // especially when the tyvars are just empty!
       const PolyType *pt = G.Find(var);
       CHECK(pt != nullptr) << "Bug: In closure conversion, the free "
         "variable " << var << " was not bound in the context!";
@@ -262,6 +280,28 @@ struct ConvertPass : public TypedPass<> {
               [](const auto &a, const auto &b) {
                 return a.env_label < b.env_label;
               });
+
+    if (VERBOSE) {
+      /*
+      struct EnvEntry {
+      std::string il_var;
+      std::vector<const Type *> type_args;
+      PolyType polytype;
+      std::string env_label;
+    };
+      */
+      for (const EnvEntry &entry : env) {
+        std::vector<std::string> ts;
+        for (const Type *t : entry.type_args) ts.push_back(TypeString(t));
+
+        printf(AORANGE("#%s") " = " ABLUE("%s") " (used as <%s>)\n"
+               "   polytype: %s\n" ,
+               entry.env_label.c_str(),
+               entry.il_var.c_str(),
+               Util::Join(ts, ",").c_str(),
+               PolyTypeString(entry.polytype).c_str());
+      }
+    }
 
     // Now, the environment expression itself, along with its actual type.
     std::vector<std::pair<std::string, const Exp *>> env_components;

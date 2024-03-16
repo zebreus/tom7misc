@@ -68,6 +68,32 @@ static void Regression5580() {
   }
 }
 
+static void Regression5668() {
+  Compiler compiler;
+  compiler.SetVerbose(2);
+  bc::Program prog = compiler.CompileString(
+      "test",
+      R"(
+      let
+
+      datatype (a) option = SOME of a | NONE
+
+      fun option-app f (SOME h) = f h
+
+      fun main-text (lay : int) =
+        let
+          fun insert-paragraph (_ : int) : unit =
+            option-app (fn _ => ()) NONE
+        in
+          option-app insert-paragraph NONE
+        end
+
+      in
+        (main-text 0)
+      end
+      )");
+  bc::PrintProgram(prog);
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -75,6 +101,7 @@ int main(int argc, char **argv) {
   TrivialTest();
   SimpleTest();
   Regression5580();
+  Regression5668();
 
   printf("OK\n");
   return 0;

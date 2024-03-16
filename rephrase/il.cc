@@ -710,7 +710,7 @@ std::string ProgramString(const Program &pgm) {
     if (!glob.tyvars.empty()) {
       tyvars = StringPrintf("(%s) ", Util::Join(glob.tyvars, ",").c_str());
     }
-    StringAppendF(&ret, "  val %s%s : %s = %s\n",
+    StringAppendF(&ret, "  global %s%s : %s = %s\n",
                   tyvars.c_str(),
                   glob.sym.c_str(),
                   TypeString(glob.type).c_str(),

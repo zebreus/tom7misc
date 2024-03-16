@@ -14,8 +14,9 @@
 #include "functional-map.h"
 #include "il-pass.h"
 #include "il-util.h"
+#include "util.h"
 
-static constexpr bool VERBOSE = false;
+static constexpr bool VERBOSE = true;
 
 // TODO: Can do some typed simplification, like:
 //   - unit erasure
@@ -398,7 +399,11 @@ struct PeepholePass : public il::Pass<> {
       // regardless of its size.
       Simplified("inlined single-use binding");
       if (VERBOSE) {
-        printf("  Inlined var is " APURPLE("%s") "\n", x.c_str());
+        std::string ts = tyvars.empty() ? "" :
+          StringPrintf("tyvars (" ABLUE("%s") ")",
+                       Util::Join(tyvars, ",").c_str());
+        printf("  Inlined var is " APURPLE("%s") ", tyvars %s\n",
+               x.c_str(), ts.c_str());
       }
       return ILUtil::SubstPolyExp(pool, tyvars, DoExp(rhs), x, DoExp(body));
     }
