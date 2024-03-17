@@ -50,6 +50,8 @@ struct PDFDocument : public Document {
   };
 
  private:
+  void InitBuiltInFonts();
+  const PDF::FontObj *AnyFontByName(const std::string &font_name);
 
   double FlipPageCoordinate(const PDF::Page &page, double y);
 
@@ -65,6 +67,7 @@ struct PDFDocument : public Document {
                         PDF::Page *page);
 
   std::unique_ptr<PDF> pdf;
+  std::unordered_map<std::string, PDF::BuiltInFont> builtin_fonts;
 };
 
 #endif

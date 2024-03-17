@@ -88,7 +88,7 @@ fun bibliography () =
       | render-one _ = [Unrenderable citation type?]
 
   in
-    [Bibliography.
+    [[b[Bibliography]].
 
      [layout-concat (list-map render-one (set-tolist (!citations-used)))]]
   end

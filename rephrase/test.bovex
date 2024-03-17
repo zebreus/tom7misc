@@ -242,16 +242,7 @@ let
       emit-column ()
     end
 in
-  (main-text
-   (times-roman
-    [Why is [helvetica[text]] missing?
 
-     more paragraph
-
-     click here to continue
-     ]))
-
-  (*
   (main-text
   (times-roman
    [
@@ -278,5 +269,5 @@ in
 
     [bibliography()]
    ]))
-*)
+
 end

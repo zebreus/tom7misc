@@ -114,6 +114,8 @@ static inline Transform Translate(Transform t, double dx, double dy) {
 
 
 PDFDocument::PDFDocument(double width, double height) {
+  InitBuiltInFonts();
+
   PDF::Info info;
   // XXX make settable from document.
   strncpy(info.creator, "BoVeX", 63);
@@ -142,6 +144,43 @@ double PDFDocument::FlipPageCoordinate(const PDF::Page &page, double y) {
 static uint32_t PDFColor(uint32_t rgba) {
   const auto &[r, g, b, a] = ColorUtil::Unpack32(rgba);
   return ColorUtil::Pack32(255 - a, r, g, b);
+}
+
+// For fonts that have already been loaded; returns nullptr if not
+// found. This is like PDF::GetFontByName but it allows naming
+// built-in fonts as well.
+const PDF::FontObj *PDFDocument::AnyFontByName(const std::string &font_name) {
+  const auto it = builtin_fonts.find(font_name);
+  if (it != builtin_fonts.end()) {
+    const PDF::FontObj *f = pdf->GetBuiltInFont(it->second);
+    CHECK(f != nullptr) << "Built-in fonts should always succeed.";
+    return f;
+  }
+
+  return pdf->GetFontByName(font_name);
+}
+
+void PDFDocument::InitBuiltInFonts() {
+  for (PDF::BuiltInFont bif : {
+           PDF::HELVETICA,
+           PDF::HELVETICA_BOLD,
+           PDF::HELVETICA_OBLIQUE,
+           PDF::HELVETICA_BOLD_OBLIQUE,
+           PDF::COURIER,
+           PDF::COURIER_BOLD,
+           PDF::COURIER_OBLIQUE,
+           PDF::COURIER_BOLD_OBLIQUE,
+           PDF::TIMES_ROMAN,
+           PDF::TIMES_BOLD,
+           PDF::TIMES_ITALIC,
+           PDF::TIMES_BOLD_ITALIC,
+           PDF::SYMBOL,
+           PDF::ZAPF_DINGBATS,
+       }) {
+    const char *name = PDF::BuiltInFontName(bif);
+    CHECK(name != nullptr);
+    builtin_fonts[name] = bif;
+  }
 }
 
 void PDFDocument::DrawText(const PDFFont &font,
@@ -198,7 +237,17 @@ void PDFDocument::PlaceStickersRec(Context context,
   CHECK(x != nullptr && y != nullptr) << "Every sticker should have "
     "its final x= and y= coordinates.";
 
-  // XXX text props from sticker
+  if (const std::string *font_name = doc.GetStringAttr("font-name")) {
+    const PDF::FontObj *f = AnyFontByName(*font_name);
+    if (f == nullptr) {
+      fprintf(stderr, ARED("Missing font: ") "%s\n", font_name->c_str());
+    } else {
+      context.font = PDFFont(f);
+    }
+  }
+
+  // XXX text props from sticker:
+  //   font size
   // XXX scaling
 
   for (const std::shared_ptr<DocTree> &child : doc.children) {
