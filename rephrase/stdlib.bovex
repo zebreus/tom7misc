@@ -234,6 +234,9 @@ fun string-chop small big =
         SOME(a, b)
       end
 
+fun string-list-concat nil = ""
+  | string-list-concat (h :: t) = h ^ string-list-concat t
+
 (* Split string to a1+small+a2+small+...an where small does
    not appear in ai. Takes the first match of small. Returns
    the list of a1 :: a2 :: ... :: an :: nil *)

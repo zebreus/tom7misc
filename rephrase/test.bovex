@@ -32,6 +32,25 @@ let
 
   do VERBOSE andthen printlayout author
 
+  fun test-get-paragraphs () =
+    let
+      val s = get-paragraphs ([word] :: nil)
+      do case s of
+        p :: nil =>
+          let
+            val w = get-text-rec p
+          in
+            string-eq (w, "word")
+            otherwise fail ("wrong result: " ^ w)
+          end
+      | nil => fail "there were no paragraphs?"
+      | _ => fail "expected one paragraph"
+    in
+      ()
+    end
+  do test-get-paragraphs ()
+
+
   fun stick-line (lay : layout) : layout =
     case layoutcase lay of
       Node (BOX, attrs, children) =>
@@ -224,6 +243,16 @@ let
     end
 in
   (main-text
+   (times-roman
+    [Why is [helvetica[text]] missing?
+
+     more paragraph
+
+     click here to continue
+     ]))
+
+  (*
+  (main-text
   (times-roman
    [
     The system goes on-line March 13th, 2024.
@@ -249,5 +278,5 @@ in
 
     [bibliography()]
    ]))
-
+*)
 end

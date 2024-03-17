@@ -139,14 +139,6 @@ fun sticker (attrs : obj) (l : layout) =
    *)
 
 (*
-  let
-    val res = internal-line-break boxes
-  in
-
-  end
-  *)
-
-(*
  A pararagraph at a time,
 
  First, rephrase text.
@@ -235,6 +227,17 @@ fun unjoin (lay : layout) : layout list =
       then children
       else fail "group may not have attrs"
   | Node _ => lay :: nil
+
+(* XXX I think this should become unnecessary when node does
+   text normalization. *)
+fun get-text-rec (lay : layout) : string =
+  case layoutcase lay of
+    Text s => s
+  | Node (GROUP, attrs, children) =>
+      if obj-empty attrs
+      then string-list-concat (list-map get-text-rec children)
+      else fail "group may not have attrs"
+  | Node _ => fail "expected only text nodes"
 
 (* Generates a series of lines (boxes) with the glue turned into definite
    padding. Still in "AllBox" format. *)
@@ -346,6 +349,14 @@ fun stick-lines-column (line-height: float, p : layout) =
 
 fun get-paragraphs (ls : layout list) : layout list =
   let
+    do print "----get paras----\n"
+    do list-app (fn l =>
+                 let in
+                   debug-print-doc l;
+                   print "\n==\n";
+                 end) ls
+    do print "-----------------\n"
+
     val rev-paragraphs : layout list ref = ref nil
 
     (* Current paragraph being accumulated. *)
@@ -364,6 +375,9 @@ fun get-paragraphs (ls : layout list) : layout list =
     fun normalize s = string-replace (s, "\n", " ")
 
     fun do-one-text s =
+      let
+        do print ("one text [" ^ s ^ "]")
+      in
       case string-chop "\n\n" s of
         NONE => append (layout (normalize s))
       | SOME (para, rest) =>
@@ -373,7 +387,7 @@ fun get-paragraphs (ls : layout list) : layout list =
             next-paragraph ();
             do-one-text rest
           end
-
+      end
     fun do-one lay =
       case layoutcase lay of
         Text s => do-one-text s
@@ -411,6 +425,6 @@ fun get-paragraphs (ls : layout list) : layout list =
 
   in
     list-app do-one ls;
-
+    next-paragraph ();
     list-rev (!rev-paragraphs)
   end
