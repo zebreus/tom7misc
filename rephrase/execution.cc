@@ -257,12 +257,14 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   case Primop::INT_DIV_TO_FLOAT: {
     const auto &[aa, bb] = TwoInts("int_mod");
-    if (BigInt::Eq(bb, 0)) {
-      // We can allow division by zero, returning -inf, nan, or +inf
-      LOG(FATAL) << "unimplemented";
-    }
 
-    LOG(FATAL) << "unimplemented INT_DIV_TO_FLOAT";
+    // We allow division by zero, returning -inf, nan, or +inf.
+
+    // TODO: Can improve precision here with BigRat. This works
+    // fine unless the numbers are very large, though.
+    double numer = aa.ToDouble();
+    double denom = bb.ToDouble();
+    return Float(numer / denom, state);
   }
 
   case Primop::FLOAT_TIMES: {

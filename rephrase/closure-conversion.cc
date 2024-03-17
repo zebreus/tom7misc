@@ -13,7 +13,7 @@
 #include "simplification.h"
 #include "util.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 // Closure conversion makes all functions in the program
 // into globals. Globals are closed except for other globals.
@@ -52,6 +52,15 @@ static constexpr bool VERBOSE = true;
 
 
 namespace il {
+
+static const Type *PolyTypeToForall(AstPool *pool, const PolyType &pt) {
+  const Type *t = pt.second;
+  for (int i = pt.first.size() - 1; i >= 0; i --) {
+    t = pool->Forall(pt.first[i], t);
+  }
+  return t;
+}
+
 namespace {
 struct ConvertPass : public TypedPass<> {
   using TypedPass::TypedPass;
@@ -212,7 +221,10 @@ struct ConvertPass : public TypedPass<> {
     // We also need the free expression variables and their types.
     // Since these might be polymorphic variables, we also get the
     // types they're applied to. The same variable might appear
-    // multiple times, applied to different types!
+    // multiple times, applied to different types! We grab all
+    // the different ones since this used to try to put monomorphic
+    // versions in the environment. But we'll actually put a
+    // TypeFn-abstracted thing in there.
 
     using Uses = std::vector<std::vector<const Type *>>;
     std::unordered_map<std::string, Uses> free_expvars_map =
@@ -235,7 +247,7 @@ struct ConvertPass : public TypedPass<> {
 
     struct EnvEntry {
       std::string il_var;
-      std::vector<const Type *> type_args;
+      // std::vector<const Type *> type_args;
       PolyType polytype;
       std::string env_label;
     };
@@ -244,7 +256,7 @@ struct ConvertPass : public TypedPass<> {
     // This flattens each variable with its polytype and uses.
     std::vector<EnvEntry> env;
     env.reserve(free_expvars_map.size());
-    std::unordered_set<std::string> labels;
+    std::unordered_set<std::string> labels_used;
     for (const auto &[var, uses] : free_expvars_map) {
       // PERF! We should be deduplicating uses at the same types here,
       // especially when the tyvars are just empty!
@@ -252,26 +264,28 @@ struct ConvertPass : public TypedPass<> {
       CHECK(pt != nullptr) << "Bug: In closure conversion, the free "
         "variable " << var << " was not bound in the context!";
       CHECK(!uses.empty());
+      const size_t num_type_args = pt->first.size();
       for (const auto &types : uses) {
-        EnvEntry entry;
-        entry.il_var = var;
-        entry.type_args = types;
-        entry.polytype = *pt;
-        CHECK(pt->first.size() == types.size()) << "Internal type error: "
+        CHECK(types.size() == num_type_args) << "Internal type error: "
           "In closue conversion, the variable " << var << " is used with " <<
-          types.size() << " type args, but its type has kind " <<
-          pt->first.size();
-        // just need a unique label, but try to use the variable's
-        // name for clarity.
-        std::string label = pool->BaseVar(var);
-        int suffix = 0;
-        while (labels.contains(label)) {
-          suffix++;
-          label = StringPrintf("%s_%d", pool->BaseVar(var).c_str(), suffix);
-        }
-        entry.env_label = std::move(label);
-        env.push_back(std::move(entry));
+          num_type_args << " type args, but its type has kind " <<
+          num_type_args;
       }
+
+      EnvEntry entry;
+      entry.il_var = var;
+      entry.polytype = *pt;
+      // just need a unique label, but try to use the variable's
+      // name for clarity.
+      std::string label = pool->BaseVar(var);
+      int suffix = 0;
+      while (labels_used.contains(label)) {
+        suffix++;
+        label = StringPrintf("%s_%d", pool->BaseVar(var).c_str(), suffix);
+      }
+      labels_used.insert(label);
+      entry.env_label = std::move(label);
+      env.push_back(std::move(entry));
     }
 
     // Keep the environment in a stable order.
@@ -284,7 +298,7 @@ struct ConvertPass : public TypedPass<> {
     if (VERBOSE) {
       for (const EnvEntry &entry : env) {
         std::vector<std::string> ts;
-        for (const Type *t : entry.type_args) ts.push_back(TypeString(t));
+        // for (const Type *t : entry.type_args) ts.push_back(TypeString(t));
 
         printf(AORANGE("#%s") " = " ABLUE("%s") " (used as <%s>)\n"
                "   polytype: %s\n" ,
@@ -301,18 +315,28 @@ struct ConvertPass : public TypedPass<> {
     env_components.reserve(env.size());
     env_type_components.reserve(env.size());
     for (const EnvEntry &entry : env) {
-      const Type *t = entry.polytype.second;
-      CHECK(entry.polytype.first.size() == entry.type_args.size());
-      for (int i = 0; i < (int)entry.polytype.first.size(); i++) {
-        const std::string &alpha = entry.polytype.first[i];
-        const Type *arg = entry.type_args[i];
-        t = pool->SubstType(arg, alpha, t);
+      const PolyType &pt = entry.polytype;
+      // CHECK(entry.polytype.first.size() == entry.type_args.size());
+      // for (int i = 0; i < (int)entry.polytype.first.size(); i++) {
+      // const std::string &alpha = entry.polytype.first[i];
+      // const Type *arg = entry.type_args[i];
+      // t = pool->SubstType(arg, alpha, t);
+      // }
+
+      // eta expand the IL variable (using the TypeFn and Forall constructs,
+      // which is the only place we use these).
+      const Type *forall_type = PolyTypeToForall(pool, pt);
+      std::vector<const Type *> eta_type_args;
+      eta_type_args.reserve(pt.first.size());
+      for (int i = 0; i < (int)pt.first.size(); i++)
+        eta_type_args.push_back(pool->VarType(pt.first[i]));
+      const Exp *eta_exp = pool->Var(std::move(eta_type_args), entry.il_var);
+      for (int i = (int)pt.first.size() - 1; i >= 0; i--) {
+        eta_exp = pool->TypeFn(pt.first[i], eta_exp);
       }
-      // XXX This might be bogus: What if the type args mention a type
-      // variable that's not free because it's bound in a subexpression?
-      env_components.emplace_back(entry.env_label,
-                                  pool->Var(entry.type_args, entry.il_var));
-      env_type_components.emplace_back(entry.env_label, t);
+
+      env_components.emplace_back(entry.env_label, eta_exp);
+      env_type_components.emplace_back(entry.env_label, forall_type);
     }
 
     const Exp *env_exp = pool->Record(env_components);
@@ -331,12 +355,19 @@ struct ConvertPass : public TypedPass<> {
     // environment.
     const Exp *fn = cc_body;
     for (const EnvEntry &entry : env) {
-      fn = pool->Let({}, entry.il_var,
-                     pool->Project(entry.env_label, env_var_exp),
+      // The binding is polymorphic (regular prenex polymorphism)
+      // but the value in the environment is explicit first-order
+      // polymorphism. Convert.
+
+      const PolyType &pt = entry.polytype;
+      const Exp *rhs = pool->Project(entry.env_label, env_var_exp);
+      for (int i = 0; i < (int)pt.first.size(); i++) {
+        rhs = pool->TypeApp(rhs, pool->VarType(pt.first[i]));
+      }
+
+      fn = pool->Let(entry.polytype.first, entry.il_var, rhs,
                      fn);
     }
-
-    // Type variables used in
 
     const std::string global_sym =
       pool->NewVar(

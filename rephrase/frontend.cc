@@ -14,7 +14,6 @@
 #include "nullary.h"
 #include "il-util.h"
 #include "inclusion.h"
-#include "interval-cover.h"
 #include "uncurry.h"
 
 using Token = el::Token;

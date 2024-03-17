@@ -32,7 +32,7 @@ std::string ColorValueString(const Value &value) {
   } else if (const uint64_t *u = std::get_if<uint64_t>(&value.v)) {
     return StringPrintf("%lluLLU", *u);
   } else if (const double *d = std::get_if<double>(&value.v)) {
-    return StringPrintf("%.17g", d);
+    return StringPrintf("%.17g", *d);
   } else if (const std::unordered_map<std::string, Value *> *m =
              std::get_if<std::unordered_map<std::string, Value *>>(&value.v)) {
     std::string ret = AWHITE("{");
