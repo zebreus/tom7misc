@@ -16,7 +16,7 @@ test : lex_test.exe context_test.exe unification_test.exe parsing_test.exe front
 	./compiler_test.exe
 	./execution_test.exe
 
-test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex
+test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex hyph-en-us.tex
 	./bovex.exe -v test.bovex -o test.pdf
 
 # Changes by tom7.

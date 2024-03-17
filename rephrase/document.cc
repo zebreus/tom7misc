@@ -13,6 +13,21 @@
 
 // Could use actual infinity.
 static constexpr double INFINITE_PENALTY = 9999999.0;
+static constexpr double HYPHEN_PENALTY = 100.0;
+
+#define ATAG(s) AFGCOLOR(160, 160, 200, s)
+#define AATTRNAME(s) AFGCOLOR(200, 200, 160, s)
+#define AATTRVAL(s) AFGCOLOR(160, 200, 160, s)
+
+static DocTree TextDoc(const std::string &s) {
+  DocTree d;
+  d.text = s;
+  return d;
+}
+
+void DocTree::ClearChildren() {
+  children.clear();
+}
 
 void DocTree::AddChild(DocTree d) {
   // printf("Added child (now %d)\n", (int)children.size());
@@ -30,6 +45,10 @@ void DocTree::SetStringAttr(const std::string &name, const std::string &value) {
 
 void DocTree::SetDoubleAttr(const std::string &name, double d) {
   attrs[name] = AttrVal{.v = {d}};
+}
+
+void DocTree::SetLayoutAttr(const std::string &name, DocTree dt) {
+  attrs[name] = AttrVal{.v = std::make_shared<DocTree>(std::move(dt))};
 }
 
 const AttrVal *DocTree::GetAttr(const std::string &name) const {
@@ -74,6 +93,24 @@ const bool *DocTree::GetBoolAttr(const std::string &name) const {
   return nullptr;
 }
 
+const DocTree *DocTree::GetLayoutAttr(const std::string &name) const {
+  if (const AttrVal *a = GetAttr(name)) {
+    if (const std::shared_ptr<DocTree> *dt =
+        std::get_if<std::shared_ptr<DocTree>>(&a->v)) {
+      return dt->get();
+    } else {
+      LOG(FATAL) << "Attribute " << name << " was present, but expected "
+        "layout type.";
+    }
+  }
+  return nullptr;
+}
+
+
+static std::string ShortColorLayout(const DocTree &doc) {
+  if (doc.IsText()) return StringPrintf(AWHITE("%s"), doc.text.c_str());
+  else return ATAG("<layout>");
+}
 
 std::string AttrValString(const AttrVal &val) {
   if (const std::string *s = std::get_if<std::string>(&val.v)) {
@@ -84,6 +121,11 @@ std::string AttrValString(const AttrVal &val) {
     return StringPrintf("%.17g", *d);
   } else if (const BigInt *b = std::get_if<BigInt>(&val.v)) {
     return b->ToString();
+  } else if (const bool *b = std::get_if<bool>(&val.v)) {
+    return b ? "true" : "false";
+  } else if (const std::shared_ptr<DocTree> *dt =
+             std::get_if<std::shared_ptr<DocTree>>(&val.v)) {
+    return ShortColorLayout(**dt);
   } else {
     return "??INVALID??";
   }
@@ -91,13 +133,25 @@ std::string AttrValString(const AttrVal &val) {
 
 std::pair<std::string, AttrVal>
 ValueToAttrVal(const std::string &field, const bc::Value &val) {
+  CHECK(!field.empty());
+
   auto CheckStripTag = [&field](bc::ObjectFieldType oft) {
       char c = ObjectFieldTypeTag(oft);
-      CHECK(!field.empty() && field[0] == c) << "Bug: Field tag did not match "
+      CHECK(field[0] == c) << "Bug: Field tag did not match "
         "type in object? field: " << field;
       return field.substr(1, std::string::npos);
     };
 
+  using map_type = std::unordered_map<std::string, bc::Value *>;
+
+  // Check fields tagged as layout first, since these could also
+  // contain strings.
+  if (field[0] == ObjectFieldTypeTag(bc::ObjectFieldType::LAYOUT)) {
+    std::string f = CheckStripTag(bc::ObjectFieldType::LAYOUT);
+    return {f, AttrVal{.v = std::make_shared<DocTree>(ValueToDocTree(&val))}};
+  }
+
+  // Otherwise, look at the type of the value.
   if (const std::string *s = std::get_if<std::string>(&val.v)) {
     return {CheckStripTag(bc::ObjectFieldType::STRING), AttrVal{.v = *s}};
   } else if (const uint64_t *u = std::get_if<uint64_t>(&val.v)) {
@@ -112,6 +166,9 @@ ValueToAttrVal(const std::string &field, const bc::Value &val) {
     return {CheckStripTag(bc::ObjectFieldType::FLOAT), AttrVal{.v = *d}};
   } else if (const BigInt *b = std::get_if<BigInt>(&val.v)) {
     return {CheckStripTag(bc::ObjectFieldType::INT), AttrVal{.v = *b}};
+  } else if (const map_type *obj = std::get_if<map_type>(&val.v)) {
+    // Only expecting layout; handled above.
+    LOG(FATAL) << "Saw map type that was not layout?";
   } else {
     LOG(FATAL) << "Unsupported attribute type in layout. It must be "
       "BigInt, string, bool, uint64_t, or double. The field was: " << field;
@@ -225,6 +282,10 @@ AttrValToValue(std::vector<bc::Value *> *heap,
     return {MakeField(bc::ObjectFieldType::INT), NewInt(heap, *b)};
   } else if (const bool *b = std::get_if<bool>(&val.v)) {
     return {MakeField(bc::ObjectFieldType::BOOL), NewU64(heap, *b ? 1 : 0)};
+  } else if (const std::shared_ptr<DocTree> *dt =
+             std::get_if<std::shared_ptr<DocTree>>(&val.v)) {
+    return {MakeField(bc::ObjectFieldType::LAYOUT),
+            DocTreeToValue(heap, **dt)};
   } else {
     LOG(FATAL) << "Invalid AttrVal when converting to Value";
   }
@@ -282,10 +343,6 @@ bool DocTree::IsEmpty() const {
 bool DocTree::IsGroup() const {
   return attrs.empty() && !children.empty();
 }
-
-#define ATAG(s) AFGCOLOR(160, 160, 200, s)
-#define AATTRNAME(s) AFGCOLOR(200, 200, 160, s)
-#define AATTRVAL(s) AFGCOLOR(160, 200, 160, s)
 
 void DebugPrintDocTree(const DocTree &doc) {
   std::function<void(int, const DocTree &)> Rec =
@@ -354,69 +411,117 @@ static std::string_view NextWord(std::string_view &text) {
   return ret;
 }
 
-DocTree TextDoc(const std::string &s) {
-  DocTree d;
-  d.text = s;
-  return d;
-}
-
-static std::vector<DocTree>
-BoxifyText(const Font *font, double font_size, std::string_view text) {
+std::vector<DocTree>
+Document::BoxifyText(const Font *font, double font_size,
+                     std::string_view text) {
   static constexpr bool VERBOSE = false;
   std::vector<DocTree> out;
 
   const double space_width = font->CharWidth(' ');
+  const double hyphen_width = font->CharWidth('-');
 
   // Work a word at a time.
   while (!text.empty()) {
     std::string_view word = NextWord(text);
     if (word.empty()) continue;
 
-    // TODO: Here's where we would implement hyphenation.
+    // TODO: We currently punt on any "word" that contains
+    // non-letters, because the hyphenation library doesn't
+    // handle these. But we should trip punctuation like
+    // a trailing comma or leading quotation mark. Actual
+    // hyphens can of course allow for break after, as well.
+    const std::vector<std::string> hyphen_parts =
+      [&]() -> std::vector<std::string> {
+        for (int i = 0; i < (int)word.size(); i++) {
+          if (!std::isalpha(word[i])) return {std::string(word)};
+        }
+        return hyphenation.Hyphenate(word);
+    }();
+
+    // Now turn the word into boxes. We read successive codepoints
+    // from each hyphenated piece.
 
     // Then to turn the word into boxes, read successive codepoints
     // from it.
     uint32_t prev = ' ';
     std::string chunk;
     double chunk_width = 0.0;
-    for (const uint32_t codepoint : UTF8Codepoints(word)) {
-      double char_width = font->CharWidth(codepoint);
-      std::optional<double> kern = font->GetKerning(prev, codepoint);
-      if (kern.has_value()) {
-        // If there is a kerning pair, make an unbreakable box to
-        // contain the chunk so far.
-        DocTree d;
-        d.SetStringAttr("display", "box");
-        d.SetDoubleAttr("width", chunk_width * font_size);
-        d.SetDoubleAttr("height", font_size);
-        // PERF The font is normalized onto every chunk, which may be kinda
-        // expensive.
-        d.SetDoubleAttr("font-size", font_size);
-        d.SetStringAttr("font-name", font->Name());
-
-        // Since this is inside a word, we disable breaks here by setting
-        // the break penalty "infinite".
-        d.SetDoubleAttr("glue-break-penalty", INFINITE_PENALTY);
-
-        d.AddChild(TextDoc(chunk));
-        out.push_back(std::move(d));
-
-        chunk = Util::EncodeUTF8(codepoint);
-        chunk_width = char_width;
-
-        if (VERBOSE) {
-          printf("Kerned '%c'+'%c'; chunk now '%s'\n", prev, codepoint,
-                 chunk.c_str());
-        }
-      } else {
-        // Extend the chunk.
-        chunk += Util::EncodeUTF8(codepoint);
-        chunk_width += char_width;
-        if (VERBOSE) {
-          printf("Added '%c'; chunk now '%s'\n", codepoint, chunk.c_str());
-        }
+    for (int hyidx = 0; hyidx < (int)hyphen_parts.size(); hyidx++) {
+      const std::string &hypart = hyphen_parts[hyidx];
+      if (VERBOSE) {
+        printf(AGREY("[%s]") "\n", hypart.c_str());
       }
-      prev = codepoint;
+      auto codepoints = UTF8Codepoints(hypart);
+      for (auto it = codepoints.begin(); it != codepoints.end(); ++it) {
+        const uint32_t codepoint = *it;
+        double char_width = font->CharWidth(codepoint);
+        std::optional<double> kern = font->GetKerning(prev, codepoint);
+
+        // Do we break before this character?
+        const bool break_for_kern = kern.has_value();
+        // First character of a hyphen part, except the first one.
+        const bool break_for_hyphen = [&]() {
+            if (hyidx == 0) return false;
+            return it == codepoints.begin();
+          }();
+
+        if (VERBOSE) {
+          printf("[%c] -> [%c] %s%s\n",
+                 prev, codepoint,
+                 break_for_kern ? " " AGREEN("kern") : "",
+                 break_for_hyphen ? " " APURPLE("hyph") : "");
+        }
+
+        if (break_for_kern || break_for_hyphen) {
+          // If there is a kerning pair, make an unbreakable box to
+          // contain the chunk so far.
+          DocTree d;
+          d.SetStringAttr("display", "box");
+          d.SetDoubleAttr("width", chunk_width * font_size);
+          d.SetDoubleAttr("height", font_size);
+          // PERF The font is normalized onto every chunk, which may be kinda
+          // expensive.
+          d.SetDoubleAttr("font-size", font_size);
+          d.SetStringAttr("font-name", font->Name());
+
+          if (break_for_hyphen) {
+            // If breaking for hyphen, then we have a penalty,
+            d.SetDoubleAttr("glue-break-penalty", HYPHEN_PENALTY);
+            d.SetLayoutAttr("glue-break-insert", TextDoc("-"));
+            // Not including the kerning, since we are breaking between
+            // the two characters.
+            d.SetDoubleAttr("glue-break-extra-width", hyphen_width);
+          } else {
+            // Since this is inside a word, we disable breaks here by setting
+            // the break penalty "infinite".
+            d.SetDoubleAttr("glue-break-penalty", INFINITE_PENALTY);
+          }
+
+          d.AddChild(TextDoc(chunk));
+          out.push_back(std::move(d));
+
+          chunk = Util::EncodeUTF8(codepoint);
+          chunk_width = char_width;
+          if (break_for_kern) {
+            CHECK(kern.has_value());
+            // Typically negative.
+            chunk_width += kern.value();
+          }
+
+          if (VERBOSE) {
+            printf("Kerned '%c'+'%c'; chunk now '%s'\n", prev, codepoint,
+                   chunk.c_str());
+          }
+        } else {
+          // Extend the chunk.
+          chunk += Util::EncodeUTF8(codepoint);
+          chunk_width += char_width;
+          if (VERBOSE) {
+            printf("Added '%c'; chunk now '%s'\n", codepoint, chunk.c_str());
+          }
+        }
+        prev = codepoint;
+      }
     }
 
     CHECK(!chunk.empty()) << "We only break on kerning pairs, so the chunk "
@@ -441,6 +546,18 @@ BoxifyText(const Font *font, double font_size, std::string_view text) {
 
     d.AddChild(TextDoc(chunk));
     out.push_back(std::move(d));
+  }
+
+  if (VERBOSE) {
+    printf(ABGCOLOR(255, 0, 0, AFGCOLOR(255, 255, 255, " ==== Boxified ==== "))
+           "\n");
+
+    for (const DocTree &x : out) {
+      DebugPrintDocTree(x);
+    }
+
+    printf(ABGCOLOR(255, 0, 0, AFGCOLOR(255, 255, 255, " ================== "))
+           "\n");
   }
 
   return out;
@@ -541,6 +658,7 @@ namespace {
 struct Box {
   // Request from input.
   double width = 0.0;
+  double break_extra_width = 0.0;
   // From text, or from box's native height.
   double height = 0.0;
   double glue_ideal = 0.0;
@@ -550,6 +668,7 @@ struct Box {
 
   // Set during layout.
   double pad_right = 0.0;
+  bool did_break = false;
 
   // TODO: other metrics copied from attributes, like glue!
   const DocTree *node = nullptr;
@@ -557,6 +676,9 @@ struct Box {
 }
 
 DocTree Document::PackBoxes(double width, const DocTree &doc) {
+  // Allows hyphens.
+  static constexpr double MAX_BREAK_PENALTY = 200.0;
+
   static constexpr bool VERBOSE = false;
   if (doc.IsEmpty()) return doc;
   CHECK(!doc.IsText()) <<
@@ -574,6 +696,10 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
 
       Box b;
       b.width = *width;
+      if (const double *bw = doc.GetDoubleAttr("glue-break-extra-width")) {
+        b.break_extra_width = *bw;
+      }
+
       if (const double *height = doc.GetDoubleAttr("height")) {
         b.height = *height;
       }
@@ -581,8 +707,12 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
         b.glue_ideal = *glue;
       }
       if (const double *pen = doc.GetDoubleAttr("glue-break-penalty")) {
-        if (*pen > 0.0) b.cannot_break = true;
+        if (*pen > MAX_BREAK_PENALTY) {
+          b.cannot_break = true;
+          // printf(ABLUE("PENALTY") " %.11g\n", *pen);
+        }
       }
+
       b.node = &doc;
       return b;
     };
@@ -617,6 +747,11 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
       // out.push_back(TextDoc("EmitLine"));
       if (current_line.empty()) return;
 
+      {
+        Box &last = current_line.back();
+        last.did_break = true;
+      }
+
       DocTree line;
       line.SetStringAttr("display", "box");
       // Or the actual width?
@@ -626,12 +761,40 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
         // Same box, but extend the width to consume the actually used
         // glue.
         DocTree d = *box.node;
-        d.SetDoubleAttr("width", box.width + box.pad_right);
+        std::optional<DocTree> insertion;
+        if (box.did_break) {
+          if (const DocTree *insert = d.GetLayoutAttr("glue-break-insert")) {
+            // Copy the node so that we have its text properties, etc.
+            DocTree ins = *box.node;
+            ins.RemoveAttr("glue-contract");
+            ins.RemoveAttr("glue-break-penalty");
+            ins.RemoveAttr("glue-break-insert");
+            ins.RemoveAttr("glue-ideal");
+            ins.SetDoubleAttr("width", box.break_extra_width);
+            ins.ClearChildren();
+            ins.AddChild(*insert);
+            insertion = {std::move(ins)};
+            if (VERBOSE) {
+              printf(ABGCOLOR(255, 255, 0, "HYPHEN:") "\n");
+              DebugPrintDocTree(insertion.value());
+            }
+          }
+          d.SetDoubleAttr("width", box.width + box.pad_right);
+
+        } else {
+          d.SetDoubleAttr("width", box.width + box.pad_right);
+        }
         d.SetDoubleAttr("height", box.height);
         d.RemoveAttr("glue-contract");
         d.RemoveAttr("glue-break-penalty");
+        d.RemoveAttr("glue-break-insert");
+        d.RemoveAttr("glue-break-width");
         d.RemoveAttr("glue-ideal");
         line.AddChild(d);
+        if (insertion.has_value()) {
+          line.AddChild(insertion.value());
+        }
+
       }
       out.push_back(std::move(line));
       current_line.clear();
@@ -644,19 +807,27 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
   for (const Box &box : boxes) {
 
     if (VERBOSE) {
+      // std::string text = ShortColorLayout(*box.node);
+      DebugPrintDocTree(*box.node);
       printf("line: %d boxes, width %.3g. %s"
-             "post %.3g. this box %.3g, target %.3g\n",
+             "post %.3g. this box %.3g, target %.3g box\n",
              (int)current_line.size(), current_width,
              cannot_break ? ARED("NOBRK") " " : "",
              current_postwidth,
              box.width, width);
     }
 
-    if (cannot_break ||
-        current_width + current_postwidth + box.width <= width) {
+    const bool fits =
+      current_width + current_postwidth + box.width <= width;
+    if (cannot_break || fits) {
       // Take the box.
+      if (VERBOSE) {
+        printf(AGREEN("take") "%s%s\n\n",
+               cannot_break ? " (cannot-break)" : "",
+               fits ? " (fits)" : "");
+      }
 
-      // This means the previous box gets is glue turned into padding.
+      // This means the previous box gets its glue turned into padding.
       if (!current_line.empty()) {
         current_line.back().pad_right = current_postwidth;
         current_width += current_postwidth;
@@ -677,6 +848,9 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
 
     } else {
       // Break.
+      if (VERBOSE) {
+        printf(AORANGE("break") "\n\n");
+      }
       EmitLine();
 
       current_line = {box};

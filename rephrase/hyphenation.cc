@@ -7,7 +7,7 @@
 #include "util.h"
 #include "base/logging.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 // The hyphenation format:
 // See "Word Hy-phen-a-tion by Com-put-er", Liang, 1983
@@ -96,6 +96,7 @@ Hyphenation::Hyphenation() {
         patterns[key] = code;
       } else {
         // An exception like "ta-ble" is equivalent to ".8t8a9b8l8e8."
+        // (Maximum priority hyphens or non-hyphens at each slot.)
         std::string pat = ".";
         for (int i = 0; i < (int)line.size(); i++) {
           if (line[i] == '-') {
@@ -122,8 +123,8 @@ Hyphenation::Hyphenation() {
   }
 }
 
-std::vector<std::string> Hyphenation::Hyphenate(const std::string &word) {
-  std::string lword = "." + Util::lcase(word) + ".";
+std::vector<std::string> Hyphenation::Hyphenate(std::string_view word) {
+  std::string lword = "." + Util::lcase(std::string(word)) + ".";
 
   std::vector<uint8_t> values(lword.size() + 1, 0);
 
@@ -146,7 +147,7 @@ std::vector<std::string> Hyphenation::Hyphenate(const std::string &word) {
   }
 
   if (VERBOSE) {
-    printf("For word [%s]:\n", word.c_str());
+    printf("For word [%s]:\n", std::string(word).c_str());
     for (int i = 0; i < (int)lword.size(); i++) {
       printf(" %c", lword[i]);
     }
@@ -170,7 +171,8 @@ std::vector<std::string> Hyphenation::Hyphenate(const std::string &word) {
   for (int i = 1; i < (int)values.size() - 1; i++) {
     if (values[i] & 1) {
       if (cur_start < i) {
-        out.push_back(word.substr(cur_start - 1, i - cur_start));
+        out.push_back(
+            std::string(word.substr(cur_start - 1, i - cur_start)));
         cur_start = i;
       }
     }
@@ -178,7 +180,8 @@ std::vector<std::string> Hyphenation::Hyphenate(const std::string &word) {
 
   int last = values.size() - 1;
   if (cur_start < last) {
-    out.push_back(word.substr(cur_start - 1, last - cur_start));
+    out.push_back(
+        std::string(word.substr(cur_start - 1, last - cur_start)));
   }
 
   return out;

@@ -99,7 +99,10 @@ object Box of { width: float, height: float,
                 glue-break-penalty : float,
                 (* When breaking at this point, inserts additional layout.
                    This is typically a hyphen. *)
-                glue-break-insert : layout }
+                glue-break-insert : layout,
+                (* When breaking at this point, the width of the box
+                   including the glue-break-insert. *)
+                glue-break-width : float }
 
 fun box (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_BOX) l

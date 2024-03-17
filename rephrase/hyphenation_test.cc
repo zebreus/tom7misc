@@ -36,6 +36,10 @@ static void TestHyphenations() {
 
   // Preserve capitalization.
   TESTCASE("Cornstarch", "Corn-starch");
+
+  TESTCASE("the", "the");
+  TESTCASE("2024", "2024");
+  TESTCASE("exercitation", "ex-erci-ta-tion");
 }
 
 int main(int argc, char **argv) {

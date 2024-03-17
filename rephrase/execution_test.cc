@@ -483,6 +483,14 @@ static void StringTests()  {
       RunToString(
           "print (substr (\"lorem ipsum dolor sit amet\", 7, 8))"),
       "psum dol");
+
+  CHECK_EQ(
+      RunToString(
+          "case substr (\"camera\", 6, 0) of\n"
+          "  \"\" => print \"OK\"\n"
+          " | _ => print \"no\"\n"),
+      "OK");
+
 }
 
 static void FloatTests() {

@@ -25,7 +25,7 @@ struct UTF8Codepoints {
     constexpr const_iterator(const char *ptr, const char *limit) :
       ptr(ptr), limit(limit) {}
     constexpr const_iterator(const const_iterator &other) = default;
-    constexpr bool operator =(const const_iterator &other) const {
+    constexpr bool operator ==(const const_iterator &other) const {
       return other.ptr == ptr;
     }
     constexpr bool operator !=(const const_iterator &other) const {

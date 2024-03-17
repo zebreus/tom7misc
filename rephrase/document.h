@@ -13,13 +13,16 @@
 #include "bytecode.h"
 #include "hyphenation.h"
 
+struct DocTree;
+
 struct AttrVal {
   using t = std::variant<
     BigInt,
     std::string,
     uint64_t,
     bool,
-    double
+    double,
+    std::shared_ptr<DocTree>
     >;
   t v;
 };
@@ -45,13 +48,16 @@ struct DocTree {
   const std::string *GetStringAttr(const std::string &) const;
   const double *GetDoubleAttr(const std::string &) const;
   const bool *GetBoolAttr(const std::string &) const;
+  const DocTree *GetLayoutAttr(const std::string &) const;
 
   // Simply overwriting the attribute if already present.
   void SetStringAttr(const std::string &name, const std::string &value);
   void SetDoubleAttr(const std::string &name, double d);
+  void SetLayoutAttr(const std::string &name, DocTree t);
 
   void RemoveAttr(const std::string &name);
 
+  void ClearChildren();
   void AddChild(DocTree doc);
 };
 
@@ -81,7 +87,8 @@ struct Font {
   virtual ~Font() = default;
   virtual std::string Name() const;
 
-  virtual std::optional<double> GetKerning(int codepoint1, int codepoint2) const;
+  virtual std::optional<double>
+  GetKerning(int codepoint1, int codepoint2) const;
 
   // Get the width of the codepoint when the font is at 1pt. You can
   // multiply by the font size to get the width at that size.
@@ -108,6 +115,9 @@ struct Document {
 
   // Pack boxes to lines.
   DocTree PackBoxes(double width, const DocTree &doc);
+
+  std::vector<DocTree>
+  BoxifyText(const Font *font, double font_size, std::string_view text);
 
   // All loaded fonts.
   std::unordered_map<std::string, std::unique_ptr<Font>> fonts;

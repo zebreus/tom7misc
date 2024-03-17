@@ -616,7 +616,7 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   const auto CaseExpr = [&](const auto &Expr) {
       return
-        ((IsToken<CASE>() >> Expr << IsToken<OF>()) &&
+        (((IsToken<CASE>() >> Expr << IsToken<OF>()) &&
          (Opt(IsToken<BAR>()) >>
           Separate(
               Pattern && (IsToken<DARROW>() >> Expr),
@@ -624,7 +624,14 @@ const Exp *Parsing::Parse(AstPool *pool,
         >[&](const auto &pair) {
             const auto &[obj, clauses] = pair;
             return pool->Case(obj, clauses);
-          };
+          }) ||
+        (Mark(IsToken<CASE>()) >[&](const auto &err) -> const Exp * {
+            const auto &[_, start, length] = err;
+            LOG(FATAL) << ErrorAtIndex(start, length) <<
+              "Expected CASE EXP OF ROWS+ after seeing "
+              "CASE. At: " << start << " for " << length;
+            return nullptr;
+          });
     };
 
   const auto FailExpr = [&](const auto &Expr) {

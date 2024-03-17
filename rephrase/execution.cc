@@ -130,7 +130,7 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
     const int64_t bb = GetInt64("substr start", *bi);
     const int64_t cc = GetInt64("substr length", *ci);
     CHECK(bb >= 0 && cc >= 0 &&
-          bb < (int64_t)as->size() &&
+          bb <= (int64_t)as->size() &&
           bb + cc <= (int64_t)as->size())
       << "In string-substr, out of range start/length: "
       << bb << ", " << cc;
@@ -353,9 +353,9 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     std::optional<int64_t> io = bb->ToInt();
     CHECK(io.has_value()) << "Index is way too big! " << bb->ToString();
     const int64_t idx = io.value();
-    CHECK(idx >= 0 && idx < (int64_t)children.size()) << "Index out of bounds in "
-      "layout-vec-sub.\nIndex: " << idx << "\nVector size: " <<
-      children.size();
+    CHECK(idx >= 0 && idx < (int64_t)children.size()) <<
+      "Index out of bounds in layout-vec-sub.\nIndex: " <<
+      idx << "\nVector size: " << children.size();
     return children[idx];
   }
 
