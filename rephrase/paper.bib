@@ -1,4 +1,6 @@
 
+(* Not BibTeX format! See cite.bovex. *)
+
 val famousbirthdays =
   bib-website {(Website) url = "https://allfamousbirthday.com/donald-knuth/"}
 
@@ -12,3 +14,12 @@ val murphy2013first =
   page-end = 133,
   title = "The First Level of Super Mario Bros. is Easy with Lexicographic Orderings and Time Travel. After that it gets a little tricky"
   }
+
+val liang1983word =
+  bib-phd-thesis{(PhdThesis)
+  (* Yes, the hyphens are in the title. *)
+  title = "Word Hy-phen-a-tion by Com-put-er",
+  author = "Liang, Franklin Mark",
+  year = 1983,
+  university = "Stanford University"
+}

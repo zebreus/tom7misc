@@ -115,7 +115,7 @@ static int Bovex(const std::vector<std::string> &args) {
   DocTree doc = execution.ExtractDocument();
   // Measure final badness?
 
-  if (true || verbose > 1) {
+  if (verbose > 1) {
     printf(AWHITE("The document") ":\n");
     DebugPrintDocTree(doc);
   }

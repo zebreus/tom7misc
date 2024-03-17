@@ -349,13 +349,17 @@ fun stick-lines-column (line-height: float, p : layout) =
 
 fun get-paragraphs (ls : layout list) : layout list =
   let
-    do print "----get paras----\n"
-    do list-app (fn l =>
-                 let in
-                   debug-print-doc l;
-                   print "\n==\n";
-                 end) ls
-    do print "-----------------\n"
+    do LAYOUT-VERBOSE
+      andthen
+      let in
+        print "----get paras----\n";
+        list-app (fn l =>
+                  let in
+                    debug-print-doc l;
+                    print "\n==\n";
+                  end) ls;
+        print "-----------------\n";
+      end
 
     val rev-paragraphs : layout list ref = ref nil
 
@@ -376,7 +380,7 @@ fun get-paragraphs (ls : layout list) : layout list =
 
     fun do-one-text s =
       let
-        do print ("one text [" ^ s ^ "]")
+        do LAYOUT-VERBOSE andthen print ("one text [" ^ s ^ "]")
       in
       case string-chop "\n\n" s of
         NONE => append (layout (normalize s))

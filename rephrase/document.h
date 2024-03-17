@@ -11,6 +11,7 @@
 
 #include "bignum/big.h"
 #include "bytecode.h"
+#include "hyphenation.h"
 
 struct AttrVal {
   using t = std::variant<
@@ -93,9 +94,6 @@ struct Font {
 struct Document {
   virtual ~Document() = default;
 
-  // All loaded fonts.
-  std::unordered_map<std::string, std::unique_ptr<Font>> fonts;
-
   struct TextProps {
     std::string font_face;
     double font_size = 12.0;
@@ -110,6 +108,10 @@ struct Document {
 
   // Pack boxes to lines.
   DocTree PackBoxes(double width, const DocTree &doc);
+
+  // All loaded fonts.
+  std::unordered_map<std::string, std::unique_ptr<Font>> fonts;
+  Hyphenation hyphenation;
 };
 
 #endif
