@@ -31,6 +31,9 @@ fun list-append (h :: t, l2) = h :: list-append(t, l2)
 
 (* val @ = list-append *)
 
+fun list-rcons (nil, x) = x :: nil
+  | list-rcons (h :: t, x) = h :: list-rcons (t, x)
+
 fun list-concat nil = nil
   | list-concat (l::t) = list-append(l, list-concat t)
 

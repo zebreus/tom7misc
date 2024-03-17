@@ -78,6 +78,9 @@ let
       val LEFT-COLUMN-X = LEFT-MARGIN
       val COLUMN-STRIDE = COLUMN-WIDTH +. GUTTER
 
+      (* XXX This should depend on the font *)
+      val PARAGRAPH-VSPACE-BOTTOM = 12.0
+
       (* Layout state. *)
       val current-column = ref 0
       (* y position within column. *)
@@ -132,6 +135,11 @@ let
             end
 
           val lines : layout list = pack-boxes (COLUMN-WIDTH, boxes)
+
+          (* Put a line at the end to space out the paragraph. We
+             should do this with glue. *)
+          val lines = list-rcons
+            (lines, box {(Box) height = PARAGRAPH-VSPACE-BOTTOM} [])
 
           do VERBOSE andthen
             let in

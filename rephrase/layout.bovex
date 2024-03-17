@@ -250,6 +250,7 @@ fun pack-boxes (width : float, content : layout) : layout list =
 
    and flattens them into a single "column" sticker with
    stickers as children. *)
+(*
 fun stick-lines-column (line-height: float, p : layout) =
   let
 
@@ -329,30 +330,7 @@ fun stick-lines-column (line-height: float, p : layout) =
   in
     r (0.0, get-lines p)
   end
-
-(* Parse the top-level text nodes. *)
-
-(*
-fun parse-text (parse : string -> layout) (l : layout) : layout =
-  let
-    fun parse-subtext ll =
-      case layoutcase ll of
-        Text s => parse s
-      | _ => fail "expected Text node!"
-  in
-    (case layoutcase l of
-      Text s => parse s
-    | Node (SPAN, attrs, children : layout list) =>
-        let val nc = list-map parse-subtext children
-        in span attrs (layout-concat nc)
-        end
-    | Node (GROUP, _, children : layout list) =>
-        layout-concat (list-map (parse-text parse) children)
-    | Node (BOX, _, _) => l
-    | Node (STICKER, _, _) => l
-    | _ => fail "unimplemented node type")
-  end
-  *)
+*)
 
 (*
  Parsing text into paragraphs (and perhaps other stuff).
@@ -362,17 +340,9 @@ fun parse-text (parse : string -> layout) (l : layout) : layout =
  text and spans until we see a paragraph break (two
  newlines) or something else we're interested in. Spans
  can be nested within paragraphs, and this is natural.
- If we have a paragraph inside a span, we have a number
- of options...
- - Don't allow it!
- - Don't do anything special to parse it!
- - We could perhaps allow for paragraphs *within* paragraphs.
-   Not sure what that means, though!
- - We could apply the span (duplicating the attributes from it
-   to each paragraph, making them properly nested. This might
-   be what's expected?
-
-   *)
+ If we have a paragraph inside a span, we smear the span's
+ attributes onto the paragraph pieces, and join the
+ first one and last one to surrounding paragraphs. *)
 
 fun get-paragraphs (ls : layout list) : layout list =
   let
