@@ -382,6 +382,14 @@ fun get-paragraphs (ls : layout list) : layout list =
     val acc = ref []
     fun append (lay : layout) = acc := [[!acc][lay]]
 
+    fun next-paragraph () =
+      let in
+        (if layout-empty (!acc)
+         then ()
+         else rev-paragraphs := !acc :: !rev-paragraphs);
+        acc := []
+      end
+
     (* TODO: normalize whitespace *)
     fun normalize s = string-replace (s, "\n", " ")
 
@@ -390,13 +398,9 @@ fun get-paragraphs (ls : layout list) : layout list =
         NONE => append (layout (normalize s))
       | SOME (para, rest) =>
           (* Got a paragraph. *)
-          let
-            do append (layout (normalize para))
-            do if layout-empty (!acc)
-               then ()
-               else rev-paragraphs := !acc :: !rev-paragraphs
-            do acc := []
-          in
+          let in
+            append (layout (normalize para));
+            next-paragraph ();
             do-one-text rest
           end
 
@@ -405,11 +409,31 @@ fun get-paragraphs (ls : layout list) : layout list =
         Text s => do-one-text s
       | Node (BOX, _, _) => append lay
       | Node (SPAN, attrs, children) =>
-          (case get-paragraphs children of
-             nil => append (span attrs [])
-           | p :: nil => append (span attrs p)
-           | ps => fail ("multiple paragraphs in span not yet " ^
-                         "implemented)"))
+          let
+            val paras = get-paragraphs children
+            (* Apply the same attributes to every paragraph. *)
+            val spans = list-map (fn ch => span attrs ch) paras
+          in
+            case spans of
+              nil => append (span attrs [])
+            | p :: nil => append p
+            | p :: ps =>
+                let
+                  fun rec nil = ()
+                    | rec (p :: ps) =
+                    let in
+                      next-paragraph ();
+                      append p;
+                      rec ps
+                    end
+                in
+                  (* append the first one to the current paragraph. *)
+                  append p;
+                  (* now each one starts a new paragraph. but note
+                     that we don't flush the last one. *)
+                  rec ps
+                end
+          end
       | Node (GROUP, attrs, children) =>
           if obj-empty attrs
           then list-app do-one children

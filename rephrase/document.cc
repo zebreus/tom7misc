@@ -387,8 +387,8 @@ BoxifyText(const Font *font, double font_size, std::string_view text) {
         // contain the chunk so far.
         DocTree d;
         d.SetStringAttr("display", "box");
-        // XXX chunk height?
         d.SetDoubleAttr("width", chunk_width * font_size);
+        d.SetDoubleAttr("height", font_size);
         // PERF The font is normalized onto every chunk, which may be kinda
         // expensive.
         d.SetDoubleAttr("font-size", font_size);
@@ -541,6 +541,8 @@ namespace {
 struct Box {
   // Request from input.
   double width = 0.0;
+  // From text, or from box's native height.
+  double height = 0.0;
   double glue_ideal = 0.0;
   // Derived from penalty. Later, we should actually use softer
   // penalties.
@@ -556,8 +558,12 @@ struct Box {
 
 DocTree Document::PackBoxes(double width, const DocTree &doc) {
   static constexpr bool VERBOSE = false;
+  if (doc.IsEmpty()) return doc;
+  CHECK(!doc.IsText()) <<
+    "PackBoxes wants a node that has only box children. Got text: " <<
+    doc.text;
+
   std::vector<DocTree> out;
-  CHECK(!doc.IsText()) << "PackBoxes wants a node that has only box children.";
 
   auto GetBox = [](const DocTree &doc) -> Box {
       const double *width = doc.GetDoubleAttr("width");
@@ -568,6 +574,9 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
 
       Box b;
       b.width = *width;
+      if (const double *height = doc.GetDoubleAttr("height")) {
+        b.height = *height;
+      }
       if (const double *glue = doc.GetDoubleAttr("glue-ideal")) {
         b.glue_ideal = *glue;
       }
@@ -603,7 +612,8 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
   // Now pack.
   // Simple first-fit algorithm so we can test the end-to-end.
   std::vector<Box> current_line;
-  auto EmitLine = [width, &out, &current_line]() {
+  double current_line_max_height = 0.0;
+  auto EmitLine = [width, &out, &current_line, &current_line_max_height]() {
       // out.push_back(TextDoc("EmitLine"));
       if (current_line.empty()) return;
 
@@ -611,6 +621,7 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
       line.SetStringAttr("display", "box");
       // Or the actual width?
       line.SetDoubleAttr("width", width);
+      line.SetDoubleAttr("height", current_line_max_height);
       for (const Box &box : current_line) {
         // Same box, but extend the width to consume the actually used
         // glue.
@@ -621,8 +632,9 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
         d.RemoveAttr("glue-ideal");
         line.AddChild(d);
       }
-
       out.push_back(std::move(line));
+      current_line.clear();
+      current_line_max_height = 0.0;
     };
 
   double current_width = 0.0;
@@ -652,6 +664,8 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
       }
 
       current_line.push_back(box);
+      current_line_max_height =
+        std::max(current_line_max_height, box.height);
       current_width += box.width;
       cannot_break = box.cannot_break;
       current_postwidth = box.glue_ideal;

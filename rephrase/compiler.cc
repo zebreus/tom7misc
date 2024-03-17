@@ -71,5 +71,18 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
   }
 
   bc::Program bc_pgm = to_bytecode.Convert(il_pgm);
+
+  if (verbose > 0) {
+    if (verbose > 1) {
+      printf("\n\n" AWHITE("Bytecode") ":\n");
+      bc::PrintProgram(bc_pgm);
+      printf("\n");
+    }
+    const auto &[data_bytes, total_insts] = bc::ProgramSize(bc_pgm);
+    printf("Program size: " ABLUE("%lld") " bytes data, "
+           APURPLE("%lld") " insts.\n", data_bytes, total_insts);
+    fflush(stdout);
+  }
+
   return bc_pgm;
 }

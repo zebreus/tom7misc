@@ -90,15 +90,19 @@ let
           column-stickers-rev := s :: !column-stickers-rev
         end
 
-      (* Emits the current column (if non-empty); doesn't clear it. *)
+      (* Emits the current column (if non-empty); clears it. *)
       fun emit-column () =
-        !column-empty otherwise
-        output (sticker {(Sticker)
-                         x =
-                         LEFT-COLUMN-X +.
-                         (int-to-float (!current-column)) *. COLUMN-STRIDE,
-                         y = TOP-MARGIN }
-                (layout-concat (list-rev (!column-stickers-rev))))
+        let in
+          !column-empty otherwise
+          output (sticker {(Sticker)
+                           x =
+                           LEFT-COLUMN-X +.
+                           (int-to-float (!current-column)) *. COLUMN-STRIDE,
+                           y = TOP-MARGIN }
+                  (layout-concat (list-rev (!column-stickers-rev))));
+          column-stickers-rev := nil;
+          column-empty := true
+        end
 
       (* XXX should probably just use pack-boxes for this, but
          they are vertical boxes. *)
@@ -113,6 +117,17 @@ let
 
           val boxes = get-boxes p
           val lines : layout list = pack-boxes (COLUMN-WIDTH, boxes)
+
+          do VERBOSE andthen
+            let in
+              print "----now as lines---\n";
+              list-app (fn (lay : layout) =>
+                        let in
+                          print "==\n";
+                          debug-print-doc lay;
+                        end) lines;
+              print "-------------------\n"
+            end
 
           (* Maybe advance to the next column (or page) to place
              something. *)
@@ -140,7 +155,6 @@ let
                   emit-column ();
                   current-column := !current-column + 1;
                   current-ypos := 0.0;
-                  column-empty := true;
                   !current-column >= COLUMNS
                   andthen fail "Need to implement pages!";
                   (* badness from unfilled column? *)
@@ -166,7 +180,8 @@ let
 
       val paras : layout list = get-paragraphs (lay :: nil)
     in
-      list-app insert-paragraph paras
+      list-app insert-paragraph paras;
+      emit-column ()
     end
 in
   (main-text
@@ -177,7 +192,6 @@ in
     [helvetica
      [
       Does it make sense to put paragraphs...
-
       ... inside a span? I guess so?
       ]]
 

@@ -57,6 +57,8 @@ const char *TokenTypeString(TokenType tok) {
   case ELSE: return "ELSE";
   case ANDALSO: return "ANDALSO";
   case ORELSE: return "ORELSE";
+  case ANDTHEN: return "ANDTHEN";
+  case OTHERWISE: return "OTHERWISE";
 
   case DATATYPE: return "DATATYPE";
   case OF: return "OF";

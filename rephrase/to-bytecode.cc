@@ -830,6 +830,11 @@ struct Converter {
           CHECK(ls.size() == 2);
           insts->emplace_back(
               inst::SetLabel{.obj = ls[0], .lab = REF_LABEL, .arg = ls[1]});
+          // Need to allocate a unit for the return.
+          // PERF: Don't allocate empty records; represent it as 0 or
+          // something!
+          insts->emplace_back(
+              inst::Alloc{.out = out});
           return out;
         }
 
@@ -1008,8 +1013,6 @@ ToBytecode::ToBytecode() {}
 void ToBytecode::SetVerbose(int verbose_in) {
   verbose = verbose_in;
 }
-
-// To convert an IL program, we
 
 Program ToBytecode::Convert(const il::Program &pgm) {
   Converter conv;

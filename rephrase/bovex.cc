@@ -17,35 +17,6 @@
 #include "timer.h"
 #include "util.h"
 
-static void GeneratePDF(const std::string &filename) {
-  PDF::Info info;
-  sprintf(info.creator, "bovex.cc");
-  sprintf(info.producer, "Tom 7");
-  sprintf(info.title, "It is a test");
-  sprintf(info.author, "None");
-  sprintf(info.author, "No subject");
-  sprintf(info.date, "deleteme");
-
-  PDF pdf(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT, info);
-
-  [[maybe_unused]]
-  PDF::Page *page = pdf.AppendNewPage();
-
-  pdf.SetFont(PDF::TIMES_ROMAN);
-  CHECK(pdf.AddTextWrap(
-            "This is just test output. I need to make BoVeX "
-            "actually generate a PDF that depends on your input!",
-            20,
-            36, PDF::PDF_LETTER_HEIGHT - 72 - 36 - 48,
-            0.0f,
-            PDF_RGB(0, 0, 0),
-            PDF_INCH_TO_POINT(3.4f),
-            PDF::PDF_ALIGN_JUSTIFY));
-
-  pdf.Save(filename);
-  printf("Wrote %s\n", filename.c_str());
-}
-
 struct BovexExecution : public bc::Execution {
   explicit BovexExecution(const bc::Program &pgm,
                           PDFDocument *pdf_document) :
@@ -63,6 +34,7 @@ struct BovexExecution : public bc::Execution {
   // virtual void ConsoleHook(const std::string &msg);
 
   void OutputLayoutHook(const bc::Value *v) override {
+    printf(AGREEN("OUTPUT") "!\n");
     docs.push_back(ValueToDocTree(v));
   }
 
@@ -115,6 +87,7 @@ static int Bovex(const std::vector<std::string> &args) {
   }
 
   compiler.frontend.SetVerbose(verbose);
+  compiler.SetVerbose(verbose);
 
   CHECK(!output_file.empty()) << "Need to explicitly specify an "
     "output file with -o output.pdf.\n";
@@ -142,15 +115,12 @@ static int Bovex(const std::vector<std::string> &args) {
   DocTree doc = execution.ExtractDocument();
   // Measure final badness?
 
-  if (verbose > 1) {
+  if (true || verbose > 1) {
     printf(AWHITE("The document") ":\n");
     DebugPrintDocTree(doc);
   }
 
   pdf_document.GeneratePDF(output_file, doc);
-
-  // XXX, using pdf_document
-  // GeneratePDF(output_file);
 
   const auto &[data_bytes, total_insts] = ProgramSize(pgm);
   printf("Program size: " ABLUE("%lld") " bytes data, "

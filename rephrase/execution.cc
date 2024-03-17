@@ -545,12 +545,25 @@ void Execution::Step(State *state) {
   // Hack: We use this in the "message" of an assertion, but it
   // prints the stack trace as an effect.
   int error_ip = frame.ip;
-  auto Error = [state, &error_ip]() -> std::string {
+  auto Error = [this, state, &error_ip]() -> std::string {
       fprintf(stderr, "\n\n" ARED("Error") ":\n");
+
       if (state->stack.empty()) {
         fprintf(stderr, "(stack is empty!)");
       } else {
         StackFrame &frame = state->stack.back();
+
+        // Recover the name of the function.
+        std::string fn = "(!unknown!)";
+        for (const auto &[name, arg_insts] : program.code) {
+          const auto &[arg, insts] = arg_insts;
+          if (frame.insts == &insts) {
+            fn = name;
+            break;
+          }
+        }
+
+        fprintf(stderr, "In code " AYELLOW("%s") "\n", fn.c_str());
 
         fprintf(stderr, AWHITE("Globals") ":\n");
         for (const auto &[global, value] : state->globals) {
