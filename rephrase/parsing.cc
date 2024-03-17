@@ -45,19 +45,29 @@ GetFixity(const std::string &sym) {
 
     {"o", {Fixity::Infix, Associativity::Left, 4}},
 
+    // TODO: Missing stuff here like ^
+
     {"==", {Fixity::Infix, Associativity::Non, 5}},
     {"!=", {Fixity::Infix, Associativity::Non, 5}},
+    {"==.", {Fixity::Infix, Associativity::Non, 5}},
+    {"!=.", {Fixity::Infix, Associativity::Non, 5}},
     {"<", {Fixity::Infix, Associativity::Non, 6}},
     {"<=", {Fixity::Infix, Associativity::Non, 6}},
     {">", {Fixity::Infix, Associativity::Non, 6}},
     {">=", {Fixity::Infix, Associativity::Non, 6}},
+    {"<.", {Fixity::Infix, Associativity::Non, 6}},
+    {"<=.", {Fixity::Infix, Associativity::Non, 6}},
+    {">.", {Fixity::Infix, Associativity::Non, 6}},
+    {">=.", {Fixity::Infix, Associativity::Non, 6}},
 
-    // Maybe add explicit floating-point versions
     {"+", {Fixity::Infix, Associativity::Left, 7}},
     {"-", {Fixity::Infix, Associativity::Left, 7}},
+    {"+.", {Fixity::Infix, Associativity::Left, 7}},
+    {"-.", {Fixity::Infix, Associativity::Left, 7}},
     {"*", {Fixity::Infix, Associativity::Left, 9}},
-    // int * int -> float
+    {"*.", {Fixity::Infix, Associativity::Left, 9}},
     {"/", {Fixity::Infix, Associativity::Left, 9}},
+    {"/.", {Fixity::Infix, Associativity::Left, 9}},
     {"div", {Fixity::Infix, Associativity::Left, 9}},
     {"mod", {Fixity::Infix, Associativity::Left, 9}},
 

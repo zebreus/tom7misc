@@ -426,8 +426,8 @@ BoxifyText(const Font *font, double font_size, std::string_view text) {
     // after it.
     DocTree d;
     d.SetStringAttr("display", "box");
-    // XXX chunk height?
     d.SetDoubleAttr("width", chunk_width * font_size);
+    d.SetDoubleAttr("height", font_size);
     d.SetDoubleAttr("font-size", font_size);
     d.SetStringAttr("font-name", font->Name());
 
@@ -627,6 +627,7 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
         // glue.
         DocTree d = *box.node;
         d.SetDoubleAttr("width", box.width + box.pad_right);
+        d.SetDoubleAttr("height", box.height);
         d.RemoveAttr("glue-contract");
         d.RemoveAttr("glue-break-penalty");
         d.RemoveAttr("glue-ideal");
@@ -681,6 +682,7 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
       current_line = {box};
       current_width = box.width;
       current_postwidth = box.glue_ideal;
+      current_line_max_height = box.height;
       cannot_break = box.cannot_break;
     }
   }

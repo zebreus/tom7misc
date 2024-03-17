@@ -216,9 +216,8 @@ void PDFDocument::GeneratePDF(const std::string &filename,
   Context context;
   context.font = PDFFont(pdf->GetBuiltInFont(PDF::BuiltInFont::TIMES_ROMAN));
   Transform identity;
-  // XXX default margins like this should come from the document
-  identity.dx = 72.0 / 2.0;
-  identity.dy = 72.0 / 2.0;
+  identity.dx = 0.0;
+  identity.dy = 0.0;
   PlaceStickersRec(context, identity, doc, page);
 
   pdf->Save(filename);

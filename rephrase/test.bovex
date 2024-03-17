@@ -32,25 +32,27 @@ let
 
   do VERBOSE andthen printlayout author
 
-
-    (*
-  fun render-one-column (l : layout) =
-    let
-      do VERBOSE andthen
-        let in
-          print "-------------------\n";
-          debug-print-doc l;
-          print "-------------------\n"
+  fun stick-line (lay : layout) : layout =
+    case layoutcase lay of
+      Node (BOX, attrs, children) =>
+        let
+          fun rec (_, nil) = nil
+            | rec (x, h :: t) =
+            case layoutcase h of
+              Node (BOX, attrs as {(Box) width}, ch) =>
+                let val s =
+                  sticker (attrs without (Box)width
+                           without (Box)height
+                           with (Sticker)x = x
+                           with (Sticker)y = 0.0) (layout-concat ch)
+                in
+                  s :: rec (x +. width, t)
+                end
+            | _ => fail "Expected line's contents to be boxes."
+        in
+          box attrs (layout-concat (rec (0.0, children)))
         end
-
-      val boxes = get-boxes l
-      val packed : layout list = pack-boxes (inch 4.0, boxes)
-      (* val stickers = stick-lines (12.0, packed) *)
-    in
-    (* stickers *)
-      fail "broken"
-    end
-  *)
+    | _ => fail "Expected line to be a box!"
 
   (* Generally just one of these, for the toplevel document.
      This breaks the layout into paragraphs, and then inserts
@@ -67,11 +69,10 @@ let
       val RIGHT-MARGIN = inch 0.3
       val BOTTOM-MARGIN = inch 0.5
 
-      fun int-to-float n = n / 1
       val BODY-WIDTH = PAGE-WIDTH -. (LEFT-MARGIN +. RIGHT-MARGIN)
       val BODY-HEIGHT = PAGE-HEIGHT -. (TOP-MARGIN +. BOTTOM-MARGIN)
       val COLUMN-WIDTH =
-        (BODY-WIDTH -. int-to-float (COLUMNS - 1) *. GUTTER)
+        (BODY-WIDTH -. (int-to-float (COLUMNS - 1) *. GUTTER))
         /. (int-to-float COLUMNS)
 
       val LEFT-COLUMN-X = LEFT-MARGIN
@@ -92,13 +93,19 @@ let
 
       (* Emits the current column (if non-empty); clears it. *)
       fun emit-column () =
-        let in
+        let
+          val colx =
+            LEFT-COLUMN-X +.
+            ((int-to-float (!current-column)) *. COLUMN-STRIDE)
+        in
           !column-empty otherwise
-          output (sticker {(Sticker)
-                           x =
-                           LEFT-COLUMN-X +.
-                           (int-to-float (!current-column)) *. COLUMN-STRIDE,
-                           y = TOP-MARGIN }
+          output (sticker ({(Sticker)
+                            x = colx ,
+                            y = TOP-MARGIN }
+                           with column-num = !current-column
+                           with comment = "column"
+                           with column-stride = COLUMN-STRIDE
+                           with left-margin = LEFT-MARGIN)
                   (layout-concat (list-rev (!column-stickers-rev))));
           column-stickers-rev := nil;
           column-empty := true
@@ -116,7 +123,29 @@ let
             end
 
           val boxes = get-boxes p
+
+          do VERBOSE andthen
+            let in
+              print "----the boxes...---\n";
+              debug-print-doc boxes;
+              print "-------------------\n"
+            end
+
           val lines : layout list = pack-boxes (COLUMN-WIDTH, boxes)
+
+          do VERBOSE andthen
+            let in
+              print "----packed lines---\n";
+              list-app (fn (lay : layout) =>
+                        let in
+                          print "==\n";
+                          debug-print-doc lay;
+                        end) lines;
+              print "-------------------\n"
+            end
+
+
+          val lines : layout list = list-map stick-line lines
 
           do VERBOSE andthen
             let in
@@ -169,8 +198,10 @@ let
                   add-column-sticker
                   (sticker (attrs without (Box)width
                             without (Box)height
+                            with comment = "line"
                             with x = 0.0
-                            with y = !current-ypos) (layout-concat children))
+                            with y = !current-ypos) (layout-concat children));
+                  current-ypos := !current-ypos +. height
                 end
             | _ => fail "only expecting boxes with known height in addline"
 
