@@ -26,6 +26,7 @@ static constexpr bool VERBOSE = false;
 // TODO: I notice that it hyphenates "king" as "k-ing" and this
 // seems to be correct given the rules. There may be an implicit
 // rule that short words are never hyphenated?
+// Also "shal-l" is ridiculous. So probably the minimum is 6 chars?
 
 static constexpr const char *DATABASE =
   "hyph-en-us.tex";

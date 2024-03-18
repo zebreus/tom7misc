@@ -189,7 +189,9 @@ void PDFDocument::DrawText(const PDFFont &font,
   CHECK(font.pdf_font != nullptr);
   pdf->SetFont(font.pdf_font);
   pdf->AddText(text, size,
-               x, FlipPageCoordinate(*page, y),
+               // We flip the y coordinate, but also then need to
+               // measure from the top of the text, not its baseline.
+               x, FlipPageCoordinate(*page, y + size),
                PDFColor(color),
                page);
 }
@@ -241,8 +243,10 @@ void PDFDocument::PlaceStickersRec(Context context,
     }
   }
 
-  // XXX text props from sticker:
-  //   font size
+  if (const double *font_size = doc.GetDoubleAttr("font-size")) {
+    context.font_size = *font_size;
+  }
+
   // XXX scaling
 
   for (const std::shared_ptr<DocTree> &child : doc.children) {

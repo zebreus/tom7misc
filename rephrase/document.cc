@@ -16,7 +16,7 @@
 static constexpr double INFINITE_PENALTY = 9999999.0;
 
 // This should be tunable.
-static constexpr double HYPHEN_PENALTY = 6.0;
+static constexpr double HYPHEN_PENALTY = 4.0;
 
 // For expand-contract, in places where we don't want to do any
 // expansion or contraction (e.g. kerning points).

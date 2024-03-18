@@ -294,11 +294,31 @@ let
        box {(Box) width = WIDTH} (layout-concat lines))
     end
 
+  fun title lay =
+    let
+      (* probably we want center justification *)
+      val WIDTH = inch 3.75
+      val lay = span {(Span) font-bold = true, font-size = point 36.0 } lay
+      val boxes = get-boxes lay
+
+      val lines : layout list = pack-boxes (BEST, WIDTH, boxes)
+      val lines : layout list = list-map stick-horizontally lines
+
+      val t =
+      stick-vertically
+      (0.0, box {(Box) width = WIDTH} (layout-concat lines))
+    in
+      debug-print-doc t;
+      t
+    end
+
 in
 
   (main-text
   (palatino
    [
+    [title[My test]]
+
     The system goes on-line March 13th, 2024.
 
     magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut
