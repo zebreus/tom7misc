@@ -12,6 +12,88 @@
 
 static constexpr bool VERBOSE = false;
 
+// Old, greedy version. Maybe useful for comparison in the paper?
+// Probably can move to BoxesAndGlue
+std::vector<std::vector<BoxesAndGlue::BoxOut>>
+BoxesAndGlue::PackBoxesFirst(
+    double line_width,
+    const std::vector<BoxIn> &boxes_in,
+    double max_break_penalty) {
+  static constexpr bool VERBOSE = false;
+
+  using BoxOut = BoxesAndGlue::BoxOut;
+
+  std::vector<std::vector<BoxesAndGlue::BoxOut>> lines_out;
+
+  std::vector<BoxesAndGlue::BoxOut> current_line;
+  auto EmitLine = [&]() {
+      if (current_line.empty()) return;
+      lines_out.push_back(std::move(current_line));
+      current_line.clear();
+    };
+
+  double current_width = 0.0;
+  double current_postwidth = 0.0;
+  bool cannot_break = false;
+  for (const BoxIn &box : boxes_in) {
+
+    BoxOut boxo;
+    boxo.box = &box;
+
+    const bool fits =
+      current_width + current_postwidth + box.width <= line_width;
+    if (cannot_break || fits) {
+      // Take the box.
+      if (VERBOSE) {
+        printf(AGREEN("take") "%s%s\n\n",
+               cannot_break ? " (cannot-break)" : "",
+               fits ? " (fits)" : "");
+      }
+
+      // This means the previous box gets its glue turned into padding.
+      if (!current_line.empty()) {
+        current_width += current_postwidth;
+        current_line.back().actual_glue = current_postwidth;
+      } else {
+        CHECK(current_postwidth == 0.0);
+      }
+
+      current_line.push_back(boxo);
+      current_width += box.width;
+      cannot_break = box.glue_break_penalty > max_break_penalty;
+      current_postwidth = box.glue_ideal;
+
+    } else {
+      // Break.
+      if (VERBOSE) {
+        printf(AORANGE("break") "\n\n");
+      }
+
+      if (current_line.empty()) {
+        // Unusual situation where the word was so long (or break was
+        // not allowed) that it doesn't fit on a line on its own. We
+        // put it on the line, but do not "break" before it.
+      } else {
+        current_line.back().did_break = true;
+      }
+
+      // This does not output empty lines, so it works for the unusual
+      // case above, too.
+      EmitLine();
+
+      current_line = {boxo};
+      current_width = box.width;
+      cannot_break = box.glue_break_penalty > max_break_penalty;
+      current_postwidth = box.glue_ideal;
+    }
+  }
+
+  // The line usually still has something on it.
+  EmitLine();
+  return lines_out;
+}
+
+
 std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     double line_width,
     const std::vector<BoxIn> &boxes) {

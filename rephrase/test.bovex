@@ -153,7 +153,7 @@ let
               print "-------------------\n"
             end
 
-          val lines : layout list = pack-boxes (COLUMN-WIDTH, boxes)
+          val lines : layout list = pack-boxes (BEST, COLUMN-WIDTH, boxes)
 
           (* Put a line at the end to space out the paragraph. We
              should do this with glue. *)

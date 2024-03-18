@@ -4,31 +4,32 @@
 
 #include <vector>
 
-// Abstract version of the boxes-and-glue algorithm.
+// Abstract version of a boxes-and-glue algorithm.
 //
-// This is presented as the classic problem of
-// placing words into lines, but it can be used for
-// other stuff, like placing paragraphs into columns.
-// Note that even when placing words on a line, we
-// often have more than one box per word, to represent
-// potential hyphenation points or kerning pairs.
-
+// This is presented as the classic problem of placing words into
+// lines with optinal line breaks. But it can be used for other stuff,
+// like placing paragraphs into columns. Note that even when placing
+// words on a line, we often have more than one box per word, to
+// represent potential hyphenation points or kerning pairs.
+//
+// Note that this is probably not the same algorithm as Knuth's.
 struct BoxesAndGlue {
 
   struct BoxIn {
     // Native width of the box, not counting any glue.
-    double width;
+    double width = 0.0;
     // Additional penalty if we break here.
-    double glue_break_penalty;
+    double glue_break_penalty = 0.0;
     // If we break here, then this much extra width is used
     // (for insertion of a hyphen or something like that).
-    double glue_break_extra_width;
+    double glue_break_extra_width = 0.0;
     // Ideal amount of glue after the box, e.g. the width
     // of a space glyph in the font (or a kerning pair).
-    double glue_ideal;
+    double glue_ideal = 0.0;
 
-    double glue_expand;
-    double glue_contract;
+    // TODO:
+    double glue_expand = 1.0;
+    double glue_contract = 1.0;
 
     // User data.
     void *data = nullptr;
@@ -51,6 +52,13 @@ struct BoxesAndGlue {
   static std::vector<std::vector<BoxOut>> PackBoxes(
       double line_width,
       const std::vector<BoxIn> &boxes_in);
+
+  // Greedy algorithm, mostly useful for comparison purposes or
+  // as a fallback (it's linear time).
+  static std::vector<std::vector<BoxOut>> PackBoxesFirst(
+      double line_width,
+      const std::vector<BoxIn> &boxes_in,
+      double max_break_penalty);
 
 };
 

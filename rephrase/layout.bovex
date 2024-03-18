@@ -294,12 +294,21 @@ fun get-text-rec (lay : layout) : string =
       else fail "group may not have attrs"
   | Node _ => fail "expected only text nodes"
 
+
+datatype packing-algorithm = BEST | FIRST
 (* Generates a series of lines (boxes) with the glue turned into definite
    padding. Still in "AllBox" format. *)
-fun pack-boxes (width : float, content : layout) : layout list =
+fun pack-boxes (algo : packing-algorithm,
+                width : float, content : layout) : layout list =
   let
+    (* This is communicated with a string attribute; an implementation
+       detail. *)
+    val algo-string =
+      case algo of
+        BEST => "best"
+      | FIRST => "first"
     val content =
-      map-attrs (fn attrs => attrs with algorithm = "first") content
+      map-attrs (fn attrs => attrs with algorithm = algo-string) content
     val packed = internal-pack-boxes (width, content)
   in
     unjoin packed

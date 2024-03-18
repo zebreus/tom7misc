@@ -10,7 +10,7 @@
 using BoxIn = BoxesAndGlue::BoxIn;
 using BoxOut = BoxesAndGlue::BoxOut;
 
-static void TestASCII() {
+static void TestASCII(bool best_fit) {
   std::vector<std::string> words =
     Util::Split(
         "If during a game it is found that an illegal move, including "
@@ -38,7 +38,8 @@ static void TestASCII() {
   }
 
   std::vector<std::vector<BoxOut>> out =
-    BoxesAndGlue::PackBoxes(40.0, boxes);
+    best_fit ? BoxesAndGlue::PackBoxes(40.0, boxes) :
+    BoxesAndGlue::PackBoxesFirst(40.0, boxes, 5.0);
 
   for (const std::vector<BoxOut> &line : out) {
     // Alas, we can only space in discrete increments.
@@ -59,7 +60,10 @@ static void TestASCII() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  TestASCII();
+  printf("----------- first ---------\n");
+  TestASCII(false);
+  printf("----------- best ----------\n");
+  TestASCII(true);
 
   printf("OK\n");
   return 0;
