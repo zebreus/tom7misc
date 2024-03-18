@@ -5,6 +5,7 @@
 #include <utility>
 #include <unordered_map>
 #include <cstdio>
+#include <unordered_set>
 
 #include "base/logging.h"
 #include "ansi.h"
@@ -94,34 +95,54 @@ BoxesAndGlue::PackBoxesFirst(
 }
 
 
-std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
+std::vector<std::vector<BoxesAndGlue::BoxOut>>
+BoxesAndGlue::PackBoxesLinear(
     double line_width,
     const std::vector<BoxIn> &boxes) {
-
-  // First, split into words with their widths.
-
-  // "words" was the vector of words (pre-kerning)
-  // sizes was the vector of their kerned total widths.
-
-  #if 0
-  if (VERBOSE) {
-    printf("\n"
-           ABGCOLOR(60, 60, 180,
-                    AFGCOLOR(255, 255, 255, "=== SpaceLines ===")) "\n"
-           "Space into " ABLUE("%.6f") ":  (' ' is " AYELLOW("%.6f") ")\n"
-           "[", line_width, space_width);
-    double total = 0.0;
-    for (int i = 0; i < (int)words.size(); i++) {
-      printf(AWHITE("%s") " " APURPLE("%.4f") " ",
-             words[i].c_str(), sizes[i]);
-      total += sizes[i];
-    }
-    printf("]\n"
-           "Total word width: " ACYAN("%.6f")
-           " w/ space: " AYELLOW("%.6f") "\n",
-           total, total + ((int)words.size() - 1) * space_width);
+  std::vector<Edge> edges;
+  edges.reserve(boxes.size() - 1);
+  for (int i = 0; i < (int)boxes.size() - 1; i++) {
+    edges.emplace_back(Edge{
+        .parent_node = i,
+        .child_node = i + 1,
+        .edge_penalty = 0.0,
+      });
   }
-  #endif
+  return PackBoxes(line_width, boxes, edges);
+}
+
+std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
+    double line_width,
+    const std::vector<BoxIn> &boxes,
+    const std::vector<Edge> &edges) {
+
+  if (boxes.empty()) return {};
+
+  std::unordered_set<int> not_starting, not_ending;
+
+  std::vector<std::vector<int>> predecessors(boxes.size(), std::vector<int>{});
+  std::vector<std::vector<int>> successors(boxes.size(), std::vector<int>{});
+
+  for (const Edge &edge : edges) {
+    CHECK(edge.parent_node < edge.child_node) << "The nodes must be "
+      "topologically sorted, for one thing to inhibit cycles.";
+    CHECK(edge.parent_node >= 0 && edge.parent_node < (int)boxes.size());
+    CHECK(edge.child_node >= 0 && edge.child_node < (int)boxes.size());
+    not_starting.insert(edge.parent_node);
+    not_ending.insert(edge.child_node);
+
+    // Duplicate edges cause blow-up, so maybe we should reject them?
+    predecessors[edge.parent_node].push_back(edge.child_node);
+  }
+
+
+  std::unordered_set<int> starting, ending;
+  for (int i = 0; i < (int)boxes.size(); i++) {
+    if (!not_starting.contains(i)) starting.insert(i);
+    if (!not_ending.contains(i)) ending.insert(i);
+  }
+
+
 
   // Once a line is complete, apply glue. If justify is true, then
   // we stretch glue proportionally to reach the given line width.

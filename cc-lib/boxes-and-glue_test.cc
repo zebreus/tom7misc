@@ -38,7 +38,7 @@ static void TestASCII(bool best_fit) {
   }
 
   std::vector<std::vector<BoxOut>> out =
-    best_fit ? BoxesAndGlue::PackBoxes(40.0, boxes) :
+    best_fit ? BoxesAndGlue::PackBoxesLinear(40.0, boxes) :
     BoxesAndGlue::PackBoxesFirst(40.0, boxes, 5.0);
 
   for (const std::vector<BoxOut> &line : out) {
