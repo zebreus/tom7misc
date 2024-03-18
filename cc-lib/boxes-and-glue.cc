@@ -123,6 +123,55 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
   }
   #endif
 
+  // Once a line is complete, apply glue. If justify is true, then
+  // we stretch glue proportionally to reach the given line width.
+  auto ApplyGlue = [line_width](std::vector<BoxOut> *current_line,
+                                bool justify) {
+      double space_used = 0.0;
+      for (int i = 0; i < (int)current_line->size(); i++) {
+        const BoxOut &box = (*current_line)[i];
+        space_used += box.box->width;
+        if (i < (int)current_line->size() - 1) {
+          space_used += box.box->glue_ideal;
+        } else {
+          CHECK(i == (int)current_line->size() - 1);
+          // Last word behaves differently. It has no glue
+          // and might have its width adjusted for a hyphen.
+          space_used += box.box->glue_break_extra_width;
+        }
+      }
+
+      // could be negative
+      const double space_left = line_width - space_used;
+      const bool expanding = space_left >= 0.0;
+
+      double total_weight = 0.0;
+      for (int i = 0; i < (int)current_line->size() - 1; i++) {
+        BoxOut &box = (*current_line)[i];
+        total_weight += expanding ? box.box->glue_expand :
+          box.box->glue_contract;
+      }
+
+      const double weighted_glue = space_left / total_weight;
+
+      if (VERBOSE) {
+        printf("Total weight: %.11g.\n"
+               "Weighted glue: %.11g\n", total_weight, weighted_glue);
+      }
+
+      for (int i = 0; i < (int)current_line->size() - 1; i++) {
+        BoxOut &box = (*current_line)[i];
+        const double weight = expanding ? box.box->glue_expand :
+          box.box->glue_contract;
+        const double additional_glue =
+          justify ? weighted_glue * weight : 0.0;
+        if (VERBOSE) {
+          printf("  Additional glue: %.11g\n", additional_glue);
+        }
+        box.actual_glue = box.box->glue_ideal + additional_glue;
+      }
+    };
+
   // This is a dynamic programming problem. We store a table of O(m^2)
   // entries. The table is keyed by a pair: A word index and the
   // number of words before that word on the line. The number of words
@@ -342,47 +391,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     current_line.push_back(box_out);
 
     if (break_after) {
-      // Apply glue!
-      double space_used = 0.0;
-      for (int i = 0; i < (int)current_line.size(); i++) {
-        const BoxOut &box = current_line[i];
-        space_used += box.box->width;
-        if (i < (int)current_line.size() - 1) {
-          space_used += box.box->glue_ideal;
-        } else {
-          CHECK(i == (int)current_line.size() - 1);
-          CHECK(break_after);
-          // Last word behaves differently. It has no glue
-          // and might have its width adjusted for a hyphen.
-          space_used += box.box->glue_break_extra_width;
-        }
-      }
-
-      // could be negative
-      const double space_left = line_width - space_used;
-      const bool expanding = space_left >= 0.0;
-
-      double total_weight = 0.0;
-      for (int i = 0; i < (int)current_line.size() - 1; i++) {
-        BoxOut &box = current_line[i];
-        total_weight += expanding ? box.box->glue_expand :
-          box.box->glue_contract;
-      }
-
-      const double weighted_glue = space_left / total_weight;
-
-      printf("Total weight: %.11g.\n"
-             "Weighted glue: %.11g\n", total_weight, weighted_glue);
-
-      for (int i = 0; i < (int)current_line.size() - 1; i++) {
-        BoxOut &box = current_line[i];
-        const double weight = expanding ? box.box->glue_expand :
-          box.box->glue_contract;
-        const double additional_glue = weighted_glue * weight;
-        printf("  Additional glue: %.11g\n", additional_glue);
-        box.actual_glue = box.box->glue_ideal + additional_glue;
-      }
-
+      ApplyGlue(&current_line, true);
       lines.push_back(std::move(current_line));
       current_line.clear();
       before = 0;
@@ -391,8 +400,11 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     }
   }
 
-  if (!current_line.empty())
+  if (!current_line.empty()) {
+    // Apply glue to final line. It is not justified.
+    ApplyGlue(&current_line, false);
     lines.push_back(std::move(current_line));
+  }
 
   return lines;
 }
