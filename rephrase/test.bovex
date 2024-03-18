@@ -50,8 +50,8 @@ let
     end
   do test-get-paragraphs ()
 
-
-  fun stick-line (lay : layout) : layout =
+  (* Makes the contents of a box into stickers. *)
+  fun stick-horizontally (lay : layout) : layout =
     case layoutcase lay of
       Node (BOX, attrs, children) =>
         let
@@ -72,6 +72,37 @@ let
           box attrs (layout-concat (rec (0.0, children)))
         end
     | _ => fail "Expected line to be a box!"
+
+  (* Like stick-horizontally, but vertically. *)
+  fun stick-vertically (x : float, lay : layout) : layout =
+    case layoutcase lay of
+      Node (BOX, attrs, children) =>
+        let
+          val height = ref 0.0
+          fun rec (y, nil) =
+            let in
+              height := y;
+              nil
+            end
+            | rec (y, h :: t) =
+            case layoutcase h of
+              Node (BOX, attrs as {(Box) height}, ch) =>
+                let val s =
+                  sticker (attrs without (Box)width
+                           without (Box)height
+                           with (Sticker)y = y
+                           with (Sticker)x = x) (layout-concat ch)
+                in
+                  s :: rec (y +. height, t)
+                end
+            | _ => fail "In stick-vertically, expected contents to be boxes."
+
+          val ch = rec (0.0, children)
+        in
+          box (attrs with (Box)height = !height) (layout-concat ch)
+        end
+    | _ => fail "Expected line to be a box!"
+
 
   (* Generally just one of these, for the toplevel document.
      This breaks the layout into paragraphs, and then inserts
@@ -171,8 +202,9 @@ let
               print "-------------------\n"
             end
 
-
-          val lines : layout list = list-map stick-line lines
+          (* Now can treat the contents of lines as stickers.
+             The line itself remains a box. *)
+          val lines : layout list = list-map stick-horizontally lines
 
           do VERBOSE andthen
             let in
@@ -241,6 +273,27 @@ let
       list-app insert-paragraph paras;
       emit-column ()
     end
+
+  (* This creates a rigid box. We could improve it in various ways:
+     - Don't be fixed width!
+     - It would be better as a text property anyway, so that it
+     can flow across columns and pages.
+     But I want to test layout of rigid stuff like this.
+     *)
+  fun blockquote lay =
+    let
+      val LEFT-INDENT = inch 0.25
+      val WIDTH = inch 3.25
+      val lay = it lay
+      val boxes = get-boxes lay
+      val lines : layout list = pack-boxes (BEST, WIDTH, boxes)
+      val lines : layout list = list-map stick-horizontally lines
+    in
+      stick-vertically
+      (LEFT-INDENT,
+       box {(Box) width = WIDTH} (layout-concat lines))
+    end
+
 in
 
   (main-text
@@ -291,6 +344,12 @@ player. However, the game is drawn if the position is such that the opponent can
 checkmate the player's king by any possible series of legal moves.
 
 I understand the risks and wish to continue.
+
+[* single quotes *]
+[blockquote["It would threaten millions of small businesses operating on a razor-thin margin because they're unable to find enough workers," said Cassidy, the ranking Republican on the committee. "Now they've got the same workers, but only for three-quarters of the time. And they have to hire more."]]
+
+[* fancy quotes *]
+[blockquote[“It would threaten millions of small businesses operating on a razor-thin margin because they’re unable to find enough workers," said Cassidy, the ranking Republican on the committee. "Now they’ve got the same workers, but only for three-quarters of the time. And they have to hire more.”]]
 
     And now it is over.
 

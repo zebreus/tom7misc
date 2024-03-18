@@ -2295,6 +2295,7 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
   return true;
 }
 
+// TODO: Use BoxesAndGlue library for this.
 std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
                                              double line_width,
                                              const FontObj *font) const {
