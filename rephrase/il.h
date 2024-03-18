@@ -487,6 +487,8 @@ struct AstPool {
       return guess;
     }
 
+    if (v.empty()) return &unit_type;
+
     Type *ret = NewType(TypeType::RECORD);
     ret->str_children = v;
     SortLabeled(&ret->str_children);
@@ -1187,6 +1189,7 @@ struct AstPool {
   const Type bool_type = Type(TypeType::BOOL);
   const Type obj_type = Type(TypeType::OBJ);
   const Type layout_type = Type(TypeType::LAYOUT);
+  const Type unit_type = Type(TypeType::RECORD);
 
   const Exp true_exp = []() {
       Exp t(ExpType::BOOL);

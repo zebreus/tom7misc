@@ -42,8 +42,10 @@ const char *PrimopString(Primop po) {
   case Primop::FLOAT_LESSEQ: return "FLOAT_LESSEQ";
   case Primop::FLOAT_GREATER: return "FLOAT_GREATER";
   case Primop::FLOAT_GREATEREQ: return "FLOAT_GREATEREQ";
+
   case Primop::OUT_STRING: return "OUT_STRING";
   case Primop::OUT_LAYOUT: return "OUT_LAYOUT";
+  case Primop::EMIT_BADNESS: return "EMIT_BADNESS";
 
   case Primop::STRING_CONCAT: return "STRING_CONCAT";
   case Primop::STRING_EMPTY: return "STRING_EMPTY";
@@ -110,6 +112,11 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::FLOAT_LESSEQ: return std::make_tuple(0, 2);
   case Primop::FLOAT_GREATER: return std::make_tuple(0, 2);
   case Primop::FLOAT_GREATEREQ: return std::make_tuple(0, 2);
+
+  case Primop::OUT_STRING: return std::make_tuple(0, 1);
+  case Primop::OUT_LAYOUT: return std::make_tuple(0, 2);
+  case Primop::EMIT_BADNESS: return std::make_tuple(0, 1);
+
   case Primop::INT_TO_STRING: return std::make_tuple(0, 1);
   case Primop::STRING_TO_LAYOUT: return std::make_tuple(0, 1);
   case Primop::STRING_CONCAT: return std::make_tuple(0, 2);
@@ -126,8 +133,6 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::REGISTER_FONT: return std::make_tuple(0, 3);
 
   case Primop::REPHRASE: return std::make_tuple(0, 1);
-  case Primop::OUT_STRING: return std::make_tuple(0, 1);
-  case Primop::OUT_LAYOUT: return std::make_tuple(0, 2);
   case Primop::GET_BOXES: return std::make_tuple(0, 1);
   case Primop::PACK_BOXES: return std::make_tuple(0, 2);
   case Primop::IS_TEXT: return std::make_tuple(0, 1);
@@ -204,6 +209,7 @@ bool IsPrimopTotal(Primop p) {
 
   case Primop::OUT_STRING: return false;
   case Primop::OUT_LAYOUT: return false;
+  case Primop::EMIT_BADNESS: return false;
 
   case Primop::IS_TEXT: return true;
 
@@ -337,6 +343,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};
     // page number, content
   case Primop::OUT_LAYOUT: return {{}, BinOp(Int, Layout, Unit())};
+  case Primop::EMIT_BADNESS: return {{}, pool->Arrow(Float, Unit())};
 
   case Primop::OBJ_EMPTY: return {{}, pool->Arrow(Obj, Bool)};
 

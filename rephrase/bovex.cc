@@ -26,6 +26,7 @@ struct BovexExecution : public bc::Execution {
   }
 
   std::map<int, std::vector<DocTree>> pages;
+  double total_badness = 0.125;
 
   Document *DocumentHook() override { return pdf_document; }
 
@@ -36,6 +37,10 @@ struct BovexExecution : public bc::Execution {
   void OutputLayoutHook(int page_idx, const bc::Value *v) override {
     // printf(AGREEN("OUTPUT") "!\n");
     pages[page_idx].push_back(ValueToDocTree(v));
+  }
+
+  void EmitBadnessHook(double badness) override {
+    total_badness += badness;
   }
 
   std::map<int, DocTree> ExtractDocument() {
@@ -117,6 +122,7 @@ static int Bovex(const std::vector<std::string> &args) {
 
   std::map<int, DocTree> pages = execution.ExtractDocument();
   // Measure final badness?
+  printf("Total badness: " ARED("%.11g") "\n", execution.total_badness);
 
   if (verbose > 1) {
     printf(AWHITE("The document") ":\n");

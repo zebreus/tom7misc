@@ -70,6 +70,8 @@ struct Execution {
   // For output of layout
   virtual void OutputLayoutHook(int page_idx, const Value *layout);
 
+  virtual void EmitBadnessHook(double badness);
+
  private:
   static std::pair<Value *, Value *>
   GetNodeParts(const char *what, Value *a);

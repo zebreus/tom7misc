@@ -77,6 +77,10 @@ let
       (* XXX This should depend on the font *)
       val PARAGRAPH-VSPACE-BOTTOM = 12.0
 
+      (* Badness modifiers are compared to the badness of text
+         outside of the intended box. *)
+      val ORPHAN-LINE-BADNESS-MODIFIER = 0.125
+
       val current-page = ref 0
 
       (* Layout state. *)
@@ -225,56 +229,6 @@ let
     in
       list-app insert-paragraph paras;
       emit-column ()
-    end
-
-  (* This creates a rigid box. We could improve it in various ways:
-     - Don't be fixed width!
-     - It would be better as a text property anyway, so that it
-     can flow across columns and pages.
-     But I want to test layout of rigid stuff like this.
-     *)
-  fun blockquote lay =
-    let
-      val LEFT-INDENT = inch 0.25
-      val WIDTH = inch 3.25
-      val lay = it lay
-      val boxes = get-boxes lay
-      val lines : layout list = pack-boxes (BEST, WIDTH, boxes)
-      val lines : layout list = list-map stick-horizontally lines
-    in
-      stick-vertically
-      (LEFT-INDENT,
-       box {(Box) width = WIDTH} (layout-concat lines))
-    end
-
-  fun title lay =
-    let
-      (* probably we want center justification *)
-      val WIDTH = inch 3.75
-      val lay = span {(Span) font-bold = true, font-size = point 36.0 } lay
-      val boxes = get-boxes lay
-
-      val lines : layout list = pack-boxes (BEST, WIDTH, boxes)
-      val lines : layout list = list-map stick-horizontally lines
-
-      val t =
-      stick-vertically
-      (0.0, box {(Box) width = WIDTH} (layout-concat lines))
-    in
-      (* debug-print-doc t; *)
-      t
-    end
-
-  fun vspace vdim =
-    let val doc =
-      (* Break before (0 size) and after (with given height). *)
-       [[box {(Box) height = 0.0, width = 0.0,
-              glue-break-penalty = -9999999.0 } [ ]]
-        [box {(Box) height = vdim, width = 0.0,
-              glue-break-penalty = -9999999.0 } [ ]]]
-    in
-      debug-print-doc doc;
-      doc
     end
 
 in

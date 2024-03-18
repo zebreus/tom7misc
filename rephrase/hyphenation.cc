@@ -23,10 +23,10 @@ static constexpr bool VERBOSE = false;
 // denylists. So, if the final number is ODD, hyphenation is allowed
 // there.
 //
-// TODO: I notice that it hyphenates "king" as "k-ing" and this
-// seems to be correct given the rules. There may be an implicit
-// rule that short words are never hyphenated?
-// Also "shal-l" is ridiculous. So probably the minimum is 6 chars?
+// TODO: Additionally, the rules seem to be designed with a minimum
+// hyphenation length in mind. This appears to be 2 characters for
+// the shortest prefix, and 3 characters for the shortest suffix.
+// Without this, you get hyphenations like "k-ing".
 
 static constexpr const char *DATABASE =
   "hyph-en-us.tex";
@@ -128,7 +128,9 @@ Hyphenation::Hyphenation() {
   }
 }
 
-std::vector<std::string> Hyphenation::Hyphenate(std::string_view word) {
+std::vector<std::string> Hyphenation::Hyphenate(std::string_view word,
+                                                int lefthyphenmin,
+                                                int righthyphenmin) {
   std::string lword = "." + Util::lcase(std::string(word)) + ".";
 
   std::vector<uint8_t> values(lword.size() + 1, 0);
@@ -177,6 +179,31 @@ std::vector<std::string> Hyphenation::Hyphenate(std::string_view word) {
 
   CHECK(values[0] == 0 && values.back() == 0) << "The patterns should "
     "not allow hyphens outside the beginning and end-of-word sentinels!";
+
+  // Remove hyphenation points that are too close to the ends of words.
+  for (int i = 0; i < lefthyphenmin && i < (int)values.size(); i++) {
+    values[i] = 0;
+  }
+
+  // Need to deal with the edge conditions, plus the '.'. By example:
+  // When there are 10 values and righthyphenmin is 3, we want to start
+  // at index 6.
+  const int start_idx = (int)values.size() - (righthyphenmin + 1);
+
+  for (int i = std::max(0, start_idx); i < (int)values.size(); i++) {
+    values[i] = 0;
+  }
+
+  if (VERBOSE) {
+    for (int i = 0; i < (int)values.size(); i++) {
+      if (values[i] & 1) {
+        printf(AGREEN("%c") " ", '0' + values[i]);
+      } else {
+        printf("%c ", '0' + values[i]);
+      }
+    }
+    printf("\n");
+  }
 
   std::vector<std::string> out;
 

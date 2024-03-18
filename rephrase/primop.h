@@ -71,6 +71,8 @@ enum class Primop {
   OUT_STRING,
   OUT_LAYOUT,
 
+  EMIT_BADNESS,
+
   STRING_TO_LAYOUT,
 
   OBJ_EMPTY,

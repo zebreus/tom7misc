@@ -43,6 +43,7 @@ static void TestHyphenations() {
 
   TESTCASE("bovex", "bo-vex");
   TESTCASE("king", "king");
+  TESTCASE("prevent", "pre-vent");
 }
 
 int main(int argc, char **argv) {

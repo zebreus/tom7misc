@@ -443,3 +443,53 @@ fun stick-vertically (x : float, lay : layout) : layout =
         box (attrs with (Box)height = !height) (layout-concat ch)
       end
   | _ => fail "Expected line to be a box!"
+
+
+fun vspace vdim =
+  let val doc =
+    (* Break before (0 size) and after (with given height). *)
+    [[box {(Box) height = 0.0, width = 0.0,
+           glue-break-penalty = -9999999.0 } [ ]]
+     [box {(Box) height = vdim, width = 0.0,
+           glue-break-penalty = -9999999.0 } [ ]]]
+  in
+    doc
+  end
+
+(* This creates a rigid box. We could improve it in various ways:
+   - Don't be fixed width!
+   - It would be better as a text property anyway, so that it
+   can flow across columns and pages.
+   But I want to test layout of rigid stuff like this.
+   *)
+fun blockquote lay =
+  let
+    val LEFT-INDENT = inch 0.25
+    val WIDTH = inch 3.25
+    val lay = it lay
+    val boxes = get-boxes lay
+    val lines : layout list = pack-boxes (BEST, WIDTH, boxes)
+    val lines : layout list = list-map stick-horizontally lines
+  in
+    stick-vertically
+    (LEFT-INDENT,
+     box {(Box) width = WIDTH} (layout-concat lines))
+  end
+
+fun title lay =
+  let
+    (* probably we want center justification *)
+    val WIDTH = inch 3.75
+    val lay = span {(Span) font-bold = true, font-size = point 36.0 } lay
+    val boxes = get-boxes lay
+
+    val lines : layout list = pack-boxes (BEST, WIDTH, boxes)
+    val lines : layout list = list-map stick-horizontally lines
+
+    val t =
+    stick-vertically
+    (0.0, box {(Box) width = WIDTH} (layout-concat lines))
+  in
+    (* debug-print-doc t; *)
+    t
+  end

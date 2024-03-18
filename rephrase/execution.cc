@@ -83,6 +83,10 @@ void Execution::OutputLayoutHook(int page_idx, const Value *doc) {
   printf("(output layout ignored)\n");
 }
 
+void Execution::EmitBadnessHook(double badness) {
+  printf("Badness " ARED("%.5f") "\n", badness);
+}
+
 Document *Execution::DocumentHook() {
   return degenerate_document.get();
 }
