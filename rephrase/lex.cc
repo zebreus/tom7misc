@@ -173,7 +173,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
       ")");
 
   // In 1e100, the "e100" part.
-#define EXPONENT_SUFFIX "(?:[Ee][-+]?[0-9]+)"
+  #define EXPONENT_SUFFIX "(?:[Ee][-+]?[0-9]+)"
 
   static const RE2 float_lit(
       "(?:"
@@ -187,7 +187,14 @@ std::optional<std::vector<Token>> Lexing::Lex(
       "[-+]?[0-9]+" EXPONENT_SUFFIX
       ")");
 
+  // Then we try to recognize negative decimal numbers.
+  static const RE2 negative_decimal(
+      "(?:-[0-9]+)");
+
+  // Then plain digits, which can be used in some places
+  // where negative integers cannot.
   static const RE2 digits("[0-9]+");
+
   // TODO: Allow UTF-8
   // Note that - and _ can appear in alphanumeric-identifiers
   // as well as symbolic ones.
@@ -327,6 +334,10 @@ std::optional<std::vector<Token>> Lexing::Lex(
       ret.emplace_back(NUMERIC_LIT, start, Pos() - start);
     } else if (RE2::Consume(&input, float_lit)) {
       ret.emplace_back(FLOAT_LIT, start, Pos() - start);
+    } else if (RE2::Consume(&input, negative_decimal)) {
+      // Must come after float lit, so that we don't treat -999.0
+      // as "-999" followed by ".0".
+      ret.emplace_back(NUMERIC_LIT, start, Pos() - start);
     } else if (RE2::Consume(&input, digits)) {
       // Digits must come AFTER floats and prefixed stuff like 0x and
       // 0u, since otherwise we'd parse the leading 0 or integer part

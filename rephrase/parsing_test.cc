@@ -41,6 +41,21 @@ static void TestParse() {
     CHECK(e->integer == 15232);
   }
 
+  {
+    const Exp *e = Parse("-12345");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::INT);
+    CHECK(e->integer == -12345);
+  }
+
+  {
+    const Exp *e = Parse("-1234.5");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::FLOAT);
+    // Represented exactly.
+    CHECK(e->d == -1234.5);
+  }
+
   if (VERBOSE) {
     printf("Trivial parsing OK.\n");
     fflush(stdout);

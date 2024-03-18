@@ -134,6 +134,9 @@ object Box of { width: float, height: float,
                    here? *)
                 dx: float, dy: float, scale: float,
 
+                (* if "break", then it is on a line by itself. *)
+                flow: string,
+
                 (* TODO: a way to indicate ascenders and descenders. *)
                 (* TODO: a way to indicate spaces for channel detection. *)
 
@@ -408,3 +411,57 @@ fun get-paragraphs (ls : layout list) : layout list =
     next-paragraph ();
     list-rev (!rev-paragraphs)
   end
+
+
+(* Makes the contents of a box into stickers. *)
+fun stick-horizontally (lay : layout) : layout =
+  case layoutcase lay of
+    Node (BOX, attrs, children) =>
+      let
+        fun rec (_, nil) = nil
+          | rec (x, h :: t) =
+          case layoutcase h of
+            Node (BOX, attrs as {(Box) width}, ch) =>
+              let val s =
+                sticker (attrs without (Box)width
+                         without (Box)height
+                         with (Sticker)x = x
+                         with (Sticker)y = 0.0) (layout-concat ch)
+              in
+                s :: rec (x +. width, t)
+              end
+          | _ => fail "Expected line's contents to be boxes."
+      in
+        box attrs (layout-concat (rec (0.0, children)))
+      end
+  | _ => fail "Expected line to be a box!"
+
+(* Like stick-horizontally, but vertically. *)
+fun stick-vertically (x : float, lay : layout) : layout =
+  case layoutcase lay of
+    Node (BOX, attrs, children) =>
+      let
+        val height = ref 0.0
+        fun rec (y, nil) =
+          let in
+            height := y;
+            nil
+          end
+          | rec (y, h :: t) =
+          case layoutcase h of
+            Node (BOX, attrs as {(Box) height}, ch) =>
+              let val s =
+                sticker (attrs without (Box)width
+                         without (Box)height
+                         with (Sticker)y = y
+                         with (Sticker)x = x) (layout-concat ch)
+              in
+                s :: rec (y +. height, t)
+              end
+          | _ => fail "In stick-vertically, expected contents to be boxes."
+
+        val ch = rec (0.0, children)
+      in
+        box (attrs with (Box)height = !height) (layout-concat ch)
+      end
+  | _ => fail "Expected line to be a box!"

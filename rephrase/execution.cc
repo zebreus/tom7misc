@@ -79,7 +79,7 @@ void Execution::ConsoleHook(const std::string &msg) {
   printf("%s", msg.c_str());
 }
 
-void Execution::OutputLayoutHook(const Value *doc) {
+void Execution::OutputLayoutHook(int page_idx, const Value *doc) {
   printf("(output layout ignored)\n");
 }
 
@@ -116,13 +116,6 @@ Value *Execution::Float(double d, State *state) {
 
 Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
                           State *state) {
-
-  auto Unit = [state]() -> Value * {
-      // PERF: Don't represent unit with an allocated record :(
-      return NewValue(&state->heap,
-                      std::unordered_map<std::string, Value *>());
-    };
-
   switch (primop) {
   case Primop::STRING_SUBSTR: {
     const std::string *as = std::get_if<std::string>(&a->v);
@@ -169,7 +162,7 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
     props.font_bold = !!BigInt::BitwiseAnd(*ci, 1);
     props.font_italic = !!BigInt::BitwiseAnd(*ci, 2);
     DocumentHook()->RegisterFont(props, font);
-    return Unit();
+    return Unit(state);
   }
 
   default:
@@ -359,6 +352,19 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     }
   }
 
+  case Primop::OUT_LAYOUT: {
+    const BigInt *ai = std::get_if<BigInt>(&a->v);
+    CHECK(ai != nullptr) << "out-layout expects an integer as its first "
+      "argument.";
+    std::optional<int64_t> io = ai->ToInt();
+    CHECK(io.has_value()) << "Index is way too big! " << ai->ToString();
+    const int64_t page_idx = io.value();
+    CHECK(page_idx >= 0 && page_idx < 1'000'000'000LL) << "Page index "
+      "is nonsensical!";
+    OutputLayoutHook((int)page_idx, b);
+    return Unit(state);
+  }
+
   case Primop::PACK_BOXES: {
     const double *ad = std::get_if<double>(&a->v);
     CHECK(ad != nullptr) << "Expected double argument (lhs) to pack_boxes";
@@ -447,6 +453,12 @@ Value *Execution::Node(Value *attrs, Value *children, State *state) {
   return NewValue(&state->heap, std::move(layout));
 }
 
+Value *Execution::Unit(State *state) {
+  // PERF: Don't represent unit with an allocated record :(
+  return NewValue(&state->heap,
+                  std::unordered_map<std::string, Value *>());
+}
+
 Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   auto GetInt = [a](const char *what) -> const BigInt & {
@@ -466,13 +478,6 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
       CHECK(s != nullptr) << "Expected string argument to " << what;
       return *s;
   };
-
-
-  auto Unit = [state]() -> Value * {
-      // PERF: Don't represent unit with an allocated record :(
-      return NewValue(&state->heap,
-                      std::unordered_map<std::string, Value *>());
-    };
 
   auto Big = [state](BigInt b) -> Value * {
       return NewValue(&state->heap, std::move(b));
@@ -502,12 +507,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::OUT_STRING: {
     const std::string &s = GetString("out_string");
     ConsoleHook(s);
-    return Unit();
-  }
-
-  case Primop::OUT_LAYOUT: {
-    OutputLayoutHook(a);
-    return Unit();
+    return Unit(state);
   }
 
   case Primop::OBJ_EMPTY: {
@@ -562,7 +562,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::DEBUG_PRINT_DOC: {
     DocTree doc = ValueToDocTree(a);
     DebugPrintDocTree(doc);
-    return Unit();
+    return Unit(state);
   }
 
   case Primop::LOAD_FONT_FILE: {

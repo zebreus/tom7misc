@@ -125,7 +125,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
 
   case Primop::REPHRASE: return std::make_tuple(0, 1);
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
-  case Primop::OUT_LAYOUT: return std::make_tuple(0, 1);
+  case Primop::OUT_LAYOUT: return std::make_tuple(0, 2);
   case Primop::GET_BOXES: return std::make_tuple(0, 1);
   case Primop::PACK_BOXES: return std::make_tuple(0, 2);
   case Primop::IS_TEXT: return std::make_tuple(0, 1);
@@ -332,7 +332,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};
-  case Primop::OUT_LAYOUT: return {{}, pool->Arrow(Layout, Unit())};
+    // page number, content
+  case Primop::OUT_LAYOUT: return {{}, BinOp(Int, Layout, Unit())};
 
   case Primop::OBJ_EMPTY: return {{}, pool->Arrow(Obj, Bool)};
 

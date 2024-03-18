@@ -132,10 +132,20 @@ const Exp *Parsing::Parse(AstPool *pool,
       return i;
     };
 
-  // TODO: Support other integer literals. (NUMERIC_LIT)
-  // TODO: Parse bigint
-  const auto BigInteger = Int >[&](int64_t i) {
-      return BigInt(i);
+  auto IntLiteral =
+    (IsToken<DIGITS>() >[&](Token t) {
+        return TokenStr(t);
+      }) ||
+    (IsToken<NUMERIC_LIT>() >[&](Token t) {
+        return TokenStr(t);
+      });
+
+  const auto BigInteger = IntLiteral >[&](const std::string &s) {
+      if (s.size() > 1 && s[0] == '0' && (s[1] < '0' || s[1] > '9')) {
+        LOG(FATAL) << "unimplemented: Numeric literals of the form "
+                   << s;
+      }
+      return BigInt(s);
     };
 
   const auto Float = IsToken<FLOAT_LIT>() >[&](Token t) -> double {

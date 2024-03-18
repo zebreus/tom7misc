@@ -68,7 +68,7 @@ struct Execution {
   virtual Document *DocumentHook();
 
   // For output of layout
-  virtual void OutputLayoutHook(const Value *layout);
+  virtual void OutputLayoutHook(int page_idx, const Value *layout);
 
  private:
   static std::pair<Value *, Value *>
@@ -88,6 +88,7 @@ struct Execution {
   Value *String(std::string s, State *state);
   Value *Float(double d, State *state);
   Value *Node(Value *attrs, Value *children, State *state);
+  Value *Unit(State *state);
 
   const Program &program;
   const std::unique_ptr<Document> degenerate_document;

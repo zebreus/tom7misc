@@ -11,6 +11,8 @@ struct Type;
 struct AstPool;
 };
 
+// TODO: Primitive types
+
 enum class Primop {
   REF,
   REF_GET,

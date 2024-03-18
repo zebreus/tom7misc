@@ -1,6 +1,10 @@
 #ifndef _REPHRASE_PDF_DOCUMENT_H
 #define _REPHRASE_PDF_DOCUMENT_H
 
+#include <map>
+#include <string>
+#include <optional>
+
 #include "document.h"
 #include "pdf.h"
 
@@ -34,7 +38,7 @@ struct PDFDocument : public Document {
   const Font *GetBuiltInFont(PDF::BuiltInFont bif);
 
   void GeneratePDF(const std::string &filename,
-                   const DocTree &doc);
+                   const std::map<int, DocTree> &pages);
 
   // This stuff should probably be generic, since we'd use this for
   // any backend.

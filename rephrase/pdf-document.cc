@@ -256,18 +256,24 @@ void PDFDocument::PlaceStickersRec(Context context,
 }
 
 void PDFDocument::GeneratePDF(const std::string &filename,
-                              const DocTree &doc) {
-  // XXX: Some way of having multiple pages. Maybe just a newpage
-  // primop.
-  PDF::Page *page = pdf->AppendNewPage();
+                              const std::map<int, DocTree> &pages) {
+  // We ignore gaps in the pages. If you want a blank page, make
+  // a blank document.
+  int num_pages = 0;
+  for (const auto &[page_idx, doc] : pages) {
+    PDF::Page *page = pdf->AppendNewPage();
+    num_pages++;
 
-  Context context;
-  context.font = PDFFont(pdf->GetBuiltInFont(PDF::BuiltInFont::TIMES_ROMAN));
-  Transform identity;
-  identity.dx = 0.0;
-  identity.dy = 0.0;
-  PlaceStickersRec(context, identity, doc, page);
+    Context context;
+    context.font = PDFFont(pdf->GetBuiltInFont(PDF::BuiltInFont::TIMES_ROMAN));
+    Transform identity;
+    identity.dx = 0.0;
+    identity.dy = 0.0;
+    PlaceStickersRec(context, identity, doc, page);
+  }
 
   pdf->Save(filename);
-  printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+  printf("Wrote %d page%s to " AGREEN("%s") ".\n",
+         num_pages, num_pages != 1 ? "s" : "",
+         filename.c_str());
 }

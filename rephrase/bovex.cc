@@ -25,7 +25,7 @@ struct BovexExecution : public bc::Execution {
 
   }
 
-  std::vector<DocTree> docs;
+  std::map<int, std::vector<DocTree>> pages;
 
   Document *DocumentHook() override { return pdf_document; }
 
@@ -33,15 +33,18 @@ struct BovexExecution : public bc::Execution {
   // virtual void FailHook(const std::string &msg);
   // virtual void ConsoleHook(const std::string &msg);
 
-  void OutputLayoutHook(const bc::Value *v) override {
-    printf(AGREEN("OUTPUT") "!\n");
-    docs.push_back(ValueToDocTree(v));
+  void OutputLayoutHook(int page_idx, const bc::Value *v) override {
+    // printf(AGREEN("OUTPUT") "!\n");
+    pages[page_idx].push_back(ValueToDocTree(v));
   }
 
-  DocTree ExtractDocument() {
-    DocTree ret = JoinDocs(std::move(docs));
-    docs.clear();
-    return ret;
+  std::map<int, DocTree> ExtractDocument() {
+    std::map<int, DocTree> out;
+    for (auto &[page_idx, docs] : pages) {
+      out[page_idx] = JoinDocs(std::move(docs));
+    }
+    pages.clear();
+    return out;
   }
 
   PDFDocument *pdf_document;
@@ -112,15 +115,18 @@ static int Bovex(const std::vector<std::string> &args) {
   }
   execution.RunToCompletion(&state);
 
-  DocTree doc = execution.ExtractDocument();
+  std::map<int, DocTree> pages = execution.ExtractDocument();
   // Measure final badness?
 
   if (verbose > 1) {
     printf(AWHITE("The document") ":\n");
-    DebugPrintDocTree(doc);
+    for (const auto &[page_idx, doc] : pages) {
+      printf("==== PAGE %d ====\n", page_idx);
+      DebugPrintDocTree(doc);
+    }
   }
 
-  pdf_document.GeneratePDF(output_file, doc);
+  pdf_document.GeneratePDF(output_file, pages);
 
   const auto &[data_bytes, total_insts] = ProgramSize(pgm);
   printf("Program size: " ABLUE("%lld") " bytes data, "

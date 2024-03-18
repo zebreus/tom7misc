@@ -50,60 +50,6 @@ let
     end
   do test-get-paragraphs ()
 
-  (* Makes the contents of a box into stickers. *)
-  fun stick-horizontally (lay : layout) : layout =
-    case layoutcase lay of
-      Node (BOX, attrs, children) =>
-        let
-          fun rec (_, nil) = nil
-            | rec (x, h :: t) =
-            case layoutcase h of
-              Node (BOX, attrs as {(Box) width}, ch) =>
-                let val s =
-                  sticker (attrs without (Box)width
-                           without (Box)height
-                           with (Sticker)x = x
-                           with (Sticker)y = 0.0) (layout-concat ch)
-                in
-                  s :: rec (x +. width, t)
-                end
-            | _ => fail "Expected line's contents to be boxes."
-        in
-          box attrs (layout-concat (rec (0.0, children)))
-        end
-    | _ => fail "Expected line to be a box!"
-
-  (* Like stick-horizontally, but vertically. *)
-  fun stick-vertically (x : float, lay : layout) : layout =
-    case layoutcase lay of
-      Node (BOX, attrs, children) =>
-        let
-          val height = ref 0.0
-          fun rec (y, nil) =
-            let in
-              height := y;
-              nil
-            end
-            | rec (y, h :: t) =
-            case layoutcase h of
-              Node (BOX, attrs as {(Box) height}, ch) =>
-                let val s =
-                  sticker (attrs without (Box)width
-                           without (Box)height
-                           with (Sticker)y = y
-                           with (Sticker)x = x) (layout-concat ch)
-                in
-                  s :: rec (y +. height, t)
-                end
-            | _ => fail "In stick-vertically, expected contents to be boxes."
-
-          val ch = rec (0.0, children)
-        in
-          box (attrs with (Box)height = !height) (layout-concat ch)
-        end
-    | _ => fail "Expected line to be a box!"
-
-
   (* Generally just one of these, for the toplevel document.
      This breaks the layout into paragraphs, and then inserts
      them one by one into columns. *)
@@ -131,6 +77,8 @@ let
       (* XXX This should depend on the font *)
       val PARAGRAPH-VSPACE-BOTTOM = 12.0
 
+      val current-page = ref 0
+
       (* Layout state. *)
       val current-column = ref 0
       (* y position within column. *)
@@ -152,7 +100,8 @@ let
             ((int-to-float (!current-column)) *. COLUMN-STRIDE)
         in
           !column-empty otherwise
-          output (sticker ({(Sticker)
+          output (!current-page,
+                  sticker ({(Sticker)
                             x = colx ,
                             y = TOP-MARGIN }
                            with column-num = !current-column
@@ -308,8 +257,20 @@ let
       stick-vertically
       (0.0, box {(Box) width = WIDTH} (layout-concat lines))
     in
-      debug-print-doc t;
+      (* debug-print-doc t; *)
       t
+    end
+
+  fun vspace vdim =
+    let val doc =
+      (* Break before (0 size) and after (with given height). *)
+       [[box {(Box) height = 0.0, width = 0.0,
+              glue-break-penalty = -9999999.0 } [ ]]
+        [box {(Box) height = vdim, width = 0.0,
+              glue-break-penalty = -9999999.0 } [ ]]]
+    in
+      debug-print-doc doc;
+      doc
     end
 
 in
@@ -317,7 +278,8 @@ in
   (main-text
   (palatino
    [
-    [title[My test]]
+    [title[My test]][vspace (inch 0.1)]
+    Dr. Tom Murphy VII, Ph.D.
 
     The system goes on-line March 13th, 2024.
 
