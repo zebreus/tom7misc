@@ -10,6 +10,7 @@
 #include "bytecode.h"
 #include "utf.h"
 #include "functional-set.h"
+#include "boxes-and-glue.h"
 
 // Could use actual infinity.
 static constexpr double INFINITE_PENALTY = 9999999.0;
@@ -706,28 +707,120 @@ DocTree Document::GetBoxes(const DocTree &doc) {
   return JoinDocs(out);
 }
 
-namespace {
-struct Box {
-  // Request from input.
-  double width = 0.0;
-  double break_extra_width = 0.0;
-  // From text, or from box's native height.
-  double height = 0.0;
-  double glue_ideal = 0.0;
-  // Derived from penalty. Later, we should actually use softer
-  // penalties.
+using BoxIn = BoxesAndGlue::BoxIn;
+
+// Old, greedy version. Maybe useful for comparison in the paper?
+// Probably can move to BoxesAndGlue
+static std::vector<std::vector<BoxesAndGlue::BoxOut>> PackBoxesFirst(
+    double line_width,
+    const std::vector<BoxIn> &boxes_in) {
+  static constexpr bool VERBOSE = false;
+
+  using BoxOut = BoxesAndGlue::BoxOut;
+  // Allows hyphens.
+  static constexpr double MAX_BREAK_PENALTY = 200.0;
+
+  std::vector<std::vector<BoxesAndGlue::BoxOut>> lines_out;
+
+  std::vector<BoxesAndGlue::BoxOut> current_line;
+  auto EmitLine = [&]() {
+      if (current_line.empty()) return;
+      lines_out.push_back(std::move(current_line));
+      current_line.clear();
+    };
+
+  double current_width = 0.0;
+  double current_postwidth = 0.0;
   bool cannot_break = false;
+  for (const BoxIn &box : boxes_in) {
 
-  // Set during layout.
-  double pad_right = 0.0;
-  bool did_break = false;
+    if (VERBOSE) {
+      // std::string text = ShortColorLayout(*box.node);
+      DebugPrintDocTree(*(DocTree*)box.data);
+      printf("line: %d boxes, width %.3g. %s"
+             "post %.3g. this box %.3g, target %.3g box\n",
+             (int)current_line.size(), current_width,
+             cannot_break ? ARED("NOBRK") " " : "",
+             current_postwidth,
+             box.width, line_width);
+    }
 
-  // TODO: other metrics copied from attributes, like glue!
-  const DocTree *node = nullptr;
-};
+    BoxOut boxo;
+    boxo.box = &box;
+
+    const bool fits =
+      current_width + current_postwidth + box.width <= line_width;
+    if (cannot_break || fits) {
+      // Take the box.
+      if (VERBOSE) {
+        printf(AGREEN("take") "%s%s\n\n",
+               cannot_break ? " (cannot-break)" : "",
+               fits ? " (fits)" : "");
+      }
+
+      // This means the previous box gets its glue turned into padding.
+      if (!current_line.empty()) {
+        current_width += current_postwidth;
+        current_line.back().actual_glue = current_postwidth;
+      } else {
+        CHECK(current_postwidth == 0.0);
+      }
+
+      current_line.push_back(boxo);
+      current_width += box.width;
+      cannot_break = box.glue_break_penalty > MAX_BREAK_PENALTY;
+      current_postwidth = box.glue_ideal;
+
+    } else {
+      // Break.
+      if (VERBOSE) {
+        printf(AORANGE("break") "\n\n");
+      }
+
+      if (current_line.empty()) {
+        // Unusual situation where the word was so long (or break was
+        // not allowed) that it doesn't fit on a line on its own. We
+        // put it on the line, but do not "break" before it.
+      } else {
+        current_line.back().did_break = true;
+      }
+
+      // This does not output empty lines, so it works for the unusual
+      // case above, too.
+      EmitLine();
+
+      current_line = {boxo};
+      current_width = box.width;
+      cannot_break = box.glue_break_penalty > MAX_BREAK_PENALTY;
+      current_postwidth = box.glue_ideal;
+    }
+  }
+
+  // The line usually still has something on it.
+  EmitLine();
+  return lines_out;
 }
 
-DocTree Document::PackBoxes(double width, const DocTree &doc) {
+DocTree Document::PackBoxesOld(double width, const DocTree &doc) {
+  struct Box {
+    // Request from input.
+    double width = 0.0;
+    double break_extra_width = 0.0;
+    // From text, or from box's native height.
+    double height = 0.0;
+    double glue_ideal = 0.0;
+    // Derived from penalty. Later, we should actually use softer
+    // penalties.
+    bool cannot_break = false;
+
+    // Set during layout.
+    double pad_right = 0.0;
+    bool did_break = false;
+
+    // TODO: other metrics copied from attributes, like glue!
+    const DocTree *node = nullptr;
+  };
+
   // Allows hyphens.
   static constexpr double MAX_BREAK_PENALTY = 200.0;
 
@@ -916,7 +1009,157 @@ DocTree Document::PackBoxes(double width, const DocTree &doc) {
   // The line usually still has something on it.
   EmitLine();
 
-  // out.push_back(TextDoc("hi :)"));
-
   return JoinDocs(out);
+}
+
+DocTree Document::PackBoxes(double line_width, const DocTree &doc) {
+  static constexpr bool VERBOSE = false;
+
+  if (doc.IsEmpty()) return doc;
+  CHECK(!doc.IsText()) <<
+    "pack-boxes wants a node that has only box children. Got text: " <<
+    doc.text;
+
+  enum class Algorithm {
+    BEST,
+    FIRST,
+  };
+  Algorithm algorithm = Algorithm::BEST;
+  if (const std::string *algo = doc.GetStringAttr("algorithm")) {
+    if (*algo == "best") {
+      algorithm = Algorithm::BEST;
+    } else if (*algo == "first") {
+      algorithm = Algorithm::FIRST;
+    } else {
+      LOG(FATAL) << "pack-boxes algorithm attr unknown: " << *algo;
+    }
+  }
+
+  std::vector<BoxIn> children;
+
+  auto GetBox = [](const DocTree &doc) -> BoxIn {
+      const double *width = doc.GetDoubleAttr("width");
+      CHECK(width != nullptr) << "In pack-boxes, encountered a top-level box "
+        "that has no width. This probably means that you didn't do get-boxes "
+        "or you messed up the boxes after that, or there's a bug in "
+        "get-boxes (could have been anyone?)";
+
+      BoxIn b;
+      b.width = *width;
+      b.data = (void*)&doc;
+      if (const double *bw = doc.GetDoubleAttr("glue-break-extra-width")) {
+        b.glue_break_extra_width = *bw;
+      }
+
+      if (const double *glue = doc.GetDoubleAttr("glue-ideal")) {
+        b.glue_ideal = *glue;
+      }
+
+      if (const double *pen = doc.GetDoubleAttr("glue-break-penalty")) {
+        b.glue_break_penalty = *pen;
+      }
+
+      // TODO: glue expand/contract
+
+      return b;
+    };
+
+  std::vector<BoxIn> boxes = [&]() {
+      std::vector<BoxIn> boxes;
+      if (const std::string *display = doc.GetStringAttr("display")) {
+        if (*display == "box") {
+          // Just one box.
+          boxes.push_back(GetBox(doc));
+          return boxes;
+        }
+      }
+
+      // Then we expect the direct children (if any) to be the boxes.
+      // XXX perhaps we should be warning if there are attributes
+      // (on doc) here, as they will be dropped?
+      for (const auto &child : doc.children) {
+        const std::string *display = child->GetStringAttr("display");
+        CHECK(display != nullptr) << "In PackBoxes, expected a series "
+          "of boxes. Probably need to call GetBoxes first?";
+        boxes.push_back(GetBox(*child));
+      }
+      return boxes;
+    }();
+
+  std::vector<std::vector<BoxesAndGlue::BoxOut>> lines;
+  switch (algorithm) {
+  case Algorithm::FIRST:
+    lines = PackBoxesFirst(line_width, boxes);
+    break;
+  case Algorithm::BEST:
+    LOG(FATAL) << "unimplemented";
+    break;
+  }
+
+  // Now put the boxes on lines in doctree format.
+
+  // Remove attributes that are consumed by this algorithm.
+  auto CleanAttrs = [](DocTree *doc) {
+      doc->RemoveAttr("glue-contract");
+      doc->RemoveAttr("glue-break-penalty");
+      doc->RemoveAttr("glue-break-insert");
+      doc->RemoveAttr("glue-ideal");
+    };
+
+  std::vector<DocTree> lines_out;
+  for (std::vector<BoxesAndGlue::BoxOut> &box_line : lines) {
+    double line_max_height = 0.0;
+    DocTree line;
+    for (int i = 0; i < (int)box_line.size(); i++) {
+      BoxesAndGlue::BoxOut &box = box_line[i];
+
+      // The box's user data points to the original doctree node.
+      // Copy the node from the input, but we set its width to
+      // include glue, and possibly add hyphens.
+      DocTree d = *(const DocTree*)box.box->data;
+
+      // Maybe this should be handled externally? It would be nice
+      // if this code were generic about what dimension is "width".
+      if (const double *height = d.GetDoubleAttr("height")) {
+        line_max_height = std::max(line_max_height, *height);
+      }
+
+      std::optional<DocTree> insertion;
+      if (box.did_break) {
+        if (const DocTree *insert = d.GetLayoutAttr("glue-break-insert")) {
+          // Copy the word node so that we have its text properties, etc.
+          DocTree ins = d;
+          CleanAttrs(&ins);
+          ins.SetDoubleAttr("width", box.box->glue_break_extra_width);
+          // And the hyphen (typically text) will be its one child.
+          ins.ClearChildren();
+          ins.AddChild(*insert);
+          insertion = {std::move(ins)};
+          if (VERBOSE) {
+            printf(ABGCOLOR(255, 255, 0, "HYPHEN:") "\n");
+            DebugPrintDocTree(insertion.value());
+          }
+        }
+
+        // Accounted for extra width above. No glue when breaking.
+        d.SetDoubleAttr("width", box.box->width);
+      } else {
+        d.SetDoubleAttr("width", box.box->width + box.actual_glue);
+      }
+
+      CleanAttrs(&d);
+      line.AddChild(d);
+      if (insertion.has_value()) {
+        line.AddChild(insertion.value());
+      }
+    }
+
+    line.SetStringAttr("display", "box");
+    line.SetDoubleAttr("width", line_width);
+    line.SetDoubleAttr("height", line_max_height);
+
+    lines_out.push_back(std::move(line));
+  }
+
+  return JoinDocs(lines_out);
 }

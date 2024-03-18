@@ -65,6 +65,7 @@ const char *PrimopString(Primop po) {
   case Primop::IS_TEXT: return "IS_TEXT";
   case Primop::GET_TEXT: return "GET_TEXT";
   case Primop::GET_ATTRS: return "GET_ATTRS";
+  case Primop::SET_ATTRS: return "SET_ATTRS";
   case Primop::LAYOUT_VEC_SIZE: return "LAYOUT_VEC_SIZE";
   case Primop::LAYOUT_VEC_SUB: return "LAYOUT_VEC_SUB";
 
@@ -130,6 +131,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::IS_TEXT: return std::make_tuple(0, 1);
   case Primop::GET_TEXT: return std::make_tuple(0, 1);
   case Primop::GET_ATTRS: return std::make_tuple(0, 1);
+  case Primop::SET_ATTRS: return std::make_tuple(0, 2);
   case Primop::LAYOUT_VEC_SIZE: return std::make_tuple(0, 1);
   case Primop::LAYOUT_VEC_SUB: return std::make_tuple(0, 2);
 
@@ -218,6 +220,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::PACK_BOXES:
   case Primop::GET_TEXT:
   case Primop::GET_ATTRS:
+  case Primop::SET_ATTRS:
   case Primop::LAYOUT_VEC_SIZE:
   case Primop::LAYOUT_VEC_SUB:
   case Primop::DEBUG_PRINT_DOC:
@@ -344,6 +347,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::IS_TEXT: return {{}, pool->Arrow(Layout, Bool)};
   case Primop::GET_TEXT: return {{}, pool->Arrow(Layout, String)};
   case Primop::GET_ATTRS: return {{}, pool->Arrow(Layout, Obj)};
+  case Primop::SET_ATTRS: return {{}, BinOp(Obj, Layout, Layout)};
   case Primop::LAYOUT_VEC_SIZE: return {{}, pool->Arrow(Layout, Int)};
   case Primop::LAYOUT_VEC_SUB: return {{}, BinOp(Layout, Int, Layout)};
 

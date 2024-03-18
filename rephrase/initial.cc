@@ -90,6 +90,7 @@ Initial::Initial(AstPool *pool) {
     {"is-text", Primop::IS_TEXT},
     {"get-text", Primop::GET_TEXT},
     {"get-attrs", Primop::GET_ATTRS},
+    {"set-attrs", Primop::SET_ATTRS},
     {"layout-vec-size", Primop::LAYOUT_VEC_SIZE},
     {"layout-vec-sub", Primop::LAYOUT_VEC_SUB},
 

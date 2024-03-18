@@ -381,6 +381,13 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return children[idx];
   }
 
+  case Primop::SET_ATTRS: {
+    const map_type *aa = std::get_if<map_type>(&a->v);
+    CHECK(aa != nullptr) << "Expected obj first argument to set-attrs.";
+    const auto &[attrs, children] = GetNodeParts("set-attrs", b);
+    return Node(a, children, state);
+  }
+
   case Primop::REF_SET:
     LOG(FATAL) << "SET should have been compiled away.";
   case Primop::INVALID:
@@ -391,9 +398,9 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   return NonceValue();
 }
 
-  // Returns the attrs (as a Value *) and the children (as a vector
-std::pair<Value *, const Execution::vec_type &>
-Execution::GetNode(const char *what, Value *a) {
+// attrs, children vector
+std::pair<Value *, Value *>
+Execution::GetNodeParts(const char *what, Value *a) {
   map_type *obj = std::get_if<map_type>(&a->v);
   CHECK(obj != nullptr) << what << " on a (presumably) text node. "
       "Must check it first with is-text.";
@@ -411,12 +418,34 @@ Execution::GetNode(const char *what, Value *a) {
   auto cit = obj->find(bc::NODE_CHILDREN_LABEL);
   CHECK(cit != obj->end()) << "(" << what << ") Nodes always have a "
       "children vector, even if it is empty.";
-  vec_type *cvec = std::get_if<vec_type>(&cit->second->v);
+  Value *children = cit->second;
+  return std::make_pair(attrs, children);
+}
+
+// Returns the attrs (as a Value *) and the children (as a vector
+std::pair<const Execution::map_type &, const Execution::vec_type &>
+Execution::GetNode(const char *what, Value *a) {
+  const auto &[attrs, children] = GetNodeParts(what, a);
+
+  map_type *aobj = std::get_if<map_type>(&attrs->v);
+  CHECK(aobj != nullptr) << "(" << what << ") In a node, the attrs "
+      "field is always an object.";
+
+  vec_type *cvec = std::get_if<vec_type>(&children->v);
   CHECK(cvec != nullptr) << "(" << what << ") In a node, the children "
       "field is always a vector.";
-  return std::tie(attrs, *cvec);
+  return std::tie(*aobj, *cvec);
 };
 
+// Make a (non-text) node.
+Value *Execution::Node(Value *attrs, Value *children, State *state) {
+  map_type layout = {
+    {bc::NODE_ATTRS_LABEL, attrs},
+    {bc::NODE_CHILDREN_LABEL, children}
+  };
+
+  return NewValue(&state->heap, std::move(layout));
+}
 
 Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
@@ -488,12 +517,12 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   }
 
   case Primop::STRING_EMPTY: {
-    const std::string &s = GetString("string_empty");
+    const std::string &s = GetString("string-empty");
     return Bool(s.empty(), state);
   }
 
   case Primop::STRING_SIZE: {
-    const std::string &s = GetString("string_empty");
+    const std::string &s = GetString("string-size");
     return Big(BigInt(s.size()));
   }
 
@@ -521,7 +550,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   }
 
   case Primop::GET_ATTRS: {
-    const auto [attrs, children] = GetNode("get-attrs", a);
+    const auto [attrs, children] = GetNodeParts("get-attrs", a);
     return attrs;
   }
 
@@ -537,7 +566,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   }
 
   case Primop::LOAD_FONT_FILE: {
-    const std::string filename = GetString("load_font");
+    const std::string filename = GetString("load-font");
     std::string f = DocumentHook()->LoadFontFile(filename);
     return String(std::move(f), state);
   }

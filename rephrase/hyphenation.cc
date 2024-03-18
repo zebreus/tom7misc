@@ -137,6 +137,14 @@ std::vector<std::string> Hyphenation::Hyphenate(std::string_view word) {
       const auto it = patterns.find(part);
       if (it != patterns.end()) {
         const std::vector<uint8_t> &code = it->second;
+        if (VERBOSE) {
+          printf("Matched " AYELLOW("%s") " with code ",
+                 part.c_str());
+          for (int i = 0; i < (int)code.size(); i++) {
+            printf("%d ", code[i]);
+          }
+          printf("\n");
+        }
         for (int i = 0; i < (int)code.size(); i++) {
           int outpos = start + i;
           CHECK(outpos >= 0 && outpos < (int)values.size());

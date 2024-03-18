@@ -71,7 +71,11 @@ struct Execution {
   virtual void OutputLayoutHook(const Value *layout);
 
  private:
-  static std::pair<Value *, const vec_type &>
+  static std::pair<Value *, Value *>
+  GetNodeParts(const char *what, Value *a);
+
+  // Get the underlying representations (const).
+  std::pair<const Execution::map_type &, const Execution::vec_type &>
   GetNode(const char *what, Value *a);
 
   void InternalFail(const std::string &msg, State *state);
@@ -83,6 +87,7 @@ struct Execution {
   Value *Bool(bool b, State *state);
   Value *String(std::string s, State *state);
   Value *Float(double d, State *state);
+  Value *Node(Value *attrs, Value *children, State *state);
 
   const Program &program;
   const std::unique_ptr<Document> degenerate_document;

@@ -76,6 +76,7 @@ enum class Primop {
   GET_TEXT,
   // Operations on non-text layout
   GET_ATTRS,
+  SET_ATTRS,
   LAYOUT_VEC_SIZE,
   LAYOUT_VEC_SUB,
 

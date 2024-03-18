@@ -42,6 +42,7 @@ static void TestHyphenations() {
   TESTCASE("exercitation", "ex-erci-ta-tion");
 
   TESTCASE("bovex", "bo-vex");
+  TESTCASE("king", "king");
 }
 
 int main(int argc, char **argv) {
