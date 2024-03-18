@@ -213,13 +213,18 @@ fun helvetica layout = apply-font HELVETICA layout
 
 fun times-roman layout = apply-font TIMES layout
 
+fun courier layout = apply-font COURIER layout
+
 fun palatino layout = apply-font PALATINO layout
+
 
 fun b layout =
   span {(Span) font-bold = true} layout
 
 fun it layout =
   span {(Span) font-italic = true} layout
+
+val tt = courier
 
 fun rm layout =
   span {(Span) font-bold = false, font-italic = false} layout
