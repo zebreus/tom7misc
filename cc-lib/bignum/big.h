@@ -1083,7 +1083,7 @@ double BigInt::ToDouble() const {
     uint64_t udigit = BzGetDigit(rep, idx);
     double ddigit = udigit;
     // printf("d %.17g | u %llu | dd %.17g\n", d, udigit, ddigit);
-    for (int e = 0; e < sizeof (BigNumDigit); e++)
+    for (size_t e = 0; e < sizeof (BigNumDigit); e++)
       d *= 256.0;
     d += ddigit;
   }

@@ -512,7 +512,7 @@ public:
 
   // TODO: Add support for RGBA images with actual alpha channels!
 
-  // XXX In progress. TODO: return font name
+  // Document
   std::string AddTTF(const std::string &filename);
 
   static const char *ObjTypeName(ObjType t);
