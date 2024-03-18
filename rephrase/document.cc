@@ -797,6 +797,11 @@ DocTree Document::PackBoxes(double line_width, const DocTree &doc) {
       return boxes;
     }();
 
+  for (int i = 0; i < (int)boxes.size(); i++) {
+    boxes[i].parent_idx = i - 1;
+    boxes[i].edge_penalty = 0.0;
+  }
+
   // Allows hyphens.
   static constexpr double MAX_BREAK_PENALTY = 200.0;
 

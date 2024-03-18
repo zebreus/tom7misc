@@ -33,6 +33,14 @@ struct BoxesAndGlue {
     double glue_expand = 1.0;
     double glue_contract = 1.0;
 
+    // Required! Must be less than the box's index.
+    // If parent_node is -1, then it is a root.
+    // A node that doesn't have any children is terminal.
+    // In the normal case of laying out a flat vector of words,
+    // just set the parent to index-1 for each node.
+    int parent_idx = 0;
+    double edge_penalty = 0.0;
+
     // User data.
     void *data = nullptr;
   };
@@ -40,6 +48,8 @@ struct BoxesAndGlue {
   struct BoxOut {
     // Points to one of the boxes in the input vector.
     const BoxIn *box = nullptr;
+    // Refers to that same box by its index.
+    int box_idx = 0;
 
     // Populated by PackBoxes.
     // Did we break after this box?
@@ -47,39 +57,23 @@ struct BoxesAndGlue {
     // Amount of glue assigned (on the right side). This does not
     // include width or glue_break_extra_width.
     double actual_glue = 0.0;
-  };
 
-  // For advanced uses, the boxes can actually be DAG-structured.
-  // Any node with no parents is treated as a starting node.
-  // Any node with no children is treated as an ending node.
-  struct Edge {
-    // Index (in the boxes_in vector) of the parent node.
-    int parent_node = 0;
-    // Index (in the boxes_out vector) of the child node; the one
-    // coming after the parent in the sequence. In order to prevent
-    // cycles, we require that parent_node < child_node.
-    int child_node = 0;
-    // Additional penalty when following this edge.
-    double edge_penalty = 0.0;
+    // Penalty associated with this word. Penalties are a global
+    // phenomenon, so don't read too much into it being associated
+    // with this word. It's just the difference betwen the penalty
+    // at this spot versus the tail.
+    double penalty_here = 0.0;
   };
 
   // Return the vector of "lines," each with the vector of "words"
   // on that line.
-  //
-  // This is the same as PackBoxes with edges from each n to n+1,
-  // and 0.0 penalty.
-  static std::vector<std::vector<BoxOut>> PackBoxesLinear(
+  static std::vector<std::vector<BoxOut>> PackBoxes(
       double line_width,
       const std::vector<BoxIn> &boxes_in);
 
-  static std::vector<std::vector<BoxOut>> PackBoxes(
-      double line_width,
-      const std::vector<BoxIn> &boxes_in,
-      const std::vector<Edge> &edges);
-
   // Greedy algorithm, mostly useful for comparison purposes or
   // as a fallback (it's linear time).
-  // Doesn't support DAG input.
+  // Doesn't support tree input!
   static std::vector<std::vector<BoxOut>> PackBoxesFirst(
       double line_width,
       const std::vector<BoxIn> &boxes_in,

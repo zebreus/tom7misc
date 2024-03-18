@@ -235,7 +235,7 @@ functional-map_test.exe : functional-map_test.o $(BASE)
 functional-set_test.exe : functional-set_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-boxes-and-glue_test.exe : boxes-and-glue_test.o boxes-and-glue.o ansi.o util.o $(BASE)
+boxes-and-glue_test.exe : boxes-and-glue_test.o boxes-and-glue.o ansi.o util.o color-util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :

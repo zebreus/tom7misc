@@ -22,6 +22,12 @@ BoxesAndGlue::PackBoxesFirst(
     double max_break_penalty) {
   static constexpr bool VERBOSE = false;
 
+  for (int i = 0; i < (int)boxes_in.size(); i++) {
+    CHECK(boxes_in[i].parent_idx == i - 1 &&
+          boxes_in[i].edge_penalty == 0.0) << "PackBoxesFirst does "
+      "not support tree input";
+  }
+
   using BoxOut = BoxesAndGlue::BoxOut;
 
   std::vector<std::vector<BoxesAndGlue::BoxOut>> lines_out;
@@ -94,55 +100,39 @@ BoxesAndGlue::PackBoxesFirst(
   return lines_out;
 }
 
-
-std::vector<std::vector<BoxesAndGlue::BoxOut>>
-BoxesAndGlue::PackBoxesLinear(
-    double line_width,
-    const std::vector<BoxIn> &boxes) {
-  std::vector<Edge> edges;
-  edges.reserve(boxes.size() - 1);
-  for (int i = 0; i < (int)boxes.size() - 1; i++) {
-    edges.emplace_back(Edge{
-        .parent_node = i,
-        .child_node = i + 1,
-        .edge_penalty = 0.0,
-      });
-  }
-  return PackBoxes(line_width, boxes, edges);
-}
-
 std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     double line_width,
-    const std::vector<BoxIn> &boxes,
-    const std::vector<Edge> &edges) {
+    const std::vector<BoxIn> &boxes) {
 
-  if (boxes.empty()) return {};
+  std::vector<std::vector<std::pair<int, double>>> successors(
+      boxes.size(), std::vector<std::pair<int, double>>{});
 
-  std::unordered_set<int> not_starting, not_ending;
+  std::vector<int> starting_nodes;
+  std::vector<int> depth;
+  depth.reserve(boxes.size());
 
-  std::vector<std::vector<int>> predecessors(boxes.size(), std::vector<int>{});
-  std::vector<std::vector<int>> successors(boxes.size(), std::vector<int>{});
-
-  for (const Edge &edge : edges) {
-    CHECK(edge.parent_node < edge.child_node) << "The nodes must be "
-      "topologically sorted, for one thing to inhibit cycles.";
-    CHECK(edge.parent_node >= 0 && edge.parent_node < (int)boxes.size());
-    CHECK(edge.child_node >= 0 && edge.child_node < (int)boxes.size());
-    not_starting.insert(edge.parent_node);
-    not_ending.insert(edge.child_node);
-
-    // Duplicate edges cause blow-up, so maybe we should reject them?
-    predecessors[edge.parent_node].push_back(edge.child_node);
-  }
-
-
-  std::unordered_set<int> starting, ending;
   for (int i = 0; i < (int)boxes.size(); i++) {
-    if (!not_starting.contains(i)) starting.insert(i);
-    if (!not_ending.contains(i)) ending.insert(i);
+    const BoxIn &box = boxes[i];
+    CHECK(box.parent_idx < i) << "The nodes must be "
+      "topologically sorted, for one thing to inhibit cycles.";
+    CHECK(box.parent_idx == -1 ||
+          (box.parent_idx >= 0 &&
+           box.parent_idx < boxes.size()));
+    if (box.parent_idx == -1) {
+      starting_nodes.push_back(i);
+      depth.push_back(0);
+    } else {
+      CHECK(box.parent_idx >= 0) << box.parent_idx;
+      successors[box.parent_idx].emplace_back(i, box.edge_penalty);
+      CHECK(box.parent_idx < depth.size());
+      depth.push_back(depth[box.parent_idx] + 1);
+    }
   }
 
-
+  std::unordered_set<int> ending_nodes;
+  for (int i = 0; i < (int)boxes.size(); i++) {
+    if (successors[i].empty()) ending_nodes.insert(i);
+  }
 
   // Once a line is complete, apply glue. If justify is true, then
   // we stretch glue proportionally to reach the given line width.
@@ -193,6 +183,13 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       }
     };
 
+  struct MemoResult {
+    double penalty;
+    int successor;
+    bool break_after;
+  };
+
+
   // This is a dynamic programming problem. We store a table of O(m^2)
   // entries. The table is keyed by a pair: A word index and the
   // number of words before that word on the line. The number of words
@@ -201,10 +198,10 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
   // this word on the line, wherever we are.
   //
   // The value is the result of computing the best way of laying out
-  // this word and the remainder, given this situation. The value
-  // pair contains the total penalty (for the rest) and whether that
-  // best layout breaks after this word.
-  std::unordered_map<std::pair<int, int>, std::pair<double, bool>,
+  // this word and the remainder, given this situation. The MemoResult
+  // pair contains the total penalty (for the rest), the successor node
+  // to choose, and whether this best layout breaks after this word.
+  std::unordered_map<std::pair<int, int>, MemoResult,
     Hashing<std::pair<int, int>>> memo_table;
 
   // Same arguments as the memo table. Gets the width of the text up
@@ -213,30 +210,43 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
   // (since there are no breaks). For expanding/contracting glue, we
   // do this proportionally using the leftover space once we know
   // where the line ends.
+  //
+  // words_before cannot be more than the depth.
   auto GetWidthBefore = [&](int word_idx, int words_before) -> double {
+      CHECK(words_before <= depth[word_idx]);
+
       double width_used = 0.0;
-      const int before_start = word_idx - words_before;
-      CHECK(before_start >= 0);
       for (int b = 0; b < words_before; b++) {
-        // Add the word's length and the space after it.
-        CHECK(before_start + b < (int)boxes.size());
-        const BoxIn &box = boxes[before_start + b];
+        // get previous word
+        CHECK(word_idx >= 0);
+        word_idx = boxes[word_idx].parent_idx;
+
+        const BoxIn &box = boxes[word_idx];
+        CHECK(word_idx >= 0);
         width_used += box.width + box.glue_ideal;
       }
+
       return width_used;
     };
 
   // Since the recursion depth can get kinda high here, we need to solve
-  // this one iteratively. It's bottom-up, starting from the last word.
+  // this one iteratively. It's bottom-up, starting from the leaves.
+  // Since the nodes are topologically sorted, we'll always have the
+  // successor nodes filled in.
   for (int word_idx = (int)boxes.size() - 1; word_idx >= 0; word_idx--) {
     // As a loop invariant, we have memo_table filled in for every greater
     // word_idx.
 
     // Look up the entry in the memo table, handling the base cases
     // beyond the box vector.
-    auto Get = [&boxes, &memo_table](int w, int b) {
+    auto Get = [&boxes, &memo_table](int w, int b) -> MemoResult {
         // Base case is no penalty; no breaks.
-        if (w >= (int)boxes.size()) return std::make_pair(0.0, false);
+        if (w >= (int)boxes.size())
+          return MemoResult{
+            .penalty = 0.0,
+            .successor = -1,
+            .break_after = false
+          };
         auto mit = memo_table.find(std::make_pair(w, b));
         CHECK(mit != memo_table.end()) << "Later table entries should "
           "be filled in!" << w << "," << b;
@@ -244,18 +254,19 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       };
 
     // Set the entry in the memo table.
-    auto Set = [&boxes, &memo_table](int w, int b, double p, bool brk) {
+    auto Set = [&boxes, &memo_table](int w, int b, MemoResult mr) {
         CHECK(!memo_table.contains(std::make_pair(w, b))) <<
           "Duplicate entries?";
         if (VERBOSE) {
           if (w < (int)boxes.size()) {
             printf(
                 "  Penalty ..%d.. ["
-                AWHITE("box #%d") "] = " ARED("%.4f") " %s\n",
-                b, w, p, brk ? AYELLOW("break") : "no");
+                AWHITE("box #%d") "] = " ARED("%.4f") " -> #%d %s\n",
+                b, w, mr.penalty, mr.successor,
+                mr.break_after ? AYELLOW("break") : "no");
           }
         }
-        memo_table[std::make_pair(w, b)] = std::make_pair(p, brk);
+        memo_table[std::make_pair(w, b)] = mr;
       };
 
     // Now compute the value in the table for every number of words before
@@ -263,8 +274,11 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     //
     // PERF: We can (and should) cut this off once we exceed the
     // length of a line.
-    for (int words_before = 0; words_before <= word_idx; words_before++) {
+    for (int words_before = 0;
+         words_before <= depth[word_idx];
+         words_before++) {
 
+      #if 0
       if (VERBOSE) {
         printf("[%d,%d] Check", word_idx, words_before);
         const int before_start = word_idx - words_before;
@@ -276,6 +290,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
         }
         printf(" " AWHITE("box #%d") "\n", word_idx);
       }
+      #endif
 
       // PERF: Can compute this incrementally in the loop.
       CHECK(word_idx >= 0 && word_idx < (int)boxes.size()) << word_idx;
@@ -342,44 +357,86 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
           penalty_word_break * penalty_word_break;
       }
 
-      // Now we can either break here, or continue.
-      // If we break, then the penalty is the amount of space left.
+      // The penalties above just depend on this box and before_words.
+      // Now compute the best option, checking each possible
+      // continuation.
 
-      const double penalty_break_slack =
-        std::max(line_width - total_width_break, 0.0);
-      // ... plus the penalty for the remainder, starting on a new line.
-      const double p_rest = Get(word_idx + 1, 0).first;
-
-      const double penalty_break =
-        // Some glue comes with a penalty, e.g. because we have
-        // to insert a hyphen. (But the penalty can also be
-        // negative!)
-        box.glue_break_penalty +
-        penalty_word_break + penalty_break_slack + p_rest;
-
-      if (VERBOSE) {
-        printf("  width used " ABLUE("%.4f") "."
-               "Word penalty " APURPLE("%.4f") ".\n"
-               "    w/break " AORANGE("%.4f")
-               " " AGREY("(slack)") " + " AYELLOW("%.4f")
-               " " AGREY("(rest)") " = " ARED("%.4f") "\n",
-               total_width_break, penalty_word_break,
-               penalty_break_slack, p_rest, penalty_break);
-      }
-
-      // Try the case where we do not break.
-      const double p_rest_nobreak = Get(word_idx + 1, words_before + 1).first;
-      const double penalty_nobreak = penalty_word_nobreak + p_rest_nobreak;
-      if (VERBOSE) {
-        printf("    or without break: " AGREEN("%.4f") " = " ARED("%.4f") "\n",
-               p_rest_nobreak, penalty_nobreak);
-      }
-
-      // Save the better of the two options.
-      if (penalty_break < penalty_nobreak) {
-        Set(word_idx, words_before, penalty_break, true);
+      if (successors[word_idx].empty()) {
+        MemoResult only;
+        only.penalty = penalty_word_nobreak;
+        only.successor = -1;
+        only.break_after = false;
+        Set(word_idx, words_before, only);
       } else {
-        Set(word_idx, words_before, penalty_nobreak, false);
+        MemoResult best;
+        best.penalty = 1.0/0.0;
+        best.successor = -999;
+        best.break_after = false;
+
+        for (const auto &[next_node, edge_penalty] : successors[word_idx]) {
+          // For each of these, we can either break here, or continue.
+
+          // If we break, then the penalty is the amount of space left.
+          const double penalty_break_slack =
+            std::max(line_width - total_width_break, 0.0);
+          // ... plus the penalty for the remainder, starting on a new line.
+          const double p_rest = Get(next_node, 0).penalty;
+
+          const double penalty_break =
+            // Some glue comes with a penalty, e.g. because we have
+            // to insert a hyphen. (But the penalty can also be
+            // negative!)
+            box.glue_break_penalty +
+            // Just following the edge costs this amount.
+            edge_penalty +
+            penalty_word_break + penalty_break_slack + p_rest;
+
+          if (VERBOSE) {
+            printf("for successor %d:\n"
+                   "  width used " ABLUE("%.4f") "."
+                   "Word penalty " APURPLE("%.4f") ".\n"
+                   "    w/break " AORANGE("%.4f")
+                   " " AGREY("(slack)") " + " AYELLOW("%.4f")
+                   " " AGREY("(rest)") " = " ARED("%.4f") "\n",
+                   next_node,
+                   total_width_break, penalty_word_break,
+                   penalty_break_slack, p_rest, penalty_break);
+          }
+
+          // And the case where we do not break.
+          const double p_rest_nobreak =
+            Get(next_node, words_before + 1).penalty;
+          const double penalty_nobreak =
+            // Just following the edge costs this amount.
+            edge_penalty +
+            penalty_word_nobreak + p_rest_nobreak;
+          if (VERBOSE) {
+            printf("    or without break: "
+                   AGREEN("%.4f") " = " ARED("%.4f") "\n",
+                   p_rest_nobreak, penalty_nobreak);
+          }
+
+          // Consider both options.
+          if (penalty_break < best.penalty) {
+            best = MemoResult{
+              .penalty = penalty_break,
+              .successor = next_node,
+              .break_after = true,
+            };
+          }
+
+          if (penalty_nobreak < best.penalty) {
+            best = MemoResult{
+              .penalty = penalty_nobreak,
+              .successor = next_node,
+              .break_after = false,
+            };
+          }
+        }
+
+        CHECK(best.successor >= 0);
+        // Now save the best one.
+        Set(word_idx, words_before, best);
       }
     }
   }
@@ -389,7 +446,22 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
   std::vector<std::vector<BoxOut>> lines;
   int before = 0;
   std::vector<BoxOut> current_line;
-  for (int w = 0; w < (int)boxes.size(); w++) {
+
+  // Get best starting node.
+  int start = -1;
+  double start_penalty = 1.0/0.0;
+  for (int w : starting_nodes) {
+    const auto mit = memo_table.find(std::make_pair(w, 0));
+    CHECK(mit != memo_table.end()) << "Bug: We should have computed the "
+      "value for each starting node above! " << w;
+    if (start == -1 || mit->second.penalty < start_penalty) {
+      start = w;
+      start_penalty = mit->second.penalty;
+    }
+  }
+
+  int w = start;
+  while (w != -1) {
     // Get the data from the table.
     const auto mit = memo_table.find(std::make_pair(w, before));
     CHECK(mit != memo_table.end()) << "Bug: This should have been computed by "
@@ -400,18 +472,23 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       current_line.size() << " vs " << before;
 
     // Now, do we break or not?
-    const auto &[penalty, break_after] = mit->second;
+    MemoResult memo_result = mit->second;
     if (VERBOSE) {
-      printf("After [" AWHITE("box #%d") "]? Penalty " ARED("%.4f") " %s\n",
-             w, penalty, break_after ? AYELLOW("break") : AGREY("no"));
+      printf("After [" AWHITE("box #%d") "]? -> #%d, "
+             "Penalty " ARED("%.4f") " %s\n",
+             w, memo_result.successor, memo_result.penalty,
+             memo_result.break_after ? AYELLOW("break") : AGREY("no"));
     }
 
     BoxOut box_out;
     box_out.box = &boxes[w];
-    box_out.did_break = break_after;
+    box_out.box_idx = w;
+    box_out.did_break = memo_result.break_after;
+    // Note: We diff these down below.
+    box_out.penalty_here = memo_result.penalty;
     current_line.push_back(box_out);
 
-    if (break_after) {
+    if (memo_result.break_after) {
       ApplyGlue(&current_line, true);
       lines.push_back(std::move(current_line));
       current_line.clear();
@@ -419,12 +496,25 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     } else {
       before++;
     }
+
+    w = memo_result.successor;
   }
 
   if (!current_line.empty()) {
     // Apply glue to final line. It is not justified.
     ApplyGlue(&current_line, false);
     lines.push_back(std::move(current_line));
+  }
+
+  // Compute penalty diffs.
+  BoxOut *prev = nullptr;
+  for (auto &line : lines) {
+    for (auto &box : line) {
+      if (prev != nullptr) {
+        prev->penalty_here -= box.penalty_here;
+      }
+      prev = &box;
+    }
   }
 
   return lines;

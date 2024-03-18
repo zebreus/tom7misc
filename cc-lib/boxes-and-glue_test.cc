@@ -6,6 +6,7 @@
 
 #include "util.h"
 #include "ansi.h"
+#include "color-util.h"
 
 using BoxIn = BoxesAndGlue::BoxIn;
 using BoxOut = BoxesAndGlue::BoxOut;
@@ -33,13 +34,22 @@ static void TestASCII(bool best_fit) {
     box.glue_ideal = 1.0;
     box.glue_expand = 1.0;
     box.glue_contract = 1.0;
+    box.parent_idx = i - 1;
+    box.edge_penalty = 0.0;
     box.data = (void*)&words[i];
     boxes.push_back(box);
   }
 
   std::vector<std::vector<BoxOut>> out =
-    best_fit ? BoxesAndGlue::PackBoxesLinear(40.0, boxes) :
+    best_fit ? BoxesAndGlue::PackBoxes(40.0, boxes) :
     BoxesAndGlue::PackBoxesFirst(40.0, boxes, 5.0);
+
+  double max_penalty = 0.0;
+  for (const std::vector<BoxOut> &line : out) {
+    for (const BoxOut &box : line) {
+      max_penalty = std::max(std::abs(box.penalty_here), max_penalty);
+    }
+  }
 
   for (const std::vector<BoxOut> &line : out) {
     // Alas, we can only space in discrete increments.
@@ -47,7 +57,13 @@ static void TestASCII(bool best_fit) {
     for (const BoxOut &word : line) {
       const std::string &w = *(const std::string*)word.box->data;
       slack += word.actual_glue;
-      printf("%s", w.c_str());
+
+      uint32_t color = ColorUtil::LinearGradient32(
+          ColorUtil::HEATED_TEXT, word.penalty_here / max_penalty);
+
+      printf("%s%s" ANSI_RESET,
+             ANSI::ForegroundRGB32(color).c_str(),
+             w.c_str());
       while (slack >= 1.0) {
         printf(" ");
         slack -= 1.0;
