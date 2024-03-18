@@ -179,36 +179,9 @@ object Sticker of { x: float, y: float, scale: float }
 fun sticker (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_STICKER) l
 
-(* Run the line breaking algorithm on a sequence of boxes.
-   This takes
-   <b1><b2><b3><b4><b5><b6><b7><b8><b9><b10><b11><b12><b13><b114>...
-   and gives
-   <l1><b1>...<bn><bn*></l1>
-   <l2><bn+1>...<bm></l2>
-   ...
-
-   where <l> are also boxes. It also reifies glue and inserts any
-   break-insert layout from breaks (likewise, dropping any that is not used).
-
-   see pack-boxes below.
-   *)
-
-(*
- A pararagraph at a time,
-
- First, rephrase text.
- Then, get boxes from layout.
- Then, lay out those boxes into lines.
- Then, emit the lines into the current
- text column, adding new columns or
- pages as needed.
-
- *)
-
 fun apply-font (Font f) lay =
   span {(Span) font-face = f} lay
 
-(* XXX this needs to load the font.  *)
 fun helvetica layout = apply-font HELVETICA layout
 
 fun times-roman layout = apply-font TIMES layout
@@ -360,7 +333,7 @@ fun get-paragraphs (ls : layout list) : layout list =
       end
 
     (* TODO: normalize whitespace *)
-    fun normalize s = string-replace (s, "\n", " ")
+    fun normalize s = normalize-whitespace s
 
     fun do-one-text s =
       let

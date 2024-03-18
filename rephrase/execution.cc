@@ -526,6 +526,11 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Big(BigInt(s.size()));
   }
 
+  case Primop::NORMALIZE_WHITESPACE: {
+    const std::string &s = GetString("normalize-whitespace");
+    return String(NormalizeWhitespace(s), state);
+  }
+
   case Primop::REPHRASE: {
     return RephraseHook(a);
   }

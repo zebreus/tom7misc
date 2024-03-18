@@ -75,6 +75,11 @@ DocTree ValueToDocTree(const bc::Value *v);
 // pointer to it.
 bc::Value *DocTreeToValue(std::vector<bc::Value *> *heap, const DocTree &doc);
 
+// Like Util::NormalizeWhitespace, but don't remove surrounding whitespace.
+// (We don't want a node with just " " to become empty!)
+// We need to figure out something more rational here.
+std::string NormalizeWhitespace(const std::string &s);
+
 void DebugPrintDocTree(const DocTree &doc);
 
 DocTree JoinDocs(std::vector<DocTree> v);

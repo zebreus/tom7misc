@@ -51,6 +51,7 @@ const char *PrimopString(Primop po) {
   case Primop::STRING_FIND: return "STRING_FIND";
   case Primop::STRING_SUBSTR: return "STRING_SUBSTR";
   case Primop::STRING_REPLACE: return "STRING_REPLACE";
+  case Primop::NORMALIZE_WHITESPACE: return "NORMALIZE_WHITESPACE";
 
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
@@ -117,6 +118,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_FIND: return std::make_tuple(0, 2);
   case Primop::STRING_SUBSTR: return std::make_tuple(0, 3);
   case Primop::STRING_REPLACE: return std::make_tuple(0, 3);
+  case Primop::NORMALIZE_WHITESPACE: return std::make_tuple(0, 1);
 
   case Primop::OBJ_EMPTY: return std::make_tuple(0, 1);
 
@@ -198,6 +200,7 @@ bool IsPrimopTotal(Primop p) {
     // It can fail.
     return false;
   case Primop::STRING_REPLACE: return true;
+  case Primop::NORMALIZE_WHITESPACE: return true;
 
   case Primop::OUT_STRING: return false;
   case Primop::OUT_LAYOUT: return false;
@@ -328,7 +331,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::STRING_REPLACE:
     // string-replace(haystack, needle, replacement)
     return {{}, pool->Arrow(pool->Product({String, String, String}), String)};
-
+  case Primop::NORMALIZE_WHITESPACE: return {{}, pool->Arrow(String, String)};
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};

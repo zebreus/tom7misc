@@ -632,11 +632,7 @@ const Font *Document::GetDescribedFont(const TextProps &props) {
   return nullptr;
 }
 
-
-// Like Util::NormalizeWhitespace, but don't remove surrounding whitespace.
-// (We don't want a node with just " " to become empty!)
-// We need to figure out something more rational here.
-static std::string NormalizeWhitespace(const std::string &s) {
+std::string NormalizeWhitespace(const std::string &s) {
   std::string ret;
   ret.reserve(s.size());
   bool skip_ws = false;
