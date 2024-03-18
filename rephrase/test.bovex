@@ -244,7 +244,7 @@ let
 in
 
   (main-text
-  (times-roman
+  (palatino
    [
     The system goes on-line March 13th, 2024.
 
@@ -255,7 +255,10 @@ of coverage. For a particular product received by a particular user,
     [helvetica
      [
       Does it make sense to put paragraphs...
-      ... inside a span? I guess so?
+
+      ... inside a span?
+
+      I guess so?
       ]]
 
     This is my paper. I have written some filler text in order to get the

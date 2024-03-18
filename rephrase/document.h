@@ -102,14 +102,31 @@ struct Document {
   virtual ~Document() = default;
 
   struct TextProps {
-    std::string font_face;
+    std::string font_family;
     double font_size = 12.0;
     bool font_bold = false;
     bool font_italic = false;
   };
 
-  // This is independent of font size.
-  virtual const Font *GetDescribedFont(const TextProps &props);
+  // Each style is optional, but there should be at least one non-null.
+  struct FontFamily {
+    const Font *regular = nullptr;
+    const Font *bold = nullptr;
+    const Font *italic = nullptr;
+    const Font *bold_italic = nullptr;
+  };
+
+  // Load a font from a file and insert it in the fonts map.
+  // Returns a font identifier if successful, or else the empty
+  // string. This just just a single face, not a font family.
+  virtual std::string LoadFontFile(const std::string &filename);
+
+  // Look up a font by its name (Font::Name; not family name).
+  const Font *GetFontByName(const std::string &font_name);
+
+  // These are independent of font size.
+  void RegisterFont(const TextProps &props, const Font *f);
+  const Font *GetDescribedFont(const TextProps &props);
 
   DocTree GetBoxes(const DocTree &doc);
 
@@ -118,6 +135,8 @@ struct Document {
 
   std::vector<DocTree>
   BoxifyText(const Font *font, double font_size, std::string_view text);
+
+  std::unordered_map<std::string, FontFamily> font_families;
 
   // All loaded fonts.
   std::unordered_map<std::string, std::unique_ptr<Font>> fonts;

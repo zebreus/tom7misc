@@ -15,11 +15,7 @@
 namespace bc {
 
 struct DegenerateDocument : public Document {
-  // This is independent of font size.
-  const Font *GetDescribedFont(const TextProps &props) override {
-    LOG(FATAL) << "Can't get fonts in degenerate document.";
-    return nullptr;
-  }
+
 };
 
 Execution::Execution(const Program &pgm) :
@@ -120,6 +116,13 @@ Value *Execution::Float(double d, State *state) {
 
 Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
                           State *state) {
+
+  auto Unit = [state]() -> Value * {
+      // PERF: Don't represent unit with an allocated record :(
+      return NewValue(&state->heap,
+                      std::unordered_map<std::string, Value *>());
+    };
+
   switch (primop) {
   case Primop::STRING_SUBSTR: {
     const std::string *as = std::get_if<std::string>(&a->v);
@@ -148,6 +151,25 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
       "Expected string,string,string to string-replace";
 
     return String(Util::Replace(*as, *bs, *cs), state);
+  }
+
+  case Primop::REGISTER_FONT: {
+    const std::string *as = std::get_if<std::string>(&a->v);
+    const std::string *bs = std::get_if<std::string>(&b->v);
+    const BigInt *ci = std::get_if<BigInt>(&c->v);
+    CHECK(as != nullptr && bs != nullptr && ci != nullptr) <<
+      "Expected string,string,int to register-font";
+
+    const Font *font = DocumentHook()->GetFontByName(*as);
+
+    Document::TextProps props;
+    props.font_family = *bs;
+    // unused
+    props.font_size = 1.0;
+    props.font_bold = !!BigInt::BitwiseAnd(*ci, 1);
+    props.font_italic = !!BigInt::BitwiseAnd(*ci, 2);
+    DocumentHook()->RegisterFont(props, font);
+    return Unit();
   }
 
   default:
@@ -512,6 +534,12 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     DocTree doc = ValueToDocTree(a);
     DebugPrintDocTree(doc);
     return Unit();
+  }
+
+  case Primop::LOAD_FONT_FILE: {
+    const std::string filename = GetString("load_font");
+    std::string f = DocumentHook()->LoadFontFile(filename);
+    return String(std::move(f), state);
   }
 
   case Primop::REF:

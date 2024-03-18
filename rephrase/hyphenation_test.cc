@@ -40,6 +40,8 @@ static void TestHyphenations() {
   TESTCASE("the", "the");
   TESTCASE("2024", "2024");
   TESTCASE("exercitation", "ex-erci-ta-tion");
+
+  TESTCASE("bovex", "bo-vex");
 }
 
 int main(int argc, char **argv) {

@@ -22,16 +22,16 @@ struct PDFFont : public Font {
 
  private:
   friend struct PDFDocument;
+  // Not owned.
   const PDF::FontObj *pdf_font = nullptr;
 };
 
 struct PDFDocument : public Document {
   PDFDocument(double width, double height);
 
-  const Font *GetDescribedFont(const TextProps &props) override;
+  std::string LoadFontFile(const std::string &filename) override;
 
   const Font *GetBuiltInFont(PDF::BuiltInFont bif);
-  const Font *GetFontByName(const std::string &s);
 
   void GeneratePDF(const std::string &filename,
                    const DocTree &doc);
@@ -67,7 +67,6 @@ struct PDFDocument : public Document {
                         PDF::Page *page);
 
   std::unique_ptr<PDF> pdf;
-  std::unordered_map<std::string, PDF::BuiltInFont> builtin_fonts;
 };
 
 #endif

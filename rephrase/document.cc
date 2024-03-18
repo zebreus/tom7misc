@@ -563,10 +563,62 @@ Document::BoxifyText(const Font *font, double font_size,
   return out;
 }
 
-const Font *Document::GetDescribedFont(const TextProps &props) {
-  LOG(FATAL) << "The abstract base class of Document does not understand "
-    "fonts on its own!";
+std::string Document::LoadFontFile(const std::string &filename) {
+  LOG(FATAL) << "(LoadFontFile) The abstract base class of Document does "
+    "not understand fonts on its own!";
 }
+
+const Font *Document::GetFontByName(const std::string &font_name) {
+  const auto it = fonts.find(font_name);
+  CHECK(it != fonts.end()) << "Unknown font name " << font_name;
+  CHECK(it->second.get() != nullptr) << "Null font pointer??";
+  return it->second.get();
+}
+
+void Document::RegisterFont(const TextProps &props, const Font *f) {
+  FontFamily &family = font_families[props.font_family];
+  if (props.font_bold && props.font_italic) {
+    family.bold_italic = f;
+  } else if (props.font_bold) {
+    family.bold = f;
+  } else if (props.font_italic) {
+    family.italic = f;
+  } else {
+    family.regular = f;
+  }
+}
+
+const Font *Document::GetDescribedFont(const TextProps &props) {
+  const auto it = font_families.find(props.font_family);
+  if (it == font_families.end()) {
+    LOG(FATAL) << "Unknown font family: " << props.font_family;
+  }
+  const FontFamily &family = it->second;
+
+  if (props.font_bold && props.font_italic && family.bold_italic)
+    return family.bold_italic;
+
+  if (props.font_italic && family.italic)
+    return family.italic;
+
+  if (props.font_bold && family.bold)
+    return family.bold;
+
+  if (family.regular)
+    return family.regular;
+
+  // Then this is a weird case where we only have bold/italic/bold-italic,
+  // and we weren't asking for that! Just return something...
+  if (family.italic)
+    return family.italic;
+  if (family.bold)
+    return family.bold;
+  if (family.bold_italic)
+    return family.bold_italic;
+  LOG(FATAL) << "Font family has no faces?";
+  return nullptr;
+}
+
 
 // Like Util::NormalizeWhitespace, but don't remove surrounding whitespace.
 // (We don't want a node with just " " to become empty!)
@@ -620,7 +672,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
             return;
           } else if (*display == "span") {
             if (const std::string *f = doc.GetStringAttr("font-face")) {
-              props.font_face = *f;
+              props.font_family = *f;
             }
 
             if (const double *d = doc.GetDoubleAttr("font-size")) {
@@ -649,7 +701,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
 
   // Get default text props somehow?
   TextProps props;
-  props.font_face = "times";
+  props.font_family = "times";
   Rec(props, doc);
   return JoinDocs(out);
 }

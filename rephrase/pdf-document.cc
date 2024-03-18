@@ -1,7 +1,6 @@
 
 #include "pdf-document.h"
 
-#include <array>
 #include <string>
 #include <string>
 #include <cstring>
@@ -19,67 +18,84 @@ PDFFont::PDFFont(const PDF::FontObj *f) : pdf_font(f) {
 
 using Transform = PDFDocument::Transform;
 
-const Font *PDFDocument::GetDescribedFont(const Document::TextProps &props) {
-  auto Variant = [&]() -> int {
-      return (props.font_bold ? 1 : 0) + (props.font_italic ? 2 : 0);
-    };
-  if (props.font_face == "helvetica") {
-    static constexpr std::array hvariants = {
-      PDF::HELVETICA,
-      PDF::HELVETICA_BOLD,
-      PDF::HELVETICA_OBLIQUE,
-      PDF::HELVETICA_BOLD_OBLIQUE,
-    };
-    return GetBuiltInFont(hvariants[Variant()]);
-
-  } else if (props.font_face == "courier") {
-    static constexpr std::array cvariants = {
-      PDF::COURIER,
-      PDF::COURIER_BOLD,
-      PDF::COURIER_OBLIQUE,
-      PDF::COURIER_BOLD_OBLIQUE,
-    };
-    return GetBuiltInFont(cvariants[Variant()]);
-
-  } else if (props.font_face == "times") {
-    static constexpr std::array tvariants = {
-      PDF::TIMES_ROMAN,
-      PDF::TIMES_BOLD,
-      PDF::TIMES_ITALIC,
-      PDF::TIMES_BOLD_ITALIC,
-    };
-    return GetBuiltInFont(tvariants[Variant()]);
-
-  } else if (props.font_face == "symbol") {
-    return GetBuiltInFont(PDF::SYMBOL);
-  } else if (props.font_face == "zapf_dingbats") {
-    return GetBuiltInFont(PDF::ZAPF_DINGBATS);
-  } else {
-    // Somehow need to get the "italic name" and "bold name".
-    return GetFontByName(props.font_face);
-  }
-
+std::string PDFDocument::LoadFontFile(const std::string &filename) {
+  std::string name = pdf->AddTTF(filename);
+  const PDF::FontObj *fobj = pdf->GetFontByName(name);
+  CHECK(fobj != nullptr) << "Couldn't find just-loaded font? " << filename;
+  fonts[name] = std::make_unique<PDFFont>(fobj);
+  return name;
 }
 
-const Font *PDFDocument::GetBuiltInFont(PDF::BuiltInFont bif) {
-  // Easier to get this directly, but we make sure it's present in
-  // the font map anyway.
-  const PDF::FontObj *fobj = pdf->GetBuiltInFont(bif);
-  CHECK(fobj != nullptr) << "PDF can't get built-in font? " <<
-    PDF::BuiltInFontName(bif);
-  const std::string name = fobj->BaseFont();
-  auto &fptr = fonts[name];
-  if (fptr.get() == nullptr) {
-    fptr.reset(new PDFFont(fobj));
+void PDFDocument::InitBuiltInFonts() {
+  CHECK(pdf.get() != nullptr) << "Needs the PDF object to be created first!";
+  // Returns pointer; stores in fonts vector to maintain lifetime.
+  auto GetBIF = [this](PDF::BuiltInFont bif) -> const PDFFont * {
+      const PDF::FontObj *fobj = pdf->GetBuiltInFont(bif);
+      auto font = std::make_unique<PDFFont>(fobj);
+      const PDFFont *f = font.get();
+      CHECK(f != nullptr) << "Failed to load built-in font??";
+      fonts[f->Name()] = std::move(font);
+      return f;
+    };
+
+  auto RegisterFourFonts = [&](const std::string &family,
+                               PDF::BuiltInFont regular,
+                               PDF::BuiltInFont bold,
+                               PDF::BuiltInFont italic,
+                               PDF::BuiltInFont bold_italic) {
+      TextProps props;
+      props.font_family = family;
+      // Unused
+      props.font_size = 1.0;
+
+      props.font_bold = false;
+      props.font_italic = false;
+
+      RegisterFont(props, GetBIF(regular));
+
+      props.font_bold = true;
+      RegisterFont(props, GetBIF(bold));
+
+      props.font_italic = true;
+      RegisterFont(props, GetBIF(bold_italic));
+
+      props.font_bold = false;
+      RegisterFont(props, GetBIF(italic));
+    };
+
+  RegisterFourFonts("helvetica",
+                    PDF::HELVETICA,
+                    PDF::HELVETICA_BOLD,
+                    PDF::HELVETICA_OBLIQUE,
+                    PDF::HELVETICA_BOLD_OBLIQUE);
+
+  RegisterFourFonts("courier",
+                    PDF::COURIER,
+                    PDF::COURIER_BOLD,
+                    PDF::COURIER_OBLIQUE,
+                    PDF::COURIER_BOLD_OBLIQUE);
+
+  RegisterFourFonts("times",
+                    PDF::TIMES_ROMAN,
+                    PDF::TIMES_BOLD,
+                    PDF::TIMES_ITALIC,
+                    PDF::TIMES_BOLD_ITALIC);
+
+  {
+    TextProps props;
+    props.font_family = "symbol";
+    props.font_bold = false;
+    props.font_italic = false;
+    RegisterFont(props, GetBIF(PDF::SYMBOL));
   }
 
-  return fptr.get();
-}
-
-
-// Get a font from the hash map, maybe by loading and inserting it first.
-const Font *PDFDocument::GetFontByName(const std::string &name) {
-  LOG(FATAL) << "Need to implement font loading: " << name;
+  {
+    TextProps props;
+    props.font_family = "zapf-dingbats";
+    props.font_bold = false;
+    props.font_italic = false;
+    RegisterFont(props, GetBIF(PDF::ZAPF_DINGBATS));
+  }
 }
 
 std::string PDFFont::Name() const {
@@ -114,8 +130,6 @@ static inline Transform Translate(Transform t, double dx, double dy) {
 
 
 PDFDocument::PDFDocument(double width, double height) {
-  InitBuiltInFonts();
-
   PDF::Info info;
   // XXX make settable from document.
   strncpy(info.creator, "BoVeX", 63);
@@ -128,6 +142,8 @@ PDFDocument::PDFDocument(double width, double height) {
   strncpy(info.date, DateTimeStamp().c_str(), 63);
 
   pdf.reset(new PDF((float)width, (float)height, info));
+
+  InitBuiltInFonts();
 }
 
 // These draw routines are just like their counterparts in PDF, except
@@ -146,6 +162,7 @@ static uint32_t PDFColor(uint32_t rgba) {
   return ColorUtil::Pack32(255 - a, r, g, b);
 }
 
+#if 0
 // For fonts that have already been loaded; returns nullptr if not
 // found. This is like PDF::GetFontByName but it allows naming
 // built-in fonts as well.
@@ -159,29 +176,7 @@ const PDF::FontObj *PDFDocument::AnyFontByName(const std::string &font_name) {
 
   return pdf->GetFontByName(font_name);
 }
-
-void PDFDocument::InitBuiltInFonts() {
-  for (PDF::BuiltInFont bif : {
-           PDF::HELVETICA,
-           PDF::HELVETICA_BOLD,
-           PDF::HELVETICA_OBLIQUE,
-           PDF::HELVETICA_BOLD_OBLIQUE,
-           PDF::COURIER,
-           PDF::COURIER_BOLD,
-           PDF::COURIER_OBLIQUE,
-           PDF::COURIER_BOLD_OBLIQUE,
-           PDF::TIMES_ROMAN,
-           PDF::TIMES_BOLD,
-           PDF::TIMES_ITALIC,
-           PDF::TIMES_BOLD_ITALIC,
-           PDF::SYMBOL,
-           PDF::ZAPF_DINGBATS,
-       }) {
-    const char *name = PDF::BuiltInFontName(bif);
-    CHECK(name != nullptr);
-    builtin_fonts[name] = bif;
-  }
-}
+#endif
 
 void PDFDocument::DrawText(const PDFFont &font,
                            const std::string &text, double size,
@@ -238,11 +233,11 @@ void PDFDocument::PlaceStickersRec(Context context,
     "its final x= and y= coordinates.";
 
   if (const std::string *font_name = doc.GetStringAttr("font-name")) {
-    const PDF::FontObj *f = AnyFontByName(*font_name);
+    const Font *f = GetFontByName(*font_name);
     if (f == nullptr) {
       fprintf(stderr, ARED("Missing font: ") "%s\n", font_name->c_str());
     } else {
-      context.font = PDFFont(f);
+      context.font = *(const PDFFont *)f;
     }
   }
 

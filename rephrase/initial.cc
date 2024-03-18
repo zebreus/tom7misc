@@ -93,6 +93,9 @@ Initial::Initial(AstPool *pool) {
     {"layout-vec-size", Primop::LAYOUT_VEC_SIZE},
     {"layout-vec-sub", Primop::LAYOUT_VEC_SUB},
 
+    {"load-font-file", Primop::LOAD_FONT_FILE},
+    {"register-font", Primop::REGISTER_FONT},
+
     {"print", Primop::OUT_STRING},
     {"output", Primop::OUT_LAYOUT},
   };

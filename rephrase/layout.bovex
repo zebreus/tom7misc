@@ -12,6 +12,54 @@ fun inch (d : float) = d *. 72.0
 fun point (d : float) = d
 fun mm (d : float) = d *. 2.8346456664
 
+(* Fonts are represented with text attributes. But we wrap them
+   so that some utilities get a little extra type checking. *)
+datatype font-family = Font of string
+
+(*
+XXX support patterns like this!
+{ name: string,
+regular: string option,
+bold: string option,
+italic: string option,
+bold-italic: string option }
+*)
+fun load-font-family { name = family-name : string,
+                       regular, bold, italic, bold-italic }
+  : font-family =
+  let
+    (* Must agree with internals. *)
+    val BOLD = 1
+    val ITALIC = 2
+
+    fun load (NONE, _) = ()
+      | load (SOME ttf, props) =
+      case load-font-file ttf of
+        "" => fail ("Unable to load font from file " ^ ttf)
+        | font => register-font (font, family-name, props)
+
+  in
+    load (regular, 0);
+    load (bold, BOLD);
+    load (italic, ITALIC);
+    load (bold-italic, BOLD + ITALIC);
+    (* TODO: We could be computing the name? *)
+    Font family-name
+  end
+
+(* some built-in fonts *)
+val HELVETICA : font-family = Font "helvetica"
+val TIMES : font-family = Font "times"
+val COURIER : font-family = Font "courier"
+val ZAPF-DINGBATS : font-family = Font "zapf-dingbats"
+
+val PALATINO : font-family =
+  load-font-family { name = "palatino",
+                     regular = SOME "pala.ttf",
+                     bold = SOME "palab.ttf",
+                     italic = SOME "palai.ttf",
+                     bold-italic = SOME "palabi.ttf" }
+
 fun layout-concat nil = []
   | layout-concat (l :: t) = [[l][layout-concat t]]
 
@@ -153,15 +201,15 @@ fun sticker (attrs : obj) (l : layout) =
 
  *)
 
+fun apply-font (Font f) lay =
+  span {(Span) font-face = f} lay
+
 (* XXX this needs to load the font.  *)
-fun palatino layout =
-  span {(Span) font-face = "palatino"} layout
+fun helvetica layout = apply-font HELVETICA layout
 
-fun helvetica layout =
-  span {(Span) font-face = "helvetica"} layout
+fun times-roman layout = apply-font TIMES layout
 
-fun times-roman layout =
-  span {(Span) font-face = "times"} layout
+fun palatino layout = apply-font PALATINO layout
 
 fun b layout =
   span {(Span) font-bold = true} layout
@@ -216,7 +264,6 @@ fun layout-tostring l =
 fun layout-concat nil = []
   | layout-concat (h :: t) = [[h][layout-concat t]]
 
-
 (* Generates boxes and glue from text, making this into "AllBox" format. *)
 fun get-boxes (content : layout) =
   internal-get-boxes content
@@ -248,95 +295,6 @@ fun pack-boxes (width : float, content : layout) : layout list =
   let val packed = internal-pack-boxes (width, content)
   in unjoin packed
   end
-
-(* This expects
-   <box> <box></box><box></box><box></box> </box>
-   <box> <box></box><box></box><box></box> </box>
-   ...
-
-   and flattens them into a single "column" sticker with
-   stickers as children. *)
-(*
-fun stick-lines-column (line-height: float, p : layout) =
-  let
-
-    (* TODO: I think this is a generic construct; the opposite of
-       JoinDocs in document.cc. *)
-    fun get-lines p =
-      if is-empty-layout p
-      then nil
-      else
-        case layoutcase p of
-          Node (SPAN, attrs, words) => p :: nil
-        | Node (GROUP, attrs, words) => words
-        | _ => fail ("expecting a node with line children, " ^
-                     "not text or boxes, etc.?")
-
-    fun one-line (start-y : float, line : layout) =
-      let
-        do LAYOUT-VERBOSE andthen
-          let in
-             print "Want LINE:\n";
-             debug-print-doc line;
-             print "^^^^^^^^^^^^^";
-
-             debug-print-doc (node (get-attrs line) [content]);
-             (case get-attrs line of
-                {(Node) display} => print ("Display: " ^ display ^ "\n")
-              | _ => print "no display")
-          end
-      in
-      case layoutcase line of
-        Node (BOX, attrs, words) =>
-          let
-
-            fun r (_, nil) = []
-              | r (x, word :: t) =
-              let
-                val (width, s) =
-                  case layoutcase word of
-                    Node (BOX, {(Box) width = width}, content) =>
-                      (width,
-                       sticker
-                       {(Sticker) x = x, y = start-y}
-                       (layout-concat content))
-                  | _ => fail "need a box with a width!"
-              in
-                [[s][r (x +. width, t)]]
-              end
-
-          in
-            r (0.0, words)
-          end
-      | Node (GROUP, _, body : layout list) => fail "got group?"
-          (*
-          let do print "GROUP:\n"
-            fun f p = let do one-line (start-y, p) in () end
-            do list-app f body
-            (* do list-app (fn p => one-line (start-y, p)) body *)
-          in
-            []
-            (* fail "??" *)
-          end
-        *)
-      | Node (SPAN, _, _) => fail "got group?"
-      | Node (STICKER, _, _) => fail "got group?"
-      | Text _ => fail "got text?"
-      | _ => fail "impossible!"
-      end
-
-    (* Probably should return total height to the caller? *)
-    fun r (_, nil) = []
-      | r (y, h :: t) =
-      let
-        val line = one-line (y, h)
-      in
-        [[line][r (y +. line-height, t)]]
-      end
-  in
-    r (0.0, get-lines p)
-  end
-*)
 
 (*
  Parsing text into paragraphs (and perhaps other stuff).

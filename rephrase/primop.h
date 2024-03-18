@@ -79,6 +79,9 @@ enum class Primop {
   LAYOUT_VEC_SIZE,
   LAYOUT_VEC_SUB,
 
+  LOAD_FONT_FILE,
+  REGISTER_FONT,
+
   // expensive stuff implemented by harness
   REPHRASE,
   GET_BOXES,
