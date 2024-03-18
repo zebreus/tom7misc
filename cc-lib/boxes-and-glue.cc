@@ -344,13 +344,11 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     if (break_after) {
       // Apply glue!
       double space_used = 0.0;
-      int glues = 0;
       for (int i = 0; i < (int)current_line.size(); i++) {
         const BoxOut &box = current_line[i];
         space_used += box.box->width;
         if (i < (int)current_line.size() - 1) {
           space_used += box.box->glue_ideal;
-          glues++;
         } else {
           CHECK(i == (int)current_line.size() - 1);
           CHECK(break_after);
@@ -361,13 +359,27 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       }
 
       // could be negative
-      double space_left = line_width - space_used;
-      // XXX apply proportionally, especially so that
-      // we avoid messing up kerning.
-      double additional_glue = space_left / glues;
+      const double space_left = line_width - space_used;
+      const bool expanding = space_left >= 0.0;
+
+      double total_weight = 0.0;
+      for (int i = 0; i < (int)current_line.size() - 1; i++) {
+        BoxOut &box = current_line[i];
+        total_weight += expanding ? box.box->glue_expand :
+          box.box->glue_contract;
+      }
+
+      const double weighted_glue = space_left / total_weight;
+
+      printf("Total weight: %.11g.\n"
+             "Weighted glue: %.11g\n", total_weight, weighted_glue);
 
       for (int i = 0; i < (int)current_line.size() - 1; i++) {
         BoxOut &box = current_line[i];
+        const double weight = expanding ? box.box->glue_expand :
+          box.box->glue_contract;
+        const double additional_glue = weighted_glue * weight;
+        printf("  Additional glue: %.11g\n", additional_glue);
         box.actual_glue = box.box->glue_ideal + additional_glue;
       }
 

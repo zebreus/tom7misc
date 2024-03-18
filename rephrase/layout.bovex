@@ -140,12 +140,8 @@ object Box of { width: float, height: float,
                 (* The ideal width; badness 0. *)
                 glue-ideal : float,
 
-                (* TODO: Could support arbitrary functions here? *)
-                (* Coefficient giving cost of expansion.
-                   Linear. Nominal 1.0 *)
+                (* See boxes-and-glue. *)
                 glue-expand : float,
-                (* Coefficient giving cost of contraction.
-                   Linear. Nominal 1.0 *)
                 glue-contract : float,
 
                 (* Can be positive, negative, zero... *)

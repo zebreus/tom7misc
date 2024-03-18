@@ -7,8 +7,9 @@ val famousbirthdays =
 val murphy2013first =
   bib-article {(Article)
   author = "Murphy, VII, Tom",
-  month = "April",
+  month = APRIL,
   journal = "SIGBOVIK",
+  publisher = "Association for Computational Heresy",
   year = 2013,
   page-start = 112,
   page-end = 133,
@@ -16,10 +17,21 @@ val murphy2013first =
   }
 
 val liang1983word =
-  bib-phd-thesis{(PhdThesis)
+  bib-phd-thesis {(PhdThesis)
   (* Yes, the hyphens are in the title. *)
   title = "Word Hy-phen-a-tion by Com-put-er",
   author = "Liang, Franklin Mark",
   year = 1983,
   university = "Stanford University"
 }
+
+val bynum2014bernie =
+  bib-news {(News)
+  title = "Bernie Sanders wants the US to adopt a 32-hour workweek. Could workers and companies benefit?",
+  author = "Russ Bynum",
+  publisher = "Associated Press",
+  year = 2024,
+  month = MARCH,
+  day = 16,
+  url = "https://apnews.com/article/32-hour-workweek-bernie-sanders-076c14dd52c7938bfb41e988a9a6d347"
+  }

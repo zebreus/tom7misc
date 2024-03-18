@@ -27,7 +27,9 @@ struct BoxesAndGlue {
     // of a space glyph in the font (or a kerning pair).
     double glue_ideal = 0.0;
 
-    // TODO:
+    // Coefficients used when applying glue in a line.
+    // When a coefficient is higher, larger magnitude of space
+    // (positive or negative) is apportioned here.
     double glue_expand = 1.0;
     double glue_contract = 1.0;
 

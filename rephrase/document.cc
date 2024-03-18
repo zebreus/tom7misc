@@ -16,6 +16,10 @@
 static constexpr double INFINITE_PENALTY = 9999999.0;
 static constexpr double HYPHEN_PENALTY = 100.0;
 
+// For expand-contract, in places where we don't want to do any
+// expansion or contraction (e.g. kerning points).
+static constexpr double EPSILON_COEFFICIENT = 0.0000000005;
+
 #define ATAG(s) AFGCOLOR(160, 160, 200, s)
 #define AATTRNAME(s) AFGCOLOR(200, 200, 160, s)
 #define AATTRVAL(s) AFGCOLOR(160, 200, 160, s)
@@ -498,6 +502,12 @@ Document::BoxifyText(const Font *font, double font_size,
             d.SetDoubleAttr("glue-break-penalty", INFINITE_PENALTY);
           }
 
+          // Either way, since this is inside a word, we set the
+          // glue coefficients infinitesimally small so that we
+          // don't apportion glue here unless forced.
+          d.SetDoubleAttr("glue-expand", EPSILON_COEFFICIENT);
+          d.SetDoubleAttr("glue-contract", EPSILON_COEFFICIENT);
+
           d.AddChild(TextDoc(chunk));
           out.push_back(std::move(d));
 
@@ -756,7 +766,13 @@ DocTree Document::PackBoxes(double line_width, const DocTree &doc) {
         b.glue_break_penalty = *pen;
       }
 
-      // TODO: glue expand/contract
+      if (const double *e = doc.GetDoubleAttr("glue-expand")) {
+        b.glue_expand = *e;
+      }
+
+      if (const double *c = doc.GetDoubleAttr("glue-contract")) {
+        b.glue_contract = *c;
+      }
 
       return b;
     };
@@ -801,6 +817,7 @@ DocTree Document::PackBoxes(double line_width, const DocTree &doc) {
 
   // Remove attributes that are consumed by this algorithm.
   auto CleanAttrs = [](DocTree *doc) {
+      doc->RemoveAttr("glue-expand");
       doc->RemoveAttr("glue-contract");
       doc->RemoveAttr("glue-break-penalty");
       doc->RemoveAttr("glue-break-insert");

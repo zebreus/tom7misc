@@ -760,14 +760,22 @@ const Exp *Parsing::Parse(AstPool *pool,
   // object Article of { title : string, year : int }
   // We allow parsing any type, but only accept base types in elaboration.
   const auto ObjectDecl =
-    ((IsToken<OBJECT>() >> Id << IsToken<OF>() << IsToken<LBRACE>()) &&
-     (Separate0(Id && (IsToken<COLON>() >> TypeExpr),
-                IsToken<COMMA>()) << IsToken<RBRACE>()
-      ))
-    >[&](const auto &p) {
-        const auto &[name, fields] = p;
-        return pool->ObjectDec(ObjectDec({.name = name, .fields = fields}));
-      };
+    (((IsToken<OBJECT>() >> Id << IsToken<OF>() << IsToken<LBRACE>()) &&
+      (Separate0(Id && (IsToken<COLON>() >> TypeExpr),
+                 IsToken<COMMA>()) << IsToken<RBRACE>()
+       ))
+     >[&](const auto &p) {
+         const auto &[name, fields] = p;
+         return pool->ObjectDec(ObjectDec({.name = name, .fields = fields}));
+       }) ||
+    (Mark(IsToken<OBJECT>()) >[&](const auto &err) -> const Dec * {
+        const auto &[_, start, length] = err;
+        LOG(FATAL) << ErrorAtIndex(start, length) <<
+          "Expected OBJECT ID OF LBRACE ... after seeing "
+          "OBJECT. At: " << start << " for " << length;
+        return nullptr;
+      });
+
 
   // This is like "Nil" or "Cons of a * list".
   // We use null for the type in the first case.
@@ -779,7 +787,7 @@ const Exp *Parsing::Parse(AstPool *pool,
       };
 
   const auto DatatypeDecl =
-    (IsToken<DATATYPE>() >>
+    ((IsToken<DATATYPE>() >>
      // Type variables appear in the type language, so don't allow
      // non-type identifiers.
      (Opt(IsToken<LPAREN>() >> Separate(IdType, IsToken<COMMA>()) <<
@@ -803,7 +811,15 @@ const Exp *Parsing::Parse(AstPool *pool,
           datadecs.push_back(dd);
         }
         return pool->DatatypeDec(std::move(tyvars), datadecs);
-      };
+      }) ||
+    (Mark(IsToken<DATATYPE>()) >[&](const auto &err) -> const Dec * {
+        const auto &[_, start, length] = err;
+        LOG(FATAL) << ErrorAtIndex(start, length) <<
+          "Expected DATATYPE TYVARS* ID EQUALS ... after seeing "
+          "DATATYPE. At: " << start << " for " << length;
+        return nullptr;
+      });
+
 
   const auto ExpAdjApp = [&](const Exp *f, const Exp *arg) -> const Exp * {
       return pool->App(f, arg);
