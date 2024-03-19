@@ -249,11 +249,13 @@ public:
    */
   #define PDF_TRANSPARENT (uint32_t)(0xffu << 24)
 
-  // Constructor. Give width and height of the page, and optional
-  // header info.
-  PDF(float width, float height, const std::optional<Info> &info);
-
+  // Constructor. Give width and height of the page.
+  PDF(float width, float height);
   ~PDF();
+
+  // Set the PDF header info. Fields are truncated to 63 characters
+  // in order to ensure nul-termination.
+  void SetInfo(const Info &info);
 
   // If an operation fails, this gets the error code and a human-readable
   // error message.

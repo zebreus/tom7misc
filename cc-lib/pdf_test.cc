@@ -55,6 +55,7 @@ static ImageRGB RandomRGB(ArcFour *rc, int width, int height) {
 }
 
 static void SpaceLine() {
+  PDF pdf(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);
   PDF::Info info;
   sprintf(info.creator, "pdf_test.cc");
   sprintf(info.producer, "Tom 7");
@@ -62,10 +63,7 @@ static void SpaceLine() {
   sprintf(info.author, "None");
   sprintf(info.author, "No subject");
   sprintf(info.date, "30 Dec 2023");
-
-  PDF pdf(PDF::PDF_LETTER_WIDTH,
-          PDF::PDF_LETTER_HEIGHT,
-          info);
+  pdf.SetInfo(info);
 
   const FontObj *times = pdf.GetBuiltInFont(PDF::TIMES_ROMAN);
 
@@ -108,6 +106,9 @@ static void SpaceLine() {
 static void MakeSimplePDF() {
   ArcFour rc("pdf");
 
+  printf("Create PDF object.\n");
+  PDF pdf(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);
+
   PDF::Info info;
   sprintf(info.creator, "pdf_test.cc");
   sprintf(info.producer, "Tom 7");
@@ -115,11 +116,7 @@ static void MakeSimplePDF() {
   sprintf(info.author, "None");
   sprintf(info.author, "No subject");
   sprintf(info.date, "30 Dec 2023");
-
-  printf("Create PDF object.\n");
-  PDF pdf(PDF::PDF_LETTER_WIDTH,
-          PDF::PDF_LETTER_HEIGHT,
-          info);
+  pdf.SetInfo(info);
 
   std::string pasement_name = pdf.AddTTF("fonts/DFXPasement9px.ttf");
 

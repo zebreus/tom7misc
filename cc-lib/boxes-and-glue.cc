@@ -117,14 +117,14 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       "topologically sorted, for one thing to inhibit cycles.";
     CHECK(box.parent_idx == -1 ||
           (box.parent_idx >= 0 &&
-           box.parent_idx < boxes.size()));
+           box.parent_idx < (int)boxes.size()));
     if (box.parent_idx == -1) {
       starting_nodes.push_back(i);
       depth.push_back(0);
     } else {
       CHECK(box.parent_idx >= 0) << box.parent_idx;
       successors[box.parent_idx].emplace_back(i, box.edge_penalty);
-      CHECK(box.parent_idx < depth.size());
+      CHECK(box.parent_idx < (int)depth.size());
       depth.push_back(depth[box.parent_idx] + 1);
     }
   }

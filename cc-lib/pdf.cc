@@ -318,8 +318,23 @@ void PDF::pdf_del_object(Object *obj) {
   pdf_object_destroy(obj);
 }
 
-PDF::PDF(float width, float height,
-         const std::optional<PDF::Info> &info) :
+void PDF::SetInfo(const PDF::Info &info) {
+  InfoObj *obj = (InfoObj*)pdf_find_first_object(OBJ_info);
+  CHECK(obj != nullptr) << "This is created by the "
+    "constructor!";
+
+  obj->info = info;
+
+  // Make sure the strings are nul-terminated.
+  obj->info.creator[sizeof(obj->info.creator) - 1] = '\0';
+  obj->info.producer[sizeof(obj->info.producer) - 1] = '\0';
+  obj->info.title[sizeof(obj->info.title) - 1] = '\0';
+  obj->info.author[sizeof(obj->info.author) - 1] = '\0';
+  obj->info.subject[sizeof(obj->info.subject) - 1] = '\0';
+  obj->info.date[sizeof(obj->info.date) - 1] = '\0';
+}
+
+PDF::PDF(float width, float height) :
   width(width), height(height) {
 
   /* We don't want to use ID 0 */
@@ -329,30 +344,25 @@ PDF::PDF(float width, float height,
   InfoObj *obj = AddObject(new InfoObj);
   CHECK(obj != nullptr);
 
-  if (info.has_value()) {
-    obj->info = info.value();
-    obj->info.creator[sizeof(obj->info.creator) - 1] = '\0';
-    obj->info.producer[sizeof(obj->info.producer) - 1] = '\0';
-    obj->info.title[sizeof(obj->info.title) - 1] = '\0';
-    obj->info.author[sizeof(obj->info.author) - 1] = '\0';
-    obj->info.subject[sizeof(obj->info.subject) - 1] = '\0';
-    obj->info.date[sizeof(obj->info.date) - 1] = '\0';
-  }
+  strncpy(obj->info.creator, "pdf.cc", 64);
+  strncpy(obj->info.producer, "pdf.cc", 64);
+  strncpy(obj->info.title, "Untitled", 64);
+  strncpy(obj->info.author, "", 64);
+  strncpy(obj->info.subject, "", 64);
 
-  /* FIXME: Should be quoting PDF strings? */
-  if (!obj->info.date[0]) {
-    time_t now = time(nullptr);
-    struct tm tm;
+  // XXX: Should be quoting PDF strings?
+  time_t now = time(nullptr);
+  struct tm tm;
 #ifdef _WIN32
-    struct tm *tmp;
-    tmp = localtime(&now);
-    tm = *tmp;
+  struct tm *tmp;
+  tmp = localtime(&now);
+  tm = *tmp;
 #else
-    localtime_r(&now, &tm);
+  localtime_r(&now, &tm);
 #endif
-    strftime(obj->info.date, sizeof(obj->info.date), "%Y%m%d%H%M%SZ",
-             &tm);
-  }
+  strftime(obj->info.date, sizeof(obj->info.date),
+           "%Y%m%d%H%M%SZ",
+           &tm);
 
   CHECK(AddObject(new PagesObj) != nullptr);
   CHECK(AddObject(new CatalogObj) != nullptr);

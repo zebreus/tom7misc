@@ -130,18 +130,17 @@ static inline Transform Translate(Transform t, double dx, double dy) {
 
 
 PDFDocument::PDFDocument(double width, double height) {
+  pdf.reset(new PDF((float)width, (float)height));
+
   PDF::Info info;
   // XXX make settable from document.
   strncpy(info.creator, "BoVeX", 63);
   strncpy(info.producer, "BoVeX", 63);
-
   strncpy(info.title, "Test Document", 63);
   strncpy(info.author, "Tom 7", 63);
   strncpy(info.subject, "Documents do not need a 'subject'", 63);
-
   strncpy(info.date, DateTimeStamp().c_str(), 63);
-
-  pdf.reset(new PDF((float)width, (float)height, info));
+  pdf->SetInfo(info);
 
   InitBuiltInFonts();
 }
@@ -151,6 +150,10 @@ PDFDocument::PDFDocument(double width, double height) {
 // coordinates ("regular graphics coordinates") in BoVeX, and
 // the PDF library only uses y-up. Both use "points" as the distance
 // unit uniformly.
+//
+// Note that many objects in PDF (text, images) are measured from their
+// bottom-left coordinate, so you may also need to add the object height
+// before flipping.
 double PDFDocument::FlipPageCoordinate(const PDF::Page &page, double y) {
   const double height = page.Height();
   return height - y;
