@@ -231,6 +231,8 @@ let
       emit-column ()
     end
 
+  val anti-aliasing-png = image-load "anti-aliasing.png"
+
 in
 
   (main-text
@@ -339,6 +341,12 @@ next one.
 
 [* fancy quotes *]
 [blockquote[“It would threaten millions of small businesses operating on a razor-thin margin because they’re unable to find enough workers," said Cassidy, the ranking Republican on the committee. "Now they’ve got the same workers, but only for three-quarters of the time. And they have to hire more.”]]
+
+The image is [let val { width, height } = image-size anti-aliasing-png
+              in layout (int-to-string width ^ " x " ^ int-to-string height)
+              end].
+
+[image { img = anti-aliasing-png, width = inch 3.75 }]
 
     And now it is over.
 

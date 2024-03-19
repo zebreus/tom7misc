@@ -65,6 +65,11 @@ struct PDFDocument : public Document {
                 uint32_t color,
                 PDF::Page *page);
 
+  void DrawImage(double x, double y,
+                 double width, double height,
+                 const ImageRGBA &image,
+                 PDF::Page *page);
+
   void PlaceStickersRec(Context context,
                         Transform transform,
                         const DocTree &doc,

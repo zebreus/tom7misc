@@ -581,10 +581,29 @@ std::string Document::LoadFontFile(const std::string &filename) {
     "not understand fonts on its own!";
 }
 
+std::string Document::LoadImageFile(const std::string &filename) {
+  std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(filename));
+  if (img.get() == nullptr)
+    return "";
+
+  std::string key = StringPrintf("img%d", image_counter);
+  image_counter++;
+  CHECK(!images.contains(key));
+  images[key] = std::move(img);
+  return key;
+}
+
 const Font *Document::GetFontByName(const std::string &font_name) {
   const auto it = fonts.find(font_name);
   CHECK(it != fonts.end()) << "Unknown font name " << font_name;
   CHECK(it->second.get() != nullptr) << "Null font pointer??";
+  return it->second.get();
+}
+
+const ImageRGBA *Document::GetImageByName(const std::string &name) {
+  const auto it = images.find(name);
+  CHECK(it != images.end() && it->second.get() != nullptr) << "Unknown "
+    "image handle " << name;
   return it->second.get();
 }
 

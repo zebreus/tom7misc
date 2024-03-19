@@ -12,6 +12,7 @@
 #include "bignum/big.h"
 #include "bytecode.h"
 #include "hyphenation.h"
+#include "image.h"
 
 struct DocTree;
 
@@ -126,8 +127,17 @@ struct Document {
   // string. This just just a single face, not a font family.
   virtual std::string LoadFontFile(const std::string &filename);
 
+  // Loads an image in a format that's supported by ImageRGBA
+  // (PNG, JPEG are best). Inserts it in the map and returns a
+  // unique handle to it. If the file can't be loaded, returns
+  // the empty string.
+  std::string LoadImageFile(const std::string &filename);
+
   // Look up a font by its name (Font::Name; not family name).
   const Font *GetFontByName(const std::string &font_name);
+
+  // Look up an image by its handle.
+  const ImageRGBA *GetImageByName(const std::string &name);
 
   // These are independent of font size.
   void RegisterFont(const TextProps &props, const Font *f);
@@ -148,6 +158,9 @@ struct Document {
   Hyphenation hyphenation;
 
  private:
+  // All loaded images.
+  int image_counter = 0;
+  std::unordered_map<std::string, std::unique_ptr<ImageRGBA>> images;
 
   DocTree PackBoxesOld(double width, const DocTree &doc);
 };

@@ -24,7 +24,7 @@ bold: string option,
 italic: string option,
 bold-italic: string option }
 *)
-fun load-font-family { name = family-name : string,
+fun font-load-family { name = family-name : string,
                        regular, bold, italic, bold-italic }
   : font-family =
   let
@@ -34,9 +34,9 @@ fun load-font-family { name = family-name : string,
 
     fun load (NONE, _) = ()
       | load (SOME ttf, props) =
-      case load-font-file ttf of
+      case font-load-file ttf of
         "" => fail ("Unable to load font from file " ^ ttf)
-        | font => register-font (font, family-name, props)
+        | font => font-register (font, family-name, props)
 
   in
     load (regular, 0);
@@ -54,11 +54,24 @@ val COURIER : font-family = Font "courier"
 val ZAPF-DINGBATS : font-family = Font "zapf-dingbats"
 
 val PALATINO : font-family =
-  load-font-family { name = "palatino",
+  font-load-family { name = "palatino",
                      regular = SOME "pala.ttf",
                      bold = SOME "palab.ttf",
                      italic = SOME "palai.ttf",
                      bold-italic = SOME "palabi.ttf" }
+
+datatype image-handle = Image of string
+fun image-load filename : image-handle =
+  case image-load-file filename of
+    "" => fail ("Unable to load image from file " ^ filename)
+  | img => Image img
+
+object InternalImageProps of { width : int, height : int }
+fun image-size (Image img) : { width : int, height : int } =
+  case image-props img of
+    {(InternalImageProps) width, height} => { width = width, height = height }
+  | _ => fail "bad image props?"
+
 
 fun layout-concat nil = []
   | layout-concat (l :: t) = [[l][layout-concat t]]
@@ -96,10 +109,8 @@ fun layout-concat nil = []
    then this is the area of the bounding box of the part of the
    text rectangle that's outside its container. Of course this
    can be scaled as desired.
-
-   TODO: Primop that records this!
    *)
-fun emit-badness (penalty : float) = ()
+(* emit-badness : double -> unit *)
 
 (* Low-level node info.
    Programmers should probably not be looking at or setting the
@@ -128,14 +139,16 @@ fun map-attrs (f : obj -> obj) (lay : layout) : layout =
 
    Glue follows each box. It describes the space between that box and
    the next one, including in the case that the break spans lines. *)
-object Box of { width: float, height: float,
+object Box of { width : float, height : float,
                 (* Transformation for contents.
                    We could support arbitrary matrices
                    here? *)
-                dx: float, dy: float, scale: float,
+                dx : float, dy : float, scale : float,
 
-                (* if "break", then it is on a line by itself. *)
-                flow: string,
+                (* background image (as image handle) *)
+                img : string,
+                img-width : float, img-height : float,
+
 
                 (* TODO: a way to indicate ascenders and descenders. *)
                 (* TODO: a way to indicate spaces for channel detection. *)
@@ -452,6 +465,30 @@ fun vspace vdim =
            glue-break-penalty = -9999999.0 } [ ]]
      [box {(Box) height = vdim, width = 0.0,
            glue-break-penalty = -9999999.0 } [ ]]]
+  in
+    doc
+  end
+
+
+(* Image on its own line, maintaining aspect ratio. *)
+fun image { img = img as (Image img-handle), width } =
+  let
+    (* Compute height from image native dimensions. *)
+
+    val { width = pixel-width, height = pixel-height } = image-size img
+    val ratio : float = pixel-width / pixel-height
+    val height = width /. ratio
+
+
+    (* Would it be cleaner to put the image sticker inside the box? *)
+    val doc =
+    (* Break before (0 size) and after (with given height). *)
+    [[box {(Box) height = 0.0, width = 0.0,
+           glue-break-penalty = -9999999.0 } [ ]]
+     [box {(Box) height = height, width = width,
+           img = img-handle, img-width = width, img-height = height,
+           glue-break-penalty = -9999999.0 } [ ]]]
+
   in
     doc
   end

@@ -196,6 +196,22 @@ void PDFDocument::DrawText(const PDFFont &font,
                page);
 }
 
+void PDFDocument::DrawImage(double x, double y,
+                            double width, double height,
+                            const ImageRGBA &image,
+                            PDF::Page *page) {
+  CHECK(page != nullptr);
+
+  printf("Add image at %.11g %.11g.\n", x, y);
+  CHECK(pdf->AddImageRGB(
+            // Images are also measured from their baselines.
+            x, FlipPageCoordinate(*page, y + height),
+            width, height,
+            image.IgnoreAlpha(),
+            PDF::CompressionType::PNG,
+            page));
+}
+
 void PDFDocument::PlaceStickersRec(Context context,
                                    Transform transform,
                                    const DocTree &doc,
@@ -233,6 +249,20 @@ void PDFDocument::PlaceStickersRec(Context context,
   const double *y = doc.GetDoubleAttr("y");
   CHECK(x != nullptr && y != nullptr) << "Every sticker should have "
     "its final x= and y= coordinates.";
+
+  if (const std::string *img = doc.GetStringAttr("img")) {
+    const double *width = doc.GetDoubleAttr("img-width");
+    const double *height = doc.GetDoubleAttr("img-height");
+    CHECK(width != nullptr && height != nullptr) << "An img=\"\" on a "
+      "sticker also requires img-width=\"\" and img-height\"\" (doubles).";
+    const ImageRGBA *image = GetImageByName(*img);
+    Transform ct = Translate(transform, *x, *y);
+    if (image == nullptr) {
+      fprintf(stderr, ARED("Missing image: ") "%s\n", img->c_str());
+    } else {
+      DrawImage(ct.dx, ct.dy, *width, *height, *image, page);
+    }
+  }
 
   if (const std::string *font_name = doc.GetStringAttr("font-name")) {
     const Font *f = GetFontByName(*font_name);

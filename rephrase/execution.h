@@ -91,6 +91,7 @@ struct Execution {
   Value *Float(double d, State *state);
   Value *Node(Value *attrs, Value *children, State *state);
   Value *Unit(State *state);
+  Value *Obj(map_type m, State *state);
 
   const Program &program;
   const std::unique_ptr<Document> degenerate_document;
@@ -109,7 +110,6 @@ Value *Execution::NewValue(Heap *heap, Args&&... args) {
   heap->used.push_back(v);
   return v;
 }
-
 
 }  // namespace bc
 

@@ -83,6 +83,7 @@ Initial::Initial(AstPool *pool) {
 
     {"obj-empty", Primop::OBJ_EMPTY},
 
+    {"emit-badness", Primop::EMIT_BADNESS},
     {"rephrase", Primop::REPHRASE},
     {"internal-get-boxes", Primop::GET_BOXES},
     {"internal-pack-boxes", Primop::PACK_BOXES},
@@ -95,8 +96,11 @@ Initial::Initial(AstPool *pool) {
     {"layout-vec-size", Primop::LAYOUT_VEC_SIZE},
     {"layout-vec-sub", Primop::LAYOUT_VEC_SUB},
 
-    {"load-font-file", Primop::LOAD_FONT_FILE},
-    {"register-font", Primop::REGISTER_FONT},
+    {"font-load-file", Primop::FONT_LOAD_FILE},
+    {"font-register", Primop::FONT_REGISTER},
+
+    {"image-load-file", Primop::IMAGE_LOAD_FILE},
+    {"image-props", Primop::IMAGE_PROPS},
 
     {"print", Primop::OUT_STRING},
     {"output", Primop::OUT_LAYOUT},
@@ -110,7 +114,8 @@ Initial::Initial(AstPool *pool) {
 
   const Type *node_type2 = pool->Arrow(pool->LayoutType(), pool->LayoutType());
   const Type *node_type1 = pool->Arrow(pool->ObjType(), node_type2);
-  const std::vector<std::tuple<std::string, const Exp *, const Type *>> inlined = {
+  const std::vector<std::tuple<std::string, const Exp *, const Type *>>
+    inlined = {
     {"node", pool->Fn("", "a", node_type1,
                       pool->Fn("", "l", node_type2,
                                pool->Node(pool->Var({}, "a"),

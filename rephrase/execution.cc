@@ -8,6 +8,7 @@
 
 #include "bytecode.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "ansi.h"
 #include "document.h"
 #include "util.h"
@@ -118,6 +119,10 @@ Value *Execution::Float(double d, State *state) {
   return NewValue(&state->heap, d);
 }
 
+Value *Execution::Obj(map_type m, State *state) {
+  return NewValue(&state->heap, std::move(m));
+}
+
 Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
                           State *state) {
   switch (primop) {
@@ -150,12 +155,12 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
     return String(Util::Replace(*as, *bs, *cs), state);
   }
 
-  case Primop::REGISTER_FONT: {
+  case Primop::FONT_REGISTER: {
     const std::string *as = std::get_if<std::string>(&a->v);
     const std::string *bs = std::get_if<std::string>(&b->v);
     const BigInt *ci = std::get_if<BigInt>(&c->v);
     CHECK(as != nullptr && bs != nullptr && ci != nullptr) <<
-      "Expected string,string,int to register-font";
+      "Expected string,string,int to font-register";
 
     const Font *font = DocumentHook()->GetFontByName(*as);
 
@@ -574,10 +579,32 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Unit(state);
   }
 
-  case Primop::LOAD_FONT_FILE: {
-    const std::string filename = GetString("load-font");
+  case Primop::FONT_LOAD_FILE: {
+    const std::string filename = GetString("font-load-file");
     std::string f = DocumentHook()->LoadFontFile(filename);
     return String(std::move(f), state);
+  }
+
+  case Primop::IMAGE_LOAD_FILE: {
+    const std::string filename = GetString("image-load-file");
+    std::string f = DocumentHook()->LoadImageFile(filename);
+    return String(std::move(f), state);
+  }
+
+  case Primop::IMAGE_PROPS: {
+    const std::string img = GetString("image-props");
+    const ImageRGBA *image = DocumentHook()->GetImageByName(img);
+    std::string width_field =
+      StringPrintf("%cwidth",
+                   bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT));
+    std::string height_field =
+      StringPrintf("%cheight",
+                   bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT));
+    map_type obj = {
+      {width_field, Big(BigInt(image->Width()))},
+      {height_field, Big(BigInt(image->Height()))}
+    };
+    return Obj(std::move(obj), state);
   }
 
   case Primop::REF:

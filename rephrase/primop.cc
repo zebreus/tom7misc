@@ -59,8 +59,11 @@ const char *PrimopString(Primop po) {
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
   case Primop::OBJ_EMPTY: return "OBJ_EMPTY";
 
-  case Primop::LOAD_FONT_FILE: return "LOAD_FONT_FILE";
-  case Primop::REGISTER_FONT: return "REGISTER_FONT";
+  case Primop::FONT_LOAD_FILE: return "FONT_LOAD_FILE";
+  case Primop::FONT_REGISTER: return "FONT_REGISTER";
+
+  case Primop::IMAGE_LOAD_FILE: return "IMAGE_LOAD_FILE";
+  case Primop::IMAGE_PROPS: return "IMAGE_PROPS";
 
   case Primop::REPHRASE: return "REPHRASE";
   case Primop::GET_BOXES: return "GET_BOXES";
@@ -129,8 +132,11 @@ std::tuple<int, int> PrimopArity(Primop po) {
 
   case Primop::OBJ_EMPTY: return std::make_tuple(0, 1);
 
-  case Primop::LOAD_FONT_FILE: return std::make_tuple(0, 1);
-  case Primop::REGISTER_FONT: return std::make_tuple(0, 3);
+  case Primop::FONT_LOAD_FILE: return std::make_tuple(0, 1);
+  case Primop::FONT_REGISTER: return std::make_tuple(0, 3);
+
+  case Primop::IMAGE_LOAD_FILE: return std::make_tuple(0, 1);
+  case Primop::IMAGE_PROPS: return std::make_tuple(0, 1);
 
   case Primop::REPHRASE: return std::make_tuple(0, 1);
   case Primop::GET_BOXES: return std::make_tuple(0, 1);
@@ -215,13 +221,21 @@ bool IsPrimopTotal(Primop p) {
 
   case Primop::OBJ_EMPTY: return true;
 
-  case Primop::LOAD_FONT_FILE:
+  case Primop::FONT_LOAD_FILE:
     // Possibly we could consider this lazy with a little more
     // care, which could be good so that there can be a library
     // of fonts without cost. But currently it does affect the
     // document if it's loaded.
     return false;
-  case Primop::REGISTER_FONT:
+
+  case Primop::FONT_REGISTER:
+    return false;
+
+  case Primop::IMAGE_LOAD_FILE:
+    return false;
+
+  case Primop::IMAGE_PROPS:
+    // Can fail if image handle is bad
     return false;
 
   case Primop::REPHRASE:
@@ -347,10 +361,13 @@ PrimopType(il::AstPool *pool, Primop p) {
 
   case Primop::OBJ_EMPTY: return {{}, pool->Arrow(Obj, Bool)};
 
-  case Primop::LOAD_FONT_FILE: return {{}, pool->Arrow(String, String)};
-  case Primop::REGISTER_FONT:
+  case Primop::FONT_LOAD_FILE: return {{}, pool->Arrow(String, String)};
+  case Primop::FONT_REGISTER:
     // register-font(font-name, family-name, property-mask)
     return {{}, pool->Arrow(pool->Product({String, String, Int}), Unit())};
+
+  case Primop::IMAGE_LOAD_FILE: return {{}, pool->Arrow(String, String)};
+  case Primop::IMAGE_PROPS: return {{}, pool->Arrow(String, Obj)};
 
   case Primop::REPHRASE: return {{}, pool->Arrow(Layout, Layout)};
   case Primop::GET_BOXES: return {{}, pool->Arrow(Layout, Layout)};
