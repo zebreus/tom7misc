@@ -9,7 +9,7 @@
 #include "base/stringprintf.h"
 #include "el.h"
 #include "inclusion.h"
-#include "lex.h"
+#include "lexing.h"
 #include "parser-combinators.h"
 #include "util.h"
 #include "ansi.h"

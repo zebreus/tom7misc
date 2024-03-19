@@ -148,6 +148,7 @@ struct Document {
   Hyphenation hyphenation;
 
  private:
+
   DocTree PackBoxesOld(double width, const DocTree &doc);
 };
 

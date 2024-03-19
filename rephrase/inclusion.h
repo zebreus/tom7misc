@@ -7,7 +7,7 @@
 #include <tuple>
 
 #include "interval-cover.h"
-#include "lex.h"
+#include "lexing.h"
 
 // Processes includes.
 // After lexing, we replace the sequence IMPORT STR_LIT with

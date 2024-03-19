@@ -7,7 +7,7 @@
 #include <unordered_set>
 
 #include "interval-cover.h"
-#include "lex.h"
+#include "lexing.h"
 #include "util.h"
 
 using Token = el::Token;

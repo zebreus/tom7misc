@@ -1,9 +1,9 @@
 
-default: bovex.exe monospace.exe lex_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe
+default: bovex.exe monospace.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe
 
-test : lex_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
+test : lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
 	./hyphenation_test.exe
-	./lex_test.exe
+	./lexing_test.exe
 	./il_test.exe
 	./il-util_test.exe
 	./context_test.exe
@@ -68,7 +68,7 @@ LLAMA_DIR=../llama
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
-CC_LIB_OBJECTS=$(RE2_OBJECTS) $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/pdf.o $(CC_LIB)/color-util.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/boxes-and-glue.o
+CC_LIB_OBJECTS=$(RE2_OBJECTS) $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/pdf.o $(CC_LIB)/color-util.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/boxes-and-glue.o $(CC_LIB)/crypt/sha256.o
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -271,7 +271,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=utf.o hyphenation.o el.o parsing.o lex.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o execution.o document.o pdf-document.o rephrasing.o
+LANG_OBJECTS=utf.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o execution.o document.o pdf-document.o rephrasing.o
 
 %.o : %.cc *.h $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -279,7 +279,7 @@ LANG_OBJECTS=utf.o hyphenation.o el.o parsing.o lex.o inclusion.o nullary.o uncu
 
 # Parser takes a uniquely long time to compile, so don't make it
 # depend on every header.
-parsing.o : parsing.cc parsing.h el.h lex.h $(CC_LIB)/parser-combinators.h $(LLAMA_HEADERS)
+parsing.o : parsing.cc parsing.h el.h lexing.h $(CC_LIB)/parser-combinators.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
@@ -293,7 +293,7 @@ test-rephrase.exe : test-rephrase.o $(LANG_OBJECTS) $(LLM_OBJECTS) $(CC_LIB_OBJE
 variations.exe : variations.o $(LANG_OBJECTS) $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-lex_test.exe : lex_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+lexing_test.exe : lexing_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 il_test.exe : il_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
@@ -329,7 +329,7 @@ compiler_test.exe : compiler_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 execution_test.exe : execution_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-bovex.exe : bovex.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+bovex.exe : bovex.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS) $(LLM_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 paper.pdf : bovex.exe paper.bovex
@@ -342,5 +342,5 @@ hyphenation_test.exe : hyphenation_test.o hyphenation.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
-	rm -f *.o $(CC_LIB_OBJECTS) monospace.exe lex_test.exe parsing_test.exe
+	rm -f *.o $(CC_LIB_OBJECTS) $(LLM_OBJECTS) monospace.exe lexing_test.exe parsing_test.exe
 

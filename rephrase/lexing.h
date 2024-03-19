@@ -1,6 +1,6 @@
 
-#ifndef _REPHRASE_LEX_H
-#define _REPHRASE_LEX_H
+#ifndef _REPHRASE_LEXING_H
+#define _REPHRASE_LEXING_H
 
 #include <utility>
 #include <string>

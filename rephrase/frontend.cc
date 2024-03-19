@@ -4,7 +4,7 @@
 #include <string>
 
 #include "base/logging.h"
-#include "lex.h"
+#include "lexing.h"
 #include "parsing.h"
 #include "el.h"
 #include "ansi.h"

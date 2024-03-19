@@ -6,7 +6,7 @@
 
 #include "el.h"
 #include "inclusion.h"
-#include "lex.h"
+#include "lexing.h"
 
 namespace el {
 
