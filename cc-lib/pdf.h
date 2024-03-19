@@ -256,6 +256,7 @@ public:
   // Set the PDF header info. Fields are truncated to 63 characters
   // in order to ensure nul-termination.
   void SetInfo(const Info &info);
+  const Info &GetInfo() const;
 
   // If an operation fails, this gets the error code and a human-readable
   // error message.
@@ -602,6 +603,8 @@ private:
   void pdf_del_object(Object *obj);
   Object *pdf_find_first_object(int type);
   Object *pdf_find_last_object(int type);
+  const Object *pdf_find_first_object(int type) const;
+  const Object *pdf_find_last_object(int type) const;
   static int pdf_get_bookmark_count(const Object *obj);
   void pdf_add_stream(Page *page, std::string str);
   int pdf_save_file(FILE *fp);

@@ -133,17 +133,39 @@ PDFDocument::PDFDocument(double width, double height) {
   pdf.reset(new PDF((float)width, (float)height));
 
   PDF::Info info;
-  // XXX make settable from document.
   strncpy(info.creator, "BoVeX", 63);
   strncpy(info.producer, "BoVeX", 63);
-  strncpy(info.title, "Test Document", 63);
-  strncpy(info.author, "Tom 7", 63);
-  strncpy(info.subject, "Documents do not need a 'subject'", 63);
+  strncpy(info.title, "Untitled", 63);
+  strncpy(info.author, "", 63);
+  strncpy(info.subject, "", 63);
   strncpy(info.date, DateTimeStamp().c_str(), 63);
   pdf->SetInfo(info);
 
   InitBuiltInFonts();
 }
+
+void PDFDocument::SetDocumentInfoStrings(
+    const std::unordered_map<std::string, std::string> &m) {
+
+  PDF::Info info = pdf->GetInfo();
+  auto AddIf = [&m](const std::string &key, char *field) {
+      auto it = m.find(key);
+      if (it == m.end()) return;
+      strncpy(field, it->second.data(), 63);
+      field[64] = '\0';
+    };
+
+  AddIf("creator", info.creator);
+  AddIf("producer", info.producer);
+  AddIf("title", info.title);
+  AddIf("author", info.author);
+  AddIf("title", info.title);
+  AddIf("subject", info.subject);
+  AddIf("date", info.date);
+
+  pdf->SetInfo(info);
+}
+
 
 // These draw routines are just like their counterparts in PDF, except
 // except that the y coordinates are flipped. We only use y-down

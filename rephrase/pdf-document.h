@@ -35,6 +35,9 @@ struct PDFDocument : public Document {
 
   std::string LoadFontFile(const std::string &filename) override;
 
+  void SetDocumentInfoStrings(
+      const std::unordered_map<std::string, std::string> &info) override;
+
   const Font *GetBuiltInFont(PDF::BuiltInFont bif);
 
   void GeneratePDF(const std::string &filename,

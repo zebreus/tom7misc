@@ -46,6 +46,7 @@ const char *PrimopString(Primop po) {
   case Primop::OUT_STRING: return "OUT_STRING";
   case Primop::OUT_LAYOUT: return "OUT_LAYOUT";
   case Primop::EMIT_BADNESS: return "EMIT_BADNESS";
+  case Primop::SET_DOC_INFO: return "SET_DOC_INFO";
 
   case Primop::STRING_CONCAT: return "STRING_CONCAT";
   case Primop::STRING_EMPTY: return "STRING_EMPTY";
@@ -119,6 +120,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
   case Primop::OUT_LAYOUT: return std::make_tuple(0, 2);
   case Primop::EMIT_BADNESS: return std::make_tuple(0, 1);
+  case Primop::SET_DOC_INFO: return std::make_tuple(0, 1);
 
   case Primop::INT_TO_STRING: return std::make_tuple(0, 1);
   case Primop::STRING_TO_LAYOUT: return std::make_tuple(0, 1);
@@ -216,6 +218,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::OUT_STRING: return false;
   case Primop::OUT_LAYOUT: return false;
   case Primop::EMIT_BADNESS: return false;
+  case Primop::SET_DOC_INFO: return false;
 
   case Primop::IS_TEXT: return true;
 
@@ -358,6 +361,7 @@ PrimopType(il::AstPool *pool, Primop p) {
     // page number, content
   case Primop::OUT_LAYOUT: return {{}, BinOp(Int, Layout, Unit())};
   case Primop::EMIT_BADNESS: return {{}, pool->Arrow(Float, Unit())};
+  case Primop::SET_DOC_INFO: return {{}, pool->Arrow(Obj, Unit())};
 
   case Primop::OBJ_EMPTY: return {{}, pool->Arrow(Obj, Bool)};
 

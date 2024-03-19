@@ -334,6 +334,13 @@ void PDF::SetInfo(const PDF::Info &info) {
   obj->info.date[sizeof(obj->info.date) - 1] = '\0';
 }
 
+const PDF::Info &PDF::GetInfo() const {
+  const InfoObj *obj = (const InfoObj*)pdf_find_first_object(OBJ_info);
+  CHECK(obj != nullptr) << "This is created by the "
+    "constructor!";
+  return obj->info;
+}
+
 PDF::PDF(float width, float height) :
   width(width), height(height) {
 
@@ -383,6 +390,14 @@ PDF::Object *PDF::pdf_find_first_object(int type) {
 }
 
 PDF::Object *PDF::pdf_find_last_object(int type) {
+  return last_objects[type];
+}
+
+const PDF::Object *PDF::pdf_find_first_object(int type) const {
+  return first_objects[type];
+}
+
+const PDF::Object *PDF::pdf_find_last_object(int type) const {
   return last_objects[type];
 }
 

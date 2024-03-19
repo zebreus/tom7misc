@@ -7,6 +7,14 @@ let
 
   val VERBOSE = false
 
+  do set-doc-info {(PDFInfo)
+                   creator = "BoVeX",
+                   producer = "Huh?",
+                   title = "test.bovex",
+                   author = "Tom 7",
+                   subject = "Documents do not need a 'subject'"
+                   (* leaving out date, so it is the creation time. *) }
+
   val author = b[Tom 7 [[Murphy]] ]
 
   fun attrs-string (BOX, {(Box) width }) = "box-width"

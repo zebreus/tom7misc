@@ -540,6 +540,26 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return String(NormalizeWhitespace(s), state);
   }
 
+  case Primop::EMIT_BADNESS: {
+    const double d = GetFloat("emit_badness");
+    EmitBadnessHook(d);
+    return Unit(state);
+  }
+
+  case Primop::SET_DOC_INFO: {
+    const map_type *obj = std::get_if<map_type>(&a->v);
+    CHECK(obj != nullptr) << "set-doc-info takes an obj";
+
+    std::unordered_map<std::string, AttrVal> attrs;
+    for (const auto &[k, v] : *obj) {
+      const auto &[kk, vv] = ValueToAttrVal(k, *v);
+      attrs[kk] = vv;
+    }
+
+    DocumentHook()->SetDocumentInfo(attrs);
+    return Unit(state);
+  }
+
   case Primop::REPHRASE: {
     return RephraseHook(a);
   }

@@ -84,6 +84,8 @@ Initial::Initial(AstPool *pool) {
     {"obj-empty", Primop::OBJ_EMPTY},
 
     {"emit-badness", Primop::EMIT_BADNESS},
+    {"set-doc-info", Primop::SET_DOC_INFO},
+
     {"rephrase", Primop::REPHRASE},
     {"internal-get-boxes", Primop::GET_BOXES},
     {"internal-pack-boxes", Primop::PACK_BOXES},

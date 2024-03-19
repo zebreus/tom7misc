@@ -581,6 +581,23 @@ std::string Document::LoadFontFile(const std::string &filename) {
     "not understand fonts on its own!";
 }
 
+void Document::SetDocumentInfoStrings(
+    const std::unordered_map<std::string, std::string> &info) {
+  // Base class does nothing with this.
+}
+
+void Document::SetDocumentInfo(
+    const std::unordered_map<std::string, AttrVal> &info) {
+  std::unordered_map<std::string, std::string> m;
+  for (const auto &[k, v] : info) {
+    if (const std::string *s = std::get_if<std::string>(&v.v)) {
+      m[k] = *s;
+    }
+  }
+  SetDocumentInfoStrings(m);
+}
+
+
 std::string Document::LoadImageFile(const std::string &filename) {
   std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(filename));
   if (img.get() == nullptr)

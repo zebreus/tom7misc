@@ -127,6 +127,16 @@ struct Document {
   // string. This just just a single face, not a font family.
   virtual std::string LoadFontFile(const std::string &filename);
 
+  // Set document metadata (title, creation time, etc.).
+  // The fields accepted depend on the format.
+  virtual void SetDocumentInfoStrings(
+      const std::unordered_map<std::string, std::string> &info);
+
+  // TODO: Perhaps this is what should be overridden, but we
+  // only use string fields in PDF.
+  void SetDocumentInfo(
+      const std::unordered_map<std::string, AttrVal> &attrs);
+
   // Loads an image in a format that's supported by ImageRGBA
   // (PNG, JPEG are best). Inserts it in the map and returns a
   // unique handle to it. If the file can't be loaded, returns

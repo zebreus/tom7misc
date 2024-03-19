@@ -72,6 +72,7 @@ enum class Primop {
   OUT_LAYOUT,
 
   EMIT_BADNESS,
+  SET_DOC_INFO,
 
   STRING_TO_LAYOUT,
 
