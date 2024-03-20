@@ -273,6 +273,8 @@ LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_
 
 LANG_OBJECTS=utf.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o execution.o document.o pdf-document.o rephrasing.o
 
+BOVEX_OBJECTS=$(LANG_OBJECTS) $(LLM_OBJECTS) $(LLAMA_OBJECTS)
+
 %.o : %.cc *.h $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
@@ -287,55 +289,55 @@ parsing.o : parsing.cc parsing.h el.h lexing.h $(CC_LIB)/parser-combinators.h $(
 monospace.exe : monospace.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-test-rephrase.exe : test-rephrase.o $(LANG_OBJECTS) $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
+test-rephrase.exe : test-rephrase.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-variations.exe : variations.o $(LANG_OBJECTS) $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
+variations.exe : variations.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-lexing_test.exe : lexing_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+lexing_test.exe : lexing_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-il_test.exe : il_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+il_test.exe : il_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-parsing_test.exe : parsing_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+parsing_test.exe : parsing_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-context_test.exe : context_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+context_test.exe : context_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-unification_test.exe : unification_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+unification_test.exe : unification_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-frontend_test.exe : frontend_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+frontend_test.exe : frontend_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-il-pass_test.exe : il-pass_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+il-pass_test.exe : il-pass_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-il-util_test.exe : il-util_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+il-util_test.exe : il-util_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-il-typed-pass_test.exe : il-typed-pass_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+il-typed-pass_test.exe : il-typed-pass_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-closure-conversion_test.exe : closure-conversion_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+closure-conversion_test.exe : closure-conversion_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-compiler_test.exe : compiler_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+compiler_test.exe : compiler_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-execution_test.exe : execution_test.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+execution_test.exe : execution_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-bovex.exe : bovex.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS) $(LLM_OBJECTS)
+bovex.exe : bovex.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 paper.pdf : bovex.exe paper.bovex
 	./bovex.exe paper.bovex -o paper.pdf
 
-concat.exe : concat.o $(LANG_OBJECTS) $(CC_LIB_OBJECTS)
+concat.exe : concat.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 hyphenation_test.exe : hyphenation_test.o hyphenation.o $(CC_LIB_OBJECTS)

@@ -8,7 +8,9 @@
 #include <string>
 
 #include "bytecode.h"
-#include "document.h"
+
+struct Rephrasing;
+struct Document;
 
 namespace bc {
 
@@ -67,6 +69,8 @@ struct Execution {
   // but for tests we sometimes provide a fake one.
   virtual Document *DocumentHook();
 
+  virtual Rephrasing *RephrasingHook();
+
   // For output of layout
   virtual void OutputLayoutHook(int page_idx, const Value *layout);
 
@@ -95,6 +99,7 @@ struct Execution {
 
   const Program &program;
   const std::unique_ptr<Document> degenerate_document;
+  const std::unique_ptr<Rephrasing> degenerate_rephrasing;
 };
 
 

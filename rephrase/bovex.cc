@@ -19,9 +19,11 @@
 
 struct BovexExecution : public bc::Execution {
   explicit BovexExecution(const bc::Program &pgm,
-                          PDFDocument *pdf_document) :
+                          PDFDocument *pdf_document,
+                          Rephrasing *rephrasing) :
     bc::Execution(pgm),
-    pdf_document(pdf_document) {
+    pdf_document(pdf_document),
+    rephrasing(rephrasing) {
 
   }
 
@@ -29,6 +31,7 @@ struct BovexExecution : public bc::Execution {
   double total_badness = 0.125;
 
   Document *DocumentHook() override { return pdf_document; }
+  Rephrasing *RephrasingHook() override { return rephrasing; }
 
   // The defaults for these are fine.
   // virtual void FailHook(const std::string &msg);
@@ -52,7 +55,8 @@ struct BovexExecution : public bc::Execution {
     return out;
   }
 
-  PDFDocument *pdf_document;
+  PDFDocument *pdf_document = nullptr;
+  Rephrasing *rephrasing = nullptr;
 };
 
 static int Bovex(const std::vector<std::string> &args) {
@@ -105,13 +109,18 @@ static int Bovex(const std::vector<std::string> &args) {
 
   bc::Program pgm = compiler.Compile(leftover[0]);
 
-  Rephrasing rephrasing;
+  std::string rephrase_db = leftover[0];
+  Util::TryStripSuffix(".bovex", &rephrase_db);
+  rephrase_db += ".rdb";
+
+  std::unique_ptr<Rephrasing> rephrasing(Rephrasing::Create(rephrase_db));
+  CHECK(rephrasing.get() != nullptr);
 
   // TODO: In a loop!
 
   // Dimensions should be settable from within program!
   PDFDocument pdf_document(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);
-  BovexExecution execution(pgm, &pdf_document);
+  BovexExecution execution(pgm, &pdf_document, rephrasing.get());
   BovexExecution::State state = execution.Start();
 
   if (verbose > 0) {

@@ -11,6 +11,7 @@
 #include "base/stringprintf.h"
 #include "ansi.h"
 #include "document.h"
+#include "rephrasing.h"
 #include "util.h"
 
 namespace bc {
@@ -19,9 +20,24 @@ struct DegenerateDocument : public Document {
 
 };
 
+struct DegenerateRephrasing : public Rephrasing {
+  ~DegenerateRephrasing() override {}
+  bool Rephrase(const Rephrasable &rephrasable) override {
+    return false;
+  }
+  std::vector<std::pair<double, std::string>> GetRephrasings(
+      const Rephrasable &rephrasable) override {
+    return {{0.0, rephrasable.text}};
+  }
+  std::string DatabaseKey(const Rephrasable &rephrasable) override {
+    return "key";
+  }
+};
+
 Execution::Execution(const Program &pgm) :
   program(pgm),
-  degenerate_document(new DegenerateDocument) {
+  degenerate_document(new DegenerateDocument),
+  degenerate_rephrasing(new DegenerateRephrasing) {
 
 }
 
@@ -90,6 +106,10 @@ void Execution::EmitBadnessHook(double badness) {
 
 Document *Execution::DocumentHook() {
   return degenerate_document.get();
+}
+
+Rephrasing *Execution::RephrasingHook() {
+  return degenerate_rephrasing.get();
 }
 
 static std::string ColorValuePtrString(const Value *value) {

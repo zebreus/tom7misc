@@ -10,11 +10,9 @@
 
 #include "document.h"
 
-struct LLM;
-
 struct Rephrasing {
-  Rephrasing();
-  ~Rephrasing();
+  static Rephrasing *Create(const std::string &database_file);
+  virtual ~Rephrasing();
 
   struct Rephrasable {
     std::vector<std::shared_ptr<DocTree>> images;
@@ -25,25 +23,26 @@ struct Rephrasing {
 
   // Attempt to make a new rephrasing. If it is valid, insert
   // it in the database.
-  bool MakeNewRephrasing(const Rephrasable &rephrasable);
+  virtual bool Rephrase(const Rephrasable &rephrasable) = 0;
+
+  // TODO: Allow providing scores for rephrasings, perhaps at
+  // specific spots, as feedback from pack-boxes?
 
   // Returns the known rephrasings of the string. Sorted by loss
   // (ascending). The rephrasings should be valid (can be joined
   // back up with the rephrasable).
-  std::vector<std::pair<double, std::string>> GetRephrasings(
-      const Rephrasable &rephrasable);
+  virtual std::vector<std::pair<double, std::string>> GetRephrasings(
+      const Rephrasable &rephrasable) = 0;
 
-  Rephrasable GetTextToRephrase(const DocTree &doc);
+  static Rephrasable GetTextToRephrase(const DocTree &doc);
 
   // Get the database key, which depends on the context, text, and
   // current model. It is ASCII.
-  std::string DatabaseKey(const Rephrasable &rephrasable);
+  virtual std::string DatabaseKey(const Rephrasable &rephrasable) = 0;
 
- private:
-  void LazyInit();
-
-  std::string model_key;
-  std::unique_ptr<LLM> llm;
+ protected:
+  // Use Create().
+  Rephrasing();
 };
 
 #endif
