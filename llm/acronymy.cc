@@ -1,15 +1,6 @@
 
-#include "llama.h"
-
-#include <algorithm>
-#include <cassert>
-#include <cinttypes>
-#include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <ctime>
-#include <fstream>
-#include <iostream>
 #include <string>
 #include <vector>
 #include <optional>
@@ -27,6 +18,7 @@
 #include "nfa.h"
 #include "nfa-util.h"
 #include "llm-util.h"
+#include "models.h"
 
 using namespace std;
 
@@ -66,7 +58,7 @@ static string BrainstormPrefix(const string &word, char c) {
 static std::set<std::string> useful_common = {
   // Most common words from wikipedia, aside from stuff like "align"
   // and "s" that are actually markup.
-  "the", "of", "and", "in" "a", "to", "was" "is" "for" "as"
+  "the", "of", "and", "in", "a", "to", "was" "is" "for" "as"
   "by", "on", "with", "that", "from", "at", "were", "it", "his",
   "he", "an", "or", "are", "which", "be", "this", "had", "also",
   "has", "not", "one", "but", "have", "its", "who", "there",
@@ -93,12 +85,9 @@ int main(int argc, char ** argv) {
   AnsiInit();
   Timer model_timer;
 
-  ContextParams cparams;
-  // cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
-  // cparams.model = "llama2/7b/ggml-model-q8_0.gguf";
-  // cparams.model = "llama2/70b/ggml-model-f16.gguf";
-  // cparams.model = "llama2/7b/ggml-model-Q2_K.gguf";
-  cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
+  // ContextParams cparams = Models::LLAMA_70B_F16;
+  ContextParams cparams = Models::LLAMA_70B_Q8;
+  // ContextParams cparams = Models::LLAMA_7B_F16;
 
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;

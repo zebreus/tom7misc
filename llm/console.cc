@@ -37,7 +37,7 @@ void Console::ReadThread() {
   }
 }
 
-  // Block in the calling thread until there's a line available.
+// Block in the calling thread until there's a line available.
 std::string Console::WaitLine() {
   std::unique_lock<std::mutex> ul(m);
   // Wait (without the lock) until we have thread budget.

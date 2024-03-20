@@ -1,35 +1,16 @@
 
-#include "llama.h"
-
-#include <algorithm>
-#include <cassert>
-#include <cinttypes>
-#include <cmath>
 #include <cstdio>
-#include <cstring>
-#include <ctime>
-#include <fstream>
-#include <iostream>
 #include <string>
-#include <vector>
 
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "ansi.h"
-#include "timer.h"
 #include "util.h"
-#include "vector-util.h"
-#include "arcfour.h"
-#include "randutil.h"
-
 #include "llm.h"
+#include "models.h"
 
 using namespace std;
 
 int main(int argc, char ** argv) {
-  ContextParams cparams;
   // Any model will work; use the smallest one.
-  cparams.model = "e:\\llama2\\7b\\ggml-model-Q2_K.gguf";
+  ContextParams cparams = Models::LLAMA_7B_Q2;
   SamplerParams sparams;
 
   LLM llm(cparams, sparams);

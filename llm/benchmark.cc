@@ -1,15 +1,8 @@
 
 #include "llama.h"
 
-#include <algorithm>
-#include <cassert>
-#include <cinttypes>
-#include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <ctime>
-#include <fstream>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -24,6 +17,7 @@
 
 #include "llm.h"
 #include "llm-util.h"
+#include "models.h"
 
 // Prevent runaway (no correct answer can be longer).
 static constexpr int MAX_ANSWER = 80;
@@ -468,25 +462,9 @@ int main(int argc, char ** argv) {
   problems.emplace_back(LoadFreeformProblem("trivia-personal.txt"));
   printf("Loaded " APURPLE("%d") " problems.\n", (int)problems.size());
 
-  ContextParams cparams;
-  // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
-  // cparams.model = "../llama/models/7B/ggml-model-f16.bin";
-  // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  // cparams.model = "llama2/7b/ggml-model-f16.gguf";
-
-  // cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
-
-  // cparams.model = "llama2/70b/ggml-model-f16.gguf";
-  // cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
-
-  // cparams.model = "codellama2/34b/ggml-model-f16.gguf";
-
-  cparams.model = "codellama2/7b/ggml-model-f16.gguf";
-
-  // test!
-  // cparams.model = "llama2/7b/ggml-model-Q2_K.gguf";
+  // ContextParams cparams = Models::LLAMA_70B_F16;
+  ContextParams cparams = Models::LLAMA_70B_Q8;
+  // ContextParams cparams = Models::LLAMA_7B_F16;
 
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;
@@ -510,7 +488,7 @@ int main(int argc, char ** argv) {
   llama_print_timings(llm.context.GetLlamaContext());
 
   // TODO: Dump full context/sampler params, like to a spreadsheet.
-  printf("Model: " AWHITE("%s") "\n", cparams.model.c_str());
+  printf("Model: " AWHITE("%s") "\n", std::string(cparams.model).c_str());
   printf("Sample type: " AYELLOW("%s") "\n",
          Sampler::SampleTypeString(sparams.type));
   printf("Using thoughts: " AYELLOW("%s") "\n", USE_THOUGHT ? "YES" : "NO");
@@ -523,7 +501,7 @@ int main(int argc, char ** argv) {
   StringAppendF(&out, "Took: %lld (%s)\n",
                 (int64_t)total_timer.Seconds(),
                 ANSI::StripCodes(ANSI::Time(total_timer.Seconds())).c_str());
-  StringAppendF(&out, "Model: %s\n", cparams.model.c_str());
+  StringAppendF(&out, "Model: %s\n", std::string(cparams.model).c_str());
   StringAppendF(&out, "Sampler: %s\n",
                 Sampler::SampleTypeString(sparams.type));
   StringAppendF(&out, "Thoughts: %s\n",

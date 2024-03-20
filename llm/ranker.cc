@@ -9,6 +9,7 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "ansi.h"
+#include "models.h"
 
 using namespace std;
 
@@ -17,10 +18,9 @@ Ranker::Ranker(
     const std::vector<std::string> &examples) :
   rc(StringPrintf("ranker.%lld", time(nullptr))) {
 
-  ContextParams cparams;
-  // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
-  cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
-  // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
+  // ContextParams cparams = Models::LLAMA_70B_F16;
+  ContextParams cparams = Models::LLAMA_70B_Q8;
+  // ContextParams cparams = Models::LLAMA_7B_F16;
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

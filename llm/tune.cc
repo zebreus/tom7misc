@@ -24,7 +24,7 @@ static constexpr int MAX_LAYERS_GPU = 34;
 
 // Outside this region, sample less often.
 static constexpr int HINT_MIN_THREADS = 4;
-static constexpr int HINT_MAX_THREADS = 32;
+static constexpr int HINT_MAX_THREADS = 30;
 static constexpr int HINT_MAX_GPU = 32;
 
 struct Database {
@@ -476,23 +476,13 @@ static void Tune(const std::string &model, const std::string &tunefile) {
   Periodically save_per(60.0);
 
   std::vector<std::pair<int, int>> todo;
-#if 0
-  todo.emplace_back(25, 14);
+#if 1
+  todo.emplace_back(14, 32);
   // Redo the best region, to reduce noise
-  for (int th = 25; th <= 33; th++)
-    for (int gpu = 19; gpu <= 25; gpu++)
-      todo.emplace_back(th, gpu);
-
-  for (int th = 25; th <= 37; th++)
-    for (int gpu = 19; gpu <= 27; gpu++)
-      todo.emplace_back(th, gpu);
-
-  for (int th = 4; th < 32; th++) {
-    for (int gpu = 0; gpu < 25; gpu++) {
-      if (db.NumTrials(th, gpu) == 0) {
-        printf("Needed (%d,%d)\n", th, gpu);
+  for (int th = 10; th <= 18; th++) {
+    for (int gpu = 31; gpu <= 32; gpu++) {
+      if (true || db.NumTrials(th, gpu) == 0)
         todo.emplace_back(th, gpu);
-      }
     }
   }
 #endif

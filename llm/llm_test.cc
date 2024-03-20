@@ -7,20 +7,18 @@
 
 #include "timer.h"
 #include "ansi.h"
+#include "models.h"
 
 using namespace std;
 
 static constexpr bool VERBOSE = false;
 
-#define MODEL_DIR "llama2"
-
 static void BasicPredict() {
   string prompt = "Please excuse my";
   Timer model_timer;
-  ContextParams cparams;
-  // Fastest model for test.
-  // cparams.model = "llama2/7b/ggml-model-Q2_K.gguf";
-  cparams.model = MODEL_DIR "/7b/ggml-model-f16.gguf";
+  // Fast model for test, but we want to inspect the output
+  // to make sure it makes some kind of sense.
+  ContextParams cparams = Models::LLAMA_7B_Q8;
 
   SamplerParams sparams;
   // Get determinism for test.
@@ -81,10 +79,8 @@ static void BasicPredict() {
 static void Rewind() {
   string prompt = "1 2 3 4 5 6 7 8";
   Timer model_timer;
-  ContextParams cparams;
   // Fastest model for test.
-  cparams.model = MODEL_DIR "/7b/ggml-model-Q2_K.gguf";
-  // cparams.model = "llama2/7b/ggml-model-f16.gguf";
+  ContextParams cparams = Models::LLAMA_7B_Q2;
 
   SamplerParams sparams;
   // Get determinism for test.
@@ -167,10 +163,8 @@ static void TokenizeInContext() {
   string prompt = "one two three four five six seven eight nine ten "
     "eleven twelve";
   Timer model_timer;
-  ContextParams cparams;
   // Fastest model for test.
-  cparams.model = MODEL_DIR "/7b/ggml-model-Q2_K.gguf";
-  // cparams.model = "llama2/7b/ggml-model-f16.gguf";
+  ContextParams cparams = Models::LLAMA_7B_Q2;
 
   SamplerParams sparams;
   // Get determinism for test.
@@ -282,10 +276,8 @@ static void RewindAfterSample() {
   string prompt = "Counting to ten in different languages.\n"
     "German: eins zwei drei vier funf sechs sieben";
   Timer model_timer;
-  ContextParams cparams;
   // Fastest model for test.
-  cparams.model = MODEL_DIR "/7b/ggml-model-Q2_K.gguf";
-  // cparams.model = "llama2/7b/ggml-model-f16.gguf";
+  ContextParams cparams = Models::LLAMA_7B_Q2;
 
   SamplerParams sparams;
   // Get determinism for test.

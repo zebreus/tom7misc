@@ -267,12 +267,30 @@ struct Sampler {
 
   static const char *SampleTypeString(SampleType type);
 
-  // Samples a token from the logits. This does not accept the token
-  // (although it does currently update sampler state for the mirostat
-  // algorithm).
+  // Samples a token from the logits using the current sampling strategy.
+  // This does not accept the token (although it does currently update
+  // sampler state for the mirostat algorithm).
   // You probably want to call Penalize on the candidates first.
   // Consumes the candidates.
   llama_token SampleToken(std::unique_ptr<Candidates> cand);
+
+  // Produces a probability distribution over tokens, with tokens in
+  // descending order by their probabilities. Consumes the candidates.
+  // Doesn't affect sampler state.
+  static std::vector<std::pair<llama_token, double>> ProbDist(
+      std::unique_ptr<Candidates> cand);
+
+  // Lower level modification of candidates array, for custom sampling.
+  // TODO: Make these all static.
+  void UpdateCandidatesMinP(float min_p, int min_keep, Candidates *cand);
+  // temperature = 1.0 is the identity. Lower temperatures cause
+  // the probability distribution to skew towards more-probable tokens,
+  // and higher temperatures makes the distribution flatter.
+  static void UpdateCandidatesTemp(float temperature, Candidates *cand);
+
+  // Raw sampling of the probability distribution.
+  // Consumes candidates.
+  llama_token SampleRaw(std::unique_ptr<Candidates> cand);
 
 private:
   // PERF!

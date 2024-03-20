@@ -23,7 +23,7 @@
 #include "randutil.h"
 
 #include "llm.h"
-
+#include "models.h"
 #include "llm-util.h"
 
 using namespace std;
@@ -130,13 +130,9 @@ int main(int argc, char ** argv) {
   AnsiInit();
   Timer model_timer;
 
-  ContextParams cparams;
-  // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
-  // cparams.model = "../llama/models/7B/ggml-model-f16.bin";
-  // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
-  cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-f16.bin";
+  ContextParams cparams = Models::LLAMA_70B_F16;
+  // ContextParams cparams = Models::LLAMA_70B_Q8;
+  // ContextParams cparams = Models::LLAMA_7B_F16;
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

@@ -376,9 +376,21 @@ llama_token Sampler::SampleToken(std::unique_ptr<Candidates> cand) {
     return SampleDistribution(&cand->ltda);
 
   case SampleType::MIN_P:
-    llama_sample_min_p(lctx, &cand->ltda, params.min_p, 1);
+    UpdateCandidatesMinP(params.min_p, 1, cand.get());
     // XXX also temp?
     return SampleDistribution(&cand->ltda);
+  }
+}
+
+void Sampler::UpdateCandidatesMinP(float min_p, int min_keep,
+                                   Candidates *cand) {
+  llama_sample_min_p(context->lctx, &cand->ltda, params.min_p, 1);
+}
+
+void Sampler::UpdateCandidatesTemp(float temperature, Candidates *cand) {
+  const float inv_temp = 1.0f / temperature;
+  for (size_t i = 0; i < cand->ltda.size; ++i) {
+    cand->ltda.data[i].logit *= inv_temp;
   }
 }
 
@@ -481,6 +493,9 @@ llama_token Sampler::SampleTokenMirostatV2(
   return X;
 }
 
+llama_token Sampler::SampleRaw(std::unique_ptr<Candidates> cand) {
+  return SampleDistribution(&cand->ltda);
+}
 
 llama_token Sampler::SampleDistribution(llama_token_data_array *dist) {
   // PERF we need to normalize probabilities, but not sort them.
@@ -502,6 +517,23 @@ llama_token Sampler::SampleDistribution(llama_token_data_array *dist) {
     // when subtracting the bucket). Easiest is to just try again.
   }
 }
+
+// Produces a probability distribution over tokens, with tokens in
+// descending order by their probabilities. Consumes the candidates.
+std::vector<std::pair<llama_token, double>> Sampler::ProbDist(
+    std::unique_ptr<Candidates> cand) {
+  // llama_sample_min_p(lctx, &cand->ltda, params.min_p, 1);
+  llama_token_data_array *dist = &cand->ltda;
+  llama_sample_softmax(nullptr, dist);
+
+  std::vector<std::pair<llama_token, double>> ret;
+  ret.reserve(dist->size);
+  for (size_t i = 0; i < dist->size; i++) {
+    ret.emplace_back(dist->data[i].id, dist->data[i].p);
+  }
+  return ret;
+}
+
 
 void Sampler::Observe(llama_token id) {
   last_n_tokens.push_front(id);

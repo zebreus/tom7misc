@@ -24,7 +24,6 @@
 #include "util.h"
 #include "vector-util.h"
 #include "arcfour.h"
-#include "randutil.h"
 
 #include "nfa.h"
 #include "nfa-util.h"
@@ -161,7 +160,7 @@ struct Chatting {
   LLM::State start_line_state;
   Timer line_timer;
   int line_token_count = 0;
-  bool verbose = true;
+  bool verbose = VERBOSE;
 
   // Render the line (no trailing newline) in color.
   std::string ANSILine(const ChatLine &line) const {
@@ -208,6 +207,7 @@ struct Chatting {
   // but this is also used to initialize history from the prompt.
   // The line should end with a newline.
   void FinishLine(const std::string &line_in) {
+    Timer finish_line_timer;
     if (line_in.empty() || line_in.back() != '\n') {
       printf(ARED("Should end with newline") " [%s]\n", line_in.c_str());
     }
@@ -225,10 +225,16 @@ struct Chatting {
 
     // Reset state.
     current_line.clear();
+    // Probably the saving is slow?
+    Timer save_timer;
     start_line_state = llm->SaveState();
+    double save_sec = save_timer.Seconds();
     ResetRegex();
     line_timer.Reset();
     line_token_count = 0;
+    printf(AGREY("Finished line in ") "%s (saving: %s)\n",
+           ANSI::Time(finish_line_timer.Seconds()).c_str(),
+           ANSI::Time(save_sec).c_str());
   }
 
   // Clear anything in the current line and force the argument.
@@ -539,27 +545,15 @@ int main(int argc, char ** argv) {
   // AnsiInit();
   Timer model_timer;
 
-  ContextParams cparams;
-  // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
-  // cparams.model = "e:\\llama2\\7b\\ggml-model-q8_0.gguf";
-  // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
-  // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
+  // ContextParams cparams = Models::LLAMA_70B_F16;
+  ContextParams cparams = Models::LLAMA_70B_Q8;
+  // ContextParams cparams = Models::LLAMA_7B_F16;
 
-  /*
-  cparams.model = "llama2\\70b\\ggml-model-q8_0.gguf";
-  cparams.num_threads = 22;
-  cparams.num_gpu_layers = 19;
-  */
+  // This fits on the GPU, so inference is quite fast.
+  // ContextParams cparams = Models::LLAMA_7B_F16;
 
-  cparams.model = "llama2\\70b\\ggml-model-f16.gguf";
-  cparams.num_threads = 24;
-  cparams.num_gpu_layers = 11;
-
-  /*
-  cparams.model = "llama2\\7b\\ggml-model-q4_0.gguf";
-  cparams.num_threads = 24;
-  cparams.num_gpu_layers = 32;
-  */
+  // Best quality.
+  // ContextParams cparams = Models::LLAMA_70B_F16;
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

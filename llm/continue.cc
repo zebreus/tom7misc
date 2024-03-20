@@ -1,15 +1,5 @@
 
-#include "llama.h"
-
-#include <algorithm>
-#include <cassert>
-#include <cinttypes>
-#include <cmath>
 #include <cstdio>
-#include <cstring>
-#include <ctime>
-#include <fstream>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -18,11 +8,9 @@
 #include "ansi.h"
 #include "timer.h"
 #include "util.h"
-#include "vector-util.h"
-#include "arcfour.h"
-#include "randutil.h"
 
 #include "llm.h"
+#include "models.h"
 #include "llm-util.h"
 
 using namespace std;
@@ -110,22 +98,9 @@ int main(int argc, char ** argv) {
     printf("Writing to " ACYAN("%s") "...\n", argv[2]);
   }
 
-  ContextParams cparams;
-  // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
-  // cparams.model = "../llama/models/7B/ggml-model-f16.bin";
-  // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
-  // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
-  // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
-
-  // cparams.model = "codellama2/34b/ggml-model-f16.gguf";
-
-  cparams.model = "llama2\\70b\\ggml-model-f16.gguf";
-  cparams.num_threads = 24;
-  cparams.num_gpu_layers = 11;
-
+  ContextParams cparams = Models::LLAMA_70B_F16;
+  // ContextParams cparams = Models::LLAMA_70B_Q8;
+  // ContextParams cparams = Models::LLAMA_7B_F16;
 
   SamplerParams sparams;
   // cparams.mirostat = 2;
