@@ -307,6 +307,12 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // Patterns.
 
+  // TODO: support patterns like this!
+  // { name: string,
+  // regular: string option,
+  // bold: string option,
+  // italic: string option,
+  // bold-italic: string option }
   const auto TuplePat = [&](const auto &Pattern) {
       return ((IsToken<LPAREN>() >>
                Separate0(Pattern, IsToken<COMMA>()) <<

@@ -26,11 +26,13 @@
 #include "auto-histo.h"
 
 #include "llm.h"
+#include "models.h"
 #include "llm-util.h"
 
 using namespace std;
 
-static constexpr int WIDTH = 70;
+// XXX command-line flag
+static constexpr int WIDTH = 42;
 
 static void PrintGreyParity(const std::string &tok) {
   static bool odd = 0;
@@ -56,8 +58,17 @@ struct WordStream {
   explicit WordStream(LLM *llm) : llm(llm) {
   }
 
+  llama_token Sample(float temp) {
+    auto cand = llm->context.GetCandidates();
+    llm->sampler.FilterByNFA(cand.get());
+    Sampler::UpdateCandidatesTemp(temp, cand.get());
+    llm->sampler.UpdateCandidatesMinP(0.05, 1, cand.get());
+    return llm->sampler.SampleRaw(std::move(cand));
+  }
+
   // Returns the word (whitespace etc. intact).
-  std::string Next() {
+  std::string Next(float temp = 1.0) {
+
     CHECK(!llm->sampler.Stuck()) << "STUCK!";
 
     std::string partial_word;
@@ -67,7 +78,8 @@ struct WordStream {
       if (partial_word.size() > WIDTH) return partial_word;
 
       // Sample, but do not yet take, the token.
-      int id = llm->Sample();
+      // int id = llm->Sample();
+      const int id = Sample(temp);
       string tok = llm->context.TokenString(id);
 
       // We have a "word" if the new partial_word contains a space.
@@ -103,7 +115,8 @@ static std::string LengthIndicator() {
   return std::string(WIDTH, '-');
 }
 
-static void Rephrase(LLM *llm, const string &prompt, const string &original) {
+static void RephraseMono(
+    LLM *llm, const string &prompt, const string &original) {
   printf("Loaded prompt of %d chars\n", (int)prompt.size());
 
   Timer startup_timer;
@@ -137,9 +150,10 @@ static void Rephrase(LLM *llm, const string &prompt, const string &original) {
     };
   ResetHisto();
 
-  std::vector<std::string> failures;
+  std::map<std::string, int> failures;
 
   LLM::State line_beginning = llm->SaveState();
+  float current_temp = 1.0f;
   for (;;) {
     printf("Start loop. Last:\n");
     printf(ANSI_GREY);
@@ -151,10 +165,16 @@ static void Rephrase(LLM *llm, const string &prompt, const string &original) {
       printf(AFGCOLOR(200, 250, 200, "%s") "\n", line.c_str());
     }
 
-    for (const std::string &line : failures) {
-      printf(AFGCOLOR(190, 50, 50, "%s") "\n", line.c_str());
+    for (const auto &[line, times] : failures) {
+      printf(AFGCOLOR(190, 50, 50, "%s") "%s\n",
+             line.c_str(),
+             times > 1 ?
+             StringPrintf(" x " AYELLOW("%d"), times).c_str() : "");
     }
 
+    if (current_temp > 1.0f) {
+      printf("Temperature: %.4f\n", current_temp);
+    }
     printf("%s\n", LengthIndicator().c_str());
 
     // As a loop invariant, line_beginning is the current state.
@@ -190,7 +210,7 @@ static void Rephrase(LLM *llm, const string &prompt, const string &original) {
       // before (proportional to its length); decrease it when it
       // is new. In the former case, it's easy for us to get stuck
       // trying the same phrasing over and over.)
-      string word = word_stream.Next();
+      string word = word_stream.Next(current_temp);
 
       // At the beginning of a continuation line, a space was
       // covered by the newline that we implicitly have (and
@@ -220,6 +240,7 @@ static void Rephrase(LLM *llm, const string &prompt, const string &original) {
       */
       line_beginning = llm->SaveState();
       failures.clear();
+      current_temp = 1.0;
       ResetHisto();
       // and continue with the next line.
     } else {
@@ -228,12 +249,18 @@ static void Rephrase(LLM *llm, const string &prompt, const string &original) {
              LengthIndicator().c_str(),
              // std::string(WIDTH, '-').c_str(),
              line.c_str());
+      current_temp += 0.0125;
 
       printf("Histo:\n"
              "%s\n",
              len_histo->SimpleHorizANSI(12).c_str());
 
-      failures.push_back(line);
+      // Whenever we get a repeat, increase temperature so
+      // that we are getting more random samples.
+      if (failures[line] > 0) {
+        current_temp += 0.0125;
+      }
+      failures[line]++;
 
       // [ Californ]
       // llm->TakeTokenBatch({7599});
@@ -249,7 +276,7 @@ static void Rephrase(LLM *llm, const string &prompt, const string &original) {
 int main(int argc, char ** argv) {
   CHECK(argc >= 2) << "Usage: ./rephrase.exe input.txt\n";
 
-  constexpr const char *prompt_file = "rephrase.txt";
+  constexpr const char *prompt_file = "rephrase-monospace.txt";
   const string prompt = Util::ReadFile(prompt_file);
   CHECK(!prompt.empty()) << prompt_file;
 
@@ -263,17 +290,12 @@ int main(int argc, char ** argv) {
   // AnsiInit();
   Timer model_timer;
 
-  ContextParams cparams;
-  // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
-  // cparams.model = "../llama/models/7B/ggml-model-f16.bin";
-  // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
-  cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
-  // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
+  // Best.
+  // ContextParams cparams = Models::LLAMA_70B_F16;
+  // ContextParams cparams = Models::LLAMA_70B_Q8;
+  // Fast.
+  ContextParams cparams = Models::LLAMA_7B_F16;
 
-  // cparams.model = "codellama2/34b/ggml-model-f16.gguf";
 
   SamplerParams sparams;
   // cparams.mirostat = 2;
@@ -287,7 +309,7 @@ int main(int argc, char ** argv) {
   LLM llm(cparams, sparams);
   printf(AGREEN("Loaded model") ".\n");
 
-  Rephrase(&llm, prompt, original);
+  RephraseMono(&llm, prompt, original);
 
   return 0;
 }

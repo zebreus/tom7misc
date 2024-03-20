@@ -15,6 +15,14 @@ let
                    subject = "Documents do not need a 'subject'"
                    (* leaving out date, so it is the creation time. *) }
 
+  val FIXEDERSYS : font-family =
+    font-load-family { name = "fixedersys",
+                       regular = SOME "fixedersys2x.ttf",
+                       bold = NONE,
+                       italic = NONE,
+                       bold-italic = NONE }
+  fun fixedersys layout = apply-font FIXEDERSYS layout
+
   val author = b[Tom 7 [[Murphy]] ]
 
   fun attrs-string (BOX, {(Box) width }) = "box-width"
@@ -241,6 +249,41 @@ let
 
   val anti-aliasing-png = image-load "anti-aliasing.png"
 
+  fun monospace-block lay =
+    let
+      val LEFT-INDENT = inch 0.05
+      val WIDTH = inch 3.4
+      val LINE-HEIGHT = 12.0
+
+      (* Since we generate boxes directly, we need the actual
+         font name, not the family. *)
+      val ff = case font-regular FIXEDERSYS of
+        NONE => fail "no fixedersys font?"
+      | SOME name => name
+
+      fun monospace-lines lay =
+        case layoutcase lay of
+          Text str =>
+            let val sl : string list = string-split "\n" str
+            in
+              list-map (fn (s : string) =>
+                        (box {(Box)
+                              width = WIDTH,
+                              font-name = ff,
+                              height = LINE-HEIGHT} (layout s))) sl
+            end
+        | _ => fail "Markup is not supported inside monospace-lines."
+
+
+      val lines : layout list = monospace-lines lay
+    in
+      stick-vertically
+      (LEFT-INDENT,
+       box {(Box) width = WIDTH} (layout-concat lines))
+    end
+
+  fun no-rephrase lay = lay
+
 in
 
   (main-text
@@ -269,7 +312,7 @@ of coverage. For a particular product received by a particular user,
     stressing
     me out. Makes sense, as it's kind of the [b[core]] of everything.
 
-    [rephrase
+    [no-rephrase
      [This paragraph has some [b[markup]] in it. It's also inside
       a call to rephrase.]]
 
@@ -292,6 +335,30 @@ the arbiter shall give two minutes extra time to his opponent in each instance; 
 third illegal move by the same player, the arbiter shall declare the game lost by this
 player. However, the game is drawn if the position is such that the opponent cannot
 checkmate the player's king by any possible series of legal moves.
+
+I then sample text a word at a time to continue this prompt. If a line
+ends exactly on the number of characters that I want (and the next
+character is a space or other character that is appropriate to end a
+line) then I accept the stream so far and continue. If I exceed the
+line length, I back up to the state at the beginning of the line and
+try again with new random samples. I just keep doing that until the
+paragraph is complete, and we have beautifully justified monospace
+text that resembles the original. Here is an example of this paragraph
+rendered in monospace:
+
+[monospace-block
+ [I sample text a word at a time to continue
+this prompt. If a line ends exactly on the
+number of characters I want, I accept that
+text so far, and continue. If I exceed the
+line length, I back up to the beginning of
+the line and try again with new samples. I
+keep repeating this until I get text I can
+render in monospaced font, and that is how
+we can get beautifully justified monospace
+text. Here is an example of this paragraph
+rendered in monospace:
+]]
 
 A natural question is, how did ML5 help us in building these? It is
 difficult to evaluate this question objectively, because to some

@@ -23,16 +23,20 @@ object PDFInfo of { creator : string,
 
 (* Fonts are represented with text attributes. But we wrap them
    so that some utilities get a little extra type checking. *)
-datatype font-family = Font of string
+datatype font-family =
+  Font of {
+           (* This is what's typically used, so that BoVeX
+              handles the selection of bold/italic variants. *)
+           family : string,
+           (* But in some cases we want to request a specific
+              font name. *)
+           regular : string option,
+           bold : string option,
+           italic : string option,
+           bold-italic : string option }
 
-(*
-XXX support patterns like this!
-{ name: string,
-regular: string option,
-bold: string option,
-italic: string option,
-bold-italic: string option }
-*)
+(* Load a font family from .TTF files. Each style is optional, but at
+   least one of them must be supplied! *)
 fun font-load-family { name = family-name : string,
                        regular, bold, italic, bold-italic }
   : font-family =
@@ -41,26 +45,60 @@ fun font-load-family { name = family-name : string,
     val BOLD = 1
     val ITALIC = 2
 
-    fun load (NONE, _) = ()
+    fun load (NONE, _) = NONE
       | load (SOME ttf, props) =
       case font-load-file ttf of
         "" => fail ("Unable to load font from file " ^ ttf)
-        | font => font-register (font, family-name, props)
+      | font =>
+          let in
+            font-register (font, family-name, props);
+            SOME font
+          end
 
+    val reg = load (regular, 0)
+    val b = load (bold, BOLD)
+    val i = load (italic, ITALIC)
+    val bi = load (bold-italic, BOLD + ITALIC)
   in
-    load (regular, 0);
-    load (bold, BOLD);
-    load (italic, ITALIC);
-    load (bold-italic, BOLD + ITALIC);
     (* TODO: We could be computing the name? *)
-    Font family-name
+    Font { family = family-name,
+           regular = reg,
+           bold = b,
+           italic = i,
+           bold-italic = bi }
   end
 
+fun font-family (Font { family, regular, bold, italic, bold-italic }) =
+  family
+fun font-regular (Font { family, regular, bold, italic, bold-italic }) =
+  regular
+
 (* some built-in fonts *)
-val HELVETICA : font-family = Font "helvetica"
-val TIMES : font-family = Font "times"
-val COURIER : font-family = Font "courier"
-val ZAPF-DINGBATS : font-family = Font "zapf-dingbats"
+(* Note: These do have built-in names for the styles. We could use them
+   here. *)
+val HELVETICA : font-family = Font { family = "helvetica",
+                                     regular = NONE,
+                                     bold = NONE,
+                                     italic = NONE,
+                                     bold-italic = NONE }
+val TIMES : font-family = Font { family = "times",
+                                 regular = NONE,
+                                 bold = NONE,
+                                 italic = NONE,
+                                 bold-italic = NONE }
+
+val COURIER : font-family = Font { family = "courier",
+                                   regular = NONE,
+                                   bold = NONE,
+                                   italic = NONE,
+                                   bold-italic = NONE }
+
+val ZAPF-DINGBATS : font-family = Font { family = "zapf-dingbats",
+                                         regular = NONE,
+                                         bold = NONE,
+                                         italic = NONE,
+                                         bold-italic = NONE }
+
 
 val PALATINO : font-family =
   font-load-family { name = "palatino",
@@ -158,6 +196,13 @@ object Box of { width : float, height : float,
                 img : string,
                 img-width : float, img-height : float,
 
+                (* Actual font names, not families. Usually you set
+                   the font on spans and then it is normalized onto
+                   boxes with get-boxes. This is for cases where
+                   you generate boxes directly (or want to read the
+                   output of get-boxes). *)
+                font-name : string,
+                font-size : float,
 
                 (* TODO: a way to indicate ascenders and descenders. *)
                 (* TODO: a way to indicate spaces for channel detection. *)
@@ -201,8 +246,8 @@ object Sticker of { x: float, y: float, scale: float }
 fun sticker (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_STICKER) l
 
-fun apply-font (Font f) lay =
-  span {(Span) font-face = f} lay
+fun apply-font font lay =
+  span {(Span) font-face = (font-family font)} lay
 
 fun helvetica layout = apply-font HELVETICA layout
 
