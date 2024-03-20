@@ -44,6 +44,14 @@ static void TestHyphenations() {
   TESTCASE("bovex", "bo-vex");
   TESTCASE("king", "king");
   TESTCASE("prevent", "pre-vent");
+  TESTCASE("a", "a");
+
+  {
+    std::vector<std::string> a1 = hyphenation.Hyphenate("a", 10000, 0);
+    CHECK(a1.size() == 1 && a1[0] == "a");
+    std::vector<std::string> a2 = hyphenation.Hyphenate("a", 0, 10000);
+    CHECK(a2.size() == 1 && a2[0] == "a");
+  }
 }
 
 int main(int argc, char **argv) {

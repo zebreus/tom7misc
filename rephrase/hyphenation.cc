@@ -7,7 +7,7 @@
 #include "util.h"
 #include "base/logging.h"
 
-static constexpr bool VERBOSE = false;
+static constexpr bool VERBOSE = true;
 
 // The hyphenation format:
 // See "Word Hy-phen-a-tion by Com-put-er", Liang, 1983
@@ -181,7 +181,7 @@ std::vector<std::string> Hyphenation::Hyphenate(std::string_view word,
     "not allow hyphens outside the beginning and end-of-word sentinels!";
 
   // Remove hyphenation points that are too close to the ends of words.
-  for (int i = 0; i < lefthyphenmin && i < (int)values.size(); i++) {
+  for (int i = 0; i <= lefthyphenmin && i < (int)values.size(); i++) {
     values[i] = 0;
   }
 
