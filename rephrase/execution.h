@@ -63,8 +63,6 @@ struct Execution {
   virtual void FailHook(const std::string &msg);
   virtual void ConsoleHook(const std::string &msg);
 
-  virtual Value *RephraseHook(Value *layout);
-
   // Get the document. In normal situations we have one of these,
   // but for tests we sometimes provide a fake one.
   virtual Document *DocumentHook();

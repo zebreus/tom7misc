@@ -84,6 +84,7 @@ std::string NormalizeWhitespace(const std::string &s);
 void DebugPrintDocTree(const DocTree &doc);
 
 DocTree JoinDocs(std::vector<DocTree> v);
+DocTree TextDoc(std::string s);
 
 // This is the document context as we're rendering.
 // I tried to keep this somewhat separated from PDF itself, so that I

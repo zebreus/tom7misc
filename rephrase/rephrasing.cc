@@ -15,6 +15,7 @@
 
 #include "llm.h"
 #include "models.h"
+#include "util.h"
 
 using Rephrasable = Rephrasing::Rephrasable;
 using Candidates = LLM::Candidates;
@@ -165,8 +166,7 @@ struct RephrasingImpl : public Rephrasing {
   }
 
   void LazyInit() {
-    // AnsiInit();
-    Timer model_timer;
+    if (llm.get() != nullptr) return;
 
     #define USE_MODEL(name) \
       ContextParams cparams = Models:: name ;       \
@@ -233,7 +233,7 @@ struct RephrasingImpl : public Rephrasing {
                    "\n"
                    "Rephrased text:\n\n"
                    "<P>",
-                   prompt_header.c_str(), rephrasable.text.c_str());
+                   rephrasable.text.c_str());
 
     printf(AGREY("Full prompt: [%s]") "\n", input.c_str());
 
@@ -296,19 +296,27 @@ struct RephrasingImpl : public Rephrasing {
 
       llm->TakeTokenBatch({id});
       std::string tok = llm->context.TokenString(id);
+      text += tok;
       if (id == llm->context.EOSToken())
         break;
       printf("%s", tok.c_str());
-      if (llm->sampler.Accepting() || llm->sampler.Stuck())
+      if (llm->sampler.Accepting() || llm->sampler.Stuck()) {
         break;
-
+      }
       if ((int)path.size() % 3 == 0) fflush(stdout);
     }
+
+    // Would be nice if we could remove the nodes from the path
+    // as well, but it doesn't really affect anything since we
+    // aren't trying to keep a correspondence between that and
+    // the string.
+    (void)Util::TryStripSuffix("</P>", &text);
 
     // TODO:
     // - check validity
     bool valid = true;
 
+    printf("\nFinal text: " AYELLOW("%s") "\n", text.c_str());
     DatabaseRow row;
     row.text = std::move(text);
     row.skipped_loss = 0.0;
@@ -401,6 +409,7 @@ Rephrasable Rephrasing::GetTextToRephrase(const DocTree &doc) {
       }
     };
 
+  Rec(doc);
   return rephrasable;
 }
 

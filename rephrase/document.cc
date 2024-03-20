@@ -26,9 +26,9 @@ static constexpr double EPSILON_COEFFICIENT = 0.0000000005;
 #define AATTRNAME(s) AFGCOLOR(200, 200, 160, s)
 #define AATTRVAL(s) AFGCOLOR(160, 200, 160, s)
 
-static DocTree TextDoc(const std::string &s) {
+DocTree TextDoc(std::string s) {
   DocTree d;
-  d.text = s;
+  d.text = std::move(s);
   return d;
 }
 

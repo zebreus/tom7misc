@@ -81,10 +81,6 @@ void Execution::InternalFail(const std::string &msg, State *state) {
   state->stack.clear();
 }
 
-Value *Execution::RephraseHook(Value *layout) {
-  return layout;
-}
-
 // Certain hooks are useful for testing.
 void Execution::FailHook(const std::string &msg) {
   fprintf(stderr, AWHITE("[") ARED("FAIL") AWHITE("]")
@@ -581,7 +577,37 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   }
 
   case Primop::REPHRASE: {
-    return RephraseHook(a);
+    Rephrasing *rephrasing = RephrasingHook();
+    DocTree doc = ValueToDocTree(a);
+    DebugPrintDocTree(doc);
+    Rephrasing::Rephrasable rep =
+      Rephrasing::GetTextToRephrase(doc);
+    printf("Rephrase: %s\n", rep.text.c_str());
+    if (rephrasing->Rephrase(rep)) {
+      printf("\nRephrased " AGREEN("OK") "\n");
+    }
+
+    // XXX: Taking the top-scoring doc is silly, as it will typically
+    // be the input doc. We need to try different continuations, or
+    // perhaps rephrase and pack together.
+    //
+    // Maybe the simplest way for this to work would be to just give
+    // BoVeX code the ability to get the top X rephrasings (with
+    // loss), which it can use to pack as locally or globally as it
+    // likes (and then it needs access to the packing results). This
+    // does not preclude global optimization!
+    std::vector<std::pair<double, std::string>> reps =
+      rephrasing->GetRephrasings(rep);
+
+    if (!reps.empty()) {
+      printf("Returning (score %.11g): %s\n",
+             reps[0].first,
+             reps[0].second.c_str());
+      return DocTreeToValue(&state->heap.used, TextDoc(reps[0].second));
+    }
+
+    printf("(returning original)");
+    return a;
   }
 
   case Primop::GET_BOXES: {

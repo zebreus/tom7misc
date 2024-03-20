@@ -7,7 +7,7 @@
 #include "util.h"
 #include "base/logging.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 // The hyphenation format:
 // See "Word Hy-phen-a-tion by Com-put-er", Liang, 1983
