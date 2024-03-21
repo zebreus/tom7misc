@@ -341,7 +341,6 @@ fun hfill () =
        glue-contract = EPSILON-COEFFICIENT,
        glue-break-penalty = 0.0 } [ ]
 
-
 fun vspace vdim =
   let val doc =
     (* Break before (0 size) and after (with given height). *)
@@ -611,12 +610,10 @@ fun title lay =
 
 fun author lay = [[lay][hfill()][vspace 16.0]]
 
-fun monospace-block lay =
+fun monospace-block-ext { left-indent, width,
+                          line-height,
+                          font-size } lay =
   let
-    val LEFT-INDENT = inch 0.05
-    val WIDTH = inch 3.4
-    val LINE-HEIGHT = 12.2
-
     (* Since we generate boxes directly, we need the actual
        font name, not the family. *)
     val ff = case font-regular FIXEDERSYS of
@@ -630,9 +627,10 @@ fun monospace-block lay =
           in
             list-map (fn (s : string) =>
                       (box {(Box)
-                            width = WIDTH,
+                            width = width,
+                            font-size = font-size,
                             font-name = ff,
-                            height = LINE-HEIGHT} (layout s))) sl
+                            height = line-height} (layout s))) sl
           end
       | _ => fail "Markup is not supported inside monospace-lines."
 
@@ -640,14 +638,64 @@ fun monospace-block lay =
     val lines : layout list = monospace-lines lay
   in
     stick-vertically
-    (LEFT-INDENT,
-     box {(Box) width = WIDTH} (layout-concat lines))
+    (left-indent,
+     box {(Box) width = width} (layout-concat lines))
   end
+
+
+fun monospace-block lay =
+  monospace-block-ext { left-indent = inch 0.05,
+                        width = inch 3.4,
+                        line-height = 12.05,
+                        font-size = 12.0 } lay
 
 fun section lay = span {(Span) font-bold = true, font-size = 14.0 }
     [[lay].[hfill()][break()]]
 fun subsection lay = span {(Span) font-bold = true }
     [[lay].[hfill()][break()]]
+
+(* Pack a paragraph. This is basically pack-boxes o get-boxes, but
+   we also look for rephrase contexts. If there are any, we
+   try multiple rephrasings and pick the one with the best badness. *)
+fun pack-paragraph column-width para =
+  let
+    val VERBOSE = false
+    do VERBOSE andthen
+      let in
+        print "----insert para----\n";
+        debug-print-doc para;
+        print "-------------------\n"
+      end
+
+    fun has-rephrase _ = false
+
+    val paras =
+      if has-rephrase para
+      then fail "unimplemented: rephrasing"
+      else para :: nil
+
+    fun get-best (NONE, nil) = fail "bug: no options?"
+      | get-best (SOME (badness, best), nil) =
+      let in
+        emit-badness badness;
+        best
+      end
+      | get-best (best, h :: t) =
+      let
+        val boxes = get-boxes para
+        val (badness, lines) = pack-boxes (BEST, column-width, boxes)
+
+        fun new-best NONE = SOME (badness, lines)
+          | new-best (SOME (pbad, pbest)) =
+          if badness <. pbad
+          then SOME (badness, lines)
+          else best
+      in
+        get-best (new-best best, t)
+      end
+  in
+    get-best (NONE, paras)
+  end
 
 (* Generally just one of these, for the toplevel document.
    This breaks the layout into paragraphs, and then inserts
@@ -722,26 +770,8 @@ fun main-text lay =
        they are vertical boxes. *)
     fun insert-paragraph (p : layout) : unit =
       let
-        do VERBOSE andthen
-          let in
-            print "----insert para----\n";
-            debug-print-doc p;
-            print "-------------------\n"
-          end
 
-        val boxes = get-boxes p
-
-        do VERBOSE andthen
-          let in
-            print "----the boxes...---\n";
-            debug-print-doc boxes;
-            print "-------------------\n"
-          end
-
-        val (badness, lines : layout list) =
-          pack-boxes (BEST, COLUMN-WIDTH, boxes)
-        (* Eager *)
-        do emit-badness badness
+        val lines = pack-paragraph COLUMN-WIDTH p
 
         (* Put a line at the end to space out the paragraph. We
            should do this with glue. *)
@@ -758,6 +788,8 @@ fun main-text lay =
                       end) lines;
             print "-------------------\n"
           end
+
+
 
         (* Now can treat the contents of lines as stickers.
            The line itself remains a box. *)
