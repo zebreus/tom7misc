@@ -1,6 +1,10 @@
 
 #include "il.h"
 
+#include <cstdio>
+#include <string>
+#include <unordered_set>
+
 #include "ansi.h"
 #include "base/logging.h"
 

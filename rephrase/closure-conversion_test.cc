@@ -1,6 +1,7 @@
 
 #include "closure-conversion.h"
 
+#include <cstdio>
 #include <string>
 
 #include "il.h"

@@ -1,10 +1,14 @@
 #ifndef _REPHRASE_PDF_DOCUMENT_H
 #define _REPHRASE_PDF_DOCUMENT_H
 
+#include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <optional>
+#include <unordered_map>
 
+#include "image.h"
 #include "document.h"
 #include "pdf.h"
 

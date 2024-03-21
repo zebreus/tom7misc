@@ -2,6 +2,7 @@
 #ifndef _REPHRASE_HYPHENATION_H
 #define _REPHRASE_HYPHENATION_H
 
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <unordered_map>

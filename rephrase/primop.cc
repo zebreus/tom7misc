@@ -1,6 +1,7 @@
 
 #include "primop.h"
 
+#include <cstdio>
 #include <tuple>
 #include <utility>
 #include <string>
@@ -261,6 +262,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::INVALID:
     LOG(FATAL) << "INVALID primop.";
   }
+
   printf("Uknown primop in IsPrimopTotal");
   return false;
 }

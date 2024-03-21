@@ -2,12 +2,13 @@
 #ifndef _REPHRASE_COMPILER_H
 #define _REPHRASE_COMPILER_H
 
-#include "il.h"
-#include "bytecode.h"
+#include <string>
 
-#include "frontend.h"
+#include "bytecode.h"
 #include "closure-conversion.h"
 #include "flatten-globals.h"
+#include "frontend.h"
+#include "il.h"
 #include "to-bytecode.h"
 
 // This is a fairly simple wrapper that pairs together the frontend and

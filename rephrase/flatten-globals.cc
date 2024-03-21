@@ -1,6 +1,12 @@
 
 #include "flatten-globals.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
+
+#include "bignum/big.h"
 #include "il.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"

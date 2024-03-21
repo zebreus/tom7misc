@@ -12,6 +12,7 @@
 #include <unordered_map>
 
 #include "ansi.h"
+#include "re2/stringpiece.h"
 #include "re2/re2.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"

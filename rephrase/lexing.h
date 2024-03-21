@@ -2,6 +2,7 @@
 #ifndef _REPHRASE_LEXING_H
 #define _REPHRASE_LEXING_H
 
+#include <cstddef>
 #include <utility>
 #include <string>
 #include <vector>

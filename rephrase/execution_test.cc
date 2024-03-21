@@ -1,8 +1,12 @@
 
+#include "bytecode.h"
 #include "execution.h"
 
+#include <cstdio>
 #include <string>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "compiler.h"
 

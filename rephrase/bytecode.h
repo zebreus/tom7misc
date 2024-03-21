@@ -1,6 +1,7 @@
 #ifndef _REPHRASE_BYTECODE_H
 #define _REPHRASE_BYTECODE_H
 
+#include <utility>
 #include <variant>
 #include <cstdint>
 #include <unordered_map>

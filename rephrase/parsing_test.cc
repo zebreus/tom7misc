@@ -1,7 +1,11 @@
 
+#include "inclusion.h"
+#include "lexing.h"
 #include "parsing.h"
 
+#include <cstdio>
 #include <string>
+#include <utility>
 #include <vector>
 #include <optional>
 

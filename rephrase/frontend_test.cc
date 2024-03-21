@@ -1,14 +1,17 @@
 
 #include "frontend.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <unordered_set>
 
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "il.h"
 #include "bignum/big-overloads.h"
+#include "il.h"
+#include "primop.h"
 
 // Make all tests verbose.
 static constexpr bool VERBOSE = false;
@@ -389,7 +392,7 @@ static void TestSimplify() {
   }
 
   {
-    for (uint8 bits = 0; bits < 8; bits++) {
+    for (uint8_t bits = 0; bits < 8; bits++) {
       bool a = !!(bits & 4);
       bool b = !!(bits & 2);
       bool c = !!(bits & 1);

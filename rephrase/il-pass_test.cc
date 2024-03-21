@@ -4,6 +4,8 @@
 #include "frontend.h"
 #include "ansi.h"
 #include "base/logging.h"
+#include "il.h"
+#include <cstdio>
 
 static constexpr bool VERBOSE = false;
 

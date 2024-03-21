@@ -2,18 +2,22 @@
 #include "to-bytecode.h"
 
 #include <cctype>
+#include <cstddef>
 #include <string>
+#include <tuple>
 #include <unordered_set>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include <cstdint>
 
-#include "il.h"
-#include "bytecode.h"
-
-#include "functional-map.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "bignum/big.h"
+#include "bytecode.h"
+#include "functional-map.h"
+#include "il.h"
+#include "primop.h"
 
 namespace bc {
 namespace {

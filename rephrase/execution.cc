@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <cstdio>

@@ -3,10 +3,16 @@
 #define _REPHRASE_IL_PASS_H
 
 #include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "c:/code/sf_svn/cc-lib/bignum/big.h"
 #include "il.h"
 
 #include "base/logging.h"
+#include "primop.h"
+#include "unification.h"
 
 // This is a recursive identity function over the IL AST.
 // The idea is that you can override just the constructs
@@ -320,7 +326,7 @@ struct Pass {
     return pool->Float(d, guess);
   }
 
-  virtual const Exp *DoInt(BigInt i, const Exp *guess,
+  virtual const Exp *DoInt(const BigInt &i, const Exp *guess,
                            Args... args) {
     return pool->Int(i, guess);
   }

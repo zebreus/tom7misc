@@ -1,6 +1,11 @@
 #include "hyphenation.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "ansi.h"

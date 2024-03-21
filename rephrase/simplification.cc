@@ -1,19 +1,25 @@
 
 #include "simplification.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <vector>
-
-#include "il.h"
 
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big.h"
 #include "functional-map.h"
 #include "il-pass.h"
 #include "il-util.h"
+#include "il.h"
+#include "primop.h"
 #include "util.h"
 
 static constexpr bool VERBOSE = false;

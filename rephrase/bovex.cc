@@ -1,9 +1,13 @@
 
+#include <cstdio>
+#include <map>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include "bytecode.h"
 #include "compiler.h"
 #include "frontend.h"
 #include "execution.h"

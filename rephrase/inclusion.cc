@@ -1,6 +1,10 @@
 
 #include "inclusion.h"
 
+#include <cstdint>
+#include <cstdio>
+#include <optional>
+#include <utility>
 #include <vector>
 #include <string>
 #include <tuple>

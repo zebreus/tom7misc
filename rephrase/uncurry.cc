@@ -1,12 +1,13 @@
 #include "uncurry.h"
 
+#include <cstddef>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "el.h"
 #include "el-pass.h"
 #include "base/logging.h"
-#include "functional-map.h"
 
 namespace el {
 

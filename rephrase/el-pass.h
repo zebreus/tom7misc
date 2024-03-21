@@ -3,7 +3,10 @@
 #define _REPHRASE_EL_PASS_H
 
 #include <string>
+#include <utility>
+#include <vector>
 
+#include "bignum/big.h"
 #include "el.h"
 
 #include "base/logging.h"

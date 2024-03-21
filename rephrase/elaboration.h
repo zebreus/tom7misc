@@ -2,6 +2,11 @@
 #ifndef _REPHRASE_ELABORATION_H
 #define _REPHRASE_ELABORATION_H
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "el.h"
 #include "il.h"
 

@@ -861,8 +861,10 @@ const Exp *Parsing::Parse(AstPool *pool,
       // We'd get the same result from the code below, but with
       // more work in this very common case.
     if (elts.size() == 1) {
-      // Possible for user programs to generate this?
-      CHECK(elts[0].fixity == Fixity::Atom) << FixityString(elts[0].fixity);
+      // Possible for user programs to generate this with an expression like
+      // [[/]]
+      CHECK(elts[0].fixity == Fixity::Atom) << FixityString(elts[0].fixity)
+      << "Saw an infix operator on its own?";
 
       return elts[0].item;
     }

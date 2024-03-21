@@ -2,6 +2,11 @@
 #include "il-util.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <optional>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 #include <unordered_set>
 #include <string>
@@ -9,6 +14,7 @@
 #include "il.h"
 #include "il-pass.h"
 #include "functional-set.h"
+#include "unification.h"
 #include "util.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"

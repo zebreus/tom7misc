@@ -1,9 +1,12 @@
 #ifndef _REPHRASE_UNIFICATION_H
 #define _REPHRASE_UNIFICATION_H
 
+#include <cstdint>
 #include <mutex>
 #include <memory>
 #include <functional>
+#include <string>
+#include <vector>
 
 #include "base/logging.h"
 

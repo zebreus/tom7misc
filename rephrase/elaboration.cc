@@ -4,15 +4,24 @@
 
 #include "elaboration.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <functional>
+#include <optional>
+#include <tuple>
 #include <utility>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
+#include "context.h"
 #include "el.h"
 #include "il.h"
 #include "initial.h"
 #include "pattern-compilation.h"
 #include "il-util.h"
+#include "primop.h"
+#include "unification.h"
 #include "util.h"
 
 #include "base/stringprintf.h"

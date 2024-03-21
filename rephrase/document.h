@@ -2,7 +2,10 @@
 #ifndef _REPHRASE_DOCUMENT_H
 #define _REPHRASE_DOCUMENT_H
 
+#include <optional>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <variant>
 #include <unordered_map>
 #include <vector>

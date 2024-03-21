@@ -1,6 +1,8 @@
 #ifndef _REPHRASE_EXECUTION_H
 #define _REPHRASE_EXECUTION_H
 
+#include <memory>
+#include <utility>
 #include <variant>
 #include <cstdint>
 #include <unordered_map>
@@ -8,6 +10,7 @@
 #include <string>
 
 #include "bytecode.h"
+#include "primop.h"
 
 struct Rephrasing;
 struct Document;

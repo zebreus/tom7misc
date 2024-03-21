@@ -1,6 +1,10 @@
 
 #include "compiler.h"
 
+#include <cstdio>
+#include <variant>
+
+#include "bytecode.h"
 #include "ansi.h"
 #include "base/logging.h"
 

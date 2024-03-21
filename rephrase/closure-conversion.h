@@ -6,6 +6,8 @@
 
 #include "il.h"
 
+#include <cstdint>
+
 namespace il {
 
 struct ClosureConversion {

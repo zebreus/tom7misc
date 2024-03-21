@@ -1,6 +1,8 @@
 
 #include "lexing.h"
 
+#include <cstdio>
+#include <optional>
 #include <string>
 #include <vector>
 

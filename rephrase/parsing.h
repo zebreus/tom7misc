@@ -3,6 +3,7 @@
 #define _REPHRASE_PARSING_H
 
 #include <string>
+#include <vector>
 
 #include "el.h"
 #include "inclusion.h"

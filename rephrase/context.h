@@ -2,11 +2,19 @@
 #ifndef _REPHRASE_CONTEXT_H
 #define _REPHRASE_CONTEXT_H
 
+#include <optional>
 #include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "functional-map.h"
 #include "functional-set.h"
 #include "il.h"
+#include "primop.h"
+#include "unification.h"
 
 namespace il {
 

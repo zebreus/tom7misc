@@ -5,6 +5,8 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "context.h"
+#include "il.h"
+#include <cstdio>
 
 static constexpr bool VERBOSE = false;
 

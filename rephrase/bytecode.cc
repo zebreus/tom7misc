@@ -1,15 +1,22 @@
 
 #include "bytecode.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <unordered_map>
 #include <unordered_set>
 #include <map>
 #include <string>
+#include <utility>
 #include <variant>
+#include <vector>
 
 #include "bignum/big.h"
 #include "ansi.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"
+#include "primop.h"
 
 namespace bc {
 

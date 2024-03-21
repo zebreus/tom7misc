@@ -8,6 +8,7 @@
 #include "functional-map.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "unification.h"
 #include "util.h"
 #include "il.h"
 

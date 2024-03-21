@@ -4,6 +4,9 @@
 #include "el-pass.h"
 #include "base/logging.h"
 #include "functional-set.h"
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace el {
 

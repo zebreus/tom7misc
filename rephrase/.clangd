@@ -6,6 +6,7 @@ Diagnostics:
   Includes:
     IgnoreHeader: base/logging.h
     IgnoreHeader: <cstdint>
+    IgnoreHeader: <cstddef>
 
 # I'm not showing these, so disable them in the hopes of saving
 # time.

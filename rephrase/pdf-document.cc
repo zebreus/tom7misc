@@ -1,12 +1,20 @@
 
 #include "pdf-document.h"
 
+#include <cstdint>
+#include <cstdio>
+#include <map>
+#include <memory>
+#include <optional>
 #include <string>
 #include <string>
 #include <cstring>
 #include <format>
 #include <chrono>
+#include <unordered_map>
+#include <utility>
 
+#include "image.h"
 #include "document.h"
 #include "pdf.h"
 #include "ansi.h"

@@ -1,14 +1,21 @@
 
 #include "closure-conversion.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "context.h"
 #include "il-typed-pass.h"
+#include "il-util.h"
 #include "il.h"
 #include "simplification.h"
 #include "util.h"

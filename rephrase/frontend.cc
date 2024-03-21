@@ -1,9 +1,14 @@
 
 #include "frontend.h"
 
+#include <cstdio>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
+#include "il.h"
 #include "lexing.h"
 #include "parsing.h"
 #include "el.h"

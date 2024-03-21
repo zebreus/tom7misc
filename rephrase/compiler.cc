@@ -1,12 +1,15 @@
 
 #include "compiler.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <utility>
 
 #include "frontend.h"
 #include "closure-conversion.h"
 #include "bytecode.h"
+#include "il.h"
 #include "simplification.h"
 #include "base/logging.h"
 #include "ansi.h"
