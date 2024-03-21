@@ -384,7 +384,7 @@ PrimopType(il::AstPool *pool, Primop p) {
 
   case Primop::REPHRASE: return {{}, pool->Arrow(Layout, Layout)};
   case Primop::GET_BOXES: return {{}, pool->Arrow(Layout, Layout)};
-  case Primop::PACK_BOXES: return {{}, BinOp(Float, Layout, Layout)};
+  case Primop::PACK_BOXES: return {{}, BinOp(Float, Layout, Obj)};
   case Primop::IS_TEXT: return {{}, pool->Arrow(Layout, Bool)};
   case Primop::GET_TEXT: return {{}, pool->Arrow(Layout, String)};
   case Primop::GET_ATTRS: return {{}, pool->Arrow(Layout, Obj)};

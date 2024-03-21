@@ -819,12 +819,13 @@ DocTree Document::GetBoxes(const DocTree &doc) {
   return JoinDocs(out);
 }
 
-using BoxIn = BoxesAndGlue::BoxIn;
-
-DocTree Document::PackBoxes(double line_width, const DocTree &doc) {
+std::pair<DocTree, double>
+Document::PackBoxes(double line_width, const DocTree &doc) {
   static constexpr bool VERBOSE = false;
+  using BoxIn = BoxesAndGlue::BoxIn;
+  using BoxOut = BoxesAndGlue::BoxOut;
 
-  if (doc.IsEmpty()) return doc;
+  if (doc.IsEmpty()) return {doc, 0.0};
   CHECK(!doc.IsText()) <<
     "pack-boxes wants a node that has only box children. Got text: " <<
     doc.text;
@@ -920,6 +921,13 @@ DocTree Document::PackBoxes(double line_width, const DocTree &doc) {
     break;
   }
 
+  double total_badness = 0.0;
+  for (const std::vector<BoxOut> &box_line : lines) {
+    for (const BoxOut &box : box_line) {
+      total_badness += box.penalty_here;
+    }
+  }
+
   // Now put the boxes on lines in doctree format.
 
   // Remove attributes that are consumed by this algorithm.
@@ -986,5 +994,5 @@ DocTree Document::PackBoxes(double line_width, const DocTree &doc) {
     lines_out.push_back(std::move(line));
   }
 
-  return JoinDocs(lines_out);
+  return {JoinDocs(lines_out), total_badness};
 }

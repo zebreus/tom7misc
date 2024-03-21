@@ -172,7 +172,7 @@ fun layout-list-join _ nil = []
    text rectangle that's outside its container. Of course this
    can be scaled as desired.
    *)
-(* emit-badness : double -> unit *)
+(* emit-badness : float -> unit *)
 
 (* Low-level node info.
    Programmers should probably not be looking at or setting the
@@ -382,7 +382,7 @@ datatype packing-algorithm = BEST | FIRST
 (* Generates a series of lines (boxes) with the glue turned into definite
    padding. Still in "AllBox" format. *)
 fun pack-boxes (algo : packing-algorithm,
-                width : float, content : layout) : layout list =
+                width : float, content : layout) : (float * layout list) =
   let
     (* This is communicated with a string attribute; an implementation
        detail. *)
@@ -392,11 +392,14 @@ fun pack-boxes (algo : packing-algorithm,
       | FIRST => "first"
     val content =
       map-attrs (fn attrs => attrs with algorithm = algo-string) content
-    val packed = internal-pack-boxes (width, content)
-  in
-    unjoin packed
-  end
 
+    val packed = internal-pack-boxes (width, content)
+    object InternalPackBoxes of { badness: float, layout: layout }
+  in
+    case packed of
+      {(InternalPackBoxes) badness, layout} => (badness, unjoin layout)
+    | _ => fail "Bug: Expected badness and layout from pack-boxes"
+  end
 
 (*
  Parsing text into paragraphs (and perhaps other stuff).
@@ -593,33 +596,14 @@ fun blockquote lay =
     val WIDTH = inch 3.25
     val lay = it lay
     val boxes = get-boxes lay
-    val lines : layout list = pack-boxes (BEST, WIDTH, boxes)
+    val (badness, lines : layout list) = pack-boxes (BEST, WIDTH, boxes)
+    do emit-badness badness
     val lines : layout list = list-map stick-horizontally lines
   in
     stick-vertically
     (LEFT-INDENT,
      box {(Box) width = WIDTH} (layout-concat lines))
   end
-
-(*
-fun title lay =
-  let
-    (* probably we want center justification *)
-    val WIDTH = inch 3.75
-    val lay = span {(Span) font-bold = true, font-size = point 36.0 } lay
-    val boxes = get-boxes lay
-
-    val lines : layout list = pack-boxes (BEST, WIDTH, boxes)
-    val lines : layout list = list-map stick-horizontally lines
-
-    val t =
-    stick-vertically
-    (0.0, box {(Box) width = WIDTH} (layout-concat lines))
-  in
-    (* debug-print-doc t; *)
-    t
-  end
-*)
 
 fun title lay =
   [[span {(Span) font-bold = true, font-size = point 28.0 }
@@ -754,7 +738,10 @@ fun main-text lay =
             print "-------------------\n"
           end
 
-        val lines : layout list = pack-boxes (BEST, COLUMN-WIDTH, boxes)
+        val (badness, lines : layout list) =
+          pack-boxes (BEST, COLUMN-WIDTH, boxes)
+        (* Eager *)
+        do emit-badness badness
 
         (* Put a line at the end to space out the paragraph. We
            should do this with glue. *)

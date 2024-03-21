@@ -413,8 +413,22 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     const double *ad = std::get_if<double>(&a->v);
     CHECK(ad != nullptr) << "Expected double argument (lhs) to pack_boxes";
     DocTree doc = ValueToDocTree(b);
-    DocTree packdoc = DocumentHook()->PackBoxes(*ad, doc);
-    return DocTreeToValue(&state->heap.used, packdoc);
+    const auto &[packdoc, badness] = DocumentHook()->PackBoxes(*ad, doc);
+
+    auto MakeField = [](const bc::ObjectFieldType oft,
+                        const std::string &field) {
+        return StringPrintf("%c%s",
+                            ObjectFieldTypeTag(oft), field.c_str());
+      };
+
+    map_type obj{
+        {MakeField(bc::ObjectFieldType::FLOAT, "badness"),
+         Float(badness, state)},
+        {MakeField(bc::ObjectFieldType::LAYOUT, "layout"),
+         DocTreeToValue(&state->heap.used, packdoc)},
+      };
+
+    return NewValue(&state->heap, std::move(obj));
   }
 
     // PERF: Could compile this away to GetVec.

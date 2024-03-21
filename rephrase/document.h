@@ -159,8 +159,8 @@ struct Document {
 
   DocTree GetBoxes(const DocTree &doc);
 
-  // Pack boxes to lines.
-  DocTree PackBoxes(double width, const DocTree &doc);
+  // Pack boxes to lines. Returns the document and the total badness.
+  std::pair<DocTree, double> PackBoxes(double width, const DocTree &doc);
 
   std::vector<DocTree>
   BoxifyText(const Font *font, double font_size, std::string_view text);
