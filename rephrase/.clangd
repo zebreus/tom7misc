@@ -2,6 +2,10 @@ Diagnostics:
   ClangTidy:
     # Only availabile in clang 18+
     FastCheckFilter: Strict
+  MissingIncludes: Strict
+  Includes:
+    IgnoreHeader: base/logging.h
+    IgnoreHeader: <cstdint>
 
 # I'm not showing these, so disable them in the hopes of saving
 # time.

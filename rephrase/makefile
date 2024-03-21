@@ -1,7 +1,8 @@
 
 default: bovex.exe monospace.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe
 
-test : lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
+test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
+	./html_test.exe
 	./hyphenation_test.exe
 	./lexing_test.exe
 	./il_test.exe
@@ -26,7 +27,7 @@ test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex hyph-en-us.
 LLAMA_CLBLAST=true
 # It's crashing or doing something weird? You're always
 # being too clever with std::move!
-# ASAN=true
+ASAN=true
 
 # Pro-tip for understanding compilation time:
 #  -ftime-trace
@@ -341,6 +342,9 @@ concat.exe : concat.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 hyphenation_test.exe : hyphenation_test.o hyphenation.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+html_test.exe : html_test.o html.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:

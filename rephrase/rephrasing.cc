@@ -362,6 +362,12 @@ struct RephrasingImpl : public Rephrasing {
 
 }  // namespace
 
+Rephrasable Rephrasing::Rejoin(
+    const Rephrasable &rephrasable,
+    const std::string &text) {
+
+}
+
 Rephrasable Rephrasing::GetTextToRephrase(const DocTree &doc) {
   Rephrasable rephrasable;
   std::function<void(const DocTree &)> Rec =

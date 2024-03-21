@@ -1,6 +1,10 @@
 
 #include "lexing.h"
 
+#include <cstdio>
+#include <cstddef>
+#include <utility>
+#include <optional>
 #include <cstdint>
 #include <string>
 #include <vector>
