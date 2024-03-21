@@ -68,16 +68,20 @@ let
 
 (* [rephrase-paragraph 5 [This is a rephrased paragraph. Please rephrase it!]] *)
 
-in
-  if SIMPLE-TEST
-  then (main-text
-        [A regular paragraph. Nothing funny going on here.
-
+(*
          [rephrase-paragraph 25
           [When thinking about writing a document, you should choose your
            words carefully. For example, if you choose words that are too
            long or too short, then they won't fit well on the lines. This
            could cause your document to look bad!]]
+*)
+
+in
+  if SIMPLE-TEST
+  then (main-text
+        [A regular paragraph. Nothing funny going on here.
+
+         [rephrase-paragraph 25 [Help me find a way to China.]]
 
          Back to normal paragraphs.])
   else

@@ -29,6 +29,9 @@ using Candidates = LLM::Candidates;
 
 static constexpr int VERBOSE = 2;
 
+// Hack!
+static constexpr int TAIL_TOKEN_HEADROOM = 5;
+
 namespace {
 
 static std::string ColorProb(float prob) {
@@ -36,7 +39,7 @@ static std::string ColorProb(float prob) {
     ColorUtil::Unpack32(
         ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, prob));
 
-  return StringPrintf("%s%.4f%%" ANSI_RESET,
+  return StringPrintf("%s%.2f%%" ANSI_RESET,
                       ANSI::ForegroundRGB(r, g, b).c_str(),
                       prob * 100.0);
 }
@@ -140,6 +143,23 @@ struct RephrasingImpl : public Rephrasing {
 
   ~RephrasingImpl() override {}
 
+  bool IsPathNew(
+      const std::vector<DatabaseRow> &rows,
+      const Path &new_path, int prefix_size, int next_depth) {
+    for (const DatabaseRow &row : rows) {
+      const Path &path = row.path;
+      if (prefix_size + 1 < (int)path.size()) {
+        for (int i = 0; i < prefix_size; i++) {
+          if (new_path[i].depth != path[i].depth) goto try_next;
+        }
+        if (path[prefix_size].depth == next_depth) return false;
+      }
+
+    try_next:;
+    }
+    return true;
+  }
+
   // Returns the next prefix to search, which consists of some
   // (maybe empty) series of forced tokens and then the *depth*
   // of the next token to sample.
@@ -166,7 +186,7 @@ struct RephrasingImpl : public Rephrasing {
       double laplace_denom = 1.0;
 
       double total_p = (laplace_numer * laplace_denom);
-      for (int i = 0; i < (int)path.size(); i++) {
+      for (int i = 0; i < (int)path.size() - TAIL_TOKEN_HEADROOM; i++) {
         // average probability of samples up to here
         double avg_p = total_p / (i + laplace_denom);
 
@@ -184,7 +204,7 @@ struct RephrasingImpl : public Rephrasing {
                  ColorProb(path[i].p).c_str(),
                  ColorProb(total_p / (i + 1)).c_str());
           */
-          printf(AGREY("%s") " " AORANGE("%.3f") " * " ABLUE("%.3f")
+          printf(AGREY("%s") " " ACYAN("%.3f") " * " ABLUE("%.3f")
                  " = %s ",
                  llm->TokenString(node.token).c_str(),
                  avg_p,
@@ -192,19 +212,28 @@ struct RephrasingImpl : public Rephrasing {
                  ColorProb(score).c_str());
         }
 
-        // I think what I want here is a point where the
-        // *remaining* probability mass is high.
         if (score > best_score) {
-          best_path = path;
-          best_next = node.depth + 1;
-          // Not including this last node.
-          best_path.resize(i);
-          best_row = row_idx;
-          best_score = score;
+          // We know that this next depth won't match this path
+          // (since we're incrementing the depth), but we could
+          // have explored it already. Only consider it if it's
+          // new (not a prefix of any path).
+          if (IsPathNew(rows, path, i, node.depth + 1)) {
+            best_path = path;
+            best_next = node.depth + 1;
+            // Not including this last node.
+            best_path.resize(i);
+            best_row = row_idx;
+            best_score = score;
+            if (VERBOSE > 1) {
+              printf(AGREEN("♥"));
+            }
 
-          if (VERBOSE > 1) {
-            printf(AGREEN("♥"));
+          } else {
+            if (VERBOSE > 1) {
+              printf(ARED("💣"));
+            }
           }
+
         }
       }
 
@@ -389,6 +418,7 @@ struct RephrasingImpl : public Rephrasing {
     // the path.
     (void)Util::TryStripSuffix("</P>", &text);
 
+    #if 0
     std::string suffix = " </P>";
     while (!suffix.empty() && !path.empty()) {
       int tok = path.back().token;
@@ -407,13 +437,16 @@ struct RephrasingImpl : public Rephrasing {
         break;
       }
     }
+    #endif
 
+    #if 0
     // XXX one tokenization of </ P >.
     // A better way would be to stringify the tokens and see if
     // they match the string </P>.
     if (!path.empty() && path.back().token == 29958) path.pop_back();
     if (!path.empty() && path.back().token == 29925) path.pop_back();
     if (!path.empty() && path.back().token == 829) path.pop_back();
+    #endif
 
     printf("\nFinal text: " AYELLOW("%s") "\n", text.c_str());
 
@@ -459,6 +492,9 @@ struct RephrasingImpl : public Rephrasing {
     const std::string key = DatabaseKey(rephrasable);
     const auto it = db.entries.find(key);
     if (it == db.entries.end()) return {};
+
+    // It's possible to get the same text through two different
+    // tokenizations! We should not allow that.
 
     std::vector<std::pair<double, std::string>> ret;
     for (const DatabaseRow &row : it->second) {
