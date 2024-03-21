@@ -123,6 +123,10 @@ fun image-size (Image img) : { width : int, height : int } =
 fun layout-concat nil = []
   | layout-concat (l :: t) = [[l][layout-concat t]]
 
+fun layout-list-join _ nil = []
+  | layout-list-join _ (x :: nil) = x
+  | layout-list-join sep (x :: t) = [[x][sep][layout-list-join sep t]]
+
 (* Types of layout:
    (It would be nice if we were distinguishing these statically!)
 

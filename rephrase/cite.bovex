@@ -39,20 +39,20 @@ val NOVEMBER = 11
 val DECEMBER = 12
 
 object Website of { url : string, title: string,
-                    year : int, month : int }
+                    year : int, month : int, day : int }
 object Article of { author : string, title : string,
-                    year : int, month : int,
+                    year : int, month : int, day : int,
                     page-start : int, page-end : int,
                     journal : string, publisher : string,
                     url : string }
 
 object Book of { author : string, title : string,
-                 year : int, month : int,
+                 year : int, month : int, day : int,
                  publisher : string }
 
 (* Derived forms. *)
 object PhdThesis of { author : string, title : string,
-                      year : int, month : int,
+                      year : int, month : int, day : int,
                       university : string,
                       publisher : string }
 
@@ -130,19 +130,81 @@ fun nocite c =
     []
   end
 
+fun monthname 1 = "January"
+  | monthname 2 = "February"
+  | monthname 3 = "March"
+  | monthname 4 = "April"
+  | monthname 5 = "May"
+  | monthname 6 = "June"
+  | monthname 7 = "July"
+  | monthname 8 = "August"
+  | monthname 9 = "September"
+  | monthname 10 = "October"
+  | monthname 11 = "November"
+  | monthname 12 = "December"
+  | monthname _ = "Unknown Month"
+
+(* XXX obviously use other fields if present! *)
+fun cite-render-one (Source { t, sort-key = _, fields }) =
+  let
+
+    object Pages of { page-start : int, page-end : int }
+    fun pages {(Pages) page-start, page-end} =
+      [pp. [layout (int-to-string page-start)]–[(layout
+                                                 (int-to-string page-end))]]
+      | pages _ = []
+
+    (* Ignoring day for now. *)
+    object Date of { year : int, month : int, day : int }
+    fun date {(Date) year, month } =
+      [[layout (monthname month)] [layout (int-to-string year)]]
+      | date {(Date) year } = layout (int-to-string year)
+
+    fun joindots l =
+      layout-concat
+      (list-map (fn lay => if layout-empty lay then lay else [[lay]. ]) l)
+
+    (* collections of fields supported by many citation types. *)
+    val pp = pages fields
+
+  in
+    case (t, fields) of
+      (Website, {(Website) url }) =>
+        let
+          val title =
+            case fields of
+              {(Article) title} => ["[layout title]"]
+            | _ => []
+        in
+          joindots (layout url ::
+                    title :: date fields ::
+                    nil)
+        end
+
+    | (Article, {(Article) author, title }) =>
+        let
+          val j =
+            case fields of
+              {(Article) journal} => it(layout journal)
+            | _ => []
+          val r =
+            joindots (layout author :: ["[layout title]"] ::
+                      j :: date fields ::
+                      pp :: nil)
+
+        in
+          debug-print-doc r;
+          r
+        end
+    | _ => [Unrenderable citation type?]
+
+  end
+
 fun bibliography () =
   let
-    (* XXX obviously use other fields if present! *)
-    fun render-one (Source { t = Website, sort-key = _, fields }) =
-      (case fields of
-         {(Website) url } => [Website: [layout url]])
-      | render-one (Source { t = Article, sort-key = _, fields }) =
-      (case fields of
-         {(Article) author } => [Author: [layout author]])
-      | render-one _ = [Unrenderable citation type?]
-
   in
     [[b[Bibliography]].
 
-     [layout-concat (list-map render-one (set-tolist (!citations-used)))]]
+     [layout-concat
+      (list-map cite-render-one (set-tolist (!citations-used)))]]
   end
