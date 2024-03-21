@@ -22,12 +22,24 @@
 #include "models.h"
 #include "util.h"
 #include "html.h"
+#include "color-util.h"
 
 using Rephrasable = Rephrasing::Rephrasable;
 using Candidates = LLM::Candidates;
 
+static constexpr int VERBOSE = 1;
+
 namespace {
 
+static std::string ColorProb(float prob) {
+  const auto &[r, g, b, a_] =
+    ColorUtil::Unpack32(
+        ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, prob));
+
+  return StringPrintf("%s%.4f%%" ANSI_RESET,
+                      ANSI::ForegroundRGB(r, g, b).c_str(),
+                      prob * 100.0);
+}
 
 // As we predict, we order the probabilities at each branch and
 // we're mostly exploring the most probable path. This vector
@@ -141,31 +153,53 @@ struct RephrasingImpl : public Rephrasing {
       const DatabaseRow &row = rows[row_idx];
       double total_p = 0.0;
       const Path &path = row.path;
-      for (int i = 0; i < (int)path.size(); i++) {
-        total_p += path[i].p;
 
-        // average probability of samples
+      if (VERBOSE > 1) {
+        printf("For each node:\n");
+      }
+      for (int i = 0; i < (int)path.size(); i++) {
+        const Node &node = path[i];
+        total_p += node.p;
+
+        if (VERBOSE > 1) {
+          printf(AGREY("%d") "=%s " AGREY("d%d") " %s ~%s",
+                 node.token,
+                 llm->TokenString(node.token).c_str(),
+                 node.depth,
+                 ColorProb(path[i].p).c_str(),
+                 ColorProb(total_p / (i + 1)).c_str());
+        }
+
+        // average probability of samples.
         double score = total_p / (i + 1);
         if (score > best_score) {
           best_path = path;
-          best_next = path[i].depth + 1;
-            // Not including this last node.
+          best_next = node.depth + 1;
+          // Not including this last node.
           best_path.resize(i);
           best_row = row_idx;
         }
       }
     }
 
-    if (best_row >= 0) {
-      printf(ABLUE("Best existing text") ":\n"
-             "%s\n"
-             AWHITE("With score") ": %.11g\n"
-             "Path length" APURPLE("%d")
-             ", Next depth " APURPLE("%d") "\n",
-             rows[best_row].text.c_str(),
-             best_score, (int)best_path.size(), best_next);
-    } else {
-      printf("Best to start fresh.\n");
+    if (VERBOSE > 0) {
+      if (best_row >= 0) {
+        printf(ABLUE("Best existing text") ":\n"
+               "%s\n"
+               AWHITE("With score") ": %.11g\n"
+               "Path length " APURPLE("%d")
+               ", Next depth " APURPLE("%d") "\n",
+               rows[best_row].text.c_str(),
+               best_score, (int)best_path.size(), best_next);
+        for (const Node &node : best_path) {
+          printf("%s " AGREY("d%d") " ",
+                 llm->TokenString(node.token).c_str(),
+                 node.depth);
+        }
+        printf("\n");
+      } else {
+        printf("Best to start fresh.\n");
+      }
     }
 
     return std::make_pair(std::move(best_path), best_next);
@@ -241,7 +275,7 @@ struct RephrasingImpl : public Rephrasing {
                    "<P>",
                    rephrasable.text.c_str());
 
-    printf(AGREY("Full prompt: [%s]") "\n", input.c_str());
+    printf(AGREY("Completed prompt: [%s]") "\n", input.c_str());
 
     llm->DoPrompt(input);
     // Reset regex, since the prompt may not have followed it.
@@ -317,11 +351,16 @@ struct RephrasingImpl : public Rephrasing {
     // aren't trying to keep a correspondence between that and
     // the string.
     (void)Util::TryStripSuffix("</P>", &text);
+    // XXX one tokenization of </ P >.
+    // A better way would be to stringify the tokens and see if
+    // they match the string </P>.
+    if (!path.empty() && path.back().token == 29958) path.pop_back();
+    if (!path.empty() && path.back().token == 29925) path.pop_back();
+    if (!path.empty() && path.back().token == 829) path.pop_back();
 
     printf("\nFinal text: " AYELLOW("%s") "\n", text.c_str());
 
-    // TODO:
-    // - check validity
+    // Check validity.
     DocTree doc;
     std::string error;
     bool valid = Rejoin(rephrasable, text, &doc, &error);
@@ -345,6 +384,17 @@ struct RephrasingImpl : public Rephrasing {
     db.entries[key].push_back(std::move(row));
 
     return valid;
+  }
+
+  int GetNumRephrasings(const Rephrasable &rephrasable) override {
+    const std::string key = DatabaseKey(rephrasable);
+    const auto it = db.entries.find(key);
+    if (it == db.entries.end()) return {};
+    int num = 0;
+    for (const DatabaseRow &row : it->second)
+      if (row.valid)
+        num++;
+    return num;
   }
 
   std::vector<std::pair<double, std::string>> GetRephrasings(

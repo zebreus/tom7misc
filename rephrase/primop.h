@@ -94,7 +94,8 @@ enum class Primop {
   IMAGE_PROPS,
 
   // expensive stuff implemented by harness
-  REPHRASE,
+  REPHRASE_ONCE,
+  REPHRASINGS,
   GET_BOXES,
   PACK_BOXES,
 

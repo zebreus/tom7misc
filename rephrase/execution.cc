@@ -2,6 +2,7 @@
 #include "execution.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <tuple>
 #include <utility>
@@ -38,6 +39,10 @@ struct DegenerateRephrasing : public Rephrasing {
       const Rephrasable &rephrasable) override {
     return {{0.0, rephrasable.text}};
   }
+  int GetNumRephrasings(const Rephrasable &rephrasable) override {
+    return 1;
+  }
+
   std::string DatabaseKey(const Rephrasable &rephrasable) override {
     return "key";
   }
@@ -396,6 +401,63 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     }
   }
 
+  case Primop::REPHRASINGS: {
+    const BigInt *abi = std::get_if<BigInt>(&a->v);
+    CHECK(abi != nullptr) << "Expected int argument (lhs) to rephrasings";
+    auto aio = abi->ToInt();
+    CHECK(aio.has_value() && aio.value() < 1000000) <<
+      "Integer is way too big!";
+    const int times = (int)aio.value();
+
+    DocTree doc = ValueToDocTree(b);
+
+    Rephrasing *rephrasing = RephrasingHook();
+    DebugPrintDocTree(doc);
+    Rephrasing::Rephrasable rep = Rephrasing::GetTextToRephrase(doc);
+    printf("Rephrase: %s\n", rep.text.c_str());
+
+    int max_attempts = 20;
+    while (rephrasing->GetNumRephrasings(rep) < times) {
+      if (rephrasing->Rephrase(rep)) {
+        printf("\nRephrased " AGREEN("OK") "\n");
+      }
+      max_attempts--;
+      if (max_attempts < 0) break;
+    }
+
+    // Now get them all.
+    std::vector<std::pair<double, std::string>> reps =
+      rephrasing->GetRephrasings(rep);
+
+    std::vector<DocTree> ret;
+
+    static constexpr bool VERBOSE = true;
+
+    for (const auto &[loss, text] : reps) {
+      DocTree one;
+      std::string error;
+      if (!rephrasing->Rejoin(rep, text, &one, &error)) {
+        printf(ARED("Should not happen!") " The rephrasing was supposedly "
+               "valid but I couldn't rejoin it.\n"
+               "Error: %s\n"
+               "Text:\n%s\n",
+               error.c_str(),
+               text.c_str());
+      } else {
+        DocTree span;
+        span.children = {std::make_shared<DocTree>(std::move(one))};
+        span.SetStringAttr("display", "span");
+        span.SetDoubleAttr("loss", loss);
+        if (VERBOSE) {
+          DebugPrintDocTree(span);
+        }
+        ret.push_back(std::move(span));
+      }
+    }
+
+    return DocTreeToValue(&state->heap.used, JoinDocs(std::move(ret)));
+  }
+
   case Primop::OUT_LAYOUT: {
     const BigInt *ai = std::get_if<BigInt>(&a->v);
     CHECK(ai != nullptr) << "out-layout expects an integer as its first "
@@ -615,7 +677,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Unit(state);
   }
 
-  case Primop::REPHRASE: {
+  case Primop::REPHRASE_ONCE: {
     Rephrasing *rephrasing = RephrasingHook();
     DocTree doc = ValueToDocTree(a);
     DebugPrintDocTree(doc);

@@ -924,7 +924,12 @@ Document::PackBoxes(double line_width, const DocTree &doc) {
   double total_badness = 0.0;
   for (const std::vector<BoxOut> &box_line : lines) {
     for (const BoxOut &box : box_line) {
-      total_badness += box.penalty_here;
+      // There can be negative badness, but this is mostly used
+      // to force line breaks and stuff like that. Here we
+      // report badness as only the positive penalties.
+      if (box.penalty_here > 0.0) {
+        total_badness += box.penalty_here;
+      }
     }
   }
 

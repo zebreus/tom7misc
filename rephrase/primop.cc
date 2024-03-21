@@ -68,7 +68,8 @@ const char *PrimopString(Primop po) {
   case Primop::IMAGE_LOAD_FILE: return "IMAGE_LOAD_FILE";
   case Primop::IMAGE_PROPS: return "IMAGE_PROPS";
 
-  case Primop::REPHRASE: return "REPHRASE";
+  case Primop::REPHRASE_ONCE: return "REPHRASE_ONCE";
+  case Primop::REPHRASINGS: return "REPHRASINGS";
   case Primop::GET_BOXES: return "GET_BOXES";
   case Primop::PACK_BOXES: return "PACK_BOXES";
   case Primop::IS_TEXT: return "IS_TEXT";
@@ -143,7 +144,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::IMAGE_LOAD_FILE: return std::make_tuple(0, 1);
   case Primop::IMAGE_PROPS: return std::make_tuple(0, 1);
 
-  case Primop::REPHRASE: return std::make_tuple(0, 1);
+  case Primop::REPHRASE_ONCE: return std::make_tuple(0, 1);
+  case Primop::REPHRASINGS: return std::make_tuple(0, 2);
   case Primop::GET_BOXES: return std::make_tuple(0, 1);
   case Primop::PACK_BOXES: return std::make_tuple(0, 2);
   case Primop::IS_TEXT: return std::make_tuple(0, 1);
@@ -247,7 +249,8 @@ bool IsPrimopTotal(Primop p) {
     // Can fail if image handle is bad
     return false;
 
-  case Primop::REPHRASE:
+  case Primop::REPHRASE_ONCE:
+  case Primop::REPHRASINGS:
   case Primop::GET_BOXES:
   case Primop::PACK_BOXES:
   case Primop::GET_TEXT:
@@ -382,7 +385,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::IMAGE_LOAD_FILE: return {{}, pool->Arrow(String, String)};
   case Primop::IMAGE_PROPS: return {{}, pool->Arrow(String, Obj)};
 
-  case Primop::REPHRASE: return {{}, pool->Arrow(Layout, Layout)};
+  case Primop::REPHRASE_ONCE: return {{}, pool->Arrow(Layout, Layout)};
+  case Primop::REPHRASINGS: return {{}, BinOp(Int, Layout, Layout)};
   case Primop::GET_BOXES: return {{}, pool->Arrow(Layout, Layout)};
   case Primop::PACK_BOXES: return {{}, BinOp(Float, Layout, Obj)};
   case Primop::IS_TEXT: return {{}, pool->Arrow(Layout, Bool)};

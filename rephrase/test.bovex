@@ -64,16 +64,22 @@ let
 
   fun no-rephrase lay = lay
 
-  val SIMPLE-TEST = false
+  val SIMPLE-TEST = true
+
+(* [rephrase-paragraph 5 [This is a rephrased paragraph. Please rephrase it!]] *)
 
 in
   if SIMPLE-TEST
-  then (main-text [Why drop? [layout "one"] [layout "two"] space after
+  then (main-text
+        [A regular paragraph. Nothing funny going on here.
 
-                   [b[but this]] is a new paragraph
+         [rephrase-paragraph 5
+          [When thinking about writing a document, you should choose your
+           words carefully. For example, if you choose words that are too
+           long or too short, then they won't fit well on the lines. This
+           could cause your document to look bad!]]
 
-                   and so is this.])
-
+         Back to normal paragraphs.])
   else
   (main-text
   (palatino
@@ -201,6 +207,11 @@ program (or  operating system,  itself a  program written  using these
 same instructions), doing what it says to do, and then going on to the
 next one.
 
+Why drop? [layout "one"] [layout "two"] space after
+
+[b[but this]] is a new paragraph
+
+and so is this.
 
 [* single quotes *]
 [blockquote["It would threaten millions of small businesses operating on a razor-thin margin because they're unable to find enough workers," said Cassidy, the ranking Republican on the committee. "Now they've got the same workers, but only for three-quarters of the time. And they have to hire more."]]

@@ -195,6 +195,10 @@ fun map-attrs (f : obj -> obj) (lay : layout) : layout =
   then node (f {(Object) }) lay
   else set-attrs (f (get-attrs lay), lay)
 
+fun get-attrs-opt (lay : layout) : obj option =
+  if is-text lay then NONE
+  else SOME (get-attrs lay)
+
 (* A box is a fixed-size element that can be moved around within a
    span during the line-breaking algorithm. Its layout contents are
    the contents of the node.
@@ -499,7 +503,11 @@ fun get-paragraphs (ls : layout list) : layout list =
       | Node (GROUP, attrs, children) =>
           if obj-empty attrs
           then list-app do-one children
-          else fail "this code doesn't preserve attrs on a group"
+          else
+            let in
+              debug-print-doc lay;
+              fail "this code doesn't preserve attrs on a group"
+            end
 
   in
     list-app do-one ls;
@@ -654,12 +662,44 @@ fun section lay = span {(Span) font-bold = true, font-size = 14.0 }
 fun subsection lay = span {(Span) font-bold = true }
     [[lay].[hfill()][break()]]
 
+object Rephrase of { rephrase-times : int }
+fun rephrase-paragraph (times : int) p =
+(* map-attrs (fn attrs => attrs with (Rephrase) times = times) p *)
+  let val r = span {(Rephrase) rephrase-times = times} p
+  in
+    debug-print-doc r;
+    r
+  end
+
+fun rephrasings (times, para) : (float * layout) list =
+  let
+    object InternalRephrasings of { loss : float }
+    fun get-metadata one =
+      case get-attrs-opt one of
+        SOME {(InternalRephrasings) loss } => (loss, one)
+      | _ => fail ("internal-rephrasings should annotate the returned " ^
+                   "layout with the (semantic) loss")
+  in
+    list-map get-metadata (unjoin (internal-rephrasings (times, para)))
+  end
+
 (* Pack a paragraph. This is basically pack-boxes o get-boxes, but
    we also look for rephrase contexts. If there are any, we
    try multiple rephrasings and pick the one with the best badness. *)
 fun pack-paragraph column-width para =
   let
-    val VERBOSE = false
+    val VERBOSE = true
+
+    (* XXX I should fix whatever's creating singleton groups, but
+       it prevents us from recognizing the top-level rephrase
+       paragraph. So peel any of those off. *)
+    fun unjoin-if-one l =
+      case unjoin l of
+        one :: nil => one
+      | _ => l
+
+    val para = unjoin-if-one para
+
     do VERBOSE andthen
       let in
         print "----insert para----\n";
@@ -667,12 +707,23 @@ fun pack-paragraph column-width para =
         print "-------------------\n"
       end
 
-    fun has-rephrase _ = false
+    (* TODO: Allow rephrasing mid-paragraph. Same idea; it's just
+       fiddly. Probably would be good to provide context to the
+       LLM, as well. *)
+    fun get-rephrasings para =
+      case get-attrs-opt para of
+        SOME {(Rephrase) rephrase-times } =>
+          let
+            val reparas : (float * layout) list =
+              rephrasings (rephrase-times, para)
+          in
+            print ("Got " ^ int-to-string (list-length reparas) ^
+                   " rephrasings.\n");
+            reparas
+          end
+      | _ => (0.0, para) :: nil
 
-    val paras =
-      if has-rephrase para
-      then fail "unimplemented: rephrasing"
-      else para :: nil
+    val paras : (float * layout) list = get-rephrasings para
 
     fun get-best (NONE, nil) = fail "bug: no options?"
       | get-best (SOME (badness, best), nil) =
@@ -680,8 +731,10 @@ fun pack-paragraph column-width para =
         emit-badness badness;
         best
       end
-      | get-best (best, h :: t) =
+      | get-best (best, (loss, para) :: t) =
       let
+        (* XXX use semantic loss! *)
+
         val boxes = get-boxes para
         val (badness, lines) = pack-boxes (BEST, column-width, boxes)
 

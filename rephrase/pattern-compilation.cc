@@ -1,17 +1,26 @@
 
 #include "pattern-compilation.h"
 
+#include <cstdio>
+#include <functional>
+#include <optional>
 #include <set>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 #include <string>
 #include <unordered_set>
 
+#include "context.h"
+#include "el.h"
 #include "il.h"
 #include "il-util.h"
 #include "elaboration.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "ansi.h"
+#include "unification.h"
 #include "util.h"
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
@@ -1350,7 +1359,7 @@ PatternCompilation::SplitObjectPattern(
       for (const auto &[lab, pp] : p->str_children) {
         auto it = ovi->fields.find(lab);
         CHECK(it != ovi->fields.end()) << "The object " << p->str <<
-          "does not have a field called " << lab << ".\nWhen "
+          " does not have a field called " << lab << ".\nWhen "
           "compiling object pattern: " << PatString(p);
         fields[lab] = std::make_pair(pp, it->second);
       }

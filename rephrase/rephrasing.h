@@ -34,6 +34,9 @@ struct Rephrasing {
   virtual std::vector<std::pair<double, std::string>> GetRephrasings(
       const Rephrasable &rephrasable) = 0;
 
+  // Counts only valid rephrasings.
+  virtual int GetNumRephrasings(const Rephrasable &rephrasable) = 0;
+
   static bool Rejoin(const Rephrasable &rephrasable,
                      const std::string &text,
                      DocTree *doc,

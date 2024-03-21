@@ -170,7 +170,9 @@ of precision for beauty. It essentially gives us a dial between Lorem
 Epsom and Donald Knuth. To illustrate, we'll first look at a simpler
 case by inspecting one of my other interests: Super Metroid.
 
-[blockquote[The scientists' findings were astounding! They discovered that the powers of the Metroid might be harnessed for the good of civilization!]]
+[blockquote[The scientists' findings were astounding! They discovered
+that the powers of the Metroid might be harnessed for the good of
+civilization!]]
 
 Metroid is a video game about...
 
@@ -296,6 +298,20 @@ used to prepare the paper that I'm now writing? Maybe! This is the
 Donald Knuth Any% speedrun.
 
 
+[section[The BoVeX language]]
+
+[subsection[Garbage collection]]
+
+Garbage collection is so easy. I keep track of all the pointers that
+are allocated during execution. Then it is just a matter of periodically
+walking through the stack and marking the allocations that are still
+reachable, then deleting anything in the heap that isn't. It's so easy
+that I didn't even implement it! I have 256 gigabytes of RAM. Even
+with a 70-billion parameter, 128-gigabyte LLM in RAM, there's still
+plenty of space to just keep allocating. In fact, LLM inference acts
+as a useful "performance regulator" to make sure that we don't allocate
+memory [it[too fast]].
+
 [subsection[Advantages of this approach]]
 
 Another nice thing is that the manual rephrasing that consumes
@@ -330,6 +346,9 @@ dates from a time when storing a spell check dictionary in
 a computer's memory was described as "not feasible."
 
 [section[Nightmare on LLM street]]
+
+[section[Future work]]
+
 
 [section[Graveyard / TODO]]
 
