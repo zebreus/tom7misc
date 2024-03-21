@@ -403,26 +403,34 @@ fun get-paragraphs (ls : layout list) : layout list =
         acc := []
       end
 
-    (* TODO: normalize whitespace *)
-    fun normalize s = normalize-whitespace s
+    (* Normalize whitespace. This can probably be improved.
+       We drop leading space from paragraphs (they are usually
+       indented), for one thing. *)
+    fun normalize s =
+      normalize-whitespace s
 
-    fun do-one-text s =
+    fun normalize (true, s) =
+      string-strip-prefix " " (normalize-whitespace s)
+      | normalize (false, s) =
+      normalize-whitespace s
+
+    fun do-one-text (after-p, s) =
       let
         do LAYOUT-VERBOSE andthen print ("one text [" ^ s ^ "]")
       in
       case string-chop "\n\n" s of
-        NONE => append (layout (normalize s))
+        NONE => append (layout (normalize (after-p, s)))
       | SOME (para, rest) =>
           (* Got a paragraph. *)
           let in
-            append (layout (normalize para));
+            append (layout (normalize (after-p, para)));
             next-paragraph ();
-            do-one-text rest
+            do-one-text (true, rest)
           end
       end
     fun do-one lay =
       case layoutcase lay of
-        Text s => do-one-text s
+        Text s => do-one-text (false, s)
       | Node (BOX, _, _) => append lay
       | Node (SPAN, attrs, children) =>
           let

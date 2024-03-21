@@ -194,6 +194,7 @@ fun cite-render-one (Source { t, sort-key = _, fields }) =
 
         in
           debug-print-doc r;
+          debug-print-doc (get-boxes r);
           r
         end
     | _ => [Unrenderable citation type?]

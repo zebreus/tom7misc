@@ -241,6 +241,15 @@ fun string-list-join _ nil = ""
   | string-list-join _ (x :: nil) = x
   | string-list-join sep (x :: t) = x ^ sep ^ string-list-join sep t
 
+fun string-strip-prefix prefix big =
+  let val ps = string-size prefix
+  in
+    if string-size big < ps then big
+    else if string-eq (substr (big, 0, ps), prefix)
+         then substr-rest (big, ps)
+         else big
+  end
+
 (* Split string to a1+small+a2+small+...an where small does
    not appear in ai. Takes the first match of small. Returns
    the list of a1 :: a2 :: ... :: an :: nil *)

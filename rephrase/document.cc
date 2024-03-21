@@ -1,16 +1,30 @@
 #include "document.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
+#include <cstdio>
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
 
-#include "base/stringprintf.h"
-#include "base/logging.h"
+#include "bignum/big.h"
 #include "ansi.h"
+#include "image.h"
 #include "util.h"
 #include "bytecode.h"
 #include "utf.h"
 #include "functional-set.h"
 #include "boxes-and-glue.h"
+#include "base/stringprintf.h"
+#include "base/logging.h"
 
 // Could use actual infinity.
 static constexpr double INFINITE_PENALTY = 9999999.0;
@@ -358,7 +372,7 @@ void DebugPrintDocTree(const DocTree &doc) {
         // We should be careful about normalizing whitespace here,
         // since it sometimes has meaning.
         const std::string t = Util::NormalizeWhitespace(doc.text);
-        printf("%s" AWHITE("%s") "\n",
+        printf("%s" ABGCOLOR(30, 30, 30, AFGCOLOR(255, 255, 255, "%s")) "\n",
                Pad(depth).c_str(),
                t.c_str());
       } else {
@@ -404,18 +418,31 @@ DocTree JoinDocs(std::vector<DocTree> docs) {
   return doc;
 }
 
-static std::string_view NextWord(std::string_view &text) {
-  auto pos = text.find(' ');
-  if (pos == std::string_view::npos) {
-    std::string_view ret = text;
-    text.remove_prefix(ret.size());
-    return ret;
+// has space before, word, has space after
+static std::tuple<bool, std::string_view, bool>
+NextWord(std::string_view &text) {
+  bool space_before = false;
+  while (!text.empty() && text[0] == ' ') {
+    space_before = true;
+    text.remove_prefix(1);
   }
 
-  std::string_view ret = text.substr(0, pos);
+  auto pos = text.find(' ');
+  if (pos == std::string_view::npos) {
+    // No more spaces. Eat until the end of the string.
+    std::string_view word = text;
+    text.remove_prefix(word.size());
+    return std::make_tuple(space_before, word, false);
+  }
+
+  bool space_after = false;
+  std::string_view word = text.substr(0, pos);
   text.remove_prefix(pos);
-  while (!text.empty() && text[0] == ' ') text.remove_prefix(1);
-  return ret;
+  while (!text.empty() && text[0] == ' ') {
+    space_after = true;
+    text.remove_prefix(1);
+  }
+  return std::make_tuple(space_before, word, space_after);
 }
 
 std::vector<DocTree>
@@ -427,23 +454,55 @@ Document::BoxifyText(const Font *font, double font_size,
   const double space_width = font->CharWidth(' ');
   const double hyphen_width = font->CharWidth('-');
 
+  auto IsWhitespace = [](const std::string &s) {
+      // Because of the way we normalize whitespace, the only
+      // case where the word is whitespace will be a single
+      // space.
+      return s.size() == 1 && s[0] == ' ';
+  };
+
   // Work a word at a time.
   while (!text.empty()) {
-    std::string_view word = NextWord(text);
-    if (word.empty()) continue;
+    const auto &[space_before, word_in, space_after] = NextWord(text);
+    std::string word = std::string(word_in);
+    if (word.empty()) {
+      CHECK(!space_after) << "Bug: The empty word should "
+        "cause the space to be one?";
+      if (space_before) {
+        // This happens if the doctree node only contains space.
+        // We preserve it for now, although there are situations
+        // where a natural document doesn't want a space. Maybe
+        // better to drop those elsewhere.
+        // word = "_";
+      } else {
+        continue;
+      }
+    }
 
     // TODO: We currently punt on any "word" that contains
     // non-letters, because the hyphenation library doesn't
-    // handle these. But we should trip punctuation like
+    // handle these. But we should strip punctuation like
     // a trailing comma or leading quotation mark. Actual
     // hyphens can of course allow for break after, as well.
-    const std::vector<std::string> hyphen_parts =
-      [&]() -> std::vector<std::string> {
+    std::vector<std::string> hyphen_parts;
+
+    if (!word.empty()) {
+      hyphen_parts = [&]() -> std::vector<std::string> {
         for (int i = 0; i < (int)word.size(); i++) {
           if (!std::isalpha(word[i])) return {std::string(word)};
         }
         return hyphenation.Hyphenate(word);
-    }();
+      }();
+    }
+
+    // In the rare case of a space before, we handle it by making
+    // it part of the first hyphen part. There may be no hyphen
+    // parts at all, in which case the word will just be a space;
+    // this is even rarer.
+    if (space_before) {
+      if (hyphen_parts.empty()) hyphen_parts.push_back(" ");
+      else hyphen_parts[0] = " " + hyphen_parts[0];
+    }
 
     // Now turn the word into boxes. We read successive codepoints
     // from each hyphenated piece.
@@ -549,13 +608,22 @@ Document::BoxifyText(const Font *font, double font_size,
     d.SetDoubleAttr("font-size", font_size);
     d.SetStringAttr("font-name", font->Name());
 
-    // No penalty to break between words. We could use some heuristics to
-    // penalize certain breaks in the future. (For example, breaking after
-    // a comma or semicolon seems better.)
-    d.SetDoubleAttr("glue-break-penalty", 0.0);
-    d.SetDoubleAttr("glue-ideal", space_width * font_size);
-    // Relative penalty for contracting.
-    d.SetDoubleAttr("glue-contract", 4.0);
+    if (space_after || IsWhitespace(word)) {
+      // No penalty to break between words. We could use some heuristics to
+      // penalize certain breaks in the future. (For example, breaking after
+      // a comma or semicolon seems better.)
+      d.SetDoubleAttr("glue-break-penalty", 0.0);
+      d.SetDoubleAttr("glue-ideal", space_width * font_size);
+      // Relative penalty for contracting.
+      d.SetDoubleAttr("glue-contract", 4.0);
+    } else {
+      d.SetDoubleAttr("glue-break-penalty", INFINITE_PENALTY);
+      d.SetDoubleAttr("glue-ideal", 0.0);
+      // Since there's no space, treat it like it's inside a word for
+      // the purposes of glue allocation.
+      d.SetDoubleAttr("glue-expand", EPSILON_COEFFICIENT);
+      d.SetDoubleAttr("glue-contract", EPSILON_COEFFICIENT);
+    }
 
     d.AddChild(TextDoc(chunk));
     out.push_back(std::move(d));
