@@ -312,8 +312,8 @@ of coverage. For a particular product received by a particular user,
     stressing
     me out. Makes sense, as it's kind of the [b[core]] of everything.
 
-    [no-rephrase
-     [This paragraph has some [b[markup]] in it. It's also inside
+    [rephrase
+     [This paragraph has some [b[markup]] in it. It's [it[also]] inside
       a call to rephrase.]]
 
     [cite murphy2013first]

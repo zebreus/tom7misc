@@ -27,7 +27,7 @@ test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex hyph-en-us.
 LLAMA_CLBLAST=true
 # It's crashing or doing something weird? You're always
 # being too clever with std::move!
-ASAN=true
+# ASAN=true
 
 # Pro-tip for understanding compilation time:
 #  -ftime-trace
@@ -272,7 +272,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=utf.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o execution.o document.o pdf-document.o rephrasing.o
+LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o execution.o document.o pdf-document.o rephrasing.o
 
 BOVEX_OBJECTS=$(LANG_OBJECTS) $(LLM_OBJECTS) $(LLAMA_OBJECTS)
 

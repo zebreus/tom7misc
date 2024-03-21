@@ -34,6 +34,11 @@ struct Rephrasing {
   virtual std::vector<std::pair<double, std::string>> GetRephrasings(
       const Rephrasable &rephrasable) = 0;
 
+  static bool Rejoin(const Rephrasable &rephrasable,
+                     const std::string &text,
+                     DocTree *doc,
+                     std::string *error);
+
   static Rephrasable GetTextToRephrase(const DocTree &doc);
 
   // Get the database key, which depends on the context, text, and

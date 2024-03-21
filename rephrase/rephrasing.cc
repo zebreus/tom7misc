@@ -1,11 +1,15 @@
 #include "rephrasing.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <string>
 #include <vector>
 #include <utility>
 
+#include "llama.h"
 #include "document.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -13,9 +17,11 @@
 #include "timer.h"
 #include "ansi.h"
 
+#include "re2/re2.h"
 #include "llm.h"
 #include "models.h"
 #include "util.h"
+#include "html.h"
 
 using Rephrasable = Rephrasing::Rephrasable;
 using Candidates = LLM::Candidates;
@@ -312,11 +318,20 @@ struct RephrasingImpl : public Rephrasing {
     // the string.
     (void)Util::TryStripSuffix("</P>", &text);
 
+    printf("\nFinal text: " AYELLOW("%s") "\n", text.c_str());
+
     // TODO:
     // - check validity
-    bool valid = true;
+    DocTree doc;
+    std::string error;
+    bool valid = Rejoin(rephrasable, text, &doc, &error);
+    if (valid) {
+      printf(AGREEN("Valid:") "\n");
+      DebugPrintDocTree(doc);
+    } else {
+      printf(ARED("Not valid") ": %s\n", error.c_str());
+    }
 
-    printf("\nFinal text: " AYELLOW("%s") "\n", text.c_str());
     DatabaseRow row;
     row.text = std::move(text);
     row.skipped_loss = 0.0;
@@ -362,10 +377,90 @@ struct RephrasingImpl : public Rephrasing {
 
 }  // namespace
 
-Rephrasable Rephrasing::Rejoin(
+bool Rephrasing::Rejoin(
     const Rephrasable &rephrasable,
-    const std::string &text) {
+    const std::string &text,
+    DocTree *doc,
+    std::string *error) {
+  std::string html_error;
+  std::vector<HTMLNode> nodes = HTML::Parse(text, &html_error);
+  if (!html_error.empty()) {
+    printf(ARED("Couldn't parse as HTML") ": %s\n", html_error.c_str());
+    if (error != nullptr) *error = html_error;
+    return false;
+  }
 
+  bool failed = false;
+  std::function<DocTree(const HTMLNode &node)> Rec =
+    [&rephrasable, error, &failed, &Rec](const HTMLNode &node) -> DocTree {
+      if (failed) return DocTree();
+      if (node.is_tag) {
+        if (node.str == "span") {
+          auto it = node.attrs.find("class");
+          if (it == node.attrs.end()) {
+            failed = true;
+            if (error != nullptr) *error = "missing class attr on span";
+            return DocTree();
+          }
+
+          static RE2 class_re("c([0-9]+)");
+          int class_num = -1;
+          if (RE2::FullMatch(it->second, class_re, &class_num) &&
+              class_num >= 0 && class_num < (int)rephrasable.classes.size()) {
+            DocTree span;
+            span.attrs = rephrasable.classes[class_num];
+            for (const HTMLNode &child : node.children) {
+              span.AddChild(Rec(child));
+            }
+            return span;
+
+          } else {
+            failed = true;
+            if (error != nullptr)
+              *error = StringPrintf("class not the right format: [%s]",
+                                    it->second.c_str());
+            return DocTree();
+          }
+
+        } else if (node.str == "img") {
+          auto it = node.attrs.find("src");
+          if (it == node.attrs.end()) {
+            failed = true;
+            if (error != nullptr) *error = "missing src on img";
+            return DocTree();
+          }
+
+          static RE2 img_re("img([0-9]+).png");
+          int img_num = -1;
+          if (RE2::FullMatch(it->second, img_re, &img_num) &&
+              img_num >= 0 && img_num < (int)rephrasable.images.size()) {
+            return *rephrasable.images[img_num];
+
+          } else {
+            failed = true;
+            if (error != nullptr) *error = "img not the right format";
+            return DocTree();
+          }
+
+        } else {
+          failed = true;
+          if (error != nullptr) *error = "unknown tag";
+          return DocTree();
+        }
+      } else {
+        // Text nodes become text docs.
+        return TextDoc(node.str);
+      }
+    };
+
+  std::vector<DocTree> ret;
+  ret.reserve(nodes.size());
+  for (const HTMLNode &node : nodes)
+    ret.push_back(Rec(node));
+
+  if (failed) return false;
+  *doc = JoinDocs(std::move(ret));
+  return true;
 }
 
 Rephrasable Rephrasing::GetTextToRephrase(const DocTree &doc) {
