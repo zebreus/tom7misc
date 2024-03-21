@@ -2,10 +2,12 @@
 #include "il.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "primop.h"
 #include "util.h"
 #include "pp.h"
 

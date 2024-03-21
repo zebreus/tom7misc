@@ -1,12 +1,19 @@
 
 #include "parsing.h"
 
+#include <cstdio>
+#include <functional>
+#include <optional>
 #include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 #include <cstdint>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "bignum/big.h"
 #include "el.h"
 #include "inclusion.h"
 #include "lexing.h"
@@ -312,7 +319,7 @@ const Exp *Parsing::Parse(AstPool *pool,
   // regular: string option,
   // bold: string option,
   // italic: string option,
-  // bold-italic: string option }
+  // bold-italic: string option
   const auto TuplePat = [&](const auto &Pattern) {
       return ((IsToken<LPAREN>() >>
                Separate0(Pattern, IsToken<COMMA>()) <<
@@ -537,10 +544,17 @@ const Exp *Parsing::Parse(AstPool *pool,
     };
 
   const auto BracedExpr = [&](const auto &Expr) {
-    return IsToken<LBRACE>() >>
-      // XXX why doesn't it work to reverse these two?
-      (ObjectContents(Expr) || RecordContents(Expr))
-      << IsToken<RBRACE>();
+      return (IsToken<LBRACE>() >>
+              // XXX why doesn't it work to reverse these two?
+              (ObjectContents(Expr) || RecordContents(Expr))
+              << IsToken<RBRACE>()) ||
+    (Mark(IsToken<LBRACE>()) >[&](const auto &err) -> const Exp * {
+        const auto &[_, start, length] = err;
+        LOG(FATAL) << ErrorAtIndex(start, length) <<
+          "Expected [(OBJNAME)] fields... after seeing "
+          "LBRACE. At: " << start << " for " << length;
+        return nullptr;
+      });
   };
 
   const auto LayoutExpr = [&](const auto &Expr) {
@@ -847,7 +861,9 @@ const Exp *Parsing::Parse(AstPool *pool,
       // We'd get the same result from the code below, but with
       // more work in this very common case.
     if (elts.size() == 1) {
+      // Possible for user programs to generate this?
       CHECK(elts[0].fixity == Fixity::Atom) << FixityString(elts[0].fixity);
+
       return elts[0].item;
     }
 

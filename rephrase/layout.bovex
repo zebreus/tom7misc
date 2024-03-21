@@ -329,6 +329,10 @@ fun break () =
   box {(Box) height = 0.0, width = 0.0,
        glue-break-penalty = -9999999.0 } [ ]
 
+fun break-ok () =
+  box {(Box) height = 0.0, width = 0.0,
+       glue-break-penalty = 1.0 } [ ]
+
 fun hfill () =
   box {(Box) height = 0.0, width = 0.0,
        glue-ideal = 0.0,
@@ -597,6 +601,7 @@ fun blockquote lay =
      box {(Box) width = WIDTH} (layout-concat lines))
   end
 
+(*
 fun title lay =
   let
     (* probably we want center justification *)
@@ -614,39 +619,46 @@ fun title lay =
     (* debug-print-doc t; *)
     t
   end
+*)
 
-  fun monospace-block lay =
-    let
-      val LEFT-INDENT = inch 0.05
-      val WIDTH = inch 3.4
-      val LINE-HEIGHT = 12.2
+fun title lay =
+  [[span {(Span) font-bold = true, font-size = point 28.0 }
+    lay][hfill()][vspace 16.0]]
 
-      (* Since we generate boxes directly, we need the actual
-         font name, not the family. *)
-      val ff = case font-regular FIXEDERSYS of
-        NONE => fail "no fixedersys font?"
-      | SOME name => name
+fun author lay = [[lay][hfill()][vspace 16.0]]
 
-      fun monospace-lines lay =
-        case layoutcase lay of
-          Text str =>
-            let val sl : string list = string-split "\n" str
-            in
-              list-map (fn (s : string) =>
-                        (box {(Box)
-                              width = WIDTH,
-                              font-name = ff,
-                              height = LINE-HEIGHT} (layout s))) sl
-            end
-        | _ => fail "Markup is not supported inside monospace-lines."
+fun monospace-block lay =
+  let
+    val LEFT-INDENT = inch 0.05
+    val WIDTH = inch 3.4
+    val LINE-HEIGHT = 12.2
+
+    (* Since we generate boxes directly, we need the actual
+       font name, not the family. *)
+    val ff = case font-regular FIXEDERSYS of
+      NONE => fail "no fixedersys font?"
+    | SOME name => name
+
+    fun monospace-lines lay =
+      case layoutcase lay of
+        Text str =>
+          let val sl : string list = string-split "\n" str
+          in
+            list-map (fn (s : string) =>
+                      (box {(Box)
+                            width = WIDTH,
+                            font-name = ff,
+                            height = LINE-HEIGHT} (layout s))) sl
+          end
+      | _ => fail "Markup is not supported inside monospace-lines."
 
 
-      val lines : layout list = monospace-lines lay
-    in
-      stick-vertically
-      (LEFT-INDENT,
-       box {(Box) width = WIDTH} (layout-concat lines))
-    end
+    val lines : layout list = monospace-lines lay
+  in
+    stick-vertically
+    (LEFT-INDENT,
+     box {(Box) width = WIDTH} (layout-concat lines))
+  end
 
 fun section lay = span {(Span) font-bold = true, font-size = 14.0 }
     [[lay].[hfill()][break()]]

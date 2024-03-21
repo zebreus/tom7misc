@@ -14,12 +14,13 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "ansi.h"
-#include "c:/code/sf_svn/cc-lib/bignum/big.h"
-#include "c:/code/sf_svn/cc-lib/image.h"
+#include "bignum/big.h"
+#include "image.h"
 #include "document.h"
 #include "primop.h"
 #include "rephrasing.h"
 #include "util.h"
+#include "utf.h"
 
 namespace bc {
 
@@ -566,6 +567,12 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::STRING_SIZE: {
     const std::string &s = GetString("string-size");
     return Big(BigInt(s.size()));
+  }
+
+  case Primop::STRING_FIRST_CODEPOINT: {
+    const std::string &s = GetString("string-first-codepoint");
+    if (s.empty()) return a;
+    return String(Util::EncodeUTF8(*UTF8Codepoints(s).begin()), state);
   }
 
   case Primop::NORMALIZE_WHITESPACE: {

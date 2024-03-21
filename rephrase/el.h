@@ -3,6 +3,7 @@
 
 #include <string>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "ast-arena.h"

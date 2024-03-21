@@ -39,6 +39,7 @@ val NOVEMBER = 11
 val DECEMBER = 12
 
 object Website of { url : string, title: string,
+                    author : string,
                     year : int, month : int, day : int }
 object Article of { author : string, title : string,
                     year : int, month : int, day : int,
@@ -151,6 +152,19 @@ fun monthname 1 = "January"
 fun cite-render-one (Source { t, sort-key = _, fields }) =
   let
 
+    (* Since bibliography URLs are often too long, we allow
+       breaking after each slash-separated part.
+
+       TODO: Can hyperlink it
+       *)
+
+    fun bib-url url =
+      let val parts = list-map (fn s => (layout s)) (string-split "/" url)
+      in
+        layout-list-join [/[break-ok ()]] parts
+      end
+
+
     object Pages of { page-start : int, page-end : int }
     fun pages {(Pages) page-start, page-end} =
       [pp. [layout (int-to-string page-start)]–[(layout
@@ -166,7 +180,9 @@ fun cite-render-one (Source { t, sort-key = _, fields }) =
 
     fun joindots l =
       layout-concat
-      (list-map (fn lay => if layout-empty lay then lay else [[lay]. ]) l)
+      (list-map (fn lay => if layout-empty lay
+                           then lay
+                           else [[lay]. [break-ok()]]) l)
 
     (* collections of fields supported by many citation types. *)
     val pp = pages fields
@@ -180,7 +196,7 @@ fun cite-render-one (Source { t, sort-key = _, fields }) =
               {(Article) title} => ["[layout title]"]
             | _ => []
         in
-          joindots (layout url ::
+          joindots (bib-url url ::
                     title :: date fields ::
                     nil)
         end

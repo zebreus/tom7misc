@@ -77,6 +77,7 @@ Initial::Initial(AstPool *pool) {
     {"internal-string-find", Primop::STRING_FIND},
     {"substr", Primop::STRING_SUBSTR},
     {"string-replace", Primop::STRING_REPLACE},
+    {"string-first-codepoint", Primop::STRING_FIRST_CODEPOINT},
     {"normalize-whitespace", Primop::NORMALIZE_WHITESPACE},
 
     {"layout", Primop::STRING_TO_LAYOUT},

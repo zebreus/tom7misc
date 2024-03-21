@@ -15,9 +15,8 @@ let
 in
 (main-text (palatino
 [
-
-Cursed BoVeX is
-Fully Justified
+ [title[I didn't come up with a good title yet]]
+ [author[Dr. Tom Murphy VII, Ph.D.]]
 
 It has become clear to me that many people walk this Earth completely
 unbothered by incorrect details. For example, they are unconcerned
@@ -31,30 +30,12 @@ does not contain any liquid, I immediately lose suspension of
 disbelief and will not purchase the product featured in the
 commercial. I literally projectile vomit if Auto-Motion Plus is
 enabled on a television in the hotel I'm staying in, even if the TV is
-not turned on, or if someone misuses the word "literally." Each time I
-learn of a new type of mistake, I am forever cursed to notice that
-mistake.
-
-    Another successful person is the congressperson X Y Z.
-    I'm not gonna drag politics into this one, but let's just say
-    your guess of their party is correct.
-Criticising a proposed bill that would reduce the standard work week
-in the US by 8 hours, from 40 to 32, this senator says,
-
-  [blockquote[
-GOP Sen. Bill Cassidy of Louisiana said paying workers the same wages for fewer hours would force employers to pass the cost of hiring more workers along to consumers.
-
-“It would threaten millions of small businesses operating on a razor-thin margin because they’re unable to find enough workers," said Cassidy, the ranking Republican on the committee. "Now they’ve got the same workers, but only for three-quarters of the time. And they have to hire more.”
-]]
-
-  OKAY, first of all, razors famously have high margins.
-
-  (Actually, that's not exactly the quote, but I needed to make it look
-   nice.)
-
-  For another thing: This guy mixes fancy typographic quotes and ASCII ones.
-
-  Anyway: What? No! 32/40 is 4/5, not 3/4.
+not turned on, or if someone misuses the word "literally." If I see a
+paragraph missing a period at its end on Wikipedia, I will spend
+dozens of hours writing software to organize and semi-automate a
+distributed effort to fix all the missing periods on Wikipedia.[cite
+project-punctuation] And worse, each time I learn of a new type of
+mistake, I am forever cursed to notice that mistake
 
 Seriously: One time I found myself spell-correcting someone else's
 [it[lorem ipsum]] text in a slide. It said "lorem epsom," which is
@@ -63,7 +44,43 @@ the slide probably thinks about things like leveraging synergy,
 generative AI, metaverses, blockchain 3.0, being eco-green, and so on,
 without it occurring to him that these things could have nuance and
 meaning separate from their names. He has probably never even read the
-Wikipedia article on Lorem Ipsum. Like the congressperson, he is successful and rich.
+Wikipedia article on Lorem Ipsum. He is successful and rich.
+
+
+Another successful person is the congressperson Bill Cassidy.
+Criticising a proposed bill that would reduce the standard work week
+in the US by 8 hours, from 40 to 32, this senator says,
+
+[blockquote
+ [Sen. Bill Cassidy of Louisiana said paying workers the
+  same wages for fewer hours would force employers to pass the cost of
+  hiring more workers along to consumers.]]
+
+[blockquote
+ [“It would threaten millions of small businesses operating on a
+  razor-thin margin because they’re unable to find enough workers,"
+  said Cassidy. "Now they’ve got the same workers, but only for
+  three-quarters of the time. And they have to hire more.”]]
+
+Actually, that's not exactly the quote, but I needed to make it look
+nice.[cite bynum2014bernie]
+
+Anyway, [it[OKAY]], first of all, razors famously have high margins.
+It's like the worst possible metaphor here.
+
+For another thing: This guy mixes fancy typographic quotes and ASCII ones.
+
+But the main thing I want to talk about is: What? No! 32/40 is four
+fifths, not three quarters. This is not, like, complicated math. It
+uses some of the world's smallest integers. Everybody knows that the
+work week is 40 hours, and that a work day is 8 hours, and that the
+proposed bill reduces it by one day, giving four of five days. I don't
+really mind if someone makes an error in calculation
+(well, I do mind, but I am certainly prone to doing it). The infuriating
+realization here is that this person does not even think of "three-quarters"
+as a kind of thing that can be right or wrong. He says three quarters
+because it makes smaller number feelings. You could imagine him having
+the conversation (with me, perhaps): "You say four-fifths, I say three-quarters." Me: "But it [it[is]] four fifths. And why are you always hyphenating it?" Him (smiling patronizingly): "I guess we just have to agree to disagree."
 
 The opposite of this person is the hero called Donald Knuth.
 
@@ -346,6 +363,9 @@ everywhere
 
   - People who ask "will you marry me" instead of "would you marry me?"
   - Or when the rules of "hard mode" in Wordle are just incorrect
+
+Cursed BoVeX is
+Fully Justified
 
 There is a way to get zero badness: Delete the whole document!
 "Don't say anything at all."

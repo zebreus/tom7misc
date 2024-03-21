@@ -2,11 +2,27 @@
 (* Not BibTeX format! See cite.bovex. *)
 
 val famousbirthdays =
-  bib-website {(Website) url = "https://allfamousbirthday.com/donald-knuth/"}
+  bib-website {(Website) url = "https://allfamousbirthday.com/donald-knuth/",
+  year = 2024,
+  month = FEBRUARY
+  }
 
 val ggeranov =
-  bib-website {(Website) url = "https://github.com/ggerganov/llama.cpp"}
+  bib-website {(Website)
+  url = "https://github.com/ggerganov/llama.cpp",
+  author = "ggeranov",
+  year = 2024,
+  month = MARCH
+}
 
+val project-punctuation =
+  bib-website {(Website)
+  url = "https://en.wikipedia.org/wiki/Wikipedia:WikiProject_Punctuation",
+  author = "Murphy, VII, Tom",
+  title = "WikiProject Punctuation",
+  year = 2007,
+  month = JULY
+  }
 
 val murphy2013first =
   bib-article {(Article)

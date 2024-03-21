@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <string>
 #include <cstdint>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "ast-arena.h"
@@ -723,7 +725,8 @@ struct AstPool {
   }
 
   const Exp *Object(
-      const std::vector<std::tuple<std::string, ObjFieldType, const Exp *>> &fields,
+      const std::vector<std::tuple<std::string,
+                                   ObjFieldType, const Exp *>> &fields,
       const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::OBJECT &&
