@@ -1,25 +1,6 @@
 
 default: bovex.exe monospace.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe
 
-test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
-	./html_test.exe
-	./hyphenation_test.exe
-	./lexing_test.exe
-	./il_test.exe
-	./il-util_test.exe
-	./context_test.exe
-	./unification_test.exe
-	./parsing_test.exe
-	./il-pass_test.exe
-	./frontend_test.exe
-	./il-typed-pass_test.exe
-	./closure-conversion_test.exe
-	./compiler_test.exe
-	./execution_test.exe
-
-test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex hyph-en-us.tex
-	./bovex.exe -v test.bovex -o test.pdf
-
 # Changes by tom7.
 # Also add -static to LFLAGS below
 # Also add /c/code/openblas/include to
@@ -335,9 +316,6 @@ execution_test.exe : execution_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 bovex.exe : bovex.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-paper.pdf : bovex.exe paper.bovex
-	./bovex.exe paper.bovex -o paper.pdf
-
 concat.exe : concat.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
@@ -346,6 +324,28 @@ hyphenation_test.exe : hyphenation_test.o hyphenation.o $(CC_LIB_OBJECTS)
 
 html_test.exe : html_test.o html.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex hyph-en-us.tex anti-aliasing.png
+	./bovex.exe -v test.bovex -o test.pdf
+
+paper.pdf : bovex.exe paper.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex
+	./bovex.exe -v paper.bovex -o paper.pdf
+
+test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
+	./html_test.exe
+	./hyphenation_test.exe
+	./lexing_test.exe
+	./il_test.exe
+	./il-util_test.exe
+	./context_test.exe
+	./unification_test.exe
+	./parsing_test.exe
+	./il-pass_test.exe
+	./frontend_test.exe
+	./il-typed-pass_test.exe
+	./closure-conversion_test.exe
+	./compiler_test.exe
+	./execution_test.exe
 
 clean:
 	rm -f *.o $(CC_LIB_OBJECTS) $(LLM_OBJECTS) monospace.exe lexing_test.exe parsing_test.exe

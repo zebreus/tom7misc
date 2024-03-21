@@ -1,16 +1,23 @@
 
 #include "execution.h"
 
+#include <cstdint>
+#include <optional>
+#include <utility>
 #include <variant>
 #include <cstdio>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "bytecode.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "ansi.h"
+#include "c:/code/sf_svn/cc-lib/bignum/big.h"
+#include "c:/code/sf_svn/cc-lib/image.h"
 #include "document.h"
+#include "primop.h"
 #include "rephrasing.h"
 #include "util.h"
 
@@ -360,6 +367,16 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   case Primop::STRING_EQ: {
     const auto &[aa, bb] = TwoStrings("string_eq");
     return Bool(aa == bb, state);
+  }
+
+  case Primop::STRING_LESS: {
+    const auto &[aa, bb] = TwoStrings("string_less");
+    return Bool(aa < bb, state);
+  }
+
+  case Primop::STRING_GREATER: {
+    const auto &[aa, bb] = TwoStrings("string_greater");
+    return Bool(aa > bb, state);
   }
 
   case Primop::STRING_CONCAT: {

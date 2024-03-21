@@ -15,14 +15,6 @@ let
                    subject = "Documents do not need a 'subject'"
                    (* leaving out date, so it is the creation time. *) }
 
-  val FIXEDERSYS : font-family =
-    font-load-family { name = "fixedersys",
-                       regular = SOME "fixedersys2x.ttf",
-                       bold = NONE,
-                       italic = NONE,
-                       bold-italic = NONE }
-  fun fixedersys layout = apply-font FIXEDERSYS layout
-
   val author = b[Tom 7 [[Murphy]] ]
 
   fun attrs-string (BOX, {(Box) width }) = "box-width"
@@ -66,221 +58,9 @@ let
     end
   do test-get-paragraphs ()
 
-  (* Generally just one of these, for the toplevel document.
-     This breaks the layout into paragraphs, and then inserts
-     them one by one into columns. *)
-  fun main-text lay =
-    let
-      val PAGE-WIDTH = inch 8.5
-      val PAGE-HEIGHT = inch 11.0
-      val LEFT-MARGIN = inch 0.4
-      val TOP-MARGIN = inch 0.5
-      val GUTTER = inch 0.3
-      val COLUMNS = 2
-      do COLUMNS >= 1 otherwise fail "There must be at least one column!"
-      val RIGHT-MARGIN = inch 0.4
-      val BOTTOM-MARGIN = inch 0.5
-
-      val BODY-WIDTH = PAGE-WIDTH -. (LEFT-MARGIN +. RIGHT-MARGIN)
-      val BODY-HEIGHT = PAGE-HEIGHT -. (TOP-MARGIN +. BOTTOM-MARGIN)
-      val COLUMN-WIDTH =
-        (BODY-WIDTH -. (int-to-float (COLUMNS - 1) *. GUTTER))
-        /. (int-to-float COLUMNS)
-
-      val LEFT-COLUMN-X = LEFT-MARGIN
-      val COLUMN-STRIDE = COLUMN-WIDTH +. GUTTER
-
-      (* XXX This should depend on the font *)
-      val PARAGRAPH-VSPACE-BOTTOM = 12.0
-
-      (* Badness modifiers are compared to the badness of text
-         outside of the intended box. *)
-      val ORPHAN-LINE-BADNESS-MODIFIER = 0.125
-
-      val current-page = ref 0
-
-      (* Layout state. *)
-      val current-column = ref 0
-      (* y position within column. *)
-      val current-ypos = ref 0.0
-      val column-empty = ref true
-
-      val column-stickers-rev : layout list ref = ref nil
-      fun add-column-sticker s =
-        let in
-          column-empty := false;
-          column-stickers-rev := s :: !column-stickers-rev
-        end
-
-      (* Emits the current column (if non-empty); clears it. *)
-      fun emit-column () =
-        let
-          val colx =
-            LEFT-COLUMN-X +.
-            ((int-to-float (!current-column)) *. COLUMN-STRIDE)
-        in
-          !column-empty otherwise
-          output (!current-page,
-                  sticker ({(Sticker)
-                            x = colx ,
-                            y = TOP-MARGIN }
-                           with column-num = !current-column
-                           with comment = "column"
-                           with column-stride = COLUMN-STRIDE
-                           with left-margin = LEFT-MARGIN)
-                  (layout-concat (list-rev (!column-stickers-rev))));
-          column-stickers-rev := nil;
-          column-empty := true
-        end
-
-      (* XXX should probably just use pack-boxes for this, but
-         they are vertical boxes. *)
-      fun insert-paragraph (p : layout) : unit =
-        let
-          do VERBOSE andthen
-            let in
-              print "----insert para----\n";
-              debug-print-doc p;
-              print "-------------------\n"
-            end
-
-          val boxes = get-boxes p
-
-          do VERBOSE andthen
-            let in
-              print "----the boxes...---\n";
-              debug-print-doc boxes;
-              print "-------------------\n"
-            end
-
-          val lines : layout list = pack-boxes (BEST, COLUMN-WIDTH, boxes)
-
-          (* Put a line at the end to space out the paragraph. We
-             should do this with glue. *)
-          val lines = list-rcons
-            (lines, box {(Box) height = PARAGRAPH-VSPACE-BOTTOM} [])
-
-          do VERBOSE andthen
-            let in
-              print "----packed lines---\n";
-              list-app (fn (lay : layout) =>
-                        let in
-                          print "==\n";
-                          debug-print-doc lay;
-                        end) lines;
-              print "-------------------\n"
-            end
-
-          (* Now can treat the contents of lines as stickers.
-             The line itself remains a box. *)
-          val lines : layout list = list-map stick-horizontally lines
-
-          do VERBOSE andthen
-            let in
-              print "----now as lines---\n";
-              list-app (fn (lay : layout) =>
-                        let in
-                          print "==\n";
-                          debug-print-doc lay;
-                        end) lines;
-              print "-------------------\n"
-            end
-
-          (* Maybe advance to the next column (or page) to place
-             something. *)
-          fun get-placement height =
-            if !current-ypos +. height <=. BODY-HEIGHT
-            then
-              (* Place here at no cost. *)
-              ()
-            else
-              if !column-empty
-              then
-              (* If we're already at the top of the column, then
-                 we don't have any choice but to place it. *)
-                let
-                  val overrun-height = BODY-HEIGHT -. (!current-ypos +. height)
-                in
-                  (* TODO: We assume it's the full column width. But really
-                     we should be measuring the actual width of the line
-                     that's overflowing. *)
-                  emit-badness (COLUMN-WIDTH *. overrun-height)
-                end
-              else
-                (* New column. *)
-                let in
-                  emit-column ();
-                  current-column := !current-column + 1;
-                  current-ypos := 0.0;
-                  !current-column >= COLUMNS
-                  andthen
-                  let in
-                    current-column := 0;
-                    current-page := !current-page + 1;
-                  end;
-                  (* badness from unfilled column? *)
-                  ()
-                end
-
-          fun addline (line : layout) : unit =
-            case layoutcase line of
-              Node (BOX, {(Box) height } as attrs, children) =>
-                let in
-                  get-placement height;
-                  add-column-sticker
-                  (sticker (attrs without (Box)width
-                            without (Box)height
-                            with comment = "line"
-                            with x = 0.0
-                            with y = !current-ypos) (layout-concat children));
-                  current-ypos := !current-ypos +. height
-                end
-            | _ => fail "only expecting boxes with known height in addline"
-
-        in
-          list-app addline lines
-        end
-
-      val paras : layout list = get-paragraphs (lay :: nil)
-    in
-      list-app insert-paragraph paras;
-      emit-column ()
-    end
 
   val anti-aliasing-png = image-load "anti-aliasing.png"
 
-  fun monospace-block lay =
-    let
-      val LEFT-INDENT = inch 0.05
-      val WIDTH = inch 3.4
-      val LINE-HEIGHT = 12.0
-
-      (* Since we generate boxes directly, we need the actual
-         font name, not the family. *)
-      val ff = case font-regular FIXEDERSYS of
-        NONE => fail "no fixedersys font?"
-      | SOME name => name
-
-      fun monospace-lines lay =
-        case layoutcase lay of
-          Text str =>
-            let val sl : string list = string-split "\n" str
-            in
-              list-map (fn (s : string) =>
-                        (box {(Box)
-                              width = WIDTH,
-                              font-name = ff,
-                              height = LINE-HEIGHT} (layout s))) sl
-            end
-        | _ => fail "Markup is not supported inside monospace-lines."
-
-
-      val lines : layout list = monospace-lines lay
-    in
-      stick-vertically
-      (LEFT-INDENT,
-       box {(Box) width = WIDTH} (layout-concat lines))
-    end
 
   fun no-rephrase lay = lay
 
@@ -436,6 +216,7 @@ The image is [let val { width, height } = image-size anti-aliasing-png
 
     And now it is over.
 
+    [section [Bibliography]]
     [bibliography()]
 
    ]))

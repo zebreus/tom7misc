@@ -15,7 +15,7 @@
    This is the greatest planet on Earth.[cite wikipedia-earth]
 *)
 
-val () = ()
+val CITE-VERBOSE = false
 
 (* Basic source types. Some bibliography types are converted
    into one of these (e.g. PhD thesis). *)
@@ -118,13 +118,16 @@ fun add-citation (c : bibsource) =
   citations-used := set-insert (!citations-used, c)
 
 (* XXX should do something *)
-fun cite c =
+fun cite (c : bibsource) : layout =
   let do add-citation c
   in
-    [citation needed]
+    (* XXX conveniently, changes in font size are top-aligned rather than
+       baseline-aligned like you'd expect. So for now this does create
+       a superscript. *)
+    span {(Span) font-size = 8.0 } [[layout "["]citation needed[layout "]"]]
   end
 
-fun nocite c =
+fun nocite (c : bibsource) : layout =
   let do add-citation c
   in
     []
@@ -159,6 +162,7 @@ fun cite-render-one (Source { t, sort-key = _, fields }) =
     fun date {(Date) year, month } =
       [[layout (monthname month)] [layout (int-to-string year)]]
       | date {(Date) year } = layout (int-to-string year)
+      | date _ = []
 
     fun joindots l =
       layout-concat
@@ -193,8 +197,8 @@ fun cite-render-one (Source { t, sort-key = _, fields }) =
                       pp :: nil)
 
         in
-          debug-print-doc r;
-          debug-print-doc (get-boxes r);
+          CITE-VERBOSE andthen debug-print-doc r;
+          CITE-VERBOSE andthen debug-print-doc (get-boxes r);
           r
         end
     | _ => [Unrenderable citation type?]
@@ -202,10 +206,9 @@ fun cite-render-one (Source { t, sort-key = _, fields }) =
   end
 
 fun bibliography () =
-  let
+  let val cites = (set-tolist (!citations-used))
   in
-    [[b[Bibliography]].
-
-     [layout-concat
-      (list-map cite-render-one (set-tolist (!citations-used)))]]
+    layout-concat
+    (list-map (fn c => [[layout "\n\n"][cite-render-one c]]) cites)
   end
+
