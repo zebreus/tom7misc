@@ -1,6 +1,7 @@
 
 #include "execution.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -416,7 +417,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     Rephrasing::Rephrasable rep = Rephrasing::GetTextToRephrase(doc);
     printf("Rephrase: %s\n", rep.text.c_str());
 
-    int max_attempts = 20;
+    int max_attempts = std::min(20, times * 2);
     while (rephrasing->GetNumRephrasings(rep) < times) {
       if (rephrasing->Rephrase(rep)) {
         printf("\nRephrased " AGREEN("OK") "\n");

@@ -27,7 +27,7 @@
 using Rephrasable = Rephrasing::Rephrasable;
 using Candidates = LLM::Candidates;
 
-static constexpr int VERBOSE = 1;
+static constexpr int VERBOSE = 2;
 
 namespace {
 
@@ -53,6 +53,8 @@ struct Node {
   double p_skipped = 0.0;
   // Probability of this token.
   double p = 0.0;
+  // And of the token with the next depth.
+  double p_next = 0.0;
 };
 
 // Paths often share prefixes.
@@ -151,34 +153,63 @@ struct RephrasingImpl : public Rephrasing {
     int best_row = -1;
     for (int row_idx = 0; row_idx < (int)rows.size(); row_idx++) {
       const DatabaseRow &row = rows[row_idx];
-      double total_p = 0.0;
+
       const Path &path = row.path;
 
       if (VERBOSE > 1) {
         printf("For each node:\n");
       }
+
+      // So that we can get a probability for the first token,
+      // we do some "laplace smoothing".
+      double laplace_numer = 1.0;
+      double laplace_denom = 1.0;
+
+      double total_p = (laplace_numer * laplace_denom);
       for (int i = 0; i < (int)path.size(); i++) {
+        // average probability of samples up to here
+        double avg_p = total_p / (i + laplace_denom);
+
         const Node &node = path[i];
         total_p += node.p;
 
+        double score = avg_p * node.p_next;
+
         if (VERBOSE > 1) {
+          /*
           printf(AGREY("%d") "=%s " AGREY("d%d") " %s ~%s",
                  node.token,
                  llm->TokenString(node.token).c_str(),
                  node.depth,
                  ColorProb(path[i].p).c_str(),
                  ColorProb(total_p / (i + 1)).c_str());
+          */
+          printf(AGREY("%s") " " AORANGE("%.3f") " * " ABLUE("%.3f")
+                 " = %s ",
+                 llm->TokenString(node.token).c_str(),
+                 avg_p,
+                 node.p_next,
+                 ColorProb(score).c_str());
         }
 
-        // average probability of samples.
-        double score = total_p / (i + 1);
+        // I think what I want here is a point where the
+        // *remaining* probability mass is high.
         if (score > best_score) {
           best_path = path;
           best_next = node.depth + 1;
           // Not including this last node.
           best_path.resize(i);
           best_row = row_idx;
+          best_score = score;
+
+          if (VERBOSE > 1) {
+            printf(AGREEN("♥"));
+          }
         }
+      }
+
+      if (VERBOSE > 1) {
+        printf("\n");
       }
     }
 
@@ -293,7 +324,7 @@ struct RephrasingImpl : public Rephrasing {
       2 * (int)llm->context.Tokenize(rephrasable.text, false).size();
 
     Path path = path_in;
-    int next_depth = next_depth_in;
+    int next_node_depth = next_depth_in;
 
     std::string text;
 
@@ -318,21 +349,29 @@ struct RephrasingImpl : public Rephrasing {
       std::vector<std::pair<llama_token, double>> probdist =
         Sampler::ProbDist(llm->context.GetCandidates());
 
-      CHECK(next_depth < (int)probdist.size()) << "I guess this could "
+      CHECK(next_node_depth < (int)probdist.size()) << "I guess this could "
         "happen if we sample thousands of times at the same "
         "position?";
       double p_skipped = 0;
-      for (int i = 0; i < next_depth; i++)
+      for (int i = 0; i < next_node_depth; i++)
         p_skipped += probdist[i].second;
+      // For this node, what't the probability of the next best token?
+      // We'll use this later to see if this is a good place to try
+      // a different alternative path.
+      const double p_next =
+        next_node_depth + 1 < (int)probdist.size() ?
+        probdist[next_node_depth + 1].second : 0.0;
 
-      const auto &[id, p] = probdist[next_depth];
+      const auto &[id, p] = probdist[next_node_depth];
       path.push_back(Node{
           .token = id,
-          .depth = next_depth,
+          .depth = next_node_depth,
           .p_skipped = p_skipped,
-          .p = p});
-      // From now on, take the toap token.
-      next_depth = 0;
+          .p = p,
+          .p_next = p_next,
+        });
+      // From now on, take the top token.
+      next_node_depth = 0;
 
       llm->TakeTokenBatch({id});
       std::string tok = llm->context.TokenString(id);
@@ -346,11 +385,29 @@ struct RephrasingImpl : public Rephrasing {
       if ((int)path.size() % 3 == 0) fflush(stdout);
     }
 
-    // Would be nice if we could remove the nodes from the path
-    // as well, but it doesn't really affect anything since we
-    // aren't trying to keep a correspondence between that and
-    // the string.
+    // Strip this from the text, and also try to strip it from
+    // the path.
     (void)Util::TryStripSuffix("</P>", &text);
+
+    std::string suffix = " </P>";
+    while (!suffix.empty() && !path.empty()) {
+      int tok = path.back().token;
+      std::string stok = llm->TokenString(tok);
+
+      if (Util::TryStripSuffix(stok, &suffix)) {
+        printf("Stripped %d = " APURPLE("%s") "\n", tok, stok.c_str());
+        path.pop_back();
+      } else {
+        if (suffix == " ") {
+          // OK to leave this.
+          printf("Stripping up to space character.");
+        } else {
+          printf(ARED("Unable to strip </P> suffix :(") "\n");
+        }
+        break;
+      }
+    }
+
     // XXX one tokenization of </ P >.
     // A better way would be to stringify the tokens and see if
     // they match the string </P>.
