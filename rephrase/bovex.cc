@@ -137,6 +137,8 @@ static int Bovex(const std::vector<std::string> &args) {
   // Measure final badness?
   printf("Total badness: " ARED("%.11g") "\n", execution.total_badness);
 
+  rephrasing->Save();
+
   if (verbose > 1) {
     printf(AWHITE("The document") ":\n");
     for (const auto &[page_idx, doc] : pages) {

@@ -31,28 +31,9 @@ struct DegenerateDocument : public Document {
 
 };
 
-struct DegenerateRephrasing : public Rephrasing {
-  ~DegenerateRephrasing() override {}
-  bool Rephrase(const Rephrasable &rephrasable) override {
-    return false;
-  }
-  std::vector<std::pair<double, std::string>> GetRephrasings(
-      const Rephrasable &rephrasable) override {
-    return {{0.0, rephrasable.text}};
-  }
-  int GetNumRephrasings(const Rephrasable &rephrasable) override {
-    return 1;
-  }
-
-  std::string DatabaseKey(const Rephrasable &rephrasable) override {
-    return "key";
-  }
-};
-
 Execution::Execution(const Program &pgm) :
   program(pgm),
-  degenerate_document(new DegenerateDocument),
-  degenerate_rephrasing(new DegenerateRephrasing) {
+  degenerate_document(new DegenerateDocument) {
 
 }
 
@@ -120,7 +101,8 @@ Document *Execution::DocumentHook() {
 }
 
 Rephrasing *Execution::RephrasingHook() {
-  return degenerate_rephrasing.get();
+  LOG(FATAL) << "No rephrasing support in base Execution.";
+  return nullptr;
 }
 
 static std::string ColorValuePtrString(const Value *value) {
@@ -426,6 +408,11 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     DebugPrintDocTree(doc);
     Rephrasing::Rephrasable rep = Rephrasing::GetTextToRephrase(doc);
     printf("Rephrase: %s\n", rep.text.c_str());
+    const int already_have = rephrasing->GetNumRephrasings(rep);
+    if (already_have > 0) {
+      printf("Already have " ACYAN("%d") " rephrasings from database!\n",
+             already_have);
+    }
 
     int max_attempts = std::min(20, times * 2);
     while (rephrasing->GetNumRephrasings(rep) < times) {

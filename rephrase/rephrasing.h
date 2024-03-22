@@ -21,6 +21,8 @@ struct Rephrasing {
     std::string text;
   };
 
+  virtual void Save() = 0;
+
   // Attempt to make a new rephrasing. If it is valid, insert
   // it in the database.
   virtual bool Rephrase(const Rephrasable &rephrasable) = 0;

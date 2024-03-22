@@ -1,6 +1,8 @@
 #include "rephrasing.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <memory>
@@ -45,6 +47,39 @@ static std::string ColorProb(float prob) {
                       prob * 100.0);
 }
 
+// We store quantized (16-bit) probabilities in paths, mostly so that they
+// are easier to look at when serializing. This also makes sure that they
+// are actually in [0, 1].
+struct QProb {
+  std::string ToString() const {
+    return StringPrintf("%04x", word);
+  }
+  QProb() {}
+  explicit QProb(const std::string &s) {
+    CHECK(s.size() == 4 &&
+          Util::HexDigit(s[0]) &&
+          Util::HexDigit(s[1]) &&
+          Util::HexDigit(s[2]) &&
+          Util::HexDigit(s[3])) << s;
+    int w =
+      (Util::HexDigitValue(s[0]) << 12) |
+      (Util::HexDigitValue(s[1]) << 8) |
+      (Util::HexDigitValue(s[2]) << 4) |
+      (Util::HexDigitValue(s[3]) << 0);
+    word = w;
+  }
+
+  explicit QProb(double d) {
+    word = std::clamp((int)std::round(d * 65535.0), 0, 65535);
+  }
+
+  operator double() const {
+    return (double)word / 65535.0;
+  }
+
+  uint16_t word = 0;
+};
+
 // As we predict, we order the probabilities at each branch and
 // we're mostly exploring the most probable path. This vector
 // gives the depth of the sample we took (with the expectation
@@ -54,11 +89,11 @@ struct Node {
   int token = 0;
   int depth = 0;
   // Total probability mass with lower depth.
-  double p_skipped = 0.0;
+  QProb p_skipped;
   // Probability of this token.
-  double p = 0.0;
+  QProb p;
   // And of the token with the next depth.
-  double p_next = 0.0;
+  QProb p_next;
 };
 
 // Paths often share prefixes.
@@ -73,8 +108,6 @@ struct Paths {
   void AddPath(Path p) {
     vec.push_back(p);
   }
-
-  // TODO: to/from disk
 
   std::vector<Path> vec;
 };
@@ -133,13 +166,202 @@ struct Database {
   // want to serialize documents.
   std::unordered_map<std::string, std::vector<DatabaseRow>> entries;
 
-  // TODO: to/from file
+  static std::string Escape(const std::string &in) {
+    std::string out;
+    out.reserve(in.size());
+
+    for (int i = 0; i < (int)in.size(); i++) {
+      unsigned char c = in[i];
+      if (c < 20 || c == '%') {
+        out.push_back('%');
+        out.push_back(Util::HexDigit((c >> 4) & 15));
+        out.push_back(Util::HexDigit(c & 15));
+      } else {
+        out.push_back(c);
+      }
+    }
+
+    return out;
+  }
+
+  static std::string Unescape(const std::string &in) {
+    std::string out;
+    out.reserve(in.size());
+
+    for (int i = 0; i < (int)in.size(); i++) {
+      unsigned char c = in[i];
+      if (c == '%') {
+        if (i + 2 < (int)in.size()) {
+          out.push_back((Util::HexDigitValue(in[i + 1]) << 4) +
+                        Util::HexDigitValue(in[i + 2]));
+          i += 2;
+        }
+      } else {
+        out.push_back(c);
+      }
+    }
+
+    return out;
+  }
+
+  static std::string PathString(const Path &path) {
+    std::string out;
+    for (const Node &node : path) {
+      StringAppendF(&out, "%d %d %s %s %s ",
+                    node.token, node.depth,
+                    node.p_skipped.ToString().c_str(),
+                    node.p.ToString().c_str(),
+                    node.p_next.ToString().c_str());
+    }
+    return out;
+  }
+
+  static Path ParsePath(const std::string &str) {
+    static const RE2 node_re(
+        " *([0-9]+) +([0-9]+) +([0-9A-Fa-f]+) +([0-9A-Fa-f]+) +([0-9A-Fa-f]+) *");
+    Path path;
+    re2::StringPiece input(str);
+    // while (!input.empty() && input[0] == ' ') input.remove_prefix(1);
+    int tok = 0, depth = 0;
+    std::string pskip, p, pnext;
+    while (RE2::Consume(&input, node_re, &tok, &depth, &pskip, &p, &pnext)) {
+      Node node;
+      node.token = tok;
+      node.depth = depth;
+      node.p_skipped = QProb(pskip);
+      node.p = QProb(p);
+      node.p_next = QProb(pnext);
+      path.push_back(std::move(node));
+    }
+
+    CHECK(input.empty()) << "Unrecognized content left in Path:\n"
+                         << std::string(input)
+                         << "\nFrom original input:\n"
+                         << str;
+
+    return path;
+  }
+
+  void SaveToFile(const std::string &file) const {
+
+    std::vector<std::pair<const std::string *,
+                          const std::vector<DatabaseRow> *>> sorted;
+    sorted.reserve(entries.size());
+    for (const auto &[key, rows] : entries) {
+      sorted.emplace_back(&key, &rows);
+    }
+
+    std::sort(sorted.begin(), sorted.end(),
+              [](const auto &a, const auto &b) {
+                return *a.first < *b.first;
+              });
+
+    std::string out;
+    for (const auto &[key, rows_in] : sorted) {
+      // The order doesn't matter, but it is nice to keep them sorted
+      // so that we can see the shared prefixes of the text.
+      std::vector<const DatabaseRow *> rows;
+      rows.reserve(rows_in->size());
+      for (const auto &row : *rows_in) rows.push_back(&row);
+      std::sort(rows.begin(), rows.end(),
+                [](const DatabaseRow *a, const DatabaseRow *b) {
+                  return a->text < b->text;
+                });
+
+      // Key and number of rows.
+      // They are ASCII SHA-256.
+      StringAppendF(&out, "%s %d\n", key->c_str(),
+                    (int)rows_in->size());
+
+      for (const DatabaseRow *row : rows) {
+        std::string path_string = PathString(row->path);
+        // The text sometimes starts with space, so we use | to
+        // make sure we can just strip off leading whitespace.
+        StringAppendF(&out, "  |%s\n", Escape(row->text).c_str());
+        StringAppendF(&out, "    %s\n", path_string.c_str());
+        StringAppendF(&out, "    %c %.17g %.17g\n",
+                      row->valid ? 'V' : 'X',
+                      row->skipped_loss,
+                      row->other_loss);
+      }
+    }
+
+    Util::WriteFile(file, out);
+  }
+
+  void ReadFromFile(const std::string &file) {
+    auto Error = [&file](const std::string &msg) {
+        return StringPrintf(ARED("Bad rephrase database file") " %s:\n"
+                            ABLUE("%s") "\n"
+                            "You should probably just delete it?\n",
+                            file.c_str(), msg.c_str());
+      };
+
+    static const RE2 key_re("([A-Za-z0-9]+) +([0-9]+) *");
+    static const RE2 text_re(" *\\|(.*)");
+    // very permissive
+    #define FLOAT_RE "[-+0-9.eE]+"
+    static const RE2 score_re(" *([VX]) +(" FLOAT_RE ") +(" FLOAT_RE ") *");
+
+    entries.clear();
+    std::vector<std::string> lines = Util::ReadFileToLines(file);
+    for (int lidx = 0; lidx < (int)lines.size(); /* in loop */) {
+      std::string &key_line = lines[lidx];
+      // Expect a key.
+      std::string key;
+      int num_rows = -1;
+      CHECK(RE2::FullMatch(key_line, key_re, &key, &num_rows))
+        << Error("key") << "\n" << key_line;
+      lidx++;
+
+      int num_valid = 0;
+      static constexpr int LINES_PER_ROW = 3;
+      std::vector<DatabaseRow> rows;
+      rows.reserve(num_rows);
+      for (int ridx = 0; ridx < num_rows; ridx++) {
+        int roff = lidx + ridx * LINES_PER_ROW;
+        CHECK(roff + (LINES_PER_ROW - 1) < (int)lines.size())
+          << Error("num_rows");
+        std::string &text_line = lines[roff + 0];
+        std::string &path_line = lines[roff + 1];
+        std::string &score_line = lines[roff + 2];
+        DatabaseRow row;
+        CHECK(RE2::FullMatch(text_line, text_re, &row.text)) << Error("text");
+        row.path = ParsePath(path_line);
+        char valid = 0;
+        CHECK(RE2::FullMatch(score_line, score_re,
+                             &valid, &row.skipped_loss, &row.other_loss))
+          << Error("score") << "\n" << score_line;
+        row.valid = (valid == 'V');
+        if (row.valid) num_valid++;
+
+        rows.push_back(std::move(row));
+      }
+
+      if (VERBOSE > 0) {
+        std::string kt = key.size() > 20 ? key.substr(0, 17) + "..." : key;
+        printf(AGREY("%s") ": Read " ACYAN("%d") " rows (%d valid)\n",
+               kt.c_str(), (int)rows.size(), num_valid);
+      }
+
+      entries[key] = std::move(rows);
+      lidx += num_rows * LINES_PER_ROW;
+    }
+
+    if (VERBOSE > 0) {
+      printf("Read " ACYAN("%d") " entries from " AWHITE("%s") "\n",
+             (int)entries.size(), file.c_str());
+    }
+
+  }
+
 };
 
 struct RephrasingImpl : public Rephrasing {
 
-  RephrasingImpl(const std::string &database_file) {
-    // TODO: Load from file
+  RephrasingImpl(const std::string &database_file) :
+    db_filename(database_file) {
+    db.ReadFromFile(db_filename);
   }
 
   ~RephrasingImpl() override {}
@@ -209,7 +431,7 @@ struct RephrasingImpl : public Rephrasing {
                  " = %s ",
                  llm->TokenString(node.token).c_str(),
                  avg_p,
-                 node.p_next,
+                 (double)node.p_next,
                  ColorProb(score).c_str());
         }
 
@@ -398,9 +620,9 @@ struct RephrasingImpl : public Rephrasing {
       path.push_back(Node{
           .token = id,
           .depth = next_node_depth,
-          .p_skipped = p_skipped,
-          .p = p,
-          .p_next = p_next,
+          .p_skipped = QProb(p_skipped),
+          .p = QProb(p),
+          .p_next = QProb(p_next),
         });
       // From now on, take the top token.
       next_node_depth = 0;
@@ -482,11 +704,13 @@ struct RephrasingImpl : public Rephrasing {
   int GetNumRephrasings(const Rephrasable &rephrasable) override {
     const std::string key = DatabaseKey(rephrasable);
     const auto it = db.entries.find(key);
-    if (it == db.entries.end()) return {};
+    if (it == db.entries.end()) return 0;
     int num = 0;
-    for (const DatabaseRow &row : it->second)
-      if (row.valid)
+    for (const DatabaseRow &row : it->second) {
+      if (row.valid) {
         num++;
+      }
+    }
     return num;
   }
 
@@ -514,6 +738,15 @@ struct RephrasingImpl : public Rephrasing {
     return ret;
   }
 
+  void Save() override {
+    db.SaveToFile(db_filename);
+    if (VERBOSE > 0) {
+      printf("Saved rephrasing database to " AWHITE("%s") "\n",
+             db_filename.c_str());
+    }
+  }
+
+  std::string db_filename;
   std::string model_key;
   std::unique_ptr<LLM> llm;
   std::string prompt_header;

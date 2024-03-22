@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "re2/re2.h"
-#include "re2/stringpiece.h"
 #include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
