@@ -220,7 +220,7 @@ work-queue_test.exe : work-queue_test.o $(BASE)
 csv_test.exe : csv.o csv_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-pdf_test.exe : pdf.o pdf_test.o image.o stb_image.o stb_image_write.o stb_truetype.o $(TEST_UTIL) $(BASE)
+pdf_test.exe : pdf.o pdf_test.o image.o stb_image.o stb_image_write.o stb_truetype.o qr-code.o $(TEST_UTIL) $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 recurse_test.exe : recurse_test.o $(BASE)

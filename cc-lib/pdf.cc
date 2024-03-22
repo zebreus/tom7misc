@@ -50,6 +50,7 @@
 #include "base/stringprintf.h"
 #include "image.h"
 #include "stb_truetype.h"
+#include "qr-code.h"
 
 // XXX maybe should avoid this dependency. Just
 // need to read file to a vector.
@@ -1728,6 +1729,31 @@ bool PDF::AddBarcodeUPCE(float x, float y, float width, float height,
 
   return true;
 }
+
+bool PDF::AddQRCode(float x, float y, float size,
+                    const std::string &str, uint32_t color,
+                    Page *page) {
+  ImageA img = QRCode::Text(str);
+
+  float pixel = size / img.Width();
+
+  for (int qy = 0; qy < img.Height(); qy++) {
+    for (int qx = 0; qx < img.Width(); qx++) {
+      if (img.GetPixel(qx, qy) == 0x00) {
+        AddFilledRectangle(x + qx * pixel,
+                           // Image is flipped relative to PDF
+                           // coordinate system
+                           size + y - (qy + 1) * pixel,
+                           pixel, pixel,
+                           0, color,
+                           PDF_TRANSPARENT, page);
+      }
+    }
+  }
+
+  return true;
+}
+
 
 int PDF::AddBookmark(const std::string &name, int parent, Page *page) {
   if (!page)

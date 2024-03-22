@@ -395,6 +395,10 @@ public:
                       const std::string &str, uint32_t color,
                       Page *page = nullptr);
 
+  bool AddQRCode(float x, float y, float size,
+                 const std::string &str, uint32_t color = PDF_RGB(0, 0, 0),
+                 Page *page = nullptr);
+
   bool AddText(const std::string &text,
                float size,
                // XXX baseline?

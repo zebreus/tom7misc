@@ -13,6 +13,7 @@
 #include "image.h"
 #include "arcfour.h"
 #include "util.h"
+#include "qr-code.h"
 
 static constexpr std::initializer_list<const char *> FONTS = {
   "cmunrm.ttf",
@@ -345,6 +346,36 @@ static void MakeSimplePDF() {
     CHECK(pdf.AddBarcodeUPCE(45, y, BARCODE_WIDTH, BARCODE_HEIGHT,
                              "042100005264", PDF_RGB(0, 0, 0))) <<
       "Error: " << pdf.GetErr();
+
+
+    // Second column.
+    static constexpr float QR_SIZE = BARCODE_WIDTH * 2.0;
+    y = PDF::PDF_LETTER_HEIGHT - GAP - QR_SIZE;
+
+    pdf.AddFilledRectangle(256, y, QR_SIZE, QR_SIZE, 0,
+                           PDF_RGB(245, 245, 255),
+                           PDF_TRANSPARENT);
+    CHECK(pdf.AddQRCode(256, y, QR_SIZE, "HTTP:\\\\SIGBOVIK.ORG",
+                        PDF_RGB(40, 0, 0)));
+    y -= QR_SIZE + GAP;
+
+    static constexpr int qw = 29;
+    const float qp = QR_SIZE / (double)qw;
+    const float rx = 256 + 2 * qp;
+    const float ry = y + 2 * qp;
+
+    CHECK(pdf.AddQRCode(256, y, QR_SIZE,
+                        "pls stop invading my personal space"));
+
+    pdf.AddFilledRectangle(rx, ry, qp * 3, qp * 3, 0,
+                           PDF_RGB(255, 255, 255),
+                           PDF_TRANSPARENT);
+    CHECK(pdf.AddQRCode(rx, ry, qp * 3, "so nosy :("));
+
+    y -= QR_SIZE + GAP;
+
+
+
   }
 
   {
