@@ -280,6 +280,8 @@ struct ImageA {
   void Clear(uint8 value);
 
   void BlendImage(int x, int y, const ImageA &other);
+  // Clipped, but copy source alpha and ignore current image contents.
+  void CopyImage(int x, int y, const ImageA &other);
 
   // Clipped.
   inline void SetPixel(int x, int y, uint8 v);

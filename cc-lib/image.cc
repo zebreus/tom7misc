@@ -1226,6 +1226,65 @@ void ImageA::BlendImage(int x, int y, const ImageA &other) {
   }
 }
 
+// This version assumes every pixel read/write is in bounds.
+// Assumes the two images do not alias.
+static void CopyImageARectUnclipped(
+    uint8_t *dest, int destwidth,
+    int dstx, int dsty,
+    const uint8_t *source, int sourcewidth,
+    int srcx, int srcy, int srcw, int srch) {
+  for (int yy = 0; yy < srch; yy++) {
+    const int syy = srcy + yy;
+    const int dyy = dsty + yy;
+
+    memcpy(dest + (dyy * destwidth) + dstx,
+           source + (syy * sourcewidth) + srcx,
+           srcw * sizeof (uint8_t));
+  }
+}
+
+void ImageA::CopyImage(int x, int y, const ImageA &other) {
+  // Compute clipped rectangle.
+  int srcx = 0, srcy = 0;
+  int srcw = other.Width(), srch = other.Height();
+  // Clip left and top edges.
+  if (x < 0) { srcx -= x; srcw += x; x = 0; }
+  if (y < 0) { srcy -= y; srch += y; y = 0; }
+
+  // Clip right and bottom.
+  int right = (x + srcw) - width;
+  if (right > 0) srcw -= right;
+  int bottom = (y + srch) - height;
+  if (bottom > 0) srch -= bottom;
+
+  // Completely clipped; no-op.
+  if (srcw <= 0 || srch <= 0) return;
+
+  if (this == &other) {
+    // Overlapping copies don't work. (PERF: If the src/dest
+    // rectangles don't overlap, we can still use memcpy.)
+    // If they come from the same image, always use slow path
+    // via temporary:
+    ImageA tmp(srcw, srch);
+    CopyImageARectUnclipped(
+        tmp.alpha.data(), tmp.Width(),
+        0, 0,
+        other.alpha.data(), other.Width(),
+        srcx, srcy, srcw, srch);
+    CopyImageARectUnclipped(
+        alpha.data(), width,
+        x, y,
+        tmp.alpha.data(), tmp.Width(),
+        0, 0, srcw, srch);
+  } else {
+    CopyImageARectUnclipped(
+        alpha.data(), width,
+        x, y,
+        other.alpha.data(), other.width,
+        srcx, srcy, srcw, srch);
+  }
+}
+
 
 ImageRGBA ImageA::GreyscaleRGBA() const {
   ImageRGBA rgba(width, height);

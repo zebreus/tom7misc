@@ -20,7 +20,6 @@
 #include <mutex>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "re2/util/util.h"
 #include "re2/util/logging.h"

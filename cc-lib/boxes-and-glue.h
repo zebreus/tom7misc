@@ -60,8 +60,10 @@ struct BoxesAndGlue {
 
     // Penalty associated with this word. Penalties are a global
     // phenomenon, so don't read too much into it being associated
-    // with this word. It's just the difference betwen the penalty
-    // at this spot versus the tail.
+    // with this word (it is almost always the last word in the line).
+    // It's just the difference betwen the penalty at this spot versus
+    // the tail. Summing up all the penalties in the output gives the
+    // total badness.
     double penalty_here = 0.0;
   };
 

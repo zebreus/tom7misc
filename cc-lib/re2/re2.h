@@ -190,12 +190,11 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <algorithm>
 #include <map>
 #include <mutex>
 #include <string>
 
-#include "re2/stringpiece.h"
+#include "re2/stringpiece.h"  // IWYU pragma: export
 
 namespace re2 {
 class Prog;

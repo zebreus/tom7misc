@@ -61,6 +61,8 @@ BoxesAndGlue::PackBoxesFirst(
       if (!current_line.empty()) {
         current_width += current_postwidth;
         current_line.back().actual_glue = current_postwidth;
+        current_line.back().penalty_here +=
+          current_line.back().box->glue_break_penalty;
       } else {
         CHECK(current_postwidth == 0.0);
       }
@@ -80,8 +82,13 @@ BoxesAndGlue::PackBoxesFirst(
         // Unusual situation where the word was so long (or break was
         // not allowed) that it doesn't fit on a line on its own. We
         // put it on the line, but do not "break" before it.
+
+        // XXX there should be badness if the word overruns.
       } else {
         current_line.back().did_break = true;
+        current_line.back().penalty_here =
+          current_line.back().box->glue_break_penalty +
+          std::abs(line_width - current_width);
       }
 
       // This does not output empty lines, so it works for the unusual
