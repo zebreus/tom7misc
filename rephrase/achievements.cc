@@ -44,17 +44,17 @@ struct AchievementsImpl : public Achievements {
           printf("\n");
         }
       }
-    }
 
     printf("\n"
-           AWHITE("  Achievement Unlocked!") "\n"
-           ACYAN("    ** %s **") "\n"
-           "%s\n",
+           AWHITE("       Achievement Unlocked!") "\n"
+           ACYAN("          ** %s **") "\n"
+           "%s\n\n",
            name.c_str(), description.c_str());
 
     FILE *f = fopen(ACHIEVEMENTS_FILE, "ab");
-    fprintf(f, "%s", name.c_str());
+    fprintf(f, "%s\n", name.c_str());
     fclose(f);
+    }
   }
 };
 

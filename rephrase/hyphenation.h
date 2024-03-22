@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <unordered_map>
 #include <string_view>
@@ -21,6 +22,16 @@ struct Hyphenation {
   std::vector<std::string> Hyphenate(std::string_view word,
                                      int lefthyphenmin = 2,
                                      int righthyphenmin = 3);
+
+  // If you want to hyphenate a token like ["actually,"] you first
+  // need to strip the leading and trailing punctuation so that
+  // you can look up [actually] in the hyphenation dictionary.
+  // This conveinece function removes non-letters from the left
+  // and right side of the word. This also includes space.
+  //
+  // If the whole thing is punctuation, returns {"", input, ""}.
+  std::tuple<std::string_view, std::string_view, std::string_view>
+  static SplitPunctuation(std::string_view word);
 
  private:
   std::unordered_map<std::string, std::vector<uint8_t>> patterns;

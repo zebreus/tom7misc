@@ -15,8 +15,10 @@
 #include <variant>
 #include <vector>
 
+#include "achievements.h"
 #include "bignum/big.h"
 #include "ansi.h"
+#include "hyphenation.h"
 #include "image.h"
 #include "util.h"
 #include "bytecode.h"
@@ -202,8 +204,12 @@ DocTree ValueToDocTree(const bc::Value *v) {
   // within an input tree; we just don't want cycles.
   std::function<DocTree(FS seen, const bc::Value *)> Rec =
     [&Rec](FS seen, const bc::Value *v) -> DocTree {
-      CHECK(!seen.Contains(v)) << "Cycle in document! "
-        "What is this, some kind of joke!?";
+      if (seen.Contains(v)) {
+        Achievements::Get().Achieve("Cycle Correct",
+                                    "A cycle in the document?!");
+        LOG(FATAL) << "Cycle in document! "
+          "What is this, some kind of joke!?";
+      }
       seen = seen.Insert(v);
 
       using map_type = std::unordered_map<std::string, bc::Value *>;
@@ -454,7 +460,7 @@ Document::BoxifyText(const Font *font, double font_size,
   const double space_width = font->CharWidth(' ');
   const double hyphen_width = font->CharWidth('-');
 
-  auto IsWhitespace = [](const std::string &s) {
+  auto IsWhitespace = [](std::string_view s) {
       // Because of the way we normalize whitespace, the only
       // case where the word is whitespace will be a single
       // space.
@@ -464,8 +470,7 @@ Document::BoxifyText(const Font *font, double font_size,
   // Work a word at a time.
   while (!text.empty()) {
     const auto &[space_before, word_in, space_after] = NextWord(text);
-    std::string word = std::string(word_in);
-    if (word.empty()) {
+    if (word_in.empty()) {
       CHECK(!space_after) << "Bug: The empty word should "
         "cause the space to be one?";
       if (space_before) {
@@ -479,13 +484,13 @@ Document::BoxifyText(const Font *font, double font_size,
       }
     }
 
-    // TODO: We currently punt on any "word" that contains
-    // non-letters, because the hyphenation library doesn't
-    // handle these. But we should strip punctuation like
-    // a trailing comma or leading quotation mark. Actual
-    // hyphens can of course allow for break after, as well.
-    std::vector<std::string> hyphen_parts;
+    // Split off punctuation leading or following the word.
+    const auto &[prefix, word, suffix] =
+      Hyphenation::SplitPunctuation(word_in);
 
+    // TODO: Detect actual hyphens in the word, which would
+    // allow breaks after them too!
+    std::vector<std::string> hyphen_parts;
     if (!word.empty()) {
       hyphen_parts = [&]() -> std::vector<std::string> {
         for (int i = 0; i < (int)word.size(); i++) {
@@ -495,13 +500,22 @@ Document::BoxifyText(const Font *font, double font_size,
       }();
     }
 
-    // In the rare case of a space before, we handle it by making
-    // it part of the first hyphen part. There may be no hyphen
-    // parts at all, in which case the word will just be a space;
-    // this is even rarer.
+    // Now we put the prefix and suffix back on the parts, including
+    // the rare "space before" obligation. It may be that there were
+    // no parts, (even rarer!) but then we'll create one.
+    if (hyphen_parts.empty() &&
+        (space_before || !prefix.empty() || !suffix.empty())) {
+      hyphen_parts.push_back("");
+    }
+
+    if (!prefix.empty()) {
+      hyphen_parts[0] = std::string(prefix) + hyphen_parts[0];
+    }
+    if (!suffix.empty()) {
+      hyphen_parts.back() = hyphen_parts.back() + std::string(suffix);
+    }
     if (space_before) {
-      if (hyphen_parts.empty()) hyphen_parts.push_back(" ");
-      else hyphen_parts[0] = " " + hyphen_parts[0];
+      hyphen_parts[0] = " " + hyphen_parts[0];
     }
 
     // Now turn the word into boxes. We read successive codepoints

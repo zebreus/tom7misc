@@ -3,15 +3,7 @@
 
 #include "llama.h"
 
-#include <algorithm>
-#include <cassert>
-#include <cinttypes>
-#include <cmath>
 #include <cstdio>
-#include <cstring>
-#include <ctime>
-#include <fstream>
-#include <iostream>
 #include <map>
 #include <memory>
 #include <string>
@@ -23,14 +15,10 @@
 #include "ansi.h"
 #include "timer.h"
 #include "util.h"
-#include "vector-util.h"
-#include "arcfour.h"
-#include "randutil.h"
 #include "auto-histo.h"
 
 #include "llm.h"
 #include "models.h"
-#include "llm-util.h"
 
 using namespace std;
 

@@ -185,8 +185,8 @@ that it looked good:
 
 [monospace-block-ext { left-indent = 0.0,
                        width = inch 3.45,
-                       line-height = 6.45,
-                       font-size = 7.0 }
+                       line-height = 6.46,
+                       font-size = 7.05 }
  [  Once you save the game at your ship (about 1 hour 15 minutes is good), go
 down to Tourian. Do not save your game in Tourian if you have intentions of
 returning to any previously explored section on Planet Zebes. There will be
@@ -210,16 +210,15 @@ that every line was exactly the same length, with no extra spaces or
 other cheating, just because it could be done.[cite metroid1996rs]
 
 Doing this manually is a chore, and I do like to automate the chores
-of Speedrunners[cite murphy2013first]. Here's how we can do this with
+of Speedrunners.[cite murphy2013first] Here's how we can do this with
 an LLM:
 
 I got this working in an afternoon. It's, like, easy mode. For a
 paragraph of text and a target line length, I ask the LLM to remember
 the paragraph and recite it. The prompt looks like this:
 
-[monospace-block
- [... actual prompt ...
-]]
+[blockquote
+ [Exercise in rephrasing text. The following paragraph needs to be rephrased so that it retains its precise meaning, but with minor variations in the specific choice of words, punctuation, and so on. No new facts should be introduced or removed, but it is good to use synonyms and change the word order and phrasing.]]
 
 I then sample text a word at a time to continue this prompt. If a line
 ends exactly on the number of characters that I want (and the next
@@ -300,12 +299,32 @@ them?" one answer is "me," and the other answer is "this."
 
 Quantization means using fewer bits to represent the floating point
 weights.[cite murphy2019nan] This saves memory, but it also speeds
-up inference, which needs to read pretty much read the entire model
-for every predicted token. I used
-
-[* Tuning model settings *]
+up inference, which needs to read pretty much the entire model
+for every predicted token. I got reasonable quality and good
+performance from LLama-v2-7b with 16-bit floats. This one fits
+completely on my World's (physically) largest GPU. In order to
+tune various settings, I ran thousands of trials for the different
+models, and made some nice custom graphs:
 
 [image { img = image-load "tune-single.png", width = inch 3.65 }]
+
+Tuning results for Llama-v2-7b with 16-bit floats. The [it[x]] axis is
+the number of CPU threads and the [it[y]] axis is the number of model
+layers that have been loaded onto the GPU. As expected, increasing the
+number of threads and layers on the GPU improves performance, since
+this whole model fits on the GPU. For the 70b models (not pictured)
+there is an abrupt drop-off in throughput before we load all the
+layers, and also my computer gets very sluggish if I exceed the GPU
+memory. Unsurprisingly, we see that if we use more than the number
+of physical cores (32) we do not see any benefit from hyperthreading,
+since hyperthreading basically never helps. The best throughput
+actually uses a modest number of cores (about 12). Mostly I'm
+just including the graph to demonstrate that BoVeX has support for
+including PNG files.
+
+Where was I? Right. Fundamentally, LLMs are trained to predict a
+token (like a word or part of a word) given some sequence of tokens
+that precedes them.
 
 [section[Next Part]]
 

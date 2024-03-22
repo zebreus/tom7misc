@@ -115,6 +115,11 @@ static int Bovex(const std::vector<std::string> &args) {
     printf("\n");
   }
 
+  if (verbose > 16) {
+    Achievements::Get().Achieve("Logorrhea",
+                                "Have more than 16 verbosity enabled.");
+  }
+
   compiler.frontend.SetVerbose(verbose);
   compiler.SetVerbose(verbose);
 

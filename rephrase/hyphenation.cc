@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -230,4 +231,49 @@ std::vector<std::string> Hyphenation::Hyphenate(std::string_view word,
   }
 
   return out;
+}
+
+// We do want to handle unicode like "em dash" and "fancy quotes"
+// touching the words.
+//
+// Since we only hyphenate ASCII, it's simplest to allowlist the
+// characters that count as part of a word, and treat everything
+// else as punctuation. This could have false positives for unicode
+// words that contain ASCII. To do this correctly, I think we need
+// to use the unicode props tables.
+static bool IsWordConstituent(char c) {
+  return (c >= 'a' && c <= 'z') ||
+    (c >= 'A' && c <= 'Z') ||
+    (c >= '0' && c <= '9');
+}
+
+std::tuple<std::string_view, std::string_view, std::string_view>
+Hyphenation::SplitPunctuation(std::string_view word_in) {
+  std::string_view word = word_in;
+  size_t prefix_size = 0;
+  while (!word.empty() && !IsWordConstituent(word[0])) {
+    prefix_size++;
+    word.remove_prefix(1);
+  }
+
+  if (word.empty()) return std::make_tuple(std::string_view(),
+                                           word_in,
+                                           std::string_view());
+
+  size_t suffix_size = 0;
+  while (!word.empty() && !IsWordConstituent(word.back())) {
+    suffix_size++;
+    word.remove_suffix(1);
+  }
+
+  CHECK(!word.empty()) << "We should have found these characters "
+    "in the prefix process above, then.";
+
+  CHECK(prefix_size + word.size() + suffix_size == word_in.size());
+
+  std::string_view prefix =
+    word_in.substr(0, prefix_size);
+  std::string_view suffix =
+    word_in.substr(word_in.size() - suffix_size, suffix_size);
+  return std::make_tuple(prefix, word, suffix);
 }
