@@ -20,6 +20,8 @@
 #include "rephrasing.h"
 #include "timer.h"
 #include "util.h"
+#include "periodically.h"
+#include "achievements.h"
 
 struct BovexExecution : public bc::Execution {
   explicit BovexExecution(const bc::Program &pgm,
@@ -27,7 +29,8 @@ struct BovexExecution : public bc::Execution {
                           Rephrasing *rephrasing) :
     bc::Execution(pgm),
     pdf_document(pdf_document),
-    rephrasing(rephrasing) {
+    rephrasing(rephrasing),
+    save_rephrasing_per(60.0) {
 
   }
 
@@ -35,7 +38,12 @@ struct BovexExecution : public bc::Execution {
   double total_badness = 0.125;
 
   Document *DocumentHook() override { return pdf_document; }
-  Rephrasing *RephrasingHook() override { return rephrasing; }
+  Rephrasing *RephrasingHook() override {
+    if (save_rephrasing_per.ShouldRun()) {
+      rephrasing->Save();
+    }
+    return rephrasing;
+  }
 
   // The defaults for these are fine.
   // virtual void FailHook(const std::string &msg);
@@ -61,6 +69,11 @@ struct BovexExecution : public bc::Execution {
 
   PDFDocument *pdf_document = nullptr;
   Rephrasing *rephrasing = nullptr;
+
+  // Periodically save the rephrasing database, so that even if we
+  // kill the process, we don't lose work. (Unless you kill it during
+  // the write to disk. Then you can lose everything!)
+  Periodically save_rephrasing_per;
 };
 
 static int Bovex(const std::vector<std::string> &args) {
@@ -148,6 +161,8 @@ static int Bovex(const std::vector<std::string> &args) {
   }
 
   pdf_document.GeneratePDF(output_file, pages);
+
+  Achievements::Get().Achieve("Gen AI", "Generated a PDF!");
 
   const auto &[data_bytes, total_insts] = ProgramSize(pgm);
   printf("Program size: " ABLUE("%lld") " bytes data, "

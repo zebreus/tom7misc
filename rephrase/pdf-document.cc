@@ -19,6 +19,7 @@
 #include "pdf.h"
 #include "ansi.h"
 #include "color-util.h"
+#include "base/logging.h"
 
 PDFFont::PDFFont(const PDF::FontObj *f) : pdf_font(f) {
   CHECK(f != nullptr);

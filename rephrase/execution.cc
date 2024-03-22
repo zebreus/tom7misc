@@ -417,7 +417,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     int max_attempts = std::min(20, times * 2);
     while (rephrasing->GetNumRephrasings(rep) < times) {
       if (rephrasing->Rephrase(rep)) {
-        printf("\nRephrased " AGREEN("OK") "\n");
+        // printf("\nRephrased " AGREEN("OK") "\n");
       }
       max_attempts--;
       if (max_attempts < 0) break;

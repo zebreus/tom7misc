@@ -78,10 +78,15 @@ fun bibsource-compare (Source { t = t1, sort-key = k1, fields = f1 },
     EQUAL => bibsourcetype-compare (t1, t2)
   | ord => ord
 
+fun url-sort-key url =
+  case string-split "/" url of
+    "http" :: "" :: domain :: _ => domain
+  | "https" :: "" :: domain :: _ => domain
+  | _ => url
 
 (* XXX: should register these in a global data structure. *)
 fun bib-website (obj as {(Website) url}) =
-  Source { t = Website, sort-key = url, fields = obj }
+  Source { t = Website, sort-key = url-sort-key url, fields = obj }
   | bib-website _ = fail "bib-website needs at least a url"
 
 

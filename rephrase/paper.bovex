@@ -274,7 +274,7 @@ world I mean stuff like filling the internet with infinite spam, or
 building critical infrastructure on it in order to cut costs, where
 most of our "safety" measures consist of asking the model politely to
 recite its daily affirmations before performing its tasks. That kind
-of thing. It'll be at least months before we really have to worry.
+of thing. It'll be at least months before we [it[really]] have to worry.
 
 Anyway, the normal way to program with Llama is to use Python, and a
 mountain of things that you are not supposed to understand and cannot
@@ -284,7 +284,28 @@ geniuses[cite ggeranov] have implemented the inference code for
 llama-like models in a nice, portable C++ library called "llama.cpp"
 (checks out).
 
-OK EXPLAIN :)
+With llama.cpp, I can load a quantized version of the model into RAM.
+Actually there are two different models, the 7b and the 70b, referring
+to the number of billions of parameters, which must be a multiple of
+VII "for performance reasons." The parameters are the weights on the
+layers of the network. At native 16-bit floats, the 70b model will fit
+in about 130 GB of RAM, just slightly more than 128 GB, making one
+wonder what performance reasons they had in mind. But anyway, earlier
+this year I (physically) broke my computer trying to put the world's
+(physically) largest video card into it, the GeForce 4090, and so I
+endowed the replacement computer with 256 GB of RAM. If you are ever
+looking at specifications for a high-end desktop computer, by the way,
+and wondering "who the heck buys these things and what do they do with
+them?" one answer is "me," and the other answer is "this."
+
+Quantization means using fewer bits to represent the floating point
+weights.[cite murphy2019nan] This saves memory, but it also speeds
+up inference, which needs to read pretty much read the entire model
+for every predicted token. I used
+
+[* Tuning model settings *]
+
+[image { img = image-load "tune-single.png", width = inch 3.65 }]
 
 [section[Next Part]]
 
@@ -296,6 +317,7 @@ perks of proportional fonts and a programmable document preparation
 system? And can we have it by the SIGBOVIK deadline so that it can be
 used to prepare the paper that I'm now writing? Maybe! This is the
 Donald Knuth Any% speedrun.
+
 
 
 [section[The BoVeX language]]
@@ -363,6 +385,7 @@ Keywords: Donald Knuth Net Worth, some kind of -topia,
 
 TODO: total badness begins at 0.125, since every paper is a little
 bit bad.
+Since it feels good to be a little bit bad.
 
 TODO: time travel, the most powerful weapon
 

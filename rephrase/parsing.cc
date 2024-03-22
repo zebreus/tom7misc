@@ -546,8 +546,10 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto BracedExpr = [&](const auto &Expr) {
       return (IsToken<LBRACE>() >>
               // XXX why doesn't it work to reverse these two?
-              (ObjectContents(Expr) || RecordContents(Expr))
-              << IsToken<RBRACE>()) ||
+              (ObjectContents(Expr) || RecordContents(Expr)) <<
+              // Allow and ignore trailing comma.
+              Opt(IsToken<COMMA>()) <<
+              IsToken<RBRACE>()) ||
     (Mark(IsToken<LBRACE>()) >[&](const auto &err) -> const Exp * {
         const auto &[_, start, length] = err;
         LOG(FATAL) << ErrorAtIndex(start, length) <<

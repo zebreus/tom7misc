@@ -30,21 +30,27 @@
 using Rephrasable = Rephrasing::Rephrasable;
 using Candidates = LLM::Candidates;
 
-static constexpr int VERBOSE = 1;
+static constexpr int VERBOSE = 2;
 
 // Hack!
 static constexpr int TAIL_TOKEN_HEADROOM = 5;
 
+// So that we can get a probability for the first token,
+// we do some "laplace smoothing".
+static constexpr double LAPLACE_NUMER = 1.0;
+static constexpr double LAPLACE_DENOM = 1.0;
+
 namespace {
 
-static std::string ColorProb(float prob) {
+static std::string ColorProbString(const std::string &s, float prob) {
   const auto &[r, g, b, a_] =
     ColorUtil::Unpack32(
         ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, prob));
+  return ANSI::ForegroundRGB(r, g, b) + s + ANSI_RESET;
+}
 
-  return StringPrintf("%s%.2f%%" ANSI_RESET,
-                      ANSI::ForegroundRGB(r, g, b).c_str(),
-                      prob * 100.0);
+static std::string ColorProb(float prob) {
+  return ColorProbString(StringPrintf("%.2f%%", prob * 100.0), prob);
 }
 
 // We store quantized (16-bit) probabilities in paths, mostly so that they
@@ -396,29 +402,26 @@ struct RephrasingImpl : public Rephrasing {
     int best_row = -1;
     for (int row_idx = 0; row_idx < (int)rows.size(); row_idx++) {
       const DatabaseRow &row = rows[row_idx];
+      // We only consider valid rows to sample.
+      if (!row.valid) continue;
 
       const Path &path = row.path;
 
-      if (VERBOSE > 1) {
+      if (VERBOSE > 2) {
         printf("For each node:\n");
       }
 
-      // So that we can get a probability for the first token,
-      // we do some "laplace smoothing".
-      double laplace_numer = 1.0;
-      double laplace_denom = 1.0;
-
-      double total_p = (laplace_numer * laplace_denom);
+      double total_p = (LAPLACE_NUMER * LAPLACE_DENOM);
       for (int i = 0; i < (int)path.size() - TAIL_TOKEN_HEADROOM; i++) {
         // average probability of samples up to here
-        double avg_p = total_p / (i + laplace_denom);
+        double avg_p = total_p / (i + LAPLACE_DENOM);
 
         const Node &node = path[i];
         total_p += node.p;
 
         double score = avg_p * node.p_next;
 
-        if (VERBOSE > 1) {
+        if (VERBOSE > 2) {
           /*
           printf(AGREY("%d") "=%s " AGREY("d%d") " %s ~%s",
                  node.token,
@@ -447,12 +450,12 @@ struct RephrasingImpl : public Rephrasing {
             best_path.resize(i);
             best_row = row_idx;
             best_score = score;
-            if (VERBOSE > 1) {
+            if (VERBOSE > 2) {
               printf(AGREEN("♥"));
             }
 
           } else {
-            if (VERBOSE > 1) {
+            if (VERBOSE > 2) {
               printf(ARED("💣"));
             }
           }
@@ -460,12 +463,12 @@ struct RephrasingImpl : public Rephrasing {
         }
       }
 
-      if (VERBOSE > 1) {
+      if (VERBOSE > 2) {
         printf("\n");
       }
     }
 
-    if (VERBOSE > 0) {
+    if (VERBOSE > 2) {
       if (best_row >= 0) {
         printf(ABLUE("Best existing text") ":\n"
                "%s\n"
@@ -486,6 +489,14 @@ struct RephrasingImpl : public Rephrasing {
     }
 
     return std::make_pair(std::move(best_path), best_next);
+  }
+
+  static std::string SimplePrompt() {
+    return "Exercise in rephrasing text. The following paragraph, which appears between <P> and </P> tags, needs to be rephrased so that it retains its precise meaning, but with minor variations in the specific choice of words, punctuation, and so on. No new facts should be introduced or removed, and all the ideas from the original paragraph should appear. However, it is good to use synonyms and change the word order and phrasing.";
+  }
+
+  static std::string MarkupPrompt() {
+    return SimplePrompt() + " The text contains markup as well. There are two types: <span class=\"c1\">text goes here</span> and <img src=\"image.png\">. These should be preserved in the rephrased text. <img> tags absolutely need to be retained and should not change their sources, although it is permissible to move them around in the text. <span> should generally be retained, but the contents could change. The classes of spans may not change, and only the classes that appear in the original text may be used.";
   }
 
   void LazyInit() {
@@ -512,15 +523,23 @@ struct RephrasingImpl : public Rephrasing {
            model_key.c_str(),
            ANSI::Time(load_timer.Seconds()).c_str());
 
-    prompt_header = Util::ReadFile("variations.txt");
-    CHECK(!prompt_header.empty());
+    // Database keys also depend on the prompt for highest reproducibility.
+    prompt_key = SHA256::Ascii(
+        SHA256::HashString(SimplePrompt() + "||||" + MarkupPrompt()));
 
-    prompt_header += "\nOriginal text:\n\n<P>";
+    // We always use one of these two prompts. Play them once and
+    // save the state after.
 
-    // Since we always use the same prompt header, play that once
-    // and save the state.
-    llm->DoPrompt(prompt_header);
-    post_prompt_state.reset(new LLM::State(llm->SaveState()));
+    post_simple_prompt_state = GetStateFromTask(SimplePrompt());
+    post_markup_prompt_state = GetStateFromTask(MarkupPrompt());
+  }
+
+  std::unique_ptr<LLM::State> GetStateFromTask(const std::string &task) {
+    CHECK(!task.empty());
+    const std::string prompt = task + "\nOriginal text:\n\n<P>";
+    llm->Reset();
+    llm->DoPrompt(prompt);
+    return std::make_unique<LLM::State>(llm->SaveState());
   }
 
   std::string DatabaseKey(const Rephrasable &rephrasable) override {
@@ -531,6 +550,7 @@ struct RephrasingImpl : public Rephrasing {
     SHA256::Ctx hash;
     SHA256::Init(&hash);
     SHA256::UpdateString(&hash, model_key);
+    SHA256::UpdateString(&hash, prompt_key);
     // Make sure the context and text can't get mixed up, no matter what
     // they contain.
     SHA256::UpdateString(
@@ -542,13 +562,28 @@ struct RephrasingImpl : public Rephrasing {
     return SHA256::Ascii(SHA256::FinalVector(&hash));
   }
 
+  bool IsSimple(const Rephrasable &rephrasable) const {
+    return rephrasable.images.empty() &&
+      rephrasable.classes.empty();
+  }
+
   bool Rephrase(const Rephrasable &rephrasable) override {
     LazyInit();
 
     Timer prep_timer;
+
+    const bool is_simple = IsSimple(rephrasable);
+
     // PERF: Save some of the recent texts (by database key) so that
-    // we don't need to replay them.
-    llm->LoadState(*post_prompt_state);
+    // we don't need to replay them. This could be fancy by storing
+    // some of the path as well, but the easy thing would be to just
+    // skip the "input" below, which is the same each time and half of
+    // the work.
+    if (is_simple) {
+      llm->LoadState(*post_simple_prompt_state);
+    } else {
+      llm->LoadState(*post_markup_prompt_state);
+    }
 
     // Prompt already contains instructions and "Original text:\n\n<P>"
     std::string input =
@@ -558,14 +593,20 @@ struct RephrasingImpl : public Rephrasing {
                    "<P>",
                    rephrasable.text.c_str());
 
-    printf(AGREY("Completed prompt: [%s]") "\n", input.c_str());
+    if (VERBOSE > 2) {
+      printf(AGREY("Completed prompt: [%s]") "\n", input.c_str());
+    }
 
-    llm->DoPrompt(input);
+    // This is not a prompt; we're continuing the prompt.
+    // llm->DoPrompt(input);
+    llm->InsertString(input, true);
     // Reset regex, since the prompt may not have followed it.
     llm->sampler.SetRegEx(".*</P>");
 
     const double prep_sec = prep_timer.Seconds();
-    printf("[finished prep in %s]\n", ANSI::Time(prep_sec).c_str());
+    if (VERBOSE > 2) {
+      printf("[finished prep in %s]\n", ANSI::Time(prep_sec).c_str());
+    }
 
     const std::string key = DatabaseKey(rephrasable);
 
@@ -591,9 +632,31 @@ struct RephrasingImpl : public Rephrasing {
       llm->TakeTokenBatch(tokens, true);
     }
     const double replay_sec = replay_timer.Seconds();
-    printf("Replayed path in %s\n", ANSI::Time(replay_sec).c_str());
+    if (VERBOSE > 2) {
+      printf("Replayed path in %s\n", ANSI::Time(replay_sec).c_str());
+    }
 
-    printf(AGREY("%s"), text.c_str());
+    if (VERBOSE > 1) {
+      // printf(AGREY("%s"), text.c_str());
+      double total_p = LAPLACE_NUMER;
+      for (int i = 0; i < (int)path.size(); i++) {
+        const Node &node = path[i];
+
+        // average probability of samples up to here
+        double avg_p = total_p / (i + LAPLACE_DENOM);
+        total_p += node.p;
+
+        double score = avg_p * node.p_next;
+
+        std::string tok = llm->context.TokenString(node.token);
+        printf("%s", ColorProbString(tok, score).c_str());
+        if (node.depth > 0) {
+          printf(AORANGE("↓"));
+        }
+      }
+    }
+
+    bool normal_termination = false;
 
     Timer inference_timer;
     while ((int)path.size() < max_tokens) {
@@ -632,8 +695,11 @@ struct RephrasingImpl : public Rephrasing {
       text += tok;
       if (id == llm->context.EOSToken())
         break;
-      printf("%s", tok.c_str());
+      if (VERBOSE > 1) {
+        printf("%s", tok.c_str());
+      }
       if (llm->sampler.Accepting() || llm->sampler.Stuck()) {
+        normal_termination = llm->sampler.Accepting();
         break;
       }
       if ((int)path.size() % 3 == 0) fflush(stdout);
@@ -673,17 +739,29 @@ struct RephrasingImpl : public Rephrasing {
     if (!path.empty() && path.back().token == 829) path.pop_back();
     #endif
 
-    printf("\nFinal text: " AYELLOW("%s") "\n", text.c_str());
+    if (VERBOSE > 1) {
+      printf("\n");
+    }
+    if (VERBOSE > 2) {
+      printf("Final text: " AYELLOW("%s") "\n", text.c_str());
+    }
 
     // Check validity.
     DocTree doc;
     std::string error;
-    bool valid = Rejoin(rephrasable, text, &doc, &error);
+    if (!normal_termination) error = "invalid termination";
+    const bool valid = normal_termination && Rejoin(rephrasable, text, &doc, &error);
     if (valid) {
-      printf(AGREEN("Valid:") "\n");
-      DebugPrintDocTree(doc);
+      if (VERBOSE > 1) {
+        printf(AGREEN("Valid") ".\n");
+        if (VERBOSE > 2) {
+          DebugPrintDocTree(doc);
+        }
+      }
     } else {
-      printf(ARED("Not valid") ": %s\n", error.c_str());
+      if (VERBOSE > 1) {
+        printf(ARED("Not valid") ": %s\n", error.c_str());
+      }
     }
 
     DatabaseRow row;
@@ -747,10 +825,10 @@ struct RephrasingImpl : public Rephrasing {
   }
 
   std::string db_filename;
-  std::string model_key;
+  std::string model_key, prompt_key;
   std::unique_ptr<LLM> llm;
-  std::string prompt_header;
-  std::unique_ptr<LLM::State> post_prompt_state;
+  std::unique_ptr<LLM::State> post_simple_prompt_state;
+  std::unique_ptr<LLM::State> post_markup_prompt_state;
   Database db;
 };
 

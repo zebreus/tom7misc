@@ -125,25 +125,25 @@ of coverage. For a particular product received by a particular user,
 
     #[cite murphy2013first]#
 
-    Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+    [rephrase-paragraph 25 [Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.]]
 
-    A "User Product" is either (1) a "consumer product", which means any tangible personal property which is normally used for personal, family, or household purposes, or (2) anything designed or sold for incorporation into a dwelling. In determining whether a product is a consumer product, doubtful cases shall be resolved in favor of coverage. For a particular product received by a particular user, "normally used" refers to a typical or common use of that class of product, regardless of the status of the particular user or of the way in which the particular user actually uses, or expects or is expected to use, the product. A product is a consumer product regardless of whether the product has substantial commercial, industrial or non-consumer uses, unless such uses represent the only significant mode of use of the product.
+    [rephrase-paragraph 25 [A "User Product" is either (1) a "consumer product", which means any tangible personal property which is normally used for personal, family, or household purposes, or (2) anything designed or sold for incorporation into a dwelling. In determining whether a product is a consumer product, doubtful cases shall be resolved in favor of coverage. For a particular product received by a particular user, "normally used" refers to a typical or common use of that class of product, regardless of the status of the particular user or of the way in which the particular user actually uses, or expects or is expected to use, the product. A product is a consumer product regardless of whether the product has substantial commercial, industrial or non-consumer uses, unless such uses represent the only significant mode of use of the product.]]
 
-If during a game it is found that an illegal move, including failing to meet the
+    [rephrase-paragraph 25 [If during a game it is found that an illegal move, including failing to meet the
 requirements of the promotion of a pawn or capturing the opponent's king, has
 been completed, the position immediately before the irregularity shall be
 reinstated. If the position immediately before the irregularity cannot be determined
 the game shall continue from the last identifiable position prior to the irregularity.
 The clocks shall be adjusted according to Article 6.13. The Articles 4.3 and 4.6 apply
-to the move replacing the illegal move. The game shall then continue from this reinstated position.
+to the move replacing the illegal move. The game shall then continue from this reinstated position.]]
 
-After the action taken under Article 7.4.a, for the first two illegal moves by a player
+    [rephrase-paragraph 25 [After the action taken under Article 7.4.a, for the first two illegal moves by a player
 the arbiter shall give two minutes extra time to his opponent in each instance; for a
 third illegal move by the same player, the arbiter shall declare the game lost by this
 player. However, the game is drawn if the position is such that the opponent cannot
-checkmate the player's king by any possible series of legal moves.
+checkmate the player's king by any possible series of legal moves.]]
 
-I then sample text a word at a time to continue this prompt. If a line
+    [rephrase-paragraph 25 [I then sample text a word at a time to continue this prompt. If a line
 ends exactly on the number of characters that I want (and the next
 character is a space or other character that is appropriate to end a
 line) then I accept the stream so far and continue. If I exceed the
@@ -151,7 +151,7 @@ line length, I back up to the state at the beginning of the line and
 try again with new random samples. I just keep doing that until the
 paragraph is complete, and we have beautifully justified monospace
 text that resembles the original. Here is an example of this paragraph
-rendered in monospace:
+rendered in monospace:]]
 
 [monospace-block
  [I sample text a word at a time to continue
@@ -169,7 +169,7 @@ rendered in monospace:
 
 
 
-A natural question is, how did ML5 help us in building these? It is
+[rephrase-paragraph 25 [A natural question is, how did ML5 help us in building these? It is
 difficult to evaluate this question objectively, because to some
 extent language choice is a matter of taste, skill level varies
 greatly between programmers, and measures of code complexity or
@@ -190,11 +190,11 @@ importantly, ML5’s modal type system yields a logical way of
 organizing a program according to the places involved (worlds), their
 local resources (modal code and data), and the computations and values
 that they share (valid code and data). This simply leads to better
-programs.
+programs.]]
 
-I understand the risks and wish to continue.
+[rephrase-paragraph 25 [I understand the risks and wish to continue.]]
 
-On any  normal computer,  a program  is just a  data file.  It usually
+[rephrase-paragraph 25 [On any  normal computer,  a program  is just a  data file.  It usually
 contains some header information that tells the operating system about
 what it is (for example, to confirm  that it is a program and not some
 other kind of file; to tell the operating system about how much memory
@@ -217,7 +217,7 @@ register—and a multibyte sequence like [tt[0x6A 0x40]] means [tt[PUSH 0x40]].
 All the time,  the computer is just  reading the next byte  out of the
 program (or  operating system,  itself a  program written  using these
 same instructions), doing what it says to do, and then going on to the
-next one.
+next one.]]
 
 Why drop? [layout "one"] [layout "two"] space after
 
