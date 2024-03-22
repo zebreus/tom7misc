@@ -625,6 +625,18 @@ fun image { img = img as (Image img-handle), width } =
     doc
   end
 
+
+fun layout-map-text (f : string -> string) (lay : layout) : layout =
+  let
+    fun rec (l : layout) =
+      case layoutcase l of
+        Text s => layout (f s)
+      | Node (_, attrs, ch : layout list) =>
+          node attrs (layout-concat (list-map rec ch))
+  in
+    rec lay
+  end
+
 (* This creates a rigid box. We could improve it in various ways:
    - Don't be fixed width!
    - It would be better as a text property anyway, so that it
@@ -635,7 +647,7 @@ fun blockquote lay =
   let
     val LEFT-INDENT = inch 0.25
     val WIDTH = inch 3.25
-    val lay = it lay
+    val lay = it (layout-map-text normalize-whitespace lay)
     val boxes = get-boxes lay
     val (badness, lines : layout list) = pack-boxes (BEST, WIDTH, boxes)
     do emit-badness badness
