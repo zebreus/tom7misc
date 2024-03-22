@@ -132,6 +132,7 @@ fun image-size (Image img) : { width : int, height : int } =
 
 
 fun layout-concat nil = []
+  | layout-concat (x :: nil) = x
   | layout-concat (l :: t) = [[l][layout-concat t]]
 
 fun layout-list-join _ nil = []
@@ -455,6 +456,7 @@ fun get-paragraphs (ls : layout list) : layout list =
       | normalize (false, s) =
       normalize-whitespace s
 
+
     fun do-one-text (after-p, s) =
       let
         do LAYOUT-VERBOSE andthen print ("one text [" ^ s ^ "]")
@@ -470,6 +472,38 @@ fun get-paragraphs (ls : layout list) : layout list =
           end
       end
 
+    (*
+    fun merge-span attrs lay =
+      case layoutcase lay of
+        Node (SPAN, old-attrs, ch) =>
+          let
+            val m = span (obj-merge (old-attrs, attrs)) (layout-concat ch)
+          in
+            print "\nS:BEFORE:\n";
+            debug-print-doc lay;
+            print "S:MERGED:\n";
+            debug-print-doc m;
+            m
+          end
+      | Node (GROUP, old-attrs, ch) =>
+          if obj-empty old-attrs
+          then layout-concat (list-map (merge-span attrs) ch)
+            (* we could just merge 'em? *)
+          else fail "group with attributes not supported here"
+      | _ =>
+          let
+            val m = span attrs lay
+          in
+            print "NOT MERGED:\n";
+            debug-print-doc lay;
+            print "RESULT:\n";
+            debug-print-doc m;
+            m
+          end
+        *)
+
+    val merge-span = span
+
     fun do-one lay =
       case layoutcase lay of
         Text s => do-one-text (false, s)
@@ -478,7 +512,7 @@ fun get-paragraphs (ls : layout list) : layout list =
           let
             val paras = get-paragraphs children
             (* Apply the same attributes to every paragraph. *)
-            val spans = list-map (fn ch => span attrs ch) paras
+            val spans = list-map (fn ch => merge-span attrs ch) paras
           in
             case spans of
               nil => append (span attrs [])
@@ -667,7 +701,7 @@ fun rephrase-paragraph (times : int) p =
 (* map-attrs (fn attrs => attrs with (Rephrase) times = times) p *)
   let val r = span {(Rephrase) rephrase-times = times} p
   in
-    debug-print-doc r;
+    (* debug-print-doc r; *)
     r
   end
 
@@ -688,7 +722,7 @@ fun rephrasings (times, para) : (float * layout) list =
    try multiple rephrasings and pick the one with the best badness. *)
 fun pack-paragraph column-width para =
   let
-    val VERBOSE = true
+    val VERBOSE = false
 
     (* XXX I should fix whatever's creating singleton groups, but
        it prevents us from recognizing the top-level rephrase
@@ -707,6 +741,15 @@ fun pack-paragraph column-width para =
         print "-------------------\n"
       end
 
+    fun extract-rephrasing rewrap para =
+      case layoutcase para of
+        Node (SPAN, attrs as {(Rephrase) rephrase-times }, ch) =>
+          list-map (fn (loss, para) => (loss, rewrap para))
+          (rephrasings (rephrase-times, para))
+      | Node (SPAN, attrs, child :: nil) =>
+          extract-rephrasing (fn x => span attrs x) child
+      | _ => (0.0, rewrap para) :: nil
+
     (* TODO: Allow rephrasing mid-paragraph. Same idea; it's just
        fiddly. Probably would be good to provide context to the
        LLM, as well. *)
@@ -723,7 +766,8 @@ fun pack-paragraph column-width para =
           end
       | _ => (0.0, para) :: nil
 
-    val paras : (float * layout) list = get-rephrasings para
+    (* val paras : (float * layout) list = get-rephrasings para *)
+    val paras : (float * layout) list = extract-rephrasing (fn x => x) para
 
     fun get-best (NONE, nil) = fail "bug: no options?"
       | get-best (SOME (badness, best), nil) =

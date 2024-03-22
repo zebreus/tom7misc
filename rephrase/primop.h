@@ -78,6 +78,7 @@ enum class Primop {
   STRING_TO_LAYOUT,
 
   OBJ_EMPTY,
+  OBJ_MERGE,
 
   IS_TEXT,
   GET_TEXT,

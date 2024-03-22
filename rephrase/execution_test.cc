@@ -462,6 +462,19 @@ static void ObjTests() {
           list-app print y
         end)"), "4,2,");
 
+
+  CHECK_EQ(
+      RunToString(R"(
+        let
+          object A of { x : int, s : string }
+          object B of { x : int, z : string }
+          val o1 = {(A) x = 1, s = "hi"}
+          val o2 = {(B) x = 2, z = "yo"}
+        in
+          case obj-merge (o1, o2) of
+            {(A) x = 2, s = "hi"} as {(B) x = 2, z = "yo"} => print "OK"
+          | _ => print "NO"
+        end)"), "OK");
 }
 
 static void StringTests()  {

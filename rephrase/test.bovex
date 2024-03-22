@@ -63,8 +63,9 @@ let
 
 
   fun no-rephrase lay = lay
+  fun no-rephrase-paragraph _ lay = lay
 
-  val SIMPLE-TEST = true
+  val SIMPLE-TEST = false
 
 (* [rephrase-paragraph 5 [This is a rephrased paragraph. Please rephrase it!]] *)
 
@@ -79,11 +80,12 @@ let
 in
   if SIMPLE-TEST
   then (main-text
-        [A regular paragraph. Nothing funny going on here.
+        (palatino
+         [A regular paragraph. Nothing funny going on here.
 
-         [rephrase-paragraph 25 [Help me find a way to China.]]
+          [rephrase-paragraph 25 [Help me find a way to China.]]
 
-         Back to normal paragraphs.])
+          Back to normal paragraphs.]))
   else
   (main-text
   (palatino
@@ -110,6 +112,12 @@ of coverage. For a particular product received by a particular user,
     main layout loop working, [helvetica[which]] is the design thing that's
     stressing
     me out. Makes sense, as it's kind of the [b[core]] of everything.
+
+    [rephrase-paragraph 25 [When thinking about writing a document,
+     you should choose your words carefully. For example, if you are
+     too sesquipedalian and use words that are too long or, or too
+     prolix and use words that are too short, then they might not fit
+     well on the lines. This could cause your document to look bad!]]
 
     [no-rephrase
      [This paragraph has some [b[markup]] in it. It's [it[also]] inside

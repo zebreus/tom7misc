@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <string_view>
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -27,7 +28,7 @@
 using Rephrasable = Rephrasing::Rephrasable;
 using Candidates = LLM::Candidates;
 
-static constexpr int VERBOSE = 2;
+static constexpr int VERBOSE = 1;
 
 // Hack!
 static constexpr int TAIL_TOKEN_HEADROOM = 5;
@@ -370,6 +371,8 @@ struct RephrasingImpl : public Rephrasing {
     const double replay_sec = replay_timer.Seconds();
     printf("Replayed path in %s\n", ANSI::Time(replay_sec).c_str());
 
+    printf(AGREY("%s"), text.c_str());
+
     Timer inference_timer;
     while ((int)path.size() < max_tokens) {
       // No need to filter by NFA, since the NFA is just used to
@@ -522,11 +525,26 @@ struct RephrasingImpl : public Rephrasing {
 
 bool Rephrasing::Rejoin(
     const Rephrasable &rephrasable,
-    const std::string &text,
+    const std::string &text_in,
     DocTree *doc,
     std::string *error) {
+
+  const std::string &before_text = rephrasable.text;
+  const bool orig_space_before =
+    !before_text.empty() && before_text[0] == ' ';
+  const bool orig_space_after =
+    !before_text.empty() && before_text.back() == ' ';
+
+  std::string_view text(text_in);
+  if (!orig_space_before) {
+    while (!text.empty() && text[0] == ' ') text.remove_prefix(1);
+  }
+  if (!orig_space_after) {
+    while (!text.empty() && text.back() == ' ') text.remove_suffix(1);
+  }
+
   std::string html_error;
-  std::vector<HTMLNode> nodes = HTML::Parse(text, &html_error);
+  std::vector<HTMLNode> nodes = HTML::Parse(std::string(text), &html_error);
   if (!html_error.empty()) {
     printf(ARED("Couldn't parse as HTML") ": %s\n", html_error.c_str());
     if (error != nullptr) *error = html_error;

@@ -402,6 +402,16 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     }
   }
 
+  case Primop::OBJ_MERGE: {
+    const map_type *as = std::get_if<map_type>(&a->v);
+    const map_type *bs = std::get_if<map_type>(&b->v);
+    CHECK(as != nullptr) << "Expected obj argument (lhs) to obj-merge";
+    CHECK(bs != nullptr) << "Expected obj argument (rhs) to obj-merge";
+    map_type merged = *as;
+    for (const auto &[k, v] : *bs) merged[k] = v;
+    return NewValue(&state->heap, std::move(merged));
+  }
+
   case Primop::REPHRASINGS: {
     const BigInt *abi = std::get_if<BigInt>(&a->v);
     CHECK(abi != nullptr) << "Expected int argument (lhs) to rephrasings";

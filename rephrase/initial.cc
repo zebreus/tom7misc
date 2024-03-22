@@ -85,6 +85,7 @@ Initial::Initial(AstPool *pool) {
     {"layout", Primop::STRING_TO_LAYOUT},
 
     {"obj-empty", Primop::OBJ_EMPTY},
+    {"obj-merge", Primop::OBJ_MERGE},
 
     {"emit-badness", Primop::EMIT_BADNESS},
     {"set-doc-info", Primop::SET_DOC_INFO},

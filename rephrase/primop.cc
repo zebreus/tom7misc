@@ -61,6 +61,7 @@ const char *PrimopString(Primop po) {
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
   case Primop::OBJ_EMPTY: return "OBJ_EMPTY";
+  case Primop::OBJ_MERGE: return "OBJ_MERGE";
 
   case Primop::FONT_LOAD_FILE: return "FONT_LOAD_FILE";
   case Primop::FONT_REGISTER: return "FONT_REGISTER";
@@ -137,6 +138,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::NORMALIZE_WHITESPACE: return std::make_tuple(0, 1);
 
   case Primop::OBJ_EMPTY: return std::make_tuple(0, 1);
+  case Primop::OBJ_MERGE: return std::make_tuple(0, 2);
 
   case Primop::FONT_LOAD_FILE: return std::make_tuple(0, 1);
   case Primop::FONT_REGISTER: return std::make_tuple(0, 3);
@@ -231,6 +233,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::IS_TEXT: return true;
 
   case Primop::OBJ_EMPTY: return true;
+  case Primop::OBJ_MERGE: return true;
 
   case Primop::FONT_LOAD_FILE:
     // Possibly we could consider this lazy with a little more
@@ -376,6 +379,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::SET_DOC_INFO: return {{}, pool->Arrow(Obj, Unit())};
 
   case Primop::OBJ_EMPTY: return {{}, pool->Arrow(Obj, Bool)};
+  // attributes on the rhs overwrite the lhs
+  case Primop::OBJ_MERGE: return {{}, BinOp(Obj, Obj, Obj)};
 
   case Primop::FONT_LOAD_FILE: return {{}, pool->Arrow(String, String)};
   case Primop::FONT_REGISTER:
