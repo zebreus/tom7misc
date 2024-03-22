@@ -39,9 +39,11 @@ struct BovexExecution : public bc::Execution {
 
   Document *DocumentHook() override { return pdf_document; }
   Rephrasing *RephrasingHook() override {
+    // TODO: Only if dirty.
     if (save_rephrasing_per.ShouldRun()) {
       rephrasing->Save();
     }
+    did_rephrase = true;
     return rephrasing;
   }
 
@@ -66,6 +68,8 @@ struct BovexExecution : public bc::Execution {
     pages.clear();
     return out;
   }
+
+  bool did_rephrase = false;
 
   PDFDocument *pdf_document = nullptr;
   Rephrasing *rephrasing = nullptr;
@@ -152,8 +156,20 @@ static int Bovex(const std::vector<std::string> &args) {
   execution.RunToCompletion(&state);
 
   std::map<int, DocTree> pages = execution.ExtractDocument();
-  // Measure final badness?
-  printf("Total badness: " ARED("%.11g") "\n", execution.total_badness);
+  // Measure final badness.
+  const double total_badness = execution.total_badness;
+  printf("Total badness: " ARED("%.11g") "\n", total_badness);
+
+  if (pages.size() >= 5 && total_badness < 1000.0 * pages.size()) {
+    Achievements::Get().Achieve("Not bad",
+                                "Generate a document that's at least 5 pages "
+                                "with less than 1000 badness per page.");
+  }
+
+  if (total_badness >= +1e100) {
+    Achievements::Get().Achieve("SUPERBAD",
+                                "Generate a document with a googol badness.");
+  }
 
   rephrasing->Save();
 
@@ -167,7 +183,11 @@ static int Bovex(const std::vector<std::string> &args) {
 
   pdf_document.GeneratePDF(output_file, pages);
 
-  Achievements::Get().Achieve("Gen AI", "Generated a PDF!");
+  if (execution.did_rephrase) {
+    Achievements::Get().Achieve("Gen AI",
+                                "Generated a PDF that used the rephrase "
+                                "functionality.");
+  }
 
   const auto &[data_bytes, total_insts] = ProgramSize(pgm);
   printf("Program size: " ABLUE("%lld") " bytes data, "

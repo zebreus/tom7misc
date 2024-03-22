@@ -45,6 +45,7 @@ static void TestHyphenations() {
   TESTCASE("king", "king");
   TESTCASE("prevent", "pre-vent");
   TESTCASE("a", "a");
+  TESTCASE("sigbovik", "sig-bovik");
 
   {
     std::vector<std::string> a1 = hyphenation.Hyphenate("a", 10000, 0);

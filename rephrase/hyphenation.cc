@@ -29,10 +29,11 @@ static constexpr bool VERBOSE = false;
 // denylists. So, if the final number is ODD, hyphenation is allowed
 // there.
 //
-// TODO: Additionally, the rules seem to be designed with a minimum
+// Additionally, the rules seem to be designed with a minimum
 // hyphenation length in mind. This appears to be 2 characters for
 // the shortest prefix, and 3 characters for the shortest suffix.
-// Without this, you get hyphenations like "k-ing".
+// Without this, you get hyphenations like "k-ing". These are parameters
+// to the hyphenation function.
 
 static constexpr const char *DATABASE =
   "hyph-en-us.tex";

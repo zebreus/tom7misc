@@ -241,7 +241,7 @@ object Box of { width : float, height : float,
                 glue-break-insert : layout,
                 (* When breaking at this point, the width of the box
                    including the glue-break-insert. *)
-                glue-break-width : float }
+                glue-break-extra-width : float }
 
 fun box (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_BOX) l
@@ -621,6 +621,24 @@ fun image { img = img as (Image img-handle), width } =
            img = img-handle, img-width = width, img-height = height,
            glue-break-penalty = -9999999.0 } [ ]]]
 
+  in
+    doc
+  end
+
+(* Here we give the height, since the typical usage is to make it flow
+   with some text. Allows breaks. *)
+fun image-inline { img = img as (Image img-handle), height } = let
+    (* Compute width from image native dimensions. *)
+
+    val { width = pixel-width, height = pixel-height } = image-size img
+    val ratio : float = pixel-width / pixel-height
+    val width = height *. ratio
+
+    (* Would it be cleaner to put the image sticker inside the box? *)
+    val doc =
+      box {(Box) height = height, width = width,
+           img = img-handle, img-width = width, img-height = height,
+           glue-break-penalty = 0.0, glue-ideal = 0.0 } []
   in
     doc
   end

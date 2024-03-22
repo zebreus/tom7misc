@@ -4,18 +4,25 @@ let
   import "cite.bovex"
   import "paper.bib"
 
+  val doc-title = "Badness 0"
+
   do set-doc-info {(PDFInfo)
                    creator = "BoVeX",
                    producer = "Huh?",
-                   title = "I didn't come up with a good title yet",
+                   title = doc-title,
                    author = "Tom 7",
                    subject = "Documents do not need a 'subject'"
                    (* leaving out date, so it is the creation time. *) }
 
+  val gutenberg-hyphen-png = image-load "gutenberg-hyphen.png"
+  val gutenberg-hyphen =
+    image-inline { img = gutenberg-hyphen-png, height = 9.0 }
+  val tt = fixedersys
+
 in
 (main-text (palatino
 [
- [title[I didn't come up with a good title yet]]
+ [title (layout doc-title)]
  [author[Dr. Tom Murphy VII, Ph.D.]]
 
 It has become clear to me that many people walk this Earth completely
@@ -142,12 +149,6 @@ One of the irritating things about large language models is that they are so buz
 ... AI is more like lorem epsom than Donald Knuth ...
 Even if it never gets as smart and precise as Knuth, it will be industrially useful (or at least prevalent), like Lorem Epsom is.
 
-[*
-  In video, flash up a slide here with the list of things that distress me:
-  Oil spill in our information landscape. Demise of human creativity.
-  Torment Nexus.
-*]
-
 So many things about "AI" distress me. [it[Dolor sit amet]]. Even in
 the best scenarios we will not be able to ignore it: It's too
 economically useful even in its Lorem Epsom state. So one of my side
@@ -165,7 +166,7 @@ Fortunately, I already spent a lengthy introduction talking about
 
 If we are giving up on precision, perhaps at least we can have
 something that we want: Perfect typography? This paper is about a new
-typesetting system, SigBoVeX, which allows for the controlled exchange
+typesetting system, BoVeX, which allows for the controlled exchange
 of precision for beauty. It essentially gives us a dial between Lorem
 Epsom and Donald Knuth. To illustrate, we'll first look at a simpler
 case by inspecting one of my other interests: Super Metroid.
@@ -255,7 +256,7 @@ similarity to the playfun algorithm!)
 
 The approach described works reasonably well, but it has several
 deficiencies (such as: it only took an afternoon) that we'll address
-for the real SigBoVeX system. But it is a good example to explain some
+for the real BoVeX system. But it is a good example to explain some
 concepts that will be useful later. (And niceish ways to program with
 LLMs, etc.)
 
@@ -373,22 +374,83 @@ of my time on this project implementing a full-fledged language.
 
 [section[Hyphenation]]
 
-Good joke about hyph-en-us.tex. "hyph" here of course stands for
-hyphens, and "en-us" means "English (United States)" (it is actually
-the [it[standard]] IETF BCP 47 locale code for US
+Johannes Gutenberg invented the hyphen in A.D. 1455 for his
+Gutenberg Bible, then just known as Bible. His printing process
+actually required the lines to all be the same length, so he
+had to stick these little guys all over the place. His hyphens
+looked like this: [gutenberg-hyphen].
+Later on we straightened these out and decided we only needed one
+at a time, and today we use them not because we [it[require]] our
+lines to all be the same length, but because we like the cognitive
+challenge of remembering the beginning of the word while we move
+our eyes to the beginning of the next line while reading.
+
+BoVeX supports hyphenation using the same approach as TeX: We break
+each word into boxes at legal hyphenation points, and mark these
+points as sort-of-bad to break, and that if you do, you need to insert
+the hyphen character and use a little more space. By default in BoVeX,
+the hyphen sticks out of the end of the line a little bit. This is
+actually a bug but I like it.
+
+I use the same hyphen dictionary as TeX, which is cleverly represented
+as a prioritized set of patterns in order to fit compactly in memory.[cite
+liang1983word] Again, you have to respect Knuth and crew's attention
+to detail, although to be fair this algorithm also dates to a time when
+storing a spell check dictionary in a computer's memory was described
+as "not feasible." So some of this was out of necessity. One of the
+nice things about the representation is that it generalizes to words
+that were not in the 1974 Merriam-Webster Pocket Dictionary. For example
+it hyphenates SIG[box {(Box)
+                       glue-break-penalty = -1000.0,
+                       width = 0.0 } [-]]BOVIK
+correctly.
+
+The details really keep going, too. The hyphenation dictionary is
+stored in a file called [tt[hyph-en-us.tex]]. "hyph" here of course
+stands for hyphens, and "en-us" means "English (United States)" (it is
+actually the [it[standard]] IETF BCP 47 locale code for US
 English![cite bcp47]). But then we have "hyph-en", which is the
 correct hyphenation of "hyphen"! You could even read it as "hyphen us,
 tex", as a request for TeX to hyphenate the words in this file. This
 is the kind of detail I'm talking about! (There is also hyph-uk, which
 for once sounds a little less dignified than the US accent.)
 
-This algorithm
-dates from a time when storing a spell check dictionary in
-a computer's memory was described as "not feasible."
-
 [section[Nightmare on LLM street]]
 
-[section[Future work]]
+[section[Conclusion]]
+
+[subsection[Future work]]
+
+Unicode support. This would have been helpful when above I decided
+to show you Gutenberg's funny hyphen, [gutenberg-hyphen], for which I had to settle for embedding a crappy hand-drawn
+PNG file. BoVeX is witten with some Unicode support, with the main
+exception being that the PDF output code only supports the diminutive
+WinAnsiEncoding.[cite adobe2006pdf].
+
+
+The BoVeX system allows the document author to trade semantic
+consistency in order to achieve higher quality typography. Although we
+achieve state-of-the-art results, there are likely points that are
+more Pareto-efficient than what BoVeX can achieve. Although it uses
+one of the most powerful publicly available LLMs, that model is
+limited to performing edits to the text within narrow constraints.
+Irresponsible research has demonstrated that language models are
+capable of volition, taking actions and using tools to accomplish
+goals. With minor modifications, it is likely possible to expand
+the Pareto frontier of the semantic/typographic tradeoff. For example,
+sometimes we could improve the typographic quality of the text without
+any semantic loss, by acting on the world to
+[it[make the reworded text true]].
+(TODO: Example of something I changed in the paper,
+ like implementing an achievement system?) Imagine the difficulty
+in typesetting a statement like "The universe contains approximately
+1,000,000,000 paperclips," and how much more beautiful the text could be
+  if that number were instead 1,000,000,000,000,000,000,000,000,000,000,000,000!
+
+In the meantime XXX here
+There is a way to get zero badness: Delete the whole document!
+"Don't say anything at all."
+
 
 
 [section[Graveyard / TODO]]
@@ -397,7 +459,7 @@ Is this the most beautifully typeset document that you've ever seen?
 Yes. That's because it was constructed using a new document
 preparation system that is beyond anything ever used in the past.
 That's right, you're seeing for the first time in print, making
-its debut at SIGBOVIK 2024, the AI-enhanced SiGBoVeX document
+its debut at SIGBOVIK 2024, the AI-enhanced BoVeX document
 preparation system. Get ready to have your mind very slowly blown!
 
 Keywords: Donald Knuth Net Worth, some kind of -topia,
@@ -452,8 +514,6 @@ everywhere
 Cursed BoVeX is
 Fully Justified
 
-There is a way to get zero badness: Delete the whole document!
-"Don't say anything at all."
 
 "typeset"
 
