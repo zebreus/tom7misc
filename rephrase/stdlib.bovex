@@ -323,3 +323,56 @@ fun set-tolist (Set { cmp = _, tree }) =
   in
     rec tree
   end
+
+
+datatype (a, b) map-tree =
+  MapEmpty
+  | MapNode of map-tree * a * b * map-tree
+
+datatype (a, b) map = Map of { cmp: a * a -> order, tree: (a, b) map-tree }
+
+fun map-empty cmp = Map { cmp = cmp, tree = MapEmpty }
+
+fun map-insert (Map { cmp, tree }, key, value) =
+  let
+    fun r MapEmpty = MapNode (MapEmpty, key, value, MapEmpty)
+      | r (MapNode (left, x, v, right)) =
+      case cmp (key, x) of
+        (* Already present. Overwrite it. *)
+        EQUAL => MapNode (left, key, value, right)
+      | LESS => MapNode (r left, x, v, right)
+      | GREATER => MapNode (left, x, v, r right)
+  in
+    Map { cmp = cmp, tree = r tree }
+  end
+
+fun map-find (Map { cmp, tree }, key) =
+  let
+    fun r MapEmpty = NONE
+      | r (MapNode (left, x, value, right)) =
+      case cmp (key, x) of
+        EQUAL => SOME value
+      | LESS => r left
+      | GREATER => r right
+  in
+    r tree
+  end
+
+fun map-contains (Map { cmp, tree }, key) =
+  case map-find key of
+    SOME _ => true
+  | _ => false
+
+fun map-tolist (Map { cmp = _, tree }) =
+  let
+    fun rec MapEmpty = nil
+      | rec (MapNode (l, k, v, r)) =
+      let
+        val ll = rec l
+        val rr = rec r
+      in
+        list-append (ll, ((k, v) :: rr))
+      end
+  in
+    rec tree
+  end

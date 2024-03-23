@@ -126,18 +126,30 @@ fun bib-news (obj as {(News) author}) =
   Source { t = Article, sort-key = author, fields = convert-news obj }
   | bib-news _ = fail "bib-news needs at least an author"
 
-val citations-used : bibsource set ref = ref (set-empty bibsource-compare)
-fun add-citation (c : bibsource) =
-  citations-used := set-insert (!citations-used, c)
+val citation-next-num = ref 1
+val citations-used : (bibsource, int) map ref =
+  ref (map-empty bibsource-compare)
+fun add-citation (c : bibsource) : int =
+  case map-find (!citations-used, c) of
+    NONE => let
+              val n = !citation-next-num
+            in
+              citation-next-num := n + 1;
+              citations-used := map-insert (!citations-used, c, n);
+              n
+            end
+  | SOME n => n
 
 (* XXX should do something *)
 fun cite (c : bibsource) : layout =
-  let do add-citation c
+  let
+    val n = add-citation c
   in
     (* XXX conveniently, changes in font size are top-aligned rather than
        baseline-aligned like you'd expect. So for now this does create
        a superscript. *)
-    span {(Span) font-size = 8.0 } [[layout "["]citation needed[layout "]"]]
+    span {(Span) font-size = 8.0 }
+    (layout ("[" ^ int-to-string n ^ "]"))
   end
 
 fun nocite (c : bibsource) : layout =
@@ -161,7 +173,7 @@ fun monthname 1 = "January"
   | monthname _ = "Unknown Month"
 
 (* XXX obviously use other fields if present! *)
-fun cite-render-one (Source { t, sort-key = _, fields }) =
+fun cite-render-one (Source { t, sort-key = _, fields }, n) =
   let
 
     (* Since bibliography URLs are often too long, we allow
@@ -190,9 +202,12 @@ fun cite-render-one (Source { t, sort-key = _, fields }) =
       | date {(Date) year } = layout (int-to-string year)
       | date _ = []
 
+    val num = layout ("[" ^ int-to-string n ^ "] ")
+
     fun joindots l =
       layout-concat
-      (list-map (fn lay => if layout-empty lay
+      (num ::
+       list-map (fn lay => if layout-empty lay
                            then lay
                            else [[lay]. [break-ok()]]) l)
 
@@ -252,9 +267,9 @@ fun cite-render-one (Source { t, sort-key = _, fields }) =
   end
 
 fun bibliography () =
-  let val cites = (set-tolist (!citations-used))
+  let val cites = (map-tolist (!citations-used))
   in
     layout-concat
-    (list-map (fn c => [[layout "\n\n"][cite-render-one c]]) cites)
+    (list-map (fn cn => [[layout "\n\n"][cite-render-one cn]]) cites)
   end
 

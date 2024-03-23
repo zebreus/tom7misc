@@ -425,7 +425,7 @@ Unicode support. This would have been helpful when above I decided
 to show you Gutenberg's funny hyphen, [gutenberg-hyphen], for which I had to settle for embedding a crappy hand-drawn
 PNG file. BoVeX is witten with some Unicode support, with the main
 exception being that the PDF output code only supports the diminutive
-WinAnsiEncoding.[cite adobe2006pdf].
+WinAnsiEncoding.[cite adobe2006pdf]
 
 
 The BoVeX system allows the document author to trade semantic
