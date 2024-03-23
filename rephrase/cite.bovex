@@ -19,7 +19,7 @@ val CITE-VERBOSE = false
 
 (* Basic source types. Some bibliography types are converted
    into one of these (e.g. PhD thesis). *)
-datatype bibsourcetype = Website | Article | Book
+datatype bibsourcetype = Website | Article | Book | Misc
 datatype bibsource =
   Source of { t : bibsourcetype,
               sort-key : string,
@@ -45,13 +45,18 @@ object Article of { author : string, title : string,
                     year : int, month : int, day : int,
                     page-start : int, page-end : int,
                     journal : string, publisher : string,
-                    url : string }
+                    url : string,
+                    editor : string,
+                    (* If in proceedings, the ISBN of that book. *)
+                    isbn : string }
 
 object Book of { author : string, title : string,
                  year : int, month : int, day : int,
                  page-start : int, page-end : int,
-                 isbn : string,
+                 isbn : string, pages : int,
                  publisher : string }
+
+object Misc of { note : string }
 
 (* Derived forms. *)
 object PhdThesis of { author : string, title : string,
@@ -71,6 +76,9 @@ fun bibsourcetype-compare (Website, Website) = EQUAL
   | bibsourcetype-compare (Article, _) = LESS
   | bibsourcetype-compare (_, Article) = GREATER
   | bibsourcetype-compare (Book, Book) = EQUAL
+  | bibsourcetype-compare (Book, _) = LESS
+  | bibsourcetype-compare (_, Book) = GREATER
+  | bibsourcetype-compare (Misc, Misc) = EQUAL
   | bibsourcetype-compare _ = fail "impossible"
 
 
@@ -101,6 +109,11 @@ fun bib-book (obj as {(Article) author}) =
   (* XXX extract last name from author field *)
   Source { t = Book, sort-key = author, fields = obj }
   | bib-book _ = fail "bib-book needs at least an author"
+
+fun bib-misc (obj as {(Misc) note}) =
+  Source { t = Misc, sort-key = note, fields = obj }
+  | bib-misc _ = fail "bib-misc needs at least a note"
+
 
 fun convert-phd-thesis (obj as {(PhdThesis) publisher, university}) =
   obj
@@ -181,7 +194,6 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
 
        TODO: Can hyperlink it
        *)
-
     fun bib-url url =
       let val parts = list-map (fn s => (layout s)) (string-split "/" url)
       in
@@ -189,10 +201,11 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
       end
 
 
-    object Pages of { page-start : int, page-end : int }
+    object Pages of { page-start : int, page-end : int, pages : int }
     fun pages {(Pages) page-start, page-end} =
       [pp. [layout (int-to-string page-start)]–[(layout
                                                  (int-to-string page-end))]]
+      | pages {(Pages) pages } = [[layout (int-to-string pages)] pages]
       | pages _ = []
 
     (* Ignoring day for now. *)
@@ -234,9 +247,15 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
             case fields of
               {(Article) journal} => it(layout journal)
             | _ => []
+
+          val e =
+            case fields of
+              {(Article) editor} => [[layout editor], ed]
+            | _ => []
+
           val r =
             joindots (layout author :: ["[layout title]"] ::
-                      j :: date fields ::
+                      e :: j :: date fields ::
                       pp :: nil)
 
         in
@@ -256,6 +275,14 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
                       j :: date fields ::
                       pp :: nil)
 
+        in
+          CITE-VERBOSE andthen debug-print-doc r;
+          CITE-VERBOSE andthen debug-print-doc (get-boxes r);
+          r
+        end
+    | (Misc, {(Misc) note }) =>
+        let
+          val r = joindots (layout note :: nil)
         in
           CITE-VERBOSE andthen debug-print-doc r;
           CITE-VERBOSE andthen debug-print-doc (get-boxes r);

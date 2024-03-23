@@ -485,6 +485,7 @@ Document::BoxifyText(const TextProps &props,
   };
 
   auto ApplyTextProps = [props, font](DocTree *doc) {
+      // PERF can leave them off if default
       doc->SetDoubleAttr("font-size", props.font_size);
       doc->SetStringAttr("font-name", font->Name());
       doc->SetIntAttr("font-color", BigInt(props.font_color));
@@ -581,7 +582,7 @@ Document::BoxifyText(const TextProps &props,
           DocTree d;
           d.SetStringAttr("display", "box");
           d.SetDoubleAttr("width", chunk_width * props.font_size);
-          d.SetDoubleAttr("height", props.font_size);
+          d.SetDoubleAttr("height", props.font_size + props.line_spacing);
           // PERF The font is normalized onto every chunk, which may be kinda
           // expensive.
           ApplyTextProps(&d);
@@ -641,7 +642,7 @@ Document::BoxifyText(const TextProps &props,
     DocTree d;
     d.SetStringAttr("display", "box");
     d.SetDoubleAttr("width", chunk_width * props.font_size);
-    d.SetDoubleAttr("height", props.font_size);
+    d.SetDoubleAttr("height", props.font_size + props.line_spacing);
     ApplyTextProps(&d);
 
     if (space_after || IsWhitespace(word)) {
@@ -840,6 +841,10 @@ DocTree Document::GetBoxes(const DocTree &doc) {
                     co.value() <= int64_t{0xFFFFFFFF}) << "Color is out "
                 "of range. Must be in [0, 0xFFFFFFFF]: " << bc->ToString();
               props.font_color = (uint32_t)co.value();
+            }
+
+            if (const double *h = doc.GetDoubleAttr("line-spacing")) {
+              props.line_spacing = *h;
             }
 
           } else {

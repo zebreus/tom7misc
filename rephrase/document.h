@@ -123,6 +123,7 @@ struct Document {
   struct TextProps {
     FontDescription desc;
     double font_size = 12.0;
+    double line_spacing = 0.0;
     uint32_t font_color = 0x000000FF;
   };
 

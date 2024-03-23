@@ -677,9 +677,12 @@ static il::ObjFieldType ResolveObjFieldType(
 
   if (ovi != nullptr) {
     const auto it = ovi->fields.find(lab);
-    CHECK(it != ovi->fields.end()) << "The field " << lab << " was "
-      "not present in the object named " << objname << ", in "
-      "the object expression: " << ExpString(error_exp);
+    CHECK(it != ovi->fields.end()) <<
+      StringPrintf("The field " ABLUE("%s") " was not present "
+                   "in the object named " APURPLE("%s") ", in "
+                   "the object expression:\n%s",
+                   lab.c_str(), objname.c_str(),
+                   ExpString(error_exp).c_str());
     if (rhs_type != nullptr) {
       Unification::Unify([what]() {
           return StringPrintf("Object field type: %s", what);

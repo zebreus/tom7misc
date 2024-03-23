@@ -54,7 +54,7 @@ val murphy2023grad =
   year = 2023,
   page-start = 33,
   page-end = 56,
-  title = "The First Level of Super Mario Bros. is Easy with Lexicographic Orderings and Time Travel. After that it gets a little tricky",
+  title = "GradIEEEnt half decent",
   }
 
 
@@ -70,7 +70,7 @@ val liang1983word =
 val bynum2014bernie =
   bib-news {(News)
   title = "Bernie Sanders wants the US to adopt a 32-hour workweek. Could workers and companies benefit?",
-  author = "Russ Bynum",
+  author = "Bynum, Russ",
   publisher = "Associated Press",
   year = 2024,
   month = MARCH,
@@ -82,7 +82,7 @@ val bynum2014bernie =
 val bcp47 =
   bib-article {(Article)
   title = "Tags for identifying languages",
-  author = "A Phillips. and M. Davis",
+  author = "Phillips., A and Davis, M.",
   year = 2009,
   month = SEPTEMBER,
   url = "https://www.ietf.org/rfc/bcp/bcp47.txt",
@@ -127,6 +127,99 @@ val gutenberg1455bible =
   title = "Bible",
   author = "Gutenberg, Johann",
   year = 1455,
+}
+
+val knuth2011taocp4a =
+  bib-book {(Book)
+  title = "The Art of Computer Programming: Volume 4A, Combinatorial Algorithms Part 1",
+  author = "Knuth, Donald E.",
+  year = 2011,
+  month = JANUARY,
+  day = 12,
+  pages = 912,
+  publisher = "Addison-Wesley",
+  isbn = "978-0201038040",
+  }
+
+val knuth2022taocp4b =
+  bib-book {(Book)
+  title = "The Art of Computer Programming: Volume 4B, Combinatorial Algorithms Part 2",
+  author = "Knuth, Donald E.",
+  year = 2022,
+  month = OCTOBER,
+  day = 8,
+  pages = 736,
+  publisher = "Addison-Wesley",
+  isbn = "978-0201038064",
+  }
+
+val arxivany =
+  bib-misc {(Misc)
+  note = "You can just go to arxiv.org and click on any random article these days",
+}
+
+(* This should be bib-inproceedings. or just add "editor" to article? *)
+val mitchell1990type =
+  bib-article {(Article)
+  title = "Type Systems for Programming Languages",
+  author = "Mitchell, John C.",
+  journal = "Formal Models and Semantics",
+  editor = "Van Leeuwen, Jan",
+(*
+  booktitle = {Formal Models and Semantics},
+  series = {Handbook of Theoretical Computer Science},
+  address = {Amsterdam},
+*)
+  publisher = "Elsevier",
+  page-start = 365,
+  page-end = 458,
+  year = 1990,
+  isbn = "978-0-444-88074-1",
+}
+
+val touvron2023llama =
+  bib-article {(Article)
+  title= "Llama 2: Open foundation and fine-tuned chat models",
+  author = "Hugo Touvron and Louis Martin and Kevin Stone and Peter Albert and Amjad Almahairi and Yasmine Babaei and Nikolay Bashlykov and Soumya Batra and Prajjwal Bhargava and Shruti Bhosale and Dan Bikel and Lukas Blecher and Cristian Canton Ferrer and Moya Chen and Guillem Cucurull and David Esiobu and Jude Fernandes and Jeremy Fu and Wenyin Fu and Brian Fuller and Cynthia Gao and Vedanuj Goswami and Naman Goyal and Anthony Hartshorn and Saghar Hosseini and Rui Hou and Hakan Inan and Marcin Kardas and Viktor Kerkez and Madian Khabsa and Isabel Kloumann and Artem Korenev and Punit Singh Koura and Marie-Anne Lachaux and Thibaut Lavril and Jenya Lee and Diana Liskovich and Yinghai Lu and Yuning Mao and Xavier Martinet and Todor Mihaylov and Pushkar Mishra and Igor Molybog and Yixin Nie and Andrew Poulton and Jeremy Reizenstein and Rashi Rungta and Kalyan Saladi and Alan Schelten and Ruan Silva and Eric Michael Smith and Ranjan Subramanian and Xiaoqing Ellen Tan and Binh Tang and Ross Taylor and Adina Williams and Jian Xiang Kuan and Puxin Xu and Zheng Yan and Iliyan Zarov and Yuchen Zhang and Angela Fan and Melanie Kambadur and Sharan Narang and Aurelien Rodriguez and Robert Stojnic and Sergey Edunov and Thomas Scialom",
+  journal = "ArXiv.org",
+  year = 2023,
+  month = JULY,
+  day = 19,
+  url = "https://arxiv.org/abs/2307.09288",
+}
+
+val knuth1981breaking =
+  bib-article {(Article)
+  title = "Breaking paragraphs into lines",
+  author = "Knuth, Donald E. and Plass, Michael F.",
+  journal= "Software: Practice and Experience",
+ (*  volume={11},
+  number={11}, *)
+  page-start = 1119,
+  page-end = 1184,
+  year = 1981,
+  month = NOVEMBER,
+  publisher = "Wiley Online Library",
+}
+
+val ocaml =
+  bib-website {(Website)
+  title = "The Objective Caml system",
+  url = "https://ocaml.org",
+  year = 2023,
+}
+
+
+val remy1998objective =
+  bib-article {(Article)
+  title = "Objective ML: An effective object-oriented extension to ML",
+  author = "Rémy, Didier and Vouillon, Jérôme",
+  journal = "In Theory And Practice of Objects Systems",
+  (* volume = 4, number = 1 *)
+  page-start = 27,
+  page-end = 50,
+  year = 1998,
+  publisher = "John Wiley & Sons, Inc.",
 }
 
 (* TODO: Knuth of course! *)

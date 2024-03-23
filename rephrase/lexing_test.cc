@@ -93,6 +93,8 @@ static void TestLex() {
             LBRACKET, LAYOUT_LIT,
             LBRACKET, LAYOUT_COMMENT, RBRACKET,
             LAYOUT_LIT, RBRACKET);
+
+  CHECK_LEX("\"string\\nliteral\"", STR_LIT);
 }
 
 }  // namespace el

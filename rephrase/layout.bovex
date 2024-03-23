@@ -259,7 +259,7 @@ fun attrs-pos (attrs : obj) : float * float =
 
 (* A span lays out boxes one after another. Nested spans can be used
    to set text properties (like the font). *)
-object Span of { line-height: float,
+object Span of { line-spacing: float,
                  (* base font. *)
                  font-face: string,
                  font-size: float,
@@ -716,7 +716,7 @@ fun title lay =
 fun author lay = [[lay][hfill()][vspace 16.0]]
 
 fun monospace-block-ext { left-indent, width,
-                          line-height,
+                          line-spacing,
                           font-size } lay =
   let
     (* Since we generate boxes directly, we need the actual
@@ -735,7 +735,7 @@ fun monospace-block-ext { left-indent, width,
                             width = width,
                             font-size = font-size,
                             font-name = ff,
-                            height = line-height} (layout s))) sl
+                            height = font-size +. line-spacing} (layout s))) sl
           end
       | _ => fail "Markup is not supported inside monospace-lines."
 
@@ -748,16 +748,21 @@ fun monospace-block-ext { left-indent, width,
   end
 
 
+val DEFAULT-MONOSPACE-BLOCK-LEFT-INDENT = inch 0.05
 fun monospace-block lay =
-  monospace-block-ext { left-indent = inch 0.05,
+  monospace-block-ext { left-indent = DEFAULT-MONOSPACE-BLOCK-LEFT-INDENT,
                         width = inch 3.4,
-                        line-height = 12.05,
+                        line-spacing = 0.05,
                         font-size = 12.0 } lay
 
-fun section lay = span {(Span) font-bold = true, font-size = 14.0 }
-    [[lay].[hfill()][break()]]
-fun subsection lay = span {(Span) font-bold = true }
-    [[lay].[hfill()][break()]]
+fun section lay = span {(Span) font-bold = true, font-size = 15.0 }
+  [[lay][hfill()][break()]]
+
+fun subsection lay = span {(Span) font-bold = true, font-size = 13.5 }
+  [[lay][hfill()][break()]]
+
+fun paragraph lay = span {(Span) font-bold = true}
+  [[lay].[box {(Box) width=3.0, glue-ideal=3.0, glue-expand = 5.0 } []]]
 
 object Rephrase of { rephrase-times : int }
 fun rephrase-paragraph (times : int) p =
