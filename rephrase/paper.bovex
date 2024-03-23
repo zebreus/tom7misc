@@ -1,5 +1,4 @@
 let
-
   import "stdlib.bovex"
   import "layout.bovex"
   import "cite.bovex"
@@ -290,14 +289,15 @@ Actually there are two different models, the 7b and the 70b, referring
 to the number of billions of parameters, which must be a multiple of
 VII "for performance reasons." The parameters are the weights on the
 layers of the network. At native 16-bit floats, the 70b model will fit
-in about 130 GB of RAM, just slightly more than 128 GB, making one
-wonder what performance reasons they had in mind. But anyway, earlier
-this year I (physically) broke my computer trying to put the world's
-(physically) largest video card into it, the GeForce 4090, and so I
-endowed the replacement computer with 256 GB of RAM. If you are ever
-looking at specifications for a high-end desktop computer, by the way,
-and wondering "who the heck buys these things and what do they do with
-them?" one answer is "me," and the other answer is "this."
+in about 130 GB of RAM, just slightly more than a nice round 128 GB,
+making one wonder what performance reasons they had in mind. But
+anyway, earlier this year I (physically) broke my computer trying to
+put the world's (physically) largest video card into it, the GeForce
+4090, and so I endowed the replacement computer with 256 GB of RAM. If
+you are ever looking at specifications for a high-end desktop
+computer, by the way, and wondering "who the heck buys these things
+and what do they do with them?" one answer is "me," and the other
+answer is "this."
 
 Quantization means using fewer bits to represent the floating point
 weights.[cite murphy2019nan] This saves memory, but it also speeds
@@ -408,13 +408,14 @@ correctly.
 
 The details really keep going, too. The hyphenation dictionary is
 stored in a file called [tt[hyph-en-us.tex]]. "hyph" here of course
-stands for hyphens, and "en-us" means "English (United States)" (it is
-actually the [it[standard]] IETF BCP 47 locale code for US
-English![cite bcp47]). But then we have "hyph-en", which is the
-correct hyphenation of "hyphen"! You could even read it as "hyphen us,
-tex", as a request for TeX to hyphenate the words in this file. This
-is the kind of detail I'm talking about! (There is also hyph-uk, which
-for once sounds a little less dignified than the US accent.)
+stands for hyphens, and "en-us" means "English (United States)."
+In fact it is the [it[standard]] language code for US English in
+the Small Language Model called IETF BCP 47![cite bcp47]
+But then we have "hyph-en", which is the correct hyphenation of
+"hyphen"! You could even read it as "hyphen us, tex", as a request for
+TeX to hyphenate the words in this file. This is the kind of detail
+I'm talking about! (There is also hyph-uk, which for once sounds a
+little less dignified than the US accent.)
 
 [section[Nightmare on LLM street]]
 

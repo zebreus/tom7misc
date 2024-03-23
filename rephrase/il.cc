@@ -1,6 +1,7 @@
 
 #include "il.h"
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -126,6 +127,29 @@ std::string TypeString(const Type *t) {
       return ret;
     };
 
+  auto GetTupleString =
+    [](const std::vector<std::pair<std::string, const Type *>> &v) ->
+      std::optional<std::string> {
+    if (v.size() <= 1) return std::nullopt;
+    // Note that this assumes labels are sorted in numeric order, i.e. not "10"
+    // after "1".
+    for (int i = 0; i < (int)v.size(); i++) {
+      const std::string &lab = v[i].first;
+      if (lab != StringPrintf("%d", i + 1)) {
+        return std::nullopt;
+      }
+    }
+
+    // Then it is a tuple.
+    std::vector<std::string> parts;
+    parts.reserve(v.size());
+    for (const auto &[k_, t] : v) {
+      parts.push_back(TypeString(t));
+    }
+
+    return StringPrintf("(%s)", Util::Join(parts, " * ").c_str());
+  };
+
   switch (t->type) {
   case TypeType::VAR: {
     const auto &[var, args] = t->Var();
@@ -154,9 +178,15 @@ std::string TypeString(const Type *t) {
                         TypeString(cod).c_str());
   }
 
-  case TypeType::RECORD:
-    // Might want to special case tuple types; unit type?
-    return StringPrintf("{%s}", RecordOrSumBody(t->Record()).c_str());
+  case TypeType::RECORD: {
+    // Since these are used in error message, special case unit and
+    // tuple types.
+    const std::vector<std::pair<std::string, const Type *>> &fields = t->Record();
+    if (fields.empty()) return "unit";
+    std::optional<std::string> to = GetTupleString(fields);
+    if (to.has_value()) return to.value();
+    return StringPrintf("{%s}", RecordOrSumBody(fields).c_str());
+  }
 
   case TypeType::SUM:
     // Might want to special case void?

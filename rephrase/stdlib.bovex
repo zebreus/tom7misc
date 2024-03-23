@@ -17,6 +17,19 @@ fun int-compare (a, b) =
        then EQUAL
        else GREATER
 
+fun int-max (a, b) = if a < b then b else a
+fun int-min (a, b) = if a < b then a else b
+
+fun float-compare (a, b) =
+  if a <. b
+  then LESS
+  else if a ==. b
+       then EQUAL
+       else GREATER
+
+fun float-max (a, b) = if a <. b then b else a
+fun float-min (a, b) = if a <. b then a else b
+
 fun string-compare (a, b) =
   if string-less (a, b)
   then LESS

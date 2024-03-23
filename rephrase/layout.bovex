@@ -393,8 +393,8 @@ fun get-text-rec (lay : layout) : string =
 datatype packing-algorithm = BEST | FIRST
 (* Generates a series of lines (boxes) with the glue turned into definite
    padding. Still in "AllBox" format. *)
-fun pack-boxes (algo : packing-algorithm,
-                width : float, content : layout) : (float * layout list) =
+fun pack-boxes-horiz (algo : packing-algorithm,
+                      width : float, content : layout) : (float * layout list) =
   let
     (* This is communicated with a string attribute; an implementation
        detail. *)
@@ -407,10 +407,33 @@ fun pack-boxes (algo : packing-algorithm,
 
     val packed = internal-pack-boxes (width, content)
     object InternalPackBoxes of { badness: float, layout: layout }
+
+
+    fun set-height (line : layout) =
+      case layoutcase line of
+        Node (BOX, attrs, boxes) =>
+          let
+            fun max-height (h, nil) = h
+              | max-height (h, box :: rest) =
+              case layoutcase box of
+                Node (BOX, {(Box) height}, _) =>
+                  max-height (float-max(height, h), rest)
+              | _ => max-height (h, rest)
+
+            val height = max-height (0.0, boxes)
+          in
+            (* Could also strip height from words here! *)
+            box (attrs with (Box)height = height) (layout-concat boxes)
+          end
+      | _ => fail "Bug: Expected pack-boxes to return a series of lines (boxes)"
+
+    val (badness, lines) =
+      case packed of
+        {(InternalPackBoxes) badness, layout} => (badness, unjoin layout)
+      | _ => fail "Bug: Expected badness and layout from pack-boxes"
+
   in
-    case packed of
-      {(InternalPackBoxes) badness, layout} => (badness, unjoin layout)
-    | _ => fail "Bug: Expected badness and layout from pack-boxes"
+    (badness, list-map set-height lines)
   end
 
 (*
@@ -655,7 +678,7 @@ fun blockquote lay =
     val WIDTH = inch 3.25
     val lay = it (layout-map-text normalize-whitespace lay)
     val boxes = get-boxes lay
-    val (badness, lines : layout list) = pack-boxes (BEST, WIDTH, boxes)
+    val (badness, lines : layout list) = pack-boxes-horiz (BEST, WIDTH, boxes)
     do emit-badness badness
     val lines : layout list = list-map stick-horizontally lines
   in
@@ -785,7 +808,7 @@ fun pack-one-paragraph column-width para =
         (* XXX use semantic loss! *)
 
         val boxes = get-boxes para
-        val (badness, lines) = pack-boxes (BEST, column-width, boxes)
+        val (badness, lines) = pack-boxes-horiz (BEST, column-width, boxes)
 
         fun new-best NONE = SOME (badness, lines)
           | new-best (SOME (pbad, pbest)) =
@@ -800,7 +823,7 @@ fun pack-one-paragraph column-width para =
   end
 
 (*
-  xrefs allow us to refer to a string that is not known at the time
+  TODO: xrefs allow us to refer to a string that is not known at the time
   the document is evaluated.
 *)
 
@@ -952,8 +975,9 @@ fun main-text lay =
        outside of the intended box. *)
     val ORPHAN-LINE-BADNESS-MODIFIER = 0.125
 
-
-    fun insert-paragraph (p : layout) : paragraph =
+    (* This returns multiple paragraphs because processing a paragraph
+       may emit floaters. *)
+    fun process-paragraph (p : layout) : paragraph list =
       let
         val lines = pack-one-paragraph COLUMN-WIDTH p
 
@@ -989,18 +1013,19 @@ fun main-text lay =
             print "-------------------\n"
           end
       in
-        Paragraph { lines = lines }
+        (Paragraph { lines = lines }) :: nil
       end
 
     (* Parse layout to find paragraph breaks. Handle whitespace.
        Normalize spans that contain paragraphs onto the constituent
        paragraphs. *)
     val paras : layout list = get-paragraphs (lay :: nil)
-    (* Do rephrasing if needed.
+    (* Pull out floats.
+       Do rephrasing if needed.
        Optimize line breaks for each paragraph.
        Turn each paragraph into a series of vertical boxes (lines, which
        are stickers). *)
-    val paras : paragraph list = list-map insert-paragraph paras
+    val paras : paragraph list = list-concat (list-map process-paragraph paras)
   in
     pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
                      BODY-HEIGHT,

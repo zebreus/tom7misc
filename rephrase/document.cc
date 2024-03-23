@@ -921,15 +921,16 @@ Document::PackBoxes(double line_width, const DocTree &doc) {
     boxes[i].edge_penalty = 0.0;
   }
 
-  // Allows hyphens.
-  static constexpr double MAX_BREAK_PENALTY = 200.0;
 
   std::vector<std::vector<BoxesAndGlue::BoxOut>> lines;
   switch (algorithm) {
-  case Algorithm::FIRST:
+  case Algorithm::FIRST: {
+    // Allows hyphens.
+    static constexpr double MAX_BREAK_PENALTY = 200.0;
     lines = BoxesAndGlue::PackBoxesFirst(
         line_width, boxes, MAX_BREAK_PENALTY);
     break;
+  }
   case Algorithm::BEST:
     lines = BoxesAndGlue::PackBoxes(line_width, boxes);
     break;
@@ -960,7 +961,6 @@ Document::PackBoxes(double line_width, const DocTree &doc) {
 
   std::vector<DocTree> lines_out;
   for (std::vector<BoxesAndGlue::BoxOut> &box_line : lines) {
-    double line_max_height = 0.0;
     DocTree line;
     for (int i = 0; i < (int)box_line.size(); i++) {
       BoxesAndGlue::BoxOut &box = box_line[i];
@@ -969,12 +969,6 @@ Document::PackBoxes(double line_width, const DocTree &doc) {
       // Copy the node from the input, but we set its width to
       // include glue, and possibly add hyphens.
       DocTree d = *(const DocTree*)box.box->data;
-
-      // Maybe this should be handled externally? It would be nice
-      // if this code were generic about what dimension is "width".
-      if (const double *height = d.GetDoubleAttr("height")) {
-        line_max_height = std::max(line_max_height, *height);
-      }
 
       std::optional<DocTree> insertion;
       if (box.did_break) {
@@ -1008,7 +1002,6 @@ Document::PackBoxes(double line_width, const DocTree &doc) {
 
     line.SetStringAttr("display", "box");
     line.SetDoubleAttr("width", line_width);
-    line.SetDoubleAttr("height", line_max_height);
 
     lines_out.push_back(std::move(line));
   }
