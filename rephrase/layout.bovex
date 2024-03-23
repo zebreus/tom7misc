@@ -738,7 +738,7 @@ fun rephrasings (times, para) : (float * layout) list =
 (* Pack a paragraph. This is basically pack-boxes o get-boxes, but
    we also look for rephrase contexts. If there are any, we
    try multiple rephrasings and pick the one with the best badness. *)
-fun pack-paragraph column-width para =
+fun pack-one-paragraph column-width para =
   let
     val VERBOSE = false
 
@@ -759,6 +759,10 @@ fun pack-paragraph column-width para =
         print "-------------------\n"
       end
 
+    (* TODO: Allow rephrasing mid-paragraph. Same idea of passing
+       the rewrap function to represent the "hole"; it's just
+       fiddly. Probably would be good to provide context to the
+       LLM, as well. *)
     fun extract-rephrasing rewrap para =
       case layoutcase para of
         Node (SPAN, attrs as {(Rephrase) rephrase-times }, ch) =>
@@ -768,23 +772,6 @@ fun pack-paragraph column-width para =
           extract-rephrasing (fn x => span attrs x) child
       | _ => (0.0, rewrap para) :: nil
 
-    (* TODO: Allow rephrasing mid-paragraph. Same idea; it's just
-       fiddly. Probably would be good to provide context to the
-       LLM, as well. *)
-    fun get-rephrasings para =
-      case get-attrs-opt para of
-        SOME {(Rephrase) rephrase-times } =>
-          let
-            val reparas : (float * layout) list =
-              rephrasings (rephrase-times, para)
-          in
-            print ("Got " ^ int-to-string (list-length reparas) ^
-                   " rephrasings.\n");
-            reparas
-          end
-      | _ => (0.0, para) :: nil
-
-    (* val paras : (float * layout) list = get-rephrasings para *)
     val paras : (float * layout) list = extract-rephrasing (fn x => x) para
 
     fun get-best (NONE, nil) = fail "bug: no options?"
@@ -812,44 +799,25 @@ fun pack-paragraph column-width para =
     get-best (NONE, paras)
   end
 
-(* Generally just one of these, for the toplevel document.
-   This breaks the layout into paragraphs, and then inserts
-   them one by one into columns.
+(*
+  xrefs allow us to refer to a string that is not known at the time
+  the document is evaluated.
+*)
 
-   TODO: First process make a pass over the document's layout looking
-   for sequentially-numbered stuff like sections and bib-sources.
-   Assign them numbers imperatively in some global map. A second pass
-   can replace them with their actual numbers (or whatever).
-   *)
-fun main-text lay =
+
+(* XXX should probably just use pack-boxes for this, but
+   they are vertical boxes. *)
+datatype paragraph = Paragraph of { lines : layout list }
+(* Given all the paragraphs in the document, pack them and
+   turn them into stickers and emit write them. *)
+(* XXX pass a "metrics" object or something *)
+fun pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
+                     BODY-HEIGHT,
+                     COLUMN-WIDTH, COLUMNS,
+                     paras : paragraph list) =
   let
-    val VERBOSE = LAYOUT-VERBOSE orelse false
-
-    val PAGE-WIDTH = inch 8.5
-    val PAGE-HEIGHT = inch 11.0
-    val LEFT-MARGIN = inch 0.4
-    val TOP-MARGIN = inch 0.5
-    val GUTTER = inch 0.3
-    val COLUMNS = 2
-    do COLUMNS >= 1 otherwise fail "There must be at least one column!"
-    val RIGHT-MARGIN = inch 0.4
-    val BOTTOM-MARGIN = inch 0.5
-
-    val BODY-WIDTH = PAGE-WIDTH -. (LEFT-MARGIN +. RIGHT-MARGIN)
-    val BODY-HEIGHT = PAGE-HEIGHT -. (TOP-MARGIN +. BOTTOM-MARGIN)
-    val COLUMN-WIDTH =
-      (BODY-WIDTH -. (int-to-float (COLUMNS - 1) *. GUTTER))
-      /. (int-to-float COLUMNS)
-
-    val LEFT-COLUMN-X = LEFT-MARGIN
     val COLUMN-STRIDE = COLUMN-WIDTH +. GUTTER
-
-    (* XXX This should depend on the font *)
-    val PARAGRAPH-VSPACE-BOTTOM = 12.0
-
-    (* Badness modifiers are compared to the badness of text
-       outside of the intended box. *)
-    val ORPHAN-LINE-BADNESS-MODIFIER = 0.125
+    val LEFT-COLUMN-X = LEFT-MARGIN
 
     val current-page = ref 0
 
@@ -865,6 +833,7 @@ fun main-text lay =
         column-empty := false;
         column-stickers-rev := s :: !column-stickers-rev
       end
+
 
     (* Emits the current column (if non-empty); clears it. *)
     fun emit-column () =
@@ -887,17 +856,112 @@ fun main-text lay =
         column-empty := true
       end
 
-    (* XXX should probably just use pack-boxes for this, but
-       they are vertical boxes. *)
-    fun insert-paragraph (p : layout) : unit =
-      let
+    (* Maybe advance to the next column (or page) to place
+       something. *)
+    fun get-placement height =
+      if !current-ypos +. height <=. BODY-HEIGHT
+      then
+        (* Place here at no cost. *)
+        ()
+      else
+        if !column-empty
+        then
+        (* If we're already at the top of the column, then
+           we don't have any choice but to place it. *)
+          let
+            val overrun-height = BODY-HEIGHT -. (!current-ypos +. height)
+          in
+            (* TODO: We assume it's the full column width. But really
+               we should be measuring the actual width of the line
+               that's overflowing. *)
+            emit-badness (COLUMN-WIDTH *. overrun-height)
+          end
+        else
+          (* New column. *)
+          let in
+            emit-column ();
+            current-column := !current-column + 1;
+            current-ypos := 0.0;
+            !current-column >= COLUMNS
+            andthen
+            let in
+              current-column := 0;
+              current-page := !current-page + 1;
+            end;
+            (* badness from unfilled column? *)
+            ()
+          end
 
-        val lines = pack-paragraph COLUMN-WIDTH p
+    fun addline (line : layout) : unit =
+      case layoutcase line of
+        Node (BOX, {(Box) height } as attrs, children) =>
+          let in
+            get-placement height;
+            add-column-sticker
+            (sticker (attrs without (Box)width
+                      without (Box)height
+                      with comment = "line"
+                      with x = 0.0
+                      with y = !current-ypos) (layout-concat children));
+            current-ypos := !current-ypos +. height
+          end
+      | _ => fail "only expecting boxes with known height in addline"
+
+    fun addpara (Paragraph { lines }) =
+      list-app addline lines
+
+  in
+    list-app addpara paras;
+    emit-column ()
+  end
+
+(* Generally just one of these, for the toplevel document.
+   This breaks the layout into paragraphs, and then inserts
+   them one by one into columns.
+
+   TODO: First process make a pass over the document's layout looking
+   for sequentially-numbered stuff like sections and bib-sources.
+   Assign them numbers imperatively in some global map. A second pass
+   can replace them with their actual numbers (or whatever).
+   *)
+fun main-text lay =
+  let
+    val VERBOSE = LAYOUT-VERBOSE orelse false
+
+    (* TODO: Make configurable, obviously *)
+    val PAGE-WIDTH = inch 8.5
+    val PAGE-HEIGHT = inch 11.0
+    val LEFT-MARGIN = inch 0.4
+    val TOP-MARGIN = inch 0.5
+    val GUTTER = inch 0.3
+    val COLUMNS = 2
+    do COLUMNS >= 1 otherwise fail "There must be at least one column!"
+    val RIGHT-MARGIN = inch 0.4
+    val BOTTOM-MARGIN = inch 0.5
+
+    val BODY-WIDTH = PAGE-WIDTH -. (LEFT-MARGIN +. RIGHT-MARGIN)
+    val BODY-HEIGHT = PAGE-HEIGHT -. (TOP-MARGIN +. BOTTOM-MARGIN)
+    val COLUMN-WIDTH =
+      (BODY-WIDTH -. (int-to-float (COLUMNS - 1) *. GUTTER))
+      /. (int-to-float COLUMNS)
+
+    (* XXX This should depend on the font *)
+    val PARAGRAPH-VSPACE-BOTTOM = 12.0
+
+    (* Badness modifiers are compared to the badness of text
+       outside of the intended box. *)
+    val ORPHAN-LINE-BADNESS-MODIFIER = 0.125
+
+
+    fun insert-paragraph (p : layout) : paragraph =
+      let
+        val lines = pack-one-paragraph COLUMN-WIDTH p
 
         (* Put a line at the end to space out the paragraph. We
            should do this with glue. *)
         val lines = list-rcons
           (lines, box {(Box) height = PARAGRAPH-VSPACE-BOTTOM} [])
+
 
         do VERBOSE andthen
           let in
@@ -909,8 +973,6 @@ fun main-text lay =
                       end) lines;
             print "-------------------\n"
           end
-
-
 
         (* Now can treat the contents of lines as stickers.
            The line itself remains a box. *)
@@ -926,64 +988,21 @@ fun main-text lay =
                       end) lines;
             print "-------------------\n"
           end
-
-        (* Maybe advance to the next column (or page) to place
-           something. *)
-        fun get-placement height =
-          if !current-ypos +. height <=. BODY-HEIGHT
-          then
-            (* Place here at no cost. *)
-            ()
-          else
-            if !column-empty
-            then
-            (* If we're already at the top of the column, then
-               we don't have any choice but to place it. *)
-              let
-                val overrun-height = BODY-HEIGHT -. (!current-ypos +. height)
-              in
-                (* TODO: We assume it's the full column width. But really
-                   we should be measuring the actual width of the line
-                   that's overflowing. *)
-                emit-badness (COLUMN-WIDTH *. overrun-height)
-              end
-            else
-              (* New column. *)
-              let in
-                emit-column ();
-                current-column := !current-column + 1;
-                current-ypos := 0.0;
-                !current-column >= COLUMNS
-                andthen
-                let in
-                  current-column := 0;
-                  current-page := !current-page + 1;
-                end;
-                (* badness from unfilled column? *)
-                ()
-              end
-
-        fun addline (line : layout) : unit =
-          case layoutcase line of
-            Node (BOX, {(Box) height } as attrs, children) =>
-              let in
-                get-placement height;
-                add-column-sticker
-                (sticker (attrs without (Box)width
-                          without (Box)height
-                          with comment = "line"
-                          with x = 0.0
-                          with y = !current-ypos) (layout-concat children));
-                current-ypos := !current-ypos +. height
-              end
-          | _ => fail "only expecting boxes with known height in addline"
-
       in
-        list-app addline lines
+        Paragraph { lines = lines }
       end
 
+    (* Parse layout to find paragraph breaks. Handle whitespace.
+       Normalize spans that contain paragraphs onto the constituent
+       paragraphs. *)
     val paras : layout list = get-paragraphs (lay :: nil)
+    (* Do rephrasing if needed.
+       Optimize line breaks for each paragraph.
+       Turn each paragraph into a series of vertical boxes (lines, which
+       are stickers). *)
+    val paras : paragraph list = list-map insert-paragraph paras
   in
-    list-app insert-paragraph paras;
-    emit-column ()
+    pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
+                     BODY-HEIGHT,
+                     COLUMN-WIDTH, COLUMNS, paras)
   end

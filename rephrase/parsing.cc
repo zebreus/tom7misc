@@ -37,6 +37,25 @@ struct IsToken {
   }
 };
 
+# if 0
+template<class Ret>
+struct Error {
+  using token_type = Token;
+  using out_type = const Ret *;
+  TokenType t;
+  const char *msg = "";
+  constexpr Error(TokenType t, const char *msg) : t(t), msg(msg) {}
+  Parsed<const Ret *> operator()(TokenSpan<Token> toks) const {
+    if (toks.empty() || toks[0].type != t) return Parsed<out_type>::None();
+    const size_t start = toks[0].start;
+    const size_t length = toks[0].length;
+    LOG(FATAL) << ErrorAtIndex(start, length) <<
+      msg << "\nAt: " << start << " for " << length;
+    return nullptr;
+  }
+};
+#endif
+
 // For built-in identifiers, get their fixity, associativity, and precedence.
 // TODO: Make it possible to declare new fixity.
 [[maybe_unused]]
@@ -603,7 +622,7 @@ const Exp *Parsing::Parse(AstPool *pool,
     };
 
   const auto LetExpr = [&](const auto &Expr, const auto &Decl) {
-      return ((IsToken<LET>() >> *Decl << IsToken<IN>()) &&
+      return (((IsToken<LET>() >> *Decl << IsToken<IN>()) &&
               // Trailing semicolon is allowed, unlike SML.
               (Separate(Expr, IsToken<SEMICOLON>()) <<
                Opt(IsToken<SEMICOLON>())) <<
@@ -620,7 +639,14 @@ const Exp *Parsing::Parse(AstPool *pool,
                   }
 
                   return pool->Let(std::move(decs), es.back());
-                };
+               }) ||
+        (Mark(IsToken<LET>()) >[&](const auto &err) -> const Exp * {
+            const auto &[_, start, length] = err;
+            LOG(FATAL) << ErrorAtIndex(start, length) <<
+              "Expected LET [DECS] IN (EXP;) END ... after seeing "
+              "LET. At: " << start << " for " << length;
+            return nullptr;
+          });
     };
 
   const auto IfExpr = [&](const auto &Expr) {
@@ -704,10 +730,18 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // This is syntactic sugar for val _ = e
   const auto DoDecl = [&](const auto &Expr) {
-      return (IsToken<DO>() >> Expr)
-        >[&](const Exp *e) {
-            return pool->ValDec(pool->WildPat(), e);
-          };
+      return ((IsToken<DO>() >> Expr)
+              >[&](const Exp *e) {
+                  return pool->ValDec(pool->WildPat(), e);
+                }) ||
+        (Mark(IsToken<DO>()) >[&](const auto &err) -> const Dec * {
+            const auto &[_, start, length] = err;
+            LOG(FATAL) << ErrorAtIndex(start, length) <<
+              "Expected DO EXP after seeing "
+              // TODO: We can explicitly detect (or allow) a semicolon?
+              "DO. Extra semicolon? At: " << start << " for " << length;
+            return nullptr;
+          });
     };
 
   const auto ValDecl = [&](const auto &Expr) {
