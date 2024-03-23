@@ -52,10 +52,12 @@ struct DocTree {
   const std::string *GetStringAttr(const std::string &) const;
   const double *GetDoubleAttr(const std::string &) const;
   const bool *GetBoolAttr(const std::string &) const;
+  const BigInt *GetIntAttr(const std::string &) const;
   const DocTree *GetLayoutAttr(const std::string &) const;
 
   // Simply overwriting the attribute if already present.
   void SetStringAttr(const std::string &name, const std::string &value);
+  void SetIntAttr(const std::string &name, const BigInt &value);
   void SetDoubleAttr(const std::string &name, double d);
   void SetLayoutAttr(const std::string &name, DocTree t);
 
@@ -121,6 +123,7 @@ struct Document {
   struct TextProps {
     FontDescription desc;
     double font_size = 12.0;
+    uint32_t font_color = 0x000000FF;
   };
 
   // Each style is optional, but there should be at least one non-null.
@@ -168,7 +171,7 @@ struct Document {
   std::pair<DocTree, double> PackBoxes(double width, const DocTree &doc);
 
   std::vector<DocTree>
-  BoxifyText(const Font *font, double font_size, std::string_view text);
+  BoxifyText(const TextProps &props, std::string_view text);
 
   std::unordered_map<std::string, FontFamily> font_families;
 

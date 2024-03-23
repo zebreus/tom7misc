@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "bignum/big.h"
 #include "image.h"
 #include "document.h"
 #include "pdf.h"
@@ -194,22 +195,6 @@ static uint32_t PDFColor(uint32_t rgba) {
   return ColorUtil::Pack32(255 - a, r, g, b);
 }
 
-#if 0
-// For fonts that have already been loaded; returns nullptr if not
-// found. This is like PDF::GetFontByName but it allows naming
-// built-in fonts as well.
-const PDF::FontObj *PDFDocument::AnyFontByName(const std::string &font_name) {
-  const auto it = builtin_fonts.find(font_name);
-  if (it != builtin_fonts.end()) {
-    const PDF::FontObj *f = pdf->GetBuiltInFont(it->second);
-    CHECK(f != nullptr) << "Built-in fonts should always succeed.";
-    return f;
-  }
-
-  return pdf->GetFontByName(font_name);
-}
-#endif
-
 void PDFDocument::DrawText(const PDFFont &font,
                            const std::string &text, double size,
                            double x, double y,
@@ -309,6 +294,14 @@ void PDFDocument::PlaceStickersRec(Context context,
     context.font_size = *font_size;
   }
 
+  if (const BigInt *bc = doc.GetIntAttr("font-color")) {
+    auto co = bc->ToInt();
+    CHECK(co.has_value() && co.value() >= 0 &&
+          co.value() <= int64_t{0xFFFFFFFF}) << "Color is out "
+      "of range. Must be in [0, 0xFFFFFFFF]: " << bc->ToString();
+    context.color = (uint32_t)co.value();
+  }
+
   // XXX scaling
 
   for (const std::shared_ptr<DocTree> &child : doc.children) {
@@ -328,6 +321,7 @@ void PDFDocument::GeneratePDF(const std::string &filename,
 
     Context context;
     context.font = PDFFont(pdf->GetBuiltInFont(PDF::BuiltInFont::TIMES_ROMAN));
+    context.color = 0x000000FF;
     Transform identity;
     identity.dx = 0.0;
     identity.dy = 0.0;

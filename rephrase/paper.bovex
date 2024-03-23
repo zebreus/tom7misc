@@ -375,16 +375,16 @@ of my time on this project implementing a full-fledged language.
 
 [section[Hyphenation]]
 
-Johannes Gutenberg invented the hyphen in A.D. 1455 for his
-Gutenberg Bible, then just known as Bible. His printing process
-actually required the lines to all be the same length, so he
-had to stick these little guys all over the place. His hyphens
-looked like this: [gutenberg-hyphen].
-Later on we straightened these out and decided we only needed one
-at a time, and today we use them not because we [it[require]] our
-lines to all be the same length, but because we like the cognitive
-challenge of remembering the beginning of the word while we move
-our eyes to the beginning of the next line while reading.
+[span {(Span) font-color = rgba(255, 0, 0, 255)} [Johannes Gutenberg]] invented the hyphen in A.D. 1455 for his Gutenberg
+Bible, then just known as Bible.[cite gutenberg1455bible] His printing
+process actually required the lines to all be the same length, so he
+had to stick these little guys all over the place. His hyphens looked
+like this: [gutenberg-hyphen]. Later on we straightened these out and
+decided we only needed one at a time, and today we use them not
+because we [it[require]] our lines to all be the same length, but
+because we like the cognitive challenge of remembering the beginning
+of the word while we move our eyes to the beginning of the next line
+while reading.
 
 BoVeX supports hyphenation using the same approach as TeX: We break
 each word into boxes at legal hyphenation points, and mark these
@@ -422,6 +422,8 @@ little less dignified than the US accent.)
 [section[Conclusion]]
 
 [subsection[Future work]]
+
+Reproducibility. (GradIEEE)
 
 Unicode support. This would have been helpful when above I decided
 to show you Gutenberg's funny hyphen, [gutenberg-hyphen], for which I had to settle for embedding a crappy hand-drawn
@@ -471,6 +473,8 @@ bit bad.
 Since it feels good to be a little bit bad.
 
 TODO: time travel, the most powerful weapon
+
+TODO: BoVeX rendering pipeline is a bit like a multi-pass compiler
 
 TODO: BoVeX does not support page numbers, which is good because
 page numbers are prohibited in the SIGBOVIK proceedings.

@@ -224,6 +224,9 @@ object Box of { width : float, height : float,
                 font-name : string,
                 font-size : float,
 
+                (* RGBA format. 0xFF00FF *)
+                font-color : int,
+
                 (* TODO: a way to indicate ascenders and descenders. *)
                 (* TODO: a way to indicate spaces for channel detection. *)
 
@@ -262,7 +265,10 @@ object Span of { line-height: float,
                  font-size: float,
                  (* Selects a font variant *)
                  font-bold: bool,
-                 font-italic: bool }
+                 font-italic: bool,
+
+                 (* RGBA format. 0xFF00FF *)
+                 font-color : int }
 fun span (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_SPAN) l
 
@@ -390,12 +396,15 @@ fun get-text-rec (lay : layout) : string =
   | Node _ => fail "expected only text nodes"
 
 
+(* Pack boxes along a dimension. The boxes must be marked with their
+   "width" as the dimension. Usually you want to just use pack-boxes-horiz
+   or pack-boxes-vert below. *)
 datatype packing-algorithm = BEST | FIRST
-(* Generates a series of lines (boxes) with the glue turned into definite
-   padding. Still in "AllBox" format. *)
-fun pack-boxes-horiz (algo : packing-algorithm,
-                      width : float, content : layout) : (float * layout list) =
+fun pack-boxes (algo : packing-algorithm, dimension : float, content : layout) :
+  (float * layout list) =
   let
+    object InternalPackBoxes of { badness: float, layout: layout }
+
     (* This is communicated with a string attribute; an implementation
        detail. *)
     val algo-string =
@@ -404,10 +413,20 @@ fun pack-boxes-horiz (algo : packing-algorithm,
       | FIRST => "first"
     val content =
       map-attrs (fn attrs => attrs with algorithm = algo-string) content
+    val packed = internal-pack-boxes (dimension, content)
+  in
+    case packed of
+      {(InternalPackBoxes) badness, layout} => (badness, unjoin layout)
+    | _ => fail "Bug: Expected badness and layout from pack-boxes"
+  end
 
-    val packed = internal-pack-boxes (width, content)
-    object InternalPackBoxes of { badness: float, layout: layout }
 
+(* Generates a series of lines (boxes) with the glue turned into definite
+   padding. Still in "AllBox" format. *)
+fun pack-boxes-horiz (algo : packing-algorithm,
+                      width : float, content : layout) : (float * layout list) =
+  let
+    val (badness, lines) = pack-boxes (algo, width, content)
 
     fun set-height (line : layout) =
       case layoutcase line of
@@ -427,13 +446,16 @@ fun pack-boxes-horiz (algo : packing-algorithm,
           end
       | _ => fail "Bug: Expected pack-boxes to return a series of lines (boxes)"
 
-    val (badness, lines) =
-      case packed of
-        {(InternalPackBoxes) badness, layout} => (badness, unjoin layout)
-      | _ => fail "Bug: Expected badness and layout from pack-boxes"
-
   in
     (badness, list-map set-height lines)
+  end
+
+(* Pack boxes (e.g. paragraphs) vertically into columns. *)
+fun pack-boxes-vert (height : float, content : layout) : (float * layout list) =
+  let
+    val (badness, columns) = pack-boxes (BEST, height, content)
+  in
+    (badness, columns)
   end
 
 (*

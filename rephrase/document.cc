@@ -1,6 +1,5 @@
 #include "document.h"
 
-#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -66,6 +65,10 @@ void DocTree::SetStringAttr(const std::string &name, const std::string &value) {
   attrs[name] = AttrVal{.v = {value}};
 }
 
+void DocTree::SetIntAttr(const std::string &name, const BigInt &value) {
+  attrs[name] = AttrVal{.v = {value}};
+}
+
 void DocTree::SetDoubleAttr(const std::string &name, double d) {
   attrs[name] = AttrVal{.v = {d}};
 }
@@ -111,6 +114,18 @@ const bool *DocTree::GetBoolAttr(const std::string &name) const {
     } else {
       LOG(FATAL) << "Attribute " << name << " was present, but expected "
         "bool type.";
+    }
+  }
+  return nullptr;
+}
+
+const BigInt *DocTree::GetIntAttr(const std::string &name) const {
+  if (const AttrVal *a = GetAttr(name)) {
+    if (const BigInt *b = std::get_if<BigInt>(&a->v)) {
+      return b;
+    } else {
+      LOG(FATAL) << "Attribute " << name << " was present, but expected "
+        "int type.";
     }
   }
   return nullptr;
@@ -452,10 +467,12 @@ NextWord(std::string_view &text) {
 }
 
 std::vector<DocTree>
-Document::BoxifyText(const Font *font, double font_size,
+Document::BoxifyText(const TextProps &props,
                      std::string_view text) {
   static constexpr bool VERBOSE = false;
   std::vector<DocTree> out;
+
+  const Font *font = GetDescribedFont(props.desc);
 
   const double space_width = font->CharWidth(' ');
   const double hyphen_width = font->CharWidth('-');
@@ -466,6 +483,12 @@ Document::BoxifyText(const Font *font, double font_size,
       // space.
       return s.size() == 1 && s[0] == ' ';
   };
+
+  auto ApplyTextProps = [props, font](DocTree *doc) {
+      doc->SetDoubleAttr("font-size", props.font_size);
+      doc->SetStringAttr("font-name", font->Name());
+      doc->SetIntAttr("font-color", BigInt(props.font_color));
+    };
 
   // Work a word at a time.
   while (!text.empty()) {
@@ -557,16 +580,16 @@ Document::BoxifyText(const Font *font, double font_size,
           // contain the chunk so far.
           DocTree d;
           d.SetStringAttr("display", "box");
-          d.SetDoubleAttr("width", chunk_width * font_size);
-          d.SetDoubleAttr("height", font_size);
+          d.SetDoubleAttr("width", chunk_width * props.font_size);
+          d.SetDoubleAttr("height", props.font_size);
           // PERF The font is normalized onto every chunk, which may be kinda
           // expensive.
-          d.SetDoubleAttr("font-size", font_size);
-          d.SetStringAttr("font-name", font->Name());
+          ApplyTextProps(&d);
 
           if (break_for_hyphen) {
             // If breaking for hyphen, then we have a penalty,
             d.SetDoubleAttr("glue-break-penalty", HYPHEN_PENALTY);
+            // XXX this should get text props too?
             d.SetLayoutAttr("glue-break-insert", TextDoc("-"));
             // Not including the kerning, since we are breaking between
             // the two characters.
@@ -617,17 +640,16 @@ Document::BoxifyText(const Font *font, double font_size,
     // after it.
     DocTree d;
     d.SetStringAttr("display", "box");
-    d.SetDoubleAttr("width", chunk_width * font_size);
-    d.SetDoubleAttr("height", font_size);
-    d.SetDoubleAttr("font-size", font_size);
-    d.SetStringAttr("font-name", font->Name());
+    d.SetDoubleAttr("width", chunk_width * props.font_size);
+    d.SetDoubleAttr("height", props.font_size);
+    ApplyTextProps(&d);
 
     if (space_after || IsWhitespace(word)) {
       // No penalty to break between words. We could use some heuristics to
       // penalize certain breaks in the future. (For example, breaking after
       // a comma or semicolon seems better.)
       d.SetDoubleAttr("glue-break-penalty", 0.0);
-      d.SetDoubleAttr("glue-ideal", space_width * font_size);
+      d.SetDoubleAttr("glue-ideal", space_width * props.font_size);
       // Relative penalty for contracting.
       d.SetDoubleAttr("glue-contract", 4.0);
     } else {
@@ -781,12 +803,10 @@ DocTree Document::GetBoxes(const DocTree &doc) {
     [this, &out, &Rec](TextProps props, const DocTree &doc) {
       if (doc.IsText()) {
 
-        const Font *font = GetDescribedFont(props.desc);
-
         std::string normtext = NormalizeWhitespace(doc.text);
 
         std::vector<DocTree> boxes =
-          BoxifyText(font, props.font_size, doc.text);
+          BoxifyText(props, doc.text);
         for (DocTree &d : boxes)
           out.push_back(std::move(d));
         boxes.clear();
@@ -812,6 +832,14 @@ DocTree Document::GetBoxes(const DocTree &doc) {
 
             if (const bool *b = doc.GetBoolAttr("font-italic")) {
               props.desc.font_italic = *b;
+            }
+
+            if (const BigInt *bc = doc.GetIntAttr("font-color")) {
+              auto co = bc->ToInt();
+              CHECK(co.has_value() && co.value() >= 0 &&
+                    co.value() <= int64_t{0xFFFFFFFF}) << "Color is out "
+                "of range. Must be in [0, 0xFFFFFFFF]: " << bc->ToString();
+              props.font_color = (uint32_t)co.value();
             }
 
           } else {

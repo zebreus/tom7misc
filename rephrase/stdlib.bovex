@@ -389,3 +389,8 @@ fun map-tolist (Map { cmp = _, tree }) =
   in
     rec tree
   end
+
+(* colors *)
+
+fun rgba (r, g, b, a) : int =
+  ((((r * 256) + g) * 256 + b) * 256) + a
