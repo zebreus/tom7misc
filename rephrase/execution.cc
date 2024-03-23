@@ -177,13 +177,11 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
 
     const Font *font = DocumentHook()->GetFontByName(*as);
 
-    Document::TextProps props;
-    props.font_family = *bs;
-    // unused
-    props.font_size = 1.0;
-    props.font_bold = !!BigInt::BitwiseAnd(*ci, 1);
-    props.font_italic = !!BigInt::BitwiseAnd(*ci, 2);
-    DocumentHook()->RegisterFont(props, font);
+    Document::FontDescription desc;
+    desc.font_family = *bs;
+    desc.font_bold = !!BigInt::BitwiseAnd(*ci, 1);
+    desc.font_italic = !!BigInt::BitwiseAnd(*ci, 2);
+    DocumentHook()->RegisterFont(desc, font);
     return Unit(state);
   }
 

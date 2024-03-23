@@ -16,7 +16,7 @@ let
 
   val gutenberg-hyphen-png = image-load "gutenberg-hyphen.png"
   val gutenberg-hyphen =
-    image-inline { img = gutenberg-hyphen-png, height = 9.0 }
+    image-inline { img = gutenberg-hyphen-png, height = 9.0, dy = 3.0 }
   val tt = fixedersys
 
 in

@@ -706,33 +706,33 @@ const ImageRGBA *Document::GetImageByName(const std::string &name) {
   return it->second.get();
 }
 
-void Document::RegisterFont(const TextProps &props, const Font *f) {
-  FontFamily &family = font_families[props.font_family];
-  if (props.font_bold && props.font_italic) {
+void Document::RegisterFont(const FontDescription &desc, const Font *f) {
+  FontFamily &family = font_families[desc.font_family];
+  if (desc.font_bold && desc.font_italic) {
     family.bold_italic = f;
-  } else if (props.font_bold) {
+  } else if (desc.font_bold) {
     family.bold = f;
-  } else if (props.font_italic) {
+  } else if (desc.font_italic) {
     family.italic = f;
   } else {
     family.regular = f;
   }
 }
 
-const Font *Document::GetDescribedFont(const TextProps &props) {
-  const auto it = font_families.find(props.font_family);
+const Font *Document::GetDescribedFont(const FontDescription &desc) {
+  const auto it = font_families.find(desc.font_family);
   if (it == font_families.end()) {
-    LOG(FATAL) << "Unknown font family: " << props.font_family;
+    LOG(FATAL) << "Unknown font family: " << desc.font_family;
   }
   const FontFamily &family = it->second;
 
-  if (props.font_bold && props.font_italic && family.bold_italic)
+  if (desc.font_bold && desc.font_italic && family.bold_italic)
     return family.bold_italic;
 
-  if (props.font_italic && family.italic)
+  if (desc.font_italic && family.italic)
     return family.italic;
 
-  if (props.font_bold && family.bold)
+  if (desc.font_bold && family.bold)
     return family.bold;
 
   if (family.regular)
@@ -781,7 +781,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
     [this, &out, &Rec](TextProps props, const DocTree &doc) {
       if (doc.IsText()) {
 
-        const Font *font = GetDescribedFont(props);
+        const Font *font = GetDescribedFont(props.desc);
 
         std::string normtext = NormalizeWhitespace(doc.text);
 
@@ -799,7 +799,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
             return;
           } else if (*display == "span") {
             if (const std::string *f = doc.GetStringAttr("font-face")) {
-              props.font_family = *f;
+              props.desc.font_family = *f;
             }
 
             if (const double *d = doc.GetDoubleAttr("font-size")) {
@@ -807,11 +807,11 @@ DocTree Document::GetBoxes(const DocTree &doc) {
             }
 
             if (const bool *b = doc.GetBoolAttr("font-bold")) {
-              props.font_bold = *b;
+              props.desc.font_bold = *b;
             }
 
             if (const bool *b = doc.GetBoolAttr("font-italic")) {
-              props.font_italic = *b;
+              props.desc.font_italic = *b;
             }
 
           } else {
@@ -828,7 +828,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
 
   // Get default text props somehow?
   TextProps props;
-  props.font_family = "times";
+  props.desc.font_family = "times";
   Rec(props, doc);
   return JoinDocs(out);
 }

@@ -111,11 +111,16 @@ struct Font {
 struct Document {
   virtual ~Document() = default;
 
-  struct TextProps {
+  // Describing one of the variants of a font family.
+  struct FontDescription {
     std::string font_family;
-    double font_size = 12.0;
     bool font_bold = false;
     bool font_italic = false;
+  };
+
+  struct TextProps {
+    FontDescription desc;
+    double font_size = 12.0;
   };
 
   // Each style is optional, but there should be at least one non-null.
@@ -154,8 +159,8 @@ struct Document {
   const ImageRGBA *GetImageByName(const std::string &name);
 
   // These are independent of font size.
-  void RegisterFont(const TextProps &props, const Font *f);
-  const Font *GetDescribedFont(const TextProps &props);
+  void RegisterFont(const FontDescription &desc, const Font *f);
+  const Font *GetDescribedFont(const FontDescription &desc);
 
   DocTree GetBoxes(const DocTree &doc);
 

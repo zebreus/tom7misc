@@ -246,6 +246,14 @@ object Box of { width : float, height : float,
 fun box (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_BOX) l
 
+fun attrs-pos (attrs : obj) : float * float =
+  let
+    val dx = case attrs of {(Box) dx } => dx | _ => 0.0
+    val dy = case attrs of {(Box) dy } => dy | _ => 0.0
+  in
+    (dx, dy)
+  end
+
 (* A span lays out boxes one after another. Nested spans can be used
    to set text properties (like the font). *)
 object Span of { line-height: float,
@@ -472,36 +480,6 @@ fun get-paragraphs (ls : layout list) : layout list =
           end
       end
 
-    (*
-    fun merge-span attrs lay =
-      case layoutcase lay of
-        Node (SPAN, old-attrs, ch) =>
-          let
-            val m = span (obj-merge (old-attrs, attrs)) (layout-concat ch)
-          in
-            print "\nS:BEFORE:\n";
-            debug-print-doc lay;
-            print "S:MERGED:\n";
-            debug-print-doc m;
-            m
-          end
-      | Node (GROUP, old-attrs, ch) =>
-          if obj-empty old-attrs
-          then layout-concat (list-map (merge-span attrs) ch)
-            (* we could just merge 'em? *)
-          else fail "group with attributes not supported here"
-      | _ =>
-          let
-            val m = span attrs lay
-          in
-            print "NOT MERGED:\n";
-            debug-print-doc lay;
-            print "RESULT:\n";
-            debug-print-doc m;
-            m
-          end
-        *)
-
     val merge-span = span
 
     fun do-one lay =
@@ -559,11 +537,16 @@ fun stick-horizontally (lay : layout) : layout =
           | rec (x, h :: t) =
           case layoutcase h of
             Node (BOX, attrs as {(Box) width}, ch) =>
-              let val s =
-                sticker (attrs without (Box)width
-                         without (Box)height
-                         with (Sticker)x = x
-                         with (Sticker)y = 0.0) (layout-concat ch)
+              let
+                val (dx, dy) = attrs-pos attrs
+                val s =
+                  sticker (attrs
+                           without (Box)width
+                           without (Box)height
+                           without (Box)dx
+                           without (Box)dy
+                           with (Sticker)x = x +. dx
+                           with (Sticker)y = dy) (layout-concat ch)
               in
                 s :: rec (x +. width, t)
               end
@@ -587,11 +570,16 @@ fun stick-vertically (x : float, lay : layout) : layout =
           | rec (y, h :: t) =
           case layoutcase h of
             Node (BOX, attrs as {(Box) height}, ch) =>
-              let val s =
-                sticker (attrs without (Box)width
-                         without (Box)height
-                         with (Sticker)y = y
-                         with (Sticker)x = x) (layout-concat ch)
+              let
+                val (dx, dy) = attrs-pos attrs
+                val s =
+                  sticker (attrs
+                           without (Box)width
+                           without (Box)height
+                           without (Box)dx
+                           without (Box)dy
+                           with (Sticker)x = x +. dx
+                           with (Sticker)y = y +. dy) (layout-concat ch)
               in
                 s :: rec (y +. height, t)
               end
@@ -627,7 +615,7 @@ fun image { img = img as (Image img-handle), width } =
 
 (* Here we give the height, since the typical usage is to make it flow
    with some text. Allows breaks. *)
-fun image-inline { img = img as (Image img-handle), height } = let
+fun image-inline { img = img as (Image img-handle), height, dy } = let
     (* Compute width from image native dimensions. *)
 
     val { width = pixel-width, height = pixel-height } = image-size img
@@ -636,7 +624,7 @@ fun image-inline { img = img as (Image img-handle), height } = let
 
     (* Would it be cleaner to put the image sticker inside the box? *)
     val doc =
-      box {(Box) height = height, width = width,
+      box {(Box) height = height, width = width, dy = dy,
            img = img-handle, img-width = width, img-height = height,
            glue-break-penalty = 0.0, glue-ideal = 0.0 } []
   in

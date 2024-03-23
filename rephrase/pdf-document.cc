@@ -52,24 +52,22 @@ void PDFDocument::InitBuiltInFonts() {
                                PDF::BuiltInFont bold,
                                PDF::BuiltInFont italic,
                                PDF::BuiltInFont bold_italic) {
-      TextProps props;
-      props.font_family = family;
-      // Unused
-      props.font_size = 1.0;
+      FontDescription desc;
+      desc.font_family = family;
 
-      props.font_bold = false;
-      props.font_italic = false;
+      desc.font_bold = false;
+      desc.font_italic = false;
 
-      RegisterFont(props, GetBIF(regular));
+      RegisterFont(desc, GetBIF(regular));
 
-      props.font_bold = true;
-      RegisterFont(props, GetBIF(bold));
+      desc.font_bold = true;
+      RegisterFont(desc, GetBIF(bold));
 
-      props.font_italic = true;
-      RegisterFont(props, GetBIF(bold_italic));
+      desc.font_italic = true;
+      RegisterFont(desc, GetBIF(bold_italic));
 
-      props.font_bold = false;
-      RegisterFont(props, GetBIF(italic));
+      desc.font_bold = false;
+      RegisterFont(desc, GetBIF(italic));
     };
 
   RegisterFourFonts("helvetica",
@@ -91,19 +89,19 @@ void PDFDocument::InitBuiltInFonts() {
                     PDF::TIMES_BOLD_ITALIC);
 
   {
-    TextProps props;
-    props.font_family = "symbol";
-    props.font_bold = false;
-    props.font_italic = false;
-    RegisterFont(props, GetBIF(PDF::SYMBOL));
+    FontDescription desc;
+    desc.font_family = "symbol";
+    desc.font_bold = false;
+    desc.font_italic = false;
+    RegisterFont(desc, GetBIF(PDF::SYMBOL));
   }
 
   {
-    TextProps props;
-    props.font_family = "zapf-dingbats";
-    props.font_bold = false;
-    props.font_italic = false;
-    RegisterFont(props, GetBIF(PDF::ZAPF_DINGBATS));
+    FontDescription desc;
+    desc.font_family = "zapf-dingbats";
+    desc.font_bold = false;
+    desc.font_italic = false;
+    RegisterFont(desc, GetBIF(PDF::ZAPF_DINGBATS));
   }
 }
 
