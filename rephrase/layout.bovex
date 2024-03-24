@@ -308,6 +308,15 @@ fun b layout =
 fun it layout =
   span {(Span) font-italic = true} layout
 
+fun color rgba layout =
+  span {(Span) font-color = rgba } layout
+
+fun size pts layout =
+  span {(Span) font-size = pts } layout
+
+fun sup pts layout = span {(Box) font-size = pts *. 0.75,
+                           dy = -0.25 *. pts } layout
+
 val tt = courier
 
 fun rm layout =
