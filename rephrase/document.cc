@@ -470,6 +470,9 @@ std::vector<DocTree>
 Document::BoxifyText(const TextProps &props,
                      std::string_view text) {
   static constexpr bool VERBOSE = false;
+
+  // bool VERBOSE = text[0] == 'R' || text[0] == 'J';
+
   std::vector<DocTree> out;
 
   const Font *font = GetDescribedFont(props.desc);
@@ -570,8 +573,10 @@ Document::BoxifyText(const TextProps &props,
           }();
 
         if (VERBOSE) {
-          printf("[%c] -> [%c] %s%s\n",
-                 prev, codepoint,
+          printf("[%s] -> [%s] %.3f width%s%s\n",
+                 Util::EncodeUTF8(prev).c_str(),
+                 Util::EncodeUTF8(codepoint).c_str(),
+                 char_width,
                  break_for_kern ? " " AGREEN("kern") : "",
                  break_for_hyphen ? " " APURPLE("hyph") : "");
         }
@@ -619,7 +624,9 @@ Document::BoxifyText(const TextProps &props,
           }
 
           if (VERBOSE) {
-            printf("Kerned '%c'+'%c'; chunk now '%s'\n", prev, codepoint,
+            printf("Kerned '%s'+'%s'; chunk now '%s'\n",
+                   Util::EncodeUTF8(prev).c_str(),
+                   Util::EncodeUTF8(codepoint).c_str(),
                    chunk.c_str());
           }
         } else {
@@ -627,7 +634,9 @@ Document::BoxifyText(const TextProps &props,
           chunk += Util::EncodeUTF8(codepoint);
           chunk_width += char_width;
           if (VERBOSE) {
-            printf("Added '%c'; chunk now '%s'\n", codepoint, chunk.c_str());
+            printf("Added '%s'; chunk now '%s'\n",
+                   Util::EncodeUTF8(codepoint).c_str(),
+                   chunk.c_str());
           }
         }
         prev = codepoint;
@@ -872,6 +881,8 @@ Document::PackBoxes(double line_width, const DocTree &doc) {
   using BoxIn = BoxesAndGlue::BoxIn;
   using BoxOut = BoxesAndGlue::BoxOut;
 
+  using Justification = BoxesAndGlue::Justification;
+
   if (doc.IsEmpty()) return {doc, 0.0};
   CHECK(!doc.IsText()) <<
     "pack-boxes wants a node that has only box children. Got text: " <<
@@ -889,6 +900,19 @@ Document::PackBoxes(double line_width, const DocTree &doc) {
       algorithm = Algorithm::FIRST;
     } else {
       LOG(FATAL) << "pack-boxes algorithm attr unknown: " << *algo;
+    }
+  }
+
+  Justification just = Justification::FULL;
+  if (const std::string *j = doc.GetStringAttr("justification")) {
+    if (*j == "full") {
+      just = Justification::FULL;
+    } else if (*j == "left") {
+      just = Justification::LEFT;
+    } else if (*j == "center") {
+      just = Justification::CENTER;
+    } else {
+      LOG(FATAL) << "pack-boxes justification attr unknown: " << *j;
     }
   }
 
@@ -954,7 +978,6 @@ Document::PackBoxes(double line_width, const DocTree &doc) {
     boxes[i].edge_penalty = 0.0;
   }
 
-
   std::vector<std::vector<BoxesAndGlue::BoxOut>> lines;
   switch (algorithm) {
   case Algorithm::FIRST: {
@@ -965,7 +988,7 @@ Document::PackBoxes(double line_width, const DocTree &doc) {
     break;
   }
   case Algorithm::BEST:
-    lines = BoxesAndGlue::PackBoxes(line_width, boxes);
+    lines = BoxesAndGlue::PackBoxes(line_width, boxes, just);
     break;
   }
 

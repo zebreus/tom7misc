@@ -11,8 +11,6 @@
 #include <optional>
 #include <algorithm>
 
-#include "base/logging.h"
-
 // ImageRGBA is recommended for most uses, but other formats are
 // supported below.
 struct ImageRGB;

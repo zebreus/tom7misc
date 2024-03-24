@@ -109,7 +109,8 @@ BoxesAndGlue::PackBoxesFirst(
 
 std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     double line_width,
-    const std::vector<BoxIn> &boxes) {
+    const std::vector<BoxIn> &boxes,
+    Justification just) {
 
   std::vector<std::vector<std::pair<int, double>>> successors(
       boxes.size(), std::vector<std::pair<int, double>>{});
@@ -496,7 +497,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     current_line.push_back(box_out);
 
     if (memo_result.break_after) {
-      ApplyGlue(&current_line, true);
+      ApplyGlue(&current_line, just == Justification::FULL);
       lines.push_back(std::move(current_line));
       current_line.clear();
       before = 0;

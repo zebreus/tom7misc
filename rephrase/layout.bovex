@@ -130,7 +130,6 @@ fun image-size (Image img) : { width : int, height : int } =
     {(InternalImageProps) width, height} => { width = width, height = height }
   | _ => fail "bad image props?"
 
-
 fun layout-concat nil = []
   | layout-concat (x :: nil) = x
   | layout-concat (l :: t) = [[l][layout-concat t]]
@@ -267,6 +266,9 @@ object Span of { line-spacing: float,
                  font-bold: bool,
                  font-italic: bool,
 
+                 (* left, full, center *)
+                 justification: string,
+
                  (* RGBA format. 0xFF00FF *)
                  font-color : int }
 fun span (attrs : obj) (l : layout) =
@@ -400,7 +402,10 @@ fun get-text-rec (lay : layout) : string =
    "width" as the dimension. Usually you want to just use pack-boxes-horiz
    or pack-boxes-vert below. *)
 datatype packing-algorithm = BEST | FIRST
-fun pack-boxes (algo : packing-algorithm, dimension : float, content : layout) :
+datatype justification = FULLY-JUSTIFIED | LEFT-JUSTIFIED | CENTERED
+fun pack-boxes (algo : packing-algorithm,
+                justification : justification,
+                dimension : float, content : layout) :
   (float * layout list) =
   let
     object InternalPackBoxes of { badness: float, layout: layout }
@@ -411,8 +416,18 @@ fun pack-boxes (algo : packing-algorithm, dimension : float, content : layout) :
       case algo of
         BEST => "best"
       | FIRST => "first"
+
+    val just-string =
+      case justification of
+        FULLY-JUSTIFIED => "full"
+      | LEFT-JUSTIFIED => "left"
+      | CENTERED => "center"
+
     val content =
-      map-attrs (fn attrs => attrs with algorithm = algo-string) content
+      map-attrs (fn attrs =>
+                 attrs
+                 with algorithm = algo-string
+                 with justification = just-string) content
     val packed = internal-pack-boxes (dimension, content)
   in
     case packed of
@@ -423,10 +438,10 @@ fun pack-boxes (algo : packing-algorithm, dimension : float, content : layout) :
 
 (* Generates a series of lines (boxes) with the glue turned into definite
    padding. Still in "AllBox" format. *)
-fun pack-boxes-horiz (algo : packing-algorithm,
+fun pack-boxes-horiz (algo : packing-algorithm, just : justification,
                       width : float, content : layout) : (float * layout list) =
   let
-    val (badness, lines) = pack-boxes (algo, width, content)
+    val (badness, lines) = pack-boxes (algo, just, width, content)
 
     fun set-height (line : layout) =
       case layoutcase line of
@@ -453,7 +468,8 @@ fun pack-boxes-horiz (algo : packing-algorithm,
 (* Pack boxes (e.g. paragraphs) vertically into columns. *)
 fun pack-boxes-vert (height : float, content : layout) : (float * layout list) =
   let
-    val (badness, columns) = pack-boxes (BEST, height, content)
+    (* XXX we probably want left-justified here. *)
+    val (badness, columns) = pack-boxes (BEST, FULLY-JUSTIFIED, height, content)
   in
     (badness, columns)
   end
@@ -700,7 +716,8 @@ fun blockquote lay =
     val WIDTH = inch 3.25
     val lay = it (layout-map-text normalize-whitespace lay)
     val boxes = get-boxes lay
-    val (badness, lines : layout list) = pack-boxes-horiz (BEST, WIDTH, boxes)
+    val (badness, lines : layout list) =
+      pack-boxes-horiz (BEST, FULLY-JUSTIFIED, WIDTH, boxes)
     do emit-badness badness
     val lines : layout list = list-map stick-horizontally lines
   in
@@ -761,8 +778,9 @@ fun section lay = span {(Span) font-bold = true, font-size = 15.0 }
 fun subsection lay = span {(Span) font-bold = true, font-size = 13.5 }
   [[lay][hfill()][break()]]
 
-fun paragraph lay = span {(Span) font-bold = true}
-  [[lay].[box {(Box) width=3.0, glue-ideal=3.0, glue-expand = 5.0 } []]]
+fun paragraph lay =
+  span {(Span) font-bold = true} [[lay].] ^^
+  box {(Box) width=3.0, glue-ideal=3.0, glue-expand = 5.0 } []
 
 object Rephrase of { rephrase-times : int }
 fun rephrase-paragraph (times : int) p =
@@ -809,6 +827,16 @@ fun pack-one-paragraph column-width para =
         print "-------------------\n"
       end
 
+    val just =
+      case layoutcase para of
+        Node (SPAN, attrs as {(Span) justification }, _) =>
+          (case justification of
+             "full" => FULLY-JUSTIFIED
+           | "left" => LEFT-JUSTIFIED
+           | "center" => CENTERED
+           | s => fail ("Unsupported justification type " ^ s))
+      | _ => FULLY-JUSTIFIED
+
     (* TODO: Allow rephrasing mid-paragraph. Same idea of passing
        the rewrap function to represent the "hole"; it's just
        fiddly. Probably would be good to provide context to the
@@ -835,7 +863,8 @@ fun pack-one-paragraph column-width para =
         (* XXX use semantic loss! *)
 
         val boxes = get-boxes para
-        val (badness, lines) = pack-boxes-horiz (BEST, column-width, boxes)
+        val (badness, lines) =
+          pack-boxes-horiz (BEST, just, column-width, boxes)
 
         fun new-best NONE = SOME (badness, lines)
           | new-best (SOME (pbad, pbest)) =

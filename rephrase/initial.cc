@@ -121,15 +121,23 @@ Initial::Initial(AstPool *pool) {
 
   const Type *node_type2 = pool->Arrow(pool->LayoutType(), pool->LayoutType());
   const Type *node_type1 = pool->Arrow(pool->ObjType(), node_type2);
+
+  const Type *layout_cat_dom =
+    pool->Product({pool->LayoutType(), pool->LayoutType()});
+  const Type *layout_cat_cod = pool->LayoutType();
+  const Type *layout_cat_arrow = pool->Arrow(layout_cat_dom, layout_cat_cod);
   const std::vector<std::tuple<std::string, const Exp *, const Type *>>
     inlined = {
     {"node", pool->Fn("", "a", node_type1,
                       pool->Fn("", "l", node_type2,
                                pool->Node(pool->Var({}, "a"),
                                           {pool->Var({}, "l")}))), node_type1},
+    {"^^", pool->Fn("", "r", layout_cat_arrow,
+                    pool->Node(pool->Object({}),
+                               {pool->Project("1", pool->Var({}, "r")),
+                                pool->Project("2", pool->Var({}, "r"))})),
+     layout_cat_arrow},
   };
-
-  // TODO: ^^ inlined as join
 
   for (const auto &[v, e, t] : inlined) {
     exp_vars.emplace_back(

@@ -65,7 +65,9 @@ let
   fun no-rephrase lay = lay
   fun no-rephrase-paragraph _ lay = lay
 
-  val SIMPLE-TEST = false
+  val SIMPLE-TEST = true
+
+  val tt = fixedersys
 
 (* [rephrase-paragraph 5 [This is a rephrased paragraph. Please rephrase it!]] *)
 
@@ -81,9 +83,16 @@ in
   if SIMPLE-TEST
   then (main-text
         (palatino
-         [A regular paragraph. Nothing funny going on here.
+         [A regular paragraph. Nothing funny going on here.[cite ggeranov][cite ocaml][cite remy1998objective]
 
-          [rephrase-paragraph 25 [Help me find a way to China.]]
+          The details really keep going, too. The hyphenation dictionary is
+          stored in a file called [tt[hyph-en-us.tex]]. "hyph" here of course
+          stands for hyphens, and "en-us" means "English (United States)."
+          In fact it is the [it[standard]] language code for US English in
+          the Small Language Model called IETF BCP 47![cite bcp47]
+
+          [section [Bibliography]]
+          [bibliography()]
 
           Back to normal paragraphs.]))
   else

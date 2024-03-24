@@ -1,6 +1,12 @@
 
 // Throw-away test
 
+#include <cstdint>
+#include <cstdio>
+#include <optional>
+#include <vector>
+
+#include "image.h"
 #include "fonts/ttf.h"
 #include "base/logging.h"
 

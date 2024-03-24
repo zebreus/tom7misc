@@ -1358,9 +1358,11 @@ PatternCompilation::SplitObjectPattern(
         fields;
       for (const auto &[lab, pp] : p->str_children) {
         auto it = ovi->fields.find(lab);
-        CHECK(it != ovi->fields.end()) << "The object " << p->str <<
-          " does not have a field called " << lab << ".\nWhen "
-          "compiling object pattern: " << PatString(p);
+        CHECK(it != ovi->fields.end()) <<
+          StringPrintf("The object " APURPLE("%s")
+                       " does not have a field called " ABLUE("%s") ".\n",
+                       p->str.c_str(), lab.c_str()) <<
+          "When compiling object pattern: " << PatString(p);
         fields[lab] = std::make_pair(pp, it->second);
       }
       return fields;

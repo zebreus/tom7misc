@@ -10,8 +10,9 @@
 
 using BoxIn = BoxesAndGlue::BoxIn;
 using BoxOut = BoxesAndGlue::BoxOut;
+using Justification = BoxesAndGlue::Justification;
 
-static void TestASCII(bool best_fit) {
+static void TestASCII(bool best_fit, Justification just) {
   std::vector<std::string> words =
     Util::Split(
         "If during a game it is found that an illegal move, including "
@@ -41,7 +42,7 @@ static void TestASCII(bool best_fit) {
   }
 
   std::vector<std::vector<BoxOut>> out =
-    best_fit ? BoxesAndGlue::PackBoxes(40.0, boxes) :
+    best_fit ? BoxesAndGlue::PackBoxes(40.0, boxes, just) :
     BoxesAndGlue::PackBoxesFirst(40.0, boxes, 5.0);
 
   double max_penalty = 0.0;
@@ -77,9 +78,11 @@ int main(int argc, char **argv) {
   ANSI::Init();
 
   printf("----------- first ---------\n");
-  TestASCII(false);
+  TestASCII(false, Justification::FULL);
   printf("----------- best ----------\n");
-  TestASCII(true);
+  TestASCII(true, Justification::FULL);
+  printf("----------- left ----------\n");
+  TestASCII(true, Justification::LEFT);
 
   printf("OK\n");
   return 0;

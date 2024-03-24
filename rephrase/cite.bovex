@@ -218,11 +218,12 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
     val num = layout ("[" ^ int-to-string n ^ "] ")
 
     fun joindots l =
-      layout-concat
-      (num ::
-       list-map (fn lay => if layout-empty lay
-                           then lay
-                           else [[lay]. [break-ok()]]) l)
+      span {(Span) justification = "left" }
+      (layout-concat
+       (num ::
+        list-map (fn lay => if layout-empty lay
+                            then lay
+                            else [[lay]. [break-ok()]]) l))
 
     (* collections of fields supported by many citation types. *)
     val pp = pages fields

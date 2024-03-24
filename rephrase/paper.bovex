@@ -80,6 +80,7 @@ in the US by 8 hours, from 40 to 32, this senator says,
   said Cassidy. "Now they’ve got the same workers, but only for
   three-quarters of the time. And they have to hire more.”]]
 
+
 Actually, that's not exactly the quote, but I needed to make it look
 nice.[cite bynum2014bernie]
 
@@ -163,7 +164,9 @@ that Knuth has with his editor goes like this. Editor: "Hey, Donald,
 I hope you're well. Just wonder if you have an update on when 4C
 will be ready? Or any more icicles?" Donald E. Knuth: "I am working
 diligently on fascicles for Volume 4C. As I've mentioned in the past,
-it's impossible to tell how long it will be, since mathematics XXX "
+it's impossible to tell how long it will be, since mathematics
+[* is full of unexpected twists and turns that I have to follow." *]
+does not obey the rules of project management."
 Editor: "I just need a date to tell the publishers." Donald E. Knuth:
 "Like I've said, any date would be very low confidence, other than
 the fact that it will be in the future." Editor: "I just need a date."
@@ -173,9 +176,7 @@ to miss that date, or even deliver early?" Editor: "Early! Now we're
 talking." Donald E. Knuth: "What use is the date if you're excited
 about the possibility of it being early, relative to some unknown
 date?" Editor: "I just need a date for the publishers."
-Donald E. Knuth:
-
-Editor: "Thanks Donald, you're the best!"
+Donald E. Knuth: "2030." Editor: "Thanks Donald, you're the best!"
 
 Volume 5 is estimated to be ready in 2030, when Knuth will be 92.
 
@@ -227,6 +228,7 @@ great many shared with typography as well:
 
 [* TODO: Better as vector. This one we could create
    with stickers if we just add a Line command. *]
+
 [monospace-block
 [            +----------+
             |typography|
@@ -265,7 +267,7 @@ inside a jar in an underground datacenter on the planet Zebes. This
 brain is called Mother Brain and its goal is to control the
 hypercapitalists called Space Pirates to increase their "score" as
 high as possible by conquering planets throughout the galaxy. Mother
-Brain was invented by the space pirates, although it is not clear
+Brain was invented by the Space Pirates, although it is not clear
 whether the current situation was actually intended by the Space
 Pirates. The most super version of Metroid is Super Metroid.
 
@@ -339,8 +341,7 @@ keep repeating this until I get text I can
 render in monospaced font, and that is how
 we can get beautifully justified monospace
 text. Here is an example of this paragraph
-rendered in monospace:
-]]
+rendered in monospace:]]
 
 You could argue that this is improved, even, by making the text
 shorter. It does use "monospace" and "monospaced" inconsistently. The
@@ -354,8 +355,8 @@ for the real BoVeX system. But it is a good example to explain some
 concepts that will be useful later.
 
 [* Bug: We get the wrong width (or kerning?) for U+00BF here, so
-   force it. *]
-[section[¿[box {(Box) width = 8.0} []]Como te LLama?]]
+   force it. [box {(Box) width = 8.0} []] *]
+[section[¿Como te LLama?]]
 
 Llama is Facebook's Large Language Model,[cite touvron2023llama] which
 they nicely share with anyone who agrees not to use it to destroy the
@@ -505,7 +506,7 @@ since the data have heterogeneous types, manipulating some
 string-indexed data structure would have worse static checking and be
 more syntactically cumbersome. The bibliography rendering code case
 analyzes over the presence of fields to show different things with
-different substs of data.
+different subsets of data.
 
 Another use is in the [tt[layout]] type. This is a primitive type that
 most of a document's text is written in. It is a tree structure with
@@ -517,12 +518,32 @@ file as:
 (layout
  ("Another use is in the [tt[layout]] type.\n" ^
   "This is a primitive type that most of a\n" ^
-  "document's\n text is written in. It is a\n" ^
-  "tree structure with\n optional attributes\n" ^
+  "document's text is written in. It is a\n" ^
+  "tree structure with optional attributes\n" ^
   "on each node, which are represented with\n" ^
   "an object. For example, this paragraph is\n" ^
   "written in the [tt[paper.bovex]] source\n" ^
   "file as:"))]
+
+The square brackets are used to write a layout literal (the main
+body of the document is inside one large literal). Layout literals
+can also embed expression literal (of type layout) with nested
+square brackets. Here the function [tt[tt]] is applied to a
+layout literal that contains text like [tt[paper.bovex]]. The [tt[tt]] function
+just adds the [tt[font-family]] attribute "FixederSys" to the. This is
+a custom monospaced font that I made.[cite fixedersys-site] Functions
+like [tt[b]] and [tt[it]] apply bold and italic text styles, but
+it is not limited to XXX
+
+[subsection[Primops]]
+
+The other thing that objects are used for is interfacing with the
+harness that is executing the BoVeX bytecode. There are about 50
+different builtin primops that can be used by the BoVeX program.
+This includes simple things like integer and floating point addition,
+but also heavyweight operations like "load and register this
+collection of TrueType font files as a font family" or "invoke the
+boxes-and-glue packing algorithm with these parameters."
 
 [paragraph[Garbage collection]]
 Garbage collection is so easy. I keep track of all the pointers that
@@ -593,11 +614,12 @@ TeX to hyphenate the words in this file. This is the kind of detail
 I'm talking about! (There is also hyph-uk, which for once sounds a
 little less dignified than the US accent.)
 
+
 [section[Conclusion]]
 
 [subsection[Future work]]
 
-Reproducibility. The algorithm for reprhasing text tries to find the
+[paragraph[Reproducibility]] The algorithm for reprhasing text tries to find the
 best place to explore the next most likely token from the probability
 distribution. This expects the generation of these distributions to be
 deterministic. Mathematically, inference is deterministic (it is just
@@ -615,13 +637,14 @@ the probability distribution was different the second time we looked
 at it. There are already lots of ways we might fail to find highly
 likely paths. It is mostly just a bit unsatisfying.
 
-Unicode support. This would have been helpful when above I decided to
+[paragraph[Unicode support]] This would have been helpful when above I decided to
 show you Gutenberg's funny hyphen, [gutenberg-hyphen], for which I had
 to settle for embedding a crappy hand-drawn PNG file. BoVeX is witten
 with some Unicode support, with the main exception being that the PDF
 output code only supports the diminutive WinAnsiEncoding.[cite
 adobe2006pdf]
 
+[* TODO paragraph name *]
 The BoVeX system allows the document author to trade semantic
 consistency in order to achieve higher quality typography. Although we
 achieve state-of-the-art results, there are likely points that are
@@ -708,6 +731,14 @@ everywhere
 
   - People who ask "will you marry me" instead of "would you marry me?"
   - Or when the rules of "hard mode" in Wordle are just incorrect
+  - Or the extra pixel on a trinitron
+  - Or when the screws aren’t lined up
+  - Or when your 192kHz audio has hypersonic artifacts in it (FFT)
+  - Or when the seltzer water smells like suntan lotion
+  - Or when the piña colada smells like sunscreen
+  - Or when the sunscreen smells like piña colada
+  - Like someone who thinks that watching a movie on a VR helmet is good because the screen “looks big”
+  - I hate ads like this “always carry a bread tag when you travel, here’s why”. Do you know why? Right, because of the comma splice
 
 Cursed BoVeX is
 Fully Justified

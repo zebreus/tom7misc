@@ -59,9 +59,15 @@
 // XXX just for debugging output
 #include "ansi.h"
 
-#define PDF_RGB_R(c) (float)((((c) >> 16) & 0xff) / 255.0f)
-#define PDF_RGB_G(c) (float)((((c) >> 8) & 0xff) / 255.0f)
-#define PDF_RGB_B(c) (float)((((c) >> 0) & 0xff) / 255.0f)
+#define PDF_RGB_R(c) (((c) >> 16) & 0xff)
+#define PDF_RGB_G(c) (((c) >> 8) & 0xff)
+#define PDF_RGB_B(c) (((c) >> 0) & 0xff)
+
+
+#define PDF_RGB_R_FLOAT(c) (float)(PDF_RGB_R(c) / 255.0f)
+#define PDF_RGB_G_FLOAT(c) (float)(PDF_RGB_G(c) / 255.0f)
+#define PDF_RGB_B_FLOAT(c) (float)(PDF_RGB_B(c) / 255.0f)
+#define PDF_COLOR_FLOAT(a) (float)( (a) / 255.0f )
 #define PDF_IS_TRANSPARENT(c) (((c) >> 24) == 0xff)
 
 #if defined(_MSC_VER)
@@ -1862,6 +1868,8 @@ static constexpr std::initializer_list<uint16_t> MAPPED_CODEPOINTS = {
   0x152, 0x153, 0x160, 0x161, 0x178, 0x17d, 0x17e, 0x192, 0x2c6, 0x2dc,
   0x2013, 0x2014, 0x2018, 0x2019, 0x201a, 0x201c, 0x201d, 0x201e, 0x2020,
   0x2021, 0x2022, 0x2026, 0x2030, 0x2039, 0x203a, 0x20ac, 0x2122,
+  // Added by Tom 7
+  0x00BF, 0x00E9, 0x00F4,
 };
 
 static constexpr std::optional<int> MapCodepoint(int codepoint) {
@@ -1928,6 +1936,12 @@ static constexpr std::optional<int> MapCodepoint(int codepoint) {
     return {0200};
   case 0x2122: // Trade Mark Sign
     return {0231};
+  case 0x00BF: // Rotated question mark
+    return {0277};
+  case 0x00E9: // e acute
+    return {0351};
+  case 0x00F4: // o circumflex
+    return {0364};
   default:
     break;
   }
@@ -1965,9 +1979,9 @@ void PDF::AddLine(float x1, float y1,
   StringAppendF(&str, "%f %f m\r\n", x1, y1);
   StringAppendF(&str, "/DeviceRGB CS\r\n");
   StringAppendF(&str, "%f %f %f RG\r\n",
-                PDF_RGB_R(color_rgb),
-                PDF_RGB_G(color_rgb),
-                PDF_RGB_B(color_rgb));
+                PDF_RGB_R_FLOAT(color_rgb),
+                PDF_RGB_G_FLOAT(color_rgb),
+                PDF_RGB_B_FLOAT(color_rgb));
   StringAppendF(&str, "%f %f l S\r\n", x2, y2);
 
   pdf_add_stream(page, std::move(str));
@@ -1982,9 +1996,9 @@ void PDF::AddCubicBezier(float x1, float y1, float x2, float y2, float xq1,
   StringAppendF(&str, "%f %f m\r\n", x1, y1);
   StringAppendF(&str, "/DeviceRGB CS\r\n");
   StringAppendF(&str, "%f %f %f RG\r\n",
-                PDF_RGB_R(color_rgb),
-                PDF_RGB_G(color_rgb),
-                PDF_RGB_B(color_rgb));
+                PDF_RGB_R_FLOAT(color_rgb),
+                PDF_RGB_G_FLOAT(color_rgb),
+                PDF_RGB_B_FLOAT(color_rgb));
   StringAppendF(&str, "%f %f %f %f %f %f c S\r\n", xq1, yq1, xq2, yq2, x2,
                 y2);
 
@@ -2017,15 +2031,15 @@ void PDF::AddEllipse(float x, float y,
   if (!PDF_IS_TRANSPARENT(fill_color)) {
     StringAppendF(&str, "/DeviceRGB CS\r\n");
     StringAppendF(&str, "%f %f %f rg\r\n",
-                  PDF_RGB_R(fill_color),
-                  PDF_RGB_G(fill_color),
-                  PDF_RGB_B(fill_color));
+                  PDF_RGB_R_FLOAT(fill_color),
+                  PDF_RGB_G_FLOAT(fill_color),
+                  PDF_RGB_B_FLOAT(fill_color));
   }
 
   /* stroke color */
   StringAppendF(&str, "/DeviceRGB CS\r\n");
   StringAppendF(&str, "%f %f %f RG\r\n",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+                PDF_RGB_R_FLOAT(color), PDF_RGB_G_FLOAT(color), PDF_RGB_B_FLOAT(color));
 
   StringAppendF(&str, "%f w ", width);
 
@@ -2063,7 +2077,7 @@ void PDF::AddRectangle(float x, float y,
                        uint32_t color, Page *page) {
   std::string str;
   StringAppendF(&str, "%f %f %f RG ",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+                PDF_RGB_R_FLOAT(color), PDF_RGB_G_FLOAT(color), PDF_RGB_B_FLOAT(color));
   StringAppendF(&str, "%f w ", border_width);
   StringAppendF(&str, "%f %f %f %f re S ", x, y, width, height);
 
@@ -2078,14 +2092,14 @@ void PDF::AddFilledRectangle(
   std::string str;
 
   StringAppendF(&str, "%f %f %f rg ",
-                PDF_RGB_R(color_fill),
-                PDF_RGB_G(color_fill),
-                PDF_RGB_B(color_fill));
+                PDF_RGB_R_FLOAT(color_fill),
+                PDF_RGB_G_FLOAT(color_fill),
+                PDF_RGB_B_FLOAT(color_fill));
   if (border_width > 0) {
     StringAppendF(&str, "%f %f %f RG ",
-                  PDF_RGB_R(color_border),
-                  PDF_RGB_G(color_border),
-                  PDF_RGB_B(color_border));
+                  PDF_RGB_R_FLOAT(color_border),
+                  PDF_RGB_G_FLOAT(color_border),
+                  PDF_RGB_B_FLOAT(color_border));
     StringAppendF(&str, "%f w ", border_width);
     StringAppendF(&str, "%f %f %f %f re B ", x, y, width, height);
   } else {
@@ -2106,17 +2120,17 @@ bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
   if (!PDF_IS_TRANSPARENT(fill_color)) {
     StringAppendF(&str, "/DeviceRGB CS\r\n");
     StringAppendF(&str, "%f %f %f rg\r\n",
-                  PDF_RGB_R(fill_color),
-                  PDF_RGB_G(fill_color),
-                  PDF_RGB_B(fill_color));
+                  PDF_RGB_R_FLOAT(fill_color),
+                  PDF_RGB_G_FLOAT(fill_color),
+                  PDF_RGB_B_FLOAT(fill_color));
   }
 
   StringAppendF(&str, "%f w\r\n", stroke_width);
   StringAppendF(&str, "/DeviceRGB CS\r\n");
   StringAppendF(&str, "%f %f %f RG\r\n",
-                PDF_RGB_R(stroke_color),
-                PDF_RGB_G(stroke_color),
-                PDF_RGB_B(stroke_color));
+                PDF_RGB_R_FLOAT(stroke_color),
+                PDF_RGB_G_FLOAT(stroke_color),
+                PDF_RGB_B_FLOAT(stroke_color));
 
   for (PathOp operation : ops) {
     switch (operation.op) {
@@ -2167,9 +2181,9 @@ bool PDF::AddPolygon(
   std::string str;
 
   StringAppendF(&str, "%f %f %f RG ",
-                PDF_RGB_R(color),
-                PDF_RGB_G(color),
-                PDF_RGB_B(color));
+                PDF_RGB_R_FLOAT(color),
+                PDF_RGB_G_FLOAT(color),
+                PDF_RGB_B_FLOAT(color));
   StringAppendF(&str, "%f w ", border_width);
   StringAppendF(&str, "%f %f m ", points[0].first, points[0].second);
   for (int i = 1; i < (int)points.size(); i++) {
@@ -2190,9 +2204,9 @@ bool PDF::AddFilledPolygon(
   std::string str;
 
   StringAppendF(&str, "%f %f %f RG ",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+                PDF_RGB_R_FLOAT(color), PDF_RGB_G_FLOAT(color), PDF_RGB_B_FLOAT(color));
   StringAppendF(&str, "%f %f %f rg ",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+                PDF_RGB_R_FLOAT(color), PDF_RGB_G_FLOAT(color), PDF_RGB_B_FLOAT(color));
   StringAppendF(&str, "%f w ", border_width);
   StringAppendF(&str, "%f %f m ", points[0].first, points[0].second);
   for (int i = 1; i < (int)points.size(); i++) {
@@ -2264,8 +2278,26 @@ bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
   SetTextPositionAndAngle(&str, xoff, yoff, angle);
 
   StringAppendF(&str, "/F%d %f Tf ", current_font->font_index, size);
-  StringAppendF(&str, "%f %f %f rg ",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+
+  uint8_t r = PDF_RGB_R(color);
+  uint8_t g = PDF_RGB_G(color);
+  uint8_t b = PDF_RGB_B(color);
+
+  // If greyscale, we can make this smaller with "0 g" to "1 g" (white).
+  if (r == g && r == b) {
+    if (r == 0) {
+      StringAppendF(&str, "0 g ",
+                    PDF_COLOR_FLOAT(r));
+    } else {
+      StringAppendF(&str, "%f g ",
+                    PDF_COLOR_FLOAT(r));
+    }
+  } else {
+    StringAppendF(&str, "%f %f %f rg ",
+                  PDF_COLOR_FLOAT(r),
+                  PDF_COLOR_FLOAT(g),
+                  PDF_COLOR_FLOAT(b));
+  }
   StringAppendF(&str, "%f Tc ", spacing);
   StringAppendF(&str, "(");
 
@@ -2314,7 +2346,9 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
 
   StringAppendF(&str, "/F%d %f Tf ", current_font->font_index, size);
   StringAppendF(&str, "%f %f %f rg ",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+                PDF_RGB_R_FLOAT(color),
+                PDF_RGB_G_FLOAT(color),
+                PDF_RGB_B_FLOAT(color));
   // StringAppendF(&str, "%f Tc ", spacing);
 
   StringAppendF(&str, "[ ");

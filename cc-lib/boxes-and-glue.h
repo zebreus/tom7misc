@@ -15,6 +15,12 @@
 // Note that this is probably not the same algorithm as Knuth's.
 struct BoxesAndGlue {
 
+  enum class Justification {
+    FULL,
+    LEFT,
+    CENTER,
+  };
+
   struct BoxIn {
     // Native width of the box, not counting any glue.
     double width = 0.0;
@@ -71,11 +77,13 @@ struct BoxesAndGlue {
   // on that line.
   static std::vector<std::vector<BoxOut>> PackBoxes(
       double line_width,
-      const std::vector<BoxIn> &boxes_in);
+      const std::vector<BoxIn> &boxes_in,
+      Justification justification = Justification::FULL);
 
   // Greedy algorithm, mostly useful for comparison purposes or
   // as a fallback (it's linear time).
   // Doesn't support tree input!
+  // Doesn't support justification options! (Would be easy though.)
   static std::vector<std::vector<BoxOut>> PackBoxesFirst(
       double line_width,
       const std::vector<BoxIn> &boxes_in,

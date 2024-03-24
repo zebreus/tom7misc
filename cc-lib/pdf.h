@@ -401,7 +401,7 @@ public:
 
   bool AddText(const std::string &text,
                float size,
-               // XXX baseline?
+               // This is the location of the baseline.
                float xoff, float yoff,
                uint32_t color, Page *page = nullptr);
 

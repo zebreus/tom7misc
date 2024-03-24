@@ -1,13 +1,13 @@
 
 #include "image.h"
 
-#include <string>
-#include <vector>
-#include <cstdint>
-#include <utility>
-#include <cstring>
-#include <tuple>
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "lines.h"
 #include "stb_image.h"
