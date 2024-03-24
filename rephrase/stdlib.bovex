@@ -6,6 +6,12 @@ fun o(f, g) = fn x => f(g(x))
 fun option-map f (SOME x) = SOME (f x)
   | option-map f NONE = NONE
 
+fun option-get de NONE = de
+  | option-get _ (SOME v) = v
+
+fun opt-require (SOME v) = v
+  | opt-require _ = fail "opt-require on NONE"
+
 datatype order = LESS | EQUAL | GREATER
 
 object Object of { }

@@ -9,6 +9,7 @@ val famousbirthdays =
 
 val fixedersys-site =
   bib-website {(Website) url = "http://tom7.org/fixedersys/",
+  title = "The FixederSys font family",
   author = "Murphy, VII, Tom",
   year = 2024,
   }
@@ -199,8 +200,8 @@ val knuth1981breaking =
   title = "Breaking paragraphs into lines",
   author = "Knuth, Donald E. and Plass, Michael F.",
   journal= "Software: Practice and Experience",
- (*  volume={11},
-  number={11}, *)
+  volume = 11,
+  number = 11,
   page-start = 1119,
   page-end = 1184,
   year = 1981,
@@ -219,13 +220,110 @@ val remy1998objective =
   bib-article {(Article)
   title = "Objective ML: An effective object-oriented extension to ML",
   author = "Rémy, Didier and Vouillon, Jérôme",
-  (*  author = "Remy, Didier and Vouillon, Jérôme", *)
   journal = "In Theory And Practice of Objects Systems",
-  (* volume = 4, number = 1 *)
+  volume = 4,
+  number = 1,
   page-start = 27,
   page-end = 50,
   year = 1998,
   publisher = "John Wiley & Sons, Inc.",
 }
 
-(* TODO: Knuth of course! *)
+val murphy2017zm =
+  bib-article {(Article)
+(* Would be nice if this could be monospace *)
+  title = "ZM~~ # PRinty# C with ABC!",
+  author = "Murphy, VII, Tom",
+  page-start = 129,
+  page-end = 148,
+  year = 2017,
+  month = APRIL,
+  journal = "SIGBOVIK",
+  publisher = "Association for Computational Heresy",
+  url = "https://sigbovik.org/2017",
+}
+
+val milner1997definition =
+  bib-book {(Book)
+  title = "The definition of Standard ML (Revised)",
+  year = 1997,
+  author = "Milner, Robin and Tofte, Mads and Harper, Robert and MacQueen, David",
+  publisher = "MIT Press",
+  pages = 114,
+  isbn = "9780262631815",
+  month = MAY,
+}
+
+val murphy2008modal =
+  bib-phd-thesis {(PhdThesis)
+  author = "Murphy, VII, Tom",
+  title = "Modal Types for Mobile Code",
+  month = JANUARY,
+  year = 2008,
+  university = "Carnegie Mellon",
+ (*  note = {Available as technical report CMU-CS-08-126}, *)
+  url = "http://tom7.org/papers/",
+}
+
+
+val murphy2002wizard =
+  bib-article {(Article)
+  author = "Murphy, VII, Tom",
+  title = "The Wizard of TILT: Efficient(?), Convenient and Abstract Type Representations",
+  journal = "Carnegie Mellon tech report CMU-CS-02-120",
+  year = 2002,
+  (* number = "CMU-CS-02-120", *)
+  month = MARCH,
+  url = "http://tom7.org/papers/",
+}
+
+
+val hutton1992higher =
+  bib-article {(Article)
+  title = "Higher-order functions for parsing",
+  author = "Hutton, Graham",
+  journal = "Journal of functional programming",
+  volume = 2,
+  number = 3,
+  page-start = 323,
+  page-end = 343,
+  year = 1992,
+  publisher= "Cambridge University Press",
+}
+
+val okasaki1998even =
+  bib-article {(Article)
+  title = "Even higher-order functions for parsing or Why would anyone ever want to use a sixth-order function?",
+  volume = 8,
+  number = 2,
+   (* DOI= "10.1017/S0956796898003001", *)
+  journal = "Journal of Functional Programming",
+  author = "Okasaki, Chris",
+  year = 1998,
+  month = MARCH,
+  day = 1,
+  page-start = 195,
+  page-end = 199,
+}
+
+val bovexsource =
+  bib-website {(Website)
+  title = "BoVeX source code",
+  author = "Murphy, VII, Tom",
+  year = 2024,
+  url = "https://sourceforge.net/p/tom7misc/svn/HEAD/tree/trunk/rephrase/",
+}
+
+val murphy2016glend =
+  bib-article {(Article)
+  title = "the glEnd() of Zelda",
+  author = "Murphy, VII, Tom",
+  year = 2016,
+  day = 1,
+  month = APRIL,
+  page-start = 105,
+  page-end = 112,
+  journal = "SIGBOVIK",
+  publisher = "Association for Computational Heresy",
+  url = "https://sigbovik.org/2016",
+}

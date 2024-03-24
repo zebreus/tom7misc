@@ -24,6 +24,7 @@
 #include "rephrasing.h"
 #include "util.h"
 #include "utf.h"
+#include "boxes-and-glue.h"
 
 namespace bc {
 
@@ -469,9 +470,44 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   case Primop::PACK_BOXES: {
     const double *ad = std::get_if<double>(&a->v);
-    CHECK(ad != nullptr) << "Expected double argument (lhs) to pack_boxes";
-    DocTree doc = ValueToDocTree(b);
-    const auto &[packdoc, badness] = DocumentHook()->PackBoxes(*ad, doc);
+    CHECK(ad != nullptr) << "Expected double argument (lhs) to pack-boxes";
+    const map_type *arg = std::get_if<map_type>(&b->v);
+    CHECK(arg != nullptr) << "Expected obj argument (rhs) to pack-boxes";
+
+    Document::Algorithm algorithm = Document::Algorithm::BEST;
+    if (const std::string *algo =
+        GetObjStringField("pack-boxes", "algorithm", *arg)) {
+      if (*algo == "best") {
+        algorithm = Document::Algorithm::BEST;
+      } else if (*algo == "first") {
+        algorithm = Document::Algorithm::FIRST;
+      } else {
+        LOG(FATAL) << "pack-boxes algorithm field unknown: " << *algo;
+      }
+    }
+
+    using Justification = BoxesAndGlue::Justification;
+    Justification just = Justification::FULL;
+    if (const std::string *j =
+        GetObjStringField("pack-boxes", "justification", *arg)) {
+      if (*j == "full") {
+        just = Justification::FULL;
+      } else if (*j == "left") {
+        just = Justification::LEFT;
+      } else if (*j == "center") {
+        just = Justification::CENTER;
+      } else {
+        LOG(FATAL) << "pack-boxes justification field unknown: " << *j;
+      }
+    }
+
+    const Value *doc_value = GetRequiredObjField("pack-boxes", "doc",
+                                                 bc::ObjectFieldType::LAYOUT,
+                                                 *arg);
+    DocTree doc = ValueToDocTree(doc_value);
+
+    const auto &[packdoc, badness] = DocumentHook()->PackBoxes(
+        algorithm, just, *ad, doc);
 
     auto MakeField = [](const bc::ObjectFieldType oft,
                         const std::string &field) {
@@ -519,6 +555,35 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
   return NonceValue();
 }
+
+const std::string *Execution::GetObjStringField(const char *what,
+                                                const std::string &field,
+                                                const map_type &obj) {
+  auto it = obj.find(
+      StringPrintf("%c%s",
+                   bc::ObjectFieldTypeTag(bc::ObjectFieldType::STRING),
+                   field.c_str()));
+  if (it == obj.end()) return nullptr;
+
+  const std::string *s = std::get_if<std::string>(&it->second->v);
+  CHECK(s != nullptr) << "(" << what <<
+    ") Bug: Field " << field << " with string tag should have a string value!";
+  return s;
+}
+
+const Value *Execution::GetRequiredObjField(const char *what,
+                                            const std::string &field,
+                                            bc::ObjectFieldType oft,
+                                            const map_type &obj) {
+  auto it = obj.find(
+      StringPrintf("%c%s",
+                   bc::ObjectFieldTypeTag(oft),
+                   field.c_str()));
+  CHECK(it != obj.end()) << "(" << what <<
+    ") Field " << field << " was required but not found.";
+  return it->second;
+}
+
 
 // attrs, children vector
 std::pair<Value *, Value *>

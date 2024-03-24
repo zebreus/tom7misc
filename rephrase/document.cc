@@ -876,45 +876,18 @@ DocTree Document::GetBoxes(const DocTree &doc) {
 }
 
 std::pair<DocTree, double>
-Document::PackBoxes(double line_width, const DocTree &doc) {
+Document::PackBoxes(Algorithm algo,
+                    BoxesAndGlue::Justification just,
+                    double line_width,
+                    const DocTree &doc) {
   static constexpr bool VERBOSE = false;
   using BoxIn = BoxesAndGlue::BoxIn;
   using BoxOut = BoxesAndGlue::BoxOut;
-
-  using Justification = BoxesAndGlue::Justification;
 
   if (doc.IsEmpty()) return {doc, 0.0};
   CHECK(!doc.IsText()) <<
     "pack-boxes wants a node that has only box children. Got text: " <<
     doc.text;
-
-  enum class Algorithm {
-    BEST,
-    FIRST,
-  };
-  Algorithm algorithm = Algorithm::BEST;
-  if (const std::string *algo = doc.GetStringAttr("algorithm")) {
-    if (*algo == "best") {
-      algorithm = Algorithm::BEST;
-    } else if (*algo == "first") {
-      algorithm = Algorithm::FIRST;
-    } else {
-      LOG(FATAL) << "pack-boxes algorithm attr unknown: " << *algo;
-    }
-  }
-
-  Justification just = Justification::FULL;
-  if (const std::string *j = doc.GetStringAttr("justification")) {
-    if (*j == "full") {
-      just = Justification::FULL;
-    } else if (*j == "left") {
-      just = Justification::LEFT;
-    } else if (*j == "center") {
-      just = Justification::CENTER;
-    } else {
-      LOG(FATAL) << "pack-boxes justification attr unknown: " << *j;
-    }
-  }
 
   std::vector<BoxIn> children;
 
@@ -979,7 +952,7 @@ Document::PackBoxes(double line_width, const DocTree &doc) {
   }
 
   std::vector<std::vector<BoxesAndGlue::BoxOut>> lines;
-  switch (algorithm) {
+  switch (algo) {
   case Algorithm::FIRST: {
     // Allows hyphens.
     static constexpr double MAX_BREAK_PENALTY = 200.0;

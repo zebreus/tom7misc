@@ -16,6 +16,7 @@
 #include "bytecode.h"
 #include "hyphenation.h"
 #include "image.h"
+#include "boxes-and-glue.h"
 
 struct DocTree;
 
@@ -169,7 +170,14 @@ struct Document {
   DocTree GetBoxes(const DocTree &doc);
 
   // Pack boxes to lines. Returns the document and the total badness.
-  std::pair<DocTree, double> PackBoxes(double width, const DocTree &doc);
+  enum class Algorithm {
+    BEST,
+    FIRST,
+  };
+  std::pair<DocTree, double> PackBoxes(Algorithm algo,
+                                       BoxesAndGlue::Justification just,
+                                       double width,
+                                       const DocTree &doc);
 
   std::vector<DocTree>
   BoxifyText(const TextProps &props, std::string_view text);

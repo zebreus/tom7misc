@@ -81,6 +81,15 @@ struct Execution {
   static std::pair<Value *, Value *>
   GetNodeParts(const char *what, Value *a);
 
+  const std::string *GetObjStringField(const char *what,
+                                       const std::string &field,
+                                       const map_type &obj);
+
+  const Value *GetRequiredObjField(const char *what,
+                                   const std::string &field,
+                                   bc::ObjectFieldType oft,
+                                   const map_type &obj);
+
   // Get the underlying representations (const).
   std::pair<const Execution::map_type &, const Execution::vec_type &>
   GetNode(const char *what, Value *a);

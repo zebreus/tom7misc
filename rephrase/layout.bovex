@@ -77,6 +77,7 @@ fun font-family (Font { family, regular, bold, italic, bold-italic }) =
 fun font-regular (Font { family, regular, bold, italic, bold-italic }) =
   regular
 
+
 (* some built-in fonts *)
 (* Note: These do have built-in names for the styles. We could use them
    here. *)
@@ -277,8 +278,18 @@ fun span (attrs : obj) (l : layout) =
 (* The rendered document is presented to the harness as bunch of
    stickers, which are positioned (and scaled) relative to their parent.
    Here the layout contents do not "flow" and can be freely reordered
-   (except that this affects the drawing order). *)
-object Sticker of { x: float, y: float, scale: float }
+   (except that this affects the drawing order).
+
+   It's rare to generate stickers directly.
+*)
+object Sticker of { x: float, y: float, scale: float,
+                    font-name: string,
+                    font-size: float,
+                    font-color: int,
+                    img: string,
+                    img-height: float,
+                    img-width: float }
+
 fun sticker (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_STICKER) l
 
@@ -408,7 +419,10 @@ fun pack-boxes (algo : packing-algorithm,
                 dimension : float, content : layout) :
   (float * layout list) =
   let
-    object InternalPackBoxes of { badness: float, layout: layout }
+    object InternalPackBoxesArg of { algorithm: string,
+                                     justification: string,
+                                     doc: layout }
+    object InternalPackBoxesRet of { badness: float, layout: layout }
 
     (* This is communicated with a string attribute; an implementation
        detail. *)
@@ -423,15 +437,14 @@ fun pack-boxes (algo : packing-algorithm,
       | LEFT-JUSTIFIED => "left"
       | CENTERED => "center"
 
-    val content =
-      map-attrs (fn attrs =>
-                 attrs
-                 with algorithm = algo-string
-                 with justification = just-string) content
-    val packed = internal-pack-boxes (dimension, content)
+    val arg = {(InternalPackBoxesArg)
+               algorithm = algo-string,
+               justification = just-string,
+               doc = content }
+    val packed = internal-pack-boxes (dimension, arg)
   in
     case packed of
-      {(InternalPackBoxes) badness, layout} => (badness, unjoin layout)
+      {(InternalPackBoxesRet) badness, layout} => (badness, unjoin layout)
     | _ => fail "Bug: Expected badness and layout from pack-boxes"
   end
 
@@ -780,7 +793,7 @@ fun subsection lay = span {(Span) font-bold = true, font-size = 13.5 }
 
 fun paragraph lay =
   span {(Span) font-bold = true} [[lay].] ^^
-  box {(Box) width=3.0, glue-ideal=3.0, glue-expand = 5.0 } []
+  box {(Box) width=3.0, glue-ideal=3.0, glue-expand = 1.5 } []
 
 object Rephrase of { rephrase-times : int }
 fun rephrase-paragraph (times : int) p =
@@ -827,15 +840,37 @@ fun pack-one-paragraph column-width para =
         print "-------------------\n"
       end
 
-    val just =
-      case layoutcase para of
-        Node (SPAN, attrs as {(Span) justification }, _) =>
-          (case justification of
-             "full" => FULLY-JUSTIFIED
-           | "left" => LEFT-JUSTIFIED
-           | "center" => CENTERED
-           | s => fail ("Unsupported justification type " ^ s))
-      | _ => FULLY-JUSTIFIED
+    fun consume-outer-span f s =
+      case layoutcase s of
+        Node (SPAN, attrs, children) =>
+          let
+            (* If there's a single child, recurse. *)
+            val (ropt, rchildren) =
+              case children of
+                one :: nil => consume-outer-span f one
+              | _ => (NONE, layout-concat children)
+          in
+            (* if f matches the span, always remove it.
+               but we let inner spans override the outer ones. *)
+            case (f attrs, ropt) of
+              (NONE, _) => (ropt, span attrs rchildren)
+            | (SOME vouter, inner as SOME _) => (inner, rchildren)
+            | (outer, NONE) => (outer, rchildren)
+          end
+      | _ => (NONE, s)
+
+    val (just, para) =
+      consume-outer-span
+      (fn {(Span) justification } =>
+       SOME (case justification of
+               "full" => FULLY-JUSTIFIED
+             | "left" => LEFT-JUSTIFIED
+             | "center" => CENTERED
+             | s => fail ("Unsupported justification type " ^ s))
+      | _ => NONE)
+      para
+
+    val just = option-get FULLY-JUSTIFIED just
 
     (* TODO: Allow rephrasing mid-paragraph. Same idea of passing
        the rewrap function to represent the "hole"; it's just

@@ -45,6 +45,7 @@ object Article of { author : string, title : string,
                     year : int, month : int, day : int,
                     page-start : int, page-end : int,
                     journal : string, publisher : string,
+                    volume: int, number : int,
                     url : string,
                     editor : string,
                     (* If in proceedings, the ISBN of that book. *)
@@ -54,15 +55,18 @@ object Book of { author : string, title : string,
                  year : int, month : int, day : int,
                  page-start : int, page-end : int,
                  isbn : string, pages : int,
-                 publisher : string }
+                 publisher : string,
+                 url : string }
 
-object Misc of { note : string }
+object Misc of { note : string,
+                 url : string }
 
 (* Derived forms. *)
 object PhdThesis of { author : string, title : string,
                       year : int, month : int, day : int,
                       university : string,
-                      publisher : string }
+                      publisher : string,
+                      url : string }
 
 object News of { author : string, title : string,
                  year : int, month : int, day : int,
@@ -244,9 +248,17 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
 
     | (Article, {(Article) author, title }) =>
         let
-          val j =
+          val jour =
             case fields of
-              {(Article) journal} => it(layout journal)
+              {(Article) journal} =>
+                (case fields of
+                   {(Article) volume, number } =>
+                     it (layout journal) ^^ [, ] ^^
+                     layout (int-to-string volume) ^^
+                     [([layout (int-to-string number)])]
+                 | {(Article) volume } =>
+                     [[it (layout journal)], [layout (int-to-string volume)]]
+                 | _ => it (layout journal))
             | _ => []
 
           val e =
@@ -256,7 +268,7 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
 
           val r =
             joindots (layout author :: ["[layout title]"] ::
-                      e :: j :: date fields ::
+                      e :: jour :: date fields ::
                       pp :: nil)
 
         in
