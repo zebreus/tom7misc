@@ -368,13 +368,14 @@ struct RephrasingImpl : public Rephrasing {
   RephrasingImpl(const std::string &database_file) :
     db_filename(database_file) {
     db.ReadFromFile(db_filename);
+    dirty = false;
   }
 
   ~RephrasingImpl() override {}
 
   bool IsPathNew(
       const std::vector<DatabaseRow> &rows,
-      const Path &new_path, int prefix_size, int next_depth) {
+      const Path &new_path, int prefix_size, int next_depth) const {
     for (const DatabaseRow &row : rows) {
       const Path &path = row.path;
       if (prefix_size + 1 < (int)path.size()) {
@@ -569,6 +570,7 @@ struct RephrasingImpl : public Rephrasing {
 
   bool Rephrase(const Rephrasable &rephrasable) override {
     LazyInit();
+    dirty = true;
 
     Timer prep_timer;
 
@@ -822,6 +824,7 @@ struct RephrasingImpl : public Rephrasing {
       printf("Saved rephrasing database to " AWHITE("%s") "\n",
              db_filename.c_str());
     }
+    dirty = false;
   }
 
   std::string db_filename;
@@ -830,6 +833,7 @@ struct RephrasingImpl : public Rephrasing {
   std::unique_ptr<LLM::State> post_simple_prompt_state;
   std::unique_ptr<LLM::State> post_markup_prompt_state;
   Database db;
+  bool dirty = false;
 };
 
 }  // namespace
