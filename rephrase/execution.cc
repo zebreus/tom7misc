@@ -413,13 +413,17 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
              already_have);
     }
 
-    int max_attempts = std::min(20, times * 2);
-    while (rephrasing->GetNumRephrasings(rep) < times) {
-      if (rephrasing->Rephrase(rep)) {
-        // printf("\nRephrased " AGREEN("OK") "\n");
+    if (doc.IsEmpty()) {
+      printf("Not rephrasing " AORANGE("empty doc") ".\n");
+    } else {
+      int max_attempts = std::min(20, times * 2);
+      while (rephrasing->GetNumRephrasings(rep) < times) {
+        if (rephrasing->Rephrase(rep)) {
+          // printf("\nRephrased " AGREEN("OK") "\n");
+        }
+        max_attempts--;
+        if (max_attempts < 0) break;
       }
-      max_attempts--;
-      if (max_attempts < 0) break;
     }
 
     // Now get them all.

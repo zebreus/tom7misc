@@ -884,7 +884,7 @@ fun pack-one-paragraph column-width para =
 
     val just = option-get FULLY-JUSTIFIED just
 
-    val REPHRASE-ALL = SOME 5
+    val REPHRASE-ALL : int option = NONE
 
     (* TODO: Allow rephrasing mid-paragraph. Same idea of passing
        the rewrap function to represent the "hole"; it's just

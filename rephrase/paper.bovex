@@ -899,9 +899,9 @@ of the document is inside one large literal). Layout literals can also
 embed expressions (of type layout) with nested square brackets.
 Here the function [tt[tt]] is applied to a layout literal that
 contains text like [tt[paper.bovex]]. The [tt[tt]] function just adds
-the [tt[font-family]] attribute with value [tt["FixederSys"]] to the
-layout node. This is a custom monospaced font that I made.[cite
-fixedersys-site] It’s a bit heavy for this paper, to be honest.
+the [tt[font-family]] attribute with value [tt["FixederSysLight"]] to the
+layout node. This is a custom monospaced bitmap font that I made for this
+paper, in the FixederSys family.[cite fixedersys-site]
 Functions like [tt[b]] and [tt[it]] apply bold and italic text styles,
 but the functions can do anything that you can do in a general-purpose
 programming language. For example, most of the layout of the document
@@ -1125,7 +1125,7 @@ highest-probability token. We are now in an unexplored part of the
 tree, and so we sample the most probable nodes repeatedly until we
 reach [tt[</P>]]. Speaking of which, BoVeX has a heck of a time trying
 to rephrase these last few paragraphs because they literally contain
-the text [tt[</P]] in them. [* would be a good place for a figure *]
+the text [tt[</P>]] in them. [* would be a good place for a figure *]
 
 This should be seen as heuristic; we would get different results by
 choosing different ways of computing the score. This is an example of
@@ -1326,6 +1326,8 @@ See you next mission,
 
   Tom 7
 
+[*
+
 [section[Graveyard / TODO]]
 
 Keywords: Donald Knuth Net Worth, some kind of -topia,
@@ -1378,9 +1380,9 @@ everywhere
 
 Cursed BoVeX is
 Fully Justified
-
-
 “typeset”
+
+*]
 
 [section [Bibliography]]
 

@@ -6,11 +6,12 @@
 #include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "pp.h"
 #include "primop.h"
 #include "util.h"
-#include "pp.h"
 
 namespace il {
 
@@ -594,6 +595,9 @@ AstPool::AlphaVaryType(const std::string &x, const Type *t) {
 }
 
 const Type *AstPool::UnrollType(const Type *mu) {
+  if (VERBOSE) {
+    printf(AORANGE("Unroll") " %s\n", TypeString(mu).c_str());
+  }
   CHECK(mu->type == TypeType::MU);
   const auto &[idx, bundles] = mu->Mu();
   CHECK(idx >= 0 && idx < (int)bundles.size());
