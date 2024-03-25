@@ -1,21 +1,16 @@
 let
 
-  datatype (a) option = SOME of a | NONE
+  datatype (a) option = NONE
 
   fun option-get de NONE = de
-    | option-get _ (SOME v) = v
 
-  datatype (a) list = :: of a * list | nil
+  datatype justification = FULLY | LEFT
 
-  datatype justification = FULLY-JUSTIFIED | LEFT-JUSTIFIED
-
-  (* Generates a series of lines (boxes) with the glue turned into definite
-     padding. Still in "AllBox" format. *)
-  fun pack-boxes-horiz (just : justification) =
+  fun pack-boxes-horiz (just : justification) : int =
     (case just of
-       FULLY-JUSTIFIED => 999)
+       FULLY => 999)
 
-  fun consume f  =
+  fun consume f =
     case (7, "yo") of
       (7, children) =>
         (case f 0 of
@@ -23,7 +18,7 @@ let
          | outer => outer)
 
   val just = consume (fn _ => NONE)
-  val justy = option-get FULLY-JUSTIFIED just
+  val justy = option-get FULLY just
   val _ = pack-boxes-horiz justy
 
 in

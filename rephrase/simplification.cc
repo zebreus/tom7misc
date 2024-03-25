@@ -1,6 +1,7 @@
 
 #include "simplification.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
@@ -57,7 +58,7 @@ namespace il {
 Simplification::Simplification(AstPool *pool) : pool(pool) {}
 
 void Simplification::SetVerbose(int v) {
-  verbose = v;
+  verbose = VERBOSE ? std::max(v, 2) : v;
 }
 
 // A brief (suitable for one-liner), color version of an expression.
@@ -406,9 +407,9 @@ struct PeepholePass : public il::Pass<> {
       Simplified("inlined single-use binding");
       if (VERBOSE) {
         std::string ts = tyvars.empty() ? "" :
-          StringPrintf("tyvars (" ABLUE("%s") ")",
+          StringPrintf(", tyvars (" ABLUE("%s") ")",
                        Util::Join(tyvars, ",").c_str());
-        printf("  Inlined var is " APURPLE("%s") ", tyvars %s\n",
+        printf("  Inlined var is " APURPLE("%s") "%s\n",
                x.c_str(), ts.c_str());
       }
       return ILUtil::SubstPolyExp(pool, tyvars, DoExp(rhs), x, DoExp(body));
@@ -960,6 +961,7 @@ Program Simplification::Simplify(const Program &program_in,
   KnownPass known(opts, pool, &progress);
   FlattenLetPass flatten_let(opts, pool, &progress);
   GlobalInlining global_inlining(opts, pool, &progress);
+
 
   // Do decomposition first if enabled. This only needs
   // to be done once, since other passes should not reintroduce

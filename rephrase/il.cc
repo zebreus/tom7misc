@@ -1,6 +1,7 @@
 
 #include "il.h"
 
+#include <cstdio>
 #include <optional>
 #include <string>
 #include <utility>

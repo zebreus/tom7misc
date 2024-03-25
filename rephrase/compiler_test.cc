@@ -36,13 +36,13 @@ static void SimpleTest() {
   bc::Program prog = compiler.CompileString(
       "test",
       R"(
-let
-  fun fact 0 = 1
-    | fact n = n * fact (n - 1)
-in
-  fact 6
-end
-)");
+        let
+          fun fact 0 = 1
+            | fact n = n * fact (n - 1)
+        in
+          fact 6
+        end
+        )");
 
   if (VERBOSE) {
     bc::PrintProgram(prog);
@@ -74,7 +74,9 @@ static void Regression5580() {
 
 static void Regression5668() {
   Compiler compiler;
-  compiler.SetVerbose(2);
+  if (VERBOSE) {
+    compiler.SetVerbose(2);
+  }
   bc::Program prog = compiler.CompileString(
       "test",
       R"(
@@ -96,7 +98,50 @@ static void Regression5668() {
         (main-text 0)
       end
       )");
-  bc::PrintProgram(prog);
+  if (VERBOSE) {
+    bc::PrintProgram(prog);
+  }
+}
+
+// This used to cause an internal type error (attempt
+// to unroll a type variable, which was a free "gen"
+// variable from a polymorphic value that got substituted),
+// due to a bug in substitution.
+static void Regression5743() {
+  Compiler compiler;
+  if (VERBOSE) {
+    compiler.SetVerbose(2);
+  }
+  bc::Program prog = compiler.CompileString(
+      "test", R"(
+          let
+            datatype (a) option = NONE
+
+            fun option-get de NONE = de
+
+            datatype justification = FULLY | LEFT
+
+            fun pack-boxes-horiz (just : justification) : int =
+              (case just of
+                 FULLY => 999)
+
+            fun consume f =
+              case (7, "yo") of
+                (7, children) =>
+                  (case f 0 of
+                     NONE => NONE
+                   | outer => outer)
+
+            val just = consume (fn _ => NONE)
+            val justy = option-get FULLY just
+            val _ = pack-boxes-horiz justy
+
+          in
+            777
+          end)");
+  if (VERBOSE) {
+    bc::PrintProgram(prog);
+  }
 }
 
 int main(int argc, char **argv) {
@@ -106,6 +151,7 @@ int main(int argc, char **argv) {
   SimpleTest();
   Regression5580();
   Regression5668();
+  Regression5743();
 
   printf("OK\n");
   return 0;
