@@ -406,14 +406,14 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     Rephrasing *rephrasing = RephrasingHook();
     DebugPrintDocTree(doc);
     Rephrasing::Rephrasable rep = Rephrasing::GetTextToRephrase(doc);
-    printf("Rephrase: %s\n", rep.text.c_str());
+    printf("Rephrase: [%s]\n", rep.text.c_str());
     const int already_have = rephrasing->GetNumRephrasings(rep);
     if (already_have > 0) {
       printf("Already have " ACYAN("%d") " rephrasings from database!\n",
              already_have);
     }
 
-    if (doc.IsEmpty()) {
+    if (doc.IsEmpty() || rep.text.empty()) {
       printf("Not rephrasing " AORANGE("empty doc") ".\n");
     } else {
       int max_attempts = std::min(20, times * 2);
@@ -758,6 +758,8 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     if (rephrasing->Rephrase(rep)) {
       printf("\nRephrased " AGREEN("OK") "\n");
     }
+
+    CHECK(!rep.text.empty()) << "Please fix this as in the REPHRASINGS case";
 
     // XXX: Taking the top-scoring doc is silly, as it will typically
     // be the input doc. We need to try different continuations, or
