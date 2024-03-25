@@ -497,7 +497,7 @@ struct RephrasingImpl : public Rephrasing {
   }
 
   static std::string MarkupPrompt() {
-    return SimplePrompt() + " The text contains markup as well. There are two types: <span class=\"c1\">text goes here</span> and <img src=\"image.png\">. These should be preserved in the rephrased text. <img> tags absolutely need to be retained and should not change their sources, although it is permissible to move them around in the text. <span> should generally be retained, but the contents could change. The classes of spans may not change, and only the classes that appear in the original text may be used.";
+    return SimplePrompt() + " The text contains markup as well. There are two types: <span class=\"c0\">text goes here</span> and <img src=\"image.png\">. These should be preserved in the rephrased text. <img> tags absolutely need to be retained and should not change their sources, although it is permissible to move them around in the text. <span> should generally be retained, but the contents could change. The classes of spans may not change, and only the classes that appear in the original text may be used.";
   }
 
   void LazyInit() {
@@ -935,14 +935,24 @@ bool Rephrasing::Rejoin(
     ret.push_back(Rec(node));
 
   if (failed) return false;
-  *doc = JoinDocs(std::move(ret));
+
+  DocTree d = JoinDocs(std::move(ret));
+  // Finally, apply all the wrap_all spans in reverse.
+  for (int i = (int)rephrasable.wrap_all.size() - 1; i >= 0; i--) {
+    DocTree span;
+    span.attrs = rephrasable.wrap_all[i];
+    span.AddChild(std::move(d));
+    d = std::move(span);
+  }
+
+  *doc = std::move(d);
   return true;
 }
 
 Rephrasable Rephrasing::GetTextToRephrase(const DocTree &doc) {
   Rephrasable rephrasable;
-  std::function<void(const DocTree &)> Rec =
-    [&rephrasable, &Rec](const DocTree &doc) -> void {
+  std::function<void(const DocTree &, bool)> Rec =
+    [&rephrasable, &Rec](const DocTree &doc, bool outer) -> void {
       if (doc.IsText()) {
 
         std::string normtext = NormalizeWhitespace(doc.text);
@@ -964,13 +974,26 @@ Rephrasable Rephrasing::GetTextToRephrase(const DocTree &doc) {
 
             if (has_style) {
               // Process children.
-              StringAppendF(&rephrasable.text, "<span class=\"c%d\">",
-                            (int)rephrasable.classes.size());
-              rephrasable.classes.push_back(doc.attrs);
-              for (const std::shared_ptr<DocTree> &child : doc.children) {
-                Rec(*child);
+
+              if (outer) {
+                // Outermost nodes (wrapping the entire paragraph) just
+                // go on the wrap_all stack; we don't need to emit them
+                // in the text.
+                rephrasable.wrap_all.push_back(doc.attrs);
+                bool only_child = doc.children.size() == 1;
+                for (const std::shared_ptr<DocTree> &child : doc.children) {
+                  Rec(*child, only_child);
+                }
+              } else {
+                // Otherwise we need to bracket the styled text.
+                StringAppendF(&rephrasable.text, "<span class=\"c%d\">",
+                              (int)rephrasable.classes.size());
+                rephrasable.classes.push_back(doc.attrs);
+                for (const std::shared_ptr<DocTree> &child : doc.children) {
+                  Rec(*child, false);
+                }
+                StringAppendF(&rephrasable.text, "</span>");
               }
-              StringAppendF(&rephrasable.text, "</span>");
               return;
             }
 
@@ -981,12 +1004,12 @@ Rephrasable Rephrasing::GetTextToRephrase(const DocTree &doc) {
 
         // Groups and unstyled spans are ignored.
         for (const std::shared_ptr<DocTree> &child : doc.children) {
-          Rec(*child);
+          Rec(*child, outer);
         }
       }
     };
 
-  Rec(doc);
+  Rec(doc, true);
   return rephrasable;
 }
 

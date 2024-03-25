@@ -1,0 +1,152 @@
+let
+
+datatype (a) option = SOME of a | NONE
+
+fun option-get de NONE = de
+  | option-get _ (SOME v) = v
+
+datatype order = LESS | EQUAL | GREATER
+
+object Object of { }
+
+datatype (a) list = :: of a * list | nil
+
+(* Layout stuff. *)
+
+fun inch (d : float) = d *. 72.0
+fun point (d : float) = d
+
+(* Low-level node info.
+   Programmers should probably not be looking at or setting the
+   display property. But... I'M a programmer! *)
+val NODE_SPAN = "span"
+object Node of { display : string }
+
+datatype display = SPAN | GROUP
+
+(* A span lays out boxes one after another. Nested spans can be used
+   to set text properties (like the font). *)
+object Span of { line-spacing: float,
+                 (* base font. *)
+                 font-face: string,
+                 font-size: float,
+                 (* Selects a font variant *)
+                 font-bold: bool,
+                 font-italic: bool,
+
+                 (* left, full, center *)
+                 justification: string }
+fun span (attrs : obj) (l : layout) =
+  node (attrs with (Node) display = NODE_SPAN) l
+
+datatype layoutcase =
+  (* Includes empty nodes. *)
+    Text of string
+  | Node of display * obj * layout list
+
+fun layoutcase (l : layout) =
+  if is-text l
+  then Text (get-text l)
+  else
+    let
+      val z = layout-vec-size l
+      fun r n =
+        if n == z then nil
+        else (layout-vec-sub (l, n) :: r (n + 1))
+      val attrs = get-attrs l
+    in
+      Node (SPAN, attrs, r 0)
+    end
+
+(* Pack boxes along a dimension. The boxes must be marked with their
+   "width" as the dimension. Usually you want to just use pack-boxes-horiz
+   or pack-boxes-vert below. *)
+datatype packing-algorithm = BEST | FIRST
+datatype justification = FULLY-JUSTIFIED | LEFT-JUSTIFIED | CENTERED
+
+
+(* Generates a series of lines (boxes) with the glue turned into definite
+   padding. Still in "AllBox" format. *)
+fun pack-boxes-horiz (algo : packing-algorithm, just : justification,
+                      width : float, content : layout) : (float * layout list) =
+let
+    val just-string =
+      case just of
+        FULLY-JUSTIFIED => "full"
+      | LEFT-JUSTIFIED => "left"
+      | CENTERED => "center"
+in
+  (* pack-boxes (algo, just, width, content) *)
+  (0.0, nil)
+end
+
+
+(* Pack a paragraph. This is basically pack-boxes o get-boxes, but
+   we also look for rephrase contexts. If there are any, we
+   try multiple rephrasings and pick the one with the best badness. *)
+fun pack-one-paragraph column-width para =
+  let
+    fun consume-outer-span f s =
+      case layoutcase s of
+        Node (SPAN, attrs, children) =>
+          let
+            (* If there's a single child, recurse. *)
+            val (ropt, rchildren) =
+              case children of
+                one :: nil => consume-outer-span f one
+              | nil => (NONE, [])
+          in
+            (* if f matches the span, always remove it.
+               but we let inner spans override the outer ones. *)
+            case f attrs of
+              NONE => (ropt, span attrs rchildren)
+            | outer => (outer, rchildren)
+          end
+      | _ => (NONE, s)
+
+    val (just, para) =
+      consume-outer-span
+      (fn _ => NONE)
+      para
+
+    val just = option-get FULLY-JUSTIFIED just
+
+    (* TODO: Allow rephrasing mid-paragraph. Same idea of passing
+       the rewrap function to represent the "hole"; it's just
+       fiddly. Probably would be good to provide context to the
+       LLM, as well. *)
+    fun extract-rephrasing rewrap para = (0.0, rewrap para) :: nil
+
+    val paras : (float * layout) list = extract-rephrasing (fn x => x) para
+
+    fun get-best (best, (loss, para) :: t) =
+      let
+        (* XXX use semantic loss! *)
+
+        val boxes = [] (* get-boxes para *)
+        val (badness, lines) =
+          pack-boxes-horiz (BEST, just, column-width, boxes)
+
+        fun new-best NONE = SOME (badness, lines)
+          | new-best (SOME (pbad, pbest)) =
+          if badness <. pbad
+          then SOME (badness, lines)
+          else best
+      in
+        get-best (new-best best, t)
+      end
+  in
+    get-best (NONE, paras)
+  end
+
+fun main-text lay =
+  let
+    val COLUMN-WIDTH = 42.0
+  in
+    pack-one-paragraph COLUMN-WIDTH []
+  end
+
+in
+  main-text [hi]
+end
+

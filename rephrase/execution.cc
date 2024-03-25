@@ -428,6 +428,12 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
     std::vector<DocTree> ret;
 
+    // Always include the original.
+    // Always include the original.
+    doc.SetStringAttr("display", "span");
+    doc.SetDoubleAttr("loss", 0.0);
+    ret.emplace_back(doc);
+
     static constexpr bool VERBOSE = true;
 
     for (const auto &[loss, text] : reps) {
@@ -744,7 +750,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     DebugPrintDocTree(doc);
     Rephrasing::Rephrasable rep =
       Rephrasing::GetTextToRephrase(doc);
-    printf("Rephrase: %s\n", rep.text.c_str());
+    printf("Rephrase: [%s]\n", rep.text.c_str());
     if (rephrasing->Rephrase(rep)) {
       printf("\nRephrased " AGREEN("OK") "\n");
     }

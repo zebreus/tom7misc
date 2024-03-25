@@ -17,6 +17,7 @@ struct Rephrasing {
   struct Rephrasable {
     std::vector<std::shared_ptr<DocTree>> images;
     std::vector<std::unordered_map<std::string, AttrVal>> classes;
+    std::vector<std::unordered_map<std::string, AttrVal>> wrap_all;
     std::string context;
     std::string text;
   };

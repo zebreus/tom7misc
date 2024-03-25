@@ -823,7 +823,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
 
       } else {
         if (const std::string *display = doc.GetStringAttr("display")) {
-          if (*display == "box") {
+          if (*display == "box" || *display == "sticker") {
             // This is already a box with a fixed size, so we just copy it.
             out.push_back(doc);
             return;
@@ -893,10 +893,14 @@ Document::PackBoxes(Algorithm algo,
 
   auto GetBox = [](const DocTree &doc) -> BoxIn {
       const double *width = doc.GetDoubleAttr("width");
-      CHECK(width != nullptr) << "In pack-boxes, encountered a top-level box "
-        "that has no width. This probably means that you didn't do get-boxes "
-        "or you messed up the boxes after that, or there's a bug in "
-        "get-boxes (could have been anyone?)";
+      if (width == nullptr) {
+        printf("\n\nErroneous doc:\n");
+        DebugPrintDocTree(doc);
+        LOG(FATAL) << "In pack-boxes, encountered a top-level box "
+          "that has no width. This probably means that you didn't do get-boxes "
+          "or you messed up the boxes after that, or there's a bug in "
+          "get-boxes (could have been anyone?)";
+      }
 
       BoxIn b;
       b.width = *width;

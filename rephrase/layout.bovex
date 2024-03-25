@@ -114,10 +114,12 @@ val PALATINO : font-family =
 
 val FIXEDERSYS : font-family =
   font-load-family { name = "fixedersys",
-                     regular = SOME "fixedersys2x.ttf",
-                     bold = NONE,
+                     regular = SOME "fixedersyslight2x.ttf",
+                     bold = SOME "fixedersys2x.ttf",
                      italic = NONE,
                      bold-italic = NONE }
+
+(* val FIXEDERSYS = PALATINO *)
 
 datatype image-handle = Image of string
 fun image-load filename : image-handle =
@@ -764,22 +766,23 @@ fun monospace-block-ext { left-indent, width,
       NONE => fail "no fixedersys font?"
     | SOME name => name
 
-    fun monospace-lines lay =
+    fun flat-text lay =
       case layoutcase lay of
-        Text str =>
-          let val sl : string list = string-split "\n" str
-          in
-            list-map (fn (s : string) =>
-                      (box {(Box)
-                            width = width,
-                            font-size = font-size,
-                            font-name = ff,
-                            height = font-size +. line-spacing} (layout s))) sl
-          end
+        Text str => str
+      | Node (GROUP, _, ch) =>
+          string-list-concat (list-map flat-text ch)
       | _ => fail "Markup is not supported inside monospace-lines."
 
-
-    val lines : layout list = monospace-lines lay
+    val lines =
+      let val sl : string list = string-split "\n" (flat-text lay)
+      in
+        list-map (fn (s : string) =>
+                  (box {(Box)
+                        width = width,
+                        font-size = font-size,
+                        font-name = ff,
+                        height = font-size +. line-spacing} (layout s))) sl
+      end
   in
     stick-vertically
     (left-indent,
@@ -881,6 +884,8 @@ fun pack-one-paragraph column-width para =
 
     val just = option-get FULLY-JUSTIFIED just
 
+    val REPHRASE-ALL = SOME 5
+
     (* TODO: Allow rephrasing mid-paragraph. Same idea of passing
        the rewrap function to represent the "hole"; it's just
        fiddly. Probably would be good to provide context to the
@@ -892,7 +897,14 @@ fun pack-one-paragraph column-width para =
           (rephrasings (rephrase-times, para))
       | Node (SPAN, attrs, child :: nil) =>
           extract-rephrasing (fn x => span attrs x) child
-      | _ => (0.0, rewrap para) :: nil
+      | Node (BOX, _, _) => (0.0, rewrap para) :: nil
+      | Node (STICKER, _, _) => (0.0, rewrap para) :: nil
+      | _ =>
+          (case REPHRASE-ALL of
+             SOME n-times =>
+               list-map (fn (loss, para) => (loss, rewrap para))
+               (rephrasings (n-times, para))
+             | NONE => (0.0, rewrap para) :: nil)
 
     val paras : (float * layout) list = extract-rephrasing (fn x => x) para
 
