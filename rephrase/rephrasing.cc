@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <set>
 #include <string_view>
 #include <unordered_map>
 #include <string>
@@ -794,11 +795,35 @@ struct RephrasingImpl : public Rephrasing {
     return num;
   }
 
+  static constexpr bool REVALIDATE = true;
   std::vector<std::pair<double, std::string>> GetRephrasings(
       const Rephrasable &rephrasable) override {
     const std::string key = DatabaseKey(rephrasable);
-    const auto it = db.entries.find(key);
+    auto it = db.entries.find(key);
     if (it == db.entries.end()) return {};
+
+    if (REVALIDATE) {
+      std::vector<DatabaseRow> &rows = it->second;
+      for (DatabaseRow &old : rows) {
+        if (old.valid) {
+          // Re-check validity.
+          std::string error;
+          DocTree doc;
+          if (Rejoin(rephrasable, old.text, &doc, &error)) {
+            // Still valid.
+          } else {
+            if (VERBOSE > 0) {
+              printf(AORANGE("Invalidated") " [%s] because " ARED("%s") "\n",
+                     old.text.c_str(), error.c_str());
+            }
+            dirty = true;
+            old.valid = false;
+          }
+        } else {
+          // keep already-invalid stuff as-is
+        }
+      }
+    }
 
     // It's possible to get the same text through two different
     // tokenizations! We should not allow that.
@@ -866,9 +891,10 @@ bool Rephrasing::Rejoin(
     return false;
   }
 
+  std::set<int> images_used;
   bool failed = false;
   std::function<DocTree(const HTMLNode &node)> Rec =
-    [&rephrasable, error, &failed, &Rec](const HTMLNode &node) -> DocTree {
+    [&rephrasable, error, &failed, &Rec, &images_used](const HTMLNode &node) -> DocTree {
       if (failed) return DocTree();
       if (node.is_tag) {
         if (node.str == "span") {
@@ -910,6 +936,13 @@ bool Rephrasing::Rejoin(
           int img_num = -1;
           if (RE2::FullMatch(it->second, img_re, &img_num) &&
               img_num >= 0 && img_num < (int)rephrasable.images.size()) {
+            if (images_used.contains(img_num)) {
+              failed = true;
+              if (error != nullptr) *error = "img used multiple times";
+              return DocTree();
+            }
+            images_used.insert(img_num);
+
             return *rephrasable.images[img_num];
 
           } else {
@@ -934,6 +967,15 @@ bool Rephrasing::Rejoin(
   for (const HTMLNode &node : nodes)
     ret.push_back(Rec(node));
 
+  // Check that we used all the images.
+  for (int i = 0; i < (int)rephrasable.images.size(); i++) {
+    if (!images_used.contains(i)) {
+      failed = true;
+      if (error != nullptr) *error = "not all images were used";
+      return false;
+    }
+  }
+
   if (failed) return false;
 
   DocTree d = JoinDocs(std::move(ret));
@@ -949,6 +991,12 @@ bool Rephrasing::Rejoin(
   return true;
 }
 
+// TODO: Like with wrap_all, we can support a series of <img> at the end.
+// This is especially useful for citations at the ends of paragraphs, which
+// is pretty common. We also use line-ending markup for stuff like inserting
+// vspace. In principle these could be interleaved with outer
+// spans, but I think the simplest thing is to just recognize the common
+// form <span><span>...<span>text<img><img><img></span>...</span></span>
 Rephrasable Rephrasing::GetTextToRephrase(const DocTree &doc) {
   Rephrasable rephrasable;
   std::function<void(const DocTree &, bool)> Rec =
@@ -959,14 +1007,27 @@ Rephrasable Rephrasing::GetTextToRephrase(const DocTree &doc) {
         rephrasable.text += normtext;
 
       } else {
-        if (const std::string *display = doc.GetStringAttr("display")) {
-          if (*display == "box") {
-            // This is already a box with a fixed size, so we just copy it.
+        auto AsImg = [&rephrasable](const DocTree &doc) {
             StringAppendF(&rephrasable.text, "<img src=\"img%d.png\">",
                           (int)rephrasable.images.size());
             rephrasable.images.push_back(std::make_shared<DocTree>(doc));
             return;
+          };
+
+        if (const std::string *display = doc.GetStringAttr("display")) {
+          if (*display == "box") {
+            // This is already a box with a fixed size, so we just copy it.
+            AsImg(doc);
+            return;
           } else if (*display == "span") {
+            // Some spans, like citation references, are protected from
+            // rephrasing.
+            const bool *norephrase = doc.GetBoolAttr("no-rephrase");
+            if (norephrase != nullptr && *norephrase) {
+              AsImg(doc);
+              return;
+            }
+
             bool has_style = doc.GetStringAttr("font-face") != nullptr ||
               doc.GetDoubleAttr("font-size") != nullptr ||
               doc.GetBoolAttr("font-bold") != nullptr ||

@@ -165,7 +165,9 @@ fun cite (c : bibsource) : layout =
     (* XXX conveniently, changes in font size are top-aligned rather than
        baseline-aligned like you'd expect. So for now this does create
        a superscript. *)
-    span {(Span) font-size = 8.0 }
+    span {(Span) font-size = 8.0,
+          (* Don't rephrase the text in these. *)
+          no-rephrase = true }
     (layout ("[" ^ int-to-string n ^ "]"))
   end
 
@@ -219,7 +221,9 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
       | date {(Date) year } = layout (int-to-string year)
       | date _ = []
 
-    val num = layout ("[" ^ int-to-string n ^ "] ")
+    (* Don't rephrase the cross-references. *)
+    val num = span {(Span) no-rephrase = true}
+      (layout ("[" ^ int-to-string n ^ "] "))
 
     fun joindots l =
       span {(Span) justification = "left" }
