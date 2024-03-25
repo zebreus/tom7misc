@@ -11,13 +11,14 @@
 #include <unordered_set>
 #include <string>
 
-#include "il.h"
-#include "il-pass.h"
+#include "ansi.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 #include "functional-set.h"
+#include "il-pass.h"
+#include "il.h"
 #include "unification.h"
 #include "util.h"
-#include "base/stringprintf.h"
-#include "base/logging.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -205,6 +206,10 @@ struct SubstPass : public Pass<> {
                    const std::string &v,
                    const Exp *guess) override {
     if (v == target_var) {
+      if (VERBOSE) {
+        printf(AGREEN("%s") " with %d type params\n",
+               v.c_str(), (int)ts.size());
+      }
       // The target variable.
       CHECK(ts.size() == tyvars.size()) << "Internal type error: When "
         "substituting for " << v << ", expected the number of type "
@@ -217,7 +222,7 @@ struct SubstPass : public Pass<> {
       for (int i = (int)ts.size() - 1; i >= 0; i--) {
         result = ILUtil::SubstTypeInExp(pool, ts[i], tyvars[i], result);
       }
-      return e1;
+      return result;
     } else {
       // Types are unaffected by substitution for expression variables.
       return guess;
@@ -284,13 +289,17 @@ const Exp *ILUtil::SubstPolyExp(AstPool *pool,
                                 const Exp *e1, const std::string &x,
                                 const Exp *e2) {
   if (VERBOSE) {
-    printf("Subst [Λ(%s).%s/%s](%s).\n",
+    printf(APURPLE("Subst") " [Λ(%s).%s/" ABLUE("%s") "](%s).\n",
            Util::Join(tyvars, ",").c_str(),
            ExpString(e1).c_str(), x.c_str(),
            ExpString(e2).c_str());
   }
   SubstPass pass(pool, tyvars, e1, x);
-  return pass.DoExp(e2);
+  const Exp *ret = pass.DoExp(e2);
+  if (VERBOSE) {
+    printf(AORANGE("Result") ":\n%s\n", ExpString(ret).c_str());
+  }
+  return ret;
 }
 
 std::pair<std::string, const Exp *> ILUtil::AlphaVaryExp(
