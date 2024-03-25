@@ -474,8 +474,7 @@ then the probability distribution (Llama-v2-70b) begins as
   ...
 ]]
 
-[* This could be a good place to say 3/4 *]
-with the thousands of other tokens following. So more than half the
+with the thousands of other tokens following. So three-quarters of the
 time the next token should be [tt[" annual"]] but there are many
 other reasonable possibilities. We can pick one of these tokens
 however we like, append it to the sequence, and run the model again.
@@ -625,11 +624,11 @@ is indexed by the two parameters, the current line and the remaining
 text. Note that these two can be represented as integers. The line
 is just the number of words before the current word that are included
 on the line, and the text is just the position in the string where
-we'll next look for a word. That's all there is to it; the base
+we’ll next look for a word. That’s all there is to it; the base
 cases of empty text are used to start the table, and then you just
 write the loop to fill out cells in the right order.
 
-Knuth's boxes-and-glue algorithm contains many extensions, and so
+Knuth’s boxes-and-glue algorithm contains many extensions, and so
 does mine.
 
 [* XXX transition *]
@@ -638,7 +637,7 @@ Here’s where I diverge from Knuth somewhat. Knuth was reluctant to
 add a programming language to TeX[cite bijlage1996knuth] but I spent the majority
 of my time on this project implementing a full-fledged language.
 BoVeX is about 33,000 lines of code, the majority of which is the
-implementation of the language itself. That's 110× as long as the
+implementation of the language itself. That’s 110× as long as the
 original monospace proof of concept, and 30× the length of this
 document!
 
@@ -1197,6 +1196,9 @@ floating figure implementation. End notes are actually easy, but
 I don’t want end notes. I want them to be little footnotes so
 that you can’t help but read them.
 
+BoVeX does not support page numbers, which is good because they
+are forbidden by the SIGBOVIK conference.
+
 TeX is famous for its mathematical typesetting as well. It would fit
 neatly into BoVeX in the same way, since both use the same fundamental
 boxes-and-glue engine. BoVeX does not have “macros” or “modes” like
@@ -1313,10 +1315,9 @@ Delete the whole document! As a wise person once said, “If you
 can’t say something with nonzero typographic or semantic loss,
 don’t say anything at all.”
 
-[* acknowledgements *]
-[paragraph[Acknowledgements.]] Supposing their names survive
-rephrasing, I’d like to acknowledge the following people.
-Karl Crary, one of my advisors, who long ago set out with me
+[paragraph[Acknowledgements]] Supposing his name survives
+rephrasing, I’d like to acknowledge one of my advisors,
+Karl Crary. 20 years ago, he set out with me
 on an ill-advised and ill-fated attempt to replace LaTeX with
 an SML-like language mTeX, which compiled into TeX macros. It
 was Karl’s idea to use the nesting square brackets, and
@@ -1343,9 +1344,6 @@ TODO: BoVeX rendering pipeline is a bit like a multi-pass compiler
 TODO: BoVeX does not support page numbers, which is good because
 page numbers are prohibited in the SIGBOVIK proceedings.
 
-TODO: Would be good to be able to protect certain phrases (or weight
-them) so that the cost of rephrasing them is higher.
-
 TODO: Obviously I need to submit two versions of the paper with the
 dial set at opposite ends? (Taylor’s Version) Or three?
 
@@ -1357,9 +1355,7 @@ TODO: This relates to “What words ought to exist?”
 
 TODO: I mean, to be honest, his decks didn’t look that good either
 
-TODO: Deeper integration with the AI. For example, as badness increases,
-we can add to the prompt “You are feeling frustrated.” As badness
-approaches zero, we can add, “You are feeling satisfied with a job well done.”
+TODO:
 
 TODO: Conference Class files can specify the appropriate tradeoff of
 semantic badness versus typographic badness. For example, Metaverse

@@ -15,6 +15,7 @@ let
                    subject = "Documents do not need a 'subject'"
                    (* leaving out date, so it is the creation time. *) }
 
+(*
   val author = b[Tom 7 [[Murphy]] ]
 
   fun attrs-string (BOX, {(Box) width }) = "box-width"
@@ -57,17 +58,16 @@ let
       ()
     end
   do test-get-paragraphs ()
-
+*)
 
   val anti-aliasing-png = image-load "anti-aliasing.png"
 
 
-  fun no-rephrase lay = lay
-  fun no-rephrase-paragraph _ lay = lay
+  fun no-rephrase (lay : layout) = lay
 
   val SIMPLE-TEST = true
 
-  val tt = fixedersys
+  (* val tt = fixedersys *)
 
 (* [rephrase-paragraph 5 [This is a rephrased paragraph. Please rephrase it!]] *)
 
@@ -84,6 +84,8 @@ in
   then (main-text
         (palatino
          [A regular paragraph. Nothing funny going on here.[cite ggeranov][cite ocaml][cite remy1998objective]
+
+          [* a comment *]
 
           The details really keep going, too. The hyphenation dictionary is
           stored in a file called [tt[hyph-en-us.tex]]. "hyph" here of course

@@ -269,6 +269,10 @@ object Span of { line-spacing: float,
                  font-bold: bool,
                  font-italic: bool,
 
+                 (* Inhibit rephrasing of the contents,
+                    even if inside a call to rephrase *)
+                 no-rephrase: bool,
+
                  (* left, full, center *)
                  justification: string,
 
@@ -808,7 +812,7 @@ fun paragraph lay =
   box {(Box) width=3.0, glue-ideal=3.0, glue-expand = 1.5 } []
 
 object Rephrase of { rephrase-times : int }
-fun rephrase-paragraph (times : int) p =
+fun rephrase-paragraph (times : int) (p : layout) : layout =
 (* map-attrs (fn attrs => attrs with (Rephrase) times = times) p *)
   let val r = span {(Rephrase) rephrase-times = times} p
   in
@@ -831,7 +835,7 @@ fun rephrasings (times, para) : (float * layout) list =
 (* Pack a paragraph. This is basically pack-boxes o get-boxes, but
    we also look for rephrase contexts. If there are any, we
    try multiple rephrasings and pick the one with the best badness. *)
-fun pack-one-paragraph column-width para =
+fun pack-one-paragraph (column-width : float) (para : layout) =
   let
     val VERBOSE = false
 
@@ -852,7 +856,8 @@ fun pack-one-paragraph column-width para =
         print "-------------------\n"
       end
 
-    fun consume-outer-span f s =
+    fun consume-outer-span (f : obj -> justification option) s :
+      (justification option * layout) =
       case layoutcase s of
         Node (SPAN, attrs, children) =>
           let
@@ -871,20 +876,27 @@ fun pack-one-paragraph column-width para =
           end
       | _ => (NONE, s)
 
-    val (just, para) =
+    val (just : justification option, para : layout) =
       consume-outer-span
       (fn {(Span) justification } =>
        SOME (case justification of
                "full" => FULLY-JUSTIFIED
              | "left" => LEFT-JUSTIFIED
              | "center" => CENTERED
-             | s => fail ("Unsupported justification type " ^ s))
-      | _ => NONE)
+             | s => (fail ("Unsupported justification type " ^ s)) :
+                 justification) : justification option
+      | _ => NONE : justification option)
       para
 
-    val just = option-get FULLY-JUSTIFIED just
+    val just : justification = option-get FULLY-JUSTIFIED just
 
-    val REPHRASE-ALL : int option = NONE
+    (* XXX: Late-breaking compiler bug! Make sure this has a type
+       annotation on it, particularly if it is NONE. If it is
+       polymorphic, then we seem to leak a generalized type
+       variable at some point. See fails.bovex *)
+    (* val REPHRASE-ALL : int option = SOME 5 *)
+    (* val REPHRASE-ALL : int option = NONE *)
+    val REPHRASE-ALL : int option = SOME 25
 
     (* TODO: Allow rephrasing mid-paragraph. Same idea of passing
        the rewrap function to represent the "hole"; it's just
