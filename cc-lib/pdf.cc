@@ -1869,7 +1869,7 @@ static constexpr std::initializer_list<uint16_t> MAPPED_CODEPOINTS = {
   0x2013, 0x2014, 0x2018, 0x2019, 0x201a, 0x201c, 0x201d, 0x201e, 0x2020,
   0x2021, 0x2022, 0x2026, 0x2030, 0x2039, 0x203a, 0x20ac, 0x2122,
   // Added by Tom 7
-  0x00BF, 0x00E9, 0x00F4,
+  0x00BF, 0x00E9, 0x00F4, 0x00F1, 0x00D7,
 };
 
 static constexpr std::optional<int> MapCodepoint(int codepoint) {
@@ -1942,6 +1942,10 @@ static constexpr std::optional<int> MapCodepoint(int codepoint) {
     return {0351};
   case 0x00F4: // o circumflex
     return {0364};
+  case 0x00F1: // n tilde
+    return {0361};
+  case 0x00D7: // multiplication sign
+    return {0327};
   default:
     break;
   }

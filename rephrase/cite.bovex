@@ -132,13 +132,13 @@ fun bib-parse-authors author-field =
     list-map bib-parse-author-name authors
   end
 
-fun author-sort-key authors =
+fun author-sort-key authors rest =
   let
     fun one (AuthorOther s) = s
       | one (AuthorCommon { first, last, middle = _, suffix = _ }) =
       string-lowercase last ^ ":" ^ string-lowercase first
   in
-    string-list-join "/" (list-map one authors)
+    string-list-join "/" (list-map one authors) ^ "/" ^ rest
   end
 
 fun bibsource-compare
@@ -159,9 +159,10 @@ fun url-sort-key url =
 fun bib-website (obj as {(Website) author}) =
   let
     val authors = bib-parse-authors author
+    val key-rest = case obj of {(Website) url} => url | _ => ""
   in
     Source { t = Website, authors = authors,
-             sort-key = author-sort-key authors, fields = obj }
+             sort-key = author-sort-key authors key-rest, fields = obj }
   end
   | bib-website (obj as {(Website) url}) =
   Source { t = Website, sort-key = url-sort-key url, fields = obj, authors = nil }
@@ -170,18 +171,28 @@ fun bib-website (obj as {(Website) author}) =
 fun bib-article (obj as {(Article) author}) =
   let
     val authors = bib-parse-authors author
+    val key-rest =
+      case obj of
+        {(Article) title} => title
+      | {(Article) year} => int-to-string year
+      | _ => ""
   in
     Source { t = Article, authors = authors,
-             sort-key = author-sort-key authors, fields = obj }
+             sort-key = author-sort-key authors key-rest, fields = obj }
   end
   | bib-article _ = fail "bib-article needs at least an author"
 
 fun bib-book (obj as {(Article) author}) =
   let
     val authors = bib-parse-authors author
+    val key-rest =
+      case obj of
+        {(Book) title} => title
+      | {(Book) year} => int-to-string year
+      | _ => ""
   in
     Source { t = Book, authors = authors,
-             sort-key = author-sort-key authors, fields = obj }
+             sort-key = author-sort-key authors key-rest, fields = obj }
   end
   | bib-book _ = fail "bib-book needs at least an author"
 

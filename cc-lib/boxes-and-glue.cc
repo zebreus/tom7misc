@@ -385,8 +385,15 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
           // For each of these, we can either break here, or continue.
 
           // If we break, then the penalty is the amount of space left.
-          const double penalty_break_slack =
+          const double penalty_break_slack_base =
             std::max(line_width - total_width_break, 0.0);
+
+          // We want to use a nonlinear scale for slack. Otherwise it
+          // wouldn't matter where we put it, and this can result in
+          // putting it all on the same line (which clearly looks worse).
+          const double penalty_break_slack =
+            std::pow(penalty_break_slack_base, 1.8);
+
           // ... plus the penalty for the remainder, starting on a new line.
           const double p_rest = Get(next_node, 0).penalty;
 

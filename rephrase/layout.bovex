@@ -755,8 +755,16 @@ fun blockquote lay =
   end
 
 fun title lay =
-  [[span {(Span) font-bold = true, font-size = point 28.0 }
-    lay][hfill()][vspace 16.0]]
+  span {(Span)
+        justification = "left",
+        font-bold = true,
+        font-size = point 30.0 } [[lay][hfill()][break()]]
+
+fun sub-title lay =
+  span {(Span)
+        justification = "left",
+        font-bold = true,
+        font-size = point 22.0 } [[lay][hfill()][break()]]
 
 fun author lay = [[lay][hfill()][vspace 16.0]]
 

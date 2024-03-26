@@ -242,6 +242,7 @@ static void MakeSimplePDF() {
           };
 
         CompareKern("To Await Is To Worry.", 24);
+        CompareKern("BoVeX.", 24);
         CompareKern("Mr. Jock, T.V. Quiz Ph.D., bags few lynx.", 12);
 
         ypos -= 96.0f;

@@ -5,11 +5,12 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-  val EPSOM = true
+  val EPSOM = false
   do EPSOM andthen REPHRASE-ALL := SOME 5
 
   val doc-title =
-    "Badness 0 (" ^ (if EPSOM then "Epsom" else "Knuth") "'s version)"
+    "Badness 0"
+  val doc-subtitle = "(" ^ (if EPSOM then "Epsom" else "Knuth") ^ "’s version)"
 
   do set-doc-info {(PDFInfo)
                    creator = "BoVeX",
@@ -58,6 +59,8 @@ in
 (main-text (body-font
 [
  [title (layout doc-title)]
+ [sub-title (layout doc-subtitle)]
+
  [author[Dr. Tom Murphy VII, Ph.D.]]
 
 It has become clear to me that many people walk this Earth completely
@@ -71,8 +74,6 @@ They care as much as the phone’s autocorrect (none) about the difference
 between “its” and “it’s.”
 When someone asks, “Will you marry me?” and they think “Oh my god!”
 it’s not because the proposer probably should be using the subjunctive [it[would]].
-
-They think that the order of letters within words...
 
 I am... not like this. If a character in a TV commercial is handling a
 coffee cup but I can infer from its moment of inertia that the cup
@@ -113,7 +114,6 @@ in the US by 8 hours, from 40 to 32, this senator says,
   razor-thin margin because they’re unable to find enough workers,"
   said Cassidy. "Now they’ve got the same workers, but only for
   three-quarters of the time. And they have to hire more.”]]
-
 
 Actually, that’s not exactly the quote, but I needed to make it look
 nice.[cite bynum2014bernie]
@@ -600,7 +600,7 @@ pair<int, string> Split(string line,
   // try not splitting
   auto [layout "[penalty2, rest2]"] =
       Split(line + " " + word, rest);
-  penalty2 += badness if we exceed the line length;
+  penalty2 += badness from line too long;
   if (penalty1 < penalty2) {
     return {penalty1, word + "\n" + rest1};
   } else {
@@ -636,9 +636,7 @@ write the loop to fill out cells in the right order.
 
 Knuth’s boxes-and-glue algorithm contains many extensions, and so
 does mine. For example, later we'll talk about how you can adapt
-the algorith to perform hyphenation and kerning. I
-
-[* XXX transition *]
+the algorithm to perform hyphenation and kerning. [* XXX transition *]
 
 Here’s where I diverge from Knuth somewhat. Knuth was reluctant to
 add a programming language to TeX[cite bijlage1996knuth] but I spent the majority
@@ -796,7 +794,7 @@ useful than C++’s mile-long SFINAE vomitus.) It supports
 mutually-recursive parsers, resolution of dynamic infix operators, and
 all that. My template-heavy parser combinators take clang about a
 minute to compile, which is acceptable. Less acceptable, but something
-I only learned after using this to write a 14 [* XXX *] page-long
+I only learned after using this to write a 14–page-long
 paper, is that the parsers are very slow. Putting aside LLM inference,
 this paper takes 13 seconds to render into a PDF, 11 seconds of which
 is parsing! There must be some bug, but I don’t know if it’s in my
@@ -1028,7 +1026,7 @@ as “not feasible.” So some of this was out of necessity. One of the
 nice things about the representation is that it generalizes to words
 that were not in the 1974 Merriam-Webster Pocket Dictionary. For example
 it hyphenates SIG[box {(Box)
-                       glue-break-penalty = -1000.0,
+                       glue-break-penalty = -100000.0,
                        width = 0.0 } [-]]BOVIK
 correctly.
 

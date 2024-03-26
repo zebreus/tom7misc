@@ -433,7 +433,6 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     std::vector<DocTree> ret;
 
     // Always include the original.
-    // Always include the original.
     doc.SetStringAttr("display", "span");
     doc.SetDoubleAttr("loss", 0.0);
     ret.emplace_back(doc);
