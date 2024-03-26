@@ -81,6 +81,8 @@ Initial::Initial(AstPool *pool) {
     {"string-replace", Primop::STRING_REPLACE},
     {"string-first-codepoint", Primop::STRING_FIRST_CODEPOINT},
     {"normalize-whitespace", Primop::NORMALIZE_WHITESPACE},
+    {"string-lowercase", Primop::STRING_LOWERCASE},
+    {"string-uppercase", Primop::STRING_UPPERCASE},
 
     {"layout", Primop::STRING_TO_LAYOUT},
 

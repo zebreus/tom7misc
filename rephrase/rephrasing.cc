@@ -397,9 +397,10 @@ struct RephrasingImpl : public Rephrasing {
   std::pair<Path, int> GetNextPrefix(const std::string &key) {
     const std::vector<DatabaseRow> &rows = db.entries[key];
 
-    // Empty path is always an option.
+    // Empty path is always an option, although we should use a
+    // depth that hasn't been explored yet if so.
     Path best_path;
-    int best_next = 0;
+    int best_next_depth = 0;
     double best_score = 0.0;
     int best_row = -1;
     for (int row_idx = 0; row_idx < (int)rows.size(); row_idx++) {
@@ -447,7 +448,7 @@ struct RephrasingImpl : public Rephrasing {
           // new (not a prefix of any path).
           if (IsPathNew(rows, path, i, node.depth + 1)) {
             best_path = path;
-            best_next = node.depth + 1;
+            best_next_depth = node.depth + 1;
             // Not including this last node.
             best_path.resize(i);
             best_row = row_idx;
@@ -478,7 +479,7 @@ struct RephrasingImpl : public Rephrasing {
                "Path length " APURPLE("%d")
                ", Next depth " APURPLE("%d") "\n",
                rows[best_row].text.c_str(),
-               best_score, (int)best_path.size(), best_next);
+               best_score, (int)best_path.size(), best_next_depth);
         for (const Node &node : best_path) {
           printf("%s " AGREY("d%d") " ",
                  llm->TokenString(node.token).c_str(),
@@ -490,7 +491,16 @@ struct RephrasingImpl : public Rephrasing {
       }
     }
 
-    return std::make_pair(std::move(best_path), best_next);
+    if (best_path.empty()) {
+      while (!IsPathNew(rows, best_path, 0, best_next_depth)) {
+        best_next_depth++;
+      }
+      if (VERBOSE > 1) {
+        printf("Start from root, depth " APURPLE("%d") "\n", best_next_depth);
+      }
+    }
+
+    return std::make_pair(std::move(best_path), best_next_depth);
   }
 
   static std::string SimplePrompt() {

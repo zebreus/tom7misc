@@ -296,6 +296,14 @@ fun string-explode str =
     r str
   end
 
+fun string-ends-with small big =
+  let
+    val ss = string-size small
+    val bb = string-size big
+  in
+    ss <= bb andalso string-eq (small, substr-rest (big, bb - ss))
+  end
+
 datatype (a) set-tree =
   SetEmpty
   | SetNode of set-tree * a * set-tree

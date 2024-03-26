@@ -728,6 +728,16 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return String(NormalizeWhitespace(s), state);
   }
 
+  case Primop::STRING_LOWERCASE: {
+    const std::string &s = GetString("string-lowercase");
+    return String(Util::lcase(s), state);
+  }
+
+  case Primop::STRING_UPPERCASE: {
+    const std::string &s = GetString("string-uppercase");
+    return String(Util::ucase(s), state);
+  }
+
   case Primop::EMIT_BADNESS: {
     const double d = GetFloat("emit_badness");
     EmitBadnessHook(d);

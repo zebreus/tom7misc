@@ -57,6 +57,8 @@ const char *PrimopString(Primop po) {
   case Primop::STRING_REPLACE: return "STRING_REPLACE";
   case Primop::STRING_FIRST_CODEPOINT: return "STRING_FIRST_CODEPOINT";
   case Primop::NORMALIZE_WHITESPACE: return "NORMALIZE_WHITESPACE";
+  case Primop::STRING_LOWERCASE: return "STRING_LOWERCASE";
+  case Primop::STRING_UPPERCASE: return "STRING_UPPERCASE";
 
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
@@ -136,6 +138,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_REPLACE: return std::make_tuple(0, 3);
   case Primop::STRING_FIRST_CODEPOINT: return std::make_tuple(0, 1);
   case Primop::NORMALIZE_WHITESPACE: return std::make_tuple(0, 1);
+  case Primop::STRING_LOWERCASE: return std::make_tuple(0, 1);
+  case Primop::STRING_UPPERCASE: return std::make_tuple(0, 1);
 
   case Primop::OBJ_EMPTY: return std::make_tuple(0, 1);
   case Primop::OBJ_MERGE: return std::make_tuple(0, 2);
@@ -224,6 +228,9 @@ bool IsPrimopTotal(Primop p) {
     // Returns empty string if string is empty, so this always succeeds.
     return true;
   case Primop::NORMALIZE_WHITESPACE: return true;
+
+  case Primop::STRING_LOWERCASE: return true;
+  case Primop::STRING_UPPERCASE: return true;
 
   case Primop::OUT_STRING: return false;
   case Primop::OUT_LAYOUT: return false;
@@ -370,6 +377,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::STRING_FIRST_CODEPOINT:
     return {{}, pool->Arrow(String, String)};
   case Primop::NORMALIZE_WHITESPACE: return {{}, pool->Arrow(String, String)};
+  case Primop::STRING_LOWERCASE: return {{}, pool->Arrow(String, String)};
+  case Primop::STRING_UPPERCASE: return {{}, pool->Arrow(String, String)};
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};

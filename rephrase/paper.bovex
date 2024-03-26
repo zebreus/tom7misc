@@ -5,7 +5,11 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-  val doc-title = "Badness 0"
+  val EPSOM = true
+  do EPSOM andthen REPHRASE-ALL := SOME 5
+
+  val doc-title =
+    "Badness 0 (" ^ (if EPSOM then "Epsom" else "Knuth") "'s version)"
 
   do set-doc-info {(PDFInfo)
                    creator = "BoVeX",
@@ -63,10 +67,10 @@ It doesn’t upset them when the screw heads on a light switch wall
 plate are not all lined up.
 They didn’t notice that the rules of Wordle’s “hard mode” are simply
 wrong.
-They care about as much as the phone’s autocorrect about the difference
+They care as much as the phone’s autocorrect (none) about the difference
 between “its” and “it’s.”
 When someone asks, “Will you marry me?” and they think “Oh my god!”
-it’s not because they probably should be using the subjunctive mood [it[would]].
+it’s not because the proposer probably should be using the subjunctive [it[would]].
 
 They think that the order of letters within words...
 
@@ -149,11 +153,11 @@ United States, according to the analysis of Famous Birthdays,
 Wikipedia, Forbes & Business Insider, “Donald Knuth’s net worth $3--5
 Million.* (Last Update: February 3, 2024)”
 
-I suppose it is arguable that he is the Professor Emeritus. It is very
-likely true that he is the [it[only]] popular and rich mathematician
-born on that specific day in Wisconsin, making the singular
-“Mathematician” perhaps a technical master-stroke. But more likely
-this is just an amusingly dense series of imprecisions.
+I suppose it is arguable that he is the Professor Emeritus. And it is
+very likely true that he is the [it[only]] popular and rich
+mathematician born on that specific day in Wisconsin, making the
+singular “Mathematician” perhaps a technical master-stroke. But more
+likely this is just an amusingly dense series of imprecisions.
 
 
 What I mean when I say that Donald Knuth is the opposite of this
@@ -233,17 +237,17 @@ that humans have created, about extreme concentration of wealth. And
 yes, I worry about competing with AI. Being able to work tirelessly
 and thousands of times faster than humans is a huge competitive
 advantage. Of course, I find some solace in the significant possible
-upsides. It might help us solve hard problems like climate change. But
-even in the best scenarios we will not be able to ignore it: Even if
-it never gets as smart and precise as Knuth, it’s already too
+upsides. It might help us solve hard problems like climate change and
+AI. But even in the best scenarios we will not be able to ignore it:
+Even if it never gets as smart and precise as Knuth, it’s already too
 economically useful in its Lorem Epsom state (just like Lorem Epsom
 himself).
 
 On the other hand, the technology is pretty neat and lends itself to
 some nice abstractions. I love playing with words. So one of my side
 quests is to masticate this whole scenario by experimenting with
-LLMs in practical and impractical applications, and trying to make
-it fun to program with them.
+LLMs in practical and impractical applications, and to try to make
+it fun (for me) to program with them.
 
 Many things irritate me, so this is something I have ample experience
 with. I have a myriad of strategies for digestion of them. For this
@@ -280,13 +284,13 @@ shared with typography as well:
 
 By no coincidence, I already spent a lengthy introduction talking
 about Donald Knuth’s work in computer typography. So now I can tell
-you what this paper is about. If we are giving up on precision,
-perhaps at least we can have something that we want: Perfect
-typography? This paper is about a new typesetting system, BoVeX, which
-allows for the controlled exchange of precision for beauty. It
-essentially gives us a dial between Lorem Epsom and Donald Knuth. To
-illustrate, we’ll first look at a simpler case by inspecting one of my
-other interests: Super Metroid.
+you what this paper is about. If in our near AI future we are giving
+up on precision, perhaps at least we can have something that we want:
+Perfect typography? This paper is about a new typesetting system,
+BoVeX, which allows for the controlled exchange of precision for
+beauty. It essentially gives us a dial between Lorem Epsom and Donald
+Knuth. To illustrate, we’ll first look at a simpler case by inspecting
+one of my other interests: Super Metroid.
 
 [blockquote[The scientists’ findings were astounding! They discovered
 that the powers of the Metroid might be harnessed for the good of
@@ -444,11 +448,11 @@ number of threads and layers on the GPU improves performance, since
 this whole model fits on the GPU. For the 70b models (not pictured)
 there is an abrupt drop-off in throughput before we load all the
 layers, and also my computer gets very sluggish if I exceed the GPU
-memory. Unsurprisingly, we see that if we use more than the number
-of physical cores (32) we do not see any benefit from hyperthreading,
-since hyperthreading basically never helps. The best throughput
-actually uses a modest number of cores (about 12). Mostly I’m
-just including the graph to demonstrate that BoVeX has support for
+memory. We see that if we use more than the number of physical cores
+(32) we do not see any benefit, which is not surprising because
+hyperthreading basically never helps anything. The best throughput
+actually uses a modest number of cores (about 12). Mostly I’m just
+including the graph to demonstrate that BoVeX has support for
 including PNG files.
 
 Where was I? Right. Fundamentally, LLMs are trained to predict a token
@@ -497,10 +501,11 @@ generation is the spice of life!
 We also need not use the probability distribution to sample at all. We
 can just pick the token that we want. This is how the initial “prompt”
 works; we just run the inference process one token at a time but
-always select the next token in the prompt. So at each moment, the
-text we’ve generated so far (more or less) completely characterizes
-the state of the LLM. This means that we can easily go back to earlier
-moments and sample a different continuation of the text. We also
+always select the next token in the prompt, ignoring the
+probabilities. So at each moment, the text we’ve generated so far
+(more or less) completely characterizes the state of the LLM. This
+means that we can easily go back to earlier moments and sample a
+different continuation of the text, by just replaying tokens. We also
 have the option of storing the LLM state (gigabytes) in RAM, which
 allows us to return to a previous state in constant time.
 
@@ -509,8 +514,8 @@ that asks the model to rephrase the input paragraph. Here, greedily
 sampling the distribution typically results in a copy of the input
 paragraph, which is fine for our purposes. (If the lines already
 happen to be the right length, we need not change them!) But when a
-line comes out the wrong length, I want to try again. So I save
-the model state whenever I begin a line. To produce a variant of the line,
+line comes out the wrong length, I want to try again. So I save the
+model state whenever I begin a line. To produce a variant of the line,
 I sample tokens proportional to the probability distribution. When the
 set of probable lines is small (this is common), the process will keep
 generating the same lines and failing because they are not the right
@@ -521,8 +526,9 @@ higher) flattens out the probability distribution, making previously
 unlikely tokens more likely. You can think of this like the model
 getting a little hot-headed as it frustratedly does the same thing
 over and over. This causes the candidate lines to be more varied, but
-less probable. I can reset the temperature when it succeeds, since
-we prefer to have more likely lines.
+less probable (according to the original probability distribution). I
+can reset the temperature when it succeeds, since we prefer to have
+more likely lines.
 
 This is all there is to the monospacing version. It’s just 300 lines
 of code, including boilerplate and commented-out debugging code and
@@ -594,7 +600,7 @@ pair<int, string> Split(string line,
   // try not splitting
   auto [layout "[penalty2, rest2]"] =
       Split(line + " " + word, rest);
-  penalty2 += badness if we go over;
+  penalty2 += badness if we exceed the line length;
   if (penalty1 < penalty2) {
     return {penalty1, word + "\n" + rest1};
   } else {
@@ -612,8 +618,8 @@ memoization: If the function is called for the same line and text
 a second time, just return the same answer as before without
 doing any work (especially not making recursive calls again). This
 limits the function to be called at most once for each possible
-argument; we can then see that "line" is no longer than the input
-(so it is size O([it[n]])) and text is always some suffix
+argument; we can then see that [tt[line]] is no longer than the input
+(so it is size O([it[n]])) and [tt[text]] is always some suffix
 of the input (so it is size O([it[n]])), giving O([it[n]][sup 12.0[2]])
 calls.
 
@@ -629,7 +635,8 @@ cases of empty text are used to start the table, and then you just
 write the loop to fill out cells in the right order.
 
 Knuth’s boxes-and-glue algorithm contains many extensions, and so
-does mine.
+does mine. For example, later we'll talk about how you can adapt
+the algorith to perform hyphenation and kerning. I
 
 [* XXX transition *]
 
@@ -679,31 +686,31 @@ You don’t need to understand it. I just want to show you that it is a
 full-fledged programming language. It supports higher order functions,
 polymorphism, algebraic datatypes, pattern matching, Hindley-Milner
 type inference, and so on. It is basically core (no modules) Standard
-ML[cite milner1997definition], although I left out some warts
+ML,[cite milner1997definition] although I left out some warts
 (operator overloading, eqtypes, abstype, non-uniform datatypes and
 polymorphic recursion) and added some new warts. For example, [tt[as]]
 allow patterns on both sides, since Standard ML has always seemed
 backwards to me and it works perfectly fine to just make it symmetric.
 Anyway, a full description of the language would be boring and take
-too much time as the time left before the SIGBOVIK deadline draws closer.
+too much time as the SIGBOVIK deadline draws closer.
 
 [subsection[Implementation]]
 
 I have implemented many similar languages in the past, including for
-my dissertation.[cite murphy2008modal] It would have been expedient
-to start from one of my existing implementations, but they are mostly
+my dissertation.[cite murphy2008modal] It would have been expedient to
+start from one of my existing implementations, but they are mostly
 written in Standard ML and I couldn’t get MLton to work on my Windows
-computer. So I started over from scratch in C++, which at least does
-work on my computer. (I also want to be able to interface with GPU
-inference code for running the LLM, which will be easiest from C++).
-C++ is not a good language for writing language implementations, but
-it has gotten better.
+computer in 2024. So I started over from scratch in C++, which at
+least does work on my computer. (I also want to be able to interface
+with GPU inference code for running the LLM, which will be easiest
+from C++). C++ is not a good language for writing language
+implementations, but it has gotten better.
 
 The BoVeX implementation is a “compiler” in the sense that it
 transforms the source language through multiple intermediate languages
 into a low-level bytecode. This bytecode is just straight-line code on
 an abstract machine with infinite registers and operations like
-[tt[alloc]] (allocate a new “object”) and [tt[setfield]] (set a
+[tt[alloc]] (allocate a new “object”) and [tt[setfield]] (set a fixed
 field of the “object” to a value from a register). It does not produce
 machine code, and although this would be pretty feasible, it would not
 be the first thing to do to make BoVeX faster.
@@ -823,8 +830,8 @@ this disgust reflex. I imagine my Ph.D. advisors, should they read this,
 are contemplating whether and how a Ph.D. can be revoked. Anyway, I
 deliberately kept objects low-tech so that nothing could get too Oriented.
 
-There is one object type [tt[obj]] in BoVeX. An value of this type has
-an arbitrary set of fields whose names and types are known; they can
+There is one object type [tt[obj]] in BoVeX. A value of this type has
+an arbitrary set of named fields whose types are known; they can
 only be the base types [tt[int]], [tt[float]], [tt[string]],
 [tt[bool]], [tt[layout]], or [tt[obj]]. Fields are distinct if they
 have different types. An object can be introduced with an expression
@@ -873,7 +880,7 @@ It is just too irritating to make each one explicitly optional, and
 since the data have heterogeneous types, manipulating some
 string-indexed data structure would have worse static checking and be
 more syntactically cumbersome. The bibliography rendering code case
-analyzes over the presence of fields to show different things with
+analyzes over the presence of fields to render citations that have
 different subsets of data.
 
 Another use is in the [tt[layout]] type. This is a primitive type that
@@ -895,19 +902,15 @@ file as:
 
 The square brackets are used to write a layout literal (the main body
 of the document is inside one large literal). Layout literals can also
-embed expressions (of type layout) with nested square brackets.
-Here the function [tt[tt]] is applied to a layout literal that
-contains text like [tt[paper.bovex]]. The [tt[tt]] function just adds
-the [tt[font-family]] attribute with value [tt["FixederSysLight"]] to the
-layout node. This is a custom monospaced bitmap font that I made for this
-paper, in the FixederSys family.[cite fixedersys-site]
-Functions like [tt[b]] and [tt[it]] apply bold and italic text styles,
-but the functions can do anything that you can do in a general-purpose
-programming language. For example, most of the layout of the document
- itself is performed inside BoVeX code by a function [tt[main-text]],
-which parses the document layout to produce paragraphs, optimizes
-their layout, places them into columns, and outputs them to be
-rendered.
+embed expressions (of type layout) with nested square brackets. Here
+the function [tt[tt]] is applied to a layout literal that contains
+text like [tt[paper.bovex]]. The [tt[tt]] function just adds the
+[tt[font-family]] attribute with value [tt["FixederSysLight"]] to the
+layout node. This is a custom monospaced bitmap font that I made for
+this paper using software I wrote. It is part of th FixederSys
+family.[cite fixedersys-site] Functions like [tt[b]] and [tt[it]]
+apply bold and italic text styles, but functions can do anything that
+you can do in a general-purpose programming language.
 
 [subsection[Primops]]
 
@@ -937,10 +940,11 @@ be a series of box nodes, with attributes giving their size, glue
 properties, and so on) and configuration parameters like the type of
 justification and algorithm to use. It returns an object with a new
 layout (the boxes grouped into lines, with new glued up widths) as
-well as the total badness. Inside the BoVeX layout support code,
-this primop is wrapped as [tt[pack-boxes]] with a native, typed
-interface. Other typographic features that benefit from runtime
-support are implemented this way as well.
+well as the total badness. Inside the BoVeX layout support code, this
+primop is wrapped as [tt[pack-boxes]] with a native, typed interface,
+so programmers do not need to think about that implementation detail.
+Other typographic features that benefit from runtime support are
+implemented this way as well.
 
 [section[Typographic features]]
 
@@ -952,7 +956,31 @@ paragraph) and the columns as “lines.” It could be used by the
 document author for other purposes, I guess. There are other typographic
 features available.
 
-[* XXX talk about rendering pipeline here. need to cover “badness”! *]
+Most of the layout of the document itself is by BoVeX code, which is
+either part of the standard library or part of your document,
+depending on how ambitious you feel. The function [tt[main-text]]
+parses the document layout into paragraphs and removes whitespace that
+is not really part of the text. It normalizes text properties across
+those paragraphs so that they can be manipulated individually. For
+each paragraph it uses the built-in [tt[get-boxes]] to break the words
+into fixed-size boxes with appropriate glue and hyphenation (see the
+next two sections), and then uses the [tt[pack-boxes]] routine to
+optimize their layout. The height of resulting lines are measured, and
+spaced according to the line spacing, then packed into columns. Once
+their final placement is known, boxes become stickers, which are
+sizeless elements that only know their position and contents. In this
+way, the BoVeX rendering pipeline is itself a bit like a compiler: It
+transforms programmer-written source layout into formatted paragraphs,
+then into boxes of known size, then into stickers of known position.
+At the end, it outputs the document as a PDF.
+
+Any part of the rendering process can report “badness,” by calling the
+[tt[emit-badness]] primop. Nominally, badness is measured in square
+points of area that is outside of its container. Worse situations—such
+as text overlapping other text—have their badness scaled up per the
+same area of typographic horror. Less serious infractions—such as a
+little too much space between words—have badness scaled down. You have
+to use your heart to tell you what these scaling factors should be.
 
 [subsection[Fonts]]
 
@@ -962,14 +990,14 @@ can load any TrueType font from font files. (They do not need to be
 “installed,” and it won’t help to install them. You just put them in
 the directory with your document.) It loads their kerning tables and
 applies kerning properly, by generating rigid boxes at the sub-word
-level. I was disappointed to find that most fonts include only a few
-dozen kerning pairs. They do this in order to “save space” in the font
-file, which is utterly rich coming from someone that would try to save
-space [it[inside of words]] by squeezing letters together! For
-example, the word “BoVeX” is not kerned correctly because the rare
-bigraph “oV” does not have a kerning pair. I hope to improve this
-detail in a future version (perhaps for the presumably forthcoming
-video version of this paper).
+level with unbreakable glue. I was disappointed to find that most
+fonts include only a few dozen kerning pairs. They do this in order to
+“save space” in the font file, which is utterly rich coming from
+someone that would try to save space [it[inside of words]] by
+squeezing letters together! In the current font Palatino, the word
+“BoVeX” is not kerned correctly because the rare bigraph “oV” does not
+have a kerning pair. I hope to improve this detail in a future version
+(perhaps for the presumably forthcoming video version of this paper).
 
 [subsection[Hyphenation]]
 
@@ -1009,7 +1037,7 @@ stored in a file called [tt[hyph-en-us.tex]]. “hyph” here of course
 stands for hyphens, and “en-us” means “English (United States).”
 In fact it is the [it[standard]] language code for US English in
 the Small Language Model called IETF BCP 47![cite bcp47]
-But then we have “hyph-en”, which is the correct hyphenation of
+But then we have “hyph-en”, which is a plausible hyphenation of
 “hyphen”! You could even read it as “hyphen us, tex”, as a request for
 TeX to hyphenate the words in this file. This is the kind of detail
 I’m talking about! (There is also hyph-uk, which for once sounds a
@@ -1020,7 +1048,7 @@ little less dignified than the US accent.)
 And of course, BoVeX includes a facility for using the LLM to rephrase
 text so that it renders more beautifully.
 
-In contrast to the algorithm I described for monospaced text, [* XXX section *]
+In contrast to the algorithm I described for monospaced text,
 it is not straightforward to know whether a prefix of some text
 will pack neatly with a proportional font. It depends on all sorts of
 contingencies, like kerning, whether we will split mid-word and hyphenate, or
@@ -1036,7 +1064,7 @@ contains some structure. Sending the original BoVeX code for the
 paragraph would maybe be possible in principle, although it would
 require very invasive changes to the compiler, and forbidden
 obscenities like “eval” to run the code it generated, and much better
-error recovery for the presumably constant stream of broken BoVeX code
+error recovery for the presumably vigorous stream of broken BoVeX code
 generated by the LLM. So I didn’t try that. Instead, I generate a
 textual representation for the paragraph to be rephrased, and feed
 that to the LLM. The prompt looks like this:
@@ -1071,8 +1099,8 @@ the second part of the prompt in the common case that the input paragraph
 is plain text. That way the LLM doesn’t even try using markup.
 
 With the HTML and original layout matched up, BoVeX can reconsitute
-the layout with the new rephrased text, and continue with the
-rendering process.
+the layout with the new rephrased text. This preserves any nested
+layout and attributes. It then continues with the rendering process.
 
 But, how do we know whether we have a good rephrasing? When we run the
 boxes-and-glue algorithm, we get a “badness” score for the paragraph’s
@@ -1088,12 +1116,13 @@ algorithm! But so far I just have something reasonable that works. I
 generate many different rephrasings (with their semantic loss), and
 run each of them through the boxes-and-glue algorithm (to get the
 typographic badness). I choose the one that optimizes the preferred
-tradeoff between semantic loss and typographic badness. Knuth has a
-very low tolerance for semantic loss, and knows that his algorithms
-produce good results without rephrasing. Lorem Epsom just wants it to
-look good and sound good. This process is controlled by BoVeX code
-(i.e. it is in the source code of this very paper) and so it can be
-modified by the document author.
+tradeoff between semantic loss and typographic badness. This process
+is controlled by BoVeX code (i.e. it is in the source code of this
+very paper) and so it can be modified by the document author. Knuth
+has a very low tolerance for semantic loss, and knows that his
+algorithms produce good results without rephrasing. Lorem Epsom just
+wants it to look good and sound good. Both have published in SIGBOVIK
+2024.
 
 How to generate many different rephrasings? The simplest thing would
 be to sample randomly, like we did for the monospaced version. But
@@ -1126,9 +1155,9 @@ reach [tt[</P>]]. Speaking of which, BoVeX has a heck of a time trying
 to rephrase these last few paragraphs because they literally contain
 the text [tt[</P>]] in them. [* would be a good place for a figure *]
 
-This should be seen as heuristic; we would get different results by
-choosing different ways of computing the score. This is an example of
-a “beam search” algorithm, which is good because it connects this
+The scores should be seen as heuristic; we would get different results
+by choosing different ways of computing the score. This is an example
+of a “beam search” algorithm, which is good because it connects this
 project again to Super Metroid. As described in the earlier excerpt
 from the speedrun document that inspired this work, one of the final
 things you do in that game is acquire the “hyper beam” to defeat
@@ -1144,10 +1173,11 @@ the asymptotic runtime. The table size is still at most O([it[n]][sup
 12.0 [2]]), and although we explore more children per node, branches
 in the tree reduce the maximum depth to the root, which actually
 reduces one of the factors of [it[n]] to log([it[n]]) as the tree
-becomes complete. However, I don’t actually use this funtionality. It
-would require additional (programming) work to join the trees up, and
-the layout process is so fast that it doesn’t matter; I can easily run
-the full layout algorithm on hundreds of rephrasings per paragraph.
+becomes complete. However, as the SIGBOVIK deadline crept upon us, I
+never actually hooked this functionality up. It would require
+additional (programming) work to merge the trees, and the layout
+process is so fast that it doesn’t matter; I can easily run the full
+layout algorithm on hundreds of rephrasings per paragraph.
 
 I would like to improve the algorithm, because it does seem like there
 should be a way to integrate the boxes-and-glue dynamic programming
@@ -1169,20 +1199,13 @@ badness per page.
 
 [subsection[Advantages of rephrasing]]
 
-
-
+[* XXX more advantages / disadvantages *]
 Another nice thing is that the manual rephrasing that consumes
 valuable brain sugars when writing can become optional. For example,
 when I wrote the opening paragraph of this paper and listed a variety
 of trivial details, I might not need to think of different ways to say
 “unconcerned.” I could just write “unconcerned” each time and let the
 typographic considerations determine which synonym to use each time.
-
-Auto Justification Plus
-Auto-Margin Plus
-
-Instead of “interpolation,” “interpolishing”
-
 
 [section[Conclusion]]
 
@@ -1197,7 +1220,7 @@ I don’t want end notes. I want them to be little footnotes so
 that you can’t help but read them.
 
 BoVeX does not support page numbers, which is good because they
-are forbidden by the SIGBOVIK conference.
+are forbidden by the SIGBOVIK program committee.
 
 TeX is famous for its mathematical typesetting as well. It would fit
 neatly into BoVeX in the same way, since both use the same fundamental
@@ -1226,11 +1249,12 @@ All of this becomes more important if I add another planned feature,
 which is the ability for the document to be globally optimized by
 applying a black-box optimizer to a set of user-specified parameters.
 For example, the column width, line spacing, or font size could be
-tweaked to make the document fit better.
+tweaked to make the document fit better. This feature is "Auto-Margin Plus."
 Things are already set up to do this pretty straightforwardly; we
 would simply generate the document over and over while searching
 over the parameter space, and choose the one with the least badness.
-Instead I spent my precious time implementing
+This may also affect which rephrasings look best.
+But instead I spent my precious time implementing
 [three-d { font-name = opt-require (font-regular PALATINO),
            width = 40.0, height = 12.0, text = "3D text" }].[cite murphy2016glend]
 
@@ -1269,14 +1293,14 @@ coffee-fueled fugue in the last few days before the deadline, then
 stay up all night writing the paper and finding citations for the
 pro-forma “related work” section which you did last but you know that
 the reviewers will insist upon, and tweaking [tt[\vspace]] and [tt
-(layout "\\begin{float}[h!]")] until it fits within the page limit. On
-the one hand, the approach does potentially free the author from the
+(layout "\\begin{figure}[h!]")] until it fits within the page limit.
+On the one hand, BoVeX does potentially free the author from the
 visual tweaking process. But on the other hand, the LLM inference for
-the rephrasing process can be quite slow, and can take many hours or
-days to fully bake a long paper! For this reason, it may be better to
-change conference deadlines to a system where the pre-rephrasing text
-is submitted. The publishers (what do they even do?) can be the ones
-to execute the rephrasing in the cloud as they produce the
+the rephrasing process can be quite slow, and it can take many hours
+or days to fully bake a long paper! For this reason, it may be better
+to change conference deadlines to a system where the pre-rephrasing
+text is submitted. The publishers (what do they even do?) can be the
+ones to execute the rephrasing in the cloud as they produce the
 “camera-ready copy.” With straightforward extensions, this would also
 allow the rephrasing to adapt to changes in the overall volume style,
 or to adjust to avoid embarrassing typographic concidences with other
@@ -1284,14 +1308,14 @@ articles in the same volume (such as using the same notation with a
 different meaning). In principle, the paper could edit itself to
 respond to feedback from reviewers, in a way that minimizes the
 semantic distance from the original. This rapid feedback loop could
-reduce the time to publication to mere months, or even weeks!
+reduce the time to publication, perhaps to mere months, or even weeks!
 
 [paragraph[Other ways to minimize badness]] The BoVeX system allows
-the document author to trade semantic consistency in order to achieve
+the document author to exchange semantic consistency for
 higher quality typography. Although we achieve state-of-the-art
 results, there are likely points that are more Pareto-efficient than
-what BoVeX can achieve. Although it uses one of the most powerful
-publicly available LLMs, that model is limited to performing edits to
+what BoVeX can reach. BoVeX uses one of the most powerful
+publicly available LLMs, but that model is limited to rewriting
 the text within narrow constraints. Irresponsible research has
 demonstrated that language models are capable of volition, taking
 actions and using tools to accomplish goals. With minor modifications,
@@ -1315,13 +1339,12 @@ Delete the whole document! As a wise person once said, “If you
 can’t say something with nonzero typographic or semantic loss,
 don’t say anything at all.”
 
-[paragraph[Acknowledgements]] Supposing his name survives
-rephrasing, I’d like to acknowledge one of my advisors,
-Karl Crary. 20 years ago, he set out with me
-on an ill-advised and ill-fated attempt to replace LaTeX with
-an SML-like language mTeX, which compiled into TeX macros. It
-was Karl’s idea to use the nesting square brackets, and
-BoVeX shares genetic material with mTeX for sure.
+[paragraph[Acknowledgements]] Supposing his name survives rephrasing,
+I’d like to shout out to one of my advisors, Karl Crary. 20 years ago,
+he set out with me on an ill-advised and ill-fated (but serious)
+attempt to replace LaTeX with an SML-like language mTeX, which
+compiled into TeX macros. It was Karl’s idea to use the nesting square
+brackets, and BoVeX shares genetic material with mTeX for sure.
 
 See you next mission,
 
@@ -1340,9 +1363,6 @@ Since it feels good to be a little bit bad.
 TODO: time travel, the most powerful weapon
 
 TODO: BoVeX rendering pipeline is a bit like a multi-pass compiler
-
-TODO: BoVeX does not support page numbers, which is good because
-page numbers are prohibited in the SIGBOVIK proceedings.
 
 TODO: Obviously I need to submit two versions of the paper with the
 dial set at opposite ends? (Taylor’s Version) Or three?

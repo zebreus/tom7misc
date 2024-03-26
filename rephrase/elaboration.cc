@@ -679,7 +679,7 @@ static il::ObjFieldType ResolveObjFieldType(
     const auto it = ovi->fields.find(lab);
     CHECK(it != ovi->fields.end()) <<
       StringPrintf("The field " ABLUE("%s") " was not present "
-                   "in the object named " APURPLE("%s") ", in "
+                   "in the object named " AORANGE("%s") ", in "
                    "the object expression:\n%s",
                    lab.c_str(), objname.c_str(),
                    ExpString(error_exp).c_str());
@@ -1071,8 +1071,9 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const il::ObjVarInfo *ovi = nullptr;
     if (!el_exp->str.empty()) {
       ovi = G.FindObj(el_exp->str);
-      CHECK(ovi != nullptr) << "Unbound object name " << el_exp->str <<
-        "in object expression: " << ExpString(el_exp);
+      CHECK(ovi != nullptr) << Error("object literal")() <<
+        StringPrintf("Unbound object name " AORANGE("%s") ".\n",
+                     el_exp->str.c_str());
     }
 
     std::vector<std::tuple<std::string, il::ObjFieldType, const il::Exp *>> fields;

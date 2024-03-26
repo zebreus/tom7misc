@@ -15,13 +15,21 @@
    This is the greatest planet on Earth.[cite wikipedia-earth]
 *)
 
+
+
 val CITE-VERBOSE = false
 
 (* Basic source types. Some bibliography types are converted
    into one of these (e.g. PhD thesis). *)
 datatype bibsourcetype = Website | Article | Book | Misc
+datatype author-name =
+  AuthorCommon of { first: string, middle: string option, last: string,
+                    suffix: string option }
+  | AuthorOther of string
+
 datatype bibsource =
   Source of { t : bibsourcetype,
+              authors : author-name list,
               sort-key : string,
               fields : obj }
 
@@ -85,9 +93,57 @@ fun bibsourcetype-compare (Website, Website) = EQUAL
   | bibsourcetype-compare (Misc, Misc) = EQUAL
   | bibsourcetype-compare _ = fail "impossible"
 
+fun bib-parse-author-name s =
+  let
+    (* We want something like string-tokens here *)
+    val words = string-split " " s
+    fun one-word w =
+      if string-ends-with "," w
+      then (substr (w, 0, string-size w - 1) :: "," :: nil)
+      else w :: nil
+    val toks = list-concat (list-map one-word words)
+  in
+    case toks of
+      last :: "," :: suffix :: "," :: first :: nil =>
+        AuthorCommon { first = first, middle = NONE, last = last,
+                       suffix = SOME suffix }
+    | last :: "," :: first :: middle :: nil =>
+        AuthorCommon { first = first, middle = SOME middle, last = last,
+                       suffix = NONE }
+    | last :: "," :: first :: nil =>
+        AuthorCommon { first = first, middle = NONE, last = last, suffix = NONE }
+    | first :: last :: nil =>
+        AuthorCommon { first = first, middle = NONE, last = last, suffix = NONE }
+    | last1 :: last2 :: "," :: first :: nil =>
+        AuthorCommon { first = first, middle = NONE, last = last1 ^ " " ^ last2,
+                       suffix = NONE }
+    | first :: last1 :: last2 :: nil =>
+        AuthorCommon { first = first, middle = NONE, last = last1 ^ " " ^ last2,
+                       suffix = NONE }
+    | _ => AuthorOther s
+  end
 
-fun bibsource-compare (Source { t = t1, sort-key = k1, fields = f1 },
-                       Source { t = t2, sort-key = k2, fields = f2 }) =
+fun bib-parse-authors author-field =
+  let
+    val author-field = normalize-whitespace author-field
+    (* only the literal string "and" separates authors *)
+    val authors = string-split " and " author-field
+  in
+    list-map bib-parse-author-name authors
+  end
+
+fun author-sort-key authors =
+  let
+    fun one (AuthorOther s) = s
+      | one (AuthorCommon { first, last, middle = _, suffix = _ }) =
+      string-lowercase last ^ ":" ^ string-lowercase first
+  in
+    string-list-join "/" (list-map one authors)
+  end
+
+fun bibsource-compare
+  (Source { t = t1, sort-key = k1, fields = f1, authors = _ },
+   Source { t = t2, sort-key = k2, fields = f2, authors = _ }) =
   case string-compare (k1, k2) of
     EQUAL => bibsourcetype-compare (t1, t2)
   | ord => ord
@@ -98,24 +154,39 @@ fun url-sort-key url =
   | "https" :: "" :: domain :: _ => domain
   | _ => url
 
+
 (* XXX: should register these in a global data structure. *)
-fun bib-website (obj as {(Website) url}) =
-  Source { t = Website, sort-key = url-sort-key url, fields = obj }
+fun bib-website (obj as {(Website) author}) =
+  let
+    val authors = bib-parse-authors author
+  in
+    Source { t = Website, authors = authors,
+             sort-key = author-sort-key authors, fields = obj }
+  end
+  | bib-website (obj as {(Website) url}) =
+  Source { t = Website, sort-key = url-sort-key url, fields = obj, authors = nil }
   | bib-website _ = fail "bib-website needs at least a url"
 
-
 fun bib-article (obj as {(Article) author}) =
-  (* XXX extract last name from author field *)
-  Source { t = Article, sort-key = author, fields = obj }
+  let
+    val authors = bib-parse-authors author
+  in
+    Source { t = Article, authors = authors,
+             sort-key = author-sort-key authors, fields = obj }
+  end
   | bib-article _ = fail "bib-article needs at least an author"
 
 fun bib-book (obj as {(Article) author}) =
-  (* XXX extract last name from author field *)
-  Source { t = Book, sort-key = author, fields = obj }
+  let
+    val authors = bib-parse-authors author
+  in
+    Source { t = Book, authors = authors,
+             sort-key = author-sort-key authors, fields = obj }
+  end
   | bib-book _ = fail "bib-book needs at least an author"
 
 fun bib-misc (obj as {(Misc) note}) =
-  Source { t = Misc, sort-key = note, fields = obj }
+  Source { t = Misc, authors = nil, sort-key = note, fields = obj }
   | bib-misc _ = fail "bib-misc needs at least a note"
 
 
@@ -128,8 +199,7 @@ fun convert-phd-thesis (obj as {(PhdThesis) publisher, university}) =
   | convert-phd-thesis obj = obj
 
 fun bib-phd-thesis (obj as {(Article) author}) =
-  (* XXX extract last name from author field *)
-  Source { t = Article, sort-key = author, fields = convert-phd-thesis obj }
+  bib-article (convert-phd-thesis obj)
   | bib-phd-thesis _ = fail "bib-phd-thesis needs at least an author"
 
 fun convert-news (obj as {(News) work }) =
@@ -139,8 +209,7 @@ fun convert-news (obj as {(News) work }) =
   | convert-news obj = obj
 
 fun bib-news (obj as {(News) author}) =
-  (* XXX extract last name from author field *)
-  Source { t = Article, sort-key = author, fields = convert-news obj }
+  bib-article (convert-news obj)
   | bib-news _ = fail "bib-news needs at least an author"
 
 val citation-next-num = ref 1
@@ -192,8 +261,21 @@ fun monthname 1 = "January"
   | monthname _ = "Unknown Month"
 
 (* XXX obviously use other fields if present! *)
-fun cite-render-one (Source { t, sort-key = _, fields }, n) =
+fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
   let
+
+    fun render-author (AuthorCommon { first, middle, last, suffix }) =
+      first ^ " " ^
+      (case middle of
+         NONE => ""
+       | SOME m => m ^ " ") ^
+         last ^
+      (case suffix of
+         NONE => ""
+       | SOME x => " " ^ x)
+      | render-author (AuthorOther s) = s
+
+    val authors = string-list-join ", " (list-map render-author authors)
 
     (* Since bibliography URLs are often too long, we allow
        breaking after each slash-separated part.
@@ -246,11 +328,12 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
             | _ => []
         in
           joindots (bib-url url ::
+                    layout authors ::
                     title :: date fields ::
                     nil)
         end
 
-    | (Article, {(Article) author, title }) =>
+    | (Article, {(Article) title }) =>
         let
           val jour =
             case fields of
@@ -271,7 +354,7 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
             | _ => []
 
           val r =
-            joindots (layout author :: ["[layout title]"] ::
+            joindots (layout authors :: ["[layout title]"] ::
                       e :: jour :: date fields ::
                       pp :: nil)
 
@@ -281,14 +364,14 @@ fun cite-render-one (Source { t, sort-key = _, fields }, n) =
           r
         end
 
-    | (Book, {(Book) author, title }) =>
+    | (Book, {(Book) title }) =>
         let
           val j =
             case fields of
               {(Article) publisher} => it(layout publisher)
             | _ => []
           val r =
-            joindots (layout author :: ["[layout title]"] ::
+            joindots (layout authors :: ["[layout title]"] ::
                       j :: date fields ::
                       pp :: nil)
 
@@ -316,4 +399,3 @@ fun bibliography () =
     layout-concat
     (list-map (fn cn => [[layout "\n\n"][cite-render-one cn]]) cites)
   end
-
