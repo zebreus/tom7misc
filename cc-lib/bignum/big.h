@@ -39,6 +39,9 @@ struct BigInt {
 
   static inline BigInt FromU64(uint64_t u);
 
+  // TODO: From doubles (rounding), which is useful because
+  // uint64_t can't represent all large doubles.
+
   // Aborts if the string is not valid.
   // Bases from [2, 62] are permitted.
   inline std::string ToString(int base = 10) const;

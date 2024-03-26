@@ -16,9 +16,12 @@
 struct BoxesAndGlue {
 
   enum class Justification {
+    // Lines take the full width, except for the last.
     FULL,
     LEFT,
     CENTER,
+    // Lines take the full width, including the last.
+    ALL,
   };
 
   struct BoxIn {

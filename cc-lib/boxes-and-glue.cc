@@ -112,6 +112,10 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     const std::vector<BoxIn> &boxes,
     Justification just) {
 
+  CHECK(just != Justification::CENTER) << "CENTER unimplemented. It's not "
+    "hard; just put the computed space symmetricially on the two sides "
+    "of the line. You can add RIGHT while you're at it!";
+
   std::vector<std::vector<std::pair<int, double>>> successors(
       boxes.size(), std::vector<std::pair<int, double>>{});
 
@@ -504,7 +508,8 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     current_line.push_back(box_out);
 
     if (memo_result.break_after) {
-      ApplyGlue(&current_line, just == Justification::FULL);
+      ApplyGlue(&current_line, just == Justification::FULL ||
+                just == Justification::ALL);
       lines.push_back(std::move(current_line));
       current_line.clear();
       before = 0;
@@ -516,8 +521,9 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
   }
 
   if (!current_line.empty()) {
-    // Apply glue to final line. It is not justified.
-    ApplyGlue(&current_line, false);
+    // Apply glue to final line. It is not justified unless
+    // we are in "all" mode.
+    ApplyGlue(&current_line, just == Justification::ALL);
     lines.push_back(std::move(current_line));
   }
 

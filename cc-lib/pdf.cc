@@ -91,6 +91,26 @@ static const char png_chunk_palette[] = "PLTE";
 static const char png_chunk_data[] = "IDAT";
 static const char png_chunk_end[] = "IEND";
 
+static std::string Float(float f) {
+  std::string s = StringPrintf("%.6f", f);
+  for (;;) {
+    if (s.empty()) return "0";
+    // Trailing zeroes do nothing
+    if (s.back() == '0') {
+      s.resize(s.size() - 1);
+    } else if (s.back() == '.') {
+      // And if we had an integer, we don't need the period either.
+      s.resize(s.size() - 1);
+      // But now we are done.
+      if (s.empty()) return "0";
+      return s;
+    } else {
+      // Other digits? Done.
+      return s;
+    }
+  }
+}
+
 namespace {
 
 // Prefer this one, which is already converted into native byte order.
@@ -592,9 +612,9 @@ int PDF::pdf_save_object(FILE *fp, int index) {
             "  /Type /Page\r\n"
             "  /Parent %d 0 R\r\n",
             pages->index);
-    fprintf(fp, "  /MediaBox [0 0 %f %f]\r\n",
-            pobj->width,
-            pobj->height);
+    fprintf(fp, "  /MediaBox [0 0 %s %s]\r\n",
+            Float(pobj->width).c_str(),
+            Float(pobj->height).c_str());
     fprintf(fp, "  /Resources <<\r\n");
     fprintf(fp, "    /Font <<\r\n");
     for (Object *font = pdf_find_first_object(OBJ_font);
@@ -664,11 +684,11 @@ int PDF::pdf_save_object(FILE *fp, int index) {
       break;
     fprintf(fp,
             "<<\r\n"
-            "  /Dest [%d 0 R /XYZ 0 %f null]\r\n"
+            "  /Dest [%d 0 R /XYZ 0 %s null]\r\n"
             "  /Parent %d 0 R\r\n"
             "  /Title (%s)\r\n",
             bobj->page->index,
-            this->height,
+            Float(this->height).c_str(),
             parent->index,
             bobj->name.c_str());
     int nchildren = (int)bobj->children.size();
@@ -815,13 +835,17 @@ int PDF::pdf_save_object(FILE *fp, int index) {
             "<<\r\n"
             "  /Type /Annot\r\n"
             "  /Subtype /Link\r\n"
-            "  /Rect [%f %f %f %f]\r\n"
-            "  /Dest [%u 0 R /XYZ %f %f null]\r\n"
+            "  /Rect [%s %s %s %s]\r\n"
+            "  /Dest [%u 0 R /XYZ %s %s null]\r\n"
             "  /Border [0 0 0]\r\n"
             ">>\r\n",
-            lobj->llx, lobj->lly, lobj->urx,
-            lobj->ury, lobj->target_page->index,
-            lobj->target_x, lobj->target_y);
+            Float(lobj->llx).c_str(),
+            Float(lobj->lly).c_str(),
+            Float(lobj->urx).c_str(),
+            Float(lobj->ury).c_str(),
+            lobj->target_page->index,
+            Float(lobj->target_x).c_str(),
+            Float(lobj->target_y).c_str());
     break;
   }
 
@@ -1979,14 +2003,16 @@ void PDF::AddLine(float x1, float y1,
                   float width, uint32_t color_rgb,
                   Page *page) {
   std::string str;
-  StringAppendF(&str, "%f w\r\n", width);
-  StringAppendF(&str, "%f %f m\r\n", x1, y1);
+  StringAppendF(&str, "%s w\r\n", Float(width).c_str());
+  StringAppendF(&str, "%s %s m\r\n", Float(x1).c_str(), Float(y1).c_str());
   StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%f %f %f RG\r\n",
-                PDF_RGB_R_FLOAT(color_rgb),
-                PDF_RGB_G_FLOAT(color_rgb),
-                PDF_RGB_B_FLOAT(color_rgb));
-  StringAppendF(&str, "%f %f l S\r\n", x2, y2);
+  StringAppendF(&str, "%s %s %s RG\r\n",
+                Float(PDF_RGB_R_FLOAT(color_rgb)).c_str(),
+                Float(PDF_RGB_G_FLOAT(color_rgb)).c_str(),
+                Float(PDF_RGB_B_FLOAT(color_rgb)).c_str());
+  StringAppendF(&str, "%s %s l S\r\n",
+                Float(x2).c_str(),
+                Float(y2).c_str());
 
   pdf_add_stream(page, std::move(str));
 }
@@ -1996,15 +2022,20 @@ void PDF::AddCubicBezier(float x1, float y1, float x2, float y2, float xq1,
                          uint32_t color_rgb, Page *page) {
   std::string str;
 
-  StringAppendF(&str, "%f w\r\n", width);
-  StringAppendF(&str, "%f %f m\r\n", x1, y1);
+  StringAppendF(&str, "%s w\r\n", Float(width).c_str());
+  StringAppendF(&str, "%s %s m\r\n", Float(x1).c_str(), Float(y1).c_str());
   StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%f %f %f RG\r\n",
-                PDF_RGB_R_FLOAT(color_rgb),
-                PDF_RGB_G_FLOAT(color_rgb),
-                PDF_RGB_B_FLOAT(color_rgb));
-  StringAppendF(&str, "%f %f %f %f %f %f c S\r\n", xq1, yq1, xq2, yq2, x2,
-                y2);
+  StringAppendF(&str, "%s %s %s RG\r\n",
+                Float(PDF_RGB_R_FLOAT(color_rgb)).c_str(),
+                Float(PDF_RGB_G_FLOAT(color_rgb)).c_str(),
+                Float(PDF_RGB_B_FLOAT(color_rgb)).c_str());
+  StringAppendF(&str, "%s %s %s %s %s %s c S\r\n",
+                Float(xq1).c_str(),
+                Float(yq1).c_str(),
+                Float(xq2).c_str(),
+                Float(yq2).c_str(),
+                Float(x2).c_str(),
+                Float(y2).c_str());
 
   pdf_add_stream(page, std::move(str));
 }
@@ -2034,30 +2065,29 @@ void PDF::AddEllipse(float x, float y,
 
   if (!PDF_IS_TRANSPARENT(fill_color)) {
     StringAppendF(&str, "/DeviceRGB CS\r\n");
-    StringAppendF(&str, "%f %f %f rg\r\n",
-                  PDF_RGB_R_FLOAT(fill_color),
-                  PDF_RGB_G_FLOAT(fill_color),
-                  PDF_RGB_B_FLOAT(fill_color));
+    StringAppendF(&str, "%s %s %s rg\r\n",
+                  Float(PDF_RGB_R_FLOAT(fill_color)).c_str(),
+                  Float(PDF_RGB_G_FLOAT(fill_color)).c_str(),
+                  Float(PDF_RGB_B_FLOAT(fill_color)).c_str());
   }
 
   /* stroke color */
   StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%f %f %f RG\r\n",
-                PDF_RGB_R_FLOAT(color), PDF_RGB_G_FLOAT(color), PDF_RGB_B_FLOAT(color));
+  StringAppendF(&str, "%s %s %s RG\r\n",
+                Float(PDF_RGB_R_FLOAT(color)).c_str(),
+                Float(PDF_RGB_G_FLOAT(color)).c_str(),
+                Float(PDF_RGB_B_FLOAT(color)).c_str());
 
-  StringAppendF(&str, "%f w ", width);
+  StringAppendF(&str, "%s w ", Float(width).c_str());
 
+  // TODO: Original code had two decimal places here; we can use Float()?
   StringAppendF(&str, "%.2f %.2f m ", (x + xradius), (y));
-
   StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x + xradius),
                 (y - ly), (x + lx), (y - yradius), x, (y - yradius));
-
   StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x - lx),
                 (y - yradius), (x - xradius), (y - ly), (x - xradius), y);
-
   StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x - xradius),
                 (y + ly), (x - lx), (y + yradius), x, (y + yradius));
-
   StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x + lx),
                 (y + yradius), (x + xradius), (y + ly), (x + xradius), y);
 
@@ -2080,10 +2110,17 @@ void PDF::AddRectangle(float x, float y,
                        float width, float height, float border_width,
                        uint32_t color, Page *page) {
   std::string str;
-  StringAppendF(&str, "%f %f %f RG ",
-                PDF_RGB_R_FLOAT(color), PDF_RGB_G_FLOAT(color), PDF_RGB_B_FLOAT(color));
-  StringAppendF(&str, "%f w ", border_width);
-  StringAppendF(&str, "%f %f %f %f re S ", x, y, width, height);
+  StringAppendF(&str, "%s %s %s RG ",
+                Float(PDF_RGB_R_FLOAT(color)).c_str(),
+                Float(PDF_RGB_G_FLOAT(color)).c_str(),
+                Float(PDF_RGB_B_FLOAT(color)).c_str());
+
+  StringAppendF(&str, "%s w ", Float(border_width).c_str());
+  StringAppendF(&str, "%s %s %s %s re S ",
+                Float(x).c_str(),
+                Float(y).c_str(),
+                Float(width).c_str(),
+                Float(height).c_str());
 
   pdf_add_stream(page, std::move(str));
 }
@@ -2095,19 +2132,24 @@ void PDF::AddFilledRectangle(
 
   std::string str;
 
-  StringAppendF(&str, "%f %f %f rg ",
-                PDF_RGB_R_FLOAT(color_fill),
-                PDF_RGB_G_FLOAT(color_fill),
-                PDF_RGB_B_FLOAT(color_fill));
+  StringAppendF(&str, "%s %s %s rg ",
+                Float(PDF_RGB_R_FLOAT(color_fill)).c_str(),
+                Float(PDF_RGB_G_FLOAT(color_fill)).c_str(),
+                Float(PDF_RGB_B_FLOAT(color_fill)).c_str());
+
   if (border_width > 0) {
-    StringAppendF(&str, "%f %f %f RG ",
-                  PDF_RGB_R_FLOAT(color_border),
-                  PDF_RGB_G_FLOAT(color_border),
-                  PDF_RGB_B_FLOAT(color_border));
-    StringAppendF(&str, "%f w ", border_width);
-    StringAppendF(&str, "%f %f %f %f re B ", x, y, width, height);
+    StringAppendF(&str, "%s %s %s RG ",
+                  Float(PDF_RGB_R_FLOAT(color_border)).c_str(),
+                  Float(PDF_RGB_G_FLOAT(color_border)).c_str(),
+                  Float(PDF_RGB_B_FLOAT(color_border)).c_str());
+    StringAppendF(&str, "%s w ", Float(border_width).c_str());
+    StringAppendF(&str, "%s %s %s %s re B ",
+                  Float(x).c_str(), Float(y).c_str(),
+                  Float(width).c_str(), Float(height).c_str());
   } else {
-    StringAppendF(&str, "%f %f %f %f re f ", x, y, width, height);
+    StringAppendF(&str, "%s %s %s %s re f ",
+                  Float(x).c_str(), Float(y).c_str(),
+                  Float(width).c_str(), Float(height).c_str());
   }
 
   pdf_add_stream(page, std::move(str));
@@ -2121,6 +2163,7 @@ bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
 
   std::string str;
 
+  // TODO: Use Float() in here.
   if (!PDF_IS_TRANSPARENT(fill_color)) {
     StringAppendF(&str, "/DeviceRGB CS\r\n");
     StringAppendF(&str, "%f %f %f rg\r\n",
@@ -2184,6 +2227,7 @@ bool PDF::AddPolygon(
 
   std::string str;
 
+  // TODO: Use Float() in here.
   StringAppendF(&str, "%f %f %f RG ",
                 PDF_RGB_R_FLOAT(color),
                 PDF_RGB_G_FLOAT(color),
@@ -2207,6 +2251,7 @@ bool PDF::AddFilledPolygon(
 
   std::string str;
 
+  // TODO: Use Float() in here.
   StringAppendF(&str, "%f %f %f RG ",
                 PDF_RGB_R_FLOAT(color), PDF_RGB_G_FLOAT(color), PDF_RGB_B_FLOAT(color));
   StringAppendF(&str, "%f %f %f rg ",
@@ -2260,11 +2305,15 @@ static std::optional<std::string> EncodePDFText(const std::string &text) {
 static void SetTextPositionAndAngle(std::string *str,
                                     float xoff, float yoff, float angle) {
   if (angle != 0.0f) {
-    StringAppendF(str, "%f %f %f %f %f %f Tm ",
-                  cosf(angle), sinf(angle),
-                  -sinf(angle), cosf(angle), xoff, yoff);
+    StringAppendF(str, "%s %s %s %s %s %s Tm ",
+                  Float(cosf(angle)).c_str(),
+                  Float(sinf(angle)).c_str(),
+                  Float(-sinf(angle)).c_str(),
+                  Float(cosf(angle)).c_str(),
+                  Float(xoff).c_str(),
+                  Float(yoff).c_str());
   } else {
-    StringAppendF(str, "%f %f TD ", xoff, yoff);
+    StringAppendF(str, "%s %s TD ", Float(xoff).c_str(), Float(yoff).c_str());
   }
 }
 
@@ -2281,7 +2330,8 @@ bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
   StringAppendF(&str, "/GS%d gs ", alpha);
   SetTextPositionAndAngle(&str, xoff, yoff, angle);
 
-  StringAppendF(&str, "/F%d %f Tf ", current_font->font_index, size);
+  StringAppendF(&str, "/F%d %s Tf ", current_font->font_index,
+                Float(size).c_str());
 
   uint8_t r = PDF_RGB_R(color);
   uint8_t g = PDF_RGB_G(color);
@@ -2293,16 +2343,16 @@ bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
       StringAppendF(&str, "0 g ",
                     PDF_COLOR_FLOAT(r));
     } else {
-      StringAppendF(&str, "%f g ",
-                    PDF_COLOR_FLOAT(r));
+      StringAppendF(&str, "%s g ",
+                    Float(PDF_COLOR_FLOAT(r)).c_str());
     }
   } else {
-    StringAppendF(&str, "%f %f %f rg ",
-                  PDF_COLOR_FLOAT(r),
-                  PDF_COLOR_FLOAT(g),
-                  PDF_COLOR_FLOAT(b));
+    StringAppendF(&str, "%s %s %s rg ",
+                  Float(PDF_COLOR_FLOAT(r)).c_str(),
+                  Float(PDF_COLOR_FLOAT(g)).c_str(),
+                  Float(PDF_COLOR_FLOAT(b)).c_str());
   }
-  StringAppendF(&str, "%f Tc ", spacing);
+  StringAppendF(&str, "%s Tc ", Float(spacing).c_str());
   StringAppendF(&str, "(");
 
   if (const std::optional<std::string> encoded_text = EncodePDFText(text)) {
@@ -2348,11 +2398,12 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
   StringAppendF(&str, "/GS%d gs ", alpha);
   SetTextPositionAndAngle(&str, xoff, yoff, angle);
 
-  StringAppendF(&str, "/F%d %f Tf ", current_font->font_index, size);
-  StringAppendF(&str, "%f %f %f rg ",
-                PDF_RGB_R_FLOAT(color),
-                PDF_RGB_G_FLOAT(color),
-                PDF_RGB_B_FLOAT(color));
+  StringAppendF(&str, "/F%d %s Tf ", current_font->font_index,
+                Float(size).c_str());
+  StringAppendF(&str, "%s %s %s rg ",
+                Float(PDF_RGB_R_FLOAT(color)).c_str(),
+                Float(PDF_RGB_G_FLOAT(color)).c_str(),
+                Float(PDF_RGB_B_FLOAT(color)).c_str());
   // StringAppendF(&str, "%f Tc ", spacing);
 
   StringAppendF(&str, "[ ");
@@ -2373,7 +2424,7 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
 
     // The last spacing is ignored (and the syntax does not allow it).
     if (i != (int)line.size() - 1) {
-      StringAppendF(&str, "%f ", gap * gap_scale);
+      StringAppendF(&str, "%s ", Float(gap * gap_scale).c_str());
     }
   }
   StringAppendF(&str,
@@ -2574,55 +2625,6 @@ std::vector<PDF::SpacedLine> PDF::SpaceLines(const std::string &text,
       }
     }
   }
-
-  #if 0
-  // Get the total penalty when we lay out the word, with words_before
-  // of the preceding words of text on the line before it.
-  std::function<double(int, int)> Penalty =
-    std::function<double(int, int)>([&](int word_idx, int words_before) -> double {
-        if (word_idx >= (int)words.size()) return 0.0;
-
-        // See if we have a memo entry.
-        const std::pair<int, int> key(word_idx, words_before);
-        auto mit = memo_table.find(key);
-        if (mit != memo_table.end()) return mit->second.first;
-
-        double width_used = GetWidthSoFar(word_idx, words_before);
-
-        // Now we can either break here, or continue.
-
-        // If we break, then the penalty is the amount of space left.
-        double penalty_break = line_width - width_used;
-        // Worse to go over than under.
-        if (penalty_break < 0.0)
-          penalty_break = 16.0 * abs(penalty_break); // (penalty_break * penalty_break);
-        // ... plus the penalty for the remainder, starting on a new line.
-        penalty_break += Penalty(word_idx + 1, 0);
-
-        // The case where we do not break. We only consider this if
-        // we still have space on the line.
-        if (width_used < line_width) {
-          double penalty_nobreak = Penalty(word_idx + 1, words_before + 1);
-
-          if (penalty_break < penalty_nobreak) {
-            memo_table[key] = std::make_pair(penalty_break, true);
-            return penalty_break;
-          } else {
-            memo_table[key] = std::make_pair(penalty_nobreak, false);
-            return penalty_nobreak;
-          }
-
-        } else {
-          // Then the only choice is to break.
-          memo_table[key] = std::make_pair(penalty_break, true);
-          return penalty_break;
-        }
-      });
-
-  double penalty = Penalty(0, 0);
-  printf("Best penalty: %.4f\n", penalty);
-  #endif
-
 
   // Now lay it out using the memo table we already computed.
   std::vector<SpacedLine> ret;
@@ -3226,7 +3228,9 @@ bool PDF::pdf_add_image(ImageObj *image, float x, float y,
 
   std::string str;
   StringAppendF(&str, "q ");
-  StringAppendF(&str, "%f 0 0 %f %f %f cm ", width, height, x, y);
+  StringAppendF(&str, "%s 0 0 %s %s %s cm ",
+                Float(width).c_str(), Float(height).c_str(),
+                Float(x).c_str(), Float(y).c_str());
   StringAppendF(&str, "/Image%d Do ", image->index);
   StringAppendF(&str, "Q");
 
@@ -3238,80 +3242,77 @@ bool PDF::pdf_add_image(ImageObj *image, float x, float y,
 
 static Object *pdf_add_raw_rgb24(pdf_doc *pdf,
                                  const uint8_t *data,
-                                 uint32_t width, uint32_t height)
-{
-    Object *obj;
-    size_t len;
-    const char *endstream = ">\r\nendstream\r\n";
-    dstr str = INIT_DSTR;
-    size_t data_len = (size_t)width * (size_t)height * 3;
+                                 uint32_t width, uint32_t height) {
+  Object *obj;
+  size_t len;
+  const char *endstream = ">\r\nendstream\r\n";
+  dstr str = INIT_DSTR;
+  size_t data_len = (size_t)width * (size_t)height * 3;
 
-    StringAppendF(&str,
-                "<<\r\n"
-                "  /Type /XObject\r\n"
-                "  /Name /Image%d\r\n"
-                "  /Subtype /Image\r\n"
-                "  /ColorSpace /DeviceRGB\r\n"
-                "  /Height %d\r\n"
-                "  /Width %d\r\n"
-                "  /BitsPerComponent 8\r\n"
-                "  /Length %lu\r\n"
-                ">>stream\r\n",
-                flexarray_size(&pdf->objects), height, width,
-                (unsigned long)(data_len + 1));
+  StringAppendF(&str,
+              "<<\r\n"
+              "  /Type /XObject\r\n"
+              "  /Name /Image%d\r\n"
+              "  /Subtype /Image\r\n"
+              "  /ColorSpace /DeviceRGB\r\n"
+              "  /Height %d\r\n"
+              "  /Width %d\r\n"
+              "  /BitsPerComponent 8\r\n"
+              "  /Length %lu\r\n"
+              ">>stream\r\n",
+              flexarray_size(&pdf->objects), height, width,
+              (unsigned long)(data_len + 1));
 
-    len = dstr_len(&str) + data_len + strlen(endstream) + 1;
-    if (dstr_ensure(&str, len) < 0) {
-        dstr_free(&str);
-        SetErr(-ENOMEM,
-                    "Unable to allocate %lu bytes memory for image",
-                    (unsigned long)len);
-        return nullptr;
-    }
-    dstr_append_data(&str, data, data_len);
-    dstr_append(&str, endstream);
+  len = dstr_len(&str) + data_len + strlen(endstream) + 1;
+  if (dstr_ensure(&str, len) < 0) {
+      dstr_free(&str);
+      SetErr(-ENOMEM,
+                  "Unable to allocate %lu bytes memory for image",
+                  (unsigned long)len);
+      return nullptr;
+  }
+  dstr_append_data(&str, data, data_len);
+  dstr_append(&str, endstream);
 
-    obj = pdf_add_object(pdf, OBJ_image);
-    if (!obj) {
-        dstr_free(&str);
-        return nullptr;
-    }
-    obj->stream.stream = str;
+  obj = pdf_add_object(pdf, OBJ_image);
+  if (!obj) {
+      dstr_free(&str);
+      return nullptr;
+  }
+  obj->stream.stream = str;
 
-    return obj;
+  return obj;
 }
 
 // Probably unnecessary--we would always use PNG?
 int pdf_add_rgb24(pdf_doc *pdf, Object *page, float x,
                   float y, float display_width, float display_height,
-                  const uint8_t *data, uint32_t width, uint32_t height)
-{
-    Object *obj;
+                  const uint8_t *data, uint32_t width, uint32_t height) {
+  Object *obj;
 
-    obj = pdf_add_raw_rgb24(pdf, data, width, height);
-    if (!obj)
-        return pdf->errval;
+  obj = pdf_add_raw_rgb24(pdf, data, width, height);
+  if (!obj)
+      return pdf->errval;
 
-    get_img_display_dimensions(width, height, &display_width,
-                               &display_height));
-    return pdf_add_image(pdf, page, obj, x, y, display_width, display_height);
+  get_img_display_dimensions(width, height, &display_width,
+                             &display_height));
+  return pdf_add_image(pdf, page, obj, x, y, display_width, display_height);
 }
 
 // Probably unnecessary--we would always use PNG?
 int pdf_add_grayscale8(pdf_doc *pdf, Object *page, float x,
                        float y, float display_width, float display_height,
-                       const uint8_t *data, uint32_t width, uint32_t height)
-{
-    Object *obj;
+                       const uint8_t *data, uint32_t width, uint32_t height) {
+  Object *obj;
 
-    obj = pdf_add_raw_grayscale8(pdf, data, width, height);
-    if (!obj)
-        return pdf->errval;
+  obj = pdf_add_raw_grayscale8(pdf, data, width, height);
+  if (!obj)
+      return pdf->errval;
 
-    get_img_display_dimensions(width, height, &display_width,
-                               &display_height);
+  get_img_display_dimensions(width, height, &display_width,
+                             &display_height);
 
-    return pdf_add_image(pdf, page, obj, x, y, display_width, display_height);
+  return pdf_add_image(pdf, page, obj, x, y, display_width, display_height);
 }
 
 #endif
