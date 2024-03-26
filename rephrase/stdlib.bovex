@@ -3,6 +3,8 @@ datatype (a) option = SOME of a | NONE
 
 fun o(f, g) = fn x => f(g(x))
 
+fun ignore _ = ()
+
 fun option-map f (SOME x) = SOME (f x)
   | option-map f NONE = NONE
 

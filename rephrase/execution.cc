@@ -2,6 +2,7 @@
 #include "execution.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -25,6 +26,7 @@
 #include "util.h"
 #include "utf.h"
 #include "boxes-and-glue.h"
+#include "achievements.h"
 
 namespace bc {
 
@@ -383,6 +385,12 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     }
   }
 
+  case Primop::ACHIEVEMENT: {
+    const auto &[aa, bb] = TwoStrings("achievement");
+    Achievements::Get().Achieve(aa, bb);
+    return Unit(state);
+  }
+
   case Primop::OBJ_MERGE: {
     const map_type *as = std::get_if<map_type>(&a->v);
     const map_type *bs = std::get_if<map_type>(&b->v);
@@ -394,6 +402,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
 
   case Primop::REPHRASINGS: {
+    static constexpr int VERBOSE = 1;
     const BigInt *abi = std::get_if<BigInt>(&a->v);
     CHECK(abi != nullptr) << "Expected int argument (lhs) to rephrasings";
     auto aio = abi->ToInt();
@@ -404,17 +413,26 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     DocTree doc = ValueToDocTree(b);
 
     Rephrasing *rephrasing = RephrasingHook();
-    DebugPrintDocTree(doc);
+    if (VERBOSE > 1) {
+      printf(ABGCOLOR(0, 0, 180, "Rephrase input doc:") "\n");
+      DebugPrintDocTree(doc);
+    }
     Rephrasing::Rephrasable rep = Rephrasing::GetTextToRephrase(doc);
-    printf("Rephrase: [%s]\n", rep.text.c_str());
+    if (VERBOSE > 0) {
+      std::string t = (VERBOSE > 1 || rep.text.size() < 40) ? rep.text :
+        rep.text.substr(0, 40) + AGREY("...");
+      printf("Rephrase: [%s]\n", t.c_str());
+    }
     const int already_have = rephrasing->GetNumRephrasings(rep);
-    if (already_have > 0) {
+    if (VERBOSE > 0 && already_have > 0) {
       printf("Already have " ACYAN("%d") " rephrasings from database!\n",
              already_have);
     }
 
     if (doc.IsEmpty() || rep.text.empty()) {
-      printf("Not rephrasing " AORANGE("empty doc") ".\n");
+      if (VERBOSE > 0) {
+        printf("Not rephrasing " AORANGE("empty doc") ".\n");
+      }
     } else {
       int max_attempts = std::min(20, times * 2);
       while (rephrasing->GetNumRephrasings(rep) < times) {
@@ -433,11 +451,15 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     std::vector<DocTree> ret;
 
     // Always include the original.
-    doc.SetStringAttr("display", "span");
-    doc.SetDoubleAttr("loss", 0.0);
-    ret.emplace_back(doc);
-
-    static constexpr bool VERBOSE = true;
+    DocTree orig;
+    orig.SetStringAttr("display", "span");
+    orig.SetDoubleAttr("loss", 0.0);
+    orig.AddChild(doc);
+    if (VERBOSE > 1) {
+      printf("Now the doc is:\n");
+      DebugPrintDocTree(orig);
+    }
+    ret.emplace_back(orig);
 
     for (const auto &[loss, text] : reps) {
       DocTree one;
@@ -454,7 +476,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
         span.children = {std::make_shared<DocTree>(std::move(one))};
         span.SetStringAttr("display", "span");
         span.SetDoubleAttr("loss", loss);
-        if (VERBOSE) {
+        if (VERBOSE > 1) {
           DebugPrintDocTree(span);
         }
         ret.push_back(std::move(span));
@@ -534,8 +556,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return NewValue(&state->heap, std::move(obj));
   }
 
-    // PERF: Could compile this away to GetVec.
   case Primop::LAYOUT_VEC_SUB: {
+    // PERF: Could compile this away to GetVec.
     const BigInt *bb = std::get_if<BigInt>(&b->v);
     CHECK(bb != nullptr) << "Expected int argument (rhs) to layout-vec-sub";
     const auto &[attrs, children] = GetNode("layout-vec-sub", a);
@@ -682,6 +704,11 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::FLOAT_NEG: {
     const double d = GetFloat("float_neg");
     return Float(-d, state);
+  }
+
+  case Primop::FLOAT_ROUND: {
+    const double d = GetFloat("float-round");
+    return Big(BigInt(std::llround(d)));
   }
 
   case Primop::INT_TO_STRING: {

@@ -51,6 +51,7 @@ enum class Primop {
   FLOAT_LESSEQ,
   FLOAT_GREATER,
   FLOAT_GREATEREQ,
+  FLOAT_ROUND,
 
   STRING_EQ,
   STRING_LESS,
@@ -101,6 +102,8 @@ enum class Primop {
   REPHRASINGS,
   GET_BOXES,
   PACK_BOXES,
+
+  ACHIEVEMENT,
 
   DEBUG_PRINT_DOC,
 

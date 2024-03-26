@@ -43,6 +43,7 @@ const char *PrimopString(Primop po) {
   case Primop::FLOAT_LESSEQ: return "FLOAT_LESSEQ";
   case Primop::FLOAT_GREATER: return "FLOAT_GREATER";
   case Primop::FLOAT_GREATEREQ: return "FLOAT_GREATEREQ";
+  case Primop::FLOAT_ROUND: return "FLOAT_ROUND";
 
   case Primop::OUT_STRING: return "OUT_STRING";
   case Primop::OUT_LAYOUT: return "OUT_LAYOUT";
@@ -84,6 +85,8 @@ const char *PrimopString(Primop po) {
 
   case Primop::DEBUG_PRINT_DOC: return "DEBUG_PRINT_DOC";
 
+  case Primop::ACHIEVEMENT: return "ACHIEVEMENT";
+
   case Primop::INVALID: return "INVALID";
   }
   return "?? UNKNOWN PRIMOP ??";
@@ -122,6 +125,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::FLOAT_LESSEQ: return std::make_tuple(0, 2);
   case Primop::FLOAT_GREATER: return std::make_tuple(0, 2);
   case Primop::FLOAT_GREATEREQ: return std::make_tuple(0, 2);
+  case Primop::FLOAT_ROUND: return std::make_tuple(0, 1);
 
   case Primop::OUT_STRING: return std::make_tuple(0, 1);
   case Primop::OUT_LAYOUT: return std::make_tuple(0, 2);
@@ -162,6 +166,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::LAYOUT_VEC_SUB: return std::make_tuple(0, 2);
 
   case Primop::DEBUG_PRINT_DOC: return std::make_tuple(0, 1);
+
+  case Primop::ACHIEVEMENT: return std::make_tuple(0, 2);
 
   case Primop::INVALID:
     LOG(FATAL) << "INVALID primop";
@@ -213,6 +219,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::FLOAT_LESSEQ: return true;
   case Primop::FLOAT_GREATER: return true;
   case Primop::FLOAT_GREATEREQ: return true;
+  case Primop::FLOAT_ROUND: return true;
 
   case Primop::INT_TO_STRING: return true;
   case Primop::STRING_TO_LAYOUT: return true;
@@ -270,6 +277,9 @@ bool IsPrimopTotal(Primop p) {
   case Primop::LAYOUT_VEC_SUB:
   case Primop::DEBUG_PRINT_DOC:
     // minimally, internal layout stuff errors out on invalid layout
+    return false;
+
+  case Primop::ACHIEVEMENT:
     return false;
 
   case Primop::INVALID:
@@ -360,6 +370,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::FLOAT_LESSEQ: return {{}, BinOp(Float, Float, Bool)};
   case Primop::FLOAT_GREATER: return {{}, BinOp(Float, Float, Bool)};
   case Primop::FLOAT_GREATEREQ: return {{}, BinOp(Float, Float, Bool)};
+  case Primop::FLOAT_ROUND: return {{}, pool->Arrow(Float, Int)};
 
   case Primop::STRING_EQ: return {{}, BinOp(String, String, Bool)};
   case Primop::STRING_LESS: return {{}, BinOp(String, String, Bool)};
@@ -409,6 +420,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::SET_ATTRS: return {{}, BinOp(Obj, Layout, Layout)};
   case Primop::LAYOUT_VEC_SIZE: return {{}, pool->Arrow(Layout, Int)};
   case Primop::LAYOUT_VEC_SUB: return {{}, BinOp(Layout, Int, Layout)};
+
+  case Primop::ACHIEVEMENT: return {{}, BinOp(String, String, Unit())};
 
   case Primop::DEBUG_PRINT_DOC: return {{}, pool->Arrow(Layout, Unit())};
 

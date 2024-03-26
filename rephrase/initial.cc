@@ -68,6 +68,7 @@ Initial::Initial(AstPool *pool) {
     {"!", Primop::REF_GET},
 
     {"int-to-string", Primop::INT_TO_STRING},
+    {"round", Primop::FLOAT_ROUND},
     // {"int-eq", Primop::INT_EQ},
     {"string-concat", Primop::STRING_CONCAT},
     {"string-eq", Primop::STRING_EQ},
@@ -111,6 +112,7 @@ Initial::Initial(AstPool *pool) {
     {"image-load-file", Primop::IMAGE_LOAD_FILE},
     {"image-props", Primop::IMAGE_PROPS},
 
+    {"achievement", Primop::ACHIEVEMENT},
     {"print", Primop::OUT_STRING},
     {"output", Primop::OUT_LAYOUT},
   };

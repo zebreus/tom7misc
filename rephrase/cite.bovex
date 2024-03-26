@@ -9,7 +9,7 @@
 
    (* in "paper.bib" or whatever *)
    val wikipedia-earth =
-     Website { url = "https://en.wikipedia.org/en/wiki/Earth" }
+     bib-website {(Website) url = "https://en.wikipedia.org/en/wiki/Earth" }
 
    (* in "paper.bovex" *)
    This is the greatest planet on Earth.[cite wikipedia-earth]
@@ -154,8 +154,6 @@ fun url-sort-key url =
   | "https" :: "" :: domain :: _ => domain
   | _ => url
 
-
-(* XXX: should register these in a global data structure. *)
 fun bib-website (obj as {(Website) author}) =
   let
     val authors = bib-parse-authors author
@@ -237,7 +235,6 @@ fun add-citation (c : bibsource) : int =
             end
   | SOME n => n
 
-(* XXX should do something *)
 fun cite (c : bibsource) : layout =
   let
     val n = add-citation c
@@ -269,9 +266,10 @@ fun monthname 1 = "January"
   | monthname 10 = "October"
   | monthname 11 = "November"
   | monthname 12 = "December"
-  | monthname _ = "Unknown Month"
+  | monthname _ =
+  (* (achievement) *)
+  "Unknown Month"
 
-(* XXX obviously use other fields if present! *)
 fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
   let
 
@@ -320,11 +318,17 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
 
     fun joindots l =
       span {(Span) justification = "left" }
+      (span {(Span)
+             (* XXX currently, rephrasing cannot handle the intense
+                amount of embedded markup we use here; it usually
+                fails and produces bad-looking results when it
+                succeeds. *)
+             no-rephrase = true }
       (layout-concat
        (num ::
         list-map (fn lay => if layout-empty lay
                             then lay
-                            else [[lay]. [break-ok()]]) l))
+                            else [[lay]. [break-ok()]]) l)))
 
     (* collections of fields supported by many citation types. *)
     val pp = pages fields

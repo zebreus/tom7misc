@@ -5,8 +5,9 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-  val EPSOM = false
-  do EPSOM andthen REPHRASE-ALL := SOME 5
+  val EPSOM = true
+  (* do EPSOM andthen REPHRASE-ALL := SOME 35 *)
+  do EPSOM andthen REPHRASE-ALL := SOME 0
 
   val doc-title =
     "Badness 0"
@@ -214,7 +215,7 @@ Donald E. Knuth: “2030.” Editor: “Thanks Donald, you’re the best!”
 
 Volume 5 is estimated to be ready in 2030, when Knuth will be 92.
 
-That’s a lot of language!
+That’s a large amount of language!
 
 [section[Nightmare on LLM street]]
 
@@ -224,11 +225,6 @@ most buzzwordy trends, they are actually substantive. They produce
 remarkably fluent text. With no additional training they frequently
 beat purpose-built models that have been in development for decades.
 They generalize to completely new situations.
-
-[*
-... AI is more like lorem epsom than Donald Knuth ...
-Even if it never gets as smart and precise as Knuth, it will be industrially useful (or at least prevalent), like Lorem Epsom is.
-*]
 
 So many things about “AI” distress me. [it[Dolor sit amet!]] I worry
 about the devaluation of human creativity, about large-scale
@@ -462,7 +458,7 @@ than predict a single token, they actually give a score for every
 possible token. These scores are typically normalized into a
 probability distribution. So for example if we have the text
 
-[monospace-block[SIGBOVIK is an]]
+[monospace-block[          SIGBOVIK is an]]
 
 then the probability distribution (Llama-v2-70b) begins as
 
@@ -589,8 +585,7 @@ young, perhaps because of its strange name. Here is how I think about
 it. Imagine you have a recursive procedure that solves the problem.
 In this case, the pseudocode is something like
 
-[monospace-block[
-pair<int, string> Split(string line,
+[monospace-block[pair<int, string> Split(string line,
                         string text) {
   if (text.empty()) return {0, ""};
   auto [layout "[word, rest]"] = GetFirstWord(text);
@@ -794,7 +789,7 @@ useful than C++’s mile-long SFINAE vomitus.) It supports
 mutually-recursive parsers, resolution of dynamic infix operators, and
 all that. My template-heavy parser combinators take clang about a
 minute to compile, which is acceptable. Less acceptable, but something
-I only learned after using this to write a 14–page-long
+I only learned after using this to write a 17–page-long
 paper, is that the parsers are very slow. Putting aside LLM inference,
 this paper takes 13 seconds to render into a PDF, 11 seconds of which
 is parsing! There must be some bug, but I don’t know if it’s in my
@@ -1034,7 +1029,7 @@ The details really keep going, too. The hyphenation dictionary is
 stored in a file called [tt[hyph-en-us.tex]]. “hyph” here of course
 stands for hyphens, and “en-us” means “English (United States).”
 In fact it is the [it[standard]] language code for US English in
-the Small Language Model called IETF BCP 47![cite bcp47]
+the Small Language Model called IETF BCP 47.[cite bcp47]
 But then we have “hyph-en”, which is a plausible hyphenation of
 “hyphen”! You could even read it as “hyphen us, tex”, as a request for
 TeX to hyphenate the words in this file. This is the kind of detail

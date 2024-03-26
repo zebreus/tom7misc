@@ -13,6 +13,7 @@
 #include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "ansi.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -34,6 +35,10 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
   static const RE2 text_re("([^<]*)");
   static const RE2 attr_re(" *([A-Za-z][-A-Za-z0-9]*) *= *\"([^\"]*)\"");
   static const RE2 no_more_attrs_re(" */?");
+
+  if (VERBOSE) {
+    printf("\n\nParse: %s\n", input.c_str());
+  }
 
   // Nodes in progress. There's always one element in this stack,
   // and the topmost one is not a real node (we will return its children).
@@ -79,6 +84,9 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
       re2::StringPiece a(attrs);
       std::string attr, value;
       while (RE2::Consume(&a, attr_re, &attr, &value)) {
+        if (VERBOSE) {
+          printf("Attr: %s\n", attr.c_str());
+        }
         // TODO: unescape attribute
         attr = Util::lcase(attr);
         node.attrs[attr] = value;
@@ -129,11 +137,15 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
     }
   }
 
+  if (VERBOSE) {
+    printf("Ended with tag stack %d\n", (int)tag_stack.size());
+  }
+
   if (tag_stack.size() != 1) {
     if (parse_error != nullptr) {
       *parse_error = "some tags were never closed";
-      return {};
     }
+    return {};
   }
 
   if (VERBOSE)
@@ -147,15 +159,17 @@ void HTML::DebugPrint(const std::vector<HTMLNode> &nodes) {
     [&Rec](const HTMLNode &node, int depth) {
       std::string pad(depth * 2, ' ');
       if (node.is_tag) {
-        printf("%s<%s attrs...>\n", pad.c_str(), node.str.c_str());
+        printf("%s" ABLUE("<") "%s attrs..." ABLUE(">") "\n",
+               pad.c_str(), node.str.c_str());
         for (const HTMLNode &child : node.children) {
           Rec(child, depth + 1);
         }
-        printf("%s</%s>\n", pad.c_str(), node.str.c_str());
+        printf("%s" ABLUE("</") "%s" ABLUE(">") "\n",
+               pad.c_str(), node.str.c_str());
       } else {
         printf("%s%s\n", pad.c_str(), node.str.c_str());
         if (!node.attrs.empty() && !node.children.empty()) {
-          printf("%s(with illegal children)\n", pad.c_str());
+          printf("%s" ARED("(with illegal children)") "\n", pad.c_str());
         }
       }
     };

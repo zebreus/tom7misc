@@ -515,6 +515,10 @@ static void FloatTests() {
       RunToString(
           "print (if int-to-float 5 ==. 5.0 then \"OK\" else \"NO\")"),
       "OK");
+
+  CHECK_EQ(
+      RunToString("print (int-to-string (round 32768.4))"),
+      "32768");
 }
 
 static void NewTests() {

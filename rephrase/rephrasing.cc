@@ -333,7 +333,9 @@ struct Database {
         std::string &path_line = lines[roff + 1];
         std::string &score_line = lines[roff + 2];
         DatabaseRow row;
-        CHECK(RE2::FullMatch(text_line, text_re, &row.text)) << Error("text");
+        std::string text_content;
+        CHECK(RE2::FullMatch(text_line, text_re, &text_content)) << Error("text");
+        row.text = Unescape(text_content);
         row.path = ParsePath(path_line);
         char valid = 0;
         CHECK(RE2::FullMatch(score_line, score_re,
@@ -342,6 +344,8 @@ struct Database {
         row.valid = (valid == 'V');
         if (row.valid) num_valid++;
 
+        // XXX: One-time deletion of escaped rows, since I broke them
+        // if (Unescape(text_content) == text_content)
         rows.push_back(std::move(row));
       }
 
@@ -853,6 +857,8 @@ struct RephrasingImpl : public Rephrasing {
     return ret;
   }
 
+  bool IsDirty() const override { return dirty; }
+
   void Save() override {
     db.SaveToFile(db_filename);
     if (VERBOSE > 0) {
@@ -873,6 +879,18 @@ struct RephrasingImpl : public Rephrasing {
 
 }  // namespace
 
+static bool IsSpace(char c) {
+  switch (c) {
+  case ' ':
+  case '\n':
+  case '\r':
+  case '\t':
+    return true;
+  default:
+    return false;
+  }
+}
+
 bool Rephrasing::Rejoin(
     const Rephrasable &rephrasable,
     const std::string &text_in,
@@ -881,16 +899,16 @@ bool Rephrasing::Rejoin(
 
   const std::string &before_text = rephrasable.text;
   const bool orig_space_before =
-    !before_text.empty() && before_text[0] == ' ';
+    !before_text.empty() && IsSpace(before_text[0]);
   const bool orig_space_after =
-    !before_text.empty() && before_text.back() == ' ';
+    !before_text.empty() && IsSpace(before_text.back());
 
   std::string_view text(text_in);
   if (!orig_space_before) {
-    while (!text.empty() && text[0] == ' ') text.remove_prefix(1);
+    while (!text.empty() && IsSpace(text[0])) text.remove_prefix(1);
   }
   if (!orig_space_after) {
-    while (!text.empty() && text.back() == ' ') text.remove_suffix(1);
+    while (!text.empty() && IsSpace(text.back())) text.remove_suffix(1);
   }
 
   std::string html_error;

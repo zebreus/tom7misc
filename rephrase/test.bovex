@@ -6,6 +6,7 @@ let
   import "paper.bib"
 
   val VERBOSE = false
+  do REPHRASE-ALL := SOME 1
 
   do set-doc-info {(PDFInfo)
                    creator = "BoVeX",

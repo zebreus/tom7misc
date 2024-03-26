@@ -886,6 +886,10 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
           end
       | _ => (NONE, s)
 
+    (* TODO: Like its name says, this consumes the span. But that
+       could cause it to drop other attributes that are on the
+       same span. Rethink how we do this (but this whole
+       part is a mess, obviously.) *)
     val (just : justification option, para : layout) =
       consume-outer-span
       (fn {(Span) justification } =>
@@ -922,6 +926,15 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
 
     val paras : (float * layout) list = extract-rephrasing (fn x => x) para
 
+      (*
+    do list-app (fn (loss, lay) =>
+                 let in
+                   print ("######## LOSS: " ^
+                          (int-to-string (round (loss *. 100.0))) ^ "\n");
+                   debug-print-doc lay
+                 end) paras
+    *)
+
     fun get-best (NONE, nil) = fail "bug: no options?"
       | get-best (SOME (badness, best), nil) =
       let in
@@ -930,7 +943,9 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
       end
       | get-best (best, (loss, para) :: t) =
       let
-        (* XXX use semantic loss! *)
+        (* TODO: Right now we just take the lowest overall badness,
+           ignoring the semantic loss (Epsom's version). We could
+           blend them somehow. *)
 
         val boxes = get-boxes para
         val (badness, lines) =

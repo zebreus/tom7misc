@@ -22,6 +22,7 @@ struct Rephrasing {
     std::string text;
   };
 
+  virtual bool IsDirty() const = 0;
   virtual void Save() = 0;
 
   // Attempt to make a new rephrasing. If it is valid, insert

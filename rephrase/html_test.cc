@@ -1,6 +1,7 @@
 
 #include "html.h"
 
+#include <cstdio>
 #include <vector>
 #include <string>
 
@@ -16,6 +17,18 @@ static std::vector<HTMLNode> Parse(const std::string &s) {
   if (VERBOSE)
     HTML::DebugPrint(nodes);
   return nodes;
+}
+
+static void FailParse(const std::string &s) {
+  std::string err;
+  std::vector<HTMLNode> nodes = HTML::Parse(s, &err);
+  if (err.empty()) {
+    printf(AWHITE("Expected failure, but parsed (input)") ":\n");
+    printf("%s\n", s.c_str());
+    printf(AWHITE("To") ":\n");
+    HTML::DebugPrint(nodes);
+    LOG(FATAL) << "Unexpected success.";
+  }
 }
 
 static void TestSimple() {
@@ -70,6 +83,21 @@ static void TestSimple() {
     CHECK(c2.str == " one");
   }
 
+  FailParse("<b>");
+
+  FailParse("Unmatched\n<P> tag");
+
+  FailParse("Didier Rémy, Jérôme Vouillon. \"Objective ML: An "
+            "effective object-oriented extension to ML\". In "
+            "Theory And Practice of Objects Systems, 4(1). 1998. "
+            "pp. 27–50. <img src=\"img0.png\">\n\n<P>"
+            "<img src=\"img1.png\">Didier Rémy, Jérôme Vouillon. "
+            "<img src=\"img2.png\">\"Objective ML: An effective "
+            "object-oriented extension to ML\". "
+            "<img src=\"img3.png\"><span class=\"c0\">In Theory "
+            "And Practice of Objects Systems</span>, 4(1). <img "
+            "src=\"img4.png\">1998. <img src=\"img5.png\">pp. "
+            "27–50. <img src=\"img6.png\">");
 
 }
 

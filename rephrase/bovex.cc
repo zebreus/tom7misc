@@ -30,7 +30,8 @@ struct BovexExecution : public bc::Execution {
     bc::Execution(pgm),
     pdf_document(pdf_document),
     rephrasing(rephrasing),
-    save_rephrasing_per(60.0) {
+    // Save periodically, but not immediately!
+    save_rephrasing_per(60.0, false) {
 
   }
 
@@ -39,8 +40,7 @@ struct BovexExecution : public bc::Execution {
 
   Document *DocumentHook() override { return pdf_document; }
   Rephrasing *RephrasingHook() override {
-    // TODO: Only if dirty.
-    if (save_rephrasing_per.ShouldRun()) {
+    if (rephrasing->IsDirty() && save_rephrasing_per.ShouldRun()) {
       rephrasing->Save();
     }
     did_rephrase = true;
