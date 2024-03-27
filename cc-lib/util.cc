@@ -830,7 +830,7 @@ unsigned int Util::hash(const string &s) {
   return h;
 }
 
-string Util::lcase(const string &in) {
+string Util::lcase(std::string_view in) {
   string out;
   out.reserve(in.size());
   for (unsigned int i = 0; i < in.length(); i++) {
@@ -842,7 +842,7 @@ string Util::lcase(const string &in) {
   return out;
 }
 
-string Util::ucase(const string &in) {
+string Util::ucase(std::string_view in) {
   string out;
   out.reserve(in.size());
   for (unsigned int i = 0; i < in.length(); i++) {

@@ -515,6 +515,11 @@ static void TestMemMem() {
                                            (const uint8_t*)"t", 1));
 }
 
+static void TestCase() {
+  CHECK(Util::lcase("BoVeX 999\n") == "bovex 999\n");
+  CHECK(Util::ucase("BoVeX 999\n") == "BOVEX 999\n");
+}
+
 int main(int argc, char **argv) {
   TestItos();
   TestStoi();
@@ -540,6 +545,7 @@ int main(int argc, char **argv) {
   TestCommas();
   TestNormalizeLines();
   TestMemMem();
+  TestCase();
 
   printf("OK\n");
   return 0;

@@ -127,8 +127,8 @@ struct Util {
   static string ensureext(string f, string ext);
 
   // Convert ASCII string to lowercase or uppercase.
-  static string lcase(const string &in);
-  static string ucase(const string &in);
+  static string lcase(std::string_view in);
+  static string ucase(std::string_view in);
 
   static bool ExistsFile(const string &f);
 
