@@ -5,9 +5,9 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-  val EPSOM = false
-  (* do EPSOM andthen REPHRASE-ALL := SOME 0 *)
-  do EPSOM andthen REPHRASE-ALL := SOME 42
+  val EPSOM = true
+  do EPSOM andthen REPHRASE-ALL := SOME 0
+  (* do EPSOM andthen REPHRASE-ALL := SOME 80 *)
 
   val doc-title = "Badness 0"
   val doc-subtitle = "(" ^ (if EPSOM then "Epsom" else "Knuth") ^ "’s version)"
@@ -92,7 +92,7 @@ distributed effort to fix all the missing periods on Wikipedia.[cite
 project-punctuation] And worse, each time I learn of a new type of
 mistake, I am forever cursed to notice that mistake
 
-Seriously: One time I found myself spell-correcting someone else’s
+[no-rephrase[Seriously: One time I found myself spell-correcting someone else’s
 [it[lorem ipsum]] text in a slide. It said “lorem epsom,” which is
 funny. I think about that incident all the time. The person that wrote
 the slide probably thinks about things like leveraging synergy,
@@ -100,8 +100,7 @@ generative AI, metaverses, blockchain 3.0, snackable content, being
 eco-green, and so on, without it occurring to him that these things
 could have nuance and meaning separate from their names. He has
 probably never even read the Wikipedia article on Lorem Ipsum. He is
-successful and rich.
-
+successful and rich.]]
 
 Another successful person is the congressperson Bill Cassidy.
 Criticizing a proposed bill that would reduce the standard work week
@@ -111,8 +110,8 @@ in the US by 8 hours, from 40 to 32, this senator says,
  [Sen. Bill Cassidy of Louisiana, representing the ______ party, said paying workers the same wages for fewer hours would force employers to pass the cost of
   hiring more workers along to consumers.]]
 
-[* Note: Don't fix the quotation marks in here; I refer to them below *]
 [blockquote
+(* Note: Don't fix the quotation marks in here; I refer to them below *)
  [“It would threaten millions of small businesses operating on a
   razor-thin margin because they’re unable to find enough workers,"
   said Cassidy. "Now they’ve got the same workers, but only for
@@ -1149,7 +1148,7 @@ highest-probability token. We are now in an unexplored part of the
 tree, and so we sample the most probable nodes repeatedly until we
 reach [tt[</P>]]. Speaking of which, BoVeX has a heck of a time trying
 to rephrase these last few paragraphs because they literally contain
-the text [tt[</P>]] in them. [* would be a good place for a figure *]
+the text [tt[</P>]] in them.
 
 The scores should be seen as heuristic; we would get different results
 by choosing different ways of computing the score. This is an example

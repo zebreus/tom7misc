@@ -1,6 +1,7 @@
 #include "document.h"
 
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <functional>
@@ -878,6 +879,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
 std::pair<DocTree, double>
 Document::PackBoxes(Algorithm algo,
                     BoxesAndGlue::Justification just,
+                    double orphan_threshold,
                     double line_width,
                     const DocTree &doc) {
   static constexpr bool VERBOSE = false;
@@ -953,6 +955,45 @@ Document::PackBoxes(Algorithm algo,
   for (int i = 0; i < (int)boxes.size(); i++) {
     boxes[i].parent_idx = i - 1;
     boxes[i].edge_penalty = 0.0;
+  }
+
+  // Penalize orphans, if enabled.
+  if (orphan_threshold > 0.0 && !boxes.empty()) {
+    // static constexpr
+    const bool is_multiline = [line_width, &boxes]() {
+        double total_width = 0.0;
+        for (const BoxIn &box : boxes) {
+          total_width += box.width + box.glue_ideal;
+        }
+        return total_width > line_width;
+      }();
+    if (is_multiline) {
+      // Working from the back of the text, the amount of
+      // width that would (heuristically) be on the last line
+      // if our last break was here.
+      double orphan_width = boxes.back().width;
+      for (int i = (int)boxes.size() - 2; i >= 0; i--) {
+        // Breaking after this box would mean leaving the
+        // last two lines like this
+        //
+        // blah blah blah blah blah blah blah blah [this_token]
+        // [later tokens]     |       ... empty ...
+        //              ^     ^
+        //       orphan w   orphan threshold
+        double space_to_thresh = orphan_threshold - orphan_width;
+        if (space_to_thresh <= 0.0) {
+          // At this point there will be no more orphan penalties
+          // (assuming positive widths, etc.)
+          break;
+        }
+
+        // penalize proportional to space_to_thresh.
+        boxes[i].glue_break_penalty +=
+          std::pow(space_to_thresh, 1.5);
+
+        orphan_width += boxes[i].width + boxes[i].glue_ideal;
+      }
+    }
   }
 
   std::vector<std::vector<BoxesAndGlue::BoxOut>> lines;

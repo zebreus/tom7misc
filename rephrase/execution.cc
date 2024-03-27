@@ -534,13 +534,17 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       }
     }
 
+    const double line_width = *ad;
+    // TODO: Make configurable.
+    const double orphan_threshold = line_width / 3.0;
+
     const Value *doc_value = GetRequiredObjField("pack-boxes", "doc",
                                                  bc::ObjectFieldType::LAYOUT,
                                                  *arg);
     DocTree doc = ValueToDocTree(doc_value);
 
     const auto &[packdoc, badness] = DocumentHook()->PackBoxes(
-        algorithm, just, *ad, doc);
+        algorithm, just, orphan_threshold, line_width, doc);
 
     auto MakeField = [](const bc::ObjectFieldType oft,
                         const std::string &field) {

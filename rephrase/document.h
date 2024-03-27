@@ -176,6 +176,7 @@ struct Document {
   };
   std::pair<DocTree, double> PackBoxes(Algorithm algo,
                                        BoxesAndGlue::Justification just,
+                                       double orphan_threshold,
                                        double width,
                                        const DocTree &doc);
 
