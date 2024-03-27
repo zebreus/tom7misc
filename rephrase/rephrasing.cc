@@ -897,6 +897,9 @@ bool Rephrasing::Rejoin(
     DocTree *doc,
     std::string *error) {
 
+  // Patch up or fail on some common problems. Match space at the
+  // beginning or end of text.
+
   const std::string &before_text = rephrasable.text;
   const bool orig_space_before =
     !before_text.empty() && IsSpace(before_text[0]);
@@ -909,6 +912,20 @@ bool Rephrasing::Rejoin(
   }
   if (!orig_space_after) {
     while (!text.empty() && IsSpace(text.back())) text.remove_suffix(1);
+  }
+
+  // The phrase "text goes here" appears in the prompt, and sometimes
+  // gets copied into the rephrasing. Only allow it if it appears in
+  // the input.
+  const bool has_tgh =
+    Util::lcase(rephrasable.text).find("text goes here") != std::string::npos;
+  if (!has_tgh) {
+    if (Util::lcase(text).find("text goes here") != std::string::npos) {
+      if (error != nullptr)
+        *error = "text can't contain parts of the prompt that aren't "
+          "in the original text.";
+      return false;
+    }
   }
 
   std::string html_error;

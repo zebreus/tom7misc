@@ -451,9 +451,16 @@ std::optional<std::vector<Token>> Lexing::Lex(
         }
         // XXX get line info
         if (error != nullptr) {
+          size_t snippet_start = start >= 20 ? start - 20 : 0;
+          std::string snippet =
+            snippet_start + 40 < input_string.size() ?
+            input_string.substr(snippet_start, 40) :
+            input_string.substr(snippet_start, std::string::npos);
           *error =
-            StringPrintf("%s '%c' (0x%02x) at offset %zu",
-                         msg, c, c, start);
+            StringPrintf("%s '%c' (0x%02x) at offset %zu:\n"
+                         "%s\n",
+                         msg, c, c, start,
+                         snippet.c_str());
         }
         return std::nullopt;
       }

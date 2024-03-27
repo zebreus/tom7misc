@@ -527,6 +527,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
         just = Justification::LEFT;
       } else if (*j == "center") {
         just = Justification::CENTER;
+      } else if (*j == "all") {
+        just = Justification::ALL;
       } else {
         LOG(FATAL) << "pack-boxes justification field unknown: " << *j;
       }

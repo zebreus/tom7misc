@@ -273,7 +273,7 @@ object Span of { line-spacing: float,
                     even if inside a call to rephrase *)
                  no-rephrase: bool,
 
-                 (* left, full, center *)
+                 (* left, full, center, all *)
                  justification: string,
 
                  (* RGBA format. 0xFF00FF *)
@@ -428,7 +428,7 @@ fun get-text-rec (lay : layout) : string =
    "width" as the dimension. Usually you want to just use pack-boxes-horiz
    or pack-boxes-vert below. *)
 datatype packing-algorithm = BEST | FIRST
-datatype justification = FULLY-JUSTIFIED | LEFT-JUSTIFIED | CENTERED
+datatype justification = FULLY-JUSTIFIED | LEFT-JUSTIFIED | ALL-JUSTIFIED | CENTERED
 fun pack-boxes (algo : packing-algorithm,
                 justification : justification,
                 dimension : float, content : layout) :
@@ -450,6 +450,7 @@ fun pack-boxes (algo : packing-algorithm,
       case justification of
         FULLY-JUSTIFIED => "full"
       | LEFT-JUSTIFIED => "left"
+      | ALL-JUSTIFIED => "all"
       | CENTERED => "center"
 
     val arg = {(InternalPackBoxesArg)
@@ -766,7 +767,11 @@ fun sub-title lay =
         font-bold = true,
         font-size = point 22.0 } [[lay][hfill()][break()]]
 
-fun author lay = [[lay][hfill()][vspace 16.0]]
+fun author lay = span {(Span) justification = "left" }
+                       [[lay][hfill()][break()]]
+fun date lay = [[lay][hfill()][vspace 16.0]]
+
+fun justify-all lay = span {(Span) justification = "all" } lay
 
 fun monospace-block-ext { left-indent, width,
                           line-spacing,
@@ -818,6 +823,8 @@ fun subsection lay = span {(Span) font-bold = true, font-size = 13.5 }
 fun paragraph lay =
   span {(Span) font-bold = true} [[lay].] ^^
   box {(Box) width=3.0, glue-ideal=3.0, glue-expand = 1.5 } []
+
+fun no-rephrase lay = span {(Span) no-rephrase = true } lay
 
 object Rephrase of { rephrase-times : int }
 fun rephrase-paragraph (times : int) (p : layout) : layout =
@@ -896,6 +903,7 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
        SOME (case justification of
                "full" => FULLY-JUSTIFIED
              | "left" => LEFT-JUSTIFIED
+             | "all" => ALL-JUSTIFIED
              | "center" => CENTERED
              | s => (fail ("Unsupported justification type " ^ s)) :
                  justification) : justification option

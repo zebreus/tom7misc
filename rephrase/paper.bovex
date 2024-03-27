@@ -5,12 +5,11 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-  val EPSOM = true
-  (* do EPSOM andthen REPHRASE-ALL := SOME 35 *)
-  do EPSOM andthen REPHRASE-ALL := SOME 0
+  val EPSOM = false
+  (* do EPSOM andthen REPHRASE-ALL := SOME 0 *)
+  do EPSOM andthen REPHRASE-ALL := SOME 42
 
-  val doc-title =
-    "Badness 0"
+  val doc-title = "Badness 0"
   val doc-subtitle = "(" ^ (if EPSOM then "Epsom" else "Knuth") ^ "’s version)"
 
   do set-doc-info {(PDFInfo)
@@ -30,6 +29,10 @@ let
     image-inline { img = u2e17-png, height = 9.0, dy = 4.0 }
 
   val tt = fixedersys
+
+  (* Cite the symmetric paper in SIGBOVIK '24 *)
+  do if EPSOM then nocite murphy2024knuth
+     else nocite murphy2024epsom
 
   val FONT-SIZE = 12.0
   val LINE-SPACING = 1.0
@@ -62,7 +65,7 @@ in
  [title (layout doc-title)]
  [sub-title (layout doc-subtitle)]
 
- [author[Dr. Tom Murphy VII, Ph.D.]]
+ [author[Dr. Tom Murphy VII, Ph.D.]][date[March 2024]]
 
 It has become clear to me that many people walk this Earth completely
 unbothered by incorrect details. For example, they are unconcerned
@@ -74,7 +77,7 @@ wrong.
 They care as much as the phone’s autocorrect (none) about the difference
 between “its” and “it’s.”
 When someone asks, “Will you marry me?” and they think “Oh my god!”
-it’s not because the proposer probably should be using the subjunctive [it[would]].
+it’s not because the proposer probably should have used the subjunctive [it[would]].
 
 I am... not like this. If a character in a TV commercial is handling a
 coffee cup but I can infer from its moment of inertia that the cup
@@ -105,8 +108,7 @@ Criticizing a proposed bill that would reduce the standard work week
 in the US by 8 hours, from 40 to 32, this senator says,
 
 [blockquote
- [Sen. Bill Cassidy of Louisiana said paying workers the
-  same wages for fewer hours would force employers to pass the cost of
+ [Sen. Bill Cassidy of Louisiana, representing the ______ party, said paying workers the same wages for fewer hours would force employers to pass the cost of
   hiring more workers along to consumers.]]
 
 [* Note: Don't fix the quotation marks in here; I refer to them below *]
@@ -117,7 +119,8 @@ in the US by 8 hours, from 40 to 32, this senator says,
   three-quarters of the time. And they have to hire more.”]]
 
 Actually, that’s not exactly the quote, but I needed to make it look
-nice.[cite bynum2014bernie]
+nice.[cite bynum2014bernie] And this is not a paper about politics,
+but let’s just say you can guess what word goes in the blank.
 
 Anyway, [it[OKAY]], first of all, razors famously have high margins.
 It’s like the worst possible metaphor here.
@@ -152,14 +155,14 @@ was arguably most recognized as the Professor Emeritus at Stanford in
 Palo Alto, California.” As one of the richest Mathematician from
 United States, according to the analysis of Famous Birthdays,
 Wikipedia, Forbes & Business Insider, “Donald Knuth’s net worth $3--5
-Million.* (Last Update: February 3, 2024)”
+Million.[sup 12.0 [*]]”
 
 I suppose it is arguable that he is the Professor Emeritus. And it is
 very likely true that he is the [it[only]] popular and rich
 mathematician born on that specific day in Wisconsin, making the
 singular “Mathematician” perhaps a technical master-stroke. But more
-likely this is just an amusingly dense series of imprecisions.
-
+likely this is just an amusingly dense series of imprecisions. The
+asterisk of course does not have any referent on the page.
 
 What I mean when I say that Donald Knuth is the opposite of this
 person is that Knuth is interested in unpacking a single unnecessary
@@ -255,9 +258,6 @@ Language”, as well as “type” both as in “typeface” and as in “type
 systems for programming languages.”[cite mitchell1990type] And because
 machine learning has claimed so many words, there are a great many
 shared with typography as well:
-
-[* TODO: Better as vector. This one we could create
-   with stickers if we just add a Line command. *]
 
 [monospace-block
 [            +----------+
@@ -462,16 +462,15 @@ probability distribution. So for example if we have the text
 
 then the probability distribution (Llama-v2-70b) begins as
 
-[monospace-block[
-  ( annual) 69.8010%
-  ( April) 3.8023%
-  ( ac) 3.2456%
-  ( academic) 2.9374%
-  ( artificial) 2.0857%
-  ( open) 1.7993%
-  ( under) 1.2331%
-  ( international) 1.1032%
-  ...
+[monospace-block[          ( annual) 69.8010%
+          ( April) 3.8023%
+          ( ac) 3.2456%
+          ( academic) 2.9374%
+          ( artificial) 2.0857%
+          ( open) 1.7993%
+          ( under) 1.2331%
+          ( international) 1.1032%
+          ...
 ]]
 
 with the thousands of other tokens following. So three-quarters of the
@@ -491,8 +490,6 @@ useful. However, you might not want exactly the same result each
 time, and in many situations if you only sample the most likely
 token, you get very boring, repetitive text. Pseudorandom number
 generation is the spice of life!
-
-[* regex sampling? *]
 
 We also need not use the probability distribution to sample at all. We
 can just pick the token that we want. This is how the initial “prompt”
@@ -629,16 +626,19 @@ we’ll next look for a word. That’s all there is to it; the base
 cases of empty text are used to start the table, and then you just
 write the loop to fill out cells in the right order.
 
-Knuth’s boxes-and-glue algorithm contains many extensions, and so
-does mine. For example, later we'll talk about how you can adapt
-the algorithm to perform hyphenation and kerning. [* XXX transition *]
+Knuth’s boxes-and-glue algorithm contains many extensions, and so does
+mine. For example, later we’ll talk about how you can adapt the
+algorithm to perform hyphenation and kerning. There are many rabbit
+holes to go down, and I explored the ones that attracted my attention.
+There is plenty of time to add more features later, since of course
+I have now cursed myself to use BoVeX for my future SIGBOVIK papers.
 
-Here’s where I diverge from Knuth somewhat. Knuth was reluctant to
-add a programming language to TeX[cite bijlage1996knuth] but I spent the majority
-of my time on this project implementing a full-fledged language.
-BoVeX is about 33,000 lines of code, the majority of which is the
-implementation of the language itself. That’s 110× as long as the
-original monospace proof of concept, and 30× the length of this
+But here’s where I diverge from Knuth somewhat. Knuth was reluctant to add
+a programming language to TeX,[cite bijlage1996knuth] but I spent the
+majority of my time on this project implementing a full-fledged
+language. BoVeX is about 33,000 lines of code, the majority of which
+is the implementation of the language itself. That’s 110× as long as
+the original monospace proof of concept, and 30× the length of this
 document!
 
 [section[The BoVeX language]]
@@ -789,7 +789,8 @@ useful than C++’s mile-long SFINAE vomitus.) It supports
 mutually-recursive parsers, resolution of dynamic infix operators, and
 all that. My template-heavy parser combinators take clang about a
 minute to compile, which is acceptable. Less acceptable, but something
-I only learned after using this to write a 17–page-long
+I only learned after using this to write a
+[if EPSOM then [14] else [16]]–page-long
 paper, is that the parsers are very slow. Putting aside LLM inference,
 this paper takes 13 seconds to render into a PDF, 11 seconds of which
 is parsing! There must be some bug, but I don’t know if it’s in my
@@ -1066,7 +1067,9 @@ that to the LLM. The prompt looks like this:
 
 [blockquote[The text contains markup as well. There are two types: <span class="c0">text goes here</span> and <img src="image.png">. These should be preserved in the rephrased text. <img> tags absolutely need to be retained and should not change their sources, although it is permissible to move them around in the text. <span> should generally be retained, but the contents could change. The classes of spans may not change, and only the classes that appear in the original text may be used.]]
 
-The first part is basically the same as what I used for the monospaced
+[(* The following two paragraphs cannot be successfully rephrased
+    because they literaly contain <span> and <img> in them. *)
+no-rephrase[The first part is basically the same as what I used for the monospaced
 version, except that I ask the LLM to delimit the paragraph. This is
 important so that I know when it thinks it’s done, and seems to work
 better than looking for newlines or the end-of-stream token. The
@@ -1079,9 +1082,9 @@ the subtrees with attributes (like [helvetica [fonts]], [color
 (rgba(0, 64, 0, 255)) [colors]], [sup 10.0 [sizes]], etc.) are translated
 into distinct classes and marked up with [tt[<span
 class="c0">...</span>]]. The LLM has seen plenty of HTML, so it’s able
-to use these reasonably well.
+to use these reasonably well.]]
 
-After generating a rephrasing, I parse the output HTML and match it
+[no-rephrase[After generating a rephrasing, I parse the output HTML and match it
 up with the original layout. If I find any broken HTML, it is rejected.
 If I find any [tt[<img>]] tag referencing a [tt[src]] not in the original,
 it is rejected. If I find any [tt[<span>]] tag referencing a [tt[class]]
@@ -1089,7 +1092,7 @@ not in the original, it is rejected. The more complexity that the
 original layout has, the higher the chance of a rejection, but rephrasing
 generally succeeds. But rejecting samples slows us down, so I leave off
 the second part of the prompt in the common case that the input paragraph
-is plain text. That way the LLM doesn’t even try using markup.
+is plain text. That way the LLM doesn’t even try using markup.]]
 
 With the HTML and original layout matched up, BoVeX can reconsitute
 the layout with the new rephrased text. This preserves any nested
@@ -1192,15 +1195,21 @@ badness per page.
 
 [subsection[Advantages of rephrasing]]
 
-[* XXX more advantages / disadvantages *]
 Another nice thing is that the manual rephrasing that consumes
 valuable brain sugars when writing can become optional. For example,
 when I wrote the opening paragraph of this paper and listed a variety
 of trivial details, I might not need to think of different ways to say
 “unconcerned.” I could just write “unconcerned” each time and let the
 typographic considerations determine which synonym to use each time.
+[* XXX more advantages / disadvantages *]
 
 [section[Conclusion]]
+
+[justify-all[In this paper—and [it[with]] this paper—I presented BoVeX, a new computer
+typesetting system. It follows the tradition TeX, but with modern amenities
+such as requiring over 128 gigabytes of RAM.
+Though some may consider the addition of AI features to TeX to be an
+unnecessary perversion, I find this[box {(Box) glue-break-penalty = -1000000.0, width = 0.0 } []]use of LLMs to be [it[fully justified]].]]
 
 [subsection[Future work]]
 
@@ -1242,7 +1251,7 @@ All of this becomes more important if I add another planned feature,
 which is the ability for the document to be globally optimized by
 applying a black-box optimizer to a set of user-specified parameters.
 For example, the column width, line spacing, or font size could be
-tweaked to make the document fit better. This feature is "Auto-Margin Plus."
+tweaked to make the document fit better. This feature is “Auto-Margin Plus.”
 Things are already set up to do this pretty straightforwardly; we
 would simply generate the document over and over while searching
 over the parameter space, and choose the one with the least badness.
@@ -1334,10 +1343,10 @@ don’t say anything at all.”
 
 [paragraph[Acknowledgements]] Supposing his name survives rephrasing,
 I’d like to shout out to one of my advisors, Karl Crary. 20 years ago,
-he set out with me on an ill-advised and ill-fated (but serious)
-attempt to replace LaTeX with an SML-like language mTeX, which
-compiled into TeX macros. It was Karl’s idea to use the nesting square
-brackets, and BoVeX shares genetic material with mTeX for sure.
+he set out with me on an ill-advised and ill-fated attempt to replace
+LaTeX with an SML-like language mTeX, which compiled into TeX macros.
+The nesting square brackets syntax was Karl’s idea, and BoVeX shares
+genetic material with mTeX for sure.
 
 See you next mission,
 
@@ -1355,11 +1364,6 @@ Since it feels good to be a little bit bad.
 
 TODO: time travel, the most powerful weapon
 
-TODO: BoVeX rendering pipeline is a bit like a multi-pass compiler
-
-TODO: Obviously I need to submit two versions of the paper with the
-dial set at opposite ends? (Taylor’s Version) Or three?
-
 TODO: 10 columns
 TODO: debugging while
 simultaneously developing paper, layout algorithm, compiler, ...!
@@ -1367,8 +1371,6 @@ simultaneously developing paper, layout algorithm, compiler, ...!
 TODO: This relates to “What words ought to exist?”
 
 TODO: I mean, to be honest, his decks didn’t look that good either
-
-TODO:
 
 TODO: Conference Class files can specify the appropriate tradeoff of
 semantic badness versus typographic badness. For example, Metaverse
