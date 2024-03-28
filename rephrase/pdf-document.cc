@@ -1,33 +1,38 @@
 
 #include "pdf-document.h"
 
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <format>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
-#include <string>
-#include <cstring>
-#include <format>
-#include <chrono>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
-#include "bignum/big.h"
-#include "image.h"
-#include "document.h"
-#include "pdf.h"
 #include "ansi.h"
-#include "color-util.h"
 #include "base/logging.h"
+#include "color-util.h"
+#include "image.h"
+#include "pdf.h"
+
+#include "document.h"
 
 PDFFont::PDFFont(const PDF::FontObj *f) : pdf_font(f) {
   CHECK(f != nullptr);
 }
 
 using Transform = PDFDocument::Transform;
+
+const Font *PDFDocument::GetDefaultFont() {
+  return GetFontByName(
+      pdf->GetBuiltInFont(PDF::TIMES_ROMAN)->BaseFont());
+}
 
 std::string PDFDocument::LoadFontFile(const std::string &filename) {
   std::string name = pdf->AddTTF(filename);
@@ -131,13 +136,6 @@ static std::string DateTimeStamp() {
                      std::chrono::system_clock::now());
 }
 
-static inline Transform Translate(Transform t, double dx, double dy) {
-  t.dx += dx;
-  t.dy += dy;
-  return t;
-}
-
-
 PDFDocument::PDFDocument(double width, double height) {
   pdf.reset(new PDF((float)width, (float)height));
 
@@ -185,8 +183,8 @@ void PDFDocument::SetDocumentInfoStrings(
 // Note that many objects in PDF (text, images) are measured from their
 // bottom-left coordinate, so you may also need to add the object height
 // before flipping.
-double PDFDocument::FlipPageCoordinate(const PDF::Page &page, double y) {
-  const double height = page.Height();
+double PDFPage::FlipPageCoordinate(double y) const {
+  const double height = Height();
   return height - y;
 }
 
@@ -196,119 +194,38 @@ static uint32_t PDFColor(uint32_t rgba) {
   return ColorUtil::Pack32(255 - a, r, g, b);
 }
 
-void PDFDocument::DrawText(const PDFFont &font,
-                           const std::string &text, double size,
-                           double x, double y,
-                           uint32_t color,
-                           PDF::Page *page) {
-  CHECK(page != nullptr);
+void PDFPage::DrawText(const Font *font_in,
+                       const std::string &text, double size,
+                       double x, double y,
+                       uint32_t color) {
+  const PDFFont *font = (const PDFFont*)font_in;
+
+  CHECK(pdf_page != nullptr);
   if (text.empty()) return;
 
-  CHECK(font.pdf_font != nullptr);
-  pdf->SetFont(font.pdf_font);
+  CHECK(font->pdf_font != nullptr);
+  pdf->SetFont(font->pdf_font);
   pdf->AddText(text, size,
                // We flip the y coordinate, but also then need to
                // measure from the top of the text, not its baseline.
-               x, FlipPageCoordinate(*page, y + size),
+               x, FlipPageCoordinate(y + size),
                PDFColor(color),
-               page);
+               pdf_page);
 }
 
-void PDFDocument::DrawImage(double x, double y,
-                            double width, double height,
-                            const ImageRGBA &image,
-                            PDF::Page *page) {
-  CHECK(page != nullptr);
+void PDFPage::DrawImage(double x, double y,
+                        double width, double height,
+                        const ImageRGBA &image) {
+  CHECK(pdf_page != nullptr);
 
   printf("Add image at %.11g %.11g.\n", x, y);
   CHECK(pdf->AddImageRGB(
             // Images are also measured from their baselines.
-            x, FlipPageCoordinate(*page, y + height),
+            x, FlipPageCoordinate(y + height),
             width, height,
             image.IgnoreAlpha(),
             PDF::CompressionType::PNG,
-            page));
-}
-
-void PDFDocument::PlaceStickersRec(Context context,
-                                   Transform transform,
-                                   const DocTree &doc,
-                                   PDF::Page *page) {
-  if (doc.IsText()) {
-    // Place the text with the current transform.
-    DrawText(context.font,
-             doc.text,
-             context.font_size,
-             transform.dx, transform.dy,
-             context.color,
-             page);
-    return;
-  }
-
-  if (doc.IsEmpty())
-    return;
-
-  if (doc.IsGroup()) {
-    for (const std::shared_ptr<DocTree> &child : doc.children) {
-      PlaceStickersRec(context, transform, *child, page);
-    }
-    return;
-  }
-
-  // Otherwise, the node should be a sticker.
-  const std::string *display = doc.GetStringAttr("display");
-  CHECK(display != nullptr) << "Any non-group node has to have a display "
-    "when rendering the page.";
-
-  CHECK(*display == "sticker") << "At this point everything should be "
-    "stickers. Got node with display=" << *display;
-
-  const double *x = doc.GetDoubleAttr("x");
-  const double *y = doc.GetDoubleAttr("y");
-  CHECK(x != nullptr && y != nullptr) << "Every sticker should have "
-    "its final x= and y= coordinates.";
-
-  if (const std::string *img = doc.GetStringAttr("img")) {
-    const double *width = doc.GetDoubleAttr("img-width");
-    const double *height = doc.GetDoubleAttr("img-height");
-    CHECK(width != nullptr && height != nullptr) << "An img=\"\" on a "
-      "sticker also requires img-width=\"\" and img-height\"\" (doubles).";
-    const ImageRGBA *image = GetImageByName(*img);
-    Transform ct = Translate(transform, *x, *y);
-    if (image == nullptr) {
-      fprintf(stderr, ARED("Missing image: ") "%s\n", img->c_str());
-    } else {
-      DrawImage(ct.dx, ct.dy, *width, *height, *image, page);
-    }
-  }
-
-  if (const std::string *font_name = doc.GetStringAttr("font-name")) {
-    const Font *f = GetFontByName(*font_name);
-    if (f == nullptr) {
-      fprintf(stderr, ARED("Missing font: ") "%s\n", font_name->c_str());
-    } else {
-      context.font = *(const PDFFont *)f;
-    }
-  }
-
-  if (const double *font_size = doc.GetDoubleAttr("font-size")) {
-    context.font_size = *font_size;
-  }
-
-  if (const BigInt *bc = doc.GetIntAttr("font-color")) {
-    auto co = bc->ToInt();
-    CHECK(co.has_value() && co.value() >= 0 &&
-          co.value() <= int64_t{0xFFFFFFFF}) << "Color is out "
-      "of range. Must be in [0, 0xFFFFFFFF]: " << bc->ToString();
-    context.color = (uint32_t)co.value();
-  }
-
-  // XXX scaling
-
-  for (const std::shared_ptr<DocTree> &child : doc.children) {
-    Transform ct = Translate(transform, *x, *y);
-    PlaceStickersRec(context, ct, *child, page);
-  }
+            pdf_page));
 }
 
 void PDFDocument::GenerateOutput(std::string_view filename,
@@ -321,12 +238,18 @@ void PDFDocument::GeneratePDF(const std::string &filename,
   // We ignore gaps in the pages. If you want a blank page, make
   // a blank document.
   int num_pages = 0;
+  std::vector<std::unique_ptr<PDFPage>> pageptrs;
   for (const auto &[page_idx, doc] : pages) {
-    PDF::Page *page = pdf->AppendNewPage();
+    PDF::Page *pdf_page = pdf->AppendNewPage();
+    pageptrs.emplace_back(std::make_unique<PDFPage>(
+                              pdf_page->Width(), pdf_page->Height(),
+                              pdf.get(), pdf_page));
+    Page *page = pageptrs.back().get();
     num_pages++;
 
     Context context;
-    context.font = PDFFont(pdf->GetBuiltInFont(PDF::BuiltInFont::TIMES_ROMAN));
+    context.font = GetDefaultFont();
+    // PDFFont(pdf->GetBuiltInFont(PDF::BuiltInFont::TIMES_ROMAN));
     context.color = 0x000000FF;
     Transform identity;
     identity.dx = 0.0;

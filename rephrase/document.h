@@ -112,6 +112,29 @@ struct Font {
   virtual double GetKernedWidth(const std::string &text) const;
 };
 
+struct Page {
+  virtual ~Page() = default;
+  Page(double width, double height) : page_width(width), page_height(height) {}
+
+  double Height() const { return page_height; }
+  double Width() const { return page_width; }
+
+  virtual void DrawText(const Font *font,
+                        const std::string &text, double size,
+                        double x, double y,
+                        uint32_t color);
+
+  virtual void DrawImage(double x, double y,
+                         double width, double height,
+                         const ImageRGBA &image);
+
+  // TODO: Line drawing commands, etc.
+
+ protected:
+  double page_width = 0.0;
+  double page_height = 0.0;
+};
+
 struct Document {
   virtual ~Document() = default;
 
@@ -160,6 +183,7 @@ struct Document {
 
   // Look up a font by its name (Font::Name; not family name).
   const Font *GetFontByName(const std::string &font_name);
+  virtual const Font *GetDefaultFont();
 
   // Look up an image by its handle.
   const ImageRGBA *GetImageByName(const std::string &name);
@@ -192,6 +216,23 @@ struct Document {
 
   virtual void GenerateOutput(std::string_view filename_base,
                               const std::map<int, DocTree> &pages);
+
+  struct Transform {
+    double dx = 0.0, dy = 0.0;
+    double sx = 1.0, sy = 1.0;
+  };
+
+  struct Context {
+    const Font *font = nullptr;
+    double font_size = 12.0;
+    uint32_t color = 0x000000FF;
+  };
+
+ protected:
+  void PlaceStickersRec(Context context,
+                        Transform transform,
+                        const DocTree &doc,
+                        Page *page);
 
  private:
   // All loaded images.

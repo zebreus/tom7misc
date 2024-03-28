@@ -473,8 +473,6 @@ Document::BoxifyText(const TextProps &props,
                      std::string_view text) {
   static constexpr bool VERBOSE = false;
 
-  // bool VERBOSE = text[0] == 'R' || text[0] == 'J';
-
   std::vector<DocTree> out;
 
   const Font *font = GetDescribedFont(props.desc);
@@ -757,6 +755,11 @@ void Document::RegisterFont(const FontDescription &desc, const Font *f) {
   } else {
     family.regular = f;
   }
+}
+
+const Font *Document::GetDefaultFont() {
+  LOG(FATAL) << "No default font for base Document class.";
+  return nullptr;
 }
 
 const Font *Document::GetDescribedFont(const FontDescription &desc) {
@@ -1088,4 +1091,92 @@ Document::PackBoxes(Algorithm algo,
   }
 
   return {JoinDocs(lines_out), total_badness};
+}
+
+using Transform = Document::Transform;
+
+static inline Transform Translate(Transform t, double dx, double dy) {
+  t.dx += dx;
+  t.dy += dy;
+  return t;
+}
+
+void Document::PlaceStickersRec(Context context,
+                                Transform transform,
+                                const DocTree &doc,
+                                Page *page) {
+  if (doc.IsText()) {
+    // Place the text with the current transform.
+    page->DrawText(context.font,
+                   doc.text,
+                   context.font_size,
+                   transform.dx, transform.dy,
+                   context.color);
+    return;
+  }
+
+  if (doc.IsEmpty())
+    return;
+
+  if (doc.IsGroup()) {
+    for (const std::shared_ptr<DocTree> &child : doc.children) {
+      PlaceStickersRec(context, transform, *child, page);
+    }
+    return;
+  }
+
+  // Otherwise, the node should be a sticker.
+  const std::string *display = doc.GetStringAttr("display");
+  CHECK(display != nullptr) << "Any non-group node has to have a display "
+    "when rendering the page.";
+
+  CHECK(*display == "sticker") << "At this point everything should be "
+    "stickers. Got node with display=" << *display;
+
+  const double *x = doc.GetDoubleAttr("x");
+  const double *y = doc.GetDoubleAttr("y");
+  CHECK(x != nullptr && y != nullptr) << "Every sticker should have "
+    "its final x= and y= coordinates.";
+
+  if (const std::string *img = doc.GetStringAttr("img")) {
+    const double *width = doc.GetDoubleAttr("img-width");
+    const double *height = doc.GetDoubleAttr("img-height");
+    CHECK(width != nullptr && height != nullptr) << "An img=\"\" on a "
+      "sticker also requires img-width=\"\" and img-height\"\" (doubles).";
+    const ImageRGBA *image = GetImageByName(*img);
+    Transform ct = Translate(transform, *x, *y);
+    if (image == nullptr) {
+      fprintf(stderr, ARED("Missing image: ") "%s\n", img->c_str());
+    } else {
+      page->DrawImage(ct.dx, ct.dy, *width, *height, *image);
+    }
+  }
+
+  if (const std::string *font_name = doc.GetStringAttr("font-name")) {
+    const Font *f = GetFontByName(*font_name);
+    if (f == nullptr) {
+      fprintf(stderr, ARED("Missing font: ") "%s\n", font_name->c_str());
+    } else {
+      context.font = f;
+    }
+  }
+
+  if (const double *font_size = doc.GetDoubleAttr("font-size")) {
+    context.font_size = *font_size;
+  }
+
+  if (const BigInt *bc = doc.GetIntAttr("font-color")) {
+    auto co = bc->ToInt();
+    CHECK(co.has_value() && co.value() >= 0 &&
+          co.value() <= int64_t{0xFFFFFFFF}) << "Color is out "
+      "of range. Must be in [0, 0xFFFFFFFF]: " << bc->ToString();
+    context.color = (uint32_t)co.value();
+  }
+
+  // XXX scaling
+
+  for (const std::shared_ptr<DocTree> &child : doc.children) {
+    Transform ct = Translate(transform, *x, *y);
+    PlaceStickersRec(context, ct, *child, page);
+  }
 }

@@ -31,8 +31,30 @@ struct PDFFont : public Font {
 
  private:
   friend struct PDFDocument;
+  friend struct PDFPage;
   // Not owned.
   const PDF::FontObj *pdf_font = nullptr;
+};
+
+struct PDFPage : public Page {
+  PDFPage(double width, double height,
+          PDF *pdf, PDF::Page *pdf_page) : Page(width, height),
+                                           pdf(pdf), pdf_page(pdf_page) {}
+
+  void DrawText(const Font *font,
+                const std::string &text, double size,
+                double x, double y,
+                uint32_t color) override;
+
+  void DrawImage(double x, double y,
+                 double width, double height,
+                 const ImageRGBA &image) override;
+
+ private:
+  double FlipPageCoordinate(double y) const;
+  // Not owned.
+  PDF *pdf = nullptr;
+  PDF::Page *pdf_page = nullptr;
 };
 
 struct PDFDocument : public Document {
@@ -44,6 +66,7 @@ struct PDFDocument : public Document {
       const std::unordered_map<std::string, std::string> &info) override;
 
   const Font *GetBuiltInFont(PDF::BuiltInFont bif);
+  const Font *GetDefaultFont() override;
 
   void GenerateOutput(std::string_view filename,
                       const std::map<int, DocTree> &pages) override;
@@ -51,41 +74,9 @@ struct PDFDocument : public Document {
   void GeneratePDF(const std::string &filename,
                    const std::map<int, DocTree> &pages);
 
-  // This stuff should probably be generic, since we'd use this for
-  // any backend.
-  struct Transform {
-    double dx = 0.0, dy = 0.0;
-    double sx = 1.0, sy = 1.0;
-  };
-
-  struct Context {
-    PDFFont font;
-    double font_size = 12.0;
-    uint32_t color = 0x000000FF;
-  };
-
  private:
   void InitBuiltInFonts();
   const PDF::FontObj *AnyFontByName(const std::string &font_name);
-
-  double FlipPageCoordinate(const PDF::Page &page, double y);
-
-  void DrawText(const PDFFont &font,
-                const std::string &text, double size,
-                double x, double y,
-                uint32_t color,
-                PDF::Page *page);
-
-  void DrawImage(double x, double y,
-                 double width, double height,
-                 const ImageRGBA &image,
-                 PDF::Page *page);
-
-  void PlaceStickersRec(Context context,
-                        Transform transform,
-                        const DocTree &doc,
-                        PDF::Page *page);
-
   std::unique_ptr<PDF> pdf;
 };
 
