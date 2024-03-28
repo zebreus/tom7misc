@@ -27,6 +27,7 @@ struct BigInt {
   inline explicit BigInt(int64_t n);
   inline explicit BigInt(uint64_t n);
   inline explicit BigInt(uint32_t n);
+  inline explicit BigInt(size_t n);
   inline explicit BigInt(int n);
   inline explicit BigInt(const std::string &digits);
 
@@ -329,6 +330,11 @@ BigInt::BigInt(int n) : BigInt((int64_t)n) {
 
 BigInt::BigInt(uint64_t u) {
   SetU64(u);
+}
+
+BigInt::BigInt(size_t s) {
+  static_assert(sizeof (size_t) <= sizeof (uint64_t));
+  SetU64((uint64_t)s);
 }
 
 BigInt::BigInt(uint32_t u) {
@@ -997,6 +1003,10 @@ double BigRat::ToDouble() const {
 BigInt::BigInt(int64_t n) : rep(BzFromInteger(n)) { }
 BigInt::BigInt(uint64_t n) : rep(BzFromUnsignedInteger(n)) { }
 BigInt::BigInt(uint32_t n) : rep(BzFromUnsignedInteger(n)) { }
+
+BigInt::BigInt(size_t s) : BigInt((uint64_t)s) {
+  static_assert(sizeof (size_t) <= sizeof (uint64_t));
+}
 
 BigInt::BigInt(int n) : BigInt((int64_t)n) {
   static_assert(sizeof (int) <= sizeof (int64_t));

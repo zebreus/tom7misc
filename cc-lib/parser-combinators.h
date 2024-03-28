@@ -11,6 +11,7 @@
 #include <deque>
 
 #include "base/logging.h"
+#include "hashing.h"
 
 struct Unit { };
 
@@ -42,6 +43,10 @@ struct TokenSpan {
     return offset;
   }
 
+  size_t Size() const {
+    return length;
+  }
+
   TokenSpan SubSpan(size_t start) const {
     CHECK(start <= length);
     return TokenSpan(
@@ -59,6 +64,29 @@ struct TokenSpan {
       root, full_length,
       offset, len);
   }
+
+  struct ShallowHash {
+    // Hash code for the span, which distinguishes spans
+    // with the same data but different roots.
+    size_t operator()(const TokenSpan &s) const {
+      size_t hh = (size_t)s.root;
+      // XXX BETTER HASH!
+      // auto t = std::make_tuple(s.root, s.offset, s.length);
+      // return Hashing<decltype(t)>(t);
+      return s.offset ^ s.length;
+    }
+  };
+
+  struct ShallowEq {
+    // Shallow equality; constant time.
+    bool operator ()(const TokenSpan &a,
+                     const TokenSpan &b) const {
+      return a.root == b.root &&
+        a.full_length == b.full_length &&
+        a.offset == b.offset &&
+        a.length == b.length;
+    }
+  };
 
  private:
   TokenSpan(const T *root, size_t full_length,
@@ -868,5 +896,37 @@ std::optional<Out> ResolveFixityAdj(
 // failure handler
 // list of alternates
 // sequence, making tuple
+
+template <Parser A>
+struct MemoizedParser {
+  using token_type = A::token_type;
+  using out_type = A::out_type;
+
+  using TS = TokenSpan<token_type>;
+
+  using Table = std::unordered_map<
+    TS, Parsed<out_type>, typename TS::ShallowHash, typename TS::ShallowEq>;
+
+  MemoizedParser(A a) : parser(std::move(a)) {
+    table = std::make_shared<Table>();
+  }
+
+  Parsed<out_type> operator ()(TokenSpan<token_type> t) const {
+    auto it = table->find(t);
+    if (it != table->end()) {
+      // Already computed.
+      return it->second;
+    }
+    auto res = parser(t);
+    (*table)[t] = res;
+    return res;
+  }
+
+ private:
+  // We copy around parsers willy-nilly, but the memo table can be
+  // big; wrap it so copies are cheap.
+  std::shared_ptr<Table> table;
+  A parser;
+};
 
 #endif

@@ -117,6 +117,18 @@ struct Util {
   static bool HasMagic(string filename, const string &magic);
   static string ReadFileMagic(string filename, const string &magic);
 
+  //XXX TEMP
+  static std::string_view FileExtOf(std::string_view s) {
+    auto pos = s.rfind('.');
+    if (pos == std::string_view::npos) return {};
+    return s.substr(pos + 1, std::string_view::npos);
+  }
+
+  static std::string_view FileBaseOf(std::string_view s) {
+    auto pos = s.rfind('.');
+    if (pos == std::string_view::npos) return {};
+    return s.substr(0, pos);
+  }
 
   static string ptos(void *);
   static unsigned int hash(const string &s);

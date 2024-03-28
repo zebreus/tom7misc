@@ -132,7 +132,6 @@ static void TestSimple() {
     std::string s("xxxxxa");
     auto po = parser(CharSpan(s));
     CHECK(po.HasValue());
-    // doesn't find x, but succeeds with nullopt
     CHECK(po.Value().first.size() == 5);
     for (int i = 0; i < 5; i++) {
       CHECK(po.Value().first[i] == 'x');
@@ -361,33 +360,6 @@ static void TestFixity() {
       return atom;
     };
 
-  /*
-#define CHECK_FIXITY(expected_, ...) do { \
-    const std::string expected = expected_; \
-    const std::vector<Item> items = {__VA_ARGS__}; \
-    std::string parse_error;                        \
-    const std::optional<std::string> got =          \
-      ResolveFixity<std::string>(items, &parse_error);  \
-    const char *err = # __VA_ARGS__ ; \
-  if (expected == "FAIL") {                            \
-    CHECK(!got.has_value()) << "For:\n" << err         \
-                            << "\nExpected failure!\n"   \
-                            << got.value();              \
-    } else {                                           \
-    CHECK(got.has_value()) << "For:\n" << err \
-                           << "\nExpected success:\n"         \
-                           << expected                        \
-                           << "\nBut it did not parse:\n"     \
-                           << parse_error << "\n";            \
-    CHECK(got.value() == expected) << "For:\n" << err            \
-                                   << "\nExpected:\n"            \
-                                   << expected                \
-                                   << "\nBut got:\n"          \
-                                   << got.value();            \
-    }                                                         \
- } while (0)
-  */
-
   auto NoAdj = [](const std::string &a, const std::string &b) ->
     std::string {
       LOG(FATAL) << "Adj should not be called";
@@ -505,10 +477,58 @@ static void TestStructuredBindings() {
   CHECK(y == 10);
 }
 
+namespace {
+// Like the library 'Is', but tracks how many times it
+// was called.
+template<class Token>
+struct IsCount {
+  using token_type = Token;
+  using out_type = Token;
+  explicit IsCount(Token r) : r(r) {
+    count = std::make_shared<int>(0);
+  }
+  Parsed<Token> operator ()(TokenSpan<Token> toks) const {
+    (*count)++;
+    if (toks.empty()) return Parsed<Token>::None();
+    if (toks[0] == r) return Parsed(toks[0], 1);
+    else return Parsed<Token>::None();
+  }
+  mutable std::shared_ptr<int> count;
+  const Token r;
+};
+}  // namespace
+
+static void TestMemo() {
+  {
+    auto CountX = IsCount('x');
+    auto MCX = MemoizedParser(CountX);
+    auto parser = *((Is('x') >> MCX >> Is('y')) ||
+                    MCX) && Is('a');
+    std::string s("xxxxxxxxb");
+    auto po = parser(CharSpan(s));
+    // It doesn't parse because there's no trailing 'a', but the
+    // point is to make it have to try all the ways of parsing
+    // the first part.
+    CHECK(!po.HasValue());
+#if 0
+    CHECK(po.Value().first.size() == 5);
+    for (int i = 0; i < 5; i++) {
+      CHECK(po.Value().first[i] == 'x');
+    }
+    CHECK(po.Value().second == 'a');
+    CHECK(po.Length() == 6);
+#endif
+    printf("Count: %d\n", *CountX.count);
+    // Should be called at most once for each position.
+    CHECK(*CountX.count <= s.size());
+  }
+}
+
 int main(int argc, char **argv) {
   TestSimple();
   TestFixity();
   TestMark();
+  TestMemo();
 
   TestStructuredBindings();
 
