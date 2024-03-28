@@ -274,9 +274,6 @@ monospace.exe : monospace.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 test-rephrase.exe : test-rephrase.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-variations.exe : variations.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
-
 lexing_test.exe : lexing_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 

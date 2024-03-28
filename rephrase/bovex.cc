@@ -7,28 +7,34 @@
 #include <utility>
 #include <vector>
 
-#include "bytecode.h"
-#include "compiler.h"
-#include "frontend.h"
-#include "execution.h"
-
-#include "ansi.h"
 #include "base/logging.h"
-#include "document.h"
-#include "pdf-document.h"
-#include "pdf.h"
-#include "rephrasing.h"
+#include "ansi.h"
 #include "timer.h"
 #include "util.h"
-#include "periodically.h"
-#include "achievements.h"
+#include "pdf.h"
 
+#include "achievements.h"
+#include "bytecode.h"
+#include "compiler.h"
+#include "document.h"
+#include "execution.h"
+#include "frontend.h"
+#include "pdf-document.h"
+#include "periodically.h"
+#include "rephrasing.h"
+
+enum class OutputType {
+  PDF,
+  TALK,
+};
+
+namespace {
 struct BovexExecution : public bc::Execution {
   explicit BovexExecution(const bc::Program &pgm,
-                          PDFDocument *pdf_document,
+                          Document *document,
                           Rephrasing *rephrasing) :
     bc::Execution(pgm),
-    pdf_document(pdf_document),
+    document(document),
     rephrasing(rephrasing),
     // Save periodically, but not immediately!
     save_rephrasing_per(60.0, false) {
@@ -38,7 +44,7 @@ struct BovexExecution : public bc::Execution {
   std::map<int, std::vector<DocTree>> pages;
   double total_badness = 0.125;
 
-  Document *DocumentHook() override { return pdf_document; }
+  Document *DocumentHook() override { return document; }
   Rephrasing *RephrasingHook() override {
     if (rephrasing->IsDirty() && save_rephrasing_per.ShouldRun()) {
       rephrasing->Save();
@@ -60,7 +66,7 @@ struct BovexExecution : public bc::Execution {
     total_badness += badness;
   }
 
-  std::map<int, DocTree> ExtractDocument() {
+  std::map<int, DocTree> ExtractPages() {
     std::map<int, DocTree> out;
     for (auto &[page_idx, docs] : pages) {
       out[page_idx] = JoinDocs(std::move(docs));
@@ -71,7 +77,8 @@ struct BovexExecution : public bc::Execution {
 
   bool did_rephrase = false;
 
-  PDFDocument *pdf_document = nullptr;
+  // Not owned!
+  Document *document = nullptr;
   Rephrasing *rephrasing = nullptr;
 
   // Periodically save the rephrasing database, so that even if we
@@ -79,6 +86,7 @@ struct BovexExecution : public bc::Execution {
   // the write to disk. Then you can lose everything!)
   Periodically save_rephrasing_per;
 };
+}  // namespace
 
 static int Bovex(const std::vector<std::string> &args) {
   Timer timer;
@@ -130,6 +138,15 @@ static int Bovex(const std::vector<std::string> &args) {
   CHECK(!output_file.empty()) << "Need to explicitly specify an "
     "output file with -o output.pdf.\n";
 
+  std::string_view ext = Util::FileExtOf(output_file);
+  std::string_view output_base = Util::FileBaseOf(output_file);
+
+  const OutputType output_type = [&ext]() {
+      if (ext == "pdf") return OutputType::PDF;
+      if (ext == "talk") return OutputType::TALK;
+      LOG(FATAL) << "Unsupported output type: " << ext;
+    }();
+
   CHECK(leftover.size() == 1) << "Expected exactly one .bovex file "
     "on the command-line.";
 
@@ -144,9 +161,20 @@ static int Bovex(const std::vector<std::string> &args) {
 
   // TODO: In a loop!
 
-  // Dimensions should be settable from within program!
-  PDFDocument pdf_document(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);
-  BovexExecution execution(pgm, &pdf_document, rephrasing.get());
+  std::unique_ptr<Document> document = [output_type]() ->
+    std::unique_ptr<Document> {
+      switch (output_type) {
+      case OutputType::PDF:
+        // Dimensions should be settable from within program!
+        return std::make_unique<PDFDocument>(
+            PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);
+      case OutputType::TALK:
+        LOG(FATAL) << "unimplemented";
+        return {};
+      }
+  }();
+
+  BovexExecution execution(pgm, document.get(), rephrasing.get());
   BovexExecution::State state = execution.Start();
 
   if (verbose > 0) {
@@ -155,7 +183,7 @@ static int Bovex(const std::vector<std::string> &args) {
   }
   execution.RunToCompletion(&state);
 
-  std::map<int, DocTree> pages = execution.ExtractDocument();
+  std::map<int, DocTree> pages = execution.ExtractPages();
   // Measure final badness.
   const double total_badness = execution.total_badness;
   printf("Total badness: " ARED("%.11g") "\n", total_badness);
@@ -181,11 +209,11 @@ static int Bovex(const std::vector<std::string> &args) {
     }
   }
 
-  pdf_document.GeneratePDF(output_file, pages);
+  document->GenerateOutput(output_base, pages);
 
   if (execution.did_rephrase) {
     Achievements::Get().Achieve("Gen AI",
-                                "Generated a PDF that used the rephrase "
+                                "Generated a document that used the rephrase "
                                 "functionality.");
   }
 

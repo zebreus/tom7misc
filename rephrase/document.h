@@ -11,6 +11,7 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include <map>
 
 #include "bignum/big.h"
 #include "bytecode.h"
@@ -188,6 +189,9 @@ struct Document {
   // All loaded fonts.
   std::unordered_map<std::string, std::unique_ptr<Font>> fonts;
   Hyphenation hyphenation;
+
+  virtual void GenerateOutput(std::string_view filename_base,
+                              const std::map<int, DocTree> &pages);
 
  private:
   // All loaded images.

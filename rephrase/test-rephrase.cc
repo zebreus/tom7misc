@@ -7,7 +7,9 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/logging.h"
@@ -19,19 +21,8 @@
 #include "color-util.h"
 
 #include "llm.h"
-#include "llm-util.h"
 
 using namespace std;
-
-static void PrintGreyParity(const std::string &tok) {
-  static bool odd = 0;
-  if (odd) {
-    printf(AFGCOLOR(125, 125, 140, "%s"), tok.c_str());
-  } else {
-    printf(AFGCOLOR(190, 190, 225, "%s"), tok.c_str());
-  }
-  odd = !odd;
-}
 
 // Characters that it's reasonable to start a line with.
 #define ASCII_LINE_START "[A-Za-z0-9()\"']"

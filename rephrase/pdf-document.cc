@@ -11,6 +11,7 @@
 #include <cstring>
 #include <format>
 #include <chrono>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 
@@ -308,6 +309,11 @@ void PDFDocument::PlaceStickersRec(Context context,
     Transform ct = Translate(transform, *x, *y);
     PlaceStickersRec(context, ct, *child, page);
   }
+}
+
+void PDFDocument::GenerateOutput(std::string_view filename,
+                                 const std::map<int, DocTree> &pages) {
+  return GeneratePDF(std::string(filename) + ".pdf", pages);
 }
 
 void PDFDocument::GeneratePDF(const std::string &filename,

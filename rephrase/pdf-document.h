@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 
 #include "image.h"
@@ -43,6 +44,9 @@ struct PDFDocument : public Document {
       const std::unordered_map<std::string, std::string> &info) override;
 
   const Font *GetBuiltInFont(PDF::BuiltInFont bif);
+
+  void GenerateOutput(std::string_view filename,
+                      const std::map<int, DocTree> &pages) override;
 
   void GeneratePDF(const std::string &filename,
                    const std::map<int, DocTree> &pages);

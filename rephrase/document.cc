@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -694,6 +695,12 @@ Document::BoxifyText(const TextProps &props,
 std::string Document::LoadFontFile(const std::string &filename) {
   LOG(FATAL) << "(LoadFontFile) The abstract base class of Document does "
     "not understand fonts on its own!";
+}
+
+void Document::GenerateOutput(std::string_view filename,
+                              const std::map<int, DocTree> &pages) {
+  LOG(FATAL) << "(LoadFontFile) The abstract base class of Document does "
+    "not know how to make output on its own!";
 }
 
 void Document::SetDocumentInfoStrings(
