@@ -2,17 +2,18 @@
 #ifndef _REPHRASE_IL_CONTEXT_PASS_H
 #define _REPHRASE_IL_CONTEXT_PASS_H
 
-#include "c:/code/sf_svn/cc-lib/bignum/big.h"
-#include "il.h"
-#include "context.h"
-#include "primop.h"
-#include "il-util.h"
-#include "unification.h"
 #include <string>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include "bignum/big.h"
+#include "context.h"
+#include "il-util.h"
+#include "il.h"
+#include "primop.h"
+#include "unification.h"
 
 namespace il {
 template<typename... Args>

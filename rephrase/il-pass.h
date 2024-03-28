@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "c:/code/sf_svn/cc-lib/bignum/big.h"
+#include "bignum/big.h"
 #include "il.h"
 
 #include "base/logging.h"

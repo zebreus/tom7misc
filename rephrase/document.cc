@@ -1180,3 +1180,11 @@ void Document::PlaceStickersRec(Context context,
     PlaceStickersRec(context, ct, *child, page);
   }
 }
+
+Page::Page() {}
+Font::Font() {}
+Document::Document() {}
+
+Page::~Page() {}
+Font::~Font() {}
+Document::~Document() {}

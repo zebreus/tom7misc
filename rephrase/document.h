@@ -98,7 +98,8 @@ DocTree TextDoc(std::string s);
 // can make other backends (e.g. a PNG backend for slide images). But
 // this is basically PDF::Font.
 struct Font {
-  virtual ~Font() = default;
+  Font();
+  virtual ~Font();
   virtual std::string Name() const;
 
   virtual std::optional<double>
@@ -113,7 +114,8 @@ struct Font {
 };
 
 struct Page {
-  virtual ~Page() = default;
+  Page();
+  virtual ~Page();
   Page(double width, double height) : page_width(width), page_height(height) {}
 
   double Height() const { return page_height; }
@@ -136,7 +138,8 @@ struct Page {
 };
 
 struct Document {
-  virtual ~Document() = default;
+  Document();
+  virtual ~Document();
 
   // Describing one of the variants of a font family.
   struct FontDescription {

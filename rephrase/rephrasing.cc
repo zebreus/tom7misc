@@ -13,25 +13,31 @@
 #include <vector>
 #include <utility>
 
-#include "llama.h"
+#include "util.h"
+#include "html.h"
+#include "color-util.h"
+
 #include "document.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "crypt/sha256.h"
 #include "timer.h"
 #include "ansi.h"
-
 #include "re2/re2.h"
+
+#if ENABLE_LLM
+#include "llama.h"
 #include "llm.h"
 #include "models.h"
-#include "util.h"
-#include "html.h"
-#include "color-util.h"
+#endif
+
+[[maybe_unused]]
+static constexpr int VERBOSE = 2;
 
 using Rephrasable = Rephrasing::Rephrasable;
-using Candidates = LLM::Candidates;
 
-static constexpr int VERBOSE = 2;
+#if ENABLE_LLM
+using Candidates = LLM::Candidates;
 
 // Hack!
 static constexpr int TAIL_TOKEN_HEADROOM = 5;
@@ -225,7 +231,8 @@ struct Database {
 
   static Path ParsePath(const std::string &str) {
     static const RE2 node_re(
-        " *([0-9]+) +([0-9]+) +([0-9A-Fa-f]+) +([0-9A-Fa-f]+) +([0-9A-Fa-f]+) *");
+        " *([0-9]+) +([0-9]+) "
+        "+([0-9A-Fa-f]+) +([0-9A-Fa-f]+) +([0-9A-Fa-f]+) *");
     Path path;
     re2::StringPiece input(str);
     // while (!input.empty() && input[0] == ' ') input.remove_prefix(1);
@@ -334,7 +341,8 @@ struct Database {
         std::string &score_line = lines[roff + 2];
         DatabaseRow row;
         std::string text_content;
-        CHECK(RE2::FullMatch(text_line, text_re, &text_content)) << Error("text");
+        CHECK(RE2::FullMatch(text_line, text_re, &text_content)) <<
+          Error("text");
         row.text = Unescape(text_content);
         row.path = ParsePath(path_line);
         char valid = 0;
@@ -429,14 +437,6 @@ struct RephrasingImpl : public Rephrasing {
         double score = avg_p * node.p_next;
 
         if (VERBOSE > 2) {
-          /*
-          printf(AGREY("%d") "=%s " AGREY("d%d") " %s ~%s",
-                 node.token,
-                 llm->TokenString(node.token).c_str(),
-                 node.depth,
-                 ColorProb(path[i].p).c_str(),
-                 ColorProb(total_p / (i + 1)).c_str());
-          */
           printf(AGREY("%s") " " ACYAN("%.3f") " * " ABLUE("%.3f")
                  " = %s ",
                  llm->TokenString(node.token).c_str(),
@@ -726,36 +726,6 @@ struct RephrasingImpl : public Rephrasing {
     // the path.
     (void)Util::TryStripSuffix("</P>", &text);
 
-    #if 0
-    std::string suffix = " </P>";
-    while (!suffix.empty() && !path.empty()) {
-      int tok = path.back().token;
-      std::string stok = llm->TokenString(tok);
-
-      if (Util::TryStripSuffix(stok, &suffix)) {
-        printf("Stripped %d = " APURPLE("%s") "\n", tok, stok.c_str());
-        path.pop_back();
-      } else {
-        if (suffix == " ") {
-          // OK to leave this.
-          printf("Stripping up to space character.");
-        } else {
-          printf(ARED("Unable to strip </P> suffix :(") "\n");
-        }
-        break;
-      }
-    }
-    #endif
-
-    #if 0
-    // XXX one tokenization of </ P >.
-    // A better way would be to stringify the tokens and see if
-    // they match the string </P>.
-    if (!path.empty() && path.back().token == 29958) path.pop_back();
-    if (!path.empty() && path.back().token == 29925) path.pop_back();
-    if (!path.empty() && path.back().token == 829) path.pop_back();
-    #endif
-
     if (VERBOSE > 1) {
       printf("\n");
     }
@@ -767,7 +737,8 @@ struct RephrasingImpl : public Rephrasing {
     DocTree doc;
     std::string error;
     if (!normal_termination) error = "invalid termination";
-    const bool valid = normal_termination && Rejoin(rephrasable, text, &doc, &error);
+    const bool valid = normal_termination &&
+      Rejoin(rephrasable, text, &doc, &error);
     if (valid) {
       if (VERBOSE > 1) {
         printf(AGREEN("Valid") ".\n");
@@ -877,7 +848,37 @@ struct RephrasingImpl : public Rephrasing {
   bool dirty = false;
 };
 
-}  // namespace
+#else
+
+// When LLM is disabled, we can't do renaming.
+struct RephrasingImpl : public Rephrasing {
+  RephrasingImpl(const std::string &database_file) {}
+  ~RephrasingImpl() override = default;
+
+  bool IsDirty() const override { return false; }
+  void Save() override {}
+
+  bool Rephrase(const Rephrasable &rephrasable) override {
+    return false;
+  }
+
+  std::vector<std::pair<double, std::string>> GetRephrasings(
+      const Rephrasable &rephrasable) override {
+    return {};
+  }
+
+  int GetNumRephrasings(const Rephrasable &rephrasable) override {
+    return 0;
+  }
+
+  // Get the database key, which depends on the context, text, and
+  // current model. It is ASCII.
+  std::string DatabaseKey(const Rephrasable &rephrasable) override {
+    LOG(FATAL) << "Rephrasing is not enabled.";
+  }
+};
+
+#endif
 
 static bool IsSpace(char c) {
   switch (c) {
@@ -939,7 +940,8 @@ bool Rephrasing::Rejoin(
   std::set<int> images_used;
   bool failed = false;
   std::function<DocTree(const HTMLNode &node)> Rec =
-    [&rephrasable, error, &failed, &Rec, &images_used](const HTMLNode &node) -> DocTree {
+    [&rephrasable, error, &failed, &Rec, &images_used](
+        const HTMLNode &node) -> DocTree {
       if (failed) return DocTree();
       if (node.is_tag) {
         if (node.str == "span") {

@@ -1,6 +1,8 @@
 
 default: bovex.exe monospace.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe
 
+ENABLE_LLM=false
+
 # Changes by tom7.
 # Also add -static to LFLAGS below
 # Also add /c/code/openblas/include to
@@ -16,6 +18,7 @@ LLAMA_CLBLAST=true
 
 UNAME := $(shell uname -o)
 
+
 ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
   CC=x86_64-w64-mingw32-gcc
@@ -29,6 +32,11 @@ ifeq ($(UNAME),Cygwin)
   PLATFORM_CFLAGS=
   OPTFLAGS= -O3 -flto=auto -march=native -mtune=native
 #  OPTFLAGS=-O -g
+else ifeq ($(UNAME),Darwin)
+  CC=/usr/local/opt/llvm/bin/clang
+  CXX=/usr/local/opt/llvm/bin/clang++
+  LDFLAGS += -L/usr/local/opt/llvm/lib/c++ -Wl,-rpath,/usr/local/opt/llvm/lib/c++ -L/usr/local/opt/llvm/lib
+  CPPFLAGS += -I/usr/local/opt/llvm/include
 else
 # Linux (and msys2)
   CXX=g++
@@ -37,10 +45,10 @@ else
   # OPTFLAGS=-O
   PLATFORM_CFLAGS=-g -D_GNU_SOURCE
   ifdef ASAN
-  OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
-  PLATFORM_LDFLAGS += -Wl,--stack,167772160
-else
-  OPTFLAGS=-O3 -march=native -mtune=native
+    OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
+    PLATFORM_LDFLAGS += -Wl,--stack,167772160
+  else
+    OPTFLAGS=-O3 -march=native -mtune=native
   endif
 endif
 
@@ -90,6 +98,7 @@ CFLAGS   = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) $(TOM7_INCLUD
 CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I./examples -std=c++20 -fPIC $(PLATFORM_CFLAGS)
 LDFLAGS  = $(OPTFLAGS) $(TOM7_LIBS) -m64 $(PLATFORM_LDFLAGS)
 
+
 ifndef LLAMA_DEBUG
 	CFLAGS   += -DNDEBUG
 	CXXFLAGS += -DNDEBUG
@@ -98,6 +107,9 @@ endif
 # warnings
 CFLAGS   += -Wall -Wextra -Wcast-qual -Wdouble-promotion -Wshadow -Wstrict-prototypes -Wpointer-arith
 CXXFLAGS += -Wall -Wextra -Wcast-qual -Wshadow-field -Wno-unused-parameter -Wno-unused-function -Wno-multichar
+
+## begin enable LLM
+ifeq ($(ENABLE_LLM), true)
 
 # OS specific
 # TODO: support Windows
@@ -219,6 +231,9 @@ ifneq ($(filter armv8%,$(UNAME_M)),)
 	CFLAGS += -mfp16-format=ieee -mno-unaligned-access
 endif
 
+# end enable LLM
+endif
+
 LLAMA_HEADERS = $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-alloc.h $(LLAMA_DIR)/ggml-backend-impl.h $(LLAMA_DIR)/ggml-backend.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/ggml-impl.h $(LLAMA_DIR)/ggml-metal.h $(LLAMA_DIR)/ggml-mpi.h $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-quants.h $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/unicode.h
 
 ggml-opencl.o: $(LLAMA_DIR)/ggml-opencl.cpp $(LLAMA_HEADERS)
@@ -255,15 +270,22 @@ LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_
 
 LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o execution.o document.o pdf-document.o rephrasing.o achievements.o
 
-BOVEX_OBJECTS=$(LANG_OBJECTS) $(LLM_OBJECTS) $(LLAMA_OBJECTS)
+BOVEX_OBJECTS=$(LANG_OBJECTS)
+BOVEX_HEADERS=*.h
 
-%.o : %.cc *.h $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
+ifeq ($(ENABLE_LLM), true)
+	BOVEX_OBJECTS += $(LLM_OBJECTS) $(LLAMA_OBJECTS)
+	BOVEX_HEADERS += $(LLM_DIR)/llm.h $(LLM_DIR)/nfa.h $(LLM_DIR)/nfa-util.h $(LLAMA_HEADERS)
+	CXXFLAGS += -DENABLE_LLM=1
+endif
+
+%.o : %.cc $(BOVEX_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
 # Parser takes a uniquely long time to compile, so don't make it
 # depend on every header.
-parsing.o : parsing.cc parsing.h el.h lexing.h $(CC_LIB)/parser-combinators.h $(LLAMA_HEADERS)
+parsing.o : parsing.cc parsing.h inclusion.h el.h lexing.h $(CC_LIB)/parser-combinators.h
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
