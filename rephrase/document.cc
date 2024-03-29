@@ -1181,6 +1181,38 @@ void Document::PlaceStickersRec(Context context,
   }
 }
 
+std::string Font::Name() const {
+  LOG(FATAL) << "Font base class does not have font names.";
+  return "";
+}
+
+
+std::optional<double>
+Font::GetKerning(int codepoint1, int codepoint2) const {
+  return std::nullopt;
+}
+
+double Font::CharWidth(int codepoint) const {
+  LOG(FATAL) << "Font base class cannot produce widths.";
+  return 0.0;
+}
+
+double Font::GetKernedWidth(const std::string &text) const {
+  LOG(FATAL) << "Font base class cannot produce widths.";
+  return 0.0;
+}
+
+void Page::DrawText(const Font *font,
+                    const std::string &text, double size,
+                    double x, double y,
+                    uint32_t color) {
+}
+
+void Page::DrawImage(double x, double y,
+                     double width, double height,
+                     const ImageRGBA &image) {
+}
+
 Page::Page() {}
 Font::Font() {}
 Document::Document() {}

@@ -10,7 +10,7 @@ ENABLE_LLM=false
 LLAMA_CLBLAST=true
 # It's crashing or doing something weird? You're always
 # being too clever with std::move!
-# ASAN=true
+ASAN=true
 
 # Pro-tip for understanding compilation time:
 #  -ftime-trace
@@ -24,8 +24,6 @@ ifeq ($(UNAME),Cygwin)
   CC=x86_64-w64-mingw32-gcc
   CXX=x86_64-w64-mingw32-g++
   # CUDA_PATH=../../cuda
-  # TOM7_INCLUDES=-I../../openblas/include -I../../cuda/include
-  # TOM7_LIBS=-L../../openblas/lib -L$(CUDA_PATH)/lib/x64 -static
   PLATFORM_LDFLAGS=-Wl,--subsystem,console -lpsapi -static
   # LLAMA_OPENBLAS=1
   # LLAMA_CUBLAS=1
@@ -37,6 +35,13 @@ else ifeq ($(UNAME),Darwin)
   CXX=/usr/local/opt/llvm/bin/clang++
   LDFLAGS += -L/usr/local/opt/llvm/lib/c++ -Wl,-rpath,/usr/local/opt/llvm/lib/c++ -L/usr/local/opt/llvm/lib
   CPPFLAGS += -I/usr/local/opt/llvm/include
+  ifdef ASAN
+    OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
+    # PLATFORM_LDFLAGS += -Wl,--stack,167772160
+  else
+    OPTFLAGS=-O3 -march=native -mtune=native
+  endif
+
 else
 # Linux (and msys2)
   CXX=g++
@@ -94,8 +99,8 @@ endif
 
 # keep standard at C11 and C++11
 
-CFLAGS   = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) $(TOM7_INCLUDES) -std=c11   -fPIC $(PLATFORM_CFLAGS)
-CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I./examples -std=c++20 -fPIC $(PLATFORM_CFLAGS)
+CFLAGS   = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -std=c11 -fPIC $(PLATFORM_CFLAGS)
+CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -std=c++20 -fPIC $(PLATFORM_CFLAGS)
 LDFLAGS  = $(OPTFLAGS) $(TOM7_LIBS) -m64 $(PLATFORM_LDFLAGS)
 
 
@@ -268,7 +273,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o execution.o document.o pdf-document.o rephrasing.o achievements.o
+LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o document.o pdf-document.o rephrasing.o achievements.o execution.o
 
 BOVEX_OBJECTS=$(LANG_OBJECTS)
 BOVEX_HEADERS=*.h
@@ -281,13 +286,13 @@ endif
 
 %.o : %.cc $(BOVEX_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
-	@echo -n "."
+#	@echo -n "."
 
 # Parser takes a uniquely long time to compile, so don't make it
 # depend on every header.
 parsing.o : parsing.cc parsing.h inclusion.h el.h lexing.h $(CC_LIB)/parser-combinators.h
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
-	@echo -n "."
+#	@echo -n "."
 
 
 monospace.exe : monospace.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)

@@ -236,7 +236,7 @@ const Exp *Parsing::Parse(AstPool *pool,
       },
   };
 
-  const auto TypeExpr =
+  const auto TypeExprBase =
     Fix<Token, const Type *>([&](const auto &Self) {
         auto RecordType =
           (IsToken<LBRACE>() >>
@@ -330,6 +330,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         return +FixityElement /= ResolveTypeFixity;
       });
 
+  auto TypeExpr = MemoizedParser(TypeExprBase);
 
   // Patterns.
 
@@ -430,7 +431,7 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // Need to also expose AtomicPattern, since "fun f p1 p2 p3 = ..."
   // uses it.
-  const auto &[AtomicPattern, Pattern] =
+  const auto &[AtomicPatternBase, PatternBase] =
     Fix2<Token, const Pat *, const Pat *>(
 
         [&](const auto &AtomicSelf, const auto &Self) {
@@ -504,6 +505,9 @@ const Exp *Parsing::Parse(AstPool *pool,
                 }
               };
         });
+
+  auto AtomicPattern = MemoizedParser(AtomicPatternBase);
+  auto Pattern = MemoizedParser(PatternBase);
 
   // Because AppPattern is actually where var patterns are parsed (as
   // the singleton instance of app patterns), we need to re-add that
@@ -1040,10 +1044,11 @@ const Exp *Parsing::Parse(AstPool *pool,
               };
 
           auto WithExpr =
-            (WithoutExpr && *(IsToken<WITH>() >>
-                             Opt(IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
-                             Id &&
-                             (IsToken<EQUALS>() >> WithoutExpr)))
+            (WithoutExpr &&
+             *(IsToken<WITH>() >>
+               Opt(IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
+               Id &&
+               (IsToken<EQUALS>() >> WithoutExpr)))
             >[&](const auto &pair) -> const Exp * {
                 const auto &[e, withs] = pair;
                 const Exp *ret = e;

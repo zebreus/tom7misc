@@ -173,7 +173,6 @@ void PDFDocument::SetDocumentInfoStrings(
   pdf->SetInfo(info);
 }
 
-
 // These draw routines are just like their counterparts in PDF, except
 // except that the y coordinates are flipped. We only use y-down
 // coordinates ("regular graphics coordinates") in BoVeX, and
