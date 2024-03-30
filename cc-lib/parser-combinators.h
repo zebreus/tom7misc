@@ -143,19 +143,11 @@ struct ParserWrapper {
   }
 
   #endif
-  //
-  ParserWrapper &operator=(const ParserWrapper &other) {
-    if (PARSE_VERBOSE) printf("PW assignment\n");
-    if (this == &other) return *this;
-    func = other.func;
-    return *this;
-  }
 
-  /*
-  ParserWrapper(ParserWrapper &&other) : func(other) {
-    printf("PW move\n");
-  }
-  */
+  ParserWrapper(const ParserWrapper&) = default;
+  ParserWrapper(ParserWrapper&&) = default;
+  ParserWrapper& operator=(const ParserWrapper&) = default;
+  ParserWrapper& operator=(ParserWrapper&&) = default;
 
   template <typename F>
   explicit ParserWrapper(F&& f, const char *src) :

@@ -248,6 +248,13 @@ struct Util {
 
   static bool IsWhitespace(char c);
 
+  template<class F>
+  static std::string RemoveCharsMatching(
+      std::string_view s, const F &f);
+
+  static std::string RemoveChar(std::string_view s, char c);
+
+
   /* try to remove the file. If it
      doesn't exist or is successfully
      removed, then return true. */
@@ -413,6 +420,18 @@ std::vector<std::string> Util::Fields(const std::string &s, F f) {
   }
   out.emplace_back(s, start, string::npos);
   return out;
+}
+
+template<class F>
+std::string Util::RemoveCharsMatching(
+    std::string_view s, const F &f) {
+  std::string ret;
+  ret.reserve(s.size());
+  for (int i = 0; i < (int)s.size(); i++) {
+    char c = s[i];
+    if (!f(c)) ret.push_back(c);
+  }
+  return ret;
 }
 
 

@@ -53,6 +53,41 @@ static void TestParse() {
   }
 
   {
+    const Exp *e = Parse("0xCC71B0");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::INT);
+    CHECK(e->integer == 0xCC71B0);
+  }
+
+  {
+    const Exp *e = Parse("0xCC.71.B0");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::INT);
+    CHECK(e->integer == 0xCC71B0);
+  }
+
+  {
+    const Exp *e = Parse("0d987654321");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::INT);
+    CHECK(e->integer == 987654321);
+  }
+
+  {
+    const Exp *e = Parse("0o76543210");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::INT);
+    CHECK(e->integer == 076543210);
+  }
+
+  {
+    const Exp *e = Parse("0b0000101010");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::INT);
+    CHECK(e->integer == 42);
+  }
+
+  {
     const Exp *e = Parse("-1234.5");
     CHECK(e != nullptr);
     CHECK(e->type == ExpType::FLOAT);

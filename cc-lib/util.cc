@@ -1090,6 +1090,10 @@ bool Util::IsWhitespace(char c) {
   }
 }
 
+string Util::RemoveChar(std::string_view s, char c) {
+  return RemoveCharsMatching(s, [c](char cc) { return c == cc; });
+}
+
 string Util::NormalizeWhitespace(const string &s) {
   string ret;
   // Skip at beginning.

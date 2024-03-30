@@ -166,10 +166,57 @@ const Exp *Parsing::Parse(AstPool *pool,
         return TokenStr(t);
       });
 
-  const auto BigInteger = IntLiteral >[&](const std::string &s) {
-      if (s.size() > 1 && s[0] == '0' && (s[1] < '0' || s[1] > '9')) {
-        LOG(FATAL) << "unimplemented: Numeric literals of the form "
-                   << s;
+  const auto BigInteger = IntLiteral >[&](const std::string &s_in) {
+      // . is ignored in this type of literal. We rely on lexing
+      // to distinguish a floating point literal.
+      std::string s = Util::RemoveChar(s_in, '.');
+      if (s.size() > 1 && s[0] == '0') {
+        // Handle 0x, 0b, etc.
+        const char r = s[1];
+        if (r >= '0' && r <= '9') {
+          // This is just a regular integer with a leading zero.
+          // We do not treat 0777 etc. as octal. Use 0o for that.
+          return BigInt(s);
+
+        } if (r == 'D' || r == 'd') {
+          return BigInt(s.substr(2, std::string::npos));
+
+        } if (r == 'X' || r == 'x') {
+          // Hex literal.
+          BigInt b(0);
+          for (int i = 2; i < (int)s.size(); i++) {
+            char c = s[i];
+            b = BigInt::LeftShift(std::move(b), 4);
+            b = BigInt::Plus(std::move(b), Util::HexDigitValue(c));
+          }
+          return b;
+
+        } if (r == 'B' || r == 'b') {
+          // Binary literal.
+          BigInt b(0);
+          for (int i = 2; i < (int)s.size(); i++) {
+            char c = s[i];
+            b = BigInt::LeftShift(std::move(b), 1);
+            if (c == '1') {
+              b = BigInt::Plus(std::move(b), 1);
+            }
+          }
+          return b;
+
+        } if (r == 'O' || r == 'o') {
+          // Octal literal.
+          BigInt b(0);
+          for (int i = 2; i < (int)s.size(); i++) {
+            char c = s[i];
+            b = BigInt::LeftShift(std::move(b), 3);
+            b = BigInt::Plus(std::move(b), Util::HexDigitValue(c));
+          }
+          return b;
+
+        } else {
+          LOG(FATAL) << "unimplemented: Numeric literals of the form "
+                     << s;
+        }
       }
       return BigInt(s);
     };

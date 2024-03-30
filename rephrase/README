@@ -1,0 +1,8 @@
+
+This requires a new clang; it won't work with the clang 15 that comes
+with xcode :(
+
+on os X:
+
+brew install llvm
+

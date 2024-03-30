@@ -516,8 +516,19 @@ static void TestMemMem() {
 }
 
 static void TestCase() {
-  CHECK(Util::lcase("BoVeX 999\n") == "bovex 999\n");
-  CHECK(Util::ucase("BoVeX 999\n") == "BOVEX 999\n");
+  CHECK_SEQ(Util::lcase("BoVeX 999\n"), "bovex 999\n");
+  CHECK_SEQ(Util::ucase("BoVeX 999\n"), "BOVEX 999\n");
+}
+
+static void TestRemoveChars() {
+  CHECK_SEQ(Util::RemoveCharsMatching(
+                "get out of my string!",
+                [](char c) {
+                  return c == 'a' || c == 'e' || c == 'i' ||
+                    c == 'o' || c == 'u';
+                }), "gt t f my strng!");
+  CHECK_SEQ(Util::RemoveChar("  east north  east ", ' '),
+            "eastnortheast");
 }
 
 int main(int argc, char **argv) {
@@ -546,6 +557,7 @@ int main(int argc, char **argv) {
   TestNormalizeLines();
   TestMemMem();
   TestCase();
+  TestRemoveChars();
 
   printf("OK\n");
   return 0;

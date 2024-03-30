@@ -160,20 +160,25 @@ std::optional<std::vector<Token>> Lexing::Lex(
   // character literals (u). Note that octal is not
   // allowed with just a leading 0, as C does.
   // In each case, the . character is allowed (and
-  // ignored) as a separator.
+  // ignored) as a separator, but there must be at
+  // least one non-separator digit.
   static const RE2 explicit_numeric_lit(
       "(?:"
       // hex prefix
-      "(?:0[Xx][0-9A-Fa-f.]+)"
+      "(?:0[Xx][0-9A-Fa-f.]*[0-9A-Fa-f][0-9A-Fa-f.]*)"
+      "|"
+      // decimal prefix
+      "(?:0[Dd][0-9.]*[0-9][0-9.]*)"
       "|"
       // binary prefix
-      "(?:0[Bb][01.]+)"
+      "(?:0[Bb][01.]*[01][01.]*)"
       "|"
       // octal prefix.
-      "(?:0[Oo][0-7.]+)"
+      "(?:0[Oo][0-7.]*[0-7][0-7.]*)"
       "|"
       // unicode prefix (char literal)
-      "(?:0[Uu][0-9A-Fa-f.]+)"
+      // XXX this is currently unused
+      "(?:0[Uu][0-9A-Fa-f.]*[0-9A-Fa-f][0-9A-Fa-f.]*)"
       ")");
 
   // In 1e100, the "e100" part.
