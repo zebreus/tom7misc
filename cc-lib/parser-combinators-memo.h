@@ -13,8 +13,6 @@
 
 #include "base/logging.h"
 
-static constexpr bool PARSE_VERBOSE = false;
-
 struct Unit { };
 
 // Like std::span<T>, but rooted at the beginning of the token
@@ -126,62 +124,19 @@ concept Parser = requires(P p, TokenSpan<typename P::token_type> toks) {
   { p(toks) } -> std::convertible_to<Parsed<typename P::out_type>>;
 };
 
-struct Nothing {
-  Nothing();
-  Nothing(const char *msg) {
-    if (PARSE_VERBOSE) printf("%s\n", msg);
-  }
-};
-
 template <typename Token, typename Out>
 struct ParserWrapper {
-  #if 0
-  ParserWrapper(const ParserWrapper &other) :
-    nothing("PW ctor const\n"),
-    func(other.func) {
-    printf("PW ctor const ret\n");
-  }
-
-  #endif
-  //
-  ParserWrapper &operator=(const ParserWrapper &other) {
-    if (PARSE_VERBOSE) printf("PW assignment\n");
-    if (this == &other) return *this;
-    func = other.func;
-    return *this;
-  }
-
-  /*
-  ParserWrapper(ParserWrapper &&other) : func(other) {
-    printf("PW move\n");
-  }
-  */
-
   template <typename F>
-  explicit ParserWrapper(F&& f, const char *src) :
-    nothing("PW f ctor")
-    // This gets us into an infinite loop...
-     {
-       if (PARSE_VERBOSE) printf("make fn @ %s\n", src);
-       std::function<Parsed<Out>(TokenSpan<Token>)> fn =
-         std::forward<F>(f);
-       if (PARSE_VERBOSE) printf("move fn\n");
-       func = std::move(fn);
-       if (PARSE_VERBOSE) printf("PW f ctor end\n");
-     }
+  ParserWrapper(F&& f) : func(f) {}
 
   Parsed<Out> operator ()(TokenSpan<Token> t) const {
-    if (PARSE_VERBOSE) printf("Call PW op()\n");
-    auto ret = func(t);
-    if (PARSE_VERBOSE) printf("PW func returned\n");
-    return ret;
+    return func(t);
   }
 
   using token_type = Token;
   using out_type = Out;
 
  private:
-  Nothing nothing;
   std::function<Parsed<Out>(TokenSpan<Token>)> func;
 };
 
@@ -269,21 +224,14 @@ requires std::same_as<typename A::token_type,
 inline auto operator >>(const A &a, const B &b) {
   using in = A::token_type;
   using out = B::out_type;
-  if (PARSE_VERBOSE) printf("In >>, about to call PW ctor\n");
   return ParserWrapper<in, out>(
-      // I guess this is the "problem"... the constructor
-      // for ParserWrapper ends up calling itself again,
-      // likely through Fix? Maybe Fix should be using
-      // shared_ptr or something so that it doesn't copy?
-      [a = std::make_shared<A>(a),
-       b = std::make_shared<B>(b)](TokenSpan<in> toks) -> Parsed<out> {
-        if (PARSE_VERBOSE) printf("in >> op()\n");
-        auto o1 = (*a)(toks);
+      [a, b](TokenSpan<in> toks) -> Parsed<out> {
+        auto o1 = a(toks);
         if (!o1.HasValue()) return Parsed<out>::None();
         const size_t start = o1.Length();
-        auto o2 = (*b)(toks.SubSpan(start));
+        auto o2 = b(toks.SubSpan(start));
         return ExpandLength(o2, start);
-      }, ">>");
+      });
 }
 
 // A << B
@@ -295,41 +243,39 @@ inline auto operator <<(const A &a, const B &b) {
   using in = A::token_type;
   using out = A::out_type;
   return ParserWrapper<in, out>(
-      [a = std::make_shared<A>(a),
-       b = std::make_shared<B>(b)](
-          TokenSpan<in> toks) -> Parsed<out> {
-        auto o1 = (*a)(toks);
+      [a, b](TokenSpan<in> toks) -> Parsed<out> {
+        auto o1 = a(toks);
         if (!o1.HasValue()) return Parsed<out>::None();
         const size_t start = o1.Length();
-        auto o2 = (*b)(toks.SubSpan(start));
+        auto o2 = b(toks.SubSpan(start));
         if (!o2.HasValue()) return Parsed<out>::None();
         return ExpandLength(o1, o2.Length());
-      }, "<<");
+      });
 }
 
 // Parse both A and B. Produce a pair of the results.
 template<Parser A, Parser B>
 requires std::same_as<typename A::token_type,
                       typename B::token_type>
-inline auto operator &&(const A &a, const B &b) {
+inline auto operator &&(const A &a,
+                        const B &b) {
   using in = A::token_type;
   using out1 = A::out_type;
   using out2 = B::out_type;
   return ParserWrapper<in, std::pair<out1, out2>>(
-      [a = std::make_shared<A>(a),
-       b = std::make_shared<B>(b)](TokenSpan<in> toks) ->
+      [a, b](TokenSpan<in> toks) ->
       Parsed<std::pair<out1, out2>> {
-        auto o1 = (*a)(toks);
+        auto o1 = a(toks);
         if (!o1.HasValue())
           return Parsed<std::pair<out1, out2>>::None();
         const size_t start = o1.Length();
-        auto o2 = (*b)(toks.SubSpan(start));
+        auto o2 = b(toks.SubSpan(start));
         if (!o2.HasValue())
           return Parsed<std::pair<out1, out2>>::None();
         return Parsed<std::pair<out1, out2>>(
             std::make_pair(o1.Value(), o2.Value()),
             start + o2.Length());
-      }, "&&");
+      });
 }
 
 template<Parser A, Parser B>
@@ -337,21 +283,19 @@ requires std::same_as<typename A::token_type,
                       typename B::token_type> &&
          std::same_as<typename A::out_type,
                       typename B::out_type>
-inline auto operator ||(const A &a_in, const B &b_in) {
+inline auto operator ||(const A &a, const B &b) {
   using in = A::token_type;
   using out = A::out_type;
   return ParserWrapper<in, out>(
-      [a = std::make_shared<A>(a_in),
-       b = std::make_shared<B>(b_in)](
-          TokenSpan<in> toks) ->
+      [a, b](TokenSpan<in> toks) ->
       Parsed<out> {
-        auto o1 = (*a)(toks);
+        auto o1 = a(toks);
         if (o1.HasValue()) {
           return o1;
         } else {
-          return (*b)(toks);
+          return b(toks);
         }
-      }, "||");
+      });
 }
 
 // One or zero. Always succeeds with std::optional<>.
@@ -360,15 +304,15 @@ inline auto Opt(const A &a) {
   using in = A::token_type;
   using out = std::optional<typename A::out_type>;
   return ParserWrapper<in, out>(
-      [a = std::make_shared<A>(a)](TokenSpan<in> toks) ->
+      [a](TokenSpan<in> toks) ->
       Parsed<out> {
-        auto o = (*a)(toks);
+        auto o = a(toks);
         if (!o.HasValue())
           return Parsed<out>(std::nullopt, 0);
         return Parsed<out>(
             std::make_optional(o.Value()),
             o.Length());
-      }, "Opt");
+      });
 }
 
 // If successful, pair the result with its position,
@@ -379,16 +323,16 @@ inline auto Mark(const A &a) {
   using in = A::token_type;
   using out = std::tuple<typename A::out_type, size_t, size_t>;
   return ParserWrapper<in, out>(
-      [a = std::make_shared<A>(a)](TokenSpan<in> toks) ->
+      [a](TokenSpan<in> toks) ->
       Parsed<out> {
-        auto o = (*a)(toks);
+        auto o = a(toks);
         if (!o.HasValue())
           return Parsed<out>::None();
 
         return Parsed<out>(
             std::make_tuple(o.Value(), toks.StartOffset(), o.Length()),
             o.Length());
-      }, "Mark");
+      });
 }
 
 
@@ -400,12 +344,12 @@ inline auto operator *(const A &a) {
   using in = A::token_type;
   using out = std::vector<typename A::out_type>;
   return ParserWrapper<in, out>(
-      [a = std::make_shared<A>(a)](TokenSpan<in> toks) ->
+      [a](TokenSpan<in> toks) ->
       Parsed<out> {
         std::vector<typename A::out_type> ret;
         size_t total_len = 0;
         for (;;) {
-          auto o = (*a)(toks);
+          auto o = a(toks);
           if (!o.HasValue())
             return Parsed<out>(ret, total_len);
           const size_t one_len = o.Length();
@@ -413,7 +357,7 @@ inline auto operator *(const A &a) {
           ret.push_back(o.Value());
           toks = toks.SubSpan(one_len);
         }
-      }, "*");
+      });
 }
 
 // A >f
@@ -427,13 +371,12 @@ inline auto operator >(const A &a, const F &f) {
   // Get the result type of applying f to the result of a.
   using out = decltype(f(std::declval<a_out>()));
   return ParserWrapper<in, out>(
-      [a = std::make_shared<A>(a),
-       f = std::make_shared<F>(f)](TokenSpan<in> toks) ->
+      [a, f](TokenSpan<in> toks) ->
       Parsed<out> {
-        auto o = (*a)(toks);
+        auto o = a(toks);
         if (!o.HasValue()) return Parsed<out>::None();
-        else return Parsed<out>((*f)(o.Value()), o.Length());
-      }, ">");
+        else return Parsed<out>(f(o.Value()), o.Length());
+      });
 }
 
 template <typename T>
@@ -452,15 +395,14 @@ inline auto operator /=(const A &a, const F &f) {
   // Get the result type of applying f to the result of a.
   using out = decltype(f(std::declval<a_out>()))::value_type;
   return ParserWrapper<in, out>(
-      [a = std::make_shared<A>(a),
-       f = std::make_shared<F>(f)](TokenSpan<in> toks) ->
+      [a, f](TokenSpan<in> toks) ->
       Parsed<out> {
-        auto o = (*a)(toks);
+        auto o = a(toks);
         if (!o.HasValue()) return Parsed<out>::None();
-        auto fo = (*f)(o.Value());
+        auto fo = f(o.Value());
         if (!fo.has_value()) return Parsed<out>::None();
         else return Parsed<out>(fo.value(), o.Length());
-      }, "/=");
+      });
 }
 
 
@@ -476,8 +418,7 @@ inline auto operator >=(const A &a, const F &f) {
   using f_arg_type = std::declval<Parsed<a_out>>();
   using out = decltype(f());
   return ParserWrapper<in, out>(
-      [a = std:make_shared<A>(a),
-       f = std::make_shared<F>(f)](TokenSpan<in> toks) ->
+      [a, f](TokenSpan<in> toks) ->
       Parsed<out> {
         return f(a)(toks);
       });
@@ -573,30 +514,23 @@ template<bool MEMOIZE,
          class Token, class Out1, class Out2, class F1, class F2>
 struct RecursiveParsers2 {
 
-  Nothing nothing;
+  template<class F1_, class F2_>
+  RecursiveParsers2(F1_ &&f1_in, F2_ &&f2_in) :
+    f1(std::forward<F1_>(f1_in)),
+    f2(std::forward<F2_>(f2_in)),
+    p1(MEMOIZE ?
+       ParserWrapper<Token, Out1>(
+           MemoizedParser(
+               ParserWrapper<Token, Out1>(
+                   [this](TokenSpan<Token> toks) {
+                     return this->f1(p1, p2)(toks);
+                   }))) :
+       ParserWrapper<Token, Out1>(
+           [this](TokenSpan<Token> toks) {
+             return this->f1(p1, p2)(toks);
+           })),
 
-  // template<class F1_, class F2_>
-  // RecursiveParsers2(F1_ &&f1_in, F2_ &&f2_in) :
-  RecursiveParsers2(F1 &&f1_in, F2 &&f2_in) :
-    nothing("RP2 ctor\n"),
-    // f1(new F1(std::forward<F1_>(f1_in))),
-    // f2(new F2(std::forward<F2_>(f2_in))),
-    f1(new F1(f1_in)),
-    f2(new F2(f2_in)),
-    p1(new ParserWrapper<Token, Out1>(
-           [this](TokenSpan<Token> toks) mutable {
-             return (*this->f1)(*p1, *p2)(toks);
-           }, "fix2.1")),
-    p2(new ParserWrapper<Token, Out2>(
-           [this](TokenSpan<Token> toks) mutable {
-             return (*this->f2)(*p1, *p2)(toks);
-           }, "fix2.2")) {
-    if (PARSE_VERBOSE)
-      printf("in rec2 ctor, %s\n", MEMOIZE ? "memoize" : "no");
-  }
-
-  /*
-        p2(MEMOIZE ?
+    p2(MEMOIZE ?
        ParserWrapper<Token, Out2>(
            MemoizedParser(
                ParserWrapper<Token, Out2>(
@@ -607,26 +541,27 @@ struct RecursiveParsers2 {
            [this](TokenSpan<Token> toks) {
         return this->f2(p1, p2)(toks);
       })) {
-  */
+
+  }
 
   static constexpr size_t tuple_size = 2;
 
-  const ParserWrapper<Token, Out1> &Get1() const { return *p1; }
-  const ParserWrapper<Token, Out2> &Get2() const { return *p2; }
+  ParserWrapper<Token, Out1> Get1() const { return p1; }
+  ParserWrapper<Token, Out2> Get2() const { return p2; }
 
   template <std::size_t Idx>
   auto get() const {
-    if constexpr (Idx == 0) return Get1();
-    else if constexpr (Idx == 1) return Get2();
+    if constexpr (Idx == 0) return p1;
+    else if constexpr (Idx == 1) return p2;
     else throw std::out_of_range("Invalid index");
   }
 
 private:
-  int padding1, padding2, padding3;
-  std::shared_ptr<F1> f1;
-  std::shared_ptr<F2> f2;
-  std::shared_ptr<ParserWrapper<Token, Out1>> p1;
-  std::shared_ptr<ParserWrapper<Token, Out2>> p2;
+  int padding1, padding2, paddgin3;
+  F1 f1;
+  F2 f2;
+  ParserWrapper<Token, Out1> p1;
+  ParserWrapper<Token, Out2> p2;
 };
 
 namespace std {
@@ -670,19 +605,15 @@ inline auto get(const RecursiveParsers2<M, Token, Out1, Out2, F1, F2> &r) {
 
 template<class Token, class Out1, class Out2, class F1, class F2>
 // requires ...
-inline auto Fix2(F1 &&f1, F2 &&f2) {
-  return RecursiveParsers2<false, Token, Out1, Out2, F1, F2>(
-      std::forward<F1>(f1),
-      std::forward<F2>(f2));
+inline auto Fix2(const F1 &f1, const F2 &f2) {
+  return RecursiveParsers2<false, Token, Out1, Out2, F1, F2>(f1, f2);
 };
 
-#if 0
 template<class Token, class Out1, class Out2, class F1, class F2>
 // requires ...
 inline auto MemoizedFix2(const F1 &f1, const F2 &f2) {
   return RecursiveParsers2<true, Token, Out1, Out2, F1, F2>(f1, f2);
 };
-#endif
 
 // Parses a b a b .... b a.
 // Returns the vector of a's results.

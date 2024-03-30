@@ -10,7 +10,7 @@ TokenSpan<char> CharSpan(const std::string &s) {
   return TokenSpan<char>(s.data(), s.size());
 }
 
-static void TestSimple() {
+static void TestBasic() {
   {
     std::string empty;
     auto po = Any<char>()(CharSpan(empty));
@@ -182,6 +182,7 @@ static void TestSimple() {
     }
   }
 
+
   {
     auto abc = Is('a') || Is('b') || Is('c');
     auto parser = Separate(abc, Is(','));
@@ -223,7 +224,6 @@ static void TestSimple() {
       Parsed<char> po = parser(CharSpan(s));
       CHECK(!po.HasValue());
     }
-
   }
 
   {
@@ -237,6 +237,38 @@ static void TestSimple() {
         });
   }
 
+
+}
+
+static void TestCrashy() {
+  // just using the first characters
+  // 'l'et D
+  // 'i'n E
+  // 'e'nd
+  // or 0
+  using exp_out = std::string;
+  using dec_out = char;
+  const auto &[E, D] =
+    Fix2<char, exp_out, dec_out>(
+        [](const auto &EE, const auto &DD) {
+          printf("in exp lambda\n");
+          auto zero = Succeed<char, std::string>("ZERO");
+          printf("Create SEQ...\n");
+          return DD >> zero;
+        },
+        // 'v'al x = E
+        [](const auto &EE, const auto &DD) {
+          printf("in dec lambda\n");
+          return Is('=');
+        });
+
+  printf("----- created parsers ------\n");
+
+  Parsed<std::string> po = E(CharSpan(""));
+  CHECK(!po.HasValue());
+}
+
+static void TestFix2() {
   {
     // just using the first characters
     // 'l'et D
@@ -268,6 +300,7 @@ static void TestSimple() {
             };
         });
 
+
     {
       Parsed<std::string> po = E(CharSpan(""));
       CHECK(!po.HasValue());
@@ -284,7 +317,6 @@ static void TestSimple() {
       CHECK(po.HasValue());
       CHECK(po.Value() == "let val x = 0 in 0 end");
     }
-
   }
 
 }
@@ -525,7 +557,16 @@ static void TestMemo() {
 }
 
 int main(int argc, char **argv) {
-  TestSimple();
+  (void)TestBasic;
+  (void)TestFix2;
+  (void)TestFixity;
+  (void)TestMark;
+  (void)TestMemo;
+  (void)TestStructuredBindings;
+
+  TestCrashy();
+  TestBasic();
+  TestFix2();
   TestFixity();
   TestMark();
   TestMemo();
