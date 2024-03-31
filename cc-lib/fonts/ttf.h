@@ -68,6 +68,14 @@ struct TTF {
                   const std::string &text, const DP &DrawPixel,
                   bool subpixel = true) const;
 
+  // This is generally preferable to the above, which I should probably
+  // deprecate. Always uses subpixel rendering.
+  template<class DP>
+  void BlitStringFloat(float x, float y, float size_px,
+                       const std::string &text, const DP &DrawPixel,
+                       bool kern);
+
+
   // Uses SCREEN COORDINATES.
   // Measure the nominal width and height of the string using the same
   // method as above. (This does not mean that all pixels lie within
@@ -414,6 +422,62 @@ void TTF::BlitString(int x, int y, int size_px,
     if (!subpixel) {
       // Or floor?
       xpos = roundf(xpos);
+    }
+  }
+}
+
+template<class DP>
+void TTF::BlitStringFloat(float x, float y, float size_px,
+                          const std::string &text, const DP &DrawPixel,
+                          bool kern) {
+  const float scale = stbtt_ScaleForPixelHeight(&font, size_px);
+
+  const float baseline = [&]() {
+      int ascent = 0;
+      stbtt_GetFontVMetrics(&font, &ascent, 0, 0);
+      return ascent * scale;
+    }();
+
+  // y position stays the same throughout.
+  const float ypos = y + baseline;
+  const int y_int = floor(ypos);
+  const float y_shift = ypos - y_int;
+
+  // Should stay integral if subpixel is false.
+  float xpos = x;
+  for (int idx = 0; idx < (int)text.size(); idx++) {
+
+    int advance = 0, left_side_bearing = 0;
+    stbtt_GetCodepointHMetrics(
+        &font, text[idx], &advance, &left_side_bearing);
+
+    int bitmap_w = 0, bitmap_h = 0;
+    // We always render the glyph's bitmap as though at 0,0.
+    int xoff = 0, yoff = 0;
+    uint8_t *bitmap = nullptr;
+
+    const int x_int = floor(xpos);
+    const float x_shift = xpos - x_int;
+    bitmap = stbtt_GetCodepointBitmapSubpixel(&font, scale, scale,
+                                              x_shift, y_shift,
+                                              text[idx],
+                                              &bitmap_w, &bitmap_h,
+                                              &xoff, &yoff);
+
+    if (bitmap != nullptr) {
+      for (int yy = 0; yy < bitmap_h; yy++) {
+        for (int xx = 0; xx < bitmap_w; xx++) {
+          DrawPixel(xpos + xx + x_int, ypos + yy + y_int,
+                    bitmap[yy * bitmap_w + xx]);
+        }
+      }
+      stbtt_FreeBitmap(bitmap, nullptr);
+    }
+
+    xpos += advance * scale;
+    if (kern && text[idx + 1] != '\0') {
+      xpos += scale *
+        stbtt_GetCodepointKernAdvance(&font, text[idx], text[idx + 1]);
     }
   }
 }
