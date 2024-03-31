@@ -181,6 +181,7 @@ struct ImageRGBA {
                                 const ImageA &alpha);
 
 private:
+  friend struct ImageResize;
   std::vector<uint8_t> ToBuffer8() const;
   int width, height;
   // Size width * height.
