@@ -108,9 +108,6 @@ struct Font {
   // Get the width of the codepoint when the font is at 1pt. You can
   // multiply by the font size to get the width at that size.
   virtual double CharWidth(int codepoint) const;
-
-  // The width of the string at 1pt.
-  virtual double GetKernedWidth(const std::string &text) const;
 };
 
 struct Page {
@@ -140,6 +137,9 @@ struct Page {
 struct Document {
   Document();
   virtual ~Document();
+
+  static double PointToPixel(double pt) { return pt; }
+  static double PixelToPoint(double px) { return px; }
 
   // Describing one of the variants of a font family.
   struct FontDescription {

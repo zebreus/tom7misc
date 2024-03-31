@@ -23,11 +23,11 @@
 
 #include "document.h"
 
+using Transform = Document::Transform;
+
 PDFFont::PDFFont(const PDF::FontObj *f) : pdf_font(f) {
   CHECK(f != nullptr);
 }
-
-using Transform = PDFDocument::Transform;
 
 const Font *PDFDocument::GetDefaultFont() {
   return GetFontByName(
@@ -123,12 +123,6 @@ PDFFont::GetKerning(int codepoint1, int codepoint2) const {
 
 double PDFFont::CharWidth(int codepoint) const {
   return pdf_font->CharWidth(codepoint);
-}
-
-// We have our own internal kerning calculation, so maybe we should be leaving
-// this out?
-double PDFFont::GetKernedWidth(const std::string &text) const {
-  return pdf_font->GetKernedWidth(text);
 }
 
 static std::string DateTimeStamp() {
@@ -227,9 +221,9 @@ void PDFPage::DrawImage(double x, double y,
             pdf_page));
 }
 
-void PDFDocument::GenerateOutput(std::string_view filename,
+void PDFDocument::GenerateOutput(std::string_view filename_base,
                                  const std::map<int, DocTree> &pages) {
-  return GeneratePDF(std::string(filename) + ".pdf", pages);
+  return GeneratePDF(std::string(filename_base) + ".pdf", pages);
 }
 
 void PDFDocument::GeneratePDF(const std::string &filename,

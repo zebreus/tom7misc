@@ -1256,7 +1256,7 @@ would simply generate the document over and over while searching
 over the parameter space, and choose the one with the least badness.
 This may also affect which rephrasings look best.
 But instead I spent my precious time implementing
-[three-d { font-name = opt-require (font-regular PALATINO),
+[three-d { font-name = font-regular PALATINO,
            width = 40.0, height = 12.0, text = "3D text" }].[cite murphy2016glend]
 
 [paragraph[Reproducibility]] The algorithm for reprhasing text tries to find the

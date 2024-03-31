@@ -15,6 +15,8 @@ val EPSILON-COEFFICIENT = 0.0000000005
 fun inch (d : float) = d *. 72.0
 fun point (d : float) = d
 fun mm (d : float) = d *. 2.8346456664
+(* We say that a pixel is the same as a point. *)
+fun pixel (d : float) = d
 
 (* Each has a maximum length of 64 characters. *)
 object PDFInfo of { creator : string,
@@ -75,8 +77,13 @@ fun font-load-family { name = family-name : string,
 fun font-family (Font { family, regular, bold, italic, bold-italic }) =
   family
 fun font-regular (Font { family, regular, bold, italic, bold-italic }) =
-  regular
-
+  case regular of
+    NONE => fail ("no regular style for " ^ family)
+  | SOME f => f
+fun font-bold (Font { family, regular, bold, italic, bold-italic }) =
+  case bold of
+    NONE => fail ("no bold style for " ^ family)
+  | SOME f => f
 
 (* some built-in fonts *)
 (* Note: These do have built-in names for the styles. We could use them
@@ -779,9 +786,7 @@ fun monospace-block-ext { left-indent, width,
   let
     (* Since we generate boxes directly, we need the actual
        font name, not the family. *)
-    val ff = case font-regular FIXEDERSYS of
-      NONE => fail "no fixedersys font?"
-    | SOME name => name
+    val ff = font-regular FIXEDERSYS
 
     fun flat-text lay =
       case layoutcase lay of

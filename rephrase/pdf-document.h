@@ -16,9 +16,6 @@
 struct PDFFont : public Font {
   // Invalid state.
   PDFFont() = default;
-  // It's just a pointer. Copy freely.
-  PDFFont(const PDFFont &other) = default;
-  PDFFont &operator =(const PDFFont &other) = default;
 
   explicit PDFFont(const PDF::FontObj *f);
   std::string Name() const override;
@@ -27,9 +24,11 @@ struct PDFFont : public Font {
   GetKerning(int codepoint1, int codepoint2) const override;
 
   double CharWidth(int codepoint) const override;
-  double GetKernedWidth(const std::string &text) const override;
 
  private:
+  PDFFont(const PDFFont &other) = delete;
+  PDFFont &operator =(const PDFFont &other) = delete;
+
   friend struct PDFDocument;
   friend struct PDFPage;
   // Not owned.
@@ -51,6 +50,9 @@ struct PDFPage : public Page {
                  const ImageRGBA &image) override;
 
  private:
+  PDFPage(const PDFPage &other) = delete;
+  PDFPage &operator =(const PDFPage &other) = delete;
+
   double FlipPageCoordinate(double y) const;
   // Not owned.
   PDF *pdf = nullptr;
@@ -68,7 +70,7 @@ struct PDFDocument : public Document {
   const Font *GetBuiltInFont(PDF::BuiltInFont bif);
   const Font *GetDefaultFont() override;
 
-  void GenerateOutput(std::string_view filename,
+  void GenerateOutput(std::string_view filename_base,
                       const std::map<int, DocTree> &pages) override;
 
   void GeneratePDF(const std::string &filename,

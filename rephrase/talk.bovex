@@ -1,0 +1,53 @@
+(*   -*- electric-indent-local-mode: nil -*- *)
+let
+  import "stdlib.bovex"
+  import "layout.bovex"
+  import "cite.bovex"
+  import "paper.bib"
+
+  (* slides info *)
+  object TalkInfo of { }
+
+  (*
+  do set-doc-info {(TalkInfo)
+                   creator = "BoVeX",
+                   producer = "Huh?",
+                   title = doc-title,
+                   author = "Tom 7",
+                   subject = "Documents do not need a 'subject'"
+                   (* leaving out date, so it is the creation time. *) }
+    *)
+
+  val tt = fixedersys
+
+  val FONT-SIZE = 12.0
+  val LINE-SPACING = 1.0
+  fun body-font lay = span
+    {(Span)
+     font-face = font-family PALATINO,
+     font-size = 12.0,
+     line-spacing = 1.0 } lay
+
+  val current-page = ref 0
+
+  (* 26 2/3 inches wide, 15 inches tall. *)
+  val LEFT-MARGIN = inch 1.0
+  val TOP-MARGIN = inch 1.0
+  fun slide title body =
+    let in
+      output (!current-page,
+              sticker {(Sticker)
+                       x = LEFT-MARGIN,
+                       y = TOP-MARGIN,
+                       font-name = font-bold PALATINO,
+                       font-size = 36.0 } title);
+      current-page := !current-page + 1
+    end
+
+
+in
+  slide [Title of slide]
+  [
+   This is the contents.
+   ]
+end

@@ -1197,11 +1197,6 @@ double Font::CharWidth(int codepoint) const {
   return 0.0;
 }
 
-double Font::GetKernedWidth(const std::string &text) const {
-  LOG(FATAL) << "Font base class cannot produce widths.";
-  return 0.0;
-}
-
 void Page::DrawText(const Font *font,
                     const std::string &text, double size,
                     double x, double y,
