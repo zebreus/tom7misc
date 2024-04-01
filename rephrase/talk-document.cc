@@ -26,6 +26,8 @@
 
 #include "document.h"
 
+static constexpr bool VERBOSE = false;
+
 static constexpr const char *DEFAULT_FONT_NAME = "FixederSys2x";
 static constexpr const char *DEFAULT_FONT_FILE = "fixedersys2x.ttf";
 
@@ -34,8 +36,10 @@ using Transform = Document::Transform;
 TalkFont::TalkFont(const std::string &name,
                    const std::string &filename) : name(name) {
   ttf.reset(new TTF(filename));
-  printf("** %s **\n", filename.c_str());
-  stbtt__print_tables(ttf->FontInfo());
+  if (VERBOSE) {
+    printf("** %s **\n", filename.c_str());
+    stbtt__print_tables(ttf->FontInfo());
+  }
 }
 
 const Font *TalkDocument::GetDefaultFont() {
@@ -132,7 +136,12 @@ void TalkPage::DrawImage(double x, double y,
                          const ImageRGBA &sticker) {
   CHECK(image.get() != nullptr);
   printf("Add image at %.11g %.11g.\n", x, y);
-  LOG(FATAL) << "DrawImage unimplemented. Easy. Resize and blit.";
+
+  // TODO: Sub-pixel resize and positioning.
+  ImageRGBA resized = ImageResize::Resize(sticker,
+                                          (int)std::round(width),
+                                          (int)std::round(height));
+  image->BlendImage((int)std::round(x), (int)std::round(y), resized);
 }
 
 void TalkDocument::GenerateOutput(std::string_view filename_base,
@@ -155,7 +164,7 @@ void TalkDocument::GenerateOutput(std::string_view filename_base,
 
     Context context;
     context.font = GetDefaultFont();
-    context.color = 0xFF0000FF;
+    context.color = 0x000000FF;
     Transform identity;
     identity.dx = 0.0;
     identity.dy = 0.0;

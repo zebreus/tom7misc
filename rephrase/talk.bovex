@@ -38,6 +38,22 @@ let
 
   val current-page = ref 0
 
+  val u2e17-png = image-load "u2e17.png"
+  val u2e17 =
+    image-inline { img = u2e17-png, height = 9.0, dy = 4.0 }
+
+  fun image-sticker { img = img as (Image img-handle), x, y, width } =
+    let
+      (* Compute height from image native dimensions. *)
+      val { width = pixel-width, height = pixel-height } = image-size img
+      val ratio : float = pixel-width / pixel-height
+      val height = width /. ratio
+  in
+    sticker {(Sticker) x = x, y = y,
+             img = img-handle, img-width = width, img-height = height} []
+  end
+
+
   (* 26 2/3 inches wide, 15 inches tall. *)
   val LEFT-MARGIN = inch 3.0
   val TOP-MARGIN = inch 3.0
@@ -47,8 +63,16 @@ let
               sticker {(Sticker)
                        x = LEFT-MARGIN,
                        y = TOP-MARGIN,
+                       font-color = 0x000044FF,
                        font-name = font-bold PALATINO,
                        font-size = 138.0 } title);
+
+      output (!current-page,
+              image-sticker { img = u2e17-png,
+                              x = LEFT-MARGIN,
+                              y = inch 7.0,
+                              width = inch 3.0 });
+
       current-page := !current-page + 1
     end
 
