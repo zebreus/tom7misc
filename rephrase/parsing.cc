@@ -479,7 +479,7 @@ const Exp *Parsing::Parse(AstPool *pool,
   // Need to also expose AtomicPattern, since "fun f p1 p2 p3 = ..."
   // uses it.
   const auto &[AtomicPatternBase, PatternBase] =
-    Fix2<Token, const Pat *, const Pat *>(
+    MemoizedFix2<Token, const Pat *, const Pat *>(
 
         [&](const auto &AtomicSelf, const auto &Self) {
           // Atomic patterns.
@@ -967,7 +967,7 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // Expression and Declaration are mutually recursive.
   const auto &[Expr, Decl] =
-    Fix2<Token, const Exp *, const Dec *>(
+    MemoizedFix2<Token, const Exp *, const Dec *>(
         [&](const auto &Expr, const auto &Decl) {
 
           // Expression parser.

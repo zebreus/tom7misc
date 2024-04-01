@@ -181,7 +181,13 @@ static int Bovex(const std::vector<std::string> &args) {
     printf(AWHITE("Running") ".\n");
     fflush(stdout);
   }
+  Timer exec_timer;
   execution.RunToCompletion(&state);
+  const double exec_sec = exec_timer.Seconds();
+
+  if (verbose > 0) {
+    printf(AWHITE("Executed") " in %s.\n", ANSI::Time(exec_sec).c_str());
+  }
 
   std::map<int, DocTree> pages = execution.ExtractPages();
   // Measure final badness.

@@ -53,6 +53,38 @@ let
              img = img-handle, img-width = width, img-height = height} []
   end
 
+  (* Place properly kerned text, but with no wrapping. *)
+  fun text-sticker { x, y } lay =
+    let
+      val lay = it (layout-map-text normalize-whitespace lay)
+      val boxes = get-boxes lay
+
+      (* Turn the line into a sticker, ignoring its width/height *)
+      fun stick-line (line : layout) : layout =
+        case layoutcase line of
+          Node (BOX, attrs, children) =>
+            sticker (attrs without (Box)width
+                     without (Box)height
+                     with x = 0.0
+                     with y = 0.0) (layout-concat children)
+        | _ => fail "expected box containing the line's stickers"
+
+    in
+      debug-print-doc boxes;
+
+      (* Hack: "infinite" line width. *)
+      case pack-boxes-horiz (BEST, LEFT-JUSTIFIED, 9999999999.0, boxes) of
+        (badness-ignored, line :: nil) =>
+          let
+            val s = stick-line (stick-horizontally line)
+          in
+            debug-print-doc s;
+            sticker {(Sticker) x = x, y = y } s
+          end
+      | _ => fail ("Expected just one line when packing boxes on " ^
+                   "an 'infinite' line.")
+    end
+
 
   (* 26 2/3 inches wide, 15 inches tall. *)
   val LEFT-MARGIN = inch 3.0
@@ -60,12 +92,12 @@ let
   fun slide title body =
     let in
       output (!current-page,
-              sticker {(Sticker)
-                       x = LEFT-MARGIN,
-                       y = TOP-MARGIN,
-                       font-color = 0x000044FF,
-                       font-name = font-bold PALATINO,
-                       font-size = 138.0 } title);
+              text-sticker { x = LEFT-MARGIN, y = TOP-MARGIN }
+              (color 0x000044FF
+               (size 136.0
+                (b
+                 (palatino
+                  title)))));
 
       output (!current-page,
               image-sticker { img = u2e17-png,
@@ -78,7 +110,7 @@ let
 
 
 in
-  slide [Tigle of slidey]
+  slide [Toggle of slidey]
   [
    This is the contents.
    ]

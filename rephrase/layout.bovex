@@ -1125,10 +1125,6 @@ fun main-text lay =
     (* XXX This should depend on the font *)
     val PARAGRAPH-VSPACE-BOTTOM = 12.0
 
-    (* Badness modifiers are compared to the badness of text
-       outside of the intended box. *)
-    val ORPHAN-LINE-BADNESS-MODIFIER = 0.125
-
     (* This returns multiple paragraphs because processing a paragraph
        may emit floaters. *)
     fun process-paragraph (p : layout) : paragraph list =
