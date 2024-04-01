@@ -41,11 +41,7 @@ struct TalkFont : public Font {
 
 struct TalkPage : public Page {
   TalkPage(int pixel_width, int pixel_height,
-           TalkDocument *talk) : Page(Document::PixelToPoint(pixel_width),
-                                      Document::PixelToPoint(pixel_height)),
-                                 talk(talk) {
-    image = std::make_unique<ImageRGBA>(pixel_width, pixel_height);
-  }
+           TalkDocument *talk);
 
   void DrawText(const Font *font,
                 const std::string &text, double size,

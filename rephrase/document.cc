@@ -732,7 +732,13 @@ std::string Document::LoadImageFile(const std::string &filename) {
 
 const Font *Document::GetFontByName(const std::string &font_name) {
   const auto it = fonts.find(font_name);
-  CHECK(it != fonts.end()) << "Unknown font name " << font_name;
+  if (it == fonts.end()) {
+    printf("Registered fonts:\n");
+    for (const auto &[font_name, _] : fonts) {
+      printf("  %s\n", font_name.c_str());
+    }
+    LOG(FATAL) << "Unknown font name " << font_name;
+  }
   CHECK(it->second.get() != nullptr) << "Null font pointer??";
   return it->second.get();
 }

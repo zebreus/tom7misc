@@ -40,7 +40,7 @@ let
                        x = LEFT-MARGIN,
                        y = TOP-MARGIN,
                        font-name = font-bold PALATINO,
-                       font-size = 36.0 } title);
+                       font-size = 96.0 } title);
       current-page := !current-page + 1
     end
 
