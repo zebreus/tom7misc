@@ -6,3 +6,7 @@ on os X:
 
 brew install llvm
 
+
+Silence runtime warning (when compiling with asan):
+export MallocNanoZone='0'
+

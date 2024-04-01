@@ -62,7 +62,8 @@ struct TTF {
   ImageA GetChar(int codepoint, int size);
 
   // Pass DrawPixel(int x, int y, uint8 v) which should do the pixel blending.
-  // XXX y position is the baseline, I think, but I have not really tested this.
+  // y position is the top of the font.
+  // Prefer BlitStringFloat.
   template<class DP>
   void BlitString(int x, int y, int size_px,
                   const std::string &text, const DP &DrawPixel,
@@ -70,6 +71,8 @@ struct TTF {
 
   // This is generally preferable to the above, which I should probably
   // deprecate. Always uses subpixel rendering.
+  //
+  // y position is baseline.
   template<class DP>
   void BlitStringFloat(float x, float y, float size_px,
                        const std::string &text, const DP &DrawPixel,
@@ -432,14 +435,8 @@ void TTF::BlitStringFloat(float x, float y, float size_px,
                           bool kern) {
   const float scale = stbtt_ScaleForPixelHeight(&font, size_px);
 
-  const float baseline = [&]() {
-      int ascent = 0;
-      stbtt_GetFontVMetrics(&font, &ascent, 0, 0);
-      return ascent * scale;
-    }();
-
   // y position stays the same throughout.
-  const float ypos = y + baseline;
+  const float ypos = y;
   const int y_int = floor(ypos);
   const float y_shift = ypos - y_int;
 
@@ -467,11 +464,19 @@ void TTF::BlitStringFloat(float x, float y, float size_px,
     if (bitmap != nullptr) {
       for (int yy = 0; yy < bitmap_h; yy++) {
         for (int xx = 0; xx < bitmap_w; xx++) {
-          DrawPixel(xpos + xx + x_int, ypos + yy + y_int,
+          DrawPixel(xoff + x_int + xx, yoff + y_int + yy,
                     bitmap[yy * bitmap_w + xx]);
         }
       }
       stbtt_FreeBitmap(bitmap, nullptr);
+    }
+
+    if (false) {
+      for (int yy = 0; yy < bitmap_h; yy++) {
+        for (int xx = 0; xx < bitmap_w; xx++) {
+          DrawPixel(x_int + xx, y_int - bitmap_h + yy, 0x44);
+        }
+      }
     }
 
     xpos += advance * scale;

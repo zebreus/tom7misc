@@ -34,6 +34,8 @@ using Transform = Document::Transform;
 TalkFont::TalkFont(const std::string &name,
                    const std::string &filename) : name(name) {
   ttf.reset(new TTF(filename));
+  printf("** %s **\n", filename.c_str());
+  stbtt__print_tables(ttf->FontInfo());
 }
 
 const Font *TalkDocument::GetDefaultFont() {
