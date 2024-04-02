@@ -86,8 +86,8 @@ fun font-bold (Font { family, regular, bold, italic, bold-italic }) =
   | SOME f => f
 
 (* some built-in fonts *)
-(* Note: These do have built-in names for the styles. We could use them
-   here. *)
+(* Note: These do have built-in names for the styles in PDF.
+   We could use them here. *)
 val HELVETICA : font-family = Font { family = "helvetica",
                                      regular = NONE,
                                      bold = NONE,

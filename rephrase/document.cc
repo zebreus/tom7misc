@@ -29,6 +29,8 @@
 #include "base/stringprintf.h"
 #include "base/logging.h"
 
+static constexpr bool VERBOSE = false;
+
 // Could use actual infinity.
 static constexpr double INFINITE_PENALTY = 9999999.0;
 
@@ -54,7 +56,6 @@ void DocTree::ClearChildren() {
 }
 
 void DocTree::AddChild(DocTree d) {
-  // printf("Added child (now %d)\n", (int)children.size());
   children.push_back(std::make_shared<DocTree>(std::move(d)));
   CHECK(children.back().get() != nullptr);
 }
@@ -475,6 +476,11 @@ Document::BoxifyText(const TextProps &props,
 
   std::vector<DocTree> out;
 
+  if (VERBOSE) {
+    printf("Boxify text with desc " ABLUE("%s") "\n",
+           FontDescriptionString(props.desc).c_str());
+  }
+
   const Font *font = GetDescribedFont(props.desc);
 
   const double space_width = font->CharWidth(' ');
@@ -572,7 +578,7 @@ Document::BoxifyText(const TextProps &props,
             return it == codepoints.begin();
           }();
 
-        if (VERBOSE) {
+        if (true || VERBOSE) {
           printf("[%s] -> [%s] %.3f width%s%s\n",
                  Util::EncodeUTF8(prev).c_str(),
                  Util::EncodeUTF8(codepoint).c_str(),
@@ -750,6 +756,13 @@ const ImageRGBA *Document::GetImageByName(const std::string &name) {
   return it->second.get();
 }
 
+std::string Document::FontDescriptionString(const FontDescription &fd) {
+  return StringPrintf("{ font_family = %s, font_bold = %s, font_italic = %s }",
+                      fd.font_family.c_str(),
+                      fd.font_bold ? "true" : "false",
+                      fd.font_italic ? "true" : "false");
+}
+
 void Document::RegisterFont(const FontDescription &desc, const Font *f) {
   FontFamily &family = font_families[desc.font_family];
   if (desc.font_bold && desc.font_italic) {
@@ -774,6 +787,11 @@ const Font *Document::GetDescribedFont(const FontDescription &desc) {
     LOG(FATAL) << "Unknown font family: " << desc.font_family;
   }
   const FontFamily &family = it->second;
+
+  if (VERBOSE) {
+    printf("Get described font: " APURPLE("%s") "\n",
+           FontDescriptionString(desc).c_str());
+  }
 
   if (desc.font_bold && desc.font_italic && family.bold_italic)
     return family.bold_italic;
@@ -828,6 +846,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
 
   std::function<void(TextProps props, const DocTree &)> Rec =
     [this, &out, &Rec](TextProps props, const DocTree &doc) {
+
       if (doc.IsText()) {
 
         std::string normtext = NormalizeWhitespace(doc.text);

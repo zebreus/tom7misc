@@ -18,13 +18,14 @@ let
                    (* leaving out date, so it is the creation time. *) }
     *)
 
+  (*
   val GEORGIA : font-family =
     font-load-family { name = "Georgia",
                        regular = SOME "Georgia.ttf",
                        bold = SOME "GeorgiaBold.ttf",
                        italic = SOME "GeorgiaItalic.ttf",
                        bold-italic = SOME "GeorgiaBoldItalic.ttf" }
-
+*)
 
   val tt = fixedersys
 
@@ -56,7 +57,7 @@ let
   (* Place properly kerned text, but with no wrapping. *)
   fun text-sticker { x, y } lay =
     let
-      val lay = it (layout-map-text normalize-whitespace lay)
+      val lay = layout-map-text normalize-whitespace lay
       val boxes = get-boxes lay
 
       (* Turn the line into a sticker, ignoring its width/height *)
@@ -70,8 +71,6 @@ let
         | _ => fail "expected box containing the line's stickers"
 
     in
-      debug-print-doc boxes;
-
       (* Hack: "infinite" line width. *)
       case pack-boxes-horiz (BEST, LEFT-JUSTIFIED, 9999999999.0, boxes) of
         (badness-ignored, line :: nil) =>
@@ -110,7 +109,7 @@ let
 
 
 in
-  slide [Toggle of slidey]
+  slide [Toggle of Voice AVE]
   [
    This is the contents.
    ]

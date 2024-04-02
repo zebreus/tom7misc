@@ -54,6 +54,8 @@ std::string TalkDocument::LoadFontFile(const std::string &filename) {
   std::string name = StringPrintf("font%d", next_font_id);
   next_font_id++;
   fonts[name] = std::make_unique<TalkFont>(name, filename);
+  printf("Loaded " ACYAN("%s") " as " APURPLE("%s") "\n",
+         filename.c_str(), name.c_str());
   return name;
 }
 
@@ -70,8 +72,14 @@ std::string TalkFont::Name() const {
 
 std::optional<double>
 TalkFont::GetKerning(int codepoint1, int codepoint2) const {
-  // XXX we do have kerning; get it
-  return std::nullopt;
+  // PERF: This has to search some tables. Better to load this once
+  // or cache it?
+  const int k =
+    stbtt_GetCodepointKernAdvance(ttf->FontInfo(), codepoint1, codepoint2);
+  // printf("Kern for %d to %d is %d\n", codepoint1, codepoint2, k);
+  if (k == 0) return std::nullopt;
+  const double scale = stbtt_ScaleForPixelHeight(ttf->FontInfo(), 1.0);
+  return {scale * k};
 }
 
 double TalkFont::CharWidth(int codepoint) const {

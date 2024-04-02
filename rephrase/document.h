@@ -148,6 +148,9 @@ struct Document {
     bool font_italic = false;
   };
 
+  static std::string FontDescriptionString(const FontDescription &fd);
+  // static std::string TextPropsString(const TextProps &p);
+
   struct TextProps {
     FontDescription desc;
     double font_size = 12.0;

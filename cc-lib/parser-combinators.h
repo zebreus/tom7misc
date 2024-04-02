@@ -575,31 +575,32 @@ struct RecursiveParsers2 {
     // f2(new F2(std::forward<F2_>(f2_in))),
     f1(new F1(f1_in)),
     f2(new F2(f2_in)),
-    p1(new ParserWrapper<Token, Out1>(
+    p1(MEMOIZE ?
+       new ParserWrapper<Token, Out1>(
+           MemoizedParser(
+               ParserWrapper<Token, Out1>(
+                   [this](TokenSpan<Token> toks) mutable {
+                     return (*this->f1)(*p1, *p2)(toks);
+                   }, "fix2.1")), "fix2.1.m") :
+       new ParserWrapper<Token, Out1>(
            [this](TokenSpan<Token> toks) mutable {
              return (*this->f1)(*p1, *p2)(toks);
            }, "fix2.1")),
-    p2(new ParserWrapper<Token, Out2>(
+    p2(MEMOIZE ?
+       new ParserWrapper<Token, Out2>(
+           MemoizedParser(
+               ParserWrapper<Token, Out2>(
+                   [this](TokenSpan<Token> toks) mutable {
+                     return (*this->f2)(*p1, *p2)(toks);
+                   }, "fix2.2")), "fix2.2.m") :
+       new ParserWrapper<Token, Out2>(
            [this](TokenSpan<Token> toks) mutable {
              return (*this->f2)(*p1, *p2)(toks);
            }, "fix2.2")) {
-    if (PARSE_VERBOSE)
+    if (PARSE_VERBOSE) {
       printf("in rec2 ctor, %s\n", MEMOIZE ? "memoize" : "no");
+    }
   }
-
-  /*
-        p2(MEMOIZE ?
-       ParserWrapper<Token, Out2>(
-           MemoizedParser(
-               ParserWrapper<Token, Out2>(
-                   [this](TokenSpan<Token> toks) {
-                     return this->f2(p1, p2)(toks);
-                   }))) :
-       ParserWrapper<Token, Out2>(
-           [this](TokenSpan<Token> toks) {
-        return this->f2(p1, p2)(toks);
-      })) {
-  */
 
   static constexpr size_t tuple_size = 2;
 
@@ -668,13 +669,13 @@ inline auto Fix2(F1 &&f1, F2 &&f2) {
       std::forward<F2>(f2));
 };
 
-#if 0
 template<class Token, class Out1, class Out2, class F1, class F2>
 // requires ...
-inline auto MemoizedFix2(const F1 &f1, const F2 &f2) {
-  return RecursiveParsers2<true, Token, Out1, Out2, F1, F2>(f1, f2);
+inline auto MemoizedFix2(F1 &&f1, F2 &&f2) {
+  return RecursiveParsers2<true, Token, Out1, Out2, F1, F2>(
+      std::forward<F1>(f1),
+      std::forward<F2>(f2));
 };
-#endif
 
 // Parses a b a b .... b a.
 // Returns the vector of a's results.

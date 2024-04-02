@@ -318,6 +318,56 @@ struct PeepholePass : public il::Pass<> {
         }
         break;
 
+      case Primop::STRING_UPPERCASE:
+        if (ees[0]->type == ExpType::STRING) {
+          Simplified("string-uppercase primop");
+          return pool->String(Util::ucase(ees[0]->String()));
+        }
+        break;
+
+      case Primop::STRING_LOWERCASE:
+        if (ees[0]->type == ExpType::STRING) {
+          Simplified("string-lowercase primop");
+          return pool->String(Util::lcase(ees[0]->String()));
+        }
+        break;
+
+      case Primop::STRING_FIND:
+        if (ees[0]->type == ExpType::STRING &&
+            ees[1]->type == ExpType::STRING) {
+          Simplified("string-find primop");
+          const std::string &a = ees[0]->String();
+          const std::string &b = ees[1]->String();
+          auto pos = a.find(b);
+          if (pos == std::string::npos) {
+            return pool->Int(-1);
+          } else {
+            return pool->Int(pos);
+          }
+        }
+        break;
+
+      case Primop::STRING_REPLACE:
+        if (ees[0]->type == ExpType::STRING &&
+            ees[1]->type == ExpType::STRING &&
+            ees[2]->type == ExpType::STRING) {
+          const std::string &a = ees[0]->String();
+          const std::string &b = ees[1]->String();
+          const std::string &c = ees[2]->String();
+
+          // Only if the resulting string will not
+          // grow. We could say that we are
+          // reducing the number of operations and
+          // get a partial order that way, but it
+          // could easily be counterproductive.
+          if (c.size() <= b.size() ||
+              a.find(b) == std::string::npos) {
+            Simplified("string-replace primop");
+            return pool->String(Util::Replace(a, b, c));
+          }
+        }
+        break;
+
       case Primop::INT_EQ:
       case Primop::INT_NEQ:
       case Primop::INT_LESS:
@@ -365,6 +415,28 @@ struct PeepholePass : public il::Pass<> {
               case Primop::FLOAT_LESSEQ: return lhs <= rhs;
               case Primop::FLOAT_GREATER: return lhs > rhs;
               case Primop::FLOAT_GREATEREQ: return lhs >= rhs;
+              default:
+                LOG(FATAL) << "Bug";
+                return false;
+              }
+            }();
+          return pool->Bool(result);
+        }
+        break;
+
+      case Primop::STRING_EQ:
+      case Primop::STRING_LESS:
+      case Primop::STRING_GREATER:
+        if (ees[0]->type == ExpType::STRING &&
+            ees[1]->type == ExpType::STRING) {
+          Simplified("string comparison primop");
+          const std::string &lhs = ees[0]->String();
+          const std::string &rhs = ees[1]->String();
+          const bool result = [&lhs, &rhs, po]() {
+              switch (po) {
+              case Primop::STRING_EQ: return lhs == rhs;
+              case Primop::STRING_LESS: return lhs < rhs;
+              case Primop::STRING_GREATER: return lhs > rhs;
               default:
                 LOG(FATAL) << "Bug";
                 return false;
@@ -489,10 +561,37 @@ struct PeepholePass : public il::Pass<> {
         }
         break;
 
-        // TODO: string comparisons
+      case Primop::OBJ_EMPTY:
+        if (ees[0]->type == ExpType::OBJECT) {
+          const std::vector<
+            std::tuple<std::string, ObjFieldType, const Exp *>> &fields =
+            ees[0]->Object();
+          return pool->Bool(fields.empty());
+        }
+        break;
+
+      case Primop::STRING_SUBSTR:
+        // TODO
+        break;
+      case Primop::INT_DIV_TO_FLOAT:
+        // TODO
+        break;
+      case Primop::STRING_FIRST_CODEPOINT:
+        // TODO
+        break;
+      case Primop::NORMALIZE_WHITESPACE:
+        // TODO
+        break;
+
+      case Primop::STRING_TO_LAYOUT:
+        // TODO!
+        break;
 
         // TODO: more primops can be reduced!
-
+      case Primop::OUT_STRING:
+      case Primop::OUT_LAYOUT:
+      case Primop::EMIT_BADNESS:
+      case Primop::SET_DOC_INFO:
       case Primop::REF:
       case Primop::REF_GET:
       case Primop::REF_SET:
