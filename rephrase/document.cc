@@ -578,7 +578,7 @@ Document::BoxifyText(const TextProps &props,
             return it == codepoints.begin();
           }();
 
-        if (true || VERBOSE) {
+        if (VERBOSE) {
           printf("[%s] -> [%s] %.3f width%s%s\n",
                  Util::EncodeUTF8(prev).c_str(),
                  Util::EncodeUTF8(codepoint).c_str(),

@@ -522,7 +522,15 @@ static void FloatTests() {
 }
 
 static void NewTests() {
-
+  CHECK_EQ(
+      RunToString(
+          "let val r = ref 0\n"
+          "object O of { x : int }\n"
+          "in case (get-attrs (node {(O) x = !r }\n"
+          "                    (layout (let do r := 5 in \"e\" end)))) of\n"
+          "    {(O) x } => print (int-to-string x)\n"
+          "end\n"),
+      "0");
 }
 
 }  // namespace bc

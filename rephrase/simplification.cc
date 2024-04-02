@@ -587,6 +587,41 @@ struct PeepholePass : public il::Pass<> {
         // TODO!
         break;
 
+      case Primop::OBJ_MERGE:
+        // TODO
+        break;
+
+      case Primop::IS_TEXT:
+        // TODO
+        break;
+
+      case Primop::GET_TEXT:
+        // TODO
+        break;
+
+      case Primop::GET_ATTRS:
+        if (ees[0]->type == ExpType::NODE) {
+          const auto &[attrs, children] = ees[0]->Node();
+          Simplified("get-attrs primop");
+          // Maintain evaluation order.
+          std::string v = pool->NewVar("attrs");
+          pool->Let({}, v, attrs,
+                    pool->Seq(children, pool->Var({}, v)));
+        }
+        break;
+
+      case Primop::SET_ATTRS:
+        // TODO
+        break;
+
+      case Primop::LAYOUT_VEC_SUB:
+        // TODO
+        break;
+
+      case Primop::LAYOUT_VEC_SIZE:
+        // TODO
+        break;
+
         // TODO: more primops can be reduced!
       case Primop::OUT_STRING:
       case Primop::OUT_LAYOUT:
@@ -608,6 +643,9 @@ struct PeepholePass : public il::Pass<> {
         // No simplification, even with known args.
         break;
 
+      case Primop::INVALID:
+        LOG(FATAL) << "Saw invalid primop";
+        break;
       }
     }
 
@@ -631,6 +669,21 @@ struct PeepholePass : public il::Pass<> {
     }
 
     return pool->Fn(self, x, DoType(arrow_type), DoExp(body), guess);
+  }
+
+  const Exp *DoNode(const Exp *attrs,
+                    const std::vector<const Exp *> &v,
+                    const Exp *guess) override {
+    if ((opts & Simplification::O_REDUCE) &&
+        attrs->type == ExpType::OBJECT &&
+        attrs->Object().empty() &&
+        v.size() == 1) {
+      Simplified("remove trivial node");
+      return DoExp(v[0]);
+    } else {
+      // TODO: Nodes that just concatenate children
+      return Pass::DoNode(attrs, v, guess);
+    }
   }
 
   const Exp *DoLet(const std::vector<std::string> &tyvars,
