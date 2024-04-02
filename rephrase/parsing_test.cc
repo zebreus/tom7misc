@@ -865,6 +865,19 @@ static void TestParsePat() {
     CHECK(pat->str_children[1].second->type == PatType::WILD);
   }
 
+  {
+    const Pat *pat = ParsePat("{ a : int, b : string option }");
+    CHECK(pat->type == PatType::RECORD);
+    CHECK(pat->str_children.size() == 2);
+    // Might want to do unordered compare here?
+    CHECK(pat->str_children[0].first == "a");
+    CHECK(pat->str_children[0].second->type == PatType::ANN);
+    CHECK(pat->str_children[0].second->ann->type == TypeType::VAR);
+    CHECK(pat->str_children[0].second->ann->var == "int");
+    CHECK(pat->str_children[1].first == "b");
+    CHECK(pat->str_children[1].second->type == PatType::ANN);
+  }
+
 
   {
     const Pat *pat = ParsePat("(_, 7)");

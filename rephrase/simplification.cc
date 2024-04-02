@@ -622,7 +622,6 @@ struct PeepholePass : public il::Pass<> {
         // TODO
         break;
 
-        // TODO: more primops can be reduced!
       case Primop::OUT_STRING:
       case Primop::OUT_LAYOUT:
       case Primop::EMIT_BADNESS:
@@ -640,6 +639,7 @@ struct PeepholePass : public il::Pass<> {
       case Primop::PACK_BOXES:
       case Primop::ACHIEVEMENT:
       case Primop::DEBUG_PRINT_DOC:
+      case Primop::OPT:
         // No simplification, even with known args.
         break;
 

@@ -88,29 +88,33 @@ let
   (* 26 2/3 inches wide, 15 inches tall. *)
   val LEFT-MARGIN = inch 3.0
   val TOP-MARGIN = inch 3.0
-  fun slide title body =
-    let in
-      output (!current-page,
-              text-sticker { x = LEFT-MARGIN, y = TOP-MARGIN }
-              (color 0x000044FF
-               (size 136.0
-                (b
-                 (palatino
-                  title)))));
 
-      output (!current-page,
-              image-sticker { img = u2e17-png,
-                              x = LEFT-MARGIN,
-                              y = inch 7.0,
-                              width = inch 3.0 });
+  fun add-title title =
+    output (!current-page,
+            text-sticker { x = LEFT-MARGIN, y = TOP-MARGIN }
+            (size 136.0
+             (b
+              (palatino
+               title))))
 
-      current-page := !current-page + 1
+  fun next-slide () = current-page := !current-page + 1
+
+  fun bullet-slide title bullets =
+    let
+
+
+    in
+      add-title title;
+
+
+
+      next-slide()
     end
 
 
 in
-  slide [Toggle of Voice AVE]
-  [
-   This is the contents.
-   ]
+  bullet-slide [Toggle of Voice AVE]
+  ([Razors have famously high margins] ::
+   [Mixes fancy typographic quotes and ASCII ones] ::
+   [What? No!] :: nil)
 end

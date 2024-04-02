@@ -87,6 +87,8 @@ const char *PrimopString(Primop po) {
 
   case Primop::ACHIEVEMENT: return "ACHIEVEMENT";
 
+  case Primop::OPT: return "OPT";
+
   case Primop::INVALID: return "INVALID";
   }
   return "?? UNKNOWN PRIMOP ??";
@@ -168,6 +170,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::DEBUG_PRINT_DOC: return std::make_tuple(0, 1);
 
   case Primop::ACHIEVEMENT: return std::make_tuple(0, 2);
+
+  case Primop::OPT: return std::make_tuple(0, 1);
 
   case Primop::INVALID:
     LOG(FATAL) << "INVALID primop";
@@ -280,6 +284,9 @@ bool IsPrimopTotal(Primop p) {
     return false;
 
   case Primop::ACHIEVEMENT:
+    return false;
+
+  case Primop::OPT:
     return false;
 
   case Primop::INVALID:
@@ -422,6 +429,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::LAYOUT_VEC_SUB: return {{}, BinOp(Layout, Int, Layout)};
 
   case Primop::ACHIEVEMENT: return {{}, BinOp(String, String, Unit())};
+
+  case Primop::OPT: return {{}, pool->Arrow(Obj, Float)};
 
   case Primop::DEBUG_PRINT_DOC: return {{}, pool->Arrow(Layout, Unit())};
 

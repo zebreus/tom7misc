@@ -105,6 +105,8 @@ enum class Primop {
 
   ACHIEVEMENT,
 
+  OPT,
+
   DEBUG_PRINT_DOC,
 
   INVALID,

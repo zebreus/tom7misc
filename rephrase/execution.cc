@@ -99,6 +99,14 @@ void Execution::EmitBadnessHook(double badness) {
   printf("Badness " ARED("%.5f") "\n", badness);
 }
 
+double Execution::OptimizationHook(const std::string &name,
+                                   double low,
+                                   double start,
+                                   double high) {
+  printf("(Base execution does not optimize.)\n");
+  return start;
+}
+
 Document *Execution::DocumentHook() {
   return degenerate_document.get();
 }
@@ -608,6 +616,21 @@ const std::string *Execution::GetObjStringField(const char *what,
   return s;
 }
 
+const double *Execution::GetObjDoubleField(const char *what,
+                                           const std::string &field,
+                                           const map_type &obj) {
+  auto it = obj.find(
+      StringPrintf("%c%s",
+                   bc::ObjectFieldTypeTag(bc::ObjectFieldType::FLOAT),
+                   field.c_str()));
+  if (it == obj.end()) return nullptr;
+
+  const double *d = std::get_if<double>(&it->second->v);
+  CHECK(d != nullptr) << "(" << what <<
+    ") Bug: Field " << field << " with float tag should have a float value!";
+  return d;
+}
+
 const Value *Execution::GetRequiredObjField(const char *what,
                                             const std::string &field,
                                             bc::ObjectFieldType oft,
@@ -788,6 +811,21 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
     DocumentHook()->SetDocumentInfo(attrs);
     return Unit(state);
+  }
+
+  case Primop::OPT: {
+    const map_type *arg = std::get_if<map_type>(&a->v);
+    CHECK(arg != nullptr) << "Expected obj argument internal-opt";
+
+    const std::string *name = GetObjStringField("opt", "name", *arg);
+    const double *lo = GetObjDoubleField("opt", "lo", *arg);
+    const double *start = GetObjDoubleField("opt", "start", *arg);
+    const double *hi = GetObjDoubleField("opt", "hi", *arg);
+
+    CHECK(name != nullptr &&
+          lo != nullptr && start != nullptr && hi != nullptr) <<
+      "Expected { name, lo, start, hi } to opt";
+    return Float(OptimizationHook(*name, *lo, *start, *hi), state);
   }
 
   case Primop::REPHRASE_ONCE: {

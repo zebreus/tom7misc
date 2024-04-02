@@ -77,6 +77,11 @@ struct Execution {
 
   virtual void EmitBadnessHook(double badness);
 
+  virtual double OptimizationHook(const std::string &name,
+                                  double low,
+                                  double start,
+                                  double high);
+
  private:
   static std::pair<Value *, Value *>
   GetNodeParts(const char *what, Value *a);
@@ -84,6 +89,10 @@ struct Execution {
   const std::string *GetObjStringField(const char *what,
                                        const std::string &field,
                                        const map_type &obj);
+
+  const double *GetObjDoubleField(const char *what,
+                                  const std::string &field,
+                                  const map_type &obj);
 
   const Value *GetRequiredObjField(const char *what,
                                    const std::string &field,

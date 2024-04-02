@@ -416,11 +416,22 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   const auto RecordPatContents = [&](const auto &Pattern) {
       // lab = pat
-      // or
+      //   or
       // lab
+      //   or
+      // lab : type
       // (which is syntactic sugar for lab = lab).
-      auto OneField = (Label && Opt(IsToken<EQUALS>() >> Pattern))
-         >MaybeLabelPun;
+      auto OneField =
+        ((Label && (IsToken<COLON>() >> TypeExpr))
+         >[&](const auto &p) -> std::pair<std::string, const Pat *> {
+          const auto &[lab, ty] = p;
+          return std::make_pair(lab,
+                                pool->AnnPat(
+                                    pool->VarPat(lab),
+                                    ty));
+        }) ||
+        ((Label && Opt(IsToken<EQUALS>() >> Pattern))
+         >MaybeLabelPun);
 
       return Separate0(OneField, IsToken<COMMA>())
         >[&](const std::vector<std::pair<std::string, const Pat *>> &lps) ->

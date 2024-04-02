@@ -113,6 +113,8 @@ Initial::Initial(AstPool *pool) {
     {"image-props", Primop::IMAGE_PROPS},
 
     {"achievement", Primop::ACHIEVEMENT},
+    {"internal-opt", Primop::OPT},
+
     {"print", Primop::OUT_STRING},
     {"output", Primop::OUT_LAYOUT},
   };

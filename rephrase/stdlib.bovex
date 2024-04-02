@@ -410,3 +410,12 @@ fun map-tolist (Map { cmp = _, tree }) =
 
 fun rgba (r, g, b, a) : int =
   ((((r * 256) + g) * 256 + b) * 256) + a
+
+fun optimize { name : string, low : float, start: float, high : float } =
+  let
+    object InternalOpt of { name : string,
+                            lo : float, start : float, hi : float }
+  in
+    internal-opt {(InternalOpt) name = name, lo = low, start = start,
+                  hi = high }
+  end
