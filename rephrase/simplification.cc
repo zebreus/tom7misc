@@ -318,10 +318,197 @@ struct PeepholePass : public il::Pass<> {
         }
         break;
 
-        // TODO: So many more primops can be reduced!
-
-      default:
+      case Primop::INT_EQ:
+      case Primop::INT_NEQ:
+      case Primop::INT_LESS:
+      case Primop::INT_LESSEQ:
+      case Primop::INT_GREATER:
+      case Primop::INT_GREATEREQ:
+        if (ees[0]->type == ExpType::INT &&
+            ees[1]->type == ExpType::INT) {
+          Simplified("int comparison primop");
+          const BigInt &lhs = ees[0]->Int();
+          const BigInt &rhs = ees[1]->Int();
+          const bool result = [&lhs, &rhs, po]() {
+              switch (po) {
+              case Primop::INT_EQ: return BigInt::Eq(lhs, rhs);
+              case Primop::INT_NEQ: return !BigInt::Eq(lhs, rhs);
+              case Primop::INT_LESS: return BigInt::Less(lhs, rhs);
+              case Primop::INT_LESSEQ: return BigInt::LessEq(lhs, rhs);
+              case Primop::INT_GREATER: return BigInt::Greater(lhs, rhs);
+              case Primop::INT_GREATEREQ: return BigInt::GreaterEq(lhs, rhs);
+              default:
+                LOG(FATAL) << "Bug";
+                return false;
+              }
+            }();
+          return pool->Bool(result);
+        }
         break;
+
+      case Primop::FLOAT_EQ:
+      case Primop::FLOAT_NEQ:
+      case Primop::FLOAT_LESS:
+      case Primop::FLOAT_LESSEQ:
+      case Primop::FLOAT_GREATER:
+      case Primop::FLOAT_GREATEREQ:
+        if (ees[0]->type == ExpType::FLOAT &&
+            ees[1]->type == ExpType::FLOAT) {
+          Simplified("float comparison primop");
+          const bool lhs = ees[0]->Float();
+          const bool rhs = ees[1]->Float();
+          const bool result = [&lhs, &rhs, po]() {
+              switch (po) {
+              case Primop::FLOAT_EQ: return lhs == rhs;
+              case Primop::FLOAT_NEQ: return lhs != rhs;
+              case Primop::FLOAT_LESS: return lhs < rhs;
+              case Primop::FLOAT_LESSEQ: return lhs <= rhs;
+              case Primop::FLOAT_GREATER: return lhs > rhs;
+              case Primop::FLOAT_GREATEREQ: return lhs >= rhs;
+              default:
+                LOG(FATAL) << "Bug";
+                return false;
+              }
+            }();
+          return pool->Bool(result);
+        }
+        break;
+
+      case Primop::INT_TIMES:
+      case Primop::INT_PLUS:
+      case Primop::INT_MINUS:
+      case Primop::INT_DIV:
+      case Primop::INT_MOD:
+        if (ees[0]->type == ExpType::INT &&
+            ees[1]->type == ExpType::INT) {
+          Simplified("int arithmetic primop");
+
+          const BigInt &lhs = ees[0]->Int();
+          const BigInt &rhs = ees[1]->Int();
+          switch (po) {
+          case Primop::INT_TIMES:
+            return pool->Int(BigInt::Times(lhs, rhs));
+          case Primop::INT_PLUS:
+            return pool->Int(BigInt::Plus(lhs, rhs));
+          case Primop::INT_MINUS:
+            return pool->Int(BigInt::Minus(lhs, rhs));
+          case Primop::INT_DIV:
+            if (BigInt::Eq(rhs, 0)) {
+              return pool->Fail(pool->String("Division by zero (static)"),
+                                pool->IntType());
+            }
+            return pool->Int(BigInt::Div(lhs, rhs));
+          case Primop::INT_MOD:
+            if (BigInt::Eq(rhs, 0)) {
+              return pool->Fail(pool->String("Modulo by zero (static)"),
+                                pool->IntType());
+            }
+            return pool->Int(BigInt::CMod(lhs, rhs));
+          default:
+            LOG(FATAL) << "Bug";
+            return nullptr;
+          }
+        }
+        // TODO: Other reductions, like 0 - e ==> -e
+        break;
+
+      case Primop::INT_TO_STRING:
+        if (ees[0]->type == ExpType::INT) {
+          Simplified("int-to-string primop");
+          const BigInt &b = ees[0]->Int();
+          return pool->String(b.ToString());
+        }
+        break;
+
+      case Primop::INT_NEG:
+        if (ees[0]->type == ExpType::INT) {
+          Simplified("int-neg primop");
+          const BigInt &b = ees[0]->Int();
+          return pool->Int(BigInt::Negate(b));
+        }
+        break;
+
+      case Primop::INT_TO_FLOAT:
+        if (ees[0]->type == ExpType::INT) {
+          const BigInt &b = ees[0]->Int();
+          const auto io = b.ToInt();
+          if (io.has_value() &&
+              // 2^53 is supposedly the largest exactly representable;
+              // let's not cut it too close
+              io.value() <= int64_t{1} << 52 &&
+              io.value() >= -(int64_t{1} << 52)) {
+            Simplified("int-neg primop");
+            return pool->Float((double)io.value());
+          }
+        }
+        break;
+
+      case Primop::FLOAT_TIMES:
+      case Primop::FLOAT_PLUS:
+      case Primop::FLOAT_MINUS:
+      case Primop::FLOAT_DIV:
+        if (ees[0]->type == ExpType::FLOAT &&
+            ees[1]->type == ExpType::FLOAT) {
+          Simplified("float arithmetic primop");
+
+          const double lhs = ees[0]->Float();
+          const double rhs = ees[1]->Float();
+          switch (po) {
+          case Primop::FLOAT_TIMES:
+            return pool->Float(lhs * rhs);
+          case Primop::FLOAT_PLUS:
+            return pool->Float(lhs + rhs);
+          case Primop::FLOAT_MINUS:
+            return pool->Float(lhs - rhs);
+          case Primop::FLOAT_DIV:
+            return pool->Float(lhs / rhs);
+          default:
+            LOG(FATAL) << "Bug";
+            return nullptr;
+          }
+        }
+
+      case Primop::FLOAT_NEG:
+        if (ees[0]->type == ExpType::FLOAT) {
+          Simplified("float-neg primop");
+          const double d = ees[0]->Float();
+          return pool->Float(-d);
+        }
+        break;
+
+      case Primop::FLOAT_ROUND:
+        if (ees[0]->type == ExpType::FLOAT) {
+          const double d = ees[0]->Float();
+          // We can also support values outside this range, by
+          // just making sure we have the same behavior as execution.
+          // But currently we are a bit sloppy in execution, too.
+          if (d > -1e52 && d < 1e52) {
+            Simplified("float-round primop");
+            return pool->Int(std::llround(d));
+          }
+        }
+        break;
+
+        // TODO: string comparisons
+
+        // TODO: more primops can be reduced!
+
+      case Primop::REF:
+      case Primop::REF_GET:
+      case Primop::REF_SET:
+      case Primop::FONT_LOAD_FILE:
+      case Primop::FONT_REGISTER:
+      case Primop::IMAGE_LOAD_FILE:
+      case Primop::IMAGE_PROPS:
+      case Primop::REPHRASE_ONCE:
+      case Primop::REPHRASINGS:
+      case Primop::GET_BOXES:
+      case Primop::PACK_BOXES:
+      case Primop::ACHIEVEMENT:
+      case Primop::DEBUG_PRINT_DOC:
+        // No simplification, even with known args.
+        break;
+
       }
     }
 
