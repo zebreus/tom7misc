@@ -674,12 +674,67 @@ struct PeepholePass : public il::Pass<> {
   const Exp *DoNode(const Exp *attrs,
                     const std::vector<const Exp *> &v,
                     const Exp *guess) override {
-    if ((opts & Simplification::O_REDUCE) &&
-        attrs->type == ExpType::OBJECT &&
-        attrs->Object().empty() &&
-        v.size() == 1) {
-      Simplified("remove trivial node");
-      return DoExp(v[0]);
+    if (opts & Simplification::O_SIMPLIFY_LAYOUT) {
+
+      auto GetLayoutString = [](const Exp *e) -> const std::string * {
+          if (e->type != ExpType::PRIMOP) return nullptr;
+          const auto &[po, ts, es] = e->Primop();
+          if (po != Primop::STRING_TO_LAYOUT)
+            return nullptr;
+          CHECK(ts.empty() && es.size() == 1);
+          if (es[0]->type != ExpType::STRING)
+            return nullptr;
+          return &es[0]->String();
+        };
+
+      std::vector<const Exp *> vv;
+      std::function<void(const Exp *)> Rec =
+        [this, &GetLayoutString, &vv, &Rec](const Exp *ee) {
+          const Exp *e = DoExp(ee);
+          if (const std::string *s = GetLayoutString(e)) {
+            const std::string *prevs = vv.empty() ? nullptr :
+              GetLayoutString(vv.back());
+            if (prevs == nullptr) {
+              vv.push_back(e);
+            } else {
+              vv.pop_back();
+              Simplified("concat string layout");
+              vv.push_back(
+                  pool->Primop(Primop::STRING_TO_LAYOUT,
+                               {},
+                               {pool->String(*prevs + *s)}));
+            }
+          } else if (e->type == ExpType::NODE) {
+            const auto &[ca, cc] = e->Node();
+            if (ca->type == ExpType::OBJECT &&
+                ca->Object().empty()) {
+              Simplified("flatten layout child");
+              for (const Exp *child : cc) {
+                Rec(child);
+              }
+            } else {
+              vv.push_back(e);
+            }
+          } else {
+            vv.push_back(e);
+          }
+        };
+
+      for (const Exp *e : v) Rec(e);
+
+      const Exp *aa = DoExp(attrs);
+      // If there are no attributes and one child, this is equivalent
+      // to the one child.
+      if (aa->type == ExpType::OBJECT) {
+        const auto &obj = attrs->Object();
+        if (obj.empty() && v.size() == 1) {
+          Simplified("remove singleton node");
+          return vv[0];
+        }
+      }
+
+      return pool->Node(aa, vv, guess);
+
     } else {
       // TODO: Nodes that just concatenate children
       return Pass::DoNode(attrs, v, guess);
