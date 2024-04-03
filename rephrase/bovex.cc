@@ -111,6 +111,39 @@ struct BovexExecution : public bc::Execution {
 };
 }  // namespace
 
+struct BovexOpt {
+  std::vector<std::tuple<std::string, double, double, double>> vars;
+  std::unordered_map<std::string, int> var_nums;
+  BovexOpt(int verbose) : verbose(verbose) {}
+
+  GetValue(const std::string &var, double low, double start, double high) {
+    auto it = var_nums.find(var);
+    if (it == var_nums.end()) {
+      if (verbose > 0) {
+        printf("New optimization var " ACYAN("%s") "\n");
+        var_nums[var] = (int)vars.size();
+        vars.emplace_back(var, low, start, high);
+        Resize();
+        return start;
+      }
+    }
+
+    // XXX use best
+  }
+
+  void Resize() {
+    std::vector<std::pair<double, double>> bounds;
+    bounds.reserve(vars.size());
+    for (const auto &[v, lo, st, hi] : vars) {
+      bounds.emplace_back(lo, hi);
+    }
+    seq.reset(new OptSeq(std::move(bounds)));
+  }
+
+  int verbose = 0;
+  std::unique_ptr<OptSeq> seq;
+};
+
 static int Bovex(const std::vector<std::string> &args) {
   Timer timer;
   Compiler compiler;
