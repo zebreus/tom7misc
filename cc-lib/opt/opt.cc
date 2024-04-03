@@ -14,6 +14,8 @@
 // as I believe was intended (otherwise it generates samples
 // outside the range). See: github.com/avaneev/biteopt/issues/6
 //
+// Fixed some warnings (const cast, etc.)
+//
 // At the bottom are implementations of my wrapper in opt.h.
 
 
@@ -660,9 +662,9 @@ public:
    * which are sorted in the ascending cost order.
    */
 
-  const ptype** getPopParams() const
+  const ptype* const* getPopParams() const
   {
-    return( (const ptype**) PopParams );
+    return( (const ptype* const*) PopParams );
   }
 
   /**
@@ -1327,9 +1329,9 @@ public:
    * Function returns a pointer to an array of histogram names.
    */
 
-  const char** getHistNames() const
+  const char* const* getHistNames() const
   {
-    return( (const char**) HistNames );
+    return( (const char* const*) HistNames );
   }
 
   /**
@@ -3398,7 +3400,7 @@ protected:
     UseSize[ 0 ] = CurPopSize;
     UseSize[ 1 ] = ParPop.getCurPopSize();
 
-    const ptype** UseParams[ 2 ];
+    const ptype* const* UseParams[ 2 ];
     UseParams[ 0 ] = AltPop.getPopParams();
     UseParams[ 1 ] = ParPop.getPopParams();
 
@@ -3616,7 +3618,7 @@ public:
    * Function returns a pointer to an array of histogram names.
    */
 
-  const char** getHistNames() const
+  const char* const* getHistNames() const
   {
     return( CurOpt -> getHistNames() );
   }
@@ -3947,7 +3949,7 @@ inline int biteopt_minimize(
 using namespace std;
 
 void Opt::internal_minimize(
-    const int N, internal_func f, const void* data,
+    const int N, internal_func f, void* data,
     const double* lb, const double* ub, double* x, double* minf,
     const int iter, const int M, const int attc,
     const int random_seed) {
@@ -3973,7 +3975,7 @@ Opt::Minimize(int n,
     };
   std::vector<double> out(n);
   double out_v = 0.0;
-  Opt::internal_minimize(n, +wrap_f, &f,
+  Opt::internal_minimize(n, +wrap_f, (void*)&f,
                          lower_bound.data(), upper_bound.data(),
                          out.data(), &out_v, iters, depth, attempts,
                          random_seed);

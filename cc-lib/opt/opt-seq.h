@@ -1,6 +1,9 @@
 
-#ifndef _REPHRASE_OPT_SEQ_H
-#define _REPHRASE_OPT_SEQ_H
+// "Open loop" vesion of optimizer. It gives you a sequence of
+// arguments to test on, using the score as guidance.
+
+#ifndef _CC_LIB_OPT_OPT_SEQ_H
+#define _CC_LIB_OPT_OPT_SEQ_H
 
 #include <vector>
 #include <optional>

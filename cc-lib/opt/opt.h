@@ -99,7 +99,7 @@ private:
                                   void* func_data);
 
   static void internal_minimize(
-      int N, internal_func f, const void* data,
+      int N, internal_func f, void* data,
       const double* lb, const double* ub, double* x, double* minf,
       int iter, int M = 1, int attc = 10,
       int random_seed = 1);
@@ -128,7 +128,7 @@ Opt::Minimize(
     };
   std::array<double, N> out;
   double out_v = 0.0;
-  Opt::internal_minimize(N, +wrap_f, &f,
+  Opt::internal_minimize(N, +wrap_f, (void*)&f,
                          lower_bound.data(), upper_bound.data(),
                          out.data(), &out_v, iters, depth, attempts,
                          random_seed);

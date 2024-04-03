@@ -273,7 +273,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o document.o pdf-document.o talk-document.o rephrasing.o achievements.o execution.o opt-seq.o
+LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bytecode.o to-bytecode.o compiler.o document.o pdf-document.o talk-document.o rephrasing.o achievements.o execution.o
 
 BOVEX_OBJECTS=$(LANG_OBJECTS)
 BOVEX_HEADERS=*.h
@@ -349,16 +349,13 @@ hyphenation_test.exe : hyphenation_test.o hyphenation.o $(CC_LIB_OBJECTS)
 html_test.exe : html_test.o html.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-opt-seq_test.exe : opt-seq_test.o opt-seq.o $(CC_LIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
-
 test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex hyph-en-us.tex anti-aliasing.png paper.bib
 	./bovex.exe -v test.bovex -o test.pdf
 
 paper.pdf : bovex.exe paper.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex
 	./bovex.exe -v paper.bovex -o paper.pdf
 
-test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe opt-seq_test.exe
+test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
 	./html_test.exe
 	./hyphenation_test.exe
 	./lexing_test.exe
@@ -373,7 +370,7 @@ test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsi
 	./closure-conversion_test.exe
 	./compiler_test.exe
 	./execution_test.exe
-	./opt-seq_test.exe
+
 
 clean:
 	rm -f *.o $(CC_LIB_OBJECTS) $(LLM_OBJECTS) monospace.exe lexing_test.exe parsing_test.exe
