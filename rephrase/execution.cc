@@ -319,17 +319,17 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
 
   case Primop::FLOAT_PLUS: {
-    const auto &[aa, bb] = TwoFloats("float_times");
+    const auto &[aa, bb] = TwoFloats("float_plus");
     return Float(aa + bb, state);
   }
 
   case Primop::FLOAT_MINUS: {
-    const auto &[aa, bb] = TwoFloats("float_times");
+    const auto &[aa, bb] = TwoFloats("float_minus");
     return Float(aa - bb, state);
   }
 
   case Primop::FLOAT_DIV: {
-    const auto &[aa, bb] = TwoFloats("float_times");
+    const auto &[aa, bb] = TwoFloats("float_div");
     return Float(aa / bb, state);
   }
 

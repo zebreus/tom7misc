@@ -23,6 +23,7 @@
 #include "talk-document.h"
 #include "periodically.h"
 #include "rephrasing.h"
+#include "opt/opt.h"
 
 enum class OutputType {
   PDF,
@@ -75,6 +76,27 @@ struct BovexExecution : public bc::Execution {
     pages.clear();
     return out;
   }
+
+  double OptimizationHook(const std::string &name,
+                          double low,
+                          double start,
+                          double high) override {
+    auto it = opt_active.find(name);
+    if (it == opt_active.end()) {
+      opt_active[name] = std::make_tuple(low, start, high);
+    }
+
+    auto vit = opt_values.find(name);
+    if (vit == opt_values.end()) return start;
+    else return vit->second;
+  }
+
+  std::unordered_map<std::string, std::tuple<double, double, double>>
+  opt_active;
+
+  std::unordered_map<std::string, double> opt_values;
+
+
 
   bool did_rephrase = false;
 
@@ -160,10 +182,15 @@ static int Bovex(const std::vector<std::string> &args) {
   std::unique_ptr<Rephrasing> rephrasing(Rephrasing::Create(rephrase_db));
   CHECK(rephrasing.get() != nullptr);
 
-  // TODO: In a loop!
+  std::optional<double> best_badness;
+  std::optional<std::map<int, DocTree>> best_pages;
+  std::optional<std::unique_ptr<Document>> best_document;
+  bool did_rephrase = false;
 
-  std::unique_ptr<Document> document = [output_type]() ->
-    std::unique_ptr<Document> {
+  for (;;) {
+
+    std::unique_ptr<Document> document = [output_type]() ->
+      std::unique_ptr<Document> {
       switch (output_type) {
       case OutputType::PDF:
       // Dimensions should be settable from within program!
@@ -172,27 +199,47 @@ static int Bovex(const std::vector<std::string> &args) {
       case OutputType::TALK:
       return std::make_unique<TalkDocument>(1920, 1080);
       }
-  }();
+    }();
 
-  BovexExecution execution(pgm, document.get(), rephrasing.get());
-  BovexExecution::State state = execution.Start();
+    BovexExecution execution(pgm, document.get(), rephrasing.get());
+    BovexExecution::State state = execution.Start();
 
-  if (verbose > 0) {
-    printf(AWHITE("Running") ".\n");
-    fflush(stdout);
+    if (verbose > 0) {
+      printf(AWHITE("Running") ".\n");
+      fflush(stdout);
+    }
+    Timer exec_timer;
+    execution.RunToCompletion(&state);
+    const double exec_sec = exec_timer.Seconds();
+
+    if (verbose > 0) {
+      printf(AWHITE("Executed") " in %s.\n", ANSI::Time(exec_sec).c_str());
+    }
+
+    did_rephrase = did_rephrase || execution.did_rephrase;
+
+    std::map<int, DocTree> pages = execution.ExtractPages();
+
+    // Measure final badness.
+    const double total_badness = execution.total_badness;
+    printf("Total badness: " ARED("%.11g") "\n", total_badness);
+
+    if (!best_badness.has_value() || total_badness < best_badness.value()) {
+      best_badness = total_badness;
+      best_pages.emplace(std::move(pages));
+      best_document.emplace(std::move(document));
+    }
+
+    if (execution.opt_active.empty()) {
+      break;
+    }
   }
-  Timer exec_timer;
-  execution.RunToCompletion(&state);
-  const double exec_sec = exec_timer.Seconds();
 
-  if (verbose > 0) {
-    printf(AWHITE("Executed") " in %s.\n", ANSI::Time(exec_sec).c_str());
-  }
-
-  std::map<int, DocTree> pages = execution.ExtractPages();
-  // Measure final badness.
-  const double total_badness = execution.total_badness;
-  printf("Total badness: " ARED("%.11g") "\n", total_badness);
+  CHECK(best_badness.has_value() && best_pages.has_value() &&
+        best_document.has_value());
+  const double total_badness = best_badness.value();
+  const std::map<int, DocTree> &pages = best_pages.value();
+  Document *document = best_document.value().get();
 
   if (pages.size() >= 5 && total_badness < 1000.0 * pages.size()) {
     Achievements::Get().Achieve("Not bad",
@@ -217,7 +264,7 @@ static int Bovex(const std::vector<std::string> &args) {
 
   document->GenerateOutput(output_base, pages);
 
-  if (execution.did_rephrase) {
+  if (did_rephrase) {
     Achievements::Get().Achieve("Gen AI",
                                 "Generated a document that used the rephrase "
                                 "functionality.");
