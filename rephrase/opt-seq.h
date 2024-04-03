@@ -13,6 +13,7 @@
 struct OptSeq {
   // Pair of [low, high] bounds for each parameter.
   OptSeq(const std::vector<std::pair<double, double>> &bounds);
+  ~OptSeq();
   // TODO: Save/Load
 
   std::vector<double> Next();
@@ -22,6 +23,8 @@ struct OptSeq {
 
  private:
   void Observe(const std::vector<double> &arg, double d);
+  void OptThread();
+  double Eval(const std::vector<double> &args);
 
   std::mutex m;
   std::condition_variable c;
@@ -36,6 +39,7 @@ struct OptSeq {
   std::vector<std::pair<std::vector<double>, double>> history;
 
   std::optional<std::pair<std::vector<double>, double>> best;
+  bool should_die = false;
 };
 
 #endif

@@ -11,9 +11,18 @@
 #include "opt/opt.h"
 #include "base/logging.h"
 
+static constexpr bool VERBOSE = false;
+
 OptSeq::OptSeq(
     const std::vector<std::pair<double, double>> &bounds) :
   bounds(bounds) {
+  if (VERBOSE) {
+    printf("spawn...\n");
+  }
+  th.reset(new std::thread(&OptSeq::OptThread, this));
+}
+
+void OptSeq::OptThread() {
 
   std::vector<double> lb, ub;
   for (const auto &[l, u] : bounds) {
@@ -21,59 +30,69 @@ OptSeq::OptSeq(
     ub.push_back(u);
   }
 
-  std::function<double(const std::vector<double> &)> f =
-    [this](const std::vector<double> &args) {
-      printf("Called:");
-      for (double d : args) printf(" %.4f", d);
-      printf("\n");
-      {
-        std::unique_lock<std::mutex> ml(m);
-        c.wait(ml, [this](){
-            return !arg.has_value();
-          });
+  for (;;) {
+    Opt::Minimize(
+        (int)lb.size(),
+        [this](const std::vector<double> &v) {
+          return this->Eval(v);
+        },
+        lb, ub,
+        1000,
+        1,
+        10,
+        // Always use the same random seed so that we can
+        // replay previous samples.
+        0xCAFE);
 
-        CHECK(!arg.has_value());
-        arg = {args};
-      }
-      c.notify_one();
+    {
+      std::unique_lock<std::mutex> ml(m);
+      if (should_die) return;
+    }
+  }
+}
 
-      {
-        std::unique_lock<std::mutex> ml(m);
-        c.wait(ml, [this](){
-            return result.has_value();
-          });
+double OptSeq::Eval(const std::vector<double> &args) {
 
-        double r = result.value();
-        // Consume the result.
-        result.reset();
-        arg.reset();
-        return r;
-      }
-    };
+  if (VERBOSE) {
+    printf("Called:");
+    for (double d : args) printf(" %.4f", d);
+    printf("\n");
+  }
+  {
+    std::unique_lock<std::mutex> ml(m);
+    // When dying, just keep returning immediately to the optimizer.
+    if (should_die) {
+      return 0.0;
+    }
 
-  printf("spawn...\n");
-  th.reset(
-      new std::thread([this, lb, ub, f]() {
-          printf("START\n");
+    c.wait(ml, [this]() {
+        return !arg.has_value();
+      });
 
-          Opt::Minimize(
-              (int)lb.size(),
-              f,
-              lb, ub,
-              1000,
-              1,
-              10,
-              // Always use the same random seed so that we can
-              // replay previous samples.
-              0xCAFE);
+    CHECK(!arg.has_value());
+    arg = {args};
+  }
+  c.notify_one();
 
-        }));
+  {
+    std::unique_lock<std::mutex> ml(m);
+    c.wait(ml, [this](){
+        return result.has_value();
+      });
+
+    double r = result.value();
+    // Consume the result.
+    result.reset();
+    arg.reset();
+    return r;
+  }
 }
 
 std::vector<double> OptSeq::Next() {
   std::vector<double> ret;
   {
     std::unique_lock<std::mutex> ml(m);
+    CHECK(!should_die);
     c.wait(ml, [this](){
         return arg.has_value();
       });
@@ -89,6 +108,7 @@ std::vector<double> OptSeq::Next() {
 void OptSeq::Result(double d) {
   {
     std::unique_lock<std::mutex> ml(m);
+    CHECK(!should_die);
     CHECK(arg.has_value());
     CHECK(!result.has_value());
 
@@ -111,4 +131,14 @@ void OptSeq::Observe(const std::vector<double> &arg,
 
 std::optional<std::pair<std::vector<double>, double>> OptSeq::GetBest() {
   return best;
+}
+
+OptSeq::~OptSeq() {
+  {
+    std::unique_lock<std::mutex> ml(m);
+    should_die = true;
+  }
+  c.notify_all();
+  th->join();
+  th.reset(nullptr);
 }
