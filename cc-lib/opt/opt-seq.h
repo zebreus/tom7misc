@@ -1,6 +1,7 @@
 
 // "Open loop" vesion of optimizer. It gives you a sequence of
-// arguments to test on, using the score as guidance.
+// arguments to test on, using the score as guidance. This is
+// accomplished by running the optimizer in another thread.
 
 #ifndef _CC_LIB_OPT_OPT_SEQ_H
 #define _CC_LIB_OPT_OPT_SEQ_H
@@ -19,9 +20,15 @@ struct OptSeq {
   ~OptSeq();
   // TODO: Save/Load
 
+  // The client should make a call to Next() to get an argument,
+  // evaluate it, and then call Result with its score. Lower
+  // scores are preferable.
   std::vector<double> Next();
   void Result(double d);
 
+  // Get the overall best pair (lowest score) of argument and
+  // score. Always has a value once there has been one call to
+  // Result.
   std::optional<std::pair<std::vector<double>, double>> GetBest();
 
  private:

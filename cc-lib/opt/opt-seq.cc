@@ -30,7 +30,7 @@ void OptSeq::OptThread() {
     ub.push_back(u);
   }
 
-  for (;;) {
+  for (int offset = 0; true; offset++) {
     Opt::Minimize(
         (int)lb.size(),
         [this](const std::vector<double> &v) {
@@ -41,8 +41,9 @@ void OptSeq::OptThread() {
         1,
         10,
         // Always use the same random seed so that we can
-        // replay previous samples.
-        0xCAFE);
+        // replay previous samples. But if we make more than
+        // one loop, use a different seed.
+        0xCAFE + offset);
 
     {
       std::unique_lock<std::mutex> ml(m);
@@ -83,7 +84,6 @@ double OptSeq::Eval(const std::vector<double> &args) {
     double r = result.value();
     // Consume the result.
     result.reset();
-    arg.reset();
     return r;
   }
 }
@@ -114,6 +114,8 @@ void OptSeq::Result(double d) {
 
     Observe(arg.value(), d);
 
+    // Consumes the arg, so the next call to Next will block.
+    arg.reset();
     result.emplace(d);
   }
   c.notify_one();
