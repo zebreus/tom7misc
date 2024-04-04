@@ -873,6 +873,18 @@ string Util::pathof(const string &s) {
   return ".";
 }
 
+std::string_view Util::FileExtOf(std::string_view s) {
+  auto pos = s.rfind('.');
+  if (pos == std::string_view::npos) return {};
+  return s.substr(pos + 1, std::string_view::npos);
+}
+
+std::string_view Util::FileBaseOf(std::string_view s) {
+  auto pos = s.rfind('.');
+  if (pos == std::string_view::npos) return s;
+  return s.substr(0, pos);
+}
+
 /* XX can use EndsWith below */
 string Util::ensureext(string f, string ext) {
   if (f.length() < ext.length())

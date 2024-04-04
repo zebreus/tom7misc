@@ -561,7 +561,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
   object->offset = ftell(fp);
 
-  fprintf(fp, "%d 0 obj\r\n", index);
+  fprintf(fp, "%d 0 obj\n", index);
 
   switch (object->type) {
   case OBJ_stream: {
@@ -584,20 +584,20 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     const InfoObj *iobj = (InfoObj*)object;
     const PDF::Info *info = &iobj->info;
 
-    fprintf(fp, "<<\r\n");
+    fprintf(fp, "<<\n");
     if (info->creator[0])
-      fprintf(fp, "  /Creator (%s)\r\n", info->creator);
+      fprintf(fp, "  /Creator (%s)\n", info->creator);
     if (info->producer[0])
-      fprintf(fp, "  /Producer (%s)\r\n", info->producer);
+      fprintf(fp, "  /Producer (%s)\n", info->producer);
     if (info->title[0])
-      fprintf(fp, "  /Title (%s)\r\n", info->title);
+      fprintf(fp, "  /Title (%s)\n", info->title);
     if (info->author[0])
-      fprintf(fp, "  /Author (%s)\r\n", info->author);
+      fprintf(fp, "  /Author (%s)\n", info->author);
     if (info->subject[0])
-      fprintf(fp, "  /Subject (%s)\r\n", info->subject);
+      fprintf(fp, "  /Subject (%s)\n", info->subject);
     if (info->date[0])
-      fprintf(fp, "  /CreationDate (D:%s)\r\n", info->date);
-    fprintf(fp, ">>\r\n");
+      fprintf(fp, "  /CreationDate (D:%s)\n", info->date);
+    fprintf(fp, ">>\n");
     break;
   }
 
@@ -608,23 +608,23 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     Page *pobj = (Page*)object;
 
     fprintf(fp,
-            "<<\r\n"
-            "  /Type /Page\r\n"
-            "  /Parent %d 0 R\r\n",
+            "<<\n"
+            "  /Type /Page\n"
+            "  /Parent %d 0 R\n",
             pages->index);
-    fprintf(fp, "  /MediaBox [0 0 %s %s]\r\n",
+    fprintf(fp, "  /MediaBox [0 0 %s %s]\n",
             Float(pobj->width).c_str(),
             Float(pobj->height).c_str());
-    fprintf(fp, "  /Resources <<\r\n");
-    fprintf(fp, "    /Font <<\r\n");
+    fprintf(fp, "  /Resources <<\n");
+    fprintf(fp, "    /Font <<\n");
     for (Object *font = pdf_find_first_object(OBJ_font);
          font; font = font->next) {
       const FontObj *fobj = (FontObj *)font;
-      fprintf(fp, "      /F%d %d 0 R\r\n",
+      fprintf(fp, "      /F%d %d 0 R\n",
               fobj->font_index,
               font->index);
     }
-    fprintf(fp, "    >>\r\n");
+    fprintf(fp, "    >>\n");
     // TODO: The way alpha is implemented is to always generate 16
     // different graphics states on each page, for 4-bit transparency.
     // (/GS0 ... /GS15). Better would be to register the actual
@@ -632,12 +632,12 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     // arbitrarily metter.
     //
     // We trim transparency to just 4-bits
-    fprintf(fp, "    /ExtGState <<\r\n");
+    fprintf(fp, "    /ExtGState <<\n");
     for (int i = 0; i < 16; i++) {
-      fprintf(fp, "      /GS%d <</ca %f>>\r\n", i,
+      fprintf(fp, "      /GS%d <</ca %f>>\n", i,
               (float)(15 - i) / 15);
     }
-    fprintf(fp, "    >>\r\n");
+    fprintf(fp, "    >>\n");
 
     for (Object *image = pdf_find_first_object(OBJ_image);
          image; image = image->next) {
@@ -653,24 +653,24 @@ int PDF::pdf_save_object(FILE *fp, int index) {
       }
     }
     if (printed_xobjects)
-      fprintf(fp, "    >>\r\n");
-    fprintf(fp, "  >>\r\n");
+      fprintf(fp, "    >>\n");
+    fprintf(fp, "  >>\n");
 
-    fprintf(fp, "  /Contents [\r\n");
+    fprintf(fp, "  /Contents [\n");
     for (Object *child : pobj->children) {
-      fprintf(fp, "%d 0 R\r\n", child->index);
+      fprintf(fp, "%d 0 R\n", child->index);
     }
-    fprintf(fp, "]\r\n");
+    fprintf(fp, "]\n");
 
     if (!pobj->annotations.empty()) {
-      fprintf(fp, "  /Annots [\r\n");
+      fprintf(fp, "  /Annots [\n");
       for (Object *child : pobj->annotations) {
-        fprintf(fp, "%d 0 R\r\n", child->index);
+        fprintf(fp, "%d 0 R\n", child->index);
       }
-      fprintf(fp, "]\r\n");
+      fprintf(fp, "]\n");
     }
 
-    fprintf(fp, ">>\r\n");
+    fprintf(fp, ">>\n");
     break;
   }
 
@@ -683,10 +683,10 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     if (!bobj->page)
       break;
     fprintf(fp,
-            "<<\r\n"
-            "  /Dest [%d 0 R /XYZ 0 %s null]\r\n"
-            "  /Parent %d 0 R\r\n"
-            "  /Title (%s)\r\n",
+            "<<\n"
+            "  /Dest [%d 0 R /XYZ 0 %s null]\n"
+            "  /Parent %d 0 R\n"
+            "  /Title (%s)\n",
             bobj->page->index,
             Float(this->height).c_str(),
             parent->index,
@@ -695,9 +695,9 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     if (nchildren > 0) {
       Object *f = (Object *)bobj->children[0];
       Object *l = (Object *)bobj->children[nchildren - 1];
-      fprintf(fp, "  /First %d 0 R\r\n", f->index);
-      fprintf(fp, "  /Last %d 0 R\r\n", l->index);
-      fprintf(fp, "  /Count %d\r\n", pdf_get_bookmark_count(object));
+      fprintf(fp, "  /First %d 0 R\n", f->index);
+      fprintf(fp, "  /Last %d 0 R\n", l->index);
+      fprintf(fp, "  /Count %d\n", pdf_get_bookmark_count(object));
     }
 
     {
@@ -708,7 +708,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
       }
 
       if (other != nullptr) {
-        fprintf(fp, "  /Prev %d 0 R\r\n", other->index);
+        fprintf(fp, "  /Prev %d 0 R\n", other->index);
       }
     }
 
@@ -720,11 +720,11 @@ int PDF::pdf_save_object(FILE *fp, int index) {
       }
 
       if (other != nullptr) {
-        fprintf(fp, "  /Next %d 0 R\r\n", other->index);
+        fprintf(fp, "  /Next %d 0 R\n", other->index);
       }
     }
 
-    fprintf(fp, ">>\r\n");
+    fprintf(fp, ">>\n");
     break;
   }
 
@@ -744,12 +744,12 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
       /* Bookmark outline */
       fprintf(fp,
-              "<<\r\n"
-              "  /Count %d\r\n"
-              "  /Type /Outlines\r\n"
-              "  /First %d 0 R\r\n"
-              "  /Last %d 0 R\r\n"
-              ">>\r\n",
+              "<<\n"
+              "  /Count %d\n"
+              "  /Type /Outlines\n"
+              "  /First %d 0 R\n"
+              "  /Last %d 0 R\n"
+              ">>\n",
               count, first->index, last->index);
     }
     break;
@@ -760,17 +760,17 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     if (fobj->ttf != nullptr) {
       // An embedded font.
       fprintf(fp,
-              "<<\r\n"
-              "  /Type /Font\r\n"
-              "  /Subtype /TrueType\r\n"
-              "  /BaseFont /Font%d\r\n"
-              "  /Encoding /WinAnsiEncoding\r\n"
-              "  /FontDescriptor <<\r\n"
-              "    /Type /FontDescriptor\r\n"
-              "    /FontName FontName%d\r\n"
-              "    /FontFile2 %d 0 R\r\n"
-              "  >>\r\n"
-              ">>\r\n",
+              "<<\n"
+              "  /Type /Font\n"
+              "  /Subtype /TrueType\n"
+              "  /BaseFont /Font%d\n"
+              "  /Encoding /WinAnsiEncoding\n"
+              "  /FontDescriptor <<\n"
+              "    /Type /FontDescriptor\n"
+              "    /FontName FontName%d\n"
+              "    /FontFile2 %d 0 R\n"
+              "  >>\n"
+              ">>\n",
               // Basefont: Just needs a unique name.
               fobj->index,
               // FontName; we just FontName<id>
@@ -783,12 +783,12 @@ int PDF::pdf_save_object(FILE *fp, int index) {
         "be either an embedded font or built-in one?";
       // A built-in font (BaseFont).
       fprintf(fp,
-              "<<\r\n"
-              "  /Type /Font\r\n"
-              "  /Subtype /Type1\r\n"
-              "  /BaseFont /%s\r\n"
-              "  /Encoding /WinAnsiEncoding\r\n"
-              ">>\r\n",
+              "<<\n"
+              "  /Type /Font\n"
+              "  /Subtype /Type1\n"
+              "  /BaseFont /%s\n"
+              "  /Encoding /WinAnsiEncoding\n"
+              ">>\n",
               BuiltInFontName(fobj->builtin_font.value()));
     }
     break;
@@ -797,17 +797,17 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   case OBJ_pages: {
     int npages = 0;
 
-    fprintf(fp, "<<\r\n"
-            "  /Type /Pages\r\n"
+    fprintf(fp, "<<\n"
+            "  /Type /Pages\n"
             "  /Kids [ ");
     for (Object *page = pdf_find_first_object(OBJ_page);
          page; page = page->next) {
       npages++;
       fprintf(fp, "%d 0 R ", page->index);
     }
-    fprintf(fp, "]\r\n");
-    fprintf(fp, "  /Count %d\r\n", npages);
-    fprintf(fp, ">>\r\n");
+    fprintf(fp, "]\n");
+    fprintf(fp, "  /Count %d\n", npages);
+    fprintf(fp, ">>\n");
     break;
   }
 
@@ -815,16 +815,16 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     Object *outline = pdf_find_first_object(OBJ_outline);
     Object *pages = pdf_find_first_object(OBJ_pages);
 
-    fprintf(fp, "<<\r\n"
-            "  /Type /Catalog\r\n");
+    fprintf(fp, "<<\n"
+            "  /Type /Catalog\n");
     if (outline)
       fprintf(fp,
-              "  /Outlines %d 0 R\r\n"
-              "  /PageMode /UseOutlines\r\n",
+              "  /Outlines %d 0 R\n"
+              "  /PageMode /UseOutlines\n",
               outline->index);
     fprintf(fp,
-            "  /Pages %d 0 R\r\n"
-            ">>\r\n",
+            "  /Pages %d 0 R\n"
+            ">>\n",
             pages->index);
     break;
   }
@@ -832,13 +832,13 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   case OBJ_link: {
     LinkObj *lobj = (LinkObj *)object;
     fprintf(fp,
-            "<<\r\n"
-            "  /Type /Annot\r\n"
-            "  /Subtype /Link\r\n"
-            "  /Rect [%s %s %s %s]\r\n"
-            "  /Dest [%u 0 R /XYZ %s %s null]\r\n"
-            "  /Border [0 0 0]\r\n"
-            ">>\r\n",
+            "<<\n"
+            "  /Type /Annot\n"
+            "  /Subtype /Link\n"
+            "  /Rect [%s %s %s %s]\n"
+            "  /Dest [%u 0 R /XYZ %s %s null]\n"
+            "  /Border [0 0 0]\n"
+            ">>\n",
             Float(lobj->llx).c_str(),
             Float(lobj->lly).c_str(),
             Float(lobj->urx).c_str(),
@@ -854,7 +854,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
                   object->type);
   }
 
-  fprintf(fp, "endobj\r\n");
+  fprintf(fp, "endobj\n");
 
   return 0;
 }
@@ -880,9 +880,9 @@ int PDF::pdf_save_file(FILE *fp) {
 
   force_locale(saved_locale, sizeof(saved_locale));
 
-  fprintf(fp, "%%PDF-1.3\r\n");
+  fprintf(fp, "%%PDF-1.3\n");
   /* Hibit bytes */
-  fprintf(fp, "%c%c%c%c%c\r\n", 0x25, 0xc7, 0xec, 0x8f, 0xa2);
+  fprintf(fp, "%c%c%c%c%c\n", 0x25, 0xc7, 0xec, 0x8f, 0xa2);
 
   /* Dump all the objects & get their file offsets */
   for (int i = 0; i < (int)objects.size(); i++)
@@ -891,35 +891,35 @@ int PDF::pdf_save_file(FILE *fp) {
 
   /* xref */
   xref_offset = ftell(fp);
-  fprintf(fp, "xref\r\n");
-  fprintf(fp, "0 %d\r\n", xref_count + 1);
-  fprintf(fp, "0000000000 65535 f\r\n");
+  fprintf(fp, "xref\n");
+  fprintf(fp, "0 %d\n", xref_count + 1);
+  fprintf(fp, "0000000000 65535 f\n");
   for (Object *obj : objects) {
     if (obj->type != OBJ_none) {
-      fprintf(fp, "%10.10d 00000 n\r\n", obj->offset);
+      fprintf(fp, "%10.10d 00000 n\n", obj->offset);
     }
   }
 
   fprintf(fp,
-          "trailer\r\n"
-          "<<\r\n"
-          "/Size %d\r\n",
+          "trailer\n"
+          "<<\n"
+          "/Size %d\n",
           xref_count + 1);
   Object *obj = pdf_find_first_object(OBJ_catalog);
   CHECK(obj != nullptr);
-  fprintf(fp, "/Root %d 0 R\r\n", obj->index);
+  fprintf(fp, "/Root %d 0 R\n", obj->index);
 
   const InfoObj *iobj = (InfoObj*)pdf_find_first_object(OBJ_info);
-  fprintf(fp, "/Info %d 0 R\r\n", iobj->index);
+  fprintf(fp, "/Info %d 0 R\n", iobj->index);
   /* Generate document unique IDs */
   id1 = hash(5381, &iobj->info, sizeof (PDF::Info));
   id1 = hash(id1, &xref_count, sizeof (xref_count));
   id2 = hash(5381, &now, sizeof(now));
-  fprintf(fp, "/ID [<%16.16" PRIx64 "> <%16.16" PRIx64 ">]\r\n", id1, id2);
-  fprintf(fp, ">>\r\n"
-          "startxref\r\n");
-  fprintf(fp, "%d\r\n", xref_offset);
-  fprintf(fp, "%%%%EOF\r\n");
+  fprintf(fp, "/ID [<%16.16" PRIx64 "> <%16.16" PRIx64 ">]\n", id1, id2);
+  fprintf(fp, ">>\n"
+          "startxref\n");
+  fprintf(fp, "%d\n", xref_offset);
+  fprintf(fp, "%%%%EOF\n");
 
   restore_locale(saved_locale);
 
@@ -966,9 +966,9 @@ void PDF::pdf_add_stream(Page *page, std::string str) {
   StreamObj *sobj = AddObject(new StreamObj);
   CHECK(sobj != nullptr);
 
-  sobj->stream = StringPrintf("<< /Length %d >>stream\r\n", (int)str.size());
+  sobj->stream = StringPrintf("<< /Length %d >>stream\n", (int)str.size());
   sobj->stream.append(str);
-  StringAppendF(&sobj->stream, "\r\nendstream\r\n");
+  StringAppendF(&sobj->stream, "\nendstream\n");
 
   page->children.push_back(sobj);
 }
@@ -2003,14 +2003,14 @@ void PDF::AddLine(float x1, float y1,
                   float width, uint32_t color_rgb,
                   Page *page) {
   std::string str;
-  StringAppendF(&str, "%s w\r\n", Float(width).c_str());
-  StringAppendF(&str, "%s %s m\r\n", Float(x1).c_str(), Float(y1).c_str());
-  StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%s %s %s RG\r\n",
+  StringAppendF(&str, "%s w\n", Float(width).c_str());
+  StringAppendF(&str, "%s %s m\n", Float(x1).c_str(), Float(y1).c_str());
+  StringAppendF(&str, "/DeviceRGB CS\n");
+  StringAppendF(&str, "%s %s %s RG\n",
                 Float(PDF_RGB_R_FLOAT(color_rgb)).c_str(),
                 Float(PDF_RGB_G_FLOAT(color_rgb)).c_str(),
                 Float(PDF_RGB_B_FLOAT(color_rgb)).c_str());
-  StringAppendF(&str, "%s %s l S\r\n",
+  StringAppendF(&str, "%s %s l S\n",
                 Float(x2).c_str(),
                 Float(y2).c_str());
 
@@ -2022,14 +2022,14 @@ void PDF::AddCubicBezier(float x1, float y1, float x2, float y2, float xq1,
                          uint32_t color_rgb, Page *page) {
   std::string str;
 
-  StringAppendF(&str, "%s w\r\n", Float(width).c_str());
-  StringAppendF(&str, "%s %s m\r\n", Float(x1).c_str(), Float(y1).c_str());
-  StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%s %s %s RG\r\n",
+  StringAppendF(&str, "%s w\n", Float(width).c_str());
+  StringAppendF(&str, "%s %s m\n", Float(x1).c_str(), Float(y1).c_str());
+  StringAppendF(&str, "/DeviceRGB CS\n");
+  StringAppendF(&str, "%s %s %s RG\n",
                 Float(PDF_RGB_R_FLOAT(color_rgb)).c_str(),
                 Float(PDF_RGB_G_FLOAT(color_rgb)).c_str(),
                 Float(PDF_RGB_B_FLOAT(color_rgb)).c_str());
-  StringAppendF(&str, "%s %s %s %s %s %s c S\r\n",
+  StringAppendF(&str, "%s %s %s %s %s %s c S\n",
                 Float(xq1).c_str(),
                 Float(yq1).c_str(),
                 Float(xq2).c_str(),
@@ -2064,16 +2064,16 @@ void PDF::AddEllipse(float x, float y,
     (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * yradius;
 
   if (!PDF_IS_TRANSPARENT(fill_color)) {
-    StringAppendF(&str, "/DeviceRGB CS\r\n");
-    StringAppendF(&str, "%s %s %s rg\r\n",
+    StringAppendF(&str, "/DeviceRGB CS\n");
+    StringAppendF(&str, "%s %s %s rg\n",
                   Float(PDF_RGB_R_FLOAT(fill_color)).c_str(),
                   Float(PDF_RGB_G_FLOAT(fill_color)).c_str(),
                   Float(PDF_RGB_B_FLOAT(fill_color)).c_str());
   }
 
   /* stroke color */
-  StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%s %s %s RG\r\n",
+  StringAppendF(&str, "/DeviceRGB CS\n");
+  StringAppendF(&str, "%s %s %s RG\n",
                 Float(PDF_RGB_R_FLOAT(color)).c_str(),
                 Float(PDF_RGB_G_FLOAT(color)).c_str(),
                 Float(PDF_RGB_B_FLOAT(color)).c_str());
@@ -2165,16 +2165,16 @@ bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
 
   // TODO: Use Float() in here.
   if (!PDF_IS_TRANSPARENT(fill_color)) {
-    StringAppendF(&str, "/DeviceRGB CS\r\n");
-    StringAppendF(&str, "%f %f %f rg\r\n",
+    StringAppendF(&str, "/DeviceRGB CS\n");
+    StringAppendF(&str, "%f %f %f rg\n",
                   PDF_RGB_R_FLOAT(fill_color),
                   PDF_RGB_G_FLOAT(fill_color),
                   PDF_RGB_B_FLOAT(fill_color));
   }
 
-  StringAppendF(&str, "%f w\r\n", stroke_width);
-  StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%f %f %f RG\r\n",
+  StringAppendF(&str, "%f w\n", stroke_width);
+  StringAppendF(&str, "/DeviceRGB CS\n");
+  StringAppendF(&str, "%f %f %f RG\n",
                 PDF_RGB_R_FLOAT(stroke_color),
                 PDF_RGB_G_FLOAT(stroke_color),
                 PDF_RGB_B_FLOAT(stroke_color));
@@ -2182,26 +2182,26 @@ bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
   for (PathOp operation : ops) {
     switch (operation.op) {
     case 'm':
-      StringAppendF(&str, "%f %f m\r\n", operation.x1, operation.y1);
+      StringAppendF(&str, "%f %f m\n", operation.x1, operation.y1);
       break;
     case 'l':
-      StringAppendF(&str, "%f %f l\r\n", operation.x1, operation.y1);
+      StringAppendF(&str, "%f %f l\n", operation.x1, operation.y1);
       break;
     case 'c':
-      StringAppendF(&str, "%f %f %f %f %f %f c\r\n", operation.x1,
+      StringAppendF(&str, "%f %f %f %f %f %f c\n", operation.x1,
                     operation.y1, operation.x2, operation.y2,
                     operation.x3, operation.y3);
       break;
     case 'v':
-      StringAppendF(&str, "%f %f %f %f v\r\n", operation.x1, operation.y1,
+      StringAppendF(&str, "%f %f %f %f v\n", operation.x1, operation.y1,
                     operation.x2, operation.y2);
       break;
     case 'y':
-      StringAppendF(&str, "%f %f %f %f y\r\n", operation.x1, operation.y1,
+      StringAppendF(&str, "%f %f %f %f y\n", operation.x1, operation.y1,
                     operation.x2, operation.y2);
       break;
     case 'h':
-      StringAppendF(&str, "h\r\n");
+      StringAppendF(&str, "h\n");
       break;
     default:
       SetErr(-errno, "Invalid operation");
@@ -3151,21 +3151,21 @@ PDF::ImageObj *PDF::pdf_add_raw_grayscale8(const uint8_t *data,
 
   const int idx = (int)objects.size();
   std::string str =
-    StringPrintf("<<\r\n"
-                 "  /Type /XObject\r\n"
-                 "  /Name /Image%d\r\n"
-                 "  /Subtype /Image\r\n"
-                 "  /ColorSpace /DeviceGray\r\n"
-                 "  /Height %d\r\n"
-                 "  /Width %d\r\n"
-                 "  /BitsPerComponent 8\r\n"
-                 "  /Length %lu\r\n"
-                 ">>stream\r\n",
+    StringPrintf("<<\n"
+                 "  /Type /XObject\n"
+                 "  /Name /Image%d\n"
+                 "  /Subtype /Image\n"
+                 "  /ColorSpace /DeviceGray\n"
+                 "  /Height %d\n"
+                 "  /Width %d\n"
+                 "  /BitsPerComponent 8\n"
+                 "  /Length %lu\n"
+                 ">>stream\n",
                  idx, height, width,
                  (unsigned long)(data_len + 1));
 
   str.append((const char *)data, width * height);
-  StringAppendF(&str, ">\r\nendstream\r\n");
+  StringAppendF(&str, ">\nendstream\n");
 
   ImageObj *iobj = AddObject(new ImageObj);
   CHECK(iobj);
@@ -3245,21 +3245,21 @@ static Object *pdf_add_raw_rgb24(pdf_doc *pdf,
                                  uint32_t width, uint32_t height) {
   Object *obj;
   size_t len;
-  const char *endstream = ">\r\nendstream\r\n";
+  const char *endstream = ">\nendstream\n";
   dstr str = INIT_DSTR;
   size_t data_len = (size_t)width * (size_t)height * 3;
 
   StringAppendF(&str,
-              "<<\r\n"
-              "  /Type /XObject\r\n"
-              "  /Name /Image%d\r\n"
-              "  /Subtype /Image\r\n"
-              "  /ColorSpace /DeviceRGB\r\n"
-              "  /Height %d\r\n"
-              "  /Width %d\r\n"
-              "  /BitsPerComponent 8\r\n"
-              "  /Length %lu\r\n"
-              ">>stream\r\n",
+              "<<\n"
+              "  /Type /XObject\n"
+              "  /Name /Image%d\n"
+              "  /Subtype /Image\n"
+              "  /ColorSpace /DeviceRGB\n"
+              "  /Height %d\n"
+              "  /Width %d\n"
+              "  /BitsPerComponent 8\n"
+              "  /Length %lu\n"
+              ">>stream\n",
               flexarray_size(&pdf->objects), height, width,
               (unsigned long)(data_len + 1));
 
@@ -3379,22 +3379,22 @@ bool PDF::pdf_add_jpeg_data(float x, float y, float display_width,
 
   int index = (int)objects.size();
   StringAppendF(&obj->stream,
-                "<<\r\n"
-                "  /Type /XObject\r\n"
-                "  /Name /Image%d\r\n"
-                "  /Subtype /Image\r\n"
-                "  /ColorSpace %s\r\n"
-                "  /Width %d\r\n"
-                "  /Height %d\r\n"
-                "  /BitsPerComponent 8\r\n"
-                "  /Filter /DCTDecode\r\n"
-                "  /Length %lu\r\n"
-                ">>stream\r\n",
+                "<<\n"
+                "  /Type /XObject\n"
+                "  /Name /Image%d\n"
+                "  /Subtype /Image\n"
+                "  /ColorSpace %s\n"
+                "  /Width %d\n"
+                "  /Height %d\n"
+                "  /BitsPerComponent 8\n"
+                "  /Filter /DCTDecode\n"
+                "  /Length %lu\n"
+                ">>stream\n",
                 index,
                 (header.ncolors == 1) ? "/DeviceGray" : "/DeviceRGB",
                 header.width, header.height, (unsigned long) len);
   obj->stream.append((const char*)jpeg_data, len);
-  StringAppendF(&obj->stream, "\r\nendstream\r\n");
+  StringAppendF(&obj->stream, "\nendstream\n");
 
   get_img_display_dimensions(header.width,
                              header.height,
@@ -3566,9 +3566,9 @@ bool PDF::pdf_add_png_data(float x, float y,
     }
     // Write the color palette to the color_palette buffer
     StringAppendF(&color_space,
-                  "[ /Indexed\r\n"
-                  "  /DeviceRGB\r\n"
-                  "  %lu\r\n"
+                  "[ /Indexed\n"
+                  "  /DeviceRGB\n"
+                  "  %lu\n"
                   "  <",
                   (unsigned long)(palette_buffer_length - 1));
     // write individual palette values
@@ -3578,7 +3578,7 @@ bool PDF::pdf_add_png_data(float x, float y,
       StringAppendF(&color_space, "%02X%02X%02X ", palette_buffer[i].red,
                     palette_buffer[i].green, palette_buffer[i].blue);
     }
-    StringAppendF(&color_space, ">\r\n]");
+    StringAppendF(&color_space, ">\n]");
     break;
 
   default:
@@ -3599,27 +3599,27 @@ bool PDF::pdf_add_png_data(float x, float y,
     const int idx = (int)objects.size();
     final_data =
       StringPrintf(
-              "<<\r\n"
-              "  /Type /XObject\r\n"
-              "  /Name /Image%d\r\n"
-              "  /Subtype /Image\r\n"
-              "  /ColorSpace %s\r\n"
-              "  /Width %u\r\n"
-              "  /Height %u\r\n"
-              "  /Interpolate true\r\n"
-              "  /BitsPerComponent %u\r\n"
-              "  /Filter /FlateDecode\r\n"
+              "<<\n"
+              "  /Type /XObject\n"
+              "  /Name /Image%d\n"
+              "  /Subtype /Image\n"
+              "  /ColorSpace %s\n"
+              "  /Width %u\n"
+              "  /Height %u\n"
+              "  /Interpolate true\n"
+              "  /BitsPerComponent %u\n"
+              "  /Filter /FlateDecode\n"
               "  /DecodeParms << /Predictor 15 /Colors %d "
-              "/BitsPerComponent %u /Columns %u >>\r\n"
-              "  /Length %zu\r\n"
-              ">>stream\r\n",
+              "/BitsPerComponent %u /Columns %u >>\n"
+              "  /Length %zu\n"
+              ">>stream\n",
               idx, color_space.c_str(),
               header.width, header.height, header.bitDepth, ncolors,
               header.bitDepth, header.width, png_data_total_length);
 
     final_data.append(std::string_view((const char*)png_data_temp,
                                        png_data_total_length));
-    StringAppendF(&final_data, "\r\nendstream\r\n");
+    StringAppendF(&final_data, "\nendstream\n");
   }
 
   obj = AddObject(new ImageObj);
@@ -3966,18 +3966,18 @@ std::string PDF::AddTTF(const std::string &filename) {
   // save about 50%.
   std::string str;
   StringAppendF(&obj->stream,
-                "<<\r\n"
-                "  /Type /FontDescriptor\r\n"
+                "<<\n"
+                "  /Type /FontDescriptor\n"
                 // Supposedly required for TrueType fonts.
                 // Since there are no filters, this is the
                 // same as the length.
-                "  /Length1 %lu\r\n"
-                "  /Length %lu\r\n"
-                ">>stream\r\n",
+                "  /Length1 %lu\n"
+                "  /Length %lu\n"
+                ">>stream\n",
                 (unsigned long) ttf_bytes.size(),
                 (unsigned long) ttf_bytes.size());
   obj->stream.append((const char*)ttf_bytes.data(), ttf_bytes.size());
-  StringAppendF(&obj->stream, "\r\nendstream\r\n");
+  StringAppendF(&obj->stream, "\nendstream\n");
 
   fobj->ttf = obj;
   fobj->kerning = std::move(kerning);

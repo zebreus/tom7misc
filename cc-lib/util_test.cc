@@ -520,6 +520,17 @@ static void TestCase() {
   CHECK_SEQ(Util::ucase("BoVeX 999\n"), "BOVEX 999\n");
 }
 
+static void TestPaths() {
+  CHECK_SEQ(Util::FileExtOf("test.pdf"), "pdf");
+  CHECK_SEQ(Util::FileExtOf("no.test.pdf"), "pdf");
+  CHECK_SEQ(Util::FileExtOf("test."), "");
+  CHECK_SEQ(Util::FileExtOf("test"), "");
+  CHECK_SEQ(Util::FileBaseOf("test.pdf"), "test");
+  CHECK_SEQ(Util::FileBaseOf("no.test.pdf"), "no.test");
+  CHECK_SEQ(Util::FileBaseOf("test."), "test");
+  CHECK_SEQ(Util::FileBaseOf("test"), "test");
+}
+
 static void TestRemoveChars() {
   CHECK_SEQ(Util::RemoveCharsMatching(
                 "get out of my string!",
@@ -557,6 +568,7 @@ int main(int argc, char **argv) {
   TestNormalizeLines();
   TestMemMem();
   TestCase();
+  TestPaths();
   TestRemoveChars();
 
   printf("OK\n");

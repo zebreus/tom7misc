@@ -117,24 +117,17 @@ struct Util {
   static bool HasMagic(string filename, const string &magic);
   static string ReadFileMagic(string filename, const string &magic);
 
-  //XXX TEMP
-  static std::string_view FileExtOf(std::string_view s) {
-    auto pos = s.rfind('.');
-    if (pos == std::string_view::npos) return {};
-    return s.substr(pos + 1, std::string_view::npos);
-  }
-
-  static std::string_view FileBaseOf(std::string_view s) {
-    auto pos = s.rfind('.');
-    if (pos == std::string_view::npos) return {};
-    return s.substr(0, pos);
-  }
-
   static string ptos(void *);
   static unsigned int hash(const string &s);
-  /* give /home/tom/ of /home/tom/.bashrc */
+  // give /home/tom/ of /home/tom/.bashrc
   static string pathof(const string &s);
   static string fileof(const string &s);
+  // give "pdf" of "/home/tom/test.pdf"
+  // For paths with no ".", returns the empty string.
+  static std::string_view FileExtOf(std::string_view s);
+  // give "/home/tom/test" of "/home/tom/test.pdf"
+  // For paths with no ".", returns the whole string.
+  static std::string_view FileBaseOf(std::string_view s);
 
   static string ensureext(string f, string ext);
 
