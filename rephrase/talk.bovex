@@ -5,7 +5,7 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-  (* import "chess.bovex" *)
+(*  import "chess.bovex" *)
 
   (* slides info *)
   object TalkInfo of { }

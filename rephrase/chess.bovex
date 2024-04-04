@@ -1,0 +1,141 @@
+
+datatype piece =
+  PAWN | ROOK | KNIGHT | BISHOP | KING | QUEEN
+
+datatype color =
+  WHITE | BLACK
+
+(* functional representation *)
+datatype board =
+  Board of { squares : (int, color * piece) map,
+             castling : bool * bool * bool * bool,
+             en-passant : int option,
+             black-move : bool }
+
+fun color-eq (WHITE, WHITE) = true
+  | color-eq (BLACK, BLACK) = true
+  | color-eq _ = false
+
+fun piece-eq (PAWN, PAWN) = true
+  | piece-eq (ROOK, ROOK) = true
+  | piece-eq (KNIGHT, KNIGHT) = true
+  | piece-eq (BISHOP, BISHOP) = true
+  | piece-eq (KING, KING) = true
+  | piece-eq (QUEEN, QUEEN) = true
+  | piece-eq _ = false
+
+datatype move =
+  Move of { src : int, dst : int, promote : piece option }
+
+fun pos (x, y) = y * 8 + x
+fun unpos p =
+  if p < 0 orelse p >= 64
+  then fail "bad pos"
+  else (p mod 8, p div 8)
+
+val START-BOARD =
+  let
+    val black-pawns =
+      list-tabulate (8, fn x => (pos (x, 1), (BLACK, PAWN)))
+    val white-pawns =
+      list-tabulate (8, fn x => (pos (x, 6), (WHITE, PAWN)))
+
+    fun pieces (y, color) =
+      list-mapi (fn (p, x) => (pos (x, y), (color, p)))
+      (ROOK :: KNIGHT :: BISHOP :: KING :: QUEEN ::
+       BISHOP :: KNIGHT :: ROOK :: nil)
+    val black-pieces = pieces (0, BLACK)
+    val white-pieces = pieces (7, WHITE)
+  in
+    Board { squares = map-from-list int-compare (black-pieces @
+                                                 black-pawns @
+                                                 white-pawns @
+                                                 white-pieces),
+            castling = (true, true, true, true),
+            en-passant = NONE,
+            black-move = false }
+  end
+
+fun get-delta (sx, sy, dx, dy) : (int * int) option =
+    case (dx - sx, dy - sy) of
+      (0, 0) => NONE
+    | (dx, 0) => SOME (if dx > 0 then 1 else -1, 0)
+    | (0, dy) => SOME (0, if dy > 0 then 1 else -1)
+    | (dx, dy) => if int-abs dx == int-abs dy
+                  then SOME (if dx > 0 then 1 else -1,
+                             if dy > 0 then 1 else -1)
+                  else NONE
+
+                    (*
+fun clear-between (sx, sy, dx, dy, xx, yy) =
+  let
+    fun rec (x, y) =
+      if x == dx andalso y == dy
+      then true
+      else
+        (case map-find (squares, dst) of
+           NONE => rec (x + xx, y + yy)
+         | SOME _ => false)
+  in
+    if xx < -1 orelse xx > 1 yy < -1 orelse yy > 1
+       orelse (xx == 0 andalso yy == 0)
+    then fail "Bug: precondition"
+    else rec (sx + xx, sy + yy)
+  end
+  *)
+
+(* Returning NONE if the move is not legal. *)
+datatype move-result = OK of board | ILLEGAL of string
+fun make-move (Board { squares, castling, en-passant, black-move },
+               Move { src, dst, promote }) =
+  let
+    val (sx, sy) = unpos src
+    val (dx, dy) = unpos dst
+
+    val my-color = if black-move then BLACK else WHITE
+
+    fun move-pawn capturing = fail "unimplemented"
+    fun move-rook () =
+      case get-delta (sx, sy, dx, dy) of
+        NONE => ILLEGAL "rooks move along rows or columns"
+      | SOME (xx, yy) =>
+          if xx != 0 andalso yy != 0
+          then ILLEGAL "rooks cannot move diagonally"
+          else
+            (* check clear between *)
+            if clear-between (sx, sy, dx, dy, xx, yy)
+            then fail "unimplemented"
+            else ILLEGAL "rook cannot jump over piece"
+
+    fun move-knight () = fail "unimplemented"
+    fun move-bishop () = fail "unimplemented"
+    fun move-king capturing = fail "unimplemented"
+    fun move-queen () = fail "unimplemented"
+
+
+    fun move-piece (capturing, piece) =
+      case piece of
+        PAWN => move-pawn capturing
+      | ROOK => move-rook ()
+      | KNIGHT => move-knight ()
+      | BISHOP => move-bishop ()
+      | KING => move-king capturing
+      | QUEEN => move-queen ()
+
+  in
+    if src == dst
+    then ILLEGAL "move to self"
+    else
+    case map-find (squares, src) of
+      NONE => ILLEGAL "no piece on source square"
+    | SOME (color, piece) =>
+        if color-eq (color, my-color)
+        then
+          (case map-find (squares, dst) of
+             NONE => move-piece (false, piece)
+           | SOME (dcolor, _) =>
+               if color-eq (dcolor, my-color)
+               then ILLEGAL "can't capture same-color piece"
+               else move-piece (true, piece))
+        else ILLEGAL "wrong source piece color"
+  end
