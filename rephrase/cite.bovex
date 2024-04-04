@@ -410,7 +410,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
   end
 
 fun bibliography () =
-  let val cites = (map-tolist (!citations-used))
+  let val cites = (map-to-list (!citations-used))
   in
     layout-concat
     (list-map (fn cn => [[layout "\n\n"][cite-render-one cn]]) cites)

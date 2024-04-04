@@ -27,6 +27,7 @@ fun int-compare (a, b) =
 
 fun int-max (a, b) = if a < b then b else a
 fun int-min (a, b) = if a < b then a else b
+fun int-abs a = if a < 0 then 0 - a else a
 
 fun float-compare (a, b) =
   if a <. b
@@ -37,6 +38,7 @@ fun float-compare (a, b) =
 
 fun float-max (a, b) = if a <. b then b else a
 fun float-min (a, b) = if a <. b then a else b
+fun float-abs a = if a < 0.0 then 0.0 -. a else a
 
 fun string-compare (a, b) =
   if string-less (a, b)
@@ -51,7 +53,7 @@ datatype (a) list = :: of a * list | nil
 fun list-append (h :: t, l2) = h :: list-append(t, l2)
   | list-append (nil, l2) = l2
 
-(* val @ = list-append *)
+fun @ (x, y) = list-append (x, y)
 
 fun list-rcons (nil, x) = x :: nil
   | list-rcons (h :: t, x) = h :: list-rcons (t, x)
@@ -339,7 +341,7 @@ fun set-contains (Set { cmp, tree }, item) =
     r tree
   end
 
-fun set-tolist (Set { cmp = _, tree }) =
+fun set-to-list (Set { cmp = _, tree }) =
   let
     fun rec SetEmpty = nil
       | rec (SetNode (l, x, r)) =
@@ -392,7 +394,15 @@ fun map-contains (Map { cmp, tree }, key) =
     SOME _ => true
   | _ => false
 
-fun map-tolist (Map { cmp = _, tree }) =
+fun map-from-list cmp list =
+  let
+    fun r nil = map-empty cmp
+      | r ((k, v) :: t) = map-insert (r t, k, v)
+  in
+    r list
+  end
+
+fun map-to-list (Map { cmp = _, tree }) =
   let
     fun rec MapEmpty = nil
       | rec (MapNode (l, k, v, r)) =

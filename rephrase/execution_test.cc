@@ -356,10 +356,9 @@ static void ObjTests() {
          print (layout-tostring author)
       end
       )##"),
-           // This depends on how nodes are collapsed. We should
-           // probably be concatenating the text nodes, giving
-           // "Tom 7 Murphy .1".
-           "Tom 7 Murphy .3");
+           // XXX dependent on optimizations.
+           "Tom 7 Murphy .1"
+           );
 
   CHECK_EQ(RunToString(
      "let\n" +
@@ -382,7 +381,10 @@ static void ObjTests() {
       in
          print-layout author
       end
-      )##"), "Tom 7 Murphy .3");
+      )##"),
+           // This depends on optimizations being performed; we don't
+           // (yet) collapse text nodes at runtime.
+           "Tom 7 Murphy .1");
 
   CHECK_EQ(RunToString(
      "let\n" +
@@ -475,6 +477,16 @@ static void ObjTests() {
             {(A) x = 2, s = "hi"} as {(B) x = 2, z = "yo"} => print "OK"
           | _ => print "NO"
         end)"), "OK");
+
+  CHECK_EQ(
+      RunToString(
+          "let val r = ref 0\n"
+          "object O of { x : int }\n"
+          "in case (get-attrs (node {(O) x = !r }\n"
+          "                    (layout (let do r := 5 in \"e\" end)))) of\n"
+          "    {(O) x } => print (int-to-string x)\n"
+          "end\n"),
+      "0");
 }
 
 static void StringTests()  {
@@ -519,18 +531,33 @@ static void FloatTests() {
   CHECK_EQ(
       RunToString("print (int-to-string (round 32768.4))"),
       "32768");
+
+  // Regression at r5766 where irreducible 2 *. x was "simplified" to -2
+  CHECK_EQ(
+      RunToString(R"(
+  let
+    fun inch (d : float) = d *. 72.0
+    fun point (d : float) = d
+    fun mm (d : float) = d *. 2.8346456664
+    fun pixel (d : float) = d
+
+    val SLIDE-WIDTH = pixel 1920.0
+    val SLIDE-HEIGHT = pixel 1080.0
+    val LEFT-MARGIN = inch 3.0
+    val TOP-MARGIN = inch 3.0
+
+    val LM2 = 2.0 *. LEFT-MARGIN
+
+    val WWW = SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
+  in
+    print ("LM2:" ^ int-to-string (round LM2))
+  end)"),
+      "LM2:432");
 }
 
+
 static void NewTests() {
-  CHECK_EQ(
-      RunToString(
-          "let val r = ref 0\n"
-          "object O of { x : int }\n"
-          "in case (get-attrs (node {(O) x = !r }\n"
-          "                    (layout (let do r := 5 in \"e\" end)))) of\n"
-          "    {(O) x } => print (int-to-string x)\n"
-          "end\n"),
-      "0");
+
 }
 
 }  // namespace bc

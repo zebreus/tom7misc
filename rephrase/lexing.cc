@@ -43,6 +43,7 @@ const char *TokenTypeString(TokenType tok) {
   case AS: return "AS";
   case AND: return "AND";
   case FAIL: return "FAIL";
+  case OP: return "OP";
 
   // Symbolic keywords.
   case TIMES: return "TIMES";
@@ -270,7 +271,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
     {"orelse", ORELSE},
     {"andthen", ANDTHEN},
     {"otherwise", OTHERWISE},
-
+    {"op", OP},
     {"as", AS},
     {"and", AND},
     {"import", IMPORT},

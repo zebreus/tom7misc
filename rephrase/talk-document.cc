@@ -145,11 +145,16 @@ void TalkPage::DrawImage(double x, double y,
   CHECK(image.get() != nullptr);
   printf("Add image at %.11g %.11g.\n", x, y);
 
-  // TODO: Sub-pixel resize and positioning.
-  ImageRGBA resized = ImageResize::Resize(sticker,
-                                          (int)std::round(width),
-                                          (int)std::round(height));
-  image->BlendImage((int)std::round(x), (int)std::round(y), resized);
+  const int ww = std::round(width);
+  const int hh = std::round(height);
+
+  if (ww != sticker.Width() || hh != sticker.Height()) {
+    // TODO: Sub-pixel resize and positioning.
+    ImageRGBA resized = ImageResize::Resize(sticker, ww, hh);
+    image->BlendImage((int)std::round(x), (int)std::round(y), resized);
+  } else {
+    image->BlendImage((int)std::round(x), (int)std::round(y), sticker);
+  }
 }
 
 void TalkDocument::GenerateOutput(std::string_view filename_base,
@@ -176,6 +181,12 @@ void TalkDocument::GenerateOutput(std::string_view filename_base,
     Transform identity;
     identity.dx = 0.0;
     identity.dy = 0.0;
+
+    /*
+    printf("Page %d:\n", page_idx);
+    DebugPrintDocTree(doc);
+    */
+
     PlaceStickersRec(context, identity, doc, page);
   }
 

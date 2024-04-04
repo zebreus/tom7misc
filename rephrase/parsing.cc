@@ -236,7 +236,7 @@ const Exp *Parsing::Parse(AstPool *pool,
     (IsToken<TRUE>() >> Succeed<Token, bool>(true)) ||
     (IsToken<FALSE>() >> Succeed<Token, bool>(false));
 
-  // Use IdAny for expressions, which adds * and others.
+  // Use Id for expressions, which adds * and others.
   const auto IdType = IsToken<ID>() >[&](Token t) { return TokenStr(t); };
   // Labels can also be numeric. Since they also appear in types (or
   // nearby like in the #1/5 construct), we only allow type
@@ -948,6 +948,15 @@ const Exp *Parsing::Parse(AstPool *pool,
         return nullptr;
       });
 
+  auto ErrorDecl =
+    Mark(IsToken<SEMICOLON>()) >[&](const auto &err) -> const Dec * {
+        const auto &[tok, start, length] = err;
+        LOG(FATAL) << ErrorAtIndex(start, length) <<
+          "Expected declaration, but got " <<
+          StringPrintf(AORANGE("%s"), TokenTypeString(tok.type)) <<
+          "\nAt: " << start << " for " << length;
+        return nullptr;
+      };
 
   const auto ExpAdjApp = [&](const Exp *f, const Exp *arg) -> const Exp * {
       return pool->App(f, arg);
@@ -1130,6 +1139,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             FunDecl(Expr) ||
             DatatypeDecl ||
             ObjectDecl ||
+            ErrorDecl ||
             // Just here for convenience of writing a || b || ...
             Fail<Token, const Dec *>();
         });

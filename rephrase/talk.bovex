@@ -5,6 +5,8 @@ let
   import "cite.bovex"
   import "paper.bib"
 
+  (* import "chess.bovex" *)
+
   (* slides info *)
   object TalkInfo of { }
 
@@ -17,15 +19,6 @@ let
                    subject = "Documents do not need a 'subject'"
                    (* leaving out date, so it is the creation time. *) }
     *)
-
-  (*
-  val GEORGIA : font-family =
-    font-load-family { name = "Georgia",
-                       regular = SOME "Georgia.ttf",
-                       bold = SOME "GeorgiaBold.ttf",
-                       italic = SOME "GeorgiaItalic.ttf",
-                       bold-italic = SOME "GeorgiaBoldItalic.ttf" }
-*)
 
   val tt = fixedersys
 
@@ -42,6 +35,18 @@ let
   val u2e17-png = image-load "u2e17.png"
   val u2e17 =
     image-inline { img = u2e17-png, height = 9.0, dy = 4.0 }
+
+  val testbg-png = image-load "testbg.png"
+
+  fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
+    let
+      val { width = pixel-width, height = pixel-height } = image-size img
+    in
+      sticker {(Sticker) x = int-to-float x, y = int-to-float y,
+               img = img-handle,
+               img-width = int-to-float pixel-width,
+               img-height = int-to-float pixel-height } []
+    end
 
   fun image-sticker { img = img as (Image img-handle), x, y, width } =
     let
@@ -77,7 +82,7 @@ let
           let
             val s = stick-line (stick-horizontally line)
           in
-            debug-print-doc s;
+            (* debug-print-doc s; *)
             sticker {(Sticker) x = x, y = y } s
           end
       | _ => fail ("Expected just one line when packing boxes on " ^
@@ -86,13 +91,26 @@ let
 
 
   (* 26 2/3 inches wide, 15 inches tall. *)
+  val SLIDE-WIDTH = pixel 1920.0
+  val SLIDE-HEIGHT = pixel 1080.0
   val LEFT-MARGIN = inch 3.0
   val TOP-MARGIN = inch 3.0
+
+  val LM2 = 2.0 *. LEFT-MARGIN
+
+  val WWW = SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
+  do print ("SLIDE-WIDTH: " ^ int-to-string (round SLIDE-WIDTH) ^
+            " LEFT-MARGIN: " ^ int-to-string (round LEFT-MARGIN) ^
+            " LM2: " ^ int-to-string (round LM2) ^
+            " LEFT-MARGIN*2: " ^ int-to-string (round (2.0 *. LEFT-MARGIN)) ^
+            " WWW: " ^ int-to-string (round WWW) ^ "\n")
+
+  val TITLE-SIZE = point 136.0
 
   fun add-title title =
     output (!current-page,
             text-sticker { x = LEFT-MARGIN, y = TOP-MARGIN }
-            (size 136.0
+            (size TITLE-SIZE
              (b
               (palatino
                title))))
@@ -101,20 +119,116 @@ let
 
   fun bullet-slide title bullets =
     let
+      val BULLET-FONT-SIZE = point 72.0
+      val BULLET-WIDTH = SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
+      val BULLET-LINE-GAP = point 36.0
 
+      val xpos = LEFT-MARGIN
+      val ypos = ref (TOP-MARGIN +. TITLE-SIZE *. 1.5)
+      fun add-bullet lay =
+        let
+          val lay =
+            palatino
+            (size BULLET-FONT-SIZE
+             (layout-map-text normalize-whitespace lay))
+          val boxes = get-boxes lay
+          val (badness, lines : layout list) =
+            pack-boxes-horiz (BEST, FULLY-JUSTIFIED, BULLET-WIDTH, boxes)
+          do emit-badness badness
+          val lines : layout list = list-map stick-horizontally lines
+
+          val num-lines = list-length lines
+        in
+          output
+          (!current-page,
+           box-stick-at { x = xpos, y = !ypos }
+           (stick-vertically (0.0, layout-concat lines)));
+
+          (* output a bullet picture too *)
+          output
+          (!current-page,
+           sticker {(Sticker)
+                    x = xpos -. 64.0, y = !ypos +. 16.0,
+                    font-name = font-bold PALATINO,
+                    font-size = BULLET-FONT-SIZE,
+                    font-color = 0x000066FF } [ * ]);
+
+          ypos := !ypos +. BULLET-FONT-SIZE *. int-to-float num-lines +.
+          BULLET-LINE-GAP;
+
+        end
 
     in
+      output
+      (!current-page,
+       exact-image-at { x = 0, y = 0, img = testbg-png });
+
       add-title title;
 
-
+      list-app add-bullet bullets;
 
       next-slide()
     end
 
 
+  fun quote-slide title lay =
+    let
+      val xpos = LEFT-MARGIN
+      val ypos = ref (TOP-MARGIN +. TITLE-SIZE *. 1.5)
+      val QUOTE-FONT-SIZE = 72.0
+      val QUOTE-WIDTH = SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
+      val COLUMN-WIDTH = QUOTE-WIDTH
+      val PARAGRAPH-VSPACE-BOTTOM = QUOTE-FONT-SIZE
+
+      val body = span {(Span) font-size = QUOTE-FONT-SIZE,
+                       font-face = font-family PALATINO,
+                       font-italic = true }
+        (layout-map-text normalize-whitespace lay)
+
+      fun process p =
+        process-paragraph (COLUMN-WIDTH, PARAGRAPH-VSPACE-BOTTOM, p)
+
+      val paras : paragraph list =
+        list-concat (list-map process (get-paragraphs (body :: nil)))
+
+      val pboxes =
+        list-map (fn (Paragraph { lines }) =>
+                  stick-vertically (0.0, layout-concat lines ))
+        paras
+
+    in
+      output
+      (!current-page,
+       exact-image-at { x = 0, y = 0, img = testbg-png });
+
+      add-title title;
+
+      output
+      (!current-page,
+       box-stick-at { x = xpos, y = !ypos }
+       (stick-vertically (0.0, layout-concat pboxes)));
+
+      next-slide()
+    end
+
 in
-  bullet-slide [Toggle of Voice AVE]
+  (* TODO: We can have a slide object with some config, like a title,
+     background image, etc. *)
+
+  quote-slide [OK]
+  [Sen. Bill Cassidy of Louisiana, representing the ______ party, said
+   paying workers the same wages for fewer hours would force employers
+   to pass the cost of hiring more workers along to consumers.
+
+   [* Note: Don't fix the quotation marks in here; I refer to them below *]
+   “It would threaten millions of small businesses operating on a
+   razor-thin margin because they’re unable to find enough workers,"
+   said Cassidy. "Now they’ve got the same workers, but only for
+   three-quarters of the time. And they have to hire more.”];
+(*
+  bullet-slide [Now I am making slides]
   ([Razors have famously high margins] ::
-   [Mixes fancy typographic quotes and ASCII ones] ::
-   [What? No!] :: nil)
+   [Mixes fancy “typographic quotes” and "ASCII ones"] ::
+   [What? No!] :: nil) *)
+
 end

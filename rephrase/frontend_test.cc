@@ -763,13 +763,12 @@ static void TestLayout() {
     const Program pgm = Run(
         "let object ABC of { x : int }\n"
         "in node {(ABC) } [hi] end");
-    if (VERBOSE) {
-      printf("%s", ProgramString(pgm).c_str());
-    }
-    CHECK(pgm.body->type == ExpType::NODE);
-    const auto &[attrs, children] = pgm.body->Node();
-    CHECK(attrs->type == ExpType::OBJECT);
-    CHECK(children.size() == 1);
+    CHECK(pgm.body->type == ExpType::PRIMOP) << ProgramString(pgm);
+    const auto &[po, ts, es] = pgm.body->Primop();
+    CHECK(po == Primop::STRING_TO_LAYOUT);
+    CHECK(ts.empty());
+    CHECK(es.size() == 1);
+    CHECK(es[0]->String() == "hi");
   }
 
 }

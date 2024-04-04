@@ -23,7 +23,7 @@
 #include "talk-document.h"
 #include "periodically.h"
 #include "rephrasing.h"
-#include "opt/opt.h"
+#include "opt/opt-seq.h"
 
 enum class OutputType {
   PDF,
@@ -31,16 +31,78 @@ enum class OutputType {
 };
 
 namespace {
+struct BovexOpt {
+  std::vector<std::tuple<std::string, double, double, double>> vars;
+  std::unordered_map<std::string, int> var_nums;
+  BovexOpt(int verbose) : verbose(verbose) {}
+
+  bool Continue() const {
+    return seq.get() != nullptr;
+  }
+
+  void Next() {
+    // No optimization vars.
+    if (vars.empty()) {
+      args = {};
+      return;
+    }
+
+    // Sequence was resized, so we need to start over.
+    if (seq.get() == nullptr) {
+      std::vector<std::pair<double, double>> bounds;
+      bounds.reserve(vars.size());
+      for (const auto &[v, lo, st, hi] : vars) {
+        bounds.emplace_back(lo, hi);
+      }
+      seq.reset(new OptSeq(std::move(bounds)));
+    }
+
+    args = seq->Next();
+  }
+
+  void Result(double r) {
+    if (seq.get() != nullptr) {
+      CHECK(seq->size() == args.size());
+      seq->Result(r);
+    }
+  }
+
+  double GetValue(const std::string &var,
+                  double low, double start, double high) {
+    auto it = var_nums.find(var);
+    if (it == var_nums.end()) {
+      if (verbose > 0) {
+        printf("New optimization var " ACYAN("%s") "\n", var.c_str());
+      }
+      var_nums[var] = (int)vars.size();
+      vars.emplace_back(var, low, start, high);
+      args.push_back(start);
+      return start;
+
+    } else {
+      int idx = it->second;
+      CHECK(idx >= 0 && idx < (int)args.size());
+      return args[idx];
+    }
+  }
+
+  int verbose = 0;
+  std::unique_ptr<OptSeq> seq;
+  std::vector<double> args;
+};
+
 struct BovexExecution : public bc::Execution {
   explicit BovexExecution(const bc::Program &pgm,
                           Document *document,
-                          Rephrasing *rephrasing) :
+                          Rephrasing *rephrasing,
+                          BovexOpt *opt) :
     bc::Execution(pgm),
     document(document),
     rephrasing(rephrasing),
+    opt(opt),
     // Save periodically, but not immediately!
     save_rephrasing_per(60.0, false) {
-
+    opt->Next();
   }
 
   std::map<int, std::vector<DocTree>> pages;
@@ -81,28 +143,15 @@ struct BovexExecution : public bc::Execution {
                           double low,
                           double start,
                           double high) override {
-    auto it = opt_active.find(name);
-    if (it == opt_active.end()) {
-      opt_active[name] = std::make_tuple(low, start, high);
-    }
-
-    auto vit = opt_values.find(name);
-    if (vit == opt_values.end()) return start;
-    else return vit->second;
+    return opt->GetValue(name, low, start, high);
   }
-
-  std::unordered_map<std::string, std::tuple<double, double, double>>
-  opt_active;
-
-  std::unordered_map<std::string, double> opt_values;
-
-
 
   bool did_rephrase = false;
 
   // Not owned!
   Document *document = nullptr;
   Rephrasing *rephrasing = nullptr;
+  BovexOpt *opt = nullptr;
 
   // Periodically save the rephrasing database, so that even if we
   // kill the process, we don't lose work. (Unless you kill it during
@@ -110,39 +159,6 @@ struct BovexExecution : public bc::Execution {
   Periodically save_rephrasing_per;
 };
 }  // namespace
-
-struct BovexOpt {
-  std::vector<std::tuple<std::string, double, double, double>> vars;
-  std::unordered_map<std::string, int> var_nums;
-  BovexOpt(int verbose) : verbose(verbose) {}
-
-  GetValue(const std::string &var, double low, double start, double high) {
-    auto it = var_nums.find(var);
-    if (it == var_nums.end()) {
-      if (verbose > 0) {
-        printf("New optimization var " ACYAN("%s") "\n");
-        var_nums[var] = (int)vars.size();
-        vars.emplace_back(var, low, start, high);
-        Resize();
-        return start;
-      }
-    }
-
-    // XXX use best
-  }
-
-  void Resize() {
-    std::vector<std::pair<double, double>> bounds;
-    bounds.reserve(vars.size());
-    for (const auto &[v, lo, st, hi] : vars) {
-      bounds.emplace_back(lo, hi);
-    }
-    seq.reset(new OptSeq(std::move(bounds)));
-  }
-
-  int verbose = 0;
-  std::unique_ptr<OptSeq> seq;
-};
 
 static int Bovex(const std::vector<std::string> &args) {
   Timer timer;
@@ -220,6 +236,8 @@ static int Bovex(const std::vector<std::string> &args) {
   std::optional<std::unique_ptr<Document>> best_document;
   bool did_rephrase = false;
 
+  BovexOpt opt(verbose);
+
   for (;;) {
 
     std::unique_ptr<Document> document = [output_type]() ->
@@ -234,7 +252,8 @@ static int Bovex(const std::vector<std::string> &args) {
       }
     }();
 
-    BovexExecution execution(pgm, document.get(), rephrasing.get());
+    BovexExecution execution(pgm, document.get(), rephrasing.get(),
+                             &opt);
     BovexExecution::State state = execution.Start();
 
     if (verbose > 0) {
@@ -256,6 +275,7 @@ static int Bovex(const std::vector<std::string> &args) {
     // Measure final badness.
     const double total_badness = execution.total_badness;
     printf("Total badness: " ARED("%.11g") "\n", total_badness);
+    opt.Result(total_badness);
 
     if (!best_badness.has_value() || total_badness < best_badness.value()) {
       best_badness = total_badness;
@@ -263,7 +283,7 @@ static int Bovex(const std::vector<std::string> &args) {
       best_document.emplace(std::move(document));
     }
 
-    if (execution.opt_active.empty()) {
+    if (!opt.Continue()) {
       break;
     }
   }

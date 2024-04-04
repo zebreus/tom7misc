@@ -31,6 +31,8 @@ struct OptSeq {
   // Result.
   std::optional<std::pair<std::vector<double>, double>> GetBest();
 
+  size_t size() const { return bounds.size(); }
+
  private:
   void Observe(const std::vector<double> &arg, double d);
   void OptThread();

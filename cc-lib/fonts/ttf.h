@@ -442,11 +442,13 @@ void TTF::BlitStringFloat(float x, float y, float size_px,
 
   // Should stay integral if subpixel is false.
   float xpos = x;
-  for (int idx = 0; idx < (int)text.size(); idx++) {
+
+  std::vector<uint32_t> codepoints = Util::UTF8Codepoints(text);
+  for (int idx = 0; idx < (int)codepoints.size(); idx++) {
 
     int advance = 0, left_side_bearing = 0;
     stbtt_GetCodepointHMetrics(
-        &font, text[idx], &advance, &left_side_bearing);
+        &font, codepoints[idx], &advance, &left_side_bearing);
 
     int bitmap_w = 0, bitmap_h = 0;
     // We always render the glyph's bitmap as though at 0,0.
@@ -457,7 +459,7 @@ void TTF::BlitStringFloat(float x, float y, float size_px,
     const float x_shift = xpos - x_int;
     bitmap = stbtt_GetCodepointBitmapSubpixel(&font, scale, scale,
                                               x_shift, y_shift,
-                                              text[idx],
+                                              codepoints[idx],
                                               &bitmap_w, &bitmap_h,
                                               &xoff, &yoff);
 
@@ -480,9 +482,10 @@ void TTF::BlitStringFloat(float x, float y, float size_px,
     }
 
     xpos += advance * scale;
-    if (kern && text[idx + 1] != '\0') {
+    if (kern && idx + 1 < (int)codepoints.size()) {
       xpos += scale *
-        stbtt_GetCodepointKernAdvance(&font, text[idx], text[idx + 1]);
+        stbtt_GetCodepointKernAdvance(
+            &font, codepoints[idx], codepoints[idx + 1]);
     }
   }
 }

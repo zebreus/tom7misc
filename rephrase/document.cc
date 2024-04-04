@@ -1062,6 +1062,7 @@ Document::PackBoxes(Algorithm algo,
   // Remove attributes that are consumed by this algorithm.
   auto CleanAttrs = [](DocTree *doc) {
       doc->RemoveAttr("glue-expand");
+      doc->RemoveAttr("glue-break-extra-width");
       doc->RemoveAttr("glue-contract");
       doc->RemoveAttr("glue-break-penalty");
       doc->RemoveAttr("glue-break-insert");
@@ -1150,18 +1151,24 @@ void Document::PlaceStickersRec(Context context,
     return;
   }
 
+  auto Error = [&doc]() -> const char * {
+      printf(ARED("In this document tree") ":\n");
+      DebugPrintDocTree(doc);
+      return "\n";
+    };
+
   // Otherwise, the node should be a sticker.
   const std::string *display = doc.GetStringAttr("display");
-  CHECK(display != nullptr) << "Any non-group node has to have a display "
-    "when rendering the page.";
+  CHECK(display != nullptr) << Error() << "Any non-group node has "
+    "to have a display when rendering the page.";
 
-  CHECK(*display == "sticker") << "At this point everything should be "
-    "stickers. Got node with display=" << *display;
+  CHECK(*display == "sticker") << Error() << "At this point everything "
+    "should be stickers. Got node with display=" << *display;
 
   const double *x = doc.GetDoubleAttr("x");
   const double *y = doc.GetDoubleAttr("y");
-  CHECK(x != nullptr && y != nullptr) << "Every sticker should have "
-    "its final x= and y= coordinates.";
+  CHECK(x != nullptr && y != nullptr) << Error() << "Every sticker "
+    "should have its final x= and y= coordinates.";
 
   if (const std::string *img = doc.GetStringAttr("img")) {
     const double *width = doc.GetDoubleAttr("img-width");

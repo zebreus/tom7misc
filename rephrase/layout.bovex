@@ -111,6 +111,14 @@ val ZAPF-DINGBATS : font-family = Font { family = "zapf-dingbats",
                                          italic = NONE,
                                          bold-italic = NONE }
 
+(*
+  val GEORGIA : font-family =
+    font-load-family { name = "Georgia",
+                       regular = SOME "Georgia.ttf",
+                       bold = SOME "GeorgiaBold.ttf",
+                       italic = SOME "GeorgiaItalic.ttf",
+                       bold-italic = SOME "GeorgiaBoldItalic.ttf" }
+*)
 
 val PALATINO : font-family =
   font-load-family { name = "palatino",
@@ -655,8 +663,8 @@ fun stick-horizontally (lay : layout) : layout =
 
 (* Like stick-horizontally, but vertically. *)
 fun stick-vertically (x : float, lay : layout) : layout =
-  case layoutcase lay of
-    Node (BOX, attrs, children) =>
+  let
+    fun do-lines attrs children =
       let
         val height = ref 0.0
         fun rec (y, nil) =
@@ -686,7 +694,22 @@ fun stick-vertically (x : float, lay : layout) : layout =
       in
         box (attrs with (Box)height = !height) (layout-concat ch)
       end
-  | _ => fail "Expected line to be a box!"
+  in
+    case layoutcase lay of
+      Node (BOX, attrs, children) => do-lines attrs children
+    | Node (GROUP, _, children) => do-lines {(Object)} children
+    | _ =>
+      let in
+        debug-print-doc lay;
+        fail "Expected line to be a box!"
+      end
+  end
+
+fun box-stick-at {x : float, y : float} lay =
+  case layoutcase lay of
+    Node (BOX, attrs, children) =>
+      sticker (attrs with x = x with y = y) (layout-concat children)
+    | _ => fail "Expected box argument to box-stick-at"
 
 (* Image on its own line, maintaining aspect ratio. *)
 fun image { img = img as (Image img-handle), width } =
@@ -939,15 +962,6 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
 
     val paras : (float * layout) list = extract-rephrasing (fn x => x) para
 
-      (*
-    do list-app (fn (loss, lay) =>
-                 let in
-                   print ("######## LOSS: " ^
-                          (int-to-string (round (loss *. 100.0))) ^ "\n");
-                   debug-print-doc lay
-                 end) paras
-    *)
-
     fun get-best (NONE, nil) = fail "bug: no options?"
       | get-best (SOME (badness, best), nil) =
       let in
@@ -1092,6 +1106,54 @@ fun pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
     emit-column ()
   end
 
+
+(* This returns multiple paragraphs because processing a paragraph
+   may emit floaters. *)
+fun process-paragraph (COLUMN-WIDTH : float,
+                       PARAGRAPH-VSPACE-BOTTOM : float,
+                       p : layout) : paragraph list =
+  let
+    val VERBOSE = false
+    val lines = pack-one-paragraph COLUMN-WIDTH p
+
+    (* Put a line at the end to space out the paragraph. We
+       should do this with glue. *)
+    val lines = list-rcons
+      (lines, box {(Box) height = PARAGRAPH-VSPACE-BOTTOM} [])
+
+
+    do VERBOSE andthen
+      let in
+        print "----packed lines---\n";
+        list-app (fn (lay : layout) =>
+                  let in
+                    print "==\n";
+                    debug-print-doc lay;
+                  end) lines;
+        print "-------------------\n"
+      end
+
+    (* Now can treat the contents of lines as stickers.
+       The line itself remains a box. *)
+    val lines : layout list = list-map stick-horizontally lines
+
+    do VERBOSE andthen
+      let in
+        print "----now as lines---\n";
+        list-app (fn (lay : layout) =>
+                  let in
+                    print "==\n";
+                    debug-print-doc lay;
+                  end) lines;
+        print "-------------------\n"
+      end
+  in
+    (Paragraph { lines = lines }) :: nil
+  end
+
+(* TODO: Some kind of page config object that specifies the
+   various constant dimensions, with defaults. *)
+
 (* Generally just one of these, for the toplevel document.
    This breaks the layout into paragraphs, and then inserts
    them one by one into columns.
@@ -1125,46 +1187,8 @@ fun main-text lay =
     (* XXX This should depend on the font *)
     val PARAGRAPH-VSPACE-BOTTOM = 12.0
 
-    (* This returns multiple paragraphs because processing a paragraph
-       may emit floaters. *)
-    fun process-paragraph (p : layout) : paragraph list =
-      let
-        val lines = pack-one-paragraph COLUMN-WIDTH p
-
-        (* Put a line at the end to space out the paragraph. We
-           should do this with glue. *)
-        val lines = list-rcons
-          (lines, box {(Box) height = PARAGRAPH-VSPACE-BOTTOM} [])
-
-
-        do VERBOSE andthen
-          let in
-            print "----packed lines---\n";
-            list-app (fn (lay : layout) =>
-                      let in
-                        print "==\n";
-                        debug-print-doc lay;
-                      end) lines;
-            print "-------------------\n"
-          end
-
-        (* Now can treat the contents of lines as stickers.
-           The line itself remains a box. *)
-        val lines : layout list = list-map stick-horizontally lines
-
-        do VERBOSE andthen
-          let in
-            print "----now as lines---\n";
-            list-app (fn (lay : layout) =>
-                      let in
-                        print "==\n";
-                        debug-print-doc lay;
-                      end) lines;
-            print "-------------------\n"
-          end
-      in
-        (Paragraph { lines = lines }) :: nil
-      end
+    fun process p =
+      process-paragraph (COLUMN-WIDTH, PARAGRAPH-VSPACE-BOTTOM, p)
 
     (* Parse layout to find paragraph breaks. Handle whitespace.
        Normalize spans that contain paragraphs onto the constituent
@@ -1175,7 +1199,7 @@ fun main-text lay =
        Optimize line breaks for each paragraph.
        Turn each paragraph into a series of vertical boxes (lines, which
        are stickers). *)
-    val paras : paragraph list = list-concat (list-map process-paragraph paras)
+    val paras : paragraph list = list-concat (list-map process paras)
   in
     pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
                      BODY-HEIGHT,
