@@ -36,6 +36,8 @@ static constexpr int VERBOSE = 2;
 
 using Rephrasable = Rephrasing::Rephrasable;
 
+namespace {
+
 #if ENABLE_LLM
 using Candidates = LLM::Candidates;
 
@@ -46,8 +48,6 @@ static constexpr int TAIL_TOKEN_HEADROOM = 5;
 // we do some "laplace smoothing".
 static constexpr double LAPLACE_NUMER = 1.0;
 static constexpr double LAPLACE_DENOM = 1.0;
-
-namespace {
 
 static std::string ColorProbString(const std::string &s, float prob) {
   const auto &[r, g, b, a_] =
@@ -879,6 +879,8 @@ struct RephrasingImpl : public Rephrasing {
 };
 
 #endif
+
+}  // namespace
 
 static bool IsSpace(char c) {
   switch (c) {

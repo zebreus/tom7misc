@@ -38,7 +38,7 @@ fun float-compare (a, b) =
 
 fun float-max (a, b) = if a <. b then b else a
 fun float-min (a, b) = if a <. b then a else b
-fun float-abs a = if a < 0.0 then 0.0 -. a else a
+fun float-abs a = if a <. 0.0 then 0.0 -. a else a
 
 fun string-compare (a, b) =
   if string-less (a, b)
