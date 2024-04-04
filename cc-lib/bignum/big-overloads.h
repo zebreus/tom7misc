@@ -7,6 +7,9 @@
 
 #include "bignum/big.h"
 
+#include <cstdint>
+#include <cstddef>
+
 // TODO modifying operators
 // TODO spaceship
 // TODO << >> | & ^

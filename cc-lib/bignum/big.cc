@@ -1,12 +1,11 @@
 
 #include "bignum/big.h"
 
-#include <bit>
 #include <array>
-#include <vector>
+#include <bit>
 #include <cstdint>
 #include <utility>
-
+#include <vector>
 
 // TODO: Move to big-util or something so that we don't
 // need to include it by default?

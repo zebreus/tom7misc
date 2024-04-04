@@ -14,21 +14,20 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cmath>
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
-#include <functional>
 
 struct BigInt {
+  static_assert(std::integral<size_t>);
+
   BigInt() : BigInt(uint32_t{0}) {}
-  inline explicit BigInt(int64_t n);
-  inline explicit BigInt(uint64_t n);
-  inline explicit BigInt(uint32_t n);
-  inline explicit BigInt(size_t n);
-  inline explicit BigInt(int n);
+  // From any integral type, but only up to 64 bits are supported.
+  inline explicit BigInt(std::integral auto n);
   inline explicit BigInt(const std::string &digits);
 
   // Value semantics with linear-time copies (like std::vector).
@@ -314,33 +313,31 @@ inline bool FitsLongInt(int64_t x) {
 }
 }
 
-BigInt::BigInt(int64_t n) {
-  mpz_init(rep);
-  if (n < 0) {
-    SetU64((uint64_t)-n);
-    mpz_neg(rep, rep);
-  } else {
-    SetU64((uint64_t)n);
-  }
-}
-
-BigInt::BigInt(int n) : BigInt((int64_t)n) {
-  static_assert(sizeof (int) <= sizeof (int64_t));
-}
-
-BigInt::BigInt(uint64_t u) {
-  SetU64(u);
-}
-
-BigInt::BigInt(size_t s) {
-  static_assert(sizeof (size_t) <= sizeof (uint64_t));
-  SetU64((uint64_t)s);
-}
-
-BigInt::BigInt(uint32_t u) {
+BigInt::BigInt(std::integral auto ni) {
+  // PERF: Set 32-bit quantities too.
+  /*
   // Need to be able to set 4 bytes at a time.
   static_assert(sizeof (unsigned long int) >= 4);
   mpz_set_ui(rep, u);
+  */
+
+  using T = decltype(ni);
+  if constexpr (std::signed_integral<T>) {
+    static_assert(sizeof (T) <= sizeof (int64_t));
+    const int64_t n = ni;
+    mpz_init(rep);
+    if (n < 0) {
+      SetU64((uint64_t)-n);
+      mpz_neg(rep, rep);
+    } else {
+      SetU64((uint64_t)n);
+    }
+  } else {
+    static_assert(std::unsigned_integral<T>);
+    static_assert(sizeof (T) <= sizeof (uint64_t));
+    uint64_t u = ni;
+    SetU64(u);
+  }
 }
 
 BigInt::BigInt(const BigInt &other) {
@@ -1000,16 +997,25 @@ double BigRat::ToDouble() const {
 // No GMP. Using portable big*.h.
 
 
-BigInt::BigInt(int64_t n) : rep(BzFromInteger(n)) { }
-BigInt::BigInt(uint64_t n) : rep(BzFromUnsignedInteger(n)) { }
-BigInt::BigInt(uint32_t n) : rep(BzFromUnsignedInteger(n)) { }
+BigInt::BigInt(std::integral auto ni) {
+  // PERF: Set 32-bit quantities too.
+  /*
+  // Need to be able to set 4 bytes at a time.
+  static_assert(sizeof (unsigned long int) >= 4);
+  mpz_set_ui(rep, u);
+  */
 
-BigInt::BigInt(size_t s) : BigInt((uint64_t)s) {
-  static_assert(sizeof (size_t) <= sizeof (uint64_t));
-}
-
-BigInt::BigInt(int n) : BigInt((int64_t)n) {
-  static_assert(sizeof (int) <= sizeof (int64_t));
+  using T = decltype(ni);
+  if constexpr (std::signed_integral<T>) {
+    static_assert(sizeof (T) <= sizeof (int64_t));
+    const int64_t n = ni;
+    rep = BzFromInteger(n);
+  } else {
+    static_assert(std::unsigned_integral<T>);
+    static_assert(sizeof (T) <= sizeof (uint64_t));
+    const uint64_t u = ni;
+    rep = BzFromUnsignedInteger(u);
+  }
 }
 
 BigInt::BigInt(const BigInt &other) : rep(BzCopy(other.rep)) { }
