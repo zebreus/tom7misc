@@ -48,6 +48,8 @@ enum class DecType {
   FUN,
   DATATYPE,
   OBJECT,
+  OPEN,
+  TYPE,
 };
 
 enum class PatType {
@@ -154,7 +156,8 @@ struct Dec {
   std::string str;
   const Pat *pat = nullptr;
   const Exp *exp = nullptr;
-  // Explicit tyvars, used for datatype decl.
+  const Type *t = nullptr;
+  // Explicit tyvars, used for type and datatype decl.
   std::vector<std::string> tyvars;
   // All arms in the bundle must use the same tyvars.
   std::vector<DatatypeDec> datatypes;
@@ -396,6 +399,22 @@ struct AstPool {
   const Dec *ObjectDec(ObjectDec objdec) {
     Dec *ret = NewDec(DecType::OBJECT);
     ret->object = std::move(objdec);
+    return ret;
+  }
+
+  const Dec *TypeDec(std::vector<std::string> tyvars,
+                     std::string s, const Type *t) {
+    Dec *ret = NewDec(DecType::TYPE);
+    ret->tyvars = std::move(tyvars);
+    ret->str = std::move(s);
+    ret->t = t;
+    return ret;
+  }
+
+  const Dec *OpenDec(const Exp *e, const Type *t) {
+    Dec *ret = NewDec(DecType::OPEN);
+    ret->exp = e;
+    ret->t = t;
     return ret;
   }
 

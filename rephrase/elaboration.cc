@@ -656,6 +656,31 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
       // the decl. (In the future we could be generating a tag, though?)
       return Elab(G.InsertObj(object.name, std::move(ovi)), rest);
     }
+
+    case el::DecType::TYPE: {
+      // This is not hard, but I am rushing for the SIGBOVIK deadline!
+      CHECK(dec->tyvars.empty()) << "unimplemented: tyvars in type decl";
+      const il::Type *t = ElabType(G, dec->t);
+      il::ElabContext GG = G.InsertType(
+          dec->str,
+          TypeVarInfo{.tyvars = {}, .type = t});
+      return Elab(GG, rest);
+    }
+
+    case el::DecType::OPEN: {
+      CHECK(dec->t != nullptr);
+      const il::Type *type = ElabType(G, dec->t);
+      CHECK(type->type == il::TypeType::RECORD) << "The type in an open "
+        "declaration must be a record. Got: " << TypeString(type);
+      // generate { f1 = f1, f2 = f2, ... }
+      std::vector<std::pair<std::string, const el::Pat *>> pats;
+      for (const auto &[f, t] : type->Record()) {
+        pats.emplace_back(f, el_pool->VarPat(f));
+      }
+      const el::Pat *rpat = el_pool->RecordPat(pats);
+
+      return Elab(G, el_pool->Let({el_pool->ValDec(rpat, dec->exp)}, rest));
+    }
     }
 
     LOG(FATAL) << "Unimplemented in ElabDecs";

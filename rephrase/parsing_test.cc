@@ -999,6 +999,23 @@ static void TestParseDec() {
     CHECK(od.fields[1].second->var == "int");
   }
 
+  {
+    const auto *dec = ParseDec(
+        "type t = { }");
+    CHECK(dec->type == DecType::TYPE);
+    CHECK(dec->str == "t");
+    CHECK(dec->tyvars.empty());
+    CHECK(dec->t->type == TypeType::RECORD);
+  }
+
+  {
+    const auto *dec = ParseDec(
+        "open { } as { }");
+    CHECK(dec->type == DecType::OPEN);
+    CHECK(dec->exp->type == ExpType::RECORD);
+    CHECK(dec->t->type == TypeType::RECORD);
+  }
+
   printf("Dec parsing " AGREEN("OK") "\n");
 }
 

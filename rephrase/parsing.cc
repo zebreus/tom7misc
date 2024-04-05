@@ -37,25 +37,6 @@ struct IsToken {
   }
 };
 
-# if 0
-template<class Ret>
-struct Error {
-  using token_type = Token;
-  using out_type = const Ret *;
-  TokenType t;
-  const char *msg = "";
-  constexpr Error(TokenType t, const char *msg) : t(t), msg(msg) {}
-  Parsed<const Ret *> operator()(TokenSpan<Token> toks) const {
-    if (toks.empty() || toks[0].type != t) return Parsed<out_type>::None();
-    const size_t start = toks[0].start;
-    const size_t length = toks[0].length;
-    LOG(FATAL) << ErrorAtIndex(start, length) <<
-      msg << "\nAt: " << start << " for " << length;
-    return nullptr;
-  }
-};
-#endif
-
 // For built-in identifiers, get their fixity, associativity, and precedence.
 // TODO: Make it possible to declare new fixity.
 [[maybe_unused]]
@@ -948,6 +929,20 @@ const Exp *Parsing::Parse(AstPool *pool,
         return nullptr;
       });
 
+  auto TypeDecl =
+    // TODO: Tyvars; it's easy
+    ((IsToken<TYPE>() >> IdType) && (IsToken<EQUALS>() >> TypeExpr))
+    >[&](const auto &p) -> const Dec * {
+        return pool->TypeDec({}, p.first, p.second);
+      };
+
+  auto OpenDecl = [&](const auto &Expr) {
+      return (IsToken<OPEN>() >> Expr && (IsToken<AS>() >> TypeExpr))
+        >[&](const auto &p) -> const Dec * {
+            return pool->OpenDec(p.first, p.second);
+          };
+    };
+
   auto ErrorDecl =
     Mark(IsToken<SEMICOLON>()) >[&](const auto &err) -> const Dec * {
         const auto &[tok, start, length] = err;
@@ -1139,6 +1134,8 @@ const Exp *Parsing::Parse(AstPool *pool,
             FunDecl(Expr) ||
             DatatypeDecl ||
             ObjectDecl ||
+            TypeDecl ||
+            OpenDecl(Expr) ||
             ErrorDecl ||
             // Just here for convenience of writing a || b || ...
             Fail<Token, const Dec *>();

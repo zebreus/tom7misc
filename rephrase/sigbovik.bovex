@@ -90,41 +90,76 @@ let
     end
 
 
+
+  object Slide of
+    {
+     TITLE-FONT-SIZE : float,
+     LEFT-MARGIN : float,
+     TOP-MARGIN : float,
+     QUOTE-FONT-SIZE : float,
+     QUOTE-WIDTH : float,
+     PARAGRAPH-VSPACE-BOTTOM : float
+     }
+
+  type slide-props =
+    {
+     TITLE-FONT-SIZE : float,
+     LEFT-MARGIN : float,
+     TOP-MARGIN : float,
+     QUOTE-FONT-SIZE : float,
+     QUOTE-WIDTH : float,
+     PARAGRAPH-VSPACE-BOTTOM : float
+     }
+
+  fun slide-props (s : obj) : slide-props =
+    let
+      val TITLE-FONT-SIZE =
+        case s of {(Slide) TITLE-FONT-SIZE = tfs } => tfs | _ => point 136.0
+      val LEFT-MARGIN =
+        case s of {(Slide) LEFT-MARGIN = lm } => lm | _ => inch 3.0
+      val TOP-MARGIN =
+        case s of {(Slide) TOP-MARGIN = tm } => tm | _ => inch 3.0
+
+    in
+      { TITLE-FONT-SIZE = TITLE-FONT-SIZE,
+        LEFT-MARGIN = LEFT-MARGIN,
+        TOP-MARGIN = TOP-MARGIN,
+        QUOTE-FONT-SIZE = 72.0,
+        QUOTE-WIDTH = 100.0,
+        PARAGRAPH-VSPACE-BOTTOM = 36.0,
+        } : slide-props
+    end
+
+
   (* 26 2/3 inches wide, 15 inches tall. *)
   val SLIDE-WIDTH = pixel 1920.0
   val SLIDE-HEIGHT = pixel 1080.0
-  val LEFT-MARGIN = inch 3.0
-  val TOP-MARGIN = inch 3.0
 
-  val LM2 = 2.0 *. LEFT-MARGIN
-
-  val WWW = SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
-  do print ("SLIDE-WIDTH: " ^ int-to-string (round SLIDE-WIDTH) ^
-            " LEFT-MARGIN: " ^ int-to-string (round LEFT-MARGIN) ^
-            " LM2: " ^ int-to-string (round LM2) ^
-            " LEFT-MARGIN*2: " ^ int-to-string (round (2.0 *. LEFT-MARGIN)) ^
-            " WWW: " ^ int-to-string (round WWW) ^ "\n")
-
-  val TITLE-SIZE = point 136.0
-
-  fun add-title title =
-    output (!current-page,
-            text-sticker { x = LEFT-MARGIN, y = TOP-MARGIN }
-            (size TITLE-SIZE
-             (b
-              (palatino
-               title))))
+  fun add-title props title =
+    let
+      open props as slide-props
+    in
+      output (!current-page,
+              text-sticker { x = LEFT-MARGIN, y = TOP-MARGIN }
+              (size TITLE-FONT-SIZE
+               (b
+                (palatino
+                 title))))
+    end
 
   fun next-slide () = current-page := !current-page + 1
 
-  fun bullet-slide title bullets =
+  fun bullet-slide slide title bullets =
     let
+      val props = slide-props slide
+      open props as slide-props
+
       val BULLET-FONT-SIZE = point 72.0
       val BULLET-WIDTH = SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
       val BULLET-LINE-GAP = point 36.0
 
       val xpos = LEFT-MARGIN
-      val ypos = ref (TOP-MARGIN +. TITLE-SIZE *. 1.5)
+      val ypos = ref (TOP-MARGIN +. TITLE-FONT-SIZE *. 1.5)
       fun add-bullet lay =
         let
           val lay =
@@ -163,7 +198,7 @@ let
       (!current-page,
        exact-image-at { x = 0, y = 0, img = testbg-png });
 
-      add-title title;
+      add-title props title;
 
       list-app add-bullet bullets;
 
@@ -171,25 +206,33 @@ let
     end
 
 
-  fun quote-slide title lay =
+  fun quote-slide slide title lay =
     let
+      val props = slide-props slide
+      open props as slide-props
+
       val xpos = LEFT-MARGIN
-      val ypos = ref (TOP-MARGIN +. TITLE-SIZE *. 1.5)
-      val QUOTE-FONT-SIZE = 72.0
+      val ypos = ref (TOP-MARGIN +. TITLE-FONT-SIZE *. 1.5)
       val QUOTE-WIDTH = SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
       val COLUMN-WIDTH = QUOTE-WIDTH
       val PARAGRAPH-VSPACE-BOTTOM = QUOTE-FONT-SIZE
 
       val body = span {(Span) font-size = QUOTE-FONT-SIZE,
                        font-face = font-family PALATINO,
-                       font-italic = true }
-        (layout-map-text normalize-whitespace lay)
+                       font-italic = true } lay
 
       fun process p =
-        process-paragraph (COLUMN-WIDTH, PARAGRAPH-VSPACE-BOTTOM, p)
+        let
+          val p = (layout-map-text normalize-whitespace p)
+        in
+          process-paragraph (COLUMN-WIDTH, PARAGRAPH-VSPACE-BOTTOM, p)
+        end
 
       val paras : paragraph list =
         list-concat (list-map process (get-paragraphs (body :: nil)))
+
+      do print ("There are " ^ int-to-string (list-length paras) ^
+                " paragraphs\n")
 
       val pboxes =
         list-map (fn (Paragraph { lines }) =>
@@ -201,7 +244,7 @@ let
       (!current-page,
        exact-image-at { x = 0, y = 0, img = testbg-png });
 
-      add-title title;
+      add-title props title;
 
       output
       (!current-page,
@@ -211,11 +254,15 @@ let
       next-slide()
     end
 
+  val slide = {(Slide) }
+
 in
   (* TODO: We can have a slide object with some config, like a title,
      background image, etc. *)
 
-  quote-slide [OK]
+  (* TODO: Better bullet graphic. Can embed fonts, remember *)
+
+  quote-slide slide [OK]
   [Sen. Bill Cassidy of Louisiana, representing the ______ party, said
    paying workers the same wages for fewer hours would force employers
    to pass the cost of hiring more workers along to consumers.
@@ -226,7 +273,7 @@ in
    said Cassidy. "Now they’ve got the same workers, but only for
    three-quarters of the time. And they have to hire more.”];
 
-  bullet-slide [Now I am making slides]
+  bullet-slide slide [Now I am making slides]
   ([Razors have famously high margins] ::
    [Mixes fancy “typographic quotes” and "ASCII ones"] ::
    [What? No!] :: nil)

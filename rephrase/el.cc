@@ -236,6 +236,18 @@ std::string DecString(const Dec *d) {
                         Util::Join(fs, ", ").c_str());
   }
 
+  case DecType::TYPE: {
+    CHECK(d->tyvars.empty()) << "unimplemented";
+    return StringPrintf("type %s = %s\n",
+                        d->str.c_str(),
+                        TypeString(d->t).c_str());
+  }
+
+  case DecType::OPEN:
+    return StringPrintf("open %s as %s\n",
+                        ExpString(d->exp).c_str(),
+                        TypeString(d->t).c_str());
+
   case DecType::DATATYPE: {
     std::string tyvars;
     if (!d->tyvars.empty()) {

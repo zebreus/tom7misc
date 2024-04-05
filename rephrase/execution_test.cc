@@ -520,6 +520,16 @@ static void StringTests()  {
           " | _ => print \"no\"\n"),
       "OK");
 
+  CHECK_EQ(
+      RunToString(
+          "let\n"
+          "  type t = { x : int, y : string }\n"
+          "  val r = { x = 3, y = \"hi\" }\n"
+          "  open r as t\n"
+          "in\n"
+          "  print (int-to-string x ^ y)\n"
+          "end\n"),
+      "3hi");
 }
 
 static void FloatTests() {

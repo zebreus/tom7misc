@@ -53,6 +53,7 @@ enum TokenType {
   AND,
   FAIL,
   OP,
+  OPEN,
   IMPORT,
 
   TRUE,
@@ -65,6 +66,7 @@ enum TokenType {
   ANDTHEN,
   OTHERWISE,
 
+  TYPE,
   DATATYPE,
   OF,
   CASE,
