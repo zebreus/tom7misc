@@ -349,14 +349,18 @@ hyphenation_test.exe : hyphenation_test.o hyphenation.o $(CC_LIB_OBJECTS)
 html_test.exe : html_test.o html.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
+maketalk.exe : maketalk.o talk.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex hyph-en-us.tex anti-aliasing.png paper.bib
 	./bovex.exe -v test.bovex -o test.pdf
 
 paper.pdf : bovex.exe paper.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex
 	./bovex.exe -v paper.bovex -o paper.pdf
 
-talk.talk : bovex.exe talk.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex
-	./bovex.exe -v talk.bovex -o talk.talk
+sigbovik/sigbovik.talk : bovex.exe sigbovik.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html
+	./bovex.exe -v sigbovik.bovex -o sigbovik.talk
+	./maketalk.exe sigbovik sigbovik.talk
 
 test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
 	./html_test.exe

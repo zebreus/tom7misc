@@ -225,10 +225,10 @@ in
    razor-thin margin because they’re unable to find enough workers,"
    said Cassidy. "Now they’ve got the same workers, but only for
    three-quarters of the time. And they have to hire more.”];
-(*
+
   bullet-slide [Now I am making slides]
   ([Razors have famously high margins] ::
    [Mixes fancy “typographic quotes” and "ASCII ones"] ::
-   [What? No!] :: nil) *)
+   [What? No!] :: nil)
 
 end

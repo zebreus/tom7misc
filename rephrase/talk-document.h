@@ -73,7 +73,7 @@ struct TalkDocument : public Document {
 
   const Font *GetDefaultFont() override;
 
-  void GenerateOutput(std::string_view filename,
+  void GenerateOutput(std::string_view dirname,
                       const std::map<int, DocTree> &pages) override;
 
  private:
