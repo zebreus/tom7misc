@@ -340,8 +340,48 @@ let
       next-slide()
     end
 
-  (* TODO: We can have a slide object with some config, like a title,
-     background image, etc. *)
+  fun diagram-slide slide title img =
+    let
+      val props = slide-props slide
+      open props as slide-props
+
+      val { width, height } = image-size img
+
+      val content-height = SLIDE-HEIGHT -. CONTENT-START-Y
+      val IMG-PAD-TOP = CONTENT-START-Y +.
+        (content-height -. int-to-float height) *. 0.5
+      val IMG-PAD-LEFT = (SLIDE-WIDTH -. int-to-float width) *. 0.5
+
+    in
+      output
+      (!current-page,
+       exact-image-at { x = 0, y = 0, img = testbg-png });
+
+      add-title props title;
+
+      output
+      (!current-page,
+       exact-image-at { x = round IMG-PAD-LEFT,
+                        y = round IMG-PAD-TOP,
+                        img = img});
+
+      next-slide()
+    end
+
+
+  (* The whole slide is just this image exactly. *)
+  fun just-image filename =
+    let
+      val img = image-load filename
+    in
+      output
+      (!current-page,
+       exact-image-at { x = 0, y = 0, img = img});
+
+      next-slide()
+    end
+
+
   val slide = {(Slide) }
 
 in
@@ -351,6 +391,18 @@ in
   title-slide slide [Badness 0 (Bovik's Version)]
   [Vii, T. M.]
   [SIGBOVIK 2024];
+
+  (* TODO It has come to my attention... *)
+
+  just-image "typography0.png";
+  just-image "typography1.png";
+  just-image "typography2.png";
+  just-image "typography3.png";
+  just-image "typography4.png";
+  just-image "typography5.png";
+  just-image "typography6.png";
+
+  (* Lorem Epsom *)
 
   quote-slide (slide with CONTENT-START-Y = inch 4.0) [OK]
   [Sen. Bill Cassidy of Louisiana, representing the ______ party, said
@@ -366,6 +418,25 @@ in
   bullet-slide slide [Now I am making slides]
   ([Razors have famously high margins] ::
    [Mixes fancy “typographic quotes” and "ASCII ones"] ::
-   [What? No!] :: nil)
+   [What? No!] :: nil);
+
+  bullet-slide slide [The Hero: Donald Knuth]
+  ([Awesome] ::
+   [Will pay you if you find an error] ::
+   [Took 35 years to write a book] :: nil);
+
+  bullet-slide slide [Nightmare on LLM Street]
+  ([Wow OMG I'm sick of it] ::
+   [Torment Nexus] ::
+   [It does kinda work though] :: nil);
+
+  diagram-slide slide [The Hurry-Coward So-So-Morphism]
+  (image-load "morphism.png");
+
+  bullet-slide slide [Nightmare on LLM Street]
+  ([Wow OMG I'm sick of it] ::
+   [Torment Nexus] ::
+   [It does kinda work though] :: nil);
+
 
 end

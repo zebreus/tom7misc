@@ -1,28 +1,26 @@
 
 #include "talk-document.h"
 
-#include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
-#include <format>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
+#include "util.h"
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "color-util.h"
 #include "image.h"
 #include "fonts/ttf.h"
 #include "stb_truetype.h"
 #include "image-resize.h"
+#include "threadutil.h"
+#include "timer.h"
 
 #include "document.h"
 
@@ -159,6 +157,7 @@ void TalkPage::DrawImage(double x, double y,
 
 void TalkDocument::GenerateOutput(std::string_view filename_base,
                                  const std::map<int, DocTree> &pages) {
+  Timer output_timer;
 
   std::string talk_dir = (std::string)filename_base;
   Util::MakeDir(talk_dir);
@@ -186,6 +185,7 @@ void TalkDocument::GenerateOutput(std::string_view filename_base,
     PlaceStickersRec(context, identity, doc, page);
   }
 
+  Asynchronously async(8);
   for (int i = 0; i < (int)pageptrs.size(); i++) {
     const auto &page = pageptrs[i];
     const std::string slidefile = StringPrintf("slide%d.png", i);
@@ -193,13 +193,18 @@ void TalkDocument::GenerateOutput(std::string_view filename_base,
                   "slide\n"
                   "  %s\n",
                   slidefile.c_str());
-    const std::string slideabsfile = Util::dirplus(talk_dir, slidefile);
-    page->image->Save(slideabsfile);
+
+    async.Run([&talk_dir, &page, slidefile]() {
+        const std::string slideabsfile = Util::dirplus(talk_dir, slidefile);
+        page->image->Save(slideabsfile);
+      });
   }
 
   Util::WriteFile(talk_filename, talk);
 
-  printf("Wrote %d slide%s to " AGREEN("%s") ".\n",
+  double sec = output_timer.Seconds();
+  printf("Wrote %d slide%s to " AGREEN("%s") " in %s.\n",
          num_pages, num_pages != 1 ? "s" : "",
-         talk_filename.c_str());
+         talk_filename.c_str(),
+         ANSI::Time(sec).c_str());
 }

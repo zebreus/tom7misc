@@ -94,19 +94,25 @@
    font-size: 80px;
    padding: 20px;
    border: 2px solid #fff;
-   margin-right: 518px;
    border-radius: 4px;
    width: 80px;
    color: #fff;
    float: left;
    -webkit-user-select: none
  }
+ .clickers {
+   width: 1920px;
+   display: flex;
+   justify-content: space-between;
+ }
 </style>
 
 <body bgcolor="#000" onload="Start()">
-    <img id="proj" class="screen">
-    <br/>
+  <img id="proj" class="screen">
+  <br/>
+  <div class="clickers">
     <div class="click" onclick="Left()">&nbsp;&lt;</div>
-    <div class="click" onclick="Right()">&nbsp;&gt;</div>
+    <div class="click" style-onclick="Right()">&nbsp;&gt;</div>
+  </div>
 </body>
 
