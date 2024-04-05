@@ -89,16 +89,23 @@ let
                    "an 'infinite' line.")
     end
 
-
+  (* 26 2/3 inches wide, 15 inches tall. *)
+  val SLIDE-WIDTH = pixel 1920.0
+  val SLIDE-HEIGHT = pixel 1080.0
 
   object Slide of
     {
      TITLE-FONT-SIZE : float,
      LEFT-MARGIN : float,
      TOP-MARGIN : float,
+     CONTENT-START-Y : float,
      QUOTE-FONT-SIZE : float,
      QUOTE-WIDTH : float,
-     PARAGRAPH-VSPACE-BOTTOM : float
+     PARAGRAPH-VSPACE-BOTTOM : float,
+
+     BULLET-FONT-SIZE : float,
+     BULLET-WIDTH : float,
+     BULLET-LINE-GAP : float
      }
 
   type slide-props =
@@ -106,9 +113,15 @@ let
      TITLE-FONT-SIZE : float,
      LEFT-MARGIN : float,
      TOP-MARGIN : float,
+     CONTENT-START-Y : float,
+
      QUOTE-FONT-SIZE : float,
      QUOTE-WIDTH : float,
-     PARAGRAPH-VSPACE-BOTTOM : float
+     PARAGRAPH-VSPACE-BOTTOM : float,
+
+     BULLET-FONT-SIZE : float,
+     BULLET-WIDTH : float,
+     BULLET-LINE-GAP : float
      }
 
   fun slide-props (s : obj) : slide-props =
@@ -120,20 +133,43 @@ let
       val TOP-MARGIN =
         case s of {(Slide) TOP-MARGIN = tm } => tm | _ => inch 3.0
 
+      val CONTENT-START-Y =
+        case s of {(Slide) CONTENT-START-Y = csy } => csy
+      | _ => TOP-MARGIN +. TITLE-FONT-SIZE *. 1.5
+
+      val QUOTE-WIDTH =
+        case s of {(Slide) QUOTE-WIDTH = qw } => qw
+          | _ => SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
+
+      val QUOTE-FONT-SIZE =
+        case s of {(Slide) QUOTE-FONT-SIZE = tm } => tm | _ => point 70.0
+
+      val PARAGRAPH-VSPACE-BOTTOM =
+        case s of {(Slide) PARAGRAPH-VSPACE-BOTTOM = pvb } => pvb
+      | _ => point 36.0
+
+      val BULLET-FONT-SIZE =
+        case s of {(Slide) BULLET-FONT-SIZE = bfs } => bfs | _ => point 72.0
+      val BULLET-WIDTH =
+        case s of {(Slide) BULLET-WIDTH = bw } => bw
+      | _ => SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
+      val BULLET-LINE-GAP =
+        case s of {(Slide) BULLET-LINE-GAP = blg } => blg
+      | _ => point 36.0
+
     in
       { TITLE-FONT-SIZE = TITLE-FONT-SIZE,
         LEFT-MARGIN = LEFT-MARGIN,
         TOP-MARGIN = TOP-MARGIN,
-        QUOTE-FONT-SIZE = 72.0,
-        QUOTE-WIDTH = 100.0,
-        PARAGRAPH-VSPACE-BOTTOM = 36.0,
+        CONTENT-START-Y = CONTENT-START-Y,
+        QUOTE-FONT-SIZE = QUOTE-FONT-SIZE,
+        QUOTE-WIDTH = QUOTE-WIDTH,
+        PARAGRAPH-VSPACE-BOTTOM = PARAGRAPH-VSPACE-BOTTOM,
+        BULLET-FONT-SIZE = BULLET-FONT-SIZE,
+        BULLET-WIDTH = BULLET-WIDTH,
+        BULLET-LINE-GAP = BULLET-LINE-GAP
         } : slide-props
     end
-
-
-  (* 26 2/3 inches wide, 15 inches tall. *)
-  val SLIDE-WIDTH = pixel 1920.0
-  val SLIDE-HEIGHT = pixel 1080.0
 
   fun add-title props title =
     let
@@ -154,12 +190,8 @@ let
       val props = slide-props slide
       open props as slide-props
 
-      val BULLET-FONT-SIZE = point 72.0
-      val BULLET-WIDTH = SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
-      val BULLET-LINE-GAP = point 36.0
-
       val xpos = LEFT-MARGIN
-      val ypos = ref (TOP-MARGIN +. TITLE-FONT-SIZE *. 1.5)
+      val ypos = ref CONTENT-START-Y
       fun add-bullet lay =
         let
           val lay =
@@ -212,10 +244,8 @@ let
       open props as slide-props
 
       val xpos = LEFT-MARGIN
-      val ypos = ref (TOP-MARGIN +. TITLE-FONT-SIZE *. 1.5)
-      val QUOTE-WIDTH = SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
+      val ypos = ref CONTENT-START-Y
       val COLUMN-WIDTH = QUOTE-WIDTH
-      val PARAGRAPH-VSPACE-BOTTOM = QUOTE-FONT-SIZE
 
       val body = span {(Span) font-size = QUOTE-FONT-SIZE,
                        font-face = font-family PALATINO,
@@ -254,15 +284,15 @@ let
       next-slide()
     end
 
+  (* TODO: We can have a slide object with some config, like a title,
+     background image, etc. *)
   val slide = {(Slide) }
 
 in
-  (* TODO: We can have a slide object with some config, like a title,
-     background image, etc. *)
 
   (* TODO: Better bullet graphic. Can embed fonts, remember *)
 
-  quote-slide slide [OK]
+  quote-slide (slide with CONTENT-START-Y = inch 4.0) [OK]
   [Sen. Bill Cassidy of Louisiana, representing the ______ party, said
    paying workers the same wages for fewer hours would force employers
    to pass the cost of hiring more workers along to consumers.
