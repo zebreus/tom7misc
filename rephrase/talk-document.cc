@@ -1,6 +1,8 @@
 
 #include "talk-document.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <map>

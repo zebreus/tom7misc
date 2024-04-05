@@ -904,6 +904,8 @@ DocTree Document::GetBoxes(const DocTree &doc) {
       }
     };
 
+  // DebugPrintDocTree(doc);
+
   // Get default text props somehow?
   TextProps props;
   props.desc.font_family = "times";

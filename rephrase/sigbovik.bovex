@@ -10,6 +10,9 @@ let
   (* slides info *)
   object TalkInfo of { }
 
+  do REPHRASE-ALL := SOME 10
+  do REPHRASE-ALL := NONE
+
   (*
   do set-doc-info {(TalkInfo)
                    creator = "BoVeX",
@@ -22,21 +25,13 @@ let
 
   val tt = fixedersys
 
-  val FONT-SIZE = 12.0
-  val LINE-SPACING = 1.0
-  fun body-font lay = span
-    {(Span)
-     font-face = font-family PALATINO,
-     font-size = 12.0,
-     line-spacing = 1.0 } lay
-
   val current-page = ref 0
 
+  (*
   val u2e17-png = image-load "u2e17.png"
   val u2e17 =
     image-inline { img = u2e17-png, height = 9.0, dy = 4.0 }
-
-  val testbg-png = image-load "testbg.png"
+    *)
 
   fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
     let
@@ -85,6 +80,9 @@ let
             (* debug-print-doc s; *)
             sticker {(Sticker) x = x, y = y } s
           end
+      | (_, nil) =>
+          (* Empty title ok. *)
+          []
       | _ => fail ("Expected just one line when packing boxes on " ^
                    "an 'infinite' line.")
     end
@@ -123,37 +121,67 @@ let
 
   object Slide of
     {
+     BACKGROUND : string,
+
      TITLE-FONT-SIZE : float,
      LEFT-MARGIN : float,
      TOP-MARGIN : float,
      CONTENT-START-Y : float,
      QUOTE-FONT-SIZE : float,
-     QUOTE-WIDTH : float,
      PARAGRAPH-VSPACE-BOTTOM : float,
 
+     BODY-FONT-SIZE: float,
      BULLET-FONT-SIZE : float,
-     BULLET-WIDTH : float,
-     BULLET-LINE-GAP : float
+     BULLET-LINE-GAP : float,
+
+     CONTENT-WIDTH : float,
+     MONOSPACE-FONT-SIZE : float,
+
+     TITLE-FONT-COLOR: int,
+     BODY-FONT-COLOR: int
      }
 
   type slide-props =
     {
+     BACKGROUND-IMAGE : image-handle option,
+
      TITLE-FONT-SIZE : float,
      LEFT-MARGIN : float,
      TOP-MARGIN : float,
      CONTENT-START-Y : float,
 
+     BODY-FONT-SIZE : float,
      QUOTE-FONT-SIZE : float,
-     QUOTE-WIDTH : float,
      PARAGRAPH-VSPACE-BOTTOM : float,
 
      BULLET-FONT-SIZE : float,
-     BULLET-WIDTH : float,
-     BULLET-LINE-GAP : float
+     BULLET-LINE-GAP : float,
+
+     CONTENT-WIDTH: float,
+     MONOSPACE-FONT-SIZE : float,
+
+     TITLE-FONT-COLOR: int,
+     BODY-FONT-COLOR: int
      }
 
   fun slide-props (s : obj) : slide-props =
     let
+      (* PERF could cache these,
+         since we often use a background many times. *)
+
+      val BACKGROUND-IMAGE =
+        case s of
+          {(Slide) BACKGROUND = bg } =>
+            (if string-ends-with ".png" bg
+             then
+               SOME (image-load bg)
+             else
+               let in
+                 print ("Unknown background expression: " ^ bg ^ "\n");
+                 NONE
+               end)
+        | _ => NONE
+
       val TITLE-FONT-SIZE =
         case s of {(Slide) TITLE-FONT-SIZE = tfs } => tfs | _ => point 136.0
       val LEFT-MARGIN =
@@ -163,10 +191,10 @@ let
 
       val CONTENT-START-Y =
         case s of {(Slide) CONTENT-START-Y = csy } => csy
-      | _ => TOP-MARGIN +. TITLE-FONT-SIZE *. 1.5
+      | _ => TOP-MARGIN +. TITLE-FONT-SIZE *. 1.25
 
-      val QUOTE-WIDTH =
-        case s of {(Slide) QUOTE-WIDTH = qw } => qw
+      val CONTENT-WIDTH =
+        case s of {(Slide) CONTENT-WIDTH = cw } => cw
           | _ => SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
 
       val QUOTE-FONT-SIZE =
@@ -176,28 +204,51 @@ let
         case s of {(Slide) PARAGRAPH-VSPACE-BOTTOM = pvb } => pvb
       | _ => point 36.0
 
+
+      val BODY-FONT-SIZE =
+        case s of {(Slide) BODY-FONT-SIZE = bfs } => bfs | _ => point 72.0
+
       val BULLET-FONT-SIZE =
         case s of {(Slide) BULLET-FONT-SIZE = bfs } => bfs | _ => point 72.0
-      val BULLET-WIDTH =
-        case s of {(Slide) BULLET-WIDTH = bw } => bw
-      | _ => SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
       val BULLET-LINE-GAP =
         case s of {(Slide) BULLET-LINE-GAP = blg } => blg
       | _ => point 36.0
 
+      val MONOSPACE-FONT-SIZE =
+        case s of {(Slide) MONOSPACE-FONT-SIZE = mfs } => mfs
+          | _ => point 32.0
+
+      val BODY-FONT-COLOR =
+        case s of {(Slide) BODY-FONT-COLOR = bfc } => bfc
+          | _ => 0x000000FF
+
+      val TITLE-FONT-COLOR =
+        case s of {(Slide) TITLE-FONT-COLOR = tfc } => tfc
+          | _ => 0x000000FF
+
     in
-      { TITLE-FONT-SIZE = TITLE-FONT-SIZE,
+      { BACKGROUND-IMAGE = BACKGROUND-IMAGE,
+        TITLE-FONT-SIZE = TITLE-FONT-SIZE,
         LEFT-MARGIN = LEFT-MARGIN,
         TOP-MARGIN = TOP-MARGIN,
         CONTENT-START-Y = CONTENT-START-Y,
         QUOTE-FONT-SIZE = QUOTE-FONT-SIZE,
-        QUOTE-WIDTH = QUOTE-WIDTH,
         PARAGRAPH-VSPACE-BOTTOM = PARAGRAPH-VSPACE-BOTTOM,
+        BODY-FONT-SIZE = BODY-FONT-SIZE,
         BULLET-FONT-SIZE = BULLET-FONT-SIZE,
-        BULLET-WIDTH = BULLET-WIDTH,
-        BULLET-LINE-GAP = BULLET-LINE-GAP
+        BULLET-LINE-GAP = BULLET-LINE-GAP,
+        CONTENT-WIDTH = CONTENT-WIDTH,
+        MONOSPACE-FONT-SIZE = MONOSPACE-FONT-SIZE,
+        TITLE-FONT-COLOR = TITLE-FONT-COLOR,
+        BODY-FONT-COLOR = BODY-FONT-COLOR
         } : slide-props
     end
+
+  fun add-background-image NONE = ()
+    | add-background-image (SOME img) =
+      output
+      (!current-page,
+       exact-image-at { x = 0, y = 0, img = img })
 
   fun add-title props title =
     let
@@ -206,9 +257,10 @@ let
       output (!current-page,
               text-sticker { x = LEFT-MARGIN, y = TOP-MARGIN }
               (size TITLE-FONT-SIZE
-               (b
-                (palatino
-                 title))))
+               (color TITLE-FONT-COLOR
+                (b
+                 (palatino
+                  title)))))
     end
 
   fun next-slide () = current-page := !current-page + 1
@@ -228,7 +280,7 @@ let
              (layout-map-text normalize-whitespace lay))
           val boxes = get-boxes lay
           val (badness, lines : layout list) =
-            pack-boxes-horiz (BEST, FULLY-JUSTIFIED, BULLET-WIDTH, boxes)
+            pack-boxes-horiz (BEST, FULLY-JUSTIFIED, CONTENT-WIDTH, boxes)
           do emit-badness badness
           val lines : layout list = list-map stick-horizontally lines
 
@@ -254,9 +306,7 @@ let
         end
 
     in
-      output
-      (!current-page,
-       exact-image-at { x = 0, y = 0, img = testbg-png });
+      add-background-image BACKGROUND-IMAGE;
 
       add-title props title;
 
@@ -264,6 +314,86 @@ let
 
       next-slide()
     end
+
+  fun text-slide slide title text =
+    let
+      val props = slide-props slide
+      open props as slide-props
+
+      val xpos = LEFT-MARGIN
+      val ypos = ref CONTENT-START-Y
+
+      fun add-text lay =
+        let
+          val lay =
+            palatino
+            (size BODY-FONT-SIZE
+             (layout-map-text normalize-whitespace lay))
+
+          val lines = pack-one-paragraph CONTENT-WIDTH lay
+          val lines : layout list = list-map stick-horizontally lines
+          val num-lines = list-length lines
+        in
+          output
+          (!current-page,
+           box-stick-at { x = xpos, y = !ypos }
+           (stick-vertically (0.0, layout-concat lines)));
+
+          (* XXX *)
+          ypos := !ypos +. BULLET-FONT-SIZE *. int-to-float num-lines +.
+          BULLET-LINE-GAP;
+        end
+
+    in
+      add-background-image BACKGROUND-IMAGE;
+      add-title props title;
+
+      add-text text;
+
+      next-slide()
+    end
+
+  fun two-column-slide slide title text1 text2 =
+    let
+      val props = slide-props slide
+      open props as slide-props
+
+      val xpos1 = LEFT-MARGIN
+      val gap = inch 1.0
+      val COLUMN-WIDTH = (CONTENT-WIDTH -. gap) *. 0.5
+      val xpos2 = LEFT-MARGIN +. COLUMN-WIDTH +. gap
+
+      val ypos = CONTENT-START-Y
+
+      fun add-text xpos lay =
+        let
+          val lay =
+            palatino
+            (span {(Span)
+                   font-size = BODY-FONT-SIZE} lay)
+
+          val paras : layout list = get-paragraphs (lay :: nil)
+          val lines = list-concat
+            (list-map (pack-one-paragraph COLUMN-WIDTH) paras)
+          val lines : layout list = list-map stick-horizontally lines
+          val num-lines = list-length lines
+        in
+          output
+          (!current-page,
+           box-stick-at { x = xpos, y = ypos }
+           (stick-vertically (0.0, layout-concat lines)))
+        end
+
+    in
+      add-background-image BACKGROUND-IMAGE;
+      add-title props title;
+
+      add-text xpos1 text1;
+      add-text xpos2 text2;
+
+      next-slide()
+    end
+
 
 
   fun quote-slide slide title lay =
@@ -273,10 +403,11 @@ let
 
       val xpos = LEFT-MARGIN
       val ypos = ref CONTENT-START-Y
-      val COLUMN-WIDTH = QUOTE-WIDTH
+      val COLUMN-WIDTH = CONTENT-WIDTH
 
       val body = span {(Span) font-size = QUOTE-FONT-SIZE,
                        font-face = font-family PALATINO,
+                       font-color = BODY-FONT-COLOR,
                        font-italic = true } lay
 
       fun process p =
@@ -298,9 +429,7 @@ let
         paras
 
     in
-      output
-      (!current-page,
-       exact-image-at { x = 0, y = 0, img = testbg-png });
+      add-background-image BACKGROUND-IMAGE;
 
       add-title props title;
 
@@ -318,9 +447,7 @@ let
       open props as slide-props
 
     in
-      output
-      (!current-page,
-       exact-image-at { x = 0, y = 0, img = testbg-png });
+      add-background-image BACKGROUND-IMAGE;
 
       output
       (!current-page,
@@ -340,34 +467,50 @@ let
       next-slide()
     end
 
+  (* Titled slide with a single centered image on it. *)
   fun diagram-slide slide title img =
     let
       val props = slide-props slide
       open props as slide-props
-
       val { width, height } = image-size img
-
       val content-height = SLIDE-HEIGHT -. CONTENT-START-Y
       val IMG-PAD-TOP = CONTENT-START-Y +.
         (content-height -. int-to-float height) *. 0.5
-      val IMG-PAD-LEFT = (SLIDE-WIDTH -. int-to-float width) *. 0.5
-
+      val IMG-PAD-LEFT =
+        (SLIDE-WIDTH -. int-to-float width) *. 0.5
     in
-      output
-      (!current-page,
-       exact-image-at { x = 0, y = 0, img = testbg-png });
-
+      add-background-image BACKGROUND-IMAGE;
       add-title props title;
-
       output
       (!current-page,
        exact-image-at { x = round IMG-PAD-LEFT,
                         y = round IMG-PAD-TOP,
                         img = img});
-
       next-slide()
     end
 
+  (* The whole slide is just this image exactly. *)
+  fun monospace-slide slide title body =
+    let
+      val props = slide-props slide
+      open props as slide-props
+    in
+      add-background-image BACKGROUND-IMAGE;
+
+      add-title props title;
+
+      output
+      (!current-page,
+       box-stick-at { x = LEFT-MARGIN, y = CONTENT-START-Y }
+       (monospace-block-ext { left-indent = 0.0,
+                              line-spacing = 2.0,
+                              width = CONTENT-WIDTH,
+                              font-size = MONOSPACE-FONT-SIZE,
+                              attrs = {(Span) font-color = BODY-FONT-COLOR} }
+        body));
+
+      next-slide()
+    end
 
   (* The whole slide is just this image exactly. *)
   fun just-image filename =
@@ -381,11 +524,29 @@ let
       next-slide()
     end
 
+  fun on-previous-slide layout =
+    output (!current-page - 1, layout)
 
-  val slide = {(Slide) }
+  val slide = {(Slide) BACKGROUND = "testbg.png" }
+
+  (* Currently need to tell it the dimensions, but we could easily
+     get them with get-boxes or something like that. *)
+  fun three-d { font-name, font-size, width, height, text } =
+    box {(Box) width = width, height = height }
+    (sticker {(Sticker)
+               x = 6.0,
+               y = 1.0,
+              font-color = rgba(0, 180, 255, 255),
+              font-name = font-name,
+              font-size = font-size } (layout text) ^^
+     sticker {(Sticker)
+              x = 0.0,
+              y = 0.0,
+              font-color = rgba(255, 0, 0, 200),
+              font-name = font-name,
+              font-size = font-size } (layout text))
 
 in
-
   (* TODO: Better bullet graphic. Can embed fonts, remember *)
 
   title-slide slide [Badness 0 (Bovik's Version)]
@@ -394,6 +555,7 @@ in
 
   (* TODO It has come to my attention... *)
 
+  (* People will look at this and think, "Looks fine to me!" *)
   just-image "typography0.png";
   just-image "typography1.png";
   just-image "typography2.png";
@@ -403,6 +565,7 @@ in
   just-image "typography6.png";
 
   (* Lorem Epsom *)
+
 
   quote-slide (slide with CONTENT-START-Y = inch 4.0) [OK]
   [Sen. Bill Cassidy of Louisiana, representing the ______ party, said
@@ -420,23 +583,198 @@ in
    [Mixes fancy “typographic quotes” and "ASCII ones"] ::
    [What? No!] :: nil);
 
+
+
   bullet-slide slide [The Hero: Donald Knuth]
   ([Awesome] ::
    [Will pay you if you find an error] ::
    [Took 35 years to write a book] :: nil);
+  (* XXX HAX *)
+  on-previous-slide (image-sticker { img = image-load "knuth.jpg",
+                                     x = pixel 1400.0,
+                                     y = pixel 300.0,
+                                     width = pixel 500.0 });
 
   bullet-slide slide [Nightmare on LLM Street]
   ([Wow OMG I'm sick of it] ::
    [Torment Nexus] ::
    [It does kinda work though] :: nil);
 
-  diagram-slide slide [The Hurry-Coward So-So-Morphism]
+
+  diagram-slide (slide with TITLE-FONT-SIZE = point 90.0
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+  [The Hurry-Coward So-So-Morphism]
   (image-load "morphism.png");
 
-  bullet-slide slide [Nightmare on LLM Street]
-  ([Wow OMG I'm sick of it] ::
-   [Torment Nexus] ::
-   [It does kinda work though] :: nil);
+  diagram-slide (slide with TITLE-FONT-SIZE = point 90.0
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+  [The Hurry-Coward So-So-Morphism]
+  (image-load "morphism2.png");
 
+  monospace-slide (slide with TITLE-FONT-SIZE = point 88.5
+                   with MONOSPACE-FONT-SIZE = point 40.0
+                   with TOP-MARGIN = inch 2.0
+                   with CONTENT-START-Y = inch 3.2)
+  [Super Metroid Speed Guide and FAQ]
+[  Once you save the game at your ship (about 1 hour 15 minutes is good), go
+down to Tourian. Do not save your game in Tourian if you have intentions of
+returning to any previously explored section on Planet Zebes. There will be
+a few Metroids to kill before you reach Mother Brain, and they must all die
+in order to continue to Mother Brain. Read the boss guide for more details.
+Once Mother Brain is defeated, you will need to hurry back to your ship. By
+now you will already have the HYPER BEAM. From Mother Brain’s room, go west
+and then south. Take the blue door at the bottom and speed dash east. Super
+jump up, and continue north. Once you land up top and are running east, aim
+diagonally down to the right and shoot an unseen door. Eventually, you will
+get to this door since lava will start to rise from the floor in this area.
+Speed dash through the door you preopened, and charge for a super jump. Hug
+either the left or right wall in the Craterian shaft and super jump up. Now
+quickly get to your ship before the planet explodes. There should be almost
+a minute left on the timer. Sit back and watch the ending! Did you beat the
+game within 1 hour and 20 minutes?
+
+(c) 1996 rs1n
+https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
+
+  bullet-slide (slide
+                with TITLE-FONT-SIZE = point 88.5)
+  [Automating speedrunner chores]
+  ([The first level of Super Metroid Speed Guide and FAQ is easy with
+    lexical coinduction and time travel] ::
+   nil);
+
+  quote-slide slide [¿Como te LLama?]
+  [Exercise in rephrasing text. The following paragraph
+   needs to be rephrased so that it retains its precise meaning, but
+   with minor variations in the specific choice of words, punctuation,
+   and so on. No new facts should be introduced or removed, but it is
+   good to use synonyms and change the word order and phrasing.
+
+   Original paragraph:];
+
+  monospace-slide (slide
+                   with MONOSPACE-FONT-SIZE = 50.0)
+  [Original paragraph]
+  [I then sample text a word at a time to
+continue this prompt. If a line ends exactly on
+the number of characters that I want (and the
+next character is a space or other character that
+is appropriate to end a line) then I accept the
+stream so far and continue. If I exceed the line
+length, I back up to the state at the beginning
+of the line and try again with new random
+samples. I just keep doing that until the
+paragraph is complete, and we have beautifully
+justified monospace text that resembles the
+original. Here is an example of this paragraph
+rendered in monospace:];
+
+  monospace-slide (slide
+                   with MONOSPACE-FONT-SIZE = 50.0)
+  [Rephrased paragraph]
+[I sample text a word at a time to continue
+this prompt. If a line ends exactly on the
+number of characters I want, I accept that
+text so far, and continue. If I exceed the
+line length, I back up to the beginning of
+the line and try again with new samples. I
+keep repeating this until I get text I can
+render in monospaced font, and that is how
+we can get beautifully justified monospace
+text. Here is an example of this paragraph
+rendered in monospace:];
+
+  quote-slide (slide with BACKGROUND = "metroidbg.png"
+               with BODY-FONT-COLOR = 0xFFFF77FF) []
+  [Great !! You fulfiled your mission. It will revive peace
+   in space. But,it may be invaded by the other Metroid. Pray for a true
+   peace in space!];
+
+  bullet-slide slide [Baby mode]
+  ([300 lines of code] ::
+   [It only took an afternoon] ::
+   [You have to look at monospace text] :: nil);
+
+  diagram-slide (slide with TITLE-FONT-SIZE = 90.0
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+  [The Hurry-Coward So-So-Morphism]
+  (image-load "morphism3.png");
+
+  bullet-slide slide [Knuth Any% Speedrun]
+  ([Make a new programmable document preparation system] ::
+   [Full-featured typed programming language] ::
+   [Kerning, hyphenation, and all that shit] ::
+   [New fonts, and software for making fonts] ::
+   [AI-enhanced text layout algorithm] ::
+   [Write my SIGBOVIK paper using it] :: nil);
+
+  diagram-slide (slide
+                 with BACKGROUND = "emacs-grey.png"
+                 with TITLE-FONT-SIZE = 80.0
+                 with TITLE-FONT-COLOR = 0xFFFF90FF
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+  [Here is what [it[this]] slide looks like]
+  (image-load "self.png");
+
+
+  diagram-slide (slide
+                 with TITLE-FONT-SIZE = 80.0
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+  [Boxes and glue]
+  (image-load "knuth-algorithm.png");
+
+  diagram-slide (slide
+                 with TITLE-FONT-SIZE = 80.0
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+  [Boxes and LLMers Glue]
+  (image-load "algorithm2.png");
+
+  two-column-slide
+  (slide with BODY-FONT-SIZE = 64.0)
+  [Boxes and LLMers Glue]
+  (palatino [Is this the most beautiful typesetting you've ever seen?
+   Of course it is! That's because it's been rendered with
+   the ground-breaking BoVeX computer document preparation
+   system. It's the only program permitted by the SIGBOVIK
+   program committee.])
+  (palatino (rephrase-paragraph 100
+             [Is this the most beautiful typesetting you've ever seen?
+   Of course it is! That's because it's been rendered with
+   the ground-breaking BoVeX computer document preparation
+   system. It's the only program permitted by the SIGBOVIK
+   program committee.]));
+
+(*
+
+ This is the most beautiful typesetting you've ever seen, isn't it?
+ Of course it is! It's been rendered with the ground-breaking BoVeX
+ computer document preparation system, and it's the only program
+ permitted by the SIGBOVIK program committee. *)
+
+  bullet-slide slide [Additional features]
+  ([Achievement system] ::
+   three-d { font-name = font-regular PALATINO,
+             font-size = 72.0,
+             width = 40.0, height = 72.0, text = "3D text" } ::
+   [Bibliography database] ::
+   [Page numbers are not allowed] ::
+   nil);
+
+  just-image "achievement-screenshot.png";
+
+  text-slide slide [Conclusion]
+  (justify-all
+   [In this paper—and [it[with]] this paper—I presented BoVeX, a new computer
+    typesetting system. It follows the tradition TeX, but with modern amenities
+    such as requiring over 128 gigabytes of RAM.
+    Though some may consider the addition of AI features to TeX to be an
+    unnecessary perversion,
+    I find this[box {(Box) glue-break-penalty = -1000000.0, width = 0.0 } []]use of LLMs to be [it[fully justified]].]);
 
 end

@@ -2,14 +2,10 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <memory>
-#include <utility>
 #include <string>
 #include <vector>
-#include <cstring>
 
 #include "util.h"
-#include "image.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 

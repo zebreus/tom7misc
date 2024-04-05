@@ -805,7 +805,8 @@ fun justify-all lay = span {(Span) justification = "all" } lay
 
 fun monospace-block-ext { left-indent, width,
                           line-spacing,
-                          font-size } lay =
+                          font-size,
+                          attrs : obj } lay =
   let
     (* Since we generate boxes directly, we need the actual
        font name, not the family. *)
@@ -822,11 +823,14 @@ fun monospace-block-ext { left-indent, width,
       let val sl : string list = string-split "\n" (flat-text lay)
       in
         list-map (fn (s : string) =>
-                  (box {(Box)
-                        width = width,
-                        font-size = font-size,
-                        font-name = ff,
-                        height = font-size +. line-spacing} (layout s))) sl
+                  (box (obj-merge
+                        ({(Box)
+                          width = width,
+                          font-name = ff,
+                          font-size = font-size,
+                          height = font-size +. line-spacing},
+                         attrs))
+                   (layout s))) sl
       end
   in
     stick-vertically
@@ -840,7 +844,8 @@ fun monospace-block lay =
   monospace-block-ext { left-indent = DEFAULT-MONOSPACE-BLOCK-LEFT-INDENT,
                         width = inch 3.4,
                         line-spacing = 0.05,
-                        font-size = 12.0 } lay
+                        font-size = 12.0,
+                        attrs = {(Object) } } lay
 
 fun section lay = span {(Span) font-bold = true, font-size = 15.0 }
   [[lay][hfill()][break()]]
@@ -943,14 +948,17 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
     (* TODO: Allow rephrasing mid-paragraph. Same idea of passing
        the rewrap function to represent the "hole"; it's just
        fiddly. Probably would be good to provide context to the
-       LLM, as well. *)
+       LLM, as well.
+
+       XXX this or consume-outer-span is dropping attributes
+       *)
     fun extract-rephrasing rewrap para =
       case layoutcase para of
         Node (SPAN, attrs as {(Rephrase) rephrase-times }, ch) =>
           list-map (fn (loss, para) => (loss, rewrap para))
           (rephrasings (rephrase-times, para))
       | Node (SPAN, attrs, child :: nil) =>
-          extract-rephrasing (fn x => span attrs x) child
+          extract-rephrasing (fn x => rewrap (span attrs x)) child
       | Node (BOX, _, _) => (0.0, rewrap para) :: nil
       | Node (STICKER, _, _) => (0.0, rewrap para) :: nil
       | _ =>

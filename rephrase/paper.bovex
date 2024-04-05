@@ -310,7 +310,8 @@ that it looked good:
 [monospace-block-ext { left-indent = 0.0,
                        width = inch 3.45,
                        line-spacing = 7.05 -. 6.46,
-                       font-size = 7.05 }
+                       font-size = 7.05,
+                       attrs = {(Object) } }
 [  Once you save the game at your ship (about 1 hour 15 minutes is good), go
 down to Tourian. Do not save your game in Tourian if you have intentions of
 returning to any previously explored section on Planet Zebes. There will be
@@ -654,7 +655,8 @@ code from the source code of this document:
 [monospace-block-ext {left-indent = DEFAULT-MONOSPACE-BLOCK-LEFT-INDENT,
                       width = inch 3.45,
                       line-spacing = 0.0,
-                      font-size = 10.0 }
+                      font-size = 10.0,
+                      attrs = {(Object) } }
 [datatype (a) option = SOME of a | NONE
 
 fun consume-outer-span f s =
@@ -836,7 +838,8 @@ declare an object name [tt[O]]:
 [monospace-block-ext {left-indent = DEFAULT-MONOSPACE-BLOCK-LEFT-INDENT,
                       width = inch 3.45,
                       line-spacing = 0.0,
-                      font-size = 11.0 }
+                      font-size = 11.0,
+                      attrs = {(Object) } }
 [object O of { field1 : type1, field2 : type2 }]]
 
 and then use this in an expression like [tt[{(O) field1 = exp1}]].
@@ -854,7 +857,8 @@ format, which consists of declarations like this
 [monospace-block-ext { left-indent = DEFAULT-MONOSPACE-BLOCK-LEFT-INDENT,
                        width = inch 3.45,
                        line-spacing = 0.0,
-                       font-size = 10.0, }
+                       font-size = 10.0,
+                       attrs = {(Object) } }
 [val knuth1981breaking =
   bib-article {(Article)
   title = "Breaking paragraphs into lines",
