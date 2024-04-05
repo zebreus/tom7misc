@@ -355,6 +355,9 @@ test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex hyph-en-us.
 paper.pdf : bovex.exe paper.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex
 	./bovex.exe -v paper.bovex -o paper.pdf
 
+talk.talk : bovex.exe talk.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex
+	./bovex.exe -v talk.bovex -o talk.talk
+
 test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
 	./html_test.exe
 	./hyphenation_test.exe
