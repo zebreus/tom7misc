@@ -1072,6 +1072,12 @@ Document::PackBoxes(Algorithm algo,
   std::vector<DocTree> lines_out;
   for (std::vector<BoxesAndGlue::BoxOut> &box_line : lines) {
     DocTree line;
+    if (!box_line.empty() && box_line[0].left_padding != 0.0) {
+      DocTree space;
+      space.SetStringAttr("display", "box");
+      space.SetDoubleAttr("width", box_line[0].left_padding);
+      line.AddChild(space);
+    }
     for (int i = 0; i < (int)box_line.size(); i++) {
       BoxesAndGlue::BoxOut &box = box_line[i];
 
@@ -1162,8 +1168,9 @@ void Document::PlaceStickersRec(Context context,
   CHECK(display != nullptr) << Error() << "Any non-group node has "
     "to have a display when rendering the page.";
 
-  CHECK(*display == "sticker") << Error() << "At this point everything "
-    "should be stickers. Got node with display=" << *display;
+  CHECK(*display == "sticker") << Error() << "At this point "
+    "(PlaceStickersRec) everything should be stickers. Got node "
+    "with display=" << *display;
 
   const double *x = doc.GetDoubleAttr("x");
   const double *y = doc.GetDoubleAttr("y");

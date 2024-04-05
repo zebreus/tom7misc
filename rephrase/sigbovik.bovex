@@ -89,6 +89,34 @@ let
                    "an 'infinite' line.")
     end
 
+  fun centered-text-sticker { x, y, width } lay =
+    let
+      val lay = layout-map-text normalize-whitespace lay
+      val boxes = get-boxes lay
+
+      (* Turn the line into a sticker, ignoring its width/height *)
+      fun stick-line (line : layout) : layout =
+        case layoutcase line of
+          Node (BOX, attrs, children) =>
+            sticker (attrs without (Box)width
+                     without (Box)height
+                     with x = 0.0
+                     with y = 0.0) (layout-concat children)
+        | _ => fail "expected box containing the line's stickers"
+
+    in
+      case pack-boxes-horiz (BEST, CENTERED, width, boxes) of
+        (badness-ignored, lines) =>
+          let
+            val lines = layout-concat (list-map stick-horizontally lines)
+
+            (* do debug-print-doc lines *)
+          in
+            sticker {(Sticker) x = x, y = y }
+            (stick-line (stick-vertically (0.0, lines)))
+          end
+    end
+
   (* 26 2/3 inches wide, 15 inches tall. *)
   val SLIDE-WIDTH = pixel 1920.0
   val SLIDE-HEIGHT = pixel 1080.0
@@ -284,6 +312,34 @@ let
       next-slide()
     end
 
+  fun title-slide slide title author venue =
+    let
+      val props = slide-props slide
+      open props as slide-props
+
+    in
+      output
+      (!current-page,
+       exact-image-at { x = 0, y = 0, img = testbg-png });
+
+      output
+      (!current-page,
+       centered-text-sticker { x = 0.0, y = inch 6.0, width = SLIDE-WIDTH }
+       (size TITLE-FONT-SIZE (b (palatino title))));
+
+      output
+      (!current-page,
+       centered-text-sticker { x = 0.0, y = inch 8.0, width = SLIDE-WIDTH }
+       (size TITLE-FONT-SIZE (b (palatino author))));
+
+      output
+      (!current-page,
+       centered-text-sticker { x = 0.0, y = inch 12.0, width = SLIDE-WIDTH }
+       (size TITLE-FONT-SIZE (b (palatino venue))));
+
+      next-slide()
+    end
+
   (* TODO: We can have a slide object with some config, like a title,
      background image, etc. *)
   val slide = {(Slide) }
@@ -291,6 +347,10 @@ let
 in
 
   (* TODO: Better bullet graphic. Can embed fonts, remember *)
+
+  title-slide slide [Badness 0 (Bovik's Version)]
+  [Vii, T. M.]
+  [SIGBOVIK 2024];
 
   quote-slide (slide with CONTENT-START-Y = inch 4.0) [OK]
   [Sen. Bill Cassidy of Louisiana, representing the ______ party, said

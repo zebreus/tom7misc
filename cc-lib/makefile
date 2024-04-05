@@ -19,8 +19,8 @@ ifeq ($(UNAME),Msys)
   CXX=clang++
   CC=clang
   # FLTO=-flto=thin
-  # CXXFLAGS=-fsanitize=address -march=native -Wall -I. --std=c++20 -O3 $(FLTO)
-  CXXFLAGS=-fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer -march=native -g -O -Wall -I. --std=c++20
+  # CXXFLAGS=-fsanitize=address -march=native -Wall -I. --std=c++20 -O $(FLTO)
+  CXXFLAGS=-fno-omit-frame-pointer -march=native -g -O3 -Wall -I. --std=c++20
   SOCK_LFLAGS= -lws2_32
 else
   # Linux

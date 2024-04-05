@@ -67,6 +67,11 @@ struct BoxesAndGlue {
     // include width or glue_break_extra_width.
     double actual_glue = 0.0;
 
+    // This is only used on the first box in a line to add left
+    // padding when rendering CENTERED or RIGHT. Note this can be
+    // negative when the line is too long.
+    double left_padding = 0.0;
+
     // Penalty associated with this word. Penalties are a global
     // phenomenon, so don't read too much into it being associated
     // with this word (it is almost always the last word in the line).

@@ -23,6 +23,7 @@
    anim_idx = 0;
    count = 0;
    if (slide_idx < 0) slide_idx = slides.length - 1;
+   window.location.hash = '#' + slide_idx;
  }
 
  function Right() {
@@ -30,6 +31,7 @@
    anim_idx = 0;
    count = 0;
    if (slide_idx >= slides.length) slide_idx = 0;
+   window.location.hash = '#' + slide_idx;
  }
 
  document.onkeydown = function(e) {
@@ -69,6 +71,11 @@
  }
 
  function Start() {
+
+   // Function to get the slide number from the URL fragment
+   const hash = window.location.hash.slice(1);
+   slide_idx = parseInt(hash, 10) || 0;
+
    window.requestAnimationFrame(Frame);
  }
 

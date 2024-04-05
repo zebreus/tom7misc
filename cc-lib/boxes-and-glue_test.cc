@@ -56,6 +56,13 @@ static void TestASCII(bool best_fit, Justification just) {
     // Alas, we can only space in discrete increments.
     double slack = 0.0;
     for (const BoxOut &word : line) {
+
+      slack += word.left_padding;
+      while (slack >= 1.0) {
+        printf(" ");
+        slack -= 1.0;
+      }
+
       const std::string &w = *(const std::string*)word.box->data;
       slack += word.actual_glue;
 
@@ -83,6 +90,8 @@ int main(int argc, char **argv) {
   TestASCII(true, Justification::FULL);
   printf("----------- left ----------\n");
   TestASCII(true, Justification::LEFT);
+  printf("----------- center --------\n");
+  TestASCII(true, Justification::CENTER);
 
   printf("OK\n");
   return 0;

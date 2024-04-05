@@ -112,9 +112,12 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     const std::vector<BoxIn> &boxes,
     Justification just) {
 
-  CHECK(just != Justification::CENTER) << "CENTER unimplemented. It's not "
-    "hard; just put the computed space symmetricially on the two sides "
-    "of the line. You can add RIGHT while you're at it!";
+  enum class LineJustification {
+    CENTER,
+    LEFT,
+    JUSTIFY,
+    // RIGHT,
+  };
 
   std::vector<std::vector<std::pair<int, double>>> successors(
       boxes.size(), std::vector<std::pair<int, double>>{});
@@ -146,10 +149,11 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     if (successors[i].empty()) ending_nodes.insert(i);
   }
 
-  // Once a line is complete, apply glue. If justify is true, then
-  // we stretch glue proportionally to reach the given line width.
+  // Once a line is complete, apply glue. The line justification
+  // determines how we apply the glue.
   auto ApplyGlue = [line_width](std::vector<BoxOut> *current_line,
-                                bool justify) {
+                                LineJustification justify) {
+
       double space_used = 0.0;
       for (int i = 0; i < (int)current_line->size(); i++) {
         const BoxOut &box = (*current_line)[i];
@@ -165,8 +169,8 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       }
 
       // could be negative
-      const double space_left = line_width - space_used;
-      const bool expanding = space_left >= 0.0;
+      const double space_remaining = line_width - space_used;
+      const bool expanding = space_remaining >= 0.0;
 
       double total_weight = 0.0;
       for (int i = 0; i < (int)current_line->size() - 1; i++) {
@@ -175,7 +179,7 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
           box.box->glue_contract;
       }
 
-      const double weighted_glue = space_left / total_weight;
+      const double weighted_glue = space_remaining / total_weight;
 
       if (VERBOSE) {
         printf("Total weight: %.11g.\n"
@@ -186,13 +190,26 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
         BoxOut &box = (*current_line)[i];
         const double weight = expanding ? box.box->glue_expand :
           box.box->glue_contract;
-        const double additional_glue =
-          justify ? weighted_glue * weight : 0.0;
-        if (VERBOSE) {
-          printf("  Additional glue: %.11g\n", additional_glue);
+
+        box.actual_glue = box.box->glue_ideal;
+        // How much glue to add between words?
+        if (justify == LineJustification::JUSTIFY) {
+          const double additional_glue = weighted_glue * weight;
+          if (VERBOSE) {
+            printf("  Additional glue: %.11g\n", additional_glue);
+          }
+          box.actual_glue += additional_glue;
         }
-        box.actual_glue = box.box->glue_ideal + additional_glue;
       }
+
+      if (justify == LineJustification::CENTER && !current_line->empty()) {
+        // Not using weighted glue.
+        double center_space = space_remaining * 0.5;
+        (*current_line)[0].left_padding = center_space;
+        // printf("Added center space of %.3f\n", center_space);
+        current_line->back().actual_glue += center_space;
+      }
+
     };
 
   struct MemoResult {
@@ -508,8 +525,15 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     current_line.push_back(box_out);
 
     if (memo_result.break_after) {
-      ApplyGlue(&current_line, just == Justification::FULL ||
-                just == Justification::ALL);
+      LineJustification lj = LineJustification::LEFT;
+      switch (just) {
+      case Justification::FULL:
+      case Justification::ALL: lj = LineJustification::JUSTIFY; break;
+      case Justification::CENTER: lj = LineJustification::CENTER; break;
+      case Justification::LEFT: lj = LineJustification::LEFT; break;
+      }
+
+      ApplyGlue(&current_line, lj);
       lines.push_back(std::move(current_line));
       current_line.clear();
       before = 0;
@@ -523,7 +547,15 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
   if (!current_line.empty()) {
     // Apply glue to final line. It is not justified unless
     // we are in "all" mode.
-    ApplyGlue(&current_line, just == Justification::ALL);
+    LineJustification lj = LineJustification::LEFT;
+    switch (just) {
+    case Justification::FULL: lj = LineJustification::LEFT; break;
+    case Justification::ALL: lj = LineJustification::JUSTIFY; break;
+    case Justification::CENTER: lj = LineJustification::CENTER; break;
+    case Justification::LEFT: lj = LineJustification::LEFT; break;
+    }
+
+    ApplyGlue(&current_line, lj);
     lines.push_back(std::move(current_line));
   }
 
