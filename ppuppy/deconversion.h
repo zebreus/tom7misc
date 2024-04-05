@@ -1,9 +1,9 @@
 
-#ifndef __DECONVERSION_H
-#define __DECONVERSION_H
+#ifndef _PPUPPY_DECONVERSION_H
+#define _PPUPPY_DECONVERSION_H
 
 #include "screen.h"
-#include "../cc-lib/image.h"
+#include "image.h"
 
 ImageRGBA Deconvert(const Screen &screen);
 

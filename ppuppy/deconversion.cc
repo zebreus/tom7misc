@@ -1,13 +1,12 @@
 // Round-trip converts a graphic into Screen format, then back to RGBA
 // PNG, for debugging.
 
-#include <string>
-#include "../cc-lib/image.h"
+#include <utility>
+#include <vector>
+
+#include "image.h"
 #include "ppuppy.h"
 #include "screen.h"
-#include "convert.h"
-#include "base/stringprintf.h"
-#include "util.h"
 
 using namespace std;
 
@@ -40,12 +39,12 @@ ImageRGBA Deconvert(const Screen &screen) {
     rgba.push_back(0x00);
     rgba.push_back(0x00);
     rgba.push_back(0x00);
-    rgba.push_back(0xFF);    
+    rgba.push_back(0xFF);
   }
 
   const uint8 scroll_x = screen.palette[4];
   // printf("scroll_x: %02x\n", scroll_x);
-  
+
   for (int y = 0; y < 240; y++) {
     for (int col = 0; col < 32; col++) {
       // Note: This doesn't read the same color bits that the PPU
@@ -53,24 +52,21 @@ ImageRGBA Deconvert(const Screen &screen) {
       const uint8 attr = screen.attr[y * 32 + col] & 3;
       const uint8 color_lo = screen.color_lo[y * 32 + col];
       const uint8 color_hi = screen.color_hi[y * 32 + col];
-      
+
       for (int bit = 0; bit < 8; bit++) {
-	const int x = col * 8 + bit;
-	const uint8 value =
-	  ((color_lo >> (7 - bit)) & 1) |
-	  (((color_hi >> (7 - bit)) & 1) << 1);
+        const int x = col * 8 + bit;
+        const uint8 value = ((color_lo >> (7 - bit)) & 1) |
+                            (((color_hi >> (7 - bit)) & 1) << 1);
 
-	const int nes_color =
-	  value == 0 ?
-	  screen.palette[0] :
-	  screen.palette[attr * 4 + value];
+        const int nes_color =
+            value == 0 ? screen.palette[0] : screen.palette[attr * 4 + value];
 
-	if (x >= scroll_x) {
-	  const int idx = (y * 256 + x - scroll_x) * 4;
-	  rgba[idx + 0] = ntsc_palette[nes_color * 3 + 0];
-	  rgba[idx + 1] = ntsc_palette[nes_color * 3 + 1];
-	  rgba[idx + 2] = ntsc_palette[nes_color * 3 + 2];
-	}
+        if (x >= scroll_x) {
+          const int idx = (y * 256 + x - scroll_x) * 4;
+          rgba[idx + 0] = ntsc_palette[nes_color * 3 + 0];
+          rgba[idx + 1] = ntsc_palette[nes_color * 3 + 1];
+          rgba[idx + 2] = ntsc_palette[nes_color * 3 + 2];
+        }
       }
     }
   }
@@ -92,15 +88,13 @@ ImageRGBA Deconvert(const Screen &screen) {
       return false;
     }
   };
-  
+
   // Show palettes at the bottom.
-  for (int p = 0; p < 4; p ++) {
+  for (int p = 0; p < 4; p++) {
     const int yy = 256 - 14;
     for (int i = 0; i < 4; i++) {
       const int nes_color =
-	i == 0 ?
-	screen.palette[0] :
-	screen.palette[p * 4 + i];
+          i == 0 ? screen.palette[0] : screen.palette[p * 4 + i];
       bool is_black = IsBlack(nes_color);
       uint8 r = ntsc_palette[nes_color * 3 + 0];
       uint8 g = ntsc_palette[nes_color * 3 + 1];
@@ -109,23 +103,22 @@ ImageRGBA Deconvert(const Screen &screen) {
       const int xx = 2 + p * 67 + i * 13;
 
       for (int y = 0; y < 12; y++) {
-	for (int x = 0; x < 12; x++) {
-	  int idx = ((yy + y) * 256 + xx + x) * 4;
-	  if (is_black && (y == 0 || x == 0 || y == 11 || x == 11)) {
-	    rgba[idx + 0] = 0xFF;
-	    rgba[idx + 1] = 0xFF;
-	    rgba[idx + 2] = 0xFF;
-	  } else {
-	    rgba[idx + 0] = r;
-	    rgba[idx + 1] = g;
-	    rgba[idx + 2] = b;
-	  }
-	}
+        for (int x = 0; x < 12; x++) {
+          int idx = ((yy + y) * 256 + xx + x) * 4;
+          if (is_black && (y == 0 || x == 0 || y == 11 || x == 11)) {
+            rgba[idx + 0] = 0xFF;
+            rgba[idx + 1] = 0xFF;
+            rgba[idx + 2] = 0xFF;
+          } else {
+            rgba[idx + 0] = r;
+            rgba[idx + 1] = g;
+            rgba[idx + 2] = b;
+          }
+        }
       }
 
       // If the color is very dark, draw a border
       // around it
-      
     }
   }
 

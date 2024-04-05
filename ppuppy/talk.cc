@@ -1,5 +1,7 @@
 #include "talk.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <utility>
 #include <string>
@@ -12,6 +14,7 @@
 #include "arcfour.h"
 #include "convert.h"
 #include "base/stringprintf.h"
+#include "image.h"
 
 using namespace std;
 
@@ -111,19 +114,21 @@ void Talk::Save(const string &meta_file,
     CHECK(!slide.anim.empty());
     for (const Frame &frame : slide.anim) {
       CHECK(frame.duration > 0);
-      std::unique_ptr<ImageRGB> img(ImageRGB::Load(frame.filename));
-      CHECK(img.get()) << frame.filename;
+      std::unique_ptr<ImageRGBA> img_rgba(ImageRGBA::Load(frame.filename));
+      CHECK(img_rgba.get()) << frame.filename;
+      ImageRGB img = img_rgba->IgnoreAlpha();
+
       fprintf(stderr, "%s\n", frame.filename.c_str());
       if (frame.multi) {
         CHECK((frame.duration & 1) == 0) << "multi frames must have "
           "a duration that's a multiple of two; got " << frame.duration;
         Screen screen0, screen1;
         MakePalette(PaletteMethod::GREEDY_BIGRAMS,
-                    img.get(), &rc, false, frame.forced, &screen0);
+                    &img, &rc, false, frame.forced, &screen0);
         MakePalette(PaletteMethod::GREEDY_BIGRAMS,
-                    img.get(), &rc, true, frame.forced, &screen1);
-        FillScreenSelective(img.get(), false, &screen0);
-        FillScreenSelective(img.get(), true, &screen1);
+                    &img, &rc, true, frame.forced, &screen1);
+        FillScreenSelective(&img, false, &screen0);
+        FillScreenSelective(&img, true, &screen1);
         const int idx0 = AddScreen(screen0);
         const int idx1 = AddScreen(screen1);
         for (int i = 0; i < frame.duration >> 1; i++) {
@@ -133,8 +138,8 @@ void Talk::Save(const string &meta_file,
       } else {
         Screen screen;
         MakePalette(PaletteMethod::GREEDY_BIGRAMS,
-                    img.get(), &rc, false, frame.forced, &screen);
-        FillScreenSelective(img.get(), false, &screen);
+                    &img, &rc, false, frame.forced, &screen);
+        FillScreenSelective(&img, false, &screen);
         const int idx = AddScreen(screen);
         cslide.screens.emplace_back(idx, frame.duration);
       }
@@ -158,7 +163,7 @@ void Talk::Save(const string &meta_file,
   CHECK(metaf) << meta_file;
 
   for (const CT::Slide &cslide : cslides) {
-    for (const pair<int, int> s : cslide.screens) {
+    for (const std::pair<int, int> &s : cslide.screens) {
       fprintf(metaf, "%d %d   ", s.first, s.second);
     }
     fprintf(metaf, "\n");

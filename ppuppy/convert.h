@@ -1,38 +1,22 @@
 
-#ifndef __CONVERT_H
-#define __CONVERT_H
+#ifndef _PPUPPY_CONVERT_H
+#define _PPUPPY_CONVERT_H
 
 #include "screen.h"
 #include <string>
 #include <vector>
 
-class ArcFour;
+#include "image.h"
+
+struct ArcFour;
 
 // Convert images to Screen format.
 
-Screen ScreenFromFileDithered(const string &filename);
+Screen ScreenFromFileDithered(const std::string &filename);
 
-Screen ScreenFromFile(const string &filename);
+Screen ScreenFromFile(const std::string &filename);
 
-std::vector<Screen> MultiScreenFromFile(const string &filename);
-
-// Dense r-g-b triplets.
-// TODO: to cc-lib image.h?
-struct ImageRGB {
-  ImageRGB(std::vector<uint8> rgb, int width, int height) :
-    width(width), height(height), rgb(std::move(rgb)) {}
-  ImageRGB(int width, int height) :
-    width(width), height(height) {
-    rgb.resize(width * height * 3);
-  }
-  static ImageRGB *Load(const string &filename);
-  ImageRGB *Clone() const {
-    return new ImageRGB(rgb, width, height);
-  }
-  const int width, height;
-  // Size width * height * 3.
-  std::vector<uint8> rgb;
-};
+std::vector<Screen> MultiScreenFromFile(const std::string &filename);
 
 enum class PaletteMethod {
   // TODO: fixed, etc.
@@ -44,7 +28,7 @@ enum class PaletteMethod {
 
 void MakePalette(PaletteMethod method, const ImageRGB *img,
                  ArcFour *rc, bool offset,
-                 const vector<int> &forced,
+                 const std::vector<int> &forced,
                  Screen *screen);
 
 // Put the magic bytes in unused palette slots that tell

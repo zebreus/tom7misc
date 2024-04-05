@@ -4,14 +4,15 @@
 #include <cstdint>
 #include <sys/time.h>
 #include <atomic>
+#include <utility>
+#include <vector>
 
 #include "armsnes/libretro/libretro.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/stb_image_write.h"
-#include "../cc-lib/image.h"
+#include "util.h"
+#include "image.h"
 #include "screen.h"
 #include "convert565.h"
-#include "../cc-lib/arcfour.h"
+#include "arcfour.h"
 
 using namespace std;
 
@@ -41,13 +42,13 @@ uint8 palette_cache[16] = {};
 int main(int argc, char **argv) {
 
   InitClosestColors565();
-  
+
   // The environment callback is required before initialization.
   retro_set_environment([](unsigned cmd, void *data) {
-	printf("environ %d\n", cmd);
-	return false;
+  printf("environ %d\n", cmd);
+  return false;
       });
-  
+
   printf("Trying to initialize...\n");
   retro_init();
   printf("Initialized.\n");
@@ -65,7 +66,7 @@ int main(int argc, char **argv) {
   retro_set_get_inputs([]() -> uint32 {
     return 0;
   });
-  
+
   retro_game_info mario;
   mario.path = "super-mario-world.smc";
   string game = Util::ReadFile(mario.path);
@@ -100,7 +101,7 @@ int main(int argc, char **argv) {
     dummy += screen.color_lo[rc.Byte()];
   });
 
- 
+
   printf("With conversion...\n");
   #define FRAMES 2000
   int64 start = utime();
@@ -113,39 +114,39 @@ int main(int argc, char **argv) {
     retro_run();
   }
   printf("inc\n");
-  
+
   int64 elapsed = utime() - start;
   printf("%d frames in %lld usec = %.4f FPS = %.4f ms/frame\n"
-	 "%.4f ms/frame palette, %.4f ms/frame screen\n",
-	 FRAMES, elapsed, FRAMES/(double)(elapsed / 1000000.0),
-	 ((double)(elapsed / 1000.0) / FRAMES),
-	 ((double)(paltime / 1000.0) / FRAMES),
-	 ((double)(screentime / 1000.0) / FRAMES));
-  
-  retro_set_video_refresh([](const void *data,
-                             unsigned width, unsigned height, size_t pitch) {
-      vector<uint8> rgbas;
-      rgbas.reserve(width * height * 4);
-      for (int y = 0; y < height; y++) {
-	uint16 *line = (uint16*)&((uint8 *)data)[y * pitch];
-	for (int x = 0; x < width; x++) {
-	  uint8 a = 0xFF;
-	  uint16 packed = line[x];
-	  uint8 b = (packed & 31) << 3;
-	  uint8 g = ((packed >> 5) & 63) << 2;
-	  uint8 r = ((packed >> 11) & 31) << 3;
-	  rgbas.push_back(r);
-	  rgbas.push_back(g);
-	  rgbas.push_back(b);
-	  rgbas.push_back(a);
-	}
-      }
+   "%.4f ms/frame palette, %.4f ms/frame screen\n",
+   FRAMES, elapsed, FRAMES/(double)(elapsed / 1000000.0),
+   ((double)(elapsed / 1000.0) / FRAMES),
+   ((double)(paltime / 1000.0) / FRAMES),
+   ((double)(screentime / 1000.0) / FRAMES));
 
-      ImageRGBA image(std::move(rgbas), width, height);
-      image.Save("snestest.png");
-    });
+  retro_set_video_refresh(
+      [](const void *data, unsigned width, unsigned height, size_t pitch) {
+        vector<uint8> rgbas;
+        rgbas.reserve(width * height * 4);
+        for (int y = 0; y < height; y++) {
+          uint16 *line = (uint16 *)&((uint8 *)data)[y * pitch];
+          for (int x = 0; x < width; x++) {
+            uint8 a = 0xFF;
+            uint16 packed = line[x];
+            uint8 b = (packed & 31) << 3;
+            uint8 g = ((packed >> 5) & 63) << 2;
+            uint8 r = ((packed >> 11) & 31) << 3;
+            rgbas.push_back(r);
+            rgbas.push_back(g);
+            rgbas.push_back(b);
+            rgbas.push_back(a);
+          }
+        }
+
+        ImageRGBA image(std::move(rgbas), width, height);
+        image.Save("snestest.png");
+      });
   retro_run();
-  
+
   retro_deinit();
   return 0;
 }

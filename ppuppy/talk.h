@@ -5,15 +5,14 @@
 // pretty slow on the pi and we want startup times to be
 // as fast as possible.
 
-#ifndef __TALK_H
-#define __TALK_H
+#ifndef _PPUPPY_TALK_H
+#define _PPUPPY_TALK_H
 
 #include <string>
 #include <vector>
 #include <utility>
 
 #include "screen.h"
-#include "ppuppy.h"
 
 using namespace std;
 

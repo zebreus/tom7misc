@@ -1,18 +1,19 @@
 // Deconvert a compiled talk into javascript/PNG files for local
 // or emergency purposes.
 
+#include <cstdio>
 #include <string>
-#include "../cc-lib/image.h"
-#include "ppuppy.h"
+
+#include "image.h"
 #include "screen.h"
-#include "convert.h"
 #include "base/stringprintf.h"
 #include "util.h"
 #include "deconversion.h"
 #include "talk.h"
+#include "base/logging.h"
 
 static void Save(const ImageRGBA &img,
-		 const string &outfile) {
+     const string &outfile) {
   img.Save(outfile);
   fprintf(stderr, "Wrote %s\n", outfile.c_str());
 }
@@ -43,6 +44,6 @@ int main(int argc, char **argv) {
   Util::WriteFile(StringPrintf("%s/slides.js", argv[3]), json);
 
   Util::WriteFile(StringPrintf("%s/talk.html", argv[3]),
-		  Util::ReadFile("talk.html"));
+      Util::ReadFile("talk.html"));
   return 0;
 }
