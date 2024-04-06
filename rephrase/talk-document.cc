@@ -187,6 +187,7 @@ void TalkDocument::GenerateOutput(std::string_view filename_base,
     PlaceStickersRec(context, identity, doc, page);
   }
 
+  {
   Asynchronously async(8);
   for (int i = 0; i < (int)pageptrs.size(); i++) {
     const auto &page = pageptrs[i];
@@ -203,6 +204,7 @@ void TalkDocument::GenerateOutput(std::string_view filename_base,
   }
 
   Util::WriteFile(talk_filename, talk);
+  }
 
   double sec = output_timer.Seconds();
   printf("Wrote %d slide%s to " AGREEN("%s") " in %s.\n",

@@ -66,23 +66,23 @@ fun get-delta (sx, sy, dx, dy) : (int * int) option =
                              if dy > 0 then 1 else -1)
                   else NONE
 
-                    (*
-fun clear-between (sx, sy, dx, dy, xx, yy) =
+fun clear-between squares (sx, sy, dx, dy, xx, yy) =
   let
     fun rec (x, y) =
       if x == dx andalso y == dy
       then true
       else
-        (case map-find (squares, dst) of
+        (case map-find (squares, pos (x, y)) of
            NONE => rec (x + xx, y + yy)
          | SOME _ => false)
+
   in
-    if xx < -1 orelse xx > 1 yy < -1 orelse yy > 1
+    if xx < -1 orelse xx > 1 orelse yy < 0 - 1 orelse yy > 1
        orelse (xx == 0 andalso yy == 0)
     then fail "Bug: precondition"
     else rec (sx + xx, sy + yy)
+
   end
-  *)
 
 (* Returning NONE if the move is not legal. *)
 datatype move-result = OK of board | ILLEGAL of string
@@ -103,7 +103,7 @@ fun make-move (Board { squares, castling, en-passant, black-move },
           then ILLEGAL "rooks cannot move diagonally"
           else
             (* check clear between *)
-            if clear-between (sx, sy, dx, dy, xx, yy)
+            if clear-between squares (sx, sy, dx, dy, xx, yy)
             then fail "unimplemented"
             else ILLEGAL "rook cannot jump over piece"
 

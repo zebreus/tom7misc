@@ -512,6 +512,26 @@ static void TestParse() {
   }
 
   {
+    const Exp *e = Parse("1 < 2 orelse 3 < 4 orelse 5 < 6");
+    CHECK(e->type == ExpType::ORELSE);
+    const Exp *l = e->a;
+    const Exp *r = e->b;
+    CHECK(l->type == ExpType::APP);
+    CHECK(r->type == ExpType::ORELSE);
+  }
+
+  // XXX Parse these as infix operators. Right now this
+  // requires parenthesization.
+  if (false) {
+    const Exp *e = Parse("1 < 2 andalso 3 < 4 andalso 5 < 6");
+    CHECK(e->type == ExpType::ANDALSO);
+    const Exp *l = e->a;
+    const Exp *r = e->b;
+    CHECK(l->type == ExpType::APP);
+    CHECK(r->type == ExpType::ANDALSO);
+  }
+
+  {
     const Exp *e = Parse("x otherwise fail \"die\"");
     // It's compiled as syntactic sugar.
     CHECK(e->type == ExpType::IF) << ExpString(e);

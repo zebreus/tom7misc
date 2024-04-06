@@ -1077,7 +1077,7 @@ const Exp *Parsing::Parse(AstPool *pool,
 
           auto OrelseExpr =
             (AndalsoExpr && Opt((IsToken<ORELSE>() || IsToken<OTHERWISE>()) &&
-                                AndalsoExpr))
+                                Expr))
             >[&](const auto &pair) {
                 const auto &[e, oor] = pair;
                 if (oor.has_value()) {

@@ -5,7 +5,7 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-(*  import "chess.bovex" *)
+  import "chess.bovex"
 
   (* slides info *)
   object TalkInfo of { }
@@ -567,7 +567,8 @@ in
   (* Lorem Epsom *)
 
 
-  quote-slide (slide with CONTENT-START-Y = inch 4.0) [OK]
+  quote-slide (slide with CONTENT-START-Y = inch 4.6)
+  [Then there's this guy...]
   [Sen. Bill Cassidy of Louisiana, representing the ______ party, said
    paying workers the same wages for fewer hours would force employers
    to pass the cost of hiring more workers along to consumers.
@@ -578,11 +579,17 @@ in
    said Cassidy. "Now they’ve got the same workers, but only for
    three-quarters of the time. And they have to hire more.”];
 
-  bullet-slide slide [Now I am making slides]
+  bullet-slide slide [Um, actually]
+  ([Razors have famously high margins] :: nil);
+
+  bullet-slide slide [Um, actually]
+  ([Razors have famously high margins] ::
+   [Mixes fancy “typographic quotes” and "ASCII ones"] :: nil);
+
+  bullet-slide slide [Um, actually]
   ([Razors have famously high margins] ::
    [Mixes fancy “typographic quotes” and "ASCII ones"] ::
    [What? No!] :: nil);
-
 
 
   bullet-slide slide [The Hero: Donald Knuth]
@@ -596,7 +603,7 @@ in
                                      width = pixel 500.0 });
 
   bullet-slide slide [Nightmare on LLM Street]
-  ([Wow OMG I'm sick of it] ::
+  ([Wow OMG I'm sick of hearing about it] ::
    [Torment Nexus] ::
    [It does kinda work though] :: nil);
 
@@ -743,7 +750,7 @@ rendered in monospace:];
    the ground-breaking BoVeX computer document preparation
    system. It's the only program permitted by the SIGBOVIK
    program committee.])
-  (palatino (rephrase-paragraph 100
+  (palatino (rephrase-paragraph 50
              [Is this the most beautiful typesetting you've ever seen?
    Of course it is! That's because it's been rendered with
    the ground-breaking BoVeX computer document preparation
