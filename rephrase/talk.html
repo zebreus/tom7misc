@@ -18,20 +18,25 @@
    elt.src = f.i + ".png";
  }
 
- function Left() {
-   slide_idx--;
+ function GoTo(n) {
    anim_idx = 0;
    count = 0;
-   if (slide_idx < 0) slide_idx = slides.length - 1;
+   while (n < 0) n += slides.length;
+   n = n % slides.length;
+   slide_idx = n;
    window.location.hash = '#' + slide_idx;
  }
 
+ function Home() {
+   GoTo(0);
+ }
+
+ function Left() {
+   GoTo(slide_idx - 1);
+ }
+
  function Right() {
-   slide_idx++;
-   anim_idx = 0;
-   count = 0;
-   if (slide_idx >= slides.length) slide_idx = 0;
-   window.location.hash = '#' + slide_idx;
+   GoTo(slide_idx + 1);
  }
 
  document.onkeydown = function(e) {
@@ -39,6 +44,9 @@
    if (e.ctrlKey) return true;
 
    switch (e.keyCode) {
+     case 36: // HOME
+       Home();
+       break;
      case 37: // LEFT
        Left();
        break;
@@ -82,12 +90,12 @@
 </script>
 <style>
  .screen {
-    width: 1920px;
-    height: 1080px;
-    zz-image-rendering: auto;
-    zz-image-rendering: crisp-edges;
-    zz-image-rendering: pixelated;
-    -webkit-user-select: none;
+   width: 1920px;
+   height: 1080px;
+   zz-image-rendering: auto;
+   zz-image-rendering: crisp-edges;
+   zz-image-rendering: pixelated;
+   -webkit-user-select: none;
  }
  .click {
    cursor: pointer;
@@ -104,6 +112,9 @@
    width: 1920px;
    display: flex;
    justify-content: space-between;
+ }
+ body {
+   cursor: url('mouse-cursor.png'), auto;
  }
 </style>
 

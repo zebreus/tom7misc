@@ -525,7 +525,7 @@ static void StringTests()  {
           "let\n"
           "  type t = { x : int, y : string }\n"
           "  val r = { x = 3, y = \"hi\" }\n"
-          "  open r as t\n"
+          "  open r : t\n"
           "in\n"
           "  print (int-to-string x ^ y)\n"
           "end\n"),

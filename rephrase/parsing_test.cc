@@ -1030,10 +1030,9 @@ static void TestParseDec() {
 
   {
     const auto *dec = ParseDec(
-        "open { } as { }");
+        "open { }");
     CHECK(dec->type == DecType::OPEN);
     CHECK(dec->exp->type == ExpType::RECORD);
-    CHECK(dec->t->type == TypeType::RECORD);
   }
 
   printf("Dec parsing " AGREEN("OK") "\n");

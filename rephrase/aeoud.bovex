@@ -5,33 +5,30 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-  import "chess.bovex"
-
   (* slides info *)
   object TalkInfo of { }
 
   do REPHRASE-ALL := SOME 10
   do REPHRASE-ALL := NONE
-
-  (*
-  do set-doc-info {(TalkInfo)
-                   creator = "BoVeX",
-                   producer = "Huh?",
-                   title = doc-title,
-                   author = "Tom 7",
-                   subject = "Documents do not need a 'subject'"
-                   (* leaving out date, so it is the creation time. *) }
-    *)
+  do NO-REPHRASE := true
 
   val tt = fixedersys
 
   val current-page = ref 0
+  fun next-slide () = current-page := !current-page + 1
 
-  (*
-  val u2e17-png = image-load "u2e17.png"
-  val u2e17 =
-    image-inline { img = u2e17-png, height = 9.0, dy = 4.0 }
-    *)
+  val image-cache : (string, image-handle) map ref =
+    ref (map-empty string-compare)
+  fun image-load-cache (f : string) : image-handle =
+    case map-find (!image-cache, f) of
+      SOME img => img
+    | NONE =>
+        let
+          val img = image-load f
+        in
+          image-cache := map-insert (!image-cache, f, img);
+          img
+        end
 
   fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
     let
@@ -43,7 +40,8 @@ let
                img-height = int-to-float pixel-height } []
     end
 
-  fun image-sticker { img = img as (Image img-handle), x, y, width } =
+  fun image-sticker { img = img as (Image img-handle),
+                      x : float, y : float, width : float } =
     let
       (* Compute height from image native dimensions. *)
       val { width = pixel-width, height = pixel-height } = image-size img
@@ -115,9 +113,20 @@ let
           end
     end
 
+  datatype element =
+    Title of layout
+    | Bullets of layout list
+    | Image of { img : image-handle,
+                 x : float,
+                 y : float,
+                 width : float option }
+
   (* 26 2/3 inches wide, 15 inches tall. *)
   val SLIDE-WIDTH = pixel 1920.0
   val SLIDE-HEIGHT = pixel 1080.0
+
+  (* val BULLET-COLOR = 0x000066FF *)
+  val BULLET-COLOR = 0xAAFFAAFF
 
   object Slide of
     {
@@ -174,7 +183,7 @@ let
           {(Slide) BACKGROUND = bg } =>
             (if string-ends-with ".png" bg
              then
-               SOME (image-load bg)
+               SOME (image-load-cache bg)
              else
                let in
                  print ("Unknown background expression: " ^ bg ^ "\n");
@@ -220,11 +229,11 @@ let
 
       val BODY-FONT-COLOR =
         case s of {(Slide) BODY-FONT-COLOR = bfc } => bfc
-          | _ => 0x000000FF
+          | _ => 0xFFFFFFFF
 
       val TITLE-FONT-COLOR =
         case s of {(Slide) TITLE-FONT-COLOR = tfc } => tfc
-          | _ => 0x000000FF
+          | _ => 0xFFFFAAFF
 
     in
       { BACKGROUND-IMAGE = BACKGROUND-IMAGE,
@@ -242,6 +251,16 @@ let
         TITLE-FONT-COLOR = TITLE-FONT-COLOR,
         BODY-FONT-COLOR = BODY-FONT-COLOR
         } : slide-props
+    end
+
+  fun default-text lay =
+    let
+      open slide-props {(Slide) }
+    in
+      (size BODY-FONT-SIZE
+       (color BODY-FONT-COLOR
+         (palatino
+          lay)))
     end
 
   fun add-background-image NONE = ()
@@ -263,24 +282,73 @@ let
                   title)))))
     end
 
-  fun next-slide () = current-page := !current-page + 1
+  datatype element =
+    Title of layout
+    | Bullets of layout list
+    | Image of { img : image-handle,
+                 x : float,
+                 y : float,
+                 width : float option }
+    | TextBox of { x : float,
+                   y : float,
+                   width : float }
 
-  fun bullet-slide slide title bullets =
+  fun add-textbox props { x : float,
+                          y : float,
+                          width : float,
+                          text : layout } =
     let
-      val props = slide-props slide
       open props : slide-props
 
-      val xpos = LEFT-MARGIN
-      val ypos = ref CONTENT-START-Y
+      val xpos = x
+      val ypos = ref y
+
+      fun add-text lay =
+        let
+          val lay =
+            span {(Span) font-size = BODY-FONT-SIZE,
+                  font-face = font-family PALATINO,
+                  font-color = BODY-FONT-COLOR }
+            (layout-map-text normalize-whitespace lay)
+
+          val lines = pack-one-paragraph width lay
+          val lines : layout list = list-map stick-horizontally lines
+          val num-lines = list-length lines
+        in
+          output
+          (!current-page,
+           box-stick-at { x = xpos, y = !ypos }
+           (stick-vertically (0.0, layout-concat lines)));
+
+          (* XXX *)
+          ypos := !ypos +. BULLET-FONT-SIZE *. int-to-float num-lines +.
+          BULLET-LINE-GAP;
+        end
+
+    in
+      add-text text
+    end
+
+
+  fun add-bullets props { x : float,
+                          y : float,
+                          width : float,
+                          bullets : layout list } =
+    let
+      open props : slide-props
+
+      val xpos = x
+      val ypos = ref y
       fun add-bullet lay =
         let
           val lay =
             palatino
             (size BULLET-FONT-SIZE
-             (layout-map-text normalize-whitespace lay))
+             (color BODY-FONT-COLOR
+              (layout-map-text normalize-whitespace lay)))
           val boxes = get-boxes lay
           val (badness, lines : layout list) =
-            pack-boxes-horiz (BEST, FULLY-JUSTIFIED, CONTENT-WIDTH, boxes)
+            pack-boxes-horiz (BEST, FULLY-JUSTIFIED, width, boxes)
           do emit-badness badness
           val lines : layout list = list-map stick-horizontally lines
 
@@ -298,19 +366,54 @@ let
                     x = xpos -. 64.0, y = !ypos +. 16.0,
                     font-name = font-bold PALATINO,
                     font-size = BULLET-FONT-SIZE,
-                    font-color = 0x000066FF } [ * ]);
+                    font-color = BULLET-COLOR } [ * ]);
 
           ypos := !ypos +. BULLET-FONT-SIZE *. int-to-float num-lines +.
           BULLET-LINE-GAP;
-
         end
+    in
+      list-app add-bullet bullets
+    end
 
+  fun combo-slide slide (elts : element list) =
+    let
+      val props = slide-props slide
+      open props
+      fun add-elt (Title title) =
+        add-title props title
+        | add-elt (Bullets bull) =
+        add-bullets props { x = LEFT-MARGIN,
+                            y = CONTENT-START-Y,
+                            width = CONTENT-WIDTH,
+                            bullets = bull }
+        | add-elt (Image { img, x, y, width }) =
+        output
+        (!current-page,
+         (case width of
+            NONE => exact-image-at { x = round x, y = round y, img = img }
+          | SOME w => image-sticker { img = img, x = x, y = y, width = w }))
+
+    in
+      add-background-image BACKGROUND-IMAGE;
+
+      list-app add-elt elts;
+
+      next-slide ()
+    end
+
+  fun bullet-slide slide title bullets =
+    let
+      val props = slide-props slide
+      open props : slide-props
     in
       add-background-image BACKGROUND-IMAGE;
 
       add-title props title;
 
-      list-app add-bullet bullets;
+      add-bullets props { x = LEFT-MARGIN,
+                          y = CONTENT-START-Y,
+                          width = CONTENT-WIDTH,
+                          bullets = bullets };
 
       next-slide()
     end
@@ -319,36 +422,14 @@ let
     let
       val props = slide-props slide
       open props : slide-props
-
-      val xpos = LEFT-MARGIN
-      val ypos = ref CONTENT-START-Y
-
-      fun add-text lay =
-        let
-          val lay =
-            palatino
-            (size BODY-FONT-SIZE
-             (layout-map-text normalize-whitespace lay))
-
-          val lines = pack-one-paragraph CONTENT-WIDTH lay
-          val lines : layout list = list-map stick-horizontally lines
-          val num-lines = list-length lines
-        in
-          output
-          (!current-page,
-           box-stick-at { x = xpos, y = !ypos }
-           (stick-vertically (0.0, layout-concat lines)));
-
-          (* XXX *)
-          ypos := !ypos +. BULLET-FONT-SIZE *. int-to-float num-lines +.
-          BULLET-LINE-GAP;
-        end
-
     in
       add-background-image BACKGROUND-IMAGE;
       add-title props title;
 
-      add-text text;
+      add-textbox props { x = LEFT-MARGIN,
+                          y = CONTENT-START-Y,
+                          width = CONTENT-WIDTH,
+                          text = text };
 
       next-slide()
     end
@@ -363,34 +444,16 @@ let
       val COLUMN-WIDTH = (CONTENT-WIDTH -. gap) *. 0.5
       val xpos2 = LEFT-MARGIN +. COLUMN-WIDTH +. gap
 
-      val ypos = CONTENT-START-Y
-
-      fun add-text xpos lay =
-        let
-          val lay =
-            palatino
-            (span {(Span)
-                   font-size = BODY-FONT-SIZE} lay)
-
-          val paras : layout list = get-paragraphs (lay :: nil)
-          val lines = list-concat
-            (list-map (pack-one-paragraph COLUMN-WIDTH) paras)
-          val lines : layout list = list-map stick-horizontally lines
-          val num-lines = list-length lines
-        in
-          output
-          (!current-page,
-           box-stick-at { x = xpos, y = ypos }
-           (stick-vertically (0.0, layout-concat lines)))
-        end
-
     in
       add-background-image BACKGROUND-IMAGE;
       add-title props title;
 
-      add-text xpos1 text1;
-      add-text xpos2 text2;
-
+      add-textbox props { x = xpos1, y = CONTENT-START-Y,
+                          width = COLUMN-WIDTH,
+                          text = text1 };
+      add-textbox props { x = xpos2, y = CONTENT-START-Y,
+                          width = COLUMN-WIDTH,
+                          text = text2 };
       next-slide()
     end
 
@@ -446,23 +509,28 @@ let
       val props = slide-props slide
       open props : slide-props
 
+      fun title-text lay =
+        span {(Span)
+              font-bold = true,
+              font-color = TITLE-FONT-COLOR,
+              font-size = TITLE-FONT-SIZE} (palatino lay)
     in
       add-background-image BACKGROUND-IMAGE;
 
       output
       (!current-page,
        centered-text-sticker { x = 0.0, y = inch 6.0, width = SLIDE-WIDTH }
-       (size TITLE-FONT-SIZE (b (palatino title))));
+       (title-text title));
 
       output
       (!current-page,
        centered-text-sticker { x = 0.0, y = inch 8.0, width = SLIDE-WIDTH }
-       (size TITLE-FONT-SIZE (b (palatino author))));
+       (title-text author));
 
       output
       (!current-page,
        centered-text-sticker { x = 0.0, y = inch 12.0, width = SLIDE-WIDTH }
-       (size TITLE-FONT-SIZE (b (palatino venue))));
+       (title-text venue));
 
       next-slide()
     end
@@ -489,7 +557,6 @@ let
       next-slide()
     end
 
-  (* The whole slide is just this image exactly. *)
   fun monospace-slide slide title body =
     let
       val props = slide-props slide
@@ -527,7 +594,7 @@ let
   fun on-previous-slide layout =
     output (!current-page - 1, layout)
 
-  val slide = {(Slide) BACKGROUND = "testbg.png" }
+  val slide = {(Slide) BACKGROUND = "sunset-bg.png" }
 
   (* Currently need to tell it the dimensions, but we could easily
      get them with get-boxes or something like that. *)
@@ -546,12 +613,45 @@ let
               font-name = font-name,
               font-size = font-size } (layout text))
 
+  fun get-box lay =
+    let
+      val lay = layout-map-text normalize-whitespace lay
+      val boxes = get-boxes lay
+    in
+      (* Hack: "infinite" line width. *)
+      case pack-boxes-horiz (BEST, LEFT-JUSTIFIED, 9999999999.0, boxes) of
+        (badness-ignored, line :: nil) => stick-horizontally line
+      | (_, nil) => box {(Box) width = 0.0, height = 0.0} []
+      | _ => fail ("Expected just one line when packing boxes on " ^
+                   "an 'infinite' line.")
+    end
+
+  fun zigzag lay =
+    case layoutcase (get-box lay) of
+      Node (BOX, attrs as {(Box) width, height}, ch) =>
+        let
+          val y-offset = height *. -0.15
+          val d =
+            box attrs
+            (layout-concat
+             (ch @
+              (image-sticker { img = image-load-cache "red-underline.png",
+                               x = 0.0, y = y-offset, width = width } :: nil)
+              ))
+        in
+          d
+        end
+    | _ =>
+        let in
+          debug-print-doc lay;
+          fail "Expected box with width/height from get-box"
+        end
 in
   (* TODO: Better bullet graphic. Can embed fonts, remember *)
 
-  title-slide slide [Badness 0 (Bovik's Version)]
-  [Vii, T. M.]
-  [SIGBOVIK 2024];
+  title-slide slide [Badness 0]
+  [by Tom 7]
+  [An Evening Of... 2024];
 
   (* TODO It has come to my attention... *)
 
@@ -566,41 +666,36 @@ in
 
   (* Lorem Epsom *)
 
-
-  quote-slide (slide with CONTENT-START-Y = inch 4.6)
-  [Then there's this guy...]
-  [Sen. Bill Cassidy of Louisiana, representing the ______ party, said
-   paying workers the same wages for fewer hours would force employers
-   to pass the cost of hiring more workers along to consumers.
-
-   [* Note: Don't fix the quotation marks in here; I refer to them below *]
-   “It would threaten millions of small businesses operating on a
-   razor-thin margin because they’re unable to find enough workers,"
-   said Cassidy. "Now they’ve got the same workers, but only for
-   three-quarters of the time. And they have to hire more.”];
-
-  bullet-slide slide [Um, actually]
-  ([Razors have famously high margins] :: nil);
-
-  bullet-slide slide [Um, actually]
-  ([Razors have famously high margins] ::
-   [Mixes fancy “typographic quotes” and "ASCII ones"] :: nil);
-
-  bullet-slide slide [Um, actually]
-  ([Razors have famously high margins] ::
-   [Mixes fancy “typographic quotes” and "ASCII ones"] ::
-   [What? No!] :: nil);
+  quote-slide slide [Corporate Preso]
+  [[zigzag (default-text [Lorem Epsom])] dolor sit amet];
 
 
+ (* Epsom vs Knuth
+
+    * Thinks of spreadsheets as "the one without clip-art"
+
+    *)
+
+  combo-slide slide
+  (Title [The Hero: Donald Knuth] ::
+   Bullets ([Awesome] ::
+            [Will pay you if you find an error] ::
+            [Took 35 years to write a book] :: nil) ::
+   Image { img = image-load "knuth.jpg",
+           x = pixel 1400.0,
+           y = pixel 300.0,
+           width = SOME (pixel 500.0) } ::
+   nil);
+
+   (*
   bullet-slide slide [The Hero: Donald Knuth]
-  ([Awesome] ::
-   [Will pay you if you find an error] ::
-   [Took 35 years to write a book] :: nil);
+  (;
   (* XXX HAX *)
   on-previous-slide (image-sticker { img = image-load "knuth.jpg",
                                      x = pixel 1400.0,
                                      y = pixel 300.0,
                                      width = pixel 500.0 });
+   *)
 
   bullet-slide slide [Nightmare on LLM Street]
   ([Wow OMG I'm sick of hearing about it] ::
@@ -764,6 +859,7 @@ rendered in monospace:];
  computer document preparation system, and it's the only program
  permitted by the SIGBOVIK program committee. *)
 
+  (* Can drop this *)
   bullet-slide slide [Additional features]
   ([Achievement system] ::
    three-d { font-name = font-regular PALATINO,

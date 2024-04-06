@@ -244,9 +244,8 @@ std::string DecString(const Dec *d) {
   }
 
   case DecType::OPEN:
-    return StringPrintf("open %s as %s\n",
-                        ExpString(d->exp).c_str(),
-                        TypeString(d->t).c_str());
+    return StringPrintf("open %s\n",
+                        ExpString(d->exp).c_str());
 
   case DecType::DATATYPE: {
     std::string tyvars;

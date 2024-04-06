@@ -1,6 +1,7 @@
 
 #include "talk.h"
 
+#include <cstdio>
 #include <string>
 
 #include "ansi.h"

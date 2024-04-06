@@ -143,7 +143,9 @@ void TalkPage::DrawImage(double x, double y,
                          double width, double height,
                          const ImageRGBA &sticker) {
   CHECK(image.get() != nullptr);
-  printf("Add image at %.11g %.11g.\n", x, y);
+  printf("Add %dx%d image at %.11g %.11g.\n",
+         sticker.Width(), sticker.Height(),
+         x, y);
 
   const int ww = std::round(width);
   const int hh = std::round(height);

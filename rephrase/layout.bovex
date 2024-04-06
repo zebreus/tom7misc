@@ -302,11 +302,15 @@ fun span (attrs : obj) (l : layout) =
    (except that this affects the drawing order).
 
    It's rare to generate stickers directly.
+
+   TODO: Add path drawing stuff. This is straightforward for PDF, but
+   we would need some kind of rasterization support for the PNG backend!
 *)
 object Sticker of { x: float, y: float, scale: float,
                     font-name: string,
                     font-size: float,
                     font-color: int,
+
                     img: string,
                     img-height: float,
                     img-width: float }
@@ -632,13 +636,20 @@ fun get-paragraphs (ls : layout list) : layout list =
     list-rev (!rev-paragraphs)
   end
 
-
-(* Makes the contents of a box into stickers. *)
+(* Makes the contents of a box into stickers.
+   Returns a box whose width is the sum of the actual widths of
+   these stickers. *)
 fun stick-horizontally (lay : layout) : layout =
   case layoutcase lay of
     Node (BOX, attrs, children) =>
       let
-        fun rec (_, nil) = nil
+        val width = ref 0.0
+        fun rec (x, nil) =
+          let in
+            (* print ("Final width: " ^ int-to-string (round x) ^ "\n"); *)
+            width := x;
+            nil
+          end
           | rec (x, h :: t) =
           case layoutcase h of
             Node (BOX, attrs as {(Box) width}, ch) =>
@@ -656,8 +667,11 @@ fun stick-horizontally (lay : layout) : layout =
                 s :: rec (x +. width, t)
               end
           | _ => fail "Expected line's contents to be boxes."
+
+        (* Run first for effect of setting width *)
+        val ch = layout-concat (rec (0.0, children))
       in
-        box attrs (layout-concat (rec (0.0, children)))
+        box (attrs with (Box)width = !width) ch
       end
   | _ => fail "Expected line to be a box!"
 
@@ -881,6 +895,7 @@ fun rephrasings (times, para) : (float * layout) list =
   end
 
 val REPHRASE-ALL : int option ref = ref NONE
+val NO-REPHRASE : bool ref = ref false
 
 (* Pack a paragraph. This is basically pack-boxes o get-boxes, but
    we also look for rephrase contexts. If there are any, we
@@ -955,18 +970,20 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
     fun extract-rephrasing rewrap para =
       case layoutcase para of
         Node (SPAN, attrs as {(Rephrase) rephrase-times }, ch) =>
-          list-map (fn (loss, para) => (loss, rewrap para))
-          (rephrasings (rephrase-times, para))
+          if !NO-REPHRASE
+          then (0.0, rewrap para) :: nil
+          else list-map (fn (loss, para) => (loss, rewrap para))
+               (rephrasings (rephrase-times, para))
       | Node (SPAN, attrs, child :: nil) =>
           extract-rephrasing (fn x => rewrap (span attrs x)) child
       | Node (BOX, _, _) => (0.0, rewrap para) :: nil
       | Node (STICKER, _, _) => (0.0, rewrap para) :: nil
       | _ =>
-          (case !REPHRASE-ALL of
-             SOME n-times =>
+          (case (!REPHRASE-ALL, !NO-REPHRASE) of
+             (SOME n-times, false) =>
                list-map (fn (loss, para) => (loss, rewrap para))
                (rephrasings (n-times, para))
-             | NONE => (0.0, rewrap para) :: nil)
+             | _ => (0.0, rewrap para) :: nil)
 
     val paras : (float * layout) list = extract-rephrasing (fn x => x) para
 

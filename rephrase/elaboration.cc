@@ -668,17 +668,28 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
     }
 
     case el::DecType::OPEN: {
-      CHECK(dec->t != nullptr);
-      const il::Type *type = ElabType(G, dec->t);
-      CHECK(type->type == il::TypeType::RECORD) << "The type in an open "
-        "declaration must be a record. Got: " << TypeString(type);
+      const auto &[e, t] = Elab(G, dec->exp);
+
+      std::optional<const il::Type *> ortype = ILUtil::GetTypeIfKnown(t);
+      if (!ortype.has_value()) {
+        LOG(FATAL) << "In open declaration, the type of the expression "
+          "must be synthesizable (and must be a record). You can add a "
+          "type annotation to fix this. Object exp: " << ExpString(dec->exp);
+      }
+
+      const il::Type *rtype = ortype.value();
+
+      CHECK(rtype->type == il::TypeType::RECORD) << "The type in an open "
+        "declaration must be a record. Got: " << TypeString(rtype);
       // generate { f1 = f1, f2 = f2, ... }
       std::vector<std::pair<std::string, const el::Pat *>> pats;
-      for (const auto &[f, t] : type->Record()) {
+      for (const auto &[f, t] : rtype->Record()) {
         pats.emplace_back(f, el_pool->VarPat(f));
       }
       const el::Pat *rpat = el_pool->RecordPat(pats);
 
+      // XXX This elaborates the RHS twice. Should not be hard to fix,
+      // but the
       return Elab(G, el_pool->Let({el_pool->ValDec(rpat, dec->exp)}, rest));
     }
     }
@@ -1101,7 +1112,8 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
                      el_exp->str.c_str());
     }
 
-    std::vector<std::tuple<std::string, il::ObjFieldType, const il::Exp *>> fields;
+    std::vector<
+      std::tuple<std::string, il::ObjFieldType, const il::Exp *>> fields;
     fields.reserve(el_exp->str_children.size());
     for (const auto &[lab, e] : el_exp->str_children) {
       const auto &[ee, tt] = Elab(G, e);

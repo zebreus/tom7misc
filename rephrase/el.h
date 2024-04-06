@@ -411,10 +411,9 @@ struct AstPool {
     return ret;
   }
 
-  const Dec *OpenDec(const Exp *e, const Type *t) {
+  const Dec *OpenDec(const Exp *e) {
     Dec *ret = NewDec(DecType::OPEN);
     ret->exp = e;
-    ret->t = t;
     return ret;
   }
 

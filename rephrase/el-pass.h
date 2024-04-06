@@ -68,7 +68,7 @@ struct Pass {
         d->tyvars, d->datatypes, args...);
     case DecType::OBJECT: return DoObjectDec(d->object, args...);
     case DecType::TYPE: return DoTypeDec(d->tyvars, d->str, d->t, args...);
-    case DecType::OPEN: return DoOpenDec(d->exp, d->t, args...);
+    case DecType::OPEN: return DoOpenDec(d->exp, args...);
     }
     LOG(FATAL) << "Unhandled type in el::Pass::DoDec!";
     return nullptr;
@@ -333,8 +333,8 @@ struct Pass {
     return pool->TypeDec(tyvars, var, DoType(t, args...));
   }
 
-  virtual const Dec *DoOpenDec(const Exp *e, const Type *t, Args... args) {
-    return pool->OpenDec(DoExp(e, args...), DoType(t, args...));
+  virtual const Dec *DoOpenDec(const Exp *e, Args... args) {
+    return pool->OpenDec(DoExp(e, args...));
   }
 
 

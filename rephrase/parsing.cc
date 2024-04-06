@@ -937,10 +937,17 @@ const Exp *Parsing::Parse(AstPool *pool,
       };
 
   auto OpenDecl = [&](const auto &Expr) {
-      return (IsToken<OPEN>() >> Expr && (IsToken<AS>() >> TypeExpr))
-        >[&](const auto &p) -> const Dec * {
-            return pool->OpenDec(p.first, p.second);
-          };
+      return ((IsToken<OPEN>() >> Expr)
+              >[&](const Exp *e) -> const Dec * {
+                  return pool->OpenDec(e);
+                }) ||
+        (Mark(IsToken<OPEN>()) >[&](const auto &err) -> const Dec * {
+            const auto &[_, start, length] = err;
+            LOG(FATAL) << ErrorAtIndex(start, length) <<
+              "Expected OPEN EXP after seeing "
+              "OPEN. At: " << start << " for " << length;
+            return nullptr;
+          });
     };
 
   auto ErrorDecl =
