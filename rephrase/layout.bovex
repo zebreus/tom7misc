@@ -313,7 +313,12 @@ object Sticker of { x: float, y: float, scale: float,
 
                     img: string,
                     img-height: float,
-                    img-width: float }
+                    img-width: float,
+
+                    video: string,
+                    video-width: float,
+                    video-height: float
+                    }
 
 fun sticker (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_STICKER) l

@@ -159,6 +159,45 @@ void TalkPage::DrawImage(double x, double y,
   }
 }
 
+void TalkPage::DrawRect(double x, double y, double width, double height,
+                        double border_width, uint32_t color_fill,
+                        uint32_t color_border) {
+  double x2 = x + width;
+  double y2 = y + height;
+  int ix = (int)std::round(x);
+  int iy = (int)std::round(y);
+  int iw = (int)std::round(x2 - ix);
+  int ih = (int)std::round(y2 - iy);
+
+  int ib = (int)std::round(border_width);
+
+  if ((color_fill & 0xFF) > 0) {
+    image->BlendRect32(ix, iy, iw, ih, color_fill);
+  }
+
+  if (ib > 0 && (color_border & 0xFF) > 0) {
+    image->BlendBox32(ix, iy, iw, ih, color_border, std::nullopt);
+    for (int i = 0; i < (ib >> 1); i++) {
+      image->BlendBox32(ix - i, iy - i, iw + 2 * i, ih + 2 * i, color_border,
+                        std::nullopt);
+      image->BlendBox32(ix + i, iy + i, iw - 2 * i, ih - 2 * i, color_border,
+                        std::nullopt);
+    }
+  }
+}
+
+void TalkPage::DrawVideo(double x, double y,
+                         double width, double height,
+                         const std::string &src) {
+  CHECK(!video.has_value()) << "Just one video per slide is supported "
+    "in the talk format. It would not be that bad to support more; you "
+    "just gotta make it work in talk.html. Had: " << video.value().src <<
+    " and tried to add " << src;
+  video.emplace(Video{.x = x, .y = y, .width = width, .height = height,
+      .src = src});
+}
+
+
 void TalkDocument::GenerateOutput(std::string_view filename_base,
                                  const std::map<int, DocTree> &pages) {
   Timer output_timer;
@@ -190,22 +229,35 @@ void TalkDocument::GenerateOutput(std::string_view filename_base,
   }
 
   {
-  Asynchronously async(8);
-  for (int i = 0; i < (int)pageptrs.size(); i++) {
-    const auto &page = pageptrs[i];
-    const std::string slidefile = StringPrintf("slide%d.png", i);
-    StringAppendF(&talk,
-                  "slide\n"
-                  "  %s\n",
-                  slidefile.c_str());
+    Asynchronously async(8);
+    for (int i = 0; i < (int)pageptrs.size(); i++) {
+      const auto &page = pageptrs[i];
+      const std::string slidefile = StringPrintf("slide%d.png", i);
+      StringAppendF(&talk,
+                    "slide\n");
 
-    async.Run([&talk_dir, &page, slidefile]() {
-        const std::string slideabsfile = Util::dirplus(talk_dir, slidefile);
-        page->image->Save(slideabsfile);
-      });
-  }
+      if (page->video.has_value()) {
+        const TalkPage::Video &video = page->video.value();
+        StringAppendF(&talk,
+                      "  video %d %d %d %d %s\n",
+                      (int)std::round(video.x),
+                      (int)std::round(video.y),
+                      (int)std::round(video.width),
+                      (int)std::round(video.height),
+                      video.src.c_str());
+      }
 
-  Util::WriteFile(talk_filename, talk);
+      StringAppendF(&talk,
+                    "  %s\n",
+                    slidefile.c_str());
+
+      async.Run([&talk_dir, &page, slidefile]() {
+          const std::string slideabsfile = Util::dirplus(talk_dir, slidefile);
+          page->image->Save(slideabsfile);
+        });
+    }
+
+    Util::WriteFile(talk_filename, talk);
   }
 
   double sec = output_timer.Seconds();

@@ -221,6 +221,19 @@ void PDFPage::DrawImage(double x, double y,
             pdf_page));
 }
 
+void PDFPage::DrawRect(double x, double y, double width, double height,
+                       double border_width, uint32_t color_fill,
+                       uint32_t color_border) {
+  LOG(FATAL) << "unimplemented DrawRect. It's easy!";
+}
+
+void PDFPage::DrawVideo(double x, double y,
+                        double width, double height,
+                        const std::string &src) {
+  LOG(FATAL) << "Incredibly, PDF does support embedding videos, but "
+    "I did not implement it!";
+}
+
 void PDFDocument::GenerateOutput(std::string_view filename_base,
                                  const std::map<int, DocTree> &pages) {
   return GeneratePDF(std::string(filename_base) + ".pdf", pages);

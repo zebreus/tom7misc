@@ -52,6 +52,15 @@ struct TalkPage : public Page {
                  double width, double height,
                  const ImageRGBA &img) override;
 
+
+  void DrawRect(double x, double y, double width, double height,
+                double border_width, uint32_t color_fill,
+                uint32_t color_border) override;
+
+  void DrawVideo(double x, double y,
+                 double width, double height,
+                 const std::string &src) override;
+
  private:
   friend struct TalkDocument;
   TalkPage(const TalkPage &other) = delete;
@@ -61,6 +70,14 @@ struct TalkPage : public Page {
   // would be multiple images or some meta representation.
   const TalkDocument *talk = nullptr;
   std::unique_ptr<ImageRGBA> image;
+
+  struct Video {
+    double x = 0.0, y = 0.0, width = 0.0, height = 0.0;
+    std::string src;
+  };
+
+  // Just one video is supported for now.
+  std::optional<Video> video;
 };
 
 struct TalkDocument : public Document {

@@ -1,7 +1,8 @@
 <!doctype html>
 
-<!-- This is not for direct use; you gotta build and then detalk
-     a talk (which copies this into the destination directory). -->
+<!-- This is not for direct use; you gotta build and then
+     use "maketalk" (which copies this into the destination
+     directory). -->
 
 <script src="slides.js"></script>
 <script>
@@ -9,22 +10,54 @@
  let slide_idx = 0;
  let anim_idx = 0;
  let count = 0;
+ let video_dirty = true;
 
  function Draw() {
    let slide = slides[slide_idx];
-   let f = slide[anim_idx];
+   let f = slide.a[anim_idx];
    let screen = f.i;
    let elt = document.getElementById('proj');
    elt.src = f.i + ".png";
+   if (video_dirty) {
+     let video = document.getElementById('vid');
+     if (slide.video) {
+       console.log('begin video');
+       video.style.position = 'fixed';
+       video.style.zIndex = 999;
+       // Video overlay
+       video.style.left = (slide.video.x || 0) + 'px';
+       video.style.top = (slide.video.y || 0) + 'px';
+       video.style.width = (slide.video.w || 1920) + 'px';
+       video.style.height = (slide.video.h || 1080) + 'px';
+       video.defaultMuted = true;
+       video.muted = true;
+       console.log(slide.video.src);
+       video.src = slide.video.src;
+       video.style.display = 'block';
+       video.play();
+     } else {
+       console.log('exit video');
+       video.pause();
+       video.style.display = 'none';
+     }
+     video_dirty = false;
+   }
  }
 
  function GoTo(n) {
+   video_dirty = true;
    anim_idx = 0;
    count = 0;
    while (n < 0) n += slides.length;
    n = n % slides.length;
    slide_idx = n;
    window.location.hash = '#' + slide_idx;
+   if (slide_idx != 0) {
+     document.body.classList.add('hidden-cursor');
+     document.addEventListener('mousemove', function() {
+       document.body.classList.remove('hidden-cursor');
+     }, { once: true });
+   }
  }
 
  function Home() {
@@ -68,9 +101,9 @@
    // advance animation
    let slide = slides[slide_idx];
    count++;
-   if (count > slide[anim_idx].d) {
+   if (count > slide.a[anim_idx].d) {
      anim_idx++;
-     if (anim_idx >= slide.length) anim_idx = 0;
+     if (anim_idx >= slide.a.length) anim_idx = 0;
      count = 0;
    }
 
@@ -114,12 +147,18 @@
    justify-content: space-between;
  }
  body {
+   padding: 0;
+   margin: 0;
    cursor: url('mouse-cursor.png'), auto;
+ }
+ .hidden-cursor {
+   cursor: none;
  }
 </style>
 
 <body bgcolor="#000" onload="Start()">
   <img id="proj" class="screen">
+  <video id="vid" muted="true" style="left:9999px"></video>
   <br/>
   <div class="clickers">
     <div class="click" onclick="Left()">&nbsp;&lt;</div>

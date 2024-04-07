@@ -1139,6 +1139,8 @@ void Document::PlaceStickersRec(Context context,
                                 Transform transform,
                                 const DocTree &doc,
                                 Page *page) {
+  static constexpr bool DEBUG_STICKERS = false;
+
   if (doc.IsText()) {
     // Place the text with the current transform.
     page->DrawText(context.font,
@@ -1179,6 +1181,17 @@ void Document::PlaceStickersRec(Context context,
   CHECK(x != nullptr && y != nullptr) << Error() << "Every sticker "
     "should have its final x= and y= coordinates.";
 
+  if (DEBUG_STICKERS) {
+    const double *w = doc.GetDoubleAttr("width");
+    const double *h = doc.GetDoubleAttr("height");
+    double ww = w == nullptr ? 1.0 : *w;
+    double hh = h == nullptr ? 1.0 : *h;
+    Transform ct = Translate(transform, *x, *y);
+    page->DrawRect(ct.dx, ct.dy, ww, hh,
+                   1.0, 0xFF000033,
+                   0xFF0000FF);
+  }
+
   if (const std::string *img = doc.GetStringAttr("img")) {
     const double *width = doc.GetDoubleAttr("img-width");
     const double *height = doc.GetDoubleAttr("img-height");
@@ -1191,6 +1204,15 @@ void Document::PlaceStickersRec(Context context,
     } else {
       page->DrawImage(ct.dx, ct.dy, *width, *height, *image);
     }
+  }
+
+  if (const std::string *video = doc.GetStringAttr("video")) {
+    const double *width = doc.GetDoubleAttr("video-width");
+    const double *height = doc.GetDoubleAttr("video-height");
+    CHECK(width != nullptr && height != nullptr) << "A video=\"\" on a "
+      "sticker also requires video-width=\"\" and video-height\"\" (doubles).";
+    Transform ct = Translate(transform, *x, *y);
+    page->DrawVideo(ct.dx, ct.dy, *width, *height, *video);
   }
 
   if (const std::string *font_name = doc.GetStringAttr("font-name")) {
@@ -1247,6 +1269,18 @@ void Page::DrawText(const Font *font,
 void Page::DrawImage(double x, double y,
                      double width, double height,
                      const ImageRGBA &image) {
+}
+
+void Page::DrawVideo(double x, double y,
+                     double width, double height,
+                     const std::string &src) {
+}
+
+void Page::DrawRect(double x, double y,
+                    double width, double height,
+                    double border_width, uint32_t color_fill,
+                    uint32_t color_border) {
+
 }
 
 Page::Page() {}

@@ -146,11 +146,13 @@ static void RephraseMono(
   LLM::State line_beginning = llm->SaveState();
   float current_temp = 1.0f;
   for (;;) {
+    /*
     printf("Start loop. Last:\n");
     printf(ANSI_GREY);
     llm->sampler.PrintLast();
     printf(ANSI_RESET);
     printf("\n");
+    */
 
     for (const std::string &line : lines) {
       printf(AFGCOLOR(200, 250, 200, "%s") "\n", line.c_str());

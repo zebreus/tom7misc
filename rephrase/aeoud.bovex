@@ -14,6 +14,10 @@ let
 
   val tt = fixedersys
 
+  (* 26 2/3 inches wide, 15 inches tall. *)
+  val SLIDE-WIDTH = pixel 1920.0
+  val SLIDE-HEIGHT = pixel 1080.0
+
   val current-page = ref 0
   fun next-slide () = current-page := !current-page + 1
 
@@ -29,6 +33,12 @@ let
           image-cache := map-insert (!image-cache, f, img);
           img
         end
+
+  fun fullscreen-video src =
+    sticker {(Sticker) x = 0.0, y = 0.0,
+             video-width = SLIDE-WIDTH,
+             video-height = SLIDE-HEIGHT,
+             video = src } []
 
   fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
     let
@@ -121,10 +131,6 @@ let
                  y : float,
                  width : float option }
 
-  (* 26 2/3 inches wide, 15 inches tall. *)
-  val SLIDE-WIDTH = pixel 1920.0
-  val SLIDE-HEIGHT = pixel 1080.0
-
   (* val BULLET-COLOR = 0x000066FF *)
   val BULLET-COLOR = 0xAAFFAAFF
 
@@ -173,6 +179,9 @@ let
      BODY-FONT-COLOR: int
      }
 
+  val DEFAULT-LEFT-MARGIN = inch 2.0
+  val DEFAULT-TOP-MARGIN = inch 2.0
+
   fun slide-props (s : obj) : slide-props =
     let
       (* PERF could cache these,
@@ -194,9 +203,9 @@ let
       val TITLE-FONT-SIZE =
         case s of {(Slide) TITLE-FONT-SIZE = tfs } => tfs | _ => point 136.0
       val LEFT-MARGIN =
-        case s of {(Slide) LEFT-MARGIN = lm } => lm | _ => inch 3.0
+        case s of {(Slide) LEFT-MARGIN = lm } => lm | _ => DEFAULT-LEFT-MARGIN
       val TOP-MARGIN =
-        case s of {(Slide) TOP-MARGIN = tm } => tm | _ => inch 3.0
+        case s of {(Slide) TOP-MARGIN = tm } => tm | _ => DEFAULT-TOP-MARGIN
 
       val CONTENT-START-Y =
         case s of {(Slide) CONTENT-START-Y = csy } => csy
@@ -291,7 +300,8 @@ let
                  width : float option }
     | TextBox of { x : float,
                    y : float,
-                   width : float }
+                   width : float,
+                   text : layout }
 
   fun add-textbox props { x : float,
                           y : float,
@@ -314,6 +324,7 @@ let
           val lines = pack-one-paragraph width lay
           val lines : layout list = list-map stick-horizontally lines
           val num-lines = list-length lines
+
         in
           output
           (!current-page,
@@ -321,7 +332,7 @@ let
            (stick-vertically (0.0, layout-concat lines)));
 
           (* XXX *)
-          ypos := !ypos +. BULLET-FONT-SIZE *. int-to-float num-lines +.
+          ypos := !ypos +. BODY-FONT-SIZE *. int-to-float num-lines +.
           BULLET-LINE-GAP;
         end
 
@@ -348,7 +359,7 @@ let
               (layout-map-text normalize-whitespace lay)))
           val boxes = get-boxes lay
           val (badness, lines : layout list) =
-            pack-boxes-horiz (BEST, FULLY-JUSTIFIED, width, boxes)
+            pack-boxes-horiz (BEST, LEFT-JUSTIFIED, width, boxes)
           do emit-badness badness
           val lines : layout list = list-map stick-horizontally lines
 
@@ -379,6 +390,13 @@ let
     let
       val props = slide-props slide
       open props
+
+      val CONTENT-WIDTH =
+        case list-find (fn Image _ => true | _ => false) elts of
+          SOME (Image {x, y, width, img }) =>
+            (x -. LEFT-MARGIN *. 2.0)
+        | NONE => CONTENT-WIDTH
+
       fun add-elt (Title title) =
         add-title props title
         | add-elt (Bullets bull) =
@@ -392,6 +410,8 @@ let
          (case width of
             NONE => exact-image-at { x = round x, y = round y, img = img }
           | SOME w => image-sticker { img = img, x = x, y = y, width = w }))
+        | add-elt (TextBox { x, y, width, text }) =
+        add-textbox props { x = x, y = y, width = width, text = text }
 
     in
       add-background-image BACKGROUND-IMAGE;
@@ -591,6 +611,23 @@ let
       next-slide()
     end
 
+  (* The whole slide is this full-screen video. *)
+  fun just-video slide src =
+    let
+      val props = slide-props slide
+      open props : slide-props
+    in
+      (* Adding the background image helps prevent a flash
+         of white when unloading the video. *)
+      add-background-image BACKGROUND-IMAGE;
+
+      output
+      (!current-page,
+       fullscreen-video src);
+
+      next-slide()
+    end
+
   fun on-previous-slide layout =
     output (!current-page - 1, layout)
 
@@ -646,15 +683,24 @@ let
           debug-print-doc lay;
           fail "Expected box with width/height from get-box"
         end
+
+  fun em lay = color 0xCCCCFFFF lay
 in
   (* TODO: Better bullet graphic. Can embed fonts, remember *)
 
-  title-slide slide [Badness 0]
+  title-slide slide (size (point 280.0) (color 0xFFFFFFFF [Badness 0]))
   [by Tom 7]
   [An Evening Of... 2024];
 
+  title-slide slide (size (point 380.0) (color 0xFF0000FF [UN-]))
+  (color 0xFF7777FF [necessary])
+  [detail?!!‽];
+
+
   (* TODO It has come to my attention... *)
 
+ (* Oh my god, it burns my eyes!! And not just because it's so
+    bright... the glaring mistake... *)
   (* People will look at this and think, "Looks fine to me!" *)
   just-image "typography0.png";
   just-image "typography1.png";
@@ -666,11 +712,60 @@ in
 
   (* Lorem Epsom *)
 
-  quote-slide slide [Corporate Preso]
-  [[zigzag (default-text [Lorem Epsom])] dolor sit amet];
+  let
+    val YPOS = inch 4.0
+  in
+    combo-slide slide
+    (Title [Corporate Preso] ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = YPOS,
+               width = inch 9.0,
+               text = [[zigzag (default-text [Lorem Epsom])]
+                       dolor sit amet,
+                       [color 0xFFFFFFEE
+                        [consectetur adipiscing elit,]]
+                       [color 0xFFFFFFCC
+                        [sed do eiusmod tempor
+                         incididunt ut labore]]
+                       [color 0xFFFFFFAA
+                        [et dolore magna aliqua. Ut]]
+                       [color 0xFFFFFF88
+                        [enim ad minim veniam, quis nostrud]]
+                       [color 0xFFFFFF55
+                        [exercitation ullamco laboris nisi ut]]
+                       [color 0xFFFFFF33
+                        [aliquip ex ea commodo consequat. Duis]]
+                       [*
+                       aute irure dolor in reprehenderit in
+                       voluptate velit esse cillum dolore eu
+                       fugiat nulla pariatur. Excepteur sint
+                       occaecat cupidatat non proident, sunt
+                       in culpa qui officia deserunt mollit
+                       anim id est laborum *]] } ::
+     Image { img = image-load "graph.png",
+             x = pixel 900.0,
+             y = YPOS,
+             width = SOME (pixel 900.0) } ::
+     nil)
+  end;
 
+  combo-slide slide
+  (Title [The Villain: Lorem Epsom] ::
+   Bullets ([Probably never even read the Wikipedia article
+             on [it[Lorem Ipsum]]] ::
+            [Leverages synergy] ::
+            [Loves the phrases "[em[metaverse]]" and
+             "[em[blockchain]]" and
+             "[em[generative AI]]" but doesn't know why] ::
+            [Is successful and rich] ::
+            nil) ::
+   Image { img = image-load "douche-anime.png", (* "douche.jpg", *)
+           x = pixel 1400.0,
+           y = pixel 300.0,
+           width = SOME (pixel 500.0) } ::
+   nil);
 
- (* Epsom vs Knuth
+  (* Epsom vs Knuth
 
     * Thinks of spreadsheets as "the one without clip-art"
 
@@ -687,15 +782,19 @@ in
            width = SOME (pixel 500.0) } ::
    nil);
 
-   (*
-  bullet-slide slide [The Hero: Donald Knuth]
-  (;
-  (* XXX HAX *)
-  on-previous-slide (image-sticker { img = image-load "knuth.jpg",
-                                     x = pixel 1400.0,
-                                     y = pixel 300.0,
-                                     width = pixel 500.0 });
-   *)
+  combo-slide slide
+  (Title [The Art of Computer Procrastination] ::
+   Bullets ([1975: 3000 pages of hand-written text] ::
+            [1977: Publisher proofs don't look that good ] ::
+            [1982: Returns with TeX ] ::
+            [XXX finish the slide ] ::
+            [Took 35 years to write a book] :: nil) ::
+   Image { img = image-load "knuth.jpg",
+           x = pixel 1400.0,
+           y = pixel 300.0,
+           width = SOME (pixel 500.0) } ::
+   nil);
+
 
   bullet-slide slide [Nightmare on LLM Street]
   ([Wow OMG I'm sick of hearing about it] ::
@@ -709,6 +808,7 @@ in
   [The Hurry-Coward So-So-Morphism]
   (image-load "morphism.png");
 
+             (* dual triforce *)
   diagram-slide (slide with TITLE-FONT-SIZE = point 90.0
                  with TOP-MARGIN = inch 2.0
                  with CONTENT-START-Y = inch 2.75)
@@ -747,7 +847,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
     lexical coinduction and time travel] ::
    nil);
 
-  quote-slide slide [¿Como te LLama?]
+  quote-slide slide [¿Cómo se LLama?]
   [Exercise in rephrasing text. The following paragraph
    needs to be rephrased so that it retains its precise meaning, but
    with minor variations in the specific choice of words, punctuation,
@@ -755,6 +855,8 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
    good to use synonyms and change the word order and phrasing.
 
    Original paragraph:];
+
+  just-video slide "test.webm";
 
   monospace-slide (slide
                    with MONOSPACE-FONT-SIZE = 50.0)

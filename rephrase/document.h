@@ -127,6 +127,15 @@ struct Page {
                          double width, double height,
                          const ImageRGBA &image);
 
+  virtual void DrawRect(double x, double y,
+                        double width, double height,
+                        double border_width, uint32_t color_fill,
+                        uint32_t color_border);
+
+  virtual void DrawVideo(double x, double y,
+                         double width, double height,
+                         const std::string &src);
+
   // TODO: Line drawing commands, etc.
 
  protected:

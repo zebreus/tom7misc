@@ -49,6 +49,14 @@ struct PDFPage : public Page {
                  double width, double height,
                  const ImageRGBA &image) override;
 
+  void DrawRect(double x, double y, double width, double height,
+                double border_width, uint32_t color_fill,
+                uint32_t color_border) override;
+
+  void DrawVideo(double x, double y,
+                 double width, double height,
+                 const std::string &src) override;
+
  private:
   PDFPage(const PDFPage &other) = delete;
   PDFPage &operator =(const PDFPage &other) = delete;

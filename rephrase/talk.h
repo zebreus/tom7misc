@@ -4,8 +4,15 @@
 
 #include <string>
 #include <vector>
+#include <optional>
 
 struct Talk {
+
+  struct Video {
+    int x = 0, y = 0;
+    int width = 0, height = 0;
+    std::string src;
+  };
 
   struct Frame {
     // Source image.
@@ -15,6 +22,7 @@ struct Talk {
 
   struct Slide {
     std::vector<Frame> frames;
+    std::optional<Video> video;
   };
 
   static Talk Load(const std::string &filename);
