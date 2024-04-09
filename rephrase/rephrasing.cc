@@ -34,6 +34,9 @@
 [[maybe_unused]]
 static constexpr int VERBOSE = 2;
 
+// TODO: Make this configurable.
+static constexpr float TEMPERATURE = 2.0;
+
 using Rephrasable = Rephrasing::Rephrasable;
 
 namespace {
@@ -428,13 +431,22 @@ struct RephrasingImpl : public Rephrasing {
 
       double total_p = (LAPLACE_NUMER * LAPLACE_DENOM);
       for (int i = 0; i < (int)path.size() - TAIL_TOKEN_HEADROOM; i++) {
+        // As an additional "heuristic", prefer split points towards
+        // the beginning of the text. Without this, we might never
+        // rephrase the beginning of the text, but there may be a
+        // very hard-to-typeset word there.
+        // Note: This may subsume TAIL_TOKEN_HEADROOM.
+        double path_frac = i / (double)path.size();
+        double path_penalty = sqrt(1.0 - path_frac);
+
         // average probability of samples up to here
         double avg_p = total_p / (i + LAPLACE_DENOM);
 
         const Node &node = path[i];
         total_p += node.p;
 
-        double score = avg_p * node.p_next;
+
+        double score = (avg_p * node.p_next) * path_penalty;
 
         if (VERBOSE > 2) {
           printf(AGREY("%s") " " ACYAN("%.3f") " * " ABLUE("%.3f")
@@ -678,8 +690,9 @@ struct RephrasingImpl : public Rephrasing {
     Timer inference_timer;
     while ((int)path.size() < max_tokens) {
       // No need to filter by NFA, since the NFA is just used to
-      // tell when we are done. We could consider applying
-      // temperature, though?
+      // tell when we are done.
+      std::unique_ptr<Candidates> cand = llm->context.GetCandidates();
+      Sampler::UpdateCandidatesTemp(TEMPERATURE, cand.get());
       std::vector<std::pair<llama_token, double>> probdist =
         Sampler::ProbDist(llm->context.GetCandidates());
 
