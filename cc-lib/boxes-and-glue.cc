@@ -107,10 +107,47 @@ BoxesAndGlue::PackBoxesFirst(
   return lines_out;
 }
 
+namespace {
+struct MemoResult {
+  double penalty;
+  int successor;
+  bool break_after;
+};
+
+using MemoTable = std::unordered_map<std::pair<int, int>, MemoResult,
+                                     Hashing<std::pair<int, int>>>;
+
+struct TableImpl : public BoxesAndGlue::Table {
+  ~TableImpl() override {}
+  TableImpl(int w, int h, MemoTable table) :
+    width(w), height(h), memo_table(std::move(table)) {
+
+  }
+
+  int Width() const override { return width; }
+  int Height() const override { return height; }
+
+  std::optional<std::tuple<double, int, bool>>
+  GetCell(int x, int y) const override {
+    auto it = memo_table.find(std::make_pair(x, y));
+    if (it == memo_table.end()) return std::nullopt;
+    else return std::make_optional(std::make_tuple(it->second.penalty,
+                                                   it->second.successor,
+                                                   it->second.break_after));
+  }
+
+  int width = 0, height = 0;
+  MemoTable memo_table;
+};
+}  // namespace
+
+BoxesAndGlue::Table::~Table() {}
+
 std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     double line_width,
     const std::vector<BoxIn> &boxes,
-    Justification just) {
+    Justification just,
+    std::unique_ptr<Table> *table) {
 
   enum class LineJustification {
     CENTER,
@@ -211,13 +248,6 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       }
 
     };
-
-  struct MemoResult {
-    double penalty;
-    int successor;
-    bool break_after;
-  };
-
 
   // This is a dynamic programming problem. We store a table of O(m^2)
   // entries. The table is keyed by a pair: A word index and the
@@ -568,6 +598,12 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
       }
       prev = &box;
     }
+  }
+
+  if (table != nullptr) {
+    table->reset(new TableImpl((int)boxes.size(),
+                               (int)boxes.size(),
+                               std::move(memo_table)));
   }
 
   return lines;

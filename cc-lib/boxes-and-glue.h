@@ -3,6 +3,8 @@
 #define _CC_LIB_BOXES_AND_GLUE
 
 #include <vector>
+#include <tuple>
+#include <optional>
 
 // Abstract version of a boxes-and-glue algorithm.
 //
@@ -81,12 +83,27 @@ struct BoxesAndGlue {
     double penalty_here = 0.0;
   };
 
+  struct Table {
+    // The x dimension is the word index.
+    virtual int Width() const = 0;
+    // The y dimension is the number of words before this one
+    // on the line.
+    virtual int Height() const = 0;
+
+    // penalty, successor, break?
+    virtual std::optional<std::tuple<double, int, bool>>
+    GetCell(int x, int y) const = 0;
+    virtual ~Table();
+  };
+
   // Return the vector of "lines," each with the vector of "words"
   // on that line.
   static std::vector<std::vector<BoxOut>> PackBoxes(
       double line_width,
       const std::vector<BoxIn> &boxes_in,
-      Justification justification = Justification::FULL);
+      Justification justification = Justification::FULL,
+      // For debugging / visualization, the memo table.
+      std::unique_ptr<Table> *table = nullptr);
 
   // Greedy algorithm, mostly useful for comparison purposes or
   // as a fallback (it's linear time).
