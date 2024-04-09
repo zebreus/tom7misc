@@ -1,5 +1,6 @@
 #include "document.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -28,6 +29,7 @@
 #include "boxes-and-glue.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"
+#include "color-util.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -913,6 +915,21 @@ DocTree Document::GetBoxes(const DocTree &doc) {
   return JoinDocs(out);
 }
 
+// Lower penalties are better.
+static constexpr ColorUtil::Gradient BEST_WORST{
+  /*  GradRGB(0.00f, 0xFFFFFF),
+  GradRGB(0.01f, 0xFFFF00),
+  GradRGB(0.05f, 0x00FF00),
+  GradRGB(0.50f, 0x2222FF),
+  GradRGB(1.00f, 0xFF0000),*/
+
+  GradRGB(0.00f, 0xFFFFFF),
+  GradRGB(0.01f, 0xFFFF00),
+  GradRGB(0.0f, 0x00FF00),
+  GradRGB(1.0f, 0xFF0000),
+};
+
+
 std::pair<DocTree, double>
 Document::PackBoxes(Algorithm algo,
                     BoxesAndGlue::Justification just,
@@ -1042,9 +1059,76 @@ Document::PackBoxes(Algorithm algo,
         line_width, boxes, MAX_BREAK_PENALTY);
     break;
   }
-  case Algorithm::BEST:
-    lines = BoxesAndGlue::PackBoxes(line_width, boxes, just);
+  case Algorithm::BEST: {
+    std::unique_ptr<BoxesAndGlue::Table> table;
+    lines = BoxesAndGlue::PackBoxes(line_width, boxes, just, &table);
+    static constexpr bool SAVE_TABLE = false;
+    if (SAVE_TABLE) {
+      // We actually render this transposed.
+      int num_words = table->Width();
+      int num_before = table->Height();
+      constexpr int CELL_SIZE = 5;
+      ImageRGBA img(num_before * CELL_SIZE, num_words * CELL_SIZE);
+      printf("Table size %d x %d\n", num_before, num_words);
+
+      // Get all values so we can compute rank.
+      std::vector<double> values;
+      for (int y = 0; y < num_words; y++) {
+        for (int x = 0; x < num_before; x++) {
+          if (auto co = table->GetCell(x, y)) {
+            const auto &[p, s, b] = co.value();
+            values.push_back(p);
+          }
+        }
+      }
+      CHECK(!values.empty());
+
+      std::sort(values.begin(), values.end());
+
+      double minv = values[0];
+      double maxv = values.back();
+      double range = maxv - minv;
+
+      // Get a value's rank as a number in [0, 1].
+      auto Rank = [&values](double v) {
+          const int idx = std::lower_bound(values.begin(),
+                                           values.end(),
+                                           v) - values.begin();
+          return std::clamp(idx / (double)values.size(), 0.0, 1.0);
+        };
+
+      auto MapValue = [&Rank, minv, range](double v) {
+          // return (v - minv) / range;
+          return Rank(v);
+        };
+
+      for (int y = 0; y < num_words; y++) {
+        for (int x = 0; x < num_before; x++) {
+          if (auto co = table->GetCell(x, y)) {
+            const auto &[p, s, b] = co.value();
+            double f = MapValue(p);
+
+            uint32_t color = ColorUtil::LinearGradient32(
+                BEST_WORST, f);
+
+            img.BlendRect32(x * CELL_SIZE, y * CELL_SIZE,
+                            CELL_SIZE, CELL_SIZE,
+                            color);
+            if (b) {
+              img.BlendBox32(x * CELL_SIZE, y * CELL_SIZE,
+                             CELL_SIZE, CELL_SIZE,
+                             0x00000055, {0x00000022});
+            }
+          }
+        }
+      }
+
+      static int image_num = 0;
+      image_num++;
+      img.Save(StringPrintf("boxes-and-glue-%d.png", image_num));
+    }
     break;
+  }
   }
 
   double total_badness = 0.0;

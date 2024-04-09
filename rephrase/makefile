@@ -1,5 +1,5 @@
 
-default: bovex.exe monospace.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe
+default: bovex.exe monospace.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe
 
 ENABLE_LLM=true
 
@@ -358,11 +358,15 @@ test.pdf : bovex.exe test.bovex stdlib.bovex cite.bovex layout.bovex hyph-en-us.
 paper.pdf : bovex.exe paper.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex
 	./bovex.exe -v paper.bovex -o paper.pdf
 
+makecodeimage.exe : makecodeimage.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 sigbovik/sigbovik.talk : bovex.exe sigbovik.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png
 	./bovex.exe -v sigbovik.bovex -o sigbovik.talk
 	./maketalk.exe sigbovik sigbovik.talk
 
-aeoud/aeoud.talk : bovex.exe aeoud.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png
+aeoud/aeoud.talk : bovex.exe aeoud.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png makecodeimage.exe
+	./makecodeimage.exe
 	./bovex.exe -v aeoud.bovex -o aeoud.talk
 	./maketalk.exe aeoud aeoud.talk
 

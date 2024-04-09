@@ -3,6 +3,7 @@
 
 #include "llama.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <map>
 #include <memory>
@@ -16,6 +17,9 @@
 #include "timer.h"
 #include "util.h"
 #include "auto-histo.h"
+#include "threadutil.h"
+#include "image.h"
+#include "color-util.h"
 
 #include "llm.h"
 #include "models.h"
@@ -24,6 +28,8 @@ using namespace std;
 
 // XXX command-line flag
 static constexpr int WIDTH = 42;
+
+static constexpr bool GENERATE_IMAGES = true;
 
 static void PrintGreyParity(const std::string &tok) {
   static bool odd = 0;
@@ -49,16 +55,26 @@ struct WordStream {
   explicit WordStream(LLM *llm) : llm(llm) {
   }
 
-  llama_token Sample(float temp) {
+  llama_token Sample(float temp,
+                     std::vector<std::pair<std::string, float>> *next) {
     auto cand = llm->context.GetCandidates();
     llm->sampler.FilterByNFA(cand.get());
     Sampler::UpdateCandidatesTemp(temp, cand.get());
     llm->sampler.UpdateCandidatesMinP(0.05, 1, cand.get());
+
+    if (next != nullptr) {
+      auto top = llm->TopCandidates(*cand, 10);
+      for (const auto &[s, l, p] : top) {
+        next->emplace_back(s, p);
+      }
+    }
+
     return llm->sampler.SampleRaw(std::move(cand));
   }
 
   // Returns the word (whitespace etc. intact).
-  std::string Next(float temp = 1.0) {
+  std::string Next(float temp,
+                   std::vector<std::pair<std::string, float>> *next) {
 
     CHECK(!llm->sampler.Stuck()) << "STUCK!";
 
@@ -70,7 +86,7 @@ struct WordStream {
 
       // Sample, but do not yet take, the token.
       // int id = llm->Sample();
-      const int id = Sample(temp);
+      const int id = Sample(temp, next);
       string tok = llm->context.TokenString(id);
 
       // We have a "word" if the new partial_word contains a space.
@@ -106,9 +122,24 @@ static std::string LengthIndicator() {
   return std::string(WIDTH, '-');
 }
 
+struct VizFrame {
+  int frame_num = 0;
+  AutoHisto::Histo length_histo;
+  // Successful lines so far
+  std::vector<std::string> good;
+  float temp = 0.0;
+  std::map<std::string, int> failures;
+
+  // Line so far.
+  std::string current;
+  std::vector<std::pair<std::string, float>> nexts;
+};
+
 static void RephraseMono(
     LLM *llm, const string &prompt, const string &original) {
   printf("Loaded prompt of %d chars\n", (int)prompt.size());
+
+  Asynchronously viz_async(8);
 
   Timer startup_timer;
   llm->Reset();
@@ -145,14 +176,70 @@ static void RephraseMono(
 
   LLM::State line_beginning = llm->SaveState();
   float current_temp = 1.0f;
+  int frame_num = 0;
+
+  auto GenFrame = [&](const std::string &line,
+                      std::vector<std::pair<std::string, float>> *nexts) {
+    if (GENERATE_IMAGES) {
+      VizFrame frame{
+        .frame_num = frame_num++,
+        .length_histo = len_histo->GetHisto(12),
+        .good = lines,
+        .temp = current_temp,
+        .failures = failures,
+        .current = line,
+      };
+
+      if (nexts != nullptr) {
+        frame.nexts = *nexts;
+      }
+
+      viz_async.Run([frame = std::move(frame)]() {
+        const int WIDTH = 1080;
+        const int HEIGHT = 1080;
+
+        ImageRGBA img(WIDTH, HEIGHT);
+        img.Clear32(0x000000FF);
+
+        int xpos = 8;
+        int ypos = 8;
+        for (int y = 0; y < (int)frame.good.size(); y++) {
+          img.BlendText2x32(xpos, ypos,
+                            0x99FF99FF,
+                            frame.good[y]);
+          ypos += ImageRGBA::TEXT2X_HEIGHT;
+        }
+
+        img.BlendRect32(xpos, ypos,
+                        ImageRGBA::TEXT2X_WIDTH * WIDTH,
+                        ImageRGBA::TEXT2X_HEIGHT,
+                        0x00000077FF);
+
+        img.BlendText2x32(xpos, ypos,
+                          0xFFFFFFCC,
+                          frame.current.c_str());
+
+        ypos = WIDTH / 2;
+        for (const auto &[s, p] : frame.nexts) {
+          uint32_t color =
+            ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, p);
+          color |= 0xFF;
+          img.BlendText2x32(xpos, ypos,
+                            color,
+                            StringPrintf("%.1f%%", p * 100.0));
+          img.BlendText2x32(xpos + 7 * ImageRGBA::TEXT2X_WIDTH,
+                            ypos,
+                            color,
+                            s);
+          ypos += ImageRGBA::TEXT2X_HEIGHT;
+        }
+
+        img.Save(StringPrintf("monospace/frame%d.png", frame.frame_num));
+      });
+    }
+    };
+
   for (;;) {
-    /*
-    printf("Start loop. Last:\n");
-    printf(ANSI_GREY);
-    llm->sampler.PrintLast();
-    printf(ANSI_RESET);
-    printf("\n");
-    */
 
     for (const std::string &line : lines) {
       printf(AFGCOLOR(200, 250, 200, "%s") "\n", line.c_str());
@@ -203,7 +290,10 @@ static void RephraseMono(
       // before (proportional to its length); decrease it when it
       // is new. In the former case, it's easy for us to get stuck
       // trying the same phrasing over and over.)
-      string word = word_stream.Next(current_temp);
+      std::vector<std::pair<std::string, float>> next;
+      string word =
+        word_stream.Next(current_temp,
+                         GENERATE_IMAGES ? &next : nullptr);
 
       // At the beginning of a continuation line, a space was
       // covered by the newline that we implicitly have (and
@@ -213,6 +303,7 @@ static void RephraseMono(
       }
       line += word;
       PrintGreyParity(word);
+      GenFrame(line, &next);
     }
 
     printf("\n(Length: %d)\n", (int)line.size());
@@ -222,20 +313,13 @@ static void RephraseMono(
     if (line.size() == WIDTH) {
       // Good!
       lines.push_back(line);
-      /*
-      printf(AGREEN("So far:") "\n"
-             "%s\n", LengthIndicator().c_str());
-      */
-      /*
-      for (const string &line : lines) {
-        printf("%s\n", line.c_str());
-      }
-      */
+
       line_beginning = llm->SaveState();
       failures.clear();
       current_temp = 1.0;
       ResetHisto();
       // and continue with the next line.
+
     } else {
       printf(ARED("Failed:") "\n"
              "%s\n%s\n",
@@ -246,7 +330,7 @@ static void RephraseMono(
 
       printf("Histo:\n"
              "%s\n",
-             len_histo->SimpleHorizANSI(12).c_str());
+             len_histo->SimpleHorizANSI(11).c_str());
 
       // Whenever we get a repeat, increase temperature so
       // that we are getting more random samples.
@@ -255,15 +339,13 @@ static void RephraseMono(
       }
       failures[line]++;
 
-      // [ Californ]
-      // llm->TakeTokenBatch({7599});
-      // llm->InsertString(". In Pittsburgh, Pennsylvan");
-
       // Otherwise, try again.
       llm->LoadState(line_beginning);
     }
-  }
 
+    GenFrame("", nullptr);
+
+  }
 }
 
 int main(int argc, char ** argv) {
@@ -291,10 +373,6 @@ int main(int argc, char ** argv) {
 
 
   SamplerParams sparams;
-  // cparams.mirostat = 2;
-  // Probably should use something like "minimum probability" sampling
-  // here.
-  // sparams.type = SampleType::MIROSTAT_2;
   sparams.type = SampleType::MIN_P;
   sparams.min_p = 0.05;
   sparams.regex = ".*";

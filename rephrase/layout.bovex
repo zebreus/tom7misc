@@ -992,6 +992,21 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
 
     val paras : (float * layout) list = extract-rephrasing (fn x => x) para
 
+    (* TODO: Right now we just take the lowest overall badness (per line),
+       ignoring the semantic loss (Epsom's version). We could
+       blend them somehow. *)
+    fun compute-penalty { badness : float, loss : float, lines : int,
+                          text } =
+      let in
+        (*
+        print ("Badness " ^ int-to-string (round badness) ^
+               " loss " ^ int-to-string (round (loss *. 100.0)) ^
+               "% lines " ^ int-to-string lines ^ "\n");
+        *)
+        (* debug-print-doc text; *)
+        badness /. int-to-float lines
+      end
+
     fun get-best (NONE, nil) = fail "bug: no options?"
       | get-best (SOME (badness, best), nil) =
       let in
@@ -1000,18 +1015,18 @@ fun pack-one-paragraph (column-width : float) (para : layout) =
       end
       | get-best (best, (loss, para) :: t) =
       let
-        (* TODO: Right now we just take the lowest overall badness,
-           ignoring the semantic loss (Epsom's version). We could
-           blend them somehow. *)
-
         val boxes = get-boxes para
         val (badness, lines) =
           pack-boxes-horiz (BEST, just, column-width, boxes)
 
-        fun new-best NONE = SOME (badness, lines)
-          | new-best (SOME (pbad, pbest)) =
-          if badness <. pbad
-          then SOME (badness, lines)
+        val score = compute-penalty { badness = badness, loss = loss,
+                                      lines = list-length lines,
+                                      text = para }
+
+        fun new-best NONE = SOME (score, lines)
+          | new-best (best as (SOME (best-score, best-lines))) =
+          if score <. best-score
+          then SOME (score, lines)
           else best
       in
         get-best (new-best best, t)

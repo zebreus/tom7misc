@@ -442,7 +442,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
         printf("Not rephrasing " AORANGE("empty doc") ".\n");
       }
     } else {
-      int max_attempts = std::min(20, times * 2);
+      // int max_attempts = std::min(20, times * 2);
+      int max_attempts = times * 2;
       while (rephrasing->GetNumRephrasings(rep) < times) {
         if (rephrasing->Rephrase(rep)) {
           // printf("\nRephrased " AGREEN("OK") "\n");

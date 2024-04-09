@@ -8,7 +8,7 @@ let
   (* slides info *)
   object TalkInfo of { }
 
-  do REPHRASE-ALL := SOME 10
+  (* do REPHRASE-ALL := SOME 50 *)
   do REPHRASE-ALL := NONE
   do NO-REPHRASE := true
 
@@ -150,6 +150,8 @@ let
      BULLET-LINE-GAP : float,
 
      CONTENT-WIDTH : float,
+     (* generic space between e.g. columns *)
+     GAP : float,
      MONOSPACE-FONT-SIZE : float,
 
      TITLE-FONT-COLOR: int,
@@ -174,6 +176,7 @@ let
 
      CONTENT-WIDTH: float,
      MONOSPACE-FONT-SIZE : float,
+     GAP : float,
 
      TITLE-FONT-COLOR: int,
      BODY-FONT-COLOR: int
@@ -232,6 +235,10 @@ let
         case s of {(Slide) BULLET-LINE-GAP = blg } => blg
       | _ => point 36.0
 
+      val GAP =
+        case s of {(Slide) GAP = g } => g
+      | _ => point 36.0
+
       val MONOSPACE-FONT-SIZE =
         case s of {(Slide) MONOSPACE-FONT-SIZE = mfs } => mfs
           | _ => point 32.0
@@ -257,6 +264,7 @@ let
         BULLET-LINE-GAP = BULLET-LINE-GAP,
         CONTENT-WIDTH = CONTENT-WIDTH,
         MONOSPACE-FONT-SIZE = MONOSPACE-FONT-SIZE,
+        GAP = GAP,
         TITLE-FONT-COLOR = TITLE-FONT-COLOR,
         BODY-FONT-COLOR = BODY-FONT-COLOR
         } : slide-props
@@ -393,8 +401,7 @@ let
 
       val CONTENT-WIDTH =
         case list-find (fn Image _ => true | _ => false) elts of
-          SOME (Image {x, y, width, img }) =>
-            (x -. LEFT-MARGIN *. 2.0)
+          SOME (Image {x, y, width, img }) => (x -. GAP)
         | NONE => CONTENT-WIDTH
 
       fun add-elt (Title title) =
@@ -686,6 +693,32 @@ let
 
   fun em lay = color 0xCCCCFFFF lay
 in
+
+  let
+    val YPOS = inch 4.0
+  in
+    combo-slide slide
+    ((* Title [Corporate Preso] :: *)
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = YPOS,
+               width = inch 9.0,
+               text = [Here is an example of applying the boxes
+                       and glue algorithm to this very text. Most
+                       of the break points lead to extremely long
+                         or short lines, so only a small region
+                         is of any interest. But those details
+                         matter. For example, a suboptimal choice
+                         on one line could mean having to use a
+                         hyphen on a later line. If you are still
+                         reading this, you are a fast reader, or
+                         perhaps you read from bottom to top.
+                       ] } ::
+     nil)
+  end;
+
+(* fail "exit early"; *)
+
+
   (* TODO: Better bullet graphic. Can embed fonts, remember *)
 
   title-slide slide (size (point 280.0) (color 0xFFFFFFFF [Badness 0]))
@@ -710,17 +743,29 @@ in
   just-image "typography5.png";
   just-image "typography6.png";
 
+  just-video slide "bottle.mp4";
+
+  (* couple more gags here? *)
+  (* Rules of Wordle expert mode are just wrong.
+
+     Parker Square
+     error correction?
+
+     *)
+
   (* Lorem Epsom *)
 
   let
     val YPOS = inch 4.0
-  in
+
+    fun lorem-slide zig =
     combo-slide slide
     (Title [Corporate Preso] ::
      TextBox { x = DEFAULT-LEFT-MARGIN,
                y = YPOS,
                width = inch 9.0,
-               text = [[zigzag (default-text [Lorem Epsom])]
+               text = [[if zig then zigzag (default-text [Lorem Epsom])
+                        else [Lorem Epsom]]
                        dolor sit amet,
                        [color 0xFFFFFFEE
                         [consectetur adipiscing elit,]]
@@ -747,22 +792,27 @@ in
              y = YPOS,
              width = SOME (pixel 900.0) } ::
      nil)
+  in
+    lorem-slide false;
+    lorem-slide true;
   end;
 
-  combo-slide slide
-  (Title [The Villain: Lorem Epsom] ::
+  combo-slide (slide with GAP = 0.0)
+  (Image { img = image-load "lorem-portrait.png",
+           x = pixel 1100.0,
+           y = pixel 100.0,
+           width = NONE } ::
+   Title [The Villain: Lorem Epsom] ::
    Bullets ([Probably never even read the Wikipedia article
              on [it[Lorem Ipsum]]] ::
-            [Leverages synergy] ::
+            (* [Leverages synergy] :: *)
+            [If you tell him there's a mistake in the
+             math he takes this as a personal attack] ::
             [Loves the phrases "[em[metaverse]]" and
              "[em[blockchain]]" and
              "[em[generative AI]]" but doesn't know why] ::
             [Is successful and rich] ::
             nil) ::
-   Image { img = image-load "douche-anime.png", (* "douche.jpg", *)
-           x = pixel 1400.0,
-           y = pixel 300.0,
-           width = SOME (pixel 500.0) } ::
    nil);
 
   (* Epsom vs Knuth
@@ -772,14 +822,14 @@ in
     *)
 
   combo-slide slide
-  (Title [The Hero: Donald Knuth] ::
-   Bullets ([Awesome] ::
+  (Image { img = image-load "knuth-portrait-trace.png",
+           x = pixel 1100.0,
+           y = pixel 80.0,
+           width = NONE } ::
+   Title [The Hero: Donald Knuth] ::
+   Bullets ([[em[Wrote]] the article on [it[Lorem Ipsum]]] ::
             [Will pay you if you find an error] ::
             [Took 35 years to write a book] :: nil) ::
-   Image { img = image-load "knuth.jpg",
-           x = pixel 1400.0,
-           y = pixel 300.0,
-           width = SOME (pixel 500.0) } ::
    nil);
 
   combo-slide slide
@@ -789,31 +839,71 @@ in
             [1982: Returns with TeX ] ::
             [XXX finish the slide ] ::
             [Took 35 years to write a book] :: nil) ::
-   Image { img = image-load "knuth.jpg",
-           x = pixel 1400.0,
-           y = pixel 300.0,
-           width = SOME (pixel 500.0) } ::
+   Image { img = image-load "knuth-portrait-trace.png",
+           x = pixel 1100.0,
+           y = pixel 80.0,
+           width = NONE } ::
+(*
+   Image { img = image-load "knuth-portrait.png",
+           x = pixel 1200.0,
+           y = pixel 164.0,
+           width = NONE } ::
+   *)
    nil);
 
+  (* XXX need a better transition here *)
 
+
+  (* Clarissa explains it all *)
+  (* XXX add illustration. can put "torment nexus 9000" *)
   bullet-slide slide [Nightmare on LLM Street]
   ([Wow OMG I'm sick of hearing about it] ::
    [Torment Nexus] ::
    [It does kinda work though] :: nil);
 
+  (* I'm Tom 7. I specialize in cursed computer software.
+     I don't do it for the likes. I do it because I'm
+     riddled with anxiety and I find it therapeutic to
+     digest vexing things by systematizing them. *)
 
-  diagram-slide (slide with TITLE-FONT-SIZE = point 90.0
+  let
+    val morphism = image-load "morphism.png"
+    val { width, height } = image-size morphism
+    val MORPHISM-X = (SLIDE-WIDTH -. (int-to-float width)) *. 0.5
+    val MORPHISM-Y = inch 2.75
+  in
+    combo-slide (slide with TITLE-FONT-SIZE = point 90.0
                  with TOP-MARGIN = inch 2.0
                  with CONTENT-START-Y = inch 2.75)
-  [The Hurry-Coward So-So-Morphism]
-  (image-load "morphism.png");
+    (Title [The Hurry-Coward So-So-Morphism] ::
+     Image { img = morphism,
+             x = MORPHISM-X, y = MORPHISM-Y,
+             width = NONE } ::
+     nil);
 
-             (* dual triforce *)
-  diagram-slide (slide with TITLE-FONT-SIZE = point 90.0
+    (* But first, we need to talk about Super Metroid. *)
+    (* Let's just add one more character to this play: Super Metroid *)
+    combo-slide (slide with TITLE-FONT-SIZE = point 90.0
                  with TOP-MARGIN = inch 2.0
                  with CONTENT-START-Y = inch 2.75)
-  [The Hurry-Coward So-So-Morphism]
-  (image-load "morphism2.png");
+    (Title [The Hurry-Coward So-So-Morphism] ::
+     Image { img = image-load "morphism2.png",
+             x = MORPHISM-X, y = MORPHISM-Y,
+             width = NONE } ::
+     nil);
+
+    combo-slide (slide with TITLE-FONT-SIZE = point 90.0
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+    (Title [The Hurry-Coward So-So-Morphism] ::
+     Image { img = image-load "triforce.png",
+             x = MORPHISM-X +. inch 1.5, y = MORPHISM-Y -. inch 5.0,
+             width = SOME 1300.0 } ::
+     Image { img = image-load "morphism2.png",
+             x = MORPHISM-X, y = MORPHISM-Y,
+             width = NONE } ::
+     nil);
+  end;
 
   monospace-slide (slide with TITLE-FONT-SIZE = point 88.5
                    with MONOSPACE-FONT-SIZE = point 40.0
@@ -840,6 +930,7 @@ game within 1 hour and 20 minutes?
 (c) 1996 rs1n
 https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
 
+  (* XXX weak slide. Illustrate? *)
   bullet-slide (slide
                 with TITLE-FONT-SIZE = point 88.5)
   [Automating speedrunner chores]
@@ -856,8 +947,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
 
    Original paragraph:];
 
-  just-video slide "test.webm";
-
+  (* XXX update this text to match demo *)
   monospace-slide (slide
                    with MONOSPACE-FONT-SIZE = 50.0)
   [Original paragraph]
@@ -875,6 +965,10 @@ justified monospace text that resembles the
 original. Here is an example of this paragraph
 rendered in monospace:];
 
+  (* XXX better video! *)
+  just-video slide "test.webm";
+
+  (* XXX update this text to match demo *)
   monospace-slide (slide
                    with MONOSPACE-FONT-SIZE = 50.0)
   [Rephrased paragraph]
@@ -899,13 +993,7 @@ rendered in monospace:];
   bullet-slide slide [Baby mode]
   ([300 lines of code] ::
    [It only took an afternoon] ::
-   [You have to look at monospace text] :: nil);
-
-  diagram-slide (slide with TITLE-FONT-SIZE = 90.0
-                 with TOP-MARGIN = inch 2.0
-                 with CONTENT-START-Y = inch 2.75)
-  [The Hurry-Coward So-So-Morphism]
-  (image-load "morphism3.png");
+   [You have to look at [tt[monospace text]]] :: nil);
 
   bullet-slide slide [Knuth Any% Speedrun]
   ([Make a new programmable document preparation system] ::
@@ -913,7 +1001,7 @@ rendered in monospace:];
    [Kerning, hyphenation, and all that shit] ::
    [New fonts, and software for making fonts] ::
    [AI-enhanced text layout algorithm] ::
-   [Write my SIGBOVIK paper using it] :: nil);
+   [Use it to write a paper about it] :: nil);
 
   diagram-slide (slide
                  with BACKGROUND = "emacs-grey.png"
@@ -924,6 +1012,8 @@ rendered in monospace:];
   [Here is what [it[this]] slide looks like]
   (image-load "self.png");
 
+  just-image "code.png";
+  just-image "code-self.png";
 
   diagram-slide (slide
                  with TITLE-FONT-SIZE = 80.0
@@ -939,20 +1029,47 @@ rendered in monospace:];
   [Boxes and LLMers Glue]
   (image-load "algorithm2.png");
 
-  two-column-slide
-  (slide with BODY-FONT-SIZE = 64.0)
-  [Boxes and LLMers Glue]
-  (palatino [Is this the most beautiful typesetting you've ever seen?
-   Of course it is! That's because it's been rendered with
-   the ground-breaking BoVeX computer document preparation
-   system. It's the only program permitted by the SIGBOVIK
-   program committee.])
-  (palatino (rephrase-paragraph 50
-             [Is this the most beautiful typesetting you've ever seen?
-   Of course it is! That's because it's been rendered with
-   the ground-breaking BoVeX computer document preparation
-   system. It's the only program permitted by the SIGBOVIK
-   program committee.]));
+  let
+    open slide-props slide
+    val xpos1 = LEFT-MARGIN
+    val gap = inch 1.0
+    val MAX-COLUMN-WIDTH = (CONTENT-WIDTH -. gap) *. 0.5
+    val xpos2 = LEFT-MARGIN +. MAX-COLUMN-WIDTH +. gap
+
+    val NUM-REPHRASE = 1000
+
+    val text =
+      [Is this the most beautiful typesetting you've ever seen?
+       Yes! That's because it's been rendered with
+       the ground-breaking BoVeX computer document preparation
+       system. Gone are the days of manually editing your manuscript to
+       eliminate unsightly typographic misdemeanors like widows and
+       orphans!]
+    val text1 = palatino text
+    val text2 = palatino (rephrase-paragraph NUM-REPHRASE text)
+
+    val title = if !NO-REPHRASE then [** warning disabled **]
+                else [Boxes and LLMers Glue]
+
+    fun comparison width =
+      combo-slide (slide with BODY-FONT-SIZE = 64.0)
+      (Title title ::
+       TextBox { x = xpos1, y = CONTENT-START-Y,
+                 width = width, text = text1 } ::
+       TextBox { x = xpos2, y = CONTENT-START-Y,
+                 width = width, text = text2 } ::
+       nil)
+
+    fun spectrum delta lo hi =
+      lo >. hi otherwise
+      let in
+        comparison lo;
+        spectrum delta (lo +. delta) hi
+      end
+  in
+    spectrum (MAX-COLUMN-WIDTH *. 0.0125)
+    (MAX-COLUMN-WIDTH *. 0.65) MAX-COLUMN-WIDTH
+  end;
 
 (*
 
@@ -968,18 +1085,19 @@ rendered in monospace:];
              font-size = 72.0,
              width = 40.0, height = 72.0, text = "3D text" } ::
    [Bibliography database] ::
-   [Page numbers are not allowed] ::
    nil);
 
   just-image "achievement-screenshot.png";
 
   text-slide slide [Conclusion]
   (justify-all
-   [In this paper—and [it[with]] this paper—I presented BoVeX, a new computer
+   [In this talk—and [it[with]] this talk—I presented BoVeX, a new computer
     typesetting system. It follows the tradition TeX, but with modern amenities
     such as requiring over 128 gigabytes of RAM.
     Though some may consider the addition of AI features to TeX to be an
     unnecessary perversion,
-    I find this[box {(Box) glue-break-penalty = -1000000.0, width = 0.0 } []]use of LLMs to be [it[fully justified]].]);
+    I find this[box {(Box) glue-break-penalty = -1000000.0,
+                     width = 0.0 } []]use of LLMs to be
+    [it[fully justified]].]);
 
 end
