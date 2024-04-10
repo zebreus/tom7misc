@@ -91,7 +91,8 @@ void Execution::ConsoleHook(const std::string &msg) {
   printf("%s", msg.c_str());
 }
 
-void Execution::OutputLayoutHook(int page_idx, const Value *doc) {
+void Execution::OutputLayoutHook(int page_idx, int frame_idx,
+                                 const Value *doc) {
   printf("(output layout ignored)\n");
 }
 
@@ -496,15 +497,28 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
 
   case Primop::OUT_LAYOUT: {
-    const BigInt *ai = std::get_if<BigInt>(&a->v);
-    CHECK(ai != nullptr) << "out-layout expects an integer as its first "
+    const map_type *am = std::get_if<map_type>(&a->v);
+    CHECK(am != nullptr) << "out-layout expects an object as its first "
       "argument.";
+    const BigInt *ai = GetObjIntField("out-layout", "page", *am);
+    CHECK(ai != nullptr) << "out-layout requires a page (int field)";
     std::optional<int64_t> io = ai->ToInt();
-    CHECK(io.has_value()) << "Index is way too big! " << ai->ToString();
+    CHECK(io.has_value()) << "Page index is way too big! " << ai->ToString();
     const int64_t page_idx = io.value();
     CHECK(page_idx >= 0 && page_idx < 1'000'000'000LL) << "Page index "
       "is nonsensical!";
-    OutputLayoutHook((int)page_idx, b);
+
+    int64_t frame_idx = 0;
+    const BigInt *fi = GetObjIntField("out-layout", "frame", *am);
+    if (fi != nullptr) {
+      std::optional<int64_t> io = fi->ToInt();
+      CHECK(io.has_value()) << "Frame index is way too big! " << fi->ToString();
+      frame_idx = io.value();
+      CHECK(frame_idx >= 0 && page_idx < 1'000'000'000LL) << "Frame index "
+        "is nonsensical!";
+    }
+
+    OutputLayoutHook((int)page_idx, (int)frame_idx, b);
     return Unit(state);
   }
 
@@ -615,6 +629,21 @@ const std::string *Execution::GetObjStringField(const char *what,
   CHECK(s != nullptr) << "(" << what <<
     ") Bug: Field " << field << " with string tag should have a string value!";
   return s;
+}
+
+const BigInt *Execution::GetObjIntField(const char *what,
+                                        const std::string &field,
+                                        const map_type &obj) {
+  auto it = obj.find(
+      StringPrintf("%c%s",
+                   bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT),
+                   field.c_str()));
+  if (it == obj.end()) return nullptr;
+
+  const BigInt *i = std::get_if<BigInt>(&it->second->v);
+  CHECK(i != nullptr) << "(" << what <<
+    ") Bug: Field " << field << " with int tag should have an int value!";
+  return i;
 }
 
 const double *Execution::GetObjDoubleField(const char *what,

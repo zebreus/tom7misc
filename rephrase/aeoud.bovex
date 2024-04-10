@@ -510,8 +510,10 @@ let
       val paras : paragraph list =
         list-concat (list-map process (get-paragraphs (body :: nil)))
 
+      (*
       do print ("There are " ^ int-to-string (list-length paras) ^
                 " paragraphs\n")
+      *)
 
       val pboxes =
         list-map (fn (Paragraph { lines }) =>
@@ -670,7 +672,7 @@ let
                    "an 'infinite' line.")
     end
 
-  fun zigzag lay =
+  fun zigzag zig lay =
     case layoutcase (get-box lay) of
       Node (BOX, attrs as {(Box) width, height}, ch) =>
         let
@@ -679,8 +681,11 @@ let
             box attrs
             (layout-concat
              (ch @
-              (image-sticker { img = image-load-cache "red-underline.png",
-                               x = 0.0, y = y-offset, width = width } :: nil)
+              (if zig then
+                  (image-sticker
+                   { img = image-load-cache "red-underline.png",
+                     x = 0.0, y = y-offset, width = width } :: nil)
+               else nil)
               ))
         in
           d
@@ -695,7 +700,7 @@ let
 in
 
   let
-    val YPOS = inch 4.0
+    val YPOS = inch 2.0
   in
     combo-slide slide
     ((* Title [Corporate Preso] :: *)
@@ -707,16 +712,20 @@ in
                        of the break points lead to extremely long
                          or short lines, so only a small region
                          is of any interest. But those details
-                         matter. For example, a suboptimal choice
+                         matter. [* For example, a suboptimal choice
                          on one line could mean having to use a
                          hyphen on a later line. If you are still
                          reading this, you are a fast reader, or
-                         perhaps you read from bottom to top.
-                       ] } ::
+                         perhaps you read from bottom to top. *]
+                         ] } ::
+     Image { img = image-load "boxes-and-glue-1.png",
+             x = pixel 900.0,
+             y = YPOS -. 36.0,
+             width = NONE } ::
      nil)
   end;
 
-(* fail "exit early"; *)
+  (* fail "exit early"; *)
 
 
   (* TODO: Better bullet graphic. Can embed fonts, remember *)
@@ -764,8 +773,7 @@ in
      TextBox { x = DEFAULT-LEFT-MARGIN,
                y = YPOS,
                width = inch 9.0,
-               text = [[if zig then zigzag (default-text [Lorem Epsom])
-                        else [Lorem Epsom]]
+               text = [[zigzag zig (default-text [Lorem Epsom])]
                        dolor sit amet,
                        [color 0xFFFFFFEE
                         [consectetur adipiscing elit,]]
@@ -843,12 +851,6 @@ in
            x = pixel 1100.0,
            y = pixel 80.0,
            width = NONE } ::
-(*
-   Image { img = image-load "knuth-portrait.png",
-           x = pixel 1200.0,
-           y = pixel 164.0,
-           width = NONE } ::
-   *)
    nil);
 
   (* XXX need a better transition here *)
@@ -1020,14 +1022,35 @@ rendered in monospace:];
                  with TOP-MARGIN = inch 2.0
                  with CONTENT-START-Y = inch 2.75)
   [Boxes and glue]
-  (image-load "knuth-algorithm.png");
+  (image-load "algorithm-dark.png");
+
+  let
+    val YPOS = inch 2.0
+  in
+    combo-slide slide
+    ((* Title [Corporate Preso] :: *)
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = YPOS,
+               width = inch 9.0,
+               text = [Here is an example of applying the boxes
+                       and glue algorithm to this very text. Most
+                       of the break points lead to extremely long
+                         or short lines, so only a small region
+                         is of any interest. But those details
+                         matter.] } ::
+     Image { img = image-load "boxes-and-glue-matrix.png",
+             x = pixel 900.0,
+             y = YPOS -. 36.0,
+             width = NONE } ::
+     nil)
+  end;
 
   diagram-slide (slide
                  with TITLE-FONT-SIZE = 80.0
                  with TOP-MARGIN = inch 2.0
                  with CONTENT-START-Y = inch 2.75)
   [Boxes and LLMers Glue]
-  (image-load "algorithm2.png");
+  (image-load "algorithm2-dark.png");
 
   let
     open slide-props slide

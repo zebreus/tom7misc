@@ -124,7 +124,9 @@ struct BovexExecution : public bc::Execution {
   // virtual void FailHook(const std::string &msg);
   // virtual void ConsoleHook(const std::string &msg);
 
-  void OutputLayoutHook(int page_idx, const bc::Value *v) override {
+  void OutputLayoutHook(int page_idx, int frame_idx,
+                        const bc::Value *v) override {
+    CHECK(frame_idx == 0) << "Anim frames unimplemented!";
     // printf(AGREEN("OUTPUT") "!\n");
     pages[page_idx].push_back(ValueToDocTree(v));
   }

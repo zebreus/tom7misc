@@ -116,7 +116,7 @@ Initial::Initial(AstPool *pool) {
     {"internal-opt", Primop::OPT},
 
     {"print", Primop::OUT_STRING},
-    {"output", Primop::OUT_LAYOUT},
+    {"internal-output", Primop::OUT_LAYOUT},
   };
 
   std::vector<std::pair<std::string, VarInfo>> exp_vars;

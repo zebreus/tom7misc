@@ -3,13 +3,12 @@
 
 #include <memory>
 #include <utility>
-#include <variant>
-#include <cstdint>
 #include <unordered_map>
 #include <vector>
 #include <string>
 
 #include "bytecode.h"
+#include "bignum/big.h"
 #include "primop.h"
 
 struct Rephrasing;
@@ -73,7 +72,8 @@ struct Execution {
   virtual Rephrasing *RephrasingHook();
 
   // For output of layout
-  virtual void OutputLayoutHook(int page_idx, const Value *layout);
+  virtual void OutputLayoutHook(int page_idx, int frame_idx,
+                                const Value *layout);
 
   virtual void EmitBadnessHook(double badness);
 
@@ -89,6 +89,10 @@ struct Execution {
   const std::string *GetObjStringField(const char *what,
                                        const std::string &field,
                                        const map_type &obj);
+
+  const BigInt *GetObjIntField(const char *what,
+                               const std::string &field,
+                               const map_type &obj);
 
   const double *GetObjDoubleField(const char *what,
                                   const std::string &field,

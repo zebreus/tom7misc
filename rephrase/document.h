@@ -89,6 +89,7 @@ bc::Value *DocTreeToValue(std::vector<bc::Value *> *heap, const DocTree &doc);
 std::string NormalizeWhitespace(const std::string &s);
 
 void DebugPrintDocTree(const DocTree &doc);
+std::string DocText(const DocTree &doc);
 
 DocTree JoinDocs(std::vector<DocTree> v);
 DocTree TextDoc(std::string s);

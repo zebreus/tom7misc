@@ -18,7 +18,6 @@ enum class Primop {
   REF_GET,
   REF_SET,
 
-  // TODO: Math, comparisons, etc.
   INT_EQ,
   INT_NEQ,
   INT_LESS,

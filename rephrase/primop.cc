@@ -400,8 +400,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};
-    // page number, content
-  case Primop::OUT_LAYOUT: return {{}, BinOp(Int, Layout, Unit())};
+    // page/frame description, content
+  case Primop::OUT_LAYOUT: return {{}, BinOp(Obj, Layout, Unit())};
   case Primop::EMIT_BADNESS: return {{}, pool->Arrow(Float, Unit())};
   case Primop::SET_DOC_INFO: return {{}, pool->Arrow(Obj, Unit())};
 

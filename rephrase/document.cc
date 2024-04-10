@@ -426,6 +426,23 @@ void DebugPrintDocTree(const DocTree &doc) {
   Rec(0, doc);
 }
 
+std::string DocText(const DocTree &doc) {
+  std::function<std::string(const DocTree &)> Rec =
+    [&Rec](const DocTree &doc) -> std::string {
+      if (doc.IsText()) {
+        return doc.text;
+      } else {
+        std::string ret;
+        for (const auto &child : doc.children) {
+          ret += Rec(*child);
+        }
+        return ret;
+      }
+    };
+  return Rec(doc);
+}
+
+
 DocTree JoinDocs(std::vector<DocTree> docs) {
   if (docs.empty()) {
     return DocTree();
@@ -923,10 +940,10 @@ static constexpr ColorUtil::Gradient BEST_WORST{
   GradRGB(0.50f, 0x2222FF),
   GradRGB(1.00f, 0xFF0000),*/
 
-  GradRGB(0.00f, 0xFFFFFF),
-  GradRGB(0.01f, 0xFFFF00),
-  GradRGB(0.0f, 0x00FF00),
-  GradRGB(1.0f, 0xFF0000),
+  GradRGB(0.00f, 0x88FFAA),
+  GradRGB(0.05f, 0x00FF00),
+  GradRGB(0.70f, 0x660000),
+  GradRGB(1.0f,  0xFF0000),
 };
 
 
@@ -1060,15 +1077,30 @@ Document::PackBoxes(Algorithm algo,
     break;
   }
   case Algorithm::BEST: {
+
     std::unique_ptr<BoxesAndGlue::Table> table;
     lines = BoxesAndGlue::PackBoxes(line_width, boxes, just, &table);
-    static constexpr bool SAVE_TABLE = false;
-    if (SAVE_TABLE) {
+    static constexpr bool SAVE_TABLE = true;
+    static int image_num = 0;
+    if (SAVE_TABLE && image_num == 0) {
+      int wordlen = 0;
+      std::vector<std::string> words;
+      for (const BoxesAndGlue::BoxIn &box : boxes) {
+        const DocTree *doc = (const DocTree*)box.data;
+        std::string w = DocText(*doc);
+        wordlen = std::max((int)w.size(), wordlen);
+        words.push_back(w);
+      }
+
+
       // We actually render this transposed.
       int num_words = table->Width();
       int num_before = table->Height();
-      constexpr int CELL_SIZE = 5;
-      ImageRGBA img(num_before * CELL_SIZE, num_words * CELL_SIZE);
+      constexpr int FONT_SIZE = 18;
+      constexpr int CELL_SIZE = 21;
+      constexpr int MARGIN_SIZE = 2;
+      int WORD_COL = wordlen * FONT_SIZE + 4;
+      ImageRGBA img(WORD_COL + num_before * CELL_SIZE, num_words * CELL_SIZE);
       printf("Table size %d x %d\n", num_before, num_words);
 
       // Get all values so we can compute rank.
@@ -1083,7 +1115,12 @@ Document::PackBoxes(Algorithm algo,
       }
       CHECK(!values.empty());
 
-      std::sort(values.begin(), values.end());
+      {
+        for (double v : values) CHECK(std::isfinite(v));
+        std::sort(values.begin(), values.end());
+        auto it = std::unique(values.begin(), values.end());
+        values.erase(it, values.end());
+      }
 
       double minv = values[0];
       double maxv = values.back();
@@ -1103,27 +1140,81 @@ Document::PackBoxes(Algorithm algo,
         };
 
       for (int y = 0; y < num_words; y++) {
+        img.BlendText2x32(0, y * CELL_SIZE + (CELL_SIZE - FONT_SIZE) / 2,
+                          0xFFFFFFFF,
+                          words[y]);
+
         for (int x = 0; x < num_before; x++) {
-          if (auto co = table->GetCell(x, y)) {
+          // Note transposition.
+          if (auto co = table->GetCell(y, x)) {
             const auto &[p, s, b] = co.value();
             double f = MapValue(p);
 
             uint32_t color = ColorUtil::LinearGradient32(
                 BEST_WORST, f);
 
-            img.BlendRect32(x * CELL_SIZE, y * CELL_SIZE,
+            img.BlendRect32(WORD_COL + x * CELL_SIZE, y * CELL_SIZE,
                             CELL_SIZE, CELL_SIZE,
                             color);
             if (b) {
+              img.BlendRect32(WORD_COL + x * CELL_SIZE + MARGIN_SIZE + 1,
+                              y * CELL_SIZE + MARGIN_SIZE + 1,
+                              CELL_SIZE - ((MARGIN_SIZE + 1) * 2),
+                              CELL_SIZE - ((MARGIN_SIZE + 1) * 2),
+                              0x00000055);
+              img.BlendBox32(WORD_COL + x * CELL_SIZE + MARGIN_SIZE,
+                             y * CELL_SIZE + MARGIN_SIZE,
+                             CELL_SIZE - (MARGIN_SIZE * 2),
+                             CELL_SIZE - (MARGIN_SIZE * 2),
+                             0x00000055, {0x00000044});
+              /*
               img.BlendBox32(x * CELL_SIZE, y * CELL_SIZE,
                              CELL_SIZE, CELL_SIZE,
                              0x00000055, {0x00000022});
+              */
             }
           }
         }
       }
 
-      static int image_num = 0;
+      // Draw path.
+
+      // position of the starting word in this line
+      int start_word = 0;
+      int before = 0;
+      int word_idx = 0;
+      while (word_idx < num_words) {
+        auto co = table->GetCell(word_idx, before);
+        CHECK(co.has_value());
+        const auto &[p, s, b] = co.value();
+        // printf("At %d,%d we have %s\n", dx, dy, b ? "BREAK" : "NO");
+        if (b) {
+          int sx = 0;
+          int sy = start_word;
+          int dx = before;
+          int dy = word_idx;
+          // Draw the diagonal.
+          img.BlendThickLine32(WORD_COL + sx * CELL_SIZE + CELL_SIZE * 0.5f,
+                               sy * CELL_SIZE + CELL_SIZE * 0.5f,
+                               WORD_COL + dx * CELL_SIZE + CELL_SIZE * 0.5f,
+                               dy * CELL_SIZE + CELL_SIZE * 0.5f,
+                               2.5f,
+                               0x000000AA);
+          img.BlendThickLine32(WORD_COL + dx * CELL_SIZE + CELL_SIZE * 0.5f,
+                               dy * CELL_SIZE + CELL_SIZE * 0.5f,
+                               WORD_COL + CELL_SIZE * 0.5f,
+                               (dy + 1) * CELL_SIZE + CELL_SIZE * 0.5f,
+                               2.5f,
+                               0x000022777);
+          before = 0;
+          word_idx++;
+          start_word = word_idx;
+        } else {
+          before++;
+          word_idx++;
+        }
+      }
+
       image_num++;
       img.Save(StringPrintf("boxes-and-glue-%d.png", image_num));
     }
