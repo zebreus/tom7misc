@@ -108,7 +108,7 @@ struct BovexExecution : public bc::Execution {
     opt->Next();
   }
 
-  std::map<int, std::vector<DocTree>> pages;
+  std::map<std::pair<int, int>, std::vector<DocTree>> pages;
   double total_badness = 0.125;
 
   Document *DocumentHook() override { return document; }
@@ -126,19 +126,19 @@ struct BovexExecution : public bc::Execution {
 
   void OutputLayoutHook(int page_idx, int frame_idx,
                         const bc::Value *v) override {
-    CHECK(frame_idx == 0) << "Anim frames unimplemented!";
     // printf(AGREEN("OUTPUT") "!\n");
-    pages[page_idx].push_back(ValueToDocTree(v));
+    pages[std::make_pair(page_idx, frame_idx)].push_back(ValueToDocTree(v));
   }
 
   void EmitBadnessHook(double badness) override {
     total_badness += badness;
   }
 
-  std::map<int, DocTree> ExtractPages() {
-    std::map<int, DocTree> out;
-    for (auto &[page_idx, docs] : pages) {
-      out[page_idx] = JoinDocs(std::move(docs));
+  std::map<int, std::map<int, DocTree>> ExtractPages() {
+    std::map<int, std::map<int, DocTree>> out;
+    for (auto &[idx, docs] : pages) {
+      const auto &[page_idx, frame_idx] = idx;
+      out[page_idx][frame_idx] = JoinDocs(std::move(docs));
     }
     pages.clear();
     return out;
@@ -237,7 +237,7 @@ static int Bovex(const std::vector<std::string> &args) {
   CHECK(rephrasing.get() != nullptr);
 
   std::optional<double> best_badness;
-  std::optional<std::map<int, DocTree>> best_pages;
+  std::optional<std::map<int, std::map<int, DocTree>>> best_pages;
   std::optional<std::unique_ptr<Document>> best_document;
   bool did_rephrase = false;
 
@@ -275,7 +275,7 @@ static int Bovex(const std::vector<std::string> &args) {
 
     did_rephrase = did_rephrase || execution.did_rephrase;
 
-    std::map<int, DocTree> pages = execution.ExtractPages();
+    std::map<int, std::map<int, DocTree>> pages = execution.ExtractPages();
 
     // Measure final badness.
     const double total_badness = execution.total_badness;
@@ -296,7 +296,7 @@ static int Bovex(const std::vector<std::string> &args) {
   CHECK(best_badness.has_value() && best_pages.has_value() &&
         best_document.has_value());
   const double total_badness = best_badness.value();
-  const std::map<int, DocTree> &pages = best_pages.value();
+  const std::map<int, std::map<int, DocTree>> &pages = best_pages.value();
   Document *document = best_document.value().get();
 
   if (pages.size() >= 5 && total_badness < 1000.0 * pages.size()) {
@@ -314,9 +314,11 @@ static int Bovex(const std::vector<std::string> &args) {
 
   if (verbose > 1) {
     printf(AWHITE("The document") ":\n");
-    for (const auto &[page_idx, doc] : pages) {
-      printf("==== PAGE %d ====\n", page_idx);
-      DebugPrintDocTree(doc);
+    for (const auto &[page_idx, anim] : pages) {
+      for (const auto &[frame_idx, doc] : anim) {
+        printf("==== PAGE %d FRAME %d ====\n", page_idx, frame_idx);
+        DebugPrintDocTree(doc);
+      }
     }
   }
 

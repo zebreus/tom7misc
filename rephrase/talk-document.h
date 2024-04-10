@@ -90,15 +90,16 @@ struct TalkDocument : public Document {
 
   const Font *GetDefaultFont() override;
 
-  void GenerateOutput(std::string_view dirname,
-                      const std::map<int, DocTree> &pages) override;
+  void GenerateOutput(
+      std::string_view dirname,
+      const std::map<int, std::map<int, DocTree>> &pages) override;
 
  private:
   void InitBuiltInFonts();
   int next_font_id = 0;
   int pixel_width = 0, pixel_height = 0;
   // TODO: talk metadata
-  std::map<int, std::unique_ptr<TalkPage>> pages;
+  // std::map<int, std::map<int, std::unique_ptr<TalkPage>>> pages;
 };
 
 #endif

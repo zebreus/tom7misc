@@ -78,11 +78,12 @@ struct PDFDocument : public Document {
   const Font *GetBuiltInFont(PDF::BuiltInFont bif);
   const Font *GetDefaultFont() override;
 
-  void GenerateOutput(std::string_view filename_base,
-                      const std::map<int, DocTree> &pages) override;
+  void GenerateOutput(
+      std::string_view filename_base,
+      const std::map<int, std::map<int, DocTree>> &pages) override;
 
   void GeneratePDF(const std::string &filename,
-                   const std::map<int, DocTree> &pages);
+                   const std::map<int, std::map<int, DocTree>> &pages);
 
  private:
   void InitBuiltInFonts();

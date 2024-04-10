@@ -720,8 +720,9 @@ std::string Document::LoadFontFile(const std::string &filename) {
     "not understand fonts on its own!";
 }
 
-void Document::GenerateOutput(std::string_view filename,
-                              const std::map<int, DocTree> &pages) {
+void Document::GenerateOutput(
+    std::string_view filename,
+    const std::map<int, std::map<int, DocTree>> &pages) {
   LOG(FATAL) << "(LoadFontFile) The abstract base class of Document does "
     "not know how to make output on its own!";
 }
@@ -1135,6 +1136,8 @@ Document::PackBoxes(Algorithm algo,
         };
 
       auto MapValue = [&Rank, minv, range](double v) {
+          (void)minv;
+          (void)range;
           // return (v - minv) / range;
           return Rank(v);
         };

@@ -230,8 +230,9 @@ struct Document {
   std::unordered_map<std::string, std::unique_ptr<Font>> fonts;
   Hyphenation hyphenation;
 
-  virtual void GenerateOutput(std::string_view filename_base,
-                              const std::map<int, DocTree> &pages);
+  virtual void GenerateOutput(
+      std::string_view filename_base,
+      const std::map<int, std::map<int, DocTree>> &pages);
 
   struct Transform {
     double dx = 0.0, dy = 0.0;

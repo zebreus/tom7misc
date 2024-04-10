@@ -234,18 +234,23 @@ void PDFPage::DrawVideo(double x, double y,
     "I did not implement it!";
 }
 
-void PDFDocument::GenerateOutput(std::string_view filename_base,
-                                 const std::map<int, DocTree> &pages) {
+void PDFDocument::GenerateOutput(
+    std::string_view filename_base,
+    const std::map<int, std::map<int, DocTree>> &pages) {
   return GeneratePDF(std::string(filename_base) + ".pdf", pages);
 }
 
-void PDFDocument::GeneratePDF(const std::string &filename,
-                              const std::map<int, DocTree> &pages) {
+void PDFDocument::GeneratePDF(
+    const std::string &filename,
+    const std::map<int, std::map<int, DocTree>> &pages) {
   // We ignore gaps in the pages. If you want a blank page, make
   // a blank document.
   int num_pages = 0;
   std::vector<std::unique_ptr<PDFPage>> pageptrs;
-  for (const auto &[page_idx, doc] : pages) {
+  for (const auto &[page_idx, anim] : pages) {
+    CHECK(anim.size() == 1) << "Animations are not supported in PDF output. "
+      "Always output to the first frame.";
+    const auto &doc = anim.begin()->second;
     PDF::Page *pdf_page = pdf->AppendNewPage();
     pageptrs.emplace_back(std::make_unique<PDFPage>(
                               pdf_page->Width(), pdf_page->Height(),

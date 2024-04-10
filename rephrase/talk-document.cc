@@ -198,8 +198,9 @@ void TalkPage::DrawVideo(double x, double y,
 }
 
 
-void TalkDocument::GenerateOutput(std::string_view filename_base,
-                                 const std::map<int, DocTree> &pages) {
+void TalkDocument::GenerateOutput(
+    std::string_view filename_base,
+    const std::map<int, std::map<int, DocTree>> &pages) {
   Timer output_timer;
 
   std::string talk_dir = (std::string)filename_base;
@@ -212,7 +213,9 @@ void TalkDocument::GenerateOutput(std::string_view filename_base,
 
   int num_pages = 0;
   std::vector<std::unique_ptr<TalkPage>> pageptrs;
-  for (const auto &[page_idx, doc] : pages) {
+  for (const auto &[page_idx, anim_frames] : pages) {
+    CHECK(anim_frames.size() == 1) << "unimplemented: talk anims";
+    const auto &doc = anim_frames.begin()->second;
     pageptrs.push_back(std::make_unique<TalkPage>(
                            pixel_width, pixel_height, this));
     TalkPage *page = pageptrs.back().get();
