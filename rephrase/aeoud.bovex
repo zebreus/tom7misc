@@ -19,7 +19,14 @@ let
   val SLIDE-HEIGHT = pixel 1080.0
 
   val current-page = ref 0
-  fun next-slide () = current-page := !current-page + 1
+  val current-frame = ref 0
+
+  fun next-slide () =
+    let in
+      current-page := !current-page + 1;
+      current-frame := 0
+    end
+  fun get-slide () = !current-page
 
   val image-cache : (string, image-handle) map ref =
     ref (map-empty string-compare)
@@ -282,21 +289,22 @@ let
 
   fun add-background-image NONE = ()
     | add-background-image (SOME img) =
-      output
-      (!current-page,
+      output-frame
+      (!current-page, !current-frame,
        exact-image-at { x = 0, y = 0, img = img })
 
   fun add-title props title =
     let
       open props : slide-props
     in
-      output (!current-page,
-              text-sticker { x = LEFT-MARGIN, y = TOP-MARGIN }
-              (size TITLE-FONT-SIZE
-               (color TITLE-FONT-COLOR
-                (b
-                 (palatino
-                  title)))))
+      output-frame
+      (!current-page, !current-frame,
+       text-sticker { x = LEFT-MARGIN, y = TOP-MARGIN }
+       (size TITLE-FONT-SIZE
+        (color TITLE-FONT-COLOR
+         (b
+          (palatino
+           title)))))
     end
 
   datatype element =
@@ -334,8 +342,8 @@ let
           val num-lines = list-length lines
 
         in
-          output
-          (!current-page,
+          output-frame
+          (!current-page, !current-frame,
            box-stick-at { x = xpos, y = !ypos }
            (stick-vertically (0.0, layout-concat lines)));
 
@@ -373,14 +381,14 @@ let
 
           val num-lines = list-length lines
         in
-          output
-          (!current-page,
+          output-frame
+          (!current-page, !current-frame,
            box-stick-at { x = xpos, y = !ypos }
            (stick-vertically (0.0, layout-concat lines)));
 
           (* output a bullet picture too *)
-          output
-          (!current-page,
+          output-frame
+          (!current-page, !current-frame,
            sticker {(Sticker)
                     x = xpos -. 64.0, y = !ypos +. 16.0,
                     font-name = font-bold PALATINO,
@@ -412,8 +420,8 @@ let
                             width = CONTENT-WIDTH,
                             bullets = bull }
         | add-elt (Image { img, x, y, width }) =
-        output
-        (!current-page,
+        output-frame
+        (!current-page, !current-frame,
          (case width of
             NONE => exact-image-at { x = round x, y = round y, img = img }
           | SOME w => image-sticker { img = img, x = x, y = y, width = w }))
@@ -525,8 +533,8 @@ let
 
       add-title props title;
 
-      output
-      (!current-page,
+      output-frame
+      (!current-page, !current-frame,
        box-stick-at { x = xpos, y = !ypos }
        (stick-vertically (0.0, layout-concat pboxes)));
 
@@ -546,18 +554,18 @@ let
     in
       add-background-image BACKGROUND-IMAGE;
 
-      output
-      (!current-page,
+      output-frame
+      (!current-page, !current-frame,
        centered-text-sticker { x = 0.0, y = inch 6.0, width = SLIDE-WIDTH }
        (title-text title));
 
-      output
-      (!current-page,
+      output-frame
+      (!current-page, !current-frame,
        centered-text-sticker { x = 0.0, y = inch 8.0, width = SLIDE-WIDTH }
        (title-text author));
 
-      output
-      (!current-page,
+      output-frame
+      (!current-page, !current-frame,
        centered-text-sticker { x = 0.0, y = inch 12.0, width = SLIDE-WIDTH }
        (title-text venue));
 
@@ -578,8 +586,8 @@ let
     in
       add-background-image BACKGROUND-IMAGE;
       add-title props title;
-      output
-      (!current-page,
+      output-frame
+      (!current-page, !current-frame,
        exact-image-at { x = round IMG-PAD-LEFT,
                         y = round IMG-PAD-TOP,
                         img = img});
@@ -595,8 +603,8 @@ let
 
       add-title props title;
 
-      output
-      (!current-page,
+      output-frame
+      (!current-page, !current-frame,
        box-stick-at { x = LEFT-MARGIN, y = CONTENT-START-Y }
        (monospace-block-ext { left-indent = 0.0,
                               line-spacing = 2.0,
@@ -613,8 +621,8 @@ let
     let
       val img = image-load filename
     in
-      output
-      (!current-page,
+      output-frame
+      (!current-page, !current-frame,
        exact-image-at { x = 0, y = 0, img = img});
 
       next-slide()
@@ -630,15 +638,12 @@ let
          of white when unloading the video. *)
       add-background-image BACKGROUND-IMAGE;
 
-      output
-      (!current-page,
+      output-frame
+      (!current-page, !current-frame,
        fullscreen-video src);
 
       next-slide()
     end
-
-  fun on-previous-slide layout =
-    output (!current-page - 1, layout)
 
   val slide = {(Slide) BACKGROUND = "sunset-bg.png" }
 
@@ -1059,6 +1064,8 @@ rendered in monospace:];
     val MAX-COLUMN-WIDTH = (CONTENT-WIDTH -. gap) *. 0.5
     val xpos2 = LEFT-MARGIN +. MAX-COLUMN-WIDTH +. gap
 
+    val NUM-FRAMES = 5 * 30
+
     val NUM-REPHRASE = 1000
 
     val text =
@@ -1089,9 +1096,26 @@ rendered in monospace:];
         comparison lo;
         spectrum delta (lo +. delta) hi
       end
+
+    val MIN-WIDTH = MAX-COLUMN-WIDTH *. 0.65
+    val MAX-WIDTH = MAX-COLUMN-WIDTH
+
+    val start-page = !current-page
+    fun makeframe n =
+      let
+        val t = n / (NUM-FRAMES - 1)
+        (* Ease in/out *)
+        val pos = t *. t *. t -. 3.0 *. (t *. t) +. 2.0 *. t
+        (* do print ("Frame " ^ int-to-string n ^ "\n") *)
+      in
+        (* generating a slide advances the frame, so keep going back. *)
+        current-page := start-page;
+        current-frame := n;
+        comparison (MIN-WIDTH +. (MAX-WIDTH -. MIN-WIDTH) *. pos);
+      end
   in
-    spectrum (MAX-COLUMN-WIDTH *. 0.0125)
-    (MAX-COLUMN-WIDTH *. 0.65) MAX-COLUMN-WIDTH
+    for 0 (NUM-FRAMES - 1) makeframe;
+    current-frame := 0;
   end;
 
 (*

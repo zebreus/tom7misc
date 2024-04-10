@@ -35,6 +35,7 @@ Talk Talk::Load(const string &src_filename) {
     if (cmd == "end") {
       printf("Ending early!\n");
       break;
+
     } else if (cmd == "slide") {
       talk.slides.emplace_back();
       slide = &talk.slides.back();
@@ -52,6 +53,7 @@ Talk Talk::Load(const string &src_filename) {
       CHECK(!src.empty()) << "Video needs src.";
       slide->video.emplace(Video{.x = x, .y = y, .width = w, .height = h,
           .src = src});
+
     } else if (cmd == "dur") {
       string d = Util::chop(line);
       CHECK(slide != nullptr) << "dur: start slide first";

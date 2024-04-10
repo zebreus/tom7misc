@@ -9,7 +9,8 @@ ENABLE_LLM=true
 
 LLAMA_CLBLAST=true
 # It's crashing or doing something weird? You're always
-# being too clever with std::move!
+# being too clever with std::move! Or you incremented
+# the wrong loop counter!
 # ASAN=true
 
 # Pro-tip for understanding compilation time:

@@ -8,6 +8,7 @@
 #include <optional>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 #include "image.h"
 #include "document.h"
@@ -42,6 +43,7 @@ struct TalkFont : public Font {
 struct TalkPage : public Page {
   TalkPage(int pixel_width, int pixel_height,
            TalkDocument *talk);
+  ~TalkPage() override;
 
   void DrawText(const Font *font,
                 const std::string &text, double size,
@@ -66,9 +68,8 @@ struct TalkPage : public Page {
   TalkPage(const TalkPage &other) = delete;
   TalkPage &operator =(const TalkPage &other) = delete;
 
-  // TODO: Perhaps a "page" could be an animation, in which case there
-  // would be multiple images or some meta representation.
   const TalkDocument *talk = nullptr;
+
   std::unique_ptr<ImageRGBA> image;
 
   struct Video {
@@ -76,7 +77,6 @@ struct TalkPage : public Page {
     std::string src;
   };
 
-  // Just one video is supported for now.
   std::optional<Video> video;
 };
 

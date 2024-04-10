@@ -355,6 +355,17 @@ fun set-to-list (Set { cmp = _, tree }) =
     rec tree
   end
 
+(* Note: Inclusive of endpoints *)
+fun for lo hi f =
+  let
+    fun r n = n > hi otherwise
+      let in
+        f n;
+        r (n + 1);
+      end
+  in
+    r lo
+  end
 
 datatype (a, b) map-tree =
   MapEmpty

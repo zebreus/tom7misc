@@ -32,6 +32,8 @@ object OutputDest of { page : int, frame : int }
 
 fun output (page, lay) =
   internal-output ({(OutputDest) page = page, frame = 0}, lay)
+fun output-frame (page, frame, lay) =
+  internal-output ({(OutputDest) page = page, frame = frame}, lay)
 
 (* Fonts are represented with text attributes. But we wrap them
    so that some utilities get a little extra type checking. *)
