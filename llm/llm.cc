@@ -384,7 +384,7 @@ llama_token Sampler::SampleToken(std::unique_ptr<Candidates> cand) {
 
 void Sampler::UpdateCandidatesMinP(float min_p, int min_keep,
                                    Candidates *cand) {
-  llama_sample_min_p(context->lctx, &cand->ltda, min_p, 1);
+  llama_sample_min_p(context->lctx, &cand->ltda, min_p, min_keep);
 }
 
 void Sampler::UpdateCandidatesTemp(float temperature, Candidates *cand) {
