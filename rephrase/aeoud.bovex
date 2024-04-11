@@ -13,35 +13,6 @@ let
 
 in
 
-  let
-    val YPOS = inch 2.0
-  in
-    combo-slide slide
-    ((* Title [Corporate Preso] :: *)
-     TextBox { x = DEFAULT-LEFT-MARGIN,
-               y = YPOS,
-               width = inch 9.0,
-               text = [Here is an example of applying the boxes
-                       and glue algorithm to this very text. Most
-                       of the break points lead to extremely long
-                         or short lines, so only a small region
-                         is of any interest. But those details
-                         matter. [* For example, a suboptimal choice
-                         on one line could mean having to use a
-                         hyphen on a later line. If you are still
-                         reading this, you are a fast reader, or
-                         perhaps you read from bottom to top. *]
-                         ] } ::
-     Image { img = image-load "boxes-and-glue-1.png",
-             x = pixel 900.0,
-             y = YPOS -. 36.0,
-             width = NONE } ::
-     nil)
-  end;
-
-  (* fail "exit early"; *)
-
-
   (* TODO: Better bullet graphic. Can embed fonts, remember *)
 
   title-slide slide (size (point 280.0) (color 0xFFFFFFFF [Badness 0]))
@@ -366,73 +337,7 @@ rendered in monospace:];
   [Boxes and LLMers Glue]
   (image-load "algorithm2-dark.png");
 
-  let
-    open slide-props slide
-    val xpos1 = LEFT-MARGIN
-    val gap = inch 1.0
-    val MAX-COLUMN-WIDTH = (CONTENT-WIDTH -. gap) *. 0.5
-    val xpos2 = LEFT-MARGIN +. MAX-COLUMN-WIDTH +. gap
-
-    val NUM-FRAMES = 5 * 30
-
-    val NUM-REPHRASE = 1000
-
-    val text =
-      [Is this the most beautiful typesetting you've ever seen?
-       Yes! That's because it's been rendered with
-       the ground-breaking BoVeX computer document preparation
-       system. Gone are the days of manually editing your manuscript to
-       eliminate unsightly typographic misdemeanors like widows and
-       orphans!]
-    val text1 = palatino text
-    val text2 = palatino (rephrase-paragraph NUM-REPHRASE text)
-
-    val title = if !NO-REPHRASE then [** warning disabled **]
-                else [Boxes and LLMers Glue]
-
-    fun comparison width =
-      combo-slide (slide with BODY-FONT-SIZE = 64.0)
-      (Title title ::
-       TextBox { x = xpos1, y = CONTENT-START-Y,
-                 width = width, text = text1 } ::
-       TextBox { x = xpos2, y = CONTENT-START-Y,
-                 width = width, text = text2 } ::
-       nil)
-
-    fun spectrum delta lo hi =
-      lo >. hi otherwise
-      let in
-        comparison lo;
-        spectrum delta (lo +. delta) hi
-      end
-
-    val MIN-WIDTH = MAX-COLUMN-WIDTH *. 0.65
-    val MAX-WIDTH = MAX-COLUMN-WIDTH
-
-    val start-page = !current-page
-    fun makeframe n =
-      let
-        val t = n / (NUM-FRAMES - 1)
-        (* Ease in/out *)
-        val pos = t *. t *. t -. 3.0 *. (t *. t) +. 2.0 *. t
-        (* do print ("Frame " ^ int-to-string n ^ "\n") *)
-      in
-        (* generating a slide advances the frame, so keep going back. *)
-        current-page := start-page;
-        current-frame := n;
-        comparison (MIN-WIDTH +. (MAX-WIDTH -. MIN-WIDTH) *. pos);
-      end
-  in
-    for 0 (NUM-FRAMES - 1) makeframe;
-    current-frame := 0;
-  end;
-
-(*
-
- This is the most beautiful typesetting you've ever seen, isn't it?
- Of course it is! It's been rendered with the ground-breaking BoVeX
- computer document preparation system, and it's the only program
- permitted by the SIGBOVIK program committee. *)
+  just-video slide "comparison.mp4";
 
   (* Can drop this *)
   bullet-slide slide [Additional features]

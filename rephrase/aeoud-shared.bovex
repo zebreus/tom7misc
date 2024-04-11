@@ -3,10 +3,6 @@
 (* slides info *)
 object TalkInfo of { }
 
-(* do REPHRASE-ALL := SOME 50 *)
-do REPHRASE-ALL := NONE
-do NO-REPHRASE := true
-
 val tt = fixedersys
 
 (* 26 2/3 inches wide, 15 inches tall. *)
