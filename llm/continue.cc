@@ -4,16 +4,16 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
 #include "timer.h"
 #include "util.h"
 
 #include "llm.h"
 #include "models.h"
-#include "llm-util.h"
 
 using namespace std;
+
+static constexpr bool SHOW_DIST = true;
 
 static void Continue(LLM *llm, const string &prompt, FILE *outfile) {
   printf("Loaded prompt of %d chars\n", (int)prompt.size());
@@ -45,7 +45,16 @@ static void Continue(LLM *llm, const string &prompt, FILE *outfile) {
   int tokens = 0;
   for (;;) {
     // Get and commit a token.
-    int id = llm->Sample();
+
+    int id = 0;
+    if (SHOW_DIST) {
+      auto cand = llm->context.GetCandidates();
+      llm->AnsiPrintCandidates(*cand, 25);
+      id = llm->sampler.SampleToken(std::move(cand));
+    } else {
+      id = llm->Sample();
+    }
+
     llm->TakeTokenBatch({id});
     string tok = llm->context.TokenString(id);
     if (outfile == nullptr) {
@@ -74,6 +83,7 @@ static void Continue(LLM *llm, const string &prompt, FILE *outfile) {
 }
 
 int main(int argc, char ** argv) {
+  ANSI::Init();
   CHECK(argc >= 2) << "Usage: ./continue.exe prompt.txt [out.txt]\n"
     "First line of the prompt file is a regex; use .* for anything.";
 
@@ -88,7 +98,15 @@ int main(int argc, char ** argv) {
     auto enfa = Parse(regex);
     auto nfa = RemoveEpsilon<256>(enfa);
   }
-  // AnsiInit();
+
+  // If the prompt ends with a single newline, remove it. The intent is
+  // typically to continue the line, but most editors will write a newline
+  // at the end of the file by default.
+  if (prompt.size() > 2 && prompt[prompt.size() - 1] == '\n' &&
+      prompt[prompt.size() - 2] != '\n') {
+    prompt.resize(prompt.size() - 1);
+  }
+
   Timer model_timer;
 
   FILE *file = nullptr;

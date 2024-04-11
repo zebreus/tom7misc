@@ -384,7 +384,7 @@ llama_token Sampler::SampleToken(std::unique_ptr<Candidates> cand) {
 
 void Sampler::UpdateCandidatesMinP(float min_p, int min_keep,
                                    Candidates *cand) {
-  llama_sample_min_p(context->lctx, &cand->ltda, params.min_p, 1);
+  llama_sample_min_p(context->lctx, &cand->ltda, min_p, 1);
 }
 
 void Sampler::UpdateCandidatesTemp(float temperature, Candidates *cand) {
@@ -882,8 +882,9 @@ void LLM::LoadState(const State &state) {
   }
 }
 
-void LLM::AnsiPrintCandidates(const Candidates &candidates,
-                              int maximum) const {
+std::vector<std::tuple<std::string, float, float>> LLM::TopCandidates(
+    const Candidates &candidates,
+    int maximum) const {
   auto IsAscii = [](const std::string &s) {
       for (char c : s) {
         if (c < ' ' || c > '~') return false;
@@ -916,16 +917,35 @@ void LLM::AnsiPrintCandidates(const Candidates &candidates,
     }
   }
 
+  // PERF: TopN
   std::sort(toks.begin(), toks.end(),
             [](const std::tuple<std::string, float, float> &a,
                const std::tuple<std::string, float, float> &b) {
               return std::get<1>(a) > std::get<1>(b);
             });
+
+  if (maximum >= 0 && (int)toks.size() > maximum) {
+    toks.resize(maximum);
+  }
+
+  for (auto &[s, l, p] : toks) {
+    p /= sum;
+  }
+
+  return toks;
+}
+
+
+void LLM::AnsiPrintCandidates(const Candidates &candidates,
+                              int maximum) const {
+
+  std::vector<std::tuple<std::string, float, float>> toks =
+    TopCandidates(candidates, maximum);
+
   for (int i = 0;
        (maximum < 0 || i < maximum) && i < (int)toks.size();
        i++) {
-    const auto &[s, logit, p] = toks[i];
-    const double prob = p / sum;
+    const auto &[s, logit, prob] = toks[i];
     const auto &[r, g, b, a_] =
       ColorUtil::Unpack32(
           ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, prob));

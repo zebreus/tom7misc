@@ -8,7 +8,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "llama.h"
+#include "llama.h"  // IWYU pragma: export
 
 #include "base/logging.h"
 #include "lastn-buffer.h"
@@ -292,7 +292,7 @@ struct Sampler {
   // Consumes candidates.
   llama_token SampleRaw(std::unique_ptr<Candidates> cand);
 
-private:
+ private:
   // PERF!
   inline float RandFloat() {
     const uint32_t uu = rng.Rand32();
@@ -309,7 +309,7 @@ private:
                                     llama_token_data_array *candidates,
                                     float tau, float eta, float *mu);
 
-public:
+ public:
 
   // Some samplers depend on the history of the text.
   // Typically, when we take a token for the context, we take that same
@@ -473,8 +473,13 @@ struct LLM {
   // Reseed the RNG.
   void NewRNG() { sampler.NewRNG(); }
 
-  // Print up 'maximum' (or all of them, if -1) candidates,
-  // using ANSI color codes.
+  // Get the 'maximum' (or all of them, if -1) highest-probability
+  // candidates. Returns {token string, logit, probability}.
+  std::vector<std::tuple<std::string, float, float>> TopCandidates(
+      const Candidates &candidates,
+      int maximum) const;
+
+  // Print the result of TopCandidates using ANSI color codes.
   void AnsiPrintCandidates(const Candidates &candidates,
                            int maximum) const;
 
