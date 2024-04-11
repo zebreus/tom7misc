@@ -366,10 +366,15 @@ sigbovik/sigbovik.talk : bovex.exe sigbovik.bovex stdlib.bovex cite.bovex layout
 	./bovex.exe -v sigbovik.bovex -o sigbovik.talk
 	./maketalk.exe sigbovik sigbovik.talk
 
-aeoud/aeoud.talk : bovex.exe aeoud.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png makecodeimage.exe
+aeoud/aeoud.talk : bovex.exe aeoud-shared.bovex aeoud.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png makecodeimage.exe
 	./makecodeimage.exe
 	./bovex.exe -v aeoud.bovex -o aeoud.talk
 	./maketalk.exe aeoud aeoud.talk
+
+# comparison movie
+aeoud-comparison/aeoud-comparison.talk : bovex.exe aeoud-shared.bovex aeoud-comparison.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png
+	./bovex.exe -v aeoud-comparison.bovex -o aeoud-comparison.talk
+	./maketalk.exe aeoud-comparison aeoud-comparison.talk
 
 test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
 	./html_test.exe

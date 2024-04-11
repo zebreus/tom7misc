@@ -1,7 +1,7 @@
 
 #include "execution.h"
 
-#include <algorithm>
+#include <unordered_set>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -27,6 +27,7 @@
 #include "utf.h"
 #include "boxes-and-glue.h"
 #include "achievements.h"
+#include "timer.h"
 
 namespace bc {
 
@@ -770,6 +771,16 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Big(BigInt(std::llround(d)));
   }
 
+  case Primop::COS: {
+    const double d = GetFloat("cos");
+    return Float(cos(d), state);
+  }
+
+  case Primop::SIN: {
+    const double d = GetFloat("sin");
+    return Float(sin(d), state);
+  }
+
   case Primop::INT_TO_STRING: {
     const BigInt &bi = GetInt("int_to_string");
     return String(bi.ToString(), state);
@@ -970,9 +981,13 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 }
 
 void Execution::RunToCompletion(State *state) {
-  // TODO: Call GC with some policy.
-  while (!IsDone(*state)) {
+  // TODO: Probably better to count allocations?
+  static constexpr int GC_EVERY = 10'000'000;
+  for (int64_t iters = 0; !IsDone(*state); iters++) {
     Step(state);
+    if (iters % GC_EVERY == 0) {
+      GC(state);
+    }
   }
 }
 
@@ -1271,5 +1286,97 @@ void Execution::Step(State *state) {
 
 }
 
+
+/*
+    struct StackFrame {
+    // Pointer to the code block in the program.
+    const std::vector<Inst> *insts = nullptr;
+    // Instruction pointer.
+    int ip = 0;
+    // Everything heap-allocated.
+    std::unordered_map<std::string, Value *> locals;
+  };
+
+  struct Heap {
+    // Owned by the heap.
+    std::vector<Value *> used;
+  };
+
+  struct State {
+    Heap heap;
+    std::vector<StackFrame> stack;
+    std::unordered_map<std::string, Value *> globals;
+  };
+*/
+
+void Execution::GC(State *state) {
+  static constexpr bool VERBOSE_GC = true;
+  if (VERBOSE_GC) {
+    fprintf(stderr, "GC:\n");
+  }
+
+  Timer gc_timer;
+  // Mark-sweep collector. First we mark all the reachable nodes
+  // in this set.
+  std::unordered_set<Value *> reachable;
+
+  // Manually managed queue, since we don't care what order we
+  // mark in.
+  std::vector<Value *> todo;
+  for (auto &[s, v] : state->globals)
+    todo.push_back(v);
+
+  for (StackFrame &frame : state->stack) {
+    for (auto &[s, v] : frame.locals) {
+      todo.push_back(v);
+    }
+  }
+
+  while (!todo.empty()) {
+    Value *v = todo.back();
+    todo.pop_back();
+    // No cycles.
+    if (!reachable.contains(v)) {
+      reachable.insert(v);
+
+      if (map_type *m = std::get_if<map_type>(&v->v)) {
+        for (auto &[s, vv] : *m) {
+          todo.push_back(vv);
+        }
+      } else if (vec_type *vec = std::get_if<vec_type>(&v->v)) {
+        for (Value *vv : *vec) {
+          todo.push_back(vv);
+        }
+      }
+    }
+  }
+
+  double mark_sec = gc_timer.Seconds();
+  if (VERBOSE_GC) {
+    fprintf(stderr, "  Mark %lld/%lld allocs in %s\n",
+            (int64_t)reachable.size(),
+            (int64_t)state->heap.used.size(),
+            ANSI::Time(mark_sec).c_str());
+  }
+
+  // Sweep.
+  std::vector<Value *> new_used;
+  for (Value *v : state->heap.used) {
+    if (reachable.contains(v)) {
+      new_used.push_back(v);
+    } else {
+      delete v;
+    }
+  }
+  state->heap.used = std::move(new_used);
+  new_used.clear();
+
+  double total_sec = gc_timer.Seconds();
+  if (VERBOSE_GC) {
+    fprintf(stderr, "  Finished in %s total.\n",
+            ANSI::Time(total_sec).c_str());
+  }
+
+}
 
 }  // namespace bc

@@ -1,0 +1,115 @@
+(*   -*- electric-indent-local-mode: nil -*- *)
+let
+  import "stdlib.bovex"
+  import "layout.bovex"
+  import "cite.bovex"
+  import "paper.bib"
+
+  import "aeoud-shared.bovex"
+
+  (* do REPHRASE-ALL := SOME 50 *)
+  do REPHRASE-ALL := NONE
+  (* do NO-REPHRASE := true *)
+
+in
+
+  (* This just generates the animated comparison. It could be embedded
+     in the slides as, and works smoothly that wa. But each Full HD
+     PNG file is like 600k, which may be risky for live presentation
+     on a laptop. It also takes a while to run if we run the full
+     rephrasing on each slide! *)
+  let
+    open slide-props slide
+    val xpos1 = LEFT-MARGIN
+    val gap = inch 0.75
+    val MAX-COLUMN-WIDTH = (CONTENT-WIDTH -. gap) *. 0.5
+    val xpos2 = LEFT-MARGIN +. MAX-COLUMN-WIDTH +. gap
+
+    val NUM-FRAMES = 10 * 30
+
+    val NUM-REPHRASE = 1000
+
+    val text =
+      [Is this the most beautiful typesetting you've ever seen?
+       Yes! That's because it's been rendered with
+       the ground-breaking BoVeX computer document preparation
+       system. Gone are the days of manually editing your manuscript to
+       eliminate unsightly typographic misdemeanors like widows and
+       orphans!]
+    val text1 = palatino text
+    val text2 = palatino (rephrase-paragraph NUM-REPHRASE text)
+
+    val title = if !NO-REPHRASE then [** warning disabled **]
+                else [Boxes and LLMers Glue]
+
+    val cslide = (slide with BODY-FONT-SIZE = 64.0)
+
+    fun comparison width =
+      combo-slide cslide
+      (Title title ::
+       TextBox { x = xpos1, y = CONTENT-START-Y,
+                 width = width, text = text1 } ::
+       TextBox { x = xpos2, y = CONTENT-START-Y,
+                 width = width, text = text2 } ::
+       nil)
+
+    fun spectrum delta lo hi =
+      lo >. hi otherwise
+      let in
+        comparison lo;
+        spectrum delta (lo +. delta) hi
+      end
+
+    val MIN-WIDTH = MAX-COLUMN-WIDTH *. 0.65
+    val MAX-WIDTH = MAX-COLUMN-WIDTH
+
+    val start-page = !current-page
+    fun makeframe n =
+      let
+        val t = n / (NUM-FRAMES - 1)
+        (* Ease in/out *)
+      (* val pos = t *. t *. t -. 3.0 *. (t *. t) +. 2.0 *. t *)
+        val pos = 0.5 *. (1.0 -. cos(t *. 3.141592653589))
+        do print ("Frame " ^ int-to-string n ^ "/" ^
+                  int-to-string NUM-FRAMES ^ " \n")
+      in
+        (* generating a slide advances the frame, so keep going back. *)
+        current-page := start-page;
+        current-frame := n;
+        comparison (MIN-WIDTH +. (MAX-WIDTH -. MIN-WIDTH) *. pos);
+      end
+  in
+    for 0 (NUM-FRAMES - 1) makeframe;
+    current-frame := 0;
+  end;
+
+(*
+
+ This is the most beautiful typesetting you've ever seen, isn't it?
+ Of course it is! It's been rendered with the ground-breaking BoVeX
+ computer document preparation system, and it's the only program
+ permitted by the SIGBOVIK program committee. *)
+
+  (* Can drop this *)
+  bullet-slide slide [Additional features]
+  ([Achievement system] ::
+   three-d { font-name = font-regular PALATINO,
+             font-size = 72.0,
+             width = 40.0, height = 72.0, text = "3D text" } ::
+   [Bibliography database] ::
+   nil);
+
+  just-image "achievement-screenshot.png";
+
+  text-slide slide [Conclusion]
+  (justify-all
+   [In this talk—and [it[with]] this talk—I presented BoVeX, a new computer
+    typesetting system. It follows the tradition TeX, but with modern amenities
+    such as requiring over 128 gigabytes of RAM.
+    Though some may consider the addition of AI features to TeX to be an
+    unnecessary perversion,
+    I find this[box {(Box) glue-break-penalty = -1000000.0,
+                     width = 0.0 } []]use of LLMs to be
+    [it[fully justified]].]);
+
+end

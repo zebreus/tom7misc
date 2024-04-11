@@ -69,6 +69,9 @@ Initial::Initial(AstPool *pool) {
 
     {"int-to-string", Primop::INT_TO_STRING},
     {"round", Primop::FLOAT_ROUND},
+
+    {"cos", Primop::COS},
+    {"sin", Primop::SIN},
     // {"int-eq", Primop::INT_EQ},
     {"string-concat", Primop::STRING_CONCAT},
     {"string-eq", Primop::STRING_EQ},

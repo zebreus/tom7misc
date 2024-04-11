@@ -2,8 +2,10 @@
 #include "simplification.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -563,6 +565,22 @@ struct PeepholePass : public il::Pass<> {
             Simplified("float-round primop");
             return pool->Int(std::llround(d));
           }
+        }
+        break;
+
+      case Primop::COS:
+        if (ees[0]->type == ExpType::FLOAT) {
+          const double d = ees[0]->Float();
+          Simplified("cos");
+          return pool->Float(cos(d));
+        }
+        break;
+
+      case Primop::SIN:
+        if (ees[0]->type == ExpType::FLOAT) {
+          const double d = ees[0]->Float();
+          Simplified("sin");
+          return pool->Float(sin(d));
         }
         break;
 
