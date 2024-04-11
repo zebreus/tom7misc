@@ -3,9 +3,18 @@ common from wikipedia: ../acronymine/unicode.cc
 Transform the input images to make them wider, and make more space for greek etc.
 
 Glyphs todo:
- - Fly (for flymake modeline)
- U+1FAB0 is the emoji, U+131A6 is the Egyptian hieroglyph
+ - U+201F ‟ Double High-Reversed-9 Quotation Mark
+ - unicode stars
+ - U+2E17 ⸗ Double Oblique Hyphen would have been good for writing
+   about Gutenberg bible.
+ - obviously...
+ U+203D ‽ INTERROBANG
+ U+2E18 ⸘ INVERTED INTERROBANG
+  irony mark (⸮) found in Unicode as U+2E2E
 
+This kind of thing:
+U+27e6 Ps MATHEMATICAL LEFT WHITE SQUARE BRACKET ⟦
+U+27e7 Pe MATHEMATICAL RIGHT WHITE SQUARE BRACKET ⟧
 
 TODO:
  - improve 2x versions of some new emoji
@@ -30,3 +39,6 @@ We definitely need these! "Symbols for Legacy Computing"
 https://www.unicode.org/charts/PDF/U1FB00.pdf
 
 Can do the rest of WinAnsiEncoding. See pdf.cc.
+
+
+▜▘ ▉   ▛▛▜   ▜

@@ -60,10 +60,14 @@ struct FontImage {
   void SaveImage(const std::string &filename,
                  int chars_across, int chars_down);
 
+  // Maps from codepoint to glyph index below.
+  std::unordered_map<int, int> GetUnicode(bool verbose = false);
+
   // Map from character index (position in image) to glyph.
   std::map<int, Glyph> glyphs;
   Config config;
 };
+
 
 
 #endif
