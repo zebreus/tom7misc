@@ -11,6 +11,7 @@
  let anim_idx = 0;
  let count = 0;
  let video_dirty = true;
+ let clickers_hidden = false;
 
  function Draw() {
    let slide = slides[slide_idx];
@@ -72,6 +73,16 @@
    GoTo(slide_idx + 1);
  }
 
+ function ToggleHide() {
+   clickers_hidden = !clickers_hidden;
+   let elt = document.getElementById('clickers');
+   if (clickers_hidden) {
+     elt.style.display = 'none';
+   } else {
+     elt.style.display = 'flex';
+   }
+ }
+
  document.onkeydown = function(e) {
    e = e || window.event;
    if (e.ctrlKey) return true;
@@ -91,7 +102,12 @@
      case 40: // DOWN
        break;
      case 32: // SPACE
+       // TODO: Play/pause video
        break;
+
+       // Letters keycodes are just the uppercase ASCII.
+     case 72: // H
+       ToggleHide();
    }
    Draw();
    return false;
@@ -160,9 +176,9 @@
   <img id="proj" class="screen">
   <video id="vid" muted="true" style="left:9999px"></video>
   <br/>
-  <div class="clickers">
+  <div class="clickers" id="clickers">
     <div class="click" onclick="Left()">&nbsp;&lt;</div>
-    <div class="click" style-onclick="Right()">&nbsp;&gt;</div>
+    <div class="click" onclick="Right()">&nbsp;&gt;</div>
   </div>
 </body>
 

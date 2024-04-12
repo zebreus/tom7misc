@@ -14,4 +14,4 @@ InlayHints:
   Enabled: No
 
 CompileFlags:
-  Add: [-xc++, -Wall, -Wshadow-field, --std=c++20, -DENABLE_LLM, -I., -I../cc-lib, -I../llama, -I../llm]
+  Add: [-xc++, -Wall, -Wshadow-field, --std=c++20, -DENABLE_LLM, -I., -I../cc-lib, -I../llama, -I../llm, -I../bit7]

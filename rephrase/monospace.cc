@@ -1,8 +1,7 @@
 
 // Simple greedy experiment; fixed widths.
 
-#include "llama.h"
-
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <map>
@@ -21,15 +20,21 @@
 #include "image.h"
 #include "color-util.h"
 
+#include "llama.h"
 #include "llm.h"
 #include "models.h"
+#include "font-image.h"
 
 using namespace std;
 
 // XXX command-line flag
-static constexpr int WIDTH = 42;
+static constexpr int LINE_WIDTH = 41;
 
 static constexpr bool GENERATE_IMAGES = true;
+// 5% seems like a good choice, but I'm using lower for the
+// AEOUD talk visualization.
+// static constexpr float MIN_P = 0.05;
+static constexpr float MIN_P = 0.05;
 
 static void PrintGreyParity(const std::string &tok) {
   static bool odd = 0;
@@ -60,13 +65,17 @@ struct WordStream {
     auto cand = llm->context.GetCandidates();
     llm->sampler.FilterByNFA(cand.get());
     Sampler::UpdateCandidatesTemp(temp, cand.get());
-    llm->sampler.UpdateCandidatesMinP(0.05, 1, cand.get());
 
+    // Generate visualization before min_p sampling.
     if (next != nullptr) {
-      auto top = llm->TopCandidates(*cand, 10);
+      auto top = llm->TopCandidates(*cand, -1);
       for (const auto &[s, l, p] : top) {
         next->emplace_back(s, p);
       }
+    }
+
+    if (MIN_P > 0.0) {
+      llm->sampler.UpdateCandidatesMinP(MIN_P, 1, cand.get());
     }
 
     return llm->sampler.SampleRaw(std::move(cand));
@@ -74,19 +83,26 @@ struct WordStream {
 
   // Returns the word (whitespace etc. intact).
   std::string Next(float temp,
-                   std::vector<std::pair<std::string, float>> *next) {
+                   std::vector<std::pair<std::string, float>> *next_out) {
 
     CHECK(!llm->sampler.Stuck()) << "STUCK!";
+
+    // We start with the probability distribution just being the
+    // empty string with 1.0 mass.
+    std::map<std::string, float> wnext = {
+      {"", 1.0},
+    };
 
     std::string partial_word;
     for (;;) {
       // We will definitely fail in this case (and probably
       // the model is off the rails), so just return it.
-      if (partial_word.size() > WIDTH) return partial_word;
+      if (partial_word.size() > LINE_WIDTH) return partial_word;
 
       // Sample, but do not yet take, the token.
       // int id = llm->Sample();
-      const int id = Sample(temp, next);
+      std::vector<std::pair<std::string, float>> next;
+      const int id = Sample(temp, &next);
       string tok = llm->context.TokenString(id);
 
       // We have a "word" if the new partial_word contains a space.
@@ -105,8 +121,34 @@ struct WordStream {
       if (!partial_word.empty() && tok[0] == ' ') {
         // PERF: We could keep the sampled token for the next
         // call, if we want, saving a little time.
+        if (next_out != nullptr) {
+          next_out->clear();
+          next_out->reserve(wnext.size());
+          for (const auto &[s, p] : wnext) {
+            next_out->emplace_back(s, p);
+          }
+          // By descending probability.
+          std::sort(next_out->begin(), next_out->end(),
+                    [](const auto &a, const auto &b) {
+                      return a.second > b.second;
+                    });
+        }
         return partial_word;
       } else {
+
+        // Now split the current word into multiple entries.
+        {
+          float oldp = wnext[partial_word];
+          wnext.erase(partial_word);
+          for (const auto &[suffix, p] : next) {
+            std::string new_word = partial_word + suffix;
+           float new_p = oldp * p;
+            // In theory this could coincide with an existing entry,
+            // so add probability mass in that case.
+            wnext[new_word] += new_p;
+          }
+        }
+
         // Otherwise, keep building up the word.
         // We accept the token.
         llm->TakeTokenBatch({id});
@@ -119,7 +161,7 @@ private:
 };
 
 static std::string LengthIndicator() {
-  return std::string(WIDTH, '-');
+  return std::string(LINE_WIDTH, '-');
 }
 
 struct VizFrame {
@@ -140,6 +182,10 @@ static void RephraseMono(
   printf("Loaded prompt of %d chars\n", (int)prompt.size());
 
   Asynchronously viz_async(8);
+  std::unique_ptr<BitmapFont> font;
+  if (GENERATE_IMAGES) {
+    font = BitmapFont::Load("../bit7/fixedersys2x.cfg");
+  }
 
   Timer startup_timer;
   llm->Reset();
@@ -194,47 +240,86 @@ static void RephraseMono(
         frame.nexts = *nexts;
       }
 
-      viz_async.Run([frame = std::move(frame)]() {
-        const int WIDTH = 1080;
-        const int HEIGHT = 1080;
+      viz_async.Run([&font, frame = std::move(frame)]() {
+        const int WIDTH = 960;
+        const int HEIGHT = 540;
 
         ImageRGBA img(WIDTH, HEIGHT);
         img.Clear32(0x000000FF);
 
         int xpos = 8;
         int ypos = 8;
+
+        font->DrawText(&img, xpos, ypos,
+                       0x999999FF,
+                       "Rephrased text:");
+        ypos += font->Height();
+
+        // Fixed width.
+        const int font_width = font->Width('m');
+
         for (int y = 0; y < (int)frame.good.size(); y++) {
-          img.BlendText2x32(xpos, ypos,
-                            0x99FF99FF,
-                            frame.good[y]);
-          ypos += ImageRGBA::TEXT2X_HEIGHT;
+          font->DrawText(&img, xpos, ypos,
+                         0x99FF99FF,
+                         frame.good[y]);
+          ypos += font->Height();
         }
 
         img.BlendRect32(xpos, ypos,
-                        ImageRGBA::TEXT2X_WIDTH * WIDTH,
-                        ImageRGBA::TEXT2X_HEIGHT,
+                        font_width * LINE_WIDTH,
+                        font->Height(),
                         0x00000077FF);
 
-        img.BlendText2x32(xpos, ypos,
-                          0xFFFFFFCC,
-                          frame.current.c_str());
+        font->DrawText(&img, xpos, ypos,
+                       0xFFFFFFCC,
+                       frame.current.c_str());
+        ypos += font->Height();
 
-        ypos = WIDTH / 2;
+        const int bottom_pos = HEIGHT / 2 - font->Height();
+
+        for (const auto &[failed, times] : frame.failures) {
+          if (ypos + font->Height() >= bottom_pos)
+            break;
+          font->DrawText(&img, xpos, ypos,
+                         0xCC3333FF,
+                         failed);
+          if (times > 1) {
+            int xx = xpos + failed.size() * font_width;
+            font->DrawText(&img, xx, ypos, 0x77770099, " × ");
+            xx += 3 * font_width;
+            font->DrawText(&img, xx, ypos, 0x997700FF,
+                           StringPrintf("%d", times).c_str());
+          }
+
+          ypos += font->Height();
+        }
+
+        ypos = HEIGHT / 2 - font->Height();
+
+        font->DrawText(
+            &img, xpos, ypos,
+            ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT,
+                                        frame.temp - 1.0),
+            // FIRE
+            StringPrintf("🔥 %.3f", frame.temp).c_str());
+        ypos += font->Height();
+
         for (const auto &[s, p] : frame.nexts) {
           uint32_t color =
             ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, p);
           color |= 0xFF;
-          img.BlendText2x32(xpos, ypos,
+          font->DrawText(&img, xpos, ypos,
                             color,
                             StringPrintf("%.1f%%", p * 100.0));
-          img.BlendText2x32(xpos + 7 * ImageRGBA::TEXT2X_WIDTH,
+          font->DrawText(&img, xpos + 7 * font_width,
                             ypos,
                             color,
                             s);
-          ypos += ImageRGBA::TEXT2X_HEIGHT;
+          ypos += font->Height();
         }
 
-        img.Save(StringPrintf("monospace/frame%d.png", frame.frame_num));
+        img.ScaleBy(2).Save(
+            StringPrintf("monospace/frame%d.png", frame.frame_num));
       });
     }
     };
@@ -285,11 +370,7 @@ static void RephraseMono(
     WordStream word_stream(llm);
 
     // Sample words for this line.
-    while (line.size() < WIDTH) {
-      // TODO: Increase temperature when the prefix has been seen
-      // before (proportional to its length); decrease it when it
-      // is new. In the former case, it's easy for us to get stuck
-      // trying the same phrasing over and over.)
+    while (line.size() < LINE_WIDTH) {
       std::vector<std::pair<std::string, float>> next;
       string word =
         word_stream.Next(current_temp,
@@ -310,7 +391,7 @@ static void RephraseMono(
 
     len_histo->Observe(line.size());
 
-    if (line.size() == WIDTH) {
+    if (line.size() == LINE_WIDTH) {
       // Good!
       lines.push_back(line);
 
@@ -367,15 +448,14 @@ int main(int argc, char ** argv) {
 
   // Best.
   // ContextParams cparams = Models::LLAMA_70B_F16;
-  // ContextParams cparams = Models::LLAMA_70B_Q8;
+  ContextParams cparams = Models::LLAMA_70B_Q8;
   // Fast.
-  ContextParams cparams = Models::LLAMA_7B_F16;
+  // ContextParams cparams = Models::LLAMA_7B_F16;
 
 
   SamplerParams sparams;
-  sparams.type = SampleType::MIN_P;
-  sparams.min_p = 0.05;
-  sparams.regex = ".*";
+  // We have our own sampling, so this does nothing.
+  sparams.type = SampleType::GREEDY;
 
   LLM llm(cparams, sparams);
   printf(AGREEN("Loaded model") ".\n");

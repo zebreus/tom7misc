@@ -138,16 +138,23 @@ in
            width = NONE } ::
    nil);
 
-  (* XXX need a better transition here *)
+  (* XXX need a better transition here.
+     since it's a timeline, we could just get up to 2023?
+     *)
 
+
+  combo-slide slide
+  (Bullets ([Wow OMG I'm sick of hearing about it] ::
+            [Torment Nexus] ::
+            [It does kinda work though] :: nil) ::
+   Image { img = image-load "torment-nexus.png",
+           x = pixel (1920.0 -. 1080.0),
+           y = pixel 0.0,
+           width = NONE } ::
+   Title [Nightmare on LLM Street] ::
+   nil);
 
   (* Clarissa explains it all *)
-  (* XXX add illustration. can put "torment nexus 9000" *)
-  bullet-slide slide [Nightmare on LLM Street]
-  ([Wow OMG I'm sick of hearing about it] ::
-   [Torment Nexus] ::
-   [It does kinda work though] :: nil);
-
   (* I'm Tom 7. I specialize in cursed computer software.
      I don't do it for the likes. I do it because I'm
      riddled with anxiety and I find it therapeutic to
@@ -159,6 +166,7 @@ in
     val MORPHISM-X = (SLIDE-WIDTH -. (int-to-float width)) *. 0.5
     val MORPHISM-Y = inch 2.75
   in
+    (* There is also "space" in typography::metroid *)
     combo-slide (slide with TITLE-FONT-SIZE = point 90.0
                  with TOP-MARGIN = inch 2.0
                  with CONTENT-START-Y = inch 2.75)
@@ -217,13 +225,29 @@ game within 1 hour and 20 minutes?
 (c) 1996 rs1n
 https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
 
-  (* XXX weak slide. Illustrate? *)
-  bullet-slide (slide
-                with TITLE-FONT-SIZE = point 88.5)
-  [Automating speedrunner chores]
-  ([The first level of Super Metroid Speed Guide and FAQ is easy with
-    lexical coinduction and time travel] ::
-   nil);
+  let
+    val mother = image-load "motherbrain.png"
+    val { width = mother-width, height = _ } = image-size mother
+    val YPOS = inch 4.0
+
+    (* right aligned *)
+    val motherbrain-x = pixel (1920.0 -. int-to-float mother-width)
+    val GAP = inch 0.25
+  in
+    combo-slide (slide with TITLE-FONT-SIZE = point 88.5)
+    (TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = YPOS,
+               width = motherbrain-x -. GAP -. DEFAULT-LEFT-MARGIN,
+               text =
+               [The first level of Super Metroid Speed Guide and FAQ is
+                easy with lexical coinduction and time travel] } ::
+     Image { img = mother,
+             x = motherbrain-x,
+             y = pixel 0.0,
+             width = NONE } ::
+     Title [Automating speedrunner chores] ::
+     nil)
+  end;
 
   quote-slide slide [¿Cómo se LLama?]
   [Exercise in rephrasing text. The following paragraph
@@ -234,42 +258,25 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
 
    Original paragraph:];
 
-  (* XXX update this text to match demo *)
   monospace-slide (slide
                    with MONOSPACE-FONT-SIZE = 50.0)
   [Original paragraph]
-  [I then sample text a word at a time to
-continue this prompt. If a line ends exactly on
-the number of characters that I want (and the
-next character is a space or other character that
-is appropriate to end a line) then I accept the
-stream so far and continue. If I exceed the line
-length, I back up to the state at the beginning
-of the line and try again with new random
-samples. I just keep doing that until the
-paragraph is complete, and we have beautifully
-justified monospace text that resembles the
-original. Here is an example of this paragraph
-rendered in monospace:];
+  (* This is the text from demo.txt *)
+  [Here's a demo of it generating monospaced text. I'm just
+sampling text a line at a time, and if the line happens
+to be exactly the right length, then I keep that line
+and continue. If not, then I reset to the beginning of
+the line and roll the dice again.];
+
+  (* XXX show schematic of prompt, paragraph, output *)
+
+  for 0 45 (fn i => just-image ("monospace-slides/frame" ^
+                                int-to-string i ^ ".png"));
 
   (* XXX better video! *)
-  just-video slide "test.webm";
+  just-video slide "monospace30.mp4";
 
-  (* XXX update this text to match demo *)
-  monospace-slide (slide
-                   with MONOSPACE-FONT-SIZE = 50.0)
-  [Rephrased paragraph]
-[I sample text a word at a time to continue
-this prompt. If a line ends exactly on the
-number of characters I want, I accept that
-text so far, and continue. If I exceed the
-line length, I back up to the beginning of
-the line and try again with new samples. I
-keep repeating this until I get text I can
-render in monospaced font, and that is how
-we can get beautifully justified monospace
-text. Here is an example of this paragraph
-rendered in monospace:];
+  just-image "monospace-finished.png";
 
   quote-slide (slide with BACKGROUND = "metroidbg.png"
                with BODY-FONT-COLOR = 0xFFFF77FF) []
@@ -285,10 +292,12 @@ rendered in monospace:];
   bullet-slide slide [Knuth Any% Speedrun]
   ([Make a new programmable document preparation system] ::
    [Full-featured typed programming language] ::
-   [Kerning, hyphenation, and all that shit] ::
+   [Kerning, hyphenation, and all that crap] ::
    [New fonts, and software for making fonts] ::
    [AI-enhanced text layout algorithm] ::
    [Use it to write a paper about it] :: nil);
+
+  (* XXX screenshot of paper *)
 
   diagram-slide (slide
                  with BACKGROUND = "emacs-grey.png"
@@ -310,19 +319,18 @@ rendered in monospace:];
   (image-load "algorithm-dark.png");
 
   let
-    val YPOS = inch 2.0
+    val YPOS = inch 0.9
   in
     combo-slide slide
-    ((* Title [Corporate Preso] :: *)
-     TextBox { x = DEFAULT-LEFT-MARGIN,
+    (TextBox { x = DEFAULT-LEFT-MARGIN,
                y = YPOS,
                width = inch 9.0,
                text = [Here is an example of applying the boxes
                        and glue algorithm to this very text. Most
                        of the break points lead to extremely long
-                         or short lines, so only a small region
-                         is of any interest. But those details
-                         matter.] } ::
+                       or short lines, so only a small region
+                       is of any interest. But those details
+                       matter.] } ::
      Image { img = image-load "boxes-and-glue-matrix.png",
              x = pixel 900.0,
              y = YPOS -. 36.0,
@@ -337,6 +345,7 @@ rendered in monospace:];
   [Boxes and LLMers Glue]
   (image-load "algorithm2-dark.png");
 
+  (* Maybe I want this to loop? *)
   just-video slide "comparison.mp4";
 
   (* Can drop this *)
@@ -349,6 +358,8 @@ rendered in monospace:];
    nil);
 
   just-image "achievement-screenshot.png";
+
+  (* TODO: Future work: Acting on world, 1,000,000 *)
 
   text-slide slide [Conclusion]
   (justify-all

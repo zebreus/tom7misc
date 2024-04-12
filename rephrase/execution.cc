@@ -1286,30 +1286,12 @@ void Execution::Step(State *state) {
 
 }
 
-
-/*
-    struct StackFrame {
-    // Pointer to the code block in the program.
-    const std::vector<Inst> *insts = nullptr;
-    // Instruction pointer.
-    int ip = 0;
-    // Everything heap-allocated.
-    std::unordered_map<std::string, Value *> locals;
-  };
-
-  struct Heap {
-    // Owned by the heap.
-    std::vector<Value *> used;
-  };
-
-  struct State {
-    Heap heap;
-    std::vector<StackFrame> stack;
-    std::unordered_map<std::string, Value *> globals;
-  };
-*/
-
 void Execution::GC(State *state) {
+  // PERF: It's kinda slow, probably because deleting is slow. We
+  // should consider the standard tricks:
+  //    - major/minor heaps
+  //    - placement new?
+  //    - copying GC to compact heap
   static constexpr bool VERBOSE_GC = true;
   if (VERBOSE_GC) {
     fprintf(stderr, "GC:\n");
