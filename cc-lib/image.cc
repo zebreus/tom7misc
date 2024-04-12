@@ -570,6 +570,27 @@ void ImageRGBA::BlendLine32(int x1, int y1, int x2, int y2,
   }
 }
 
+void ImageRGBA::BlendThickLine32(float x1, float y1, float x2, float y2,
+                                 float radius,
+                                 uint32 color) {
+  const auto [r, g, b, a] = Unpack32(color);
+
+  // Get bounding rect.
+  int xmin = std::floorf(std::min(x1, x2) - radius);
+  int xmax = std::ceilf(std::max(x1, x2) + radius);
+  int ymin = std::floorf(std::min(y1, y2) - radius);
+  int ymax = std::ceilf(std::max(y1, y2) + radius);
+
+  for (int y = ymin; y < ymax; y++) {
+    for (int x = xmin; x < xmax; x++) {
+      float d = PointLineDistance(x1, y1, x2, y2, x, y);
+      if (d <= radius) {
+        BlendPixel(x, y, r, g, b, a);
+      }
+    }
+  }
+}
+
 void ImageRGBA::BlendLine(int x1, int y1, int x2, int y2,
                           uint8 r, uint8 g, uint8 b, uint8 a) {
   for (const auto [x, y] : Line<int>{x1, y1, x2, y2}) {
