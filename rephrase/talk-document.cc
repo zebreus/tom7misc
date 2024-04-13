@@ -12,18 +12,20 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "util.h"
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "image.h"
+#include "bignum/big.h"
 #include "fonts/ttf.h"
-#include "stb_truetype.h"
 #include "image-resize.h"
+#include "image.h"
+#include "stb_truetype.h"
 #include "threadutil.h"
 #include "timer.h"
+#include "util.h"
 
 #include "document.h"
 
@@ -105,6 +107,20 @@ void TalkDocument::SetDocumentInfoStrings(
   // but we have a document title at least?
 }
 
+void TalkDocument::SetPageInfo(
+    int page_idx, int frame_idx,
+    const std::unordered_map<std::string, AttrVal> &attrs) {
+  // Base document ignores it.
+  const auto it = attrs.find("duration");
+  if (it != attrs.end()) {
+    const BigInt *bi = std::get_if<BigInt>(&it->second.v);
+    CHECK(bi != nullptr && bi->ToInt().has_value()) << "Expected "
+      "a reasonable-size integer for frame duration";
+    durations[page_idx][frame_idx] = bi->ToInt().value();
+  }
+}
+
+
 TalkPage::TalkPage(int pixel_width, int pixel_height,
                    TalkDocument *talk) :
   Page(Document::PixelToPoint(pixel_width),
@@ -115,6 +131,10 @@ TalkPage::TalkPage(int pixel_width, int pixel_height,
 }
 
 TalkPage::~TalkPage() {
+}
+
+void TalkPage::SetDuration(int dur) {
+  duration = dur;
 }
 
 void TalkPage::DrawText(const Font *font_in,
@@ -218,6 +238,7 @@ void TalkDocument::GenerateOutput(
   std::vector<std::vector<std::unique_ptr<TalkPage>>> slides;
   for (const auto &[page_idx, anim_frames] : pages) {
     std::vector<std::unique_ptr<TalkPage>> frames;
+    auto pit = durations.find(page_idx);
     for (const auto &[frame_idx, doc] : anim_frames) {
 
       frames.push_back(std::make_unique<TalkPage>(
@@ -234,6 +255,14 @@ void TalkDocument::GenerateOutput(
       identity.dy = 0.0;
 
       PlaceStickersRec(context, identity, doc, page);
+
+      if (pit != durations.end()) {
+        const auto &fdur = pit->second;
+        auto fit = fdur.find(frame_idx);
+        if (fit != fdur.end()) {
+          page->SetDuration(fit->second);
+        }
+      }
     }
     slides.push_back(std::move(frames));
   }
@@ -263,8 +292,16 @@ void TalkDocument::GenerateOutput(
                       v.src.c_str());
       }
 
+
       for (int f = 0; f < (int)page.size(); f++) {
         const auto &frame = page[f];
+
+        if (frame->duration != 0) {
+          StringAppendF(&talk,
+                        "  dur %d\n",
+                        frame->duration);
+        }
+
         const std::string framefile =
           page.size() == 1 ?
           StringPrintf("slide%d.png", i) :

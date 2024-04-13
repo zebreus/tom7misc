@@ -206,6 +206,29 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
   return NonceValue();
 }
 
+std::tuple<int64_t, int64_t> Execution::GetPageAndFrame(const char *what,
+                                                        const map_type *am) {
+  const BigInt *ai = GetObjIntField(what, "page", *am);
+  CHECK(ai != nullptr) << "out-layout requires a page (int field)";
+  std::optional<int64_t> io = ai->ToInt();
+  CHECK(io.has_value()) << "Page index is way too big! " << ai->ToString();
+  const int64_t page_idx = io.value();
+  CHECK(page_idx >= 0 && page_idx < 1'000'000'000LL) << "Page index "
+    "is nonsensical!";
+
+  int64_t frame_idx = 0;
+  const BigInt *fi = GetObjIntField(what, "frame", *am);
+  if (fi != nullptr) {
+    std::optional<int64_t> io = fi->ToInt();
+    CHECK(io.has_value()) << "Frame index is way too big! " << fi->ToString();
+    frame_idx = io.value();
+    CHECK(frame_idx >= 0 && page_idx < 1'000'000'000LL) << "Frame index "
+      "is nonsensical!";
+  }
+
+  return std::make_pair(page_idx, frame_idx);
+};
+
 Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
                           State *state) {
   auto TwoInts = [a, b](const char *what) ->
@@ -232,6 +255,15 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     const std::string *bs = std::get_if<std::string>(&b->v);
     CHECK(as != nullptr) << "Expected string argument (lhs) to " << what;
     CHECK(bs != nullptr) << "Expected string argument (rhs) to " << what;
+    return std::tie(*as, *bs);
+  };
+
+  auto TwoObjs = [a, b](const char *what) ->
+    std::pair<const map_type &, const map_type &> {
+    const map_type *as = std::get_if<map_type>(&a->v);
+    const map_type *bs = std::get_if<map_type>(&b->v);
+    CHECK(as != nullptr) << "Expected obj argument (lhs) to " << what;
+    CHECK(bs != nullptr) << "Expected obj argument (rhs) to " << what;
     return std::tie(*as, *bs);
   };
 
@@ -395,6 +427,21 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     }
   }
 
+  case Primop::SET_PAGE_INFO: {
+    const auto &[as, bs] = TwoObjs("set-page-info");
+    const auto &[page_idx, frame_idx] =
+      GetPageAndFrame("set-page-info", &as);
+
+    std::unordered_map<std::string, AttrVal> attrs;
+    for (const auto &[k, v] : bs) {
+      const auto &[kk, vv] = ValueToAttrVal(k, *v);
+      attrs[kk] = vv;
+    }
+
+    DocumentHook()->SetPageInfo(page_idx, frame_idx, attrs);
+    return Unit(state);
+  }
+
   case Primop::ACHIEVEMENT: {
     const auto &[aa, bb] = TwoStrings("achievement");
     Achievements::Get().Achieve(aa, bb);
@@ -402,12 +449,9 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   }
 
   case Primop::OBJ_MERGE: {
-    const map_type *as = std::get_if<map_type>(&a->v);
-    const map_type *bs = std::get_if<map_type>(&b->v);
-    CHECK(as != nullptr) << "Expected obj argument (lhs) to obj-merge";
-    CHECK(bs != nullptr) << "Expected obj argument (rhs) to obj-merge";
-    map_type merged = *as;
-    for (const auto &[k, v] : *bs) merged[k] = v;
+    const auto &[as, bs] = TwoObjs("obj-merge");
+    map_type merged = as;
+    for (const auto &[k, v] : bs) merged[k] = v;
     return NewValue(&state->heap, std::move(merged));
   }
 
@@ -501,23 +545,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     const map_type *am = std::get_if<map_type>(&a->v);
     CHECK(am != nullptr) << "out-layout expects an object as its first "
       "argument.";
-    const BigInt *ai = GetObjIntField("out-layout", "page", *am);
-    CHECK(ai != nullptr) << "out-layout requires a page (int field)";
-    std::optional<int64_t> io = ai->ToInt();
-    CHECK(io.has_value()) << "Page index is way too big! " << ai->ToString();
-    const int64_t page_idx = io.value();
-    CHECK(page_idx >= 0 && page_idx < 1'000'000'000LL) << "Page index "
-      "is nonsensical!";
-
-    int64_t frame_idx = 0;
-    const BigInt *fi = GetObjIntField("out-layout", "frame", *am);
-    if (fi != nullptr) {
-      std::optional<int64_t> io = fi->ToInt();
-      CHECK(io.has_value()) << "Frame index is way too big! " << fi->ToString();
-      frame_idx = io.value();
-      CHECK(frame_idx >= 0 && page_idx < 1'000'000'000LL) << "Frame index "
-        "is nonsensical!";
-    }
+    const auto &[page_idx, frame_idx] =
+      GetPageAndFrame("out-layout", am);
 
     OutputLayoutHook((int)page_idx, (int)frame_idx, b);
     return Unit(state);

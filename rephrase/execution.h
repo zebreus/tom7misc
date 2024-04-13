@@ -1,7 +1,9 @@
 #ifndef _REPHRASE_EXECUTION_H
 #define _REPHRASE_EXECUTION_H
 
+#include <cstdint>
 #include <memory>
+#include <tuple>
 #include <utility>
 #include <unordered_map>
 #include <vector>
@@ -119,6 +121,9 @@ struct Execution {
   Value *Node(Value *attrs, Value *children, State *state);
   Value *Unit(State *state);
   Value *Obj(map_type m, State *state);
+
+  std::tuple<int64_t, int64_t> GetPageAndFrame(const char *what,
+                                               const map_type *am);
 
   const Program &program;
   const std::unique_ptr<Document> degenerate_document;

@@ -95,6 +95,7 @@ Initial::Initial(AstPool *pool) {
 
     {"emit-badness", Primop::EMIT_BADNESS},
     {"set-doc-info", Primop::SET_DOC_INFO},
+    {"internal-set-page-info", Primop::SET_PAGE_INFO},
 
     {"rephrase-once", Primop::REPHRASE_ONCE},
     {"internal-rephrasings", Primop::REPHRASINGS},

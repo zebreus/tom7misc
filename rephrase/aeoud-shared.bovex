@@ -645,13 +645,13 @@ fun three-d { font-name, font-size, width, height, text } =
   (sticker {(Sticker)
              x = 6.0,
              y = 1.0,
-            font-color = rgba(0, 180, 255, 255),
+            font-color = rgba(0, 100, 255, 255),
             font-name = font-name,
             font-size = font-size } (layout text) ^^
    sticker {(Sticker)
             x = 0.0,
             y = 0.0,
-            font-color = rgba(255, 0, 0, 200),
+            font-color = rgba(255, 0, 0, 176),
             font-name = font-name,
             font-size = font-size } (layout text))
 

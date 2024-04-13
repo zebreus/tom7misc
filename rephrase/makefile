@@ -1,5 +1,5 @@
 
-default: bovex.exe monospace.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe
+default: bovex.exe monospace.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe upcontrast.exe
 
 ENABLE_LLM=true
 
@@ -363,6 +363,9 @@ paper.pdf : bovex.exe paper.bovex stdlib.bovex cite.bovex layout.bovex paper.bib
 	./bovex.exe -v paper.bovex -o paper.pdf
 
 makecodeimage.exe : makecodeimage.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+upcontrast.exe : upcontrast.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 sigbovik/sigbovik.talk : bovex.exe sigbovik.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png

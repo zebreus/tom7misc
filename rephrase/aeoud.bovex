@@ -122,27 +122,42 @@ in
    Title [The Hero: Donald Knuth] ::
    Bullets ([[em[Wrote]] the article on [it[Lorem Ipsum]]] ::
             [Will pay you if you find an error] ::
-            [Took 35 years to write a book] :: nil) ::
+            [Took 49 years to write a book] :: nil) ::
    nil);
 
-  combo-slide slide
+  (* Now if you paid for an event called An Evening of Unnecessary
+     Detail I think there's a good chance you admire Knuth, as I do.
+     But a brief recap of the TeX story...
+
+     This is a guy who allows himself to
+     *)
+  combo-slide (slide
+               with BULLET-FONT-SIZE = 60.0
+               with BULLET-LINE-GAP = 40.0)
   (Title [The Art of Computer Procrastination] ::
-   Bullets ([1975: 3000 pages of hand-written text] ::
-            [1977: Publisher proofs don't look that good ] ::
-            [1982: Returns with TeX ] ::
-            [XXX finish the slide ] ::
-            [Took 35 years to write a book] :: nil) ::
    Image { img = image-load "knuth-portrait-trace.png",
            x = pixel 1100.0,
            y = pixel 80.0,
            width = NONE } ::
+   Bullets ([1975: 3000 pages of hand-written text] ::
+            [1977: Publisher proofs aren't beautiful enough] ::
+            [1982: Returns with TeX] ::
+            (size 48.0
+             [... New text layout algorithms. New abstract
+              computer. New hyphenation algorithms. New data structures
+              for storing hyphenation tables. New fonts. New ways of
+              describing fonts. New ways of documenting source code.
+              New computer science to write about. etc. etc. ...]) ::
+            [2023: Releases Volume 4c of ?? volumes] :: nil) ::
    nil);
 
-  (* XXX need a better transition here.
-     since it's a timeline, we could just get up to 2023?
+  (* And a large fraction of scientific literature, especially in
+     computer science and math, is made using Knuth's TeX.
+
+     All that text was consumed by this guy,
      *)
 
-
+  (* XXX more like "Lorem Epsom" than "Donald Knuth" *)
   combo-slide slide
   (Bullets ([Wow OMG I'm sick of hearing about it] ::
             [Torment Nexus] ::
@@ -154,11 +169,25 @@ in
    Title [Nightmare on LLM Street] ::
    nil);
 
+  (* The LLM is way more like Lorem Ipsum than Knuth.
+     But it's a little bit Knuth. And that worries me a lot... *)
+
+  combo-slide slide
+  (Image { img = image-load "vu-meter-slide.png",
+           x = pixel 0.0,
+           y = pixel 0.0,
+           width = NONE } :: nil);
+
   (* Clarissa explains it all *)
   (* I'm Tom 7. I specialize in cursed computer software.
      I don't do it for the likes. I do it because I'm
      riddled with anxiety and I find it therapeutic to
-     digest vexing things by systematizing them. *)
+     digest vexing things by systematizing them.
+
+     So I started thinking about projects. If I have to
+     live with AI, and it's going to get the details wrong
+     all the time... can I at least have something that I
+     want? Like beautiful typography? *)
 
   let
     val morphism = image-load "morphism.png"
@@ -249,6 +278,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
      nil)
   end;
 
+  (*
   quote-slide slide [¿Cómo se LLama?]
   [Exercise in rephrasing text. The following paragraph
    needs to be rephrased so that it retains its precise meaning, but
@@ -257,9 +287,80 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
    good to use synonyms and change the word order and phrasing.
 
    Original paragraph:];
+*)
+
+  let
+    val slide = slide
+    open slide-props slide
+    (* val Y1 = inch 1.5 *)
+    val Y1 = CONTENT-START-Y
+    val Y2 = Y1 +. BODY-FONT-SIZE *. 1.25 (* 5.25 *)
+    val Y3 = Y2 +. BODY-FONT-SIZE *. 1.25
+    val Y4 = Y3 +. BODY-FONT-SIZE *. 1.25
+    val Y5 = Y4 +. BODY-FONT-SIZE *. 1.25
+
+    fun frame on =
+    combo-slide slide
+    (
+     Image { img = image-load "torment-nexus.png",
+             x = pixel (1920.0 -. 1080.0),
+             y = pixel 0.0,
+             width = NONE } ::
+     Title [¿Cómo se LLama?] ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = Y1,
+               width = CONTENT-WIDTH,
+               text =
+               color 0xFFFFFFFF [(instructions)]
+               (*
+               (size 64.0
+                (color 0xEEEEBBFF
+                 [Exercise in rephrasing text. The following paragraph
+                  needs to be rephrased so that it retains its precise
+                  meaning, but with minor variations in the specific
+                  choice of words, punctuation, and so on. No new facts
+                  should be introduced or removed, but it is good to use
+                  synonyms and change the word order and phrasing.])) *)
+               } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = Y2,
+               width = CONTENT-WIDTH,
+               text = color 0xFFFFFFFF [Original paragraph:] } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = Y3,
+               width = CONTENT-WIDTH,
+               text = color 0xAAAACCFF [(input paragraph)] } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = Y4,
+               width = CONTENT-WIDTH,
+               text = color 0xFFFFFFFF [Rephrased paragraph:] } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = Y5,
+               width = CONTENT-WIDTH,
+               text = fixedersys
+               (color 0xFFFFFF [> ] ^^ (if on
+                                        then color 0xAACCAAFF [_]
+                                        else color 0xAACCAAFF [ ]))} ::
+     nil)
+
+    val start-page = !current-page
+  in
+    (* XXX set duration *)
+    current-page := start-page;
+    current-frame := 0;
+    set-frame-duration(start-page, 0, 30);
+    frame true;
+
+    current-page := start-page;
+    current-frame := 1;
+    set-frame-duration(start-page, 1, 30);
+    frame false;
+
+    current-frame := 0;
+  end;
 
   monospace-slide (slide
-                   with MONOSPACE-FONT-SIZE = 50.0)
+                   with MONOSPACE-FONT-SIZE = 58.0)
   [Original paragraph]
   (* This is the text from demo.txt *)
   [Here's a demo of it generating monospaced text. I'm just
@@ -268,13 +369,11 @@ to be exactly the right length, then I keep that line
 and continue. If not, then I reset to the beginning of
 the line and roll the dice again.];
 
-  (* XXX show schematic of prompt, paragraph, output *)
-
   for 0 45 (fn i => just-image ("monospace-slides/frame" ^
                                 int-to-string i ^ ".png"));
 
-  (* XXX better video! *)
-  just-video slide "monospace30.mp4";
+  just-video (slide with BACKGROUND = "monospace-finished.png")
+  "monospace30.mp4";
 
   just-image "monospace-finished.png";
 
@@ -289,16 +388,30 @@ the line and roll the dice again.];
    [It only took an afternoon] ::
    [You have to look at [tt[monospace text]]] :: nil);
 
-  bullet-slide slide [Knuth Any% Speedrun]
-  ([Make a new programmable document preparation system] ::
-   [Full-featured typed programming language] ::
-   [Kerning, hyphenation, and all that crap] ::
-   [New fonts, and software for making fonts] ::
-   [AI-enhanced text layout algorithm] ::
-   [Use it to write a paper about it] :: nil);
+  let
+    val tom = image-load "tom7-portrait.png"
+    val { width, height = _ } = image-size tom
+  in
+    combo-slide (slide with BULLET-FONT-SIZE = 52.0)
+    (Image { x = SLIDE-WIDTH -. int-to-float width, y = 0.0, width = NONE,
+             img = tom } ::
+     Title [The Fool: Tom 7] ::
+     (* XXX this can be textbox with bullets / timeline ? *)
+     Bullets ([Knuth Any% Speedrun:] ::
+              [BoVeX, a new document preparation system] ::
+              [Full-featured typed programming language] ::
+              [Kerning, hyphenation, and all that crap] ::
+              [New fonts, and software for making fonts] ::
+              [AI-enhanced text layout algorithm] ::
+              [Use it to write a paper about it] :: nil) ::
+     nil)
+  end;
 
-  (* XXX screenshot of paper *)
+  just-video slide "scrollbadness0.mp4";
 
+  (* This talk is not about the paper. But I did also use
+     it to make these slides. For example, here's the source
+     code for the slide you're looking at. *)
   diagram-slide (slide
                  with BACKGROUND = "emacs-grey.png"
                  with TITLE-FONT-SIZE = 80.0
@@ -308,6 +421,7 @@ the line and roll the dice again.];
   [Here is what [it[this]] slide looks like]
   (image-load "self.png");
 
+  (* 77% of the code on screen *)
   just-image "code.png";
   just-image "code-self.png";
 
@@ -361,15 +475,42 @@ the line and roll the dice again.];
 
   (* TODO: Future work: Acting on world, 1,000,000 *)
 
-  text-slide slide [Conclusion]
-  (justify-all
-   [In this talk—and [it[with]] this talk—I presented BoVeX, a new computer
-    typesetting system. It follows the tradition TeX, but with modern amenities
-    such as requiring over 128 gigabytes of RAM.
-    Though some may consider the addition of AI features to TeX to be an
-    unnecessary perversion,
-    I find this[box {(Box) glue-break-penalty = -1000000.0,
-                     width = 0.0 } []]use of LLMs to be
-    [it[fully justified]].]);
+  (* XXX progressive reveal *)
+(*
+  let
+    fun concslide pun =
+      text-slide slide [Conclusion]
+      (justify-all
+       [In this talk—and [it[with]] this talk—I presented BoVeX, a
+        new computer typesetting system. It follows the tradition TeX, but
+        with modern amenities such as requiring over 128 gigabytes of RAM.]
+       ^^
+       (if pun
+        then
+          [Though some may consider the addition of AI features to TeX to be
+           an unnecessary perversion,
+           I find this[box {(Box) glue-break-penalty = -1000000.0,
+                            width = 0.0 } []]use of LLMs to be
+           [it[fully justified]].]
+        else []))
+  in
+    concslide false;
+    concslide true;
+  end;
+  *)
+      text-slide slide [Conclusion]
+      (justify-all
+       [In this talk—and [it[with]] this talk—I presented BoVeX, a
+        new computer typesetting system. It follows the tradition TeX, but
+        with modern amenities such as requiring over 128 gigabytes of RAM.
+        Though some may consider the addition of AI features to TeX to be
+         an unnecessary perversion,
+         I find this[box {(Box) glue-break-penalty = -1000000.0,
+                          width = 0.0 } []]use of LLMs to be
+         [it[fully justified]].]);
+
+
+  title-slide slide (size (point 256.0) (color 0xFF0000FF [tom7.org]))
+  [ ] [ ]
 
 end

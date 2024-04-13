@@ -743,6 +743,12 @@ void Document::SetDocumentInfo(
   SetDocumentInfoStrings(m);
 }
 
+void Document::SetPageInfo(
+    int page_idx, int frame_idx,
+    const std::unordered_map<std::string, AttrVal> &attrs) {
+  // Base document ignores it.
+}
+
 
 std::string Document::LoadImageFile(const std::string &filename) {
   std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(filename));
@@ -1081,7 +1087,7 @@ Document::PackBoxes(Algorithm algo,
 
     std::unique_ptr<BoxesAndGlue::Table> table;
     lines = BoxesAndGlue::PackBoxes(line_width, boxes, just, &table);
-    static constexpr bool SAVE_TABLE = true;
+    static constexpr bool SAVE_TABLE = false;
     static int image_num = 0;
     if (SAVE_TABLE && image_num == 0) {
       int wordlen = 0;

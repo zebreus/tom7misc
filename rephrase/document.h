@@ -139,6 +139,8 @@ struct Page {
 
   // TODO: Line drawing commands, etc.
 
+  void SetInfo(const std::unordered_map<std::string, AttrVal> &attrs);
+
  protected:
   double page_width = 0.0;
   double page_height = 0.0;
@@ -189,6 +191,10 @@ struct Document {
   // TODO: Perhaps this is what should be overridden, but we
   // only use string fields in PDF.
   void SetDocumentInfo(
+      const std::unordered_map<std::string, AttrVal> &attrs);
+
+  virtual void SetPageInfo(
+      int page_idx, int frame_idx,
       const std::unordered_map<std::string, AttrVal> &attrs);
 
   // Loads an image in a format that's supported by ImageRGBA

@@ -63,6 +63,8 @@ struct TalkPage : public Page {
                  double width, double height,
                  const std::string &src) override;
 
+  void SetDuration(int dur);
+
  private:
   friend struct TalkDocument;
   TalkPage(const TalkPage &other) = delete;
@@ -70,6 +72,7 @@ struct TalkPage : public Page {
 
   const TalkDocument *talk = nullptr;
 
+  int duration = 0;
   std::unique_ptr<ImageRGBA> image;
 
   struct Video {
@@ -94,12 +97,18 @@ struct TalkDocument : public Document {
       std::string_view dirname,
       const std::map<int, std::map<int, DocTree>> &pages) override;
 
+  void SetPageInfo(
+      int page_idx, int frame_idx,
+      const std::unordered_map<std::string, AttrVal> &attrs) override;
+
  private:
   void InitBuiltInFonts();
   int next_font_id = 0;
   int pixel_width = 0, pixel_height = 0;
   // TODO: talk metadata
   // std::map<int, std::map<int, std::unique_ptr<TalkPage>>> pages;
+  // XXX make this more general
+  std::map<int, std::map<int, int>> durations;
 };
 
 #endif
