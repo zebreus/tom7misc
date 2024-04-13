@@ -150,8 +150,10 @@ CODEPOINTS = {
   // EMOJI: HEAVY DOLLAR SIGN
   0x1F4B2,
 
-  -1, -1,
+  // EMOJI: FIRE
+  0x1F525,
 
+  -1,
 
   // ASCII, in order
   0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
@@ -535,3 +537,60 @@ std::unordered_map<int, int> FontImage::GetUnicode(bool verbose) {
   return ret;
 }
 
+BitmapFont::BitmapFont(FontImage font_in) :
+  font(std::move(font_in)),
+  codepoints(font.GetUnicode()) {
+
+}
+
+int BitmapFont::Height() const {
+  return font.config.charbox_height + font.config.extra_linespacing;
+}
+
+int BitmapFont::Width(int cp) const {
+  const auto it = codepoints.find(cp);
+  if (it == codepoints.end())
+    return 0;
+  int glyph_idx = it->second;
+  const auto git = font.glyphs.find(glyph_idx);
+  CHECK(git != font.glyphs.end()) << "Missing glyph index?";
+  return git->second.pic.Width();
+}
+
+void BitmapFont::DrawText(ImageRGBA *img, int x, int y,
+                           uint32_t color,
+                           const std::string &s) const {
+  std::vector<uint32_t> cps = Util::UTF8Codepoints(s);
+  for (uint32_t cp : cps) {
+    const auto it = codepoints.find(cp);
+    if (it == codepoints.end()) {
+      // Draw missing glyph char?
+    } else {
+      int glyph_idx = it->second;
+      const auto git = font.glyphs.find(glyph_idx);
+      CHECK(git != font.glyphs.end()) << "Missing glyph index?";
+      const FontImage::Glyph &glyph = git->second;
+
+      // Draw it.
+      for (int yy = 0; yy < glyph.pic.Height(); yy++) {
+        for (int xx = 0; xx < glyph.pic.Width(); xx++) {
+          uint8_t a = glyph.pic.GetPixel(xx, yy);
+          if (a) {
+            img->BlendPixel32(x + xx, y + yy, color);
+          }
+        }
+      }
+
+      // Advance horizontally.
+      x += glyph.pic.Width();
+    }
+  }
+}
+
+std::unique_ptr<BitmapFont> BitmapFont::Load(const std::string &configfile) {
+  // XXX interpret png in config relative to config path so that
+  // this can load from other directories.
+  Config cfg = Config::ParseConfig(configfile);
+  FontImage font_image(cfg);
+  return std::make_unique<BitmapFont>(std::move(font_image));
+}

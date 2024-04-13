@@ -3,6 +3,10 @@
 
 #include <string>
 #include <map>
+#include <unordered_map>
+#include <cstdint>
+#include <memory>
+
 #include "image.h"
 
 struct Config {
@@ -68,6 +72,21 @@ struct FontImage {
   Config config;
 };
 
+// For drawing to ImageRGBA.
+struct BitmapFont {
+  static std::unique_ptr<BitmapFont> Load(const std::string &configfile);
+  BitmapFont(FontImage font);
 
+  void DrawText(ImageRGBA *img, int x, int y,
+                uint32_t color,
+                const std::string &s) const;
+
+  int Height() const;
+  int Width(int codepoint = 'm') const;
+
+ private:
+  FontImage font;
+  std::unordered_map<int, int> codepoints;
+};
 
 #endif
