@@ -121,14 +121,6 @@ fun centered-text-sticker { x, y, width } lay =
         end
   end
 
-datatype element =
-  Title of layout
-  | Bullets of layout list
-  | Image of { img : image-handle,
-               x : float,
-               y : float,
-               width : float option }
-
 (* val BULLET-COLOR = 0x000066FF *)
 val BULLET-COLOR = 0xAAFFAAFF
 
@@ -309,6 +301,7 @@ datatype element =
                  y : float,
                  width : float,
                  text : layout }
+  | StickerElt of layout
 
 fun add-textbox props { x : float,
                         y : float,
@@ -418,6 +411,10 @@ fun combo-slide slide (elts : element list) =
         | SOME w => image-sticker { img = img, x = x, y = y, width = w }))
       | add-elt (TextBox { x, y, width, text }) =
       add-textbox props { x = x, y = y, width = width, text = text }
+      | add-elt (StickerElt lay) =
+      output-frame
+      (!current-page, !current-frame,
+       lay)
 
   in
     add-background-image BACKGROUND-IMAGE;
@@ -693,3 +690,76 @@ fun zigzag zig lay =
       end
 
 fun em lay = color 0xCCCCFFFF lay
+
+val FRANKLIN : font-family =
+  font-load-family { name = "franklin",
+                     regular = SOME "franklin-normal-500.ttf",
+                     bold = SOME "franklin-normal-700.ttf",
+                     (* These do exist *)
+                     italic = NONE,
+                     bold-italic = NONE }
+
+datatype wordle-color =
+  WORDLE-EMPTY
+  | WORDLE-GREEN
+  | WORDLE-GREY
+  | WORDLE-YELLOW
+
+fun wordle-cell { x : float, y : float,
+                  size = sz : float,
+                  letter : string option,
+                  color = cc : wordle-color } : layout =
+  let
+    val WORDLE-COLOR-EMPTY = 0xFFFFFFFF
+    val WORDLE-COLOR-GREEN = 0x6aaa64FF
+    val WORDLE-COLOR-GREY = 0x787c7eFF
+    val WORDLE-COLOR-YELLOW = 0xc9b458FF
+
+    val WORDLE-WHITE-BORDER = 0xd3d6daFF
+
+    val bgcolor =
+      case cc of
+        WORDLE-EMPTY => WORDLE-COLOR-EMPTY
+      | WORDLE-GREEN => WORDLE-COLOR-GREEN
+      | WORDLE-GREY => WORDLE-COLOR-GREY
+      | WORDLE-YELLOW => WORDLE-COLOR-YELLOW
+
+    val textfrac = 0.20
+    val text-size = sz *. (1.0 -. textfrac)
+
+    fun center-string (s : layout) =
+      case layoutcase (get-box s) of
+        Node (BOX, attrs as {(Box) width, height}, ch) =>
+          let
+            val margin = (sz -. width) *. 0.5
+          in
+            (node (attrs
+                   with display = "sticker"
+                   with x = x +. margin
+                   (* at baseline *)
+                   with y = y +. text-size *. (1.0 -. (textfrac *, 0.5))
+                   with width = width
+                   with height = height) (layout-concat ch))
+          end
+      | _ => fail "get-box should produce box"
+  in
+    (fill-rectangle { x = x, y = y, width = sz, height = sz,
+                      fill-color = bgcolor }) ^^
+
+    (case cc of
+       WORDLE-EMPTY =>
+         rectangle { x = x, y = y, width = sz, height = sz,
+                     stroke-color = WORDLE-WHITE-BORDER,
+                     line-width = 2.0 }
+     | _ => []) ^^
+
+    (case letter of
+       SOME s =>
+         center-string
+         (size text-size
+          (color 0xFFFFFFFF
+           (b
+            (apply-font FRANKLIN
+             (layout s)))))
+     | NONE => [])
+  end

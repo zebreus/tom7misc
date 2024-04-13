@@ -328,6 +328,14 @@ object Sticker of { x: float, y: float, scale: float,
                     img-height: float,
                     img-width: float,
 
+                    (* Rectangle *)
+                    width: float,
+                    height: float,
+                    (* color *)
+                    fill-color: int,
+                    stroke-color: int,
+                    line-width: float,
+
                     video: string,
                     video-width: float,
                     video-height: float
@@ -338,6 +346,15 @@ fun sticker (attrs : obj) (l : layout) =
 
 fun apply-font font lay =
   span {(Span) font-face = (font-family font)} lay
+
+fun fill-rectangle { x, y, width, height, fill-color } : layout =
+  sticker {(Sticker) x = x, y = y, width = width, height = height,
+           fill-color = fill-color } []
+
+fun rectangle { x, y, width, height, stroke-color, line-width } : layout =
+  sticker {(Sticker) x = x, y = y, width = width, height = height,
+           line-width = line-width,
+           stroke-color = stroke-color } []
 
 fun helvetica layout = apply-font HELVETICA layout
 fun times-roman layout = apply-font TIMES layout

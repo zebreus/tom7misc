@@ -34,15 +34,15 @@
 [[maybe_unused]]
 static constexpr int VERBOSE = 2;
 
-// TODO: Make this configurable.
-static constexpr float TEMPERATURE = 2.0;
-
 using Rephrasable = Rephrasing::Rephrasable;
 
 namespace {
 
 #if ENABLE_LLM
 using Candidates = LLM::Candidates;
+
+// TODO: Make this configurable.
+static constexpr float TEMPERATURE = 2.0;
 
 // Hack!
 static constexpr int TAIL_TOKEN_HEADROOM = 5;

@@ -214,6 +214,8 @@ struct Document {
   void RegisterFont(const FontDescription &desc, const Font *f);
   const Font *GetDescribedFont(const FontDescription &desc);
 
+  uint32_t IntToColor(const char *what, const BigInt &b);
+
   DocTree GetBoxes(const DocTree &doc);
 
   // Pack boxes to lines. Returns the document and the total badness.

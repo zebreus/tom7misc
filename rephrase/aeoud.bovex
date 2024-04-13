@@ -39,8 +39,24 @@ in
 
   just-video slide "bottle.mp4";
 
+  combo-slide slide
+  (StickerElt (wordle-cell { x = inch 1.0, y = inch 1.0,
+                             size = inch 1.0,
+                             letter = SOME "G",
+                             color = WORDLE-GREEN }) ::
+   nil);
+
   (* couple more gags here? *)
   (* Rules of Wordle expert mode are just wrong.
+
+     F  I  G  H  T
+     T  I  M [E] S
+     W  R *O* N  G
+     R [U] L [E] S
+     aeoud
+
+     hello has a unique solution
+     that illustrates the problem, too
 
      Parker Square
      error correction?

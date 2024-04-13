@@ -649,6 +649,7 @@ struct PeepholePass : public il::Pass<> {
       case Primop::OUT_LAYOUT:
       case Primop::EMIT_BADNESS:
       case Primop::SET_DOC_INFO:
+      case Primop::SET_PAGE_INFO:
       case Primop::REF:
       case Primop::REF_GET:
       case Primop::REF_SET:

@@ -807,6 +807,15 @@ const Font *Document::GetDefaultFont() {
   return nullptr;
 }
 
+uint32_t Document::IntToColor(const char *what, const BigInt &b) {
+  auto co = b.ToInt();
+  CHECK(co.has_value() && co.value() >= 0 &&
+        co.value() <= int64_t{0xFFFFFFFF}) << "(" << what <<
+    ") Color is out of range. Must be in [0, 0xFFFFFFFF]: " <<
+    b.ToString();
+  return (uint32_t)co.value();
+}
+
 const Font *Document::GetDescribedFont(const FontDescription &desc) {
   const auto it = font_families.find(desc.font_family);
   if (it == font_families.end()) {
@@ -907,11 +916,7 @@ DocTree Document::GetBoxes(const DocTree &doc) {
             }
 
             if (const BigInt *bc = doc.GetIntAttr("font-color")) {
-              auto co = bc->ToInt();
-              CHECK(co.has_value() && co.value() >= 0 &&
-                    co.value() <= int64_t{0xFFFFFFFF}) << "Color is out "
-                "of range. Must be in [0, 0xFFFFFFFF]: " << bc->ToString();
-              props.font_color = (uint32_t)co.value();
+              props.font_color = IntToColor("font-color", *bc);
             }
 
             if (const double *h = doc.GetDoubleAttr("line-spacing")) {
@@ -1376,6 +1381,29 @@ void Document::PlaceStickersRec(Context context,
                    0xFF0000FF);
   }
 
+  if (const BigInt *fill = doc.GetIntAttr("fill-color")) {
+    uint32_t color = IntToColor("fill-color", *fill);
+    const double *w = doc.GetDoubleAttr("width");
+    const double *h = doc.GetDoubleAttr("height");
+    CHECK(w != nullptr && h != nullptr) << "sticker with fill requires "
+      "width and height.";
+    Transform ct = Translate(transform, *x, *y);
+    page->DrawRect(ct.dx, ct.dy, *w, *h,
+                   0.0, color, 0x00000000);
+  }
+
+  if (const BigInt *fill = doc.GetIntAttr("stroke-color")) {
+    uint32_t color = IntToColor("stroke-color", *fill);
+    const double *w = doc.GetDoubleAttr("width");
+    const double *h = doc.GetDoubleAttr("height");
+    const double *t = doc.GetDoubleAttr("line-width");
+    CHECK(w != nullptr && h != nullptr && t != nullptr) <<
+      "sticker with stroke requires width, height, and linewidth.";
+    Transform ct = Translate(transform, *x, *y);
+    page->DrawRect(ct.dx, ct.dy, *w, *h,
+                   *t, 0x00000000, color);
+  }
+
   if (const std::string *img = doc.GetStringAttr("img")) {
     const double *width = doc.GetDoubleAttr("img-width");
     const double *height = doc.GetDoubleAttr("img-height");
@@ -1413,11 +1441,7 @@ void Document::PlaceStickersRec(Context context,
   }
 
   if (const BigInt *bc = doc.GetIntAttr("font-color")) {
-    auto co = bc->ToInt();
-    CHECK(co.has_value() && co.value() >= 0 &&
-          co.value() <= int64_t{0xFFFFFFFF}) << "Color is out "
-      "of range. Must be in [0, 0xFFFFFFFF]: " << bc->ToString();
-    context.color = (uint32_t)co.value();
+    context.color = IntToColor("font-color", *bc);
   }
 
   // XXX scaling
