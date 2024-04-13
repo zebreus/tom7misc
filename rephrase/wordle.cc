@@ -95,22 +95,41 @@ int main(int argc, char **argv) {
 
   std::vector<std::string> words = Util::ReadFileToLines("wordle.txt");
 
-  /*
-  std::vector<std::pair<std::string, std::vector<Color>>>
-  board = {
-    {"fight", {GREY,   GREY,   GREY,  GREY,  GREY}},
-    {"times", {GREY,   GREY,   GREY,   GREY, YELLOW}},
-    {"wrong", {GREY,   YELLOW, YELLOW, GREY, GREY}},
-    {"rules", {YELLOW, GREY,   GREY,   GREY, YELLOW}},
-  };
-  */
+  {
+    std::vector<std::pair<std::string, std::vector<Color>>>
+      board = {
+      {"wrong", {GREY,  GREY,   GREY,   GREY, GREY}},
+      {"rules", {GREY,  GREY,   GREY,   YELLOW, YELLOW}},
+      {"times", {GREY,  GREY,   YELLOW, YELLOW, YELLOW}},
+      {"shame", {GREY,  GREY,   GREY,   GREEN, GREEN}},
+    };
+
+    std::vector<std::string> remain =
+      Filter(words, board);
+
+    if (remain.empty()) {
+      printf("No words.\n");
+    }
+    for (const auto &s : remain) {
+      printf("%s\n", s.c_str());
+    }
+  }
 
   words.push_back("aeoud");
+  words.push_back("bovex");
+  words.push_back("knuth");
 
-  std::string secret = "grant";
+  std::string secret = "messy";
   std::vector<std::pair<std::string, std::vector<Color>>>
     board;
-  for (const std::string s : {"fight", "times", "wrong", "rules"}) {
+  for (const std::string s : {
+      // "fight",
+      // "trash",
+      // "times", "wrong", "rules",
+      "wrong", "rules", "times",
+      "shame",
+      // "shame",
+    }) {
     board.emplace_back(s, Color1(secret, s));
   }
 

@@ -108,4 +108,7 @@ void Talk::SaveJS(const string &dir) {
 
   Util::WriteFile(Util::dirplus(dir, "talk.html"),
                   Util::ReadFile("talk.html"));
+  // This should be configured in the talk?
+  Util::WriteFile(Util::dirplus(dir, "mouse-cursor.png"),
+                  Util::ReadFile("mouse-cursor.png"));
 }

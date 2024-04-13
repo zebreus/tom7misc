@@ -13,6 +13,8 @@
  let video_dirty = true;
  let clickers_hidden = false;
 
+ let requested_frame = false;
+
  function Draw() {
    let slide = slides[slide_idx];
    let f = slide.a[anim_idx];
@@ -59,6 +61,10 @@
        document.body.classList.remove('hidden-cursor');
      }, { once: true });
    }
+
+   if (!requested_frame) {
+     RequestFrame();
+     }
  }
 
  function Home() {
@@ -114,6 +120,11 @@
  }
 
  function Frame() {
+   // Consume outstanding frame. To save battery, we might
+   // not request another if there's no animation on
+   // this slide.
+   requested_frame = false;
+
    // TODO: Make this not be framerate dependent!
    // advance animation
    let slide = slides[slide_idx];
@@ -125,16 +136,23 @@
    }
 
    Draw();
+
+   if (slide.a.length > 1) {
+     RequestFrame();
+   }
+ }
+
+ function RequestFrame() {
    window.requestAnimationFrame(Frame);
+   requested_frame = true;
  }
 
  function Start() {
-
    // Function to get the slide number from the URL fragment
    const hash = window.location.hash.slice(1);
-   slide_idx = parseInt(hash, 10) || 0;
-
-   window.requestAnimationFrame(Frame);
+   // slide_idx = parseInt(hash, 10) || 0;
+   GoTo(parseInt(hash, 10) || 0);
+   // RequestFrame();
  }
 
 </script>

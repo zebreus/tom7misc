@@ -39,12 +39,28 @@ in
 
   just-video slide "bottle.mp4";
 
-  combo-slide slide
-  (StickerElt (wordle-cell { x = inch 1.0, y = inch 1.0,
-                             size = inch 1.0,
-                             letter = SOME "G",
-                             color = WORDLE-GREEN }) ::
-   nil);
+  (* Or like, the rules for wordle hard mode are just
+     wrong. I would never have let this happen. *)
+  let
+    val W = (NONE, WORDLE-EMPTY)
+    fun X s = (SOME s, WORDLE-GREY)
+    fun N s = (SOME s, WORDLE-GREEN)
+    fun Y s = (SOME s, WORDLE-YELLOW)
+    val board =
+      (X "W" :: X "R" :: X "O" :: X "N" :: X "G" :: nil) ::
+      (X "R" :: X "U" :: X "L" :: Y "E" :: Y "S" :: nil) ::
+      (X "T" :: X "I" :: Y "M" :: Y "E" :: Y "S" :: nil) ::
+      (Y "S" :: X "H" :: X "A" :: Y "M" :: Y "E" :: nil) ::
+      (W :: W :: W :: W :: W :: nil) ::
+      nil
+
+  in
+    combo-slide slide
+    (StickerElt (wordle-board { x = inch 9.0, y = inch 4.0,
+                                cell-size = inch 1.6,
+                                board = board }) ::
+    nil)
+  end;
 
   (* couple more gags here? *)
   (* Rules of Wordle expert mode are just wrong.

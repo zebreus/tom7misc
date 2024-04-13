@@ -290,9 +290,28 @@ fun add-title props title =
          title)))))
   end
 
+object Bullet of {
+                  (* The bullet character (or string) *)
+                  bullet : layout,
+                  bullet-color : int,
+                  bullet-size : float,
+                  space-after : float
+                  }
+
+fun default-bullet slide =
+  let
+    open (slide-props slide)
+  in
+    {(Bullet) bullet = [ * ],
+     bullet-color = BULLET-COLOR,
+     bullet-size = BULLET-FONT-SIZE,
+     space-after = BULLET-LINE-GAP  }
+  end
+
 datatype element =
   Title of layout
   | Bullets of layout list
+  | Bullet of obj * layout
   | Image of { img : image-handle,
                x : float,
                y : float,
@@ -391,6 +410,8 @@ fun combo-slide slide (elts : element list) =
     val props = slide-props slide
     open props
 
+
+
     val CONTENT-WIDTH =
       case list-find (fn Image _ => true | _ => false) elts of
         SOME (Image {x, y, width, img }) => (x -. GAP)
@@ -425,21 +446,7 @@ fun combo-slide slide (elts : element list) =
   end
 
 fun bullet-slide slide title bullets =
-  let
-    val props = slide-props slide
-    open props : slide-props
-  in
-    add-background-image BACKGROUND-IMAGE;
-
-    add-title props title;
-
-    add-bullets props { x = LEFT-MARGIN,
-                        y = CONTENT-START-Y,
-                        width = CONTENT-WIDTH,
-                        bullets = bullets };
-
-    next-slide()
-  end
+  combo-slide slide (Title title :: Bullets bullets :: nil)
 
 fun text-slide slide title text =
   let
@@ -706,9 +713,9 @@ datatype wordle-color =
   | WORDLE-YELLOW
 
 fun wordle-cell { x : float, y : float,
-                  size = sz : float,
+                  size = (sz : float),
                   letter : string option,
-                  color = cc : wordle-color } : layout =
+                  color = (cc : wordle-color) } : layout =
   let
     val WORDLE-COLOR-EMPTY = 0xFFFFFFFF
     val WORDLE-COLOR-GREEN = 0x6aaa64FF
@@ -732,16 +739,19 @@ fun wordle-cell { x : float, y : float,
         Node (BOX, attrs as {(Box) width, height}, ch) =>
           let
             val margin = (sz -. width) *. 0.5
+            val attrs =
+              (attrs
+               with display = "sticker"
+               with x = x +. margin
+               (* at baseline *)
+               with y = y +. text-size *. (1.0 -. (textfrac *. 0.5))
+               with width = width
+               with height = height)
           in
-            (node (attrs
-                   with display = "sticker"
-                   with x = x +. margin
-                   (* at baseline *)
-                   with y = y +. text-size *. (1.0 -. (textfrac *, 0.5))
-                   with width = width
-                   with height = height) (layout-concat ch))
+            node attrs (layout-concat ch)
           end
       | _ => fail "get-box should produce box"
+
   in
     (fill-rectangle { x = x, y = y, width = sz, height = sz,
                       fill-color = bgcolor }) ^^
@@ -761,5 +771,36 @@ fun wordle-cell { x : float, y : float,
            (b
             (apply-font FRANKLIN
              (layout s)))))
-     | NONE => [])
+         | NONE => [])
+  end
+
+
+fun wordle-board { x, y, cell-size,
+                   board : (string option * wordle-color) list list } =
+  let
+    (* Fun fact: The wordle squares are actually rectangles,
+       52x52.5! *)
+   val cell-spacing = (5.0 /. 52.0) *. cell-size
+   val ypos = ref y
+
+   fun one-row row =
+     let
+       val xpos = ref x
+       fun one-cell (s, c) =
+         let
+           val lay =
+             wordle-cell { x = !xpos, y = !ypos, size = cell-size,
+                           letter = s, color = c }
+         in
+           xpos := !xpos +. cell-size +. cell-spacing;
+           lay
+         end
+
+       val rlay = layout-concat (list-map one-cell row)
+     in
+       ypos := !ypos +. cell-size +. cell-spacing;
+       rlay
+     end
+  in
+    layout-concat (list-map one-row board)
   end
