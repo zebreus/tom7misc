@@ -39,6 +39,10 @@ Initial::Initial(AstPool *pool) {
     {"div", Primop::INT_DIV},
     {"mod", Primop::INT_MOD},
 
+    {"andb", Primop::INT_ANDB},
+    {"xorb", Primop::INT_XORB},
+    {"orb", Primop::INT_ORB},
+
     {"+.", Primop::FLOAT_PLUS},
     {"-.", Primop::FLOAT_MINUS},
     {"*.", Primop::FLOAT_TIMES},

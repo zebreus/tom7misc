@@ -533,6 +533,12 @@ the line and roll the dice again.];
 
   (* Can drop this *)
   let
+    type particle = { x: float, y : float, lay : layout,
+                      dx : float, dy : float }
+
+    val sim : particle list ref = ref nil
+    (* Add some particles *)
+    (* fun add *)
 
     fun theslide t =
       bullet-slide slide [Additional features]
@@ -550,7 +556,7 @@ the line and roll the dice again.];
       let
         val t = n / (NUM-FRAMES - 1)
         (* Ease in/out *)
-      (* val pos = t *. t *. t -. 3.0 *. (t *. t) +. 2.0 *. t *)
+        (* val pos = t *. t *. t -. 3.0 *. (t *. t) +. 2.0 *. t *)
         val pos = 0.5 *. (1.0 -. cos(t *. 3.141592653589))
         do print ("Frame " ^ int-to-string n ^ "/" ^
                   int-to-string NUM-FRAMES ^ " \n")

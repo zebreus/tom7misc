@@ -31,6 +31,10 @@ enum class Primop {
   INT_DIV,
   INT_MOD,
 
+  INT_XORB,
+  INT_ANDB,
+  INT_ORB,
+
   INT_NEG,
 
   INT_TO_FLOAT,

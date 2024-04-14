@@ -78,6 +78,10 @@ GetFixity(const std::string &sym) {
     {"div", {Fixity::Infix, Associativity::Left, 9}},
     {"mod", {Fixity::Infix, Associativity::Left, 9}},
 
+    {"andb", {Fixity::Infix, Associativity::Left, 11}},
+    {"xorb", {Fixity::Infix, Associativity::Left, 12}},
+    {"orb", {Fixity::Infix, Associativity::Left, 13}},
+
     // some nonfix symbolic identifiers
     {"!", {Fixity::Atom, Associativity::Non, 0}},
     {"~", {Fixity::Atom, Associativity::Non, 0}},

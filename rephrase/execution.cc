@@ -317,6 +317,21 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return Big(BigInt::Minus(aa, bb));
   }
 
+  case Primop::INT_ANDB: {
+    const auto &[aa, bb] = TwoInts("int_andb");
+    return Big(BigInt::BitwiseAnd(aa, bb));
+  }
+
+  case Primop::INT_XORB: {
+    const auto &[aa, bb] = TwoInts("int_xorb");
+    return Big(BigInt::BitwiseXor(aa, bb));
+  }
+
+  case Primop::INT_ORB: {
+    const auto &[aa, bb] = TwoInts("int_orb");
+    return Big(BigInt::BitwiseOr(aa, bb));
+  }
+
   case Primop::INT_DIV: {
     const auto &[aa, bb] = TwoInts("int_div");
     if (BigInt::Eq(bb, 0)) {

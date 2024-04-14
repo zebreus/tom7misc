@@ -452,6 +452,9 @@ struct PeepholePass : public il::Pass<> {
       case Primop::INT_PLUS:
       case Primop::INT_MINUS:
       case Primop::INT_DIV:
+      case Primop::INT_ANDB:
+      case Primop::INT_XORB:
+      case Primop::INT_ORB:
       case Primop::INT_MOD:
         if (ees[0]->type == ExpType::INT &&
             ees[1]->type == ExpType::INT) {
@@ -466,6 +469,12 @@ struct PeepholePass : public il::Pass<> {
             return pool->Int(BigInt::Plus(lhs, rhs));
           case Primop::INT_MINUS:
             return pool->Int(BigInt::Minus(lhs, rhs));
+          case Primop::INT_ANDB:
+            return pool->Int(BigInt::BitwiseAnd(lhs, rhs));
+          case Primop::INT_XORB:
+            return pool->Int(BigInt::BitwiseXor(lhs, rhs));
+          case Primop::INT_ORB:
+            return pool->Int(BigInt::BitwiseOr(lhs, rhs));
           case Primop::INT_DIV:
             if (BigInt::Eq(rhs, 0)) {
               return pool->Fail(pool->String("Division by zero (static)"),
@@ -484,6 +493,7 @@ struct PeepholePass : public il::Pass<> {
           }
         }
         // TODO: Other reductions, like 0 - e ==> -e
+        // and 0 + e ==> e
         break;
 
       case Primop::INT_TO_STRING:

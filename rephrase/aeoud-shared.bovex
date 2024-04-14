@@ -821,3 +821,26 @@ fun wordle-board { x, y, cell-size,
   in
     layout-concat (list-map one-row board)
   end
+
+datatype random-state = R of int
+val random-state : random-state ref = ref (R 0xCAFE)
+fun random64 () =
+  (case !random-state of
+     R s =>
+       let
+         (* XXX improve this algorithm; like use PCG *)
+         val s = s + 0x31415926.27182813
+         val s = s * 0x12345678.91234731
+         val s = s xorb 0xCAFED00D.FEED0123
+         val s = s andb 0xFFFFFFFF.FFFFFFFF
+       in
+         random-state := R s;
+         s
+       end)
+
+fun random () : float =
+  let
+    val n = random64 () andb 0xFFFFFFFF
+  in
+    n / 0xFFFFFFFF
+  end
