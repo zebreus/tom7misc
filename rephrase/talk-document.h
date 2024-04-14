@@ -61,7 +61,8 @@ struct TalkPage : public Page {
 
   void DrawVideo(double x, double y,
                  double width, double height,
-                 const std::string &src) override;
+                 const std::string &src,
+                 bool loop) override;
 
   void SetDuration(int dur);
 
@@ -78,6 +79,7 @@ struct TalkPage : public Page {
   struct Video {
     double x = 0.0, y = 0.0, width = 0.0, height = 0.0;
     std::string src;
+    bool loop = false;
   };
 
   std::optional<Video> video;

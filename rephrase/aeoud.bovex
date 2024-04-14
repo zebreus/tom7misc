@@ -35,7 +35,25 @@ in
   just-image "typography3.png";
   just-image "typography4.png";
   just-image "typography5.png";
-  just-image "typography6.png";
+  (* just-image "typography6.png"; *)
+  let
+    val AIX = 180.0
+    val TX = AIX +. 240.0
+  in
+    combo-slide (slide with BODY-FONT-COLOR = 0x440044FF)
+    (Image { x = 0.0, y = 0.0, width = NONE,
+             img = image-load "typography6.png" } ::
+     Image { x = AIX, y = 800.0, width = SOME 180.0,
+             img = image-load "illustrator-icon.png" } ::
+     TextBox { x = TX, y = 800.0 +. 64.0,
+               width = 800.0, text = b[Adobe Illustrator] } ::
+     TextBox { x = TX, y = 800.0 +. 110.0,
+               width = 800.0, text = size 42.0 [“King of Fonts”] } ::
+     TextBox { x = TX, y = 800.0 +. 164.0,
+               width = 800.0, text =
+               color 0x880000FF (size 32.0 [($600/yr.)]) } ::
+     nil);
+  end;
 
   just-video slide "bottle.mp4";
 
@@ -418,7 +436,7 @@ the line and roll the dice again.];
   bullet-slide slide [Baby mode]
   ([300 lines of code] ::
    [It only took an afternoon] ::
-   [You have to look at [tt[monospace text]]] :: nil);
+   [You have to look at [tt[monospaced text]]] :: nil);
 
   let
     val tom = image-load "tom7-portrait.png"
@@ -469,14 +487,15 @@ the line and roll the dice again.];
   in
     combo-slide slide
     (TextBox { x = DEFAULT-LEFT-MARGIN,
-               y = YPOS,
-               width = inch 9.0,
-               text = [Here is an example of applying the boxes
+               y = YPOS +. 64.0,
+               width = inch 8.75,
+               text = (span {(Span) line-spacing = 4.0}
+                       [Here is an example of applying the boxes
                        and glue algorithm to this very text. Most
                        of the break points lead to extremely long
                        or short lines, so only a small region
                        is of any interest. But those details
-                       matter.] } ::
+                       matter.]) } ::
      Image { img = image-load "boxes-and-glue-matrix.png",
              x = pixel 900.0,
              y = YPOS -. 36.0,
@@ -492,7 +511,7 @@ the line and roll the dice again.];
   (image-load "algorithm2-dark.png");
 
   (* Maybe I want this to loop? *)
-  just-video slide "comparison.mp4";
+  just-video (slide with LOOP-VIDEO = true) "comparison.mp4";
 
   (* Can drop this *)
   bullet-slide slide [Additional features]
@@ -508,29 +527,38 @@ the line and roll the dice again.];
   (* TODO: Future work: Acting on world, 1,000,000 *)
 
   (* XXX progressive reveal *)
-(*
   let
+    val last-line =
+      [Though some may consider the addition of AI features to TeX to be
+       an unnecessary perversion]
+    val last-line-end=
+      [I find this[box {(Box) glue-break-penalty = -1000000.0,
+                        width = 0.0 } []]use of LLMs to be
+       [it[fully justified]].]
+
+    val last-line-setup = last-line ^^ [...] ^^
+      (color 0x00000000 last-line-end)
+
+    val last-line-pun =
+      last-line ^^ [, ] ^^ last-line-end
+
     fun concslide pun =
       text-slide slide [Conclusion]
       (justify-all
-       [In this talk—and [it[with]] this talk—I presented BoVeX, a
-        new computer typesetting system. It follows the tradition TeX, but
-        with modern amenities such as requiring over 128 gigabytes of RAM.]
-       ^^
-       (if pun
-        then
-          [Though some may consider the addition of AI features to TeX to be
-           an unnecessary perversion,
-           I find this[box {(Box) glue-break-penalty = -1000000.0,
-                            width = 0.0 } []]use of LLMs to be
-           [it[fully justified]].]
-        else []))
+       ([In this talk—and [it[with]] this talk—I presented BoVeX, a
+         new computer typesetting system. It follows the tradition TeX, but
+         with modern amenities such as requiring over 128 gigabytes of RAM. ]
+        ^^
+        (if pun
+         then last-line-pun
+         else last-line-setup))) (* (color 0x00000000 last-line)))) *)
   in
     concslide false;
     concslide true;
   end;
-  *)
-      text-slide slide [Conclusion]
+
+  (*
+  text-slide slide [Conclusion]
       (justify-all
        [In this talk—and [it[with]] this talk—I presented BoVeX, a
         new computer typesetting system. It follows the tradition TeX, but
@@ -540,7 +568,7 @@ the line and roll the dice again.];
          I find this[box {(Box) glue-break-penalty = -1000000.0,
                           width = 0.0 } []]use of LLMs to be
          [it[fully justified]].]);
-
+*)
 
   title-slide slide (size (point 256.0) (color 0xFF0000FF [tom7.org]))
   [ ] [ ]

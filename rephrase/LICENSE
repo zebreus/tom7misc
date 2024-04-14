@@ -1,0 +1,14 @@
+BoVeX is experimental software; use at your own risk!
+
+The core of BoVeX (.cc and .h files in this directory)
+are available under the terms of the GNU GPL. See the
+file COPYING.
+
+TODO: Document status of example papers and icons, etc.
+The Adobe Illustrator icon comes from Wikipedia where
+it is marked as "Public Domain", but I would guess that
+Adobe has a copyright and/or trademark on this design,
+so beware. (Is included here via a fair use exemption.)
+
+The hyphenation file hyph-en-us.txt comes from TeX and
+has a BSD-like license; see that file for details.

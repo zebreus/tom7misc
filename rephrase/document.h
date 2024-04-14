@@ -135,7 +135,8 @@ struct Page {
 
   virtual void DrawVideo(double x, double y,
                          double width, double height,
-                         const std::string &src);
+                         const std::string &src,
+                         bool loop);
 
   // TODO: Line drawing commands, etc.
 

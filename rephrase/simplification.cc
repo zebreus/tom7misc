@@ -528,10 +528,14 @@ struct PeepholePass : public il::Pass<> {
           const double lhs = ees[0]->Float();
           const double rhs = ees[1]->Float();
 
-          printf("Simplifying float math %.3f and %.3f\n", lhs, rhs);
+          if (VERBOSE > 1) {
+            printf("Simplifying float math %.3f and %.3f\n", lhs, rhs);
+          }
           switch (po) {
           case Primop::FLOAT_TIMES: {
-            printf("Reducing %.3f * %.3f -> %.3f\n", lhs, rhs, lhs * rhs);
+            if (VERBOSE > 1) {
+              printf("Reducing %.3f * %.3f -> %.3f\n", lhs, rhs, lhs * rhs);
+            }
             return pool->Float(lhs * rhs);
           }
           case Primop::FLOAT_PLUS:

@@ -32,10 +32,11 @@ fun image-load-cache (f : string) : image-handle =
         img
       end
 
-fun fullscreen-video src =
+fun fullscreen-video loop src =
   sticker {(Sticker) x = 0.0, y = 0.0,
            video-width = SLIDE-WIDTH,
            video-height = SLIDE-HEIGHT,
+           video-loop = loop,
            video = src } []
 
 fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
@@ -145,7 +146,9 @@ object Slide of
    MONOSPACE-FONT-SIZE : float,
 
    TITLE-FONT-COLOR: int,
-   BODY-FONT-COLOR: int
+   BODY-FONT-COLOR: int,
+
+   LOOP-VIDEO: bool
    }
 
 type slide-props =
@@ -169,7 +172,9 @@ type slide-props =
    GAP : float,
 
    TITLE-FONT-COLOR: int,
-   BODY-FONT-COLOR: int
+   BODY-FONT-COLOR: int,
+
+   LOOP-VIDEO: bool
    }
 
 val DEFAULT-LEFT-MARGIN = inch 2.0
@@ -177,9 +182,8 @@ val DEFAULT-TOP-MARGIN = inch 2.0
 
 fun slide-props (s : obj) : slide-props =
   let
-    (* PERF could cache these,
-       since we often use a background many times. *)
-
+    (* We cache the background image, since we often use the same
+       one many times. *)
     val BACKGROUND-IMAGE =
       case s of
         {(Slide) BACKGROUND = bg } =>
@@ -241,6 +245,9 @@ fun slide-props (s : obj) : slide-props =
       case s of {(Slide) TITLE-FONT-COLOR = tfc } => tfc
         | _ => 0xFFFFAAFF
 
+    val LOOP-VIDEO =
+      case s of {(Slide) LOOP-VIDEO = lv } => lv
+        | _ => false
   in
     { BACKGROUND-IMAGE = BACKGROUND-IMAGE,
       TITLE-FONT-SIZE = TITLE-FONT-SIZE,
@@ -256,7 +263,8 @@ fun slide-props (s : obj) : slide-props =
       MONOSPACE-FONT-SIZE = MONOSPACE-FONT-SIZE,
       GAP = GAP,
       TITLE-FONT-COLOR = TITLE-FONT-COLOR,
-      BODY-FONT-COLOR = BODY-FONT-COLOR
+      BODY-FONT-COLOR = BODY-FONT-COLOR,
+      LOOP-VIDEO = LOOP-VIDEO
       } : slide-props
   end
 
@@ -359,16 +367,19 @@ fun add-textbox props { x : float,
     add-text text
   end
 
-
-fun add-bullets props { x : float,
-                        y : float,
-                        width : float,
-                        bullets : layout list } =
+fun combo-slide slide (elts : element list) =
   let
-    open props : slide-props
+    val props = slide-props slide
+    open props
 
-    val xpos = x
-    val ypos = ref y
+    val bullet-xpos = LEFT-MARGIN
+    val bullet-ypos = ref CONTENT-START-Y
+
+    val CONTENT-WIDTH =
+      case list-find (fn Image _ => true | _ => false) elts of
+        SOME (Image {x, y, width, img }) => (x -. GAP)
+      | NONE => CONTENT-WIDTH
+
     fun add-bullet lay =
       let
         val lay =
@@ -378,7 +389,7 @@ fun add-bullets props { x : float,
             (layout-map-text normalize-whitespace lay)))
         val boxes = get-boxes lay
         val (badness, lines : layout list) =
-          pack-boxes-horiz (BEST, LEFT-JUSTIFIED, width, boxes)
+          pack-boxes-horiz (BEST, LEFT-JUSTIFIED, CONTENT-WIDTH, boxes)
         do emit-badness badness
         val lines : layout list = list-map stick-horizontally lines
 
@@ -386,44 +397,27 @@ fun add-bullets props { x : float,
       in
         output-frame
         (!current-page, !current-frame,
-         box-stick-at { x = xpos, y = !ypos }
+         box-stick-at { x = bullet-xpos, y = !bullet-ypos }
          (stick-vertically (0.0, layout-concat lines)));
 
         (* output a bullet picture too *)
         output-frame
         (!current-page, !current-frame,
          sticker {(Sticker)
-                  x = xpos -. 64.0, y = !ypos +. 16.0,
+                  x = bullet-xpos -. 64.0, y = !bullet-ypos +. 16.0,
                   font-name = font-bold PALATINO,
                   font-size = BULLET-FONT-SIZE,
                   font-color = BULLET-COLOR } [ * ]);
 
-        ypos := !ypos +. BULLET-FONT-SIZE *. int-to-float num-lines +.
+        bullet-ypos :=
+        !bullet-ypos +. BULLET-FONT-SIZE *. int-to-float num-lines +.
         BULLET-LINE-GAP;
       end
-  in
-    list-app add-bullet bullets
-  end
-
-fun combo-slide slide (elts : element list) =
-  let
-    val props = slide-props slide
-    open props
-
-
-
-    val CONTENT-WIDTH =
-      case list-find (fn Image _ => true | _ => false) elts of
-        SOME (Image {x, y, width, img }) => (x -. GAP)
-      | NONE => CONTENT-WIDTH
 
     fun add-elt (Title title) =
       add-title props title
       | add-elt (Bullets bull) =
-      add-bullets props { x = LEFT-MARGIN,
-                          y = CONTENT-START-Y,
-                          width = CONTENT-WIDTH,
-                          bullets = bull }
+      list-app add-bullet bull
       | add-elt (Image { img, x, y, width }) =
       output-frame
       (!current-page, !current-frame,
@@ -635,7 +629,7 @@ fun just-video slide src =
 
     output-frame
     (!current-page, !current-frame,
-     fullscreen-video src);
+     fullscreen-video LOOP-VIDEO src);
 
     next-slide()
   end

@@ -166,9 +166,11 @@ void TalkPage::DrawImage(double x, double y,
                          double width, double height,
                          const ImageRGBA &sticker) {
   CHECK(image.get() != nullptr);
-  printf("Add %dx%d image at %.11g %.11g.\n",
-         sticker.Width(), sticker.Height(),
-         x, y);
+  if (VERBOSE > 1) {
+    printf("Add %dx%d image at %.11g %.11g.\n",
+           sticker.Width(), sticker.Height(),
+           x, y);
+  }
 
   const int ww = std::round(width);
   const int hh = std::round(height);
@@ -211,13 +213,14 @@ void TalkPage::DrawRect(double x, double y, double width, double height,
 
 void TalkPage::DrawVideo(double x, double y,
                          double width, double height,
-                         const std::string &src) {
+                         const std::string &src,
+                         bool loop) {
   CHECK(!video.has_value()) << "Just one video per slide is supported "
     "in the talk format. It would not be that bad to support more; you "
     "just gotta make it work in talk.html. Had: " << video.value().src <<
     " and tried to add " << src;
   video.emplace(Video{.x = x, .y = y, .width = width, .height = height,
-      .src = src});
+      .src = src, .loop = loop});
 }
 
 
@@ -290,6 +293,9 @@ void TalkDocument::GenerateOutput(
                       (int)std::round(v.width),
                       (int)std::round(v.height),
                       v.src.c_str());
+        if (v.loop) {
+          StringAppendF(&talk, "  loop-video\n");
+        }
       }
 
 

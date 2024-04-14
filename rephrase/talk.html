@@ -34,6 +34,12 @@
        video.style.height = (slide.video.h || 1080) + 'px';
        video.defaultMuted = true;
        video.muted = true;
+       video.playsInline = true;
+       if (slide.video.loop) {
+         video.loop = true;
+       } else {
+         video.removeAttribute('loop');
+       }
        console.log(slide.video.src);
        video.src = slide.video.src;
        video.style.display = 'block';
@@ -64,7 +70,7 @@
 
    if (!requested_frame) {
      RequestFrame();
-     }
+   }
  }
 
  function Home() {
@@ -91,9 +97,10 @@
 
  document.onkeydown = function(e) {
    e = e || window.event;
-   if (e.ctrlKey) return true;
+   if (e.ctrlKey || e.metaKey) return true;
 
    switch (e.keyCode) {
+     case 87: // W
      case 36: // HOME
        Home();
        break;

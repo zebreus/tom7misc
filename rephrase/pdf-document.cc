@@ -229,7 +229,8 @@ void PDFPage::DrawRect(double x, double y, double width, double height,
 
 void PDFPage::DrawVideo(double x, double y,
                         double width, double height,
-                        const std::string &src) {
+                        const std::string &src,
+                        bool loop) {
   LOG(FATAL) << "Incredibly, PDF does support embedding videos, but "
     "I did not implement it!";
 }
