@@ -38,7 +38,7 @@ in
   (* just-image "typography6.png"; *)
   let
     val AIX = 180.0
-    val TX = AIX +. 240.0
+    val TX = AIX +. 220.0
   in
     combo-slide (slide with BODY-FONT-COLOR = 0x440044FF)
     (Image { x = 0.0, y = 0.0, width = NONE,
@@ -47,8 +47,8 @@ in
              img = image-load "illustrator-icon.png" } ::
      TextBox { x = TX, y = 800.0 +. 64.0,
                width = 800.0, text = b[Adobe Illustrator] } ::
-     TextBox { x = TX, y = 800.0 +. 110.0,
-               width = 800.0, text = size 42.0 [“King of Fonts”] } ::
+     TextBox { x = TX, y = 800.0 +. 122.0,
+               width = 800.0, text = size 52.0 [“King of Fonts”] } ::
      TextBox { x = TX, y = 800.0 +. 164.0,
                width = 800.0, text =
                color 0x880000FF (size 32.0 [($600/yr.)]) } ::
@@ -189,16 +189,17 @@ in
            x = pixel 1100.0,
            y = pixel 80.0,
            width = NONE } ::
-   Bullets ([1975: 3000 pages of hand-written text] ::
-            [1977: Publisher proofs aren't beautiful enough] ::
-            [1982: Returns with TeX] ::
-            (size 48.0
-             [... New text layout algorithms. New abstract
-              computer. New hyphenation algorithms. New data structures
-              for storing hyphenation tables. New fonts. New ways of
-              describing fonts. New ways of documenting source code.
-              New computer science to write about. etc. etc. ...]) ::
-            [2023: Releases Volume 4c of ?? volumes] :: nil) ::
+   Bullet ({(Bullet)}, [1975: 3000 pages of hand-written text]) ::
+   Bullet ({(Bullet)}, [1977: Publisher proofs aren't beautiful enough]) ::
+   Bullet ({(Bullet)}, [1982: Returns with TeX]) ::
+   Bullet ({(Bullet) space-after = -36.0 },
+           size 48.0
+           [... New text layout algorithms. New abstract
+            computer. New hyphenation algorithms. New data structures
+            for storing hyphenation tables. New fonts. New ways of
+            describing fonts. New ways of documenting source code.
+            New computer science to write about. etc. etc. ...]) ::
+   Bullet ({(Bullet)}, [2023: Releases Volume 4c of ?? volumes]) ::
    nil);
 
   (* And a large fraction of scientific literature, especially in
@@ -510,7 +511,6 @@ the line and roll the dice again.];
   [Boxes and LLMers Glue]
   (image-load "algorithm2-dark.png");
 
-  (* Maybe I want this to loop? *)
   just-video (slide with LOOP-VIDEO = true) "comparison.mp4";
 
   (* Can drop this *)
@@ -526,7 +526,6 @@ the line and roll the dice again.];
 
   (* TODO: Future work: Acting on world, 1,000,000 *)
 
-  (* XXX progressive reveal *)
   let
     val last-line =
       [Though some may consider the addition of AI features to TeX to be
@@ -545,30 +544,18 @@ the line and roll the dice again.];
     fun concslide pun =
       text-slide slide [Conclusion]
       (justify-all
+       (span {(Span) line-spacing = 4.0}
        ([In this talk—and [it[with]] this talk—I presented BoVeX, a
          new computer typesetting system. It follows the tradition TeX, but
          with modern amenities such as requiring over 128 gigabytes of RAM. ]
         ^^
         (if pun
          then last-line-pun
-         else last-line-setup))) (* (color 0x00000000 last-line)))) *)
+         else last-line-setup))))
   in
     concslide false;
     concslide true;
   end;
-
-  (*
-  text-slide slide [Conclusion]
-      (justify-all
-       [In this talk—and [it[with]] this talk—I presented BoVeX, a
-        new computer typesetting system. It follows the tradition TeX, but
-        with modern amenities such as requiring over 128 gigabytes of RAM.
-        Though some may consider the addition of AI features to TeX to be
-         an unnecessary perversion,
-         I find this[box {(Box) glue-break-penalty = -1000000.0,
-                          width = 0.0 } []]use of LLMs to be
-         [it[fully justified]].]);
-*)
 
   title-slide slide (size (point 256.0) (color 0xFF0000FF [tom7.org]))
   [ ] [ ]

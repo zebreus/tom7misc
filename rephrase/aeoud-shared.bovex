@@ -306,16 +306,6 @@ object Bullet of {
                   space-after : float
                   }
 
-fun default-bullet slide =
-  let
-    open (slide-props slide)
-  in
-    {(Bullet) bullet = [ * ],
-     bullet-color = BULLET-COLOR,
-     bullet-size = BULLET-FONT-SIZE,
-     space-after = BULLET-LINE-GAP  }
-  end
-
 datatype element =
   Title of layout
   | Bullets of layout list
@@ -380,11 +370,31 @@ fun combo-slide slide (elts : element list) =
         SOME (Image {x, y, width, img }) => (x -. GAP)
       | NONE => CONTENT-WIDTH
 
-    fun add-bullet lay =
+    fun add-bullet (obj, lay) =
       let
+        val bullet-char =
+          case obj of
+            {(Bullet) bullet} => bullet
+          | _ => [ * ]
+
+        val bullet-color =
+          case obj of
+            {(Bullet) bullet-color} => bullet-color
+          | _ => BULLET-COLOR
+
+        val bullet-size =
+          case obj of
+            {(Bullet) bullet-size} => bullet-size
+          | _ => BULLET-FONT-SIZE
+
+        val space-after =
+          case obj of
+            {(Bullet) space-after} => space-after
+          | _ => BULLET-LINE-GAP
+
         val lay =
           palatino
-          (size BULLET-FONT-SIZE
+          (size bullet-size
            (color BODY-FONT-COLOR
             (layout-map-text normalize-whitespace lay)))
         val boxes = get-boxes lay
@@ -406,18 +416,21 @@ fun combo-slide slide (elts : element list) =
          sticker {(Sticker)
                   x = bullet-xpos -. 64.0, y = !bullet-ypos +. 16.0,
                   font-name = font-bold PALATINO,
-                  font-size = BULLET-FONT-SIZE,
-                  font-color = BULLET-COLOR } [ * ]);
+                  font-size = bullet-size,
+                  font-color = bullet-color } bullet-char);
 
         bullet-ypos :=
-        !bullet-ypos +. BULLET-FONT-SIZE *. int-to-float num-lines +.
-        BULLET-LINE-GAP;
+            !bullet-ypos +. bullet-size *. int-to-float num-lines +.
+            space-after;
       end
 
     fun add-elt (Title title) =
       add-title props title
-      | add-elt (Bullets bull) =
-      list-app add-bullet bull
+      | add-elt (Bullets bulls) =
+      let val db = {(Bullet) }
+      in list-app (fn b => add-bullet (db, b)) bulls
+      end
+      | add-elt (Bullet (obj, b)) = add-bullet (obj, b)
       | add-elt (Image { img, x, y, width }) =
       output-frame
       (!current-page, !current-frame,
