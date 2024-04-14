@@ -303,12 +303,14 @@ object Bullet of {
                   bullet : layout,
                   bullet-color : int,
                   bullet-size : float,
-                  space-after : float
+                  space-after : float,
+                  indent : int
                   }
 
 datatype element =
   Title of layout
   | Bullets of layout list
+  | BulletsExt of obj * layout list
   | Bullet of obj * layout
   | Image of { img : image-handle,
                x : float,
@@ -392,6 +394,11 @@ fun combo-slide slide (elts : element list) =
             {(Bullet) space-after} => space-after
           | _ => BULLET-LINE-GAP
 
+        val offset =
+          case obj of
+            {(Bullet) indent} => int-to-float indent *. bullet-size
+          | _ => 0.0
+
         val lay =
           palatino
           (size bullet-size
@@ -407,14 +414,15 @@ fun combo-slide slide (elts : element list) =
       in
         output-frame
         (!current-page, !current-frame,
-         box-stick-at { x = bullet-xpos, y = !bullet-ypos }
+         box-stick-at { x = bullet-xpos +. offset, y = !bullet-ypos }
          (stick-vertically (0.0, layout-concat lines)));
 
         (* output a bullet picture too *)
         output-frame
         (!current-page, !current-frame,
          sticker {(Sticker)
-                  x = bullet-xpos -. 64.0, y = !bullet-ypos +. 16.0,
+                  x = bullet-xpos -. 64.0 +. offset,
+                  y = !bullet-ypos +. 16.0,
                   font-name = font-bold PALATINO,
                   font-size = bullet-size,
                   font-color = bullet-color } bullet-char);
@@ -430,6 +438,8 @@ fun combo-slide slide (elts : element list) =
       let val db = {(Bullet) }
       in list-app (fn b => add-bullet (db, b)) bulls
       end
+      | add-elt (BulletsExt (obj, bulls)) =
+      list-app (fn b => add-bullet (obj, b)) bulls
       | add-elt (Bullet (obj, b)) = add-bullet (obj, b)
       | add-elt (Image { img, x, y, width }) =
       output-frame

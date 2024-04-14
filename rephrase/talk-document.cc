@@ -110,14 +110,27 @@ void TalkDocument::SetDocumentInfoStrings(
 void TalkDocument::SetPageInfo(
     int page_idx, int frame_idx,
     const std::unordered_map<std::string, AttrVal> &attrs) {
-  // Base document ignores it.
-  const auto it = attrs.find("duration");
-  if (it != attrs.end()) {
-    const BigInt *bi = std::get_if<BigInt>(&it->second.v);
-    CHECK(bi != nullptr && bi->ToInt().has_value()) << "Expected "
-      "a reasonable-size integer for frame duration";
-    durations[page_idx][frame_idx] = bi->ToInt().value();
+
+  {
+    const auto it = attrs.find("duration");
+    if (it != attrs.end()) {
+      const BigInt *bi = std::get_if<BigInt>(&it->second.v);
+      CHECK(bi != nullptr && bi->ToInt().has_value()) << "Expected "
+        "a reasonable-size integer for frame duration";
+      durations[page_idx][frame_idx] = bi->ToInt().value();
+    }
   }
+
+  {
+    const auto it = attrs.find("target");
+    if (it != attrs.end()) {
+      const BigInt *bi = std::get_if<BigInt>(&it->second.v);
+      CHECK(bi != nullptr && bi->ToInt().has_value()) << "Expected "
+        "a reasonable-size integer for target seconds";
+      targets[page_idx] = bi->ToInt().value();
+    }
+  }
+
 }
 
 
@@ -135,6 +148,10 @@ TalkPage::~TalkPage() {
 
 void TalkPage::SetDuration(int dur) {
   duration = dur;
+}
+
+void TalkPage::SetTargetSec(int s) {
+  target_sec = s;
 }
 
 void TalkPage::DrawText(const Font *font_in,
@@ -266,6 +283,13 @@ void TalkDocument::GenerateOutput(
           page->SetDuration(fit->second);
         }
       }
+
+      // XXX this should be slide-level. We just set
+      // the target sec for every frame right now.
+      auto target_it = targets.find(page_idx);
+      if (target_it != targets.end()) {
+        page->SetTargetSec(target_it->second);
+      }
     }
     slides.push_back(std::move(frames));
   }
@@ -298,6 +322,15 @@ void TalkDocument::GenerateOutput(
         }
       }
 
+      for (const auto &frame : page) {
+        if (frame->target_sec > 0) {
+          StringAppendF(&talk,
+                        "  target %d\n",
+                        frame->target_sec);
+          // Just the first one we see.
+          break;
+        }
+      }
 
       for (int f = 0; f < (int)page.size(); f++) {
         const auto &frame = page[f];

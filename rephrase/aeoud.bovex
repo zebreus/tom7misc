@@ -47,7 +47,7 @@ in
              img = image-load "illustrator-icon.png" } ::
      TextBox { x = TX, y = 800.0 +. 64.0,
                width = 800.0, text = b[Adobe Illustrator] } ::
-     TextBox { x = TX, y = 800.0 +. 122.0,
+     TextBox { x = TX, y = 800.0 +. 118.0,
                width = 800.0, text = size 52.0 [“King of Fonts”] } ::
      TextBox { x = TX, y = 800.0 +. 164.0,
                width = 800.0, text =
@@ -72,11 +72,19 @@ in
       (W :: W :: W :: W :: W :: nil) ::
       nil
 
+    val QUOTE-OFFSET = inch 7.0
   in
     combo-slide slide
-    (StickerElt (wordle-board { x = inch 9.0, y = inch 4.0,
+    (StickerElt (wordle-board { x = inch 9.0, y = inch 2.5,
                                 cell-size = inch 1.6,
                                 board = board }) ::
+     TextBox { x = QUOTE-OFFSET +. inch 0.6,
+               y = 1080.0 -. inch 2.0,
+               width = SLIDE-WIDTH -. QUOTE-OFFSET *. 2.0,
+               text = (justify-left
+                       (it (color 0xDDDD99FF
+                            [“Any revealed hints must be
+                             used in subsequent guesses”]))) } ::
     nil)
   end;
 
@@ -208,7 +216,10 @@ in
      All that text was consumed by this guy,
      *)
 
-  (* XXX more like "Lorem Epsom" than "Donald Knuth" *)
+
+  (* - AI in everything now. I do not want this when I'm trying
+     to rebook my flight.
+     *)
   combo-slide slide
   (Bullets ([Wow OMG I'm sick of hearing about it] ::
             [Torment Nexus] ::
@@ -238,7 +249,8 @@ in
      So I started thinking about projects. If I have to
      live with AI, and it's going to get the details wrong
      all the time... can I at least have something that I
-     want? Like beautiful typography? *)
+     want? I like programming languages, and I like fonts...
+     Like beautiful typography? *)
 
   let
     val morphism = image-load "morphism.png"
@@ -396,7 +408,6 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
 
     val start-page = !current-page
   in
-    (* XXX set duration *)
     current-page := start-page;
     current-frame := 0;
     set-frame-duration(start-page, 0, 30);
@@ -439,6 +450,9 @@ the line and roll the dice again.];
    [It only took an afternoon] ::
    [You have to look at [tt[monospaced text]]] :: nil);
 
+  (* XXX would be kind of nice to illustrate proportional vs.
+     monospaced here? *)
+
   let
     val tom = image-load "tom7-portrait.png"
     val { width, height = _ } = image-size tom
@@ -447,14 +461,17 @@ the line and roll the dice again.];
     (Image { x = SLIDE-WIDTH -. int-to-float width, y = 0.0, width = NONE,
              img = tom } ::
      Title [The Fool: Tom 7] ::
-     (* XXX this can be textbox with bullets / timeline ? *)
-     Bullets ([Knuth Any% Speedrun:] ::
-              [BoVeX, a new document preparation system] ::
-              [Full-featured typed programming language] ::
-              [Kerning, hyphenation, and all that crap] ::
-              [New fonts, and software for making fonts] ::
-              [AI-enhanced text layout algorithm] ::
-              [Use it to write a paper about it] :: nil) ::
+     Bullet ({(Bullet) space-after = 42.0, bullet = [ ]},
+             size 72.0 [Knuth Any% Speedrun:]) ::
+     BulletsExt
+     ({(Bullet) indent = 1 },
+      [[color 0xFFFF77FF[BoVeX]], a new document preparation system] ::
+      [Full-featured typed programming language] ::
+      [Kerning, hyphenation, and all that crap] ::
+      [New fonts, and software for making fonts] ::
+      [AI-enhanced text layout algorithm] ::
+      [Use [color 0xFFFF77FF[BoVeX]] to write a paper
+       about [color 0xFFFF77FF[BoVeX]]] :: nil) ::
      nil)
   end;
 
@@ -507,6 +524,7 @@ the line and roll the dice again.];
   diagram-slide (slide
                  with TITLE-FONT-SIZE = 80.0
                  with TOP-MARGIN = inch 2.0
+                 with LEFT-MARGIN = DEFAULT-LEFT-MARGIN -. inch 0.75
                  with CONTENT-START-Y = inch 2.75)
   [Boxes and LLMers Glue]
   (image-load "algorithm2-dark.png");
@@ -514,13 +532,38 @@ the line and roll the dice again.];
   just-video (slide with LOOP-VIDEO = true) "comparison.mp4";
 
   (* Can drop this *)
-  bullet-slide slide [Additional features]
-  ([Achievement system] ::
-   three-d { font-name = font-regular PALATINO,
-             font-size = 72.0,
-             width = 40.0, height = 72.0, text = "3D text" } ::
-   [Bibliography database] ::
-   nil);
+  let
+
+    fun theslide t =
+      bullet-slide slide [Additional features]
+      ([Bibliography database] ::
+       three-d { font-name = font-regular PALATINO,
+                 font-size = 72.0 *. (t +. 1.0),
+                 width = 40.0, height = 72.0, text = "3D text" } ::
+       [Achievement system] ::
+       nil)
+
+    val NUM-FRAMES = 32
+
+    val start-page = !current-page
+    fun makeframe n =
+      let
+        val t = n / (NUM-FRAMES - 1)
+        (* Ease in/out *)
+      (* val pos = t *. t *. t -. 3.0 *. (t *. t) +. 2.0 *. t *)
+        val pos = 0.5 *. (1.0 -. cos(t *. 3.141592653589))
+        do print ("Frame " ^ int-to-string n ^ "/" ^
+                  int-to-string NUM-FRAMES ^ " \n")
+      in
+        (* generating a slide advances the frame, so keep going back. *)
+        current-page := start-page;
+        current-frame := n;
+        theslide t
+      end
+  in
+    for 0 (NUM-FRAMES - 1) makeframe;
+    current-frame := 0;
+  end;
 
   just-image "achievement-screenshot.png";
 
@@ -557,6 +600,7 @@ the line and roll the dice again.];
     concslide true;
   end;
 
+  set-target-seconds (!current-page, 12 * 60);
   title-slide slide (size (point 256.0) (color 0xFF0000FF [tom7.org]))
   [ ] [ ]
 

@@ -24,6 +24,9 @@ struct Talk {
   struct Slide {
     std::vector<Frame> frames;
     std::optional<Video> video;
+    // Goal pace is to reach this slide by this number
+    // of seconds (total).
+    int target_seconds = 0;
   };
 
   static Talk Load(const std::string &filename);

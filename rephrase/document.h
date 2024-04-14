@@ -140,8 +140,6 @@ struct Page {
 
   // TODO: Line drawing commands, etc.
 
-  void SetInfo(const std::unordered_map<std::string, AttrVal> &attrs);
-
  protected:
   double page_width = 0.0;
   double page_height = 0.0;

@@ -40,6 +40,9 @@ struct TalkFont : public Font {
   std::unique_ptr<TTF> ttf;
 };
 
+// TODO: This should probably be TalkFrame and we should have
+// a notion of Slide separately. There are many places where
+// we want to store something with the frame.
 struct TalkPage : public Page {
   TalkPage(int pixel_width, int pixel_height,
            TalkDocument *talk);
@@ -65,6 +68,7 @@ struct TalkPage : public Page {
                  bool loop) override;
 
   void SetDuration(int dur);
+  void SetTargetSec(int sec);
 
  private:
   friend struct TalkDocument;
@@ -74,6 +78,7 @@ struct TalkPage : public Page {
   const TalkDocument *talk = nullptr;
 
   int duration = 0;
+  int target_sec = 0;
   std::unique_ptr<ImageRGBA> image;
 
   struct Video {
@@ -107,10 +112,10 @@ struct TalkDocument : public Document {
   void InitBuiltInFonts();
   int next_font_id = 0;
   int pixel_width = 0, pixel_height = 0;
-  // TODO: talk metadata
-  // std::map<int, std::map<int, std::unique_ptr<TalkPage>>> pages;
   // XXX make this more general
   std::map<int, std::map<int, int>> durations;
+  // Just slide index.
+  std::map<int, int> targets;
 };
 
 #endif

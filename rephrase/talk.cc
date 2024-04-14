@@ -61,10 +61,15 @@ Talk Talk::Load(const string &src_filename) {
       CHECK(duration > 0) << "got: " << d;
 
     } else if (cmd == "loop-video") {
-      CHECK(slide != nullptr);
+      CHECK(slide != nullptr) << "loop-video: Add a slide first.";
       CHECK(slide->video.has_value()) << "Add a video to the slide "
         "first.";
       slide->video.value().loop = true;
+
+    } else if (cmd == "target") {
+      CHECK(slide != nullptr) << "target: Add a slide first.";
+      string sec = Util::chop(line);
+      slide->target_seconds = atoi(sec.c_str());
 
     } else if (cmd == "array") {
       CHECK(slide != nullptr) << "array: start slide first";
@@ -107,7 +112,13 @@ void Talk::SaveJS(const string &dir) {
       if (v.loop) {
         StringAppendF(&json, ", loop: true");
       }
-      StringAppendF(&json, "},");
+      StringAppendF(&json, "}");
+    }
+
+    if (slide.target_seconds > 0) {
+      StringAppendF(&json,
+                    ", target: %d",
+                    slide.target_seconds);
     }
 
     StringAppendF(&json, "},\n");
