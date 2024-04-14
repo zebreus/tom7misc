@@ -547,6 +547,20 @@ static void TestAnd() {
 
 }
 
+static void TestXor() {
+  CHECK(BigInt::Eq(BigInt{0},
+                   BigInt::BitwiseXor(BigInt{12345}, BigInt{12345})));
+  CHECK(BigInt::Eq(BigInt{5},
+                   BigInt::BitwiseXor(BigInt{4}, BigInt{1})));
+}
+
+static void TestOr() {
+  CHECK(BigInt::Eq(BigInt{12345},
+                   BigInt::BitwiseOr(BigInt{12345}, BigInt{12345})));
+  CHECK(BigInt::Eq(BigInt{5}, BigInt::BitwiseOr(BigInt{4}, BigInt{1})));
+  CHECK(BigInt::Eq(BigInt{5}, BigInt::BitwiseOr(BigInt{5}, BigInt{1})));
+}
+
 static void TestDivExact() {
   BigInt a{"23984727341"};
   BigInt b{"12737177354116809923874293874113"};
@@ -798,6 +812,8 @@ int main(int argc, char **argv) {
 
   TestShift();
   TestAnd();
+  TestXor();
+  TestOr();
   TestCtz();
 
   TestLeadingZero();

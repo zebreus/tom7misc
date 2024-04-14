@@ -121,6 +121,9 @@ struct BigInt {
   inline static BigInt RightShift(const BigInt &a, uint64_t bits);
   inline static BigInt BitwiseAnd(const BigInt &a, const BigInt &b);
   inline static uint64_t BitwiseAnd(const BigInt &a, uint64_t b);
+
+  inline static BigInt BitwiseXor(const BigInt &a, const BigInt &b);
+  inline static BigInt BitwiseOr(const BigInt &a, const BigInt &b);
   // Return the number of trailing zeroes. For an input of zero,
   // this is zero (this differs from std::countr_zero<T>, which returns
   // the finite size of T in bits for zero).
@@ -526,6 +529,19 @@ uint64_t BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
   // Extract the low word and AND natively.
   uint64_t aa = mpz_getlimbn(a.rep, 0);
   return aa & b;
+}
+
+BigInt BigInt::BitwiseXor(const BigInt &a, const BigInt &b) {
+  BigInt ret;
+  mpz_xor(ret.rep, a.rep, b.rep);
+  return ret;
+}
+
+BigInt BigInt::BitwiseOr(const BigInt &a, const BigInt &b) {
+  BigInt ret;
+  // "inclusive or"
+  mpz_ior(ret.rep, a.rep, b.rep);
+  return ret;
 }
 
 uint64_t BigInt::BitwiseCtz(const BigInt &a) {
@@ -1323,6 +1339,15 @@ uint64_t BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
   assert(ao.has_value());
   return ao.value();
 }
+
+BigInt BigInt::BitwiseXor(const BigInt &a, const BigInt &b) {
+  return BigInt{BzXor(a.rep, b.rep), nullptr};
+}
+
+BigInt BigInt::BitwiseOr(const BigInt &a, const BigInt &b) {
+  return BigInt{BzOr(a.rep, b.rep), nullptr};
+}
+
 
 uint64_t BigInt::BitwiseCtz(const BigInt &a) {
   if (BzGetSign(a.rep) == BZ_ZERO) return 0;
