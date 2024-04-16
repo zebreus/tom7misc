@@ -385,6 +385,10 @@ aeoud-comparison/aeoud-comparison.talk : bovex.exe aeoud-shared.bovex aeoud-comp
 	./bovex.exe -v aeoud-comparison.bovex -o aeoud-comparison.talk
 	./maketalk.exe aeoud-comparison aeoud-comparison.talk
 
+chessdemo/chessdemo.talk : bovex.exe chess.bovex stdlib.bovex layout.bovex hyph-en-us.tex maketalk.exe talk.html *.png
+	./bovex.exe -v chessdemo.bovex -o chessdemo.talk
+	./maketalk.exe chessdemo chessdemo.talk
+
 test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
 	./html_test.exe
 	./hyphenation_test.exe

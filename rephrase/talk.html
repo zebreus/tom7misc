@@ -88,7 +88,7 @@
    video_dirty = true;
    anim_idx = 0;
    count = 0;
-   if (slide_idx = 0) {
+   if (n == 0) {
      start_time = performance.now();
    }
    while (n < 0) n += slides.length;
@@ -139,6 +139,7 @@
 
  document.onkeydown = function(e) {
    e = e || window.event;
+
    if (e.ctrlKey || e.metaKey) return true;
 
    switch (e.keyCode) {
@@ -146,11 +147,13 @@
      case 36: // HOME
        Home();
        break;
+	 case 33: // matt's thing left
      case 37: // LEFT
        Left();
        break;
      case 38: // UP
        break;
+	 case 34: // matt's thing left	   
      case 39: // RIGHT
        Right();
        break;
@@ -160,6 +163,10 @@
        // TODO: Play/pause video
        break;
 
+	 case 66:
+	   // nothing
+	   break;
+	   
        // Letters keycodes are just the uppercase ASCII.
      case 72: // H
        ToggleHide();

@@ -8,6 +8,7 @@ datatype color =
 (* functional representation *)
 datatype board =
   Board of { squares : (int, color * piece) map,
+             (* a8, h8, a1, h1 *)
              castling : bool * bool * bool * bool,
              en-passant : int option,
              black-move : bool }
@@ -92,7 +93,8 @@ fun make-move (Board { squares, castling, en-passant, black-move },
     val (sx, sy) = unpos src
     val (dx, dy) = unpos dst
 
-    val my-color = if black-move then BLACK else WHITE
+    val (my-color, your-color) =
+      if black-move then (BLACK, WHITE) else (WHITE, BLACK)
 
     fun move-pawn capturing = fail "unimplemented"
     fun move-rook () =
@@ -102,9 +104,25 @@ fun make-move (Board { squares, castling, en-passant, black-move },
           if xx != 0 andalso yy != 0
           then ILLEGAL "rooks cannot move diagonally"
           else
-            (* check clear between *)
             if clear-between squares (sx, sy, dx, dy, xx, yy)
-            then fail "unimplemented"
+            then
+              let
+                val squares = map-remove (squares, src)
+                val squares = map-insert (squares, dst, (my-color, ROOK))
+
+                val (a8, h8, a1, h1) = castling
+                (* If the corners are involved (including by capture!)
+                   castling is lost. XXX the capture logic should be applied
+                   for all types of moves, not just rook moves! *)
+                val a8 = (a8 andalso src != 0) andalso dst != 0
+                val h8 = (h8 andalso src != 7) andalso dst != 7
+                val a1 = (a1 andalso src != 56) andalso dst != 56
+                val h1 = (h1 andalso src != 63) andalso dst != 63
+              in
+                OK (Board { squares = squares, black-move = not black-move,
+                            en-passant = NONE,
+                            castling = (a8, h8, a1, h1) })
+              end
             else ILLEGAL "rook cannot jump over piece"
 
     fun move-knight () = fail "unimplemented"

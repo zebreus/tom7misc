@@ -16,6 +16,13 @@ fun opt-require (SOME v) = v
 
 datatype order = LESS | EQUAL | GREATER
 
+fun bool-compare (false, true) = LESS
+  | bool-compare (true, false) = GREATER
+  | bool-compare _ = EQUAL
+
+fun not true = false
+  | not false = true
+
 object Object of { }
 
 fun int-compare (a, b) =
@@ -329,6 +336,32 @@ fun set-insert (Set { cmp, tree }, item) =
     Set { cmp = cmp, tree = r tree }
   end
 
+fun set-remove (Set { cmp, tree }, key) =
+  let
+    (* Merge t1 and t1, where everything in t1 is less than t2. *)
+    fun merge (SetEmpty, SetEmpty) = SetEmpty
+      | merge (SetEmpty, right) = right
+      | merge (left, SetEmpty) = left
+      | merge (SetNode (l, x, r), right) =
+               (*
+                 x:v     right
+                 / \
+                l   r
+                *)
+              SetNode(l, x, merge (r, right))
+
+    fun r SetEmpty = SetEmpty
+      | r (SetNode (left, x, right)) =
+      case cmp (key, x) of
+        (* This is the key, so remove this node. *)
+        EQUAL => merge (left, right)
+      | LESS => SetNode (r left, x, right)
+      | GREATER => SetNode (left, x, r right)
+  in
+    Set { cmp = cmp, tree = r tree }
+  end
+
+
 fun set-contains (Set { cmp, tree }, item) =
   let
     fun r SetEmpty = false
@@ -382,6 +415,31 @@ fun map-insert (Map { cmp, tree }, key, value) =
       case cmp (key, x) of
         (* Already present. Overwrite it. *)
         EQUAL => MapNode (left, key, value, right)
+      | LESS => MapNode (r left, x, v, right)
+      | GREATER => MapNode (left, x, v, r right)
+  in
+    Map { cmp = cmp, tree = r tree }
+  end
+
+fun map-remove (Map { cmp, tree }, key) =
+  let
+    (* Merge t1 and t1, where everything in t1 is less than t2. *)
+    fun merge (MapEmpty, MapEmpty) = MapEmpty
+      | merge (MapEmpty, right) = right
+      | merge (left, MapEmpty) = left
+      | merge (MapNode (l, x, v, r), right) =
+               (*
+                 x:v     right
+                 / \
+                l   r
+                *)
+              MapNode(l, x, v, merge (r, right))
+
+    fun r MapEmpty = MapEmpty
+      | r (MapNode (left, x, v, right)) =
+      case cmp (key, x) of
+        (* This is the key, so remove this node. *)
+        EQUAL => merge (left, right)
       | LESS => MapNode (r left, x, v, right)
       | GREATER => MapNode (left, x, v, r right)
   in

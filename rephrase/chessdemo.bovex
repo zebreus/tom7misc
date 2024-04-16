@@ -1,0 +1,9 @@
+let
+  import "stdlib.bovex"
+  import "chess.bovex"
+  import "layout.bovex"
+
+in
+  print "OK\n"
+end
+
