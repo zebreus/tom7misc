@@ -171,8 +171,6 @@ Elaboration::ElabDec(
     return pattern_compilation->CompileIrrefutable(
         G, dec->pat, dec->exp);
 
-  #if 0
-    // HERE: Need to fix these!
   case el::DecType::FUN: {
     CHECK(!dec->funs.empty()) << "Bug: Should not parse empty funs.";
 
@@ -196,8 +194,7 @@ Elaboration::ElabDec(
       return pattern_compilation->CompileIrrefutable(
           G,
           el_pool->VarPat(fun.name),
-          el_pool->Fn(fun.name, GetSimpleClauses(fun)),
-          rest);
+          el_pool->Fn(fun.name, GetSimpleClauses(fun)));
     } else {
       // For mutually recursive functions, we hoist them out to
       // globals so that they can reference each other. First,
@@ -432,46 +429,91 @@ Elaboration::ElabDec(
           });
       }
 
-      const auto &[let_exp, let_type] = Elab(GGG, rest);
-
       // Get a name (cosmetic) for the environment that involves
       // the functions declared.
-      std::vector<std::string> fnames;
-      for (const el::FunDec &fun : dec->funs)
-        fnames.push_back(fun.name);
+      std::string aenv_var = [this, dec]() {
+          std::vector<std::string> fnames;
+          for (const el::FunDec &fun : dec->funs)
+            fnames.push_back(fun.name);
+          return pool->NewVar(
+              StringPrintf("%s_env", Util::Join(fnames, "_").c_str()));
+        }();
 
-      std::string aenv_var = pool->NewVar(
-          StringPrintf("%s_env", Util::Join(fnames, "_").c_str()));
-      const il::Exp *ret_exp = let_exp;
-      // Now wrap with the function bindings as described above.
+      std::vector<ILDec> ret;
+      // One for each function, and the environment itself.
+      ret.reserve(dec->funs.size() + 1);
+
+      // First, the environment.
+      {
+        std::vector<std::pair<std::string, const il::Exp *>> env_fields;
+        env_fields.reserve(fvts.size());
+        for (const auto &[lab_var, t_] : fvts) {
+          // Label and variable are the same.
+          env_fields.emplace_back(lab_var, pool->Var({}, lab_var));
+        }
+        ret.push_back(ILDec{
+              .tyvars = {},
+              .x = aenv_var,
+              .rhs = pool->Record(env_fields)
+              });
+      }
+
+      // const il::Exp *ret_exp = let_exp;
+      // Now each function binding as described above.
       for (int i = 0; i < (int)dec->funs.size(); i++) {
         // Generalize using the same type variable bindings and
         // occurrences. Note that since the body is an application,
         // this violates the value restriction, but that is an EL
         // concept, not an IL one.
-        ret_exp = pool->Let(
-            tyvars, il_vars[i],
-            pool->App(pool->GlobalSym(tyvar_args, global_syms[i]),
-                      // Environment is not polymorphic.
-                      pool->Var({}, aenv_var)),
-            ret_exp);
+        ret.push_back(ILDec{
+            .tyvars = tyvars,
+            .x = il_vars[i],
+            .rhs = pool->App(pool->GlobalSym(tyvar_args, global_syms[i]),
+                             // Environment is not polymorphic.
+                             pool->Var({}, aenv_var))
+          });
       }
 
-      // And bind the environment itself.
-      std::vector<std::pair<std::string, const il::Exp *>> env_fields;
-      env_fields.reserve(fvts.size());
-      for (const auto &[lab_var, t_] : fvts) {
-        // Label and variable are the same.
-        env_fields.emplace_back(lab_var, pool->Var({}, lab_var));
-      }
-      ret_exp = pool->Let({}, aenv_var, pool->Record(env_fields),
-                          ret_exp);
-
-      return std::make_pair(ret_exp, let_type);
+      return std::make_pair(ret, GGG);
     }
     break;
   }
-  #endif
+
+  case el::DecType::LOCAL: {
+    std::vector<ILDec> ildecs;
+
+    il::ElabContext GG = G;
+    // The hidden decls.
+    for (const el::Dec *el_dec : dec->decs1) {
+      const auto &[ds, GGG] = ElabDec(GG, el_dec);
+      GG = GGG;
+      for (const ILDec &d : ds)
+        ildecs.push_back(d);
+    }
+
+    il::ElabContext GHIDE = GG;
+    // The exposed decls.
+    for (const el::Dec *el_dec : dec->decs2) {
+      const auto &[ds, GGG] = ElabDec(GG, el_dec);
+      GG = GGG;
+      for (const ILDec &d : ds)
+        ildecs.push_back(d);
+    }
+
+    // All the IL decls are part of the elaborated program. But
+    // somehow we want to prevent bindings between G and GHIDE
+    // to be hidden for the sake of elaboration.
+    // TODO:
+    //  So it's like,
+    //    any binding in GG
+    //      but if that binding is also in GHIDE,
+    //        then instead use the shadowed binding in G
+    //        (or delete it if no such binding in G).
+
+    il::ElabContext GL = il::ElabContext::SubtractForLocal(G, GHIDE, GG);
+
+    return std::make_pair(ildecs, GL);
+  }
 
   case el::DecType::DATATYPE: {
     {

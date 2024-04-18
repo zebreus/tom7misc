@@ -130,7 +130,8 @@ static std::string RunToString(const std::string &source) {
   if (execution.Failed()) {
     printf(ARED("FAILED") "\n");
     if (execution.fail_message.has_value()) {
-      printf(AWHITE("message") ": %s\n", execution.fail_message.value().c_str());
+      printf(AWHITE("message") ": %s\n",
+             execution.fail_message.value().c_str());
     } else {
       printf(AWHITE("(no message?)") "\n");
     }

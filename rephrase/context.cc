@@ -141,6 +141,22 @@ std::string ElabContext::ToString() const {
   return ret;
 }
 
+ElabContext ElabContext::SubtractForLocal(
+      ElabContext Gbefore,
+      ElabContext Ghidden,
+      ElabContext Gexposed) {
+
+  const auto before = Gbefore.fm.Export();
+
+  const auto hidden = Ghidden.fm.Export();
+
+  const auto exposed = Gexposed.fm.Export();
+
+  // TODO: HERE.
+
+  LOG(FATAL) << "unimplemented SubtractForLocal";
+}
+
 std::string PolyTypeString(const PolyType &pt) {
   return StringPrintf("(%s) %s", Util::Join(pt.first, ",").c_str(),
                       TypeString(pt.second).c_str());
