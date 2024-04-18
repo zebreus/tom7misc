@@ -1798,7 +1798,9 @@ PatternCompilation::SplitRecordPattern(
   return std::make_pair(result, type);
 }
 
-std::pair<std::vector<Elaboration::ILDec>, il::ElabContext>
+std::tuple<std::vector<Elaboration::ILDec>,
+           std::vector<il::ElabContext::Binding>,
+           il::ElabContext>
 PatternCompilation::CompileIrrefutable(
       const ElabContext &G,
       const el::Pat *pat,
@@ -1812,7 +1814,7 @@ PatternCompilation::CompileIrrefutable(
   // a syntactic check for irrefutability.
   bool valuable = el::IsValuable(rhs);
 
-  const auto &[GG, decs] =
+  const auto &[decs, binds, GG] =
     CompileIrrefutableRec(G, pat, re, rt, valuable);
 
   if (VERBOSE) {
@@ -1822,14 +1824,18 @@ PatternCompilation::CompileIrrefutable(
              dec.x.c_str(), ExpString(dec.rhs).c_str());
     }
 
+    // Should print the bindings here instead of the context
+
     printf(AWHITE("New context") ":\n%s\n(end)\n",
            GG.ToString().c_str());
   }
 
-  return std::make_pair(decs, GG);
+  return std::make_tuple(decs, binds, GG);
 }
 
-std::pair<ElabContext, std::vector<Elaboration::ILDec>>
+std::tuple<std::vector<Elaboration::ILDec>,
+           std::vector<ElabContext::Binding>,
+           ElabContext>
 PatternCompilation::CompileIrrefutableRec(
     const ElabContext &G,
     const el::Pat *pat,
@@ -1957,7 +1963,7 @@ PatternCompilation::CompileIrrefutableRec(
     // PERF: Could use one of the variables in here, if non-empty.
     vars.push_back(r);
     // This is just a variable binding.
-    const auto &[GG, rdecs] =
+    const auto &[rdecs, rbinds, GG] =
       GeneralizeOne(G, vars, rhs, rhs_type, rhs_valuable);
 
     // Now we have the subpatterns.
@@ -1974,6 +1980,7 @@ PatternCompilation::CompileIrrefutableRec(
     // Now, for each subpattern, compile it recursively.
 
     std::vector<Elaboration::ILDec> decs = rdecs;
+    std::vector<ElabContext::Binding> binds = rbinds;
 
     ElabContext GGG = GG;
     for (int i = 0; i < (int)pat->str_children.size(); i++) {
@@ -1989,15 +1996,16 @@ PatternCompilation::CompileIrrefutableRec(
       CHECK(label == shape[i].first);
       const il::Type *rhs_type = shape[i].second;
 
-      const auto &[Gi, decsi] = CompileIrrefutableRec(
+      const auto &[decsi, bindsi, Gi] = CompileIrrefutableRec(
           GGG, p, rhs, rhs_type, rhs_valuable);
 
       for (const Elaboration::ILDec &d : decsi) decs.push_back(d);
+      for (const ElabContext::Binding &b : bindsi) binds.push_back(b);
 
       GGG = Gi;
     }
 
-    return std::make_pair(GGG, decs);
+    return std::make_tuple(decs, binds, GGG);
   }
 }
 
@@ -2008,7 +2016,9 @@ PatternCompilation::CompileIrrefutableRec(
 // This is the base case of irrefutable patterns. The vector
 // of variables may be empty. Importantly, this is the one
 // case where we may perform polymorphic generalization.
-std::pair<ElabContext, std::vector<Elaboration::ILDec>>
+std::tuple<std::vector<Elaboration::ILDec>,
+           std::vector<ElabContext::Binding>,
+           ElabContext>
 PatternCompilation::GeneralizeOne(
     const ElabContext &G,
     std::vector<std::string> vars,
@@ -2099,6 +2109,8 @@ PatternCompilation::GeneralizeOne(
   };
 
   std::vector<Elaboration::ILDec> decs = {odec};
+  std::vector<ElabContext::Binding> binds =
+    {ElabContext::Binding{.v = ov, .info = {oinfo}}};
   ElabContext GG = G.Insert(ov, oinfo);
 
   // Now bind the rest of the variables as copies. Most of the
@@ -2120,10 +2132,11 @@ PatternCompilation::GeneralizeOne(
     };
 
     GG = GG.Insert(v, info);
+    binds.push_back(ElabContext::Binding{.v = v, .info = {info}});
     decs.push_back(std::move(dec));
   }
 
-  return std::make_pair(GG, decs);
+  return std::make_tuple(decs, binds, GG);
 }
 
 

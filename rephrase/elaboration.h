@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -57,7 +58,9 @@ struct Elaboration {
   const il::Type *EVarize(const std::vector<std::string> &tyvars,
                           const il::Type *t);
 
-  std::pair<std::vector<ILDec>, il::ElabContext>
+  std::tuple<std::vector<ILDec>,
+             std::vector<il::ElabContext::Binding>,
+             il::ElabContext>
   ElabDec(const il::ElabContext &G,
           const el::Dec *dec);
 

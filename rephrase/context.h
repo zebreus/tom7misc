@@ -73,6 +73,7 @@ struct ObjVarInfo {
 // Elaboration context.
 //
 struct ElabContext {
+  using AnyVarInfo = std::variant<VarInfo, TypeVarInfo, ObjVarInfo>;
 
   // Empty context.
   ElabContext() = default;
@@ -81,6 +82,23 @@ struct ElabContext {
   ElabContext(const std::vector<std::pair<std::string, VarInfo>> &exp,
               const std::vector<std::pair<std::string, TypeVarInfo>> &typ,
               const std::vector<std::pair<std::string, ObjVarInfo>> &obj);
+
+  struct Binding {
+    std::string v;
+    AnyVarInfo info;
+  };
+
+  ElabContext InsertBinding(const Binding &b) const {
+    if (const VarInfo *vi = std::get_if<VarInfo>(&b.info)) {
+      return Insert(b.v, *vi);
+    } else if (const TypeVarInfo *tvi = std::get_if<TypeVarInfo>(&b.info)) {
+      return InsertType(b.v, *tvi);
+    } else if (const ObjVarInfo *ovi = std::get_if<ObjVarInfo>(&b.info)) {
+      return InsertObj(b.v, *ovi);
+    } else {
+      LOG(FATAL) << "Invalid AnyVarInfo";
+    }
+  }
 
   // Expression variables.
   ElabContext Insert(const std::string &s, VarInfo vi) const {
@@ -144,6 +162,7 @@ struct ElabContext {
 
   static std::string VarInfoString(const VarInfo &vi);
 
+  // XXX obsolete
   // When we have
   //   Gbefore |- let decs1 in decs2 end,
   //   and decs1 produces an updated context Ghidden,
@@ -163,8 +182,6 @@ private:
     // Name declared in an "object" declaration.
     OBJ,
   };
-
-  using AnyVarInfo = std::variant<VarInfo, TypeVarInfo, ObjVarInfo>;
 
   using KeyType = std::pair<std::string, V>;
   using FM = FunctionalMap<KeyType, AnyVarInfo>;

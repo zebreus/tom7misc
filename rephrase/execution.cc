@@ -1029,7 +1029,7 @@ void Execution::RunToCompletion(State *state) {
   static constexpr int GC_EVERY = 10'000'000;
   for (int64_t iters = 0; !IsDone(*state); iters++) {
     Step(state);
-    if (iters % GC_EVERY == 0) {
+    if ((iters + 1) % GC_EVERY == 0) {
       GC(state);
     }
   }

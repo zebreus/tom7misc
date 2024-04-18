@@ -5,6 +5,7 @@
 // Pattern compilation (elaboration).
 
 #include <string>
+#include <tuple>
 #include <utility>
 #include <functional>
 #include <vector>
@@ -36,7 +37,9 @@ struct PatternCompilation {
   // This is used for val declarations.
   //
   // leval pat = rhs
-  std::pair<std::vector<Elaboration::ILDec>, il::ElabContext>
+  std::tuple<std::vector<Elaboration::ILDec>,
+             std::vector<il::ElabContext::Binding>,
+             il::ElabContext>
   CompileIrrefutable(
       const ElabContext &G,
       const el::Pat *pat,
@@ -53,7 +56,9 @@ struct PatternCompilation {
   const el::Exp *SimpleBind(std::string nv, std::string objv,
                             const el::Exp *body);
 
-  std::pair<ElabContext, std::vector<Elaboration::ILDec>>
+  std::tuple<std::vector<Elaboration::ILDec>,
+             std::vector<ElabContext::Binding>,
+             ElabContext>
   CompileIrrefutableRec(
       const ElabContext &G,
       const el::Pat *pat,
@@ -61,7 +66,9 @@ struct PatternCompilation {
       const il::Type *rhs_type,
       bool rhs_valuable);
 
-  std::pair<ElabContext, std::vector<Elaboration::ILDec>>
+  std::tuple<std::vector<Elaboration::ILDec>,
+             std::vector<ElabContext::Binding>,
+             ElabContext>
   GeneralizeOne(
       const ElabContext &G,
       std::vector<std::string> vars,

@@ -148,7 +148,9 @@ const il::Type *Elaboration::ElabType(const Context &G,
   }
 }
 
-std::pair<std::vector<Elaboration::ILDec>, il::ElabContext>
+std::tuple<std::vector<Elaboration::ILDec>,
+           std::vector<il::ElabContext::Binding>,
+           il::ElabContext>
 Elaboration::ElabDec(
     const il::ElabContext &G,
     const el::Dec *dec) {
@@ -417,16 +419,20 @@ Elaboration::ElabDec(
       // the same as what we used to evaluate the function bodies, but
       // now we've generalized. So build a new context.
 
+      std::vector<il::ElabContext::Binding> binds;
       Context GGG = G;
       for (int i = 0; i < (int)dec->funs.size(); i++) {
         const el::FunDec &fun = dec->funs[i];
         std::string il_var = il_vars[i];
         const auto &[dom, cod] = dom_cods[i];
-        GGG = GGG.Insert(fun.name, VarInfo{
-            .tyvars = tyvars,
-            .type = pool->Arrow(dom, cod),
-            .var = il_var,
-          });
+        VarInfo funinfo = VarInfo{
+          .tyvars = tyvars,
+          .type = pool->Arrow(dom, cod),
+          .var = il_var,
+        };
+        GGG = GGG.Insert(fun.name, funinfo);
+        binds.push_back(il::ElabContext::Binding{
+            .v = fun.name, .info = {funinfo}});
       }
 
       // Get a name (cosmetic) for the environment that involves
@@ -474,7 +480,7 @@ Elaboration::ElabDec(
           });
       }
 
-      return std::make_pair(ret, GGG);
+      return std::make_tuple(ret, binds, GGG);
     }
     break;
   }
@@ -485,7 +491,7 @@ Elaboration::ElabDec(
     il::ElabContext GG = G;
     // The hidden decls.
     for (const el::Dec *el_dec : dec->decs1) {
-      const auto &[ds, GGG] = ElabDec(GG, el_dec);
+      const auto &[ds, binds, GGG] = ElabDec(GG, el_dec);
       GG = GGG;
       for (const ILDec &d : ds)
         ildecs.push_back(d);
@@ -493,26 +499,26 @@ Elaboration::ElabDec(
 
     il::ElabContext GHIDE = GG;
     // The exposed decls.
+    std::vector<il::ElabContext::Binding> exposed_binds;
     for (const el::Dec *el_dec : dec->decs2) {
-      const auto &[ds, GGG] = ElabDec(GG, el_dec);
+      const auto &[ds, binds, GGG] = ElabDec(GG, el_dec);
       GG = GGG;
       for (const ILDec &d : ds)
         ildecs.push_back(d);
+      for (const il::ElabContext::Binding &b : binds)
+        exposed_binds.push_back(b);
     }
 
-    // All the IL decls are part of the elaborated program. But
-    // somehow we want to prevent bindings between G and GHIDE
-    // to be hidden for the sake of elaboration.
-    // TODO:
-    //  So it's like,
-    //    any binding in GG
-    //      but if that binding is also in GHIDE,
-    //        then instead use the shadowed binding in G
-    //        (or delete it if no such binding in G).
+    // All the IL decls are part of the elaborated program.
+    // But we do not want to expose the bindings from the
+    // hidden part.
 
-    il::ElabContext GL = il::ElabContext::SubtractForLocal(G, GHIDE, GG);
+    il::ElabContext GL = G;
+    for (const auto &b : exposed_binds) {
+      GL = GL.InsertBinding(b);
+    }
 
-    return std::make_pair(ildecs, GL);
+    return std::make_tuple(ildecs, exposed_binds, GL);
   }
 
   case el::DecType::DATATYPE: {
@@ -588,6 +594,11 @@ Elaboration::ElabDec(
     //           and v_1 . [ctor21: t21, ctor22: t22, ...]
     //           and ...)
 
+    // FIXME: I think we shuold discard GG and have like GGG here.
+    // GG was for elaborating the RHS, and it has the tyvars
+    // bound.
+    std::vector<il::ElabContext::Binding> binds;
+
     // Bind the datatypes themselves, e.g. 'list' and 'option'.
     // Each is a function over the same IL type variables,
     // Λ(tyvars). pi_n (... same mu body ...)
@@ -596,9 +607,14 @@ Elaboration::ElabDec(
       const DatatypeDec &dd = dec->datatypes[i];
       const il::Type *mu = pool->Mu(i, sum_types);
       mu_types.push_back(mu);
-      GG = GG.InsertType(dd.name, TypeVarInfo{
-          .tyvars = il_tyvars,
-          .type = mu,
+      TypeVarInfo datatype_info = TypeVarInfo{
+        .tyvars = il_tyvars,
+        .type = mu,
+      };
+      GG = GG.InsertType(dd.name, datatype_info);
+      binds.push_back(il::ElabContext::Binding{
+          .v = dd.name,
+          .info = datatype_info,
         });
     }
 
@@ -653,17 +669,20 @@ Elaboration::ElabDec(
                  TypeString(mu_type).c_str(),
                  ctor.c_str());
         }
-        GG = GG.Insert(ctor, VarInfo{
-            .tyvars = il_tyvars,
-            .type = pool->Arrow(dom, cod),
-            .ctor = std::make_optional(std::make_tuple(y, mu_type, ctor)),
-          });
+        VarInfo ctor_info = VarInfo{
+          .tyvars = il_tyvars,
+          .type = pool->Arrow(dom, cod),
+          .ctor = std::make_optional(std::make_tuple(y, mu_type, ctor)),
+        };
+        GG = GG.Insert(ctor, ctor_info);
+        binds.push_back(
+            il::ElabContext::Binding({.v = ctor, .info = ctor_info}));
       }
     }
 
     // There are no actual declarations generated; all the bindings
     // are transparent. So just elaborate the body in the new context.
-    return std::make_pair(std::vector<ILDec>{}, GG);
+    return std::make_tuple(std::vector<ILDec>{}, binds, GG);
   }
 
   case el::DecType::OBJECT: {
@@ -684,18 +703,29 @@ Elaboration::ElabDec(
 
     // As with a datatype decl, nothing is actually generated by
     // the decl. (In the future we could be generating a tag, though?)
+    std::vector<il::ElabContext::Binding> binds = {
+      il::ElabContext::Binding{
+        .v = object.name,
+        .info = ovi,
+      }
+    };
     auto GG = G.InsertObj(object.name, std::move(ovi));
-    return std::make_pair(std::vector<ILDec>{}, GG);
+    return std::make_tuple(std::vector<ILDec>{}, binds, GG);
   }
 
   case el::DecType::TYPE: {
     // This is not hard, but I am rushing for the SIGBOVIK deadline!
     CHECK(dec->tyvars.empty()) << "unimplemented: tyvars in type decl";
     const il::Type *t = ElabType(G, dec->t);
-    il::ElabContext GG = G.InsertType(
-        dec->str,
-        TypeVarInfo{.tyvars = {}, .type = t});
-    return std::make_pair(std::vector<ILDec>{},GG);
+    TypeVarInfo tvi = TypeVarInfo{.tyvars = {}, .type = t};
+    il::ElabContext GG = G.InsertType(dec->str, tvi);
+    std::vector<il::ElabContext::Binding> binds = {
+      il::ElabContext::Binding{
+        .v = dec->str,
+        .info = tvi,
+      }
+    };
+    return std::make_tuple(std::vector<ILDec>{}, binds, GG);
   }
 
   case el::DecType::OPEN: {
@@ -728,7 +758,8 @@ Elaboration::ElabDec(
   }  // switch
 
   LOG(FATAL) << "Unimplemented in ElabDec";
-  return std::make_pair(std::vector<ILDec>{}, G);
+  return std::make_tuple(
+      std::vector<ILDec>{}, std::vector<il::ElabContext::Binding>{}, G);
 }
 
 
@@ -742,7 +773,7 @@ std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
   std::vector<ILDec> ildecs;
   il::ElabContext GG = G;
   for (const el::Dec *dec : decs) {
-    const auto &[ds, GGG] = ElabDec(GG, dec);
+    const auto &[ds, binds_, GGG] = ElabDec(GG, dec);
     GG = GGG;
     for (const ILDec &d : ds)
       ildecs.push_back(d);
