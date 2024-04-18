@@ -51,7 +51,8 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
   const Dec *DoLocal(const std::vector<const Dec *> &decs1,
                      const std::vector<const Dec *> &decs2,
                      FunctionalSet<std::string> nullary_ctors) override {
-    LOG(FATAL) << "Expect local to be compiled away by now";
+    // XXXX gotta implement it.
+    LOG(FATAL) << "unimplemented";
   }
 
   const Dec *DoDatatypeDec(

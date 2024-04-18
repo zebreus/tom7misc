@@ -256,7 +256,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
 
   static const std::unordered_map<std::string, TokenType> keywords = {
     {"let", LET},
-    {"local", LET},
+    {"local", LOCAL},
     {"do", DO},
     {"end", END},
     {"in", IN},

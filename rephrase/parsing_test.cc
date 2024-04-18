@@ -1035,6 +1035,23 @@ static void TestParseDec() {
     CHECK(dec->exp->type == ExpType::RECORD);
   }
 
+  {
+    const auto *dec = ParseDec("local  in  end");
+    CHECK(dec->type == DecType::LOCAL);
+    CHECK(dec->decs1.empty());
+    CHECK(dec->decs2.empty());
+  }
+
+  {
+    const auto *dec = ParseDec(
+        "local val x = 3 in object Nothing of { } end");
+    CHECK(dec->type == DecType::LOCAL);
+    CHECK(dec->decs1.size() == 1);
+    CHECK(dec->decs1[0]->type == DecType::VAL);
+    CHECK(dec->decs2.size() == 1);
+    CHECK(dec->decs2[0]->type == DecType::OBJECT);
+  }
+
   printf("Dec parsing " AGREEN("OK") "\n");
 }
 

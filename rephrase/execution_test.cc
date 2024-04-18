@@ -567,6 +567,23 @@ static void FloatTests() {
 }
 
 
+static void TestLocal() {
+  CHECK_EQ(
+      RunToString(R"(
+          let
+            val x = "ok"
+            local val x = 666
+            in val y = 777
+            end
+          in
+            print (x : string);
+            print (int-to-string (y : int))
+          end
+      )"),
+      "ok777");
+}
+
+
 static void NewTests() {
 
 }
@@ -582,6 +599,7 @@ int main(int argc, char **argv) {
   bc::ObjTests();
   bc::StringTests();
   bc::FloatTests();
+  bc::TestLocal();
   bc::NewTests();
 
   printf("OK\n");
