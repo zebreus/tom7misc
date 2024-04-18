@@ -148,555 +148,567 @@ const il::Type *Elaboration::ElabType(const Context &G,
   }
 }
 
-// XXX return context instead of requiring let?
-const std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
+std::pair<std::vector<Elaboration::ILDec>, il::ElabContext>
+Elaboration::ElabDec(
     const il::ElabContext &G,
-    const std::vector<const el::Dec *> &decs,
-    const el::Exp *el_body) {
+    const el::Dec *dec) {
+
   // PERF this copies the string, but it seems safer than worrying about
   // its lifetime. Most of these will be smaller than the SSO.
   auto Error = [](const std::string &construct) ->
     std::function<std::string()> {
     return std::function<std::string()>([construct]() {
-        return StringPrintf("ElabDecs: %s\n", construct.c_str());
+        return StringPrintf("ElabDec: %s\n", construct.c_str());
       });
     };
 
-  if (decs.empty()) {
-    return Elab(G, el_body);
-  } else {
-    const el::Dec *dec = decs[0];
+  switch (dec->type) {
+  case el::DecType::VAL:
+    // Only irrefutable patterns are allowed in a val decl.
 
-    const el::Exp *rest = [&]() {
-        std::vector<const el::Dec *> rest_decs;
-        rest_decs.reserve(decs.size() - 1);
-        for (int i = 1; i < (int)decs.size(); i++) {
-          rest_decs.push_back(decs[i]);
+    // Need to generalize if free evars.
+    // All this is handled in the pattern compiler.
+    return pattern_compilation->CompileIrrefutable(
+        G, dec->pat, dec->exp);
+
+  #if 0
+    // HERE: Need to fix these!
+  case el::DecType::FUN: {
+    CHECK(!dec->funs.empty()) << "Bug: Should not parse empty funs.";
+
+    auto GetSimpleClauses = [](const el::FunDec &fun) {
+        std::vector<std::pair<const el::Pat *, const el::Exp *>>
+          simple_clauses;
+        simple_clauses.reserve(fun.clauses.size());
+        for (const auto &[ps, e] : fun.clauses) {
+          CHECK(ps.size() == 1) << "Function " << fun.name <<
+            " should have been rewritten already by the Uncurry "
+            "phase.";
+          simple_clauses.emplace_back(ps[0], e);
         }
-        return rest_decs.empty() ? el_body :
-          el_pool->Let(std::move(rest_decs), el_body);
-      }();
+        return simple_clauses;
+      };
 
-    switch (dec->type) {
-    case el::DecType::VAL:
-      // Only irrefutable patterns are allowed in a val decl.
+    if (dec->funs.size() == 1) {
+      const el::FunDec &fun = dec->funs[0];
 
-      // Need to generalize if free evars.
-      // All this is handled in the pattern compiler.
+      // If not mutually recursive, do this the easy way.
       return pattern_compilation->CompileIrrefutable(
-          G, dec->pat, dec->exp, rest);
-
-    case el::DecType::FUN: {
-      CHECK(!dec->funs.empty()) << "Bug: Should not parse empty funs.";
-
-      auto GetSimpleClauses = [](const el::FunDec &fun) {
-          std::vector<std::pair<const el::Pat *, const el::Exp *>>
-            simple_clauses;
-          simple_clauses.reserve(fun.clauses.size());
-          for (const auto &[ps, e] : fun.clauses) {
-            CHECK(ps.size() == 1) << "Function " << fun.name <<
-              " should have been rewritten already by the Uncurry "
-              "phase.";
-            simple_clauses.emplace_back(ps[0], e);
-          }
-          return simple_clauses;
-        };
-
-      if (dec->funs.size() == 1) {
-        const el::FunDec &fun = dec->funs[0];
-
-        // If not mutually recursive, do this the easy way.
-        return pattern_compilation->CompileIrrefutable(
-            G,
-            el_pool->VarPat(fun.name),
-            el_pool->Fn(fun.name, GetSimpleClauses(fun)),
-            rest);
-      } else {
-        // For mutually recursive functions, we hoist them out to
-        // globals so that they can reference each other. First,
-        // type-check and translate the bodies.
-        std::vector<std::string> el_vars;
-        std::vector<std::string> il_vars;
-        std::vector<std::pair<const il::Type *, const il::Type *>> dom_cods;
-        Context GG = G;
-        for (const el::FunDec &fun : dec->funs) {
-          const std::string &el_var = fun.name;
-          const std::string il_var = pool->NewVar(el_var);
-          el_vars.push_back(el_var);
-          il_vars.push_back(il_var);
-          const il::Type *dom = NewEVar();
-          const il::Type *cod = NewEVar();
-          dom_cods.emplace_back(dom, cod);
-          GG = GG.Insert(fun.name, VarInfo{
-              // We only support uniform recursion, so each function
-              // will have just one type here; if there are free evars
-              // at the end, those are the only ones we abstract over.
-              .tyvars = {},
-              .type = pool->Arrow(dom, cod),
-              .var = il_var,
-            });
-        }
-
-        std::vector<std::pair<const il::Exp *, const il::Type *>> fns;
-        fns.reserve(dec->funs.size());
-        for (int i = 0; i < (int)dec->funs.size(); i++) {
-          const el::FunDec &fun = dec->funs[i];
-          // In the generated code we could perform the recursion
-          // through the fn's recursive name or through the global.
-          // The fn name is a little better because its type variables
-          // are already instantiated, but if there ends up being a
-          // reason to prefer the global, it would be easy to switch
-          // it right here.
-          const auto &[e, t] =
-            Elab(GG, el_pool->Fn(el_vars[i], GetSimpleClauses(fun)));
-          const auto &[dom, cod] = dom_cods[i];
-          Unification::Unify(Error("fun..and decl"), pool->Arrow(dom, cod), t);
-          fns.emplace_back(e, t);
-        }
-
-        // Once the function bodies are elaborated, we've finished with
-        // any constraints on their types, so we can generalize. We only
-        // support uniform recursion, so we get the same set of type
-        // variables for all of them. Get that set.
-        std::vector<EVar> free_evars = [&]() {
-            std::vector<const il::Type *> all_types;
-            for (const auto &[dom, cod] : dom_cods) {
-              all_types.push_back(dom);
-              all_types.push_back(cod);
-            }
-
-            std::vector<EVar> gen_evars;
-            for (const EVar &v : EVar::FreeEVarsInTypes(all_types)) {
-              // Only generalize evars that cannot still be accessed
-              // through the context. (The context to consider here
-              // is G, the one for the outer scope.)
-              if (!G.HasEVar(v)) {
-                gen_evars.push_back(v);
-              }
-            }
-            return gen_evars;
-          }();
-
-        if (VERBOSE) {
-          printf("Free type variables:\n");
-          for (const EVar &ev : free_evars) {
-            printf("  %s\n", ev.ToString().c_str());
-          }
-        }
-
-        // Generalize, setting the evars to new type variables.
-        std::vector<std::string> tyvars;
-        std::vector<const il::Type *> tyvar_args;
-        tyvars.reserve(free_evars.size());
-        tyvar_args.reserve(free_evars.size());
-        for (const EVar &ev : free_evars) {
-          std::string alpha_var = pool->NewVar("gen");
-          const il::Type *alpha = pool->VarType(alpha_var, {});
-          tyvars.push_back(alpha_var);
-          tyvar_args.push_back(alpha);
-          ev.Set(alpha);
-        }
-
-        // The declared functions may mention local variables that prevent
-        // them from being hoisted to top-level. These present as
-        // free variables that are not in the mutually-recursive bundle
-        // and are not globals. We use the same environment for the
-        // entire bundle.
-        std::unordered_set<std::string> fvs_all;
-        for (int i = 0; i < (int)dec->funs.size(); i++) {
-          const auto &[oexp, otype] = fns[i];
-          for (const std::string &fv : ILUtil::FreeExpVars(oexp)) {
-            fvs_all.insert(fv);
-          }
-        }
-
-        // The other functions in the bundle will look syntactically
-        // free, but they are being bound as part of this declaration.
-        // Remove them from the set.
-        for (const std::string &ilv : il_vars) {
-          fvs_all.erase(ilv);
-        }
-
-        // The free variables must be bound in the context, so get
-        // those types.
-        std::vector<std::pair<std::string, const il::Type *>> fvts;
-        for (const std::string &s : fvs_all) {
-          // Since we've already elaborated the expression, its
-          // free variables are IL variables. Look them up in the
-          // context to get their types.
-          const VarInfo *vi = G.FindByILVar(s);
-          CHECK(vi != nullptr) << "Bug: When compiling a "
-            "mutually-recursive bundle of functions (fun...and), "
-            "found a free variable " << s << " that's not bound in "
-            "the context.\n";
-          CHECK(vi->type != nullptr) << "Bug: Maybe this happens "
-            "for primops or ctors?";
-          fvts.emplace_back(s, vi->type);
-        }
-
-        std::sort(fvts.begin(), fvts.end(),
-                  [](const std::pair<std::string, const il::Type *> &a,
-                     const std::pair<std::string, const il::Type *> &b) {
-                    return a.first < b.first;
-                  });
-
-        if (VERBOSE) {
-          printf("Environment for mutually recursive fun dec:\n");
-          for (const auto &[x, t] : fvts) {
-            printf("  %s : %s\n", x.c_str(), TypeString(t).c_str());
-          }
-        }
-
-        // The labels have the same names as the variables for our
-        // convenience. This means that the record type is just the
-        // fvts set we just created.
-        const il::Type *env_type = pool->RecordType(fvts);
-        const std::string gx = pool->NewVar("env");
-        const il::Exp *gxv = pool->Var({}, gx);
-
-        auto UnpackEnv = [&](const il::Exp *body) {
-            for (const auto &[fv, t] : fvts) {
-              body = pool->Let({}, fv, pool->Project(fv, gxv), body);
-            }
-            return body;
-          };
-
-        // Names for the globals.
-        std::vector<std::string> global_syms;
-        global_syms.reserve(dec->funs.size());
-        for (const el::FunDec &fun : dec->funs) {
-          global_syms.push_back(
-              pool->NewVar(StringPrintf("g_%s", fun.name.c_str())));
-        }
-
-        // Now we can generate the global for each function.
-        CHECK(dec->funs.size() == fns.size());
-        for (int i = 0; i < (int)dec->funs.size(); i++) {
-          const el::FunDec &fun = dec->funs[i];
-          const auto &[obody, otype] = fns[i];
-
-          // If the function is f : d->c = (fn x => e), with free variables
-          // x1 : t1, x2 : t2, ... then we generate the global
-          // global_f : (t1*t2*...) -> d -> c =
-          //    (fn (x1=x1, x2=x2, ...) => fn x => e)
-          //
-          // With appropriate substitutions for calls to friends in the
-          // bundle.
-          const il::Exp *gbody = obody;
-
-          // To call self, we're just using the recursive variable. It's
-          // already bound so there's nothing to do for it.
-          // To call a friend f, we just call (glob_f env) to get the
-          // function of the correct type.
-          for (int j = 0; j < (int)dec->funs.size(); j++) {
-            const el::FunDec &friend_fun = dec->funs[j];
-            if (friend_fun.name == fun.name) {
-              // Substitution would do nothing, but skip it to do fewer
-              // allocations.
-            } else {
-              // The symbol is applied to the same type variables that
-              // were passed into it, since each function in the bundle
-              // is abstracted over the same set and recursion is uniform.
-              const il::Exp *friend_exp =
-                pool->App(pool->GlobalSym(tyvar_args, global_syms[j]), gxv);
-              gbody = ILUtil::SubstExp(pool, friend_exp, il_vars[j], gbody);
-            }
-          }
-
-          // Now wrap the body with the projections from the environment.
-          // We could have done this before the substitutions above, since
-          // the symbols should be disjoint, but that just makes more work
-          // copying these.
-          gbody = UnpackEnv(gbody);
-
-          const il::Type *glob_type = pool->Arrow(env_type, otype);
-          const il::Exp *glob_fn = pool->Fn("", gx, glob_type, gbody);
-
-          // Now add it to the table.
-          Global global;
-          // Same tyvars for each.
-          global.tyvars = tyvars;
-          global.sym = global_syms[i];
-          global.type = glob_type;
-          global.exp = glob_fn;
-          globals.push_back(std::move(global));
-        }
-
-        // Now the globals are emitted and can access one another. Next
-        // we need to bind callable functions for the body of the let.
-        // These can just be
-        //   val env = {x1=x1, x2=x2, ...}
-        //   val (α1, α2) f1 = (g_f1 env)
-        //   val (α1, α2) f2 = (g_f2 env)
-
-        // The context used for elaboration of the let's body is almost
-        // the same as what we used to evaluate the function bodies, but
-        // now we've generalized. So build a new context.
-
-        Context GGG = G;
-        for (int i = 0; i < (int)dec->funs.size(); i++) {
-          const el::FunDec &fun = dec->funs[i];
-          std::string il_var = il_vars[i];
-          const auto &[dom, cod] = dom_cods[i];
-          GGG = GGG.Insert(fun.name, VarInfo{
-              .tyvars = tyvars,
-              .type = pool->Arrow(dom, cod),
-              .var = il_var,
-            });
-        }
-
-        const auto &[let_exp, let_type] = Elab(GGG, rest);
-
-        // Get a name (cosmetic) for the environment that involves
-        // the functions declared.
-        std::vector<std::string> fnames;
-        for (const el::FunDec &fun : dec->funs)
-          fnames.push_back(fun.name);
-
-        std::string aenv_var = pool->NewVar(
-            StringPrintf("%s_env", Util::Join(fnames, "_").c_str()));
-        const il::Exp *ret_exp = let_exp;
-        // Now wrap with the function bindings as described above.
-        for (int i = 0; i < (int)dec->funs.size(); i++) {
-          // Generalize using the same type variable bindings and
-          // occurrences. Note that since the body is an application,
-          // this violates the value restriction, but that is an EL
-          // concept, not an IL one.
-          ret_exp = pool->Let(
-              tyvars, il_vars[i],
-              pool->App(pool->GlobalSym(tyvar_args, global_syms[i]),
-                        // Environment is not polymorphic.
-                        pool->Var({}, aenv_var)),
-              ret_exp);
-        }
-
-        // And bind the environment itself.
-        std::vector<std::pair<std::string, const il::Exp *>> env_fields;
-        env_fields.reserve(fvts.size());
-        for (const auto &[lab_var, t_] : fvts) {
-          // Label and variable are the same.
-          env_fields.emplace_back(lab_var, pool->Var({}, lab_var));
-        }
-        ret_exp = pool->Let({}, aenv_var, pool->Record(env_fields),
-                            ret_exp);
-
-        return std::make_pair(ret_exp, let_type);
-      }
-      break;
-    }
-
-    case el::DecType::DATATYPE: {
-      {
-        std::unordered_set<std::string> unique_tyvars;
-        for (const std::string &eltv : dec->tyvars) {
-          CHECK(!unique_tyvars.contains(eltv)) << "Duplicate type "
-            "variable " << eltv << " in datatype declaration.";
-          unique_tyvars.insert(eltv);
-        }
-
-        std::unordered_set<std::string> unique_names;
-        std::unordered_set<std::string> unique_ctors;
-        for (const DatatypeDec &dd : dec->datatypes) {
-          CHECK(!unique_names.contains(dd.name)) << "Duplicate datatype " <<
-            dd.name << " in mutually recurisve datatype declaration.";
-          unique_names.insert(dd.name);
-          for (const auto &[ctor, t_] : dd.arms) {
-            CHECK(!unique_ctors.contains(ctor)) << "Duplicate constructor " <<
-              ctor << " in mutually recursive datatype declaration. The "
-              "constructors must be distinct across all datatypes.";
-            unique_ctors.insert(ctor);
-          }
-        }
-      }
-
-      std::vector<std::pair<std::string, std::string>> tyvars;
-      std::vector<std::string> il_tyvars;
-      for (const std::string &eltv : dec->tyvars) {
-        std::string iltv = pool->NewVar(eltv);
-        tyvars.emplace_back(eltv, iltv);
-        il_tyvars.emplace_back(iltv);
-      }
-
-      // Bind tyvars: The explicit type variables written by the
-      // programmer.
+          G,
+          el_pool->VarPat(fun.name),
+          el_pool->Fn(fun.name, GetSimpleClauses(fun)),
+          rest);
+    } else {
+      // For mutually recursive functions, we hoist them out to
+      // globals so that they can reference each other. First,
+      // type-check and translate the bodies.
+      std::vector<std::string> el_vars;
+      std::vector<std::string> il_vars;
+      std::vector<std::pair<const il::Type *, const il::Type *>> dom_cods;
       Context GG = G;
-      for (const auto &[eltv, iltv] : tyvars) {
-        GG = GG.InsertType(eltv, TypeVarInfo{.type = pool->VarType(iltv, {})});
-      }
-
-      // Bind the muvars: One recursive variable for each datatype
-      // in the bundle.
-      std::vector<std::pair<std::string, std::string>> recvars;
-      for (const DatatypeDec &dd : dec->datatypes) {
-        recvars.emplace_back(dd.name, pool->NewVar(dd.name));
-      }
-
-      for (const auto &[eltv, iltv] : recvars) {
-        GG = GG.InsertType(eltv, TypeVarInfo{.type = pool->VarType(iltv, {})});
-      }
-
-      // Each arm of the mu is the bound recursive type variable (il)
-      // and the type, which is a sum.
-      std::vector<std::pair<std::string, const il::Type *>> sum_types;
-      // For each datatype declaration, for each arm, its arg type ("of ...").
-      // This is used below to bind the constructors.
-      std::vector<std::vector<const il::Type *>> oftypes;
-      for (int i = 0; i < (int)dec->datatypes.size(); i++) {
-        const DatatypeDec &dd = dec->datatypes[i];
-        // Construct the sum over all arms of this datatype.
-        std::vector<std::pair<std::string, const il::Type *>> sum_arms;
-        oftypes.push_back({});
-        for (const auto &[ctor, el_type] : dd.arms) {
-          const il::Type *cod = ElabType(GG, el_type);
-          sum_arms.emplace_back(ctor, cod);
-          oftypes.back().push_back(cod);
-        }
-        sum_types.emplace_back(recvars[i].second, pool->SumType(sum_arms));
-      }
-
-      //      π_n (μ   v_0 . [ctor11: t11, ctor12: t12, ...]
-      //           and v_1 . [ctor21: t21, ctor22: t22, ...]
-      //           and ...)
-
-      // Bind the datatypes themselves, e.g. 'list' and 'option'.
-      // Each is a function over the same IL type variables,
-      // Λ(tyvars). pi_n (... same mu body ...)
-      std::vector<const il::Type *> mu_types;
-      for (int i = 0; i < (int)dec->datatypes.size(); i++) {
-        const DatatypeDec &dd = dec->datatypes[i];
-        const il::Type *mu = pool->Mu(i, sum_types);
-        mu_types.push_back(mu);
-        GG = GG.InsertType(dd.name, TypeVarInfo{
-            .tyvars = il_tyvars,
-            .type = mu,
+      for (const el::FunDec &fun : dec->funs) {
+        const std::string &el_var = fun.name;
+        const std::string il_var = pool->NewVar(el_var);
+        el_vars.push_back(el_var);
+        il_vars.push_back(il_var);
+        const il::Type *dom = NewEVar();
+        const il::Type *cod = NewEVar();
+        dom_cods.emplace_back(dom, cod);
+        GG = GG.Insert(fun.name, VarInfo{
+            // We only support uniform recursion, so each function
+            // will have just one type here; if there are free evars
+            // at the end, those are the only ones we abstract over.
+            .tyvars = {},
+            .type = pool->Arrow(dom, cod),
+            .var = il_var,
           });
       }
 
-      // Now, bind the expression-level constructors.
+      std::vector<std::pair<const il::Exp *, const il::Type *>> fns;
+      fns.reserve(dec->funs.size());
+      for (int i = 0; i < (int)dec->funs.size(); i++) {
+        const el::FunDec &fun = dec->funs[i];
+        // In the generated code we could perform the recursion
+        // through the fn's recursive name or through the global.
+        // The fn name is a little better because its type variables
+        // are already instantiated, but if there ends up being a
+        // reason to prefer the global, it would be easy to switch
+        // it right here.
+        const auto &[e, t] =
+          Elab(GG, el_pool->Fn(el_vars[i], GetSimpleClauses(fun)));
+        const auto &[dom, cod] = dom_cods[i];
+        Unification::Unify(Error("fun..and decl"), pool->Arrow(dom, cod), t);
+        fns.emplace_back(e, t);
+      }
 
-      CHECK(oftypes.size() == dec->datatypes.size());
-      CHECK(mu_types.size() == dec->datatypes.size());
-      for (int y = 0; y < (int)dec->datatypes.size(); y++) {
-        const DatatypeDec &dd = dec->datatypes[y];
-        CHECK(oftypes[y].size() == dd.arms.size());
-        const il::Type *mu_type = mu_types[y];
-        for (int x = 0; x < (int)dd.arms.size(); x++) {
-          const std::string &ctor = dd.arms[x].first;
-
-          const il::Type *dom = oftypes[y][x];
-          const il::Type *cod = mu_type;
-
-          // The mu constructor binds the recursive type variables, so
-          // they will not be free in the codomain. But in the domain,
-          // they are outside that binding. Substitute the actual mu
-          // type for all datatypes being declared.
-          // (e.g. for :: we have α * list -> (μ list. ...), but list
-          // is an unbound il variable).
-          for (int yother = 0; yother < (int)dec->datatypes.size(); yother++) {
-            const il::Type *mu_other = mu_types[yother];
-            // e.g. "list$1"
-            const std::string il_tyvar = recvars[yother].second;
-            if (VERBOSE) {
-              printf("[%s/%s]%s\n",
-                     TypeString(mu_other).c_str(),
-                     il_tyvar.c_str(),
-                     TypeString(dom).c_str());
-            }
-            dom = pool->SubstType(mu_other, il_tyvar, dom);
+      // Once the function bodies are elaborated, we've finished with
+      // any constraints on their types, so we can generalize. We only
+      // support uniform recursion, so we get the same set of type
+      // variables for all of them. Get that set.
+      std::vector<EVar> free_evars = [&]() {
+          std::vector<const il::Type *> all_types;
+          for (const auto &[dom, cod] : dom_cods) {
+            all_types.push_back(dom);
+            all_types.push_back(cod);
           }
 
-          if (VERBOSE) {
-            std::string tyvars;
-            if (!il_tyvars.empty()) {
-              tyvars = StringPrintf(
-                  "(" AYELLOW("%s") ") ",
-                  Util::Join(il_tyvars, ",").c_str());
+          std::vector<EVar> gen_evars;
+          for (const EVar &v : EVar::FreeEVarsInTypes(all_types)) {
+            // Only generalize evars that cannot still be accessed
+            // through the context. (The context to consider here
+            // is G, the one for the outer scope.)
+            if (!G.HasEVar(v)) {
+              gen_evars.push_back(v);
             }
-            printf("Binding constructor " ABLUE("%s") " : "
-                   "%s%s -> %s\n"
-                   "   with .ctor = %d  %s  %s\n",
-                   ctor.c_str(),
-                   tyvars.c_str(),
-                   TypeString(dom).c_str(),
-                   TypeString(cod).c_str(),
-                   y,
-                   TypeString(mu_type).c_str(),
-                   ctor.c_str());
           }
-          GG = GG.Insert(ctor, VarInfo{
-              .tyvars = il_tyvars,
-              .type = pool->Arrow(dom, cod),
-              .ctor = std::make_optional(std::make_tuple(y, mu_type, ctor)),
-            });
+          return gen_evars;
+        }();
+
+      if (VERBOSE) {
+        printf("Free type variables:\n");
+        for (const EVar &ev : free_evars) {
+          printf("  %s\n", ev.ToString().c_str());
         }
       }
 
-      // There are no actual declarations generated; all the bindings
-      // are transparent. So just elaborate the body in the new context.
-      return Elab(GG, rest);
-    }
-
-    case el::DecType::OBJECT: {
-      const el::ObjectDec &object = dec->object;
-
-      // All we need to for an object declaration is record the name
-      // in the context.
-      il::ObjVarInfo ovi;
-      for (const auto &[lab, el_type] : object.fields) {
-        CHECK(!ovi.fields.contains(lab)) << "Duplicate labels in "
-          "declaration of object " << object.name;
-        const il::Type *t = ElabType(G, el_type);
-        CHECK(AllowedInObject(t)) << "Only base types are allowed "
-          "in object declarations. Declaring:\n  " << object.name <<
-          "Saw:\n  " << lab << " : " << TypeString(t);
-        ovi.fields[lab] = t;
+      // Generalize, setting the evars to new type variables.
+      std::vector<std::string> tyvars;
+      std::vector<const il::Type *> tyvar_args;
+      tyvars.reserve(free_evars.size());
+      tyvar_args.reserve(free_evars.size());
+      for (const EVar &ev : free_evars) {
+        std::string alpha_var = pool->NewVar("gen");
+        const il::Type *alpha = pool->VarType(alpha_var, {});
+        tyvars.push_back(alpha_var);
+        tyvar_args.push_back(alpha);
+        ev.Set(alpha);
       }
 
-      // As with a datatype decl, nothing is actually generated by
-      // the decl. (In the future we could be generating a tag, though?)
-      return Elab(G.InsertObj(object.name, std::move(ovi)), rest);
-    }
-
-    case el::DecType::TYPE: {
-      // This is not hard, but I am rushing for the SIGBOVIK deadline!
-      CHECK(dec->tyvars.empty()) << "unimplemented: tyvars in type decl";
-      const il::Type *t = ElabType(G, dec->t);
-      il::ElabContext GG = G.InsertType(
-          dec->str,
-          TypeVarInfo{.tyvars = {}, .type = t});
-      return Elab(GG, rest);
-    }
-
-    case el::DecType::OPEN: {
-      const auto &[e, t] = Elab(G, dec->exp);
-
-      std::optional<const il::Type *> ortype = ILUtil::GetTypeIfKnown(t);
-      if (!ortype.has_value()) {
-        LOG(FATAL) << "In open declaration, the type of the expression "
-          "must be synthesizable (and must be a record). You can add a "
-          "type annotation to fix this. Object exp: " << ExpString(dec->exp);
+      // The declared functions may mention local variables that prevent
+      // them from being hoisted to top-level. These present as
+      // free variables that are not in the mutually-recursive bundle
+      // and are not globals. We use the same environment for the
+      // entire bundle.
+      std::unordered_set<std::string> fvs_all;
+      for (int i = 0; i < (int)dec->funs.size(); i++) {
+        const auto &[oexp, otype] = fns[i];
+        for (const std::string &fv : ILUtil::FreeExpVars(oexp)) {
+          fvs_all.insert(fv);
+        }
       }
 
-      const il::Type *rtype = ortype.value();
-
-      CHECK(rtype->type == il::TypeType::RECORD) << "The type in an open "
-        "declaration must be a record. Got: " << TypeString(rtype);
-      // generate { f1 = f1, f2 = f2, ... }
-      std::vector<std::pair<std::string, const el::Pat *>> pats;
-      for (const auto &[f, t] : rtype->Record()) {
-        pats.emplace_back(f, el_pool->VarPat(f));
+      // The other functions in the bundle will look syntactically
+      // free, but they are being bound as part of this declaration.
+      // Remove them from the set.
+      for (const std::string &ilv : il_vars) {
+        fvs_all.erase(ilv);
       }
-      const el::Pat *rpat = el_pool->RecordPat(pats);
 
-      // XXX This elaborates the RHS twice. Should not be hard to fix,
-      // but the
-      return Elab(G, el_pool->Let({el_pool->ValDec(rpat, dec->exp)}, rest));
-    }
-    }
+      // The free variables must be bound in the context, so get
+      // those types.
+      std::vector<std::pair<std::string, const il::Type *>> fvts;
+      for (const std::string &s : fvs_all) {
+        // Since we've already elaborated the expression, its
+        // free variables are IL variables. Look them up in the
+        // context to get their types.
+        const VarInfo *vi = G.FindByILVar(s);
+        CHECK(vi != nullptr) << "Bug: When compiling a "
+          "mutually-recursive bundle of functions (fun...and), "
+          "found a free variable " << s << " that's not bound in "
+          "the context.\n";
+        CHECK(vi->type != nullptr) << "Bug: Maybe this happens "
+          "for primops or ctors?";
+        fvts.emplace_back(s, vi->type);
+      }
 
-    LOG(FATAL) << "Unimplemented in ElabDecs";
-    return std::make_pair(nullptr, nullptr);
+      std::sort(fvts.begin(), fvts.end(),
+                [](const std::pair<std::string, const il::Type *> &a,
+                   const std::pair<std::string, const il::Type *> &b) {
+                  return a.first < b.first;
+                });
+
+      if (VERBOSE) {
+        printf("Environment for mutually recursive fun dec:\n");
+        for (const auto &[x, t] : fvts) {
+          printf("  %s : %s\n", x.c_str(), TypeString(t).c_str());
+        }
+      }
+
+      // The labels have the same names as the variables for our
+      // convenience. This means that the record type is just the
+      // fvts set we just created.
+      const il::Type *env_type = pool->RecordType(fvts);
+      const std::string gx = pool->NewVar("env");
+      const il::Exp *gxv = pool->Var({}, gx);
+
+      auto UnpackEnv = [&](const il::Exp *body) {
+          for (const auto &[fv, t] : fvts) {
+            body = pool->Let({}, fv, pool->Project(fv, gxv), body);
+          }
+          return body;
+        };
+
+      // Names for the globals.
+      std::vector<std::string> global_syms;
+      global_syms.reserve(dec->funs.size());
+      for (const el::FunDec &fun : dec->funs) {
+        global_syms.push_back(
+            pool->NewVar(StringPrintf("g_%s", fun.name.c_str())));
+      }
+
+      // Now we can generate the global for each function.
+      CHECK(dec->funs.size() == fns.size());
+      for (int i = 0; i < (int)dec->funs.size(); i++) {
+        const el::FunDec &fun = dec->funs[i];
+        const auto &[obody, otype] = fns[i];
+
+        // If the function is f : d->c = (fn x => e), with free variables
+        // x1 : t1, x2 : t2, ... then we generate the global
+        // global_f : (t1*t2*...) -> d -> c =
+        //    (fn (x1=x1, x2=x2, ...) => fn x => e)
+        //
+        // With appropriate substitutions for calls to friends in the
+        // bundle.
+        const il::Exp *gbody = obody;
+
+        // To call self, we're just using the recursive variable. It's
+        // already bound so there's nothing to do for it.
+        // To call a friend f, we just call (glob_f env) to get the
+        // function of the correct type.
+        for (int j = 0; j < (int)dec->funs.size(); j++) {
+          const el::FunDec &friend_fun = dec->funs[j];
+          if (friend_fun.name == fun.name) {
+            // Substitution would do nothing, but skip it to do fewer
+            // allocations.
+          } else {
+            // The symbol is applied to the same type variables that
+            // were passed into it, since each function in the bundle
+            // is abstracted over the same set and recursion is uniform.
+            const il::Exp *friend_exp =
+              pool->App(pool->GlobalSym(tyvar_args, global_syms[j]), gxv);
+            gbody = ILUtil::SubstExp(pool, friend_exp, il_vars[j], gbody);
+          }
+        }
+
+        // Now wrap the body with the projections from the environment.
+        // We could have done this before the substitutions above, since
+        // the symbols should be disjoint, but that just makes more work
+        // copying these.
+        gbody = UnpackEnv(gbody);
+
+        const il::Type *glob_type = pool->Arrow(env_type, otype);
+        const il::Exp *glob_fn = pool->Fn("", gx, glob_type, gbody);
+
+        // Now add it to the table.
+        Global global;
+        // Same tyvars for each.
+        global.tyvars = tyvars;
+        global.sym = global_syms[i];
+        global.type = glob_type;
+        global.exp = glob_fn;
+        globals.push_back(std::move(global));
+      }
+
+      // Now the globals are emitted and can access one another. Next
+      // we need to bind callable functions for the body of the let.
+      // These can just be
+      //   val env = {x1=x1, x2=x2, ...}
+      //   val (α1, α2) f1 = (g_f1 env)
+      //   val (α1, α2) f2 = (g_f2 env)
+
+      // The context used for elaboration of the let's body is almost
+      // the same as what we used to evaluate the function bodies, but
+      // now we've generalized. So build a new context.
+
+      Context GGG = G;
+      for (int i = 0; i < (int)dec->funs.size(); i++) {
+        const el::FunDec &fun = dec->funs[i];
+        std::string il_var = il_vars[i];
+        const auto &[dom, cod] = dom_cods[i];
+        GGG = GGG.Insert(fun.name, VarInfo{
+            .tyvars = tyvars,
+            .type = pool->Arrow(dom, cod),
+            .var = il_var,
+          });
+      }
+
+      const auto &[let_exp, let_type] = Elab(GGG, rest);
+
+      // Get a name (cosmetic) for the environment that involves
+      // the functions declared.
+      std::vector<std::string> fnames;
+      for (const el::FunDec &fun : dec->funs)
+        fnames.push_back(fun.name);
+
+      std::string aenv_var = pool->NewVar(
+          StringPrintf("%s_env", Util::Join(fnames, "_").c_str()));
+      const il::Exp *ret_exp = let_exp;
+      // Now wrap with the function bindings as described above.
+      for (int i = 0; i < (int)dec->funs.size(); i++) {
+        // Generalize using the same type variable bindings and
+        // occurrences. Note that since the body is an application,
+        // this violates the value restriction, but that is an EL
+        // concept, not an IL one.
+        ret_exp = pool->Let(
+            tyvars, il_vars[i],
+            pool->App(pool->GlobalSym(tyvar_args, global_syms[i]),
+                      // Environment is not polymorphic.
+                      pool->Var({}, aenv_var)),
+            ret_exp);
+      }
+
+      // And bind the environment itself.
+      std::vector<std::pair<std::string, const il::Exp *>> env_fields;
+      env_fields.reserve(fvts.size());
+      for (const auto &[lab_var, t_] : fvts) {
+        // Label and variable are the same.
+        env_fields.emplace_back(lab_var, pool->Var({}, lab_var));
+      }
+      ret_exp = pool->Let({}, aenv_var, pool->Record(env_fields),
+                          ret_exp);
+
+      return std::make_pair(ret_exp, let_type);
+    }
+    break;
   }
+  #endif
+
+  case el::DecType::DATATYPE: {
+    {
+      std::unordered_set<std::string> unique_tyvars;
+      for (const std::string &eltv : dec->tyvars) {
+        CHECK(!unique_tyvars.contains(eltv)) << "Duplicate type "
+          "variable " << eltv << " in datatype declaration.";
+        unique_tyvars.insert(eltv);
+      }
+
+      std::unordered_set<std::string> unique_names;
+      std::unordered_set<std::string> unique_ctors;
+      for (const DatatypeDec &dd : dec->datatypes) {
+        CHECK(!unique_names.contains(dd.name)) << "Duplicate datatype " <<
+          dd.name << " in mutually recurisve datatype declaration.";
+        unique_names.insert(dd.name);
+        for (const auto &[ctor, t_] : dd.arms) {
+          CHECK(!unique_ctors.contains(ctor)) << "Duplicate constructor " <<
+            ctor << " in mutually recursive datatype declaration. The "
+            "constructors must be distinct across all datatypes.";
+          unique_ctors.insert(ctor);
+        }
+      }
+    }
+
+    std::vector<std::pair<std::string, std::string>> tyvars;
+    std::vector<std::string> il_tyvars;
+    for (const std::string &eltv : dec->tyvars) {
+      std::string iltv = pool->NewVar(eltv);
+      tyvars.emplace_back(eltv, iltv);
+      il_tyvars.emplace_back(iltv);
+    }
+
+    // Bind tyvars: The explicit type variables written by the
+    // programmer.
+    Context GG = G;
+    for (const auto &[eltv, iltv] : tyvars) {
+      GG = GG.InsertType(eltv, TypeVarInfo{.type = pool->VarType(iltv, {})});
+    }
+
+    // Bind the muvars: One recursive variable for each datatype
+    // in the bundle.
+    std::vector<std::pair<std::string, std::string>> recvars;
+    for (const DatatypeDec &dd : dec->datatypes) {
+      recvars.emplace_back(dd.name, pool->NewVar(dd.name));
+    }
+
+    for (const auto &[eltv, iltv] : recvars) {
+      GG = GG.InsertType(eltv, TypeVarInfo{.type = pool->VarType(iltv, {})});
+    }
+
+    // Each arm of the mu is the bound recursive type variable (il)
+    // and the type, which is a sum.
+    std::vector<std::pair<std::string, const il::Type *>> sum_types;
+    // For each datatype declaration, for each arm, its arg type ("of ...").
+    // This is used below to bind the constructors.
+    std::vector<std::vector<const il::Type *>> oftypes;
+    for (int i = 0; i < (int)dec->datatypes.size(); i++) {
+      const DatatypeDec &dd = dec->datatypes[i];
+      // Construct the sum over all arms of this datatype.
+      std::vector<std::pair<std::string, const il::Type *>> sum_arms;
+      oftypes.push_back({});
+      for (const auto &[ctor, el_type] : dd.arms) {
+        const il::Type *cod = ElabType(GG, el_type);
+        sum_arms.emplace_back(ctor, cod);
+        oftypes.back().push_back(cod);
+      }
+      sum_types.emplace_back(recvars[i].second, pool->SumType(sum_arms));
+    }
+
+    //      π_n (μ   v_0 . [ctor11: t11, ctor12: t12, ...]
+    //           and v_1 . [ctor21: t21, ctor22: t22, ...]
+    //           and ...)
+
+    // Bind the datatypes themselves, e.g. 'list' and 'option'.
+    // Each is a function over the same IL type variables,
+    // Λ(tyvars). pi_n (... same mu body ...)
+    std::vector<const il::Type *> mu_types;
+    for (int i = 0; i < (int)dec->datatypes.size(); i++) {
+      const DatatypeDec &dd = dec->datatypes[i];
+      const il::Type *mu = pool->Mu(i, sum_types);
+      mu_types.push_back(mu);
+      GG = GG.InsertType(dd.name, TypeVarInfo{
+          .tyvars = il_tyvars,
+          .type = mu,
+        });
+    }
+
+    // Now, bind the expression-level constructors.
+
+    CHECK(oftypes.size() == dec->datatypes.size());
+    CHECK(mu_types.size() == dec->datatypes.size());
+    for (int y = 0; y < (int)dec->datatypes.size(); y++) {
+      const DatatypeDec &dd = dec->datatypes[y];
+      CHECK(oftypes[y].size() == dd.arms.size());
+      const il::Type *mu_type = mu_types[y];
+      for (int x = 0; x < (int)dd.arms.size(); x++) {
+        const std::string &ctor = dd.arms[x].first;
+
+        const il::Type *dom = oftypes[y][x];
+        const il::Type *cod = mu_type;
+
+        // The mu constructor binds the recursive type variables, so
+        // they will not be free in the codomain. But in the domain,
+        // they are outside that binding. Substitute the actual mu
+        // type for all datatypes being declared.
+        // (e.g. for :: we have α * list -> (μ list. ...), but list
+        // is an unbound il variable).
+        for (int yother = 0; yother < (int)dec->datatypes.size(); yother++) {
+          const il::Type *mu_other = mu_types[yother];
+          // e.g. "list$1"
+          const std::string il_tyvar = recvars[yother].second;
+          if (VERBOSE) {
+            printf("[%s/%s]%s\n",
+                   TypeString(mu_other).c_str(),
+                   il_tyvar.c_str(),
+                   TypeString(dom).c_str());
+          }
+          dom = pool->SubstType(mu_other, il_tyvar, dom);
+        }
+
+        if (VERBOSE) {
+          std::string tyvars;
+          if (!il_tyvars.empty()) {
+            tyvars = StringPrintf(
+                "(" AYELLOW("%s") ") ",
+                Util::Join(il_tyvars, ",").c_str());
+          }
+          printf("Binding constructor " ABLUE("%s") " : "
+                 "%s%s -> %s\n"
+                 "   with .ctor = %d  %s  %s\n",
+                 ctor.c_str(),
+                 tyvars.c_str(),
+                 TypeString(dom).c_str(),
+                 TypeString(cod).c_str(),
+                 y,
+                 TypeString(mu_type).c_str(),
+                 ctor.c_str());
+        }
+        GG = GG.Insert(ctor, VarInfo{
+            .tyvars = il_tyvars,
+            .type = pool->Arrow(dom, cod),
+            .ctor = std::make_optional(std::make_tuple(y, mu_type, ctor)),
+          });
+      }
+    }
+
+    // There are no actual declarations generated; all the bindings
+    // are transparent. So just elaborate the body in the new context.
+    return std::make_pair(std::vector<ILDec>{}, GG);
+  }
+
+  case el::DecType::OBJECT: {
+    const el::ObjectDec &object = dec->object;
+
+    // All we need to for an object declaration is record the name
+    // in the context.
+    il::ObjVarInfo ovi;
+    for (const auto &[lab, el_type] : object.fields) {
+      CHECK(!ovi.fields.contains(lab)) << "Duplicate labels in "
+        "declaration of object " << object.name;
+      const il::Type *t = ElabType(G, el_type);
+      CHECK(AllowedInObject(t)) << "Only base types are allowed "
+        "in object declarations. Declaring:\n  " << object.name <<
+        "Saw:\n  " << lab << " : " << TypeString(t);
+      ovi.fields[lab] = t;
+    }
+
+    // As with a datatype decl, nothing is actually generated by
+    // the decl. (In the future we could be generating a tag, though?)
+    auto GG = G.InsertObj(object.name, std::move(ovi));
+    return std::make_pair(std::vector<ILDec>{}, GG);
+  }
+
+  case el::DecType::TYPE: {
+    // This is not hard, but I am rushing for the SIGBOVIK deadline!
+    CHECK(dec->tyvars.empty()) << "unimplemented: tyvars in type decl";
+    const il::Type *t = ElabType(G, dec->t);
+    il::ElabContext GG = G.InsertType(
+        dec->str,
+        TypeVarInfo{.tyvars = {}, .type = t});
+    return std::make_pair(std::vector<ILDec>{},GG);
+  }
+
+  case el::DecType::OPEN: {
+    const auto &[e, t] = Elab(G, dec->exp);
+
+    std::optional<const il::Type *> ortype = ILUtil::GetTypeIfKnown(t);
+    if (!ortype.has_value()) {
+      LOG(FATAL) << "In open declaration, the type of the expression "
+        "must be synthesizable (and must be a record). You can add a "
+        "type annotation to fix this. Object exp: " << ExpString(dec->exp);
+    }
+
+    const il::Type *rtype = ortype.value();
+
+    CHECK(rtype->type == il::TypeType::RECORD) << "The type in an open "
+      "declaration must be a record. Got: " << TypeString(rtype);
+    // generate { f1 = f1, f2 = f2, ... }
+    std::vector<std::pair<std::string, const el::Pat *>> pats;
+    for (const auto &[f, t] : rtype->Record()) {
+      pats.emplace_back(f, el_pool->VarPat(f));
+    }
+    const el::Pat *rpat = el_pool->RecordPat(pats);
+
+    // XXX PERF: This elaborates the RHS twice. Should not be hard to fix,
+    // but the SIGBOVIK Deadline approaches!
+    return pattern_compilation->CompileIrrefutable(
+        G, rpat, dec->exp);
+  }
+
+  }  // switch
+
+  LOG(FATAL) << "Unimplemented in ElabDec";
+  return std::make_pair(std::vector<ILDec>{}, G);
+}
+
+
+
+// XXX return context instead of requiring let?
+std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
+    const il::ElabContext &G,
+    const std::vector<const el::Dec *> &decs,
+    const el::Exp *el_body) {
+
+  std::vector<ILDec> ildecs;
+  il::ElabContext GG = G;
+  for (const el::Dec *dec : decs) {
+    const auto &[ds, GGG] = ElabDec(GG, dec);
+    GG = GGG;
+    for (const ILDec &d : ds)
+      ildecs.push_back(d);
+  }
+
+  const auto &[ee, tt] = Elab(GG, el_body);
+
+  return std::make_pair(LetDecs(ildecs, ee), tt);
 }
 
 static il::ObjFieldType ResolveObjFieldType(
@@ -1169,3 +1181,15 @@ const il::Exp *Elaboration::ElabLayout(
   LOG(FATAL) << "Unimplemented layout type.";
   return nullptr;
 }
+
+const il::Exp *Elaboration::LetDecs(
+    const std::vector<ILDec> &decs,
+    const il::Exp *body) {
+  const il::Exp *ret = body;
+  for (int i = decs.size() - 1; i >= 0; i--) {
+    const ILDec &dec = decs[i];
+    ret = pool->Let(dec.tyvars, dec.x, dec.rhs, ret);
+  }
+  return ret;
+}
+

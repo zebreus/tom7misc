@@ -25,8 +25,17 @@ struct Elaboration {
 
   il::Program Elaborate(const el::Exp *el_exp);
 
-private:
+ private:
   friend struct il::PatternCompilation;
+
+  // IL has just LET (tyvars) x = e in e'.
+  // This represents the (tyvars) x = e part so that
+  // it's easier to manipulate a vector of them.
+  struct ILDec {
+    std::vector<std::string> tyvars;
+    std::string x;
+    const il::Exp *rhs = nullptr;
+  };
 
   const std::pair<const il::Exp *, const il::Type *> Elab(
       const il::ElabContext &G,
@@ -48,11 +57,17 @@ private:
   const il::Type *EVarize(const std::vector<std::string> &tyvars,
                           const il::Type *t);
 
-  const std::pair<const il::Exp *, const il::Type *> ElabDecs(
+  std::pair<std::vector<ILDec>, il::ElabContext>
+  ElabDec(const il::ElabContext &G,
+          const el::Dec *dec);
+
+  std::pair<const il::Exp *, const il::Type *> ElabDecs(
       const il::ElabContext &G,
       const std::vector<const el::Dec *> &decs,
       const el::Exp *exp);
 
+  const il::Exp *LetDecs(const std::vector<ILDec> &decs,
+                         const il::Exp *body);
 
   // This is repeatedly used.
   std::pair<const il::Exp *, const il::Type *> FailMatch();

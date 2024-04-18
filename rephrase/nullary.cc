@@ -44,7 +44,14 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
         dd.push_back(Pass::DoDec(d, nullary_ctors));
       }
     }
+
     return pool->Let(dd, DoExp(e, nullary_ctors));
+  }
+
+  const Dec *DoLocal(const std::vector<const Dec *> &decs1,
+                     const std::vector<const Dec *> &decs2,
+                     FunctionalSet<std::string> nullary_ctors) override {
+    LOG(FATAL) << "Expect local to be compiled away by now";
   }
 
   const Dec *DoDatatypeDec(

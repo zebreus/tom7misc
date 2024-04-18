@@ -93,10 +93,24 @@ fun make-move (Board { squares, castling, en-passant, black-move },
     val (sx, sy) = unpos src
     val (dx, dy) = unpos dst
 
+    (* If we capture a piece in the corner, it can no
+       longer castle! King and rook movements are covered
+       in the cases for those pieces. *)
+    fun new-castling-flags (a8, h8, a1, h1) =
+      let
+        val a8 = a8 andalso dst != 0
+        val h8 = h8 andalso dst != 7
+        val a1 = a1 andalso dst != 56
+        val h1 = h1 andalso dst != 63
+      in
+        (a8, h8, a1, h1)
+      end
+
     val (my-color, your-color) =
       if black-move then (BLACK, WHITE) else (WHITE, BLACK)
 
     fun move-pawn capturing = fail "unimplemented"
+
     fun move-rook () =
       case get-delta (sx, sy, dx, dy) of
         NONE => ILLEGAL "rooks move along rows or columns"
@@ -111,27 +125,31 @@ fun make-move (Board { squares, castling, en-passant, black-move },
                 val squares = map-insert (squares, dst, (my-color, ROOK))
 
                 val (a8, h8, a1, h1) = castling
-                (* If the corners are involved (including by capture!)
-                   castling is lost. XXX the capture logic should be applied
-                   for all types of moves, not just rook moves! *)
-                val a8 = (a8 andalso src != 0) andalso dst != 0
-                val h8 = (h8 andalso src != 7) andalso dst != 7
-                val a1 = (a1 andalso src != 56) andalso dst != 56
-                val h1 = (h1 andalso src != 63) andalso dst != 63
+                (* If the corners are involved, castling privilege is lost. *)
+                val a8 = a8 andalso src != 0
+                val h8 = h8 andalso src != 7
+                val a1 = a1 andalso src != 56
+                val h1 = h1 andalso src != 63
+                val castling = new-castling-flags (a8, h8, a1, h1)
               in
                 OK (Board { squares = squares, black-move = not black-move,
                             en-passant = NONE,
-                            castling = (a8, h8, a1, h1) })
+                            castling = castling })
               end
             else ILLEGAL "rook cannot jump over piece"
 
     fun move-knight () = fail "unimplemented"
     fun move-bishop () = fail "unimplemented"
-    fun move-king capturing = fail "unimplemented"
+    fun move-king capturing =
+      let
+        (* Is it castling? That's the only complicated case. *)
+      in
+        fail "unimplemented"
+      end
+
     fun move-queen () = fail "unimplemented"
 
-
-    fun move-piece (capturing, piece) =
+    fun raw-move-piece (capturing, piece) =
       case piece of
         PAWN => move-pawn capturing
       | ROOK => move-rook ()
@@ -139,6 +157,37 @@ fun make-move (Board { squares, castling, en-passant, black-move },
       | BISHOP => move-bishop ()
       | KING => move-king capturing
       | QUEEN => move-queen ()
+
+    (* Test whether the target square (which may be empty or occupied)
+       is attacked by any piece of the attacker color. This is used
+       for testing check, for example. *)
+    fun attacked (squares, target, attacker) =
+      fail "unimplemented"
+    (* HERE - this is basically easy, but we want to run most of the
+       move logic again with a different board, and without some
+       parts (attacking allows moving into check, for example).
+       Want to implement "local" so that I can pull some of these
+       routines out. *)
+
+    (* Move a piece, and check post-move conditions (check) *)
+    fun move-piece pair =
+      let val res = raw-move-piece pair
+      in
+        case res of
+          (* Still illegal. *)
+          (ILLEGAL _) => res
+        | (OK { Board { squares, black-move,
+                        castling = _,
+                        en-passant = _ } }) =>
+            (* Don't allow moving into check. *)
+            (case get-king (squares, not black-move) of
+               NONE => ILLEGAL "king was captured?"
+             | SOME my-king =>
+                 if attacked (squares, my-king, black-move)
+                 then ILLEGAL "leaves or places king in check"
+                 else res)
+      end
+
 
   in
     if src == dst

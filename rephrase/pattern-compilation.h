@@ -35,38 +35,25 @@ struct PatternCompilation {
   // (It would be possible to support single-arm sums too.)
   // This is used for val declarations.
   //
-  // let pat = rhs
-  // in body
-  std::pair<const Exp *, const Type *> CompileIrrefutable(
+  // leval pat = rhs
+  std::pair<std::vector<Elaboration::ILDec>, il::ElabContext>
+  CompileIrrefutable(
       const ElabContext &G,
       const el::Pat *pat,
-      const el::Exp *rhs,
-      const el::Exp *body);
+      const el::Exp *rhs);
 
-
-private:
+ private:
   struct Matrix;
   std::pair<const Exp *, const Type *> Comp(
       const ElabContext &G,
       Matrix m);
-
-  // This could probably be simplified away; it's a remnant of
-  // when we used to have Dec as a separate syntactic class in
-  // IL.
-  struct Dec {
-    std::vector<std::string> tyvars;
-    std::string x;
-    const il::Exp *rhs = nullptr;
-  };
-  const il::Exp *LetDecs(const std::vector<Dec> &decs,
-                         const il::Exp *body);
 
   void CheckAffine(const el::Pat *orig_pat) const;
 
   const el::Exp *SimpleBind(std::string nv, std::string objv,
                             const el::Exp *body);
 
-  std::pair<ElabContext, std::vector<Dec>>
+  std::pair<ElabContext, std::vector<Elaboration::ILDec>>
   CompileIrrefutableRec(
       const ElabContext &G,
       const el::Pat *pat,
@@ -74,7 +61,7 @@ private:
       const il::Type *rhs_type,
       bool rhs_valuable);
 
-  std::pair<ElabContext, std::vector<Dec>>
+  std::pair<ElabContext, std::vector<Elaboration::ILDec>>
   GeneralizeOne(
       const ElabContext &G,
       std::vector<std::string> vars,

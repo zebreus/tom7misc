@@ -675,17 +675,17 @@ const Exp *Parsing::Parse(AstPool *pool,
                Opt(IsToken<SEMICOLON>())) <<
               IsToken<END>())
              >[&](const auto &p) {
-                  const auto &[ds, es] = p;
-                  CHECK(!es.empty()) << "Impossible. Separate must "
-                    "parse at least one exp!";
-                  std::vector<const Dec *> decs = ds;
-                  // parse any leading sequence expressions as
-                  // val _ = e  (but the last one is the body.)
-                  for (int i = 0; i < (int)es.size() - 1; i++) {
-                    decs.push_back(pool->ValDec(pool->WildPat(), es[i]));
-                  }
+                 const auto &[ds, es] = p;
+                 CHECK(!es.empty()) << "Impossible. Separate must "
+                   "parse at least one exp!";
+                 std::vector<const Dec *> decs = ds;
+                 // parse any leading sequence expressions as
+                 // val _ = e  (but the last one is the body.)
+                 for (int i = 0; i < (int)es.size() - 1; i++) {
+                   decs.push_back(pool->ValDec(pool->WildPat(), es[i]));
+                 }
 
-                  return pool->Let(std::move(decs), es.back());
+                 return pool->Let(std::move(decs), es.back());
                }) ||
         (Mark(IsToken<LET>()) >[&](const auto &err) -> const Exp * {
             const auto &[_, start, length] = err;
@@ -933,6 +933,22 @@ const Exp *Parsing::Parse(AstPool *pool,
         return nullptr;
       });
 
+  const auto LocalDecl = [&](const auto &Decl) {
+      return (((IsToken<LOCAL>() >> *Decl << IsToken<IN>()) &&
+               (*Decl << IsToken<END>()))
+              >[&](const auto &p) {
+                  const auto &[ds1, ds2] = p;
+                  return pool->LocalDec(ds1, ds2);
+                }) ||
+        (Mark(IsToken<LOCAL>()) >[&](const auto &err) -> const Dec * {
+            const auto &[_, start, length] = err;
+            LOG(FATAL) << ErrorAtIndex(start, length) <<
+              "Expected LOCAL [DECS] IN [DECS] END ... after seeing "
+              "LOCAL. At: " << start << " for " << length;
+            return nullptr;
+          });
+    };
+
   auto TypeDecl =
     // TODO: Tyvars; it's easy
     ((IsToken<TYPE>() >> IdType) && (IsToken<EQUALS>() >> TypeExpr))
@@ -1146,6 +1162,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             DatatypeDecl ||
             ObjectDecl ||
             TypeDecl ||
+            LocalDecl(Decl) ||
             OpenDecl(Expr) ||
             ErrorDecl ||
             // Just here for convenience of writing a || b || ...

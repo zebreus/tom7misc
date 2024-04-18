@@ -38,6 +38,7 @@ const char *TokenTypeString(TokenType tok) {
   case DO: return "DO";
   case FUN: return "FUN";
   case LET: return "LET";
+  case LOCAL: return "LOCAL";
   case IN: return "IN";
   case END: return "END";
   case AS: return "AS";
@@ -255,6 +256,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
 
   static const std::unordered_map<std::string, TokenType> keywords = {
     {"let", LET},
+    {"local", LET},
     {"do", DO},
     {"end", END},
     {"in", IN},

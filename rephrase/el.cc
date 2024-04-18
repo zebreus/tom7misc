@@ -247,6 +247,19 @@ std::string DecString(const Dec *d) {
     return StringPrintf("open %s\n",
                         ExpString(d->exp).c_str());
 
+  case DecType::LOCAL: {
+    std::string ret = "local\n";
+    for (const Dec *dec : d->decs1) {
+      StringAppendF(&ret, "  %s\n", DecString(dec).c_str());
+    }
+    ret += "in\n";
+    for (const Dec *dec : d->decs2) {
+      StringAppendF(&ret, "  %s\n", DecString(dec).c_str());
+    }
+    ret += "end\n";
+    return ret;
+  }
+
   case DecType::DATATYPE: {
     std::string tyvars;
     if (!d->tyvars.empty()) {
@@ -624,14 +637,20 @@ std::string VeryShortColorPatString(const Pat *p) {
   case PatType::BOOL: return p->boolean ? "true" : "false";
   case PatType::WILD: return "_";
   case PatType::VAR: return StringPrintf(AVAR("%s"), p->str.c_str());
-  case PatType::TUPLE: return "(" AGREY("...") ")";
-  case PatType::RECORD: return "{" AGREY("...") "}";
+  case PatType::TUPLE:
+    if (p->children.empty()) return "()";
+    else return "(" AGREY("...") ")";
+  case PatType::RECORD:
+    if (p->str_children.empty()) return "{}";
+    else return "{" AGREY("...") "}";
   case PatType::OBJECT:
     return StringPrintf("{(" AOBJNAME("%s") ")" AGREY("...") "}",
                         p->str.c_str());
   case PatType::ANN: return AGREY("...") " : " AGREY("...");
   case PatType::AS: return AGREY("...") " " AKEYWORD("as") " " AGREY("...");
-  case PatType::APP: return AGREY("...") " " AGREY("...");
+  case PatType::APP:
+    return StringPrintf(ABLUE("%s") " " AGREY("..."),
+                        p->str.c_str());
   }
   return ARED("??PAT??");
 }
@@ -716,12 +735,6 @@ std::string ShortColorExpString(const Exp *e) {
   }
 
   case ExpType::LET: {
-    /*
-    std::vector<std::string> decs;
-    for (const Dec *d : e->decs) {
-      decs.push_back(DecString(d));
-    }
-    */
     return StringPrintf(AKEYWORD("let") " " AGREY("...") " "
                         AKEYWORD("in") " %s "
                         AKEYWORD("end"),

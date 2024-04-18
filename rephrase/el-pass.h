@@ -64,6 +64,7 @@ struct Pass {
     switch (d->type) {
     case DecType::VAL: return DoValDec(d->pat, d->exp, args...);
     case DecType::FUN: return DoFunDec(d->funs, args...);
+    case DecType::LOCAL: return DoLocal(d->decs1, d->decs2, args...);
     case DecType::DATATYPE: return DoDatatypeDec(
         d->tyvars, d->datatypes, args...);
     case DecType::OBJECT: return DoObjectDec(d->object, args...);
@@ -240,6 +241,15 @@ struct Pass {
     std::vector<const Dec *> dd;
     for (const Dec *d : ds) dd.push_back(DoDec(d, args...));
     return pool->Let(dd, DoExp(e, args...));
+  }
+
+  virtual const Dec *DoLocal(const std::vector<const Dec *> &decs1,
+                             const std::vector<const Dec *> &decs2,
+                             Args... args) {
+    std::vector<const Dec *> dd1, dd2;
+    for (const Dec *d : decs1) dd1.push_back(DoDec(d, args...));
+    for (const Dec *d : decs2) dd2.push_back(DoDec(d, args...));
+    return pool->LocalDec(dd1, dd2);
   }
 
   virtual const Exp *DoIf(const Exp *cond, const Exp *t, const Exp *f,

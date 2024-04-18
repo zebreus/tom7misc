@@ -50,6 +50,7 @@ enum class DecType {
   OBJECT,
   OPEN,
   TYPE,
+  LOCAL,
 };
 
 enum class PatType {
@@ -163,6 +164,8 @@ struct Dec {
   std::vector<DatatypeDec> datatypes;
   std::vector<FunDec> funs;
   ObjectDec object;
+  // for local decs1 in decs2 end
+  std::vector<const Dec *> decs1, decs2;
   Dec(DecType t) : type(t) {}
 };
 
@@ -384,6 +387,14 @@ struct AstPool {
   const Dec *FunDec(std::vector<FunDec> funs) {
     Dec *ret = NewDec(DecType::FUN);
     ret->funs = std::move(funs);
+    return ret;
+  }
+
+  const Dec *LocalDec(std::vector<const Dec *> ds1,
+                      std::vector<const Dec *> ds2) {
+    Dec *ret = NewDec(DecType::LOCAL);
+    ret->decs1 = std::move(ds1);
+    ret->decs2 = std::move(ds2);
     return ret;
   }
 

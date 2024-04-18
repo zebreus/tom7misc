@@ -46,6 +46,7 @@ enum TokenType {
   FUN,
   VAL,
   DO,
+  LOCAL,
   LET,
   IN,
   END,
