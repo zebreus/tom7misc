@@ -240,7 +240,7 @@ endif
 # Build library
 #
 
-LLAMA_HEADERS = $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-alloc.h $(LLAMA_DIR)/ggml-backend-impl.h $(LLAMA_DIR)/ggml-backend.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/ggml-impl.h $(LLAMA_DIR)/ggml-metal.h $(LLAMA_DIR)/ggml-mpi.h $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-quants.h $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/unicode.h
+LLAMA_HEADERS = $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-alloc.h $(LLAMA_DIR)/ggml-backend-impl.h $(LLAMA_DIR)/ggml-backend.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/ggml-impl.h $(LLAMA_DIR)/ggml-metal.h $(LLAMA_DIR)/ggml-mpi.h $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-quants.h $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/unicode.h $(LLAMA_DIR)/unicode-data.h $(LLAMA_DIR)/common/json-schema-to-grammar.h
 
 ggml-opencl.o: $(LLAMA_DIR)/ggml-opencl.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS)   -c $< -o $@
@@ -266,11 +266,20 @@ llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_HEADERS)
 common.o: $(LLAMA_DIR)/common/common.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+unicode.o: $(LLAMA_DIR)/unicode.cpp $(LLAMA_HEADERS)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+unicode-data.o: $(LLAMA_DIR)/unicode-data.cpp $(LLAMA_HEADERS)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 build-info.o: $(LLAMA_DIR)/common/build-info.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+json-schema-to-grammar.o : $(LLAMA_DIR)/common/json-schema-to-grammar.cpp $(LLAMA_HEADERS)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 # ggml-mpi.o
-LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llama.o common.o
+LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llama.o common.o unicode.o unicode-data.o json-schema-to-grammar.o
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) llm.o ranker.o console.o
 

@@ -232,9 +232,11 @@ struct Chatting {
     ResetRegex();
     line_timer.Reset();
     line_token_count = 0;
-    printf(AGREY("Finished line in ") "%s (saving: %s)\n",
-           ANSI::Time(finish_line_timer.Seconds()).c_str(),
-           ANSI::Time(save_sec).c_str());
+    if (VERBOSE) {
+      printf(AGREY("Finished line in ") "%s (saving: %s)\n",
+             ANSI::Time(finish_line_timer.Seconds()).c_str(),
+             ANSI::Time(save_sec).c_str());
+    }
   }
 
   // Clear anything in the current line and force the argument.
@@ -547,6 +549,7 @@ int main(int argc, char ** argv) {
 
   // ContextParams cparams = Models::LLAMA_70B_F16;
   ContextParams cparams = Models::LLAMA_70B_Q8;
+  cparams.num_gpu_layers = 17;
   // ContextParams cparams = Models::LLAMA_7B_F16;
 
   // This fits on the GPU, so inference is quite fast.

@@ -394,7 +394,7 @@ struct LLM {
   // XXX Maybe call this internally? Reference count?
   static void Init() {
     // Maybe should consider numa optimizations?
-    llama_backend_init(false);
+    llama_backend_init();
   }
   static void Shutdown() {
     llama_backend_free();

@@ -95,7 +95,7 @@ Context::Context(const ContextParams &params) {
 
   // For special-purpose uses.
   lparams.logits_all = false;
-  lparams.embedding = false;
+  lparams.embeddings = false;
 
   const std::string model_name = std::string(params.model);
   model = llama_load_model_from_file(model_name.c_str(), mparams);
@@ -973,7 +973,7 @@ void LLM::PrintKV() const {
 
   printf(AWHITE("KV Cache:") "\n");
   printf("  n_cells: %d\n", kcv.n_cells);
-  printf("  n_max_seq: %d\n", kcv.n_max_seq);
+  printf("  n_seq_max: %d\n", kcv.n_seq_max);
   printf("  token_count: %d\n", kcv.token_count);
   printf("  used_cells: %d\n", kcv.used_cells);
   printf("  max_contiguous: %d\n", kcv.max_contiguous);
