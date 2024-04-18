@@ -594,9 +594,8 @@ Elaboration::ElabDec(
     //           and v_1 . [ctor21: t21, ctor22: t22, ...]
     //           and ...)
 
-    // FIXME: I think we shuold discard GG and have like GGG here.
-    // GG was for elaborating the RHS, and it has the tyvars
-    // bound.
+    // Now produce the output bindings and context.
+    il::ElabContext GGG = G;
     std::vector<il::ElabContext::Binding> binds;
 
     // Bind the datatypes themselves, e.g. 'list' and 'option'.
@@ -611,7 +610,7 @@ Elaboration::ElabDec(
         .tyvars = il_tyvars,
         .type = mu,
       };
-      GG = GG.InsertType(dd.name, datatype_info);
+      GGG = GGG.InsertType(dd.name, datatype_info);
       binds.push_back(il::ElabContext::Binding{
           .v = dd.name,
           .info = datatype_info,
@@ -674,7 +673,7 @@ Elaboration::ElabDec(
           .type = pool->Arrow(dom, cod),
           .ctor = std::make_optional(std::make_tuple(y, mu_type, ctor)),
         };
-        GG = GG.Insert(ctor, ctor_info);
+        GGG = GGG.Insert(ctor, ctor_info);
         binds.push_back(
             il::ElabContext::Binding({.v = ctor, .info = ctor_info}));
       }
@@ -682,7 +681,7 @@ Elaboration::ElabDec(
 
     // There are no actual declarations generated; all the bindings
     // are transparent. So just elaborate the body in the new context.
-    return std::make_tuple(std::vector<ILDec>{}, binds, GG);
+    return std::make_tuple(std::vector<ILDec>{}, binds, GGG);
   }
 
   case el::DecType::OBJECT: {

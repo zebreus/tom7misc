@@ -162,17 +162,6 @@ struct ElabContext {
 
   static std::string VarInfoString(const VarInfo &vi);
 
-  // XXX obsolete
-  // When we have
-  //   Gbefore |- let decs1 in decs2 end,
-  //   and decs1 produces an updated context Ghidden,
-  //   and decs2 produces an updated context Gexposed,
-  // then this returns the Gbefore, Gexposed as appropriate.
-  static ElabContext SubtractForLocal(
-      ElabContext Gbefore,
-      ElabContext Ghidden,
-      ElabContext Gexposed);
-
 private:
   enum class V {
     // e.g. 'int' or 'list'

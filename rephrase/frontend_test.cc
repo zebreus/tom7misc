@@ -222,6 +222,18 @@ static void TestSimplify() {
   }
 
   {
+    // Test that datatype tyvars have the right scope.
+    const Program pgm = Run(
+        "let\n"
+        "  type a = int * string\n"
+        "  datatype (a) option = SOME of a | NONE\n"
+        "in\n"
+        "  (SOME 7, (7, \"hi\") : a)\n"
+        "end");
+    CHECK(pgm.body->type == ExpType::RECORD);
+  }
+
+  {
     const Program pgm = Run("let\n"
                             "   datatype dir = Up | Down\n"
                             "   val x = 9\n"
