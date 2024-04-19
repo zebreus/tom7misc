@@ -2,6 +2,7 @@
 #ifndef _REPHRASE_EL_PASS_H
 #define _REPHRASE_EL_PASS_H
 
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,27 +35,30 @@ struct Pass {
 
   virtual const Exp *DoExp(const Exp *e, Args... args) {
     switch (e->type) {
-    case ExpType::STRING: return DoString(e->str, args...);
-    case ExpType::JOIN: return DoJoin(e->children, args...);
-    case ExpType::TUPLE: return DoTuple(e->children, args...);
-    case ExpType::RECORD: return DoRecord(e->str_children, args...);
-    case ExpType::OBJECT: return DoObject(e->str, e->str_children, args...);
-    case ExpType::WITH: return DoWith(e->a, e->str, e->str2, e->b, args...);
-    case ExpType::WITHOUT: return DoWithout(e->a, e->str, e->str2, args...);
-    case ExpType::INT: return DoInt(e->integer, args...);
-    case ExpType::BOOL: return DoBool(e->boolean, args...);
-    case ExpType::FLOAT: return DoFloat(e->d, args...);
-    case ExpType::VAR: return DoVar(e->str, args...);
-    case ExpType::LAYOUT: return DoLayoutExp(e->layout, args...);
-    case ExpType::LET: return DoLet(e->decs, e->a, args...);
-    case ExpType::IF: return DoIf(e->a, e->b, e->c, args...);
-    case ExpType::APP: return DoApp(e->a, e->b, args...);
-    case ExpType::ANN: return DoAnn(e->a, e->t, args...);
-    case ExpType::CASE: return DoCase(e->a, e->clauses, args...);
-    case ExpType::FN: return DoFn(e->str, e->clauses, args...);
-    case ExpType::ANDALSO: return DoAndalso(e->a, e->b, args...);
-    case ExpType::ORELSE: return DoOrelse(e->a, e->b, args...);
-    case ExpType::FAIL: return DoFail(e->a, args...);
+    case ExpType::STRING: return DoString(e->str, e->pos, args...);
+    case ExpType::JOIN: return DoJoin(e->children, e->pos, args...);
+    case ExpType::TUPLE: return DoTuple(e->children, e->pos, args...);
+    case ExpType::RECORD: return DoRecord(e->str_children, e->pos, args...);
+    case ExpType::OBJECT:
+      return DoObject(e->str, e->str_children, e->pos, args...);
+    case ExpType::WITH:
+      return DoWith(e->a, e->str, e->str2, e->b, e->pos, args...);
+    case ExpType::WITHOUT:
+      return DoWithout(e->a, e->str, e->str2, e->pos, args...);
+    case ExpType::INT: return DoInt(e->integer, e->pos, args...);
+    case ExpType::BOOL: return DoBool(e->boolean, e->pos, args...);
+    case ExpType::FLOAT: return DoFloat(e->d, e->pos, args...);
+    case ExpType::VAR: return DoVar(e->str, e->pos, args...);
+    case ExpType::LAYOUT: return DoLayoutExp(e->layout, e->pos, args...);
+    case ExpType::LET: return DoLet(e->decs, e->a, e->pos, args...);
+    case ExpType::IF: return DoIf(e->a, e->b, e->c, e->pos, args...);
+    case ExpType::APP: return DoApp(e->a, e->b, e->pos, args...);
+    case ExpType::ANN: return DoAnn(e->a, e->t, e->pos, args...);
+    case ExpType::CASE: return DoCase(e->a, e->clauses, e->pos, args...);
+    case ExpType::FN: return DoFn(e->str, e->clauses, e->pos, args...);
+    case ExpType::ANDALSO: return DoAndalso(e->a, e->b, e->pos, args...);
+    case ExpType::ORELSE: return DoOrelse(e->a, e->b, e->pos, args...);
+    case ExpType::FAIL: return DoFail(e->a, e->pos, args...);
     }
     LOG(FATAL) << "Unhandled type in el::Pass::DoExp!";
     return nullptr;
@@ -64,7 +68,7 @@ struct Pass {
     switch (d->type) {
     case DecType::VAL: return DoValDec(d->pat, d->exp, args...);
     case DecType::FUN: return DoFunDec(d->funs, args...);
-    case DecType::LOCAL: return DoLocal(d->decs1, d->decs2, args...);
+    case DecType::LOCAL: return DoLocalDec(d->decs1, d->decs2, args...);
     case DecType::DATATYPE: return DoDatatypeDec(
         d->tyvars, d->datatypes, args...);
     case DecType::OBJECT: return DoObjectDec(d->object, args...);
@@ -141,31 +145,33 @@ struct Pass {
 
   // Expressions.
 
-  virtual const Exp *DoString(const std::string &s, Args... args) {
-    return pool->String(s);
+  virtual const Exp *DoString(const std::string &s,
+                              size_t pos, Args... args) {
+    return pool->String(s, pos);
   }
 
-  virtual const Exp *DoLayoutExp(const Layout *lay, Args... args) {
+  virtual const Exp *DoLayoutExp(const Layout *lay, size_t pos, Args... args) {
     return pool->LayoutExp(DoLayout(lay, args...));
   }
 
-  virtual const Exp *DoVar(const std::string &v, Args... args) {
-    return pool->Var(v);
+  virtual const Exp *DoVar(const std::string &v, size_t pos, Args... args) {
+    return pool->Var(v, pos);
   }
 
-  virtual const Exp *DoInt(const BigInt &i, Args... args) {
+  virtual const Exp *DoInt(const BigInt &i, size_t pos, Args... args) {
     return pool->Int(i);
   }
 
-  virtual const Exp *DoBool(bool b, Args... args) {
+  virtual const Exp *DoBool(bool b, size_t pos, Args... args) {
     return pool->Bool(b);
   }
 
-  virtual const Exp *DoFloat(double d, Args... args) {
+  virtual const Exp *DoFloat(double d, size_t pos, Args... args) {
     return pool->Float(d);
   }
 
   virtual const Exp *DoTuple(const std::vector<const Exp *> &v,
+                             size_t pos,
                              Args... args) {
     std::vector<const Exp *> vv;
     for (const auto &e : v) vv.push_back(DoExp(e, args...));
@@ -174,6 +180,7 @@ struct Pass {
 
   virtual const Exp *DoRecord(
       const std::vector<std::pair<std::string, const Exp *>> &v,
+      size_t pos,
       Args... args) {
     std::vector<std::pair<std::string, const Exp *>> vv;
     for (const auto &[s, e] : v) vv.emplace_back(s, DoExp(e, args...));
@@ -183,6 +190,7 @@ struct Pass {
   virtual const Exp *DoObject(
       const std::string &objtype,
       const std::vector<std::pair<std::string, const Exp *>> &v,
+      size_t pos,
       Args... args) {
     std::vector<std::pair<std::string, const Exp *>> vv;
     for (const auto &[s, e] : v) vv.emplace_back(s, DoExp(e, args...));
@@ -194,6 +202,7 @@ struct Pass {
       const std::string &objtype,
       const std::string &field,
       const Exp *rhs,
+      size_t pos,
       Args... args) {
     return pool->With(DoExp(obj, args...), objtype, field, DoExp(rhs, args...));
   }
@@ -202,6 +211,7 @@ struct Pass {
       const Exp *obj,
       const std::string &objtype,
       const std::string &field,
+      size_t pos,
       Args... args) {
     return pool->Without(DoExp(obj, args...), objtype, field);
   }
@@ -209,6 +219,7 @@ struct Pass {
   virtual const Exp *DoCase(
       const Exp *obj,
       const std::vector<std::pair<const Pat *, const Exp *>> &clauses,
+      size_t pos,
       Args... args) {
     std::vector<std::pair<const Pat *, const Exp *>> cc;
     for (const auto &[p, e] : clauses) {
@@ -220,6 +231,7 @@ struct Pass {
   virtual const Exp *DoFn(
       const std::string &self,
       const std::vector<std::pair<const Pat *, const Exp *>> &clauses,
+      size_t pos,
       Args... args) {
     std::vector<std::pair<const Pat *, const Exp *>> cc;
     for (const auto &[p, e] : clauses) {
@@ -229,6 +241,7 @@ struct Pass {
   }
 
   virtual const Exp *DoJoin(const std::vector<const Exp *> &v,
+                            size_t pos,
                             Args... args) {
     std::vector<const Exp *> vv;
     for (const Exp *e : v) vv.push_back(DoExp(e, args...));
@@ -237,49 +250,46 @@ struct Pass {
 
   virtual const Exp *DoLet(const std::vector<const Dec *> &ds,
                            const Exp *e,
+                           size_t pos,
                            Args... args) {
     std::vector<const Dec *> dd;
     for (const Dec *d : ds) dd.push_back(DoDec(d, args...));
     return pool->Let(dd, DoExp(e, args...));
   }
 
-  virtual const Dec *DoLocal(const std::vector<const Dec *> &decs1,
-                             const std::vector<const Dec *> &decs2,
-                             Args... args) {
-    std::vector<const Dec *> dd1, dd2;
-    for (const Dec *d : decs1) dd1.push_back(DoDec(d, args...));
-    for (const Dec *d : decs2) dd2.push_back(DoDec(d, args...));
-    return pool->LocalDec(dd1, dd2);
-  }
-
   virtual const Exp *DoIf(const Exp *cond, const Exp *t, const Exp *f,
+                          size_t pos,
                           Args... args) {
     return pool->If(DoExp(cond, args...),
                     DoExp(t, args...),
                     DoExp(f, args...));
   }
 
-  virtual const Exp *DoApp(const Exp *f, const Exp *arg, Args... args) {
+  virtual const Exp *DoApp(const Exp *f, const Exp *arg,
+                           size_t pos, Args... args) {
     return pool->App(DoExp(f, args...), DoExp(arg, args...));
   }
 
-  virtual const Exp *DoAnn(const Exp *e, const Type *t, Args... args) {
+  virtual const Exp *DoAnn(const Exp *e, const Type *t,
+                           size_t pos, Args... args) {
     return pool->Ann(DoExp(e, args...), DoType(t, args...));
   }
 
   virtual const Exp *DoAndalso(
       const Exp *a, const Exp *b,
+      size_t pos,
       Args... args) {
     return pool->Andalso(DoExp(a, args...), DoExp(b, args...));
   }
 
   virtual const Exp *DoOrelse(
       const Exp *a, const Exp *b,
+      size_t pos,
       Args... args) {
     return pool->Orelse(DoExp(a, args...), DoExp(b, args...));
   }
 
-  virtual const Exp *DoFail(const Exp *e, Args... args) {
+  virtual const Exp *DoFail(const Exp *e, size_t pos, Args... args) {
     return pool->Fail(DoExp(e, args...));
   }
 
@@ -305,6 +315,15 @@ struct Pass {
       ffs.push_back(std::move(ffd));
     }
     return pool->FunDec(std::move(ffs));
+  }
+
+  virtual const Dec *DoLocalDec(const std::vector<const Dec *> &decs1,
+                                const std::vector<const Dec *> &decs2,
+                                Args... args) {
+    std::vector<const Dec *> dd1, dd2;
+    for (const Dec *d : decs1) dd1.push_back(DoDec(d, args...));
+    for (const Dec *d : decs2) dd2.push_back(DoDec(d, args...));
+    return pool->LocalDec(dd1, dd2);
   }
 
   virtual const Dec *DoDatatypeDec(const std::vector<std::string> &tyvars,

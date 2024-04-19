@@ -1113,6 +1113,46 @@ static void TestParseLayout() {
   printf("Layout parsing " AGREEN("OK") "\n");
 }
 
+static void TestParsePos() {
+  AstPool pool;
+  auto Parse = [&](const std::string &s) {
+      SourceMap source_map = Inclusion::SimpleSourceMap(__func__, s);
+      std::string error;
+      std::optional<std::vector<Token>> tokens = Lexing::Lex(s, &error);
+      CHECK(tokens.has_value()) << "Did not lex: " << error;
+      // print tokens?
+      if (VERBOSE) {
+        printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
+      }
+      return Parsing::Parse(&pool, source_map, s, tokens.value());
+    };
+
+
+  {
+    const Exp *e = Parse("identifier");
+    CHECK(e->pos == 0);
+  }
+
+  {
+    const Exp *e = Parse("if 0 then \"hi\" else 7");
+    CHECK(e->type == ExpType::IF);
+    CHECK(e->b->pos == 10) << e->b->pos;
+  }
+
+  {
+    const Exp *e = Parse(" identifier");
+    CHECK(e->pos == 1) << e->pos;
+  }
+
+  {
+    const Exp *e = Parse("  identifier");
+    CHECK(e->pos == 2) << e->pos;
+  }
+
+  // TODO: Test more with positions!
+
+}
+
 }  // namespace el
 
 int main(int argc, char **argv) {
@@ -1122,6 +1162,7 @@ int main(int argc, char **argv) {
   el::TestParsePat();
   el::TestParseDec();
   el::TestParseLayout();
+  el::TestParsePos();
 
   printf("OK\n");
   return 0;

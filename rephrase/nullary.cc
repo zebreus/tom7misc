@@ -4,6 +4,7 @@
 #include "el-pass.h"
 #include "base/logging.h"
 #include "functional-set.h"
+#include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
@@ -68,14 +69,15 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
 
   const Exp *DoLet(const std::vector<const Dec *> &ds,
                    const Exp *e,
+                   size_t pos,
                    FunctionalSet<std::string> nullary_ctors) override {
     const auto &[dd, nn] = DoDecs(ds, nullary_ctors);
     return pool->Let(dd, DoExp(e, nullary_ctors.Insert(nn)));
   }
 
-  const Dec *DoLocal(const std::vector<const Dec *> &decs1,
-                     const std::vector<const Dec *> &decs2,
-                     FunctionalSet<std::string> nullary_ctors) override {
+  const Dec *DoLocalDec(const std::vector<const Dec *> &decs1,
+                        const std::vector<const Dec *> &decs2,
+                        FunctionalSet<std::string> nullary_ctors) override {
     LOG(FATAL) << "This case should not be reached; we cover LOCAL "
       "decls in LET.";
   }
@@ -98,11 +100,12 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
   }
 
   const Exp *DoVar(const std::string &v,
+                   size_t pos,
                    FunctionalSet<std::string> nullary_ctors) override {
     if (nullary_ctors.Contains(v)) {
-      return pool->App(pool->Var(v), pool->Record({}));
+      return pool->App(pool->Var(v, pos), pool->Record({}));
     } else {
-      return pool->Var(v);
+      return pool->Var(v, pos);
     }
   }
 };

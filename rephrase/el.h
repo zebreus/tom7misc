@@ -1,6 +1,7 @@
 #ifndef _REPHRASE_AST_H
 #define _REPHRASE_AST_H
 
+#include <cstddef>
 #include <string>
 #include <cstdint>
 #include <utility>
@@ -114,6 +115,9 @@ struct Exp {
   std::vector<const Dec *> decs;
   std::vector<const Exp *> children;
   std::vector<std::pair<std::string, const Exp *>> str_children;
+  // Approximate position (byte offset in the concatenated source) of
+  // this expression in the input stream. For error reporting.
+  size_t pos = 0;
   bool boolean = false;
   Exp(ExpType t) : type(t) {}
 };
@@ -204,9 +208,10 @@ struct AstPool {
 
   // Expressions
 
-  const Exp *String(const std::string &s) {
+  const Exp *String(const std::string &s, size_t pos) {
     Exp *ret = NewExp(ExpType::STRING);
     ret->str = s;
+    ret->pos = pos;
     return ret;
   }
 
@@ -216,9 +221,10 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Var(const std::string &v) {
+  const Exp *Var(const std::string &v, size_t pos) {
     Exp *ret = NewExp(ExpType::VAR);
     ret->str = v;
+    ret->pos = pos;
     return ret;
   }
 
@@ -531,6 +537,8 @@ std::string ExpString(const Exp *e);
 // For error messages etc.
 std::string ShortColorPatString(const el::Pat *pat);
 std::string ShortColorExpString(const el::Exp *exp);
+
+size_t ExpNearbyPos(const el::Exp *exp);
 
 // In-order flattening of the layout without any JOIN-type nodes,
 // and dropping empty text nodes.

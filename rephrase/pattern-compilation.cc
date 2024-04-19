@@ -406,6 +406,10 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     const Type *obj_type,
     const std::vector<std::pair<const el::Pat *, const el::Exp *>> &rows_in) {
 
+  // XXX get a real position
+  [[maybe_unused]]
+  const size_t pos = 0;
+
   CHECK(!rows_in.empty()) << "There must be rows.";
 
   // Check that no row binds a variable more than once.
@@ -426,7 +430,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     }
     el::AstPool *el_pool = elab->el_pool;
     il::AstPool *pool = elab->pool;
-    const auto &[ve, vt] = elab->Elab(G, el_pool->Var(obj));
+    const auto &[ve, vt] = elab->Elab(G, el_pool->Var(obj, pos));
     std::string var = rows_in[0].first->str;
     std::string il_var = var;
     Elaboration::ILDec dec{.tyvars = {}, .x = var, .rhs = ve};
@@ -459,7 +463,9 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     matrix.rows.push_back(exp);
   }
 
-  matrix.def = elab->el_pool->Fail(elab->el_pool->String("match"));
+  // XXX get accurate position info
+  // XXX also include it in the message
+  matrix.def = elab->el_pool->Fail(elab->el_pool->String("match", pos));
 
   return Comp(G, matrix);
 }
@@ -525,7 +531,7 @@ const el::Exp *PatternCompilation::SimpleBind(std::string nv, std::string objv,
                                               const el::Exp *body) {
   el::AstPool *el_pool = elab->el_pool;
   return el_pool->Let(
-      {el_pool->ValDec(el_pool->VarPat(nv), el_pool->Var(objv))},
+      {el_pool->ValDec(el_pool->VarPat(nv), el_pool->Var(objv, body->pos))},
       body);
 }
 
@@ -704,6 +710,9 @@ PatternCompilation::SplitIntPattern(
     Matrix matrix,
     int x) {
 
+  // XXX get a real pos
+  const size_t pos = 0;
+
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
     };
@@ -808,7 +817,7 @@ PatternCompilation::SplitIntPattern(
 
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
-    elab->el_pool->App(elab->el_pool->Var(el_cont_var),
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var, pos),
                        elab->el_pool->Record({}));
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
@@ -850,6 +859,9 @@ PatternCompilation::SplitBoolPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
+
+  // XXX get a real pos
+  const size_t pos = 0;
 
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
@@ -918,7 +930,7 @@ PatternCompilation::SplitBoolPattern(
 
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
-    elab->el_pool->App(elab->el_pool->Var(el_cont_var),
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var, pos),
                        elab->el_pool->Record({}));
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, G, x);
@@ -975,6 +987,9 @@ PatternCompilation::SplitStringPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
+
+  // XXX get a real pos
+  const size_t pos = 0;
 
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
@@ -1058,7 +1073,7 @@ PatternCompilation::SplitStringPattern(
 
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
-    elab->el_pool->App(elab->el_pool->Var(el_cont_var),
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var, pos),
                        elab->el_pool->Record({}));
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
@@ -1102,6 +1117,9 @@ PatternCompilation::SplitAppPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
+
+  // XXX get a real pos
+  const size_t pos = 0;
 
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
@@ -1268,7 +1286,7 @@ PatternCompilation::SplitAppPattern(
 
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
-    elab->el_pool->App(elab->el_pool->Var(el_cont_var),
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var, pos),
                        elab->el_pool->Record({}));
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
@@ -1326,6 +1344,9 @@ PatternCompilation::SplitObjectPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
+
+  // XXX get a real pos
+  const size_t pos = 0;
 
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
@@ -1545,7 +1566,7 @@ PatternCompilation::SplitObjectPattern(
 
   // Failure continuation calls the hoisted expression.
   const el::Exp *el_failure_cont =
-    elab->el_pool->App(elab->el_pool->Var(el_cont_var),
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var, pos),
                        elab->el_pool->Record({}));
 
   const il::Exp *il_failure_cont =
@@ -1601,6 +1622,11 @@ PatternCompilation::SplitAsPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
+
+  // XXX get a real pos
+  [[maybe_unused]]
+  const size_t pos = 0;
+
   std::vector<const Pat *> leftcol, rightcol;
   leftcol.reserve(matrix.Height());
   rightcol.reserve(matrix.Height());
@@ -1660,6 +1686,10 @@ PatternCompilation::SplitRecordPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
+
+  // XXX get a real pos
+  [[maybe_unused]]
+  const size_t pos = 0;
 
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
@@ -1845,6 +1875,9 @@ PatternCompilation::CompileIrrefutableRec(
   el::AstPool *el_pool = elab->el_pool;
   il::AstPool *pool = elab->pool;
 
+  // XXX get a real pos (from pat?)
+  const size_t pos = 0;
+
   auto Error = [](const std::string &msg) {
       return std::function<std::string()>(
           [msg]() {
@@ -1975,7 +2008,7 @@ PatternCompilation::CompileIrrefutableRec(
     // Since we have to instantiate the variable at evars if it's
     // polymorphic, the easiest way is to repeatedly elaborate
     // a synthetic EL expression that is just the variable.
-    const el::Exp *el_rexp = el_pool->Var(r);
+    const el::Exp *el_rexp = el_pool->Var(r, pos);
 
     // Now, for each subpattern, compile it recursively.
 

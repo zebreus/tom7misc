@@ -151,7 +151,7 @@ Program Frontend::RunFrontendInternal(
   }
 
   Timer elab_timer;
-  Elaboration elaboration(&el_pool, &il_pool);
+  Elaboration elaboration(source_map, &el_pool, &il_pool);
   Program il_pgm = elaboration.Elaborate(el_exp);
   const double elab_sec = elab_timer.Seconds();
 

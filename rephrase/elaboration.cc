@@ -14,6 +14,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "inclusion.h"
 #include "context.h"
 #include "el.h"
 #include "il.h"
@@ -43,8 +44,9 @@ using DatatypeDec = el::DatatypeDec;
 
 static constexpr bool VERBOSE = false;
 
-Elaboration::Elaboration(el::AstPool *el_pool, il::AstPool *il_pool) :
-  el_pool(el_pool), pool(il_pool), init(pool) {
+Elaboration::Elaboration(const SourceMap &source_map,
+                         el::AstPool *el_pool, il::AstPool *il_pool) :
+  source_map(source_map), el_pool(el_pool), pool(il_pool), init(pool) {
   pattern_compilation.reset(new PatternCompilation(this));
 }
 
@@ -841,12 +843,17 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     const Context &G,
     const el::Exp *el_exp) {
 
-  auto Error = [el_exp](const std::string &construct) {
-      return std::function<std::string()>([construct, el_exp]() -> std::string {
-        return StringPrintf("Elab: %s\n"
-                            "Expression: %s\n",
-                            construct.c_str(),
-                            ShortColorExpString(el_exp).c_str());
+  auto Error = [this, el_exp](const std::string &construct) {
+      return std::function<std::string()>(
+          [this, construct, el_exp]() -> std::string {
+            size_t pos = ExpNearbyPos(el_exp);
+            std::string loc = ErrorAtPos(pos);
+            return StringPrintf("%s"
+                                "Elab: %s\n"
+                                "Expression: %s\n",
+                                loc.c_str(),
+                                construct.c_str(),
+                                ShortColorExpString(el_exp).c_str());
       });
     };
 
@@ -918,7 +925,8 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
 
   case el::ExpType::VAR: {
     const il::VarInfo *vi = G.Find(el_exp->str);
-    CHECK(vi != nullptr) << "Unbound variable: " << el_exp->str;
+    CHECK(vi != nullptr) << Error("Variable")()
+                         << "Unbound variable: " << el_exp->str;
 
     if (VERBOSE) {
       printf("Look up " ABLUE("%s") " : %s\n",
@@ -1071,10 +1079,13 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     std::vector<std::pair<const el::Pat *, const el::Exp *>> rows;
     for (const auto &[p, e] : el_exp->clauses)
       rows.emplace_back(p, e);
+
+    // XXX Get proper location info here.
+    // Also, can include this in the error string.
+    size_t pos = 0;
     rows.emplace_back(
         el_pool->WildPat(),
-        // Could include location info here.
-        el_pool->Fail(el_pool->String("unhandled match")));
+        el_pool->Fail(el_pool->String("unhandled match", pos)));
 
     // Now translate the pattern.
     const auto [body, body_type] =
@@ -1099,8 +1110,11 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
 
     std::vector<std::pair<const el::Pat *, const el::Exp *>> rows =
       el_exp->clauses;
+    // XXX Get proper location info here.
+    // Also, can include this in the error string.
+    size_t pos = 0;
     rows.emplace_back(el_pool->WildPat(),
-                      el_pool->Fail(el_pool->String("unhandled match")));
+                      el_pool->Fail(el_pool->String("unhandled match", pos)));
 
     const auto &[cexp, ctype] =
       pattern_compilation->Compile(GG, obj_var, ot, rows);
@@ -1265,3 +1279,12 @@ const il::Exp *Elaboration::LetDecs(
   return ret;
 }
 
+
+std::string Elaboration::ErrorAtPos(size_t byte_pos) {
+  const std::string file = source_map.filecover[byte_pos];
+  const int line = source_map.linecover[byte_pos];
+  return StringPrintf(
+      "\nAt byte %d which is "
+      AWHITE("%s") ":" AYELLOW("%d") ".\n",
+      byte_pos, file.c_str(), line);
+}

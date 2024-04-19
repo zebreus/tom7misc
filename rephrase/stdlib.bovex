@@ -463,6 +463,20 @@ fun map-contains (Map { cmp, tree }, key) =
     SOME _ => true
   | _ => false
 
+fun map-foldl b f (Map { cmp, tree }) =
+  let
+    fun r (MapEmpty, b) = b
+      | r (MapNode (left, x, value, right), b) =
+      let
+        val b = r (left, b)
+        val b = f (x, value, b)
+      in
+        r (right, b)
+      end
+  in
+    r (tree, b)
+  end
+
 fun map-from-list cmp list =
   let
     fun r nil = map-empty cmp

@@ -1,6 +1,7 @@
 
 #include "el.h"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -808,6 +809,63 @@ std::string ShortColorExpString(const Exp *e) {
   }
   LOG(FATAL) << "Impossible";
   return ARED("??EXP??");
+}
+
+size_t ExpNearbyPos(const el::Exp *exp) {
+  if (exp->pos != 0) return exp->pos;
+  switch (exp->type) {
+
+  case ExpType::JOIN: {
+    for (const Exp *child : exp->children) {
+      if (size_t p = ExpNearbyPos(child)) {
+        return p;
+      }
+    }
+    return 0;
+  }
+
+    // case ExpType::LET:
+    // check decs and exp
+
+  case ExpType::IF: {
+    if (size_t p = ExpNearbyPos(exp->a)) {
+      return p;
+    } else if (size_t pp = ExpNearbyPos(exp->b)) {
+      return pp;
+    } else {
+      return ExpNearbyPos(exp->c);
+    }
+  }
+
+  case ExpType::APP: {
+    if (size_t p = ExpNearbyPos(exp->a)) {
+      return p;
+    } else {
+      return ExpNearbyPos(exp->b);
+    }
+  }
+
+  case ExpType::FN: {
+    for (const auto &[pat, e] : exp->clauses) {
+      if (size_t p = ExpNearbyPos(e)) {
+        return p;
+      }
+    }
+    return 0;
+  }
+
+  case ExpType::CASE:
+    return ExpNearbyPos(exp->a);
+
+  case ExpType::FAIL:
+    return ExpNearbyPos(exp->a);
+
+  case ExpType::ANN:
+    return ExpNearbyPos(exp->a);
+
+  default:
+    return 0;
+  }
 }
 
 }  // namespace el

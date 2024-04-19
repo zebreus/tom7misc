@@ -2,6 +2,7 @@
 #ifndef _REPHRASE_ELABORATION_H
 #define _REPHRASE_ELABORATION_H
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -11,6 +12,7 @@
 #include "el.h"
 #include "il.h"
 
+#include "inclusion.h"
 #include "context.h"
 #include "initial.h"
 
@@ -19,7 +21,8 @@ namespace il { struct PatternCompilation; }
 // Elaboration is a recursive transformation from EL to IL.
 struct Elaboration {
 
-  Elaboration(el::AstPool *el_pool, il::AstPool *il_pool);
+  Elaboration(const SourceMap &source_map,
+              el::AstPool *el_pool, il::AstPool *il_pool);
   ~Elaboration();
 
   void SetVerbose(int v) { verbose = v; }
@@ -72,14 +75,20 @@ struct Elaboration {
   const il::Exp *LetDecs(const std::vector<ILDec> &decs,
                          const il::Exp *body);
 
+  // Return a useful position string (file, line number) from
+  // a byte position in the concatenated input.
+  std::string ErrorAtPos(size_t byte_pos);
+
   // This is repeatedly used.
   std::pair<const il::Exp *, const il::Type *> FailMatch();
+
 
   // Globals collected during elaboration. They all have global
   // scope (including each other's bodies) and distinct names.
   std::vector<il::Global> globals;
 
   int verbose = 0;
+  const SourceMap &source_map;
   el::AstPool *el_pool = nullptr;
   il::AstPool *pool = nullptr;
   il::Initial init;

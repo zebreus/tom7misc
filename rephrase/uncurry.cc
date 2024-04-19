@@ -20,6 +20,9 @@ struct UncurryPass : public Pass<> {
   const Type *DoType(const Type *t) override { return t; }
 
   const Dec *DoFunDec(const std::vector<FunDec> &funs) override {
+    // XXX get real pos from decl
+    const size_t pos = 0;
+
     std::vector<FunDec> ffs;
     ffs.reserve(funs.size());
     for (const auto &fd : funs) {
@@ -60,7 +63,7 @@ struct UncurryPass : public Pass<> {
         std::vector<const Exp *> vrec;
         for (int i = 0; i < (int)width; i++) {
           v.push_back(pool->NewInternalVar("cur"));
-          vrec.push_back(pool->Var(v.back()));
+          vrec.push_back(pool->Var(v.back(), pos));
         }
 
         // Clauses for the internal case. Need to recurse on the

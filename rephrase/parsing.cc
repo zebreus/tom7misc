@@ -129,6 +129,12 @@ const Exp *Parsing::Parse(AstPool *pool,
       }
     };
 
+  auto BytePos = [&tokens](size_t token_pos) {
+      // printf("BytePos: %lld\n", (int64_t) token_pos);
+      CHECK(token_pos < tokens.size()) << token_pos << " vs " << tokens.size();
+      return tokens[token_pos].start;
+    };
+
   auto TokenStr = [&input](Token t) {
       CHECK(t.start <= input.size());
       CHECK(t.start + t.length <= input.size());
@@ -564,8 +570,11 @@ const Exp *Parsing::Parse(AstPool *pool,
       return pool->Int(i);
     };
   const auto FloatExpr = Float >[&](double d) { return pool->Float(d); };
-  const auto StrLitExpr = StrLit >[&](const std::string &s) {
-      return pool->String(s);
+  const auto StrLitExpr = Mark(StrLit)
+    >[&](const auto &s_pos_len) -> const Exp * {
+        const auto &[s, token_pos, token_len] = s_pos_len;
+        // printf("StrLitExp: %lld\n", (int64_t)token_pos);
+        return pool->String(s, BytePos(token_pos));
     };
   const auto BoolExpr = Bool >[&](bool b) { return pool->Bool(b); };
 
@@ -750,8 +759,9 @@ const Exp *Parsing::Parse(AstPool *pool,
   // we could mark this internally as a total function.
   const auto ProjectExpr =
     // #1/3 is syntactic sugar for (fn (x, _, _) => x)
-    ((IsToken<HASH>() >> Int) && (IsToken<SLASH>() >> Int))
-    >[&](const auto &pair) -> const Exp * {
+    Mark((IsToken<HASH>() >> Int) && (IsToken<SLASH>() >> Int))
+    >[&](const auto &pair_pos) -> const Exp * {
+        const auto &[pair, token_start, token_len] = pair_pos;
         const auto &[lab, num] = pair;
         CHECK(lab > 0 && num > 0 && lab <= num) << "In the syntactic "
           "sugar #l/n, l must be a numeric label that's in range "
@@ -767,10 +777,11 @@ const Exp *Parsing::Parse(AstPool *pool,
             args.push_back(pool->WildPat());
           }
         }
+        // printf("ProjectExpr: %lld\n", (int64_t)token_start);
         return pool->Fn(
             // Not recursive
             "",
-            {{pool->TuplePat(args), pool->Var(v)}});
+            {{pool->TuplePat(args), pool->Var(v, BytePos(token_start))}});
       };
 
   // Declarations.
@@ -1033,7 +1044,8 @@ const Exp *Parsing::Parse(AstPool *pool,
           // where everything is an "atom" except for "+", which
           // is an infix operator.
           auto FixityElement =
-            (Id >[&](const std::string &v) {
+            (Mark(Id) >[&](const auto &v_pos) {
+                const auto &[v, token_start, token_len] = v_pos;
                 // TODO: Should be able to change this in the
                 // input source.
                 const auto [fixity, assoc, prec] = GetFixity(v);
@@ -1042,12 +1054,13 @@ const Exp *Parsing::Parse(AstPool *pool,
                 item.assoc = assoc;
                 item.precedence = prec;
                 // A symbol can only be a var or a binary infix operator.
+                size_t byte_pos = BytePos(token_start);
                 if (fixity == Fixity::Atom) {
-                  item.item = pool->Var(v);
+                  item.item = pool->Var(v, byte_pos);
                 } else {
                   CHECK(fixity == Fixity::Infix);
-                  item.binop = [&, v](const Exp *a, const Exp *b) {
-                      return pool->App(pool->Var(v),
+                  item.binop = [pool, byte_pos, v](const Exp *a, const Exp *b) {
+                      return pool->App(pool->Var(v, byte_pos),
                                        pool->Tuple({a, b}));
                     };
                 }
