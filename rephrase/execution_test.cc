@@ -568,6 +568,7 @@ static void FloatTests() {
 
 
 static void TestLocal() {
+
   CHECK_EQ(
       RunToString(R"(
           let
