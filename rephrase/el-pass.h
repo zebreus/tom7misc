@@ -176,7 +176,7 @@ struct Pass {
                              Args... args) {
     std::vector<const Exp *> vv;
     for (const auto &e : v) vv.push_back(DoExp(e, args...));
-    return pool->Tuple(vv);
+    return pool->Tuple(vv, pos);
   }
 
   virtual const Exp *DoRecord(
@@ -280,14 +280,14 @@ struct Pass {
       const Exp *a, const Exp *b,
       size_t pos,
       Args... args) {
-    return pool->Andalso(DoExp(a, args...), DoExp(b, args...));
+    return pool->Andalso(DoExp(a, args...), DoExp(b, args...), pos);
   }
 
   virtual const Exp *DoOrelse(
       const Exp *a, const Exp *b,
       size_t pos,
       Args... args) {
-    return pool->Orelse(DoExp(a, args...), DoExp(b, args...));
+    return pool->Orelse(DoExp(a, args...), DoExp(b, args...), pos);
   }
 
   virtual const Exp *DoFail(const Exp *e, size_t pos, Args... args) {

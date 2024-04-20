@@ -7,6 +7,7 @@ datatype color =
 
 (* functional representation *)
 type squares = (int, color * piece) map
+type castling = bool * bool * bool * bool
 datatype board =
   Board of { squares : squares,
              (* a8, h8, a1, h1 *)
@@ -85,7 +86,7 @@ local
                                if dy > 0 then 1 else -1)
                     else NONE
 
-  fun clear-between squares (sx, sy, dx, dy, xx, yy) =
+  fun clear-between (squares : squares) (sx, sy, dx, dy, xx, yy) =
     let
       fun rec (x, y) =
         if x == dx andalso y == dy
@@ -106,7 +107,7 @@ local
   (* If we capture a piece in the corner, it can no
      longer castle! King and rook movements are covered
      in the cases for those pieces. *)
-  fun new-castling-flags (dst, a8, h8, a1, h1) =
+  fun new-castling-flags (dst, (a8, h8, a1, h1)) =
     let
       val a8 = a8 andalso dst != 0
       val h8 = h8 andalso dst != 7
@@ -116,33 +117,45 @@ local
       (a8, h8, a1, h1)
     end
 
+  (* FIXME: there seems to be a bug where mutually recursive functions
+     can't capture polymorphic variables. *)
+  fun find-piece (squares : squares, pos : int) = map-find (squares, pos)
+
+  fun mono-map-foldl (b : bool) (f : int * (color * piece) * bool -> bool)
+    (m : squares) = map-foldl b f m
+
+  fun squares-remove (m : squares, pos : int) = map-remove (m, pos)
+  fun squares-insert (m : squares, pos : int, v) = map-insert (m, pos, v)
+
   (* Can the piece move from src to dst?
      src is assumed to contain the piece.
 
      *)
   fun simple-move-piece (squares : (int, color * piece) map,
-                         castling, capturing,
-                         src, dst, piece : piece, my-color) =
+                         castling : castling,
+                         capturing : bool,
+                         src : int, dst : int,
+                         piece : piece, my-color : color) =
     let
       fun move-pawn capturing = fail "unimplemented"
 
-      val (sx, sy) = unpos src
-      val (dx, dy) = unpos src
+      val (srcx, srcy) = unpos src
+      val (dstx, dsty) = unpos src
 
       val your-color = color-other my-color
 
       fun move-rook () =
-        case get-delta (sx, sy, dx, dy) of
-          NONE => ILLEGAL "rooks move along rows or columns"
+        case get-delta (srcx, srcy, dstx, dsty) of
+          NONE => ILLEGAL "rook moves along rows or columns"
         | SOME (xx, yy) =>
             if xx != 0 andalso yy != 0
-            then ILLEGAL "rooks cannot move diagonally"
+            then ILLEGAL "rook cannot move diagonally"
             else
-              if clear-between squares (sx, sy, dx, dy, xx, yy)
+              if clear-between squares (srcx, srcy, dstx, dsty, xx, yy)
               then
                 let
-                  val squares = map-remove (squares, src)
-                  val squares = map-insert (squares, dst, (my-color, ROOK))
+                  val squares = squares-remove (squares, src)
+                  val squares = squares-insert (squares, dst, (my-color, ROOK))
 
                   val (a8, h8, a1, h1) = castling
                   (* If the corners are involved, castling privilege is lost. *)
@@ -150,25 +163,176 @@ local
                   val h8 = h8 andalso src != 7
                   val a1 = a1 andalso src != 56
                   val h1 = h1 andalso src != 63
-                  val castling = new-castling-flags (dst, a8, h8, a1, h1)
+                  val castling = new-castling-flags (dst, (a8, h8, a1, h1))
                 in
                   OK (Board { squares = squares,
-                              turn = color-other my-color,
+                              turn = your-color,
                               en-passant = NONE,
                               castling = castling })
                 end
               else ILLEGAL "rook cannot jump over piece"
 
-      fun move-knight () = fail "unimplemented"
-      fun move-bishop () = fail "unimplemented"
-      fun move-king capturing =
+      fun move-knight () =
         let
-          (* Is it castling? That's the only complicated case. *)
+          fun go () =
+            let
+              val squares = squares-remove (squares, src)
+              val squares = squares-insert (squares, dst, (my-color, KNIGHT))
+              val castling = new-castling-flags (dst, castling)
+            in
+              OK (Board { squares = squares,
+                          turn = your-color,
+                          en-passant = NONE,
+                          castling = castling })
+            end
         in
-          fail "unimplemented"
+          case (int-abs (dstx - srcx), int-abs (dsty - srcy)) of
+            (1, 2) => go ()
+          | (2, 1) => go ()
+          | _ => fail "knight must move (2,1) or (1,2)"
         end
 
-      fun move-queen () = fail "unimplemented"
+      fun move-bishop () =
+        case get-delta (srcx, srcy, dstx, dsty) of
+          NONE => ILLEGAL "bishop moves cardinally"
+        | SOME (xx, yy) =>
+            if int-abs xx == 1 andalso int-abs yy == 1
+            then
+              if clear-between squares (srcx, srcy, dstx, dsty, xx, yy)
+              then
+                let
+                  val squares = squares-remove (squares, src)
+                  val squares = squares-insert (squares, dst, (my-color, BISHOP))
+
+                  val castling = new-castling-flags (dst, castling)
+                in
+                  OK (Board { squares = squares,
+                              turn = your-color,
+                              en-passant = NONE,
+                              castling = castling })
+                end
+              else ILLEGAL "bishop cannot jump over piece"
+            else ILLEGAL "bishop moves diagonally"
+
+      fun move-king capturing =
+        let
+          val dx = dstx - srcx
+          val dy = dsty - srcy
+
+          fun new-king-castling () =
+            case (castling, my-color) of
+              ((a8, h8, _, _), WHITE) => (a8, h8, false, false)
+            | ((_, _, a1, h1), BLACK) => (false, false, a1, h1)
+
+        in
+          if not capturing andalso int-abs dx == 2
+          then
+            let
+              datatype castling = A8 | H8 | A1 | H1
+              val xx = if dx > 0 then 1 else -1
+
+              (* Squares between must be clear. *)
+              fun is-clear () =
+                clear-between squares (srcx, srcy, dstx, dsty, xx, 0)
+
+              (* Squares involving the king can't be attacked.
+                 We always check moving into check, so we only
+                 need to check the first two of these.
+
+                 It's not obvious that it would be the case, but
+                 it suffices to check the squares in the source
+                 position. *)
+              fun castle c =
+                let
+                  val pos1 = src
+                  val pos2 =
+                    case c of
+                      A8 => pos (3, 0)
+                    | H8 => pos (5, 0)
+                    | A1 => pos (3, 7)
+                    | H1 => pos (5, 7)
+                in
+                  if attacked (squares, pos1, your-color) orelse
+                     attacked (squares, pos2, your-color)
+                  then ILLEGAL "can't castle out of, or through, check"
+                  else
+                    if is-clear ()
+                    then
+                      let
+                        val (rsrc, rdst) =
+                          case c of
+                            A8 => (pos (0, 0), pos (3, 0))
+                          | H8 => (pos (7, 0), pos (5, 0))
+                          | A1 => (pos (0, 7), pos (3, 7))
+                          | H1 => (pos (7, 7), pos (5, 7))
+                      in
+                        case find-piece (squares, rsrc) of
+                          SOME (color, ROOK) =>
+                            if color-eq (color, my-color)
+                            then
+                              let
+                                val squares = squares-remove (squares, rsrc)
+                                val squares = squares-remove (squares, src)
+                                val squares =
+                                  squares-insert (squares, rdst, (my-color, ROOK))
+                                val squares =
+                                  squares-insert (squares, dst, (my-color, KING))
+                              in
+                                OK (Board { squares = squares,
+                                            castling = new-king-castling (),
+                                            en-passant = NONE,
+                                            turn = your-color })
+                              end
+                            else fail "bug: wrong color rook when castling?"
+                        | _ => fail "bug: no rook when castling?"
+                      end
+                    else ILLEGAL "castling squares are not clear."
+                end
+
+            in
+              (case (castling, srcx, srcy, dstx, dsty) of
+                 (* (a8, h8, a1, h1) *)
+                 ((true, _, _, _), 4, 0, 2, 0) => castle A8
+               | ((_, true, _, _), 4, 0, 6, 0) => castle H8
+               | ((_, _, true, _), 4, 7, 2, 7) => castle A1
+               | ((_, _, _, true), 4, 7, 6, 7) => castle H1
+               | _ => ILLEGAL "invalid castling")
+            end
+          else
+            (* simple king move *)
+            if int-abs dx > 1 orelse int-abs dy > 1
+               orelse (dx == 0 andalso dy == 0)
+            then ILLEGAL "king moves to the 9 1-connected neighbors"
+            else
+              let
+                val squares = squares-remove (squares, src)
+                val squares = squares-insert (squares, dst, (my-color, KING))
+              in
+                OK (Board { squares = squares,
+                            turn = your-color,
+                            en-passant = NONE,
+                            castling = new-king-castling () })
+              end
+        end
+
+      fun move-queen () =
+        case get-delta (srcx, srcy, dstx, dsty) of
+          NONE => ILLEGAL "bishop moves cardinally"
+        | SOME (xx, yy) =>
+            if clear-between squares (srcx, srcy, dstx, dsty, xx, yy)
+            then
+              let
+                val squares = squares-remove (squares, src)
+                val squares = squares-insert (squares, dst, (my-color, QUEEN))
+
+                val castling = new-castling-flags (dst, castling)
+              in
+                OK (Board { squares = squares,
+                            turn = your-color,
+                            en-passant = NONE,
+                            castling = castling })
+              end
+            else ILLEGAL "queen cannot jump over piece"
 
     in
       case piece of
@@ -180,29 +344,30 @@ local
       | QUEEN => move-queen ()
     end
 
+  (* Test whether the target square (which may be empty or occupied)
+     is attacked by any piece of the attacker color. This is used
+     for testing check, for example. *)
+  and attacked (squares, target : int, attacker-color) =
+    mono-map-foldl false
+    (fn (src : int, (color, piece), b : bool) =>
+     b orelse
+     (color-eq (color, attacker-color) andalso
+      (case simple-move-piece (squares,
+                               (* No castling. This doesn't matter
+                                  because castling can't be a capturing move,
+                                  anyway. *)
+                               (false, false, false, false),
+                               true,
+                               src, target, piece, attacker-color) of
+         ILLEGAL _ => false
+       | OK _ => true))
+     ) squares
 in
   (* Returning NONE if the move is not legal. *)
   fun make-move (Board { squares, castling, en-passant, turn = my-color },
                  Move { src, dst, promote }) =
     let
-      val (sx, sy) = unpos src
-      val (dx, dy) = unpos dst
-
       val your-color = color-other my-color
-
-      (* Test whether the target square (which may be empty or occupied)
-         is attacked by any piece of the attacker color. This is used
-         for testing check, for example. *)
-      fun attacked (squares, target : int, attacker-color) =
-        map-foldl false
-        (fn (src : int, (color, piece), b : bool) =>
-         b orelse
-         (color-eq (color, attacker-color) andalso
-          (case simple-move-piece (squares, castling, true,
-                                   src, target, piece, attacker-color) of
-             ILLEGAL _ => false
-           | OK _ => true))
-         ) squares
 
       (* Move a piece, and check post-move conditions (check) *)
       fun move-piece (capturing, piece) =

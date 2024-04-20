@@ -259,19 +259,19 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Andalso(const Exp *a, const Exp *b) {
+  const Exp *Andalso(const Exp *a, const Exp *b, size_t pos) {
     Exp *ret = NewExp(ExpType::ANDALSO);
     ret->a = a;
     ret->b = b;
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 
-  const Exp *Orelse(const Exp *a, const Exp *b) {
+  const Exp *Orelse(const Exp *a, const Exp *b, size_t pos) {
     Exp *ret = NewExp(ExpType::ORELSE);
     ret->a = a;
     ret->b = b;
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 
@@ -295,10 +295,10 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Tuple(std::vector<const Exp *> v) {
+  const Exp *Tuple(std::vector<const Exp *> v, size_t pos) {
     Exp *ret = NewExp(ExpType::TUPLE);
     ret->children = std::move(v);
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 
@@ -568,6 +568,7 @@ std::string ExpString(const Exp *e);
 // For error messages etc.
 std::string ShortColorPatString(const el::Pat *pat);
 std::string ShortColorExpString(const el::Exp *exp);
+std::string ShortColorDecString(const el::Dec *dec);
 
 size_t ExpNearbyPos(const el::Exp *exp);
 

@@ -72,7 +72,7 @@ struct UncurryPass : public Pass<> {
           case_clauses.emplace_back(pool->TuplePat(ps), DoExp(e));
         }
 
-        const Exp *body = pool->Case(pool->Tuple(vrec),
+        const Exp *body = pool->Case(pool->Tuple(vrec, pos),
                                      std::move(case_clauses), pos);
 
         // Wrap in fn expressions.

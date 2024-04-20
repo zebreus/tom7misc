@@ -569,7 +569,7 @@ std::string AstPool::NewInternalVar(const std::string &hint) {
                       next_internal_var);
 }
 
-#define AKEYWORD(s) AYELLOW(s)
+#define AKEYWORD(s) AFGCOLOR(221, 221, 170, s)
 #define ALABEL(s) APURPLE(s)
 #define AOBJNAME(s) AORANGE(s)
 #define AVAR(s) ABLUE(s)
@@ -775,19 +775,6 @@ std::string ShortColorExpString(const Exp *e) {
   case ExpType::CASE: {
     // XXX show something
     return AKEYWORD("case") " " AGREY("...");
-    /*
-    std::vector<std::string> arms;
-    arms.reserve(e->clauses.size());
-    for (const auto &[pat, exp] : e->clauses) {
-      arms.push_back(StringPrintf("%s => %s",
-                                  PatString(pat).c_str(),
-                                  ExpString(exp).c_str()));
-    }
-    return StringPrintf("(case %s of\n"
-                        "   %s)",
-                        ExpString(e->a).c_str(),
-                        Util::Join(arms, "\n | ").c_str());
-    */
   }
 
   case ExpType::FAIL:
@@ -809,6 +796,59 @@ std::string ShortColorExpString(const Exp *e) {
   }
   LOG(FATAL) << "Impossible";
   return ARED("??EXP??");
+}
+
+std::string ShortColorDecString(const Dec *d) {
+  if (d == nullptr) return ARED("NULL!?");
+  switch (d->type) {
+
+  case DecType::VAL:
+    return StringPrintf(AKEYWORD("val") " %s = %s",
+                        ShortColorPatString(d->pat).c_str(),
+                        ShortColorExpString(d->exp).c_str());
+
+  case DecType::FUN: {
+    std::string ret = AKEYWORD("fun");
+    if (d->funs.empty()) ret += " " ARED("EMPTY??");
+    // TODO can use short pat, exp
+    else ret += StringPrintf(" " AVAR("%s") " " AGREY("..."),
+                             d->funs[0].name.c_str());
+    return ret;
+  }
+
+  case DecType::OBJECT: {
+    return StringPrintf(AKEYWORD("object") " " AVAR("%s") " "
+                        AKEYWORD("of") " { " AGREY("...") " }",
+                        d->object.name.c_str());
+  }
+
+  case DecType::TYPE: {
+    return StringPrintf(AKEYWORD("type") " " AVAR("%s") " = %s",
+                        d->str.c_str(),
+                        VeryShortColorTypeString(d->t).c_str());
+  }
+
+  case DecType::OPEN:
+    return StringPrintf(AKEYWORD("open") " %s\n",
+                        ShortColorExpString(d->exp).c_str());
+
+  case DecType::LOCAL: {
+    // XXX would be good to show one declaration for wayfinding
+    std::string ret = AKEYWORD("local") " " AGREY("...") " "
+      AKEYWORD("in") " " AGREY("...") " " AKEYWORD("end");
+    return ret;
+  }
+
+  case DecType::DATATYPE: {
+    std::string ret = AKEYWORD("datatype");
+    if (d->datatypes.empty()) ret += " " ARED("EMPTY??");
+    else ret += StringPrintf(" " AVAR("%s") " = " AGREY("..."),
+                             d->datatypes[0].name.c_str());
+    return ret;
+  }
+  }
+
+  return ARED("??DEC??");
 }
 
 size_t ExpNearbyPos(const el::Exp *exp) {

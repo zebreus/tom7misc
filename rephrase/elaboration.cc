@@ -158,12 +158,20 @@ Elaboration::ElabDec(
     const il::ElabContext &G,
     const el::Dec *dec) {
 
+  const size_t pos = dec->pos;
+
   // PERF this copies the string, but it seems safer than worrying about
   // its lifetime. Most of these will be smaller than the SSO.
-  auto Error = [](const std::string &construct) ->
+  auto Error = [&](const std::string &construct) ->
     std::function<std::string()> {
-    return std::function<std::string()>([construct]() {
-        return StringPrintf("ElabDec: %s\n", construct.c_str());
+    return std::function<std::string()>([this, construct, pos, dec]() {
+        std::string loc = ErrorAtPos(pos);
+        return StringPrintf("%s"
+                            "ElabDec: %s\n"
+                            "Declaration: %s\n",
+                            loc.c_str(),
+                            construct.c_str(),
+                            ShortColorDecString(dec).c_str());
       });
     };
 

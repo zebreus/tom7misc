@@ -580,15 +580,16 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // Either (), or (e) or (e1, e2, ...).
   const auto TupleExpr = [&](const auto &Expr) {
-      return ((IsToken<LPAREN>() >>
+      return (Mark(IsToken<LPAREN>() >>
                Separate0(Expr, IsToken<COMMA>()) <<
                IsToken<RPAREN>())
-              >[&](const std::vector<const Exp *> &es) {
+              >[&](const auto &v_pos) {
+                  const auto &[es, token_start, token_len] = v_pos;
                   if (es.size() == 1) {
                     // Then this is just a parenthesized expression.
                     return es[0];
                   } else {
-                    return pool->Tuple(es);
+                    return pool->Tuple(es, BytePos(token_start));
                   }
                 });
     };
@@ -1070,7 +1071,8 @@ const Exp *Parsing::Parse(AstPool *pool,
                   CHECK(fixity == Fixity::Infix);
                   item.binop = [pool, byte_pos, v](const Exp *a, const Exp *b) {
                       return pool->App(pool->Var(v, byte_pos),
-                                       pool->Tuple({a, b}), byte_pos);
+                                       pool->Tuple({a, b}, byte_pos),
+                                       byte_pos);
                     };
                 }
                 return item;
@@ -1106,18 +1108,20 @@ const Exp *Parsing::Parse(AstPool *pool,
 
           // These should probably be in AnnotatableExpr?
           auto AndalsoExpr =
-            (AnnExpr && Opt((IsToken<ANDALSO>() || IsToken<ANDTHEN>()) &&
-                            AnnExpr))
-            >[&](const auto &pair) {
+            Mark(AnnExpr && Opt((IsToken<ANDALSO>() || IsToken<ANDTHEN>()) &&
+                                AnnExpr))
+            >[&](const auto &pair_pos) {
+                const auto &[pair, token_start, token_len] = pair_pos;
                 const auto &[e, oand] = pair;
+                const size_t byte_pos = BytePos(token_start);
                 if (oand.has_value()) {
                   const auto &[kw, rhs] = oand.value();
                   if (kw.type == ANDALSO) {
-                    return pool->Andalso(e, rhs);
+                    return pool->Andalso(e, rhs, byte_pos);
                   } else {
                     // This is treated as syntactic sugar, which isn't
                     // ideal.
-                    return pool->If(e, rhs, pool->Tuple({}));
+                    return pool->If(e, rhs, pool->Tuple({}, byte_pos));
                   }
                 } else {
                   return e;
@@ -1125,16 +1129,19 @@ const Exp *Parsing::Parse(AstPool *pool,
               };
 
           auto OrelseExpr =
-            (AndalsoExpr && Opt((IsToken<ORELSE>() || IsToken<OTHERWISE>()) &&
-                                Expr))
-            >[&](const auto &pair) {
+            Mark(AndalsoExpr &&
+                 Opt((IsToken<ORELSE>() || IsToken<OTHERWISE>()) &&
+                     Expr))
+            >[&](const auto &pair_pos) {
+                const auto &[pair, token_start, token_len] = pair_pos;
                 const auto &[e, oor] = pair;
+                const size_t byte_pos = BytePos(token_start);
                 if (oor.has_value()) {
                   const auto &[kw, rhs] = oor.value();
                   if (kw.type == ORELSE) {
-                    return pool->Orelse(e, rhs);
+                    return pool->Orelse(e, rhs, byte_pos);
                   } else {
-                    return pool->If(e, pool->Tuple({}), rhs);
+                    return pool->If(e, pool->Tuple({}, byte_pos), rhs);
                   }
                 } else {
                   return e;
