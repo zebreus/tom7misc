@@ -6,16 +6,21 @@ datatype color =
   WHITE | BLACK
 
 (* functional representation *)
+type squares = (int, color * piece) map
 datatype board =
-  Board of { squares : (int, color * piece) map,
+  Board of { squares : squares,
              (* a8, h8, a1, h1 *)
              castling : bool * bool * bool * bool,
              en-passant : int option,
-             black-move : bool }
+             turn : color }
 
 fun color-eq (WHITE, WHITE) = true
   | color-eq (BLACK, BLACK) = true
   | color-eq _ = false
+
+fun color-other WHITE = BLACK
+  | color-other BLACK = WHITE
+
 
 fun piece-eq (PAWN, PAWN) = true
   | piece-eq (ROOK, ROOK) = true
@@ -29,7 +34,7 @@ datatype move =
   Move of { src : int, dst : int, promote : piece option }
 
 fun pos (x, y) = y * 8 + x
-fun unpos p =
+fun unpos p : (int * int) =
   if p < 0 orelse p >= 64
   then fail "bad pos"
   else (p mod 8, p div 8)
@@ -54,10 +59,21 @@ val START-BOARD =
                                                  white-pieces),
             castling = (true, true, true, true),
             en-passant = NONE,
-            black-move = false }
+            turn = WHITE }
   end
 
+datatype move-result = OK of board | ILLEGAL of string
+
 local
+  fun get-king (squares : squares, color : color) =
+    let
+      fun is-king (c, KING) = color-eq (color, c)
+        | is-king _ = false
+    in
+      case map-find-first-value is-king squares of
+        NONE => NONE
+      | SOME (pos, _) => SOME pos
+    end
 
   fun get-delta (sx, sy, dx, dy) : (int * int) option =
       case (dx - sx, dy - sy) of
@@ -87,14 +103,33 @@ local
 
     end
 
+  (* If we capture a piece in the corner, it can no
+     longer castle! King and rook movements are covered
+     in the cases for those pieces. *)
+  fun new-castling-flags (dst, a8, h8, a1, h1) =
+    let
+      val a8 = a8 andalso dst != 0
+      val h8 = h8 andalso dst != 7
+      val a1 = a1 andalso dst != 56
+      val h1 = h1 andalso dst != 63
+    in
+      (a8, h8, a1, h1)
+    end
+
   (* Can the piece move from src to dst?
      src is assumed to contain the piece.
 
      *)
-(*
-  fun simple-move-piece (squares, capturing, src, dst, piece) =
+  fun simple-move-piece (squares : (int, color * piece) map,
+                         castling, capturing,
+                         src, dst, piece : piece, my-color) =
     let
       fun move-pawn capturing = fail "unimplemented"
+
+      val (sx, sy) = unpos src
+      val (dx, dy) = unpos src
+
+      val your-color = color-other my-color
 
       fun move-rook () =
         case get-delta (sx, sy, dx, dy) of
@@ -115,9 +150,10 @@ local
                   val h8 = h8 andalso src != 7
                   val a1 = a1 andalso src != 56
                   val h1 = h1 andalso src != 63
-                  val castling = new-castling-flags (a8, h8, a1, h1)
+                  val castling = new-castling-flags (dst, a8, h8, a1, h1)
                 in
-                  OK (Board { squares = squares, black-move = not black-move,
+                  OK (Board { squares = squares,
+                              turn = color-other my-color,
                               en-passant = NONE,
                               castling = castling })
                 end
@@ -143,67 +179,51 @@ local
       | KING => move-king capturing
       | QUEEN => move-queen ()
     end
-*)
 
 in
   (* Returning NONE if the move is not legal. *)
-  datatype move-result = OK of board | ILLEGAL of string
-  fun make-move (Board { squares, castling, en-passant, black-move },
+  fun make-move (Board { squares, castling, en-passant, turn = my-color },
                  Move { src, dst, promote }) =
     let
       val (sx, sy) = unpos src
       val (dx, dy) = unpos dst
 
-      (* If we capture a piece in the corner, it can no
-         longer castle! King and rook movements are covered
-         in the cases for those pieces. *)
-      fun new-castling-flags (a8, h8, a1, h1) =
-        let
-          val a8 = a8 andalso dst != 0
-          val h8 = h8 andalso dst != 7
-          val a1 = a1 andalso dst != 56
-          val h1 = h1 andalso dst != 63
-        in
-          (a8, h8, a1, h1)
-        end
-
-      val (my-color, your-color) =
-        if black-move then (BLACK, WHITE) else (WHITE, BLACK)
+      val your-color = color-other my-color
 
       (* Test whether the target square (which may be empty or occupied)
          is attacked by any piece of the attacker color. This is used
          for testing check, for example. *)
-      fun attacked (squares, target, attacker) =
+      fun attacked (squares, target : int, attacker-color) =
         map-foldl false
-        (fn (src, piece) =>
-         fail "unimplemented"
+        (fn (src : int, (color, piece), b : bool) =>
+         b orelse
+         (color-eq (color, attacker-color) andalso
+          (case simple-move-piece (squares, castling, true,
+                                   src, target, piece, attacker-color) of
+             ILLEGAL _ => false
+           | OK _ => true))
          ) squares
-      (* HERE - this is basically easy, but we want to run most of the
-         move logic again with a different board, and without some
-         parts (attacking allows moving into check, for example).
-         Want to implement "local" so that I can pull some of these
-         routines out. *)
 
       (* Move a piece, and check post-move conditions (check) *)
-(*
-      fun move-piece pair =
-        let val res = simple-move-piece pair
+      fun move-piece (capturing, piece) =
+        let val res = simple-move-piece (squares, castling, capturing,
+                                         src, dst, piece, my-color)
         in
           case res of
             (* Still illegal. *)
             (ILLEGAL _) => res
-          | (OK { Board { squares, black-move,
-                          castling = _,
-                          en-passant = _ } }) =>
+          | (OK (Board { squares,
+                         turn = _,
+                         castling = _,
+                         en-passant = _ })) =>
               (* Don't allow moving into check. *)
-              (case get-king (squares, not black-move) of
+              (case get-king (squares, my-color) of
                  NONE => ILLEGAL "king was captured?"
                | SOME my-king =>
-                   if attacked (squares, my-king, black-move)
+                   if attacked (squares, my-king, color-other my-color)
                    then ILLEGAL "leaves or places king in check"
                    else res)
         end
-*)
 
     in
       if src == dst

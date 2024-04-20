@@ -458,6 +458,23 @@ fun map-find (Map { cmp, tree }, key) =
     r tree
   end
 
+(* map-find-first-value f m
+   returns SOME (k, v) for the least k
+   where f v is true. Linear time. *)
+fun map-find-first-value f (Map { cmp, tree }) =
+  let
+    fun r MapEmpty = NONE
+      | r (MapNode (left, k, value, right)) =
+      case r left of
+        NONE =>
+          if f value
+          then SOME (k, value)
+          else r right
+      | res => res
+  in
+    r tree
+  end
+
 fun map-contains (Map { cmp, tree }, key) =
   case map-find key of
     SOME _ => true

@@ -718,26 +718,29 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   const auto FnExpr = [&](const auto &Expr) {
       return
-        ((IsToken<FN>() >> Opt(IsToken<AS>() >> Id)) &&
-         Separate(Pattern && (IsToken<DARROW>() >> Expr),
-                  IsToken<BAR>()))
-        >[&](const auto &pp) {
+        Mark((IsToken<FN>() >> Opt(IsToken<AS>() >> Id)) &&
+             Separate(Pattern && (IsToken<DARROW>() >> Expr),
+                      IsToken<BAR>()))
+        >[&](const auto &pp_start_len) {
+            const auto &[pp, token_start, token_len] = pp_start_len;
             const auto &[aso, clauses] = pp;
             std::string self = aso.has_value() ? aso.value() : "";
-            return pool->Fn(self, clauses);
+            return pool->Fn(self, clauses, BytePos(token_start));
           };
     };
 
   const auto CaseExpr = [&](const auto &Expr) {
       return
-        (((IsToken<CASE>() >> Expr << IsToken<OF>()) &&
-         (Opt(IsToken<BAR>()) >>
-          Separate(
-              Pattern && (IsToken<DARROW>() >> Expr),
-              IsToken<BAR>())))
-        >[&](const auto &pair) {
+        (Mark((IsToken<CASE>() >> Expr << IsToken<OF>()) &&
+              (Opt(IsToken<BAR>()) >>
+               Separate(
+                   Pattern && (IsToken<DARROW>() >> Expr),
+                   IsToken<BAR>())))
+        >[&](const auto &pair_start_len) {
+            const auto &[pair, token_start, token_len] = pair_start_len;
             const auto &[obj, clauses] = pair;
-            return pool->Case(obj, clauses);
+            size_t byte_pos = BytePos(token_start);
+            return pool->Case(obj, clauses, byte_pos);
           }) ||
         (Mark(IsToken<CASE>()) >[&](const auto &err) -> const Exp * {
             const auto &[_, start, length] = err;
@@ -778,10 +781,12 @@ const Exp *Parsing::Parse(AstPool *pool,
           }
         }
         // printf("ProjectExpr: %lld\n", (int64_t)token_start);
+        size_t byte_pos = BytePos(token_start);
         return pool->Fn(
             // Not recursive
             "",
-            {{pool->TuplePat(args), pool->Var(v, BytePos(token_start))}});
+            {{pool->TuplePat(args), pool->Var(v, byte_pos)}},
+            byte_pos);
       };
 
   // Declarations.
@@ -861,16 +866,17 @@ const Exp *Parsing::Parse(AstPool *pool,
         >OneFunDec;
 
       return
-        (((IsToken<FUN>() >> row) &&
-         *(IsToken<AND>() >> row))
-        >[&](const auto &p) {
+        (Mark((IsToken<FUN>() >> row) &&
+              *(IsToken<AND>() >> row))
+        >[&](const auto &p_start_len) {
+            const auto &[p, token_start, token_len] = p_start_len;
             const FunDec &f = p.first;
             const std::vector<FunDec> &fs = p.second;
             if (VERBOSE) { printf("Fundec %s + %d\n", f.name.c_str(),
                                   (int)fs.size()); }
             std::vector<FunDec> funs = {f};
             for (const FunDec &d : fs) funs.push_back(d);
-            return pool->FunDec(std::move(funs));
+            return pool->FunDec(std::move(funs), BytePos(token_start));
           }) ||
         (Mark(IsToken<FUN>()) >[&](const auto &err) -> const Dec * {
             const auto &[_, start, length] = err;
@@ -992,7 +998,10 @@ const Exp *Parsing::Parse(AstPool *pool,
       };
 
   const auto ExpAdjApp = [&](const Exp *f, const Exp *arg) -> const Exp * {
-      return pool->App(f, arg);
+      // XXX Reusing the argument's position. We could maybe do
+      // better, but there is no actual keyword associated with an
+      // application.
+      return pool->App(f, arg, arg->pos);
     };
 
   using ExpFixityElt = FixityItem<const Exp *>;
@@ -1061,7 +1070,7 @@ const Exp *Parsing::Parse(AstPool *pool,
                   CHECK(fixity == Fixity::Infix);
                   item.binop = [pool, byte_pos, v](const Exp *a, const Exp *b) {
                       return pool->App(pool->Var(v, byte_pos),
-                                       pool->Tuple({a, b}));
+                                       pool->Tuple({a, b}), byte_pos);
                     };
                 }
                 return item;

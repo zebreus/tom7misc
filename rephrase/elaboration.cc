@@ -5,6 +5,7 @@
 #include "elaboration.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <optional>
@@ -177,6 +178,7 @@ Elaboration::ElabDec(
 
   case el::DecType::FUN: {
     CHECK(!dec->funs.empty()) << "Bug: Should not parse empty funs.";
+    const size_t pos = dec->pos;
 
     auto GetSimpleClauses = [](const el::FunDec &fun) {
         std::vector<std::pair<const el::Pat *, const el::Exp *>>
@@ -198,7 +200,7 @@ Elaboration::ElabDec(
       return pattern_compilation->CompileIrrefutable(
           G,
           el_pool->VarPat(fun.name),
-          el_pool->Fn(fun.name, GetSimpleClauses(fun)));
+          el_pool->Fn(fun.name, GetSimpleClauses(fun), pos));
     } else {
       // For mutually recursive functions, we hoist them out to
       // globals so that they can reference each other. First,
@@ -229,6 +231,9 @@ Elaboration::ElabDec(
       fns.reserve(dec->funs.size());
       for (int i = 0; i < (int)dec->funs.size(); i++) {
         const el::FunDec &fun = dec->funs[i];
+        // Might be better to use a pos for the specific function
+        // (or clause)? Right now we just use the first FUN token.
+
         // In the generated code we could perform the recursion
         // through the fn's recursive name or through the global.
         // The fn name is a little better because its type variables
@@ -236,7 +241,7 @@ Elaboration::ElabDec(
         // reason to prefer the global, it would be easy to switch
         // it right here.
         const auto &[e, t] =
-          Elab(GG, el_pool->Fn(el_vars[i], GetSimpleClauses(fun)));
+          Elab(GG, el_pool->Fn(el_vars[i], GetSimpleClauses(fun), pos));
         const auto &[dom, cod] = dom_cods[i];
         Unification::Unify(Error("fun..and decl"), pool->Arrow(dom, cod), t);
         fns.emplace_back(e, t);
@@ -765,8 +770,8 @@ Elaboration::ElabDec(
 
 
 
-// XXX return context instead of requiring let?
-std::pair<const il::Exp *, const il::Type *> Elaboration::ElabDecs(
+// XXX Maybe now this should just be inlined into the LET case?
+std::pair<const il::Exp *, const il::Type *> Elaboration::ElabLet(
     const il::ElabContext &G,
     const std::vector<const el::Dec *> &decs,
     const el::Exp *el_body) {
@@ -1019,7 +1024,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
   }
 
   case el::ExpType::LET:
-    return ElabDecs(G, el_exp->decs, el_exp->a);
+    return ElabLet(G, el_exp->decs, el_exp->a);
 
   case el::ExpType::ANDALSO: {
     const auto &[ae, at] = Elab(G, el_exp->a);
@@ -1089,7 +1094,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
 
     // Now translate the pattern.
     const auto [body, body_type] =
-      pattern_compilation->Compile(GG, arg, dom, rows);
+      pattern_compilation->Compile(GG, arg, dom, rows, pos);
 
     Unification::Unify(Error("fn body"), body_type, cod);
 
@@ -1110,14 +1115,17 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
 
     std::vector<std::pair<const el::Pat *, const el::Exp *>> rows =
       el_exp->clauses;
-    // XXX Get proper location info here.
-    // Also, can include this in the error string.
-    size_t pos = 0;
-    rows.emplace_back(el_pool->WildPat(),
-                      el_pool->Fail(el_pool->String("unhandled match", pos)));
+
+    const size_t pos = el_exp->a->pos;
+    rows.emplace_back(
+        el_pool->WildPat(),
+        el_pool->Fail(
+            el_pool->String(
+                StringPrintf("unhandled match at %s",
+                             SimplePos(pos).c_str()), pos)));
 
     const auto &[cexp, ctype] =
-      pattern_compilation->Compile(GG, obj_var, ot, rows);
+      pattern_compilation->Compile(GG, obj_var, ot, rows, pos);
     return std::make_pair(
         pool->Let({}, obj_ilvar, oe,
                   cexp),
@@ -1281,10 +1289,23 @@ const il::Exp *Elaboration::LetDecs(
 
 
 std::string Elaboration::ErrorAtPos(size_t byte_pos) {
+  if (byte_pos >= SourceMap::BOGUS_POS) {
+    // This can probably go once we have sufficient coverage of
+    // position information in the parser. But for now it lets me
+    // figure out which of the many missing positions got propagated.
+    return StringPrintf(AORANGE("BOGUS: ") "%lld\n", uint64_t(byte_pos));
+  } else {
+    const std::string file = source_map.filecover[byte_pos];
+    const int line = source_map.linecover[byte_pos];
+    return StringPrintf(
+        "\nAt byte %d which is "
+        AWHITE("%s") ":" AYELLOW("%d") ".\n",
+        byte_pos, file.c_str(), line);
+  }
+}
+
+std::string Elaboration::SimplePos(size_t byte_pos) {
   const std::string file = source_map.filecover[byte_pos];
   const int line = source_map.linecover[byte_pos];
-  return StringPrintf(
-      "\nAt byte %d which is "
-      AWHITE("%s") ":" AYELLOW("%d") ".\n",
-      byte_pos, file.c_str(), line);
+  return StringPrintf("%s:%d", file.c_str(), line);
 }

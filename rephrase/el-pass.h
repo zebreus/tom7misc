@@ -66,14 +66,15 @@ struct Pass {
 
   virtual const Dec *DoDec(const Dec *d, Args... args) {
     switch (d->type) {
-    case DecType::VAL: return DoValDec(d->pat, d->exp, args...);
-    case DecType::FUN: return DoFunDec(d->funs, args...);
-    case DecType::LOCAL: return DoLocalDec(d->decs1, d->decs2, args...);
+    case DecType::VAL: return DoValDec(d->pat, d->exp, d->pos, args...);
+    case DecType::FUN: return DoFunDec(d->funs, d->pos, args...);
+    case DecType::LOCAL: return DoLocalDec(d->decs1, d->decs2, d->pos, args...);
     case DecType::DATATYPE: return DoDatatypeDec(
-        d->tyvars, d->datatypes, args...);
-    case DecType::OBJECT: return DoObjectDec(d->object, args...);
-    case DecType::TYPE: return DoTypeDec(d->tyvars, d->str, d->t, args...);
-    case DecType::OPEN: return DoOpenDec(d->exp, args...);
+        d->tyvars, d->datatypes, d->pos, args...);
+    case DecType::OBJECT: return DoObjectDec(d->object, d->pos, args...);
+    case DecType::TYPE: return DoTypeDec(
+        d->tyvars, d->str, d->t, d->pos, args...);
+    case DecType::OPEN: return DoOpenDec(d->exp, d->pos, args...);
     }
     LOG(FATAL) << "Unhandled type in el::Pass::DoDec!";
     return nullptr;
@@ -225,7 +226,7 @@ struct Pass {
     for (const auto &[p, e] : clauses) {
       cc.emplace_back(DoPat(p, args...), DoExp(e, args...));
     }
-    return pool->Case(DoExp(obj, args...), cc);
+    return pool->Case(DoExp(obj, args...), cc, pos);
   }
 
   virtual const Exp *DoFn(
@@ -237,7 +238,7 @@ struct Pass {
     for (const auto &[p, e] : clauses) {
       cc.emplace_back(DoPat(p, args...), DoExp(e, args...));
     }
-    return pool->Fn(self, cc);
+    return pool->Fn(self, cc, pos);
   }
 
   virtual const Exp *DoJoin(const std::vector<const Exp *> &v,
@@ -267,7 +268,7 @@ struct Pass {
 
   virtual const Exp *DoApp(const Exp *f, const Exp *arg,
                            size_t pos, Args... args) {
-    return pool->App(DoExp(f, args...), DoExp(arg, args...));
+    return pool->App(DoExp(f, args...), DoExp(arg, args...), pos);
   }
 
   virtual const Exp *DoAnn(const Exp *e, const Type *t,
@@ -296,11 +297,13 @@ struct Pass {
 
   // Declarations.
 
-  virtual const Dec *DoValDec(const Pat *pat, const Exp *rhs, Args... args) {
+  virtual const Dec *DoValDec(const Pat *pat, const Exp *rhs,
+                              size_t pos, Args... args) {
     return pool->ValDec(DoPat(pat, args...), DoExp(rhs, args...));
   }
 
-  virtual const Dec *DoFunDec(const std::vector<FunDec> &funs, Args... args) {
+  virtual const Dec *DoFunDec(const std::vector<FunDec> &funs,
+                              size_t pos, Args... args) {
     std::vector<FunDec> ffs;
     ffs.reserve(funs.size());
     for (const auto &fd : funs) {
@@ -314,11 +317,12 @@ struct Pass {
       }
       ffs.push_back(std::move(ffd));
     }
-    return pool->FunDec(std::move(ffs));
+    return pool->FunDec(std::move(ffs), pos);
   }
 
   virtual const Dec *DoLocalDec(const std::vector<const Dec *> &decs1,
                                 const std::vector<const Dec *> &decs2,
+                                size_t pos,
                                 Args... args) {
     std::vector<const Dec *> dd1, dd2;
     for (const Dec *d : decs1) dd1.push_back(DoDec(d, args...));
@@ -328,6 +332,7 @@ struct Pass {
 
   virtual const Dec *DoDatatypeDec(const std::vector<std::string> &tyvars,
                                    const std::vector<DatatypeDec> &ds,
+                                   size_t pos,
                                    Args... args) {
     std::vector<DatatypeDec> dds;
     dds.reserve(ds.size());
@@ -343,7 +348,8 @@ struct Pass {
     return pool->DatatypeDec(tyvars, std::move(dds));
   }
 
-  virtual const Dec *DoObjectDec(const ObjectDec &objdec, Args... args) {
+  virtual const Dec *DoObjectDec(const ObjectDec &objdec,
+                                 size_t pos, Args... args) {
     std::vector<std::pair<std::string, const Type *>> fields;
     fields.reserve(objdec.fields.size());
     for (const auto &[lab, t] : objdec.fields) {
@@ -358,11 +364,12 @@ struct Pass {
   virtual const Dec *DoTypeDec(const std::vector<std::string> &tyvars,
                                const std::string &var,
                                const Type *t,
+                               size_t pos,
                                Args... args) {
     return pool->TypeDec(tyvars, var, DoType(t, args...));
   }
 
-  virtual const Dec *DoOpenDec(const Exp *e, Args... args) {
+  virtual const Dec *DoOpenDec(const Exp *e, size_t pos, Args... args) {
     return pool->OpenDec(DoExp(e, args...));
   }
 

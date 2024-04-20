@@ -5,25 +5,25 @@
 #include <functional>
 #include <optional>
 #include <set>
+#include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <string>
-#include <unordered_set>
 
-#include "context.h"
-#include "el.h"
-#include "il.h"
-#include "il-util.h"
-#include "elaboration.h"
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "ansi.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "context.h"
+#include "el.h"
+#include "elaboration.h"
+#include "il-util.h"
+#include "il.h"
 #include "unification.h"
 #include "util.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
 
 static constexpr int VERBOSE = 0;
 
@@ -390,6 +390,9 @@ struct PatternCompilation::Matrix {
   // The default case, if nothing matches.
   const el::Exp *def = nullptr;
 
+  // The source position of the pattern, for errors.
+  size_t pos = 0;
+
   // Controls whether we print error messages for redundant
   // matches. For compiler-generated patterns, this is harmless
   // and not an error.
@@ -404,11 +407,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
     const ElabContext &G,
     const std::string &obj,
     const Type *obj_type,
-    const std::vector<std::pair<const el::Pat *, const el::Exp *>> &rows_in) {
-
-  // XXX get a real position
-  [[maybe_unused]]
-  const size_t pos = 0;
+    const std::vector<std::pair<const el::Pat *, const el::Exp *>> &rows_in,
+    size_t pos) {
 
   CHECK(!rows_in.empty()) << "There must be rows.";
 
@@ -453,6 +453,7 @@ std::pair<const Exp *, const Type *> PatternCompilation::Compile(
   //       (x, y, 0)    => e1
   //     | (w as z : t) => e2
   Matrix matrix(elab->el_pool);
+  matrix.pos = pos;
   matrix.objs = {obj};
   matrix.types = {obj_type};
 
@@ -710,9 +711,6 @@ PatternCompilation::SplitIntPattern(
     Matrix matrix,
     int x) {
 
-  // XXX get a real pos
-  const size_t pos = 0;
-
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
     };
@@ -817,8 +815,9 @@ PatternCompilation::SplitIntPattern(
 
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
-    elab->el_pool->App(elab->el_pool->Var(el_cont_var, pos),
-                       elab->el_pool->Record({}));
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var, matrix.pos),
+                       elab->el_pool->Record({}),
+                       matrix.pos);
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
   Unification::Unify(Error("int pattern"),
@@ -859,9 +858,6 @@ PatternCompilation::SplitBoolPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
-
-  // XXX get a real pos
-  const size_t pos = 0;
 
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
@@ -930,8 +926,9 @@ PatternCompilation::SplitBoolPattern(
 
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
-    elab->el_pool->App(elab->el_pool->Var(el_cont_var, pos),
-                       elab->el_pool->Record({}));
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var, matrix.pos),
+                       elab->el_pool->Record({}),
+                       matrix.pos);
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, G, x);
   Unification::Unify(Error("bool pattern"), obj_type, elab->pool->BoolType());
@@ -987,9 +984,6 @@ PatternCompilation::SplitStringPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
-
-  // XXX get a real pos
-  const size_t pos = 0;
 
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
@@ -1073,8 +1067,9 @@ PatternCompilation::SplitStringPattern(
 
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
-    elab->el_pool->App(elab->el_pool->Var(el_cont_var, pos),
-                       elab->el_pool->Record({}));
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var, matrix.pos),
+                       elab->el_pool->Record({}),
+                       matrix.pos);
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
   Unification::Unify(Error("string pattern"),
@@ -1117,9 +1112,6 @@ PatternCompilation::SplitAppPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
-
-  // XXX get a real pos
-  const size_t pos = 0;
 
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
@@ -1286,8 +1278,9 @@ PatternCompilation::SplitAppPattern(
 
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
-    elab->el_pool->App(elab->el_pool->Var(el_cont_var, pos),
-                       elab->el_pool->Record({}));
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var, matrix.pos),
+                       elab->el_pool->Record({}),
+                       matrix.pos);
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
   Unification::Unify(Error("sum pattern"), obj_type, mu_type);
@@ -1344,9 +1337,6 @@ PatternCompilation::SplitObjectPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
-
-  // XXX get a real pos
-  const size_t pos = 0;
 
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
@@ -1566,8 +1556,9 @@ PatternCompilation::SplitObjectPattern(
 
   // Failure continuation calls the hoisted expression.
   const el::Exp *el_failure_cont =
-    elab->el_pool->App(elab->el_pool->Var(el_cont_var, pos),
-                       elab->el_pool->Record({}));
+    elab->el_pool->App(elab->el_pool->Var(el_cont_var, matrix.pos),
+                       elab->el_pool->Record({}),
+                       matrix.pos);
 
   const il::Exp *il_failure_cont =
     elab->pool->App(elab->pool->Var({}, il_cont_var),
@@ -1622,10 +1613,6 @@ PatternCompilation::SplitAsPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
-
-  // XXX get a real pos
-  [[maybe_unused]]
-  const size_t pos = 0;
 
   std::vector<const Pat *> leftcol, rightcol;
   leftcol.reserve(matrix.Height());
@@ -1686,10 +1673,6 @@ PatternCompilation::SplitRecordPattern(
     const ElabContext &G,
     Matrix matrix,
     int x) {
-
-  // XXX get a real pos
-  [[maybe_unused]]
-  const size_t pos = 0;
 
   auto Error = [this, &matrix](const std::string &msg) {
       return MatrixError(matrix, msg);
@@ -1875,7 +1858,7 @@ PatternCompilation::CompileIrrefutableRec(
   el::AstPool *el_pool = elab->el_pool;
   il::AstPool *pool = elab->pool;
 
-  // XXX get a real pos (from pat?)
+  // XXX get a real pos (from pat? arg?)
   const size_t pos = 0;
 
   auto Error = [](const std::string &msg) {
@@ -2179,9 +2162,11 @@ std::function<std::string()> PatternCompilation::MatrixError(
   // PERF: Copying the matrix here, since (among other things)
   // we sometimes modify it and temporarily put it in an invalid
   // state.
-  return [matrix, e]() -> std::string {
-      return StringPrintf("Pattern compilation: %s\n"
+  return [this, matrix, e]() -> std::string {
+      return StringPrintf("%s"
+                          "Pattern compilation: %s\n"
                           AWHITE("Matrix") ":\n%s\n",
+                          this->elab->ErrorAtPos(matrix.pos).c_str(),
                           e.c_str(),
                           matrix.ShortColorString().c_str());
     };

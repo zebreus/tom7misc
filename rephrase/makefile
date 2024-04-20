@@ -299,13 +299,13 @@ endif
 
 %.o : %.cc $(BOVEX_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
-#	@echo -n "."
+	@echo -n "."
 
 # Parser takes a uniquely long time to compile, so don't make it
 # depend on every header.
 parsing.o : parsing.cc parsing.h inclusion.h el.h lexing.h $(CC_LIB)/parser-combinators.h
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
-#	@echo -n "."
+	@echo -n ":"
 
 
 monospace.exe : monospace.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS) $(BIT7_OBJECTS)

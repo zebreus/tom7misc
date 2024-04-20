@@ -4,6 +4,7 @@
 
 // Pattern compilation (elaboration).
 
+#include <cstddef>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -29,7 +30,9 @@ struct PatternCompilation {
       // Pattern rows, mapping EL pattern to EL expression.
       // To explicitly insert a default, use the wildcard pattern
       // at the end.
-      const std::vector<std::pair<const el::Pat *, const el::Exp *>> &rows);
+      const std::vector<std::pair<const el::Pat *, const el::Exp *>> &rows,
+      // The source position that should be reported in errors.
+      size_t pos);
 
   // Compile an irrefutable pattern, which is a single row
   // just consisting of Record, wild, variable, and as patterns.

@@ -67,7 +67,7 @@ struct Elaboration {
   ElabDec(const il::ElabContext &G,
           const el::Dec *dec);
 
-  std::pair<const il::Exp *, const il::Type *> ElabDecs(
+  std::pair<const il::Exp *, const il::Type *> ElabLet(
       const il::ElabContext &G,
       const std::vector<const el::Dec *> &decs,
       const el::Exp *exp);
@@ -78,6 +78,9 @@ struct Elaboration {
   // Return a useful position string (file, line number) from
   // a byte position in the concatenated input.
   std::string ErrorAtPos(size_t byte_pos);
+  // Same idea, but just file:line in plain text for embedding
+  // in something like a case match failure in the program itself.
+  std::string SimplePos(size_t byte_pos);
 
   // This is repeatedly used.
   std::pair<const il::Exp *, const il::Type *> FailMatch();

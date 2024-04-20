@@ -2,6 +2,7 @@
 #ifndef _REPHRASE_INCLUSION_H
 #define _REPHRASE_INCLUSION_H
 
+#include <cstddef>
 #include <vector>
 #include <string>
 #include <tuple>
@@ -31,6 +32,9 @@ struct SourceMap {
   // above) that contains the byte. These are used for error messages
   // so they are 1-based by convention.
   IntervalCover<int> linecover;
+
+  // Source files may not exceed 100 terabytes.
+  static constexpr size_t BOGUS_POS = 100'000'000'000'000;
 };
 
 struct Inclusion {
@@ -44,7 +48,6 @@ struct Inclusion {
   // the "file", which need not be real).
   static SourceMap SimpleSourceMap(const std::string &file,
                                    const std::string &content);
-
 };
 
 

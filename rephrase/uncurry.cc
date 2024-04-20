@@ -19,10 +19,7 @@ struct UncurryPass : public Pass<> {
   const Pat *DoPat(const Pat *p) override { return p; }
   const Type *DoType(const Type *t) override { return t; }
 
-  const Dec *DoFunDec(const std::vector<FunDec> &funs) override {
-    // XXX get real pos from decl
-    const size_t pos = 0;
-
+  const Dec *DoFunDec(const std::vector<FunDec> &funs, size_t pos) override {
     std::vector<FunDec> ffs;
     ffs.reserve(funs.size());
     for (const auto &fd : funs) {
@@ -76,12 +73,12 @@ struct UncurryPass : public Pass<> {
         }
 
         const Exp *body = pool->Case(pool->Tuple(vrec),
-                                     std::move(case_clauses));
+                                     std::move(case_clauses), pos);
 
         // Wrap in fn expressions.
         // Note that we do NOT include v1 here.
         for (int i = (int)width - 1; i > 0; i--) {
-          body = pool->Fn("", {std::make_pair(pool->VarPat(v[i]), body)});
+          body = pool->Fn("", {std::make_pair(pool->VarPat(v[i]), body)}, pos);
         }
 
         // Because we use it as the argument to the generated fun decl.
@@ -92,7 +89,7 @@ struct UncurryPass : public Pass<> {
 
       ffs.push_back(std::move(ffd));
     }
-    return pool->FunDec(std::move(ffs));
+    return pool->FunDec(std::move(ffs), pos);
   }
 
 };

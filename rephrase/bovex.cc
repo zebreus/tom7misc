@@ -1,4 +1,5 @@
 
+#include <cmath>
 #include <cstdio>
 #include <map>
 #include <memory>
@@ -308,6 +309,11 @@ static int Bovex(const std::vector<std::string> &args) {
   if (total_badness >= +1e100) {
     Achievements::Get().Achieve("SUPERBAD",
                                 "Generate a document with a googol badness.");
+  }
+
+  if (std::isnan(total_badness)) {
+    Achievements::Get().Achieve("IEEEeeee!",
+                                "Generate a document with NaN badness.");
   }
 
   rephrasing->Save();

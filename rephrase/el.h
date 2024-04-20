@@ -9,6 +9,7 @@
 
 #include "ast-arena.h"
 #include "bignum/big.h"
+#include "inclusion.h"
 
 namespace el {
 
@@ -117,7 +118,7 @@ struct Exp {
   std::vector<std::pair<std::string, const Exp *>> str_children;
   // Approximate position (byte offset in the concatenated source) of
   // this expression in the input stream. For error reporting.
-  size_t pos = 0;
+  size_t pos = SourceMap::BOGUS_POS;
   bool boolean = false;
   Exp(ExpType t) : type(t) {}
 };
@@ -170,6 +171,7 @@ struct Dec {
   ObjectDec object;
   // for local decs1 in decs2 end
   std::vector<const Dec *> decs1, decs2;
+  size_t pos = SourceMap::BOGUS_POS + 1'000'000'000;
   Dec(DecType t) : type(t) {}
 };
 
@@ -218,6 +220,7 @@ struct AstPool {
   const Exp *LayoutExp(const Layout *lay) {
     Exp *ret = NewExp(ExpType::LAYOUT);
     ret->layout = lay;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -231,24 +234,28 @@ struct AstPool {
   const Exp *Bool(bool b) {
     Exp *ret = NewExp(ExpType::BOOL);
     ret->boolean = b;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Exp *Int(int64_t i) {
     Exp *ret = NewExp(ExpType::INT);
     ret->integer = BigInt(i);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Exp *Int(BigInt i) {
     Exp *ret = NewExp(ExpType::INT);
     ret->integer = std::move(i);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Exp *Float(double d) {
     Exp *ret = NewExp(ExpType::FLOAT);
     ret->d = d;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -256,6 +263,7 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::ANDALSO);
     ret->a = a;
     ret->b = b;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -263,6 +271,7 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::ORELSE);
     ret->a = a;
     ret->b = b;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -273,6 +282,7 @@ struct AstPool {
     ret->str = std::move(objname);
     ret->str2 = std::move(fieldname);
     ret->b = b;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -281,18 +291,21 @@ struct AstPool {
     ret->a = a;
     ret->str = std::move(objname);
     ret->str2 = std::move(fieldname);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Exp *Tuple(std::vector<const Exp *> v) {
     Exp *ret = NewExp(ExpType::TUPLE);
     ret->children = std::move(v);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Exp *Record(std::vector<std::pair<std::string, const Exp *>> v) {
     Exp *ret = NewExp(ExpType::RECORD);
     ret->str_children = std::move(v);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -301,28 +314,34 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::OBJECT);
     ret->str = std::move(objtype);
     ret->str_children = std::move(v);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Exp *Case(const Exp *obj,
-                  std::vector<std::pair<const Pat *, const Exp *>> clauses) {
+                  std::vector<std::pair<const Pat *, const Exp *>> clauses,
+                  size_t pos) {
     Exp *ret = NewExp(ExpType::CASE);
     ret->a = obj;
     ret->clauses = std::move(clauses);
+    ret->pos = pos;
     return ret;
   }
 
   const Exp *Fn(std::string self,
-                std::vector<std::pair<const Pat *, const Exp *>> clauses) {
+                std::vector<std::pair<const Pat *, const Exp *>> clauses,
+                size_t pos) {
     Exp *ret = NewExp(ExpType::FN);
     ret->str = self;
     ret->clauses = std::move(clauses);
+    ret->pos = pos;
     return ret;
   }
 
   const Exp *Join(std::vector<const Exp *> v) {
     Exp *ret = NewExp(ExpType::JOIN);
     ret->children = std::move(v);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -330,6 +349,7 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::LET);
     ret->decs = std::move(ds);
     ret->a = e;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -338,13 +358,15 @@ struct AstPool {
     ret->a = cond;
     ret->b = t;
     ret->c = f;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
-  const Exp *App(const Exp *f, const Exp *arg) {
+  const Exp *App(const Exp *f, const Exp *arg, size_t pos) {
     Exp *ret = NewExp(ExpType::APP);
     ret->a = f;
     ret->b = arg;
+    ret->pos = pos;
     return ret;
   }
 
@@ -352,6 +374,7 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::ANN);
     ret->a = e;
     ret->t = t;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -359,6 +382,7 @@ struct AstPool {
     Exp *ret = NewExp(ExpType::FAIL);
     ret->a = e;
     return ret;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
   }
 
   // Layout
@@ -387,12 +411,14 @@ struct AstPool {
     Dec *ret = NewDec(DecType::VAL);
     ret->pat = pat;
     ret->exp = rhs;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
-  const Dec *FunDec(std::vector<FunDec> funs) {
+  const Dec *FunDec(std::vector<FunDec> funs, size_t pos) {
     Dec *ret = NewDec(DecType::FUN);
     ret->funs = std::move(funs);
+    ret->pos = pos;
     return ret;
   }
 
@@ -401,6 +427,7 @@ struct AstPool {
     Dec *ret = NewDec(DecType::LOCAL);
     ret->decs1 = std::move(ds1);
     ret->decs2 = std::move(ds2);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -410,12 +437,14 @@ struct AstPool {
     Dec *ret = NewDec(DecType::DATATYPE);
     ret->tyvars = std::move(tyvars);
     ret->datatypes = std::move(datatypes);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Dec *ObjectDec(ObjectDec objdec) {
     Dec *ret = NewDec(DecType::OBJECT);
     ret->object = std::move(objdec);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -425,12 +454,14 @@ struct AstPool {
     ret->tyvars = std::move(tyvars);
     ret->str = std::move(s);
     ret->t = t;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Dec *OpenDec(const Exp *e) {
     Dec *ret = NewDec(DecType::OPEN);
     ret->exp = e;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 

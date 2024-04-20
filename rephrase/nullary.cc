@@ -77,6 +77,7 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
 
   const Dec *DoLocalDec(const std::vector<const Dec *> &decs1,
                         const std::vector<const Dec *> &decs2,
+                        size_t pos,
                         FunctionalSet<std::string> nullary_ctors) override {
     LOG(FATAL) << "This case should not be reached; we cover LOCAL "
       "decls in LET.";
@@ -85,6 +86,7 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
   const Dec *DoDatatypeDec(
       const std::vector<std::string> &tyvars,
       const std::vector<DatatypeDec> &ds,
+      size_t pos,
       FunctionalSet<std::string> nullary_ctors) override {
     LOG(FATAL) << "This case should not be reached; we cover datatype "
       "decls in LET.";
@@ -103,7 +105,7 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
                    size_t pos,
                    FunctionalSet<std::string> nullary_ctors) override {
     if (nullary_ctors.Contains(v)) {
-      return pool->App(pool->Var(v, pos), pool->Record({}));
+      return pool->App(pool->Var(v, pos), pool->Record({}), pos);
     } else {
       return pool->Var(v, pos);
     }
