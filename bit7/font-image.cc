@@ -13,8 +13,11 @@ using namespace std;
 
 static constexpr bool VERBOSE = false;
 
+// TODO: Need to add page for "old" DFX fonts.
+
 Page Config::ParsePage(const std::string &p) {
   if (p == "bit7-classic") return Page::BIT7_CLASSIC;
+  if (p == "bit7-extended") return Page::BIT7_EXTENDED;
   LOG(FATAL) << "Unknown page " << p;
 }
 
@@ -22,6 +25,8 @@ const char *Config::PageString(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC:
     return "bit7-classic";
+  case Page::BIT7_EXTENDED:
+    return "bit7-extended";
   default:
     break;
   }
@@ -231,9 +236,120 @@ const std::vector<int> &PageBit7Classic() {
   return CODEPOINTS;
 }
 
+// TODO: Pages could also define sections, which just get colored
+// differently in generated images.
+
+// Standard size is: 16x24
+const std::vector<int> &PageBit7Extended() {
+  static const std::vector<int> CODEPOINTS = {
+    // space for emoji
+    // EMOJI: LIGHT BULB
+    0x1F4A1,
+    // EMOJI: BEER MUG
+    0x1F37A,
+    // EMOJI: WASTEBASKET
+    0x1F5D1,
+    // EMOJI: MOAI HEAD
+    0x1F5FF,
+    // EMOJI: HIGH VOLTAGE
+    0x26A1,
+    // EMOJI: MAGNET
+    0x1F9F2,
+    // EMOJI: SKULL
+    0x1F480,
+    // EMOJI: SKULL AND CROSSBONES
+    0x2620,
+    // EMOJI: DROPLET
+    0x1F4A7,
+    // EMOJI: HUNDRED POINTS
+    0x1F4AF,
+    // EMOJI: ANGER SYMBOL
+    0x1F4A2,
+    // EMOJI: ZZZ
+    0x1F4A4,
+    // EMOJI: PAGE FACING UP
+    0x1F4C4,
+    // EMOJI: BOMB
+    0x1F4A3,
+    // EMOJI: GLOBE WITH MERIDIANS
+    0x1F310,
+    // EMOJI: EYES
+    0x1F440,
+
+    // Emoji line 2.
+
+    // EMOJI: TOOTHBRUSH
+    0x1FAA5,
+    // EMOJI: HEADSTONE
+    0x1FAA6,
+    // EMOJI: PLACARD (Signpost)
+    0x1FAA7,
+    // EMOJI: ROCK
+    0x1FAA8,
+    // EMJOI: FLY
+    0x1FAB0,
+
+    // EMOJI: MAGIC WAND
+    0x1FA84,
+    // EMOJI: COIN
+    0x1FA99,
+    // EMOJI: LADDER
+    0x1FA9C,
+
+    // EMOJI: HOT PEPPER
+    0x1F336,
+
+    // EMOJI: GHOST
+    0x1F47B,
+
+    // EMOJI: KEY
+    0x1F511,
+
+    // EMOJI: LOCK (LOCKED)
+    0x1F512,
+    // EMOJI: OPEN LOCK
+    0x1F513,
+
+    // EMOJI: HEAVY DOLLAR SIGN
+    0x1F4B2,
+
+    // EMOJI: FIRE
+    0x1F525,
+
+    -1,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  };
+  return CODEPOINTS;
+}
+
+
 static const std::vector<int> &GetCodepointsForPage(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC: return PageBit7Classic();
+  case Page::BIT7_EXTENDED: return PageBit7Extended();
   }
   LOG(FATAL) << "Unimplemented page!";
 }
