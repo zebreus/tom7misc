@@ -2,18 +2,13 @@
 // font image/config. Might do this if the image has something wrong
 // with it (stray pixels, etc.).
 
-#include <cstdint>
 #include <string>
 
 #include "base/logging.h"
 #include "font-image.h"
+#include "util.h"
 
 using namespace std;
-using uint8 = uint8_t;
-using uint32 = uint32_t;
-using uint64 = uint64_t;
-
-using Glyph = FontImage::Glyph;
 
 static Config ParseAndCheckConfig(const std::string &cfgfile) {
   Config config = Config::ParseConfig(cfgfile);
@@ -32,15 +27,22 @@ static Config ParseAndCheckConfig(const std::string &cfgfile) {
 }
 
 int main(int argc, char **argv) {
-  CHECK(argc == 3) <<
-    "Usage: ./normalize.exe config.cfg normalized.png";
+  CHECK(argc == 2 || argc == 3) <<
+    "Usage: ./normalize.exe config.cfg [normalized.png]";
 
-  printf("Normalize %s to %s\n", argv[1], argv[2]);
   const Config config = ParseAndCheckConfig(argv[1]);
+  std::string dest = config.pngfile;
+  if (argc == 3) dest = argv[2];
 
   FontImage font(config);
 
-  font.SaveImage(argv[2]);
+  if (Util::ExistsFile(dest)) {
+    std::string back = Util::BackupFile(dest);
+    printf("Moved old %s to %s\n", dest.c_str(),
+           back.c_str());
+  }
+
+  font.SaveImage(dest);
 
   return 0;
 }

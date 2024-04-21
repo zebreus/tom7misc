@@ -32,6 +32,10 @@ const char *Config::PageString(Page p) {
   }
 }
 
+// Tips:
+//  - To move glyphs between pages, first duplicate them, then
+//    normalize, then set the sources to -1, then normalize again.
+
 // Standard size is: 16x24
 const std::vector<int> &PageBit7Classic() {
   static const std::vector<int> CODEPOINTS = {
@@ -69,12 +73,8 @@ const std::vector<int> &PageBit7Classic() {
     0x2022,
     // HORIZONTAL ELLIPSIS
     0x2026,
-    // EMOJI: CLOUD
-    0x2601,
-    // EMOJI: ROCKET
-    0x1F680,
-    // EMOJI: NO ENTRY
-    0x26D4,
+    // Was some emoji; unclaimed now
+    -1, -1, -1,
 
     // dagger, double-dagger
     0x2020, 0x2021,
@@ -92,81 +92,10 @@ const std::vector<int> &PageBit7Classic() {
     // turnstile (a.k.a. right tack)
     0x22A2,
 
-    // space for emoji
-    // EMOJI: LIGHT BULB
-    0x1F4A1,
-    // EMOJI: BEER MUG
-    0x1F37A,
-    // EMOJI: WASTEBASKET
-    0x1F5D1,
-    // EMOJI: MOAI HEAD
-    0x1F5FF,
-    // EMOJI: HIGH VOLTAGE
-    0x26A1,
-    // EMOJI: MAGNET
-    0x1F9F2,
-    // EMOJI: SKULL
-    0x1F480,
-    // EMOJI: SKULL AND CROSSBONES
-    0x2620,
-    // EMOJI: DROPLET
-    0x1F4A7,
-    // EMOJI: HUNDRED POINTS
-    0x1F4AF,
-    // EMOJI: ANGER SYMBOL
-    0x1F4A2,
-    // EMOJI: ZZZ
-    0x1F4A4,
-    // EMOJI: PAGE FACING UP
-    0x1F4C4,
-    // EMOJI: BOMB
-    0x1F4A3,
-    // EMOJI: GLOBE WITH MERIDIANS
-    0x1F310,
-    // EMOJI: EYES
-    0x1F440,
-
-    // Emoji line 2.
-
-    // EMOJI: TOOTHBRUSH
-    0x1FAA5,
-    // EMOJI: HEADSTONE
-    0x1FAA6,
-    // EMOJI: PLACARD (Signpost)
-    0x1FAA7,
-    // EMOJI: ROCK
-    0x1FAA8,
-    // EMJOI: FLY
-    0x1FAB0,
-
-    // EMOJI: MAGIC WAND
-    0x1FA84,
-    // EMOJI: COIN
-    0x1FA99,
-    // EMOJI: LADDER
-    0x1FA9C,
-
-    // EMOJI: HOT PEPPER
-    0x1F336,
-
-    // EMOJI: GHOST
-    0x1F47B,
-
-    // EMOJI: KEY
-    0x1F511,
-
-    // EMOJI: LOCK (LOCKED)
-    0x1F512,
-    // EMOJI: OPEN LOCK
-    0x1F513,
-
-    // EMOJI: HEAVY DOLLAR SIGN
-    0x1F4B2,
-
-    // EMOJI: FIRE
-    0x1F525,
-
-    -1,
+    // Unclaimed. Was once emoji, but I moved those to the extended
+    // page.
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     // ASCII, in order
     0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
@@ -318,7 +247,14 @@ const std::vector<int> &PageBit7Extended() {
 
     -1,
 
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // EMOJI: CLOUD
+    0x2601,
+    // EMOJI: ROCKET
+    0x1F680,
+    // EMOJI: NO ENTRY
+    0x26D4,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -566,6 +502,9 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
           }
         }
 
+        // PERF: We could dedupe glyphs here. The main thing
+        // would be empty glyphs, I think.
+
         // No way to set left edge from image yet...
         Glyph glyph{.left_edge = 0, .pic = std::move(pic)};
         int idx = (int)glyphs.size();
@@ -582,7 +521,8 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
   for (const auto &[cidx, gidx] : pos_to_glyph) {
     CHECK(gidx >= 0 && gidx < glyphs.size());
     const Glyph &glyph = glyphs[gidx];
-    const bool ok_missing = config.fixed_width && EmptyGlyph(glyph);
+    const bool is_empty = EmptyGlyph(glyph);
+    const bool ok_missing = config.fixed_width && is_empty;
 
     if (cidx >= (int)codepoints.size()) {
       if (!ok_missing) {
@@ -607,7 +547,11 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
       }
 
     } else {
-      unicode_to_glyph[codepoint] = gidx;
+      // A codepoint can appear multiple times in different pages. We take
+      // the last one, but don't overwrite with an empty glyph.
+      if (!is_empty || !unicode_to_glyph.contains(codepoint)) {
+        unicode_to_glyph[codepoint] = gidx;
+      }
     }
   }
 }
