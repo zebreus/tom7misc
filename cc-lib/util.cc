@@ -1471,6 +1471,22 @@ bool Util::Move(std::string_view src, std::string_view dst) {
   return !error;
 }
 
+std::string Util::BackupFile(std::string_view src) {
+  uint64_t ctr = time(nullptr);
+  std::string newfile;
+  do {
+    ctr++;
+    ctr *= 0xDECADE;
+    ctr = std::rotr<uint64_t>(ctr, 11);
+    newfile = std::string(src) + itos(ctr & 0x7FFFFFFF) + ".old";
+    printf("Try %s\n", newfile.c_str());
+  } while (Util::ExistsFile(newfile));
+
+  if (!Util::Move(src, newfile))
+    return "";
+  return newfile;
+}
+
 bool Util::copy(const string &src, const string &dst) {
   FILE *s = fopen(src.c_str(), "rb");
   if (!s) {

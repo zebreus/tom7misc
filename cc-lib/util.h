@@ -257,6 +257,12 @@ struct Util {
      true on success. */
   static bool Move(std::string_view src, std::string_view dst);
 
+  // Move a file to a new name (arbitrary) to make room for
+  // "overwriting" it. Returns the new filename. Should not fail
+  // unless there's an underlying filesystem problem (or src doesn't
+  // exist), but it returns "" in that case.
+  static std::string BackupFile(std::string_view src);
+
   /* make a copy by reading/writing */
   static bool copy(const string &src, const string &dst);
 
