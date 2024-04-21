@@ -1,7 +1,7 @@
 
 all: default
 
-default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe fixedersys1x.sfd fixedersys2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd addrow.exe
+default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd
 
 # CXX=x86_64-w64-mingw32-g++
 # CC=x86_64-w64-mingw32-gcc
@@ -20,8 +20,8 @@ CCLIB_FONT_OBJECTS=../cc-lib/fonts/island-finder.o ../cc-lib/fonts/ttf.o ../cc-l
 makegrid.exe : makegrid.o font-image.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
-resize.exe : resize.o $(CCLIB_OBJECTS)
-	$(CXX) $(LFLAGS) $^ -o $@
+# resize.exe : resize.o $(CCLIB_OBJECTS)
+# 	$(CXX) $(LFLAGS) $^ -o $@
 
 testpattern.exe : testpattern.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
@@ -48,8 +48,8 @@ normalize.exe : normalize.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 merge2x.exe : merge2x.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
-addrow.exe : addrow.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
-	$(CXX) $(LFLAGS) $^ -o $@
+# addrow.exe : addrow.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
+# 	$(CXX) $(LFLAGS) $^ -o $@
 
 dfx-pasement.sfd : dfx-pasement.png dfx-pasement.cfg makesfd.exe
 	./makesfd.exe dfx-pasement.cfg $@

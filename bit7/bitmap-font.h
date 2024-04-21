@@ -2,7 +2,8 @@
 // Only use C++ builtins/std.
 // XXX export to cc-lib?
 // XXX Still need to figure out the right interface for loading these guys,
-// and probably a version where W/H are not fixed (... rename this to FixedBitmapFont?)
+// and probably a version where W/H are not fixed
+// Not to be confused with BitmapFont in font-image.h :(
 
 #ifndef _BIT7_BITMAP_FONT_H
 #define _BIT7_BITMAP_FONT_H
@@ -10,7 +11,7 @@
 #include <vector>
 
 template<int W, int H>
-struct BitmapFont {
+struct FixedBitmapFont {
   static constexpr int CHAR_WIDTH = W;
   static constexpr int CHAR_HEIGHT = H;
 
@@ -38,7 +39,7 @@ struct BitmapFont {
     }
   }
 
-  explicit BitmapFont(std::vector<bool> bits) : bits(std::move(bits)) {}
+  explicit FixedBitmapFont(std::vector<bool> bits) : bits(std::move(bits)) {}
 
 private:
   // Bits are arranged as if all the characters are in one tall column

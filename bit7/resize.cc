@@ -1,5 +1,5 @@
-// "Resize" a font (just for reference or padding) by blitting
-// cropped characters 1:1.
+// Should be unnecessary now: Just use normalize with a new
+// config that sets the charbox size you want.
 
 #include <cstdint>
 #include <string>

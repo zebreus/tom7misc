@@ -2,18 +2,25 @@
 #define _BIT7_FONT_IMAGE_H
 
 #include <string>
-#include <map>
 #include <unordered_map>
 #include <cstdint>
 #include <memory>
 
 #include "image.h"
 
+// A page maps glyph indices to unicode codepoints.
+enum class Page {
+  BIT7_CLASSIC,
+};
+
 struct Config {
   std::string pngfile;
 
   std::string name;
   std::string copyright;
+
+  // TODO: Make configurable?
+  static constexpr int page_spacing = 8;
 
   // If true, copy uppercase letters to lowercase (where missing).
   bool no_lowercase = false;
@@ -32,13 +39,21 @@ struct Config {
   // (and these pixels are not treated any differently).
   int spacing = 0;
 
-  // Arrangement of characters in PNG file.
+  // Per page.
   int chars_across = 16;
   int chars_down = 8;
+
+  // Describes how the glyphs on each page are encoded.
+  // This also tells us how many pages there are (across).
+  std::vector<Page> pages;
 
   // Additional space between lines, in pixels.
   int extra_linespacing = 0;
 
+  char vendor[4] = {'f', 'o', 'n', 't'};
+
+  static Page ParsePage(const std::string &p);
+  static const char *PageString(Page p);
   static Config ParseConfig(const std::string &cfgfile);
 };
 
@@ -53,23 +68,37 @@ struct FontImage {
     ImageA pic;
   };
 
+  // As an ASCII drawing.
   static std::string GlyphString(const Glyph &glyph);
+
+  // True if the glyph is totally blank.
   static bool EmptyGlyph(const Glyph &g);
 
   explicit FontImage(const Config &config);
 
-  // Save the glyphs as a normalized image. Any characters with indices
-  // outside chars_across * chars_down is discarded. Any character with
-  // no glyph will just be blank.
-  void SaveImage(const std::string &filename,
-                 int chars_across, int chars_down);
+  // Save the glyphs as a normalized image, using the member config.
+  // It's OK for the config to be modified; this just uses the
+  // already-loaded glyphs. If there's no glyph in a space implied
+  // by the config, it'll just be blank.
+  void SaveImage(const std::string &filename);
 
-  // Maps from codepoint to glyph index below.
-  std::unordered_map<int, int> GetUnicode(bool verbose = false);
+  // Render just one page. Uses the config for the charbox sizes, etc.
+  ImageRGBA ImagePage(Page p);
+
+  std::unordered_map<int, int> GetUnicode() const {
+    return unicode_to_glyph;
+  }
+
+  // Maps from codepoint to glyph index in vector below.
+  std::unordered_map<int, int> unicode_to_glyph;
 
   // Map from character index (position in image) to glyph.
-  std::map<int, Glyph> glyphs;
+  std::vector<Glyph> glyphs;
   Config config;
+
+ private:
+  void AddPage(const ImageRGBA &img, Page p);
+  void InitUnicode();
 };
 
 // For drawing to ImageRGBA.
@@ -86,7 +115,6 @@ struct BitmapFont {
 
  private:
   FontImage font;
-  std::unordered_map<int, int> codepoints;
 };
 
 #endif

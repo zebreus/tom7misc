@@ -390,15 +390,19 @@ int main(int argc, char **argv) {
   const string out_test_png = (argc > 3) ? argv[3] : "";
 
   FontImage font_image(config);
-  auto &font = font_image.glyphs;
+  auto &unicode = font_image.unicode_to_glyph;
 
   if (config.no_lowercase) {
     for (int c = 'A'; c <= 'Z'; c++) {
       int lc = c | 32;
-      bool lc_missing = font.find(lc) == font.end() ||
-        (config.fixed_width && FontImage::EmptyGlyph(font[lc]));
-      if (font.find(c) != font.end() && lc_missing) {
-        font[lc] = font[c];
+      auto lit = unicode.find(lc);
+      bool lc_missing = lit == unicode.end() ||
+        (config.fixed_width &&
+         FontImage::EmptyGlyph(font_image.glyphs[lit->second]));
+      auto cit = unicode.find(c);
+      if (lc_missing && cit != unicode.end()) {
+        // Use same glyph.
+        unicode[lc] = cit->second;
       }
     }
   }
@@ -445,12 +449,15 @@ int main(int argc, char **argv) {
       int xpos = BORDER;
       for (int cidx = 0; cidx < (int)line.size(); cidx++) {
         const int codepoint = line[cidx];
-        auto it = font.find(codepoint);
-        if (it != font.end()) {
+        auto it = unicode.find(codepoint);
+        if (it != unicode.end()) {
           // Converting to imagergba each time obviously wasteful...!
-          ImageRGBA glyph = it->second.pic.AlphaMaskRGBA(0xEE, 0xEE, 0xFF);
-          test.BlendImage(xpos, ypos, glyph);
-          xpos += glyph.Width();
+          int glyph_idx = it->second;
+          const Glyph &glyph = font_image.glyphs[glyph_idx];
+          ImageRGBA glyph_img = glyph.pic.AlphaMaskRGBA(0xEE, 0xEE, 0xFF);
+          test.BlendImage(xpos, ypos, glyph_img);
+          xpos += glyph_img.Width();
+          // XXX left edge support
         }
       }
     }
@@ -462,17 +469,12 @@ int main(int argc, char **argv) {
 
   TTF::Font ttf_font;
 
-  std::unordered_map<int, int> codepoint_to_glyph =
-    font_image.GetUnicode(true);
-
-  for (const auto &[codepoint, glyph_idx] : codepoint_to_glyph) {
+  for (const auto &[codepoint, glyph_idx] : font_image.unicode_to_glyph) {
     // (PERF: There are often multiple codepoints that use the
     // same glyph. I think it's possible for a single outline to be used
     // for multiple characters, so we should do that instead! Or
     // perhaps even better to just dedupe as a separate matter.)
-    auto git = font.find(glyph_idx);
-    CHECK(git != font.end()) << "Glyph index missing?";
-    const auto &glyph = git->second;
+    const FontImage::Glyph &glyph = font_image.glyphs[glyph_idx];
     TTF::Char ch = Vectorize(glyph);
 
     ch.width *= one_pixel;
@@ -489,8 +491,9 @@ int main(int argc, char **argv) {
   // editor without anti-aliasing.
   ttf_font.antialias = false;
   ttf_font.bitmap_grid_height = config.charbox_height;
-  // Reserved for Tom 7!
-  ttf_font.vendor = {'F', 'r', 'o', 'g'};
+  // "Frog" is reserved for Tom 7!
+  for (int i = 0; i < 4; i++)
+    ttf_font.vendor[i] = config.vendor[i];
   ttf_font.copyright = config.copyright;
 
   const string sfd = ttf_font.ToSFD(config.name);

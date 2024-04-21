@@ -4,17 +4,7 @@
 
 #include <cstdint>
 #include <string>
-#include <vector>
-#include <memory>
-#include <set>
-#include <map>
-#include <unordered_map>
 
-#include "util.h"
-#include "image.h"
-#include "bit7chars.h"
-#include "bitmap-font.h"
-#include "base/stringprintf.h"
 #include "base/logging.h"
 #include "font-image.h"
 
@@ -25,6 +15,7 @@ using uint64 = uint64_t;
 
 using Glyph = FontImage::Glyph;
 
+// TODO: Allow specifying a second config, which we use to write.
 static Config ParseAndCheckConfig(const std::string &cfgfile) {
   Config config = Config::ParseConfig(cfgfile);
   CHECK(!config.pngfile.empty()) << "Required config line: pngfile";
@@ -50,7 +41,7 @@ int main(int argc, char **argv) {
 
   FontImage font(config);
 
-  font.SaveImage(argv[2], config.chars_across, config.chars_down);
+  font.SaveImage(argv[2]);
 
   return 0;
 }

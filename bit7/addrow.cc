@@ -1,5 +1,5 @@
-// Copy characters from a 1x font to 2x font, if they aren't already
-// present there.
+// This should be unnecessary now: Just define a new codepage
+// and then use normalize to copy the old to the new.
 
 #include <cstdint>
 #include <string>
@@ -51,7 +51,7 @@ static Config ParseAndCheckConfig(const std::string &cfgfile) {
 int main(int argc, char **argv) {
   CHECK(argc == 4) <<
     "Usage: ./addrow.exe config1x.cfg 7 merged.png\n"
-    "Inserts a blank 7th row in the image.\n";
+    "Inserts a blank 7th row in the image on every page.\n";
   const int add_row = atoi(argv[2]);
 
   const Config config = ParseAndCheckConfig(argv[1]);
@@ -70,9 +70,10 @@ int main(int argc, char **argv) {
     font.glyphs[new_idx] = glyph;
   }
 
+  int pages_across = config.pages_across;
   int chars_across = config.chars_across;
   int chars_down = config.chars_down + 1;
-  font.SaveImage(argv[3], chars_across, chars_down);
+  font.SaveImage(argv[3], pages_across, chars_across, chars_down);
 
   return 0;
 }

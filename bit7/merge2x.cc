@@ -1,31 +1,15 @@
 // Copy characters from a 1x font to 2x font, if they aren't already
 // present there.
 
-#include <cstdint>
 #include <string>
 #include <vector>
-#include <memory>
-#include <set>
-#include <map>
-#include <unordered_map>
 
-#include "util.h"
-#include "image.h"
-#include "bit7chars.h"
-#include "bitmap-font.h"
-#include "base/stringprintf.h"
 #include "base/logging.h"
-#include "fonts/island-finder.h"
-#include "fonts/ttf.h"
 #include "font-image.h"
 
 using namespace std;
-using uint8 = uint8_t;
-using uint32 = uint32_t;
-using uint64 = uint64_t;
 
 using Glyph = FontImage::Glyph;
-
 
 template<class C, class K>
 static bool ContainsKey(const C &c, const K &k) {
@@ -48,10 +32,10 @@ static Config ParseAndCheckConfig(const std::string &cfgfile) {
   return config;
 }
 
-static bool NoGlyph(const FontImage &font, int idx) {
-  auto it = font.glyphs.find(idx);
-  if (it == font.glyphs.end()) return true;
-  return FontImage::EmptyGlyph(it->second);
+static bool NoGlyph(const FontImage &font, int codepoint) {
+  auto it = font.unicode_to_glyph.find(codepoint);
+  if (it == font.unicode_to_glyph.end()) return true;
+  return FontImage::EmptyGlyph(font.glyphs[it->second]);
 }
 
 int main(int argc, char **argv) {
@@ -70,21 +54,21 @@ int main(int argc, char **argv) {
   CHECK(config1x.spacing * 2 == config2x.spacing);
   CHECK(config1x.descent * 2 == config2x.descent);
 
-  for (const auto &[idx, glyph] : font1x.glyphs) {
+  for (const auto &[codepoint, gidx] : font1x.unicode_to_glyph) {
+    const FontImage::Glyph &glyph = font1x.glyphs[gidx];
     if (!FontImage::EmptyGlyph(glyph)) {
-      if (NoGlyph(font2x, idx)) {
+      if (NoGlyph(font2x, codepoint)) {
         Glyph glyph2x;
         glyph2x.left_edge = glyph.left_edge * 2;
         glyph2x.pic = glyph.pic.ScaleBy(2);
-        font2x.glyphs[idx] = glyph2x;
+        int new_gidx = (int)font2x.glyphs.size();
+        font2x.glyphs.push_back(glyph2x);
+        font2x.unicode_to_glyph[codepoint] = new_gidx;
       }
     }
   }
 
-  // Allow expanding down, as it's obvious what we would want.
-  int chars_across = config2x.chars_across;
-  int chars_down = std::max(config1x.chars_down, config2x.chars_down);
-  font2x.SaveImage(argv[3], chars_across, chars_down);
+  font2x.SaveImage(argv[3]);
 
   return 0;
 }

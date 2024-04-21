@@ -9,6 +9,8 @@
 #include "bit7chars.h"
 #include "bitmap-font.h"
 
+#include "base/logging.h"
+
 using namespace std;
 using uint8 = uint8_t;
 using uint32 = uint32_t;
@@ -19,7 +21,7 @@ constexpr int CHARS_DOWN = 8;
 
 constexpr int CHAR_WIDTH = 9;
 constexpr int CHAR_HEIGHT = 9;
-using BF = BitmapFont<CHAR_WIDTH, CHAR_HEIGHT>;
+using BF = FixedBitmapFont<CHAR_WIDTH, CHAR_HEIGHT>;
 
 constexpr int PX = 3;
 

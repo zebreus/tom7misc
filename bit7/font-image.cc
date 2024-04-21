@@ -1,6 +1,5 @@
 #include "font-image.h"
 
-#include <array>
 #include <string>
 #include <map>
 #include <cstdint>
@@ -12,214 +11,232 @@
 
 using namespace std;
 
-// TODO: Would be nice for this to be configurable!
-// Standard layout of input file, based on characters
-// that were useful for DestroyFX. If -1, the spot
-// is unclaimed. Should be fine to extend past this many
-// characters by increasing CHARS_DOWN too.
-constexpr int MAPPED_CHARS_ACROSS = 16;
-constexpr int MAPPED_CHARS_DOWN = 24;
+static constexpr bool VERBOSE = false;
 
-static constexpr array<int, MAPPED_CHARS_ACROSS * MAPPED_CHARS_DOWN>
-CODEPOINTS = {
-  // First line
-  // BLACK HEART SUIT
-  0x2665,
-  // BEAMED EIGHTH NOTES
-  0x266B,
-  // INFINITY
-  0x221E,
-  // SQUARE ROOT
-  0x221A,
-  // LESS THAN OR EQUAL TO
-  0x2264,
-  // GREATER THAN OR EQUAL TO
-  0x2265,
-  // APPROXIMATELY EQUAL
-  0x2248,
-  // EURO SIGN
-  0x20AC,
-  // ARROWS: LEFT, UP, RIGHT, DOWN
-  0x2190, 0x2191, 0x2192, 0x2193,
+Page Config::ParsePage(const std::string &p) {
+  if (p == "bit7-classic") return Page::BIT7_CLASSIC;
+  LOG(FATAL) << "Unknown page " << p;
+}
 
-  // EN DASH, EM DASH
-  0x2013, 0x2014,
+const char *Config::PageString(Page p) {
+  switch (p) {
+  case Page::BIT7_CLASSIC:
+    return "bit7-classic";
+  default:
+    break;
+  }
+}
 
-  // LEFT SINGLE QUOTE, RIGHT SINGLE QUOTE
-  0x2018, 0x2019,
-  // Second line
+// Standard size is: 16x24
+const std::vector<int> &PageBit7Classic() {
+  static const std::vector<int> CODEPOINTS = {
+    // First line
+    // BLACK HEART SUIT
+    0x2665,
+    // BEAMED EIGHTH NOTES
+    0x266B,
+    // INFINITY
+    0x221E,
+    // SQUARE ROOT
+    0x221A,
+    // LESS THAN OR EQUAL TO
+    0x2264,
+    // GREATER THAN OR EQUAL TO
+    0x2265,
+    // APPROXIMATELY EQUAL
+    0x2248,
+    // EURO SIGN
+    0x20AC,
+    // ARROWS: LEFT, UP, RIGHT, DOWN
+    0x2190, 0x2191, 0x2192, 0x2193,
 
-  // LEFT DOUBLE QUOTE, RIGHT DOUBLE QUOTE
-  0x201C, 0x201D,
+    // EN DASH, EM DASH
+    0x2013, 0x2014,
 
-  // BULLET
-  0x2022,
-  // HORIZONTAL ELLIPSIS
-  0x2026,
-  // EMOJI: CLOUD
-  0x2601,
-  // EMOJI: ROCKET
-  0x1F680,
-  // EMOJI: NO ENTRY
-  0x26D4,
+    // LEFT SINGLE QUOTE, RIGHT SINGLE QUOTE
+    0x2018, 0x2019,
+    // Second line
 
-  // dagger, double-dagger
-  0x2020, 0x2021,
+    // LEFT DOUBLE QUOTE, RIGHT DOUBLE QUOTE
+    0x201C, 0x201D,
 
-  // checkmark, heavy checkmark,
-  0x2713, 0x2714,
-  // ballot x, heavy ballot x,
-  0x2717, 0x2718,
+    // BULLET
+    0x2022,
+    // HORIZONTAL ELLIPSIS
+    0x2026,
+    // EMOJI: CLOUD
+    0x2601,
+    // EMOJI: ROCKET
+    0x1F680,
+    // EMOJI: NO ENTRY
+    0x26D4,
 
-  // Trade Mark Sign
-  0x2122,
+    // dagger, double-dagger
+    0x2020, 0x2021,
 
-  // Ideographic full stop (big japanese period)
-  0x3002,
-  // turnstile (a.k.a. right tack)
-  0x22A2,
+    // checkmark, heavy checkmark,
+    0x2713, 0x2714,
+    // ballot x, heavy ballot x,
+    0x2717, 0x2718,
 
-  // space for emoji
-  // EMOJI: LIGHT BULB
-  0x1F4A1,
-  // EMOJI: BEER MUG
-  0x1F37A,
-  // EMOJI: WASTEBASKET
-  0x1F5D1,
-  // EMOJI: MOAI HEAD
-  0x1F5FF,
-  // EMOJI: HIGH VOLTAGE
-  0x26A1,
-  // EMOJI: MAGNET
-  0x1F9F2,
-  // EMOJI: SKULL
-  0x1F480,
-  // EMOJI: SKULL AND CROSSBONES
-  0x2620,
-  // EMOJI: DROPLET
-  0x1F4A7,
-  // EMOJI: HUNDRED POINTS
-  0x1F4AF,
-  // EMOJI: ANGER SYMBOL
-  0x1F4A2,
-  // EMOJI: ZZZ
-  0x1F4A4,
-  // EMOJI: PAGE FACING UP
-  0x1F4C4,
-  // EMOJI: BOMB
-  0x1F4A3,
-  // EMOJI: GLOBE WITH MERIDIANS
-  0x1F310,
-  // EMOJI: EYES
-  0x1F440,
+    // Trade Mark Sign
+    0x2122,
 
-  // Emoji line 2.
+    // Ideographic full stop (big japanese period)
+    0x3002,
+    // turnstile (a.k.a. right tack)
+    0x22A2,
 
-  // EMOJI: TOOTHBRUSH
-  0x1FAA5,
-  // EMOJI: HEADSTONE
-  0x1FAA6,
-  // EMOJI: PLACARD (Signpost)
-  0x1FAA7,
-  // EMOJI: ROCK
-  0x1FAA8,
-  // EMJOI: FLY
-  0x1FAB0,
+    // space for emoji
+    // EMOJI: LIGHT BULB
+    0x1F4A1,
+    // EMOJI: BEER MUG
+    0x1F37A,
+    // EMOJI: WASTEBASKET
+    0x1F5D1,
+    // EMOJI: MOAI HEAD
+    0x1F5FF,
+    // EMOJI: HIGH VOLTAGE
+    0x26A1,
+    // EMOJI: MAGNET
+    0x1F9F2,
+    // EMOJI: SKULL
+    0x1F480,
+    // EMOJI: SKULL AND CROSSBONES
+    0x2620,
+    // EMOJI: DROPLET
+    0x1F4A7,
+    // EMOJI: HUNDRED POINTS
+    0x1F4AF,
+    // EMOJI: ANGER SYMBOL
+    0x1F4A2,
+    // EMOJI: ZZZ
+    0x1F4A4,
+    // EMOJI: PAGE FACING UP
+    0x1F4C4,
+    // EMOJI: BOMB
+    0x1F4A3,
+    // EMOJI: GLOBE WITH MERIDIANS
+    0x1F310,
+    // EMOJI: EYES
+    0x1F440,
 
-  // EMOJI: MAGIC WAND
-  0x1FA84,
-  // EMOJI: COIN
-  0x1FA99,
-  // EMOJI: LADDER
-  0x1FA9C,
+    // Emoji line 2.
 
-  // EMOJI: HOT PEPPER
-  0x1F336,
+    // EMOJI: TOOTHBRUSH
+    0x1FAA5,
+    // EMOJI: HEADSTONE
+    0x1FAA6,
+    // EMOJI: PLACARD (Signpost)
+    0x1FAA7,
+    // EMOJI: ROCK
+    0x1FAA8,
+    // EMJOI: FLY
+    0x1FAB0,
 
-  // EMOJI: GHOST
-  0x1F47B,
+    // EMOJI: MAGIC WAND
+    0x1FA84,
+    // EMOJI: COIN
+    0x1FA99,
+    // EMOJI: LADDER
+    0x1FA9C,
 
-  // EMOJI: KEY
-  0x1F511,
+    // EMOJI: HOT PEPPER
+    0x1F336,
 
-  // EMOJI: LOCK (LOCKED)
-  0x1F512,
-  // EMOJI: OPEN LOCK
-  0x1F513,
+    // EMOJI: GHOST
+    0x1F47B,
 
-  // EMOJI: HEAVY DOLLAR SIGN
-  0x1F4B2,
+    // EMOJI: KEY
+    0x1F511,
 
-  // EMOJI: FIRE
-  0x1F525,
+    // EMOJI: LOCK (LOCKED)
+    0x1F512,
+    // EMOJI: OPEN LOCK
+    0x1F513,
 
-  -1,
+    // EMOJI: HEAVY DOLLAR SIGN
+    0x1F4B2,
 
-  // ASCII, in order
-  0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
-  0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
-  0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
-  0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
-  0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
-  0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, -1,
+    // EMOJI: FIRE
+    0x1F525,
 
-  // white king, queen, rook, bishop, knight, pawn
-  0x2654, 0x2655, 0x2656, 0x2657, 0x2658, 0x2659,
-  // black
-  0x265A, 0x265B, 0x265C, 0x265D, 0x265E, 0x265F,
+    -1,
 
-  // Three free before replacement char
-  -1, -1, -1,
-  // <?> replacement char
-  0xFFFD,
+    // ASCII, in order
+    0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
+    0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
+    0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
+    0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
+    0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
+    0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, -1,
 
-  // Black circle, black square
-  0x25CF, 0x25A0,
-  // geometric shapes line, unclaimed
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // white king, queen, rook, bishop, knight, pawn
+    0x2654, 0x2655, 0x2656, 0x2657, 0x2658, 0x2659,
+    // black
+    0x265A, 0x265B, 0x265C, 0x265D, 0x265E, 0x265F,
 
-  // Unicode Latin-1 Supplement, mapped to itself.
-  // See https://en.wikibooks.org/wiki/Unicode/Character_reference/0000-0FFF
-  0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
-  0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
-  0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
-  0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,
-  0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF,
-  0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+    // Three free before replacement char
+    -1, -1, -1,
+    // <?> replacement char
+    0xFFFD,
 
-  // unclaimed
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // Black circle, black square
+    0x25CF, 0x25A0,
+    // geometric shapes line, unclaimed
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
-  // Greek. We skip the characters that look the same in the Latin
-  // alphabet: A B E Z H I K M N O P T Y X v u x.
+    // Unicode Latin-1 Supplement, mapped to itself.
+    // See https://en.wikibooks.org/wiki/Unicode/Character_reference/0000-0FFF
+    0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
+    0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
+    0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
+    0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,
+    0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF,
+    0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
 
-  // Gamma, Delta, Theta, Lambda, Xi
-  0x0393, 0x0394, 0x0398, 0x039B, 0x039E,
-  // Pi, Sigma, Phi, Psi, Omega,
-  0x03A0, 0x03A3, 0x03A6, 0x03A8, 0x03A9,
-  // alpha, beta, gamma, delta, epsilon, zeta
-  0x03B1, 0x03B2, 0x03B3, 0x03B4, 0x03B5, 0x03B6,
+    // unclaimed
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
-  // Line 2:
-  // eta, theta, iota, kappa, lambda, mu, (no nu), xi, (no omicron)
-  0x03B7, 0x03B8, 0x03B9, 0x03BA, 0x03BB, 0x03BC, 0x03BE,
-  // pi, rho, (final) sigma, sigma, tau, (no upsilon), phi, (no chi), omega
-  0x03C0, 0x03C1, 0x03C2, 0x03C3, 0x03C4, 0x03C6, 0x03C8, 0x03C9,
-  // one unclaimed spot at the end of greek
-  -1,
+    // Greek. We skip the characters that look the same in the Latin
+    // alphabet: A B E Z H I K M N O P T Y X v u x.
 
-  // math
-  // exists, forall
-  0x2203, 0x2200,
-  // rest of math, unclaimed
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // Gamma, Delta, Theta, Lambda, Xi
+    0x0393, 0x0394, 0x0398, 0x039B, 0x039E,
+    // Pi, Sigma, Phi, Psi, Omega,
+    0x03A0, 0x03A3, 0x03A6, 0x03A8, 0x03A9,
+    // alpha, beta, gamma, delta, epsilon, zeta
+    0x03B1, 0x03B2, 0x03B3, 0x03B4, 0x03B5, 0x03B6,
 
-  // Block Elements, in unicode order
-  0x2580, 0x2581, 0x2582, 0x2583, 0x2584, 0x2585, 0x2586, 0x2587,
-  0x2588, 0x2589, 0x258A, 0x258B, 0x258C, 0x258D, 0x258E, 0x258F,
-  0x2590, 0x2591, 0x2592, 0x2593, 0x2594, 0x2595, 0x2596, 0x2597,
-  0x2598, 0x2599, 0x259A, 0x259B, 0x259C, 0x259D, 0x259E, 0x259F,
-};
+    // Line 2:
+    // eta, theta, iota, kappa, lambda, mu, (no nu), xi, (no omicron)
+    0x03B7, 0x03B8, 0x03B9, 0x03BA, 0x03BB, 0x03BC, 0x03BE,
+    // pi, rho, (final) sigma, sigma, tau, (no upsilon), phi, (no chi), omega
+    0x03C0, 0x03C1, 0x03C2, 0x03C3, 0x03C4, 0x03C6, 0x03C8, 0x03C9,
+    // one unclaimed spot at the end of greek
+    -1,
+
+    // math
+    // exists, forall
+    0x2203, 0x2200,
+    // rest of math, unclaimed
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    // Block Elements, in unicode order
+    0x2580, 0x2581, 0x2582, 0x2583, 0x2584, 0x2585, 0x2586, 0x2587,
+    0x2588, 0x2589, 0x258A, 0x258B, 0x258C, 0x258D, 0x258E, 0x258F,
+    0x2590, 0x2591, 0x2592, 0x2593, 0x2594, 0x2595, 0x2596, 0x2597,
+    0x2598, 0x2599, 0x259A, 0x259B, 0x259C, 0x259D, 0x259E, 0x259F,
+  };
+  return CODEPOINTS;
+}
+
+static const std::vector<int> &GetCodepointsForPage(Page p) {
+  switch (p) {
+  case Page::BIT7_CLASSIC: return PageBit7Classic();
+  }
+  LOG(FATAL) << "Unimplemented page!";
+}
 
 // e.g. use the glyph for hyphen (0x2D) to render U+2212 (minus).
 static constexpr std::initializer_list<std::pair<int, int>>
@@ -317,6 +334,24 @@ Config Config::ParseConfig(const string &cfgfile) {
   if (m.find("fixed-width") != m.end())
     config.fixed_width = true;
 
+  std::vector<std::string> pp =
+    Util::Tokens(m["pages"], [](char c) { return c == ' '; });
+
+  if (m.find("vendor") != m.end()) {
+    std::string v = m["vendor"];
+    CHECK(v.size() == 4) << "Vendor must be exactly 4 bytes.";
+    config.vendor[0] = v[0];
+    config.vendor[1] = v[1];
+    config.vendor[2] = v[2];
+    config.vendor[3] = v[3];
+  }
+
+  for (const std::string &p : pp) {
+    if (!p.empty()) {
+      config.pages.push_back(ParsePage(p));
+    }
+  }
+
   return config;
 }
 
@@ -339,26 +374,12 @@ bool FontImage::EmptyGlyph(const Glyph &g) {
   return true;
 }
 
-FontImage::FontImage(const Config &config) : config(config) {
+void FontImage::AddPage(const ImageRGBA &img, Page p) {
+
   const int chars_across = config.chars_across;
   const int chars_down = config.chars_down;
 
-  // For fixed-width fonts, the width is always the size of the charbox
-  // minus the intra-character spacing (ignored pixels).
-
-  // For proportional fonts, 'spacing' is presentational (used by
-  // makegrid). We derive the width from the black line in each
-  // character cell.
-
-  std::unique_ptr<ImageRGBA> input(ImageRGBA::Load(config.pngfile));
-  CHECK(input.get() != nullptr) << "Couldn't load: " << config.pngfile;
-  CHECK(chars_across * config.charbox_width == input->Width() &&
-        chars_down * config.charbox_height == input->Height()) <<
-    "Image with configured charboxes " << config.charbox_width << "x"
-                                       << config.charbox_height <<
-    " should be " << (chars_across * config.charbox_width) << "x"
-                  << (chars_down * config.charbox_height) << " but got "
-                  << input->Width() << "x" << input->Height();
+  std::unordered_map<int, int> pos_to_glyph;
 
   for (int cy = 0; cy < chars_down; cy++) {
     for (int cx = 0; cx < chars_across; cx++) {
@@ -374,7 +395,7 @@ FontImage::FontImage(const Config &config) : config(config) {
                 int sx = cx * config.charbox_width + x;
                 for (int y = 0; y < config.charbox_height; y++) {
                   int sy = cy * config.charbox_height + y;
-                  uint32_t color = input->GetPixel32(sx, sy);
+                  uint32_t color = img.GetPixel32(sx, sy);
                   if (color != 0x000000FF) return false;
                 }
                 return true;
@@ -393,7 +414,7 @@ FontImage::FontImage(const Config &config) : config(config) {
             for (int x = 0; x < config.charbox_width; x++) {
               int sx = cx * config.charbox_width + x;
               int sy = cy * config.charbox_height + y;
-              uint32_t color = input->GetPixel32(sx, sy);
+              uint32_t color = img.GetPixel32(sx, sy);
               if (color == 0xFFFFFFFF) return false;
             }
           }
@@ -424,29 +445,122 @@ FontImage::FontImage(const Config &config) : config(config) {
           for (int x = 0; x < width; x++) {
             int sx = cx * config.charbox_width + x;
             int sy = cy * config.charbox_height + y;
-            bool bit = input->GetPixel32(sx, sy) == 0xFFFFFFFF;
+            bool bit = img.GetPixel32(sx, sy) == 0xFFFFFFFF;
             if (bit) pic.SetPixel(x, y, 0xFF);
           }
         }
 
-        Glyph *glyph = &glyphs[cidx];
-        // No way to set this from image yet...
-        glyph->left_edge = 0;
-        glyph->pic = std::move(pic);
+        // No way to set left edge from image yet...
+        Glyph glyph{.left_edge = 0, .pic = std::move(pic)};
+        int idx = (int)glyphs.size();
+        glyphs.push_back(std::move(glyph));
+        pos_to_glyph[cidx] = idx;
       }
+    }
+  }
+
+  // Now map the glyphs (glyphs[gidx]) from their position in the
+  // image (cidx) using the page's mapping to unicode codepoints.
+  const std::vector<int> &codepoints = GetCodepointsForPage(p);
+
+  for (const auto &[cidx, gidx] : pos_to_glyph) {
+    CHECK(gidx >= 0 && gidx < glyphs.size());
+    const Glyph &glyph = glyphs[gidx];
+    const bool ok_missing = config.fixed_width && EmptyGlyph(glyph);
+
+    if (cidx >= (int)codepoints.size()) {
+      if (!ok_missing) {
+        printf("Skipping glyph at %d,%d because it is outside the codepoint "
+               "array for page %s!\n",
+               cidx % config.chars_across, cidx / config.chars_across,
+               Config::PageString(p));
+        printf("%s", GlyphString(glyph).c_str());
+      }
+      continue;
+    }
+
+    CHECK(cidx >= 0 && cidx < (int)codepoints.size());
+    const int codepoint = codepoints[cidx];
+    if (codepoint < 0) {
+      if (!ok_missing) {
+        printf("Skipping glyph at %d,%d because the codepoint is not "
+               "configured in page %s!\n",
+               cidx % config.chars_across, cidx / config.chars_across,
+               Config::PageString(p));
+        printf("%s", FontImage::GlyphString(glyph).c_str());
+      }
+
+    } else {
+      unicode_to_glyph[codepoint] = gidx;
     }
   }
 }
 
-void FontImage::SaveImage(const std::string &filename,
-                          int chars_across, int chars_down) {
+FontImage::FontImage(const Config &config) : config(config) {
+
+  // For fixed-width fonts, the width is always the size of the charbox
+  // minus the intra-character spacing (ignored pixels).
+
+  // For proportional fonts, 'spacing' is presentational (used by
+  // makegrid). We derive the width from the black line in each
+  // character cell.
+
+  std::unique_ptr<ImageRGBA> input(ImageRGBA::Load(config.pngfile));
+  CHECK(input.get() != nullptr) << "Couldn't load: " << config.pngfile;
+
+  const int page_width = config.chars_across * config.charbox_width;
+  const int page_height = config.chars_down * config.charbox_height;
+  const int spaced_page_width = page_width + config.page_spacing;
+#if 0
+  CHECK(page_width * config.pages.size() - config.page_spacing ==
+        input->Width() &&
+        page_height == input->Height()) <<
+    "Image with configured charboxes " << config.charbox_width << "x"
+                                       << config.charbox_height <<
+    " should be " << (config.chars_across * config.charbox_width) << "x"
+                  << (config.chars_down * config.charbox_height) << " but got "
+                  << input->Width() << "x" << input->Height();
+#endif
+
+  // Currently, pages are always arranged horizontally.
+
+  for (int page_num = 0; page_num < (int)config.pages.size(); page_num++) {
+    const Page &p = config.pages[page_num];
+    const int page_x = page_num * spaced_page_width;
+
+    ImageRGBA page_img(page_width, page_height);
+
+    page_img.CopyImageRect(0, 0, *input, page_x, 0,
+                           page_width, page_height);
+    AddPage(page_img, p);
+  }
+
+  // After every page is loaded, fill in any unused codepoints that
+  // can be copied from existing ones.
+
+  for (const auto &[src, dst] : REUSE_FOR) {
+    // If we do have the source, but don't have the dest, copy.
+    if (unicode_to_glyph.contains(src) &&
+        !unicode_to_glyph.contains(dst)) {
+      if (VERBOSE) {
+        printf("Copy %04x to %04x\n", src, dst);
+      }
+      unicode_to_glyph[dst] = unicode_to_glyph[src];
+    }
+  }
+}
+
+ImageRGBA FontImage::ImagePage(Page p) {
   const int ww = config.charbox_width;
   const int hh = config.charbox_height;
-  ImageRGBA out(chars_across * ww, chars_down * hh);
+  ImageRGBA out(config.chars_across * ww, config.chars_down * hh);
   out.Clear32(0xFF0000FF);
-  for (int y = 0; y < chars_down; y++) {
-    for (int x = 0; x < chars_across; x++) {
-      const int idx = y * chars_across + x;
+
+  const std::vector<int> &codepoints = GetCodepointsForPage(p);
+
+  for (int y = 0; y < config.chars_down; y++) {
+    for (int x = 0; x < config.chars_across; x++) {
+      const int cidx = y * config.chars_across + x;
       const bool odd = !!((x + y) & 1);
 
       const uint32_t bgcolor = odd ? 0x594d96FF : 0x828a19FF;
@@ -459,10 +573,16 @@ void FontImage::SaveImage(const std::string &filename,
       out.BlendRect32(xs, ys + hh - config.descent,
                       ww, config.descent, locolor);
 
+      int codepoint = -1;
+      if (cidx < codepoints.size())
+        codepoint = codepoints[cidx];
+
       // Blit the glyph.
       int glyph_width = 0;
-      if (glyphs.find(idx) != glyphs.end()) {
-        const Glyph &glyph = glyphs[idx];
+      const auto git = unicode_to_glyph.find(codepoint);
+      if (codepoint >= 0 && git != unicode_to_glyph.end()) {
+        const int glyph_idx = git->second;
+        const Glyph &glyph = glyphs[glyph_idx];
         for (int yy = 0; yy < glyph.pic.Height(); yy++) {
           for (int xx = 0; xx < glyph.pic.Width(); xx++) {
             if (glyph.pic.GetPixel(xx, yy) > 0) {
@@ -489,57 +609,34 @@ void FontImage::SaveImage(const std::string &filename,
                       0x000000FF);
     }
   }
+  return out;
+}
+
+void FontImage::SaveImage(const std::string &filename) {
+  const int pages_across = (int)config.pages.size();
+  const int page_width = config.chars_across * config.charbox_width;
+  const int page_height = config.chars_down * config.charbox_height;
+  const int spaced_page_width = page_width + config.page_spacing;
+
+  ImageRGBA out(pages_across * spaced_page_width - config.page_spacing,
+                page_height);
+  out.Clear32(0x440044FF);
+
+  for (int i = 0; i < (int)config.pages.size(); i++) {
+    const Page p = config.pages[i];
+    ImageRGBA pimg = ImagePage(p);
+    out.CopyImageRect(i * spaced_page_width, 0, pimg,
+                      0, 0, page_width, page_height);
+  }
 
   out.Save(filename);
 }
 
-std::unordered_map<int, int> FontImage::GetUnicode(bool verbose) {
-  std::unordered_map<int, int> ret;
-  for (const auto &[index, glyph] : glyphs) {
-    bool ok_missing = config.fixed_width && EmptyGlyph(glyph);
-
-    if (index >= (int)CODEPOINTS.size()) {
-      if (!ok_missing) {
-        printf("Skipping glyph at %d,%d because it is outside the codepoint "
-               "array!\n",
-               index % config.chars_across, index / config.chars_across);
-        printf("%s", GlyphString(glyph).c_str());
-      }
-      continue;
-    }
-
-    CHECK(index >= 0 && index < (int)CODEPOINTS.size());
-    const int codepoint = CODEPOINTS[index];
-    if (codepoint < 0) {
-      if (!ok_missing) {
-        printf("Skipping glyph at %d,%d because the codepoint is not "
-               "configured!\n",
-               index % config.chars_across, index / config.chars_across);
-        printf("%s", FontImage::GlyphString(glyph).c_str());
-      }
-
-    } else {
-      ret[codepoint] = index;
-    }
-  }
-
-  for (const auto &[src, dst] : REUSE_FOR) {
-    // If we do have the source, but don't have the dest, copy.
-    if (ret.contains(src) &&
-        !ret.contains(dst)) {
-      if (verbose) {
-        printf("Copy %04x to %04x\n", src, dst);
-      }
-      ret[dst] = ret[src];
-    }
-  }
-
-  return ret;
+void FontImage::InitUnicode() {
 }
 
 BitmapFont::BitmapFont(FontImage font_in) :
-  font(std::move(font_in)),
-  codepoints(font.GetUnicode()) {
+  font(std::move(font_in)) {
 
 }
 
@@ -548,13 +645,12 @@ int BitmapFont::Height() const {
 }
 
 int BitmapFont::Width(int cp) const {
-  const auto it = codepoints.find(cp);
-  if (it == codepoints.end())
+  const auto it = font.unicode_to_glyph.find(cp);
+  if (it == font.unicode_to_glyph.end())
     return 0;
   int glyph_idx = it->second;
-  const auto git = font.glyphs.find(glyph_idx);
-  CHECK(git != font.glyphs.end()) << "Missing glyph index?";
-  return git->second.pic.Width();
+  CHECK(glyph_idx >= 0 && glyph_idx < font.glyphs.size());
+  return font.glyphs[glyph_idx].pic.Width();
 }
 
 void BitmapFont::DrawText(ImageRGBA *img, int x, int y,
@@ -562,14 +658,13 @@ void BitmapFont::DrawText(ImageRGBA *img, int x, int y,
                            const std::string &s) const {
   std::vector<uint32_t> cps = Util::UTF8Codepoints(s);
   for (uint32_t cp : cps) {
-    const auto it = codepoints.find(cp);
-    if (it == codepoints.end()) {
+    const auto it = font.unicode_to_glyph.find(cp);
+    if (it == font.unicode_to_glyph.end()) {
       // Draw missing glyph char?
     } else {
       int glyph_idx = it->second;
-      const auto git = font.glyphs.find(glyph_idx);
-      CHECK(git != font.glyphs.end()) << "Missing glyph index?";
-      const FontImage::Glyph &glyph = git->second;
+      CHECK(glyph_idx >= 0 && glyph_idx < (int)font.glyphs.size());
+      const FontImage::Glyph &glyph = font.glyphs[glyph_idx];
 
       // Draw it.
       for (int yy = 0; yy < glyph.pic.Height(); yy++) {

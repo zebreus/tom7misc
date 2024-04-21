@@ -6,6 +6,7 @@
 #include "image.h"
 
 #include "base/stringprintf.h"
+#include "base/logging.h"
 #include "font-image.h"
 
 using uint8 = uint8_t;
