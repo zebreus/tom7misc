@@ -3,10 +3,7 @@ all: default
 
 default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd
 
-# CXX=x86_64-w64-mingw32-g++
-# CC=x86_64-w64-mingw32-gcc
-
-CXXFLAGS=--std=c++20 -O2 -Wall -I../cc-lib/
+CXXFLAGS=--std=c++20 -march=native -mtune=native -O3 -Wall -I../cc-lib/
 LFLAGS=-static
 
 CCLIB_OBJECTS=../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/image.o ../cc-lib/base/logging.o ../cc-lib/base/stringprintf.o ../cc-lib/util.o
@@ -19,9 +16,6 @@ CCLIB_FONT_OBJECTS=../cc-lib/fonts/island-finder.o ../cc-lib/fonts/ttf.o ../cc-l
 
 makegrid.exe : makegrid.o font-image.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
-
-# resize.exe : resize.o $(CCLIB_OBJECTS)
-# 	$(CXX) $(LFLAGS) $^ -o $@
 
 testpattern.exe : testpattern.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
@@ -50,9 +44,6 @@ reencode.exe : reencode.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 
 merge2x.exe : merge2x.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
-
-# addrow.exe : addrow.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
-# 	$(CXX) $(LFLAGS) $^ -o $@
 
 dfx-pasement.sfd : dfx-pasement.png dfx-pasement.cfg makesfd.exe
 	./makesfd.exe dfx-pasement.cfg $@

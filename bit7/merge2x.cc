@@ -39,6 +39,7 @@ static bool NoGlyph(const FontImage &font, int codepoint) {
 }
 
 int main(int argc, char **argv) {
+  // TODO: Allow in place, generating backup, like normalize.
   CHECK(argc == 4) <<
     "Usage: ./merge2x.exe config1x.cfg config2x.cfg merged.png";
 

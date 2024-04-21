@@ -73,8 +73,12 @@ const std::vector<int> &PageBit7Classic() {
     0x2022,
     // HORIZONTAL ELLIPSIS
     0x2026,
-    // Was some emoji; unclaimed now
-    -1, -1, -1,
+    // SINGLE HIGH REVERSED 9 QUOTE
+    0x201B,
+    // DOUBLE HIGH REVERSED 9 QUOTE
+    0x201F,
+    // unclaimed
+    -1,
 
     // dagger, double-dagger
     0x2020, 0x2021,
@@ -92,9 +96,17 @@ const std::vector<int> &PageBit7Classic() {
     // turnstile (a.k.a. right tack)
     0x22A2,
 
+
+    // INTERROBANG
+    0x203D,
+    // INVERTED INTERROBANG
+    0x2E18,
+    // DOUBLE EXCLAMATION MARK
+    0x203C,
+
     // Unclaimed. Was once emoji, but I moved those to the extended
     // page.
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     // ASCII, in order
@@ -349,6 +361,14 @@ REUSE_FOR = {
   // en.wikipedia.org/wiki/Halfwidth_and_Fullwidth_Forms_(Unicode_block)
   {'(', 0xFF08},
   {')', 0xFF09},
+
+  // Kelvin symbol
+  {'K', 0x212A},
+  // Ohm symbol from greek Omega
+  {0x03A9, 0x2126},
+
+  // ISO Latin-1 Macron to overline
+  {0x00AF, 0x203E},
 
   // bullet -> katakana middle dot
   {0x2022, 0x30FB},

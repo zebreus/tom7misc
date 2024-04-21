@@ -3,16 +3,10 @@ common from wikipedia: ../acronymine/unicode.cc
 Transform the input images to make them wider, and make more space for greek etc.
 
 Glyphs todo:
- - U+201F ‟ Double High-Reversed-9 Quotation Mark
  - unicode stars
  - U+2E17 ⸗ Double Oblique Hyphen would have been good for writing
    about Gutenberg bible.
- - obviously...
- U+203D ‽ INTERROBANG
- U+2E18 ⸘ INVERTED INTERROBANG
-  irony mark (⸮) found in Unicode as U+2E2E
-
-U+1F525 FIRE: 🔥
+ - irony mark (⸮) found in Unicode as U+2E2E
 
 This kind of thing:
 U+27e6 Ps MATHEMATICAL LEFT WHITE SQUARE BRACKET ⟦
