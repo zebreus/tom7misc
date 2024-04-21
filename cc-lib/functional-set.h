@@ -3,13 +3,10 @@
 #define _CC_LIB_FUNCTIONAL_SET_H
 
 #include <unordered_set>
-#include <variant>
 #include <functional>
-#include <memory>
 
 #include "functional-map.h"
 #include "hashing.h"
-#include "base/logging.h"
 
 // This is a simple wrapper around FunctionalMap for the case that
 // the value type is uninteresting.
@@ -39,6 +36,15 @@ struct FunctionalSet {
 
   FunctionalSet Insert(const Key &k) const {
     return FunctionalSet(m.Insert(k, {}));
+  }
+
+  // i.e., union
+  FunctionalSet Insert(const FunctionalSet &other) const {
+    FunctionalSet ret = *this;
+    for (const Key &k : other.Export()) {
+      ret = ret.Insert(k);
+    }
+    return ret;
   }
 
   // Initialize with a set of bindings.

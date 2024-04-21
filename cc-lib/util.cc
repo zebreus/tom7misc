@@ -17,6 +17,8 @@
 #include <ctime>
 #include <unordered_set>
 #include <cassert>
+#include <system_error>
+#include <filesystem>
 
 #include "util.h"
 
@@ -1457,29 +1459,17 @@ bool Util::remove(const string &f) {
   return false;
 }
 
-bool Util::move(const string &src, const string &dst) {
-# if defined(WIN32) || defined(__MINGW32__)
-  if (0 == rename(src.c_str(), dst.c_str()))
-    return true;
-  else return false;
+bool Util::Move(std::string_view src, std::string_view dst) {
+  namespace fs = std::filesystem;
+  fs::path p1 = src;
+  fs::path p2 = dst;
 
-# else /* posix */
-  /* XXX actually, posix has rename too. */
-  if (0 == link(src.c_str(), dst.c_str())) {
-    /* succeed regardless of whether we
-       can remove the old link or not. */
-    unlink(src.c_str());
-    return true;
-  } else {
-    /* try copy and unlink... (link doesn't work on AFS?) */
-    if (copy(src, dst)) {
-      unlink(src.c_str());
-      return true;
-    } return false;
-  }
-# endif
+  std::error_code error;
+  error.clear();
+  fs::rename(p1, p2, error);
+
+  return !error;
 }
-
 
 bool Util::copy(const string &src, const string &dst) {
   FILE *s = fopen(src.c_str(), "rb");

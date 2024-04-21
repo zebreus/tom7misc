@@ -1583,7 +1583,7 @@ int main(int argc, char **argv) {
           continue;
         }
         if (num_mangled % 100 == 0) printf("[%d] [%s] -> [%s]\n", num_mangled, f.c_str(), norm.c_str());
-        // CHECK(Util::move(f, norm)) << f;
+        // CHECK(Util::Move(f, norm)) << f;
       }
     }
     printf("Num mangled: %d\n", num_mangled);
@@ -1606,7 +1606,7 @@ int main(int argc, char **argv) {
           continue;
         }
         printf("[%d] [%s] -> [%s]\n", num_mangled, f.c_str(), norm.c_str());
-        CHECK(Util::move(f, norm)) << f;
+        CHECK(Util::Move(f, norm)) << f;
       }
     }
     printf("Num mangled: %d\n", num_mangled);

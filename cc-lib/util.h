@@ -255,7 +255,7 @@ struct Util {
 
   /* move a file from src to dst. Return
      true on success. */
-  static bool move(const string &src, const string &dst);
+  static bool Move(std::string_view src, std::string_view dst);
 
   /* make a copy by reading/writing */
   static bool copy(const string &src, const string &dst);
