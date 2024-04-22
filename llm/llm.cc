@@ -241,13 +241,14 @@ std::string Context::TokenString(llama_token token) const {
   // Guess 20-character buffer (fits in short string optimization);
   // above 22 we need to allocate. (llama.cpp uses 8)
   std::string result(20, 0);
+  static constexpr bool special = false;
   const int n_chars = llama_token_to_piece(
-      model, token, result.data(), result.size());
+      model, token, result.data(), result.size(), special);
   if (n_chars < 0) {
     result.resize(-n_chars);
     int check =
       llama_token_to_piece(model, token,
-                           result.data(), result.size());
+                           result.data(), result.size(), special);
     CHECK(check == -n_chars);
   } else {
     result.resize(n_chars);
@@ -282,10 +283,10 @@ Context::State Context::SaveState() const {
   // other hand, we can now rewind really cheaply.
 
 
-  const size_t n_state_size_max = llama_get_state_size(lctx);
+  const size_t n_state_size_max = llama_state_get_size(lctx);
   state.llama_state.resize(n_state_size_max);
   const size_t n_state_size_cur =
-    llama_copy_state_data(lctx, state.llama_state.data());
+    llama_state_get_data(lctx, state.llama_state.data());
   state.llama_state.resize(n_state_size_cur);
   state.llama_state.shrink_to_fit();
 
@@ -298,7 +299,7 @@ void Context::LoadState(const State &state) {
   Reset();
 
   size_t bytes_read =
-    llama_set_state_data(lctx,
+    llama_state_set_data(lctx,
                          // XXX I think this is morally const, but
                          // should check.
                          const_cast<uint8_t *>(
