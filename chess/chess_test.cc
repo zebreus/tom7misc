@@ -136,7 +136,7 @@ static void PromotionRegression() {
     Position pos;
     // White pawn about to promote on column 2.
     CHECK(Position::ParseFEN(
-              "8/2P5/7k/8/7K/8/8/8 w - 0 1", &pos));
+              "8/2P5/7k/8/7K/8/8/8 w - - 0 1", &pos));
     Move m;
     m.src_row = 1;
     m.src_col = 2;
@@ -155,7 +155,7 @@ static void PromotionRegression() {
     Position pos;
     // Black pawn about to promote on column 2.
     CHECK(Position::ParseFEN(
-              "8/8/7k/8/7K/8/2p5/8 b - 0 1", &pos));
+              "8/8/7k/8/7K/8/2p5/8 b - - 0 1", &pos));
     Move m;
     m.src_row = 6;
     m.src_col = 2;

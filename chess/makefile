@@ -132,10 +132,11 @@ SYMBOLS=-g
 # Tried switching back to mingw/w64...
 # CXX=g++
 # CC=gcc
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
 
-PLATFORMCFLAGS= -DPSS_STYLE=2 -D__MINGW32__ -DHAVE_ALLOCA -D_WIN32_WINNT=0x0602 -D_GLIBCXX_HAS_GTHREADS -mthreads
+#  -mthreads -D_GLIBCXX_HAS_GTHREADS
+PLATFORMCFLAGS= -DPSS_STYLE=2 -D__MINGW32__ -DHAVE_ALLOCA -D_WIN32_WINNT=0x0602
 PLATFORMLINK=-lwinpthread -lpsapi -L. -static libz.a -Wl,--subsystem,console -L.
 
 

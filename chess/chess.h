@@ -146,8 +146,7 @@ struct Position {
   // Distinguishes black and white pieces. Space for empty.
   static const char *HTMLEntity(uint8 piece);
 
-  // TODO: This does not handle castling and en passant correctly.
-  // It ignores the move counts.
+  // This ignores the move counts, since we don't track those.
   // e.g. rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
   static bool ParseFEN(const char *fen, Position *pos);
 

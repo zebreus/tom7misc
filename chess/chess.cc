@@ -126,7 +126,33 @@ bool Position::ParseFEN(const char *fen, Position *pos) {
         if (c == ' ') break;
       }
 
-      // TODO: en passant state
+      // en passant is either - or c3 or c6, where
+      // c is some file. Already skipped the space to
+      // end the castling part above.
+
+      {
+        char ep_col = fen[idx++];
+        if (ep_col == '-') {
+          // no en passant.
+        } else {
+          int col = ep_col - 'a';
+          if (col < 0 || col >= 8)
+            return false;
+          char ep_row = fen[idx++];
+          if (ep_row == '3') {
+            if (!pos->BlackMove())
+              return false;
+
+            pos->SetEnPassantColumn(col);
+          } else if (ep_row == '6') {
+            if (pos->BlackMove())
+              return false;
+
+            pos->SetEnPassantColumn(col);
+          }
+        }
+      }
+
       // (ignoring move counts here.)
 
       return true;
