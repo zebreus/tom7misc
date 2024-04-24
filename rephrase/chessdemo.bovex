@@ -3,6 +3,40 @@ let
   import "chess.bovex"
   import "layout.bovex"
 
+  fun board-parses s =
+    case board-from-fen s of
+      ILLEGAL msg => fail ("Can't parse fen [" ^ s ^ "]: " ^ msg)
+    | OK board => board
+
+  fun board-fails s =
+    case board-from-fen s of
+      ILLEGAL msg => ()
+    | OK board => fail "FEN unexpectedly parses: [" ^ s ^ "]"
+
+  (* some test boards *)
+  do board-parses
+    "rnbqkbnr/p1ppppp1/1P5p/8/8/8/PP1PPPPP/RNBQKBNR b KQkq - 0 3"
+  do board-parses
+    "rnbqkbnr/p2ppp2/1p5p/8/6pP/5NP1/PP1PPP2/RNBQKB1R b KQkq h3 0 6"
+  do board-parses
+    "rnbqkbnr/p2ppp2/7p/8/1p5P/5pPB/PP1PPP2/RNBQK2R b Qkq - 1 9"
+  do board-parses
+    "r2k1bnr/p2ppp2/b1n2N1p/q7/7P/1P3pPB/1P1PPP2/R1BQK2R w Q - 5 14"
+  do board-parses
+    "r2k1bnr/p3pp2/b2p1N1p/q3n3/1P5P/1P4PB/1B1PQP2/2KR3R b - - 1 20"
+
+  do board-fails
+    (* Can't castle *)
+    "r2k1bnr/p3pp2/b2p1N1p/q3n3/1P5P/1P4PB/1B1PQP2/2KR3R b Q - 1 20"
+
+  do board-fails
+    (* Row is too long *)
+    "8/8/7k/8/K8/8/8/8 w - - 1 20"
+
+  do board-fails
+    (* Invalid turn color *)
+    "8/8/7k/8/K7/8/8/8 g - - 1 20"
+
 in
   print "OK\n"
 end

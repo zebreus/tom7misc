@@ -394,7 +394,7 @@ aeoud-comparison/aeoud-comparison.talk : bovex.exe aeoud-shared.bovex aeoud-comp
 	./bovex.exe -v aeoud-comparison.bovex -o aeoud-comparison.talk
 	./maketalk.exe aeoud-comparison aeoud-comparison.talk
 
-chessdemo/chessdemo.talk : bovex.exe chess.bovex stdlib.bovex layout.bovex hyph-en-us.tex maketalk.exe talk.html *.png
+chessdemo/chessdemo.talk : bovex.exe chess.bovex chessdemo.bovex stdlib.bovex layout.bovex hyph-en-us.tex maketalk.exe talk.html *.png
 	./bovex.exe -v chessdemo.bovex -o chessdemo.talk
 	./maketalk.exe chessdemo chessdemo.talk
 

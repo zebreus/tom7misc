@@ -477,11 +477,15 @@ in
     end
 end
 
-fun board-from-fen (fen : string) : board option =
+(* move result is also the type we want here, even though it
+   is not a 'move' *)
+fun board-from-fen (fen : string) : move-result =
   let
     val squares : squares ref = ref (map-empty int-compare)
-    val castling : (bool * bool * bool * bool) ref =
-      ref (false, false, false, false)
+    val castling-a8 = ref false
+    val castling-h8 = ref false
+    val castling-a1 = ref false
+    val castling-h1 = ref false
     val en-passant : int option ref = ref NONE
     val turn : color ref = ref WHITE
 
@@ -490,10 +494,84 @@ fun board-from-fen (fen : string) : board option =
 
     (* These functions return SOME err. We currently discard the
        error but it may be useful to expose it in the API. *)
-    fun initmeta _ = fail "unimplemented"
+
+    fun init-ep (0'-' :: _) = NONE
+      | init-ep (file :: rank :: rest) =
+      let
+        val ep-col = file - 0'a'
+      in
+        case (ep-col >= 0 andalso ep-col < 8, !turn, rank) of
+          (true, BLACK, 0'3') =>
+            let in
+              en-passant := SOME ep-col;
+              NONE
+            end
+        | (true, WHITE, 0'6') =>
+            let in
+              en-passant := SOME ep-col;
+              NONE
+            end
+        | (false, _, _) => SOME "bad column in en passant"
+        | (_, _, _) => SOME "bad rank in en passant"
+      end
+
+    fun init-castling (0'-' :: rest) = init-castling rest
+      | init-castling (0' ' :: rest) = init-ep rest
+      | init-castling (0'K' :: rest) =
+      (case (map-find (!squares, pos (4, 7)),
+             map-find (!squares, pos (7, 7))) of
+         (SOME (WHITE, KING), SOME (WHITE, ROOK)) =>
+           let in
+             castling-h1 := true;
+             init-castling rest
+           end
+       | _ => SOME "no white king/rook for kingside castling")
+
+      | init-castling (0'Q' :: rest) =
+      (case (map-find (!squares, pos (4, 7)),
+             map-find (!squares, pos (0, 7))) of
+         (SOME (WHITE, KING), SOME (WHITE, ROOK)) =>
+           let in
+             castling-a1 := true;
+             init-castling rest
+           end
+       | _ => SOME "no white king/rook for queenside castling")
+
+      | init-castling (0'k' :: rest) =
+      (case (map-find (!squares, pos (4, 0)),
+             map-find (!squares, pos (7, 0))) of
+         (SOME (BLACK, KING), SOME (BLACK, ROOK)) =>
+           let in
+             castling-h8 := true;
+             init-castling rest
+           end
+       | _ => SOME "no black king/rook for kingside castling")
+
+      | init-castling (0'q' :: rest) =
+      (case (map-find (!squares, pos (4, 0)),
+             map-find (!squares, pos (0, 0))) of
+         (SOME (BLACK, KING), SOME (BLACK, ROOK)) =>
+           let in
+             castling-a8 := true;
+             init-castling rest
+           end
+       | _ => SOME "no black king/rook for queenside castling")
+      | init-castling _ = SOME "premature end of input"
+
+    fun init-turn (0'w' :: 0' ' :: rest) =
+      let in
+        turn := WHITE;
+        init-castling rest
+      end
+      | init-turn (0'b' :: 0' ' :: rest) =
+      let in
+        turn := BLACK;
+        init-castling rest
+      end
+      | init-turn _ = SOME "invalid turn chars"
 
     (* initboard (row, col, chars) *)
-    fun initboard (7, 8, 0' ' :: rest) = initmeta rest
+    fun initboard (7, 8, 0' ' :: rest) = init-turn rest
       | initboard (r, 8, 0'/' :: rest) = initboard(r + 1, 0, rest)
       | initboard (r, c, 0'R' :: rest) =
       let in set-piece (r, c, (WHITE, ROOK)); initboard (r, c + 1, rest) end
@@ -527,8 +605,8 @@ fun board-from-fen (fen : string) : board option =
                val count = n - 0'0'
                val c = c + count
              in
-               if c >= 8
-               then SOME "digit yields many empty squares"
+               if c > 8
+               then SOME "digit yields too many empty squares"
                else initboard (r, c, rest)
              end
         else NONE
@@ -536,102 +614,11 @@ fun board-from-fen (fen : string) : board option =
       | initboard _ = SOME "unexpected character"
   in
     case initboard (0, 0, string-explode fen) of
-      SOME err => fail err
+      SOME err => ILLEGAL err
     | NONE =>
-        SOME (Board { squares = !squares,
-                      en-passant = !en-passant,
-                      turn = !turn,
-                      castling = !castling })
+        OK (Board { squares = !squares,
+                    en-passant = !en-passant,
+                    turn = !turn,
+                    castling = (!castling-a8, !castling-h8,
+                                !castling-a1, !castling-h1) })
   end
-
-(*
-  auto InitMeta =
-    [fen, pos, &idx]() {
-      const char whose_move = fen[idx++];
-      switch (whose_move) {
-      case 'w':
-        pos->bits = 0u;
-        break;
-      case 'b':
-        pos->bits = BLACK_MOVE;
-        break;
-      default:
-        return false;
-      }
-
-      if (fen[idx++] != ' ')
-        return false;
-
-      for (;;) {
-        const char c = fen[idx++];
-        switch (c) {
-        default:
-          // This includes the NUL terminator.
-          return false;
-
-        case 'K':
-          if (pos->PieceAt(7, 7) != (WHITE | ROOK))
-            return false;
-          pos->SetPiece(7, 7, WHITE | C_ROOK);
-          break;
-        case 'Q':
-          if (pos->PieceAt(7, 0) != (WHITE | ROOK))
-            return false;
-          pos->SetPiece(7, 0, WHITE | C_ROOK);
-          break;
-        case 'k':
-          if (pos->PieceAt(0, 7) != (BLACK | ROOK))
-            return false;
-          pos->SetPiece(0, 7, BLACK | C_ROOK);
-          break;
-        case 'q':
-          if (pos->PieceAt(0, 0) != (BLACK | ROOK))
-            return false;
-          pos->SetPiece(0, 0, BLACK | C_ROOK);
-          break;
-
-        case '-':
-          // Used when the field is blank.
-          break;
-
-        case ' ':
-          break;
-        }
-        if (c == ' ') break;
-      }
-
-      // en passant is either - or c3 or c6, where
-      // c is some file. Already skipped the space to
-      // end the castling part above.
-
-      {
-        char ep_col = fen[idx++];
-        if (ep_col == '-') {
-          // no en passant.
-        } else {
-          int col = ep_col - 'a';
-          if (col < 0 || col >= 8)
-            return false;
-          char ep_row = fen[idx++];
-          if (ep_row == '3') {
-            if (!pos->BlackMove())
-              return false;
-
-            pos->SetEnPassantColumn(col);
-          } else if (ep_row == '6') {
-            if (pos->BlackMove())
-              return false;
-
-            pos->SetEnPassantColumn(col);
-          }
-        }
-      }
-
-      // (ignoring move counts here.)
-
-      return true;
-    };
-
-  return InitBoard() && InitMeta();
-}
-  *)
