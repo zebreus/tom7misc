@@ -329,7 +329,7 @@ struct Util {
   // encoded correctly. This treats no codepoints specially. Invalid
   // encodings are transformed to U+FFFD, the replacement character,
   // but the algorithm for doing this is unspecified.
-  static std::vector<uint32_t> UTF8Codepoints(const std::string &utf8);
+  static std::vector<uint32_t> UTF8Codepoints(std::string_view utf8);
 
   // Get the number of codepoints in the UTF-8 string, assuming it is
   // encoded correctly. Doesn't handle stuff like combining

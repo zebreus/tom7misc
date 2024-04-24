@@ -8,7 +8,6 @@
 #include <cstring>
 
 #include "base/logging.h"
-#include "opt/opt.h"
 #include "opt/optimizer.h"
 
 namespace {
@@ -778,7 +777,7 @@ static std::pair<int, int> FitImage(UsedMap *um, int w, int h) {
       for (int xx = 0; xx <= um->w - w; xx++) {
         if (!um->UsedRange(xx, yy, w, h)) {
           um->UseRange(xx, yy, w, h);
-          return make_pair(xx, yy);
+          return std::make_pair(xx, yy);
         }
       }
     }

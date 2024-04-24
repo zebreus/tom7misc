@@ -1,6 +1,11 @@
 
 #include "qr-code.h"
 
+#include <cstdio>
+#include <cstdint>
+
+#include "base/logging.h"
+
 #include "image.h"
 #include "ansi.h"
 

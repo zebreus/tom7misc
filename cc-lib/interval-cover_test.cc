@@ -6,12 +6,10 @@
 
 #include "interval-cover.h"
 
-#include <stdlib.h>
 #include <set>
 #include <vector>
 #include <string>
 #include <memory>
-#include <iostream>
 
 #include "ansi.h"
 #include "arcfour.h"

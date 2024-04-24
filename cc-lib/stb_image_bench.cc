@@ -15,6 +15,7 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "base/stringprintf.h"
+#include "Base/logging.h"
 
 using namespace std;
 using uint8 = uint8_t;
@@ -79,7 +80,7 @@ static void BenchmarkPNG() {
   // CHECK(image.Save("deleteme.png"));
   // CHECK(image.SaveJPG("deleteme.jpg"));
   printf("Image ready!\n");
-  
+
   // Now decode a buncha times.
   const int64 start = time(nullptr);
   for (int i = 0; i < TIMES; i++) {

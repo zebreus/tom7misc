@@ -326,14 +326,14 @@ IntervalCover<D>::SplitAt(uint64_t pt) {
     CHECK(pt != 0 && it != spans.begin());
     auto it2 = it;
     --it;
-    return make_pair(it, it2);
+    return std::make_pair(it, it2);
   }
 
   // Not an existing interval. Create a new one with the same
   // data (an illegal state!).
-  auto [it2, success] = spans.insert(make_pair(pt, it->second));
+  auto [it2, success] = spans.insert(std::make_pair(pt, it->second));
   CHECK(success);
-  return make_pair(it, it2);
+  return std::make_pair(it, it2);
 }
 
 // XXX maybe can use SplitAt for this?
@@ -415,7 +415,7 @@ void IntervalCover<D>::SplitRight(uint64_t pt, D rhs) {
     // but erasing and inserting with a hint is amortized constant
     // time:
     auto nextnext = spans.erase(next);
-    spans.insert(nextnext, make_pair(pt, rhs));
+    spans.insert(nextnext, std::make_pair(pt, rhs));
     return;
   }
 
@@ -425,7 +425,7 @@ void IntervalCover<D>::SplitRight(uint64_t pt, D rhs) {
   //
   // In C++11, hint is the element *following* where this one
   // would go.
-  spans.insert(next, make_pair(pt, rhs));
+  spans.insert(next, std::make_pair(pt, rhs));
 }
 
 // When the data are strings, specialize debugprint (used mainly

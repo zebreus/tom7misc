@@ -31,8 +31,8 @@
 
 #include "base/template_util.h"     // For true_type and false_type
 #include <utility>
-using std::pair;
-using std::make_pair;
+// using std::pair;
+// using std::make_pair;
                   // For pair
 
 namespace base {

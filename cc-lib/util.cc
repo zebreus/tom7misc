@@ -198,7 +198,7 @@ size_t Util::UTF8Length(const std::string &utf8) {
   return len;
 }
 
-std::vector<uint32_t> Util::UTF8Codepoints(const std::string &utf8) {
+std::vector<uint32_t> Util::UTF8Codepoints(std::string_view utf8) {
   std::vector<uint32_t> ret;
   ret.reserve(utf8.size());
   for (size_t i = 0; i < utf8.size(); i++) {
