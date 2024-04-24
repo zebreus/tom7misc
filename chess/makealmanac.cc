@@ -14,25 +14,25 @@
 
 #include "chess.h"
 
-#include <string>
-#include <deque>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <memory>
 #include <shared_mutex>
-#include <thread>
-#include <vector>
-#include <utility>
+#include <string>
 #include <unistd.h>
+#include <utility>
+#include <vector>
 
 #include "base/stringprintf.h"
-#include "gtl/top_n.h"
 #include "base/logging.h"
-#include "util.h"
-#include "city.h"
+#include "city/city.h"
 
-#include "pgn.h"
-#include "gamestats.h"
 #include "bigchess.h"
-#include "fate-data.h"
+#include "gamestats.h"
 #include "packedgame.h"
+#include "pgn.h"
+#include "threadutil.h"
 
 constexpr int MAX_PARALLELISM = 12;
 

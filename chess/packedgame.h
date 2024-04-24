@@ -9,15 +9,14 @@
 #ifndef _PACKEDGAME_H
 #define _PACKEDGAME_H
 
+#include <utility>
 #include <vector>
-#include <string>
 #include <cstdint>
 
 #include "chess.h"
 #include "pack.h"
 // XXX maybe make this hermetic after I'm confident in it
 #include "base/logging.h"
-#include "crypt/sha256.h"
 
 struct PackedGame {
   PackedGame() {}

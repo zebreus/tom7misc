@@ -1,6 +1,11 @@
 #include "packedgame.h"
 
-#include "chess.h"
+#include <cstdint>
+#include <cstring>
+#include <utility>
+#include <vector>
+
+#include "crypt/sha256.h"
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;

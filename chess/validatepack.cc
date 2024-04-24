@@ -1,23 +1,17 @@
 #include "chess.h"
 
-#include <string>
-#include <deque>
-#include <shared_mutex>
-#include <thread>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
 #include <vector>
 #include <utility>
 #include <unistd.h>
 
-#include "base/stringprintf.h"
-#include "gtl/top_n.h"
 #include "base/logging.h"
 #include "util.h"
-#include "city.h"
-
-#include "pgn.h"
-#include "gamestats.h"
+#include "city/city.h"
+#include "threadutil.h"
 #include "bigchess.h"
-#include "fate-data.h"
 #include "packedgame.h"
 
 constexpr int MAX_PARALLELISM = 8;
@@ -29,6 +23,7 @@ using uint64 = uint64_t;
 using Move = Position::Move;
 
 // static constexpr int64 MAX_GAMES = 1000000;
+[[maybe_unused]]
 static constexpr int64 MAX_GAMES = 0LL;
 
 static void ValidateOne(

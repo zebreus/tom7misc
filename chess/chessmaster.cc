@@ -1,13 +1,15 @@
 
 #include "chessmaster.h"
 
+#include <cstdio>
+#include <string>
 #include <vector>
 #include <cstdint>
 
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "threadutil.h"
+#include "arcfour.h"
+#include "randutil.h"
+#include "base/stringprintf.h"
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
@@ -19,7 +21,7 @@
 #include "player-util.h"
 // XXX should be able to do without headless-graphics?
 #include "headless-graphics.h"
-#include "../cc-lib/image.h"
+#include "image.h"
 
 using namespace std;
 using uint8 = uint8_t;

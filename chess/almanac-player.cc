@@ -1,13 +1,21 @@
 
 #include "almanac-player.h"
 
-#include "player.h"
-#include "chess.h"
-#include "common.h"
+#include <algorithm>
+#include <cstdint>
+#include <string>
+#include <tuple>
+#include <vector>
+
+#include "base/stringprintf.h"
 
 #include "arcfour.h"
-#include "player-util.h"
+#include "chess.h"
+#include "common.h"
 #include "packedgame.h"
+#include "player-util.h"
+#include "player.h"
+#include "randutil.h"
 
 using Move = Position::Move;
 using namespace std;
@@ -32,7 +40,7 @@ struct AlmanacPopularPlayer : public StatelessPlayer {
   Move MakeMove(const Position &orig_pos, Explainer *explainer) override {
     Position pos = orig_pos;
 
-    uint64 hc = PositionHash{}(pos);
+    uint64_t hc = PositionHash{}(pos);
 
     auto it = cm.positions.find(hc);
 

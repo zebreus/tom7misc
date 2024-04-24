@@ -1,12 +1,14 @@
 
+#include <cstdio>
 #include <string>
 #include <memory>
 #include <cstdint>
+#include <vector>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 
-#include "subprocess.h"
+#include "randutil.h"
 #include "player.h"
 #include "chess.h"
 #include "player-util.h"
@@ -67,7 +69,7 @@ struct BlindPlayer : public StatelessPlayer {
     int white_kings = 0, black_kings = 0;
     for (int r = 0; r < 8; r++) {
       for (int c = 0; c < 8; c++) {
-        uint8 p = predicted->PieceAt(r, c);
+        uint8_t p = predicted->PieceAt(r, c);
         if ((p & Position::TYPE_MASK) == Position::KING) {
           if ((p & Position::COLOR_MASK) == Position::BLACK) {
             black_kings++;
@@ -109,7 +111,7 @@ struct BlindPlayer : public StatelessPlayer {
     // we haven't computed it.
     std::vector<Position::Move> legal;
 
-    const uint64 blinded = Unblinder::Blind(orig_pos);
+    const uint64_t blinded = Unblinder::Blind(orig_pos);
     Position predicted = unblinder->Unblind(single_king, blinded);
 
     if (explainer) {
@@ -141,14 +143,14 @@ struct BlindPlayer : public StatelessPlayer {
         Move m;
         bool color_agrees = false;
         int capture_value = 0;
-        uint32 r = 0;
+        uint32_t r = 0;
       };
       vector<SpycheckMove> spymoves;
 
       for (const Move &m : legal) {
         // Here we must only consult the predicted board.
-        const uint8 srcp = predicted.PieceAt(m.src_row, m.src_col);
-        const uint8 dstp = predicted.PieceAt(m.dst_row, m.dst_col);
+        const uint8_t srcp = predicted.PieceAt(m.src_row, m.src_col);
+        const uint8_t dstp = predicted.PieceAt(m.dst_row, m.dst_col);
         if (srcp == Position::EMPTY || dstp == Position::EMPTY)
           continue;
         if ((srcp & Position::COLOR_MASK) == (dstp & Position::COLOR_MASK)) {
@@ -157,9 +159,10 @@ struct BlindPlayer : public StatelessPlayer {
           SpycheckMove sm;
           sm.m = m;
           sm.r = Rand32(&rc);
-          sm.color_agrees = ((srcp & Position::COLOR_MASK) == Position::BLACK) ==
+          sm.color_agrees =
+            ((srcp & Position::COLOR_MASK) == Position::BLACK) ==
             predicted.BlackMove();
-          const uint8 srct = srcp & Position::TYPE_MASK;
+          const uint8_t srct = srcp & Position::TYPE_MASK;
           // We know that we got the destination piece wrong if the
           // move is legal, so we don't base our decision on that at
           // all.

@@ -1,27 +1,31 @@
 
+#include <algorithm>
+#include <optional>
+#include <shared_mutex>
 #include <string>
-#include <memory>
 #include <cstdint>
 #include <mutex>
 #include <map>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 
 #include "player.h"
 #include "chess.h"
 #include "player-util.h"
 #include "threadutil.h"
-#include "image.h"
 
 #include "../pluginvert/network.h"
 
 using int64 = int64_t;
+using uint8 = uint8_t;
 
 using Move = Position::Move;
 using namespace std;
-
-static constexpr bool VERBOSE = false;
 
 namespace {
 
@@ -36,7 +40,9 @@ namespace {
 static constexpr int SQUARE_SIZE = 13;
 static constexpr int BOARD_SIZE = 8 * 8 * SQUARE_SIZE + 1 + 4 + 8;
 static constexpr int WHOSE_MOVE_IDX = 8 * 8 * SQUARE_SIZE;
+[[maybe_unused]]
 static constexpr int OTHER_STATE_IDX = WHOSE_MOVE_IDX + 1;
+[[maybe_unused]]
 static constexpr int OTHER_STATE_SIZE = 4 + 8;
 
 // Write into the output vector starting at the given index; the space must
@@ -76,6 +82,7 @@ static void BoardVecTo(const Position &pos, std::vector<float> *out, int idx) {
   }
 }
 
+[[maybe_unused]]
 static constexpr int INPUT_SIZE = BOARD_SIZE;
 
 
@@ -131,7 +138,7 @@ struct NNEvalPlayer : public StatelessPlayer {
     network->RunForward(&stim);
     const float eval = stim.values.back()[0];
     const float over = stim.values.back()[1];
-    const std::pair<float, float> res = make_pair(eval, over);
+    const std::pair<float, float> res = std::make_pair(eval, over);
     score_cache->Insert(pos, res);
     return res;
   }

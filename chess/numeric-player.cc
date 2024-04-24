@@ -2,21 +2,23 @@
 #include "player.h"
 
 #include <string>
-#include <mutex>
 #include <cstdint>
-#include <memory>
+#include <tuple>
+#include <vector>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/bignum/big.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "util.h"
+#include "bignum/big.h"
+#include "bignum/bigq.h"
 
-#include "player-util.h"
 #include "numeric-player.h"
-
+#include "chess.h"
 
 using namespace std;
 using int64 = int64_t;
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 using Move = Position::Move;
 
 

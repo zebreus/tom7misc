@@ -1,11 +1,13 @@
 
 #include "chess.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <memory>
 #include <string>
-#include <deque>
 #include <shared_mutex>
-#include <thread>
-#include <vector>
 #include <utility>
 #include <unistd.h>
 #include <unordered_set>
@@ -14,8 +16,8 @@
 #include "gtl/top_n.h"
 #include "base/logging.h"
 #include "util.h"
-#include "city.h"
-
+#include "city/city.h"
+#include "threadutil.h"
 #include "pgn.h"
 #include "gamestats.h"
 #include "fates.h"
@@ -331,10 +333,10 @@ struct Processor {
 
     // Caruana
     "stl_caruana",
-    "bombegranate"
+    "bombegranate",
 
     "stl_firouzja",
-    "stl_svidler"
+    "stl_svidler",
     "stl_nakamura",
     "stl_liren",
     "stl_nepomniachtchi",
@@ -350,7 +352,7 @@ struct Processor {
     "azerichessss",
 
     // Wesley So
-    "wesleyso"
+    "wesleyso",
     "stl_so",
 
     "anishgiri",

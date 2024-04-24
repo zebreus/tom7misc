@@ -1,10 +1,12 @@
 
 #include "chess.h"
 
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <memory>
 #include <string>
-#include <deque>
 #include <shared_mutex>
-#include <thread>
 #include <vector>
 #include <utility>
 #include <unistd.h>
@@ -12,7 +14,8 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "util.h"
-#include "city.h"
+#include "city/city.h"
+#include "threadutil.h"
 
 #include "pgn.h"
 #include "gamestats.h"

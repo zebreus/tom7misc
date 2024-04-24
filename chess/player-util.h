@@ -7,10 +7,10 @@
 #include <string>
 #include <memory>
 
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "arcfour.h"
+#include "randutil.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 
 #include "chess.h"
 #include "player.h"
@@ -104,7 +104,7 @@ struct BlendRandom : public Player {
 
     Position::Move GetMove(const Position &orig_pos,
                            Explainer *explainer) override {
-      const uint16 r = Rand16(rc);
+      const uint16_t r = Rand16(rc);
       if (r < THRESH) {
         // Random move.
         Position pos = orig_pos;

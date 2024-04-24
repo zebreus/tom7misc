@@ -3,11 +3,12 @@
 #define _CHESS_PGN_H
 
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include <string>
 #include <optional>
 
-#include "re2.h"
+#include "re2/re2.h"
 
 struct PGN {
 

@@ -4,8 +4,6 @@
 
 // Simple standalone client for playing against ENIAC chess
 #include <algorithm>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string>
 #include <utility>
 #include <vector>

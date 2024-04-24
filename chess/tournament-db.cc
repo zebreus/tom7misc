@@ -1,19 +1,23 @@
 
 #include "tournament-db.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <string>
 #include <cstdint>
 
-#include "../cc-lib/util.h"
-#include "../cc-lib/base/logging.h"
+#include "util.h"
+#include "base/logging.h"
 
 using int64 = int64_t;
 using namespace std;
 
-void TournamentDB::SaveToFile(const Outcomes &outcomes, const std::string &filename) {
+void TournamentDB::SaveToFile(const Outcomes &outcomes,
+                              const std::string &filename) {
   // One per line as
   // whiteplayer|blackplayer|white_wins|white_losses|draws|example_win|example_loss|example_draw
   FILE *f = fopen(filename.c_str(), "wb");

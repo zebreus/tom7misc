@@ -1,8 +1,11 @@
 
 #include "chess.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <cstdint>
+#include <tuple>
 #include <vector>
 
 using namespace std;

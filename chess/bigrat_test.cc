@@ -1,12 +1,11 @@
 
+#include <cstdio>
 #include <string>
-#include <vector>
-#include <cstdint>
-#include <deque>
 
-#include "../../cc-lib/base/logging.h"
+#include "base/logging.h"
 
-#include "../../cc-lib/bignum/big.h"
+#include "bignum/big.h"
+#include "bignum/bigq.h"
 
 using namespace std;
 

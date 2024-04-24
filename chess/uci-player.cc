@@ -3,10 +3,10 @@
 #include <memory>
 #include <mutex>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/util.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "threadutil.h"
+#include "util.h"
 
 #include "player.h"
 #include "subprocess.h"

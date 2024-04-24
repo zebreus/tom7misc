@@ -2,10 +2,7 @@
 #ifndef _NUMERIC_PLAYER_H
 #define _NUMERIC_PLAYER_H
 
-#include <string>
-#include <cstdint>
-
-#include "chess.h"
+#include "player.h"
 
 Player *BinaryPi();
 Player *BinaryE();

@@ -4,10 +4,12 @@
 
 #include <string>
 #include <cstdint>
+#include <tuple>
+#include <vector>
 
 #include "chess.h"
 
-class ImageRGBA;
+struct ImageRGBA;
 
 // Abstract "visualization" of the player's internal state.
 struct Explainer {

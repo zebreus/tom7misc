@@ -1,29 +1,25 @@
 
 #include "chess.h"
 
-#include <cmath>
+#include <algorithm>
+#include <cstdint>
+#include <functional>
 #include <stdio.h>
 #include <unistd.h>
 
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <deque>
-#include <shared_mutex>
-#include <thread>
 #include <vector>
 #include <utility>
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
-#include "pgn.h"
-#include "util.h"
-#include "city.h"
+#include "city/city.h"
 #include "textsvg.h"
 
 #include "gamestats.h"
 
-#include <type_traits>
 
 using namespace std;
 using int64 = int64_t;
@@ -594,13 +590,13 @@ void GenReport(Stats *stat_buckets) {
   {
     FILE *f = fopen("report-probs.cc", "wb");
 
-    vector<pair<int, float>> ranks;
+    vector<std::pair<int, float>> ranks;
     for (int p : pieces) {
       ranks.emplace_back(p, survived[p].Mean());
     }
     std::sort(ranks.begin(), ranks.end(),
-              [](const pair<int, float> &a,
-                 const pair<int, float> &b) {
+              [](const std::pair<int, float> &a,
+                 const std::pair<int, float> &b) {
                 return a.second > b.second;
               });
 

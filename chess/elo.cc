@@ -1,20 +1,25 @@
 
 // Reads the tournament database and produces the html table with elo ratings.
 
-#include <mutex>
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <ctime>
+#include <map>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdint>
+#include <utility>
 #include <vector>
 #include <string>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/randutil.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "c:/code/sf_svn/cc-lib/base/type_traits.h"
+#include "util.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 #include "headless-graphics.h"
 #include "chess.h"
@@ -24,6 +29,7 @@ using namespace std;
 
 using Move = Position::Move;
 using int64 = int64_t;
+using uint8 = uint8_t;
 
 // static constexpr const char *TOURNAMENT_FILE = "tournament.db";
 // static constexpr const char *TOURNAMENT_FILE = "eval-tournament.db";
@@ -133,9 +139,8 @@ static vector<double> ComputeStationary(int num_entrants,
         // as black. Because of the way the tournament is run, we should
         // generally have a symmetric count, but just in case, we
         // average the separately-computed probabilities.
-        double white_win, white_loss, black_win, black_loss;
-        std::tie(white_win, white_loss) = GetProbs(row, col);
-        std::tie(black_win, black_loss) = GetProbs(col, row);
+        const auto &[white_win, white_loss] = GetProbs(row, col);
+        const auto &[black_win, black_loss] = GetProbs(col, row);
         double white_draw = 1.0 - (white_win + white_loss);
         double black_draw = 1.0 - (black_win + black_loss);
 
@@ -365,7 +370,7 @@ static void MakeImage(
   const vector<EloSummary> &elos = args.elos;
   const vector<double> &stationary = args.stationary;
 
-  std::vector<uint8> rgba;
+  std::vector<uint8_t> rgba;
   static constexpr int TOP_CHARS = 4;
   static constexpr int CELL = 16;
   constexpr int P_LEFT = 9 * 9 + 4;
@@ -391,7 +396,7 @@ static void MakeImage(
   }
 
   auto BlendQuarter = [&rgba, WIDTH, HEIGHT](int x, int y,
-                                             uint8 r, uint8 g, uint8 b) {
+                                             uint8_t r, uint8_t g, uint8_t b) {
       const int i = (WIDTH * y + x) * 4;
 
       const uint8 oldr = rgba[i + 0];

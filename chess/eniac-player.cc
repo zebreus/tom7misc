@@ -2,7 +2,11 @@
 #include "eniac-player.h"
 
 #include <optional>
+#include <string>
+#include <vector>
 
+#include "base/stringprintf.h"
+#include "randutil.h"
 #include "player.h"
 #include "chess.h"
 

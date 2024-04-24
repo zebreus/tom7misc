@@ -3,22 +3,22 @@
 
 #include "chess.h"
 
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <processthreadsapi.h>
 #include <string>
-#include <deque>
 #include <shared_mutex>
-#include <thread>
 #include <vector>
 #include <utility>
 #include <unistd.h>
 
-#include "base/stringprintf.h"
-#include "gtl/top_n.h"
 #include "base/logging.h"
 #include "util.h"
 
+#include "threadutil.h"
 #include "bigchess.h"
 #include "packedgame.h"
-#include "pack.h"
 #include "common.h"
 
 #define byte win_byte_override
@@ -27,7 +27,7 @@
 #undef byte
 
 constexpr int MAX_PARALLELISM = 30;
-constexpr int MIN_COMMON = 2;
+[[maybe_unused]] constexpr int MIN_COMMON = 2;
 
 using namespace std;
 using int64 = int64_t;
@@ -55,7 +55,7 @@ static void AddPackFile(const string &filename) {
   fflush(stderr);
   vector<uint8> bytes = Util::ReadFileBytes(filename);
   CHECK(!bytes.empty()) << filename;
-  vector<pair<uint64_t, PackedGame>> packed_games =
+  vector<std::pair<uint64_t, PackedGame>> packed_games =
     PackedGame::SplitFile(bytes);
 
   const int64 num_games = packed_games.size();
@@ -72,7 +72,7 @@ static void AddPackFile(const string &filename) {
     // All moves should be legal.
     Position pos;
     for (int i = 0; i < pg.NumMoves(); i++) {
-      uint16 packed_move = pg.GetMove(i);
+      uint16_t packed_move = pg.GetMove(i);
       Position::Move move = PackedGame::UnpackMove(packed_move);
 
       uint64 ph = PositionHash{}(pos);

@@ -1,7 +1,6 @@
 #ifndef _FATES_H
 #define _FATES_H
 
-#include <shared_mutex>
 #include <cstdint>
 #include <string>
 
@@ -11,7 +10,7 @@
 // Results of a single game.
 struct Fates {
   using uint8 = uint8_t;
-  
+
   static constexpr uint8 DIED = 0b10000000;
   static constexpr uint8 POS_MASK = 0b00111111;
   // Initialized to their start squares (alive) in standard position.

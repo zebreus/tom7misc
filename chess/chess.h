@@ -2,10 +2,9 @@
 #ifndef _CHESS_H
 #define _CHESS_H
 
+#include <cstddef>
 #include <cstdint>
-#include <initializer_list>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <vector>
 #include <optional>

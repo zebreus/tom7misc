@@ -1,13 +1,13 @@
 
 // Benchmark of Player, which also acts as a benchmark of chess.h code.
 
-#include <mutex>
+#include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/util.h"
+#include "base/logging.h"
 
 #include "chess.h"
 #include "player.h"
@@ -56,6 +56,7 @@ Result PlayGame(Player *white_player, Player *black_player,
               black_stale_moves >= 75);
     };
 
+  [[maybe_unused]]
   int movenum = 0;
   for (;;) {
     movenum++;
@@ -136,6 +137,7 @@ static void PlayerBenchmark() {
   std::unique_ptr<Player> white{SinglePlayer()};
   std::unique_ptr<Player> black{SinglePlayer()};
 
+  [[maybe_unused]]
   int white_wins = 0, black_wins = 0, draws = 0;
   int total_moves = 0;
 
@@ -198,7 +200,7 @@ static void ExcursionBenchmark() {
 
   Timer bench_timer;
   static constexpr int LOOPS = 200000;
-  int64 excursions = 0;
+  int64_t excursions = 0;
   for (int i = 0; i < LOOPS; i++) {
     for (const Position &orig_pos : positions) {
       Position excursion_pos = orig_pos;

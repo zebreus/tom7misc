@@ -1,29 +1,30 @@
 
+#include <optional>
+#include <shared_mutex>
 #include <string>
-#include <memory>
 #include <cstdint>
 #include <mutex>
 #include <map>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 
 #include "player.h"
 #include "chess.h"
 #include "player-util.h"
 #include "threadutil.h"
-#include "image.h"
 
 #include "../grad/network.h"
-
 #include "../grad/nnchess.h"
 
 using int64 = int64_t;
 
 using Move = Position::Move;
 using namespace std;
-
-static constexpr bool VERBOSE = false;
 
 namespace {
 

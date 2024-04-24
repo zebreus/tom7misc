@@ -19,6 +19,7 @@ struct Stockfish {
   // Note that engine loading is lazy; errors like missing stockfish.exe
   // won't occur until the first call to GetMove.
   Stockfish(int level, int64_t nodes);
+  ~Stockfish();
 
   struct Score {
     bool is_mate = false;

@@ -1,20 +1,24 @@
 
 #include "player.h"
 
+#include <algorithm>
+#include <cstdlib>
 #include <string>
-#include <mutex>
 #include <cstdint>
-#include <memory>
+#include <tuple>
+#include <vector>
 
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "arcfour.h"
+#include "chess.h"
+#include "randutil.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 
 #include "player-util.h"
 
 using namespace std;
 using int64 = int64_t;
+using uint8 = uint8_t;
 using Move = Position::Move;
 
 namespace {

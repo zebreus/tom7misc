@@ -1,10 +1,11 @@
 
-#include "chessmaster.h"
-
+#include <cstdio>
 #include <string>
 #include <memory>
 #include <cstdint>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "image.h"
@@ -61,6 +62,10 @@ struct TextExplainer : public Explainer {
 int main(int argc, char **argv) {
   // std::unique_ptr<Player> white_player{RationalPi()};
   // std::unique_ptr<Player> black_player{RationalE()};
+  (void)RationalPi;
+  (void)Dangerous;
+  (void)Eniac;
+  (void)AlmanacPopular;
 
   std::unique_ptr<Player> white_player{NNEval(1)};
   std::unique_ptr<Player> black_player{NNEval(2)};

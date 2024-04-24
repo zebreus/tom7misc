@@ -1,9 +1,12 @@
 #include "common.h"
 
 #include <cstdint>
+#include <cstdio>
+#include <string>
+#include <vector>
 
 #include "base/logging.h"
-#include "packedgame.h"
+#include "util.h"
 
 using namespace std;
 

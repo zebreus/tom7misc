@@ -8,18 +8,11 @@
 // shared with head (and keep it working) or have network-mk0.cc, or
 // what.
 
-#include <string.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
 
 #include <cmath>
-#include <algorithm>
-#include <tuple>
 #include <utility>
-#include <set>
 #include <vector>
-#include <map>
 
 #include "../cc-lib/base/stringprintf.h"
 #include "../cc-lib/base/logging.h"
@@ -49,6 +42,7 @@ static constexpr bool VERBOSE = false;
 namespace {
 
 #define NUM_CONTENTS 13
+[[maybe_unused]]
 static constexpr int kPieceToContents[16] = {
   // 0 = empty in both representations.
   0,
@@ -136,7 +130,7 @@ static const char *TransferFunctionName(TransferFunction tf) {
 }
 
 #if 0
-struct NetworkConfiguration { 
+struct NetworkConfiguration {
 
   // Note that these must have num_layers + 1 entries.
   // The number of nodes in each layer is width * height * channels.
@@ -157,7 +151,7 @@ struct NetworkConfiguration {
   const vector<int> indices_per_node =
     {     64, 1024, 12288, 9 * 9 * 7, };
 
-  const vector<TransferFunction> transfer_functions = { 
+  const vector<TransferFunction> transfer_functions = {
     LEAKY_RELU,
     LEAKY_RELU,
     LEAKY_RELU,
@@ -169,10 +163,10 @@ struct NetworkConfiguration {
     RenderStyle::RGB,
     RenderStyle::RGB,
     RenderStyle::FLAT,
-    RenderStyle::CHESSBOARD, 
+    RenderStyle::CHESSBOARD,
   };
 
-  
+
   // num_nodes = width * height * channels
   // //  indices_per_node = indices_per_channel * channels
   // //  vector<int> indices_per_node;
@@ -196,8 +190,8 @@ struct Network {
   // Creates arrays of the appropriate size, but all zeroes. Note that this uninitialized
   // network is invalid, since the inverted indices are not correct.
   Network(vector<int> num_nodes,
-	  vector<int> indices_per_node,
-	  vector<TransferFunction> transfer_functions) :
+    vector<int> indices_per_node,
+    vector<TransferFunction> transfer_functions) :
       num_layers(num_nodes.size() - 1),
       num_nodes(num_nodes) {
     CHECK(num_nodes.size() >= 1) << "Must include input layer.";
@@ -231,16 +225,16 @@ struct Network {
     // Layer structs.
     for (int i = 0; i < num_layers; i++) {
       ret += sizeof layers[i] + sizeof layers[i].indices[0] * layers[i].indices.size() +
-	sizeof layers[i].weights[0] * layers[i].weights.size() +
-	sizeof layers[i].biases[0] * layers[i].biases.size();
+  sizeof layers[i].weights[0] * layers[i].weights.size() +
+  sizeof layers[i].biases[0] * layers[i].biases.size();
     }
     // Inverted index structs.
     for (int i = 0; i < num_layers; i++) {
       ret += sizeof inverted_indices[i] +
-	sizeof inverted_indices[i].start[0] * inverted_indices[i].start.size() +
-	sizeof inverted_indices[i].length[0] * inverted_indices[i].length.size() +
-	sizeof inverted_indices[i].output_indices[0] *
-	    inverted_indices[i].output_indices.size();
+  sizeof inverted_indices[i].start[0] * inverted_indices[i].start.size() +
+  sizeof inverted_indices[i].length[0] * inverted_indices[i].length.size() +
+  sizeof inverted_indices[i].output_indices[0] *
+      inverted_indices[i].output_indices.size();
     }
 
     return ret;
@@ -269,15 +263,15 @@ struct Network {
     if (has_nans) {
       string err;
       for (int i = 0; i < layer_nans.size(); i++) {
-	err += StringPrintf("(real) layer %d. %d/%d weights, %d/%d biases\n",
-			    i,
-			    layer_nans[i].first, layers[i].weights.size(),
-			    layer_nans[i].second, layers[i].biases.size());
+  err += StringPrintf("(real) layer %d. %d/%d weights, %d/%d biases\n",
+          i,
+          layer_nans[i].first, layers[i].weights.size(),
+          layer_nans[i].second, layers[i].biases.size());
       }
       CHECK(false) << "[" << message << "] The network has NaNs :-(\n" << err;
     }
   }
-  
+
   // Just used for serialization. Whenever changing the interpretation
   // of the data in an incomplete way, please change.
   static constexpr uint32 FORMAT_ID = 0x2700072DU;
@@ -290,7 +284,7 @@ struct Network {
   // Parallel to num_nodes. These don't affect the network's behavior,
   // just its rendering. num_nodes[i] == width[i] * height[i] * channels[i].
   vector<int> width, height, channels;
-  
+
   // "Real" layer; none for the input.
   struct Layer {
     // Same number of input indices for each node.
@@ -355,25 +349,25 @@ static void CheckInvertedIndices(const Network &net) {
     const vector<uint32> &indices = net.layers[layer].indices;
     const Network::InvertedIndices &inv = net.inverted_indices[layer];
     CHECK_EQ(net.num_nodes[layer + 1] * net.layers[layer].indices_per_node,
-	     indices.size());
+       indices.size());
     // Need one start/length pair for every node in the source layer.
     CHECK_EQ(net.num_nodes[layer], inv.start.size());
     CHECK_EQ(net.num_nodes[layer], inv.length.size());
     // But the output size is determined by the next layer.
     CHECK_EQ(net.num_nodes[layer + 1] * net.layers[layer].indices_per_node,
-	     inv.output_indices.size());
+       inv.output_indices.size());
     // z is a node id from the src layer.
     for (int z = 0; z < inv.start.size(); z++) {
       // i is the index within the compacted inverted index.
       for (int i = inv.start[z]; i < inv.start[z] + inv.length[z]; i++) {
-	// Global index into 'indices'.
-	CHECK(i >= 0);
-	CHECK(i < inv.output_indices.size());
-	const int gidx = inv.output_indices[i];
-	CHECK(gidx >= 0);
-	CHECK(gidx < indices.size());
-	// This should map back to our current node id.
-	CHECK_EQ(indices[gidx], z);
+  // Global index into 'indices'.
+  CHECK(i >= 0);
+  CHECK(i < inv.output_indices.size());
+  const int gidx = inv.output_indices[i];
+  CHECK(gidx >= 0);
+  CHECK(gidx < indices.size());
+  // This should map back to our current node id.
+  CHECK_EQ(indices[gidx], z);
       }
     }
   }
@@ -404,8 +398,8 @@ static void ComputeInvertedIndices(Network *net) {
     vector<vector<uint32>> occurrences;
     occurrences.resize(net->num_nodes[layer]);
     for (int dst_indices_idx = 0;
-	 dst_indices_idx < net->layers[layer].indices_per_node * dst_num_nodes;
-	 dst_indices_idx++) {
+   dst_indices_idx < net->layers[layer].indices_per_node * dst_num_nodes;
+   dst_indices_idx++) {
       // This index gets put into exactly one place in occurrences.
       const int src_nodes_idx = net->layers[layer].indices[dst_indices_idx];
       occurrences[src_nodes_idx].push_back(dst_indices_idx);
@@ -420,14 +414,14 @@ static void ComputeInvertedIndices(Network *net) {
     // Now flatten.
     int flat_size = 0;
     for (int src_nodes_idx = 0;
-	 src_nodes_idx < src_num_nodes;
-	 src_nodes_idx++) {
+   src_nodes_idx < src_num_nodes;
+   src_nodes_idx++) {
       (*start)[src_nodes_idx] = flat_size;
       (*length)[src_nodes_idx] = occurrences[src_nodes_idx].size();
 
       for (const int val : occurrences[src_nodes_idx]) {
-	(*inverted)[flat_size] = val;
-	flat_size++;
+  (*inverted)[flat_size] = val;
+  flat_size++;
       }
     }
     CHECK_EQ(dst_num_nodes * net->layers[layer].indices_per_node, flat_size);
@@ -442,7 +436,7 @@ static Network *ReadNetworkBinary(const string &filename) {
   FILE *file = fopen(filename.c_str(), "rb");
   if (file == nullptr) {
     if (VERBOSE) printf("  ... failed. If it's present, there may be a "
-			"permissions problem?\n");
+      "permissions problem?\n");
     return nullptr;
   }
 
@@ -505,8 +499,8 @@ static Network *ReadNetworkBinary(const string &filename) {
     CHECK(tf >= 0 && tf < NUM_TRANSFER_FUNCTIONS) << tf;
     transfer_functions[i] = tf;
     if (VERBOSE) printf("%d %s ",
-			indices_per_node[i],
-			TransferFunctionName(tf));
+      indices_per_node[i],
+      TransferFunctionName(tf));
   }
   if (VERBOSE) printf("\n");
 
@@ -514,10 +508,10 @@ static Network *ReadNetworkBinary(const string &filename) {
   net->width = width;
   net->height = height;
   net->channels = channels;
-  
+
   net->rounds = round;
   net->examples = examples;
-  
+
   // Read Layer structs.
   for (int i = 0; i < file_num_layers; i++) {
     for (int j = 0; j < net->layers[i].indices.size(); j++) {
@@ -566,7 +560,7 @@ static void SaveNetworkBinary(const Network &net, const string &filename) {
   for (const int w : net.width) Write32(w);
   for (const int h : net.height) Write32(h);
   for (const int c : net.channels) Write32(c);
-  
+
   for (const Network::Layer &layer : net.layers) {
     Write32(layer.indices_per_node);
     Write32(layer.transfer_function);
@@ -589,7 +583,7 @@ static void SaveNetworkBinary(const Network &net, const string &filename) {
 // activation value of each node on each layer, plus the input itself.
 struct Stimulation {
   explicit Stimulation(const Network &net) : num_layers(net.num_layers),
-					     num_nodes(net.num_nodes) {
+               num_nodes(net.num_nodes) {
     values.resize(num_layers + 1);
     for (int i = 0; i < values.size(); i++)
       values[i].resize(num_nodes[i], 0.0f);
@@ -634,9 +628,9 @@ struct Stimulation {
     if (has_nans) {
       string err;
       for (int i = 0; i < layer_nans.size(); i++) {
-	err += StringPrintf("stim layer %d. %d/%d values\n",
-			    i,
-			    layer_nans[i], values[i].size());
+  err += StringPrintf("stim layer %d. %d/%d values\n",
+          i,
+          layer_nans[i], values[i].size());
       }
       CHECK(false) << "[" << message << "] The stimulation has NaNs :-(\n" << err;
     }
@@ -646,8 +640,8 @@ struct Stimulation {
 struct UnblinderMk0Impl : public Unblinder {
   string ModelInfo() const override {
     return StringPrintf("%lld rounds, %lld examples",
-			net->rounds,
-			net->examples);
+      net->rounds,
+      net->examples);
   }
 
   void Stimulate(uint64 bits, Stimulation *stim) const {
@@ -660,9 +654,9 @@ struct UnblinderMk0Impl : public Unblinder {
       // Note: this one is hard coded, since we know it's the function used throughout
       CHECK(net->layers[src].transfer_function == TransferFunction::LEAKY_RELU);
       auto Forward =
-	[](double potential) -> float {
-	  return (potential < 0.0f) ? potential * 0.01f : potential;
-	};
+  [](double potential) -> float {
+    return (potential < 0.0f) ? potential * 0.01f : potential;
+  };
 
       const vector<float> &src_values = stim->values[src];
       vector<float> *dst_values = &stim->values[src + 1];
@@ -672,54 +666,54 @@ struct UnblinderMk0Impl : public Unblinder {
       const int indices_per_node = net->layers[src].indices_per_node;
       const int num_nodes = net->num_nodes[src + 1];
       for (int node_idx = 0; node_idx < num_nodes; node_idx++) {
-	// Start with bias.
-	double potential = biases[node_idx];
-	const int my_weights = node_idx * indices_per_node;
-	const int my_indices = node_idx * indices_per_node;
+  // Start with bias.
+  double potential = biases[node_idx];
+  const int my_weights = node_idx * indices_per_node;
+  const int my_indices = node_idx * indices_per_node;
 
-	for (int i = 0; i < indices_per_node; i++) {
-	  const float w = weights[my_weights + i];
-	  const int srci = indices[my_indices + i];
-	  const float v = src_values[srci];
-	  potential += w * v;
-	}
-	const float out = Forward(potential);
-	(*dst_values)[node_idx] = out;
+  for (int i = 0; i < indices_per_node; i++) {
+    const float w = weights[my_weights + i];
+    const int srci = indices[my_indices + i];
+    const float v = src_values[srci];
+    potential += w * v;
+  }
+  const float out = Forward(potential);
+  (*dst_values)[node_idx] = out;
       }
     }
   }
-  
+
   Position Unblind(bool single_king, uint64 bits) const override {
     Stimulation stim{*net};
     Stimulate(bits, &stim);
     // Now the final layer in the stimulation reflects our prediction.
-    return PositionFromLayer(single_king, stim.values.back());   
+    return PositionFromLayer(single_king, stim.values.back());
   }
 
   static Position PositionFromLayer(bool single_king,
-				    const vector<float> &layer) {
+            const vector<float> &layer) {
     CHECK(layer.size() == OUTPUT_LAYER_SIZE);
     Position ret;
 
     static constexpr int WKING = 6;
     static constexpr int BKING = 12;
-    
+
     // If single_king mode is set, populate these with the most likely
     // overall row/col for the white/black kings.
     int wkr = -1, wkc = -1;
     int bkr = -1, bkc = -1;
     if (single_king) {
       struct King {
-	King(int r, int c, float p) : r(r), c(c), p(p) {}
-	int r = 0;
-	int c = 0;
-	float p = 0.0;
+  King(int r, int c, float p) : r(r), c(c), p(p) {}
+  int r = 0;
+  int c = 0;
+  float p = 0.0;
       };
 
       struct KingCmp {
-	bool operator()(const King &a, const King &b) {
-	  return a.p > b.p;
-	};
+  bool operator()(const King &a, const King &b) {
+    return a.p > b.p;
+  };
       };
 
       // Best scores for each. Note the subtlety that the highest
@@ -727,14 +721,14 @@ struct UnblinderMk0Impl : public Unblinder {
       // can't assign both of them to it. So we keep the top two.
       gtl::TopN<King, KingCmp> top_white(2);
       gtl::TopN<King, KingCmp> top_black(2);
-      
+
       for (int r = 0; r < 8; r++) {
-	for (int c = 0; c < 8; c++) {
-	  // Find the contents with the highest score.
-	  const int cidx = (r * 8 + c) * NUM_CONTENTS;
-	  top_white.push(King(r, c, layer[cidx + WKING]));
-	  top_black.push(King(r, c, layer[cidx + BKING]));
-	}
+  for (int c = 0; c < 8; c++) {
+    // Find the contents with the highest score.
+    const int cidx = (r * 8 + c) * NUM_CONTENTS;
+    top_white.push(King(r, c, layer[cidx + WKING]));
+    top_black.push(King(r, c, layer[cidx + BKING]));
+  }
       }
 
       std::unique_ptr<vector<King>> whites{top_white.Extract()};
@@ -744,55 +738,55 @@ struct UnblinderMk0Impl : public Unblinder {
 
       int wi = 0, bi = 0;
       if ((*whites)[wi].r == (*blacks)[bi].r &&
-	  (*whites)[wi].c == (*blacks)[bi].c) {
-	// Tricky case where they are both predicted to be in the
-	// same spot.
-	if ((*whites)[wi].p > (*blacks)[bi].p) {
-	  // White wins; move black to its second prediction.
-	  bi++;
-	} else {
-	  wi++;
-	}
+    (*whites)[wi].c == (*blacks)[bi].c) {
+  // Tricky case where they are both predicted to be in the
+  // same spot.
+  if ((*whites)[wi].p > (*blacks)[bi].p) {
+    // White wins; move black to its second prediction.
+    bi++;
+  } else {
+    wi++;
+  }
       }
-      
+
       wkr = (*whites)[wi].r;
       wkc = (*whites)[wi].c;
       bkr = (*blacks)[bi].r;
       bkc = (*blacks)[bi].c;
     }
-    
+
     for (int r = 0; r < 8; r++) {
       for (int c = 0; c < 8; c++) {
 
-	auto MostLikelyPiece =
-	  [single_king](const vector<float> &vals, int start_idx) {
-	    int maxi = 0;
-	    float maxp = vals[start_idx];
-	    static_assert(BKING != 0 && WKING != 0);
-	    for (int i = 1; i < NUM_CONTENTS; i++) {
-	      // Don't ever choose kings in single_king mode.
-	      if (single_king && (i == BKING || i == WKING))
-		continue;
-	      
-	      if (vals[start_idx + i] > maxp) {
-		maxi = i;
-		maxp = vals[start_idx + i];
-	      }
-	    }
-	    return maxi;
-	  };
+  auto MostLikelyPiece =
+    [single_king](const vector<float> &vals, int start_idx) {
+      int maxi = 0;
+      float maxp = vals[start_idx];
+      static_assert(BKING != 0 && WKING != 0);
+      for (int i = 1; i < NUM_CONTENTS; i++) {
+        // Don't ever choose kings in single_king mode.
+        if (single_king && (i == BKING || i == WKING))
+    continue;
 
-	if (r == wkr && c == wkc) {
-	  ret.SetPiece(r, c, Position::WHITE | Position::KING);
-	} else if (r == bkr && c == bkc) {
-	  ret.SetPiece(r, c, Position::BLACK | Position::KING);
-	} else {
-	  // Find the contents with the highest score.
-	  int cidx = (r * 8 + c) * NUM_CONTENTS;
-	  const int maxi = MostLikelyPiece(layer, cidx);
-	  uint8 piece = kContentsToPiece[maxi];
-	  ret.SetPiece(r, c, piece);
-	}
+        if (vals[start_idx + i] > maxp) {
+    maxi = i;
+    maxp = vals[start_idx + i];
+        }
+      }
+      return maxi;
+    };
+
+  if (r == wkr && c == wkc) {
+    ret.SetPiece(r, c, Position::WHITE | Position::KING);
+  } else if (r == bkr && c == bkc) {
+    ret.SetPiece(r, c, Position::BLACK | Position::KING);
+  } else {
+    // Find the contents with the highest score.
+    int cidx = (r * 8 + c) * NUM_CONTENTS;
+    const int maxi = MostLikelyPiece(layer, cidx);
+    uint8 piece = kContentsToPiece[maxi];
+    ret.SetPiece(r, c, piece);
+  }
       }
     }
 
@@ -805,19 +799,19 @@ struct UnblinderMk0Impl : public Unblinder {
     // Only set castling if it would keep the board legal.
     if (ret.PieceAt(0, 4) == (Position::BLACK | Position::KING)) {
       if (bqf && ret.PieceAt(0, 0) == (Position::BLACK | Position::ROOK)) {
-	ret.SetPiece(0, 0, Position::BLACK | Position::C_ROOK);
+  ret.SetPiece(0, 0, Position::BLACK | Position::C_ROOK);
       }
       if (bkf && ret.PieceAt(0, 7) == (Position::BLACK | Position::ROOK)) {
-	ret.SetPiece(0, 7, Position::BLACK | Position::C_ROOK);
+  ret.SetPiece(0, 7, Position::BLACK | Position::C_ROOK);
       }
     }
 
     if (ret.PieceAt(7, 4) == (Position::WHITE | Position::KING)) {
       if (wqf && ret.PieceAt(7, 0) == (Position::WHITE | Position::ROOK)) {
-	ret.SetPiece(7, 0, Position::WHITE | Position::C_ROOK);
+  ret.SetPiece(7, 0, Position::WHITE | Position::C_ROOK);
       }
       if (wkf && ret.PieceAt(7, 7) == (Position::WHITE | Position::ROOK)) {
-	ret.SetPiece(7, 7, Position::WHITE | Position::C_ROOK);
+  ret.SetPiece(7, 7, Position::WHITE | Position::C_ROOK);
       }
     }
 

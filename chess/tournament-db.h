@@ -3,7 +3,6 @@
 #define _TOURNAMENT_DB_H
 
 #include <utility>
-#include <vector>
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdint>

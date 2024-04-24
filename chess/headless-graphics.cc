@@ -5,9 +5,11 @@
 #include <cstdint>
 #include <memory>
 
-#include "../cc-lib/stb_image.h"
-#include "../cc-lib/stb_image_write.h"
-#include "../cc-lib/base/logging.h"
+#include "stb_image.h"
+#include "stb_image_write.h"
+#include "base/logging.h"
+
+// TODO: Would be better to just replace this all with ImageRGBA.
 
 using namespace std;
 using uint8 = uint8_t;

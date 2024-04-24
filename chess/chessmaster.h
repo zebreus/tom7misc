@@ -4,6 +4,7 @@
 #ifndef _CHESSMASTER_H
 #define _CHESSMASTER_H
 
+#include <string>
 #include <vector>
 #include <cstdint>
 #include <memory>
@@ -11,7 +12,7 @@
 
 #include "chess.h"
 #include "player.h"
-#include "../cc-lib/arcfour.h"
+#include "arcfour.h"
 
 struct Emulator;
 

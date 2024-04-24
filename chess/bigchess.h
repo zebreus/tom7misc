@@ -3,14 +3,16 @@
 #ifndef _BIGCHESS_H
 #define _BIGCHESS_H
 
+#include <cstdio>
 #include <shared_mutex>
 #include <cstdint>
+#include <string>
 #include <thread>
 #include <deque>
 #include <vector>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/threadutil.h"
+#include "base/logging.h"
+#include "threadutil.h"
 
 using int64 = int64_t;
 using uint64 = uint64_t;

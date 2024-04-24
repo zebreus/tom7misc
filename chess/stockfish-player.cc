@@ -3,14 +3,13 @@
 #include <memory>
 #include <cstdint>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 
 #include "player.h"
 #include "stockfish.h"
 #include "chess.h"
 #include "player-util.h"
-#include "subprocess.h"
 
 using int64 = int64_t;
 

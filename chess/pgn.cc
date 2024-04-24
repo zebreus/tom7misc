@@ -1,10 +1,13 @@
 
 #include "pgn.h"
 
+#include <cstdlib>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "re2.h"
+#include "re2/re2.h"
 #include "base/logging.h"
 
 using namespace std;

@@ -1,24 +1,36 @@
 
 // Run a tournament of players to determine their Elo ratings.
 
+#include <cstdarg>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
 #include <mutex>
 #include <memory>
+#include <shared_mutex>
+#include <string>
+#include <tuple>
 #include <unordered_map>
 #include <cstdlib>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #ifdef __MINGW32__
 #include <windows.h>
+#include <wincon.h>
+#include <winnt.h>
+#include <processenv.h>
+#include <processthreadsapi.h>
+#include <minwindef.h>
 #undef ARRAYSIZE
 #endif
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/gtl/top_n.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "threadutil.h"
+#include "util.h"
+#include "gtl/top_n.h"
 
 #include "chess.h"
 #include "player.h"
@@ -59,6 +71,7 @@
 
 using Move = Position::Move;
 using namespace std;
+using int64 = int64_t;
 
 // static constexpr const char *TOURNAMENT_FILE = "tournament.db";
 // static constexpr const char *TOURNAMENT_FILE = "eval-tournament.db";
@@ -442,6 +455,7 @@ Result PlayGame(Player *white_player, Player *black_player,
               black_stale_moves >= 75);
     };
 
+  [[maybe_unused]]
   int movenum = 0;
   for (;;) {
     movenum++;

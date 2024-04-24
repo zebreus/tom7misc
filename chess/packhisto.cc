@@ -34,26 +34,28 @@
 // month of January 2018. This program outputs the hashes
 // (PositionHash) of such "common" positions.
 
+#include "c:/code/sf_svn/cc-lib/threadutil.h"
 #include "chess.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <map>
+#include <processthreadsapi.h>
 #include <string>
-#include <deque>
 #include <shared_mutex>
-#include <thread>
+#include <unordered_map>
 #include <vector>
 #include <utility>
 #include <unistd.h>
 
 #include "base/stringprintf.h"
-#include "gtl/top_n.h"
 #include "base/logging.h"
 #include "util.h"
-#include "city.h"
+#include "city/city.h"
 
-#include "pgn.h"
-#include "gamestats.h"
 #include "bigchess.h"
-#include "fate-data.h"
 #include "packedgame.h"
 
 #define byte win_byte_override
@@ -67,6 +69,7 @@ constexpr int MIN_COMMON = 2;
 using namespace std;
 using int64 = int64_t;
 using uint64 = uint64_t;
+using int32 = int32_t;
 
 using Move = Position::Move;
 

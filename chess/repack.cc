@@ -1,23 +1,22 @@
 #include "chess.h"
 
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <processthreadsapi.h>
 #include <string>
-#include <deque>
 #include <shared_mutex>
-#include <thread>
+#include <unordered_map>
 #include <vector>
 #include <utility>
 #include <unistd.h>
 
-#include "base/stringprintf.h"
-#include "gtl/top_n.h"
 #include "base/logging.h"
 #include "util.h"
-#include "city.h"
+#include "city/city.h"
+#include "threadutil.h"
 
-#include "pgn.h"
-#include "gamestats.h"
 #include "bigchess.h"
-#include "fate-data.h"
 #include "packedgame.h"
 
 #define byte win_byte_override

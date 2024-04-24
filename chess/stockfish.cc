@@ -1,23 +1,22 @@
 
 #include "stockfish.h"
 
-#include <stdio.h>
+#include <cstdint>
 #include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
 #include <fcntl.h>
 
 #include <string>
-#include <mutex>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/util.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "threadutil.h"
+#include "util.h"
 
 #include "subprocess.h"
 
 using namespace std;
+using int64 = int64_t;
 
 // I compiled stockfish on mingw with:
 // make -j build ARCH=x86-64 COMPCXX=x86_64-w64-mingw32-c++ COMP=mingw
@@ -25,6 +24,7 @@ using namespace std;
 // win here if I could figure out why.
 
 Stockfish::Stockfish(int level, int64 nodes) : level(level), nodes(nodes) { }
+Stockfish::~Stockfish() {}
 
 void Stockfish::InitEngine() {
   if (subprocess.get() != nullptr)

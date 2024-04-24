@@ -1,15 +1,21 @@
 
 #include "player-util.h"
 
+#include <cstdint>
+#include <ctime>
 #include <string>
 #include <mutex>
+#include <tuple>
 #include <vector>
 
+#include "randutil.h"
 #include "chess.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "base/stringprintf.h"
+#include "player.h"
 
 using Move = Position::Move;
 using int64 = int64_t;
+using uint8 = uint8_t;
 using namespace std;
 
 static std::mutex seed_m;

@@ -5,7 +5,6 @@
 #include <cstdint>
 
 #include "base/logging.h"
-#include "chess.h"
 #include "fates.h"
 
 // Whole purpose of running over games is to collect these stats. So

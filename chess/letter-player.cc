@@ -1,10 +1,19 @@
 
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdio>
+#include <optional>
+#include <shared_mutex>
 #include <string>
 #include <memory>
 #include <cstdint>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 
 #include "player.h"
 #include "chess.h"
@@ -13,11 +22,10 @@
 #include "image.h"
 
 using int64 = int64_t;
+using uint64 = uint64_t;
 
 using Move = Position::Move;
 using namespace std;
-
-static constexpr bool VERBOSE = false;
 
 namespace {
 
@@ -735,7 +743,7 @@ ImageA FontProblem::SDF36From8x8(Image8x8 img) {
   constexpr int size = 18;
 
   constexpr float FALLOFF_PER_PIXEL = 15.0f;
-  constexpr uint8 ONEDGE = 220u;
+  constexpr uint8_t ONEDGE = 220u;
   constexpr float scale = size / (float)sdf_size;
 
   constexpr int LEFT = 4;
@@ -753,8 +761,8 @@ ImageA FontProblem::SDF36From8x8(Image8x8 img) {
 
 
   // Only need to search from LEFT - 1 to LEFT - 1 + WIDTH + 2, etc.
-  auto GetSqDistanceTo = [&Color, size](int x, int y, bool c,
-                                        int squared_bound) -> int {
+  auto GetSqDistanceTo = [&Color](int x, int y, bool c,
+                                  int squared_bound) -> int {
       int min_sqdist = squared_bound;
 
       // min and max (inclusive) ranges to search for pixels.

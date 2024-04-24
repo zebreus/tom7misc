@@ -1,8 +1,11 @@
 
 #include "chess.h"
 
+#include <cstdio>
 #include <string>
 #include <cstdint>
+#include <tuple>
+#include <utility>
 #include <vector>
 #include <initializer_list>
 #include <cmath>
@@ -454,8 +457,7 @@ static void ValidMoves2() {
   CHECK(pos.IsMated());
   CHECK(!pos.HasLegalMoves());
 
-  int kingrow, kingcol;
-  std::tie(kingrow, kingcol) = pos.GetCurrentKing();
+  const auto &[kingrow, kingcol] = pos.GetCurrentKing();
   CHECK(kingrow == 4 && kingcol == 1) << kingrow << ", " << kingcol;
 }
 

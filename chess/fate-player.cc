@@ -1,14 +1,18 @@
 
 #include "fate-player.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <string>
+#include <vector>
 
 #include "all-fate-data.h"
 #include "fates.h"
 #include "player-util.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/base/logging.h"
+#include "arcfour.h"
+#include "randutil.h"
+#include "base/logging.h"
+#include "player.h"
 
 #include "chess.h"
 
@@ -275,7 +279,7 @@ struct EqualizerPlayer : public Player {
       Position::Move m;
       int piece_moved = 0;
       int square_visited = 0;
-      uint32 r = 0;
+      uint32_t r = 0;
     };
 
     void ForceMove(const Position &pos, Position::Move m) override {

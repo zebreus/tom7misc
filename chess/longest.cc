@@ -13,8 +13,8 @@
 // this. Also I am not totally sure that this is the longest chess
 // game.)
 
+#include <cstdio>
 #include <functional>
-#include <memory>
 #include <unordered_map>
 #include <cstdint>
 #include <vector>
@@ -23,12 +23,11 @@
 #include <utility>
 #include <set>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/randutil.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "util.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 #include "chess.h"
 #include "pgn.h"
@@ -37,6 +36,7 @@ using namespace std;
 
 using Move = Position::Move;
 using int64 = int64_t;
+using uint8 = uint8_t;
 
 template<class T>
 using PositionMap = std::unordered_map<Position, T, PositionHash, PositionEq>;
@@ -521,11 +521,11 @@ static bool MakeEvenExcursion(const Position &orig_pos,
       if (PositionEqIgnoringCastlingEp(orig_pos, pos5)) {
         // Got one! Commit.
         if (VERBOSE)
-        printf("Excursion: %s %s  %s %s\n",
-               pos.ShortMoveString(cur_move).c_str(),
-               pos2.ShortMoveString(opp_move).c_str(),
-               pos3.ShortMoveString(rcur_move).c_str(),
-               pos4.ShortMoveString(ropp_move).c_str());
+          printf("Excursion: %s %s  %s %s\n",
+                 pos.ShortMoveString(cur_move).c_str(),
+                 pos2.ShortMoveString(opp_move).c_str(),
+                 pos3.ShortMoveString(rcur_move).c_str(),
+                 pos4.ShortMoveString(ropp_move).c_str());
 
         (*seen)[pos2]++;
         (*seen)[pos3]++;
@@ -654,13 +654,13 @@ static bool MakeOddExcursion(const Position &orig_pos,
               if (PositionEqIgnoringCastlingEp(orig_pos, pos7)) {
                 // Got one! Commit.
                 if (VERBOSE)
-                printf("Odd Excursion: %s %s  %s %s  %s %s\n",
-                       pos.ShortMoveString(cur_move).c_str(),
-                       pos2.ShortMoveString(opp_move).c_str(),
-                       pos3.ShortMoveString(cur2_move).c_str(),
-                       pos4.ShortMoveString(opp2_move).c_str(),
-                       pos5.ShortMoveString(rcur_move).c_str(),
-                       pos6.ShortMoveString(ropp_move).c_str());
+                  printf("Odd Excursion: %s %s  %s %s  %s %s\n",
+                         pos.ShortMoveString(cur_move).c_str(),
+                         pos2.ShortMoveString(opp_move).c_str(),
+                         pos3.ShortMoveString(cur2_move).c_str(),
+                         pos4.ShortMoveString(opp2_move).c_str(),
+                         pos5.ShortMoveString(rcur_move).c_str(),
+                         pos6.ShortMoveString(ropp_move).c_str());
 
                 (*seen)[pos2]++;
                 (*seen)[pos3]++;

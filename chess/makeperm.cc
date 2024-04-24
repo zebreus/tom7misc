@@ -6,31 +6,28 @@
 // lines.
 
 #include <cmath>
+#include <cstdint>
+#include <ctime>
 #include <stdio.h>
 #include <unistd.h>
 
 #include <iostream>
-#include <fstream>
 #include <string>
-#include <deque>
-#include <shared_mutex>
-#include <thread>
 #include <vector>
 #include <utility>
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
-#include "../cc-lib/randutil.h"
-#include "chess.h"
-#include "pgn.h"
-#include "util.h"
-#include "textsvg.h"
 
-#include <type_traits>
+#include "arcfour.h"
+#include "chess.h"
+#include "randutil.h"
+#include "textsvg.h"
 
 using namespace std;
 using int64 = int64_t;
 using uint64 = uint64_t;
+using uint8 = uint8_t;
 
 enum {
       BLACK_ROOK_A,
@@ -249,6 +246,7 @@ std::vector<int> rank_ben = {
   BLACK_KNIGHT_G,
 };
 
+[[maybe_unused]]
 static constexpr const char *const PIECE_NAME[32] = {
   "a8 rook",
   "b8 knight",
@@ -273,7 +271,7 @@ static constexpr const char *const PIECE_NAME[32] = {
   "h1 rook", };
 
 // Take a piece number 0-31 and return its Position-style piece.
-static uint8 PiecePiece(int p) {
+static uint8_t PiecePiece(int p) {
   static const Position startpos;
   const bool black = p < 16;
   const int pidx = black ? p : 48 + (p - 16);
@@ -286,15 +284,15 @@ static string PieceCol(int p) {
   return StringPrintf("%c", 'a' + (p % 8));
 }
 
-static vector<int> Strip(const vector<pair<int, float>> &probs) {
+static vector<int> Strip(const vector<std::pair<int, float>> &probs) {
   vector<int> ret;
   ret.reserve(probs.size());
   for (const auto &p : probs) ret.push_back(p.first);
   return ret;
 }
 
-static vector<pair<int, float>> Degenerate(const vector<int> &ranks) {
-  vector<pair<int, float>> ret;
+static vector<std::pair<int, float>> Degenerate(const vector<int> &ranks) {
+  vector<std::pair<int, float>> ret;
   for (int p : ranks) ret.emplace_back(p, 0.0f);
   return ret;
 }
@@ -322,7 +320,7 @@ static string PieceName(int x) {
 }
 
 // Actual results over all games (500m)
-vector<pair<int, float>> actual_probs = {
+vector<std::pair<int, float>> actual_probs = {
   {WHITE_PAWN_H, 0.715432286},
   {BLACK_PAWN_A, 0.705200613},
   {WHITE_PAWN_A, 0.704906046},
@@ -376,7 +374,7 @@ int RankError(const vector<int> &a,
 }
 
 
-vector<pair<int, float>> titled_probs = {
+vector<std::pair<int, float>> titled_probs = {
   {WHITE_PAWN_H, 0.669196844},
   {BLACK_PAWN_A, 0.667333484},
   {WHITE_PAWN_A, 0.662262022},
@@ -411,7 +409,7 @@ vector<pair<int, float>> titled_probs = {
   {WHITE_KNIGHT_G, 0.200406671},
 };
 
-vector<pair<int, float>> bullet_probs = {
+vector<std::pair<int, float>> bullet_probs = {
   {BLACK_PAWN_A, 0.726668358},
   {WHITE_PAWN_H, 0.722974241},
   {WHITE_PAWN_A, 0.721098602},
@@ -446,7 +444,7 @@ vector<pair<int, float>> bullet_probs = {
   {WHITE_KNIGHT_G, 0.21258761},
 };
 
-vector<pair<int, float>> blitz_probs = {
+vector<std::pair<int, float>> blitz_probs = {
   {WHITE_PAWN_H, 0.705185533},
   {BLACK_PAWN_H, 0.694000185},
   {WHITE_PAWN_A, 0.6876176},
@@ -481,7 +479,7 @@ vector<pair<int, float>> blitz_probs = {
   {WHITE_KNIGHT_G, 0.229988366},
 };
 
-vector<pair<int, float>> rapid_probs = {
+vector<std::pair<int, float>> rapid_probs = {
   {WHITE_PAWN_H, 0.717799306},
   {BLACK_PAWN_H, 0.707557678},
   {WHITE_PAWN_A, 0.704338729},
@@ -516,7 +514,7 @@ vector<pair<int, float>> rapid_probs = {
   {WHITE_KNIGHT_G, 0.260634691},
 };
 
-vector<pair<int, float>> classical_probs = {
+vector<std::pair<int, float>> classical_probs = {
   {WHITE_PAWN_H, 0.75596571},
   {BLACK_PAWN_H, 0.74674046},
   {WHITE_PAWN_A, 0.745404184},
@@ -566,7 +564,7 @@ void GenPerm() {
   };
   */
 
-  vector<pair<string, vector<pair<int, float>>>> tableau = {
+  vector<std::pair<string, vector<std::pair<int, float>>>> tableau = {
     {"All", actual_probs},
     {"Bullet", bullet_probs},
     {"Blitz", blitz_probs},
@@ -620,7 +618,7 @@ void GenPerm() {
   for (int i = 0; i < tableau.size(); i++) {
     float yy = MARGIN_TOP;
     const string &header = tableau[i].first;
-    const vector<pair<int, float>> &col = tableau[i].second;
+    const vector<std::pair<int, float>> &col = tableau[i].second;
 
     fprintf(f, "%s\n",
             TextSVG::Text(xcol, yy, "sans-serif",
@@ -651,7 +649,7 @@ void GenPerm() {
 
       // Draw connector.
       if (i != tableau.size() - 1) {
-        const vector<pair<int, float>> &ncol = tableau[i + 1].second;
+        const vector<std::pair<int, float>> &ncol = tableau[i + 1].second;
         // Get the index of the piece from this row.
         // if (p == WHITE_KING)
         for (int nrow = 0; nrow < ncol.size(); nrow++) {
@@ -668,29 +666,29 @@ void GenPerm() {
               (ROWHEIGHT * nrow) - (ROWHEIGHT / 2.0);
 
             if (idist > 0)
-            fprintf(f, "<path fill=\"none\" "
-                    "stroke=\"#000\" stroke-opacity=\"%.2f\" "
-                    "stroke-width=\"1px\" "
-                    "d=\"M%s %s "
-                    "C%s %s, %s %s, %s %s"
+              fprintf(f, "<path fill=\"none\" "
+                      "stroke=\"#000\" stroke-opacity=\"%.2f\" "
+                      "stroke-width=\"1px\" "
+                      "d=\"M%s %s "
+                      "C%s %s, %s %s, %s %s"
 
-                    // "L%s %s"
-                    "\" />\n",
-                    dist,
+                      // "L%s %s"
+                      "\" />\n",
+                      dist,
 
-                    TextSVG::Rtos(sx).c_str(),
-                    TextSVG::Rtos(sy).c_str(),
+                      TextSVG::Rtos(sx).c_str(),
+                      TextSVG::Rtos(sy).c_str(),
 
-                    // Curve control points.
-                    TextSVG::Rtos(sx * 0.5 + dx * 0.5).c_str(),
-                    TextSVG::Rtos(sy).c_str(),
+                      // Curve control points.
+                      TextSVG::Rtos(sx * 0.5 + dx * 0.5).c_str(),
+                      TextSVG::Rtos(sy).c_str(),
 
-                    TextSVG::Rtos(sx * 0.5 + dx * 0.5).c_str(),
-                    TextSVG::Rtos(dy).c_str(),
+                      TextSVG::Rtos(sx * 0.5 + dx * 0.5).c_str(),
+                      TextSVG::Rtos(dy).c_str(),
 
-                    // end
-                    TextSVG::Rtos(dx).c_str(),
-                    TextSVG::Rtos(dy).c_str());
+                      // end
+                      TextSVG::Rtos(dx).c_str(),
+                      TextSVG::Rtos(dy).c_str());
 
             break;
           }
