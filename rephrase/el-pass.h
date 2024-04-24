@@ -82,17 +82,18 @@ struct Pass {
 
   virtual const Pat *DoPat(const Pat *p, Args... args) {
     switch (p->type) {
-    case PatType::VAR: return DoVarPat(p->str, args...);
-    case PatType::WILD: return DoWildPat(args...);
-    case PatType::TUPLE: return DoTuplePat(p->children, args...);
-    case PatType::RECORD: return DoRecordPat(p->str_children, args...);
-    case PatType::OBJECT: return DoObjectPat(p->str, p->str_children, args...);
-    case PatType::ANN: return DoAnnPat(p->a, p->ann, args...);
-    case PatType::AS: return DoAsPat(p->a, p->b, args...);
-    case PatType::INT: return DoIntPat(p->integer, args...);
-    case PatType::STRING: return DoStringPat(p->str, args...);
-    case PatType::BOOL: return DoBoolPat(p->boolean, args...);
-    case PatType::APP: return DoAppPat(p->str, p->a, args...);
+    case PatType::VAR: return DoVarPat(p->str, p->pos, args...);
+    case PatType::WILD: return DoWildPat(p->pos, args...);
+    case PatType::TUPLE: return DoTuplePat(p->children, p->pos, args...);
+    case PatType::RECORD: return DoRecordPat(p->str_children, p->pos, args...);
+    case PatType::OBJECT:
+      return DoObjectPat(p->str, p->str_children, p->pos, args...);
+    case PatType::ANN: return DoAnnPat(p->a, p->ann, p->pos, args...);
+    case PatType::AS: return DoAsPat(p->a, p->b, p->pos, args...);
+    case PatType::INT: return DoIntPat(p->integer, p->pos, args...);
+    case PatType::STRING: return DoStringPat(p->str, p->pos, args...);
+    case PatType::BOOL: return DoBoolPat(p->boolean, p->pos, args...);
+    case PatType::APP: return DoAppPat(p->str, p->a, p->pos, args...);
     }
     LOG(FATAL) << "Unhandled type in el::Pass::DoPat!";
     return nullptr;
@@ -185,7 +186,7 @@ struct Pass {
       Args... args) {
     std::vector<std::pair<std::string, const Exp *>> vv;
     for (const auto &[s, e] : v) vv.emplace_back(s, DoExp(e, args...));
-    return pool->Record(vv);
+    return pool->Record(vv, pos);
   }
 
   virtual const Exp *DoObject(
@@ -255,7 +256,7 @@ struct Pass {
                            Args... args) {
     std::vector<const Dec *> dd;
     for (const Dec *d : ds) dd.push_back(DoDec(d, args...));
-    return pool->Let(dd, DoExp(e, args...));
+    return pool->Let(dd, DoExp(e, args...), pos);
   }
 
   virtual const Exp *DoIf(const Exp *cond, const Exp *t, const Exp *f,
@@ -273,7 +274,7 @@ struct Pass {
 
   virtual const Exp *DoAnn(const Exp *e, const Type *t,
                            size_t pos, Args... args) {
-    return pool->Ann(DoExp(e, args...), DoType(t, args...));
+    return pool->Ann(DoExp(e, args...), DoType(t, args...), pos);
   }
 
   virtual const Exp *DoAndalso(
@@ -376,15 +377,16 @@ struct Pass {
 
   // Patterns.
 
-  virtual const Pat *DoVarPat(const std::string &v, Args... args) {
-    return pool->VarPat(v);
+  virtual const Pat *DoVarPat(const std::string &v, size_t pos, Args... args) {
+    return pool->VarPat(v, pos);
   }
 
-  virtual const Pat *DoWildPat(Args... args) {
+  virtual const Pat *DoWildPat(size_t pos, Args... args) {
     return pool->WildPat();
   }
 
   virtual const Pat *DoTuplePat(const std::vector<const Pat *> &v,
+                                size_t pos,
                                 Args... args) {
     std::vector<const Pat *> ps;
     for (const Pat *p : v) {
@@ -395,6 +397,7 @@ struct Pass {
 
   virtual const Pat *DoRecordPat(
       const std::vector<std::pair<std::string, const Pat *>> &v,
+      size_t pos,
       Args... args) {
     std::vector<std::pair<std::string, const Pat *>> ps;
     for (const auto &[lab, p] : v) {
@@ -406,6 +409,7 @@ struct Pass {
   virtual const Pat *DoObjectPat(
       const std::string &objtype,
       const std::vector<std::pair<std::string, const Pat *>> &v,
+      size_t pos,
       Args... args) {
     std::vector<std::pair<std::string, const Pat *>> ps;
     for (const auto &[lab, p] : v) {
@@ -414,28 +418,31 @@ struct Pass {
     return pool->ObjectPat(objtype, std::move(ps));
   }
 
-  virtual const Pat *DoAnnPat(const Pat *a, const Type *t, Args... args) {
-    return pool->AnnPat(DoPat(a, args...), DoType(t, args...));
+  virtual const Pat *DoAnnPat(const Pat *a, const Type *t,
+                              size_t pos, Args... args) {
+    return pool->AnnPat(DoPat(a, args...), DoType(t, args...), pos);
   }
 
-  virtual const Pat *DoAsPat(const Pat *a, const Pat *b, Args... args) {
+  virtual const Pat *DoAsPat(const Pat *a, const Pat *b,
+                             size_t pos, Args... args) {
     return pool->AsPat(DoPat(a, args...), DoPat(b, args...));
   }
 
-  virtual const Pat *DoIntPat(const BigInt &bi, Args... args) {
+  virtual const Pat *DoIntPat(const BigInt &bi, size_t pos, Args... args) {
     return pool->IntPat(bi);
   }
 
-  virtual const Pat *DoBoolPat(bool b, Args... args) {
+  virtual const Pat *DoBoolPat(bool b, size_t pos, Args... args) {
     return pool->BoolPat(b);
   }
 
-  virtual const Pat *DoStringPat(const std::string &s, Args... args) {
+  virtual const Pat *DoStringPat(const std::string &s,
+                                 size_t pos, Args... args) {
     return pool->StringPat(s);
   }
 
   virtual const Pat *DoAppPat(const std::string &s, const Pat *p,
-                              Args... args) {
+                              size_t pos, Args... args) {
     return pool->AppPat(s, DoPat(p, args...));
   }
 

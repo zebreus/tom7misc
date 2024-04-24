@@ -95,6 +95,20 @@ static void TestParse() {
     CHECK(e->d == -1234.5);
   }
 
+  {
+    const Exp *e = Parse("0'*'");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::INT);
+    CHECK(e->integer == 0x2A);
+  }
+
+  {
+    const Exp *e = Parse("0'☁'");
+    CHECK(e != nullptr);
+    CHECK(e->type == ExpType::INT);
+    CHECK(e->integer == 0x2601);
+  }
+
   if (VERBOSE) {
     printf("Trivial parsing OK.\n");
     fflush(stdout);

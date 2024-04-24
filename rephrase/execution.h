@@ -117,6 +117,7 @@ struct Execution {
 
   Value *Bool(bool b, State *state);
   Value *String(std::string s, State *state);
+  Value *Big(BigInt b, State *state);
   Value *Float(double d, State *state);
   Value *Node(Value *attrs, Value *children, State *state);
   Value *Unit(State *state);

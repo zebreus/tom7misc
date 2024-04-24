@@ -610,8 +610,12 @@ std::string VeryShortColorTypeString(const Type *t) {
   case TypeType::VAR:
     if (t->children.empty()) {
       return StringPrintf(AVAR("%s"), t->var.c_str());
+    } else if (t->children.size() == 1) {
+      return StringPrintf("%s " AVAR("%s"),
+                          VeryShortColorTypeString(t->children[0]).c_str(),
+                          t->var.c_str());
     } else {
-      return StringPrintf("(" AGREY("%d...") ") " AVAR("%s"),
+      return StringPrintf("(" AGREY("%d var") ") " AVAR("%s"),
                           (int)t->children.size(),
                           t->var.c_str());
     }

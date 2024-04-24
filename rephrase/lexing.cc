@@ -183,6 +183,9 @@ std::optional<std::vector<Token>> Lexing::Lex(
       // unicode prefix (char literal)
       // XXX this is currently unused
       "(?:0[Uu][0-9A-Fa-f.]*[0-9A-Fa-f][0-9A-Fa-f.]*)"
+      "|"
+      // codepoint literal 0'c'
+      "(?:0'[^']+')"
       ")");
 
   // In 1e100, the "e100" part.

@@ -257,7 +257,7 @@ bool IsPrimopTotal(Primop p) {
     return false;
   case Primop::STRING_REPLACE: return true;
   case Primop::STRING_FIRST_CODEPOINT:
-    // Returns empty string if string is empty, so this always succeeds.
+    // Returns zero if string is empty, so this always succeeds.
     return true;
   case Primop::NORMALIZE_WHITESPACE: return true;
 
@@ -422,7 +422,7 @@ PrimopType(il::AstPool *pool, Primop p) {
     // string-replace(haystack, needle, replacement)
     return {{}, pool->Arrow(pool->Product({String, String, String}), String)};
   case Primop::STRING_FIRST_CODEPOINT:
-    return {{}, pool->Arrow(String, String)};
+    return {{}, pool->Arrow(String, Obj)};
   case Primop::NORMALIZE_WHITESPACE: return {{}, pool->Arrow(String, String)};
   case Primop::STRING_LOWERCASE: return {{}, pool->Arrow(String, String)};
   case Primop::STRING_UPPERCASE: return {{}, pool->Arrow(String, String)};

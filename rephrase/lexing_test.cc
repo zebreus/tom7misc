@@ -94,6 +94,11 @@ static void TestLex() {
             LBRACKET, LAYOUT_COMMENT, RBRACKET,
             LAYOUT_LIT, RBRACKET);
 
+
+  CHECK_LEX("0'c'", NUMERIC_LIT);
+  CHECK_LEX("0'∃'", NUMERIC_LIT);
+  // TODO: Should allow 0'\'', right?
+
   CHECK_LEX("\"string\\nliteral\"", STR_LIT);
 }
 

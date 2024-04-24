@@ -207,7 +207,7 @@ Elaboration::ElabDec(
       // If not mutually recursive, do this the easy way.
       return pattern_compilation->CompileIrrefutable(
           G,
-          el_pool->VarPat(fun.name),
+          el_pool->VarPat(fun.name, pos),
           el_pool->Fn(fun.name, GetSimpleClauses(fun), pos));
     } else {
       // For mutually recursive functions, we hoist them out to
@@ -759,7 +759,7 @@ Elaboration::ElabDec(
     // generate { f1 = f1, f2 = f2, ... }
     std::vector<std::pair<std::string, const el::Pat *>> pats;
     for (const auto &[f, t] : rtype->Record()) {
-      pats.emplace_back(f, el_pool->VarPat(f));
+      pats.emplace_back(f, el_pool->VarPat(f, pos));
     }
     const el::Pat *rpat = el_pool->RecordPat(pats);
 
@@ -1095,14 +1095,13 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
 
     // XXX Get proper location info here.
     // Also, can include this in the error string.
-    size_t pos = 0;
     rows.emplace_back(
         el_pool->WildPat(),
-        el_pool->Fail(el_pool->String("unhandled match", pos)));
+        el_pool->Fail(el_pool->String("unhandled match", el_exp->pos)));
 
     // Now translate the pattern.
     const auto [body, body_type] =
-      pattern_compilation->Compile(GG, arg, dom, rows, pos);
+      pattern_compilation->Compile(GG, arg, dom, rows, el_exp->pos);
 
     Unification::Unify(Error("fn body"), body_type, cod);
 

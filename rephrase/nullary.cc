@@ -72,7 +72,7 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
                    size_t pos,
                    FunctionalSet<std::string> nullary_ctors) override {
     const auto &[dd, nn] = DoDecs(ds, nullary_ctors);
-    return pool->Let(dd, DoExp(e, nullary_ctors.Insert(nn)));
+    return pool->Let(dd, DoExp(e, nullary_ctors.Insert(nn)), pos);
   }
 
   const Dec *DoLocalDec(const std::vector<const Dec *> &decs1,
@@ -93,11 +93,12 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
   }
 
   const Pat *DoVarPat(const std::string &v,
+                      size_t pos,
                       FunctionalSet<std::string> nullary_ctors) override {
     if (nullary_ctors.Contains(v)) {
       return pool->AppPat(v, pool->RecordPat({}));
     } else {
-      return pool->VarPat(v);
+      return pool->VarPat(v, pos);
     }
   }
 
@@ -105,7 +106,7 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
                    size_t pos,
                    FunctionalSet<std::string> nullary_ctors) override {
     if (nullary_ctors.Contains(v)) {
-      return pool->App(pool->Var(v, pos), pool->Record({}), pos);
+      return pool->App(pool->Var(v, pos), pool->Record({}, pos), pos);
     } else {
       return pool->Var(v, pos);
     }

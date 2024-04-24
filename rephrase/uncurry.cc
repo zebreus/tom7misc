@@ -78,13 +78,15 @@ struct UncurryPass : public Pass<> {
         // Wrap in fn expressions.
         // Note that we do NOT include v1 here.
         for (int i = (int)width - 1; i > 0; i--) {
-          body = pool->Fn("", {std::make_pair(pool->VarPat(v[i]), body)}, pos);
+          body =
+            pool->Fn("", {std::make_pair(pool->VarPat(v[i], pos), body)}, pos);
         }
 
         // Because we use it as the argument to the generated fun decl.
         CHECK(ffd.clauses.empty());
-        ffd.clauses.emplace_back(std::vector<const Pat *>{pool->VarPat(v[0])},
-                                 body);
+        ffd.clauses.emplace_back(
+            std::vector<const Pat *>{pool->VarPat(v[0], pos)},
+            body);
       }
 
       ffs.push_back(std::move(ffd));

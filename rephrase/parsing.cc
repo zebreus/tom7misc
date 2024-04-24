@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -204,6 +205,20 @@ const Exp *Parsing::Parse(AstPool *pool,
           }
           return b;
 
+        } if (r == '\'') {
+          // Codepoint literal.
+
+          std::string_view ss(s);
+          ss.remove_prefix(2);
+          std::vector<uint32_t> cps = Util::UTF8Codepoints(ss);
+          // Including the closing '
+          CHECK(cps.size() == 2 && cps[1] == '\'') <<
+            "Invalid codepoint literal " <<
+            s << ". It must be UTF8 that decodes to exactly one "
+            "codepoint, but got " << cps.size() - 1;
+
+          return BigInt(cps[0]);
+
         } else {
           LOG(FATAL) << "unimplemented: Numeric literals of the form "
                      << s;
@@ -394,14 +409,18 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // In record or objects, we allow writing just "lab" to mean "lab = lab".
   const auto MaybeLabelPun =
-    [pool](const std::pair<std::string, std::optional<const Pat *>> &p) {
+    [pool, &BytePos](const std::tuple<
+           std::pair<std::string, std::optional<const Pat *>>,
+           size_t,
+           size_t> &p_pos) {
+      const auto &[p, token_start, token_len] = p_pos;
       const auto &[lab, opat] = p;
       if (opat.has_value()) {
         // XXX check that this is a valid identifier!
         // we should not allow {1}.
         return std::make_pair(lab, opat.value());
       } else {
-        return std::make_pair(lab, pool->VarPat(lab));
+        return std::make_pair(lab, pool->VarPat(lab, BytePos(token_start)));
       }
     };
 
@@ -413,15 +432,18 @@ const Exp *Parsing::Parse(AstPool *pool,
       // lab : type
       // (which is syntactic sugar for lab = lab).
       auto OneField =
-        ((Label && (IsToken<COLON>() >> TypeExpr))
-         >[&](const auto &p) -> std::pair<std::string, const Pat *> {
+        (Mark(Label && (IsToken<COLON>() >> TypeExpr))
+         >[&](const auto &p_pos) -> std::pair<std::string, const Pat *> {
+          const auto &[p, token_start, token_len] = p_pos;
           const auto &[lab, ty] = p;
+          const size_t pos = BytePos(token_start);
           return std::make_pair(lab,
                                 pool->AnnPat(
-                                    pool->VarPat(lab),
-                                    ty));
+                                    pool->VarPat(lab, pos),
+                                    ty,
+                                    pos));
         }) ||
-        ((Label && Opt(IsToken<EQUALS>() >> Pattern))
+        (Mark(Label && Opt(IsToken<EQUALS>() >> Pattern))
          >MaybeLabelPun);
 
       return Separate0(OneField, IsToken<COMMA>())
@@ -433,7 +455,7 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   const auto ObjectPatContents = [&](const auto &Pattern) {
       // Like above, but object labels have to be proper identifiers.
-      auto OneField = (Id && Opt(IsToken<EQUALS>() >> Pattern))
+      auto OneField = Mark(Id && Opt(IsToken<EQUALS>() >> Pattern))
          >MaybeLabelPun;
 
       return
@@ -503,15 +525,17 @@ const Exp *Parsing::Parse(AstPool *pool,
           // are either identifiers (with the appropriate fixity) or
           // atomic patterns (atoms).
           auto FixityElement =
-            (Id >[&](const std::string &v) {
+            (Mark(Id) >[&](const auto &v_pos) {
+                const auto &[v, token_start, token_len] = v_pos;
                 const auto [fixity, assoc, prec] = GetFixity(v);
                 PatFixityElt item;
                 item.fixity = fixity;
                 item.assoc = assoc;
                 item.precedence = prec;
                 // A symbol can only be a var or a binary infix operator.
+                size_t pos = BytePos(token_start);
                 if (fixity == Fixity::Atom) {
-                  item.item = pool->VarPat(v);
+                  item.item = pool->VarPat(v, pos);
                 } else {
                   CHECK(fixity == Fixity::Infix);
                   item.binop = [&, v](const Pat *a, const Pat *b) {
@@ -544,11 +568,13 @@ const Exp *Parsing::Parse(AstPool *pool,
                 }
               };
 
-          return (AsPattern && Opt(IsToken<COLON>() >> TypeExpr))
+          return (AsPattern && Opt(Mark(IsToken<COLON>() >> TypeExpr)))
             >[&](const auto &pair) -> const Pat * {
-                const auto &[pat, typ] = pair;
-                if (typ.has_value()) {
-                  return pool->AnnPat(pat, typ.value());
+                const auto &[pat, typ_pos] = pair;
+                if (typ_pos.has_value()) {
+                  const auto &[typ, token_start, token_length] =
+                    typ_pos.value();
+                  return pool->AnnPat(pat, typ, BytePos(token_start));
                 } else {
                   return pat;
                 }
@@ -562,7 +588,10 @@ const Exp *Parsing::Parse(AstPool *pool,
   // the singleton instance of app patterns), we need to re-add that
   // case to atomic patterns for fun decls.
   auto CurryPattern = AtomicPattern ||
-    (Id >[&](const std::string &v) { return pool->VarPat(v); });
+    (Mark(Id) >[&](const auto &v_pos) {
+        const auto &[v, token_start, token_len] = v_pos;
+        return pool->VarPat(v, BytePos(token_start));
+      });
 
   // Expressions.
 
@@ -598,10 +627,12 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto RecordContents = [&](const auto &Expr) {
       // Allow just { x } ?
       return
-        Separate0(Label && (IsToken<EQUALS>() >> Expr),
-                  IsToken<COMMA>())
-        >[&](const std::vector<std::pair<std::string, const Exp *>> &les) {
-            return pool->Record(les);
+        Mark(Separate0(Label && (IsToken<EQUALS>() >> Expr),
+                       IsToken<COMMA>()))
+        >[&](const auto &les_pos) {
+            // const std::vector<std::pair<std::string, const Exp *>> &les
+            const auto &[les, token_start, token_end] = les_pos;
+            return pool->Record(les, BytePos(token_start));
           };
     };
 
@@ -679,12 +710,13 @@ const Exp *Parsing::Parse(AstPool *pool,
     };
 
   const auto LetExpr = [&](const auto &Expr, const auto &Decl) {
-      return (((IsToken<LET>() >> *Decl << IsToken<IN>()) &&
-              // Trailing semicolon is allowed, unlike SML.
-              (Separate(Expr, IsToken<SEMICOLON>()) <<
-               Opt(IsToken<SEMICOLON>())) <<
-              IsToken<END>())
-             >[&](const auto &p) {
+      return (Mark((IsToken<LET>() >> *Decl << IsToken<IN>()) &&
+                   // Trailing semicolon is allowed, unlike SML.
+                   (Separate(Expr, IsToken<SEMICOLON>()) <<
+                    Opt(IsToken<SEMICOLON>())) <<
+                   IsToken<END>())
+             >[&](const auto &p_pos) {
+                 const auto &[p, token_start, token_len] = p_pos;
                  const auto &[ds, es] = p;
                  CHECK(!es.empty()) << "Impossible. Separate must "
                    "parse at least one exp!";
@@ -695,7 +727,8 @@ const Exp *Parsing::Parse(AstPool *pool,
                    decs.push_back(pool->ValDec(pool->WildPat(), es[i]));
                  }
 
-                 return pool->Let(std::move(decs), es.back());
+                 return pool->Let(std::move(decs), es.back(),
+                                  BytePos(token_start));
                }) ||
         (Mark(IsToken<LET>()) >[&](const auto &err) -> const Exp * {
             const auto &[_, start, length] = err;
@@ -771,18 +804,19 @@ const Exp *Parsing::Parse(AstPool *pool,
           "sugar #l/n, l must be a numeric label that's in range "
           "for a tuple with n elements. Got: " << lab << "/" << num;
 
+        size_t byte_pos = BytePos(token_start);
         std::string v = "x";
         std::vector<const Pat *> args;
         args.reserve(num);
         for (int i = 0; i < num; i++) {
           if (i + 1 == lab) {
-            args.push_back(pool->VarPat(v));
+            args.push_back(pool->VarPat(v, byte_pos));
           } else {
             args.push_back(pool->WildPat());
           }
         }
         // printf("ProjectExpr: %lld\n", (int64_t)token_start);
-        size_t byte_pos = BytePos(token_start);
+
         return pool->Fn(
             // Not recursive
             "",
@@ -844,7 +878,9 @@ const Exp *Parsing::Parse(AstPool *pool,
         // the annotation on the expression.
         const Exp *exp = e;
         if (to.has_value()) {
-          exp = pool->Ann(exp, to.value());
+          // Could get a more accurate position here (from
+          // the annotation itself...)
+          exp = pool->Ann(exp, to.value(), e->pos);
         }
         ret.clauses.emplace_back(curry_pats, exp);
       }
@@ -1096,11 +1132,12 @@ const Exp *Parsing::Parse(AstPool *pool,
             AppExpr;
 
           auto AnnExpr =
-            (AnnotatableExpr && Opt(IsToken<COLON>() >> TypeExpr))
+            (AnnotatableExpr && Opt(Mark(IsToken<COLON>() >> TypeExpr)))
             >[&](const auto &pair) {
-                const auto &[e, ot] = pair;
-                if (ot.has_value()) {
-                  return pool->Ann(e, ot.value());
+                const auto &[e, ot_pos] = pair;
+                if (ot_pos.has_value()) {
+                  const auto &[t, token_start, token_end] = ot_pos.value();
+                  return pool->Ann(e, t, BytePos(token_start));
                 } else {
                   return e;
                 }

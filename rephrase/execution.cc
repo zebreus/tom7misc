@@ -149,6 +149,11 @@ Value *Execution::Obj(map_type m, State *state) {
   return NewValue(&state->heap, std::move(m));
 }
 
+Value *Execution::Big(BigInt b, State *state) {
+  return NewValue(&state->heap, std::move(b));
+};
+
+
 Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
                           State *state) {
   switch (primop) {
@@ -795,14 +800,10 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
       return *s;
   };
 
-  auto Big = [state](BigInt b) -> Value * {
-      return NewValue(&state->heap, std::move(b));
-    };
-
   switch (primop) {
   case Primop::INT_NEG: {
     const BigInt &bi = GetInt("int_neg");
-    return Big(BigInt::Negate(bi));
+    return Big(BigInt::Negate(bi), state);
   }
 
   case Primop::FLOAT_NEG: {
@@ -812,7 +813,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::FLOAT_ROUND: {
     const double d = GetFloat("float-round");
-    return Big(BigInt(std::llround(d)));
+    return Big(BigInt(std::llround(d)), state);
   }
 
   case Primop::COS: {
@@ -854,13 +855,23 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::STRING_SIZE: {
     const std::string &s = GetString("string-size");
-    return Big(BigInt(s.size()));
+    return Big(BigInt(s.size()), state);
   }
 
   case Primop::STRING_FIRST_CODEPOINT: {
     const std::string &s = GetString("string-first-codepoint");
-    if (s.empty()) return a;
-    return String(Util::EncodeUTF8(*UTF8Codepoints(s).begin()), state);
+    if (s.empty()) return Obj({}, state);
+    const auto &[len, cp] = UTF8::UTF8ToUTF32(s.data(), s.size());
+    std::string cp_field = StringPrintf(
+        "%ccp", ObjectFieldTypeTag(ObjectFieldType::INT));
+    std::string len_field = StringPrintf(
+        "%clen", ObjectFieldTypeTag(ObjectFieldType::INT));
+    map_type m = {
+      { cp_field, Big(BigInt(cp), state) },
+      { len_field, Big(BigInt(len), state) },
+    };
+
+    return Obj(std::move(m), state);
   }
 
   case Primop::NORMALIZE_WHITESPACE: {
@@ -975,7 +986,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::LAYOUT_VEC_SIZE: {
     const auto &[attrs, children] = GetNode("layout-vec-size", a);
-    return Big(BigInt((int)children.size()));
+    return Big(BigInt((int)children.size()), state);
   }
 
   case Primop::DEBUG_PRINT_DOC: {
@@ -1006,8 +1017,8 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
       StringPrintf("%cheight",
                    bc::ObjectFieldTypeTag(bc::ObjectFieldType::INT));
     map_type obj = {
-      {width_field, Big(BigInt(image->Width()))},
-      {height_field, Big(BigInt(image->Height()))}
+      {width_field, Big(BigInt(image->Width()), state)},
+      {height_field, Big(BigInt(image->Height()), state)}
     };
     return Obj(std::move(obj), state);
   }

@@ -295,14 +295,15 @@ fun string-split small big =
   end
 
 (* PERF: This can be quite expensive! *)
-fun string-explode str =
+fun string-explode str : int list =
   let
-    fun r "" = nil
-      | r s =
-      let val c = string-first-codepoint s
-      in
-        c :: r (substr-rest (s, string-size c))
-      end
+    (* Returns empty object if string is empty. *)
+    object ISFC of { cp : int, len : int }
+    fun r s =
+      case internal-string-first-codepoint s of
+        {(ISFC) cp, len } =>
+          cp :: r (substr-rest (s, len))
+      | _ => nil
   in
     r str
   end

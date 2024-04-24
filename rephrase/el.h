@@ -132,6 +132,7 @@ struct Pat {
   BigInt integer;
   std::vector<const Pat *> children;
   std::vector<std::pair<std::string, const Pat *>> str_children;
+  size_t pos = SourceMap::BOGUS_POS;
   bool boolean = false;
   Pat(PatType t) : type(t) {}
 };
@@ -302,10 +303,11 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Record(std::vector<std::pair<std::string, const Exp *>> v) {
+  const Exp *Record(std::vector<std::pair<std::string, const Exp *>> v,
+                    size_t pos) {
     Exp *ret = NewExp(ExpType::RECORD);
     ret->str_children = std::move(v);
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 
@@ -345,11 +347,11 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Let(std::vector<const Dec *> ds, const Exp *e) {
+  const Exp *Let(std::vector<const Dec *> ds, const Exp *e, size_t pos) {
     Exp *ret = NewExp(ExpType::LET);
     ret->decs = std::move(ds);
     ret->a = e;
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 
@@ -370,11 +372,11 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Ann(const Exp *e, const Type *t) {
+  const Exp *Ann(const Exp *e, const Type *t, size_t pos) {
     Exp *ret = NewExp(ExpType::ANN);
     ret->a = e;
     ret->t = t;
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 
@@ -472,24 +474,28 @@ struct AstPool {
     Pat *ret = NewPat(PatType::APP);
     ret->str = std::move(s);
     ret->a = p;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Pat *StringPat(std::string s) {
     Pat *ret = NewPat(PatType::STRING);
     ret->str = std::move(s);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Pat *IntPat(BigInt i) {
     Pat *ret = NewPat(PatType::INT);
     ret->integer = std::move(i);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Pat *BoolPat(bool b) {
     Pat *ret = NewPat(PatType::BOOL);
     ret->boolean = b;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -498,19 +504,22 @@ struct AstPool {
     Pat *ret = NewPat(PatType::AS);
     ret->a = a;
     ret->b = b;
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
-  const Pat *VarPat(const std::string &v) {
+  const Pat *VarPat(const std::string &v, size_t pos) {
     Pat *ret = NewPat(PatType::VAR);
     ret->str = v;
+    ret->pos = pos;
     return ret;
   }
 
-  const Pat *AnnPat(const Pat *p, const Type *t) {
+  const Pat *AnnPat(const Pat *p, const Type *t, size_t pos) {
     Pat *ret = NewPat(PatType::ANN);
     ret->a = p;
     ret->ann = t;
+    ret->pos = pos;
     return ret;
   }
 
@@ -521,12 +530,14 @@ struct AstPool {
   const Pat *TuplePat(std::vector<const Pat *> v) {
     Pat *ret = NewPat(PatType::TUPLE);
     ret->children = std::move(v);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
   const Pat *RecordPat(std::vector<std::pair<std::string, const Pat *>> v) {
     Pat *ret = NewPat(PatType::RECORD);
     ret->str_children = std::move(v);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
     return ret;
   }
 
@@ -535,6 +546,8 @@ struct AstPool {
     Pat *ret = NewPat(PatType::OBJECT);
     ret->str = std::move(objtype);
     ret->str_children = std::move(v);
+    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+
     return ret;
   }
 

@@ -22,6 +22,7 @@
 #include "elaboration.h"
 #include "il-util.h"
 #include "il.h"
+#include "inclusion.h"
 #include "unification.h"
 #include "util.h"
 
@@ -391,7 +392,7 @@ struct PatternCompilation::Matrix {
   const el::Exp *def = nullptr;
 
   // The source position of the pattern, for errors.
-  size_t pos = 0;
+  size_t pos = SourceMap::BOGUS_POS + 7'000'000 + __LINE__;
 
   // Controls whether we print error messages for redundant
   // matches. For compiler-generated patterns, this is harmless
@@ -529,11 +530,13 @@ void PatternCompilation::CheckAffine(const Pat *orig_pat) const {
 
 // let nv = objv in body
 const el::Exp *PatternCompilation::SimpleBind(std::string nv, std::string objv,
-                                              const el::Exp *body) {
+                                              const el::Exp *body,
+                                              size_t pos) {
   el::AstPool *el_pool = elab->el_pool;
   return el_pool->Let(
-      {el_pool->ValDec(el_pool->VarPat(nv), el_pool->Var(objv, body->pos))},
-      body);
+      {el_pool->ValDec(el_pool->VarPat(nv, pos),
+                       el_pool->Var(objv, pos))},
+      body, pos);
 }
 
 std::pair<const Exp *, const Type *> PatternCompilation::Comp(
@@ -580,7 +583,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
         if (VERBOSE) {
           printf("Cleaned var " ABLUE("%s") "\n", nv.c_str());
         }
-        matrix.rows[y] = SimpleBind(nv, matrix.objs[x], matrix.rows[y]);
+        matrix.rows[y] = SimpleBind(nv, matrix.objs[x], matrix.rows[y],
+                                    matrix.pos);
         matrix.Cell(x, y) = elab->el_pool->WildPat();
       }
 
@@ -816,7 +820,7 @@ PatternCompilation::SplitIntPattern(
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
     elab->el_pool->App(elab->el_pool->Var(el_cont_var, matrix.pos),
-                       elab->el_pool->Record({}),
+                       elab->el_pool->Record({}, matrix.pos),
                        matrix.pos);
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
@@ -927,7 +931,7 @@ PatternCompilation::SplitBoolPattern(
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
     elab->el_pool->App(elab->el_pool->Var(el_cont_var, matrix.pos),
-                       elab->el_pool->Record({}),
+                       elab->el_pool->Record({}, matrix.pos),
                        matrix.pos);
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, G, x);
@@ -1068,7 +1072,7 @@ PatternCompilation::SplitStringPattern(
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
     elab->el_pool->App(elab->el_pool->Var(el_cont_var, matrix.pos),
-                       elab->el_pool->Record({}),
+                       elab->el_pool->Record({}, matrix.pos),
                        matrix.pos);
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
@@ -1279,7 +1283,7 @@ PatternCompilation::SplitAppPattern(
   // Failure continuation calls the hoisted expression.
   const el::Exp *failure_cont =
     elab->el_pool->App(elab->el_pool->Var(el_cont_var, matrix.pos),
-                       elab->el_pool->Record({}),
+                       elab->el_pool->Record({}, matrix.pos),
                        matrix.pos);
 
   const auto &[obj_exp, obj_type] = matrix.GetObjIL(elab->pool, GG, x);
@@ -1557,7 +1561,7 @@ PatternCompilation::SplitObjectPattern(
   // Failure continuation calls the hoisted expression.
   const el::Exp *el_failure_cont =
     elab->el_pool->App(elab->el_pool->Var(el_cont_var, matrix.pos),
-                       elab->el_pool->Record({}),
+                       elab->el_pool->Record({}, matrix.pos),
                        matrix.pos);
 
   const il::Exp *il_failure_cont =
@@ -1727,12 +1731,13 @@ PatternCompilation::SplitRecordPattern(
                      matrix.types[x],
                      elab->pool->RecordType(record_type));
 
-  auto GetLabel = [&matrix](const Pat *pat, const std::string &lab) {
+  auto GetLabel = [&Error, &matrix](const Pat *pat, const std::string &lab) {
       CHECK(pat->type == PatType::RECORD);
       for (const auto &[plab, p] : pat->str_children) {
         if (plab == lab) return p;
       }
-      CHECK(false) << "Expected to find label " << lab << " in "
+      CHECK(false) << Error("record pattern column")() <<
+        "Expected to find label " << lab << " in "
         "record pattern (due to its presence in other patterns from "
         "the same column): " << PatString(pat) << "\nMatrix:\n" <<
         matrix.ToString();
@@ -1825,7 +1830,7 @@ PatternCompilation::CompileIrrefutable(
 
   // TODO: We'd probably get better error messages if we first do
   // a syntactic check for irrefutability.
-  bool valuable = el::IsValuable(rhs);
+  const bool valuable = el::IsValuable(rhs);
 
   const auto &[decs, binds, GG] =
     CompileIrrefutableRec(G, pat, re, rt, valuable);
@@ -1858,13 +1863,14 @@ PatternCompilation::CompileIrrefutableRec(
   el::AstPool *el_pool = elab->el_pool;
   il::AstPool *pool = elab->pool;
 
-  // XXX get a real pos (from pat? arg?)
-  const size_t pos = 0;
+  const size_t pos = pat->pos;
 
-  auto Error = [](const std::string &msg) {
+  auto Error = [this, pos](const std::string &msg) {
       return std::function<std::string()>(
-          [msg]() {
-            return StringPrintf("Pattern compilation (irrefutable): %s",
+          [this, msg, pos]() {
+            return StringPrintf("%s"
+                                "Pattern compilation (irrefutable): %s",
+                                this->elab->ErrorAtPos(pos).c_str(),
                                 msg.c_str());
           });
     };
@@ -1885,7 +1891,7 @@ PatternCompilation::CompileIrrefutableRec(
           break;
         }
         case el::PatType::AS:
-          // TODO: This can be supported (with both sides are irrefutable),
+          // TODO: This can be supported (when both sides are irrefutable),
           // but we would need to change the approach.
           LOG(FATAL) << "Pattern must be irrefutable, but got as: " <<
             PatString(pat);

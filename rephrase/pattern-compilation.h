@@ -57,7 +57,7 @@ struct PatternCompilation {
   void CheckAffine(const el::Pat *orig_pat) const;
 
   const el::Exp *SimpleBind(std::string nv, std::string objv,
-                            const el::Exp *body);
+                            const el::Exp *body, size_t pos);
 
   std::tuple<std::vector<Elaboration::ILDec>,
              std::vector<ElabContext::Binding>,
