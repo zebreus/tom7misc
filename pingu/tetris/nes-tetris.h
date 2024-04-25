@@ -2,17 +2,13 @@
 #ifndef _PINGU_NES_TETRIS_H
 #define _PINGU_NES_TETRIS_H
 
+#include <array>
 #include <string>
 #include <vector>
-#include <memory>
 #include <cstdint>
-#include <cmath>
-#include <unordered_set>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
-#include "image.h"
 
 #include "tetris.h"
 
@@ -66,6 +62,7 @@ inline std::string RNGString(RNGState s) {
 // below). Its period is 32767.
 [[maybe_unused]]
 inline RNGState NextRNG(RNGState s) {
+  [[maybe_unused]]
   uint8_t x = 17;
   uint8_t y = 2;
   // this is zeropage[x], i.e. rng1
@@ -136,9 +133,9 @@ inline RNGState NextRNG(RNGState s) {
 [[maybe_unused]]
 inline RNGState FastNextRNG(RNGState s) {
   // Pack
-  uint16 state = (s.rng1 << 8) | s.rng2;
+  uint16_t state = (s.rng1 << 8) | s.rng2;
 
-  uint16 carry = ((state >> 9) ^ (state >> 1)) & 1;
+  uint16_t carry = ((state >> 9) ^ (state >> 1)) & 1;
   state = (state >> 1) | (carry << 15);
 
   // Unpack.
@@ -197,14 +194,14 @@ inline RNGState NextPiece(RNGState s) {
   // previous.
 
   // printf("Re-roll! a=%02x  rng = %02x%02x ", a, s.rng1, s.rng2);
-  
+
   //  ldx #$17
   //  ldy #$02
   //  jsr $ab47  (NextRNG)
   s = NextRNG(s);
 
   // printf("-> %02x%02x\n", s.rng1, s.rng2);
-  
+
   //  lda $0017
   a = s.rng1;
   //  and #$07
@@ -221,7 +218,7 @@ inline RNGState NextPiece(RNGState s) {
   // last_drop both have known ranges.
 
   // printf("At 992a, a=%02x\n", a);
-  
+
   //  cmp #$07
   carry_flag = (a >= 0x07);
   //  bcc $9934
@@ -273,7 +270,7 @@ inline RNGState FastNextPiece(RNGState s) {
     // this would be an improvement on this code, btw
     // a = ((s.rng2 & 7) ^ s.last_drop) % 7;
   }
-  
+
   s.last_drop = PIECES[a];
   return s;
 }
@@ -321,19 +318,19 @@ inline Shape DropShape(Piece p) {
 // Draw the shape on on the board (20x10, NES format) using the given
 // byte. The x,y coordinate is the BOTTOM left of the shape.
 inline void DrawShapeOnBoard(uint8_t b, Shape shape, int x, int y,
-							 std::vector<uint8_t> *board) {
+               std::vector<uint8_t> *board) {
 
   std::array<uint16_t, 4> mask = ShapeMaskInCol(shape, x);
   for (int my = 0; my < 4; my++) {
-	int yy = y - 3 + my;
-	if (yy < 0 || yy >= 20) continue;
-	
-	uint16_t m = mask[my];
-	for (int x = 0; x < 10; x++) {
-	  if (m & (1 << (9 - x))) {
-		(*board)[yy * 10 + x] = b;
-	  }
-	}
+  int yy = y - 3 + my;
+  if (yy < 0 || yy >= 20) continue;
+
+  uint16_t m = mask[my];
+  for (int x = 0; x < 10; x++) {
+    if (m & (1 << (9 - x))) {
+    (*board)[yy * 10 + x] = b;
+    }
+  }
   }
 }
 

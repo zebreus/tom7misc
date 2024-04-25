@@ -1,7 +1,13 @@
 
 #include "encoding.h"
 
+#include <array>
+#include <cstdint>
+#include <cstdio>
+#include <map>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "base/stringprintf.h"
 

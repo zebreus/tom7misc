@@ -1,25 +1,18 @@
+#include <cstdio>
+#include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <cstdint>
-#include <cmath>
-#include <unordered_set>
 
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../fceulib/simplefm7.h"
-#include "../fceulib/x6502.h"
+#include "emulator.h"
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
 #include "image.h"
 #include "timer.h"
 #include "threadutil.h"
-
-#include "tetris.h"
-#include "nes-tetris.h"
-#include "encoding.h"
 
 #include "movie-maker.h"
 
@@ -31,10 +24,10 @@ static constexpr const char *ROMFILE = "tetris.nes";
 
 int main(int argc, char **argv) {
   Timer run_timer;
-  
+
 
   std::vector<uint8_t> pattern = { 0x2e, 0x00, 0x00 };
-  
+
   std::vector<std::vector<uint8_t>> patterns;
 
   vector<uint8> moves =
@@ -54,17 +47,17 @@ int main(int argc, char **argv) {
   printf("Planned in %.2f sec\n", run_timer.Seconds());
 
   std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
-  
+
   Asynchronously async(16);
 
   std::mutex m;
-  
+
   const int do_frames = (int)moves.size();
   int frame_idx = 0;
   for (int frame = 0; frame < do_frames; frame++) {
     ImageRGBA img(1920, 1080);
     img.Clear32(0x000000FF);
-    
+
     emu->StepFull(moves[frame], 0);
 
     // And draw to frame.
@@ -91,6 +84,6 @@ int main(int argc, char **argv) {
         });
     }
   }
-  
+
   return 0;
 }

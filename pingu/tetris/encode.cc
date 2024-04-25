@@ -1,16 +1,20 @@
 
+#include <cstdarg>
+#include <ctime>
 #ifdef __MINGW32__
 #include <windows.h>
+#include <minwindef.h>
+#include <processenv.h>
+#include <processthreadsapi.h>
+#include <wincon.h>
+#include <winnt.h>
 #undef ARRAYSIZE
 #endif
 
 #include <algorithm>
 #include <string>
 #include <vector>
-#include <memory>
 #include <cstdint>
-#include <cmath>
-#include <unordered_set>
 #include <bit>
 #include <utility>
 #include <functional>
@@ -21,11 +25,9 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "arcfour.h"
-#include "image.h"
 #include "timer.h"
 #include "threadutil.h"
 #include "randutil.h"
-#include "util.h"
 
 #include "tetris.h"
 #include "encoding.h"
@@ -117,6 +119,7 @@ using Tetris = TetrisDepth<6>;
 // or maybe the effectively smaller playfield) but still
 // very tractable.
 
+[[maybe_unused]]
 constexpr int REPORT_EVERY = 10;
 
 [[maybe_unused]]
@@ -815,7 +818,7 @@ static void EndlessImprove() {
   int moves_saved = 0;
   Timer run_timer;
   for (const auto &[idx, movie] : startsols) {
-    CHECK(idx >= 0 && idx < 256) << idx;
+    CHECK(idx >= 0 /* && idx < 256 */) << idx;
     best[idx] = movie;
   }
 
@@ -864,6 +867,7 @@ static void EndlessImprove() {
 
   ArcFour rc(StringPrintf("ro-%lld", time(nullptr)));
 
+  [[maybe_unused]]
   const uint8 random_offset = rc.Byte();
 
   // Skip if this many moves or fewer
@@ -872,7 +876,7 @@ static void EndlessImprove() {
   ParallelFan(
       MAX_PARALLELISM,
       [&m, &working, &improved, &skipping, &best,
-       &moves_saved, random_offset,
+       &moves_saved,
        &PrintTable](int thread_idx) {
         ArcFour rc(StringPrintf("%d.th.%lld", thread_idx, time(nullptr)));
 
@@ -927,7 +931,7 @@ static void EndlessImprove() {
          }
        }
        std::function<void(int)> Phase1Callback =
-         [&m, &working, &PrintTable, target](int phase1) {
+         [&PrintTable](int phase1) {
            // WriteWithLock(&m, &best[idx], phase1);
            // WriteWithLock(&m, &working[target], 2);
            PrintTable();

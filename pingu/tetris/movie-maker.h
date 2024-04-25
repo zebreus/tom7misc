@@ -2,25 +2,24 @@
 #ifndef _PINGU_TETRIS_MOVIE_MAKER_H
 #define _PINGU_TETRIS_MOVIE_MAKER_H
 
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
 #include <memory>
 #include <cstdint>
 
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../fceulib/simplefm7.h"
+#include "emulator.h"
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "arcfour.h"
 
 #include "encoding.h"
+#include "tetris.h"
 
 struct MovieMaker {
 
-  // Callbacks 
+  // Callbacks
   struct Callbacks {
     // num pieces in schedule
     std::function<void(const Emulator &, int)> game_start;
@@ -36,9 +35,9 @@ struct MovieMaker {
     std::function<void(const Emulator &, int)> finished_byte;
 
     // called periodically after stepping the emulator
-    std::function<void(const Emulator &, int64)> made_step;
+    std::function<void(const Emulator &, int64_t)> made_step;
   };
-  
+
   MovieMaker(const std::string &solution_file,
              const std::string &rom_file,
              int64_t seed);
@@ -47,12 +46,12 @@ struct MovieMaker {
   MovieMaker(const std::string &solution_file,
              std::unique_ptr<Emulator> emu,
              int64_t seed);
-  
+
   // Find moves in the emulator (and execute them)
   // that encode the bytes on the playfield. Calls callbacks
   // in the object periodically. Returns the accumulated
   // moves.
-  std::vector<uint8_t> Play(const std::vector<uint8> &bytes,
+  std::vector<uint8_t> Play(const std::vector<uint8_t> &bytes,
                             Callbacks callbacks);
 
   // Emulator owned by MovieMaker.
@@ -62,13 +61,13 @@ struct MovieMaker {
 
   // Just for benchmarking, etc.; the number of total emulator
   // steps we executed while finding the solution.
-  int64 StepsExecuted() const { return steps_executed; }
-  
+  int64_t StepsExecuted() const { return steps_executed; }
+
 private:
   ArcFour rc;
   std::unique_ptr<Emulator> emu;
   std::map<uint8_t, std::vector<Move>> all_sols;
-  int64 steps_executed = 0;
+  int64_t steps_executed = 0;
 };
 
 #endif

@@ -1,27 +1,21 @@
 
 
+#include <algorithm>
+#include <cstdio>
+#include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <cstdint>
-#include <cmath>
-#include <unordered_set>
 
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../fceulib/simplefm7.h"
-#include "../fceulib/x6502.h"
+#include "emulator.h"
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
 #include "image.h"
 #include "timer.h"
 #include "threadutil.h"
-
-#include "tetris.h"
-#include "nes-tetris.h"
-#include "encoding.h"
 
 #include "movie-maker.h"
 
@@ -49,10 +43,10 @@ static void Screenshot(const Emulator &emu, const std::string &filename) {
 int main(int argc, char **argv) {
   Timer run_timer;
 
-  
+
   std::unique_ptr<ImageRGBA> graphic(
       ImageRGBA::Load("graphic.png"));
-  
+
   CHECK(graphic->Width() % 8 == 0);
   CHECK(graphic->Height() % 8 == 0);
   const int TILESW = graphic->Width() / 8;
@@ -82,7 +76,7 @@ int main(int argc, char **argv) {
   // Now plan in parallel.
 
   std::mutex m;
-      
+
   vector<vector<uint8>> moves =
     ParallelMapi(patterns,
                  [&m](int64_t idx, const vector<uint8> &pat) {
@@ -105,19 +99,19 @@ int main(int argc, char **argv) {
   int maxlen = 0;
   for (const auto &m : moves) maxlen = std::max(maxlen, (int)m.size());
 
-  const int do_frames = maxlen + 8;  
+  const int do_frames = maxlen + 8;
   printf("%d nes frames\n", do_frames);
-  
+
   std::vector<std::unique_ptr<Emulator>> emus;
   for (int i = 0; i < NUM; i++)
     emus.emplace_back(Emulator::Create(ROMFILE));
-  
+
   Asynchronously async(16);
 
   for (int frame = 0; frame < do_frames; frame++) {
     ImageRGBA img(1920, 1080);
     img.Clear32(0x000000FF);
-    
+
     for (int i = 0; i < NUM; i++) {
       CHECK(i < (int)emus.size());
 
@@ -152,6 +146,6 @@ int main(int argc, char **argv) {
         }
       });
   }
-  
+
   return 0;
 }

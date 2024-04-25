@@ -1,17 +1,18 @@
 
 #include "movie-maker.h"
 
+#include <cstdio>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <cstdint>
-#include <cmath>
-#include <unordered_set>
 
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../fceulib/simplefm7.h"
-#include "../fceulib/x6502.h"
+#include "emulator.h"
+#include "simplefm2.h"
+#include "simplefm7.h"
+#include "x6502.h"
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -25,6 +26,8 @@
 #include "encoding.h"
 
 using namespace std;
+using uint8 = uint8_t;
+using int64 = int64_t;
 
 static constexpr bool VERBOSE = false;
 
@@ -428,6 +431,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
   // This starts at 2 because the current and next count as drops.
   uint8 prev_counter = 0x02;
   int schedule_idx = 0;
+  [[maybe_unused]]
   int pieces = 0;
   Timer run_timer;
   static constexpr int REPORT_EVERY = 10;

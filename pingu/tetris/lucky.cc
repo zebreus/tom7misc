@@ -1,4 +1,7 @@
 
+#include <algorithm>
+#include <array>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <memory>
@@ -6,18 +9,15 @@
 #include <cmath>
 #include <unordered_set>
 
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../fceulib/simplefm7.h"
-#include "../fceulib/x6502.h"
+#include "emulator.h"
+#include "simplefm2.h"
+#include "simplefm7.h"
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "arcfour.h"
 #include "image.h"
 #include "color-util.h"
-#include "textsvg.h"
-#include "util.h"
 
 #include "tetris.h"
 #include "nes-tetris.h"
@@ -27,6 +27,7 @@
 using namespace std;
 using uint8 = uint8_t;
 using uint16 = uint16_t;
+using int64 = int64_t;
 
 [[maybe_unused]]
 static void HistoMenu(int iters) {
@@ -834,7 +835,7 @@ static void AllRerolls() {
       CHECK(idx >= 0 && idx < 7);
       return (Shape)SHAPES[idx];
     };
-  
+
   // for any counter / drop
   int histo_states[1 + TinySet::MAX_SIZE] = {};
   int max_piece[7] = {};
@@ -865,7 +866,7 @@ static void AllRerolls() {
           RNGState after = FastNextPiece(state);
 
           CHECK(IsShape(after.last_drop));
-            
+
           tes.Add((Shape)after.last_drop);
         }
         state = FastNextRNG(state);
@@ -876,7 +877,7 @@ static void AllRerolls() {
         CHECK(state.rng1 == start.rng1 && state.rng2 == start.rng2) <<
           "Should have looped entire period: " << RNGString(state);
       }
-      
+
       CHECK(tes.shapes.size() < sizeof histo_states / sizeof(int));
       histo_states[tes.shapes.size()]++;
       max_piece[last_drop_idx] = std::max(max_piece[last_drop_idx],
@@ -901,7 +902,7 @@ static void AllRerolls() {
          histo_states[0], histo_states[1], histo_states[2], histo_states[3],
          histo_states[4]);
   printf("There are 256 * 7 = 1792 scenarios:\n");
-  
+
   for (int p = 0; p < 7; p++) {
     char pc = PieceChar(DecodePiece(Shapes(p)));
     printf("Best for piece %d=%c: %d, worst: %d eg. %c.%d (",
@@ -911,7 +912,7 @@ static void AllRerolls() {
     for (Shape s : min_next[p]) {
       printf("%c", PieceChar(DecodePiece(s)));
     }
-    
+
     printf(") nodup: %d (%.02f%%)\n",
            cant_dup[p],
            (100.0 * cant_dup[p]) / (256 * 7));
@@ -922,6 +923,6 @@ static void AllRerolls() {
 int main(int argc, char **argv) {
   // MakeStreak2();
   AllRerolls();
-  
+
   return 0;
 }

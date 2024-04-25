@@ -1,14 +1,10 @@
 
-#include <string>
 #include <memory>
 #include <cstdio>
 #include <malloc.h>
 #include <cstdint>
 
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../fceulib/simplefm7.h"
-#include "../fceulib/x6502.h"
+#include "emulator.h"
 
 using int64 = int64_t;
 
@@ -34,7 +30,7 @@ static int64 HeapUsage() {
 
     // Otherwise, it's corrupted...
     CHECK(heapstatus == _HEAPOK) << heapstatus;
-    
+
     if (hinfo._useflag == _USEDENTRY) {
       total_size += hinfo._size;
     }
@@ -46,19 +42,19 @@ int main(int argc, char **argv) {
 
   int allocated = HeapUsage();
   for (int i = 0; i < 20; i++) {
-  
+
   std::unique_ptr<Emulator> emu(
       Emulator::Create("tetris.nes"));
 
   for (int i = 0; i < 1000; i++)
     emu->Step(0, 0);
-  
+
   int postallocated = HeapUsage();
 
   emu.reset();
-  
+
   int clearallocated = HeapUsage();
-  
+
   printf("Start: %d\n"
          "Load emu: %d (+ %d)\n"
          "Clear emu: %d (+ %d)\n",
@@ -66,6 +62,6 @@ int main(int argc, char **argv) {
          postallocated, postallocated - allocated,
          clearallocated, clearallocated - allocated);
   }
-  
+
   return 0;
 }

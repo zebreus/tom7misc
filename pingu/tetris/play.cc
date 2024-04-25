@@ -5,10 +5,13 @@
 // With an argument, executes just one of the solutions and
 // displays the steps in ascii.
 
-#include <set>
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <map>
 #include <string>
 #include <cstdint>
+#include <vector>
 
 #include "tetris.h"
 #include "encoding.h"
@@ -24,7 +27,7 @@ using Tetris = TetrisDepth<6>;
 
 int main(int argc, char **argv) {
   static constexpr const char *solfile = "solutions.txt";
- 
+
   std::map<uint8_t, std::vector<Move>> sols =
     Encoding::ParseSolutions(solfile);
 
@@ -58,7 +61,7 @@ int main(int argc, char **argv) {
     int total_moves = 0;
     int best_moves = 99999, worst_moves = 0;
     for (const auto &[b, movie] : sols) {
-      CHECK(b >= 0 && b < 256);
+      CHECK(b >= 0 /* && b < 256 */);
 
       Tetris tetris;
       for (Move m : movie) {
@@ -103,7 +106,7 @@ int main(int argc, char **argv) {
       best_moves = std::min(best_moves, (int)movie.size());
       worst_moves = std::max(worst_moves, (int)movie.size());
     }
-    
+
     printf("Total moves: %d\n"
            "Best: %d\n"
            "Worst: %d\n"

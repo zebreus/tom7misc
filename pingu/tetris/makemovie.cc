@@ -1,27 +1,21 @@
 
 
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <memory>
 #include <cstdint>
-#include <cmath>
-#include <unordered_set>
 
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../fceulib/simplefm7.h"
-#include "../fceulib/x6502.h"
+#include "emulator.h"
+#include "simplefm2.h"
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
 #include "image.h"
 #include "timer.h"
 
 #include "tetris.h"
 #include "nes-tetris.h"
-#include "encoding.h"
-
 #include "movie-maker.h"
 
 using namespace std;
@@ -66,7 +60,7 @@ static void Retried(const Emulator &emu, int retry_count, Piece expected) {
            PieceChar(expected),
            rng1, rng2, last_drop, drop_count);
   }
-} 
+}
 
 static void PlacedPiece(const Emulator &emu,
                         int pieces_done, int pieces_total) {
@@ -76,7 +70,7 @@ static void PlacedPiece(const Emulator &emu,
     printf("Saved after dropping %d/%d pieces.\n",
            pieces_done, pieces_total);
   }
-}  
+}
 
 int main(int argc, char **argv) {
   Timer run_timer;
@@ -107,7 +101,7 @@ int main(int argc, char **argv) {
   const int64 seed = 0xedd1e654c0878e7fLL;
   const std::vector<uint8> pattern =
     { 0x12, 0x23, 0x54, 0xaf, 0xd6, 0x23, 0xa0, 0x06, };
-  */  
+  */
   MovieMaker movie_maker(SOLFILE, "tetris.nes", seed);
 
   int pieces = 0;
@@ -121,7 +115,7 @@ int main(int argc, char **argv) {
     };
   callbacks.retried = Retried;
   callbacks.placed_piece = PlacedPiece;
-  
+
   std::vector<uint8_t> movie = movie_maker.Play(pattern, callbacks);
   const Emulator *emu = movie_maker.GetEmu();
   Screenshot(*emu, "encoded-done.png");
@@ -135,6 +129,6 @@ int main(int argc, char **argv) {
          (int)movie.size(),
          movie_maker.StepsExecuted(),
          run_timer.Seconds());
-  
+
   return 0;
 }
