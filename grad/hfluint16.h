@@ -2,8 +2,8 @@
 #ifndef _GRAD_HFLUINT16_H
 #define _GRAD_HFLUINT16_H
 
+#include <cstddef>
 #include <cstdint>
-#include <bit>
 
 #include "half.h"
 #include "hfluint8.h"

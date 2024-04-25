@@ -1,12 +1,16 @@
 #include "network.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
 #include <set>
 #include <string>
-#include <cmath>
 #include <memory>
+#include <vector>
 
-#include "base/logging.h"
 #include "base/stringprintf.h"
+#include "base/logging.h"
 #include "network-test-util.h"
 #include "randutil.h"
 #include "arcfour.h"
@@ -152,7 +156,7 @@ void Network::CheckInvertedIndices() const {
 #endif
 
 static void TestSparseChunk() {
-  const string seed = StringPrintf("x.%lld", time(nullptr));
+  const std::string seed = StringPrintf("x.%lld", time(nullptr));
   ArcFour rc(seed);
 
   {

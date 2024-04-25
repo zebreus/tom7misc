@@ -1,15 +1,21 @@
 
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <bit>
+#include <ctime>
+#include <optional>
+#include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "half.h"
 #include "opt/optimizer.h"
 #include "timer.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
 
 using namespace half_float;

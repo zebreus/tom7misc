@@ -1,12 +1,14 @@
 
 #include "hcomplex.h"
 
+#include <cstdint>
 #include <cstdio>
 
 #include "image.h"
 #include "threadutil.h"
 #include "color-util.h"
 #include "base/logging.h"
+#include "half.h"
 
 using uint32 = uint32_t;
 

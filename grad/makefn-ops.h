@@ -3,8 +3,11 @@
 #define _GRAD_MAKEFN_OPS_H
 
 #include <array>
+#include <cstdint>
+#include <string>
 #include <utility>
 
+#include "base/stringprintf.h"
 #include "expression.h"
 
 #include "half.h"
@@ -22,14 +25,14 @@ struct Op1 {
 
   static constexpr std::array<std::pair<int, int>, INT_ARGS>
   INT_BOUNDS = {
-    make_pair(100, 600),
+    std::make_pair(100, 600),
   };
 
   static constexpr std::array<std::pair<double, double>, DOUBLE_ARGS>
   DOUBLE_BOUNDS = {
-    make_pair(-18.0, +18.0),
-    make_pair(-18.0, +18.0),
-    make_pair(-18.0, +18.0),
+    std::make_pair(-18.0, +18.0),
+    std::make_pair(-18.0, +18.0),
+    std::make_pair(-18.0, +18.0),
   };
 
   static const Exp *GetExp(Exp::Allocator *alloc,
@@ -74,9 +77,9 @@ struct Op2 {
 
   static constexpr std::array<std::pair<double, double>, DOUBLE_ARGS>
   DOUBLE_BOUNDS = {
-    make_pair(-1.25, 1.25),
-    make_pair(-64.0, +64.0),
-    make_pair(-0.1, +0.1),
+    std::make_pair(-1.25, 1.25),
+    std::make_pair(-64.0, +64.0),
+    std::make_pair(-0.1, +0.1),
   };
 
   static const Exp *GetExp(Exp::Allocator *alloc,
@@ -110,15 +113,15 @@ struct Op3 {
 
   static constexpr std::array<std::pair<int, int>, INT_ARGS>
   INT_BOUNDS = {
-    make_pair(10, 700),
+    std::make_pair(10, 700),
   };
 
   static constexpr std::array<std::pair<double, double>, DOUBLE_ARGS>
   DOUBLE_BOUNDS = {
-    make_pair(-4, 4),
-    make_pair(-4, 4),
-    make_pair(-1.0, -0.1),
-    make_pair(-10.0, 10.0),
+    std::make_pair(-4, 4),
+    std::make_pair(-4, 4),
+    std::make_pair(-1.0, -0.1),
+    std::make_pair(-10.0, 10.0),
   };
 
   static const Exp *GetExp(Exp::Allocator *alloc,
@@ -180,15 +183,15 @@ struct Op4 {
 
   static constexpr std::array<std::pair<int, int>, INT_ARGS>
   INT_BOUNDS = {
-    make_pair(1, 20),
-    make_pair(0, 4),
-    make_pair(0, 4),
+    std::make_pair(1, 20),
+    std::make_pair(0, 4),
+    std::make_pair(0, 4),
   };
 
   static constexpr std::array<std::pair<double, double>, DOUBLE_ARGS>
   DOUBLE_BOUNDS = {
-    make_pair(-1.0, +1.0),
-    make_pair(-4.0, +4.0)
+    std::make_pair(-1.0, +1.0),
+    std::make_pair(-4.0, +4.0)
   };
 
   static const Exp *GetExp(Exp::Allocator *alloc,
@@ -197,6 +200,8 @@ struct Op4 {
                            const Exp::Table &target) {
     const auto &[iter_diff, u1, u2] = ints;
     const auto &[xd, scale] = dbls;
+
+    using namespace half_float::literal;
 
     const Exp *f0 =
       alloc->TimesC(
@@ -230,7 +235,7 @@ struct Op4 {
     uint16_t x = Exp::GetU16((half)xd);
     half fy = Exp::GetHalf(Exp::EvaluateOn(f0, x));
     half ty = Exp::GetHalf(target[x]);
-    uint16 yneg = Exp::GetU16(ty - fy);
+    uint16_t yneg = Exp::GetU16(ty - fy);
 
     return alloc->PlusC(f0, yneg);
   }
@@ -253,15 +258,15 @@ struct Op5 {
 
   static constexpr std::array<std::pair<int, int>, INT_ARGS>
   INT_BOUNDS = {
-    make_pair(0xc000, 0xc300),
-    make_pair(0xc000, 0xc300),
+    std::make_pair(0xc000, 0xc300),
+    std::make_pair(0xc000, 0xc300),
   };
 
   static constexpr std::array<std::pair<double, double>, DOUBLE_ARGS>
   DOUBLE_BOUNDS = {
-    make_pair(-3.0, +3.0),
-    make_pair(-4.0, +4.0),
-    make_pair(-1.0, +1.0),
+    std::make_pair(-3.0, +3.0),
+    std::make_pair(-4.0, +4.0),
+    std::make_pair(-1.0, +1.0),
   };
 
   static const Exp *GetExp(Exp::Allocator *alloc,
@@ -300,7 +305,7 @@ struct Op5 {
     uint16_t x = Exp::GetU16((half)xd);
     half fy = Exp::GetHalf(Exp::EvaluateOn(f0, x));
     half ty = Exp::GetHalf(target[x]);
-    uint16 yneg = Exp::GetU16(ty - fy);
+    uint16_t yneg = Exp::GetU16(ty - fy);
 
     return alloc->PlusC(f0, yneg);
   }
@@ -325,8 +330,8 @@ struct Op6 {
 
   static constexpr std::array<std::pair<double, double>, DOUBLE_ARGS>
   DOUBLE_BOUNDS = {
-    make_pair(-1.0, +1.0),
-    make_pair(-8.0, +8.0),
+    std::make_pair(-1.0, +1.0),
+    std::make_pair(-8.0, +8.0),
   };
 
   static const Exp *GetExp(Exp::Allocator *alloc,

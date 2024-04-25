@@ -2,11 +2,12 @@
 #include "hash-util.h"
 
 #include <array>
+#include <cstdint>
+#include <vector>
 
 #include "choppy.h"
 #include "expression.h"
 #include "base/logging.h"
-#include "ansi.h"
 
 using Choppy = ChoppyGrid<256>;
 using Allocator = Exp::Allocator;

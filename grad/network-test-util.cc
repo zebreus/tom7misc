@@ -1,7 +1,13 @@
 
 #include "network-test-util.h"
 
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
+#include <utility>
 #include <vector>
 #include <string>
 #include <set>
@@ -2013,7 +2019,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::SparseInCircleAdam(
 }
 
 NetworkTestUtil::TrainNet NetworkTestUtil::SparseLineIntersectionAdam(
-    int width, int ipn, int depth, int64 seed) {
+    int width, int ipn, int depth, int64_t seed) {
   ArcFour rc(StringPrintf("sparse-line-intersection.%lld", seed));
   std::vector<Layer> layers;
   constexpr int INPUT_SIZE = 8;
@@ -2202,7 +2208,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::Atan2Adam(
 }
 
 NetworkTestUtil::TrainNet NetworkTestUtil::DodgeballAdam(
-    int width, int ipn, int depth, int64 seed) {
+    int width, int ipn, int depth, int64_t seed) {
   ArcFour rc(StringPrintf("dodgeball.%lld", seed));
   std::vector<Layer> layers;
   constexpr int INPUT_SIZE = 10;

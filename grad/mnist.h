@@ -4,6 +4,8 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "util.h"
 #include "image.h"

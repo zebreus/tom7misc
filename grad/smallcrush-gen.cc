@@ -1,10 +1,10 @@
 
-#include <vector>
+#include <array>
 #include <cstdint>
 #include <bit>
+#include <cstdio>
 #include <cstring>
 #include <string>
-#include <functional>
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,7 +26,6 @@ extern "C" {
 #include "ansi.h"
 #include "color-util.h"
 #include "image.h"
-#include "arcfour.h"
 #include "timer.h"
 
 #include "testu01.h"

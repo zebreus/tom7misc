@@ -1,20 +1,32 @@
 
-#include <cstdint>
-#include <vector>
+#include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
+#include <mutex>
+#include <optional>
 #include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
-#include "expression.h"
-#include "opt/optimizer.h"
-#include "grad-util.h"
-#include "timer.h"
-#include "image.h"
-#include "color-util.h"
 #include "arcfour.h"
+#include "base/stringprintf.h"
+#include "bounds.h"
+#include "color-util.h"
+#include "expression.h"
+#include "grad-util.h"
+#include "half.h"
+#include "image.h"
+#include "makefn-ops.h"
+#include "opt/optimizer.h"
 #include "randutil.h"
 #include "threadutil.h"
-
-#include "makefn-ops.h"
+#include "timer.h"
+#include "util.h"
 
 // Attempt to mimic a function with a "linear" expression
 // (within some range).

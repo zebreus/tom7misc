@@ -1,17 +1,22 @@
 
+#include <bit>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <map>
 #include <optional>
-#include <array>
+#include <utility>
 #include <vector>
 #include <set>
 #include <string>
+#include <cstdint>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "image.h"
 #include "expression.h"
-#include "half.h"
-#include "hashing.h"
 
+#include "randutil.h"
 #include "choppy.h"
 #include "grad-util.h"
 #include "color-util.h"
@@ -23,6 +28,8 @@ using Choppy = ChoppyGrid<16>;
 using DB = Choppy::DB;
 using Allocator = Exp::Allocator;
 using Table = Exp::Table;
+
+using int64 = int64_t;
 
 static int NumWithAvalanche(const std::vector<uint8_t> &perm) {
   CHECK(std::has_single_bit(perm.size())) <<
@@ -55,6 +62,7 @@ static int NumWithAvalanche(const std::vector<uint8_t> &perm) {
   return avalanche_times;
 }
 
+[[maybe_unused]]
 static void RandStats() {
   ArcFour rc("randstats");
   std::vector<uint8_t> sbox;
@@ -77,6 +85,7 @@ static void RandStats() {
   }
 }
 
+[[maybe_unused]]
 static void AESStats() {
   // AES values.
   std::vector<uint8_t> sbox = {
@@ -237,7 +246,7 @@ static bool HasExactAvalanche(const std::vector<int> &perm,
   }
 
   auto BinaryString = [power](uint32_t x) {
-      string ret;
+      std::string ret;
       for (int bit = power - 1; bit >= 0; bit--) {
         ret += (x & (1 << bit)) ? '1' : '0';
       }
@@ -334,7 +343,7 @@ GetErrorPositions(const std::vector<int> &perm) {
       const uint32_t diff = value ^ ovalue;
       const int diffsize = std::popcount<uint32_t>(diff);
       if (diffsize != avalanche_target) {
-        errors.push_back(make_pair(idx, oidx));
+        errors.push_back(std::make_pair(idx, oidx));
       }
     }
   }
@@ -537,7 +546,7 @@ static std::vector<int> MakeAvalancheSwap(
           const auto &[xj, yj] = error[j];
 
           for (const auto &[x, y] :
-                 {make_pair(xi, xj), make_pair(yi, yj)}) {
+                 {std::make_pair(xi, xj), std::make_pair(yi, yj)}) {
             std::swap(ret[x], ret[y]);
             // PERF could incrementally update.
             auto new_error = GetErrorPositions(ret);
@@ -591,7 +600,7 @@ static std::vector<int> MakePermutation(
   std::vector<int> ret;
   ret.resize(mask.size());
 
-  for (int tries = 1; true; tries++) {
+  for (;;) {
     // Maps cycle id to all positions in the vector with that id.
     std::map<int, std::vector<int>> cyclepos;
     for (int i = 0; i < mask.size(); i++)
@@ -626,10 +635,12 @@ static std::vector<int> MakePermutation(
   }
 }
 
+[[maybe_unused]]
 static bool IsMaximalCycle(const std::vector<int> &v) {
   return CycleLengthAt(v, 0) == v.size();
 }
 
+[[maybe_unused]]
 static void MakeExactAvalanche() {
   ArcFour rc("exact-avalanche");
 
@@ -659,6 +670,7 @@ static void MakeExactAvalanche() {
   }
 }
 
+[[maybe_unused]]
 static void MakeExactAvalanche2() {
   ArcFour rc("exact-avalanche");
 
@@ -769,6 +781,7 @@ static void GetGoodSubst() {
   }
 }
 
+[[maybe_unused]]
 static void MakeBitPerm() {
   ArcFour rc("bit-perm");
 
@@ -799,7 +812,7 @@ static void MakeBitPerm() {
           failedat[n * 4 + i]++;
           if ((tries % 100000) == 0) {
             for (auto [d, c] : failedat) {
-              printf("At %lld: %lld times\n", d, c);
+              printf("At %d: %lld times\n", d, c);
             }
           }
           goto again;
@@ -810,7 +823,7 @@ static void MakeBitPerm() {
 
 
     for (auto [d, c] : failedat) {
-      printf("At %lld: %lld times\n", d, c);
+      printf("At %d: %lld times\n", d, c);
     }
 
     printf("OK!\n{");
@@ -828,6 +841,7 @@ static void MakeBitPerm() {
 
 }
 
+[[maybe_unused]]
 static void CycleStats() {
   printf("// Old ones...\n");
   std::vector<std::vector<int>> orig = {

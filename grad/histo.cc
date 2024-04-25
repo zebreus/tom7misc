@@ -1,17 +1,23 @@
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <limits>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <optional>
 #include <cstdint>
 
-#include "util.h"
+#include "base/stringprintf.h"
 #include "image.h"
 #include "ansi.h"
-#include "half.h"
 
 #include "grad-util.h"
 
 using namespace std;
+using int64 = int64_t;
+using uint8 = uint8_t;
 
 // from modelinfo; probably should promote to cc-lib somehow
 struct Histo {
@@ -100,12 +106,14 @@ struct Histo {
     int lw = label.size() * 9;
     // Align on left or right of the label so as not to run off the screen
     // (we could also try to avoid other buckets?)
+    [[maybe_unused]]
     int x = maxi > (width / 2) ? maxi - (lw + 2) : maxi + 3;
     // Align with the peak, taking into account tallest_bucket.
+    [[maybe_unused]]
     int y = (1.0 - tallest_bucket) * (height - 1);
     // img.BlendText(x, y, 0xFF, label);
 
-    return make_tuple(lo, hi, img);
+    return std::make_tuple(lo, hi, img);
   }
 
   // For example with tick=0.25, vertical lines at -0.25, 0, 0.25, 0.50, ...

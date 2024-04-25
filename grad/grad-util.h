@@ -2,21 +2,24 @@
 #ifndef _GRAD_GRAD_UTIL_H
 #define _GRAD_GRAD_UTIL_H
 
+#include <array>
+#include <cmath>
+#include <cstring>
+#include <functional>
 #include <memory>
 #include <cstdint>
 #include <bit>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-#include "util.h"
 #include "image.h"
 #include "bounds.h"
-#include "opt/optimizer.h"
 #include "half.h"
 #include "color-util.h"
-#include "arcfour.h"
-#include "randutil.h"
 
 using uint32 = uint32_t;
 using uint16 = uint16_t;
@@ -250,10 +253,10 @@ struct GradUtil {
     CHECK(img->Width() == img->Height());
     const int size = img->Width();
 
-    auto MapCoord = [size](double x, double y) -> pair<int, int> {
+    auto MapCoord = [size](double x, double y) -> std::pair<int, int> {
       int xs = (int)std::round((size / 2) + x * (size / 2));
       int ys = (int)std::round((size / 2) + -y * (size / 2));
-      return make_pair(xs, ys);
+      return std::make_pair(xs, ys);
     };
 
     int parity = 0;
@@ -342,7 +345,7 @@ struct GradUtil {
     const half offset = -GetHalf(table[GetU16((half)0.0)]);
     const half scale = (half)1.0 /
       (GetHalf(table[GetU16((half)1.0)]) + offset);
-    return make_pair(offset, scale);
+    return std::make_pair(offset, scale);
   }
 
   static float Dist(const Table &table) {

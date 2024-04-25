@@ -1,8 +1,10 @@
 
 #include "mnist.h"
 
-#include <cstdio>
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 
 #include "image.h"
@@ -13,6 +15,8 @@
 static constexpr bool ADD_OFFSET = false;
 static constexpr bool ADD_GAUSS = false;
 static constexpr bool SHOW_LABEL = false;
+
+using uint8 = uint8_t;
 
 int main(int argc, char **argv) {
   MNIST mnist("mnist/train");

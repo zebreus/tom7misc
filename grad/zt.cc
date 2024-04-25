@@ -1,12 +1,16 @@
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <string>
 
 #include "half.h"
 #include "grad-util.h"
-
+#include "image.h"
 #include "expression.h"
 
 using Allocator = Exp::Allocator;
+using uint16 = uint16_t;
 
 static constexpr bool VERBOSE = false;
 
@@ -54,7 +58,7 @@ static void AllZT88() {
     });
   printf("There are %d values.\n", num_values);
 
-  string err;
+  std::string err;
   const Exp *zt_exp = Exp::Deserialize(alloc, ZERO_THRESHOLD, &err);
   CHECK(zt_exp != nullptr) << err;
 
@@ -138,6 +142,7 @@ static void AllZT88() {
   img.ScaleDownBy(4).Save("zt88.png");
 }
 
+[[maybe_unused]]
 static void AllZT11() {
   Allocator *alloc = new Allocator;
 

@@ -7,16 +7,21 @@
 
 #include "network-gpu.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
 #include <memory>
+#include <mutex>
+#include <utility>
 #include <vector>
-#include <functional>
 #include <string>
-#include <ctype.h>
 #include <chrono>
 #include <thread>
 #include <deque>
-#include <numbers>
 
 #include "network.h"
 #include "network-test-util.h"
@@ -128,8 +133,8 @@ struct ExampleThread {
 
     // XXXXX
     // printf("EXAMPLES DISABLED\n");
-    work_thread1.reset(new std::thread(&Generate, this, 1));
-    work_thread2.reset(new std::thread(&Generate, this, 2));
+    work_thread1.reset(new std::thread(&ExampleThread::Generate, this, 1));
+    work_thread2.reset(new std::thread(&ExampleThread::Generate, this, 2));
   }
 
   ~ExampleThread() {
@@ -245,7 +250,6 @@ static void Train(const string &dir, Network *net,
   // On a verbose round we compute training error and print out
   // examples.
   constexpr int VERBOSE_EVERY = 1000;
-  int64 total_verbose = 0;
 
   // How often to also save error history to disk (if we run a
   // verbose round). This also evaluates on the test data set
@@ -532,7 +536,6 @@ static void Train(const string &dir, Network *net,
           history_per.SetPeriod(120.0);
       }
 
-      total_verbose++;
       loss_ms += loss_timer.MS();
     }
 

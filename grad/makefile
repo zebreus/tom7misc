@@ -6,8 +6,8 @@ all: grad.exe iter.exe make-data.exe mnist_test.exe train-mnist.exe evaluate-mni
 CC_LIB=../cc-lib
 CHESS=../chess
 
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
 LFLAGS=-flto -static
 
 # Note, this builds against AMD's distribution of OpenCL, since that's
@@ -28,7 +28,7 @@ CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 # TODO: This may help if not already enabled?
 # -DHALF_ENABLE_F16C_INTRINSICS=1
 OPT=-O2
-CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -Wunsafe-loop-optimizations -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -I$(CHESS) $(CLINCLUDES) -std=c++20 $(OPT)
+CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -I$(CHESS) $(CLINCLUDES) -std=c++20 $(OPT)
 
 CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/bitbuffer.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big.o $(CC_LIB)/geom/marching.o $(CC_LIB)/edit-distance.o $(CC_LIB)/ansi.o
 

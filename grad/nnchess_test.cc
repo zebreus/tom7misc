@@ -1,4 +1,5 @@
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -7,7 +8,7 @@
 #include "randutil.h"
 #include "arcfour.h"
 #include "base/logging.h"
-
+#include "../chess/chess.h"
 
 int main(int argc, char **argv) {
   constexpr int across = 48;
@@ -65,14 +66,14 @@ int main(int argc, char **argv) {
 
       for (int yy = 0; yy < 8; yy++) {
         for (int xx = 0; xx < 8; xx++) {
-          const uint32 square_color =
-            (xx + yy) & 1 ? 0x666E5EFF : 0xBABA227FF;
+          const uint32_t square_color =
+            (xx + yy) & 1 ? 0x666E5EFF : 0xBABA22FF;
           const int yyy = y * BOARD + yy * SQUARE;
           const int xxx = x * BOARD + xx * SQUARE;
           out.BlendRect32(xxx, yyy, SQUARE, SQUARE, square_color);
 
           const uint8_t p = pos.PieceAt(yy, xx);
-          const uint32 piece_color =
+          const uint32_t piece_color =
             ((p & Position::COLOR_MASK) == Position::BLACK) ?
             0x000000FF : 0xFFFFFFFF;
 

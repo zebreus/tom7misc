@@ -2,6 +2,7 @@
 #ifndef _NETWORK_TEST_UTIL_H
 #define _NETWORK_TEST_UTIL_H
 
+#include <cstdint>
 #include <vector>
 #include <functional>
 #include <string>

@@ -3,6 +3,11 @@
 #define _GRAD_EXPRESSION_H
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <functional>
+#include <tuple>
+#include <utility>
 #include <vector>
 #include <array>
 #include <string>
@@ -166,7 +171,7 @@ struct Exp {
         // PERF could relinquish lock for this slow init
         table100 = new TimesTable(c, 100);
         table10 = new TimesTable(c, 10);
-        times_tables[c] = make_pair(table100, table10);
+        times_tables[c] = std::make_pair(table100, table10);
       }
     }
 
@@ -387,7 +392,7 @@ struct Exp {
   // in magnitude than the corresponding infinities. This means that
   // if you don't stop, you eventually get positive infinity and then
   // "positive" nans, before wrapping around to "negative" nans.
-  static inline NextAfter16(uint16_t pos) {
+  static inline uint16_t NextAfter16(uint16_t pos) {
     // Zero comes immediately after -0.
     if (pos == 0x8000) return 0x0000;
     else if (pos > 0x8000) return pos - 1;
@@ -401,7 +406,7 @@ struct Exp {
     CHECK(low < high);
     uint16_t ulow = GetU16(low);
     uint16_t uhigh = GetU16(high);
-    for (uint16 upos = ulow; upos != uhigh; upos = NextAfter16(upos)) {
+    for (uint16_t upos = ulow; upos != uhigh; upos = NextAfter16(upos)) {
       ret[upos] = EvaluateOn(e, upos);
     }
     // include endpoint.
@@ -413,7 +418,7 @@ struct Exp {
   static Table MakeTableFromFn(const std::function<half(half)> &f) {
     Table table;
     for (int i = 0; i < 65536; i++) {
-      half x = Exp::GetHalf((uint16)i);
+      half x = Exp::GetHalf((uint16_t)i);
       half y = f(x);
       table[i] = Exp::GetU16(y);
     }

@@ -1,4 +1,5 @@
 
+#include <cstdio>
 #include <string>
 #include <cstdint>
 
@@ -7,6 +8,9 @@
 
 #include "base/stringprintf.h"
 #include "ansi.h"
+
+using namespace std;
+using int64 = int64_t;
 
 struct Benchmark {
   Benchmark(string name, int num_iters = 1000) :
@@ -84,6 +88,7 @@ static void BenchRightShift() {
 }
 
 // Note: Can improve shifts by 5, 6
+[[maybe_unused]]
 static void BenchRightShifts() {
   BenchRightShift<0>();
   BenchRightShift<1>();
@@ -95,6 +100,7 @@ static void BenchRightShifts() {
   BenchRightShift<7>();
 }
 
+[[maybe_unused]]
 static void BenchPlus() {
   Benchmark bench("Plus", 2000);
 
@@ -111,6 +117,7 @@ static void BenchPlus() {
     });
 }
 
+[[maybe_unused]]
 static void BenchAddWithCarry() {
   Benchmark bench("AddWithCarry", 2000);
 
@@ -128,6 +135,7 @@ static void BenchAddWithCarry() {
     });
 }
 
+[[maybe_unused]]
 static void BenchAnd() {
   Benchmark bench("BitwiseAnd", 2000);
 
@@ -177,6 +185,7 @@ static void BenchIsZero() {
 }
 
 // Compare dynamic and compile-time versions of AND.
+[[maybe_unused]]
 static void BenchAndT() {
   {
     Benchmark bench("BitwiseAnd80", 2000);

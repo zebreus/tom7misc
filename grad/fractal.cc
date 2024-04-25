@@ -1,12 +1,17 @@
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <string>
 #include <cstdint>
+#include <utility>
 
 #include "expression.h"
 #include "util.h"
 #include "image.h"
 #include "color-util.h"
 #include "ansi.h"
+#include "base/stringprintf.h"
 
 #include "half.h"
 #include "hcomplex.h"
@@ -17,6 +22,8 @@ using half_float::half;
 using Table = Exp::Table;
 
 using namespace std;
+using uint16 = uint16_t;
+using uint32 = uint32_t;
 
 static hcomplex EvaluateComplex(const Exp *e, hcomplex z) {
   switch (e->type) {

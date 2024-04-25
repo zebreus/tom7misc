@@ -7,15 +7,20 @@
 #ifndef _NETWORK_GPU_H
 #define _NETWORK_GPU_H
 
+#include <initializer_list>
 #include <string>
 #include <optional>
+#include <utility>
 #include <vector>
 #include <mutex>
 #include <cstdint>
-#include <memory>
+#include <map>
+
+#include <CL/cl.h>
 
 #include "base/logging.h"
-
+#include "base/macros.h"
+#include "base/stringprintf.h"
 #include "network.h"
 #include "clutil.h"
 

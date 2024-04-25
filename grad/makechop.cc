@@ -1,30 +1,25 @@
 
 // 2023: Make choppy functions for fluint8.
 
+#include <cstdint>
+#include <cstdio>
 #include <optional>
-#include <array>
-#include <vector>
-#include <set>
 #include <string>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "image.h"
 #include "expression.h"
-#include "half.h"
-#include "hashing.h"
-
+#include "util.h"
 #include "choppy.h"
 #include "grad-util.h"
-#include "color-util.h"
-#include "arcfour.h"
 #include "ansi.h"
-#include "timer.h"
 
 using Choppy = ChoppyGrid<256>;
 using DB = Choppy::DB;
 using Allocator = Exp::Allocator;
 using Table = Exp::Table;
+
+using namespace std;
 
 // This canonicalizes values in [-1,1) such that every value
 // within each 1/256th interval is mapped to its canonical

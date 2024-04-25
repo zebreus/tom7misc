@@ -1,13 +1,11 @@
 
 
+#include <cstdio>
 #include <string>
 #include <vector>
-#include <optional>
 #include <cstdint>
 
-#include "util.h"
 #include "image.h"
-#include "ansi.h"
 #include "half.h"
 #include "color-util.h"
 
@@ -16,6 +14,7 @@
 static constexpr bool DRAW_500 = false;
 
 // Show the paths of two numbers as we iterate "function1" on them.
+[[maybe_unused]]
 static void Race() {
   static constexpr uint16 SCALE_U = 0x3bffu;
   static constexpr half SCALE = GradUtil::GetHalf(SCALE_U);
@@ -54,18 +53,20 @@ static void Race() {
 
 }
 
-static inline NextAfter16(uint16_t pos) {
+static inline uint16_t NextAfter16(uint16_t pos) {
   // Zero comes immediately after -0.
   if (pos == 0x8000) return 0x0000;
   else if (pos > 0x8000) return pos - 1;
   else return pos + 1;
 }
 
-static inline NextAfterHalf(half h) {
+[[maybe_unused]]
+static inline uint16_t NextAfterHalf(half h) {
   return GradUtil::GetHalf(NextAfter16(GradUtil::GetU16(h)));
 }
 
 // Find a constant where f(x) = x.
+[[maybe_unused]]
 static void Self() {
   static constexpr half SCALE = GradUtil::GetHalf(0x3bffu);
   for (uint16_t u = 2; // GradUtil::GetU16((half)1.0f);

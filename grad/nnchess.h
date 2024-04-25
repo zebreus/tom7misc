@@ -1,28 +1,23 @@
 #ifndef _GRAD_NNCHESS_H
 #define _GRAD_NNCHESS_H
 
+#include <algorithm>
 #include <cmath>
-#include <memory>
+#include <cstdint>
+#include <cstdio>
+#include <mutex>
+#include <optional>
 #include <vector>
-#include <functional>
 #include <string>
-#include <ctype.h>
 #include <chrono>
 #include <thread>
-#include <deque>
-#include <numbers>
 #include <tuple>
-#include <unordered_map>
 
 #include "chess.h"
 #include "bigchess.h"
 #include "pgn.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "arcfour.h"
-#include "randutil.h"
 #include "threadutil.h"
-#include "util.h"
 #include "ansi.h"
 
 struct NNChess {

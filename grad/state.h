@@ -2,6 +2,7 @@
 #ifndef _GRAD_STATE_H
 #define _GRAD_STATE_H
 
+#include <cstdint>
 #include <vector>
 
 #include "grad-util.h"

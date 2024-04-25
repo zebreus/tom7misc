@@ -4,22 +4,23 @@
 
 #include "network-gpu.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
-#include <functional>
 #include <string>
-#include <ctype.h>
-#include <chrono>
 #include <thread>
-#include <deque>
-#include <numbers>
 #include <tuple>
-#include <unordered_map>
 
 #include "chess.h"
 #include "pgn.h"
-#include "bigchess.h"
 #include "network.h"
 #include "clutil.h"
 #include "base/logging.h"
@@ -34,6 +35,7 @@
 #include "timer.h"
 #include "periodically.h"
 #include "ansi.h"
+#include "opt/optimizer.h"
 
 #include "nnchess.h"
 
@@ -572,7 +574,7 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
   for (int i = 0; i < nonzero_error.size(); i++) {
     printf("  %02d. %s%d" ANSI_RESET "\n",
            i, nonzero_error[i] == 0 ? ANSI_RED : ANSI_GREEN,
-           nonzero_error[i]);
+           (int)nonzero_error[i]);
   }
 
   for (int i = nonzero_error.size() - 2; i > 0; i--) {

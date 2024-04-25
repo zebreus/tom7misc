@@ -1,14 +1,14 @@
 
+#include <cstdio>
+#include <ctime>
+#include <functional>
 #include <string>
-#include <cmath>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-#include "util.h"
 #include "image.h"
-#include "bounds.h"
-#include "opt/optimizer.h"
 #include "half.h"
 #include "color-util.h"
 #include "arcfour.h"
@@ -108,6 +108,7 @@ static void Iterate(State *state) {
   state->steps.push_back(best_step);
 }
 
+[[maybe_unused]]
 static void MakeIterated() {
   State state;
   for (int i = 0; i < 100; i++) {
@@ -143,8 +144,9 @@ static void MakeIterated() {
   printf("Wrote %s\n", filename.c_str());
 }
 
+[[maybe_unused]]
 static void OldIterated() {
-    Table table_f1 = GradUtil::MakeTable1().table;
+  Table table_f1 = GradUtil::MakeTable1().table;
 
   Asynchronously asyn(8);
   State state;

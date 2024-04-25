@@ -2,8 +2,13 @@
 #include "hfluint16.h"
 #include "hfluint8.h"
 
+#include <cstdint>
+#include <cstdio>
+#include <functional>
+
 #include "crypt/lfsr.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
 #define CHECK_EQ16(a, b) do {                               \
     uint16_t aa = (a), bb = (b);                                \
@@ -13,7 +18,10 @@
 } while (false)
 
 static constexpr uint16_t LFSR_POLY1 = 0xBDDD;
+[[maybe_unused]]
 static constexpr uint16_t LFSR_POLY2 = 0xD008;
+using uint8 = uint8_t;
+using uint16 = uint16_t;
 
 template<uint16_t POLY>
 void ManyPairs(std::function<void(uint16_t, uint16_t, hfluint16, hfluint16)> f) {
@@ -118,7 +126,7 @@ static void Add8() {
 static void SignExtend() {
   for (int i = 0; i < 256; i++) {
     uint8 u = i;
-    uint16 uu = (int8)u;
+    uint16 uu = (int8_t)u;
     hfluint16 f = hfluint16::SignExtend(hfluint8(u));
 
     CHECK_EQ16(uu, f.ToInt());

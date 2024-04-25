@@ -3,16 +3,21 @@
 #define _GRAD_CHOPPY_H
 
 #include <bit>
+#include <cmath>
+#include <mutex>
 #include <optional>
 #include <array>
 #include <map>
+#include <string>
 #include <unordered_map>
 #include <cstdio>
 #include <cstdint>
+#include <utility>
 
 #include "expression.h"
 #include "half.h"
 #include "hashing.h"
+#include "util.h"
 
 #include "base/stringprintf.h"
 #include "image.h"
@@ -37,6 +42,7 @@
 
 template<int GRID_ARG>
 struct ChoppyGrid {
+  using uint16 = uint16_t;
   static constexpr int GRID = GRID_ARG;
   static_assert(std::has_single_bit<uint32_t>(GRID),
                 "Grid size must be a power of two");
@@ -119,10 +125,10 @@ struct ChoppyGrid {
     CHECK(img->Width() == img->Height());
     const int size = img->Width();
 
-    auto MapCoord = [size](double x, double y) -> pair<int, int> {
+    auto MapCoord = [size](double x, double y) -> std::pair<int, int> {
       int xs = (int)std::round((size / 2) + x * (size / 2));
       int ys = (int)std::round((size / 2) + -y * (size / 2));
-      return make_pair(xs, ys);
+      return std::make_pair(xs, ys);
     };
 
     [[maybe_unused]]

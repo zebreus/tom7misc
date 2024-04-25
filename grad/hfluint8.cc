@@ -1,10 +1,14 @@
 #include "hfluint8.h"
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <utility>
 
 #include "half.h"
 
 using namespace half_float;
+using half = half_float::half;
 using namespace half_float::literal;
 
 int64_t hfluint8::num_cheats = 0;
@@ -43,7 +47,7 @@ std::pair<hfluint8, hfluint8> hfluint8::AddWithCarry(hfluint8 x, hfluint8 y) {
   half o = RightShiftHalf8(z);
 
   ECHECK(o == 1.0_h || o == 0.0_h) << o;
-  return make_pair(hfluint8(o), hfluint8(z - o * HALF256));
+  return std::make_pair(hfluint8(o), hfluint8(z - o * HALF256));
 }
 
 hfluint8 hfluint8::Plus(hfluint8 x, hfluint8 y) {
@@ -65,7 +69,7 @@ std::pair<hfluint8, hfluint8> hfluint8::SubtractWithCarry(hfluint8 x, hfluint8 y
   half o = RightShiftHalf8(z);
 
   ECHECK(o == 1.0_h || o == 0.0_h) << o;
-  return make_pair(hfluint8(HALF1 - o), hfluint8(z - o * HALF256));
+  return std::make_pair(hfluint8(HALF1 - o), hfluint8(z - o * HALF256));
 }
 
 hfluint8 hfluint8::Minus(hfluint8 x, hfluint8 y) {

@@ -5,6 +5,7 @@
 #define _GRAD_HCOMPLEX_H
 
 #include <cstdint>
+#include <cstring>
 
 #include "half.h"
 

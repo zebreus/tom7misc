@@ -1,4 +1,5 @@
 
+#include <cstdint>
 #include <cstdio>
 
 #include "expression.h"
@@ -18,6 +19,7 @@ static int Abs(int c) {
   return c;
 }
 
+[[maybe_unused]]
 static void PrintTables() {
   printf("\n");
   for (int y = -8; y < 7; y++) {

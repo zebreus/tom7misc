@@ -2,29 +2,25 @@
 // Optimize a choppy database to make smaller equivalent expressions.
 // How did I not call this choptimize??
 
+#include <cstdint>
+#include <cstdio>
+#include <functional>
+#include <map>
 #include <optional>
 #include <array>
 #include <utility>
+#include <vector>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "image.h"
 #include "expression.h"
-#include "half.h"
-#include "hashing.h"
 
 #include "choppy.h"
 #include "grad-util.h"
-#include "color-util.h"
-#include "arcfour.h"
 #include "ansi.h"
-#include "threadutil.h"
 #include "timer.h"
-#include "periodically.h"
 #include "opt/large-optimizer.h"
 #include "diff.h"
-
-#include "state.h"
+#include "util.h"
 
 using Choppy = ChoppyGrid<256>;
 using DB = Choppy::DB;
@@ -32,6 +28,7 @@ using Allocator = Exp::Allocator;
 using Table = Exp::Table;
 using namespace std;
 
+[[maybe_unused]]
 static constexpr int MAX_THREADS = 8;
 
 static double Cost(const Exp *e) {

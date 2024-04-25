@@ -1,6 +1,8 @@
 
+#include <cstdint>
 #include <cstdio>
 #include <bit>
+#include <cstdlib>
 
 #include "base/logging.h"
 

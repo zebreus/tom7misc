@@ -1,9 +1,13 @@
 
+#include <cstddef>
+#include <cstdio>
 #include <tuple>
 #include <cmath>
 #include <string>
 #include <cstdint>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "threadutil.h"
 #include "image.h"
@@ -12,6 +16,7 @@
 #include "geom/marching.h"
 #include "util.h"
 #include "ansi.h"
+#include "base/logging.h"
 
 #include "meshoptimizer.h"
 
@@ -283,6 +288,7 @@ using baffling =
                 0, 0, 1,
                 1, 0, 0>;
 
+[[maybe_unused]]
 static void Mandelbrot() {
   static constexpr int SIZE = 1024;
   static constexpr int NUM_THREADS = 12;

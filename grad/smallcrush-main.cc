@@ -1,8 +1,4 @@
 
-#include <vector>
-#include <cstdint>
-#include <bit>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -15,9 +11,9 @@ extern "C" {
 }
 #endif
 
+#include <cstdint>
 
 #include "util.h"
-
 #include "base/logging.h"
 
 static constexpr int TARGET_FLOATS = 51320000;

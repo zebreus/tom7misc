@@ -1,8 +1,17 @@
 #include "clutil.h"
 
-#include "timer.h"
 #include <CL/cl.h>
+#include <CL/cl_platform.h>
+#include <cstdio>
+#include <cstdlib>
+#include <optional>
+#include <stdlib.h>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "base/logging.h"
+#include "timer.h"
 
 using namespace std;
 

@@ -1,8 +1,13 @@
 
-#ifndef _PLUGINVERT_TRAIN_UTIL_H
-#define _PLUGINVERT_TRAIN_UTIL_H
+#ifndef _GRAD_TRAIN_UTIL_H
+#define _GRAD_TRAIN_UTIL_H
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <string>
@@ -13,6 +18,9 @@
 #include "image.h"
 #include "threadutil.h"
 #include "color-util.h"
+#include "util.h"
+
+using uint32 = uint32_t;
 
 // A single image storing history of some data, which is drawn a single column
 // at a time.
@@ -236,7 +244,7 @@ struct TrainingImages {
 
           // top
 
-          auto TopToScreenY = [this, weight_height](float w) {
+          auto TopToScreenY = [weight_height](float w) {
               int yrev = w * float(weight_height / 4) + (weight_height / 2);
               int y = weight_height - yrev;
               // Always draw on-screen.

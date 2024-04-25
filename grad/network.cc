@@ -1,6 +1,7 @@
 
 #include "network.h"
 
+#include <array>
 #include <cstdio>
 #include <cmath>
 #include <cstring>
@@ -9,6 +10,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -272,15 +274,15 @@ void Network::RunForward(Stimulation *stim) const {
   }
 }
 
-static inline half GetHalf(uint16 u) {
+static inline half GetHalf(uint16_t u) {
   half h;
   static_assert(sizeof (h) == sizeof (u));
   memcpy((void*)&h, (void*)&u, sizeof (u));
   return h;
 }
 
-static inline uint16 GetU16(half h) {
-  uint16 u;
+static inline uint16_t GetU16(half h) {
+  uint16_t u;
   static_assert(sizeof (h) == sizeof (u));
   memcpy((void*)&u, (void*)&h, sizeof (u));
   return u;

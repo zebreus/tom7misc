@@ -6,23 +6,31 @@
 #include "timer.h"
 
 #include <array>
-#include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <functional>
-#include <array>
-#include <utility>
+#include <initializer_list>
+#include <map>
+#include <optional>
+#include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "half.h"
 
-#include "grad-util.h"
-#include "makefn-ops.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "color-util.h"
-#include "state.h"
-
-#include "choppy.h"
 #include "ansi.h"
+#include "arcfour.h"
+#include "base/stringprintf.h"
+#include "choppy.h"
+#include "grad-util.h"
+#include "image.h"
+#include "makefn-ops.h"
+#include "randutil.h"
+#include "state.h"
+#include "util.h"
+
+using namespace std;
 
 using Choppy = ChoppyGrid<256>;
 using Table = Exp::Table;
@@ -30,8 +38,6 @@ using uint32 = uint32_t;
 using uint8 = uint8_t;
 using Allocator = Exp::Allocator;
 using DB = Choppy::DB;
-
-static constexpr int IMAGE_SIZE = 1920;
 
 static inline uint16 U(double d) {
   return Exp::GetU16((half)d);
@@ -200,9 +206,9 @@ static void PrintExpressionStats(const Table &result) {
       };
     int i = color_pool.Get(u);
     if (i >= 0 && i < C.size()) {
-      return make_pair(C[i], ANSI_RESET);
+      return std::make_pair(C[i], ANSI_RESET);
     } else {
-      return make_pair("", "");
+      return std::make_pair("", "");
     }
   };
 

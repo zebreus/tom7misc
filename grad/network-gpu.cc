@@ -1,10 +1,16 @@
 
 #include "network-gpu.h"
 
+#include <CL/cl.h>
+#include <CL/cl_platform.h>
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <optional>
+#include <tuple>
+#include <utility>
 #include <vector>
-#include <mutex>
 #include <cmath>
 
 #include "base/logging.h"
@@ -17,7 +23,7 @@
 #include "threadutil.h"
 
 using namespace std;
-
+using int64 = int64_t;
 
 NetworkGPU::NetworkGPU(CL *cl, Network *net) : cl(cl), net(net) {
   layers.resize(net->layers.size());
@@ -999,7 +1005,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
   CHECK(config.max_num_scratch >= 0);
 
   const int64 round_nohat = FindNoHat(std::max(config.adam_b1,
-                                               config.adam_b2));
+                                                 config.adam_b2));
   // printf("Skip hats at round %lld.\n", round_nohat);
 
   const string base_src1 = Util::ReadFile("updateweights.cl");

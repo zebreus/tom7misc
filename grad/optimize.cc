@@ -2,20 +2,20 @@
 // Optimize a choppy database to make smaller equivalent expressions.
 // How did I not call this choptimize??
 
+#include <cstdint>
+#include <cstdio>
+#include <mutex>
 #include <optional>
 #include <array>
+#include <string>
 #include <utility>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "image.h"
 #include "expression.h"
-#include "half.h"
-#include "hashing.h"
 
 #include "choppy.h"
 #include "grad-util.h"
-#include "color-util.h"
 #include "arcfour.h"
 #include "ansi.h"
 #include "threadutil.h"
@@ -23,6 +23,8 @@
 #include "periodically.h"
 #include "opt/large-optimizer.h"
 #include "diff.h"
+#include "randutil.h"
+#include "util.h"
 
 #include "state.h"
 
@@ -31,6 +33,7 @@ using DB = Choppy::DB;
 using Allocator = Exp::Allocator;
 using Table = Exp::Table;
 using namespace std;
+using int64 = int64_t;
 
 // Other keys will work, but we generally optimize bases, so
 // pipe up if something is unexpected.
@@ -746,8 +749,8 @@ static void OptimizeOne(DB *db,
         else printf("%s\n", DB::KeyString(chopo.value()).c_str());
 
         CHECK(false) <<
-        "Was: " << Exp::Serialize(exp) << "\n"
-        "Now: " << Exp::Serialize(joint_exp);
+          "Was: " << Exp::Serialize(exp) << "\n"
+          "Now: " << Exp::Serialize(joint_exp);
       }
 
       if (VERBOSE) printf("JointOpt done.\n");
@@ -772,7 +775,7 @@ static void OptimizeOne(DB *db,
 
   if (State::CanBeLinearized(exp)) {
     CPrintf(ANSI_GREEN "Linearizable." ANSI_RESET "\n");
-    vector<Step> steps = State::Linearize(exp);
+    std::vector<Step> steps = State::Linearize(exp);
 
 
     {
