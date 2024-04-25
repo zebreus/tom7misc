@@ -215,6 +215,9 @@ testplayer.exe : chess.o player.o player-util.o fate-player.o almanac-player.o p
 pairs.exe : chess.o pairs.o $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+genmoves.exe : chess.o genmoves.o $(CCLIB_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 # XXX should not delete stockfish.exe
 clean :
 	rm -f *.o *.exe $(CCLIB_OBJECTS)

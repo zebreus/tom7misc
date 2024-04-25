@@ -55,6 +55,9 @@ struct Position {
   static constexpr uint8 TYPE_MASK = 0b0111U;
   static constexpr uint8 COLOR_MASK = 0b1000U;
 
+  // Creates a board in the starting position.
+  Position() {};
+
   // Row 0 is the top row of the board, black's back
   // rank, aka. rank 8. We try to use "row" to mean
   // this zero-based top-to-bottom notion and "rank"
@@ -344,6 +347,11 @@ struct Position {
   // former pieces, etc.) FlipSides(FlipSides(pos)) == pos for all
   // legal positions.
   static Position FlipSides(const Position &pos);
+
+  // Generates a random legal position according to an unspecified
+  // distribution. The position is legal, but likely will not make
+  // sense, and may be unreachable in normal games.
+  static Position RandomLegalPos(uint64_t seed);
 
  private:
   // XXX document

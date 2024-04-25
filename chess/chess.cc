@@ -3,10 +3,12 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <cstdint>
 #include <tuple>
 #include <vector>
+#include <random>
 
 using namespace std;
 
@@ -1931,4 +1933,166 @@ int Position::NumLegalMoves() {
   CountMC cmc;
   CollectLegalMoves(*this, cmc);
   return cmc.count;
+}
+
+Position Position::RandomLegalPos(uint64_t seed) {
+  std::mt19937 gen;
+  gen.seed(seed);
+  std::uniform_real_distribution<> unit(0.0f, 1.0f);
+
+  static constexpr float promote_p = 0.05f;
+  static constexpr float kill_p = 0.20f;
+  static constexpr float castling_p = 0.80f;
+  auto P = [&gen, &unit](float thresh) -> bool {
+      return unit(gen) < thresh;
+    };
+
+  // The notion of "legal" here is potentially subtle. For example,
+  // this code will produce en passant state while the king is in
+  // check (by another piece), which is impossible because it would
+  // require the previous move to be both the pawn move and the move
+  // that placed the king in check. Similarly, this can produce a
+  // triple check.
+
+  for (;;) {
+
+    // In starting position.
+    Position pos;
+
+    // For each square, if it has a piece, maybe kill it, maybe move it,
+    // maybe promote it.
+    for (int row = 0; row < 8; row++) {
+      for (int col = 0; col < 8; col++) {
+        uint8_t p = pos.SimplePieceAt(row, col);
+        uint8_t c = p & COLOR_MASK;
+        if ((p & TYPE_MASK) != KING && P(kill_p)) {
+          pos.SetPiece(row, col, EMPTY);
+        }
+
+        p = pos.SimplePieceAt(row, col);
+        if ((p & TYPE_MASK) == PAWN && P(promote_p)) {
+          std::uniform_int_distribution<> dist(0, 3);
+          switch (dist(gen)) {
+          case 0: pos.SetPiece(row, col, c | ROOK); break;
+          case 1: pos.SetPiece(row, col, c | KNIGHT); break;
+          case 2: pos.SetPiece(row, col, c | BISHOP); break;
+          default:
+          case 3: pos.SetPiece(row, col, c | QUEEN); break;
+          }
+        }
+
+        p = pos.SimplePieceAt(row, col);
+        if (p != EMPTY) {
+          // Find a random square that we can move to.
+          std::uniform_int_distribution<> dist(0, 63);
+          for (;;) {
+            int sq = dist(gen);
+            int dst_row = sq / 8;
+            int dst_col = sq % 8;
+
+            // Only to empty squares.
+            if (pos.SimplePieceAt(dst_row, dst_col) != EMPTY)
+              continue;
+
+            // Pawns can't be in first or last row.
+            if ((p & TYPE_MASK) == PAWN && (dst_row == 0 || dst_row == 7))
+              continue;
+
+            // Can't put king next to king.
+            auto KingAdj = [&pos, dst_row, dst_col]() -> bool {
+                for (int dr : {-1, 0, 1}) {
+                  for (int dc : {-1, 0, 1}) {
+                    int r = dst_row + dr;
+                    int c = dst_col + dc;
+                    if (r >= 0 && r <= 7 &&
+                        c >= 0 && c <= 8) {
+                      if ((pos.SimplePieceAt(r, c) & TYPE_MASK) == KING)
+                        return true;
+                    }
+                  }
+                }
+                return false;
+              };
+
+            if ((p & TYPE_MASK) == KING && KingAdj())
+              continue;
+
+            // Then we found a spot. Perform the swap.
+            pos.SetPiece(dst_row, dst_col, p);
+            pos.SetPiece(row, col, EMPTY);
+            break;
+          }
+
+        }
+      }
+    }
+
+    // Now we have a simple shuffled board. It may still be illegal
+    // because of e.g. mutual check. First, we pick a random turn to
+    // move.
+    std::uniform_int_distribution<> coin(0, 1);
+    bool black_move = coin(gen) == 1;
+    // So the opponent cannot be in check!
+    pos.SetBlackMove(!black_move);
+    if (pos.IsInCheck())
+      continue;
+
+    pos.SetBlackMove(black_move);
+    // (but it's ok for me to be in check).
+
+    // Set castling state.
+    if (pos.SimplePieceAt(0, 4) == (BLACK | KING) &&
+        pos.SimplePieceAt(0, 0) == (BLACK | ROOK) &&
+        P(castling_p)) {
+      pos.SetPiece(0, 0, BLACK | C_ROOK);
+    }
+
+    if (pos.SimplePieceAt(0, 4) == (BLACK | KING) &&
+        pos.SimplePieceAt(0, 7) == (BLACK | ROOK) &&
+        P(castling_p)) {
+      pos.SetPiece(0, 7, BLACK | C_ROOK);
+    }
+
+    if (pos.SimplePieceAt(7, 4) == (WHITE | KING) &&
+        pos.SimplePieceAt(7, 0) == (WHITE | ROOK) &&
+        P(castling_p)) {
+      pos.SetPiece(7, 0, WHITE | C_ROOK);
+    }
+
+    if (pos.SimplePieceAt(7, 4) == (WHITE | KING) &&
+        pos.SimplePieceAt(7, 7) == (WHITE | ROOK) &&
+        P(castling_p)) {
+      pos.SetPiece(7, 7, WHITE | C_ROOK);
+    }
+
+    // Finally, set en passant state. Get all of the
+    // eligible columns. This can be confusing; remember
+    // that row indices are moving in the opposite
+    // direction from chess ranks in standard notation.
+    std::vector<int> eligible;
+    const uint8_t other_color = black_move ? WHITE : BLACK;
+    // square that the pawn left.
+    const int behind_row = black_move ? 6 : 1;
+    // square that would be captured.
+    const int ep_row = black_move ? 5 : 2;
+    // square where the pawn currently is.
+    const int pawn_row = black_move ? 4 : 3;
+
+    for (int ep_col = 0; ep_col < 8; ep_col++) {
+      if (pos.SimplePieceAt(behind_row, ep_col) == EMPTY &&
+          pos.SimplePieceAt(ep_row, ep_col) == EMPTY &&
+          pos.SimplePieceAt(pawn_row, ep_col) == (other_color | PAWN)) {
+        eligible.push_back(ep_col);
+      }
+    }
+
+    if (!eligible.empty()) {
+      // There can only be one, so choose randomly.
+      std::uniform_int_distribution<> pick(0, eligible.size() - 1);
+      pos.SetEnPassantColumn(std::make_optional(eligible[pick(gen)]));
+    }
+
+    // Success!
+    return pos;
+  }
 }

@@ -597,6 +597,16 @@ static void TestCastleMate() {
   CHECK(pos.IsMated()) << pos.BoardString();
 }
 
+static void TestRandom() {
+  // We only require that the position is legal. But that means
+  // we should be able to enumerate moves for it, for example
+  // (which has some internal assertions).
+  for (int i = 0; i < 10000; i++) {
+    Position pos = Position::RandomLegalPos(i);
+    (void)pos.GetLegalMoves();
+  }
+}
+
 int main(int argc, char **argv) {
 
   CheckInit();
@@ -628,6 +638,8 @@ int main(int argc, char **argv) {
 
   RegressionBxa8n();
   RegressionRg8();
+
+  TestRandom();
 
   printf("\nOK\n");
   return 0;

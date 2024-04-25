@@ -2,6 +2,7 @@
 #ifndef _TOURNAMENT_DB_H
 #define _TOURNAMENT_DB_H
 
+#include <cstddef>
 #include <utility>
 #include <unordered_map>
 #include <unordered_set>
