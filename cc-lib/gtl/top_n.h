@@ -42,7 +42,6 @@ limitations under the License.
 #include <stddef.h>
 #include <algorithm>
 #include <functional>
-#include <string>
 #include <vector>
 
 #include "base/logging.h"

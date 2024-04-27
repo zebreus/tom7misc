@@ -1,6 +1,5 @@
 
 #include <string>
-#include <vector>
 
 #include "guitar.h"
 
@@ -26,7 +25,7 @@ int main(int argc, char **argv) {
         return false;
     return true;
   };
-  
+
   // Assume rest of strings are muted if fewer than 6 are given.
   const string fing = Util::PadEx(6, (string)argv[1], 'x');
   if (fing.size() != 6 || !OKChars(fing)) {
@@ -42,14 +41,14 @@ int main(int argc, char **argv) {
     CHECK(false) << "impossible";
     return 0;
   };
-  
+
   Fingering f = make_tuple(F(fing[0]),
                            F(fing[1]),
                            F(fing[2]),
                            F(fing[3]),
                            F(fing[4]),
                            F(fing[5]));
-  
+
   std::optional<Chord> co = Guitar::NameFingering(f);
   if (co.has_value()) {
     printf("%s\n", Guitar::ChordString(co.value()).c_str());

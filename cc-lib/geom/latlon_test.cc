@@ -1,6 +1,4 @@
 #include <stdio.h>
-#include <string.h>
-#include <cstdint>
 
 #include <math.h>
 

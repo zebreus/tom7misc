@@ -15,7 +15,6 @@
 #include <array>
 #include <functional>
 #include <vector>
-#include <tuple>
 #include <cmath>
 
 #include <cstdio>
@@ -139,7 +138,7 @@ static inline void *MC_REALLOC(void *ptr, size_t size) {
     *nactual = size;
     if (VERBOSE)
       printf("Realloc %d bytes -> %d bytes, actual %p -> actual %p\n",
-             old_size, size,
+             (int)old_size, (int)size,
              actual, nactual);
     return (void*)(nactual + 1);
   }
@@ -628,7 +627,7 @@ McMesh mcGenerate(const float *bmin, const float *bmax, float cellsize, McIsoFn 
         if (VERBOSE)
           printf("grids are %d x %d = %d bytes\n",
                  xd + 1, yd + 1,
-                 sizeof(McCorner) * (xd + 1) * (yd + 1));
+                 (int)sizeof(McCorner) * (xd + 1) * (yd + 1));
         McCorner *grid0 = (McCorner *)MC_REALLOC(NULL, sizeof(McCorner) * (xd+1)*(yd+1));
         McCorner *grid1 = (McCorner *)MC_REALLOC(NULL, sizeof(McCorner) * (xd+1)*(yd+1));
         if (!grid0 || !grid1)

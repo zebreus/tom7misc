@@ -1,6 +1,4 @@
 #include <stdio.h>
-#include <string.h>
-#include <cstdint>
 
 #include <math.h>
 
@@ -116,7 +114,7 @@ int main(int argc, char **argv) {
            x, y, z);
   }
 
-  
+
   #if 0
   {
     // 2D, bare function interface

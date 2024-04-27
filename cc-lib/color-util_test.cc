@@ -1,7 +1,6 @@
 #include "color-util.h"
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string>
 #include <cstdint>
 
@@ -9,7 +8,6 @@
 #include "base/stringprintf.h"
 
 #include "arcfour.h"
-#include "randutil.h"
 #include "image.h"
 #include "timer.h"
 

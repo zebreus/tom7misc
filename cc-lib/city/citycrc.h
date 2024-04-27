@@ -25,19 +25,25 @@
 //
 // Functions in the CityHash family are not suitable for cryptography.
 
-#ifndef CITY_HASH_CRC_H_
-#define CITY_HASH_CRC_H_
+#ifndef CC_LIB_CITY_HASH_CRC_H_
+#define CC_LIB_CITY_HASH_CRC_H_
+
+#include <cstdint>
 
 #include "city/city.h"
+// #include "base/int128.h"
+
+using city_uint128 = std::pair<uint64_t, uint64_t>;
 
 // Hash function for a byte array.
-uint128 CityHashCrc128(const char *s, size_t len);
+city_uint128 CityHashCrc128(const char *s, size_t len);
 
 // Hash function for a byte array.  For convenience, a 128-bit seed is also
 // hashed into the result.
-uint128 CityHashCrc128WithSeed(const char *s, size_t len, uint128 seed);
+city_uint128 CityHashCrc128WithSeed(const char *s, size_t len,
+                                    city_uint128 seed);
 
 // Hash function for a byte array.  Sets result[0] ... result[3].
-void CityHashCrc256(const char *s, size_t len, uint64 *result);
+void CityHashCrc256(const char *s, size_t len, uint64_t *result);
 
-#endif  // CITY_HASH_CRC_H_
+#endif  // CC_LIB_CITY_HASH_CRC_H_

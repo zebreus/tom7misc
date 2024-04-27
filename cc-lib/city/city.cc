@@ -35,6 +35,9 @@
 #include <string.h>  // for memcpy and memset
 
 using uint128 = city_uint128;
+using uint64 = uint64_t;
+using uint32 = uint32_t;
+using uint8 = uint8_t;
 
 using namespace std;
 
@@ -108,13 +111,13 @@ static uint32 Fetch32(const char *p) {
 }
 
 // Some primes between 2^63 and 2^64 for various uses.
-static const uint64 k0 = 0xc3a5c85c97cb3127ULL;
-static const uint64 k1 = 0xb492b66fbe98f273ULL;
-static const uint64 k2 = 0x9ae16a3b2f90404fULL;
+static constexpr const uint64 k0 = 0xc3a5c85c97cb3127ULL;
+static constexpr const uint64 k1 = 0xb492b66fbe98f273ULL;
+static constexpr const uint64 k2 = 0x9ae16a3b2f90404fULL;
 
 // Magic numbers for 32-bit hashing.  Copied from Murmur3.
-static const uint32_t c1 = 0xcc9e2d51;
-static const uint32_t c2 = 0x1b873593;
+static constexpr const uint32_t c1 = 0xcc9e2d51;
+static constexpr const uint32_t c2 = 0x1b873593;
 
 // A 32-bit to 32-bit integer hash copied from Murmur3.
 static uint32 fmix(uint32 h)

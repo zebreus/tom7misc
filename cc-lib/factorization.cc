@@ -2,7 +2,6 @@
 #include "factorization.h"
 
 #include <algorithm>
-#include <cstdlib>
 #include <array>
 #include <cstdint>
 #include <vector>

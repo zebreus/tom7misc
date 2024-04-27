@@ -1122,8 +1122,7 @@ protected:
 
     double s[ MaxParPopCount ] = {};
 
-    if( ppc == 4 )
-    {
+    if( ppc == 4 ) {
       const ptype* const c0 = ParPops[ ppi[ 0 ]] -> getCentroid();
       const ptype* const c1 = ParPops[ ppi[ 1 ]] -> getCentroid();
       const ptype* const c2 = ParPops[ ppi[ 2 ]] -> getCentroid();
@@ -1150,10 +1149,7 @@ protected:
       s[ 1 ] = s1;
       s[ 2 ] = s2;
       s[ 3 ] = s3;
-    }
-    else
-    if( ppc == 3 )
-    {
+    } else if ( ppc == 3 ) {
       const ptype* const c0 = ParPops[ ppi[ 0 ]] -> getCentroid();
       const ptype* const c1 = ParPops[ ppi[ 1 ]] -> getCentroid();
       const ptype* const c2 = ParPops[ ppi[ 2 ]] -> getCentroid();
@@ -1175,10 +1171,7 @@ protected:
       s[ 0 ] = s0;
       s[ 1 ] = s1;
       s[ 2 ] = s2;
-    }
-    else
-    if( ppc == 2 )
-    {
+    } else if (ppc == 2) {
       const ptype* const c0 = ParPops[ ppi[ 0 ]] -> getCentroid();
       const ptype* const c1 = ParPops[ ppi[ 1 ]] -> getCentroid();
       double s0 = 0.0;
@@ -2742,17 +2735,14 @@ public:
    * more efficiently.
    */
 
-  int optimize( CBiteRnd& rnd, CBiteOpt* const PushOpt = NULL )
-  {
+  int optimize(CBiteRnd &rnd, CBiteOpt *const PushOpt = NULL) {
     int i;
 
-    if( DoInitEvals )
-    {
-      const ptype* const p = PopParams[ CurPopPos ];
+    if (DoInitEvals) {
+      const ptype *const p = PopParams[CurPopPos];
 
-      for( i = 0; i < ParamCount; i++ )
-      {
-        NewValues[ i ] = getRealValue( p, i );
+      for (i = 0; i < ParamCount; i++) {
+        NewValues[i] = getRealValue(p, i);
       }
 
       const double NewCost = optcost( NewValues );
@@ -2761,11 +2751,9 @@ public:
 
       CurPopPos++;
 
-      if( CurPopPos == PopSize )
-      {
-        for( i = 0; i < ParPopCount; i++ )
-        {
-          ParPops[ i ] -> copy( *this );
+      if (CurPopPos == PopSize) {
+        for (i = 0; i < ParPopCount; i++) {
+          ParPops[i]->copy(*this);
         }
 
         DoInitEvals = false;
@@ -2778,129 +2766,90 @@ public:
     double NewCost;
     const int SelMethod = select( MethodHist, rnd );
 
-    if( SelMethod == 0 )
-    {
-      generateSol2( rnd );
-    }
-    else
-    if( SelMethod == 1 )
-    {
-      if( select( M1Hist, rnd ))
-      {
-        if( select( M1AHist, rnd ))
-        {
-          generateSol2b( rnd );
+    if (SelMethod == 0) {
+      generateSol2(rnd);
+    } else if (SelMethod == 1) {
+      if (select(M1Hist, rnd)) {
+        if (select(M1AHist, rnd)) {
+          generateSol2b(rnd);
+        } else {
+          generateSol3(rnd);
         }
-        else
-        {
-          generateSol3( rnd );
-        }
-      }
-      else
-      {
-        const int SelM1B = select( M1BHist, rnd );
+      } else {
+        const int SelM1B = select(M1BHist, rnd);
 
-        if( SelM1B == 0 )
-        {
-          if( select( M1BAHist, rnd ))
-          {
-            generateSol4( rnd );
+        if (SelM1B == 0) {
+          if (select(M1BAHist, rnd)) {
+            generateSol4(rnd);
+          } else {
+            generateSol4b(rnd);
           }
-          else
-          {
-            generateSol4b( rnd );
+        } else if (SelM1B == 1) {
+          if (select(M1BBHist, rnd)) {
+            generateSol5(rnd);
+          } else {
+            generateSol5b(rnd);
           }
-        }
-        else
-        if( SelM1B == 1 )
-        {
-          if( select( M1BBHist, rnd ))
-          {
-            generateSol5( rnd );
-          }
-          else
-          {
-            generateSol5b( rnd );
-          }
-        }
-        else
-        {
-          generateSol6( rnd );
+        } else {
+          generateSol6(rnd);
         }
       }
-    }
-    else
-    if( SelMethod == 2 )
-    {
-      generateSol1( rnd );
-    }
-    else
-    {
+    } else if (SelMethod == 2) {
+      generateSol1(rnd);
+    } else {
       DoEval = false;
-      CBiteOptPop* UpdPop;
+      CBiteOptPop *UpdPop;
 
-      if( UseParOpt == 1 )
-      {
+      if (UseParOpt == 1) {
         // Re-assign optimizer 2 based on comparison of its
         // efficiency with optimizer 1.
 
         UseParOpt = select( ParOpt2Hist, rnd );
       }
 
-      if( UseParOpt == 0 )
-      {
-        const int sc = ParOpt.optimize( rnd, &NewCost, NewValues );
+      if (UseParOpt == 0) {
+        const int sc = ParOpt.optimize(rnd, &NewCost, NewValues);
 
-        if( sc > 0 )
-        {
+        if (sc > 0) {
           UseParOpt = 1; // On stall, select optimizer 2.
         }
 
-        if( sc > ParamCount * 64 )
-        {
-          ParOpt.init( rnd, getBestParams() );
+        if (sc > ParamCount * 64) {
+          ParOpt.init(rnd, getBestParams());
           ParOptPop.resetCurPopPos();
         }
 
         UpdPop = &ParOptPop;
-      }
-      else
-      {
+      } else {
         const int sc = ParOpt2.optimize( rnd, &NewCost, NewValues );
 
-        if( sc > 0 )
-        {
+        if (sc > 0) {
           UseParOpt = 0; // On stall, select optimizer 1.
         }
 
-        if( sc > ParamCount * 16 )
-        {
-          ParOpt2.init( rnd, getBestParams(), -1.0 );
+        if (sc > ParamCount * 16) {
+          ParOpt2.init(rnd, getBestParams(), -1.0);
           ParOpt2Pop.resetCurPopPos();
         }
 
         UpdPop = &ParOpt2Pop;
       }
 
-      for( i = 0; i < ParamCount; i++ )
-      {
-        TmpParams[ i ] = (ptype) (( NewValues[ i ] -
-          MinValues[ i ]) * DiffValuesI[ i ]);
+      for (i = 0; i < ParamCount; i++) {
+        TmpParams[i] = (ptype)((NewValues[i] - MinValues[i]) * DiffValuesI[i]);
       }
 
       UpdPop -> updatePop( NewCost, TmpParams, false, true );
     }
 
-    if( DoEval )
-    {
+    if (DoEval) {
       // Evaluate objective function with new parameters, if the
       // solution was not provided by the parallel optimizer.
       // Wrap parameter values so that they stay in the [0; 1] range.
 
-      for( i = 0; i < ParamCount; i++ )
-      {
-        TmpParams[ i ] = wrapParam( rnd, TmpParams[ i ]);
-        NewValues[ i ] = getRealValue( TmpParams, i );
+      for (i = 0; i < ParamCount; i++) {
+        TmpParams[i] = wrapParam(rnd, TmpParams[i]);
+        NewValues[i] = getRealValue(TmpParams, i);
       }
 
       NewCost = optcost( NewValues );
@@ -2908,51 +2857,39 @@ public:
 
     updateBestCost( NewCost, NewValues );
 
-    if( !isAcceptedCost( NewCost ))
-    {
+    if (!isAcceptedCost(NewCost)) {
       // Upper bound cost constraint check failed, reject this solution.
 
       applyHistsDecr( rnd );
 
       StallCount++;
 
-      if( CurPopSize < PopSize )
-      {
-        if( select( PopChangeHist, rnd ) == 0 )
-        {
+      if (CurPopSize < PopSize) {
+        if (select(PopChangeHist, rnd) == 0) {
           // Increase population size on fail.
 
           incrCurPopSize( CurPopSize1 -
             (int) ( rnd.getRndValueSqr() * CurPopSize ));
         }
       }
-    }
-    else
-    {
+    } else {
       applyHistsIncr( rnd );
 
-      if( NewCost == PopCosts[ CurPopSize1 ])
-      {
+      if (NewCost == PopCosts[CurPopSize1]) {
         StallCount++;
-      }
-      else
-      {
+      } else {
         StallCount = 0;
       }
 
       updatePop( NewCost, TmpParams, false, false );
 
-      if( PushOpt != NULL && PushOpt != this &&
-        !PushOpt -> DoInitEvals )
-      {
-        PushOpt -> updatePop( NewCost, TmpParams, false, true );
-        PushOpt -> updateParPop( NewCost, TmpParams );
+      if (PushOpt != NULL && PushOpt != this && !PushOpt->DoInitEvals) {
+        PushOpt->updatePop(NewCost, TmpParams, false, true);
+        PushOpt->updateParPop(NewCost, TmpParams);
       }
 
-      if( CurPopSize > PopSize / 2 )
-      {
-        if( select( PopChangeHist, rnd ) == 1 )
-        {
+      if (CurPopSize > PopSize / 2) {
+        if (select(PopChangeHist, rnd) == 1) {
           // Decrease population size on success.
 
           decrCurPopSize();
@@ -2966,16 +2903,14 @@ public:
 
     CentUpdateCtr++;
 
-    if( CentUpdateCtr >= CurPopSize * 32 )
-    {
+    if (CentUpdateCtr >= CurPopSize * 32) {
       // Update centroids of parallel populations that use running
       // average, to reduce error accumulation.
 
       CentUpdateCtr = 0;
 
-      for( i = 0; i < ParPopCount; i++ )
-      {
-        ParPops[ i ] -> updateCentroid();
+      for (i = 0; i < ParPopCount; i++) {
+        ParPops[i]->updateCentroid();
       }
     }
 

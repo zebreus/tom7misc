@@ -49,8 +49,8 @@ inline static float V2Dot(Vector2 *a, Vector2 *b) {
 }
 
 // XXX use STL
-#define MIN(a,b)	(((a)<(b))?(a):(b))
-#define MAX(a,b)	(((a)>(b))?(a):(b))
+#define MIN(a,b)  (((a)<(b))?(a):(b))
+#define MAX(a,b)  (((a)>(b))?(a):(b))
 
 /*
 uh these would need params
@@ -73,7 +73,7 @@ struct BezierImpl {
   /*  Maximum depth for recursion */
   static constexpr int MAXDEPTH = 64;
   /* Flatness control value */
-  static constexpr float EPSILON = ldexp(1.0,-MAXDEPTH-1);
+  static constexpr float EPSILON = std::ldexp(1.0,-MAXDEPTH-1);
 
   /*  Degree of eqn to find roots of. */
   static constexpr int W_DEGREE = 2 * DEGREE - 1;
@@ -295,7 +295,7 @@ struct BezierImpl {
 
 
   /* take binary sign of a, either -1, or 1 if >= 0 */
-  #define SGN(a)		(((a)<0) ? -1 : 1)
+  #define SGN(a)    (((a)<0) ? -1 : 1)
 
   /*
    * CrossingCount :

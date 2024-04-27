@@ -1,8 +1,6 @@
 #include "bounds.h"
 
 #include <algorithm>
-#include <limits>
-#include <tuple>
 #include <utility>
 #include <cmath>
 

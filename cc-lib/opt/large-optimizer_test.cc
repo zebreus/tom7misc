@@ -3,7 +3,6 @@
 #include <cinttypes>
 #include <utility>
 #include <optional>
-#include <variant>
 #include <vector>
 
 #include "opt.h"
@@ -65,6 +64,7 @@ static std::pair<double, bool> F1(const std::vector<double> &args) {
   return make_pair(sum + neighbors, true);
 }
 
+[[maybe_unused]]
 static void SelfOptimize(int n) {
   static constexpr bool CACHE = false;
 
@@ -76,7 +76,7 @@ static void SelfOptimize(int n) {
       [n, &total_calls, &spam_per](double ppp) {
         Timer run_timer;
         using Optimizer = LargeOptimizer<CACHE>;
-        Optimizer opt([n, &total_calls, &spam_per](
+        Optimizer opt([&total_calls, &spam_per](
             const std::vector<double> v) {
             total_calls++;
             if (spam_per.ShouldRun()) {

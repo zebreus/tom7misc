@@ -8,10 +8,10 @@
 #include <cstdint>
 #include <optional>
 #include <cmath>
+#include <utility>
 
 #include "stb_truetype.h"
 #include "util.h"
-#include "base/logging.h"
 #include "image.h"
 
 // "Simplified" interface to TrueType fonts (based on stb_truetype),
@@ -34,7 +34,7 @@ struct TTF {
 
   // Normalizes an input coordinate (which is usually int16) to be
   // *nominally* in the unit rectangle.
-  pair<float, float> Norm(float x, float y) const {
+  std::pair<float, float> Norm(float x, float y) const {
     // x coordinate is easy; just scale by the same factor.
     x = norm * x;
     // y is flipped (want +y downward) and offset (want ascent to be 0.0).

@@ -56,9 +56,9 @@ struct IslandFinder {
   static Maps Find(const ImageA &bitmap,
                    ImageRGBA *islands_debug = nullptr);
 
-  
+
   // TODO: No need to expose these details any more...
-private:
+ private:
   // Information about a pixel, which should be eventually
   // shared with the full equivalence class.
   struct Info {
@@ -90,7 +90,7 @@ private:
   void SetInfo(int idx, int depth, int parent);
   void Union(int aidx, int bidx);
 
-  // Many of these could be public, but they are 
+  // Many of these could be public, but they are
   std::pair<int, int> GetXY(int index) const;
   int Index(int x, int y) const;
 
@@ -104,25 +104,25 @@ private:
 
   int Height() const;
   int Width() const;
-  
+
   // Return the equivalence class that this index currently
   // belongs in. Not const because it performs path compression.
   int GetClass(int idx);
-  
+
   static ImageA Preprocess(const ImageA &bitmap);
 
   // The input bitmap is 8-bit, but we only treat it as 1-bit (0 =
   // sea, >0 = land). The image is automatically padded with two
   // pixels of sea on all sides, so Width() below will be
   // bitmap.Width() + 4.
-  // 
+  //
   // Typical usage is to immediately call Fill and then work
   // with the results of GetMaps.
   explicit IslandFinder(const ImageA &bitmap);
 
   // Usually you want to immediately run Fill after constructing.
   void Fill();
-  
+
   // Get the output of this process as three components:
   //  - Two bitmaps the size of the original bitmap:
   //      (removing the padding used for internal purposes).

@@ -1,5 +1,5 @@
 /*
- * $Id: bigq.c,v 1.61 2023/08/20 09:20:29 tom7 Exp $
+ * $Id: bigq.c,v 1.62 2024/04/26 20:45:42 tom7 Exp $
  */
 
 /*
@@ -35,7 +35,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 
 /*
  * Implementation note:

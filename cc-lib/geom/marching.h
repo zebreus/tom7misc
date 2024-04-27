@@ -5,8 +5,8 @@
 // THIS FILE ONLY:
 // Use and distribute freely; see marching.cc for license.
 
-#ifndef _CC_LIB_MARCHING_H
-#define _CC_LIB_MARCHING_H
+#ifndef _CC_LIB_GEOM_MARCHING_H
+#define _CC_LIB_GEOM_MARCHING_H
 
 #include <functional>
 #include <vector>
@@ -24,7 +24,7 @@ struct MarchingCubes {
 
     float x = 0.0f, y = 0.0f, z = 0.0f;
   };
-  
+
   struct Vertex {
     Vertex() {}
     Vertex(Pos pos, Pos normal) : pos(pos), normal(normal) {}
@@ -36,7 +36,7 @@ struct MarchingCubes {
     Pos pos;
     Pos normal;
   };
-  
+
   struct Mesh {
     std::vector<Vertex> vertices;
     // Each triangle's three vertices are represented
@@ -55,5 +55,5 @@ struct MarchingCubes {
                        float cellsize,
                        const std::function<float(Pos)> &shape);
 };
-  
+
 #endif

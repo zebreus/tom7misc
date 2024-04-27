@@ -5,7 +5,6 @@
 #include "guitar.h"
 
 #include "base/logging.h"
-#include "util.h"
 
 using namespace std;
 using Fingering = Guitar::Fingering;
@@ -29,7 +28,7 @@ static void TestParse() {
   CHECK_EQ(Guitar::Parse("Eb6add9"), Guitar::Parse("Eb69"));
   CHECK(Guitar::Parse("C6add9") != Guitar::Parse("Cm69"));
   CHECK_EQ(Guitar::Parse("Abm6add9"), Guitar::Parse("Abm69"));
-  CHECK_EQ(Guitar::Parse("Gbm6/9"), Guitar::Parse("Gbm6add9"));  
+  CHECK_EQ(Guitar::Parse("Gbm6/9"), Guitar::Parse("Gbm6add9"));
 }
 
 static bool HasFingering(vector<Fingering> fs, Fingering fing) {
@@ -79,7 +78,7 @@ static void TestRender() {
 }
 
 static bool HasFingering(Chord c, Fingering f) {
-  for (const Fingering ff : Guitar::GetFingerings(c))
+  for (const Fingering &ff : Guitar::GetFingerings(c))
     if (f == ff)
       return true;
   return false;
@@ -91,7 +90,7 @@ static void TestNameFingering() {
   const optional<Chord> c_add9_co = Guitar::NameFingering(c_add9);
   CHECK(c_add9_co.has_value());
   CHECK_EQ(Guitar::ChordString(c_maj_co.value()), "C");
-  CHECK_EQ(Guitar::ChordString(c_add9_co.value()), "Cadd9");  
+  CHECK_EQ(Guitar::ChordString(c_add9_co.value()), "Cadd9");
 
   // In principle every fingering could have a name, but this one is
   // unplayable and ridiculous.
@@ -101,7 +100,7 @@ static void TestNameFingering() {
   for (int b = 0; b < Guitar::NUM_BASES; b++) {
     for (int s = 0; s < Guitar::NUM_SUFFIXES; s++) {
       const Chord c = Guitar::ChordOf(b, s);
-      for (const Fingering f : Guitar::GetFingerings(c)) {
+      for (const Fingering &f : Guitar::GetFingerings(c)) {
         const optional<Chord> co = Guitar::NameFingering(f);
         CHECK(co.has_value()) << Guitar::FingeringString(f);
 

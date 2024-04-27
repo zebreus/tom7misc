@@ -13,7 +13,6 @@
 // is best suited to fairly easy convex problems.
 
 #include <cstdio>
-#include <array>
 #include <bit>
 #include <chrono>
 #include <cmath>

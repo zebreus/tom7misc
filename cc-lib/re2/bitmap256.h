@@ -45,7 +45,7 @@ class Bitmap256 {
 
   // Finds the next non-zero bit with index >= c.
   // Returns -1 if no such bit exists.
-  int FindNextSetBit(int c) const;
+  inline int FindNextSetBit(int c) const;
 
  private:
   // Finds the least significant non-zero bit in n.

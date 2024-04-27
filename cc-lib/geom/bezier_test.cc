@@ -1,6 +1,4 @@
 #include <stdio.h>
-#include <string.h>
-#include <cstdint>
 
 #include <math.h>
 
@@ -12,7 +10,7 @@ using namespace std;
 #define CHECK_FEQ(a, b) CHECK(fabs((a) - (b)) < 0.00001)
 
 static void DistanceToQuad() {
-  const auto [x, y, d] = 
+  const auto [x, y, d] =
     DistanceFromPointToQuadBezier(
         // The point to test
         1.0f, 2.0f,
@@ -25,7 +23,7 @@ static void DistanceToQuad() {
 
   CHECK_FEQ(0.88100123f, x);
   CHECK_FEQ(1.99277639f, y);
-  CHECK_FEQ(0.01421289f, d);  
+  CHECK_FEQ(0.01421289f, d);
 
   // TODO: Test endpoints, etc.
 }
