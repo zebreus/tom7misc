@@ -342,19 +342,19 @@ static void ObjTests() {
      layout_lib_preamble + R"##(
 
        val author = b[Tom 7 [[Murphy]] ]
-       fun layout-tostring l =
+       fun layout-to-string l =
          if is-text l
          then get-text l
          else
            let
                val z = layout-vec-size l
                fun r n = if n == z then "." ^ int-to-string n
-                         else layout-tostring (layout-vec-sub (l, n)) ^
+                         else layout-to-string (layout-vec-sub (l, n)) ^
                               r (n + 1)
            in r 0
            end
       in
-         print (layout-tostring author)
+         print (layout-to-string author)
       end
       )##"),
            // XXX dependent on optimizations.
@@ -567,6 +567,34 @@ static void FloatTests() {
 }
 
 
+static void TestUnicode() {
+  CHECK_EQ(
+      RunToString(R"(
+         let object ISFC of { cp : int, len : int }
+         in
+           case internal-string-first-codepoint "Ω" of
+              {(ISFC) cp = 0x03A9, len = 2 } => print "yes"
+         end
+      )"),
+      "yes");
+
+  CHECK_EQ(
+      RunToString(R"(
+        if 0x03A9 == 0'Ω'
+        then print "correct"
+        else print "no"
+      )"),
+      "correct");
+
+  CHECK_EQ(
+      RunToString(R"(
+         case codepoint-to-string 42 of
+            "*" => print "yeah"
+      )"),
+      "yeah");
+}
+
+
 static void TestLocal() {
 
   CHECK_EQ(
@@ -600,6 +628,7 @@ int main(int argc, char **argv) {
   bc::ObjTests();
   bc::StringTests();
   bc::FloatTests();
+  bc::TestUnicode();
   bc::TestLocal();
   bc::NewTests();
 

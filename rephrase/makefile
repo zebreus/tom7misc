@@ -67,6 +67,8 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 
 CC_LIB_OBJECTS=$(RE2_OBJECTS) $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/image-resize.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/pdf.o $(CC_LIB)/qr-code.o $(CC_LIB)/color-util.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/boxes-and-glue.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/opt/opt.o $(CC_LIB)/opt/opt-seq.o
 
+CHESS_OBJECTS=$(CHESS)
+
 BIT7_OBJECTS=$(BIT7)/font-image.o
 
 ifndef UNAME_S
@@ -397,6 +399,8 @@ aeoud-comparison/aeoud-comparison.talk : bovex.exe aeoud-shared.bovex aeoud-comp
 chessdemo/chessdemo.talk : bovex.exe chess.bovex chessdemo.bovex stdlib.bovex layout.bovex hyph-en-us.tex maketalk.exe talk.html *.png
 	./bovex.exe -v chessdemo.bovex -o chessdemo.talk
 	./maketalk.exe chessdemo chessdemo.talk
+
+chess-testcases.exe : $(CC_LIB_OBJECTS) $(CHESS_OBJECTS)
 
 test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
 	./html_test.exe

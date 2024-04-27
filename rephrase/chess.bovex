@@ -23,23 +23,77 @@ fun color-eq (WHITE, WHITE) = true
 fun color-other WHITE = BLACK
   | color-other BLACK = WHITE
 
+fun piece-compare (PAWN, PAWN) = EQUAL
+  | piece-compare (PAWN, _) = LESS
+  | piece-compare (_, PAWN) = GREATER
+  | piece-compare (ROOK, ROOK) = EQUAL
+  | piece-compare (ROOK, _) = LESS
+  | piece-compare (_, ROOK) = GREATER
+  | piece-compare (KNIGHT, KNIGHT) = EQUAL
+  | piece-compare (KNIGHT, _) = LESS
+  | piece-compare (_, KNIGHT) = GREATER
+  | piece-compare (BISHOP, BISHOP) = EQUAL
+  | piece-compare (BISHOP, _) = LESS
+  | piece-compare (_, BISHOP) = GREATER
+  | piece-compare (QUEEN, QUEEN) = EQUAL
+  | piece-compare (QUEEN, _) = LESS
+  | piece-compare (_, QUEEN) = GREATER
+  | piece-compare (KING, KING) = EQUAL
 
-fun piece-eq (PAWN, PAWN) = true
-  | piece-eq (ROOK, ROOK) = true
-  | piece-eq (KNIGHT, KNIGHT) = true
-  | piece-eq (BISHOP, BISHOP) = true
-  | piece-eq (KING, KING) = true
-  | piece-eq (QUEEN, QUEEN) = true
-  | piece-eq _ = false
+fun piece-eq (a, b) =
+  case piece-compare (a, b) of
+    EQUAL => true
+  | _ => false
 
 datatype move =
   Move of { src : int, dst : int, promote : piece option }
 
-fun pos (x, y) = y * 8 + x
+fun move-compare (Move { src = src1, dst = dst1, promote = promote1 },
+                  Move { src = src2, dst = dst2, promote = promote2 }) =
+  case int-compare (src1, src2) of
+    EQUAL =>
+      (case int-compare (dst1, dst2) of
+         EQUAL => option-compare piece-compare (promote1, promote2)
+       | ord => ord)
+  | ord => ord
+
+fun move-eq (m1, m2) =
+  case move-compare (m1, m2) of
+    EQUAL => true
+  | _ => false
+
+
+fun pos (x, y) =
+  if x < 0 orelse x >= 8 orelse
+     y < 0 orelse y >= 8
+  then fail "bad pos"
+  else y * 8 + x
 fun unpos p : (int * int) =
   if p < 0 orelse p >= 64
   then fail "bad pos"
   else (p mod 8, p div 8)
+
+(* in chess notation *)
+fun pos-to-string p =
+  let val (x, y) = unpos p
+  in
+    codepoint-to-string (0'a' + x) ^
+    codepoint-to-string (0'1' + (7 - y))
+  end
+
+fun piece-to-string QUEEN = "Q"
+  | piece-to-string KNIGHT = "N"
+  | piece-to-string BISHOP = "B"
+  | piece-to-string ROOK = "R"
+  | piece-to-string KING = "K"
+  | piece-to-string PAWN = "P"
+
+fun move-to-string (Move { src, dst, promote }) =
+  pos-to-string src ^
+  pos-to-string dst ^
+  (case promote of
+     NONE => ""
+   | SOME p => "=" ^ piece-to-string p)
 
 val START-BOARD =
   let
@@ -138,10 +192,11 @@ local
                          src : int, dst : int,
                          piece : piece,
                          my-color : color,
-                         en-passant : int option) =
+                         en-passant : int option,
+                         promo : piece option) =
     let
       val (srcx, srcy) = unpos src
-      val (dstx, dsty) = unpos src
+      val (dstx, dsty) = unpos dst
 
       val your-color = color-other my-color
 
@@ -160,9 +215,6 @@ local
                           turn = your-color })
             end
 
-          (* XXX specify in move call *)
-          val promo = QUEEN
-
           fun en-passant-move ep =
             (* XXX could check presence of pawn in destination, but
                en-passant being set is an assertion of that fact. *)
@@ -174,34 +226,51 @@ local
                  in
                    move (squares, NONE, PAWN)
                  end
+
+          (* Verifies that the jumped-over square at (src, jumpy) is
+             empty. *)
+          fun double-pawn-move jumpy =
+            case find-piece (squares, pos (srcx, jumpy)) of
+              NONE => move (squares, SOME srcx, PAWN)
+            | SOME _ => ILLEGAL "pawn double-move cannot jump over piece"
+
+          fun move-promote PAWN = ILLEGAL "cannot promote to pawn"
+            | move-promote KING = ILLEGAL "cannot promote to king"
+            | move-promote p = move (squares, NONE, p)
         in
           (* This covers all the cases. *)
           case (my-color, dst-occupied,
                 dsty - srcy, srcy, int-abs (dstx - srcx),
-                en-passant) of
-           | (WHITE, false, -2, 6, 0, _) => move (squares, SOME srcx, PAWN)
-           | (BLACK, false,  2, 1, 0, _) => move (squares, SOME srcx, PAWN)
+                en-passant, promo) of
+           | (WHITE, false, -2, 6, 0, _, NONE) => double-pawn-move 5
+           | (BLACK, false,  2, 1, 0, _, NONE) => double-pawn-move 2
            (* promoting *)
-           | (WHITE, false, -1, 1, 0, _) => move (squares, NONE, promo)
-           | (BLACK, false,  1, 6, 0, _) => move (squares, NONE, promo)
+           | (WHITE, false, -1, 1, 0, _, SOME p) => move-promote p
+           | (BLACK, false,  1, 6, 0, _, SOME p) => move-promote p
            (* capturing to promote *)
-           | (WHITE,  true, -1, 1, 1, _) => move (squares, NONE, promo)
-           | (BLACK,  true,  1, 6, 1, _) => move (squares, NONE, promo)
+           | (WHITE,  true, -1, 1, 1, _, SOME p) => move-promote p
+           | (BLACK,  true,  1, 6, 1, _, SOME p) => move-promote p
+
+           | (WHITE,     _,  _, 1, _, _, NONE) =>
+            ILLEGAL "must promote if moving to last rank"
+           | (BLACK,     _,  _, 6, _, _, NONE) =>
+            ILLEGAL "must promote if moving to last rank"
+
            (* en passant cases. Note that the dst square is not
               occupied in these cases (otherwise the pawn push on
               the previous move would have been illegal). *)
-           | (WHITE, false, -1, 3, 1, SOME ep) => en-passant-move ep
-           | (BLACK, false,  1, 4, 1, SOME ep) => en-passant-move ep
+           | (WHITE, false, -1, 3, 1, SOME ep, NONE) => en-passant-move ep
+           | (BLACK, false,  1, 4, 1, SOME ep, NONE) => en-passant-move ep
            (* one step forward; not promoting. *)
-           | (WHITE, false, -1, _, 0, _) => move (squares, NONE, PAWN)
-           | (BLACK, false,  1, _, 0, _) => move (squares, NONE, PAWN)
+           | (WHITE, false, -1, _, 0, _, NONE) => move (squares, NONE, PAWN)
+           | (BLACK, false,  1, _, 0, _, NONE) => move (squares, NONE, PAWN)
            (* capturing; not promoting *)
-           | (WHITE,  true, -1, _, 1, _) => move (squares, NONE, PAWN)
-           | (BLACK,  true,  1, _, 1, _) => move (squares, NONE, PAWN)
+           | (WHITE,  true, -1, _, 1, _, NONE) => move (squares, NONE, PAWN)
+           | (BLACK,  true,  1, _, 1, _, NONE) => move (squares, NONE, PAWN)
 
           (* Could give less generic error messages by adding cases
              here... *)
-           | (_, _, _, _, _, _) =>
+           | (_, _, _, _, _, _, _) =>
             ILLEGAL "illegal pawn move"
         end
 
@@ -250,7 +319,7 @@ local
           case (int-abs (dstx - srcx), int-abs (dsty - srcy)) of
             (1, 2) => go ()
           | (2, 1) => go ()
-          | _ => fail "knight must move (2,1) or (1,2)"
+          | _ => ILLEGAL "knight must move (2,1) or (1,2)"
         end
 
       fun move-bishop () =
@@ -286,6 +355,14 @@ local
               ((a8, h8, _, _), WHITE) => (a8, h8, false, false)
             | ((_, _, a1, h1), BLACK) => (false, false, a1, h1)
 
+        (*
+          do print ("move king. src=(" ^ int-to-string srcx ^ "," ^
+                    int-to-string srcy ^ ") dst=(" ^
+                    int-to-string dstx ^ "," ^
+                    int-to-string dsty ^ ")" ^
+                    " dx=" ^ int-to-string dx ^
+                    " dy=" ^ int-to-string dy ^ "\n")
+          *)
         in
           if not dst-occupied andalso int-abs dx == 2
           then
@@ -364,20 +441,32 @@ local
                | _ => ILLEGAL "invalid castling")
             end
           else
-            (* simple king move *)
-            if int-abs dx > 1 orelse int-abs dy > 1
-               orelse (dx == 0 andalso dy == 0)
-            then ILLEGAL "king moves to the 9 1-connected neighbors"
-            else
-              let
-                val squares = squares-remove (squares, src)
-                val squares = squares-insert (squares, dst, (my-color, KING))
-              in
-                OK (Board { squares = squares,
-                            turn = your-color,
-                            en-passant = NONE,
-                            castling = new-king-castling () })
-              end
+            let
+              (*
+              do print (int-to-string (int-abs dx) ^ "," ^
+              int-to-string (int-abs dy) ^ "\n")
+              *)
+            in
+              (* simple king move *)
+              if int-abs dx > 1 orelse int-abs dy > 1
+                 orelse (dx == 0 andalso dy == 0)
+              then ILLEGAL "king moves to the 9 1-connected neighbors"
+              else
+                let
+                  val squares = squares-remove (squares, src)
+                  val squares = squares-insert (squares, dst, (my-color, KING))
+                in
+                  (*
+                  print ("OK " ^
+                         move-to-string (Move { src = src, dst = dst,
+                         promote = NONE }) ^ "\n");
+                  *)
+                  OK (Board { squares = squares,
+                              turn = your-color,
+                              en-passant = NONE,
+                              castling = new-king-castling () })
+                end
+            end
         end
 
       fun move-queen () =
@@ -413,34 +502,50 @@ local
      is attacked by any piece of the attacker color. This is used
      for testing check, for example. *)
   and attacked (squares, target : int, attacker-color) =
-    mono-map-foldl false
-    (fn (src : int, (color, piece), b : bool) =>
-     b orelse
-     (color-eq (color, attacker-color) andalso
-      (case simple-move-piece (squares,
-                               (* No castling. This doesn't matter
-                                  because castling can't be a capturing move,
-                                  anyway. *)
-                               (false, false, false, false),
-                               true,
-                               src, target, piece, attacker-color,
-                               (* ignore en passant *)
-                               NONE) of
-         ILLEGAL _ => false
-       | OK _ => true))
-     ) squares
+    let
+      (* Pawn can attack the back row. In order for us to test
+         the move correctly, it must supply a valid promotion *)
+      fun attack-promo p =
+        case (attacker-color, p, unpos target) of
+          (WHITE, PAWN, (_, 0)) => SOME KNIGHT
+        | (BLACK, PAWN, (_, 7)) => SOME KNIGHT
+        | _ => NONE
+
+      fun piece-can-capture (src, piece) =
+        case simple-move-piece (squares,
+                                (* No castling. This doesn't matter
+                                   because castling can't be a capturing move,
+                                   anyway. *)
+                                (false, false, false, false),
+                                true,
+                                src, target, piece, attacker-color,
+                                (* ignore en passant. *)
+                                NONE,
+                                attack-promo piece) of
+          ILLEGAL _ => false
+        | OK _ => true
+    in
+      mono-map-foldl false
+      (fn (src : int, (color, piece), b : bool) =>
+       b orelse
+       (color-eq (color, attacker-color) andalso
+        piece-can-capture (src, piece))
+       ) squares
+    end
 in
   (* Returning NONE if the move is not legal. *)
   fun make-move (Board { squares, castling, en-passant, turn = my-color },
-                 Move { src, dst, promote }) =
+                 move as Move { src, dst, promote }) =
     let
+      (* do print (move-to-string move ^ "\n") *)
+
       val your-color = color-other my-color
 
       (* Move a piece, and check post-move conditions (check) *)
       fun move-piece (dst-occupied, piece) =
         let val res = simple-move-piece (squares, castling, dst-occupied,
                                          src, dst, piece, my-color,
-                                         en-passant)
+                                         en-passant, promote)
         in
           case res of
             (* Still illegal. *)

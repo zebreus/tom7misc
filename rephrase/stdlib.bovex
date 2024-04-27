@@ -1,4 +1,6 @@
 
+datatype order = LESS | EQUAL | GREATER
+
 datatype (a) option = SOME of a | NONE
 
 fun o(f, g) = fn x => f(g(x))
@@ -14,7 +16,11 @@ fun option-get de NONE = de
 fun opt-require (SOME v) = v
   | opt-require _ = fail "opt-require on NONE"
 
-datatype order = LESS | EQUAL | GREATER
+fun option-compare _ (NONE, NONE) = EQUAL
+  | option-compare _ (NONE, SOME _) = LESS
+  | option-compare _ (SOME _, NONE) = GREATER
+  | option-compare f (SOME a, SOME b) = f (a, b)
+
 
 fun bool-compare (false, true) = LESS
   | bool-compare (true, false) = GREATER
@@ -272,6 +278,9 @@ fun string-list-join _ nil = ""
   | string-list-join _ (x :: nil) = x
   | string-list-join sep (x :: t) = x ^ sep ^ string-list-join sep t
 
+fun string-empty "" = true
+  | string-empty _ = false
+
 fun string-strip-prefix prefix big =
   let val ps = string-size prefix
   in
@@ -307,6 +316,57 @@ fun string-explode str : int list =
   in
     r str
   end
+
+(* Split s1c1s2c2...cnsn into s1 :: s2 :: ... :: sn :: nil
+   where pred ci is true, and pred is false for each codepoint
+   in si. This includes empty s, so the result always contains
+   at least one string. *)
+fun string-fields pred str : string list =
+  let
+    (* Returns empty object if string is empty. *)
+    object ISFC of { cp : int, len : int }
+
+    fun r (sofar, s) =
+      case internal-string-first-codepoint s of
+        {(ISFC) cp, len } =>
+          let
+            val ss = substr-rest (s, len)
+          in
+            if pred cp
+            then sofar :: r ("", ss)
+            else r (sofar ^ codepoint-to-string cp, ss)
+          end
+        | _ => sofar :: nil
+  in
+    r ("", str)
+  end
+
+(* like string-fields, but no empty strings in the result list. *)
+fun string-tokens pred str : string list =
+  let
+    object ISFC of { cp : int, len : int }
+
+    fun r (sofar, s) =
+      case internal-string-first-codepoint s of
+        {(ISFC) cp, len } =>
+          let
+            val ss = substr-rest (s, len)
+          in
+            if pred cp
+            then
+              case sofar of
+                "" => r ("", ss)
+              | _ => sofar :: r ("", ss)
+            else r (sofar ^ codepoint-to-string cp, ss)
+          end
+      | _ =>
+          (case sofar of
+             "" => nil
+           | _ => sofar :: nil)
+  in
+    r ("", str)
+  end
+
 
 fun string-ends-with small big =
   let
@@ -362,7 +422,6 @@ fun set-remove (Set { cmp, tree }, key) =
     Set { cmp = cmp, tree = r tree }
   end
 
-
 fun set-contains (Set { cmp, tree }, item) =
   let
     fun r SetEmpty = false
@@ -375,6 +434,9 @@ fun set-contains (Set { cmp, tree }, item) =
     r tree
   end
 
+fun set-from-list cmp l =
+  list-foldl (fn (elt, s) => set-insert (s, elt)) (set-empty cmp) l
+
 fun set-to-list (Set { cmp = _, tree }) =
   let
     fun rec SetEmpty = nil
@@ -384,6 +446,19 @@ fun set-to-list (Set { cmp = _, tree }) =
         val rr = rec r
       in
         list-append (ll, (x :: rr))
+      end
+  in
+    rec tree
+  end
+
+fun set-app f (Set { cmp = _, tree }) =
+  let
+    fun rec SetEmpty = ()
+      | rec (SetNode (l, x, r)) =
+      let in
+        rec l;
+        f x;
+        rec r;
       end
   in
     rec tree
@@ -495,6 +570,21 @@ fun map-foldl b f (Map { cmp, tree }) =
     r (tree, b)
   end
 
+fun map-appi f (Map { cmp = _, tree }) =
+  let
+    fun rec MapEmpty = ()
+      | rec (MapNode (l, k, v, r)) =
+      let in
+        rec l;
+        f (k, v);
+        rec r;
+      end
+  in
+    rec tree
+  end
+
+fun map-app f m = map-appi (fn (_, v) => f v) m
+
 fun map-from-list cmp list =
   let
     fun r nil = map-empty cmp
@@ -530,3 +620,4 @@ fun optimize { name : string, low : float, start: float, high : float } =
     internal-opt {(InternalOpt) name = name, lo = low, start = start,
                   hi = high }
   end
+

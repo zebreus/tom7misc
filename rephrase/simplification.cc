@@ -446,6 +446,8 @@ struct PeepholePass : public il::Pass<> {
             }();
           return pool->Bool(result);
         }
+
+        // TODO: Comparison against empty string
         break;
 
       case Primop::INT_TIMES:

@@ -874,6 +874,15 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Obj(std::move(m), state);
   }
 
+  case Primop::CODEPOINT_TO_STRING: {
+    const BigInt &bi = GetInt("codepoint-to-string");
+    std::optional<int64_t> io = bi.ToInt();
+    CHECK(io.has_value()) << "Codepoint is way too big! " << bi.ToString();
+    const int64_t cp = io.value();
+    CHECK(cp < 0x1'0000'0000) << "Codepoint must be 32-bit.";
+    return String(Util::EncodeUTF8((uint32_t)cp), state);
+  }
+
   case Primop::NORMALIZE_WHITESPACE: {
     const std::string &s = GetString("normalize-whitespace");
     return String(NormalizeWhitespace(s), state);
