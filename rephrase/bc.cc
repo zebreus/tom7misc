@@ -28,6 +28,7 @@ namespace bc {
 #define AIDX(s) AFGCOLOR(200, 220, 220, s)
 #define ALINE(s) AGREY(s)
 #define ALINE_USED(s) AFGCOLOR(120, 120, 140, s)
+#define ABLOCK_LABEL(s) AYELLOW(s)
 
 #define ASTRLIT(s) AFGCOLOR(153, 187, 119, s)
 
@@ -166,6 +167,19 @@ std::string ColorInstString(const Inst &inst) {
 
   } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
     return StringPrintf("FAIL " AARG("%s"), fail->arg.c_str());
+
+  } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
+    return StringPrintf("NOTE " AGREY("%s"), note->msg.c_str());
+
+  } else if (const inst::SymbolicIf *iff =
+             std::get_if<inst::SymbolicIf>(&inst)) {
+    return StringPrintf("IF " AARG("%s") " " ABLOCK_LABEL("%s"),
+                        iff->cond.c_str(), iff->true_lab.c_str());
+
+  } else if (const inst::SymbolicJump *jmp =
+             std::get_if<inst::SymbolicJump>(&inst)) {
+    return StringPrintf("JUMP " ABLOCK_LABEL("%s"),
+                        jmp->lab.c_str());
 
   } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
     return StringPrintf("NOTE " AGREY("%s"), note->msg.c_str());

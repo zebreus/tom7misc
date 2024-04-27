@@ -11,9 +11,9 @@
 #include <vector>
 #include <cstdint>
 
+#include "bignum/big.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "bignum/big.h"
 #include "bc.h"
 #include "functional-map.h"
 #include "il.h"
@@ -51,7 +51,7 @@ struct Converter {
   };
 
   // We actually keep code, data, and local symbols disjoint (even
-  // though this is not required) to prevent conclusion.
+  // though this is not required) to prevent any confusion.
   std::string NewSymbol(const std::string &hint) {
     std::string base = hint.substr(0, hint.find('$'));
     if (base.empty()) base = "l";
@@ -147,7 +147,7 @@ struct Converter {
           if (il_fn_labels.contains(other_label)) {
             // (load "function pointer")
             std::string tmp_fn =
-              AddAndLoadValue(other_label,
+              AddAndLoadValueToInsts(other_label,
                        Value{.v = Value::t(other_init_global)},
                        &init_write_code);
             init_write_code.emplace_back(
@@ -227,6 +227,7 @@ struct Converter {
 
   // Reserve the next instruction slot to be overwritten later. Returns
   // the instruction index.
+  // XXX should be unnecessary for symbolic code
   int ReserveInstruction(std::vector<Inst> *insts) {
     size_t slot = insts->size();
     insts->emplace_back(inst::Fail{.arg = "Bug: Reserved"});
@@ -243,39 +244,57 @@ struct Converter {
                  const std::string &x,
                  const il::Exp *body,
                  bool is_main) {
+    // The label for the "function"
     const std::string code_lab = GetLabel(label);
-    std::vector<Inst> insts;
 
-    if (is_main) {
-      CHECK(!emitted_main);
-      // emit initialization instructions.
-      for (Inst &inst : init_alloc_code)
-        insts.push_back(std::move(inst));
-      init_alloc_code.clear();
-      for (Inst &inst : init_write_code)
-        insts.push_back(std::move(inst));
-      init_write_code.clear();
-      emitted_main = true;
-
-      insts.emplace_back(inst::Note{.msg = "End initialization"});
-    }
+    std::unordered_map<std::string, Block> blocks;
 
     VarLocalMap G;
     std::string arg_lab = NewSymbol(x);
 
     G = G.Insert(x, arg_lab);
 
+    // The label for the first block.
+    const std::string body_label = NewSymbol(label);
+    blocks[body_label] = Block{};
+
+    Block *out_block = &blocks[body_label];
+
     // Convert the body to instructions.
-    const std::string res = ConvertExp(G, label + "_ret", body, &insts);
+    const std::string res =
+      ConvertExp(G, label + "_ret", body, &blocks, out_block);
     // And return the result.
-    insts.emplace_back(inst::Ret{.arg = res});
+    out_block->insts.emplace_back(inst::Ret{.arg = res});
+
+    // Maybe insert initialization code ahead of the first block.
+    std::string start_label = body_label;
+    if (is_main) {
+      CHECK(!emitted_main);
+      Block init_block;
+
+      init_block.insts.emplace_back(inst::Note{.msg = "Initialization"});
+      // emit initialization instructions.
+      for (Inst &inst : init_alloc_code)
+        init_block.insts.push_back(std::move(inst));
+      init_alloc_code.clear();
+      for (Inst &inst : init_write_code)
+        init_block.insts.push_back(std::move(inst));
+      init_write_code.clear();
+      emitted_main = true;
+
+      init_block.insts.emplace_back(inst::Note{.msg = "End initialization"});
+      init_block.insts.emplace_back(inst::SymbolicJump{.lab = body_label});
+
+      const std::string init_label = NewSymbol("init");
+      start_label = init_label;
+      blocks[init_label] = std::move(init_block);
+    }
 
     CHECK(!program.code.contains(code_lab));
-    // FIXME NO! This needs to be symbolic
     SymbolicFn fn;
     fn.arg = std::move(arg_lab);
-    fn.initial = "only";
-    fn.blocks["only"] = Block{.insts = std::move(insts)};
+    fn.initial = start_label;
+    fn.blocks = std::move(blocks);
     program.code[code_lab] = std::move(fn);
   }
 
@@ -291,23 +310,36 @@ struct Converter {
   }
 
   // Returns the new local which has been loaded with the value.
-  std::string AddAndLoadValue(const std::string &hint,
-                              const Value &value,
-                              std::vector<Inst> *insts) {
+  std::string AddAndLoadValueToInsts(const std::string &hint,
+                                     const Value &value,
+                                     std::vector<Inst> *insts) {
     const std::string lab = AddValue(hint, value);
     std::string local = NewSymbol(hint);
     insts->emplace_back(inst::Load{.out = local, .global = lab});
     return local;
   }
 
+  std::string AddAndLoadValue(const std::string &hint,
+                              const Value &value,
+                              Block *current_block) {
+    return AddAndLoadValueToInsts(hint, value, &current_block->insts);
+  }
+
+
   // Convert the expression by adding instructions at the end
-  // of the instruction stream. Returns the local that contains
-  // the expression's value.
+  // of the instruction stream inside the argument block. Can
+  // add blocks to the map of basic blocks for this function.
+  // Returns the local that contains the expression's value.
+  //
+  // Note: The current_block argument is by reference; conversion of
+  // something like an IF requires branching to new blocks and then
+  // joining to another new block for the result.
   std::string ConvertExp(
       VarLocalMap G,
       const std::string &hint,
       const il::Exp *exp,
-      std::vector<Inst> *insts) {
+      std::unordered_map<std::string, Block> *blocks,
+      Block *&current_block) {
 
     // This is a loop so that we can get cheap tail calls for
     // common constructs like let and seq.
@@ -317,17 +349,18 @@ struct Converter {
       switch (exp->type) {
       case il::ExpType::STRING: {
         const std::string &s = exp->String();
-        return AddAndLoadValue("str", Value{.v = Value::t(s)}, insts);
+        return AddAndLoadValue("str", Value{.v = Value::t(s)}, current_block);
       }
 
       case il::ExpType::FLOAT: {
         const double d = exp->Float();
-        return AddAndLoadValue("b", Value{.v = Value::t(d)}, insts);
+        return AddAndLoadValue("b", Value{.v = Value::t(d)}, current_block);
       }
 
       case il::ExpType::NODE: {
         const auto &[attrs, children] = exp->Node();
-        const std::string lattrs = ConvertExp(G, "at", attrs, insts);
+        const std::string lattrs = ConvertExp(G, "at", attrs, blocks,
+                                              current_block);
 
         // Node automatically flattens children (i.e., makes their
         // children part of the vector) if they have no attributes.
@@ -336,17 +369,19 @@ struct Converter {
 
         // Build up the children vector.
         std::string v = NewSymbol("ch");
-        insts->emplace_back(inst::AllocVec{.out = v});
+        current_block->insts.emplace_back(inst::AllocVec{.out = v});
 
         // Current child index as we write elements into the vector.
         std::string zero = AddValue("zero", Value({.v = Value::t(BigInt(0))}));
         std::string one = AddValue("one", Value({.v = Value::t(BigInt(1))}));
         std::string idx = NewSymbol("idx");
-        insts->emplace_back(inst::Load{.out = idx, .global = zero});
+        current_block->insts.emplace_back(
+            inst::Load{.out = idx, .global = zero});
         // Increment. This stays constant and is used for the outer and
         // inner loops.
         std::string inc = NewSymbol("inc");
-        insts->emplace_back(inst::Load{.out = inc, .global = one});
+        current_block->insts.emplace_back(
+            inst::Load{.out = inc, .global = one});
 
         // Index within the child's children when we flatten elements.
         // We keep reusing this one, so it doesn't get loaded until we
@@ -365,7 +400,8 @@ struct Converter {
         int child_idx = 0;
         for (const il::Exp *child : children) {
           const std::string local =
-            ConvertExp(G, StringPrintf("c%d", child_idx), child, insts);
+            ConvertExp(G, StringPrintf("c%d", child_idx), child,
+                       blocks, current_block);
           // Several possibilities:
           // 1. A text node. Ideally we would merge this into the previous
           // node if it is a text node, but I'm not doing this yet.
@@ -375,34 +411,50 @@ struct Converter {
           //
           // 3. A trivial node (no attributes). Its children are appended.
 
-          insts->emplace_back(
+          std::string text_lab = NewSymbol("text");
+          Block *text_block = &(*blocks)[text_lab];
+
+          std::string trivial_lab = NewSymbol("trivial");
+          Block *trivial_block = &(*blocks)[trivial_lab];
+
+          // Like any other conditional, we join up to a single block.
+          std::string join_lab = NewSymbol("join_join");
+          Block *join_block = &(*blocks)[join_lab];
+
+          current_block->insts.emplace_back(
               inst::Unop{
                 .primop = Primop::IS_TEXT,
                 .out = child_is_text,
                 .arg = local});
-          // This will become a forward jump.
-          int text_if_loc = ReserveInstruction(insts);
+
+          current_block->insts.emplace_back(
+              inst::SymbolicIf{.cond = child_is_text, .true_lab = text_lab});
 
           // Get the attributes object.
-          insts->emplace_back(
+          current_block->insts.emplace_back(
               inst::Unop{
                 .primop = Primop::GET_ATTRS,
                 .out = child_attrs,
                 .arg = local});
-          insts->emplace_back(
+          current_block->insts.emplace_back(
               inst::Unop{
                 .primop = Primop::OBJ_EMPTY,
                 .out = child_attrs_empty,
                 .arg = child_attrs});
 
-          int trivial_if_loc = ReserveInstruction(insts);
+          current_block->insts.emplace_back(
+              inst::SymbolicIf{
+                .cond = child_attrs_empty,
+                .true_lab = trivial_lab
+              });
 
           // If we get here, then it's a normal node. Insert it.
-          insts->emplace_back(inst::SetVec{.vec = v, .idx = idx, .arg = local});
+          current_block->insts.emplace_back(
+              inst::SetVec{.vec = v, .idx = idx, .arg = local});
           // PERF: We'll increment the index on multiple branches. Maybe
           // there's a way to share code. But probably better to spend
           // the time writing an optimizer?
-          insts->emplace_back(
+          current_block->insts.emplace_back(
               inst::Binop{
                   .primop = Primop::INT_PLUS,
                   .out = idx,
@@ -410,48 +462,53 @@ struct Converter {
                   .arg2 = inc,
                 });
 
-          std::vector<int> join_jmps = {ReserveInstruction(insts)};
+          current_block->insts.emplace_back(
+              inst::SymbolicJump({.lab = join_lab}));
+
+          // std::vector<int> join_jmps = {ReserveInstruction(insts)};
 
           // Now emit the code for text nodes.
-          int text_loc = insts->size();
-          // Patch the jump forward.
-          (*insts)[text_if_loc] =
-            inst::If{.cond = child_is_text, .true_idx = text_loc};
 
           // An empty text node is an empty node. These are dropped.
-          insts->emplace_back(
+          text_block->insts.emplace_back(
               inst::Unop{
                 .primop = Primop::STRING_EMPTY,
                 .out = child_is_blank,
                 .arg = local,
               });
-
           // if child_is_blank continue
-          int empty_if_loc = ReserveInstruction(insts);
+          text_block->insts.emplace_back(
+              inst::SymbolicIf{
+                .cond = child_is_blank,
+                .true_lab = join_lab,
+              });
 
           // TODO: If the previous node was text, append this text
-          // to it instead of pushing a whole new node.
+          // to it instead of pushing a whole new node. Now that we
+          // have symbolic labels, this is no longer horrible to do...
 
-          insts->emplace_back(inst::SetVec{.vec = v, .idx = idx, .arg = local});
+          text_block->insts.emplace_back(
+              inst::SetVec{.vec = v, .idx = idx, .arg = local});
           // And increment.
-          insts->emplace_back(
+          text_block->insts.emplace_back(
               inst::Binop{
                   .primop = Primop::INT_PLUS,
                   .out = idx,
                   .arg1 = idx,
                   .arg2 = inc,
                 });
-          join_jmps.push_back(ReserveInstruction(insts));
+          text_block->insts.emplace_back(
+              inst::SymbolicJump{
+                .lab = join_lab,
+              });
+
 
           // Now the code for trivial nodes.
-          int trivial_loc = insts->size();
-          (*insts)[trivial_if_loc] =
-            inst::If{.cond = child_attrs_empty, .true_idx = trivial_loc};
 
           // Awkwardly, the vector size comes from the layout object
           // (the pair of attributes and child vector), not the vector
           // itself.
-          insts->emplace_back(
+          trivial_block->insts.emplace_back(
               inst::Unop{
                 .primop = Primop::LAYOUT_VEC_SIZE,
                 .out = num_subchildren,
@@ -459,7 +516,7 @@ struct Converter {
               });
 
           // But anyway, we need the vector to subscript from it.
-          insts->emplace_back(
+          trivial_block->insts.emplace_back(
               inst::GetLabel{
                 .out = child_vec,
                 .obj = local,
@@ -467,18 +524,24 @@ struct Converter {
               });
 
           // idx = 0
-          insts->emplace_back(
+          trivial_block->insts.emplace_back(
               inst::Load{
                 .out = subidx,
                 .global = zero,
               });
 
-          int while_loc = insts->size();
+          std::string while_label = NewSymbol("join_while");
+          Block *while_block = &(*blocks)[while_label];
+
+          trivial_block->insts.emplace_back(
+              inst::SymbolicJump{
+                .lab = while_label,
+              });
 
           // We want while (idx < num_subchildren) but
           // the if jumps when true, so negate:
           // cond = idx >= num_subchildren
-          insts->emplace_back(
+          while_block->insts.emplace_back(
               inst::Binop{
                 .primop = Primop::INT_GREATEREQ,
                 .out = subcond,
@@ -486,18 +549,22 @@ struct Converter {
                 .arg2 = num_subchildren,
               });
 
-          // if !cond goto ...
-          int while_if_loc = ReserveInstruction(insts);
+          // if !cond goto join_lab
+          while_block->insts.emplace_back(
+              inst::SymbolicIf{
+                  .cond = subcond,
+                  .true_lab = join_lab,
+              });
 
           // Read the child.
-          insts->emplace_back(
+          while_block->insts.emplace_back(
               inst::GetVec{
                 .out = subchild,
                 .vec = child_vec,
                 .idx = subidx,
               });
           // And write it.
-          insts->emplace_back(
+          while_block->insts.emplace_back(
               inst::SetVec{
                 .vec = v,
                 .idx = idx,
@@ -505,14 +572,14 @@ struct Converter {
               });
 
           // Increment each index.
-          insts->emplace_back(
+          while_block->insts.emplace_back(
               inst::Binop{
                   .primop = Primop::INT_PLUS,
                   .out = idx,
                   .arg1 = idx,
                   .arg2 = inc,
                 });
-          insts->emplace_back(
+          while_block->insts.emplace_back(
               inst::Binop{
                   .primop = Primop::INT_PLUS,
                   .out = subidx,
@@ -520,30 +587,15 @@ struct Converter {
                   .arg2 = inc,
                 });
 
-          // Now loop.
-          insts->emplace_back(inst::Jump{.idx = while_loc});
+          // Now loop, finishing the while block.
+          while_block->insts.emplace_back(
+              inst::SymbolicJump{.lab = while_label});
 
-          // And so this is the join point.
-          int join_loc = insts->size();
+          // Now the join block.
+          // As usual, there's nothing to do except mark
+          // this as the current block.
 
-          // Patch in destination of conditional jumps.
-
-          // Skip blank nodes.
-          (*insts)[empty_if_loc] = inst::If({
-              .cond = child_is_blank,
-              .true_idx = join_loc,
-            });
-
-          // End of while loop.
-          (*insts)[while_if_loc] = inst::If({
-              .cond = subcond,
-              .true_idx = join_loc,
-            });
-
-          for (const int jidx : join_jmps) {
-            (*insts)[jidx] = inst::Jump({.idx = join_loc});
-          }
-
+          current_block = join_block;
           child_idx++;
         }
 
@@ -552,13 +604,13 @@ struct Converter {
 
         // The node is a pair.
         std::string r = NewSymbol("node");
-        insts->emplace_back(inst::Alloc{.out = r});
-        insts->emplace_back(inst::SetLabel{
+        current_block->insts.emplace_back(inst::Alloc{.out = r});
+        current_block->insts.emplace_back(inst::SetLabel{
             .obj = r,
             .lab = NODE_ATTRS_LABEL,
             .arg = lattrs,
           });
-        insts->emplace_back(inst::SetLabel{
+        current_block->insts.emplace_back(inst::SetLabel{
             .obj = r,
             .lab = NODE_CHILDREN_LABEL,
             .arg = v,
@@ -576,16 +628,16 @@ struct Converter {
         std::vector<std::string> locals;
         locals.reserve(fields.size());
         for (const auto &[f, e] : fields) {
-          locals.push_back(ConvertExp(G, f, e, insts));
+          locals.push_back(ConvertExp(G, f, e, blocks, current_block));
         }
 
         // Now allocate the record.
         std::string r = NewSymbol("rec");
-        insts->emplace_back(inst::Alloc{.out = r});
+        current_block->insts.emplace_back(inst::Alloc{.out = r});
 
         // And set fields within it.
         for (int i = 0; i < (int)locals.size(); i++) {
-          insts->emplace_back(inst::SetLabel{
+          current_block->insts.emplace_back(inst::SetLabel{
               .obj = r,
               .lab = fields[i].first,
               .arg = locals[i]
@@ -606,19 +658,19 @@ struct Converter {
         locals.reserve(fields.size());
         typed_field_names.reserve(fields.size());
         for (const auto &[f, oft, e] : fields) {
-          locals.push_back(ConvertExp(G, f, e, insts));
+          locals.push_back(ConvertExp(G, f, e, blocks, current_block));
 
           typed_field_names.push_back(ObjFieldName(f, oft));
         }
 
         // Now allocate the obj.
         std::string r = NewSymbol("obj");
-        insts->emplace_back(inst::Alloc{.out = r});
+        current_block->insts.emplace_back(inst::Alloc{.out = r});
 
         // And set fields within it.
         CHECK(typed_field_names.size() == locals.size());
         for (int i = 0; i < (int)locals.size(); i++) {
-          insts->emplace_back(inst::SetLabel{
+          current_block->insts.emplace_back(inst::SetLabel{
               .obj = r,
               .lab = typed_field_names[i],
               .arg = locals[i],
@@ -630,14 +682,16 @@ struct Converter {
 
       case il::ExpType::WITH: {
         const auto &[e, field, oft, rhs] = exp->With();
-        const std::string obj = ConvertExp(G, "obj", e, insts);
-        const std::string rlocal = ConvertExp(G, field, rhs, insts);
+        const std::string obj =
+          ConvertExp(G, "obj", e, blocks, current_block);
+        const std::string rlocal =
+          ConvertExp(G, field, rhs, blocks, current_block);
         std::string out = NewSymbol("w_" + field);
-        insts->emplace_back(inst::Copy{
+        current_block->insts.emplace_back(inst::Copy{
             .out = out,
             .obj = obj,
           });
-        insts->emplace_back(inst::SetLabel{
+        current_block->insts.emplace_back(inst::SetLabel{
             .obj = out,
             .lab = ObjFieldName(field, oft),
             .arg = rlocal,
@@ -647,13 +701,13 @@ struct Converter {
 
       case il::ExpType::WITHOUT: {
         const auto &[e, field, oft] = exp->Without();
-        const std::string obj = ConvertExp(G, "obj", e, insts);
+        const std::string obj = ConvertExp(G, "obj", e, blocks, current_block);
         std::string out = NewSymbol("wo_" + field);
-        insts->emplace_back(inst::Copy{
+        current_block->insts.emplace_back(inst::Copy{
             .out = out,
             .obj = obj,
           });
-        insts->emplace_back(inst::DeleteLabel{
+        current_block->insts.emplace_back(inst::DeleteLabel{
             .obj = out,
             .lab = ObjFieldName(field, oft),
           });
@@ -662,9 +716,9 @@ struct Converter {
 
       case il::ExpType::HAS: {
         const auto &[e, field, oft] = exp->Has();
-        const std::string obj = ConvertExp(G, "obj", e, insts);
+        const std::string obj = ConvertExp(G, "obj", e, blocks, current_block);
         std::string out = NewSymbol(field);
-        insts->emplace_back(inst::HasLabel{
+        current_block->insts.emplace_back(inst::HasLabel{
             .out = out,
             .obj = obj,
             .lab = ObjFieldName(field, oft),
@@ -677,9 +731,9 @@ struct Converter {
         // to insert instructions to test, and fail gracefully?
         // Or do that in the elaboration of a bare "get" construct?
         const auto &[e, field, oft] = exp->Get();
-        const std::string obj = ConvertExp(G, "obj", e, insts);
+        const std::string obj = ConvertExp(G, "obj", e, blocks, current_block);
         std::string out = NewSymbol(field);
-        insts->emplace_back(inst::GetLabel{
+        current_block->insts.emplace_back(inst::GetLabel{
             .out = out,
             .obj = obj,
             .lab = ObjFieldName(field, oft),
@@ -689,12 +743,12 @@ struct Converter {
 
       case il::ExpType::INT: {
         const auto &bi = exp->Int();
-        return AddAndLoadValue("i", Value{.v = Value::t(bi)}, insts);
+        return AddAndLoadValue("i", Value{.v = Value::t(bi)}, current_block);
       }
 
       case il::ExpType::BOOL: {
         uint64_t u = exp->Bool() ? 1 : 0;
-        return AddAndLoadValue("b", Value{.v = Value::t(u)}, insts);
+        return AddAndLoadValue("b", Value{.v = Value::t(u)}, current_block);
       }
 
       case il::ExpType::VAR: {
@@ -712,22 +766,25 @@ struct Converter {
         if (il_fn_labels.contains(sym)) {
           // Code labels are treated differently. We load the name of
           // the function ("function pointer") as the value.
-          return AddAndLoadValue(sym, Value{.v = Value::t(label)}, insts);
+          return AddAndLoadValue(sym, Value{.v = Value::t(label)},
+                                 current_block);
         } else {
           const std::string out = NewSymbol(sym);
-          insts->emplace_back(inst::Load{.out = out, .global = label});
+          current_block->insts.emplace_back(
+              inst::Load{.out = out, .global = label});
           return out;
         }
       }
 
       case il::ExpType::LAYOUT: {
+        // XXX It's unused?
         LOG(FATAL) << "Unimplemented";
         return "ERROR";
       }
 
       case il::ExpType::LET: {
         const auto &[tyvars_, x, rhs, body] = exp->Let();
-        const std::string v = ConvertExp(G, x, rhs, insts);
+        const std::string v = ConvertExp(G, x, rhs, blocks, current_block);
         G = G.Insert(x, v);
         exp = body;
         continue;
@@ -736,7 +793,7 @@ struct Converter {
       case il::ExpType::UNPACK: {
         // This acts just like Let when we erase types.
         const auto &[alpha_, x, rhs, body] = exp->Unpack();
-        const std::string v = ConvertExp(G, x, rhs, insts);
+        const std::string v = ConvertExp(G, x, rhs, blocks, current_block);
         G = G.Insert(x, v);
         exp = body;
         continue;
@@ -744,55 +801,79 @@ struct Converter {
 
       case il::ExpType::IF: {
         const auto &[cond, texp, fexp] = exp->If();
-        const std::string condv = ConvertExp(G, "cond", cond, insts);
-        const int if_idx = ReserveInstruction(insts);
-        // We branch on true, so translate the false case here.
+        const std::string condv = ConvertExp(G, "cond", cond, blocks,
+                                             current_block);
+
+        std::string true_label = NewSymbol("true");
+        std::string false_label = NewSymbol("false");
+        std::string join_label = NewSymbol("ifjoin");
+
+        CHECK(!blocks->contains(true_label));
+        CHECK(!blocks->contains(false_label));
+        CHECK(!blocks->contains(join_label));
+        Block *true_block = &(*blocks)[true_label];
+        Block *false_block = &(*blocks)[true_label];
+        Block *join_block = &(*blocks)[join_label];
+
+        // Finish the block with a conditional jump (true) and then a
+        // unconditional one. When assembling, the false branch
+        // will typically be fused onto this one, removing the
+        // unconditional branch.
+        current_block->insts.emplace_back(
+            inst::SymbolicIf({.cond = condv, .true_lab = true_label}));
+        current_block->insts.emplace_back(
+            inst::SymbolicJump({.lab = false_label}));
+
+        // Translate each block's expression, and put the result
+        // in 'ifres'.
         const std::string res = NewSymbol("ifres");
-        const std::string fres = ConvertExp(G, "f", fexp, insts);
-        insts->emplace_back(inst::Bind{.out = res, .arg = fres});
-        const int f_join_idx = ReserveInstruction(insts);
-        // Now this is the location of the true branch.
-        const int true_idx = (int)insts->size();
-        (*insts)[if_idx] =
-          Inst(inst::If({.cond = condv, .true_idx = true_idx}));
-        // Emit the true branch.
-        const std::string tres = ConvertExp(G, "t", texp, insts);
-        insts->emplace_back(inst::Bind{.out = res, .arg = tres});
-        // This is the join location. Both branches set the
-        // local "res".
-        const int ret_idx = (int)insts->size();
-        (*insts)[f_join_idx] = Inst(inst::Jump{.idx = ret_idx});
+
+        const std::string fres = ConvertExp(G, "f", fexp, blocks, false_block);
+        false_block->insts.emplace_back(inst::Bind{.out = res, .arg = fres});
+        false_block->insts.emplace_back(inst::SymbolicJump{.lab = join_label});
+
+        const std::string tres = ConvertExp(G, "t", texp, blocks, true_block);
+        true_block->insts.emplace_back(inst::Bind{.out = res, .arg = tres});
+        true_block->insts.emplace_back(inst::SymbolicJump{.lab = join_label});
+
+        // The join block is actually empty, but the caller may
+        // add to it, etc.
+
+        current_block = join_block;
         return res;
       }
 
       case il::ExpType::APP: {
         const auto &[fn, arg] = exp->App();
-        const std::string f = ConvertExp(G, "f", fn, insts);
-        const std::string x = ConvertExp(G, "arg", arg, insts);
+        const std::string f = ConvertExp(G, "f", fn, blocks, current_block);
+        const std::string x = ConvertExp(G, "arg", arg, blocks, current_block);
         const std::string res = NewSymbol("app");
-        insts->emplace_back(inst::Call{.out = res, .f = f, .arg = x});
+        current_block->insts.emplace_back(
+            inst::Call{.out = res, .f = f, .arg = x});
         return res;
       }
 
       case il::ExpType::PROJECT: {
         const auto &[lab, e] = exp->Project();
-        const std::string r = ConvertExp(G, "rec", e, insts);
+        const std::string r = ConvertExp(G, "rec", e, blocks, current_block);
         const std::string res = NewSymbol(lab);
-        insts->emplace_back(inst::GetLabel{.out = res, .obj = r, .lab = lab});
+        current_block->insts.emplace_back(
+            inst::GetLabel{.out = res, .obj = r, .lab = lab});
         return res;
       }
 
       case il::ExpType::INJECT: {
         const auto &[lab, t, e] = exp->Inject();
         // Sum is a represented as a map with the label and boxed value.
-        const std::string elocal = ConvertExp(G, "inj", e, insts);
+        const std::string elocal =
+          ConvertExp(G, "inj", e, blocks, current_block);
         const std::string rec = NewSymbol(lab);
-        insts->emplace_back(inst::Alloc{.out = rec});
+        current_block->insts.emplace_back(inst::Alloc{.out = rec});
         const std::string lab_value =
-          AddAndLoadValue(lab, Value{.v = Value::t(lab)}, insts);
-        insts->emplace_back(inst::SetLabel({
+          AddAndLoadValue(lab, Value{.v = Value::t(lab)}, current_block);
+        current_block->insts.emplace_back(inst::SetLabel({
               .obj = rec, .lab = INJ_LABEL, .arg = lab_value}));
-        insts->emplace_back(inst::SetLabel({
+        current_block->insts.emplace_back(inst::SetLabel({
               .obj = rec, .lab = INJ_VALUE, .arg = elocal}));
         return rec;
       }
@@ -806,7 +887,7 @@ struct Converter {
         std::vector<std::string> ls;
         ls.reserve(es.size());
         for (const il::Exp *e : es) {
-          ls.push_back(ConvertExp(G, "p", e, insts));
+          ls.push_back(ConvertExp(G, "p", e, blocks, current_block));
         }
 
         std::string out = NewSymbol("po");
@@ -821,28 +902,27 @@ struct Converter {
 
         case Primop::REF: {
           CHECK(ls.size() == 1);
-          insts->emplace_back(inst::Alloc{.out = out});
-          insts->emplace_back(
+          current_block->insts.emplace_back(inst::Alloc{.out = out});
+          current_block->insts.emplace_back(
               inst::SetLabel{.obj = out, .lab = REF_LABEL, .arg = ls[0]});
           return out;
         }
 
         case Primop::REF_GET: {
           CHECK(ls.size() == 1);
-          insts->emplace_back(
+          current_block->insts.emplace_back(
               inst::GetLabel{.out = out, .obj = ls[0], .lab = REF_LABEL});
           return out;
         }
 
         case Primop::REF_SET: {
           CHECK(ls.size() == 2);
-          insts->emplace_back(
+          current_block->insts.emplace_back(
               inst::SetLabel{.obj = ls[0], .lab = REF_LABEL, .arg = ls[1]});
           // Need to allocate a unit for the return.
           // PERF: Don't allocate empty records; represent it as 0 or
           // something!
-          insts->emplace_back(
-              inst::Alloc{.out = out});
+          current_block->insts.emplace_back(inst::Alloc{.out = out});
           return out;
         }
 
@@ -853,17 +933,17 @@ struct Converter {
 
         switch (num_exp_args) {
         case 1:
-          insts->emplace_back(
+          current_block->insts.emplace_back(
               inst::Unop{.primop = po, .out = out, .arg = ls[0]});
           return out;
         case 2:
-          insts->emplace_back(
+          current_block->insts.emplace_back(
               inst::Binop{
                 .primop = po, .out = out,
                 .arg1 = ls[0], .arg2 = ls[1]});
           return out;
         case 3:
-          insts->emplace_back(
+          current_block->insts.emplace_back(
               inst::Triop{
                 .primop = po, .out = out,
                 .arg1 = ls[0], .arg2 = ls[1], .arg3 = ls[2]});
@@ -877,8 +957,8 @@ struct Converter {
 
       case il::ExpType::FAIL: {
         const auto &[msg, type_] = exp->Fail();
-        const std::string v = ConvertExp(G, "msg", msg, insts);
-        insts->emplace_back(inst::Fail{.arg = v});
+        const std::string v = ConvertExp(G, "msg", msg, blocks, current_block);
+        current_block->insts.emplace_back(inst::Fail{.arg = v});
         // Should have a way to indicate that the expression
         // can't return?
         //
@@ -889,7 +969,7 @@ struct Converter {
       case il::ExpType::SEQ: {
         const auto &[es, e] = exp->Seq();
         for (const il::Exp *ee : es)
-          (void)ConvertExp(G, "ignore", ee, insts);
+          (void)ConvertExp(G, "ignore", ee, blocks, current_block);
         exp = e;
         continue;
       }
@@ -900,15 +980,15 @@ struct Converter {
         // it here.
 
         const auto &[obj, arms, def] = exp->SumCase();
-        // std::vector<std::tuple<std::string, std::string, const Exp *>>
 
-        const std::string obj_local = ConvertExp(G, "sc_obj", obj, insts);
+        const std::string obj_local =
+          ConvertExp(G, "sc_obj", obj, blocks, current_block);
 
         const std::string res = NewSymbol("sc_res");
 
         // Read the actual label just once.
         const std::string actual = NewSymbol("lab");
-        insts->emplace_back(inst::GetLabel{
+        current_block->insts.emplace_back(inst::GetLabel{
             .out = actual, .obj = obj_local, .lab = INJ_LABEL});
         // We could also read the contents once, but that seems
         // uglier since it would have different types on each branch.
@@ -917,65 +997,83 @@ struct Converter {
         // load it in the default or (in principle) in arms where
         // it isn't used.
 
-        // Each arm needs to jump to the code when there's a successful
-        // match, and then back to the join point.
-        std::vector<int> jump_match, jump_joins;
-        jump_match.reserve(arms.size());
-        jump_joins.reserve(arms.size());
 
-        // We keep writing to this same temporary, a bool.
+        // Like the IF case, we have a block for each branch (and
+        // for the default) as well as the join block.
+
+        std::vector<std::string> case_labels;
+        std::vector<Block *> case_blocks;
+        for (const auto &[lab, v_, arm_] : arms) {
+          std::string case_label = NewSymbol(lab);
+          CHECK(!blocks->contains(case_label));
+          case_blocks.push_back(&(*blocks)[case_label]);
+          case_labels.push_back(std::move(case_label));
+        }
+
+        std::string def_label = NewSymbol("case_default");
+        Block *def_block = &(*blocks)[def_label];
+
+        std::string join_label = NewSymbol("case_join");
+        Block *join_block = &(*blocks)[join_label];
+
+        // Generate the series of tests into the starting block.
         const std::string test = NewSymbol("test");
-        for (const auto &[lab, x, e] : arms) {
+        for (int i = 0; i < (int)arms.size(); i++) {
+          CHECK(i < (int)case_labels.size());
+          CHECK(current_block != nullptr);
+          const auto &[lab, x, e] = arms[i];
           const std::string lab_value =
-            AddAndLoadValue(lab, Value{.v = Value::t(lab)}, insts);
+            AddAndLoadValue(lab, Value{.v = Value::t(lab)}, current_block);
           // compare labels
-          insts->emplace_back(inst::Binop{
+          // PERF: We should be representing these as words, not strings
+          current_block->insts.emplace_back(inst::Binop{
               .primop = Primop::STRING_EQ,
               .out = test,
               .arg1 = actual,
               .arg2 = lab_value});
-          // the match jump
-          jump_match.push_back(ReserveInstruction(insts));
+          current_block->insts.emplace_back(inst::SymbolicIf{
+              .cond = test,
+              .true_lab = case_labels[i]});
         }
 
-        // If we got here, then this is the default.
-        const std::string def_local = ConvertExp(G, "sc_def", def, insts);
-        insts->emplace_back(inst::Bind({.out = res, .arg = def_local}));
-        const int jump_def_join = ReserveInstruction(insts);
+        // If we got here, all the cases failed, so jump to the default.
+        // The default block typically gets fused here.
+        current_block->insts.emplace_back(inst::SymbolicJump{
+            .lab = def_label});
+
+        // Now process each block.
+        // The default:
+        const std::string def_local = ConvertExp(G, "sc_def", def,
+                                                 blocks, def_block);
+        def_block->insts.emplace_back(
+            inst::Bind({.out = res, .arg = def_local}));
+        def_block->insts.emplace_back(
+            inst::SymbolicJump({.lab = join_label}));
 
         // Code for each arm.
         for (int i = 0; i < (int)arms.size(); i++) {
           const auto &[lab, x, e] = arms[i];
-          // Patch in the jump here.
-          const int match_idx = insts->size();
-          (*insts)[jump_match[i]] =
-            Inst(inst::If{.cond = test, .true_idx = match_idx});
 
           // Unpack contained value.
           const std::string x_local = NewSymbol(x);
-          insts->emplace_back(inst::GetLabel{
+          case_blocks[i]->insts.emplace_back(inst::GetLabel{
               .out = x_local,
               .obj = obj_local,
               .lab = INJ_VALUE,
             });
           // Convert arm's expression, with x bound to the contents.
           const std::string arm_local =
-            ConvertExp(G.Insert(x, x_local), lab + "_arm", e, insts);
-          insts->emplace_back(inst::Bind({.out = res, .arg = arm_local}));
-          // Reserve slot to jump to join.
-          CHECK((int)jump_joins.size() == i);
-          jump_joins.push_back(ReserveInstruction(insts));
+            ConvertExp(G.Insert(x, x_local), lab + "_arm", e,
+                       blocks, case_blocks[i]);
+          case_blocks[i]->insts.emplace_back(
+              inst::Bind({.out = res, .arg = arm_local}));
+          // Join.
+          case_blocks[i]->insts.emplace_back(
+              inst::SymbolicJump{.lab = join_label});
         }
 
-        // Now the location of the join.
-        const int join_idx = (int)insts->size();
-
-        // So patch in the jumps.
-        for (int i = 0; i < (int)jump_joins.size(); i++)
-          (*insts)[jump_joins[i]] = Inst(inst::Jump({.idx = join_idx}));
-        // including the default.
-        (*insts)[jump_def_join] = Inst(inst::Jump({.idx = join_idx}));
-
+        // Join block starts empty.
+        current_block = join_block;
         return res;
       }
 
@@ -1006,7 +1104,8 @@ struct Converter {
         break;
 
       default:
-        LOG(FATAL) << "Unhandled expression type in ToBytecode::ConvertExp.";
+        LOG(FATAL) << "Unhandled expression type in ToBytecode::ConvertExp: "
+                   << il::ExpTypeString(exp->type);
         return "ERROR";
         break;
       }
