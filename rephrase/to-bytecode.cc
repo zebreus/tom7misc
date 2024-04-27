@@ -812,7 +812,7 @@ struct Converter {
         CHECK(!blocks->contains(false_label));
         CHECK(!blocks->contains(join_label));
         Block *true_block = &(*blocks)[true_label];
-        Block *false_block = &(*blocks)[true_label];
+        Block *false_block = &(*blocks)[false_label];
         Block *join_block = &(*blocks)[join_label];
 
         // Finish the block with a conditional jump (true) and then a

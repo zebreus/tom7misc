@@ -12,7 +12,10 @@ static constexpr bool VERBOSE = false;
 
 static void TrivialTest() {
   Compiler compiler;
-  // There's pretty much only one way to compile this program.
+  // There's pretty much only one way to compile this program,
+  // although now that we have optimizations on basic blocks
+  // and stuff like NOTE, it may be hopeless to insist on a
+  // specific program.
   bc::Program prog = compiler.CompileString("test", "7");
   if (VERBOSE) {
     bc::PrintProgram(prog);
@@ -22,12 +25,19 @@ static void TrivialTest() {
   const auto &[data_lab, data_value] = *prog.data.begin();
   CHECK(prog.code.contains("main"));
   const auto &[arg, insts] = prog.code.find("main")->second;
-  CHECK(insts.size() == 3);
-  CHECK(std::holds_alternative<bc::inst::Note>(insts[0]));
-  const bc::inst::Load *load = std::get_if<bc::inst::Load>(&insts[1]);
+
+  // There could be NOTEs, useless forward JUMPs, etc...
+  CHECK(insts.size() >= 2);
+
+  int pos = (int)insts.size() - 2;
+  for (int i = 0; i < pos; i++) {
+    CHECK(std::holds_alternative<bc::inst::Note>(insts[i]) ||
+          std::holds_alternative<bc::inst::Jump>(insts[i]));
+  }
+  const bc::inst::Load *load = std::get_if<bc::inst::Load>(&insts[pos]);
   CHECK(load != nullptr);
   CHECK(load->global == data_lab);
-  const bc::inst::Ret *ret = std::get_if<bc::inst::Ret>(&insts[2]);
+  const bc::inst::Ret *ret = std::get_if<bc::inst::Ret>(&insts[pos + 1]);
   CHECK(ret->arg == load->out);
 }
 

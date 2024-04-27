@@ -7,6 +7,10 @@
 
 #include "bc.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace bc {
 
 struct Assembling {
@@ -18,6 +22,10 @@ struct Assembling {
   bc::Program Assemble(const bc::SymbolicProgram &pgm);
 
  private:
+
+  std::pair<std::string, std::vector<Inst>>
+  AssembleFn(const SymbolicFn &fn);
+
   int verbose = 0;
 };
 
