@@ -1,5 +1,4 @@
 
-#include "bytecode.h"
 #include "execution.h"
 
 #include <cstdio>
@@ -8,10 +7,10 @@
 #include <utility>
 #include <vector>
 
-#include "compiler.h"
-
 #include "ansi.h"
 #include "base/logging.h"
+#include "bc.h"
+#include "compiler.h"
 
 namespace bc {
 

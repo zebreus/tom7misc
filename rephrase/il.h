@@ -203,7 +203,7 @@ struct Type {
     CHECK(type == TypeType::LAYOUT);
   }
 
-private:
+ private:
   friend struct AstPool;
   std::string var;
   const Type *a = nullptr;
@@ -415,7 +415,7 @@ struct Exp {
   }
 
 
-private:
+ private:
   // PERF: Experiment with std::variant, at least.
   friend struct AstPool;
   std::string str1;

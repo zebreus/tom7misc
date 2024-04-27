@@ -38,7 +38,7 @@ struct Simplification {
 
   Program Simplify(const Program &, uint64_t opts = O_CONSERVATIVE);
 
-private:
+ private:
   int verbose = 0;
   AstPool *pool;
 };

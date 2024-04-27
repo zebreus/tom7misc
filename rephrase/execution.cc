@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "bytecode.h"
+#include "bc.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "ansi.h"
@@ -877,9 +877,9 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::CODEPOINT_TO_STRING: {
     const BigInt &bi = GetInt("codepoint-to-string");
     std::optional<int64_t> io = bi.ToInt();
-    CHECK(io.has_value()) << "Codepoint is way too big! " << bi.ToString();
+    if (!io.has_value()) return String("", state);
     const int64_t cp = io.value();
-    CHECK(cp < 0x1'0000'0000) << "Codepoint must be 32-bit.";
+    if (cp >= 0x1'0000'0000) return String("", state);
     return String(Util::EncodeUTF8((uint32_t)cp), state);
   }
 

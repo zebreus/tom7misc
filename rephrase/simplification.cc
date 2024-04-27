@@ -447,7 +447,17 @@ struct PeepholePass : public il::Pass<> {
           return pool->Bool(result);
         }
 
-        // TODO: Comparison against empty string
+        if (ees[0]->type == ExpType::STRING &&
+            ees[0]->String().empty()) {
+          Simplified("string compare against empty");
+          return pool->Primop(Primop::STRING_EMPTY, {}, {ees[1]});
+        }
+
+        if (ees[1]->type == ExpType::STRING &&
+            ees[1]->String().empty()) {
+          Simplified("string compare against empty");
+          return pool->Primop(Primop::STRING_EMPTY, {}, {ees[0]});
+        }
         break;
 
       case Primop::INT_TIMES:
@@ -606,6 +616,18 @@ struct PeepholePass : public il::Pass<> {
             std::tuple<std::string, ObjFieldType, const Exp *>> &fields =
             ees[0]->Object();
           return pool->Bool(fields.empty());
+        }
+        break;
+
+      case Primop::CODEPOINT_TO_STRING:
+        if (ees[0]->type == ExpType::INT) {
+          const BigInt &bi = ees[0]->Int();
+          auto io = bi.ToInt();
+          // Codepoints that are out of range result in empty string.
+          if (!io.has_value()) return pool->String("");
+          uint64_t cp = io.value();
+          if (cp >= 0x1'0000'0000) return pool->String("");
+          return pool->String(Util::EncodeUTF8(cp));
         }
         break;
 

@@ -162,7 +162,7 @@ struct ElabContext {
 
   static std::string VarInfoString(const VarInfo &vi);
 
-private:
+ private:
   enum class V {
     // e.g. 'int' or 'list'
     TYPE,
@@ -224,7 +224,7 @@ struct Context {
   // For debugging.
   std::string ToString() const;
 
-private:
+ private:
 
   struct Unit {};
 

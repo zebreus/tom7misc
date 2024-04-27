@@ -14,7 +14,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bignum/big.h"
-#include "bytecode.h"
+#include "bc.h"
 #include "functional-map.h"
 #include "il.h"
 #include "primop.h"
@@ -221,7 +221,7 @@ struct Converter {
     }
   }
 
-  Program program;
+  SymbolicProgram program;
 
   using VarLocalMap = FunctionalMap<std::string, std::string>;
 
@@ -271,8 +271,12 @@ struct Converter {
     insts.emplace_back(inst::Ret{.arg = res});
 
     CHECK(!program.code.contains(code_lab));
-    program.code[code_lab] =
-      std::make_pair(std::move(arg_lab), std::move(insts));
+    // FIXME NO! This needs to be symbolic
+    SymbolicFn fn;
+    fn.arg = std::move(arg_lab);
+    fn.initial = "only";
+    fn.blocks["only"] = Block{.insts = std::move(insts)};
+    program.code[code_lab] = std::move(fn);
   }
 
   // Returns the name of the data global. Maybe reuses one that's already
@@ -1018,7 +1022,7 @@ void ToBytecode::SetVerbose(int verbose_in) {
   verbose = verbose_in;
 }
 
-Program ToBytecode::Convert(const il::Program &pgm) {
+SymbolicProgram ToBytecode::Convert(const il::Program &pgm) {
   Converter conv;
   il::AstPool tmp_pool;
 

@@ -4,7 +4,8 @@
 
 #include <string>
 
-#include "bytecode.h"
+#include "assembling.h"
+#include "bc.h"
 #include "closure-conversion.h"
 #include "flatten-globals.h"
 #include "frontend.h"
@@ -19,6 +20,7 @@ struct Compiler {
   il::ClosureConversion closure_conversion;
   il::FlattenGlobals flatten_globals;
   bc::ToBytecode to_bytecode;
+  bc::Assembling assembling;
 
   Compiler();
 

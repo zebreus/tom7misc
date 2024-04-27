@@ -18,7 +18,7 @@
 #include "pdf.h"
 
 #include "achievements.h"
-#include "bytecode.h"
+#include "bc.h"
 #include "compiler.h"
 #include "document.h"
 #include "execution.h"

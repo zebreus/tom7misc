@@ -1,5 +1,5 @@
-#ifndef _REPHRASE_BYTECODE_H
-#define _REPHRASE_BYTECODE_H
+#ifndef _REPHRASE_BC_H
+#define _REPHRASE_BC_H
 
 #include <utility>
 #include <variant>
@@ -29,6 +29,10 @@ struct Value {
 };
 
 namespace inst {
+
+// TODO: Easy to have distinguished symbolic instructions for
+// accessing globals by string or by index. Would also be
+// great to do that for locals and record fields.
 
 // TODO: Consider like "n-op" which takes a vector or
 // something like that.
@@ -131,6 +135,17 @@ struct Note {
   std::string msg;
 };
 
+// The 'lab' versions are used when in the basic block
+// representation.
+struct SymbolicIf {
+  std::string cond;
+  std::string true_lab;
+};
+
+struct SymbolicJump {
+  std::string lab;
+};
+
 }  // namespace inst
 
 using Inst = std::variant<
@@ -155,9 +170,27 @@ using Inst = std::variant<
   inst::Save,
   inst::Jump,
   inst::Fail,
-  inst::Note
+  inst::Note,
+
+  inst::SymbolicIf,
+  inst::SymbolicJump
   >;
 
+struct Block {
+  std::vector<Inst> insts;
+};
+
+struct SymbolicFn {
+  std::string arg;
+  // Initial block's label.
+  std::string initial;
+  std::unordered_map<std::string, Block> blocks;
+};
+
+struct SymbolicProgram {
+  std::unordered_map<std::string, SymbolicFn> code;
+  std::unordered_map<std::string, Value> data;
+};
 
 struct Program {
   // For each code label, its argument local and instructions.
@@ -174,6 +207,7 @@ std::string ColorInstString(const Inst &inst);
 
 // Dump the entire program with ANSI colors codes.
 void PrintProgram(const Program &pgm);
+void PrintSymbolicProgram(const SymbolicProgram &pgm);
 // Approximate data bytes; total number of instructions.
 // Treats names of data and locals as constant.
 std::pair<int64_t, int64_t> ProgramSize(const Program &pgm);

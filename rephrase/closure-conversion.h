@@ -21,7 +21,7 @@ struct ClosureConversion {
   // after closure conversion.
   static uint64_t SimplificationOpts();
 
-private:
+ private:
   int verbose = 0;
   AstPool *pool;
 };

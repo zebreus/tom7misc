@@ -48,7 +48,7 @@ struct UTF8Codepoints {
     return end_it;
   }
 
-private:
+ private:
   const const_iterator begin_it, end_it;
 };
 

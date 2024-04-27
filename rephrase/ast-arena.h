@@ -20,7 +20,7 @@ struct AstArena {
     storage.clear();
   }
 
-private:
+ private:
   AstArena(const AstArena &other) = delete;
   void operator=(const AstArena &other) = delete;
 

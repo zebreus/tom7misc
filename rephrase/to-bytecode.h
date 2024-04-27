@@ -5,7 +5,7 @@
 #define _REPHRASE_TO_BYTECODE_H
 
 #include "il.h"
-#include "bytecode.h"
+#include "bc.h"
 
 namespace bc {
 
@@ -14,9 +14,9 @@ struct ToBytecode {
 
   void SetVerbose(int verbose);
 
-  bc::Program Convert(const il::Program &pgm);
+  bc::SymbolicProgram Convert(const il::Program &pgm);
 
-private:
+ private:
   int verbose = 0;
 };
 

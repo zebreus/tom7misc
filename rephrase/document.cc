@@ -23,7 +23,7 @@
 #include "hyphenation.h"
 #include "image.h"
 #include "util.h"
-#include "bytecode.h"
+#include "bc.h"
 #include "utf.h"
 #include "functional-set.h"
 #include "boxes-and-glue.h"

@@ -14,7 +14,7 @@ struct Initial {
 
   // Types needed by elaboration.
 
-private:
+ private:
   ElabContext ctx;
 };
 

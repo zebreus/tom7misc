@@ -6,13 +6,14 @@
 #include <string>
 #include <utility>
 
-#include "frontend.h"
+#include "ansi.h"
+#include "assembling.h"
+#include "base/logging.h"
+#include "bc.h"
 #include "closure-conversion.h"
-#include "bytecode.h"
+#include "frontend.h"
 #include "il.h"
 #include "simplification.h"
-#include "base/logging.h"
-#include "ansi.h"
 
 Compiler::Compiler() : closure_conversion(frontend.Pool()),
                        flatten_globals(frontend.Pool()) {
@@ -73,7 +74,16 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
     fflush(stdout);
   }
 
-  bc::Program bc_pgm = to_bytecode.Convert(il_pgm);
+  bc::SymbolicProgram bc_symbolic_pgm = to_bytecode.Convert(il_pgm);
+
+  if (verbose > 1) {
+    printf("\n\n" AWHITE("Assemble this") ":\n");
+    bc::PrintSymbolicProgram(bc_symbolic_pgm);
+    printf("\n");
+    fflush(stdout);
+  }
+
+  bc::Program bc_pgm = assembling.Assemble(bc_symbolic_pgm);
 
   if (verbose > 0) {
     if (verbose > 1) {

@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <variant>
 
-#include "bytecode.h"
+#include "bc.h"
 #include "ansi.h"
 #include "base/logging.h"
 

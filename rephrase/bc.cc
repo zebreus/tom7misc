@@ -1,5 +1,5 @@
 
-#include "bytecode.h"
+#include "bc.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -218,6 +218,41 @@ void PrintProgram(const Program &pgm) {
     printf("\n");
   }
 }
+
+void PrintSymbolicProgram(const SymbolicProgram &pgm) {
+  std::map<std::string, Value> data(pgm.data.begin(), pgm.data.end());
+  std::map<std::string, SymbolicFn> code(pgm.code.begin(), pgm.code.end());
+
+  printf(ABGCOLOR(255, 255, 255,
+                  AFGCOLOR(0, 0, 0,
+                           " == DATA == ")) "\n");
+  for (const auto &[lab, value] : data) {
+    printf(" " AGLOBAL_LAB("%s") ": %s\n",
+           lab.c_str(), ColorValueString(value).c_str());
+  }
+
+  printf(ABGCOLOR(255, 255, 255,
+                  AFGCOLOR(0, 0, 0,
+                           " == CODE == ")) "\n");
+  for (const auto &[name, fn] : code) {
+    printf(AWHITE("function") " " APURPLE("%s")
+           "(" ABLUE("%s") ") ==> " AYELLOW("%s") "\n",
+           name.c_str(), fn.arg.c_str(),
+           fn.initial.c_str());
+
+    for (const auto &[lab, block] : fn.blocks) {
+      printf(" " AYELLOW("%s") ":\n",
+             lab.c_str());
+
+      for (const auto &inst : block.insts) {
+        printf("  %s\n", ColorInstString(inst).c_str());
+      }
+    }
+  }
+  printf("\n");
+
+}
+
 
 std::pair<int64_t, int64_t> ProgramSize(const Program &pgm) {
   static constexpr int64_t DATA_NAME_SIZE = sizeof (std::string);

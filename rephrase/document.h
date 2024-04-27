@@ -14,7 +14,7 @@
 #include <map>
 
 #include "bignum/big.h"
-#include "bytecode.h"
+#include "bc.h"
 #include "hyphenation.h"
 #include "image.h"
 #include "boxes-and-glue.h"

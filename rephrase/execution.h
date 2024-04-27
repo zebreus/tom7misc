@@ -9,7 +9,7 @@
 #include <vector>
 #include <string>
 
-#include "bytecode.h"
+#include "bc.h"
 #include "bignum/big.h"
 #include "primop.h"
 
