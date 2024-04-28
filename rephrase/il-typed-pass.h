@@ -523,6 +523,8 @@ struct TypedPass {
            const Exp *guess,
            Args... args) {
     const auto &[ee, tt] = DoExp(G, e, args...);
+    CHECK(tt->type == TypeType::MU) << "Type error: In unroll, "
+      "the expression must have mu type. Got: " << TypeString(tt);
     return {pool->Unroll(ee, guess), pool->UnrollType(tt)};
   }
 

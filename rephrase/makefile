@@ -400,7 +400,8 @@ chessdemo/chessdemo.talk : bovex.exe chess.bovex chessdemo.bovex stdlib.bovex la
 	./bovex.exe -v chessdemo.bovex -o chessdemo.talk
 	./maketalk.exe chessdemo chessdemo.talk
 
-chess-testcases.exe : $(CC_LIB_OBJECTS) $(CHESS_OBJECTS)
+animate.exe : animate.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe test.pdf closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
 	./html_test.exe

@@ -28,7 +28,7 @@
 #include "primop.h"
 #include "util.h"
 
-static constexpr bool VERBOSE = false;
+static constexpr bool VERBOSE = true;
 
 // TODO: Can do some typed simplification, like:
 //   - unit erasure
@@ -1707,7 +1707,6 @@ Program Simplification::Simplify(const Program &program_in,
       program = known.DoProgram(program, Known());
     }
 
-    #if 0
     if ((opts & O_REPRESENT_ENUMS) != 0 && !represent_enums.HasRun()) {
       if (VERBOSE) {
         printf(AWHITE("Represent enums") ".\n");
@@ -1717,7 +1716,6 @@ Program Simplification::Simplify(const Program &program_in,
       Context G;
       program = represent_enums.DoProgram(G, program);
     }
-    #endif
 
     if (opts & O_FLATTEN_LET) {
       if (VERBOSE) printf(AWHITE("Flatten let") ".\n");

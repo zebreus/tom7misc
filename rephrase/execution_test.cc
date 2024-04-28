@@ -14,9 +14,9 @@
 
 namespace bc {
 
-static constexpr int COMPILER_VERBOSE = 0;
-static constexpr int FRONTEND_VERBOSE = 0;
-static constexpr int BYTECODE_VERBOSE = 0;
+static constexpr int COMPILER_VERBOSE = 2;
+static constexpr int FRONTEND_VERBOSE = 2;
+static constexpr int BYTECODE_VERBOSE = 2;
 
 #undef CHECK_EQ
 #define CHECK_EQ(s1, s2) do { \
@@ -635,7 +635,7 @@ static void NewTests() {
             case x of
                B => 777
         end
-      )"), "");
+      )"), "FIXME");
 }
 
 }  // namespace bc
