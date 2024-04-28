@@ -94,6 +94,11 @@ Initial::Initial(AstPool *pool) {
 
     {"layout", Primop::STRING_TO_LAYOUT},
 
+    // We don't (yet?) expose a word type, so this is internal.
+    // (And actually source programs don't even need access
+    // to it.)
+    // {"internal-word-eq", Primop::WORD_EQ},
+
     {"obj-empty", Primop::OBJ_EMPTY},
     {"obj-merge", Primop::OBJ_MERGE},
 

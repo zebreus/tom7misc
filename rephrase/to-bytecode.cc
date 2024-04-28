@@ -1083,6 +1083,11 @@ struct Converter {
         return "ERROR";
       }
 
+      case il::ExpType::WORDCASE: {
+        LOG(FATAL) << "Expecting wordcase to be compiled away by now.";
+        return "ERROR";
+      }
+
       case il::ExpType::STRINGCASE: {
         LOG(FATAL) << "Expecting stringcase to be compiled away by now.";
         return "ERROR";

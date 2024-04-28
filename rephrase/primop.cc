@@ -71,6 +71,9 @@ const char *PrimopString(Primop po) {
 
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
+
+  case Primop::WORD_EQ: return "WORD_EQ";
+
   case Primop::OBJ_EMPTY: return "OBJ_EMPTY";
   case Primop::OBJ_MERGE: return "OBJ_MERGE";
 
@@ -162,6 +165,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::NORMALIZE_WHITESPACE: return std::make_tuple(0, 1);
   case Primop::STRING_LOWERCASE: return std::make_tuple(0, 1);
   case Primop::STRING_UPPERCASE: return std::make_tuple(0, 1);
+
+  case Primop::WORD_EQ: return std::make_tuple(0, 1);
 
   case Primop::OBJ_EMPTY: return std::make_tuple(0, 1);
   case Primop::OBJ_MERGE: return std::make_tuple(0, 2);
@@ -277,6 +282,8 @@ bool IsPrimopTotal(Primop p) {
 
   case Primop::IS_TEXT: return true;
 
+  case Primop::WORD_EQ: return true;
+
   case Primop::OBJ_EMPTY: return true;
   case Primop::OBJ_MERGE: return true;
 
@@ -346,6 +353,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   const il::Type *Int = pool->IntType();
   const il::Type *Float = pool->FloatType();
   const il::Type *Bool = pool->BoolType();
+  const il::Type *Word = pool->WordType();
   const il::Type *String = pool->StringType();
   const il::Type *Layout = pool->LayoutType();
   const il::Type *Obj = pool->ObjType();
@@ -441,6 +449,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::EMIT_BADNESS: return {{}, pool->Arrow(Float, Unit())};
   case Primop::SET_DOC_INFO: return {{}, pool->Arrow(Obj, Unit())};
   case Primop::SET_PAGE_INFO: return {{}, BinOp(Obj, Obj, Unit())};
+
+  case Primop::WORD_EQ: return {{}, BinOp(Word, Word, Bool)};
 
   case Primop::OBJ_EMPTY: return {{}, pool->Arrow(Obj, Bool)};
   // attributes on the rhs overwrite the lhs

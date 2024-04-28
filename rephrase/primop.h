@@ -78,6 +78,11 @@ enum class Primop {
 
   INT_TO_STRING,
 
+  // Lots of word operations make sense,
+  // but we mainly use this for internally
+  // representing enums.
+  WORD_EQ,
+
   // I/O
   OUT_STRING,
   OUT_LAYOUT,

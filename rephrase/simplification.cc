@@ -83,6 +83,8 @@ static bool IsSmallValue(const Exp *e) {
     // Since we use bigint, avoid substituting huge numbers.
     // (This could probably be increased a lot without problems!)
     return e->Int() < 4'000'000ULL;
+  case ExpType::WORD:
+    return true;
   case ExpType::STRING:
     // PERF: Should consider inlining small strings by other means?
     return e->String().empty();
@@ -105,6 +107,7 @@ static bool IsEffectless(const Exp *e) {
   case ExpType::FLOAT: return true;
   case ExpType::BOOL: return true;
   case ExpType::INT: return true;
+  case ExpType::WORD: return true;
   case ExpType::STRING: return true;
   case ExpType::VAR: return true;
   case ExpType::FN: return true;
@@ -163,6 +166,7 @@ static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
   case ExpType::FLOAT: return;
   case ExpType::BOOL: return;
   case ExpType::INT: return;
+  case ExpType::WORD: return;
   case ExpType::STRING: return;
   case ExpType::VAR: return;
   case ExpType::FN: return;
@@ -610,6 +614,14 @@ struct PeepholePass : public il::Pass<> {
         }
         break;
 
+      case Primop::WORD_EQ:
+        if (ees[0]->type == ExpType::WORD &&
+            ees[1]->type == ExpType::WORD) {
+          Simplified("word-eq");
+          return pool->Bool(ees[0]->Word() == ees[1]->Word());
+        }
+        break;
+
       case Primop::OBJ_EMPTY:
         if (ees[0]->type == ExpType::OBJECT) {
           const std::vector<
@@ -918,6 +930,26 @@ struct PeepholePass : public il::Pass<> {
       return DoExp(def);
     } else {
       return Pass::DoIntCase(obj, arms, def, guess);
+    }
+  }
+
+  const Exp *DoWordCase(
+      const Exp *obj,
+      const std::vector<std::pair<uint64_t, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess) override {
+    if ((opts & Simplification::O_REDUCE) &&
+        obj->type == ExpType::WORD) {
+      Simplified("reduce wordcase");
+      for (const auto &[w, arm] : arms) {
+        if (w == obj->Word()) {
+          return DoExp(arm);
+        }
+      }
+      // None matched, so it's the default.
+      return DoExp(def);
+    } else {
+      return Pass::DoWordCase(obj, arms, def, guess);
     }
   }
 
@@ -1371,6 +1403,34 @@ struct DecomposePass : public il::Pass<> {
                      body);
   }
 
+  // Same, for wordcase.
+  const Exp *DoWordCase(
+      const Exp *obj,
+      const std::vector<std::pair<uint64_t, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess) override {
+    if (!(opts & Simplification::O_DECOMPOSE_WORDCASE))
+      return Pass::DoWordCase(obj, arms, def, guess);
+
+    std::string objvar = pool->NewVar("wordcase_obj");
+    const Exp *objvarexp = pool->Var({}, objvar);
+
+    const Exp *body = DoExp(def);
+    // PERF: If there are many cases, we should at least do
+    // binary search. Jump tables would be nice too, but then
+    // we should probably just persist the wordcase construct!
+    for (const auto &[w, e] : arms) {
+      body = pool->If(pool->Primop(Primop::WORD_EQ,
+                                   {}, {pool->Word(w), objvarexp}),
+                      DoExp(e),
+                      body);
+    }
+
+    progress->Simplified("decompose wordcase");
+    return pool->Let({}, objvar, DoExp(obj),
+                     body);
+  }
+
   // Same, for StringCase.
   const Exp *DoStringCase(
       const Exp *obj,
@@ -1423,7 +1483,7 @@ Program Simplification::Simplify(const Program &program_in,
   // to be done once, since other passes should not reintroduce
   // these (we might want to be explicit about that?).
   constexpr uint64_t ANY_DECOMPOSE =
-    O_DECOMPOSE_INTCASE;
+    O_DECOMPOSE_INTCASE | O_DECOMPOSE_WORDCASE | O_DECOMPOSE_STRINGCASE;
 
   if (opts & ANY_DECOMPOSE) {
     program = decompose.DoProgram(program);

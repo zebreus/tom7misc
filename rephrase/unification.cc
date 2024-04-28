@@ -126,6 +126,9 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
   case TypeType::INT:
     return false;
 
+  case TypeType::WORD:
+    return false;
+
   case TypeType::FLOAT:
     return false;
 
@@ -231,6 +234,9 @@ std::vector<EVar> EVar::FreeEVarsInTypes(
       return;
 
     case TypeType::INT:
+      return;
+
+    case TypeType::WORD:
       return;
 
     case TypeType::FLOAT:
@@ -463,6 +469,9 @@ static void UnifyEx(const std::function<std::string()> &error_context,
     return;
 
   case TypeType::INT:
+    return;
+
+  case TypeType::WORD:
     return;
 
   case TypeType::FLOAT:

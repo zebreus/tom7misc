@@ -33,6 +33,7 @@ const char *TypeTypeString(TypeType t) {
   case TypeType::STRING: return "STRING";
   case TypeType::INT: return "INT";
   case TypeType::FLOAT: return "FLOAT";
+  case TypeType::WORD: return "WORD";
   case TypeType::BOOL: return "BOOL";
   case TypeType::OBJ: return "OBJ";
   case TypeType::LAYOUT: return "LAYOUT";
@@ -49,6 +50,7 @@ const char *ExpTypeString(ExpType t) {
   case ExpType::OBJECT: return "OBJECT";
   case ExpType::INT: return "INT";
   case ExpType::BOOL: return "BOOL";
+  case ExpType::WORD: return "WORD";
   case ExpType::VAR: return "VAR";
   case ExpType::GLOBAL_SYM: return "GLOBAL_SYM";
   case ExpType::LAYOUT: return "LAYOUT";
@@ -64,6 +66,7 @@ const char *ExpTypeString(ExpType t) {
   case ExpType::FAIL: return "FAIL";
   case ExpType::SEQ: return "SEQ";
   case ExpType::INTCASE: return "INTCASE";
+  case ExpType::WORDCASE: return "WORDCASE";
   case ExpType::STRINGCASE: return "STRINGCASE";
   case ExpType::SUMCASE: return "SUMCASE";
   case ExpType::PACK: return "PACK";
@@ -249,6 +252,9 @@ std::string TypeString(const Type *t) {
   case TypeType::FLOAT:
     return "float";
 
+  case TypeType::WORD:
+    return "word";
+
   case TypeType::BOOL:
     return "bool";
 
@@ -312,6 +318,9 @@ std::string ExpString(const Exp *e) {
 
   case ExpType::INT:
     return e->Int().ToString();
+
+  case ExpType::WORD:
+    return StringPrintf("(word %lld)", e->Word());
 
   case ExpType::BOOL:
     return e->Bool() ? "true" : "false";
@@ -475,6 +484,21 @@ std::string ExpString(const Exp *e) {
                                    bi.ToString().c_str(),
                                    ExpString(arm).c_str()));
     return StringPrintf("intcase %s of\n"
+                        "   %s\n"
+                        " | _ => %s",
+                        ExpString(obj).c_str(),
+                        Util::Join(sarms, "\n | ").c_str(),
+                        ExpString(def).c_str());
+  }
+
+  case ExpType::WORDCASE: {
+    const auto &[obj, arms, def] = e->WordCase();
+    std::vector<std::string> sarms;
+    for (const auto &[w, arm] : arms)
+      sarms.push_back(StringPrintf("%lld => %s",
+                                   w,
+                                   ExpString(arm).c_str()));
+    return StringPrintf("wordcase %s of\n"
                         "   %s\n"
                         " | _ => %s",
                         ExpString(obj).c_str(),
@@ -761,6 +785,9 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
     return u;
 
   case TypeType::FLOAT:
+    return u;
+
+  case TypeType::WORD:
     return u;
 
   case TypeType::BOOL:

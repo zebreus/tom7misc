@@ -2,6 +2,7 @@
 #ifndef _REPHRASE_IL_PASS_H
 #define _REPHRASE_IL_PASS_H
 
+#include <cstdint>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -69,6 +70,7 @@ struct Pass {
     case TypeType::STRING: return DoStringType(t, args...);
     case TypeType::FLOAT: return DoFloatType(t, args...);
     case TypeType::INT: return DoIntType(t, args...);
+    case TypeType::WORD: return DoWordType(t, args...);
     case TypeType::BOOL: return DoBoolType(t, args...);
     case TypeType::OBJ: return DoObjType(t, args...);
     case TypeType::LAYOUT: return DoLayoutType(t, args...);
@@ -88,6 +90,7 @@ struct Pass {
     case ExpType::RECORD: return DoRecord(e->Record(), e, args...);
     case ExpType::OBJECT: return DoObject(e->Object(), e, args...);
     case ExpType::INT: return DoInt(e->Int(), e, args...);
+    case ExpType::WORD: return DoWord(e->Word(), e, args...);
     case ExpType::BOOL: return DoBool(e->Bool(), e, args...);
     case ExpType::VAR: {
       const auto &[ts, v] = e->Var();
@@ -145,6 +148,10 @@ struct Pass {
     case ExpType::INTCASE: {
       const auto &[obj, arms, def] = e->IntCase();
       return DoIntCase(obj, arms, def, e, args...);
+    }
+    case ExpType::WORDCASE: {
+      const auto &[obj, arms, def] = e->WordCase();
+      return DoWordCase(obj, arms, def, e, args...);
     }
     case ExpType::STRINGCASE: {
       const auto &[obj, arms, def] = e->StringCase();
@@ -292,6 +299,10 @@ struct Pass {
     return guess;
   }
 
+  virtual const Type *DoWordType(const Type *guess, Args... args) {
+    return guess;
+  }
+
   virtual const Type *DoStringType(const Type *guess, Args... args) {
     return guess;
   }
@@ -329,6 +340,11 @@ struct Pass {
   virtual const Exp *DoInt(const BigInt &i, const Exp *guess,
                            Args... args) {
     return pool->Int(i, guess);
+  }
+
+  virtual const Exp *DoWord(const uint64_t w, const Exp *guess,
+                            Args... args) {
+    return pool->Word(w, guess);
   }
 
   virtual const Exp *DoBool(bool b, const Exp *guess,
@@ -492,6 +508,20 @@ struct Pass {
       narms.emplace_back(bi, DoExp(arm, args...));
     return pool->IntCase(DoExp(obj, args...), std::move(narms),
                          DoExp(def, args...), guess);
+  }
+
+  virtual const Exp *DoWordCase(
+      const Exp *obj,
+      const std::vector<std::pair<uint64_t, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess,
+      Args... args) {
+    std::vector<std::pair<uint64_t, const Exp *>> narms;
+    narms.reserve(arms.size());
+    for (const auto &[w, arm] : arms)
+      narms.emplace_back(w, DoExp(arm, args...));
+    return pool->WordCase(DoExp(obj, args...), std::move(narms),
+                          DoExp(def, args...), guess);
   }
 
   virtual const Exp *DoStringCase(

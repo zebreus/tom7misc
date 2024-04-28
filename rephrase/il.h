@@ -22,6 +22,7 @@ enum class ExpType {
   OBJECT,
   INT,
   BOOL,
+  WORD,
   VAR,
   // Like var, but not a variable occurrence: A reference to
   // a global symbol.
@@ -50,6 +51,8 @@ enum class ExpType {
   INTCASE,
   // ... or strings.
   STRINGCASE,
+  // ... or words.
+  WORDCASE,
   // Match against a sum. Binds the same variable
   // for all arms.
   SUMCASE,
@@ -113,6 +116,7 @@ enum class TypeType {
   FLOAT,
   INT,
   BOOL,
+  WORD,
   OBJ,
   LAYOUT,
 };
@@ -191,6 +195,10 @@ struct Type {
     CHECK(type == TypeType::INT);
   }
 
+  void Word() const {
+    CHECK(type == TypeType::WORD);
+  }
+
   void Bool() const {
     CHECK(type == TypeType::BOOL);
   }
@@ -244,6 +252,11 @@ struct Exp {
   const BigInt &Int() const {
     CHECK(type == ExpType::INT);
     return integer;
+  }
+
+  uint64_t Word() const {
+    CHECK(type == ExpType::WORD);
+    return word;
   }
 
   bool Bool() const {
@@ -373,6 +386,13 @@ struct Exp {
   }
 
   std::tuple<const Exp *,
+             const std::vector<std::pair<uint64_t, const Exp *>> &,
+             const Exp *> WordCase() const {
+    CHECK(type == ExpType::INTCASE);
+    return std::tie(a, word_children, b);
+  }
+
+  std::tuple<const Exp *,
              const std::vector<std::pair<std::string, const Exp *>> &,
              const Exp *> StringCase() const {
     CHECK(type == ExpType::STRINGCASE);
@@ -421,6 +441,7 @@ struct Exp {
   std::string str1;
   std::string str2;
   BigInt integer;
+  uint64_t word = 0;
   enum Primop primop = Primop::REF;
   const Exp *a = nullptr;
   const Exp *b = nullptr;
@@ -436,6 +457,8 @@ struct Exp {
   std::vector<std::pair<std::string, const Exp *>> str_children;
   // For intcase. The constants must be distinct.
   std::vector<std::pair<BigInt, const Exp *>> int_children;
+  // And wordcase. Labels must be distinct.
+  std::vector<std::pair<uint64_t, const Exp *>> word_children;
   // For sumcase. Labels must be distinct.
   std::vector<std::tuple<std::string, std::string, const Exp *>> sumcase_arms;
   // For objects.
@@ -522,6 +545,10 @@ struct AstPool {
 
   const Type *IntType() {
     return &int_type;
+  }
+
+  const Type *WordType() {
+    return &word_type;
   }
 
   const Type *BoolType() {
@@ -703,6 +730,18 @@ struct AstPool {
 
     Exp *ret = NewExp(ExpType::INT);
     ret->integer = std::move(i);
+    return ret;
+  }
+
+  const Exp *Word(uint64_t w, const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::WORD &&
+        guess->word == w) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::WORD);
+    ret->word = w;
     return ret;
   }
 
@@ -1036,6 +1075,27 @@ struct AstPool {
     return ret;
   }
 
+  const Exp *WordCase(
+      const Exp *obj,
+      const std::vector<std::pair<uint64_t, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == ExpType::WORDCASE &&
+        guess->a == obj &&
+        guess->b == def &&
+        WordChildrenEq(guess->word_children, arms)) {
+      return guess;
+    }
+
+    Exp *ret = NewExp(ExpType::WORDCASE);
+    ret->a = obj;
+    ret->word_children = arms;
+    ret->b = def;
+    return ret;
+  }
+
+
   const Exp *StringCase(
       const Exp *obj,
       const std::vector<std::pair<std::string, const Exp *>> &arms,
@@ -1190,6 +1250,7 @@ struct AstPool {
   const Type int_type = Type(TypeType::INT);
   const Type float_type = Type(TypeType::FLOAT);
   const Type bool_type = Type(TypeType::BOOL);
+  const Type word_type = Type(TypeType::WORD);
   const Type obj_type = Type(TypeType::OBJ);
   const Type layout_type = Type(TypeType::LAYOUT);
   const Type unit_type = Type(TypeType::RECORD);
@@ -1216,6 +1277,16 @@ struct AstPool {
     for (int i = 0; i < (int)a.size(); i++) {
       if (a[i].second != b[i].second) return false;
       if (!BigInt::Eq(a[i].first, b[i].first)) return false;
+    }
+    return true;
+  }
+
+  bool WordChildrenEq(const std::vector<std::pair<uint64_t, const Exp *>> &a,
+                      const std::vector<std::pair<uint64_t, const Exp *>> &b) {
+    if (a.size() != b.size()) return false;
+    for (int i = 0; i < (int)a.size(); i++) {
+      if (a[i].second != b[i].second) return false;
+      if (a[i].first != b[i].first) return false;
     }
     return true;
   }

@@ -2,6 +2,7 @@
 #ifndef _REPHRASE_IL_CONTEXT_PASS_H
 #define _REPHRASE_IL_CONTEXT_PASS_H
 
+#include <cstdint>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -80,6 +81,7 @@ struct TypedPass {
     case TypeType::STRING: return DoStringType(G, t, args...);
     case TypeType::FLOAT: return DoFloatType(G, t, args...);
     case TypeType::INT: return DoIntType(G, t, args...);
+    case TypeType::WORD: return DoWordType(G, t, args...);
     case TypeType::BOOL: return DoBoolType(G, t, args...);
     case TypeType::OBJ: return DoObjType(G, t, args...);
     case TypeType::LAYOUT: return DoLayoutType(G, t, args...);
@@ -99,6 +101,7 @@ struct TypedPass {
     case ExpType::RECORD: return DoRecord(G, e->Record(), e, args...);
     case ExpType::OBJECT: return DoObject(G, e->Object(), e, args...);
     case ExpType::INT: return DoInt(G, e->Int(), e, args...);
+    case ExpType::WORD: return DoWord(G, e->Word(), e, args...);
     case ExpType::BOOL: return DoBool(G, e->Bool(), e, args...);
     case ExpType::VAR: {
       const auto &[ts, v] = e->Var();
@@ -156,6 +159,10 @@ struct TypedPass {
     case ExpType::INTCASE: {
       const auto &[obj, arms, def] = e->IntCase();
       return DoIntCase(G, obj, arms, def, e, args...);
+    }
+    case ExpType::WORDCASE: {
+      const auto &[obj, arms, def] = e->WordCase();
+      return DoWordCase(G, obj, arms, def, e, args...);
     }
     case ExpType::STRINGCASE: {
       const auto &[obj, arms, def] = e->StringCase();
@@ -313,6 +320,11 @@ struct TypedPass {
     return guess;
   }
 
+  virtual const Type *DoWordType(Context G,
+                                 const Type *guess, Args... args) {
+    return guess;
+  }
+
   virtual const Type *DoStringType(Context G,
                                    const Type *guess, Args... args) {
     return guess;
@@ -415,6 +427,13 @@ struct TypedPass {
         BigInt i, const Exp *guess,
         Args... args) {
     return {pool->Int(i, guess), pool->IntType()};
+  }
+
+  virtual std::pair<const Exp *, const Type *>
+  DoWord(Context G,
+         uint64_t w, const Exp *guess,
+         Args... args) {
+    return {pool->Word(w, guess), pool->WordType()};
   }
 
   virtual std::pair<const Exp *, const Type *>
@@ -671,6 +690,25 @@ struct TypedPass {
     const auto &[oe, ot] = DoExp(G, obj, args...);
     const auto &[de, dt] = DoExp(G, def, args...);
     return {pool->IntCase(oe, std::move(narms), de, guess), dt};
+  }
+
+  virtual std::pair<const Exp *, const Type *>
+  DoWordCase(
+      Context G,
+      const Exp *obj,
+      const std::vector<std::pair<uint64_t, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess,
+      Args... args) {
+    std::vector<std::pair<uint64_t, const Exp *>> narms;
+    narms.reserve(arms.size());
+    for (const auto &[w, arm] : arms) {
+      const auto &[ee, tt] = DoExp(G, arm, args...);
+      narms.emplace_back(w, ee);
+    }
+    const auto &[oe, ot] = DoExp(G, obj, args...);
+    const auto &[de, dt] = DoExp(G, def, args...);
+    return {pool->WordCase(oe, std::move(narms), de, guess), dt};
   }
 
   virtual std::pair<const Exp *, const Type *>

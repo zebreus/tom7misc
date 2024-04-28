@@ -53,6 +53,7 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
   il::Simplification simplification(frontend.Pool());
   // Need to remove some constructs before converting to bytecode.
   constexpr uint64_t DECOMPOSE = il::Simplification::O_DECOMPOSE_INTCASE |
+    il::Simplification::O_DECOMPOSE_WORDCASE |
     il::Simplification::O_DECOMPOSE_STRINGCASE;
   il_pgm = simplification.Simplify(il_pgm, DECOMPOSE);
 
