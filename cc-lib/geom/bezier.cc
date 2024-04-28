@@ -73,7 +73,7 @@ struct BezierImpl {
   /*  Maximum depth for recursion */
   static constexpr int MAXDEPTH = 64;
   /* Flatness control value */
-  static constexpr float EPSILON = std::ldexp(1.0,-MAXDEPTH-1);
+  static constexpr float EPSILON = std::ldexp(1.0, -MAXDEPTH - 1);
 
   /*  Degree of eqn to find roots of. */
   static constexpr int W_DEGREE = 2 * DEGREE - 1;
