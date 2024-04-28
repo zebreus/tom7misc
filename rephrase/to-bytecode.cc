@@ -751,6 +751,11 @@ struct Converter {
         return AddAndLoadValue("b", Value{.v = Value::t(u)}, current_block);
       }
 
+      case il::ExpType::WORD: {
+        uint64_t u = exp->Word();
+        return AddAndLoadValue("w", Value{.v = Value::t(u)}, current_block);
+      }
+
       case il::ExpType::VAR: {
         const auto &[tvs_, x] = exp->Var();
         const std::string *lab = G.FindPtr(x);

@@ -388,7 +388,7 @@ struct Exp {
   std::tuple<const Exp *,
              const std::vector<std::pair<uint64_t, const Exp *>> &,
              const Exp *> WordCase() const {
-    CHECK(type == ExpType::INTCASE);
+    CHECK(type == ExpType::WORDCASE);
     return std::tie(a, word_children, b);
   }
 
@@ -757,6 +757,8 @@ struct AstPool {
         guess->str_children == lv) {
       return guess;
     }
+
+    if (lv.empty()) return &unit_exp;
 
     Exp *ret = NewExp(ExpType::RECORD);
     ret->str_children = lv;
@@ -1254,6 +1256,8 @@ struct AstPool {
   const Type obj_type = Type(TypeType::OBJ);
   const Type layout_type = Type(TypeType::LAYOUT);
   const Type unit_type = Type(TypeType::RECORD);
+
+  const Exp unit_exp = Exp(ExpType::RECORD);
 
   const Exp true_exp = []() {
       Exp t(ExpType::BOOL);

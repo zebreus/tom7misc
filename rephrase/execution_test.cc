@@ -611,15 +611,39 @@ static void TestLocal() {
       "ok777");
 }
 
+static void TestEnums() {
+  CHECK_EQ(
+      RunToString(R"(
+        let
+          datatype enum = A | B | C
+        in
+          case B of
+            | A => print "NO"
+            | B => print "YEAH"
+            | C => print "NAY"
+        end
+      )"), "YEAH");
+}
 
 static void NewTests() {
-
+  CHECK_EQ(
+      RunToString(R"(
+        let
+          datatype enum = A | B | C
+        in
+          fn (x : enum) =>
+            case x of
+               B => 777
+        end
+      )"), "");
 }
 
 }  // namespace bc
 
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  bc::NewTests();
 
   bc::TestTrivial();
   bc::TestEndToEndEasy();
@@ -629,7 +653,8 @@ int main(int argc, char **argv) {
   bc::FloatTests();
   bc::TestUnicode();
   bc::TestLocal();
-  bc::NewTests();
+  bc::TestEnums();
+
 
   printf("OK\n");
   return 0;

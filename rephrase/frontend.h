@@ -35,7 +35,7 @@ struct Frontend {
 
   il::AstPool *Pool() { return &il_pool; }
 
-  private:
+ private:
 
   il::Program RunFrontendInternal(
     const std::string &contents,

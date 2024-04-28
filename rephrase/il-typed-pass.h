@@ -27,8 +27,8 @@ struct TypedPass {
   // "bidirectional type checking). It probably doesn't matter unless
   // you're doing something really fancy with this.
 
-  virtual const Program DoProgram(Context G,
-                                  const Program &program, Args... args) {
+  virtual Program DoProgram(Context G,
+                            const Program &program, Args... args) {
     Context GG = G;
     for (const Global &glob : program.globals) {
       const Type *tt = DoType(G, glob.type, args...);
@@ -637,10 +637,10 @@ struct TypedPass {
       "with non-arrow type?"
       "\nType: " << TypeString(arrow_type) <<
       "\nBecame: " << TypeString(at) <<
-      "\nFunction  expression:\n" <<
+      "\nFunction expression:\n" <<
       ExpString(guess);
 
-    const auto &[dom, cod] = arrow_type->Arrow();
+    const auto &[dom, cod] = at->Arrow();
     Context GG = G.Insert(self, {{}, at}).Insert(x, {{}, dom});
     const auto &[be, bt] = DoExp(GG, body, args...);
     return {pool->Fn(self, x, at, be, guess), at};
@@ -868,7 +868,6 @@ struct TypedPass {
       pool->SubstType(tt, alpha, tbody),
     };
   }
-
 
 protected:
   AstPool *pool = nullptr;

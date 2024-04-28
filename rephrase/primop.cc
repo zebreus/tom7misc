@@ -166,7 +166,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_LOWERCASE: return std::make_tuple(0, 1);
   case Primop::STRING_UPPERCASE: return std::make_tuple(0, 1);
 
-  case Primop::WORD_EQ: return std::make_tuple(0, 1);
+  case Primop::WORD_EQ: return std::make_tuple(0, 2);
 
   case Primop::OBJ_EMPTY: return std::make_tuple(0, 1);
   case Primop::OBJ_MERGE: return std::make_tuple(0, 2);

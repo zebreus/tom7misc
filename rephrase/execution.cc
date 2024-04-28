@@ -245,6 +245,15 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       return std::tie(*abi, *bbi);
     };
 
+  auto TwoWords = [a, b](const char *what) ->
+    std::pair<uint64_t, uint64_t> {
+      const uint64_t *aw = std::get_if<uint64_t>(&a->v);
+      const uint64_t *bw = std::get_if<uint64_t>(&b->v);
+      CHECK(aw != nullptr) << "Expected word argument (lhs) to " << what;
+      CHECK(bw != nullptr) << "Expected word argument (rhs) to " << what;
+      return std::make_pair(*aw, *bw);
+    };
+
   auto TwoFloats = [a, b](const char *what) ->
     std::pair<double, double> {
       const double *ad = std::get_if<double>(&a->v);
@@ -445,6 +454,11 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     } else {
       return Big(BigInt(pos));
     }
+  }
+
+  case Primop::WORD_EQ: {
+    const auto &[aa, bb] = TwoWords("word_eq");
+    return Bool(aa == bb, state);
   }
 
   case Primop::SET_PAGE_INFO: {

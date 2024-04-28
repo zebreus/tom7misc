@@ -25,6 +25,9 @@ struct Simplification {
   static constexpr uint64_t O_GLOBAL_INLINING = 1ULL << 32;
   static constexpr uint64_t O_GLOBAL_DEAD = 1ULL << 33;
 
+  // Global, type-directed representation rewrites.
+  static constexpr uint64_t O_REPRESENT_ENUMS = 1ULL << 40;
+
   // We require these optimizations to remove some constructs
   // before bytecode generation.
   static constexpr uint64_t O_DECOMPOSE_INTCASE = 1ULL << 50;

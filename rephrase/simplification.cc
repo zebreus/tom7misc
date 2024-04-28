@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -18,8 +19,10 @@
 #include "base/stringprintf.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
+#include "context.h"
 #include "functional-map.h"
 #include "il-pass.h"
+#include "il-typed-pass.h"
 #include "il-util.h"
 #include "il.h"
 #include "primop.h"
@@ -299,7 +302,9 @@ struct PeepholePass : public il::Pass<> {
       const auto &[num_types, num_args] = PrimopArity(po);
       CHECK((int)ees.size() == num_args &&
             (int)tts.size() == num_types) << "Internal type error: Wrong "
-        "number of args to primop " << PrimopString(po);
+        "number of args to primop " << PrimopString(po) << ". Wanted " <<
+        num_types << " types and " << num_args << " values, but got " <<
+        tts.size() << " types and " << ees.size() << " values.";
 
       switch (po) {
       case Primop::STRING_CONCAT:
@@ -1369,6 +1374,207 @@ struct FlattenLetPass : public il::Pass<> {
   Progress *progress = nullptr;
 };
 
+// A datatype declaration that is just of the form A | B | C ...
+// is an "enum." We recognize these and represent them as
+// words. This is pretty easy with the typed pass.
+struct RepresentEnumsPass : public il::TypedPass<> {
+  RepresentEnumsPass(uint64_t opts, AstPool *p, Progress *progress) :
+    TypedPass(p),
+    opts(opts),
+    progress(progress) {
+  }
+
+  // Types of the form
+  // (μ α. [A: unit, B: unit, C: unit, ...])
+  static std::optional<std::vector<std::string>> GetEnum(const Type *t) {
+    if (t->type != TypeType::MU) return std::nullopt;
+    const auto &[idx, bundles] = t->Mu();
+    // If we want to support this for mutually recursive datatypes,
+    // start by breaking them into singletons (they are not really
+    // recursive if they're enums!).
+    if (bundles.size() != 1) return std::nullopt;
+
+    const auto &[a, tt] = bundles[0];
+    if (tt->type != TypeType::SUM)
+      return std::nullopt;
+
+    std::vector<std::string> labs;
+    for (const auto &[lab, u] : tt->Sum()) {
+      if (u->type != TypeType::RECORD)
+        return std::nullopt;
+      if (!u->Record().empty())
+        return std::nullopt;
+      labs.push_back(lab);
+    }
+
+    std::sort(labs.begin(), labs.end());
+
+    return labs;
+  }
+
+  const Type *DoMu(
+      Context G,
+      int idx,
+      const std::vector<std::pair<std::string, const Type *>> &v,
+      const Type *guess) override {
+
+    const Type *mu = TypedPass::DoMu(G, idx, v, guess);
+
+    if (GetEnum(mu).has_value()) {
+      progress->Simplified("enum: rewrote type");
+      return pool->WordType();
+    } else {
+      return mu;
+    }
+  }
+
+  // Now need to handle the introduction and elimination forms
+  // for the mu.
+  //
+  // we recognize the expected form, which is
+  //  roll<μ α. [A: unit, B: unit, C: unit, ...]>(inject A = {})
+  //  =>
+  //  (word constant representing A)
+  // but in pathological cases where the roll and sum don't
+  // appear together, we need to transform it into a word. So
+  // we can do a sumcase:
+  //  roll<μ α. [A: unit, B: unit, C: unit, ...]>(exp)
+  //  =>
+  //  sumcase exp of
+  //     A => (word constant for A)
+  //   | B => (word constant for B)
+  //   | C => (word constant for C)
+  //
+  // and in fact we can just always perform that transformation
+  // and let sumcase reduction fix it for us when exp is an inject.
+
+  std::pair<const Exp *, const Type *>
+  DoRoll(Context G,
+         const Type *t,
+         const Exp *e,
+         const Exp *guess) override {
+    if (const auto &olabs = GetEnum(t)) {
+      // We don't actually need to do this (word is a leaf), but
+      // something is amiss if it doesn't get translated the way we
+      // expect!
+      const Type *wt = DoType(G, t);
+      CHECK(wt->type == TypeType::WORD);
+
+      const std::vector<std::string> &labs = olabs.value();
+
+      std::vector<std::tuple<std::string, std::string, const Exp *>> arms;
+      arms.reserve(labs.size());
+
+      // Variable is always bound to (), so unused.
+      std::string v = "unused";
+      for (int i = 0; i < (int)labs.size(); i ++) {
+        arms.emplace_back(labs[i], v, pool->Word(i));
+      }
+
+      const auto &[ee, tt] = DoExp(G, e);
+      CHECK(tt->type == TypeType::SUM) << "Since we matched an enum "
+        "type for the roll, the translated expression must be a sum "
+        "(or else the roll would have been ill-formed).";
+
+      const Exp *def = pool->Fail(
+          pool->String("Impossible! Optimization opportunity!"),
+          pool->WordType());
+
+      progress->Simplified("enum: rewrote roll");
+      return {pool->SumCase(ee, arms, def), pool->WordType()};
+
+    } else {
+      return TypedPass::DoRoll(G, t, e, guess);
+    }
+  }
+
+
+  const Type *SumType(const std::vector<std::string> &labs) {
+    std::vector<std::pair<std::string, const Type *>> arms;
+    arms.reserve(labs.size());
+    for (const std::string &lab : labs) {
+      arms.emplace_back(lab, pool->RecordType({}));
+    }
+    return pool->SumType(std::move(arms));
+  }
+
+  // Ugh!
+  // We need to pre-translation type of some expressions. We
+  // can use the base TypedPass to synthesize it, but unfortunately
+  // we are then running over expressions twice in some cases.
+  const Type *TypeOf(Context G, const Exp *e) {
+    TypedPass<> typed_pass(pool);
+    const auto &[ee_, tt] = typed_pass.DoExp(G, e);
+    return tt;
+  }
+
+  // This is unroll (e) where e may have an enum type.
+  // The result of the expression was an unrolled sum,
+  // so we just need to produce that from the word (using
+  // wordcase) if so.
+
+  std::pair<const Exp *, const Type *>
+  DoUnroll(Context G,
+           const Exp *e,
+           const Exp *guess) override {
+    // See if this is an enum type (before translating it).
+    const Type *in_type = TypeOf(G, e);
+
+    if (const std::optional<std::vector<std::string>> olabs =
+        GetEnum(in_type)) {
+      const auto &[ee, tt] = DoExp(G, e);
+      // So the type must be translated as .
+      CHECK(tt->type == TypeType::WORD) << "Exp was:\n" <<
+        ExpString(e) << "\nwhich became\n" << ExpString(ee) <<
+        "\nTyp was:\n" << TypeString(in_type) << "\nwhich became\n" <<
+        TypeString(tt);
+
+
+      const auto &labs = olabs.value();
+      const Type *sum_type = SumType(labs);
+      std::vector<std::pair<uint64_t, const Exp *>> arms;
+      arms.reserve(labs.size());
+      for (int i = 0; i < (int)labs.size(); i++) {
+        arms.emplace_back(
+            (uint64_t)i, pool->Inject(labs[i], sum_type, pool->Record({})));
+      }
+      const Exp *def = pool->Fail(
+          pool->String("Impossible! Optimization opportunity!"),
+          sum_type);
+
+      progress->Simplified("enum: rewrote unroll");
+      return {pool->WordCase(ee, arms, def), sum_type};
+    } else {
+      return TypedPass::DoUnroll(G, e, guess);
+    }
+  }
+
+  // TODO PERF: Either want to optimize case-of-case (maybe good
+  // except that there are so many combinations) or recognize
+  // sumcase(unroll(...)) here.
+
+  Program DoProgram(Context G, const Program &program) override {
+    if (!(opts & Simplification::O_REPRESENT_ENUMS)) return program;
+
+    // This optimization only needs to run once, since it will find
+    // all such types in the program and translate them in one pass.
+    // If we add transformations that somehow introduce new (mu-sum)
+    // enums, then it would be fine to run this multiple times.
+    has_run = true;
+    return TypedPass::DoProgram(G, program);
+  }
+
+  bool HasRun() const {
+    return has_run;
+  }
+
+ private:
+  const uint64_t opts = 0;
+  Progress *progress = nullptr;
+  bool has_run = false;
+};
+
+
 struct DecomposePass : public il::Pass<> {
   DecomposePass(uint64_t opts, AstPool *p, Progress *progress) :
     Pass(p),
@@ -1460,7 +1666,6 @@ struct DecomposePass : public il::Pass<> {
                      body);
   }
 
-
  private:
   const uint64_t opts = 0;
   Progress *progress = nullptr;
@@ -1477,7 +1682,7 @@ Program Simplification::Simplify(const Program &program_in,
   KnownPass known(opts, pool, &progress);
   FlattenLetPass flatten_let(opts, pool, &progress);
   GlobalInlining global_inlining(opts, pool, &progress);
-
+  RepresentEnumsPass represent_enums(opts, pool, &progress);
 
   // Do decomposition first if enabled. This only needs
   // to be done once, since other passes should not reintroduce
@@ -1501,6 +1706,18 @@ Program Simplification::Simplify(const Program &program_in,
       if (VERBOSE) printf(AWHITE("Known") ".\n");
       program = known.DoProgram(program, Known());
     }
+
+    #if 0
+    if ((opts & O_REPRESENT_ENUMS) != 0 && !represent_enums.HasRun()) {
+      if (VERBOSE) {
+        printf(AWHITE("Represent enums") ".\n");
+        printf("%s\n", ProgramString(program).c_str());
+      }
+
+      Context G;
+      program = represent_enums.DoProgram(G, program);
+    }
+    #endif
 
     if (opts & O_FLATTEN_LET) {
       if (VERBOSE) printf(AWHITE("Flatten let") ".\n");
