@@ -14,9 +14,9 @@
 
 namespace bc {
 
-static constexpr int COMPILER_VERBOSE = 2;
-static constexpr int FRONTEND_VERBOSE = 2;
-static constexpr int BYTECODE_VERBOSE = 2;
+static constexpr int COMPILER_VERBOSE = 0;
+static constexpr int FRONTEND_VERBOSE = 0;
+static constexpr int BYTECODE_VERBOSE = 0;
 
 #undef CHECK_EQ
 #define CHECK_EQ(s1, s2) do { \
@@ -623,19 +623,23 @@ static void TestEnums() {
             | C => print "NAY"
         end
       )"), "YEAH");
-}
 
-static void NewTests() {
   CHECK_EQ(
       RunToString(R"(
         let
           datatype enum = A | B | C
+          val r =
+            ref (fn (x : enum) =>
+                  case x of
+                    B => print "yes")
         in
-          fn (x : enum) =>
-            case x of
-               B => 777
+          (!r) B
         end
-      )"), "FIXME");
+      )"), "yes");
+}
+
+static void NewTests() {
+
 }
 
 }  // namespace bc

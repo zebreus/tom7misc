@@ -1421,15 +1421,18 @@ void Execution::GC(State *state) {
 
   // Sweep.
   std::vector<Value *> new_used;
+  int64_t collected = 0;
   for (Value *v : state->heap.used) {
     if (reachable.contains(v)) {
       new_used.push_back(v);
     } else {
+      collected++;
       delete v;
     }
   }
   state->heap.used = std::move(new_used);
   new_used.clear();
+  state->collected += collected;
 
   double total_sec = gc_timer.Seconds();
   if (VERBOSE_GC) {

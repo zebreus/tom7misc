@@ -28,7 +28,7 @@
 #include "primop.h"
 #include "util.h"
 
-static constexpr bool VERBOSE = true;
+static constexpr bool VERBOSE = false;
 
 // TODO: Can do some typed simplification, like:
 //   - unit erasure
@@ -189,7 +189,7 @@ static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
   case ExpType::ROLL:
     return PushSeqs(std::get<1>(e->Roll()), vflat);
   case ExpType::UNROLL:
-    return PushSeqs(e->Unroll(), vflat);
+    return PushSeqs(std::get<0>(e->Unroll()), vflat);
 
   case ExpType::PRIMOP: {
     const auto &[po, ts, es] = e->Primop();
@@ -240,14 +240,15 @@ struct PeepholePass : public il::Pass<> {
     opts(opts),
     progress(progress) {}
 
-  const Exp *DoUnroll(const Exp *e, const Exp *guess) override {
+  const Exp *DoUnroll(const Exp *e, const Type *mu_type,
+                      const Exp *guess) override {
     e = DoExp(e);
     if ((opts & Simplification::O_REDUCE) && e->type == ExpType::ROLL) {
           const auto &[tt, ee] = e->Roll();
       Simplified("reduce unroll");
       return ee;
     }
-    return pool->Unroll(e, guess);
+    return pool->Unroll(e, DoType(mu_type), guess);
   }
 
   const Exp *DoProject(const std::string &label,
@@ -1387,6 +1388,7 @@ struct RepresentEnumsPass : public il::TypedPass<> {
   // Types of the form
   // (μ α. [A: unit, B: unit, C: unit, ...])
   static std::optional<std::vector<std::string>> GetEnum(const Type *t) {
+    t = ILUtil::GetKnownType("represent-enums", t);
     if (t->type != TypeType::MU) return std::nullopt;
     const auto &[idx, bundles] = t->Mu();
     // If we want to support this for mutually recursive datatypes,
@@ -1394,15 +1396,17 @@ struct RepresentEnumsPass : public il::TypedPass<> {
     // recursive if they're enums!).
     if (bundles.size() != 1) return std::nullopt;
 
-    const auto &[a, tt] = bundles[0];
+    const auto &[a, ttb] = bundles[0];
+    const Type *tt = ILUtil::GetKnownType("represent-enums-bundle", ttb);
     if (tt->type != TypeType::SUM)
       return std::nullopt;
 
     std::vector<std::string> labs;
     for (const auto &[lab, u] : tt->Sum()) {
-      if (u->type != TypeType::RECORD)
+      const Type *uu = ILUtil::GetKnownType("represent-enums-record", u);
+      if (uu->type != TypeType::RECORD)
         return std::nullopt;
-      if (!u->Record().empty())
+      if (!uu->Record().empty())
         return std::nullopt;
       labs.push_back(lab);
     }
@@ -1422,6 +1426,10 @@ struct RepresentEnumsPass : public il::TypedPass<> {
 
     if (GetEnum(mu).has_value()) {
       progress->Simplified("enum: rewrote type");
+      if (VERBOSE) {
+        printf("   type rewritten from %s -> word\n",
+               TypeString(mu).c_str());
+      }
       return pool->WordType();
     } else {
       return mu;
@@ -1502,6 +1510,7 @@ struct RepresentEnumsPass : public il::TypedPass<> {
   // We need to pre-translation type of some expressions. We
   // can use the base TypedPass to synthesize it, but unfortunately
   // we are then running over expressions twice in some cases.
+  // XXX not used now
   const Type *TypeOf(Context G, const Exp *e) {
     TypedPass<> typed_pass(pool);
     const auto &[ee_, tt] = typed_pass.DoExp(G, e);
@@ -1516,19 +1525,24 @@ struct RepresentEnumsPass : public il::TypedPass<> {
   std::pair<const Exp *, const Type *>
   DoUnroll(Context G,
            const Exp *e,
+           const Type *mu_type,
            const Exp *guess) override {
-    // See if this is an enum type (before translating it).
-    const Type *in_type = TypeOf(G, e);
-
+    // This is why we have an annotation on the unroll: So that
+    // we can detect that we have transformed the body (yet
+    // recover the labels).
     if (const std::optional<std::vector<std::string>> olabs =
-        GetEnum(in_type)) {
-      const auto &[ee, tt] = DoExp(G, e);
-      // So the type must be translated as .
-      CHECK(tt->type == TypeType::WORD) << "Exp was:\n" <<
-        ExpString(e) << "\nwhich became\n" << ExpString(ee) <<
-        "\nTyp was:\n" << TypeString(in_type) << "\nwhich became\n" <<
-        TypeString(tt);
+        GetEnum(mu_type)) {
 
+      const auto &[ee, tt] = DoExp(G, e);
+      const Type *mu_tt = DoType(G, mu_type);
+      // So the type must be translated as .
+      CHECK(tt->type == TypeType::WORD &&
+            mu_tt->type == TypeType::WORD) << "Exp was:\n" <<
+        ExpString(e) << "\nwhich became\n" << ExpString(ee) <<
+        "\nof type\n" << TypeString(tt) <<
+        "\nType annotation was:\n" <<
+        TypeString(mu_type) << "\nwhich became\n" <<
+        TypeString(mu_tt);
 
       const auto &labs = olabs.value();
       const Type *sum_type = SumType(labs);
@@ -1543,9 +1557,15 @@ struct RepresentEnumsPass : public il::TypedPass<> {
           sum_type);
 
       progress->Simplified("enum: rewrote unroll");
+      if (VERBOSE) {
+        printf("(simplification:DoUnroll) returning %s\n",
+               TypeString(sum_type).c_str());
+      }
+
       return {pool->WordCase(ee, arms, def), sum_type};
+
     } else {
-      return TypedPass::DoUnroll(G, e, guess);
+      return TypedPass::DoUnroll(G, e, mu_type, guess);
     }
   }
 
@@ -1710,7 +1730,7 @@ Program Simplification::Simplify(const Program &program_in,
     if ((opts & O_REPRESENT_ENUMS) != 0 && !represent_enums.HasRun()) {
       if (VERBOSE) {
         printf(AWHITE("Represent enums") ".\n");
-        printf("%s\n", ProgramString(program).c_str());
+        // printf("%s\n", ProgramString(program).c_str());
       }
 
       Context G;

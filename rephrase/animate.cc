@@ -16,6 +16,9 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "color-util.h"
+#include "geom/tree-2d.h"
+#include "ansi.h"
+#include "timer.h"
 
 struct Region {
   std::unordered_set<int> pixels;
@@ -32,6 +35,7 @@ struct Animation {
 
   std::unordered_map<uint32_t, Region> regions;
   Region transparent;
+  int frame_num = 0;
 
   void Prep() {
     in.reset(ImageRGBA::Load(file_in));
@@ -167,26 +171,17 @@ struct Animation {
                   regions[c2].pixels.size();
               });
 
+    // TODO: Smooth lower regions (e.g. behind lines), since
+    // obviously we wouldn't draw *around* the lines on higher
+    // layers.
+
     ImageRGBA frame(in->Width(), in->Height());
 
-    int frame_num = 0;
     for (uint32_t color : order) {
       CHECK(regions.contains(color));
       // Blit all at once.
-      // TODO: Use brush strokes!
-      const Region &region = regions[color];
-      for (int idx : region.pixels) {
-        const auto &[x, y] = UnPos(idx);
-        // Always with the original pixel, not the posterized one.
-        frame.SetPixel32(x, y, in->GetPixel32(x, y));
-      }
 
-      std::string frame_file = StringPrintf("%s-%d.png",
-                                            file_base_out.c_str(),
-                                            frame_num);
-      frame.Save(frame_file);
-      printf("Wrote %s\n", frame_file.c_str());
-      frame_num++;
+      DrawLayer(file_base_out, &frame, regions[color]);
     }
 
     // Draw transparent pixels last.
@@ -201,10 +196,45 @@ struct Animation {
     frame.Save(final_file);
   }
 
+  void DrawLayer(const std::string &file_base_out,
+                 ImageRGBA *frame, const Region &region) {
+    constexpr float PIXELS_PER_FRAME = 12.0;
+
+    // Pick a random corner, maybe?
+    float cx = 0.0f, cy = frame->Height() - 1.0f;
+    // Pen velocity
+    float cdx = 0.0f, cdy = 0.0f;
+
+    Timer timer;
+    Tree2D<int, char> remaining;
+    for (int pos : region.pixels) {
+      const auto &[x, y] = UnPos(pos);
+      remaining.Insert(x, y, 0);
+    }
+    double sec = timer.Seconds();
+    printf("Built tree in %s\n", ANSI::Time(sec).c_str());
+
+    // TODO: Use brush strokes!
+    for (int idx : region.pixels) {
+      const auto &[x, y] = UnPos(idx);
+      // Always with the original pixel, not the posterized one.
+      frame->SetPixel32(x, y, in->GetPixel32(x, y));
+    }
+
+    std::string frame_file = StringPrintf("%s-%d.png",
+                                          file_base_out.c_str(),
+                                          frame_num);
+    frame->Save(frame_file);
+    printf("Wrote %s\n", frame_file.c_str());
+    frame_num++;
+
+  }
+
   // TODO: Animate!
 };
 
 int main(int argc, char **argv) {
+  ANSI::Init();
   CHECK(argc == 3) << "./animate.exe in.png out-base";
 
   Animation animation(argv[1]);

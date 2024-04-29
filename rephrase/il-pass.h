@@ -131,8 +131,10 @@ struct Pass {
       const auto &[type, exp] = e->Roll();
       return DoRoll(type, exp, e, args...);
     }
-    case ExpType::UNROLL:
-      return DoUnroll(e->Unroll(), e, args...);
+    case ExpType::UNROLL: {
+      const auto &[exp, type] = e->Unroll();
+      return DoUnroll(exp, type, e, args...);
+    }
     case ExpType::PRIMOP: {
       const auto &[p, ts, es] = e->Primop();
       return DoPrimop(p, ts, es, e, args...);
@@ -413,9 +415,10 @@ struct Pass {
   }
 
   virtual const Exp *DoUnroll(const Exp *e,
+                              const Type *mu_type,
                               const Exp *guess,
                               Args... args) {
-    return pool->Unroll(DoExp(e, args...), guess);
+    return pool->Unroll(DoExp(e, args...), DoType(mu_type, args...), guess);
   }
 
   virtual const Exp *DoNode(const Exp *attrs,

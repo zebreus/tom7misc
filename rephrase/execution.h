@@ -43,6 +43,8 @@ struct Execution {
     Heap heap;
     std::vector<StackFrame> stack;
     std::unordered_map<std::string, Value *> globals;
+    // For diagnostic purposes.
+    int64_t collected = 0;
   };
 
   static void GC(State *state);

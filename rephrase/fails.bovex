@@ -1,27 +1,16 @@
 let
+  datatype (a) option = SOME of a | NONE
 
-  datatype (a) option = NONE
+  fun map-find _ = NONE
 
-  fun option-get de NONE = de
+  datatype color = WHITE | BLACK
 
-  datatype justification = FULLY | LEFT
-
-  fun pack-boxes-horiz (just : justification) : int =
-    (case just of
-       FULLY => 999)
-
-  fun consume f =
-    case (7, "yo") of
-      (7, children) =>
-        (case f 0 of
-           NONE => NONE
-         | outer => outer)
-
-  val just = consume (fn _ => NONE)
-  val justy = option-get FULLY just
-  val _ = pack-boxes-horiz justy
-
+  fun fff (x : int) : int =
+    case (map-find 1, map-find 2) of
+       (SOME WHITE, _) => 777
+     | _ => 888
 in
-  777
+  print "OK\n"
 end
+
 

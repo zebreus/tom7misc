@@ -364,9 +364,10 @@ struct Exp {
     return std::tie(ta, a);
   }
 
-  const Exp *Unroll() const {
+  // Type is the rolled type (mu).
+  std::tuple<const Exp *, const Type *> Unroll() const {
     CHECK(type == ExpType::UNROLL);
-    return a;
+    return std::tie(a, ta);
   }
 
   std::tuple<const Exp *, const Type *> Fail() const {
@@ -902,15 +903,18 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Unroll(const Exp *e, const Exp *guess = nullptr) {
+  const Exp *Unroll(const Exp *e, const Type *mu_type,
+                    const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::UNROLL &&
-        guess->a == e) {
+        guess->a == e &&
+        guess->ta == mu_type) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::UNROLL);
     ret->a = e;
+    ret->ta = mu_type;
     return ret;
   }
 

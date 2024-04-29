@@ -1321,7 +1321,7 @@ PatternCompilation::SplitAppPattern(
   }
 
   const Exp *sumcase =
-    elab->pool->SumCase(elab->pool->Unroll(obj_exp),
+    elab->pool->SumCase(elab->pool->Unroll(obj_exp, obj_type),
                         std::move(arms),
                         elab->pool->App(
                             elab->pool->Var({}, il_cont_var),

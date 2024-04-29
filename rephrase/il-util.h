@@ -107,7 +107,11 @@ struct ILUtil {
   // This is used for some gross parts of elaboration (objects) where the
   // rule is "it must have a type that is resolved by now."
   static std::optional<const Type *> GetTypeIfKnown(const Type *);
-
+  // After finalizing evars, there should be no unbound ones. However,
+  // we do some type-directed translations that need to case analyze
+  // the types. This recursively dereferences bound EVars (as needed),
+  // and aborts if a free one is found
+  static const Type *GetKnownType(const char *where, const Type *);
 };
 
 }  // namespace il

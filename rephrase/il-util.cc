@@ -760,4 +760,11 @@ std::optional<const Type *> ILUtil::GetTypeIfKnown(const Type *t) {
   }
 }
 
+const Type * ILUtil::GetKnownType(const char *what, const Type *t) {
+  const auto &to = GetTypeIfKnown(t);
+  CHECK(to.has_value()) << "(" << what << ") Bug: Not expecting any "
+    "free EVars at this point. In: " << TypeString(t);
+  return to.value();
+}
+
 }  // namespace il

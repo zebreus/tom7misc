@@ -244,6 +244,7 @@ static int Bovex(const std::vector<std::string> &args) {
 
   BovexOpt opt(verbose);
 
+  int64_t total_collected = 0;
   for (;;) {
 
     std::unique_ptr<Document> document = [output_type]() ->
@@ -269,6 +270,7 @@ static int Bovex(const std::vector<std::string> &args) {
     Timer exec_timer;
     execution.RunToCompletion(&state);
     const double exec_sec = exec_timer.Seconds();
+    total_collected += state.collected;
 
     if (verbose > 0) {
       printf(AWHITE("Executed") " in %s.\n", ANSI::Time(exec_sec).c_str());
@@ -339,6 +341,8 @@ static int Bovex(const std::vector<std::string> &args) {
   const auto &[data_bytes, total_insts] = ProgramSize(pgm);
   printf("Program size: " ABLUE("%lld") " bytes data, "
          APURPLE("%lld") " insts.\n", data_bytes, total_insts);
+  printf("Collected " AWHITE("%lld") " total cells\n",
+         total_collected);
   printf("Finished in %s\n", ANSI::Time(timer.Seconds()).c_str());
   return 0;
 }

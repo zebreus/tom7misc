@@ -390,9 +390,12 @@ std::string ExpString(const Exp *e) {
                         ExpString(child).c_str());
   }
 
-  case ExpType::UNROLL:
-    return StringPrintf("unroll(%s)",
-                        ExpString(e->Unroll()).c_str());
+  case ExpType::UNROLL: {
+    const auto &[child, t] = e->Unroll();
+    return StringPrintf("unroll<%s>(%s)",
+                        TypeString(t).c_str(),
+                        ExpString(child).c_str());
+  }
 
   case ExpType::NODE: {
     const auto &[attrs, children] = e->Node();

@@ -3,6 +3,7 @@
 #define _REPHRASE_IL_CONTEXT_PASS_H
 
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -16,10 +17,14 @@
 #include "primop.h"
 #include "unification.h"
 
+#include "ansi.h"
+
 namespace il {
 template<typename... Args>
 struct TypedPass {
   explicit TypedPass(AstPool *pool) : pool(pool) {}
+
+  static constexpr bool TYPED_PASS_VERBOSE = false;
 
   // TODO: Should be clearer about when we apply DoType (i.e. before or
   // after exp callbacks that include types as args). I think it
@@ -142,8 +147,10 @@ struct TypedPass {
       const auto &[type, exp] = e->Roll();
       return DoRoll(G, type, exp, e, args...);
     }
-    case ExpType::UNROLL:
-      return DoUnroll(G, e->Unroll(), e, args...);
+    case ExpType::UNROLL: {
+      const auto &[exp, type] = e->Unroll();
+      return DoUnroll(G, exp, type, e, args...);
+    }
     case ExpType::PRIMOP: {
       const auto &[p, ts, es] = e->Primop();
       return DoPrimop(G, p, ts, es, e, args...);
@@ -387,12 +394,26 @@ struct TypedPass {
       "of type arguments to polyvar " << v;
 
     // Instantiate the var's polytype at the provided types.
+    // Bound variables already have their types translated (so
+    // the polytype is as we want) but the types that we
+    // substitute into the application need to be the newly
+    // translated ones.
     const Type *t = pt->second;
     for (int i = 0; i < (int)pt->first.size(); i++) {
-      t = pool->SubstType(ts[i], pt->first[i], t);
+      t = pool->SubstType(tts[i], pt->first[i], t);
     }
 
-    return {pool->Var(tts, v, guess), t};
+    const Exp *out = pool->Var(tts, v, guess);
+    if (TYPED_PASS_VERBOSE) {
+      printf("Translated var " ABLUE("%s") "\n"
+             "to: " ABGCOLOR(0, 0, 40, "%s") "\n"
+             "which has type: %s\n",
+             ExpString(guess).c_str(),
+             ExpString(out).c_str(),
+             TypeString(t).c_str());
+    }
+
+    return {out, t};
   }
 
   virtual std::pair<const Exp *, const Type *>
@@ -520,12 +541,29 @@ struct TypedPass {
   virtual std::pair<const Exp *, const Type *>
   DoUnroll(Context G,
            const Exp *e,
+           const Type *mu_type,
            const Exp *guess,
            Args... args) {
     const auto &[ee, tt] = DoExp(G, e, args...);
+    const Type *mu_tt = DoType(G, mu_type, args...);
     CHECK(tt->type == TypeType::MU) << "Type error: In unroll, "
       "the expression must have mu type. Got: " << TypeString(tt);
-    return {pool->Unroll(ee, guess), pool->UnrollType(tt)};
+    CHECK(mu_tt->type == TypeType::MU) << "Type error: In unroll, "
+      "the annotation must have mu type. Got: " << TypeString(mu_tt);
+
+    const Type *utt = pool->UnrollType(tt);
+
+    if (TYPED_PASS_VERBOSE) {
+      printf("(TypedPass:DoUnroll) translated exp ee is %s\n"
+             "and its translated type tt is %s\n"
+             "which unrolls to " ABGCOLOR(30, 0, 0, "%s") "\n",
+             ExpString(ee).c_str(),
+             TypeString(tt).c_str(),
+             TypeString(utt).c_str());
+    }
+
+    // DCHECK(TypeEq(tt, mu_tt));
+    return {pool->Unroll(ee, mu_tt, guess), utt};
   }
 
   virtual std::pair<const Exp *, const Type *>
@@ -556,6 +594,12 @@ struct TypedPass {
     for (const std::string &alpha : tyvars) GG = GG.InsertType(alpha);
     const auto &[ee, tt] = DoExp(GG, rhs, args...);
     Context GGG = G.Insert(x, {tyvars, tt});
+    // This is wrong.
+    if (TYPED_PASS_VERBOSE) {
+      printf("Inserting " ABLUE("%s") " with type %s\n",
+             x.c_str(),
+             TypeString(tt).c_str());
+    }
     const auto &[ebody, tbody] = DoExp(GGG, body, args...);
     return {pool->Let(tyvars, x, ee, ebody, guess), tbody};
   }
@@ -742,11 +786,23 @@ struct TypedPass {
       const Exp *guess,
       Args... args) {
 
+    if (TYPED_PASS_VERBOSE) {
+      printf("Sumcase of " AYELLOW("%s") " becomes\n", ExpString(obj).c_str());
+    }
     const auto &[oe, ot] = DoExp(G, obj, args...);
+    if (TYPED_PASS_VERBOSE) {
+      printf("Exp: " AORANGE("%s") "\nType: " ARED("%s") "\n",
+             ExpString(oe).c_str(),
+             TypeString(ot).c_str());
+    }
     std::unordered_map<std::string, const Type *> lab_types;
     for (const auto [lab, t] : ot->Sum()) {
       // Types have already been translated!
       // lab_types[lab] = DoType(G, t, args...);
+      if (TYPED_PASS_VERBOSE) {
+        printf("In sumcase, lab " APURPLE("%s") " : %s\n",
+               lab.c_str(), TypeString(t).c_str());
+      }
       lab_types[lab] = t;
     }
 
@@ -758,6 +814,10 @@ struct TypedPass {
       CHECK(it != lab_types.end()) << "Type error: Label " << lab <<
         " in sumcase not found in object type: " << TypeString(ot).c_str();
       Context GG = G.Insert(x, {{}, it->second});
+      if (TYPED_PASS_VERBOSE) {
+        printf(AYELLOW("sumcase") " bound " APURPLE("%s") " : %s\n",
+               x.c_str(), TypeString(it->second).c_str());
+      }
       const auto &[ae, at] = DoExp(GG, arm, args...);
       narms.emplace_back(lab, x, ae);
     }

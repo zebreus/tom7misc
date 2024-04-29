@@ -199,9 +199,11 @@ struct Converter {
         exp = e;
         break;
       }
-      case il::ExpType::UNROLL:
-        exp = exp->Unroll();
+      case il::ExpType::UNROLL: {
+        const auto &[e, t] = exp->Unroll();
+        exp = e;
         break;
+      }
 
       case il::ExpType::TYPEFN: {
         const auto &[alpha, body] = exp->TypeFn();

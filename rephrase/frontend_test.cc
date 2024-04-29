@@ -828,11 +828,58 @@ static void Regression() {
 
 }
 
+static void TestEnums() {
+  static constexpr int VERBOSE = 0;
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(VERBOSE);
+  }
+
+  {
+    // At r5848 this would fail in simplification
+    // because I failed to instantiate polymorphic variables
+    // like map-find at the *translated* types.
+    const Program pgm = Run(R"(
+      let
+        datatype (a) option = SOME of a | NONE
+
+        fun map-find _ = NONE
+
+        datatype color = WHITE | BLACK
+
+        fun fff (x : int) : int =
+          case (map-find 1, map-find 2) of
+             (SOME WHITE, _) => 777
+           | _ => 888
+      in
+        print "OK\n"
+      end
+     )");
+  }
+
+}
+
+
 static void NewTests() {
   static constexpr int VERBOSE = 2;
   Frontend front;
   if (VERBOSE) {
     front.SetVerbose(VERBOSE);
+  }
+
+  {
+    const Program pgm = Run(R"(
+      let
+         datatype enum = A | B | C
+         val r : (enum -> int) ref = ref (fn _ => 0)
+      in
+         r := (fn e =>
+            case e of
+              A => 10
+            | B => 20
+            | C => 30)
+      end
+     )");
   }
 
 }
@@ -851,7 +898,9 @@ int main(int argc, char **argv) {
   il::TestFun();
   il::TestObjects();
   il::TestLayout();
+  il::TestEnums();
   il::Regression();
+
   il::NewTests();
 
   printf("OK\n");
