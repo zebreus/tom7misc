@@ -1691,6 +1691,118 @@ struct DecomposePass : public il::Pass<> {
   Progress *progress = nullptr;
 };
 
+/*
+  Transform situations like the following:
+
+  case (case e of A => C ea | B => D eb | w => def1) of
+     C x => ec
+   | D y => ed
+   | z => def2
+
+   into
+
+  case e of
+    A => let x = ea in ec end
+  | B => let y = eb in ed end
+  | w => let z = def1 in def2 end
+
+  The main purpose is to find such an immediate reduction after
+  rewriting a case analysis on enums, which produce this pattern.
+  But it makes sense in general. The main problem is that there
+  are many different case constructs to combine! We specifically
+  look for sumcase (wordcase ...).
+
+*/
+
+struct CaseOfCasePass : public il::Pass<> {
+  CaseOfCasePass(uint64_t opts, AstPool *p, Progress *progress) :
+    Pass(p),
+    opts(opts),
+    progress(progress) {
+  }
+
+  const Exp *DoSumCase(
+      const Exp *obj,
+      const std::vector<
+          std::tuple<std::string, std::string, const Exp *>> &arms,
+      const Exp *def,
+      const Exp *guess) override {
+
+    if ((opts & Simplification::O_CASE_OF_CASE) &&
+        obj->type == ExpType::WORDCASE) {
+      const auto &[wobj, warms, wdef] = obj->WordCase();
+
+      // We require that the arms are all INJECT or FAIL, since
+      // for sure these will reduce. There are lots of other
+      // things we could do here; for example if the body is
+      // let ... in INJECT _ end we can also reduce it.
+      auto AllSuitable = [&]() {
+          for (const auto &[w, e] : warms) {
+            if (e->type != ExpType::INJECT && e->type != ExpType::FAIL) {
+              return false;
+            }
+          }
+          return wdef->type == ExpType::INJECT || wdef->type == ExpType::FAIL;
+        };
+
+      if (AllSuitable()) {
+        // Then we can transform it. The inner case, with its original arms,
+        // becomes the outer case.
+        auto ArmExp = [this, &arms, def](const Exp *wexp) {
+            if (wexp->type == ExpType::FAIL) {
+              // If the arm fails, the original outer sumcase is never
+              // reached. So we'd like to just leave this alone. But
+              // the fail will need to have its return type annotation
+              // changed, so we do a faithful rewrite that sequences
+              // the fail with the default of the sumcase (could use
+              // any arm). We rely on other simplifications to throw
+              // away the code after the fail and change its type.
+              return pool->Seq({wexp}, def);
+            } else {
+              CHECK(wexp->type == ExpType::INJECT) << "Checked above.";
+              const auto &[lab, t_, earg] = wexp->Inject();
+              // Find the corresponding arm in the outer sumcase.
+              for (const auto &[slab, svar, sexp] : arms) {
+                if (slab == lab) {
+                  // Bind the variable. Typically this is unit and so
+                  // it'll get erased.
+                  return pool->Let({}, svar, earg, sexp);
+                }
+              }
+
+              // If we didn't find an explicit match, then this is the
+              // default.
+              // PERF: In principle this could be duplicating the default.
+              // We should hoist it if so.
+              return def;
+            }
+          };
+
+        std::vector<std::pair<uint64_t, const Exp *>> new_warms;
+        for (const auto &[w, e] : warms) {
+          new_warms.emplace_back(w, DoExp(ArmExp(e)));
+        }
+
+        const Exp *new_wdef = DoExp(ArmExp(wdef));
+
+        progress->Simplified("Rewrote sumcase(wordcase()).");
+        return pool->WordCase(DoExp(wobj),
+                              std::move(new_warms),
+                              new_wdef);
+      }
+
+      // Otherwise, fall through.
+    }
+
+    return Pass::DoSumCase(obj, arms, def, guess);
+  }
+
+
+ private:
+  const uint64_t opts = 0;
+  Progress *progress = nullptr;
+};
+
 }  // namespace
 
 Program Simplification::Simplify(const Program &program_in,
@@ -1703,6 +1815,7 @@ Program Simplification::Simplify(const Program &program_in,
   FlattenLetPass flatten_let(opts, pool, &progress);
   GlobalInlining global_inlining(opts, pool, &progress);
   RepresentEnumsPass represent_enums(opts, pool, &progress);
+  CaseOfCasePass case_of_case(opts, pool, &progress);
 
   // Do decomposition first if enabled. This only needs
   // to be done once, since other passes should not reintroduce
@@ -1735,6 +1848,14 @@ Program Simplification::Simplify(const Program &program_in,
 
       Context G;
       program = represent_enums.DoProgram(G, program);
+    }
+
+    if (opts & O_CASE_OF_CASE) {
+      if (VERBOSE) {
+        printf(AWHITE("Case of case") ".\n");
+        printf("%s\n", ProgramString(program).c_str());
+      }
+      program = case_of_case.DoProgram(program);
     }
 
     if (opts & O_FLATTEN_LET) {

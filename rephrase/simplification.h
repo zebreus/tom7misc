@@ -21,6 +21,7 @@ struct Simplification {
   static constexpr uint64_t O_FLATTEN_LET = 1ULL << 8;
   static constexpr uint64_t O_EXPLODE_RECORDS = 1ULL << 9;
   static constexpr uint64_t O_SIMPLIFY_LAYOUT = 1ULL << 10;
+  static constexpr uint64_t O_CASE_OF_CASE = 1ULL << 11;
 
   static constexpr uint64_t O_GLOBAL_INLINING = 1ULL << 32;
   static constexpr uint64_t O_GLOBAL_DEAD = 1ULL << 33;

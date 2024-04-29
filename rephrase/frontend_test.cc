@@ -857,16 +857,6 @@ static void TestEnums() {
      )");
   }
 
-}
-
-
-static void NewTests() {
-  static constexpr int VERBOSE = 2;
-  Frontend front;
-  if (VERBOSE) {
-    front.SetVerbose(VERBOSE);
-  }
-
   {
     const Program pgm = Run(R"(
       let
@@ -880,6 +870,16 @@ static void NewTests() {
             | C => 30)
       end
      )");
+  }
+
+}
+
+
+static void NewTests() {
+  static constexpr int VERBOSE = 2;
+  Frontend front;
+  if (VERBOSE) {
+    front.SetVerbose(VERBOSE);
   }
 
 }
