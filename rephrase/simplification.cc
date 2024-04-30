@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -32,7 +33,6 @@ static constexpr bool VERBOSE = false;
 
 // TODO: Can do some typed simplification, like:
 //   - unit erasure
-//   - transform sums that are just enums into ints
 //   - flatten records
 
 namespace {
@@ -1714,14 +1714,21 @@ struct DecomposePass : public il::Pass<> {
 
 */
 
-struct CaseOfCasePass : public il::Pass<> {
+struct CaseOfCasePass : public il::TypedPass<> {
   CaseOfCasePass(uint64_t opts, AstPool *p, Progress *progress) :
-    Pass(p),
+    TypedPass(p),
     opts(opts),
     progress(progress) {
   }
 
-  const Exp *DoSumCase(
+  const Type *DoType(Context G, const Type *t) override {
+    // Types are not changed.
+    return t;
+  }
+
+  std::pair<const Exp *, const Type *>
+  DoSumCase(
+      Context G,
       const Exp *obj,
       const std::vector<
           std::tuple<std::string, std::string, const Exp *>> &arms,
@@ -1730,13 +1737,13 @@ struct CaseOfCasePass : public il::Pass<> {
 
     if ((opts & Simplification::O_CASE_OF_CASE) &&
         obj->type == ExpType::WORDCASE) {
-      const auto &[wobj, warms, wdef] = obj->WordCase();
 
       // We require that the arms are all INJECT or FAIL, since
       // for sure these will reduce. There are lots of other
       // things we could do here; for example if the body is
       // let ... in INJECT _ end we can also reduce it.
       auto AllSuitable = [&]() {
+          const auto &[wobj_, warms, wdef] = obj->WordCase();
           for (const auto &[w, e] : warms) {
             if (e->type != ExpType::INJECT && e->type != ExpType::FAIL) {
               return false;
@@ -1748,8 +1755,64 @@ struct CaseOfCasePass : public il::Pass<> {
       if (AllSuitable()) {
         // Then we can transform it. The inner case, with its original arms,
         // becomes the outer case.
-        auto ArmExp = [this, &arms, def](const Exp *wexp) {
+
+        // Translate the wordcase. We need its type to extract the sum
+        // type.
+        const auto &[oo, oot] = DoExp(G, obj);
+        CHECK(oo->type == ExpType::WORDCASE) << "This pass shouldn't "
+          "transform a wordcase into anything else.";
+        // (Similarly, the INJECT and FAIL expressions in the arms
+        // should be translated to the same.)
+        CHECK(oot->type == TypeType::SUM) << "Internal type error: "
+          "sumcase on a non-sum! " << TypeString(oot);
+        std::unordered_map<std::string, const Type *> arm_types;
+        for (const auto &[lab, t] : oot->Sum()) {
+          arm_types[lab] = t;
+        }
+
+        const auto &[wobj, warms, wdef] = obj->WordCase();
+
+        // Since sumcase arms could be duplicated, we hoist them as
+        // functions.
+        // hoisted fn name, arg var, arrow type, body type
+        struct Hoist {
+          int used = 0;
+          std::string name;
+          std::string x;
+          const Type *arrow_type;
+          const Exp *body;
+        };
+
+        // Translate the sumcase's default, which we use to get the
+        // return type of the sumcase.
+        const auto &[dd, sumcase_return_type] = DoExp(G, def);
+
+        Hoist def_hoist;
+        def_hoist.name = pool->NewVar("def");
+        def_hoist.x = pool->NewVar("unused");
+        def_hoist.arrow_type = pool->Arrow(pool->RecordType({}),
+                                           sumcase_return_type);
+        def_hoist.body = dd;
+
+        std::map<std::string, Hoist> hoists;
+        for (const auto &[lab, arg, body] : arms) {
+          CHECK(arm_types.contains(lab)) << "Internal type error: "
+            "Label " << lab << " missing in sum type? " << TypeString(oot);
+          const Type *arm_type = arm_types[lab];
+          Hoist *h = &hoists[lab];
+          h->name = pool->NewVar(lab);
+          h->x = arg;
+          const auto &[bb, bbt] =
+            DoExp(G.Insert(arg, PolyType{{}, arm_type}), body);
+          h->body = bb;
+          h->arrow_type = pool->Arrow(arm_type, bbt);
+        }
+
+        auto ArmExp = [this, &hoists, &def_hoist](const Exp *wexp) {
             if (wexp->type == ExpType::FAIL) {
+              // TODO: Now that we are using a typed pass, it would
+              // not be hard to change the type annotation on the fail
+              // here.
               // If the arm fails, the original outer sumcase is never
               // reached. So we'd like to just leave this alone. But
               // the fail will need to have its return type annotation
@@ -1757,44 +1820,74 @@ struct CaseOfCasePass : public il::Pass<> {
               // the fail with the default of the sumcase (could use
               // any arm). We rely on other simplifications to throw
               // away the code after the fail and change its type.
-              return pool->Seq({wexp}, def);
+              def_hoist.used++;
+              return pool->Seq({wexp},
+                               pool->App(pool->Var({}, def_hoist.name),
+                                         pool->Record({})));
             } else {
               CHECK(wexp->type == ExpType::INJECT) << "Checked above.";
               const auto &[lab, t_, earg] = wexp->Inject();
               // Find the corresponding arm in the outer sumcase.
-              for (const auto &[slab, svar, sexp] : arms) {
-                if (slab == lab) {
-                  // Bind the variable. Typically this is unit and so
-                  // it'll get erased.
-                  return pool->Let({}, svar, earg, sexp);
-                }
+              auto it = hoists.find(lab);
+              if (it != hoists.end()) {
+                Hoist &hoist = it->second;
+                // Call the hoisted function. Typically it will get
+                // inlined if it's just a single use.
+                hoist.used++;
+                return pool->App(pool->Var({}, hoist.name), earg);
               }
 
               // If we didn't find an explicit match, then this is the
               // default.
-              // PERF: In principle this could be duplicating the default.
-              // We should hoist it if so.
-              return def;
+              def_hoist.used++;
+              return pool->App(pool->Var({}, def_hoist.name),
+                               pool->Record({}));
             }
           };
 
         std::vector<std::pair<uint64_t, const Exp *>> new_warms;
         for (const auto &[w, e] : warms) {
-          new_warms.emplace_back(w, DoExp(ArmExp(e)));
+          const auto &[ww, tt] = DoExp(G, e);
+          new_warms.emplace_back(w, ArmExp(ww));
         }
 
-        const Exp *new_wdef = DoExp(ArmExp(wdef));
+        const auto &[dww, dtt] = DoExp(G, wdef);
+        const Exp *new_wdef = ArmExp(dww);
+
+        const auto &[new_wobj, new_wobjt] = DoExp(G, wobj);
 
         progress->Simplified("Rewrote sumcase(wordcase()).");
-        return pool->WordCase(DoExp(wobj),
-                              std::move(new_warms),
-                              new_wdef);
+
+        const Exp *ret = pool->WordCase(new_wobj,
+                                        std::move(new_warms),
+                                        new_wdef);
+
+        // And we must wrap it with the hoisted functions (if used).
+        auto WrapHoist = [this](const Hoist &hoist, const Exp *exp) {
+            if (hoist.used > 0) {
+              return pool->Let({}, hoist.name,
+                               pool->Fn("", hoist.x, hoist.arrow_type,
+                                        hoist.body),
+                               exp);
+            } else {
+              return exp;
+            }
+          };
+
+        ret = WrapHoist(def_hoist, ret);
+        for (const auto &[lab_, hoist] : hoists) {
+          ret = WrapHoist(hoist, ret);
+        }
+
+        // Wrapping is just adding let bindings, which don't
+        // change the return type.
+        return std::make_pair(ret, sumcase_return_type);
       }
 
       // Otherwise, fall through.
     }
 
-    return Pass::DoSumCase(obj, arms, def, guess);
+    return TypedPass::DoSumCase(G, obj, arms, def, guess);
   }
 
 
@@ -1855,7 +1948,8 @@ Program Simplification::Simplify(const Program &program_in,
         printf(AWHITE("Case of case") ".\n");
         printf("%s\n", ProgramString(program).c_str());
       }
-      program = case_of_case.DoProgram(program);
+      Context G;
+      program = case_of_case.DoProgram(G, program);
     }
 
     if (opts & O_FLATTEN_LET) {

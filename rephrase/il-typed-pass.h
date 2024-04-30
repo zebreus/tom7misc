@@ -384,7 +384,8 @@ struct TypedPass {
         const Exp *guess,
         Args... args) {
     const PolyType *pt = G.Find(v);
-    CHECK(pt != nullptr) << "Unbound var: " << v;
+    CHECK(pt != nullptr) << "Unbound var " << v << "\nIn context:\n"
+                         << G.ToString();
 
     std::vector<const Type *> tts;
     tts.reserve(ts.size());
