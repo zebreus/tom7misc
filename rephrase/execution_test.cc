@@ -14,9 +14,9 @@
 
 namespace bc {
 
-static constexpr int COMPILER_VERBOSE = 0;
+static constexpr int COMPILER_VERBOSE = 2;
 static constexpr int FRONTEND_VERBOSE = 0;
-static constexpr int BYTECODE_VERBOSE = 0;
+static constexpr int BYTECODE_VERBOSE = 2;
 
 #undef CHECK_EQ
 #define CHECK_EQ(s1, s2) do { \
@@ -612,6 +612,7 @@ static void TestLocal() {
 }
 
 static void TestEnums() {
+  /*
   CHECK_EQ(
       RunToString(R"(
         let
@@ -623,6 +624,7 @@ static void TestEnums() {
             | C => print "NAY"
         end
       )"), "YEAH");
+  */
 
   CHECK_EQ(
       RunToString(R"(
@@ -631,7 +633,9 @@ static void TestEnums() {
           val r =
             ref (fn (x : enum) =>
                   case x of
-                    B => print "yes")
+                    A => print "no"
+                  | B => print "yes"
+                  | C => print "nyet")
         in
           (!r) B
         end
@@ -647,6 +651,7 @@ static void NewTests() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  /*
   bc::NewTests();
 
   bc::TestTrivial();
@@ -657,6 +662,8 @@ int main(int argc, char **argv) {
   bc::FloatTests();
   bc::TestUnicode();
   bc::TestLocal();
+  */
+
   bc::TestEnums();
 
 

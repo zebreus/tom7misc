@@ -13,6 +13,7 @@
 #include "closure-conversion.h"
 #include "frontend.h"
 #include "il.h"
+#include "optimization.h"
 #include "simplification.h"
 
 Compiler::Compiler() : closure_conversion(frontend.Pool()),
@@ -76,6 +77,18 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
   }
 
   bc::SymbolicProgram bc_symbolic_pgm = to_bytecode.Convert(il_pgm);
+
+  if (verbose > 1) {
+    printf("\n\n" AWHITE("Optimize this") ":\n");
+    bc::PrintSymbolicProgram(bc_symbolic_pgm);
+    printf("\n");
+    fflush(stdout);
+  }
+
+  bc::Optimization optimization;
+  bc_symbolic_pgm = optimization.Optimize(bc_symbolic_pgm);
+
+  bc_symbolic_pgm = to_bytecode.Convert(il_pgm);
 
   if (verbose > 1) {
     printf("\n\n" AWHITE("Assemble this") ":\n");

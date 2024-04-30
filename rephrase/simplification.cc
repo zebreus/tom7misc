@@ -20,43 +20,23 @@
 #include "base/stringprintf.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
-#include "context.h"
 #include "functional-map.h"
+#include "context.h"
 #include "il-pass.h"
 #include "il-typed-pass.h"
 #include "il-util.h"
 #include "il.h"
 #include "primop.h"
+#include "progress.h"
 #include "util.h"
 
 static constexpr bool VERBOSE = false;
 
+using ProgressRecorder = Progress<VERBOSE>;
+
 // TODO: Can do some typed simplification, like:
 //   - unit erasure
 //   - flatten records
-
-namespace {
-
-struct Progress {
-  // Call this whenever the expression definitely got smaller.
-  void Simplified(const char *msg) {
-    if (VERBOSE) {
-      printf(AWHITE("S %d") " " AGREEN("%s") "\n",
-             simplified, msg);
-    }
-    simplified++;
-  }
-
-  void Reset() {
-    simplified = 0;
-  }
-
-  bool MadeProgress() const { return simplified > 0; }
-
-private:
-  int simplified = 0;
-};
-}  // namespace
 
 namespace il {
 
@@ -235,7 +215,7 @@ static bool IsDiscardable(const Exp *e) {
 
 namespace {
 struct PeepholePass : public il::Pass<> {
-  PeepholePass(uint64_t opts, AstPool *p, Progress *progress) :
+  PeepholePass(uint64_t opts, AstPool *p, ProgressRecorder *progress) :
     Pass(p),
     opts(opts),
     progress(progress) {}
@@ -1078,12 +1058,12 @@ struct PeepholePass : public il::Pass<> {
   }
 
   void Simplified(const char *msg) {
-    progress->Simplified(msg);
+    progress->Record(msg);
   }
 
 private:
   const uint64_t opts = 0;
-  Progress *progress = nullptr;
+  ProgressRecorder *progress = nullptr;
 };
 
 struct Knowledge {
@@ -1097,7 +1077,7 @@ using Known = FunctionalMap<std::string, std::shared_ptr<Knowledge>>;
 
 // TODO: This could be a general 'known' pass.
 struct KnownPass : public il::Pass<Known> {
-  KnownPass(uint64_t opts, AstPool *p, Progress *progress) :
+  KnownPass(uint64_t opts, AstPool *p, ProgressRecorder *progress) :
     Pass(p),
     opts(opts),
     progress(progress) {}
@@ -1225,7 +1205,7 @@ struct KnownPass : public il::Pass<Known> {
               // Must mark it so that the requisite bindings are
               // generated at the site of the let!
               (*kv)->was_used = true;
-              progress->Simplified("known record field");
+              progress->Record("known record field");
               return ee;
             }
           }
@@ -1242,12 +1222,12 @@ struct KnownPass : public il::Pass<Known> {
 
  private:
   const uint64_t opts = 0;
-  Progress *progress = nullptr;
+  ProgressRecorder *progress = nullptr;
 };
 
 // Inlines globals, or drops unused ones.
 struct GlobalInlining {
-  GlobalInlining(uint64_t opts, AstPool *pool, Progress *progress) :
+  GlobalInlining(uint64_t opts, AstPool *pool, ProgressRecorder *progress) :
     opts(opts),
     pool(pool),
     progress(progress) {}
@@ -1283,7 +1263,7 @@ struct GlobalInlining {
       // TODO: Or if a small value?
       if (((opts & Simplification::O_GLOBAL_INLINING) && total_count == 1) ||
           ((opts & Simplification::O_GLOBAL_DEAD) && total_count == 0)) {
-        progress->Simplified("drop/inline global");
+        progress->Record("drop/inline global");
         if (VERBOSE) {
           printf("  There were " AYELLOW("%d") " occurrences.\n",
                  total_count);
@@ -1320,11 +1300,11 @@ struct GlobalInlining {
  private:
   const uint64_t opts = 0;
   AstPool *pool = nullptr;
-  Progress *progress = nullptr;
+  ProgressRecorder *progress = nullptr;
 };
 
 struct FlattenLetPass : public il::Pass<> {
-  FlattenLetPass(uint64_t opts, AstPool *p, Progress *progress) :
+  FlattenLetPass(uint64_t opts, AstPool *p, ProgressRecorder *progress) :
     Pass(p),
     opts(opts),
     progress(progress) {
@@ -1358,7 +1338,7 @@ struct FlattenLetPass : public il::Pass<> {
       // in 'body'.
       const auto &[new_y, new_e2] =
           ILUtil::AlphaVaryExp(pool, (int)ytyvars.size(), y, e2);
-      progress->Simplified("flatten let");
+      progress->Record("flatten let");
       if (VERBOSE) {
         printf("  on " APURPLE("%s") " and "
                APURPLE("%s") " -> " APURPLE("%s") "\n",
@@ -1372,14 +1352,14 @@ struct FlattenLetPass : public il::Pass<> {
 
  private:
   const uint64_t opts = 0;
-  Progress *progress = nullptr;
+  ProgressRecorder *progress = nullptr;
 };
 
 // A datatype declaration that is just of the form A | B | C ...
 // is an "enum." We recognize these and represent them as
 // words. This is pretty easy with the typed pass.
 struct RepresentEnumsPass : public il::TypedPass<> {
-  RepresentEnumsPass(uint64_t opts, AstPool *p, Progress *progress) :
+  RepresentEnumsPass(uint64_t opts, AstPool *p, ProgressRecorder *progress) :
     TypedPass(p),
     opts(opts),
     progress(progress) {
@@ -1425,7 +1405,7 @@ struct RepresentEnumsPass : public il::TypedPass<> {
     const Type *mu = TypedPass::DoMu(G, idx, v, guess);
 
     if (GetEnum(mu).has_value()) {
-      progress->Simplified("enum: rewrote type");
+      progress->Record("enum: rewrote type");
       if (VERBOSE) {
         printf("   type rewritten from %s -> word\n",
                TypeString(mu).c_str());
@@ -1488,7 +1468,7 @@ struct RepresentEnumsPass : public il::TypedPass<> {
           pool->String("Impossible! Optimization opportunity!"),
           pool->WordType());
 
-      progress->Simplified("enum: rewrote roll");
+      progress->Record("enum: rewrote roll");
       return {pool->SumCase(ee, arms, def), pool->WordType()};
 
     } else {
@@ -1556,7 +1536,7 @@ struct RepresentEnumsPass : public il::TypedPass<> {
           pool->String("Impossible! Optimization opportunity!"),
           sum_type);
 
-      progress->Simplified("enum: rewrote unroll");
+      progress->Record("enum: rewrote unroll");
       if (VERBOSE) {
         printf("(simplification:DoUnroll) returning %s\n",
                TypeString(sum_type).c_str());
@@ -1590,13 +1570,13 @@ struct RepresentEnumsPass : public il::TypedPass<> {
 
  private:
   const uint64_t opts = 0;
-  Progress *progress = nullptr;
+  ProgressRecorder *progress = nullptr;
   bool has_run = false;
 };
 
 
 struct DecomposePass : public il::Pass<> {
-  DecomposePass(uint64_t opts, AstPool *p, Progress *progress) :
+  DecomposePass(uint64_t opts, AstPool *p, ProgressRecorder *progress) :
     Pass(p),
     opts(opts),
     progress(progress) {
@@ -1624,7 +1604,7 @@ struct DecomposePass : public il::Pass<> {
                       body);
     }
 
-    progress->Simplified("decompose intcase");
+    progress->Record("decompose intcase");
     return pool->Let({}, objvar, DoExp(obj),
                      body);
   }
@@ -1652,7 +1632,7 @@ struct DecomposePass : public il::Pass<> {
                       body);
     }
 
-    progress->Simplified("decompose wordcase");
+    progress->Record("decompose wordcase");
     return pool->Let({}, objvar, DoExp(obj),
                      body);
   }
@@ -1681,14 +1661,14 @@ struct DecomposePass : public il::Pass<> {
                       body);
     }
 
-    progress->Simplified("decompose stringcase");
+    progress->Record("decompose stringcase");
     return pool->Let({}, objvar, DoExp(obj),
                      body);
   }
 
  private:
   const uint64_t opts = 0;
-  Progress *progress = nullptr;
+  ProgressRecorder *progress = nullptr;
 };
 
 /*
@@ -1715,7 +1695,7 @@ struct DecomposePass : public il::Pass<> {
 */
 
 struct CaseOfCasePass : public il::TypedPass<> {
-  CaseOfCasePass(uint64_t opts, AstPool *p, Progress *progress) :
+  CaseOfCasePass(uint64_t opts, AstPool *p, ProgressRecorder *progress) :
     TypedPass(p),
     opts(opts),
     progress(progress) {
@@ -1856,7 +1836,7 @@ struct CaseOfCasePass : public il::TypedPass<> {
 
         const auto &[new_wobj, new_wobjt] = DoExp(G, wobj);
 
-        progress->Simplified("Rewrote sumcase(wordcase()).");
+        progress->Record("Rewrote sumcase(wordcase()).");
 
         const Exp *ret = pool->WordCase(new_wobj,
                                         std::move(new_warms),
@@ -1893,14 +1873,14 @@ struct CaseOfCasePass : public il::TypedPass<> {
 
  private:
   const uint64_t opts = 0;
-  Progress *progress = nullptr;
+  ProgressRecorder *progress = nullptr;
 };
 
 }  // namespace
 
 Program Simplification::Simplify(const Program &program_in,
                                  uint64_t opts) {
-  Progress progress;
+  ProgressRecorder progress;
   Program program = program_in;
   DecomposePass decompose(opts, pool, &progress);
   PeepholePass peephole(opts, pool, &progress);
