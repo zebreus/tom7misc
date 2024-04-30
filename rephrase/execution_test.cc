@@ -14,9 +14,11 @@
 
 namespace bc {
 
-static constexpr int COMPILER_VERBOSE = 2;
+static constexpr bool DEBUG_CODEGEN = false;
+
+static constexpr int COMPILER_VERBOSE = DEBUG_CODEGEN ? 2 : 0;
 static constexpr int FRONTEND_VERBOSE = 0;
-static constexpr int BYTECODE_VERBOSE = 2;
+static constexpr int BYTECODE_VERBOSE = DEBUG_CODEGEN ? 2 : 0;
 
 #undef CHECK_EQ
 #define CHECK_EQ(s1, s2) do { \
@@ -657,15 +659,15 @@ int main(int argc, char **argv) {
   bc::TestTrivial();
   bc::TestEndToEndEasy();
   bc::ExecTests();
+  */
   bc::ObjTests();
   bc::StringTests();
+  /*
   bc::FloatTests();
   bc::TestUnicode();
   bc::TestLocal();
-  */
-
   bc::TestEnums();
-
+  */
 
   printf("OK\n");
   return 0;

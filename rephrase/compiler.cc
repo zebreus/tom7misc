@@ -88,8 +88,6 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
   bc::Optimization optimization;
   bc_symbolic_pgm = optimization.Optimize(bc_symbolic_pgm);
 
-  bc_symbolic_pgm = to_bytecode.Convert(il_pgm);
-
   if (verbose > 1) {
     printf("\n\n" AWHITE("Assemble this") ":\n");
     bc::PrintSymbolicProgram(bc_symbolic_pgm);

@@ -194,9 +194,9 @@ struct SymbolicProgram {
 
 struct Program {
   // For each code label, its argument local and instructions.
-  std::unordered_map<std::string, std::pair<std::string, std::vector<Inst>>>
-  code;
-  // Constant data. May only be base types; no maps.
+  std::unordered_map<std::string,
+                     std::pair<std::string, std::vector<Inst>>> code;
+  // Constant data. May only be base types; no maps (or vectors? XXX check).
   // Each of these is allocated as a global at startup time;
   // other globals are created explicitly during initialization.
   std::unordered_map<std::string, Value> data;

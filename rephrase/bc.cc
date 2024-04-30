@@ -181,9 +181,6 @@ std::string ColorInstString(const Inst &inst) {
     return StringPrintf("JUMP " ABLOCK_LABEL("%s"),
                         jmp->lab.c_str());
 
-  } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
-    return StringPrintf("NOTE " AGREY("%s"), note->msg.c_str());
-
   } else {
     return ARED("!!INVALID!!");
   }
