@@ -57,6 +57,12 @@ struct Call {
   std::string out, f, arg;
 };
 
+// Same as calling the function and returning its result,
+// but uses no additional stack space.
+struct TailCall {
+  std::string f, arg;
+};
+
 struct Ret {
   std::string arg;
 };
@@ -156,6 +162,7 @@ using Inst = std::variant<
   inst::Binop,
   inst::Unop,
   inst::Call,
+  inst::TailCall,
   inst::Ret,
   inst::If,
   inst::AllocVec,

@@ -1225,6 +1225,29 @@ void Execution::Step(State *state) {
         .locals = std::move(flocals)
       });
 
+  } else if (const inst::TailCall *tail_call =
+             std::get_if<inst::TailCall>(&inst)) {
+    // For a tail call, we leave the stack how it is (ready to receive
+    // some returned value), but replace the current topmost frame
+    // with the called function's.
+
+    const std::string &fp = LoadString(tail_call->f);
+    const auto it = program.code.find(fp);
+    CHECK(it != program.code.end()) << Error() <<
+      "Tail Call to unknown function " << fp;
+    const auto &[farg, finsts] = it->second;
+
+    // Instead of pushing a frame, clear everything but
+    // the arg.
+    std::unordered_map<std::string, Value *> new_locals =
+      {{farg, Load(tail_call->arg)}};
+
+    CHECK(!state->stack.empty());
+    StackFrame *frame = &state->stack.back();
+    frame->insts = &finsts;
+    frame->ip = 0;
+    frame->locals = std::move(new_locals);
+
   } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
     // When we make a call, the instruction pointer is already advanced
     // one past the Call instruction, which is what we want. But we

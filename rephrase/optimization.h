@@ -16,7 +16,8 @@ struct Optimization {
   static constexpr uint64_t O_DEAD_INST = 1ULL << 1;
   static constexpr uint64_t O_DEAD_BLOCK = 1ULL << 2;
   static constexpr uint64_t O_DEAD_DATA = 1ULL << 3;
-  static constexpr uint64_t O_INLINE_BLOCK = 1ULL << 3;
+  static constexpr uint64_t O_INLINE_BLOCK = 1ULL << 4;
+  static constexpr uint64_t O_TAIL_CALL = 1ULL << 5;
 
   static constexpr uint64_t O_ALL = ~0ULL;
 

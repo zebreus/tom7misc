@@ -48,6 +48,69 @@ static void OnlySymbolic(const Inst &inst) {
 }
 
 namespace {
+struct PeepholePass {
+  // static constexpr bool VERBOSE = true;
+
+  PeepholePass(uint64_t opts, ProgressRecorder *progress) :
+    opts(opts),
+    progress(progress) {}
+
+  void DoFn(const std::string &fname, SymbolicFn *fn) {
+    for (auto &[block_name, block] : fn->blocks) {
+      Block new_block;
+      new_block.insts.reserve(block.insts.size());
+      for (int idx = 0; idx < (int)block.insts.size(); idx++) {
+        const Inst &inst1 = block.insts[idx];
+
+        // Instruction pairs.
+        if (idx < (int)block.insts.size() - 1) {
+          const Inst &inst2 = block.insts[idx + 1];
+
+          if (opts & Optimization::O_TAIL_CALL) {
+            const inst::Call *call = std::get_if<inst::Call>(&inst1);
+            const inst::Ret *ret = std::get_if<inst::Ret>(&inst2);
+
+            if (call != nullptr && ret != nullptr &&
+                ret->arg == call->out) {
+              progress->Record("make tail call");
+              if (VERBOSE) {
+                printf("  Tail call to " APURPLE("%s") "\n",
+                       call->f.c_str());
+              }
+              new_block.insts.push_back(Inst{inst::TailCall{
+                  .f = call->f,
+                  .arg = call->arg,
+                  }});
+
+              continue;
+            }
+          }
+        }
+
+        // If we didn't 'continue' above, then we pass through the
+        // instruction.
+        new_block.insts.push_back(inst1);
+      }
+
+      block = std::move(new_block);
+    }
+
+  }
+
+  void DoProgram(SymbolicProgram *pgm) {
+    for (auto &[fname, fn] : pgm->code) {
+      if (VERBOSE) {
+        printf("do " APURPLE("%s") "\n", fname.c_str());
+      }
+      DoFn(fname, &fn);
+    }
+  }
+
+ private:
+  const uint64_t opts = 0;
+  ProgressRecorder *progress = nullptr;
+};
+
 struct DeadPass {
   DeadPass(uint64_t opts, ProgressRecorder *progress) :
     opts(opts),
@@ -97,30 +160,44 @@ struct DeadPass {
 
         if (const inst::Call *call = std::get_if<inst::Call>(&inst)) {
           used_functions->insert(call->f);
+
         } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
           used_data->insert(load->global);
+
         } else if (const inst::Save *save = std::get_if<inst::Save>(&inst)) {
           // TODO: We treat a save as "used" for now, but since it is only
           // initializing the global, we should probably remove it if
           // it's the only mention.
           used_data->insert(save->global);
+
         } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
           if ((opts & Optimization::O_DEAD_INST) &&
               inst_idx < (int)old_block.insts.size() - 1) {
             progress->Record("dropped instructions after fail");
             break;
           }
+
         } else if (const inst::SymbolicIf *iff =
                    std::get_if<inst::SymbolicIf>(&inst)) {
           AddToDo(iff->true_lab);
+
         } else if (const inst::SymbolicJump *jmp =
                    std::get_if<inst::SymbolicJump>(&inst)) {
           AddToDo(jmp->lab);
           if ((opts & Optimization::O_DEAD_INST) &&
               inst_idx < (int)old_block.insts.size() - 1) {
-            progress->Record("dropped instructions after fail");
+            progress->Record("dropped instructions after jump");
             break;
           }
+
+        } else if (const inst::TailCall *tail_call =
+                   std::get_if<inst::TailCall>(&inst)) {
+          if ((opts & Optimization::O_DEAD_INST) &&
+              inst_idx < (int)old_block.insts.size() - 1) {
+            progress->Record("dropped instructions after tail call");
+            break;
+          }
+
         } else {
           OnlySymbolic(inst);
           // These instructions don't use data, code, or function labels:
@@ -322,6 +399,7 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
   ProgressRecorder progress;
   SymbolicProgram program = program_in;
   DeadPass dead(opts, &progress);
+  PeepholePass peep(opts, &progress);
   InlinePass inline_pass(opts, &progress);
 
   do {
@@ -329,6 +407,9 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
 
     if (VERBOSE) printf(AWHITE("Dead") ".\n");
     dead.DoProgram(&program);
+
+    if (VERBOSE) printf(AWHITE("Peephole") ".\n");
+    peep.DoProgram(&program);
 
     if (VERBOSE) {
       printf(AWHITE("Inline") ".\n");

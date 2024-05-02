@@ -91,6 +91,11 @@ std::string ColorInstString(const Inst &inst) {
     return StringPrintf("CALL " AOUT("%s") " <- " AOP("%s") "(" AOP("%s") ")",
                         call->out.c_str(), call->f.c_str(), call->arg.c_str());
 
+  } else if (const inst::TailCall *tail_call =
+             std::get_if<inst::TailCall>(&inst)) {
+    return StringPrintf("TAIL_CALL " AOP("%s") "(" AOP("%s") ")",
+                        tail_call->f.c_str(), tail_call->arg.c_str());
+
   } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
     return StringPrintf("RET " AARG("%s"), ret->arg.c_str());
 
@@ -99,7 +104,8 @@ std::string ColorInstString(const Inst &inst) {
     return StringPrintf("IF " AARG("%s") " " ALINE_USED("%05d"),
                         iff->cond.c_str(), iff->true_idx);
 
-  } else if (const inst::AllocVec *allocvec = std::get_if<inst::AllocVec>(&inst)) {
+  } else if (const inst::AllocVec *allocvec =
+             std::get_if<inst::AllocVec>(&inst)) {
     return StringPrintf("ALLOCVEC " AOUT("%s"),
                         allocvec->out.c_str());
 
