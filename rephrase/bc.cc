@@ -230,6 +230,12 @@ void PrintProgram(const Program &pgm) {
   }
 }
 
+void PrintBlock(const Block &block) {
+  for (const auto &inst : block.insts) {
+    printf("  %s\n", ColorInstString(inst).c_str());
+  }
+}
+
 void PrintSymbolicProgram(const SymbolicProgram &pgm) {
   std::map<std::string, Value> data(pgm.data.begin(), pgm.data.end());
   std::map<std::string, SymbolicFn> code(pgm.code.begin(), pgm.code.end());
@@ -255,9 +261,7 @@ void PrintSymbolicProgram(const SymbolicProgram &pgm) {
       printf(" " AYELLOW("%s") ":\n",
              lab.c_str());
 
-      for (const auto &inst : block.insts) {
-        printf("  %s\n", ColorInstString(inst).c_str());
-      }
+      PrintBlock(block);
     }
   }
   printf("\n");

@@ -174,6 +174,147 @@ struct DeadPass {
   ProgressRecorder *progress = nullptr;
 };
 
+// Inlines blocks.
+struct InlinePass {
+  InlinePass(uint64_t opts, ProgressRecorder *progress) :
+    opts(opts),
+    progress(progress) {}
+
+  void DoFn(const std::string &fname, SymbolicFn *fn) {
+    // First, count uses.
+    std::unordered_map<std::string, int> uses;
+    for (const auto &[block_name, block] : fn->blocks) {
+      for (const Inst &inst : block.insts) {
+        if (const inst::SymbolicIf *iff =
+            std::get_if<inst::SymbolicIf>(&inst)) {
+          uses[iff->true_lab]++;
+        } else if (const inst::SymbolicJump *jmp =
+                   std::get_if<inst::SymbolicJump>(&inst)) {
+          uses[jmp->lab]++;
+        } else {
+          OnlySymbolic(inst);
+        }
+      }
+    }
+
+    if (VERBOSE) {
+      for (const auto &[lab, num] : uses) {
+        printf("Label " AYELLOW("%s") " used " AWHITE("%d") " time(s)\n",
+               lab.c_str(), num);
+      }
+    }
+
+    // Now for any unconditional jump, we can replace it with the
+    // code of the block (if appropriate).
+    std::unordered_set<std::string> drop;
+    for (auto &[block_name, block] : fn->blocks) {
+      // These blocks are effectively removed. We don't want to
+      // process them, because they could cause us to drop other
+      // blocks that we actually still need. (This would happen
+      // if A jumps to B, and B jumps to C. If we inline B into
+      // A, then we don't want to inline C into the dying B;
+      // then the inlined jump in A has no target.)
+      if (drop.contains(block_name))
+        continue;
+
+      for (int inst_idx = 0;
+           inst_idx < (int)block.insts.size();
+           inst_idx++) {
+        const Inst &inst = block.insts[inst_idx];
+        if (const inst::SymbolicJump *jmp =
+            std::get_if<inst::SymbolicJump>(&inst)) {
+          auto uit = uses.find(jmp->lab);
+          CHECK(uit != uses.end()) << "Populated above.";
+          auto bit = fn->blocks.find(jmp->lab);
+          CHECK(bit != fn->blocks.end()) << "Jump to unknown label?";
+
+          // Can relax this condition a bit, but it becomes non-conservative.
+          // If it's something like "move local1, local2; ret" (which would
+          // be common for sumcase and if joins) then we should probably
+          // inline it; we can then rewrite the move to the local name and
+          // just return.
+          if (block_name != jmp->lab &&
+              (uit->second == 1 || bit->second.insts.size() == 1)) {
+            // Since we're dropping the instruction, copy the string label.
+            std::string lab = jmp->lab;
+            // If we're inlining the last use, mark it as dead so that
+            // we don't waste any time processing it in future passes.
+            //
+            // Note that while the initial block can be inlined (would
+            // be weird, but could happen), it cannot be dropped.
+            if (uit->second == 1 && lab != fn->initial) {
+              if (VERBOSE) {
+                printf("  Add " AYELLOW("%s") " to drop.\n", lab.c_str());
+              }
+              drop.insert(lab);
+            }
+
+            // In any case, insert the instructions here. We can drop
+            // the tail, which is unreachable.
+            CHECK(inst_idx < (int)block.insts.size());
+            block.insts.resize(inst_idx);
+            const Block &other = bit->second;
+            for (const Inst &oinst : other.insts) {
+              block.insts.push_back(oinst);
+            }
+            progress->Record("inlined block");
+            if (VERBOSE) {
+              printf("  Inlined " AYELLOW("%s") " into " AYELLOW("%s") "\n",
+                     lab.c_str(), block_name.c_str());
+
+              printf(" ====== resulting block " AYELLOW("%s") " =====\n",
+                     block_name.c_str());
+              PrintBlock(block);
+            }
+            // XXX Actually, we can keep processing the block...
+            break;
+          }
+        }
+      }
+    }
+
+    if (VERBOSE) {
+      SymbolicProgram tmp;
+      tmp.code = {{fname, *fn}};
+      printf("=================== rewritten blocks =============\n");
+      PrintSymbolicProgram(tmp);
+    }
+
+    if (!drop.empty()) {
+      progress->Record("dropped last use of block");
+
+      std::unordered_map<std::string, Block> new_blocks;
+      for (auto &[lab, block] : fn->blocks) {
+        if (!drop.contains(lab)) {
+          new_blocks[lab] = std::move(block);
+        } else {
+          if (VERBOSE) {
+            printf("  drop " AYELLOW("%s") "\n", lab.c_str());
+          }
+        }
+      }
+      fn->blocks = std::move(new_blocks);
+    }
+  }
+
+  void DoProgram(SymbolicProgram *pgm) {
+    if (opts & Optimization::O_INLINE_BLOCK) {
+      // Rewrites code in place.
+      for (auto &[fname, fn] : pgm->code) {
+        if (VERBOSE) {
+          printf("do " APURPLE("%s") "\n", fname.c_str());
+        }
+        DoFn(fname, &fn);
+      }
+    }
+  }
+
+ private:
+  const uint64_t opts = 0;
+  ProgressRecorder *progress = nullptr;
+};
+
+
 }  // namespace
 
 SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
@@ -181,11 +322,19 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
   ProgressRecorder progress;
   SymbolicProgram program = program_in;
   DeadPass dead(opts, &progress);
+  InlinePass inline_pass(opts, &progress);
 
   do {
     progress.Reset();
+
     if (VERBOSE) printf(AWHITE("Dead") ".\n");
     dead.DoProgram(&program);
+
+    if (VERBOSE) {
+      printf(AWHITE("Inline") ".\n");
+      PrintSymbolicProgram(program);
+    }
+    inline_pass.DoProgram(&program);
 
     if (VERBOSE) {
       printf("\n" AYELLOW("After optimization:\n"));

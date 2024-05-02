@@ -115,7 +115,8 @@ static void TestEndToEndEasy() {
   CHECK(!execution.Failed()) << "end to end easy";
 }
 
-static std::string RunToString(const std::string &source) {
+static std::string RunToString(const std::string &source,
+                               bool expect_failure = false) {
   using TE = TestExecution;
   Compiler compiler;
   compiler.SetVerbose(COMPILER_VERBOSE);
@@ -128,19 +129,31 @@ static std::string RunToString(const std::string &source) {
   TE execution(prog);
   TE::State state = execution.Start();
   execution.RunToCompletion(&state);
-  if (execution.Failed()) {
-    printf(ARED("FAILED") "\n");
-    if (execution.fail_message.has_value()) {
-      printf(AWHITE("message") ": %s\n",
-             execution.fail_message.value().c_str());
+  if (expect_failure) {
+    CHECK(execution.Failed()) << "Expected failure, but execution "
+      "did not fail.";
+
+    CHECK(execution.fail_message.has_value()) << "Failure, but with "
+      "no message?";
+
+    return execution.fail_message.value();
+  } else {
+
+    if (execution.Failed()) {
+      printf(ARED("FAILED") "\n");
+      if (execution.fail_message.has_value()) {
+        printf(AWHITE("message") ": %s\n",
+               execution.fail_message.value().c_str());
+      } else {
+        printf(AWHITE("(no message?)") "\n");
+      }
+      printf(AWHITE("output") ":\n" "%s\n",
+             execution.console_output.c_str());
+      LOG(FATAL) << "Unexpectedly failed";
     } else {
-      printf(AWHITE("(no message?)") "\n");
+      return std::move(execution.console_output);
     }
-    printf(AWHITE("output") ":\n" "%s\n",
-           execution.console_output.c_str());
-    LOG(FATAL) << "Unexpectedly failed";
   }
-  return std::move(execution.console_output);
 }
 
 static void ExecTests() {
@@ -642,6 +655,30 @@ static void TestEnums() {
           (!r) B
         end
       )"), "yes");
+
+  // Regression at 5848 where inlining a series of blocks in an unlucky
+  // order could cause some of them to be incorrectly dropped. This
+  // test case was trimmed down, so it is expected to abort.
+  CHECK(RunToString(R"(
+    let
+      datatype list = :: of int * list | nil
+
+      fun list-sort l =
+        let
+          fun merge (a, nil) = fail "1"
+            | merge (nil, b) = fail "2"
+            | merge ((a :: ta) as aa, (b :: tb) as bb) = fail "none"
+
+          fun ms (a :: b :: nil) = merge (nil, nil)
+            | ms ll = merge (fail "no", ms nil)
+
+        in
+          ms l
+        end
+    in
+      list-sort nil
+    end
+    )", true) == "no");
 }
 
 static void NewTests() {
@@ -653,21 +690,17 @@ static void NewTests() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  /*
   bc::NewTests();
 
   bc::TestTrivial();
   bc::TestEndToEndEasy();
   bc::ExecTests();
-  */
   bc::ObjTests();
   bc::StringTests();
-  /*
   bc::FloatTests();
   bc::TestUnicode();
   bc::TestLocal();
   bc::TestEnums();
-  */
 
   printf("OK\n");
   return 0;

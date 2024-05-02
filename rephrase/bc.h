@@ -34,6 +34,8 @@ namespace inst {
 // accessing globals by string or by index. Would also be
 // great to do that for locals and record fields.
 
+// TODO: Tail calls
+
 // TODO: Consider like "n-op" which takes a vector or
 // something like that.
 struct Triop {
@@ -208,6 +210,8 @@ std::string ColorInstString(const Inst &inst);
 // Dump the entire program with ANSI colors codes.
 void PrintProgram(const Program &pgm);
 void PrintSymbolicProgram(const SymbolicProgram &pgm);
+void PrintBlock(const Block &block);
+
 // Approximate data bytes; total number of instructions.
 // Treats names of data and locals as constant.
 std::pair<int64_t, int64_t> ProgramSize(const Program &pgm);
