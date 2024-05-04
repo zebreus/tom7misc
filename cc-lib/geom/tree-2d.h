@@ -24,6 +24,13 @@ struct Tree2D {
   void Insert(Num x, Num y, T t);
   void Insert(Pos pos, T t);
 
+  // Returns true if a matching point was found (and thus removed).
+  bool Remove(Num x, Num y);
+  bool Remove(Pos pos);
+
+  size_t Size() const { return count; }
+  bool Empty() const { return count == 0; }
+
   template<class F>
   void App(const F &f) const;
 
@@ -32,7 +39,9 @@ struct Tree2D {
   std::vector<std::tuple<Pos, T, double>>
   LookUp(Pos pos, double radius) const;
 
-  // TODO: Closest point query.
+  // Aborts if the tree is empty, so check first.
+  std::tuple<Pos, T, double>
+  Closest(Pos pos) const;
 
   void DebugPrint() const;
 
@@ -72,6 +81,7 @@ struct Tree2D {
 
   void InsertTo(Node *node, bool horiz, Pos pos, T t);
 
+  size_t count = 0;
   std::unique_ptr<Node> root;
 };
 
@@ -88,6 +98,9 @@ Tree2D<Num, T>::Tree2D() {
 template<class Num, class T>
 requires std::is_arithmetic_v<Num>
 void Tree2D<Num, T>::Insert(Pos pos, T t) {
+  // Insertion always increases the size by one; there can be multiple
+  // items at the same point.
+  count++;
   // Arbitrary preference for first split we create.
   InsertTo(root.get(), false, pos, t);
 }
@@ -96,6 +109,81 @@ template<class Num, class T>
 requires std::is_arithmetic_v<Num>
 void Tree2D<Num, T>::Insert(Num x, Num y, T t) {
   Insert(std::make_pair(x, y), t);
+}
+
+template<class Num, class T>
+requires std::is_arithmetic_v<Num>
+bool Tree2D<Num, T>::Remove(Num x, Num y) {
+  return Remove(std::make_pair(x, y));
+}
+
+template<class Num, class T>
+requires std::is_arithmetic_v<Num>
+bool Tree2D<Num, T>::Remove(Pos pos) {
+  // This is removing without a radius, which means we can find the
+  // exact node that has it. But we want to be able to replace that
+  // node. So we have a reference to the node.
+
+  std::unique_ptr<Node> &cursor = root;
+  if (cursor.get() == nullptr) return false;
+
+  int removed = 0;
+  std::function<void(std::unique_ptr<Node> &)> Rec = [&Rec, &removed, pos](
+      std::unique_ptr<Node> &cursor) {
+      CHECK(cursor.get() != nullptr);
+      if (Split *split = std::get_if<Split>(cursor.get())) {
+        bool lesseq = Classify(pos, split->axis_horiz, split->axis);
+        if (lesseq) {
+          if (split->lesseq.get() == nullptr) {
+            // Then the point cannot exist.
+            return;
+          }
+
+          Rec(split->lesseq);
+        } else {
+          if (split->greater.get() == nullptr) {
+            // Then the point cannot exist.
+            return;
+          }
+          Rec(split->greater);
+        }
+
+        // Delete empty splits on the way back.
+        if (split->lesseq.get() == nullptr &&
+            split->greater.get() == nullptr) {
+          cursor.reset(nullptr);
+        }
+
+      } else {
+        Leaf *leaf = &std::get<Leaf>(*cursor.get());
+        for (int idx = 0; idx < leaf->size(); /* in loop */) {
+          if ((*leaf)[idx].first == pos) {
+            // Erase it. We do this by swapping with the last
+            // element (if any) and then reducing the size by one.
+            if (idx != (int)leaf->size() - 1) {
+              std::swap((*leaf)[idx], (*leaf)[leaf->size() - 1]);
+            }
+            leaf->pop_back();
+            removed++;
+
+            // Keep index where it is, since we haven't looked
+            // at the swapped element yet (or if it was the last
+            // one, we'll exit the loop).
+          } else {
+            idx++;
+          }
+        }
+
+        // Clean up empty vectors.
+        if (leaf->empty()) {
+          cursor.reset(nullptr);
+        }
+      }
+    };
+
+  Rec(root);
+  count -= removed;
+  return removed != 0;
 }
 
 // Calls f(pos, t) for every point in the tree in
@@ -280,6 +368,86 @@ void Tree2D<Num, T>::DebugPrint() const {
 
   Rec(root.get(), 0);
 }
+
+// Aborts if the tree is empty, so check first.
+template <class Num, class T>
+requires std::is_arithmetic_v<Num>
+std::tuple<typename Tree2D<Num, T>::Pos, T, double>
+Tree2D<Num, T>::Closest(Pos pos) const {
+  const auto &[x, y] = pos;
+
+  CHECK(count != 0);
+
+  const std::pair<Pos, T> *best = nullptr;
+  double best_sq_dist = 0.0;
+
+  // minimum squared distance to the region (from pos), node
+  //
+  // PERF: We could actually keep the distance to the corner,
+  // rather than the axis.
+  //
+  // PERF: This would be better as a heap so that we can check
+  // the closest nodes first. Since we reject regions that are
+  // further than our best, checking close ones first is much
+  // faster.
+  std::vector<std::pair<double, const Node *>> q = {{0.0, root.get()}};
+
+  while (!q.empty()) {
+    const auto &[node_sqdist, node] = q.back();
+    q.pop_back();
+    CHECK(node != nullptr);
+    // No need to search if every point in there is further than
+    // our current best.
+    if (best != nullptr && node_sqdist > best_sq_dist)
+      continue;
+
+    if (const Split *split = std::get_if<Split>(node)) {
+      // Project the lookup point to the split axis.
+      const Pos axispt =
+        split->axis_horiz ? std::make_pair(x, split->axis) :
+        std::make_pair(split->axis, y);
+
+      double sdist = split->axis_horiz ? split->axis - y : split->axis - x;
+      double sq_dist = sdist * sdist;
+
+      // We always search the one we're in. But we can also search
+      // the other one if it is within our search radius.
+      const bool both = sq_dist <= best_sq_dist;
+      const bool lesseq = Classify(pos, split->axis_horiz, split->axis);
+
+      // Since we pop from the end, put the node we're in on the queue
+      // last, so that it's searched first.
+      if (both) {
+        // Insert the other one (if non-empty), as it is close enough.
+        if (const Node *other =
+            lesseq ? split->greater.get() : split->lesseq.get()) {
+          q.emplace_back(sq_dist, other);
+        }
+      }
+
+      if (lesseq && split->lesseq.get() != nullptr) {
+        q.emplace_back(0.0, split->lesseq.get());
+      } else if (!lesseq && split->greater.get() != nullptr) {
+        q.emplace_back(0.0, split->greater.get());
+      }
+    } else {
+      for (const auto &elt : std::get<Leaf>(*node)) {
+        const auto &[pp, tt] = elt;
+        double sq_dist = SqDist(pos, pp);
+        if (best == nullptr || sq_dist < best_sq_dist) {
+          best = &elt;
+          best_sq_dist = sq_dist;
+        }
+      }
+    }
+  }
+
+  CHECK(best != nullptr) << "This should find something since count > 0.";
+  return std::make_tuple(std::get<0>(*best), std::get<1>(*best),
+                         sqrt(best_sq_dist));
+
+}
+
 
 #endif
 

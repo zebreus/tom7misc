@@ -7,6 +7,8 @@
 
 static void TestInts() {
   Tree2D<int, std::string> tree;
+  CHECK(tree.Size() == 0);
+  CHECK(tree.Empty());
 
   using Pos = Tree2D<int, std::string>::Pos;
 
@@ -60,6 +62,38 @@ static void TestInts() {
     }
 
   }
+
+  CHECK(tree.Size() == points.size());
+  CHECK(!tree.Empty());
+
+  {
+    const auto &[p, s, d] = tree.Closest(std::make_pair(0, 0));
+    CHECK(p == std::make_pair(-1, -1));
+    CHECK(s == "b");
+    CHECK(d > 1.4 && d < 1.5);
+  }
+
+  {
+    const auto &[p, s, d] = tree.Closest(std::make_pair(9999, 9999));
+    CHECK(p == std::make_pair(100, 301));
+    CHECK(s == "d");
+    CHECK(d > 9999);
+  }
+
+  for (const auto &[x, y, s] : points) {
+    CHECK(tree.Remove(x, y)) << x << "," << y;
+  }
+
+  CHECK(tree.Size() == 0);
+  CHECK(tree.Empty());
+
+  // They should already be gone.
+  for (const auto &[x, y, s] : points) {
+    CHECK(!tree.Remove(x, y)) << x << "," << y;
+  }
+
+  CHECK(tree.Size() == 0);
+  CHECK(tree.Empty());
 }
 
 int main(int argc, char **argv) {
