@@ -35,6 +35,12 @@ struct Animation {
   std::string file_in;
   std::unique_ptr<ImageRGBA> in;
   std::unique_ptr<ImageRGBA> poster;
+  // Gives the assigned layer (as an integer index) at each
+  // pixel.
+  std::unique_ptr<ImageA> layers;
+
+  // The color (as a region key) of each ordered layer.
+  std::vector<uint32_t> layer_colors;
 
   std::unordered_map<uint32_t, Region> regions;
   Region transparent;
@@ -163,16 +169,31 @@ struct Animation {
     // The simplest heuristic is to order by the number of
     // total pixels; this makes the big chunks of color go
     // first, and the highlights and shadows go after those.
-    //
 
-    std::vector<uint32_t> order;
     for (const auto &[c, region] : regions)
-      order.push_back(c);
-    std::sort(order.begin(), order.end(),
+      layer_colors.push_back(c);
+    std::sort(layer_colors.begin(), layer_colors.end(),
               [this](uint32_t c1, uint32_t c2) {
                 return regions[c1].pixels.size() >
                   regions[c2].pixels.size();
               });
+
+    std::unordered_map<uint32_t, int> region_to_layer;
+    for (int idx = 0; idx < (int)layer_colors.size(); idx++) {
+      region_to_layer[layer_colors[idx]] = idx;
+    }
+
+    // Assign layers.
+    CHECK(layer_colors.size() < 256);
+    layers.reset(new ImageA(in->Width(), in->Height()));
+    for (int y = 0; y < in->Height(); y++) {
+      for (int x = 0; x < in->Width(); x++) {
+        uint32_t c = poster->GetPixel32(x, y);
+        auto cit = region_to_layer.find(c);
+        CHECK(cit != region_to_layer.end());
+        layers->SetPixel(x, y, cit->second);
+      }
+    }
 
     // TODO: Smooth lower regions (e.g. behind lines), since
     // obviously we wouldn't draw *around* the lines on higher
@@ -180,13 +201,13 @@ struct Animation {
 
     ImageRGBA frame(in->Width(), in->Height());
 
-    int region_num = 0;
-    for (uint32_t color : order) {
+    int layer_num = 0;
+    for (uint32_t color : layer_colors) {
       CHECK(regions.contains(color));
       // Blit all at once.
 
-      DrawLayer(file_base_out, &frame, region_num, regions[color]);
-      region_num++;
+      DrawLayer(file_base_out, &frame, layer_num, regions[color]);
+      layer_num++;
     }
 
     // Draw transparent pixels last.
@@ -204,7 +225,7 @@ struct Animation {
 
   void DrawLayer(const std::string &file_base_out,
                  ImageRGBA *frame,
-                 int region_num,
+                 int layer_num,
                  const Region &region) {
 
     constexpr float MAX_PEN_VELOCITY = 12.0;
@@ -252,30 +273,70 @@ struct Animation {
       cy += cdy;
 
       // We've moved the pen. Now eat any pixels that are in its
-      // radius. XXX We could get slightly better quality here if
+      // radius.
+      CHECK(!remaining.Empty());
+      // XXX We could get slightly better quality here if
       // we had lookup on floating point positions (or we can just
       // represent the tree that way in the first place).
-      CHECK(!remaining.Empty());
       std::vector<std::tuple<Pos, char, double>> inside =
         remaining.LookUp(Pos(std::round(cx), std::round(cy)), PEN_RADIUS);
 
       // Draw those pixels and delete them from the tree.
+      std::unordered_map<uint32_t, int> ink_count;
       for (const auto &[pos, c_, dist_] : inside) {
         const auto &[x, y] = pos;
         // Always with the original pixel, not the posterized one.
-        frame->SetPixel32(x, y, in->GetPixel32(x, y));
-
-        // Another simple improvement here is that we should draw
-        // pixels (in the posterized color I guess, or maybe the
-        // predominant color in the vector above) that will be
-        // overwritten by later layers.
+        // We save this color for ink spill. It might be better
+        // to use the average color, or the most common one?
+        uint32_t c = in->GetPixel32(x, y);
+        frame->SetPixel32(x, y, c);
+        ink_count[c]++;
 
         CHECK(remaining.Remove(x, y));
       }
 
+      if (!inside.empty()) {
+        // The pen is "down", so we also leave ink wherever it will
+        // be overwritten on a deeper layer.
+
+        uint32_t freq_color = 0;
+        int freq_count = 0;
+        for (const auto &[color, count] : ink_count) {
+          if (count > freq_count) {
+            freq_count = count;
+            freq_color = color;
+          }
+        }
+
+        // Rasterize the circle by looping over the bounding box.
+        int xmin = std::floor(cx - PEN_RADIUS);
+        int xmax = std::ceil(cx + PEN_RADIUS);
+        int ymin = std::floor(cy - PEN_RADIUS);
+        int ymax = std::ceil(cy + PEN_RADIUS);
+        for (int y = ymin; y <= ymax; y++) {
+          if (y >= 0 && y < frame->Height()) {
+            float dy = y - cy;
+            float ddy = dy * dy;
+            for (int x = xmin; x <= xmax; x++) {
+              if (x >= 0 && x < frame->Width()) {
+                float dx = x - cx;
+                float ddx = dx * dx;
+                const bool in_circle = sqrtf(ddx + ddy) < PEN_RADIUS;
+                if (in_circle) {
+                  // For pixels that are STRICTLY deeper.
+                  if (layers->GetPixel(x, y) > layer_num) {
+                    frame->SetPixel32(x, y, freq_color);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
       // And draw the brush itself, but on a temporary copy of the
       // frame.
-      std::unique_ptr<ImageRGBA> frame_copy(frame->Copy());
+      std::shared_ptr<ImageRGBA> frame_copy(frame->Copy());
       frame_copy->BlendCircle32(cx, cy, PEN_RADIUS + 1.0f, 0x00000077);
 
       #if 0
@@ -287,9 +348,9 @@ struct Animation {
       #endif
 
       async.Run(
-          [file_base_out,
+          [&file_base_out,
            fnum = frame_num,
-           fr = std::move(frame_copy)]() {
+           fr = frame_copy]() {
           std::string frame_file = StringPrintf("%s-%d.png",
                                                 file_base_out.c_str(),
                                                 fnum);
@@ -299,20 +360,20 @@ struct Animation {
       layer_frames++;
 
 
-      if (status_per.ShouldRun() {
-          const int pixels_done = start_pixels - remaining.Size();
-          std::string prog =
-            ANSI::ProgressBar(pixels_done, remaining.Size(),
-                              "Layer
-                              double taken,
-                              ProgressBarOptions options =
-                              ProgressBarOptions{});
-
-
-
+      if (status_per.ShouldRun()) {
+        const int pixels_done = start_pixels - remaining.Size();
+        std::string prog =
+          ANSI::ProgressBar(pixels_done, start_pixels,
+                            StringPrintf("Layer %d/%d",
+                                         layer_num + 1,
+                                         (int)layer_colors.size()),
+                            timer.Seconds());
+        printf(ANSI_UP "%s\n", prog.c_str());
+      }
     }
 
-    printf("Finished layer in %d frames.\n", layer_frames);
+    printf("Finished layer in %d frames, %s.\n", layer_frames,
+           ANSI::Time(timer.Seconds()).c_str());
   }
 
 };
