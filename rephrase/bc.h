@@ -1,6 +1,9 @@
 #ifndef _REPHRASE_BC_H
 #define _REPHRASE_BC_H
 
+#include <bit>
+#include <cstddef>
+#include <functional>
 #include <utility>
 #include <variant>
 #include <cstdint>
@@ -10,6 +13,7 @@
 
 #include "primop.h"
 #include "bignum/big.h"
+#include "base/logging.h"
 
 // Untyped bytecode.
 
@@ -28,13 +32,19 @@ struct Value {
   t v;
 };
 
+struct ValueHash {
+  inline std::size_t operator()(const Value& obj) const;
+};
+
+struct ValueEq {
+  inline bool operator()(const Value &a, const Value &b) const;
+};
+
 namespace inst {
 
 // TODO: Easy to have distinguished symbolic instructions for
 // accessing globals by string or by index. Would also be
 // great to do that for locals and record fields.
-
-// TODO: Tail calls
 
 // TODO: Consider like "n-op" which takes a vector or
 // something like that.
@@ -243,6 +253,138 @@ enum class ObjectFieldType {
 };
 
 char ObjectFieldTypeTag(ObjectFieldType oft);
+
+
+// Implementations follow.
+
+
+inline std::size_t ValueHash::operator ()(const Value& obj) const {
+  if (const BigInt *bi = std::get_if<BigInt>(&obj.v)) {
+    return 0xB1000000 + (size_t)BigInt::LowWord(*bi);
+  } else if (const std::string *str = std::get_if<std::string>(&obj.v)) {
+    return std::hash<std::string>()(*str);
+  } else if (const uint64_t *u = std::get_if<uint64_t>(&obj.v)) {
+    return std::hash<uint64_t>()(*u);
+  } else if (std::holds_alternative<std::monostate>(obj.v)) {
+    return 0x123456789;
+  } else if (const double *d = std::get_if<double>(&obj.v)) {
+    return std::hash<double>()(*d);
+  } else if (const std::unordered_map<std::string, Value *> *m =
+             std::get_if<std::unordered_map<std::string, Value *>>(&obj.v)) {
+    uint64_t ret = 0x56789123;
+    // (Note we are deliberately insensitive to iteration order here,
+    // since for one thing std::unordered_map does not guarantee
+    // stability.)
+    for (const auto &[k, v] : *m) {
+      uint64_t a = std::hash<std::string>()(k);
+      a = std::rotr<uint64_t>(a, 17);
+      uint64_t b = this->operator ()(*v);
+      ret += a * b;
+    }
+    return ret;
+  } else if (const std::vector<Value *> *v =
+             std::get_if<std::vector<Value *>>(&obj.v)) {
+    uint64_t ret = 0x31415926535;
+    for (const Value *elt : *v) {
+      ret = std::rotr<uint64_t>(ret, 55);
+      ret ^= this->operator()(*elt);
+      ret *= uint64_t{10481402436096723497u};
+    }
+    return ret;
+  } else {
+    LOG(FATAL) << "Unimplemented value type in hash.";
+    return 0;
+  }
+}
+
+inline bool ValueEq::operator ()(const Value &a, const Value &b) const {
+  {
+    const BigInt *aa = std::get_if<BigInt>(&a.v);
+    const BigInt *bb = std::get_if<BigInt>(&b.v);
+    if ((aa == nullptr) != (bb == nullptr))
+      return false;
+    if (aa != nullptr) {
+      return BigInt::Eq(*aa, *bb);
+    }
+  }
+
+  {
+    const std::string *aa = std::get_if<std::string>(&a.v);
+    const std::string *bb = std::get_if<std::string>(&a.v);
+    if ((aa == nullptr) != (bb == nullptr))
+      return false;
+    if (aa != nullptr) {
+      return *aa == *bb;
+    }
+  }
+
+  {
+    const uint64_t *aa = std::get_if<uint64_t>(&a.v);
+    const uint64_t *bb = std::get_if<uint64_t>(&a.v);
+    if ((aa == nullptr) != (bb == nullptr))
+      return false;
+    if (aa != nullptr) {
+      return *aa == *bb;
+    }
+  }
+
+  {
+    const double *aa = std::get_if<double>(&a.v);
+    const double *bb = std::get_if<double>(&a.v);
+    if ((aa == nullptr) != (bb == nullptr))
+      return false;
+    if (aa != nullptr) {
+      return *aa == *bb;
+    }
+  }
+
+  {
+    const std::monostate *aa = std::get_if<std::monostate>(&a.v);
+    const std::monostate *bb = std::get_if<std::monostate>(&a.v);
+    if ((aa == nullptr) != (bb == nullptr))
+      return false;
+    if (aa != nullptr) {
+      return true;
+    }
+  }
+
+  {
+    const std::unordered_map<std::string, Value *> *aa =
+      std::get_if<std::unordered_map<std::string, Value *>>(&a.v);
+    const std::unordered_map<std::string, Value *> *bb =
+      std::get_if<std::unordered_map<std::string, Value *>>(&a.v);
+    if ((aa == nullptr) != (bb == nullptr))
+      return false;
+    if (aa != nullptr) {
+      if (aa->size() != bb->size()) return false;
+      for (const auto &[ka, va] : *aa) {
+        const auto bit = bb->find(ka);
+        if (bit == bb->end()) return false;
+        if (!this->operator()(*va, *bit->second)) return false;
+      }
+      return true;
+    }
+  }
+
+  {
+    const std::vector<Value *> *aa =
+      std::get_if<std::vector<Value *>>(&a.v);
+    const std::vector<Value *> *bb =
+      std::get_if<std::vector<Value *>>(&a.v);
+    if ((aa == nullptr) != (bb == nullptr))
+      return false;
+    if (aa != nullptr) {
+      if (aa->size() != bb->size()) return false;
+      for (int i = 0; i < (int)aa->size(); i++) {
+        if (!this->operator()(*(*aa)[i], *(*bb)[i])) return false;
+      }
+      return true;
+    }
+  }
+
+  LOG(FATAL) << "Unimplemented case in value equality";
+  return false;
+}
 
 }  // namespace bc
 

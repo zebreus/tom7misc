@@ -1186,7 +1186,7 @@ typographic and semantic quality. It won’t be as satisfyingly optimal
 as boxes-and-glue itself because we have incomplete information (we
 never know whether one of the exponentially many paths starts out with
 improbable tokens but then ends with a miracle streak of probable
-tokens). But it can certainly be more satsifying.
+tokens). But it can certainly be more satisfying.
 Knuth would not stop here (but this is an [it[Any%]] Knuth speedrun).
 
 Instead I spent my time implementing an achievement system in BoVeX.

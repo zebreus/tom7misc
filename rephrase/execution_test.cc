@@ -627,7 +627,6 @@ static void TestLocal() {
 }
 
 static void TestEnums() {
-  /*
   CHECK_EQ(
       RunToString(R"(
         let
@@ -639,7 +638,7 @@ static void TestEnums() {
             | C => print "NAY"
         end
       )"), "YEAH");
-  */
+
 
   CHECK_EQ(
       RunToString(R"(
@@ -682,7 +681,24 @@ static void TestEnums() {
 }
 
 static void NewTests() {
+  /*
+  CHECK_EQ(RunToString(R"(
+  let
+    datatype piece = ROOK | KNIGHT | BISHOP
 
+    datatype order = LESS | EQUAL | GREATER
+
+    fun piece-compare (ROOK, ROOK) = EQUAL
+      | piece-compare (ROOK, _) = LESS
+      | piece-compare (_, ROOK) = GREATER
+      | piece-compare (KNIGHT, KNIGHT) = EQUAL
+      | piece-compare (KNIGHT, _) = LESS
+      | piece-compare (_, KNIGHT) = GREATER
+      | piece-compare (BISHOP, BISHOP) = EQUAL
+  in
+   piece-compare
+  end)"), "");
+  */
 }
 
 }  // namespace bc

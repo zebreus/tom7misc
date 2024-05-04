@@ -357,7 +357,7 @@ Elaboration::ElabDec(
 
       auto UnpackEnv = [&](const il::Exp *body) {
           for (const auto &[fv, t] : fvts) {
-            body = pool->Let({}, fv, pool->Project(fv, gxv), body);
+            body = pool->Let({}, fv, pool->Project(fv, env_type, gxv), body);
           }
           return body;
         };
@@ -983,8 +983,15 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
         // Don't make a tuple of length 1.
         args.push_back(vx);
       } else {
+
+        CHECK(t->type == il::TypeType::ARROW);
+        const auto &[dom, cod] = t->Arrow();
+        CHECK(dom->type == il::TypeType::RECORD);
+        CHECK((int)dom->Record().size() == val_arity) << "Bug: "
+          "Mismatch between PrimopArity and PrimopType?";
+
         for (int i = 0; i < val_arity; i++) {
-          args.push_back(pool->Project(StringPrintf("%d", i + 1), vx));
+          args.push_back(pool->Project(StringPrintf("%d", i + 1), dom, vx));
         }
       }
 

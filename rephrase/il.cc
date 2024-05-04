@@ -372,8 +372,10 @@ std::string ExpString(const Exp *e) {
   }
 
   case ExpType::PROJECT: {
-    const auto &[lab, r] = e->Project();
-    return StringPrintf("#%s(%s)", lab.c_str(), ExpString(r).c_str());
+    const auto &[lab, t, r] = e->Project();
+    return StringPrintf("#%s/%s(%s)",
+                        lab.c_str(),
+                        TypeString(t).c_str(), ExpString(r).c_str());
   }
 
   case ExpType::INJECT: {

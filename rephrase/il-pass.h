@@ -120,8 +120,8 @@ struct Pass {
       return DoFn(self, x, arrow_type, body, e, args...);
     }
     case ExpType::PROJECT: {
-      const auto &[lab, exp] = e->Project();
-      return DoProject(lab, exp, e, args...);
+      const auto &[lab, t, exp] = e->Project();
+      return DoProject(lab, t, exp, e, args...);
     }
     case ExpType::INJECT: {
       const auto &[lab, t, exp] = e->Inject();
@@ -394,10 +394,14 @@ struct Pass {
     return pool->Object(lvv, guess);
   }
 
-  virtual const Exp *DoProject(const std::string &s, const Exp *e,
+  virtual const Exp *DoProject(const std::string &s,
+                               const Type *record_type,
+                               const Exp *e,
                                const Exp *guess,
                                Args... args) {
-    return pool->Project(s, DoExp(e, args...), guess);
+    return pool->Project(s,
+                         DoType(record_type, args...),
+                         DoExp(e, args...), guess);
   }
 
   virtual const Exp *DoInject(const std::string &s,

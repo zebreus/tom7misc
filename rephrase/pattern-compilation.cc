@@ -1714,22 +1714,23 @@ PatternCompilation::SplitRecordPattern(
   // Now we make a submatrix with labels.size() columns and the
   // same number of rows.
   std::vector<std::string> labels;
-  std::vector<std::pair<std::string, const Type *>> record_type;
+  std::vector<std::pair<std::string, const Type *>> record_fields;
   std::vector<const Type *> types;
   std::vector<std::string> el_objs;
   for (const std::string &l : label_set) {
     labels.push_back(l);
     types.push_back(elab->NewEVar());
-    record_type.emplace_back(labels.back(), types.back());
+    record_fields.emplace_back(labels.back(), types.back());
     std::string v = elab->pool->NewVar(
         elab->pool->BaseVar(matrix.objs[x]) + "_" + l);
     el_objs.emplace_back(v);
   }
 
+  const Type *record_type = elab->pool->RecordType(record_fields);
   // Old object variable must be this record type.
   Unification::Unify(Error("record pattern column"),
                      matrix.types[x],
-                     elab->pool->RecordType(record_type));
+                     record_type);
 
   auto GetLabel = [&Error, &matrix](const Pat *pat, const std::string &lab) {
       CHECK(pat->type == PatType::RECORD);
@@ -1809,7 +1810,7 @@ PatternCompilation::SplitRecordPattern(
     // let il_var = #lab(old_obj) in result
     result = elab->pool->Let(
         {}, il_objs[i],
-        elab->pool->Project(labels[i], original_var),
+        elab->pool->Project(labels[i], record_type, original_var),
         result);
   }
 
@@ -1965,10 +1966,10 @@ PatternCompilation::CompileIrrefutableRec(
     for (const auto &[lab, child] : pat->str_children) {
       shape.push_back(std::make_pair(lab, elab->NewEVar()));
     }
-    Unification::Unify(Error("record pattern"),
-                       // Don't move; we use shape again below.
-                       pool->RecordType(shape),
-                       rhs_type);
+
+    // Don't move; we use shape again below.
+    const Type *record_type = pool->RecordType(shape);
+    Unification::Unify(Error("record pattern"), record_type, rhs_type);
 
     // val {l1: p1, l2: p2, l3: p3} as [v1, v2, ...] = rhs
     // in body
@@ -2014,7 +2015,7 @@ PatternCompilation::CompileIrrefutableRec(
       //
       // If the RHS was valuable, then projecting from it remains
       // valuable.
-      const il::Exp *rhs = pool->Project(label, rec_rhs);
+      const il::Exp *rhs = pool->Project(label, record_type, rec_rhs);
       CHECK(label == shape[i].first);
       const il::Type *rhs_type = shape[i].second;
 

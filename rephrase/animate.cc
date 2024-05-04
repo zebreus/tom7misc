@@ -2,6 +2,7 @@
 // Experimental tool to animate "drawing" an input image.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
@@ -19,6 +20,8 @@
 #include "geom/tree-2d.h"
 #include "ansi.h"
 #include "timer.h"
+#include "threadutil.h"
+#include "periodically.h"
 
 struct Region {
   std::unordered_set<int> pixels;
@@ -177,14 +180,17 @@ struct Animation {
 
     ImageRGBA frame(in->Width(), in->Height());
 
+    int region_num = 0;
     for (uint32_t color : order) {
       CHECK(regions.contains(color));
       // Blit all at once.
 
-      DrawLayer(file_base_out, &frame, regions[color]);
+      DrawLayer(file_base_out, &frame, region_num, regions[color]);
+      region_num++;
     }
 
     // Draw transparent pixels last.
+    // XXX also do this with DrawLayer
     for (int idx : transparent.pixels) {
       const auto &[x, y] = UnPos(idx);
       // Always with the original pixel, not the posterized one.
@@ -197,8 +203,15 @@ struct Animation {
   }
 
   void DrawLayer(const std::string &file_base_out,
-                 ImageRGBA *frame, const Region &region) {
-    constexpr float PIXELS_PER_FRAME = 12.0;
+                 ImageRGBA *frame,
+                 int region_num,
+                 const Region &region) {
+
+    constexpr float MAX_PEN_VELOCITY = 12.0;
+    constexpr float PEN_RADIUS = 6.0f;
+
+    Asynchronously async(16);
+    Periodically status_per(1.0);
 
     // Pick a random corner, maybe?
     float cx = 0.0f, cy = frame->Height() - 1.0f;
@@ -207,30 +220,101 @@ struct Animation {
 
     Timer timer;
     Tree2D<int, char> remaining;
+    using Pos = typename Tree2D<int, char>::Pos;
     for (int pos : region.pixels) {
       const auto &[x, y] = UnPos(pos);
       remaining.Insert(x, y, 0);
     }
+    const int start_pixels = remaining.Size();
+
     double sec = timer.Seconds();
     printf("Built tree in %s\n", ANSI::Time(sec).c_str());
 
-    // TODO: Use brush strokes!
-    for (int idx : region.pixels) {
-      const auto &[x, y] = UnPos(idx);
-      // Always with the original pixel, not the posterized one.
-      frame->SetPixel32(x, y, in->GetPixel32(x, y));
+    int layer_frames = 0;
+    while (!remaining.Empty()) {
+      // Move towards the closest pixel.
+      const auto &[pos, c_, dist] = remaining.Closest(std::make_pair(cx, cy));
+      const auto &[px, py] = pos;
+      float vx = px - cx, vy = py - cy;
+      // TODO: We want to ensure we make progress, so we should never
+      // orbit a point. One simple way to do this would be to increase the
+      // acceleration on each frame where we are not consuming pixels.
+
+      cdx = std::lerp(cdx, vx, 0.3);
+      cdy = std::lerp(cdy, vy, 0.3);
+      float norm = std::sqrt(cdx * cdx + cdy * cdy);
+      if (norm > MAX_PEN_VELOCITY) {
+        cdx /= (norm / MAX_PEN_VELOCITY);
+        cdy /= (norm / MAX_PEN_VELOCITY);
+      }
+
+      cx += cdx;
+      cy += cdy;
+
+      // We've moved the pen. Now eat any pixels that are in its
+      // radius. XXX We could get slightly better quality here if
+      // we had lookup on floating point positions (or we can just
+      // represent the tree that way in the first place).
+      CHECK(!remaining.Empty());
+      std::vector<std::tuple<Pos, char, double>> inside =
+        remaining.LookUp(Pos(std::round(cx), std::round(cy)), PEN_RADIUS);
+
+      // Draw those pixels and delete them from the tree.
+      for (const auto &[pos, c_, dist_] : inside) {
+        const auto &[x, y] = pos;
+        // Always with the original pixel, not the posterized one.
+        frame->SetPixel32(x, y, in->GetPixel32(x, y));
+
+        // Another simple improvement here is that we should draw
+        // pixels (in the posterized color I guess, or maybe the
+        // predominant color in the vector above) that will be
+        // overwritten by later layers.
+
+        CHECK(remaining.Remove(x, y));
+      }
+
+      // And draw the brush itself, but on a temporary copy of the
+      // frame.
+      std::unique_ptr<ImageRGBA> frame_copy(frame->Copy());
+      frame_copy->BlendCircle32(cx, cy, PEN_RADIUS + 1.0f, 0x00000077);
+
+      #if 0
+      for (int idx : region.pixels) {
+        const auto &[x, y] = UnPos(idx);
+        // Always with the original pixel, not the posterized one.
+        frame->SetPixel32(x, y, in->GetPixel32(x, y));
+      }
+      #endif
+
+      async.Run(
+          [file_base_out,
+           fnum = frame_num,
+           fr = std::move(frame_copy)]() {
+          std::string frame_file = StringPrintf("%s-%d.png",
+                                                file_base_out.c_str(),
+                                                fnum);
+          fr->Save(frame_file);
+          });
+      frame_num++;
+      layer_frames++;
+
+
+      if (status_per.ShouldRun() {
+          const int pixels_done = start_pixels - remaining.Size();
+          std::string prog =
+            ANSI::ProgressBar(pixels_done, remaining.Size(),
+                              "Layer
+                              double taken,
+                              ProgressBarOptions options =
+                              ProgressBarOptions{});
+
+
+
     }
 
-    std::string frame_file = StringPrintf("%s-%d.png",
-                                          file_base_out.c_str(),
-                                          frame_num);
-    frame->Save(frame_file);
-    printf("Wrote %s\n", frame_file.c_str());
-    frame_num++;
-
+    printf("Finished layer in %d frames.\n", layer_frames);
   }
 
-  // TODO: Animate!
 };
 
 int main(int argc, char **argv) {

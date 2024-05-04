@@ -28,6 +28,7 @@ struct Simplification {
 
   // Global, type-directed representation rewrites.
   static constexpr uint64_t O_REPRESENT_ENUMS = 1ULL << 40;
+  static constexpr uint64_t O_ERASE_UNIT = 1ULL << 41;
 
   // We require these optimizations to remove some constructs
   // before bytecode generation.

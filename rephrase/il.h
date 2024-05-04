@@ -346,10 +346,11 @@ struct Exp {
     return std::tie(primop, types, children);
   }
 
-  std::tuple<const std::string &, const Exp *>
+  // Annotated with the record type.
+  std::tuple<const std::string &, const Type *, const Exp *>
   Project() const {
     CHECK(type == ExpType::PROJECT);
-    return std::tie(str1, a);
+    return std::tie(str1, ta, a);
   }
 
   std::tuple<const std::string &, const Type *, const Exp *>
@@ -855,17 +856,21 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Project(const std::string &s, const Exp *e,
+  const Exp *Project(const std::string &s,
+                     const Type *record_type,
+                     const Exp *e,
                      const Exp *guess = nullptr) {
     if (guess != nullptr &&
         guess->type == ExpType::PROJECT &&
         guess->str1 == s &&
+        guess->ta == record_type &&
         guess->a == e) {
       return guess;
     }
 
     Exp *ret = NewExp(ExpType::PROJECT);
     ret->str1 = s;
+    ret->ta = record_type;
     ret->a = e;
     return ret;
   }

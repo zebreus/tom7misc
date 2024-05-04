@@ -251,7 +251,93 @@ struct DeadPass {
   ProgressRecorder *progress = nullptr;
 };
 
-// Inlines blocks.
+#define AGLOBAL_LAB(s) AFGCOLOR(200, 160, 40, s)
+
+// Coalesces global data that are exactly the same.
+// TODO: We can also coalesce identical blocks, although
+// here we want to be a bit smarter (e.g. not caring
+// about the names of temporaries if they are only used
+// within the block).
+struct CoalescePass {
+  CoalescePass(uint64_t opts, ProgressRecorder *progress) :
+    opts(opts),
+    progress(progress) {}
+
+  void DoProgram(SymbolicProgram *pgm) {
+    if (opts & Optimization::O_COALESCE_DATA) {
+      // Invert the data map so we get the list of symbols that
+      // have that same value.
+      std::unordered_map<Value, std::vector<std::string>,
+                         ValueHash, ValueEq> idata;
+
+      for (const auto &[s, v] : pgm->data) {
+        idata[v].push_back(s);
+      }
+
+      // Now for any value that has multiple names, pick one of
+      // them.
+      std::unordered_map<std::string, std::string> renamed;
+      for (auto &[v, names] : idata) {
+        if (names.size() > 1) {
+          std::sort(names.begin(), names.end());
+          const std::string &canon = names[0];
+          if (renamed.empty()) {
+            progress->Record("Coalesce identical data");
+          }
+          for (int i = 1; i < (int)names.size(); i++) {
+            if (VERBOSE) {
+              printf("  " AGLOBAL_LAB("%s") " => " AGREEN("%s") "\n",
+                     names[i].c_str(), canon.c_str());
+            }
+            renamed[names[i]] = canon;
+          }
+        }
+      }
+
+      if (!renamed.empty()) {
+        // Rename references in the code.
+        for (auto &[fname, fn] : pgm->code) {
+          if (VERBOSE) {
+            printf("do " APURPLE("%s") "\n", fname.c_str());
+          }
+          DoFn(renamed, fname, &fn);
+        }
+      }
+
+      // We can let the dead code pass clean up after us, although it
+      // would probably be better to just delete the stuff right here
+      // because we know we removed the last references.
+    }
+  }
+
+  void DoFn(const std::unordered_map<std::string, std::string> &renamed,
+            const std::string &fname,
+            SymbolicFn *fn) {
+    // In place.
+    for (auto &[block_name, block] : fn->blocks) {
+      for (Inst &inst : block.insts) {
+
+        if (inst::Load *load = std::get_if<inst::Load>(&inst)) {
+          auto rit = renamed.find(load->global);
+          if (rit != renamed.end()) {
+            load->global = rit->second;
+          }
+        } else if (inst::Save *save = std::get_if<inst::Save>(&inst)) {
+          auto rit = renamed.find(save->global);
+          if (rit != renamed.end()) {
+            save->global = rit->second;
+          }
+        }
+      }
+    }
+  }
+
+ private:
+  const uint64_t opts = 0;
+  ProgressRecorder *progress = nullptr;
+};
+
+
 struct InlinePass {
   InlinePass(uint64_t opts, ProgressRecorder *progress) :
     opts(opts),
@@ -401,6 +487,7 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
   DeadPass dead(opts, &progress);
   PeepholePass peep(opts, &progress);
   InlinePass inline_pass(opts, &progress);
+  CoalescePass coalesce(opts, &progress);
 
   do {
     progress.Reset();
@@ -416,6 +503,12 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
       PrintSymbolicProgram(program);
     }
     inline_pass.DoProgram(&program);
+
+    if (VERBOSE) {
+      printf(AWHITE("Coalesce") ".\n");
+      PrintSymbolicProgram(program);
+    }
+    coalesce.DoProgram(&program);
 
     if (VERBOSE) {
       printf("\n" AYELLOW("After optimization:\n"));

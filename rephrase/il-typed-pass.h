@@ -136,8 +136,8 @@ struct TypedPass {
       return DoFn(G, self, x, t, body, e, args...);
     }
     case ExpType::PROJECT: {
-      const auto &[lab, exp] = e->Project();
-      return DoProject(G, lab, exp, e, args...);
+      const auto &[lab, record_type, exp] = e->Project();
+      return DoProject(G, lab, record_type, exp, e, args...);
     }
     case ExpType::INJECT: {
       const auto &[lab, sum_type, exp] = e->Inject();
@@ -499,14 +499,20 @@ struct TypedPass {
 
   virtual std::pair<const Exp *, const Type *>
   DoProject(Context G,
-            const std::string &s, const Exp *e,
+            const std::string &s,
+            const Type *record_type,
+            const Exp *e,
             const Exp *guess,
             Args... args) {
     const auto &[ee, tt] = DoExp(G, e, args...);
+    // DCHECK(tt == record_type)
     CHECK(tt->type == TypeType::RECORD);
     for (const auto &[l, t] : tt->Record()) {
       if (l == s) {
-        return {pool->Project(s, ee, guess), t};
+        return {
+          pool->Project(s, DoType(G, record_type, args...), ee, guess),
+          t
+        };
       }
     }
     CHECK(false) << "Type error: Label " << s << " not found in " <<

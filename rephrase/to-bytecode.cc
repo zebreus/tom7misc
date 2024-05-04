@@ -861,7 +861,7 @@ struct Converter {
       }
 
       case il::ExpType::PROJECT: {
-        const auto &[lab, e] = exp->Project();
+        const auto &[lab, t, e] = exp->Project();
         const std::string r = ConvertExp(G, "rec", e, blocks, current_block);
         const std::string res = NewSymbol(lab);
         current_block->insts.emplace_back(

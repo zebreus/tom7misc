@@ -85,8 +85,8 @@ static bool IsSmallValue(const Exp *e) {
   }
 }
 
-static bool IsEffectless(const Exp *e) {
-  switch (e->type) {
+static bool IsEffectless(const Exp *exp) {
+  switch (exp->type) {
   case ExpType::FLOAT: return true;
   case ExpType::BOOL: return true;
   case ExpType::INT: return true;
@@ -96,29 +96,31 @@ static bool IsEffectless(const Exp *e) {
   case ExpType::FN: return true;
 
   case ExpType::RECORD: {
-    for (const auto &[lab, child] : e->Record()) {
+    for (const auto &[lab, child] : exp->Record()) {
       if (!IsEffectless(child)) return false;
     }
     return true;
   }
 
   case ExpType::OBJECT: {
-    for (const auto &[lab, oft, child] : e->Object()) {
+    for (const auto &[lab, oft, child] : exp->Object()) {
       if (!IsEffectless(child)) return false;
     }
     return true;
   }
 
-  case ExpType::PROJECT:
-    return IsEffectless(std::get<1>(e->Project()));
+  case ExpType::PROJECT: {
+    const auto &[l, t, e] = exp->Project();
+    return IsEffectless(e);
+  }
   case ExpType::INJECT:
-    return IsEffectless(std::get<2>(e->Inject()));
+    return IsEffectless(std::get<2>(exp->Inject()));
 
   case ExpType::ROLL:
-    return IsEffectless(std::get<1>(e->Roll()));
+    return IsEffectless(std::get<1>(exp->Roll()));
 
   case ExpType::PRIMOP: {
-    const auto &[po, ts, es] = e->Primop();
+    const auto &[po, ts, es] = exp->Primop();
     if (IsPrimopTotal(po)) {
       for (const Exp *child : es) {
         if (!IsEffectless(child)) {
@@ -136,14 +138,14 @@ static bool IsEffectless(const Exp *e) {
   }
 }
 
-static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
-  switch (e->type) {
+static void PushSeqs(const Exp *exp, std::vector<const Exp *> *vflat) {
+  switch (exp->type) {
   case ExpType::FAIL:
-    vflat->push_back(e);
+    vflat->push_back(exp);
     return;
   case ExpType::APP:
     // TODO: Maybe constructor applications?
-    vflat->push_back(e);
+    vflat->push_back(exp);
     return;
 
   case ExpType::FLOAT: return;
@@ -155,30 +157,32 @@ static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
   case ExpType::FN: return;
 
   case ExpType::RECORD: {
-    for (const auto &[lab, child] : e->Record()) {
+    for (const auto &[lab, child] : exp->Record()) {
       PushSeqs(child, vflat);
     }
     return;
   }
 
-  case ExpType::PROJECT:
-    return PushSeqs(std::get<1>(e->Project()), vflat);
+  case ExpType::PROJECT: {
+    const auto &[l, t, e] = exp->Project();
+    return PushSeqs(e, vflat);
+  }
   case ExpType::INJECT:
-    return PushSeqs(std::get<2>(e->Inject()), vflat);
+    return PushSeqs(std::get<2>(exp->Inject()), vflat);
 
   case ExpType::ROLL:
-    return PushSeqs(std::get<1>(e->Roll()), vflat);
+    return PushSeqs(std::get<1>(exp->Roll()), vflat);
   case ExpType::UNROLL:
-    return PushSeqs(std::get<0>(e->Unroll()), vflat);
+    return PushSeqs(std::get<0>(exp->Unroll()), vflat);
 
   case ExpType::PRIMOP: {
-    const auto &[po, ts, es] = e->Primop();
+    const auto &[po, ts, es] = exp->Primop();
     if (IsPrimopDiscardable(po)) {
       for (const Exp *child : es) {
         PushSeqs(child, vflat);
       }
     } else {
-      vflat->push_back(e);
+      vflat->push_back(exp);
     }
     return;
   }
@@ -193,7 +197,7 @@ static void PushSeqs(const Exp *e, std::vector<const Exp *> *vflat) {
   }
 
   default:
-    vflat->push_back(e);
+    vflat->push_back(exp);
     break;
   }
 }
@@ -232,6 +236,7 @@ struct PeepholePass : public il::Pass<> {
   }
 
   const Exp *DoProject(const std::string &label,
+                       const Type *record_type,
                        const Exp *arg,
                        const Exp *guess) override {
     arg = DoExp(arg);
@@ -263,7 +268,7 @@ struct PeepholePass : public il::Pass<> {
       Simplified("reduce project(record)");
       return body;
     } else {
-      return pool->Project(label, arg, guess);
+      return pool->Project(label, record_type, arg, guess);
     }
   }
 
@@ -1174,6 +1179,7 @@ struct KnownPass : public il::Pass<Known> {
   }
 
   const Exp *DoProject(const std::string &s,
+                       const Type *record_type,
                        const Exp *e_in,
                        const Exp *guess,
                        Known known) override {
@@ -1217,7 +1223,7 @@ struct KnownPass : public il::Pass<Known> {
         }
       }
     }
-    return pool->Project(s, e, guess);
+    return pool->Project(s, record_type, e, guess);
   }
 
  private:
@@ -1355,6 +1361,144 @@ struct FlattenLetPass : public il::Pass<> {
   ProgressRecorder *progress = nullptr;
 };
 
+
+// There is just one value of type unit, and it has no elimination
+// form. So we never need to store this type in records, for
+// example. One very common occurrence is in environments generated
+// by closure conversion.
+//
+// FIXME: This doesn't work correctly. There may be a simple bug,
+// but I think there's also a deeper problem here, where (due to
+// polymorphism) we can't necessarily get a handle on all of the
+// unit fields in records globally. We could apply this locally
+// (not as useful) or we could monomorphize the program. That would
+// be nice for other transformations, but it is an ordeal!
+struct EraseUnitPass : public il::TypedPass<> {
+  EraseUnitPass(uint64_t opts, AstPool *p, ProgressRecorder *progress) :
+    TypedPass(p),
+    opts(opts),
+    progress(progress) {
+  }
+
+  static bool IsUnit(const Type *t) {
+    return t->type == TypeType::RECORD && t->Record().empty();
+  }
+
+  const Type *DoRecordType(
+      Context G,
+      const std::vector<std::pair<std::string, const Type *>> &v,
+      const Type *guess) override {
+    std::vector<std::pair<std::string, const Type *>> vv;
+    vv.reserve(v.size());
+    for (const auto &[lab, t] : v) {
+      const Type *tt = DoType(G, tt);
+      if (IsUnit(tt)) {
+        progress->Record("removed unit from record type");
+      } else {
+        vv.emplace_back(lab, tt);
+      }
+    }
+    return pool->RecordType(vv, guess);
+  }
+
+  // Now the introduction and elimination forms for records.
+  virtual std::pair<const Exp *, const Type *>
+  DoRecord(
+      Context G,
+      const std::vector<std::pair<std::string, const Exp *>> &lv,
+      const Exp *guess) override {
+    std::vector<std::pair<std::string, const Exp *>> lvv;
+    lvv.reserve(lv.size());
+    std::vector<std::pair<std::string, const Type *>> ts;
+
+    std::vector<const Exp *> pending_seq;
+
+    for (const auto &[l, e] : lv) {
+      const auto &[ee, tt] = DoExp(G, e);
+      if (IsUnit(tt)) {
+        progress->Record("removed unit-type field from record exp");
+        if (VERBOSE) {
+          printf("  label was " APURPLE("%s") "\n", l.c_str());
+        }
+        // We still need to sequence the expression in case it
+        // has effects, though.
+        pending_seq.push_back(ee);
+      } else {
+
+        // If we removed an earlier field because it's unit type,
+        // we emit it at the next opportunity, which is the next
+        // field we process (or afterwards, below).
+        if (pending_seq.empty()) {
+          lvv.emplace_back(l, ee);
+        } else {
+          lvv.emplace_back(l, pool->Seq(pending_seq, ee));
+          pending_seq.clear();
+          ts.emplace_back(l, tt);
+        }
+      }
+    }
+
+    // If the tail of the record is unit-type expressions, then we
+    // still need to execute them, but we didn't have another expression
+    // to sequence them before. So we generate
+    // let tmp = { .. record exp .. }
+    // in seq (pending, tmp)
+    // end
+
+    if (pending_seq.empty()) {
+      return {pool->Record(lvv, guess), pool->RecordType(ts)};
+    } else {
+      std::string tmp = pool->NewVar("tmp");
+      return {
+        pool->Let({}, tmp, pool->Record(lvv, guess),
+                  pool->Seq(pending_seq, pool->Var({}, tmp))),
+        pool->RecordType(ts),
+      };
+    }
+  }
+
+  std::pair<const Exp *, const Type *>
+  DoProject(Context G,
+            const std::string &s, const Type *record_type, const Exp *e,
+            const Exp *guess) override {
+    // Find the label in the original type.
+    CHECK(record_type->type == TypeType::RECORD);
+    for (const auto &[l, t] : record_type->Record()) {
+      if (l == s) {
+        if (IsUnit(t)) {
+          // Then don't actually use the record since we know what the
+          // value is. Still execute the projection expression for
+          // effect though.
+          const auto &[ee, tt] = DoExp(G, e);
+          CHECK(tt->type == TypeType::RECORD);
+          for (const auto &[ll, tt_] : tt->Record()) {
+            CHECK(ll != l) << "Expected the field to be dropped from "
+              "the record, since it has unit type.";
+          }
+
+          return {pool->Seq({e}, pool->Record({})), pool->RecordType({})};
+        } else {
+          return TypedPass::DoProject(G, s, record_type, e, guess);
+        }
+      }
+    }
+
+    LOG(FATAL) << "Internal type error: Label " << s << " not found in " <<
+      TypeString(record_type);
+  }
+
+
+  Program DoProgram(Context G, const Program &program) override {
+    if (!(opts & Simplification::O_ERASE_UNIT)) return program;
+    return TypedPass::DoProgram(G, program);
+  }
+
+ private:
+  const uint64_t opts = 0;
+  ProgressRecorder *progress = nullptr;
+};
+
+
 // A datatype declaration that is just of the form A | B | C ...
 // is an "enum." We recognize these and represent them as
 // words. This is pretty easy with the typed pass.
@@ -1486,17 +1630,6 @@ struct RepresentEnumsPass : public il::TypedPass<> {
     return pool->SumType(std::move(arms));
   }
 
-  // Ugh!
-  // We need to pre-translation type of some expressions. We
-  // can use the base TypedPass to synthesize it, but unfortunately
-  // we are then running over expressions twice in some cases.
-  // XXX not used now
-  const Type *TypeOf(Context G, const Exp *e) {
-    TypedPass<> typed_pass(pool);
-    const auto &[ee_, tt] = typed_pass.DoExp(G, e);
-    return tt;
-  }
-
   // This is unroll (e) where e may have an enum type.
   // The result of the expression was an unrolled sum,
   // so we just need to produce that from the word (using
@@ -1549,10 +1682,6 @@ struct RepresentEnumsPass : public il::TypedPass<> {
     }
   }
 
-  // TODO PERF: Either want to optimize case-of-case (maybe good
-  // except that there are so many combinations) or recognize
-  // sumcase(unroll(...)) here.
-
   Program DoProgram(Context G, const Program &program) override {
     if (!(opts & Simplification::O_REPRESENT_ENUMS)) return program;
 
@@ -1573,6 +1702,7 @@ struct RepresentEnumsPass : public il::TypedPass<> {
   ProgressRecorder *progress = nullptr;
   bool has_run = false;
 };
+
 
 
 struct DecomposePass : public il::Pass<> {
@@ -1889,6 +2019,12 @@ Program Simplification::Simplify(const Program &program_in,
   GlobalInlining global_inlining(opts, pool, &progress);
   RepresentEnumsPass represent_enums(opts, pool, &progress);
   CaseOfCasePass case_of_case(opts, pool, &progress);
+  EraseUnitPass erase_unit(opts, pool, &progress);
+
+  // Optimizations that are disabled due to bugs, etc.
+  constexpr uint64_t DISABLED_OPTIMIZATIONS = O_ERASE_UNIT;
+
+  opts &= ~DISABLED_OPTIMIZATIONS;
 
   // Do decomposition first if enabled. This only needs
   // to be done once, since other passes should not reintroduce
@@ -1921,6 +2057,16 @@ Program Simplification::Simplify(const Program &program_in,
 
       Context G;
       program = represent_enums.DoProgram(G, program);
+    }
+
+    if ((opts & O_ERASE_UNIT) != 0) {
+      if (VERBOSE) {
+        printf(AWHITE("Erase unit") ".\n");
+        // printf("%s\n", ProgramString(program).c_str());
+      }
+
+      Context G;
+      program = erase_unit.DoProgram(G, program);
     }
 
     if (opts & O_CASE_OF_CASE) {

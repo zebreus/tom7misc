@@ -14,7 +14,7 @@
 #include "primop.h"
 
 // Make all tests verbose.
-static constexpr bool VERBOSE = false;
+static constexpr bool VERBOSE = true;
 
 namespace il {
 
@@ -174,10 +174,12 @@ static void TestPrimops() {
     const auto &[po, ts, es] = body->Primop();
     CHECK(ts.empty()) << "Plus should take no type args.";
     CHECK(es.size() == 2);
-    const auto &[l1, e1] = es[0]->Project();
-    const auto &[l2, e2] = es[1]->Project();
+    const auto &[l1, t1, e1] = es[0]->Project();
+    const auto &[l2, t2, e2] = es[1]->Project();
     CHECK(l1 == "1");
     CHECK(l2 == "2");
+    CHECK(t1->type == TypeType::RECORD);
+    CHECK(t2->type == TypeType::RECORD);
     CHECK(std::get<1>(e1->Var()) == x);
     CHECK(std::get<1>(e2->Var()) == x);
   }

@@ -391,6 +391,9 @@ aeoud/aeoud.talk : bovex.exe aeoud-shared.bovex aeoud.bovex stdlib.bovex cite.bo
 	./bovex.exe -v aeoud.bovex -o aeoud.talk
 	./maketalk.exe aeoud aeoud.talk
 
+aeoud-invoice.pdf : bovex.exe hyph-en-us.tex stdlib.bovex layout.bovex invoice.bovex aeoud-invoice.bovex
+	./bovex.exe -v aeoud-invoice.bovex -o aeoud-invoice.pdf
+
 # comparison movie
 aeoud-comparison/aeoud-comparison.talk : bovex.exe aeoud-shared.bovex aeoud-comparison.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png
 	./bovex.exe -v aeoud-comparison.bovex -o aeoud-comparison.talk

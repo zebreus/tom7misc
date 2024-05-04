@@ -132,13 +132,16 @@ struct ConvertPass : public TypedPass<> {
       ExpString(aa) << "\nWith type:\n" <<
       TypeString(at);
     const auto &[cc_dom, cod] = tcc_fn->Arrow();
+    CHECK(cc_dom->type == TypeType::RECORD);
+    CHECK(cc_dom->Record().size() == 2);
 
     // Now the expression. Use the same variable from the exists
     // so that we can use types without substitution.
     const std::string fnvar = pool->NewVar("f");
     const Exp *fnexp = pool->Var({}, fnvar);
-    const Exp *extracted_env = pool->Project("1", fnexp);
-    const Exp *extracted_fn  = pool->Project("2", fnexp);
+    const Exp *extracted_env = pool->Project("1", cc_dom, fnexp);
+    const Exp *extracted_fn  = pool->Project("2", cc_dom, fnexp);
+
     const Exp *ret =
       pool->Unpack(aenv, fnvar, ff,
                    pool->App(extracted_fn,
@@ -367,7 +370,7 @@ struct ConvertPass : public TypedPass<> {
       // polymorphism. Convert.
 
       const PolyType &pt = entry.polytype;
-      const Exp *rhs = pool->Project(entry.env_label, env_var_exp);
+      const Exp *rhs = pool->Project(entry.env_label, env_type, env_var_exp);
       for (int i = 0; i < (int)pt.first.size(); i++) {
         rhs = pool->TypeApp(rhs, pool->VarType(pt.first[i]));
       }
@@ -407,11 +410,11 @@ struct ConvertPass : public TypedPass<> {
     // Project out the environment and original argument from the
     // arg pair.
     fn = pool->Let({}, x,
-                    pool->Project("2", arg_var_exp),
-                    fn);
+                   pool->Project("2", cc_fn_dom, arg_var_exp),
+                   fn);
     fn = pool->Let({},
-                    env_var, pool->Project("1", arg_var_exp),
-                    fn);
+                   env_var, pool->Project("1", cc_fn_dom, arg_var_exp),
+                   fn);
 
     const Type *closed_fn_type =
       pool->SubstType(env_type, cc_alpha_env, cc_fn_type);
