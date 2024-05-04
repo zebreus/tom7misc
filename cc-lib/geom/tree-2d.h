@@ -156,7 +156,7 @@ bool Tree2D<Num, T>::Remove(Pos pos) {
 
       } else {
         Leaf *leaf = &std::get<Leaf>(*cursor.get());
-        for (int idx = 0; idx < leaf->size(); /* in loop */) {
+        for (int idx = 0; idx < (int)leaf->size(); /* in loop */) {
           if ((*leaf)[idx].first == pos) {
             // Erase it. We do this by swapping with the last
             // element (if any) and then reducing the size by one.
@@ -219,6 +219,7 @@ Tree2D<Num, T>::LookUp(Pos pos, double radius) const {
   const auto &[x, y] = pos;
 
   // PERF: q should have reduced radius (distance to axis).
+  // PERF: We can start by using code from Closest below.
   std::vector<Node *> q = {root.get()};
   std::vector<std::tuple<Pos, T, double>> out;
   while (!q.empty()) {
@@ -402,17 +403,14 @@ Tree2D<Num, T>::Closest(Pos pos) const {
       continue;
 
     if (const Split *split = std::get_if<Split>(node)) {
-      // Project the lookup point to the split axis.
-      const Pos axispt =
-        split->axis_horiz ? std::make_pair(x, split->axis) :
-        std::make_pair(split->axis, y);
-
+      // Get the minimum distance between the lookup point and
+      // the split axis.
       double sdist = split->axis_horiz ? split->axis - y : split->axis - x;
       double sq_dist = sdist * sdist;
 
       // We always search the one we're in. But we can also search
       // the other one if it is within our search radius.
-      const bool both = sq_dist <= best_sq_dist;
+      const bool both = best == nullptr || sq_dist <= best_sq_dist;
       const bool lesseq = Classify(pos, split->axis_horiz, split->axis);
 
       // Since we pop from the end, put the node we're in on the queue
