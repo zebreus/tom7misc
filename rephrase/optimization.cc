@@ -13,13 +13,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "bignum/big-overloads.h"
-#include "bignum/big.h"
-#include "context.h"
-#include "primop.h"
 #include "progress.h"
-#include "util.h"
 #include "bc.h"
 
 static constexpr bool VERBOSE = false;
@@ -477,6 +471,135 @@ struct InlinePass {
   ProgressRecorder *progress = nullptr;
 };
 
+template<class T>
+struct Dataflow {
+  // Key: Basic block label
+  // Value: T for each index.
+  std::unordered_map<std::string, std::vector<T>> state;
+
+  Dataflow(const SymbolicFn &fn) {
+    for (const auto &[name, block] : fn.blocks) {
+      state[name].resize(block.insts.size());
+    }
+  }
+};
+
+// Computes dataflow: What locals are used?
+//
+// What we do here is compute, for every instruction in a function,
+// the set of locals that are read (in or below the instruction)
+// without being overwritten first.
+struct DataflowPass {
+  DataflowPass(uint64_t opts, ProgressRecorder *progress) :
+    opts(opts),
+    progress(progress) {}
+
+  void DoFn(const std::string &fname, SymbolicFn *fn) {
+    // PERF We know the full gamut ahead of time. Use a bit vector!
+    Dataflow<std::unordered_set<std::string>> read_before_write(*fn);
+
+    // Initialize with instructions that read their inputs.
+    for (const auto &[name, block] : fn->blocks) {
+      std::vector<std::unordered_set<std::string>> *dv =
+        &read_before_write.state[name];
+      for (int i = 0; i < (int)block.insts.size(); i++) {
+        const Inst &inst = block.insts[i];
+
+        // TODO: Insert the changed indices into todo set.
+        if (const inst::Triop *triop = std::get_if<inst::Triop>(&inst)) {
+          (*dv)[i].insert(triop->arg1);
+          (*dv)[i].insert(triop->arg2);
+          (*dv)[i].insert(triop->arg3);
+        } else if (const inst::Binop *binop = std::get_if<inst::Binop>(&inst)) {
+          (*dv)[i].insert(binop->arg1);
+          (*dv)[i].insert(binop->arg2);
+        } else if (const inst::Unop *unop = std::get_if<inst::Unop>(&inst)) {
+          (*dv)[i].insert(unop->arg);
+        } else if (const inst::Call *call = std::get_if<inst::Call>(&inst)) {
+          (*dv)[i].insert(call->arg);
+        } else if (const inst::TailCall *tail_call =
+                   std::get_if<inst::TailCall>(&inst)) {
+          (*dv)[i].insert(tail_call->arg);
+        } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
+          (*dv)[i].insert(ret->arg);
+        } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
+          (*dv)[i].insert(iff->cond);
+        } else if (const inst::AllocVec *allocvec =
+                   std::get_if<inst::AllocVec>(&inst)) {
+          // nothing
+        } else if (const inst::SetVec *setvec =
+                   std::get_if<inst::SetVec>(&inst)) {
+          (*dv)[i].insert(setvec->vec);
+          (*dv)[i].insert(setvec->idx);
+          (*dv)[i].insert(setvec->arg);
+        } else if (const inst::GetVec *getvec =
+                   std::get_if<inst::GetVec>(&inst)) {
+          (*dv)[i].insert(getvec->vec);
+          (*dv)[i].insert(getvec->idx);
+        } else if (const inst::Alloc *alloc = std::get_if<inst::Alloc>(&inst)) {
+          // nothing
+        } else if (const inst::Copy *copy = std::get_if<inst::Copy>(&inst)) {
+          (*dv)[i].insert(copy->obj);
+        } else if (const inst::SetLabel *setlabel =
+                   std::get_if<inst::SetLabel>(&inst)) {
+          (*dv)[i].insert(setlabel->obj);
+          (*dv)[i].insert(setlabel->arg);
+        } else if (const inst::GetLabel *getlabel =
+                   std::get_if<inst::GetLabel>(&inst)) {
+          (*dv)[i].insert(getlabel->obj);
+        } else if (const inst::DeleteLabel *deletelabel =
+                   std::get_if<inst::DeleteLabel>(&inst)) {
+          (*dv)[i].insert(deletelabel->obj);
+        } else if (const inst::HasLabel *haslabel =
+                   std::get_if<inst::HasLabel>(&inst)) {
+          (*dv)[i].insert(haslabel->obj);
+        } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
+          (*dv)[i].insert(bind->arg);
+        } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
+          // Nothing
+        } else if (const inst::Save *save = std::get_if<inst::Save>(&inst)) {
+          (*dv)[i].insert(save->arg);
+        } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
+          // Nothing
+        } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
+          (*dv)[i].insert(fail->arg);
+        } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
+          // Nothing
+        } else if (const inst::SymbolicIf *iff =
+                   std::get_if<inst::SymbolicIf>(&inst)) {
+          (*dv)[i].insert(iff->cond);
+        } else if (const inst::SymbolicJump *jmp =
+                   std::get_if<inst::SymbolicJump>(&inst)) {
+          // Nothing
+        } else {
+          LOG(FATAL) << "Unhandled instruction in DataflowPass.";
+        }
+      }
+    }
+
+    // TODO: propagate, updating the workset
+
+    // TODO: delete effectless instructions whose values are not needed
+  }
+
+  void DoProgram(SymbolicProgram *pgm) {
+    if (opts & Optimization::O_DEAD_LOCALS) {
+      // Rewrites code in place. Each function is processed
+      // independently (and we could do this in parallel?)
+      for (auto &[fname, fn] : pgm->code) {
+        if (VERBOSE) {
+          printf("do " APURPLE("%s") "\n", fname.c_str());
+        }
+        DoFn(fname, &fn);
+      }
+    }
+  }
+
+ private:
+  const uint64_t opts = 0;
+  ProgressRecorder *progress = nullptr;
+};
+
 
 }  // namespace
 
@@ -488,6 +611,7 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
   PeepholePass peep(opts, &progress);
   InlinePass inline_pass(opts, &progress);
   CoalescePass coalesce(opts, &progress);
+  DataflowPass dataflow(opts, &progress);
 
   do {
     progress.Reset();
@@ -509,6 +633,12 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
       PrintSymbolicProgram(program);
     }
     coalesce.DoProgram(&program);
+
+    if (VERBOSE) {
+      printf(AWHITE("Dataflow") ".\n");
+      PrintSymbolicProgram(program);
+    }
+    dataflow.DoProgram(&program);
 
     if (VERBOSE) {
       printf("\n" AYELLOW("After optimization:\n"));
