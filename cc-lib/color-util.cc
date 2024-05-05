@@ -75,6 +75,56 @@ ColorUtil::RGBToHSV(float r, float g, float b) {
   return std::make_tuple(h, s, v);
 }
 
+std::tuple<float, float, float>
+ColorUtil::LABToRGB(float lab_l, float lab_a, float lab_b) {
+  // http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
+  // (Work from the bottom up.)
+
+  // Reference white with same values as used below.
+  constexpr float white_x = 0.95047f;
+  constexpr float white_y = 1.0f;
+  constexpr float white_z = 1.08883f;
+
+  constexpr float epsilon = 216.0f / 24389.0f;
+  constexpr float kappa = 24389.0f / 27.0f;
+
+  const float fy = (lab_l + 16.0f) / 116.0f;
+  const float fz = fy - (lab_b / 200.0f);
+  const float fx = (lab_a / 500.0f) + fy;
+
+  const float fzzz = fz * fz * fz;
+  const float zr =
+    fzzz > epsilon ? fzzz : (116.0f * fz - 16.0f) / kappa;
+
+  const float yr =
+    (lab_l > kappa * epsilon) ? (fy * fy * fy) : lab_l / kappa;
+
+  const float fxxx = fx * fx * fx;
+  const float xr =
+    fxxx > epsilon ? fxxx : (116.0f * fx - 16.0f) / kappa;
+
+  // Now xyz color space. Each component nominally in [0,1].
+  const float x = xr * white_x;
+  const float y = yr * white_y;
+  const float z = zr * white_z;
+
+  // Now a mysterious multiplication, to get linear RGB.
+  const float r = x *  3.2404542f + y * -1.5371385f + z * -0.4985314f;
+  const float g = x * -0.9692660f + y *  1.8760108f + z *  0.0415560f;
+  const float b = x *  0.0556434f + y * -0.2040259f + z *  1.0572252f;
+
+  // Now compand to sRGB.
+  auto SRGBCompand = [](float ch) {
+    return ch <= 0.0031308f ? ch * 12.92f :
+      1.055f * powf(ch, 1.0f / 2.4f) - 0.055f;
+    };
+
+  return std::make_tuple(SRGBCompand(r),
+                         SRGBCompand(g),
+                         SRGBCompand(b));
+}
+
+
 static std::tuple<float, float, float>
 sRGBToLAB(float srgb_r, float srgb_g, float srgb_b) {
   // Now to XYZ color space, whose components are nominally in [0, 1].

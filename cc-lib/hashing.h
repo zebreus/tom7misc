@@ -19,14 +19,12 @@
 #include <tuple>
 #include <array>
 #include <cstddef>
+#include <bit>
 
 template<class T>
 struct Hashing;
 
 namespace hashing_internal {
-static constexpr inline std::size_t RotateSizeT(size_t v, int bits) {
-  return (v << bits) | (v >> (sizeof v * 8 - bits));
-}
 
 template<size_t IDX, typename... Ts>
 struct HashTupleRec {
@@ -39,7 +37,7 @@ struct HashTupleRec {
       Hashing<std::remove_cvref_t<decltype(elt)>> hashing;
       size_t hh = hashing(elt);
       return HashTupleRec<IDX + 1, Ts...>()(
-          RotateSizeT(h, (IDX * 7 + 1) % 31) + hh,
+          std::rotl<size_t>(h, (IDX * 7 + 1) % 31) + hh,
           t);
     }
   }
@@ -62,7 +60,7 @@ struct Hashing<std::pair<T, U>> {
     size_t th = Hashing<T>()(p.first), uh = Hashing<U>()(p.second);
     // This can certainly be improved. Keep in mind that size_t
     // is commonly either 32 or 64 bits.
-    return th + 0x9e3779b9 + hashing_internal::RotateSizeT(uh, 15);
+    return th + 0x9e3779b9 + std::rotl<size_t>(uh, 15);
   }
 };
 
@@ -75,7 +73,7 @@ struct Hashing<std::vector<T>> {
     size_t h = 0xCAFED00D + v.size();
     for (const T &t : v) {
       h += Hashing<T>()(t);
-      h = hashing_internal::RotateSizeT(h, 13);
+      h = std::rotl<size_t>(h, 13);
     }
     return h;
   }
@@ -87,7 +85,7 @@ struct Hashing<std::array<T, N>> {
     size_t h = 0xDECADE00 + N;
     for (const T &t : v) {
       h += Hashing<T>()(t);
-      h = hashing_internal::RotateSizeT(h, 17);
+      h = std::rotl<size_t>(h, 17);
     }
     return h;
   }

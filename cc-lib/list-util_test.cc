@@ -4,7 +4,6 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 using namespace std;
 

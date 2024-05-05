@@ -2,6 +2,9 @@
 #ifndef _CC_LIB_ARRAY_UTIL_H
 #define _CC_LIB_ARRAY_UTIL_H
 
+#include <cstddef>
+#include <array>
+
 template<class F, class I, size_t N>
 auto MapArray(const F &f,
               const std::array<I, N> &a) ->

@@ -3,10 +3,7 @@
 
 #include <cstdint>
 
-#include "base/stringprintf.h"
 #include "base/logging.h"
-#include "arcfour.h"
-#include "randutil.h"
 #include "timer.h"
 #include "crypt/lfsr.h"
 
@@ -62,7 +59,7 @@ static void BenchClear32() {
     state = LFSRNext32(state);
     image.Clear32(state);
   }
-  
+
   double sec = timer.Seconds();
   printf("Clear32: %lld clears in %.3f sec =\n"
          "%.3f Kc/sec\n", NUM_CLEARS, sec,
@@ -72,7 +69,7 @@ static void BenchClear32() {
 int main(int argc, char **argv) {
   BenchBlendPixel();
   BenchClear32();
-  
+
   printf("OK\n");
   return 0;
 }

@@ -1,6 +1,5 @@
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string>
 #include <cstdint>
 
@@ -89,12 +88,12 @@ void FindCounterexample() {
       heap.Insert(p, &values[i]);
       if (DEBUG) printf("Insert: %d\n", p);
     }
-    if (DEBUG) 
+    if (DEBUG)
       printf("Before: %s\n", heap.DebugString(Ptos).c_str());
     IntHeap::Cell c = heap.PopMinimum();
     printf("Min priority: %llu\n", c.priority);
     heap.CheckInvariants(Ptos);
-    if (DEBUG) 
+    if (DEBUG)
       printf("Pop min: %s\n", heap.DebugString(Ptos).c_str());
     while (!heap.Empty()) {
       heap.PopMinimumValue();
@@ -117,7 +116,7 @@ void TestMin(ArcFour *rc) {
   IntHeap heap;
   heap.CheckInvariants(Ptos);
   vector<TestValue> values = GetValues(rc);
-  
+
   for (int i = 0; i < (int)values.size(); i++) {
     heap.Insert(values[i].i, &values[i]);
     heap.CheckInvariants(Ptos);
@@ -146,7 +145,7 @@ void TestMax(ArcFour *rc) {
   IntHeap heap;
   heap.CheckInvariants(Ptos);
   vector<TestValue> values = GetValues(rc);
-  
+
   for (int i = 0; i < (int)values.size(); i++) {
     heap.Insert(values[i].i, &values[i]);
     heap.CheckInvariants(Ptos);
@@ -199,7 +198,7 @@ int main() {
   printf("Test max...\n");
   TestMax(&rc);
   TestClear(&rc);
-  
+
   printf("OK\n");
   return 0;
 }

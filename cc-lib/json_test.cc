@@ -3,7 +3,6 @@
 
 #include <string>
 
-#include "base/stringprintf.h"
 #include "base/logging.h"
 
 using std::string;
@@ -12,7 +11,8 @@ using std::string;
 static void TestRapid() {
   using namespace rapidjson;
   Document document;
-  CHECK(!document.Parse(R"({ "a": 5, "b": "hello", "c": [3, 4] })").HasParseError());
+  CHECK(!document.Parse(R"({ "a": 5, "b": "hello", "c": [3, 4] })").
+        HasParseError());
   CHECK(document.IsObject());
   CHECK(document.HasMember("a"));
   CHECK(document.HasMember("b"));

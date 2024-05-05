@@ -750,6 +750,35 @@ void ImageRGBA::BlendCircle32(int x0, int y0, int radius, uint32 color) {
   }
 }
 
+void ImageRGBA::BlendThickCircle32(float x, float y, float circle_radius,
+                                   float line_radius, uint32 color) {
+  const float half_line_radius = line_radius * 0.5f;
+  const float outer_radius = circle_radius + half_line_radius;
+  const float inner_radius = std::max(0.0f, circle_radius - half_line_radius);
+  const int xmin = std::max(0, (int)std::floorf(x - outer_radius));
+  const int ymin = std::max(0, (int)std::floorf(y - outer_radius));
+  const int xmax = std::min(Width(), (int)std::ceilf(x + outer_radius));
+  const int ymax = std::min(Height(), (int)std::ceilf(y + outer_radius));
+
+  const int sq_outer = outer_radius * outer_radius;
+  const int sq_inner = inner_radius * inner_radius;
+
+  // Loop over the bounding box and test distance.
+  for (int yy = ymin; yy <= ymax; yy++) {
+    int dy = y - yy;
+    int ddy = dy * dy;
+    for (int xx = xmin; xx <= xmax; xx++) {
+      int dx = x - xx;
+      int ddx = dx * dx;
+      if (ddy + ddx <= sq_outer && ddy + ddx >= sq_inner) {
+        // PERF: This is already clipped. But that's not the main
+        // performance problem here!
+        BlendPixel32(xx, yy, color);
+      }
+    }
+  }
+}
+
 
 // TODO: Does not handle overlap correctly.
 void ImageRGBA::BlendImage(int x, int y, const ImageRGBA &other) {

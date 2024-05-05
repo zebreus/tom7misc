@@ -1,7 +1,6 @@
 
 #include "interval-tree.h"
 
-#include <stdlib.h>
 #include <set>
 #include <vector>
 #include <string>
@@ -9,8 +8,6 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "base/logging.h"
-
-#include "interval-tree-json.h"
 
 using namespace std;
 

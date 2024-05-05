@@ -116,7 +116,8 @@ struct ANSI {
 
   using ProgressBarOptions = internal::ProgressBarOptions;
   // Print a color progress bar. [numer/denom  operation] ETA HH:MM:SS
-  // Doesn't update in place; you need to move the cursor for that.
+  // Doesn't update in place; you need to move the cursor with
+  // like ANSI_UP.
   static std::string ProgressBar(uint64_t numer, uint64_t denom,
                                  // This currently can't have ANSI Codes,
                                  // because we need to split it into pieces.

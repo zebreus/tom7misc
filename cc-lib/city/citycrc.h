@@ -31,7 +31,6 @@
 #include <cstdint>
 
 #include "city/city.h"
-// #include "base/int128.h"
 
 using city_uint128 = std::pair<uint64_t, uint64_t>;
 

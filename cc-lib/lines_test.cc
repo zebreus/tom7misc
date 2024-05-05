@@ -3,7 +3,6 @@
 
 #include <optional>
 
-#include "base/stringprintf.h"
 #include "base/logging.h"
 #include "arcfour.h"
 #include "randutil.h"

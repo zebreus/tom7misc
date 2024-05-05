@@ -3,6 +3,7 @@
 #define _CC_LIB_MAP_UTIL_H
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 // This returns a copy of the value (to avoid danging references to

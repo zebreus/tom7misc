@@ -128,7 +128,7 @@ static double Bench() {
   double sec = timer.Seconds();
   printf("%llu %s\n",
          sum,
-         AnsiTime(sec).c_str());
+         ANSI::Time(sec).c_str());
   return sec;
 }
 

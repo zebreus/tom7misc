@@ -1,18 +1,14 @@
 #include "numbers.h"
 
 #include <stdlib.h>
-#include <string.h>
 #include <math.h>
 #include <stdint.h>
-#include <assert.h>
 
 #include <bit>
-#include <memory>
 #include <tuple>
 #include <cstdint>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "montgomery64.h"
 
 static constexpr bool VERBOSE = false;

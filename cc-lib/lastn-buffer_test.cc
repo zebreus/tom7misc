@@ -2,7 +2,6 @@
 
 #include "base/logging.h"
 #include <stdio.h>
-#include <vector>
 #include <string>
 #include <functional>
 

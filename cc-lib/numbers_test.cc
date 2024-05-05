@@ -6,7 +6,6 @@
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "base/int128.h"
 #include "ansi.h"
 

@@ -149,6 +149,9 @@ struct ImageRGBA {
   void BlendFilledCircleAA32(float x, float y, float r, uint32 color);
 
   void BlendCircle32(int x, int y, int r, uint32 color);
+  // PERF: Slow (rasterizes the entire bounding box).
+  void BlendThickCircle32(float x, float y, float circle_radius,
+                          float line_radius, uint32 color);
 
   // Clipped, alpha blending.
   void BlendImage(int x, int y, const ImageRGBA &other);

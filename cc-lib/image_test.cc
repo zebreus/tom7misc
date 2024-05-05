@@ -4,10 +4,8 @@
 #include <unordered_set>
 #include <functional>
 
-#include "base/stringprintf.h"
 #include "base/logging.h"
 #include "arcfour.h"
-#include "randutil.h"
 
 static void TestCreateAndDestroy() {
   {

@@ -10,10 +10,6 @@
 #include <vector>
 #include <cstdint>
 #include <tuple>
-#include <optional>
-#include <algorithm>
-
-#include "base/logging.h"
 
 // For conversion to/from ImageRGBA and other basic formats.
 #include "image.h"

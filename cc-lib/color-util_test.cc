@@ -91,6 +91,31 @@ static void TestLab() {
 
   // TODO: Some other references...
 
+  // Inverse conversion.
+  {
+    const auto &[r, g, b] =
+      ColorUtil::LABToRGB(100.0, 0.0, 0.0);
+    CHECK_NEAR(1.0f, r);
+    CHECK_NEAR(1.0f, g);
+    CHECK_NEAR(1.0f, b);
+  }
+
+  {
+    const auto &[r, g, b] =
+      ColorUtil::LABToRGB(0.0, 0.0, 0.0);
+    CHECK_NEAR(0.0f, r);
+    CHECK_NEAR(0.0f, g);
+    CHECK_NEAR(0.0f, b);
+  }
+
+  {
+    const auto &[r, g, b] =
+      ColorUtil::LABToRGB(56.7746f, 2.3497f, -52.0617f);
+    CHECK_NEAR(37.0f / 255.0f, r);
+    CHECK_NEAR(140.0f / 255.0f, g);
+    CHECK_NEAR(227.0f / 255.0f, b);
+  }
+
 }
 
 static void TestGradient() {

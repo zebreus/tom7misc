@@ -44,8 +44,14 @@ struct ColorUtil {
   static std::tuple<float, float, float>
   RGBToLAB(float r, float g, float b);
 
+  // Nominal inverse of the above.
+  static std::tuple<float, float, float>
+  LABToRGB(float lab_l, float lab_a, float lab_b);
+
   // CIE1994 distance between sample color Lab2 and reference Lab1.
   // ** Careful: This may not even be symmetric! **
+  // This is designd such that a Delta E of 1.0 is a "just noticeable"
+  // difference, and 100.0 is the nominal maximum. Your mileage may vary.
   // Note: This has been superseded by an even more complicated function
   // (CIEDE2000) if you are doing something very sensitive.
   static float DeltaE(float l1, float a1, float b1,

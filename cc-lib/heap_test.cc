@@ -1,10 +1,8 @@
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string>
-#include <cstdint>
-
 #include "heap.h"
+
+#include <stdio.h>
+#include <cstdint>
 
 using namespace std;
 
@@ -28,9 +26,9 @@ static uint64 CrapHash(int a) {
 
 int main () {
   static constexpr int kNumValues = 1000;
-  
+
   Heap<uint64, TestValue> heap;
-  
+
   vector<TestValue> values;
   for (int i = 0; i < kNumValues; i++) {
     values.push_back(TestValue(CrapHash(i)));
@@ -57,7 +55,7 @@ int main () {
       return -1;
     }
   }
-  
+
   for (int i = 0; i < (int)values.size() / 2; i++) {
     heap.Insert(values[i].i, &values[i]);
   }
@@ -74,7 +72,7 @@ int main () {
       return -1;
     }
   }
-  
+
   printf("OK\n");
   return 0;
 }
