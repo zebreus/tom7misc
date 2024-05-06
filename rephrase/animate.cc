@@ -2,6 +2,7 @@
 // Experimental tool to animate "drawing" an input image.
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -23,6 +24,8 @@
 #include "timer.h"
 #include "threadutil.h"
 #include "periodically.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 struct Region {
   std::unordered_set<int> pixels;
@@ -228,8 +231,12 @@ struct Animation {
 
     // Now that we have the ordering, we can smooth each region.
     for (int z = 0; z < (int)layer_colors.size(); z++) {
-      SmoothRegion(file_base_out, z, 25);
+      SmoothRegion(file_base_out, z, 5);
     }
+
+    // XXX
+    // printf("Stopping early.\n");
+    // return;
 
     ImageRGBA frame(in->Width(), in->Height());
 
@@ -295,15 +302,8 @@ struct Animation {
   // multiple times. We always do this subject to the mask of
   // layers that are going to overwrite us, which keeps the
   // blob within the hull, for one thing.
-  void SmoothRegion(const std::string file_base_out, int z, int passes) {
-
-    // TODO: Can I fiddle with this so that blobs don't always grow??
-    static constexpr int KERNEL_RADIUS = 34;
-    // We fill the center of the kernel only. Otherwise there is
-    // essentially always a way of extending a blob by placing the
-    // circle only ever-so-slightly off its edge.
-    static constexpr int KERNEL_FILL_RADIUS = KERNEL_RADIUS >> 1;
-    static constexpr float VOTE_THRESHOLD = 0.75f;
+  void SmoothRegion(const std::string file_base_out, int z,
+                    int max_passes) {
 
     CHECK(z >= 0 && z < (int)layer_colors.size());
     const uint32_t color = layer_colors[z];
@@ -318,61 +318,105 @@ struct Animation {
       raster.SetPixel(x, y, 0xFF);
     }
 
-    for (int i = 0; i < passes; i++) {
+    auto SaveRaster = [&file_base_out, z, color](const ImageA &rast, int p) {
+        std::string file = StringPrintf("%s-region.%d.%d.png",
+                                        file_base_out.c_str(),
+                                        z, p);
+        const auto &[r, g, b, a_] = ColorUtil::Unpack32(color);
+        rast.AlphaMaskRGBA(r, g, b).Save(file);
+        printf("Wrote %s\n", file.c_str());
+      };
+
+    SaveRaster(raster, 0);
+
+    printf("Smooth Region:\n");
+    Periodically status_per(1.0);
+    Timer timer;
+    int KERNEL_RADIUS = 0;
+    for (int i = 0; i < max_passes; i++) {
+      if (KERNEL_RADIUS == 0) KERNEL_RADIUS = 1;
+      else if (KERNEL_RADIUS == 1) KERNEL_RADIUS = 2;
+      else KERNEL_RADIUS *= 1.5;
+      // TODO: Can I fiddle with this so that blobs don't always grow??
+      // static constexpr int KERNEL_RADIUS = 18;
+      // We fill the center of the kernel only. Otherwise there is
+      // essentially always a way of extending a blob by placing the
+      // circle only ever-so-slightly off its edge.
+      const int KERNEL_FILL_RADIUS = KERNEL_RADIUS >> 1;
+      static constexpr float VOTE_THRESHOLD = 0.5f;
 
       // To avoid weird appearance due to order dependence,
       // we add all the pixels at the end of the pass.
-      ImageA new_raster = raster;
-      std::unordered_set<int> pixels_to_add;
+      // ImageA new_raster = raster;
+
+      // We'll write to the pixels from separate threads.
+      std::vector<std::atomic<uint8_t>> new_raster(
+          raster.Width() * raster.Height());
+      for (int m = 0; m < raster.Width() * raster.Height(); m++)
+        new_raster[m].store(0);
+
+      auto SetNewPixel = [&](int x, int y, uint8_t v) {
+          new_raster[Idx(x, y)].store(v);
+        };
+      auto GetNewPixel = [&](int x, int y) -> uint8_t {
+          return new_raster[Idx(x, y)].load();
+        };
 
       for (int cy = 0; cy < in->Height(); cy++) {
-        for (int cx = 0; cx < in->Width(); cx++) {
+        // In parallel. This only writes to new_raster, which
+        // supports parallel access (to different pixels).
+        ParallelComp(
+            in->Width(),
+            [&](int cx) {
+              int count = 0;
+              int count_all = 0;
+              ForEachPixelInCircle(
+                  cx, cy, KERNEL_RADIUS,
+                  [&raster, &count, &count_all](int x, int y) {
+                    count_all++;
+                    if (raster.GetPixel(x, y)) {
+                      count++;
+                    }
+                  });
 
-          int count = 0;
-          int count_all = 0;
-          ForEachPixelInCircle(
-              cx, cy, KERNEL_RADIUS,
-              [this, &region, &raster, &count, &count_all](int x, int y) {
-                count_all++;
-                // if (region.pixels.contains(Idx(x, y))) {
-                // count++;
-                // }
-                if (raster.GetPixel(x, y)) {
-                  count++;
+              if (count_all > 0) {
+                float frac = count / (float)count_all;
+                if (frac >= VOTE_THRESHOLD) {
+                  // Then fill it. We only fill inside the hull, though.
+                  ForEachPixelInCircle(
+                      cx, cy, KERNEL_FILL_RADIUS,
+                      [this, z, &SetNewPixel](int x, int y) {
+                        if (WillOverwrite(x, y, z)) {
+                          SetNewPixel(x, y, 0xFF);
+                        }
+                      });
                 }
-              });
+              }
+            }, 12);
 
-          if (count / (float)count_all >= VOTE_THRESHOLD) {
-            // Then fill it. We only fill inside the hull, though.
-            ForEachPixelInCircle(
-                cx, cy, KERNEL_FILL_RADIUS,
-                [this, z, &pixels_to_add, &new_raster](int x, int y) {
-                  if (WillOverwrite(x, y, z)) {
-                    new_raster.SetPixel(x, y, 0xFF);
-                    // pixels_to_add.insert(Idx(x, y));
-                  }
-                });
-
-          }
+        if (status_per.ShouldRun()) {
+          std::string prog =
+            ANSI::ProgressBar(cy, in->Height(),
+                              StringPrintf("Pass %d/%d",
+                                           i, max_passes),
+                              timer.Seconds());
+          printf(ANSI_UP "%s\n", prog.c_str());
         }
+
+
       }
 
       // Now any new pixels.
-      // bool added = false;
-      // for (int idx : pixels_to_add) {
-      // added = region.pixels.insert(idx).second || added;
-      // }
-      const bool added = [&raster, &new_raster]() {
-          for (int y = 0; y < raster.Height(); y++) {
-            for (int x = 0; x < raster.Width(); x++) {
-              if (raster.GetPixel(x, y) == 0 &&
-                  new_raster.GetPixel(x, y) != 0) {
-                return true;
-              }
-            }
+      bool added = false;
+      for (int y = 0; y < raster.Height(); y++) {
+        for (int x = 0; x < raster.Width(); x++) {
+          if (raster.GetPixel(x, y) == 0 &&
+              GetNewPixel(x, y) != 0) {
+            added = true;
+            raster.SetPixel(x, y, 0xFF);
           }
-          return false;
-        }();
+        }
+      }
 
       // No more passes are needed, since there will be no more
       // changes.
@@ -382,25 +426,8 @@ struct Animation {
       }
 
       // PERF only if debugging is enabled!
-      {
-        std::string file = StringPrintf("%s-region.%d.%d.png",
-                                        file_base_out.c_str(),
-                                        z, i);
-        const auto &[r, g, b, a_] = ColorUtil::Unpack32(color);
-        new_raster.AlphaMaskRGBA(r, g, b).Save(file);
-        /*
-        ImageRGBA smoothed(in->Width(), in->Height());
-        for (int idx : region.pixels) {
-          const auto &[x, y] = UnIdx(idx);
-          smoothed.SetPixel32(x, y, color);
-        }
-        smoothed.Save(file);
-        */
-        printf("Wrote %s\n", file.c_str());
-      }
-
-      raster = std::move(new_raster);
-
+      // We use i + 1 so as not to interfere with the original at 0.
+      SaveRaster(raster, i + 1);
     }
 
     // convert raster back to region. pixels are only added.
@@ -419,18 +446,89 @@ struct Animation {
     CIRCLE,
   };
 
+  float ComputePenRadius(int z) const {
+    static constexpr float MAX_PEN_RADIUS = 14.0f;
+    static constexpr float MIN_PEN_RADIUS = 2.0f;
+    // To figure out what pen size to use, we compute the average
+    // distance to a pixel that's not in the region. We start by
+    // inverting the region.
+    CHECK(z >= 0 && z < (int)layer_colors.size());
+    const uint32_t color = layer_colors[z];
+    auto rit = regions.find(color);
+    CHECK(rit != regions.end());
+    const Region &region = rit->second;
+
+    double total_dist = 0.0;
+    int num_samples = 0;
+
+    Tree2D<int, char> negative;
+    std::vector<int> sample;
+    for (int idx = 0; idx < in->Width() * in->Height(); idx++) {
+      if (!region.pixels.contains(idx)) {
+        const auto &[x, y] = UnIdx(idx);
+        negative.Insert(x, y, 0);
+      } else {
+        sample.push_back(idx);
+      }
+    }
+
+    if (sample.empty()) return MIN_PEN_RADIUS;
+
+    // We also treat the edge of the image as negative.
+    for (int y = -1; y <= in->Height(); y++) {
+      negative.Insert(-1, y, 0);
+      negative.Insert(in->Width(), y, 0);
+    }
+
+    // This time, not including the corners.
+    for (int x = 0; x < in->Width(); x++) {
+      negative.Insert(x, -1, 0);
+      negative.Insert(x, in->Height(), 0);
+    }
+
+    CHECK(!negative.Empty());
+
+    // Now do some samples.
+    ArcFour rc(StringPrintf("layer%d", z));
+    Shuffle(&rc, &sample);
+
+    static constexpr int MAX_SAMPLES = 2000;
+    for (int i = 0; i < (int)sample.size() && i < MAX_SAMPLES; i++) {
+      const auto &[x, y] = UnIdx(sample[i]);
+      const auto &[pos_, t_, dist] = negative.Closest({x, y});
+      total_dist += dist;
+      num_samples++;
+    }
+
+    float pen_size =
+      std::clamp((float)(total_dist / num_samples),
+                 MIN_PEN_RADIUS, MAX_PEN_RADIUS);
+
+    {
+      const auto &[r, g, b, a_] = ColorUtil::Unpack32(color);
+      printf("Pen size for layer %d (%s██" ANSI_RESET " is %.3f\n",
+             z,
+             ANSI::ForegroundRGB(r, g, b).c_str(),
+             pen_size);
+    }
+    return pen_size;
+  }
+
   void DrawLayer(const std::string &file_base_out,
                  ImageRGBA *frame,
-                 int layer_num,
+                 int z,
                  const Region &region) {
-
-    constexpr PenShape PEN_SHAPE = PenShape::SQUARE;
 
     // This essentially governs how many frames it takes to
     // generate the image.
     constexpr float MAX_PEN_VELOCITY = 24.0f;
     // The radius is half the side length for square pens.
-    constexpr float PEN_RADIUS = 6.0f;
+    const float PEN_RADIUS =
+      z < (int)layer_colors.size() ? ComputePenRadius(z) : 6.0f;
+
+    const PenShape PEN_SHAPE =
+      PEN_RADIUS > 10.0f ? PenShape::CIRCLE :
+      PenShape::SQUARE;
 
     // In [0, 1]. How much of the target velocity gets sent
     // to the current velocity per frame (this is not how
@@ -444,13 +542,99 @@ struct Animation {
     static_assert(TIMESTEPS_PER_FRAME > 0);
 
     // TODO: Blend frames
+    const int BLEND_FRAMES = 20;
+    std::shared_ptr<std::vector<ImageRGBA>> frames_to_blend;
 
-    constexpr float PEN_SEARCH_RADIUS =
-      PEN_SHAPE == PenShape::CIRCLE ? PEN_RADIUS :
-      (float) PEN_RADIUS * std::numbers::sqrt2;
+    const float PEN_SEARCH_RADIUS = 1.0f +
+      (PEN_SHAPE == PenShape::CIRCLE ? PEN_RADIUS :
+       (float) PEN_RADIUS * std::numbers::sqrt2);
 
     Asynchronously async(16);
     Periodically status_per(1.0);
+
+    int layer_frames = 0;
+    auto EmitFrames = [this, &file_base_out, &frames_to_blend, &async,
+                       &layer_frames]() {
+        if (frames_to_blend.get() == nullptr) return;
+
+        async.Run(
+            [this,
+             &file_base_out,
+             fnum = frame_num,
+             fr = frames_to_blend]() {
+              // Blend!
+
+              CHECK(!fr->empty());
+
+              std::vector<uint32_t> colors(fr->size());
+              auto AllSame = [&colors]() {
+                  uint32_t c = colors[0];
+                  for (int i = 1; i < (int)colors.size(); i++) {
+                    if (colors[i] != c) return false;
+                  }
+                  return true;
+                };
+              auto BlendColor = [&colors, &AllSame]() -> uint32_t {
+                  // Due to the nature of these animations, the
+                  // vast majority of the time, all the blended
+                  // frames will have the same exact color value
+                  // at a pixel.
+                  if (AllSame()) return colors[0];
+                  // Otherwise, compute the blended color, favoring
+                  // quality!
+
+                  // total values in L*A*B* color space, where linear
+                  // interpolation (i.e. average) is perceptual. The
+                  // totals are alpha weighted.
+                  double ll = 0.0, aa = 0.0, bb = 0.0;
+
+                  double total_alpha = 0.0;
+                  for (uint32_t c : colors) {
+                    const auto &[r, g, b, a] = ColorUtil::U32ToFloats(c);
+                    const auto &[L, A, B] = ColorUtil::RGBToLAB(r, g, b);
+                    total_alpha += a;
+                    ll += L * a;
+                    aa += A * a;
+                    bb += B * a;
+                  }
+
+                  if (total_alpha == 0.0) {
+                    // Every pixel was totally transparent. In this case
+                    // we output a black transparent pixel for uniformity.
+                    return 0x00000000;
+                  } else {
+                    ll /= total_alpha;
+                    aa /= total_alpha;
+                    bb /= total_alpha;
+                    // Now back to RGB.
+                    const auto &[newr, newg, newb] =
+                      ColorUtil::LABToRGB(ll, aa, bb);
+                    double newalpha = total_alpha / colors.size();
+                    return ColorUtil::FloatsTo32(newr, newg, newb, newalpha);
+                  }
+
+                };
+
+              ImageRGBA frame(in->Width(), in->Height());
+              for (int y = 0; y < in->Height(); y++) {
+                for (int x = 0; x < in->Width(); x++) {
+                  for (int i = 0; i < (int)fr->size(); i++) {
+                    colors[i] = (*fr)[i].GetPixel32(x, y);
+                  }
+                  frame.SetPixel32(x, y, BlendColor());
+                }
+              }
+
+              std::string frame_file = StringPrintf("%s-%d.png",
+                                                    file_base_out.c_str(),
+                                                    fnum);
+              frame.Save(frame_file);
+            });
+
+        frames_to_blend.reset();
+        frame_num++;
+        layer_frames++;
+      };
 
     // Pick a random corner, maybe?
     float cx = 0.0f, cy = frame->Height() - 1.0f;
@@ -470,7 +654,6 @@ struct Animation {
     double sec = timer.Seconds();
     printf("Built tree in %s\n", ANSI::Time(sec).c_str());
 
-    int layer_frames = 0;
     while (!remaining.Empty()) {
 
       for (int t = 0; t < TIMESTEPS_PER_FRAME; t++) {
@@ -495,7 +678,7 @@ struct Animation {
         cx += (cdx / TIMESTEPS_PER_FRAME);
         cy += (cdy / TIMESTEPS_PER_FRAME);
 
-        auto InsidePen = [cx, cy](float x, float y) {
+        auto InsidePen = [PEN_RADIUS, PEN_SHAPE, cx, cy](float x, float y) {
             float dy = y - cy;
             float dx = x - cx;
             switch (PEN_SHAPE) {
@@ -523,6 +706,8 @@ struct Animation {
           remaining.LookUp(Pos(std::round(cx), std::round(cy)),
                            PEN_SEARCH_RADIUS);
 
+        // TODO:
+
         // Since the pen may not be a circle, we look up by the
         // containing radius but then filter.
         std::vector<Pos> inside;
@@ -535,18 +720,26 @@ struct Animation {
 
         // Draw those pixels and delete them from the tree.
         std::unordered_map<uint32_t, int> ink_count;
+        std::vector<std::pair<int, int>> stray_ink;
         for (const auto &[x, y] : inside) {
-          // Always with the original pixel, not the posterized one.
-          // We save this color for ink spill. It might be better
-          // to use the average color, or the most common one?
-          uint32_t c = in->GetPixel32(x, y);
-          frame->SetPixel32(x, y, c);
-          ink_count[c]++;
-
+          if (WillOverwrite(x, y, z)) {
+            // We can't use the actual color, since this pixel is not
+            // in the original region. So we use the posterized color.
+            uint32_t c = layer_colors[z];
+            frame->SetPixel32(x, y, c);
+            ink_count[c] = 1;
+            stray_ink.emplace_back(x, y);
+          } else {
+            // If this is a final pixel (nothing will overwrite it)
+            // then use its final actual color.
+            uint32_t c = in->GetPixel32(x, y);
+            frame->SetPixel32(x, y, c);
+            ink_count[c]++;
+          }
           CHECK(remaining.Remove(x, y));
         }
 
-        if (!inside.empty()) {
+        if (!stray_ink.empty()) {
           // The pen is "down", so we also leave ink wherever it will
           // be overwritten on a deeper layer.
 
@@ -559,28 +752,8 @@ struct Animation {
             }
           }
 
-          // Rasterize the circle by looping over the bounding box.
-          int xmin = std::floor(cx - PEN_RADIUS);
-          int xmax = std::ceil(cx + PEN_RADIUS);
-          int ymin = std::floor(cy - PEN_RADIUS);
-          int ymax = std::ceil(cy + PEN_RADIUS);
-          for (int y = ymin; y <= ymax; y++) {
-            if (y >= 0 && y < frame->Height()) {
-              float dy = y - cy;
-              float ddy = dy * dy;
-              for (int x = xmin; x <= xmax; x++) {
-                if (x >= 0 && x < frame->Width()) {
-                  float dx = x - cx;
-                  float ddx = dx * dx;
-                  const bool in_circle = sqrtf(ddx + ddy) < PEN_RADIUS;
-                  if (in_circle) {
-                    if (WillOverwrite(x, y, layer_num)) {
-                      frame->SetPixel32(x, y, freq_color);
-                    }
-                  }
-                }
-              }
-            }
+          for (const auto &[x, y] : stray_ink) {
+            frame->SetPixel32(x, y, freq_color);
           }
         }
 
@@ -590,33 +763,41 @@ struct Animation {
       // frame. We need the copy to write asynchronously anyway.
       // TODO: Draw different pen shapes?
       // TODO: Thicken the cursor?
-      std::shared_ptr<ImageRGBA> frame_copy(frame->Copy());
-      frame_copy->BlendCircle32(cx, cy, PEN_RADIUS + 1.0f, 0x00000077);
+      {
+        if (frames_to_blend.get() == nullptr)
+          frames_to_blend = std::make_shared<std::vector<ImageRGBA>>();
 
-      async.Run(
-          [&file_base_out,
-           fnum = frame_num,
-           fr = frame_copy]() {
-          std::string frame_file = StringPrintf("%s-%d.png",
-                                                file_base_out.c_str(),
-                                                fnum);
-          fr->Save(frame_file);
-          });
-      frame_num++;
-      layer_frames++;
+        ImageRGBA frame_copy = *frame;
+        frame_copy.BlendThickCircle32(cx, cy,
+                                      PEN_RADIUS + 1.0f,
+                                      4.0f,
+                                      0xFFFFFFAA);
+        frame_copy.BlendThickCircle32(cx, cy,
+                                      PEN_RADIUS + 1.0f,
+                                      2.0f,
+                                      0x000000AA);
+        frames_to_blend->emplace_back(std::move(frame_copy));
+      }
 
+      CHECK(frames_to_blend.get() != nullptr);
+      if (frames_to_blend->size() == BLEND_FRAMES) {
+        EmitFrames();
 
-      if (status_per.ShouldRun()) {
-        const int pixels_done = start_pixels - remaining.Size();
-        std::string prog =
-          ANSI::ProgressBar(pixels_done, start_pixels,
-                            StringPrintf("Layer %d/%d",
-                                         layer_num + 1,
-                                         (int)layer_colors.size()),
-                            timer.Seconds());
-        printf(ANSI_UP "%s\n", prog.c_str());
+        if (status_per.ShouldRun()) {
+          const int pixels_done = start_pixels - remaining.Size();
+          std::string prog =
+            ANSI::ProgressBar(pixels_done, start_pixels,
+                              StringPrintf("Layer %d/%d",
+                                           z + 1,
+                                           (int)layer_colors.size()),
+                              timer.Seconds());
+          printf(ANSI_UP "%s\n", prog.c_str());
+        }
       }
     }
+
+    // If we have an incomplete blending batch, emit what we have.
+    EmitFrames();
 
     printf("Finished layer in %d frames, %s.\n", layer_frames,
            ANSI::Time(timer.Seconds()).c_str());
