@@ -85,6 +85,7 @@ static void TestWhitespace() {
                                                     "\rworld  \r\r\n"));
   CHECK_EQ("hello world", Util::NormalizeWhitespace("hello world"));
   CHECK_EQ("hello world", Util::NormalizeWhitespace("\thello\tworld\t"));
+  CHECK_EQ("hello world", Util::NormalizeWhitespace("hello\nworld"));
   string s;
   CHECK_EQ("", Util::NormalizeWhitespace(s));
 

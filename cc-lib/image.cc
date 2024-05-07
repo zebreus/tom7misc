@@ -1489,3 +1489,111 @@ ImageA ImageF::Make8Bit() const {
   }
   return out;
 }
+
+
+Image1 ImageA::Threshold(uint8_t min_one) const {
+  Image1 out(Width(), Height());
+  for (int y = 0; y < Height(); y++) {
+    for (int x = 0; x < Width(); x++) {
+      uint8_t v = GetPixel(x, y);
+      out.SetPixel(x, y, v > min_one);
+    }
+  }
+  return out;
+}
+
+int Image1::NumWords(int pixels) {
+  return (pixels >> 6) + ((pixels & 63) ? 1 : 0);
+}
+
+Image1::Image1(const std::vector<bool> &alpha, int width, int height) :
+  Image1(width, height) {
+  CHECK(alpha.size() == width * height);
+  int idx = 0;
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      SetPixel(x, y, alpha[idx]);
+      idx++;
+    }
+  }
+}
+
+Image1::Image1(int width, int height) : width(width), height(height),
+                                        bits(NumWords(width * height), 0) {
+  // printf("%d x %d stored in %d words\n", width, height, (int)bits.size());
+}
+
+void Image1::Clear() {
+  for (uint64_t &w : bits) w = 0;
+}
+
+Image1 Image1::Inverse() const {
+  Image1 out(Width(), Height());
+  for (int px = 0; px < bits.size(); px++) {
+    out.bits[px] = ~bits[px];
+  }
+  out.CanonicalMask();
+  return out;
+}
+
+void Image1::CanonicalMask() {
+  const int num_bits = width * height;
+  const int trailing_bits = num_bits & 63;
+  if (trailing_bits) {
+    // Then we need to mask the last word. Since there are nonzero
+    // trailing bits, this also means that there is at least one
+    // word in the vector.
+
+    // We read bits from left to right and msb to lsb, so we want
+    // to generate a mask like 0b111111000000000 where the number
+    // of 1 bits is equal to trailing_bits.
+    // All ones.
+    uint64_t mask = ~uint64_t{0};
+    // Then shift this many zeroes in.
+    mask <<= (64 - trailing_bits);
+    bits.back() &= mask;
+  }
+}
+
+// We ensure that trailing bits are zero, so equality and hashing
+// are just on the words.
+bool Image1::operator ==(const Image1 &other) const {
+  if (other.Width() != Width()) return false;
+  if (other.Height() != Height()) return false;
+  return other.bits == bits;
+}
+
+std::size_t Image1::Hash() const {
+  uint64_t h = width * 0xCAFE0031337;
+  for (uint64_t w : bits) {
+    h = std::rotr<uint64_t>(h, 49);
+    h ^= w;
+    h *= 0x12345678111;
+  }
+  return (std::size_t)h;
+}
+
+ImageRGBA Image1::MonoRGBA(uint32_t one, uint32_t zero) const {
+  ImageRGBA out(Width(), Height());
+  // PERF: Probably a lot faster to work a word at a time, especially
+  // if we have to do bounds checking with SetPixel32 anyway.
+  for (int y = 0; y < Height(); y++) {
+    for (int x = 0; x < Width(); x++) {
+      uint32_t c = Sub(y * width + x) ? one : zero;
+      out.SetPixel32(x, y, c);
+    }
+  }
+  return out;
+}
+
+ImageA Image1::MonoA(uint8_t one, uint8_t zero) const {
+  ImageA out(Width(), Height());
+  // PERF: As above.
+  for (int y = 0; y < Height(); y++) {
+    for (int x = 0; x < Width(); x++) {
+      uint8_t v = Sub(y * width + x) ? one : zero;
+      out.SetPixel(x, y, v);
+    }
+  }
+  return out;
+}

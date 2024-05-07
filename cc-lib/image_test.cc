@@ -3,9 +3,13 @@
 
 #include <unordered_set>
 #include <functional>
+#include <cstdint>
 
 #include "base/logging.h"
 #include "arcfour.h"
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 static void TestCreateAndDestroy() {
   {
@@ -20,6 +24,32 @@ static void TestCreateAndDestroy() {
     std::vector<uint8_t> pixels(8, 0);
     ImageRGBA img(pixels, 2, 1);
   }
+
+  {
+    ImageA imga(100, 200);
+  }
+
+  {
+    ImageF imgf(5, 7);
+  }
+
+  {
+    Image1 img1(333, 1);
+  }
+
+  {
+    Image1 img1(3, 41);
+  }
+
+  {
+    Image1 img1;
+  }
+
+  {
+    std::vector<bool> pixels(20 * 5, false);
+    Image1 img1(pixels, 20, 5);
+  }
+
 }
 
 static ImageRGB RandomRGB(ArcFour *rc, int width, int height) {
@@ -286,6 +316,32 @@ static void TestSaveRGB() {
   img24.SaveJPG("image-test-rgb.jpg", 50);
 }
 
+static void TestRoundTripA1() {
+  ArcFour rc("inv");
+
+  static constexpr int W = 55, H = 41;
+  ImageA imga(W, H);
+  for (int y = 0; y < H; y++) {
+    for (int x = 0; x < W; x++) {
+      imga.SetPixel(x, y, rc.Byte() > 128 ? 0xAA : 0x21);
+    }
+  }
+
+  Image1 img1 = imga.Threshold(0x80);
+  CHECK(img1.Width() == W);
+  CHECK(img1.Height() == H);
+  Image1 img1i = img1.Inverse();
+  CHECK(!(img1 == img1i));
+  CHECK(img1.Hash() != img1i.Hash());
+  Image1 img1ii = img1i.Inverse();
+  CHECK(img1 == img1ii);
+  CHECK(img1.Hash() == img1ii.Hash());
+
+  ImageA imgaii = img1ii.MonoA(0xAA, 0x21);
+  CHECK(imgaii == imga);
+  CHECK(imgaii.Hash() == imga.Hash());
+}
+
 int main(int argc, char **argv) {
   TestCreateAndDestroy();
   TestCopies();
@@ -298,6 +354,8 @@ int main(int argc, char **argv) {
   TestCopyImage();
 
   TestVerticalText();
+
+  TestRoundTripA1();
 
   TestConvertRGB();
   TestSaveRGB();

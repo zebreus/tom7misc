@@ -4,18 +4,20 @@
 #ifndef _CC_LIB_IMAGE_H
 #define _CC_LIB_IMAGE_H
 
-#include <string>
-#include <vector>
-#include <cstdint>
-#include <tuple>
-#include <optional>
 #include <algorithm>
+#include <bitset>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <vector>
 
 // ImageRGBA is recommended for most uses, but other formats are
 // supported below.
 struct ImageRGB;
 struct ImageA;
 struct ImageF;
+struct Image1;
 
 // 4-channel image in R-G-B-A order.
 // uint32s are represented like 0xRRGGBBAA irrespective of native
@@ -280,6 +282,10 @@ struct ImageA {
   // Make a four-channel alpha mask of the same size, RGB=rgb, A=v
   ImageRGBA AlphaMaskRGBA(uint8 r, uint8 g, uint8 b) const;
 
+  // Generate a bitmap image where there's a 1 pixel whenever the
+  // value is >= min_one.
+  Image1 Threshold(uint8_t min_one = 1) const;
+
   // Only increases values.
   void BlendText(int x, int y, uint8 v, const std::string &s);
 
@@ -291,7 +297,6 @@ struct ImageA {
 
   // Clipped.
   inline void SetPixel(int x, int y, uint8 v);
-  // x/y must be in bounds.
   inline uint8 GetPixel(int x, int y) const;
   inline void BlendPixel(int x, int y, uint8 v);
 
@@ -335,7 +340,6 @@ struct ImageF {
 
   // Clipped.
   inline void SetPixel(int x, int y, float v);
-  // x/y must be in bounds.
   inline float GetPixel(int x, int y) const;
   inline void BlendPixel(int x, int y, float v);
 
@@ -351,6 +355,70 @@ private:
   int width, height;
   // Size width * height.
   std::vector<float> alpha;
+};
+
+
+// Single-channel 1-bit bitmap.
+struct Image1 {
+  using uint8 = uint8_t;
+
+  // Consider creating these with ImageA::Threshold.
+
+  Image1(const std::vector<bool> &alpha, int width, int height);
+  Image1(int width, int height);
+  // Empty image sometimes useful for filling vectors, etc.
+  Image1() : Image1(0, 0) {}
+  // Value semantics.
+  Image1(const Image1 &other) = default;
+  Image1(Image1 &&other) = default;
+
+  Image1 &operator =(const Image1 &other) = default;
+  Image1 &operator =(Image1 &&other) = default;
+
+  bool operator ==(const Image1 &other) const;
+  // Deterministic hash, but not intended to be stable across
+  // invocations.
+  std::size_t Hash() const;
+
+  int Width() const { return width; }
+  int Height() const { return height; }
+
+  // Make a four-channel image of the same size, using the given
+  // colors for 1 and 0.
+  ImageRGBA MonoRGBA(uint32_t one = 0xFFFFFFFF,
+                     uint32_t zero = 0x00000000) const;
+  ImageA MonoA(uint8_t one = 0xFF, uint8_t zero = 0x00) const;
+
+  void Clear();
+
+  // TODO: Can easily support logical operations on images that
+  // are the same size. But maybe I want that to be generalized
+  // to regions.
+  Image1 Inverse() const;
+
+  // Clipped.
+  inline void SetPixel(int x, int y, bool v);
+  inline bool GetPixel(int x, int y) const;
+
+private:
+  int width, height;
+  // Size width * height / 64.
+  // Only padded at the end (with zeroes); a word can span more than
+  // one pixel row.
+  // PERF: Consider different representations here. It could be that
+  // a vector of bytes is just faster, for example.
+  std::vector<uint64_t> bits;
+
+  // No bounds checking.
+  inline bool Sub(int px) const;
+  inline void Set(int px, bool b);
+
+  // The number of 64-bit words we need to represent the given
+  // number of pixels.
+  static int NumWords(int pixels);
+  // If any bits outside of the image region were modified, call this
+  // to restore the representation invariant by zeroing them.
+  void CanonicalMask();
 };
 
 
@@ -464,5 +532,34 @@ void ImageF::BlendPixel(int x, int y, float value) {
   SetPixel(x, y, opaque_part + transparent_part);
 }
 
+
+bool Image1::Sub(int px) const {
+  const uint64_t w = bits[px >> 6];
+  const uint64_t sel = uint64_t{1} << (63 - (px & 63));
+  return !!(w & sel);
+}
+
+void Image1::Set(int px, bool b) {
+  // PERF: Make sure the compiler does this without branches.
+  const uint64_t sel = uint64_t{1} << (63 - (px & 63));
+  if (b) {
+    bits[px >> 6] |= sel;
+  } else {
+    bits[px >> 6] &= ~sel;
+  }
+}
+
+
+bool Image1::GetPixel(int x, int y) const {
+  if ((unsigned)x >= (unsigned)width) return 0;
+  if ((unsigned)y >= (unsigned)height) return 0;
+  return Sub(y * width + x);
+}
+
+void Image1::SetPixel(int x, int y, bool value) {
+  if ((unsigned)x >= (unsigned)width) return;
+  if ((unsigned)y >= (unsigned)height) return;
+  Set(y * width + x, value);
+}
 
 #endif
