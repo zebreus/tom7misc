@@ -430,7 +430,7 @@ static void RephraseMono(
 }
 
 int main(int argc, char ** argv) {
-  CHECK(argc >= 2) << "Usage: ./rephrase.exe input.txt\n";
+  CHECK(argc >= 2) << "Usage: ./monospace.exe input.txt\n";
 
   constexpr const char *prompt_file = "rephrase-monospace.txt";
   const string prompt = Util::ReadFile(prompt_file);

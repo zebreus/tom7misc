@@ -1,7 +1,9 @@
 
-default: bovex.exe monospace.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe upcontrast.exe
+default: bovex.exe monospace.exe monofile.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe upcontrast.exe
 
 ENABLE_LLM=true
+
+# TODO: Should perhaps separate out BoVeX from the other video/paper stuff?
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -67,8 +69,6 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 
 CC_LIB_OBJECTS=$(RE2_OBJECTS) $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/image-resize.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/pdf.o $(CC_LIB)/qr-code.o $(CC_LIB)/color-util.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/boxes-and-glue.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/opt/opt.o $(CC_LIB)/opt/opt-seq.o
 
-CHESS_OBJECTS=$(CHESS)
-
 BIT7_OBJECTS=$(BIT7)/font-image.o
 
 ifndef UNAME_S
@@ -102,8 +102,6 @@ endif
 #
 # Compile flags
 #
-
-# keep standard at C11 and C++11
 
 CFLAGS   = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7) -std=c11 -fPIC $(PLATFORM_CFLAGS)
 CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7) -std=c++20 -fPIC $(PLATFORM_CFLAGS)
@@ -311,6 +309,9 @@ parsing.o : parsing.cc parsing.h inclusion.h el.h lexing.h $(CC_LIB)/parser-comb
 
 
 monospace.exe : monospace.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS) $(BIT7_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+monofile.exe : monofile.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS) $(BIT7_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 test-rephrase.exe : test-rephrase.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
