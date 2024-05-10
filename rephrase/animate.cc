@@ -311,19 +311,19 @@ struct Animation {
     Region &region = regions[color];
 
     // Use rasterized region.
-    ImageA raster(in->Width(), in->Height());
-    raster.Clear(0);
+    Image1 raster(in->Width(), in->Height());
+    raster.Clear();
     for (int idx : region.pixels) {
       const auto &[x, y] = UnIdx(idx);
-      raster.SetPixel(x, y, 0xFF);
+      raster.SetPixel(x, y, true);
     }
 
-    auto SaveRaster = [&file_base_out, z, color](const ImageA &rast, int p) {
+    auto SaveRaster = [&file_base_out, z, color](const Image1 &rast, int p) {
         std::string file = StringPrintf("%s-region.%d.%d.png",
                                         file_base_out.c_str(),
                                         z, p);
-        const auto &[r, g, b, a_] = ColorUtil::Unpack32(color);
-        rast.AlphaMaskRGBA(r, g, b).Save(file);
+        // const auto &[r, g, b, a_] = ColorUtil::Unpack32(color);
+        rast.MonoRGBA(color | 0xFF).Save(file);
         printf("Wrote %s\n", file.c_str());
       };
 
@@ -410,10 +410,10 @@ struct Animation {
       bool added = false;
       for (int y = 0; y < raster.Height(); y++) {
         for (int x = 0; x < raster.Width(); x++) {
-          if (raster.GetPixel(x, y) == 0 &&
+          if (raster.GetPixel(x, y) &&
               GetNewPixel(x, y) != 0) {
             added = true;
-            raster.SetPixel(x, y, 0xFF);
+            raster.SetPixel(x, y, true);
           }
         }
       }
@@ -433,7 +433,7 @@ struct Animation {
     // convert raster back to region. pixels are only added.
     for (int y = 0; y < raster.Height(); y++) {
       for (int x = 0; x < raster.Width(); x++) {
-        if (raster.GetPixel(x, y) != 0) {
+        if (raster.GetPixel(x, y)) {
           region.pixels.insert(Idx(x, y));
         }
       }

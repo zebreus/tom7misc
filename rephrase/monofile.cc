@@ -2,14 +2,12 @@
 // Like monospace.exe, but processes a whole text file.
 
 #include <algorithm>
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
 #include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -20,21 +18,17 @@
 #include "util.h"
 #include "auto-histo.h"
 #include "threadutil.h"
-#include "image.h"
-#include "color-util.h"
 
-#include "llama.h"
 #include "llm.h"
 #include "models.h"
 #include "font-image.h"
+#include "line-rephrasing.h"
 
 using namespace std;
 
 static constexpr bool GENERATE_IMAGES = false;
-// 5% seems like a good choice, but I'm using lower for the
-// AEOUD talk visualization.
-static constexpr float MIN_P = 0.05;
 
+[[maybe_unused]]
 static void PrintGreyParity(const std::string &tok) {
   static bool odd = 0;
   if (odd) {
@@ -45,142 +39,9 @@ static void PrintGreyParity(const std::string &tok) {
   odd = !odd;
 }
 
-// Characters that it's reasonable to start a line with.
-#define ASCII_LINE_START "[A-Za-z0-9()\"']"
-#define ASCII_CHAR "[-A-Za-z0-9~`!@#$%^&*()_+={}:;|<>?/,.'\"\\[\\]\\\\ ]"
-#define ASCII_NOT_SPACE "[-A-Za-z0-9~`!@#$%^&*()_+={}:;|<>?/,.'\"\\[\\]\\\\]"
-
-// TODO: Increase weights of tokens from input.
-
-// Tokens are not typically full words. As we fill a line,
-// we make sure that we add a word at a time, so that we
-// don't inadvertently end a line in the middle of a word.
-struct WordStream {
-  // The wordstream is a lightweight wrapper around the llm;
-  // it does not maintain any state.
-  explicit WordStream(int max_word_length, LLM *llm) :
-    max_word_length(max_word_length), llm(llm) {}
-
-  llama_token Sample(float temp,
-                     std::vector<std::pair<std::string, float>> *next) {
-    auto cand = llm->context.GetCandidates();
-    llm->sampler.FilterByNFA(cand.get());
-    Sampler::UpdateCandidatesTemp(temp, cand.get());
-
-    // Generate visualization before min_p sampling.
-    if (next != nullptr) {
-      auto top = llm->TopCandidates(*cand, -1);
-      for (const auto &[s, l, p] : top) {
-        next->emplace_back(s, p);
-      }
-    }
-
-    if (MIN_P > 0.0) {
-      llm->sampler.UpdateCandidatesMinP(MIN_P, 1, cand.get());
-    }
-
-    return llm->sampler.SampleRaw(std::move(cand));
-  }
-
-  // Returns the word (whitespace etc. intact).
-  std::string Next(float temp,
-                   std::vector<std::pair<std::string, float>> *next_out) {
-
-    CHECK(!llm->sampler.Stuck()) << "STUCK!";
-
-    // We start with the probability distribution just being the
-    // empty string with 1.0 mass.
-    std::map<std::string, float> wnext = {
-      {"", 1.0},
-    };
-
-    std::string partial_word;
-    for (;;) {
-      // We will definitely fail in this case (and probably
-      // the model is off the rails), so just return it.
-      if ((int)partial_word.size() > max_word_length) return partial_word;
-
-      // Sample, but do not yet take, the token.
-      // int id = llm->Sample();
-      std::vector<std::pair<std::string, float>> next;
-      const int id = Sample(temp, &next);
-      string tok = llm->context.TokenString(id);
-
-      // We have a "word" if the new partial_word contains a space.
-      //
-      // Since spaces only lead tokens, this happens when the newly
-      // predicted token starts with a space. And then the save state
-      // is the one right before this token.
-      //
-      // Note that the "word" here could be something that ends a
-      // sentence, like "finished." or "\"finishing,\"". Basically we
-      // rely on the model's own notion of word breaks.
-      //
-      // TODO: We could insist that the next token is appropriate
-      // for after a line break (e.g. it should not be " --").
-
-      if (!partial_word.empty() &&
-          (id == llm->context.EOSToken() ||
-           tok[0] == ' ')) {
-        // PERF: We could keep the sampled token for the next
-        // call, if we want, saving a little time.
-        if (next_out != nullptr) {
-          next_out->clear();
-          next_out->reserve(wnext.size());
-          for (const auto &[s, p] : wnext) {
-            next_out->emplace_back(s, p);
-          }
-          // By descending probability.
-          std::sort(next_out->begin(), next_out->end(),
-                    [](const auto &a, const auto &b) {
-                      return a.second > b.second;
-                    });
-        }
-        // printf("Partial word [%s]\n", partial_word.c_str());
-        return partial_word;
-      } else {
-
-        // Now split the current word into multiple entries.
-        {
-          float oldp = wnext[partial_word];
-          wnext.erase(partial_word);
-          for (const auto &[suffix, p] : next) {
-            std::string new_word = partial_word + suffix;
-           float new_p = oldp * p;
-            // In theory this could coincide with an existing entry,
-            // so add probability mass in that case.
-            wnext[new_word] += new_p;
-          }
-        }
-
-        // Otherwise, keep building up the word.
-        // We accept the token.
-        llm->TakeTokenBatch({id});
-        partial_word += tok;
-      }
-    }
-  }
- private:
-  int max_word_length = 80;
-  LLM *llm = nullptr;
-};
-
 static std::string LengthIndicator(int line_width) {
   return std::string(line_width, '-');
 }
-
-struct VizFrame {
-  int frame_num = 0;
-  AutoHisto::Histo length_histo;
-  // Successful lines so far
-  std::vector<std::string> good;
-  float temp = 0.0;
-  std::map<std::string, int> failures;
-
-  // Line so far.
-  std::string current;
-  std::vector<std::pair<std::string, float>> nexts;
-};
 
 struct MonoFile {
 
@@ -250,7 +111,7 @@ struct MonoFile {
 
     printf("Adding task prompt:\n" AGREY("%s") "\n", task_prompt.c_str());
 
-    // Now follow the classic monospace approach.
+    // Now monospace this one paragraph.
     llm->InsertString(task_prompt, true);
 
     std::vector<std::string> lines;
@@ -264,172 +125,37 @@ struct MonoFile {
     std::map<std::string, int> failures;
 
     LLM::State line_beginning = llm->SaveState();
-    float current_temp = 1.0f;
-    int frame_num = 0;
-
-    auto GenFrame = [&](const std::string &line,
-                        std::vector<std::pair<std::string, float>> *nexts) {
-      if (GENERATE_IMAGES) {
-        VizFrame frame{
-          .frame_num = frame_num++,
-          .length_histo = len_histo->GetHisto(12),
-          .good = lines,
-          .temp = current_temp,
-          .failures = failures,
-          .current = line,
-        };
-
-        if (nexts != nullptr) {
-          frame.nexts = *nexts;
-        }
-
-        viz_async.Run([this, frame = std::move(frame)]() {
-          const int WIDTH = 960;
-          const int HEIGHT = 540;
-
-          ImageRGBA img(WIDTH, HEIGHT);
-          img.Clear32(0x000000FF);
-
-          int xpos = 8;
-          int ypos = 8;
-
-          font->DrawText(&img, xpos, ypos,
-                         0x999999FF,
-                         "Rephrased text:");
-          ypos += font->Height();
-
-          // Fixed width.
-          const int font_width = font->Width('m');
-
-          for (int y = 0; y < (int)frame.good.size(); y++) {
-            font->DrawText(&img, xpos, ypos,
-                           0x99FF99FF,
-                           frame.good[y]);
-            ypos += font->Height();
-          }
-
-          img.BlendRect32(xpos, ypos,
-                          font_width * line_width,
-                          font->Height(),
-                          0x00000077FF);
-
-          font->DrawText(&img, xpos, ypos,
-                         0xFFFFFFCC,
-                         frame.current.c_str());
-          ypos += font->Height();
-
-          const int bottom_pos = HEIGHT / 2 - font->Height();
-
-          for (const auto &[failed, times] : frame.failures) {
-            if (ypos + font->Height() >= bottom_pos)
-              break;
-            font->DrawText(&img, xpos, ypos,
-                           0xCC3333FF,
-                           failed);
-            if (times > 1) {
-              int xx = xpos + failed.size() * font_width;
-              font->DrawText(&img, xx, ypos, 0x77770099, " × ");
-              xx += 3 * font_width;
-              font->DrawText(&img, xx, ypos, 0x997700FF,
-                             StringPrintf("%d", times).c_str());
-            }
-
-            ypos += font->Height();
-          }
-
-          ypos = HEIGHT / 2 - font->Height();
-
-          font->DrawText(
-              &img, xpos, ypos,
-              ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT,
-                                          frame.temp - 1.0),
-              // FIRE
-              StringPrintf("🔥 %.3f", frame.temp).c_str());
-          ypos += font->Height();
-
-          for (const auto &[s, p] : frame.nexts) {
-            uint32_t color =
-              ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, p);
-            color |= 0xFF;
-            font->DrawText(&img, xpos, ypos,
-                           color,
-                           StringPrintf("%.1f%%", p * 100.0));
-            font->DrawText(&img, xpos + 7 * font_width,
-                           ypos,
-                           color,
-                           s);
-            ypos += font->Height();
-          }
-
-          img.ScaleBy(2).Save(
-              StringPrintf("monospace/frame%d.png", frame.frame_num));
-        });
-      }
-      };
 
     for (;;) {
+      // For each line...
+      LineRephrasing lrep(llm, lines.empty(), 3);
 
-      for (const std::string &line : lines) {
-        printf(AFGCOLOR(200, 250, 200, "%s") "\n", line.c_str());
-      }
+      // Try repeatedly to rephrase...
+      for (;;) {
 
-      for (const auto &[line, times] : failures) {
-        printf(AFGCOLOR(190, 50, 50, "%s") "%s\n",
-               line.c_str(),
-               times > 1 ?
-               StringPrintf(" x " AYELLOW("%d"), times).c_str() : "");
-      }
-
-      if (current_temp > 1.0f) {
-        printf("Temperature: %.4f\n", current_temp);
-      }
-      printf("%s\n", LengthIndicator(line_width).c_str());
-
-      // As a loop invariant, line_beginning is the current state.
-      std::string line;
-      llm->NewRNG();
-      // No newlines allowed, either.
-
-      const bool first_line = lines.empty();
-      // must start with non-space. We also exclude various
-      // punctuation that wouldn't make sense.
-      string first_char_regex;
-      if (first_line) {
-        first_char_regex = ASCII_LINE_START;
-      } else {
-        // But! For lines after the first, we want the LLM to think
-        // it's inserting a space, since we did insert a line break.
-        //
-        // We then require a line-starting character.
-        first_char_regex = " " ASCII_LINE_START;
-      }
-
-      llm->sampler.SetRegEx(
-          first_char_regex +
-          // Then we can have anything except two spaces in a row,
-          // and we can't end with space.
-          "(" ASCII_NOT_SPACE "| " ASCII_NOT_SPACE ")*");
-
-      WordStream word_stream(line_width, llm);
-
-      // std::unordered_map<std::string, int> prefix_count;
-
-      // Sample words for this line.
-      while ((int)line.size() < line_width) {
-        std::vector<std::pair<std::string, float>> next;
-        string word =
-          word_stream.Next(current_temp,
-                           GENERATE_IMAGES ? &next : nullptr);
-
-        // At the beginning of a continuation line, a space was
-        // covered by the newline that we implicitly have (and
-        // which the LLM does not see).
-        if (!first_line && line.empty()) {
-          word = Util::LoseWhiteL(word);
+        for (const std::string &line : lines) {
+          printf(AFGCOLOR(200, 250, 200, "%s") "\n", line.c_str());
         }
-        line += word;
-        PrintGreyParity(word);
-        GenFrame(line, &next);
+
+        for (const auto &[line, times] : failures) {
+          printf(AFGCOLOR(190, 50, 50, "%s") "%s\n",
+                 line.c_str(),
+                 times > 1 ?
+                 StringPrintf(" x " AYELLOW("%d"), times).c_str() : "");
+        }
+
+        printf("%s\n", LengthIndicator(line_width).c_str());
+
+        std::string line = lrep.RephraseOnce(
+            line_width,
+            [this](const std::string &s) {
+              printf(ANSI_RESTART_LINE "%s", s.c_str());
+              return (int)s.size() >= line_width ||
+                Util::EndsWith(s, "</P>");
+            });
+
+        printf(ANSI_RESTART_LINE AYELLOW("Got:") "\n"
+               AWHITE("%s") "\n", line.c_str());
 
         std::string_view last_line = line;
         // We might be done if the line now ends with
@@ -441,48 +167,35 @@ struct MonoFile {
           lines.push_back(std::string(last_line));
           return lines;
         }
-      }
 
-      printf("\n(Length: %d)\n", (int)line.size());
+        printf("\n(Length: %d)\n", (int)line.size());
+        len_histo->Observe(line.size());
 
-      len_histo->Observe(line.size());
 
-      if ((int)line.size() == line_width) {
-        // Good!
-        lines.push_back(line);
+        if ((int)line.size() == line_width) {
+          // Good!
+          lines.push_back(line);
 
-        line_beginning = llm->SaveState();
-        failures.clear();
-        current_temp = 1.0;
-        ResetHisto();
-        // and continue with the next line.
+          line_beginning = llm->SaveState();
+          failures.clear();
+          ResetHisto();
+          // and continue with the next line.
+          break;
+        } else {
+          printf(ARED("Failed:") "\n"
+                 "%s\n%s\n",
+                 LengthIndicator(line_width).c_str(),
+                 // std::string(WIDTH, '-').c_str(),
+                 line.c_str());
 
-      } else {
-        printf(ARED("Failed:") "\n"
-               "%s\n%s\n",
-               LengthIndicator(line_width).c_str(),
-               // std::string(WIDTH, '-').c_str(),
-               line.c_str());
-        // Don't increase temperature as long as we are
-        // getting some variety.
-        // current_temp += 0.0125;
-
-        printf("Histo:\n"
-               "%s\n",
-               len_histo->SimpleHorizANSI(11).c_str());
-
-        // Whenever we get a repeat, increase temperature so
-        // that we are getting more random samples.
-        if (failures[line] > 0) {
-          current_temp += 0.0125;
+          printf("Histo:\n"
+                 "%s\n",
+                 len_histo->SimpleHorizANSI(11).c_str());
+          failures[line]++;
+          // Otherwise, try again.
+          llm->LoadState(line_beginning);
         }
-        failures[line]++;
-
-        // Otherwise, try again.
-        llm->LoadState(line_beginning);
       }
-
-      GenFrame("", nullptr);
     }
   }
 

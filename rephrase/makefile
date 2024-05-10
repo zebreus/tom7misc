@@ -311,7 +311,7 @@ parsing.o : parsing.cc parsing.h inclusion.h el.h lexing.h $(CC_LIB)/parser-comb
 monospace.exe : monospace.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS) $(BIT7_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-monofile.exe : monofile.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS) $(BIT7_OBJECTS)
+monofile.exe : monofile.o line-rephrasing.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS) $(BIT7_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 test-rephrase.exe : test-rephrase.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)

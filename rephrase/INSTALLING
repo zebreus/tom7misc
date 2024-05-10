@@ -1,0 +1,84 @@
+
+Are you serious? You really want to use this software?
+
+Well, okay, here are some tips. You will need to compile it, which I
+have only tried to do on Windows and Mac OS X. It is just
+written in regular ol' C++ (well, C++20) with minimal dependencies, so
+you can probably get it compiling on linux or other platforms, as
+long as you can find a C++20 compiler like Clang. To use it with the
+LLM, you need to compile llama.cpp, which is not horrible. Getting the
+OpenCL or CUDA backends working will be harder.
+
+From my sourceforge repository, you will need to check out this
+directory (which is called "rephrase") and parallel directories "cc-lib"
+and "bit7" and "llm". You may be able to get away without the latter
+two if you aren't going to run some side utilities and aren't planning
+to use the LLM.
+
+** To use without LLM:
+
+This should be mostly reasonable? Modify the makefile and comment
+out the ENABLE_LLM=true line if it isn't already. Then try something like
+
+make -j 8 test
+
+to build everything and run some tests. If it doesn't work, you could
+try making sure the compiler flags look good at the top. There's a bunch
+of complexity in the makefile in the middle from llama.cpp, which
+you should be able to ignore when ENABLE_LLM is not set.
+
+
+** To use with the LLM:
+
+You'll need "llama.cpp" from github. I think I made some modifications
+to this repository, so if it doesn't compile, you may be out of luck,
+or you can try to fix them. I really should check in a fork of
+llama.cpp, but upstream changes so fast!
+
+Then, of course, set ENABLE_LLM=true in the makefile. If you manage
+to get it building, then you'll need to get a model to load in order
+to do the actual inference. Currently it is expecting llama2 models.
+You can get these from Facebook (and then follow the possibly
+irritating process to convert them into .gguf format) or maybe
+just download one from the internet and hope it hasn't been injected
+with an Omega virus.
+
+
+Some known issues:
+ - If you are using the LLM, it may be quite slow. The LLM
+   settings are tuned for my computer in 2024
+   (32-core, 256 GB RAM, GeForce 4090). You can select
+   a different model by editing rephrasing.cc, and you can
+   change the settings (number of layers on GPU, number of
+   threads, etc.) in ../llm/models.h. You'll almost certainly
+   need to change the paths there too. You could even use
+   ../llm/tune.cc to find good settings for your machine.
+
+ - Error messages are quite bad! If you know the type
+   theory of Standard ML, you will have some chance. Otherwise,
+   you will probably need to read "Types and Programming Languages"
+   and then guess what changes I might have made, or read the
+   source code.
+
+ - Speaking of which: If your document looks bad, it could
+   be a bug in:
+      - Your document (your BoVeX code)
+      - The PDF generation code
+      - The PDF viewer you're using (they seem to disagree
+        on whether my generated files are any good)?
+      - The layout code (my BoVeX code)
+      - The standard library (my BoVeX code)
+      - The LLM crapped it up (this is NOT a bug)
+      - The BoVeX compiler, optimizations, execution engine, etc.
+      - The C++ compiler, or I guess, your hardware
+
+   You can tell me if you found or fixed a bug, but I ain't doin'
+   technical support unless it's interesting!
+
+ - There is a bug with mutually recursive functions that capture
+   polymorphic variables in their environments. Alas, this is not
+   easily fixed. I need to either make the translation of them use
+   first-class polymorphism, monomorphize, add mutually-recursive
+   function bundles to the IL, or figure out some other
+   transformation.
+

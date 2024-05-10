@@ -113,8 +113,8 @@ struct Node {
 };
 
 // Paths often share prefixes.
-// Could be better to store this as a tree explicitly. But these
-// are so expensive to generate that we can also just loop over
+// Could be better to store this as a tree explicitly. But these are
+// so relatively expensive to generate that we can also just loop over
 // all of them, keeping this code simple for now.
 using Path = std::vector<Node>;
 
