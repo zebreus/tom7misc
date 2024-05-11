@@ -16,7 +16,7 @@
 #include "progress.h"
 #include "bc.h"
 
-static constexpr int VERBOSE = 1;
+static constexpr int VERBOSE = 0;
 
 using ProgressRecorder = Progress<VERBOSE != 0>;
 
@@ -622,22 +622,7 @@ struct DataflowPass {
 SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
                                        uint64_t opts) {
 
-
-  constexpr uint64_t DISABLED_OPTIMIZATIONS = O_TAIL_CALL | O_DEAD_BLOCK |
-
-    O_DEAD_DATA | O_INLINE_BLOCK | O_DEAD_INST
-    ;
-
-  /*
-  static constexpr uint64_t O_DEAD_INST = 1ULL << 1;
-  static constexpr uint64_t O_DEAD_BLOCK = 1ULL << 2;
-  static constexpr uint64_t O_DEAD_DATA = 1ULL << 3;
-  static constexpr uint64_t O_INLINE_BLOCK = 1ULL << 4;
-  static constexpr uint64_t O_TAIL_CALL = 1ULL << 5;
-  static constexpr uint64_t O_COALESCE_DATA = 1ULL << 6;
-  static constexpr uint64_t O_DEAD_LOCALS = 1ULL << 7;
-  */
-
+  static constexpr uint64_t DISABLED_OPTIMIZATIONS = 0;
   opts &= ~DISABLED_OPTIMIZATIONS;
 
   ProgressRecorder progress;
@@ -671,7 +656,7 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
 
     if (VERBOSE > 0) {
       printf(AWHITE("Coalesce") ".\n");
-      if (VERBOSE > 2) {
+      if (true || VERBOSE > 2) {
         PrintSymbolicProgram(program);
       }
     }

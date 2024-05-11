@@ -1,5 +1,5 @@
 
-default: bovex.exe monospace.exe monofile.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe upcontrast.exe
+default: bovex.exe monospace.exe monofile.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe bc_test.exe upcontrast.exe
 
 # for these ENABLE=true kinds of flags, you should *comment them out*
 # if you don't want them. ENABLE_LLM=false does the same thing as true.
@@ -355,6 +355,9 @@ closure-conversion_test.exe : closure-conversion_test.o $(BOVEX_OBJECTS) $(CC_LI
 compiler_test.exe : compiler_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
+bc_test.exe : bc_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 execution_test.exe : execution_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
@@ -412,7 +415,7 @@ chessdemo/chessdemo.talk : bovex.exe chess.bovex chessdemo.bovex stdlib.bovex la
 animate.exe : animate.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe
+test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe hyphenation_test.exe bc_test.exe
 	./html_test.exe
 	./hyphenation_test.exe
 	./lexing_test.exe
@@ -426,6 +429,7 @@ test : html_test.exe lexing_test.exe context_test.exe unification_test.exe parsi
 	./il-typed-pass_test.exe
 	./closure-conversion_test.exe
 	./compiler_test.exe
+	./bc_test.exe
 	./execution_test.exe
 
 

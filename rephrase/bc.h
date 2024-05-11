@@ -260,15 +260,15 @@ char ObjectFieldTypeTag(ObjectFieldType oft);
 
 inline std::size_t ValueHash::operator ()(const Value& obj) const {
   if (const BigInt *bi = std::get_if<BigInt>(&obj.v)) {
-    return 0xB1000000 + (size_t)BigInt::LowWord(*bi);
+    return 0xB10000000 + (size_t)BigInt::LowWord(*bi);
   } else if (const std::string *str = std::get_if<std::string>(&obj.v)) {
     return std::hash<std::string>()(*str);
   } else if (const uint64_t *u = std::get_if<uint64_t>(&obj.v)) {
-    return std::hash<uint64_t>()(*u);
+    return 0x420000000 + std::hash<uint64_t>()(*u);
   } else if (std::holds_alternative<std::monostate>(obj.v)) {
     return 0x123456789;
   } else if (const double *d = std::get_if<double>(&obj.v)) {
-    return std::hash<double>()(*d);
+    return 0xEE0000000 + std::hash<double>()(*d);
   } else if (const std::unordered_map<std::string, Value *> *m =
              std::get_if<std::unordered_map<std::string, Value *>>(&obj.v)) {
     uint64_t ret = 0x56789123;
@@ -310,7 +310,7 @@ inline bool ValueEq::operator ()(const Value &a, const Value &b) const {
 
   {
     const std::string *aa = std::get_if<std::string>(&a.v);
-    const std::string *bb = std::get_if<std::string>(&a.v);
+    const std::string *bb = std::get_if<std::string>(&b.v);
     if ((aa == nullptr) != (bb == nullptr))
       return false;
     if (aa != nullptr) {
@@ -320,7 +320,7 @@ inline bool ValueEq::operator ()(const Value &a, const Value &b) const {
 
   {
     const uint64_t *aa = std::get_if<uint64_t>(&a.v);
-    const uint64_t *bb = std::get_if<uint64_t>(&a.v);
+    const uint64_t *bb = std::get_if<uint64_t>(&b.v);
     if ((aa == nullptr) != (bb == nullptr))
       return false;
     if (aa != nullptr) {
@@ -330,7 +330,7 @@ inline bool ValueEq::operator ()(const Value &a, const Value &b) const {
 
   {
     const double *aa = std::get_if<double>(&a.v);
-    const double *bb = std::get_if<double>(&a.v);
+    const double *bb = std::get_if<double>(&b.v);
     if ((aa == nullptr) != (bb == nullptr))
       return false;
     if (aa != nullptr) {
@@ -340,7 +340,7 @@ inline bool ValueEq::operator ()(const Value &a, const Value &b) const {
 
   {
     const std::monostate *aa = std::get_if<std::monostate>(&a.v);
-    const std::monostate *bb = std::get_if<std::monostate>(&a.v);
+    const std::monostate *bb = std::get_if<std::monostate>(&b.v);
     if ((aa == nullptr) != (bb == nullptr))
       return false;
     if (aa != nullptr) {
@@ -352,7 +352,7 @@ inline bool ValueEq::operator ()(const Value &a, const Value &b) const {
     const std::unordered_map<std::string, Value *> *aa =
       std::get_if<std::unordered_map<std::string, Value *>>(&a.v);
     const std::unordered_map<std::string, Value *> *bb =
-      std::get_if<std::unordered_map<std::string, Value *>>(&a.v);
+      std::get_if<std::unordered_map<std::string, Value *>>(&b.v);
     if ((aa == nullptr) != (bb == nullptr))
       return false;
     if (aa != nullptr) {
@@ -370,7 +370,7 @@ inline bool ValueEq::operator ()(const Value &a, const Value &b) const {
     const std::vector<Value *> *aa =
       std::get_if<std::vector<Value *>>(&a.v);
     const std::vector<Value *> *bb =
-      std::get_if<std::vector<Value *>>(&a.v);
+      std::get_if<std::vector<Value *>>(&b.v);
     if ((aa == nullptr) != (bb == nullptr))
       return false;
     if (aa != nullptr) {
