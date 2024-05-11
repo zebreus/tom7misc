@@ -151,7 +151,7 @@ fun pack-boxes-horiz (content : layout) : (float * layout list) =
               | max-height (h, box :: rest) =
               case layoutcase box of
                 Node (BOX, {(Box) height}, _) =>
-                  max-height (float-max(height, h), rest)
+                  max-height (float-max (height, h), rest)
               | _ => max-height (h, rest)
 
             val height = max-height (0.0, boxes)
@@ -198,12 +198,11 @@ fun invoicepage () =
     fun out lay = output (0, lay)
   in
     (* XXX want right justification for these *)
-    out (text-sticker [me])
+    text-sticker [me]
   end
 
 in
 
   invoicepage ()
-
 
 end
