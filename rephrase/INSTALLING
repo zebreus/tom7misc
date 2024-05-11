@@ -2,12 +2,12 @@
 Are you serious? You really want to use this software?
 
 Well, okay, here are some tips. You will need to compile it, which I
-have only tried to do on Windows and Mac OS X. It is just
-written in regular ol' C++ (well, C++20) with minimal dependencies, so
-you can probably get it compiling on linux or other platforms, as
-long as you can find a C++20 compiler like Clang. To use it with the
-LLM, you need to compile llama.cpp, which is not horrible. Getting the
-OpenCL or CUDA backends working will be harder.
+have only tried to do on Windows and Mac OS X. It is just written in
+regular ol' C++ (well, C++20) with minimal dependencies, so you can
+probably get it compiling on linux or other platforms, as long as you
+can find a C++20 compiler like Clang. To use it with the LLM, you need
+to compile llama.cpp, which is not horrible. Getting the OpenCL or
+CUDA backends working will be harder.
 
 From my sourceforge repository, you will need to check out this
 directory (which is called "rephrase") and parallel directories "cc-lib"

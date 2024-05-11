@@ -1,15 +1,16 @@
 
 default: bovex.exe monospace.exe monofile.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe upcontrast.exe
 
-ENABLE_LLM=true
+# for these ENABLE=true kinds of flags, you should *comment them out*
+# if you don't want them. ENABLE_LLM=false does the same thing as true.
+
+# ENABLE_LLM=true
 
 # TODO: Should perhaps separate out BoVeX from the other video/paper stuff?
 
-# Changes by tom7.
-# Also add -static to LFLAGS below
-# Also add /c/code/openblas/include to
-
+# GPU acceleration
 LLAMA_CLBLAST=true
+
 # It's crashing or doing something weird? You're always
 # being too clever with std::move! Or you incremented
 # the wrong loop counter!
@@ -60,9 +61,11 @@ else
   endif
 endif
 
+# These come from tom7's repository.
 CC_LIB=../cc-lib
 BIT7=../bit7
 LLM_DIR=../llm
+# This directory comes from github.com/ggerganov/llama.cpp/tree/master
 LLAMA_DIR=../llama
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
@@ -70,6 +73,8 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 CC_LIB_OBJECTS=$(RE2_OBJECTS) $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/image-resize.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/pdf.o $(CC_LIB)/qr-code.o $(CC_LIB)/color-util.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/boxes-and-glue.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/opt/opt.o $(CC_LIB)/opt/opt-seq.o
 
 BIT7_OBJECTS=$(BIT7)/font-image.o
+
+# This section is from llama.cpp's somewhat involved makefile.
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
