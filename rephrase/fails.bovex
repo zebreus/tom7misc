@@ -1,34 +1,30 @@
 let
 
-datatype (a) list = :: of a * list | nil
+datatype layout-list = Cons of string | Nil
 
 datatype display = BOX | SPAN
 
 datatype layoutcase =
   (* Includes empty nodes. *)
-    Text
-  | Node of display * layout list
+  Node of display * layout-list
 
 fun layoutcase (l : layout) =
-  Node (BOX, nil)
+  Node (BOX, Nil)
 
-fun pack-boxes-horiz (content : layout) : layout list =
+in
   case layoutcase [] of
     Node (BOX, boxes) =>
       let
-        fun max-height nil = 0.0
+        fun max-height Nil = 0.0
           | max-height _ =
           let in
             layoutcase [];
-            max-height nil
+            0.0
           end
 
         val _ = max-height boxes
       in
-        nil
+        Nil
       end
-
-in
-  pack-boxes-horiz [me]
 
 end

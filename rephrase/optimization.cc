@@ -16,9 +16,9 @@
 #include "progress.h"
 #include "bc.h"
 
-static constexpr bool VERBOSE = false;
+static constexpr int VERBOSE = 1;
 
-using ProgressRecorder = Progress<VERBOSE>;
+using ProgressRecorder = Progress<VERBOSE != 0>;
 
 // TODO:
 // Coalesce identical globals
@@ -269,7 +269,9 @@ struct CoalescePass {
       }
 
       // Now for any value that has multiple names, pick one of
-      // them.
+      // them. The keys in the renamed map are renamed to the
+      // canonical name (the canonical name is not included) and
+      // then we can delete the keys.
       std::unordered_map<std::string, std::string> renamed;
       for (auto &[v, names] : idata) {
         if (names.size() > 1) {
@@ -296,11 +298,25 @@ struct CoalescePass {
           }
           DoFn(renamed, fname, &fn);
         }
+
+        // We could let the dead code pass clean up after us, although it
+        // is better to just delete them here (we know which ones are
+        // dead), and this makes sure that this pass is actually
+        // conservative if dead code is not enabled.
+        std::unordered_map<std::string, Value> new_data;
+        for (auto &[name, value] : pgm->data) {
+          if (renamed.contains(name)) {
+            // Drop it.
+            if (VERBOSE) {
+              printf("  dropped now-unused " AORANGE("%s") "\n", name.c_str());
+            }
+          } else {
+            new_data[std::move(name)] = std::move(value);
+          }
+        }
+        pgm->data = std::move(new_data);
       }
 
-      // We can let the dead code pass clean up after us, although it
-      // would probably be better to just delete the stuff right here
-      // because we know we removed the last references.
     }
   }
 
@@ -605,6 +621,25 @@ struct DataflowPass {
 
 SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
                                        uint64_t opts) {
+
+
+  constexpr uint64_t DISABLED_OPTIMIZATIONS = O_TAIL_CALL | O_DEAD_BLOCK |
+
+    O_DEAD_DATA | O_INLINE_BLOCK | O_DEAD_INST
+    ;
+
+  /*
+  static constexpr uint64_t O_DEAD_INST = 1ULL << 1;
+  static constexpr uint64_t O_DEAD_BLOCK = 1ULL << 2;
+  static constexpr uint64_t O_DEAD_DATA = 1ULL << 3;
+  static constexpr uint64_t O_INLINE_BLOCK = 1ULL << 4;
+  static constexpr uint64_t O_TAIL_CALL = 1ULL << 5;
+  static constexpr uint64_t O_COALESCE_DATA = 1ULL << 6;
+  static constexpr uint64_t O_DEAD_LOCALS = 1ULL << 7;
+  */
+
+  opts &= ~DISABLED_OPTIMIZATIONS;
+
   ProgressRecorder progress;
   SymbolicProgram program = program_in;
   DeadPass dead(opts, &progress);
@@ -613,38 +648,49 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
   CoalescePass coalesce(opts, &progress);
   DataflowPass dataflow(opts, &progress);
 
+  int passes = 0;
   do {
+    if (VERBOSE > 0) {
+      printf(ABGCOLOR(200, 200, 200, AFGCOLOR(0, 0, 0, " Pass %d ")) "\n", passes);
+    }
     progress.Reset();
 
-    if (VERBOSE) printf(AWHITE("Dead") ".\n");
+    if (VERBOSE > 0) printf(AWHITE("Dead") ".\n");
     dead.DoProgram(&program);
 
-    if (VERBOSE) printf(AWHITE("Peephole") ".\n");
+    if (VERBOSE > 0) printf(AWHITE("Peephole") ".\n");
     peep.DoProgram(&program);
 
-    if (VERBOSE) {
+    if (VERBOSE > 0) {
       printf(AWHITE("Inline") ".\n");
-      PrintSymbolicProgram(program);
+      if (VERBOSE > 2) {
+        PrintSymbolicProgram(program);
+      }
     }
     inline_pass.DoProgram(&program);
 
-    if (VERBOSE) {
+    if (VERBOSE > 0) {
       printf(AWHITE("Coalesce") ".\n");
-      PrintSymbolicProgram(program);
+      if (VERBOSE > 2) {
+        PrintSymbolicProgram(program);
+      }
     }
     coalesce.DoProgram(&program);
 
-    if (VERBOSE) {
+    if (VERBOSE > 0) {
       printf(AWHITE("Dataflow") ".\n");
-      PrintSymbolicProgram(program);
+      if (VERBOSE > 2) {
+        PrintSymbolicProgram(program);
+      }
     }
     dataflow.DoProgram(&program);
 
-    if (VERBOSE) {
+    if (VERBOSE > 1) {
       printf("\n" AYELLOW("After optimization:\n"));
       PrintSymbolicProgram(program);
     }
 
+    passes++;
   } while (progress.MadeProgress());
 
   return program;

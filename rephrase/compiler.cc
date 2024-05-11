@@ -15,6 +15,7 @@
 #include "il.h"
 #include "optimization.h"
 #include "simplification.h"
+#include "timer.h"
 
 Compiler::Compiler() : closure_conversion(frontend.Pool()),
                        flatten_globals(frontend.Pool()) {
@@ -78,15 +79,26 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
 
   bc::SymbolicProgram bc_symbolic_pgm = to_bytecode.Convert(il_pgm);
 
-  if (verbose > 1) {
-    printf("\n\n" AWHITE("Optimize this") ":\n");
-    bc::PrintSymbolicProgram(bc_symbolic_pgm);
-    printf("\n");
-    fflush(stdout);
+  if (verbose > 0) {
+    printf("\n" AWHITE("Optimizing...") "\n");
+
+    if (verbose > 1) {
+      printf("\n\n" AWHITE("Optimize this") ":\n");
+      bc::PrintSymbolicProgram(bc_symbolic_pgm);
+      printf("\n");
+      fflush(stdout);
+    }
   }
 
+  Timer optimize_timer;
   bc::Optimization optimization;
   bc_symbolic_pgm = optimization.Optimize(bc_symbolic_pgm);
+  const double optimize_sec = optimize_timer.Seconds();
+
+  if (verbose > 0) {
+    printf(AWHITE("Optimized") " in %s:\n",
+           ANSI::Time(optimize_sec).c_str());
+  }
 
   if (verbose > 1) {
     printf("\n\n" AWHITE("Assemble this") ":\n");
