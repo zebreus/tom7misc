@@ -1,208 +1,34 @@
 let
 
-object Object of { }
-
-fun float-max (a, b) = if a <. b then b else a
-
 datatype (a) list = :: of a * list | nil
 
-fun list-append (h :: t, l2) = h :: list-append(t, l2)
-  | list-append (nil, l2) = l2
-
-fun @ (x, y) = list-append (x, y)
-
-fun list-rcons (nil, x) = x :: nil
-  | list-rcons (h :: t, x) = h :: list-rcons (t, x)
-
-fun list-rev l =
-  let
-    fun go (nil, acc) = acc
-      | go (h :: t, acc) = go(t, h :: acc)
-  in
-    go (l, nil)
-  end
-
-fun list-map f nil = nil
-  | list-map f (h :: t) = f h :: list-map f t
-
-(* Scores are given as penalties (positive is bad). *)
-(* Dimensions are in points, nominally 1/72 of an inch. *)
-(* Coordinates start at 0.0 at the top left, with y positive meaning
-   down, and x positive meaning right. (Note this is vertically
-   flipped from what pdf.h and the internal PDF format do!) *)
-
-val LAYOUT-VERBOSE = false
-
-(* For expand-contract, in places where we don't want to do any
-   expansion or contraction (e.g. kerning points). *)
-val EPSILON-COEFFICIENT = 0.0000000005
-
-fun inch (d : float) = d *. 72.0
-fun point (d : float) = d
-fun mm (d : float) = d *. 2.8346456664
-(* We say that a pixel is the same as a point. *)
-fun pixel (d : float) = d
-
-object OutputDest of { page : int, frame : int }
-(* internal-output : obj * layout -> unit *)
-
-fun output (page, lay) =
-  internal-output ({(OutputDest) page = page, frame = 0}, lay)
-
-fun layout-concat nil = []
-  | layout-concat (x :: nil) = x
-  | layout-concat (l :: t) = [[l][layout-concat t]]
-
-val NODE_BOX = "box"
-val NODE_STICKER = "sticker"
-object Node of { display : string }
-
-datatype display = BOX | SPAN | STICKER | GROUP
-
-(* A box is a fixed-size element that can be moved around within a
-   span during the line-breaking algorithm. Its layout contents are
-   the contents of the node.
-
-   Glue follows each box. It describes the space between that box and
-   the next one, including in the case that the break spans lines. *)
-object Box of { width : float, height : float,
-                (* Transformation for contents.
-                   We could support arbitrary matrices
-                   here? *)
-                dx : float, dy : float, scale : float,
-
-                (* background image (as image handle) *)
-                img : string,
-                img-width : float, img-height : float,
-
-                font-name : string,
-                font-size : float,
-
-                font-color : int,
-
-                glue-ideal : float }
-fun box (attrs : obj) (l : layout) =
-  node (attrs with (Node) display = NODE_BOX) l
-
-object Sticker of { x: float, y: float, scale: float,
-                    font-name: string,
-                    font-size: float,
-                    font-color: int
-                    }
-
-fun sticker (attrs : obj) (l : layout) =
-  node (attrs with (Node) display = NODE_STICKER) l
+datatype display = BOX | SPAN
 
 datatype layoutcase =
   (* Includes empty nodes. *)
-    Text of string
-  | Node of display * obj * layout list
-
-fun layout-empty (lay : layout) : bool =
-  is-text lay andalso string-empty (get-text lay)
+    Text
+  | Node of display * layout list
 
 fun layoutcase (l : layout) =
-  if is-text l
-  then Text (get-text l)
-  else
-    let
-      val z = layout-vec-size l
-      fun r n =
-        if n == z then nil
-        else (layout-vec-sub (l, n) :: r (n + 1))
-      val attrs = get-attrs l
-    in
-      Node (BOX, attrs, r 0)
-    end
+  Node (BOX, nil)
 
-(* Converts the layout recursively to a string, ignoring any
-   attributes and concatenating all the text nodes. *)
-fun layout-to-string l =
-  if is-text l
-  then get-text l
-  else fail "not"
-
-fun layout-concat nil = []
-  | layout-concat (h :: t) = [[h][layout-concat t]]
-
-(* Generates boxes and glue from text, making this into "AllBox" format. *)
-fun get-boxes (content : layout) =
-  internal-get-boxes content
-
-(* Pack boxes along a dimension. The boxes must be marked with their
-   "width" as the dimension. Usually you want to just use pack-boxes-horiz
-   or pack-boxes-vert below. *)
-fun pack-boxes (content : layout) :
-  (float * layout list) =
-  let
-  in
-    (1.0, content :: nil)
-  end
-
-fun pack-boxes-horiz (content : layout) : (float * layout list) =
-  let
-    val (badness, lines) = pack-boxes (content)
-
-    fun set-height (line : layout) =
-      case layoutcase line of
-        Node (BOX, attrs, boxes) =>
-          let
-            fun max-height (h, nil) = h
-              | max-height (h, box :: rest) =
-              case layoutcase box of
-                Node (BOX, {(Box) height}, _) =>
-                  max-height (float-max (height, h), rest)
-              | _ => max-height (h, rest)
-
-            val height = max-height (0.0, boxes)
-          in
-            (* Could also strip height from words here! *)
-            box attrs []
+fun pack-boxes-horiz (content : layout) : layout list =
+  case layoutcase [] of
+    Node (BOX, boxes) =>
+      let
+        fun max-height nil = 0.0
+          | max-height _ =
+          let in
+            layoutcase [];
+            max-height nil
           end
 
-  in
-    (* (0.0, set-height content)*)
-    (badness, list-map set-height lines)
-  end
-
-fun layout-map-text (f : string -> string) (lay : layout) : layout =
-  let
-    fun rec (l : layout) =
-      case layoutcase l of
-        Text s => layout (f s)
-      | Node (_, attrs, ch : layout list) =>
-          node attrs (layout-concat (list-map rec ch))
-  in
-    rec lay
-  end
-
-(* Place properly kerned text, but with no wrapping. *)
-fun text-sticker lay =
-  let
-    val boxes = get-boxes lay
-
-    (* Turn the line into a sticker, ignoring its width/height *)
-    fun stick-line (line : layout) : layout =
-      case layoutcase line of
-        Node (BOX, attrs, children) =>
-          sticker attrs []
-
-  in
-    (* Hack: "infinite" line width. *)
-    case pack-boxes-horiz boxes of
-      _ => sticker {(Object) } []
-  end
-
-fun invoicepage () =
-  let
-    fun out lay = output (0, lay)
-  in
-    (* XXX want right justification for these *)
-    text-sticker [me]
-  end
+        val _ = max-height boxes
+      in
+        nil
+      end
 
 in
-
-  invoicepage ()
+  pack-boxes-horiz [me]
 
 end

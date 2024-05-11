@@ -1,6 +1,7 @@
 
 #include "execution.h"
 
+#include <algorithm>
 #include <unordered_set>
 #include <cmath>
 #include <cstdint>
@@ -14,20 +15,20 @@
 #include <unordered_map>
 #include <vector>
 
-#include "bc.h"
+#include "achievements.h"
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "ansi.h"
+#include "bc.h"
 #include "bignum/big.h"
-#include "image.h"
+#include "boxes-and-glue.h"
 #include "document.h"
+#include "image.h"
 #include "primop.h"
 #include "rephrasing.h"
-#include "util.h"
-#include "utf.h"
-#include "boxes-and-glue.h"
-#include "achievements.h"
 #include "timer.h"
+#include "utf.h"
+#include "util.h"
 
 namespace bc {
 
@@ -126,6 +127,45 @@ static std::string ColorValuePtrString(const Value *value) {
   }
 }
 
+// For printing internal errors.
+static std::string StateDump(const Execution::State &state) {
+  std::string ret;
+  if (state.stack.empty()) {
+    return ARED("No stack?");
+  }
+
+  // TODO: Print stack (but need program to cross-reference).
+
+  const Execution::StackFrame &frame = state.stack.back();
+  if (frame.insts == nullptr) return ARED("null instructions?");
+
+  StringAppendF(&ret, AWHITE("Locals:") "\n");
+  for (const auto &[x, v] : frame.locals) {
+    StringAppendF(&ret,
+                  "  " APURPLE("%s") " = %s\n",
+                  x.c_str(), ColorValuePtrString(v).c_str());
+  }
+
+  // We have generally advanced the IP by this point.
+  const int target_ip = frame.ip - 1;
+  StringAppendF(&ret, AWHITE("Fault here:") "\n");
+  for (int i = std::max(0, frame.ip - 8);
+       i < (int)frame.insts->size() && i < frame.ip + 4;
+       i++) {
+    StringAppendF(&ret, "%s%s\n",
+                  // U+1F4A3 BOMB EMOJI
+                  // TODO: Use this again when mintty is fixed?
+                  // " 💣 "
+                  // " \U0001F4A3 "
+                  (i == target_ip) ?
+                  AFGCOLOR(255, 0, 0, " ‼ ")
+                  : "   ",
+                  ColorInstString((*frame.insts)[i]).c_str());
+  }
+
+ return ret;
+}
+
 static int64_t GetInt64(const char *what, const BigInt &x) {
   const std::optional<int64_t> xo = x.ToInt();
   CHECK(xo.has_value()) << "In " << what << ", integer needs to fit "
@@ -156,6 +196,9 @@ Value *Execution::Big(BigInt b, State *state) {
 
 Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
                           State *state) {
+  // TODO: Add this to internal errors below.
+  auto Err = [state]() { return StateDump(*state); };
+
   switch (primop) {
   case Primop::STRING_SUBSTR: {
     const std::string *as = std::get_if<std::string>(&a->v);
@@ -236,48 +279,61 @@ std::tuple<int64_t, int64_t> Execution::GetPageAndFrame(const char *what,
 
 Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
                           State *state) {
-  auto TwoInts = [a, b](const char *what) ->
+  // TODO: Add this to internal errors below.
+  auto Err = [state]() { return StateDump(*state); };
+
+  auto TwoInts = [a, b, &Err](const char *what) ->
     std::pair<const BigInt &, const BigInt &> {
       const BigInt *abi = std::get_if<BigInt>(&a->v);
       const BigInt *bbi = std::get_if<BigInt>(&b->v);
-      CHECK(abi != nullptr) << "Expected int argument (lhs) to " << what;
-      CHECK(bbi != nullptr) << "Expected int argument (rhs) to " << what;
+      CHECK(abi != nullptr) << Err()
+                            << "Expected int argument (lhs) to " << what;
+      CHECK(bbi != nullptr) << Err()
+                            << "Expected int argument (rhs) to " << what;
       return std::tie(*abi, *bbi);
     };
 
-  auto TwoWords = [a, b](const char *what) ->
+  auto TwoWords = [a, b, &Err](const char *what) ->
     std::pair<uint64_t, uint64_t> {
       const uint64_t *aw = std::get_if<uint64_t>(&a->v);
       const uint64_t *bw = std::get_if<uint64_t>(&b->v);
-      CHECK(aw != nullptr) << "Expected word argument (lhs) to " << what;
-      CHECK(bw != nullptr) << "Expected word argument (rhs) to " << what;
+      CHECK(aw != nullptr) << Err()
+                           << "Expected word argument (lhs) to " << what;
+      CHECK(bw != nullptr) << Err()
+                           << "Expected word argument (rhs) to " << what;
       return std::make_pair(*aw, *bw);
     };
 
-  auto TwoFloats = [a, b](const char *what) ->
+  auto TwoFloats = [a, b, &Err](const char *what) ->
     std::pair<double, double> {
       const double *ad = std::get_if<double>(&a->v);
       const double *bd = std::get_if<double>(&b->v);
-      CHECK(ad != nullptr) << "Expected float argument (lhs) to " << what;
-      CHECK(bd != nullptr) << "Expected float argument (rhs) to " << what;
+      CHECK(ad != nullptr) << Err()
+                           << "Expected float argument (lhs) to " << what;
+      CHECK(bd != nullptr) << Err()
+                           << "Expected float argument (rhs) to " << what;
       return std::make_pair(*ad, *bd);
     };
 
-  auto TwoStrings = [a, b](const char *what) ->
+  auto TwoStrings = [a, b, &Err](const char *what) ->
     std::pair<const std::string &, const std::string &> {
     const std::string *as = std::get_if<std::string>(&a->v);
     const std::string *bs = std::get_if<std::string>(&b->v);
-    CHECK(as != nullptr) << "Expected string argument (lhs) to " << what;
-    CHECK(bs != nullptr) << "Expected string argument (rhs) to " << what;
+    CHECK(as != nullptr) << Err()
+                         << "Expected string argument (lhs) to " << what;
+    CHECK(bs != nullptr) << Err()
+                         << "Expected string argument (rhs) to " << what;
     return std::tie(*as, *bs);
   };
 
-  auto TwoObjs = [a, b](const char *what) ->
+  auto TwoObjs = [a, b, &Err](const char *what) ->
     std::pair<const map_type &, const map_type &> {
     const map_type *as = std::get_if<map_type>(&a->v);
     const map_type *bs = std::get_if<map_type>(&b->v);
-    CHECK(as != nullptr) << "Expected obj argument (lhs) to " << what;
-    CHECK(bs != nullptr) << "Expected obj argument (rhs) to " << what;
+    CHECK(as != nullptr) << Err()
+                         << "Expected obj argument (lhs) to " << what;
+    CHECK(bs != nullptr) << Err()
+                         << "Expected obj argument (rhs) to " << what;
     return std::tie(*as, *bs);
   };
 
@@ -492,9 +548,10 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   case Primop::REPHRASINGS: {
     static constexpr int VERBOSE = 1;
     const BigInt *abi = std::get_if<BigInt>(&a->v);
-    CHECK(abi != nullptr) << "Expected int argument (lhs) to rephrasings";
+    CHECK(abi != nullptr) << Err() <<
+      "Expected int argument (lhs) to rephrasings";
     auto aio = abi->ToInt();
-    CHECK(aio.has_value() && aio.value() < 1000000) <<
+    CHECK(aio.has_value() && aio.value() < 1000000) << Err() <<
       "Integer is way too big!";
     const int times = (int)aio.value();
 
@@ -577,8 +634,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   case Primop::OUT_LAYOUT: {
     const map_type *am = std::get_if<map_type>(&a->v);
-    CHECK(am != nullptr) << "out-layout expects an object as its first "
-      "argument.";
+    CHECK(am != nullptr) << Err() <<
+      "out-layout expects an object as its first argument.";
     const auto &[page_idx, frame_idx] =
       GetPageAndFrame("out-layout", am);
 
@@ -588,9 +645,11 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   case Primop::PACK_BOXES: {
     const double *ad = std::get_if<double>(&a->v);
-    CHECK(ad != nullptr) << "Expected double argument (lhs) to pack-boxes";
+    CHECK(ad != nullptr) << Err() <<
+      "Expected double argument (lhs) to pack-boxes";
     const map_type *arg = std::get_if<map_type>(&b->v);
-    CHECK(arg != nullptr) << "Expected obj argument (rhs) to pack-boxes";
+    CHECK(arg != nullptr) << Err() <<
+      "Expected obj argument (rhs) to pack-boxes";
 
     Document::Algorithm algorithm = Document::Algorithm::BEST;
     if (const std::string *algo =
@@ -600,6 +659,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       } else if (*algo == "first") {
         algorithm = Document::Algorithm::FIRST;
       } else {
+        // XXX Should be InternalFail?
         LOG(FATAL) << "pack-boxes algorithm field unknown: " << *algo;
       }
     }
@@ -617,6 +677,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       } else if (*j == "all") {
         just = Justification::ALL;
       } else {
+        // XXX Should be InternalFail?
         LOG(FATAL) << "pack-boxes justification field unknown: " << *j;
       }
     }

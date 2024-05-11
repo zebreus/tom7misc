@@ -166,7 +166,6 @@ fun image-size (Image img) : { width : int, height : int } =
   | _ => fail "bad image props?"
 
 fun layout-concat nil = []
-  | layout-concat (x :: nil) = x
   | layout-concat (l :: t) = [[l][layout-concat t]]
 
 fun layout-list-join _ nil = []
@@ -427,9 +426,6 @@ fun layout-to-string l =
                        r (n + 1)
     in r 0
     end
-
-fun layout-concat nil = []
-  | layout-concat (h :: t) = [[h][layout-concat t]]
 
 fun break () =
   box {(Box) height = 0.0, width = 0.0,
