@@ -2,9 +2,9 @@
 #ifndef _GUITARCHIVE_H
 #define _GUITARCHIVE_H
 
+#include <utility>
 #include <vector>
 #include <string>
-#include <string_view>
 
 
 using namespace std;
@@ -20,14 +20,14 @@ struct Entry {
   vector<pair<string, string>> headers;
 
   string filename;
-  
+
   // Unparsed body.
   string body;
 };
 
 struct Guitarchive {
   static void AddAllFilesRec(const string &dir, vector<string> *all_files);
-  
+
   static string Frontslash(const string &s);
   static string Backslash(const string &s);
 

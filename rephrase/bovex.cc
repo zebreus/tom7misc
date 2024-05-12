@@ -167,11 +167,15 @@ struct BovexExecution : public bc::Execution {
 };
 }  // namespace
 
-static int Bovex(const std::vector<std::string> &args) {
+static int Bovex(const std::string &program_dir,
+                 const std::vector<std::string> &args) {
   Timer timer;
   Compiler compiler;
 
   int verbose = 0;
+
+  // Always include the BoVeX program directory.
+  compiler.frontend.AddIncludePath(program_dir);
 
   std::string output_file;
   std::vector<std::string> leftover;
@@ -248,13 +252,13 @@ static int Bovex(const std::vector<std::string> &args) {
   int64_t total_collected = 0;
   for (;;) {
 
-    std::unique_ptr<Document> document = [output_type]() ->
+    std::unique_ptr<Document> document = [program_dir, output_type]() ->
       std::unique_ptr<Document> {
       switch (output_type) {
       case OutputType::PDF:
-        return std::make_unique<PDFDocument>();
+        return std::make_unique<PDFDocument>(program_dir);
       case OutputType::TALK:
-        return std::make_unique<TalkDocument>();
+        return std::make_unique<TalkDocument>(program_dir);
       }
     }();
 
@@ -353,6 +357,6 @@ int main(int argc, char **argv) {
     args.emplace_back(argv[i]);
   }
 
-  return Bovex(args);
+  return Bovex(Util::BinaryDir(argv[0]), args);
 }
 

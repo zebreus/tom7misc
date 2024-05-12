@@ -151,7 +151,7 @@ struct Page {
 };
 
 struct Document {
-  Document();
+  Document(std::string_view program_dir);
   virtual ~Document();
 
   static double PointToPixel(double pt) { return pt; }
@@ -235,6 +235,10 @@ struct Document {
 
   std::vector<DocTree>
   BoxifyText(const TextProps &props, std::string_view text);
+
+  // Location of bovex.exe; can be used to load data files that are
+  // part of the BoVeX distribution.
+  std::string program_dir;
 
   std::unordered_map<std::string, FontFamily> font_families;
 

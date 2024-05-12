@@ -475,7 +475,7 @@ void ImageRGBA::BlendText32(int x, int y, uint32 color, const string &s) {
     uint8 c = s[i];
     int xx = x + i * EmbeddedFont::WIDTH;
     if (xx >= width) return;
-    EmbeddedFont::Blit(c, xx, y, SetPixel, [](int x, int y) {});
+    EmbeddedFont::Blit(c, xx, y, SetPixel, [](int, int) {});
   }
 }
 
@@ -503,7 +503,7 @@ void ImageRGBA::BlendTextVert32(int x, int y, bool up,
     uint8 c = s[i];
     EmbeddedFont::Blit(c, i * EmbeddedFont::WIDTH, 0,
                        Set,
-                       [](int x, int y) {});
+                       [](int, int) {});
   }
 }
 
@@ -520,7 +520,7 @@ void ImageRGBA::BlendText2x32(int x, int y, uint32 color, const string &s) {
       };
 
     const uint8 c = s[i];
-    EmbeddedFont::Blit(c, 0, 0, SetPixel, [](int x, int y) {});
+    EmbeddedFont::Blit(c, 0, 0, SetPixel, [](int, int) {});
   }
 }
 
@@ -558,7 +558,7 @@ void ImageRGBA::BlendTextVert2x32(int x, int y, bool up,
     uint8 c = s[i];
     EmbeddedFont::Blit(c, i * EmbeddedFont::WIDTH * 2, 0,
                        Set,
-                       [](int x, int y) {});
+                       [](int, int) {});
   }
 }
 
@@ -922,19 +922,19 @@ inline static ImageA Extract(const ImageRGBA &img, const F &f) {
 }
 
 ImageA ImageRGBA::Red() const {
-  return Extract(*this, [](uint8 r, uint8 g, uint8 b, uint8 a) { return r; });
+  return Extract(*this, [](uint8 r, uint8, uint8, uint8) { return r; });
 }
 
 ImageA ImageRGBA::Green() const {
-  return Extract(*this, [](uint8 r, uint8 g, uint8 b, uint8 a) { return g; });
+  return Extract(*this, [](uint8, uint8 g, uint8, uint8) { return g; });
 }
 
 ImageA ImageRGBA::Blue() const {
-  return Extract(*this, [](uint8 r, uint8 g, uint8 b, uint8 a) { return b; });
+  return Extract(*this, [](uint8, uint8, uint8 b, uint8) { return b; });
 }
 
 ImageA ImageRGBA::Alpha() const {
-  return Extract(*this, [](uint8 r, uint8 g, uint8 b, uint8 a) { return a; });
+  return Extract(*this, [](uint8, uint8, uint8, uint8 a) { return a; });
 }
 
 ImageRGBA ImageRGBA::FromChannels(const ImageA &red,
@@ -1257,7 +1257,7 @@ void ImageA::BlendText(int x, int y, uint8 v, const string &s) {
     uint8 c = s[i];
     int xx = x + i * EmbeddedFont::WIDTH;
     if (xx >= width) return;
-    EmbeddedFont::Blit(c, xx, y, SetPixel, [](int x, int y) {});
+    EmbeddedFont::Blit(c, xx, y, SetPixel, [](int, int) {});
   }
 }
 
@@ -1474,7 +1474,7 @@ void ImageF::BlendText(int x, int y, float v, const string &s) {
     uint8 c = s[i];
     int xx = x + i * EmbeddedFont::WIDTH;
     if (xx >= width) return;
-    EmbeddedFont::Blit(c, xx, y, SetPixel, [](int x, int y) {});
+    EmbeddedFont::Blit(c, xx, y, SetPixel, [](int, int) {});
   }
 }
 
@@ -1508,7 +1508,7 @@ int Image1::NumWords(int pixels) {
 
 Image1::Image1(const std::vector<bool> &alpha, int width, int height) :
   Image1(width, height) {
-  CHECK(alpha.size() == width * height);
+  CHECK((int)alpha.size() == width * height);
   int idx = 0;
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
@@ -1529,7 +1529,7 @@ void Image1::Clear() {
 
 Image1 Image1::Inverse() const {
   Image1 out(Width(), Height());
-  for (int px = 0; px < bits.size(); px++) {
+  for (int px = 0; px < (int)bits.size(); px++) {
     out.bits[px] = ~bits[px];
   }
   out.CanonicalMask();

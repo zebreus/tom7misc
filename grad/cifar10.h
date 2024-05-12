@@ -19,10 +19,10 @@ struct CIFAR10 {
 
   CIFAR10(const std::string &dir, bool test) {
     if (test) {
-      LoadImages(Util::dirplus(dir, "test_batch.bin"));
+      LoadImages(Util::DirPlus(dir, "test_batch.bin"));
     } else {
       for (int i = 1; i <= 5; i++) {
-        LoadImages(Util::dirplus(dir, StringPrintf("data_batch_%d.bin", i)));
+        LoadImages(Util::DirPlus(dir, StringPrintf("data_batch_%d.bin", i)));
       }
     }
 

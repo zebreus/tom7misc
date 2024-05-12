@@ -232,8 +232,8 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
                   TrainParams params) {
   ExampleThread example_thread;
 
-  const string error_history_file = Util::dirplus(dir, "error-history.tsv");
-  const string model_file = Util::dirplus(dir, MODEL_NAME);
+  const string error_history_file = Util::DirPlus(dir, "error-history.tsv");
+  const string model_file = Util::DirPlus(dir, MODEL_NAME);
 
   ErrorHistory error_history(error_history_file);
 
@@ -241,7 +241,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
   for (int i = 0; i < CIFAR10::RADIX; i++)
     labels[i] = CIFAR10::LabelString(i);
   ConfusionImage<CIFAR10::RADIX> conf_image(
-      1920, labels, Util::dirplus(dir, "conf.png"));
+      1920, labels, Util::DirPlus(dir, "conf.png"));
 
   EvalCIFAR10 evaluator(cl);
 
@@ -274,7 +274,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
   static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100000;
 
   constexpr int IMAGE_EVERY = 100;
-  TrainingImages images(*net, Util::dirplus(dir, "train"),
+  TrainingImages images(*net, Util::DirPlus(dir, "train"),
                         model_file, IMAGE_EVERY);
 
   printf("Training!\n");
@@ -283,7 +283,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
   std::vector<std::unique_ptr<ErrorImage>> error_images;
   error_images.reserve(NUM_COLUMNS);
   for (int i = 0; i < NUM_COLUMNS; i++) {
-    string filename = Util::dirplus(dir, StringPrintf("error-%d.png", i));
+    string filename = Util::DirPlus(dir, StringPrintf("error-%d.png", i));
     error_images.emplace_back(
         std::make_unique<ErrorImage>(2000, EXAMPLES_PER_ROUND, filename,
                                      true));
@@ -519,7 +519,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
         net_gpu->ReadFromGPU();
         EvalCIFAR10::Result res = evaluator.Evaluate(net);
         EvalCIFAR10::TitleResult(&res);
-        res.wrong.Save(Util::dirplus(dir, "test-wrong.png"));
+        res.wrong.Save(Util::DirPlus(dir, "test-wrong.png"));
         double test_loss = (res.total - res.correct) / (double)res.total;
         error_history.Add(net->rounds, overall_average_loss,
                           ErrorHistory::ERROR_TRAIN);
@@ -530,7 +530,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
             1920, 1080,
             {{ErrorHistory::ERROR_TRAIN, 0x0033FFFF},
              {ErrorHistory::ERROR_TEST, 0x00FF00FF}},
-            0).Save(Util::dirplus(dir, "error-history.png"));
+            0).Save(Util::DirPlus(dir, "error-history.png"));
         conf_image.Add(res.conf);
         conf_image.Save();
 
@@ -571,7 +571,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
       // the main model, which is less redundant but might be surprising?
       const string filename = checkpoint_timeout ?
         StringPrintf("%s.%lld.val",
-                     Util::dirplus(dir, MODEL_BASE).c_str(),
+                     Util::DirPlus(dir, MODEL_BASE).c_str(),
                      net->rounds) : model_file;
       net->SaveToFile(filename);
       if (VERBOSE)
@@ -803,7 +803,7 @@ int main(int argc, char **argv) {
 
   cl = new CL;
 
-  const string model_file = Util::dirplus(dir, MODEL_NAME);
+  const string model_file = Util::DirPlus(dir, MODEL_NAME);
 
   std::unique_ptr<Network> net(
       Network::ReadFromFile(model_file));

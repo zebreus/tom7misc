@@ -139,6 +139,13 @@ struct Context {
 
   std::string TokenString(llama_token token) const;
 
+  // In llama3, there is an "End of Turn" token in addition to
+  // end-of-stream.
+  bool IsEOG(llama_token token) const {
+    return llama_token_is_eog(model, token);
+  }
+
+  // Note: In llama3, there is not just one token containing \n.
   llama_token NewlineToken() const { return llama_token_nl(model); }
   llama_token EOSToken() const { return llama_token_eos(model); }
 
@@ -482,6 +489,12 @@ struct LLM {
   // Print the result of TopCandidates using ANSI color codes.
   void AnsiPrintCandidates(const Candidates &candidates,
                            int maximum) const;
+
+  // For printing to the console. Tries to escape special characters
+  // and special tokens. If you call it with alternating parity, it
+  // will also use subtle color to distinguish adjacent tokens so that
+  // you can see how words are composed.
+  std::string AnsiToken(llama_token id, bool parity = false) const;
 
   std::unordered_map<std::string, std::string> GetModelMetadata() const;
 

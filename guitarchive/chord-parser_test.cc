@@ -1,22 +1,20 @@
 #include "chord-parser.h"
 
+#include <cstdio>
 #include <string>
+#include <vector>
 
-#include "re2/re2.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "util.h"
-
-#include "guitarchive.h"
 
 using namespace std;
 
-#define CHECK_VEQ(v1, v2)				\
-  do {							\
-    auto vv1 = (v1);					\
-    auto vv2 = (v2);					\
-    CHECK_EQ(vv1, vv2) << #v1 " vs " #v2 ":\n" <<	\
-      Util::Join(vv1, "|") << "\n" <<			\
+#define CHECK_VEQ(v1, v2)       \
+  do {              \
+    auto vv1 = (v1);          \
+    auto vv2 = (v2);          \
+    CHECK_EQ(vv1, vv2) << #v1 " vs " #v2 ":\n" << \
+      Util::Join(vv1, "|") << "\n" <<     \
       Util::Join(vv2, "|");                             \
   } while (0)
 
@@ -42,7 +40,7 @@ or you could try to find yourself...
 and around here we know
                    F            G
 that Others will watch where we go
-               F    
+               F
 inject us with drugs and
         D7        G     G7
 burn somebody's boat
@@ -68,13 +66,13 @@ LOST, and in this week's podcast  scoff
  and what's more
  land's  a   bore....
 )").chords;
-  
+
   vector<string> expected =
     Util::Split("C,F,C,F,C,F,"
-		"Bb,"
-		"F,G,F,G,F,D7,G,G7,"
-		"C,F,C,F,Am,Bb,"
-		"F,G,F,G,F,D7,G,G7", ',');
+    "Bb,"
+    "F,G,F,G,F,D7,G,G7,"
+    "C,F,C,F,Am,Bb,"
+    "F,G,F,G,F,D7,G,G7", ',');
   CHECK_VEQ(expected, ch);
 }
 
@@ -112,13 +110,13 @@ LOST, and in this week's podcast  scoff
  and what's more
  land's  a   bore....
 )").chords;
-  
+
   vector<string> expected =
     Util::Split("C,F,C,F,C,F,"
-		"Bb,"
-		"F,G,F,G,F,D7,G,G7,"
-		"C,F,C,F,Am,Bb,"
-		"F,G,F,G,F,D7,G,G7", ',');
+    "Bb,"
+    "F,G,F,G,F,D7,G,G7,"
+    "C,F,C,F,Am,Bb,"
+    "F,G,F,G,F,D7,G,G7", ',');
   CHECK_VEQ(expected, ch);
 }
 

@@ -1,15 +1,10 @@
 
 #include "bigconv.h"
 
-#include <string>
 #include <cstring>
 
-#include "base/logging.h"
 #include "bignum/big.h"
 #include "bignbr.h"
-#include "base/stringprintf.h"
-
-static constexpr bool VERBOSE = false;
 
 using namespace std;
 

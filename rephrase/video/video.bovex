@@ -1,0 +1,745 @@
+(*   -*- electric-indent-local-mode: nil -*- *)
+let
+  import "stdlib.bovex"
+  import "layout.bovex"
+  import "cite.bovex"
+  import "paper.bib"
+
+  import "talk-shared.bovex"
+
+  do set-doc-info { (TalkInfo)
+                    width = pixel 3840.0,
+                    height = pixel 2160.0 }
+
+
+  (* do REPHRASE-ALL := SOME 50 *)
+  do REPHRASE-ALL := NONE
+  do NO-REPHRASE := true
+
+in
+
+  (* TODO: Better bullet graphic. Can embed fonts, remember *)
+
+  title-slide slide (size (point 280.0) (color 0xFFFFFFFF [Badness 0]))
+  [by Tom 7]
+  [An Evening Of... 2024];
+
+  title-slide slide (size (point 380.0) (color 0xFF0000FF [UN-]))
+  (color 0xFF7777FF [necessary])
+  [detail?!!‽];
+
+
+  (* TODO It has come to my attention... *)
+
+ (* Oh my god, it burns my eyes!! And not just because it's so
+    bright... the glaring mistake... *)
+  (* People will look at this and think, "Looks fine to me!" *)
+  just-image "typography0.png";
+  just-image "typography1.png";
+  just-image "typography2.png";
+  just-image "typography3.png";
+  just-image "typography4.png";
+  just-image "typography5.png";
+  (* just-image "typography6.png"; *)
+  let
+    val AIX = 180.0
+    val TX = AIX +. 220.0
+  in
+    combo-slide (slide with BODY-FONT-COLOR = 0x440044FF)
+    (Image { x = 0.0, y = 0.0, width = NONE,
+             img = image-load "typography6.png" } ::
+     Image { x = AIX, y = 800.0, width = SOME 180.0,
+             img = image-load "illustrator-icon.png" } ::
+     TextBox { x = TX, y = 800.0 +. 64.0,
+               width = 800.0, text = b[Adobe Illustrator] } ::
+     TextBox { x = TX, y = 800.0 +. 118.0,
+               width = 800.0, text = size 52.0 [“King of Fonts”] } ::
+     TextBox { x = TX, y = 800.0 +. 164.0,
+               width = 800.0, text =
+               color 0x880000FF (size 32.0 [($600/yr.)]) } ::
+     nil);
+  end;
+
+  just-video slide "bottle.mp4";
+
+  (* Or like, the rules for wordle hard mode are just
+     wrong. I would never have let this happen. *)
+  let
+    val W = (NONE, WORDLE-EMPTY)
+    fun X s = (SOME s, WORDLE-GREY)
+    fun N s = (SOME s, WORDLE-GREEN)
+    fun Y s = (SOME s, WORDLE-YELLOW)
+    val board =
+      (X "W" :: X "R" :: X "O" :: X "N" :: X "G" :: nil) ::
+      (X "R" :: X "U" :: X "L" :: Y "E" :: Y "S" :: nil) ::
+      (X "T" :: X "I" :: Y "M" :: Y "E" :: Y "S" :: nil) ::
+      (Y "S" :: X "H" :: X "A" :: Y "M" :: Y "E" :: nil) ::
+      (W :: W :: W :: W :: W :: nil) ::
+      nil
+
+    val QUOTE-OFFSET = inch 7.0
+  in
+    combo-slide slide
+    (StickerElt (wordle-board { x = inch 9.0, y = inch 2.5,
+                                cell-size = inch 1.6,
+                                board = board }) ::
+     TextBox { x = QUOTE-OFFSET +. inch 0.6,
+               y = 1080.0 -. inch 2.0,
+               width = SLIDE-WIDTH -. QUOTE-OFFSET *. 2.0,
+               text = (justify-left
+                       (it (color 0xDDDD99FF
+                            [“Any revealed hints must be
+                             used in subsequent guesses”]))) } ::
+    nil)
+  end;
+
+  (* couple more gags here? *)
+  (* Rules of Wordle expert mode are just wrong.
+
+     F  I  G  H  T
+     T  I  M [E] S
+     W  R *O* N  G
+     R [U] L [E] S
+     aeoud
+
+     hello has a unique solution
+     that illustrates the problem, too
+
+     Parker Square
+     error correction?
+
+     *)
+
+  (* Lorem Epsom *)
+
+  let
+    val YPOS = inch 4.0
+
+    fun lorem-slide zig =
+    combo-slide slide
+    (Title [Corporate Preso] ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = YPOS,
+               width = inch 9.0,
+               text = [[zigzag zig (default-text [Lorem Epsom])]
+                       dolor sit amet,
+                       [color 0xFFFFFFEE
+                        [consectetur adipiscing elit,]]
+                       [color 0xFFFFFFCC
+                        [sed do eiusmod tempor
+                         incididunt ut labore]]
+                       [color 0xFFFFFFAA
+                        [et dolore magna aliqua. Ut]]
+                       [color 0xFFFFFF88
+                        [enim ad minim veniam, quis nostrud]]
+                       [color 0xFFFFFF55
+                        [exercitation ullamco laboris nisi ut]]
+                       [color 0xFFFFFF33
+                        [aliquip ex ea commodo consequat. Duis]]
+                       [*
+                       aute irure dolor in reprehenderit in
+                       voluptate velit esse cillum dolore eu
+                       fugiat nulla pariatur. Excepteur sint
+                       occaecat cupidatat non proident, sunt
+                       in culpa qui officia deserunt mollit
+                       anim id est laborum *]] } ::
+     Image { img = image-load "graph.png",
+             x = pixel 900.0,
+             y = YPOS,
+             width = SOME (pixel 900.0) } ::
+     nil)
+  in
+    lorem-slide false;
+    lorem-slide true;
+  end;
+
+  combo-slide (slide with GAP = 0.0)
+  (Image { img = image-load "lorem-portrait.png",
+           x = pixel 1100.0,
+           y = pixel 100.0,
+           width = NONE } ::
+   Title [The Villain: Lorem Epsom] ::
+   Bullets ([Probably never even read the Wikipedia article
+             on [it[Lorem Ipsum]]] ::
+            (* [Leverages synergy] :: *)
+            [If you tell him there's a mistake in the
+             math he takes this as a personal attack] ::
+            [Loves the phrases “[em[metaverse]]” and
+             “[em[blockchain]]” and
+             “[em[generative AI]]” but doesn't know why] ::
+            [Is successful and rich] ::
+            nil) ::
+   nil);
+
+  (* Epsom vs Knuth
+
+    * Thinks of spreadsheets as "the one without clip-art"
+
+    *)
+
+  combo-slide slide
+  (Image { img = image-load "knuth-portrait-trace.png",
+           x = pixel 1100.0,
+           y = pixel 80.0,
+           width = NONE } ::
+   Title [The Hero: Donald Knuth] ::
+   Bullets ([[em[Wrote]] the article on [it[Lorem Ipsum]]] ::
+            [Will pay you if you find an error] ::
+            [Took 49 years to write a book] :: nil) ::
+   nil);
+
+  (* Now if you paid for an event called An Evening of Unnecessary
+     Detail I think there's a good chance you admire Knuth, as I do.
+     But a brief recap of the TeX story...
+
+     This is a guy who allows himself to
+     *)
+  combo-slide (slide
+               with BULLET-FONT-SIZE = 60.0
+               with BULLET-LINE-GAP = 40.0)
+  (Title [The Art of Computer Procrastination] ::
+   Image { img = image-load "knuth-portrait-trace.png",
+           x = pixel 1100.0,
+           y = pixel 80.0,
+           width = NONE } ::
+   Bullet ({(Bullet)}, [1975: 3000 pages of hand-written text]) ::
+   Bullet ({(Bullet)}, [1977: Publisher proofs aren't beautiful enough]) ::
+   Bullet ({(Bullet)}, [1982: Returns with TeX]) ::
+   Bullet ({(Bullet) space-after = -36.0 },
+           size 48.0
+           [... New text layout algorithms. New abstract
+            computer. New hyphenation algorithms. New data structures
+            for storing hyphenation tables. New fonts. New ways of
+            describing fonts. New ways of documenting source code.
+            New computer science to write about. etc. etc. ...]) ::
+   Bullet ({(Bullet)}, [2023: Releases Volume 4c of ?? volumes]) ::
+   nil);
+
+  (* And a large fraction of scientific literature, especially in
+     computer science and math, is made using Knuth's TeX.
+
+     All that text was consumed by this guy,
+     *)
+
+
+  (* in practice, was here at 4:38 *)
+  set-target-seconds (!current-page, 4 * 60 - 20);
+
+  (* - AI in everything now. I do not want this when I'm trying
+     to rebook my flight.
+     *)
+  combo-slide slide
+  (Bullets ([Wow OMG I'm sick of hearing about it] ::
+            [Torment Nexus] ::
+            [It does kinda work though] :: nil) ::
+   Image { img = image-load "torment-nexus.png",
+           x = pixel (1920.0 -. 1080.0),
+           y = pixel 0.0,
+           width = NONE } ::
+   Title [Nightmare on LLM Street] ::
+   nil);
+
+  (* The LLM is way more like Lorem Ipsum than Knuth.
+     But it's a little bit Knuth. And that worries me a lot... *)
+
+  combo-slide slide
+  (Image { img = image-load "vu-meter-slide.png",
+           x = pixel 0.0,
+           y = pixel 0.0,
+           width = NONE } :: nil);
+
+  (* Clarissa explains it all *)
+  (* I'm Tom 7. I specialize in cursed computer software.
+     I don't do it for the likes. I do it because I'm
+     riddled with anxiety and I find it therapeutic to
+     digest vexing things by systematizing them.
+
+     So I started thinking about projects. If I have to
+     live with AI, and it's going to get the details wrong
+     all the time... can I at least have something that I
+     want? I like programming languages, and I like fonts...
+     Like beautiful typography? *)
+
+  let
+    val morphism = image-load "morphism.png"
+    val { width, height } = image-size morphism
+    val MORPHISM-X = (SLIDE-WIDTH -. (int-to-float width)) *. 0.5
+    val MORPHISM-Y = inch 2.75
+  in
+    (* There is also "space" in typography::metroid *)
+    combo-slide (slide with TITLE-FONT-SIZE = point 90.0
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+    (Title [The Hurry-Coward So-So-Morphism] ::
+     Image { img = morphism,
+             x = MORPHISM-X, y = MORPHISM-Y,
+             width = NONE } ::
+     nil);
+
+    (* But first, we need to talk about Super Metroid. *)
+    (* Let's just add one more character to this play: Super Metroid *)
+    combo-slide (slide with TITLE-FONT-SIZE = point 90.0
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+    (Title [The Hurry-Coward So-So-Morphism] ::
+     Image { img = image-load "morphism2.png",
+             x = MORPHISM-X, y = MORPHISM-Y,
+             width = NONE } ::
+     nil);
+
+    combo-slide (slide with TITLE-FONT-SIZE = point 90.0
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+    (Title [The Hurry-Coward So-So-Morphism] ::
+     Image { img = image-load "triforce.png",
+             x = MORPHISM-X +. inch 1.5, y = MORPHISM-Y -. inch 5.0,
+             width = SOME 1300.0 } ::
+     Image { img = image-load "morphism2.png",
+             x = MORPHISM-X, y = MORPHISM-Y,
+             width = NONE } ::
+     nil);
+  end;
+
+  monospace-slide (slide with TITLE-FONT-SIZE = point 88.5
+                   with MONOSPACE-FONT-SIZE = point 40.0
+                   with TOP-MARGIN = inch 2.0
+                   with CONTENT-START-Y = inch 3.2)
+  [Super Metroid Speed Guide and FAQ]
+[  Once you save the game at your ship (about 1 hour 15 minutes is good), go
+down to Tourian. Do not save your game in Tourian if you have intentions of
+returning to any previously explored section on Planet Zebes. There will be
+a few Metroids to kill before you reach Mother Brain, and they must all die
+in order to continue to Mother Brain. Read the boss guide for more details.
+Once Mother Brain is defeated, you will need to hurry back to your ship. By
+now you will already have the HYPER BEAM. From Mother Brain’s room, go west
+and then south. Take the blue door at the bottom and speed dash east. Super
+jump up, and continue north. Once you land up top and are running east, aim
+diagonally down to the right and shoot an unseen door. Eventually, you will
+get to this door since lava will start to rise from the floor in this area.
+Speed dash through the door you preopened, and charge for a super jump. Hug
+either the left or right wall in the Craterian shaft and super jump up. Now
+quickly get to your ship before the planet explodes. There should be almost
+a minute left on the timer. Sit back and watch the ending! Did you beat the
+game within 1 hour and 20 minutes?
+
+(c) 1996 rs1n
+https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
+
+  let
+    val mother = image-load "motherbrain.png"
+    val { width = mother-width, height = _ } = image-size mother
+    val YPOS = inch 4.0
+
+    (* right aligned *)
+    val motherbrain-x = pixel (1920.0 -. int-to-float mother-width)
+    val GAP = inch 0.25
+  in
+    combo-slide (slide with TITLE-FONT-SIZE = point 88.5)
+    (TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = YPOS,
+               width = motherbrain-x -. GAP -. DEFAULT-LEFT-MARGIN,
+               text =
+               [The first level of Super Metroid Speed Guide and FAQ is
+                easy with lexical coinduction and time travel] } ::
+     Image { img = mother,
+             x = motherbrain-x,
+             y = pixel 0.0,
+             width = NONE } ::
+     Title [Automating speedrunner chores] ::
+     nil)
+  end;
+
+  (*
+  quote-slide slide [¿Cómo se LLama?]
+  [Exercise in rephrasing text. The following paragraph
+   needs to be rephrased so that it retains its precise meaning, but
+   with minor variations in the specific choice of words, punctuation,
+   and so on. No new facts should be introduced or removed, but it is
+   good to use synonyms and change the word order and phrasing.
+
+   Original paragraph:];
+*)
+
+  let
+    val slide = slide
+    open slide-props slide
+    (* val Y1 = inch 1.5 *)
+    val Y1 = CONTENT-START-Y
+    val Y2 = Y1 +. BODY-FONT-SIZE *. 1.25 (* 5.25 *)
+    val Y3 = Y2 +. BODY-FONT-SIZE *. 1.25
+    val Y4 = Y3 +. BODY-FONT-SIZE *. 1.25
+    val Y5 = Y4 +. BODY-FONT-SIZE *. 1.25
+
+    fun frame on =
+    combo-slide slide
+    (
+     Image { img = image-load "torment-nexus.png",
+             x = pixel (1920.0 -. 1080.0),
+             y = pixel 0.0,
+             width = NONE } ::
+     Title [¿Cómo se LLama?] ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = Y1,
+               width = CONTENT-WIDTH,
+               text =
+               color 0xFFFFFFFF [(instructions)]
+               (*
+               (size 64.0
+                (color 0xEEEEBBFF
+                 [Exercise in rephrasing text. The following paragraph
+                  needs to be rephrased so that it retains its precise
+                  meaning, but with minor variations in the specific
+                  choice of words, punctuation, and so on. No new facts
+                  should be introduced or removed, but it is good to use
+                  synonyms and change the word order and phrasing.])) *)
+               } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = Y2,
+               width = CONTENT-WIDTH,
+               text = color 0xFFFFFFFF [Original paragraph:] } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = Y3,
+               width = CONTENT-WIDTH,
+               text = color 0xAAAACCFF [(input paragraph)] } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = Y4,
+               width = CONTENT-WIDTH,
+               text = color 0xFFFFFFFF [Rephrased paragraph:] } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = Y5,
+               width = CONTENT-WIDTH,
+               text = fixedersys
+               (color 0xFFFFFF [> ] ^^ (if on
+                                        then color 0xAACCAAFF [_]
+                                        else color 0xAACCAAFF [ ]))} ::
+     nil)
+
+    val start-page = !current-page
+  in
+    current-page := start-page;
+    current-frame := 0;
+    set-frame-duration(start-page, 0, 30);
+    frame true;
+
+    current-page := start-page;
+    current-frame := 1;
+    set-frame-duration(start-page, 1, 30);
+    frame false;
+
+    current-frame := 0;
+  end;
+
+  monospace-slide (slide
+                   with MONOSPACE-FONT-SIZE = 58.0)
+  [Original paragraph]
+  (* This is the text from demo.txt *)
+  [Here's a demo of it generating monospaced text. I'm just
+sampling text a line at a time, and if the line happens
+to be exactly the right length, then I keep that line
+and continue. If not, then I reset to the beginning of
+the line and roll the dice again.];
+
+  for 0 45 (fn i => just-image ("monospace-slides/frame" ^
+                                int-to-string i ^ ".png"));
+
+  just-video (slide with BACKGROUND = "monospace-finished.png")
+  "monospace30.mp4";
+
+  just-image "monospace-finished.png";
+
+  quote-slide (slide with BACKGROUND = "metroidbg.png"
+               with BODY-FONT-COLOR = 0xFFFF77FF) []
+  [Great !! You fulfiled your mission. It will revive peace
+   in space. But,it may be invaded by the other Metroid. Pray for a true
+   peace in space!];
+
+  (* In practice, was here at 9m20s. *)
+  set-target-seconds (!current-page, 8 * 60 - 40);
+  bullet-slide slide [Baby mode]
+  ([300 lines of code] ::
+   [It only took an afternoon] ::
+   [You have to look at [tt[monospaced text]]] :: nil);
+
+  (* XXX would be kind of nice to illustrate proportional vs.
+     monospaced here? *)
+
+  let
+    val tom = image-load "tom7-portrait.png"
+    val { width, height = _ } = image-size tom
+  in
+    combo-slide (slide with BULLET-FONT-SIZE = 52.0)
+    (Image { x = SLIDE-WIDTH -. int-to-float width, y = 0.0, width = NONE,
+             img = tom } ::
+     Title [The Fool: Tom 7] ::
+     Bullet ({(Bullet) space-after = 42.0, bullet = [ ]},
+             size 72.0 [Knuth Any% Speedrun:]) ::
+     BulletsExt
+     ({(Bullet) indent = 1 },
+      [[color 0xFFFF77FF[BoVeX]], a new document preparation system] ::
+      [Full-featured typed programming language] ::
+      [Kerning, hyphenation, and all that crap] ::
+      [New fonts, and software for making fonts] ::
+      [AI-enhanced text layout algorithm] ::
+      [Use [color 0xFFFF77FF[BoVeX]] to write a paper
+       about [color 0xFFFF77FF[BoVeX]]] :: nil) ::
+     nil)
+  end;
+
+  just-video slide "scrollbadness0.mp4";
+
+  (* This talk is not about the paper. But I did also use
+     it to make these slides. For example, here's the source
+     code for the slide you're looking at. *)
+  diagram-slide (slide
+                 with BACKGROUND = "emacs-grey.png"
+                 with TITLE-FONT-SIZE = 80.0
+                 with TITLE-FONT-COLOR = 0xFFFF90FF
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+  [Here is what [it[this]] slide looks like]
+  (image-load "self.png");
+
+  (* 77% of the code on screen *)
+  just-image "video/code-4k.png";
+  just-image "video/code-4k-self.png";
+
+  diagram-slide (slide
+                 with TITLE-FONT-SIZE = 80.0
+                 with TOP-MARGIN = inch 2.0
+                 with CONTENT-START-Y = inch 2.75)
+  [Boxes and glue]
+  (image-load "algorithm-dark.png");
+
+  let
+    val YPOS = inch 0.9
+  in
+    combo-slide slide
+    (TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = YPOS +. 64.0,
+               width = inch 8.75,
+               text = (span {(Span) line-spacing = 4.0}
+                       [Here is an example of applying the boxes
+                       and glue algorithm to this very text. Most
+                       of the break points lead to extremely long
+                       or short lines, so only a small region
+                       is of any interest. But those details
+                       matter.]) } ::
+     Image { img = image-load "boxes-and-glue-matrix.png",
+             x = pixel 900.0,
+             y = YPOS -. 36.0,
+             width = NONE } ::
+     nil)
+  end;
+
+  diagram-slide (slide
+                 with TITLE-FONT-SIZE = 80.0
+                 with TOP-MARGIN = inch 2.0
+                 with LEFT-MARGIN = DEFAULT-LEFT-MARGIN -. inch 0.75
+                 with CONTENT-START-Y = inch 2.75)
+  [Boxes and LLMers Glue]
+  (image-load "algorithm2-dark.png");
+
+  just-video (slide with LOOP-VIDEO = true) "comparison.mp4";
+
+  (* Can drop this *)
+  let
+    type particle = { x: float, y : float, lay : layout,
+                      width: float, height : float,
+                      dx : float, dy : float }
+
+    fun letterbox (s : layout) =
+      let val box = get-box s
+      in
+        case layoutcase box of
+          Node (BOX, attrs as {(Box) width, height}, ch) =>
+            { width = width, height = height, lay = box }
+        | _ => fail "getbox should return one box"
+      end
+
+    val SYSTEMX = SLIDE-WIDTH *. 0.5
+    val SYSTEMY = SLIDE-HEIGHT *. 0.333
+    val SYSTEMW = SLIDE-HEIGHT *. 0.444
+    val SYSTEMH = SYSTEMW
+
+    val sim : particle list ref = ref nil
+    (* Add some particles *)
+    fun add () =
+      let val { width, height, lay } =
+        let val c = (random64() andb 0xFFFFFFFF) orb 0x303030AA
+        in
+          letterbox (color c (b (size 64.0 (apply-font FRANKLIN [e]))))
+        end
+      in
+        sim := { x = random () *. SYSTEMW,
+                 y = random () *. SYSTEMH,
+                 dx = (random() *. 10.0) -. 10.0,
+                 dy = (random() *. 10.0) -. 10.0,
+                 width = width,
+                 height = height,
+                 lay = lay } :: !sim
+      end
+
+    do for 0 100 (fn _ => add ())
+
+
+    fun simulate () =
+      let
+
+        (*
+        val BOTTOM = 1000.0
+        val RIGHT = SLIDE-WIDTH -. 80.0
+        val LEFT = 40.0
+        *)
+
+        val BOTTOM = SYSTEMH
+        val LEFT = 0.0
+        val RIGHT = SYSTEMW
+
+        fun sim-one { x, y, dx, dy, width, height, lay } =
+          let
+            val x = x +. dx
+            val y = y +. dy
+            val dy = dy +. 4.0
+
+            val (y, dy) =
+              if y +. height >. BOTTOM
+              then (BOTTOM -. height, 0.0 -. dy *. 0.90)
+              else (y, dy)
+            val (x, dx) =
+              if x +. width >. RIGHT
+              then (RIGHT -. width, 0.0 -. dx *. 0.90)
+              else (x, dx)
+            val (x, dx) =
+              if x <. LEFT
+              then (LEFT, 0.0 -. dx *. 0.90)
+              else (x, dx)
+          in
+            { x = x, y = y, dx = dx, dy = dy,
+              width = width, height = height,
+              lay = lay }
+          end
+      in
+        sim := list-map sim-one (!sim)
+      end
+
+    fun theslide t =
+      let
+        do simulate ()
+
+        val texts =
+          list-map
+          (fn ({ x = x, y = y, dx = dx, dy = dy,
+                 width = width, height = height,
+                 lay = lay } : particle) =>
+           TextBox { x = x +. SYSTEMX, y = y +. SYSTEMY,
+                     width = inch 19.0,
+                     text = lay })
+          (!sim)
+      in
+        combo-slide slide
+        (Title [Additional features] ::
+         Bullets
+         ([Bibliography database] ::
+          (three-d { font-name = font-regular PALATINO,
+                     font-size = 72.0 *. (t +. 1.0),
+                     width = 40.0, height = 72.0, text = "3D text" }) ::
+          [Achievements] ::
+          nil) ::
+         TextBox { x = SYSTEMX, y = SYSTEMY +. SYSTEMH +. 48.0,
+                   width = inch 19.0,
+                   text = (palatino [Particle systems]) } ::
+         texts)
+      end
+
+    val NUM-FRAMES = 64
+
+    val start-page = !current-page
+    fun makeframe n =
+      let
+        val t = n / (NUM-FRAMES - 1)
+        (* Ease in/out *)
+        (* val pos = t *. t *. t -. 3.0 *. (t *. t) +. 2.0 *. t *)
+        val pos = 0.5 *. (1.0 -. cos(t *. 3.141592653589))
+        do print ("Frame " ^ int-to-string n ^ "/" ^
+                  int-to-string NUM-FRAMES ^ " \n")
+      in
+        (* generating a slide advances the frame, so keep going back. *)
+        current-page := start-page;
+        current-frame := n;
+        theslide t
+      end
+  in
+    for 0 (NUM-FRAMES - 1) makeframe;
+    current-frame := 0;
+  end;
+
+  just-image "achievement-screenshot.png";
+
+  (* TODO: Future work: Acting on world, 1,000,000 *)
+
+  let
+    val last-line =
+      [Though some may consider the addition of AI features to TeX to be
+       an unnecessary perversion]
+    val last-line-end=
+      [I find this[box {(Box) glue-break-penalty = -1000000.0,
+                        width = 0.0 } []]use of LLMs to be
+       [it[fully justified]].]
+
+    val last-line-setup = last-line ^^ [...] ^^
+      (color 0x00000000 last-line-end)
+
+    val last-line-pun =
+      last-line ^^ [, ] ^^ last-line-end
+
+    fun concslide pun =
+      text-slide slide [Conclusion]
+      (justify-all
+       (span {(Span) line-spacing = 4.0}
+       ([In this talk—and [it[with]] this talk—I presented BoVeX, a
+         new computer typesetting system. It follows the tradition TeX, but
+         with modern amenities such as requiring over 128 gigabytes of RAM. ]
+        ^^
+        (if pun
+         then last-line-pun
+         else last-line-setup))))
+  in
+    concslide false;
+    concslide true;
+  end;
+
+  (* Was here at 15 *)
+  set-target-seconds (!current-page, 12 * 60);
+  let
+    val tom = image-load "tom7-portrait-glasses.png"
+    val { width, height = _ } = image-size tom
+    val BYLINE = 940.0
+    val BADNESS0 = 340.0 +. 128.0 +. 54.0
+  in
+    combo-slide slide
+    (Image { x = SLIDE-WIDTH -. int-to-float width, y = 0.0, width = NONE,
+             img = tom } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN, y = BADNESS0,
+               width = inch 19.0,
+               text = size (point 196.0)
+               (b (color 0xFFFFFFFF [“Badness 0”])) } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN, y = BYLINE -. 264.0,
+               width = inch 19.0,
+               text = size (point 100.0)
+               (color 0xFF8888FF [Executive Producer]) } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN, y = BYLINE,
+               width = inch 19.0,
+               text = size (point 300.0) (color 0xFF0000FF [Tom 7]) } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN, y = 300.0,
+               width = inch 19.0,
+               text =
+               apply-font FRANKLIN
+               (b
+                (size (point 400.0) (color 0xFFFF00FF
+                                     [AEOUD[color 0xFFFF0088 [:]]NY]))) } ::
+     nil)
+  end
+
+
+
+end

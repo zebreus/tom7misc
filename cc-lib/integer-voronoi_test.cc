@@ -16,7 +16,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-int main(int argc, char *argv[]) {
+int main(int, char **) {
   ArcFour rc(StringPrintf("voronoi.%lld", time(nullptr)));
 
   int num_points = 256;
@@ -37,10 +37,10 @@ int main(int argc, char *argv[]) {
 
   std::vector<int> raster =
     IntegerVoronoi::RasterizeVec(points, width, height);
-  CHECK(raster.size() == width * height);
+  CHECK((int)raster.size() == width * height);
 
   std::vector<uint32_t> colors;
-  for (int i = 0; i < points.size(); i++) {
+  for (int i = 0; i < (int)points.size(); i++) {
     float h = RandTo(&rc, 1024) / 1024.0f;
     float s = 0.5f + (RandTo(&rc, 512) / 1024.0f);
     float v = 0.45f + (RandTo(&rc, 512) / 1024.0f);
@@ -51,7 +51,7 @@ int main(int argc, char *argv[]) {
 
   ImageRGBA vimg(width, height);
 
-  for (int idx = 0; idx < raster.size(); idx++) {
+  for (int idx = 0; idx < (int)raster.size(); idx++) {
     int x = idx % width;
     int y = idx / width;
 
@@ -69,6 +69,18 @@ int main(int argc, char *argv[]) {
 
   vimg.Save("voronoi-test.png");
   printf("Wrote voronoi-test.png\n");
+
+  Image1 bitmap(width, height);
+  bitmap.Clear();
+  for (const auto &[x, y] : points) {
+    bitmap.SetPixel(x, y, true);
+  }
+
+  ImageF dist = IntegerVoronoi::NormalizeDistanceField(
+      IntegerVoronoi::DistanceField(bitmap));
+
+  dist.Make8Bit().GreyscaleRGBA().Save("voronoi-test-dist.png");
+  printf("Wrote voronoi-test-dist.png\n");
 
   printf("OK\n");
   return 0;

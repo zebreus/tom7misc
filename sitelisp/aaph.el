@@ -1,11 +1,9 @@
-;;; aaph.el - Major mode for editing aphasia 2 source
+;;; aaph.el - Major mode for editing aphasia 2 source (and similar
+;; languages, like "BoVeX").
 ;; Adapted from sml-mode.el and highly damaged by Tom 7.
 
 ;; Copyright (C) 1989, Lars Bo Nielsen; 1994,1997, Matthew J. Morley
-;; 2003-2004 Tom Murphy VII
-
-;; $Revision: 1.5 $
-;; $Date: 2008/04/27 14:28:19 $
+;; 2003-2024 Tom Murphy VII
 
 ;; This file is not part of GNU Emacs, but it is distributed under the
 ;; same conditions.
@@ -98,9 +96,9 @@ most uses. (A value of nil, means do not look at all)")
 The default assumes the info file \"aaph-mode.info\" is on Emacs' info
 directory path. If it is not, either put the file on the standard path
 or set the variable aaph-mode-info to the exact location of this file
-which is part of the aaph-mode 3.2 (and later) distribution. E.g:  
+which is part of the aaph-mode 3.2 (and later) distribution. E.g:
 
-  (setq aaph-mode-info \"/usr/me/lib/info/aaph-mode\") 
+  (setq aaph-mode-info \"/usr/me/lib/info/aaph-mode\")
 
 in your .emacs file. You can always set it interactively with the
 set-variable command.")
@@ -117,7 +115,7 @@ This is a good place to put your preferred key bindings.")
 (defvar aaph-error-overlay t
   "*Non-nil means use an overlay to highlight errorful code in the buffer.
 
-This gets set when `aaph-mode' is invoked\; if you don't like/want SML 
+This gets set when `aaph-mode' is invoked\; if you don't like/want SML
 source errors to be highlighted in this way, do something like
 
   \(setq-default aaph-error-overlay nil\)
@@ -126,7 +124,7 @@ in your `aaph-load-hook', say.")
 
 (make-variable-buffer-local 'aaph-error-overlay)
 
-;;; CODE FOR AAPH-MODE 
+;;; CODE FOR AAPH-MODE
 
 (defun aaph-mode-info ()
   "Command to access the TeXinfo documentation for aaph-mode.
@@ -140,7 +138,7 @@ See doc for the variable aaph-mode-info."
              (message "Can't find it... set this variable first!")))))
 
 (defun aaph-indent-level (&optional indent)
-   "Allow the user to change the block indentation level. Numeric prefix 
+   "Allow the user to change the block indentation level. Numeric prefix
 accepted in lieu of prompting."
    (interactive "NIndentation level: ")
    (setq aaph-indent-level indent))
@@ -173,7 +171,7 @@ accepted in lieu of prompting."
   "Toggle aaph-electric-semi-mode. Prefix means set it to nil."
   (interactive "P")
   (setq aaph-electric-semi-mode (and (not of) (not aaph-electric-semi-mode)))
-  (message "%s" (concat "Electric semi mode is " 
+  (message "%s" (concat "Electric semi mode is "
                    (if aaph-electric-semi-mode "on" "off"))))
 
 ;;; BINDINGS: these should be common to the source and process modes...
@@ -302,8 +300,10 @@ Full documentation will be available after autoloading the function."
 ;; close, but doesn't work. font-lock wants to find matching quotes,
 ;; not *any* two quotes.
 ;  (modify-syntax-entry ?\[      "\""    aaph-mode-syntax-table)
-;  (modify-syntax-entry ?\]      "\""    aaph-mode-syntax-table)
-  (modify-syntax-entry ?-       "w"     aaph-mode-syntax-table)
+                                        ;  (modify-syntax-entry ?\]      "\""    aaph-mode-syntax-table)
+  ;; you may be tempted to treat - as part of a word, but this
+  ;; will give you undesirable ctrl-left and ctrl-right behavior
+;  (modify-syntax-entry ?-       "w"     aaph-mode-syntax-table)
   (modify-syntax-entry ?        " "     aaph-mode-syntax-table)
   (modify-syntax-entry ?\t      " "     aaph-mode-syntax-table)
   (modify-syntax-entry ?\n      " "     aaph-mode-syntax-table)
@@ -349,7 +349,7 @@ aaph-electric-semi-mode (default nil)
     If t, a `\;' will reindent line, and perform a newline.
 
 aaph-paren-lookback (default 1000)
-    Determines how far back (in chars) the indentation algorithm should 
+    Determines how far back (in chars) the indentation algorithm should
     look to match parenthesis. A value of nil, means do not look at all.
 
 Mode map
@@ -381,7 +381,7 @@ Mode map
   (make-local-variable 'comment-end)
   (setq comment-end " *)")
   (make-local-variable 'comment-column)
-  (setq comment-column 40)              
+  (setq comment-column 40)
   (make-local-variable 'comment-start-skip)
   (setq comment-start-skip "(\\*+[ \t]?")
   (make-local-variable 'comment-indent-function)
@@ -389,7 +389,7 @@ Mode map
   (setq aaph-error-overlay (and aaph-error-overlay (aaph-make-overlay))))
 
   ;; Adding these will fool the matching of parens -- because of a
-  ;; bug in Emacs (in scan_lists, i think)... it would be nice to 
+  ;; bug in Emacs (in scan_lists, i think)... it would be nice to
   ;; have comments treated as white-space.
   ;;(make-local-variable 'parse-sexp-ignore-comments)
   ;;(setq parse-sexp-ignore-comments t)
@@ -422,7 +422,7 @@ the overlay should simply be removed: \\[universal-argument] \
   "The keywords a `|' can follow.")
 
 (defun aaph-electric-pipe ()
-  "Insert a \"|\". 
+  "Insert a \"|\".
 Depending on the context insert the name of function, a \"=>\" etc."
   (interactive)
   (let ((case-fold-search nil)          ; Case sensitive
@@ -477,7 +477,7 @@ Depending on the context insert the name of function, a \"=>\" etc."
 
 (defun aaph-electric-semi ()
   "Inserts a \;.
-If variable aaph-electric-semi-mode is t, indent the current line, insert 
+If variable aaph-electric-semi-mode is t, indent the current line, insert
 a newline, and indent."
   (interactive)
   (insert "\;")
@@ -539,24 +539,26 @@ If anyone has a good algorithm for this..."
 
 (defconst aaph-indent-starters-reg
   "and\\b\\|case\\b\\|datatype\\b\
+\\|object\\b\
 \\|else\\b\\|fun\\b\\|do\\b\\|import\\b\
 \\|struct\\b\\|type\\b\\|open\\b\\|val\\b\
 \\|in\\b\\|infix\\b\\|infixr\\b\\|let\\(cc\\)?\\b\\|if\\b\\|then\\b\\|local\\b\
 \\|nonfix\\b\\|of\\b\\|open\\b\\|raise\\b\\|sig\\b\
-\\|while\\b\\|with\\b\\|withtype\\b"
+\\|while\\b"
   "The indentation starters. The next line will be indented.")
 
 ;; ditto abstraction
 (defconst aaph-starters-reg
   "\\bdatatype\\b\\|\\bdo\\b\\|\\bimport\\b\
+\\|\\bobject\\b\
 \\|\\bexception\\b\\|\\bfun\\b\\|\\bfunctor\\b\\|\\blocal\\b\
 \\|\\binfix\\b\\|\\binfixr\\b\
 \\|\\bnonfix\\b\\|\\bsignature\\b\\|\\bstructure\\b\
-\\|\\btype\\b\\|\\bopen\\b\\|\\bval\\b\\|\\bwith\\b"
+\\|\\btype\\b\\|\\bopen\\b\\|\\bval\\b"
   "The starters of new expressions.")
 
 (defconst aaph-end-starters-reg
-  "\\blet\\(cc\\)?\\b\\|\\blocal\\b\\|\\bsig\\b\\|\\bstruct\\b\\|\\bwith\\b"
+  "\\blet\\(cc\\)?\\b\\|\\blocal\\b\\|\\bsig\\b\\|\\bstruct\\b"
   "Matching reg-expression for the \"end\" keyword.")
 
 (defconst aaph-starters-indent-after
@@ -618,7 +620,7 @@ then comment out the highlighted region instead. "
             (if (re-search-backward "[^\\\\]\"" nil t)
                 (1+ (current-indentation))
               0))))
-         ;; XXX tom7: this is dumb when there is no expression following =>. 
+         ;; XXX tom7: this is dumb when there is no expression following =>.
          ;;           Can I do better?
          ;; Are we looking at a case expression ?
          ((looking-at "|.*=>")
@@ -763,7 +765,7 @@ then comment out the highlighted region instead. "
            ((looking-at "\\* ")
             (+ (current-column) 2))
            ;; Started val/fun/structure...
-           
+
            ;; tom 7 added this; if indent is skewed otherwise (29 Apr 2003)
            ((looking-at "if")
             (+ (current-column) 3))
@@ -801,8 +803,8 @@ then comment out the highlighted region instead. "
                    ((looking-at ")") (setq levelpar (1- levelpar)))
                    ((looking-at "\\[") (progn (setq levelsqr (1+ levelsqr)) (setq ilevel 1)))
                    ((looking-at "\\]") (setq levelsqr (1- levelsqr)))
-                   ((looking-at "{") (progn 
-                                       (setq levelcurl (1+ levelcurl)) 
+                   ((looking-at "{") (progn
+                                       (setq levelcurl (1+ levelcurl))
                                        (setq ilevel (save-excursion
                                                      (forward-char 1)
                                                      (if (looking-at " ") 2 1)))))
@@ -852,7 +854,10 @@ then comment out the highlighted region instead. "
                (goto-char pp)
                (fill-paragraph nil)))))
 
-        (t (error "Can only fill inside a comment block."))))
+        ;; Still allow filling normally, since we often have long
+        ;; blocks of text in BoVeX or Aphasia 2 literals.
+        ;; (t (error "Can only fill inside a comment block."))
+        (t (fill-paragraph nil))))
 
 (defun aaph-skip-block ()
   (let ((case-fold-search nil))
@@ -968,7 +973,7 @@ then comment out the highlighted region instead. "
 (font-lock-add-keywords 'aaph-mode '(
 (
 ;; regexp for all aphasia 2 keywords:
-"\\<\\(if\\|then\\|else\\|do\\|fun\\|and\\(also\\|then\\)?\\|or\\(else\\)?\\|otherwise\\|op\\(en\\)?\\|val\\|fn\\|let\\|in\\|end\\|case\\|of\\|sig\\(nature\\)?\\|raise\\|type\\|data\\(type\\|base\\)\\|exception\\|nonfix\\|local\\|handle1?\\|as\\|infixr?\\|abstype\\|import\\|select\\|from\\|delete\\|insert\\|into\\|[sg]et\\|where\\|\\(distinct\\)\\|\\(order +by\\)\\|limit\\)\\>" 
+"\\<\\(if\\|then\\|else\\|do\\|fun\\|and\\(also\\|then\\)?\\|or\\(else\\)?\\|otherwise\\|op\\(en\\)?\\|val\\|fn\\|let\\|in\\|end\\|case\\|of\\|sig\\(nature\\)?\\|raise\\|type\\|data\\(type\\|base\\)\\|exception\\|nonfix\\|local\\|handle1?\\|as\\|infixr?\\|abstype\\|import\\|select\\|from\\|delete\\|insert\\|into\\|[sg]et\\|where\\|\\(distinct\\)\\|\\(order +by\\)\\|limit\\|object\\|with\\|without\\)\\>"
 . font-lock-keyword-face)
 (
 ;; regexp for aaph constants -- adapted from sml, should be trimmed
@@ -976,20 +981,22 @@ then comment out the highlighted region instead. "
 . font-lock-constant-face
 )
 ;; for the type part of a datat/with/eq type decl.
-("\\<\\(data\\)?type *\\( \\|[A-Za-z'_]*\\|( *\\([A-Za-z'_]* *,? *\\)+)\\) *\\([A-Za-z][A-Za-z0-9_']*\\)"
+("\\<\\(data\\)?type *\\( \\|[A-Za-z'_]*\\|( *\\([A-Za-z'_]* *,? *\\)+)\\) *\\([A-Za-z][-A-Za-z0-9_']*\\)"
 4 font-lock-type-face)
 
-;; punctuation should be subtle 
+;; punctuation should be subtle
 ("\\(\\]\\|\\[\\|[();=`<>|{}^#.,:]\\)" . tom7-subtle-text-face)
 
 ;; semicolon or period before end or closeparen
-("\\([.;]\\)[ \t\n\m]*end\\>" 1 font-lock-warning-face prepend)
+;; this is not illegal in 'rephrase' parser; we should just allow it
+;; in aphasia2 as well.
+; ("\\([.;]\\)[ \t\n\m]*end\\>" 1 font-lock-warning-face prepend)
 
 ;; typos I make from too much sml/c on the brain
 ("\\<include\\>" . font-lock-warning-face)
 
 ;; ConStructors SIGNATURENAMES and StructureNames
-("\\<\\([A-Z][A-Za-z0-9'_]+\\)\\>" . font-lock-variable-name-face)
+("\\<\\([A-Z][-A-Za-z0-9'_]+\\)\\>" . font-lock-variable-name-face)
 
 ("[?]\\(.\\)" 1 font-lock-string-face)
 
@@ -1000,7 +1007,7 @@ then comment out the highlighted region instead. "
 
 (
 ;; regexp for aphasia types (just builtin):
-"\\<\\(unit\\|int\\|bool\\|float\\|ref\\|char\\|string\\|list\\|option\\|key\\|blob\\)\\>"
+"\\<\\(layout\\|obj\\|unit\\|int\\|bool\\|float\\|ref\\|char\\|string\\|list\\|option\\|key\\|blob\\)\\>"
 . font-lock-type-face)
 
 ))

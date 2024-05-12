@@ -20,7 +20,6 @@
 #include <tuple>
 
 #include "chess.h"
-#include "pgn.h"
 #include "network.h"
 #include "clutil.h"
 #include "base/logging.h"
@@ -98,8 +97,8 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
 
   ArcFour rc(StringPrintf("%lld.train.%s", time(nullptr), MODEL_BASE));
 
-  const string error_history_file = Util::dirplus(dir, "error-history.tsv");
-  const string model_file = Util::dirplus(dir, MODEL_NAME);
+  const string error_history_file = Util::DirPlus(dir, "error-history.tsv");
+  const string model_file = Util::DirPlus(dir, MODEL_NAME);
 
   ErrorHistory error_history(error_history_file);
 
@@ -127,14 +126,14 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
   static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100000;
 
   const int IMAGE_EVERY = 100;
-  TrainingImages images(*net, Util::dirplus(dir, "train"),
+  TrainingImages images(*net, Util::DirPlus(dir, "train"),
                         model_file, IMAGE_EVERY);
 
   constexpr int NUM_COLUMNS = 1;
   std::array<const char *, NUM_COLUMNS> COLUMN_NAMES = {"score"};
   std::vector<std::unique_ptr<ErrorImage>> error_images;
   for (int i = 0; i < NUM_COLUMNS; i++) {
-    string filename = Util::dirplus(dir, StringPrintf("error-%d.png", i));
+    string filename = Util::DirPlus(dir, StringPrintf("error-%d.png", i));
     error_images.emplace_back(
         std::make_unique<ErrorImage>(2000, EXAMPLES_PER_ROUND, filename));
   }
@@ -409,7 +408,7 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
         const int num = e.size();
         string filename =
           StringPrintf("%s.r%lld.%d.png",
-                       Util::dirplus(dir, "err").c_str(),
+                       Util::DirPlus(dir, "err").c_str(),
                        net->rounds, layer);
         if (num == 1) {
           string text = StringPrintf("%.11g", e[0]);
@@ -472,7 +471,7 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
       // the main model, which is less redundant but might be surprising?
       const string filename = checkpoint_timeout ?
         StringPrintf("%s.%lld.val",
-                     Util::dirplus(dir, MODEL_BASE).c_str(),
+                     Util::DirPlus(dir, MODEL_BASE).c_str(),
                      net->rounds) :
         model_file;
       net->SaveToFile(filename);
@@ -483,7 +482,7 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
         error_history.MakeImage(1920, 1080,
                                 {{0, 0xFFFF00AA},
                                  {1, 0x00FFFFAA}}, 0);
-      string eimg_file = Util::dirplus(dir, MODEL_BASE "-error.png");
+      string eimg_file = Util::DirPlus(dir, MODEL_BASE "-error.png");
       error_image.Save(eimg_file);
       printf("Wrote %s\n", eimg_file.c_str());
       images.Save();
@@ -1016,7 +1015,7 @@ int main(int argc, char **argv) {
     printf("Training params:\n%s\n",
            tparams.ToString().c_str());
 
-    const string model_file = Util::dirplus(dir, MODEL_NAME);
+    const string model_file = Util::DirPlus(dir, MODEL_NAME);
 
     example_pool = new ExamplePool;
     example_pool->PopulateExamplesInBackground(GAME_PGN, -1);

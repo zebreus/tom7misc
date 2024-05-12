@@ -1,10 +1,14 @@
 
 #include "wordnet.h"
 
+#include <cstdint>
+#include <cstdlib>
+#include <tuple>
 #include <unordered_set>
 #include <unordered_map>
 #include <initializer_list>
 #include <string>
+#include <vector>
 
 #include "util.h"
 #include "base/logging.h"
@@ -211,13 +215,13 @@ void WordNet::AddStemmed(const unordered_set<string> &gamut) {
 WordNet *WordNet::Load(const string &dir,
                        const unordered_set<string> &gamut) {
   WordNet *wn = new WordNet;
-  wn->LoadFile(gamut, Util::dirplus(dir, "data.adj"));
-  wn->LoadFile(gamut, Util::dirplus(dir, "data.adv"));
-  wn->LoadFile(gamut, Util::dirplus(dir, "data.noun"));
-  wn->LoadFile(gamut, Util::dirplus(dir, "data.verb"));
+  wn->LoadFile(gamut, Util::DirPlus(dir, "data.adj"));
+  wn->LoadFile(gamut, Util::DirPlus(dir, "data.adv"));
+  wn->LoadFile(gamut, Util::DirPlus(dir, "data.noun"));
+  wn->LoadFile(gamut, Util::DirPlus(dir, "data.verb"));
 
   // My own files are just lists of words.
-  wn->LoadBareFile(gamut, Util::dirplus(dir, "names.txt"), NAME);
+  wn->LoadBareFile(gamut, Util::DirPlus(dir, "names.txt"), NAME);
 
 
   // Insert words from the exceptions list.
@@ -225,13 +229,13 @@ WordNet *WordNet::Load(const string &dir,
   // stemming.
 
   // TODO: Exceptional verbs don't get past/present/progressive tags.
-  wn->LoadExceptions(gamut, Util::dirplus(dir, "verb.exc"),
+  wn->LoadExceptions(gamut, Util::DirPlus(dir, "verb.exc"),
                      VERB, VERB, &wn->verb_exc);
-  wn->LoadExceptions(gamut, Util::dirplus(dir, "noun.exc"),
+  wn->LoadExceptions(gamut, Util::DirPlus(dir, "noun.exc"),
                      NOUN, NOUN | PLURAL, &wn->noun_exc);
-  wn->LoadExceptions(gamut, Util::dirplus(dir, "adj.exc"),
+  wn->LoadExceptions(gamut, Util::DirPlus(dir, "adj.exc"),
                      ADJ, ADJ, &wn->adj_exc);
-  wn->LoadExceptions(gamut, Util::dirplus(dir, "adv.exc"),
+  wn->LoadExceptions(gamut, Util::DirPlus(dir, "adv.exc"),
                      ADV, ADV, &wn->adv_exc);
 
   wn->AddPrepositions(gamut);
@@ -274,7 +278,7 @@ void WordNet::AddDeterminers(const unordered_set<string> &gamut) {
         "little", "any", "no",
         "zero", "one", "two", "three", "four", "five", "six", "seven",
         "eight", "nine", "ten", "eleven", "twelve", "thirteen",
-        "fourteen", "fifteen", "sixteen", "seventeen", "eighteen"
+        "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
         "nineteen", "twenty", "thirty", "forty", "fifty", "sixty",
         "seventy", "eighty", "ninety",
         "double", "twice",
@@ -289,7 +293,7 @@ void WordNet::AddDeterminers(const unordered_set<string> &gamut) {
 void WordNet::AddPronouns(const unordered_set<string> &gamut) {
   for (const string w : {"i", "me", "you", "he", "him", "she", "her",
         "it", "we", "us", "they", "them",
-        "this", "that"
+        "this", "that",
         "these", "those", "thy", "thine",
         "my", "your",
         "mine", "yours", "his", "hers", "ours", "yours", "theirs",

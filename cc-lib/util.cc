@@ -67,6 +67,17 @@
 #define fstat64 fstat
 #endif
 
+#if defined(WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
+static constexpr inline bool IsDirSep(char c) {
+  return c == '/' || c == '\\';
+}
+#else
+static constexpr inline bool IsDirSep(char c) {
+  return c == '/';
+}
+#endif
+
+
 using namespace std;
 
 using uint8 = uint8_t;
@@ -856,20 +867,23 @@ string Util::ucase(std::string_view in) {
   return out;
 }
 
-string Util::fileof(const string &s) {
+string Util::FileOf(string_view s) {
   for (long long int i = s.length() - 1; i >= 0; i --) {
-    if (s[i] == DIRSEPC) {
-      return s.substr(i + 1, s.length() - (i + 1));
+    if (IsDirSep(s[i])) {
+      return std::string(s.substr(i + 1, s.length() - (i + 1)));
     }
   }
-  return s;
+  return std::string(s);
 }
 
-string Util::pathof(const string &s) {
-  if (s == "") return ".";
+// TODO: Use stdlib for this; it looks good now.
+// On windows the situation is very confusing because you will see
+// both / and \ in practice.
+string Util::PathOf(string_view s) {
+  if (s.empty()) return ".";
   for (long long int i = s.length() - 1; i >= 0; i --) {
-    if (s[i] == DIRSEPC) {
-      return s.substr(0, i);
+    if (IsDirSep(s[i])) {
+      return std::string(s.substr(0, i));
     }
   }
   return ".";
@@ -1520,17 +1534,22 @@ bool Util::copy(const string &src, const string &dst) {
   return true;
 }
 
-string Util::dirplus(const string &dir_, const string &file) {
-  if (dir_.empty()) return file;
-  if (!file.empty() && file[0] == DIRSEPC) return file;
-  string dir = dir_;
-  if (dir[dir.size() - 1] != DIRSEPC)
+string Util::BinaryDir(string_view argv0) {
+  return PathOf(argv0);
+}
+
+string Util::DirPlus(string_view dir_in, string_view file) {
+  if (dir_in.empty()) return std::string(file);
+  if (!file.empty() && IsDirSep(file[0])) return std::string(file);
+  string dir = std::string(dir_in);
+  if (!IsDirSep(dir.back()))
     dir += DIRSEPC;
-  return dir + file;
+  return dir + std::string(file);
 }
 
 string Util::cdup(const string &dir) {
   /* Find the last / */
+  // XXX use IsDirSep here
   size_t idx = dir.rfind(DIRSEP, dir.length() - 1);
   if (idx != string::npos) {
     if (idx) return dir.substr(0, idx);
@@ -1541,7 +1560,7 @@ string Util::cdup(const string &dir) {
 void Util::CreatePathFor(const string &f) {
   string s;
   for (unsigned int i = 0; i < f.length();  i++) {
-    if (f[i] == DIRSEPC) {
+    if (IsDirSep(f[i])) {
       /* initial / will cause s == "" for first
          appearance */
       if (s != "") MakeDir(s);

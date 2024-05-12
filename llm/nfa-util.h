@@ -3,7 +3,6 @@
 #define _LLM_NFA_UTIL_H
 
 #include <string>
-#include <cstdint>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -35,7 +34,7 @@ inline std::pair<int, int> NFADebugSize(const NFA<RADIX> &nfa) {
   for (const auto &node : nfa.nodes)
     for (const auto &[c_, nexts] : node.next_idx)
       transitions += nexts.size();
-  return make_pair((int)nfa.nodes.size(), (int)transitions);
+  return std::make_pair((int)nfa.nodes.size(), (int)transitions);
 }
 
 template<int RADIX>

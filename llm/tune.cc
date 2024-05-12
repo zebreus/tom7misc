@@ -20,12 +20,12 @@ static constexpr int MAX_THREADS = 64;
 // after tuning has started. You want to include a little past the
 // performance drop off, or up to the total number of layers (which
 // is printed at startup).
-static constexpr int MAX_LAYERS_GPU = 34;
+static constexpr int MAX_LAYERS_GPU = 8;
 
 // Outside this region, sample less often.
-static constexpr int HINT_MIN_THREADS = 4;
-static constexpr int HINT_MAX_THREADS = 30;
-static constexpr int HINT_MAX_GPU = 32;
+static constexpr int HINT_MIN_THREADS = 8;
+static constexpr int HINT_MAX_THREADS = 28;
+static constexpr int HINT_MAX_GPU = 7;
 
 struct Database {
   static constexpr int MODEL_LOAD = 0;
@@ -34,6 +34,9 @@ struct Database {
   static constexpr int SAVE = 3;
   static constexpr int RESTORE = 4;
   static constexpr int NUM_FIELDS = 5;
+
+  ArcFour rc;
+  Database() : rc(StringPrintf("tune.%lld", time(nullptr))) {}
 
   struct Cell {
     int trials = 0;
@@ -70,6 +73,38 @@ struct Database {
     int total = 0;
     for (const Cell &cell : cells) total += cell.trials;
     return total;
+  }
+
+  // Get an arbitrary cell that has the given number of trials.
+  std::pair<int, int> GetOneToDo(int num_trials) {
+    // First trying the hint region.
+    std::vector<std::pair<int, int>> pool;
+    for (int th = HINT_MIN_THREADS; th < HINT_MAX_THREADS; th++) {
+      for (int gpu = 0; gpu < HINT_MAX_GPU; gpu++) {
+        const Cell &cell = cells[gpu * MAX_THREADS + th];
+        if (cell.trials == num_trials) {
+          pool.emplace_back(th, gpu);
+        }
+      }
+    }
+    if (!pool.empty()) {
+      return pool[RandTo(&rc, pool.size())];
+    }
+
+    for (int th = 0; th < MAX_THREADS; th++) {
+      for (int gpu = 0; gpu < MAX_LAYERS_GPU; gpu++) {
+        const Cell &cell = cells[gpu * MAX_THREADS + th];
+        if (cell.trials == num_trials) {
+          pool.emplace_back(th, gpu);
+        }
+      }
+    }
+
+    if (!pool.empty()) {
+      return pool[RandTo(&rc, pool.size())];
+    }
+
+    LOG(FATAL) << "No cell had " << num_trials << " trials.";
   }
 
   void MergeCell(int num_threads,
@@ -239,7 +274,8 @@ struct Database {
               x * SCALE - 1,
               (MAX_LAYERS_GPU + 1) * SCALE + 1,
               false, 0x000000AA,
-              StringPrintf("%02d", x));
+              // threads=0 is actually 1 thread
+              StringPrintf("%02d", x + 1));
         }
 
         for (int y = 0; y < MAX_LAYERS_GPU; y++) {
@@ -403,8 +439,9 @@ static Database::Cell RunOne(const std::string &model,
   Timer infer_timer;
   constexpr int NUM_SERIAL = 12;
   for (int i = 0; i < NUM_SERIAL; i++) {
-    std::string tok = llm.SampleAndTake();
-    printf("[%s]", tok.c_str());
+    llama_token id = llm.Sample();
+    llm.TakeTokenBatch({id});
+    printf("%s", llm.AnsiToken(id, i & 1).c_str());
   }
   cell.results[Database::SINGLE_TOKEN] = infer_timer.Seconds() / NUM_SERIAL;
 
@@ -468,30 +505,40 @@ static void Tune(const std::string &model, const std::string &tunefile) {
   printf("Loaded " AGREEN("%d") " previous trials.\n",
          db.TotalTrials());
 
-  ArcFour rc(StringPrintf("tune.%lld", time(nullptr)));
-
   // Run one for warm start.
   (void)RunOne(model, 16, 3);
 
   Periodically save_per(60.0);
 
   std::vector<std::pair<int, int>> todo;
+
+  /*
+  todo.emplace_back(12, 37);
+  todo.emplace_back(12, 39);
+  todo.emplace_back(12, 41);
+  todo.emplace_back(12, 43);
+  */
+
 #if 1
-  todo.emplace_back(14, 32);
-  // Redo the best region, to reduce noise
-  for (int th = 10; th <= 18; th++) {
-    for (int gpu = 31; gpu <= 32; gpu++) {
-      if (true || db.NumTrials(th, gpu) == 0)
+  // Target region, perhaps so that we get
+  // multiple reads to reduce noise.
+  static constexpr bool INCLUDE_AGAIN = false;
+  for (int th = 24; th <= 32; th++) {
+    for (int gpu = 10; gpu <= 12; gpu++) {
+      if (INCLUDE_AGAIN || db.NumTrials(th, gpu) == 0)
         todo.emplace_back(th, gpu);
     }
   }
 #endif
-  Shuffle(&rc, &todo);
+
+  Shuffle(&db.rc, &todo);
 
   const int max_gpu_sample =
     std::min(MAX_LAYERS_GPU, actual_num_layers);
 
+  bool randomly = true;
   Timer run_timer;
+  int retries = 0;
   for (;;) {
     int min_trials = db.MinNumTrials();
     if (min_trials == 3) break;
@@ -499,27 +546,38 @@ static void Tune(const std::string &model, const std::string &tunefile) {
     bool force = false;
     int th, gpu;
     if (todo.empty()) {
-      // PERF: Should not do random samples once the grid is
-      // pretty full.
-      th = RandTo(&rc, MAX_THREADS);
-      gpu = RandTo(&rc, max_gpu_sample + 1);
 
-      if (gpu > HINT_MAX_GPU && RandTo(&rc, 5) > 0) continue;
-      if (gpu > HINT_MAX_GPU + 2 && RandTo(&rc, 20) > 0) continue;
-      if (th < HINT_MIN_THREADS && RandTo(&rc, 5) > 0) continue;
-      if (th > HINT_MAX_THREADS && RandTo(&rc, 5) > 0) continue;
+      // We do this randomly for a while, but once we get too many
+      // collisions (because the grid is basically full), we switch
+      // into just running them systematically.
+      if (randomly && retries < 24) {
+        th = RandTo(&db.rc, MAX_THREADS);
+        gpu = RandTo(&db.rc, max_gpu_sample + 1);
+        retries++;
+      } else {
+        randomly = false;
+        // Find an empty cell systematically.
+        std::tie(th, gpu) = db.GetOneToDo(min_trials);
+      }
+
+      if (gpu > HINT_MAX_GPU && RandTo(&db.rc, 5) > 0) continue;
+      if (gpu > HINT_MAX_GPU + 2 && RandTo(&db.rc, 20) > 0) continue;
+      if (th < HINT_MIN_THREADS && RandTo(&db.rc, 5) > 0) continue;
+      if (th > HINT_MAX_THREADS && RandTo(&db.rc, 5) > 0) continue;
     } else {
       std::tie(th, gpu) = todo.back();
       todo.pop_back();
       force = true;
     }
 
-    printf("Run %d,%d which has %d already.\n",
+    printf("%s" "Run %d,%d which has %d already.\n",
+           force ? AGREY("(forced)") " " : "",
            th, gpu, db.NumTrials(th, gpu));
 
     if (force || db.NumTrials(th, gpu) == min_trials) {
       Database::Cell cell = RunOne(model, th, gpu);
       db.MergeCell(th, gpu, cell);
+      retries = 0;
     }
 
 

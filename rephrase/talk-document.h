@@ -94,7 +94,7 @@ struct TalkPage : public Page {
 };
 
 struct TalkDocument : public Document {
-  TalkDocument();
+  TalkDocument(std::string_view program_dir);
 
   std::string LoadFontFile(const std::string &filename) override;
 

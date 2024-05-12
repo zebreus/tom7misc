@@ -32,6 +32,40 @@
 
 (add-to-list 'load-path "/Users/twm/tom7misc/sitelisp")
 
+(defun code-format-paragraph ()
+  "Either use eglot-format on the selected region, or set a region to the 'current paragraph' and then format it."
+  (interactive "")
+
+  (if (region-active-p)
+      ;; use the region
+      (eglot-format (region-beginning) (region-end))
+      ;; deduce a region
+      ;; this comes from c-fill-paragraph
+      (let ((pos (point))
+            (beg nil)
+            (end nil))
+        (progn
+          (save-excursion
+            (unless (c-safe (backward-char)
+                            (forward-paragraph)
+                            (>= (point) pos))
+              (goto-char pos)
+              (forward-paragraph))
+            (setq end (point-marker)))
+          (save-excursion
+            (unless (c-safe (forward-char)
+                            (backward-paragraph)
+                            (<= (point) pos))
+              (goto-char pos)
+              (backward-paragraph))
+            (setq beg (point)))
+          (if (and beg end)
+              (progn
+                (message "formatting...")
+                (eglot-format beg end))
+              (message "unable to find paragraph?"))
+          ))))
+
 ;; use "clangd --help". TODO: --path-mappings may be helpful here
 (with-eval-after-load 'eglot
   ;; configure paths for windows
@@ -67,6 +101,8 @@
                 (global-set-key [M-up] 'flymake-goto-prev-error)
                 ;; rebind alt-/ to take the quickfix at cursor
                 (global-set-key [?\M-/] 'eglot-code-action-quickfix)
+                (global-set-key [?\M-'] 'code-format-paragraph)
+
                 )))
   )
 
@@ -130,6 +166,7 @@
 
          ;; hand tweaked to use full resolution; superior!
          "FixederSys 2x-24:antialias=none"
+         ;; "FixederSys Light 2x-24:antialias=none"
 
          ;; huge!
          ; "FixederSys 2x-48:antialias=none"
@@ -318,8 +355,32 @@
       "\n"
       "Note that these are all the unicode codepoints for the Greek\n"
       "alphabet, even if they look exactly the same as an ASCII character.\n"
+      "\n"
+      "\nBonus math symbols:\n"
+      "\n"
+      "∀  ∃  →\n"
       ))
     ))
+
+(define-fringe-bitmap 'tom7-diag-stripes
+    (vector #b00110011
+            #b01100110
+            #b11001100
+            #b10011001
+            #b00110011
+            #b01100110
+            #b11001100
+            #b10011001
+            #b00110011
+            #b01100110
+            #b11001100
+            #b10011001
+            #b00110011
+            #b01100110
+            #b11001100
+          ; #b10011001
+            #b00000000
+            #b00000000))
 
 ;; used to put a unique identifier in a source file, based on its
 ;; character position (like, change all "oops!" messages to include
@@ -433,6 +494,20 @@
     (if noisy () (message "[Tom 7] Untabified Buffer"))
   ))
 
+(defun ascii-quotes (&optional noisy)
+  "Fix fancy quotation marks (and other stuff like ellipses) in the whole document, replacing them with ASCII."
+  (interactive "P")
+  (save-excursion
+    (progn
+      (goto-char (point-min))
+      (replace-regexp "“\\|”\\|‟" "\"")
+      (goto-char (point-min))
+      (replace-regexp "‘\\|’" "'")
+      (goto-char (point-min))
+      (replace-regexp "…" "...")
+      (if noisy () (message "[Tom 7] ASCII quotes")))
+  ))
+
 (defun copy-line ()
   "This copies the current line into the kill ring, leaving the cursor where it is. Copies entire line, including terminating newline (unless this is the last line in the file and has no trailing newline)."
   (interactive "*")
@@ -497,6 +572,7 @@
                 ("\\.uh$" . aaph-mode)
                 ("\\.db$" . aaph-mode)
                 ("\\.aah?$" . aaph-mode)
+                ("\\.bovex$" . aaph-mode)
                 ("\\.hml$" . sml-mode) ;; close enough
                 ("README$" . english-mode)
                 ("HACKING$" . english-mode)
@@ -531,6 +607,8 @@
   ;; indent lists (enums, etc.) with just a normal fixed
   ;; indentation; something changed ~2018 here?
   (c-set-offset 'brace-list-intro 'c-basic-offset)
+  ;; public, private, protected
+  (c-set-offset 'access-label '-1)
   ;; also fix indentation of lambda to allow for longer nested
   ;; functions. After the brace we are in defun-block-intro, but
   ;; also inside an inlambda.

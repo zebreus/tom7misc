@@ -6,14 +6,12 @@
 #include <string>
 #include <vector>
 #include <utility>
-#include <optional>
 
 #include "base/logging.h"
 #include "ansi.h"
 #include "image.h"
 #include "arcfour.h"
 #include "util.h"
-#include "qr-code.h"
 
 static constexpr std::initializer_list<const char *> FONTS = {
   "cmunrm.ttf",

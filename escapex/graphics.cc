@@ -15,15 +15,15 @@ Graphics::~Graphics() {}
 
 Graphics *Graphics::Create(const std::string &data_dir) {
   std::unique_ptr<ImageRGBA> tiles_png(
-      ImageRGBA::Load(Util::dirplus(data_dir, TILES_PNG)));
+      ImageRGBA::Load(Util::DirPlus(data_dir, TILES_PNG)));
   if (tiles_png.get() == nullptr) return nullptr;
 
   std::unique_ptr<ImageRGBA> tileutil_png(
-      ImageRGBA::Load(Util::dirplus(data_dir, TILEUTIL_PNG)));
+      ImageRGBA::Load(Util::DirPlus(data_dir, TILEUTIL_PNG)));
   if (tileutil_png.get() == nullptr) return nullptr;
 
   std::unique_ptr<ImageRGBA> animation_png(
-      ImageRGBA::Load(Util::dirplus(data_dir, ANIMATION_PNG)));
+      ImageRGBA::Load(Util::DirPlus(data_dir, ANIMATION_PNG)));
   if (animation_png.get() == nullptr) return nullptr;
 
   return new Graphics(*tiles_png, *tileutil_png, *animation_png);

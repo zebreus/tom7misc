@@ -29,9 +29,15 @@ struct Talk {
     int target_seconds = 0;
   };
 
-  static Talk Load(const std::string &filename);
+  static Talk Load(
+      // The .talk file to load.
+      const std::string &filename);
 
-  void SaveJS(const std::string &dir);
+  void SaveJS(
+      // The location of support files like talk.html
+      const std::string &program_dir,
+      // The directory to write into.
+      const std::string &out_dir);
 
   std::vector<Slide> slides;
 };

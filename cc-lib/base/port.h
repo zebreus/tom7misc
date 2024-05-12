@@ -645,7 +645,7 @@ inline void aligned_free(void *aligned_memory) {
 #define ATTRIBUTE_STACK_ALIGN_FOR_OLD_LIBC
 #define REQUIRE_STACK_ALIGN_TRAMPOLINE (0)
 #define MUST_USE_RESULT
-extern inline void prefetch(const char *x) {}
+extern inline void prefetch(const char *) {}
 #define PREDICT_FALSE(x) x
 #define PREDICT_TRUE(x) x
 

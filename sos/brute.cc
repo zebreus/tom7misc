@@ -39,7 +39,7 @@ static constexpr bool SELF_CHECK = false;
 // coefficients like this, but we're hoping to minimize the
 // error from squares.
 
-std::array<int, 9> ProgSquare(int n, int x, int y) {
+inline std::array<int, 9> ProgSquare(int n, int x, int y) {
   return {
     n + 2 * x + y,  n,                  n + x + 2 * y,
     n + 2 * y,      n + x + y,          n + 2 * x,
@@ -48,7 +48,8 @@ std::array<int, 9> ProgSquare(int n, int x, int y) {
 
 static void Brute() {
 
-  int best[8] = {
+  [[maybe_unused]]
+  constexpr int best[8] = {
     // best with 0 non-squares
     999999999,
     // best with 1 non-square
@@ -67,8 +68,28 @@ static void Brute() {
     9,
   };
 
+  // Threshold to show
+  constexpr int show[8] = {
+    // best with 0 non-squares
+    999999999,
+    // best with 1 non-square
+    999999999,
+    // best with 2 non-squares
+    500,
+    // best with 3 non-squares
+    25,
+    // best with 4 non-squares
+    15,
+    // best with 5 non-squares
+    5,
+    // best with 6 non-squares
+    6,
+    // best with 7 non-squares
+    9,
+  };
+
   Periodically status_per(5.0);
-  int64_t done = 0;
+  int64_t done_bases = 0;
   Timer run_timer;
 
   std::mutex m;
@@ -77,9 +98,10 @@ static void Brute() {
   // We can say that for a pair (base, y) to be done, we always
   // do every x in [1, y). That makes this a 2D representation.
   // And then we can store that as an interval tree, where
-  // the key is the base, and the value is [lo_y, hi_y).
+  // the key is the base, and the value indicates that we've
+  // tried y [0, value).
 
-  IntervalCover<std::pair<int, int>> cover(std::make_pair(0, 0));
+  IntervalCover<int> cover(0);
   // TODO: Save/load from file
 
   // Ran this on 28-29 Feb 2024.
@@ -87,20 +109,23 @@ static void Brute() {
 
   // And then I weirdly ran y [32768, 65536) for base 0-65536,
   // finishing on 6 Mar 2024.
-  // Then I ran the gap I left, y [0, 32768) for base [32768, 65536).
-  cover.SetSpan(0, 32768, std::make_pair(0, 65536));
-  cover.SetSpan(32768, 65536, std::make_pair(0, 65536));
+  // Then I ran the gap I left, y [0, 32768) for base [32768, 65536),
+  // finishing on 7 Mar 2024.
+  // Then did 65536-131072 from from 0 to 65536 through March 13.
+  cover.SetSpan(0, 131072, 65536);
 
-  // So next I want to do y [0, 32768) for base 32768-65536;
+  // 500 hour run completed 9 Apr 2024.
+  cover.SetSpan(0, 16384, 262144);
+
+  // Running this starting 15 Mar 2024...
+  // cover.SetSpan(0, 16384, 262144);
 
   std::set<int> in_progress;
-  // const int base_start = 0, base_end = 65536;
+  const int base_start = 0, base_end = 16384;
   // const int y_start = 2, y_end = 32768;
-  // const int y_start = 32768, y_end = 65536;
+  const int y_start = 65536, y_end = 262144;
 
-  const int base_start = 32768, base_end = 65536;
-  // const int y_start = 2, y_end = 32768;
-  const int y_start = 0, y_end = 32768;
+  const int total_bases = base_end - base_start;
 
   ParallelComp(
       base_end - base_start,
@@ -111,8 +136,6 @@ static void Brute() {
           std::unique_lock ml(m);
           in_progress.insert(base);
         }
-
-        int local_done = 0;
 
         // We want x != y, so wlog we require x < y.
         for (int y = y_start; y < y_end; y++) {
@@ -144,7 +167,7 @@ static void Brute() {
               }
             }
 
-            if (not_square < 8 && total_err < best[not_square]) {
+            if (not_square < 8 && total_err < show[not_square]) {
               // Reject duplicates, though.
               std::unordered_set<int> unique;
               unique.reserve(9);
@@ -164,14 +187,12 @@ static void Brute() {
               }
             }
           }
-
-          local_done += (y - 1);
         }
 
         int min_pending = 0;
         {
           std::unique_lock ml(m);
-          done += local_done;
+          done_bases++;
           in_progress.erase(base);
           if (!in_progress.empty()) {
             min_pending = *in_progress.begin();
@@ -179,8 +200,14 @@ static void Brute() {
         }
         if (status_per.ShouldRun()) {
           double sec = run_timer.Seconds();
-          fprintf(stderr, AGREY("%lld done. complete <%d. %.1f/sec") "\n",
-                  done, min_pending, done / sec);
+          std::string bar = ANSI::ProgressBar(
+              done_bases, total_bases,
+              StringPrintf("brute force complete <%d", min_pending),
+              sec);
+
+          printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+                 ANSI_BEGINNING_OF_LINE "%s\n",
+                 bar.c_str());
         }
       },
       6);

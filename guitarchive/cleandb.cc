@@ -1,7 +1,13 @@
 // Code for cleaning and working with ASCII guitar tab files, e.g. from OLGA.
 
 #include <algorithm>
+#include <cstdint>
+#include <ctime>
+#include <mutex>
 #include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 #include <stdio.h>
 #include <unistd.h>
@@ -12,8 +18,6 @@
 #include "re2/re2.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "randutil.h"
-#include "arcfour.h"
 #include "threadutil.h"
 #include "edit-distance.h"
 
@@ -23,6 +27,7 @@
 using namespace std;
 
 static constexpr bool DRY_RUN = false;
+using int64 = int64_t;
 
 // Can improve duplicate artist/title/album heuristics,
 // or perhaps just force taking the first one now
@@ -1671,67 +1676,64 @@ int main(int argc, char **argv) {
     std::mutex m;
     int has_marker = 0;
     vector<string> todo;
-    ParallelApp(files,
-                [&p, &m, &has_marker, &todo](const pair<string, string> &row) {
-                  // Skip "album tabs"
-                  if (row.first.find("album") != string::npos ||
-                      row.first.find("compilatio") != string::npos)
-                    return;
+    ParallelApp(
+        files,
+        [&m, &has_marker, &todo](const pair<string, string> &row) {
+          // Skip "album tabs"
+          if (row.first.find("album") != string::npos ||
+              row.first.find("compilatio") != string::npos)
+            return;
 
+          const string &cont = row.second;
+          /*
+            bool accept =
+            cont.find("-PLEASE NOTE-") != string::npos ||
+            cont.find("scholarship, or research") != string::npos ||
+            cont.find("Have fun, DAIRYBEAT on") != string::npos ||
+            cont.find("and has a specific punishment") != string::npos ||
+            // XXX
+            // HasNonAscii(cont) ||
+            cont.find("Song/CD") != string::npos ||
+            cont.find("in an unauthorized application,") != string::npos;
+          */
 
-                  const string &cont = row.second;
-                  /*
-                    bool accept =
-                    cont.find("-PLEASE NOTE-") != string::npos ||
-                    cont.find("scholarship, or research") != string::npos ||
-                    cont.find("Have fun, DAIRYBEAT on") != string::npos ||
-                    cont.find("and has a specific punishment") != string::npos ||
-                    // XXX
-                    // HasNonAscii(cont) ||
-                    cont.find("Song/CD") != string::npos ||
-                    cont.find("in an unauthorized application,") != string::npos;
-                  */
+          /*
+            string title, artist;
+            bool accept =
+            !p.GetMetadata(row.first, cont, &title, &artist);
+          */
 
-                  /*
-                    string title, artist;
-                    bool accept =
-                    !p.GetMetadata(row.first, cont, &title, &artist);
-                  */
+          /*
+            string contents = cont;
+            auto hdrs = p.ExtractHeaders(&contents);
+            bool accept = RE2::PartialMatch(contents, "(?i)\ntitle:.+\n");
+            for (const auto &[key, val] : hdrs) {
+            (void)key;
+            if (// key == "Title" &&
+            val.find("====") != string::npos)
+            accept = true;
+            }
+          */
+          bool accept =
+              RE2::PartialMatch(cont, "\n[=_*#][=_*#][=_*#][=_*#]+\n");
 
-                  /*
-                    string contents = cont;
-                    auto hdrs = p.ExtractHeaders(&contents);
-                    bool accept = RE2::PartialMatch(contents, "(?i)\ntitle:.+\n");
-                    for (const auto &[key, val] : hdrs) {
-                    (void)key;
-                    if (// key == "Title" &&
-                    val.find("====") != string::npos)
-                    accept = true;
-                    }
-                  */
-                  bool accept = RE2::PartialMatch(
-                      cont,
-                      "\n[=_*#][=_*#][=_*#][=_*#]+\n");
+          // p.ExtractFile(row.first, &title, &artist);
 
-                  // p.ExtractFile(row.first, &title, &artist);
+          // bool accept =
+          // cont.find("www.Ultimate-Guitar.com") != string::npos;
 
+          // bool accept = cont.find("&quot;") != string::npos;
 
-                  // bool accept =
-                  // cont.find("www.Ultimate-Guitar.com") != string::npos;
-
-                  // bool accept = cont.find("&quot;") != string::npos;
-
-                  if (accept) {
-                    MutexLock ml(&m);
-                    todo.push_back(row.first);
-                    if (has_marker < 20 ||
-                        (has_marker % 10000 == 0)) {
-                      printf("Marker? %s\n", row.first.c_str());
-                    }
-                    has_marker++;
-                  }
-                },
-                32);
+          if (accept) {
+            MutexLock ml(&m);
+            todo.push_back(row.first);
+            if (has_marker < 20 || (has_marker % 10000 == 0)) {
+              printf("Marker? %s\n", row.first.c_str());
+            }
+            has_marker++;
+          }
+        },
+        32);
     printf("May still have markers: %d\n", has_marker);
     FILE *ff = fopen("markers_todo.txt", "wb");
     for (const string &file : todo) {
@@ -1740,7 +1742,6 @@ int main(int argc, char **argv) {
     fclose(ff);
     fflush(stdout);
   }
-
 
   {
     Parser p;

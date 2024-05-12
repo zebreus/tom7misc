@@ -17,11 +17,11 @@
 
 #include "integer-voronoi.h"
 
-
 #include <stdlib.h>
-#include <limits.h>
+#include <cstdint>
 
 #include "base/logging.h"
+#include "image.h"
 
 static int voronoi_perpendicular_bisector(
     int ux, int uy, int vx, int vy, int r) {
@@ -267,6 +267,9 @@ static void inner_loop(int *candidates, int num_points, int *feature_points,
   free(centers);
 }
 
+// PERF: There are several places here where we are converting
+// formats or copying.
+
 // feature_points is an array of alternating x,y coordinates.
 void linear_time_voronoi(int num_points, int *feature_points, int *dest, int w,
                          int h) {
@@ -292,7 +295,6 @@ void linear_time_voronoi(int num_points, int *feature_points, int *dest, int w,
   free(candidates);
 }
 
-
 std::vector<int>
 IntegerVoronoi::RasterizeVec(const std::vector<std::pair<int, int>> &points,
                              int width, int height) {
@@ -310,3 +312,111 @@ IntegerVoronoi::RasterizeVec(const std::vector<std::pair<int, int>> &points,
   return dest;
 }
 
+ImageRGBA
+IntegerVoronoi::Rasterize32(const std::vector<std::pair<int, int>> &points,
+                            int width, int height) {
+  CHECK(points.size() < size_t{0x100000000});
+  std::vector<int> raster = RasterizeVec(points, width, height);
+  ImageRGBA ret(width, height);
+  int idx = 0;
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      int p = raster[idx++];
+      CHECK(p >= 0 && p < (int)points.size());
+      ret.SetPixel32(x, y, (uint32_t)p);
+    }
+  }
+
+  return ret;
+}
+
+ImageA IntegerVoronoi::Rasterize8(
+    const std::vector<std::pair<int, int>> &points,
+    int width, int height) {
+  CHECK(points.size() < size_t{0x100});
+  std::vector<int> raster = RasterizeVec(points, width, height);
+  ImageA ret(width, height);
+  int idx = 0;
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      int p = raster[idx++];
+      CHECK(p >= 0 && p < (int)points.size());
+      ret.SetPixel(x, y, (uint8_t)p);
+    }
+  }
+
+  return ret;
+}
+
+ImageF IntegerVoronoi::DistanceField(const Image1 &img) {
+  std::vector<std::pair<int, int>> points;
+  for (int y = 0; y < img.Height(); y++) {
+    for (int x = 0; x < img.Width(); x++) {
+      if (img.GetPixel(x, y)) {
+        points.emplace_back(x, y);
+      }
+    }
+  }
+
+  ImageRGBA vor = Rasterize32(points, img.Width(), img.Height());
+  ImageF dist(img.Width(), img.Height());
+
+  for (int y = 0; y < vor.Height(); y++) {
+    for (int x = 0; x < vor.Width(); x++) {
+      uint32_t p = vor.GetPixel32(x, y);
+      CHECK(p < (uint32_t)points.size());
+
+      const auto &[xx, yy] = points[p];
+
+      int dx = xx - x;
+      int dy = yy - y;
+      int ddx = dx * dx;
+      int ddy = dy * dy;
+
+      float d = sqrtf(ddx + ddy);
+      /*
+      printf("%d,%d nearest %d= %d,%d; dist %.6f\n",
+             x, y, p, xx, yy, d);
+      */
+      dist.SetPixel(x, y, d);
+    }
+  }
+
+  return dist;
+}
+
+ImageF IntegerVoronoi::NormalizeDistanceField(const ImageF &img) {
+  ImageF out(img.Width(), img.Height());
+  if (img.Width() == 0 || img.Height() == 0) return out;
+
+  float mxx = out.GetPixel(0, 0);
+  float mnn = mxx;
+
+  for (int y = 0; y < img.Height(); y++) {
+    for (int x = 0; x < img.Width(); x++) {
+      float p = img.GetPixel(x, y);
+      printf("%d,%d = %.6f\n", x, y, p);
+      mxx = std::max(mxx, p);
+      mnn = std::min(mnn, p);
+    }
+  }
+
+  float span = mxx - mnn;
+  float off = 0.0;
+  float scale = 0.0;
+  if (mxx <= mnn) {
+    off = -mnn;
+    scale = 1.0f / span;
+  }
+
+  for (int y = 0; y < img.Height(); y++) {
+    for (int x = 0; x < img.Width(); x++) {
+      float p = img.GetPixel(x, y);
+      float np = (p + off) * scale;
+      out.SetPixel(x, y, np);
+      printf("%d,%d. (%.6f + %.3f) * %.6f = %.6f\n", x, y, p, off, scale, np);
+    }
+  }
+
+  return out;
+}

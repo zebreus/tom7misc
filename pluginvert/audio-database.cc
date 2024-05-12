@@ -1,16 +1,19 @@
 
 #include "audio-database.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <memory>
+#include <string>
 #include <utility>
 #include <thread>
-#include <mutex>
 #include <chrono>
+#include <vector>
 
+#include "arcfour.h"
 #include "mp3.h"
 
-#include "base/stringprintf.h"
 #include "base/logging.h"
 #include "threadutil.h"
 #include "randutil.h"
@@ -41,7 +44,7 @@ std::vector<float> AudioDatabase::ReadMp3Mono(const string &filename) {
 
 static void AddAllFilesRec(const string &dir, vector<string> *all_files) {
   for (const string &f : Util::ListFiles(dir)) {
-    const string filename = Util::dirplus(dir, f);
+    const string filename = Util::DirPlus(dir, f);
     if (Util::isdir(filename)) {
       AddAllFilesRec(filename, all_files);
     } else {

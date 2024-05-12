@@ -1,6 +1,5 @@
 
 #include <string>
-#include <vector>
 #include <cstdint>
 #include <unordered_set>
 
@@ -26,6 +25,7 @@ static BigInt Error(const BigInt &n, const Sol &sol) {
   return y * y - n * x * x;
 }
 
+[[maybe_unused]]
 static Sol CombineSelf(const BigInt &n, const Sol &sol) {
   const auto &[x, y] = sol;
   return make_pair(

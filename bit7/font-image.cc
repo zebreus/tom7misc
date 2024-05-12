@@ -115,22 +115,39 @@ const std::vector<int> &PageBit7Classic() {
     0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
     0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
     0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
-    0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, -1,
+    0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E,
+    -1,
 
     // white king, queen, rook, bishop, knight, pawn
-    0x2654, 0x2655, 0x2656, 0x2657, 0x2658, 0x2659,
+    0x2654,
+    0x2655,
+    0x2656,
+    0x2657,
+    0x2658,
+    0x2659,
     // black
-    0x265A, 0x265B, 0x265C, 0x265D, 0x265E, 0x265F,
+    0x265A,
+    0x265B,
+    0x265C,
+    0x265D,
+    0x265E,
+    0x265F,
 
     // Three free before replacement char
-    -1, -1, -1,
+    -1,
+    -1,
+    -1,
     // <?> replacement char
     0xFFFD,
 
     // Black circle, black square
-    0x25CF, 0x25A0,
-    // geometric shapes line, unclaimed
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    0x25CF,
+    0x25A0,
+    // geometric shapes and bullets, unclaimed
+    -1,
+    0x203B, // reference mark
+    // cont'd
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     // Unicode Latin-1 Supplement, mapped to itself.
     // See https://en.wikibooks.org/wiki/Unicode/Character_reference/0000-0FFF
@@ -166,7 +183,15 @@ const std::vector<int> &PageBit7Classic() {
     // exists, forall
     0x2203, 0x2200,
     // rest of math, unclaimed
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    0x2213, // minus-plus
+    0x222B, // integral sign
+    0x2260, // not equal
+    0x2261, // identical to (triple-eq)
+    0x2243, // approximately equal (~ on -)
+    0x2248, // almost equal (~ on =)
+    0x2262, // logical not
+
+    -1, -1, -1, -1, -1, -1, -1,
 
     // Block Elements, in unicode order
     0x2580, 0x2581, 0x2582, 0x2583, 0x2584, 0x2585, 0x2586, 0x2587,
@@ -257,15 +282,18 @@ const std::vector<int> &PageBit7Extended() {
     // EMOJI: FIRE
     0x1F525,
 
-    -1,
+    // EMOJI: BONE
+    0x1F9B4,
 
     // EMOJI: CLOUD
     0x2601,
     // EMOJI: ROCKET
     0x1F680,
-    // EMOJI: NO ENTRY
+    // EMOJI: NO ENTRY (horizontal)
     0x26D4,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // No Entry Sign (diagonal slash)
+    0x1F6AB,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -283,13 +311,108 @@ const std::vector<int> &PageBit7Extended() {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    // Unicode Katakana
+    // 96 characters in unicode order, U+30A0 to U+30FF.
+
+    0x30A0, // ゠ Katakana-Hiragana Double Hyphen
+    0x30A1, // ァ Katakana Letter Small A
+    0x30A2, // ア Katakana Letter A
+    0x30A3, // ィ Katakana Letter Small I
+    0x30A4, // イ Katakana Letter I
+    0x30A5, // ゥ Katakana Letter Small U
+    0x30A6, // ウ Katakana Letter U
+    0x30A7, // ェ Katakana Letter Small E
+    0x30A8, // エ Katakana Letter E
+    0x30A9, // ォ Katakana Letter Small O
+    0x30AA, // オ Katakana Letter O
+    0x30AB, // カ Katakana Letter Ka
+    0x30AC, // ガ Katakana Letter Ga
+    0x30AD, // キ Katakana Letter Ki
+    0x30AE, // ギ Katakana Letter Gi
+    0x30AF, // ク Katakana Letter Ku
+    0x30B0, // グ Katakana Letter Gu
+    0x30B1, // ケ Katakana Letter Ke
+    0x30B2, // ゲ Katakana Letter Ge
+    0x30B3, // コ Katakana Letter Ko
+    0x30B4, // ゴ Katakana Letter Go
+    0x30B5, // サ Katakana Letter Sa
+    0x30B6, // ザ Katakana Letter Za
+    0x30B7, // シ Katakana Letter Si
+    0x30B8, // ジ Katakana Letter Zi
+    0x30B9, // ス Katakana Letter Su
+    0x30BA, // ズ Katakana Letter Zu
+    0x30BB, // セ Katakana Letter Se
+    0x30BC, // ゼ Katakana Letter Ze
+    0x30BD, // ソ Katakana Letter So
+    0x30BE, // ゾ Katakana Letter Zo
+    0x30BF, // タ Katakana Letter Ta
+    0x30C0, // ダ Katakana Letter Da
+    0x30C1, // チ Katakana Letter Ti
+    0x30C2, // ヂ Katakana Letter Di
+    0x30C3, // ッ Katakana Letter Small Tu
+    0x30C4, // ツ Katakana Letter Tu
+    0x30C5, // ヅ Katakana Letter Du
+    0x30C6, // テ Katakana Letter Te
+    0x30C7, // デ Katakana Letter De
+    0x30C8, // ト Katakana Letter To
+    0x30C9, // ド Katakana Letter Do
+    0x30CA, // ナ Katakana Letter Na
+    0x30CB, // ニ Katakana Letter Ni
+    0x30CC, // ヌ Katakana Letter Nu
+    0x30CD, // ネ Katakana Letter Ne
+    0x30CE, // ノ Katakana Letter No
+    0x30CF, // ハ Katakana Letter Ha
+    0x30D0, // バ Katakana Letter Ba
+    0x30D1, // パ Katakana Letter Pa
+    0x30D2, // ヒ Katakana Letter Hi
+    0x30D3, // ビ Katakana Letter Bi
+    0x30D4, // ピ Katakana Letter Pi
+    0x30D5, // フ Katakana Letter Hu
+    0x30D6, // ブ Katakana Letter Bu
+    0x30D7, // プ Katakana Letter Pu
+    0x30D8, // ヘ Katakana Letter He
+    0x30D9, // ベ Katakana Letter Be
+    0x30DA, // ペ Katakana Letter Pe
+    0x30DB, // ホ Katakana Letter Ho
+    0x30DC, // ボ Katakana Letter Bo
+    0x30DD, // ポ Katakana Letter Po
+    0x30DE, // マ Katakana Letter Ma
+    0x30DF, // ミ Katakana Letter Mi
+    0x30E0, // ム Katakana Letter Mu
+    0x30E1, // メ Katakana Letter Me
+    0x30E2, // モ Katakana Letter Mo
+    0x30E3, // ャ Katakana Letter Small Ya
+    0x30E4, // ヤ Katakana Letter Ya
+    0x30E5, // ュ Katakana Letter Small Yu
+    0x30E6, // ユ Katakana Letter Yu
+    0x30E7, // ョ Katakana Letter Small Yo
+    0x30E8, // ヨ Katakana Letter Yo
+    0x30E9, // ラ Katakana Letter Ra
+    0x30EA, // リ Katakana Letter Ri
+    0x30EB, // ル Katakana Letter Ru
+    0x30EC, // レ Katakana Letter Re
+    0x30ED, // ロ Katakana Letter Ro
+    0x30EE, // ヮ Katakana Letter Small Wa
+    0x30EF, // ワ Katakana Letter Wa
+    0x30F0, // ヰ Katakana Letter Wi
+    0x30F1, // ヱ Katakana Letter We
+    0x30F2, // ヲ Katakana Letter Wo
+    0x30F3, // ン Katakana Letter N
+    0x30F4, // ヴ Katakana Letter Vu
+    0x30F5, // ヵ Katakana Letter Small Ka
+    0x30F6, // ヶ Katakana Letter Small Ke
+    0x30F7, // ヷ Katakana Letter Va
+    0x30F8, // ヸ Katakana Letter Vi
+    0x30F9, // ヹ Katakana Letter Ve
+    0x30FA, // ヺ Katakana Letter Vo
+    0x30FB, // ・ Katakana Middle Dot
+    0x30FC, // ー Katakana-Hiragana Prolonged Sound Mark
+    0x30FD, // ヽ Katakana Iteration Mark
+    0x30FE, // ヾ Katakana Voiced Iteration Mark
+    0x30FF, // ヿ Katakana Digraph Koto
   };
+
   return CODEPOINTS;
 }
 
@@ -361,6 +484,13 @@ REUSE_FOR = {
   // en.wikipedia.org/wiki/Halfwidth_and_Fullwidth_Forms_(Unicode_block)
   {'(', 0xFF08},
   {')', 0xFF09},
+
+  // "equal and parallel to" is like an octothorpe
+  {'#', 0x22D5},
+
+  // "Prohibited sign" is identical to "No entry sign" but
+  // black instead of red.
+  {0x1F6AB, 0x1F6C7},
 
   // Kelvin symbol
   {'K', 0x212A},
@@ -539,7 +669,7 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
   const std::vector<int> &codepoints = GetCodepointsForPage(p);
 
   for (const auto &[cidx, gidx] : pos_to_glyph) {
-    CHECK(gidx >= 0 && gidx < glyphs.size());
+    CHECK(gidx >= 0 && gidx < (int)glyphs.size());
     const Glyph &glyph = glyphs[gidx];
     const bool is_empty = EmptyGlyph(glyph);
     const bool ok_missing = config.fixed_width && is_empty;
@@ -654,7 +784,7 @@ ImageRGBA FontImage::ImagePage(Page p) {
                       ww, config.descent, locolor);
 
       int codepoint = -1;
-      if (cidx < codepoints.size())
+      if (cidx < (int)codepoints.size())
         codepoint = codepoints[cidx];
 
       // Blit the glyph.
@@ -729,7 +859,7 @@ int BitmapFont::Width(int cp) const {
   if (it == font.unicode_to_glyph.end())
     return 0;
   int glyph_idx = it->second;
-  CHECK(glyph_idx >= 0 && glyph_idx < font.glyphs.size());
+  CHECK(glyph_idx >= 0 && glyph_idx < (int)font.glyphs.size());
   return font.glyphs[glyph_idx].pic.Width();
 }
 

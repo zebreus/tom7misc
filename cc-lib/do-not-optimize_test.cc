@@ -14,7 +14,7 @@ inline const char *Function(const char *str) {
 
 static std::string Reverse(std::string s) {
   char *buf = (char*)malloc(s.size());
-  for (int i = 0; i < s.size(); i++)
+  for (int i = 0; i < (int)s.size(); i++)
     buf[i] = s[s.size() - 1 - i];
   return std::string(buf, s.size());
 }

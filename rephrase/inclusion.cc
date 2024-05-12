@@ -13,6 +13,7 @@
 #include "interval-cover.h"
 #include "lexing.h"
 #include "util.h"
+#include "ansi.h"
 
 using Token = el::Token;
 using Lexing = el::Lexing;
@@ -30,8 +31,18 @@ struct InclusionImpl {
     } {}
 
   std::string ResolveInclude(const std::string &filename) {
-    // TODO: Use include paths to resolve the file.
-    return filename;
+    // We take the first existing file.
+    for (const std::string &ipath : includepaths) {
+      std::string f = Util::DirPlus(ipath, filename);
+      if (Util::ExistsFile(f)) return f;
+    }
+    printf("File " ARED("%s") " not found in any include path:\n",
+           filename.c_str());
+    for (const std::string &ipath : includepaths) {
+      printf("  " AGREY("%s") "\n", ipath.c_str());
+    }
+    LOG(FATAL) << "Could not include " << filename;
+    return "";
   }
 
   // Yuck! If I have to do any more with manipulating token streams,

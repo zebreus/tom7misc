@@ -1525,7 +1525,8 @@ void Page::DrawLine(double x0, double y0,
 
 Page::Page() {}
 Font::Font() {}
-Document::Document() {}
+Document::Document(std::string_view program_dir) : program_dir(program_dir),
+                                                   hyphenation(program_dir) {}
 
 Page::~Page() {}
 Font::~Font() {}

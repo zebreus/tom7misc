@@ -33,7 +33,7 @@
 namespace bc {
 
 struct DegenerateDocument : public Document {
-
+  DegenerateDocument() : Document(".") {}
 };
 
 Execution::Execution(const Program &pgm) :

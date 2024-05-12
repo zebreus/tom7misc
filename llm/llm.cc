@@ -241,7 +241,7 @@ std::string Context::TokenString(llama_token token) const {
   // Guess 20-character buffer (fits in short string optimization);
   // above 22 we need to allocate. (llama.cpp uses 8)
   std::string result(20, 0);
-  static constexpr bool special = false;
+  static constexpr bool special = true;
   const int n_chars = llama_token_to_piece(
       model, token, result.data(), result.size(), special);
   if (n_chars < 0) {
@@ -1091,6 +1091,22 @@ void LLM::PrintKV() const {
          cells.c_str());
 
   llama_kv_cache_view_free(&kcv);
+}
+
+std::string LLM::AnsiToken(llama_token id, bool parity) const {
+  if (id == context.EOSToken()) {
+    return AORANGE("[*eos*]");
+  } else if (id == context.NewlineToken()) {
+    return ABLUE("\\n");
+  } else {
+    std::string s = context.TokenString(id);
+    // TODO: Do something for non-printable characters.
+    if (parity) {
+      return StringPrintf(AFGCOLOR(250, 250, 250, "%s"), s.c_str());
+    } else {
+      return StringPrintf(AFGCOLOR(240, 240, 240, "%s"), s.c_str());
+    }
+  }
 }
 
 std::unordered_map<std::string, std::string>

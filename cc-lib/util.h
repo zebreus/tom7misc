@@ -119,9 +119,10 @@ struct Util {
 
   static string ptos(void *);
   static unsigned int hash(const string &s);
-  // give /home/tom/ of /home/tom/.bashrc
-  static string pathof(const string &s);
-  static string fileof(const string &s);
+  // give "/home/tom/" of "/home/tom/.bashrc"
+  // or "." of "file.txt"
+  static string PathOf(string_view s);
+  static string FileOf(string_view s);
   // give "pdf" of "/home/tom/test.pdf"
   // For paths with no ".", returns the empty string.
   static std::string_view FileExtOf(std::string_view s);
@@ -137,10 +138,15 @@ struct Util {
 
   static bool ExistsFile(const string &f);
 
-  /* dirplus("/usr/local", "core") and
-     dirplus("/usr/local/", core")  both give  "/usr/local/core"
-     dirplus("/usr/local", "/etc/passwd")  gives "/etc/passwd"  */
-  static string dirplus(const string &dir, const string &file);
+  // Figure out the location of the binary from the argv[0] parameter.
+  // This can be used to load data files that are expected to be
+  // in the same directory as the binary, for example.
+  static string BinaryDir(string_view argv0);
+
+  /* DirPlus("/usr/local", "core") and
+     DirPlus("/usr/local/", core")  both give  "/usr/local/core"
+     DirPlus("/usr/local", "/etc/passwd")  gives "/etc/passwd"  */
+  static string DirPlus(string_view dir, string_view file);
 
   /* spec is a character spec like "A-Z0-9`,."
      XXX document */

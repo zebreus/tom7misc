@@ -74,9 +74,10 @@ static std::pair<std::string, std::vector<uint8_t>> Decode(
   return std::make_pair(std::move(key), std::move(code));
 }
 
-Hyphenation::Hyphenation() {
+Hyphenation::Hyphenation(std::string_view database_dir) {
+  std::string db_file = Util::DirPlus(database_dir, DATABASE);
   std::vector<std::string> lines =
-    Util::NormalizeLines(Util::ReadFileToLines(DATABASE));
+    Util::NormalizeLines(Util::ReadFileToLines(db_file));
 
   enum Section {
     NONE,

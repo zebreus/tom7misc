@@ -8,7 +8,6 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "util.h"
 #include "bignum/big.h"
 #include "bhaskara-util.h"
 
@@ -179,6 +178,7 @@ static void Recur() {
 
 
 // With p == s.
+[[maybe_unused]]
 static void Recur2() {
   // BigInt b2 = pb + qc;
   // BigInt c2 = sc + rb;
@@ -221,6 +221,7 @@ static void Recur2() {
   }
 }
 
+[[maybe_unused]]
 static void PrintIters() {
   Polynomial p = "s"_p;
   Polynomial q = "q"_p;
@@ -331,6 +332,7 @@ static std::pair<Polynomial, Polynomial> Manual(int n) {
                         ManualC(n));
 }
 
+[[maybe_unused]]
 static void Compare() {
   const int n = 5;
 

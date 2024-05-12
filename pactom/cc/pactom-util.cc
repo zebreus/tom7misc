@@ -37,7 +37,7 @@ std::unique_ptr<PacTom> PacTomUtil::Load(bool merge_dates) {
     for (string &f : raw_tomdir) {
       if (f != "CVS" && f.find("~") == string::npos &&
           !Util::StartsWith(f, "3dwr")) {
-        tomdir.push_back(Util::dirplus(TOMDIR, f));
+        tomdir.push_back(Util::DirPlus(TOMDIR, f));
       }
     }
     printf("%d runs in tomdir\n", tomdir.size());

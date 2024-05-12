@@ -4,19 +4,26 @@
 
 #include "network-gpu.h"
 
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
 #include <memory>
+#include <mutex>
+#include <tuple>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 #include <functional>
 #include <string>
-#include <ctype.h>
 #include <chrono>
 #include <thread>
 #include <deque>
-#include <numbers>
 
 #include "network.h"
-#include "network-test-util.h"
 #include "clutil.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -30,7 +37,6 @@
 #include "timer.h"
 #include "error-history.h"
 #include "ansi.h"
-#include "lastn-buffer.h"
 #include "color-util.h"
 
 #include "word2vec.h"
@@ -172,10 +178,10 @@ struct ExampleThread {
   ExampleThread() {
     CHECK(w2v != nullptr);
 
-    work_thread1.reset(new std::thread(&Populate, this));
+    work_thread1.reset(new std::thread(&ExampleThread::Populate, this));
     // Can support multiple generation threads, but it is very
     // fast for this problem.
-    work_thread2.reset(new std::thread(&Generate, this, 1));
+    work_thread2.reset(new std::thread(&ExampleThread::Generate, this, 1));
   }
 
   ~ExampleThread() {
@@ -533,8 +539,8 @@ static void Train(const string &dir, Network *net,
                   TrainParams params) {
   ExampleThread example_thread;
 
-  const string error_history_file = Util::dirplus(dir, "error-history.tsv");
-  const string model_file = Util::dirplus(dir, MODEL_NAME);
+  const string error_history_file = Util::DirPlus(dir, "error-history.tsv");
+  const string model_file = Util::DirPlus(dir, MODEL_NAME);
 
   ErrorHistory error_history(error_history_file);
 
@@ -567,7 +573,7 @@ static void Train(const string &dir, Network *net,
   static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100000;
 
   constexpr int IMAGE_EVERY = 100;
-  TrainingImages images(*net, Util::dirplus(dir, "train"),
+  TrainingImages images(*net, Util::DirPlus(dir, "train"),
                         model_file, IMAGE_EVERY);
 
   printf("Training!\n");
@@ -784,7 +790,7 @@ static void Train(const string &dir, Network *net,
              {ERROR_EVAL_ANGLE, {0x77AA33FF, "angle"}},
              {ERROR_EVAL_EXACT, {0x00FFFFFF, "exact"}},
             },
-            0).Save(Util::dirplus(dir, "error-history.png"));
+            0).Save(Util::DirPlus(dir, "error-history.png"));
 
         auto AnsiHeat = [](float f) {
             uint32_t color = ColorUtil::LinearGradient32(
@@ -850,7 +856,7 @@ static void Train(const string &dir, Network *net,
       // the main model, which is less redundant but might be surprising?
       const string filename = checkpoint_timeout ?
         StringPrintf("%s.%lld.val",
-                     Util::dirplus(dir, MODEL_BASE).c_str(),
+                     Util::DirPlus(dir, MODEL_BASE).c_str(),
                      net->rounds) : model_file;
       net->SaveToFile(filename);
       if (VERBOSE)
@@ -1095,7 +1101,7 @@ int main(int argc, char **argv) {
 
   LoadData();
 
-  const string model_file = Util::dirplus(dir, MODEL_NAME);
+  const string model_file = Util::DirPlus(dir, MODEL_NAME);
 
   std::unique_ptr<Network> net(
       Network::ReadFromFile(model_file));

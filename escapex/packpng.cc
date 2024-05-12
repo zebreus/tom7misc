@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
   /* change to location of binary, so that we can find the
      images needed. */
   if (argc > 0) {
-    string wd = Util::pathof(argv[0]);
+    string wd = Util::PathOf(argv[0]);
     Util::changedir(wd);
   }
 

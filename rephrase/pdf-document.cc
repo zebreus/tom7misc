@@ -133,7 +133,7 @@ static std::string DateTimeStamp() {
                      std::chrono::system_clock::now());
 }
 
-PDFDocument::PDFDocument() {
+PDFDocument::PDFDocument(std::string_view dir) : Document(dir) {
   // At this point, width/height are not yet set, so use defaults.
   // The width/height can be updated by Document::SetDocumentInfo.
   pdf.reset(new PDF(DEFAULT_WIDTH, DEFAULT_HEIGHT));

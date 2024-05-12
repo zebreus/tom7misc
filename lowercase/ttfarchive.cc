@@ -1,27 +1,18 @@
 
 #include "ttfarchive.h"
 
-#include <algorithm>
 #include <string>
 #include <vector>
-#include <stdio.h>
 #include <unistd.h>
-#include <string_view>
-#include <unordered_set>
 
 #include "util.h"
-#include "re2/re2.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "randutil.h"
-#include "arcfour.h"
-#include "threadutil.h"
 
 using namespace std;
 
 void Ttfarchive::AddAllFilesRec(const string &dir, vector<string> *all_files) {
   for (const string &f : Util::ListFiles(dir)) {
-    const string filename = Util::dirplus(dir, f);
+    const string filename = Util::DirPlus(dir, f);
     // printf("%s + %s = %s\n", dir.c_str(), f.c_str(), filename.c_str());
     if (Util::isdir(filename)) {
       // printf("Dir: [%s]\n", filename.c_str());

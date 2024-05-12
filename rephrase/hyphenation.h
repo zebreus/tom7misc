@@ -10,7 +10,7 @@
 #include <string_view>
 
 struct Hyphenation {
-  Hyphenation();
+  Hyphenation(std::string_view database_dir = ".");
 
   // Hyphenate a word. Ignores case (ASCII). The word should have
   // punctuation removed first.

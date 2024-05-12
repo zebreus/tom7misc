@@ -13,6 +13,8 @@ let
   val doc-subtitle = "(" ^ (if EPSOM then "Epsom" else "Knuth") ^ "’s version)"
 
   do set-doc-info {(PDFInfo)
+                   width = inch 8.5,
+                   height = inch 11.0,
                    creator = "BoVeX",
                    producer = "Huh?",
                    title = doc-title,

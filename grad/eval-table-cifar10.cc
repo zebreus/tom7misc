@@ -1,4 +1,6 @@
 
+#include <cstdio>
+#include <memory>
 #include <vector>
 #include <string>
 #include <tuple>
@@ -8,6 +10,8 @@
 #include "ansi.h"
 #include "network.h"
 #include "clutil.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 
 using namespace std;
 
@@ -38,7 +42,7 @@ static void MakeEvalTableCIFAR10(const string &outfile) {
         "{\\bf transfer function} & {\\bf flat} & {\\bf accuracy} \\\\\n"
         "\\hline \n");
   for (const auto &[name, dir, flatten] : experiments) {
-    string model_file = Util::dirplus(dir, "classify.val");
+    string model_file = Util::DirPlus(dir, "classify.val");
     std::unique_ptr<Network> net(
         Network::ReadFromFile(model_file));
     CHECK(net.get() != nullptr) << model_file;

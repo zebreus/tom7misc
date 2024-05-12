@@ -552,7 +552,7 @@ static void TestMemo() {
 #endif
     printf("Count: %d\n", *CountX.count);
     // Should be called at most once for each position.
-    CHECK(*CountX.count <= s.size());
+    CHECK(*CountX.count <= (int)s.size());
   }
 }
 

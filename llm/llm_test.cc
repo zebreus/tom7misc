@@ -18,7 +18,7 @@ static void BasicPredict() {
   Timer model_timer;
   // Fast model for test, but we want to inspect the output
   // to make sure it makes some kind of sense.
-  ContextParams cparams = Models::LLAMA_7B_Q8;
+  ContextParams cparams = Models::LLAMA3_8B_Q8;
 
   SamplerParams sparams;
   // Get determinism for test.
@@ -60,9 +60,10 @@ static void BasicPredict() {
     llm.TakeTokenBatch({id});
     string tok = llm.context.TokenString(id);
     num_tokens++;
-    printf(ABLUE("%s"), tok.c_str());
+    printf("[" ABLUE("%s") "]", tok.c_str());
     fflush(stdout);
-    if (tok == "\n") {
+
+    if (Util::EndsWith(tok, "\n")) {
       printf(AGREEN("DONE.") "\n");
       fflush(stdout);
       break;
@@ -80,7 +81,8 @@ static void Rewind() {
   string prompt = "1 2 3 4 5 6 7 8";
   Timer model_timer;
   // Fastest model for test.
-  ContextParams cparams = Models::LLAMA_7B_Q2;
+  // XXX get a 2-bit quanitzation for llama3
+  ContextParams cparams = Models::LLAMA3_8B_Q8;
 
   SamplerParams sparams;
   // Get determinism for test.
@@ -164,7 +166,8 @@ static void TokenizeInContext() {
     "eleven twelve";
   Timer model_timer;
   // Fastest model for test.
-  ContextParams cparams = Models::LLAMA_7B_Q2;
+  // XXX as above
+  ContextParams cparams = Models::LLAMA3_8B_Q8;
 
   SamplerParams sparams;
   // Get determinism for test.
@@ -277,7 +280,8 @@ static void RewindAfterSample() {
     "German: eins zwei drei vier funf sechs sieben";
   Timer model_timer;
   // Fastest model for test.
-  ContextParams cparams = Models::LLAMA_7B_Q2;
+  // XXX as above
+  ContextParams cparams = Models::LLAMA3_8B_Q8;
 
   SamplerParams sparams;
   // Get determinism for test.

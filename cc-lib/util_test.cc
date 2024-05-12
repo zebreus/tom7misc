@@ -45,25 +45,30 @@ static constexpr char NONEXISTENT_FILE[] =
 
 // This test uses its source code as test data, so don't
 // mess with the lines that tell you to keep them, duh.
-static void TestReadFiles() {
-  const string reference = SlowReadFile("util_test.cc");
+static void TestReadFiles(const char *argv0) {
+  printf("argv[0] = [%s]. BinaryDir: %s\n",
+         argv0, Util::BinaryDir(argv0).c_str());
+  std::string self = Util::DirPlus(Util::BinaryDir(argv0), "util_test.cc");
+
+  const string reference = SlowReadFile(self);
+  CHECK(!reference.empty()) << self;
   // Self-check.
   CHECK(reference.find("KEEP THIS LINE TOO */") != string::npos);
   CHECK(reference.find("/* PLEASE KEEP THIS LINE */") == 0);
-  const string s1 = Util::ReadFile("util_test.cc");
+  const string s1 = Util::ReadFile(self);
   CHECK_EQ(reference, s1);
-  const string s2 = Util::ReadFileMagic("util_test.cc",
+  const string s2 = Util::ReadFileMagic(self,
                                         "/* PLEASE KEEP THIS");
   CHECK_EQ(reference, s2);
-  CHECK_EQ("", Util::ReadFileMagic("util_test.cc", "WRONG"));
+  CHECK_EQ("", Util::ReadFileMagic(self, "WRONG"));
   CHECK_EQ("", Util::ReadFile(NONEXISTENT_FILE));
   CHECK_EQ("", Util::ReadFileMagic(NONEXISTENT_FILE, "/"));
-  CHECK(Util::HasMagic("util_test.cc", "/* PLEASE KEEP THIS"));
-  CHECK(!Util::HasMagic("util_test.cc", "* PLEASE KEEP"));
+  CHECK(Util::HasMagic(self, "/* PLEASE KEEP THIS"));
+  CHECK(!Util::HasMagic(self, "* PLEASE KEEP"));
   // Would be nice to test files larger than 2^31 and 2^32, since these
   // have caused problems in the past.
 
-  std::optional<string> os3 = Util::ReadFileOpt("util_test.cc");
+  std::optional<string> os3 = Util::ReadFileOpt(self);
   CHECK(os3.has_value());
   CHECK_EQ(reference, *os3);
 
@@ -546,7 +551,7 @@ static void TestRemoveChars() {
 int main(int argc, char **argv) {
   TestItos();
   TestStoi();
-  TestReadFiles();
+  TestReadFiles(argv[0]);
   TestWriteFiles();
   TestWhitespace();
   TestPad();

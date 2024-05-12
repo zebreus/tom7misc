@@ -1,4 +1,6 @@
 
+#include <cstdio>
+#include <memory>
 #include <vector>
 #include <string>
 #include <tuple>
@@ -7,7 +9,7 @@
 #include "util.h"
 #include "ansi.h"
 #include "network.h"
-#include "clutil.h"
+#include "base/stringprintf.h"
 
 using namespace std;
 
@@ -35,7 +37,7 @@ static void MakeEvalTableChess(const string &outfile) {
         "{\\bf loss} & {\\bf accuracy} \\\\\n"
         "\\hline \n");
   for (const auto &[name, dir, flatten] : experiments) {
-    string model_file = Util::dirplus(dir, "chess.val");
+    string model_file = Util::DirPlus(dir, "chess.val");
     std::unique_ptr<Network> net(
         Network::ReadFromFile(model_file));
     CHECK(net.get() != nullptr) << model_file;

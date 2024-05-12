@@ -2,24 +2,20 @@
 
 #include "guitarchive.h"
 
-#include <algorithm>
-#include <string>
-#include <vector>
+#include <cstdint>
 #include <stdio.h>
+#include <string>
 #include <unistd.h>
-#include <string_view>
-#include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include "util.h"
-#include "re2/re2.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "randutil.h"
-#include "arcfour.h"
+#include "re2/re2.h"
 #include "threadutil.h"
-#include "edit-distance.h"
+#include "util.h"
 
 using namespace std;
+using int64 = int64_t;
 
 static constexpr const char *DIRS[] = {
   "c:\\code\\electron-guitar\\tabscrape\\tabs",
@@ -30,7 +26,7 @@ static constexpr const char *DIRS[] = {
 
 void Guitarchive::AddAllFilesRec(const string &dir, vector<string> *all_files) {
   for (const string &f : Util::ListFiles(dir)) {
-    const string filename = Util::dirplus(dir, f);
+    const string filename = Util::DirPlus(dir, f);
     // printf("%s + %s = %s\n", dir.c_str(), f.c_str(), filename.c_str());
     if (Util::isdir(filename)) {
       // printf("Dir: [%s]\n", filename.c_str());

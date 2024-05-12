@@ -8,10 +8,7 @@
 
 #include "util.h"
 #include "re2/re2.h"
-#include "threadutil.h"
 #include "base/logging.h"
-
-#include "guitarchive.h"
 
 using namespace std;
 using int64 = int64_t;
@@ -100,13 +97,13 @@ ChordParser::ChordParser() {
   // without surrounding whitespace (e.g. before the second
   // syllable in a lyric).
   line_with_crd_re = new RE2(".*\\[" + standard_chord + "\\].*");
-      
+
   // Needs to find longest match or else we just parse "D7 G" as
   // "D" and fail to continue consuming the line.
   RE2::Options longest;
   longest.set_longest_match(true);
   extract_chord_line_re = new RE2(ALLOW_WS_RE "(" + standard_chord + ")",
-				  longest);
+          longest);
 
   RE2::Options first;
   first.set_longest_match(false);
@@ -116,27 +113,27 @@ ChordParser::ChordParser() {
 
   // Allow a line of chords to be like "intro: C G Am G"
   intro_line_re = new RE2(" *[Ii][Nn][Tt][Rr][Oo][ :]+(.*)");
-  
+
   // TODO: To tests
   CHECK(RE2::FullMatch("Db", *standard_chord_re));
   CHECK(RE2::FullMatch("D7", *standard_chord_re));
-  CHECK(RE2::FullMatch("G7", *standard_chord_re));  
-  CHECK(RE2::FullMatch("G7#5", *standard_chord_re));  
+  CHECK(RE2::FullMatch("G7", *standard_chord_re));
+  CHECK(RE2::FullMatch("G7#5", *standard_chord_re));
   CHECK(RE2::FullMatch("Gb7sus4", *standard_chord_re));
   CHECK(RE2::FullMatch("Em/F#", *standard_chord_re));
   CHECK(RE2::FullMatch("G", *line_of_chords_re));
   CHECK(RE2::FullMatch(" G", *line_of_chords_re));
   CHECK(RE2::FullMatch("G ", *line_of_chords_re));
   CHECK(RE2::FullMatch("Em/F#\tGb7sus4 ", *line_of_chords_re));
-  CHECK(RE2::FullMatch("\tEm/F#\tGb7sus4", *line_of_chords_re));        
+  CHECK(RE2::FullMatch("\tEm/F#\tGb7sus4", *line_of_chords_re));
   CHECK(RE2::FullMatch("Sea to shining [C]sea", *line_with_crd_re));
   CHECK(RE2::FullMatch("[Csus4]Sea to shining sea", *line_with_crd_re));
   CHECK(RE2::FullMatch("[fast] Sea to shi[G#]ning sea", *line_with_crd_re));
   CHECK(RE2::FullMatch("C] Sea to shi[G#]ning sea", *line_with_crd_re));
-  CHECK(RE2::FullMatch("[C Sea to shi[G#]ning sea", *line_with_crd_re));    
+  CHECK(RE2::FullMatch("[C Sea to shi[G#]ning sea", *line_with_crd_re));
   string rest;
   CHECK(RE2::FullMatch("INTRO: C G Am G", *intro_line_re, &rest) &&
-	rest == "C G Am G");
+  rest == "C G Am G");
 }
 
 ChordParser::~ChordParser() {
@@ -177,13 +174,13 @@ ChordParser::Parsed ChordParser::ExtractChords(const string &body) {
       vector<string> line_chords;
       string chord;
       while (RE2::Consume(&l, *extract_chord_line_re, &chord)) {
-	line_chords.push_back(std::move(chord));
+  line_chords.push_back(std::move(chord));
       }
 
       if (AcceptLineChords(line_chords)) {
-	chords.reserve(chords.size() + line_chords.size());
-	for (string &s : line_chords)
-	  chords.push_back(std::move(s));
+  chords.reserve(chords.size() + line_chords.size());
+  for (string &s : line_chords)
+    chords.push_back(std::move(s));
       }
     } else if (RE2::FullMatch(line, *line_with_crd_re)) {
       crdl++;
@@ -196,18 +193,18 @@ ChordParser::Parsed ChordParser::ExtractChords(const string &body) {
       // [G]--------------------------------------------|
       // ...
 
-      
+
       vector<string> line_chords;
       string bracketed;
       while (RE2::Consume(&l, *extract_bracketed_re, &bracketed) &&
-	     RE2::FullMatch(bracketed, *standard_chord_re)) {
-	line_chords.push_back(std::move(bracketed));
+       RE2::FullMatch(bracketed, *standard_chord_re)) {
+  line_chords.push_back(std::move(bracketed));
       }
 
       if (AcceptCrdChords(line_chords)) {
-	chords.reserve(chords.size() + line_chords.size());
-	for (string &s : line_chords)
-	  chords.push_back(std::move(s));
+  chords.reserve(chords.size() + line_chords.size());
+  for (string &s : line_chords)
+    chords.push_back(std::move(s));
       }
     }
   }
@@ -225,8 +222,8 @@ ChordParser::Parsed ChordParser::ExtractChords(const string &body) {
   auto PrefixExplainsSong = [&chords](int length) {
       CHECK(length <= (int)chords.size());
       for (int i = 0; i < (int)chords.size(); i++) {
-	if (chords[i] != chords[i % length])
-	  return false;
+  if (chords[i] != chords[i % length])
+    return false;
       }
       return true;
     };

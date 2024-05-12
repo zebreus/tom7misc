@@ -622,8 +622,8 @@ static void Train(const string &dir, Network *net,
                   TrainParams params) {
   ExampleThread example_thread;
 
-  const string error_history_file = Util::dirplus(dir, "error-history.tsv");
-  const string model_file = Util::dirplus(dir, MODEL_NAME);
+  const string error_history_file = Util::DirPlus(dir, "error-history.tsv");
+  const string model_file = Util::DirPlus(dir, MODEL_NAME);
 
   ErrorHistory error_history(error_history_file);
 
@@ -656,7 +656,7 @@ static void Train(const string &dir, Network *net,
   static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100000;
 
   constexpr int IMAGE_EVERY = 100;
-  TrainingImages images(*net, Util::dirplus(dir, "train"),
+  TrainingImages images(*net, Util::DirPlus(dir, "train"),
                         model_file, IMAGE_EVERY);
 
   printf("Training!\n");
@@ -875,7 +875,7 @@ static void Train(const string &dir, Network *net,
              {ERROR_EVAL_RCORRECT, {0x33FF33FF, "real"}},
              {ERROR_EVAL_NCORRECT, {0xFF3333FF, "noise"}},
             },
-            0).Save(Util::dirplus(dir, "error-history.png"));
+            0).Save(Util::DirPlus(dir, "error-history.png"));
 
         #if 0
         auto AnsiHeat = [](float f) {
@@ -951,7 +951,7 @@ static void Train(const string &dir, Network *net,
       // the main model, which is less redundant but might be surprising?
       const string filename = checkpoint_timeout ?
         StringPrintf("%s.%lld.val",
-                     Util::dirplus(dir, MODEL_BASE).c_str(),
+                     Util::DirPlus(dir, MODEL_BASE).c_str(),
                      net->rounds) : model_file;
       net->SaveToFile(filename);
       if (VERBOSE)
@@ -1103,7 +1103,7 @@ int main(int argc, char **argv) {
 
   LoadData();
 
-  const string model_file = Util::dirplus(dir, MODEL_NAME);
+  const string model_file = Util::DirPlus(dir, MODEL_NAME);
 
   std::unique_ptr<Network> net(Network::ReadFromFile(model_file));
 

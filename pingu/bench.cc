@@ -1,6 +1,9 @@
 
 // Benchmark a "hard drive"
 
+#include <cstdio>
+#include <cstdlib>
+#include <process.h>
 #include <unistd.h>
 #include <sys/types.h>
 
@@ -32,7 +35,7 @@ int main(int argc, char **argv) {
   CHECK(0 == system("echo 3 > /proc/sys/vm/drop_caches"));
   printf("Cache dropped.\n");
 
-  string destfile = Util::dirplus(testdrive, "benchfile");
+  string destfile = Util::DirPlus(testdrive, "benchfile");
 
   Timer run_timer;
   int64_t iters = 0;

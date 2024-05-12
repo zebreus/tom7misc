@@ -2,13 +2,14 @@
 // Converts the eval output for lower/uppercase sdf to frames, a la
 // resequence, but also processing them into the movie I want.
 
+#include <cstdio>
+#include <mutex>
+#include <utility>
 #include <vector>
 #include <string>
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-
-#include "timer.h"
 
 #include "threadutil.h"
 #include "base/stringprintf.h"
@@ -49,7 +50,7 @@ static string Backslash(const string &s) {
 
 static void AddAllFiles(const string &dir, vector<string> *all_files) {
   for (const string &f : Util::ListFiles(dir)) {
-    const string filename = Util::dirplus(dir, f);
+    const string filename = Util::DirPlus(dir, f);
     // printf("%s + %s = %s\n", dir.c_str(), f.c_str(), filename.c_str());
     if (!Util::isdir(filename)) {
       if (!filename.empty() &&
@@ -83,7 +84,7 @@ static ImageRGBA Process(const ImageRGBA &input) {
     static constexpr int NUM_ITERS = 12;
 
   static constexpr int MAX_ITERS = 3;
-  
+
   // letters of iters of 36x36threshold image. 0th is input
   vector<vector<ImageRGBA>> letters;
   for (int letter = 0; letter < 26; letter++) {
@@ -92,7 +93,7 @@ static ImageRGBA Process(const ImageRGBA &input) {
     for (int iter = 0; iter < MAX_ITERS; iter++) {
       const int startx =
         LEFT_MARGIN + (LETTER_WIDTH + LETTER_X_MARGIN) * letter;
-  
+
       const int starty =
         TOP_MARGIN + iter * (LETTER_HEIGHT + LETTER_Y_MARGIN);
       ImageRGBA letter = input.Crop32(startx, starty, 36, 36);
@@ -118,7 +119,7 @@ static ImageRGBA Process(const ImageRGBA &input) {
     if (letter >= 13) base_y = 1080 / 2;
     int base_x = (letter % 13) * OUT_W;
 
-    for (int iter = 0; iter < MAX_ITERS; iter++) { 
+    for (int iter = 0; iter < MAX_ITERS; iter++) {
       int starty = base_y + OUT_TOP_MARGIN + OUT_ROW_H * iter;
       int startx = base_x + OUT_LEFT_MARGIN;
 
@@ -133,7 +134,7 @@ static ImageRGBA Process(const ImageRGBA &input) {
 
 static void Recut(const string &in_dir, const string &out_dir) {
   CHECK(out_dir.find("\\") == string::npos);
-  CHECK(out_dir.find("/") == string::npos);  
+  CHECK(out_dir.find("/") == string::npos);
   vector<string> files;
   AddAllFiles(in_dir, &files);
   std::sort(files.begin(), files.end(),
@@ -148,7 +149,7 @@ static void Recut(const string &in_dir, const string &out_dir) {
                           StringPrintf("%s\\frame%d.png", out_dir.c_str(), i));
   }
   printf("Remapped.\n");
-  
+
   // XXX
 #if 0
   static constexpr int TRUNCATE = 20;
@@ -156,7 +157,7 @@ static void Recut(const string &in_dir, const string &out_dir) {
     remapped.resize(TRUNCATE);
   }
 #endif
-  
+
   printf("Processing...\n");
   std::mutex out_m;
   int done = 0;
@@ -181,6 +182,6 @@ static void Recut(const string &in_dir, const string &out_dir) {
 int main(int argc, char **argv) {
   CHECK(argc == 3) << "./resequence.exe in_dir out_dir";
   Recut(argv[1], argv[2]);
-  
+
   return 0;
 }

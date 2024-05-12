@@ -74,7 +74,7 @@ struct PDFPage : public Page {
 };
 
 struct PDFDocument : public Document {
-  PDFDocument();
+  PDFDocument(std::string_view program_dir);
 
   std::string LoadFontFile(const std::string &filename) override;
 

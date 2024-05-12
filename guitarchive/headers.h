@@ -1,5 +1,5 @@
-#ifndef __GUITARCHIVE_HEADERS_H
-#define __GUITARCHIVE_HEADERS_H
+#ifndef _GUITARCHIVE_HEADERS_H
+#define _GUITARCHIVE_HEADERS_H
 
 #include <initializer_list>
 

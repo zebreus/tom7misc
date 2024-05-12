@@ -46,7 +46,7 @@ static string Backslash(const string &s) {
 
 static void AddAllFiles(const string &dir, vector<string> *all_files) {
   for (const string &f : Util::ListFiles(dir)) {
-    const string filename = Util::dirplus(dir, f);
+    const string filename = Util::DirPlus(dir, f);
     // printf("%s + %s = %s\n", dir.c_str(), f.c_str(), filename.c_str());
     if (!Util::isdir(filename)) {
       if (!filename.empty() &&
@@ -61,7 +61,7 @@ static void AddAllFiles(const string &dir, vector<string> *all_files) {
 
 static void Resequence(const string &in_dir, const string &out_dir) {
   CHECK(out_dir.find("\\") == string::npos);
-  CHECK(out_dir.find("/") == string::npos);  
+  CHECK(out_dir.find("/") == string::npos);
   vector<string> files;
   AddAllFiles(in_dir, &files);
   std::sort(files.begin(), files.end(),
@@ -88,6 +88,6 @@ static void Resequence(const string &in_dir, const string &out_dir) {
 int main(int argc, char **argv) {
   CHECK(argc == 3) << "./resequence.exe in_dir out_dir";
   Resequence(argv[1], argv[2]);
-  
+
   return 0;
 }

@@ -9,7 +9,6 @@
 #include "base/stringprintf.h"
 
 #include "util.h"
-#include "sos-util.h"
 #include "ansi.h"
 #include "re2/re2.h"
 #include "database.h"

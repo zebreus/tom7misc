@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
   for (const string &file : files) {
     printf("%s\n", file.c_str());
     if (Util::MatchesWildcard("dddddd_*_Layer-*.png", file)) {
-      string path = Util::dirplus("dddddd", file);
+      string path = Util::DirPlus("dddddd", file);
       std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(path));
       CHECK(img.get() != nullptr) << path;
       Layer layer;

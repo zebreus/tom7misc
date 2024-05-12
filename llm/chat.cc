@@ -548,7 +548,7 @@ int main(int argc, char ** argv) {
   Timer model_timer;
 
   // ContextParams cparams = Models::LLAMA_70B_F16;
-  ContextParams cparams = Models::LLAMA_70B_Q8;
+  ContextParams cparams = Models::LLAMA3_8B_Q8;
   cparams.num_gpu_layers = 17;
   // ContextParams cparams = Models::LLAMA_7B_F16;
 
