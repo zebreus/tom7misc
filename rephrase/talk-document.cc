@@ -34,6 +34,9 @@ static constexpr bool VERBOSE = false;
 static constexpr const char *DEFAULT_FONT_NAME = "FixederSys2x";
 static constexpr const char *DEFAULT_FONT_FILE = "fixedersys2x.ttf";
 
+static constexpr int DEFAULT_PIXEL_WIDTH = 1920;
+static constexpr int DEFAULT_PIXEL_HEIGHT = 1080;
+
 using Transform = Document::Transform;
 
 TalkFont::TalkFont(const std::string &name,
@@ -95,8 +98,7 @@ double TalkFont::CharWidth(int codepoint) const {
 }
 
 
-TalkDocument::TalkDocument(int pixel_width, int pixel_height) :
-  pixel_width(pixel_width), pixel_height(pixel_height) {
+TalkDocument::TalkDocument() {
   InitBuiltInFonts();
 }
 
@@ -228,6 +230,12 @@ void TalkPage::DrawRect(double x, double y, double width, double height,
   }
 }
 
+void TalkPage::DrawLine(double x0, double y0, double x1, double y1,
+                        double border_width, uint32_t color) {
+  // Should we AA it? Perhaps this should be a property.
+  image->BlendThickLine32(x0, y0, x1, y1, border_width, color);
+}
+
 void TalkPage::DrawVideo(double x, double y,
                          double width, double height,
                          const std::string &src,
@@ -245,6 +253,12 @@ void TalkDocument::GenerateOutput(
     std::string_view filename_base,
     const std::map<int, std::map<int, DocTree>> &pages) {
   Timer output_timer;
+
+  int pixel_width = DEFAULT_PIXEL_WIDTH, pixel_height = DEFAULT_PIXEL_HEIGHT;
+  if (width > 0.0 && height > 0.0) {
+    pixel_width = (int)std::round(width);
+    pixel_height = (int)std::round(height);
+  }
 
   std::string talk_dir = (std::string)filename_base;
   Util::MakeDir(talk_dir);

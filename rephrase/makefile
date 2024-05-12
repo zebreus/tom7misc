@@ -395,8 +395,8 @@ sigbovik/sigbovik.talk : bovex.exe sigbovik.bovex stdlib.bovex cite.bovex layout
 	./bovex.exe -v sigbovik.bovex -o sigbovik.talk
 	./maketalk.exe sigbovik sigbovik.talk
 
-aeoud/aeoud.talk : bovex.exe aeoud-shared.bovex aeoud.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png makecodeimage.exe
-	./makecodeimage.exe
+aeoud/aeoud.talk : bovex.exe talk-shared.bovex aeoud.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png makecodeimage.exe
+	./makecodeimage.exe 1920 1080 code.png code-self.png
 	./bovex.exe -v aeoud.bovex -o aeoud.talk
 	./maketalk.exe aeoud aeoud.talk
 
@@ -404,9 +404,15 @@ aeoud-invoice.pdf : bovex.exe hyph-en-us.tex stdlib.bovex layout.bovex invoice.b
 	./bovex.exe -v aeoud-invoice.bovex -o aeoud-invoice.pdf
 
 # comparison movie
-aeoud-comparison/aeoud-comparison.talk : bovex.exe aeoud-shared.bovex aeoud-comparison.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png
+aeoud-comparison/aeoud-comparison.talk : bovex.exe talk-shared.bovex aeoud-comparison.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png
 	./bovex.exe -v aeoud-comparison.bovex -o aeoud-comparison.talk
 	./maketalk.exe aeoud-comparison aeoud-comparison.talk
+
+video/video.talk : bovex.exe talk-shared.bovex video.bovex stdlib.bovex cite.bovex layout.bovex paper.bib hyph-en-us.tex maketalk.exe talk.html *.png makecodeimage.exe
+	./makecodeimage.exe 1920 1080 code.png code-self.png
+	./bovex.exe -v aeoud.bovex -o aeoud.talk
+	./maketalk.exe aeoud aeoud.talk
+
 
 chessdemo/chessdemo.talk : bovex.exe chess.bovex chessdemo.bovex stdlib.bovex layout.bovex hyph-en-us.tex maketalk.exe talk.html *.png
 	./bovex.exe -v chessdemo.bovex -o chessdemo.talk

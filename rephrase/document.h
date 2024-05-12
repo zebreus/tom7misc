@@ -133,12 +133,17 @@ struct Page {
                         double border_width, uint32_t color_fill,
                         uint32_t color_border);
 
+  virtual void DrawLine(double x0, double y0,
+                        double x1, double y1,
+                        double line_width,
+                        uint32_t stroke_color);
+
   virtual void DrawVideo(double x, double y,
                          double width, double height,
                          const std::string &src,
                          bool loop);
 
-  // TODO: Line drawing commands, etc.
+  // TODO: Other graphics drawing commands
 
  protected:
   double page_width = 0.0;
@@ -257,6 +262,9 @@ struct Document {
                         Transform transform,
                         const DocTree &doc,
                         Page *page);
+
+  // 0 means unset, in which case you can use a document-type-specific default.
+  double width = 0.0, height = 0.0;
 
  private:
   // All loaded images.

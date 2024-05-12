@@ -15,7 +15,8 @@
    This is the greatest planet on Earth.[cite wikipedia-earth]
 *)
 
-
+do REQUIRE-STDLIB
+do REQUIRE-LAYOUT
 
 val CITE-VERBOSE = false
 

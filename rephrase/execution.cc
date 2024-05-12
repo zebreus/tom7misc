@@ -205,13 +205,13 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
     const BigInt *bi = std::get_if<BigInt>(&b->v);
     const BigInt *ci = std::get_if<BigInt>(&c->v);
     CHECK(as != nullptr && bi != nullptr && ci != nullptr) <<
-      "Expected string,int,int to string-substr";
+      Err() << "Expected string,int,int to string-substr";
     const int64_t bb = GetInt64("substr start", *bi);
     const int64_t cc = GetInt64("substr length", *ci);
     CHECK(bb >= 0 && cc >= 0 &&
           bb <= (int64_t)as->size() &&
           bb + cc <= (int64_t)as->size())
-      << "In string-substr, out of range start/length: "
+      << Err() << "In string-substr, out of range start/length: "
       << bb << ", " << cc;
 
     std::string s = as->substr(bb, cc);
@@ -224,7 +224,7 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
     const std::string *cs = std::get_if<std::string>(&c->v);
 
     CHECK(as != nullptr && bs != nullptr && cs != nullptr) <<
-      "Expected string,string,string to string-replace";
+      Err() << "Expected string,string,string to string-replace";
 
     return String(Util::Replace(*as, *bs, *cs), state);
   }
@@ -234,7 +234,7 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
     const std::string *bs = std::get_if<std::string>(&b->v);
     const BigInt *ci = std::get_if<BigInt>(&c->v);
     CHECK(as != nullptr && bs != nullptr && ci != nullptr) <<
-      "Expected string,string,int to font-register";
+      Err() << "Expected string,string,int to font-register";
 
     const Font *font = DocumentHook()->GetFontByName(*as);
 
@@ -247,7 +247,7 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
   }
 
   default:
-    LOG(FATAL) << "Unimplemented or non-triop primop: "
+    LOG(FATAL) << Err() << "Unimplemented or non-triop primop: "
                << PrimopString(primop);
   }
 

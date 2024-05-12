@@ -1,4 +1,6 @@
 
+datatype provide-stdlib = REQUIRE-STDLIB
+
 datatype order = LESS | EQUAL | GREATER
 
 datatype (a) option = SOME of a | NONE

@@ -312,11 +312,12 @@ struct AstPool {
   }
 
   const Exp *Object(std::string objtype,
-                    std::vector<std::pair<std::string, const Exp *>> v) {
+                    std::vector<std::pair<std::string, const Exp *>> v,
+                    size_t pos) {
     Exp *ret = NewExp(ExpType::OBJECT);
     ret->str = std::move(objtype);
     ret->str_children = std::move(v);
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 

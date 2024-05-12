@@ -639,14 +639,15 @@ const Exp *Parsing::Parse(AstPool *pool,
   // other contents inside { ... }
   const auto ObjectContents = [&](const auto &Expr) {
       return
-        ((IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
-         // Not using Label here, since we may have some ambiguity
-         // in like "obj.3".
-         Separate0(Id && (IsToken<EQUALS>() >> Expr),
-                   IsToken<COMMA>()))
-        >[&](const auto &p) {
+        Mark((IsToken<LPAREN>() >> Id << IsToken<RPAREN>()) &&
+             // Not using Label here, since we may have some ambiguity
+             // in like "obj.3".
+             Separate0(Id && (IsToken<EQUALS>() >> Expr),
+                       IsToken<COMMA>()))
+        >[&](const auto &p_pos) {
+            const auto &[p, token_start, token_end] = p_pos;
             const auto &[objtype, fields] = p;
-            return pool->Object(objtype, fields);
+            return pool->Object(objtype, fields, BytePos(token_start));
           };
     };
 

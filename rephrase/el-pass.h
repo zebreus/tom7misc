@@ -196,7 +196,7 @@ struct Pass {
       Args... args) {
     std::vector<std::pair<std::string, const Exp *>> vv;
     for (const auto &[s, e] : v) vv.emplace_back(s, DoExp(e, args...));
-    return pool->Object(objtype, vv);
+    return pool->Object(objtype, vv, pos);
   }
 
   virtual const Exp *DoWith(

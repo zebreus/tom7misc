@@ -49,18 +49,6 @@ fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
              img-height = int-to-float pixel-height } []
   end
 
-fun image-sticker { img = img as (Image img-handle),
-                    x : float, y : float, width : float } =
-  let
-    (* Compute height from image native dimensions. *)
-    val { width = pixel-width, height = pixel-height } = image-size img
-    val ratio : float = pixel-width / pixel-height
-    val height = width /. ratio
-in
-  sticker {(Sticker) x = x, y = y,
-           img = img-handle, img-width = width, img-height = height} []
-end
-
 (* Place properly kerned text, but with no wrapping. *)
 fun text-sticker { x, y } lay =
   let

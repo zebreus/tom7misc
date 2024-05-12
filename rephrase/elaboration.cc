@@ -798,7 +798,7 @@ std::pair<const il::Exp *, const il::Type *> Elaboration::ElabLet(
   return std::make_pair(LetDecs(ildecs, ee), tt);
 }
 
-static il::ObjFieldType ResolveObjFieldType(
+il::ObjFieldType Elaboration::ResolveObjFieldType(
     // Context for error messages.
     const char *what,
     const el::Exp *error_exp,
@@ -810,12 +810,16 @@ static il::ObjFieldType ResolveObjFieldType(
     // Can be null, e.g. for WITHOUT.
     const il::Type *rhs_type) {
 
+  size_t pos = error_exp->pos;
+
   if (ovi != nullptr) {
     const auto it = ovi->fields.find(lab);
     CHECK(it != ovi->fields.end()) <<
-      StringPrintf("The field " ABLUE("%s") " was not present "
+      StringPrintf("%s"
+                   "The field " ABLUE("%s") " was not present "
                    "in the object named " AORANGE("%s") ", in "
                    "the object expression:\n%s",
+                   ErrorAtPos(pos).c_str(),
                    lab.c_str(), objname.c_str(),
                    ExpString(error_exp).c_str());
     if (rhs_type != nullptr) {

@@ -6,6 +6,10 @@
    down, and x positive meaning right. (Note this is vertically
    flipped from what pdf.h and the internal PDF format do!) *)
 
+do REQUIRE-STDLIB
+
+datatype provide-layout = REQUIRE-LAYOUT
+
 val LAYOUT-VERBOSE = false
 
 (* For expand-contract, in places where we don't want to do any
@@ -331,13 +335,21 @@ object Sticker of { x: float, y: float, scale: float,
                     img-height: float,
                     img-width: float,
 
-                    (* Rectangle *)
-                    width: float,
-                    height: float,
-                    (* color *)
+                    (* path/fill properties, used by
+                       rect and line *)
                     fill-color: int,
                     stroke-color: int,
                     line-width: float,
+
+                    (* Rectangle *)
+                    rect-width: float,
+                    rect-height: float,
+
+                    (* Line. x,y give the starting point.
+                       stroke-color and line-width are also
+                       used. *)
+                    line-x1 : float,
+                    line-y1 : float,
 
                     video: string,
                     video-width: float,
@@ -348,17 +360,33 @@ object Sticker of { x: float, y: float, scale: float,
 fun sticker (attrs : obj) (l : layout) =
   node (attrs with (Node) display = NODE_STICKER) l
 
+fun image-sticker { img = img as (Image img-handle),
+                    x : float, y : float, width : float } =
+  let
+    (* Compute height from image native dimensions. *)
+    val { width = pixel-width, height = pixel-height } = image-size img
+    val ratio : float = pixel-width / pixel-height
+    val height = width /. ratio
+in
+  sticker {(Sticker) x = x, y = y,
+           img = img-handle, img-width = width, img-height = height} []
+end
+
 fun apply-font font lay =
   span {(Span) font-face = (font-family font)} lay
 
 fun fill-rectangle { x, y, width, height, fill-color } : layout =
-  sticker {(Sticker) x = x, y = y, width = width, height = height,
+  sticker {(Sticker) x = x, y = y, rect-width = width, rect-height = height,
            fill-color = fill-color } []
 
 fun rectangle { x, y, width, height, stroke-color, line-width } : layout =
-  sticker {(Sticker) x = x, y = y, width = width, height = height,
+  sticker {(Sticker) x = x, y = y, rect-width = width, rect-height = height,
            line-width = line-width,
            stroke-color = stroke-color } []
+
+fun line { x0, y0, x1, y1, stroke-color, line-width } : layout =
+  sticker {(Sticker) x = x0, y = y0, line-x1 = x1, line-y1 = y1,
+           stroke-color = stroke-color, line-width = line-width} []
 
 fun helvetica layout = apply-font HELVETICA layout
 fun times-roman layout = apply-font TIMES layout

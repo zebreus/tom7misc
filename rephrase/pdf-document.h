@@ -53,6 +53,11 @@ struct PDFPage : public Page {
                 double border_width, uint32_t color_fill,
                 uint32_t color_border) override;
 
+  void DrawLine(double x0, double y0,
+                double x1, double y1,
+                double line_width,
+                uint32_t stroke_color) override;
+
   void DrawVideo(double x, double y,
                  double width, double height,
                  const std::string &src,
@@ -69,7 +74,7 @@ struct PDFPage : public Page {
 };
 
 struct PDFDocument : public Document {
-  PDFDocument(double width, double height);
+  PDFDocument();
 
   std::string LoadFontFile(const std::string &filename) override;
 
@@ -87,6 +92,8 @@ struct PDFDocument : public Document {
                    const std::map<int, std::map<int, DocTree>> &pages);
 
  private:
+  double page_width = PDF::PDF_LETTER_WIDTH;
+  double page_height = PDF::PDF_LETTER_HEIGHT;
   void InitBuiltInFonts();
   const PDF::FontObj *AnyFontByName(const std::string &font_name);
   std::unique_ptr<PDF> pdf;

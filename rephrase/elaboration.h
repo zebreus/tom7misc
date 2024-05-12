@@ -85,6 +85,14 @@ struct Elaboration {
   // This is repeatedly used.
   std::pair<const il::Exp *, const il::Type *> FailMatch();
 
+  // Internal helper.
+  il::ObjFieldType ResolveObjFieldType(
+    const char *what,
+    const el::Exp *error_exp,
+    const std::string &objname,
+    const il::ObjVarInfo *ovi,
+    const std::string &lab,
+    const il::Type *rhs_type);
 
   // Globals collected during elaboration. They all have global
   // scope (including each other's bodies) and distinct names.

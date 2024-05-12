@@ -8,12 +8,22 @@
 #include "util.h"
 #include "image.h"
 #include "color-util.h"
+#include "base/logging.h"
 
 static bool INCLUDE_TESTS = false;
 static constexpr bool BREAK_NEWLINE = true;
 static constexpr int GAP = 0;
 
 int main(int argc, char **argv) {
+
+  CHECK(argc == 5) << "makecodeimage.exe 1920 1080 out.png out-self.png\n";
+
+  int width = atoi(argv[1]);
+  int height = atoi(argv[2]);
+  std::string filename = argv[3];
+  std::string filename_self = argv[4];
+  CHECK(width > 0 && height > 0 && !filename.empty() &&
+        !filename_self.empty());
 
   std::vector<std::string> source;
   for (const std::string &ent : Util::ListFiles(".")) {
@@ -37,8 +47,8 @@ int main(int argc, char **argv) {
 
   std::sort(source.begin(), source.end());
 
-  ImageRGBA img(1920, 1080);
-  ImageRGBA img_self(1920, 1080);
+  ImageRGBA img(width, height);
+  ImageRGBA img_self(width, height);
   img.Clear32(0x000000FF);
   img_self.Clear32(0x000000FF);
 
@@ -77,10 +87,10 @@ int main(int argc, char **argv) {
   }
 
   int w = xcol * (80 + GAP) + xpos;
-  printf("final pos %d,%d (%.3f%%)\n", w, ypos, 192000.0 / w);
+  printf("final pos %d,%d (%.3f%%)\n", w, ypos, (width * 100.0) / w);
 
-  img.Save("code.png");
-  img_self.Save("code-self.png");
+  img.Save(filename);
+  img_self.Save(filename_self);
 
   return 0;
 }

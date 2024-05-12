@@ -67,6 +67,9 @@ struct TalkPage : public Page {
                  const std::string &src,
                  bool loop) override;
 
+  void DrawLine(double x0, double y0, double x1, double y1,
+                double stroke_width, uint32_t color) override;
+
   void SetDuration(int dur);
   void SetTargetSec(int sec);
 
@@ -91,7 +94,7 @@ struct TalkPage : public Page {
 };
 
 struct TalkDocument : public Document {
-  TalkDocument(int pixel_width, int pixel_height);
+  TalkDocument();
 
   std::string LoadFontFile(const std::string &filename) override;
 
@@ -111,7 +114,6 @@ struct TalkDocument : public Document {
  private:
   void InitBuiltInFonts();
   int next_font_id = 0;
-  int pixel_width = 0, pixel_height = 0;
   // XXX make this more general
   std::map<int, std::map<int, int>> durations;
   // Just slide index.

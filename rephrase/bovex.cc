@@ -1,5 +1,6 @@
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <map>
 #include <memory>
@@ -251,11 +252,9 @@ static int Bovex(const std::vector<std::string> &args) {
       std::unique_ptr<Document> {
       switch (output_type) {
       case OutputType::PDF:
-      // Dimensions should be settable from within program!
-      return std::make_unique<PDFDocument>(
-          PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);
+        return std::make_unique<PDFDocument>();
       case OutputType::TALK:
-      return std::make_unique<TalkDocument>(1920, 1080);
+        return std::make_unique<TalkDocument>();
       }
     }();
 

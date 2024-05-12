@@ -736,7 +736,15 @@ void Document::SetDocumentInfo(
     const std::unordered_map<std::string, AttrVal> &info) {
   std::unordered_map<std::string, std::string> m;
   for (const auto &[k, v] : info) {
-    if (const std::string *s = std::get_if<std::string>(&v.v)) {
+    if (k == "width") {
+      const double *w = std::get_if<double>(&v.v);
+      CHECK(w != nullptr) << "Document info 'width' must be a double (in points).";
+      width = *w;
+    } else if (k == "height") {
+      const double *h = std::get_if<double>(&v.v);
+      CHECK(h != nullptr) << "Document info 'height' must be a double (in points).";
+      height = *h;
+    } else if (const std::string *s = std::get_if<std::string>(&v.v)) {
       m[k] = *s;
     }
   }
@@ -1381,27 +1389,40 @@ void Document::PlaceStickersRec(Context context,
                    0xFF0000FF);
   }
 
-  if (const BigInt *fill = doc.GetIntAttr("fill-color")) {
-    uint32_t color = IntToColor("fill-color", *fill);
-    const double *w = doc.GetDoubleAttr("width");
-    const double *h = doc.GetDoubleAttr("height");
-    CHECK(w != nullptr && h != nullptr) << "sticker with fill requires "
-      "width and height.";
-    Transform ct = Translate(transform, *x, *y);
-    page->DrawRect(ct.dx, ct.dy, *w, *h,
-                   0.0, color, 0x00000000);
+  if (const double *w = doc.GetDoubleAttr("rect-width")) {
+    const double *h = doc.GetDoubleAttr("rect-height");
+    CHECK(w != nullptr && h != nullptr) << "sticker with rect "
+      "must have both width and height.";
+
+    if (const BigInt *fill = doc.GetIntAttr("fill-color")) {
+      uint32_t color = IntToColor("fill-color", *fill);
+      Transform ct = Translate(transform, *x, *y);
+      page->DrawRect(ct.dx, ct.dy, *w, *h,
+                     0.0, color, 0x00000000);
+    }
+
+    if (const BigInt *fill = doc.GetIntAttr("stroke-color")) {
+      uint32_t color = IntToColor("stroke-color", *fill);
+      const double *t = doc.GetDoubleAttr("line-width");
+      CHECK(t != nullptr) << "rect sticker with stroke requires width, height, "
+        "and linewidth.";
+      Transform ct = Translate(transform, *x, *y);
+      page->DrawRect(ct.dx, ct.dy, *w, *h,
+                     *t, 0x00000000, color);
+    }
   }
 
-  if (const BigInt *fill = doc.GetIntAttr("stroke-color")) {
-    uint32_t color = IntToColor("stroke-color", *fill);
-    const double *w = doc.GetDoubleAttr("width");
-    const double *h = doc.GetDoubleAttr("height");
+  if (const double *x1 = doc.GetDoubleAttr("line-x1")) {
+    const double *y1 = doc.GetDoubleAttr("line-y1");
     const double *t = doc.GetDoubleAttr("line-width");
-    CHECK(w != nullptr && h != nullptr && t != nullptr) <<
-      "sticker with stroke requires width, height, and linewidth.";
-    Transform ct = Translate(transform, *x, *y);
-    page->DrawRect(ct.dx, ct.dy, *w, *h,
-                   *t, 0x00000000, color);
+    const BigInt *fill = doc.GetIntAttr("stroke-color");
+    CHECK(x1 != nullptr && y1 != nullptr && t != nullptr &&
+          fill != nullptr) << "sticker with line "
+      "must have line-x1, line-y1, line-width, and stroke-color.";
+    uint32_t color = IntToColor("stroke-color", *fill);
+    Transform ct0 = Translate(transform, *x, *y);
+    Transform ct1 = Translate(transform, *x1, *y1);
+    page->DrawLine(ct0.dx, ct0.dy, ct1.dx, ct1.dy, *t, color);
   }
 
   if (const std::string *img = doc.GetStringAttr("img")) {
@@ -1493,6 +1514,14 @@ void Page::DrawRect(double x, double y,
                     uint32_t color_border) {
 
 }
+
+void Page::DrawLine(double x0, double y0,
+                    double x1, double y1,
+                    double line_width,
+                    uint32_t stroke_color) {
+
+}
+
 
 Page::Page() {}
 Font::Font() {}

@@ -25,6 +25,9 @@
 
 using Transform = Document::Transform;
 
+static constexpr float DEFAULT_WIDTH  = PDF::PDF_LETTER_WIDTH;
+static constexpr float DEFAULT_HEIGHT = PDF::PDF_LETTER_HEIGHT;
+
 PDFFont::PDFFont(const PDF::FontObj *f) : pdf_font(f) {
   CHECK(f != nullptr);
 }
@@ -130,8 +133,10 @@ static std::string DateTimeStamp() {
                      std::chrono::system_clock::now());
 }
 
-PDFDocument::PDFDocument(double width, double height) {
-  pdf.reset(new PDF((float)width, (float)height));
+PDFDocument::PDFDocument() {
+  // At this point, width/height are not yet set, so use defaults.
+  // The width/height can be updated by Document::SetDocumentInfo.
+  pdf.reset(new PDF(DEFAULT_WIDTH, DEFAULT_HEIGHT));
 
   PDF::Info info;
   strncpy(info.creator, "BoVeX", 63);
@@ -224,8 +229,34 @@ void PDFPage::DrawImage(double x, double y,
 void PDFPage::DrawRect(double x, double y, double width, double height,
                        double border_width, uint32_t color_fill,
                        uint32_t color_border) {
-  LOG(FATAL) << "unimplemented DrawRect. It's easy!";
+  CHECK(pdf_page != nullptr);
+
+  if (color_fill & 0xFF) {
+    pdf->AddFilledRectangle(x, FlipPageCoordinate(y),
+                            x + width, FlipPageCoordinate(y + height),
+                            border_width, PDFColor(color_fill),
+                            PDFColor(color_border), pdf_page);
+  } else {
+    pdf->AddRectangle(x, FlipPageCoordinate(y),
+                      x + width, FlipPageCoordinate(y + height),
+                      border_width,
+                      PDFColor(color_border), pdf_page);
+  }
 }
+
+void PDFPage::DrawLine(double x0, double y0,
+                       double x1, double y1,
+                       double line_width,
+                       uint32_t stroke_color) {
+  printf("Line %.2f,%.2f %.2f,%.2f\n", x0, y0, x1, y1);
+
+  CHECK(pdf_page != nullptr);
+  pdf->AddLine(x0, FlipPageCoordinate(y0),
+               x1, FlipPageCoordinate(y1),
+               line_width, PDFColor(stroke_color),
+               pdf_page);
+}
+
 
 void PDFPage::DrawVideo(double x, double y,
                         double width, double height,
@@ -244,6 +275,11 @@ void PDFDocument::GenerateOutput(
 void PDFDocument::GeneratePDF(
     const std::string &filename,
     const std::map<int, std::map<int, DocTree>> &pages) {
+  // Apply user-set dimensions before creating any pages.
+  if (width > 0.0 && height > 0.0) {
+    pdf->SetDimensions(width, height);
+  }
+
   // We ignore gaps in the pages. If you want a blank page, make
   // a blank document.
   int num_pages = 0;

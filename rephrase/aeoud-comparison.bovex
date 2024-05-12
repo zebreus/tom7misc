@@ -5,7 +5,7 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-  import "aeoud-shared.bovex"
+  import "talk-shared.bovex"
 
   (* do REPHRASE-ALL := SOME 50 *)
   do REPHRASE-ALL := NONE
