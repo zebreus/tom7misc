@@ -253,6 +253,11 @@ public:
   PDF(float width, float height);
   ~PDF();
 
+  // Change the dimensions of new pages added to the document.
+  // Currently this requires that no pages have been added yet,
+  // since I haven't tested changing the page size mid-stream.
+  void SetDimensions(float width, float height);
+
   // Set the PDF header info. Fields are truncated to 63 characters
   // in order to ensure nul-termination.
   void SetInfo(const Info &info);
@@ -662,8 +667,8 @@ private:
   int errval = 0;
   std::vector<Object *> objects;
 
-  float width = 0.0f;
-  float height = 0.0f;
+  float document_width = 0.0f;
+  float document_height = 0.0f;
 
   const FontObj *current_font = nullptr;
   int next_font_index = 1;

@@ -369,7 +369,7 @@ const PDF::Info &PDF::GetInfo() const {
 }
 
 PDF::PDF(float width, float height) :
-  width(width), height(height) {
+  document_width(width), document_height(height) {
 
   /* We don't want to use ID 0 */
   (void)AddObject(new NoneObj);
@@ -403,8 +403,8 @@ PDF::PDF(float width, float height) :
   SetFont(TIMES_ROMAN);
 }
 
-float PDF::Width() const { return width; }
-float PDF::Height() const { return height; }
+float PDF::Width() const { return document_width; }
+float PDF::Height() const { return document_height; }
 
 PDF::~PDF() {
   for (Object *obj : objects)
@@ -481,8 +481,8 @@ PDF::Page *PDF::AppendNewPage() {
   if (!page)
     return nullptr;
 
-  page->width = this->width;
-  page->height = this->height;
+  page->width = Width();
+  page->height = Height();
 
   return page;
 }
@@ -688,7 +688,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
             "  /Parent %d 0 R\n"
             "  /Title (%s)\n",
             bobj->page->index,
-            Float(this->height).c_str(),
+            Float(this->document_height).c_str(),
             parent->index,
             bobj->name.c_str());
     int nchildren = (int)bobj->children.size();
@@ -2949,7 +2949,6 @@ bool PDF::pdf_text_point_width(const char *text,
   return true;
 }
 
-// PERF use enum for built-in fonts.
 // PERF for fixed-width fonts, no need for table.
 static const uint16_t *find_font_widths(PDF::BuiltInFont font) {
   switch (font) {
@@ -3998,6 +3997,15 @@ std::string PDF::FontObj::BaseFont() const {
   } else {
     return StringPrintf("Font%d", font_index);
   }
+}
+
+void PDF::SetDimensions(float ww, float hh) {
+  CHECK(nullptr == (Page*)pdf_find_last_object(OBJ_page)) << "It is not (yet?) "
+    "supported to change the dimensions of a PDF document once you've added "
+    "a page. It might just work; you could try removing this error.";
+
+  document_width = ww;
+  document_height = hh;
 }
 
 /**
