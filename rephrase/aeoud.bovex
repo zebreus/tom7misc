@@ -7,6 +7,10 @@ let
 
   import "talk-shared.bovex"
 
+  do set-doc-info { (TalkInfo)
+                    width = pixel 1920.0,
+                    height = pixel 1080.0 }
+
   (* do REPHRASE-ALL := SOME 50 *)
   do REPHRASE-ALL := NONE
   do NO-REPHRASE := true

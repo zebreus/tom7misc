@@ -11,6 +11,10 @@ let
   do REPHRASE-ALL := NONE
   (* do NO-REPHRASE := true *)
 
+  do set-doc-info { (TalkInfo)
+                    width = pixel 1920.0,
+                    height = pixel 1080.0 }
+
 in
 
   (* This just generates the animated comparison. It could be embedded

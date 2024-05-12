@@ -1,7 +1,7 @@
 (*   -*- electric-indent-local-mode: nil -*- *)
 
 (* slides info *)
-object TalkInfo of { }
+object TalkInfo of { width: float, height : float }
 
 val tt = fixedersys
 
