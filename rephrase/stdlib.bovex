@@ -623,3 +623,25 @@ fun optimize { name : string, low : float, start: float, high : float } =
                   hi = high }
   end
 
+datatype random-state = InternalRandom of int
+val random-state : random-state ref = ref (InternalRandom 0xCAFE)
+fun random64 () =
+  (case !random-state of
+     InternalRandom s =>
+       let
+         (* XXX improve this algorithm; like use PCG *)
+         val s = s + 0x31415926.27182813
+         val s = s * 0x12345678.91234731
+         val s = s xorb 0xCAFED00D.FEED0123
+         val s = s andb 0xFFFFFFFF.FFFFFFFF
+       in
+         random-state := InternalRandom s;
+         s
+       end)
+
+fun random () : float =
+  let
+    val n = random64 () andb 0xFFFFFFFF
+  in
+    n / 0xFFFFFFFF
+  end

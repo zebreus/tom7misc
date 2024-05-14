@@ -5,16 +5,41 @@ let
   import "cite.bovex"
   import "paper.bib"
 
-  import "talk-shared.bovex"
+  import "shared.bovex"
 
   do set-doc-info { (TalkInfo)
-                    width = pixel 3840.0,
-                    height = pixel 2160.0 }
+                    width = pixel SLIDE-WIDTH,
+                    height = pixel SLIDE-HEIGHT }
 
 
   (* do REPHRASE-ALL := SOME 50 *)
   do REPHRASE-ALL := NONE
   do NO-REPHRASE := true
+
+
+  fun zigzag zig lay =
+    case layoutcase (get-box lay) of
+      Node (BOX, attrs as {(Box) width, height}, ch) =>
+        let
+          val y-offset = height *. -0.15
+          val d =
+            box attrs
+            (layout-concat
+             (ch @
+              (if zig then
+                  (image-sticker
+                   { img = image-load-cache "../red-underline.png",
+                     x = 0.0, y = y-offset, width = width } :: nil)
+               else nil)
+              ))
+        in
+          d
+        end
+    | _ =>
+        let in
+          debug-print-doc lay;
+          fail "Expected box with width/height from get-box"
+        end
 
 in
 
@@ -34,29 +59,31 @@ in
  (* Oh my god, it burns my eyes!! And not just because it's so
     bright... the glaring mistake... *)
   (* People will look at this and think, "Looks fine to me!" *)
-  just-image "typography0.png";
-  just-image "typography1.png";
-  just-image "typography2.png";
-  just-image "typography3.png";
-  just-image "typography4.png";
-  just-image "typography5.png";
-  (* just-image "typography6.png"; *)
+  just-image-2x "../typography0.png";
+  just-image-2x "../typography1.png";
+  just-image-2x "../typography2.png";
+  just-image-2x "../typography3.png";
+  just-image-2x "../typography4.png";
+  just-image-2x "../typography5.png";
+  (* just-image-2x "typography6.png"; *)
   let
-    val AIX = 180.0
-    val TX = AIX +. 220.0
+    val AIX = 360.0
+    val TX = AIX +. 440.0
+    val AIY = 1600.0
+    val INFINITE-WIDTH = 99999999.0
   in
     combo-slide (slide with BODY-FONT-COLOR = 0x440044FF)
     (Image { x = 0.0, y = 0.0, width = NONE,
-             img = image-load "typography6.png" } ::
-     Image { x = AIX, y = 800.0, width = SOME 180.0,
-             img = image-load "illustrator-icon.png" } ::
-     TextBox { x = TX, y = 800.0 +. 64.0,
-               width = 800.0, text = b[Adobe Illustrator] } ::
-     TextBox { x = TX, y = 800.0 +. 118.0,
-               width = 800.0, text = size 52.0 [“King of Fonts”] } ::
-     TextBox { x = TX, y = 800.0 +. 164.0,
-               width = 800.0, text =
-               color 0x880000FF (size 32.0 [($600/yr.)]) } ::
+             img = image-load "../typography6.png" } ::
+     Image { x = AIX, y = AIY, width = SOME 360.0,
+             img = image-load "../illustrator-icon.png" } ::
+     TextBox { x = TX, y = AIY +. 128.0,
+               width = INFINITE-WIDTH, text = b[Adobe Illustrator] } ::
+     TextBox { x = TX, y = AIY +. (118.0 *. 2.0),
+               width = INFINITE-WIDTH, text = size 104.0 [“King of Fonts”] } ::
+     TextBox { x = TX, y = AIY +. (164.0 *. 2.0),
+               width = INFINITE-WIDTH, text =
+               color 0x880000FF (size 64.0 [($600/yr.)]) } ::
      nil);
   end;
 
@@ -77,15 +104,15 @@ in
       (W :: W :: W :: W :: W :: nil) ::
       nil
 
-    val QUOTE-OFFSET = inch 7.0
+    val QUOTE-OFFSET = inch 14.0
   in
     combo-slide slide
-    (StickerElt (wordle-board { x = inch 9.0, y = inch 2.5,
-                                cell-size = inch 1.6,
+    (StickerElt (wordle-board { x = inch 18.0, y = inch 5.0,
+                                cell-size = inch 3.2,
                                 board = board }) ::
-     TextBox { x = QUOTE-OFFSET +. inch 0.6,
-               y = 1080.0 -. inch 2.0,
-               width = SLIDE-WIDTH -. QUOTE-OFFSET *. 2.0,
+     TextBox { x = QUOTE-OFFSET +. inch 1.2,
+               y = 2160.0 -. inch 4.0,
+               width = SLIDE-WIDTH -. QUOTE-OFFSET *. 4.0,
                text = (justify-left
                        (it (color 0xDDDD99FF
                             [“Any revealed hints must be
@@ -143,7 +170,7 @@ in
                        occaecat cupidatat non proident, sunt
                        in culpa qui officia deserunt mollit
                        anim id est laborum *]] } ::
-     Image { img = image-load "graph.png",
+     Image { img = image-load "../graph.png",
              x = pixel 900.0,
              y = YPOS,
              width = SOME (pixel 900.0) } ::
@@ -154,7 +181,7 @@ in
   end;
 
   combo-slide (slide with GAP = 0.0)
-  (Image { img = image-load "lorem-portrait.png",
+  (Image { img = image-load "../lorem-portrait.png",
            x = pixel 1100.0,
            y = pixel 100.0,
            width = NONE } ::
@@ -178,7 +205,7 @@ in
     *)
 
   combo-slide slide
-  (Image { img = image-load "knuth-portrait-trace.png",
+  (Image { img = image-load "../knuth-portrait-trace.png",
            x = pixel 1100.0,
            y = pixel 80.0,
            width = NONE } ::
@@ -198,7 +225,7 @@ in
                with BULLET-FONT-SIZE = 60.0
                with BULLET-LINE-GAP = 40.0)
   (Title [The Art of Computer Procrastination] ::
-   Image { img = image-load "knuth-portrait-trace.png",
+   Image { img = image-load "../knuth-portrait-trace.png",
            x = pixel 1100.0,
            y = pixel 80.0,
            width = NONE } ::
@@ -221,10 +248,6 @@ in
      All that text was consumed by this guy,
      *)
 
-
-  (* in practice, was here at 4:38 *)
-  set-target-seconds (!current-page, 4 * 60 - 20);
-
   (* - AI in everything now. I do not want this when I'm trying
      to rebook my flight.
      *)
@@ -232,8 +255,8 @@ in
   (Bullets ([Wow OMG I'm sick of hearing about it] ::
             [Torment Nexus] ::
             [It does kinda work though] :: nil) ::
-   Image { img = image-load "torment-nexus.png",
-           x = pixel (1920.0 -. 1080.0),
+   Image { img = image-load "../torment-nexus.png",
+           x = pixel (3840.0 -. 2160.0),
            y = pixel 0.0,
            width = NONE } ::
    Title [Nightmare on LLM Street] ::
@@ -243,7 +266,7 @@ in
      But it's a little bit Knuth. And that worries me a lot... *)
 
   combo-slide slide
-  (Image { img = image-load "vu-meter-slide.png",
+  (Image { img = image-load "../vu-meter-slide.png",
            x = pixel 0.0,
            y = pixel 0.0,
            width = NONE } :: nil);
@@ -261,15 +284,20 @@ in
      Like beautiful typography? *)
 
   let
-    val morphism = image-load "morphism.png"
+    val morphism = image-load "../morphism.png"
     val { width, height } = image-size morphism
     val MORPHISM-X = (SLIDE-WIDTH -. (int-to-float width)) *. 0.5
     val MORPHISM-Y = inch 2.75
+
+    val morphism-slide =
+      (slide
+       with TITLE-FONT-SIZE = point 180.0
+       with TOP-MARGIN = inch 4.0
+       with CONTENT-START-Y = inch 5.5)
+
   in
     (* There is also "space" in typography::metroid *)
-    combo-slide (slide with TITLE-FONT-SIZE = point 90.0
-                 with TOP-MARGIN = inch 2.0
-                 with CONTENT-START-Y = inch 2.75)
+    combo-slide morphism-slide
     (Title [The Hurry-Coward So-So-Morphism] ::
      Image { img = morphism,
              x = MORPHISM-X, y = MORPHISM-Y,
@@ -278,32 +306,28 @@ in
 
     (* But first, we need to talk about Super Metroid. *)
     (* Let's just add one more character to this play: Super Metroid *)
-    combo-slide (slide with TITLE-FONT-SIZE = point 90.0
-                 with TOP-MARGIN = inch 2.0
-                 with CONTENT-START-Y = inch 2.75)
+    combo-slide morphism-slide
     (Title [The Hurry-Coward So-So-Morphism] ::
-     Image { img = image-load "morphism2.png",
+     Image { img = image-load "../morphism2.png",
              x = MORPHISM-X, y = MORPHISM-Y,
              width = NONE } ::
      nil);
 
-    combo-slide (slide with TITLE-FONT-SIZE = point 90.0
-                 with TOP-MARGIN = inch 2.0
-                 with CONTENT-START-Y = inch 2.75)
+    combo-slide morphism-slide
     (Title [The Hurry-Coward So-So-Morphism] ::
-     Image { img = image-load "triforce.png",
-             x = MORPHISM-X +. inch 1.5, y = MORPHISM-Y -. inch 5.0,
-             width = SOME 1300.0 } ::
-     Image { img = image-load "morphism2.png",
+     Image { img = image-load "../triforce.png",
+             x = MORPHISM-X +. inch 3.0, y = MORPHISM-Y -. inch 10.0,
+             width = SOME 2600.0 } ::
+     Image { img = image-load "../morphism2.png",
              x = MORPHISM-X, y = MORPHISM-Y,
              width = NONE } ::
      nil);
   end;
 
-  monospace-slide (slide with TITLE-FONT-SIZE = point 88.5
-                   with MONOSPACE-FONT-SIZE = point 40.0
-                   with TOP-MARGIN = inch 2.0
-                   with CONTENT-START-Y = inch 3.2)
+  monospace-slide (slide with TITLE-FONT-SIZE = point (88.5 *. 2.0)
+                   with MONOSPACE-FONT-SIZE = point 80.0
+                   with TOP-MARGIN = inch 4.0
+                   with CONTENT-START-Y = inch 6.4)
   [Super Metroid Speed Guide and FAQ]
 [  Once you save the game at your ship (about 1 hour 15 minutes is good), go
 down to Tourian. Do not save your game in Tourian if you have intentions of
@@ -326,15 +350,15 @@ game within 1 hour and 20 minutes?
 https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
 
   let
-    val mother = image-load "motherbrain.png"
+    val mother = image-load "../motherbrain.png"
     val { width = mother-width, height = _ } = image-size mother
-    val YPOS = inch 4.0
+    val YPOS = inch 8.0
 
     (* right aligned *)
-    val motherbrain-x = pixel (1920.0 -. int-to-float mother-width)
-    val GAP = inch 0.25
+    val motherbrain-x = pixel (3840.0 -. int-to-float mother-width)
+    val GAP = inch 0.5
   in
-    combo-slide (slide with TITLE-FONT-SIZE = point 88.5)
+    combo-slide (slide with TITLE-FONT-SIZE = point (88.5 *. 2.0))
     (TextBox { x = DEFAULT-LEFT-MARGIN,
                y = YPOS,
                width = motherbrain-x -. GAP -. DEFAULT-LEFT-MARGIN,
@@ -373,8 +397,8 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
     fun frame on =
     combo-slide slide
     (
-     Image { img = image-load "torment-nexus.png",
-             x = pixel (1920.0 -. 1080.0),
+     Image { img = image-load "../torment-nexus.png",
+             x = pixel (3840.0 -. 2160.0),
              y = pixel 0.0,
              width = NONE } ::
      Title [¿Cómo se LLama?] ::
@@ -430,7 +454,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
   end;
 
   monospace-slide (slide
-                   with MONOSPACE-FONT-SIZE = 58.0)
+                   with MONOSPACE-FONT-SIZE = 116.0)
   [Original paragraph]
   (* This is the text from demo.txt *)
   [Here's a demo of it generating monospaced text. I'm just
@@ -439,22 +463,20 @@ to be exactly the right length, then I keep that line
 and continue. If not, then I reset to the beginning of
 the line and roll the dice again.];
 
-  for 0 45 (fn i => just-image ("monospace-slides/frame" ^
+  for 0 45 (fn i => just-image-2x ("../monospace-slides/frame" ^
                                 int-to-string i ^ ".png"));
 
-  just-video (slide with BACKGROUND = "monospace-finished.png")
+  just-video (slide with BACKGROUND = "../monospace-finished.png")
   "monospace30.mp4";
 
-  just-image "monospace-finished.png";
+  just-image-2x "../monospace-finished.png";
 
-  quote-slide (slide with BACKGROUND = "metroidbg.png"
+  quote-slide (slide with BACKGROUND = "../metroidbg.png"
                with BODY-FONT-COLOR = 0xFFFF77FF) []
   [Great !! You fulfiled your mission. It will revive peace
    in space. But,it may be invaded by the other Metroid. Pray for a true
    peace in space!];
 
-  (* In practice, was here at 9m20s. *)
-  set-target-seconds (!current-page, 8 * 60 - 40);
   bullet-slide slide [Baby mode]
   ([300 lines of code] ::
    [It only took an afternoon] ::
@@ -464,15 +486,15 @@ the line and roll the dice again.];
      monospaced here? *)
 
   let
-    val tom = image-load "tom7-portrait.png"
+    val tom = image-load "../tom7-portrait.png"
     val { width, height = _ } = image-size tom
   in
-    combo-slide (slide with BULLET-FONT-SIZE = 52.0)
+    combo-slide (slide with BULLET-FONT-SIZE = 104.0)
     (Image { x = SLIDE-WIDTH -. int-to-float width, y = 0.0, width = NONE,
              img = tom } ::
      Title [The Fool: Tom 7] ::
-     Bullet ({(Bullet) space-after = 42.0, bullet = [ ]},
-             size 72.0 [Knuth Any% Speedrun:]) ::
+     Bullet ({(Bullet) space-after = 84.0, bullet = [ ]},
+             size 144.0 [Knuth Any% Speedrun:]) ::
      BulletsExt
      ({(Bullet) indent = 1 },
       [[color 0xFFFF77FF[BoVeX]], a new document preparation system] ::
@@ -491,53 +513,53 @@ the line and roll the dice again.];
      it to make these slides. For example, here's the source
      code for the slide you're looking at. *)
   diagram-slide (slide
-                 with BACKGROUND = "emacs-grey.png"
-                 with TITLE-FONT-SIZE = 80.0
+                 with BACKGROUND = "../emacs-grey.png"
+                 with TITLE-FONT-SIZE = 160.0
                  with TITLE-FONT-COLOR = 0xFFFF90FF
-                 with TOP-MARGIN = inch 2.0
-                 with CONTENT-START-Y = inch 2.75)
+                 with TOP-MARGIN = inch 4.0
+                 with CONTENT-START-Y = inch 5.5)
   [Here is what [it[this]] slide looks like]
-  (image-load "self.png");
+  (image-load "../self.png");
 
   (* 77% of the code on screen *)
-  just-image "video/code-4k.png";
-  just-image "video/code-4k-self.png";
+  just-image "code-4k.png";
+  just-image "code-4k-self.png";
 
   diagram-slide (slide
-                 with TITLE-FONT-SIZE = 80.0
-                 with TOP-MARGIN = inch 2.0
-                 with CONTENT-START-Y = inch 2.75)
+                 with TITLE-FONT-SIZE = 160.0
+                 with TOP-MARGIN = inch 4.0
+                 with CONTENT-START-Y = inch 5.5)
   [Boxes and glue]
-  (image-load "algorithm-dark.png");
+  (image-load "../algorithm-dark.png");
 
   let
-    val YPOS = inch 0.9
+    val YPOS = inch 1.8
   in
     combo-slide slide
     (TextBox { x = DEFAULT-LEFT-MARGIN,
-               y = YPOS +. 64.0,
-               width = inch 8.75,
-               text = (span {(Span) line-spacing = 4.0}
+               y = YPOS +. 128.0,
+               width = inch 18.5,
+               text = (span {(Span) line-spacing = 8.0}
                        [Here is an example of applying the boxes
                        and glue algorithm to this very text. Most
                        of the break points lead to extremely long
                        or short lines, so only a small region
                        is of any interest. But those details
                        matter.]) } ::
-     Image { img = image-load "boxes-and-glue-matrix.png",
-             x = pixel 900.0,
-             y = YPOS -. 36.0,
+     Image { img = image-load "../boxes-and-glue-matrix.png",
+             x = pixel 1800.0,
+             y = YPOS -. 72.0,
              width = NONE } ::
      nil)
   end;
 
   diagram-slide (slide
-                 with TITLE-FONT-SIZE = 80.0
-                 with TOP-MARGIN = inch 2.0
-                 with LEFT-MARGIN = DEFAULT-LEFT-MARGIN -. inch 0.75
-                 with CONTENT-START-Y = inch 2.75)
+                 with TITLE-FONT-SIZE = 160.0
+                 with TOP-MARGIN = inch 4.0
+                 with LEFT-MARGIN = DEFAULT-LEFT-MARGIN -. inch 1.5
+                 with CONTENT-START-Y = inch 5.5)
   [Boxes and LLMers Glue]
-  (image-load "algorithm2-dark.png");
+  (image-load "../algorithm2-dark.png");
 
   just-video (slide with LOOP-VIDEO = true) "comparison.mp4";
 
@@ -567,13 +589,13 @@ the line and roll the dice again.];
       let val { width, height, lay } =
         let val c = (random64() andb 0xFFFFFFFF) orb 0x303030AA
         in
-          letterbox (color c (b (size 64.0 (apply-font FRANKLIN [e]))))
+          letterbox (color c (b (size 128.0 (apply-font FRANKLIN [e]))))
         end
       in
         sim := { x = random () *. SYSTEMW,
                  y = random () *. SYSTEMH,
-                 dx = (random() *. 10.0) -. 10.0,
-                 dy = (random() *. 10.0) -. 10.0,
+                 dx = (random() *. 20.0) -. 20.0,
+                 dy = (random() *. 20.0) -. 20.0,
                  width = width,
                  height = height,
                  lay = lay } :: !sim
@@ -599,7 +621,7 @@ the line and roll the dice again.];
           let
             val x = x +. dx
             val y = y +. dy
-            val dy = dy +. 4.0
+            val dy = dy +. 8.0
 
             val (y, dy) =
               if y +. height >. BOTTOM
@@ -632,7 +654,7 @@ the line and roll the dice again.];
                  width = width, height = height,
                  lay = lay } : particle) =>
            TextBox { x = x +. SYSTEMX, y = y +. SYSTEMY,
-                     width = inch 19.0,
+                     width = inch 38.0,
                      text = lay })
           (!sim)
       in
@@ -641,17 +663,17 @@ the line and roll the dice again.];
          Bullets
          ([Bibliography database] ::
           (three-d { font-name = font-regular PALATINO,
-                     font-size = 72.0 *. (t +. 1.0),
-                     width = 40.0, height = 72.0, text = "3D text" }) ::
+                     font-size = 144.0 *. (t +. 1.0),
+                     width = 80.0, height = 144.0, text = "3D text" }) ::
           [Achievements] ::
           nil) ::
-         TextBox { x = SYSTEMX, y = SYSTEMY +. SYSTEMH +. 48.0,
-                   width = inch 19.0,
+         TextBox { x = SYSTEMX, y = SYSTEMY +. SYSTEMH +. 96.0,
+                   width = inch 38.0,
                    text = (palatino [Particle systems]) } ::
          texts)
       end
 
-    val NUM-FRAMES = 64
+    val NUM-FRAMES = (* 64 *) 4
 
     val start-page = !current-page
     fun makeframe n =
@@ -673,7 +695,7 @@ the line and roll the dice again.];
     current-frame := 0;
   end;
 
-  just-image "achievement-screenshot.png";
+  just-image-2x "../achievement-screenshot.png";
 
   (* TODO: Future work: Acting on world, 1,000,000 *)
 
@@ -695,7 +717,7 @@ the line and roll the dice again.];
     fun concslide pun =
       text-slide slide [Conclusion]
       (justify-all
-       (span {(Span) line-spacing = 4.0}
+       (span {(Span) line-spacing = 8.0}
        ([In this talk—and [it[with]] this talk—I presented BoVeX, a
          new computer typesetting system. It follows the tradition TeX, but
          with modern amenities such as requiring over 128 gigabytes of RAM. ]
@@ -708,34 +730,32 @@ the line and roll the dice again.];
     concslide true;
   end;
 
-  (* Was here at 15 *)
-  set-target-seconds (!current-page, 12 * 60);
   let
-    val tom = image-load "tom7-portrait-glasses.png"
+    val tom = image-load "../tom7-portrait-glasses.png"
     val { width, height = _ } = image-size tom
-    val BYLINE = 940.0
-    val BADNESS0 = 340.0 +. 128.0 +. 54.0
+    val BYLINE = 940.0 *. 2.0
+    val BADNESS0 = (340.0 +. 128.0 +. 54.0) *. 2.0
   in
     combo-slide slide
     (Image { x = SLIDE-WIDTH -. int-to-float width, y = 0.0, width = NONE,
              img = tom } ::
      TextBox { x = DEFAULT-LEFT-MARGIN, y = BADNESS0,
-               width = inch 19.0,
-               text = size (point 196.0)
+               width = inch 38.0,
+               text = size (point 392.0)
                (b (color 0xFFFFFFFF [“Badness 0”])) } ::
-     TextBox { x = DEFAULT-LEFT-MARGIN, y = BYLINE -. 264.0,
-               width = inch 19.0,
-               text = size (point 100.0)
+     TextBox { x = DEFAULT-LEFT-MARGIN, y = BYLINE -. (264.0 *. 2.0),
+               width = inch 38.0,
+               text = size (point 200.0)
                (color 0xFF8888FF [Executive Producer]) } ::
      TextBox { x = DEFAULT-LEFT-MARGIN, y = BYLINE,
-               width = inch 19.0,
-               text = size (point 300.0) (color 0xFF0000FF [Tom 7]) } ::
-     TextBox { x = DEFAULT-LEFT-MARGIN, y = 300.0,
-               width = inch 19.0,
+               width = inch 76.0,
+               text = size (point 600.0) (color 0xFF0000FF [Tom 7]) } ::
+     TextBox { x = DEFAULT-LEFT-MARGIN, y = 600.0,
+               width = inch 76.0,
                text =
                apply-font FRANKLIN
                (b
-                (size (point 400.0) (color 0xFFFF00FF
+                (size (point 800.0) (color 0xFFFF00FF
                                      [AEOUD[color 0xFFFF0088 [:]]NY]))) } ::
      nil)
   end

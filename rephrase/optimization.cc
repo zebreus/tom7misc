@@ -1,9 +1,12 @@
 
 #include "optimization.h"
 
+#include <set>
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <iterator>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -13,18 +16,30 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "progress.h"
+#include "base/stringprintf.h"
 #include "bc.h"
+#include "hashing.h"
+#include "primop.h"
+#include "progress.h"
 
 static constexpr int VERBOSE = 0;
 
 using ProgressRecorder = Progress<VERBOSE != 0>;
 
 // TODO:
-// Coalesce identical globals
 // Standard data-flow stuff
 
 namespace bc {
+
+// True if the primop is effectless at the bytecode level. Effectless
+// means that we can drop an instruction if its output is never
+// used.
+static bool DiscardablePrimop(Primop po) {
+  // XXX deferring to the primop library for now, but perhaps we
+  // should have our own list here? At least check it to see if
+  // there are any differences in semantics.
+  return IsPrimopDiscardable(po);
+}
 
 Optimization::Optimization() {}
 
@@ -49,12 +64,20 @@ struct PeepholePass {
     opts(opts),
     progress(progress) {}
 
+  // TODO bind x <- x
+
   void DoFn(const std::string &fname, SymbolicFn *fn) {
     for (auto &[block_name, block] : fn->blocks) {
       Block new_block;
       new_block.insts.reserve(block.insts.size());
       for (int idx = 0; idx < (int)block.insts.size(); idx++) {
         const Inst &inst1 = block.insts[idx];
+
+        if (opts & Optimization::O_REMOVE_NOTES &&
+            std::holds_alternative<inst::Note>(inst1)) {
+          progress->Record("drop note");
+          continue;
+        }
 
         // Instruction pairs.
         if (idx < (int)block.insts.size() - 1) {
@@ -79,6 +102,8 @@ struct PeepholePass {
               continue;
             }
           }
+
+
         }
 
         // If we didn't 'continue' above, then we pass through the
@@ -493,12 +518,178 @@ struct Dataflow {
   // Value: T for each index.
   std::unordered_map<std::string, std::vector<T>> state;
 
+  // the previous instruction is always a predecessor.
+  // The first instruction in a block (key) can also be a predecessor for
+  // jumps anywhere in the function (values).
+  std::unordered_map<std::string, std::vector<std::pair<std::string, int>>>
+  predecessors;
+  // The next instruction (if any) is always a successor.
+  // An instruction in some block (key) can additionally have its successor be
+  // the first instruction of some block (value).
+  std::unordered_map<std::pair<std::string, int>, std::string,
+                     Hashing<std::pair<std::string, int>>>
+  successors;
+
+  // maps block name to instruction indices that need to be propagated.
+  // We keep the set of instructions in sorted order so that we can
+  // choose candidates in an efficient order.
+  std::unordered_map<std::string, std::set<int>> changed;
+
+  void MarkChanged(const std::string &block, int idx) {
+    changed[block].insert(idx);
+  }
+
+  std::optional<std::pair<std::string, int>> PopChanged() {
+    // We want to delete keys that have become empty. Since deleting
+    // would invalidate iterators, we save the keys to delete in here.
+    std::vector<std::string> deleteme;
+    auto DoDelete = [&]() {
+        for (const std::string &k : deleteme) {
+          changed.erase(k);
+        }
+      };
+
+    for (auto &[k, v] : changed) {
+      if (v.empty()) {
+        deleteme.push_back(k);
+      } else {
+        // TODO: Provide a hint about whether the flow is backwards or
+        // forwards.
+        // (If forward, use v.begin())
+        int next = v.extract(std::prev(v.end())).value();
+        DoDelete();
+        return {{k, next}};
+      }
+    }
+
+    DoDelete();
+    return std::nullopt;
+  }
+
   Dataflow(const SymbolicFn &fn) {
     for (const auto &[name, block] : fn.blocks) {
       state[name].resize(block.insts.size());
     }
   }
 };
+
+template<class TF>
+static Dataflow<std::unordered_set<std::string>>
+SaturateDataflow(const std::string &fname,
+                 SymbolicFn *fn,
+                 const TF &tf) {
+  using T = std::unordered_set<std::string>;
+  // PERF We know the full gamut ahead of time. Use a bit vector!
+  Dataflow<T> dataflow(*fn);
+
+  // At the beginning, every instruction is on the work queue.
+  for (const auto &[name, block] : fn->blocks) {
+    std::set<int> all_insts;
+    for (int i = 0; i < (int)block.insts.size(); i++)
+      all_insts.insert(i);
+    dataflow.changed[name] = std::move(all_insts);
+  }
+
+  // Set the successors and predecessors.
+  for (const auto &[name, block] : fn->blocks) {
+    for (int idx = 0; idx < (int)block.insts.size(); idx++) {
+      const Inst &inst = block.insts[idx];
+
+      if (const inst::SymbolicIf *iff = std::get_if<inst::SymbolicIf>(&inst)) {
+        dataflow.successors[std::make_pair(name, idx)] = iff->true_lab;
+        dataflow.predecessors[iff->true_lab].emplace_back(name, idx);
+      } else if (const inst::SymbolicJump *jmp =
+                       std::get_if<inst::SymbolicJump>(&inst)) {
+        dataflow.successors[std::make_pair(name, idx)] = jmp->lab;
+        dataflow.predecessors[jmp->lab].emplace_back(name, idx);
+      } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
+        LOG(FATAL) << "The dataflow pass can only work on symbolic bytecode.";
+      } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
+        LOG(FATAL) << "The dataflow pass can only work on symbolic bytecode.";
+      }
+
+    }
+  }
+
+  // Now propagate. We keep getting a block/instruction pair that is
+  // out of date.
+  while (std::optional<std::pair<std::string, int>> binst =
+         dataflow.PopChanged()) {
+    const auto &[block_name, idx] = binst.value();
+
+    const auto bit = fn->blocks.find(block_name);
+    CHECK(bit != fn->blocks.end()) << "Bug: Missing basic block "
+                                   << block_name;
+
+    const Block &block = bit->second;
+    const Inst &inst = block.insts[idx];
+
+    // Union together the sets from all the successors.
+    std::unordered_set<std::string> after;
+
+    // The next instruction.
+    if (idx + 1 < (int)block.insts.size()) {
+      const auto &sit = dataflow.state.find(block_name);
+      CHECK(sit != dataflow.state.end());
+      CHECK(sit->second.size() == block.insts.size());
+      const T &ts = sit->second[idx + 1];
+      after.insert(ts.begin(), ts.end());
+    }
+
+    // Jumps to other blocks.
+    const auto oit = dataflow.successors.find(
+        std::make_pair(block_name, idx));
+    if (oit != dataflow.successors.end()) {
+      const std::string &sblock = oit->second;
+      const auto &sit = dataflow.state.find(oit->second);
+      CHECK(sit != dataflow.state.end()) << "Bug: Missing block "
+                                         << sblock;
+      // The first instruction of that block...
+      const T &ts = sit->second[0];
+      after.insert(ts.begin(), ts.end());
+    }
+
+    // Now we have the new 'after' set for the instruction.
+    // Compute the before set.
+    T before = tf(&inst, after);
+
+    const T &old = dataflow.state[block_name][idx];
+    if (before != old) {
+      dataflow.state[block_name][idx] = std::move(before);
+
+      // Now mark all its predecessors as requiring update.
+
+      // The previous instruction is always a predecessor (even in a
+      // case like jmp or ret; different optimizations take care of
+      // dropping code after those), but if this is the beginning of a
+      // basic block, we also need to propagate any jumps to that block.
+      if (idx > 0) {
+        dataflow.MarkChanged(block_name, idx - 1);
+      } else {
+        CHECK(idx == 0);
+        for (const auto &[pb, pi] : dataflow.predecessors[block_name]) {
+          dataflow.MarkChanged(pb, pi);
+        }
+      }
+    }
+  }
+
+  return dataflow;
+}
+
+template<class C>
+static std::string StringSet(const C &ss) {
+  if (ss.empty()) return "";
+  std::vector<std::string> v(ss.begin(), ss.end());
+  v.reserve(ss.size());
+  std::sort(v.begin(), v.end());
+  if (v.size() == 1) return v[0];
+  std::string out = v[0];
+  for (int i = 1; i < (int)v.size(); i++) {
+    StringAppendF(&out, ", %s", v[i].c_str());
+  }
+  return out;
+}
 
 // Computes dataflow: What locals are used?
 //
@@ -511,91 +702,291 @@ struct DataflowPass {
     progress(progress) {}
 
   void DoFn(const std::string &fname, SymbolicFn *fn) {
-    // PERF We know the full gamut ahead of time. Use a bit vector!
-    Dataflow<std::unordered_set<std::string>> read_before_write(*fn);
 
-    // Initialize with instructions that read their inputs.
-    for (const auto &[name, block] : fn->blocks) {
-      std::vector<std::unordered_set<std::string>> *dv =
-        &read_before_write.state[name];
-      for (int i = 0; i < (int)block.insts.size(); i++) {
-        const Inst &inst = block.insts[i];
+    // The transfer function for one instruction takes the set of
+    // read-before-write locals in the instructions that immediately
+    // follow it (usually one), and produces the new set to propagate
+    // upwards.
 
-        // TODO: Insert the changed indices into todo set.
-        if (const inst::Triop *triop = std::get_if<inst::Triop>(&inst)) {
-          (*dv)[i].insert(triop->arg1);
-          (*dv)[i].insert(triop->arg2);
-          (*dv)[i].insert(triop->arg3);
-        } else if (const inst::Binop *binop = std::get_if<inst::Binop>(&inst)) {
-          (*dv)[i].insert(binop->arg1);
-          (*dv)[i].insert(binop->arg2);
-        } else if (const inst::Unop *unop = std::get_if<inst::Unop>(&inst)) {
-          (*dv)[i].insert(unop->arg);
-        } else if (const inst::Call *call = std::get_if<inst::Call>(&inst)) {
-          (*dv)[i].insert(call->arg);
-        } else if (const inst::TailCall *tail_call =
-                   std::get_if<inst::TailCall>(&inst)) {
-          (*dv)[i].insert(tail_call->arg);
-        } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
-          (*dv)[i].insert(ret->arg);
-        } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
-          (*dv)[i].insert(iff->cond);
-        } else if (const inst::AllocVec *allocvec =
-                   std::get_if<inst::AllocVec>(&inst)) {
-          // nothing
-        } else if (const inst::SetVec *setvec =
-                   std::get_if<inst::SetVec>(&inst)) {
-          (*dv)[i].insert(setvec->vec);
-          (*dv)[i].insert(setvec->idx);
-          (*dv)[i].insert(setvec->arg);
-        } else if (const inst::GetVec *getvec =
-                   std::get_if<inst::GetVec>(&inst)) {
-          (*dv)[i].insert(getvec->vec);
-          (*dv)[i].insert(getvec->idx);
-        } else if (const inst::Alloc *alloc = std::get_if<inst::Alloc>(&inst)) {
-          // nothing
-        } else if (const inst::Copy *copy = std::get_if<inst::Copy>(&inst)) {
-          (*dv)[i].insert(copy->obj);
-        } else if (const inst::SetLabel *setlabel =
-                   std::get_if<inst::SetLabel>(&inst)) {
-          (*dv)[i].insert(setlabel->obj);
-          (*dv)[i].insert(setlabel->arg);
-        } else if (const inst::GetLabel *getlabel =
-                   std::get_if<inst::GetLabel>(&inst)) {
-          (*dv)[i].insert(getlabel->obj);
-        } else if (const inst::DeleteLabel *deletelabel =
-                   std::get_if<inst::DeleteLabel>(&inst)) {
-          (*dv)[i].insert(deletelabel->obj);
-        } else if (const inst::HasLabel *haslabel =
-                   std::get_if<inst::HasLabel>(&inst)) {
-          (*dv)[i].insert(haslabel->obj);
-        } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
-          (*dv)[i].insert(bind->arg);
-        } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
-          // Nothing
-        } else if (const inst::Save *save = std::get_if<inst::Save>(&inst)) {
-          (*dv)[i].insert(save->arg);
-        } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
-          // Nothing
-        } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
-          (*dv)[i].insert(fail->arg);
-        } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
-          // Nothing
-        } else if (const inst::SymbolicIf *iff =
-                   std::get_if<inst::SymbolicIf>(&inst)) {
-          (*dv)[i].insert(iff->cond);
-        } else if (const inst::SymbolicJump *jmp =
-                   std::get_if<inst::SymbolicJump>(&inst)) {
-          // Nothing
-        } else {
-          LOG(FATAL) << "Unhandled instruction in DataflowPass.";
+    auto Transfer = [](
+        const Inst *inst,
+        const std::unordered_set<std::string> &after)
+        -> std::unordered_set<std::string> {
+      std::unordered_set<std::string> before = after;
+
+      if (const inst::Triop *triop = std::get_if<inst::Triop>(inst)) {
+        before.erase(triop->out);
+        before.insert(triop->arg1);
+        before.insert(triop->arg2);
+        before.insert(triop->arg3);
+      } else if (const inst::Binop *binop = std::get_if<inst::Binop>(inst)) {
+        before.erase(binop->out);
+        before.insert(binop->arg1);
+        before.insert(binop->arg2);
+      } else if (const inst::Unop *unop = std::get_if<inst::Unop>(inst)) {
+        before.erase(unop->out);
+        before.insert(unop->arg);
+      } else if (const inst::Call *call = std::get_if<inst::Call>(inst)) {
+        before.erase(call->out);
+        before.insert(call->f);
+        before.insert(call->arg);
+      } else if (const inst::TailCall *tail_call =
+                     std::get_if<inst::TailCall>(inst)) {
+        before.clear();
+        before.insert(tail_call->f);
+        before.insert(tail_call->arg);
+      } else if (const inst::Ret *ret = std::get_if<inst::Ret>(inst)) {
+        before.clear();
+        before.insert(ret->arg);
+      } else if (const inst::If *iff = std::get_if<inst::If>(inst)) {
+        before.insert(iff->cond);
+      } else if (const inst::AllocVec *allocvec =
+                     std::get_if<inst::AllocVec>(inst)) {
+        before.erase(allocvec->out);
+      } else if (const inst::SetVec *setvec =
+                     std::get_if<inst::SetVec>(inst)) {
+        before.insert(setvec->vec);
+        before.insert(setvec->idx);
+        before.insert(setvec->arg);
+      } else if (const inst::GetVec *getvec =
+                     std::get_if<inst::GetVec>(inst)) {
+        before.erase(getvec->out);
+        before.insert(getvec->vec);
+        before.insert(getvec->idx);
+      } else if (const inst::Alloc *alloc =
+                     std::get_if<inst::Alloc>(inst)) {
+        before.erase(alloc->out);
+      } else if (const inst::Copy *copy = std::get_if<inst::Copy>(inst)) {
+        before.erase(copy->out);
+        before.insert(copy->obj);
+      } else if (const inst::SetLabel *setlabel =
+                     std::get_if<inst::SetLabel>(inst)) {
+        before.insert(setlabel->obj);
+        before.insert(setlabel->arg);
+      } else if (const inst::GetLabel *getlabel =
+                     std::get_if<inst::GetLabel>(inst)) {
+        before.erase(getlabel->out);
+        before.insert(getlabel->obj);
+      } else if (const inst::DeleteLabel *deletelabel =
+                     std::get_if<inst::DeleteLabel>(inst)) {
+        before.insert(deletelabel->obj);
+      } else if (const inst::HasLabel *haslabel =
+                     std::get_if<inst::HasLabel>(inst)) {
+        before.erase(haslabel->out);
+        before.insert(haslabel->obj);
+      } else if (const inst::Bind *bind = std::get_if<inst::Bind>(inst)) {
+        before.erase(bind->out);
+        before.insert(bind->arg);
+      } else if (const inst::Load *load = std::get_if<inst::Load>(inst)) {
+        before.erase(load->out);
+      } else if (const inst::Save *save = std::get_if<inst::Save>(inst)) {
+        before.insert(save->arg);
+      } else if (const inst::Jump *jump = std::get_if<inst::Jump>(inst)) {
+        // Nothing
+      } else if (const inst::Fail *fail = std::get_if<inst::Fail>(inst)) {
+        before.insert(fail->arg);
+      } else if (const inst::Note *note = std::get_if<inst::Note>(inst)) {
+        // Nothing
+      } else if (const inst::SymbolicIf *iff =
+                     std::get_if<inst::SymbolicIf>(inst)) {
+        before.insert(iff->cond);
+      } else if (const inst::SymbolicJump *jmp =
+                     std::get_if<inst::SymbolicJump>(inst)) {
+        // Nothing
+      } else {
+        LOG(FATAL) << "Unhandled instruction in DataflowPass.";
+      }
+
+      return before;
+    };
+
+
+    using T = std::unordered_set<std::string>;
+    Dataflow<T> dataflow =
+      SaturateDataflow(fname, fn, Transfer);
+
+    if (VERBOSE > 2) {
+      for (auto &[block_name, block] : fn->blocks) {
+        const std::vector<T> &read_before_write = dataflow.state[block_name];
+        for (int idx = 0; idx < (int)block.insts.size(); idx++) {
+          const Inst &inst = block.insts[idx];
+          printf("  %s", ColorInstString(inst).c_str());
+          if (!read_before_write[idx].empty()) {
+            printf("  // " ACYAN("%s"),
+                   StringSet(read_before_write[idx]).c_str());
+          }
+          printf("\n");
         }
       }
     }
 
-    // TODO: propagate, updating the workset
+    // Now every instruction has its set of read-before-write locals.
+    // We can drop bindings of locals that are unused. Since our
+    // data are aligned with the instruction vectors, we do this by
+    // writing a no-op over them and letting later passes clean up.
 
-    // TODO: delete effectless instructions whose values are not needed
+    for (auto &[block_name, block] : fn->blocks) {
+      const std::vector<T> &read_before_write = dataflow.state[block_name];
+      CHECK(read_before_write.size() == block.insts.size());
+
+      for (int idx = 0; idx < (int)block.insts.size(); idx++) {
+        const Inst &inst = block.insts[idx];
+
+        auto Unused = [&dataflow, &read_before_write, &block_name, &block, idx](
+            const std::string &v) {
+            // Find all successors.
+
+            // Union together the sets from all the successors.
+            std::unordered_set<std::string> after;
+
+            // The next instruction.
+            if (idx + 1 < (int)block.insts.size()) {
+              after.insert(read_before_write[idx + 1].begin(),
+                           read_before_write[idx + 1].end());
+            }
+
+            // Jumps to other blocks.
+            const auto oit = dataflow.successors.find(
+                std::make_pair(block_name, idx));
+            if (oit != dataflow.successors.end()) {
+              const std::string &sblock = oit->second;
+              const auto &sit = dataflow.state.find(oit->second);
+              CHECK(sit != dataflow.state.end()) << "Bug: Missing block "
+                                                 << sblock;
+              // The first instruction of that block.
+              const T &ts = sit->second[0];
+              after.insert(ts.begin(), ts.end());
+            }
+
+            return !after.contains(v);
+          };
+
+        auto Drop = [this, &block, idx, &inst](
+            const char *what, const std::string &lab) {
+            progress->Record(what);
+            if (VERBOSE) {
+              printf("  Unused: %s\n", ColorInstString(inst).c_str());
+            }
+            block.insts[idx] =
+              inst::Note{.msg = StringPrintf("%s <- %s", lab.c_str(), what)};
+          };
+
+        if (const inst::Triop *triop = std::get_if<inst::Triop>(&inst)) {
+          if (DiscardablePrimop(triop->primop) &&
+              Unused(triop->out)) {
+            Drop("Dropped triop", triop->out);
+          }
+        } else if (const inst::Binop *binop = std::get_if<inst::Binop>(&inst)) {
+          if (DiscardablePrimop(binop->primop) &&
+              Unused(binop->out)) {
+            Drop("Dropped binop", binop->out);
+          }
+
+        } else if (const inst::Unop *unop = std::get_if<inst::Unop>(&inst)) {
+          if (DiscardablePrimop(unop->primop) &&
+              Unused(unop->out)) {
+            Drop("Dropped unop", unop->out);
+          }
+
+        } else if (const inst::Call *call = std::get_if<inst::Call>(&inst)) {
+          // We need to make the call, unless somehow we can determine
+          // that some functions are effectless.
+          // XXX for this kind of instruction, we could perhaps dump
+          // an unused write into some designated sink local? Then at least
+          // we have fewer of them.
+
+        } else if (const inst::TailCall *tail_call =
+                     std::get_if<inst::TailCall>(&inst)) {
+          // Nothing.
+        } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
+          // Nothing.
+        } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
+          // Nothing.
+        } else if (const inst::AllocVec *allocvec =
+                       std::get_if<inst::AllocVec>(&inst)) {
+          if (Unused(allocvec->out)) {
+            Drop("Dropped allocvec", allocvec->out);
+          }
+
+        } else if (const inst::SetVec *setvec =
+                       std::get_if<inst::SetVec>(&inst)) {
+          // Nothing. We would need a separate dead-write analysis.
+
+        } else if (const inst::GetVec *getvec =
+                       std::get_if<inst::GetVec>(&inst)) {
+          if (Unused(getvec->out)) {
+            Drop("Dropped getvec", getvec->out);
+          }
+
+        } else if (const inst::Alloc *alloc =
+                       std::get_if<inst::Alloc>(&inst)) {
+          if (Unused(alloc->out)) {
+            Drop("Dropped alloc", alloc->out);
+          }
+
+        } else if (const inst::Copy *copy = std::get_if<inst::Copy>(&inst)) {
+          if (Unused(copy->out)) {
+            Drop("Dropped copy", copy->out);
+          }
+
+        } else if (const inst::SetLabel *setlabel =
+                       std::get_if<inst::SetLabel>(&inst)) {
+          // Nothing. Would need a separate dead-write analysis.
+
+        } else if (const inst::GetLabel *getlabel =
+                       std::get_if<inst::GetLabel>(&inst)) {
+          if (Unused(getlabel->out)) {
+            Drop("Dropped getlabel", getlabel->out);
+          }
+
+        } else if (const inst::DeleteLabel *deletelabel =
+                       std::get_if<inst::DeleteLabel>(&inst)) {
+          // Nothing. Would need a separate dead-write analysis.
+
+        } else if (const inst::HasLabel *haslabel =
+                       std::get_if<inst::HasLabel>(&inst)) {
+          if (Unused(haslabel->out)) {
+            Drop("Dropped haslabel", haslabel->out);
+          }
+
+        } else if (const inst::Bind *bind = std::get_if<inst::Bind>(&inst)) {
+          if (Unused(bind->out)) {
+            Drop("Dropped bind", bind->out);
+          }
+
+        } else if (const inst::Load *load = std::get_if<inst::Load>(&inst)) {
+          if (Unused(load->out)) {
+            Drop("Dropped load", load->out);
+          }
+
+        } else if (const inst::Save *save = std::get_if<inst::Save>(&inst)) {
+          // Nothing.
+
+        } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
+          // Nothing.
+
+        } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
+          // Nothing.
+
+        } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
+          // Nothing.
+
+        } else if (const inst::SymbolicIf *iff =
+                       std::get_if<inst::SymbolicIf>(&inst)) {
+          // Nothing.
+
+        } else if (const inst::SymbolicJump *jmp =
+                       std::get_if<inst::SymbolicJump>(&inst)) {
+          // Nothing.
+
+        } else {
+          LOG(FATAL) << "Unhandled instruction in DataflowPass.";
+        }
+      }
+
+    }
+
+
   }
 
   void DoProgram(SymbolicProgram *pgm) {
@@ -656,7 +1047,7 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
 
     if (VERBOSE > 0) {
       printf(AWHITE("Coalesce") ".\n");
-      if (true || VERBOSE > 2) {
+      if (VERBOSE > 2) {
         PrintSymbolicProgram(program);
       }
     }
@@ -669,6 +1060,7 @@ SymbolicProgram Optimization::Optimize(const SymbolicProgram &program_in,
       }
     }
     dataflow.DoProgram(&program);
+    // LOG(FATAL) << "Stop early.";
 
     if (VERBOSE > 1) {
       printf("\n" AYELLOW("After optimization:\n"));

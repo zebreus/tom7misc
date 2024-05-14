@@ -6,6 +6,11 @@
    down, and x positive meaning right. (Note this is vertically
    flipped from what pdf.h and the internal PDF format do!) *)
 
+(* TODO! This needs major cleanup. One thing I should do is separate
+   it into the declarations and utilities for manipulating layout
+   (used by basically everything) and the columnar layout code
+   (used just by two-column PDF docs). *)
+
 do REQUIRE-STDLIB
 
 datatype provide-layout = REQUIRE-LAYOUT
@@ -984,6 +989,18 @@ fun monospace-block-ext { left-indent, width,
      box {(Box) width = width} (layout-concat lines))
   end
 
+fun get-box lay =
+  let
+    val lay = layout-map-text normalize-whitespace lay
+    val boxes = get-boxes lay
+  in
+    (* Hack: "infinite" line width. *)
+    case pack-boxes-horiz (BEST, LEFT-JUSTIFIED, 9999999999.0, boxes) of
+      (badness-ignored, line :: nil) => stick-horizontally line
+    | (_, nil) => box {(Box) width = 0.0, height = 0.0} []
+    | _ => fail ("Expected just one line when packing boxes on " ^
+                 "an 'infinite' line.")
+  end
 
 val DEFAULT-MONOSPACE-BLOCK-LEFT-INDENT = inch 0.05
 fun monospace-block lay =

@@ -20,6 +20,7 @@ struct Optimization {
   static constexpr uint64_t O_TAIL_CALL = 1ULL << 5;
   static constexpr uint64_t O_COALESCE_DATA = 1ULL << 6;
   static constexpr uint64_t O_DEAD_LOCALS = 1ULL << 7;
+  static constexpr uint64_t O_REMOVE_NOTES = 1ULL << 8;
 
   static constexpr uint64_t O_ALL = ~0ULL;
 

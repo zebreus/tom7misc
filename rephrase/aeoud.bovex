@@ -15,6 +15,30 @@ let
   do REPHRASE-ALL := NONE
   do NO-REPHRASE := true
 
+  fun zigzag zig lay =
+    case layoutcase (get-box lay) of
+      Node (BOX, attrs as {(Box) width, height}, ch) =>
+        let
+          val y-offset = height *. -0.15
+          val d =
+            box attrs
+            (layout-concat
+             (ch @
+              (if zig then
+                  (image-sticker
+                   { img = image-load-cache "red-underline.png",
+                     x = 0.0, y = y-offset, width = width } :: nil)
+               else nil)
+              ))
+        in
+          d
+        end
+    | _ =>
+        let in
+          debug-print-doc lay;
+          fail "Expected box with width/height from get-box"
+        end
+
 in
 
   (* TODO: Better bullet graphic. Can embed fonts, remember *)

@@ -5,9 +5,9 @@ object TalkInfo of { width: float, height : float }
 
 val tt = fixedersys
 
-(* 26 2/3 inches wide, 15 inches tall. *)
-val SLIDE-WIDTH = pixel 1920.0
-val SLIDE-HEIGHT = pixel 1080.0
+(* 53 1/3 inches wide, 30 inches tall. *)
+val SLIDE-WIDTH = pixel 3840.0
+val SLIDE-HEIGHT = pixel 2160.0
 
 val current-page = ref 0
 val current-frame = ref 0
@@ -47,6 +47,17 @@ fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
              img = img-handle,
              img-width = int-to-float pixel-width,
              img-height = int-to-float pixel-height } []
+  end
+
+fun exact-image-at-2x { x : int, y : int, img = img as (Image img-handle) } =
+  let
+    val { width = pixel-width, height = pixel-height } = image-size img
+  in
+    (* XXX use nearest neighbor for this I think *)
+    sticker {(Sticker) x = int-to-float x, y = int-to-float y,
+             img = img-handle,
+             img-width = int-to-float (pixel-width * 2),
+             img-height = int-to-float (pixel-height * 2)} []
   end
 
 
@@ -105,8 +116,8 @@ type slide-props =
    LOOP-VIDEO: bool
    }
 
-val DEFAULT-LEFT-MARGIN = inch 2.0
-val DEFAULT-TOP-MARGIN = inch 2.0
+val DEFAULT-LEFT-MARGIN = inch 4.0
+val DEFAULT-TOP-MARGIN = inch 4.0
 
 fun slide-props (s : obj) : slide-props =
   let
@@ -126,7 +137,7 @@ fun slide-props (s : obj) : slide-props =
       | _ => NONE
 
     val TITLE-FONT-SIZE =
-      case s of {(Slide) TITLE-FONT-SIZE = tfs } => tfs | _ => point 136.0
+      case s of {(Slide) TITLE-FONT-SIZE = tfs } => tfs | _ => point 272.0
     val LEFT-MARGIN =
       case s of {(Slide) LEFT-MARGIN = lm } => lm | _ => DEFAULT-LEFT-MARGIN
     val TOP-MARGIN =
@@ -141,29 +152,29 @@ fun slide-props (s : obj) : slide-props =
         | _ => SLIDE-WIDTH -. (2.0 *. LEFT-MARGIN)
 
     val QUOTE-FONT-SIZE =
-      case s of {(Slide) QUOTE-FONT-SIZE = tm } => tm | _ => point 70.0
+      case s of {(Slide) QUOTE-FONT-SIZE = tm } => tm | _ => point 140.0
 
     val PARAGRAPH-VSPACE-BOTTOM =
       case s of {(Slide) PARAGRAPH-VSPACE-BOTTOM = pvb } => pvb
-    | _ => point 36.0
+    | _ => point 72.0
 
 
     val BODY-FONT-SIZE =
-      case s of {(Slide) BODY-FONT-SIZE = bfs } => bfs | _ => point 72.0
+      case s of {(Slide) BODY-FONT-SIZE = bfs } => bfs | _ => point 144.0
 
     val BULLET-FONT-SIZE =
-      case s of {(Slide) BULLET-FONT-SIZE = bfs } => bfs | _ => point 72.0
+      case s of {(Slide) BULLET-FONT-SIZE = bfs } => bfs | _ => point 144.0
     val BULLET-LINE-GAP =
       case s of {(Slide) BULLET-LINE-GAP = blg } => blg
-    | _ => point 36.0
+    | _ => point 144.0
 
     val GAP =
       case s of {(Slide) GAP = g } => g
-    | _ => point 36.0
+    | _ => point 72.0
 
     val MONOSPACE-FONT-SIZE =
       case s of {(Slide) MONOSPACE-FONT-SIZE = mfs } => mfs
-        | _ => point 32.0
+        | _ => point 64.0
 
     val BODY-FONT-COLOR =
       case s of {(Slide) BODY-FONT-COLOR = bfc } => bfc
@@ -349,8 +360,8 @@ fun combo-slide slide (elts : element list) =
         output-frame
         (!current-page, !current-frame,
          sticker {(Sticker)
-                  x = bullet-xpos -. 64.0 +. offset,
-                  y = !bullet-ypos +. 16.0,
+                  x = bullet-xpos -. 128.0 +. offset,
+                  y = !bullet-ypos +. 32.0,
                   font-name = font-bold PALATINO,
                   font-size = bullet-size,
                   font-color = bullet-color } bullet-char);
@@ -415,7 +426,7 @@ fun two-column-slide slide title text1 text2 =
     open props : slide-props
 
     val xpos1 = LEFT-MARGIN
-    val gap = inch 1.0
+    val gap = inch 2.0
     val COLUMN-WIDTH = (CONTENT-WIDTH -. gap) *. 0.5
     val xpos2 = LEFT-MARGIN +. COLUMN-WIDTH +. gap
 
@@ -496,17 +507,17 @@ fun title-slide slide title author venue =
 
     output-frame
     (!current-page, !current-frame,
-     centered-text-sticker { x = 0.0, y = inch 6.0, width = SLIDE-WIDTH }
+     centered-text-sticker { x = 0.0, y = inch 12.0, width = SLIDE-WIDTH }
      (title-text title));
 
     output-frame
     (!current-page, !current-frame,
-     centered-text-sticker { x = 0.0, y = inch 8.0, width = SLIDE-WIDTH }
+     centered-text-sticker { x = 0.0, y = inch 16.0, width = SLIDE-WIDTH }
      (title-text author));
 
     output-frame
     (!current-page, !current-frame,
-     centered-text-sticker { x = 0.0, y = inch 12.0, width = SLIDE-WIDTH }
+     centered-text-sticker { x = 0.0, y = inch 24.0, width = SLIDE-WIDTH }
      (title-text venue));
 
     next-slide()
@@ -547,7 +558,7 @@ fun monospace-slide slide title body =
     (!current-page, !current-frame,
      box-stick-at { x = LEFT-MARGIN, y = CONTENT-START-Y }
      (monospace-block-ext { left-indent = 0.0,
-                            line-spacing = 2.0,
+                            line-spacing = 4.0,
                             width = CONTENT-WIDTH,
                             font-size = MONOSPACE-FONT-SIZE,
                             attrs = {(Span) font-color = BODY-FONT-COLOR} }
@@ -568,6 +579,18 @@ fun just-image filename =
     next-slide()
   end
 
+fun just-image-2x filename =
+  let
+    val img = image-load filename
+  in
+    output-frame
+    (!current-page, !current-frame,
+     exact-image-at-2x { x = 0, y = 0, img = img});
+
+    next-slide()
+  end
+
+
 (* The whole slide is this full-screen video. *)
 fun just-video slide src =
   let
@@ -585,15 +608,15 @@ fun just-video slide src =
     next-slide()
   end
 
-val slide = {(Slide) BACKGROUND = "sunset-bg.png" }
+val slide = {(Slide) BACKGROUND = "cityscape.png" }
 
 (* Currently need to tell it the dimensions, but we could easily
    get them with get-boxes or something like that. *)
 fun three-d { font-name, font-size, width, height, text } =
   box {(Box) width = width, height = height }
   (sticker {(Sticker)
-             x = 6.0,
-             y = 1.0,
+             x = 12.0,
+             y = 2.0,
             font-color = rgba(0, 100, 255, 255),
             font-name = font-name,
             font-size = font-size } (layout text) ^^
@@ -668,7 +691,7 @@ fun wordle-cell { x : float, y : float,
        WORDLE-EMPTY =>
          rectangle { x = x, y = y, width = sz, height = sz,
                      stroke-color = WORDLE-WHITE-BORDER,
-                     line-width = 2.0 }
+                     line-width = 4.0 }
      | _ => []) ^^
 
     (case letter of
@@ -686,9 +709,9 @@ fun wordle-cell { x : float, y : float,
 fun wordle-board { x, y, cell-size,
                    board : (string option * wordle-color) list list } =
   let
-    (* Fun fact: The wordle squares are actually rectangles,
-       52x52.5! *)
-   val cell-spacing = (5.0 /. 52.0) *. cell-size
+    (* Fun fact: In the classic UI, the wordle squares are actually
+       rectangles, 52x52.5! *)
+   val cell-spacing = (5.0 /. 104.0) *. cell-size
    val ypos = ref y
 
    fun one-row row =
