@@ -1,6 +1,10 @@
 
 // Based on nv_voronoi.h, by Nicholas Vining, public domain; no warranty.
 // (nicholas dot vining 'at' gas lamp games dot com)
+//
+// I think the original contains a bug where the rightmost column of
+// the rasterization has the wrong values. In my wrapper I just generate
+// an image that's one more pixel wide and discard it.
 
 // This is a small implementation of the method for Voronoi cell
 // generation, using the method described in "Linear Time Euclidean
@@ -295,9 +299,11 @@ void linear_time_voronoi(int num_points, int *feature_points, int *dest, int w,
   free(candidates);
 }
 
-std::vector<int>
-IntegerVoronoi::RasterizeVec(const std::vector<std::pair<int, int>> &points,
-                             int width, int height) {
+// This generates the requested size using the original algorithm,
+// but note that the last column is wrong.
+static std::vector<int>
+RasterizeVecInternal(const std::vector<std::pair<int, int>> &points,
+                     int width, int height) {
   std::vector<int> flat_points(points.size() * 2, 0);
   for (int i = 0; i < (int)points.size(); i++) {
     const auto &[x, y] = points[i];
@@ -312,16 +318,34 @@ IntegerVoronoi::RasterizeVec(const std::vector<std::pair<int, int>> &points,
   return dest;
 }
 
+std::vector<int>
+IntegerVoronoi::RasterizeVec(const std::vector<std::pair<int, int>> &points,
+                             int width, int height) {
+  // We generate one more pixel width, since the last one looks wrong.
+  std::vector<int> raster = RasterizeVecInternal(points, width + 1, height);
+  std::vector<int> out;
+  out.reserve(width * height);
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      const int idx = y * (width + 1) + x;
+      const int p = raster[idx];
+      out.push_back(p);
+    }
+  }
+  return out;
+}
+
 ImageRGBA
 IntegerVoronoi::Rasterize32(const std::vector<std::pair<int, int>> &points,
                             int width, int height) {
   CHECK(points.size() < size_t{0x100000000});
-  std::vector<int> raster = RasterizeVec(points, width, height);
+  // As above, an extra column, discarded.
+  std::vector<int> raster = RasterizeVecInternal(points, width + 1, height);
   ImageRGBA ret(width, height);
-  int idx = 0;
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
-      int p = raster[idx++];
+      const int idx = y * (width + 1) + x;
+      const int p = raster[idx];
       CHECK(p >= 0 && p < (int)points.size());
       ret.SetPixel32(x, y, (uint32_t)p);
     }
@@ -334,12 +358,13 @@ ImageA IntegerVoronoi::Rasterize8(
     const std::vector<std::pair<int, int>> &points,
     int width, int height) {
   CHECK(points.size() < size_t{0x100});
-  std::vector<int> raster = RasterizeVec(points, width, height);
+  // As above, an extra column, discarded.
+  std::vector<int> raster = RasterizeVecInternal(points, width + 1, height);
   ImageA ret(width, height);
-  int idx = 0;
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
-      int p = raster[idx++];
+      const int idx = y * (width + 1) + x;
+      const int p = raster[idx];
       CHECK(p >= 0 && p < (int)points.size());
       ret.SetPixel(x, y, (uint8_t)p);
     }
@@ -395,7 +420,7 @@ ImageF IntegerVoronoi::NormalizeDistanceField(const ImageF &img) {
   for (int y = 0; y < img.Height(); y++) {
     for (int x = 0; x < img.Width(); x++) {
       float p = img.GetPixel(x, y);
-      printf("%d,%d = %.6f\n", x, y, p);
+      // printf("%d,%d = %.6f\n", x, y, p);
       mxx = std::max(mxx, p);
       mnn = std::min(mnn, p);
     }
@@ -404,7 +429,7 @@ ImageF IntegerVoronoi::NormalizeDistanceField(const ImageF &img) {
   float span = mxx - mnn;
   float off = 0.0;
   float scale = 0.0;
-  if (mxx <= mnn) {
+  if (mnn <= mxx) {
     off = -mnn;
     scale = 1.0f / span;
   }
@@ -414,7 +439,7 @@ ImageF IntegerVoronoi::NormalizeDistanceField(const ImageF &img) {
       float p = img.GetPixel(x, y);
       float np = (p + off) * scale;
       out.SetPixel(x, y, np);
-      printf("%d,%d. (%.6f + %.3f) * %.6f = %.6f\n", x, y, p, off, scale, np);
+      // printf("%d,%d. (%.6f + %.3f) * %.6f = %.6f\n", x, y, p, off, scale, np);
     }
   }
 

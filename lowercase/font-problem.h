@@ -96,7 +96,7 @@ struct FontProblem {
   // (e.g. for font generation).
   static void VectorRemoveDegenerateContours(TTF::Char *ch,
                                              float min_box);
-  
+
   // Because this generates SDFs and runs two large networks, it's
   // significantly slower than the above.
   static void RenderSDF(const std::string &font_filename,
@@ -113,6 +113,8 @@ struct FontProblem {
                             const std::vector<float> &buffer);
 
   // Same but yielding [0,1] float image.
+  // This clamps the pixel values, even if values outside the range
+  // were predicted.
   static ImageF SDFGetImageF(const SDFConfig &config,
                              const std::vector<float> &buffer);
 
@@ -134,7 +136,7 @@ struct FontProblem {
     Image8x8(Image8x8 &&other) = default;
     Image8x8 &operator =(const Image8x8 &other) = default;
     Image8x8 &operator =(Image8x8 &&other) = default;
-    
+
     inline void SetPixel(int x, int y, bool v) {
       int b = y * 8 + x;
       if (v) {
@@ -172,7 +174,7 @@ struct FontProblem {
     }
 
     uint64_t To64() const { return bits; }
-    
+
     uint64_t bits = 0;
   };
 
@@ -186,7 +188,7 @@ struct FontProblem {
   // really right (they are too "low res") because that routine
   // assumes the bitmap is at least as big as the output sdf.
   static ImageA SDF36From8x8Uppercase(Image8x8 bits);
-  static ImageA SDF36From8x8Lowercase(Image8x8 bits);  
+  static ImageA SDF36From8x8Lowercase(Image8x8 bits);
 
   // Deprecated!
   static ImageA SDFThresholdAA(uint8_t onedge_value,
@@ -213,6 +215,7 @@ struct FontProblem {
               const ImageA &sdf_input);
 
   // Same but using ImageF in [0,1], which has a bit more precision.
+  // Clamps.
   static std::pair<ImageF, std::array<float, 26>>
   RunSDFModelF(const Network &net,
                const SDFConfig &config,

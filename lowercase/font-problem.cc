@@ -282,6 +282,7 @@ ImageF FontProblem::SDFGetImageF(const SDFConfig &config,
       img.SetPixel(x, y, buffer[y * config.sdf_size + x]);
     }
   }
+  img.Clamp();
   return img;
 }
 

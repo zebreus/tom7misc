@@ -34,8 +34,6 @@ struct IntegerVoronoi {
   // For a bitmap image, compute the distance from each point
   // to the nearest '1' pixel. The floats in the image give the
   // Euclidean distance, not color values. Linear time.
-  // XXX this does not work because ImageF clips to [0,1].
-  // We should just support "HDR" images?
   static ImageF DistanceField(const Image1 &img);
 
   // Normalize so that the values are in [0, 1].

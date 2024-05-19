@@ -1478,12 +1478,38 @@ void ImageF::BlendText(int x, int y, float v, const string &s) {
   }
 }
 
+void ImageF::Clamp() {
+  for (float &f : alpha) {
+    f = std::clamp(f, 0.0f, 1.0f);
+  }
+}
+
+void ImageF::Normalize() {
+  if (alpha.empty()) return;
+  float mnn = alpha[0];
+  float mxx = mnn;
+
+  for (const float &f : alpha) {
+    mnn = std::min(mnn, f);
+    mxx = std::max(mxx, f);
+  }
+
+  if (mxx == mnn) {
+    Clear(0.0f);
+  } else {
+    float invw = 1.0f / (mxx - mnn);
+    for (float &f : alpha) {
+      f = (f - mnn) * invw;
+    }
+  }
+}
 
 ImageA ImageF::Make8Bit() const {
   ImageA out(width, height);
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
-      const uint8 v = std::roundf(GetPixel(x, y) * 255.0f);
+      float f = std::clamp(GetPixel(x, y), 0.0f, 1.0f);
+      const uint8 v = std::roundf(f * 255.0f);
       out.SetPixel(x, y, v);
     }
   }

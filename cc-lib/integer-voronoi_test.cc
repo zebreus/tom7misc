@@ -79,6 +79,8 @@ int main(int, char **) {
   ImageF dist = IntegerVoronoi::NormalizeDistanceField(
       IntegerVoronoi::DistanceField(bitmap));
 
+  dist.Normalize();
+
   dist.Make8Bit().GreyscaleRGBA().Save("voronoi-test-dist.png");
   printf("Wrote voronoi-test-dist.png\n");
 

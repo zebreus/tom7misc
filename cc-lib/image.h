@@ -311,7 +311,8 @@ private:
   std::vector<uint8> alpha;
 };
 
-// Like ImageA, but float pixel values (clipped to [0,1]).
+// Like ImageA, but float pixel values. The nominal range is [0, 1],
+// but this supports "HDR" pixels, including even negative values.
 struct ImageF {
   ImageF(const std::vector<float> &alpha, int width, int height);
   ImageF(int width, int height);
@@ -329,13 +330,21 @@ struct ImageF {
   // Generally appropriate for enlarging, not shrinking.
   ImageF ResizeBilinear(int new_width, int new_height) const;
 
-  // Convert to 8-bit ImageA, rounding.
+  // Convert to 8-bit ImageA, rounding. This clamps pixel
+  // values to [0, 1].
   ImageA Make8Bit() const;
 
   // Only increases values.
   void BlendText(int x, int y, float v, const std::string &s);
 
   void Clear(float value);
+
+  // Clamps to [0, 1] in place.
+  void Clamp();
+  // Normalizes (linearly) such that the darkest pixel has value 0.0f
+  // and the lightest has 1.0f. If all pixels are the same, the result
+  // will be all 0.0f.
+  void Normalize();
 
   // Clipped.
   inline void SetPixel(int x, int y, float v);
@@ -519,7 +528,7 @@ float ImageF::GetPixel(int x, int y) const {
 void ImageF::SetPixel(int x, int y, float value) {
   if ((unsigned)x >= (unsigned)width) return;
   if ((unsigned)y >= (unsigned)height) return;
-  alpha[y * width + x] = std::clamp(value, 0.0f, 1.0f);
+  alpha[y * width + x] = value;
 }
 
 void ImageF::BlendPixel(int x, int y, float value) {
