@@ -535,10 +535,11 @@ struct AstPool {
     return ret;
   }
 
-  const Pat *RecordPat(std::vector<std::pair<std::string, const Pat *>> v) {
+  const Pat *RecordPat(std::vector<std::pair<std::string, const Pat *>> v,
+                       size_t pos) {
     Pat *ret = NewPat(PatType::RECORD);
     ret->str_children = std::move(v);
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 

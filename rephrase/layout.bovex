@@ -420,6 +420,14 @@ fun size pts layout =
 fun sup pts layout = span {(Box) font-size = pts *. 0.75,
                            dy = -0.25 *. pts } layout
 
+fun sticker-translate (dx, dy) layout =
+  case get-attrs layout of
+    {(Node) display = "box"} =>
+      fail "Can't apply sticker-translate to a box."
+  | {(Node) display = "span"} =>
+      fail "Can't apply sticker-translate to a span."
+  | _ => sticker {(Sticker) x = dx, y = dy} layout
+
 val tt = courier
 
 fun rm layout =

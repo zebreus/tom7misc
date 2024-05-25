@@ -16,7 +16,6 @@
 #include "ansi.h"
 #include "timer.h"
 #include "util.h"
-#include "pdf.h"
 
 #include "achievements.h"
 #include "bc.h"

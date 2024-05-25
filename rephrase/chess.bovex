@@ -16,6 +16,19 @@ datatype board =
              en-passant : int option,
              turn : color }
 
+fun piece-unicode (WHITE, KING) = "♔"
+  | piece-unicode (WHITE, QUEEN) = "♕"
+  | piece-unicode (WHITE, ROOK) = "♖"
+  | piece-unicode (WHITE, BISHOP) = "♗"
+  | piece-unicode (WHITE, KNIGHT) = "♘"
+  | piece-unicode (WHITE, PAWN) = "♙"
+  | piece-unicode (BLACK, KING) = "♚"
+  | piece-unicode (BLACK, QUEEN) = "♛"
+  | piece-unicode (BLACK, ROOK) = "♜"
+  | piece-unicode (BLACK, BISHOP) = "♝"
+  | piece-unicode (BLACK, KNIGHT) = "♞"
+  | piece-unicode (BLACK, PAWN) = "♟︎"
+
 fun color-eq (WHITE, WHITE) = true
   | color-eq (BLACK, BLACK) = true
   | color-eq _ = false

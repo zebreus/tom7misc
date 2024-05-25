@@ -446,10 +446,12 @@ const Exp *Parsing::Parse(AstPool *pool,
         (Mark(Label && Opt(IsToken<EQUALS>() >> Pattern))
          >MaybeLabelPun);
 
-      return Separate0(OneField, IsToken<COMMA>())
-        >[&](const std::vector<std::pair<std::string, const Pat *>> &lps) ->
+      return Mark(Separate0(OneField, IsToken<COMMA>()))
+        >[&](const auto &lps_pos) ->
         const Pat * {
-            return pool->RecordPat(lps);
+            // const std::vector<std::pair<std::string, const Pat *>> &lps;
+            const auto &[lps, token_start, token_len] = lps_pos;
+            return pool->RecordPat(lps, BytePos(token_start));
           };
     };
 

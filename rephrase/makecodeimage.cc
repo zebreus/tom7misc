@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 #include <string>
 
@@ -10,9 +11,14 @@
 #include "color-util.h"
 #include "base/logging.h"
 
-static bool INCLUDE_TESTS = false;
+static bool INCLUDE_TESTS = true;
 static constexpr bool BREAK_NEWLINE = true;
-static constexpr int GAP = 0;
+static constexpr int GAP = 2;
+
+static constexpr int MARGIN_TOP = 300;
+static constexpr int MARGIN_BOTTOM = 300;
+static constexpr int MARGIN_LEFT = 800;
+static constexpr int MARGIN_RIGHT = 800;
 
 int main(int argc, char **argv) {
 
@@ -41,9 +47,18 @@ int main(int argc, char **argv) {
     }
   }
 
+  source.push_back("chess.bovex");
+  source.push_back("video/shared.bovex");
+
   source.push_back("../cc-lib/parser-combinators.h");
+  if (INCLUDE_TESTS) {
+    source.push_back("../cc-lib/parser-combinators_test.cc");
+  }
   source.push_back("../cc-lib/pdf.h");
   source.push_back("../cc-lib/pdf.cc");
+  if (INCLUDE_TESTS) {
+    source.push_back("../cc-lib/pdf_test.cc");
+  }
 
   std::sort(source.begin(), source.end());
 
@@ -51,6 +66,8 @@ int main(int argc, char **argv) {
   ImageRGBA img_self(width, height);
   img.Clear32(0x000000FF);
   img_self.Clear32(0x000000FF);
+
+  const int CONTENT_HEIGHT = height - MARGIN_TOP - MARGIN_BOTTOM;
 
   int xcol = 0;
   int xpos = 0, ypos = 0;
@@ -66,9 +83,13 @@ int main(int argc, char **argv) {
       } else {
         uint32_t color = ColorUtil::Pack32(byte, byte, byte, 0xFF);
 
-        img.SetPixel32(xcol * (80 + GAP) + xpos, ypos, color);
+        img.SetPixel32(MARGIN_LEFT + xcol * (80 + GAP) + xpos,
+                       MARGIN_TOP + ypos,
+                       color);
         if (self) color |= 0xFF000000;
-        img_self.SetPixel32(xcol * (80 + GAP) + xpos, ypos, color);
+        img_self.SetPixel32(MARGIN_LEFT + xcol * (80 + GAP) + xpos,
+                            MARGIN_TOP + ypos,
+                            color);
 
         xpos++;
       }
@@ -76,7 +97,7 @@ int main(int argc, char **argv) {
       if (xpos >= 80) {
         ypos++;
         xpos = 0;
-        if (ypos >= 1080) {
+        if (ypos >= CONTENT_HEIGHT) {
           xcol++;
           ypos = 0;
           xpos = 0;

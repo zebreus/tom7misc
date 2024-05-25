@@ -125,6 +125,18 @@ fun list-tabulate (i, f) =
     go 0
   end
 
+(* calls f(x, y) with row major indices, producing a flat list. *)
+fun list-tabulate-2d (w, h, f) =
+  let
+    val total = w * h
+    fun go n =
+      if n < total
+      then f (n mod w, n div w) :: go (n + 1)
+      else nil
+  in
+    go 0
+  end
+
 fun list-empty nil = true
   | list-empty _ = false
 

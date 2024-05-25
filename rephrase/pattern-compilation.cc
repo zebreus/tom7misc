@@ -594,7 +594,8 @@ std::pair<const Exp *, const Type *> PatternCompilation::Comp(
         for (int i = 0; i < (int)op->children.size(); i++) {
           rp.emplace_back(StringPrintf("%d", i + 1), op->children[i]);
         }
-        matrix.Cell(x, y) = elab->el_pool->RecordPat(std::move(rp));
+        matrix.Cell(x, y) = elab->el_pool->RecordPat(std::move(rp),
+                                                     matrix.pos);
       }
 
       if (matrix.Cell(x, y)->type == PatType::OBJECT &&
@@ -1937,7 +1938,7 @@ PatternCompilation::CompileIrrefutableRec(
                      PatString(pat->children[i]).c_str());
             }
           }
-          pat = el_pool->RecordPat(std::move(lpat));
+          pat = el_pool->RecordPat(std::move(lpat), pos);
           return;
         }
         case el::PatType::RECORD:

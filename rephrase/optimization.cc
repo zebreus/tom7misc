@@ -31,9 +31,10 @@ using ProgressRecorder = Progress<VERBOSE != 0>;
 
 namespace bc {
 
-// True if the primop is effectless at the bytecode level. Effectless
+// True if the primop is discardable at the bytecode level. Discardable
 // means that we can drop an instruction if its output is never
-// used.
+// used. For example, dereferencing a ref cell is discardable, as is
+// addition.
 static bool DiscardablePrimop(Primop po) {
   // XXX deferring to the primop library for now, but perhaps we
   // should have our own list here? At least check it to see if

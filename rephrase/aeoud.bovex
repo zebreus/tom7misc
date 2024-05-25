@@ -69,9 +69,9 @@ in
     val TX = AIX +. 220.0
   in
     combo-slide (slide with BODY-FONT-COLOR = 0x440044FF)
-    (Image { x = 0.0, y = 0.0, width = NONE,
+    (Image { x = 0.0, y = 0.0, scale = ORIGINAL,
              img = image-load "typography6.png" } ::
-     Image { x = AIX, y = 800.0, width = SOME 180.0,
+     Image { x = AIX, y = 800.0, scale = WIDTH 180.0,
              img = image-load "illustrator-icon.png" } ::
      TextBox { x = TX, y = 800.0 +. 64.0,
                width = 800.0, text = b[Adobe Illustrator] } ::
@@ -169,7 +169,7 @@ in
      Image { img = image-load "graph.png",
              x = pixel 900.0,
              y = YPOS,
-             width = SOME (pixel 900.0) } ::
+             scale = WIDTH (pixel 900.0) } ::
      nil)
   in
     lorem-slide false;
@@ -180,7 +180,7 @@ in
   (Image { img = image-load "lorem-portrait.png",
            x = pixel 1100.0,
            y = pixel 100.0,
-           width = NONE } ::
+           scale = ORIGINAL } ::
    Title [The Villain: Lorem Epsom] ::
    Bullets ([Probably never even read the Wikipedia article
              on [it[Lorem Ipsum]]] ::
@@ -204,7 +204,7 @@ in
   (Image { img = image-load "knuth-portrait-trace.png",
            x = pixel 1100.0,
            y = pixel 80.0,
-           width = NONE } ::
+           scale = ORIGINAL } ::
    Title [The Hero: Donald Knuth] ::
    Bullets ([[em[Wrote]] the article on [it[Lorem Ipsum]]] ::
             [Will pay you if you find an error] ::
@@ -224,7 +224,7 @@ in
    Image { img = image-load "knuth-portrait-trace.png",
            x = pixel 1100.0,
            y = pixel 80.0,
-           width = NONE } ::
+           scale = ORIGINAL } ::
    Bullet ({(Bullet)}, [1975: 3000 pages of hand-written text]) ::
    Bullet ({(Bullet)}, [1977: Publisher proofs aren't beautiful enough]) ::
    Bullet ({(Bullet)}, [1982: Returns with TeX]) ::
@@ -258,7 +258,7 @@ in
    Image { img = image-load "torment-nexus.png",
            x = pixel (1920.0 -. 1080.0),
            y = pixel 0.0,
-           width = NONE } ::
+           scale = ORIGINAL } ::
    Title [Nightmare on LLM Street] ::
    nil);
 
@@ -269,7 +269,7 @@ in
   (Image { img = image-load "vu-meter-slide.png",
            x = pixel 0.0,
            y = pixel 0.0,
-           width = NONE } :: nil);
+           scale = ORIGINAL } :: nil);
 
   (* Clarissa explains it all *)
   (* I'm Tom 7. I specialize in cursed computer software.
@@ -296,7 +296,7 @@ in
     (Title [The Hurry-Coward So-So-Morphism] ::
      Image { img = morphism,
              x = MORPHISM-X, y = MORPHISM-Y,
-             width = NONE } ::
+             scale = ORIGINAL } ::
      nil);
 
     (* But first, we need to talk about Super Metroid. *)
@@ -307,7 +307,7 @@ in
     (Title [The Hurry-Coward So-So-Morphism] ::
      Image { img = image-load "morphism2.png",
              x = MORPHISM-X, y = MORPHISM-Y,
-             width = NONE } ::
+             scale = ORIGINAL } ::
      nil);
 
     combo-slide (slide with TITLE-FONT-SIZE = point 90.0
@@ -316,10 +316,10 @@ in
     (Title [The Hurry-Coward So-So-Morphism] ::
      Image { img = image-load "triforce.png",
              x = MORPHISM-X +. inch 1.5, y = MORPHISM-Y -. inch 5.0,
-             width = SOME 1300.0 } ::
+             scale = WIDTH 1300.0 } ::
      Image { img = image-load "morphism2.png",
              x = MORPHISM-X, y = MORPHISM-Y,
-             width = NONE } ::
+             scale = ORIGINAL } ::
      nil);
   end;
 
@@ -367,7 +367,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
      Image { img = mother,
              x = motherbrain-x,
              y = pixel 0.0,
-             width = NONE } ::
+             scale = ORIGINAL } ::
      Title [Automating speedrunner chores] ::
      nil)
   end;
@@ -399,7 +399,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
      Image { img = image-load "torment-nexus.png",
              x = pixel (1920.0 -. 1080.0),
              y = pixel 0.0,
-             width = NONE } ::
+             scale = ORIGINAL } ::
      Title [¿Cómo se LLama?] ::
      TextBox { x = DEFAULT-LEFT-MARGIN,
                y = Y1,
@@ -491,7 +491,7 @@ the line and roll the dice again.];
     val { width, height = _ } = image-size tom
   in
     combo-slide (slide with BULLET-FONT-SIZE = 52.0)
-    (Image { x = SLIDE-WIDTH -. int-to-float width, y = 0.0, width = NONE,
+    (Image { x = SLIDE-WIDTH -. int-to-float width, y = 0.0, scale = ORIGINAL,
              img = tom } ::
      Title [The Fool: Tom 7] ::
      Bullet ({(Bullet) space-after = 42.0, bullet = [ ]},
@@ -550,7 +550,7 @@ the line and roll the dice again.];
      Image { img = image-load "boxes-and-glue-matrix.png",
              x = pixel 900.0,
              y = YPOS -. 36.0,
-             width = NONE } ::
+             scale = ORIGINAL } ::
      nil)
   end;
 
@@ -740,7 +740,7 @@ the line and roll the dice again.];
     val BADNESS0 = 340.0 +. 128.0 +. 54.0
   in
     combo-slide slide
-    (Image { x = SLIDE-WIDTH -. int-to-float width, y = 0.0, width = NONE,
+    (Image { x = SLIDE-WIDTH -. int-to-float width, y = 0.0, scale = ORIGINAL,
              img = tom } ::
      TextBox { x = DEFAULT-LEFT-MARGIN, y = BADNESS0,
                width = inch 19.0,

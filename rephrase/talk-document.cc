@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,6 +27,7 @@
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
+#include "periodically.h"
 
 #include "document.h"
 
@@ -308,6 +310,19 @@ void TalkDocument::GenerateOutput(
     slides.push_back(std::move(frames));
   }
 
+  Periodically status_per(1.0);
+  std::mutex m;
+  Timer frames_timer;
+  int num_done = 0;
+
+  const int total_frames = [&]() {
+      int total = 0;
+      for (const std::vector<std::unique_ptr<TalkPage>> &page : slides) {
+        total += (int)page.size();
+      }
+      return total;
+    }();
+
   {
     Asynchronously async(12);
     for (int i = 0; i < (int)slides.size(); i++) {
@@ -363,12 +378,36 @@ void TalkDocument::GenerateOutput(
                       "  %s\n",
                       framefile.c_str());
 
-        async.Run([&talk_dir, f = frame.get(), framefile]() {
+        async.Run([&m, &num_done, &status_per, &talk_dir,
+                   &total_frames, &frames_timer,
+                   f = frame.get(), framefile]() {
             const std::string frameabsfile =
               Util::DirPlus(talk_dir, framefile);
             f->image->Save(frameabsfile);
+            {
+              MutexLock ml(&m);
+              num_done++;
+
+              if (status_per.ShouldRun()) {
+                if (status_per.TimesRun() == 1) {
+                  // The very first time, make space for the
+                  // progress bar.
+                  printf("\n");
+                }
+
+                printf(ANSI_UP "%s\n",
+                       ANSI::ProgressBar(num_done, total_frames,
+                                         "Write frames",
+                                         frames_timer.Seconds()).c_str());
+              }
+            }
           });
       }
+    }
+
+    if (status_per.TimesRun() > 0) {
+      // Remove status bar.
+      printf(ANSI_UP);
     }
 
     Util::WriteFile(talk_filename, talk);

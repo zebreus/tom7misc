@@ -1,9 +1,16 @@
 (*   -*- electric-indent-local-mode: nil -*- *)
 
+(* I forked this because it has some hard coded 1080p constants.
+   Some things to fix:
+
+   *)
+
 (* slides info *)
 object TalkInfo of { width: float, height : float }
 
 val tt = fixedersys
+
+datatype image-scaling = ORIGINAL | WIDTH of float | SCALE of float
 
 (* 53 1/3 inches wide, 30 inches tall. *)
 val SLIDE-WIDTH = pixel 3840.0
@@ -67,6 +74,7 @@ val BULLET-COLOR = 0xAAFFAAFF
 object Slide of
   {
    BACKGROUND : string,
+   BACKGROUND-SCALE : float,
 
    TITLE-FONT-SIZE : float,
    LEFT-MARGIN : float,
@@ -92,7 +100,7 @@ object Slide of
 
 type slide-props =
   {
-   BACKGROUND-IMAGE : image-handle option,
+   BACKGROUND-IMAGE : (image-handle * image-scaling) option,
 
    TITLE-FONT-SIZE : float,
    LEFT-MARGIN : float,
@@ -121,6 +129,10 @@ val DEFAULT-TOP-MARGIN = inch 4.0
 
 fun slide-props (s : obj) : slide-props =
   let
+    val background-scaling =
+      case s of {(Slide) BACKGROUND-SCALE = bs } => SCALE bs
+    | _ => ORIGINAL
+
     (* We cache the background image, since we often use the same
        one many times. *)
     val BACKGROUND-IMAGE =
@@ -128,7 +140,7 @@ fun slide-props (s : obj) : slide-props =
         {(Slide) BACKGROUND = bg } =>
           (if string-ends-with ".png" bg
            then
-             SOME (image-load-cache bg)
+             SOME (image-load-cache bg, background-scaling)
            else
              let in
                print ("Unknown background expression: " ^ bg ^ "\n");
@@ -217,12 +229,6 @@ fun default-text lay =
         lay)))
   end
 
-fun add-background-image NONE = ()
-  | add-background-image (SOME img) =
-    output-frame
-    (!current-page, !current-frame,
-     exact-image-at { x = 0, y = 0, img = img })
-
 fun add-title props title =
   let
     open props : slide-props
@@ -254,12 +260,28 @@ datatype element =
   | Image of { img : image-handle,
                x : float,
                y : float,
-               width : float option }
+               scale : image-scaling }
   | TextBox of { x : float,
                  y : float,
                  width : float,
                  text : layout }
   | StickerElt of layout
+
+fun scaled-image { img, x, y, scale } =
+  (case scale of
+     ORIGINAL => exact-image-at { x = round x, y = round y, img = img }
+   | WIDTH w => image-sticker { img = img, x = x, y = y, width = w }
+   | SCALE s =>
+       let val { width, height } = image-size img
+       in image-sticker { img = img, x = x, y = y,
+                          width = int-to-float width *. s }
+       end)
+
+fun add-background-image NONE = ()
+  | add-background-image (SOME (img, scale) ) =
+    output-frame
+    (!current-page, !current-frame,
+     scaled-image { img = img, x = 0.0, y = 0.0, scale = scale })
 
 fun add-textbox props { x : float,
                         y : float,
@@ -308,7 +330,7 @@ fun combo-slide slide (elts : element list) =
 
     val CONTENT-WIDTH =
       case list-find (fn Image _ => true | _ => false) elts of
-        SOME (Image {x, y, width, img }) => (x -. GAP)
+        SOME (Image {x, y, scale, img }) => (x -. GAP)
       | NONE => CONTENT-WIDTH
 
     fun add-bullet (obj, lay) =
@@ -380,12 +402,8 @@ fun combo-slide slide (elts : element list) =
       | add-elt (BulletsExt (obj, bulls)) =
       list-app (fn b => add-bullet (obj, b)) bulls
       | add-elt (Bullet (obj, b)) = add-bullet (obj, b)
-      | add-elt (Image { img, x, y, width }) =
-      output-frame
-      (!current-page, !current-frame,
-       (case width of
-          NONE => exact-image-at { x = round x, y = round y, img = img }
-        | SOME w => image-sticker { img = img, x = x, y = y, width = w }))
+      | add-elt (Image imgargs) =
+      output-frame (!current-page, !current-frame, scaled-image imgargs)
       | add-elt (TextBox { x, y, width, text }) =
       add-textbox props { x = x, y = y, width = width, text = text }
       | add-elt (StickerElt lay) =

@@ -235,6 +235,8 @@ object Bullet of {
                   indent : int
                   }
 
+datatype image-scaling = ORIGINAL | WIDTH of float | SCALE of float
+
 datatype element =
   Title of layout
   | Bullets of layout list
@@ -243,7 +245,7 @@ datatype element =
   | Image of { img : image-handle,
                x : float,
                y : float,
-               width : float option }
+               scale : image-scaling }
   | TextBox of { x : float,
                  y : float,
                  width : float,
@@ -297,7 +299,7 @@ fun combo-slide slide (elts : element list) =
 
     val CONTENT-WIDTH =
       case list-find (fn Image _ => true | _ => false) elts of
-        SOME (Image {x, y, width, img }) => (x -. GAP)
+        SOME (Image {x, y, scale, img }) => (x -. GAP)
       | NONE => CONTENT-WIDTH
 
     fun add-bullet (obj, lay) =
@@ -369,12 +371,14 @@ fun combo-slide slide (elts : element list) =
       | add-elt (BulletsExt (obj, bulls)) =
       list-app (fn b => add-bullet (obj, b)) bulls
       | add-elt (Bullet (obj, b)) = add-bullet (obj, b)
-      | add-elt (Image { img, x, y, width }) =
+      | add-elt (Image { img, x, y, scale }) =
       output-frame
       (!current-page, !current-frame,
-       (case width of
-          NONE => exact-image-at { x = round x, y = round y, img = img }
-        | SOME w => image-sticker { img = img, x = x, y = y, width = w }))
+       (case scale of
+          ORIGINAL => exact-image-at { x = round x, y = round y, img = img }
+        | WIDTH w => image-sticker { img = img, x = x, y = y, width = w }
+        | SCALE s => fail "XXX scale unimplemented"
+            ))
       | add-elt (TextBox { x, y, width, text }) =
       add-textbox props { x = x, y = y, width = width, text = text }
       | add-elt (StickerElt lay) =

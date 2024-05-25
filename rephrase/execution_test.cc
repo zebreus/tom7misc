@@ -14,7 +14,7 @@
 
 namespace bc {
 
-static constexpr bool DEBUG_CODEGEN = false;
+static constexpr bool DEBUG_CODEGEN = true;
 
 static constexpr int COMPILER_VERBOSE = DEBUG_CODEGEN ? 2 : 0;
 static constexpr int FRONTEND_VERBOSE = 0;
@@ -681,7 +681,7 @@ static void TestEnums() {
 }
 
 static void NewTests() {
-  /*
+
   CHECK_EQ(RunToString(R"(
   let
     datatype piece = ROOK | KNIGHT | BISHOP
@@ -698,7 +698,8 @@ static void NewTests() {
   in
    piece-compare
   end)"), "");
-  */
+
+  LOG(FATAL) << "Exit early";
 }
 
 }  // namespace bc

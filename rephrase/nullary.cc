@@ -96,7 +96,7 @@ struct NullaryPass : public Pass<FunctionalSet<std::string>> {
                       size_t pos,
                       FunctionalSet<std::string> nullary_ctors) override {
     if (nullary_ctors.Contains(v)) {
-      return pool->AppPat(v, pool->RecordPat({}));
+      return pool->AppPat(v, pool->RecordPat({}, pos));
     } else {
       return pool->VarPat(v, pos);
     }

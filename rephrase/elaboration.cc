@@ -761,7 +761,7 @@ Elaboration::ElabDec(
     for (const auto &[f, t] : rtype->Record()) {
       pats.emplace_back(f, el_pool->VarPat(f, pos));
     }
-    const el::Pat *rpat = el_pool->RecordPat(pats);
+    const el::Pat *rpat = el_pool->RecordPat(pats, dec->pos);
 
     // XXX PERF: This elaborates the RHS twice. Should not be hard to fix,
     // but the SIGBOVIK Deadline approaches!

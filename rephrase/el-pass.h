@@ -403,7 +403,7 @@ struct Pass {
     for (const auto &[lab, p] : v) {
       ps.emplace_back(lab, DoPat(p, args...));
     }
-    return pool->RecordPat(std::move(ps));
+    return pool->RecordPat(std::move(ps), pos);
   }
 
   virtual const Pat *DoObjectPat(

@@ -22,6 +22,14 @@
  // we want to be at the next target frame by.
  let next_target = 0;
 
+ let mousex = 0.0;
+ let mousey = 0.0;
+
+ document.addEventListener("mousemove", function(e) {
+   mousex = e.pageX;
+   mousey = e.pageY;
+ });
+
  // TODO: Hide
  function UpdateTimer() {
    let elt = document.getElementById('timer');
@@ -137,6 +145,44 @@
    }
  }
 
+ function CopyTextToClipboard(text) {
+   var textArea = document.createElement("textarea");
+
+   // Probably unnecessary, but prevent it from displaying
+   // if for example there is a security pop-up.
+   textArea.style.position = 'fixed';
+   textArea.style.top = 0;
+   textArea.style.left = 0;
+   textArea.style.width = '2em';
+   textArea.style.height = '2em';
+   textArea.style.padding = 0;
+   textArea.style.border = 'none';
+   textArea.style.outline = 'none';
+   textArea.style.boxShadow = 'none';
+   textArea.style.background = 'transparent';
+
+   textArea.value = text;
+
+   document.body.appendChild(textArea);
+   textArea.focus();
+   textArea.select();
+
+   try {
+     var successful = document.execCommand('copy');
+     var msg = successful ? 'successful' : 'unsuccessful';
+     console.log('Copying text command was ' + msg);
+   } catch (err) {
+     console.log('Couldn\'t copy');
+   }
+
+   document.body.removeChild(textArea);
+ }
+
+ function CopyPos() {
+   CopyTextToClipboard('pixels ' + (0 | mousex) + ', ' +
+                       'pixels ' + (0 | mousey));
+ }
+
  document.onkeydown = function(e) {
    e = e || window.event;
 
@@ -147,13 +193,13 @@
      case 36: // HOME
        Home();
        break;
-	 case 33: // matt's thing left
+     case 33: // matt's thing left
      case 37: // LEFT
        Left();
        break;
      case 38: // UP
        break;
-	 case 34: // matt's thing left	   
+     case 34: // matt's thing left
      case 39: // RIGHT
        Right();
        break;
@@ -163,13 +209,16 @@
        // TODO: Play/pause video
        break;
 
-	 case 66:
-	   // nothing
-	   break;
-	   
+     case 66:
+       // nothing
+       break;
+
        // Letters keycodes are just the uppercase ASCII.
      case 72: // H
        ToggleHide();
+
+     case 80: // P
+       CopyPos();
    }
    Draw();
    return false;
