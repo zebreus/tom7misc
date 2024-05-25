@@ -1549,8 +1549,13 @@ Image1::Image1(int width, int height) : width(width), height(height),
   // printf("%d x %d stored in %d words\n", width, height, (int)bits.size());
 }
 
-void Image1::Clear() {
-  for (uint64_t &w : bits) w = 0;
+void Image1::Clear(bool v) {
+  if (v) {
+    for (uint64_t &w : bits) w = ~0;
+    CanonicalMask();
+  } else {
+    for (uint64_t &w : bits) w = 0;
+  }
 }
 
 Image1 Image1::Inverse() const {

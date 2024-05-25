@@ -37,6 +37,7 @@ struct Periodically {
       // double-checked lock so that the previous can be cheap
       if (now >= next_run.load()) {
         next_run.store(now + wait_period);
+        times_run++;
         return true;
       }
     }
@@ -48,6 +49,10 @@ struct Periodically {
   // from running too often, even if it takes a long time. If
   // a function is already in progress, the call will immediately
   // return.
+  //
+  // Should not call methods of this class from the callback,
+  // since this can lead to deadlock if other threads are holding
+  // the mutex waiting for the callback to return.
   template<class F>
   void RunIf(const F &f) {
     const tpoint now = std::chrono::steady_clock::now();
@@ -57,6 +62,7 @@ struct Periodically {
       if (paused) return;
       if (now >= next_run.load()) {
         run_in_progress = true;
+        times_run++;
         // Try to avoid lock contention by advancing the clock;
         // its final value will be at least this.
         next_run.store(now + wait_period);
@@ -82,6 +88,7 @@ struct Periodically {
     std::unique_lock ml(m);
     paused = false;
     next_run = std::chrono::steady_clock::now() + wait_period;
+    times_run = 0;
   }
 
   // Sets the wait period, and resets the timer, so the next run
@@ -101,11 +108,21 @@ struct Periodically {
       std::chrono::duration_cast<dur>(1s * seconds);
   }
 
+  // Get the number of times that the periodic event has run. This
+  // is considered to have run when ShouldRun returns true or
+  // RunIf will invoke the function; in both cases, *before* the
+  // handler has executed.
+  int64_t TimesRun() {
+    std::unique_lock ml(m);
+    return times_run;
+  }
+
 private:
   using dur = std::chrono::steady_clock::duration;
   using tpoint = std::chrono::time_point<std::chrono::steady_clock>;
   std::mutex m;
   std::atomic<tpoint> next_run;
+  int64_t times_run = 0;
   dur wait_period = dur::zero();
   bool paused = false;
   bool run_in_progress = false;

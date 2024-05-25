@@ -397,7 +397,7 @@ struct Image1 {
                      uint32_t zero = 0x00000000) const;
   ImageA MonoA(uint8_t one = 0xFF, uint8_t zero = 0x00) const;
 
-  void Clear();
+  void Clear(bool value = false);
 
   // TODO: Can easily support logical operations on images that
   // are the same size. But maybe I want that to be generalized

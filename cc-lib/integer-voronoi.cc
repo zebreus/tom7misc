@@ -19,6 +19,8 @@
 // terrain over a network, or if you need Euclidean distance (from,
 // say, obstacles.)
 
+// TODO: Might be integer overflow for 4k-sized inputs?
+
 #include "integer-voronoi.h"
 
 #include <stdlib.h>
@@ -43,8 +45,8 @@ static bool remove_candidate(int ux, int uy, int vx, int vy, int wx, int wy,
 }
 
 static int compare_two_feature_points(const void *a, const void *b) {
-  int *x = (int *)a;
-  int *y = (int *)b;
+  const int *x = (const int *)a;
+  const int *y = (const int *)b;
 
   if (x[1] > y[1]) {
     return 1;

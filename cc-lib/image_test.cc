@@ -340,6 +340,18 @@ static void TestRoundTripA1() {
   ImageA imgaii = img1ii.MonoA(0xAA, 0x21);
   CHECK(imgaii == imga);
   CHECK(imgaii.Hash() == imga.Hash());
+
+  {
+    Image1 white1(12, 13);
+    white1.Clear(true);
+
+    Image1 white2(12, 13);
+    white2.Clear(false);
+    white2 = white2.Inverse();
+
+    CHECK(white1 == white2);
+    CHECK(white1.Hash() == white2.Hash());
+  }
 }
 
 int main(int argc, char **argv) {
