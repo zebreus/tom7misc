@@ -1318,29 +1318,39 @@ string Util::UnsignedWithCommas(uint64_t u) {
   return out;
 }
 
-/* XXX impossible to specify a spec for just ^ */
-bool Util::matchspec(string spec, char c) {
-  if (!spec.length()) return false;
-  else if (spec[0] == '^')
-  return !matchspec(spec.substr(1, spec.length() - 1), c);
+bool Util::MatchSpec(std::string_view spec, char c) {
+  if (spec.empty()) return false;
+  bool match = true;
+  if (spec[0] == '^') {
+    spec.remove_prefix(1);
+    match = !match;
+  }
 
-  /* now loop looking for c in string, or ranges */
-  for (unsigned int i = 0; i < spec.length(); i ++) {
-    /* ok if starts range, since they are inclusive */
-    if (spec[i] == c) return true;
-
-    /* handle ranges */
-    if (spec[i] == '-') {
-      /* can't be first or last */
-      if (i && i < (spec.length() - 1)) {
-        if (spec[i - 1] <= c &&
-            spec[i + 1] >= c) return true;
-        /* skip dash and next char */
-        i ++;
-      }
+  // now loop looking for c in string, or ranges.
+  for (size_t i = 0; i < spec.length(); i ++) {
+    //  handle ranges, if it's not the first or last char.
+    if (spec[i] == '-' && i > 0 && i < (spec.length() - 1)) {
+      if (spec[i - 1] <= c &&
+          spec[i + 1] >= c) return match;
+      // skip dash and next char.
+      i += 2;
+    } else {
+      // ok if starts range, since they are inclusive.
+      if (spec[i] == c) return match;
     }
   }
-  return false; /* no match */
+
+  return !match;
+}
+
+bool Util::MatchSpec(std::string_view spec, std::string_view s) {
+  for (char c : s) {
+    if (!MatchSpec(spec, c)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool Util::MatchesWildcard(string_view wildcard_, string_view s) {

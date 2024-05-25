@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
   // Perhaps this parsing should be in guitar.h.
   auto OKChars = [](const string &s) {
     for (const char c : s)
-      if (!Util::matchspec("0-9a-gx", c))
+      if (!Util::MatchSpec("0-9a-gx", c))
         return false;
     return true;
   };

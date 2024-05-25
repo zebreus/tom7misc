@@ -46,8 +46,10 @@ static constexpr char NONEXISTENT_FILE[] =
 // This test uses its source code as test data, so don't
 // mess with the lines that tell you to keep them, duh.
 static void TestReadFiles(const char *argv0) {
+  /*
   printf("argv[0] = [%s]. BinaryDir: %s\n",
          argv0, Util::BinaryDir(argv0).c_str());
+  */
   std::string self = Util::DirPlus(Util::BinaryDir(argv0), "util_test.cc");
 
   const string reference = SlowReadFile(self);
@@ -292,31 +294,55 @@ static void TestStoi() {
 }
 
 static void TestMatchSpec() {
-  CHECK(Util::matchspec("u", 'u'));
-  CHECK(!Util::matchspec("u", 'v'));
-  CHECK(Util::matchspec("uv", 'u'));
-  CHECK(Util::matchspec("uv", 'v'));
-  CHECK(Util::matchspec("0-9", '3'));
-  CHECK(Util::matchspec("0-9", '0'));
-  CHECK(Util::matchspec("0-9", '9'));
-  CHECK(!Util::matchspec("0-9", 'a'));
-  CHECK(Util::matchspec("0-9a-z", 'a'));
-  CHECK(Util::matchspec("a-z0-9", 'a'));
-  CHECK(Util::matchspec("a-z0-9", '3'));
-  CHECK(Util::matchspec("0-9a-z", '3'));
+  CHECK(Util::MatchSpec("u", 'u'));
+  CHECK(!Util::MatchSpec("u", 'v'));
+  CHECK(Util::MatchSpec("uv", 'u'));
+  CHECK(Util::MatchSpec("uv", 'v'));
+  CHECK(Util::MatchSpec("0-9", '3'));
+  CHECK(Util::MatchSpec("0-9", '0'));
+  CHECK(Util::MatchSpec("0-9", '9'));
+  CHECK(!Util::MatchSpec("0-9", 'a'));
+  CHECK(Util::MatchSpec("0-9a-z", 'a'));
+  CHECK(Util::MatchSpec("a-z0-9", 'a'));
+  CHECK(Util::MatchSpec("a-z0-9", '3'));
+  CHECK(Util::MatchSpec("0-9a-z", '3'));
+  CHECK(Util::MatchSpec("-9a", '-'));
+  CHECK(Util::MatchSpec("-9a", '9'));
+  CHECK(Util::MatchSpec("-9a", 'a'));
+  CHECK(Util::MatchSpec("9a-", '9'));
+  CHECK(Util::MatchSpec("9a-", 'a'));
+  CHECK(Util::MatchSpec("9a-", '-'));
 
-  CHECK(!Util::matchspec("^u", 'u'));
-  CHECK(Util::matchspec("^u", 'v'));
-  CHECK(!Util::matchspec("^uv", 'u'));
-  CHECK(!Util::matchspec("^uv", 'v'));
-  CHECK(!Util::matchspec("^0-9", '3'));
-  CHECK(!Util::matchspec("^0-9", '0'));
-  CHECK(!Util::matchspec("^0-9", '9'));
-  CHECK(Util::matchspec("^0-9", 'a'));
-  CHECK(!Util::matchspec("^0-9a-z", 'a'));
-  CHECK(!Util::matchspec("^a-z0-9", 'a'));
-  CHECK(!Util::matchspec("^a-z0-9", '3'));
-  CHECK(!Util::matchspec("^0-9a-z", '3'));
+  CHECK(!Util::MatchSpec("a-z", '-'));
+
+  CHECK(!Util::MatchSpec("^u", 'u'));
+  CHECK(Util::MatchSpec("^u", 'v'));
+  CHECK(!Util::MatchSpec("^uv", 'u'));
+  CHECK(!Util::MatchSpec("^uv", 'v'));
+  CHECK(!Util::MatchSpec("^0-9", '3'));
+  CHECK(!Util::MatchSpec("^0-9", '0'));
+  CHECK(!Util::MatchSpec("^0-9", '9'));
+  CHECK(Util::MatchSpec("^0-9", 'a'));
+  CHECK(!Util::MatchSpec("^0-9a-z", 'a'));
+  CHECK(!Util::MatchSpec("^a-z0-9", 'a'));
+  CHECK(!Util::MatchSpec("^a-z0-9", '3'));
+  CHECK(!Util::MatchSpec("^0-9a-z", '3'));
+
+  CHECK(!Util::MatchSpec("-9a", 'b'));
+  CHECK(!Util::MatchSpec("-9a", '8'));
+  CHECK(!Util::MatchSpec("9a-", '8'));
+  CHECK(!Util::MatchSpec("9a-", 'b'));
+
+
+  // With string inputs.
+  CHECK(Util::MatchSpec("", ""));
+  CHECK(Util::MatchSpec("a-z", ""));
+  CHECK(Util::MatchSpec("^a-z", ""));
+  CHECK(Util::MatchSpec("^a-z", "1001"));
+  CHECK(!Util::MatchSpec("^a-z", "10z1"));
+  CHECK(Util::MatchSpec("a-z", "abraz"));
+  CHECK(Util::MatchSpec("A-Za-z0-9", "Alphanumeric007"));
+  CHECK(!Util::MatchSpec("A-Za-z0-9", "Alpha numeric 007!"));
 }
 
 static void TestMatchesWildcard() {

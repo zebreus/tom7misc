@@ -149,8 +149,14 @@ struct Util {
   static string DirPlus(string_view dir, string_view file);
 
   /* spec is a character spec like "A-Z0-9`,."
-     XXX document */
-  static bool matchspec(string spec, char c);
+     If the first character is ^, negates the spec.
+     A range like A-Z is inclusive, using ASCII order. The first
+     character must not come later than the second in ASCII.
+
+     Note that some specs, like one just consisting of the character ^,
+     cannot be written. */
+  static bool MatchSpec(string_view spec, char c);
+  static bool MatchSpec(string_view spec, string_view s);
 
   /* Returns true if s matches the wildcard; the character *
      means any sequence of bytes (or none) and the character
