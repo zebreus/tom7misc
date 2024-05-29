@@ -20,6 +20,7 @@
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "bounds.h"
 #include "color-util.h"
 #include "geom/tree-2d.h"
 #include "image.h"
@@ -244,6 +245,7 @@ struct AnimationImpl : public Animation {
     }
 
     // Now that we have the ordering, we can smooth each region.
+    // PERF: Can run these in parallel.
     for (int z = 0; z < (int)layer_colors.size(); z++) {
       SmoothRegion("animation-debug", z, 5);
     }
@@ -475,31 +477,58 @@ struct AnimationImpl : public Animation {
   float ComputePenRadius(int z) const {
     Timer pen_size_timer;
     // To figure out what pen size to use, we compute the average
-    // distance to a pixel that's not in the region. We start by
-    // inverting the region.
+    // distance to a pixel that's not in the region. We do this with a
+    // linear time Voronoi rasterization, which gives us the distance
+    // from each pixel (in the region) to the closest pixel that's not
+    // in the region.
     CHECK(z >= 0 && z < (int)layer_colors.size());
     const uint32_t color = layer_colors[z];
     auto rit = regions.find(color);
     CHECK(rit != regions.end());
     const Region &region = rit->second;
 
+    // As indices into the original image.
     std::vector<int> sample;
 
-    // The negative image for the region, plus a border.
-    Image1 bitmap(in->Width() + 2, in->Height() + 2);
+    // But since the distance field calculation is somewhat expensive,
+    // we only compute it for the bounding box containing the region.
+    // This is often much smaller than the whole image.
+    IntBounds bbox;
+    for (const int idx : region.pixels) {
+      const auto &[x, y] = UnIdx(idx);
+      bbox.Bound(x, y);
+    }
+
+    if (bbox.Empty()) return opt.min_pen_radius;
+
+    // Include a single-pixel border around the region.
+    bbox.AddMargin(1);
+
+    // Now a one-pixel bitmap for the bounding box.
+    Image1 bitmap(bbox.Width(), bbox.Height());
+
     bitmap.Clear(true);
-    for (int y = 0; y < in->Height(); y++) {
-      for (int x = 0; x < in->Width(); x++) {
-        const int idx = Idx(x, y);
-        const bool in = region.pixels.contains(idx);
-        if (in) {
-          bitmap.SetPixel(x + 1, y + 1, false);
-          sample.push_back(idx);
-        }
+
+    // The bounding box is generally not located at 0,0.
+    const int xoff = bbox.MinX();
+    const int yoff = bbox.MinY();
+    {
+      /*
+      const int min_y = std::max((int)bbox.MinY(), 0);
+      const int min_x = std::max((int)bbox.MinX(), 0);
+      const int max_y = std::min((int)bbox.MaxY(), in->Height() - 1);
+      const int max_x = std::max((int)bbox.MinX(), in->Width() - 1);
+      */
+
+      for (const int idx : region.pixels) {
+        const auto &[x, y] = UnIdx(idx);
+        bitmap.SetPixel(x - xoff, y - yoff, false);
+        sample.push_back(idx);
       }
     }
 
-    if (sample.empty()) return opt.min_pen_radius;
+    CHECK(!sample.empty()) << "Otherwise, the bounding box would "
+      "also have been empty.";
 
     Timer field_timer;
     ImageF distance_field = IntegerVoronoi::DistanceField(bitmap);
@@ -514,10 +543,12 @@ struct AnimationImpl : public Animation {
     ArcFour rc(StringPrintf("layer%d", z));
     Shuffle(&rc, &sample);
 
+
     static constexpr int MAX_SAMPLES = 2000;
     for (int i = 0; i < (int)sample.size() && i < MAX_SAMPLES; i++) {
       const auto &[x, y] = UnIdx(sample[i]);
-      const float dist = distance_field.GetPixel(x + 1, y + 1);
+
+      const float dist = distance_field.GetPixel(x - xoff, y - yoff);
       total_dist += dist;
       num_samples++;
     }
