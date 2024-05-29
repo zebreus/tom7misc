@@ -72,6 +72,7 @@ struct TalkPage : public Page {
 
   void SetDuration(int dur);
   void SetTargetSec(int sec);
+  void SetSection(const std::string &s);
 
  private:
   friend struct TalkDocument;
@@ -82,6 +83,7 @@ struct TalkPage : public Page {
 
   int duration = 0;
   int target_sec = 0;
+  std::string section;
   std::unique_ptr<ImageRGBA> image;
 
   struct Video {
@@ -118,6 +120,7 @@ struct TalkDocument : public Document {
   std::map<int, std::map<int, int>> durations;
   // Just slide index.
   std::map<int, int> targets;
+  std::map<int, std::string> sections;
 };
 
 #endif

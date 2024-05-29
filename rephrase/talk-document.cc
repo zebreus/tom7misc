@@ -135,6 +135,18 @@ void TalkDocument::SetPageInfo(
     }
   }
 
+  {
+    const auto it = attrs.find("section");
+    if (it != attrs.end()) {
+      const std::string *s = std::get_if<std::string>(&it->second.v);
+      CHECK(Util::MatchSpec("-a-z", *s)) << "PageInfo's section must "
+        "be strictly lowercase letters and hyphen. This is so that "
+        "it can be used in filenames that also use numbers, without "
+        "ambiguity. Got: " << *s;
+      sections[page_idx] = *s;
+    }
+  }
+
 }
 
 
@@ -156,6 +168,10 @@ void TalkPage::SetDuration(int dur) {
 
 void TalkPage::SetTargetSec(int s) {
   target_sec = s;
+}
+
+void TalkPage::SetSection(const std::string &s) {
+  section = s;
 }
 
 void TalkPage::DrawText(const Font *font_in,
@@ -256,6 +272,8 @@ void TalkDocument::GenerateOutput(
     const std::map<int, std::map<int, DocTree>> &pages) {
   Timer output_timer;
 
+  std::string section = "slide";
+
   int pixel_width = DEFAULT_PIXEL_WIDTH, pixel_height = DEFAULT_PIXEL_HEIGHT;
   if (width > 0.0 && height > 0.0) {
     pixel_width = (int)std::round(width);
@@ -302,9 +320,15 @@ void TalkDocument::GenerateOutput(
 
       // XXX this should be slide-level. We just set
       // the target sec for every frame right now.
-      auto target_it = targets.find(page_idx);
-      if (target_it != targets.end()) {
+      if (auto target_it = targets.find(page_idx);
+          target_it != targets.end()) {
         page->SetTargetSec(target_it->second);
+      }
+
+      // ditto.
+      if (auto section_it = sections.find(page_idx);
+          section_it != sections.end()) {
+        page->SetSection(section_it->second);
       }
     }
     slides.push_back(std::move(frames));
@@ -322,6 +346,9 @@ void TalkDocument::GenerateOutput(
       }
       return total;
     }();
+
+  // In case we reencounter a section, keep increasing the count.
+  std::unordered_map<std::string, int> section_count;
 
   {
     Asynchronously async(12);
@@ -361,6 +388,12 @@ void TalkDocument::GenerateOutput(
         }
       }
 
+      for (const auto &frame : page) {
+        if (!frame->section.empty()) {
+          section = frame->section;
+        }
+      }
+
       for (int f = 0; f < (int)page.size(); f++) {
         const auto &frame = page[f];
 
@@ -372,8 +405,8 @@ void TalkDocument::GenerateOutput(
 
         const std::string framefile =
           page.size() == 1 ?
-          StringPrintf("slide%d.png", i) :
-          StringPrintf("slide%d_%d.png", i, f);
+          StringPrintf("%s-%d.png", section.c_str(), i) :
+          StringPrintf("%s-%d_%d.png", section.c_str(), i, f);
         StringAppendF(&talk,
                       "  %s\n",
                       framefile.c_str());

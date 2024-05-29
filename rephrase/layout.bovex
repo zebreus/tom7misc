@@ -50,14 +50,23 @@ fun output (page, lay) =
 fun output-frame (page, frame, lay) =
   internal-output ({(OutputDest) page = page, frame = frame}, lay)
 
-object PageInfo of { duration : int, target : int }
+object PageInfo of { duration : int, target : int, section : string }
+(* For slide output, add the duration (as a number of animation frames
+   to hold for) of the page's frame. *)
 fun set-frame-duration (page, frame, dur) =
   internal-set-page-info ({(OutputDest) page = page, frame = frame },
                           {(PageInfo) duration = dur})
 
+(* For slide output, add metadata about the target number of seconds
+   for reaching this page. *)
 fun set-target-seconds (page, target) =
   internal-set-page-info ({(OutputDest) page = page, frame = 0 },
                           {(PageInfo) target = target})
+(* set the output "section", which changes the filenames for
+   slide output. *)
+fun set-output-section (page, section) =
+  internal-set-page-info ({(OutputDest) page = page, frame = 0 },
+                          {(PageInfo) section = section})
 
 (* Fonts are represented with text attributes. But we wrap them
    so that some utilities get a little extra type checking. *)

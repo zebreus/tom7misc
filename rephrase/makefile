@@ -292,7 +292,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bc.o to-bytecode.o optimization.o assembling.o compiler.o document.o pdf-document.o talk-document.o rephrasing.o achievements.o execution.o
+LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bc.o to-bytecode.o optimization.o assembling.o compiler.o document.o pdf-document.o talk-document.o rephrasing.o achievements.o execution.o animation.o
 
 BOVEX_OBJECTS=$(LANG_OBJECTS)
 BOVEX_HEADERS=*.h
@@ -413,7 +413,7 @@ chessdemo/chessdemo.talk : bovex.exe chess.bovex chessdemo.bovex stdlib.bovex la
 	./bovex.exe -v chessdemo.bovex -o chessdemo.talk
 	./maketalk.exe chessdemo chessdemo.talk
 
-animate.exe : animate.o $(CC_LIB_OBJECTS)
+animate.exe : animation.o animate.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 cyber-voronoi.exe : cyber-voronoi.o $(CC_LIB_OBJECTS)
