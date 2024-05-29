@@ -16,17 +16,18 @@
 #include <utility>
 #include <vector>
 
-#include "image.h"
+#include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "color-util.h"
 #include "geom/tree-2d.h"
-#include "ansi.h"
-#include "timer.h"
-#include "threadutil.h"
+#include "image.h"
+#include "integer-voronoi.h"
 #include "periodically.h"
-#include "arcfour.h"
 #include "randutil.h"
+#include "threadutil.h"
+#include "timer.h"
 
 namespace {
 
@@ -482,36 +483,33 @@ struct AnimationImpl : public Animation {
     CHECK(rit != regions.end());
     const Region &region = rit->second;
 
-    double total_dist = 0.0;
-    int num_samples = 0;
-
-    Tree2D<int, char> negative;
     std::vector<int> sample;
-    for (int idx = 0; idx < in->Width() * in->Height(); idx++) {
-      if (!region.pixels.contains(idx)) {
-        const auto &[x, y] = UnIdx(idx);
-        negative.Insert(x, y, 0);
-      } else {
-        sample.push_back(idx);
+
+    // The negative image for the region, plus a border.
+    Image1 bitmap(in->Width() + 2, in->Height() + 2);
+    bitmap.Clear(true);
+    for (int y = 0; y < in->Height(); y++) {
+      for (int x = 0; x < in->Width(); x++) {
+        const int idx = Idx(x, y);
+        const bool in = region.pixels.contains(idx);
+        if (in) {
+          bitmap.SetPixel(x + 1, y + 1, false);
+          sample.push_back(idx);
+        }
       }
     }
 
     if (sample.empty()) return opt.min_pen_radius;
 
-    // We also treat the edge of the image as negative.
-    for (int y = -1; y <= in->Height(); y++) {
-      negative.Insert(-1, y, 0);
-      negative.Insert(in->Width(), y, 0);
-    }
+    Timer field_timer;
+    ImageF distance_field = IntegerVoronoi::DistanceField(bitmap);
+    const double field_seconds = field_timer.Seconds();
 
-    // This time, not including the corners.
-    for (int x = 0; x < in->Width(); x++) {
-      negative.Insert(x, -1, 0);
-      negative.Insert(x, in->Height(), 0);
-    }
+    double total_dist = 0.0;
+    int num_samples = 0;
 
-    CHECK(!negative.Empty());
-
+    // (XXX Seems like this could just be a sum over everything at this
+    // point!)
     // Now do some samples.
     ArcFour rc(StringPrintf("layer%d", z));
     Shuffle(&rc, &sample);
@@ -519,7 +517,7 @@ struct AnimationImpl : public Animation {
     static constexpr int MAX_SAMPLES = 2000;
     for (int i = 0; i < (int)sample.size() && i < MAX_SAMPLES; i++) {
       const auto &[x, y] = UnIdx(sample[i]);
-      const auto &[pos_, t_, dist] = negative.Closest({x, y});
+      const float dist = distance_field.GetPixel(x + 1, y + 1);
       total_dist += dist;
       num_samples++;
     }
@@ -529,10 +527,11 @@ struct AnimationImpl : public Animation {
                  opt.min_pen_radius, opt.max_pen_radius);
 
     if (opt.verbosity > 0) {
-      printf("Pen size for layer %d (%s) is %.3f (%s)\n",
+      printf("Pen size for layer %d (%s) is %.3f (%s field; %s all)\n",
              z,
              ColorSwatch(color).c_str(),
              pen_size,
+             ANSI::Time(field_seconds).c_str(),
              ANSI::Time(pen_size_timer.Seconds()).c_str());
     }
 
