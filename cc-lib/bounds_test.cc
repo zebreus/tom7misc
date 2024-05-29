@@ -261,6 +261,8 @@ static void TestScaleToFit() {
   }
 }
 
+// TODO: Test integer version.
+
 int main(int argc, char **argv) {
   TestSimple();
   TestStretch();

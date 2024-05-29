@@ -5,7 +5,12 @@
 #include <limits>
 #include <utility>
 
-/* Imperative 2D bounding box, after sml-lib. */
+// TODO: We now have a notion of "empty in x" and "empty in y",
+// which should be preserved by Union and margins (in that dimension).
+// Currently these treat the bounding box as empty if either dimension
+// is empty.
+
+// Imperative 2D bounding box, after sml-lib.
 struct Bounds {
   // With no points.
   Bounds();
@@ -114,6 +119,68 @@ struct Bounds {
   double miny = std::numeric_limits<double>::infinity();
   double maxx = -std::numeric_limits<double>::infinity();
   double maxy = -std::numeric_limits<double>::infinity();
+  bool is_empty_x = true, is_empty_y = true;
+};
+
+// Same, with integer coordinates.
+struct IntBounds {
+  // With no points.
+  IntBounds();
+
+  // Expand the bounding box to contain the point.
+  void Bound(int64_t x, int64_t y);
+  void Bound(std::pair<int64_t, int64_t> p);
+  void BoundX(int64_t x);
+  void BoundY(int64_t y);
+
+  // The margins are included.
+  bool Contains(int64_t x, int64_t y) const;
+
+  // Returns true if we don't have points on both the x and y axes
+  // (because Bound has not been called, or not both of BoundX and BoundY).
+  // When the bounding box is empty, several functions below should not
+  // be called.
+  bool Empty() const;
+
+  int64_t MinX() const;
+  int64_t MinY() const;
+  int64_t MaxX() const;
+  int64_t MaxY() const;
+
+  // The offset of the input point within the bounding box (thinking
+  // of MinX/MinY as 0,0).
+  int64_t OffsetX(int64_t x) const;
+  int64_t OffsetY(int64_t y) const;
+
+  int64_t Width() const;
+  int64_t Height() const;
+
+  // Modifies 'this'. 'this' and 'other' may be empty.
+  void Union(const IntBounds &other);
+
+  // Adds a fixed-sized margin around the entire bounds, in absolute units.
+  // If empty, does nothing. d must be non-negative.
+  void AddMargin(int64_t d);
+  // Add margin to the sides of the bounding box.
+  // If empty, does nothing. Arguments must be non-negative.
+  void AddMargins(int64_t up, int64_t right, int64_t down, int64_t left);
+
+  // Add a margin on both sides of each dimension that's a fraction
+  // (e.g. 0.01 for 1% on each side) of its current width. If empty,
+  // does nothing. Since the bounds are always integers, this may
+  // do nothing if the margin rounds down to zero.
+  // f must be non-negative.
+  void AddMarginFrac(double f);
+  void AddMarginsFrac(double fup, double fright,
+                      double fdown, double fleft);
+
+  // TODO: Scaling?
+
+ private:
+  int64_t minx = std::numeric_limits<std::int64_t>::max();
+  int64_t miny = std::numeric_limits<std::int64_t>::max();
+  int64_t maxx = std::numeric_limits<std::int64_t>::min();
+  int64_t maxy = std::numeric_limits<std::int64_t>::min();
   bool is_empty_x = true, is_empty_y = true;
 };
 

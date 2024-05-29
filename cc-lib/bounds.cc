@@ -177,3 +177,80 @@ Bounds::Scaler Bounds::Scaler::Zoom(double xfactor, double yfactor) const {
   ret.height *= yfactor;
   return ret;
 }
+
+
+
+IntBounds::IntBounds() {}
+
+void IntBounds::Bound(int64_t x, int64_t y) {
+  BoundX(x);
+  BoundY(y);
+}
+void IntBounds::Bound(std::pair<int64_t, int64_t> p) {
+  BoundX(p.first);
+  BoundY(p.second);
+}
+void IntBounds::BoundX(int64_t x) {
+  if (x < minx) minx = x;
+  if (x > maxx) maxx = x;
+  is_empty_x = false;
+}
+void IntBounds::BoundY(int64_t y) {
+  if (y < miny) miny = y;
+  if (y > maxy) maxy = y;
+  is_empty_y = false;
+}
+
+bool IntBounds::Contains(int64_t x, int64_t y) const {
+  return x >= minx && x <= maxx &&
+    y >= miny && y <= maxy && !(is_empty_x || is_empty_y);
+}
+
+bool IntBounds::Empty() const { return is_empty_x || is_empty_y; }
+
+int64_t IntBounds::MinX() const { return minx; }
+int64_t IntBounds::MinY() const { return miny; }
+int64_t IntBounds::MaxX() const { return maxx; }
+int64_t IntBounds::MaxY() const { return maxy; }
+
+int64_t IntBounds::OffsetX(int64_t x) const { return x - minx; }
+int64_t IntBounds::OffsetY(int64_t y) const { return y - miny; }
+
+int64_t IntBounds::Width() const { return OffsetX(MaxX()); }
+int64_t IntBounds::Height() const { return OffsetY(MaxY()); }
+
+void IntBounds::Union(const IntBounds &other) {
+  if (other.Empty()) return;
+  Bound(other.MinX(), other.MinY());
+  Bound(other.MinX(), other.MaxY());
+  Bound(other.MaxX(), other.MinY());
+  Bound(other.MaxX(), other.MaxY());
+}
+
+
+void IntBounds::AddMargin(int64_t d) {
+  AddMargins(d, d, d, d);
+}
+
+void IntBounds::AddMargins(int64_t up, int64_t right,
+                           int64_t down, int64_t left) {
+  if (Empty()) return;
+  maxx += right;
+  maxy += down;
+  minx -= left;
+  miny -= up;
+}
+
+void IntBounds::AddMarginFrac(double f) {
+  AddMarginsFrac(f, f, f, f);
+}
+
+void IntBounds::AddMarginsFrac(double fup, double fright,
+                               double fdown, double fleft) {
+  if (Empty()) return;
+  const int64_t left = std::round(fleft * Width());
+  const int64_t right = std::round(fright * Width());
+  const int64_t up = std::round(fup * Height());
+  const int64_t down = std::round(fdown * Height());
+  AddMargins(up, right, down, left);
+}
