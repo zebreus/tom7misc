@@ -15,6 +15,12 @@ const char *PrimopString(Primop po) {
   case Primop::REF: return "REF";
   case Primop::REF_GET: return "REF_GET";
   case Primop::REF_SET: return "REF_SET";
+
+  case Primop::VEC: return "VEC";
+  case Primop::VEC_SUB: return "VEC_SUB";
+  case Primop::VEC_SIZE: return "VEC_SIZE";
+  case Primop::VEC_UPDATE: return "VEC_UPDATE";
+
   case Primop::INT_EQ: return "INT_EQ";
   case Primop::INT_NEQ: return "INT_NEQ";
   case Primop::INT_LESS: return "INT_LESS";
@@ -110,6 +116,12 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::REF: return std::make_tuple(1, 1);
   case Primop::REF_GET: return std::make_tuple(1, 1);
   case Primop::REF_SET: return std::make_tuple(1, 2);
+
+  case Primop::VEC: return std::make_tuple(1, 2);
+  case Primop::VEC_SUB: return std::make_tuple(1, 2);
+  case Primop::VEC_SIZE: return std::make_tuple(1, 1);
+  case Primop::VEC_UPDATE: return std::make_tuple(1, 3);
+
   case Primop::INT_EQ: return std::make_tuple(0, 2);
   case Primop::INT_NEQ: return std::make_tuple(0, 2);
   case Primop::INT_LESS: return std::make_tuple(0, 2);
@@ -206,6 +218,12 @@ bool IsPrimopTotal(Primop p) {
   case Primop::REF: return false;
   case Primop::REF_GET: return false;
   case Primop::REF_SET: return false;
+
+  case Primop::VEC: return false;
+  case Primop::VEC_SUB: return false;
+  case Primop::VEC_SIZE: return true;
+  case Primop::VEC_UPDATE: return false;
+
   // Since we use BigInt, integer arithmetic cannot overflow.
   case Primop::INT_EQ: return true;
   case Primop::INT_NEQ: return true;
@@ -339,6 +357,11 @@ bool IsPrimopDiscardable(Primop p) {
   case Primop::REF_GET: return true;
   case Primop::REF_SET: return false;
 
+  case Primop::VEC: return true;
+  case Primop::VEC_SUB:
+    // Because out-of-bounds reads abort.
+    return false;
+
   default:
     return IsPrimopTotal(p);
   }
@@ -377,6 +400,17 @@ PrimopType(il::AstPool *pool, Primop p) {
     return {{"a"}, pool->Arrow(Ref(Alpha()), Alpha())};
   case Primop::REF_SET:
     return {{"a"}, BinOp(Ref(Alpha()), Alpha(), Unit())};
+
+  case Primop::VEC:
+    return {{"a"}, BinOp(Int, Alpha(), Ref(Alpha()))};
+  case Primop::VEC_SUB:
+    return {{"a"}, BinOp(Ref(Alpha()), Int, Alpha())};
+  case Primop::VEC_SIZE:
+    return {{"a"}, pool->Arrow(Ref(Alpha()), Int)};
+  case Primop::VEC_UPDATE:
+    return {{"a"}, pool->Arrow(
+          pool->Product({Ref(Alpha()), Int, Alpha()}),
+          Alpha())};
 
   // Perhaps these should just be overloaded α * α -> bool,
   // with some hack to resolve them? (But not here. Elaboration

@@ -110,6 +110,8 @@ enum class TypeType {
   EVAR,
   // Primitive reference type
   REF,
+  // Primitive vector type
+  VEC,
   // There is no "app"; primitive tycons
   // are to be added here.
   STRING,
@@ -180,6 +182,11 @@ struct Type {
 
   const Type *Ref() const {
     CHECK(type == TypeType::REF);
+    return a;
+  }
+
+  const Type *Vec() const {
+    CHECK(type == TypeType::VEC);
     return a;
   }
 
@@ -573,6 +580,18 @@ struct AstPool {
     }
 
     Type *ret = NewType(TypeType::REF);
+    ret->a = t;
+    return ret;
+  }
+
+  const Type *VecType(const Type *t, const Type *guess = nullptr) {
+    if (guess != nullptr &&
+        guess->type == TypeType::VEC &&
+        t == guess->a) {
+      return guess;
+    }
+
+    Type *ret = NewType(TypeType::VEC);
     ret->a = t;
     return ret;
   }

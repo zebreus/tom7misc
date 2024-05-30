@@ -875,6 +875,12 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
       return *s;
   };
 
+  auto GetVec = [a](const char *what) -> const vec_type & {
+      const vec_type *v = std::get_if<vec_type>(&a->v);
+      CHECK(v != nullptr) << "Expected vector argument to " << what;
+      return *v;
+  };
+
   switch (primop) {
   case Primop::INT_NEG: {
     const BigInt &bi = GetInt("int_neg");
@@ -1073,6 +1079,11 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Big(BigInt((int)children.size()), state);
   }
 
+  case Primop::VEC_SIZE: {
+    const vec_type &v = GetVec("vec-size");
+    return Big(BigInt((int)v.size()), state);
+  }
+
   case Primop::DEBUG_PRINT_DOC: {
     DocTree doc = ValueToDocTree(a);
     DebugPrintDocTree(doc);
@@ -1218,8 +1229,7 @@ void Execution::Step(State *state) {
   auto LoadVec = [&Error, &Load](const std::string &local) ->
     std::vector<Value *> * {
       Value *a = Load(local);
-      auto *r =
-        std::get_if<std::vector<Value *>>(&a->v);
+      auto *r = std::get_if<std::vector<Value *>>(&a->v);
       CHECK(r != nullptr) << Error() << "Expected " << local <<
       " to have a vector value. Got: " << ColorValuePtrString(a);
       return r;

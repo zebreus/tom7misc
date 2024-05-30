@@ -83,6 +83,7 @@ struct TypedPass {
     case TypeType::RECORD: return DoRecordType(G, t->Record(), t, args...);
     case TypeType::EVAR: return DoEVar(G, t->EVar(), t, args...);
     case TypeType::REF: return DoRefType(G, t->Ref(), t, args...);
+    case TypeType::VEC: return DoVecType(G, t->Vec(), t, args...);
     case TypeType::STRING: return DoStringType(G, t, args...);
     case TypeType::FLOAT: return DoFloatType(G, t, args...);
     case TypeType::INT: return DoIntType(G, t, args...);
@@ -320,6 +321,12 @@ struct TypedPass {
                                 const Type *body, const Type *guess,
                                 Args... args) {
     return pool->RefType(DoType(G, body, args...), guess);
+  }
+
+  virtual const Type *DoVecType(Context G,
+                                const Type *body, const Type *guess,
+                                Args... args) {
+    return pool->VecType(DoType(G, body, args...), guess);
   }
 
   virtual const Type *DoIntType(Context G,

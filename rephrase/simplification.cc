@@ -686,14 +686,28 @@ struct PeepholePass : public il::Pass<> {
         // TODO
         break;
 
+
+
+      case Primop::REF_GET:
+      case Primop::REF_SET:
+        // In principle, if the argument is a call to ref,
+        // we know we have the only copy of it. But why
+        // would this code exist?
+        break;
+
+      case Primop::VEC_SUB:
+      case Primop::VEC_SIZE:
+        // As above.
+        break;
+
+      case Primop::VEC:
+      case Primop::VEC_UPDATE:
       case Primop::OUT_STRING:
       case Primop::OUT_LAYOUT:
       case Primop::EMIT_BADNESS:
       case Primop::SET_DOC_INFO:
       case Primop::SET_PAGE_INFO:
       case Primop::REF:
-      case Primop::REF_GET:
-      case Primop::REF_SET:
       case Primop::FONT_LOAD_FILE:
       case Primop::FONT_REGISTER:
       case Primop::IMAGE_LOAD_FILE:
@@ -1079,6 +1093,8 @@ struct Knowledge {
   bool was_used = false;
 };
 using Known = FunctionalMap<std::string, std::shared_ptr<Knowledge>>;
+
+// TODO: Could be useful to record known size of vectors.
 
 // TODO: This could be a general 'known' pass.
 struct KnownPass : public il::Pass<Known> {

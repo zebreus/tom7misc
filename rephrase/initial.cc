@@ -70,6 +70,11 @@ Initial::Initial(AstPool *pool) {
     {":=", Primop::REF_SET},
     {"!", Primop::REF_GET},
 
+    {"vec", Primop::VEC},
+    {"vec-sub", Primop::VEC_SUB},
+    {"vec-size", Primop::VEC_SIZE},
+    {"vec-update", Primop::VEC_UPDATE},
+
     {"int-to-string", Primop::INT_TO_STRING},
     {"round", Primop::FLOAT_ROUND},
 

@@ -305,7 +305,8 @@ struct Converter {
   std::string AddValue(const std::string &hint,
                        const Value &value) {
     std::string lab = NewSymbol(hint);
-    // TODO: Coalesce if already present!
+    // TODO: We do coalesce in optimization, but if it's easy to do,
+    // eagerly coalescing here may be wise.
     CHECK(!program.data.contains(lab)) << lab;
     program.data[lab] = value;
     return lab;
@@ -327,6 +328,48 @@ struct Converter {
     return AddAndLoadValueToInsts(hint, value, &current_block->insts);
   }
 
+  // Check that the value contained in the local idx is >= 0
+  // and < size(vec), aborting if not.
+  void CheckVecBounds(
+      const std::string &vec,
+      const std::string &idx,
+      std::unordered_map<std::string, Block> *blocks,
+      Block *current_block) {
+
+    // Bounds check failure destination.
+    std::string oob_label = NewSymbol("oob");
+    Block *oob_block = &(*blocks)[oob_label];
+    std::string msg = NewSymbol("oob_msg");
+    current_block->insts.emplace_back(inst::Load{
+        .out = msg,
+        .global = AddValue(
+            "oob_msg",
+            Value({.v = Value::t(std::string("vec index out of bounds"))}))});
+    oob_block->insts.emplace_back(inst::Fail{.arg = msg});
+
+    // Size, for bounds check.
+    std::string size = NewSymbol("size");
+    current_block->insts.emplace_back(
+        inst::Unop{.primop = Primop::VEC_SIZE, .out = size, .arg = vec});
+
+    // Check lower and upper bounds.
+    std::string zero = NewSymbol("zero");
+    current_block->insts.emplace_back(inst::Load{
+        .out = zero,
+        .global = AddValue("zero", Value({.v = Value::t(BigInt(0))}))});
+    std::string cmp = NewSymbol("bounds");
+    current_block->insts.emplace_back(inst::Binop{
+        .primop = Primop::INT_LESS, .out = cmp, .arg1 = idx, .arg2 = zero});
+    current_block->insts.emplace_back(
+        inst::SymbolicIf{.cond = cmp, .true_lab = oob_label});
+    current_block->insts.emplace_back(
+        inst::Binop{.primop = Primop::INT_GREATEREQ,
+                    .out = cmp,
+                    .arg1 = idx,
+                    .arg2 = size});
+    current_block->insts.emplace_back(
+        inst::SymbolicIf{.cond = cmp, .true_lab = oob_label});
+  }
 
   // Convert the expression by adding instructions at the end
   // of the instruction stream inside the argument block. Can
@@ -897,8 +940,6 @@ struct Converter {
           ls.push_back(ConvertExp(G, "p", e, blocks, current_block));
         }
 
-        std::string out = NewSymbol("po");
-
         // Some primops are translated away natively.
         switch (po) {
         case Primop::STRING_TO_LAYOUT:
@@ -909,6 +950,7 @@ struct Converter {
 
         case Primop::REF: {
           CHECK(ls.size() == 1);
+          std::string out = NewSymbol("ref");
           current_block->insts.emplace_back(inst::Alloc{.out = out});
           current_block->insts.emplace_back(
               inst::SetLabel{.obj = out, .lab = REF_LABEL, .arg = ls[0]});
@@ -916,6 +958,7 @@ struct Converter {
         }
 
         case Primop::REF_GET: {
+          std::string out = NewSymbol("ref_get");
           CHECK(ls.size() == 1);
           current_block->insts.emplace_back(
               inst::GetLabel{.out = out, .obj = ls[0], .lab = REF_LABEL});
@@ -923,6 +966,7 @@ struct Converter {
         }
 
         case Primop::REF_SET: {
+          std::string out = NewSymbol("ref_set");
           CHECK(ls.size() == 2);
           current_block->insts.emplace_back(
               inst::SetLabel{.obj = ls[0], .lab = REF_LABEL, .arg = ls[1]});
@@ -933,29 +977,131 @@ struct Converter {
           return out;
         }
 
+        case Primop::VEC: {
+          CHECK(ls.size() == 2);
+          // 0: size 1: initial value
+          const std::string &size = ls[0];
+          const std::string &val = ls[1];
+
+          std::string out = NewSymbol("vec");
+          current_block->insts.emplace_back(inst::AllocVec{.out = out});
+          // Vectors should be fixed size, right? We could do a "resize"
+          // here.
+
+          // Loop up to the size, initializing the vector with the
+          // same object over and over.
+
+          std::string loop_label = NewSymbol("vec_init");
+          std::string done_label = NewSymbol("vec_init_done");
+
+          // Constants for 0 and 1.
+          std::string zero =
+            AddValue("zero", Value({.v = Value::t(BigInt(0))}));
+          std::string one =
+            AddValue("one", Value({.v = Value::t(BigInt(1))}));
+          // The current index, and the value 1 to increment it.
+          std::string idx = NewSymbol("idx");
+          current_block->insts.emplace_back(
+              inst::Load{.out = idx, .global = zero});
+          std::string inc = NewSymbol("inc");
+          current_block->insts.emplace_back(
+              inst::Load{.out = inc, .global = one});
+
+          // Finish the block by jumping to the beginning of the
+          // loop.
+          current_block->insts.emplace_back(
+              inst::SymbolicJump({.lab = loop_label}));
+
+          Block *loop_block = &(*blocks)[loop_label];
+
+          // while (idx < size) ...
+          std::string cmp = NewSymbol("vec_init_cmp");
+          loop_block->insts.emplace_back(
+              inst::Binop({
+                  .primop = Primop::INT_GREATEREQ,
+                  .out = cmp, .arg1 = idx, .arg2 = size}));
+          loop_block->insts.emplace_back(
+              inst::SymbolicIf({.cond = cmp, .true_lab = done_label}));
+
+          // vec[idx++] = val
+          loop_block->insts.emplace_back(
+              inst::SetVec({.vec = out, .idx = idx, .arg = val}));
+          loop_block->insts.emplace_back(
+              inst::Binop({
+                  .primop = Primop::INT_PLUS,
+                  .out = idx, .arg1 = idx, .arg2 = inc}));
+
+          loop_block->insts.emplace_back(
+              inst::SymbolicJump({.lab = loop_label}));
+
+          // When done, just yield the initialized vector.
+          Block *done_block = &(*blocks)[done_label];
+          current_block = done_block;
+
+          return out;
+        }
+
+        case Primop::VEC_SUB: {
+          CHECK(ls.size() == 2);
+          // 0: vec 1: idx
+          const std::string &vec = ls[0];
+          const std::string &idx = ls[1];
+
+          CheckVecBounds(vec, idx, blocks, current_block);
+
+          // Otherwise, we're good.
+          std::string out = NewSymbol("sub");
+          current_block->insts.emplace_back(
+              inst::GetVec({.out = out, .vec = vec, .idx = idx}));
+          return out;
+        }
+
+        case Primop::VEC_UPDATE: {
+          CHECK(ls.size() == 3);
+          const std::string &vec = ls[0];
+          const std::string &idx = ls[1];
+          const std::string &val = ls[2];
+
+          CheckVecBounds(vec, idx, blocks, current_block);
+
+          // Otherwise, we're good.
+          current_block->insts.emplace_back(
+              inst::SetVec({.vec = vec, .idx = idx, .arg = val}));
+
+          // Need to allocate a unit for the return. PERF!
+          std::string out = NewSymbol("update");
+          current_block->insts.emplace_back(inst::Alloc{.out = out});
+          return out;
+        }
+
         default:
           // Handled as a generic primop, then.
           break;
         }
 
         switch (num_exp_args) {
-        case 1:
+        case 1: {
+          std::string out = NewSymbol("unop");
           current_block->insts.emplace_back(
               inst::Unop{.primop = po, .out = out, .arg = ls[0]});
           return out;
-        case 2:
+        }
+        case 2: {
+          std::string out = NewSymbol("binop");
           current_block->insts.emplace_back(
               inst::Binop{
                 .primop = po, .out = out,
                 .arg1 = ls[0], .arg2 = ls[1]});
           return out;
-        case 3:
+        }
+        case 3: {
+          std::string out = NewSymbol("triop");
           current_block->insts.emplace_back(
               inst::Triop{
                 .primop = po, .out = out,
                 .arg1 = ls[0], .arg2 = ls[1], .arg3 = ls[2]});
           return out;
-
+        }
         default:
           LOG(FATAL) << "Unimplemented primop arity " << num_exp_args;
         }

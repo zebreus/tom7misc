@@ -120,6 +120,9 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
   case TypeType::REF:
     return Occurs(e, t->Ref());
 
+  case TypeType::VEC:
+    return Occurs(e, t->Vec());
+
   case TypeType::STRING:
     return false;
 
@@ -228,6 +231,10 @@ std::vector<EVar> EVar::FreeEVarsInTypes(
 
     case TypeType::REF:
       Rec(t->Ref());
+      return;
+
+    case TypeType::VEC:
+      Rec(t->Vec());
       return;
 
     case TypeType::STRING:
@@ -463,6 +470,10 @@ static void UnifyEx(const std::function<std::string()> &error_context,
 
   case TypeType::REF:
     UnifyEx(error_context, vmap, t1->Ref(), t2->Ref());
+    return;
+
+  case TypeType::VEC:
+    UnifyEx(error_context, vmap, t1->Vec(), t2->Vec());
     return;
 
   case TypeType::STRING:

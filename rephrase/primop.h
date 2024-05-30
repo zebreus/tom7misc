@@ -18,6 +18,11 @@ enum class Primop {
   REF_GET,
   REF_SET,
 
+  VEC,
+  VEC_SUB,
+  VEC_SIZE,
+  VEC_UPDATE,
+
   INT_EQ,
   INT_NEQ,
   INT_LESS,

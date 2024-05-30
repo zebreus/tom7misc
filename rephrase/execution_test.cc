@@ -14,7 +14,7 @@
 
 namespace bc {
 
-static constexpr bool DEBUG_CODEGEN = true;
+static constexpr bool DEBUG_CODEGEN = false;
 
 static constexpr int COMPILER_VERBOSE = DEBUG_CODEGEN ? 2 : 0;
 static constexpr int FRONTEND_VERBOSE = 0;
@@ -680,8 +680,93 @@ static void TestEnums() {
     )", true) == "no");
 }
 
+static void TestVectors() {
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in print (vec-sub (v, 3))
+    end)"), "yes");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in print (vec-sub (v, 0))
+    end)"), "yes");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in print (vec-sub (v, 7))
+    end)"), "yes");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in
+      vec-update (v, 3, "si");
+      print (vec-sub (v, 3))
+    end)"), "si");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in
+      vec-update (v, 4, "no");
+      print (vec-sub (v, 3))
+    end)"), "yes");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in
+      print (vec-sub (v, 3));
+      vec-update (v, 3, "no")
+    end)"), "yes");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in
+      vec-update (v, 0, "no");
+      vec-update (v, 2, "no");
+      vec-update (v, 3, "no");
+      vec-update (v, 4, "no");
+      vec-update (v, 5, "no");
+      vec-update (v, 6, "no");
+      vec-update (v, 7, "no");
+      print (vec-sub (v, 1));
+    end)"), "yes");
+
+  // Expecting failure (bounds checks in sub)...
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in print (vec-sub (v, 0 - 1))
+    end)", true), "vec index out of bounds");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in print (vec-sub (v, 8))
+    end)", true), "vec index out of bounds");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in print (vec-sub (v, 9))
+    end)", true), "vec index out of bounds");
+
+  // Expecting failure (bounds checks in update)...
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in vec-update (v, 0 - 1, "no")
+    end)", true), "vec index out of bounds");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in vec-update (v, 8, "no")
+    end)", true), "vec index out of bounds");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (8, "yes")
+    in vec-update (v, 9, "no")
+    end)", true), "vec index out of bounds");
+
+}
+
 static void NewTests() {
 
+  /*
   CHECK_EQ(RunToString(R"(
   let
     datatype piece = ROOK | KNIGHT | BISHOP
@@ -700,6 +785,7 @@ static void NewTests() {
   end)"), "");
 
   LOG(FATAL) << "Exit early";
+  */
 }
 
 }  // namespace bc
@@ -718,6 +804,7 @@ int main(int argc, char **argv) {
   bc::TestUnicode();
   bc::TestLocal();
   bc::TestEnums();
+  bc::TestVectors();
 
   printf("OK\n");
   return 0;

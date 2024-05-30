@@ -30,6 +30,7 @@ const char *TypeTypeString(TypeType t) {
   case TypeType::RECORD: return "RECORD";
   case TypeType::EVAR: return "EVAR";
   case TypeType::REF: return "REF";
+  case TypeType::VEC: return "VEC";
   case TypeType::STRING: return "STRING";
   case TypeType::INT: return "INT";
   case TypeType::FLOAT: return "FLOAT";
@@ -242,6 +243,9 @@ std::string TypeString(const Type *t) {
 
   case TypeType::REF:
     return StringPrintf("(%s ref)", TypeString(t->Ref()).c_str());
+
+  case TypeType::VEC:
+    return StringPrintf("(%s vec)", TypeString(t->Vec()).c_str());
 
   case TypeType::STRING:
     return "string";
@@ -782,6 +786,9 @@ const Type *AstPool::SubstTypeInternal(const Type *t, const std::string &v,
 
   case TypeType::REF:
     return RefType(SubstTypeInternal(t, v, u->a, is_simple), u);
+
+  case TypeType::VEC:
+    return VecType(SubstTypeInternal(t, v, u->a, is_simple), u);
 
   case TypeType::STRING:
     return u;

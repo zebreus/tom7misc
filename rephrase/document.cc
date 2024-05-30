@@ -763,6 +763,12 @@ std::string Document::LoadImageFile(const std::string &filename) {
   if (img.get() == nullptr)
     return "";
 
+  return AddImage(std::move(img));
+}
+
+std::string Document::AddImage(std::unique_ptr<ImageRGBA> img) {
+  CHECK(img.get() != nullptr) << "Cannot add null image.";
+
   std::string key = StringPrintf("img%d", image_counter);
   image_counter++;
   CHECK(!images.contains(key));

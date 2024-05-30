@@ -2,22 +2,22 @@
 #ifndef _REPHRASE_DOCUMENT_H
 #define _REPHRASE_DOCUMENT_H
 
+#include <cstdint>
+#include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <variant>
-#include <unordered_map>
 #include <vector>
-#include <memory>
-#include <cstdint>
-#include <map>
 
-#include "bignum/big.h"
 #include "bc.h"
+#include "bignum/big.h"
+#include "boxes-and-glue.h"
 #include "hyphenation.h"
 #include "image.h"
-#include "boxes-and-glue.h"
 
 struct DocTree;
 
@@ -206,6 +206,8 @@ struct Document {
   // unique handle to it. If the file can't be loaded, returns
   // the empty string.
   std::string LoadImageFile(const std::string &filename);
+  // Same, but for an image in memory, taking ownership.
+  std::string AddImage(std::unique_ptr<ImageRGBA> img);
 
   // Look up a font by its name (Font::Name; not family name).
   const Font *GetFontByName(const std::string &font_name);
