@@ -20,6 +20,7 @@ const char *PrimopString(Primop po) {
   case Primop::VEC_SUB: return "VEC_SUB";
   case Primop::VEC_SIZE: return "VEC_SIZE";
   case Primop::VEC_UPDATE: return "VEC_UPDATE";
+  case Primop::VEC_EMPTY: return "VEC_EMPTY";
 
   case Primop::INT_EQ: return "INT_EQ";
   case Primop::INT_NEQ: return "INT_NEQ";
@@ -88,6 +89,7 @@ const char *PrimopString(Primop po) {
 
   case Primop::IMAGE_LOAD_FILE: return "IMAGE_LOAD_FILE";
   case Primop::IMAGE_PROPS: return "IMAGE_PROPS";
+  case Primop::AUTO_DRAW: return "AUTO_DRAW";
 
   case Primop::REPHRASE_ONCE: return "REPHRASE_ONCE";
   case Primop::REPHRASINGS: return "REPHRASINGS";
@@ -121,6 +123,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::VEC_SUB: return std::make_tuple(1, 2);
   case Primop::VEC_SIZE: return std::make_tuple(1, 1);
   case Primop::VEC_UPDATE: return std::make_tuple(1, 3);
+  case Primop::VEC_EMPTY: return std::make_tuple(1, 0);
 
   case Primop::INT_EQ: return std::make_tuple(0, 2);
   case Primop::INT_NEQ: return std::make_tuple(0, 2);
@@ -188,6 +191,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
 
   case Primop::IMAGE_LOAD_FILE: return std::make_tuple(0, 1);
   case Primop::IMAGE_PROPS: return std::make_tuple(0, 1);
+  case Primop::AUTO_DRAW: return std::make_tuple(0, 2);
 
   case Primop::REPHRASE_ONCE: return std::make_tuple(0, 1);
   case Primop::REPHRASINGS: return std::make_tuple(0, 2);
@@ -223,6 +227,10 @@ bool IsPrimopTotal(Primop p) {
   case Primop::VEC_SUB: return false;
   case Primop::VEC_SIZE: return true;
   case Primop::VEC_UPDATE: return false;
+  case Primop::VEC_EMPTY:
+    // Perhaps could consider this total. They cannot be
+    // distinguished.
+    return false;
 
   // Since we use BigInt, integer arithmetic cannot overflow.
   case Primop::INT_EQ: return true;
@@ -319,6 +327,7 @@ bool IsPrimopTotal(Primop p) {
     return false;
 
   case Primop::IMAGE_PROPS:
+  case Primop::AUTO_DRAW:
     // Can fail if image handle is bad
     return false;
 
@@ -358,6 +367,8 @@ bool IsPrimopDiscardable(Primop p) {
   case Primop::REF_SET: return false;
 
   case Primop::VEC: return true;
+  case Primop::VEC_EMPTY:
+    return true;
   case Primop::VEC_SUB:
     // Because out-of-bounds reads abort.
     return false;
@@ -387,6 +398,7 @@ PrimopType(il::AstPool *pool, Primop p) {
     };
 
   auto Ref = [pool](const Type *a) { return pool->RefType(a); };
+  auto Vec = [pool](const Type *a) { return pool->VecType(a); };
 
   auto BinOp = [pool, &PairType](
       const Type *a, const Type *b, const Type *ret) {
@@ -402,15 +414,17 @@ PrimopType(il::AstPool *pool, Primop p) {
     return {{"a"}, BinOp(Ref(Alpha()), Alpha(), Unit())};
 
   case Primop::VEC:
-    return {{"a"}, BinOp(Int, Alpha(), Ref(Alpha()))};
+    return {{"a"}, BinOp(Int, Alpha(), Vec(Alpha()))};
   case Primop::VEC_SUB:
-    return {{"a"}, BinOp(Ref(Alpha()), Int, Alpha())};
+    return {{"a"}, BinOp(Vec(Alpha()), Int, Alpha())};
   case Primop::VEC_SIZE:
-    return {{"a"}, pool->Arrow(Ref(Alpha()), Int)};
+    return {{"a"}, pool->Arrow(Vec(Alpha()), Int)};
   case Primop::VEC_UPDATE:
     return {{"a"}, pool->Arrow(
-          pool->Product({Ref(Alpha()), Int, Alpha()}),
+          pool->Product({Vec(Alpha()), Int, Alpha()}),
           Alpha())};
+  case Primop::VEC_EMPTY:
+    return {{"a"}, pool->Arrow(Unit(), Vec(Alpha()))};
 
   // Perhaps these should just be overloaded α * α -> bool,
   // with some hack to resolve them? (But not here. Elaboration
@@ -497,6 +511,7 @@ PrimopType(il::AstPool *pool, Primop p) {
 
   case Primop::IMAGE_LOAD_FILE: return {{}, pool->Arrow(String, String)};
   case Primop::IMAGE_PROPS: return {{}, pool->Arrow(String, Obj)};
+  case Primop::AUTO_DRAW: return {{}, BinOp(String, Obj, Obj)};
 
   case Primop::REPHRASE_ONCE: return {{}, pool->Arrow(Layout, Layout)};
   case Primop::REPHRASINGS: return {{}, BinOp(Int, Layout, Layout)};

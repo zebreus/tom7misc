@@ -41,18 +41,18 @@ struct Region {
 };
 
 struct AnimationImpl : public Animation {
-  AnimationImpl(const std::string &filename,
+  AnimationImpl(const ImageRGBA &image_in,
                 const Animation::Options &opt) :
-    file_in(filename),
+    in(image_in),
     opt(opt) {
 
     CHECK(opt.timesteps_per_frame > 0);
   }
 
-  std::string file_in;
+  // Not owned.
+  const ImageRGBA &in;
   const Animation::Options opt;
 
-  std::unique_ptr<ImageRGBA> in;
   std::unique_ptr<ImageRGBA> poster;
   // Gives the assigned layer (as an integer index) at each
   // pixel.
@@ -72,9 +72,6 @@ struct AnimationImpl : public Animation {
   static constexpr uint32_t TRANSPARENT_EMPTY = 0xFFFFFF00;
 
   void Prep() {
-    in.reset(ImageRGBA::Load(file_in));
-    CHECK(in.get() != nullptr);
-
     // We expect the image to be a small number of colors,
     // but we can handle "anti-aliased" pixels by snapping
     // them to a nearby color.
@@ -96,9 +93,9 @@ struct AnimationImpl : public Animation {
     // For alpha, we have only FF and 00 (with r=g=b=0 as well) here.
     std::unordered_map<uint32_t, int64_t> color_counts;
     int64_t opaque_pixels = 0;
-    for (int y = 0; y < in->Height(); y++) {
-      for (int x = 0; x < in->Width(); x++) {
-        const uint32_t c = MapAlpha(in->GetPixel32(x, y));
+    for (int y = 0; y < in.Height(); y++) {
+      for (int x = 0; x < in.Width(); x++) {
+        const uint32_t c = MapAlpha(in.GetPixel32(x, y));
         color_counts[c]++;
 
         if (c & 0xFF) {
@@ -113,9 +110,9 @@ struct AnimationImpl : public Animation {
     const int64_t min_pixels = MIN_PERCENTAGE * opaque_pixels;
 
     // Create the regions.
-    for (int y = 0; y < in->Height(); y++) {
-      for (int x = 0; x < in->Width(); x++) {
-        const uint32_t c = MapAlpha(in->GetPixel32(x, y));
+    for (int y = 0; y < in.Height(); y++) {
+      for (int x = 0; x < in.Width(); x++) {
+        const uint32_t c = MapAlpha(in.GetPixel32(x, y));
         if (!regions.contains(c)) {
           if (color_counts[c] >= min_pixels) {
             const auto &[r, g, b, a_] = ColorUtil::U32ToFloats(c);
@@ -155,11 +152,11 @@ struct AnimationImpl : public Animation {
 
     // Now posterize the image. We use this to indicate regions of
     // the original image; it is not output directly.
-    poster.reset(new ImageRGBA(in->Width(), in->Height()));
-    for (int y = 0; y < in->Height(); y++) {
-      for (int x = 0; x < in->Width(); x++) {
-        int idx = y * in->Width() + x;
-        const uint32_t original_c = in->GetPixel32(x, y);
+    poster.reset(new ImageRGBA(in.Width(), in.Height()));
+    for (int y = 0; y < in.Height(); y++) {
+      for (int x = 0; x < in.Width(); x++) {
+        int idx = y * in.Width() + x;
+        const uint32_t original_c = in.GetPixel32(x, y);
         const uint32_t c = MapAlpha(original_c);
         if (c & 0xFF) {
           // Opaque
@@ -193,10 +190,10 @@ struct AnimationImpl : public Animation {
   }
 
   int Idx(int x, int y) const {
-    return y * in->Width() + x;
+    return y * in.Width() + x;
   }
   std::pair<int, int> UnIdx(int idx) const {
-    return std::make_pair(idx % in->Width(), idx / in->Width());
+    return std::make_pair(idx % in.Width(), idx / in.Width());
   }
 
   const ImageRGBA &GetPoster() const override {
@@ -227,9 +224,9 @@ struct AnimationImpl : public Animation {
 
     // Assign layers.
     CHECK(layer_colors.size() < 255);
-    layers.reset(new ImageA(in->Width(), in->Height()));
-    for (int y = 0; y < in->Height(); y++) {
-      for (int x = 0; x < in->Width(); x++) {
+    layers.reset(new ImageA(in.Width(), in.Height()));
+    for (int y = 0; y < in.Height(); y++) {
+      for (int x = 0; x < in.Width(); x++) {
         uint32_t c = poster->GetPixel32(x, y);
         if (c == TRANSPARENT_EMPTY) {
           // two past the number of real layers.
@@ -250,7 +247,7 @@ struct AnimationImpl : public Animation {
       SmoothRegion("animation-debug", z, 5);
     }
 
-    ImageRGBA frame(in->Width(), in->Height());
+    ImageRGBA frame(in.Width(), in.Height());
 
     std::vector<ImageRGBA> all_frames;
 
@@ -282,8 +279,8 @@ struct AnimationImpl : public Animation {
                             const F &f) {
     const int xmin = std::max(0, x - radius);
     const int ymin = std::max(0, y - radius);
-    const int xmax = std::min(in->Width(), x + radius);
-    const int ymax = std::min(in->Height(), y + radius);
+    const int xmax = std::min(in.Width(), x + radius);
+    const int ymax = std::min(in.Height(), y + radius);
 
     const int sq_radius = radius * radius;
 
@@ -323,7 +320,7 @@ struct AnimationImpl : public Animation {
     Region &region = regions[color];
 
     // Use rasterized region.
-    Image1 raster(in->Width(), in->Height());
+    Image1 raster(in.Width(), in.Height());
     raster.Clear();
     for (int idx : region.pixels) {
       const auto &[x, y] = UnIdx(idx);
@@ -379,11 +376,11 @@ struct AnimationImpl : public Animation {
           return new_raster[Idx(x, y)].load();
         };
 
-      for (int cy = 0; cy < in->Height(); cy++) {
+      for (int cy = 0; cy < in.Height(); cy++) {
         // In parallel. This only writes to new_raster, which
         // supports parallel access (to different pixels).
         ParallelComp(
-            in->Width(),
+            in.Width(),
             [&](int cx) {
               int count = 0;
               int count_all = 0;
@@ -413,7 +410,7 @@ struct AnimationImpl : public Animation {
 
         if (status_per.ShouldRun()) {
           std::string prog =
-            ANSI::ProgressBar(cy, in->Height(),
+            ANSI::ProgressBar(cy, in.Height(),
                               StringPrintf("Pass %d/%d",
                                            i, max_passes),
                               timer.Seconds());
@@ -516,8 +513,8 @@ struct AnimationImpl : public Animation {
       /*
       const int min_y = std::max((int)bbox.MinY(), 0);
       const int min_x = std::max((int)bbox.MinX(), 0);
-      const int max_y = std::min((int)bbox.MaxY(), in->Height() - 1);
-      const int max_x = std::max((int)bbox.MinX(), in->Width() - 1);
+      const int max_y = std::min((int)bbox.MaxY(), in.Height() - 1);
+      const int max_x = std::max((int)bbox.MinX(), in.Width() - 1);
       */
 
       for (const int idx : region.pixels) {
@@ -670,9 +667,9 @@ struct AnimationImpl : public Animation {
 
                 };
 
-              ImageRGBA frame(in->Width(), in->Height());
-              for (int y = 0; y < in->Height(); y++) {
-                for (int x = 0; x < in->Width(); x++) {
+              ImageRGBA frame(in.Width(), in.Height());
+              for (int y = 0; y < in.Height(); y++) {
+                for (int x = 0; x < in.Width(); x++) {
                   for (int i = 0; i < (int)fr->size(); i++) {
                     colors[i] = (*fr)[i].GetPixel32(x, y);
                   }
@@ -791,7 +788,7 @@ struct AnimationImpl : public Animation {
           } else {
             // If this is a final pixel (nothing will overwrite it)
             // then use its final actual color.
-            uint32_t c = in->GetPixel32(x, y);
+            uint32_t c = in.GetPixel32(x, y);
             frame->SetPixel32(x, y, c);
             ink_count[c]++;
           }
@@ -880,7 +877,7 @@ struct AnimationImpl : public Animation {
 Animation::Animation() {}
 Animation::~Animation() {}
 
-Animation *Animation::Create(const std::string &filename,
+Animation *Animation::Create(const ImageRGBA &image_in,
                              const Animation::Options &opt) {
-  return new AnimationImpl(filename, opt);
+  return new AnimationImpl(image_in, opt);
 }

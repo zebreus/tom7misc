@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "achievements.h"
+#include "animation.h"
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -279,7 +280,6 @@ std::tuple<int64_t, int64_t> Execution::GetPageAndFrame(const char *what,
 
 Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
                           State *state) {
-  // TODO: Add this to internal errors below.
   auto Err = [state]() { return StateDump(*state); };
 
   auto TwoInts = [a, b, &Err](const char *what) ->
@@ -713,12 +713,14 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   case Primop::LAYOUT_VEC_SUB: {
     // PERF: Could compile this away to GetVec.
     const BigInt *bb = std::get_if<BigInt>(&b->v);
-    CHECK(bb != nullptr) << "Expected int argument (rhs) to layout-vec-sub";
+    CHECK(bb != nullptr) << Err()
+                         << "Expected int argument (rhs) to layout-vec-sub";
     const auto &[attrs, children] = GetNode("layout-vec-sub", a);
     std::optional<int64_t> io = bb->ToInt();
-    CHECK(io.has_value()) << "Index is way too big! " << bb->ToString();
+    CHECK(io.has_value()) << Err()
+                          << "Index is way too big! " << bb->ToString();
     const int64_t idx = io.value();
-    CHECK(idx >= 0 && idx < (int64_t)children.size()) <<
+    CHECK(idx >= 0 && idx < (int64_t)children.size()) << Err() <<
       "Index out of bounds in layout-vec-sub.\nIndex: " <<
       idx << "\nVector size: " << children.size();
     return children[idx];
@@ -726,17 +728,62 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   case Primop::SET_ATTRS: {
     const map_type *aa = std::get_if<map_type>(&a->v);
-    CHECK(aa != nullptr) << "Expected obj first argument to set-attrs.";
+    CHECK(aa != nullptr) << Err()
+                         << "Expected obj first argument to set-attrs.";
     const auto &[attrs, children] = GetNodeParts("set-attrs", b);
     return Node(a, children, state);
   }
 
+  case Primop::AUTO_DRAW: {
+    const std::string *imghandle = std::get_if<std::string>(&a->v);
+    CHECK(imghandle != nullptr) << Err() <<
+      "Expected string first argument to internal-auto-draw.";
+    const map_type *bb = std::get_if<map_type>(&b->v);
+    CHECK(bb != nullptr) << Err() <<
+      "Expected obj second argument to internal-auto-draw.";
+
+    LOG(FATAL) << Err() << "Unimplemented.";
+
+    // Repeating defaults here for increased stability of BoVeX
+    // documents in case I change the library's defaults.
+    Animation::Options options{
+      .smooth_passes = 5,
+      .max_pen_radius = 14.0f,
+      .min_pen_radius = 2.0f,
+      .max_pen_velocity = 24.0f,
+      .pen_acceleration = 0.5f,
+      .timesteps_per_frame = 8,
+      .blend_frames = 20,
+      .verbosity = 0,
+    };
+
+    Document *doc = DocumentHook();
+    const ImageRGBA *image = doc->GetImageByName(*imghandle);
+    std::unique_ptr<Animation> anim(Animation::Create(*image, options));
+    std::vector<ImageRGBA> frames = anim->Animate();
+
+    // Construct the vector of image handles to return.
+    vec_type ret;
+    ret.reserve(frames.size());
+    for (ImageRGBA &frame : frames) {
+      ret.push_back(
+          NewValue(
+              &state->heap,
+              doc->AddImage(
+                  std::make_unique<ImageRGBA>(std::move(frame)))));
+    }
+    return NewValue(&state->heap, std::move(ret));
+  }
+
   case Primop::REF_SET:
-    LOG(FATAL) << "SET should have been compiled away.";
+    LOG(FATAL) << Err()
+               << "SET should have been compiled away.";
   case Primop::INVALID:
-    LOG(FATAL) << "Tried executing INVALID primop as binop.";
+    LOG(FATAL) << Err()
+               << "Tried executing INVALID primop as binop.";
   default:
-    LOG(FATAL) << "Invalid (or non-binop) primop " << PrimopString(primop);
+    LOG(FATAL) << Err()
+               << "Invalid (or non-binop) primop " << PrimopString(primop);
   }
   return NonceValue();
 }

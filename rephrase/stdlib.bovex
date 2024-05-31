@@ -381,6 +381,63 @@ fun string-tokens pred str : string list =
     r ("", str)
   end
 
+fun vec-app f v =
+  let
+    val sz = vec-size v
+    fun r i =
+      if i == sz then ()
+      else
+      let in
+        vec-update (v, i, f (vec-sub (v, i)));
+        r (i + 1)
+      end
+  in
+    r 0
+  end
+
+fun vec-map f v =
+  case vec-size v of
+    0 => vec-empty ()
+  | sz =>
+      let
+        (* This is a little tricky, because we need to
+           provide an initial value when allocating the
+           vector, and we want to run exactly (f 0),
+           (f 1), ... since they may have observable
+           effects. *)
+        val init = f (vec-sub (v, 0))
+        val vv = vec (sz, init)
+        fun r i =
+          if i == sz then ()
+          else
+          let in
+            vec-update (vv, i, f (vec-sub (v, i)));
+            r (i + 1)
+          end
+      in
+        (* Start the loop at one, since f(0) already
+           occupies each cell. *)
+        r 1;
+        vv
+      end
+
+(* Same approach as vec-map. *)
+fun vec-tabulate (0, _) = vec-empty()
+  | vec-tabulate (sz, f) =
+  let
+    val init = f 0
+    val v = vec (sz, init)
+    fun r i =
+      if i == sz then ()
+      else
+        let in
+          vec-update (v, i, f i);
+          r (i + 1)
+        end
+  in
+    r 1;
+    v
+  end
 
 fun string-ends-with small big =
   let

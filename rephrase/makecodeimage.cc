@@ -39,6 +39,7 @@ int main(int argc, char **argv) {
         (ent == "makefile") ||
         (ent == "stdlib.bovex") ||
         (ent == "layout.bovex") ||
+        (ent == "animation.bovex") ||
         (ent == "cite.bovex")) {
 
       if (INCLUDE_TESTS || !Util::MatchesWildcard("*_test.cc", ent)) {

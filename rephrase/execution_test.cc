@@ -762,6 +762,36 @@ static void TestVectors() {
     in vec-update (v, 9, "no")
     end)", true), "vec index out of bounds");
 
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec-empty ()
+    in print (vec-sub (v, 0))
+    end)", true), "vec index out of bounds");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec-empty ()
+    in vec-update (v, 0, "no")
+    end)", true), "vec index out of bounds");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (7, 123)
+    in print (int-to-string (vec-size v))
+    end)"), "7");
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec (7, 123)
+    in
+       vec-update (v, 0, 3);
+       vec-update (v, 6, 2);
+       print (int-to-string (vec-size v))
+    end)"), "7");
+
+
+  CHECK_EQ(RunToString(R"(
+    let val v = vec-empty()
+    in print (int-to-string (vec-size v))
+    end)"), "0");
+
 }
 
 static void NewTests() {

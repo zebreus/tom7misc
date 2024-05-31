@@ -22,6 +22,7 @@ enum class Primop {
   VEC_SUB,
   VEC_SIZE,
   VEC_UPDATE,
+  VEC_EMPTY,
 
   INT_EQ,
   INT_NEQ,
@@ -106,6 +107,7 @@ enum class Primop {
   // Operations on non-text layout
   GET_ATTRS,
   SET_ATTRS,
+  // TODO: Consider making these regular vectors?
   LAYOUT_VEC_SIZE,
   LAYOUT_VEC_SUB,
 
@@ -114,6 +116,7 @@ enum class Primop {
 
   IMAGE_LOAD_FILE,
   IMAGE_PROPS,
+  AUTO_DRAW,
 
   // expensive stuff implemented by harness
   REPHRASE_ONCE,

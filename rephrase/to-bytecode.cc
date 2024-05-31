@@ -1074,6 +1074,14 @@ struct Converter {
           return out;
         }
 
+        case Primop::VEC_EMPTY: {
+          CHECK(ls.size() == 0);
+
+          std::string out = NewSymbol("vec");
+          current_block->insts.emplace_back(inst::AllocVec{.out = out});
+          return out;
+        }
+
         default:
           // Handled as a generic primop, then.
           break;

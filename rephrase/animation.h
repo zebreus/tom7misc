@@ -37,10 +37,11 @@ struct Animation {
 
     // 0 = no output
     int verbosity = 1;
-
   };
 
-  static Animation *Create(const std::string &filename,
+  // This keeps a reference to the image, which must outlive
+  // the Animation object (and not be modified).
+  static Animation *Create(const ImageRGBA &image_in,
                            const Options &options);
   virtual ~Animation();
 

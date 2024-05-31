@@ -1,5 +1,7 @@
 
 // Experimental tool to animate "drawing" an input image.
+// Used in BoVeX for the auto-draw primop.
+
 #include "animation.h"
 
 #include <cstdio>
@@ -27,7 +29,9 @@ int main(int argc, char **argv) {
   // for 4k
   options.min_pen_radius = 4.0f;
 
-  std::unique_ptr<Animation> animation(Animation::Create(file_in, options));
+  std::unique_ptr<ImageRGBA> in(ImageRGBA::Load(file_in));
+  CHECK(in.get() != nullptr) << file_in;
+  std::unique_ptr<Animation> animation(Animation::Create(*in, options));
 
   std::vector<ImageRGBA> frames = animation->Animate();
 

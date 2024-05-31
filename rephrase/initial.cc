@@ -74,6 +74,7 @@ Initial::Initial(AstPool *pool) {
     {"vec-sub", Primop::VEC_SUB},
     {"vec-size", Primop::VEC_SIZE},
     {"vec-update", Primop::VEC_UPDATE},
+    {"vec-empty", Primop::VEC_EMPTY},
 
     {"int-to-string", Primop::INT_TO_STRING},
     {"round", Primop::FLOAT_ROUND},

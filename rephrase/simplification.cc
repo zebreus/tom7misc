@@ -687,7 +687,6 @@ struct PeepholePass : public il::Pass<> {
         break;
 
 
-
       case Primop::REF_GET:
       case Primop::REF_SET:
         // In principle, if the argument is a call to ref,
@@ -701,6 +700,7 @@ struct PeepholePass : public il::Pass<> {
         break;
 
       case Primop::VEC:
+      case Primop::VEC_EMPTY:
       case Primop::VEC_UPDATE:
       case Primop::OUT_STRING:
       case Primop::OUT_LAYOUT:
@@ -716,6 +716,7 @@ struct PeepholePass : public il::Pass<> {
       case Primop::REPHRASINGS:
       case Primop::GET_BOXES:
       case Primop::PACK_BOXES:
+      case Primop::AUTO_DRAW:
       case Primop::ACHIEVEMENT:
       case Primop::DEBUG_PRINT_DOC:
       case Primop::OPT:
