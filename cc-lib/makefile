@@ -119,6 +119,9 @@ image_test.exe : image_test.o arcfour.o image.o stb_image.o stb_image_write.o $(
 util_test.exe : util_test.o util.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+base64_test.exe : base64.o base64_test.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 randutil_test.exe : randutil.h randutil_test.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) randutil_test.o arcfour.o $(BASE) -o $@
 

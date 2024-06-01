@@ -1,8 +1,10 @@
 
 #include "base64.h"
+
 #include <cstdio>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 using namespace std;
 
@@ -23,7 +25,7 @@ static string EncodePtr(const uint8 *in, unsigned int length) {
   for (i = 0; i < 9; i++) {
     dtable[i] = 'A' + i;
     dtable[i + 9] = 'J' + i;
-    
+
     dtable[26 + i] = 'a' + i;
     dtable[26 + i + 9] = 'j' + i;
   }
@@ -51,7 +53,7 @@ static string EncodePtr(const uint8 *in, unsigned int length) {
 
     igroup[0] = igroup[1] = igroup[2] = 0;
     for (n = 0; n < 3; n++) {
-      
+
       if (idx >= length) { hiteof = 1; break; }
       else igroup[n] = (uint8) in[idx++];
 
@@ -80,7 +82,7 @@ static string EncodePtr(const uint8 *in, unsigned int length) {
   return ou;
 }
 
-string Base64::Encode(const string &in) {
+string Base64::Encode(string_view in) {
   return EncodePtr((const uint8 *)in.data(), in.size());
 }
 
@@ -89,7 +91,7 @@ string Base64::EncodeV(const std::vector<uint8> &in) {
 }
 
 template<class C>
-static C DecodeC(const string &in) {
+static C DecodeC(string_view in) {
   uint8 dtable[256];
 
   /* strange magic for EBCDIC. I'm not touching it! */
@@ -149,11 +151,11 @@ static C DecodeC(const string &in) {
   }
 }
 
-string Base64::Decode(const string &in) {
+string Base64::Decode(string_view in) {
   return DecodeC<string>(in);
 }
 
-std::vector<uint8> Base64::DecodeV(const string &in) {
+std::vector<uint8> Base64::DecodeV(string_view in) {
   return DecodeC<std::vector<uint8>>(in);
 }
 

@@ -4,7 +4,6 @@
 #ifndef _CC_LIB_IMAGE_H
 #define _CC_LIB_IMAGE_H
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
