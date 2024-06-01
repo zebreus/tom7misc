@@ -28,6 +28,10 @@ using ProgressRecorder = Progress<VERBOSE != 0>;
 
 // TODO:
 // Standard data-flow stuff
+// Jump threading: A jump to a non-conditional jump, or more generally
+//   to a conditional one whose condition is implied by the source jump,
+//   can be flattened. Inlining already does some of this, but only
+//   when the first jump is non-conditional.
 
 namespace bc {
 

@@ -20,6 +20,7 @@ Initial::Initial(AstPool *pool) {
   const il::Type *Obj = pool->ObjType();
   const il::Type *Layout = pool->LayoutType();
   auto Ref = [&](const Type *a) { return pool->RefType(a); };
+  auto Vec = [&](const Type *a) { return pool->VecType(a); };
 
   auto LookupPrimop = [&pool](Primop p) {
       const auto &[tv, t] = PrimopType(pool, p);
@@ -130,6 +131,8 @@ Initial::Initial(AstPool *pool) {
 
     {"image-load-file", Primop::IMAGE_LOAD_FILE},
     {"image-props", Primop::IMAGE_PROPS},
+    {"image-integer-scale", Primop::IMAGE_INTEGER_SCALE},
+    {"internal-auto-draw", Primop::AUTO_DRAW},
 
     {"achievement", Primop::ACHIEVEMENT},
     {"internal-opt", Primop::OPT},
@@ -195,6 +198,7 @@ Initial::Initial(AstPool *pool) {
     {"layout", Kind0(Layout)},
     {"unit", Kind0(pool->RecordType({}))},
     {"ref", TypeVarInfo{.tyvars = {"a"}, .type = Ref(Alpha)}},
+    {"vec", TypeVarInfo{.tyvars = {"a"}, .type = Vec(Alpha)}},
   };
 
   // No initial object names.

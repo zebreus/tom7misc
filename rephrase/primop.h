@@ -116,6 +116,7 @@ enum class Primop {
 
   IMAGE_LOAD_FILE,
   IMAGE_PROPS,
+  IMAGE_INTEGER_SCALE,
   AUTO_DRAW,
 
   // expensive stuff implemented by harness

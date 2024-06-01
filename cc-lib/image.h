@@ -65,7 +65,7 @@ struct ImageRGBA {
 
   // Scale by a positive integer factor, crisp pixels.
   ImageRGBA ScaleBy(int scale) const;
-  ImageRGBA ScaleBy(int xscale, int scale) const;
+  ImageRGBA ScaleBy(int xscale, int yscale) const;
   // Scale down by averaging boxes of size scale x scale to produce
   // a pixel value. If the width and height are not divisible by
   // the scale, pixels are dropped.

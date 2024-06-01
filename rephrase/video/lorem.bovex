@@ -1,0 +1,196 @@
+(*   -*- electric-indent-local-mode: nil -*- *)
+let
+  import "stdlib.bovex"
+  import "layout.bovex"
+  import "cite.bovex"
+  import "paper.bib"
+  import "animation.bovex"
+  import "chess.bovex"
+
+  import "shared.bovex"
+
+
+  do set-doc-info { (TalkInfo)
+                    width = pixel SLIDE-WIDTH,
+                    height = pixel SLIDE-HEIGHT }
+
+
+  (* do REPHRASE-ALL := SOME 50 *)
+  do REPHRASE-ALL := NONE
+  do NO-REPHRASE := true
+
+
+  fun zigzag zig lay =
+    case layoutcase (get-box lay) of
+      Node (BOX, attrs as {(Box) width, height}, ch) =>
+        let
+          val y-offset = height *. -0.15
+          val d =
+            box attrs
+            (layout-concat
+             (ch @
+              (if zig then
+                  (image-sticker
+                   { img = image-load-cache "../red-underline.png",
+                     x = 0.0, y = y-offset, width = width } :: nil)
+               else nil)
+              ))
+        in
+          d
+        end
+    | _ =>
+        let in
+          debug-print-doc lay;
+          fail "Expected box with width/height from get-box"
+        end
+
+  fun placeholder-slide s =
+    combo-slide slide
+    (TextBox { x = inch 2.0,
+               y = 2160.0 *. 0.5,
+               width = 3840.0 -. inch 4.0,
+               text = (size 128.0 (color 0xFFCCCCFF s)) } ::
+    nil)
+
+  val DEJAVU : font-family =
+    font-load-family { name = "dejavu",
+                       regular = SOME "DejaVuSans.ttf",
+                       (* These do exist, but I do not need them. *)
+                       bold = NONE,
+                       italic = NONE,
+                       bold-italic = NONE }
+
+  fun dejavu layout = apply-font DEJAVU layout
+
+  fun chessboard { size = board-size, fen } =
+    let
+      val squares =
+        case board-from-fen fen of
+          ILLEGAL msg => fail ("Can't parse fen [" ^ fen ^ "]: " ^ msg)
+        | OK Board { squares, castling = _, en-passant = _, turn = _ } =>
+            squares
+
+      val square-size = board-size /. 8.0
+
+      fun square (xx, yy) =
+        let
+          val c =
+            case (xx + yy) mod 2 of
+              0 => 0xffffddff
+            | _ => 0x86a666ff
+        in
+          fill-rectangle { x = square-size *. int-to-float xx,
+                           y = square-size *. int-to-float yy,
+                           width = square-size,
+                           height = square-size,
+                           fill-color = c }
+        end
+
+      fun draw-pieces () =
+        map-foldl nil (fn (pos, (c, p), b : layout list) =>
+                       let
+                         val (x, y) = unpos pos
+                         (* XXX center? *)
+                         val xo = square-size *. 0.10
+                         (* text is measured from baseline, so go almost
+                            a whole square down *)
+                         val yo = square-size *. 0.85
+
+                         fun gen cc u =
+                           text-sticker
+                           { x = xo +. square-size *. int-to-float x,
+                             y = yo +. square-size *. int-to-float y }
+                           (dejavu (color cc (size square-size u)))
+
+                         val ub = layout (piece-unicode (BLACK, p))
+                         val uf = layout (piece-unicode (WHITE, p))
+
+                         val (ccb, ccf) =
+                           case c of
+                             WHITE => (0xFFFFFFFF, 0x333333FF)
+                           | BLACK => (0x333333FF, 0x000000FF)
+                       in
+                         gen ccb ub :: gen ccf uf :: b
+                       end) squares
+    in
+      (* First, draw board as squares. *)
+      layout-concat (list-tabulate-2d (8, 8, square)) ^^
+      layout-concat (draw-pieces ())
+    end
+
+in
+
+  (* TODO: Better bullet graphic. Can embed fonts, remember *)
+
+  (* TODO It has come to my attention... *)
+
+  set-output-section "opening";
+
+  (* People will look at this and think, "Looks fine to me!" *)
+  just-image-2x "../typography0.png";
+
+  (* Lorem Epsom *)
+
+  let
+    val GRAPH-XPOS = pixel 1850.0
+    val GRAPH-WIDTH = pixel 1800.0
+    val YPOS = inch 8.0
+
+    fun lorem-slide zig =
+    combo-slide slide
+    (Title [Corporate Preso] ::
+     TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = YPOS,
+               width = inch 18.0,
+               text = [[zigzag zig (default-text [Lorem Epsom])]
+                       dolor sit amet,
+                       [color 0xFFFFFFEE
+                        [consectetur adipiscing elit,]]
+                       [color 0xFFFFFFCC
+                        [sed do eiusmod tempor
+                         incididunt ut labore]]
+                       [color 0xFFFFFFAA
+                        [et dolore magna aliqua. Ut]]
+                       [color 0xFFFFFF88
+                        [enim ad minim veniam, quis nostrud]]
+                       [color 0xFFFFFF55
+                        [exercitation ullamco laboris nisi ut]]
+                       [color 0xFFFFFF33
+                        [aliquip ex ea commodo consequat. Duis]]
+                       [*
+                       aute irure dolor in reprehenderit in
+                       voluptate velit esse cillum dolore eu
+                       fugiat nulla pariatur. Excepteur sint
+                       occaecat cupidatat non proident, sunt
+                       in culpa qui officia deserunt mollit
+                       anim id est laborum *]] } ::
+     Image { img = image-load "../graph.png",
+             x = GRAPH-XPOS,
+             y = YPOS,
+             scale = WIDTH (pixel 1800.0) } ::
+     nil)
+  in
+    lorem-slide false;
+    lorem-slide true;
+  end;
+
+  set-output-section "lorem";
+
+  combo-slide (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
+  (Image { img = image-load "../lorem-portrait.png",
+           x = pixel 2200.0,
+           y = pixel 200.0,
+           scale = SCALE 2.0 } ::
+   Title [The Villain: Lorem Epsom] ::
+   Bullets ([Probably never even read the Wikipedia article
+             on [it[Lorem Ipsum]]] ::
+            [If you tell him there's a mistake in the
+             math he takes this as a personal attack] ::
+            [Loves the phrases “[em[metaverse]]” and
+             “[em[blockchain]]” and
+             “[em[generative AI]]” but doesn't know why] ::
+            [Is successful and rich] ::
+            nil) ::
+   nil);
+
+end

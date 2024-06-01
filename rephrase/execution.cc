@@ -167,6 +167,10 @@ static std::string StateDump(const Execution::State &state) {
  return ret;
 }
 
+// BoVeX uses BigInt for integers, but many internal functions
+// just use machine words (e.g. image dimensions). This
+// gets a machine-word-sized integer from the BigInt, or fails
+// using 'what' to describe the caller.
 static int64_t GetInt64(const char *what, const BigInt &x) {
   const std::optional<int64_t> xo = x.ToInt();
   CHECK(xo.has_value()) << "In " << what << ", integer needs to fit "
@@ -259,18 +263,14 @@ std::tuple<int64_t, int64_t> Execution::GetPageAndFrame(const char *what,
                                                         const map_type *am) {
   const BigInt *ai = GetObjIntField(what, "page", *am);
   CHECK(ai != nullptr) << "out-layout requires a page (int field)";
-  std::optional<int64_t> io = ai->ToInt();
-  CHECK(io.has_value()) << "Page index is way too big! " << ai->ToString();
-  const int64_t page_idx = io.value();
+  const int64_t page_idx = GetInt64("out-layout page index", *ai);
   CHECK(page_idx >= 0 && page_idx < 1'000'000'000LL) << "Page index "
     "is nonsensical!";
 
   int64_t frame_idx = 0;
   const BigInt *fi = GetObjIntField(what, "frame", *am);
   if (fi != nullptr) {
-    std::optional<int64_t> io = fi->ToInt();
-    CHECK(io.has_value()) << "Frame index is way too big! " << fi->ToString();
-    frame_idx = io.value();
+    const int64_t frame_idx = GetInt64("out-layout frame index", *fi);
     CHECK(frame_idx >= 0 && page_idx < 1'000'000'000LL) << "Frame index "
       "is nonsensical!";
   }
@@ -550,10 +550,10 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     const BigInt *abi = std::get_if<BigInt>(&a->v);
     CHECK(abi != nullptr) << Err() <<
       "Expected int argument (lhs) to rephrasings";
-    auto aio = abi->ToInt();
-    CHECK(aio.has_value() && aio.value() < 1000000) << Err() <<
-      "Integer is way too big!";
-    const int times = (int)aio.value();
+
+    const int64_t times = GetInt64("rephrasings", *abi);
+    CHECK(times >= 0 && times < 1000000) << Err() <<
+      "rephrasings: Integer is out of reasonable range!";
 
     DocTree doc = ValueToDocTree(b);
 
@@ -716,10 +716,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     CHECK(bb != nullptr) << Err()
                          << "Expected int argument (rhs) to layout-vec-sub";
     const auto &[attrs, children] = GetNode("layout-vec-sub", a);
-    std::optional<int64_t> io = bb->ToInt();
-    CHECK(io.has_value()) << Err()
-                          << "Index is way too big! " << bb->ToString();
-    const int64_t idx = io.value();
+    const int64_t idx = GetInt64("layout-vec-sub", *bb);
     CHECK(idx >= 0 && idx < (int64_t)children.size()) << Err() <<
       "Index out of bounds in layout-vec-sub.\nIndex: " <<
       idx << "\nVector size: " << children.size();
@@ -738,11 +735,9 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     const std::string *imghandle = std::get_if<std::string>(&a->v);
     CHECK(imghandle != nullptr) << Err() <<
       "Expected string first argument to internal-auto-draw.";
-    const map_type *bb = std::get_if<map_type>(&b->v);
-    CHECK(bb != nullptr) << Err() <<
+    const map_type *arg = std::get_if<map_type>(&b->v);
+    CHECK(arg != nullptr) << Err() <<
       "Expected obj second argument to internal-auto-draw.";
-
-    LOG(FATAL) << Err() << "Unimplemented.";
 
     // Repeating defaults here for increased stability of BoVeX
     // documents in case I change the library's defaults.
@@ -756,6 +751,27 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       .blend_frames = 20,
       .verbosity = 0,
     };
+
+#   define SET_INT_FIELD(cpp, bovex) do {                               \
+      if (const BigInt *i = GetObjIntField("auto-draw", bovex, *arg)) { \
+        options. cpp = GetInt64("auto-draw " bovex "", *i);             \
+      }                                                                 \
+    } while (0)
+
+#   define SET_FLOAT_FIELD(cpp, bovex) do {                             \
+      if (const double *d = GetObjDoubleField("auto-draw", bovex, *arg)) { \
+        options. cpp = *d;                                              \
+      }                                                                 \
+    } while (0)
+
+    SET_INT_FIELD(smooth_passes, "smooth-passes");
+    SET_FLOAT_FIELD(max_pen_radius, "max-pen-radius");
+    SET_FLOAT_FIELD(min_pen_radius, "min-pen-radius");
+    SET_FLOAT_FIELD(max_pen_velocity, "max-pen-velocity");
+    SET_FLOAT_FIELD(pen_acceleration, "pen-acceleration");
+    SET_INT_FIELD(timesteps_per_frame, "timesteps-per-frame");
+    SET_INT_FIELD(blend_frames, "blend-frames");
+    SET_INT_FIELD(verbosity, "verbosity");
 
     Document *doc = DocumentHook();
     const ImageRGBA *image = doc->GetImageByName(*imghandle);
@@ -773,6 +789,28 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
                   std::make_unique<ImageRGBA>(std::move(frame)))));
     }
     return NewValue(&state->heap, std::move(ret));
+  }
+
+  case Primop::IMAGE_INTEGER_SCALE: {
+    const std::string *imghandle = std::get_if<std::string>(&a->v);
+    CHECK(imghandle != nullptr) << Err() <<
+      "Expected string first argument to image-integer-scale.";
+    const BigInt *bb = std::get_if<BigInt>(&b->v);
+    CHECK(bb != nullptr) << Err() <<
+      "Expected int second argument to image-integer-scale.";
+    int64_t scale = GetInt64("image-integer-scale", *bb);
+    CHECK(scale > 0) << "image-integer-scale scale must be positive.";
+
+    Document *doc = DocumentHook();
+    const ImageRGBA *image = doc->GetImageByName(*imghandle);
+    if (image == nullptr) {
+      InternalFail("unknown image handle " + *imghandle, state);
+      return NonceValue();
+    }
+
+    auto scaled = std::make_unique<ImageRGBA>(image->ScaleBy(scale));
+
+    return NewValue(&state->heap, doc->AddImage(std::move(scaled)));
   }
 
   case Primop::REF_SET:
@@ -1411,9 +1449,7 @@ void Execution::Step(State *state) {
     std::vector<Value *> *vec = LoadVec(setvec->vec);
     const BigInt &bidx = LoadInt(setvec->idx);
 
-    std::optional<int64_t> io = bidx.ToInt();
-    CHECK(io.has_value()) << "Index is way too big! " << bidx.ToString();
-    const int64_t idx = io.value();
+    const int64_t idx = GetInt64("setvec", bidx);
     CHECK(idx >= 0) << "SetVec Index cannot be less than zero: " << idx;
     while ((int64_t)vec->size() <= idx) vec->push_back(nullptr);
     (*vec)[idx] = Load(setvec->arg);
@@ -1423,9 +1459,7 @@ void Execution::Step(State *state) {
     std::vector<Value *> *vec = LoadVec(getvec->vec);
     const BigInt &bidx = LoadInt(getvec->idx);
 
-    std::optional<int64_t> io = bidx.ToInt();
-    CHECK(io.has_value()) << "Index is way too big! " << bidx.ToString();
-    const int64_t idx = io.value();
+    const int64_t idx = GetInt64("getvec", bidx);
     CHECK(idx >= 0) << "GetVec Index cannot be less than zero: " << idx;
     while ((int64_t)vec->size() <= idx) vec->push_back(nullptr);
     frame.locals[getvec->out] = (*vec)[idx];

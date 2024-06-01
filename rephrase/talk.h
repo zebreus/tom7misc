@@ -8,6 +8,10 @@
 
 struct Talk {
 
+  // Screen width; fixed for the presentation.
+  int screen_width = 1920;
+  int screen_height = 1080;
+
   struct Video {
     int x = 0, y = 0;
     int width = 0, height = 0;

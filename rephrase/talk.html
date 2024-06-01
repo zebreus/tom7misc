@@ -4,6 +4,7 @@
      use "maketalk" (which copies this into the destination
      directory). -->
 
+<!-- Expecting SCREEN_WIDTH, SCREEN_HEIGHT, and slides to be defined. -->
 <script src="slides.js"></script>
 <script>
 
@@ -253,6 +254,18 @@
  }
 
  function Start() {
+   // Resize using constants from JS.
+   let screen = document.getElementById('proj');
+   screen.style.width = SCREEN_WIDTH + 'px';
+   screen.style.height = SCREEN_HEIGHT + 'px';
+
+   let clickers = document.getElementById('clickers');
+   clickers.style.width = SCREEN_WIDTH + 'px';
+
+   let timer = document.getElementById('timer');
+   timer.style.left = (SCREEN_WIDTH - 80) + 'px';
+   timer.style.top = (SCREEN_HEIGHT - 40) + 'px';
+
    // Function to get the slide number from the URL fragment
    const hash = window.location.hash.slice(1);
 
@@ -263,12 +276,16 @@
    GoTo(parseInt(hash, 10) || 0);
    // RequestFrame();
  }
-
 </script>
+
 <style>
+ html {
+   overflow: hidden
+ }
+ body {
+   overflow: hidden
+ }
  .screen {
-   width: 1920px;
-   height: 1080px;
    zz-image-rendering: auto;
    zz-image-rendering: crisp-edges;
    zz-image-rendering: pixelated;
@@ -286,7 +303,6 @@
    -webkit-user-select: none
  }
  .clickers {
-   width: 1920px;
    display: flex;
    justify-content: space-between;
  }
@@ -300,12 +316,10 @@
  }
 
  #timer {
-     position: fixed;
-     z-index: 99999;
-     color: rgba(255, 0, 0, 0.5);
-     left: 1840px;
-     top: 1040px;
-     font: 32px "FixederSys 2x";
+   position: fixed;
+   z-index: 99999;
+   color: rgba(255, 0, 0, 0.5);
+   font: 32px "FixederSys 2x";
  }
 </style>
 
@@ -314,7 +328,7 @@
   <img id="proj" class="screen">
   <video id="vid" muted="true" style="left:9999px"></video>
   <br/>
-  <div class="clickers" id="clickers">
+  <div id="clickers">
     <div class="click" onclick="Left()">&nbsp;&lt;</div>
     <div class="click" onclick="Right()">&nbsp;&gt;</div>
   </div>

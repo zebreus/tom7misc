@@ -18,6 +18,7 @@ static constexpr int GAP = 2;
 static constexpr int MARGIN_TOP = 300;
 static constexpr int MARGIN_BOTTOM = 300;
 static constexpr int MARGIN_LEFT = 800;
+[[maybe_unused]]
 static constexpr int MARGIN_RIGHT = 800;
 
 int main(int argc, char **argv) {

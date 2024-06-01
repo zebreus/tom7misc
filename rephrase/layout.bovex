@@ -189,6 +189,10 @@ fun image-size (Image img) : { width : int, height : int } =
     {(InternalImageProps) width, height} => { width = width, height = height }
   | _ => fail "bad image props?"
 
+(* scale by 2x, 3x, etc. Creates a new image handle. *)
+fun image-exact-scale (Image img, scale-by : int) : image-handle =
+  Image (image-integer-scale (img, scale-by))
+
 fun layout-concat nil = []
   | layout-concat (l :: t) = [[l][layout-concat t]]
 

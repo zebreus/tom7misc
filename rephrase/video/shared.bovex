@@ -10,7 +10,14 @@ object TalkInfo of { width: float, height : float }
 
 val tt = fixedersys
 
-datatype image-scaling = ORIGINAL | WIDTH of float | SCALE of float
+(* How to scale an image.
+   This also affects whether we get sub-pixel positioning.
+   With ORIGINAL and INTSCALE, we round to the nearest integer. *)
+datatype image-scaling =
+    ORIGINAL
+  | WIDTH of float
+  | SCALE of float
+  | INTSCALE of int
 
 (* 53 1/3 inches wide, 30 inches tall. *)
 val SLIDE-WIDTH = pixel 3840.0
@@ -56,17 +63,9 @@ fun exact-image-at { x : int, y : int, img = img as (Image img-handle) } =
              img-height = int-to-float pixel-height } []
   end
 
-fun exact-image-at-2x { x : int, y : int, img = img as (Image img-handle) } =
-  let
-    val { width = pixel-width, height = pixel-height } = image-size img
-  in
-    (* XXX use nearest neighbor for this I think *)
-    sticker {(Sticker) x = int-to-float x, y = int-to-float y,
-             img = img-handle,
-             img-width = int-to-float (pixel-width * 2),
-             img-height = int-to-float (pixel-height * 2)} []
-  end
-
+(* PERF: could cache the scaled image *)
+fun exact-image-at-2x { x : int, y : int, img } =
+  exact-image-at { x = x, y = y, img = image-exact-scale (img, 2) }
 
 (* val BULLET-COLOR = 0x000066FF *)
 val BULLET-COLOR = 0xAAFFAAFF
@@ -275,6 +274,12 @@ fun scaled-image { img, x, y, scale } =
        let val { width, height } = image-size img
        in image-sticker { img = img, x = x, y = y,
                           width = int-to-float width *. s }
+       end
+   | INTSCALE s =>
+       let
+         val img : image-handle = image-exact-scale (img, s)
+         val { width, height } = image-size img
+       in exact-image-at { img = img, x = round x, y = round y }
        end)
 
 fun add-background-image NONE = ()
@@ -592,7 +597,7 @@ fun just-image filename =
   in
     output-frame
     (!current-page, !current-frame,
-     exact-image-at { x = 0, y = 0, img = img});
+     exact-image-at { x = 0, y = 0, img = img });
 
     next-slide()
   end
@@ -603,7 +608,7 @@ fun just-image-2x filename =
   in
     output-frame
     (!current-page, !current-frame,
-     exact-image-at-2x { x = 0, y = 0, img = img});
+     exact-image-at-2x { x = 0, y = 0, img = img });
 
     next-slide()
   end
@@ -754,3 +759,7 @@ fun wordle-board { x, y, cell-size,
     layout-concat (list-map one-row board)
   end
 
+
+
+(* Video-specific stuff; should probably be split off if I make this
+   into a proper talk library? *)

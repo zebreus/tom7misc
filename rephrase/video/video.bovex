@@ -4,9 +4,11 @@ let
   import "layout.bovex"
   import "cite.bovex"
   import "paper.bib"
+  import "animation.bovex"
   import "chess.bovex"
 
   import "shared.bovex"
+
 
   do set-doc-info { (TalkInfo)
                     width = pixel SLIDE-WIDTH,
@@ -122,7 +124,7 @@ in
 
   (* TODO It has come to my attention... *)
 
-  set-output-section "opening";
+  set-output-section (!current-page, "opening");
 
   (* People will look at this and think, "Looks fine to me!" *)
   just-image-2x "../typography0.png";
@@ -134,7 +136,7 @@ in
     val INFINITE-WIDTH = 99999999.0
   in
     combo-slide (slide with BODY-FONT-COLOR = 0x440044FF)
-    (Image { x = 0.0, y = 0.0, scale = WIDTH SLIDE-WIDTH,
+    (Image { x = 0.0, y = 0.0, scale = INTSCALE 2,
              img = image-load "../typography6.png" } ::
      Image { x = AIX, y = AIY, scale = WIDTH 360.0,
              img = image-load "../illustrator-icon.png" } ::
@@ -247,13 +249,13 @@ in
     lorem-slide true;
   end;
 
-  set-output-section "lorem";
+  set-output-section (!current-page, "lorem");
 
   combo-slide (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
   (Image { img = image-load "../lorem-portrait.png",
            x = pixel 2200.0,
            y = pixel 200.0,
-           scale = SCALE 2.0 } ::
+           scale = INTSCALE 2 } ::
    Title [The Villain: Lorem Epsom] ::
    Bullets ([Probably never even read the Wikipedia article
              on [it[Lorem Ipsum]]] ::
@@ -272,7 +274,7 @@ in
 
     *)
 
-  set-output-section "knuth";
+  set-output-section (!current-page, "knuth");
 
   combo-slide slide
   (Image { img = image-load "../knuth-portrait-trace.png",
@@ -316,7 +318,7 @@ in
 
   placeholder-slide [thesis.mp4];
 
-  set-output-section "editor";
+  set-output-section (!current-page, "editor");
 
   (* chat with editor *)
   combo-slide slide
@@ -342,7 +344,7 @@ in
    Image { img = image-load "../torment-nexus.png",
            x = pixel (3840.0 -. 2160.0),
            y = pixel 0.0,
-           scale = SCALE 2.0 } ::
+           scale = INTSCALE 2 } ::
    Title [Nightmare on LLM Street] ::
    nil);
 
@@ -353,7 +355,7 @@ in
   (Image { img = image-load "../vu-meter-slide.png",
            x = pixel 0.0,
            y = pixel 0.0,
-           scale = SCALE 2.0 } :: nil);
+           scale = INTSCALE 2 } :: nil);
 
   (* An example: 3blue1brown *)
 
@@ -454,7 +456,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
      Image { img = mother,
              x = motherbrain-x,
              y = pixel 0.0,
-             scale = SCALE 2.0 } ::
+             scale = INTSCALE 2 } ::
      Title [Automating speedrunner chores] ::
      nil)
   end;
@@ -486,7 +488,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
      Image { img = image-load "../torment-nexus.png",
              x = pixel (3840.0 -. 2160.0),
              y = pixel 0.0,
-             scale = SCALE 2.0 } ::
+             scale = INTSCALE 2 } ::
      Title [¿Cómo se LLama?] ::
      TextBox { x = DEFAULT-LEFT-MARGIN,
                y = Y1,
@@ -586,7 +588,7 @@ the line and roll the dice again.];
                  with BULLET-LINE-GAP = 48.0)
     (Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
              y = 0.0,
-             scale = SCALE 2.0,
+             scale = INTSCALE 2,
              img = tom } ::
      Title [The Fool: Tom 7] ::
      Bullet ({(Bullet) space-after = 42.0, bullet = [ ]},
@@ -646,7 +648,7 @@ the line and roll the dice again.];
      Image { img = image-load "../boxes-and-glue-matrix.png",
              x = pixel 1800.0,
              y = YPOS -. 72.0,
-             scale = SCALE 2.0 } ::
+             scale = INTSCALE 2 } ::
      nil)
   end;
 
@@ -661,7 +663,7 @@ the line and roll the dice again.];
   just-video (slide with LOOP-VIDEO = true) "comparison.mp4";
 
 
-  set-output-section "features";
+  set-output-section (!current-page, "features");
 
   let
     type particle = { x: float, y : float, lay : layout,
