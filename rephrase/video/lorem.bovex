@@ -177,6 +177,140 @@ in
   set-output-section (!current-page, "lorem");
 
   let
+    type particle = { x: float, y : float, lay : layout,
+                      width: float, height : float,
+                      dx : float, dy : float }
+
+    fun letterbox (s : layout) =
+      let val box = get-box s
+      in
+        case layoutcase box of
+          Node (BOX, attrs as {(Box) width, height}, ch) =>
+            { width = width, height = height, lay = box }
+        | _ => fail "getbox should return one box"
+      end
+
+    val SYSTEMX = SLIDE-WIDTH *. 0.5
+    val SYSTEMY = SLIDE-HEIGHT *. 0.333
+    val SYSTEMW = SLIDE-HEIGHT *. 0.444
+    val SYSTEMH = SYSTEMW
+
+    val sim : particle list ref = ref nil
+    (* Add some particles *)
+    fun add () =
+      let val { width, height, lay } =
+        let val c = (random64() andb 0xFFFFFFFF) orb 0x303030AA
+        in
+          letterbox (color c (b (size 128.0 (apply-font FRANKLIN [e]))))
+        end
+      in
+        sim := { x = random () *. SYSTEMW,
+                 y = random () *. SYSTEMH,
+                 dx = (random() *. 20.0) -. 20.0,
+                 dy = (random() *. 20.0) -. 20.0,
+                 width = width,
+                 height = height,
+                 lay = lay } :: !sim
+      end
+
+    do for 0 100 (fn _ => add ())
+
+
+    fun simulate () =
+      let
+
+        (*
+        val BOTTOM = 1000.0
+        val RIGHT = SLIDE-WIDTH -. 80.0
+        val LEFT = 40.0
+        *)
+
+        val BOTTOM = SYSTEMH
+        val LEFT = 0.0
+        val RIGHT = SYSTEMW
+
+        fun sim-one { x, y, dx, dy, width, height, lay } =
+          let
+            val x = x +. dx
+            val y = y +. dy
+            val dy = dy +. 8.0
+
+            val (y, dy) =
+              if y +. height >. BOTTOM
+              then (BOTTOM -. height, 0.0 -. dy *. 0.90)
+              else (y, dy)
+            val (x, dx) =
+              if x +. width >. RIGHT
+              then (RIGHT -. width, 0.0 -. dx *. 0.90)
+              else (x, dx)
+            val (x, dx) =
+              if x <. LEFT
+              then (LEFT, 0.0 -. dx *. 0.90)
+              else (x, dx)
+          in
+            { x = x, y = y, dx = dx, dy = dy,
+              width = width, height = height,
+              lay = lay }
+          end
+      in
+        sim := list-map sim-one (!sim)
+      end
+
+    fun theslide t =
+      let
+        do simulate ()
+
+        val texts =
+          list-map
+          (fn ({ x = x, y = y, dx = dx, dy = dy,
+                 width = width, height = height,
+                 lay = lay } : particle) =>
+           TextBox { x = x +. SYSTEMX, y = y +. SYSTEMY,
+                     width = inch 38.0,
+                     text = lay })
+          (!sim)
+      in
+        combo-slide slide
+        (Title [Additional features] ::
+         Bullets
+         ([Bibliography database] ::
+          (three-d { font-name = font-regular PALATINO,
+                     font-size = 144.0 *. (t +. 1.0),
+                     width = 80.0, height = 144.0, text = "3D text" }) ::
+          [Achievements] ::
+          nil) ::
+         TextBox { x = SYSTEMX, y = SYSTEMY +. SYSTEMH +. 96.0,
+                   width = inch 38.0,
+                   text = (palatino [Particle systems]) } ::
+         texts)
+      end
+
+    val NUM-FRAMES = (* 64 *) 4
+
+    val start-page = !current-page
+    fun makeframe n =
+      let
+        val t = n / (NUM-FRAMES - 1)
+        (* Ease in/out *)
+        (* val pos = t *. t *. t -. 3.0 *. (t *. t) +. 2.0 *. t *)
+        val pos = 0.5 *. (1.0 -. cos(t *. 3.141592653589))
+        do print ("Frame " ^ int-to-string n ^ "/" ^
+                  int-to-string NUM-FRAMES ^ " \n")
+      in
+        (* generating a slide advances the frame, so keep going back. *)
+        current-page := start-page;
+        current-frame := n;
+        theslide t
+      end
+  in
+    for 0 (NUM-FRAMES - 1) makeframe;
+    current-frame := 0;
+  end;
+
+
+(*
+
+  let
     (* Or scale animation frames. It's easy... *)
     val portrait =
       image-exact-scale (image-load "../lorem-portrait.png", 2)
@@ -196,25 +330,33 @@ in
 
     do print ("Got " ^ int-to-string (vec-size anim-frames) ^
               " animation frames from auto-draw.\n")
+
+    val start-page = !current-page
   in
-    vec-app
-    (fn (anim-frame : image-handle) =>
-     combo-slide (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
-     (Image { img = anim-frame,
-              x = pixel 2200.0,
-              y = pixel 200.0,
-              scale = ORIGINAL } ::
-      Title [The Villain: Lorem Epsom] ::
-      Bullets ([Probably never even read the Wikipedia article
-                on [it[Lorem Ipsum]]] ::
-               [If you tell him there's a mistake in the
-                math he takes this as a personal attack] ::
-               [Loves the phrases “[em[metaverse]]” and
-                “[em[blockchain]]” and
-                “[em[generative AI]]” but doesn't know why] ::
-               [Is successful and rich] ::
-               nil) ::
-      nil)) anim-frames;
+    vec-appi
+    (fn (fidx, anim-frame : image-handle) =>
+     let in
+       current-page := start-page;
+       current-frame := fidx;
+       combo-slide (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
+       (Image { img = anim-frame,
+                x = pixel 2200.0,
+                y = pixel 200.0,
+                scale = ORIGINAL } ::
+        Title [The Villain: Lorem Epsom] ::
+        Bullets ([Probably never even read the Wikipedia article
+                  on [it[Lorem Ipsum]]] ::
+                 [If you tell him there's a mistake in the
+                  math he takes this as a personal attack] ::
+                 [Loves the phrases “[em[metaverse]]” and
+                  “[em[blockchain]]” and
+                  “[em[generative AI]]” but doesn't know why] ::
+                 [Is successful and rich] ::
+                 nil) ::
+        nil)
+     end) anim-frames;
+    current-frame := 0;
   end
+*)
 
 end

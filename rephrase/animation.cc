@@ -186,8 +186,6 @@ struct AnimationImpl : public Animation {
           return count;
         };
 
-      ImageRGBA fragile_viz(connected.Width(), connected.Height());
-      fragile_viz.Clear32(0);
       for (int y = 0; y < in.Height(); y++) {
         for (int x = 0; x < in.Width(); x++) {
           const uint32_t c = MapAlpha(in.GetPixel32(x, y));
@@ -196,7 +194,6 @@ struct AnimationImpl : public Animation {
           int size = GetConnectedSize(x, y, c);
           if (size <= opt.max_fragile_piece_size) {
             fragile_idx.insert(Idx(x, y));
-            fragile_viz.SetPixel32(x, y, 0xFFFFFFFF);
 
             // Since the pixel was removed from all potential regions,
             // decrease its count. This can sometimes bring a color
@@ -206,8 +203,14 @@ struct AnimationImpl : public Animation {
         }
       }
 
-      // XXX!
       if (DEBUG_ANIMATION) {
+        ImageRGBA fragile_viz(connected.Width(), connected.Height());
+        fragile_viz.Clear32(0);
+        for (const auto idx : fragile_idx) {
+          const auto &[x, y] = UnIdx(idx);
+          fragile_viz.SetPixel32(x, y, 0xFFFFFFFF);
+        }
+
         ImageRGBA connected_viz(connected.Width(), connected.Height());
         for (int y = 0; y < connected.Height(); y++) {
           for (int x = 0; x < connected.Width(); x++) {

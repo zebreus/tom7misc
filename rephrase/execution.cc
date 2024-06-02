@@ -261,6 +261,13 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
 
 std::tuple<int64_t, int64_t> Execution::GetPageAndFrame(const char *what,
                                                         const map_type *am) {
+  printf("GPAF %s:", what);
+  for (const auto &[k, v] : *am) {
+    printf(" (%s=%s)", k.c_str(),
+           bc::ColorValueString(*v).c_str());
+  }
+  printf("\n");
+
   const BigInt *ai = GetObjIntField(what, "page", *am);
   CHECK(ai != nullptr) << "out-layout requires a page (int field)";
   const int64_t page_idx = GetInt64("out-layout page index", *ai);
@@ -270,11 +277,13 @@ std::tuple<int64_t, int64_t> Execution::GetPageAndFrame(const char *what,
   int64_t frame_idx = 0;
   const BigInt *fi = GetObjIntField(what, "frame", *am);
   if (fi != nullptr) {
-    const int64_t frame_idx = GetInt64("out-layout frame index", *fi);
-    CHECK(frame_idx >= 0 && page_idx < 1'000'000'000LL) << "Frame index "
+    frame_idx = GetInt64("out-layout frame index", *fi);
+    CHECK(frame_idx >= 0 && frame_idx < 1'000'000'000LL) << "Frame index "
       "is nonsensical!";
   }
 
+  /* if (frame_idx != 0) */
+  printf(ARED("%lld %lld") "\n", page_idx, frame_idx);
   return std::make_pair(page_idx, frame_idx);
 };
 
@@ -519,8 +528,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
 
   case Primop::SET_PAGE_INFO: {
     const auto &[as, bs] = TwoObjs("set-page-info");
-    const auto &[page_idx, frame_idx] =
-      GetPageAndFrame("set-page-info", &as);
+    const auto &[page_idx, frame_idx] = GetPageAndFrame("set-page-info", &as);
 
     std::unordered_map<std::string, AttrVal> attrs;
     for (const auto &[k, v] : bs) {
@@ -636,9 +644,9 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     const map_type *am = std::get_if<map_type>(&a->v);
     CHECK(am != nullptr) << Err() <<
       "out-layout expects an object as its first argument.";
-    const auto &[page_idx, frame_idx] =
-      GetPageAndFrame("out-layout", am);
+    const auto &[page_idx, frame_idx] = GetPageAndFrame("out-layout", am);
 
+    printf("OUT|%d %d\n", (int)page_idx, (int)frame_idx);
     OutputLayoutHook((int)page_idx, (int)frame_idx, b);
     return Unit(state);
   }

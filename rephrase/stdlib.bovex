@@ -412,6 +412,21 @@ fun vec-app f v : unit =
     r 0
   end
 
+(* with vector index as first argument to f. *)
+fun vec-appi f v : unit =
+  let
+    val sz = vec-size v
+    fun r i =
+      if i == sz then ()
+      else
+      let in
+        f (i, vec-sub (v, i));
+        r (i + 1)
+      end
+  in
+    r 0
+  end
+
 fun vec-map f v =
   case vec-size v of
     0 => vec-empty ()
