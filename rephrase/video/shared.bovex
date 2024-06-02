@@ -1,9 +1,8 @@
 (*   -*- electric-indent-local-mode: nil -*- *)
 
 (* I forked this because it has some hard coded 1080p constants.
-   Some things to fix:
-
-   *)
+   It's probably superior to the aeoud one, so it should
+   be the one to evolve and use for future talks. *)
 
 (* slides info *)
 object TalkInfo of { width: float, height : float }
@@ -387,8 +386,8 @@ fun combo-slide slide (elts : element list) =
         output-frame
         (!current-page, !current-frame,
          sticker {(Sticker)
-                  x = bullet-xpos -. 128.0 +. offset,
-                  y = !bullet-ypos +. 32.0,
+                  x = bullet-xpos -. (bullet-size *. 1.1) +. offset,
+                  y = !bullet-ypos +. (bullet-size *. 0.20),
                   font-name = font-bold PALATINO,
                   font-size = bullet-size,
                   font-color = bullet-color } bullet-char);

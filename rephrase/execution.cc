@@ -747,6 +747,8 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       .min_pen_radius = 2.0f,
       .max_pen_velocity = 24.0f,
       .pen_acceleration = 0.5f,
+      .adjacent_deltae_threshold = 10.0f,
+      .max_fragile_piece_size = 10,
       .timesteps_per_frame = 8,
       .blend_frames = 20,
       .verbosity = 0,
@@ -765,10 +767,13 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     } while (0)
 
     SET_INT_FIELD(smooth_passes, "smooth-passes");
+    SET_FLOAT_FIELD(smooth_vote_threshold, "smooth-vote-threshold");
     SET_FLOAT_FIELD(max_pen_radius, "max-pen-radius");
     SET_FLOAT_FIELD(min_pen_radius, "min-pen-radius");
     SET_FLOAT_FIELD(max_pen_velocity, "max-pen-velocity");
     SET_FLOAT_FIELD(pen_acceleration, "pen-acceleration");
+    SET_FLOAT_FIELD(adjacent_deltae_threshold, "adjacent-deltae-threshold");
+    SET_INT_FIELD(max_fragile_piece_size, "max-fragile-piece-size");
     SET_INT_FIELD(timesteps_per_frame, "timesteps-per-frame");
     SET_INT_FIELD(blend_frames, "blend-frames");
     SET_INT_FIELD(verbosity, "verbosity");

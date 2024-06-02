@@ -814,17 +814,24 @@ il::ObjFieldType Elaboration::ResolveObjFieldType(
 
   if (ovi != nullptr) {
     const auto it = ovi->fields.find(lab);
+    auto FieldError = [this, pos, &lab, &objname]() {
+        return StringPrintf("%s"
+                            "For the field " ABLUE("%s") " in the object "
+                            "named " AORANGE("%s") ".",
+                            ErrorAtPos(pos).c_str(),
+                            lab.c_str(), objname.c_str());
+      };
+
     CHECK(it != ovi->fields.end()) <<
-      StringPrintf("%s"
-                   "The field " ABLUE("%s") " was not present "
-                   "in the object named " AORANGE("%s") ", in "
-                   "the object expression:\n%s",
-                   ErrorAtPos(pos).c_str(),
-                   lab.c_str(), objname.c_str(),
-                   ExpString(error_exp).c_str());
-    if (rhs_type != nullptr) {
-      Unification::Unify([what]() {
-          return StringPrintf("Object field type: %s", what);
+      FieldError() <<
+      "\nField not present. Object expression:\n" <<
+      ExpString(error_exp);
+
+      if (rhs_type != nullptr) {
+      Unification::Unify([what, &FieldError]() {
+          return StringPrintf("%s\n"
+                              "Object field type: %s\n",
+                              FieldError().c_str(), what);
         }, rhs_type, it->second);
     } else {
       // e.g. for WITHOUT, where we don't even have an expression.

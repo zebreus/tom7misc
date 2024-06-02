@@ -1,0 +1,60 @@
+(*   -*- electric-indent-local-mode: nil -*- *)
+let
+  import "stdlib.bovex"
+  import "layout.bovex"
+  import "cite.bovex"
+  import "paper.bib"
+  import "animation.bovex"
+  import "chess.bovex"
+
+  import "shared.bovex"
+
+
+  do set-doc-info { (TalkInfo)
+                    width = pixel SLIDE-WIDTH,
+                    height = pixel SLIDE-HEIGHT }
+
+
+  (* do REPHRASE-ALL := SOME 50 *)
+  do REPHRASE-ALL := NONE
+  do NO-REPHRASE := true
+
+in
+
+
+  (* chat with editor *)
+  let
+    val portrait = image-load "../torment-nexus.png"
+
+    val anim-frames : image-handle vec = auto-draw portrait
+      {(AutoDrawArg)
+       smooth-passes = 4,
+       smooth-vote-threshold = 0.5,
+       max-pen-radius = 28.0,
+       min-pen-radius = 8.0,
+       max-pen-velocity = 48.0,
+       pen-acceleration = 0.5,
+       timesteps-per-frame = 8,
+       adjacent-deltae-threshold = 5.0,
+       max-fragile-piece-size = 10,
+       blend-frames = 20,
+       verbosity = 1 }
+
+    do print ("Got " ^ int-to-string (vec-size anim-frames) ^
+              " animation frames from auto-draw.\n")
+  in
+    vec-app
+    (fn (anim-frame : image-handle) =>
+    combo-slide slide
+    (Bullets ([Wow OMG I'm sick of hearing about it] ::
+              [Torment Nexus] ::
+              [It does kinda work though] :: nil) ::
+     Image { img = anim-frame,
+             x = pixel (3840.0 -. 2160.0),
+             y = pixel 0.0,
+             scale = INTSCALE 2 } ::
+     Title [Nightmare on LLM Street] ::
+     nil)) anim-frames;
+  end
+
+end

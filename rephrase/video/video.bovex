@@ -118,6 +118,27 @@ let
       layout-concat (draw-pieces ())
     end
 
+  fun morphism-slide filename =
+    let
+      val img = image-load filename
+      val { width, height } = image-size img
+      val LR-MARGIN = inch 1.0
+      val MORPHISM-X = LR-MARGIN
+      val MORPHISM-Y = inch 4.50
+      val m-slide =
+        (slide
+         with TITLE-FONT-SIZE = point 180.0
+         with TOP-MARGIN = inch 4.0
+         with CONTENT-START-Y = inch 5.5)
+    in
+      combo-slide m-slide
+      (Title [The Hurry-Coward So-So-Morphism] ::
+       Image { img = img,
+               x = MORPHISM-X, y = MORPHISM-Y,
+               scale = WIDTH (SLIDE-WIDTH -. 2.0 *. LR-MARGIN) } ::
+       nil)
+    end
+
 in
 
   (* TODO: Better bullet graphic. Can embed fonts, remember *)
@@ -294,7 +315,7 @@ in
      This is a guy who allows himself to
      *)
   combo-slide (slide
-               with BULLET-FONT-SIZE = 80.0
+               with BULLET-FONT-SIZE = 100.0
                with BULLET-LINE-GAP = 40.0)
   (Title [The Art of Computer Procrastination] ::
    Image { img = image-load "../knuth-portrait-trace.png",
@@ -305,7 +326,7 @@ in
    Bullet ({(Bullet)}, [1977: Publisher proofs aren't beautiful enough]) ::
    Bullet ({(Bullet)}, [1982: Returns with TeX]) ::
    Bullet ({(Bullet) space-after = -36.0 },
-           size 48.0
+           size 56.0
            [... New text layout algorithms. New abstract
             computer. New hyphenation algorithms. New data structures
             for storing hyphenation tables. New fonts. New ways of
@@ -371,46 +392,11 @@ in
      want? I like programming languages, and I like fonts...
      Like beautiful typography? *)
 
-  let
-    val morphism = image-load "../morphism.png"
-    val { width, height } = image-size morphism
-    val MORPHISM-X = (SLIDE-WIDTH -. (int-to-float width)) *. 0.5
-    val MORPHISM-Y = inch 2.75
-
-    val morphism-slide =
-      (slide
-       with TITLE-FONT-SIZE = point 180.0
-       with TOP-MARGIN = inch 4.0
-       with CONTENT-START-Y = inch 5.5)
-
-  in
-    (* There is also "space" in typography::metroid *)
-    combo-slide morphism-slide
-    (Title [The Hurry-Coward So-So-Morphism] ::
-     Image { img = morphism,
-             x = MORPHISM-X, y = MORPHISM-Y,
-             scale = ORIGINAL } ::
-     nil);
-
-    (* But first, we need to talk about Super Metroid. *)
-    (* Let's just add one more character to this play: Super Metroid *)
-    combo-slide morphism-slide
-    (Title [The Hurry-Coward So-So-Morphism] ::
-     Image { img = image-load "../morphism2.png",
-             x = MORPHISM-X, y = MORPHISM-Y,
-             scale = ORIGINAL } ::
-     nil);
-
-    combo-slide morphism-slide
-    (Title [The Hurry-Coward So-So-Morphism] ::
-     Image { img = image-load "../triforce.png",
-             x = MORPHISM-X +. inch 3.0, y = MORPHISM-Y -. inch 10.0,
-             scale = WIDTH 2600.0 } ::
-     Image { img = image-load "../morphism2.png",
-             x = MORPHISM-X, y = MORPHISM-Y,
-             scale = ORIGINAL } ::
-     nil);
-  end;
+  morphism-slide "morphism1.png";
+  morphism-slide "morphism2.png";
+  morphism-slide "morphism3.png";
+  morphism-slide "morphism4.png";
+  morphism-slide "morphism5.png";
 
   monospace-slide (slide with TITLE-FONT-SIZE = point (88.5 *. 2.0)
                    with MONOSPACE-FONT-SIZE = point 80.0
@@ -461,16 +447,22 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114];
      nil)
   end;
 
-  (*
-  quote-slide slide [¿Cómo se LLama?]
-  [Exercise in rephrasing text. The following paragraph
-   needs to be rephrased so that it retains its precise meaning, but
-   with minor variations in the specific choice of words, punctuation,
-   and so on. No new facts should be introduced or removed, but it is
-   good to use synonyms and change the word order and phrasing.
 
-   Original paragraph:];
-*)
+(* one slide about how LLM works
+
+   so when this guy says it's "generative ai", that's what he's
+   referring to. Like, ooh, it's <<generative>>. That is not
+   even the interesting part.
+
+   Also, not to be confused with genitive, which is not to be
+   confused with possessive.
+
+   Speaking of which. I know about the Grocer's Apostrophy's, but
+   what is going on here? How is milkshake's different from soup's?
+   *)
+
+  placeholder-slide [islays.mp4];
+  placeholder-slide [apostrophy-mad.mp4];
 
   let
     val slide = slide
@@ -821,6 +813,11 @@ the line and roll the dice again.];
 
   (* TODO: Future work: Acting on world, 1,000,000 *)
 
+  morphism-slide "morphism6.png";
+  morphism-slide "morphism7.png";
+
+  (* This could be a tom7 glasses slide. *)
+
   let
     val last-line =
       [Though some may consider the addition of AI features to TeX to be
@@ -850,6 +847,8 @@ the line and roll the dice again.];
   in
     concslide false;
     concslide true;
-  end
+  end;
+
+  placeholder-slide [crimescene.mp4];
 
 end

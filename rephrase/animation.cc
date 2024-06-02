@@ -71,7 +71,8 @@ struct AnimationImpl : public Animation {
   static constexpr uint32_t TRANSPARENT_USED  = 0x00000000;
   static constexpr uint32_t TRANSPARENT_EMPTY = 0xFFFFFF00;
 
-  void Prep() {
+
+  static inline uint32_t MapAlpha(uint32_t c) {
     // We expect the image to be a small number of colors,
     // but we can handle "anti-aliased" pixels by snapping
     // them to a nearby color.
@@ -80,15 +81,18 @@ struct AnimationImpl : public Animation {
     // treated as fully transparent.
     static constexpr uint8_t MIN_ALPHA = 0x07;
 
-    auto MapAlpha = [](uint32_t c) -> uint32_t {
-        const uint8_t a = c & 0xFF;
-        if (a <= MIN_ALPHA) {
-          // "fully" transparent; ignore colors.
-          return 0x00000000;
-        } else {
-          return c | 0xFF;
-        }
-      };
+    const uint8_t a = c & 0xFF;
+    if (a <= MIN_ALPHA) {
+      // "fully" transparent; ignore colors.
+      return 0x00000000;
+    } else {
+      return c | 0xFF;
+    }
+  }
+
+  void Prep() {
+
+    Timer posterize_timer;
 
     // For alpha, we have only FF and 00 (with r=g=b=0 as well) here.
     std::unordered_map<uint32_t, int64_t> color_counts;
@@ -109,6 +113,121 @@ struct AnimationImpl : public Animation {
     static constexpr float MIN_PERCENTAGE = 0.005f;
     const int64_t min_pixels = MIN_PERCENTAGE * opaque_pixels;
 
+    // Very small components should be treated as ambiguous, as it
+    // is usually better to snap them to adjacent components.
+    std::unordered_set<int> fragile_idx;
+    Timer fragile_timer;
+    if (opt.max_fragile_piece_size > 0) {
+      // already-computed connected components. Not color values: Each
+      // pixel has the size of its connected component (or a lower
+      // bound, if it reaches max_fragile_piece_size), or 0 if it has
+      // not yet been computed. (Every actual component size is at
+      // least 1, the pixel itself).
+      ImageRGBA connected(in.Width(), in.Height());
+      connected.Clear32(0);
+
+      auto GetConnectedSize =
+        [this, &connected](int xx, int yy, uint32_t c) -> int {
+
+          // Memoized.
+          uint32_t already = connected.GetPixel32(xx, yy);
+          if (already > 0) return already;
+
+          // A considered pixel has the correct color value.
+          // We don't actually use the memoized values here because
+          // it's hard to avoid double counting. But we could at
+          // least use them if we see a value >= max_fragile_piece_size.
+          const int start_idx = Idx(xx, yy);
+          std::unordered_set<int> considered = {start_idx};
+          std::vector<int> todo = {start_idx};
+          auto Consider = [this, &considered, &todo, c](int x, int y) {
+              const int idx = Idx(x, y);
+              // Already counted.
+              if (considered.contains(idx))
+                return 0;
+
+              // The border doesn't match anything.
+              if (x < 0 || y < 0 || x >= in.Width() || y >= in.Height())
+                return 0;
+
+              // Must match the color exactly.
+              uint32_t cc = MapAlpha(in.GetPixel32(x, y));
+              if (c == cc) {
+                considered.insert(idx);
+                todo.push_back(idx);
+                return 1;
+              }
+              return 0;
+            };
+
+          int count = 1;
+          while (!todo.empty()) {
+            const auto &[x, y] = UnIdx(todo.back());
+            todo.pop_back();
+
+            // Try all its neighbors.
+            count += Consider(x - 1, y);
+            count += Consider(x + 1, y);
+            count += Consider(x, y - 1);
+            count += Consider(x, y + 1);
+
+            if (count > opt.max_fragile_piece_size) {
+              break;
+            }
+          }
+
+          // Now we have the answer. Memoize it in all the
+          // pixels we considered.
+          for (int idx : considered) {
+            const auto &[x, y] = UnIdx(idx);
+            connected.SetPixel32(x, y, count);
+          }
+
+          return count;
+        };
+
+      ImageRGBA fragile_viz(connected.Width(), connected.Height());
+      fragile_viz.Clear32(0);
+      for (int y = 0; y < in.Height(); y++) {
+        for (int x = 0; x < in.Width(); x++) {
+          const uint32_t c = MapAlpha(in.GetPixel32(x, y));
+
+          // See if the component is fragile.
+          int size = GetConnectedSize(x, y, c);
+          if (size <= opt.max_fragile_piece_size) {
+            fragile_idx.insert(Idx(x, y));
+            fragile_viz.SetPixel32(x, y, 0xFFFFFFFF);
+
+            // Since the pixel was removed from all potential regions,
+            // decrease its count. This can sometimes bring a color
+            // below the threshold because it was all just fringe.
+            color_counts[c]--;
+          }
+        }
+      }
+
+      // XXX!
+      if (DEBUG_ANIMATION) {
+        ImageRGBA connected_viz(connected.Width(), connected.Height());
+        for (int y = 0; y < connected.Height(); y++) {
+          for (int x = 0; x < connected.Width(); x++) {
+            uint8_t v = std::min(connected.GetPixel32(x, y) * 8,
+                                 (uint32_t)0xFF);
+            connected_viz.SetPixel(x, y, v, v, v, 0xFF);
+          }
+        }
+        connected_viz.Save("connected.png");
+        fragile_viz.Save("fragile.png");
+        printf("Wrote conneted.png and fragile.png\n");
+      }
+    }
+    const double fragile_seconds = fragile_timer.Seconds();
+    if (opt.verbosity > 0) {
+      printf("There are %d/%d fragile pixels.\n",
+             (int)fragile_idx.size(),
+             (int)(in.Width() * in.Height()));
+    }
+
     // Create the regions.
     for (int y = 0; y < in.Height(); y++) {
       for (int x = 0; x < in.Width(); x++) {
@@ -128,47 +247,27 @@ struct AnimationImpl : public Animation {
     // in the image.
     CHECK(!regions.empty());
 
-    // Get the region (by color id) of the closest color for this
-    // pixel. TODO: Also consider its proximity to neighbors, as
-    // we much prefer the input to be spatially smooth!
-    auto ClosestColor = [this](int x, int y, uint32_t c) {
-        uint32_t best_c = 0x00000000;
-        double best_de = 10000.0;
-        const auto &[rr, gg, bb, aa_] = ColorUtil::U32ToFloats(c);
-        const auto &[l, a, b] = ColorUtil::RGBToLAB(rr, gg, bb);
-        for (const auto &[cc, region] : regions) {
-          double de = ColorUtil::DeltaE(region.l, region.a, region.b, l, a, b);
-          if (de < best_de) {
-            best_c = cc;
-            best_de = de;
-          }
-        }
-
-        CHECK(best_c != 0) << "No color was found?";
-        return best_c;
-      };
-
-
-
     // Now posterize the image. We use this to indicate regions of
     // the original image; it is not output directly.
     poster.reset(new ImageRGBA(in.Width(), in.Height()));
+
+    // First pass populates all the pixels that are unambiguous,
+    // like those that match a region exactly.
+    std::vector<std::pair<int, int>> ambiguous_xy;
     for (int y = 0; y < in.Height(); y++) {
       for (int x = 0; x < in.Width(); x++) {
-        int idx = y * in.Width() + x;
+        const int idx = y * in.Width() + x;
         const uint32_t original_c = in.GetPixel32(x, y);
         const uint32_t c = MapAlpha(original_c);
         if (c & 0xFF) {
           // Opaque
-          if (color_counts[c] >= min_pixels) {
+          if (color_counts[c] >= min_pixels &&
+              !fragile_idx.contains(idx)) {
             regions[c].pixels.insert(idx);
             poster->SetPixel32(x, y, c);
           } else {
-            // Find the closest color.
-            uint32_t cc = ClosestColor(x, y, c);
-            CHECK(regions.contains(cc));
-            regions[cc].pixels.insert(idx);
-            poster->SetPixel32(x, y, cc);
+            // Handle these on the second pass.
+            ambiguous_xy.emplace_back(x, y);
           }
         } else {
           // Transparent.
@@ -187,6 +286,120 @@ struct AnimationImpl : public Animation {
         }
       }
     }
+
+    if (opt.verbosity > 0) {
+      printf("There are %d/%d ambiguous pixels.\n",
+             (int)ambiguous_xy.size(),
+             (int)(in.Width() * in.Height()));
+    }
+
+
+    if (DEBUG_ANIMATION) {
+      ImageRGBA ambiguous_viz(in.Width(), in.Height());
+      ambiguous_viz.Clear32(0x00000000);
+      for (const auto &[x, y] : ambiguous_xy) {
+        ambiguous_viz.SetPixel32(x, y, 0xFF0000FF);
+      }
+      ambiguous_viz.Save("ambiguous.png");
+      printf("Wrote ambiguous.png\n");
+    }
+
+    // Now, a second pass for the ambiguous colors.
+
+    // Get the region (by color id) of the closest color for this
+    // pixel.
+    auto ClosestColor = [this, &fragile_idx](int x, int y, uint32_t c) {
+        // If the pixel is part of a fragile region, we don't
+        // care about the delta-e threshold; we always just snap it
+        // to the best adjacent region if we can.
+        const bool is_fragile = fragile_idx.contains(Idx(x, y));
+
+        // Compute Delta-E for each region.
+
+        // Of all regions.
+        uint32_t best_c = 0x00000000;
+        double best_de = 10000.0;
+
+        // Of adjacent regions.
+        uint32_t best_adjacent_c = 0x00000000;
+        double best_adjacent_de = 10001.0;
+
+        // Is the region adjacent to the pixel, only considering
+        // non-fragile pixels?
+        auto IsAdjacent = [this, &fragile_idx, x, y](const Region &region) {
+            for (int dy : {-1, 0, 1}) {
+              int yy = y + dy;
+              for (int dx : {-1, 0, 1}) {
+                int xx = x + dx;
+                const int idx = Idx(xx, yy);
+                if (!fragile_idx.contains(idx) &&
+                    region.pixels.contains(idx)) {
+                  return true;
+                }
+              }
+            }
+            return false;
+          };
+
+        const auto &[rr, gg, bb, aa_] = ColorUtil::U32ToFloats(c);
+        const auto &[l, a, b] = ColorUtil::RGBToLAB(rr, gg, bb);
+        for (const auto &[cc, region] : regions) {
+          // Don't allow selecting transparent.
+          if (cc & 0xFF) {
+            double de =
+              ColorUtil::DeltaE(region.l, region.a, region.b, l, a, b);
+            if (de < best_de) {
+              best_c = cc;
+              best_de = de;
+            }
+
+            if ((de <= opt.adjacent_deltae_threshold || is_fragile) &&
+                de < best_adjacent_de && IsAdjacent(region)) {
+              best_adjacent_c = cc;
+              best_adjacent_de = de;
+            }
+
+          }
+        }
+
+        if (best_c == 0) {
+          for (const auto &[cc, region] : regions) {
+            double de = ColorUtil::DeltaE(region.l, region.a, region.b,
+                                          l, a, b);
+            printf("#%08x (%s): %.6f\n", cc, ColorSwatch(cc).c_str(),
+                   de);
+          }
+          LOG(FATAL) << "No color was found for " <<
+            StringPrintf("#%08x", c) << " at " <<
+            x << "," << y;
+        }
+
+        // If any adjacent pixel was close enough, use the best one.
+        if (best_adjacent_c) {
+          return best_adjacent_c;
+        } else {
+          return best_c;
+        }
+      };
+
+
+    for (const auto &[x, y] : ambiguous_xy) {
+      int idx = y * in.Width() + x;
+      const uint32_t original_c = in.GetPixel32(x, y);
+      const uint32_t c = MapAlpha(original_c);
+      // Find the closest color.
+      uint32_t cc = ClosestColor(x, y, c);
+      CHECK(regions.contains(cc));
+      regions[cc].pixels.insert(idx);
+      poster->SetPixel32(x, y, cc);
+    }
+
+    if (opt.verbosity > 0) {
+      printf("Posterized in %s (%s fragile)\n",
+             ANSI::Time(posterize_timer.Seconds()).c_str(),
+             ANSI::Time(fragile_seconds).c_str());
+    }
+
   }
 
   int Idx(int x, int y) const {
@@ -244,7 +457,7 @@ struct AnimationImpl : public Animation {
     // Now that we have the ordering, we can smooth each region.
     // PERF: Can run these in parallel.
     for (int z = 0; z < (int)layer_colors.size(); z++) {
-      SmoothRegion("animation-debug", z, 5);
+      SmoothRegion("animation-debug", z, opt.smooth_passes);
     }
 
     ImageRGBA frame(in.Width(), in.Height());
@@ -277,10 +490,11 @@ struct AnimationImpl : public Animation {
   template<class F>
   void ForEachPixelInCircle(int x, int y, int radius,
                             const F &f) {
+    // Clip to image.
     const int xmin = std::max(0, x - radius);
     const int ymin = std::max(0, y - radius);
-    const int xmax = std::min(in.Width(), x + radius);
-    const int ymax = std::min(in.Height(), y + radius);
+    const int xmax = std::min(in.Width() - 1, x + radius);
+    const int ymax = std::min(in.Height() - 1, y + radius);
 
     const int sq_radius = radius * radius;
 
@@ -346,18 +560,17 @@ struct AnimationImpl : public Animation {
     }
     Periodically status_per(1.0, false);
     Timer timer;
-    int KERNEL_RADIUS = 0;
-    for (int i = 0; i < max_passes; i++) {
-      if (KERNEL_RADIUS == 0) KERNEL_RADIUS = 1;
-      else if (KERNEL_RADIUS == 1) KERNEL_RADIUS = 2;
-      else KERNEL_RADIUS *= 1.5;
+    int kernel_radius = 0;
+    for (int pass = 0; pass < max_passes; pass++) {
+      if (kernel_radius == 0) kernel_radius = 1;
+      else if (kernel_radius == 1) kernel_radius = 2;
+      else kernel_radius *= 1.5;
       // TODO: Can I fiddle with this so that blobs don't always grow??
       // static constexpr int KERNEL_RADIUS = 18;
       // We fill the center of the kernel only. Otherwise there is
       // essentially always a way of extending a blob by placing the
       // circle only ever-so-slightly off its edge.
-      const int KERNEL_FILL_RADIUS = KERNEL_RADIUS >> 1;
-      static constexpr float VOTE_THRESHOLD = 0.5f;
+      const int kernel_fill_radius = kernel_radius >> 1;
 
       // To avoid weird appearance due to order dependence,
       // we add all the pixels at the end of the pass.
@@ -385,7 +598,7 @@ struct AnimationImpl : public Animation {
               int count = 0;
               int count_all = 0;
               ForEachPixelInCircle(
-                  cx, cy, KERNEL_RADIUS,
+                  cx, cy, kernel_radius,
                   [&raster, &count, &count_all](int x, int y) {
                     count_all++;
                     if (raster.GetPixel(x, y)) {
@@ -395,10 +608,10 @@ struct AnimationImpl : public Animation {
 
               if (count_all > 0) {
                 float frac = count / (float)count_all;
-                if (frac >= VOTE_THRESHOLD) {
+                if (frac >= opt.smooth_vote_threshold) {
                   // Then fill it. We only fill inside the hull, though.
                   ForEachPixelInCircle(
-                      cx, cy, KERNEL_FILL_RADIUS,
+                      cx, cy, kernel_fill_radius,
                       [this, z, &SetNewPixel](int x, int y) {
                         if (WillOverwrite(x, y, z)) {
                           SetNewPixel(x, y, 0xFF);
@@ -408,11 +621,11 @@ struct AnimationImpl : public Animation {
               }
             }, 12);
 
-        if (status_per.ShouldRun()) {
+        if (opt.verbosity > 0 && status_per.ShouldRun()) {
           std::string prog =
             ANSI::ProgressBar(cy, in.Height(),
                               StringPrintf("Pass %d/%d",
-                                           i, max_passes),
+                                           pass, max_passes),
                               timer.Seconds());
           if (status_per.TimesRun() == 0) {
             // Make room for progress bar.
@@ -421,14 +634,13 @@ struct AnimationImpl : public Animation {
           printf(ANSI_UP "%s\n", prog.c_str());
         }
 
-
       }
 
       // Now any new pixels.
       bool added = false;
       for (int y = 0; y < raster.Height(); y++) {
         for (int x = 0; x < raster.Width(); x++) {
-          if (raster.GetPixel(x, y) &&
+          if (!raster.GetPixel(x, y) &&
               GetNewPixel(x, y) != 0) {
             added = true;
             raster.SetPixel(x, y, true);
@@ -437,10 +649,10 @@ struct AnimationImpl : public Animation {
       }
 
       // No more passes are needed, since there will be no more
-      // changes.
-      if (!added) {
+      // changes. (Just kidding: The kernel grows with each step!)
+      if (false && !added) {
         if (opt.verbosity > 0) {
-          printf("Reached a fixed point.\n");
+          printf("Reached a fixed point in %d pass(es).\n", pass + 1);
         }
         break;
       }
@@ -448,7 +660,7 @@ struct AnimationImpl : public Animation {
       // PERF only if debugging is enabled!
       // We use i + 1 so as not to interfere with the original at 0.
       if (DEBUG_ANIMATION) {
-        SaveRaster(raster, i + 1);
+        SaveRaster(raster, pass + 1);
       }
     }
 
@@ -509,19 +721,10 @@ struct AnimationImpl : public Animation {
     // The bounding box is generally not located at 0,0.
     const int xoff = bbox.MinX();
     const int yoff = bbox.MinY();
-    {
-      /*
-      const int min_y = std::max((int)bbox.MinY(), 0);
-      const int min_x = std::max((int)bbox.MinX(), 0);
-      const int max_y = std::min((int)bbox.MaxY(), in.Height() - 1);
-      const int max_x = std::max((int)bbox.MinX(), in.Width() - 1);
-      */
-
-      for (const int idx : region.pixels) {
-        const auto &[x, y] = UnIdx(idx);
-        bitmap.SetPixel(x - xoff, y - yoff, false);
-        sample.push_back(idx);
-      }
+    for (const int idx : region.pixels) {
+      const auto &[x, y] = UnIdx(idx);
+      bitmap.SetPixel(x - xoff, y - yoff, false);
+      sample.push_back(idx);
     }
 
     CHECK(!sample.empty()) << "Otherwise, the bounding box would "
@@ -777,14 +980,19 @@ struct AnimationImpl : public Animation {
         // Draw those pixels and delete them from the tree.
         std::unordered_map<uint32_t, int> ink_count;
         std::vector<std::pair<int, int>> stray_ink;
+        constexpr bool stray_ink_posterized = true;
         for (const auto &[x, y] : inside) {
           if (WillOverwrite(x, y, z)) {
             // We can't use the actual color, since this pixel is not
             // in the original region. So we use the posterized color.
             uint32_t c = layer_colors[z];
-            frame->SetPixel32(x, y, c);
-            ink_count[c] = 1;
-            stray_ink.emplace_back(x, y);
+            if (stray_ink_posterized) {
+              frame->SetPixel32(x, y, c);
+            } else {
+              // Count this, but don't overweight it.
+              ink_count[c] = 1;
+              stray_ink.emplace_back(x, y);
+            }
           } else {
             // If this is a final pixel (nothing will overwrite it)
             // then use its final actual color.

@@ -403,10 +403,12 @@ void TalkDocument::GenerateOutput(
                         frame->duration);
         }
 
+        int file_slide_num = section_count[section]++;
+
         const std::string framefile =
           page.size() == 1 ?
-          StringPrintf("%s-%d.png", section.c_str(), i) :
-          StringPrintf("%s-%d_%d.png", section.c_str(), i, f);
+          StringPrintf("%s-%d.png", section.c_str(), file_slide_num) :
+          StringPrintf("%s-%d_%d.png", section.c_str(), file_slide_num, f);
         StringAppendF(&talk,
                       "  %s\n",
                       framefile.c_str());

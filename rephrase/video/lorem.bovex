@@ -124,7 +124,7 @@ in
 
   (* TODO It has come to my attention... *)
 
-  set-output-section "opening";
+  set-output-section (!current-page, "opening");
 
   (* People will look at this and think, "Looks fine to me!" *)
   just-image-2x "../typography0.png";
@@ -174,23 +174,47 @@ in
     lorem-slide true;
   end;
 
-  set-output-section "lorem";
+  set-output-section (!current-page, "lorem");
 
-  combo-slide (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
-  (Image { img = image-load "../lorem-portrait.png",
-           x = pixel 2200.0,
-           y = pixel 200.0,
-           scale = SCALE 2.0 } ::
-   Title [The Villain: Lorem Epsom] ::
-   Bullets ([Probably never even read the Wikipedia article
-             on [it[Lorem Ipsum]]] ::
-            [If you tell him there's a mistake in the
-             math he takes this as a personal attack] ::
-            [Loves the phrases “[em[metaverse]]” and
-             “[em[blockchain]]” and
-             “[em[generative AI]]” but doesn't know why] ::
-            [Is successful and rich] ::
-            nil) ::
-   nil);
+  let
+    (* Or scale animation frames. It's easy... *)
+    val portrait =
+      image-exact-scale (image-load "../lorem-portrait.png", 2)
+
+    val anim-frames : image-handle vec = auto-draw portrait
+      {(AutoDrawArg)
+       smooth-passes = 5,
+       max-pen-radius = 28.0,
+       min-pen-radius = 8.0,
+       max-pen-velocity = 48.0,
+       pen-acceleration = 0.5,
+       timesteps-per-frame = 8,
+       adjacent-deltae-threshold = 10.0,
+       max-fragile-piece-size = 10,
+       blend-frames = 20,
+       verbosity = 1 }
+
+    do print ("Got " ^ int-to-string (vec-size anim-frames) ^
+              " animation frames from auto-draw.\n")
+  in
+    vec-app
+    (fn (anim-frame : image-handle) =>
+     combo-slide (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
+     (Image { img = anim-frame,
+              x = pixel 2200.0,
+              y = pixel 200.0,
+              scale = ORIGINAL } ::
+      Title [The Villain: Lorem Epsom] ::
+      Bullets ([Probably never even read the Wikipedia article
+                on [it[Lorem Ipsum]]] ::
+               [If you tell him there's a mistake in the
+                math he takes this as a personal attack] ::
+               [Loves the phrases “[em[metaverse]]” and
+                “[em[blockchain]]” and
+                “[em[generative AI]]” but doesn't know why] ::
+               [Is successful and rich] ::
+               nil) ::
+      nil)) anim-frames;
+  end
 
 end

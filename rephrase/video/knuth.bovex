@@ -1,0 +1,61 @@
+(*   -*- electric-indent-local-mode: nil -*- *)
+let
+  import "stdlib.bovex"
+  import "layout.bovex"
+  import "cite.bovex"
+  import "paper.bib"
+  import "animation.bovex"
+  import "chess.bovex"
+
+  import "shared.bovex"
+
+
+  do set-doc-info { (TalkInfo)
+                    width = pixel SLIDE-WIDTH,
+                    height = pixel SLIDE-HEIGHT }
+
+
+  (* do REPHRASE-ALL := SOME 50 *)
+  do REPHRASE-ALL := NONE
+  do NO-REPHRASE := true
+
+in
+
+  set-output-section (!current-page, "knuth");
+
+  let
+    val portrait = image-load "../knuth-portrait-trace.png"
+
+    val anim-frames : image-handle vec = auto-draw portrait
+      {(AutoDrawArg)
+       smooth-passes = 3,
+       smooth-vote-threshold = 0.25,
+       max-pen-radius = 13.0,
+       min-pen-radius = 4.0,
+       max-pen-velocity = 24.0,
+       pen-acceleration = 0.5,
+       adjacent-deltae-threshold = 10.0,
+       max-fragile-piece-size = 20,
+       timesteps-per-frame = 8,
+       blend-frames = 30,
+       verbosity = 1 }
+
+    do print ("Got " ^ int-to-string (vec-size anim-frames) ^
+              " animation frames from auto-draw.\n")
+  in
+    vec-app
+    (fn (anim-frame : image-handle) =>
+     combo-slide slide
+     (Image { img = anim-frame,
+              x = pixel 2200.0,
+              y = pixel 160.0,
+              scale = INTSCALE 2 } ::
+      Title [The Hero: Donald Knuth] ::
+      Bullets ([[em[Wrote]] the article on [it[Lorem Ipsum]]] ::
+               [Will pay you if you find an error] ::
+               [Took 49 years to write a book] :: nil) ::
+      nil))
+    anim-frames;
+  end
+
+end

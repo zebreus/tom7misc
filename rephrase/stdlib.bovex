@@ -381,7 +381,9 @@ fun string-tokens pred str : string list =
     r ("", str)
   end
 
-fun vec-app f v =
+(* Apply f to every element in the vector, writing that
+   back in place. *)
+fun vec-app-update f v : unit =
   let
     val sz = vec-size v
     fun r i =
@@ -389,6 +391,21 @@ fun vec-app f v =
       else
       let in
         vec-update (v, i, f (vec-sub (v, i)));
+        r (i + 1)
+      end
+  in
+    r 0
+  end
+
+(* Apply f to every element, discarding the results. *)
+fun vec-app f v : unit =
+  let
+    val sz = vec-size v
+    fun r i =
+      if i == sz then ()
+      else
+      let in
+        f (vec-sub (v, i));
         r (i + 1)
       end
   in
