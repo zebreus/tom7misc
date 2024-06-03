@@ -1,0 +1,52 @@
+Make document look better:
+ - actual boxes-and-glue (vertical)
+ - bibliography in order
+
+Fixes and missing stuff:
+
+ - PDF output is broken with some viewers (pdf.js). Might be because
+   I skip some required font width tables (see radar.spacebar.org).
+
+ - find fonts using include dirs (especially fonts loaded by the standard
+   library!)
+
+ - optimization loop exists but it is not integrated
+
+ - xrefs
+
+ - When choosing the next split point for rephrase, we can also include
+   the badness up to that point (if we can run get-boxes and pack-boxes
+   with the same parameters). Although this is not guaranteed to
+   lead to a good overall paragraph, it is probably a very good heuristic.
+
+ - tweak expansion/contraction penalties after commas, periods, semicolons, colons
+   (and other).
+
+ - bug: comments actually induce whitespace beginning paragraphs, or
+   blank spaces between paragraphs. This should be fixable now with
+   symbolic bytecode.
+
+ - tweak break penalty at end of text (orphans)
+
+ - column layout allowing for headers, footers
+
+ - Footnotes
+
+ - Could rephrase a single sentence at a time, providing the context
+   of the paragraph in the prompt. This would probably be a lot more
+   practical, in several ways.
+
+ - garbage collector
+
+ - option to include hyphens within the line (I think it looks good
+   with them hanging out, but it's probably a bug that it happens)
+
+Minor improvements:
+ - Implement pretty-printing lib and use that for output of
+   expressions and types
+
+ - Better handling of leading space in getboxes (or call to getboxes).
+
+Expansive ideas:
+
+ - could compile the whole paper (inference and all) to postscript??

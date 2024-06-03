@@ -25,14 +25,6 @@ val SLIDE-HEIGHT = pixel 2160.0
 val current-page = ref 0
 val current-frame = ref 0
 
-val output-frame =
-  (fn (p, 0, l) => output-frame (p, 0, l)
-| (p, f, l) =>
-   let in
-     print ("nonzero frame: " ^ int-to-string f ^ "\n");
-     output-frame (p, f, l);
-   end)
-
 fun next-slide () =
   let in
     current-page := !current-page + 1;
@@ -770,3 +762,6 @@ fun wordle-board { x, y, cell-size,
 
 (* Video-specific stuff; should probably be split off if I make this
    into a proper talk library? *)
+
+val TeX = color 0xFFBBFFFF [TeX]
+val BoVeX = color 0xFFFF77FF [BoVeX]

@@ -972,7 +972,10 @@ fun author lay = span {(Span) justification = "left" }
                        [[lay][hfill()][break()]]
 fun date lay = [[lay][hfill()][vspace 16.0]]
 
+(* Justify even the final line of the paragraph. *)
 fun justify-all lay = span {(Span) justification = "all" } lay
+(* Justify all but the final line. *)
+fun justify-full lay = span {(Span) justification = "full" } lay
 fun justify-left lay = span {(Span) justification = "left" } lay
 
 fun monospace-block-ext { left-indent, width,

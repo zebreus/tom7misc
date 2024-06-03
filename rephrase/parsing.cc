@@ -706,9 +706,10 @@ const Exp *Parsing::Parse(AstPool *pool,
                 };
           });
 
-      return (IsToken<LBRACKET>() >> Lay << IsToken<RBRACKET>())
-          >[&](const Layout *lay) {
-              return pool->LayoutExp(lay);
+      return Mark(IsToken<LBRACKET>() >> Lay << IsToken<RBRACKET>())
+          >[&](const auto &lay_pos) {
+              const auto &[lay, token_start, token_len] = lay_pos;
+              return pool->LayoutExp(lay, BytePos(token_start));
             };
     };
 

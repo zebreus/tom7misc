@@ -60,13 +60,13 @@ in
                  size 144.0 [Knuth Any% Speedrun:]) ::
          BulletsExt
          ({(Bullet) indent = 1 },
-          [[color 0xFFFF77FF[BoVeX]], a new document preparation system] ::
+          [[BoVeX], a new document preparation system] ::
           [Full-featured typed programming language] ::
           [Kerning, hyphenation, and all that crap] ::
           [New fonts, and software for making fonts] ::
           [AI-enhanced text layout algorithm] ::
-          [Use [color 0xFFFF77FF[BoVeX]] to write a paper
-           about [color 0xFFFF77FF[BoVeX]]] :: nil) ::
+          [Use [BoVeX] to write a paper
+           about [BoVeX]] :: nil) ::
          nil)
      end) anim-frames
   end

@@ -153,7 +153,7 @@ struct Pass {
   }
 
   virtual const Exp *DoLayoutExp(const Layout *lay, size_t pos, Args... args) {
-    return pool->LayoutExp(DoLayout(lay, args...));
+    return pool->LayoutExp(DoLayout(lay, args...), pos);
   }
 
   virtual const Exp *DoVar(const std::string &v, size_t pos, Args... args) {

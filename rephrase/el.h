@@ -218,10 +218,10 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *LayoutExp(const Layout *lay) {
+  const Exp *LayoutExp(const Layout *lay, size_t pos) {
     Exp *ret = NewExp(ExpType::LAYOUT);
     ret->layout = lay;
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 

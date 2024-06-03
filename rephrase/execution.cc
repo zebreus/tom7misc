@@ -261,13 +261,6 @@ Value *Execution::DoTriop(Primop primop, Value *a, Value *b, Value *c,
 
 std::tuple<int64_t, int64_t> Execution::GetPageAndFrame(const char *what,
                                                         const map_type *am) {
-  printf("GPAF %s:", what);
-  for (const auto &[k, v] : *am) {
-    printf(" (%s=%s)", k.c_str(),
-           bc::ColorValueString(*v).c_str());
-  }
-  printf("\n");
-
   const BigInt *ai = GetObjIntField(what, "page", *am);
   CHECK(ai != nullptr) << "out-layout requires a page (int field)";
   const int64_t page_idx = GetInt64("out-layout page index", *ai);
@@ -282,8 +275,6 @@ std::tuple<int64_t, int64_t> Execution::GetPageAndFrame(const char *what,
       "is nonsensical!";
   }
 
-  /* if (frame_idx != 0) */
-  printf(ARED("%lld %lld") "\n", page_idx, frame_idx);
   return std::make_pair(page_idx, frame_idx);
 };
 
@@ -645,8 +636,6 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     CHECK(am != nullptr) << Err() <<
       "out-layout expects an object as its first argument.";
     const auto &[page_idx, frame_idx] = GetPageAndFrame("out-layout", am);
-
-    printf("OUT|%d %d\n", (int)page_idx, (int)frame_idx);
     OutputLayoutHook((int)page_idx, (int)frame_idx, b);
     return Unit(state);
   }

@@ -13,6 +13,7 @@
  let count = 0;
  let video_dirty = true;
  let clickers_hidden = false;
+ let timer_hidden = false;
 
  let requested_frame = false;
 
@@ -146,6 +147,16 @@
    }
  }
 
+ function ToggleTimer() {
+   timer_hidden = !timer_hidden;
+   let elt = document.getElementById('timer');
+   if (timer_hidden) {
+     elt.style.display = 'none';
+   } else {
+     elt.style.display = 'block';
+   }
+ }
+
  function CopyTextToClipboard(text) {
    var textArea = document.createElement("textarea");
 
@@ -217,9 +228,14 @@
        // Letters keycodes are just the uppercase ASCII.
      case 72: // H
        ToggleHide();
+       break;
+     case 84: // T
+       ToggleTimer();
+       break;
 
      case 80: // P
        CopyPos();
+       break;
    }
    Draw();
    return false;

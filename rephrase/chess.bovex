@@ -27,7 +27,7 @@ fun piece-unicode (WHITE, KING) = "♔"
   | piece-unicode (BLACK, ROOK) = "♜"
   | piece-unicode (BLACK, BISHOP) = "♝"
   | piece-unicode (BLACK, KNIGHT) = "♞"
-  | piece-unicode (BLACK, PAWN) = "♟︎"
+  | piece-unicode (BLACK, PAWN) = "♟"
 
 fun color-eq (WHITE, WHITE) = true
   | color-eq (BLACK, BLACK) = true
