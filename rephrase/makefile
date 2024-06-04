@@ -4,7 +4,7 @@ default: bovex.exe monospace.exe monofile.exe lexing_test.exe context_test.exe u
 # for these ENABLE=true kinds of flags, you should *comment them out*
 # if you don't want them. ENABLE_LLM=false does the same thing as true.
 
-ENABLE_LLM=true
+# ENABLE_LLM=true
 
 # TODO: Should perhaps separate out BoVeX from the other video/paper stuff?
 
@@ -54,9 +54,9 @@ else
   # PLATFORM_CFLAGS=-fsanitize=address -g -D_GNU_SOURCE
   # OPTFLAGS=-O
   PLATFORM_CFLAGS=-g -D_GNU_SOURCE
+  PLATFORM_LDFLAGS += -Wl,--stack,167772160
   ifdef ASAN
     OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
-    PLATFORM_LDFLAGS += -Wl,--stack,167772160
   else
     OPTFLAGS=-O3 -march=native -mtune=native
   endif
