@@ -12,6 +12,8 @@
 namespace el {
 
 struct Parsing {
+  // May return nullptr if parsing fails, but there are also many
+  // cases where it aborts internally.
   static const Exp *Parse(AstPool *pool,
                           const SourceMap &source_map,
                           // Raw input string.

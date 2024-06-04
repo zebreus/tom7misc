@@ -230,6 +230,12 @@ fun list-filter _ nil = nil
   | list-filter f (h :: t) = if f h then h :: (list-filter f t)
                              else list-filter f t
 
+fun list-map-partial f nil = nil
+  | list-map-partial f (h :: t) =
+  case f h of
+    SOME x => x :: list-map-partial f t
+  | NONE => list-map-partial f t
+
 fun list-exists _ nil = false
   | list-exists f (h :: t) = if f h then true
                              else list-exists f t
@@ -270,6 +276,10 @@ fun string-find (big, small) =
 
 fun substr-rest (s, pos) =
   substr (s, pos, string-size s - pos)
+
+fun string-prefix (s, n) =
+  if n >= string-size s then s
+  else substr (s, 0, n)
 
 (* If the big string is a+small+b (with small not a substring of a;
    i.e. this is the first occurrence of small), return SOME(a, b).
@@ -732,14 +742,42 @@ fun random64 () =
      InternalRandom s =>
        let
          (* XXX improve this algorithm; like use PCG *)
-         val s = s + 0x31415926.27182813
-         val s = s * 0x12345678.91234731
          val s = s xorb 0xCAFED00D.FEED0123
+         val s = s * 0x12345678.91234731
+         val s = s + 0x31415926.27182813
+         val s = (s shr 17) orb (s shl (64 - 17))
          val s = s andb 0xFFFFFFFF.FFFFFFFF
        in
          random-state := InternalRandom s;
          s
        end)
+
+(* Return a random number in [0, n). *)
+fun random-to n =
+  if n <= 0 then fail "random-to needs a positive upper bound"
+  else if n > 0x1.00000000.00000000
+       then fail "random-to only works on 64-bit upper bounds"
+       else
+         let
+           (* Mask for rejection sampling. *)
+           val mask = n - 1
+           val mask = mask orb (mask shr 1)
+           val mask = mask orb (mask shr 2)
+           val mask = mask orb (mask shr 4)
+           val mask = mask orb (mask shr 8)
+           val mask = mask orb (mask shr 16)
+           val mask = mask orb (mask shr 32)
+
+           fun loop-reject () =
+             let
+               val r = random64 () andb mask
+             in
+               if r < n then r
+               else loop-reject ()
+             end
+         in
+           loop-reject ()
+         end
 
 fun random () : float =
   let

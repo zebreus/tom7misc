@@ -22,6 +22,10 @@ datatype image-scaling =
 val SLIDE-WIDTH = pixel 3840.0
 val SLIDE-HEIGHT = pixel 2160.0
 
+val FPS = 60
+fun seconds x = x * FPS
+fun fseconds f = round (f *. int-to-float FPS)
+
 val current-page = ref 0
 val current-frame = ref 0
 
@@ -264,6 +268,28 @@ datatype element =
                  width : float,
                  text : layout }
   | StickerElt of layout
+
+
+type timed-element = int * element
+
+fun reveal (t : int) (le : timed-element list) =
+  list-map-partial (fn (tt, e) => if tt <= t then SOME e else NONE) le
+
+datatype element =
+  Title of layout
+  | Bullets of layout list
+  | BulletsExt of obj * layout list
+  | Bullet of obj * layout
+  | Image of { img : image-handle,
+               x : float,
+               y : float,
+               scale : image-scaling }
+  | TextBox of { x : float,
+                 y : float,
+                 width : float,
+                 text : layout }
+  | StickerElt of layout
+
 
 fun scaled-image { img, x, y, scale } =
   (case scale of
@@ -765,3 +791,43 @@ fun wordle-board { x, y, cell-size,
 
 val TeX = color 0xFFBBFFFF [TeX]
 val BoVeX = color 0xFFFF77FF [BoVeX]
+
+(* Generate one slide with progressive reveal of the bullets.
+   Other elements appear on every slide. *)
+fun reveal-bullets-slides slide elts =
+  let
+    val ctr = ref 1
+
+    fun add-times nil : timed-element list = nil
+      | add-times ((h as Bullet _) :: t) =
+      let
+        val b = (!ctr, h)
+      in
+        ctr := !ctr + 1;
+        b :: add-times t
+      end
+      | add-times (Bullets nil :: t) = add-times t
+      | add-times (Bullets (b :: r) :: t) =
+      (* This is shorthand; expand it. *)
+      add-times ((Bullet ({(Bullet) }, b)) :: Bullets r :: t)
+      (* XXX BulletExt *)
+      | add-times (h :: t) =
+      (* Anything else appears at time 0 *)
+      (0, h) :: add-times t
+
+    val new-elts = add-times elts
+    val maxt = !ctr
+
+    fun one t = combo-slide slide (reveal t new-elts)
+
+    fun go t =
+      if t <= maxt
+      then
+        let in
+          one t;
+          go (t + 1)
+        end
+      else ()
+  in
+    go 0
+  end

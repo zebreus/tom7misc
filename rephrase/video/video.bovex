@@ -19,6 +19,8 @@ let
   do REPHRASE-ALL := NONE
   do NO-REPHRASE := true
 
+  fun bullet-at t lay = (t, Bullet ({(Bullet) }, lay))
+
   fun zigzag zig lay =
     case layoutcase (get-box lay) of
       Node (BOX, attrs as {(Box) width, height}, ch) =>
@@ -194,6 +196,9 @@ in
 
   placeholder-slide [weight.mp4];
 
+
+  set-output-section (!current-page, "wordle");
+
   (* Or like, the rules for wordle hard mode are just
      wrong. I would never have let this happen. *)
   let
@@ -292,22 +297,33 @@ in
     lorem-slide true;
   end;
 
-  combo-slide (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
-  (Image { img = image-load "../lorem-portrait.png",
-           x = pixel 2200.0,
-           y = pixel 200.0,
-           scale = INTSCALE 2 } ::
-   Title [The Villain: Lorem Epsom] ::
-   Bullets ([Probably never even read the Wikipedia article
-             on [it[Lorem Ipsum]]] ::
-            [If you tell him there’s a mistake in the
-             math he takes this as a personal attack] ::
-            [Loves the phrases “[em[metaverse]]” and
-             “[em[blockchain]]” and
-             “[em[generative AI]]” but doesn’t know why] ::
-            [Is successful and rich] ::
-            nil) ::
-   nil);
+  set-output-section (!current-page, "lorem");
+
+  let
+    fun lorem t =
+      combo-slide (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
+      (reveal t
+       ((0, Image { img = image-load "../lorem-portrait.png",
+                    x = pixel 2200.0,
+                    y = pixel 200.0,
+                    scale = INTSCALE 2 }) ::
+        (0, Title [The Villain: Lorem Epsom]) ::
+        bullet-at 0
+        [Probably never even read the Wikipedia article
+         on [it[Lorem Ipsum]]] ::
+        bullet-at (seconds 15)
+        [If you tell him there's a mistake in the
+         math he takes this as a personal attack] ::
+        bullet-at (seconds 20)
+        [Loves the phrases “[em[metaverse]]” and
+         “[em[blockchain]]” and
+         “[em[generative AI]]” but doesn't know why] ::
+        bullet-at (seconds 25)
+        [Is successful and rich] ::
+        nil))
+  in
+    list-app (fn s => lorem (seconds s)) (0 :: 18 :: 22 :: 27 :: nil)
+  end;
 
   (*
      The opposite of this person ...
@@ -315,16 +331,24 @@ in
 
   set-output-section (!current-page, "knuth");
 
-  combo-slide slide
-  (Image { img = image-load "knuth-traced-4k.png",
-           x = pixel 2200.0,
-           y = pixel 160.0,
-           scale = ORIGINAL } ::
-   Title [The Hero: Donald Knuth] ::
-   Bullets ([[em[Wrote]] the article on [it[Lorem Ipsum]]] ::
-            [Will pay you if you find an error] ::
-            [Took 49 years to write a book] :: nil) ::
-   nil);
+
+  let
+
+    fun knuth t =
+     combo-slide slide
+     (reveal t
+      ((0, Image { img = image-load "knuth-traced-4k.png",
+                   x = pixel 2200.0,
+                   y = pixel 160.0,
+                   scale = ORIGINAL }) ::
+       (0, Title [The Hero: Donald Knuth]) ::
+       bullet-at (seconds 3) [[em[Wrote]] the article on [it[Lorem Ipsum]]] ::
+       bullet-at (seconds 9) [Will pay you if you find an error] ::
+       bullet-at (seconds 14) [Took 49 years to write a book] ::
+       nil))
+  in
+    list-app (fn s => knuth (seconds s)) (0 :: 4 :: 10 :: 15 :: nil)
+  end;
 
   (* Now I say "a book", but to be fair it's become more than that.
 
@@ -340,9 +364,9 @@ in
 
        rabbit holes in rabbit holes.
        *)
-    combo-slide (slide
-                 with BULLET-FONT-SIZE = 100.0
-                 with BULLET-LINE-GAP = 40.0)
+    reveal-bullets-slides (slide
+                           with BULLET-FONT-SIZE = 100.0
+                           with BULLET-LINE-GAP = 40.0)
     (Title [The Art of Computer Procrastination] ::
      Image { img = image-load "knuth-traced-4k.png",
              x = pixel 2200.0,
@@ -364,6 +388,8 @@ in
      Bullet ({(Bullet)},
              [[year[2023]]: Releases Volume 4c of [em[??]] volumes]) ::
      nil);
+
+
   end;
 
   (* The proofs don't look good. I can relate, Donald... *)
@@ -381,6 +407,7 @@ in
    Title [Just checking in to see if you got my call] ::
    nil);
 
+  (* TODO back/forth highlight *)
   combo-slide (slide with TITLE-FONT-SIZE = 180.0)
   (Image { img = image-load "editor-portrait.png",
               x = pixel 0.0,
@@ -399,10 +426,12 @@ in
      All that text was consumed by this guy,
      *)
 
+  set-output-section (!current-page, "llm");
+
   (* - AI in everything now. I do not want this when I'm trying
      to rebook my flight.
      *)
-  combo-slide slide
+  reveal-bullets-slides slide
   (Bullets ([Wow OMG I’m sick of hearing about it] ::
             [Torment Nexus] ::
             [It does kinda work though] :: nil) ::
@@ -538,11 +567,13 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
    confused with possessive.
    *)
 
+  set-output-section (!current-page, "genai");
+
   let
     val MARGIN = inch 13.1
   in
 
-    combo-slide (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
+    reveal-bullets-slides (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
     (Image { img = image-load "../lorem-portrait.png",
              x = pixel 2200.0,
              y = pixel 200.0,
@@ -759,6 +790,7 @@ the line and roll the dice again.];
 
   just-video (slide with LOOP-VIDEO = true) "comparison.mp4";
 
+  placeholder-slide [features.mp4];
 
   set-output-section (!current-page, "features");
 

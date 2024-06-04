@@ -2,6 +2,13 @@ Make document look better:
  - actual boxes-and-glue (vertical)
  - bibliography in order
 
+Features:
+
+ - It turns out to be very useful to be able to split out expensive
+   animations into their own documents that are rendered independently.
+   It would be nice if these were just part of the same bovex file
+   but could be rendered or re-rendered using a command-line flag.
+
 Fixes and missing stuff:
 
  - PDF output is broken with some viewers (pdf.js). Might be because
@@ -19,8 +26,8 @@ Fixes and missing stuff:
    with the same parameters). Although this is not guaranteed to
    lead to a good overall paragraph, it is probably a very good heuristic.
 
- - tweak expansion/contraction penalties after commas, periods, semicolons, colons
-   (and other).
+ - tweak expansion/contraction penalties after commas, periods,
+   semicolons, colons (and other).
 
  - bug: comments actually induce whitespace beginning paragraphs, or
    blank spaces between paragraphs. This should be fixable now with
@@ -36,10 +43,9 @@ Fixes and missing stuff:
    of the paragraph in the prompt. This would probably be a lot more
    practical, in several ways.
 
- - garbage collector
-
  - option to include hyphens within the line (I think it looks good
    with them hanging out, but it's probably a bug that it happens)
+
 
 Minor improvements:
  - Implement pretty-printing lib and use that for output of

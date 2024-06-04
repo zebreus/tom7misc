@@ -82,25 +82,31 @@ in
   in
     vec-appi
     (fn (fidx, anim-frame : image-handle) =>
-     let in
+     let
+       fun bullet-at t lay = (t, Bullet ({(Bullet) }, lay))
+     in
        current-page := start-page;
        current-frame := fidx;
        combo-slide (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
-       (Image { img = anim-frame,
-                x = pixel 2200.0,
-                y = pixel 200.0,
-                scale = ORIGINAL } ::
-        Title [The Villain: Lorem Epsom] ::
-        Bullets ([Probably never even read the Wikipedia article
-                  on [it[Lorem Ipsum]]] ::
-                 [If you tell him there's a mistake in the
-                  math he takes this as a personal attack] ::
-                 [Loves the phrases “[em[metaverse]]” and
-                  “[em[blockchain]]” and
-                  “[em[generative AI]]” but doesn't know why] ::
-                 [Is successful and rich] ::
-                 nil) ::
-        nil)
+       (reveal fidx
+        ((0, Image { img = anim-frame,
+                     x = pixel 2200.0,
+                     y = pixel 200.0,
+                     scale = ORIGINAL }) ::
+         (0, Title [The Villain: Lorem Epsom]) ::
+         bullet-at 0
+         [Probably never even read the Wikipedia article
+          on [it[Lorem Ipsum]]] ::
+         bullet-at (seconds 15)
+         [If you tell him there's a mistake in the
+          math he takes this as a personal attack] ::
+         bullet-at (seconds 20)
+         [Loves the phrases “[em[metaverse]]” and
+          “[em[blockchain]]” and
+          “[em[generative AI]]” but doesn't know why] ::
+         bullet-at (seconds 25)
+         [Is successful and rich] ::
+         nil))
      end) anim-frames;
     current-frame := 0;
   end

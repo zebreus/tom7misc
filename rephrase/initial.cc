@@ -43,6 +43,9 @@ Initial::Initial(AstPool *pool) {
     {"xorb", Primop::INT_XORB},
     {"orb", Primop::INT_ORB},
 
+    {"shr", Primop::INT_SHR},
+    {"shl", Primop::INT_SHL},
+
     {"+.", Primop::FLOAT_PLUS},
     {"-.", Primop::FLOAT_MINUS},
     {"*.", Primop::FLOAT_TIMES},
@@ -99,7 +102,9 @@ Initial::Initial(AstPool *pool) {
     {"string-lowercase", Primop::STRING_LOWERCASE},
     {"string-uppercase", Primop::STRING_UPPERCASE},
 
+    // Perhaps should be called only string-to-layout?
     {"layout", Primop::STRING_TO_LAYOUT},
+    {"string-to-layout", Primop::STRING_TO_LAYOUT},
 
     // We don't (yet?) expose a word type, so this is internal.
     // (And actually source programs don't even need access

@@ -402,6 +402,27 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     return Big(BigInt::BitwiseOr(aa, bb));
   }
 
+  case Primop::INT_SHL: {
+    const auto &[aa, bb] = TwoInts("int_orb");
+    const int64_t amount = GetInt64("left shift", bb);
+    if (amount < 0) {
+      InternalFail("left shift by negative amount", state);
+      return NonceValue();
+    }
+    return Big(BigInt::LeftShift(aa, amount));
+  }
+
+  case Primop::INT_SHR: {
+    const auto &[aa, bb] = TwoInts("int_orb");
+    const int64_t amount = GetInt64("right shift", bb);
+    if (amount < 0) {
+      InternalFail("right shift by negative amount", state);
+      return NonceValue();
+    }
+    return Big(BigInt::RightShift(aa, amount));
+  }
+
+
   case Primop::INT_DIV: {
     const auto &[aa, bb] = TwoInts("int_div");
     if (BigInt::Eq(bb, 0)) {

@@ -4,32 +4,33 @@ let
   import "layout.bovex"
   import "cite.bovex"
   import "paper.bib"
+  import "animation.bovex"
+  import "chess.bovex"
 
-  import "talk-shared.bovex"
+  import "shared.bovex"
+
+
+  do set-doc-info { (TalkInfo)
+                    width = pixel SLIDE-WIDTH,
+                    height = pixel SLIDE-HEIGHT }
+
 
   (* do REPHRASE-ALL := SOME 50 *)
   do REPHRASE-ALL := NONE
   (* do NO-REPHRASE := true *)
 
-  do set-doc-info { (TalkInfo)
-                    width = pixel 1920.0,
-                    height = pixel 1080.0 }
-
 in
 
-  (* This just generates the animated comparison. It could be embedded
-     in the slides as, and works smoothly that way. But each Full HD
-     PNG file is like 600k, which may be risky for live presentation
-     on a laptop. It also takes a while to run if we run the full
-     rephrasing on each slide! *)
+  set-output-section (!current-frame, "comparison");
+
   let
     open slide-props slide
     val xpos1 = LEFT-MARGIN
-    val gap = inch 0.75
+    val gap = inch 1.5
     val MAX-COLUMN-WIDTH = (CONTENT-WIDTH -. gap) *. 0.5
     val xpos2 = LEFT-MARGIN +. MAX-COLUMN-WIDTH +. gap
 
-    val NUM-FRAMES = 10 * 30
+    val NUM-FRAMES = 10 * 60
 
     val NUM-REPHRASE = 1000
 
@@ -46,7 +47,7 @@ in
     val title = if !NO-REPHRASE then [** warning disabled **]
                 else [Boxes and LLMers Glue]
 
-    val cslide = (slide with BODY-FONT-SIZE = 64.0)
+    val cslide = (slide with BODY-FONT-SIZE = 128.0)
 
     fun comparison width =
       combo-slide cslide
@@ -87,33 +88,6 @@ in
     current-frame := 0;
   end;
 
-(*
 
- This is the most beautiful typesetting you've ever seen, isn't it?
- Of course it is! It's been rendered with the ground-breaking BoVeX
- computer document preparation system, and it's the only program
- permitted by the SIGBOVIK program committee. *)
-
-  (* Can drop this *)
-  bullet-slide slide [Additional features]
-  ([Achievement system] ::
-   three-d { font-name = font-regular PALATINO,
-             font-size = 72.0,
-             width = 40.0, height = 72.0, text = "3D text" } ::
-   [Bibliography database] ::
-   nil);
-
-  just-image "achievement-screenshot.png";
-
-  text-slide slide [Conclusion]
-  (justify-all
-   [In this talk—and [it[with]] this talk—I presented BoVeX, a new computer
-    typesetting system. It follows the tradition TeX, but with modern amenities
-    such as requiring over 128 gigabytes of RAM.
-    Though some may consider the addition of AI features to TeX to be an
-    unnecessary perversion,
-    I find this[box {(Box) glue-break-penalty = -1000000.0,
-                     width = 0.0 } []]use of LLMs to be
-    [it[fully justified]].]);
 
 end

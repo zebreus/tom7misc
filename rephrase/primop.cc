@@ -36,6 +36,8 @@ const char *PrimopString(Primop po) {
   case Primop::INT_XORB: return "INT_XORB";
   case Primop::INT_ANDB: return "INT_ANDB";
   case Primop::INT_ORB: return "INT_ORB";
+  case Primop::INT_SHL: return "INT_SHL";
+  case Primop::INT_SHR: return "INT_SHR";
   case Primop::INT_NEG: return "INT_NEG";
   case Primop::STRING_EQ: return "STRING_EQ";
   case Primop::STRING_LESS: return "STRING_LESS";
@@ -140,6 +142,8 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::INT_XORB: return std::make_tuple(0, 2);
   case Primop::INT_ANDB: return std::make_tuple(0, 2);
   case Primop::INT_ORB: return std::make_tuple(0, 2);
+  case Primop::INT_SHL: return std::make_tuple(0, 2);
+  case Primop::INT_SHR: return std::make_tuple(0, 2);
   case Primop::INT_NEG: return std::make_tuple(0, 1);
   case Primop::STRING_EQ: return std::make_tuple(0, 2);
   case Primop::STRING_LESS: return std::make_tuple(0, 2);
@@ -254,6 +258,10 @@ bool IsPrimopTotal(Primop p) {
   case Primop::INT_ANDB:
   case Primop::INT_ORB:
     return true;
+  case Primop::INT_SHL:
+  case Primop::INT_SHR:
+    // Negative shifts fail at runtime.
+    return false;
   case Primop::INT_NEG:
     return true;
   case Primop::STRING_EQ:
@@ -451,6 +459,8 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::INT_XORB: return {{}, BinOp(Int, Int, Int)};
   case Primop::INT_ANDB: return {{}, BinOp(Int, Int, Int)};
   case Primop::INT_ORB: return {{}, BinOp(Int, Int, Int)};
+  case Primop::INT_SHL: return {{}, BinOp(Int, Int, Int)};
+  case Primop::INT_SHR: return {{}, BinOp(Int, Int, Int)};
 
   case Primop::INT_NEG: return {{}, pool->Arrow(Int, Int)};
 

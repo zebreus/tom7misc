@@ -9,6 +9,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "bc.h"
 #include "compiler.h"
 
@@ -794,6 +795,22 @@ static void TestVectors() {
 
 }
 
+static void TestOps() {
+  // Would be good to test these with and without the simplification
+  // optimization.
+
+  CHECK_EQ(RunToString(R"(
+print (int-to-string (0b100101 shl 3))
+       )"), StringPrintf("%d", 0b100101000));
+
+  CHECK_EQ(RunToString(R"(
+print (int-to-string (0b100101 shr 2))
+       )"), StringPrintf("%d", 0b1001));
+
+  // TODO: Many more operators to test!
+
+}
+
 static void NewTests() {
 
   /*
@@ -835,6 +852,7 @@ int main(int argc, char **argv) {
   bc::TestLocal();
   bc::TestEnums();
   bc::TestVectors();
+  bc::TestOps();
 
   printf("OK\n");
   return 0;

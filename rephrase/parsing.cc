@@ -79,6 +79,9 @@ GetFixity(const std::string &sym) {
     {"div", {Fixity::Infix, Associativity::Left, 9}},
     {"mod", {Fixity::Infix, Associativity::Left, 9}},
 
+    {"shl", {Fixity::Infix, Associativity::Non, 10}},
+    {"shr", {Fixity::Infix, Associativity::Non, 10}},
+
     {"andb", {Fixity::Infix, Associativity::Left, 11}},
     {"xorb", {Fixity::Infix, Associativity::Left, 12}},
     {"orb", {Fixity::Infix, Associativity::Left, 13}},
@@ -1242,7 +1245,7 @@ const Exp *Parsing::Parse(AstPool *pool,
   auto Program = Expr << End<Token>();
 
   auto parseopt = Program(TokenSpan<Token>(tokens.data(), tokens.size()));
-  CHECK(parseopt.HasValue()) << "Could not parse program.";
+  if (!parseopt.HasValue()) return nullptr;
   return parseopt.Value();
 }
 

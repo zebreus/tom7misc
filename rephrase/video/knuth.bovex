@@ -37,24 +37,27 @@ in
        adjacent-deltae-threshold = 10.0,
        max-fragile-piece-size = 30,
        timesteps-per-frame = 8,
-       blend-frames = 30,
+       blend-frames = 25,
        verbosity = 1 }
 
     do print ("Got " ^ int-to-string (vec-size anim-frames) ^
               " animation frames from auto-draw.\n")
+
+    fun bullet-at t lay = (t, Bullet ({(Bullet) }, lay))
   in
-    vec-app
-    (fn (anim-frame : image-handle) =>
+    vec-appi
+    (fn (fidx, anim-frame : image-handle) =>
      combo-slide slide
-     (Image { img = anim-frame,
-              x = pixel 2200.0,
-              y = pixel 160.0,
-              scale = ORIGINAL } ::
-      Title [The Hero: Donald Knuth] ::
-      Bullets ([[em[Wrote]] the article on [it[Lorem Ipsum]]] ::
-               [Will pay you if you find an error] ::
-               [Took 49 years to write a book] :: nil) ::
-      nil))
+     (reveal fidx
+      ((0, Image { img = anim-frame,
+                   x = pixel 2200.0,
+                   y = pixel 160.0,
+                   scale = ORIGINAL }) ::
+       (0, Title [The Hero: Donald Knuth]) ::
+       bullet-at (seconds 3) [[em[Wrote]] the article on [it[Lorem Ipsum]]] ::
+       bullet-at (seconds 9) [Will pay you if you find an error] ::
+       bullet-at (seconds 14) [Took 49 years to write a book] ::
+       nil)))
     anim-frames;
   end
 

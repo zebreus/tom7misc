@@ -458,10 +458,12 @@ struct PeepholePass : public il::Pass<> {
       case Primop::INT_TIMES:
       case Primop::INT_PLUS:
       case Primop::INT_MINUS:
-      case Primop::INT_DIV:
       case Primop::INT_ANDB:
       case Primop::INT_XORB:
       case Primop::INT_ORB:
+      case Primop::INT_SHL:
+      case Primop::INT_SHR:
+      case Primop::INT_DIV:
       case Primop::INT_MOD:
         if (ees[0]->type == ExpType::INT &&
             ees[1]->type == ExpType::INT) {
@@ -482,6 +484,36 @@ struct PeepholePass : public il::Pass<> {
             return pool->Int(BigInt::BitwiseXor(lhs, rhs));
           case Primop::INT_ORB:
             return pool->Int(BigInt::BitwiseOr(lhs, rhs));
+
+          case Primop::INT_SHL: {
+            const auto io = rhs.ToInt();
+            if (!io.has_value()) {
+              return pool->Fail(
+                  pool->String("Left shift too big (static)"),
+                  pool->IntType());
+            }
+            if (*io < 0) {
+              return pool->Fail(
+                  pool->String("Left shift by negative amount (static)"),
+                  pool->IntType());
+            }
+            return pool->Int(BigInt::LeftShift(lhs, *io));
+          }
+          case Primop::INT_SHR: {
+            const auto io = rhs.ToInt();
+            if (!io.has_value()) {
+              return pool->Fail(
+                  pool->String("Right shift too big (static)"),
+                  pool->IntType());
+            }
+            if (*io < 0) {
+              return pool->Fail(
+                  pool->String("Right shift by negative amount (static)"),
+                  pool->IntType());
+            }
+            return pool->Int(BigInt::RightShift(lhs, *io));
+          }
+
           case Primop::INT_DIV:
             if (BigInt::Eq(rhs, 0)) {
               return pool->Fail(pool->String("Division by zero (static)"),

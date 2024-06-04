@@ -40,6 +40,8 @@ enum class Primop {
   INT_XORB,
   INT_ANDB,
   INT_ORB,
+  INT_SHL,
+  INT_SHR,
 
   INT_NEG,
 

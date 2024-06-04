@@ -116,8 +116,7 @@ Program Frontend::RunFrontendInternal(
   Timer parse_timer;
   const el::Exp *el_exp =
     Parsing::Parse(&el_pool, source_map, contents, tokens);
-  // Parser reports its own errors.
-  CHECK(el_exp != nullptr);
+  CHECK(el_exp != nullptr) << "Parsing failed.\n";
   const double parse_sec = parse_timer.Seconds();
 
   if (verbose > 0) {

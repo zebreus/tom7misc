@@ -19,6 +19,8 @@ namespace el {
 
 static constexpr bool VERBOSE = false;
 
+// TODO Parse failure tests
+
 static void TestParse() {
   AstPool pool;
   auto Parse = [&](const std::string &s) {
@@ -30,7 +32,9 @@ static void TestParse() {
       if (VERBOSE) {
         printf("Parse [" AWHITE("%s") "]:\n", s.c_str());
       }
-      return Parsing::Parse(&pool, source_map, s, tokens.value());
+      const Exp *parsed = Parsing::Parse(&pool, source_map, s, tokens.value());
+      CHECK(parsed != nullptr) << "Parsing failed.";
+      return parsed;
     };
 
   if (VERBOSE) {

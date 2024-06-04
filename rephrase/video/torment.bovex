@@ -37,7 +37,7 @@ in
        timesteps-per-frame = 8,
        adjacent-deltae-threshold = 5.0,
        max-fragile-piece-size = 10,
-       blend-frames = 20,
+       blend-frames = 10,
        verbosity = 1 }
 
     do print ("Got " ^ int-to-string (vec-size anim-frames) ^
@@ -46,9 +46,9 @@ in
     vec-app
     (fn (anim-frame : image-handle) =>
     combo-slide slide
-    (Bullets ([Wow OMG I'm sick of hearing about it] ::
-              [Torment Nexus] ::
-              [It does kinda work though] :: nil) ::
+    ((* Bullets ([Wow OMG I'm sick of hearing about it] ::
+                 [Torment Nexus] ::
+                 [It does kinda work though] :: nil) :: *)
      Image { img = anim-frame,
              x = pixel (3840.0 -. 2160.0),
              y = pixel 0.0,
