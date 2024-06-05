@@ -1,0 +1,58 @@
+(*   -*- electric-indent-local-mode: nil -*- *)
+let
+  import "stdlib.bovex"
+  import "layout.bovex"
+  import "cite.bovex"
+  import "paper.bib"
+  import "animation.bovex"
+  import "chess.bovex"
+
+  import "shared.bovex"
+
+
+  do set-doc-info { (TalkInfo)
+                    width = pixel SLIDE-WIDTH,
+                    height = pixel SLIDE-HEIGHT }
+
+
+  (* do REPHRASE-ALL := SOME 50 *)
+  do REPHRASE-ALL := NONE
+  do NO-REPHRASE := true
+
+in
+
+  set-output-section (!current-page, "motherbrain");
+
+  let
+    val portrait =
+      image-exact-scale (image-load "motherbrain-planet.png", 2)
+
+    val anim-frames : image-handle vec = auto-draw portrait
+      {(AutoDrawArg)
+       smooth-passes = 5,
+       max-pen-radius = 28.0,
+       min-pen-radius = 8.0,
+       max-pen-velocity = 48.0,
+       pen-acceleration = 0.5,
+       timesteps-per-frame = 8,
+       adjacent-deltae-threshold = 10.0,
+       max-fragile-piece-size = 10,
+       blend-frames = 60,
+       verbosity = 1 }
+
+    do print ("Got " ^ int-to-string (vec-size anim-frames) ^
+              " animation frames from auto-draw.\n")
+
+  in
+    vec-appi
+    (fn (fidx, anim-frame : image-handle) =>
+     combo-slide slide
+     (Image { img = anim-frame,
+              x = pixel 0.0,
+              y = pixel 0.0,
+              scale = ORIGINAL } ::
+      nil))
+    anim-frames
+  end;
+
+end

@@ -24,7 +24,7 @@ in
   set-output-section (!current-page, "features");
 
   let
-    val NUM-FRAMES = 60 * 8
+    val NUM-FRAMES = 60 * 7
 
     type particle = { x: float, y : float, lay : layout,
                       width: float, height : float,
@@ -55,8 +55,8 @@ in
       in
         sim := { x = random () *. SYSTEMW,
                  y = random () *. SYSTEMH,
-                 dx = (random() *. 20.0) -. 20.0,
-                 dy = (random() *. 20.0) -. 20.0,
+                 dx = (random() *. 10.0) -. 10.0,
+                 dy = (random() *. 10.0) -. 10.0,
                  width = width,
                  height = height,
                  lay = lay } :: !sim
@@ -82,7 +82,8 @@ in
           let
             val x = x +. dx
             val y = y +. dy
-            val dy = dy +. 8.0
+            (* val dy = dy +. 8.0 *)
+            val dy = dy +. 5.0
 
             val (y, dy) =
               if y +. height >. BOTTOM

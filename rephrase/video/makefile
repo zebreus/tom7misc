@@ -2,7 +2,7 @@
 default: slides
 
 # not comparison -- it's so slow!!
-all : slides/video.talk lorem/lorem.talk knuth/knuth.talk editor/editor.talk torment/torment.talk tom7/tom7.talk gamefaq/gamefaq.talk features/features.talk
+all : slides/video.talk lorem/lorem.talk knuth/knuth.talk editor/editor.talk torment/torment.talk tom7/tom7.talk gamefaq/gamefaq.talk features/features.talk motherbrain/motherbrain.talk
 
 slides : slides/video.talk
 
@@ -53,6 +53,11 @@ features/features.talk : features.bovex ../talk-shared.bovex ../stdlib.bovex ../
 	make -j -C .. maketalk.exe bovex.exe
 	../bovex.exe -I . -v features.bovex -o features.talk
 	../maketalk.exe features features.talk 3840 2160
+
+motherbrain/motherbrain.talk : motherbrain.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex ../hyph-en-us.tex *.png ../*.cc
+	make -j -C .. maketalk.exe bovex.exe
+	../bovex.exe -I . -v motherbrain.bovex -o motherbrain.talk
+	../maketalk.exe motherbrain motherbrain.talk 3840 2160
 
 clean :
 	rm code-4k.png code-4k-self.png

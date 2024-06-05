@@ -398,27 +398,68 @@ in
 
   set-output-section (!current-page, "editor");
 
-  (* chat with editor *)
-  combo-slide (slide with TITLE-FONT-SIZE = 180.0)
-  (Image { img = image-load "editor-portrait.png",
-              x = pixel 0.0,
-              y = pixel 160.0,
-              scale = ORIGINAL } ::
-   Title [Just checking in to see if you got my call] ::
-   nil);
+  let
+    val editor-png = image-load "editor-portrait.png"
+    val knuth-png = image-load "knuth-traced-4k.png"
 
-  (* TODO back/forth highlight *)
-  combo-slide (slide with TITLE-FONT-SIZE = 180.0)
-  (Image { img = image-load "editor-portrait.png",
-              x = pixel 0.0,
-              y = pixel 160.0,
-              scale = ORIGINAL } ::
-   Image { img = image-load "knuth-traced-4k.png",
-           x = pixel 2200.0,
-           y = pixel 160.0,
-           scale = ORIGINAL } ::
-   Title [Just checking in to see if you got my call] ::
-   nil);
+    datatype spos = FADE | NEUTRAL | SPEAK
+
+    fun back-forth epos kpos =
+      let
+        val { width = ewidth, height = eheight } =
+          image-size editor-png
+        val { width = kwidth, height = kheight } =
+          image-size knuth-png
+
+        val escale =
+          case epos of
+            FADE => 0.9
+          | NEUTRAL => 1.0
+          | SPEAK => 1.1
+
+        val (edx, edy) =
+          ((escale -. 1.0) *. int-to-float ewidth *. -0.5,
+           (escale -. 1.0) *. int-to-float eheight *. -0.5)
+
+        val kscale =
+          case kpos of
+            FADE => 0.9
+          | NEUTRAL => 1.0
+          | SPEAK => 1.1
+
+        val (kdx, kdy) =
+          ((kscale -. 1.0) *. int-to-float kwidth *. -0.5,
+           (kscale -. 1.0) *. int-to-float kheight *. -0.5)
+
+      in
+        combo-slide (slide with TITLE-FONT-SIZE = 180.0)
+        (Image { img = editor-png,
+                 x = pixel 0.0 +. edx,
+                 y = pixel 160.0 +. edy,
+                 scale = SCALE escale } ::
+         Image { img = knuth-png,
+                 x = pixel 2200.0 +. kdx,
+                 y = pixel 160.0 +. kdy,
+                 scale = SCALE kscale } ::
+         Title [Just checking in to see if you got my call] ::
+         nil);
+      end
+
+  in
+    (* chat with editor *)
+    combo-slide (slide with TITLE-FONT-SIZE = 180.0)
+    (Image { img = editor-png,
+             x = pixel 0.0,
+             y = pixel 160.0,
+             scale = ORIGINAL } ::
+     Title [Just checking in to see if you got my call] ::
+     nil);
+
+    back-forth NEUTRAL NEUTRAL;
+    back-forth SPEAK NEUTRAL;
+    back-forth FADE SPEAK;
+    back-forth SPEAK FADE;
+  end;
 
   (* And a large fraction of scientific literature, especially in
      computer science and math, is made using Knuth's TeX.
@@ -476,6 +517,8 @@ in
 
   set-output-section (!current-page, "metroid");
 
+  (* (animates in...) *)
+
   let
     fun gamefaq-slide lay =
       monospace-slide (slide with TITLE-FONT-SIZE = point (88.5 *. 2.0)
@@ -505,36 +548,40 @@ game within 1 hour and 20 minutes?
 (c) 1996 rs1n
 https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
 
-    (* XXX type it in gradually *)
-
   in
     gamefaq-slide mono;
   end;
 
+
   let
-    val mother = image-load "../motherbrain.png"
-    val { width = mother-width, height = _ } = image-size mother
+    val mother = image-load "motherbrain-planet.png"
     val YPOS = inch 8.0
 
-    (* right aligned *)
-    val motherbrain-x = pixel (3840.0 -. 2.0 *. int-to-float mother-width)
-    val GAP = inch 0.5
+    val img = Image { img = mother,
+                      x = pixel 0.0,
+                      y = pixel 0.0,
+                      scale = ORIGINAL }
+
+    fun mbslide text =
+      combo-slide (slide with TITLE-FONT-SIZE = point (88.5 *. 2.0))
+      (if text
+       then
+         (TextBox { x = DEFAULT-LEFT-MARGIN,
+                    y = YPOS,
+                    width = pixel 1800.0,
+                    text =
+                    [The first level of Super Metroid Speed Guide and FAQ is
+                     easy with lexical coinduction and time travel] } ::
+          img ::
+          Title [Automating speedrunner chores] ::
+          nil)
+       else img :: nil)
   in
-    combo-slide (slide with TITLE-FONT-SIZE = point (88.5 *. 2.0))
-    (TextBox { x = DEFAULT-LEFT-MARGIN,
-               y = YPOS,
-               width = motherbrain-x -. GAP -. DEFAULT-LEFT-MARGIN,
-               text =
-               [The first level of Super Metroid Speed Guide and FAQ is
-                easy with lexical coinduction and time travel] } ::
-     Image { img = mother,
-             x = motherbrain-x,
-             y = pixel 0.0,
-             scale = INTSCALE 2 } ::
-     Title [Automating speedrunner chores] ::
-     nil)
+    mbslide false;
+    mbslide true;
   end;
 
+  set-output-section (!current-page, "llmsplainer");
 
   let
     fun ml-slide img =
@@ -950,7 +997,8 @@ the line and roll the dice again.];
 
   let
   in
-    combo-slide slide
+    (* combo-slide slide *)
+    reveal-bullets-slides slide
     (Title [Future work] ::
      Bullets
      ([Automatically respond to reviewer comments] ::
@@ -990,41 +1038,71 @@ the line and roll the dice again.];
   morphism-slide "morphism6.png";
   morphism-slide "morphism7.png";
 
+  set-output-section (!current-page, "conclusion");
+
   let
     val tom = image-load "../tom7-portrait-glasses.png"
     val { width, height = _ } = image-size tom
     val LEFT-MARGIN = inch 4.0
     val EXTRA-RIGHT-MARGIN = inch 6.0
-  in
-    combo-slide (slide with BULLET-FONT-SIZE = 96.0
-                 with BULLET-LINE-GAP = 48.0)
-    (Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
-             y = 0.0,
-             scale = INTSCALE 2,
-             img = tom } ::
-     TextBox { x = inch 4.0,
-               y = inch 3.0,
-               width = SLIDE-WIDTH -. int-to-float width -.
-               (LEFT-MARGIN *. 2.0) -. EXTRA-RIGHT-MARGIN,
-               text =
-               justify-full
-               [In this talk—and [it[with]] this talk—I presented
-                [BoVeX], a new computer typesetting system that finally
-                solves the AI alignment problem. It follows
-                in the tradition of Knuth’s [TeX], but with modern
-                amenities such as requiring over 128 gigabytes of RAM.] } ::
 
-     TextBox { x = inch 4.0,
-               (* XXX hax *)
-               y = inch 22.0,
-               width = SLIDE-WIDTH -. int-to-float width -.
-               (LEFT-MARGIN *. 2.0) -. EXTRA-RIGHT-MARGIN,
-               text =
-               justify-full
-               [With it, [color 0xFFFFAAFF [Tom 7]] can finally be
-                spared all of his typographic irritant‘s.[hfill()]
-                [color 0x9999FFFF [#blessed #subscribe]]] } ::
-     nil)
+    fun concslide last =
+      combo-slide (slide with BULLET-FONT-SIZE = 96.0
+                   with BULLET-LINE-GAP = 48.0)
+      (Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
+               y = 0.0,
+               scale = INTSCALE 2,
+               img = tom } ::
+       TextBox { x = inch 4.0,
+                 y = inch 3.0,
+                 width = SLIDE-WIDTH -. int-to-float width -.
+                 (LEFT-MARGIN *. 2.0) -. EXTRA-RIGHT-MARGIN,
+                 text =
+                 justify-full
+                 [In this talk—and [it[with]] this talk—I presented
+                  [BoVeX], a new computer typesetting system that finally
+                  solves the AI alignment problem. It follows
+                  in the tradition of Knuth’s [TeX], but with modern
+                  amenities such as requiring over 128 gigabytes of RAM.] } ::
+
+       (if last then
+           TextBox { x = inch 4.0,
+                     (* XXX hax *)
+                     y = inch 22.0,
+                     width = SLIDE-WIDTH -. int-to-float width -.
+                     (LEFT-MARGIN *. 2.0) -. EXTRA-RIGHT-MARGIN,
+                     text =
+                     justify-full
+                     [With it, [color 0xFFFFAAFF [Tom 7]] can finally be
+                      spared all of his typographic irritant‘s.[hfill()]
+                      [color 0x9999FFFF [#blessed #subscribe]]] } ::
+           nil
+        else nil))
+
+    fun cursed () =
+      combo-slide (slide with BULLET-FONT-SIZE = 96.0
+                   with BULLET-LINE-GAP = 48.0)
+      (Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
+               y = 0.0,
+               scale = INTSCALE 2,
+               img = tom } ::
+       TextBox { x = inch 4.0,
+                 (* XXX hax *)
+                 y = inch 22.0,
+                 width = SLIDE-WIDTH -. int-to-float width -.
+                 (LEFT-MARGIN *. 2.0) -. EXTRA-RIGHT-MARGIN,
+                 text =
+                 justify-full
+                 (color 0x00000000
+                  [With it, [color 0xFFFFAAFF [Tom 7]] can finally be
+                  spared all of his typographic irritant‘s.[hfill()]
+                   [color 0xAA3333FF [#cursed]] #subscribe]) } ::
+       nil)
+  in
+    concslide false;
+    concslide true;
+
+    cursed ();
   end;
 
   (* But it's not just typography. Another thing I hate ... *)
