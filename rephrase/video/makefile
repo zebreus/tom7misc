@@ -39,6 +39,11 @@ tom7/tom7.talk : tom7.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex
 	../bovex.exe -I . -v tom7.bovex -o tom7.talk
 	../maketalk.exe tom7 tom7.talk 3840 2160
 
+snakebite/snakebite.talk : snakebite.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex ../hyph-en-us.tex *.png ../*.cc
+	make -j -C .. maketalk.exe bovex.exe
+	../bovex.exe -I . -v snakebite.bovex -o snakebite.talk
+	../maketalk.exe snakebite snakebite.talk 3840 2160
+
 gamefaq/gamefaq.talk : gamefaq.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex ../hyph-en-us.tex *.png ../*.cc
 	make -j -C .. maketalk.exe bovex.exe
 	../bovex.exe -I . -v gamefaq.bovex -o gamefaq.talk

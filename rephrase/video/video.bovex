@@ -139,7 +139,7 @@ let
          with TOP-MARGIN = inch 4.0
          with CONTENT-START-Y = inch 5.5)
   in
-    fun morphism-slide filename =
+    fun morphism-slide filename triforce =
       let
         val img = image-load filename
         val { width, height } = image-size img
@@ -152,7 +152,14 @@ let
          Image { img = img,
                  x = MORPHISM-X, y = MORPHISM-Y,
                  scale = WIDTH (SLIDE-WIDTH -. 2.0 *. LR-MARGIN) } ::
-         nil)
+         (if triforce
+          then
+            Image { img = image-load "triforce8k.png",
+                    x = inch -3.0,
+                    (* was -8 *)
+                    y = inch -12.0,
+                    scale = WIDTH SLIDE-WIDTH } :: nil
+          else nil))
       end
 
     fun blank-morphism-slide () =
@@ -520,12 +527,21 @@ in
       (X "" :: Y "529"  :: Y "1681" :: Y "841"  :: X "" :: nil) ::
       (X "" :: X ""     :: X ""     :: X ""     :: X "" :: nil) ::
       nil
-*)
+      *)
+      (*
     val board1 =
       (X "" :: X ""     :: X ""     :: X ""     :: X "" :: nil) ::
       (X "" :: Y "8"    :: Y "1"    :: R "2"    :: X "" :: nil) ::
       (X "" :: Y "1"    :: R "1"    :: Y "1"    :: X "" :: nil) ::
       (X "" :: R "5"    :: Y "1"    :: Y "8"    :: X "" :: nil) ::
+      (X "" :: X ""     :: X ""     :: X ""     :: X "" :: nil) ::
+      nil
+      *)
+    val board1 =
+      (X "" :: X ""     :: X ""     :: X ""     :: X "" :: nil) ::
+      (X "" :: Y "29"   :: Y "1"    :: R "47"   :: X "" :: nil) ::
+      (X "" :: Y "41"   :: R "37"   :: Y "1"    :: X "" :: nil) ::
+      (X "" :: R "23"   :: Y "41"   :: Y "29"   :: X "" :: nil) ::
       (X "" :: X ""     :: X ""     :: X ""     :: X "" :: nil) ::
       nil
 
@@ -595,11 +611,11 @@ in
 
   set-output-section (!current-page, "morphism");
 
-  morphism-slide "morphism1.png";
-  morphism-slide "morphism2.png";
-  morphism-slide "morphism3.png";
-  morphism-slide "morphism4.png";
-  morphism-slide "morphism5.png";
+  morphism-slide "morphism1.png" false;
+  morphism-slide "morphism2.png" false;
+  morphism-slide "morphism3.png" false;
+  morphism-slide "morphism4.png" false;
+  morphism-slide "morphism5.png" false;
 
   set-output-section (!current-page, "metroid");
 
@@ -705,7 +721,9 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
     val MARGIN = inch 13.1
   in
 
-    reveal-bullets-slides (slide with GAP = 0.0 with BULLET-LINE-GAP = 100.0)
+    reveal-bullets-slides (slide with GAP = 0.0
+                           with BULLET-FONT-SIZE = 180.0
+                           with BULLET-LINE-GAP = 140.0)
     (Image { img = image-load "../lorem-portrait.png",
              x = pixel 2200.0,
              y = pixel 200.0,
@@ -730,6 +748,9 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
   just-image "islays.png";
   placeholder-slide [apostrophy-mad.mp4];
 
+  set-output-section (!current-page, "howitworks");
+
+  (*
   let
     val slide = slide
     open slide-props slide
@@ -798,16 +819,48 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
 
     current-frame := 0;
   end;
+  *)
 
-  monospace-slide (slide
-                   with MONOSPACE-FONT-SIZE = 116.0)
-  [Original paragraph]
-  (* This is the text from demo.txt *)
-  [Here's a demo of it generating monospaced text. I'm just
-sampling text a line at a time, and if the line happens
-to be exactly the right length, then I keep that line
-and continue. If not, then I reset to the beginning of
-the line and roll the dice again.];
+  let
+    (* Just using bullets for progressive reveal feature *)
+    val bull = {(Bullet) bullet = [], space-after = 0.0 }
+    fun itext c lay = size 120.0 (fixedersys (color c lay))
+    val prompt = 0xFFFFFFFF
+    val input = 0x99FFFFFF
+  in
+    reveal-bullets-slides slide
+    (Image { img = image-load "../torment-nexus.png",
+             x = pixel (3840.0 -. 2160.0),
+             y = pixel 0.0,
+             scale = INTSCALE 2 } ::
+     Title [¿Cómo se LLama?] ::
+     Bullet (bull, itext prompt [Below are two paragraphs that are
+                                 very similar, maybe with minor
+                                 differences in punctuation and
+                                 word choice.]) ::
+     Bullet (bull, itext prompt [First paragraph:]) ::
+     Bullet (bull with space-after = 80.0,
+             itext input [(input paragraph)]) ::
+     Bullet (bull, itext prompt [Second paragraph:]) ::
+     Bullet (bull,
+             itext 0xFF9999FF [______]) ::
+     nil);
+
+     combo-slide (slide
+                  with MONOSPACE-FONT-SIZE = 116.0)
+     (Title [Example] ::
+      Bullet (bull, itext prompt [First paragraph:]) ::
+      (* This is the text from demo.txt *)
+      Bullet
+      (bull, itext input
+       [Here's a demo of it generating monospaced text. I'm just
+        sampling text a line at a time, and if the line happens
+        to be exactly the right length, then I keep that line
+        and continue. If not, then I reset to the beginning of
+          the line and roll the dice again.]) ::
+      nil);
+  end;
+
 
   for 0 45 (fn i => just-image-2x ("../monospace-slides/frame" ^
                                    int-to-string i ^ ".png"));
@@ -1176,8 +1229,9 @@ the line and roll the dice again.];
 
   (* So, we did it! *)
 
-  morphism-slide "morphism6.png";
-  morphism-slide "morphism7.png";
+  morphism-slide "morphism6.png" false;
+  (* morphism-slide "morphism7.png"; *)
+  morphism-slide "morphism6.png" true;
 
   set-output-section (!current-page, "conclusion");
 
