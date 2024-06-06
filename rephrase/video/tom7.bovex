@@ -38,36 +38,41 @@ in
        timesteps-per-frame = 8,
        adjacent-deltae-threshold = 5.0,
        max-fragile-piece-size = 10,
-       blend-frames = 20,
+       blend-frames = 10,
        verbosity = 1 }
 
     do print ("Got " ^ int-to-string (vec-size anim-frames) ^
               " animation frames from auto-draw.\n")
+
+    (* base is 710 *)
+    fun bullet-at t lay = (seconds (t - 710),
+                           Bullet ({(Bullet) indent = 1}, lay))
   in
-    vec-app
-    (fn (anim-frame : image-handle) =>
+    vec-appi
+    (fn (fidx, anim-frame : image-handle) =>
      let
        val { width, height = _ } = image-size portrait
      in
         combo-slide (slide with BULLET-FONT-SIZE = 96.0
                      with BULLET-LINE-GAP = 48.0)
-        (Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
-                 y = 0.0,
-                 scale = INTSCALE 2,
-                 img = anim-frame } ::
-         Title [The Fool: Tom 7] ::
-         Bullet ({(Bullet) space-after = 42.0, bullet = [ ]},
-                 size 144.0 [Knuth Any% Speedrun:]) ::
-         BulletsExt
-         ({(Bullet) indent = 1 },
-          [[BoVeX], a new document preparation system] ::
-          [Full-featured typed programming language] ::
-          [Kerning, hyphenation, and all that crap] ::
-          [New fonts, and software for making fonts] ::
-          [AI-enhanced text layout algorithm] ::
-          [Use [BoVeX] to write a paper
-           about [BoVeX]] :: nil) ::
-         nil)
+        (reveal fidx
+        ((0, Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
+                     y = 0.0,
+                     scale = INTSCALE 2,
+                     img = anim-frame }) ::
+         (0, Title [The Fool: Tom 7]) ::
+         (* base 7:10 *)
+         (seconds 2,
+          Bullet ({(Bullet) space-after = 42.0, bullet = [ ]},
+                  size 144.0 [Knuth Any% Speedrun:])) ::
+
+         bullet-at 715 [[BoVeX], a new document preparation system] ::
+         bullet-at 721 [Full-featured typed programming language] ::
+         bullet-at 725 [Kerning, hyphenation, and all that crap] ::
+         bullet-at 727 [New fonts, and software for making fonts] ::
+         bullet-at 731 [AI-enhanced text layout algorithm] ::
+         bullet-at 733 [Use [BoVeX] to write a paper about [BoVeX]] ::
+         nil))
      end) anim-frames
   end
 

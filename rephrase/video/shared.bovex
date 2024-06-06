@@ -690,6 +690,10 @@ datatype wordle-color =
   | WORDLE-GREEN
   | WORDLE-GREY
   | WORDLE-YELLOW
+(* non-standard : *)
+  | WORDLE-RED
+  | WORDLE-BLUE
+  | WORDLE-BROWN
 
 fun wordle-cell { x : float, y : float,
                   size = (sz : float),
@@ -701,6 +705,10 @@ fun wordle-cell { x : float, y : float,
     val WORDLE-COLOR-GREY = 0x787c7eFF
     val WORDLE-COLOR-YELLOW = 0xc9b458FF
 
+    val WORDLE-COLOR-RED = 0xbd3333FF
+    val WORDLE-COLOR-BLUE = 0x3367bdFF
+    val WORDLE-COLOR-BROWN = 0x5e4604FF
+
     val WORDLE-WHITE-BORDER = 0xd3d6daFF
 
     val bgcolor =
@@ -709,6 +717,9 @@ fun wordle-cell { x : float, y : float,
       | WORDLE-GREEN => WORDLE-COLOR-GREEN
       | WORDLE-GREY => WORDLE-COLOR-GREY
       | WORDLE-YELLOW => WORDLE-COLOR-YELLOW
+      | WORDLE-RED => WORDLE-COLOR-RED
+      | WORDLE-BLUE => WORDLE-COLOR-BLUE
+      | WORDLE-BROWN => WORDLE-COLOR-BROWN
 
     val textfrac = 0.20
     val text-size = sz *. (1.0 -. textfrac)

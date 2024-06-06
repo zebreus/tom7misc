@@ -13,8 +13,8 @@ enum Color { GREY, YELLOW, GREEN, };
 
 static std::vector<Color>
 Color1(const std::string &secret, const std::string &guess) {
-  CHECK(secret.size() == 5);
-  CHECK(guess.size() == 5);
+  CHECK(secret.size() == 5) << secret;
+  CHECK(guess.size() == 5) << guess;
 
   std::map<char, int> counts;
   for (char c : secret) counts[c]++;
@@ -94,17 +94,40 @@ static void PrintBoard(
   }
 }
 
+static void ShowPuzzle(const std::vector<std::string> &words,
+                       const std::string &secret,
+                       const std::vector<std::string> &guesses) {
+
+  std::vector<std::pair<std::string, std::vector<Color>>>
+    board;
+  for (const std::string &s : guesses) {
+    board.emplace_back(s, Color1(secret, s));
+  }
+
+  PrintBoard(board);
+
+  std::vector<std::string> remain =
+    Filter(words, board);
+
+  for (const auto &s : remain) {
+    printf("%s\n", s.c_str());
+  }
+}
+
 int main(int argc, char **argv) {
 
   std::vector<std::string> words = Util::ReadFileToLines("wordle.txt");
 
+  words.push_back("bovex");
+  words.push_back("knuth");
+
   {
     std::vector<std::pair<std::string, std::vector<Color>>>
       board = {
-      {"wrong", {GREY,  GREY,   GREY,   GREY, GREY}},
-      {"rules", {GREY,  GREY,   GREY,   YELLOW, YELLOW}},
-      {"times", {GREY,  GREY,   YELLOW, YELLOW, YELLOW}},
-      {"shame", {GREY,  GREY,   GREY,   GREEN, GREEN}},
+      {"wrong", {GREY,   GREY,   GREY,   GREY,  GREY}},
+      {"rules", {GREY,   GREY,   GREY,   YELLOW, YELLOW}},
+      {"times", {GREY,   GREY,   YELLOW, YELLOW, YELLOW}},
+      {"shame", {YELLOW, GREY,   GREY,   YELLOW, YELLOW}},
     };
 
     std::vector<std::string> remain =
@@ -116,40 +139,84 @@ int main(int argc, char **argv) {
     for (const auto &s : remain) {
       printf("%s\n", s.c_str());
     }
+    printf("\n------\n");
   }
 
-  words.push_back("aeoud");
-  words.push_back("bovex");
-  words.push_back("knuth");
+  {
+    {
+      auto BLUE = GREEN; // YELLOW;
+      auto BROWN = YELLOW;  // GREEN;
 
-  std::string secret = "messy";
-  std::vector<std::pair<std::string, std::vector<Color>>>
-    board;
-  for (const std::string s : {
-      // "fight",
-      // "trash",
-      // "times", "wrong", "rules",
-      "wrong", "rules", "times",
-      "shame",
-      // "shame",
-    }) {
-    board.emplace_back(s, Color1(secret, s));
+      std::vector<std::pair<std::string, std::vector<Color>>>
+        board = {
+        {"spoof", {BLUE,  GREY,   BROWN,  GREY,  GREY}},
+        {"tuber", {GREY,  GREY,   GREY,   GREY,  BROWN}},
+        {"using", {GREY,  BROWN,  GREY,   GREY,  GREY}},
+        {"famed", {GREY,  GREY,   GREY,   GREY,  GREY}},
+        {"fault", {GREY,  GREY,   GREY,   GREY,  GREY}},
+      };
+
+      std::vector<std::string> remain =
+        Filter(words, board);
+
+      if (remain.empty()) {
+        printf("No words.\n");
+      }
+      for (const auto &s : remain) {
+        printf("%s\n", s.c_str());
+      }
+    }
+
+    printf("\n-------\n");
+
   }
 
-  PrintBoard(board);
+  ShowPuzzle(
+      words,
+      "messy",
+      {
+        // "fight",
+        // "trash",
+        // "times", "wrong", "rules",
+        // "shame",
+        "wrong", "rules", "times",
+        "shame"
+      });
 
-  /*
-  Print("sorry", "fight");
-  Print("sorry", "times");
-  Print("sorry", "wrong");
-  Print("sorry", "rules");
-  */
 
-  std::vector<std::string> remain =
-    Filter(words, board);
+  printf("\n------\n");
 
-  for (const auto &s : remain) {
-    printf("%s\n", s.c_str());
+
+  for (const std::string secret : { "sorry", "fails", }) {
+    for (const std::string line1 : { "troll", "spoof", }) {
+      for (const std::string line2 : { "grant", "tuber", }) {
+        for (const std::string line3 : { "using" }) {
+          for (const std::string line4 : { "famed", "known", }) {
+            for (const std::string line5 : { "error", "fault", }) {
+
+              std::vector<std::pair<std::string, std::vector<Color>>>
+                board;
+
+              int green = 0, yellow = 0;
+              for (const std::string &line : {
+                  line1, line2, line3, line4, line5 }) {
+                for (Color c : Color1(secret, line)) {
+                  if (c == YELLOW) yellow++;
+                  if (c == GREEN) green++;
+                }
+              }
+
+              if ((green == 3 && yellow == 1) ||
+                  (green == 1 && yellow == 3)) {
+                printf(AWHITE("Good!") " \n");
+                ShowPuzzle(words, secret,
+                           {line1, line2, line3, line4, line5 });
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   return 0;

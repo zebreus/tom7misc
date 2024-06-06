@@ -1099,7 +1099,7 @@ Document::PackBoxes(Algorithm algo,
     // Allows hyphens.
     static constexpr double MAX_BREAK_PENALTY = 200.0;
     lines = BoxesAndGlue::PackBoxesFirst(
-        line_width, boxes, MAX_BREAK_PENALTY);
+        line_width, boxes, MAX_BREAK_PENALTY, just);
     break;
   }
   case Algorithm::BEST: {

@@ -1,0 +1,49 @@
+(*   -*- electric-indent-local-mode: nil -*- *)
+let
+  import "stdlib.bovex"
+  import "layout.bovex"
+  import "cite.bovex"
+  import "paper.bib"
+  import "animation.bovex"
+
+  import "shared.bovex"
+
+  do set-doc-info { (TalkInfo)
+                    width = pixel SLIDE-WIDTH,
+                    height = pixel SLIDE-HEIGHT }
+
+
+  (* do REPHRASE-ALL := SOME 50 *)
+  do REPHRASE-ALL := NONE
+  do NO-REPHRASE := true
+
+in
+
+  (* This just exists to generate the matrix image below,
+     which requires modifying document.cc to set SAVE_TABLE
+     to true temporarily. *)
+
+  let
+    val YPOS = inch 1.8
+  in
+    combo-slide slide
+    (TextBox { x = DEFAULT-LEFT-MARGIN,
+               y = YPOS +. 128.0,
+               width = inch 18.5,
+               text = (span {(Span) line-spacing = 8.0}
+                       [Here is an example of applying the boxes
+                        and glue algorithm to this very text. Most
+                        of the break points lead to extremely long
+                        or short lines, so only a small region
+                        is of any interest. But those details
+                        within the region matter.]) } ::
+(*
+     Image { img = image-load "../boxes-and-glue-matrix.png",
+             x = pixel 1800.0,
+             y = YPOS -. 72.0,
+             scale = INTSCALE 2 } ::
+     *)
+     nil)
+  end;
+
+end

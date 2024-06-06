@@ -44,11 +44,6 @@ gamefaq/gamefaq.talk : gamefaq.bovex ../talk-shared.bovex ../stdlib.bovex ../lay
 	../bovex.exe -I . -v gamefaq.bovex -o gamefaq.talk
 	../maketalk.exe gamefaq gamefaq.talk 3840 2160
 
-comparison/comparison.talk : comparison.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex ../hyph-en-us.tex *.png ../*.cc
-	make -j -C .. maketalk.exe bovex.exe
-	../bovex.exe -I . -v comparison.bovex -o comparison.talk
-	../maketalk.exe comparison comparison.talk 3840 2160
-
 features/features.talk : features.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex ../hyph-en-us.tex *.png ../*.cc
 	make -j -C .. maketalk.exe bovex.exe
 	../bovex.exe -I . -v features.bovex -o features.talk
@@ -58,6 +53,23 @@ motherbrain/motherbrain.talk : motherbrain.bovex ../talk-shared.bovex ../stdlib.
 	make -j -C .. maketalk.exe bovex.exe
 	../bovex.exe -I . -v motherbrain.bovex -o motherbrain.talk
 	../maketalk.exe motherbrain motherbrain.talk 3840 2160
+
+# expensive! renders hundreds of frames over thousands of rephrasings
+comparison/comparison.talk : comparison.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex ../hyph-en-us.tex *.png ../*.cc
+	make -j -C .. maketalk.exe bovex.exe
+	../bovex.exe -I . -v comparison.bovex -o comparison.talk
+	../maketalk.exe comparison comparison.talk 3840 2160
+
+# one-off to generate matrix image; needs edit to bovex
+matrix/matrix.talk : matrix.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex ../hyph-en-us.tex *.png ../*.cc
+	make -j -C .. maketalk.exe bovex.exe
+	../bovex.exe -I . -v matrix.bovex -o matrix.talk
+
+# one-off for screen capturing the rephrase debug output
+rephrasedemo/rephrasedemo.talk : rephrasedemo.bovex ../talk-shared.bovex ../stdlib.bovex ../layout.bovex ../hyph-en-us.tex *.png ../*.cc
+	make -j -C .. maketalk.exe bovex.exe
+	../bovex.exe -I . -v rephrasedemo.bovex -o rephrasedemo.talk
+	../maketalk.exe rephrasedemo rephrasedemo.talk 3840 2160
 
 clean :
 	rm code-4k.png code-4k-self.png

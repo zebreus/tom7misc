@@ -132,26 +132,35 @@ let
       layout-concat (draw-pieces ())
     end
 
-  fun morphism-slide filename =
-    let
-      val img = image-load filename
-      val { width, height } = image-size img
-      val LR-MARGIN = inch 1.0
-      val MORPHISM-X = LR-MARGIN
-      val MORPHISM-Y = inch 4.50
-      val m-slide =
+  local
+    val m-slide =
         (slide
          with TITLE-FONT-SIZE = point 180.0
          with TOP-MARGIN = inch 4.0
          with CONTENT-START-Y = inch 5.5)
-    in
-      combo-slide m-slide
-      (Title [The Hurry-Coward So-So-Morphism] ::
-       Image { img = img,
-               x = MORPHISM-X, y = MORPHISM-Y,
-               scale = WIDTH (SLIDE-WIDTH -. 2.0 *. LR-MARGIN) } ::
-       nil)
-    end
+  in
+    fun morphism-slide filename =
+      let
+        val img = image-load filename
+        val { width, height } = image-size img
+        val LR-MARGIN = inch 1.0
+        val MORPHISM-X = LR-MARGIN
+        val MORPHISM-Y = inch 4.50
+      in
+        combo-slide m-slide
+        (Title [The Hurry-Coward So-So-Morphism] ::
+         Image { img = img,
+                 x = MORPHISM-X, y = MORPHISM-Y,
+                 scale = WIDTH (SLIDE-WIDTH -. 2.0 *. LR-MARGIN) } ::
+         nil)
+      end
+
+    fun blank-morphism-slide () =
+        combo-slide m-slide
+        (Title [The Hurry-Coward So-So-Morphism] ::
+         nil)
+  end
+
 
 in
 
@@ -492,6 +501,78 @@ in
            y = pixel 0.0,
            scale = INTSCALE 2 } :: nil);
 
+  set-output-section (!current-page, "trolling");
+
+  let
+    val W = (NONE, WORDLE-EMPTY)
+    fun X s = (SOME s, WORDLE-GREY)
+    fun N s = (SOME s, WORDLE-GREEN)
+    fun Y s = (SOME s, WORDLE-YELLOW)
+    fun R s = (SOME s, WORDLE-RED)
+    fun B s = (SOME s, WORDLE-BROWN)
+    fun U s = (SOME s, WORDLE-BLUE)
+    (* SQUARE 841 1 2209 1681 1369 1 529 1681 841 Parker Square *)
+(*
+    val board =
+      (X "" :: X ""     :: X ""     :: X ""     :: X "" :: nil) ::
+      (X "" :: Y "841"  :: X "1"    :: R "2209" :: X "" :: nil) ::
+      (X "" :: Y "1681" :: R "1369" :: Y "1"    :: X "" :: nil) ::
+      (X "" :: Y "529"  :: Y "1681" :: Y "841"  :: X "" :: nil) ::
+      (X "" :: X ""     :: X ""     :: X ""     :: X "" :: nil) ::
+      nil
+*)
+    val board1 =
+      (X "" :: X ""     :: X ""     :: X ""     :: X "" :: nil) ::
+      (X "" :: Y "8"    :: Y "1"    :: R "2"    :: X "" :: nil) ::
+      (X "" :: Y "1"    :: R "1"    :: Y "1"    :: X "" :: nil) ::
+      (X "" :: R "5"    :: Y "1"    :: Y "8"    :: X "" :: nil) ::
+      (X "" :: X ""     :: X ""     :: X ""     :: X "" :: nil) ::
+      nil
+
+    val board2 =
+      (B "S" :: X "P" :: U "O" :: X "O" :: X "F" :: nil) ::
+      (X "T" :: X "U" :: X "B" :: X "E" :: U "R" :: nil) ::
+      (X "U" :: U "S" :: X "I" :: X "N" :: X "G" :: nil) ::
+      (X "F" :: X "A" :: X "M" :: X "E" :: X "D" :: nil) ::
+      (X "F" :: X "A" :: X "U" :: X "L" :: X "T" :: nil) ::
+      (W :: W :: W :: W :: W :: nil) ::
+      nil
+
+    val QUOTE-MARGIN = inch 14.0
+    val QUOTE-FUDGE = inch 1.0
+  in
+    combo-slide slide
+    (StickerElt (wordle-board { x = inch 18.0, y = inch 4.8,
+                                cell-size = inch 3.2,
+                                board = board1 }) ::
+(*
+     TextBox { x = QUOTE-MARGIN +. QUOTE-FUDGE,
+               y = 2160.0 -. inch 4.2,
+               width = SLIDE-WIDTH -. QUOTE-MARGIN *. 2.0,
+               text = (justify-left
+                       (it (color 0xDDDD99FF
+                            [“Any revealed hints must be
+                             used in subsequent guesses”]))) } ::
+*)
+     nil);
+
+    combo-slide slide
+    (StickerElt (wordle-board { x = inch 18.0, y = inch 4.8,
+                                cell-size = inch 3.2,
+                                board = board2 }) ::
+(*
+     TextBox { x = QUOTE-MARGIN +. QUOTE-FUDGE,
+               y = 2160.0 -. inch 4.2,
+               width = SLIDE-WIDTH -. QUOTE-MARGIN *. 2.0,
+               text = (justify-left
+                       (it (color 0xDDDD99FF
+                            [“Any revealed hints must be
+                             used in subsequent guesses”]))) } ::
+*)
+     nil);
+  end;
+
+
   (* An example: 3blue1brown *)
   just-image "3blue1brown.png";
   placeholder-slide [error correction is incredible];
@@ -508,6 +589,11 @@ in
      all the time... can I at least have something that I
      want? I like programming languages, and I like fonts...
      Like beautiful typography? *)
+
+
+  blank-morphism-slide ();
+
+  set-output-section (!current-page, "morphism");
 
   morphism-slide "morphism1.png";
   morphism-slide "morphism2.png";
@@ -552,7 +638,6 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
     gamefaq-slide mono;
   end;
 
-
   let
     val mother = image-load "motherbrain-planet.png"
     val YPOS = inch 8.0
@@ -560,7 +645,7 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
     val img = Image { img = mother,
                       x = pixel 0.0,
                       y = pixel 0.0,
-                      scale = ORIGINAL }
+                      scale = INTSCALE 2 }
 
     fun mbslide text =
       combo-slide (slide with TITLE-FONT-SIZE = point (88.5 *. 2.0))
@@ -745,42 +830,57 @@ the line and roll the dice again.];
      *)
   just-image-2x "../metroidbg.png";
 
-  bullet-slide slide [BAD END]
-  ([300 lines of code] ::
-   [It only took an afternoon] ::
-   [You have to look at [tt[monospaced text]]] :: nil);
+  set-output-section (!current-page, "bad-end");
+
+  reveal-bullets-slides slide
+  (Title [BAD END] ::
+   Bullets ([300 lines of code] ::
+            [It only took an afternoon] ::
+            [You have to look at [tt[monospaced text]]] :: nil) :: nil);
 
   (* XXX would be kind of nice to illustrate proportional vs.
      monospaced here? *)
 
-  set-output-section (!current-page, "bovex");
+  set-output-section (!current-page, "thefool");
 
   let
     val tom = image-load "../tom7-portrait.png"
     val { width, height = _ } = image-size tom
+
+    val BASE-T = 710
+
+    fun bullet-at t lay = (seconds (t - BASE-T),
+                           Bullet ({(Bullet) indent = 1}, lay))
+
+    fun foolslide t =
+        combo-slide (slide with BULLET-FONT-SIZE = 96.0
+                     with BULLET-LINE-GAP = 48.0)
+        (reveal (seconds (t - BASE-T))
+        ((0, Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
+                     y = 0.0,
+                     scale = INTSCALE 2,
+                     img = tom }) ::
+         (0, Title [The Fool: Tom 7]) ::
+         (* base 7:10 *)
+         (seconds 2,
+          Bullet ({(Bullet) space-after = 42.0, bullet = [ ]},
+                  size 144.0 [Knuth Any% Speedrun:])) ::
+
+         bullet-at 715 [[BoVeX], a new document preparation system] ::
+         bullet-at 721 [Full-featured typed programming language] ::
+         bullet-at 725 [Kerning, hyphenation, and all that crap] ::
+         bullet-at 727 [New fonts, and software for making fonts] ::
+         bullet-at 731 [AI-enhanced text layout algorithm] ::
+         bullet-at 733 [Use [BoVeX] to write a paper about [BoVeX]] ::
+         nil))
   in
-    combo-slide (slide with BULLET-FONT-SIZE = 96.0
-                 with BULLET-LINE-GAP = 48.0)
-    (Image { x = SLIDE-WIDTH -. 2.0 *. int-to-float width,
-             y = 0.0,
-             scale = INTSCALE 2,
-             img = tom } ::
-     Title [The Fool: Tom 7] ::
-     Bullet ({(Bullet) space-after = 42.0, bullet = [ ]},
-             size 144.0 [Knuth Any% Speedrun:]) ::
-     BulletsExt
-     ({(Bullet) indent = 1 },
-      [[BoVeX], a new document preparation system] ::
-      [Full-featured typed programming language] ::
-      [Kerning, hyphenation, and all that crap] ::
-      [New fonts, and software for making fonts] ::
-      [AI-enhanced text layout algorithm] ::
-      [Use [BoVeX] to write a paper
-       about [BoVeX]] :: nil) ::
-     nil)
+    list-app foolslide (700 :: 713 :: 716 :: 722 :: 726 ::
+                        728 :: 732 :: 734 :: nil)
   end;
 
+  set-output-section (!current-page, "bovex");
 
+  placeholder-slide [formerly, the fool];
 
   (* This talk is not about the paper. But I did also use
      it to make these slides. For example, here's the source
@@ -799,12 +899,18 @@ the line and roll the dice again.];
   just-image "code-4k.png";
   just-image "code-4k-self.png";
 
-  diagram-slide (slide
-                 with TITLE-FONT-SIZE = 160.0
-                 with TOP-MARGIN = inch 4.0
-                 with CONTENT-START-Y = inch 5.5)
-  [Boxes and glue]
-  (image-load "../algorithm-dark.png");
+  combo-slide (slide
+               with TITLE-FONT-SIZE = 160.0
+               with TOP-MARGIN = inch 4.0
+               with LEFT-MARGIN = DEFAULT-LEFT-MARGIN -. inch 1.5
+               with CONTENT-START-Y = inch 5.5)
+  (Title [Boxes and glue] ::
+   Image { img = image-load "boxes-and-glue.png",
+           x = 0.0,
+           y = inch 5.5,
+           scale = WIDTH (SLIDE-WIDTH *. 0.90) } ::
+   nil);
+
 
   let
     val YPOS = inch 1.8
@@ -820,22 +926,57 @@ the line and roll the dice again.];
                         or short lines, so only a small region
                         is of any interest. But those details
                         within the region matter.]) } ::
-     Image { img = image-load "../boxes-and-glue-matrix.png",
+     (* this image is generated; see matrix.bovex. *)
+     Image { img = image-load "boxes-and-glue-matrix.png",
              x = pixel 1800.0,
              y = YPOS -. 72.0,
              scale = INTSCALE 2 } ::
      nil)
   end;
 
-  diagram-slide (slide
-                 with TITLE-FONT-SIZE = 160.0
-                 with TOP-MARGIN = inch 4.0
-                 with LEFT-MARGIN = DEFAULT-LEFT-MARGIN -. inch 1.5
-                 with CONTENT-START-Y = inch 5.5)
-  [Boxes and LLMers Glue]
-  (image-load "../algorithm2-dark.png");
+  let
+    val YPOS = inch 1.8
+  in
+    combo-slide slide
+    (* This is generated (with matrix.bovex) and by
+       modifying layout.bovex to force FIRST algorith. *)
+    (Image { img = image-load "generated-greedy.png",
+             x = 0.0,
+             y = 0.0,
+             scale = ORIGINAL } ::
+     TextBox { x = pixel 2211.0,
+               y = YPOS +. 128.0,
+               width = inch 18.5,
+               text = (span {(Span) line-spacing = 8.0}
+                       [Here is an example of applying the boxes
+                        and glue algorithm to this very text. Most
+                        of the break points lead to extremely long
+                        or short lines, so only a small region
+                        is of any interest. But those details
+                        within the region matter.]) } ::
+     nil)
+  end;
+
+  combo-slide (slide
+               with TITLE-FONT-SIZE = 160.0
+               with TOP-MARGIN = inch 4.0
+               with LEFT-MARGIN = DEFAULT-LEFT-MARGIN -. inch 1.5)
+  (Title [Boxes and LLMers Glue] ::
+   Image { img = image-load "boxes-and-glue-and-llm.png",
+           x = 0.0,
+           y = inch 5.5,
+           scale = WIDTH (SLIDE-WIDTH *. 0.90) } ::
+   nil);
 
   just-video (slide with LOOP-VIDEO = true) "comparison.mp4";
+
+  set-output-section (!current-page, "tradeoff");
+
+  combo-slide slide
+  (Image { img = image-load "vu-meter-slide-knob.png",
+           x = pixel 0.0,
+           y = pixel 0.0,
+           scale = ORIGINAL } :: nil);
 
   placeholder-slide [features.mp4];
 
@@ -1095,7 +1236,7 @@ the line and roll the dice again.];
                  justify-full
                  (color 0x00000000
                   [With it, [color 0xFFFFAAFF [Tom 7]] can finally be
-                  spared all of his typographic irritant‘s.[hfill()]
+                   spared all of his typographic irritant‘s.[hfill()]
                    [color 0xAA3333FF [#cursed]] #subscribe]) } ::
        nil)
   in
