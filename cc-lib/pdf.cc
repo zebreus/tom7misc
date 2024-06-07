@@ -628,8 +628,8 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     // TODO: The way alpha is implemented is to always generate 16
     // different graphics states on each page, for 4-bit transparency.
     // (/GS0 ... /GS15). Better would be to register the actual
-    // transparency levels used as we draw stuff, and allow
-    // arbitrarily metter.
+    // transparency levels used as we draw stuff, and allow arbitrary
+    // levels.
     //
     // We trim transparency to just 4-bits
     fprintf(fp, "    /ExtGState <<\n");

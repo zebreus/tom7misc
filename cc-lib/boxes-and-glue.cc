@@ -13,13 +13,44 @@
 
 static constexpr bool VERBOSE = false;
 
+using Justification = BoxesAndGlue::Justification;
+
+enum class LineJustification {
+  CENTER,
+  LEFT,
+  JUSTIFY,
+  // RIGHT,
+};
+
+static LineJustification NormalLineJustification(Justification just) {
+  switch (just) {
+  case Justification::FULL: return LineJustification::JUSTIFY;
+  case Justification::ALL: return LineJustification::JUSTIFY;
+  case Justification::CENTER: return LineJustification::CENTER;
+  case Justification::LEFT: return LineJustification::LEFT;
+  default:
+    LOG(FATAL) << "Unimplemented justification";
+  }
+}
+
+static LineJustification FinalLineJustification(Justification just) {
+  switch (just) {
+  case Justification::FULL: return LineJustification::LEFT;
+  case Justification::ALL: return LineJustification::JUSTIFY;
+  case Justification::CENTER: return LineJustification::CENTER;
+  case Justification::LEFT: return LineJustification::LEFT;
+    LOG(FATAL) << "Unimplemented justification";
+  }
+}
+
 // Old, greedy version. Maybe useful for comparison in the paper?
 // Probably can move to BoxesAndGlue
 std::vector<std::vector<BoxesAndGlue::BoxOut>>
 BoxesAndGlue::PackBoxesFirst(
     double line_width,
     const std::vector<BoxIn> &boxes_in,
-    double max_break_penalty) {
+    double max_break_penalty,
+    Justification just) {
   static constexpr bool VERBOSE = false;
 
   for (int i = 0; i < (int)boxes_in.size(); i++) {
@@ -33,8 +64,56 @@ BoxesAndGlue::PackBoxesFirst(
   std::vector<std::vector<BoxesAndGlue::BoxOut>> lines_out;
 
   std::vector<BoxesAndGlue::BoxOut> current_line;
-  auto EmitLine = [&]() {
+  auto EmitLine = [&](LineJustification line_just) {
       if (current_line.empty()) return;
+
+      // How much left-over space is there?
+      double used = 0.0;
+      for (const BoxesAndGlue::BoxOut &out : current_line) {
+        used += out.box->width;
+        used += out.actual_glue;
+      }
+
+      double leftover = line_width - used;
+
+      switch (line_just) {
+      case LineJustification::CENTER:
+        // Symmetric outer space.
+        current_line[0].left_padding += leftover * 0.5;
+        current_line.back().actual_glue += leftover * 0.5;
+        break;
+
+      case LineJustification::LEFT:
+        // This is typically invisible, but we might
+        // as well.
+        current_line.back().actual_glue += leftover;
+        break;
+
+      case LineJustification::JUSTIFY: {
+
+        double total_weight = 0.0;
+        for (int i = 0; i < (int)current_line.size() - 1; i++) {
+          double weight =
+            leftover >= 0.0 ?
+            current_line[i].box->glue_expand :
+            current_line[i].box->glue_contract;
+          total_weight += weight;
+        }
+
+        double weighted_glue = leftover / total_weight;
+
+        for (int i = 0; i < (int)current_line.size() - 1; i++) {
+          double weight =
+            leftover >= 0.0 ?
+            current_line[i].box->glue_expand :
+            current_line[i].box->glue_contract;
+          current_line[i].actual_glue += weighted_glue * weight;
+        }
+
+        break;
+      }
+      }
+
       lines_out.push_back(std::move(current_line));
       current_line.clear();
     };
@@ -93,7 +172,7 @@ BoxesAndGlue::PackBoxesFirst(
 
       // This does not output empty lines, so it works for the unusual
       // case above, too.
-      EmitLine();
+      EmitLine(NormalLineJustification(just));
 
       current_line = {boxo};
       current_width = box.width;
@@ -103,7 +182,7 @@ BoxesAndGlue::PackBoxesFirst(
   }
 
   // The line usually still has something on it.
-  EmitLine();
+  EmitLine(FinalLineJustification(just));
   return lines_out;
 }
 
@@ -148,13 +227,6 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
     const std::vector<BoxIn> &boxes,
     Justification just,
     std::unique_ptr<Table> *table) {
-
-  enum class LineJustification {
-    CENTER,
-    LEFT,
-    JUSTIFY,
-    // RIGHT,
-  };
 
   std::vector<std::vector<std::pair<int, double>>> successors(
       boxes.size(), std::vector<std::pair<int, double>>{});
@@ -577,15 +649,8 @@ std::vector<std::vector<BoxesAndGlue::BoxOut>> BoxesAndGlue::PackBoxes(
   if (!current_line.empty()) {
     // Apply glue to final line. It is not justified unless
     // we are in "all" mode.
-    LineJustification lj = LineJustification::LEFT;
-    switch (just) {
-    case Justification::FULL: lj = LineJustification::LEFT; break;
-    case Justification::ALL: lj = LineJustification::JUSTIFY; break;
-    case Justification::CENTER: lj = LineJustification::CENTER; break;
-    case Justification::LEFT: lj = LineJustification::LEFT; break;
-    }
 
-    ApplyGlue(&current_line, lj);
+    ApplyGlue(&current_line, FinalLineJustification(just));
     lines.push_back(std::move(current_line));
   }
 

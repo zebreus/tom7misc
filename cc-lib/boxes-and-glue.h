@@ -108,11 +108,11 @@ struct BoxesAndGlue {
   // Greedy algorithm, mostly useful for comparison purposes or
   // as a fallback (it's linear time).
   // Doesn't support tree input!
-  // Doesn't support justification options! (Would be easy though.)
   static std::vector<std::vector<BoxOut>> PackBoxesFirst(
       double line_width,
       const std::vector<BoxIn> &boxes_in,
-      double max_break_penalty);
+      double max_break_penalty,
+      Justification justification = Justification::LEFT);
 
 };
 
