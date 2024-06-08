@@ -52,6 +52,7 @@ private:
     OBJ_pages,
     OBJ_image,
     OBJ_link,
+    OBJ_widths,
 
     OBJ_count,
   };
@@ -71,6 +72,7 @@ private:
   };
 
   struct StreamObj;
+  struct WidthsObj;
 
 public:
 
@@ -178,6 +180,8 @@ public:
 
     // For embedded fonts, the data stream.
     StreamObj *ttf = nullptr;
+    // For all fonts, the required widths array.
+    WidthsObj *widths_obj = nullptr;
     // For embedded fonts, the table of widths.
     // These widths are scaled to "14pt".
     std::vector<uint16_t> widths;
@@ -547,6 +551,14 @@ private:
     StreamObj() : Object(OBJ_stream) {}
     Object *page = nullptr;
     std::string stream;
+  };
+
+  struct WidthsObj : public Object {
+    WidthsObj() : Object(OBJ_widths) {}
+    // Inclusive!
+    int firstchar = 0, lastchar = 255;
+    // Scaled by 1000.
+    std::vector<int> widths;
   };
 
   // Port note: This originally used the "stream" entry in the union.

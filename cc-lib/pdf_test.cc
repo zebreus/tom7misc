@@ -430,11 +430,38 @@ static void MakeSimplePDF() {
   printf("Wrote " AGREEN("test.pdf") "\n");
 }
 
+static void MakeMinimalPDF() {
+  printf("Create PDF object.\n");
+  PDF pdf(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);
+
+  PDF::Page *page = pdf.AppendNewPage();
+  PDF::Info info;
+  sprintf(info.creator, "pdf_test.cc");
+  sprintf(info.producer, "Tom 7");
+  sprintf(info.title, "Minimal PDF");
+  sprintf(info.author, "None");
+  sprintf(info.author, "No subject");
+  sprintf(info.date, "8 Jun 2024");
+  pdf.SetInfo(info);
+
+  std::string pasement_name = pdf.AddTTF("fonts/DFXPasement9px.ttf");
+
+  pdf.SetFont(pasement_name);
+  CHECK(pdf.AddText("Title of PDF", 72,
+                    30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
+                    PDF_RGB(0, 0, 0)));
+
+  pdf.Save("minimal.pdf");
+  printf("Wrote " AGREEN("minimal.pdf") "\n");
+
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   SpaceLine();
 
+  MakeMinimalPDF();
   MakeSimplePDF();
 
   printf("OK\n");

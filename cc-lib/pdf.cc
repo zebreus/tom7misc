@@ -565,7 +565,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
   switch (object->type) {
   case OBJ_stream: {
-    StreamObj *sobj = (StreamObj*)object;
+    const StreamObj *sobj = (const StreamObj*)object;
     fwrite(sobj->stream.data(),
            sobj->stream.size(),
            1, fp);
@@ -573,7 +573,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_image: {
-    ImageObj *iobj = (ImageObj *)object;
+    const ImageObj *iobj = (const ImageObj *)object;
     fwrite(iobj->stream.data(),
            iobj->stream.size(),
            1, fp);
@@ -581,7 +581,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_info: {
-    const InfoObj *iobj = (InfoObj*)object;
+    const InfoObj *iobj = (const InfoObj*)object;
     const PDF::Info *info = &iobj->info;
 
     fprintf(fp, "<<\n");
@@ -602,10 +602,10 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_page: {
-    Object *pages = pdf_find_first_object(OBJ_pages);
+    const Object *pages = pdf_find_first_object(OBJ_pages);
     bool printed_xobjects = false;
 
-    Page *pobj = (Page*)object;
+    const Page *pobj = (Page*)object;
 
     fprintf(fp,
             "<<\n"
@@ -617,9 +617,9 @@ int PDF::pdf_save_object(FILE *fp, int index) {
             Float(pobj->height).c_str());
     fprintf(fp, "  /Resources <<\n");
     fprintf(fp, "    /Font <<\n");
-    for (Object *font = pdf_find_first_object(OBJ_font);
+    for (const Object *font = pdf_find_first_object(OBJ_font);
          font; font = font->next) {
-      const FontObj *fobj = (FontObj *)font;
+      const FontObj *fobj = (const FontObj *)font;
       fprintf(fp, "      /F%d %d 0 R\n",
               fobj->font_index,
               font->index);
@@ -639,9 +639,9 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     }
     fprintf(fp, "    >>\n");
 
-    for (Object *image = pdf_find_first_object(OBJ_image);
+    for (const Object *image = pdf_find_first_object(OBJ_image);
          image; image = image->next) {
-      ImageObj *iobj = (ImageObj *)image;
+      const ImageObj *iobj = (ImageObj *)image;
       if (iobj->page == object) {
         if (!printed_xobjects) {
           fprintf(fp, "    /XObject <<");
@@ -657,14 +657,14 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     fprintf(fp, "  >>\n");
 
     fprintf(fp, "  /Contents [\n");
-    for (Object *child : pobj->children) {
+    for (const Object *child : pobj->children) {
       fprintf(fp, "%d 0 R\n", child->index);
     }
     fprintf(fp, "]\n");
 
     if (!pobj->annotations.empty()) {
       fprintf(fp, "  /Annots [\n");
-      for (Object *child : pobj->annotations) {
+      for (const Object *child : pobj->annotations) {
         fprintf(fp, "%d 0 R\n", child->index);
       }
       fprintf(fp, "]\n");
@@ -675,9 +675,9 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_bookmark: {
-    BookmarkObj *bobj = (BookmarkObj *)object;
+    const BookmarkObj *bobj = (BookmarkObj *)object;
 
-    Object *parent = bobj->parent;
+    const Object *parent = bobj->parent;
     if (!parent)
       parent = pdf_find_first_object(OBJ_outline);
     if (!bobj->page)
@@ -693,8 +693,8 @@ int PDF::pdf_save_object(FILE *fp, int index) {
             bobj->name.c_str());
     int nchildren = (int)bobj->children.size();
     if (nchildren > 0) {
-      Object *f = (Object *)bobj->children[0];
-      Object *l = (Object *)bobj->children[nchildren - 1];
+      const Object *f = (Object *)bobj->children[0];
+      const Object *l = (Object *)bobj->children[nchildren - 1];
       fprintf(fp, "  /First %d 0 R\n", f->index);
       fprintf(fp, "  /Last %d 0 R\n", l->index);
       fprintf(fp, "  /Count %d\n", pdf_get_bookmark_count(object));
@@ -702,7 +702,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
     {
       // Find the previous bookmark with the same parent
-      BookmarkObj *other = (BookmarkObj*)object->prev;
+      const BookmarkObj *other = (BookmarkObj*)object->prev;
       while (other && other->parent != bobj->parent) {
         other = (BookmarkObj*)other->prev;
       }
@@ -714,7 +714,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
     {
       // Find the next bookmark with the same parent
-      BookmarkObj *other = (BookmarkObj *)object->next;
+      const BookmarkObj *other = (BookmarkObj *)object->next;
       while (other && other->parent != bobj->parent) {
         other = (BookmarkObj *)other->next;
       }
@@ -729,12 +729,12 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_outline: {
-    Object *first = pdf_find_first_object(OBJ_bookmark);
-    Object *last = pdf_find_last_object(OBJ_bookmark);
+    const Object *first = pdf_find_first_object(OBJ_bookmark);
+    const Object *last = pdf_find_last_object(OBJ_bookmark);
 
     if (first && last) {
       int count = 0;
-      BookmarkObj *cur = (BookmarkObj *)first;
+      const BookmarkObj *cur = (BookmarkObj *)first;
       while (cur) {
         if (!cur->parent) {
           count += pdf_get_bookmark_count(cur) + 1;
@@ -756,8 +756,9 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_font: {
-    FontObj *fobj = (FontObj*)object;
+    const FontObj *fobj = (FontObj*)object;
     if (fobj->ttf != nullptr) {
+      CHECK(fobj->widths_obj != nullptr);
       // An embedded font.
       fprintf(fp,
               "<<\n"
@@ -767,16 +768,23 @@ int PDF::pdf_save_object(FILE *fp, int index) {
               "  /Encoding /WinAnsiEncoding\n"
               "  /FontDescriptor <<\n"
               "    /Type /FontDescriptor\n"
-              "    /FontName FontName%d\n"
+              "    /FontName /FontName%d\n"
               "    /FontFile2 %d 0 R\n"
               "  >>\n"
+              "  /FirstChar %d\n"
+              "  /LastChar %d\n"
+              "  /Widths %d 0 R\n"
               ">>\n",
               // Basefont: Just needs a unique name.
               fobj->index,
               // FontName; we just FontName<id>
               fobj->index,
               // Refers to the embedded file in its own stream.
-              fobj->ttf->index);
+              fobj->ttf->index,
+              fobj->widths_obj->firstchar,
+              fobj->widths_obj->lastchar,
+              // Array of widths in its own object.
+              fobj->widths_obj->index);
 
     } else {
       CHECK(fobj->builtin_font.has_value()) << "A FontObj should "
@@ -790,6 +798,9 @@ int PDF::pdf_save_object(FILE *fp, int index) {
               "  /Encoding /WinAnsiEncoding\n"
               ">>\n",
               BuiltInFontName(fobj->builtin_font.value()));
+
+      // TODO: Built-in fonts are now supposed to have widths
+      // as well.
     }
     break;
   }
@@ -800,7 +811,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     fprintf(fp, "<<\n"
             "  /Type /Pages\n"
             "  /Kids [ ");
-    for (Object *page = pdf_find_first_object(OBJ_page);
+    for (const Object *page = pdf_find_first_object(OBJ_page);
          page; page = page->next) {
       npages++;
       fprintf(fp, "%d 0 R ", page->index);
@@ -812,16 +823,17 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_catalog: {
-    Object *outline = pdf_find_first_object(OBJ_outline);
-    Object *pages = pdf_find_first_object(OBJ_pages);
+    const Object *outline = pdf_find_first_object(OBJ_outline);
+    const Object *pages = pdf_find_first_object(OBJ_pages);
 
     fprintf(fp, "<<\n"
             "  /Type /Catalog\n");
-    if (outline)
+    if (outline != nullptr) {
       fprintf(fp,
               "  /Outlines %d 0 R\n"
               "  /PageMode /UseOutlines\n",
               outline->index);
+    }
     fprintf(fp,
             "  /Pages %d 0 R\n"
             ">>\n",
@@ -830,7 +842,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_link: {
-    LinkObj *lobj = (LinkObj *)object;
+    const LinkObj *lobj = (LinkObj *)object;
     fprintf(fp,
             "<<\n"
             "  /Type /Annot\n"
@@ -849,6 +861,17 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     break;
   }
 
+  case OBJ_widths: {
+    const WidthsObj *wobj = (WidthsObj *)object;
+
+    fprintf(fp, "[");
+    for (int w : wobj->widths) {
+      fprintf(fp, " %d", w);
+    }
+    fprintf(fp, " ]\n");
+    break;
+  }
+
   default:
     return SetErr(-EINVAL, "Invalid PDF object type %d",
                   object->type);
@@ -860,15 +883,14 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 }
 
 // Slightly modified djb2 hash algorithm to get pseudo-random ID
-static uint64_t hash(uint64_t hash, const void *data, size_t len)
-{
-    const uint8_t *d8 = (const uint8_t *)data;
-    for (; len; len--) {
-        hash = (((hash & 0x03ffffffffffffff) << 5) +
-                (hash & 0x7fffffffffffffff)) +
-               *d8++;
-    }
-    return hash;
+static uint64_t hash(uint64_t hash, const void *data, size_t len) {
+  const uint8_t *d8 = (const uint8_t *)data;
+  for (; len; len--) {
+    hash = (((hash & 0x03ffffffffffffff) << 5) +
+            (hash & 0x7fffffffffffffff)) +
+      *d8++;
+  }
+  return hash;
 }
 
 int PDF::pdf_save_file(FILE *fp) {
@@ -885,9 +907,16 @@ int PDF::pdf_save_file(FILE *fp) {
   fprintf(fp, "%c%c%c%c%c\n", 0x25, 0xc7, 0xec, 0x8f, 0xa2);
 
   /* Dump all the objects & get their file offsets */
-  for (int i = 0; i < (int)objects.size(); i++)
-    if (pdf_save_object(fp, i) >= 0)
+  for (int i = 0; i < (int)objects.size(); i++) {
+    int err = pdf_save_object(fp, i);
+    if (err >= 0) {
       xref_count++;
+    } else if (err == -ENOENT) {
+      /* ok */
+    } else {
+      LOG(FATAL) << "Could not write object: " << errstr;
+    }
+  }
 
   /* xref */
   xref_offset = ftell(fp);
@@ -3980,6 +4009,17 @@ std::string PDF::AddTTF(const std::string &filename) {
 
   fobj->ttf = obj;
   fobj->kerning = std::move(kerning);
+
+  // Output the widths object for this font.
+  WidthsObj *wobj = AddObject(new WidthsObj);
+  // We only use pdf encoding for now.
+  wobj->firstchar = 0;
+  wobj->lastchar = 255;
+  wobj->widths.reserve(256);
+  for (int i = wobj->firstchar; i < wobj->lastchar + 1; i++) {
+    wobj->widths.push_back(fobj->widths[i]);
+  }
+  fobj->widths_obj = wobj;
 
   return font_name;
 }
