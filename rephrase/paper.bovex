@@ -5,9 +5,17 @@ let
   import "cite.bovex"
   import "paper.bib"
 
+  (* To get Epsom's version, make sure you have enabled the LLM
+     and have the models in the right place, and have some patience,
+     and then set this to true. *)
   val EPSOM = false
-  do EPSOM andthen REPHRASE-ALL := SOME 0
-  (* do EPSOM andthen REPHRASE-ALL := SOME 80 *)
+
+  (* You can set this to zero if you already have a rephrasings
+     database from a previous build that you're happy with. *)
+  val NUM-REPHRASINGS = 0
+  (* val NUM-REPHRASINGS = 80 *)
+  do EPSOM andthen REPHRASE-ALL := SOME NUM-REPHRASINGS
+
 
   val doc-title = "Badness 0"
   val doc-subtitle = "(" ^ (if EPSOM then "Epsom" else "Knuth") ^ "’s version)"

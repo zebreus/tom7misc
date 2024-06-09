@@ -117,12 +117,15 @@ static void TestEndToEndEasy() {
 }
 
 static std::string RunToString(const std::string &source,
-                               bool expect_failure = false) {
+                               bool expect_failure = false,
+                               bool simplify = true) {
   using TE = TestExecution;
   Compiler compiler;
   compiler.SetVerbose(COMPILER_VERBOSE);
   compiler.frontend.SetVerbose(FRONTEND_VERBOSE);
-  Program prog = compiler.CompileString("test", source);
+  Compiler::Options options;
+  options.frontend_options.simplify = simplify;
+  Program prog = compiler.CompileString("test", source, options);
   if (BYTECODE_VERBOSE) {
     PrintProgram(prog);
   }
@@ -352,55 +355,57 @@ static void ObjTests() {
          span {(Span) font-bold = true} layout
   )##";
 
-  CHECK_EQ(RunToString(
-     "let\n" +
-     layout_lib_preamble + R"##(
+  // Both optimization and runtime node construction should
+  // create a single text node here.
+  for (const bool simplify : {false, true}) {
 
-       val author = b[Tom 7 [[Murphy]] ]
-       fun layout-to-string l =
-         if is-text l
-         then get-text l
-         else
-           let
-               val z = layout-vec-size l
-               fun r n = if n == z then "." ^ int-to-string n
-                         else layout-to-string (layout-vec-sub (l, n)) ^
-                              r (n + 1)
-           in r 0
-           end
-      in
-         print (layout-to-string author)
-      end
-      )##"),
-           // XXX dependent on optimizations.
-           "Tom 7 Murphy .1"
-           );
+    CHECK_EQ(RunToString(
+       "let\n" +
+       layout_lib_preamble + R"##(
 
-  CHECK_EQ(RunToString(
-     "let\n" +
-     layout_lib_preamble + R"##(
+         val author = b[Tom 7 [[Murphy]] ]
+         fun layout-to-string l =
+           if is-text l
+           then get-text l
+           else
+             let
+                 val z = layout-vec-size l
+                 fun r n = if n == z then "." ^ int-to-string n
+                           else layout-to-string (layout-vec-sub (l, n)) ^
+                                r (n + 1)
+             in r 0
+             end
+        in
+           print (layout-to-string author)
+        end
+        )##", false, simplify),
+             "Tom 7 Murphy .1"
+             );
 
-       val author = b[Tom 7 [[Murphy]] ]
-       fun print-layout l =
-         if is-text l
-         then print (get-text l)
-         else
-           let
-               val z = layout-vec-size l
-               fun r n = if n == z then print ("." ^ int-to-string n)
-                         else
-                           let do print-layout (layout-vec-sub (l, n))
-                           in r (n + 1)
-                           end
-           in r 0
-           end
-      in
-         print-layout author
-      end
-      )##"),
-           // This depends on optimizations being performed; we don't
-           // (yet) collapse text nodes at runtime.
-           "Tom 7 Murphy .1");
+    CHECK_EQ(RunToString(
+       "let\n" +
+       layout_lib_preamble + R"##(
+
+         val author = b[Tom 7 [[Murphy]] ]
+         fun print-layout l =
+           if is-text l
+           then print (get-text l)
+           else
+             let
+                 val z = layout-vec-size l
+                 fun r n = if n == z then print ("." ^ int-to-string n)
+                           else
+                             let do print-layout (layout-vec-sub (l, n))
+                             in r (n + 1)
+                             end
+             in r 0
+             end
+        in
+           print-layout author
+        end
+        )##", false, simplify),
+             "Tom 7 Murphy .1");
+  }
 
   CHECK_EQ(RunToString(
      "let\n" +
@@ -796,19 +801,19 @@ static void TestVectors() {
 }
 
 static void TestOps() {
-  // Would be good to test these with and without the simplification
-  // optimization.
 
-  CHECK_EQ(RunToString(R"(
-print (int-to-string (0b100101 shl 3))
-       )"), StringPrintf("%d", 0b100101000));
+  // Since these will be executed both at runtime and in the simplifier,
+  // explicitly test both.
+  for (bool simplify : { true, false }) {
+    CHECK_EQ(RunToString(R"(
+        print (int-to-string (0b100101 shl 3))
+       )", false, simplify), StringPrintf("%d", 0b100101000));
 
-  CHECK_EQ(RunToString(R"(
-print (int-to-string (0b100101 shr 2))
-       )"), StringPrintf("%d", 0b1001));
+    CHECK_EQ(RunToString(R"(
+        print (int-to-string (0b100101 shr 2))
+       )", false, simplify), StringPrintf("%d", 0b1001));
 
-  // TODO: Many more operators to test!
-
+  }
 }
 
 static void NewTests() {

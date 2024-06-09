@@ -227,15 +227,6 @@ struct Converter {
 
   using VarLocalMap = FunctionalMap<std::string, std::string>;
 
-  // Reserve the next instruction slot to be overwritten later. Returns
-  // the instruction index.
-  // XXX should be unnecessary for symbolic code
-  int ReserveInstruction(std::vector<Inst> *insts) {
-    size_t slot = insts->size();
-    insts->emplace_back(inst::Fail{.arg = "Bug: Reserved"});
-    return (int)slot;
-  }
-
   // Convert the function to code, storing it in the program at the
   // given label. The function is (fn x => body). If is_main is true,
   // then we insert the one-time initialization code at the front of
@@ -403,32 +394,47 @@ struct Converter {
       }
 
       case il::ExpType::NODE: {
+        // PERF: The children are often layout or literals, so we should
+        // emit faster code in that case (or make sure that optimizations
+        // can recognize this).
         const auto &[attrs, children] = exp->Node();
         const std::string lattrs = ConvertExp(G, "at", attrs, blocks,
                                               current_block);
 
         // Node automatically flattens children (i.e., makes their
-        // children part of the vector) if they have no attributes.
-        // We only need to do this once, since nodes within will
-        // also be in this normal form.
+        // children part of the vector) if they have no attributes. We
+        // only need to do a shallow normalization, since nodes within
+        // will also be in this normal form.
 
         // Build up the children vector.
-        std::string v = NewSymbol("ch");
+        const std::string v = NewSymbol("ch");
         current_block->insts.emplace_back(inst::AllocVec{.out = v});
 
-        // Current child index as we write elements into the vector.
-        std::string zero = AddValue("zero", Value({.v = Value::t(BigInt(0))}));
-        std::string one = AddValue("one", Value({.v = Value::t(BigInt(1))}));
-        std::string idx = NewSymbol("idx");
+        // Need constants since we don't have immediates. These get
+        // coalesced away by the optimizer, although maybe it would be
+        // better if we had a direct solution for frequently-used
+        // numbers like this.
+        const std::string global_zero =
+          AddValue("zero", Value({.v = Value::t(BigInt(0))}));
+        const std::string global_one =
+          AddValue("one", Value({.v = Value::t(BigInt(1))}));
+        // Current destination child index as we write elements into
+        // the vector.
+        const std::string idx = NewSymbol("idx");
         current_block->insts.emplace_back(
-            inst::Load{.out = idx, .global = zero});
+            inst::Load{.out = idx, .global = global_zero});
         // Increment. This stays constant and is used for the outer and
         // inner loops.
-        std::string inc = NewSymbol("inc");
+        const std::string inc = NewSymbol("inc");
         current_block->insts.emplace_back(
-            inst::Load{.out = inc, .global = one});
+            inst::Load{.out = inc, .global = global_one});
 
-        // Index within the child's children when we flatten elements.
+        const std::string global_false =
+          AddValue("false", Value({.v = Value::t(uint64_t{0})}));
+        const std::string global_true =
+          AddValue("true", Value({.v = Value::t(uint64_t{1})}));
+
+        // Index within the source child's children when we flatten elements.
         // We keep reusing this one, so it doesn't get loaded until we
         // start an inner loop.
         const std::string num_subchildren = NewSymbol("sn");
@@ -442,14 +448,22 @@ struct Converter {
         const std::string child_attrs = NewSymbol("cattrs");
         const std::string child_attrs_empty = NewSymbol("caempty");
 
+        // True if the previously inserted child is text. If so,
+        // an appended text node will concatenated with that one
+        // instead of inserted as a separate child.
+        const std::string prev_child_is_text = NewSymbol("pctxt");
+
+        current_block->insts.emplace_back(
+            inst::Load({.out = prev_child_is_text, .global = global_false}));
+
         int child_idx = 0;
         for (const il::Exp *child : children) {
           const std::string local =
             ConvertExp(G, StringPrintf("c%d", child_idx), child,
                        blocks, current_block);
           // Several possibilities:
-          // 1. A text node. Ideally we would merge this into the previous
-          // node if it is a text node, but I'm not doing this yet.
+          // 1. A text node. If the previous node was text, we replace the
+          // previous node with a new one that has the concatenated text.
           //
           // 2. A node with attributes. This is just copied in as the next
           // child.
@@ -461,6 +475,9 @@ struct Converter {
 
           std::string trivial_lab = NewSymbol("trivial");
           Block *trivial_block = &(*blocks)[trivial_lab];
+
+          std::string concat_lab = NewSymbol("concat");
+          Block *concat_block = &(*blocks)[concat_lab];
 
           // Like any other conditional, we join up to a single block.
           std::string join_lab = NewSymbol("join_join");
@@ -475,7 +492,7 @@ struct Converter {
           current_block->insts.emplace_back(
               inst::SymbolicIf{.cond = child_is_text, .true_lab = text_lab});
 
-          // Get the attributes object.
+          // Not text. Get the attributes object.
           current_block->insts.emplace_back(
               inst::Unop{
                 .primop = Primop::GET_ATTRS,
@@ -493,9 +510,15 @@ struct Converter {
                 .true_lab = trivial_lab
               });
 
-          // If we get here, then it's a normal node. Insert it.
+          // If we get here, then it has attributes and is thus a
+          // "normal" node. Insert it.
           current_block->insts.emplace_back(
               inst::SetVec{.vec = v, .idx = idx, .arg = local});
+
+          // Previous node was not text, then.
+          current_block->insts.emplace_back(
+            inst::Load({.out = prev_child_is_text, .global = global_false}));
+
           // PERF: We'll increment the index on multiple branches. Maybe
           // there's a way to share code. But probably better to spend
           // the time writing an optimizer?
@@ -510,8 +533,6 @@ struct Converter {
           current_block->insts.emplace_back(
               inst::SymbolicJump({.lab = join_lab}));
 
-          // std::vector<int> join_jmps = {ReserveInstruction(insts)};
-
           // Now emit the code for text nodes.
 
           // An empty text node is an empty node. These are dropped.
@@ -522,18 +543,29 @@ struct Converter {
                 .arg = local,
               });
           // if child_is_blank continue
+          // Since we didn't insert it, this does not change the
+          // status of whether the last node was text.
           text_block->insts.emplace_back(
               inst::SymbolicIf{
                 .cond = child_is_blank,
                 .true_lab = join_lab,
               });
 
-          // TODO: If the previous node was text, append this text
-          // to it instead of pushing a whole new node. Now that we
-          // have symbolic labels, this is no longer horrible to do...
+          // If the previous node was text, append this text
+          // to it instead of pushing a whole new node.
+          text_block->insts.emplace_back(
+              inst::SymbolicIf{
+                .cond = prev_child_is_text,
+                .true_lab = concat_lab,
+              });
 
           text_block->insts.emplace_back(
               inst::SetVec{.vec = v, .idx = idx, .arg = local});
+
+          // The previous child is text now.
+          text_block->insts.emplace_back(
+            inst::Load({.out = prev_child_is_text, .global = global_true}));
+
           // And increment.
           text_block->insts.emplace_back(
               inst::Binop{
@@ -547,8 +579,54 @@ struct Converter {
                 .lab = join_lab,
               });
 
+          // The concat block, for one of the immediate children.
+          // Append the source child's text to the last child node's
+          // text. If we get here, we know there is at least one
+          // destination child, it is a non-blank text node, and the
+          // source child is also a non-blank text node.
+          const std::string prev_idx = NewSymbol("prev_idx");
+          // Get the previous node's index, which is idx - 1.
+          concat_block->insts.emplace_back(
+              inst::Binop{
+                  .primop = Primop::INT_MINUS,
+                  .out = prev_idx,
+                  .arg1 = idx,
+                  .arg2 = inc,
+                });
+          const std::string prev = NewSymbol("prev");
+          concat_block->insts.emplace_back(
+              inst::GetVec{.out = prev, .vec = v, .idx = prev_idx});
 
-          // Now the code for trivial nodes.
+          const std::string concatenated = NewSymbol("cat");
+          concat_block->insts.emplace_back(
+              inst::Binop{
+                .primop = Primop::STRING_CONCAT,
+                .out = concatenated,
+                .arg1 = prev,
+                .arg2 = local,
+              });
+
+          concat_block->insts.emplace_back(
+              inst::SetVec{
+                .vec = v,
+                .idx = prev_idx,
+                .arg = concatenated
+              });
+
+          // Don't increment the output index, as we did not increase
+          // the number of nodes.
+          // The previous node is still a text node.
+          concat_block->insts.emplace_back(
+              inst::SymbolicJump{
+                .lab = join_lab,
+              });
+
+
+          // Now the code for trivial nodes. We flatten each of its
+          // children into the vector. Because the child must be normal,
+          // we don't need to consider empty text nodes, or text nodes
+          // adjacent to one another. However, we might need to concatenate
+          // the first node.
 
           // Awkwardly, the vector size comes from the layout object
           // (the pair of attributes and child vector), not the vector
@@ -572,15 +650,18 @@ struct Converter {
           trivial_block->insts.emplace_back(
               inst::Load{
                 .out = subidx,
-                .global = zero,
+                .global = global_zero,
               });
 
-          std::string while_label = NewSymbol("join_while");
-          Block *while_block = &(*blocks)[while_label];
+          std::string while_lab = NewSymbol("join_while");
+          Block *while_block = &(*blocks)[while_lab];
+
+          std::string concat_subchild_lab = NewSymbol("concat_subchild");
+          Block *concat_subchild_block = &(*blocks)[concat_subchild_lab];
 
           trivial_block->insts.emplace_back(
               inst::SymbolicJump{
-                .lab = while_label,
+                .lab = while_lab,
               });
 
           // We want while (idx < num_subchildren) but
@@ -608,12 +689,50 @@ struct Converter {
                 .vec = child_vec,
                 .idx = subidx,
               });
-          // And write it.
+
+
+          // If it is text, and the previous node is text,
+          // concatenate instead of appending.
+          // PERF: We really only need to do this for the
+          // first subchild, so we could maybe unroll this
+          // loop one iteration.
+          std::string subchild_is_text = NewSymbol("sct");
+          while_block->insts.emplace_back(
+              inst::Unop{
+                .primop = Primop::IS_TEXT,
+                .out = subchild_is_text,
+                .arg = subchild});
+          // Don't need to check for empty nodes; they do not
+          // appear as children of normalized nodes.
+          std::string should_concat_subchild = NewSymbol("scsub");
+
+          // if (subchild_is_text && prev_child_is_text)
+          while_block->insts.emplace_back(
+              inst::Binop{
+                .primop = Primop::WORD_ANDB,
+                  .out = should_concat_subchild,
+                  .arg1 = subchild_is_text,
+                  .arg2 = prev_child_is_text,
+              });
+
+          while_block->insts.emplace_back(
+              inst::SymbolicIf{
+                  .cond = should_concat_subchild,
+                  .true_lab = concat_subchild_lab,
+              });
+
+          // Otherwise, we just write it.
           while_block->insts.emplace_back(
               inst::SetVec{
                 .vec = v,
                 .idx = idx,
                 .arg = subchild,
+              });
+
+          while_block->insts.emplace_back(
+              inst::Bind{
+                .out = prev_child_is_text,
+                .arg = subchild_is_text,
               });
 
           // Increment each index.
@@ -634,7 +753,53 @@ struct Converter {
 
           // Now loop, finishing the while block.
           while_block->insts.emplace_back(
-              inst::SymbolicJump{.lab = while_label});
+              inst::SymbolicJump{.lab = while_lab});
+
+
+          // Fill out the concat subchild block.
+          const std::string sub_prev_idx = NewSymbol("sub_prev_idx");
+          // Get the previous node's index, which is idx - 1.
+          concat_subchild_block->insts.emplace_back(
+              inst::Binop{
+                  .primop = Primop::INT_MINUS,
+                  .out = sub_prev_idx,
+                  .arg1 = idx,
+                  .arg2 = inc,
+                });
+          const std::string sub_prev = NewSymbol("sub_prev");
+          concat_subchild_block->insts.emplace_back(
+              inst::GetVec{.out = sub_prev, .vec = v, .idx = sub_prev_idx});
+
+          const std::string sub_concatenated = NewSymbol("sub_cat");
+          concat_subchild_block->insts.emplace_back(
+              inst::Binop{
+                .primop = Primop::STRING_CONCAT,
+                .out = sub_concatenated,
+                .arg1 = sub_prev,
+                .arg2 = subchild,
+              });
+
+          // Overwrite it.
+          concat_subchild_block->insts.emplace_back(
+              inst::SetVec{
+                .vec = v,
+                .idx = sub_prev_idx,
+                .arg = sub_concatenated});
+
+          // Increment the subchild idx, but not the destination idx.
+          // prev_is_text remains true.
+          concat_subchild_block->insts.emplace_back(
+              inst::Binop{
+                  .primop = Primop::INT_PLUS,
+                  .out = subidx,
+                  .arg1 = subidx,
+                  .arg2 = inc,
+                });
+
+          // And loop, same as the "normal" body of the while loop.
+          concat_subchild_block->insts.emplace_back(
+              inst::SymbolicJump{.lab = while_lab});
+
 
           // Now the join block.
           // As usual, there's nothing to do except mark

@@ -118,6 +118,7 @@ struct Execution {
   Value *DoUnop(Primop primop, Value *a, State *state);
 
   Value *Bool(bool b, State *state);
+  Value *Word(uint64_t w, State *state);
   Value *String(std::string s, State *state);
   Value *Big(BigInt b, State *state);
   Value *Float(double d, State *state);

@@ -645,6 +645,14 @@ struct PeepholePass : public il::Pass<> {
         }
         break;
 
+      case Primop::WORD_ANDB:
+        if (ees[0]->type == ExpType::WORD &&
+            ees[1]->type == ExpType::WORD) {
+          Simplified("word-andb");
+          return pool->Word(ees[0]->Word() & ees[1]->Word());
+        }
+        break;
+
       case Primop::OBJ_EMPTY:
         if (ees[0]->type == ExpType::OBJECT) {
           const std::vector<

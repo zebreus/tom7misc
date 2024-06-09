@@ -1,0 +1,18 @@
+
+9 Jun 2024 (r5906)
+
+ * Did long-standing TODO. Now dynamically-constructed nodes are always
+   in normal form, because adjacent text nodes are concatenated when
+   the nodes are built. Fixes some incorrect spacing (e.g. after comments)
+   in documents.
+
+8 Jun 2024 (r5905)
+
+ * Fixed bugs in the PDF export code. Renders correctly in Firefox now.
+
+ * Added changelog.
+
+6 Jun 2024 (r5903)
+
+ * This was when I uploaded the final video and the first version of the
+   webpage at http://tom7.org/bovex/.

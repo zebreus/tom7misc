@@ -82,6 +82,7 @@ const char *PrimopString(Primop po) {
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
 
   case Primop::WORD_EQ: return "WORD_EQ";
+  case Primop::WORD_ANDB: return "WORD_ANDB";
 
   case Primop::OBJ_EMPTY: return "OBJ_EMPTY";
   case Primop::OBJ_MERGE: return "OBJ_MERGE";
@@ -187,6 +188,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::STRING_UPPERCASE: return std::make_tuple(0, 1);
 
   case Primop::WORD_EQ: return std::make_tuple(0, 2);
+  case Primop::WORD_ANDB: return std::make_tuple(0, 2);
 
   case Primop::OBJ_EMPTY: return std::make_tuple(0, 1);
   case Primop::OBJ_MERGE: return std::make_tuple(0, 2);
@@ -319,6 +321,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::IS_TEXT: return true;
 
   case Primop::WORD_EQ: return true;
+  case Primop::WORD_ANDB: return true;
 
   case Primop::OBJ_EMPTY: return true;
   case Primop::OBJ_MERGE: return true;
@@ -515,6 +518,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::SET_PAGE_INFO: return {{}, BinOp(Obj, Obj, Unit())};
 
   case Primop::WORD_EQ: return {{}, BinOp(Word, Word, Bool)};
+  case Primop::WORD_ANDB: return {{}, BinOp(Word, Word, Word)};
 
   case Primop::OBJ_EMPTY: return {{}, pool->Arrow(Obj, Bool)};
   // attributes on the rhs overwrite the lhs

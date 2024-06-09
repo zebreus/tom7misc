@@ -88,8 +88,9 @@ enum class Primop {
 
   // Lots of word operations make sense,
   // but we mainly use this for internally
-  // representing enums.
+  // representing enums and bools.
   WORD_EQ,
+  WORD_ANDB,
 
   // I/O
   OUT_STRING,

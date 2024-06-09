@@ -182,6 +182,10 @@ Value *Execution::Bool(bool x, State *state) {
   return NewValue(&state->heap, uint64_t(x ? 1 : 0));
 }
 
+Value *Execution::Word(uint64_t w, State *state) {
+  return NewValue(&state->heap, w);
+}
+
 Value *Execution::String(std::string s, State *state) {
   return NewValue(&state->heap, std::move(s));
 }
@@ -536,6 +540,11 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   case Primop::WORD_EQ: {
     const auto &[aa, bb] = TwoWords("word_eq");
     return Bool(aa == bb, state);
+  }
+
+  case Primop::WORD_ANDB: {
+    const auto &[aa, bb] = TwoWords("word_andb");
+    return Word(aa & bb, state);
   }
 
   case Primop::SET_PAGE_INFO: {
