@@ -641,7 +641,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
     for (const Object *image = pdf_find_first_object(OBJ_image);
          image; image = image->next) {
-      const ImageObj *iobj = (ImageObj *)image;
+      const ImageObj *iobj = (const ImageObj *)image;
       if (iobj->page == object) {
         if (!printed_xobjects) {
           fprintf(fp, "    /XObject <<");
@@ -675,7 +675,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_bookmark: {
-    const BookmarkObj *bobj = (BookmarkObj *)object;
+    const BookmarkObj *bobj = (const BookmarkObj *)object;
 
     const Object *parent = bobj->parent;
     if (!parent)
@@ -693,8 +693,8 @@ int PDF::pdf_save_object(FILE *fp, int index) {
             bobj->name.c_str());
     int nchildren = (int)bobj->children.size();
     if (nchildren > 0) {
-      const Object *f = (Object *)bobj->children[0];
-      const Object *l = (Object *)bobj->children[nchildren - 1];
+      const Object *f = (const Object *)bobj->children[0];
+      const Object *l = (const Object *)bobj->children[nchildren - 1];
       fprintf(fp, "  /First %d 0 R\n", f->index);
       fprintf(fp, "  /Last %d 0 R\n", l->index);
       fprintf(fp, "  /Count %d\n", pdf_get_bookmark_count(object));
@@ -702,9 +702,9 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
     {
       // Find the previous bookmark with the same parent
-      const BookmarkObj *other = (BookmarkObj*)object->prev;
+      const BookmarkObj *other = (const BookmarkObj*)object->prev;
       while (other && other->parent != bobj->parent) {
-        other = (BookmarkObj*)other->prev;
+        other = (const BookmarkObj*)other->prev;
       }
 
       if (other != nullptr) {
@@ -716,7 +716,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
       // Find the next bookmark with the same parent
       const BookmarkObj *other = (BookmarkObj *)object->next;
       while (other && other->parent != bobj->parent) {
-        other = (BookmarkObj *)other->next;
+        other = (const BookmarkObj *)other->next;
       }
 
       if (other != nullptr) {
@@ -734,12 +734,12 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
     if (first && last) {
       int count = 0;
-      const BookmarkObj *cur = (BookmarkObj *)first;
+      const BookmarkObj *cur = (const BookmarkObj *)first;
       while (cur) {
         if (!cur->parent) {
           count += pdf_get_bookmark_count(cur) + 1;
         }
-        cur = (BookmarkObj *)cur->next;
+        cur = (const BookmarkObj *)cur->next;
       }
 
       /* Bookmark outline */
@@ -756,7 +756,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   }
 
   case OBJ_font: {
-    const FontObj *fobj = (FontObj*)object;
+    const FontObj *fobj = (const FontObj*)object;
     if (fobj->ttf != nullptr) {
       CHECK(fobj->widths_obj != nullptr);
       // An embedded font.
