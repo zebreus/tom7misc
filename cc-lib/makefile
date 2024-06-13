@@ -250,5 +250,8 @@ image-resize_test.exe : image.o image-resize.o stb_image.o stb_image_write.o ima
 integer-voronoi_test.exe : integer-voronoi.o integer-voronoi_test.o image.o stb_image.o stb_image_write.o color-util.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+zip_test.exe : zip.o zip_test.o miniz.o arcfour.o ansi.o util.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f base/*.o bignum/*.o *.o *.exe *.deleteme test-*.png $(BASE) $(RE2_OBJECTS)

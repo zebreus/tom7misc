@@ -1,4 +1,4 @@
-cc-lib                             Tom 7       22 Mar 2024
+cc-lib                             Tom 7       12 Jun 2024
 
 Like my "sml-lib", this is my attempt to get all of my frequently used
 C++ libraries into a single place so that different copies don't
@@ -42,8 +42,13 @@ contributions here are MIT-licensed as well. See xml.cc.
 The csv parser is based on the MIT-licensed "Vince's CSV Parser."
 My wrapper is MIT-licensed as well. See csv.cc.
 
+The zip library is a wrapper around miniz, which has a "public domain"
+"unlicense" (although it actually looks MIT-like since it wants you to
+persist the copyright statement and warranty disclaimer); see
+miniz.cc. My wrapper is MIT-licensed as well.
+
 The re2 subdirectory comes from Google and community contributors. See
-re2/LICENSE for its permissive license.
+re2/LICENSE for its permissive BSD-style license.
 
 The guitar subdirectory is based on some MIT-licensed data so my
 contributions are as well. See guitar/LICENSE.txt.
@@ -149,3 +154,5 @@ pdf             - PDF generation.
 qr-code         - QR code generator.
 boxes-and-glue  - Line breaking algorithm similar to what TeX uses.
 integer-voronoi - Compute a rasterized 2D voronoi diagram on an integer grid.
+miniz           - Standalone flate/deflate/zip/gzip codec.
+zip             - My simple C++ wrapper for compressed streams, using miniz.
