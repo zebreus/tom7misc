@@ -2770,6 +2770,17 @@ tinfl_status tinfl_decompress(tinfl_decompressor *r, const mz_uint8 *pIn_buf_nex
                         {
                             TINFL_CR_RETURN(53, TINFL_STATUS_HAS_MORE_OUTPUT);
                         }
+                        /*
+                        printf(
+                            "buf_start: %p  buf_end: %p\n"
+                            "Write %p <- (%d - %d) & %d = %p\n",
+                            pOut_buf_start, pOut_buf_end,
+                            pOut_buf_cur,
+                            (int)dist_from_out_buf_start,
+                            dist,
+                            (int)out_buf_size_mask,
+                            &pOut_buf_start[(dist_from_out_buf_start - dist) & out_buf_size_mask]);
+                        */
                         *pOut_buf_cur++ = pOut_buf_start[(dist_from_out_buf_start++ - dist) & out_buf_size_mask];
                     }
                     continue;

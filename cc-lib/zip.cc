@@ -9,9 +9,64 @@
 #include "miniz.h"
 
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
+static constexpr size_t BUFFER_SIZE = 32768;
+static constexpr size_t CHUNK_SIZE = 32768;
+static_assert(BUFFER_SIZE >= TINFL_LZ_DICT_SIZE,
+              "buffer size must be at least the size of the "
+              "dictionary.");
+
+static_assert((BUFFER_SIZE & (BUFFER_SIZE - 1)) == 0,
+              "buffer size must be a power of 2");
+
+// static constexpr size_t BUFFER_SIZE = 16;
+static constexpr bool DEBUG_ZIP = false;
 
 namespace {
+
+#if 0
+static std::string DumpString(std::string_view s) {
+  std::string out = StringPrintf("%d bytes:\n", (int)s.size());
+
+  for (int p = 0; p < (int)s.size(); p += 16) {
+    // Print line, first hex, then ascii
+    for (int i = 0; i < 16; i++) {
+      int idx = p + i;
+      if (idx < (int)s.size()) {
+        uint8_t c = s[idx];
+        StringAppendF(&out, "%02x ", c);
+      } else {
+        StringAppendF(&out, " . ");
+      }
+    }
+
+    StringAppendF(&out, "| ");
+
+    for (int i = 0; i < 16; i++) {
+      int idx = p + i;
+      if (idx < (int)s.size()) {
+        uint8_t c = s[idx];
+        if (c >= 32 && c < 127) {
+          StringAppendF(&out, "%c", c);
+        } else {
+          StringAppendF(&out, ".");
+        }
+      } else {
+        StringAppendF(&out, " ");
+      }
+    }
+
+    StringAppendF(&out, "\n");
+  }
+
+  return out;
+}
+
+static std::string DumpVector(const std::vector<uint8_t> &v) {
+  return DumpString(std::string_view{(const char *)v.data(), v.size()});
+}
+#endif
 
 template<size_t N_>
 struct Vec {
@@ -59,15 +114,17 @@ struct Buf {
   // reader reads from the front. Each vec has capacity N.
 
   // Get the next write destination, perhaps by allocating a new
-  // block. It will always have at least one byte of space.
-  Vec<N> *GetDest() {
+  // block. It will have a minimum of at_least space in it.
+  Vec<N> *GetDest(size_t at_least) {
     if (q.empty()) {
       q.emplace_back();
       return &q.back();
     }
     Vec<N> *v = &q.back();
-    if (v->space_left() == 0) {
-      DCHECK(v->end == N);
+    if (v->space_left() < at_least) {
+      DCHECK(at_least <= N) << "There will never be enough space "
+        "in a chunk if you ask for " << at_least << " but chunk "
+        "size is " << N;
       q.emplace_back();
       return &q.back();
     } else {
@@ -114,6 +171,7 @@ struct Buf {
       size_t copy_size = std::min(chunk_size, size);
       memcpy(data, v->data(), copy_size);
       done += copy_size;
+      data += copy_size;
       v->start += copy_size;
       DCHECK(copy_size <= size);
       DCHECK(v->start <= v->end);
@@ -127,7 +185,10 @@ struct Buf {
 };
 
 struct EBImpl : public ZIP::EncodeBuffer {
-  static constexpr size_t BUFFER_SIZE = 32768;
+
+  // There don't seem to be any restrictions on this, so we
+  // just use the same size as the decompressor.
+  static constexpr size_t ENCODE_BUFFER_SIZE = BUFFER_SIZE;
 
   // For levels 0..10, the number of hash probes to use.
   static constexpr const int probes_for_level[11] = {
@@ -160,7 +221,7 @@ struct EBImpl : public ZIP::EncodeBuffer {
     const uint8_t *data = data_in;
     size_t remaining = size_in;
     while (remaining > 0) {
-      V *out = buf.GetDest();
+      V *out = buf.GetDest(ENCODE_BUFFER_SIZE);
       DCHECK(V::N > out->end);
       const size_t space_left = out->space_left();
       DCHECK(space_left != 0);
@@ -181,11 +242,16 @@ struct EBImpl : public ZIP::EncodeBuffer {
       CHECK(status == TDEFL_STATUS_OKAY) << "Bug! Only OKAY status makes "
         "sense since we don't FINISH here.";
 
+      if (DEBUG_ZIP) {
+        printf("Compress %d/%d in, get %d/%d out\n",
+               (int)in_bytes, (int)remaining,
+               (int)out_bytes, (int)space_left);
+      }
+
       DCHECK(in_bytes <= remaining);
       remaining -= in_bytes;
 
-      DCHECK(out_bytes <= out->space_left()) << out_bytes << " "
-                                             << out->space_left();
+      DCHECK(out_bytes <= space_left) << out_bytes << " " << space_left;
       out->end += out_bytes;
       buf.AdjustSize(+out_bytes);
 
@@ -195,7 +261,7 @@ struct EBImpl : public ZIP::EncodeBuffer {
   void Finalize() override {
 
     for (;;) {
-      V *out = buf.GetDest();
+      V *out = buf.GetDest(ENCODE_BUFFER_SIZE);
       DCHECK(V::N > out->end);
       const size_t space_left = out->space_left();
       DCHECK(space_left != 0);
@@ -211,6 +277,12 @@ struct EBImpl : public ZIP::EncodeBuffer {
                        // output buffer.
                        out_space, &out_bytes,
                        TDEFL_FINISH);
+
+      if constexpr (DEBUG_ZIP) {
+        printf("Finalize %d/%d in, get %d/%d out to %p\n",
+               (int)0, (int)0,
+               (int)out_bytes, (int)space_left, out);
+      }
 
       CHECK(in_bytes == 0);
 
@@ -252,12 +324,11 @@ struct EBImpl : public ZIP::EncodeBuffer {
 
 
   tdefl_compressor enc;
-  using V = Vec<BUFFER_SIZE>;
-  Buf<BUFFER_SIZE> buf;
+  using V = Vec<CHUNK_SIZE>;
+  Buf<CHUNK_SIZE> buf;
 };
 
 struct DBImpl : public ZIP::DecodeBuffer {
-  static constexpr size_t BUFFER_SIZE = 32768;
 
   ~DBImpl() override {
     tinfl_decompressor_free(dec);
@@ -278,6 +349,9 @@ struct DBImpl : public ZIP::DecodeBuffer {
     InsertPtr((const uint8_t *)s.data(), s.size());
   }
   void InsertPtr(const uint8_t *data_in, size_t size_in) override {
+    if (DEBUG_ZIP) {
+      printf("InsertPtr on %p for %d\n", data_in, (int)size_in);
+    }
     if (size_in == 0) return;
 
     // TODO: Figure out if I want headers etc.
@@ -287,7 +361,8 @@ struct DBImpl : public ZIP::DecodeBuffer {
     size_t remaining = size_in;
     bool has_more_output = false;
     do {
-      V *out = buf.GetDest();
+      // This must be at least the dictionary size.
+      V *out = buf.GetDest(BUFFER_SIZE);
       const size_t space_left = out->space_left();
       DCHECK(space_left != 0);
       // in/out parameter.
@@ -298,15 +373,23 @@ struct DBImpl : public ZIP::DecodeBuffer {
 
       uint8_t *out_space = out->space();
 
+      if (DEBUG_ZIP) {
+        printf("Data buffer at %p for %d -> %p for %d\n",
+               data, (int)in_bytes,
+               out_space, (int)out_bytes);
+      }
       tinfl_status status =
         tinfl_decompress(dec,
                          // input buffer
                          data, &in_bytes,
                          // output buffer. not using a circular
-                         // buffer here.
+                         // buffer here; we are always at the "start".
                          out_space, out_space, &out_bytes,
-                         TINFL_FLAG_HAS_MORE_INPUT |
-                         TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+                         TINFL_FLAG_HAS_MORE_INPUT);
+      if (DEBUG_ZIP) {
+        printf("Got in_bytes %d, out_bytes %d\n",
+               (int)in_bytes, (int)out_bytes);
+      }
 
       CHECK(status != TINFL_STATUS_FAILED_CANNOT_MAKE_PROGRESS)
         << "Should be impossible since we're passing data with each "
@@ -330,6 +413,7 @@ struct DBImpl : public ZIP::DecodeBuffer {
             status == TINFL_STATUS_HAS_MORE_OUTPUT);
 
       DCHECK(in_bytes <= remaining);
+      data += in_bytes;
       remaining -= in_bytes;
 
       DCHECK(out_bytes <= out->space_left());
@@ -387,8 +471,8 @@ struct DBImpl : public ZIP::DecodeBuffer {
   // PERF: We should be able to avoid an indirection here.
   // Just nest the struct.
   tinfl_decompressor *dec = nullptr;
-  using V = Vec<BUFFER_SIZE>;
-  Buf<BUFFER_SIZE> buf;
+  using V = Vec<CHUNK_SIZE>;
+  Buf<CHUNK_SIZE> buf;
 };
 }
 

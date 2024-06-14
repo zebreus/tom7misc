@@ -6,7 +6,10 @@
 #include <string>
 #include <vector>
 
-// XXXX: Incomplete and untested!
+// Simple flate codec, wrapping miniz. These are raw streams with
+// header or footer. You could add your own (typically it is useful
+// to record the size of the decompressed data and a checksum) or
+// maybe I'll add those in the future.
 
 struct ZIP {
 
