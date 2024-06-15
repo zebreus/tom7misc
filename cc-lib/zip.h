@@ -29,6 +29,10 @@ struct ZIP {
   static std::string UnzipString(const std::string &s);
   static std::vector<uint8_t> UnzipPtr(const uint8_t *data, size_t size);
 
+  static std::vector<uint8_t> ZipPtrRaw(const uint8_t *data, size_t size,
+                                        int level = 7);
+  static std::vector<uint8_t> UnzipPtrRaw(const uint8_t *data, size_t size);
+
   // Streaming interfaces.
 
   struct EncodeBuffer {

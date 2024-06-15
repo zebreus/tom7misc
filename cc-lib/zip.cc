@@ -21,12 +21,12 @@ static_assert(BUFFER_SIZE >= TINFL_LZ_DICT_SIZE,
 static_assert((BUFFER_SIZE & (BUFFER_SIZE - 1)) == 0,
               "buffer size must be a power of 2");
 
-// static constexpr size_t BUFFER_SIZE = 16;
-static constexpr bool DEBUG_ZIP = true;
+#define DEBUG_ZIP 1
 
 namespace {
 
-#if 1
+#if DEBUG_ZIP
+[[maybe_unused]]
 static std::string DumpString(std::string_view s) {
   std::string out = StringPrintf("%d bytes:\n", (int)s.size());
 
@@ -69,6 +69,11 @@ static std::string DumpVector(const std::vector<uint8_t> &v) {
 }
 #endif
 
+// TODO PERF: I initially thought I could write decompressed data
+// directly into this deque of vectors. But miniz seems to want to
+// reuse the same circular buffer between calls. That's fine, but
+// it's probably possible to simplify this stuff now. At least we
+// should tune BUFFER/CHUNK/CIRC size.
 template<size_t N_>
 struct Vec {
   static constexpr size_t N = N_;
@@ -146,13 +151,17 @@ struct Buf {
         // An empty block is possible if it was consumed by reading,
         // or because we reached the final block but nothing is
         // written there yet.
-        printf("(%d == %d)\n", (int)v->start, (int)v->end);
+        if (DEBUG_ZIP) {
+          printf("(%d == %d)\n", (int)v->start, (int)v->end);
+        }
         q.pop_front();
       } else {
         return v;
       }
     }
-    printf("(q empty)\n");
+    if (DEBUG_ZIP) {
+      printf("(q empty)\n");
+    }
     return nullptr;
   }
 
@@ -163,23 +172,32 @@ struct Buf {
   }
 
   size_t WriteOutput(uint8_t *out_data, size_t out_size) {
+    if (DEBUG_ZIP) {
+      printf("== write output ==\n");
+    }
     CheckInvariants();
     size_t done = 0;
     while (this->size > 0) {
       Vec<N> *v = GetSrc();
       if (v == nullptr) {
-        printf("(null)\n");
+        if (DEBUG_ZIP) {
+          printf("(null)\n");
+        }
         break;
       }
-      printf("Block at %p:\n", v);
+      if (DEBUG_ZIP) {
+        printf("Block at %p:\n", v);
+      }
 
       DCHECK(v->start <= v->end);
       size_t chunk_size = v->end - v->start;
       // We might not have enough room for the whole chunk
       // in the output.
       size_t copy_size = std::min(chunk_size, out_size);
-      printf("  copy size %lld (min(%lld, %lld))\n",
-             copy_size, chunk_size, out_size);
+      if (DEBUG_ZIP) {
+        printf("  copy size %lld (min(%lld, %lld))\n",
+               copy_size, chunk_size, out_size);
+      }
       memcpy(out_data, v->data(), copy_size);
       done += copy_size;
       out_data += copy_size;
@@ -189,7 +207,9 @@ struct Buf {
       out_size -= copy_size;
       this->size -= copy_size;
     }
-    printf("Done. Read %lld\n", done);
+    if (DEBUG_ZIP) {
+      printf("Done. Read %lld\n", done);
+    }
     return done;
   }
 
@@ -197,16 +217,20 @@ struct Buf {
 #   ifndef NDEBUG
     int64_t actual_size = 0;
     for (const Vec<N> &v : q) {
-      printf("(Block at %p, size %lld. [%d,%d))\n",
-             &v, v.size(),
-             (int)v.start, (int)v.end);
+      if (DEBUG_ZIP) {
+        printf("(Block at %p, size %lld. [%d,%d))\n",
+               &v, v.size(),
+               (int)v.start, (int)v.end);
+      }
       actual_size += v.size();
       DCHECK(v.start <= v.end);
       DCHECK(v.start <= N);
       DCHECK(v.end <= N);
     }
 
-    printf("Actual %lld vs %lld\n", actual_size, size);
+    if (DEBUG_ZIP) {
+      printf("Actual %lld vs %lld\n", actual_size, size);
+    }
     DCHECK(actual_size == size) << actual_size << " " << size;
 #   endif
   }
@@ -262,8 +286,10 @@ struct EBImpl : public ZIP::EncodeBuffer {
 
       uint8_t *out_space = out->space();
 
-      printf("tdefl_compress %p for %d -> %p for %d.\n",
-             data, (int)in_bytes, out_space, (int)out_bytes);
+      if (DEBUG_ZIP) {
+        printf("tdefl_compress %p for %d -> %p for %d.\n",
+               data, (int)in_bytes, out_space, (int)out_bytes);
+      }
       tdefl_status status =
         tdefl_compress(&enc,
                        // input buffer
@@ -272,8 +298,10 @@ struct EBImpl : public ZIP::EncodeBuffer {
                        out_space, &out_bytes,
                        TDEFL_NO_FLUSH);
 
-      CHECK(status == TDEFL_STATUS_OKAY) << "Bug! Only OKAY status makes "
-        "sense since we don't FINISH here.";
+      if (DEBUG_ZIP) {
+        CHECK(status == TDEFL_STATUS_OKAY) << "Bug! Only OKAY status makes "
+          "sense since we don't FINISH here.";
+      }
 
       if (DEBUG_ZIP) {
         printf("Compress %d/%d in; got %d/%d out\n",
@@ -288,6 +316,8 @@ struct EBImpl : public ZIP::EncodeBuffer {
       out->end += out_bytes;
       buf.AdjustSize(+out_bytes);
 
+      buf.CheckInvariants();
+
     } while (remaining > 0);
   }
 
@@ -295,6 +325,8 @@ struct EBImpl : public ZIP::EncodeBuffer {
 
     for (;;) {
       V *out = buf.GetDest(ENCODE_BUFFER_SIZE);
+      printf("For finalize, space at %p (start=%d, end=%d)\n",
+             &out->arr, (int)out->start, (int)out->end);
       DCHECK(V::N > out->end);
       const size_t space_left = out->space_left();
       DCHECK(space_left != 0);
@@ -302,6 +334,7 @@ struct EBImpl : public ZIP::EncodeBuffer {
       size_t out_bytes = space_left;
       uint8_t *out_space = out->space();
 
+      printf("Finalize with %d space\n", (int)out_bytes);
       size_t in_bytes = 0;
       tdefl_status status =
         tdefl_compress(&enc,
@@ -315,6 +348,14 @@ struct EBImpl : public ZIP::EncodeBuffer {
         printf("Finalize %d/%d in, get %d/%d out to %p\n",
                (int)0, (int)0,
                (int)out_bytes, (int)space_left, out);
+        #if DEBUG_ZIP
+        printf(
+            "%s\n",
+            DumpString(std::string_view{
+                (const char *)out_space,
+                out_bytes
+              }).c_str());
+        #endif
       }
 
       CHECK(in_bytes == 0);
@@ -326,6 +367,8 @@ struct EBImpl : public ZIP::EncodeBuffer {
       DCHECK(out_bytes <= space_left) << out_bytes << " " << space_left;
       out->end += out_bytes;
       buf.AdjustSize(+out_bytes);
+
+      buf.CheckInvariants();
 
       if (status == TDEFL_STATUS_DONE) return;
     }
@@ -363,6 +406,11 @@ struct EBImpl : public ZIP::EncodeBuffer {
 };
 
 struct DBImpl : public ZIP::DecodeBuffer {
+  static constexpr size_t CIRC_SIZE = BUFFER_SIZE;
+  static_assert(CIRC_SIZE >= 32768);
+  static_assert((CIRC_SIZE & (CIRC_SIZE - 1)) == 0,
+                "must be a power of 2");
+  static constexpr size_t CIRC_MASK = CIRC_SIZE - 1;
 
   ~DBImpl() override {
     tinfl_decompressor_free(dec);
@@ -372,7 +420,7 @@ struct DBImpl : public ZIP::DecodeBuffer {
   DBImpl() : dec(tinfl_decompressor_alloc()) {
     CHECK(dec != nullptr);
     tinfl_init(dec);
-    circ.reset(new uint8_t[BUFFER_SIZE]);
+    circ.reset(new uint8_t[CIRC_SIZE]);
     circ_pos = 0;
   }
 
@@ -397,41 +445,35 @@ struct DBImpl : public ZIP::DecodeBuffer {
     size_t remaining = size_in;
     bool has_more_output = false;
     do {
-      // This must be at least the dictionary size.
-      V *out = buf.GetDest(BUFFER_SIZE);
-      const size_t space_left = out->space_left();
-      DCHECK(space_left != 0);
-      // in/out parameter.
-      size_t out_bytes = space_left;
       // Note this may be zero if we're making more calls just to
       // read output.
       size_t in_bytes = remaining;
-
-      uint8_t *out_space = out->space();
+      size_t out_bytes = CIRC_SIZE;
 
       if (DEBUG_ZIP) {
-        printf("Decompress buffer at %p for %d -> %p for %d\n",
+        printf("Decompress buffer at %p for %d -> %p (%p)\n",
                data, (int)in_bytes,
-               out_space, (int)out_bytes);
+               circ.get(), circ.get() + circ_pos);
       }
       tinfl_status status =
         tinfl_decompress(dec,
                          // input buffer
                          data, &in_bytes,
-                         // output buffer. not using a circular
-                         // buffer here; we are always at the "start".
-                         out_space, out_space, &out_bytes,
+                         // circular buffer start and current pos.
+                         circ.get(), circ.get() + circ_pos, &out_bytes,
                          TINFL_FLAG_HAS_MORE_INPUT);
       if (DEBUG_ZIP) {
-        printf("Decompress %d/%d; got out %d/%d\n",
+        printf("Decompress %d/%d; got out %d\n",
                (int)in_bytes, (int)remaining,
-               (int)out_bytes, (int)space_left);
+               (int)out_bytes);
 
-        printf("Written to out buffer:\n%s\n",
+        #if DEBUG_ZIP
+        printf("Full circ buffer is:\n%s\n",
                DumpString(std::string_view{
-                   (const char *)out_space,
-                   out_bytes
+                   (const char *)circ.get(),
+                   CIRC_SIZE
                  }).c_str());
+        #endif
       }
 
       CHECK(status != TINFL_STATUS_FAILED_CANNOT_MAKE_PROGRESS)
@@ -459,9 +501,20 @@ struct DBImpl : public ZIP::DecodeBuffer {
       data += in_bytes;
       remaining -= in_bytes;
 
+      // We have out_bytes of data, which start at
+      // circ_pos, but wrap around.
+
+      // PERF: Could do this with two memcpy calls.
+      V *out = buf.GetDest(out_bytes);
       DCHECK(out_bytes <= out->space_left());
+      for (size_t i = 0; i < out_bytes; i++) {
+        out->arr[out->end + i] =
+          circ[(circ_pos + i) & CIRC_MASK];
+      }
+
       out->end += out_bytes;
       buf.AdjustSize(+out_bytes);
+      circ_pos = (circ_pos + out_bytes) & CIRC_MASK;
 
       if (status == TINFL_STATUS_NEEDS_MORE_INPUT) {
         // We've read all the output. We're done if we've inserted all
@@ -585,4 +638,29 @@ std::string ZIP::ZipString(const std::string &s, int level) {
   enc->InsertString(s);
   enc->Finalize();
   return enc->GetOutputString();
+}
+
+std::vector<uint8_t> ZIP::UnzipPtrRaw(const uint8_t *data, size_t size) {
+  size_t out_size = 0;
+  uint8_t *d =
+    (uint8_t*)tinfl_decompress_mem_to_heap(data, size, &out_size, 0);
+  CHECK(d != nullptr);
+  std::vector<uint8_t> ret(out_size);
+  memcpy(ret.data(), d, out_size);
+  free(d);
+  return ret;
+}
+
+std::vector<uint8_t> ZIP::ZipPtrRaw(const uint8_t *data, size_t size,
+                                    int level) {
+  size_t out_size = 0;
+  level = std::clamp(level, 0, 10);
+  const int flags = EBImpl::probes_for_level[level];
+  uint8_t *e =
+    (uint8_t*)tdefl_compress_mem_to_heap(data, size, &out_size, flags);
+  CHECK(e != nullptr);
+  std::vector<uint8_t> ret(out_size);
+  memcpy(ret.data(), e, out_size);
+  free(e);
+  return ret;
 }
