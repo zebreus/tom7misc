@@ -20,18 +20,13 @@ struct ZIP {
 
   static std::vector<uint8_t> ZipVector(const std::vector<uint8_t> &v,
                                         int level = 7);
-  static std::string ZipString(const std::string &s,
-                               int level = 7);
+  static std::string ZipString(std::string_view s, int level = 7);
   static std::vector<uint8_t> ZipPtr(const uint8_t *data, size_t size,
                                      int level = 7);
 
   static std::vector<uint8_t> UnzipVector(const std::vector<uint8_t> &v);
-  static std::string UnzipString(const std::string &s);
+  static std::string UnzipString(std::string_view s);
   static std::vector<uint8_t> UnzipPtr(const uint8_t *data, size_t size);
-
-  static std::vector<uint8_t> ZipPtrRaw(const uint8_t *data, size_t size,
-                                        int level = 7);
-  static std::vector<uint8_t> UnzipPtrRaw(const uint8_t *data, size_t size);
 
   // Streaming interfaces.
 
@@ -86,7 +81,5 @@ struct ZIP {
   };
 
 };
-
-
 
 #endif

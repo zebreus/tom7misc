@@ -13,6 +13,58 @@
 #include "randutil.h"
 #include "util.h"
 #include "periodically.h"
+#include "timer.h"
+
+// These do whole-buffer decompression, but using the stream interface,
+// to exercise that.
+
+static std::vector<uint8_t> StreamUnzipPtr(const uint8_t *data, size_t size) {
+  std::unique_ptr<ZIP::DecodeBuffer> dec(ZIP::DecodeBuffer::Create());
+  CHECK(dec.get() != nullptr);
+
+  dec->InsertPtr(data, size);
+
+  return dec->GetOutputVector();
+}
+
+static std::vector<uint8_t> StreamUnzipVector(const std::vector<uint8_t> &v) {
+  return StreamUnzipPtr(v.data(), v.size());
+}
+
+static std::string StreamUnzipString(const std::string &s) {
+  std::unique_ptr<ZIP::DecodeBuffer> dec(ZIP::DecodeBuffer::Create());
+  CHECK(dec.get() != nullptr);
+
+  dec->InsertString(s);
+
+  return dec->GetOutputString();
+}
+
+
+static std::vector<uint8_t> StreamZipPtr(const uint8_t *data, size_t size,
+                                         int level = 7) {
+  std::unique_ptr<ZIP::EncodeBuffer> enc(ZIP::EncodeBuffer::Create(level));
+  CHECK(enc.get() != nullptr);
+
+  enc->InsertPtr(data, size);
+  enc->Finalize();
+  return enc->GetOutputVector();
+}
+
+static std::vector<uint8_t> StreamZipVector(const std::vector<uint8_t> &v,
+                                            int level = 7) {
+  return StreamZipPtr(v.data(), v.size(), level);
+}
+
+static std::string StreamZipString(const std::string &s, int level) {
+  std::unique_ptr<ZIP::EncodeBuffer> enc(ZIP::EncodeBuffer::Create(level));
+  CHECK(enc.get() != nullptr);
+
+  enc->InsertString(s);
+  enc->Finalize();
+  return enc->GetOutputString();
+}
+
 
 static std::string DumpString(std::string_view s) {
   std::string out = StringPrintf("%d bytes:\n", (int)s.size());
@@ -148,10 +200,10 @@ static std::string DumpVectorDiff(const std::vector<uint8_t> &v1,
 static void TestOneRoundTrip(const std::string &s) {
   // printf("Input string:\n%s\n", DumpString(s).c_str());
   // printf(AWHITE("Encode %d bytes:") "\n", (int)s.size());
-  std::string enc = ZIP::ZipString(s, 7);
+  std::string enc = StreamZipString(s, 7);
   // printf(AWHITE("Decode %d bytes:") "\n", (int)enc.size());
   // printf("Encoded:\n%s\n", DumpString(enc).c_str());
-  std::string dec = ZIP::UnzipString(enc);
+  std::string dec = StreamUnzipString(enc);
   // printf(AWHITE("Got %d bytes.") "\n", (int)dec.size());
   if (dec != s) {
 
@@ -170,10 +222,9 @@ static void TestOneRoundTrip(const std::string &s) {
 
 static void TestOneRoundTrip(const std::vector<uint8_t> &v) {
   // printf("Test vec:\n%s\n", DumpVector(v).c_str());
-  printf("Size %d\n", (int)v.size());
-  std::vector<uint8_t> enc = ZIP::ZipVector(v, 7);
-  std::vector<uint8_t> dec_raw = ZIP::UnzipPtrRaw(enc.data(), enc.size());
-  std::vector<uint8_t> dec = ZIP::UnzipVector(enc);
+  std::vector<uint8_t> enc = StreamZipVector(v, 7);
+  std::vector<uint8_t> dec_raw = ZIP::UnzipPtr(enc.data(), enc.size());
+  std::vector<uint8_t> dec = StreamUnzipVector(enc);
   if (dec_raw != v) {
     if (dec_raw == dec) {
       printf("Streamed and raw decompression match!\n");
@@ -193,25 +244,70 @@ static void TestOneRoundTrip(const std::vector<uint8_t> &v) {
 }
 
 static void TestRoundTripRandom() {
+  Periodically status_per(0.25);
+  Timer timer;
   ArcFour rc("zip_test");
 
-  static constexpr int NUM_ROUNDS = 4096;
+  static constexpr int NUM_ROUNDS = 8192;
   for (int i = 0; i < NUM_ROUNDS; i++) {
-    int size = 1 + RandTo(&rc, 131072 * 2);
+    int size = 1 + RandTo(&rc, 131072 * 4);
     // int size = 128;
     std::vector<uint8_t> v;
     v.reserve(size);
-    for (int x = 0; x < size; x++) {
-      v.push_back(rc.Byte() & 0x7f);
+
+    switch (rc.Byte() & 3) {
+    default:
+    case 0:
+      // Uniformly random.
+      for (int x = 0; x < size; x++) {
+        v.push_back(rc.Byte());
+      }
+      break;
+    case 1: {
+      // Runs of random length.
+      uint8_t b = rc.Byte();
+      while ((int)v.size() < size) {
+        uint8_t x = rc.Byte();
+        if ((x & 0xf) == 0) {
+          b = rc.Byte();
+        } else {
+          v.push_back(b);
+        }
+      }
+      break;
+    }
+    case 2: {
+      v.push_back(rc.Byte());
+
+      // Alternating a substring of the existing buffer,
+      // then a new random byte.
+      while ((int)v.size() < size) {
+        int pos = RandTo(&rc, v.size());
+        int len = std::min(size - v.size(),
+                           RandTo(&rc, v.size() - pos));
+        for (int i = 0; i < len; i++) {
+          v.push_back(v[pos + i]);
+        }
+        v.push_back(rc.Byte());
+      }
+
+      break;
+    }
     }
 
     TestOneRoundTrip(v);
+    if (status_per.ShouldRun()) {
+      printf(ANSI_UP "%s\n",
+             ANSI::ProgressBar(i, NUM_ROUNDS,
+                               "Random vector round-trips",
+                               timer.Seconds()).c_str());
+    }
   }
 }
 
 static bool RoundTripOK(const std::vector<uint8_t> &v) {
-  std::vector<uint8_t> enc = ZIP::ZipVector(v, 7);
-  std::vector<uint8_t> dec_raw = ZIP::UnzipPtrRaw(enc.data(), enc.size());
+  std::vector<uint8_t> enc = StreamZipVector(v, 7);
+  std::vector<uint8_t> dec_raw = ZIP::UnzipPtr(enc.data(), enc.size());
   return dec_raw == v;
 }
 
@@ -284,6 +380,7 @@ static void ShrinkExample(std::vector<uint8_t> v) {
   }
 }
 
+[[maybe_unused]]
 static void FindCounterexample() {
   ArcFour rc("zip_test");
 
@@ -328,17 +425,17 @@ static void TestRegression1() {
 
 static void TestRegression2() {
   std::vector<uint8_t> ctr = Util::ReadFileBytes("counterexample");
-  std::vector<uint8_t> enc_raw = ZIP::ZipPtrRaw(ctr.data(), ctr.size());
-  std::vector<uint8_t> enc = ZIP::ZipPtr(ctr.data(), ctr.size());
+  std::vector<uint8_t> enc_raw = ZIP::ZipPtr(ctr.data(), ctr.size());
+  std::vector<uint8_t> enc = StreamZipPtr(ctr.data(), ctr.size());
   if (enc_raw != enc) {
     printf("Encoded differ!!\n");
     printf("%s\n", DumpVectorDiff(enc_raw, enc).c_str());
   }
 
-  std::vector<uint8_t> dec_raw = ZIP::UnzipPtrRaw(enc_raw.data(),
-                                                  enc_raw.size());
-  std::vector<uint8_t> dec = ZIP::UnzipPtrRaw(enc.data(),
-                                              enc.size());
+  std::vector<uint8_t> dec_raw = ZIP::UnzipPtr(enc_raw.data(),
+                                               enc_raw.size());
+  std::vector<uint8_t> dec = ZIP::UnzipPtr(enc.data(),
+                                           enc.size());
   CHECK(dec_raw == ctr);
   CHECK(dec == ctr);
 }
@@ -362,17 +459,14 @@ static void TestLong2() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  /*
   TestRegression1();
   TestLong1();
   TestLong2();
   TestRoundTripFixed();
-  */
-
   TestRegression2();
 
   // FindCounterexample();
-  // TestRoundTripRandom();
+  TestRoundTripRandom();
 
   printf("OK\n");
   return 0;

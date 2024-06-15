@@ -21,7 +21,7 @@ static_assert(BUFFER_SIZE >= TINFL_LZ_DICT_SIZE,
 static_assert((BUFFER_SIZE & (BUFFER_SIZE - 1)) == 0,
               "buffer size must be a power of 2");
 
-#define DEBUG_ZIP 1
+#define DEBUG_ZIP 0
 
 namespace {
 
@@ -326,8 +326,10 @@ struct EBImpl : public ZIP::EncodeBuffer {
 
     for (;;) {
       V *out = buf.GetDest(ENCODE_BUFFER_SIZE);
-      printf("For finalize, space at %p (start=%d, end=%d)\n",
-             &out->arr, (int)out->start, (int)out->end);
+      if (DEBUG_ZIP) {
+        printf("For finalize, space at %p (start=%d, end=%d)\n",
+               &out->arr, (int)out->start, (int)out->end);
+      }
       DCHECK(V::N > out->end);
       const size_t space_left = out->space_left();
       DCHECK(space_left != 0);
@@ -335,7 +337,9 @@ struct EBImpl : public ZIP::EncodeBuffer {
       size_t out_bytes = space_left;
       uint8_t *out_space = out->space();
 
-      printf("Finalize with %d space\n", (int)out_bytes);
+      if (DEBUG_ZIP) {
+        printf("Finalize with %d space\n", (int)out_bytes);
+      }
       size_t in_bytes = 0;
       tdefl_status status =
         tdefl_compress(&enc,
@@ -595,53 +599,6 @@ ZIP::DecodeBuffer::DecodeBuffer() { }
 ZIP::DecodeBuffer::~DecodeBuffer() { }
 
 std::vector<uint8_t> ZIP::UnzipPtr(const uint8_t *data, size_t size) {
-  std::unique_ptr<DecodeBuffer> dec(ZIP::DecodeBuffer::Create());
-  CHECK(dec.get() != nullptr);
-
-  dec->InsertPtr(data, size);
-
-  return dec->GetOutputVector();
-}
-
-std::vector<uint8_t> ZIP::UnzipVector(const std::vector<uint8_t> &v) {
-  return UnzipPtr(v.data(), v.size());
-}
-
-std::string ZIP::UnzipString(const std::string &s) {
-  std::unique_ptr<DecodeBuffer> dec(ZIP::DecodeBuffer::Create());
-  CHECK(dec.get() != nullptr);
-
-  dec->InsertString(s);
-
-  return dec->GetOutputString();
-}
-
-
-std::vector<uint8_t> ZIP::ZipPtr(const uint8_t *data, size_t size,
-                                 int level) {
-  std::unique_ptr<EncodeBuffer> enc(ZIP::EncodeBuffer::Create(level));
-  CHECK(enc.get() != nullptr);
-
-  enc->InsertPtr(data, size);
-  enc->Finalize();
-  return enc->GetOutputVector();
-}
-
-std::vector<uint8_t> ZIP::ZipVector(const std::vector<uint8_t> &v,
-                                    int level) {
-  return ZipPtr(v.data(), v.size(), level);
-}
-
-std::string ZIP::ZipString(const std::string &s, int level) {
-  std::unique_ptr<EncodeBuffer> enc(ZIP::EncodeBuffer::Create(level));
-  CHECK(enc.get() != nullptr);
-
-  enc->InsertString(s);
-  enc->Finalize();
-  return enc->GetOutputString();
-}
-
-std::vector<uint8_t> ZIP::UnzipPtrRaw(const uint8_t *data, size_t size) {
   size_t out_size = 0;
   uint8_t *d =
     (uint8_t*)tinfl_decompress_mem_to_heap(data, size, &out_size, 0);
@@ -652,8 +609,23 @@ std::vector<uint8_t> ZIP::UnzipPtrRaw(const uint8_t *data, size_t size) {
   return ret;
 }
 
-std::vector<uint8_t> ZIP::ZipPtrRaw(const uint8_t *data, size_t size,
-                                    int level) {
+std::vector<uint8_t> ZIP::UnzipVector(const std::vector<uint8_t> &v) {
+  return UnzipPtr(v.data(), v.size());
+}
+
+std::string ZIP::UnzipString(std::string_view s) {
+  size_t out_size = 0;
+  uint8_t *d =
+    (uint8_t*)tinfl_decompress_mem_to_heap(s.data(), s.size(), &out_size, 0);
+  CHECK(d != nullptr);
+  std::string ret(out_size, 0);
+  memcpy(ret.data(), d, out_size);
+  free(d);
+  return ret;
+}
+
+std::vector<uint8_t> ZIP::ZipPtr(const uint8_t *data, size_t size,
+                                 int level) {
   size_t out_size = 0;
   level = std::clamp(level, 0, 10);
   const int flags = EBImpl::probes_for_level[level];
@@ -664,4 +636,23 @@ std::vector<uint8_t> ZIP::ZipPtrRaw(const uint8_t *data, size_t size,
   memcpy(ret.data(), e, out_size);
   free(e);
   return ret;
+}
+
+std::string ZIP::ZipString(std::string_view s, int level) {
+  size_t out_size = 0;
+  level = std::clamp(level, 0, 10);
+  const int flags = EBImpl::probes_for_level[level];
+  uint8_t *e =
+    (uint8_t*)tdefl_compress_mem_to_heap(s.data(), s.size(),
+                                         &out_size, flags);
+  CHECK(e != nullptr);
+  std::string ret(out_size, 0);
+  memcpy(ret.data(), e, out_size);
+  free(e);
+  return ret;
+}
+
+std::vector<uint8_t> ZIP::ZipVector(const std::vector<uint8_t> &v,
+                                    int level) {
+  return ZipPtr(v.data(), v.size(), level);
 }
