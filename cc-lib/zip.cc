@@ -311,6 +311,7 @@ struct EBImpl : public ZIP::EncodeBuffer {
 
       DCHECK(in_bytes <= remaining);
       remaining -= in_bytes;
+      data += in_bytes;
 
       DCHECK(out_bytes <= space_left) << out_bytes << " " << space_left;
       out->end += out_bytes;
