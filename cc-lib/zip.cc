@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdint>
 #include <deque>
+#include <string_view>
 
 #include "miniz.h"
 
@@ -21,11 +22,11 @@ static_assert((BUFFER_SIZE & (BUFFER_SIZE - 1)) == 0,
               "buffer size must be a power of 2");
 
 // static constexpr size_t BUFFER_SIZE = 16;
-static constexpr bool DEBUG_ZIP = false;
+static constexpr bool DEBUG_ZIP = true;
 
 namespace {
 
-#if 0
+#if 1
 static std::string DumpString(std::string_view s) {
   std::string out = StringPrintf("%d bytes:\n", (int)s.size());
 
@@ -142,14 +143,16 @@ struct Buf {
         DCHECK(v->end == N);
         q.pop_front();
       } else if (v->start == v->end) {
-        // It is possible to reach the final block, which exists
-        // as a write destination. In this case, the stream is
-        // empty for reading.
-        return nullptr;
+        // An empty block is possible if it was consumed by reading,
+        // or because we reached the final block but nothing is
+        // written there yet.
+        printf("(%d == %d)\n", (int)v->start, (int)v->end);
+        q.pop_front();
       } else {
         return v;
       }
     }
+    printf("(q empty)\n");
     return nullptr;
   }
 
@@ -159,25 +162,53 @@ struct Buf {
     CHECK(size >= 0) << size << " " << delta;
   }
 
-  size_t WriteOutput(uint8_t *data, size_t size) {
+  size_t WriteOutput(uint8_t *out_data, size_t out_size) {
+    CheckInvariants();
     size_t done = 0;
-    while (size > 0) {
+    while (this->size > 0) {
       Vec<N> *v = GetSrc();
-      if (v == nullptr) break;
+      if (v == nullptr) {
+        printf("(null)\n");
+        break;
+      }
+      printf("Block at %p:\n", v);
+
       DCHECK(v->start <= v->end);
       size_t chunk_size = v->end - v->start;
       // We might not have enough room for the whole chunk
       // in the output.
-      size_t copy_size = std::min(chunk_size, size);
-      memcpy(data, v->data(), copy_size);
+      size_t copy_size = std::min(chunk_size, out_size);
+      printf("  copy size %lld (min(%lld, %lld))\n",
+             copy_size, chunk_size, out_size);
+      memcpy(out_data, v->data(), copy_size);
       done += copy_size;
-      data += copy_size;
+      out_data += copy_size;
       v->start += copy_size;
-      DCHECK(copy_size <= size);
+      DCHECK(copy_size <= out_size);
       DCHECK(v->start <= v->end);
-      size -= copy_size;
+      out_size -= copy_size;
+      this->size -= copy_size;
     }
+    printf("Done. Read %lld\n", done);
     return done;
+  }
+
+  void CheckInvariants() {
+#   ifndef NDEBUG
+    int64_t actual_size = 0;
+    for (const Vec<N> &v : q) {
+      printf("(Block at %p, size %lld. [%d,%d))\n",
+             &v, v.size(),
+             (int)v.start, (int)v.end);
+      actual_size += v.size();
+      DCHECK(v.start <= v.end);
+      DCHECK(v.start <= N);
+      DCHECK(v.end <= N);
+    }
+
+    printf("Actual %lld vs %lld\n", actual_size, size);
+    DCHECK(actual_size == size) << actual_size << " " << size;
+#   endif
   }
 
   std::deque<Vec<N>> q;
@@ -231,6 +262,8 @@ struct EBImpl : public ZIP::EncodeBuffer {
 
       uint8_t *out_space = out->space();
 
+      printf("tdefl_compress %p for %d -> %p for %d.\n",
+             data, (int)in_bytes, out_space, (int)out_bytes);
       tdefl_status status =
         tdefl_compress(&enc,
                        // input buffer
@@ -243,7 +276,7 @@ struct EBImpl : public ZIP::EncodeBuffer {
         "sense since we don't FINISH here.";
 
       if (DEBUG_ZIP) {
-        printf("Compress %d/%d in, get %d/%d out\n",
+        printf("Compress %d/%d in; got %d/%d out\n",
                (int)in_bytes, (int)remaining,
                (int)out_bytes, (int)space_left);
       }
@@ -303,7 +336,8 @@ struct EBImpl : public ZIP::EncodeBuffer {
   std::vector<uint8_t> GetOutputVector() override {
     size_t sz = buf.size;
     std::vector<uint8_t> ret(sz);
-    CHECK(WriteOutput(ret.data(), ret.size()) == sz);
+    size_t wrote = WriteOutput(ret.data(), ret.size());
+    CHECK(wrote == sz) << wrote << " " << sz;
     return ret;
   }
   std::string GetOutputString() override {
@@ -338,6 +372,8 @@ struct DBImpl : public ZIP::DecodeBuffer {
   DBImpl() : dec(tinfl_decompressor_alloc()) {
     CHECK(dec != nullptr);
     tinfl_init(dec);
+    circ.reset(new uint8_t[BUFFER_SIZE]);
+    circ_pos = 0;
   }
 
   // Insert compressed data. New decompressed bytes may become
@@ -374,7 +410,7 @@ struct DBImpl : public ZIP::DecodeBuffer {
       uint8_t *out_space = out->space();
 
       if (DEBUG_ZIP) {
-        printf("Data buffer at %p for %d -> %p for %d\n",
+        printf("Decompress buffer at %p for %d -> %p for %d\n",
                data, (int)in_bytes,
                out_space, (int)out_bytes);
       }
@@ -387,8 +423,15 @@ struct DBImpl : public ZIP::DecodeBuffer {
                          out_space, out_space, &out_bytes,
                          TINFL_FLAG_HAS_MORE_INPUT);
       if (DEBUG_ZIP) {
-        printf("Got in_bytes %d, out_bytes %d\n",
-               (int)in_bytes, (int)out_bytes);
+        printf("Decompress %d/%d; got out %d/%d\n",
+               (int)in_bytes, (int)remaining,
+               (int)out_bytes, (int)space_left);
+
+        printf("Written to out buffer:\n%s\n",
+               DumpString(std::string_view{
+                   (const char *)out_space,
+                   out_bytes
+                 }).c_str());
       }
 
       CHECK(status != TINFL_STATUS_FAILED_CANNOT_MAKE_PROGRESS)
@@ -472,6 +515,13 @@ struct DBImpl : public ZIP::DecodeBuffer {
   // Just nest the struct.
   tinfl_decompressor *dec = nullptr;
   using V = Vec<CHUNK_SIZE>;
+  // If we don't know the output size ahead of time (we don't), then
+  // miniz wants a fixed circular buffer and seemingly wants us to keep
+  // reusing the same one (it keeps a member m_dist_from_out_buf_start).
+  // Here is that buffer, which has size BUFFER_SIZE.
+  std::unique_ptr<uint8_t[]> circ;
+  // The position of the "start" of this circular buffer.
+  int circ_pos = 0;
   Buf<CHUNK_SIZE> buf;
 };
 }

@@ -2770,7 +2770,7 @@ tinfl_status tinfl_decompress(tinfl_decompressor *r, const mz_uint8 *pIn_buf_nex
                         {
                             TINFL_CR_RETURN(53, TINFL_STATUS_HAS_MORE_OUTPUT);
                         }
-                        /*
+
                         printf(
                             "buf_start: %p  buf_end: %p\n"
                             "Write %p <- (%d - %d) & %d = %p\n",
@@ -2780,7 +2780,7 @@ tinfl_status tinfl_decompress(tinfl_decompressor *r, const mz_uint8 *pIn_buf_nex
                             dist,
                             (int)out_buf_size_mask,
                             &pOut_buf_start[(dist_from_out_buf_start - dist) & out_buf_size_mask]);
-                        */
+
                         *pOut_buf_cur++ = pOut_buf_start[(dist_from_out_buf_start++ - dist) & out_buf_size_mask];
                     }
                     continue;
@@ -2876,6 +2876,8 @@ common_exit:
     r->m_dist = dist;
     r->m_counter = counter;
     r->m_num_extra = num_extra;
+    printf("Saving dist_from_out_buf_start = %d\n",
+           (int)dist_from_out_buf_start);
     r->m_dist_from_out_buf_start = dist_from_out_buf_start;
     *pIn_buf_size = pIn_buf_cur - pIn_buf_next;
     *pOut_buf_size = pOut_buf_cur - pOut_buf_next;

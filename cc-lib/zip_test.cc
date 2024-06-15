@@ -50,18 +50,121 @@ static std::string DumpString(std::string_view s) {
   return out;
 }
 
+static std::string DumpStringDiff(std::string_view s1,
+                                  std::string_view s2) {
+  std::string out = StringPrintf("%d bytes vs %d bytes\n",
+                                 (int)s1.size(), (int)s2.size());
+# define ANSI_LEFT  ANSI_FG(210, 128, 128)
+# define ANSI_RIGHT ANSI_FG(210, 160, 112)
+
+  bool equal_prefix = true;
+
+  auto Equal16 = [s1, s2](int p) {
+      for (int i = 0; i < 16; i++) {
+        const int idx = p + i;
+        if (idx >= s1.size() || idx >= s2.size()) return false;
+        if (s1[idx] != s2[idx]) return false;
+      }
+      return true;
+    };
+
+  for (int p = 0; p < (int)std::max(s1.size(), s2.size()); p += 16) {
+    if (equal_prefix && Equal16(p)) {
+      continue;
+    } else if (equal_prefix) {
+      if (p > 0) {
+        StringAppendF(&out,
+            AGREY("...") " " ABLUE("%d equal bytes") " " AGREY("...") "\n",
+            p);
+      }
+      equal_prefix = false;
+    }
+
+    // Print line, first hex, then ascii
+    for (int i = 0; i < 16; i++) {
+      const int idx = p + i;
+      const int c1 = idx < s1.size() ? s1[idx] : -1;
+      const int c2 = idx < s2.size() ? s2[idx] : -1;
+      if (c1 == c2) {
+        if (c1 >= 0) {
+          StringAppendF(&out, AGREY("%02x=="), (uint8_t)c1);
+        } else {
+          StringAppendF(&out, AGREY("::::"));
+        }
+      } else {
+        #define L
+        StringAppendF(&out, ANSI_LEFT);
+        if (c1 >= 0) {
+          StringAppendF(&out, "%02x", (uint8_t)c1);
+        } else {
+          StringAppendF(&out, "__");
+        }
+
+        StringAppendF(&out, ANSI_RIGHT);
+        if (c2 >= 0) {
+          StringAppendF(&out, "%02x", (uint8_t)c2);
+        } else {
+          StringAppendF(&out, "__");
+        }
+      }
+    }
+
+    #if 0
+    StringAppendF(&out, "| ");
+
+    for (int i = 0; i < 16; i++) {
+      int idx = p + i;
+      if (idx < (int)s.size()) {
+        uint8_t c = s[idx];
+        if (c >= 32 && c < 127) {
+          StringAppendF(&out, "%c", c);
+        } else {
+          StringAppendF(&out, ".");
+        }
+      } else {
+        StringAppendF(&out, " ");
+      }
+    }
+    #endif
+
+    StringAppendF(&out, ANSI_RESET "\n");
+  }
+
+  return out;
+}
+
+
 static std::string DumpVector(const std::vector<uint8_t> &v) {
   return DumpString(std::string_view{(const char *)v.data(), v.size()});
 }
 
+static std::string DumpVectorDiff(const std::vector<uint8_t> &v1,
+                                  const std::vector<uint8_t> &v2) {
+  return DumpStringDiff(std::string_view{(const char *)v1.data(), v1.size()},
+                        std::string_view{(const char *)v2.data(), v2.size()});
+}
+
 static void TestOneRoundTrip(const std::string &s) {
   // printf("Input string:\n%s\n", DumpString(s).c_str());
+  printf(AWHITE("Encode %d bytes:") "\n", (int)s.size());
   std::string enc = ZIP::ZipString(s, 7);
+  printf(AWHITE("Decode %d bytes:") "\n", (int)enc.size());
   // printf("Encoded:\n%s\n", DumpString(enc).c_str());
   std::string dec = ZIP::UnzipString(enc);
-  CHECK(dec == s) << "Round trip failed for: " << s << "\n"
-    "Which encoded to:\n" << DumpString(enc) <<
-    "And then decoded to:\n" << DumpString(dec);
+  printf(AWHITE("Got %d bytes.") "\n", (int)dec.size());
+  if (dec != s) {
+
+    printf("%s\n", DumpStringDiff(s, dec).c_str());
+
+    printf("Input " AWHITE("%d") " bytes, encoded " AYELLOW("%d")
+           ", decoded " APURPLE("%d") "\n",
+           (int)s.size(), (int)enc.size(), (int)dec.size());
+
+    LOG(FATAL) << "Diffs";
+    LOG(FATAL) << "Round trip failed for: " << s << "\n"
+      "Which encoded to:\n" << DumpString(enc) <<
+      "And then decoded to:\n" << DumpString(dec);
+  }
 }
 
 static void TestOneRoundTrip(const std::vector<uint8_t> &v) {
@@ -69,9 +172,15 @@ static void TestOneRoundTrip(const std::vector<uint8_t> &v) {
   printf("Size %d\n", (int)v.size());
   std::vector<uint8_t> enc = ZIP::ZipVector(v, 7);
   std::vector<uint8_t> dec = ZIP::UnzipVector(enc);
-  CHECK(dec == v) << "Round trip failed for: " << DumpVector(v) << "\n"
-    "Which encoded to:\n" << DumpVector(enc) <<
-    "And then decoded to:\n" << DumpVector(dec);
+  if (dec != v) {
+
+    printf("%s\n", DumpVectorDiff(v, dec).c_str());
+    LOG(FATAL) << "Diffs.\n";
+
+    LOG(FATAL) << "Round trip failed for: " << DumpVector(v) << "\n"
+      "Which encoded to:\n" << DumpVector(enc) <<
+      "And then decoded to:\n" << DumpVector(dec);
+  }
 }
 
 static void TestRoundTripRandom() {
@@ -112,12 +221,23 @@ static void TestRegression() {
   TestOneRoundTrip(s);
 }
 
+static void TestLong() {
+  std::string s(33333, 'x');
+  for (int i = 0; i < s.size(); i = i + (i >> 2) + 1) {
+    s[i] = 'O';
+  }
+  TestOneRoundTrip(s);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  TestRegression();
+  // TestRegression();
+  TestLong();
+  /*
   TestRoundTripFixed();
   TestRoundTripRandom();
+  */
 
   printf("OK\n");
   return 0;
