@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
   int64_t output_size = 0;
   std::unique_ptr<ZIP::EncodeBuffer> eb(ZIP::EncodeBuffer::Create(level));
   auto Flush = [&]() {
-      if (eb->OutputSize() > 0) {
+      while (eb->OutputSize() > 0) {
         std::vector<uint8_t> v = eb->GetOutputVector();
         if (!v.empty()) {
           output_size += v.size();

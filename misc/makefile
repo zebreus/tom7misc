@@ -79,6 +79,9 @@ logo.exe : logo.o $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE) $(CC_LIB)/ansi.o
 compress.exe : compress.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP) $(CC_LIB)/ansi.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+decompress.exe : decompress.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP) $(CC_LIB)/ansi.o
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 clean :
 	rm -f *.exe *.o core *.s $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
 
