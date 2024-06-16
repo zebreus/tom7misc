@@ -18,6 +18,7 @@ static constexpr bool VERBOSE = false;
 Page Config::ParsePage(const std::string &p) {
   if (p == "bit7-classic") return Page::BIT7_CLASSIC;
   if (p == "bit7-extended") return Page::BIT7_EXTENDED;
+  if (p == "bit7-cyrillic") return Page::BIT7_CYRILLIC;
   LOG(FATAL) << "Unknown page " << p;
 }
 
@@ -27,6 +28,8 @@ const char *Config::PageString(Page p) {
     return "bit7-classic";
   case Page::BIT7_EXTENDED:
     return "bit7-extended";
+  case Page::BIT7_CYRILLIC:
+    return "bit7-cyrillic";
   default:
     break;
   }
@@ -104,9 +107,12 @@ const std::vector<int> &PageBit7Classic() {
     // DOUBLE EXCLAMATION MARK
     0x203C,
 
+    // Left and right single guillemets
+    0x2039, 0x203A,
+
     // Unclaimed. Was once emoji, but I moved those to the extended
     // page.
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     // ASCII, in order
@@ -417,15 +423,293 @@ const std::vector<int> &PageBit7Extended() {
 }
 
 
+const std::vector<int> &PageBit7Cyrillic() {
+  static const std::vector<int> CODEPOINTS = {
+    // Cyrillic, exactly as Unicode U+0400 to U+04FF.
+    0x0400, // (Ѐ) Cyrillic Capital Letter Ie with Grave
+    0x0401, // (Ё) Cyrillic Capital Letter Io
+    0x0402, // (Ђ) Cyrillic Capital Letter Dje
+    0x0403, // (Ѓ) Cyrillic Capital Letter Gje
+    0x0404, // (Є) Cyrillic Capital Letter Ukrainian Ie
+    0x0405, // (Ѕ) Cyrillic Capital Letter Dze
+    0x0406, // (І) Cyrillic Capital Letter Byelorussian-Ukrainian I
+    0x0407, // (Ї) Cyrillic Capital Letter Yi
+    0x0408, // (Ј) Cyrillic Capital Letter Je
+    0x0409, // (Љ) Cyrillic Capital Letter Lje
+    0x040A, // (Њ) Cyrillic Capital Letter Nje
+    0x040B, // (Ћ) Cyrillic Capital Letter Tshe
+    0x040C, // (Ќ) Cyrillic Capital Letter Kje
+    0x040D, // (Ѝ) Cyrillic Capital Letter I with Grave
+    0x040E, // (Ў) Cyrillic Capital Letter Short U
+    0x040F, // (Џ) Cyrillic Capital Letter Dzhe
+    0x0410, // (А) Cyrillic Capital Letter A
+    0x0411, // (Б) Cyrillic Capital Letter Be
+    0x0412, // (В) Cyrillic Capital Letter Ve
+    0x0413, // (Г) Cyrillic Capital Letter Ghe
+    0x0414, // (Д) Cyrillic Capital Letter De
+    0x0415, // (Е) Cyrillic Capital Letter Ie
+    0x0416, // (Ж) Cyrillic Capital Letter Zhe
+    0x0417, // (З) Cyrillic Capital Letter Ze
+    0x0418, // (И) Cyrillic Capital Letter I
+    0x0419, // (Й) Cyrillic Capital Letter Short I
+    0x041A, // (К) Cyrillic Capital Letter Ka
+    0x041B, // (Л) Cyrillic Capital Letter El
+    0x041C, // (М) Cyrillic Capital Letter Em
+    0x041D, // (Н) Cyrillic Capital Letter En
+    0x041E, // (О) Cyrillic Capital Letter O
+    0x041F, // (П) Cyrillic Capital Letter Pe
+    0x0420, // (Р) Cyrillic Capital Letter Er
+    0x0421, // (С) Cyrillic Capital Letter Es
+    0x0422, // (Т) Cyrillic Capital Letter Te
+    0x0423, // (У) Cyrillic Capital Letter U
+    0x0424, // (Ф) Cyrillic Capital Letter Ef
+    0x0425, // (Х) Cyrillic Capital Letter Ha
+    0x0426, // (Ц) Cyrillic Capital Letter Tse
+    0x0427, // (Ч) Cyrillic Capital Letter Che
+    0x0428, // (Ш) Cyrillic Capital Letter Sha
+    0x0429, // (Щ) Cyrillic Capital Letter Shcha
+    0x042A, // (Ъ) Cyrillic Capital Letter Hard Sign
+    0x042B, // (Ы) Cyrillic Capital Letter Yeru
+    0x042C, // (Ь) Cyrillic Capital Letter Soft Sign
+    0x042D, // (Э) Cyrillic Capital Letter E
+    0x042E, // (Ю) Cyrillic Capital Letter Yu
+    0x042F, // (Я) Cyrillic Capital Letter Ya
+    0x0430, // (а) Cyrillic Small Letter A
+    0x0431, // (б) Cyrillic Small Letter Be
+    0x0432, // (в) Cyrillic Small Letter Ve
+    0x0433, // (г) Cyrillic Small Letter Ghe
+    0x0434, // (д) Cyrillic Small Letter De
+    0x0435, // (е) Cyrillic Small Letter Ie
+    0x0436, // (ж) Cyrillic Small Letter Zhe
+    0x0437, // (з) Cyrillic Small Letter Ze
+    0x0438, // (и) Cyrillic Small Letter I
+    0x0439, // (й) Cyrillic Small Letter Short I
+    0x043A, // (к) Cyrillic Small Letter Ka
+    0x043B, // (л) Cyrillic Small Letter El
+    0x043C, // (м) Cyrillic Small Letter Em
+    0x043D, // (н) Cyrillic Small Letter En
+    0x043E, // (о) Cyrillic Small Letter O
+    0x043F, // (п) Cyrillic Small Letter Pe
+    0x0440, // (р) Cyrillic Small Letter Er
+    0x0441, // (с) Cyrillic Small Letter Es
+    0x0442, // (т) Cyrillic Small Letter Te
+    0x0443, // (у) Cyrillic Small Letter U
+    0x0444, // (ф) Cyrillic Small Letter Ef
+    0x0445, // (х) Cyrillic Small Letter Ha
+    0x0446, // (ц) Cyrillic Small Letter Tse
+    0x0447, // (ч) Cyrillic Small Letter Che
+    0x0448, // (ш) Cyrillic Small Letter Sha
+    0x0449, // (щ) Cyrillic Small Letter Shcha
+    0x044A, // (ъ) Cyrillic Small Letter Hard Sign
+    0x044B, // (ы) Cyrillic Small Letter Yeru
+    0x044C, // (ь) Cyrillic Small Letter Soft Sign
+    0x044D, // (э) Cyrillic Small Letter E
+    0x044E, // (ю) Cyrillic Small Letter Yu
+    0x044F, // (я) Cyrillic Small Letter Ya
+    0x0450, // (ѐ) Cyrillic Small Letter Ie with Grave
+    0x0451, // (ё) Cyrillic Small Letter Io
+    0x0452, // (ђ) Cyrillic Small Letter Dje
+    0x0453, // (ѓ) Cyrillic Small Letter Gje
+    0x0454, // (є) Cyrillic Small Letter Ukrainian Ie
+    0x0455, // (ѕ) Cyrillic Small Letter Dze
+    0x0456, // (і) Cyrillic Small Letter Byelorussian-Ukrainian I
+    0x0457, // (ї) Cyrillic Small Letter Yi
+    0x0458, // (ј) Cyrillic Small Letter Je
+    0x0459, // (љ) Cyrillic Small Letter Lje
+    0x045A, // (њ) Cyrillic Small Letter Nje
+    0x045B, // (ћ) Cyrillic Small Letter Tshe
+    0x045C, // (ќ) Cyrillic Small Letter Kje
+    0x045D, // (ѝ) Cyrillic Small Letter I with Grave
+    0x045E, // (ў) Cyrillic Small Letter Short U
+    0x045F, // (џ) Cyrillic Small Letter Dzhe
+    0x0460, // (Ѡ) Cyrillic Capital Letter Omega
+    0x0461, // (ѡ) Cyrillic Small Letter Omega
+    0x0462, // (Ѣ) Cyrillic Capital Letter Yat
+    0x0463, // (ѣ) Cyrillic Small Letter Yat
+    0x0464, // (Ѥ) Cyrillic Capital Letter Iotified E
+    0x0465, // (ѥ) Cyrillic Small Letter Iotified E
+    0x0466, // (Ѧ) Cyrillic Capital Letter Little Yus
+    0x0467, // (ѧ) Cyrillic Small Letter Little Yus
+    0x0468, // (Ѩ) Cyrillic Capital Letter Iotified Little Yus
+    0x0469, // (ѩ) Cyrillic Small Letter Iotified Little Yus
+    0x046A, // (Ѫ) Cyrillic Capital Letter Big Yus
+    0x046B, // (ѫ) Cyrillic Small Letter Big Yus
+    0x046C, // (Ѭ) Cyrillic Capital Letter Iotified Big Yus
+    0x046D, // (ѭ) Cyrillic Small Letter Iotified Big Yus
+    0x046E, // (Ѯ) Cyrillic Capital Letter Ksi
+    0x046F, // (ѯ) Cyrillic Small Letter Ksi
+    0x0470, // (Ѱ) Cyrillic Capital Letter Psi
+    0x0471, // (ѱ) Cyrillic Small Letter Psi
+    0x0472, // (Ѳ) Cyrillic Capital Letter Fita
+    0x0473, // (ѳ) Cyrillic Small Letter Fita
+    0x0474, // (Ѵ) Cyrillic Capital Letter Izhitsa
+    0x0475, // (ѵ) Cyrillic Small Letter Izhitsa
+    0x0476, // (Ѷ) Cyrillic Capital Letter Izhitsa with Double Grave Accent
+    0x0477, // (ѷ) Cyrillic Small Letter Izhitsa with Double Grave Accent
+    0x0478, // (Ѹ) Cyrillic Capital Letter Uk
+    0x0479, // (ѹ) Cyrillic Small Letter Uk
+    0x047A, // (Ѻ) Cyrillic Capital Letter Round Omega
+    0x047B, // (ѻ) Cyrillic Small Letter Round Omega
+    0x047C, // (Ѽ) Cyrillic Capital Letter Omega with Titlo
+    0x047D, // (ѽ) Cyrillic Small Letter Omega with Titlo
+    0x047E, // (Ѿ) Cyrillic Capital Letter Ot
+    0x047F, // (ѿ) Cyrillic Small Letter Ot
+    0x0480, // (Ҁ) Cyrillic Capital Letter Koppa
+    0x0481, // (ҁ) Cyrillic Small Letter Koppa
+    0x0482, // (҂) Cyrillic Thousands Sign
+    0x0483, // (◌҃) Combining Cyrillic Titlo
+    0x0484, // (◌҄) Combining Cyrillic Palatalization
+    0x0485, // (◌҅) Combining Cyrillic Dasia Pneumata
+    0x0486, // (◌҆) Combining Cyrillic Psili Pneumata
+    0x0487, // (◌҇) Combining Cyrillic Pokrytie
+    0x0488, // (҈) Combining Cyrillic Hundred Thousands Sign
+    0x0489, // (҉) Combining Cyrillic Millions Sign
+    0x048A, // (Ҋ) Cyrillic Capital Letter Short I with Tail
+    0x048B, // (ҋ) Cyrillic Small Letter Short I with Tail
+    0x048C, // (Ҍ) Cyrillic Capital Letter Semisoft Sign
+    0x048D, // (ҍ) Cyrillic Small Letter Semisoft Sign
+    0x048E, // (Ҏ) Cyrillic Capital Letter Er with Tick
+    0x048F, // (ҏ) Cyrillic Small Letter Er with Tick
+    0x0490, // (Ґ) Cyrillic Capital Letter Ghe with Upturn
+    0x0491, // (ґ) Cyrillic Small Letter Ghe with Upturn
+    0x0492, // (Ғ) Cyrillic Capital Letter Ghe with Stroke
+    0x0493, // (ғ) Cyrillic Small Letter Ghe with Stroke
+    0x0494, // (Ҕ) Cyrillic Capital Letter Ghe with Middle Hook
+    0x0495, // (ҕ) Cyrillic Small Letter Ghe with Middle Hook
+    0x0496, // (Җ) Cyrillic Capital Letter Zhe with Descender
+    0x0497, // (җ) Cyrillic Small Letter Zhe with Descender
+    0x0498, // (Ҙ) Cyrillic Capital Letter Ze with Descender
+    0x0499, // (ҙ) Cyrillic Small Letter Ze with Descender
+    0x049A, // (Қ) Cyrillic Capital Letter Ka with Descender
+    0x049B, // (қ) Cyrillic Small Letter Ka with Descender
+    0x049C, // (Ҝ) Cyrillic Capital Letter Ka with Vertical Stroke
+    0x049D, // (ҝ) Cyrillic Small Letter Ka with Vertical Stroke
+    0x049E, // (Ҟ) Cyrillic Capital Letter Ka with Stroke
+    0x049F, // (ҟ) Cyrillic Small Letter Ka with Stroke
+    0x04A0, // (Ҡ) Cyrillic Capital Letter Bashkir Ka
+    0x04A1, // (ҡ) Cyrillic Small Letter Bashkir Ka
+    0x04A2, // (Ң) Cyrillic Capital Letter En with Descender
+    0x04A3, // (ң) Cyrillic Small Letter En with Descender
+    0x04A4, // (Ҥ) Cyrillic Capital Ligature En Ghe
+    0x04A5, // (ҥ) Cyrillic Small Ligature En Ghe
+    0x04A6, // (Ҧ) Cyrillic Capital Letter Pe with Middle Hook
+    0x04A7, // (ҧ) Cyrillic Small Letter Pe with Middle Hook
+    0x04A8, // (Ҩ) Cyrillic Capital Letter Abkhasian Ha
+    0x04A9, // (ҩ) Cyrillic Small Letter Abkhasian Ha
+    0x04AA, // (Ҫ) Cyrillic Capital Letter Es with Descender
+    0x04AB, // (ҫ) Cyrillic Small Letter Es with Descender
+    0x04AC, // (Ҭ) Cyrillic Capital Letter Te with Descender
+    0x04AD, // (ҭ) Cyrillic Small Letter Te with Descender
+    0x04AE, // (Ү) Cyrillic Capital Letter Straight U
+    0x04AF, // (ү) Cyrillic Small Letter Straight U
+    0x04B0, // (Ұ) Cyrillic Capital Letter Straight U with Stroke
+    0x04B1, // (ұ) Cyrillic Small Letter Straight U with Stroke
+    0x04B2, // (Ҳ) Cyrillic Capital Letter Ha with Descender
+    0x04B3, // (ҳ) Cyrillic Small Letter Ha with Descender
+    0x04B4, // (Ҵ) Cyrillic Capital Ligature Te Tse
+    0x04B5, // (ҵ) Cyrillic Small Ligature Te Tse
+    0x04B6, // (Ҷ) Cyrillic Capital Letter Che with Descender
+    0x04B7, // (ҷ) Cyrillic Small Letter Che with Descender
+    0x04B8, // (Ҹ) Cyrillic Capital Letter Che with Vertical Stroke
+    0x04B9, // (ҹ) Cyrillic Small Letter Che with Vertical Stroke
+    0x04BA, // (Һ) Cyrillic Capital Letter Shha
+    0x04BB, // (һ) Cyrillic Small Letter Shha
+    0x04BC, // (Ҽ) Cyrillic Capital Letter Abkhasian Che
+    0x04BD, // (ҽ) Cyrillic Small Letter Abkhasian Che
+    0x04BE, // (Ҿ) Cyrillic Capital Letter Abkhasian Che with Descender
+    0x04BF, // (ҿ) Cyrillic Small Letter Abkhasian Che with Descender
+    0x04C0, // (Ӏ) Cyrillic Letter Palochka
+    0x04C1, // (Ӂ) Cyrillic Capital Letter Zhe with Breve
+    0x04C2, // (ӂ) Cyrillic Small Letter Zhe with Breve
+    0x04C3, // (Ӄ) Cyrillic Capital Letter Ka with Hook
+    0x04C4, // (ӄ) Cyrillic Small Letter Ka with Hook
+    0x04C5, // (Ӆ) Cyrillic Capital Letter El with Tail
+    0x04C6, // (ӆ) Cyrillic Small Letter El with Tail
+    0x04C7, // (Ӈ) Cyrillic Capital Letter En with Hook
+    0x04C8, // (ӈ) Cyrillic Small Letter En with Hook
+    0x04C9, // (Ӊ) Cyrillic Capital Letter En with Tail
+    0x04CA, // (ӊ) Cyrillic Small Letter En with Tail
+    0x04CB, // (Ӌ) Cyrillic Capital Letter Khakassian Che
+    0x04CC, // (ӌ) Cyrillic Small Letter Khakassian Che
+    0x04CD, // (Ӎ) Cyrillic Capital Letter Em with Tail
+    0x04CE, // (ӎ) Cyrillic Small Letter Em with Tail
+    0x04CF, // (ӏ) Cyrillic Small Letter Palochka
+    0x04D0, // (Ӑ) Cyrillic Capital Letter A with Breve
+    0x04D1, // (ӑ) Cyrillic Small Letter A with Breve
+    0x04D2, // (Ӓ) Cyrillic Capital Letter A with Diaeresis
+    0x04D3, // (ӓ) Cyrillic Small Letter A with Diaeresis
+    0x04D4, // (Ӕ) Cyrillic Capital Ligature A Ie
+    0x04D5, // (ӕ) Cyrillic Small Ligature A Ie
+    0x04D6, // (Ӗ) Cyrillic Capital Letter Ie with Breve
+    0x04D7, // (ӗ) Cyrillic Small Letter Ie with Breve
+    0x04D8, // (Ә) Cyrillic Capital Letter Schwa
+    0x04D9, // (ә) Cyrillic Small Letter Schwa
+    0x04DA, // (Ӛ) Cyrillic Capital Letter Schwa with Diaeresis
+    0x04DB, // (ӛ) Cyrillic Small Letter Schwa with Diaeresis
+    0x04DC, // (Ӝ) Cyrillic Capital Letter Zhe with Diaeresis
+    0x04DD, // (ӝ) Cyrillic Small Letter Zhe with Diaeresis
+    0x04DE, // (Ӟ) Cyrillic Capital Letter Ze with Diaeresis
+    0x04DF, // (ӟ) Cyrillic Small Letter Ze with Diaeresis
+    0x04E0, // (Ӡ) Cyrillic Capital Letter Abkhasian Dze
+    0x04E1, // (ӡ) Cyrillic Small Letter Abkhasian Dze
+    0x04E2, // (Ӣ) Cyrillic Capital Letter I with Macron
+    0x04E3, // (ӣ) Cyrillic Small Letter I with Macron
+    0x04E4, // (Ӥ) Cyrillic Capital Letter I with Diaeresis
+    0x04E5, // (ӥ) Cyrillic Small Letter I with Diaeresis
+    0x04E6, // (Ӧ) Cyrillic Capital Letter O with Diaeresis
+    0x04E7, // (ӧ) Cyrillic Small Letter O with Diaeresis
+    0x04E8, // (Ө) Cyrillic Capital Letter Barred O
+    0x04E9, // (ө) Cyrillic Small Letter Barred O
+    0x04EA, // (Ӫ) Cyrillic Capital Letter Barred O with Diaeresis
+    0x04EB, // (ӫ) Cyrillic Small Letter Barred O with Diaeresis
+    0x04EC, // (Ӭ) Cyrillic Capital Letter E with Diaeresis
+    0x04ED, // (ӭ) Cyrillic Small Letter E with Diaeresis
+    0x04EE, // (Ӯ) Cyrillic Capital Letter U with Macron
+    0x04EF, // (ӯ) Cyrillic Small Letter U with Macron
+    0x04F0, // (Ӱ) Cyrillic Capital Letter U with Diaeresis
+    0x04F1, // (ӱ) Cyrillic Small Letter U with Diaeresis
+    0x04F2, // (Ӳ) Cyrillic Capital Letter U with Double Acute
+    0x04F3, // (ӳ) Cyrillic Small Letter U with Double Acute
+    0x04F4, // (Ӵ) Cyrillic Capital Letter Che with Diaeresis
+    0x04F5, // (ӵ) Cyrillic Small Letter Che with Diaeresis
+    0x04F6, // (Ӷ) Cyrillic Capital Letter Ghe with Descender
+    0x04F7, // (ӷ) Cyrillic Small Letter Ghe with Descender
+    0x04F8, // (Ӹ) Cyrillic Capital Letter Yeru with Diaeresis
+    0x04F9, // (ӹ) Cyrillic Small Letter Yeru with Diaeresis
+    0x04FA, // (Ӻ) Cyrillic Capital Letter Ghe with Stroke and Hook
+    0x04FB, // (ӻ) Cyrillic Small Letter Ghe with Stroke and Hook
+    0x04FC, // (Ӽ) Cyrillic Capital Letter Ha with Hook
+    0x04FD, // (ӽ) Cyrillic Small Letter Ha with Hook
+    0x04FE, // (Ӿ) Cyrillic Capital Letter Ha with Stroke
+    0x04FF, // (ӿ) Cyrillic Small Letter Ha with Stroke
+
+    // 128 unclaimed glyphs.
+    // "Cyrillic Supplement" may be a good choice to go here?
+    // U+0500 - U+052F
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  };
+
+  return CODEPOINTS;
+}
+
 static const std::vector<int> &GetCodepointsForPage(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC: return PageBit7Classic();
   case Page::BIT7_EXTENDED: return PageBit7Extended();
+  case Page::BIT7_CYRILLIC: return PageBit7Cyrillic();
   }
   LOG(FATAL) << "Unimplemented page!";
 }
 
 // e.g. use the glyph for hyphen (0x2D) to render U+2212 (minus).
+// Both source and destination are Unicode codepoints.
 static constexpr std::initializer_list<std::pair<int, int>>
 REUSE_FOR = {
   // hyphen used as minus
@@ -452,7 +736,19 @@ REUSE_FOR = {
   {'s', 0x0455},
   {'i', 0x0456},
   {'j', 0x0458},
+  {'W', 0x051C},
+  {'w', 0x051D},
   // TODO: More cyrillic can be copied from Latin-1, Greek.
+  {0x00C6, 0x04D4}, // Æ -> cyrillic
+  {0x00E6, 0x04D5}, // æ -> cyrillic
+  {0x0393, 0x0433}, // Γ -> cyrillic
+  {0x03A0, 0x041F}, // Π -> cyrillic
+  {0x03A6, 0x0424}, // Φ -> cyrillic
+  {0x00C8, 0x0400}, // È -> cyrillic
+  {0x00CB, 0x0401}, // Ë -> cyrillic
+  {0x00E8, 0x0450}, // è -> cyrillic
+  {0x00EB, 0x0451}, // ë -> cyrillic
+
 
   // ascii -> greek
   {'J', 0x037F},
@@ -496,6 +792,8 @@ REUSE_FOR = {
   {'K', 0x212A},
   // Ohm symbol from greek Omega
   {0x03A9, 0x2126},
+  // "micro" symbol from greek mu
+  {0x03BC, 0x00B5},
 
   // ISO Latin-1 Macron to overline
   {0x00AF, 0x203E},

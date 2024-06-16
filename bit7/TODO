@@ -11,15 +11,77 @@ Glyphs todo:
    about Gutenberg bible.
  - irony mark (⸮) found in Unicode as U+2E2E
 
+obviously
+□◇○ (and ◊)
+
+
 This kind of thing:
 U+27e6 Ps MATHEMATICAL LEFT WHITE SQUARE BRACKET ⟦
 U+27e7 Pe MATHEMATICAL RIGHT WHITE SQUARE BRACKET ⟧
 
+Popular from wikipedia:
+
+U+0438 (и): 1196964
+U+043d (н): 933194
+U+0107 (ć): 775977
+U+014d (ō): 768930
+U+0442 (т): 647778
+U+0432 (в): 626003
+U+043a (к): 604660
+U+0101 (ā): 592090
+U+0161 (š): 588115
+U+0142 (ł): 582497
+U+0627 (ا): 562605
+U+043b (л): 557742
+U+010d (č): 502057
+U+0131 (ı): 396606
+U+0434 (д): 375072
+U+0103 (ă): 365868
+U+015f (ş): 338371
+U+0443 (у): 333046
+U+043c (м): 314822
+U+016b (ū): 311140
+U+0644 (ل): 283104
+U+0439 (й): 268356
+U+0631 (ر): 264108
+U+0433 (г): 247904
+U+043f (п): 247544
+U+017e (ž): 236426
+U+044f (я): 234175
+U+064a (ي): 233681
+U+0646 (ن): 225484
+U+0144 (ń): 219906
+U+0219 (ș): 211495
+U+0645 (م): 210553
+U+30fc (ー): 208581
+U+012b (ī): 203418
+U+0160 (Š): 196338
+U+0431 (б): 194279
+U+062f (د): 191930
+U+0648 (و): 189517
+U+044c (ь): 181528
+U+306e (の): 177882
+U+0437 (з): 174544
+U+0628 (ب): 170222
+U+30f3 (ン): 166363
+U+0447 (ч): 164730
+U+044b (ы): 160651
+U+0119 (ę): 158383
+U+0259 (ə): 148583
+U+011f (ğ): 134466
+U+015b (ś): 124185
+
+
+Also good:
+https://en.wikipedia.org/wiki/List_of_Japanese_typographic_symbols#Brackets%20and%20quotation%20marks
+
 Playing cards:
+https://en.wikipedia.org/wiki/Playing_cards_in_Unicode
 
 TODO:
  - improve 2x versions of some new emoji
  - light greek in fixedersyslight2x
+ - I guess switch to two-wide characters where that's what unicode wants?
 
 maybe .notdef?
 

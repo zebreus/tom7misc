@@ -12,6 +12,7 @@
 enum class Page {
   BIT7_CLASSIC,
   BIT7_EXTENDED,
+  BIT7_CYRILLIC,
 };
 
 struct Config {
