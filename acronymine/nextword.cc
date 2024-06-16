@@ -47,7 +47,7 @@ using namespace std;
 
 static constexpr const char *WIKIPEDIA_FILE =
   // "fake-wikipedia.xml";
-  "d:\\rivercity\\wikipedia\\enwiki-20160204-pages-articles.xml";
+  "d:\\wikipedia\\enwiki-20160204-pages-articles.xml";
 
 static constexpr const char *WORD2VEC_FILE =
   "c:\\code\\word2vec\\GoogleNews-vectors-negative300.bin";

@@ -7,6 +7,8 @@
 #ifndef _NETWORK_H
 #define _NETWORK_H
 
+#include <tuple>
+#include <utility>
 #include <vector>
 #include <string>
 #include <cstdint>

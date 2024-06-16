@@ -1,41 +1,31 @@
 // Backend for interactive editor.
 
-#include "network-gpu.h"
-
-#include <cmath>
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
+#include <unordered_set>
+#include <utility>
 #include <vector>
-#include <functional>
 #include <string>
 #include <ctype.h>
 #include <chrono>
 #include <thread>
-#include <deque>
-#include <numbers>
 
-#include "webserver.h"
-#include "network.h"
-#include "network-test-util.h"
-#include "clutil.h"
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "threadutil.h"
-#include "image.h"
-#include "util.h"
-#include "train-util.h"
-#include "periodically.h"
-#include "timer.h"
-#include "error-history.h"
-#include "ansi.h"
-#include "lastn-buffer.h"
-#include "gtl/top_n.h"
-
+#include "clutil.h"
 #include "freq.h"
+#include "gtl/top_n.h"
 #include "sentencelike.h"
-#include "wordnet.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "util.h"
+#include "webserver.h"
 #include "word2vec.h"
+#include "wordnet.h"
 
 using namespace std;
 
@@ -67,8 +57,6 @@ static constexpr const int WORDS_PER_CHAR = 16384;
 static CL *cl = nullptr;
 
 using int64 = int64_t;
-
-static constexpr int VEC_SIZE = 300;
 
 static std::unordered_set<std::string> *words = nullptr;
 static Word2Vec *w2v = nullptr;
@@ -272,6 +260,7 @@ SlashHandler(const WebServer::Request &req) {
   return response;
 }
 
+[[maybe_unused]]
 static string Harden(const string &s) {
   string out;
   for (int i = 0; i < s.size(); i++) {

@@ -1,6 +1,7 @@
 
 #include "wikipedia.h"
 
+#include <cstdio>
 #include <memory>
 #include <string>
 
@@ -8,14 +9,30 @@
 
 using namespace std;
 
-static void Parse() {
-  std::unique_ptr<Wikipedia> wiki(Wikipedia::Create("fake-wikipedia.xml"));
+static void ExpectTestArticles(Wikipedia *wiki) {
   auto ao1 = wiki->Next();
   CHECK(ao1.has_value());
   auto ao2 = wiki->Next();
   CHECK(ao2.has_value());
+  auto ao3 = wiki->Next();
+  CHECK(ao3.has_value());
+  CHECK(ao3.value().title == "The Third Article");
+  CHECK(ao3.value().body == "HI");
+
   CHECK(!wiki->Next().has_value());
 }
+
+static void Parse() {
+  std::unique_ptr<Wikipedia> wiki(Wikipedia::Create("fake-wikipedia.xml"));
+  ExpectTestArticles(wiki.get());
+}
+
+static void ParseCompressed() {
+  std::unique_ptr<Wikipedia> wiki(
+      Wikipedia::CreateFromCompressed("fake-wikipedia.ccz"));
+  ExpectTestArticles(wiki.get());
+}
+
 
 static void TestRemoveTags() {
   std::unique_ptr<Wikipedia> wiki(Wikipedia::Create("fake-wikipedia.xml"));
@@ -87,6 +104,7 @@ static void TestRemoveWikilinks() {
 
 int main(int argc, char **argv) {
   Parse();
+  ParseCompressed();
   TestReplaceEntities();
   TestRemoveTags();
   TestRemoveWikilinks();

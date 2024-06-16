@@ -1,8 +1,12 @@
 #include "network-gpu.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <optional>
 #include <cmath>
 #include <memory>
+#include <utility>
 #include <vector>
 #include <functional>
 #include <string>
@@ -16,7 +20,6 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "image.h"
 #include "train-util.h"
 #include "timer.h"
 #include "periodically.h"
@@ -26,6 +29,8 @@ using namespace std;
 using TestNet = NetworkTestUtil::TestNet;
 using TrainNet = NetworkTestUtil::TrainNet;
 using TestExample = NetworkTestUtil::TestExample;
+
+using int64 = int64_t;
 
 static CL *cl = nullptr;
 

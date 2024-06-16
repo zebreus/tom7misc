@@ -1,41 +1,40 @@
 
 #include "wikipedia.h"
 
-#include <codecvt>
-#include <locale>
-#include <string>
-#include <optional>
+#include <algorithm>
+#include <cstdint>
 #include <memory>
-#include <stdio.h>
-#include <unordered_map>
-#include <cctype>
 #include <mutex>
-#include <thread>
-#include <unordered_set>
+#include <optional>
+#include <stdio.h>
+#include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
-#include "base/logging.h"
-#include "util.h"
-#include "re2/re2.h"
-#include "timer.h"
-#include "city/city.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
-#include "threadutil.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 #include "periodically.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "util.h"
 #include "wikipedia.h"
 
 using namespace std;
-using re2::RE2;
-using re2::StringPiece;
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
 
+[[maybe_unused]]
 static constexpr const char *WIKIPEDIA_FILE =
   // "fake-wikipedia.xml";
-  "d:\\rivercity\\wikipedia\\enwiki-20160204-pages-articles.xml";
+  "d:\\wikipedia\\enwiki-20160204-pages-articles.xml";
+
+[[maybe_unused]]
+static constexpr const char *WIKIPEDIA_CCZ_FILE =
+  "d:\\wikipedia\\enwiki-20160204_9.ccz";
 
 using Article = Wikipedia::Article;
 
@@ -43,43 +42,37 @@ static constexpr int NUM_THREADS = 12;
 
 static std::mutex count_mutex;
 static std::unordered_map<uint32_t, int64_t> counts;
-static int64 total_count = 0;
-
-// ???? https://en.cppreference.com/w/cpp/locale/codecvt
-template<class Facet>
-struct deletable_facet : Facet
-{
-    template<class... Args>
-    deletable_facet(Args&&... args) : Facet(std::forward<Args>(args)...) {}
-    ~deletable_facet() {}
-};
+static int64_t total_count = 0;
 
 static void Process() {
-  std::unique_ptr<Wikipedia> wiki(Wikipedia::Create(WIKIPEDIA_FILE));
+  #if 1
+  std::unique_ptr<Wikipedia> wiki(
+      Wikipedia::CreateFromCompressed(WIKIPEDIA_CCZ_FILE));
+  CHECK(wiki.get() != nullptr) << WIKIPEDIA_CCZ_FILE;
+  #else
+  std::unique_ptr<Wikipedia> wiki(
+      Wikipedia::Create(WIKIPEDIA_FILE));
   CHECK(wiki.get() != nullptr) << WIKIPEDIA_FILE;
+  #endif
 
   Timer timer;
 
-  auto OneArticle = [&wiki](Article *article) {
+  auto OneArticle = [](Article *article) {
       uint32_t low[127] = {0};
       unordered_map<uint32_t, uint32_t> rest;
       int64_t total = 0;
 
       auto OneString = [&low, &rest, &total](const std::string &s) {
-          std::wstring_convert<
-            deletable_facet<std::codecvt<char32_t, char, std::mbstate_t>>, char32_t> conv32;
-          std::u32string str32 = conv32.from_bytes(s);
-
-          /*
-          std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> conv32;
-          std::u32string str32 = conv32.from_bytes(s);
-          */
-          total += str32.size();
-          for (char32_t c : str32) {
-            if (c >= 0 && c < 128) low[(uint32_t)c]++;
-            else rest[(uint32_t)c]++;
+          std::vector<uint32_t> codepoints = Util::UTF8Codepoints(s);
+          total += codepoints.size();
+          for (uint32_t c : codepoints) {
+            if (c >= 0 && c < 128) {
+              low[(uint32_t)c]++;
+            } else {
+              rest[(uint32_t)c]++;
+            }
           }
-        };
+      };
 
       OneString(article->title);
       OneString(article->body);
@@ -147,10 +140,12 @@ static void Process() {
 
   Util::WriteFile("unicode.txt", out);
   printf("Wrote unicode.txt\n");
+  printf("Finished in %s\n", ANSI::Time(timer.Seconds()).c_str());
+  wiki->PrintStats();
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   Process();
   return 0;

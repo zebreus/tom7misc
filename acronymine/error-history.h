@@ -2,6 +2,7 @@
 #define _ACRONYMINE_ERROR_HISTORY_H
 
 #include <string>
+#include <utility>
 #include <vector>
 #include <cstdint>
 #include <optional>

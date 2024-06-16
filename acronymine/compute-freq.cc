@@ -3,6 +3,8 @@
 
 #include "wikipedia.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <optional>
 #include <memory>
@@ -10,26 +12,21 @@
 #include <unordered_map>
 #include <cctype>
 #include <mutex>
-#include <thread>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
-#include "base/logging.h"
-#include "util.h"
-#include "re2/re2.h"
-#include "timer.h"
-#include "city/city.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
-#include "threadutil.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 #include "periodically.h"
-#include "lastn-buffer.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "util.h"
 
 #include "word2vec.h"
 
 using namespace std;
-using re2::RE2;
-using re2::StringPiece;
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
@@ -39,7 +36,7 @@ using int64 = int64_t;
 
 static constexpr const char *WIKIPEDIA_FILE =
   // "fake-wikipedia.xml";
-  "d:\\rivercity\\wikipedia\\enwiki-20160204-pages-articles.xml";
+  "d:\\wikipedia\\enwiki-20160204-pages-articles.xml";
 
 static constexpr const char *WORD2VEC_FILE =
   "c:\\code\\word2vec\\GoogleNews-vectors-negative300.bin";
@@ -48,7 +45,6 @@ static constexpr const char *WORD2VEC_FILL_FILE = "word2vecfill.txt";
 using Article = Wikipedia::Article;
 
 static constexpr int NUM_THREADS = 12;
-static constexpr int MAX_ACRONYMS = 50;
 
 static std::unordered_set<string> *words = nullptr;
 

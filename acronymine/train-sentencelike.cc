@@ -4,19 +4,27 @@
 
 #include "network-gpu.h"
 
+#include <algorithm>
+#include <array>
+#include <cctype>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
 #include <memory>
+#include <mutex>
+#include <tuple>
+#include <unordered_set>
+#include <utility>
 #include <vector>
 #include <functional>
 #include <string>
-#include <ctype.h>
 #include <chrono>
 #include <thread>
 #include <deque>
-#include <numbers>
 
 #include "network.h"
-#include "network-test-util.h"
 #include "clutil.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -30,7 +38,6 @@
 #include "timer.h"
 #include "error-history.h"
 #include "ansi.h"
-#include "lastn-buffer.h"
 #include "color-util.h"
 
 #include "acronym-util.h"
@@ -43,7 +50,7 @@ using namespace std;
 
 static constexpr const char *WIKIPEDIA_FILE =
   // "fake-wikipedia.xml";
-  "d:\\rivercity\\wikipedia\\enwiki-20160204-pages-articles.xml";
+  "d:\\wikipedia\\enwiki-20160204-pages-articles.xml";
 
 static constexpr const char *WORD2VEC_FILE =
   "c:\\code\\word2vec\\GoogleNews-vectors-negative300.bin";
@@ -208,10 +215,10 @@ struct ExampleThread {
   ExampleThread() {
     CHECK(w2v != nullptr);
 
-    work_thread1.reset(new std::thread(&Populate, this));
+    work_thread1.reset(new std::thread(&ExampleThread::Populate, this));
     // Can support multiple generation threads, but it is very
     // fast for this problem.
-    work_thread2.reset(new std::thread(&Generate, this, 1));
+    work_thread2.reset(new std::thread(&ExampleThread::Generate, this, 1));
   }
 
   ~ExampleThread() {

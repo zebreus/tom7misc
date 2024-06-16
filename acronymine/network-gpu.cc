@@ -1,11 +1,19 @@
 
 #include "network-gpu.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdio>
 #include <string>
 #include <optional>
+#include <tuple>
+#include <utility>
 #include <vector>
-#include <mutex>
 #include <cmath>
+#include <cstdint>
+
+#include <CL/cl_platform.h>
+#include <CL/cl.h>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -18,6 +26,7 @@
 
 using namespace std;
 
+using int64 = int64_t;
 
 NetworkGPU::NetworkGPU(CL *cl, Network *net) : cl(cl), net(net) {
   layers.resize(net->layers.size());

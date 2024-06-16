@@ -15,4 +15,8 @@
       via extension
     </text>
   </page>
+  <page>
+    <title>The Third Article</title>
+    <text xml:space="preserve">HI</text>
+  </page>
 </mediawiki>

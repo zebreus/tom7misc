@@ -2,14 +2,16 @@
 #ifndef _SENTENCELIKE_H
 #define _SENTENCELIKE_H
 
+#include <cstdint>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <mutex>
 
 #include "base/logging.h"
 
-#include "threadutil.h"
 #include "network.h"
 #include "network-gpu.h"
 #include "clutil.h"

@@ -3,6 +3,7 @@
 #define _WORD2VEC_H
 
 #include <cmath>
+#include <utility>
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -115,7 +116,7 @@ struct Word2Vec {
         bestw = w;
       }
     }
-    return make_pair(bestw, besta);
+    return std::make_pair(bestw, besta);
   }
 
 private:

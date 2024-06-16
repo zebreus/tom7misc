@@ -4,8 +4,6 @@
 #ifndef _WIKIPEDIA_H
 #define _WIKIPEDIA_H
 
-#include <stdio.h>
-
 #include <string>
 #include <optional>
 
@@ -14,6 +12,10 @@
 struct Wikipedia {
 
   static Wikipedia *Create(const std::string &filename);
+  // Takes a .ccz file.
+  // Running over the compressed file is a bit slower (40%) but
+  // requires about 25% of the disk space.
+  static Wikipedia *CreateFromCompressed(const std::string &filename);
   virtual ~Wikipedia() {}
 
   struct Article {
@@ -64,6 +66,8 @@ struct Wikipedia {
 
   // TODO: Filter articles like /Wikipedia:Articles for deletion/etc.
   // TODO: Filter articles like Category:Westchester County, New York
+
+  virtual void PrintStats() = 0;
 
  protected:
   Wikipedia() {}

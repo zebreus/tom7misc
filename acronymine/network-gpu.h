@@ -7,11 +7,15 @@
 
 #include <string>
 #include <optional>
+#include <utility>
 #include <vector>
 #include <mutex>
 #include <cstdint>
 
+#include <CL/cl.h>
+
 #include "base/logging.h"
+#include "base/macros.h"
 
 #include "network.h"
 #include "clutil.h"

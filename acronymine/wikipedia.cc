@@ -1,12 +1,20 @@
 
 #include "wikipedia.h"
 
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "re2/re2.h"
 #include "util.h"
+#include "zip.h"
 
 using namespace std;
 using re2::RE2;
@@ -20,12 +28,22 @@ namespace {
 #define WS_RE "[ \r\n\t]*"
 #define ANY_RE "(?:.|" WS_RE ")*"
 
+template<bool COMPRESSED_>
 struct BufferedFile {
-  static constexpr int64 BYTES_AT_A_TIME = 1 << 24;
+  static constexpr bool COMPRESSED = COMPRESSED_;
+  static constexpr int64 BYTES_AT_A_TIME =
+    COMPRESSED ? (1 << 21) : (1 << 24);
   explicit BufferedFile(const std::string &filename) :
     filename(filename) {
     f = fopen(filename.c_str(), "rb");
     CHECK(f != nullptr) << filename;
+    if constexpr (COMPRESSED) {
+      ZIP::CCLibHeader header;
+      CHECK(1 == fread(&header, sizeof (header), 1, f)) << filename;
+      CHECK(header.HasCorrectMagic()) << "Not a ccz file: " << filename;
+      CHECK(header.GetFlags() == 0) << "Unsupported ccz flags: " << filename;
+      db.reset(ZIP::DecodeBuffer::Create());
+    }
     Refresh();
   }
 
@@ -51,11 +69,15 @@ struct BufferedFile {
     bpos = bytes.size();
     Refresh();
     auto rec = GetLine();
-    if (rec.has_value())
+    if (rec.has_value()) {
+      // Not at EOF, so always return (even if it's the empty string).
       ret += rec.value();
-    if (ret.empty())
-      return {};
-    return {ret};
+      return {ret};
+    } else {
+      if (ret.empty())
+        return {};
+      return {ret};
+    }
   }
 
   int Get() {
@@ -81,32 +103,85 @@ struct BufferedFile {
     f = nullptr;
   }
 
+  int64_t OutBytes() const { return out_bytes; }
+
  private:
 
   // After Refresh, we are either at_eof or have bytes.
   void Refresh() {
+    CHECK(bpos == bytes.size());
+    // No matter what, we have used up the bytes.
+    bpos = 0;
+    bytes.clear();
+
+    // If we have data from decompression, use that first.
+    if constexpr (COMPRESSED) {
+      if (db->OutputSize() > 0) {
+        bytes = db->GetOutputVector();
+        out_bytes += bytes.size();
+        CHECK(!bytes.empty());
+        return;
+      }
+    }
+
     // Noticing we are at EOF for the first time?
     if (feof(f)) {
+      printf("EOF after %lld bytes\n", out_bytes);
+      if constexpr (COMPRESSED) {
+        CHECK(db->OutputSize() == 0);
+      }
       bytes.clear();
       at_eof = true;
       return;
     }
 
-    bytes.resize(BYTES_AT_A_TIME);
-    const size_t bytes_read =
-      fread(bytes.data(), 1, BYTES_AT_A_TIME, f);
-    bytes.resize(bytes_read);
+    if constexpr (COMPRESSED) {
+      for (;;) {
+        // We use the bytes buffer both for the decompressed
+        // and compressed data.
+        bytes.resize(BYTES_AT_A_TIME);
+        const size_t bytes_read =
+          fread(bytes.data(), 1, BYTES_AT_A_TIME, f);
+        // printf("Read %lld bytes.\n", (int64_t)bytes_read);
+        CHECK(bytes_read > 0);
+        // printf("InsertPtr %p %lld\n", bytes.data(), bytes_read);
+        db->InsertPtr(bytes.data(), bytes_read);
+        // printf("OK\n");
 
-    if (!bytes_read) {
-      // Possible?
-      at_eof = true;
+        if (db->OutputSize() > 0) {
+          bytes = db->GetOutputVector();
+          out_bytes += bytes.size();
+          CHECK(!bytes.empty());
+          return;
+        }
+
+        // Not enough data was read to produce any decompressed bytes.
+        // Loop, but an EOF in this situation is an error.
+        CHECK(!feof(f)) << "Corrupted ccz stream: The file ended "
+          "with partial compressed data that did not yield any "
+          "output bytes.";
+      }
+
+    } else {
+      bytes.resize(BYTES_AT_A_TIME);
+      const size_t bytes_read =
+        fread(bytes.data(), 1, BYTES_AT_A_TIME, f);
+      // printf("Read %lld bytes.\n", (int64_t)bytes_read);
+      bytes.resize(bytes_read);
+      out_bytes += bytes_read;
+
+      if (!bytes_read) {
+        // Possible?
+        at_eof = true;
+      }
     }
-    bpos = 0;
   }
 
   const string filename;
   int64 bpos = 0;
+  int64_t out_bytes = 0;
   vector<uint8> bytes;
+  std::unique_ptr<ZIP::DecodeBuffer> db;
   FILE *f = nullptr;
   bool at_eof = false;
 };
@@ -117,40 +192,24 @@ static bool SelfExpandingTemplate(const string &t) {
     "theta", "epsilon", "gamma",
     // XXX lots more here..
   };
-  return all.find(t) != all.end();
+  return all.contains(t);
 }
 
+template<bool COMPRESSED_>
 struct WikipediaImpl : public Wikipedia {
+  static constexpr bool COMPRESSED = COMPRESSED_;
+
   explicit WikipediaImpl(const std::string &filename) :
     file(filename),
-    redirect_re(WS_RE "#REDIRECT" ANY_RE)
-  {
+    redirect_re(WS_RE "#REDIRECT" ANY_RE) {
   }
 
-  // We should probably explicitly buffer this; getc
-  // is just not fast!
   optional<string> NextLine() {
     auto so = file.GetLine();
     if (so.has_value()) {
       // printf("Line [%s]\n", so.value().c_str());
     }
     return so;
-    /*
-    if (file.AtEof()) return {};
-    std::string ret;
-    for (;;) {
-      int c = file.Get();
-      if (c == EOF) {
-        if (ret.empty()) return {};
-        return {ret};
-      }
-
-      if (c == '\r') continue;
-      if (c == '\n') return {ret};
-      ret.push_back(c);
-    }
-    */
-
   }
 
   const string TITLE_START = "<title>";
@@ -158,7 +217,8 @@ struct WikipediaImpl : public Wikipedia {
   const string BODY_START = "<text xml:space=\"preserve\">";
   const string BODY_END = "</text>";
 
-  std::optional<string> NextDelimited(const std::string &start, const std::string &end) {
+  std::optional<string> NextDelimited(const std::string &start,
+                                      const std::string &end) {
     for (;;) {
       std::optional<string> lineo = NextLine();
       if (!lineo.has_value()) return {};
@@ -194,9 +254,17 @@ struct WikipediaImpl : public Wikipedia {
 
   std::optional<Article> Next() override {
     std::optional<string> title = NextDelimited(TITLE_START, TITLE_END);
-    if (!title.has_value()) return {};
+    if (!title.has_value()) {
+      no_title++;
+      return {};
+    }
     std::optional<string> body = NextDelimited(BODY_START, BODY_END);
-    if (!body.has_value()) return {};
+    if (!body.has_value()) {
+      no_body++;
+      return {};
+    }
+
+    total_articles++;
     return {Article{.title = std::move(title.value()),
                     .body = std::move(body.value())}};
   }
@@ -451,8 +519,20 @@ struct WikipediaImpl : public Wikipedia {
     // TODO: fancy single quotes
   }
 
-  BufferedFile file;
+  void PrintStats() override {
+    printf("Total articles %lld\n"
+           "No title: %lld\n"
+           "No body: %lld\n",
+           total_articles,
+           no_title,
+           no_body);
+    printf("File decompressed bytes: %lld\n", file.OutBytes());
+  }
+
+  BufferedFile<COMPRESSED> file;
   const RE2 redirect_re;
+  int64_t total_articles = 0;
+  int64_t no_title = 0, no_body = 0;
   // const RE2 title_re, title_end_re;
   // const RE2 body_re, body_end_re;
 };
@@ -460,5 +540,9 @@ struct WikipediaImpl : public Wikipedia {
 }  // namespace
 
 Wikipedia *Wikipedia::Create(const string &filename) {
-  return new WikipediaImpl(filename);
+  return new WikipediaImpl<false>(filename);
+}
+
+Wikipedia *Wikipedia::CreateFromCompressed(const std::string &filename) {
+  return new WikipediaImpl<true>(filename);
 }

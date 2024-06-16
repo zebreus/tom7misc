@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 #include <set>
+#include <cstdint>
 
 #include "network.h"
 

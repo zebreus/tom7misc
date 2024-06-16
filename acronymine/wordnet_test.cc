@@ -1,10 +1,12 @@
 
 #include "wordnet.h"
 
+#include <cstdio>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 #include <unordered_set>
-#include <unordered_map>
 #include <cstdint>
 
 #include "freq.h"
