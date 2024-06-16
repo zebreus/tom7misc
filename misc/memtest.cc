@@ -36,9 +36,9 @@ using int64 = int64_t;
 using namespace std;
 
 static_assert(sizeof (size_t) == sizeof (uint64),
-	      "size_t needs to be 64 bit");
+        "size_t needs to be 64 bit");
 
-static inline Hash(uint64 seed1, uint64 seed2, uint64 input) {
+static inline uint64_t Hash3(uint64 seed1, uint64 seed2, uint64 input) {
   // This is basically from CityHash, but instead of reusing the
   // high 64 twice, we take two different seeds.
   static constexpr uint64 kMul = 0x9ddfea08eb382d69ULL;
@@ -53,7 +53,7 @@ static inline Hash(uint64 seed1, uint64 seed2, uint64 input) {
 int main(int argc, char **argv) {
   if (argc < 2) {
     fprintf(stderr, "Give a number of gigabytes on the command "
-	    "line to test.");
+      "line to test.");
     return -1;
   }
 
@@ -96,30 +96,28 @@ int main(int argc, char **argv) {
   ArcFour rc(seed);
   for (int i = 0; i < times; i++) {
     const uint64 seed = Rand64(&rc);
-    printf("[%d/%d] Setting memory (hash test):\n",
-	   i + 1, times);
+    printf("[%d/%d] Setting memory (hash test):\n", i + 1, times);
     fflush(stdout);
     ParallelComp(
-	chunks.size(),
-	[&chunks, seed](int chunk) {
-	  for (int idx = 0; idx < GIG_IN_64; idx++)
-	    chunks[chunk][idx] = Hash(seed, (uint64)chunks[chunk], idx);
-	},
-	threads);
+        chunks.size(),
+        [&chunks, seed](int chunk) {
+          for (int idx = 0; idx < GIG_IN_64; idx++)
+            chunks[chunk][idx] = Hash3(seed, (uint64)chunks[chunk], idx);
+        },
+        threads);
 
-    printf("[%d/%d] Checking its contents:\n",
-	   i + 1, times);
+    printf("[%d/%d] Checking its contents:\n", i + 1, times);
     fflush(stdout);
     ParallelComp(
-	chunks.size(),
-	// GIG_IN_64,
-	[&chunks, seed](int chunk) {
-	  for (int idx = 0; idx < GIG_IN_64; idx++) {
-	    CHECK(chunks[chunk][idx] ==
-		  Hash(seed, (uint64)chunks[chunk], idx));
-	  }
-	},
-	threads);
+        chunks.size(),
+        // GIG_IN_64,
+        [&chunks, seed](int chunk) {
+          for (int idx = 0; idx < GIG_IN_64; idx++) {
+            CHECK(chunks[chunk][idx] ==
+                  Hash3(seed, (uint64)chunks[chunk], idx));
+          }
+        },
+        threads);
 
     printf("[%d/%d] OK!\n", i + 1, times);
     fflush(stdout);

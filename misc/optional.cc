@@ -1,9 +1,9 @@
 // Another idea for "pattern-matching" decomposition of std::optional.
 // Here, a for loop that is entered 0 or 1 times.
 
+#include <cassert>
 #include <optional>
 #include <string>
-
 
 namespace std {
 template<class T>
@@ -20,7 +20,7 @@ class optional_iterator {
     t = nullptr;
     return *this;
   }
-  
+
   T &operator*() {
     return *t;
   }
@@ -57,13 +57,13 @@ optional_iterator<T> end(std::optional<T> &o) {
 int main(int argc, char **argv) {
   std::optional<std::string> foo; // = "yes";
 
-  ++std::begin(foo) != std::end(foo);
+  assert(++std::begin(foo) != std::end(foo));
 #if 1
   for (const std::string &f : foo) {
     printf("%s\n", f.c_str());
   }
 #endif
-  
+
   return 0;
 }
 
