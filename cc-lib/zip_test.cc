@@ -416,6 +416,8 @@ static void TestRoundTripFixed() {
       "a aardvark. a albatros. a appalacian.\n"
       "0000000001111111112222222222333333333\n"
       "2 4 8 16 32 64 128 256 512 1024 2048 4096 8192 16384\n");
+
+  printf("Fixed tests " AGREEN("OK") "\n");
 }
 
 static void TestRegression1() {
@@ -446,6 +448,7 @@ static void TestLong1() {
     s[i] = 'O';
   }
   TestOneRoundTrip(s);
+  printf("Long 1 " AGREEN("OK") "\n");
 }
 
 static void TestLong2() {
@@ -454,13 +457,18 @@ static void TestLong2() {
     s[i] = 'a' + (i % 26);
   }
   TestOneRoundTrip(s);
+
+  printf("Long 2 " AGREEN("OK") "\n");
 }
 
 static void TestRegression3() {
   ArcFour rc("reg3");
+  Periodically status_per(0.25);
+  Timer timer;
+
+  printf("Regression 3:\n");
   static constexpr int SIZE = 1 << 16;
-  // for (int64_t s = 16; s < SIZE; s++) {
-  static constexpr int64_t s = 16;
+  for (int64_t s = 1; s < SIZE; s += 97) {
 
     std::vector<uint8_t> compressible;
     for (int i = 0; i < SIZE; i++)
@@ -488,25 +496,26 @@ static void TestRegression3() {
       }
     }
 
-    CHECK(dec == compressible);
-    printf("OK s=%lld\n", s);
-    // }
+    CHECK(dec == compressible) << s;
+    if (status_per.ShouldRun()) {
+      printf(ANSI_UP "%s\n",
+             ANSI::ProgressBar(s, SIZE, "Regression 3",
+                               timer.Seconds()).c_str());
+    }
+  }
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  TestRegression3();
-  /*
   TestRegression1();
   TestLong1();
   TestLong2();
   TestRoundTripFixed();
   TestRegression2();
-
+  TestRegression3();
   // FindCounterexample();
   TestRoundTripRandom();
-  */
 
   printf("OK\n");
   return 0;

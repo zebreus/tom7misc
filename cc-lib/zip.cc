@@ -21,7 +21,7 @@ static_assert(BUFFER_SIZE >= TINFL_LZ_DICT_SIZE,
 static_assert((BUFFER_SIZE & (BUFFER_SIZE - 1)) == 0,
               "buffer size must be a power of 2");
 
-#define DEBUG_ZIP 1
+#define DEBUG_ZIP 0
 
 namespace {
 
@@ -453,7 +453,10 @@ struct DBImpl : public ZIP::DecodeBuffer {
       // Note this may be zero if we're making more calls just to
       // read output.
       size_t in_bytes = remaining;
-      size_t out_bytes = CIRC_SIZE;
+      // Somewhat surprisingly, the "buf_size" parameter should be
+      // the number of trailing bytes in the circular buffer, not
+      // its full size.
+      size_t out_bytes = CIRC_SIZE - circ_pos;
 
       if (DEBUG_ZIP) {
         printf("Decompress buffer at %p for %d -> %p (%p) size %lld\n",

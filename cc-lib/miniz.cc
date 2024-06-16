@@ -26,7 +26,7 @@
  **************************************************************************/
 
 #include <cstdio>
-static constexpr bool DEBUG_MINIZ = true;
+static constexpr bool DEBUG_MINIZ = false;
 
 
 typedef unsigned char mz_validate_uint16[sizeof(mz_uint16) == 2 ? 1 : -1];

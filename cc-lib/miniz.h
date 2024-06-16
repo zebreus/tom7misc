@@ -904,6 +904,11 @@ typedef enum {
 
 /* Main low-level decompressor coroutine function. This is the only function actually needed for decompression. All the other functions are just high-level helpers for improved usability. */
 /* This is a universal API, i.e. it can be used as a building block to build any desired higher level decompression API. In the limit case, it can be called once per every byte input or output. */
+// Note: There are several secret requirements on the circular buffer. It
+// keeps state between calls (in tinfl_decompressor) so you have to keep
+// reusing the same one. On input, pOut_buf_size should be the number of
+// bytes REMAINING in the buffer (i.e. actual_size - (next - start));
+// the actual size must be a power of two at least 32768. -tom7
 MINIZ_EXPORT tinfl_status tinfl_decompress(tinfl_decompressor *r, const mz_uint8 *pIn_buf_next, size_t *pIn_buf_size, mz_uint8 *pOut_buf_start, mz_uint8 *pOut_buf_next, size_t *pOut_buf_size, const mz_uint32 decomp_flags);
 
 /* Internal/private bits follow. */
