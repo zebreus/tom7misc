@@ -26,7 +26,7 @@
  **************************************************************************/
 
 #include <cstdio>
-static constexpr bool DEBUG_MINIZ = false;
+static constexpr bool DEBUG_MINIZ = true;
 
 
 typedef unsigned char mz_validate_uint16[sizeof(mz_uint16) == 2 ? 1 : -1];
@@ -2433,11 +2433,20 @@ tinfl_status tinfl_decompress(tinfl_decompressor *r, const mz_uint8 *pIn_buf_nex
     tinfl_bit_buf_t bit_buf;
     const mz_uint8 *pIn_buf_cur = pIn_buf_next, *const pIn_buf_end = pIn_buf_next + *pIn_buf_size;
     mz_uint8 *pOut_buf_cur = pOut_buf_next, *const pOut_buf_end = pOut_buf_next ? pOut_buf_next + *pOut_buf_size : NULL;
-    size_t out_buf_size_mask = (decomp_flags & TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF) ? (size_t)-1 : ((pOut_buf_next - pOut_buf_start) + *pOut_buf_size) - 1, dist_from_out_buf_start;
+    size_t out_buf_size_mask = (decomp_flags & TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF) ? (size_t)-1 : ((pOut_buf_next - pOut_buf_start) + *pOut_buf_size) - 1;
+    size_t dist_from_out_buf_start = 0;
 
     /* Ensure the output buffer's size is a power of 2, unless the output buffer is large enough to hold the entire output file (in which case it doesn't matter). */
     if (((out_buf_size_mask + 1) & out_buf_size_mask) || (pOut_buf_next < pOut_buf_start))
     {
+      if (DEBUG_MINIZ) {
+        printf("%p - %p + %lld - 1\n",
+               pOut_buf_next, pOut_buf_start, (int64_t)*pOut_buf_size);
+        printf("%lld + %lld - 1\n", (int64_t)(pOut_buf_next - pOut_buf_start),
+               (int64_t)*pOut_buf_size);
+        printf("%lld, %p < %p\n",
+               (int64_t)out_buf_size_mask, pOut_buf_next, pOut_buf_start);
+      }
         *pIn_buf_size = *pOut_buf_size = 0;
         return TINFL_STATUS_BAD_PARAM;
     }

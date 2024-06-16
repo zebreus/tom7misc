@@ -456,9 +456,48 @@ static void TestLong2() {
   TestOneRoundTrip(s);
 }
 
+static void TestRegression3() {
+  ArcFour rc("reg3");
+  static constexpr int SIZE = 1 << 16;
+  // for (int64_t s = 16; s < SIZE; s++) {
+  static constexpr int64_t s = 16;
+
+    std::vector<uint8_t> compressible;
+    for (int i = 0; i < SIZE; i++)
+      compressible.push_back(RandTo(&rc, 25) + 'a');
+
+    std::vector<uint8_t> enc = ZIP::ZipVector(compressible, 9);
+
+    std::unique_ptr<ZIP::DecodeBuffer> db(ZIP::DecodeBuffer::Create());
+
+    std::vector<uint8_t> dec;
+    dec.reserve(compressible.size());
+
+    uint8_t *data = enc.data();
+    int64_t size_left = enc.size();
+    while (size_left > 0) {
+      int64_t chunk = std::min(size_left, s);
+      db->InsertPtr(data, chunk);
+      size_left -= chunk;
+      data += chunk;
+
+      while (db->OutputSize() > 0) {
+        for (uint8_t b : db->GetOutputVector()) {
+          dec.push_back(b);
+        }
+      }
+    }
+
+    CHECK(dec == compressible);
+    printf("OK s=%lld\n", s);
+    // }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  TestRegression3();
+  /*
   TestRegression1();
   TestLong1();
   TestLong2();
@@ -467,6 +506,7 @@ int main(int argc, char **argv) {
 
   // FindCounterexample();
   TestRoundTripRandom();
+  */
 
   printf("OK\n");
   return 0;

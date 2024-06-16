@@ -6,18 +6,17 @@
 #include <string>
 #include <vector>
 
-// Simple flate codec, wrapping miniz. These are raw streams with
-// header or footer. You could add your own (typically it is useful
+// Simple flate codec, wrapping miniz. These are raw streams with no
+// header nor footer. You could add your own (typically it is useful
 // to record the size of the decompressed data and a checksum) or
 // maybe I'll add those in the future.
 
 struct ZIP {
 
+  // The compression "level" can range from 0 to 9. Higher is slower,
+  // but generates smaller files.
+
   // The simplest functions operate on the entire input at once.
-
-  // The "level" can range from 0 to 9. Higher is slower, but generates
-  // smaller files.
-
   static std::vector<uint8_t> ZipVector(const std::vector<uint8_t> &v,
                                         int level = 7);
   static std::string ZipString(std::string_view s, int level = 7);
@@ -66,7 +65,6 @@ struct ZIP {
     virtual void InsertPtr(const uint8_t *data, size_t size) = 0;
     virtual void InsertString(const std::string &s) = 0;
 
-    // XXX need some way to indicate that the stream is done.
     // XXX need some way to indicate failure.
 
     // Number of bytes that are ready.
@@ -80,6 +78,38 @@ struct ZIP {
     DecodeBuffer();
   };
 
+  // Custom file format. I should also support pkzip and gzip here.
+  // gzip, annoyingly, stores the size mod 2^32, which is a practical
+  // problem for modern files (e.g. wikipedia far exceeds this).
+  struct CCLibHeader {
+    // Always 16 bytes.
+    uint8_t magic[4] = {'C', 'c', 'Z', 'z'};
+    uint8_t flags_msb_first[4] = {};
+    uint8_t size_msb_first[8] = {};
+
+    // Flags are not used yet, so they should all be zero.
+    // This could include stuff like a delta coder.
+    void SetFlags(uint32_t f);
+    uint32_t GetFlags() const;
+
+    void SetSize(uint64_t s);
+    uint64_t GetSize() const;
+
+    bool HasCorrectMagic() const;
+
+    // Just memcpy into the struct.
+    void ParseHeader(uint8_t *data);
+  };
+
+  // TODO
+  /*
+  std::vector<uint8_t> CompressWithHeader(const uint8_t *data,
+                                          size_t size,
+                                          int level = 7);
+
+  std::vector<uint8_t> DecompressWithHeader(const uint8_t *data,
+                                            size_t size);
+  */
 };
 
 #endif

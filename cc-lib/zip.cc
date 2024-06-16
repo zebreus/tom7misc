@@ -21,7 +21,7 @@ static_assert(BUFFER_SIZE >= TINFL_LZ_DICT_SIZE,
 static_assert((BUFFER_SIZE & (BUFFER_SIZE - 1)) == 0,
               "buffer size must be a power of 2");
 
-#define DEBUG_ZIP 0
+#define DEBUG_ZIP 1
 
 namespace {
 
@@ -456,9 +456,9 @@ struct DBImpl : public ZIP::DecodeBuffer {
       size_t out_bytes = CIRC_SIZE;
 
       if (DEBUG_ZIP) {
-        printf("Decompress buffer at %p for %d -> %p (%p)\n",
+        printf("Decompress buffer at %p for %d -> %p (%p) size %lld\n",
                data, (int)in_bytes,
-               circ.get(), circ.get() + circ_pos);
+               circ.get(), circ.get() + circ_pos, out_bytes);
       }
       tinfl_status status =
         tinfl_decompress(dec,
@@ -473,11 +473,13 @@ struct DBImpl : public ZIP::DecodeBuffer {
                (int)out_bytes);
 
         #if DEBUG_ZIP
+        if (false) {
         printf("Full circ buffer is:\n%s\n",
                DumpString(std::string_view{
                    (const char *)circ.get(),
                    CIRC_SIZE
                  }).c_str());
+        }
         #endif
       }
 
@@ -485,7 +487,10 @@ struct DBImpl : public ZIP::DecodeBuffer {
         << "Should be impossible since we're passing data with each "
         "call.";
 
-      CHECK(status != TINFL_STATUS_BAD_PARAM) << "Bug?";
+      CHECK(status != TINFL_STATUS_BAD_PARAM) << "Bug? " <<
+        StringPrintf("%p %lld %p %p %lld\n",
+                     data, in_bytes, circ.get(), circ.get() + circ_pos,
+                     out_bytes);
 
       CHECK(status != TINFL_STATUS_FAILED) <<
         "Flate stream is corrupt (miscellaneous).";
@@ -655,4 +660,52 @@ std::string ZIP::ZipString(std::string_view s, int level) {
 std::vector<uint8_t> ZIP::ZipVector(const std::vector<uint8_t> &v,
                                     int level) {
   return ZipPtr(v.data(), v.size(), level);
+}
+
+
+void ZIP::CCLibHeader::SetFlags(uint32_t f) {
+  flags_msb_first[3] = f & 0xFF; f >>= 8;
+  flags_msb_first[2] = f & 0xFF; f >>= 8;
+  flags_msb_first[1] = f & 0xFF; f >>= 8;
+  flags_msb_first[0] = f & 0xFF; f >>= 8;
+}
+uint32 ZIP::CCLibHeader::GetFlags() const {
+  uint32_t f = 0;
+  f <<= 8; f |= flags_msb_first[3];
+  f <<= 8; f |= flags_msb_first[2];
+  f <<= 8; f |= flags_msb_first[1];
+  f <<= 8; f |= flags_msb_first[0];
+  return f;
+}
+
+void ZIP::CCLibHeader::SetSize(uint64_t s) {
+  size_msb_first[7] = s & 0xFF; s >>= 8;
+  size_msb_first[6] = s & 0xFF; s >>= 8;
+  size_msb_first[5] = s & 0xFF; s >>= 8;
+  size_msb_first[4] = s & 0xFF; s >>= 8;
+  size_msb_first[3] = s & 0xFF; s >>= 8;
+  size_msb_first[2] = s & 0xFF; s >>= 8;
+  size_msb_first[1] = s & 0xFF; s >>= 8;
+  size_msb_first[0] = s & 0xFF; s >>= 8;
+}
+
+uint64_t ZIP::CCLibHeader::GetSize() const {
+  uint32_t s = 0;
+  s <<= 8; s |= size_msb_first[7];
+  s <<= 8; s |= size_msb_first[6];
+  s <<= 8; s |= size_msb_first[5];
+  s <<= 8; s |= size_msb_first[4];
+  s <<= 8; s |= size_msb_first[3];
+  s <<= 8; s |= size_msb_first[2];
+  s <<= 8; s |= size_msb_first[1];
+  s <<= 8; s |= size_msb_first[0];
+  return s;
+}
+
+bool ZIP::CCLibHeader::HasCorrectMagic() const {
+  CCLibHeader r;
+  return r.magic[0] == magic[0] &&
+    r.magic[1] == magic[1] &&
+    r.magic[2] == magic[2] &&
+    r.magic[3] == magic[3];
 }
