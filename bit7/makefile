@@ -3,8 +3,17 @@ all: default
 
 default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd
 
-CXXFLAGS=--std=c++20 -march=native -mtune=native -O3 -Wall -I../cc-lib/
-LFLAGS=-static
+ASAN=true
+
+ifdef ASAN
+  OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
+  # PLATFORM_LDFLAGS += -Wl,--stack,167772160
+else
+  OPTFLAGS=-O3 -march=native -mtune=native
+endif
+
+CXXFLAGS=--std=c++20 $(OPTFLAGS) -Wall -I../cc-lib/
+LFLAGS=$(OPTFLAGS) -static
 
 CCLIB_OBJECTS=../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/image.o ../cc-lib/base/logging.o ../cc-lib/base/stringprintf.o ../cc-lib/util.o
 

@@ -11,7 +11,7 @@
 
 using namespace std;
 
-static constexpr bool VERBOSE = false;
+static constexpr bool VERBOSE = true;
 
 // TODO: Need to add page for "old" DFX fonts.
 
@@ -55,7 +55,7 @@ const std::vector<int> &PageBit7Classic() {
     0x2264,
     // GREATER THAN OR EQUAL TO
     0x2265,
-    // APPROXIMATELY EQUAL
+    // APPROXIMATELY EQUAL (~ on ~)
     0x2248,
     // EURO SIGN
     0x20AC,
@@ -153,7 +153,7 @@ const std::vector<int> &PageBit7Classic() {
     -1,
     0x203B, // reference mark
     // cont'd
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     // Unicode Latin-1 Supplement, mapped to itself.
     // See https://en.wikibooks.org/wiki/Unicode/Character_reference/0000-0FFF
@@ -193,8 +193,8 @@ const std::vector<int> &PageBit7Classic() {
     0x222B, // integral sign
     0x2260, // not equal
     0x2261, // identical to (triple-eq)
-    0x2243, // approximately equal (~ on -)
-    0x2248, // almost equal (~ on =)
+    0x2243, // asymptotically equal to (~ on -)
+    0x2245, // almost equal (~ on =)
     0x2262, // logical not
 
     -1, -1, -1, -1, -1, -1, -1,
@@ -205,6 +205,7 @@ const std::vector<int> &PageBit7Classic() {
     0x2590, 0x2591, 0x2592, 0x2593, 0x2594, 0x2595, 0x2596, 0x2597,
     0x2598, 0x2599, 0x259A, 0x259B, 0x259C, 0x259D, 0x259E, 0x259F,
   };
+
   return CODEPOINTS;
 }
 
@@ -713,7 +714,7 @@ static const std::vector<int> &GetCodepointsForPage(Page p) {
 static constexpr std::initializer_list<std::pair<int, int>>
 REUSE_FOR = {
   // hyphen used as minus
-  {0x2D, 0x2212},
+  {0x002D, 0x2212},
   // ascii -> cyrillic
   {'S', 0x0405},
   {'J', 0x0408},
@@ -741,7 +742,7 @@ REUSE_FOR = {
   // TODO: More cyrillic can be copied from Latin-1, Greek.
   {0x00C6, 0x04D4}, // Æ -> cyrillic
   {0x00E6, 0x04D5}, // æ -> cyrillic
-  {0x0393, 0x0433}, // Γ -> cyrillic
+  {0x0393, 0x0413}, // Γ -> cyrillic
   {0x03A0, 0x041F}, // Π -> cyrillic
   {0x03A6, 0x0424}, // Φ -> cyrillic
   {0x00C8, 0x0400}, // È -> cyrillic
@@ -987,10 +988,11 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
     const int codepoint = codepoints[cidx];
     if (codepoint < 0) {
       if (!ok_missing) {
-        printf("Skipping glyph at %d,%d because the codepoint is not "
-               "configured in page %s!\n",
+        printf("Skipping glyph at %d = %d,%d because the codepoint is not "
+               "configured in page %s (it's %d)!\n",
+               cidx,
                cidx % config.chars_across, cidx / config.chars_across,
-               Config::PageString(p));
+               Config::PageString(p), codepoint);
         printf("%s", FontImage::GlyphString(glyph).c_str());
       }
 
@@ -1045,15 +1047,22 @@ FontImage::FontImage(const Config &config) : config(config) {
 
   // After every page is loaded, fill in any unused codepoints that
   // can be copied from existing ones.
-
   for (const auto &[src, dst] : REUSE_FOR) {
-    // If we do have the source, but don't have the dest, copy.
-    if (unicode_to_glyph.contains(src) &&
-        !unicode_to_glyph.contains(dst)) {
-      if (VERBOSE) {
-        printf("Copy %04x to %04x\n", src, dst);
+    // If we do have a non-blank source, but don't have the dest,
+    // copy. (This includes if the dest is completely blank. It would
+    // make logical sense to be able to somehow suppress the copy
+    // over an empty glyph, but little practical sense.)
+    auto sit = unicode_to_glyph.find(src);
+    if (sit != unicode_to_glyph.end() &&
+        !EmptyGlyph(glyphs[sit->second])) {
+      auto dit = unicode_to_glyph.find(dst);
+      if (dit == unicode_to_glyph.end() ||
+          EmptyGlyph(glyphs[dit->second])) {
+        if (VERBOSE) {
+          printf("Copy %04x to %04x\n", src, dst);
+        }
+        unicode_to_glyph[dst] = unicode_to_glyph[src];
       }
-      unicode_to_glyph[dst] = unicode_to_glyph[src];
     }
   }
 }
