@@ -1,21 +1,18 @@
 // Code for cleaning database of TTFs.
 
 #include <algorithm>
+#include <cstdint>
+#include <ctime>
 #include <string>
 #include <vector>
 #include <stdio.h>
 #include <unistd.h>
-#include <string_view>
-#include <unordered_set>
 #include <mutex>
 #include <unordered_map>
 
 #include "util.h"
 #include "re2/re2.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "randutil.h"
-#include "arcfour.h"
 #include "threadutil.h"
 #include "city/city.h"
 
@@ -26,11 +23,14 @@ using namespace std;
 
 using uint8 = uint8_t;
 using int64 = int64_t;
+using uint64 = uint64_t;
+
+[[maybe_unused]]
 static constexpr bool DRY_RUN = false;
 
 struct ShapeFreer {
   // XXX don't need n
-  ShapeFreer(stbtt_fontinfo *font, int n, stbtt_vertex *v) : font(font), n(n), v(v) {}
+  ShapeFreer(stbtt_fontinfo *font, int n, stbtt_vertex *v) : font(font), v(v) {}
   ShapeFreer() = delete;
   ~ShapeFreer() {
     if (v != nullptr) {
@@ -40,7 +40,6 @@ struct ShapeFreer {
 
 private:
   stbtt_fontinfo *font;
-  int n;
   stbtt_vertex *v;
 };
 
@@ -50,26 +49,26 @@ int main(int argc, char **argv) {
   for (const char *d : DIRS) {
     Ttfarchive::AddAllFilesRec(d, &all_filenames);
   }
-  
+
   // TODO: TTC (truetype collection) may also work,
   // although we only will load the first font.
   RE2 truetype_re(".*\\.(?:[Tt][Tt][Ff]|[Oo][Tt][Ff])");
-  
+
   printf("Num files: %lld\n", (int64)all_filenames.size());
 
   int64 start = time(nullptr);
-  
+
   std::mutex out_m;
   std::unordered_map<string, int64> counters;
   std::vector<string> good, bad;
-  
+
   std::mutex bytes_m;
   int64 total_bytes = 0;
 
   std::mutex contents_m;
   // contents -> filename
   std::unordered_map<uint64, vector<string>> bycontent;
-  
+
   UnParallelApp(all_filenames,
                 [&](const string &filename) {
                 if (!RE2::FullMatch(filename, truetype_re)) {
@@ -78,7 +77,7 @@ int main(int argc, char **argv) {
                   bad.push_back(filename);
                   return;
                 }
-                
+
                 vector<uint8> ttf_bytes = Util::ReadFileBytes(filename);
                 if (ttf_bytes.empty()) {
                   MutexLock ml(&out_m);
@@ -87,7 +86,7 @@ int main(int argc, char **argv) {
                   bad.push_back(filename);
                   return;
                 }
-                
+
                 {
                   MutexLock ml(&bytes_m);
                   total_bytes += ttf_bytes.size();
@@ -99,7 +98,7 @@ int main(int argc, char **argv) {
                   MutexLock ml(&contents_m);
                   bycontent[h].push_back(filename);
                 }
-                
+
                 // printf("%s\n", filename.c_str());
                 // fflush(stdout);
 
@@ -136,7 +135,7 @@ int main(int argc, char **argv) {
                 bool all_match = true;
                 for (int uc = 'A'; uc <= 'Z'; uc++) {
                   const int lc = uc | 32;
-                  
+
                   stbtt_vertex *uvertices = nullptr;
                   stbtt_vertex *lvertices = nullptr;
                   const int un = stbtt_GetCodepointShape(&font, uc, &uvertices);
@@ -163,11 +162,11 @@ int main(int argc, char **argv) {
                     bad.push_back(filename);
                     return;
                   }
-                      
+
 
                   auto SameShape = [un, ln, uvertices, lvertices]() {
                       if (un != ln) return false;
-                      
+
                       for (int i = 0; i < un; i++) {
                         const stbtt_vertex &u = uvertices[i];
                         const stbtt_vertex &l = lvertices[i];
@@ -200,7 +199,7 @@ int main(int argc, char **argv) {
 
                       return true;
                     };
-                  
+
                   // See if they still match...
                   if (all_match)
                     if (!SameShape())
@@ -214,7 +213,7 @@ int main(int argc, char **argv) {
                   bad.push_back(filename);
                   return;
                 }
-                
+
                 {
                   MutexLock ml(&out_m);
                   good.push_back(filename);
@@ -236,11 +235,11 @@ int main(int argc, char **argv) {
       for (int i = 0; i < ranks.size(); i++)
         if (!ranks[i].empty() && Util::StartsWith(a, ranks[i]))
           return i;
-        
+
       LOG(FATAL) << "Need directory in ranks.txt matching " << a;
       return 99999;
     };
-  
+
   auto Preference = [&Rank](const string &a, const string &b) {
       int aa = Rank(a);
       int bb = Rank(b);

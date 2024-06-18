@@ -1,23 +1,10 @@
-// Mark fonts whose characters for a-z seem to be simple
-// transformations (x = ax + b, y = cx + d) of A-Z.
+// This was a bug report for stb_truetype, which sean has
+// fixed!
 
-#include <algorithm>
-#include <string>
-#include <vector>
 #include <stdio.h>
 #include <unistd.h>
-#include <string_view>
-#include <unordered_set>
-#include <mutex>
-#include <unordered_map>
 
-#include "util.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "randutil.h"
-#include "arcfour.h"
-#include "threadutil.h"
-#include "city/city.h"
 
 #include "fonts/ttf.h"
 #include "stb_truetype.h"
@@ -34,6 +21,7 @@ int main(int argc, char **argv) {
   TTF ttf{"exedoreli.ttf"};
   const stbtt_fontinfo *info = ttf.FontInfo();
 
+  [[maybe_unused]]
   float stb_scale = stbtt_ScaleForPixelHeight(info, 200.0f);
 
   int width2, height2, x2, y2;

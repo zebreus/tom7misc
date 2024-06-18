@@ -109,9 +109,12 @@ int main(int argc, char **argv) {
   fclose(fin);
 
   // Write header now that we have the actual size.
+  printf("We compressed %lld (guess %lld) bytes.\n", input_processed,
+         input_size_guess);
   fseek(fou, 0, SEEK_SET);
   header.SetFlags(0);
   header.SetSize(input_processed);
+  CHECK(header.GetSize() == input_processed);
   CHECK(1 == fwrite(&header, sizeof (header), 1, fou)) << outfile;
 
   fclose(fou);

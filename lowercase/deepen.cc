@@ -1,17 +1,16 @@
 
+#include <cstdio>
+#include <ctime>
+#include <memory>
 #include <string>
 #include <vector>
-#include <shared_mutex>
 #include <cstdint>
 #include <unordered_set>
 
-#include "threadutil.h"
 #include "randutil.h"
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-
-#include "timer.h"
 
 #include "network.h"
 #include "network-util.h"
@@ -62,7 +61,7 @@ static Network *DeepenNetwork(ArcFour *rc, const Network &old_net, int layer_idx
   fflush(stdout);
 
   auto MakeCopy = [layer_idx](auto &v) {
-      printf("size %d   %d + 1 = %d\n", v.size(), layer_idx, layer_idx + 1);
+      printf("size %zu   %d + 1 = %d\n", v.size(), layer_idx, layer_idx + 1);
       const auto prev = v[layer_idx + 1];
       v.insert(v.begin() + layer_idx + 1 + 1, prev);
     };

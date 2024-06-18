@@ -3,7 +3,12 @@
 #define _CLUTIL_H
 
 #include <CL/cl.h>
+#include <CL/cl_platform.h>
+#include <cstdint>
+#include <cstdio>
+#include <stdlib.h>
 #include <string>
+#include <utility>
 #include <vector>
 
 using uint8 = uint8_t;
@@ -39,7 +44,7 @@ struct CL {
         nullptr);
   }
   */
-  
+
   std::pair<cl_program, cl_kernel>
   BuildOneKernel(const std::string &kernel_src,
                  const std::string &function_name);

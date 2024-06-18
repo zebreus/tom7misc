@@ -1,6 +1,6 @@
 
 // Experimental tool to animate "drawing" an input image.
-// Used in BoVeX for the auto-draw primop.
+// Standalone version of the auto-draw primop used in BoVeX.
 
 #include "animation.h"
 

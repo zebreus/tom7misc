@@ -8,19 +8,20 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-#include "util.h"
 #include "ansi.h"
-#include "re2/re2.h"
-#include "database.h"
-#include "image.h"
+#include "bignum/big.h"
 #include "bounds.h"
 #include "color-util.h"
-#include "predict.h"
+#include "database.h"
 #include "factorization.h"
-#include "map-util.h"
-#include "set-util.h"
 #include "hashing.h"
-#include "bignum/big.h"
+#include "image.h"
+#include "map-util.h"
+#include "numbers.h"
+#include "predict.h"
+#include "re2/re2.h"
+#include "set-util.h"
+#include "util.h"
 
 using namespace std;
 

@@ -1,19 +1,20 @@
 
+#include <cstddef>
+#include <cstdio>
+#include <optional>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 #include <string>
 #include <algorithm>
 #include <cstdint>
 #include <memory>
 
+#include "fonts/ttf.h"
 #include "timer.h"
 #include "font-problem.h"
-
 #include "image.h"
-#include "lines.h"
-#include "base/stringprintf.h"
-
 #include "network.h"
-#include "threadutil.h"
 
 using namespace std;
 
@@ -52,7 +53,7 @@ static void FindOneLoop(bool lower, char ch) {
   CHECK(make_uppercase.get() != nullptr);
 
   // std::unordered_map<ImageA, int, HashImageA> seen;
-  std::unordered_map<vector<bool>, int> seen;  
+  std::unordered_map<vector<bool>, int> seen;
 
   const Network *net =
     lower ? make_lowercase.get() : make_uppercase.get();
@@ -79,19 +80,19 @@ static void FindOneLoop(bool lower, char ch) {
       SCALE == 1 ? Threshold(sdf) :
       Threshold(sdf.ResizeBilinear(SDF_SIZE * SCALE,
                                    SDF_SIZE * SCALE));
-    
+
     int &prev = seen[bits];
     if (prev == 0) {
       prev = iters;
     } else {
-      printf("Got loop at %d -> %d\n", iters, prev);
+      printf("Got loop at %lld -> %d\n", iters, prev);
       sdf.Make8Bit().GreyscaleRGBA().Save("loop.png");
       return;
     }
     if (iters % 10000 == 0) {
       double total_ms = timer.MS();
       double ips = iters / (total_ms / 1000.0);
-      printf("%d iters, %.2f iters/sec\n", iters, ips);
+      printf("%lld iters, %.2f iters/sec\n", iters, ips);
     }
   }
   printf("Never found a loop!");
@@ -99,10 +100,11 @@ static void FindOneLoop(bool lower, char ch) {
   return;
 }
 
+[[maybe_unused]]
 static void FindAllLoops(bool lower) {
   TTF helvetica("helvetica.ttf");
   constexpr float SCALE = 2.0;
-  
+
   std::unique_ptr<Network> make_lowercase, make_uppercase;
   make_lowercase.reset(Network::ReadNetworkBinary("net0.val"));
   make_uppercase.reset(Network::ReadNetworkBinary("net1.val"));
@@ -111,7 +113,7 @@ static void FindAllLoops(bool lower) {
   CHECK(make_uppercase.get() != nullptr);
 
   // std::unordered_map<ImageA, int, HashImageA> seen;
-  std::unordered_map<vector<bool>, std::vector<std::pair<int, char>>> seen;  
+  std::unordered_map<vector<bool>, std::vector<std::pair<int, char>>> seen;
 
   const Network *net =
     lower ? make_lowercase.get() : make_uppercase.get();
@@ -135,27 +137,27 @@ static void FindAllLoops(bool lower) {
 
     int64 iters = 0;
     while (iters < 25000000) {
-      
+
       vector<bool> bits =
         SCALE == 1 ? Threshold(sdf) :
         Threshold(sdf.ResizeBilinear(SDF_SIZE * SCALE,
                                      SDF_SIZE * SCALE));
-    
+
       std::vector<std::pair<int, char>> &prev = seen[bits];
       if (prev.empty()) {
         prev.emplace_back(iters, ch);
       } else {
         auto AddSelf = [&prev, iters, ch]() -> bool {
-            for (const auto [previ, prevc] : prev) {
+            for (const auto &[previ, prevc] : prev) {
               if (prevc == ch) {
-                printf("[%c] full loop %d -> %d\n", ch, iters, previ);
+                printf("[%c] full loop %lld -> %d\n", ch, iters, previ);
                 return true;
               }
             }
             prev.emplace_back(iters, ch);
             return false;
           };
-        
+
         if (AddSelf()) {
           max_depth = std::max(iters, max_depth);
           break;
@@ -164,13 +166,13 @@ static void FindAllLoops(bool lower) {
       if (all_iters % 10000 == 0) {
         double total_ms = timer.MS();
         double ips = all_iters / (total_ms / 1000.0);
-        printf("[%c] %d iters %d total, %.2f iters/sec\n",
+        printf("[%c] %lld iters %lld total, %.2f iters/sec\n",
                ch,
                iters, all_iters, ips);
       }
 
       CHECK(sdf.Width() == SDF_CONFIG.sdf_size) << sdf.Width();
-      CHECK(sdf.Height() == SDF_CONFIG.sdf_size);      
+      CHECK(sdf.Height() == SDF_CONFIG.sdf_size);
       sdf = FontProblem::RunSDFModelF(*net, SDF_CONFIG, sdf).first;
       iters++;
       all_iters++;

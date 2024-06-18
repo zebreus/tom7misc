@@ -2,11 +2,17 @@
 // Simplify a network by removing nodes that never have significant
 // activation.
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <ctime>
+#include <initializer_list>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
-#include <shared_mutex>
 #include <cstdint>
-#include <set>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -16,7 +22,6 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "image.h"
-#include "util.h"
 
 #include "timer.h"
 #include "network.h"
@@ -239,7 +244,7 @@ CullLayer(ArcFour *rc,
 
   ez.MakeWidthHeight();
   printf("Removed %d weak, %d low-rank, and %d unreferenced nodes.\n"
-         "New size %dx%d = %d.\n",
+         "New size %dx%d = %zu.\n",
          removed_weak, removed_rank, removed_unreferenced,
          ez.width, ez.height, ez.nodes.size());
 
@@ -348,7 +353,7 @@ static std::unordered_set<int> GetUnreferenced(const Network &net,
   return unreferenced;
 }
 
-static uint8 FloatByte(float f) {
+static uint8_t FloatByte(float f) {
   int x = roundf(f * 255.0f);
   return std::clamp(x, 0, 255);
 }
@@ -413,7 +418,7 @@ static void CullNetworkAt(ArcFour *rc, Network *net,
       for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
           float f = max_stim.values[layer_idx][y * w + x];
-          uint8 v = FloatByte(f);
+          uint8_t v = FloatByte(f);
           img.SetPixel(x, starty + y, v, v, v, 0xFF);
         }
       }
@@ -426,7 +431,7 @@ static void CullNetworkAt(ArcFour *rc, Network *net,
   const std::unordered_set<int> unreferenced =
     GetUnreferenced(*net, cull_layer);
   if (!unreferenced.empty())
-    printf("[Cull layer %d] There are %d unreferenced nodes\n", cull_layer,
+    printf("[Cull layer %d] There are %zu unreferenced nodes\n", cull_layer,
            unreferenced.size());
 
   // If missing from the remapping, it is deleted.

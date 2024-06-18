@@ -1,12 +1,9 @@
 #include <cmath>
-#include <chrono>
 #include <memory>
 #include <vector>
 #include <functional>
-#include <string>
 #include <bit>
 #include <tuple>
-#include <atomic>
 
 #include <windows.h>
 
@@ -29,7 +26,6 @@
 #include "sos-util.h"
 #include "sos-gpu.h"
 #include "sos-quad.h"
-#include "predict.h"
 #include "auto-histo.h"
 
 using namespace std;

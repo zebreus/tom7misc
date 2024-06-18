@@ -178,6 +178,11 @@
         (set-fontset-font t 'greek-iso8859-7
                           "FixederSys 2x-24:antialias=none")
 
+        ;; this seems like a pretty good approach. We lose replacements
+        ;; for some wild characters, but it does still fall through
+        ;; for many
+        (set-fontset-font t 'unicode-bmp "FixederSys 2x-24:antialias=none")
+
          (modify-frame-parameters nil
            (list '(top . 40) '(width . 80) '(height . 64))) ;; XX to 99
          ;; to see frame parameters:
@@ -577,6 +582,9 @@
                 ("README$" . english-mode)
                 ("HACKING$" . english-mode)
                 ("\\.txt$" . english-mode)
+                ;; builtin changelog mode is too annoying
+                ("[cC]hange[lL]og[-.][-0-9a-z]+\\'" . english-mode)
+                ("CHANGELOG[-.][-0-9a-z]+\\'" . english-mode)
                 ("\\.mli?$" . sml-mode) ;; XXX need caml-mode
                 ("\\.mst$" . homework-mode)
                 ("\\.wrd$" . homework-mode)
@@ -584,6 +592,7 @@
                 ("\\.proto$" . protobuf-mode)
                 ("\\.tfdesc$" . textformat-mode)
                 ("\\.sig$" . sml-mode)) auto-mode-alist))
+;; (prin1 auto-mode-alist)
 
 ;; Prefer C++ for .h files. Really just keyword highlighting,
 ;; and you should probably avoid C++ keywords in C anyway.

@@ -515,8 +515,9 @@ struct WikipediaImpl : public Wikipedia {
     RE2::GlobalReplace(body, "(?:\u2212|\u2013)", "-");
     // Em dash.
     RE2::GlobalReplace(body, "(?:\u2014)", "--");
+    // Fancy single quotes
+    RE2::GlobalReplace(body, "(?:\u2018|\u2019)", "\'");
 
-    // TODO: fancy single quotes
   }
 
   void PrintStats() override {

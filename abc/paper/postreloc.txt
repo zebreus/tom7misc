@@ -92,25 +92,25 @@ Source code for this project is available at:   http://tom7.org/abc
 This is a challenging programming problem!
 
   - Well, you have to write a compiler;
-  
+
   - Due to some constraints, it has to produce reasonably good (small)
     code, or the compilation strategy will fail;
-    
+
   - You only get a handful of instructions;
-  
+
   - Some extremely important instructions are completely missing;
-  
+
   - Notably, superficially you can't load arbitrary numbers into
     registers, jump backwards, or interact with the operating system;
-    
+
   - Many remaining instructions can only be used in weird addressing modes;
 
   - Several standard techniques for assembling programs don't work
     due to the subset targeted;
-    
+
   - The program's header must also be printable, which puts constraints
     on its size and layout;
-    
+
   - Unreasonable SIGBOVIK policies require that papers not be xxx-tra
     large-size.
 
@@ -156,7 +156,7 @@ read this table, but I will refer to it:
        64  FS segment override prefix
        65  GS segment override prefix
        66  operand size override prefix
-       67  address size override prefix     
+       67  address size override prefix
     68,6A  PUSH imm
     69,6B  IMUL
     6C,6D  INS ES:DI <- DX
@@ -179,16 +179,16 @@ give a little thought to the following puzzles:
  - How can we load an arbitrary number (e.g. an address constant) into
    a register? Note that the immediate value in something like "PUSH imm"
    must be printable.
-   
+
  - Without the MOV instruction, how do we do loads and stores?
- 
+
  - Without the INT instruction, how can we even exit the program?
- 
+
  - How do we implement bitwise OR with the given instructions?
- 
+
  - The Jcc (e.g. JNZ, JAE) instructions take only an absolute displacement.
    How do we do function (pointer) calls and returns?
-   
+
  - The displacement must be printable, which means it is always a
    positive number. How do we even do loops?
 
@@ -254,18 +254,18 @@ offset). Some annoying facts:
 
  - The segment registers are changed through different instructions than
    the regular registers. None are available in printable X86.
-   
+
  - However, we can make some instructions use a different segment
    register with one of the prefix bytes (e.g. 0x36 makes the next
    instruction use the SS (stack) segment instead of the default, which
    might be DS (data)).
-   
+
  - However, some other instructions like PUSH or OUTS can only use a
    specific segment.
-   
+
  - There are multiple different SEG:OFF pairs that reference the same
    real address.
-   
+
  - The segment values are not predictable in DOS, because they depend
    on where DOS happens to place your program.
 
@@ -321,7 +321,7 @@ looks like this:
       20  initial ins pointer          (program dependent)
       22  code segment displacement    0x20 0x20
       24  relocation table start       0x20 0x20
-      26  overlay number               0x43 0x20             C 
+      26  overlay number               0x43 0x20             C
 
 Normally, the  header is followed by  the relocation table (if  any; see
 below) and  then the program  image. The program  image is some  blob of
@@ -353,13 +353,13 @@ but the crux of the solution involves the following tricks:
   - Overflow the "pages in file" (a page is 512 bytes, so 0x2320 is 4MB;
     way beyond the 1MB limit) field to provide a smaller effective value.
     The file still needs to be pretty big.
-    
+
   - Specify a much larger than usual "pages in header" (0x2020 * 16 =
     131kb). Since the header isn't loaded into memory, it doesn't count
     against the program's memory needs. A really big header also gives
     us space to store the paper. You're looking at part of the "header"
     right now.
-    
+
   - Give technically invalid values for some fields (extrabytes, checksum,
     overlay number); DOS doesn't actually seem to care about these.
     This helps us get a paper title that's almost readable.
@@ -371,10 +371,10 @@ The layout of a compiled program is roughly like this:
                               DS,ES    CS       SS
                               |        |        |      (additional memory)
    (not in memory)            v        v        v
-   +--------------------------+-----------------------+ - - - - - - 
+   +--------------------------+-----------------------+ - - - - - -
    |hdr|paper| reloc | paper  |   program image       |             ...
-   |   |intro|       |        |   paper   paper  paper|         
-   +--------------------------+-----------------------+ - - - - - - 
+   |   |intro|       |        |   paper   paper  paper|
+   +--------------------------+-----------------------+ - - - - - -
     PAPER.EXE .......
 
 This results in  an file size of  409,600 bytes, which I  believe is the
@@ -499,10 +499,10 @@ addressing modes. Notably:
 
  - We can't do any register-to-register operations, like "AND AX <- BX".
    Most compilers use these instructions frequently!
-   
+
  - As a result, exactly one of the source or destination operand is
    some location in memory.
-   
+
  - The simple addressing modes can only be paired with some registers.
    For example, AND DI <- [EDX] is allowed, but AND AX <- [EDX] is not.
    [ESI] means the memory in the location pointed to by the value in
@@ -523,7 +523,7 @@ To perform a basic subtraction operation, whereas a traditional compiler
 is likely to emit an instruction like
 
    0x29 0xC2    SUB AX <- DX          ;; AX = AX - DX
-   
+
 ABC emits a sequence like
 
    ??                     MOV AX <- [EBP+0x22]    ;; AX = tmp2
@@ -544,26 +544,26 @@ temporary 0 is accessed as [EBP+0x20].
 With this idea in mind, here is a summary of ABC's low-level design:
 
  - A C pointer is represented as a 16-bit address into the data segment.
- 
+
  - Anything addressable therefore needs to be stored in DS. This includes
    global variables, local variables and function arguments.
 
  - Global variables are just allocated at compile time to some locations
    near the beginning of DS.
-   
+
  - A traditional C compiler uses the machine stack to store local
    variables, but since these need to be in DS, not SS, we maintain a
    separate stack of arguments and locals in DS, which starts after the
    global variables and grows towards larger addresses. This is called the
    locals stack. The register EBX points 32 bytes before the locals stack,
    so that we can use [EBX+disp8] to efficiently access locals.
-   
+
  - EBP always points 32 bytes before the "temp stack".
- 
+
  - Both stacks (and the machine stack) advance when we make a function
    call, so that the values of locals and temporaries persist across the
    function call. ABC only stores the return address on the machine stack.
-   
+
  - Aside from EBX, EBP, and ESP (the machine stack pointer), all other
    registers can be used for any purpose.
 
@@ -664,15 +664,15 @@ value 0x00. Then this sequence:
 
    instruction    AH  AL        stack           (ww, xx, yy, zz stand for
                   ww  0x12      xx yy zz ...          some arbitrary junk)
-   PUSH AX            
-                  ww  0x12      0x12 ww xx yy zz ...   
-   PUSH 0x3040        
+   PUSH AX
+                  ww  0x12      0x12 ww xx yy zz ...
+   PUSH 0x3040
                   ww  0x12      0x40 0x30 0x12 ww xx yy zz ...
-   INC SP             
+   INC SP
                   ww  0x12      0x30 0x12 ww xx yy zz ...
-   POP AX             
+   POP AX
                 0x12  0x30      ww xx yy zz ...
-   INC SP             
+   INC SP
                 0x12  0x30      xx yy zz ...
 
 Remember that x86 is  little endian, so the low byte goes  on the top of
@@ -721,7 +721,7 @@ trick.
     1  0  0  0    A AND B
     0  1  1  0    A XOR B
     0  0  0  0    (A AND B) AND (A XOR B)
-    1  1  1  0    (A AND B)  OR (A XOR B)    
+    1  1  1  0    (A AND B)  OR (A XOR B)
     1  1  1  0    (A AND B)  +  (A XOR B)
 
     1  1  1  0    A  OR B
@@ -969,7 +969,7 @@ Sadly, there are two very serious issues:
    illegal instruction itself, not the one that follows it. So when the
    interrupt handler returns, it simply executes another illegal
    instruction.
-   
+
  - When the interrupt is triggered, it clears the interrupt flag (so
    that for example the timer interrupt doesn't fire while it's already
    running). Only a few instructions, which we don't have access to,
@@ -989,7 +989,7 @@ printable; the instruction we actually encode is
 
 The ASCII  sequence is  "cya", as  in see  ya, which  we follow  with an
 unexecuted exclamation mark for emphasis. You can find the string "cya!"
-in the code segment on page 16 if you're good at Where's Waldo stuff!
+in the code segment on page 13 if you're good at Where's Waldo stuff!
 
 
     ** 18. Loops **

@@ -1,4 +1,4 @@
-all : decode-monika.exe pass.exe swipe-ambiguous.exe memtest.exe optional.exe bus.exe cubedex.exe cubedex2.exe extractpng.exe compress.exe
+all : decode-monika.exe pass.exe swipe-ambiguous.exe memtest.exe optional.exe bus.exe cubedex.exe cubedex2.exe extractpng.exe compress.exe decompress.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)

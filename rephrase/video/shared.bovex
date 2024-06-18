@@ -589,7 +589,7 @@ fun diagram-slide slide title img =
     (!current-page, !current-frame,
      exact-image-at { x = round IMG-PAD-LEFT,
                       y = round IMG-PAD-TOP,
-                      img = img});
+                      img = img });
     next-slide()
   end
 

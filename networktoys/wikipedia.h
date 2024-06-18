@@ -1,4 +1,7 @@
 
+// Note: The canonical version of this is now in ../acronymine.
+// They should probably be consolidated into cc-lib etc.
+
 // TODO: To cc-lib?
 
 #ifndef _WIKIPEDIA_H

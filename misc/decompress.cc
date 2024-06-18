@@ -39,7 +39,14 @@ int main(int argc, char **argv) {
   CHECK(header.GetFlags() == 0) << "Unsupported flags.\n";
 
   // Guess file size, but this is just for progress reporting.
+  /*
+  printf("Header bytes:\n");
+  for (int i = 0; i < sizeof (header); i++) {
+    printf(" %02x", ((const uint8_t*)&header)[i]);
+  }
+  */
   const int64_t output_size = header.GetSize();
+  // printf("Supposedly there are %lld bytes in the output.\n", output_size);
   int64_t input_processed = 0;
   int64_t output_written = 0;
 
@@ -65,6 +72,7 @@ int main(int argc, char **argv) {
       };
     };
 
+  printf("\n");
   std::vector<uint8_t> buf(BUFFER_SIZE, 0);
   while (!feof(fin)) {
     size_t bytes = fread(buf.data(), 1, BUFFER_SIZE, fin);
