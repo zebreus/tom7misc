@@ -11,6 +11,7 @@
 #define _CC_LIB_HEAP_H
 
 #include <vector>
+#include <cstdio>
 
 // Heaps are intrusive: The values stored within should be derived
 // from this class.
