@@ -7,6 +7,7 @@
 #include "base/logging.h"
 #include "font-image.h"
 #include "util.h"
+// ѢALL ѣall
 
 using namespace std;
 

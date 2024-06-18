@@ -35,6 +35,10 @@ const char *Config::PageString(Page p) {
   }
 }
 
+inline static bool PageUsesEmptyGlyphs(Page p) {
+  return p == Page::BIT7_CLASSIC;
+}
+
 // Tips:
 //  - To move glyphs between pages, first duplicate them, then
 //    normalize, then set the sources to -1, then normalize again.
@@ -749,7 +753,10 @@ REUSE_FOR = {
   {0x00CB, 0x0401}, // Ë -> cyrillic
   {0x00E8, 0x0450}, // è -> cyrillic
   {0x00EB, 0x0451}, // ë -> cyrillic
-
+  {0x00C4, 0x04D2}, // Ä -> cyrillic
+  {0x00E4, 0x04D3}, // ä -> cyrillic
+  {0x00D6, 0x04E6}, // Ö -> cyrillic
+  {0x00F6, 0x04E7}, // ö -> cyrillic
 
   // ascii -> greek
   {'J', 0x037F},
@@ -771,6 +778,12 @@ REUSE_FOR = {
   {'o', 0x03BF},
   {'u', 0x03C5},
   {'x', 0x03C7},
+
+  // Coptic homoglyphs
+  {'C', 0x2CA4},
+  {'c', 0x2CA5},
+  {'O', 0x2C9E},
+  {'o', 0x2C9F},
 
   // Full-width comma
   {',', 0xFF0C},
@@ -806,6 +819,10 @@ REUSE_FOR = {
   {0x25CF, 0x23FA},
   // Same for square
   {0x25A0, 0x23F9},
+
+  // Various for IPA (Latin Extended B)
+  {0x03A3, 0x01A9}, // Greek Σ -> esh
+  {'!', 0x01C3},
 };
 
 Config Config::ParseConfig(const string &cfgfile) {
@@ -997,9 +1014,18 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
       }
 
     } else {
+      // We use empty glyphs on the classic codepage, since it is sparsely
+      // mapped, and this is where the space character lives. Otherwise,
+      // we treat this as a missing glyph. Perhaps we should give some way
+      // (like making it all black) to indicate a deliberate empty glyph,
+      // though.
+      bool write_empty_glyph =
+        PageUsesEmptyGlyphs(p) &&
+        !unicode_to_glyph.contains(codepoint);
+
       // A codepoint can appear multiple times in different pages. We take
       // the last one, but don't overwrite with an empty glyph.
-      if (!is_empty || !unicode_to_glyph.contains(codepoint)) {
+      if (!is_empty || write_empty_glyph) {
         unicode_to_glyph[codepoint] = gidx;
       }
     }
