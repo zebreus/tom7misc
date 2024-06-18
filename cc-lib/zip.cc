@@ -674,10 +674,10 @@ void ZIP::CCLibHeader::SetFlags(uint32_t f) {
 }
 uint32 ZIP::CCLibHeader::GetFlags() const {
   uint32_t f = 0;
-  f <<= 8; f |= flags_msb_first[3];
-  f <<= 8; f |= flags_msb_first[2];
-  f <<= 8; f |= flags_msb_first[1];
   f <<= 8; f |= flags_msb_first[0];
+  f <<= 8; f |= flags_msb_first[1];
+  f <<= 8; f |= flags_msb_first[2];
+  f <<= 8; f |= flags_msb_first[3];
   return f;
 }
 
@@ -693,15 +693,15 @@ void ZIP::CCLibHeader::SetSize(uint64_t s) {
 }
 
 uint64_t ZIP::CCLibHeader::GetSize() const {
-  uint32_t s = 0;
-  s <<= 8; s |= size_msb_first[7];
-  s <<= 8; s |= size_msb_first[6];
-  s <<= 8; s |= size_msb_first[5];
-  s <<= 8; s |= size_msb_first[4];
-  s <<= 8; s |= size_msb_first[3];
-  s <<= 8; s |= size_msb_first[2];
-  s <<= 8; s |= size_msb_first[1];
+  uint64_t s = 0;
   s <<= 8; s |= size_msb_first[0];
+  s <<= 8; s |= size_msb_first[1];
+  s <<= 8; s |= size_msb_first[2];
+  s <<= 8; s |= size_msb_first[3];
+  s <<= 8; s |= size_msb_first[4];
+  s <<= 8; s |= size_msb_first[5];
+  s <<= 8; s |= size_msb_first[6];
+  s <<= 8; s |= size_msb_first[7];
   return s;
 }
 
