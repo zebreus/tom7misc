@@ -39,6 +39,9 @@ static constexpr inline float PDF_MM_TO_POINT(float mm) {
 namespace internal {
 // This is hoisted out to work around a GCC bug. Call it PDF::Options.
 struct PDFOptions {
+  // If compression is enabled, the amount to compress in [1, 9]. Higher
+  // gives more compression, but the default is a good choice.
+  int compression_level = 7;
   // If true, use flate compression on embedded streams. There's not really
   // any reason to turn off compression except that it makes it harder to
   // debug by looking at the generated PDF.

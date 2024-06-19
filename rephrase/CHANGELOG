@@ -1,8 +1,8 @@
 
 19 Jun 2024 (r5927)
 
- * PDF files written by BoVeX now have embedded fonts compressed with
-   flate compression, which saves a lot of bytes.
+ * PDF files written by BoVeX now use flate compression, which saves a
+   lot of bytes (particularly for embedded TTFs).
 
 9 Jun 2024 (r5906)
 

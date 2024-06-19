@@ -996,8 +996,24 @@ void PDF::pdf_add_stream(Page *page, std::string str) {
   StreamObj *sobj = AddObject(new StreamObj);
   CHECK(sobj != nullptr);
 
-  sobj->stream = StringPrintf("<< /Length %d >>stream\n", (int)str.size());
-  sobj->stream.append(str);
+  if (options.use_compression) {
+    std::string flate_bytes = ZIP::ZlibString(str, options.compression_level);
+    // /Filter /FlateDecode
+    // 012345678901234567890
+    if (flate_bytes.size() + 20 < str.size()) {
+      sobj->stream = StringPrintf(
+          "<< /Length %d /Filter /FlateDecode >>stream\n", (int)flate_bytes.size());
+      sobj->stream.append(flate_bytes);
+    } else {
+      // If it's not smaller (which is common for very short streams, for example)
+      // then don't bother compressing it.
+      sobj->stream = StringPrintf("<< /Length %d >>stream\n", (int)str.size());
+      sobj->stream.append(str);
+    }
+  } else {
+    sobj->stream = StringPrintf("<< /Length %d >>stream\n", (int)str.size());
+    sobj->stream.append(str);
+  }
   StringAppendF(&sobj->stream, "\nendstream\n");
 
   page->children.push_back(sobj);
@@ -4005,7 +4021,7 @@ std::string PDF::AddTTF(const std::string &filename) {
 
   if (options.use_compression) {
     const std::vector<uint8_t> flate_bytes =
-      ZIP::ZlibVector(ttf_bytes);
+      ZIP::ZlibVector(ttf_bytes, options.compression_level);
     StringAppendF(&obj->stream,
                   "  /Filter /FlateDecode\n"
                   "  /Length %lu\n"
