@@ -186,7 +186,9 @@ class QrSegment final {
    * The character count (numCh) must agree with the mode and the bit buffer length,
    * but the constraint isn't checked. The given bit buffer is copied and stored.
    */
-  public: QrSegment(const Mode &md, int numCh, const std::vector<bool> &dt);
+  public:
+  [[maybe_unused]]
+  QrSegment(const Mode &md, int numCh, const std::vector<bool> &dt);
 
 
   /*
@@ -194,7 +196,9 @@ class QrSegment final {
    * The character count (numCh) must agree with the mode and the bit buffer length,
    * but the constraint isn't checked. The given bit buffer is moved and stored.
    */
-  public: QrSegment(const Mode &md, int numCh, std::vector<bool> &&dt);
+  public:
+
+  QrSegment(const Mode &md, int numCh, std::vector<bool> &&dt);
 
 
   /*---- Methods ----*/
@@ -698,7 +702,6 @@ vector<QrSegment> QrSegment::makeSegments(const char *text) {
   return result;
 }
 
-
 QrSegment QrSegment::makeEci(long assignVal) {
   BitBuffer bb;
   if (assignVal < 0)
@@ -808,7 +811,6 @@ QrCode QrCode::encodeText(const char *text, Ecc ecl) {
   return encodeSegments(segs, ecl);
 }
 
-
 QrCode QrCode::encodeBinary(const vector<uint8_t> &data, Ecc ecl) {
   vector<QrSegment> segs{QrSegment::makeBytes(data)};
   return encodeSegments(segs, ecl);
@@ -917,7 +919,6 @@ QrCode::QrCode(int ver, Ecc ecl, const vector<uint8_t> &dataCodewords, int msk) 
   isFunction.shrink_to_fit();
 }
 
-
 int QrCode::getVersion() const {
   return version;
 }
@@ -927,11 +928,9 @@ int QrCode::getSize() const {
   return size;
 }
 
-
 QrCode::Ecc QrCode::getErrorCorrectionLevel() const {
   return errorCorrectionLevel;
 }
-
 
 int QrCode::getMask() const {
   return mask;
@@ -1392,6 +1391,13 @@ void BitBuffer::appendBits(std::uint32_t val, int len) {
 // TODO: Tom stuff
 
 ImageA QRCode::Text(const std::string &text) {
+  (void)&qrcodegen::QrCode::getVersion;
+  (void)&qrcodegen::QrCode::getMask;
+  (void)&qrcodegen::QrCode::getErrorCorrectionLevel;
+  (void)&qrcodegen::QrCode::encodeBinary;
+  // (void)qrcodegen::QrSegment::QrSegment;
+  (void)&qrcodegen::QrSegment::makeEci;
+
   const qrcodegen::QrCode qr =
     qrcodegen::QrCode::encodeText(text.c_str(),
                                   qrcodegen::QrCode::Ecc::LOW);

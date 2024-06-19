@@ -1,6 +1,8 @@
 
 #include "image.h"
 
+#include <cmath>
+#include <bit>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
