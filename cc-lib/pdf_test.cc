@@ -105,8 +105,11 @@ static void SpaceLine() {
 static void MakeSimplePDF() {
   ArcFour rc("pdf");
 
+  static constexpr bool COMPRESS_TEST_PDF = true;
+
   printf("Create PDF object.\n");
-  PDF pdf(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);
+  PDF pdf(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT,
+          PDF::Options{.use_compression = COMPRESS_TEST_PDF});
 
   PDF::Info info;
   sprintf(info.creator, "pdf_test.cc");

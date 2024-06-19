@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <utility>
@@ -136,13 +137,14 @@ public:
 
     void SetSize(float width, float height);
 
-  private:
+   private:
     // Created by AppendNewPage.
     Page() : Object(OBJ_page) {}
     float width = 0.0f;
     float height = 0.0f;
     std::vector<Object *> children;
     std::vector<Object *> annotations;
+    std::string draw_buffer;
     friend struct PDF;
   };
 
@@ -627,6 +629,15 @@ private:
     GUARD_ADDON_DELIN,
   };
 
+  // In order to reduce the number of objects, and increase the effectiveness
+  // of compression, we consolidate consecutive drawing commands on a page
+  // into a single stream. This manages all of that.
+  void AppendDrawCommand(Page *page, std::string_view cmd);
+  // When adding an object (e.g. an image) that is not drawing commands,
+  // flush existing commands to a regular stream object so that they are
+  // properly ordered.
+  void FlushDrawCommands(Page *page);
+
   int SetErr(int errval, const char *buffer, ...);
   Object *pdf_get_object(int index);
   void pdf_append_object(Object *obj);
@@ -645,6 +656,8 @@ private:
   const Object *pdf_find_last_object(int type) const;
   static int pdf_get_bookmark_count(const Object *obj);
   void pdf_add_stream(Page *page, std::string str);
+  void pdf_add_stream_raw(Page *page, std::string str);
+
   int pdf_save_file(FILE *fp);
   int pdf_save_object(FILE *fp, int index);
 

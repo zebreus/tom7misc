@@ -606,7 +606,11 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     const Object *pages = pdf_find_first_object(OBJ_pages);
     bool printed_xobjects = false;
 
-    const Page *pobj = (Page*)object;
+    Page *pobj = (Page*)object;
+
+    // Flush any delayed buffered commands, which may add
+    // a new child.
+    FlushDrawCommands(pobj);
 
     fprintf(fp,
             "<<\n"
@@ -978,9 +982,42 @@ bool PDF::Save(const std::string &filename) {
   return true;
 }
 
+// In order to reduce the number of objects, and increase the effectiveness
+// of compression, we consolidate consecutive drawing commands on a page
+// into a single stream. This manages all of that.
+void PDF::AppendDrawCommand(Page *page, std::string_view cmd) {
+  if (!page)
+    page = (Page*)pdf_find_last_object(OBJ_page);
+
+  auto IsWhitespace = [](char c) { return c == ' ' || c == '\n'; };
+
+  CHECK(page != nullptr);
+  if (!page->draw_buffer.empty() && !IsWhitespace(page->draw_buffer.back()))
+    page->draw_buffer.push_back('\n');
+
+  page->draw_buffer.append(cmd);
+}
+
+// When adding an object (e.g. an image) that is not drawing commands,
+// flush existing commands to a regular stream object so that they are
+// properly ordered.
+void PDF::FlushDrawCommands(Page *page) {
+  CHECK(page != nullptr);
+  if (!page->draw_buffer.empty()) {
+    pdf_add_stream_raw(page, std::move(page->draw_buffer));
+    page->draw_buffer.clear();
+  }
+}
+
+// Consider whether you can use AppendDrawCommand.
 void PDF::pdf_add_stream(Page *page, std::string str) {
   if (!page)
     page = (Page*)pdf_find_last_object(OBJ_page);
+  FlushDrawCommands(page);
+  pdf_add_stream_raw(page, std::move(str));
+}
+
+void PDF::pdf_add_stream_raw(Page *page, std::string str) {
 
   CHECK(page != nullptr) << "You may need to add a page to the document "
     "first.";
@@ -1028,7 +1065,7 @@ struct Encoding128a {
 
 static std::array<Encoding128a, 107> code_128a_encoding = {
     Encoding128a{0x212222, ' '},
-    {0x222122, '!'},  {0x222221, '"'},   {0x121223, '#'},
+    {0x222122, '!'},  {0x222221, '"'},  {0x121223, '#'},
     {0x121322, '$'},  {0x131222, '%'},  {0x122213, '&'},   {0x122312, '\''},
     {0x132212, '('},  {0x221213, ')'},  {0x221312, '*'},   {0x231212, '+'},
     {0x112232, ','},  {0x122132, '-'},  {0x122231, '.'},   {0x113222, '/'},
@@ -2060,7 +2097,7 @@ void PDF::AddLine(float x1, float y1,
                 Float(x2).c_str(),
                 Float(y2).c_str());
 
-  pdf_add_stream(page, std::move(str));
+  AppendDrawCommand(page, std::move(str));
 }
 
 void PDF::AddCubicBezier(float x1, float y1, float x2, float y2, float xq1,
@@ -2083,7 +2120,7 @@ void PDF::AddCubicBezier(float x1, float y1, float x2, float y2, float xq1,
                 Float(x2).c_str(),
                 Float(y2).c_str());
 
-  pdf_add_stream(page, std::move(str));
+  AppendDrawCommand(page, std::move(str));
 }
 
 void PDF::AddQuadraticBezier(float x1, float y1, float x2, float y2,
@@ -2142,7 +2179,7 @@ void PDF::AddEllipse(float x, float y,
   else
     StringAppendF(&str, "%s", "B ");
 
-  pdf_add_stream(page, std::move(str));
+  AppendDrawCommand(page, std::move(str));
 }
 
 void PDF::AddCircle(float xr, float yr, float radius, float width,
@@ -2162,13 +2199,13 @@ void PDF::AddRectangle(float x, float y,
                 Float(PDF_RGB_B_FLOAT(color)).c_str());
 
   StringAppendF(&str, "%s w ", Float(border_width).c_str());
-  StringAppendF(&str, "%s %s %s %s re S ",
+  StringAppendF(&str, "%s %s %s %s re S",
                 Float(x).c_str(),
                 Float(y).c_str(),
                 Float(width).c_str(),
                 Float(height).c_str());
 
-  pdf_add_stream(page, std::move(str));
+  AppendDrawCommand(page, str);
 }
 
 void PDF::AddFilledRectangle(
@@ -2189,16 +2226,16 @@ void PDF::AddFilledRectangle(
                   Float(PDF_RGB_G_FLOAT(color_border)).c_str(),
                   Float(PDF_RGB_B_FLOAT(color_border)).c_str());
     StringAppendF(&str, "%s w ", Float(border_width).c_str());
-    StringAppendF(&str, "%s %s %s %s re B ",
+    StringAppendF(&str, "%s %s %s %s re B",
                   Float(x).c_str(), Float(y).c_str(),
                   Float(width).c_str(), Float(height).c_str());
   } else {
-    StringAppendF(&str, "%s %s %s %s re f ",
+    StringAppendF(&str, "%s %s %s %s re f",
                   Float(x).c_str(), Float(y).c_str(),
                   Float(width).c_str(), Float(height).c_str());
   }
 
-  pdf_add_stream(page, std::move(str));
+  AppendDrawCommand(page, str);
 }
 
 bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
@@ -2260,7 +2297,7 @@ bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
   else
     StringAppendF(&str, "%s", "B ");
 
-  pdf_add_stream(page, std::move(str));
+  AppendDrawCommand(page, std::move(str));
 
   return true;
 }
@@ -2283,9 +2320,9 @@ bool PDF::AddPolygon(
   for (int i = 1; i < (int)points.size(); i++) {
     StringAppendF(&str, "%f %f l ", points[i].first, points[i].second);
   }
-  StringAppendF(&str, "h S ");
+  StringAppendF(&str, "h S");
 
-  pdf_add_stream(page, std::move(str));
+  AppendDrawCommand(page, str);
   return true;
 }
 
@@ -2307,9 +2344,9 @@ bool PDF::AddFilledPolygon(
   for (int i = 1; i < (int)points.size(); i++) {
     StringAppendF(&str, "%f %f l ", points[i].first, points[i].second);
   }
-  StringAppendF(&str, "h f ");
+  StringAppendF(&str, "h f");
 
-  pdf_add_stream(page, std::move(str));
+  AppendDrawCommand(page, std::move(str));
   return true;
 }
 
@@ -2412,7 +2449,7 @@ bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
                 ") Tj "
                 "ET");
 
-  pdf_add_stream(page, std::move(str));
+  AppendDrawCommand(page, std::move(str));
   return true;
 }
 
@@ -2474,10 +2511,9 @@ bool PDF::AddSpacedLine(const SpacedLine &line,
     }
   }
   StringAppendF(&str,
-                "] TJ\n"
-                "ET");
+                "] TJ ET");
 
-  pdf_add_stream(page, std::move(str));
+  AppendDrawCommand(page, std::move(str));
   return true;
 }
 
@@ -3417,6 +3453,8 @@ bool PDF::pdf_add_jpeg_data(float x, float y, float display_width,
     return false;
   }
 
+  CHECK(page != nullptr);
+
   const JPGHeader &header = oheader.value();
 
   ImageObj *obj = AddObject(new ImageObj);
@@ -3461,6 +3499,8 @@ bool PDF::pdf_add_png_data(float x, float y,
 
   // Parse the png data from memory.
   PNGHeader header = ReadPngHeader(png_data);
+
+  CHECK(page != nullptr);
 
   // indicates if we return an error or add the img at the
   // end of the function
@@ -3697,6 +3737,11 @@ bool PDF::AddImageRGB(float x, float y,
                       const ImageRGB &img,
                       CompressionType compression,
                       Page *page) {
+
+  if (!page)
+    page = (Page*)pdf_find_last_object(OBJ_page);
+
+  CHECK(page != nullptr);
 
   // Also easy to support JPG here.
   if (compression == CompressionType::PNG) {
