@@ -51,6 +51,7 @@
 #include "image.h"
 #include "stb_truetype.h"
 #include "qr-code.h"
+#include "zip.h"
 
 // XXX maybe should avoid this dependency. Just
 // need to read file to a vector.
@@ -3993,18 +3994,33 @@ std::string PDF::AddTTF(const std::string &filename) {
   // PERF: We could deflate the font data here; we'd probably
   // save about 50%.
   std::string str;
+
   StringAppendF(&obj->stream,
                 "<<\n"
                 "  /Type /FontDescriptor\n"
-                // Supposedly required for TrueType fonts.
-                // Since there are no filters, this is the
-                // same as the length.
-                "  /Length1 %lu\n"
-                "  /Length %lu\n"
-                ">>stream\n",
-                (unsigned long) ttf_bytes.size(),
+                // Size of *decompressed* TTF bytes.
+                "  /Length1 %lu\n",
                 (unsigned long) ttf_bytes.size());
-  obj->stream.append((const char*)ttf_bytes.data(), ttf_bytes.size());
+
+
+  if (options.use_compression) {
+    const std::vector<uint8_t> flate_bytes =
+      ZIP::ZlibVector(ttf_bytes);
+    StringAppendF(&obj->stream,
+                  "  /Filter /FlateDecode\n"
+                  "  /Length %lu\n"
+                  ">>stream\n",
+                  (unsigned long) flate_bytes.size());
+    obj->stream.append((const char*)flate_bytes.data(), flate_bytes.size());
+
+  } else {
+    StringAppendF(&obj->stream,
+                  "  /Length %lu\n"
+                  ">>stream\n",
+                  (unsigned long) ttf_bytes.size());
+    obj->stream.append((const char*)ttf_bytes.data(), ttf_bytes.size());
+  }
+
   StringAppendF(&obj->stream, "\nendstream\n");
 
   fobj->ttf = obj;

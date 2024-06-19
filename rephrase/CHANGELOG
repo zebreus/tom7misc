@@ -1,4 +1,9 @@
 
+19 Jun 2024 (r5927)
+
+ * PDF files written by BoVeX now have embedded fonts compressed with
+   flate compression, which saves a lot of bytes.
+
 9 Jun 2024 (r5906)
 
  * Did long-standing TODO. Now dynamically-constructed nodes are always
