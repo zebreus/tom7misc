@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string>
 #include <cstdint>
+#include <cmath>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -20,7 +21,7 @@ using uint32 = uint32_t;
   do {                                              \
   auto aa = (a);                                    \
   auto bb = (b);                                    \
-  auto d = fabs(aa - bb);                           \
+  auto d = std::abs(aa - bb);                       \
   CHECK(d < 0.0001f) << "Expected nearly equal: "   \
                       << "\n" #a << ": " << aa      \
                       << "\n" #b << ": " << bb;     \
@@ -162,9 +163,9 @@ static void BenchLinearGradient() {
   static constexpr int ITERS = 2500;
   for (int iters = 0; iters < ITERS; iters++) {
     for (int y = 0; y < 256; y++) {
-      float fy = cosf(y * (3.14159f / 32.0f)) * 0.5f + 1.0f;
+      float fy = std::cos(y * (3.14159f / 32.0f)) * 0.5f + 1.0f;
       for (int x = 0; x < 256; x++) {
-        float fx = sinf(x * (3.14159f / 16.0f)) * 0.5f + 1.0f;
+        float fx = std::sin(x * (3.14159f / 16.0f)) * 0.5f + 1.0f;
         uint32_t c = ColorUtil::LinearGradient32(
             ColorUtil::HEATED_METAL, fx * fy);
         out.SetPixel32(x, y, c);

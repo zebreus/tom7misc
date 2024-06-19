@@ -578,10 +578,10 @@ void ImageRGBA::BlendThickLine32(float x1, float y1, float x2, float y2,
   const auto [r, g, b, a] = Unpack32(color);
 
   // Get bounding rect.
-  int xmin = std::floorf(std::min(x1, x2) - radius);
-  int xmax = std::ceilf(std::max(x1, x2) + radius);
-  int ymin = std::floorf(std::min(y1, y2) - radius);
-  int ymax = std::ceilf(std::max(y1, y2) + radius);
+  int xmin = std::floor(std::min(x1, x2) - radius);
+  int xmax = std::ceil(std::max(x1, x2) + radius);
+  int ymin = std::floor(std::min(y1, y2) - radius);
+  int ymax = std::ceil(std::max(y1, y2) + radius);
 
   for (int y = ymin; y < ymax; y++) {
     for (int x = xmin; x < xmax; x++) {
@@ -757,10 +757,10 @@ void ImageRGBA::BlendThickCircle32(float x, float y, float circle_radius,
   const float half_line_radius = line_radius * 0.5f;
   const float outer_radius = circle_radius + half_line_radius;
   const float inner_radius = std::max(0.0f, circle_radius - half_line_radius);
-  const int xmin = std::max(0, (int)std::floorf(x - outer_radius));
-  const int ymin = std::max(0, (int)std::floorf(y - outer_radius));
-  const int xmax = std::min(Width(), (int)std::ceilf(x + outer_radius));
-  const int ymax = std::min(Height(), (int)std::ceilf(y + outer_radius));
+  const int xmin = std::max(0, (int)std::floor(x - outer_radius));
+  const int ymin = std::max(0, (int)std::floor(y - outer_radius));
+  const int xmax = std::min(Width(), (int)std::ceil(x + outer_radius));
+  const int ymax = std::min(Height(), (int)std::ceil(y + outer_radius));
 
   const int sq_outer = outer_radius * outer_radius;
   const int sq_inner = inner_radius * inner_radius;

@@ -6,6 +6,7 @@
 #include "util.h"
 #include <stdio.h>
 #include <cmath>
+#include <cstring>
 
 #include "arcfour.h"
 

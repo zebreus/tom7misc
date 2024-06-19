@@ -1,11 +1,13 @@
 
 #include "zip.h"
 
+#include <array>
 #include <string>
 #include <vector>
 #include <cstdint>
 #include <deque>
 #include <string_view>
+#include <memory>
 
 #include "miniz.h"
 
@@ -195,8 +197,8 @@ struct Buf {
       // in the output.
       size_t copy_size = std::min(chunk_size, out_size);
       if (DEBUG_ZIP) {
-        printf("  copy size %lld (min(%lld, %lld))\n",
-               copy_size, chunk_size, out_size);
+        printf("  copy size %d (min(%d, %d))\n",
+               (int)copy_size, (int)chunk_size, (int)out_size);
       }
       memcpy(out_data, v->data(), copy_size);
       done += copy_size;
@@ -208,7 +210,7 @@ struct Buf {
       this->size -= copy_size;
     }
     if (DEBUG_ZIP) {
-      printf("Done. Read %lld\n", done);
+      printf("Done. Read %d\n", (int)done);
     }
     return done;
   }
@@ -218,8 +220,8 @@ struct Buf {
     int64_t actual_size = 0;
     for (const Vec<N> &v : q) {
       if (DEBUG_ZIP) {
-        printf("(Block at %p, size %lld. [%d,%d))\n",
-               &v, v.size(),
+        printf("(Block at %p, size %d. [%d,%d))\n",
+               &v, (int)v.size(),
                (int)v.start, (int)v.end);
       }
       actual_size += v.size();
@@ -229,7 +231,7 @@ struct Buf {
     }
 
     if (DEBUG_ZIP) {
-      printf("Actual %lld vs %lld\n", actual_size, size);
+      printf("Actual %d vs %d\n", (int)actual_size, (int)size);
     }
     DCHECK(actual_size == size) << actual_size << " " << size;
 #   endif
@@ -459,9 +461,9 @@ struct DBImpl : public ZIP::DecodeBuffer {
       size_t out_bytes = CIRC_SIZE - circ_pos;
 
       if (DEBUG_ZIP) {
-        printf("Decompress buffer at %p for %d -> %p (%p) size %lld\n",
+        printf("Decompress buffer at %p for %d -> %p (%p) size %zu\n",
                data, (int)in_bytes,
-               circ.get(), circ.get() + circ_pos, out_bytes);
+               circ.get(), circ.get() + circ_pos, (size_t)out_bytes);
       }
       tinfl_status status =
         tinfl_decompress(dec,
@@ -491,8 +493,8 @@ struct DBImpl : public ZIP::DecodeBuffer {
         "call.";
 
       CHECK(status != TINFL_STATUS_BAD_PARAM) << "Bug? " <<
-        StringPrintf("%p %lld %p %p %lld\n",
-                     data, in_bytes, circ.get(), circ.get() + circ_pos,
+        StringPrintf("%p %lzu %p %p %lld\n",
+                     data, (size_t)in_bytes, circ.get(), circ.get() + circ_pos,
                      out_bytes);
 
       CHECK(status != TINFL_STATUS_FAILED) <<
@@ -606,63 +608,97 @@ ZIP::EncodeBuffer::~EncodeBuffer() { }
 ZIP::DecodeBuffer::DecodeBuffer() { }
 ZIP::DecodeBuffer::~DecodeBuffer() { }
 
-std::vector<uint8_t> ZIP::UnzipPtr(const uint8_t *data, size_t size) {
+// Intended for T = std::vector<uint8_t> or std::string
+template<class T>
+static T CompressPtr(const uint8_t *data, size_t size,
+                     int level, int other_flags) {
+  size_t out_size = 0;
+  level = std::clamp(level, 0, 10);
+  const int flags = EBImpl::probes_for_level[level] | other_flags;
+  uint8_t *e =
+    (uint8_t*)tdefl_compress_mem_to_heap(data, size, &out_size, flags);
+  CHECK(e != nullptr);
+  T ret;
+  ret.resize(out_size);
+  memcpy(ret.data(), e, out_size);
+  free(e);
+  return ret;
+}
+
+template<class T>
+static T DecompressPtr(const uint8_t *data, size_t size,
+                       int flags) {
   size_t out_size = 0;
   uint8_t *d =
-    (uint8_t*)tinfl_decompress_mem_to_heap(data, size, &out_size, 0);
-  CHECK(d != nullptr);
-  std::vector<uint8_t> ret(out_size);
-  memcpy(ret.data(), d, out_size);
-  free(d);
-  return ret;
+    (uint8_t*)tinfl_decompress_mem_to_heap(data, size, &out_size, flags);
+  if (d == nullptr) {
+    CHECK(out_size == 0);
+    return T();
+  } else {
+    CHECK(d != nullptr);
+    T ret;
+    ret.resize(out_size);
+    memcpy(ret.data(), d, out_size);
+    free(d);
+    return ret;
+  }
+}
+
+std::vector<uint8_t> ZIP::UnzipPtr(const uint8_t *data, size_t size) {
+  return DecompressPtr<std::vector<uint8_t>>(data, size, 0);
 }
 
 std::vector<uint8_t> ZIP::UnzipVector(const std::vector<uint8_t> &v) {
-  return UnzipPtr(v.data(), v.size());
+  return DecompressPtr<std::vector<uint8_t>>(v.data(), v.size(), 0);
 }
 
 std::string ZIP::UnzipString(std::string_view s) {
-  size_t out_size = 0;
-  uint8_t *d =
-    (uint8_t*)tinfl_decompress_mem_to_heap(s.data(), s.size(), &out_size, 0);
-  CHECK(d != nullptr);
-  std::string ret(out_size, 0);
-  memcpy(ret.data(), d, out_size);
-  free(d);
-  return ret;
+  return DecompressPtr<std::string>(
+      (const uint8_t *)s.data(), s.size(), 0);
 }
 
 std::vector<uint8_t> ZIP::ZipPtr(const uint8_t *data, size_t size,
                                  int level) {
-  size_t out_size = 0;
-  level = std::clamp(level, 0, 10);
-  const int flags = EBImpl::probes_for_level[level];
-  uint8_t *e =
-    (uint8_t*)tdefl_compress_mem_to_heap(data, size, &out_size, flags);
-  CHECK(e != nullptr);
-  std::vector<uint8_t> ret(out_size);
-  memcpy(ret.data(), e, out_size);
-  free(e);
-  return ret;
+  return CompressPtr<std::vector<uint8_t>>(data, size, level, 0);
 }
 
 std::string ZIP::ZipString(std::string_view s, int level) {
-  size_t out_size = 0;
-  level = std::clamp(level, 0, 10);
-  const int flags = EBImpl::probes_for_level[level];
-  uint8_t *e =
-    (uint8_t*)tdefl_compress_mem_to_heap(s.data(), s.size(),
-                                         &out_size, flags);
-  CHECK(e != nullptr);
-  std::string ret(out_size, 0);
-  memcpy(ret.data(), e, out_size);
-  free(e);
-  return ret;
+  return CompressPtr<std::string>((const uint8_t*)s.data(), s.size(), level, 0);
 }
 
 std::vector<uint8_t> ZIP::ZipVector(const std::vector<uint8_t> &v,
                                     int level) {
-  return ZipPtr(v.data(), v.size(), level);
+  return CompressPtr<std::vector<uint8_t>>(v.data(), v.size(), level, 0);
+}
+
+
+std::vector<uint8_t> ZIP::ZlibPtr(const uint8_t *data, size_t size,
+                                  int level) {
+  return CompressPtr<std::vector<uint8_t>>(data, size, level, TDEFL_WRITE_ZLIB_HEADER);
+}
+
+std::vector<uint8_t> ZIP::ZlibVector(const std::vector<uint8_t> &v,
+                                     int level) {
+  return CompressPtr<std::vector<uint8_t>>(v.data(), v.size(), level, TDEFL_WRITE_ZLIB_HEADER);
+}
+
+std::string ZIP::ZlibString(std::string_view s, int level) {
+  return CompressPtr<std::string>(
+      (const uint8_t*)s.data(), s.size(), level, TDEFL_WRITE_ZLIB_HEADER);
+}
+
+
+std::vector<uint8_t> ZIP::UnZlibPtr(const uint8_t *data, size_t size) {
+  return DecompressPtr<std::vector<uint8_t>>(data, size, TINFL_FLAG_PARSE_ZLIB_HEADER);
+}
+
+std::vector<uint8_t> ZIP::UnZlibVector(const std::vector<uint8_t> &v) {
+  return DecompressPtr<std::vector<uint8_t>>(v.data(), v.size(), TINFL_FLAG_PARSE_ZLIB_HEADER);
+}
+
+std::string ZIP::UnZlibString(std::string_view s) {
+  return DecompressPtr<std::string>(
+      (const uint8_t*)s.data(), s.size(), TINFL_FLAG_PARSE_ZLIB_HEADER);
 }
 
 

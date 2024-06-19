@@ -28,8 +28,8 @@ else
   CC=gcc
   # no-psabi suppresses warnings all over STL in GCC 7.1 for ARM (e.g. pi)
   # it can probably be removed in a few years?
-  #  CXXFLAGS=-fsanitize=address -fsanitize=undefined
-  CXXFLAGS=-march=native -g -Wall -I. --std=c++20 -O3 -Wno-psabi
+  CXXFLAGS=-fsanitize=address -fsanitize=undefined -g -Wall -I. --std=c++20 -O -Wno-psabi
+  # CXXFLAGS=-march=native -g -Wall -I. --std=c++20 -O3 -Wno-psabi
   SOCK_LFLAGS=
 endif
 endif

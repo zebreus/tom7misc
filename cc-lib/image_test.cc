@@ -139,7 +139,7 @@ static void TestSampleBilinear() {
     // This sample is well outside the image, so it should
     // return the third arg.
     float out = in.SampleBilinear(10.0, 10.0, 0.25);
-    CHECK(fabs(out - 0.25) < 0.00001);
+    CHECK(std::abs(out - 0.25f) < 0.00001f);
   }
 }
 

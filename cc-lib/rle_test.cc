@@ -127,13 +127,13 @@ int main(int argc, char **argv) {
   }
   double elapsed = timer.Seconds();
   printf("\n"
-         "Total uncompressed: %lld\n"
-         "Total compressed:   %lld\n"
+         "Total uncompressed: %d\n"
+         "Total compressed:   %d\n"
          "Average ratio: %.3f:1\n"
          "Time: %s\n"
          "kB/sec (round trip plus validation): %.1f\n",
-         uncompressed_bytes,
-         compressed_bytes,
+         (int)uncompressed_bytes,
+         (int)compressed_bytes,
          (double)uncompressed_bytes / compressed_bytes,
          ANSI::Time(elapsed).c_str(),
          (uncompressed_bytes / 1000.0) / elapsed);

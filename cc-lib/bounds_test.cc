@@ -8,7 +8,7 @@
 using namespace std;
 
 // Note: Evaluates a and b a second time if check fails!
-#define CHECK_FEQ(a, b) CHECK(fabs((a) - (b)) < 0.00001) \
+#define CHECK_FEQ(a, b) CHECK(std::abs((a) - (b)) < 0.00001)  \
   << #a " = " << (a) << " vs " #b " = " << (b)
 
 #define CHECK_PEQ(a, x, y) do { \

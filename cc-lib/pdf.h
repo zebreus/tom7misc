@@ -36,6 +36,18 @@ static constexpr inline float PDF_MM_TO_POINT(float mm) {
   return mm * 72.0f / 25.4f;
 }
 
+namespace internal {
+// This is hoisted out to work around a GCC bug. Call it PDF::Options.
+struct PDFOptions {
+  // If true, use flate compression on embedded streams. There's not really
+  // any reason to turn off compression except that it makes it harder to
+  // debug by looking at the generated PDF.
+  bool use_compression = true;
+  // TODO: Might want to give options for only compressing binary data (e.g. TTFs)
+  // TODO: Use object streams for better compression (PDF 1.5+).
+};
+}
+
 struct PDF {
 private:
 
@@ -253,8 +265,10 @@ public:
    */
   #define PDF_TRANSPARENT (uint32_t)(0xffu << 24)
 
+  using Options = internal::PDFOptions;
+
   // Constructor. Give width and height of the page.
-  PDF(float width, float height);
+  PDF(float width, float height, Options options = Options{});
   ~PDF();
 
   // Change the dimensions of new pages added to the document.
@@ -692,6 +706,7 @@ private:
 
   Object *last_objects[OBJ_count] = {};
   Object *first_objects[OBJ_count] = {};
+  const Options options;
 };
 
 #endif

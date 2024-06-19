@@ -2,6 +2,8 @@
 #ifndef _CC_LIB_BOUNDS_H
 #define _CC_LIB_BOUNDS_H
 
+#include <cstdint>
+#include <utility>
 #include <limits>
 #include <utility>
 

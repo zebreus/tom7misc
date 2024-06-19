@@ -5,6 +5,8 @@
 #include <vector>
 #include <string_view>
 #include <cstdint>
+#include <memory>
+#include <string>
 
 #include "ansi.h"
 #include "arcfour.h"
@@ -427,6 +429,10 @@ static void TestRegression1() {
 
 static void TestRegression2() {
   std::vector<uint8_t> ctr = Util::ReadFileBytes("counterexample");
+  if (ctr.empty()) {
+    printf("Note: Missing the file 'counterexample'!\n");
+    return;
+  }
   std::vector<uint8_t> enc_raw = ZIP::ZipPtr(ctr.data(), ctr.size());
   std::vector<uint8_t> enc = StreamZipPtr(ctr.data(), ctr.size());
   if (enc_raw != enc) {
@@ -440,6 +446,7 @@ static void TestRegression2() {
                                            enc.size());
   CHECK(dec_raw == ctr);
   CHECK(dec == ctr);
+  printf("Regression 2 " AGREEN("OK") "\n");
 }
 
 static void TestLong1() {
@@ -503,11 +510,31 @@ static void TestRegression3() {
                                timer.Seconds()).c_str());
     }
   }
+
+  printf("Regression 3 " AGREEN("OK") "\n");
+}
+
+static void TestZlib() {
+  for (const std::string s : {
+      "lorem ipsum dolor sit amet",
+      "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzza",
+      "15:05:42 15:05:43 15:05:44 15:05:45 15:05:46 15:05:47",
+      "",
+      "a",
+      "\xFF\x01\xFF" "1234567891234566789",
+    }) {
+    printf("[%s]\n", s.c_str());
+    std::string enc = ZIP::ZlibString(s);
+    std::string dec = ZIP::UnZlibString(enc);
+    CHECK(s == dec) << s;
+  }
+  printf("zlib round trip " AGREEN("OK") "\n");
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  TestZlib();
   TestRegression1();
   TestLong1();
   TestLong2();

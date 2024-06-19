@@ -368,8 +368,8 @@ const PDF::Info &PDF::GetInfo() const {
   return obj->info;
 }
 
-PDF::PDF(float width, float height) :
-  document_width(width), document_height(height) {
+PDF::PDF(float width, float height, Options options) :
+  document_width(width), document_height(height), options(options) {
 
   /* We don't want to use ID 0 */
   (void)AddObject(new NoneObj);

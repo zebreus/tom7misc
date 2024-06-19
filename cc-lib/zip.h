@@ -4,17 +4,25 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
-// Simple flate codec, wrapping miniz. These are raw streams with no
-// header nor footer. You could add your own (typically it is useful
-// to record the size of the decompressed data and a checksum) or
-// maybe I'll add those in the future.
+// Simple flate codec, wrapping miniz.
+// The primary functions produce raw streams (RFC 1951) with no header nor
+// footer, which you'd typically embed inside some other file format. It is
+// often useful to know the size of the decompressed data, for example.
+//
+// Below I define a nonstandard "CCZ" header (to be read or written
+// manually) that I use in some cc-lib code. There are also some
+// convenience functions for decompressing standard zlib (RFC 1950)
+// data.
 
 struct ZIP {
 
   // The compression "level" can range from 0 to 9. Higher is slower,
   // but generates smaller files.
+
+  // TODO: These should perhaps be renamed to "Flate"?
 
   // The simplest functions operate on the entire input at once.
   static std::vector<uint8_t> ZipVector(const std::vector<uint8_t> &v,
@@ -110,6 +118,20 @@ struct ZIP {
   std::vector<uint8_t> DecompressWithHeader(const uint8_t *data,
                                             size_t size);
   */
+
+  // With a ZLIB header and Adler-32 checksum at the end (RFC 1950).
+  // This format is not great because the length field is only
+  // 32-bit (it should work with data >4GB, but it means the length
+  // is not really useful). The checksum also has some weaknesses.
+  static std::vector<uint8_t> ZlibVector(const std::vector<uint8_t> &v,
+                                         int level = 7);
+  static std::string ZlibString(std::string_view s, int level = 7);
+  static std::vector<uint8_t> ZlibPtr(const uint8_t *data, size_t size,
+                                     int level = 7);
+
+  static std::vector<uint8_t> UnZlibVector(const std::vector<uint8_t> &v);
+  static std::string UnZlibString(std::string_view s);
+  static std::vector<uint8_t> UnZlibPtr(const uint8_t *data, size_t size);
 };
 
 #endif

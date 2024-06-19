@@ -432,8 +432,9 @@ static void MakeSimplePDF() {
 
 static void MakeMinimalPDF() {
   printf("Create PDF object.\n");
-  PDF pdf(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT);
+  PDF pdf(PDF::PDF_LETTER_WIDTH, PDF::PDF_LETTER_HEIGHT, PDF::Options{.use_compression = false});
 
+  [[maybe_unused]]
   PDF::Page *page = pdf.AppendNewPage();
   PDF::Info info;
   sprintf(info.creator, "pdf_test.cc");

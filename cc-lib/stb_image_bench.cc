@@ -15,7 +15,7 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "base/stringprintf.h"
-#include "Base/logging.h"
+#include "base/logging.h"
 
 using namespace std;
 using uint8 = uint8_t;
