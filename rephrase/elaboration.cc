@@ -1009,7 +1009,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
       // λx.primop<t1, t2, ...>(x)                 (when val_arity = 1)
       // λx.primop<t1, t2, ...>(#1 x, #2 x, ...)   (otherwise)
       const il::Exp *lambda =
-        pool->Fn("", x, t, pool->Primop(po, std::move(tvs), std::move(args)));
+        pool->Fn("", x, t, pool->Primapp(po, std::move(tvs), std::move(args)));
       return std::make_pair(lambda, t);
 
     } else if (vi->ctor.has_value()) {
@@ -1274,8 +1274,8 @@ const il::Exp *Elaboration::ElabLayout(
   case el::LayoutType::TEXT: {
     // This is a literal string.
     // We should consider calling some user-provided parsing hook, though?
-    return pool->Primop(Primop::STRING_TO_LAYOUT, {},
-                        {pool->String(lay->str)});
+    return pool->Primapp(Primop::STRING_TO_LAYOUT, {},
+                         {pool->String(lay->str)});
   }
 
   case el::LayoutType::JOIN: {

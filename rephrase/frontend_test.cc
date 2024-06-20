@@ -131,7 +131,7 @@ static void TestPrimops() {
     CHECK_TYPETYPE(dom, TypeType::INT);
     CHECK_TYPETYPE(cod, TypeType::REF);
     CHECK(self.empty());
-    const auto &[po, ts, es] = body->Primop();
+    const auto &[po, ts, es] = body->Primapp();
     CHECK(po == Primop::REF);
     CHECK(ts.size() == 1);
     CHECK_TYPETYPE(ts[0], TypeType::INT);
@@ -149,7 +149,7 @@ static void TestPrimops() {
     const Program pgm = Run("ref 7 : int ref");
     // Simplifier should be able to make this into
     // a direct primop application.
-    const auto &[po, ts, es] = pgm.body->Primop();
+    const auto &[po, ts, es] = pgm.body->Primapp();
     CHECK(po == Primop::REF);
     CHECK(ts.size() == 1);
     CHECK_TYPETYPE(ts[0], TypeType::INT);
@@ -171,7 +171,7 @@ static void TestPrimops() {
     // from the tuple.
     const auto &[self, x, arrow_type, body] = f->Fn();
     CHECK(self.empty()) << "Not recursive.";
-    const auto &[po, ts, es] = body->Primop();
+    const auto &[po, ts, es] = body->Primapp();
     CHECK(ts.empty()) << "Plus should take no type args.";
     CHECK(es.size() == 2);
     const auto &[l1, t1, e1] = es[0]->Project();
@@ -412,8 +412,8 @@ static void TestSimplify() {
 
   {
     const Program pgm = Run("print (\"all you have to do\" ^ \" is do it\")");
-    CHECK(pgm.body->type == ExpType::PRIMOP) << ProgramString(pgm);
-    const auto &[f, targs, eargs] = pgm.body->Primop();
+    CHECK(pgm.body->type == ExpType::PRIMAPP) << ProgramString(pgm);
+    const auto &[f, targs, eargs] = pgm.body->Primapp();
     CHECK(eargs.size() == 1);
     CHECK(eargs[0]->type == ExpType::STRING);
     CHECK(eargs[0]->String() == "all you have to do is do it");
@@ -714,6 +714,19 @@ static void TestFun() {
   (void)Run("let fun f (s : string) : int = string-size s\n"
             "in f \"hi\"\n"
             "end\n");
+
+  // Environment contains a polymorphic function, which is
+  // used at multiple different types.
+  (void)Run(
+      "let\n"
+      "  fun ignore x = 0\n"
+      "  fun id0 x = ignore 2 + ignore \"\"\n"
+      "  and id1 y = ignore ignore + ignore id0\n"
+      "  do id0 \"hi\"\n"
+      "in\n"
+      "  id0 5\n"
+      "end\n");
+
 }
 
 static void TestObjects() {
@@ -776,8 +789,8 @@ static void TestLayout() {
     const Program pgm = Run(
         "let object ABC of { x : int }\n"
         "in node {(ABC) } [hi] end");
-    CHECK(pgm.body->type == ExpType::PRIMOP) << ProgramString(pgm);
-    const auto &[po, ts, es] = pgm.body->Primop();
+    CHECK(pgm.body->type == ExpType::PRIMAPP) << ProgramString(pgm);
+    const auto &[po, ts, es] = pgm.body->Primapp();
     CHECK(po == Primop::STRING_TO_LAYOUT);
     CHECK(ts.empty());
     CHECK(es.size() == 1);

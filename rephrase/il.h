@@ -41,7 +41,7 @@ enum class ExpType {
   // ... and the reverse.
   UNROLL,
   // Apply a primop to the types and children.
-  PRIMOP,
+  PRIMAPP,
   // Abort with a string message. Should be
   // replaced with generic exception mechanism.
   FAIL,
@@ -164,12 +164,12 @@ struct Type {
     return std::tie(var, a);
   }
 
-  std::pair<const Type *, const Type *> Arrow() const {
+  std::tuple<const Type *, const Type *> Arrow() const {
     CHECK(type == TypeType::ARROW);
     return std::tie(a, b);
   }
 
-  std::pair<const std::string &, const std::vector<const Type *> &>
+  std::tuple<const std::string &, const std::vector<const Type *> &>
   Var() const {
     CHECK(type == TypeType::VAR);
     return std::tie(var, children);
@@ -348,8 +348,8 @@ struct Exp {
   std::tuple<const Primop &,
              const std::vector<const Type *> &,
              const std::vector<const Exp *> &>
-  Primop() const {
-    CHECK(type == ExpType::PRIMOP);
+  Primapp() const {
+    CHECK(type == ExpType::PRIMAPP);
     return std::tie(primop, types, children);
   }
 
@@ -1012,19 +1012,19 @@ struct AstPool {
     return ret;
   }
 
-  const Exp *Primop(Primop po,
-                    const std::vector<const Type *> &ts,
-                    const std::vector<const Exp *> &es,
-                    const Exp *guess = nullptr) {
+  const Exp *Primapp(Primop po,
+                     const std::vector<const Type *> &ts,
+                     const std::vector<const Exp *> &es,
+                     const Exp *guess = nullptr) {
     if (guess != nullptr &&
-        guess->type == ExpType::PRIMOP &&
+        guess->type == ExpType::PRIMAPP &&
         guess->primop == po &&
         guess->types == ts &&
         guess->children == es) {
       return guess;
     }
 
-    Exp *ret = NewExp(ExpType::PRIMOP);
+    Exp *ret = NewExp(ExpType::PRIMAPP);
     ret->primop = po;
     ret->types = ts;
     ret->children = es;

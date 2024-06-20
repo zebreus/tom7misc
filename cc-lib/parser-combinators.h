@@ -4,6 +4,9 @@
 #ifndef _CC_LIB_PARSE_H
 #define _CC_LIB_PARSE_H
 
+#include <memory>
+#include <string>
+#include <vector>
 #include <optional>
 #include <functional>
 #include <concepts>
@@ -758,11 +761,11 @@ struct FixityItem {
   // Higher means tighter binding.
   int precedence = 0;
   // For atom.
-  Item item;
+  Item item = {};
   // For prefix, postfix.
-  std::function<Item(Item)> unop;
+  std::function<Item(Item)> unop = {};
   // For infix.
-  std::function<Item(Item, Item)> binop;
+  std::function<Item(Item, Item)> binop = {};
 
   static FixityItem MakeAtom(Item item) {
     FixityItem ret;

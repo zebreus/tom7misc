@@ -136,9 +136,9 @@ struct Pass {
       const auto &[exp, type] = e->Unroll();
       return DoUnroll(exp, type, e, args...);
     }
-    case ExpType::PRIMOP: {
-      const auto &[p, ts, es] = e->Primop();
-      return DoPrimop(p, ts, es, e, args...);
+    case ExpType::PRIMAPP: {
+      const auto &[p, ts, es] = e->Primapp();
+      return DoPrimapp(p, ts, es, e, args...);
     }
     case ExpType::FAIL: {
       const auto &[msg, t] = e->Fail();
@@ -466,11 +466,11 @@ struct Pass {
     return pool->App(DoExp(f, args...), DoExp(arg, args...), guess);
   }
 
-  virtual const Exp *DoPrimop(Primop po,
-                              const std::vector<const Type *> &ts,
-                              const std::vector<const Exp *> &es,
-                              const Exp *guess,
-                              Args... args) {
+  virtual const Exp *DoPrimapp(Primop po,
+                               const std::vector<const Type *> &ts,
+                               const std::vector<const Exp *> &es,
+                               const Exp *guess,
+                               Args... args) {
     std::vector<const Type *> tts;
     tts.reserve(ts.size());
     for (const Type *t : ts) tts.push_back(DoType(t, args...));
@@ -479,7 +479,7 @@ struct Pass {
     ees.reserve(es.size());
     for (const Exp *e : es) ees.push_back(DoExp(e, args...));
 
-    return pool->Primop(po, tts, ees, guess);
+    return pool->Primapp(po, tts, ees, guess);
   }
 
   virtual const Exp *DoFn(const std::string &self,

@@ -152,9 +152,9 @@ struct TypedPass {
       const auto &[exp, type] = e->Unroll();
       return DoUnroll(G, exp, type, e, args...);
     }
-    case ExpType::PRIMOP: {
-      const auto &[p, ts, es] = e->Primop();
-      return DoPrimop(G, p, ts, es, e, args...);
+    case ExpType::PRIMAPP: {
+      const auto &[p, ts, es] = e->Primapp();
+      return DoPrimapp(G, p, ts, es, e, args...);
     }
     case ExpType::FAIL: {
       const auto &[fe, ft] = e->Fail();
@@ -647,12 +647,12 @@ struct TypedPass {
   }
 
   virtual std::pair<const Exp *, const Type *>
-  DoPrimop(Context G,
-           Primop po,
-           const std::vector<const Type *> &ts,
-           const std::vector<const Exp *> &es,
-           const Exp *guess,
-           Args... args) {
+  DoPrimapp(Context G,
+            Primop po,
+            const std::vector<const Type *> &ts,
+            const std::vector<const Exp *> &es,
+            const Exp *guess,
+            Args... args) {
 
     const auto &[tyvars, po_type] = PrimopType(pool, po);
     CHECK(po_type->type == TypeType::ARROW) << "Bug: Primop doesn't have "
@@ -680,7 +680,7 @@ struct TypedPass {
       ret_type = pool->SubstType(tts[i], tyvars[i], ret_type);
     }
 
-    return {pool->Primop(po, tts, ees, guess), ret_type};
+    return {pool->Primapp(po, tts, ees, guess), ret_type};
   }
 
   virtual std::pair<const Exp *, const Type *>

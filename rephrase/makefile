@@ -53,6 +53,10 @@ else
   CC=gcc
   # PLATFORM_CFLAGS=-fsanitize=address -g -D_GNU_SOURCE
   # OPTFLAGS=-O
+  # Check if g++ is actually clang
+  ifeq ($(shell $(CXX) -v 2>&1 | grep -q "clang"), 1)
+    CLANG=true
+  endif
   PLATFORM_CFLAGS=-g -D_GNU_SOURCE
   PLATFORM_LDFLAGS += -Wl,--stack,167772160
   ifdef ASAN
@@ -114,7 +118,6 @@ CFLAGS   = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7) -st
 CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7) -std=c++20 -fPIC $(PLATFORM_CFLAGS)
 LDFLAGS  = $(OPTFLAGS) -m64 $(PLATFORM_LDFLAGS)
 
-
 ifndef LLAMA_DEBUG
 	CFLAGS   += -DNDEBUG
 	CXXFLAGS += -DNDEBUG
@@ -122,7 +125,13 @@ endif
 
 # warnings
 CFLAGS   += -Wall -Wextra -Wcast-qual -Wdouble-promotion -Wshadow -Wstrict-prototypes -Wpointer-arith
-CXXFLAGS += -Wall -Wextra -Wcast-qual -Wshadow-field -Wno-unused-parameter -Wno-unused-function -Wno-multichar
+CXXFLAGS += -Wall -Wextra -Wcast-qual -Wno-unused-parameter -Wno-unused-function -Wno-multichar
+
+# warnings only supported by clang. clang is only set in the msys/linux block above.
+ifdef CLANG
+	CXXFLAGS += -Wshadow-field
+endif
+
 
 ## begin enable LLM
 ifeq ($(ENABLE_LLM), true)
@@ -310,8 +319,9 @@ endif
 
 # Parser takes a uniquely long time to compile, so don't make it
 # depend on every header.
+CXXFLAGS_PARSING=$(filter-out -O3,$(CXXFLAGS)) -O
 parsing.o : parsing.cc parsing.h inclusion.h el.h lexing.h $(CC_LIB)/parser-combinators.h
-	@$(CXX) $(CXXFLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS_PARSING) -c $< -o $@
 	@echo -n ":"
 
 

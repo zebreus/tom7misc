@@ -1093,8 +1093,8 @@ struct Converter {
         return rec;
       }
 
-      case il::ExpType::PRIMOP: {
-        const auto &[po, ts_, es] = exp->Primop();
+      case il::ExpType::PRIMAPP: {
+        const auto &[po, ts_, es] = exp->Primapp();
 
         const auto &[num_type_args, num_exp_args] = PrimopArity(po);
         CHECK(num_exp_args == (int)es.size());

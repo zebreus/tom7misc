@@ -63,7 +63,7 @@ const char *ExpTypeString(ExpType t) {
   case ExpType::INJECT: return "INJECT";
   case ExpType::ROLL: return "ROLL";
   case ExpType::UNROLL: return "UNROLL";
-  case ExpType::PRIMOP: return "PRIMOP";
+  case ExpType::PRIMAPP: return "PRIMAPP";
   case ExpType::FAIL: return "FAIL";
   case ExpType::SEQ: return "SEQ";
   case ExpType::INTCASE: return "INTCASE";
@@ -444,8 +444,8 @@ std::string ExpString(const Exp *e) {
                         ExpString(x).c_str());
   }
 
-  case ExpType::PRIMOP: {
-    const auto &[po, types, children] = e->Primop();
+  case ExpType::PRIMAPP: {
+    const auto &[po, types, children] = e->Primapp();
 
     std::string targs;
     for (int i = 0; i < (int)types.size(); i++) {

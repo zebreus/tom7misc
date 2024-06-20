@@ -82,3 +82,11 @@ Some known issues:
    function bundles to the IL, or figure out some other
    transformation.
 
+ - Compiling with g++ (11.40) on linux might be doable, but it runs
+   out of memory (I think) for me when compiling parsing.cc. This is
+   on a virtualized server with "only" 2 GB RAM, though. There were
+   some other errors that look to me like bugs/oldness in g++, but
+   stuff that could be worked around. I would be very happy if
+   Ubuntu's maintainers would GET WITH THE PROGRAM and package a more
+   recent version, since GCC 12 was released in 2022 and it's not like
+   11 is some magical release that's free from bugs.

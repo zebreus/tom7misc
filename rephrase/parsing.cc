@@ -287,6 +287,8 @@ const Exp *Parsing::Parse(AstPool *pool,
     // a -> b -> c  is a -> (b -> c)
     .assoc = Associativity::Right,
     .precedence = 9,
+    .item = nullptr,
+    .unop = nullptr,
     .binop = [&](const Type *a, const Type *b) {
         return pool->Arrow(a, b);
       },

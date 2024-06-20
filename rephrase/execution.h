@@ -143,7 +143,8 @@ Value *Execution::NewValue(Heap *heap, Args&&... args) {
   // PERF could use placement new, since we have a heap and will
   // perform garbage collection. But that's far from the worst
   // performance issue in here!
-  Value *v = new Value{.v = std::forward<Args>(args)...};
+  auto t{std::forward<Args>(args)...};
+  Value *v = new Value{.v = std::move(t)};
   heap->used.push_back(v);
   return v;
 }

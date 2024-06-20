@@ -119,8 +119,8 @@ static bool IsEffectless(const Exp *exp) {
   case ExpType::ROLL:
     return IsEffectless(std::get<1>(exp->Roll()));
 
-  case ExpType::PRIMOP: {
-    const auto &[po, ts, es] = exp->Primop();
+  case ExpType::PRIMAPP: {
+    const auto &[po, ts, es] = exp->Primapp();
     if (IsPrimopTotal(po)) {
       for (const Exp *child : es) {
         if (!IsEffectless(child)) {
@@ -175,8 +175,8 @@ static void PushSeqs(const Exp *exp, std::vector<const Exp *> *vflat) {
   case ExpType::UNROLL:
     return PushSeqs(std::get<0>(exp->Unroll()), vflat);
 
-  case ExpType::PRIMOP: {
-    const auto &[po, ts, es] = exp->Primop();
+  case ExpType::PRIMAPP: {
+    const auto &[po, ts, es] = exp->Primapp();
     if (IsPrimopDiscardable(po)) {
       for (const Exp *child : es) {
         PushSeqs(child, vflat);
@@ -272,10 +272,10 @@ struct PeepholePass : public il::Pass<> {
     }
   }
 
-  const Exp *DoPrimop(Primop po,
-                      const std::vector<const Type *> &ts,
-                      const std::vector<const Exp *> &es,
-                      const Exp *guess) override {
+  const Exp *DoPrimapp(Primop po,
+                       const std::vector<const Type *> &ts,
+                       const std::vector<const Exp *> &es,
+                       const Exp *guess) override {
     std::vector<const Type *> tts;
     tts.reserve(ts.size());
     for (const Type *t : ts) tts.push_back(DoType(t));
@@ -445,13 +445,13 @@ struct PeepholePass : public il::Pass<> {
         if (ees[0]->type == ExpType::STRING &&
             ees[0]->String().empty()) {
           Simplified("string compare against empty");
-          return pool->Primop(Primop::STRING_EMPTY, {}, {ees[1]});
+          return pool->Primapp(Primop::STRING_EMPTY, {}, {ees[1]});
         }
 
         if (ees[1]->type == ExpType::STRING &&
             ees[1]->String().empty()) {
           Simplified("string compare against empty");
-          return pool->Primop(Primop::STRING_EMPTY, {}, {ees[0]});
+          return pool->Primapp(Primop::STRING_EMPTY, {}, {ees[0]});
         }
         break;
 
@@ -770,7 +770,7 @@ struct PeepholePass : public il::Pass<> {
       }
     }
 
-    return pool->Primop(po, tts, ees, guess);
+    return pool->Primapp(po, tts, ees, guess);
   }
 
   // For fn expressions, if the function's self variable is not used,
@@ -798,8 +798,8 @@ struct PeepholePass : public il::Pass<> {
     if (opts & Simplification::O_SIMPLIFY_LAYOUT) {
 
       auto GetLayoutString = [](const Exp *e) -> const std::string * {
-          if (e->type != ExpType::PRIMOP) return nullptr;
-          const auto &[po, ts, es] = e->Primop();
+          if (e->type != ExpType::PRIMAPP) return nullptr;
+          const auto &[po, ts, es] = e->Primapp();
           if (po != Primop::STRING_TO_LAYOUT)
             return nullptr;
           CHECK(ts.empty() && es.size() == 1);
@@ -821,9 +821,9 @@ struct PeepholePass : public il::Pass<> {
               vv.pop_back();
               Simplified("concat string layout");
               vv.push_back(
-                  pool->Primop(Primop::STRING_TO_LAYOUT,
-                               {},
-                               {pool->String(*prevs + *s)}));
+                  pool->Primapp(Primop::STRING_TO_LAYOUT,
+                                {},
+                                {pool->String(*prevs + *s)}));
             }
           } else if (e->type == ExpType::NODE) {
             const auto &[ca, cc] = e->Node();
@@ -1786,8 +1786,8 @@ struct DecomposePass : public il::Pass<> {
     // PERF: If there are many cases, we should at least do
     // binary search.
     for (const auto &[bi, e] : arms) {
-      body = pool->If(pool->Primop(Primop::INT_EQ,
-                                   {}, {pool->Int(bi), objvarexp}),
+      body = pool->If(pool->Primapp(Primop::INT_EQ,
+                                    {}, {pool->Int(bi), objvarexp}),
                       DoExp(e),
                       body);
     }
@@ -1814,8 +1814,8 @@ struct DecomposePass : public il::Pass<> {
     // binary search. Jump tables would be nice too, but then
     // we should probably just persist the wordcase construct!
     for (const auto &[w, e] : arms) {
-      body = pool->If(pool->Primop(Primop::WORD_EQ,
-                                   {}, {pool->Word(w), objvarexp}),
+      body = pool->If(pool->Primapp(Primop::WORD_EQ,
+                                    {}, {pool->Word(w), objvarexp}),
                       DoExp(e),
                       body);
     }
@@ -1843,8 +1843,8 @@ struct DecomposePass : public il::Pass<> {
     // like checking specific informative characters in the
     // strings.
     for (const auto &[str, e] : arms) {
-      body = pool->If(pool->Primop(Primop::STRING_EQ,
-                                   {}, {pool->String(str), objvarexp}),
+      body = pool->If(pool->Primapp(Primop::STRING_EQ,
+                                    {}, {pool->String(str), objvarexp}),
                       DoExp(e),
                       body);
     }

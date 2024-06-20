@@ -144,6 +144,9 @@ bool EVar::Occurs(const EVar &e, const Type *t) {
   case TypeType::LAYOUT:
     return false;
   }
+
+  LOG(FATAL) << "Unhandled case in occurs check.";
+  return true;
 }
 
 // PERF: We can actually use hash set on the ids, especially
