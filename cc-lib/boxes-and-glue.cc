@@ -1,6 +1,8 @@
 
 #include "boxes-and-glue.h"
 
+#include <memory>
+#include <cmath>
 #include <vector>
 #include <utility>
 #include <unordered_map>

@@ -2,6 +2,7 @@
 #ifndef _CC_LIB_BOXES_AND_GLUE
 #define _CC_LIB_BOXES_AND_GLUE
 
+#include <memory>
 #include <vector>
 #include <tuple>
 #include <optional>

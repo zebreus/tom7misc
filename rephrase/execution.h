@@ -108,7 +108,7 @@ struct Execution {
                                    const map_type &obj);
 
   // Get the underlying representations (const).
-  std::pair<const Execution::map_type &, const Execution::vec_type &>
+  std::tuple<const Execution::map_type &, const Execution::vec_type &>
   GetNode(const char *what, Value *a);
 
   void InternalFail(const std::string &msg, State *state);

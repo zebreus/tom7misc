@@ -25,6 +25,7 @@
 
 #include <stdlib.h>
 #include <cstdint>
+#include <cmath>
 
 #include "base/logging.h"
 #include "image.h"
@@ -400,7 +401,7 @@ ImageF IntegerVoronoi::DistanceField(const Image1 &img) {
       int ddx = dx * dx;
       int ddy = dy * dy;
 
-      float d = sqrtf(ddx + ddy);
+      float d = std::sqrt((float)(ddx + ddy));
       /*
       printf("%d,%d nearest %d= %d,%d; dist %.6f\n",
              x, y, p, xx, yy, d);

@@ -7,6 +7,8 @@
 
 // Simplified version of Google's logging.
 
+// TODO: In cc-lib, we might as well just use base/logging.h?
+
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

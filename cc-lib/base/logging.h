@@ -40,15 +40,15 @@
 #define DCHECK_GE(val1, val2) CHECK_GE(val1, val2)
 #define DCHECK_GT(val1, val2) CHECK_GT(val1, val2)
 #else
-// XXX tom7: These were all CHECK(false) but that's gotta be wrong!?
-// changed to no-op statement
-#define DCHECK(condition) do { } while (false)
-#define DCHECK_EQ(val1, val2) do { } while (false)
-#define DCHECK_NE(val1, val2) do { } while (false)
-#define DCHECK_LE(val1, val2) do { } while (false)
-#define DCHECK_LT(val1, val2) do { } while (false)
-#define DCHECK_GE(val1, val2) do { } while (false)
-#define DCHECK_GT(val1, val2) do { } while (false)
+// Disabled unless we're in debug mode, but we still need
+// something like DCHECK(cond) << "Error!" to compile.
+#define DCHECK(condition) if (true) {} else LogMessageFatal(__FILE__, __LINE__).stream()
+#define DCHECK_EQ(val1, val2) DCHECK(true)
+#define DCHECK_NE(val1, val2) DCHECK(true)
+#define DCHECK_LE(val1, val2) DCHECK(true)
+#define DCHECK_LT(val1, val2) DCHECK(true)
+#define DCHECK_GE(val1, val2) DCHECK(true)
+#define DCHECK_GT(val1, val2) DCHECK(true)
 #endif
 
 #define LOG_INFO LogMessage(__FILE__, __LINE__)

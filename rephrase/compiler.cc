@@ -116,8 +116,8 @@ bc::Program Compiler::InternalGuts(il::Program pgm_in) {
       printf("\n");
     }
     const auto &[data_bytes, total_insts] = bc::ProgramSize(bc_pgm);
-    printf("Program size: " ABLUE("%lld") " bytes data, "
-           APURPLE("%lld") " insts.\n", data_bytes, total_insts);
+    printf("Program size: " ABLUE("%zu") " bytes data, "
+           APURPLE("%zu") " insts.\n", (size_t)data_bytes, (size_t)total_insts);
     fflush(stdout);
   }
 

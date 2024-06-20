@@ -259,6 +259,8 @@ static int Bovex(const std::string &program_dir,
       case OutputType::TALK:
         return std::make_unique<TalkDocument>(program_dir);
       }
+      LOG(FATAL) << "Unimplemented document type";
+      return std::unique_ptr<Document>(nullptr);
     }();
 
     BovexExecution execution(pgm, document.get(), rephrasing.get(),
@@ -341,10 +343,10 @@ static int Bovex(const std::string &program_dir,
   }
 
   const auto &[data_bytes, total_insts] = ProgramSize(pgm);
-  printf("Program size: " ABLUE("%lld") " bytes data, "
-         APURPLE("%lld") " insts.\n", data_bytes, total_insts);
-  printf("Collected " AWHITE("%lld") " total cells\n",
-         total_collected);
+  printf("Program size: " ABLUE("%zu") " bytes data, "
+         APURPLE("%d") " insts.\n", (size_t)data_bytes, (int)total_insts);
+  printf("Collected " AWHITE("%zu") " total cells\n",
+         (size_t)total_collected);
   printf("Finished in %s\n", ANSI::Time(timer.Seconds()).c_str());
   return 0;
 }

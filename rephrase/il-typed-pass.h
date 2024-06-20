@@ -810,7 +810,7 @@ struct TypedPass {
              TypeString(ot).c_str());
     }
     std::unordered_map<std::string, const Type *> lab_types;
-    for (const auto [lab, t] : ot->Sum()) {
+    for (const auto &[lab, t] : ot->Sum()) {
       // Types have already been translated!
       // lab_types[lab] = DoType(G, t, args...);
       if (TYPED_PASS_VERBOSE) {

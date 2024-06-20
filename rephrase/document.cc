@@ -278,7 +278,8 @@ DocTree ValueToDocTree(const bc::Value *v) {
 // Calls "new Value" with the args; stores in heap.
 template<typename... Args>
 static bc::Value *NewValue(std::vector<bc::Value *> *heap, Args&&... args) {
-  bc::Value *v = new bc::Value{.v = std::forward<Args>(args)...};
+  auto t{std::forward<Args>(args)...};
+  bc::Value *v = new bc::Value{.v = std::move(t)};
   heap->push_back(v);
   return v;
 }

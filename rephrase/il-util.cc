@@ -407,6 +407,7 @@ struct SubstTypePass : public Pass<> {
       const std::vector<std::pair<std::string, const Type *>> &v,
       const Type *guess) override {
     LOG(FATAL) << "This should not be called, because we defer to SubstType.";
+    return nullptr;
   }
 
 
@@ -415,6 +416,7 @@ struct SubstTypePass : public Pass<> {
       const Type *body,
       const Type *guess) override {
     LOG(FATAL) << "This should not be called, because we defer to SubstType.";
+    return nullptr;
   }
 
   const Type *DoForall(
@@ -422,6 +424,7 @@ struct SubstTypePass : public Pass<> {
       const Type *body,
       const Type *guess) override {
     LOG(FATAL) << "This should not be called, because we defer to SubstType.";
+    return nullptr;
   }
 
   // Type being substituted.

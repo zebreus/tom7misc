@@ -287,7 +287,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   auto Err = [state]() { return StateDump(*state); };
 
   auto TwoInts = [a, b, &Err](const char *what) ->
-    std::pair<const BigInt &, const BigInt &> {
+    std::tuple<const BigInt &, const BigInt &> {
       const BigInt *abi = std::get_if<BigInt>(&a->v);
       const BigInt *bbi = std::get_if<BigInt>(&b->v);
       CHECK(abi != nullptr) << Err()
@@ -298,7 +298,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     };
 
   auto TwoWords = [a, b, &Err](const char *what) ->
-    std::pair<uint64_t, uint64_t> {
+    std::tuple<uint64_t, uint64_t> {
       const uint64_t *aw = std::get_if<uint64_t>(&a->v);
       const uint64_t *bw = std::get_if<uint64_t>(&b->v);
       CHECK(aw != nullptr) << Err()
@@ -309,7 +309,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     };
 
   auto TwoFloats = [a, b, &Err](const char *what) ->
-    std::pair<double, double> {
+    std::tuple<double, double> {
       const double *ad = std::get_if<double>(&a->v);
       const double *bd = std::get_if<double>(&b->v);
       CHECK(ad != nullptr) << Err()
@@ -320,7 +320,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     };
 
   auto TwoStrings = [a, b, &Err](const char *what) ->
-    std::pair<const std::string &, const std::string &> {
+    std::tuple<const std::string &, const std::string &> {
     const std::string *as = std::get_if<std::string>(&a->v);
     const std::string *bs = std::get_if<std::string>(&b->v);
     CHECK(as != nullptr) << Err()
@@ -331,7 +331,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   };
 
   auto TwoObjs = [a, b, &Err](const char *what) ->
-    std::pair<const map_type &, const map_type &> {
+    std::tuple<const map_type &, const map_type &> {
     const map_type *as = std::get_if<map_type>(&a->v);
     const map_type *bs = std::get_if<map_type>(&b->v);
     CHECK(as != nullptr) << Err()
@@ -848,12 +848,15 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
   case Primop::REF_SET:
     LOG(FATAL) << Err()
                << "SET should have been compiled away.";
+    break;
   case Primop::INVALID:
     LOG(FATAL) << Err()
                << "Tried executing INVALID primop as binop.";
+    break;
   default:
     LOG(FATAL) << Err()
                << "Invalid (or non-binop) primop " << PrimopString(primop);
+    break;
   }
   return NonceValue();
 }
@@ -942,7 +945,7 @@ Execution::GetNodeParts(const char *what, Value *a) {
 }
 
 // Returns the attrs (as a Value *) and the children (as a vector
-std::pair<const Execution::map_type &, const Execution::vec_type &>
+std::tuple<const Execution::map_type &, const Execution::vec_type &>
 Execution::GetNode(const char *what, Value *a) {
   const auto &[attrs, children] = GetNodeParts(what, a);
 
@@ -1237,12 +1240,16 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
 
   case Primop::REF:
     LOG(FATAL) << "REF should have been compiled away";
+    break;
   case Primop::REF_GET:
     LOG(FATAL) << "GET should have been compiled away";
+    break;
   case Primop::INVALID:
     LOG(FATAL) << "Tried executing INVALID primop as unop.";
+    break;
   default:
     LOG(FATAL) << "Invalid (or non-unop) primop " << PrimopString(primop);
+    break;
   }
   return NonceValue();
 }
@@ -1554,6 +1561,7 @@ void Execution::Step(State *state) {
     return;
 
   } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
+    (void)note;
     // no-op. But we could print the message in super-verbose modes?
     return;
 
@@ -1620,9 +1628,9 @@ void Execution::GC(State *state) {
 
   double mark_sec = gc_timer.Seconds();
   if (VERBOSE_GC) {
-    fprintf(stderr, "  Mark %lld/%lld allocs in %s\n",
-            (int64_t)reachable.size(),
-            (int64_t)state->heap.used.size(),
+    fprintf(stderr, "  Mark %zu/%zu allocs in %s\n",
+            reachable.size(),
+            state->heap.used.size(),
             ANSI::Time(mark_sec).c_str());
   }
 

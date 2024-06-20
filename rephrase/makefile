@@ -56,9 +56,14 @@ else
   # Check if g++ is actually clang
   ifeq ($(shell $(CXX) -v 2>&1 | grep -q "clang"), 1)
     CLANG=true
+    PLATFORM_LDFLAGS += -Wl,--stack,167772160
+  else
+    # g++ wants just one -. Thanks!
+	# PLATFORM_LDFLAGS += -Wl,--stack,167772160
+	PLATFORM_LDFLAGS += -Wl,-z,stack-size=167772160
   endif
   PLATFORM_CFLAGS=-g -D_GNU_SOURCE
-  PLATFORM_LDFLAGS += -Wl,--stack,167772160
+
   ifdef ASAN
     OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
   else
