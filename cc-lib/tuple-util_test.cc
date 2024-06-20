@@ -2,6 +2,7 @@
 
 #include <list>
 #include <tuple>
+#include <cstdlib>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -16,12 +17,12 @@ static void TestMapTuple() {
   const auto &[a, b, c] = t2;
   CHECK(a == "5");
   CHECK(b == "6");
-  CHECK(c == "7");  
+  CHECK(c == "7");
 }
 
 int main(int argc, char **argv) {
   TestMapTuple();
-  
+
   printf("OK\n");
   return 0;
 }

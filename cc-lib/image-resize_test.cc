@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <cstdio>
+#include <algorithm>
 
 #include "image.h"
 #include "ansi.h"

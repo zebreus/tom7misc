@@ -158,7 +158,7 @@ void PDFDocument::SetDocumentInfoStrings(
       auto it = m.find(key);
       if (it == m.end()) return;
       strncpy(field, it->second.data(), 63);
-      field[64] = '\0';
+      field[63] = '\0';
     };
 
   AddIf("creator", info.creator);

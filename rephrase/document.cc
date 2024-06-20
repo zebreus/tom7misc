@@ -210,6 +210,7 @@ ValueToAttrVal(const std::string &field, const bc::Value &val) {
   } else if (const BigInt *b = std::get_if<BigInt>(&val.v)) {
     return {CheckStripTag(bc::ObjectFieldType::INT), AttrVal{.v = *b}};
   } else if (const map_type *obj = std::get_if<map_type>(&val.v)) {
+    (void)obj;
     // Only expecting layout; handled above.
     LOG(FATAL) << "Saw map type that was not layout?";
   } else {
@@ -1004,7 +1005,7 @@ Document::PackBoxes(Algorithm algo,
 
       BoxIn b;
       b.width = *width;
-      b.data = (void*)&doc;
+      b.data = (const void*)&doc;
       if (const double *bw = doc.GetDoubleAttr("glue-break-extra-width")) {
         b.glue_break_extra_width = *bw;
       }

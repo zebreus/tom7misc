@@ -12,6 +12,7 @@
 
 #include <vector>
 #include <cstdio>
+#include <cstdlib>
 
 // Heaps are intrusive: The values stored within should be derived
 // from this class.

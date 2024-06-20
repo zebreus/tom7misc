@@ -149,6 +149,9 @@ const il::Type *Elaboration::ElabType(const Context &G,
     return pool->RecordType(std::move(rec));
   }
   }
+
+  LOG(FATAL) << "Unknown type";
+  return nullptr;
 }
 
 std::tuple<std::vector<Elaboration::ILDec>,

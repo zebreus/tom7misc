@@ -5,6 +5,7 @@
 #include <tuple>
 #include <utility>
 #include <cstdint>
+#include <cstdlib>
 
 namespace internal {
 template<class F, class T, size_t... I>

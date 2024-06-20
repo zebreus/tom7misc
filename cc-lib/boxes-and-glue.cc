@@ -30,9 +30,9 @@ static LineJustification NormalLineJustification(Justification just) {
   case Justification::ALL: return LineJustification::JUSTIFY;
   case Justification::CENTER: return LineJustification::CENTER;
   case Justification::LEFT: return LineJustification::LEFT;
-  default:
-    LOG(FATAL) << "Unimplemented justification";
   }
+  LOG(FATAL) << "Unimplemented justification";
+  return LineJustification::LEFT;
 }
 
 static LineJustification FinalLineJustification(Justification just) {
@@ -41,8 +41,9 @@ static LineJustification FinalLineJustification(Justification just) {
   case Justification::ALL: return LineJustification::JUSTIFY;
   case Justification::CENTER: return LineJustification::CENTER;
   case Justification::LEFT: return LineJustification::LEFT;
-    LOG(FATAL) << "Unimplemented justification";
   }
+  LOG(FATAL) << "Unimplemented justification";
+  return LineJustification::LEFT;
 }
 
 // Old, greedy version. Maybe useful for comparison in the paper?
