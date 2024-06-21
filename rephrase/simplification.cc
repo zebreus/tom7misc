@@ -1543,6 +1543,7 @@ struct EraseUnitPass : public il::TypedPass<> {
 
     LOG(FATAL) << "Internal type error: Label " << s << " not found in " <<
       TypeString(record_type);
+    return {nullptr, nullptr};
   }
 
 

@@ -185,15 +185,9 @@ local
       (a8, h8, a1, h1)
     end
 
-  (* FIXME: there seems to be a bug where mutually recursive functions
-     can't capture polymorphic variables. *)
-  fun find-piece (squares : squares, pos : int) = map-find (squares, pos)
-
-  fun mono-map-foldl (b : bool) (f : int * (color * piece) * bool -> bool)
-    (m : squares) = map-foldl b f m
-
-  fun squares-remove (m : squares, pos : int) = map-remove (m, pos)
-  fun squares-insert (m : squares, pos : int, v) = map-insert (m, pos, v)
+  fun find-piece (squares, pos) = map-find (squares, pos)
+  fun squares-remove (m, pos) = map-remove (m, pos)
+  fun squares-insert (m, pos, v) = map-insert (m, pos, v)
 
   (* Can the piece move from src to dst?
      src is assumed to contain the piece.
@@ -538,7 +532,7 @@ local
           ILLEGAL _ => false
         | OK _ => true
     in
-      mono-map-foldl false
+      map-foldl false
       (fn (src : int, (color, piece), b : bool) =>
        b orelse
        (color-eq (color, attacker-color) andalso

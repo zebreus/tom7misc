@@ -43,25 +43,32 @@ irritating process to convert them into .gguf format) or maybe
 just download one from the internet and hope it hasn't been injected
 with an Omega virus.
 
+GCC:
+Compiling with G++ does work on linux with version 13.4, and perhaps
+with some earlier versions. It seems to need more than 2 GB of RAM to
+compile parsing.cc (come on), but BoVeX will also like to use a lot of
+memory, so you might as well have a lot. I got a "premium" virtual
+server! Alas, G++ seems to frequently have bugs/oldness that I don't
+experience in clang (which is now what I'm normally using for
+development), so no guarantees that it will stay compatible.
+
 
 Some known issues:
- - If you are using the LLM, it may be quite slow. The LLM
-   settings are tuned for my computer in 2024
-   (32-core, 256 GB RAM, GeForce 4090). You can select
-   a different model by editing rephrasing.cc, and you can
-   change the settings (number of layers on GPU, number of
-   threads, etc.) in ../llm/models.h. You'll almost certainly
-   need to change the paths there too. You could even use
-   ../llm/tune.cc to find good settings for your machine.
 
- - Error messages are quite bad! If you know the type
-   theory of Standard ML, you will have some chance. Otherwise,
-   you will probably need to read "Types and Programming Languages"
-   and then guess what changes I might have made, or read the
-   source code.
+ - If you are using the LLM, it may be quite slow. The LLM settings
+   are tuned for my computer in 2024 (32-core, 256 GB RAM, GeForce
+   4090). You can select a different model by editing rephrasing.cc,
+   and you can change the settings (number of layers on GPU, number of
+   threads, etc.) in ../llm/models.h. You'll almost certainly need to
+   change the paths there too. You could even use ../llm/tune.cc to
+   find good settings for your machine.
 
- - Speaking of which: If your document looks bad, it could
-   be a bug in:
+ - Error messages are bad! If you know the type theory of Standard ML,
+   you will have some chance. Otherwise, you will probably need to
+   read "Types and Programming Languages" and then guess what changes
+   I might have made, or read the source code.
+
+ - Speaking of which: If your document looks bad, it could be a bug in:
       - Your document (your BoVeX code)
       - The PDF generation code
       - The PDF viewer you're using (they seem to disagree
@@ -74,19 +81,3 @@ Some known issues:
 
    You can tell me if you found or fixed a bug, but I ain't doin'
    technical support unless it's interesting!
-
- - There is a bug with mutually recursive functions that capture
-   polymorphic variables in their environments. Alas, this is not
-   easily fixed. I need to either make the translation of them use
-   first-class polymorphism, monomorphize, add mutually-recursive
-   function bundles to the IL, or figure out some other
-   transformation.
-
- - Compiling with g++ (11.40) on linux might be doable, but it runs
-   out of memory (I think) for me when compiling parsing.cc. This is
-   on a virtualized server with "only" 2 GB RAM, though. There were
-   some other errors that look to me like bugs/oldness in g++, but
-   stuff that could be worked around. I would be very happy if
-   Ubuntu's maintainers would GET WITH THE PROGRAM and package a more
-   recent version, since GCC 12 was released in 2022 and it's not like
-   11 is some magical release that's free from bugs.

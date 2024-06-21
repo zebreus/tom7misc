@@ -306,6 +306,12 @@ Elaboration::ElabDec(
       // free variables that are not in the mutually-recursive bundle
       // and are not globals. We use the same environment for the
       // entire bundle.
+      //
+      // Note that the bundle may use a polymorphic value (e.g. 'map')
+      // at multiple different types in its body. Two options here:
+      // We can replicate it in the environment for each different
+      // type instantiation, or we can use IL-level type quantification.
+      // Trying the second option here.
       std::unordered_set<std::string> fvs_all;
       for (int i = 0; i < (int)dec->funs.size(); i++) {
         const auto &[oexp, otype] = fns[i];
@@ -322,8 +328,12 @@ Elaboration::ElabDec(
       }
 
       // The free variables must be bound in the context, so get
-      // those types.
-      std::vector<std::pair<std::string, const il::Type *>> fvts;
+      // those types. We have the (IL) var, its tyvars if any, and
+      // a forall-quantified monotype. For example, 'ignore' would
+      // be
+      //   {"ignore", {"α"}, ∀ α. α → unit}
+      //
+      std::vector<std::tuple<std::string, std::vector<std::string>, const il::Type *>> fvts;
       for (const std::string &s : fvs_all) {
         // Since we've already elaborated the expression, its
         // free variables are IL variables. Look them up in the
@@ -335,32 +345,60 @@ Elaboration::ElabDec(
           "the context.\n";
         CHECK(vi->type != nullptr) << "Bug: Maybe this happens "
           "for primops or ctors?";
-        fvts.emplace_back(s, vi->type);
+
+        const il::Type *typ = vi->type;
+        for (int i = (int)vi->tyvars.size() - 1; i >= 0; i--) {
+          typ = pool->Forall(vi->tyvars[i], typ);
+        }
+
+        /*
+        if (!vi->tyvars.empty()) {
+          printf("Binding " ACYAN("%s") " as %s\n",
+                 s.c_str(),
+                 TypeString(typ).c_str());
+        }
+        */
+
+        fvts.emplace_back(s, vi->tyvars, typ);
       }
 
       std::sort(fvts.begin(), fvts.end(),
-                [](const std::pair<std::string, const il::Type *> &a,
-                   const std::pair<std::string, const il::Type *> &b) {
-                  return a.first < b.first;
+                [](const auto &a, const auto &b) {
+                  return std::get<0>(a) < std::get<0>(b);
                 });
 
       if (VERBOSE) {
         printf("Environment for mutually recursive fun dec:\n");
-        for (const auto &[x, t] : fvts) {
-          printf("  %s : %s\n", x.c_str(), TypeString(t).c_str());
+        for (const auto &[x, tv, t] : fvts) {
+          printf("  {%s} %s : %s\n",
+                 Util::Join(tv, ",").c_str(),
+                 x.c_str(), TypeString(t).c_str());
         }
       }
 
       // The labels have the same names as the variables for our
-      // convenience. This means that the record type is just the
-      // fvts set we just created.
-      const il::Type *env_type = pool->RecordType(fvts);
+      // convenience. So the record type is directly derived from
+      // the free variable set we just created.
+      std::vector<std::pair<std::string, const il::Type *>> record_type;
+      record_type.reserve(fvts.size());
+      for (const auto &[x, tv_, t] : fvts) record_type.emplace_back(x, t);
+      const il::Type *env_type = pool->RecordType(record_type);
       const std::string gx = pool->NewVar("env");
       const il::Exp *gxv = pool->Var({}, gx);
 
+      // Wrap the body with an expression that unpacks every element of the
+      // environment. We rely on simplification to clean up ones that we're
+      // not using. These bindings are polymorphic in the same way that the
+      // original variables were; we bind them by abstracting over the same
+      // type variables. The stored value is ∀-quantified at the IL level,
+      // so we apply it to those type variables in order.
       auto UnpackEnv = [&](const il::Exp *body) {
-          for (const auto &[fv, t] : fvts) {
-            body = pool->Let({}, fv, pool->Project(fv, env_type, gxv), body);
+          for (const auto &[fv, tvs, t_] : fvts) {
+            const il::Exp *rhs = pool->Project(fv, env_type, gxv);
+            for (const std::string &alpha : tvs) {
+              rhs = pool->TypeApp(rhs, pool->VarType(alpha, {}));
+            }
+            body = pool->Let(tvs, fv, rhs, body);
           }
           return body;
         };
@@ -471,9 +509,18 @@ Elaboration::ElabDec(
       {
         std::vector<std::pair<std::string, const il::Exp *>> env_fields;
         env_fields.reserve(fvts.size());
-        for (const auto &[lab_var, t_] : fvts) {
-          // Label and variable are the same.
-          env_fields.emplace_back(lab_var, pool->Var({}, lab_var));
+        for (const auto &[lab_var, tvs, t_] : fvts) {
+          // Label and variable are the same. But we abstract over
+          // any bound type variables for polymorphic bindings.
+          std::vector<const il::Type *> tv_args;
+          tv_args.reserve(tvs.size());
+          for (const std::string &alpha : tvs)
+            tv_args.push_back(pool->VarType(alpha, {}));
+          const il::Exp *elt = pool->Var(tv_args, lab_var);
+          for (int i = (int)tvs.size() - 1; i >= 0; i--) {
+            elt = pool->TypeFn(tvs[i], elt);
+          }
+          env_fields.emplace_back(lab_var, elt);
         }
         ret.push_back(ILDec{
               .tyvars = {},

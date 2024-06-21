@@ -93,6 +93,7 @@ struct TypedPass {
     case TypeType::LAYOUT: return DoLayoutType(G, t, args...);
     }
     LOG(FATAL) << "Unhandled type type in Pass::DoExp!";
+    return nullptr;
   }
 
   virtual std::pair<const Exp *, const Type *>
@@ -203,6 +204,14 @@ struct TypedPass {
     case ExpType::WITHOUT: {
       const auto &[obj, field, oft] = e->Without();
       return DoWithout(G, obj, field, oft, e, args...);
+    }
+    case ExpType::TYPEAPP: {
+      const auto &[exp, typ] = e->TypeApp();
+      return DoTypeApp(G, exp, typ, e, args...);
+    }
+    case ExpType::TYPEFN: {
+      const auto &[alpha, exp] = e->TypeFn();
+      return DoTypeFn(G, alpha, exp, e, args...);
     }
 
     default:
