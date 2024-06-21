@@ -351,14 +351,6 @@ Elaboration::ElabDec(
           typ = pool->Forall(vi->tyvars[i], typ);
         }
 
-        /*
-        if (!vi->tyvars.empty()) {
-          printf("Binding " ACYAN("%s") " as %s\n",
-                 s.c_str(),
-                 TypeString(typ).c_str());
-        }
-        */
-
         fvts.emplace_back(s, vi->tyvars, typ);
       }
 

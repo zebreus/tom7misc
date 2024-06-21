@@ -714,6 +714,30 @@ static void TestFun() {
   (void)Run("let fun f (s : string) : int = string-size s\n"
             "in f \"hi\"\n"
             "end\n");
+
+  // Regression: Mutually-recursive bundle whose environment contains
+  // a polymorphic function, which is used at multiple different
+  // types.
+  (void)Run(
+      "let\n"
+      "  fun ignore x = 0\n"
+      "  fun id0 x = ignore 2 + ignore \"\"\n"
+      "  and id1 y = ignore ignore + ignore id0\n"
+      "  do id0 \"hi\"\n"
+      "in\n"
+      "  id0 5\n"
+      "end\n");
+
+  (void)Run(
+      "let\n"
+      "  datatype (a) option = SOME of a | NONE\n"
+      "  fun mksome 0 = SOME \"ok\"\n"
+      "    | mksome n = unsome (SOME n)\n"
+      "  and unsome (SOME r) = SOME (int-to-string r)\n"
+      "    | unsome NONE = SOME \"hi\"\n"
+      "in\n"
+      " mksome 7\n"
+      "end\n");
 }
 
 static void TestObjects() {
@@ -883,18 +907,6 @@ static void NewTests() {
   if (VERBOSE) {
     front.SetVerbose(VERBOSE);
   }
-
-  // Environment contains a polymorphic function, which is
-  // used at multiple different types.
-  (void)Run(
-      "let\n"
-      "  fun ignore x = 0\n"
-      "  fun id0 x = ignore 2 + ignore \"\"\n"
-      "  and id1 y = ignore ignore + ignore id0\n"
-      "  do id0 \"hi\"\n"
-      "in\n"
-      "  id0 5\n"
-      "end\n");
 }
 
 }  // il
@@ -902,7 +914,6 @@ static void NewTests() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  /*
   il::TestLiterals();
   il::TestPrimops();
   il::TestSimplify();
@@ -914,7 +925,6 @@ int main(int argc, char **argv) {
   il::TestLayout();
   il::TestEnums();
   il::Regression();
-  */
 
   il::NewTests();
 

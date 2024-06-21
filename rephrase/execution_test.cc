@@ -288,6 +288,21 @@ static void ExecTests() {
         list-app pint (1 :: 5 :: 2 :: 3 :: 2 :: nil)
       end
       )"), "15232");
+
+  CHECK_EQ(RunToString(R"(
+      let
+        datatype (a) option = SOME of a | NONE
+        fun mksome 0 = SOME "ok"
+          | mksome n = unsome (SOME n)
+        and unsome (SOME r) = SOME (int-to-string r)
+          | unsome NONE = SOME "hi"
+      in
+       case (mksome 7, unsome NONE) of
+        (SOME s1, SOME s2) => print (s1 ^ s2)
+       | _ => print "WRONG"
+      end
+      )"), "7hi");
+
 }
 
 static void ObjTests() {
