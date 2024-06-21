@@ -1,3 +1,9 @@
+21 Jun 2024 (r5931)
+
+ * Fixed the bug with mutually-recursive functions that have polymorphic
+   variables in their environment (and use them at multiple different
+   types). This may inhibit some optimizations but otherwise should
+   work correctly now.
 
 19 Jun 2024 (r5927)
 

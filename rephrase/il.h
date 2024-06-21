@@ -134,8 +134,6 @@ enum class ObjFieldType {
 
 struct Type {
   TypeType type;
-  // XXX private
-  Type(TypeType t) : type(t) {}
 
   // Labels are always sorted.
   const std::vector<std::pair<std::string, const Type *>> &Record() const {
@@ -219,6 +217,9 @@ struct Type {
   }
 
  private:
+  explicit Type(TypeType t) : type(t) {}
+
+  friend struct AstArena<Type>;
   friend struct AstPool;
   std::string var;
   const Type *a = nullptr;
@@ -234,8 +235,6 @@ struct Type {
 
 struct Exp {
   ExpType type;
-  // (XXX should be able to make these private?)
-  Exp(ExpType t) : type(t) {}
 
   // Accessors.
 
@@ -445,7 +444,10 @@ struct Exp {
 
 
  private:
+  explicit Exp(ExpType t) : type(t) {}
+
   // PERF: Experiment with std::variant, at least.
+  friend struct AstArena<Exp>;
   friend struct AstPool;
   std::string str1;
   std::string str2;
