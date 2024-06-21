@@ -283,14 +283,15 @@ std::pair<int64_t, int64_t> ProgramSize(const Program &pgm) {
     data_bytes += DATA_NAME_SIZE;
     if (const auto *x = std::get_if<BigInt>(&val.v)) {
       // XXX measure actual size of bigint
+      (void)x;
       data_bytes += 8;
     } else if (const auto *x = std::get_if<std::string>(&val.v)) {
       // XXX and overhead?
       data_bytes += x->size();
     } else if (const auto *x = std::get_if<uint64_t>(&val.v)) {
-      data_bytes += 8;
+      data_bytes += sizeof (*x);
     } else if (const auto *x = std::get_if<double>(&val.v)) {
-      data_bytes += 8;
+      data_bytes += sizeof (*x);
     } else {
       LOG(FATAL) << "Unhandled or illegal data in ProgramSize";
     }

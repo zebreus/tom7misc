@@ -84,7 +84,7 @@ let
 in
   if SIMPLE-TEST
   then (main-text
-        (palatino
+        (fixedersys
          [A regular paragraph. Nothing funny going on here.[cite ggeranov][cite ocaml][cite remy1998objective][nocite touvron2023llama]
 
           [* a comment *]
@@ -101,7 +101,7 @@ in
           Back to normal paragraphs.]))
   else
   (main-text
-  (palatino
+  (fixedersys
    [
     [title[My test]][vspace (inch 0.1)]
     Dr. Tom Murphy VII, Ph.D.

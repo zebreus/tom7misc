@@ -107,6 +107,9 @@ class LogMessageFatal : public LogMessage {
     #if __cpp_lib_unreachable
     std::unreachable();
     #endif
+    #ifdef __GCC__
+    __builtin_unreachable();
+    #endif
   }
  private:
   DISALLOW_COPY_AND_ASSIGN(LogMessageFatal);

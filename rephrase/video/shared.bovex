@@ -1,5 +1,7 @@
 (*   -*- electric-indent-local-mode: nil -*- *)
 
+import "palatino.bovex"
+
 (* I forked this because it has some hard coded 1080p constants.
    It's probably superior to the aeoud one, so it should
    be the one to evolve and use for future talks. *)

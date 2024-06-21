@@ -1,0 +1,16 @@
+(* Installs the Palatino font family. You need to find the .ttf files
+   below yourself! *)
+
+do REQUIRE-LAYOUT
+
+datatype provide-palatino = REQUIRE-PALATINO
+
+val PALATINO : font-family =
+  font-load-family { name = "palatino",
+                     regular = SOME "pala.ttf",
+                     bold = SOME "palab.ttf",
+                     italic = SOME "palai.ttf",
+                     bold-italic = SOME "palabi.ttf" }
+
+fun palatino layout = apply-font PALATINO layout
+

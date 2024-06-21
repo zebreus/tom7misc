@@ -720,6 +720,7 @@ Document::BoxifyText(const TextProps &props,
 std::string Document::LoadFontFile(const std::string &filename) {
   LOG(FATAL) << "(LoadFontFile) The abstract base class of Document does "
     "not understand fonts on its own!";
+  return "";
 }
 
 void Document::GenerateOutput(
@@ -1005,7 +1006,7 @@ Document::PackBoxes(Algorithm algo,
 
       BoxIn b;
       b.width = *width;
-      b.data = (const void*)&doc;
+      b.data = const_cast<void*>((const void*)&doc);
       if (const double *bw = doc.GetDoubleAttr("glue-break-extra-width")) {
         b.glue_break_extra_width = *bw;
       }

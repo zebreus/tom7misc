@@ -55,8 +55,10 @@ void Optimization::SetVerbose(int v) {
 // Assert that an instruction is symbolic.
 static void OnlySymbolic(const Inst &inst) {
   if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
+    (void)iff;
     LOG(FATAL) << "Saw non-symbolic IF instruction in symbolic program.";
   } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
+    (void)jump;
     LOG(FATAL) << "Saw non-symbolic JUMP instruction in symbolic program.";
   }
 }
@@ -195,6 +197,7 @@ struct DeadPass {
           used_data->insert(save->global);
 
         } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
+          (void)fail;
           if ((opts & Optimization::O_DEAD_INST) &&
               inst_idx < (int)old_block.insts.size() - 1) {
             progress->Record("dropped instructions after fail");
@@ -216,6 +219,7 @@ struct DeadPass {
 
         } else if (const inst::TailCall *tail_call =
                    std::get_if<inst::TailCall>(&inst)) {
+          (void)tail_call;
           if ((opts & Optimization::O_DEAD_INST) &&
               inst_idx < (int)old_block.insts.size() - 1) {
             progress->Record("dropped instructions after tail call");
@@ -787,16 +791,19 @@ struct DataflowPass {
       } else if (const inst::Save *save = std::get_if<inst::Save>(inst)) {
         before.insert(save->arg);
       } else if (const inst::Jump *jump = std::get_if<inst::Jump>(inst)) {
+        (void)jump;
         // Nothing
       } else if (const inst::Fail *fail = std::get_if<inst::Fail>(inst)) {
         before.insert(fail->arg);
       } else if (const inst::Note *note = std::get_if<inst::Note>(inst)) {
+        (void)note;
         // Nothing
       } else if (const inst::SymbolicIf *iff =
                      std::get_if<inst::SymbolicIf>(inst)) {
         before.insert(iff->cond);
       } else if (const inst::SymbolicJump *jmp =
                      std::get_if<inst::SymbolicJump>(inst)) {
+        (void)jmp;
         // Nothing
       } else {
         LOG(FATAL) << "Unhandled instruction in DataflowPass.";
@@ -899,14 +906,21 @@ struct DataflowPass {
           // XXX for this kind of instruction, we could perhaps dump
           // an unused write into some designated sink local? Then at least
           // we have fewer of them.
+          (void)call;
 
         } else if (const inst::TailCall *tail_call =
                      std::get_if<inst::TailCall>(&inst)) {
+          (void)tail_call;
           // Nothing.
+
         } else if (const inst::Ret *ret = std::get_if<inst::Ret>(&inst)) {
+          (void)ret;
           // Nothing.
+
         } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
+          (void)iff;
           // Nothing.
+
         } else if (const inst::AllocVec *allocvec =
                        std::get_if<inst::AllocVec>(&inst)) {
           if (Unused(allocvec->out)) {
@@ -915,6 +929,7 @@ struct DataflowPass {
 
         } else if (const inst::SetVec *setvec =
                        std::get_if<inst::SetVec>(&inst)) {
+          (void)setvec;
           // Nothing. We would need a separate dead-write analysis.
 
         } else if (const inst::GetVec *getvec =
@@ -936,6 +951,7 @@ struct DataflowPass {
 
         } else if (const inst::SetLabel *setlabel =
                        std::get_if<inst::SetLabel>(&inst)) {
+          (void)setlabel;
           // Nothing. Would need a separate dead-write analysis.
 
         } else if (const inst::GetLabel *getlabel =
@@ -946,6 +962,7 @@ struct DataflowPass {
 
         } else if (const inst::DeleteLabel *deletelabel =
                        std::get_if<inst::DeleteLabel>(&inst)) {
+          (void)deletelabel;
           // Nothing. Would need a separate dead-write analysis.
 
         } else if (const inst::HasLabel *haslabel =
@@ -965,23 +982,29 @@ struct DataflowPass {
           }
 
         } else if (const inst::Save *save = std::get_if<inst::Save>(&inst)) {
+          (void)save;
           // Nothing.
 
         } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
+          (void)jump;
           // Nothing.
 
         } else if (const inst::Fail *fail = std::get_if<inst::Fail>(&inst)) {
+          (void)fail;
           // Nothing.
 
         } else if (const inst::Note *note = std::get_if<inst::Note>(&inst)) {
+          (void)note;
           // Nothing.
 
         } else if (const inst::SymbolicIf *iff =
                        std::get_if<inst::SymbolicIf>(&inst)) {
+          (void)iff;
           // Nothing.
 
         } else if (const inst::SymbolicJump *jmp =
-                       std::get_if<inst::SymbolicJump>(&inst)) {
+                   std::get_if<inst::SymbolicJump>(&inst)) {
+          (void)jmp;
           // Nothing.
 
         } else {

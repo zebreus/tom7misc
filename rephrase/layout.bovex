@@ -11,6 +11,9 @@
    (used by basically everything) and the columnar layout code
    (used just by two-column PDF docs). *)
 
+(* TODO: This should not install any fonts, especially ones that
+   I can't freely include with bovex itself. *)
+
 do REQUIRE-STDLIB
 
 datatype provide-layout = REQUIRE-LAYOUT
@@ -161,21 +164,12 @@ val ZAPF-DINGBATS : font-family = Font { family = "zapf-dingbats",
                        bold-italic = SOME "GeorgiaBoldItalic.ttf" }
 *)
 
-val PALATINO : font-family =
-  font-load-family { name = "palatino",
-                     regular = SOME "pala.ttf",
-                     bold = SOME "palab.ttf",
-                     italic = SOME "palai.ttf",
-                     bold-italic = SOME "palabi.ttf" }
-
 val FIXEDERSYS : font-family =
   font-load-family { name = "fixedersys",
                      regular = SOME "fixedersyslight2x.ttf",
                      bold = SOME "fixedersys2x.ttf",
                      italic = NONE,
                      bold-italic = NONE }
-
-(* val FIXEDERSYS = PALATINO *)
 
 datatype image-handle = Image of string
 fun image-load filename : image-handle =
@@ -415,7 +409,6 @@ fun line { x0, y0, x1, y1, stroke-color, line-width } : layout =
 fun helvetica layout = apply-font HELVETICA layout
 fun times-roman layout = apply-font TIMES layout
 fun courier layout = apply-font COURIER layout
-fun palatino layout = apply-font PALATINO layout
 fun fixedersys layout = apply-font FIXEDERSYS layout
 
 fun b layout =
