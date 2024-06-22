@@ -11,14 +11,12 @@
 
 int main(int argc, char **argv) {
   ANSI::Init();
-  CHECK(argc == 3 || argc == 5) <<
-    "./maketalk.exe dir file.talk [1920 1080]\n";
-
-  // XXX: Configurable from bovex file
-  const int screen_width = argc == 5 ? atoi(argv[3]) : 1920;
-  const int screen_height = argc == 5 ? atoi(argv[4]) : 1080;
+  CHECK(argc == 3) << "./maketalk.exe dir file.talk\n";
 
   Talk talk = Talk::Load(Util::DirPlus(argv[1], argv[2]));
+  CHECK(talk.screen_width > 0 &&
+        talk.screen_width > 0) << "Talk now requires a screen "
+    "width and height; maybe you need to rebuild it?";
   talk.screen_width = screen_width;
   talk.screen_height = screen_height;
   talk.SaveJS(

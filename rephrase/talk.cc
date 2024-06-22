@@ -51,7 +51,9 @@ Talk Talk::Load(const string &src_filename) {
       int h = atoi(Util::chop(line).c_str());
       string src = Util::chop(line);
       CHECK(!src.empty()) << "Video needs src.";
-      slide->video.emplace(Video{.x = x, .y = y, .width = w, .height = h,
+      slide->video.emplace(Video{
+          .x = x, .y = y,
+          .width = w, .height = h,
           .src = src});
 
     } else if (cmd == "dur") {
@@ -82,6 +84,17 @@ Talk Talk::Load(const string &src_filename) {
       for (int x = lo; x <= hi; x++) {
         AddFile(Util::Replace(f, "%", StringPrintf("%d", x)));
       }
+
+    } else if (cmd == "screen-width") {
+      string px = Util::chop(line);
+      talk.screen_width = atoi(px.c_str());
+      CHECK(talk.screen_width > 0) << "Screen width needs a positive int";
+
+    } else if (cmd == "screen-height") {
+      string px = Util::chop(line);
+      talk.screen_height = atoi(px.c_str());
+      CHECK(talk.screen_height > 0) << "Screen height needs a positive int";
+
     } else {
       // Command must be a file that we can open.
       CHECK(slide != nullptr) << "start slide first (" << cmd << ")";

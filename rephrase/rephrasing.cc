@@ -355,8 +355,6 @@ struct Database {
         row.valid = (valid == 'V');
         if (row.valid) num_valid++;
 
-        // XXX: One-time deletion of escaped rows, since I broke them
-        // if (Unescape(text_content) == text_content)
         rows.push_back(std::move(row));
       }
 
