@@ -104,5 +104,9 @@ https://www.unicode.org/charts/PDF/U1FB00.pdf
 
 Can do the rest of WinAnsiEncoding. See pdf.cc.
 
+Practical info about how combining characters are treated in fonts and
+terminals:
+https://github.com/alacritty/alacritty/issues/1420#issuecomment-623118500
+
 
 ▜▘ ▉   ▛▛▜   ▜

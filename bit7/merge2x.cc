@@ -6,6 +6,7 @@
 
 #include "base/logging.h"
 #include "font-image.h"
+#include "util.h"
 
 using namespace std;
 
@@ -39,15 +40,28 @@ static bool NoGlyph(const FontImage &font, int codepoint) {
 }
 
 int main(int argc, char **argv) {
-  // TODO: Allow in place, generating backup, like normalize.
-  CHECK(argc == 4) <<
-    "Usage: ./merge2x.exe config1x.cfg config2x.cfg merged.png";
+  CHECK(argc == 3 || argc == 4) <<
+    "Usage: ./merge2x.exe config1x.cfg config2x.cfg [merged.png]\n"
+    "\n"
+    "Adds missing characters in the second font by upscaling\n"
+    "characters from the first. The second font must be exactly\n"
+    "twice the dimensions. If the merged.png is not provided,\n"
+    "back up the second file's font image and overwrite it.\n";
 
   const Config config1x = ParseAndCheckConfig(argv[1]);
   const Config config2x = ParseAndCheckConfig(argv[2]);
 
   FontImage font1x(config1x);
   FontImage font2x(config2x);
+
+  std::string dest = config2x.pngfile;
+  if (argc == 4) dest = argv[3];
+
+  if (Util::ExistsFile(dest)) {
+    std::string back = Util::BackupFile(dest);
+    printf("Moved old %s to %s\n", dest.c_str(),
+           back.c_str());
+  }
 
   CHECK(config1x.charbox_width * 2 == config2x.charbox_width);
   CHECK(config1x.charbox_height * 2 == config2x.charbox_height);
@@ -69,7 +83,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  font2x.SaveImage(argv[3]);
+  font2x.SaveImage(dest);
 
   return 0;
 }
