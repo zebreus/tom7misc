@@ -1,6 +1,8 @@
 default : codec.dll
 
-CXXFLAGS = -O3 -Wall -shared -fPIC
+CC_LIB=../cc-lib
+
+CXXFLAGS = -O3 -I. -I$(CC_LIB) -Wall -shared -fPIC
 
 OBJECTS = codec.o
 

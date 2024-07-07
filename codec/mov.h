@@ -36,6 +36,7 @@ struct MOV {
    private:
     friend struct MOV;
     int64_t pos = 0;
+    int width = 0, height = 0;
     int num_frames = 0;
     int frame_duration = 0;
     Out(FILE *f);
@@ -50,7 +51,8 @@ struct MOV {
     //
   };
 
-  std::unique_ptr<Out> OpenOut(std::string_view filename);
+  std::unique_ptr<Out> OpenOut(std::string_view filename,
+                               int width, int height);
   void CloseOut(Out *);
 
   #if 0
@@ -69,4 +71,4 @@ struct MOV {
 
 };
 
-#endif _MOV_H
+#endif

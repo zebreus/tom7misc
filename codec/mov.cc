@@ -13,12 +13,17 @@
 
 using Out = MOV::Out;
 
+// Possibly useful reference:
+// ffmpeg/libavformat/movenc.c
+
 // 1.0 in a 32-bit fixed point quantity.
 static constexpr uint32_t FIXED32_ONE = 0x00010000;
 static constexpr uint16_t FIXED16_ONE = 0x0100;
 // In matrices, the last column uses a 2_30 split of
 // bits.
 static constexpr uint32_t FRACT32_ONE = (1 << 30);
+
+static constexpr uint32_t TRACK_ID = 1;
 
 static constexpr uint32_t IDENTITY_MATRIX[9] = {
   FIXED32_ONE, 0, 0,
@@ -30,6 +35,11 @@ namespace {
 struct Buf {
   void W8(uint8_t b) {
     bytes.push_back(b);
+  }
+
+  void W16(uint16_t w) {
+    W8(0xFF & (w >> 8));
+    W8(0xFF & w);
   }
 
   void W32(uint32_t w) {
@@ -60,6 +70,12 @@ struct Buf {
     size_t s = bytes.size();
     CHECK(s < 0x100000000) << "Need to add support for 64-bit sizes!";
     W32At(idx, s);
+  }
+
+  void AddBuf(const Buf &other) {
+    for (uint8_t b : other.bytes) {
+      bytes.push_back(b);
+    }
   }
 
   std::vector<uint8_t> bytes;
@@ -110,7 +126,8 @@ MOV::Out::Out(FILE *f) : file(f) {}
 void MOV::Out::WriteHeader() {
 
   // XXX this depends on
-  // num_frames, fps
+  // num_frames, fps. So probably we should
+  // write it at the end.
 
   static constexpr uint32_t moov_size = 0; // XXX
   Write32(moov_size);
@@ -158,10 +175,14 @@ void MOV::Out::WriteHeader() {
   Write32(0);
 
   // Next track id. This code only outputs one track.
-  Write32(1);
+  Write32(TRACK_ID + 1);
 
   // Now the tracks. We have just one.
 
+  Buf trak;
+  // Size, tbd
+  trak.W32(0);
+  trak.WCC("trak");
   // Required sub-atoms: trhd, mdia
 
   {
@@ -181,21 +202,81 @@ void MOV::Out::WriteHeader() {
     trhd.W32(now);
     trhd.W32(now);
 
+    trhd.W32(TRACK_ID);
+    // Reserved 1
+    trhd.W32(0);
+    // Duration
+    trhd.W32(num_frames * frame_duration);
+    // Reserved 2, 3
+    trhd.W32(0);
+    trhd.W32(0);
+
+    // Layer
+    trhd.W16(0);
+    // Alternate group (?)
+    trhd.W16(0);
+    // Volume
+    trhd.W16(FIXED16_ONE);
+    // Reserved 4
+    trhd.W16(0);
+
+    for (int i = 0; i < 9; i++) trhd.W32(IDENTITY_MATRIX[i]);
+
+    trhd.W32(width);
+    trhd.W32(height);
+    trhd.WriteSizeTo(0);
+    trak.AddBuf(trhd);
   }
 
-  Buf track;
-  // size, tbd
-  track.W32(0);
-  track.WCC("trak");
+  {
+    Buf mdia;
+    mdia.W32(0);
+    mdia.WCC("mdia");
 
+    Buf mdhd;
+    mdhd.W32(0);
+    mdhd.WCC("mdhd");
+    // Version 0
+    mdhd.W8(0);
+    // Flags, 0
+    mdhd.W8(0);
+    mdhd.W8(0);
+    mdhd.W8(0);
+    // Creation and Modification time
+    mdhd.W32(now);
+    mdhd.W32(now);
 
+    mdhd.W32(TIME_SCALE);
+    mdhd.W32(num_frames * frame_duration);
+
+    // Language code 0 = English
+    mdhd.W16(0);
+    // Quality. Undocumented. ffmpeg writes 0.
+    mdhd.W16(0);
+
+    mdhd.WriteSizeTo(0);
+    mdia.AddBuf(mdhd);
+
+    mdia.WriteSizeTo(0);
+    trak.AddBuf(mdia);
+  }
+
+  trak.WriteSizeTo(0);
+  // XXX write to output
 }
 
-std::unique_ptr<Out> MOV::OpenOut(std::string_view filename) {
+std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
+                                  int width, int height) {
+  // TODO: Check maximum values here too
+  CHECK(width > 0);
+  CHECK(height > 0);
+
   FILE *f = fopen(std::string(filename).c_str(), "wb");
   if (f == nullptr) return nullptr;
 
   std::unique_ptr<Out> out(new Out(f));
+  out->width = width;
+  out->height = height;
 
   // Begins with an 'ftyp' atom. It has the size,
   // type, major brand, minor version, and one
@@ -209,4 +290,5 @@ std::unique_ptr<Out> MOV::OpenOut(std::string_view filename) {
   out->Write32(0);
   out->WriteCC("qt  ");
 
+  return out;
 }
