@@ -1,4 +1,5 @@
 
+// Incomplete!
 // The MOV file format. This is sometimes also known as the QuickTime
 // file format. It's structurally identical to MP4, so you could
 // possibly use this to work with MP4 files.
@@ -17,6 +18,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "image.h"
 
 namespace internal {
 struct Chunk;
@@ -36,7 +38,7 @@ struct MOV {
   // is supported now.
   struct Out {
 
-
+    void AddFrame(const ImageRGBA &img);
 
    private:
     friend struct MOV;
@@ -58,6 +60,7 @@ struct MOV {
     // WriteCC("qt  ");
     void WriteCC(const char (&fourcc)[5]);
     void WriteHeader();
+    void WritePtr(const uint8_t *data, size_t size);
     void WriteChunk(const internal::Chunk &chunk);
     FILE *file = nullptr;
 
@@ -66,9 +69,10 @@ struct MOV {
 
   };
 
-  std::unique_ptr<Out> OpenOut(std::string_view filename,
-                               int width, int height);
-  void CloseOut(Out *);
+  static std::unique_ptr<Out> OpenOut(std::string_view filename,
+                                      int width, int height);
+  // Finalizes the file; consumes the argument.
+  static void CloseOut(std::unique_ptr<Out> &out);
 
   #if 0
   struct FTyp {

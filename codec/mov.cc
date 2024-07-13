@@ -108,11 +108,15 @@ struct Chunk : public Buf {
 
 using Chunk = internal::Chunk;
 
-void MOV::CloseOut(Out *out) {
+void MOV::CloseOut(std::unique_ptr<Out> &out) {
   CHECK(out->file != nullptr);
+
+  out->WriteHeader();
+
   // TODO: Finalize.
   fclose(out->file);
   out->file = nullptr;
+  out.reset(nullptr);
 }
 
 void MOV::Out::Write8(uint8_t b) {
@@ -147,9 +151,24 @@ void MOV::Out::WriteCC(const char (&fourcc)[5]) {
   Write32(enc);
 }
 
+void MOV::Out::WritePtr(const uint8_t *data, size_t size) {
+  if (file != nullptr) {
+    if (size == 0) return;
+
+    if (1 == fwrite(data, size, 1, file)) {
+      pos += size;
+    } else {
+      fclose(file);
+      file = nullptr;
+    }
+  }
+}
+
 void MOV::Out::WriteChunk(const Chunk &chunk) {
-  // write size, then remainder of chunk with fwrite
-  LOG(FATAL) << "TODO";
+  // TODO: Support 64-bit sizes.
+  const size_t size = chunk.Size();
+  Write32(size);
+  WritePtr(chunk.bytes.data() + 4, size - 4);
 }
 
 MOV::Out::Out(FILE *f) : file(f) {}
@@ -380,4 +399,18 @@ std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
   out->WriteCC("qt  ");
 
   return out;
+}
+
+void MOV::Out::AddFrame(const ImageRGBA &img) {
+  CHECK(img.Height() == height && img.Width () == width);
+  Frame f{.pos = pos};
+  // TODO! Write it as raw bytes, R-G-B.
+  for (int y = 0; y < img.Height(); y++) {
+    for (int x = 0; x < img.Width(); x++) {
+      // ...
+    }
+  }
+
+  f.size = img.Height() * img.Width() * 3;
+  frames.push_back(f);
 }
