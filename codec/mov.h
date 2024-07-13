@@ -48,7 +48,14 @@ struct MOV {
     void WriteHeader();
     FILE *file = nullptr;
 
-    //
+    std::vector<Frame> frames;
+
+    struct Frame {
+      // Absolute byte offset in output.
+      int64_t pos = 0;
+
+    };
+
   };
 
   std::unique_ptr<Out> OpenOut(std::string_view filename,

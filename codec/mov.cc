@@ -177,6 +177,7 @@ void MOV::Out::WriteHeader() {
   // Next track id. This code only outputs one track.
   Write32(TRACK_ID + 1);
 
+
   // Now the tracks. We have just one.
 
   Buf trak;
@@ -233,29 +234,112 @@ void MOV::Out::WriteHeader() {
     mdia.W32(0);
     mdia.WCC("mdia");
 
-    Buf mdhd;
-    mdhd.W32(0);
-    mdhd.WCC("mdhd");
-    // Version 0
-    mdhd.W8(0);
-    // Flags, 0
-    mdhd.W8(0);
-    mdhd.W8(0);
-    mdhd.W8(0);
-    // Creation and Modification time
-    mdhd.W32(now);
-    mdhd.W32(now);
+    {
+      Buf mdhd;
+      mdhd.W32(0);
+      mdhd.WCC("mdhd");
+      // Version 0
+      mdhd.W8(0);
+      // Flags, 0
+      mdhd.W8(0);
+      mdhd.W8(0);
+      mdhd.W8(0);
+      // Creation and Modification time
+      mdhd.W32(now);
+      mdhd.W32(now);
 
-    mdhd.W32(TIME_SCALE);
-    mdhd.W32(num_frames * frame_duration);
+      mdhd.W32(TIME_SCALE);
+      mdhd.W32(num_frames * frame_duration);
 
-    // Language code 0 = English
-    mdhd.W16(0);
-    // Quality. Undocumented. ffmpeg writes 0.
-    mdhd.W16(0);
+      // Language code 0 = English
+      mdhd.W16(0);
+      // Quality. Undocumented. ffmpeg writes 0.
+      mdhd.W16(0);
 
-    mdhd.WriteSizeTo(0);
-    mdia.AddBuf(mdhd);
+      mdhd.WriteSizeTo(0);
+      mdia.AddBuf(mdhd);
+    }
+
+    /*
+       minf
+        stbl
+          stsd
+          stco
+          co64
+          stts
+          stss
+          stsc
+          stsz
+    */
+
+    {
+      // media info
+      Buf minf;
+      minf.W32(0);
+      minf.WCC("minf");
+
+      {
+        // sample table
+        Buf stbl;
+        stbl.W32(0);
+        stbl.WCC("stbl");
+
+        {
+          Buf stsd;
+          stsd.W32(0);
+          stsd.WCC("stsd");
+
+          // Version
+          stsd.W8(0);
+          // Reserved flags
+          stsd.W8(0);
+          stsd.W8(0);
+          stsd.W8(0);
+          // We just use one encoding, so the
+          // table just needs one entry.
+          // Number of entries.
+          stsd.W32(1);
+
+          // Entries.
+          Buf entry;
+          entry.W32(0);
+          entry.WCC("h777");
+          // reserved
+          for (int i = 0; i < 6; i++) entry.W8(0);
+          // index of "data reference" (??)
+          // https://developer.apple.com/documentation/quicktime-file-format/sample_description_atom
+          // Do they mean mdat? Or is this sidecar data?
+          entry.W16(0);
+
+          entry.WriteSizeTo(0);
+
+          stsd.AddBuf(entry);
+          stsd.WriteSizeTo(0);
+          stbl.AddBuf(stsd);
+        }
+
+        // TODO:
+        // use stco or co64 depending on how
+        // big the offsets are
+
+        // TODO:
+        // https://developer.apple.com/documentation/quicktime-file-format/composition_offset_atom
+        // ctts is what orders the presentation of frames (I think
+        // they are always ordered in decoding order)
+
+        // TODO:
+        // stss to mark keyframes ("sync" frames, i-frames)
+        // if absent, everything is an i-frame.
+
+        // sample table sizes.
+
+        stbl.WriteSizeTo(0);
+        minf.AddBuf(stbl);
+      }
+
+      minf.WriteSizeTo(0);
+      mdia.AddBuf(minf);
+    }
 
     mdia.WriteSizeTo(0);
     trak.AddBuf(mdia);
@@ -263,6 +347,7 @@ void MOV::Out::WriteHeader() {
 
   trak.WriteSizeTo(0);
   // XXX write to output
+
 }
 
 std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
