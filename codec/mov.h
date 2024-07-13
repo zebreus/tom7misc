@@ -14,8 +14,13 @@
 #include <string_view>
 #include <string>
 #include <cstdint>
+#include <vector>
 
 #include "base/logging.h"
+
+namespace internal {
+struct Chunk;
+}
 
 struct MOV {
 
@@ -35,6 +40,13 @@ struct MOV {
 
    private:
     friend struct MOV;
+
+    struct Frame {
+      // Absolute byte offset in output.
+      int64_t pos = 0;
+      int64_t size = 0;
+    };
+
     int64_t pos = 0;
     int width = 0, height = 0;
     int num_frames = 0;
@@ -46,15 +58,11 @@ struct MOV {
     // WriteCC("qt  ");
     void WriteCC(const char (&fourcc)[5]);
     void WriteHeader();
+    void WriteChunk(const internal::Chunk &chunk);
     FILE *file = nullptr;
 
     std::vector<Frame> frames;
 
-    struct Frame {
-      // Absolute byte offset in output.
-      int64_t pos = 0;
-
-    };
 
   };
 

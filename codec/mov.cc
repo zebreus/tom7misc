@@ -78,9 +78,35 @@ struct Buf {
     }
   }
 
+  size_t Size() const {
+    return bytes.size();
+  }
+
   std::vector<uint8_t> bytes;
 };
+}
+
+namespace internal {
+// Best to just use Chunk and AddChunk.
+struct Chunk : public Buf {
+  Chunk(const char (&fourcc)[5]) {
+    // Reserved for size.
+    W32(0);
+    WCC(fourcc);
+  }
+
+  // Sets the chunk size (in the destination, not source).
+  void AddChunk(const Chunk &other) {
+    CHECK(other.Size() >= 4);
+    size_t pos = bytes.size();
+    AddBuf(other);
+    W32At(pos, other.Size());
+  }
+
+};
 }  // namespace
+
+using Chunk = internal::Chunk;
 
 void MOV::CloseOut(Out *out) {
   CHECK(out->file != nullptr);
@@ -121,6 +147,11 @@ void MOV::Out::WriteCC(const char (&fourcc)[5]) {
   Write32(enc);
 }
 
+void MOV::Out::WriteChunk(const Chunk &chunk) {
+  // write size, then remainder of chunk with fwrite
+  LOG(FATAL) << "TODO";
+}
+
 MOV::Out::Out(FILE *f) : file(f) {}
 
 void MOV::Out::WriteHeader() {
@@ -129,69 +160,59 @@ void MOV::Out::WriteHeader() {
   // num_frames, fps. So probably we should
   // write it at the end.
 
-  static constexpr uint32_t moov_size = 0; // XXX
-  Write32(moov_size);
-  WriteCC("moov");
+  Chunk moov("moov");
 
   // The nested movie header.
-  static constexpr uint32_t mvhd_size = 0;
-  Write32(mvhd_size);
-  WriteCC("mvhd");
+  Chunk mvhd("mvhd");
   // Version
-  Write8(0); // ?
+  mvhd.W8(0); // ?
   // Flags, reserved.
-  Write8(0);
-  Write8(0);
-  Write8(0);
+  mvhd.W8(0);
+  mvhd.W8(0);
+  mvhd.W8(0);
 
   // The creation and edited time. Note that these
   // fields are 32 bit, so they will overflow soon.
   // Probably nobody cares about these.
   const uint32_t now = (uint32_t)time(nullptr);
-  Write32(now);
-  Write32(now);
+  mvhd.W32(now);
+  mvhd.W32(now);
 
-  Write32(TIME_SCALE);
-  Write32(num_frames * frame_duration);
+  mvhd.W32(TIME_SCALE);
+  mvhd.W32(num_frames * frame_duration);
   // Speed and volume, both 1.0.
-  Write32(FIXED32_ONE);
-  Write16(FIXED16_ONE);
+  mvhd.W32(FIXED32_ONE);
+  mvhd.W16(FIXED16_ONE);
 
   // Transformation matrix.
   for (int i = 0; i < 9; i++) Write32(IDENTITY_MATRIX[i]);
 
   // Preview start and duration. We just use the first frame?
-  Write32(0);
-  Write32(frame_duration);
+  mvhd.W32(0);
+  mvhd.W32(frame_duration);
 
   // Poster time is also the first frame.
-  Write32(0);
+  mvhd.W32(0);
 
   // Selection time and duration
-  Write32(0);
-  Write32(0);
+  mvhd.W32(0);
+  mvhd.W32(0);
 
   // Current time.
-  Write32(0);
+  mvhd.W32(0);
 
   // Next track id. This code only outputs one track.
-  Write32(TRACK_ID + 1);
+  mvhd.W32(TRACK_ID + 1);
 
 
   // Now the tracks. We have just one.
 
-  Buf trak;
-  // Size, tbd
-  trak.W32(0);
-  trak.WCC("trak");
+  Chunk trak("trak");
   // Required sub-atoms: trhd, mdia
 
   {
     // https://developer.apple.com/documentation/quicktime-file-format/track_header_atom
-    Buf trhd;
-    // size, tbd
-    trhd.W32(0);
-    trhd.WCC("trhd");
+    Chunk trhd("trhd");
     // trhd 0
     trhd.W8(0);
     // Flags, zero.
@@ -225,19 +246,15 @@ void MOV::Out::WriteHeader() {
 
     trhd.W32(width);
     trhd.W32(height);
-    trhd.WriteSizeTo(0);
-    trak.AddBuf(trhd);
+
+    trak.AddChunk(trhd);
   }
 
   {
-    Buf mdia;
-    mdia.W32(0);
-    mdia.WCC("mdia");
+    Chunk mdia("mdia");
 
     {
-      Buf mdhd;
-      mdhd.W32(0);
-      mdhd.WCC("mdhd");
+      Chunk mdhd("mdhd");
       // Version 0
       mdhd.W8(0);
       // Flags, 0
@@ -256,8 +273,7 @@ void MOV::Out::WriteHeader() {
       // Quality. Undocumented. ffmpeg writes 0.
       mdhd.W16(0);
 
-      mdhd.WriteSizeTo(0);
-      mdia.AddBuf(mdhd);
+      mdia.AddChunk(mdhd);
     }
 
     /*
@@ -274,20 +290,14 @@ void MOV::Out::WriteHeader() {
 
     {
       // media info
-      Buf minf;
-      minf.W32(0);
-      minf.WCC("minf");
+      Chunk minf("minf");
 
       {
         // sample table
-        Buf stbl;
-        stbl.W32(0);
-        stbl.WCC("stbl");
+        Chunk stbl("stbl");
 
         {
-          Buf stsd;
-          stsd.W32(0);
-          stsd.WCC("stsd");
+          Chunk stsd("stsd");
 
           // Version
           stsd.W8(0);
@@ -301,9 +311,7 @@ void MOV::Out::WriteHeader() {
           stsd.W32(1);
 
           // Entries.
-          Buf entry;
-          entry.W32(0);
-          entry.WCC("h777");
+          Chunk entry("h777");
           // reserved
           for (int i = 0; i < 6; i++) entry.W8(0);
           // index of "data reference" (??)
@@ -311,11 +319,8 @@ void MOV::Out::WriteHeader() {
           // Do they mean mdat? Or is this sidecar data?
           entry.W16(0);
 
-          entry.WriteSizeTo(0);
-
-          stsd.AddBuf(entry);
-          stsd.WriteSizeTo(0);
-          stbl.AddBuf(stsd);
+          stsd.AddChunk(entry);
+          stbl.AddChunk(stsd);
         }
 
         // TODO:
@@ -333,21 +338,20 @@ void MOV::Out::WriteHeader() {
 
         // sample table sizes.
 
-        stbl.WriteSizeTo(0);
-        minf.AddBuf(stbl);
+        minf.AddChunk(stbl);
       }
 
-      minf.WriteSizeTo(0);
-      mdia.AddBuf(minf);
+      mdia.AddChunk(minf);
     }
 
-    mdia.WriteSizeTo(0);
-    trak.AddBuf(mdia);
+    trak.AddChunk(mdia);
   }
 
-  trak.WriteSizeTo(0);
-  // XXX write to output
+  moov.AddChunk(trak);
 
+  moov.AddChunk(mvhd);
+  moov.WriteSizeTo(0);
+  WriteChunk(moov);
 }
 
 std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
