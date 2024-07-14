@@ -189,8 +189,11 @@
          ;; (insert (concat "\n;; " (prin1-to-string (frame-parameters))))
          ))
      ((eq window-system 'x)
+
+
       (set-frame-font
-       "-misc-fixed-bold-r-normal--13-100-100-100-c-70-iso8859-1"))
+       ;; "-misc-fixed-bold-r-normal--13-100-100-100-c-70-iso8859-1"
+       "-Frog-FixederSys 1x-thin-normal-normal-*-16-*-*-*-m-0-iso10646-1"))
      ((eq window-system 'ns)
       (progn
         (set-frame-font
@@ -363,7 +366,7 @@
       "\n"
       "\nBonus math symbols:\n"
       "\n"
-      "∀  ∃  →\n"
+      "∀  ∃  →  ×  ÷\n"
       ))
     ))
 
@@ -1009,6 +1012,7 @@
                                   "red")
              ))
 
+; (require 'rust-mode)
 
 (require 'typescript-mode)
 ;; for some reason, the customize variable that seems to control this
