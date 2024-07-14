@@ -54,7 +54,7 @@ struct MOV {
 
     int64_t pos = 0;
     int width = 0, height = 0;
-    int frame_duration = 0;
+    int frame_duration = DURATION_60;
     int64_t mdat_size32_pos = 0;
     Out(FILE *f);
     void Write8(uint8_t b);
@@ -79,7 +79,8 @@ struct MOV {
   };
 
   static std::unique_ptr<Out> OpenOut(std::string_view filename,
-                                      int width, int height);
+                                      int width, int height,
+                                      int duration = DURATION_60);
   // Finalizes the file; consumes the argument.
   static void CloseOut(std::unique_ptr<Out> &out);
 

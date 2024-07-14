@@ -201,7 +201,7 @@ void MOV::Out::FinalizeData() {
   // of writing.
   int64_t mdat_size = Pos() - mdat_size32_pos;
   CHECK(mdat_size >= 8);
-  CHECK(0 == (0x100000000 & mdat_size)) << "Please add "
+  CHECK(mdat_size < 0x100000000) << "Please add "
     "support for 64-bit sizes!";
 
   Buf size32;
@@ -630,10 +630,12 @@ Chunk MOV::Out::GetVideoFormatChunk() const {
 
 
 std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
-                                  int width, int height) {
+                                  int width, int height,
+                                  int duration) {
   // TODO: Check maximum values here too
   CHECK(width > 0);
   CHECK(height > 0);
+  CHECK(duration > 0);
 
   FILE *f = fopen(std::string(filename).c_str(), "wb");
   if (f == nullptr) return nullptr;
@@ -641,6 +643,7 @@ std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
   std::unique_ptr<Out> out(new Out(f));
   out->width = width;
   out->height = height;
+  out->frame_duration = duration;
 
   out->WriteChunk(out->GetFtypChunk());
 
