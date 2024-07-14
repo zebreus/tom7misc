@@ -1,6 +1,7 @@
 
 #include "mov.h"
 
+#include <cstddef>
 #include <ctime>
 #include <memory>
 #include <string>
@@ -33,8 +34,20 @@ static constexpr uint32_t IDENTITY_MATRIX[9] = {
   0, 0, FRACT32_ONE,
 };
 
-namespace {
+namespace internal {
 struct Buf {
+  void WB(const std::initializer_list<uint8_t> &bs) {
+    for (uint8_t b : bs) bytes.push_back(b);
+  }
+
+  void WPascal(const std::string &s) {
+    CHECK(s.size() < 256) << "String too large to be stored "
+      "as a Pascal string!";
+    bytes.push_back((uint8_t)s.size());
+    for (int i = 0; i < (int)s.size(); i++)
+      bytes.push_back((uint8_t)s[i]);
+  }
+
   void W8(uint8_t b) {
     bytes.push_back(b);
   }
@@ -86,9 +99,7 @@ struct Buf {
 
   std::vector<uint8_t> bytes;
 };
-}
 
-namespace internal {
 // Best to just use Chunk and AddChunk.
 struct Chunk : public Buf {
   Chunk(const char (&fourcc)[5]) {
@@ -108,14 +119,16 @@ struct Chunk : public Buf {
 };
 }  // namespace
 
+using Buf = internal::Buf;
 using Chunk = internal::Chunk;
 
 void MOV::CloseOut(std::unique_ptr<Out> &out) {
   CHECK(out->file != nullptr);
 
+  out->FinalizeData();
   out->WriteHeader();
+  out->WriteDelayed();
 
-  // TODO: Finalize.
   fclose(out->file);
   out->file = nullptr;
   out.reset(nullptr);
@@ -166,6 +179,10 @@ void MOV::Out::WritePtr(const uint8_t *data, size_t size) {
   }
 }
 
+void MOV::Out::WriteBuf(const Buf &buf) {
+  WritePtr(buf.bytes.data(), buf.Size());
+}
+
 void MOV::Out::WriteChunk(const Chunk &chunk) {
   // TODO: Support 64-bit sizes.
   const size_t size = chunk.Size();
@@ -175,7 +192,36 @@ void MOV::Out::WriteChunk(const Chunk &chunk) {
 
 MOV::Out::Out(FILE *f) : file(f) {}
 
-// This depends on the frames, so it should be written
+void MOV::Out::FinalizeData() {
+  // Finalize the mdat chunk, which we're in the midst
+  // of writing.
+  int64_t mdat_size = Pos() - mdat_size32_pos;
+  CHECK(mdat_size >= 8);
+  CHECK(0 == (0x100000000 & mdat_size)) << "Please add "
+    "support for 64-bit sizes!";
+
+  Buf size32;
+  size32.W32(mdat_size);
+  delayed_writes.emplace_back(mdat_size32_pos, size32.bytes);
+}
+
+// Seek around the file to write stuff that doesn't
+// happen in order.
+void MOV::Out::WriteDelayed() {
+  for (const auto &[pos, bytes] : delayed_writes) {
+    if (file == nullptr)
+      return;
+
+    if (fseek(file, pos, SEEK_SET) < 0) {
+      file = nullptr;
+      return;
+    }
+
+    WritePtr(bytes.data(), bytes.size());
+  }
+}
+
+// This depends on the frames, so it's actually written
 // last.
 void MOV::Out::WriteHeader() {
   Chunk moov("moov");
@@ -185,9 +231,7 @@ void MOV::Out::WriteHeader() {
   // Version
   mvhd.W8(0); // ?
   // Flags, reserved.
-  mvhd.W8(0);
-  mvhd.W8(0);
-  mvhd.W8(0);
+  mvhd.WB({0, 0, 0});
 
   // The creation and edited time. Note that these
   // fields are 32 bit, so they will overflow soon.
@@ -234,9 +278,7 @@ void MOV::Out::WriteHeader() {
     // trhd 0
     trhd.W8(0);
     // Flags, zero.
-    trhd.W8(0);
-    trhd.W8(0);
-    trhd.W8(0);
+    trhd.WB({0, 0, 0});
 
     // Creation and modification times.
     trhd.W32(now);
@@ -276,9 +318,7 @@ void MOV::Out::WriteHeader() {
       // Version 0
       mdhd.W8(0);
       // Flags, 0
-      mdhd.W8(0);
-      mdhd.W8(0);
-      mdhd.W8(0);
+      mdhd.WB({0, 0, 0});
       // Creation and Modification time
       mdhd.W32(now);
       mdhd.W32(now);
@@ -293,6 +333,42 @@ void MOV::Out::WriteHeader() {
 
       mdia.AddChunk(mdhd);
     }
+
+    //
+    /*
+       |- size (32 bits)          // Size of the entire atom, including header
+  |- type (32 bits)          // Atom type identifier ('hdlr')
+  |- version (8 bits)         // Usually set to 0
+  |- flags (24 bits)         // Reserved; usually set to 0
+  |- componentType (32 bits) // Predefined type (e.g., 'mhlr' - media handler)
+  |- componentSubtype (32 bits) // FourCC code for the handler type (e.g., 'vide', 'soun')
+  |- componentManufacturer (32 bits) // Optional; often set to 0
+  |- componentFlags (32 bits)     // Optional flags; often set to 0
+  |- componentFlagsMask (32 bits)  // Optional mask for flags; often set to 0
+  |- componentName (Pascal string) // Optional human-readable name for the handler
+    */
+
+    // Required, but boring
+    {
+      Chunk hdlr("hdlr");
+      // Version 0
+      hdlr.W8(0);
+      // Flags
+      hdlr.WB({0, 0, 0});
+      // 'media handler' for 'video'
+      hdlr.WCC("mhlr");
+      hdlr.WCC("vide");
+      // manufacturer
+      hdlr.W32(0);
+      // flags
+      hdlr.WB({0, 0, 0, 0});
+      // flags mask
+      hdlr.WB({0, 0, 0, 0});
+      hdlr.WPascal("VideoHandler");
+
+      mdia.AddChunk(hdlr);
+    }
+
 
     /*
        minf
@@ -309,6 +385,61 @@ void MOV::Out::WriteHeader() {
     {
       // media info
       Chunk minf("minf");
+
+      // TODO: vmhd?
+
+      // Also required here, but boring
+      {
+        Chunk hdlr("hdlr");
+        // Version 0
+        hdlr.W8(0);
+        // Flags
+        hdlr.WB({0, 0, 0});
+        // 'data handler' for 'url' (?)
+        hdlr.WCC("dhlr");
+        hdlr.WCC("url ");
+        // manufacturer
+        hdlr.W32(0);
+        // flags
+        hdlr.WB({0, 0, 0, 0});
+        // flags mask
+        hdlr.WB({0, 0, 0, 0});
+        hdlr.WPascal("DataHandler");
+
+        minf.AddChunk(hdlr);
+      }
+
+
+      // Since the sample description has to have an index
+      // into dref, we write a single degenerate one.
+      {
+        Chunk dinf("dinf");
+        Chunk dref("dref");
+        // version
+        dref.W8(0);
+        // flags
+        dref.W8(0);
+        dref.W8(0);
+        dref.W8(0);
+        // one entry
+        dref.W32(1);
+
+        // The entry:
+        // XXX ffmpeg claims "Unknown dref type 0x206c7275 size 12"
+        // (but does it matter?)
+        Chunk url("url ");
+        // Version
+        url.W8(0);
+        // Flags
+        url.W8(0);
+        url.W8(0);
+        url.W8(0);
+        // Data; empty.
+
+        dref.AddChunk(url);
+        dinf.AddChunk(dref);
+        minf.AddChunk(dinf);
+      }
 
       {
         // sample table
@@ -400,6 +531,18 @@ std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
 
   out->WriteChunk(out->GetFtypChunk());
 
+  // In the steady state, the file is writing the "mdat" chunk.
+  // This is handled specially since we don't want to require
+  // the whole thing to reside in RAM.
+
+  // TODO: Support 64-bit sizes, especially here.
+
+  // We have to seek back here to write this.
+  out->mdat_size32_pos = out->Pos();
+  out->Write32(0);
+  out->WriteCC("mdat");
+
+
   return out;
 }
 
@@ -419,14 +562,21 @@ Chunk MOV::Out::GetFtypChunk() {
 void MOV::Out::AddFrame(const ImageRGBA &img) {
   CHECK(img.Height() == height && img.Width () == width);
   Frame f{.pos = pos};
-  // TODO! Write it as raw bytes, R-G-B.
+
+  Buf buf;
   for (int y = 0; y < img.Height(); y++) {
     for (int x = 0; x < img.Width(); x++) {
-      // ...
+      const auto &[r, g, b, a] = img.GetPixel(x, y);
+      buf.W8(r);
+      buf.W8(g);
+      buf.W8(b);
     }
   }
 
+  WriteBuf(buf);
+
   f.size = img.Height() * img.Width() * 3;
+  CHECK((int64_t)buf.Size() == (int64_t)f.size);
   frames.push_back(f);
 }
 

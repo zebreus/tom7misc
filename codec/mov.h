@@ -21,6 +21,7 @@
 #include "image.h"
 
 namespace internal {
+struct Buf;
 struct Chunk;
 }
 
@@ -53,6 +54,7 @@ struct MOV {
     int width = 0, height = 0;
     int num_frames = 0;
     int frame_duration = 0;
+    int64_t mdat_size32_pos = 0;
     Out(FILE *f);
     void Write8(uint8_t b);
     void Write16(uint16_t w);
@@ -61,12 +63,18 @@ struct MOV {
     void WriteCC(const char (&fourcc)[5]);
     void WriteHeader();
     void WritePtr(const uint8_t *data, size_t size);
+    void WriteBuf(const internal::Buf &buf);
     void WriteChunk(const internal::Chunk &chunk);
+    void FinalizeData();
+    void WriteDelayed();
+    int64_t Pos() const { return pos; }
     static internal::Chunk GetVideoFormatChunk();
     static internal::Chunk GetFtypChunk();
     FILE *file = nullptr;
 
     std::vector<Frame> frames;
+    std::vector<std::pair<std::size_t, std::vector<uint8_t>>>
+      delayed_writes;
   };
 
   static std::unique_ptr<Out> OpenOut(std::string_view filename,
