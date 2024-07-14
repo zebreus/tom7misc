@@ -10,6 +10,8 @@
 #ifndef _MOV_H
 #define _MOV_H
 
+#include <utility>
+#include <optional>
 #include <cstdio>
 #include <memory>
 #include <string_view>
@@ -67,7 +69,7 @@ struct MOV {
     void FinalizeData();
     void WriteDelayed();
     int64_t Pos() const { return pos; }
-    static internal::Chunk GetVideoFormatChunk();
+    internal::Chunk GetVideoFormatChunk() const;
     static internal::Chunk GetFtypChunk();
     FILE *file = nullptr;
 

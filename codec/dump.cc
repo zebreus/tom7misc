@@ -1,12 +1,16 @@
 
 #include "mov.h"
 
+#include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"

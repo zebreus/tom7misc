@@ -1,8 +1,12 @@
 
 #include "mov.h"
 
+#include <cstdio>
+#include <memory>
+
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "image.h"
 
 using Out = MOV::Out;
@@ -23,6 +27,10 @@ static void MakeMovie() {
     int x = WIDTH * (0.3 + f * 0.1);
     int y = HEIGHT * (0.2 + f * 0.4);
     frame.BlendFilledCircle32(x, y, WIDTH / 10, 0xAA3377FF);
+
+    frame.BlendText2x32(100, 100, 0xFFFF00FF,
+                        StringPrintf("Frame %d", i));
+
     out->AddFrame(frame);
   }
 
@@ -30,6 +38,7 @@ static void MakeMovie() {
 }
 
 int main(int argc, char **argv) {
+  ANSI::Init();
   MakeMovie();
 
   printf("OK\n");

@@ -1,17 +1,21 @@
 
 #include "mov.h"
 
+#include <cctype>
 #include <cstddef>
 #include <ctime>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <cstdint>
 #include <cstdio>
 #include <vector>
+#include <initializer_list>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "image.h"
 
 using Out = MOV::Out;
 using In = MOV::In;
@@ -570,7 +574,7 @@ void MOV::Out::WriteHeader() {
 // Looks like 'raw ' and 'RGBA' and 'png ' are good options.
 
 // In ffmpeg, compare mov_write_video_tag
-Chunk MOV::Out::GetVideoFormatChunk() {
+Chunk MOV::Out::GetVideoFormatChunk() const {
   // Entries.
   Chunk entry("RGBA");
   // reserved
@@ -579,7 +583,47 @@ Chunk MOV::Out::GetVideoFormatChunk() {
   // https://developer.apple.com/documentation/quicktime-file-format/sample_description_atom
   entry.W16(1);
 
-  for (int i = 0; i < 20 + 58; i++) entry.W8(0);
+  // codec stream version.
+  entry.W16(0);
+  // and revision.
+  entry.W16(0);
+
+  // Following ffmpeg, though it uses "FFMP" here.
+  entry.WCC("CCLB");
+  // Temporal quality (?)
+  entry.W32(0x00000000);
+  // Spatial quality = lossless
+  entry.W32(0x00000400);
+
+  entry.W16(width);
+  entry.W16(height);
+
+  // Horizontal and vertical resolution.
+  // Following ffmpeg, use 72dpi here, but this is generally ignored.
+  entry.W32(0x00480000);
+  entry.W32(0x00480000);
+
+  // Data size
+  entry.W32(0);
+  // Frame count
+  entry.W16(1);
+
+  // 32 bytes, with the first byte being the length.
+  const std::string compressor = "cc-lib rgba";
+  CHECK(compressor.size() <= 31);
+  entry.W8((uint8_t)compressor.size());
+  for (int i = 0; i < 31; i++) {
+    entry.W8(i < (int)compressor.size() ? compressor[i] : 0);
+  }
+
+  // Legacy bit depth. Might be ignored. RGBA implies 32, of course.
+  entry.W16(32);
+  // This is the "reserved" value (24) in ffmpeg?
+  // entry.W16(0x18);
+
+  // Color table id.
+  // Following mpeg, use the "reserved" value of -1.
+  entry.W16(0xFFFF);
 
   return entry;
 }
