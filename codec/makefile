@@ -1,4 +1,6 @@
-default : codec.dll
+default : mov_test.exe dump.exe
+
+codec : codec.dll
 
 CC_LIB=../cc-lib
 
@@ -17,6 +19,9 @@ codec.dll: codec.o
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 mov_test.exe : mov_test.o mov.o $(CC_LIB_OBJECTS)
+	$(CXX) $(EXE_LDFLAGS) $^ -o $@
+
+dump.exe : dump.o mov.o $(CC_LIB_OBJECTS)
 	$(CXX) $(EXE_LDFLAGS) $^ -o $@
 
 clean:

@@ -35,7 +35,7 @@ struct MOV {
   static constexpr int DURATION_24 = 2500;
 
   // An in-progress output stream (open file). Only basic video
-  // is supported now.
+  // is supported now. Create this with OpenOut below.
   struct Out {
 
     void AddFrame(const ImageRGBA &img);
@@ -62,11 +62,11 @@ struct MOV {
     void WriteHeader();
     void WritePtr(const uint8_t *data, size_t size);
     void WriteChunk(const internal::Chunk &chunk);
+    static internal::Chunk GetVideoFormatChunk();
+    static internal::Chunk GetFtypChunk();
     FILE *file = nullptr;
 
     std::vector<Frame> frames;
-
-
   };
 
   static std::unique_ptr<Out> OpenOut(std::string_view filename,
@@ -74,20 +74,49 @@ struct MOV {
   // Finalizes the file; consumes the argument.
   static void CloseOut(std::unique_ptr<Out> &out);
 
-  #if 0
-  struct FTyp {
 
+  // Extremely basic parsing, basically just for writing debugging
+  // tools.
+  struct In {
+    ~In();
+
+    struct ChunkHeader {
+      // The value in the size field (whether 32-bit or 64-bit).
+      // This is not usually what you care about, since we've
+      // already read past the header.
+      int64_t total_size = 0;
+      // Number of bytes remaining in the chunk.
+      int64_t size_left = 0;
+      uint8_t fourcc[4] = {};
+
+      bool IsFourCC(const char (&cc)[5]) const;
+      std::string FourCC() const;
+    };
+
+    // With the file pointer pointing at a valid chunk. Aborts
+    // if the file is already closed or if an incomplete/invalid
+    // chunk header is read. Returns nullopt if at a clean EOF
+    // (and then the object should not be used further).
+    // Otherwise, the chunk header.
+    std::optional<ChunkHeader> NextChunk();
+
+    // These abort if EOF is reached.
+    std::vector<uint8_t> ReadBytes(size_t s);
+    uint8_t Read8();
+    uint16_t Read16();
+    uint32_t Read32();
+
+    int64_t Pos() const { return pos; }
+
+   private:
+    friend struct MOV;
+    In(FILE *file) : file(file) {}
+    FILE *file = nullptr;
+    int64_t pos = 0;
   };
 
-
-  // Parsed to host byte order.
-  struct AtomHeader {
-    // In the file, this can be stored as a 32- or 64-bit value.
-    uint64_t size = 0;
-    uint32_t type = 0;
-  };
-  #endif
-
+  // To close the input, simply destroy the object.
+  static std::unique_ptr<In> OpenIn(std::string_view filename);
 };
 
 #endif

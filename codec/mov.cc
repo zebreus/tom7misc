@@ -10,8 +10,10 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
 using Out = MOV::Out;
+using In = MOV::In;
 
 // Possibly useful reference:
 // ffmpeg/libavformat/movenc.c
@@ -173,12 +175,9 @@ void MOV::Out::WriteChunk(const Chunk &chunk) {
 
 MOV::Out::Out(FILE *f) : file(f) {}
 
+// This depends on the frames, so it should be written
+// last.
 void MOV::Out::WriteHeader() {
-
-  // XXX this depends on
-  // num_frames, fps. So probably we should
-  // write it at the end.
-
   Chunk moov("moov");
 
   // The nested movie header.
@@ -204,7 +203,7 @@ void MOV::Out::WriteHeader() {
   mvhd.W16(FIXED16_ONE);
 
   // Transformation matrix.
-  for (int i = 0; i < 9; i++) Write32(IDENTITY_MATRIX[i]);
+  for (int i = 0; i < 9; i++) mvhd.W32(IDENTITY_MATRIX[i]);
 
   // Preview start and duration. We just use the first frame?
   mvhd.W32(0);
@@ -329,16 +328,8 @@ void MOV::Out::WriteHeader() {
           // Number of entries.
           stsd.W32(1);
 
-          // Entries.
-          Chunk entry("h777");
-          // reserved
-          for (int i = 0; i < 6; i++) entry.W8(0);
-          // index of "data reference" (??)
-          // https://developer.apple.com/documentation/quicktime-file-format/sample_description_atom
-          // Do they mean mdat? Or is this sidecar data?
-          entry.W16(0);
+          stsd.AddChunk(GetVideoFormatChunk());
 
-          stsd.AddChunk(entry);
           stbl.AddChunk(stsd);
         }
 
@@ -373,6 +364,27 @@ void MOV::Out::WriteHeader() {
   WriteChunk(moov);
 }
 
+
+// I think this is where all the fourccs are defined in ffmpeg:
+// libavformat/isom_tags.c
+
+// Looks like 'raw ' and 'RGBA' and 'png ' are good options.
+
+// In ffmpeg, compare mov_write_video_tag
+Chunk MOV::Out::GetVideoFormatChunk() {
+  // Entries.
+  Chunk entry("raw ");
+  // reserved
+  for (int i = 0; i < 6; i++) entry.W8(0);
+  // index of "data reference" (??)
+  // https://developer.apple.com/documentation/quicktime-file-format/sample_description_atom
+  // Do they mean mdat? Or is this sidecar data?
+  entry.W16(0);
+
+  return entry;
+}
+
+
 std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
                                   int width, int height) {
   // TODO: Check maximum values here too
@@ -386,19 +398,22 @@ std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
   out->width = width;
   out->height = height;
 
-  // Begins with an 'ftyp' atom. It has the size,
-  // type, major brand, minor version, and one
-  // compatible brand, so 4x5 = 20 bytes.
-  out->Write32(20);
-  out->WriteCC("ftyp");
-  out->WriteCC("qt  ");
+  out->WriteChunk(out->GetFtypChunk());
+
+  return out;
+}
+
+Chunk MOV::Out::GetFtypChunk() {
+  // Begins with an 'ftyp' atom.
+  Chunk ftyp("ftyp");
+  // MOV format.
+  ftyp.WCC("qt  ");
   // minor version 0?
   // looks like this could be something like 0x20 0x04 0x06 0x00
   // for the date 2004-06, but I see zero in real files.
-  out->Write32(0);
-  out->WriteCC("qt  ");
-
-  return out;
+  ftyp.W32(0);
+  ftyp.WCC("qt  ");
+  return ftyp;
 }
 
 void MOV::Out::AddFrame(const ImageRGBA &img) {
@@ -414,3 +429,112 @@ void MOV::Out::AddFrame(const ImageRGBA &img) {
   f.size = img.Height() * img.Width() * 3;
   frames.push_back(f);
 }
+
+
+std::optional<MOV::In::ChunkHeader> MOV::In::NextChunk() {
+  CHECK(file != nullptr);
+  if (feof(file)) {
+    fclose(file);
+    file = nullptr;
+    return std::nullopt;
+  }
+
+  ChunkHeader head;
+  head.total_size = Read32();
+  head.fourcc[0] = Read8();
+  head.fourcc[1] = Read8();
+  head.fourcc[2] = Read8();
+  head.fourcc[3] = Read8();
+  // 64-bit size?
+  if (head.total_size == 1) {
+    uint64_t size_hi = Read32();
+    uint64_t size_lo = Read32();
+    CHECK(0 == (size_hi & 0x80000000)) << "Size is way too big";
+    head.total_size = (size_hi << 32) | size_lo;
+    head.size_left = head.total_size - 4 * 4;
+  } else {
+    head.size_left = head.total_size - 2 * 4;
+  }
+
+  // Either way, the file pointer is at the beginning
+  // of the chunk's data now, like we wanted.
+  return {head};
+}
+
+std::vector<uint8_t> MOV::In::ReadBytes(size_t s) {
+  CHECK(file != nullptr);
+  if (s == 0) return {};
+  std::vector<uint8_t> ret(s);
+  CHECK(1 == fread(ret.data(), s, 1, file)) << "Failed to read "
+                                            << s << " bytes.";
+  pos += s;
+  return ret;
+}
+
+uint8_t MOV::In::Read8() {
+  CHECK(file != nullptr);
+  int c = fgetc(file);
+  CHECK(c != EOF);
+  pos++;
+  return c;
+}
+
+uint16_t MOV::In::Read16() {
+  uint16_t hi = Read8();
+  uint16_t lo = Read8();
+  return (hi << 8) | lo;
+}
+
+uint32_t MOV::In::Read32() {
+  uint32_t hi = Read16();
+  uint32_t lo = Read16();
+  return (hi << 16) | lo;
+}
+
+std::unique_ptr<In> MOV::OpenIn(std::string_view filename) {
+  FILE *f = fopen(std::string(filename).c_str(), "rb");
+  if (f == nullptr) return nullptr;
+
+  return std::unique_ptr<In>(new In(f));
+}
+
+MOV::In::~In() {
+  if (file != nullptr) {
+    fclose(file);
+    file = nullptr;
+  }
+}
+
+
+bool MOV::In::ChunkHeader::IsFourCC(const char (&cc)[5]) const {
+  return cc[0] == fourcc[0] &&
+    cc[1] == fourcc[1] &&
+    cc[2] == fourcc[2] &&
+    cc[3] == fourcc[3];
+}
+
+static inline bool Printable(char c) {
+  return c == ' ' || isalnum(c);
+}
+
+std::string MOV::In::ChunkHeader::FourCC() const {
+  std::string ret;
+  if (Printable(fourcc[0]) &&
+      Printable(fourcc[1]) &&
+      Printable(fourcc[2]) &&
+      Printable(fourcc[3])) {
+    ret.resize(4);
+    ret[0] = fourcc[0];
+    ret[1] = fourcc[1];
+    ret[2] = fourcc[2];
+    ret[3] = fourcc[3];
+    return ret;
+  } else {
+    return StringPrintf("%02x.%02x.%02x.%02x",
+                        fourcc[0],
+                        fourcc[1],
+                        fourcc[2],
+                        fourcc[3]);
+  }
+}
+
