@@ -669,7 +669,7 @@ bool ServerImpl::ListenOn(uint16_t portInHostOrder) {
      we want to bind to 0.0.0.0, which is all available interfaces.
      What you actually want to do is call getaddrinfo on command line arguments
      to let users specify the interface and port */
-  struct sockaddr_in anyInterfaceIPv4 = {0};
+  struct sockaddr_in anyInterfaceIPv4 = {};
   // also popular inet_addr("127.0.0.1") which is INADDR_LOOPBACK
   anyInterfaceIPv4.sin_addr.s_addr = htonl(INADDR_ANY);
   anyInterfaceIPv4.sin_family = AF_INET;
@@ -1112,7 +1112,7 @@ static void callWSAStartupIfNecessary() {
   // uninitialized winsock, then initialize winsock
   SOCKET testsocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (INVALID_SOCKET == testsocket && WSANOTINITIALISED == WSAGetLastError()) {
-    WSADATA data = { 0 };
+    WSADATA data = {};
     int result = WSAStartup(MAKEWORD(2, 2), &data);
     if (0 != result) {
       ews_printf("Calling WSAStartup failed! It returned %d with "

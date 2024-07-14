@@ -5043,11 +5043,20 @@ inline DataType type_num() {
     return int_type_arr[sizeof(T) - 1];
 }
 
-template<> inline DataType type_num<float>() { return DataType::CSV_DOUBLE; }
-template<> inline DataType type_num<double>() { return DataType::CSV_DOUBLE; }
-template<> inline DataType type_num<long double>() { return DataType::CSV_DOUBLE; }
-template<> inline DataType type_num<std::nullptr_t>() { return DataType::CSV_NULL; }
-template<> inline DataType type_num<std::string>() { return DataType::CSV_STRING; }
+template<> [[maybe_unused]]
+inline DataType type_num<float>() { return DataType::CSV_DOUBLE; }
+
+template<> [[maybe_unused]]
+inline DataType type_num<double>() { return DataType::CSV_DOUBLE; }
+
+template<> [[maybe_unused]]
+inline DataType type_num<long double>() { return DataType::CSV_DOUBLE; }
+
+template<> [[maybe_unused]]
+inline DataType type_num<std::nullptr_t>() { return DataType::CSV_NULL; }
+
+template<> [[maybe_unused]]
+inline DataType type_num<std::string>() { return DataType::CSV_STRING; }
 
 CONSTEXPR_14 DataType data_type(std::string_view in, long double* const out = nullptr);
 #endif
@@ -5726,6 +5735,7 @@ CONSTEXPR bool CSVField::operator==(std::string_view other) const noexcept
     return this->sv == other;
 }
 
+[[maybe_unused]]
 static inline std::ostream &operator<<(std::ostream &os,
                                        CSVField const &value) {
   os << std::string(value);
@@ -5784,6 +5794,7 @@ HEDLEY_CONST CONSTEXPR_17 WhitespaceMap make_ws_flags(const char* ws_chars, size
     return ret;
 }
 
+[[maybe_unused]]
 inline WhitespaceMap make_ws_flags(const std::vector<char>& flags) {
     return make_ws_flags(flags.data(), flags.size());
 }
@@ -6094,6 +6105,7 @@ struct GuessScore {
   size_t header;
 };
 
+[[maybe_unused]]
 static std::vector<std::string> get_col_names(
     std::string_view filename,
     const CSVFormat format = CSVFormat::guess_csv());
@@ -7156,6 +7168,7 @@ CSV_INLINE CSVGuessResult guess_format(std::string_view filename,
  *  @param[in] format    Format of the CSV file
  *
  */
+[[maybe_unused]]
 CSV_INLINE std::vector<std::string> get_col_names(std::string_view filename,
                                                   CSVFormat format) {
   auto head = get_csv_head(filename);
@@ -8104,6 +8117,7 @@ CSV_INLINE void CSVStat::variance(const long double &x_n, const size_t &i) {
  *
  *  \return A mapping of column names to csv::DataType enums
  */
+[[maybe_unused]]
 CSV_INLINE std::unordered_map<std::string, DataType> csv_data_types(const std::string& filename) {
     CSVStat stat(filename);
     std::unordered_map<std::string, DataType> csv_dtypes;
@@ -8163,11 +8177,13 @@ CSV_INLINE CSVReader parse_no_header(std::string_view in) {
  *  @snippet tests/test_read_csv.cpp Escaped Comma
  *
  */
+[[maybe_unused]]
 CSV_INLINE CSVReader operator ""_csv(const char* in, size_t n) {
     return parse(std::string_view(in, n));
 }
 
 /** A shorthand for csv::parse_no_header() */
+[[maybe_unused]]
 CSV_INLINE CSVReader operator ""_csv_no_header(const char* in, size_t n) {
     return parse_no_header(std::string_view(in, n));
 }
@@ -8179,6 +8195,7 @@ CSV_INLINE CSVReader operator ""_csv_no_header(const char* in, size_t n) {
  *  @param[in] col_name  Column whose position we should resolve
  *  @param[in] format    Format of the CSV file
  */
+[[maybe_unused]]
 CSV_INLINE int get_col_pos(
     std::string_view filename,
     std::string_view col_name,
@@ -8190,6 +8207,7 @@ CSV_INLINE int get_col_pos(
 /** Get basic information about a CSV file
  *  @include programs/csv_info.cpp
  */
+[[maybe_unused]]
 CSV_INLINE CSVFileInfo get_file_info(const std::string& filename) {
     CSVReader reader(filename);
     CSVFormat format = reader.get_format();
