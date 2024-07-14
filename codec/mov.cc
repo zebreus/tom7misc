@@ -241,7 +241,7 @@ void MOV::Out::WriteHeader() {
   mvhd.W32(now);
 
   mvhd.W32(TIME_SCALE);
-  mvhd.W32(num_frames * frame_duration);
+  mvhd.W32(frames.size() * frame_duration);
   // Speed and volume, both 1.0.
   mvhd.W32(FIXED32_ONE);
   mvhd.W16(FIXED16_ONE);
@@ -274,40 +274,40 @@ void MOV::Out::WriteHeader() {
 
   {
     // https://developer.apple.com/documentation/quicktime-file-format/track_header_atom
-    Chunk trhd("trhd");
-    // trhd 0
-    trhd.W8(0);
+    Chunk tkhd("tkhd");
+    // tkhd version 0
+    tkhd.W8(0);
     // Flags, zero.
-    trhd.WB({0, 0, 0});
+    tkhd.WB({0, 0, 0});
 
     // Creation and modification times.
-    trhd.W32(now);
-    trhd.W32(now);
+    tkhd.W32(now);
+    tkhd.W32(now);
 
-    trhd.W32(TRACK_ID);
+    tkhd.W32(TRACK_ID);
     // Reserved 1
-    trhd.W32(0);
+    tkhd.W32(0);
     // Duration
-    trhd.W32(num_frames * frame_duration);
+    tkhd.W32(frames.size() * frame_duration);
     // Reserved 2, 3
-    trhd.W32(0);
-    trhd.W32(0);
+    tkhd.W32(0);
+    tkhd.W32(0);
 
     // Layer
-    trhd.W16(0);
+    tkhd.W16(0);
     // Alternate group (?)
-    trhd.W16(0);
+    tkhd.W16(0);
     // Volume
-    trhd.W16(FIXED16_ONE);
+    tkhd.W16(FIXED16_ONE);
     // Reserved 4
-    trhd.W16(0);
+    tkhd.W16(0);
 
-    for (int i = 0; i < 9; i++) trhd.W32(IDENTITY_MATRIX[i]);
+    for (int i = 0; i < 9; i++) tkhd.W32(IDENTITY_MATRIX[i]);
 
-    trhd.W32(width);
-    trhd.W32(height);
+    tkhd.W32(width);
+    tkhd.W32(height);
 
-    trak.AddChunk(trhd);
+    trak.AddChunk(tkhd);
   }
 
   {
@@ -324,7 +324,7 @@ void MOV::Out::WriteHeader() {
       mdhd.W32(now);
 
       mdhd.W32(TIME_SCALE);
-      mdhd.W32(num_frames * frame_duration);
+      mdhd.W32(frames.size() * frame_duration);
 
       // Language code 0 = English
       mdhd.W16(0);
@@ -333,20 +333,6 @@ void MOV::Out::WriteHeader() {
 
       mdia.AddChunk(mdhd);
     }
-
-    //
-    /*
-       |- size (32 bits)          // Size of the entire atom, including header
-  |- type (32 bits)          // Atom type identifier ('hdlr')
-  |- version (8 bits)         // Usually set to 0
-  |- flags (24 bits)         // Reserved; usually set to 0
-  |- componentType (32 bits) // Predefined type (e.g., 'mhlr' - media handler)
-  |- componentSubtype (32 bits) // FourCC code for the handler type (e.g., 'vide', 'soun')
-  |- componentManufacturer (32 bits) // Optional; often set to 0
-  |- componentFlags (32 bits)     // Optional flags; often set to 0
-  |- componentFlagsMask (32 bits)  // Optional mask for flags; often set to 0
-  |- componentName (Pascal string) // Optional human-readable name for the handler
-    */
 
     // Required, but boring
     {
@@ -386,7 +372,19 @@ void MOV::Out::WriteHeader() {
       // media info
       Chunk minf("minf");
 
-      // TODO: vmhd?
+      {
+        Chunk vmhd("vmhd");
+        vmhd.W8(0);
+        // flags. The lsb marks the video as enabled.
+        vmhd.WB({0, 0, 0x01});
+        // Legacy stuff that's usually ignored:
+        // graphics mode
+        vmhd.W16(0);
+        // opcolor R, G, B
+        vmhd.W16(0);
+        vmhd.W16(0);
+        vmhd.W16(0);
+      }
 
       // Also required here, but boring
       {
@@ -433,7 +431,10 @@ void MOV::Out::WriteHeader() {
         // Flags
         url.W8(0);
         url.W8(0);
-        url.W8(0);
+        // This is what ffmpeg writes. Rumor has it that this
+        // flag means the data are "self-contained" (i.e. don't
+        // actually follow this blank URL).
+        url.W8(0x01);
         // Data; empty.
 
         dref.AddChunk(url);
@@ -464,9 +465,76 @@ void MOV::Out::WriteHeader() {
           stbl.AddChunk(stsd);
         }
 
-        // TODO:
-        // use stco or co64 depending on how
-        // big the offsets are
+        // TODO: Detect and use co64.
+        {
+          Chunk stco("stco");
+          // version 0
+          stco.W8(0);
+          // flags
+          stco.WB({0, 0, 0});
+          CHECK(frames.size() < int64_t{0x100000000});
+          stco.W32((uint32_t)frames.size());
+          for (const Frame &f : frames) {
+            CHECK(f.pos < int64_t{0x100000000}) << "Need to add support "
+              "for 64-bit sample offset table.";
+            stco.W32((uint32_t)f.pos);
+          }
+
+          stbl.AddChunk(stco);
+        }
+
+        // Time-to-Sample Atom
+        {
+          Chunk stts("stts");
+          // version 0
+          stts.W8(0);
+          // flags
+          stts.WB({0, 0, 0});
+          // One entry, since we have a constant frame rate.
+          stts.W32(1);
+          CHECK(frames.size() < int64_t{0x100000000});
+          stts.W32((uint32_t)frames.size());
+          stts.W32(frame_duration);
+
+          stbl.AddChunk(stts);
+        }
+
+        // Sample sizes.
+        {
+          Chunk stsz("stsz");
+          // version 0
+          stsz.W8(0);
+          // flags
+          stsz.WB({0, 0, 0});
+          // RGBA
+          stsz.W32(width * height * 4);
+          stsz.W32(frames.size());
+
+          stbl.AddChunk(stsz);
+        }
+
+
+        // Sample-to-Chunk Atom
+        {
+          Chunk stsc("stsc");
+          // version 0
+          stsc.W8(0);
+          // flags
+          stsc.WB({0, 0, 0});
+
+          // One entry.
+          stsc.W32(1);
+
+          // The entry, specifying one sample per chunk.
+          // First chunk id.
+          stsc.W32(1);
+          // Samples per chunk.
+          stsc.W32(1);
+          // Index 1 in stsd.
+          stsc.W32(1);
+
+          stbl.AddChunk(stsc);
+        }
 
         // TODO:
         // https://developer.apple.com/documentation/quicktime-file-format/composition_offset_atom
@@ -504,13 +572,14 @@ void MOV::Out::WriteHeader() {
 // In ffmpeg, compare mov_write_video_tag
 Chunk MOV::Out::GetVideoFormatChunk() {
   // Entries.
-  Chunk entry("raw ");
+  Chunk entry("RGBA");
   // reserved
   for (int i = 0; i < 6; i++) entry.W8(0);
-  // index of "data reference" (??)
+  // index of "data reference" into the dinf.dref chunk.
   // https://developer.apple.com/documentation/quicktime-file-format/sample_description_atom
-  // Do they mean mdat? Or is this sidecar data?
-  entry.W16(0);
+  entry.W16(1);
+
+  for (int i = 0; i < 20 + 58; i++) entry.W8(0);
 
   return entry;
 }
@@ -563,6 +632,8 @@ void MOV::Out::AddFrame(const ImageRGBA &img) {
   CHECK(img.Height() == height && img.Width () == width);
   Frame f{.pos = pos};
 
+  static constexpr int BYTES_PER_PIXEL = 4;
+
   Buf buf;
   for (int y = 0; y < img.Height(); y++) {
     for (int x = 0; x < img.Width(); x++) {
@@ -570,12 +641,13 @@ void MOV::Out::AddFrame(const ImageRGBA &img) {
       buf.W8(r);
       buf.W8(g);
       buf.W8(b);
+      buf.W8(a);
     }
   }
 
   WriteBuf(buf);
 
-  f.size = img.Height() * img.Width() * 3;
+  f.size = img.Height() * img.Width() * BYTES_PER_PIXEL;
   CHECK((int64_t)buf.Size() == (int64_t)f.size);
   frames.push_back(f);
 }

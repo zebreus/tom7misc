@@ -20,6 +20,7 @@ static bool ShouldShowData(const std::string &s) {
     "dref",
     "vmhd",
     "hdlr",
+    "stsd",
   };
 
   return fourccs.contains(s);

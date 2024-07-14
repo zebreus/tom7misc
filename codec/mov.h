@@ -52,7 +52,6 @@ struct MOV {
 
     int64_t pos = 0;
     int width = 0, height = 0;
-    int num_frames = 0;
     int frame_duration = 0;
     int64_t mdat_size32_pos = 0;
     Out(FILE *f);
