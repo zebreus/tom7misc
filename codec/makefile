@@ -10,7 +10,7 @@ EXE_LDFLAGS = -static
 
 OBJECTS = codec.o
 
-CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o
+CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/ansi.o
 
 codec.dll: codec.o
 	$(CXX) $(CXXFLAGS) $(DLL_LDFLAGS) -o $@ $<
