@@ -430,25 +430,33 @@ void MOV::Out::AddFrame(const ImageRGBA &img) {
   frames.push_back(f);
 }
 
+template<class T>
+static inline T AssertOpt(const char *what,
+                          const std::optional<T> &to) {
+  CHECK(to.has_value()) << what;
+  return to.value();
+}
 
 std::optional<MOV::In::ChunkHeader> MOV::In::NextChunk() {
   CHECK(file != nullptr);
-  if (feof(file)) {
+
+  std::optional<uint32_t> s = Read32();
+  if (!s.has_value()) {
     fclose(file);
     file = nullptr;
     return std::nullopt;
   }
 
   ChunkHeader head;
-  head.total_size = Read32();
-  head.fourcc[0] = Read8();
-  head.fourcc[1] = Read8();
-  head.fourcc[2] = Read8();
-  head.fourcc[3] = Read8();
+  head.total_size = s.value();
+  head.fourcc[0] = AssertOpt("fourcc", Read8());
+  head.fourcc[1] = AssertOpt("fourcc", Read8());
+  head.fourcc[2] = AssertOpt("fourcc", Read8());
+  head.fourcc[3] = AssertOpt("fourcc", Read8());
   // 64-bit size?
   if (head.total_size == 1) {
-    uint64_t size_hi = Read32();
-    uint64_t size_lo = Read32();
+    uint64_t size_hi = AssertOpt("64-bit size", Read32());
+    uint64_t size_lo = AssertOpt("64-bit size", Read32());
     CHECK(0 == (size_hi & 0x80000000)) << "Size is way too big";
     head.total_size = (size_hi << 32) | size_lo;
     head.size_left = head.total_size - 4 * 4;
@@ -471,24 +479,32 @@ std::vector<uint8_t> MOV::In::ReadBytes(size_t s) {
   return ret;
 }
 
-uint8_t MOV::In::Read8() {
+std::optional<uint8_t> MOV::In::Read8() {
   CHECK(file != nullptr);
   int c = fgetc(file);
-  CHECK(c != EOF);
+  if (c == EOF) return std::nullopt;
   pos++;
-  return c;
+  return {c};
 }
 
-uint16_t MOV::In::Read16() {
-  uint16_t hi = Read8();
-  uint16_t lo = Read8();
-  return (hi << 8) | lo;
+std::optional<uint16_t> MOV::In::Read16() {
+  std::optional<uint16_t> hi = Read8();
+  std::optional<uint16_t> lo = Read8();
+  if (hi.has_value() && lo.has_value()) {
+    return (hi.value() << 8) | lo.value();
+  } else {
+    return std::nullopt;
+  }
 }
 
-uint32_t MOV::In::Read32() {
-  uint32_t hi = Read16();
-  uint32_t lo = Read16();
-  return (hi << 16) | lo;
+std::optional<uint32_t> MOV::In::Read32() {
+  std::optional<uint16_t> hi = Read16();
+  std::optional<uint16_t> lo = Read16();
+  if (hi.has_value() && lo.has_value()) {
+    return (hi.value() << 16) | lo.value();
+  } else {
+    return std::nullopt;
+  }
 }
 
 std::unique_ptr<In> MOV::OpenIn(std::string_view filename) {

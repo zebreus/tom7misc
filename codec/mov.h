@@ -100,11 +100,12 @@ struct MOV {
     // Otherwise, the chunk header.
     std::optional<ChunkHeader> NextChunk();
 
-    // These abort if EOF is reached.
+    // Aborts if the target size cannot be read.
     std::vector<uint8_t> ReadBytes(size_t s);
-    uint8_t Read8();
-    uint16_t Read16();
-    uint32_t Read32();
+
+    std::optional<uint8_t> Read8();
+    std::optional<uint16_t> Read16();
+    std::optional<uint32_t> Read32();
 
     int64_t Pos() const { return pos; }
 
