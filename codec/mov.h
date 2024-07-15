@@ -29,6 +29,11 @@ struct Chunk;
 
 struct MOV {
 
+  enum class Codec {
+    PNG,
+    RAW_RGBA,
+  };
+
   static constexpr int TIME_SCALE = 60000;
   // FPS values when using the above time scale.
   static constexpr int DURATION_59_94 = 1001;
@@ -52,6 +57,7 @@ struct MOV {
       int64_t size = 0;
     };
 
+    Codec codec = Codec::PNG;
     int64_t pos = 0;
     int width = 0, height = 0;
     int frame_duration = DURATION_60;
@@ -80,10 +86,10 @@ struct MOV {
 
   static std::unique_ptr<Out> OpenOut(std::string_view filename,
                                       int width, int height,
-                                      int duration = DURATION_60);
+                                      int duration = DURATION_60,
+                                      Codec codec = Codec::PNG);
   // Finalizes the file; consumes the argument.
   static void CloseOut(std::unique_ptr<Out> &out);
-
 
   // Extremely basic parsing, basically just for writing debugging
   // tools.

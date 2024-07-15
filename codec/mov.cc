@@ -281,8 +281,9 @@ void MOV::Out::WriteHeader() {
     Chunk tkhd("tkhd");
     // tkhd version 0
     tkhd.W8(0);
-    // Flags, zero.
-    tkhd.WB({0, 0, 0});
+    // Flags.
+    // LSB is "track enabled".
+    tkhd.WB({0, 0, 0x01});
 
     // Creation and modification times.
     tkhd.W32(now);
@@ -388,6 +389,7 @@ void MOV::Out::WriteHeader() {
         vmhd.W16(0);
         vmhd.W16(0);
         vmhd.W16(0);
+        minf.AddChunk(vmhd);
       }
 
       // Also required here, but boring
@@ -548,6 +550,18 @@ void MOV::Out::WriteHeader() {
         // TODO:
         // stss to mark keyframes ("sync" frames, i-frames)
         // if absent, everything is an i-frame.
+        {
+          Chunk stss("stss");
+          // flags, unused
+          stss.W32(0);
+          stss.W32(frames.size());
+          // All i-frames.
+          for (int i = 0; i < (int)frames.size(); i++) {
+            stss.W32(i + 1);
+          }
+          stbl.AddChunk(stss);
+        }
+
 
         // sample table sizes.
 
@@ -576,7 +590,17 @@ void MOV::Out::WriteHeader() {
 // In ffmpeg, compare mov_write_video_tag
 Chunk MOV::Out::GetVideoFormatChunk() const {
   // Entries.
-  Chunk entry("RGBA");
+
+  Chunk entry = [&]() {
+      switch (codec) {
+      case Codec::PNG: return Chunk("png ");
+      case Codec::RAW_RGBA: return Chunk("RGBA");
+      default:
+        LOG(FATAL) << "Unimplemented codec?";
+        return Chunk("0000");
+      }
+    }();
+
   // reserved
   for (int i = 0; i < 6; i++) entry.W8(0);
   // index of "data reference" into the dinf.dref chunk.
@@ -609,7 +633,7 @@ Chunk MOV::Out::GetVideoFormatChunk() const {
   entry.W16(1);
 
   // 32 bytes, with the first byte being the length.
-  const std::string compressor = "cc-lib rgba";
+  const std::string compressor = "cc-lib mov.cc";
   CHECK(compressor.size() <= 31);
   entry.W8((uint8_t)compressor.size());
   for (int i = 0; i < 31; i++) {
@@ -631,7 +655,8 @@ Chunk MOV::Out::GetVideoFormatChunk() const {
 
 std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
                                   int width, int height,
-                                  int duration) {
+                                  int duration,
+                                  Codec codec) {
   // TODO: Check maximum values here too
   CHECK(width > 0);
   CHECK(height > 0);
@@ -641,6 +666,7 @@ std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
   if (f == nullptr) return nullptr;
 
   std::unique_ptr<Out> out(new Out(f));
+  out->codec = codec;
   out->width = width;
   out->height = height;
   out->frame_duration = duration;
@@ -657,7 +683,6 @@ std::unique_ptr<Out> MOV::OpenOut(std::string_view filename,
   out->mdat_size32_pos = out->Pos();
   out->Write32(0);
   out->WriteCC("mdat");
-
 
   return out;
 }
@@ -679,23 +704,35 @@ void MOV::Out::AddFrame(const ImageRGBA &img) {
   CHECK(img.Height() == height && img.Width () == width);
   Frame f{.pos = pos};
 
-  static constexpr int BYTES_PER_PIXEL = 4;
-
-  Buf buf;
-  for (int y = 0; y < img.Height(); y++) {
-    for (int x = 0; x < img.Width(); x++) {
-      const auto &[r, g, b, a] = img.GetPixel(x, y);
-      buf.W8(r);
-      buf.W8(g);
-      buf.W8(b);
-      buf.W8(a);
+  switch (codec) {
+  case Codec::RAW_RGBA: {
+    static constexpr int BYTES_PER_PIXEL = 4;
+    Buf buf;
+    for (int y = 0; y < img.Height(); y++) {
+      for (int x = 0; x < img.Width(); x++) {
+        const auto &[r, g, b, a] = img.GetPixel(x, y);
+        buf.W8(r);
+        buf.W8(g);
+        buf.W8(b);
+        buf.W8(a);
+      }
     }
+    WriteBuf(buf);
+    f.size = img.Height() * img.Width() * BYTES_PER_PIXEL;
+    CHECK((int64_t)buf.Size() == (int64_t)f.size);
+    break;
+  }
+  case Codec::PNG: {
+    std::vector<uint8_t> png = img.SaveToVec();
+    WritePtr(png.data(), png.size());
+    f.size = png.size();
+    break;
+  }
+  default:
+    LOG(FATAL) << "Unimplemented codec?";
+    break;
   }
 
-  WriteBuf(buf);
-
-  f.size = img.Height() * img.Width() * BYTES_PER_PIXEL;
-  CHECK((int64_t)buf.Size() == (int64_t)f.size);
   frames.push_back(f);
 }
 
