@@ -21,7 +21,7 @@ static constexpr int FRAMES = 4;
 static void MakeMovie() {
   std::unique_ptr<Out> out = MOV::OpenOut("test.mov", 1920, 1080,
                                           MOV::DURATION_60,
-                                          MOV::Codec::PNG);
+                                          MOV::Codec::PNG_MINIZ);
 
   for (int i = 0; i < FRAMES; i++) {
     ImageRGBA frame(WIDTH, HEIGHT);

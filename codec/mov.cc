@@ -3,6 +3,8 @@
 
 #include <cctype>
 #include <cstddef>
+#include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <memory>
 #include <optional>
@@ -16,6 +18,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "image.h"
+#include "miniz.h"
 
 using Out = MOV::Out;
 using In = MOV::In;
@@ -37,6 +40,19 @@ static constexpr uint32_t IDENTITY_MATRIX[9] = {
   0, FIXED32_ONE, 0,
   0, 0, FRACT32_ONE,
 };
+
+static std::vector<uint8_t> EncodeAsPNG(const ImageRGBA &img) {
+ std::vector<uint8_t> rgba = img.ToBuffer8();
+ size_t enc_len = 0;
+ void *enc = tdefl_write_image_to_png_file_in_memory_ex(
+     rgba.data(), img.Width(), img.Height(), 4, &enc_len, 9, false);
+ CHECK(enc != nullptr);
+
+ std::vector<uint8_t> ret(enc_len);
+ memcpy(ret.data(), enc, enc_len);
+ free(enc);
+ return ret;
+}
 
 namespace internal {
 struct Buf {
@@ -229,6 +245,10 @@ void MOV::Out::WriteDelayed() {
 // last.
 void MOV::Out::WriteHeader() {
   Chunk moov("moov");
+  // MOV does support a compressed movie atom ("cmov"),
+  // which would be pretty easy to add. But ffmpeg does
+  // not support it, suggesting that it would be a bad
+  // idea for compatibility.
 
   // The nested movie header.
   Chunk mvhd("mvhd");
@@ -593,6 +613,7 @@ Chunk MOV::Out::GetVideoFormatChunk() const {
 
   Chunk entry = [&]() {
       switch (codec) {
+      case Codec::PNG_MINIZ:
       case Codec::PNG: return Chunk("png ");
       case Codec::RAW_RGBA: return Chunk("RGBA");
       default:
@@ -728,6 +749,13 @@ void MOV::Out::AddFrame(const ImageRGBA &img) {
     f.size = png.size();
     break;
   }
+  case Codec::PNG_MINIZ: {
+    std::vector<uint8_t> png = EncodeAsPNG(img);
+    WritePtr(png.data(), png.size());
+    f.size = png.size();
+    break;
+  }
+
   default:
     LOG(FATAL) << "Unimplemented codec?";
     break;

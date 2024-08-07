@@ -32,6 +32,7 @@ struct MOV {
   enum class Codec {
     PNG,
     RAW_RGBA,
+    PNG_MINIZ,
   };
 
   static constexpr int TIME_SCALE = 60000;
