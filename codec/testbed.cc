@@ -3,11 +3,13 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <vector>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <algorithm>
+#include <span>
 
 #include "image.h"
 #include "base/logging.h"
@@ -122,6 +124,8 @@ struct Palette {
 // A mask is a set of pixels, typically in some spatially
 // dense region.
 //
+// TODO: Maybe better with std::variant?
+//
 // TODO: Certainly consider other mask types here (e.g.
 // a run-length-encoded bitmask or quadtree) and
 // boolean operators on them.
@@ -129,52 +133,79 @@ struct Mask {
   enum MaskType : uint8_t {
     ALL = 0,
     RECT = 1,
+    INVALID = 255,
   };
 
-  MaskType type = ALL;
+  virtual MaskType Type() const = 0;
+  virtual int NumPixels() const = 0;
 
-  // Maybe better to do this as a serialize/deserialize
-  // routine?
-  union u {
-    struct all {
-      // Nothing.
-    };
+  // TODO
+  static Mask *Parse(int frame_width, int frame_height,
+                     std::span<uint8_t> s);
 
-    struct rect {
-      u16be x, y;
-      u16be w, h;
-    };
-  };
+  static std::unique_ptr<Mask> All(int w, int h);
 
-  static Mask All() {
-    Mask mask;
-    mask.type = ALL;
-    return mask;
-  }
-
-  int NumPixels() const {
-
-  }
-
+ private:
+  friend struct AllMask;
+  friend struct RectMask;
+  Mask() {}
 };
+
+struct AllMask final : public Mask {
+  AllMask(int w, int h) : width(w), height(h) {
+  }
+
+  MaskType Type() const override { return ALL; }
+  int NumPixels() const override { return width * height; }
+
+  int width = 0, height = 0;
+};
+
+struct RectMask final : public Mask {
+  RectMask(int x, int y, int w, int h) : x(x), y(y), w(w), h(h) {
+  }
+
+  MaskType Type() const override { return RECT; }
+  int NumPixels() const override { return w * h; }
+
+  int x = 0, y = 0, w = 0, h = 0;
+};
+
+
+std::unique_ptr<Mask> Mask::All(int w, int h) {
+  return std::unique_ptr<Mask>(new AllMask(w, h));
+}
 
 // See below, but this requires the background color to be the
 // specific color.
 static Mask GetForegroundMaskWithColor(const ImageRGBA &frame,
                                        uint32_t bgcolor) {
+  const int width = frame.Width(), height = frame.Height();
   int left = 0, top = 0, right = 0, bottom = 0;
 
   // The order we do this in matters, but a row has to be
   // completely blank in order to crop it out.
-  auto SolidRow = [&frame, width](int x) -> std::optional<uint32_t> {
-      for (int i = 0; i < width; i++) {
-        if
-      }
+  auto SolidRow = [&frame, bgcolor, width](int y) bool {
+      for (int x = 0; x < frame.Width(); x++)
+        if (frame.GetPixel32(x, y) != bgcolor)
+          return false;
+      return true;
     };
 
-  for (int i = 0; i < width; i++) {
+  while (top < height - 1 && SolidRow(top))
+    top++;
+  while (bottom < height - top - 1 && SolidRow(height - bottom - 1))
+    bottom++;
+  const int mheight = height - top - bottom;
+  CHECK(mheight >= 1);
 
-  }
+  auto SolidRow = [&frame, bgcolor, top, mheight](int y) bool {
+      for (int x = 0; x < frame.Width(); x++)
+        if (frame.GetPixel32(x, y) != bgcolor)
+          return false;
+      return true;
+    };
+
 
 }
 
