@@ -2,8 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <optional>
-#include <string_view>
+#include <variant>
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -123,58 +122,36 @@ struct Palette {
 
 // A mask is a set of pixels, typically in some spatially
 // dense region.
-//
-// TODO: Maybe better with std::variant?
-//
 // TODO: Certainly consider other mask types here (e.g.
 // a run-length-encoded bitmask or quadtree) and
 // boolean operators on them.
-struct Mask {
-  enum MaskType : uint8_t {
-    ALL = 0,
-    RECT = 1,
-    INVALID = 255,
-  };
-
-  virtual MaskType Type() const = 0;
-  virtual int NumPixels() const = 0;
-
-  // TODO
-  static Mask *Parse(int frame_width, int frame_height,
-                     std::span<uint8_t> s);
-
-  static std::unique_ptr<Mask> All(int w, int h);
-
- private:
-  friend struct AllMask;
-  friend struct RectMask;
-  Mask() {}
+struct AllMask {
+  int width = 0;
+  int height = 0;
 };
 
-struct AllMask final : public Mask {
-  AllMask(int w, int h) : width(w), height(h) {
-  }
-
-  MaskType Type() const override { return ALL; }
-  int NumPixels() const override { return width * height; }
-
+struct RectMask {
+  int x = 0, y = 0;
   int width = 0, height = 0;
 };
 
-struct RectMask final : public Mask {
-  RectMask(int x, int y, int w, int h) : x(x), y(y), w(w), h(h) {
+using Mask =
+  std::variant<AllMask, RectMask>;
+
+static int NumPixels(const Mask &mask) {
+  if (const AllMask *a = std::get_if<AllMask>(&mask)) {
+    return a->width * a->height;
+  } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
+    return a->width * a->height;
+  } else {
+    LOG(FATAL) << "Bad mask";
+    return 0;
   }
-
-  MaskType Type() const override { return RECT; }
-  int NumPixels() const override { return w * h; }
-
-  int x = 0, y = 0, w = 0, h = 0;
-};
-
-
-std::unique_ptr<Mask> Mask::All(int w, int h) {
-  return std::unique_ptr<Mask>(new AllMask(w, h));
 }
+
+// TODO
+static Mask *ParseMask(int frame_width, int frame_height,
+                       std::span<uint8_t> s);
 
 // See below, but this requires the background color to be the
 // specific color.
@@ -185,8 +162,8 @@ static Mask GetForegroundMaskWithColor(const ImageRGBA &frame,
 
   // The order we do this in matters, but a row has to be
   // completely blank in order to crop it out.
-  auto SolidRow = [&frame, bgcolor, width](int y) bool {
-      for (int x = 0; x < frame.Width(); x++)
+  auto SolidRow = [&frame, bgcolor, width](int y) -> bool {
+      for (int x = 0; x < width; x++)
         if (frame.GetPixel32(x, y) != bgcolor)
           return false;
       return true;
@@ -199,32 +176,46 @@ static Mask GetForegroundMaskWithColor(const ImageRGBA &frame,
   const int mheight = height - top - bottom;
   CHECK(mheight >= 1);
 
-  auto SolidRow = [&frame, bgcolor, top, mheight](int y) bool {
-      for (int x = 0; x < frame.Width(); x++)
+  auto SolidCol = [&frame, bgcolor, top, mheight](int y) -> bool {
+      for (int x = top; x < top + mheight; x++)
         if (frame.GetPixel32(x, y) != bgcolor)
           return false;
       return true;
     };
 
+  while (left < width - 1 && SolidCol(left))
+    left++;
+  while (right < width - left - 1 && SolidCol(width - right - 1))
+    right++;
 
+  if (left == 0 && top == 0 && right == 0 && bottom == 0) {
+    return AllMask{.width = width, .height = height};
+  } else {
+    return RectMask{
+      .x = left, .y = top,
+      .width = width - left - right,
+      .height = mheight,
+    };
+  }
 }
 
 // This masks out a region with a solid "background" color.
-// The mask will be non-empty.
-static Mask GetForegroundMask(const ImageRGBA &frame) {
+// The mask will be non-empty. Sets the background color
+// if the mask is not degenerate.
+static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   // Greedy approach that only generates rectangular masks.
   const int width = frame.Width(), height = frame.Height();
 
   CHECK(width > 0 && height > 0);
   // Can't make a non-degenerate mask.
   if (width == 1 && height == 1) {
-    return Mask::All();
+    return AllMask{.width = width, .height = height};
   }
 
   // The corner-based logic wants nontrivial edges. We could
   // support this with a special case, though.
   if (width == 1 || height == 1) {
-    return Mask::All();
+    return AllMask{.width = width, .height = height};
   }
 
 
@@ -242,49 +233,82 @@ static Mask GetForegroundMask(const ImageRGBA &frame) {
   const uint32_t c = frame.GetPixel32(width - 1, height - 1);
 
   int num_eq = 0;
+  // Count equal edges.
   if (a == b) num_eq++;
   if (b == c) num_eq++;
   if (c == d) num_eq++;
   if (d == a) num_eq++;
+  // And diagonals.
+  if (a == c) num_eq++;
+  if (b == d) num_eq++;
 
   // No way to make a rectangular mask, then.
-  if (num_eq == 0) return Mask::All();
+  if (num_eq == 0) {
+    return AllMask{.width = width, .height = height};
+  }
 
-  if (num_eq >= 4) {
+  if (num_eq >= 3) {
     // Only one color will work. We can figure out the color
     // value with some pigeonhole logic:
     const uint32_t color = a == b ? a : c;
+    *bgcolor = color;
     return GetForegroundMaskWithColor(frame, color);
   }
 
   if (num_eq == 1) {
     // Only one edge can be cropped.
     // We could have a faster version of the cropping logic in this
-    // case, but it's not like this is the
-    if (a == b) return GetForegroundMaskWithColor(frame, a);
-    if (b == c) return GetForegroundMaskWithColor(frame, b);
-    if (c == d) return GetForegroundMaskWithColor(frame, c);
-    CHECK(d == a);
-    return GetForegroundMaskWithColor(frame, d);
+    // case, but it's not like this is a performance bottleneck.
+    if (a == b) {
+      *bgcolor = a;
+      return GetForegroundMaskWithColor(frame, a);
+    } else if (b == c) {
+      *bgcolor = b;
+      GetForegroundMaskWithColor(frame, b);
+    } else if (c == d) {
+      *bgcolor = c;
+      return GetForegroundMaskWithColor(frame, c);
+    } else if (d == a) {
+      *bgcolor = d;
+      return GetForegroundMaskWithColor(frame, d);
+    } else {
+      // One diagonal is equal. Useless.
+      return AllMask{.width = width, .height = height};
+    }
   }
 
-  CHECK(num_eq == 2);
+  CHECK(num_eq == 2) << num_eq;
   // The only interesting case is that opposing edges would work,
   // but they have different colors, so we can only choose one.
   // An example would be a French flag, where we could choose
   // blue or red to crop out. If the flag is asymmetric, one
   // choice may be better than the other.
-  // Get two masks and take the smaller one.
-  if (a == b && c == d) {
-    // Crop vertically.
+
+  // Either we have (a == b && c == d) or (a == d && b == c).
+  // Regardless we can use opposite corners as the two candidates.
+  if ((a == b && c == d) || (a == d && b == c)) {
+    /*
+    StringPrintf("\n"
+                 "%08x %08x\n"
+                 "%08x %08x\n", a, b, d, c);
+    */
+    CHECK(a != c);
+
+    // Get two masks and take the smaller one.
+
     Mask mask1 = GetForegroundMaskWithColor(frame, a);
     Mask mask2 = GetForegroundMaskWithColor(frame, c);
-    if (mask ==
+    if (NumPixels(mask1) < NumPixels(mask2)) {
+      *bgcolor = a;
+      return mask1;
+    } else {
+      *bgcolor = c;
+      return mask2;
+    }
   } else {
-    CHECK(b == c && d == a);
-
+    // Both diagonals are equal. Useless.
+    return AllMask{.width = width, .height = height};
   }
-
 }
 
 struct Encode {
@@ -317,7 +341,10 @@ struct Encode {
     Palette p;
     uint8_t pixel_format = Palette::MakePalette(frame, &p);
 
-    Mask m = GetForegroundMask(frame);
+    uint32_t bgcolor = 0;
+    Mask m = GetForegroundMask(frame, &bgcolor);
+
+
 
     return {};
   }
@@ -374,10 +401,14 @@ static void RunTestcase(const Testcase &t) {
   }
 
   Encode encode(width, height);
+  Decode decode(width, height);
 
   // All I-frame.
   for (const ImageRGBA &frame : frames) {
-    std::vector<uint8_t> bytes = encode.EncodeIFrame()
+    std::vector<uint8_t> bytes = encode.EncodeIFrame(frame);
+
+    ImageRGBA f = decode.DecodeIFrame(bytes);
+    CHECK(frame == f) << "encode/decode round trip not equal.";
   }
 }
 
