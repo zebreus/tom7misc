@@ -46,6 +46,7 @@ enum PixelFormat : uint8_t {
 enum MaskType : uint8_t {
   MASK_ALL = 0,
   MASK_RECT = 1,
+  MASK_RLE = 2,
 };
 
 static const char *PixelFormatString(PixelFormat p) {
@@ -180,14 +181,22 @@ struct RectMask {
   int width = 0, height = 0;
 };
 
+struct RLEMask {
+  int width = 0, height = 0;
+  // Runs alternate "off" and "on".
+  std::vector<int> runs;
+};
+
 using Mask =
-  std::variant<AllMask, RectMask>;
+  std::variant<AllMask, RectMask, RLEMask>;
 
 static MaskType MaskType(const Mask &mask) {
   if (const AllMask *a = std::get_if<AllMask>(&mask)) {
     return MASK_ALL;
   } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
     return MASK_RECT;
+  } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
+    return MASK_RLE;
   } else {
     LOG(FATAL) << "Bad mask";
     return MASK_ALL;
@@ -201,6 +210,9 @@ static std::string MaskString(const Mask &mask) {
     return StringPrintf("RECT(@%d,%d %dx%d)",
                         r->x, r->y,
                         r->width, r->height);
+  } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
+    return StringPrintf("RLE(%d runs)",
+                        (int)r->runs.size());
   } else {
     LOG(FATAL) << "Bad mask";
     return 0;
@@ -212,6 +224,13 @@ static int MaskNumPixels(const Mask &mask) {
     return a->width * a->height;
   } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
     return a->width * a->height;
+  } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
+    // Only the "on" runs.
+    int total = 0;
+    for (int i = 1; i < r->runs.size(); i += 2) {
+      total += r->runs[i];
+    }
+    return total;
   } else {
     LOG(FATAL) << "Bad mask";
     return 0;
@@ -235,6 +254,24 @@ static void AppMask(const Mask &mask, const F &f) {
       }
     }
 
+  } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
+    bool on = false;
+    int idx = 0;
+    for (const int run_len : r->runs) {
+      if (on) {
+        for (int i = 0; i < run_len; i++) {
+          // PERF avoid division
+          int y = idx / r->width;
+          int x = idx % r->width;
+          f(x, y);
+          idx++;
+        }
+      } else {
+        idx += run_len;
+      }
+      on = !on;
+    }
+
   } else {
     LOG(FATAL) << "Bad mask";
   }
@@ -242,7 +279,7 @@ static void AppMask(const Mask &mask, const F &f) {
 
 // See below, but this requires the background color to be the
 // specific color.
-static Mask GetForegroundMaskWithColor(const ImageRGBA &frame,
+static Mask GetForegroundRectMaskWithColor(const ImageRGBA &frame,
                                        uint32_t bgcolor) {
   const int width = frame.Width(), height = frame.Height();
   int left = 0, top = 0, right = 0, bottom = 0;
@@ -289,7 +326,7 @@ static Mask GetForegroundMaskWithColor(const ImageRGBA &frame,
 // This masks out a region with a solid "background" color.
 // The mask will be non-empty. Sets the background color
 // if the mask is not degenerate.
-static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
+static Mask GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   // Greedy approach that only generates rectangular masks.
   const int width = frame.Width(), height = frame.Height();
 
@@ -339,7 +376,7 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     // value with some pigeonhole logic:
     const uint32_t color = a == b ? a : c;
     *bgcolor = color;
-    return GetForegroundMaskWithColor(frame, color);
+    return GetForegroundRectMaskWithColor(frame, color);
   }
 
   if (num_eq == 1) {
@@ -348,16 +385,16 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     // case, but it's not like this is a performance bottleneck.
     if (a == b) {
       *bgcolor = a;
-      return GetForegroundMaskWithColor(frame, a);
+      return GetForegroundRectMaskWithColor(frame, a);
     } else if (b == c) {
       *bgcolor = b;
-      GetForegroundMaskWithColor(frame, b);
+      GetForegroundRectMaskWithColor(frame, b);
     } else if (c == d) {
       *bgcolor = c;
-      return GetForegroundMaskWithColor(frame, c);
+      return GetForegroundRectMaskWithColor(frame, c);
     } else if (d == a) {
       *bgcolor = d;
-      return GetForegroundMaskWithColor(frame, d);
+      return GetForegroundRectMaskWithColor(frame, d);
     } else {
       // One diagonal is equal. Useless.
       return AllMask{.width = width, .height = height};
@@ -383,8 +420,8 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 
     // Get two masks and take the smaller one.
 
-    Mask mask1 = GetForegroundMaskWithColor(frame, a);
-    Mask mask2 = GetForegroundMaskWithColor(frame, c);
+    Mask mask1 = GetForegroundRectMaskWithColor(frame, a);
+    Mask mask2 = GetForegroundRectMaskWithColor(frame, c);
     if (MaskNumPixels(mask1) < MaskNumPixels(mask2)) {
       *bgcolor = a;
       return mask1;
@@ -398,6 +435,56 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   }
 }
 
+static RLEMask GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
+  // We can use any color as the background color. Currently we only try the
+  // most common color, which would usually be the right choice.
+
+  // HERE: Actually, count longest runs and use that.
+
+}
+
+
+// Mask out the foreground (against a solid background) if possible.
+// Tries to find the best mask (rectangular, rle, ...).
+static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
+  uint32_t rle_bgcolor = 0;
+  RLEMask rle_mask = GetForegroundRLEMask(frame, palette, rle_bgcolor);
+
+  // Don't generate ALL mask in this one.
+  uint32_t rect_bgcolor = 0;
+  Mask rect_mask = GetForegroundRectMask(frame, rect_bgcolor);
+
+  // The rle mask will always be at least as detailed as the rectangle (if we
+  // found the same background color), but it is typically much larger to encode.
+  int rect_pixels = MaskNumPixels(rect_mask);
+  int rle_pixels = MaskNumPixels(rle_mask);
+
+  if (rect_pixels <= rle_pixels) {
+    *bgcolor = rect_bgcolor;
+    return rect_mask;
+  }
+
+  // Rect is four 16-bit coordinates.
+  int rect_size = 4 * 2;
+  // Estimate rle as 16 bit run lenghts.
+  int rle_size = rle_mask.runs.size() * 2;
+
+  // Choose heuristically. We assume that the difference between the masks is
+  // encoding background pixels.
+  // PERF: Tune this.
+  static constexpr double BYTES_PER_BACKGROUND_PIXEL = 1.5 / 8.0;
+
+  double rect_cost_bytes = rect_size + (rect_pixels - rle_pixels) * BYTES_PER_BACKGROUND_PIXEL;
+  double rle_cost_bytes = rle_size;
+
+  if (rle_cost_bytes < rect_cost_bytes) {
+    *bgcolor = rle_bgcolor;
+    return rle_mask;
+  } else {
+    *bgcolor = rect_bgcolor;
+    return rect_mask;
+  }
+}
 
 // This is the parsed in-memory representation, but it also contains
 // the reference for the serialized form.
