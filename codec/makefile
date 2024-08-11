@@ -4,13 +4,13 @@ codec : codec.dll
 
 CC_LIB=../cc-lib
 
-CXXFLAGS = --std=c++20 -O3 -I. -I$(CC_LIB) -Wall -fPIC
+CXXFLAGS = --std=c++20 -g -O3 -I. -I$(CC_LIB) -Wall -fPIC
 DLL_LDFLAGS = -shared -fPIC
 EXE_LDFLAGS = -static
 
 OBJECTS = codec.o
 
-CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o
+CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o $(CC_LIB)/zip.o
 
 codec.dll: codec.o
 	$(CXX) $(CXXFLAGS) $(DLL_LDFLAGS) -o $@ $<

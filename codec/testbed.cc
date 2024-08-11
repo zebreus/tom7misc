@@ -1,7 +1,12 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <initializer_list>
 #include <memory>
+#include <optional>
 #include <variant>
 #include <vector>
 #include <string>
@@ -14,12 +19,15 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
+#include "zip.h"
+
 // Assumptions:
 //   All frames are a fixed size.
 //   That size is at least 1x1.
 //   Pixel indices fit in int.
 //   Width and height fit in 16 bits each.
 // TODO: Can relax some of these with varint representations.
+
 
 // This works with an unsigned byte stream, with a preference towards
 // smaller byte values. The idea is that the generic compressor (e.g.
@@ -29,32 +37,67 @@
 // distribution of bytes is not uniform, so when we can, we try to
 // make bytes smaller.
 
-static constexpr uint8_t PIXELS_RGBA = 0;
-static constexpr uint8_t PIXELS_RGB = 1;
-static constexpr uint8_t PIXELS_PALETTE = 2;
-
-// Two bytes in big-endian order, for use in structs.
-struct u16be {
-  explicit u16be(uint16_t u) : hi(u >> 8), lo(u & 0xFF) {}
-  u16be(uint8_t hi, uint8_t lo) : hi(hi), lo(lo) {}
-
-  uint16_t value() const { return (uint16_t(hi) << 8) | lo; }
-
-  uint8_t hi = 0;
-  uint8_t lo = 0;
+enum PixelFormat : uint8_t {
+  PIXELS_RGBA = 0,
+  PIXELS_RGB = 1,
+  PIXELS_PALETTE = 2,
 };
 
-// TODO: Masks
+enum MaskType : uint8_t {
+  MASK_ALL = 0,
+  MASK_RECT = 1,
+};
 
-struct IFrameHeader {
+static const char *PixelFormatString(PixelFormat p) {
+  switch (p) {
+  case PIXELS_RGBA: return "RGBA";
+  case PIXELS_RGB: return "RGB";
+  case PIXELS_PALETTE: return "PALETTE";
+  default: return "BAD_PIXELFORMAT";
+  }
+}
 
-  uint8_t pixel_format;
+// Output buffer; defaulting to big-endian numbers.
+struct Buf {
+  void WB(const std::initializer_list<uint8_t> &bs) {
+    for (uint8_t b : bs) bytes.push_back(b);
+  }
 
-  // If pixel_format is palette, then this is the number of
-  // palette entries minus one (since there may be 256 entries and
-  // cannot be zero). Otherwise, zero.
-  // Palette entries are always RGBA.
-  uint8_t palette_size;
+  void W8(uint8_t b) {
+    bytes.push_back(b);
+  }
+
+  void W16(uint16_t w) {
+    W8(0xFF & (w >> 8));
+    W8(0xFF & w);
+  }
+
+  void W32(uint32_t w) {
+    W8(0xFF & (w >> 24));
+    W8(0xFF & (w >> 16));
+    W8(0xFF & (w >>  8));
+    W8(0xFF & (w >>  0));
+  }
+
+  // Writes only the rgb components (high 3 bits) of the
+  // color.
+  void WRGB(uint32_t color) {
+    W8(0xFF & (color >> 24));
+    W8(0xFF & (color >> 16));
+    W8(0xFF & (color >>  8));
+  }
+
+  void AddBuf(const Buf &other) {
+    for (uint8_t b : other.bytes) {
+      bytes.push_back(b);
+    }
+  }
+
+  size_t Size() const {
+    return bytes.size();
+  }
+
+  std::vector<uint8_t> bytes;
 };
 
 // A bijection between uint32_t and uint8_t, favoring small indices.
@@ -62,14 +105,16 @@ struct Palette {
 
   // The RGBA colors in the palette. Distinct. At most 256 entries.
   std::vector<uint32_t> entries;
-  // The number of times the entry appears.
-  std::vector<int> counts;
   // Inverse.
   std::unordered_map<uint32_t, int> indices;
 
+  // The number of times the entry appears. This is only present
+  // during encoding. (Maybe make this a separate PaletteStats?)
+  std::vector<int> counts;
+
   // Returns pixelformat. Initializes the palette arg if that
   // format is PALETTE.
-  static uint8_t MakePalette(const ImageRGBA &img, Palette *p) {
+  static PixelFormat MakePalette(const ImageRGBA &img, Palette *p) {
     // RGBA -> count
     std::unordered_map<uint32_t, int> counts;
     uint8_t any_alpha = 0x00;
@@ -138,7 +183,31 @@ struct RectMask {
 using Mask =
   std::variant<AllMask, RectMask>;
 
-static int NumPixels(const Mask &mask) {
+static MaskType MaskType(const Mask &mask) {
+  if (const AllMask *a = std::get_if<AllMask>(&mask)) {
+    return MASK_ALL;
+  } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
+    return MASK_RECT;
+  } else {
+    LOG(FATAL) << "Bad mask";
+    return MASK_ALL;
+  }
+}
+
+static std::string MaskString(const Mask &mask) {
+  if (const AllMask *a = std::get_if<AllMask>(&mask)) {
+    return "ALL";
+  } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
+    return StringPrintf("RECT(@%d,%d %dx%d)",
+                        r->x, r->y,
+                        r->width, r->height);
+  } else {
+    LOG(FATAL) << "Bad mask";
+    return 0;
+  }
+}
+
+static int MaskNumPixels(const Mask &mask) {
   if (const AllMask *a = std::get_if<AllMask>(&mask)) {
     return a->width * a->height;
   } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
@@ -149,9 +218,27 @@ static int NumPixels(const Mask &mask) {
   }
 }
 
-// TODO
-static Mask *ParseMask(int frame_width, int frame_height,
-                       std::span<uint8_t> s);
+// Apply f to the pixel coordinates in the mask, in order.
+template<class F>
+static void AppMask(const Mask &mask, const F &f) {
+  if (const AllMask *a = std::get_if<AllMask>(&mask)) {
+    for (int y = 0; y < a->height; y++) {
+      for (int x = 0; x < a->width; x++) {
+        f(x, y);
+      }
+    }
+
+  } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
+    for (int y = 0; y < r->height; y++) {
+      for (int x = 0; x < r->width; x++) {
+        f(r->x + x, r->y + y);
+      }
+    }
+
+  } else {
+    LOG(FATAL) << "Bad mask";
+  }
+}
 
 // See below, but this requires the background color to be the
 // specific color.
@@ -176,8 +263,8 @@ static Mask GetForegroundMaskWithColor(const ImageRGBA &frame,
   const int mheight = height - top - bottom;
   CHECK(mheight >= 1);
 
-  auto SolidCol = [&frame, bgcolor, top, mheight](int y) -> bool {
-      for (int x = top; x < top + mheight; x++)
+  auto SolidCol = [&frame, bgcolor, top, mheight](int x) -> bool {
+      for (int y = top; y < top + mheight; y++)
         if (frame.GetPixel32(x, y) != bgcolor)
           return false;
       return true;
@@ -298,7 +385,7 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 
     Mask mask1 = GetForegroundMaskWithColor(frame, a);
     Mask mask2 = GetForegroundMaskWithColor(frame, c);
-    if (NumPixels(mask1) < NumPixels(mask2)) {
+    if (MaskNumPixels(mask1) < MaskNumPixels(mask2)) {
       *bgcolor = a;
       return mask1;
     } else {
@@ -308,6 +395,212 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   } else {
     // Both diagonals are equal. Useless.
     return AllMask{.width = width, .height = height};
+  }
+}
+
+
+// This is the parsed in-memory representation, but it also contains
+// the reference for the serialized form.
+struct IFrameHeader {
+  // First byte gives the pixel format.
+  PixelFormat pixel_format;
+
+  // If pixel format is PALETTE, then we have a palette. The palette
+  // is represented as one size byte, which is the number of palette
+  // entries minus one (since there may be 256 entries and cannot be
+  // zero). Palette entries are always RGBA.
+  std::optional<Palette> palette;
+
+  // The foreground mask.
+  Mask mask;
+  // If the foreground mask is not ALL, then the background color
+  // (in the pixel format).
+  uint32_t bgcolor = 0;
+};
+
+void RemovePrefix(std::span<uint8_t> *v, size_t n) {
+  CHECK(v->size() >= n);
+  *v = v->subspan(n);
+}
+
+uint8_t Read8(std::span<uint8_t> *v) {
+  CHECK(!v->empty());
+  uint8_t b = v->front();
+  RemovePrefix(v, 1);
+  return b;
+}
+
+uint16_t Read16(std::span<uint8_t> *v) {
+  CHECK(v->size() >= 2);
+  uint32_t a = (*v)[0];
+  uint32_t b = (*v)[1];
+  RemovePrefix(v, 2);
+  return (a << 8) | b;
+}
+
+uint32_t Read32(std::span<uint8_t> *v) {
+  CHECK(v->size() >= 4);
+  uint32_t a = (*v)[0];
+  uint32_t b = (*v)[1];
+  uint32_t c = (*v)[2];
+  uint32_t d = (*v)[3];
+  RemovePrefix(v, 4);
+  return (a << 24) | (b << 16) | (c << 8) | d;
+}
+
+// Read a three-byte RGBA color with alpha=0xFF implied.
+uint32_t ReadRGB(std::span<uint8_t> *v) {
+  CHECK(v->size() >= 3);
+  uint32_t a = (*v)[0];
+  uint32_t b = (*v)[1];
+  uint32_t c = (*v)[2];
+  RemovePrefix(v, 3);
+  return (a << 24) | (b << 16) | (c << 8) | 0xFF;
+}
+
+static bool ReadPalette(Palette *p,
+                        std::span<uint8_t> *v) {
+  if (v->empty()) return false;
+  int num_entries = Read8(v) + 1;
+  p->entries.reserve(num_entries);
+  if (v->size() < 4 * num_entries) return false;
+  for (int i = 0; i < num_entries; i++) {
+    p->entries.push_back(Read32(v));
+  }
+
+  // PERF: We probably don't need the inverted map for decoding.
+  for (int i = 0; i < num_entries; i++) {
+    p->indices[p->entries[i]] = i;
+  }
+
+  return true;
+}
+
+static bool ReadMask(int frame_width,
+                     int frame_height,
+                     Mask *m,
+                     std::span<uint8_t> *v) {
+  if (v->empty()) return false;
+  switch (Read8(v)) {
+  case MASK_ALL:
+    *m = AllMask{.width = frame_width, .height = frame_height};
+    return true;
+
+  case MASK_RECT: {
+    if (v->size() < 8) return false;
+    uint16_t x = Read16(v);
+    uint16_t y = Read16(v);
+    uint16_t w = Read16(v);
+    uint16_t h = Read16(v);
+    *m = RectMask{.x = x, .y = y, .width = w, .height = h};
+    return true;
+  }
+
+  default:
+    return false;
+  }
+}
+
+static inline bool ReadPixel(const IFrameHeader &head,
+                             std::span<uint8_t> *v,
+                             uint32_t *c) {
+  switch (head.pixel_format) {
+  case PIXELS_RGBA: {
+    if (v->size() < 4) return false;
+    *c = Read32(v);
+    return true;
+  }
+  case PIXELS_RGB: {
+    if (v->size() < 3) return false;
+    *c = ReadRGB(v);
+    return true;
+  }
+
+  case PIXELS_PALETTE: {
+    if (v->empty()) return false;
+    uint8_t b = Read8(v);
+    CHECK(head.palette.has_value());
+    if (b >= head.palette.value().entries.size()) return false;
+    *c = head.palette.value().entries[b];
+    return true;
+  }
+
+  default:
+    LOG(FATAL) << "Bad pixelformat";
+    return false;
+  }
+}
+
+static std::optional<IFrameHeader>
+ParseIFrameHeader(int frame_width, int frame_height,
+                  std::span<uint8_t> *v) {
+  if (v->empty()) return std::nullopt;
+
+  IFrameHeader head;
+  uint8_t pf = Read8(v);
+  switch (pf) {
+  case PIXELS_RGBA:
+    head.pixel_format = PIXELS_RGBA;
+    break;
+
+  case PIXELS_RGB:
+    head.pixel_format = PIXELS_RGB;
+    break;
+
+  case PIXELS_PALETTE: {
+    head.pixel_format = PIXELS_PALETTE;
+
+    // Parse palette in this case.
+    head.palette = {Palette()};
+    if (!ReadPalette(&head.palette.value(), v)) return std::nullopt;
+    break;
+  }
+
+  default:
+    return std::nullopt;
+    break;
+  }
+
+  if (!ReadMask(frame_width, frame_height, &head.mask, v))
+    return std::nullopt;
+
+  if (const RectMask *r = std::get_if<RectMask>(&head.mask)) {
+    uint32_t c = 0;
+    if (!ReadPixel(head, v, &c))
+      return std::nullopt;
+    head.bgcolor = c;
+  }
+
+  return {std::move(head)};
+}
+
+static void WritePalette(const Palette &p, Buf *buf) {
+  // Palette entries are always RGBA, although we could evolve this.
+  // A full palette is 1 kb + 1 byte.
+
+  // Size.
+  CHECK(p.entries.size() > 0 && p.entries.size() <= 256) << "Invalid "
+    "palette! " << p.entries.size();
+  buf->W8(p.entries.size() - 1);
+
+  for (uint32_t c : p.entries) {
+    buf->W32(c);
+  }
+}
+
+static void WriteMask(const Mask &mask, Buf *buf) {
+  if (const AllMask *a = std::get_if<AllMask>(&mask)) {
+    buf->W8(MASK_ALL);
+
+  } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
+    buf->W8(MASK_RECT);
+    buf->W16(r->x);
+    buf->W16(r->y);
+    buf->W16(r->width);
+    buf->W16(r->height);
+
+  } else {
+    LOG(FATAL) << "Bad mask";
   }
 }
 
@@ -323,7 +616,7 @@ struct Encode {
     return {};
   }
 
-  std::vector<uint8_t> EncodeIFrame(const ImageRGBA &frame) {
+  Buf EncodeIFrame(const ImageRGBA &frame) {
 
     // For iframe encoding, we are just going to
     // encode the pixels of the image (using the smallest
@@ -338,15 +631,66 @@ struct Encode {
     // and contents. The content can be repeated (so that we
     // can easily get a fill with a single pixel) or something
     // like that.
-    Palette p;
-    uint8_t pixel_format = Palette::MakePalette(frame, &p);
+    Palette palette;
+    PixelFormat pixel_format = Palette::MakePalette(frame, &palette);
 
     uint32_t bgcolor = 0;
-    Mask m = GetForegroundMask(frame, &bgcolor);
+    Mask mask = GetForegroundMask(frame, &bgcolor);
+
+    printf("Pixelformat %s. Palette size %d. Mask=%s\n",
+           PixelFormatString(pixel_format),
+           (int)palette.entries.size(),
+           MaskString(mask).c_str());
 
 
+    // Write.
+    Buf buf;
 
-    return {};
+    auto WritePixel = [pixel_format, &palette, &buf](uint32_t c) {
+        switch (pixel_format) {
+        case PIXELS_PALETTE: {
+          auto it = palette.indices.find(c);
+          CHECK(it != palette.indices.end()) << "Bug: Missing color in "
+            "palette?";
+          buf.W8(it->second);
+          break;
+        }
+
+        case PIXELS_RGBA:
+          buf.W32(c);
+          break;
+
+        case PIXELS_RGB:
+          buf.WRGB(c);
+          break;
+
+        default:
+          LOG(FATAL) << "Bad pixelformat";
+        }
+      };
+
+    buf.W8(pixel_format);
+    if (pixel_format == PIXELS_PALETTE) {
+      WritePalette(palette, &buf);
+    }
+
+    WriteMask(mask, &buf);
+
+    if (const AllMask *a = std::get_if<AllMask>(&mask)) {
+      // Nothing.
+    } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
+      WritePixel(bgcolor);
+    } else {
+      LOG(FATAL) << "Bad mask";
+      return {};
+    }
+
+    // Now the image pixels, but only from the mask.
+    AppMask(mask, [&frame, &WritePixel](int x, int y) {
+        WritePixel(frame.GetPixel32(x, y));
+      });
+
+    return buf;
   }
 
 };
@@ -356,10 +700,41 @@ struct Decode {
     frame_width(frame_width), frame_height(frame_height) {}
 
   // PERF: Probably these should work on spans, not vectors.
-  ImageRGBA DecodeIFrame(const std::vector<uint8_t> &v) {
+  ImageRGBA DecodeIFrame(std::span<uint8_t> *v) {
     ImageRGBA ret(frame_width, frame_height);
+
+    std::optional<IFrameHeader> head =
+      ParseIFrameHeader(frame_width, frame_height, v);
+
+    if (head.has_value()) {
+      if (MaskType(head->mask) == MASK_RECT) {
+        ret.Clear32(head->bgcolor);
+      }
+
+      // PERF: We can check that we have enough space easily
+      // with MaskNumPixels(head->mask) >= v->size(), and
+      // avoid doing the checks in the loop. This also makes
+      // it easier to exit early.
+      bool failed = false;
+      AppMask(head->mask, [&ret, &head, &v, &failed](int x, int y) {
+          uint32_t color = 0;
+          if (!failed) {
+            if (ReadPixel(head.value(), v, &color)) {
+              ret.SetPixel32(x, y, color);
+            } else {
+              failed = true;
+            }
+          }
+        });
+
+      if (!failed) {
+        return ret;
+      }
+    }
+
+    // Error path.
     ret.Clear32(0xFF0000FF);
-    ret.BlendText2x32(6, 6, 0x000000FF, "UNIMPLEMENTED");
+    ret.BlendText2x32(5, 5, 0x000000FF, "DecodeIFrame error");
     return ret;
   }
 
@@ -404,11 +779,47 @@ static void RunTestcase(const Testcase &t) {
   Decode decode(width, height);
 
   // All I-frame.
+  printf("original\tpng\tenc\tzip\n");
   for (const ImageRGBA &frame : frames) {
-    std::vector<uint8_t> bytes = encode.EncodeIFrame(frame);
+    Buf buf = encode.EncodeIFrame(frame);
 
-    ImageRGBA f = decode.DecodeIFrame(bytes);
-    CHECK(frame == f) << "encode/decode round trip not equal.";
+    size_t orig = frame.Width() * frame.Height() * 4;
+
+    // Size comparison.
+    std::vector<uint8_t> miniz_png =
+      ZIP::EncodeAsPNG(frame.Width(), frame.Height(),
+                       frame.ToBuffer8());
+    [[maybe_unused]] double miniz_png_ratio = orig / (double)miniz_png.size();
+
+    [[maybe_unused]] double enc_ratio = orig / (double)buf.Size();
+
+    std::vector<uint8_t> h777 = ZIP::ZipVector(buf.bytes, 9);
+    [[maybe_unused]] double h777_ratio = orig / (double)h777.size();
+
+    /*
+    printf("%d\t%.1fx\t%.1fx\t%.1fx\n",
+           (int)orig,
+           miniz_png_ratio,
+           enc_ratio,
+           h777_ratio);
+    */
+
+    printf("%d\t%d\t%d\t%d\n",
+           (int)orig,
+           (int)miniz_png.size(),
+           (int)buf.Size(),
+           (int)h777.size());
+
+    {
+      // (Assumes zip is correct.)
+      std::span v(buf.bytes);
+      ImageRGBA f = decode.DecodeIFrame(&v);
+      if (frame != f) {
+        frame.Save("test-expected.png");
+        f.Save("test-actual.png");
+        LOG(FATAL) << "encode/decode round trip not equal.";
+      }
+    }
   }
 }
 
@@ -418,6 +829,13 @@ static void RunTests() {
       .file_prefix = "../rephrase/ee/ee-",
       .file_suffix = ".png",
       .start = 970,
+      .num = 10,
+    },
+
+    Testcase{
+      .file_prefix = "../rephrase/tt-square/tt-",
+      .file_suffix = ".png",
+      .start = 0,
       .num = 10,
     },
   };

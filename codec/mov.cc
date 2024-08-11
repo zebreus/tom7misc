@@ -18,7 +18,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "image.h"
-#include "miniz.h"
+#include "zip.h"
 
 using Out = MOV::Out;
 using In = MOV::In;
@@ -42,16 +42,7 @@ static constexpr uint32_t IDENTITY_MATRIX[9] = {
 };
 
 static std::vector<uint8_t> EncodeAsPNG(const ImageRGBA &img) {
- std::vector<uint8_t> rgba = img.ToBuffer8();
- size_t enc_len = 0;
- void *enc = tdefl_write_image_to_png_file_in_memory_ex(
-     rgba.data(), img.Width(), img.Height(), 4, &enc_len, 9, false);
- CHECK(enc != nullptr);
-
- std::vector<uint8_t> ret(enc_len);
- memcpy(ret.data(), enc, enc_len);
- free(enc);
- return ret;
+  return ZIP::EncodeAsPNG(img.Width(), img.Height(), img.ToBuffer8());
 }
 
 namespace internal {
