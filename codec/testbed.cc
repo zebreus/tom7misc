@@ -1,4 +1,5 @@
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -18,6 +19,7 @@
 #include "image.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "ansi.h"
 
 #include "zip.h"
 
@@ -183,7 +185,8 @@ struct RectMask {
 
 struct RLEMask {
   int width = 0, height = 0;
-  // Runs alternate "off" and "on".
+  // Runs alternate "off" (background) then "on" (foreground).
+  // At most 2^16 entries.
   std::vector<int> runs;
 };
 
@@ -278,9 +281,11 @@ static void AppMask(const Mask &mask, const F &f) {
 }
 
 // See below, but this requires the background color to be the
-// specific color.
-static Mask GetForegroundRectMaskWithColor(const ImageRGBA &frame,
-                                       uint32_t bgcolor) {
+// specific color. This function might return the entire frame
+// as a rectangle.
+static RectMask
+GetForegroundRectMaskWithColor(const ImageRGBA &frame,
+                               uint32_t bgcolor) {
   const int width = frame.Width(), height = frame.Height();
   int left = 0, top = 0, right = 0, bottom = 0;
 
@@ -312,34 +317,31 @@ static Mask GetForegroundRectMaskWithColor(const ImageRGBA &frame,
   while (right < width - left - 1 && SolidCol(width - right - 1))
     right++;
 
-  if (left == 0 && top == 0 && right == 0 && bottom == 0) {
-    return AllMask{.width = width, .height = height};
-  } else {
-    return RectMask{
-      .x = left, .y = top,
-      .width = width - left - right,
-      .height = mheight,
-    };
-  }
+  return RectMask{
+    .x = left, .y = top,
+    .width = width - left - right,
+    .height = mheight,
+  };
 }
 
 // This masks out a region with a solid "background" color.
 // The mask will be non-empty. Sets the background color
 // if the mask is not degenerate.
-static Mask GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
+static std::optional<RectMask>
+GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   // Greedy approach that only generates rectangular masks.
   const int width = frame.Width(), height = frame.Height();
 
   CHECK(width > 0 && height > 0);
   // Can't make a non-degenerate mask.
   if (width == 1 && height == 1) {
-    return AllMask{.width = width, .height = height};
+    return std::nullopt;
   }
 
   // The corner-based logic wants nontrivial edges. We could
   // support this with a special case, though.
   if (width == 1 || height == 1) {
-    return AllMask{.width = width, .height = height};
+    return std::nullopt;
   }
 
 
@@ -368,7 +370,7 @@ static Mask GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 
   // No way to make a rectangular mask, then.
   if (num_eq == 0) {
-    return AllMask{.width = width, .height = height};
+    return std::nullopt;
   }
 
   if (num_eq >= 3) {
@@ -397,7 +399,7 @@ static Mask GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
       return GetForegroundRectMaskWithColor(frame, d);
     } else {
       // One diagonal is equal. Useless.
-      return AllMask{.width = width, .height = height};
+      return std::nullopt;
     }
   }
 
@@ -420,8 +422,8 @@ static Mask GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 
     // Get two masks and take the smaller one.
 
-    Mask mask1 = GetForegroundRectMaskWithColor(frame, a);
-    Mask mask2 = GetForegroundRectMaskWithColor(frame, c);
+    RectMask mask1 = GetForegroundRectMaskWithColor(frame, a);
+    RectMask mask2 = GetForegroundRectMaskWithColor(frame, c);
     if (MaskNumPixels(mask1) < MaskNumPixels(mask2)) {
       *bgcolor = a;
       return mask1;
@@ -431,59 +433,250 @@ static Mask GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     }
   } else {
     // Both diagonals are equal. Useless.
-    return AllMask{.width = width, .height = height};
+    return std::nullopt;
   }
 }
 
-static RLEMask GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
-  // We can use any color as the background color. Currently we only try the
-  // most common color, which would usually be the right choice.
+static std::optional<RLEMask>
+GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
+  static constexpr int VERBOSE = 0;
+  // The minimum (background) run size that we try to encode. We can always
+  // treat background pixels as foreground in order to make longer runs.
+  // PERF: Tune.
+  static constexpr int MIN_BACKGROUND_RUN = 2;
+  static_assert(MIN_BACKGROUND_RUN > 1);
 
-  // HERE: Actually, count longest runs and use that.
+  const int size = frame.Width() * frame.Height();
 
+  CHECK(frame.Width() > 0 && frame.Height() > 0);
+
+  // Find the best "background color." This is the color with the highest
+  // scoring runs.
+  std::unordered_map<uint32_t, double> run_scores;
+
+  // PERF: Tune.
+  // Longer runs are better, so use a little bit of nonlinearity.
+  static constexpr auto ScoreLength = [](int run_length) {
+      double p = (run_length - MIN_BACKGROUND_RUN);
+      return p * std::log2(p);
+    };
+
+  {
+    // Color of the current run, and the number of pixels in it.
+    // This is always at least 1.
+    uint32_t prev = ~frame.GetPixel32(0, 0);
+    int run_length = 1;
+
+    auto Emit = [&run_scores, &prev, &run_length]() {
+        if (run_length >= MIN_BACKGROUND_RUN) {
+          run_scores[prev] += ScoreLength(run_length);
+        }
+      };
+
+    for (int idx = 0; idx < size; idx++) {
+      // PERF: Avoid division.
+      int y = idx / frame.Width();
+      int x = idx % frame.Width();
+
+      uint32_t cur = frame.GetPixel32(x, y);
+      if (VERBOSE > 2) {
+        if (cur != 0) printf("%08x\n", cur);
+      }
+
+      if (cur == prev) {
+        // Run extended.
+        run_length++;
+      } else {
+        Emit();
+
+        prev = cur;
+        run_length = 1;
+      }
+    }
+    Emit();
+  }
+
+  if (VERBOSE > 1) {
+    for (const auto &[c, s] : run_scores) {
+      printf("Color #%08x (%s██" ANSI_RESET "): %.3f\n",
+             c, ANSI::ForegroundRGB32(c).c_str(), s);
+    }
+  }
+
+  double best_score = 0.0;
+  uint32_t best_color = 0x00000000;
+  for (const auto &[c, s] : run_scores) {
+    if (s > best_score ||
+        (s == best_score && c < best_color)) {
+      best_color = c;
+      best_score = s;
+    }
+  }
+
+  const uint32_t bg = best_color;
+  if (VERBOSE > 0) printf("RLE best bgcolor: #%08x\n", bg);
+
+  {
+    std::vector<int> runs;
+    // Now compute the RLE representation with best_color.
+    bool in_background = true;
+    int run_length = 0;
+
+    for (int idx = 0; idx < size; idx++) {
+      // PERF: Avoid division.
+      int y = idx / frame.Width();
+      int x = idx % frame.Width();
+
+      uint32_t cur = frame.GetPixel32(x, y);
+
+      if (in_background) {
+        if (cur == bg) {
+          // Simply extend background run.
+          run_length++;
+        } else {
+          if (VERBOSE > 1) {
+            printf("At %d,%d with background run of length %d\n",
+                   x, y, run_length);
+          }
+          // We must end the background run no matter what.
+          in_background = false;
+          // But if the background run is too short, we do this by
+          // resuming the previous foreground run.
+          if (run_length < MIN_BACKGROUND_RUN && !runs.empty()) {
+            run_length = runs.back() + run_length + 1;
+            runs.pop_back();
+          } else {
+            runs.push_back(run_length);
+            run_length = 1;
+          }
+        }
+      } else {
+        // Same idea, but we cannot treat foreground as background.
+        // So we need to emit all runs, even if they are shorter than
+        // we would want.
+        if (cur != bg) {
+          // Extend the run of foreground pixels.
+          run_length++;
+        } else {
+          if (VERBOSE > 1) {
+            printf("At %d,%d with foreground run of length %d\n",
+                   x, y, run_length);
+          }
+
+          // End foreground run.
+          runs.push_back(run_length);
+          run_length = 1;
+          in_background = true;
+        }
+      }
+    }
+
+    // The final run is implied by the frame size, so we just
+    // leave it off.
+    if (VERBOSE > 0) {
+      printf("%d runs. Last run was %s, of length %d\n",
+             (int)runs.size(),
+             in_background ? "bg" : "fg", run_length);
+    }
+
+    if ((int)runs.size() < 65536) {
+      *bgcolor = bg;
+      return std::make_optional(RLEMask{
+          .width = frame.Width(),
+          .height = frame.Height(),
+          .runs = std::move(runs),
+        });
+    }
+  }
+
+  return std::nullopt;
 }
 
 
 // Mask out the foreground (against a solid background) if possible.
 // Tries to find the best mask (rectangular, rle, ...).
+//
+// TODO: Easy to allow variants like transposed masks here.
 static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
-  uint32_t rle_bgcolor = 0;
-  RLEMask rle_mask = GetForegroundRLEMask(frame, palette, rle_bgcolor);
 
-  // Don't generate ALL mask in this one.
-  uint32_t rect_bgcolor = 0;
-  Mask rect_mask = GetForegroundRectMask(frame, rect_bgcolor);
+  struct ScoredMask {
+    double score = 0.0;
+    Mask mask;
+    uint32_t bgcolor = 0;
+  };
 
-  // The rle mask will always be at least as detailed as the rectangle (if we
-  // found the same background color), but it is typically much larger to encode.
-  int rect_pixels = MaskNumPixels(rect_mask);
-  int rle_pixels = MaskNumPixels(rle_mask);
+  std::vector<ScoredMask> candidates;
 
-  if (rect_pixels <= rle_pixels) {
-    *bgcolor = rect_bgcolor;
-    return rect_mask;
-  }
-
-  // Rect is four 16-bit coordinates.
-  int rect_size = 4 * 2;
-  // Estimate rle as 16 bit run lenghts.
-  int rle_size = rle_mask.runs.size() * 2;
-
-  // Choose heuristically. We assume that the difference between the masks is
-  // encoding background pixels.
+  // The score is the total cost of the mask, which is the number of
+  // bytes used to represent the mask, minus the number of pixels that
+  // are outside the mask (since these get encoded cheaply). Lower is
+  // better.
+  //
   // PERF: Tune this.
   static constexpr double BYTES_PER_BACKGROUND_PIXEL = 1.5 / 8.0;
 
-  double rect_cost_bytes = rect_size + (rect_pixels - rle_pixels) * BYTES_PER_BACKGROUND_PIXEL;
-  double rle_cost_bytes = rle_size;
+  auto Score = [&frame](int mask_bytes, int mask_pixels) {
+      const int pixels_outside =
+        frame.Width() * frame.Height() - mask_pixels;
+      return mask_bytes - pixels_outside * BYTES_PER_BACKGROUND_PIXEL;
+    };
 
-  if (rle_cost_bytes < rect_cost_bytes) {
-    *bgcolor = rle_bgcolor;
-    return rle_mask;
-  } else {
-    *bgcolor = rect_bgcolor;
-    return rect_mask;
+  uint32_t rle_bgcolor = 0;
+  if (std::optional<RLEMask> maybe_rle_mask =
+      GetForegroundRLEMask(frame, &rle_bgcolor)) {
+    RLEMask rle_mask = std::move(maybe_rle_mask.value());
+    // The rle mask will always be at least as detailed as the rectangle
+    // (if we found the same background color), but it is typically much
+    // larger to encode.
+    int rle_pixels = MaskNumPixels(rle_mask);
+    // Estimate rle as 16-bit size and then 16 bit run lengths.
+    int rle_size = 2 + rle_mask.runs.size() * 2;
+
+    candidates.push_back(
+        ScoredMask{
+          .score = Score(rle_size, rle_pixels),
+          .mask = std::move(rle_mask),
+          .bgcolor = rle_bgcolor,
+        });
   }
+
+  uint32_t rect_bgcolor = 0;
+  if (std::optional<RectMask> maybe_rect_mask =
+      GetForegroundRectMask(frame, &rect_bgcolor)) {
+    RectMask rect_mask = std::move(maybe_rect_mask.value());
+    int rect_pixels = MaskNumPixels(rect_mask);
+    int rect_size = 4 * 2;
+
+    candidates.push_back(
+        ScoredMask{
+          .score = Score(rect_size, rect_pixels),
+          .mask = std::move(rect_mask),
+          .bgcolor = rect_bgcolor,
+        });
+  }
+
+  candidates.push_back(
+      ScoredMask{
+        .score = 1,
+        .mask = AllMask(frame.Width(), frame.Height()),
+        .bgcolor = 0x00000000,
+      });
+
+  std::sort(
+      candidates.begin(), candidates.end(),
+      [](const ScoredMask &a, const ScoredMask &b) {
+        if (a.score == b.score) {
+          // Break ties arbitrarily.
+          return MaskType(a.mask) < MaskType(b.mask);
+        } else {
+          return a.score < b.score;
+        }
+      });
+
+  CHECK(!candidates.empty()) << "Should always have the ALL mask.";
+
+  *bgcolor = candidates.begin()->bgcolor;
+  return std::move(candidates.begin()->mask);
 }
 
 // This is the parsed in-memory representation, but it also contains
@@ -563,12 +756,36 @@ static bool ReadPalette(Palette *p,
   return true;
 }
 
+static void DebugParse(const char *what,
+                       std::span<uint8_t> *v) {
+  printf(AWHITE("%s") ":", what);
+  for (int i = 0; i < 16; i++) {
+    if (i >= v->size()) {
+      printf(ARED(" EOF"));
+      break;
+    } else {
+      printf(" %02x", (*v)[i]);
+    }
+  }
+  printf("\n");
+}
+
 static bool ReadMask(int frame_width,
                      int frame_height,
                      Mask *m,
                      std::span<uint8_t> *v) {
+  static constexpr int VERBOSE = 0;
+  if (VERBOSE > 1) {
+    DebugParse("read mask", v);
+  }
+
   if (v->empty()) return false;
-  switch (Read8(v)) {
+
+  const uint8_t mask_type = Read8(v);
+  if (VERBOSE > 0) {
+    printf("Got mask type %d\n", mask_type);
+  }
+  switch (mask_type) {
   case MASK_ALL:
     *m = AllMask{.width = frame_width, .height = frame_height};
     return true;
@@ -580,6 +797,27 @@ static bool ReadMask(int frame_width,
     uint16_t w = Read16(v);
     uint16_t h = Read16(v);
     *m = RectMask{.x = x, .y = y, .width = w, .height = h};
+    return true;
+  }
+
+  case MASK_RLE: {
+    if (v->size() < 2) return false;
+    int num = Read16(v);
+    std::vector<int> runs;
+    runs.resize(num);
+
+    if (v->size() < num * 2) return false;
+    for (int i = 0; i < num; i++) {
+      runs.push_back(Read16(v));
+    }
+    *m = RLEMask{
+      .width = frame_width,
+      .height = frame_height,
+      .runs = std::move(runs),
+    };
+    if (VERBOSE > 1) {
+      printf("Read RLE mask with %d runs.\n", num);
+    }
     return true;
   }
 
@@ -648,8 +886,10 @@ ParseIFrameHeader(int frame_width, int frame_height,
     break;
   }
 
-  if (!ReadMask(frame_width, frame_height, &head.mask, v))
+  if (!ReadMask(frame_width, frame_height, &head.mask, v)) {
+    printf("Failed to read mask\n");
     return std::nullopt;
+  }
 
   if (const RectMask *r = std::get_if<RectMask>(&head.mask)) {
     uint32_t c = 0;
@@ -686,8 +926,48 @@ static void WriteMask(const Mask &mask, Buf *buf) {
     buf->W16(r->width);
     buf->W16(r->height);
 
+  } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
+    buf->W8(MASK_RLE);
+
+    // Compute the size (see below).
+    int r_size = 0;
+    for (int r : r->runs) {
+      while (r > 65535) {
+        r_size++;
+        r_size++;
+        r -= 65535;
+      }
+
+      r_size++;
+    }
+
+    // Also,
+    CHECK(r_size < 65536) << "RLE runs are supposed to have no "
+      "more than 65536 entries. There is possibly a bug here where "
+      "we had just shy of this many, but had to break some super-long "
+      "runs up, and so exceeded the size. Could detect this by breaking "
+      "them earlier, or use varint here.";
+
+    buf->W16(r_size);
+
+    for (int r : r->runs) {
+      // TODO PERF: Varint would probably be more compact here.
+
+      // We can output a run of N+M equivalently as N,0,M. So we use
+      // this whenever the run is more than 16 bits.
+      while (r > 65535) {
+        buf->W16(0xFFFF);
+        // degenerate 0-length run of the opposite polarity
+        buf->W16(0x0000);
+        r -= 65535;
+      }
+
+      buf->W16(r);
+    }
+
   } else {
     LOG(FATAL) << "Bad mask";
+
   }
 }
 
@@ -763,11 +1043,17 @@ struct Encode {
 
     WriteMask(mask, &buf);
 
-    if (const AllMask *a = std::get_if<AllMask>(&mask)) {
+    switch (MaskType(mask)) {
+    case MASK_ALL:
       // Nothing.
-    } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
+      break;
+
+    case MASK_RECT:
+    case MASK_RLE:
       WritePixel(bgcolor);
-    } else {
+      break;
+
+    default:
       LOG(FATAL) << "Bad mask";
       return {};
     }
@@ -794,8 +1080,20 @@ struct Decode {
       ParseIFrameHeader(frame_width, frame_height, v);
 
     if (head.has_value()) {
-      if (MaskType(head->mask) == MASK_RECT) {
+      printf("Decode: %s\n", MaskString(head->mask).c_str());
+
+      switch (MaskType(head->mask)) {
+      case MASK_RECT:
+      case MASK_RLE:
         ret.Clear32(head->bgcolor);
+        break;
+
+      case MASK_ALL:
+        break;
+
+      default:
+        LOG(FATAL) << "Bad mask";
+        break;
       }
 
       // PERF: We can check that we have enough space easily
@@ -912,6 +1210,7 @@ static void RunTestcase(const Testcase &t) {
 
 static void RunTests() {
   std::vector<Testcase> testcases = {
+
     Testcase{
       .file_prefix = "../rephrase/ee/ee-",
       .file_suffix = ".png",
