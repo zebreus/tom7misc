@@ -226,7 +226,7 @@ static int MaskNumPixels(const Mask &mask) {
   if (const AllMask *a = std::get_if<AllMask>(&mask)) {
     return a->width * a->height;
   } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
-    return a->width * a->height;
+    return r->width * r->height;
   } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
     // Only the "on" runs.
     int total = 0;
@@ -457,6 +457,7 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   // PERF: Tune.
   // Longer runs are better, so use a little bit of nonlinearity.
   static constexpr auto ScoreLength = [](int run_length) {
+      if (run_length <= MIN_BACKGROUND_RUN) return 0.0;
       double p = (run_length - MIN_BACKGROUND_RUN);
       return p * std::log2(p);
     };
@@ -598,6 +599,7 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 //
 // TODO: Easy to allow variants like transposed masks here.
 static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
+  static constexpr int VERBOSE = 0;
 
   struct ScoredMask {
     double score = 0.0;
@@ -632,6 +634,10 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     // Estimate rle as 16-bit size and then 16 bit run lengths.
     int rle_size = 2 + rle_mask.runs.size() * 2;
 
+    if (VERBOSE > 1) {
+      printf(APURPLE("RLE") ":  %d pixels, %d size\n", rle_pixels, rle_size);
+    }
+
     candidates.push_back(
         ScoredMask{
           .score = Score(rle_size, rle_pixels),
@@ -647,12 +653,24 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     int rect_pixels = MaskNumPixels(rect_mask);
     int rect_size = 4 * 2;
 
+    if (VERBOSE > 1) {
+      printf(APURPLE("RECT") ": %d pixels, %d size\n",
+             rect_pixels, rect_size);
+    }
+
     candidates.push_back(
         ScoredMask{
           .score = Score(rect_size, rect_pixels),
           .mask = std::move(rect_mask),
           .bgcolor = rect_bgcolor,
         });
+  }
+
+
+  if (VERBOSE > 1) {
+    printf(APURPLE("ALL") ":  %d pixels, %d size\n",
+           frame.Width() * frame.Height(),
+           1);
   }
 
   candidates.push_back(
@@ -804,7 +822,7 @@ static bool ReadMask(int frame_width,
     if (v->size() < 2) return false;
     int num = Read16(v);
     std::vector<int> runs;
-    runs.resize(num);
+    runs.reserve(num);
 
     if (v->size() < num * 2) return false;
     for (int i = 0; i < num; i++) {
@@ -891,11 +909,22 @@ ParseIFrameHeader(int frame_width, int frame_height,
     return std::nullopt;
   }
 
-  if (const RectMask *r = std::get_if<RectMask>(&head.mask)) {
+  switch (MaskType(head.mask)) {
+  case MASK_RLE:
+  case MASK_RECT: {
     uint32_t c = 0;
     if (!ReadPixel(head, v, &c))
       return std::nullopt;
     head.bgcolor = c;
+    break;
+  }
+
+  case MASK_ALL:
+    // Nothing.
+    break;
+
+  default:
+    return std::nullopt;
   }
 
   return {std::move(head)};
@@ -916,6 +945,8 @@ static void WritePalette(const Palette &p, Buf *buf) {
 }
 
 static void WriteMask(const Mask &mask, Buf *buf) {
+  static constexpr int VERBOSE = 0;
+
   if (const AllMask *a = std::get_if<AllMask>(&mask)) {
     buf->W8(MASK_ALL);
 
@@ -939,6 +970,11 @@ static void WriteMask(const Mask &mask, Buf *buf) {
       }
 
       r_size++;
+    }
+
+    if (VERBOSE > 0) {
+      printf("Write RLE: %d runs, but write %d\n",
+             (int)r->runs.size(), r_size);
     }
 
     // Also,
@@ -1195,15 +1231,26 @@ static void RunTestcase(const Testcase &t) {
            (int)buf.Size(),
            (int)h777.size());
 
+    bool failed = false;
+
     {
       // (Assumes zip is correct.)
       std::span v(buf.bytes);
       ImageRGBA f = decode.DecodeIFrame(&v);
+      if (!v.empty()) {
+        printf(ARED("%d") " extra byte(s) at end\n",
+               (int)v.size());
+        failed = true;
+      }
+
       if (frame != f) {
         frame.Save("test-expected.png");
         f.Save("test-actual.png");
-        LOG(FATAL) << "encode/decode round trip not equal.";
+        printf("encode/decode " ARED("round trip") " not equal.\n");
+        failed = true;
       }
+
+      CHECK(!failed);
     }
   }
 }
@@ -1223,6 +1270,13 @@ static void RunTests() {
       .file_suffix = ".png",
       .start = 0,
       .num = 10,
+    },
+
+    Testcase{
+      .file_prefix = "rle",
+      .file_suffix = ".png",
+      .start = 123,
+      .num = 1,
     },
   };
 
