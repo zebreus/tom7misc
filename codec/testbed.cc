@@ -49,6 +49,7 @@ enum MaskType : uint8_t {
   MASK_ALL = 0,
   MASK_RECT = 1,
   MASK_RLE = 2,
+  MASK_QUADTREE = 3,
 };
 
 static const char *PixelFormatString(PixelFormat p) {
@@ -190,8 +191,38 @@ struct RLEMask {
   std::vector<int> runs;
 };
 
+
+struct Rect {
+  int x = 0, y = 0, w = 0, h = 0;
+};
+struct QuadNode {
+  // Either four children (maybe null), or no children but is_all_on.
+  std::vector<std::shared_ptr<QuadNode>> children;
+  bool is_all_on = false;
+};
+struct QuadTreeMask {
+  int width = 0, height = 0;
+  // Describing the rectangle 0,0,width,height.
+  std::shared_ptr<QuadNode> root;
+
+  // Split the rectangle into the four canonical subrectangles
+  // (top-left, top-right, bottom-left, bottom-right).
+  // Note that rectangles may be empty if the input is small enough.
+  static std::tuple<Rect, Rect, Rect, Rect> Split(const Rect &r) {
+    const int halfw = r.w >> 1;
+    const int halfh = r.h >> 1;
+    const int restw = r.w - halfw;
+    const int resth = r.h - halfh;
+    Rect tl = {.x = r.x, .y = r.y, .w = halfw, .h = halfh };
+    Rect tr = {.x = r.x + halfw, .y = r.y, .w = restw, .h = halfh };
+    Rect bl = {.x = r.x, .y = r.y + halfh, .w = halfw, .h = resth };
+    Rect br = {.x = r.x + halfw, .y = r.y + halfh, .w = restw, .h = resth };
+    return std::make_tuple(tl, tr, bl, br);
+  }
+};
+
 using Mask =
-  std::variant<AllMask, RectMask, RLEMask>;
+  std::variant<AllMask, RectMask, RLEMask, QuadTreeMask>;
 
 static MaskType MaskType(const Mask &mask) {
   if (const AllMask *a = std::get_if<AllMask>(&mask)) {
@@ -200,6 +231,8 @@ static MaskType MaskType(const Mask &mask) {
     return MASK_RECT;
   } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
     return MASK_RLE;
+  } else if (const QuadTreeMask *q = std::get_if<QuadTreeMask>(&mask)) {
+    return MASK_QUADTREE;
   } else {
     LOG(FATAL) << "Bad mask";
     return MASK_ALL;
@@ -216,24 +249,9 @@ static std::string MaskString(const Mask &mask) {
   } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
     return StringPrintf("RLE(%d runs)",
                         (int)r->runs.size());
-  } else {
-    LOG(FATAL) << "Bad mask";
-    return 0;
-  }
-}
+  } else if (const QuadTreeMask *r = std::get_if<QuadTreeMask>(&mask)) {
+    return "QUADTREE";
 
-static int MaskNumPixels(const Mask &mask) {
-  if (const AllMask *a = std::get_if<AllMask>(&mask)) {
-    return a->width * a->height;
-  } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
-    return r->width * r->height;
-  } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
-    // Only the "on" runs.
-    int total = 0;
-    for (int i = 1; i < r->runs.size(); i += 2) {
-      total += r->runs[i];
-    }
-    return total;
   } else {
     LOG(FATAL) << "Bad mask";
     return 0;
@@ -275,8 +293,64 @@ static void AppMask(const Mask &mask, const F &f) {
       on = !on;
     }
 
+  } else if (const QuadTreeMask *q = std::get_if<QuadTreeMask>(&mask)) {
+
+    std::function<void (const Rect &, const QuadNode *)> Rec =
+      [&Rec, &f](const Rect &r, const QuadNode *node) {
+        // Treat null nodes as all empty.
+        if (node == nullptr) return;
+        if (node->is_all_on) {
+          CHECK(node->children.empty());
+          for (int y = 0; y < r.h; y++) {
+            for (int x = 0; x < r.w; x++) {
+              f(x, y);
+            }
+          }
+        } else {
+          const auto &[tl, tr, bl, br] = QuadTreeMask::Split(r);
+          // They can be null, but there must be four of them.
+          CHECK(node->children.size() == 4);
+          Rec(tl, node->children[0].get());
+          Rec(tr, node->children[1].get());
+          Rec(bl, node->children[2].get());
+          Rec(br, node->children[3].get());
+        }
+      };
+
+    Rect all{.x = 0, .y = 0, .w = q->width, .h = q->height };
+    Rec(all, q->root.get());
+
   } else {
     LOG(FATAL) << "Bad mask";
+  }
+}
+
+static int MaskNumPixels(const Mask &mask) {
+  if (const AllMask *a = std::get_if<AllMask>(&mask)) {
+    return a->width * a->height;
+
+  } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
+    return r->width * r->height;
+
+  } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
+    // Only the "on" runs.
+    int total = 0;
+    for (int i = 1; i < (int)r->runs.size(); i += 2) {
+      total += r->runs[i];
+    }
+    return total;
+
+  } else if (const QuadTreeMask *r = std::get_if<QuadTreeMask>(&mask)) {
+    // PERF: This can be faster because we can just add rectangle sizes.
+    int total = 0;
+    AppMask(mask, [&total](int x, int y) {
+        total++;
+      });
+    return total;
+
+  } else {
+    LOG(FATAL) << "Bad mask";
+    return 0;
   }
 }
 
@@ -761,7 +835,7 @@ static bool ReadPalette(Palette *p,
   if (v->empty()) return false;
   int num_entries = Read8(v) + 1;
   p->entries.reserve(num_entries);
-  if (v->size() < 4 * num_entries) return false;
+  if ((int)v->size() < 4 * num_entries) return false;
   for (int i = 0; i < num_entries; i++) {
     p->entries.push_back(Read32(v));
   }
@@ -778,7 +852,7 @@ static void DebugParse(const char *what,
                        std::span<uint8_t> *v) {
   printf(AWHITE("%s") ":", what);
   for (int i = 0; i < 16; i++) {
-    if (i >= v->size()) {
+    if (i >= (int)v->size()) {
       printf(ARED(" EOF"));
       break;
     } else {
@@ -824,7 +898,7 @@ static bool ReadMask(int frame_width,
     std::vector<int> runs;
     runs.reserve(num);
 
-    if (v->size() < num * 2) return false;
+    if ((int)v->size() < num * 2) return false;
     for (int i = 0; i < num; i++) {
       runs.push_back(Read16(v));
     }
