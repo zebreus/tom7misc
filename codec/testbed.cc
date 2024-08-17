@@ -1,4 +1,5 @@
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -8,19 +9,18 @@
 #include <initializer_list>
 #include <memory>
 #include <optional>
-#include <variant>
-#include <vector>
+#include <span>
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <algorithm>
-#include <span>
+#include <variant>
+#include <vector>
 
-#include "image.h"
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "ansi.h"
-
+#include "image.h"
+#include "timer.h"
 #include "zip.h"
 
 // Assumptions:
@@ -1164,6 +1164,7 @@ struct Decode {
 
 
 struct Testcase {
+  std::string name;
   // Path is prefix + n + suffix.
   std::string file_prefix;
   std::string file_suffix;
@@ -1172,7 +1173,35 @@ struct Testcase {
 };
 
 // XXX return stats
-static void RunTestcase(const Testcase &t) {
+struct TestStats {
+  int64_t raw_bytes = 0;
+  int64_t png_bytes = 0;
+  int64_t cmp_bytes = 0;
+
+  double filter_sec = 0.0;
+  double zip_sec = 0.0;
+
+  int used_rle = 0;
+  int used_all = 0;
+  int used_rect = 0;
+
+  void Merge(const TestStats &other) {
+    raw_bytes += other.raw_bytes;
+    png_bytes += other.png_bytes;
+    cmp_bytes += other.cmp_bytes;
+
+    filter_sec += other.filter_sec;
+    zip_sec += other.zip_sec;
+
+    used_rle += other.used_rle;
+    used_all += other.used_all;
+    used_rect += other.used_rect;
+  }
+};
+
+static TestStats RunTestcase(const Testcase &t) {
+  TestStats stats;
+
   std::vector<ImageRGBA> frames;
   frames.reserve(t.num);
   for (int i = 0; i < t.num; i++) {
@@ -1202,9 +1231,13 @@ static void RunTestcase(const Testcase &t) {
   // All I-frame.
   printf("original\tpng\tenc\tzip\n");
   for (const ImageRGBA &frame : frames) {
+    Timer filter_timer;
     Buf buf = encode.EncodeIFrame(frame);
+    stats.filter_sec += filter_timer.Seconds();
 
     size_t orig = frame.Width() * frame.Height() * 4;
+
+    stats.raw_bytes += orig;
 
     // Size comparison.
     std::vector<uint8_t> miniz_png =
@@ -1212,9 +1245,14 @@ static void RunTestcase(const Testcase &t) {
                        frame.ToBuffer8());
     [[maybe_unused]] double miniz_png_ratio = orig / (double)miniz_png.size();
 
+    stats.png_bytes += miniz_png.size();
+
     [[maybe_unused]] double enc_ratio = orig / (double)buf.Size();
 
+    Timer zip_timer;
     std::vector<uint8_t> h777 = ZIP::ZipVector(buf.bytes, 9);
+    stats.zip_sec += zip_timer.Seconds();
+    stats.cmp_bytes = h777.size();
     [[maybe_unused]] double h777_ratio = orig / (double)h777.size();
 
     /*
@@ -1253,12 +1291,15 @@ static void RunTestcase(const Testcase &t) {
       CHECK(!failed);
     }
   }
+
+  return stats;
 }
 
 static void RunTests() {
   std::vector<Testcase> testcases = {
 
     Testcase{
+      .name = "ee",
       .file_prefix = "../rephrase/ee/ee-",
       .file_suffix = ".png",
       .start = 970,
@@ -1266,6 +1307,7 @@ static void RunTests() {
     },
 
     Testcase{
+      .name = "tt",
       .file_prefix = "../rephrase/tt-square/tt-",
       .file_suffix = ".png",
       .start = 0,
@@ -1273,6 +1315,7 @@ static void RunTests() {
     },
 
     Testcase{
+      .name = "rle",
       .file_prefix = "rle",
       .file_suffix = ".png",
       .start = 123,
@@ -1280,9 +1323,25 @@ static void RunTests() {
     },
   };
 
+  TestStats all_stats;
+
   for (const Testcase &t : testcases) {
-    RunTestcase(t);
+    TestStats stats = RunTestcase(t);
+    all_stats.Merge(stats);
   }
+
+  double png_ratio = all_stats.raw_bytes / (double)all_stats.png_bytes;
+  double h777_ratio = all_stats.raw_bytes / (double)all_stats.cmp_bytes;
+  double h777_pct = 100.0 *
+    (all_stats.cmp_bytes / (double)all_stats.png_bytes);
+  printf("\n" "== " AWHITE("TOTALS") " ==\n"
+         "Orig bytes: " AORANGE("%lld") "\n"
+         "PNG bytes: " AYELLOW("%lld") " (%.1f:1)\n"
+         "H777 bytes: " AGREEN("%lld")
+         " (%.1f:1; " AYELLOW("%.3f%%") " of PNG)\n",
+         all_stats.raw_bytes,
+         all_stats.png_bytes, png_ratio,
+         all_stats.cmp_bytes, h777_ratio, h777_pct);
 }
 
 
