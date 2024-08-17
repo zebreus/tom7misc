@@ -86,6 +86,13 @@ struct ZIP {
     DecodeBuffer();
   };
 
+  // Encode the image pixels (in R-G-B-A byte order) as a PNG file
+  // in memory. Compression level 9.
+  // Deliberately avoiding the dependency on image.h, but you can
+  // call it as EncodeAsPNG(img.Width(), img.Height(), img.ToBuffer8());
+  static std::vector<uint8_t> EncodeAsPNG(int width, int height,
+                                          const std::vector<uint8_t> &rgba);
+
   // Custom file format. I should also support pkzip and gzip here.
   // gzip, annoyingly, stores the size mod 2^32, which is a practical
   // problem for modern files (e.g. wikipedia far exceeds this).

@@ -702,6 +702,19 @@ std::string ZIP::UnZlibString(std::string_view s) {
       (const uint8_t*)s.data(), s.size(), TINFL_FLAG_PARSE_ZLIB_HEADER);
 }
 
+std::vector<uint8_t> ZIP::EncodeAsPNG(int width, int height,
+                                      const std::vector<uint8_t> &rgba) {
+ size_t enc_len = 0;
+ void *enc = tdefl_write_image_to_png_file_in_memory_ex(
+     rgba.data(), width, height, 4, &enc_len, 9, false);
+ CHECK(enc != nullptr);
+
+ std::vector<uint8_t> ret(enc_len);
+ memcpy(ret.data(), enc, enc_len);
+ free(enc);
+ return ret;
+}
+
 
 void ZIP::CCLibHeader::SetFlags(uint32_t f) {
   flags_msb_first[3] = f & 0xFF; f >>= 8;

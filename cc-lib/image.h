@@ -187,9 +187,12 @@ struct ImageRGBA {
                                 const ImageA &blue,
                                 const ImageA &alpha);
 
-private:
-  friend struct ImageResize;
+  // Convert to R-G-B-A byte order.
   std::vector<uint8_t> ToBuffer8() const;
+
+ private:
+  friend struct ImageResize;
+
   int width, height;
   // Size width * height.
   // Bytes are packed 0xRRGGBBAA, regardless of host endianness.
