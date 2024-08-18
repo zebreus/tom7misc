@@ -335,7 +335,6 @@ struct Exp {
     return std::tie(a, b, c);
   }
 
-  // TODO: Needs arg and return types.
   // self, x, arrow_type, body
   std::tuple<const std::string &, const std::string &, const Type *,
              const Exp *>
@@ -1338,6 +1337,22 @@ const char *ObjFieldTypeString(ObjFieldType t);
 std::string TypeString(const Type *t);
 std::string ExpString(const Exp *e);
 std::string ProgramString(const Program &pgm);
+
+// Superficial ordering (does not consider ∀α.α equal to ∀β.β).
+// Ignores bound evars and fails on unbound evars.
+struct TypeCmp {
+  enum class Order { LESS, GREATER, EQ, };
+  static Order Compare(const Type *a, const Type *b);
+  inline bool operator()(const Type *a, const Type *b) const {
+    return Compare(a, b) == Order::LESS;
+  }
+};
+
+// Using the above.
+struct TypeVecCmp {
+  bool operator()(const std::vector<const Type *> &av,
+                  const std::vector<const Type *> &bv) const;
+};
 
 }  // namespace il
 

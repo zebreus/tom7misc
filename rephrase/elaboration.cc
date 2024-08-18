@@ -333,7 +333,9 @@ Elaboration::ElabDec(
       // be
       //   {"ignore", {"α"}, ∀ α. α → unit}
       //
-      std::vector<std::tuple<std::string, std::vector<std::string>, const il::Type *>> fvts;
+      std::vector<std::tuple<std::string,
+                             std::vector<std::string>,
+                             const il::Type *>> fvts;
       for (const std::string &s : fvs_all) {
         // Since we've already elaborated the expression, its
         // free variables are IL variables. Look them up in the
@@ -528,6 +530,9 @@ Elaboration::ElabDec(
         // occurrences. Note that since the body is an application,
         // this violates the value restriction, but that is an EL
         // concept, not an IL one.
+        //
+        // (If we need to fix this to do monomorphization, we can
+        // just eta-expand it here. It has arrow type.)
         ret.push_back(ILDec{
             .tyvars = tyvars,
             .x = il_vars[i],

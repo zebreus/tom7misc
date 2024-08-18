@@ -18,6 +18,12 @@
 
 namespace il {
 
+// This file defines both elaboration contexts and regular IL contexts.
+// The elaboration context is used for the transformation between
+// the EL and IL, which makes it more complex. The Info structs collect
+// the information we know about an expression variable, type variable,
+// or object name.
+
 struct VarInfo {
   // Polymorphic types only exist at the outermost level of the type
   // language (and only for bound variables and constructors). tyvars

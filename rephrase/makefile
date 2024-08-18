@@ -1,5 +1,7 @@
 
-default: bovex.exe monospace.exe monofile.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe bc_test.exe upcontrast.exe cyber-voronoi.exe
+default: bovex.exe lexing_test.exe context_test.exe unification_test.exe parsing_test.exe frontend_test.exe il_test.exe il-pass_test.exe il-util_test.exe il-typed-pass_test.exe closure-conversion_test.exe compiler_test.exe execution_test.exe execution_test.exe concat.exe makecodeimage.exe bc_test.exe upcontrast.exe cyber-voronoi.exe
+
+all : default monospace.exe monofile.exe test-rephrase.exe
 
 # for these ENABLE=true kinds of flags, you should *comment them out*
 # if you don't want them. ENABLE_LLM=false does the same thing as true.
@@ -7,9 +9,10 @@ default: bovex.exe monospace.exe monofile.exe lexing_test.exe context_test.exe u
 # ENABLE_LLM=true
 
 # TODO: Should perhaps separate out BoVeX from the other video/paper stuff?
+# Especially since some of these targets cannot even compile without LLM.
 
 # GPU acceleration
-LLAMA_CLBLAST=true
+LLAMA_CLBLAST = true
 
 # It's crashing or doing something weird? You're always
 # being too clever with std::move! Or you incremented
@@ -55,13 +58,12 @@ else
   # OPTFLAGS=-O
   PLATFORM_CFLAGS=-g -D_GNU_SOURCE
   # Check if g++ is actually clang
-  ifeq ($(shell $(CXX) -v 2>&1 | grep -q "clang"), 1)
+  ifeq ($(shell $(CXX) -v 2>&1 | grep "clang version" | wc -l), 1)
     CLANG=true
     PLATFORM_LDFLAGS += -Wl,--stack,167772160
   else
     # g++ says it supports --size but it doesn't work
-	PLATFORM_LDFLAGS += -Wl,-z,stack-size=167772160
-    PLATFORM_CFLAGS += -Wno-missing-field-initializers
+    PLATFORM_LDFLAGS += -Wl,-z,stack-size=167772160
   endif
 
   ifdef ASAN
@@ -129,8 +131,9 @@ ifndef LLAMA_DEBUG
 endif
 
 # warnings
-CFLAGS   += -Wall -Wextra -Wcast-qual -Wdouble-promotion -Wshadow -Wstrict-prototypes -Wpointer-arith
-CXXFLAGS += -Wall -Wextra -Wcast-qual -Wno-unused-parameter -Wno-unused-function -Wno-multichar
+CFLAGS   += -Wall -Wextra -Wcast-qual -Wdouble-promotion -Wshadow -Wstrict-prototypes -Wpointer-arith -Wno-missing-field-initializers
+
+CXXFLAGS += -Wall -Wextra -Wcast-qual -Wno-unused-parameter -Wno-unused-function -Wno-multichar -Wno-missing-field-initializers
 
 # warnings only supported by clang. clang is only set in the msys/linux block above.
 ifdef CLANG
@@ -307,7 +310,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bc.o to-bytecode.o optimization.o assembling.o compiler.o document.o pdf-document.o talk-document.o rephrasing.o achievements.o execution.o animation.o
+LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bc.o to-bytecode.o optimization.o assembling.o compiler.o document.o pdf-document.o image-document.o talk-document.o rephrasing.o achievements.o execution.o animation.o
 
 BOVEX_OBJECTS=$(LANG_OBJECTS)
 BOVEX_HEADERS=*.h
@@ -330,6 +333,9 @@ parsing.o : parsing.cc parsing.h inclusion.h el.h lexing.h $(CC_LIB)/parser-comb
 	@echo -n ":"
 
 
+# These programs require LLM
+ifeq ($(ENABLE_LLM), true)
+
 monospace.exe : monospace.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS) $(BIT7_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
@@ -338,6 +344,8 @@ monofile.exe : monofile.o line-rephrasing.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS) $(B
 
 test-rephrase.exe : test-rephrase.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+endif
 
 lexing_test.exe : lexing_test.o $(BOVEX_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)

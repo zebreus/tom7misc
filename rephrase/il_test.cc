@@ -27,6 +27,10 @@ static void TestTypeSubst() {
                                       arrow);
   CHECK(arrow == arrow2) << "Expected that a no-op substitution "
     "does not copy anything.";
+  CHECK(TypeCmp::Compare(arrow, arrow2) == TypeCmp::Order::EQ);
+  CHECK(TypeCmp::Compare(arrow, pool.StringType()) != TypeCmp::Order::EQ);
+  CHECK(TypeCmp::Compare(arrow, pool.Arrow(arrow, arrow))
+        != TypeCmp::Order::EQ);
 
   {
     // (μ α.α -> β)
@@ -72,6 +76,30 @@ static void TestUnroll() {
 
 }
 
+static void TestCompare() {
+  AstPool pool;
+
+  using enum TypeCmp::Order;
+
+  CHECK(TypeCmp::Compare(pool.Arrow(pool.IntType(), pool.StringType()),
+                       pool.Arrow(pool.IntType(), pool.StringType())) == EQ);
+
+  CHECK(TypeCmp::Compare(pool.Arrow(pool.StringType(), pool.StringType()),
+                         pool.Arrow(pool.IntType(), pool.StringType())) != EQ);
+
+  CHECK(TypeCmp::Compare(pool.RecordType({{"a", pool.IntType()}}),
+                         pool.RecordType({})) != EQ);
+  CHECK(TypeCmp::Compare(pool.RecordType({{"a", pool.IntType()}}),
+                         pool.RecordType({{"a", pool.IntType()}})) == EQ);
+  CHECK(TypeCmp::Compare(pool.RecordType({{"a", pool.StringType()}}),
+                         pool.RecordType({{"a", pool.IntType()}})) != EQ);
+  CHECK(TypeCmp::Compare(
+            pool.RecordType(
+                {{"a", pool.IntType()}, {"b", pool.StringType()}}),
+            pool.RecordType(
+                {{"a", pool.IntType()}, {"c", pool.StringType()}})) == EQ);
+}
+
 }  // il
 
 int main(int argc, char **argv) {
@@ -79,6 +107,7 @@ int main(int argc, char **argv) {
 
   il::TestTypeSubst();
   il::TestUnroll();
+  il::TestCompare();
 
   printf("OK\n");
   return 0;

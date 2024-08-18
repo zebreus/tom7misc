@@ -836,4 +836,200 @@ std::string ProgramString(const Program &pgm) {
   return ret;
 }
 
+template<class T, class F>
+TypeCmp::Order static OrderVector(const std::vector<T> &av,
+                                  const std::vector<T> &bv,
+                                  const F &f) {
+  if (av.size() == bv.size()) {
+    for (size_t i = 0; i < av.size(); i++) {
+      TypeCmp::Order ord = f(av[i], bv[i]);
+      if (ord != TypeCmp::Order::EQ) return ord;
+    }
+    return TypeCmp::Order::EQ;
+
+  } else if (av.size() < bv.size()) {
+    return TypeCmp::Order::LESS;
+  } else {
+    return TypeCmp::Order::GREATER;
+  }
+}
+
+
+TypeCmp::Order TypeCmp::Compare(const Type *a, const Type *b) {
+  if (a == b) return Order::EQ;
+
+  if (a->type == TypeType::EVAR) {
+    a = a->EVar().GetBound();
+    CHECK(a != nullptr) << "EVar (lhs) unset in TypeCmp.";
+  }
+
+  if (b->type == TypeType::EVAR) {
+    b = b->EVar().GetBound();
+    CHECK(b != nullptr) << "EVar (rhs) unset in TypeCmp.";
+  }
+
+  if (a->type != b->type) {
+#   define ORDER(ctor) do {                                        \
+      if (a->type == TypeType:: ctor ) return Order::LESS;         \
+      if (b->type == TypeType:: ctor ) return Order::GREATER;      \
+    } while (0)
+
+    ORDER(VAR);
+    ORDER(SUM);
+    ORDER(ARROW);
+    ORDER(MU);
+    ORDER(EXISTS);
+    ORDER(FORALL);
+    ORDER(RECORD);
+    ORDER(REF);
+    ORDER(VEC);
+    ORDER(STRING);
+    ORDER(FLOAT);
+    ORDER(INT);
+    ORDER(BOOL);
+    ORDER(WORD);
+    ORDER(OBJ);
+    ORDER(LAYOUT);
+#   undef ORDER
+
+    LOG(FATAL) << "Unhandled TypeType (or illegal evar?) in "
+      "TypeCmp where a->type != b->type: " <<
+      TypeString(a) << "\nvs\n" << TypeString(b);
+  }
+
+  DCHECK(a->type == b->type);
+  switch (a->type) {
+  case TypeType::VAR: {
+    const auto &[ax, av] = a->Var();
+    const auto &[bx, bv] = a->Var();
+    if (ax == bx) {
+      // const std::vector<const Type *>
+      return OrderVector(av, bv,
+                         [](const auto &aa, const auto &bb) {
+                           return Compare(aa, bb);
+                         });
+    } else if (ax < bx) {
+      return Order::LESS;
+    } else {
+      return Order::GREATER;
+    }
+
+    break;
+  }
+
+  case TypeType::SUM:
+    // Sum fields are sorted by label.
+    return OrderVector(a->Sum(), b->Sum(),
+                       [](const auto &aa, const auto &bb) {
+                         if (aa.first == bb.first) {
+                           return Compare(aa.second, bb.second);
+                         } else if (aa.first < bb.first) {
+                           return Order::LESS;
+                         } else {
+                           return Order::GREATER;
+                         }
+                       });
+    break;
+
+  case TypeType::ARROW: {
+    const auto &[a1, a2] = a->Arrow();
+    const auto &[b1, b2] = b->Arrow();
+    const auto ord = Compare(a1, b1);
+    if (ord == Order::EQ) return Compare(a2, b2);
+    else return ord;
+  }
+
+  case TypeType::MU: {
+    const auto &[an, av] = a->Mu();
+    const auto &[bn, bv] = b->Mu();
+    if (an == bn) {
+      return OrderVector(av, bv,
+                         [](const auto &aa, const auto &bb) {
+                           const auto &[ax, at] = aa;
+                           const auto &[bx, bt] = bb;
+                           if (ax == bx) {
+                             return Compare(at, bt);
+                           } else if (ax < bx) {
+                             return Order::LESS;
+                           } else {
+                             return Order::GREATER;
+                           }
+                         });
+    } else if (an < bn) {
+      return Order::LESS;
+    } else {
+      return Order::GREATER;
+    }
+    break;
+  }
+
+  case TypeType::EXISTS: {
+    const auto &[ax, at] = a->Exists();
+    const auto &[bx, bt] = b->Exists();
+    if (ax == bx) {
+      return Compare(at, bt);
+    } else if (ax < bx) {
+      return Order::LESS;
+    } else {
+      return Order::GREATER;
+    }
+
+    break;
+  }
+
+  case TypeType::FORALL: {
+    const auto &[ax, at] = a->Forall();
+    const auto &[bx, bt] = b->Forall();
+    if (ax == bx) {
+      return Compare(at, bt);
+    } else if (ax < bx) {
+      return Order::LESS;
+    } else {
+      return Order::GREATER;
+    }
+
+    break;
+  }
+
+  case TypeType::RECORD:
+    // Record fields are sorted by label.
+    return OrderVector(a->Record(), b->Record(),
+                       [](const auto &aa, const auto &bb) {
+                         if (aa.first == bb.first) {
+                           return Compare(aa.second, bb.second);
+                         } else if (aa.first < bb.first) {
+                           return Order::LESS;
+                         } else {
+                           return Order::GREATER;
+                         }
+                       });
+    break;
+
+  case TypeType::EVAR:
+    LOG(FATAL) << "Bug: EVars handled above.";
+  case TypeType::REF: return Compare(a->Ref(), b->Ref());
+  case TypeType::VEC: return Compare(a->Ref(), b->Ref());
+  case TypeType::STRING: return Order::EQ;
+  case TypeType::FLOAT: return Order::EQ;
+  case TypeType::INT: return Order::EQ;
+  case TypeType::BOOL: return Order::EQ;
+  case TypeType::WORD: return Order::EQ;
+  case TypeType::OBJ: return Order::EQ;
+  case TypeType::LAYOUT: return Order::EQ;
+  }
+
+  LOG(FATAL) << "Unhandled TypeType in TypeCmp where "
+    "a->type == b->type: " <<
+    TypeString(a) << "\nvs\n" << TypeString(b);
+  return Order::LESS;
+}
+
+bool TypeVecCmp::operator()(const std::vector<const Type *> &av,
+                            const std::vector<const Type *> &bv) const {
+  return OrderVector(av, bv, [](const Type *a, const Type *b) {
+      return TypeCmp::Compare(a, b);
+    }) == TypeCmp::Order::LESS;
+}
+
+
 }  // namespace il

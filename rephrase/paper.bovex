@@ -493,7 +493,7 @@ over we can generate a likely piece of text. This is what Lorem Epsom
 means when he says “Generative AI.” Rather, what he means is
 “the new thing that is cool,” but what he is unknowingly [it[referring to]]
 is that you can sample a probability distribution. He has probably
-never even read the wikipedia article on Markov chains.
+never even read the Wikipedia article on Markov chains.
 
 If I always sample the most likely token, I always get the most
 likely text. It is good to be likely; this is why the model is
