@@ -304,7 +304,10 @@ const std::vector<int> &PageBit7Extended() {
     0x26D4,
     // No Entry Sign (diagonal slash)
     0x1F6AB,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // Hourglass
+    0x231B,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -825,6 +828,7 @@ REUSE_FOR = {
   // Various for IPA (Latin Extended B)
   {0x03A3, 0x01A9}, // Greek Σ -> esh
   {'!', 0x01C3},
+  {0x04D9, 0x0259}, // Cyrillic schwa -> IPA schwa
 };
 
 Config Config::ParseConfig(const string &cfgfile) {

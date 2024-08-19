@@ -10,6 +10,56 @@ Glyphs todo:
  - U+2E17 ⸗ Double Oblique Hyphen would have been good for writing
    about Gutenberg bible.
  - irony mark (⸮) found in Unicode as U+2E2E
+ - “ᴥ” (U+1D25) for ºᴥº
+
+Should really just do Latin extended A and B.
+
+// Common in Wikipedia:
+U+0101 (ā): 592090
+U+0161 (š): 588115
+U+0142 (ł): 582497
+U+0107 (ć): 775977
+U+014d (ō): 768930
+U+0103 (ă): 365868
+U+015f (ş): 338371
+U+0131 (ı): 396606
+U+012b (ī): 203418
+U+0144 (ń): 219906
+U+0160 (Š): 196338
+U+0119 (ę): 158383
+U+011f (ğ): 134466
+U+02c8 (ˈ): 130261
+U+015b (ś): 124185
+U+0159 (ř): 113621
+U+010c (Č): 110753
+U+0141 (Ł): 105530
+U+0105 (ą): 104222
+U+017d (Ž): 101867
+U+0130 (İ): 96355
+U+00ee (î): 93529
+U+011b (ě): 93484
+U+03af (ί): 93181
+U+017c (ż): 85329
+U+02d0 (ː): 84841
+U+014c (Ō): 75934
+U+0110 (Đ): 72847
+U+0163 (ţ): 70549
+U+03ac (ά): 67724
+U+0151 (ő): 66454
+U+0113 (ē): 66433
+U+017a (ź): 63409
+U+015e (Ş): 62291
+U+0111 (đ): 56791
+U+03cc (ό): 56472
+U+03ad (έ): 45479
+U+025b (ɛ): 43318
+U+026a (ɪ): 41570
+U+300c (「): 30788
+U+300d (」): 30753
+U+0283 (ʃ): 29294
+U+014f (ŏ): 29225
+U+0153 (œ): 25481
+
 
 obviously
 □◇○ (and ◊)
@@ -78,6 +128,9 @@ https://en.wikipedia.org/wiki/List_of_Japanese_typographic_symbols#Brackets%20an
 Playing cards:
 https://en.wikipedia.org/wiki/Playing_cards_in_Unicode
 
+Really good reference letterforms for arabic on a terminal:
+https://github.com/eliheuer/hasubi-mono
+
 TODO:
  - improve 2x versions of some new emoji
  - light greek in fixedersyslight2x
@@ -93,20 +146,25 @@ font somehow to indicate that it supports some "emoji". Supposedly
 "Segoe UI Symbol" does this, whereas "Segoe UI Emoji" has the color
 emoji in it.
 
-Could pretty easily generate BDF for x windows:
-https://en.wikipedia.org/wiki/Glyph_Bitmap_Distribution_Format
-and also PCF:
-https://en.wikipedia.org/wiki/Portable_Compiled_Format
-
-
 We definitely need these! "Symbols for Legacy Computing"
 https://www.unicode.org/charts/PDF/U1FB00.pdf
 
 Can do the rest of WinAnsiEncoding. See pdf.cc.
 
+Tech:
+
+Export UFO?
+https://unifiedfontobject.org/versions/ufo3/
+
 Practical info about how combining characters are treated in fonts and
 terminals:
 https://github.com/alacritty/alacritty/issues/1420#issuecomment-623118500
+
+Could pretty easily generate BDF for x windows:
+https://en.wikipedia.org/wiki/Glyph_Bitmap_Distribution_Format
+and also PCF:
+https://en.wikipedia.org/wiki/Portable_Compiled_Format
+
 
 
 ▜▘ ▉   ▛▛▜   ▜

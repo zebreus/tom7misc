@@ -72,6 +72,11 @@ fixedersys2x.sfd : fixedersys2x.png fixedersys2x.cfg makesfd.exe
 fixedersyslight2x.sfd : fixedersyslight2x.png fixedersyslight2x.cfg makesfd.exe
 	./makesfd.exe fixedersyslight2x.cfg $@
 
+normalize : normalize.exe fixedersys1x.png fixedersys2x.png
+	./normalize.exe fixedersys1x.cfg
+	./normalize.exe fixedersys2x.cfg
+	./normalize.exe fixedersyslight2x.cfg
+
 clean :
 	rm -f *.o *.exe $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 
