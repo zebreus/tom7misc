@@ -11,6 +11,7 @@
 #include <string_view>
 #include <unordered_set>
 #include <vector>
+#include <cinttypes>
 
 #include "ansi.h"
 #include "base/logging.h"
@@ -68,7 +69,7 @@ static void Dump(std::string_view f) {
 
         std::string indent(depth * 2, ' ');
 
-        printf("%s" AGREY("@%zu") " [" AYELLOW("%s") "] × %zu\n",
+        printf("%s" AGREY("@%zu") " [" AYELLOW("%s") "] × %" PRIi64 "\n",
                indent.c_str(),
                (size_t)chunk_pos,
                cho->FourCC().c_str(), cho->total_size);
@@ -131,7 +132,7 @@ static void Dump(std::string_view f) {
             }
 
           } else {
-            printf("%s" AGREY("   ... %zu bytes ...") "\n",
+            printf("%s" AGREY("   ... %" PRIi64 " bytes ...") "\n",
                    indent.c_str(), cho->size_left);
             (void)in->ReadBytes(cho->size_left);
           }

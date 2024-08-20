@@ -750,7 +750,10 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   candidates.push_back(
       ScoredMask{
         .score = 1,
-        .mask = AllMask(frame.Width(), frame.Height()),
+        .mask = AllMask{
+          .width = frame.Width(),
+          .height = frame.Height(),
+        },
         .bgcolor = 0x00000000,
       });
 
@@ -913,6 +916,63 @@ static bool ReadMask(int frame_width,
     return true;
   }
 
+  case MASK_QUADTREE: {
+
+    // Parse tree recursively.
+    bool failed = false;
+    std::function<std::shared_ptr<QuadNode>()> ParseRec =
+      [&v, &failed, &ParseRec]() -> std::shared_ptr<QuadNode> {
+        if (failed) return nullptr;
+
+        // Always need one byte to represent a node.
+        if (v->empty()) {
+          failed = true;
+          return nullptr;
+        }
+
+        const uint8_t b = Read8(v);
+        switch (b) {
+        case 0x00:
+          // Not an error; an empty subtree is represented
+          // as nullptr.
+          return nullptr;
+
+        case 0x01:
+          return std::shared_ptr<QuadNode>(new QuadNode{
+              .children = {},
+              .is_all_on = true,
+           });
+
+        case 0x02: {
+          std::vector<std::shared_ptr<QuadNode>> children;
+          children.reserve(4);
+          for (int i = 0; i < 4; i++) {
+            children.push_back(ParseRec());
+            if (failed) return nullptr;
+          }
+          return std::shared_ptr<QuadNode>(new QuadNode{
+              .children = std::move(children),
+              .is_all_on = false,
+            });
+        }
+
+        default:
+          failed = true;
+          return nullptr;
+        }
+      };
+
+    std::shared_ptr<QuadNode> root = ParseRec();
+
+    if (failed) return false;
+    *m = QuadTreeMask{
+      .width = frame_width,
+      .height = frame_height,
+      .root = std::move(root),
+    };
+    return true;
+  }
+
   default:
     return false;
   }
@@ -984,6 +1044,7 @@ ParseIFrameHeader(int frame_width, int frame_height,
   }
 
   switch (MaskType(head.mask)) {
+  case MASK_QUADTREE:
   case MASK_RLE:
   case MASK_RECT: {
     uint32_t c = 0;
@@ -1074,6 +1135,37 @@ static void WriteMask(const Mask &mask, Buf *buf) {
 
       buf->W16(r);
     }
+
+  } else if (const QuadTreeMask *r = std::get_if<QuadTreeMask>(&mask)) {
+    buf->W8(MASK_QUADTREE);
+
+    // PERF: We should consider a DAG-style representation, since
+    // there may be subtrees that are equal. On the other hand,
+    // repeated subtrees should compress well.
+
+    // Tree in prefix form. 0 represents an all-off leaf, and 1 an all-on leaf.
+    // 2 is an internal node, followed by four nodes.
+    std::function<void(const QuadNode *)> WriteRec =
+      [buf, &WriteRec](const QuadNode *node) {
+        if (node == nullptr) {
+          buf->W8(0);
+        } else {
+          if (node->is_all_on) {
+            buf->W8(1);
+          } else {
+            // An alternative encoding here would give the bitmask
+            // of nodes that are non-zero?
+            buf->W8(2);
+            CHECK(node->children.size() == 4);
+            WriteRec(node->children[0].get());
+            WriteRec(node->children[1].get());
+            WriteRec(node->children[2].get());
+            WriteRec(node->children[3].get());
+          }
+        }
+      };
+
+    WriteRec(r->root.get());
 
   } else {
     LOG(FATAL) << "Bad mask";
