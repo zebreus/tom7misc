@@ -6,11 +6,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -29,7 +31,6 @@
 //   Pixel indices fit in int.
 //   Width and height fit in 16 bits each.
 // TODO: Can relax some of these with varint representations.
-
 
 // This works with an unsigned byte stream, with a preference towards
 // smaller byte values. The idea is that the generic compressor (e.g.
@@ -104,6 +105,58 @@ struct Buf {
   std::vector<uint8_t> bytes;
 };
 
+struct ColorStats {
+  // The number of times the entry appears. This is only present
+  // during encoding. (Maybe make this a separate PaletteStats?)
+  std::unordered_map<uint32_t, int> counts;
+  // True if any color has alpha other than 0xFF.
+  bool any_alpha = false;
+
+  static constexpr int MAX_NUM_FREQ = 4;
+  // Only consider colors to be "frequent" if they cover at least
+  // this fraction of the image.
+  static constexpr float MIN_FRAC_TO_BE_FREQUENT = 0.01f;
+  std::vector<std::pair<uint32_t, int>> most_frequent;
+
+  ColorStats(const ImageRGBA &img) {
+    for (int y = 0; y < img.Height(); y++) {
+      for (int x = 0; x < img.Width(); x++) {
+        uint32_t c = img.GetPixel32(x, y);
+        counts[c]++;
+        if (c != 0xFF) any_alpha = true;
+      }
+    }
+
+    const int min_c = std::ceil(MIN_FRAC_TO_BE_FREQUENT *
+                                img.Width() *
+                                img.Height());
+
+    // PERF don't need to sort everything if only
+    // getting the top 4!
+    most_frequent.reserve(counts.size() / 2);
+    for (const auto &[c, count] : counts) {
+      if (count >= min_c) {
+        most_frequent.emplace_back(c, count);
+      }
+    }
+
+    // Sort by decreasing frequency.
+    std::sort(most_frequent.begin(), most_frequent.end(),
+              [](const auto &a, const auto &b) {
+                if (a.second == b.second) {
+                  // Break ties arbitrarily.
+                  return a.first < b.first;
+                } else {
+                  return a.second > b.second;
+                }
+              });
+
+    if (most_frequent.size() > MAX_NUM_FREQ) {
+      most_frequent.resize(MAX_NUM_FREQ);
+    }
+  }
+};
+
 // A bijection between uint32_t and uint8_t, favoring small indices.
 struct Palette {
 
@@ -112,38 +165,26 @@ struct Palette {
   // Inverse.
   std::unordered_map<uint32_t, int> indices;
 
-  // The number of times the entry appears. This is only present
-  // during encoding. (Maybe make this a separate PaletteStats?)
-  std::vector<int> counts;
-
   // Returns pixelformat. Initializes the palette arg if that
   // format is PALETTE.
   static PixelFormat MakePalette(const ImageRGBA &img, Palette *p) {
     // RGBA -> count
-    std::unordered_map<uint32_t, int> counts;
-    uint8_t any_alpha = 0x00;
-    for (int y = 0; y < img.Height(); y++) {
-      for (int x = 0; x < img.Width(); x++) {
-        uint32_t c = img.GetPixel32(x, y);
-        counts[c]++;
-        any_alpha |= (c & 0xFF);
-      }
-      // Can return early if we already have too many colors.
-      if (counts.size() > 256 && any_alpha) {
-        return PIXELS_RGBA;
-      }
-    }
+    // PERF: If we just used this for the palette, we can return
+    // early when we find we have too many colors (and have alpha).
+    // But we also use this for mask generation.
+    ColorStats color_stats(img);
 
-    if (counts.size() > 256) {
-      return any_alpha ? PIXELS_RGBA : PIXELS_RGB;
+    if (color_stats.counts.size() > 256) {
+      return color_stats.any_alpha ? PIXELS_RGBA : PIXELS_RGB;
     }
 
     // Otherwise, create the palette.
     std::vector<std::pair<uint32_t, int>> cv;
-    cv.reserve(counts.size());
-    for (const auto &[color, count] : counts)
+    cv.reserve(color_stats.counts.size());
+    for (const auto &[color, count] : color_stats.counts)
       cv.emplace_back(color, count);
-    // Sort by decreasing frequency.
+    // Sort by decreasing frequency, so that we use lower byte
+    // values for more common colors.
     std::sort(cv.begin(), cv.end(),
               [](const auto &a, const auto &b) {
                 if (a.second == b.second) {
@@ -155,13 +196,11 @@ struct Palette {
               });
     const size_t num_entries = cv.size();
     p->entries.resize(num_entries);
-    p->counts.resize(num_entries);
     p->indices.clear();
     p->indices.reserve(num_entries);
     for (size_t i = 0; i < num_entries; i++) {
       const auto &[color, count] = cv[i];
       p->entries[i] = color;
-      p->counts[i] = count;
       p->indices[color] = (int)i;
     }
 
@@ -194,7 +233,14 @@ struct RLEMask {
 
 struct Rect {
   int x = 0, y = 0, w = 0, h = 0;
+
+  int Size() const {
+    return w * h;
+  }
 };
+
+
+
 struct QuadNode {
   // Either four children (maybe null), or no children but is_all_on.
   std::vector<std::shared_ptr<QuadNode>> children;
@@ -303,7 +349,7 @@ static void AppMask(const Mask &mask, const F &f) {
           CHECK(node->children.empty());
           for (int y = 0; y < r.h; y++) {
             for (int x = 0; x < r.w; x++) {
-              f(x, y);
+              f(r.x + x, r.y + y);
             }
           }
         } else {
@@ -511,6 +557,108 @@ GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   }
 }
 
+static std::optional<QuadTreeMask>
+GetForegroundQuadTreeMask(const ImageRGBA &frame, uint32_t bgcolor) {
+
+  // Rectangles smaller than this must be encoded as solid (fg or bg).
+  // PERF: Tune this!
+  static constexpr int MIN_RECT_PIXELS = 8 * 8;
+
+  static_assert(MIN_RECT_PIXELS >= 1);
+
+  Rect all_rect{.x = 0, .y = 0, .w = frame.Width(), .h = frame.Height()};
+  // Share one "on" leaf for the quadtree.
+  std::shared_ptr<QuadNode> all_on(
+      new QuadNode{
+        .children = {},
+        .is_all_on = true,
+      });
+
+  std::function<std::shared_ptr<QuadNode>(const Rect &r)> Rec =
+    [&Rec, &frame, &bgcolor, &all_on](const Rect &r) ->
+    std::shared_ptr<QuadNode> {
+
+    // To avoid making linear passes over and over to check for
+    // solid regions, we generate the full tree and then merge on
+    // the way up. PERF: Perhaps we can avoid allocating in sparse
+    // situations though?
+    if (r.Size() < MIN_RECT_PIXELS) {
+      // It must be a leaf then. We can always treat bg as fg, so
+      // this leaf is empty iff it is all bgcolor.
+      const bool all_background = [&]() {
+          for (int yy = 0; yy < r.h; yy++) {
+            for (int xx = 0; xx < r.w; xx++) {
+              const int x = r.x + xx;
+              const int y = r.y + yy;
+              uint32_t c = frame.GetPixel32(x, y);
+              if (c != bgcolor) return false;
+            }
+          }
+
+          return true;
+        }();
+
+      if (all_background) {
+        return std::shared_ptr<QuadNode>(nullptr);
+      } else {
+        return all_on;
+      }
+    } else {
+      // Internal node.
+
+      const auto &[tl, tr, bl, br] = QuadTreeMask::Split(r);
+      auto ntl = Rec(tl);
+      auto ntr = Rec(tr);
+      auto nbl = Rec(bl);
+      auto nbr = Rec(br);
+
+      // If all are solid (and the same) then we merge them into
+      // a single node.
+      if (ntl.get() == nullptr &&
+          ntr.get() == nullptr &&
+          nbl.get() == nullptr &&
+          nbr.get() == nullptr)
+        return nullptr;
+
+      // PERF: In the case of three foreground nodes, we might want to
+      // just merge this into a single foreground node when
+      // they are small? Tune. (Also we could have a single missing node
+      // deep in a very large rectangle. Basically we should be comparing
+      // the cost to encode the subtree with the accuracy of the mask.)
+      if (ntl.get() != nullptr &&
+          ntl->is_all_on &&
+          ntr.get() != nullptr &&
+          ntr->is_all_on &&
+          nbl.get() != nullptr &&
+          nbl->is_all_on &&
+          nbr.get() != nullptr &&
+          nbr->is_all_on) {
+        // Children are discarded.
+        return all_on;
+      }
+
+      // Otherwise, a proper internal node with these children.
+      return std::shared_ptr<QuadNode>(
+          new QuadNode{
+            .children = std::vector<std::shared_ptr<QuadNode>>{
+              std::move(ntl),
+              std::move(ntr),
+              std::move(nbl),
+              std::move(nbr),
+            },
+            .is_all_on = false,
+          });
+    }
+
+  };
+
+  QuadTreeMask mask;
+  mask.width = frame.Width();
+  mask.height = frame.Height();
+  mask.root = Rec(all_rect);
+  return mask;
+}
+
 static std::optional<RLEMask>
 GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   static constexpr int VERBOSE = 0;
@@ -675,6 +823,9 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   static constexpr int VERBOSE = 0;
 
+  // PERF pass this?
+  ColorStats color_stats(frame);
+
   struct ScoredMask {
     double score = 0.0;
     Mask mask;
@@ -682,6 +833,7 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   };
 
   std::vector<ScoredMask> candidates;
+
 
   // The score is the total cost of the mask, which is the number of
   // bytes used to represent the mask, minus the number of pixels that
@@ -696,6 +848,48 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
         frame.Width() * frame.Height() - mask_pixels;
       return mask_bytes - pixels_outside * BYTES_PER_BACKGROUND_PIXEL;
     };
+
+
+  // PERF: Could consider trying more than one top color with the
+  // quadtree.
+  if (!color_stats.most_frequent.empty()) {
+    uint32_t quad_bgcolor = color_stats.most_frequent[0].first;
+    if (std::optional<QuadTreeMask> maybe_quad_mask =
+        GetForegroundQuadTreeMask(frame, quad_bgcolor)) {
+      QuadTreeMask quad_mask = std::move(maybe_quad_mask.value());
+
+      const int quad_pixels = MaskNumPixels(quad_mask);
+      // Estimate size as number of nodes? Maybe we should just
+      // encode it?
+      std::function<int(const QuadNode *)> Rec = [&Rec](const QuadNode *n) {
+          if (n == nullptr) {
+            return 1;
+          } else if (n->is_all_on) {
+            return 1;
+          } else {
+            int sum = 1;
+            for (const auto &q : n->children) {
+              sum += Rec(q.get());
+            }
+            return sum;
+          }
+        };
+
+      // There are only three possibilities for nodes (0, 1, 2), plus
+      // we get compression. So estimate this as one bit per node.
+      // XXX: Tune
+      static constexpr float BITS_PER_NODE = 1.0;
+      const int quad_size =
+        (Rec(quad_mask.root.get()) + 7) / BITS_PER_NODE;
+
+      candidates.push_back(
+          ScoredMask{
+            .score = Score(quad_size, quad_pixels),
+            .mask = std::move(quad_mask),
+            .bgcolor = quad_bgcolor,
+          });
+    }
+  }
 
   uint32_t rle_bgcolor = 0;
   if (std::optional<RLEMask> maybe_rle_mask =
@@ -1206,12 +1400,6 @@ struct Encode {
     uint32_t bgcolor = 0;
     Mask mask = GetForegroundMask(frame, &bgcolor);
 
-    printf("Pixelformat %s. Palette size %d. Mask=%s\n",
-           PixelFormatString(pixel_format),
-           (int)palette.entries.size(),
-           MaskString(mask).c_str());
-
-
     // Write.
     Buf buf;
 
@@ -1243,7 +1431,9 @@ struct Encode {
       WritePalette(palette, &buf);
     }
 
+    const size_t size_before_mask = buf.Size();
     WriteMask(mask, &buf);
+    const size_t mask_bytes = buf.Size() - size_before_mask;
 
     switch (MaskType(mask)) {
     case MASK_ALL:
@@ -1252,6 +1442,7 @@ struct Encode {
 
     case MASK_RECT:
     case MASK_RLE:
+    case MASK_QUADTREE:
       WritePixel(bgcolor);
       break;
 
@@ -1259,6 +1450,12 @@ struct Encode {
       LOG(FATAL) << "Bad mask";
       return {};
     }
+
+    printf("Pixelformat %s. Palette size %d. Mask=%s (%zu bytes)\n",
+           PixelFormatString(pixel_format),
+           (int)palette.entries.size(),
+           MaskString(mask).c_str(),
+           mask_bytes);
 
     // Now the image pixels, but only from the mask.
     AppMask(mask, [&frame, &WritePixel](int x, int y) {
@@ -1287,6 +1484,7 @@ struct Decode {
       switch (MaskType(head->mask)) {
       case MASK_RECT:
       case MASK_RLE:
+      case MASK_QUADTREE:
         ret.Clear32(head->bgcolor);
         break;
 
