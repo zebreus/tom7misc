@@ -1,11 +1,13 @@
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -24,6 +26,10 @@
 #include "image.h"
 #include "timer.h"
 #include "zip.h"
+#include "util.h"
+#include "color-util.h"
+
+#include "opt/optimizer.h"
 
 // Assumptions:
 //   All frames are a fixed size.
@@ -31,6 +37,26 @@
 //   Pixel indices fit in int.
 //   Width and height fit in 16 bits each.
 // TODO: Can relax some of these with varint representations.
+
+// Tuning run crashed (?), but this was good: 35 39 1.04 2.05
+// It looks like setting the quadtree cost quite high is the
+// cause?
+
+// Rectangles smaller than this must be encoded as solid (fg or bg).
+static int QUADTREE_MIN_RECT_PIXELS = 208;
+
+// The minimum (background) run size that we try to encode. We can always
+// treat background pixels as foreground in order to make longer runs.
+static int RLE_MIN_BACKGROUND_RUN = 42;
+
+// There are only three possibilities for nodes (0, 1, 2), plus
+// we get compression. So estimate this as one bit per node.
+static double QUADTREE_BYTES_PER_NODE = 0.80;
+
+// When scoring a mask, we give it credit for covering more background
+// pixels, since these do not need to be encoded otherwise. This is
+// the estimated number of bytes used to encode each background pixel.
+static double BYTES_PER_BACKGROUND_PIXEL = 0.02;
 
 // This works with an unsigned byte stream, with a preference towards
 // smaller byte values. The idea is that the generic compressor (e.g.
@@ -60,6 +86,11 @@ static const char *PixelFormatString(PixelFormat p) {
   case PIXELS_PALETTE: return "PALETTE";
   default: return "BAD_PIXELFORMAT";
   }
+}
+
+static std::string ColorString(uint32_t c) {
+  const auto &[r, g, b, a] = ColorUtil::Unpack32(c);
+  return StringPrintf("#%02x%02x%02x%02x", r, g, b, a);
 }
 
 // Output buffer; defaulting to big-endian numbers.
@@ -210,9 +241,7 @@ struct Palette {
 
 // A mask is a set of pixels, typically in some spatially
 // dense region.
-// TODO: Certainly consider other mask types here (e.g.
-// a run-length-encoded bitmask or quadtree) and
-// boolean operators on them.
+// TODO: Consider boolean operators on masks...
 struct AllMask {
   int width = 0;
   int height = 0;
@@ -510,7 +539,7 @@ GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
       return GetForegroundRectMaskWithColor(frame, a);
     } else if (b == c) {
       *bgcolor = b;
-      GetForegroundRectMaskWithColor(frame, b);
+      return GetForegroundRectMaskWithColor(frame, b);
     } else if (c == d) {
       *bgcolor = c;
       return GetForegroundRectMaskWithColor(frame, c);
@@ -560,11 +589,8 @@ GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 static std::optional<QuadTreeMask>
 GetForegroundQuadTreeMask(const ImageRGBA &frame, uint32_t bgcolor) {
 
-  // Rectangles smaller than this must be encoded as solid (fg or bg).
-  // PERF: Tune this!
-  static constexpr int MIN_RECT_PIXELS = 8 * 8;
-
-  static_assert(MIN_RECT_PIXELS >= 1);
+  // static_assert(QUADTREE_MIN_RECT_PIXELS >= 1);
+  CHECK(QUADTREE_MIN_RECT_PIXELS >= 1);
 
   Rect all_rect{.x = 0, .y = 0, .w = frame.Width(), .h = frame.Height()};
   // Share one "on" leaf for the quadtree.
@@ -582,7 +608,14 @@ GetForegroundQuadTreeMask(const ImageRGBA &frame, uint32_t bgcolor) {
     // solid regions, we generate the full tree and then merge on
     // the way up. PERF: Perhaps we can avoid allocating in sparse
     // situations though?
-    if (r.Size() < MIN_RECT_PIXELS) {
+    if (r.Size() < QUADTREE_MIN_RECT_PIXELS ||
+        // Once the rectangles become degenerate we also stop, as
+        // these cannot be subdivided. We do need this condition for
+        // correctness (otherwise we get endless recursion). In
+        // principle we could support 1xN and Nx1 slivers, though, by
+        // just generating two children; the decoder would know that
+        // it is reaching this situation as well.
+        r.w <= 1 || r.w <= 1) {
       // It must be a leaf then. We can always treat bg as fg, so
       // this leaf is empty iff it is all bgcolor.
       const bool all_background = [&]() {
@@ -662,11 +695,10 @@ GetForegroundQuadTreeMask(const ImageRGBA &frame, uint32_t bgcolor) {
 static std::optional<RLEMask>
 GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   static constexpr int VERBOSE = 0;
-  // The minimum (background) run size that we try to encode. We can always
-  // treat background pixels as foreground in order to make longer runs.
-  // PERF: Tune.
-  static constexpr int MIN_BACKGROUND_RUN = 2;
-  static_assert(MIN_BACKGROUND_RUN > 1);
+
+  // XXX Why not equal to 1?
+  CHECK(RLE_MIN_BACKGROUND_RUN >= 1);
+  // static_assert(MIN_BACKGROUND_RUN > 1);
 
   const int size = frame.Width() * frame.Height();
 
@@ -679,8 +711,8 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   // PERF: Tune.
   // Longer runs are better, so use a little bit of nonlinearity.
   static constexpr auto ScoreLength = [](int run_length) {
-      if (run_length <= MIN_BACKGROUND_RUN) return 0.0;
-      double p = (run_length - MIN_BACKGROUND_RUN);
+      if (run_length <= RLE_MIN_BACKGROUND_RUN) return 0.0;
+      double p = (run_length - RLE_MIN_BACKGROUND_RUN);
       return p * std::log2(p);
     };
 
@@ -691,7 +723,7 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     int run_length = 1;
 
     auto Emit = [&run_scores, &prev, &run_length]() {
-        if (run_length >= MIN_BACKGROUND_RUN) {
+        if (run_length >= RLE_MIN_BACKGROUND_RUN) {
           run_scores[prev] += ScoreLength(run_length);
         }
       };
@@ -726,8 +758,11 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     }
   }
 
+  // All runs were too short.
+  if (run_scores.empty()) return std::nullopt;
+
   double best_score = 0.0;
-  uint32_t best_color = 0x00000000;
+  uint32_t best_color = 0xD00D00;
   for (const auto &[c, s] : run_scores) {
     if (s > best_score ||
         (s == best_score && c < best_color)) {
@@ -737,7 +772,7 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   }
 
   const uint32_t bg = best_color;
-  if (VERBOSE > 0) printf("RLE best bgcolor: #%08x\n", bg);
+  if (VERBOSE > 0) printf("RLE best bgcolor: #%08x (%.3f)\n", bg, best_score);
 
   {
     std::vector<int> runs;
@@ -765,7 +800,7 @@ GetForegroundRLEMask(const ImageRGBA &frame, uint32_t *bgcolor) {
           in_background = false;
           // But if the background run is too short, we do this by
           // resuming the previous foreground run.
-          if (run_length < MIN_BACKGROUND_RUN && !runs.empty()) {
+          if (run_length < RLE_MIN_BACKGROUND_RUN && !runs.empty()) {
             run_length = runs.back() + run_length + 1;
             runs.pop_back();
           } else {
@@ -834,15 +869,6 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
 
   std::vector<ScoredMask> candidates;
 
-
-  // The score is the total cost of the mask, which is the number of
-  // bytes used to represent the mask, minus the number of pixels that
-  // are outside the mask (since these get encoded cheaply). Lower is
-  // better.
-  //
-  // PERF: Tune this.
-  static constexpr double BYTES_PER_BACKGROUND_PIXEL = 1.5 / 8.0;
-
   auto Score = [&frame](int mask_bytes, int mask_pixels) {
       const int pixels_outside =
         frame.Width() * frame.Height() - mask_pixels;
@@ -875,12 +901,8 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
           }
         };
 
-      // There are only three possibilities for nodes (0, 1, 2), plus
-      // we get compression. So estimate this as one bit per node.
-      // XXX: Tune
-      static constexpr float BITS_PER_NODE = 1.0;
       const int quad_size =
-        (Rec(quad_mask.root.get()) + 7) / BITS_PER_NODE;
+        Rec(quad_mask.root.get()) * QUADTREE_BYTES_PER_NODE;
 
       candidates.push_back(
           ScoredMask{
@@ -891,7 +913,7 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
     }
   }
 
-  uint32_t rle_bgcolor = 0;
+  uint32_t rle_bgcolor = 0xCAFED00D;
   if (std::optional<RLEMask> maybe_rle_mask =
       GetForegroundRLEMask(frame, &rle_bgcolor)) {
     RLEMask rle_mask = std::move(maybe_rle_mask.value());
@@ -1367,6 +1389,19 @@ static void WriteMask(const Mask &mask, Buf *buf) {
   }
 }
 
+static std::string PaletteString(const Palette &p) {
+  std::string ret;
+  for (int i = 0; i < p.entries.size(); i++) {
+    uint32_t c = p.entries[i];
+    auto it = p.indices.find(c);
+    CHECK(it != p.indices.end()) << "palette index is wrong";
+    CHECK(it->second == i) << "palette index is wrong";
+    StringAppendF(&ret, "%08x=%s██" ANSI_RESET, c,
+                  ANSI::ForegroundRGB32(c).c_str());
+  }
+  return ret;
+}
+
 struct Encode {
   int frame_width = 0;
   int frame_height = 0;
@@ -1380,6 +1415,7 @@ struct Encode {
   }
 
   Buf EncodeIFrame(const ImageRGBA &frame) {
+    static constexpr int VERBOSE = 0;
 
     // For iframe encoding, we are just going to
     // encode the pixels of the image (using the smallest
@@ -1396,9 +1432,15 @@ struct Encode {
     // like that.
     Palette palette;
     PixelFormat pixel_format = Palette::MakePalette(frame, &palette);
+    CHECK(palette.entries.size() == palette.indices.size());
 
     uint32_t bgcolor = 0;
     Mask mask = GetForegroundMask(frame, &bgcolor);
+
+    if (VERBOSE > 1) {
+      printf("Mask %s with bgcolor: %08x\n",
+             MaskString(mask).c_str(), bgcolor);
+    }
 
     // Write.
     Buf buf;
@@ -1408,7 +1450,9 @@ struct Encode {
         case PIXELS_PALETTE: {
           auto it = palette.indices.find(c);
           CHECK(it != palette.indices.end()) << "Bug: Missing color in "
-            "palette?";
+            "palette: " << ColorString(c) << "\n"
+            "Palette has " << palette.indices.size() << " entries\n" <<
+            PaletteString(palette);
           buf.W8(it->second);
           break;
         }
@@ -1451,11 +1495,13 @@ struct Encode {
       return {};
     }
 
-    printf("Pixelformat %s. Palette size %d. Mask=%s (%zu bytes)\n",
-           PixelFormatString(pixel_format),
-           (int)palette.entries.size(),
-           MaskString(mask).c_str(),
-           mask_bytes);
+    if (VERBOSE > 0) {
+      printf("Pixelformat %s. Palette size %d. Mask=%s (%zu bytes)\n",
+             PixelFormatString(pixel_format),
+             (int)palette.entries.size(),
+             MaskString(mask).c_str(),
+             mask_bytes);
+    }
 
     // Now the image pixels, but only from the mask.
     AppMask(mask, [&frame, &WritePixel](int x, int y) {
@@ -1471,7 +1517,6 @@ struct Decode {
   Decode(int frame_width, int frame_height) :
     frame_width(frame_width), frame_height(frame_height) {}
 
-  // PERF: Probably these should work on spans, not vectors.
   ImageRGBA DecodeIFrame(std::span<uint8_t> *v) {
     ImageRGBA ret(frame_width, frame_height);
 
@@ -1659,6 +1704,7 @@ static TestStats RunTestcase(const Testcase &t) {
   return stats;
 }
 
+[[maybe_unused]]
 static void RunTests() {
   std::vector<Testcase> testcases = {
 
@@ -1708,8 +1754,263 @@ static void RunTests() {
          all_stats.cmp_bytes, h777_ratio, h777_pct);
 }
 
+static void Tune() {
+  using IFrameOpt = Optimizer<2, 2, char>;
+
+  // Load all images.
+  std::vector<std::pair<std::string, ImageRGBA>> corpus;
+  std::filesystem::directory_iterator dir("corpus/");
+
+  for (const auto& entry : dir) {
+    if (entry.is_regular_file()) {
+      std::string filename = entry.path().string();
+      if (Util::EndsWith(filename, ".png")) {
+        std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(filename));
+        CHECK(img.get() != nullptr);
+        corpus.emplace_back(filename, std::move(*img));
+      }
+    }
+  }
+
+  printf("Corpus size: %zu\n", corpus.size());
+
+  auto ArgString = [](const IFrameOpt::arg_type &args) {
+      const auto &[qtmr, rmbr] = args.first;
+      const auto &[qtbpn, bgbpp] = args.second;
+      return StringPrintf("%d %d %.2f %.2f",
+                          qtmr, rmbr,
+                          qtbpn, bgbpp);
+    };
+
+  int runs = 0;
+  IFrameOpt opt([&corpus, &ArgString, &runs](
+      const IFrameOpt::arg_type &args) -> IFrameOpt::return_type {
+      std::tie(QUADTREE_MIN_RECT_PIXELS,
+               RLE_MIN_BACKGROUND_RUN) = args.first;
+      std::tie(QUADTREE_BYTES_PER_NODE,
+               BYTES_PER_BACKGROUND_PIXEL) = args.second;
+      runs++;
+      printf("#%d Run %s:\n", runs, ArgString(args).c_str());
+
+      int64_t total = 0;
+
+      for (const auto &[name, img] : corpus) {
+        Encode encode(img.Width(), img.Height());
+
+        Buf buf = encode.EncodeIFrame(img);
+        std::vector<uint8_t> h777 = ZIP::ZipVector(buf.bytes, 9);
+        total += h777.size();
+      }
+
+      printf("[%s] Corpus compressed: " AWHITE("%zu") "\n",
+             ArgString(args).c_str(),
+             total);
+
+      return std::make_pair((double)total, std::make_optional('o'));
+    },
+  0xCAFE
+  );
+
+  // opt.Sample({{1, 1}, {1.04, 1.04}});
+  // Previous good tuning.
+  // opt.Sample({{35, 39}, {1.04, 2.05}});
+  // opt.Sample({{854, 41}, {0.82, 0.03}});
+  opt.Sample({{208, 42}, {0.80, 0.02}});
+
+  const std::array<std::pair<int32_t, int32_t>, IFrameOpt::num_ints>
+    int_bounds = {
+    // quadtree min rect
+    std::make_pair(1, 65536),
+    // rle min background
+    std::make_pair(1, 1024),
+  };
+
+  const std::array<std::pair<double, double>, IFrameOpt::num_doubles>
+    double_bounds = {
+    // quadtree bytes per node.
+    // 1+e is the nominal upper bound, since they are actually
+    // represented with one byte uncompressed.
+    std::make_pair(0.001, 1.1),
+    // bytes per background pixel
+    // 4+e, since RGBA would be four channels
+    std::make_pair(0.001, 4.1),
+  };
+
+  static constexpr double RUN_FOR = 1.0 * 3600.0;
+
+  opt.Run(int_bounds, double_bounds,
+          // max calls
+          std::nullopt,
+          // max feasible calls
+          std::nullopt,
+          std::make_optional(RUN_FOR));
+
+  auto Integral = [](std::string s) {
+      return IFrameOpt::IntFeature{
+        .name = s,
+        .categorical = false,
+      };
+    };
+
+  std::array<IFrameOpt::IntFeature, IFrameOpt::num_ints> int_features = {
+    Integral("qt-min-rect"),
+    Integral("rle-min-run"),
+  };
+  CHECK(int_features.size() == int_bounds.size());
+
+  std::array<IFrameOpt::DoubleFeature, IFrameOpt::num_ints> double_features = {
+    IFrameOpt::DoubleFeature{.name = "qt-bpn"},
+    IFrameOpt::DoubleFeature{.name = "bg-bpp"},
+  };
+  CHECK(double_features.size() == double_bounds.size());
+
+  auto FeatureMinMax = [&int_bounds, &double_bounds](
+      const IFrameOpt::Feature &f) ->
+    std::pair<double, double> {
+    switch (f.type) {
+    case IFrameOpt::FeatureType::NUMERIC_INT:
+    case IFrameOpt::FeatureType::CATEGORICAL_INT:
+      CHECK(f.index >= 0 && f.index < int_bounds.size());
+      return int_bounds[f.index];
+
+      case IFrameOpt::FeatureType::NUMERIC_DOUBLE:
+      CHECK(f.index >= 0 && f.index < double_bounds.size());
+      return double_bounds[f.index];
+
+      case IFrameOpt::FeatureType::BIAS:
+        return std::make_pair(0.0, 1.0);
+    }
+  };
+
+  auto ExplainWith = [&](const std::string &name,
+                         const std::vector<
+                           std::tuple<IFrameOpt::arg_type,
+                           double,
+                         std::optional<char>>> &datapoints,
+                         bool images) {
+
+      printf("Explain using " AYELLOW("%s") " (%d pts)...\n",
+             name.c_str(), (int)datapoints.size());
+      const auto &[features, loss] =
+        opt.Explain(
+            datapoints,
+            int_features,
+            double_features,
+            {"bias"});
+
+      printf("Loss: " AWHITE("%.11g") "\n", loss);
+      for (const IFrameOpt::Feature &f : features) {
+        if (f.type == IFrameOpt::FeatureType::CATEGORICAL_INT) {
+          printf(ABLUE("%s") "=" APURPLE("%d") ": ",
+                 f.name.c_str(), f.categorical_value);
+        } else {
+          printf(ABLUE("%s") ": ", f.name.c_str());
+        }
+        if (f.coefficient < 0.0) {
+          printf(AGREEN("%.11g") "\n", f.coefficient);
+        } else {
+          printf(ARED("+%.11g") "\n", f.coefficient);
+        }
+      }
+
+      printf("\n");
+
+      // For every pair of features, plot image.
+      if (false)
+      if (images && !features.empty()) {
+        static constexpr int SQUARE = 256;
+        static constexpr int MARGIN = 12;
+
+        const int num_total =
+          (int)features.size() * ((int)features.size() - 1) / 2;
+
+        int across = std::max((int)sqrt(num_total), 1);
+        int down = across;
+        while (across * down < num_total) across++;
+
+        int out_width = (SQUARE + MARGIN) * across;
+        int out_height = (SQUARE + MARGIN) * down;
+        ImageRGBA out(out_width, out_height);
+        out.Clear32(0x000000FF);
+
+        // Consider plotting a feature against itself too? The 1D
+        // data are interesting and we would at least want *some*
+        // output when there is a single feature.
+        //
+        // (Actually we plot against the constant bias term.)
+        int out_idx = 0;
+        for (int fx = 0; fx < (int)features.size(); fx++) {
+          for (int fy = fx + 1; fy < (int)features.size(); fy++) {
+
+            ImageRGBA plot(SQUARE + MARGIN, SQUARE + MARGIN);
+            plot.Clear32(0x00000000);
+
+            // In the plot we just consider the two features,
+            // ignoring the fact that other parameters are
+            // changing (we "project" to this plane). The
+            // values are the output of the evaluation calls.
+
+            // In the same order as the datapoints.
+            std::vector<std::pair<int, int>> points;
+            points.reserve(datapoints.size());
+
+            const auto &[min1, max1] = FeatureMinMax(features[fx]);
+            const auto &[min2, max2] = FeatureMinMax(features[fy]);
+            for (const auto &[arg, score, o_] : datapoints) {
+              // HERE
+            }
+
+            int outx = out_idx % across;
+            int outy = out_idx / across;
+            out.BlendImage(outx * (SQUARE + MARGIN),
+                           outy * (SQUARE + MARGIN), plot);
+            out_idx++;
+          }
+        }
+
+      }
+    };
+
+  const auto expt =
+    opt.ExploreLocally(
+        // No categorical variables
+        std::array<bool, IFrameOpt::num_ints>{
+          false, false,
+        },
+        int_bounds,
+        double_bounds,
+        0.1);
+
+  ExplainWith("expt", expt, false);
+
+  ExplainWith("all", opt.GetAll(), true);
+
+  auto besto = opt.GetBest();
+  CHECK(besto.has_value()) << "Every arg is feasible??";
+  const auto &[args, lowest_score, ot_] = besto.value();
+  printf("Best (score " AGREEN("%.1f") " bytes): %s\n",
+         lowest_score,
+         ArgString(args).c_str());
+
+  // Make images.
+  const auto all = opt.GetAll();
+
+  double highest_score = lowest_score;
+  for (const auto &[arg_, score, ot_] : all) {
+    highest_score = std::max(score, highest_score);
+  }
+
+  // Generate 2D slices by just ignoring all but two
+  // dimensions.
+
+  // (XXX)
+
+}
+
 
 int main(int argc, char **argv) {
+
+  // Tune();
 
   RunTests();
 
