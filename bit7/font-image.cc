@@ -691,12 +691,69 @@ const std::vector<int> &PageBit7Cyrillic() {
     0x04FE, // (Ӿ) Cyrillic Capital Letter Ha with Stroke
     0x04FF, // (ӿ) Cyrillic Small Letter Ha with Stroke
 
-    // 128 unclaimed glyphs.
-    // "Cyrillic Supplement" may be a good choice to go here?
-    // U+0500 - U+052F
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // "Cyrillic Supplement" exactly as unicode, U+0500 - U+052F
+    0x0500, // (Ԁ) CYRILLIC CAPITAL LETTER KOMI DE
+    0x0501, // (ԁ) CYRILLIC SMALL LETTER KOMI DE
+    0x0502, // (Ԃ) CYRILLIC CAPITAL LETTER KOMI DJE
+    0x0503, // (ԃ) CYRILLIC SMALL LETTER KOMI DJE
+    0x0504, // (Ԅ) CYRILLIC CAPITAL LETTER KOMI ZJE
+    0x0505, // (ԅ) CYRILLIC SMALL LETTER KOMI ZJE
+    0x0506, // (Ԇ) CYRILLIC CAPITAL LETTER KOMI DZJE
+    0x0507, // (ԇ) CYRILLIC SMALL LETTER KOMI DZJE
+    0x0508, // (Ԉ) CYRILLIC CAPITAL LETTER KOMI LJE
+    0x0509, // (ԉ) CYRILLIC SMALL LETTER KOMI LJE
+    0x050A, // (Ԋ) CYRILLIC CAPITAL LETTER KOMI NJE
+    0x050B, // (ԋ) CYRILLIC SMALL LETTER KOMI NJE
+    0x050C, // (Ԍ) CYRILLIC CAPITAL LETTER KOMI SJE
+    0x050D, // (ԍ) CYRILLIC SMALL LETTER KOMI SJE
+    0x050E, // (Ԏ) CYRILLIC CAPITAL LETTER KOMI TJE
+    0x050F, // (ԏ) CYRILLIC SMALL LETTER KOMI TJE
+    // Khanty letters
+    0x0510, // (Ԑ) CYRILLIC CAPITAL LETTER REVERSED ZE
+    0x0511, // (ԑ) CYRILLIC SMALL LETTER REVERSED ZE
+    // Chukchi letters
+    0x0512, // (Ԓ) CYRILLIC CAPITAL LETTER EL WITH HOOK
+    0x0513, // (ԓ) CYRILLIC SMALL LETTER EL WITH HOOK
+    // Mordvin letters
+    0x0514, // (Ԕ) CYRILLIC CAPITAL LETTER LHA
+    0x0515, // (ԕ) CYRILLIC SMALL LETTER LHA
+    0x0516, // (Ԗ) CYRILLIC CAPITAL LETTER RHA
+    0x0517, // (ԗ) CYRILLIC SMALL LETTER RHA
+    0x0518, // (Ԙ) CYRILLIC CAPITAL LETTER YAE
+    0x0519, // (ԙ) CYRILLIC SMALL LETTER YAE
+    // Kurdish letters
+    0x051A, // (Ԛ) CYRILLIC CAPITAL LETTER QA
+    0x051B, // (ԛ) CYRILLIC SMALL LETTER QA
+    0x051C, // (Ԝ) CYRILLIC CAPITAL LETTER WE
+    0x051D, // (ԝ) CYRILLIC SMALL LETTER WE
+    // Aleut letters
+    0x051E, // (Ԟ) CYRILLIC CAPITAL LETTER ALEUT KA
+    0x051F, // (ԟ) CYRILLIC SMALL LETTER ALEUT KA
+    // Chuvash letters
+    0x0520, // (Ԡ) CYRILLIC CAPITAL LETTER EL WITH MIDDLE
+    0x0521, // (ԡ) CYRILLIC SMALL LETTER EL WITH MIDDLE
+    0x0522, // (Ԣ) CYRILLIC CAPITAL LETTER EN WITH MIDDLE
+    0x0523, // (ԣ) CYRILLIC SMALL LETTER EN WITH MIDDLE
+
+    // Abkhaz letters
+    0x0524, // (Ԥ) CYRILLIC CAPITAL LETTER PE WITH
+    0x0525, // (ԥ) CYRILLIC SMALL LETTER PE WITH DESCENDER
+    // Azerbaijani letters
+    0x0526, // (Ԧ) CYRILLIC CAPITAL LETTER SHHA WITH
+    0x0527, // (ԧ) CYRILLIC SMALL LETTER SHHA WITH
+    // Orok letters
+    0x0528, // (Ԩ) CYRILLIC CAPITAL LETTER EN WITH LEFT HOOK
+    0x0529, // (ԩ) CYRILLIC SMALL LETTER EN WITH LEFT HOOK
+    // Komi letters
+    0x052A, // (Ԫ) CYRILLIC CAPITAL LETTER DZZHE
+    0x052B, // (ԫ) CYRILLIC SMALL LETTER DZZHE
+    0x052C, // (Ԭ) CYRILLIC CAPITAL LETTER DCHE
+    0x052D, // (ԭ) CYRILLIC SMALL LETTER DCHE
+    // Khanty letters
+    0x052E, // (Ԯ) CYRILLIC CAPITAL LETTER EL WITH DESCENDER
+    0x052F, // (ԯ) CYRILLIC SMALL LETTER EL WITH DESCENDER
+
+    // 80 unclaimed glyphs
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -746,6 +803,9 @@ REUSE_FOR = {
   {'s', 0x0455},
   {'i', 0x0456},
   {'j', 0x0458},
+  {'d', 0x0501},
+  {'Q', 0x051A},
+  {'q', 0x051B},
   {'W', 0x051C},
   {'w', 0x051D},
   // TODO: More cyrillic can be copied from Latin-1, Greek.
