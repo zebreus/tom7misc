@@ -16,11 +16,11 @@ inline static uint64_t Sqrt64(uint64_t n) {
 
 inline uint64_t Sqrt64Error(uint64_t aa) {
   uint64_t a1 = Sqrt64(aa);
-  uint64_t a2 = a1 + 1ULL;
+  uint64_t a2 = a1 + 1;
   uint64_t aa1 = a1 * a1;
   uint64_t aa2 = a2 * a2;
-  return std::min(std::max(aa, aa1) - std::min(aa, aa1),
-                  std::max(aa, aa2) - std::min(aa, aa2));
+  return min(max(aa, aa1) - min(aa, aa1),
+             max(aa, aa2) - min(aa, aa2));
 }
 
 // Threshold to flag as interesting if total error is less
@@ -34,8 +34,8 @@ static uint32_t INTERESTING_THRESHOLD[10] = {
   5,              // 5
   6,              // 6
   9,              // 7
-  16,             // 8
-  35,             // 9
+  14,             // 8
+  15,             // 9
 };
 
 /*
@@ -51,7 +51,8 @@ We want to try every (x, y) with x < y.
  v 4 g h i j .
 
 TODO: We can reassemble this into a dense 2D rectangle, which
-is probably faster than exiting early.
+is probably faster than exiting early. It's slightly extra
+tricky because we run this for y in [y_start, y_end).
 
 */
 // Writes bitmask to out.
@@ -86,13 +87,15 @@ __kernel void BruteXY(// aka "base"
 
   // Unrolled.
 #define ONE_CELL(q) do {                        \
-    int err_ ## q = SqrtError(q);               \
+    int err = Sqrt64Error(q);                   \
     if (err != 0) {                             \
       not_square++;                             \
       total_err += err;                         \
     }                                           \
   } while (0)
 
+  // PERF: might be possible to vectorize some of this
+  // (especially the square root) if the compiler doesn't.
   ONE_CELL(a);
   ONE_CELL(b);
   ONE_CELL(c);

@@ -181,7 +181,7 @@ prog.exe : prog.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-brute.exe : brute.o brute-gpu.o $(OBJECTS)
+brute.exe : brute.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

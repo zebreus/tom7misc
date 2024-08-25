@@ -10,17 +10,23 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "interval-cover.h"
 #include "periodically.h"
 #include "sos-util.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
 
-#include "interval-cover.h"
+#include "clutil.h"
+#include "brute-gpu.h"
 
 static constexpr bool SELF_CHECK = false;
 
+#define USE_GPU 1
+
 static constexpr const char *DONEFILE = "brute-done.txt";
+
+static CL *cl = nullptr;
 
 // Dead-simple exhaustive search!
 // Everything must be an actual magic square, but some of the
@@ -143,47 +149,112 @@ static std::string FormatNum(uint64_t n) {
 }
 
 
+[[maybe_unused]]
+static constexpr int best[10] = {
+  // best with 0 non-squares
+  999999999,
+  // best with 1 non-square
+  999999999,
+  // best with 2 non-squares
+  333,
+  // best with 3 non-squares
+  25,
+  // best with 4 non-squares
+  15,
+  // best with 5 non-squares
+  5,
+  // best with 6 non-squares
+  6,
+  // best with 7 non-squares
+  9,
+  // 8
+  14,
+  // 9
+  15,
+};
+
+// Threshold to show
+static constexpr int show[10] = {
+  // best with 0 non-squares
+  999999999,
+  // best with 1 non-square
+  999999999,
+  // best with 2 non-squares
+  1000,
+  // best with 3 non-squares
+  100,
+  // best with 4 non-squares
+  20,
+  // best with 5 non-squares
+  5,
+  // best with 6 non-squares
+  6,
+  // best with 7 non-squares
+  9,
+  // 8
+  14,
+  // 9
+  15,
+};
+
+static std::mutex output_mutex;
+
+static inline void ConsiderOne(uint32_t base, uint32_t x, uint32_t y) {
+  std::array<int, 9> sq = ProgSquare(base, x, y);
+  const auto &[a, b, c,
+               d, e, f,
+               g, h, i] = sq;
+  if constexpr (SELF_CHECK) {
+    // horiz
+    const int sum = a + b + c;
+    CHECK(d + e + f == sum);
+    CHECK(g + h + i == sum);
+    // vertical
+    CHECK(a + d + g == sum);
+    CHECK(b + e + h == sum);
+    CHECK(c + f + i == sum);
+    // diag
+    CHECK(a + e + i == sum);
+    CHECK(g + e + c == sum);
+  }
+
+  int not_square = 0, total_err = 0;
+  for (int cell : sq) {
+    int err = SqrtError(cell);
+    if (err != 0) {
+      not_square++;
+      total_err += err;
+    }
+  }
+
+  if (total_err < show[not_square]) {
+    // Reject duplicates, though.
+    std::unordered_set<int> unique;
+    unique.reserve(9);
+    for (int cell : sq)
+      unique.insert(cell);
+    if (unique.size() == 9) {
+      std::unique_lock ml(output_mutex);
+      std::string result = StringPrintf("# %d not square, %d total error\n",
+                                        not_square, total_err);
+      StringAppendF(&result, "SQUARE");
+      for (int cell : sq)
+        StringAppendF(&result, " %d", cell);
+      StringAppendF(&result, " prog%d_%d_%d\n", base, x, y);
+      printf("\n\n%s\n\n", result.c_str());
+      FILE *f = fopen("brute.txt", "ab");
+      fprintf(f, "%s", result.c_str());
+      fclose(f);
+    }
+  }
+}
+
+
+
 static void Brute() {
-
-  [[maybe_unused]]
-  constexpr int best[8] = {
-    // best with 0 non-squares
-    999999999,
-    // best with 1 non-square
-    999999999,
-    // best with 2 non-squares
-    333,
-    // best with 3 non-squares
-    25,
-    // best with 4 non-squares
-    15,
-    // best with 5 non-squares
-    5,
-    // best with 6 non-squares
-    6,
-    // best with 7 non-squares
-    9,
-  };
-
-  // Threshold to show
-  constexpr int show[8] = {
-    // best with 0 non-squares
-    999999999,
-    // best with 1 non-square
-    999999999,
-    // best with 2 non-squares
-    1000,
-    // best with 3 non-squares
-    100,
-    // best with 4 non-squares
-    20,
-    // best with 5 non-squares
-    5,
-    // best with 6 non-squares
-    6,
-    // best with 7 non-squares
-    9,
-  };
+  #if USE_GPU
+  BruteGPU brute_gpu(cl);
+  #endif
 
   Periodically status_per(5.0);
   Timer last_save;
@@ -229,9 +300,11 @@ static void Brute() {
         double sec = run_timer.Seconds();
         std::string bar = ANSI::ProgressBar(
             db, total_bases,
-            StringPrintf("[%s] complete <%d saved %.1fs ago",
-                         FormatNum(total_squares).c_str(),
-                         min_pending, saved_ago),
+            StringPrintf(
+                "[%s; %s/s] done <%d saved %d ago",
+                FormatNum(total_squares).c_str(),
+                FormatNum(total_squares / run_timer.Seconds()).c_str(),
+                min_pending, (int)saved_ago),
             sec);
 
         printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
@@ -243,6 +316,7 @@ static void Brute() {
   printf("Running base %d to %d, y to <%d\n",
          base_start, base_end,
          y_end);
+
   ParallelComp(
       total_bases,
       [&](int offset) {
@@ -258,62 +332,30 @@ static void Brute() {
 
         int64_t task_squares = 0;
 
+        #if USE_GPU
+        std::vector<std::pair<uint32_t, uint32_t>> interesting =
+          brute_gpu.RunOne(base, y_start, y_end);
+        for (const auto &[x, y] : interesting) {
+          ConsiderOne(base, x, y);
+        }
+
+        // (This may not be exactly right, but we just use it for
+        // reporting status.)
+        const int n = (y_end - y_start) * (y_end - 1) / 2;
+        task_squares += n;
+
+        #else
         // We want x != y, so wlog we require x < y.
         for (int y = y_start; y < y_end; y++) {
           for (int x = 1; x < y; x++) {
-            std::array<int, 9> sq = ProgSquare(base, x, y);
-            const auto &[a, b, c,
-                         d, e, f,
-                         g, h, i] = sq;
-            if constexpr (SELF_CHECK) {
-              // horiz
-              const int sum = a + b + c;
-              CHECK(d + e + f == sum);
-              CHECK(g + h + i == sum);
-              // vertical
-              CHECK(a + d + g == sum);
-              CHECK(b + e + h == sum);
-              CHECK(c + f + i == sum);
-              // diag
-              CHECK(a + e + i == sum);
-              CHECK(g + e + c == sum);
-            }
-
-            int not_square = 0, total_err = 0;
-            for (int cell : sq) {
-              int err = SqrtError(cell);
-              if (err != 0) {
-                not_square++;
-                total_err += err;
-              }
-            }
-
-            if (not_square < 8 && total_err < show[not_square]) {
-              // Reject duplicates, though.
-              std::unordered_set<int> unique;
-              unique.reserve(9);
-              for (int cell : sq) unique.insert(cell);
-              if (unique.size() == 9) {
-                std::unique_lock ml(m);
-                std::string result =
-                  StringPrintf("# %d not square, %d total error\n",
-                               not_square, total_err);
-                StringAppendF(&result, "SQUARE");
-                for (int cell : sq) StringAppendF(&result, " %d", cell);
-                StringAppendF(&result, " prog%d_%d_%d\n", base, x, y);
-                printf("%s", result.c_str());
-                FILE *f = fopen("brute.txt", "ab");
-                fprintf(f, "%s", result.c_str());
-                fclose(f);
-              }
-            }
-
+            ConsiderOne(base, x, y);
             task_squares++;
             if (task_squares % 65536 == 0) {
               MaybeStatus();
             }
           }
         }
+        #endif
 
         {
           std::unique_lock ml(m);
@@ -329,13 +371,20 @@ static void Brute() {
 
         MaybeStatus();
       },
-      6);
+      #if USE_GPU
+      2
+      #else
+      6
+      #endif
+               );
 
   done.Save(DONEFILE);
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
+  cl = new CL;
+  CHECK(cl);
 
   Brute();
 
