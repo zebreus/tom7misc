@@ -96,6 +96,13 @@ struct ScoredEntry {
   std::array<BigInt, 9> next_sq;
 };
 
+static bool IsMagicSquare(const ScoredEntry &scored) {
+  return scored.distinct == 9 &&
+    scored.rows == 3 &&
+    scored.cols == 3 &&
+    scored.diag == 2;
+}
+
 ScoredEntry Score(const Entry &entry) {
   ScoredEntry scored;
   scored.entry = entry;
@@ -240,10 +247,7 @@ static void PrintScored(const ScoredEntry &scored) {
   printf("Sum: " ABLUE("%s") "\n",
          LongNum(scored.sum).c_str());
 
-  if (scored.rows == 3 &&
-      scored.cols == 3 &&
-      scored.diag == 2 &&
-      scored.distinct == 9) {
+  if (IsMagicSquare(scored)) {
     printf("Is a " AGREEN("magic square") ".\n");
   } else {
     printf("Not a " ARED("magic square") ":\n"
@@ -299,6 +303,41 @@ static void Leaderboard() {
     PrintScored(scored);
     printf("\n");
   }
+
+
+  // Global stats.
+  // For valid magic squares (distinct, correct sum)
+  // best_err_nonsq[n] tells us the name and total error for
+  // the best known square that has n cells that are not squares.
+  std::pair<std::string, BigInt> best_err_nonsq[10] = {};
+  for (int i = 0; i <= 9; i++) {
+    best_err_nonsq[i] = {"", BigInt(-1)};
+  }
+
+  for (const ScoredEntry &scored : scored_entries) {
+    if (IsMagicSquare(scored)) {
+      const int nonsq = 9 - scored.squares;
+      const BigInt &prev = best_err_nonsq[nonsq].second;
+      if (prev == -1 || prev > scored.total_error) {
+        best_err_nonsq[nonsq] = std::make_pair(scored.entry.name,
+                                               scored.total_error);
+      }
+    }
+  }
+
+  printf("\nAmong valid magic squares with " APURPLE("n") " cells that are\n"
+         "not square, the best known error:\n");
+  for (int n = 0; n <= 9; n++) {
+    const auto &[name, err] = best_err_nonsq[n];
+    if (err == -1) {
+      printf("n=" APURPLE("%d") ": " ARED("none known") "\n", n);
+    } else {
+      printf("n=" APURPLE("%d") ": " AWHITE("%s")
+             " (error " AORANGE("%s") ")\n",
+             n, name.c_str(), err.ToString().c_str());
+    }
+  }
+
 }
 
 int main(int argc, char **argv) {
