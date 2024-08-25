@@ -181,9 +181,9 @@ prog.exe : prog.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-brute.exe : brute.o $(OBJECTS)
+brute.exe : brute.o brute-gpu.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 clean :
-	rm -f *.o $(UTIL_OBJECTS) $(OBJECTS) *.exe
+	rm -f *.o $(UTIL_OBJECTS) $(OBJECTS) $(CL_OBJECTS) *.exe
