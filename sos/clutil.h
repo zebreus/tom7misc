@@ -117,23 +117,6 @@ static cl_mem CopyMemoryToGPU(cl_context context, cl_command_queue cmd,
   return buf;
 }
 
-#if 0 // XXX deleteee, I think this made no sense?
-// Same, but with a constant vector. Implies read-only.
-template<class T>
-static cl_mem CopyMemoryToGPUConst(cl_context context, cl_command_queue cmd,
-                                   const std::vector<T> &v) {
-  cl_mem buf = clCreateBuffer(context,
-                              CL_MEM_READ_ONLY,
-                              sizeof (T) * v.size(),
-                              nullptr,
-                              nullptr);
-  CHECK_SUCCESS(clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0,
-                                     sizeof (T) * v.size(), v.data(), 0,
-                                     nullptr, nullptr));
-  return buf;
-}
-#endif
-
 // PERF: Consider CL_MEM_WRITE_ONLY. Are there performance advantages?
 template<class T>
 static cl_mem CreateUninitializedGPUMemory(cl_context context, size_t n_items) {

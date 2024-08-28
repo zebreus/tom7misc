@@ -41,9 +41,11 @@ static CL *cl = nullptr;
 //  n+2y    n+x+y   n+2x
 //  n+x     n+2x+2y n+y
 //
+// Each row/column/diagonal sums to 3n + 3x + 3y.
+//
 // So we can loop over (n,x,y), which is a much smaller search
 // space than looping over 9 cells!
-// (Do we need to consider negative y, z?)
+// (Do we need to consider negative x, y?)
 //
 // We know there are no proper squares of squares with small
 // coefficients like this, but we're hoping to minimize the
@@ -132,13 +134,15 @@ struct Done {
 
 static std::string FormatNum(uint64_t n) {
   if (n > 1'000'000) {
-    double m = n / 1000000.0;
-    if (m >= 1000.0) {
+    double m = n / 1'000'000.0;
+    if (m >= 1'000'000.0) {
+      return StringPrintf("%.1fT", m / 1'000'000.0);
+    } else if (m >= 1000.0) {
       return StringPrintf("%.1fB", m / 1000.0);
     } else if (m >= 100.0) {
       return StringPrintf("%dM", (int)std::round(m));
     } else if (m > 10.0) {
-            return StringPrintf("%.1fM", m);
+      return StringPrintf("%.1fM", m);
     } else {
       // TODO: Integer division. color decimal place and suffix.
       return StringPrintf("%.2fM", m);
@@ -168,9 +172,9 @@ static constexpr int best[10] = {
   // best with 7 non-squares
   9,
   // 8
-  14,
+  12,
   // 9
-  15,
+  14,
 };
 
 // Threshold to show
@@ -182,7 +186,7 @@ static constexpr int show[10] = {
   // best with 2 non-squares
   1000,
   // best with 3 non-squares
-  100,
+  30,
   // best with 4 non-squares
   20,
   // best with 5 non-squares
@@ -192,9 +196,9 @@ static constexpr int show[10] = {
   // best with 7 non-squares
   9,
   // 8
-  14,
+  12,
   // 9
-  15,
+  14,
 };
 
 static std::mutex output_mutex;
@@ -274,10 +278,20 @@ static void Brute() {
   // cover.SetSpan(0, 16384, 270000);
 
   std::set<int> in_progress;
-  const int base_start = 0, base_end = 16384;
+
+  // const int base_start = 0, base_end = 16384;
   // const int y_start = 2, y_end = 32768;
   // const int y_start = 65536, y_end = 262144;
-  const int y_end = 270000;
+  // const int y_end = 274000;
+  int base_start = 322570, base_end = 131072 * 20;
+  int y_end = 32768;
+
+  // Skip bases that are totally complete before we
+  // get into the parallel phase.
+  while (base_start < base_end &&
+         done.MinY(base_start) >= y_end) {
+    base_start++;
+  }
 
   const int total_bases = base_end - base_start;
   int64_t total_squares = 0;
@@ -313,7 +327,7 @@ static void Brute() {
       }
     };
 
-  printf("Running base %d to %d, y to <%d\n",
+  printf("Running base %d to %d, y to <%d\n\n",
          base_start, base_end,
          y_end);
 
@@ -326,8 +340,13 @@ static void Brute() {
 
         {
           std::unique_lock ml(m);
-          in_progress.insert(base);
           y_start = done.MinY(base);
+          /*
+          printf("\n%d. y_start = " AYELLOW("%d")
+                 " y_end = " AORANGE("%d") "\n", base, y_start, y_end);
+          */
+          if (y_start >= y_end) return;
+          in_progress.insert(base);
         }
 
         int64_t task_squares = 0;
