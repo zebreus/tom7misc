@@ -990,6 +990,51 @@ static Mask GetForegroundMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   return std::move(candidates.begin()->mask);
 }
 
+// XXX: Not used yet! Transition to this please.
+// A frame is represented by the Pixel tree data structure.
+// This is the in-memory representation, but it also documents
+// the serialized format. Deserialization requires knowing
+// the number of pixels.
+struct SolidPixels;
+struct PalettePixels;
+struct RGBPixels;
+struct RGBAPixels;
+struct MaskedPixels;
+using Pixels = std::variant<SolidPixels, PalettePixels,
+                            RGBPixels, RGBAPixels, MaskedPixels>;
+
+struct SolidPixels {
+  // A single repeated color of the given size.
+  static constexpr uint8_t TAG = 0x00;
+  uint32_t rgba = 0;
+};
+
+struct PalettePixels {
+  static constexpr uint8_t TAG = 0x01;
+  Palette palette;
+  std::vector<int> indices;
+};
+
+struct RGBPixels {
+  static constexpr uint8_t TAG = 0x02;
+  // as 0x00RRGGBB.
+  std::vector<uint32_t> rgb;
+};
+
+struct RGBAPixels {
+  static constexpr uint8_t TAG = 0x03;
+  // as 0xRRGGBBAA.
+  std::vector<uint32_t> rgba;
+};
+
+struct MaskedPixels {
+  // Could have the tag encode the mask type too?
+  static constexpr uint8_t TAG = 0x04;
+  Mask mask;
+  std::shared_ptr<Pixels> background;
+  std::shared_ptr<Pixels> foreground;
+};
+
 // This is the parsed in-memory representation, but it also contains
 // the reference for the serialized form.
 struct IFrameHeader {
@@ -1754,6 +1799,7 @@ static void RunTests() {
          all_stats.cmp_bytes, h777_ratio, h777_pct);
 }
 
+[[maybe_unused]]
 static void Tune() {
   using IFrameOpt = Optimizer<2, 2, char>;
 
