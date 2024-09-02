@@ -19,6 +19,7 @@
 #define ANSI_UP ANSI_PREVLINE ANSI_CLEARLINE
 
 
+// These are "bold" or "bright" foreground colors.
 #define ANSI_RED "\x1B[1;31;40m"
 #define ANSI_GREY "\x1B[1;30;40m"
 #define ANSI_BLUE "\x1B[1;34;40m"
@@ -29,6 +30,17 @@
 #define ANSI_PURPLE "\x1B[1;35;40m"
 #define ANSI_RESET "\x1B[m"
 
+// These are "regular" foreground colors.
+#define ANSI_DARK_RED "\x1B[31;40m"
+// dark grey = black
+#define ANSI_DARK_GREY "\x1B[30;40m"
+#define ANSI_DARK_BLUE "\x1B[34;40m"
+#define ANSI_DARK_CYAN "\x1B[36;40m"
+#define ANSI_DARK_YELLOW "\x1B[33;40m"
+#define ANSI_DARK_GREEN "\x1B[32;40m"
+#define ANSI_DARK_WHITE "\x1B[37;40m"
+#define ANSI_DARK_PURPLE "\x1B[35;40m"
+
 #define ARED(s) ANSI_RED s ANSI_RESET
 #define AGREY(s) ANSI_GREY s ANSI_RESET
 #define ABLUE(s) ANSI_BLUE s ANSI_RESET
@@ -37,6 +49,15 @@
 #define AGREEN(s) ANSI_GREEN s ANSI_RESET
 #define AWHITE(s) ANSI_WHITE s ANSI_RESET
 #define APURPLE(s) ANSI_PURPLE s ANSI_RESET
+
+#define ADARKRED(s) ANSI_DARK_RED s ANSI_RESET
+#define ADARKGREY(s) ANSI_DARK_GREY s ANSI_RESET
+#define ADARKBLUE(s) ANSI_DARK_BLUE s ANSI_RESET
+#define ADARKCYAN(s) ANSI_DARK_CYAN s ANSI_RESET
+#define ADARKYELLOW(s) ANSI_DARK_YELLOW s ANSI_RESET
+#define ADARKGREEN(s) ANSI_DARK_GREEN s ANSI_RESET
+#define ADARKWHITE(s) ANSI_DARK_WHITE s ANSI_RESET
+#define ADARKPURPLE(s) ANSI_DARK_PURPLE s ANSI_RESET
 
 // standard two-level trick to expand and stringify
 #define ANSI_INTERNAL_STR2(s) #s
@@ -67,6 +88,7 @@
 // non-standard colors. Perhaps should move some of these things
 // to ansi-extended or something.
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
+#define ADARKORANGE(s) ANSI_FG(189, 97, 0) s ANSI_RESET
 
 // Same as printf, but using WriteConsole on windows so that we
 // can communicate with pseudoterminal. Without this, ansi escape
@@ -121,7 +143,7 @@ struct ANSI {
   static std::string ProgressBar(uint64_t numer, uint64_t denom,
                                  // This currently can't have ANSI Codes,
                                  // because we need to split it into pieces.
-                                 // TODO: Fix it!
+                                 // TODO: Fix it using Decompose!
                                  const std::string &operation,
                                  double taken,
                                  ProgressBarOptions options =
@@ -135,14 +157,36 @@ struct ANSI {
   static std::string Composite(
       // ANSI codes are stripped.
       const std::string &text,
-      // entries are RGBA and character width. Alpha is composited.
-      const std::vector<std::pair<uint32_t, int>> &fgcolors,
-      // entries are RGBA and character width. Alpha is ignored.
-      const std::vector<std::pair<uint32_t, int>> &bgcolors);
+      // entries are RGBA. Alpha is composited.
+      const std::vector<uint32_t> &fgcolors,
+      // entries are RGBA. Alpha is ignored.
+      const std::vector<uint32_t> &bgcolors);
 
-  // TODO: A utility that strips the ansi codes and produces a
-  // fgcolors array for them.
+  // For historic uses of Composite that used to pass spans
+  // (like "red for 12 characters, blue for 8 characters").
+  // Generates a color per character, up to the length. The
+  // final color is repeated if the spans do not cover the length.
+  static std::vector<uint32_t> Rasterize(
+      const std::vector<std::pair<uint32_t, int>> &spans,
+      int length);
 
+  // Decomposes a text with ANSI color codes (other escape codes are
+  // ignored and stripped) into:
+  //   Plain stripped text
+  //   Foreground RGBA
+  //   Background RGBA.
+  // It is roughly the inverse of Composite, although this always
+  // generates alpha of 1.0 (assuming default_fg and default_bg are
+  // also alpha=1.0). This interprets standard color codes like "red",
+  // but uses its own internal RGB values for these; it will not
+  // necessarily match how the terminal displays them. The default fg
+  // and bg colors are the starting values (or after ANSI_RESET).
+  static std::tuple<std::string,
+                    std::vector<uint32_t>,
+                    std::vector<uint32_t>>
+  Decompose(const std::string &text_with_codes,
+            uint32_t default_fg = 0xBFBFBFFF,
+            uint32_t default_bg = 0x000000FF);
 };
 
 // Deprecated. Use ANSI:: versions.

@@ -20,9 +20,34 @@
 // We could use std::format in c++20, for example.
 #include "base/stringprintf.h"
 
+static constexpr bool VERBOSE = false;
+
 using std::string;
 
 static constexpr uint32_t REPLACEMENT_CODEPOINT = 0xFFFD;
+
+// Normal non-bright colors, as 00RRGGBB.
+static std::array<uint32_t, 8> DARK_RGB = {
+  0x000000,  // Black
+  0xd42c3a,  // Red
+  0x1ca800,  // Green
+  0xc0a000,  // Yellow
+  0x005dff,  // Blue
+  0xb148c6,  // Magenta
+  0x00a89a,  // Cyan
+  0xBFBFBF,  // White
+};
+
+static std::array<uint32_t, 8> BRIGHT_RGB = {
+  0x606060,  // Black
+  0xff7676,  // Red
+  0x99f299,  // Green
+  0xf2f200,  // Yellow
+  0x7d97ff,  // Blue
+  0xff70ff,  // Magenta
+  0x00f0f0,  // Cyan
+  0xffffff,  // White
+};
 
 // Duplicated from util.cc to make this file standalone.
 // Perhaps we should have a header-only UTF8 lib?
@@ -366,45 +391,39 @@ static inline uint32_t CompositeRGBA(uint32_t fg, uint32_t bg) {
   return Pack32(rr, gg, bb, 0xFF);
 }
 
+std::vector<uint32_t> ANSI::Rasterize(
+    const std::vector<std::pair<uint32_t, int>> &spans,
+    int width) {
+  std::vector<uint32_t> flat;
+  flat.reserve(width);
+  uint32_t last = 0;
+  for (const auto &[c, w] : spans) {
+    for (int i = 0; i < w; i++) flat.push_back(c);
+    last = c;
+  }
+
+  if ((int)flat.size() > width) {
+    flat.resize(width);
+  } else {
+    while ((int)flat.size() < width) flat.push_back(last);
+  }
+  return flat;
+}
+
 std::string ANSI::Composite(
-      // ANSI codes are stripped.
-      const std::string &text_raw,
-      // entries are RGBA and character width. Alpha is composited.
-      const std::vector<std::pair<uint32_t, int>> &fgcolors,
-      // entries are RGBA and character width. Alpha is ignored.
-      const std::vector<std::pair<uint32_t, int>> &bgcolors) {
-  auto Width = [](const std::vector<std::pair<uint32_t, int>> &cv) {
-      int w = 0;
-      for (const auto &[c_, cw] : cv) w += cw;
-      return w;
-    };
+    const std::string &text_raw,
+    const std::vector<uint32_t> &fgcolors,
+    const std::vector<uint32_t> &bgcolors) {
+
+  const int width = std::max(fgcolors.size(), bgcolors.size());
 
   std::string text = StripCodes(text_raw);
 
   std::vector<uint32_t> codepoints = UTF8Codepoints(text);
 
-  int width = std::max(Width(fgcolors), Width(bgcolors));
   if (width <= 0) return "";
   if ((int)codepoints.size() > width) codepoints.resize(width);
   while ((int)codepoints.size() < width) codepoints.push_back(' ');
-
-  // We could do this using the compact representation, but
-  // since we're creating a string of this width anyway, we
-  // would only be saving in constants.
-  auto Flatten = [width](const std::vector<std::pair<uint32_t, int>> &cv) {
-      std::vector<uint32_t> flat;
-      flat.reserve(width);
-      uint32_t last = 0;
-      for (const auto &[c, w] : cv) {
-        for (int i = 0; i < w; i++) flat.push_back(c);
-        last = c;
-      }
-
-      while ((int)flat.size() < width) flat.push_back(last);
-      return flat;
-    };
-
-  std::vector<uint32_t> fg = Flatten(fgcolors), bg = Flatten(bgcolors);
 
   // Now generate output string. Here we generate a color code whenever
   // the foreground or background actually changes.
@@ -414,8 +433,8 @@ std::string ANSI::Composite(
   std::string out;
   uint32_t last_fg = 0, last_bg = 0;
   for (int i = 0; i < width; i++) {
-    uint32_t bgcolor = bg[i];
-    uint32_t fgcolor = CompositeRGBA(fg[i], bgcolor);
+    uint32_t bgcolor = bgcolors[i];
+    uint32_t fgcolor = CompositeRGBA(fgcolors[i], bgcolor);
 
     if (i == 0 || bgcolor != last_bg) {
       const auto &[r, g, b, a_] = Unpack32(bgcolor);
@@ -436,3 +455,122 @@ std::string ANSI::Composite(
   return out + ANSI_RESET;
 }
 
+static bool FindAndRemove(int x, std::vector<int> *left) {
+  return std::erase_if(*left, [x](int y) { return x == y; }) != 0;
+}
+
+std::tuple<std::string,
+           std::vector<uint32_t>,
+           std::vector<uint32_t>>
+ANSI::Decompose(const std::string &text_with_codes,
+                uint32_t default_fg,
+                uint32_t default_bg) {
+  if (VERBOSE) printf("[%s]\n", text_with_codes.c_str());
+
+  std::string_view s(text_with_codes);
+  const int length = (int)s.size();
+  std::string out;
+  std::vector<uint32_t> fgs, bgs;
+  // n.b. Might not be this long because of color codes.
+  out.reserve(length);
+  fgs.reserve(length);
+  bgs.reserve(length);
+
+  uint32_t fg = default_fg;
+  uint32_t bg = default_bg;
+  while (!s.empty()) {
+    // Parse control codes. We just accept the grammar
+    // "\x1b["
+    //   followed by ([0-9]*;)*
+    //   followed by [a-z]
+    if (s.starts_with("\x1b[")) {
+      // Skip [.
+      s.remove_prefix(2);
+
+      const auto &[params, cmd] = [&s]() ->
+        std::pair<std::vector<int>, char> {
+          std::vector<int> params;
+          int value = 0;
+
+          while (!s.empty()) {
+            char c = *s.begin();
+            // Always consume; we want to consume the
+            // whole code including the command.
+            s.remove_prefix(1);
+            if (c >= '0' && c <= '9') {
+              value *= 10;
+              value += (c - '0');
+            } else if (c == ';') {
+              params.push_back(value);
+              value = 0;
+            } else if (c >= 0x40 && c <= 0x7E) {
+              params.push_back(value);
+              value = 0;
+              return std::make_pair(std::move(params), c);
+            } else {
+              // "intermediate bytes" unsupported / ignored
+            }
+          }
+
+          return std::make_pair(std::vector<int>(), 'x');
+      }();
+
+      // The only command we support is 'm'.
+      if (cmd == 'm') {
+        // ANSI_RED = \x1B[1;31;40m
+
+        // 1 means bold. 30-37 are foreground, 40-47 are background.
+        // 0 means reset.
+        std::vector<int> pleft = params;
+        bool is_reset = FindAndRemove(0, &pleft);
+        // bool is_bright = FindAndRemove(1, &pleft);
+        bool is_bright = false;
+
+        if (is_reset) {
+          fg = default_fg;
+          bg = default_bg;
+        }
+
+        for (int p : pleft) {
+          if (p == 1) {
+            is_bright = true;
+          } else if (p >= 30 && p <= 37) {
+            if (is_bright) {
+              fg = (BRIGHT_RGB[p - 30] << 8) | 0xFF;
+            } else {
+              fg = (DARK_RGB[p - 30] << 8) | 0xFF;
+            }
+          } else if (p >= 40 && p <= 47) {
+            // Bright only affects foreground, not background.
+            bg = (DARK_RGB[p - 40] << 8) | 0xFF;
+          } else if (p >= 90 && p <= 97) {
+            // unusual: direct access to bright foreground.
+            fg = (BRIGHT_RGB[p - 90] << 8) | 0xFF;
+          } else if (p >= 100 && p <= 107) {
+            // unusual: direct access to bright background.
+            bg = (BRIGHT_RGB[p - 100] << 8) | 0xFF;
+          } else if (p == 39) {
+            fg = default_fg;
+          } else if (p == 49) {
+            bg = default_bg;
+          } else {
+            if (VERBOSE) printf("Unknown param %d\n", p);
+          }
+          // TODO: 38, 48 to set RGB colors.
+
+        }
+      } else {
+        if (VERBOSE) printf("Unknown command %c\n", cmd);
+      }
+
+
+    } else {
+      out.push_back(s[0]);
+      fgs.push_back(fg);
+      bgs.push_back(bg);
+      s.remove_prefix(1);
+    }
+  }
+
+  return std::make_tuple(std::move(out), std::move(fgs), std::move(bgs));
+}

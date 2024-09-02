@@ -980,7 +980,9 @@ struct SOS {
 
         return StringPrintf(
             AWHITE("[") "%s" AWHITE("]") " %s\n",
-            ANSI::Composite(bar_info, fgcolors, bgcolors).c_str(),
+            ANSI::Composite(bar_info,
+                            ANSI::Rasterize(fgcolors, bar_width),
+                            ANSI::Rasterize(bgcolors, bar_width)).c_str(),
             eta.c_str());
         }();
 
