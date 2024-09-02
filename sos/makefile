@@ -185,5 +185,9 @@ brute.exe : brute.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+floatsqrt.exe : floatsqrt.o $(OBJECTS) $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 clean :
 	rm -f *.o $(UTIL_OBJECTS) $(OBJECTS) $(CL_OBJECTS) *.exe
