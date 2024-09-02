@@ -98,8 +98,8 @@ struct BruteGPU {
       // ranges where we know we've already done 'em. XXX Once we have
       // covered this range, we should just restore the simple
       // definition and delete this special case.
-      if ((base < 16384 && y_limit <= 274000) ||
-          (base < 131072 && y_limit <= 65536) ||
+      if (// (base < 16384 && y_limit <= 274000) ||
+          // (base < 131072 && y_limit <= 65536) ||
           (base < 2621440 && y_limit < 32768)) {
         // Only run negative x.
         x_range = base / 2;
@@ -115,7 +115,7 @@ struct BruteGPU {
       // printf("Run y=[%d, %zu)\n", y_start, y_limit);
       CHECK_SUCCESS(
           clEnqueueNDRangeKernel(cl->queue, kernel,
-                                 // 1D
+                                 // 2D
                                  2,
                                  global_work_offset,
                                  global_work_size,
@@ -139,7 +139,7 @@ struct BruteGPU {
     if (out_size[0] > 0) {
       CHECK((out_size[0] & 1) == 0) << "Must be even.";
       std::vector<int64_t> out =
-        CopyBufferFromGPU<int64_t>(cl->queue, out_gpu, MAX_INTERESTING);
+        CopyBufferFromGPU<int64_t>(cl->queue, out_gpu, MAX_INTERESTING * 2);
 
       interesting.reserve(out_size[0]);
       for (int i = 0; i < (out_size[0] >> 1); i++) {
