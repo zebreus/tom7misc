@@ -1,6 +1,7 @@
 
 typedef uchar uint8_t;
 typedef uchar3 uint8_t3;
+typedef int int32_t;
 typedef uint uint32_t;
 typedef uint3 uint32_t3;
 typedef ulong uint64_t;
@@ -87,7 +88,7 @@ tricky because we run this for y in [y_start, y_end).
     }                                           \
   } while (0)
 
-#define VECTORIZE 1
+// #define VECTORIZE 1
 
 #define PACK3(q, a, b, c) \
   uint32_t3 q ## i = (uint3)(a, b, c); \
@@ -106,7 +107,7 @@ tricky because we run this for y in [y_start, y_end).
                            min(q ## i, q ## aa1),  \
                            max(q ## i, q ## aa2) - \
                            min(q ## i, q ## aa2)); \
-  uint8_t3 q ## notsq = (q ## err > 0) & 1;   \
+  uint8_t3 q ## notsq = convert_uchar3(q ## err > 0) & (uchar3)(1, 1, 1); \
 
 #define SUM_ERR(t,  q, r, s)                          \
   uint32_t3 t = q ## err + r ## err + s ## err;
@@ -120,13 +121,20 @@ tricky because we run this for y in [y_start, y_end).
 __kernel void BruteXY(// aka "base"
                       const uint32_t n,
                       __global atomic_uint32_t *restrict out_size,
-                      __global uint32_t *restrict out) {
+                      __global int64_t *restrict out) {
 
-  const uint32_t x = get_global_id(0);
+  const uint32_t xoff = get_global_id(0);
+  const int32_t x = (int32_t)xoff - ((int32_t)n / 2);
   const uint32_t y = get_global_id(1);
 
   if (x >= y) return;
 
+  // Note we use unsigned values here, since all legal squares
+  // will have nonzero entries. Since x is at least -n/2, none
+  // of these should actually be negative. But if they are, the
+  // worst that would happen is that we flag a nonsense square
+  // and then reject it in the C++ code.
+  //
   // PERF: Probably the compiler can do this, but there are
   // many common subexpressions.
   const uint32_t a = n + 2 * x + y;
@@ -139,12 +147,10 @@ __kernel void BruteXY(// aka "base"
   const uint32_t h = n + 2 * x + 2 * y;
   const uint32_t i = n + y;
 
-  uint8_t not_square = 0;
-  // As inputs become very large this could overflow in
-  // principle, but the worst thing that happens here is
-  // that we erroneously flag the square as interesting.
-  // So we stick with 32 bits.
-  uint32_t total_err = 0;
+  // As inputs become very large the error could overflow in
+  // principle, but the worst thing that happens here is that we
+  // erroneously flag the square as interesting. So we stick with 32
+  // bits.
 
 #if VECTORIZE
   PACK3(q,   a, b, c);
@@ -165,6 +171,8 @@ __kernel void BruteXY(// aka "base"
 
   // PERF: might be possible to vectorize some of this
   // (especially the square root) if the compiler doesn't.
+  uint32_t total_err = 0;
+  uint8_t not_square = 0;
   ONE_CELL(a);
   ONE_CELL(b);
   ONE_CELL(c);

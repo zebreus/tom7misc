@@ -112,7 +112,7 @@ struct Done {
   }
 
   // We can say that for a pair (base, y) to be done, we've
-  // tested every (base, y, x) for x in [1, y). That makes this
+  // tested every (base, y, x) for x in [-base/2, y). That makes this
   // a 2D representation. In this interval cover, the key is
   // the base, and the value indicates that we're done
   // for y in [0, value).
@@ -131,6 +131,17 @@ struct Done {
 // cover.SetSpan(0, 131072, 65536);
 // 500 hour run completed March 15 to 9 Apr 2024.
 // cover.SetSpan(0, 16384, 262144);
+
+// Note that all of these were just positive x. Starting 28 Aug 2024
+// I expanded the definition of "done" to include x in -base/2 to 0.
+// At that point, we had done all of the positive x in:
+// [0, 16384) 274000
+// [16384, 131072) 65536
+// [131072, 2621440] 32768
+//
+//
+
+
 
 static std::string FormatNum(uint64_t n) {
   if (n > 1'000'000) {
@@ -203,7 +214,7 @@ static constexpr int show[10] = {
 
 static std::mutex output_mutex;
 
-static inline void ConsiderOne(uint32_t base, uint32_t x, uint32_t y) {
+static inline void ConsiderOne(uint32_t base, int32_t x, uint32_t y) {
   std::array<int, 9> sq = ProgSquare(base, x, y);
   const auto &[a, b, c,
                d, e, f,
@@ -283,8 +294,25 @@ static void Brute() {
   // const int y_start = 2, y_end = 32768;
   // const int y_start = 65536, y_end = 262144;
   // const int y_end = 274000;
-  int base_start = 322570, base_end = 131072 * 20;
+  // int base_start = 322570, base_end = 131072 * 20;
+  // int y_end = 32768;
+  // int base_start = 0, base_end = 16384;
+  // int y_end = 274000;
+
+
+  // [0, 16384) 274000  <- done
+
+  // int base_start = 16384, base_end = 131072;
+  // int y_end = 65536;
+  // [16384, 131072) 65536 <- done
+
+  int base_start = 131072, base_end = 2621440;
   int y_end = 32768;
+  // [131072, 2621440] 32768 <- in progress
+
+  // x can be negative, in which case the smallest
+  // cell will be n + 2*x. That means that we want
+  // to run y from 1 to y_end, and x from -n/2 to y.
 
   // Skip bases that are totally complete before we
   // get into the parallel phase.
@@ -352,7 +380,7 @@ static void Brute() {
         int64_t task_squares = 0;
 
         #if USE_GPU
-        std::vector<std::pair<uint32_t, uint32_t>> interesting =
+        std::vector<std::pair<int32_t, uint32_t>> interesting =
           brute_gpu.RunOne(base, y_start, y_end);
         for (const auto &[x, y] : interesting) {
           ConsiderOne(base, x, y);
@@ -360,6 +388,7 @@ static void Brute() {
 
         // (This may not be exactly right, but we just use it for
         // reporting status.)
+        // XXX it's really wrong now that x starts at -n/2.
         const int n = (y_end - y_start) * (y_end - 1) / 2;
         task_squares += n;
 

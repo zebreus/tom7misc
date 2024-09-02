@@ -38,8 +38,10 @@ struct BruteGPU {
     }
 
     out_size_gpu = CreateUninitializedGPUMemory<uint32_t>(cl->context, 1);
-    out_gpu = CreateUninitializedGPUMemory<uint32_t>(cl->context,
-                                                     MAX_INTERESTING * 2);
+    // Using 64 bit, since in the kernel we actually have signed x
+    // and unsigned y.
+    out_gpu = CreateUninitializedGPUMemory<int64_t>(cl->context,
+                                                    MAX_INTERESTING * 2);
   }
 
   // Synchronized access.
@@ -51,7 +53,7 @@ struct BruteGPU {
 
   // Returns interesting (x, y) from the range.
   // PERF: Automatically chunk when y size is too big
-  std::vector<std::pair<uint32_t, uint32_t>>
+  std::vector<std::pair<int32_t, uint32_t>>
   RunOne(uint32_t base,
          uint32_t y_start,
          uint32_t y_end) {
@@ -86,10 +88,29 @@ struct BruteGPU {
       // because we only run the lower triangle.
       size_t y_limit = std::min(y_start + MAX_Y_PER_KERNEL, y_end);
 
-      // 2D kernel where x is in [1, y_limit)
+      // x starts from -base/2. Since the offsets are unsigned, we
+      // start x at zero and subtract in the kernel. This will
+      // include the degenerate value of zero (hence the + 1), but
+      // it's not harmful to also compute some degenerate squares.
+      size_t x_range = base / 2 + y_limit + 1;
+
+      // Since we have already run a lot of positive x, we shrink
+      // ranges where we know we've already done 'em. XXX Once we have
+      // covered this range, we should just restore the simple
+      // definition and delete this special case.
+      if ((base < 16384 && y_limit <= 274000) ||
+          (base < 131072 && y_limit <= 65536) ||
+          (base < 2621440 && y_limit < 32768)) {
+        // Only run negative x.
+        x_range = base / 2;
+      }
+
+      // 2D kernel where x is in [0, x_range)
       //             and y is in [y_start, y_limit)
-      size_t global_work_offset[] = { 1, y_start };
-      size_t global_work_size[] = { y_limit, y_limit - y_start };
+      size_t global_work_offset[] = { 0, y_start };
+      size_t global_work_size[] = { x_range, y_limit - y_start };
+
+
 
       // printf("Run y=[%d, %zu)\n", y_start, y_limit);
       CHECK_SUCCESS(
@@ -114,15 +135,16 @@ struct BruteGPU {
       CopyBufferFromGPU<uint32_t>(cl->queue, out_size_gpu, 1);
 
     CHECK(out_size.size() == 1);
-    std::vector<std::pair<uint32_t, uint32_t>> interesting;
+    std::vector<std::pair<int32_t, uint32_t>> interesting;
     if (out_size[0] > 0) {
       CHECK((out_size[0] & 1) == 0) << "Must be even.";
-      std::vector<uint32_t> out =
-        CopyBufferFromGPU<uint32_t>(cl->queue, out_gpu, MAX_INTERESTING);
+      std::vector<int64_t> out =
+        CopyBufferFromGPU<int64_t>(cl->queue, out_gpu, MAX_INTERESTING);
 
       interesting.reserve(out_size[0]);
       for (int i = 0; i < (out_size[0] >> 1); i++) {
-        interesting.emplace_back(out[2 * i + 0], out[2 * i + 1]);
+        interesting.emplace_back((int32_t)out[2 * i + 0],
+                                 (uint32_t)out[2 * i + 1]);
       }
     }
 
