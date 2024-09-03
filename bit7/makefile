@@ -15,7 +15,7 @@ endif
 CXXFLAGS=--std=c++20 $(OPTFLAGS) -Wall -I../cc-lib/
 LFLAGS=$(OPTFLAGS) -static
 
-CCLIB_OBJECTS=../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/image.o ../cc-lib/base/logging.o ../cc-lib/base/stringprintf.o ../cc-lib/util.o
+CCLIB_OBJECTS=../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/image.o ../cc-lib/base/logging.o ../cc-lib/base/stringprintf.o ../cc-lib/util.o ../cc-lib/ansi.o
 
 CCLIB_FONT_OBJECTS=../cc-lib/fonts/island-finder.o ../cc-lib/fonts/ttf.o ../cc-lib/stb_truetype.o
 
@@ -76,6 +76,9 @@ normalize : normalize.exe fixedersys1x.png fixedersys2x.png
 	./normalize.exe fixedersys1x.cfg
 	./normalize.exe fixedersys2x.cfg
 	./normalize.exe fixedersyslight2x.cfg
+
+unicoderange.exe : unicoderange.o $(CCLIB_OBJECTS)
+	$(CXX) $(LFLAGS) $^ -o $@
 
 clean :
 	rm -f *.o *.exe $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
