@@ -19,6 +19,7 @@ Page Config::ParsePage(const std::string &p) {
   if (p == "bit7-classic") return Page::BIT7_CLASSIC;
   if (p == "bit7-extended") return Page::BIT7_EXTENDED;
   if (p == "bit7-cyrillic") return Page::BIT7_CYRILLIC;
+  if (p == "bit7-math") return Page::BIT7_MATH;
   LOG(FATAL) << "Unknown page " << p;
 }
 
@@ -30,6 +31,8 @@ const char *Config::PageString(Page p) {
     return "bit7-extended";
   case Page::BIT7_CYRILLIC:
     return "bit7-cyrillic";
+  case Page::BIT7_MATH:
+    return "bit7-math";
   default:
     break;
   }
@@ -42,6 +45,8 @@ inline static bool PageUsesEmptyGlyphs(Page p) {
 // Tips:
 //  - To move glyphs between pages, first duplicate them, then
 //    normalize, then set the sources to -1, then normalize again.
+
+// TODO: Move math page out of classic page.
 
 // Standard size is: 16x24
 const std::vector<int> &PageBit7Classic() {
@@ -199,9 +204,8 @@ const std::vector<int> &PageBit7Classic() {
     0x2261, // identical to (triple-eq)
     0x2243, // asymptotically equal to (~ on -)
     0x2245, // almost equal (~ on =)
-    0x2262, // logical not
 
-    -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1,
 
     // Block Elements, in unicode order
     0x2580, 0x2581, 0x2582, 0x2583, 0x2584, 0x2585, 0x2586, 0x2587,
@@ -306,8 +310,10 @@ const std::vector<int> &PageBit7Extended() {
     0x1F6AB,
     // Hourglass
     0x231B,
+    // Pile of poo
+    0x1F4A9,
 
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -764,11 +770,284 @@ const std::vector<int> &PageBit7Cyrillic() {
   return CODEPOINTS;
 }
 
+const std::vector<int> &PageBit7Math() {
+  static const std::vector<int> CODEPOINTS = {
+    0x2200,  // (∀) FOR ALL
+    0x2201,  // (∁) COMPLEMENT
+    0x2202,  // (∂) PARTIAL DIFFERENTIAL
+    0x2203,  // (∃) THERE EXISTS
+    0x2204,  // (∄) THERE DOES NOT EXIST
+    0x2205,  // (∅) EMPTY SET
+    0x2206,  // (∆) INCREMENT
+    0x2207,  // (∇) NABLA
+    0x2208,  // (∈) ELEMENT OF
+    0x2209,  // (∉) NOT AN ELEMENT OF
+    0x220a,  // (∊) SMALL ELEMENT OF
+    0x220b,  // (∋) CONTAINS AS MEMBER
+    0x220c,  // (∌) DOES NOT CONTAIN AS MEMBER
+    0x220d,  // (∍) SMALL CONTAINS AS MEMBER
+    0x220e,  // (∎) END OF PROOF
+    0x220f,  // (∏) N-ARY PRODUCT
+    0x2210,  // (∐) N-ARY COPRODUCT
+    0x2211,  // (∑) N-ARY SUMMATION
+    0x2212,  // (−) MINUS SIGN
+    0x2213,  // (∓) MINUS-OR-PLUS SIGN
+    0x2214,  // (∔) DOT PLUS
+    0x2215,  // (∕) DIVISION SLASH
+    0x2216,  // (∖) SET MINUS
+    0x2217,  // (∗) ASTERISK OPERATOR
+    0x2218,  // (∘) RING OPERATOR
+    0x2219,  // (∙) BULLET OPERATOR
+    0x221a,  // (√) SQUARE ROOT
+    0x221b,  // (∛) CUBE ROOT
+    0x221c,  // (∜) FOURTH ROOT
+    0x221d,  // (∝) PROPORTIONAL TO
+    0x221e,  // (∞) INFINITY
+    0x221f,  // (∟) RIGHT ANGLE
+    0x2220,  // (∠) ANGLE
+    0x2221,  // (∡) MEASURED ANGLE
+    0x2222,  // (∢) SPHERICAL ANGLE
+    0x2223,  // (∣) DIVIDES
+    0x2224,  // (∤) DOES NOT DIVIDE
+    0x2225,  // (∥) PARALLEL TO
+    0x2226,  // (∦) NOT PARALLEL TO
+    0x2227,  // (∧) LOGICAL AND
+    0x2228,  // (∨) LOGICAL OR
+    0x2229,  // (∩) INTERSECTION
+    0x222a,  // (∪) UNION
+    0x222b,  // (∫) INTEGRAL
+    0x222c,  // (∬) DOUBLE INTEGRAL
+    0x222d,  // (∭) TRIPLE INTEGRAL
+    0x222e,  // (∮) CONTOUR INTEGRAL
+    0x222f,  // (∯) SURFACE INTEGRAL
+    0x2230,  // (∰) VOLUME INTEGRAL
+    0x2231,  // (∱) CLOCKWISE INTEGRAL
+    0x2232,  // (∲) CLOCKWISE CONTOUR INTEGRAL
+    0x2233,  // (∳) ANTICLOCKWISE CONTOUR INTEGRAL
+    0x2234,  // (∴) THEREFORE
+    0x2235,  // (∵) BECAUSE
+    0x2236,  // (∶) RATIO
+    0x2237,  // (∷) PROPORTION
+    0x2238,  // (∸) DOT MINUS
+    0x2239,  // (∹) EXCESS
+    0x223a,  // (∺) GEOMETRIC PROPORTION
+    0x223b,  // (∻) HOMOTHETIC
+    0x223c,  // (∼) TILDE OPERATOR
+    0x223d,  // (∽) REVERSED TILDE
+    0x223e,  // (∾) INVERTED LAZY S
+    0x223f,  // (∿) SINE WAVE
+    0x2240,  // (≀) WREATH PRODUCT
+    0x2241,  // (≁) NOT TILDE
+    0x2242,  // (≂) MINUS TILDE
+    0x2243,  // (≃) ASYMPTOTICALLY EQUAL TO
+    0x2244,  // (≄) NOT ASYMPTOTICALLY EQUAL TO
+    0x2245,  // (≅) APPROXIMATELY EQUAL TO
+    0x2246,  // (≆) APPROXIMATELY BUT NOT ACTUALLY EQUAL TO
+    0x2247,  // (≇) NEITHER APPROXIMATELY NOR ACTUALLY EQUAL TO
+    0x2248,  // (≈) ALMOST EQUAL TO
+    0x2249,  // (≉) NOT ALMOST EQUAL TO
+    0x224a,  // (≊) ALMOST EQUAL OR EQUAL TO
+    0x224b,  // (≋) TRIPLE TILDE
+    0x224c,  // (≌) ALL EQUAL TO
+    0x224d,  // (≍) EQUIVALENT TO
+    0x224e,  // (≎) GEOMETRICALLY EQUIVALENT TO
+    0x224f,  // (≏) DIFFERENCE BETWEEN
+    0x2250,  // (≐) APPROACHES THE LIMIT
+    0x2251,  // (≑) GEOMETRICALLY EQUAL TO
+    0x2252,  // (≒) APPROXIMATELY EQUAL TO OR THE IMAGE OF
+    0x2253,  // (≓) IMAGE OF OR APPROXIMATELY EQUAL TO
+    0x2254,  // (≔) COLON EQUALS
+    0x2255,  // (≕) EQUALS COLON
+    0x2256,  // (≖) RING IN EQUAL TO
+    0x2257,  // (≗) RING EQUAL TO
+    0x2258,  // (≘) CORRESPONDS TO
+    0x2259,  // (≙) ESTIMATES
+    0x225a,  // (≚) EQUIANGULAR TO
+    0x225b,  // (≛) STAR EQUALS
+    0x225c,  // (≜) DELTA EQUAL TO
+    0x225d,  // (≝) EQUAL TO BY DEFINITION
+    0x225e,  // (≞) MEASURED BY
+    0x225f,  // (≟) QUESTIONED EQUAL TO
+    0x2260,  // (≠) NOT EQUAL TO
+    0x2261,  // (≡) IDENTICAL TO
+    0x2262,  // (≢) NOT IDENTICAL TO
+    0x2263,  // (≣) STRICTLY EQUIVALENT TO
+    0x2264,  // (≤) LESS-THAN OR EQUAL TO
+    0x2265,  // (≥) GREATER-THAN OR EQUAL TO
+    0x2266,  // (≦) LESS-THAN OVER EQUAL TO
+    0x2267,  // (≧) GREATER-THAN OVER EQUAL TO
+    0x2268,  // (≨) LESS-THAN BUT NOT EQUAL TO
+    0x2269,  // (≩) GREATER-THAN BUT NOT EQUAL TO
+    0x226a,  // (≪) MUCH LESS-THAN
+    0x226b,  // (≫) MUCH GREATER-THAN
+    0x226c,  // (≬) BETWEEN
+    0x226d,  // (≭) NOT EQUIVALENT TO
+    0x226e,  // (≮) NOT LESS-THAN
+    0x226f,  // (≯) NOT GREATER-THAN
+    0x2270,  // (≰) NEITHER LESS-THAN NOR EQUAL TO
+    0x2271,  // (≱) NEITHER GREATER-THAN NOR EQUAL TO
+    0x2272,  // (≲) LESS-THAN OR EQUIVALENT TO
+    0x2273,  // (≳) GREATER-THAN OR EQUIVALENT TO
+    0x2274,  // (≴) NEITHER LESS-THAN NOR EQUIVALENT TO
+    0x2275,  // (≵) NEITHER GREATER-THAN NOR EQUIVALENT TO
+    0x2276,  // (≶) LESS-THAN OR GREATER-THAN
+    0x2277,  // (≷) GREATER-THAN OR LESS-THAN
+    0x2278,  // (≸) NEITHER LESS-THAN NOR GREATER-THAN
+    0x2279,  // (≹) NEITHER GREATER-THAN NOR LESS-THAN
+    0x227a,  // (≺) PRECEDES
+    0x227b,  // (≻) SUCCEEDS
+    0x227c,  // (≼) PRECEDES OR EQUAL TO
+    0x227d,  // (≽) SUCCEEDS OR EQUAL TO
+    0x227e,  // (≾) PRECEDES OR EQUIVALENT TO
+    0x227f,  // (≿) SUCCEEDS OR EQUIVALENT TO
+    0x2280,  // (⊀) DOES NOT PRECEDE
+    0x2281,  // (⊁) DOES NOT SUCCEED
+    0x2282,  // (⊂) SUBSET OF
+    0x2283,  // (⊃) SUPERSET OF
+    0x2284,  // (⊄) NOT A SUBSET OF
+    0x2285,  // (⊅) NOT A SUPERSET OF
+    0x2286,  // (⊆) SUBSET OF OR EQUAL TO
+    0x2287,  // (⊇) SUPERSET OF OR EQUAL TO
+    0x2288,  // (⊈) NEITHER A SUBSET OF NOR EQUAL TO
+    0x2289,  // (⊉) NEITHER A SUPERSET OF NOR EQUAL TO
+    0x228a,  // (⊊) SUBSET OF WITH NOT EQUAL TO
+    0x228b,  // (⊋) SUPERSET OF WITH NOT EQUAL TO
+    0x228c,  // (⊌) MULTISET
+    0x228d,  // (⊍) MULTISET MULTIPLICATION
+    0x228e,  // (⊎) MULTISET UNION
+    0x228f,  // (⊏) SQUARE IMAGE OF
+    0x2290,  // (⊐) SQUARE ORIGINAL OF
+    0x2291,  // (⊑) SQUARE IMAGE OF OR EQUAL TO
+    0x2292,  // (⊒) SQUARE ORIGINAL OF OR EQUAL TO
+    0x2293,  // (⊓) SQUARE CAP
+    0x2294,  // (⊔) SQUARE CUP
+    0x2295,  // (⊕) CIRCLED PLUS
+    0x2296,  // (⊖) CIRCLED MINUS
+    0x2297,  // (⊗) CIRCLED TIMES
+    0x2298,  // (⊘) CIRCLED DIVISION SLASH
+    0x2299,  // (⊙) CIRCLED DOT OPERATOR
+    0x229a,  // (⊚) CIRCLED RING OPERATOR
+    0x229b,  // (⊛) CIRCLED ASTERISK OPERATOR
+    0x229c,  // (⊜) CIRCLED EQUALS
+    0x229d,  // (⊝) CIRCLED DASH
+    0x229e,  // (⊞) SQUARED PLUS
+    0x229f,  // (⊟) SQUARED MINUS
+    0x22a0,  // (⊠) SQUARED TIMES
+    0x22a1,  // (⊡) SQUARED DOT OPERATOR
+    0x22a2,  // (⊢) RIGHT TACK
+    0x22a3,  // (⊣) LEFT TACK
+    0x22a4,  // (⊤) DOWN TACK
+    0x22a5,  // (⊥) UP TACK
+    0x22a6,  // (⊦) ASSERTION
+    0x22a7,  // (⊧) MODELS
+    0x22a8,  // (⊨) TRUE
+    0x22a9,  // (⊩) FORCES
+    0x22aa,  // (⊪) TRIPLE VERTICAL BAR RIGHT TURNSTILE
+    0x22ab,  // (⊫) DOUBLE VERTICAL BAR DOUBLE RIGHT TURNSTILE
+    0x22ac,  // (⊬) DOES NOT PROVE
+    0x22ad,  // (⊭) NOT TRUE
+    0x22ae,  // (⊮) DOES NOT FORCE
+    0x22af,  // (⊯) NEGATED DOUBLE VERTICAL BAR DOUBLE RIGHT TURNSTILE
+    0x22b0,  // (⊰) PRECEDES UNDER RELATION
+    0x22b1,  // (⊱) SUCCEEDS UNDER RELATION
+    0x22b2,  // (⊲) NORMAL SUBGROUP OF
+    0x22b3,  // (⊳) CONTAINS AS NORMAL SUBGROUP
+    0x22b4,  // (⊴) NORMAL SUBGROUP OF OR EQUAL TO
+    0x22b5,  // (⊵) CONTAINS AS NORMAL SUBGROUP OR EQUAL TO
+    0x22b6,  // (⊶) ORIGINAL OF
+    0x22b7,  // (⊷) IMAGE OF
+    0x22b8,  // (⊸) MULTIMAP
+    0x22b9,  // (⊹) HERMITIAN CONJUGATE MATRIX
+    0x22ba,  // (⊺) INTERCALATE
+    0x22bb,  // (⊻) XOR
+    0x22bc,  // (⊼) NAND
+    0x22bd,  // (⊽) NOR
+    0x22be,  // (⊾) RIGHT ANGLE WITH ARC
+    0x22bf,  // (⊿) RIGHT TRIANGLE
+    0x22c0,  // (⋀) N-ARY LOGICAL AND
+    0x22c1,  // (⋁) N-ARY LOGICAL OR
+    0x22c2,  // (⋂) N-ARY INTERSECTION
+    0x22c3,  // (⋃) N-ARY UNION
+    0x22c4,  // (⋄) DIAMOND OPERATOR
+    0x22c5,  // (⋅) DOT OPERATOR
+    0x22c6,  // (⋆) STAR OPERATOR
+    0x22c7,  // (⋇) DIVISION TIMES
+    0x22c8,  // (⋈) BOWTIE
+    0x22c9,  // (⋉) LEFT NORMAL FACTOR SEMIDIRECT PRODUCT
+    0x22ca,  // (⋊) RIGHT NORMAL FACTOR SEMIDIRECT PRODUCT
+    0x22cb,  // (⋋) LEFT SEMIDIRECT PRODUCT
+    0x22cc,  // (⋌) RIGHT SEMIDIRECT PRODUCT
+    0x22cd,  // (⋍) REVERSED TILDE EQUALS
+    0x22ce,  // (⋎) CURLY LOGICAL OR
+    0x22cf,  // (⋏) CURLY LOGICAL AND
+    0x22d0,  // (⋐) DOUBLE SUBSET
+    0x22d1,  // (⋑) DOUBLE SUPERSET
+    0x22d2,  // (⋒) DOUBLE INTERSECTION
+    0x22d3,  // (⋓) DOUBLE UNION
+    0x22d4,  // (⋔) PITCHFORK
+    0x22d5,  // (⋕) EQUAL AND PARALLEL TO
+    0x22d6,  // (⋖) LESS-THAN WITH DOT
+    0x22d7,  // (⋗) GREATER-THAN WITH DOT
+    0x22d8,  // (⋘) VERY MUCH LESS-THAN
+    0x22d9,  // (⋙) VERY MUCH GREATER-THAN
+    0x22da,  // (⋚) LESS-THAN EQUAL TO OR GREATER-THAN
+    0x22db,  // (⋛) GREATER-THAN EQUAL TO OR LESS-THAN
+    0x22dc,  // (⋜) EQUAL TO OR LESS-THAN
+    0x22dd,  // (⋝) EQUAL TO OR GREATER-THAN
+    0x22de,  // (⋞) EQUAL TO OR PRECEDES
+    0x22df,  // (⋟) EQUAL TO OR SUCCEEDS
+    0x22e0,  // (⋠) DOES NOT PRECEDE OR EQUAL
+    0x22e1,  // (⋡) DOES NOT SUCCEED OR EQUAL
+    0x22e2,  // (⋢) NOT SQUARE IMAGE OF OR EQUAL TO
+    0x22e3,  // (⋣) NOT SQUARE ORIGINAL OF OR EQUAL TO
+    0x22e4,  // (⋤) SQUARE IMAGE OF OR NOT EQUAL TO
+    0x22e5,  // (⋥) SQUARE ORIGINAL OF OR NOT EQUAL TO
+    0x22e6,  // (⋦) LESS-THAN BUT NOT EQUIVALENT TO
+    0x22e7,  // (⋧) GREATER-THAN BUT NOT EQUIVALENT TO
+    0x22e8,  // (⋨) PRECEDES BUT NOT EQUIVALENT TO
+    0x22e9,  // (⋩) SUCCEEDS BUT NOT EQUIVALENT TO
+    0x22ea,  // (⋪) NOT NORMAL SUBGROUP OF
+    0x22eb,  // (⋫) DOES NOT CONTAIN AS NORMAL SUBGROUP
+    0x22ec,  // (⋬) NOT NORMAL SUBGROUP OF OR EQUAL TO
+    0x22ed,  // (⋭) DOES NOT CONTAIN AS NORMAL SUBGROUP OR EQUAL
+    0x22ee,  // (⋮) VERTICAL ELLIPSIS
+    0x22ef,  // (⋯) MIDLINE HORIZONTAL ELLIPSIS
+    0x22f0,  // (⋰) UP RIGHT DIAGONAL ELLIPSIS
+    0x22f1,  // (⋱) DOWN RIGHT DIAGONAL ELLIPSIS
+    0x22f2,  // (⋲) ELEMENT OF WITH LONG HORIZONTAL STROKE
+    0x22f3,  // (⋳) ELEMENT OF WITH VERTICAL BAR AT END OF HORIZONTAL STROKE
+    0x22f4,  // (⋴) SMALL ELEMENT OF WITH VERTICAL BAR AT END OF HORIZONTAL STROKE
+    0x22f5,  // (⋵) ELEMENT OF WITH DOT ABOVE
+    0x22f6,  // (⋶) ELEMENT OF WITH OVERBAR
+    0x22f7,  // (⋷) SMALL ELEMENT OF WITH OVERBAR
+    0x22f8,  // (⋸) ELEMENT OF WITH UNDERBAR
+    0x22f9,  // (⋹) ELEMENT OF WITH TWO HORIZONTAL STROKES
+    0x22fa,  // (⋺) CONTAINS WITH LONG HORIZONTAL STROKE
+    0x22fb,  // (⋻) CONTAINS WITH VERTICAL BAR AT END OF HORIZONTAL STROKE
+    0x22fc,  // (⋼) SMALL CONTAINS WITH VERTICAL BAR AT END OF HORIZONTAL STROKE
+    0x22fd,  // (⋽) CONTAINS WITH OVERBAR
+    0x22fe,  // (⋾) SMALL CONTAINS WITH OVERBAR
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  };
+
+  return CODEPOINTS;
+};
+
 static const std::vector<int> &GetCodepointsForPage(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC: return PageBit7Classic();
   case Page::BIT7_EXTENDED: return PageBit7Extended();
   case Page::BIT7_CYRILLIC: return PageBit7Cyrillic();
+  case Page::BIT7_MATH: return PageBit7Math();
   }
   LOG(FATAL) << "Unimplemented page!";
 }
@@ -862,6 +1141,10 @@ REUSE_FOR = {
 
   // "equal and parallel to" is like an octothorpe
   {'#', 0x22D5},
+
+  // Greek -> Math
+  {0x03A0, 0x220F},  // Pi -> Product
+  {0x03A3, 0x2211},  // Sigma -> Sum
 
   // "Prohibited sign" is identical to "No entry sign" but
   // black instead of red.
