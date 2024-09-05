@@ -12,6 +12,12 @@
 
 using namespace std;
 
+static void TestProgress() {
+  printf("%s\n", ANSI::ProgressBar(927, 1979,
+                                   "a " AYELLOW("~\\_(ツ)_/~") " birthday boy",
+                                   45.0 * 3600.0 * 24.0 * 365.25).c_str());
+}
+
 static void TestMacros() {
   printf("NORMAL" " "
          ARED("ARED") " "
@@ -88,15 +94,6 @@ static std::string PrintColors(const std::vector<uint32_t> &c) {
 
 static void TestDecompose() {
 
-  /*
-  static std::tuple<std::string,
-                    std::vector<uint32_t>,
-                    std::vector<uint32_t>>
-  Decompose(const std::string &text_with_codes,
-            uint32_t default_fg = 0xBFBFBF,
-            uint32_t default_bg = 0x000000);
-  */
-
   {
     const auto &[s, fg, bg] =
       ANSI::Decompose("no", 0x333333FF, 0x111111FF);
@@ -122,7 +119,6 @@ static void TestDecompose() {
   }
 
   {
-    // Note the ANSI_ macros set both foreground and background (to black).
     const auto &[s, fg, bg] =
       ANSI::Decompose("n" ANSI_DARK_GREEN "ow",
                       0x333333FF, 0x111111FF);
@@ -135,15 +131,32 @@ static void TestDecompose() {
       << PrintColors(bg);
   }
 
+  {
+    // Test multibyte UTF-8 codepoints.
+    const auto &[s, fg, bg] =
+      ANSI::Decompose("N" ANSI_RED "∃" ANSI_RESET "W",
+                      0x333333FF, 0x111111FF);
+    CHECK(s == "N∃W");
+    CHECK(fg.size() == 3);
+    CHECK(bg.size() == 3);
+    CHECK(fg == std::vector<uint32_t>({0x333333FF, 0xff7676ff, 0x333333FF}))
+      << PrintColors(fg);
+    CHECK(bg == std::vector<uint32_t>({0x111111FF, 0x000000FF, 0x111111FF}))
+      << PrintColors(bg);
+  }
+
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  TestProgress();
 
   TestMacros();
   TestComposite();
   TestRasterize();
   TestDecompose();
 
+  printf(AGREEN("OK") "\n");
   return 0;
 }

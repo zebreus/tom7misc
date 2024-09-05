@@ -10,6 +10,7 @@
 #include <vector>
 #include <utility>
 #include <string_view>
+#include <span>
 
 #ifdef __MINGW32__
 #include <windows.h>
@@ -226,14 +227,6 @@ void CPrintf(const char* format, ...) {
   #endif
 }
 
-// Unpack 0xRRGGBB.
-inline constexpr std::tuple<uint8_t, uint8_t, uint8_t>
-Unpack24(uint32_t color) {
-  return {(uint8_t)((color >> 16) & 255),
-          (uint8_t)((color >> 8) & 255),
-          (uint8_t)(color & 255)};
-}
-
 // and 0xRRGGBBAA
 inline static constexpr std::tuple<uint8, uint8, uint8, uint8>
 Unpack32(uint32 color) {
@@ -291,10 +284,19 @@ std::string ANSI::Time(double seconds) {
     sec -= ohour * 3600;
     int omin = sec / 60;
     int osec = sec % 60;
-    snprintf(result, 64, AYELLOW("%d") "h"
-             AYELLOW("%d") "m"
-             AYELLOW("%02d") "s",
-             ohour, omin, osec);
+    if (ohour <= 24) {
+      snprintf(result, 64, AYELLOW("%d") "h"
+               AYELLOW("%d") "m"
+               AYELLOW("%02d") "s",
+               ohour, omin, osec);
+    } else {
+      int odays = ohour / 24;
+      ohour %= 24;
+      snprintf(result, 64, AYELLOW("%d") "d"
+               AYELLOW("%d") "h"
+               AYELLOW("%d") "m",
+               odays, ohour, omin);
+    }
   }
   return (string)result;
 }
@@ -340,36 +342,37 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
 
   int bar_width = options.full_width - 2 - 1 - eta_len;
   // Number of characters that get background color.
-  int filled_width = std::clamp((int)(bar_width * frac), 0, bar_width);
+  int filled_width = std::clamp((int)std::round(bar_width * frac),
+                                0, bar_width);
   string bar_text = StringPrintf("%llu / %llu  (%.1f%%) %s", numer, denom,
                                  frac * 100.0,
                                  operation.c_str());
 
-  // TODO: Use CompositeRGBA for this.
+  // Strip codes from bar_text and generate the rasterized foreground
+  // color. We discard the background color, since we use it to draw
+  // the progress bar.
+  std::string bar_text_plain;
+  std::vector<uint32_t> fgraster, bgraster_;
+  std::tie(bar_text_plain, fgraster, bgraster_) =
+    Decompose(bar_text, options.fg);
+
+  // Generate the background raster.
+  std::vector<uint32_t> bgraster(bar_width, 0);
+  for (int i = 0; i < bar_width; i++) {
+    bgraster[i] = i < filled_width ? options.bar_filled : options.bar_empty;
+  }
+
+  // TODO: truncate using UTF-8
 
   // could do "..."
-  if ((int)bar_text.size() > bar_width) bar_text.resize(bar_width);
-  bar_text.reserve(bar_width);
-  while ((int)bar_text.size() < bar_width) bar_text.push_back(' ');
+  if ((int)bar_text_plain.size() > bar_width) bar_text_plain.resize(bar_width);
+  bar_text_plain.reserve(bar_width);
+  while ((int)bar_text_plain.size() < bar_width)
+    bar_text_plain.push_back(' ');
 
-  // int unfilled_width = bar_width - filled_width;
-  const auto &[fg_r, fg_g, fg_b] = Unpack24(options.fg);
-  const auto &[bf_r, bf_g, bf_b] = Unpack24(options.bar_filled);
-  const auto &[be_r, be_g, be_b] = Unpack24(options.bar_empty);
-  string colored_bar =
-    StringPrintf("%s"
-                 // filled bar
-                 "%s" "%s"
-                 // empty bar
-                 "%s" "%s"
-                 ANSI_RESET,
-                 ForegroundRGB(fg_r, fg_g, fg_b).c_str(),
-                 BackgroundRGB(bf_r, bf_g, bf_b).c_str(),
-                 bar_text.substr(0, filled_width).c_str(),
-                 BackgroundRGB(be_r, be_g, be_b).c_str(),
-                 bar_text.substr(filled_width).c_str());
-
+  string colored_bar = Composite(bar_text_plain, fgraster, bgraster);
   string out = AWHITE("[") + colored_bar + AWHITE("]") " " + eta;
+
   return out;
 }
 
@@ -425,6 +428,12 @@ std::string ANSI::Composite(
   if ((int)codepoints.size() > width) codepoints.resize(width);
   while ((int)codepoints.size() < width) codepoints.push_back(' ');
 
+  auto GetExtend = [](const std::vector<uint32_t> &v, int idx) -> uint32_t {
+      if (idx < (int)v.size()) return v[idx];
+      if (v.empty()) return 0x000000FF;
+      return v.back();
+    };
+
   // Now generate output string. Here we generate a color code whenever
   // the foreground or background actually changes.
 
@@ -433,8 +442,8 @@ std::string ANSI::Composite(
   std::string out;
   uint32_t last_fg = 0, last_bg = 0;
   for (int i = 0; i < width; i++) {
-    uint32_t bgcolor = bgcolors[i];
-    uint32_t fgcolor = CompositeRGBA(fgcolors[i], bgcolor);
+    uint32_t bgcolor = GetExtend(bgcolors, i);
+    uint32_t fgcolor = CompositeRGBA(GetExtend(fgcolors, i), bgcolor);
 
     if (i == 0 || bgcolor != last_bg) {
       const auto &[r, g, b, a_] = Unpack32(bgcolor);
@@ -467,8 +476,9 @@ ANSI::Decompose(const std::string &text_with_codes,
                 uint32_t default_bg) {
   if (VERBOSE) printf("[%s]\n", text_with_codes.c_str());
 
-  std::string_view s(text_with_codes);
-  const int length = (int)s.size();
+  std::vector<uint32_t> codepoints = UTF8Codepoints(text_with_codes);
+
+  const int length = (int)codepoints.size();
   std::string out;
   std::vector<uint32_t> fgs, bgs;
   // n.b. Might not be this long because of color codes.
@@ -478,25 +488,28 @@ ANSI::Decompose(const std::string &text_with_codes,
 
   uint32_t fg = default_fg;
   uint32_t bg = default_bg;
+
+  std::span<uint32_t> s(codepoints.data(), codepoints.size());
+
   while (!s.empty()) {
     // Parse control codes. We just accept the grammar
     // "\x1b["
     //   followed by ([0-9]*;)*
     //   followed by [a-z]
-    if (s.starts_with("\x1b[")) {
-      // Skip [.
-      s.remove_prefix(2);
+    if (s.size() >= 2 && s[0] == '\x1b' && s[1] == '[') {
+      // Skip the escape sequence.
+      s = s.subspan(2);
 
       const auto &[params, cmd] = [&s]() ->
-        std::pair<std::vector<int>, char> {
+        std::pair<std::vector<int>, uint32_t> {
           std::vector<int> params;
           int value = 0;
 
           while (!s.empty()) {
-            char c = *s.begin();
+            uint32_t c = *s.begin();
             // Always consume; we want to consume the
             // whole code including the command.
-            s.remove_prefix(1);
+            s = s.subspan(1);
             if (c >= '0' && c <= '9') {
               value *= 10;
               value += (c - '0');
@@ -565,10 +578,11 @@ ANSI::Decompose(const std::string &text_with_codes,
 
 
     } else {
-      out.push_back(s[0]);
+      // Encode back as UTF-8.
+      out += EncodeUTF8(s[0]);
       fgs.push_back(fg);
       bgs.push_back(bg);
-      s.remove_prefix(1);
+      s = s.subspan(1);
     }
   }
 

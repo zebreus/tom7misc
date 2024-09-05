@@ -103,11 +103,11 @@ namespace internal {
 struct ProgressBarOptions {
   // including [], time.
   int full_width = 76;
-  // TODO: Maybe switch to RGBA and ignore alpha since we're now
-  // using RGBA elsewhere.
-  uint32_t fg = 0xfcfce6;
-  uint32_t bar_filled = 0x0f1591;
-  uint32_t bar_empty  = 0x00031a;
+  // Default RGBA color of text.
+  uint32_t fg = 0xffffffcc;
+  // RGBA color of progress bar.
+  uint32_t bar_filled = 0x0f1591FF;
+  uint32_t bar_empty  = 0x00031aFF;
 };
 }
 
@@ -143,7 +143,6 @@ struct ANSI {
   static std::string ProgressBar(uint64_t numer, uint64_t denom,
                                  // This currently can't have ANSI Codes,
                                  // because we need to split it into pieces.
-                                 // TODO: Fix it using Decompose!
                                  const std::string &operation,
                                  double taken,
                                  ProgressBarOptions options =
@@ -170,11 +169,13 @@ struct ANSI {
       const std::vector<std::pair<uint32_t, int>> &spans,
       int length);
 
-  // Decomposes a text with ANSI color codes (other escape codes are
+  // Decomposes text with ANSI color codes (other escape codes are
   // ignored and stripped) into:
   //   Plain stripped text
   //   Foreground RGBA
   //   Background RGBA.
+  // The text is treated as UTF-8 and lengths are measured as though
+  // every codepoint takes the same width.
   // It is roughly the inverse of Composite, although this always
   // generates alpha of 1.0 (assuming default_fg and default_bg are
   // also alpha=1.0). This interprets standard color codes like "red",
