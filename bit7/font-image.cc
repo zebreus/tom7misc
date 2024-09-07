@@ -1027,6 +1027,7 @@ const std::vector<int> &PageBit7Math() {
     0x22fc,  // (⋼) SMALL CONTAINS WITH VERTICAL BAR AT END OF HORIZONTAL STROKE
     0x22fd,  // (⋽) CONTAINS WITH OVERBAR
     0x22fe,  // (⋾) SMALL CONTAINS WITH OVERBAR
+    0x22ff,  // (⋿) Z NOTATION BAG MEMBERSHIP
 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,

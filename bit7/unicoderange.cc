@@ -34,11 +34,12 @@ static void Dump(uint32_t start, uint32_t end) {
 
 int main(int argc, char **argv) {
   ANSI::Init();
-  CHECK(argc == 3) << "./unicoderange.exe 2200 22FF\n";
+  CHECK(argc == 3) << "./unicoderange.exe 2200 2300\n"
+    "Outputs all the unicode codepoints in [U+2200, U+2300).\n";
 
   uint32_t start = strtol(argv[1], nullptr, 16);
   uint32_t end = strtol(argv[2], nullptr, 16);
-  CHECK(start < end && start != 0) << "./unicoderange.exe 2200 22FF\n";
+  CHECK(start < end && start != 0) << "./unicoderange.exe 2200 2300\n";
 
   Dump(start, end);
 
