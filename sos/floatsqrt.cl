@@ -56,15 +56,11 @@ __kernel void CheckAll(__global atomic_uint32_t *restrict out_size,
   uint32_t a64 = Sqrt64Error(n);
 
   if (a32 != a64) {
-    // First check limit so that we don't keep incrementing if
-    // we reach the end. We don't really need to do this because
-    // the worst thing that would happen if we overflow is that
-    // we'd overwrite the array in-bounds again.
-    const uint32_t limit_idx = atomic_load(out_size);
-    if (limit_idx > MAX_OUTPUT_SIZE) return;
-
     const uint32_t out_idx = atomic_add(out_size, 1);
-    if (out_idx > MAX_OUTPUT_SIZE) return;
+    if (out_idx > MAX_OUTPUT_SIZE) {
+      atomic_add(out_size, -1);
+      return;
+    }
     out[out_idx * 3 + 0] = n;
     out[out_idx * 3 + 1] = a32;
     out[out_idx * 3 + 2] = a64;

@@ -12,18 +12,29 @@
 #include "clutil.h"
 #include "util.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
 // Runs the (smart-ish) brute force search on GPU.
 struct BruteGPU {
   CL *cl = nullptr;
 
   // Maximum number of interesting squares in an execution of the
-  // kernel. There are almost always zero interesting squares.
-  static constexpr int MAX_INTERESTING = 64;
+  // kernel. There are almost always zero interesting squares, but
+  // it's not really expensive to have a large max here.
+  static constexpr int MAX_INTERESTING = 131072;
   static constexpr int MAX_Y_PER_KERNEL = 16384;
 
-  BruteGPU(CL *cl) : cl(cl) {
-    std::string defines = "";
+  BruteGPU(CL *cl, const int report_threshold[10]) : cl(cl) {
+    std::string defines =
+      StringPrintf("#define MAX_INTERESTING %d\n", MAX_INTERESTING);
+
+    defines += "static uint INTERESTING_THRESHOLD[10] = {\n";
+    for (int i = 0; i < 10; i++) {
+      StringAppendF(&defines, "  %d,  // %d non-squares\n",
+                    report_threshold[i]);
+    }
+    StringAppendF(&defines, "};\n\n");
+
     std::string kernel_src = defines + Util::ReadFile("brute.cl");
     const auto &[prog, kern] =
       cl->BuildOneKernel(kernel_src, "BruteXY", false);
@@ -55,8 +66,12 @@ struct BruteGPU {
   // PERF: Automatically chunk when y size is too big
   std::vector<std::pair<int32_t, uint32_t>>
   RunOne(uint32_t base,
-         uint32_t y_start,
-         uint32_t y_end) {
+         uint32_t y_start_in,
+         uint32_t y_end_in,
+         int64_t *executed) {
+
+    uint32_t y_start = y_start_in;
+    uint32_t y_end = y_end_in;
 
     std::vector<uint32_t> zero = {0};
 
@@ -68,6 +83,25 @@ struct BruteGPU {
 
     // Make sure the count is zero.
     CopyBufferToGPU(cl->queue, zero, out_size_gpu);
+    // const std::vector<int64_t> init(MAX_INTERESTING * 2, 12345678);
+    // CopyBufferToGPU(cl->queue, init, out_gpu);
+    clFinish(cl->queue);
+
+    if (false) {
+      std::vector<int64_t> out =
+        CopyBufferFromGPU<int64_t>(cl->queue, out_gpu, MAX_INTERESTING * 2);
+      for (int i = 0; i < (int)out.size(); i++) {
+        printf("init %d. %lld\n", i, out[i]);
+      }
+    }
+
+    {
+      std::vector<uint32_t> out_size =
+        CopyBufferFromGPU<uint32_t>(cl->queue, out_size_gpu, 1);
+
+      CHECK(out_size.size() == 1);
+      CHECK(out_size[0] == 0);
+    }
 
     // 2D kernel where x is in [1, y_end)
     //             and y is in [y_start, y_end)
@@ -94,23 +128,12 @@ struct BruteGPU {
       // it's not harmful to also compute some degenerate squares.
       size_t x_range = base / 2 + y_limit + 1;
 
-      // Since we have already run a lot of positive x, we shrink
-      // ranges where we know we've already done 'em. XXX Once we have
-      // covered this range, we should just restore the simple
-      // definition and delete this special case.
-      if (// (base < 16384 && y_limit <= 274000) ||
-          // (base < 131072 && y_limit <= 65536) ||
-          (base < 2621440 && y_limit < 32768)) {
-        // Only run negative x.
-        x_range = base / 2;
-      }
-
       // 2D kernel where x is in [0, x_range)
       //             and y is in [y_start, y_limit)
       size_t global_work_offset[] = { 0, y_start };
       size_t global_work_size[] = { x_range, y_limit - y_start };
 
-
+      *executed += x_range * (y_limit - y_start);
 
       // printf("Run y=[%d, %zu)\n", y_start, y_limit);
       CHECK_SUCCESS(
@@ -135,17 +158,39 @@ struct BruteGPU {
       CopyBufferFromGPU<uint32_t>(cl->queue, out_size_gpu, 1);
 
     CHECK(out_size.size() == 1);
+    const int num = out_size[0];
+    CHECK(num <= MAX_INTERESTING) << "invalid: " << num;
+
     std::vector<std::pair<int32_t, uint32_t>> interesting;
-    if (out_size[0] > 0) {
-      CHECK((out_size[0] & 1) == 0) << "Must be even.";
+    if (num > 0) {
       std::vector<int64_t> out =
         CopyBufferFromGPU<int64_t>(cl->queue, out_gpu, MAX_INTERESTING * 2);
 
-      interesting.reserve(out_size[0]);
-      for (int i = 0; i < (out_size[0] >> 1); i++) {
-        interesting.emplace_back((int32_t)out[2 * i + 0],
-                                 (uint32_t)out[2 * i + 1]);
+      interesting.reserve(num);
+      for (int i = 0; i < num; i++) {
+        int64_t xx = out[i * 2 + 0];
+        int64_t yy = out[i * 2 + 1];
+        /*
+        printf("%d/%d. %d  %lld,%lld\n",
+               i, num, base,
+               xx, yy);
+        */
+        interesting.emplace_back((int32_t)xx, (uint32_t)yy);
       }
+
+      if (num >= MAX_INTERESTING) {
+        for (int i = 0; i < 3 && i < (int)interesting.size(); i++) {
+          printf("e.g. %u %d %u\n", base,
+                 interesting[i].first,
+                 interesting[i].second);
+        }
+
+        LOG(FATAL) << "Exhausted slots at "
+                   << base << " "
+                   << y_start_in << " "
+                   << y_end_in << " (got " << num << ")";
+      }
+
     }
 
     return interesting;

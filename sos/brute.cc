@@ -8,6 +8,8 @@
 #include <mutex>
 
 #include "ansi.h"
+#include "atomic-util.h"
+#include "auto-histo.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "interval-cover.h"
@@ -27,6 +29,13 @@ static constexpr bool SELF_CHECK = false;
 static constexpr const char *DONEFILE = "brute-done.txt";
 
 static CL *cl = nullptr;
+
+DECLARE_COUNTERS(
+    // bases observed
+    counter_bases,
+    // bases skipped because the starting error is too high
+    counter_filtered,
+    u1_, u2_, u3_, u4_, u5_, u6_);
 
 // Dead-simple exhaustive search!
 // Everything must be an actual magic square, but some of the
@@ -50,6 +59,7 @@ static CL *cl = nullptr;
 // We know there are no proper squares of squares with small
 // coefficients like this, but we're hoping to minimize the
 // error from squares.
+
 
 inline std::array<int, 9> ProgSquare(int n, int x, int y) {
   return {
@@ -165,7 +175,7 @@ static std::string FormatNum(uint64_t n) {
 
 
 [[maybe_unused]]
-static constexpr int best[10] = {
+static constexpr int best_threshold[10] = {
   // best with 0 non-squares
   999999999,
   // best with 1 non-square
@@ -188,33 +198,159 @@ static constexpr int best[10] = {
   14,
 };
 
-// Threshold to show
-static constexpr int show[10] = {
-  // best with 0 non-squares
-  999999999,
-  // best with 1 non-square
-  999999999,
-  // best with 2 non-squares
-  1000,
-  // best with 3 non-squares
-  30,
-  // best with 4 non-squares
-  20,
-  // best with 5 non-squares
-  5,
-  // best with 6 non-squares
-  6,
-  // best with 7 non-squares
-  9,
-  // 8
-  12,
-  // 9
-  14,
+//   a b c
+//   d e f
+//   g h i
+//
+// This program loops over base values to occupy the 'b' slot in the
+// square. The first thing we do is see how far b is from a square
+// (the err). If the error is already at least as high as all our
+// records, we don't even bother, since we could never do better. The
+// 0 case is excluded because this has error 0 by default (so we will
+// try it if the base is a square). Also, sos.exe is a faster approach
+// for finding these. The one non-square case can also be ignored
+// because sos.exe is a faster way of finding such squares (as long as
+// the non-square is in positions b, d, f, or h).
+static constexpr int ERROR_FILTER_THRESHOLD =
+  std::min(std::initializer_list<int>{
+      best_threshold[2],
+      best_threshold[3],
+      best_threshold[4],
+      best_threshold[5],
+      best_threshold[6],
+      best_threshold[7],
+      best_threshold[8],
+      best_threshold[9]});
+
+// Threshold to add to recent results.
+static constexpr int report_threshold[10] = {
+  999999999,      // 0
+  999999999,      // 1
+  90000,          // 2
+  5000,           // 3
+  3000,           // 4
+  500,            // 5
+  500,            // 6
+  400,            // 7
+  400,            // 8
+  400,            // 9
+};
+
+// Threshold to save to disk.
+[[maybe_unused]]
+static constexpr int save_threshold[10] = {
+  999999999,    // 0
+  999999999,    // 1
+  1000,         // 2
+  35,           // 3
+  20,           // 4
+  5,            // 5
+  6,            // 6
+  13,           // 7
+  22,           // 8
+  28,           // 9
 };
 
 static std::mutex output_mutex;
 
+
+static std::mutex histo_mutex;
+static std::vector<AutoHisto> *histos = nullptr;
+
+static std::mutex result_mutex;
+namespace {
+struct Result {
+  int base = 0, x = 0, y = 0;
+  std::array<int, 9> square;
+  int not_square = 0;
+  int total_err = 0;
+  int64_t timestamp = 0;
+};
+}
+
+static std::array<Result, 10> recent_results;
+
+static double OBSERVE_AGE = 3600.0 * 4.0;
+static void ObserveResult(const Result &r) {
+  {
+    MutexLock ml(&histo_mutex);
+    (*histos)[r.not_square].Observe(r.total_err);
+  }
+
+  {
+    MutexLock ml(&result_mutex);
+
+    const Result &old = recent_results[r.not_square];
+
+    // Overwrite if better or old is too old.
+    if (r.timestamp - old.timestamp > OBSERVE_AGE ||
+        r.total_err <= old.total_err) {
+      recent_results[r.not_square] = r;
+    }
+  }
+}
+
+static void DisplayResults() {
+  int64_t now = time(nullptr);
+
+  MutexLock ml1(&histo_mutex);
+  MutexLock ml2(&result_mutex);
+  for (int m = 0; m < 10; m++) {
+    if (!(*histos)[m].Empty()) {
+
+      printf("%s " ABLUE("#%d") "\n",
+             (*histos)[m].SimpleHorizANSI(12).c_str(), m);
+    }
+
+    const Result &r = recent_results[m];
+    if (r.base > 0) {
+      const auto &[a, b, c,
+                   d, e, f,
+                   g, h, i] = r.square;
+
+      auto C = [](int a) {
+          int e = SqrtError(a);
+
+          auto P = [](const std::string &s) { return Util::Pad(-7, s); };
+
+          if (e == 0) return P(StringPrintf(AGREEN("%d"), a));
+          else if (e == 1) return P(StringPrintf(AYELLOW("%d"), a));
+          else return P(StringPrintf(AORANGE("%d"), a));
+        };
+
+      printf("%s %s %s | %d,%d,%d\n"
+             "%s %s %s | #%d %s ago\n"
+             "%s %s %s | err: %d\n",
+             C(a).c_str(), C(b).c_str(), C(c).c_str(),
+             r.base, r.x, r.y,
+             C(d).c_str(), C(e).c_str(), C(f).c_str(),
+             r.not_square, ANSI::Time(now - r.timestamp).c_str(),
+             C(g).c_str(), C(h).c_str(), C(i).c_str(),
+             r.total_err);
+    }
+  }
+}
+
+static std::string ShowSquare(const std::array<int, 9> &sq) {
+  const auto &[a, b, c,
+               d, e, f,
+               g, h, i] = sq;
+
+  return StringPrintf("%d %d %d\n"
+                      "%d %d %d\n"
+                      "%d %d %d\n",
+                      a, b, c,
+                      d, e, f,
+                      g, h, i);
+}
+
 static inline void ConsiderOne(uint32_t base, int32_t x, uint32_t y) {
+  // These result in degenerate squares (duplicates).
+  if (x == 0 || y == 0 || x == y || -x == y ||
+      x == 2 * y || y == 2 * x) {
+    return;
+  }
+
   std::array<int, 9> sq = ProgSquare(base, x, y);
   const auto &[a, b, c,
                d, e, f,
@@ -236,13 +372,25 @@ static inline void ConsiderOne(uint32_t base, int32_t x, uint32_t y) {
   int not_square = 0, total_err = 0;
   for (int cell : sq) {
     int err = SqrtError(cell);
+    CHECK(err >= 0) << "base = " << base << " x = " << x
+                    << " y = " << y << "\n" << ShowSquare(sq);
     if (err != 0) {
       not_square++;
       total_err += err;
     }
   }
 
-  if (total_err < show[not_square]) {
+  Result result;
+  result.base = base;
+  result.x = x;
+  result.y = y;
+  result.timestamp = time(nullptr);
+  result.square = sq;
+  result.not_square = not_square;
+  result.total_err = total_err;
+  ObserveResult(result);
+
+  if (total_err < save_threshold[not_square]) {
     // Reject duplicates, though.
     std::unordered_set<int> unique;
     unique.reserve(9);
@@ -257,9 +405,11 @@ static inline void ConsiderOne(uint32_t base, int32_t x, uint32_t y) {
         StringAppendF(&result, " %d", cell);
       StringAppendF(&result, " prog%d_%d_%d\n", base, x, y);
       printf("\n\n%s\n\n", result.c_str());
-      FILE *f = fopen("brute.txt", "ab");
-      fprintf(f, "%s", result.c_str());
-      fclose(f);
+      if (total_err <= save_threshold[not_square]) {
+        FILE *f = fopen("brute.txt", "ab");
+        fprintf(f, "%s", result.c_str());
+        fclose(f);
+      }
     }
   }
 }
@@ -268,7 +418,7 @@ static inline void ConsiderOne(uint32_t base, int32_t x, uint32_t y) {
 
 static void Brute() {
   #if USE_GPU
-  BruteGPU brute_gpu(cl);
+  BruteGPU brute_gpu(cl, report_threshold);
   #endif
 
   Periodically status_per(5.0);
@@ -290,24 +440,10 @@ static void Brute() {
 
   std::set<int> in_progress;
 
-  // const int base_start = 0, base_end = 16384;
-  // const int y_start = 2, y_end = 32768;
-  // const int y_start = 65536, y_end = 262144;
-  // const int y_end = 274000;
-  // int base_start = 322570, base_end = 131072 * 20;
-  // int y_end = 32768;
-  // int base_start = 0, base_end = 16384;
-  // int y_end = 274000;
+  int base_start = 0, base_end = 2621440;
+  int y_end = 65536;
 
-
-  // [0, 16384) 274000  <- done
-
-  // int base_start = 16384, base_end = 131072;
-  // int y_end = 65536;
-  // [16384, 131072) 65536 <- done
-
-  int base_start = 131072, base_end = 2621440;
-  int y_end = 32768;
+  // int base_start = 131072, base_end = 1048576;
   // [131072, 2621440] 32768 <- in progress
 
   // x can be negative, in which case the smallest
@@ -339,18 +475,26 @@ static void Brute() {
           saved_ago = last_save.Seconds();
         }
 
+        DisplayResults();
+
+        printf(ACYAN("%lld") " done; " APURPLE("%lld") " filtered\n",
+               counter_bases.Read(),
+               counter_filtered.Read());
+
         double sec = run_timer.Seconds();
         std::string bar = ANSI::ProgressBar(
             db, total_bases,
             StringPrintf(
-                "[%s; %s/s] done <%d saved %d ago",
+                "[%s; %s/s] ✓ <%d; %s ago",
                 FormatNum(total_squares).c_str(),
                 FormatNum(total_squares / run_timer.Seconds()).c_str(),
-                min_pending, (int)saved_ago),
+                min_pending,
+                ANSI::Time(saved_ago).c_str()),
             sec);
 
-        printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
-               ANSI_BEGINNING_OF_LINE "%s\n",
+        printf(// ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+               // ANSI_BEGINNING_OF_LINE
+               "%s\n",
                bar.c_str());
       }
     };
@@ -362,48 +506,61 @@ static void Brute() {
   ParallelComp(
       total_bases,
       [&](int offset) {
+
         const int base = base_start + offset;
 
-        int y_start = 0;
-
-        {
-          std::unique_lock ml(m);
-          y_start = done.MinY(base);
-          /*
-          printf("\n%d. y_start = " AYELLOW("%d")
-                 " y_end = " AORANGE("%d") "\n", base, y_start, y_end);
-          */
-          if (y_start >= y_end) return;
-          in_progress.insert(base);
-        }
+        const int starting_err = SqrtError(base);
 
         int64_t task_squares = 0;
 
-        #if USE_GPU
-        std::vector<std::pair<int32_t, uint32_t>> interesting =
-          brute_gpu.RunOne(base, y_start, y_end);
-        for (const auto &[x, y] : interesting) {
-          ConsiderOne(base, x, y);
-        }
+        if (starting_err >= ERROR_FILTER_THRESHOLD) {
+          counter_filtered++;
+        } else {
 
-        // (This may not be exactly right, but we just use it for
-        // reporting status.)
-        // XXX it's really wrong now that x starts at -n/2.
-        const int n = (y_end - y_start) * (y_end - 1) / 2;
-        task_squares += n;
+          int y_start = 0;
 
-        #else
-        // We want x != y, so wlog we require x < y.
-        for (int y = y_start; y < y_end; y++) {
-          for (int x = 1; x < y; x++) {
+          {
+            std::unique_lock ml(m);
+            y_start = done.MinY(base);
+            /*
+            printf("\n%d. y_start = " AYELLOW("%d")
+                   " y_end = " AORANGE("%d") "\n", base, y_start, y_end);
+            */
+            if (y_start >= y_end) return;
+            in_progress.insert(base);
+          }
+
+          #if USE_GPU
+          int64_t executed = 0;
+          std::vector<std::pair<int32_t, uint32_t>> interesting =
+            brute_gpu.RunOne(base, y_start, y_end, &executed);
+          for (const auto &[x, y] : interesting) {
             ConsiderOne(base, x, y);
-            task_squares++;
-            if (task_squares % 65536 == 0) {
-              MaybeStatus();
+          }
+
+          // (This may not be exactly right, but we just use it for
+          // reporting status.)
+          // XXX it's really wrong now that x starts at -n/2.
+          // const int n = (y_end - y_start) * (y_end - 1) / 2;
+
+          // This overcounts because of the many tasks that
+          // die immediately.
+          task_squares += executed;
+
+
+          #else
+          // We want x != y, so wlog we require x < y.
+          for (int y = y_start; y < y_end; y++) {
+            for (int x = 1; x < y; x++) {
+              ConsiderOne(base, x, y);
+              task_squares++;
+              if (task_squares % 65536 == 0) {
+                MaybeStatus();
+              }
             }
           }
+          #endif
         }
-        #endif
 
         {
           std::unique_lock ml(m);
@@ -416,6 +573,8 @@ static void Brute() {
             last_save.Reset();
           }
         }
+
+        counter_bases++;
 
         MaybeStatus();
       },
@@ -433,6 +592,11 @@ int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
   CHECK(cl);
+  for (int i = 0; i < 10; i++) {
+    recent_results[i] = Result();
+  }
+  histos = new std::vector<AutoHisto>;
+  histos->resize(10);
 
   Brute();
 

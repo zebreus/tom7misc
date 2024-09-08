@@ -42,7 +42,9 @@ OPT=-O3
 
 # Avoid -ffast-math, which assumes std::isnan is false, for example!
 # We also rely on sqrt(double) producing exact values.
-CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) $(OPT) $(FLTO) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(ALPERTRON64) -I$(ALPERTRON) -std=c++20
+# Alpertron uses variable-length arrays, so suppress the warning about
+# that extension (or rewrite).
+CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) $(OPT) $(FLTO) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-vla-cxx-extension -I. -I$(CC_LIB) -I$(ALPERTRON64) -I$(ALPERTRON) -std=c++20
 
 # CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -DHAVE_ALLOCA -DNOWINSTUFF $(FLTO) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 

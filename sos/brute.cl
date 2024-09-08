@@ -8,119 +8,58 @@ typedef ulong uint64_t;
 typedef long int64_t;
 typedef atomic_uint atomic_uint32_t;
 
-#define STATIC_ASSERT(cond) char unused_[0 - !(cond)];
-
-
-// PERF! 32 bit versions.
-inline static uint64_t Sqrt64(uint64_t n) {
-  uint64_t r = (uint64_t)sqrt((double)n);
-  return r - (r * r >= n + 1);
-}
-
-inline uint64_t Sqrt64Error(uint64_t aa) {
-  uint64_t a1 = Sqrt64(aa);
-  uint64_t a2 = a1 + 1;
-  uint64_t aa1 = a1 * a1;
-  // Compute a2 * a2 = (a1 + 1) * (a1 + 1) =
-  // a1^2 + 2a1 + 1
-  uint64_t aa2 = aa1 + (a1 << 1) + 1;
-  return min(max(aa, aa1) - min(aa, aa1),
-             max(aa, aa2) - min(aa, aa2));
-}
-
-// As above, but 32 bit.
-// I think float sqrt may not be enough precision?
-// We could do an exhaustive check.
 inline static uint32_t Sqrt32(uint32_t n) {
-  uint32_t r = (uint32_t)sqrt((double)n);
+  uint32_t r = (uint32_t)sqrt((float)n);
   return r - (r * r >= n + 1);
 }
 
+// This produces the same integer error as the 64-bit
+// version up to 0xFFFF0000. Beyond that we get errors,
+// but we don't expect any of the numbers to get that
+// high here. See floatsqrt.* for an exhaustive check.
 inline uint32_t Sqrt32Error(uint32_t aa) {
   uint32_t a1 = Sqrt32(aa);
-  uint32_t a2 = a1 + 1;
+  // uint32_t a2 = a1 + 1;
   uint32_t aa1 = a1 * a1;
   uint32_t aa2 = aa1 + (a1 << 1) + 1;
-  return min(max(aa, aa1) - min(aa, aa1),
-             max(aa, aa2) - min(aa, aa2));
+
+  return min(abs_diff(aa, aa1),
+             abs_diff(aa, aa2));
 }
-
-
-// Threshold to flag as interesting if total error is less
-// than this amount.
-static uint32_t INTERESTING_THRESHOLD[10] = {
-  999999999,      // 0
-  999999999,      // 1
-  1000,           // 2
-  100,            // 3
-  20,             // 4
-  5,              // 5
-  6,              // 6
-  9,              // 7
-  14,             // 8
-  15,             // 9
-};
 
 /*
 
-We want to try every (x, y) with x < y.
+We want to try every (x, y) with x < y
+and y >= 0 and x >= -base/2.
 
       -- x ->
-     0 1 2 3 4
- | 0 . . . . .
- | 1 a . . . .
- y 2 b c . . .
- | 3 d e f . .
- v 4 g h i j .
+     .. -3 -2 -1  0  1  2  3  4
+ | 0     a  b  c  .  .  .  .  .
+ | 1     d  e  f  g  .  .  .  .
+ y 2     h  i  j  k  l  .  .  .
+ | 3     m  n  o  p  q  r  .  .
+ v 4     s  t  u  v  w  x  y  .
 
-TODO: We can reassemble this into a dense 2D rectangle, which
-is probably faster than exiting early. It's slightly extra
-tricky because we run this for y in [y_start, y_end).
+PERF: On the upper triangle we exit early, since
+we do not need x >= y. It would be nice to
+pack this into a 2D rectangle, although it is
+tricky because (among other things) we run negative x.
 
 */
 
-  // Unrolled.
+// Unrolled.
 #define ONE_CELL(q) do {                        \
-    int err = Sqrt64Error(q);                   \
+    int err = Sqrt32Error(q);                   \
     if (err != 0) {                             \
       not_square++;                             \
       total_err += err;                         \
     }                                           \
   } while (0)
 
-// #define VECTORIZE 1
-
-#define PACK3(q, a, b, c) \
-  uint32_t3 q ## i = (uint3)(a, b, c); \
-  double3 q = convert_double3(q ## i);
-
-#define SQRT3(q) \
-  uint32_t3 q ## aroot = convert_uint3(sqrt(q)); \
-  uint32_t3 q ## sq = q ## aroot * q ## aroot; \
-  uint32_t3 q ## root = q ## aroot - (convert_uint3(q ## sq >= q ## i) & 1);
-
-#define ERR3(q) \
-  uint32_t3 q ## a2 = q ## root + (uint3)(1, 1, 1); \
-  uint32_t3 q ## aa1 = q ## root * q ## root; \
-  uint32_t3 q ## aa2 = q ## aa1 + (q ## root << 1) + 1; \
-  uint32_t3 q ## err = min(max(q ## i, q ## aa1) - \
-                           min(q ## i, q ## aa1),  \
-                           max(q ## i, q ## aa2) - \
-                           min(q ## i, q ## aa2)); \
-  uint8_t3 q ## notsq = convert_uchar3(q ## err > 0) & (uchar3)(1, 1, 1); \
-
-#define SUM_ERR(t,  q, r, s)                          \
-  uint32_t3 t = q ## err + r ## err + s ## err;
-
-#define SUM_NOTSQ(u,  q, r, s) \
-  uint8_t3 u = q ## notsq + r ## notsq + s ## notsq;
-
-// Note that vector comparisons < > return -1, not 1, when true.
-
 // Writes bitmask to out.
 __kernel void BruteXY(// aka "base"
                       const uint32_t n,
-                      __global atomic_uint32_t *restrict out_size,
+                      volatile __global atomic_uint32_t *restrict out_size,
                       __global int64_t *restrict out) {
 
   const uint32_t xoff = get_global_id(0);
@@ -152,25 +91,8 @@ __kernel void BruteXY(// aka "base"
   // erroneously flag the square as interesting. So we stick with 32
   // bits.
 
-#if VECTORIZE
-  PACK3(q,   a, b, c);
-  PACK3(r,   d, e, f);
-  PACK3(s,   g, h, i);
-  SQRT3(q);
-  SQRT3(r);
-  SQRT3(s);
-  ERR3(q);
-  ERR3(r);
-  ERR3(s);
-  // Sum columns.
-  SUM_ERR(t,    q, r, s);
-  uint32_t total_err = t.x + t.y + t.z;
-  SUM_NOTSQ(u,  q, r, s);
-  uint8_t not_square = u.x + u.y + u.z;
-#else
-
-  // PERF: might be possible to vectorize some of this
-  // (especially the square root) if the compiler doesn't.
+  // Note: I tried vectorizing this but it didn't do any better
+  // than the compiler and it was quite fiddly.
   uint32_t total_err = 0;
   uint8_t not_square = 0;
   ONE_CELL(a);
@@ -182,11 +104,37 @@ __kernel void BruteXY(// aka "base"
   ONE_CELL(g);
   ONE_CELL(h);
   ONE_CELL(i);
-#endif
+
+
+  if (total_err < 0) {
+    printf("OOPS! %d %d %d\n%d %d %d\n%d %d %d = %d\n",
+           a, b, c, d, e, f, g, h, i, total_err);
+    return;
+  }
 
   if (total_err < INTERESTING_THRESHOLD[not_square]) {
-    const uint32_t out_idx = atomic_add(out_size, 2);
-    out[out_idx] = x;
-    out[out_idx + 1] = y;
+    // Don't bother with degenerate squares. These get filtered
+    // out on the C++ side, but they often also appear all at
+    // once in a kernel execution, exhausting the output buffer.
+    if (x == y || x == 0 || y == 0 || -x == y ||
+        x == 2 * y || y == 2 * x) {
+      return;
+    }
+
+    const uint32_t out_idx = atomic_add(out_size, 1);
+    if (out_idx >= MAX_INTERESTING) {
+      // We don't actually write anything, so don't count it.
+      atomic_add(out_size, -1);
+      return;
+    }
+
+    /*
+    printf("@%d/%d (%d, %d,%d):\n%d %d %d\n%d %d %d\n%d %d %d = %d\n",
+           out_idx, MAX_INTERESTING, n, x, y,
+           a, b, c, d, e, f, g, h, i, total_err);
+    */
+
+    out[out_idx * 2] = x;
+    out[out_idx * 2 + 1] = y;
   }
 }
