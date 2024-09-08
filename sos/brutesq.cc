@@ -25,9 +25,47 @@
 
 static constexpr bool SELF_CHECK = false;
 
+// This is a variant of the "simple" brute force search.
+// The goal is to find proper magic squares whose elements
+// are close to square numbers. It uses this enumeration:
+//
+//  n+2x+y  n       n+x+2y          a    b^2 c
+//  n+2y    n+x+y   n+2x            d^2  e   f
+//  n+x     n+2x+2y n+y             g    h   i
+//
+// Each row/column/diagonal sums to 3n + 3x + 3y.
+//
+// Here we are constraining the search to cases where n is exactly a
+// square, and n + 2y is as well. So we'll have n = b^2 and d^2 = b^2
+// + 2y. In order for y to be an integer, d and b must both be even or
+// both be odd. Without loss of generality we say y > 0 (otherwise we
+// can just transpose). So we loop over integers (u, v) with 2v < u,
+// and the resulting square is
+//
+//   n = b^2 = u^2
+//   d^2 = (2*v + u mod 2)^2
+//   2y = (2*v + u mod 2)^2 - u^2
+
+// Get n,y such that the cells 'b' and 'd' will be square.
+std::pair<int64_t, int64_t> BaseAndY(int64_t u, int64_t v) {
+  if (SELF_CHECK) {
+    CHECK(2 * v < u) << u << " " << v;
+  }
+  int64_t n = u * u;
+  int64_t d = (2 * v + u & 1);
+  int64_t two_y = d * d - n;
+  if (SELF_CHECK) {
+    CHECK((two_y & 1) == 0) << u << " " << v;
+  }
+  return {n, two_y >> 1};
+}
+
+// Now the search is very similar to brute.cc. We have n and y
+// determined, and we search all x in -n/2 up to n.
+
 #define USE_GPU 1
 
-static constexpr const char *DONEFILE = "brute-done.txt";
+static constexpr const char *DONEFILE = "brutesq-done.txt";
 
 static CL *cl = nullptr;
 
@@ -37,30 +75,6 @@ DECLARE_COUNTERS(
     // bases skipped because the starting error is too high
     counter_filtered,
     u1_, u2_, u3_, u4_, u5_, u6_);
-
-// Dead-simple exhaustive search!
-// Everything must be an actual magic square, but some of the
-// cells can be non-squares. We're looking for a small
-// total error.
-
-// jcreed showed me a nice way of enumerating magic squares.
-// If you have any nondegenerate tuple of integers <n, x, y>
-// then this gives a magic square:
-//
-//  n+2x+y  n       n+x+2y
-//  n+2y    n+x+y   n+2x
-//  n+x     n+2x+2y n+y
-//
-// Each row/column/diagonal sums to 3n + 3x + 3y.
-//
-// So we can loop over (n,x,y), which is a much smaller search
-// space than looping over 9 cells!
-// (Do we need to consider negative x, y?)
-//
-// We know there are no proper squares of squares with small
-// coefficients like this, but we're hoping to minimize the
-// error from squares.
-
 
 inline std::array<int, 9> ProgSquare(int n, int x, int y) {
   return {
@@ -131,53 +145,8 @@ struct Done {
   using Cover = IntervalCover<int>;
   Cover cover;
 };
-}  // namespace
+}
 
-// History:
-// Ran this on 28-29 Feb 2024.
-// cover.SetSpan(0, 32768, std::make_pair(0, 32768));
-// And then I weirdly ran y [32768, 65536) for base 0-65536,
-// finishing on 6 Mar 2024.
-// Then I ran the gap I left, y [0, 32768) for base [32768, 65536),
-// finishing on 7 Mar 2024.
-// Then did 65536-131072 from from 0 to 65536 through March 13.
-// cover.SetSpan(0, 131072, 65536);
-// 500 hour run completed March 15 to 9 Apr 2024.
-// cover.SetSpan(0, 16384, 262144);
-
-// Note that all of these were just positive x. Starting 28 Aug 2024
-// I expanded the definition of "done" to include x in -base/2 to 0.
-// At that point, we had done all of the positive x in:
-// [0, 16384) 274000
-// [16384, 131072) 65536
-// [131072, 2621440] 32768
-//
-// Then I re-ran this range, so the simple definition is all you
-// need to think about.
-
-//   a b c
-//   d e f
-//   g h i
-//
-// This program loops over base values to occupy the 'b' slot in the
-// square. The first thing we do is see how far b is from a square
-// (the err). If the error is already at least as high as all our
-// records, we don't even bother, since we could never do better. The
-// 0 case is excluded because this has error 0 by default (so we will
-// try it if the base is a square). Also, sos.exe is a faster approach
-// for finding these. The one non-square case can also be ignored
-// because sos.exe is a faster way of finding such squares (as long as
-// the non-square is in positions b, d, f, or h).
-static constexpr int ERROR_FILTER_THRESHOLD =
-  std::min(std::initializer_list<int>{
-      best_threshold[2],
-      best_threshold[3],
-      best_threshold[4],
-      best_threshold[5],
-      best_threshold[6],
-      best_threshold[7],
-      best_threshold[8],
-      best_threshold[9]});
 
 static std::mutex output_mutex;
 

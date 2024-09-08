@@ -248,4 +248,7 @@ inline uint64_t SqrtError(uint64_t aa) {
                   std::max(aa, aa2) - std::min(aa, aa2));
 }
 
+// Format to something like "3.1T".
+std::string FormatNum(uint64_t n);
+
 #endif

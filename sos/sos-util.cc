@@ -459,3 +459,23 @@ GetWaysMerge(uint64_t sum, int num_expected,
   }
   return ways;
 }
+
+std::string FormatNum(uint64_t n) {
+  if (n > 1'000'000) {
+    double m = n / 1'000'000.0;
+    if (m >= 1'000'000.0) {
+      return StringPrintf("%.1fT", m / 1'000'000.0);
+    } else if (m >= 1000.0) {
+      return StringPrintf("%.1fB", m / 1000.0);
+    } else if (m >= 100.0) {
+      return StringPrintf("%dM", (int)std::round(m));
+    } else if (m > 10.0) {
+      return StringPrintf("%.1fM", m);
+    } else {
+      // TODO: Integer division. color decimal place and suffix.
+      return StringPrintf("%.2fM", m);
+    }
+  } else {
+    return Util::UnsignedWithCommas(n);
+  }
+}
