@@ -1059,6 +1059,9 @@ static constexpr std::initializer_list<std::pair<int, int>>
 REUSE_FOR = {
   // hyphen used as minus
   {0x002D, 0x2212},
+  // Division slash
+  {'/', 0x2215},
+  {'\\', 0x2216},
   // ascii -> cyrillic
   {'S', 0x0405},
   {'J', 0x0408},
