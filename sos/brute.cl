@@ -56,7 +56,6 @@ tricky because (among other things) we run negative x.
     }                                           \
   } while (0)
 
-// Writes bitmask to out.
 __kernel void BruteXY(// aka "base"
                       const uint32_t n,
                       volatile __global atomic_uint32_t *restrict out_size,

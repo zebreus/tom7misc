@@ -181,7 +181,6 @@ static constexpr int ERROR_FILTER_THRESHOLD =
 
 static std::mutex output_mutex;
 
-
 static std::mutex histo_mutex;
 static std::vector<AutoHisto> *histos = nullptr;
 
@@ -369,7 +368,7 @@ static void Brute() {
   std::set<int> in_progress;
 
   int base_start = 0, base_end = 2621440;
-  int y_end = 65536;
+  int y_end = 65536 * 2;
 
   // int base_start = 131072, base_end = 1048576;
   // [131072, 2621440] 32768 <- in progress

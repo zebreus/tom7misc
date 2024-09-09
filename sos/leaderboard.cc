@@ -293,15 +293,17 @@ static void PrintScored(const ScoredEntry &scored) {
   }
 }
 
-static void Leaderboard() {
-  std::vector<Entry> entries = Parse("squares.txt");
+static void Leaderboard(const std::string &filename, bool quiet = false) {
+  std::vector<Entry> entries = Parse(filename);
   std::vector<ScoredEntry> scored_entries =
     ParallelMap(entries, Score, 8);
 
   // sort, etc.
-  for (const ScoredEntry &scored : scored_entries) {
-    PrintScored(scored);
-    printf("\n");
+  if (!quiet) {
+    for (const ScoredEntry &scored : scored_entries) {
+      PrintScored(scored);
+      printf("\n");
+    }
   }
 
 
@@ -340,10 +342,28 @@ static void Leaderboard() {
 
 }
 
+static std::string Usage() {
+  return "./leaderboard.exe [-q] [squares.txt]\n";
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  Leaderboard();
+  bool quiet = false;
+  std::string file = "squares.txt";
+  for (int i = 1; i < argc; i++) {
+    std::string arg = argv[i];
+    if (arg.empty()) continue;
+
+    if (arg[0] == '-') {
+      CHECK(arg == "-q") << Usage();
+      quiet = true;
+    } else {
+      file = argv[i];
+    }
+  }
+
+  Leaderboard(file, quiet);
 
   return 0;
 }

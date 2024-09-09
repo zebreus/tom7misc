@@ -1,7 +1,6 @@
 
 #include "ansi.h"
 
-#include <set>
 #include <unordered_set>
 #include <cstdint>
 #include <cstdio>
@@ -20,10 +19,10 @@
 #include "util.h"
 
 #include "clutil.h"
-#include "brute-gpu.h"
+#include "brutesq-gpu.h"
 #include "brute-util.h"
 
-static constexpr bool SELF_CHECK = false;
+static constexpr bool SELF_CHECK = true;
 
 // This is a variant of the "simple" brute force search.
 // The goal is to find proper magic squares whose elements
@@ -44,7 +43,7 @@ static constexpr bool SELF_CHECK = false;
 //
 //   n = b^2 = u^2
 //   d^2 = (2*v + u mod 2)^2
-//   2y = (2*v + u mod 2)^2 - u^2
+//   2y = u^2 - (2*v + u mod 2)^2
 
 // Get n,y such that the cells 'b' and 'd' will be square.
 std::pair<int64_t, int64_t> BaseAndY(int64_t u, int64_t v) {
@@ -52,12 +51,37 @@ std::pair<int64_t, int64_t> BaseAndY(int64_t u, int64_t v) {
     CHECK(2 * v < u) << u << " " << v;
   }
   int64_t n = u * u;
-  int64_t d = (2 * v + u & 1);
-  int64_t two_y = d * d - n;
+  int64_t d = (2 * v + (u & 1));
+  // d^2 = n + 2y
+  // 2y = n - d^2
+  int64_t two_y = n - d * d;
   if (SELF_CHECK) {
     CHECK((two_y & 1) == 0) << u << " " << v;
+    CHECK(u >= 0);
+    CHECK(two_y >= 0);
   }
-  return {n, two_y >> 1};
+
+  int64_t y = two_y >> 1;
+
+  if (SELF_CHECK) {
+    int64_t ne = SqrtError(n);
+    int64_t de = SqrtError(n + 2 * y);
+    CHECK(ne == 0 && de == 0) <<
+      StringPrintf("u=%lld, v=%lld\n"
+                   "d = %lld\n"
+                   "2y = %lld - %lld^2 = %lld\n"
+                   "n: %lld, y=%lld\n"
+                   "n + 2 * y = %lld\n"
+                   "nerr: %lld, derr=%lld\n",
+                   u, v,
+                   d,
+                   n, d, two_y,
+                   n, y,
+                   n + 2 * y,
+                   ne, de);
+  }
+
+  return {n, y};
 }
 
 // Now the search is very similar to brute.cc. We have n and y
@@ -74,31 +98,39 @@ DECLARE_COUNTERS(
     counter_bases,
     // bases skipped because the starting error is too high
     counter_filtered,
-    u1_, u2_, u3_, u4_, u5_, u6_);
+    // returned from GPU
+    counter_reported,
+    u2_, u3_, u4_, u5_, u6_);
 
-inline std::array<int, 9> ProgSquare(int n, int x, int y) {
+inline std::array<int64_t, 9> ProgSquare(int64_t n, int64_t x, int64_t y) {
   return {
     n + 2 * x + y,  n,                  n + x + 2 * y,
     n + 2 * y,      n + x + y,          n + 2 * x,
     n + x,          n + 2 * x + 2 * y,  n + y};
 }
 
+// In this "done" representation, the key is the value u, and
+// a value Y means that we have done every (u, v, y) for
+// 2v < u and -u^2 / 2 < y < Y. Because y can be negative,
+// the initial value ("nothing done") is highly negative.
 namespace {
 struct Done {
+  static constexpr int64_t INITIAL_VALUE = int64_t{-999999999999};
+
   // Or abort if invalid.
   static Done FromString(const std::string &contents) {
     std::vector<std::string> lines =
       Util::NormalizeLines(Util::SplitToLines(contents));
 
-    Cover cover(0);
+    Cover cover(INITIAL_VALUE);
     for (std::string &line : lines) {
       if (line.empty()) continue;
       if (line[0] == '#') continue;
       std::vector<std::string> parts = Util::Split(line, ' ');
       CHECK(parts.size() == 3) << line;
-      uint64_t start = atoll(parts[0].c_str());
-      uint64_t end = atoll(parts[1].c_str());
-      uint64_t y = atoll(parts[2].c_str());
+      int64_t start = atoll(parts[0].c_str());
+      int64_t end = atoll(parts[1].c_str());
+      int64_t y = atoll(parts[2].c_str());
       cover.SetSpan(start, end, y);
       printf("[" AWHITE("%llu") ", " AWHITE("%llu") "): <"
              APURPLE("%llu") "\n",
@@ -110,18 +142,22 @@ struct Done {
     return d;
   }
 
-  Done() : cover(0) {}
+  Done() : cover(INITIAL_VALUE) {}
 
-  // Get the number n for which we have done all y < n for the given base.
-  uint64_t MinY(uint64_t base) const {
-    Cover::Span s = cover.GetPoint(base);
+  // For the given u, get the number X for which we have
+  // tried all squares (base, x, y)
+  // with (base, y) = BaseAndY(u, v)
+  // for all v | 2v < u
+  // and all x | -u^2 / 2 < x < X.
+  int64_t BoundX(uint64_t u) const {
+    Cover::Span s = cover.GetPoint(u);
+    // printf("BoundX %llu = %lld\n", u, s.data);
     return s.data;
   }
 
-  void SetMinY(uint64_t base, uint64_t y_end) {
-    cover.SetPoint(base, y_end);
+  void SetBoundX(uint64_t u, int64_t x_end) {
+    cover.SetPoint(u, x_end);
   }
-
 
   void Save(const std::string &filename) {
     FILE *f = fopen(filename.c_str(), "wb");
@@ -130,19 +166,14 @@ struct Done {
 
     while (!Cover::IsAfterLast(pt)) {
       Cover::Span s = cover.GetPoint(pt);
-      fprintf(f, "%llu %llu %d\n",
+      fprintf(f, "%llu %llu %lld\n",
               s.start, s.end, s.data);
       pt = s.end;
     }
     fclose(f);
   }
 
-  // We can say that for a pair (base, y) to be done, we've
-  // tested every (base, y, x) for x in [-base/2, y). That makes this
-  // a 2D representation. In this interval cover, the key is
-  // the base, and the value indicates that we're done
-  // for y in [0, value).
-  using Cover = IntervalCover<int>;
+  using Cover = IntervalCover<int64_t>;
   Cover cover;
 };
 }
@@ -150,17 +181,16 @@ struct Done {
 
 static std::mutex output_mutex;
 
-
 static std::mutex histo_mutex;
 static std::vector<AutoHisto> *histos = nullptr;
 
 static std::mutex result_mutex;
 namespace {
 struct Result {
-  int base = 0, x = 0, y = 0;
-  std::array<int, 9> square;
+  int64_t base = 0, x = 0, y = 0;
+  std::array<int64_t, 9> square;
   int not_square = 0;
-  int total_err = 0;
+  int64_t total_err = 0;
   int64_t timestamp = 0;
 };
 }
@@ -205,8 +235,8 @@ static void DisplayResults() {
                    d, e, f,
                    g, h, i] = r.square;
 
-      auto C = [](int a) {
-          int e = SqrtError(a);
+      auto C = [](int64_t a) {
+          int64_t e = SqrtError(a);
 
           auto P = [](const std::string &s) { return Util::Pad(-7, s); };
 
@@ -215,9 +245,9 @@ static void DisplayResults() {
           else return P(StringPrintf(AORANGE("%d"), a));
         };
 
-      printf("%s %s %s | %d,%d,%d\n"
+      printf("%s %s %s | %lld,%lld,%lld\n"
              "%s %s %s | #%d %s ago\n"
-             "%s %s %s | err: %d\n",
+             "%s %s %s | err: %lld\n",
              C(a).c_str(), C(b).c_str(), C(c).c_str(),
              r.base, r.x, r.y,
              C(d).c_str(), C(e).c_str(), C(f).c_str(),
@@ -228,7 +258,7 @@ static void DisplayResults() {
   }
 }
 
-static std::string ShowSquare(const std::array<int, 9> &sq) {
+static std::string ShowSquare(const std::array<int64_t, 9> &sq) {
   const auto &[a, b, c,
                d, e, f,
                g, h, i] = sq;
@@ -241,20 +271,26 @@ static std::string ShowSquare(const std::array<int, 9> &sq) {
                       g, h, i);
 }
 
-static inline void ConsiderOne(uint32_t base, int32_t x, uint32_t y) {
+static inline void ConsiderOne(int64_t base, int64_t x, int64_t y) {
+  if constexpr (SELF_CHECK) {
+    // It is not actually wrong for y to be negative, but it is not
+    // expected in this particular search.
+    CHECK(base >= 0 && y >= 0) << base << " " << x << " " << y;
+  }
+
   // These result in degenerate squares (duplicates).
   if (x == 0 || y == 0 || x == y || -x == y ||
       x == 2 * y || y == 2 * x) {
     return;
   }
 
-  std::array<int, 9> sq = ProgSquare(base, x, y);
+  std::array<int64_t, 9> sq = ProgSquare(base, x, y);
   const auto &[a, b, c,
                d, e, f,
                g, h, i] = sq;
   if constexpr (SELF_CHECK) {
     // horiz
-    const int sum = a + b + c;
+    const int64_t sum = a + b + c;
     CHECK(d + e + f == sum);
     CHECK(g + h + i == sum);
     // vertical
@@ -266,9 +302,10 @@ static inline void ConsiderOne(uint32_t base, int32_t x, uint32_t y) {
     CHECK(g + e + c == sum);
   }
 
-  int not_square = 0, total_err = 0;
-  for (int cell : sq) {
-    int err = SqrtError(cell);
+  int not_square = 0;
+  int64_t total_err = 0;
+  for (int64_t cell : sq) {
+    int64_t err = SqrtError(cell);
     CHECK(err >= 0) << "base = " << base << " x = " << x
                     << " y = " << y << "\n" << ShowSquare(sq);
     if (err != 0) {
@@ -289,21 +326,21 @@ static inline void ConsiderOne(uint32_t base, int32_t x, uint32_t y) {
 
   if (total_err < save_threshold[not_square]) {
     // Reject duplicates, though.
-    std::unordered_set<int> unique;
+    std::unordered_set<int64_t> unique;
     unique.reserve(9);
-    for (int cell : sq)
+    for (int64_t cell : sq)
       unique.insert(cell);
     if (unique.size() == 9) {
       std::unique_lock ml(output_mutex);
-      std::string result = StringPrintf("# %d not square, %d total error\n",
+      std::string result = StringPrintf("# %d not square, %lld total error\n",
                                         not_square, total_err);
       StringAppendF(&result, "SQUARE");
       for (int cell : sq)
-        StringAppendF(&result, " %d", cell);
-      StringAppendF(&result, " prog%d_%d_%d\n", base, x, y);
+        StringAppendF(&result, " %lld", cell);
+      StringAppendF(&result, " prog%lld_%lld_%lld\n", base, x, y);
       printf("\n\n%s\n\n", result.c_str());
       if (total_err <= save_threshold[not_square]) {
-        FILE *f = fopen("brute.txt", "ab");
+        FILE *f = fopen("brutesq.txt", "ab");
         fprintf(f, "%s", result.c_str());
         fclose(f);
       }
@@ -315,7 +352,7 @@ static inline void ConsiderOne(uint32_t base, int32_t x, uint32_t y) {
 
 static void Brute() {
   #if USE_GPU
-  BruteGPU brute_gpu(cl, report_threshold);
+  BruteSqGPU brutesq_gpu(cl, report_threshold);
   #endif
 
   Periodically status_per(5.0);
@@ -327,144 +364,104 @@ static void Brute() {
 
   std::mutex m;
 
-  // Already did base = 0..32768, y=2..32768, x = 1..y.
-
   std::string done_txt = Util::ReadFile(DONEFILE);
   Done done = done_txt.empty() ? Done() : Done::FromString(done_txt);
 
-  // Running this starting 24 Aug 2024.
-  // cover.SetSpan(0, 16384, 270000);
+  // v always ranges up to u/2.
+  uint64_t u_start = 0, u_end = 32768;
+  int64_t x_end = 32768;
 
-  std::set<int> in_progress;
-
-  int base_start = 0, base_end = 2621440;
-  int y_end = 65536;
-
-  // int base_start = 131072, base_end = 1048576;
-  // [131072, 2621440] 32768 <- in progress
-
-  // x can be negative, in which case the smallest
-  // cell will be n + 2*x. That means that we want
-  // to run y from 1 to y_end, and x from -n/2 to y.
-
-  // Skip bases that are totally complete before we
-  // get into the parallel phase.
-  while (base_start < base_end &&
-         done.MinY(base_start) >= y_end) {
-    base_start++;
+  // Skip bases that are already totally complete before we get into
+  // the parallel phase.
+  while (u_start < u_end &&
+         done.BoundX(u_start) >= x_end) {
+    u_start++;
   }
 
-  const int total_bases = base_end - base_start;
+  const int64_t total_u = u_end - u_start;
   int64_t total_squares = 0;
 
   auto MaybeStatus =
     [&]() {
       if (status_per.ShouldRun()) {
-        int min_pending = 0;
         int64_t db = 0;
         double saved_ago = 0.0;
         {
           std::unique_lock ml(m);
           db = done_bases;
-          if (!in_progress.empty()) {
-            min_pending = *in_progress.begin();
-          }
           saved_ago = last_save.Seconds();
         }
 
+        printf("\n");
         DisplayResults();
 
-        printf(ACYAN("%lld") " done; " APURPLE("%lld") " filtered\n",
+        printf(ACYAN("%lld") " done; " APURPLE("%lld") " reported\n",
                counter_bases.Read(),
-               counter_filtered.Read());
+               counter_reported.Read());
 
         double sec = run_timer.Seconds();
         std::string bar = ANSI::ProgressBar(
-            db, total_bases,
+            db, total_u,
             StringPrintf(
-                "[%s; %s/s] ✓ <%d; %s ago",
+                "[%s; %s/s] %s ago",
                 FormatNum(total_squares).c_str(),
                 FormatNum(total_squares / run_timer.Seconds()).c_str(),
-                min_pending,
                 ANSI::Time(saved_ago).c_str()),
             sec);
 
-        printf(// ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
-               // ANSI_BEGINNING_OF_LINE
-               "%s\n",
+        printf("%s\n",
                bar.c_str());
       }
     };
 
-  printf("Running base %d to %d, y to <%d\n\n",
-         base_start, base_end,
-         y_end);
+  printf("Running u %lld to %lld (%lld), x to <%lld\n\n",
+         u_start, u_end, total_u,
+         x_end);
 
-  ParallelComp(
-      total_bases,
-      [&](int offset) {
+  UnParallelComp(
+      total_u,
+      [&](int64_t offset) {
 
-        const int base = base_start + offset;
-
-        const int starting_err = SqrtError(base);
+        const int64_t u = u_start + offset;
 
         int64_t task_squares = 0;
 
-        if (starting_err >= ERROR_FILTER_THRESHOLD) {
-          counter_filtered++;
-        } else {
+        int64_t x_start = 0;
 
-          int y_start = 0;
+        {
+          std::unique_lock ml(m);
+          x_start = done.BoundX(u);
+          if (x_start >= x_end) {
+            return;
+          }
+        }
 
-          {
-            std::unique_lock ml(m);
-            y_start = done.MinY(base);
-            /*
-            printf("\n%d. y_start = " AYELLOW("%d")
-                   " y_end = " AORANGE("%d") "\n", base, y_start, y_end);
-            */
-            if (y_start >= y_end) return;
-            in_progress.insert(base);
+        for (int64_t v = 1; 2 * v < u; v++) {
+          const auto &[base, y] = BaseAndY(u, v);
+
+          if (SELF_CHECK) {
+            CHECK(base >= 0 && y >= 0) <<
+              StringPrintf("(u, v) (%lld,%lld) = tuple (%lld, _, %lld)\n",
+                           u, v, base, y);
           }
 
-          #if USE_GPU
           int64_t executed = 0;
-          std::vector<std::pair<int32_t, uint32_t>> interesting =
-            brute_gpu.RunOne(base, y_start, y_end, &executed);
-          for (const auto &[x, y] : interesting) {
+          std::vector<int64_t> interesting =
+            brutesq_gpu.RunOne(u, y, &executed);
+          counter_reported += interesting.size();
+          for (const int64_t x : interesting) {
             ConsiderOne(base, x, y);
           }
 
-          // (This may not be exactly right, but we just use it for
-          // reporting status.)
-          // XXX it's really wrong now that x starts at -n/2.
-          // const int n = (y_end - y_start) * (y_end - 1) / 2;
-
-          // This overcounts because of the many tasks that
-          // die immediately.
-          task_squares += executed;
-
-
-          #else
-          // We want x != y, so wlog we require x < y.
-          for (int y = y_start; y < y_end; y++) {
-            for (int x = 1; x < y; x++) {
-              ConsiderOne(base, x, y);
-              task_squares++;
-              if (task_squares % 65536 == 0) {
-                MaybeStatus();
-              }
-            }
-          }
-          #endif
+          // x ranges from -base/2 to y.
+          task_squares += base/2 + y;
         }
 
         {
           std::unique_lock ml(m);
           total_squares += task_squares;
           done_bases++;
-          in_progress.erase(base);
-          done.SetMinY(base, y_end);
+          done.SetBoundX(u, x_end);
           if (save_per.ShouldRun()) {
             done.Save(DONEFILE);
             last_save.Reset();
@@ -475,13 +472,11 @@ static void Brute() {
 
         MaybeStatus();
       },
-      #if USE_GPU
-      2
-      #else
-      6
-      #endif
-               );
+      2);
 
+  printf("Done! bases %lld, squares %lld, reported %lld\n",
+         counter_bases.Read(), total_squares,
+         counter_reported.Read());
   done.Save(DONEFILE);
 }
 

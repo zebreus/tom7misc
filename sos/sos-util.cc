@@ -12,6 +12,7 @@
 #include "factorization.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"
+#include "util.h"
 
 using namespace std;
 
