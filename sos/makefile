@@ -14,7 +14,7 @@ AMD_ARCH=x86_64
 # AMDSDK=c:/Program Files (x86)/AMD APP SDK/3.0
 AMDSDK=c:/code/AMD_SDK/
 
-ASAN=true
+# ASAN=true
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)

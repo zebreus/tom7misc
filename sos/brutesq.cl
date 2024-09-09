@@ -35,15 +35,14 @@ __kernel void BruteX(const int64_t n, const int64_t y,
                      volatile __global atomic_uint32_t *restrict out_size,
                      __global int64_t *restrict out) {
 
-  const int64_t xoff = get_global_id(0);
-  const int64_t x = xoff - (n / 2);
+  const int64_t x = get_global_id(0);
 
   // PERF: By construction we should have b and f being squares
   // (zero error), so we can skip computing anything about them here.
   const uint64_t a = n + 2 * x + y;
-  const uint64_t b = n;
+  // const uint64_t b = n;
   const uint64_t c = n + x + 2 * y;
-  const uint64_t d = n + 2 * y;
+  // const uint64_t d = n + 2 * y;
   const uint64_t e = n + x + y;
   const uint64_t f = n + 2 * x;
   const uint64_t g = n + x;
@@ -53,9 +52,9 @@ __kernel void BruteX(const int64_t n, const int64_t y,
   int64_t total_err = 0;
   uint8_t not_square = 0;
   ONE_CELL(a);
-  ONE_CELL(b);
+  // ONE_CELL(b);
   ONE_CELL(c);
-  ONE_CELL(d);
+  // ONE_CELL(d);
   ONE_CELL(e);
   ONE_CELL(f);
   ONE_CELL(g);
@@ -78,6 +77,11 @@ __kernel void BruteX(const int64_t n, const int64_t y,
       return;
     }
 
+    /*
+    printf("[n=%lld,y=%lld] pushed %lld at index %d\n",
+           n, y,
+           x, out_idx);
+    */
     out[out_idx] = x;
   }
 }

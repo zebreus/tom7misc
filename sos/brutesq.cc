@@ -22,7 +22,7 @@
 #include "brutesq-gpu.h"
 #include "brute-util.h"
 
-static constexpr bool SELF_CHECK = true;
+static constexpr bool SELF_CHECK = false;
 
 // This is a variant of the "simple" brute force search.
 // The goal is to find proper magic squares whose elements
@@ -46,6 +46,7 @@ static constexpr bool SELF_CHECK = true;
 //   2y = u^2 - (2*v + u mod 2)^2
 
 // Get n,y such that the cells 'b' and 'd' will be square.
+// Note that this returns a nonpositive y.
 std::pair<int64_t, int64_t> BaseAndY(int64_t u, int64_t v) {
   if (SELF_CHECK) {
     CHECK(2 * v < u) << u << " " << v;
@@ -53,15 +54,17 @@ std::pair<int64_t, int64_t> BaseAndY(int64_t u, int64_t v) {
   int64_t n = u * u;
   int64_t d = (2 * v + (u & 1));
   // d^2 = n + 2y
-  // 2y = n - d^2
-  int64_t two_y = n - d * d;
+  // -2y + d^2 = n
+  // -2y = n - d^2
+  // 2y = d^2 - n
+  int64_t two_y = d * d - n;
   if (SELF_CHECK) {
     CHECK((two_y & 1) == 0) << u << " " << v;
     CHECK(u >= 0);
-    CHECK(two_y >= 0);
+    CHECK(two_y <= 0);
   }
 
-  int64_t y = two_y >> 1;
+  int64_t y = two_y / 2;
 
   if (SELF_CHECK) {
     int64_t ne = SqrtError(n);
@@ -85,9 +88,8 @@ std::pair<int64_t, int64_t> BaseAndY(int64_t u, int64_t v) {
 }
 
 // Now the search is very similar to brute.cc. We have n and y
-// determined, and we search all x in -n/2 up to n.
-
-#define USE_GPU 1
+// determined, and we search all x in (0, X) where X is some
+// bound.
 
 static constexpr const char *DONEFILE = "brutesq-done.txt";
 
@@ -100,7 +102,8 @@ DECLARE_COUNTERS(
     counter_filtered,
     // returned from GPU
     counter_reported,
-    u2_, u3_, u4_, u5_, u6_);
+    counter_degenerate,
+    counter_not_better, u4_, u5_, u6_);
 
 inline std::array<int64_t, 9> ProgSquare(int64_t n, int64_t x, int64_t y) {
   return {
@@ -110,12 +113,11 @@ inline std::array<int64_t, 9> ProgSquare(int64_t n, int64_t x, int64_t y) {
 }
 
 // In this "done" representation, the key is the value u, and
-// a value Y means that we have done every (u, v, y) for
-// 2v < u and -u^2 / 2 < y < Y. Because y can be negative,
-// the initial value ("nothing done") is highly negative.
+// a value X means that we have done every (u, v, x) for
+// 2v < u and 0 < x < X.
 namespace {
 struct Done {
-  static constexpr int64_t INITIAL_VALUE = int64_t{-999999999999};
+  static constexpr int64_t INITIAL_VALUE = int64_t{0};
 
   // Or abort if invalid.
   static Done FromString(const std::string &contents) {
@@ -148,7 +150,7 @@ struct Done {
   // tried all squares (base, x, y)
   // with (base, y) = BaseAndY(u, v)
   // for all v | 2v < u
-  // and all x | -u^2 / 2 < x < X.
+  // and all x | 0 < x < X.
   int64_t BoundX(uint64_t u) const {
     Cover::Span s = cover.GetPoint(u);
     // printf("BoundX %llu = %lld\n", u, s.data);
@@ -213,6 +215,8 @@ static void ObserveResult(const Result &r) {
     if (r.timestamp - old.timestamp > OBSERVE_AGE ||
         r.total_err <= old.total_err) {
       recent_results[r.not_square] = r;
+    } else {
+      counter_not_better++;
     }
   }
 }
@@ -238,11 +242,11 @@ static void DisplayResults() {
       auto C = [](int64_t a) {
           int64_t e = SqrtError(a);
 
-          auto P = [](const std::string &s) { return Util::Pad(-7, s); };
+          auto P = [](const std::string &s) { return Util::Pad(-11, s); };
 
-          if (e == 0) return P(StringPrintf(AGREEN("%d"), a));
-          else if (e == 1) return P(StringPrintf(AYELLOW("%d"), a));
-          else return P(StringPrintf(AORANGE("%d"), a));
+          if (e == 0) return P(StringPrintf(AGREEN("%lld"), a));
+          else if (e == 1) return P(StringPrintf(AYELLOW("%lld"), a));
+          else return P(StringPrintf(AORANGE("%lld"), a));
         };
 
       printf("%s %s %s | %lld,%lld,%lld\n"
@@ -263,9 +267,9 @@ static std::string ShowSquare(const std::array<int64_t, 9> &sq) {
                d, e, f,
                g, h, i] = sq;
 
-  return StringPrintf("%d %d %d\n"
-                      "%d %d %d\n"
-                      "%d %d %d\n",
+  return StringPrintf("%lld %lld %lld\n"
+                      "%lld %lld %lld\n"
+                      "%lld %lld %lld\n",
                       a, b, c,
                       d, e, f,
                       g, h, i);
@@ -273,14 +277,17 @@ static std::string ShowSquare(const std::array<int64_t, 9> &sq) {
 
 static inline void ConsiderOne(int64_t base, int64_t x, int64_t y) {
   if constexpr (SELF_CHECK) {
-    // It is not actually wrong for y to be negative, but it is not
+    // x and y can have either sign, but in this particular search
+    // we expect a nonnegative x and a nonpositive y.
     // expected in this particular search.
-    CHECK(base >= 0 && y >= 0) << base << " " << x << " " << y;
+    CHECK(base >= 0 && x >= 0 && y <= 0) << base << " " << x << " " << y;
   }
 
   // These result in degenerate squares (duplicates).
   if (x == 0 || y == 0 || x == y || -x == y ||
       x == 2 * y || y == 2 * x) {
+    printf("Example degenerate: %lld %lld %lld\n", base, x, y);
+    counter_degenerate++;
     return;
   }
 
@@ -351,9 +358,7 @@ static inline void ConsiderOne(int64_t base, int64_t x, int64_t y) {
 
 
 static void Brute() {
-  #if USE_GPU
   BruteSqGPU brutesq_gpu(cl, report_threshold);
-  #endif
 
   Periodically status_per(5.0);
   Timer last_save;
@@ -368,7 +373,7 @@ static void Brute() {
   Done done = done_txt.empty() ? Done() : Done::FromString(done_txt);
 
   // v always ranges up to u/2.
-  uint64_t u_start = 0, u_end = 32768;
+  uint64_t u_start = 0, u_end = 65536;
   int64_t x_end = 32768;
 
   // Skip bases that are already totally complete before we get into
@@ -395,9 +400,12 @@ static void Brute() {
         printf("\n");
         DisplayResults();
 
-        printf(ACYAN("%lld") " done; " APURPLE("%lld") " reported\n",
+        printf(ACYAN("%lld") " done; " APURPLE("%s") " reptd "
+               AORANGE("%s") " degen; " AYELLOW("%s") " not better\n",
                counter_bases.Read(),
-               counter_reported.Read());
+               FormatNum(counter_reported.Read()).c_str(),
+               FormatNum(counter_degenerate.Read()).c_str(),
+               FormatNum(counter_not_better.Read()).c_str());
 
         double sec = run_timer.Seconds();
         std::string bar = ANSI::ProgressBar(
@@ -440,21 +448,20 @@ static void Brute() {
           const auto &[base, y] = BaseAndY(u, v);
 
           if (SELF_CHECK) {
-            CHECK(base >= 0 && y >= 0) <<
+            CHECK(base >= 0 && y <= 0) <<
               StringPrintf("(u, v) (%lld,%lld) = tuple (%lld, _, %lld)\n",
                            u, v, base, y);
           }
 
           int64_t executed = 0;
           std::vector<int64_t> interesting =
-            brutesq_gpu.RunOne(u, y, &executed);
+            brutesq_gpu.RunOne(base, y, x_start, x_end, &executed);
           counter_reported += interesting.size();
           for (const int64_t x : interesting) {
             ConsiderOne(base, x, y);
           }
 
-          // x ranges from -base/2 to y.
-          task_squares += base/2 + y;
+          task_squares += executed;
         }
 
         {

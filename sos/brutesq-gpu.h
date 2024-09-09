@@ -68,7 +68,13 @@ struct BruteSqGPU {
   std::vector<int64_t>
   RunOne(int64_t base,
          int64_t y,
+         int64_t x_start, int64_t x_end,
          int64_t *executed) {
+
+    if (x_start == 0) x_start++;
+
+    int64_t x_range = x_end - x_start;
+    if (x_range <= 0) return {};
 
     // Only one GPU process at a time.
     MutexLock ml(&m);
@@ -76,11 +82,6 @@ struct BruteSqGPU {
     // Make sure the count is zero.
     CopyBufferToGPU(cl->queue, zero, out_size_gpu);
     clFinish(cl->queue);
-
-    // This is a 1D kernel where arg(0) ranges from -base/2 to y - 1.
-    // This will include the degenerate value of zero (hence the + 1),
-    // but it's not harmful to also compute some degenerate squares.
-    size_t x_range = base/2 + y + 1;
 
     // Run kernel.
     CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (int64_t),
@@ -92,8 +93,8 @@ struct BruteSqGPU {
     CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
                                  (void *)&out_gpu));
 
-    size_t global_work_offset[] = { 0 };
-    size_t global_work_size[] = { x_range };
+    size_t global_work_offset[] = { (size_t)x_start };
+    size_t global_work_size[] = { (size_t)x_range };
 
     CHECK_SUCCESS(
         clEnqueueNDRangeKernel(cl->queue, kernel,
@@ -113,14 +114,20 @@ struct BruteSqGPU {
     std::vector<uint32_t> out_size =
       CopyBufferFromGPU<uint32_t>(cl->queue, out_size_gpu, 1);
 
+    *executed = x_range;
+
     CHECK(out_size.size() == 1);
     const int num = out_size[0];
     CHECK(num <= MAX_INTERESTING) << "invalid: " << num;
 
+    /*
+    printf("For base=%lld y=%lld x=%lld-%lld, num=%d\n",
+           base, y, x_start, x_end, num);
+    */
 
     if (num > 0) {
       std::vector<int64_t> interesting =
-        CopyBufferFromGPU<int64_t>(cl->queue, out_gpu, MAX_INTERESTING);
+        CopyBufferFromGPU<int64_t>(cl->queue, out_gpu, num);
 
       if (num >= MAX_INTERESTING) {
         for (int i = 0; i < 3 && i < (int)interesting.size(); i++) {
