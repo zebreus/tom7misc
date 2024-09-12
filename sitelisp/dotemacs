@@ -165,11 +165,14 @@
          ;; "FixederSys 1x-24:antialias=none"
 
          ;; hand tweaked to use full resolution; superior!
-         "FixederSys 2x-24:antialias=none"
+
+         ;; on mac, antialias=false is right, not =none (has no effect)
+         ;; "FixederSys 1x-16:antialias=false:hinting=false"
+         ;; "FixederSys 2x-24:antialias=none"
          ;; "FixederSys Light 2x-24:antialias=none"
 
          ;; huge!
-         ; "FixederSys 2x-48:antialias=none"
+          "FixederSys 2x-24:antialias=none:hinting=false"
          )
 
         ;; without this, emacs thinks my font doesn't have greek :(
@@ -197,10 +200,13 @@
      ((eq window-system 'ns)
       (progn
         (set-frame-font
-         ;; Working OS X font: http://spacebar.org/stuff/FixedSys.dfont.zip
+         ;; Working OS X font: http://tom7.org/fixedersys/
          ;; Don't use FixedSys Excelsior 2 or 3; they are "anti"-aliased!
 
-         "-*-Menlo-bold-normal-normal-*-17-*-*-*-m-0-iso10646-1"
+         ; "FixederSys 1x-16:antialias=false:hinting=false"
+         "FixederSys 2x-32:antialias=false:hinting=false"
+
+         ;; "-*-Menlo-bold-normal-normal-*-17-*-*-*-m-0-iso10646-1"
 
          ;; "FixedSys-15"
 
@@ -579,6 +585,7 @@
                 ("\\.uml$" . aaph-mode)
                 ("\\.uh$" . aaph-mode)
                 ("\\.db$" . aaph-mode)
+                ("\\.bovex$" . aaph-mode)
                 ("\\.aah?$" . aaph-mode)
                 ("\\.bovex$" . aaph-mode)
                 ("\\.hml$" . sml-mode) ;; close enough
