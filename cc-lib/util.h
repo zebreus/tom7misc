@@ -364,6 +364,7 @@ inline std::string itos(int i) { return Util::itos(i); }
 inline int stoi(const std::string &s) { return Util::stoi(s); }
 inline std::string dtos(double d) { return Util::dtos(d); }
 
+#if 0
 /* drawing lines with Bresenham's algorithm.
    deprecated; please use lines.h
 */
@@ -373,6 +374,7 @@ struct line {
   virtual bool next(int &x, int &y) = 0;
   virtual ~line() {};
 };
+#endif
 
 // Note: bitbuffer used to be here; moved to bitbuffer.h
 

@@ -56,6 +56,9 @@ struct AutoHisto {
 
     total_samples++;
 
+    if (static_cast<int64_t>(x) != x)
+      integral = false;
+
     if (Bucketed()) {
       AddBucketed(x, &data);
     } else {
@@ -138,10 +141,26 @@ struct AutoHisto {
       }
 
       CHECK(maxx > minx);
-      histo.min = minx;
-      histo.max = maxx;
-      histo.histo_width = maxx - minx;
-      histo.bucket_width = histo.histo_width / buckets;
+
+      // If the data are integral, use integer-size buckets.
+      // We do this by rounding up to the next integer bucket
+      // size, then expanding equally on the low and high ends.
+      if (integral) {
+        int64_t bucket_width = (int64_t)std::ceil((maxx - minx) / buckets);
+        int64_t full_width = width * buckets;
+        int64_t add_left = full_width / 2;
+        int64_t add_right = full_width - add_left;
+
+        histo.min = minx - add_left;
+        histo.max = maxx + add_right;
+        histo.histo_width = full_width;
+        histo.bucket_width = bucket_width;
+      } else {
+        histo.min = minx;
+        histo.max = maxx;
+        histo.histo_width = maxx - minx;
+        histo.bucket_width = histo.histo_width / buckets;
+      }
 
       // Using the raw samples.
       for (double x : data) {
@@ -187,7 +206,9 @@ struct AutoHisto {
     int max_label = 0;
     for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
       const std::string label =
-        StringPrintf("%.1f", histo.BucketLeft(bidx));
+        integral ?
+        StringPrintf("%.1f", histo.BucketLeft(bidx)) :
+        StringPrintf("%lld", (int64_t)histo.BucketLeft(bidx));
       labels.emplace_back(label);
       max_label = std::max(max_label, (int)label.size());
     }
@@ -226,6 +247,8 @@ struct AutoHisto {
     return ret;
   }
 
+  bool Empty() const { return total_samples == 0; }
+
   // TODO: Simple one-line ANSI histo with colored bars.
 
   // Probably should have the caller do printing.
@@ -252,7 +275,7 @@ struct AutoHisto {
     return ret;
   }
 
-private:
+ private:
 
   // Single character.
   static std::string FilledColumnChar(float f) {
@@ -337,6 +360,8 @@ private:
   // If 0, then we're still collecting samples.
   int64_t num_buckets = 0;
   int64_t total_samples = 0;
+  // True if we've only ever observed integer samples.
+  bool integral = true;
 };
 
 #endif

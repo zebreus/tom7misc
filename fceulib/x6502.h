@@ -34,6 +34,8 @@
 #include "base/logging.h"
 
 struct X6502 {
+  #undef VERBOSE_READ
+
   // Initialize with fc pointer, since memory reads/writes
   // trigger callbacks.
   explicit X6502(FC *fc);
@@ -100,6 +102,7 @@ private:
   // normal memory read
   inline uint8 RdMem(unsigned int A) {
     // XXX
+    #ifdef VERBOSE_READ
     uint8 x = fc->fceu->ARead[A](fc, A);
     printf("Read %04x: %02x = ", A, x);
     for (int i = 0; i < 8; i++) {
@@ -107,6 +110,10 @@ private:
     }
     printf("\n");
     return DB = x;
+    #else
+    uint8 x = fc->fceu->ARead[A](fc, A);
+    return DB = x;
+    #endif
   }
 
   // normal memory write

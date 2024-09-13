@@ -5309,6 +5309,7 @@ DataType data_type(std::string_view in, long double *const out) {
 class IBasicCSVParser;
 
 static const std::string ERROR_NAN = "Not a number.";
+[[maybe_unused]]
 static const std::string ERROR_OVERFLOW = "Overflow error.";
 static const std::string ERROR_FLOAT_TO_INT =
     "Attempted to convert a floating point value to an integral type.";

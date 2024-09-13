@@ -199,7 +199,7 @@ void main() {
           __asm__("lda (%v),y", MEM_LINE);        \
           __asm__("sta $2007");                 \
           __asm__("iny")
-#endif
+        #endif
 
         // #define ONE_CHUNK *PPU_DATA = bb
         #if 1

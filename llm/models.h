@@ -95,7 +95,7 @@ struct Models {
     .model = "f:\\llama3\\70b\\ggml-model-f16.gguf",
     .context_size = 8192,
     // Aggressive would be 12.
-    .num_gpu_layers = 11,
+    .num_gpu_layers = 10,
     .num_threads = 30,
     .num_threads_batch = 22,
   };

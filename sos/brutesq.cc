@@ -234,7 +234,7 @@ static void DisplayResults() {
     }
 
     const Result &r = recent_results[m];
-    if (r.base > 0) {
+    if (r.base != 0 || r.x != 0 || r.y != 0) {
       const auto &[a, b, c,
                    d, e, f,
                    g, h, i] = r.square;
@@ -344,7 +344,7 @@ static inline void ConsiderOne(int64_t base, int64_t x, int64_t y) {
       StringAppendF(&result, "SQUARE");
       for (int cell : sq)
         StringAppendF(&result, " %lld", cell);
-      StringAppendF(&result, " prog%lld_%lld_%lld\n", base, x, y);
+      StringAppendF(&result, " prsq%lld_%lld_%lld\n", base, x, y);
       printf("\n\n%s\n\n", result.c_str());
       if (total_err <= save_threshold[not_square]) {
         FILE *f = fopen("brutesq.txt", "ab");
@@ -373,118 +373,134 @@ static void Brute() {
   Done done = done_txt.empty() ? Done() : Done::FromString(done_txt);
 
   // v always ranges up to u/2.
-  uint64_t u_start = 0, u_end = 65536;
-  int64_t x_end = 32768;
+  // uint64_t u_start = 0, u_end = 2048;
+  // int64_t x_end = int64_t{1} << 31;
 
-  // Skip bases that are already totally complete before we get into
-  // the parallel phase.
-  while (u_start < u_end &&
-         done.BoundX(u_start) >= x_end) {
-    u_start++;
+  std::vector<std::tuple<uint64_t, uint64_t, int64_t>> todo = {
+    std::make_tuple(0, 16384, 1048576),
+    std::make_tuple(131072, 131072 * 2, 8192),
+    std::make_tuple(0, 2048, int64_t{1} << 31),
+    std::make_tuple(131072 * 2, 131072 * 3, 1024),
+  };
+
+
+  for (const auto &td : todo) {
+    uint64_t u_start = 0, u_end = 0;
+    int64_t x_end;
+    std::tie(u_start, u_end, x_end) = td;
+    // uint64_t u_start = 0, u_end = 2048;
+    // int64_t x_end = int64_t{1} << 31;
+
+    // Skip bases that are already totally complete before we get into
+    // the parallel phase.
+    while (u_start < u_end &&
+           done.BoundX(u_start) >= x_end) {
+      u_start++;
+    }
+
+    const int64_t total_u = u_end - u_start;
+    int64_t total_squares = 0;
+
+    auto MaybeStatus =
+      [&]() {
+        if (status_per.ShouldRun()) {
+          int64_t db = 0;
+          double saved_ago = 0.0;
+          {
+            std::unique_lock ml(m);
+            db = done_bases;
+            saved_ago = last_save.Seconds();
+          }
+
+          printf("\n");
+          DisplayResults();
+
+          printf(ACYAN("%lld") " done; " APURPLE("%s") " reptd "
+                 AORANGE("%s") " degen; " AYELLOW("%s") " not better\n",
+                 counter_bases.Read(),
+                 FormatNum(counter_reported.Read()).c_str(),
+                 FormatNum(counter_degenerate.Read()).c_str(),
+                 FormatNum(counter_not_better.Read()).c_str());
+
+          double sec = run_timer.Seconds();
+          std::string bar = ANSI::ProgressBar(
+              db, total_u,
+              StringPrintf(
+                  "[%s; %s/s] %s ago",
+                  FormatNum(total_squares).c_str(),
+                  FormatNum(total_squares / run_timer.Seconds()).c_str(),
+                  ANSI::Time(saved_ago).c_str()),
+              sec);
+
+          printf("%s\n",
+                 bar.c_str());
+        }
+      };
+
+    printf("Running u %lld to %lld (%lld), x to <%lld\n\n",
+           u_start, u_end, total_u,
+           x_end);
+
+    UnParallelComp(
+        total_u,
+        [&](int64_t offset) {
+
+          const int64_t u = u_start + offset;
+
+          int64_t task_squares = 0;
+
+          int64_t x_start = 0;
+
+          {
+            std::unique_lock ml(m);
+            x_start = done.BoundX(u);
+            if (x_start >= x_end) {
+              return;
+            }
+          }
+
+          for (int64_t v = 1; 2 * v < u; v++) {
+            const auto &[base, y] = BaseAndY(u, v);
+
+            if (SELF_CHECK) {
+              CHECK(base >= 0 && y <= 0) <<
+                StringPrintf("(u, v) (%lld,%lld) = tuple (%lld, _, %lld)\n",
+                             u, v, base, y);
+            }
+
+            int64_t executed = 0;
+            std::vector<int64_t> interesting =
+              brutesq_gpu.RunOne(base, y, x_start, x_end, &executed);
+            counter_reported += interesting.size();
+            for (const int64_t x : interesting) {
+              ConsiderOne(base, x, y);
+            }
+
+            task_squares += executed;
+          }
+
+          {
+            std::unique_lock ml(m);
+            total_squares += task_squares;
+            done_bases++;
+            done.SetBoundX(u, x_end);
+            if (save_per.ShouldRun()) {
+              done.Save(DONEFILE);
+              last_save.Reset();
+            }
+          }
+
+          counter_bases++;
+
+          MaybeStatus();
+        },
+        2);
+
+    printf("Done! bases %lld, squares %lld, reported %lld\n",
+           counter_bases.Read(), total_squares,
+           counter_reported.Read());
+    done.Save(DONEFILE);
   }
-
-  const int64_t total_u = u_end - u_start;
-  int64_t total_squares = 0;
-
-  auto MaybeStatus =
-    [&]() {
-      if (status_per.ShouldRun()) {
-        int64_t db = 0;
-        double saved_ago = 0.0;
-        {
-          std::unique_lock ml(m);
-          db = done_bases;
-          saved_ago = last_save.Seconds();
-        }
-
-        printf("\n");
-        DisplayResults();
-
-        printf(ACYAN("%lld") " done; " APURPLE("%s") " reptd "
-               AORANGE("%s") " degen; " AYELLOW("%s") " not better\n",
-               counter_bases.Read(),
-               FormatNum(counter_reported.Read()).c_str(),
-               FormatNum(counter_degenerate.Read()).c_str(),
-               FormatNum(counter_not_better.Read()).c_str());
-
-        double sec = run_timer.Seconds();
-        std::string bar = ANSI::ProgressBar(
-            db, total_u,
-            StringPrintf(
-                "[%s; %s/s] %s ago",
-                FormatNum(total_squares).c_str(),
-                FormatNum(total_squares / run_timer.Seconds()).c_str(),
-                ANSI::Time(saved_ago).c_str()),
-            sec);
-
-        printf("%s\n",
-               bar.c_str());
-      }
-    };
-
-  printf("Running u %lld to %lld (%lld), x to <%lld\n\n",
-         u_start, u_end, total_u,
-         x_end);
-
-  UnParallelComp(
-      total_u,
-      [&](int64_t offset) {
-
-        const int64_t u = u_start + offset;
-
-        int64_t task_squares = 0;
-
-        int64_t x_start = 0;
-
-        {
-          std::unique_lock ml(m);
-          x_start = done.BoundX(u);
-          if (x_start >= x_end) {
-            return;
-          }
-        }
-
-        for (int64_t v = 1; 2 * v < u; v++) {
-          const auto &[base, y] = BaseAndY(u, v);
-
-          if (SELF_CHECK) {
-            CHECK(base >= 0 && y <= 0) <<
-              StringPrintf("(u, v) (%lld,%lld) = tuple (%lld, _, %lld)\n",
-                           u, v, base, y);
-          }
-
-          int64_t executed = 0;
-          std::vector<int64_t> interesting =
-            brutesq_gpu.RunOne(base, y, x_start, x_end, &executed);
-          counter_reported += interesting.size();
-          for (const int64_t x : interesting) {
-            ConsiderOne(base, x, y);
-          }
-
-          task_squares += executed;
-        }
-
-        {
-          std::unique_lock ml(m);
-          total_squares += task_squares;
-          done_bases++;
-          done.SetBoundX(u, x_end);
-          if (save_per.ShouldRun()) {
-            done.Save(DONEFILE);
-            last_save.Reset();
-          }
-        }
-
-        counter_bases++;
-
-        MaybeStatus();
-      },
-      2);
-
-  printf("Done! bases %lld, squares %lld, reported %lld\n",
-         counter_bases.Read(), total_squares,
-         counter_reported.Read());
-  done.Save(DONEFILE);
 }
 
 int main(int argc, char **argv) {

@@ -196,7 +196,7 @@ static std::vector<uint8> GetKey(const string &passphrase,
   return key;
 }
 
-// 128 bits in base64. This takes 22 characters formally, but always
+// 128 bits in base64. This takes 24 characters formally, but always
 // has two bytes of padding with =. So we actually leave that off.
 static int LINE_IV_BASE64_LENGTH = 22;
 // Same for the encrypted payload, which is formally 88 characters but

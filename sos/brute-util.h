@@ -43,7 +43,7 @@ static constexpr int report_threshold[10] = {
 static inline constexpr int save_threshold[10] = {
   999999999,    // 0
   999999999,    // 1
-  1000,         // 2
+  5000,         // 2
   35,           // 3
   20,           // 4
   5,            // 5

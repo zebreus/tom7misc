@@ -277,7 +277,8 @@ struct Optimizer {
   std::pair<std::vector<Feature>, double>
   Explain(
       // Can pass GetAll(), or your own experiments.
-      const std::vector<std::tuple<arg_type, double, std::optional<OutputType>>> &results,
+      const std::vector<
+          std::tuple<arg_type, double, std::optional<OutputType>>> &results,
       const std::array<IntFeature, N_INTS> &int_features,
       const std::array<DoubleFeature, N_DOUBLES> &double_features,
       // If present, a named bias term. Usually desirable.
@@ -352,9 +353,11 @@ struct Optimizer {
 
     const int num_features = features.size();
 
-    auto Score = [this, &results, &features](const std::vector<double> &coeffs) -> double {
+    auto Score = [&results, &features](const std::vector<double> &coeffs) ->
+      double {
         double loss = 0.0;
-        // For each row, compute the score we'd get with the chosen coefficients.
+        // For each row, compute the score we'd get with the chosen
+        // coefficients.
         for (const auto &[arg, actual_score, ret_] : results) {
           const auto &[int_args, double_args] = arg;
           double computed_score = 0.0;
@@ -389,8 +392,8 @@ struct Optimizer {
       };
 
     // Not much basis for choosing bounds. Could be args?
-    std::vector<double> lower_bound(num_features, -1.0e6);
-    std::vector<double> upper_bound(num_features, +1.0e6);
+    std::vector<double> lower_bound(num_features, -1.0e9);
+    std::vector<double> upper_bound(num_features, +1.0e9);
 
     const auto &[coeffs, loss] =
       Opt::Minimize(num_features,

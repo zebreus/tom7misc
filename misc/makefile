@@ -82,6 +82,9 @@ compress.exe : compress.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP) $(CC_LIB)/ansi.o
 decompress.exe : decompress.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP) $(CC_LIB)/ansi.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+maxsquare.exe : maxsquare.o $(CC_LIB_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 clean :
 	rm -f *.exe *.o core *.s $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
 

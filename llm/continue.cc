@@ -116,9 +116,10 @@ int main(int argc, char ** argv) {
     printf("Writing to " ACYAN("%s") "...\n", argv[2]);
   }
 
-  ContextParams cparams = Models::LLAMA_70B_F16;
+  // ContextParams cparams = Models::LLAMA_70B_F16;
   // ContextParams cparams = Models::LLAMA_70B_Q8;
   // ContextParams cparams = Models::LLAMA_7B_F16;
+  ContextParams cparams = Models::LLAMA3_70B_F16;
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

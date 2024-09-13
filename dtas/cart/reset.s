@@ -16,53 +16,65 @@
 .segment "HEADER"
 
     .byte $4e,$45,$53,$1a
+    ;; 1 16k PRG ROM
     .byte 01
+    ;; 1 8k CHR ROM
     .byte 01
+    ;; No mirroring; mapper zero; etc.
     .byte 00
     .byte 00
+    ;; Reserved
     .res 8,0
-
 
 .segment "STARTUP"
 
 start:
-        sei
-        cld
+    sei
+    cld
 
-        ;; turn off frame counter IRQ.
-        ldx #$40
-        stx $4017
+    ;; turn off frame counter IRQ.
+    ;; 4017 (reading) is joy2, but writing is an audio
+    ;; control register. Setting bit 6 here inhibits
+    ;; the IRQ.
+    ldx #$40
+    stx $4017
 
-        ldx #$ff
-        txs
-        inx
-        stx $2000
-        stx $2001
-        stx $4010
+    ;; initialize stack to 0xFF
+    ldx #$ff
+    txs
+
+    ;; x = 0
+    inx
+    stx $2000
+    stx $2001
+    stx $4010
+    ;; wait for vblank
 :
-        lda $2002
-        bpl :-
-        lda #$00
-Blankram:                       ;puts zero in all CPU RAM
-        sta $00, x
-        sta $0100, x
-        sta $0200, x
-        sta $0300, x
-        sta $0400, x
-        sta $0500, x
-        sta $0600, x
-        sta $0700, x
-        inx
-        bne Blankram
+    lda $2002
+    bpl :-
 
-  jmp ActualStart
+    lda #$00
+Blankram:           ; puts zero in all CPU RAM
+    sta $00, x
+    sta $0100, x
+    sta $0200, x
+    sta $0300, x
+    sta $0400, x
+    sta $0500, x
+    sta $0600, x
+    sta $0700, x
+    inx
+    bne Blankram
 
-  .asciiz "Test ROM #2 by Tom 7, 2023. Distribute freely. Displays (some of) the contents of SRAM on the screen continuously, for debugging."
+    jmp ActualStart
+
+    .asciiz "Test ROM #2 by Tom 7, 2023. Distribute freely. Displays (some of) the contents of SRAM on the screen continuously, for debugging."
 
 ActualStart:
+    ;; wait vblank again
 :
-        lda $2002
-        bpl :-
+    lda $2002
+    bpl :-
 
 Isprites:
         jsr Blanksprite

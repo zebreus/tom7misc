@@ -1,4 +1,7 @@
 
+// Note: Herein are some notes for a monomorphization pass, but I didn't
+// implement it. I think it is harder than it seemed.
+
 #include "monomorphization.h"
 
 #include <string>

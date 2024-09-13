@@ -78,7 +78,7 @@ struct IntervalCover {
 
   // Returns true if this point starts after any interval.
   // This is just true for 2^64 - 1.
-  constexpr bool IsAfterLast(uint64_t pt) const;
+  static constexpr bool IsAfterLast(uint64_t pt);
 
   // Get the start of the span that starts strictly after this
   // point. Should not be called for a point p where IsAfterLast(p)
@@ -224,7 +224,7 @@ uint64_t IntervalCover<D>::Prev(uint64_t pt) const {
 }
 
 template<class D>
-constexpr bool IntervalCover<D>::IsAfterLast(uint64_t pt) const {
+constexpr bool IntervalCover<D>::IsAfterLast(uint64_t pt) {
   return pt == MAX64;
 }
 

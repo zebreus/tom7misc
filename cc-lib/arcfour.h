@@ -2,7 +2,7 @@
 /* Alleged RC4 algorithm.
    The RC4 name is trademarked by RSA DSI.
    This implementation is based on the algorithm
-   published in Applied Cryptography. 
+   published in Applied Cryptography.
 
    This algorithm is adorably simple, but
    should only be used for cryptography with
@@ -23,6 +23,9 @@ struct ArcFour {
 
   explicit ArcFour(const std::vector<uint8> &v);
   explicit ArcFour(const std::string &s);
+  // Unspecified initialization (and of course 64 bits
+  // is not enough entropy to be secure).
+  explicit ArcFour(uint64_t seed);
 
   // Get the next byte.
   uint8 Byte();

@@ -71,9 +71,9 @@ struct LineInProgress {
 
 static std::string MakeParticipantRegexOne(
     const std::vector<std::string> &ppts) {
-  string user_alt = Util::Join(ppts, "|");
+  string ppts_alt = Util::Join(ppts, "|");
   return StringPrintf("((<(%s)>| \\* (%s)) [^ \n][^\n]*\n)",
-                      user_alt.c_str(), user_alt.c_str());
+                      ppts_alt.c_str(), ppts_alt.c_str());
 }
 
 static std::string MakeParticipantRegex(
@@ -86,7 +86,7 @@ struct Chatting {
   ArcFour rc;
   LLM *llm = nullptr;
   std::vector<std::string> participants;
-  const string user;
+  string user;
   const string prompt;
   Console console;
 
@@ -100,6 +100,12 @@ struct Chatting {
 
     Initialize(prompt);
 
+    ResetUserNFA();
+  }
+
+  ByteNFA user_nfa;
+
+  void ResetUserNFA() {
     // This basically assumes that the tokens to generate this end
     // with either ">" or "> ". I think that is the case for llama,
     // though we could check or implement this a different way.
@@ -108,8 +114,6 @@ struct Chatting {
                    user.c_str(), user.c_str());
     user_nfa = MakeNFA(user_regex);
   }
-
-  ByteNFA user_nfa;
 
   // Reset the sampler regex to allow any participant to speak,
   // when we're at the beginning of a line.
@@ -239,6 +243,13 @@ struct Chatting {
     }
   }
 
+  bool IsParticipant(const std::string &p) const {
+    for (const std::string &ppt : participants) {
+      if (p == ppt) return true;
+    }
+    return false;
+  }
+
   // Clear anything in the current line and force the argument.
   void ForceLine(std::string full_line) {
     CHECK(full_line.back() != '\n') << "[" << full_line << "]";
@@ -265,7 +276,8 @@ struct Chatting {
       // by sending a full (empty) line. We just loop again to
       // get another useful line.
       return false;
-    } else if (Util::TryStripPrefix("/raw ", &input)) {
+    } else if (Util::TryStripPrefix("/raw ", &input) ||
+               Util::TryStripPrefix("/force ", &input)) {
       // This means we want to remove the predicted prefix and
       // then insert the input verbatim.
       //
@@ -356,20 +368,68 @@ struct Chatting {
     } else if (Util::TryStripPrefix("/invite ", &input)) {
       input = Util::NormalizeWhitespace(input);
 
-      participants.push_back(input);
-      printf(ABLUE(" * %s joined") "\n", input.c_str());
-      llm->sampler.SetRegEx(
-          MakeParticipantRegex(participants));
+      if (IsParticipant(user)) {
+        printf(ARED("%s") " is already here\n", input.c_str());
+      } else {
+        participants.push_back(input);
+        printf(ABLUE(" * %s joined") "\n", input.c_str());
+        llm->sampler.SetRegEx(
+            MakeParticipantRegex(participants));
+      }
       return false;
 
-      // TODO: /kick
+    } else if (Util::TryStripPrefix("/kick ", &input)) {
+      input = Util::NormalizeWhitespace(input);
+
+      if (user == input) {
+        printf(ARED("Can't kick self.") "\n");
+      } else {
+        if (std::erase_if(participants, [&](const std::string &ppt) {
+            return ppt == input;
+          }) > 0) {
+          printf(ABLUE(" * %s left") "\n", input.c_str());
+        } else {
+          printf("Couldn't kick unknown user " ARED("%s") "\n",
+                 input.c_str());
+        }
+      }
+
+      // In any case, get new input.
+      return false;
+
+    } else if (Util::TryStripPrefix("/become ", &input)) {
+      input = Util::NormalizeWhitespace(input);
+
+      // Ensure that the target is one of the participants.
+      if (IsParticipant(user)) {
+        user = input;
+        ResetUserNFA();
+        printf(ABLUE("Became %s") "\n", user.c_str());
+      } else {
+        printf("Can't become non-participant " ARED("%s")
+               " (invite them first).\n", user.c_str());
+      }
+      return false;
 
     } else if (Util::TryStripPrefix("/save ", &input)) {
       // /save file
 
       input = Util::NormalizeWhitespace(input);
       if (input.empty()) input = "chat.txt";
+
+      // Recreate a full chat file.
       std::string contents;
+      // Participants.
+      for (const std::string &ppt : participants) {
+        if (!contents.empty()) contents.push_back(',');
+        contents += ppt;
+      }
+
+      // Now the prompt we started with.
+      contents.push_back('\n');
+      contents += prompt;
+
+      // Now the new chat lines.
       for (const ChatLine &line : lines) {
         if (line.is_action) {
           StringAppendF(&contents, " * %s %s\n",
@@ -508,10 +568,23 @@ struct Chatting {
           current_line += tok;
           line_token_count++;
 
+          #if 0
+          static bool parity = false;
+          std::string ntok = Util::Replace(tok, "\n", "¶\n");
+          if (parity) {
+            printf(ABGCOLOR(33, 33, 55, "%s"), ntok.c_str());
+          } else {
+            printf("%s", ntok.c_str());
+          }
+          parity = !parity;
+          #else
           printf("%s", tok.c_str());
+          #endif
+
           fflush(stdout);
 
-          if (tok_id == llm->context.NewlineToken()) {
+          if (tok_id == llm->context.NewlineToken() ||
+              Util::EndsWith(tok, "\n")) {
             if (verbose) {
               double sec = line_timer.Seconds();
               double tps = line_token_count / sec;
@@ -548,8 +621,14 @@ int main(int argc, char ** argv) {
   Timer model_timer;
 
   // ContextParams cparams = Models::LLAMA_70B_F16;
-  ContextParams cparams = Models::LLAMA3_8B_Q8;
-  cparams.num_gpu_layers = 17;
+
+  // ContextParams cparams = Models::LLAMA3_8B_Q8;
+  // cparams.num_gpu_layers = 17;
+
+  ContextParams cparams = Models::LLAMA3_70B_F16;
+  cparams.num_gpu_layers = 10;
+
+
   // ContextParams cparams = Models::LLAMA_7B_F16;
 
   // This fits on the GPU, so inference is quite fast.

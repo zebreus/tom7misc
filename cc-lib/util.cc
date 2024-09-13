@@ -309,6 +309,7 @@ std::vector<uint32_t> Util::UTF8Codepoints(std::string_view utf8) {
   return ret;
 }
 
+#if 0
 namespace {
 struct LineReal : public line {
   int x0, y0, x1, y1;
@@ -388,6 +389,7 @@ struct LineReal : public line {
 line *line::create(int a, int b, int c, int d) {
   return new LineReal(a, b, c, d);
 }
+#endif
 
 bool Util::isdir(const string &f) {
   struct stat st;

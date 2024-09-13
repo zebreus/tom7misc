@@ -372,7 +372,11 @@
       "\n"
       "\nBonus math symbols:\n"
       "\n"
-      "∀  ∃  →  ×  ÷\n"
+      "∀  ∃  →  ¬  ×  ÷  ≠\n"
+      "\n"
+      "\nBonus punctuation:\n"
+      "\n"
+      "en –  em —  “ ”   ‘ ’  « »\n"
       ))
     ))
 
@@ -395,6 +399,36 @@
           ; #b10011001
             #b00000000
             #b00000000))
+
+;; Make asm-mode more tolerable
+(defun tom7-asm-mode-hook ()
+  ;; don't treat ; specially. This is the main thing, since it
+  ;; makes it impossible to comment-out code!
+  (local-unset-key (vector asm-comment-char))
+  ; (electric-indent-local-mode)  ; toggle off
+  (setq tab-width 4)
+  (setq indent-tabs-mode nil)
+  (setq tab-always-indent t)
+
+  ;; this is from Peter Cordes on stackoverflow.
+  (defun asm-calculate-indentation ()
+  (or
+   ;; Flush labels to the left margin.
+   ;   (and (looking-at "\\(\\.\\|\\sw\\|\\s_\\)+:") 0)
+   ; Tom modified this to also include the weird ':' label.
+   (and (looking-at "[.@_[:word:]]*:") 0)
+   ;; Same thing for `;;;' comments.
+   (and (looking-at "\\s<\\s<\\s<") 0)
+   ;; %if nasm macro stuff goes to the left margin
+   (and (looking-at "%") 0)
+   (and (looking-at "c?global\\|section\\|default\\|align\\|INIT_..X") 0)
+   ;; Simple `;' comments go to the comment-column
+   ;   (and (looking-at "\\s<\\(\\S<\\|\\'\\)") comment-column)
+   ;; The rest goes at column 4
+   (or 4)))
+  )
+
+(add-hook 'asm-mode-hook #'tom7-asm-mode-hook)
 
 ;; used to put a unique identifier in a source file, based on its
 ;; character position (like, change all "oops!" messages to include

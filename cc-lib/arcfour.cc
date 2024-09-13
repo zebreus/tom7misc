@@ -31,6 +31,10 @@ ArcFour::ArcFour(const string &s) : ii(0), jj(0) {
   Initialize([&s](int i) { return s[i % s.size()]; }, ss);
 }
 
+ArcFour::ArcFour(uint64_t seed) : ii(0), jj(0) {
+  Initialize([seed](int i) { return 0xFF & (seed >> ((i % 8) * 8)); }, ss);
+}
+
 uint8_t ArcFour::Byte() {
   ii++;
   jj += ss[ii];
