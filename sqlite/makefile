@@ -17,7 +17,7 @@ else
 endif
 
 # XXX undo all of these
-CXXFLAGS+=-Wno-write-strings -fpermissive
+CXXFLAGS+=-Wno-write-strings -fpermissive -ferror-limit=1000
 
 
 %.o : %.cc *.h makefile
