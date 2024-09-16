@@ -16,6 +16,9 @@ else
   SOCK_LFLAGS=
 endif
 
+# XXX undo all of these
+CXXFLAGS+=-Wno-write-strings -fpermissive
+
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
