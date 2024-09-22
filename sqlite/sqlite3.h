@@ -35,14 +35,6 @@
 #include <stdarg.h>     /* Needed for the definition of va_list */
 
 /*
-** Make sure we can call this stuff from C++.
-*/
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-
-/*
 ** Facilitate override of interface linkage and calling conventions.
 ** Be aware that these macros may not be used within this particular
 ** translation of the amalgamation and its associated header file.
@@ -10842,9 +10834,6 @@ SQLITE_API int sqlite3_deserialize(
 # endif
 #endif
 
-#ifdef __cplusplus
-}  /* End of the 'extern "C"' block */
-#endif
 #endif /* SQLITE3_H */
 
 /******** Begin file sqlite3rtree.h *********/
@@ -10863,11 +10852,6 @@ SQLITE_API int sqlite3_deserialize(
 
 #ifndef _SQLITE3RTREE_H_
 #define _SQLITE3RTREE_H_
-
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 typedef struct sqlite3_rtree_geometry sqlite3_rtree_geometry;
 typedef struct sqlite3_rtree_query_info sqlite3_rtree_query_info;
@@ -10958,11 +10942,6 @@ struct sqlite3_rtree_query_info {
 #define PARTLY_WITHIN    1   /* Object partially overlaps query region */
 #define FULLY_WITHIN     2   /* Object fully contained within query region */
 
-
-#ifdef __cplusplus
-}  /* end of the 'extern "C"' block */
-#endif
-
 #endif  /* ifndef _SQLITE3RTREE_H_ */
 
 /******** End of sqlite3rtree.h *********/
@@ -10970,13 +10949,6 @@ struct sqlite3_rtree_query_info {
 
 #if !defined(__SQLITESESSION_H_) && defined(SQLITE_ENABLE_SESSION)
 #define __SQLITESESSION_H_ 1
-
-/*
-** Make sure we can call this stuff from C++.
-*/
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 
 /*
@@ -12821,10 +12793,6 @@ SQLITE_API int sqlite3session_config(int op, void *pArg);
 #define _FTS5_H
 
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /*************************************************************************
 ** CUSTOM AUXILIARY FUNCTIONS
 **
@@ -13415,10 +13383,6 @@ struct fts5_api {
 /*
 ** END OF REGISTRATION API
 *************************************************************************/
-
-#ifdef __cplusplus
-}  /* end of the 'extern "C"' block */
-#endif
 
 #endif /* _FTS5_H */
 

@@ -1,4 +1,7 @@
 
+CC_LIB=../cc-lib
+
+
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Msys)
   # for 64 bits on windows (msys2).
@@ -18,11 +21,13 @@ endif
 
 # XXX undo all of these
 CXXFLAGS+=-Wno-write-strings -fpermissive -ferror-limit=1000
+CXXFLAGS+=-I$(CC_LIB)
 
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-sqlite_test.exe : sqlite_test.o sqlite3.o
+sqlite_test.exe : sqlite_test.o sqlite3.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
