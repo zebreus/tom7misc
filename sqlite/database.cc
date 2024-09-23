@@ -1,14 +1,20 @@
 
 #include "database.h"
 
+#include <cstddef>
+#include <cstring>
 #include <string>
 #include <memory>
+#include <vector>
+#include <optional>
+#include <cstdint>
 
 #include "sqlite3.h"
 #include "base/logging.h"
 
 using Row = Database::Row;
 using Query = Database::Query;
+using ColType = Database::ColType;
 
 namespace {
 
@@ -24,27 +30,27 @@ static const char *ErrString(int status) {
   case SQLITE_NOMEM: return "SQLITE_NOMEM: A malloc() failed";
   case SQLITE_READONLY: return "SQLITE_READONLY: Attempt to write a readonly database";
   case SQLITE_INTERRUPT: return "SQLITE_INTERRUPT: Operation terminated by sqlite3_interrupt()";
-  case SQLITE_IOERR: return "SQLITE_IOERR:  /* Some kind of disk I/O error occurred";
-  case SQLITE_CORRUPT: return "SQLITE_CORRUPT:  /* The database disk image is malformed";
-  case SQLITE_NOTFOUND: return "SQLITE_NOTFOUND:  /* Unknown opcode in sqlite3_file_control()";
-  case SQLITE_FULL: return "SQLITE_FULL:  /* Insertion failed because database is full";
-  case SQLITE_CANTOPEN: return "SQLITE_CANTOPEN:  /* Unable to open the database file";
-  case SQLITE_PROTOCOL: return "SQLITE_PROTOCOL:  /* Database lock protocol error";
-  case SQLITE_EMPTY: return "SQLITE_EMPTY:  /* Internal use only";
-  case SQLITE_SCHEMA: return "SQLITE_SCHEMA:  /* The database schema changed";
-  case SQLITE_TOOBIG: return "SQLITE_TOOBIG:  /* String or BLOB exceeds size limit";
-  case SQLITE_CONSTRAINT: return "SQLITE_CONSTRAINT:  /* Abort due to constraint violation";
-  case SQLITE_MISMATCH: return "SQLITE_MISMATCH:  /* Data type mismatch";
-  case SQLITE_MISUSE: return "SQLITE_MISUSE:  /* Library used incorrectly";
-  case SQLITE_NOLFS: return "SQLITE_NOLFS:  /* Uses OS features not supported on host";
-  case SQLITE_AUTH: return "SQLITE_AUTH:  /* Authorization denied";
-  case SQLITE_FORMAT: return "SQLITE_FORMAT:  /* Not used";
-  case SQLITE_RANGE: return "SQLITE_RANGE:  /* 2nd parameter to sqlite3_bind out of range";
-  case SQLITE_NOTADB: return "SQLITE_NOTADB:  /* File opened that is not a database file";
-  case SQLITE_NOTICE: return "SQLITE_NOTICE:  /* Notifications from sqlite3_log()";
-  case SQLITE_WARNING: return "SQLITE_WARNING:  /* Warnings from sqlite3_log()";
-  case SQLITE_ROW: return "SQLITE_ROW:  /* sqlite3_step() has another row ready";
-  case SQLITE_DONE: return "SQLITE_DONE:  /* sqlite3_step() has finished executing";
+  case SQLITE_IOERR: return "SQLITE_IOERR: Some kind of disk I/O error occurred";
+  case SQLITE_CORRUPT: return "SQLITE_CORRUPT: The database disk image is malformed";
+  case SQLITE_NOTFOUND: return "SQLITE_NOTFOUND: Unknown opcode in sqlite3_file_control()";
+  case SQLITE_FULL: return "SQLITE_FULL: Insertion failed because database is full";
+  case SQLITE_CANTOPEN: return "SQLITE_CANTOPEN: Unable to open the database file";
+  case SQLITE_PROTOCOL: return "SQLITE_PROTOCOL: Database lock protocol error";
+  case SQLITE_EMPTY: return "SQLITE_EMPTY: Internal use only";
+  case SQLITE_SCHEMA: return "SQLITE_SCHEMA: The database schema changed";
+  case SQLITE_TOOBIG: return "SQLITE_TOOBIG: String or BLOB exceeds size limit";
+  case SQLITE_CONSTRAINT: return "SQLITE_CONSTRAINT: Abort due to constraint violation";
+  case SQLITE_MISMATCH: return "SQLITE_MISMATCH: Data type mismatch";
+  case SQLITE_MISUSE: return "SQLITE_MISUSE: Library used incorrectly";
+  case SQLITE_NOLFS: return "SQLITE_NOLFS: Uses OS features not supported on host";
+  case SQLITE_AUTH: return "SQLITE_AUTH: Authorization denied";
+  case SQLITE_FORMAT: return "SQLITE_FORMAT: Not used";
+  case SQLITE_RANGE: return "SQLITE_RANGE: 2nd parameter to sqlite3_bind out of range";
+  case SQLITE_NOTADB: return "SQLITE_NOTADB: File opened that is not a database file";
+  case SQLITE_NOTICE: return "SQLITE_NOTICE: Notifications from sqlite3_log()";
+  case SQLITE_WARNING: return "SQLITE_WARNING: Warnings from sqlite3_log()";
+  case SQLITE_ROW: return "SQLITE_ROW: sqlite3_step() has another row ready";
+  case SQLITE_DONE: return "SQLITE_DONE: sqlite3_step() has finished executing";
 
   case SQLITE_ERROR_MISSING_COLLSEQ: return "SQLITE_ERROR_MISSING_COLLSEQ";
   case SQLITE_ERROR_RETRY: return "SQLITE_ERROR_RETRY";
@@ -128,60 +134,11 @@ static const char *ErrString(int status) {
   }
 }
 
-struct QueryImpl;
-struct RowImpl : public Database::Row {
-  RowImpl(QueryImpl *parent);
-  ~RowImpl() override;
-
-  int Width() const override {
-    return width;
-  }
-
-  int64_t GetInt(int idx) override {
-    LOG(FATAL) << "Unimplemented";
-  }
-  std::string GetString(int idx) override {
-    LOG(FATAL) << "Unimplemented";
-  }
-  std::vector<uint8_t> GetBlob(int idx) override {
-    LOG(FATAL) << "Unimplemented";
-  }
-
-  int width = 0;
-  QueryImpl *parent = nullptr;
-};
-
+struct RowImpl;
 struct QueryImpl : public Database::Query {
   QueryImpl(sqlite3_stmt *stmt) : stmt(stmt), ready(true) {}
 
-  std::unique_ptr<Row> NextRow() override {
-    CHECK(ready) << "The previous row must be destroyed before "
-      "calling NextRow again.";
-
-    // For empty statements
-    if (stmt == nullptr)
-      return std::unique_ptr<Row>(nullptr);
-
-    for (;;) {
-      int src = sqlite3_step(stmt);
-      if (src == SQLITE_DONE) {
-        sqlite3_finalize(stmt);
-        return std::unique_ptr<Row>(nullptr);
-      }
-
-      if (src == SQLITE_BUSY)
-        continue;
-
-      if (src == SQLITE_ROW) {
-        ready = false;
-        return std::unique_ptr<Row>(new RowImpl(this));
-      }
-
-      CHECK(src != SQLITE_MISUSE);
-      CHECK(src != SQLITE_ERROR);
-      LOG(FATAL) << "sqlite3 step failed: " << ErrString(src);
-    }
-  }
+  std::unique_ptr<Row> NextRow() override;
 
   // Null for a query with an empty result set, or once we've
   // reached the end of the result set.
@@ -189,13 +146,133 @@ struct QueryImpl : public Database::Query {
   bool ready = false;
 };
 
+
+struct RowImpl : public Database::Row {
+  RowImpl(QueryImpl *parent);
+  ~RowImpl() override;
+
+  int Width() const override {
+    return (int)types.size();
+  }
+
+  const std::vector<Database::ColType> &Types() const override {
+    return types;
+  }
+
+  int64_t GetInt(int idx) override {
+    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::INT) <<
+      "Index " << idx << " does not have INT.";
+    return sqlite3_column_int64(parent->stmt, idx);
+  }
+
+  std::string GetString(int idx) override {
+    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::STRING) <<
+      "Index " << idx << " does not have STRING.";
+    size_t sz = sqlite3_column_bytes(parent->stmt, idx);
+    return std::string((const char *)sqlite3_column_text(parent->stmt, idx), sz);
+  }
+
+  std::vector<uint8_t> GetBlob(int idx) override {
+    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::BLOB) <<
+      "Index " << idx << " does not have BLOB.";
+    size_t sz = sqlite3_column_bytes(parent->stmt, idx);
+    std::vector<uint8_t> ret(sz);
+    memcpy(ret.data(), (const uint8_t*)sqlite3_column_blob(parent->stmt, idx), sz);
+    return ret;
+  }
+
+  void GetNull(int idx) override {
+    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::SQL_NULL) <<
+      "Index " << idx << " does not have SQL_NULL.";
+    return;
+  }
+
+  std::optional<int64_t> GetIntOpt(int idx) override {
+    CHECK(idx >= 0 && idx < (int)types.size());
+    if (types[idx] != ColType::INT) return std::nullopt;
+    return {GetInt(idx)};
+  }
+
+  std::optional<std::string> GetStringOpt(int idx) override {
+    CHECK(idx >= 0 && idx < (int)types.size());
+    if (types[idx] != ColType::STRING) return std::nullopt;
+    return {GetString(idx)};
+  }
+
+  std::optional<std::vector<uint8_t>> GetBlobOpt(int idx) override {
+    CHECK(idx >= 0 && idx < (int)types.size());
+    if (types[idx] != ColType::BLOB) return std::nullopt;
+    return {GetBlob(idx)};
+  }
+
+  std::vector<Database::ColType> types;
+  QueryImpl *parent = nullptr;
+};
+
 RowImpl::RowImpl(QueryImpl *parent) : parent(parent) {
-  width = sqlite3_column_count(parent->stmt);
+  const int width = sqlite3_column_count(parent->stmt);
+  types.reserve(width);
+  for (int i = 0; i < width; i++) {
+    switch (sqlite3_column_type(parent->stmt, i)) {
+    case SQLITE_INTEGER:
+      types.push_back(ColType::INT);
+      break;
+
+    case SQLITE_FLOAT:
+      types.push_back(ColType::FLOAT);
+      break;
+
+    case SQLITE_TEXT:
+      types.push_back(ColType::STRING);
+      break;
+
+    case SQLITE_BLOB:
+      types.push_back(ColType::BLOB);
+      break;
+
+    case SQLITE_NULL:
+      types.push_back(ColType::SQL_NULL);
+      break;
+
+    default:
+      LOG(FATAL) << "Unknown col type?";
+      break;
+    }
+  }
 }
 
 RowImpl::~RowImpl() {
   CHECK(!parent->ready) << "Bug";
   parent->ready = true;
+}
+
+std::unique_ptr<Row> QueryImpl::NextRow() {
+  CHECK(ready) << "The previous row must be destroyed before "
+    "calling NextRow again.";
+
+  // For empty statements
+  if (stmt == nullptr)
+    return std::unique_ptr<Row>(nullptr);
+
+  for (;;) {
+    int src = sqlite3_step(stmt);
+    if (src == SQLITE_DONE) {
+      sqlite3_finalize(stmt);
+      return std::unique_ptr<Row>(nullptr);
+    }
+
+    if (src == SQLITE_BUSY)
+      continue;
+
+    if (src == SQLITE_ROW) {
+      ready = false;
+      return std::unique_ptr<Row>(new RowImpl(this));
+    }
+
+    CHECK(src != SQLITE_MISUSE);
+    CHECK(src != SQLITE_ERROR);
+    LOG(FATAL) << "sqlite3 step failed: " << ErrString(src);
+  }
 }
 
 
@@ -217,8 +294,13 @@ struct DatabaseImpl : public Database {
 
 }  // namespace
 
+Database::Row::Row() {}
 Database::Row::~Row() {}
+
+Database::Query::Query() {}
 Database::Query::~Query() {}
+
+Database::Database() {}
 Database::~Database() {}
 
 std::unique_ptr<Database> Database::Open(const std::string &filename) {
