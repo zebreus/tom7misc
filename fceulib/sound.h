@@ -46,8 +46,8 @@ struct EXPSOUND {
   void (*Kill)(FC *fc) = nullptr;
 };
 
-struct Sound {
-  explicit Sound(FC *fc);
+struct FCSound {
+  explicit FCSound(FC *fc);
 
   int32 Wave[2048 + 512] = {};
   int32 WaveHi[40000] = {};
@@ -188,11 +188,11 @@ struct Sound {
   int32 triangle_noise_noiseacc = 0;
 
   void Dummyfunc() {}
-  void (Sound::*DoNoise)() = &Sound::Dummyfunc;
-  void (Sound::*DoTriangle)() = &Sound::Dummyfunc;
-  void (Sound::*DoPCM)() = &Sound::Dummyfunc;
-  void (Sound::*DoSQ1)() = &Sound::Dummyfunc;
-  void (Sound::*DoSQ2)() = &Sound::Dummyfunc;
+  void (FCSound::*DoNoise)() = &FCSound::Dummyfunc;
+  void (FCSound::*DoTriangle)() = &FCSound::Dummyfunc;
+  void (FCSound::*DoPCM)() = &FCSound::Dummyfunc;
+  void (FCSound::*DoSQ1)() = &FCSound::Dummyfunc;
+  void (FCSound::*DoSQ2)() = &FCSound::Dummyfunc;
 
   uint32 ChannelBC[5] = {};
 

@@ -45,7 +45,7 @@ using namespace std;
 
 // Write the vector to the output file. If the file pointer is
 // null, just return the size.
-int State::SubWrite(EmuFile *os, const vector<SFORMAT> &sf) {
+int FCState::SubWrite(EmuFile *os, const vector<SFORMAT> &sf) {
   uint32 acc = 0;
 
   TRACE_SCOPED_STAY_ENABLED_IF(false);
@@ -98,7 +98,7 @@ int State::SubWrite(EmuFile *os, const vector<SFORMAT> &sf) {
 }
 
 // Write all the sformats to the output file.
-int State::WriteStateChunk(EmuFile *os, int type,
+int FCState::WriteStateChunk(EmuFile *os, int type,
                            const vector<SFORMAT> &sf) {
   os->fputc(type);
   const int bsize = SubWrite(nullptr, sf);
@@ -112,7 +112,7 @@ int State::WriteStateChunk(EmuFile *os, int type,
 }
 
 // Find the SFORMAT structure with the name 'desc', if any.
-const SFORMAT *State::CheckS(const vector<SFORMAT> &sf,
+const SFORMAT *FCState::CheckS(const vector<SFORMAT> &sf,
                              uint32 tsize, SKEY desc) {
   for (const SFORMAT &f : sf) {
     assert(f.s != ~(uint32)0);
@@ -124,7 +124,7 @@ const SFORMAT *State::CheckS(const vector<SFORMAT> &sf,
   return nullptr;
 }
 
-bool State::ReadStateChunk(EmuFile *is,
+bool FCState::ReadStateChunk(EmuFile *is,
                            const vector<SFORMAT> &sf, int size) {
   int temp = is->ftell();
 
@@ -149,7 +149,7 @@ bool State::ReadStateChunk(EmuFile *is,
   return true;
 }
 
-bool State::ReadStateChunks(EmuFile *is, int32 totalsize) {
+bool FCState::ReadStateChunks(EmuFile *is, int32 totalsize) {
   uint32 size;
   bool ret = true;
   bool warned = false;
@@ -216,7 +216,7 @@ bool State::ReadStateChunks(EmuFile *is, int32 totalsize) {
 }
 
 // Simplified save that does not compress.
-bool State::FCEUSS_SaveRAW(std::vector<uint8> *out) const {
+bool FCState::FCEUSS_SaveRAW(std::vector<uint8> *out) const {
   EmuFile_MEMORY os(out);
 
   uint32 totalsize = 0;
@@ -256,7 +256,7 @@ bool State::FCEUSS_SaveRAW(std::vector<uint8> *out) const {
   return true;
 }
 
-bool State::FCEUSS_LoadRAW(const std::vector<uint8> &in) {
+bool FCState::FCEUSS_LoadRAW(const std::vector<uint8> &in) {
   EmuFile_MEMORY_READONLY is{in};
 
   int totalsize = is.size();
@@ -278,7 +278,7 @@ bool State::FCEUSS_LoadRAW(const std::vector<uint8> &in) {
   }
 }
 
-void State::ResetExState(void (*PreSave)(FC *), void (*PostSave)(FC *)) {
+void FCState::ResetExState(void (*PreSave)(FC *), void (*PostSave)(FC *)) {
 
   // If this needs to happen, it's a bug in the way the savestate
   // system is being used. Fix it! It's not even really possible to
@@ -297,7 +297,7 @@ void State::ResetExState(void (*PreSave)(FC *), void (*PostSave)(FC *)) {
   sfmdata.clear();
 }
 
-void State::AddExVec(const vector<SFORMAT> &vec) {
+void FCState::AddExVec(const vector<SFORMAT> &vec) {
   for (const SFORMAT &sf : vec) {
     int flags = sf.s & FCEUSTATE_FLAGS;
     AddExStateReal(sf.v, sf.s & ~FCEUSTATE_FLAGS, flags, sf.desc,
@@ -305,7 +305,7 @@ void State::AddExVec(const vector<SFORMAT> &vec) {
   }
 }
 
-void State::AddExStateReal(void *v, uint32 s, int type, SKEY desc,
+void FCState::AddExStateReal(void *v, uint32 s, int type, SKEY desc,
                            const char *src) {
   // PERF: n^2. Use a map/set.
   for (const SFORMAT &sf : sfmdata) {
@@ -325,7 +325,7 @@ void State::AddExStateReal(void *v, uint32 s, int type, SKEY desc,
   sfmdata.push_back(sf);
 }
 
-State::State(FC *fc) :
+FCState::FCState(FC *fc) :
   fc(fc),
   sfcpu({
       {&fc->X->reg_PC, 2 | FCEUSTATE_RLSB, "rgPC"},

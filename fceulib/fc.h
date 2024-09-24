@@ -16,11 +16,11 @@ struct INes;
 struct Input;
 struct Palette;
 struct PPU;
-struct Sound;
+struct FCSound;
 struct Unif;
 struct VSUni;
 struct X6502;
-struct State;
+struct FCState;
 
 struct FC {
   Cart *cart;
@@ -31,11 +31,11 @@ struct FC {
   Input *input;
   Palette *palette;
   PPU *ppu;
-  Sound *sound;
+  FCSound *sound;
   Unif *unif;
   VSUni *vsuni;
   X6502 *X;
-  State *state;
+  FCState *state;
 
   FC();
   ~FC();

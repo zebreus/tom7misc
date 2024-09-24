@@ -64,14 +64,14 @@ static constexpr uint32 PALDMCTable[0x10] = {
 // $4012        -        Address register: $c000 + V*64
 // $4013        -        Size register:  Size in bytes = (V+1)*64
 
-void Sound::LoadDMCPeriod(uint8 V) {
+void FCSound::LoadDMCPeriod(uint8 V) {
   if (fc->fceu->PAL)
     DMCPeriod = PALDMCTable[V];
   else
     DMCPeriod = NTSCDMCTable[V];
 }
 
-void Sound::PrepDPCM() {
+void FCSound::PrepDPCM() {
   DMCAddress = 0x4000 + (DMCAddressLatch << 6);
   DMCSize = (DMCSizeLatch << 4) + 1;
 }
@@ -79,7 +79,7 @@ void Sound::PrepDPCM() {
 /* Instantaneous? Maybe the new freq value is being calculated all of
    the time... */
 
-int Sound::CheckFreq(uint32 cf, uint8 sr) {
+int FCSound::CheckFreq(uint32 cf, uint8 sr) {
   if (!(sr & 0x8)) {
     const uint32 mod = cf >> (sr & 7);
     if ((mod + cf) & 0x800) return 0;
@@ -87,7 +87,7 @@ int Sound::CheckFreq(uint32 cf, uint8 sr) {
   return 1;
 }
 
-void Sound::SQReload(int x, uint8 V) {
+void FCSound::SQReload(int x, uint8 V) {
   if (EnabledChannels & (1 << x)) {
     if (x)
       (this->*DoSQ2)();
@@ -109,7 +109,7 @@ static DECLFW(Write_PSG) {
   return fc->sound->Write_PSG_Direct(DECLFW_FORWARD);
 }
 
-void Sound::Write_PSG_Direct(DECLFW_ARGS) {
+void FCSound::Write_PSG_Direct(DECLFW_ARGS) {
   A &= 0x1F;
   switch (A) {
     case 0x0:
@@ -174,7 +174,7 @@ static DECLFW(Write_DMCRegs) {
   return fc->sound->Write_DMCRegs_Direct(DECLFW_FORWARD);
 }
 
-void Sound::Write_DMCRegs_Direct(DECLFW_ARGS) {
+void FCSound::Write_DMCRegs_Direct(DECLFW_ARGS) {
   A &= 0xF;
 
   switch (A) {
@@ -205,7 +205,7 @@ static DECLFW(StatusWrite) {
   return fc->sound->StatusWrite_Direct(DECLFW_FORWARD);
 }
 
-void Sound::StatusWrite_Direct(DECLFW_ARGS) {
+void FCSound::StatusWrite_Direct(DECLFW_ARGS) {
   (this->*DoSQ1)();
   (this->*DoSQ2)();
   (this->*DoTriangle)();
@@ -229,7 +229,7 @@ static DECLFR(StatusRead) {
   return fc->sound->StatusRead_Direct(DECLFR_FORWARD);
 }
 
-DECLFR_RET Sound::StatusRead_Direct(DECLFR_ARGS) {
+DECLFR_RET FCSound::StatusRead_Direct(DECLFR_ARGS) {
   uint8 ret = SIRQStat;
 
   for (int x = 0; x < 4; x++) ret |= lengthcount[x] ? (1 << x) : 0;
@@ -243,7 +243,7 @@ DECLFR_RET Sound::StatusRead_Direct(DECLFR_ARGS) {
 // Some of this can be read by the CPU. For example, StatusRead
 // returns a bitmask of whether the lengthcounts are nonzero (plus
 // other stuff).
-void Sound::FrameSoundStuff(int V) {
+void FCSound::FrameSoundStuff(int V) {
   // n.b. there is at least something in here that's important for
   // cpu state. It might even mean that the outcomes depend on
   // whether we are in high quality or low quality sound mode,
@@ -331,7 +331,7 @@ void Sound::FrameSoundStuff(int V) {
   }
 }
 
-void Sound::FrameSoundUpdate() {
+void FCSound::FrameSoundUpdate() {
   // Linear counter:  Bit 0-6 of $4008
   // Length counter:  Bit 4-7 of $4003, $4007, $400b, $400f
 
@@ -347,7 +347,7 @@ void Sound::FrameSoundUpdate() {
   fcnt = (fcnt + 1) & 3;
 }
 
-void Sound::DMCDMA() {
+void FCSound::DMCDMA() {
   if (DMCSize && !DMCHaveDMA) {
     // Note: If DMCAddress >= 0x8000, this will crash, since
     // DMR does not do any checking and the argument type is uint32.
@@ -369,7 +369,7 @@ void Sound::DMCDMA() {
   }
 }
 
-void Sound::SoundCPUHookNoDMA(int cycles) {
+void FCSound::SoundCPUHookNoDMA(int cycles) {
   fhcnt -= cycles * 48;
   if (fhcnt <= 0) {
     FrameSoundUpdate();
@@ -379,7 +379,7 @@ void Sound::SoundCPUHookNoDMA(int cycles) {
 
 // Note: This function is run after every CPU instruction, and is a
 // major hotspot.
-void Sound::SoundCPUHook(int cycles) {
+void FCSound::SoundCPUHook(int cycles) {
   fhcnt -= cycles * 48;
   if (fhcnt <= 0) {
     FrameSoundUpdate();
@@ -485,7 +485,7 @@ void Sound::SoundCPUHook(int cycles) {
 
 }
 
-void Sound::RDoPCM() {
+void FCSound::RDoPCM() {
 #if !DISABLE_SOUND
   for (uint32 V = ChannelBC[4]; V < SoundTS(); V++) {
     // TODO get rid of floating calculations to binary. set log volume scaling.
@@ -498,7 +498,7 @@ void Sound::RDoPCM() {
 // TODO PERF: Was inlined before; called only with constant 0 or 1.
 /* This has the correct phase.  Don't mess with it. */
 // Int x decides if this is Square Wave 1 or 2
-void Sound::RDoSQ(int x) {
+void FCSound::RDoSQ(int x) {
   if (curfreq[x] >= 8 && curfreq[x] <= 0x7ff &&
       CheckFreq(curfreq[x], PSG[(x << 2) | 0x1]) &&
       lengthcount[x]) {
@@ -572,15 +572,15 @@ void Sound::RDoSQ(int x) {
   ChannelBC[x] = SoundTS();
 }
 
-void Sound::RDoSQ1() {
+void FCSound::RDoSQ1() {
   RDoSQ(0);
 }
 
-void Sound::RDoSQ2() {
+void FCSound::RDoSQ2() {
   RDoSQ(1);
 }
 
-void Sound::RDoSQLQ() {
+void FCSound::RDoSQLQ() {
   int32 start, end;
   int32 amp[2], ampx;
   int32 rthresh[2];
@@ -668,7 +668,7 @@ void Sound::RDoSQLQ() {
   }
 }
 
-void Sound::RDoTriangle() {
+void FCSound::RDoTriangle() {
   int32 tcamp = (tristep & 0xF);
   if (!(tristep & 0x10)) tcamp ^= 0xF;
   tcamp = (tcamp * 3) << 16;
@@ -702,7 +702,7 @@ void Sound::RDoTriangle() {
   ChannelBC[2] = SoundTS();
 }
 
-void Sound::RDoTriangleNoisePCMLQ() {
+void FCSound::RDoTriangleNoisePCMLQ() {
   int32 freq[2];
   int32 inie[2];
   uint32 amptab[2];
@@ -832,7 +832,7 @@ void Sound::RDoTriangleNoisePCMLQ() {
   }
 }
 
-void Sound::RDoNoise() {
+void FCSound::RDoNoise() {
   uint32 amptab[2];
 
   if (EnvUnits[2].Mode & 0x1)
@@ -903,7 +903,7 @@ static DECLFW(Write_IRQFM) {
   return fc->sound->Write_IRQFM_Direct(DECLFW_FORWARD);
 }
 
-void Sound::Write_IRQFM_Direct(DECLFW_ARGS) {
+void FCSound::Write_IRQFM_Direct(DECLFW_ARGS) {
   V = (V & 0xC0) >> 6;
   fcnt = 0;
   if (V & 0x2) FrameSoundUpdate();
@@ -914,7 +914,7 @@ void Sound::Write_IRQFM_Direct(DECLFW_ARGS) {
   IRQFrameMode = V;
 }
 
-void Sound::SetNESSoundMap() {
+void FCSound::SetNESSoundMap() {
   fc->fceu->SetWriteHandler(0x4000, 0x400F, Write_PSG);
   fc->fceu->SetWriteHandler(0x4010, 0x4013, Write_DMCRegs);
   fc->fceu->SetWriteHandler(0x4017, 0x4017, Write_IRQFM);
@@ -923,7 +923,7 @@ void Sound::SetNESSoundMap() {
   fc->fceu->SetReadHandler(0x4015, 0x4015, StatusRead);
 }
 
-int Sound::FlushEmulateSound() {
+int FCSound::FlushEmulateSound() {
   int32 end, left;
 
   if (!fc->X->timestamp) return 0;
@@ -992,14 +992,14 @@ nosoundo:
   return end;
 }
 
-int Sound::GetSoundBuffer(int32 **w) {
+int FCSound::GetSoundBuffer(int32 **w) {
   *w = WaveFinal;
   return sound_buffer_length;
 }
 
 /* FIXME: Find out what sound registers get reset on reset. I know
    $4001/$4005 don't, due to that whole MegaMan 2 Game Genie thing. */
-void Sound::FCEUSND_Reset() {
+void FCSound::FCEUSND_Reset() {
   IRQFrameMode = 0x0;
   fhcnt = fhinc;
   fcnt = 0;
@@ -1042,7 +1042,7 @@ void Sound::FCEUSND_Reset() {
   DMCBitCount = 0;
 }
 
-void Sound::FCEUSND_Power() {
+void FCSound::FCEUSND_Power() {
   SetNESSoundMap();
   memset(PSG, 0x00, sizeof(PSG));
   FCEUSND_Reset();
@@ -1056,7 +1056,7 @@ void Sound::FCEUSND_Power() {
   LoadDMCPeriod(DMCFormat & 0xF);
 }
 
-void Sound::SetSoundVariables() {
+void FCSound::SetSoundVariables() {
   fhinc = fc->fceu->PAL ? 16626 : 14915;  // *2 CPU clock rate
   fhinc *= 24;
 
@@ -1076,20 +1076,20 @@ void Sound::SetSoundVariables() {
     // PERF -- SOUNDQ is a compile time constant, so at a minimum,
     // don't use function pointers in these inner loops.
     if (FCEUS_SOUNDQ >= 1) {
-      DoNoise = &Sound::RDoNoise;
-      DoTriangle = &Sound::RDoTriangle;
-      DoPCM = &Sound::RDoPCM;
-      DoSQ1 = &Sound::RDoSQ1;
-      DoSQ2 = &Sound::RDoSQ2;
+      DoNoise = &FCSound::RDoNoise;
+      DoTriangle = &FCSound::RDoTriangle;
+      DoPCM = &FCSound::RDoPCM;
+      DoSQ1 = &FCSound::RDoSQ1;
+      DoSQ2 = &FCSound::RDoSQ2;
     } else {
-      DoSQ1 = &Sound::RDoSQLQ;
-      DoSQ2 = &Sound::RDoSQLQ;
-      DoTriangle = &Sound::RDoTriangleNoisePCMLQ;
-      DoNoise = &Sound::RDoTriangleNoisePCMLQ;
-      DoPCM = &Sound::RDoTriangleNoisePCMLQ;
+      DoSQ1 = &FCSound::RDoSQLQ;
+      DoSQ2 = &FCSound::RDoSQLQ;
+      DoTriangle = &FCSound::RDoTriangleNoisePCMLQ;
+      DoNoise = &FCSound::RDoTriangleNoisePCMLQ;
+      DoPCM = &FCSound::RDoTriangleNoisePCMLQ;
     }
   } else {
-    DoNoise = DoTriangle = DoPCM = DoSQ1 = DoSQ2 = &Sound::Dummyfunc;
+    DoNoise = DoTriangle = DoPCM = DoSQ1 = DoSQ2 = &FCSound::Dummyfunc;
     return;
   }
 
@@ -1111,11 +1111,11 @@ void Sound::SetSoundVariables() {
                (FCEUS_SNDRATE * 16));
 }
 
-void Sound::InitSound() {
+void FCSound::InitSound() {
   SetSoundVariables();
 }
 
-Sound::Sound(FC *fc)
+FCSound::FCSound(FC *fc)
     : stateinfo{{&fhcnt, 4 | FCEUSTATE_RLSB, "FHCN"},
                 {&fcnt, 1, "FCNT"},
                 {PSG, 0x10, "PSG0"},
@@ -1170,9 +1170,9 @@ Sound::Sound(FC *fc)
           // Constructor, empty.
       };
 
-void Sound::FCEUSND_SaveState() {}
+void FCSound::FCEUSND_SaveState() {}
 
-void Sound::FCEUSND_LoadState(int version) {
+void FCSound::FCEUSND_LoadState(int version) {
   LoadDMCPeriod(DMCFormat & 0xF);
   RawDALatch &= 0x7F;
   DMCAddress &= 0x7FFF;

@@ -1,15 +1,9 @@
-#include <process.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/time.h>
-#include <sys/stat.h>
-#include <strings.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <limits.h>
-#include <math.h>
 
 #include "driver.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <stdlib.h>
 
 /**
  * Prints an error string to STDOUT.
@@ -24,6 +18,6 @@ void FCEUD_PrintError(const char *errormsg) {
 }
 
 // morally FCEUD_
-unsigned int *GetKeyboard() {
+unsigned int *FCEUD_GetKeyboard() {
   abort();
 }

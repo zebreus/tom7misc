@@ -20,11 +20,11 @@
 
 #include "mapinc.h"
 
-static constexpr uint32 WRAMSIZE = 8192;
+#include "../driver.h"
+#include "../input.h"
+#include "../types.h"
 
-// FIXME: 10/28 - now implemented in SDL as well.
-// should we rename this to a FCEUI_* function?
-unsigned int *GetKeyboard();
+static constexpr uint32 WRAMSIZE = 8192;
 
 namespace {
 struct Transformer final : public CartInterface {
@@ -37,7 +37,7 @@ struct Transformer final : public CartInterface {
     TransformerCycleCount += a;
     if (TransformerCycleCount >= 1000) {
       TransformerCycleCount -= 1000;
-      TransformerKeys = GetKeyboard();
+      TransformerKeys = FCEUD_GetKeyboard();
 
       for (uint32 i = 0; i < 256; i++) {
         if (oldkeys[i] != TransformerKeys[i]) {

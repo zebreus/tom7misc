@@ -42,11 +42,11 @@ FC::FC() {
   input = new Input(this);
   palette = new Palette(this);
   ppu = new PPU(this);
-  sound = new Sound(this);
+  sound = new FCSound(this);
   unif = new Unif(this);
   vsuni = new VSUni(this);
   X = new X6502(this);
-  state = new State(this);
+  state = new FCState(this);
 }
 
 FC::~FC() {

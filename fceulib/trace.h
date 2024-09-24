@@ -1,6 +1,7 @@
 #ifndef _FCEULIB_TRACE_H
 #define _FCEULIB_TRACE_H
 
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <cstdint>

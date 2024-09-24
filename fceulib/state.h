@@ -71,28 +71,8 @@ inline SKEY MakeSKEY(const char arr[4]) {
   return k;
 }
 
-struct HashDesc {
-  size_t operator ()(const SKEY &a) const {
-    size_t res = 0;
-    res <<= 8; res |= a[0];
-    res <<= 8; res |= a[1];
-    res <<= 8; res |= a[2];
-    res <<= 8; res |= a[3];
-    return res;
-  }
-};
-
-struct EqDesc {
-  bool operator ()(const SKEY &a, const SKEY &b) const {
-    return a[0] == b[0] &&
-      a[1] == b[1] &&
-      a[2] == b[2] &&
-      a[3] == b[3];
-  }
-};
-
-struct State {
-  explicit State(FC *fc);
+struct FCState {
+  explicit FCState(FC *fc);
 
   // Tom 7's simplified versions. These should only be used for in-memory saves!
   bool FCEUSS_SaveRAW(std::vector<uint8> *out) const;
@@ -125,6 +105,26 @@ struct State {
 
   void (*SPreSave)(FC *) = nullptr;
   void (*SPostSave)(FC *) = nullptr;
+
+  struct HashDesc {
+    size_t operator ()(const SKEY &a) const {
+      size_t res = 0;
+      res <<= 8; res |= a[0];
+      res <<= 8; res |= a[1];
+      res <<= 8; res |= a[2];
+      res <<= 8; res |= a[3];
+      return res;
+    }
+  };
+
+  struct EqDesc {
+    bool operator ()(const SKEY &a, const SKEY &b) const {
+      return a[0] == b[0] &&
+        a[1] == b[1] &&
+        a[2] == b[2] &&
+        a[3] == b[3];
+    }
+  };
 
   // static constexpr int SFMDATA_SIZE = 64;
   // SFMDATA is dynamically allocated; its desc fields should be
