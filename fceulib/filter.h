@@ -4,6 +4,7 @@
 #include "fcoeff-constants.h"
 
 #include "fc.h"
+#include "types.h"
 
 struct Filter {
   explicit Filter(FC *fc);

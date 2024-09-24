@@ -22,11 +22,12 @@
 #define _FCEULIB_SOUND_H
 
 #include <vector>
-#include "state.h"
-#include "fceu.h"
 
-#include "x6502.h"
 #include "fc.h"
+#include "fceu.h"
+#include "state.h"
+#include "types.h"
+#include "x6502.h"
 
 struct EXPSOUND {
   void (*Fill)(FC *fc, int Count) = nullptr; /* Low quality ext sound. */

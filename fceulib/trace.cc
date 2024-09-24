@@ -1,17 +1,19 @@
 
 #include "trace.h"
+
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <stdarg.h>
+#include <stdlib.h>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "types.h"
 #include "stringprintf.h"
 
-#include <stdarg.h>
-
-#include <cstdio>
-#include <utility>
-
 using namespace std;
-
-using uint8 = uint8_t;
-using uint32 = uint32_t;
-using uint64 = uint64_t;
 
 // RLE compression and decompression from cc-lib.
 namespace {

@@ -7,7 +7,12 @@
 
 #include "emulator.h"
 
+#include <cstdint>
+#include <functional>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <sys/time.h>
@@ -618,10 +623,6 @@ int main(int argc, char **argv) {
              result.nes_after_random,
              result.img_after_random);
     }
-
-    // XXX DO NOT SUBMIT
-    printf("EXIT EARLY.\n");
-    return 0;
   }
 
   printf("Ran everything in %.2fs\n", test_timer.Seconds());

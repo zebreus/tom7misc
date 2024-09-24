@@ -4,27 +4,21 @@
 
 #include "emulator.h"
 
+#include <algorithm>
+#include <cstdlib>
 #include <string>
 #include <vector>
 #include <memory>
 #include <sys/time.h>
-#include <sstream>
 #include <unistd.h>
 #include <cstdio>
 
 #include "base/logging.h"
+#include "fc.h"
 #include "test-util.h"
-#include "arcfour.h"
-#include "rle.h"
-#include "simplefm2.h"
 #include "base/stringprintf.h"
-#include "stb_image_write.h"
 
 #include "x6502.h"
-#include "cart.h"
-
-#include <mutex>
-#include <thread>
 
 static int64 TimeUsec() {
   timeval tv;
@@ -92,18 +86,18 @@ static constexpr int CHUNK_SIZE = 10;
 // One of these per compiled file. It does the per-Run setup and
 // coordinates control transfer between the chunks.
 static void GenerateOuter(const CodeConfig &config,
-			  uint32 addr_start,
-			  uint32 addr_past_end,
-			  const string &symbol,
-			  FILE *f) {
+        uint32 addr_start,
+        uint32 addr_past_end,
+        const string &symbol,
+        FILE *f) {
   fprintf(f, "// Outer.\n"
-	  "void %s_Run(FC *fc, int32 cycles) {\n",
-	  symbol.c_str());
+    "void %s_Run(FC *fc, int32 cycles) {\n",
+    symbol.c_str());
 
   fprintf(f,
-	  "  X6502 *X = fc->X;\n"
-	  // "  const FCEU *fceu = fc->fceu;\n"  // const?
-	  );
+    "  X6502 *X = fc->X;\n"
+    // "  const FCEU *fceu = fc->fceu;\n"  // const?
+    );
 
   if (config.is_pal) fprintf(f, "  cycles *= 15;  // is pal\n");
   else fprintf(f, "  cycles *= 16;  // is ntsc\n");
@@ -115,19 +109,19 @@ static void GenerateOuter(const CodeConfig &config,
     else if (rhs > 0xFFFF) return StringPrintf("true /* < %x */", rhs);
     else return StringPrintf("%s < 0x%04x", lhs.c_str(), rhs);
   };
-  
+
   // Now, which chunk to call?
   // PERF
   fprintf(f, "  const uint16 pc = X->reg_PC;\n");
   fprintf(f, "  if (%s) { X->RunLoop(); return; }\n",
-	  LT16("pc", addr_start).c_str());
+    LT16("pc", addr_start).c_str());
   for (uint32 i = addr_start; i < addr_past_end; i += (1 << CHUNK_SIZE)) {
     fprintf(f, "  else if (%s) { %s_chunk_%04x(fc); }\n",
-	    LT16("pc", i + (1 << CHUNK_SIZE)).c_str(),
-	    symbol.c_str(), i);
+      LT16("pc", i + (1 << CHUNK_SIZE)).c_str(),
+      symbol.c_str(), i);
   }
   fprintf(f, "  else { X->RunLoop(); return; }\n");
-  
+
   fprintf(f, "}  // Outer.\n\n\n");
 }
 
@@ -206,12 +200,12 @@ static void GenInstruction(uint8 b1, FILE *f) {
       break;
     }
 #endif
-    
+
   case 0xAA: /* TAX */
     fprintf(f,
-	    I "X->reg_X = x->reg_A;\n"
-	    I "X->reg_P &= ~(Z_FLAG | N_FLAG);\n"
-	    I "X->reg_P |= ZNTable[X->reg_A];\n");
+      I "X->reg_X = x->reg_A;\n"
+      I "X->reg_P &= ~(Z_FLAG | N_FLAG);\n"
+      I "X->reg_P |= ZNTable[X->reg_A];\n");
     break;
 
 #if 0
@@ -465,8 +459,8 @@ static void GenInstruction(uint8 b1, FILE *f) {
   case 0x6B: {
     uint8 arrtmp;
     LD_IM(AND; reg_P &= ~V_FLAG; reg_P |= (reg_A ^ (reg_A >> 1)) & 0x40;
-	  arrtmp = reg_A >> 7; reg_A >>= 1; reg_A |= (reg_P & C_FLAG) << 7;
-	  reg_P &= ~C_FLAG; reg_P |= arrtmp; X_ZN(reg_A));
+    arrtmp = reg_A >> 7; reg_A >>= 1; reg_A |= (reg_P & C_FLAG) << 7;
+    reg_P &= ~C_FLAG; reg_P |= arrtmp; X_ZN(reg_A));
   }
     /* ASR */
   case 0x4B:
@@ -633,25 +627,25 @@ static void GenInstruction(uint8 b1, FILE *f) {
 }
 
 static void GenerateChunk(const CodeConfig &config,
-			  const vector<uint8> code,
-			  uint32 code_base,
-			  uint32 addr_start,
-			  uint32 addr_past_end,
-			  const string &symbol,
-			  FILE *f) {
-  
+        const vector<uint8> code,
+        uint32 code_base,
+        uint32 addr_start,
+        uint32 addr_past_end,
+        const string &symbol,
+        FILE *f) {
+
   fprintf(f,
-	  "// From $%04x--$%04x. (Chunk size %d)\n"
-	  "static void %s_chunk_%04x(FC *fc) {\n",
-	  addr_start, addr_past_end, 1 << CHUNK_SIZE,
-	  symbol.c_str(), addr_start);
+    "// From $%04x--$%04x. (Chunk size %d)\n"
+    "static void %s_chunk_%04x(FC *fc) {\n",
+    addr_start, addr_past_end, 1 << CHUNK_SIZE,
+    symbol.c_str(), addr_start);
 
   // Copies of FC objects, used locally.
   fprintf(f,
-	  "  X6502 *X = fc->X;\n"
-	  // "  const FCEU *fceu = fc->fceu;\n"  // const?
-	  "  Sound *sound = fc->sound;\n"
-	  );
+    "  X6502 *X = fc->X;\n"
+    // "  const FCEU *fceu = fc->fceu;\n"  // const?
+    "  Sound *sound = fc->sound;\n"
+    );
 
   fprintf(f, "  switch (X->reg_PC) {\n");
 
@@ -662,7 +656,7 @@ static void GenerateChunk(const CodeConfig &config,
     const uint8 b1 = code[code_idx];
 
     if (CanGenInstruction(b1)) {
-    
+
       // XXX include disassembly here
       fprintf(f, " // %2x\n", b1);
 
@@ -672,13 +666,13 @@ static void GenerateChunk(const CodeConfig &config,
       const int cycles = CycTable[b1];
       // ADDCYC() macro.
       fprintf(f, I "X->tcount += %d; X->count -= %d; X->timestamp += %d;\n",
-	      cycles, cycles * 48, cycles);
+        cycles, cycles * 48, cycles);
 
       // "temp" only used for the calls to irq and sound hooks, I guess
       // in case they try to read tcount?
       fprintf(f, I "{\n"
-	      I "  int32 temp = X->tcount;\n"
-	      I "  X->tcount = 0;\n");
+        I "  int32 temp = X->tcount;\n"
+        I "  X->tcount = 0;\n");
 
       CHECK(!config.has_map_irq_hook) << "Not supported (yet)?";
 
@@ -697,26 +691,26 @@ static void GenerateChunk(const CodeConfig &config,
       fprintf(f, " // %2x unimplemented\n", b1);
       // XXX doesn't make sense to call runloop from here..?
       fprintf(f, I "X->RunLoop(); return;\n"
-	      "  }\n");
+        "  }\n");
     }
   }
 
   fprintf(f, "    default: X->RunLoop(); return;\n"
-	  "  }  // switch(reg_PC)\n");
-  
-  
+    "  }  // switch(reg_PC)\n");
+
+
   fprintf(f, "  CHECK(false) << \"Should not be reachable.\";\n");
-  
+
   fprintf(f, "}  // %s_chunk_%04x\n\n", symbol.c_str(), addr_start);
 }
 
 static void GenerateCode(const CodeConfig &config,
-			 const vector<uint8> code,
-			 uint32 addr_start,
-			 uint32 addr_past_end,
-			 const string &symbol,
-			 const string &filename,
-			 const string &cart_name) {
+       const vector<uint8> code,
+       uint32 addr_start,
+       uint32 addr_past_end,
+       const string &symbol,
+       const string &filename,
+       const string &cart_name) {
   CHECK(0 == ((addr_past_end - addr_start) % (1 << CHUNK_SIZE))) <<
     "Chunk size must divide code block size. This can be relaxed "
     "reasonably easily...";
@@ -737,24 +731,24 @@ static void GenerateCode(const CodeConfig &config,
 
   // Prelude.
   fprintf(f,
-	  "// Generated code! Do not edit.\n"
-	  "// Generated from %s on [DATE].\n"
-	  "\n"
-	  "#include \"fc.h\"\n"
-	  "#include \"x6502.h\"\n"
-	  "#include \"sound.h\"\n"
-	  "#include \"fceu.h\"\n",
-	  cart_name.c_str());
+    "// Generated code! Do not edit.\n"
+    "// Generated from %s on [DATE].\n"
+    "\n"
+    "#include \"fc.h\"\n"
+    "#include \"x6502.h\"\n"
+    "#include \"sound.h\"\n"
+    "#include \"fceu.h\"\n",
+    cart_name.c_str());
 
   fprintf(f, "/* aot-prelude.inc */\n%s\n/* aot-prelude.inc */\n",
-	  ReadFileToString("aot-prelude.inc").c_str());
-  
+    ReadFileToString("aot-prelude.inc").c_str());
+
   for (uint32 i = addr_start; i < addr_past_end; i += (1 << CHUNK_SIZE)) {
     fprintf(f, "static void %s_chunk_%04x(FC *);\n",
-	    symbol.c_str(), i);
+      symbol.c_str(), i);
   }
   fprintf(f, "\n\n");
-  
+
   // First we need to create the outer function header. This function
   // is capable of executing at any PC value.
   GenerateOuter(config, addr_start, addr_past_end, symbol, f);
@@ -762,14 +756,14 @@ static void GenerateCode(const CodeConfig &config,
   // Now generate a function for each chunk.
   for (uint32 i = addr_start; i < addr_past_end; i += (1 << CHUNK_SIZE)) {
     GenerateChunk(
-	config,
-	code,
-	addr_start,
-	i, min(addr_past_end, i + (1 << CHUNK_SIZE)),
-	symbol,
-	f);
+        config,
+        code,
+        addr_start,
+        i, min(addr_past_end, i + (1 << CHUNK_SIZE)),
+        symbol,
+        f);
   }
-  
+
   fclose(f);
 }
 
@@ -781,7 +775,7 @@ int main(int argc, char **argv) {
   Timer compile_timer;
 
   FC *fc = emu->GetFC();
-  
+
   // Grab a specific block of RAM. I know this is where the
   // code resides in mario.nes, that it never gets remapped
   // (mapper 0 cannot remap), and that it is not writable
@@ -801,13 +795,13 @@ int main(int argc, char **argv) {
   CodeConfig config;
   config.is_pal = !!fc->fceu->PAL;
   config.has_map_irq_hook = fc->X->MapIRQHook != nullptr;
-  
+
   GenerateCode(config,
-	       code, 0x8000, 0x10000,
-	       "mario", "mario.cc", "mario.nes");
+         code, 0x8000, 0x10000,
+         "mario", "mario.cc", "mario.nes");
 
   double compile_seconds = compile_timer.GetSeconds();
-  
+
   fprintf(stderr, "Finished.\n"
           "Compile time: %.4fs\n",
           compile_seconds);

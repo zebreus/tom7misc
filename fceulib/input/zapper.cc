@@ -18,18 +18,21 @@
 * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#include <string.h>
+#include "zapper.h"
+
+#include <cassert>
 #include <stdlib.h>
 
-#include "cursor.h"
-#include "../types.h"
-#include "../input.h"
+#include "../fc.h"
 #include "../fceu.h"
-#include "../ppu.h"
-#include "../x6502.h"
+#include "../input.h"
 #include "../palette.h"
-
-#include "zapper.h"
+#include "../ppu.h"
+#include "../types.h"
+#include "../x6502.h"
+#include "../state.h"
+#include "../git.h"
+#include "cursor.h"
 
 namespace {
 struct ZAPPER {
@@ -50,12 +53,12 @@ struct ZapperBase : public InputC {
     // {&ZD[0].bogo, 1, "ZBG0"},
     // {&ZD[1].bogo, 1, "ZBG1"},
 
-    CHECK(w == 0 || w == 1);
+    assert(w == 0 || w == 1);
     fc->state->AddExState(&ZD, sizeof(ZAPPER), 0, w ? "ZBG1" : "ZBG0");
   }
 
   inline int CheckColor(int w) {
-    CHECK(w == which);
+    assert(w == which);
     fc->ppu->LineUpdate();
 
     if ((ZD.zaphit + 100) >=
@@ -67,7 +70,7 @@ struct ZapperBase : public InputC {
   }
 
   void Update(int w, void *data, int arg) override {
-    CHECK(w == which);
+    assert(w == which);
 
     uint32 *ptr = (uint32 *)data;
 
@@ -92,7 +95,7 @@ struct ZapperBase : public InputC {
   // Was once "ZapperFrapper".
   void SLHook(int w, uint8 *bg, uint8 *spr, uint32 linets,
               int last) override {
-    CHECK(w == which);
+    assert(w == which);
 
     int xs, xe;
     int zx, zy;
@@ -146,16 +149,16 @@ struct ZapperBase : public InputC {
   }
 
   void Draw(int w, uint8 *buf, int arg) override {
-    CHECK(w == which);
+    assert(w == which);
     FCEU_DrawGunSight(buf, ZD.mzx, ZD.mzy);
   }
 
   // Just for reference, here's how the zapper logged
   // and loaded its state with the old MovieRecord interface.
-  // There's no way 
+  // There's no way
 #if 0
   void Log(int w, MovieRecord *mr) override {
-    CHECK(w == which);
+    assert(w == which);
 
     mr->zappers[w].x = ZD.mzx;
     mr->zappers[w].y = ZD.mzy;
@@ -165,7 +168,7 @@ struct ZapperBase : public InputC {
   }
 
   void Load(int w, MovieRecord *mr) override {
-    CHECK(w == which);
+    assert(w == which);
 
     ZD.mzx = mr->zappers[w].x;
     ZD.mzy = mr->zappers[w].y;
@@ -174,7 +177,7 @@ struct ZapperBase : public InputC {
     ZD.zaphit = mr->zappers[w].zaphit;
   }
 #endif
-  
+
   int which;
   ZAPPER ZD;
 };
@@ -183,7 +186,7 @@ struct ZapperC final : public ZapperBase {
   ZapperC(FC *fc, int w) : ZapperBase(fc, w) {}
 
   uint8 Read(int w) override {
-    CHECK(w == which);
+    assert(w == which);
 
     uint8 ret = 0;
     if (ZD.bogo) ret |= 0x10;
@@ -196,7 +199,7 @@ struct ZapperVSC final : public ZapperBase {
   ZapperVSC(FC *fc, int w) : ZapperBase(fc, w) {}
 
   uint8 Read(int w) override {
-    CHECK(which == w);
+    assert(which == w);
     uint8 ret = 0;
 
     if (ZD.zap_readbit == 4) ret = 1;
@@ -212,7 +215,7 @@ struct ZapperVSC final : public ZapperBase {
   }
 
   void Strobe(int w) override {
-    CHECK(w == which);
+    assert(w == which);
     ZD.zap_readbit = 0;
   }
 };

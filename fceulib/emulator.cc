@@ -1,12 +1,18 @@
 
 #include "emulator.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <stdlib.h>
 #include <string>
 #include <vector>
 #include <zlib.h>
 
 #include "driver.h"
 #include "fceu.h"
+#include "git.h"
 #include "types.h"
 #include "utils/md5.h"
 #include "state.h"

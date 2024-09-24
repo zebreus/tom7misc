@@ -23,13 +23,14 @@
 #define _FCEULIB_INES_H
 
 #include <stdlib.h>
-#include <string.h>
 #include <map>
 #include <string>
 #include <utility>
-#include "fceu.h"
 
+#include "cart.h"
+#include "fceu.h"
 #include "fc.h"
+#include "types.h"
 
 // This is the iNES ROM image format (probably actually NES 2.0), the
 // most popular one.

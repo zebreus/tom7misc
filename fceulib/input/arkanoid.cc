@@ -18,10 +18,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
+#include "arkanoid.h"
+
 #include <string.h>
 #include <stdlib.h>
 
-#include "arkanoid.h"
+#include "../types.h"
+#include "../fc.h"
+#include "../input.h"
 
 namespace {
 struct ARK {

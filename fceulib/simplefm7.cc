@@ -39,7 +39,12 @@
 
 #include "simplefm7.h"
 
+#include <algorithm>
+#include <bit>
 #include <cstdint>
+#include <cstdio>
+#include <tuple>
+#include <utility>
 #include <vector>
 #include <string>
 #include <ctype.h>
@@ -54,33 +59,6 @@ using namespace std;
 using uint8 = uint8_t;
 
 static constexpr int DEFAULT_WRAP = 75;
-
-/*
-  // Count of 1-bits for each 8-bit byte. Generated with this code:
-  auto PopCount =
-    [](uint8 x) {
-      int count = 0;
-      while (x) {
-        count += (x & 1);
-        x >>= 1;
-      }
-      return count;
-    };
-  for (int x = 0; x < 256; x++) {
-    printf("%d,", PopCount(x));
-  }
-  printf("\n");
-*/
-// TODO: When it's a little less fresh, std::popcount from <bit>.
-static constexpr uint8 popcount_table[256] = {
-  0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,1,2,2,3,2,3,
-  3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,1,2,2,3,2,3,3,4,2,3,3,4,
-  3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,
-  4,5,4,5,5,6,4,5,5,6,5,6,6,7,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,
-  3,4,4,5,4,5,5,6,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,
-  6,7,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,4,5,4,5,5,6,4,5,5,6,5,6,6,7,3,4,4,5,
-  4,5,5,6,4,5,5,6,5,6,6,7,4,5,5,6,5,6,6,7,5,6,6,7,6,7,7,8,
-};
 
 static int AppendInt(int n, string *out) {
   char s[16];
@@ -115,13 +93,13 @@ static int EncodeTo(uint8 prev, uint8 input, string *out) {
 
   // Otherwise, there are three ways to encode. With + or -,
   // we use an extra character.
-  int n_abs = popcount_table[input];
+  int n_abs = std::popcount<uint8_t>(input);
   // Input must be a superset of previous.
   int n_add =
-    ((input | prev) == input) ? 1 + popcount_table[input & ~prev] : 999;
+    ((input | prev) == input) ? 1 + std::popcount<uint8_t>(input & ~prev) : 999;
   // Input must be a subset of previous.
   int n_sub =
-    ((input | prev) == prev) ? 1 + popcount_table[prev & ~input] : 999;
+    ((input | prev) == prev) ? 1 + std::popcount<uint8_t>(prev & ~input) : 999;
 
   if (n_sub < n_add && n_sub < n_abs) {
     out->push_back('-');

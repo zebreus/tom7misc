@@ -1,24 +1,18 @@
 
 #include "emulator.h"
 
-#include <cmath>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <memory>
 #include <sys/time.h>
-#include <sstream>
 #include <unistd.h>
 #include <cstdio>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "test-util.h"
-#include "rle.h"
-#include "simplefm2.h"
 #include "simplefm7.h"
 #include "timer.h"
-
-#include "x6502.h"
 
 static constexpr const char *ROMFILE = "mario.nes";
 static constexpr uint64 expected_nes = 0x0c8abfc012bf6c84ULL;
@@ -59,7 +53,8 @@ int main(int argc, char **argv) {
   int executions = 0;
   double total_time = 0.0;
   vector<int> last_means;
-  for (int i = 0; /* exit upon convergence */; i++) {
+  // Exits when we get convergence.
+  for (;;) {
     const auto [ram, img, sec] = RunBenchmark(emu.get(), start, movie);
     executions++;
     total_time += sec;

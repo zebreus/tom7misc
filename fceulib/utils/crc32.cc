@@ -18,10 +18,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include "../types.h"
 #include "crc32.h"
 
 #include <zlib.h>
+
+#include "../types.h"
+
+
 uint32 CalcCRC32(uint32 crc, uint8 *buf, uint32 len) {
  return crc32(crc, buf, len);
 }

@@ -23,6 +23,7 @@
 // http://wiki.nesdev.com/w/index.php/PPU_OAM
 // Note sprites are drawn from the end of the array to the beginning.
 
+#include <algorithm>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,25 +31,20 @@
 #include <tuple>
 #include <utility>
 #include <string>
-#include <typeinfo>  // Only necessary for CHECKs
-#include <typeindex> // Ditto.
+#include <typeindex>  // Only used in assertions
 
-#include "types.h"
-#include "x6502.h"
-#include "fceu.h"
-#include "ppu.h"
-#include "sound.h"
-#include "file.h"
-#include "utils/endian.h"
-#include "utils/memory.h"
 #include "boards/mmc5.h"
-
 #include "cart.h"
-#include "palette.h"
-#include "state.h"
+#include "fc.h"
+#include "fceu.h"
 #include "input.h"
-#include "driver.h"
-#include "fsettings.h"
+#include "palette.h"
+#include "ppu.h"
+#include "state.h"
+#include "tracing.h"
+#include "types.h"
+#include "utils/memory.h"
+#include "x6502.h"
 
 // XXX better way of doing this...
 #if ENABLE_AOT
@@ -61,6 +57,7 @@ extern void contra_Run(FC *fc, int32 cycles);
 
 #define DEBUGF if (0) fprintf
 // #define DCHECK if (0)
+#define DCHECK if (0)
 
 #define VBlankON  (PPU_values[0]&0x80)   //Generate VBlank NMI
 #define Sprite16  (PPU_values[0]&0x20)   //Sprites 8x16/8x8
@@ -217,9 +214,7 @@ static constexpr uint32 ppulut3[128] = {
 
 static inline const uint8 *MMC5SPRVRAMADR(FC *fc, uint32 v) {
   DCHECK(std::type_index(typeid(*fc->fceu->cartiface)) ==
-  std::type_index(typeid(MMC5))) << "\n" <<
-    typeid(fc->fceu->cartiface).name() << "\n vs \n" <<
-    typeid(MMC5).name();
+         std::type_index(typeid(MMC5)));
   MMC5 *mmc5 = static_cast<MMC5*>(fc->fceu->cartiface);
   return mmc5->SPRVPagePtr(v);
 }
@@ -232,9 +227,7 @@ static inline const uint8 *VRAMADR(FC *fc, uint32 A) {
 // in mmc5 docs
 const uint8 *PPU::MMC5BGVRAMADR(uint32 V) {
   DCHECK(std::type_index(typeid(*fc->fceu->cartiface)) ==
-  std::type_index(typeid(MMC5))) << "\n" <<
-    typeid(fc->fceu->cartiface).name() << "\n vs \n" <<
-    typeid(MMC5).name();
+         std::type_index(typeid(MMC5)));
   MMC5 *mmc5 = static_cast<MMC5*>(fc->fceu->cartiface);
   if (!Sprite16) {
     if (mmc5ABMode == 0)
@@ -936,9 +929,7 @@ void PPU::DoLine() {
 
   if (MMC5Hack && (ScreenON || SpriteON)) {
     DCHECK(std::type_index(typeid(*fc->fceu->cartiface)) ==
-    std::type_index(typeid(MMC5))) << "\n" <<
-      typeid(fc->fceu->cartiface).name() << "\n vs \n" <<
-      typeid(MMC5).name();
+           std::type_index(typeid(MMC5)));
     MMC5 *mmc5 = static_cast<MMC5*>(fc->fceu->cartiface);
     mmc5->MMC5HackHB(scanline);
   }
@@ -1588,9 +1579,7 @@ void PPU::FrameLoop() {
     // Triggers MMC5-specific interrupts, etc.
     if (MMC5Hack && (ScreenON || SpriteON)) {
       DCHECK(std::type_index(typeid(*fc->fceu->cartiface)) ==
-      std::type_index(typeid(MMC5))) << "\n" <<
-  typeid(fc->fceu->cartiface).name() << "\n vs \n" <<
-  typeid(MMC5).name();
+             std::type_index(typeid(MMC5)));
       MMC5 *mmc5 = static_cast<MMC5*>(fc->fceu->cartiface);
       mmc5->MMC5HackHB(scanline);
     }
@@ -1598,8 +1587,8 @@ void PPU::FrameLoop() {
     int max = 0, maxref = 0;
     for (int x = 0; x < 7; x++) {
       if (deempcnt[x] > max) {
-  max = deempcnt[x];
-  maxref = x;
+        max = deempcnt[x];
+        maxref = x;
       }
       deempcnt[x]=0;
     }

@@ -1,7 +1,13 @@
 
 #include "test-util.h"
+
+#include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <sys/stat.h>
+#include <vector>
+
+using namespace std;
 
 static string ReadAndCloseFile(FILE *f) {
   fseek(f, 0, SEEK_END);

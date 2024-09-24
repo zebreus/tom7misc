@@ -19,6 +19,7 @@
 * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include <cassert>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1508,7 +1509,7 @@ void INes::iNESPower() {
   }
 
   if (MapInitTab[type]) {
-    CHECK(fc->fceu->mapiface == nullptr);
+    assert(fc->fceu->mapiface == nullptr);
     fc->fceu->mapiface = MapInitTab[type](fc);
   } else if (type) {
     FCEU_PrintError("iNES mapper #%d is not supported at all.",type);

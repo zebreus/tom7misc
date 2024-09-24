@@ -1,12 +1,13 @@
 #ifndef _FCEULIB_PPU_H
 #define _FCEULIB_PPU_H
 
-#include "state.h"
 #include <utility>
 #include <vector>
 
+#include "state.h"
 #include "fceu.h"
 #include "fc.h"
+#include "types.h"
 
 #define TRACK_INTERFRAME_SCROLL 1
 

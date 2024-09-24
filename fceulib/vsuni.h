@@ -1,6 +1,8 @@
 #ifndef _FCEULIB_VSUNI_H
 #define _FCEULIB_VSUNI_H
 
+#include <vector>
+
 #include "state.h"
 #include "types.h"
 #include "fceu.h"

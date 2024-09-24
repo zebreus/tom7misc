@@ -1,13 +1,14 @@
 #ifndef _FCEULIB_INPUT_H
 #define _FCEULIB_INPUT_H
 
-#include <ostream>
+#include <vector>
 
 #include "git.h"
 #include "state.h"
 #include "fceu.h"
 
 #include "fc.h"
+#include "types.h"
 
 // This used to have Log/Load code for different exotic inputs, but now
 // it's fairly committed to a pair of gamepads, since that's what the

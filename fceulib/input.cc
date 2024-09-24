@@ -19,20 +19,17 @@
 * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-#include <string>
-#include <ostream>
+#include <cstdio>
 #include <string.h>
 
+#include "git.h"
 #include "types.h"
 #include "x6502.h"
 
 #include "fceu.h"
-#include "sound.h"
-#include "state.h"
 #include "input.h"
 #include "vsuni.h"
 #include "fds.h"
-#include "driver.h"
 
 // There are a bunch of different input types, implementing the InputC or
 // InputCFC interfaces.
@@ -385,9 +382,9 @@ void Input::InitializeInput() {
   }
 
   fc->fceu->SetWriteHandler(0x4016, 0x4016,
-			    [](DECLFW_ARGS) {
-			      return fc->input->B4016_Direct(DECLFW_FORWARD);
-			    });
+          [](DECLFW_ARGS) {
+            return fc->input->B4016_Direct(DECLFW_FORWARD);
+          });
 
   // force the port drivers to be setup
   SetInputStuff(0);

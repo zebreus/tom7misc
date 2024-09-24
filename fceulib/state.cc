@@ -20,30 +20,24 @@
 
 //  TODO: Add (better) file io error checking
 
-#include <string>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
+#include <cassert>
 #include <vector>
-#include <fstream>
-#include <map>
 
-#include "version.h"
-#include "types.h"
-#include "x6502.h"
-#include "fceu.h"
-#include "sound.h"
-#include "utils/endian.h"
-#include "utils/memory.h"
-#include "utils/xstring.h"
-#include "file.h"
-#include "fds.h"
-#include "state.h"
-#include "ppu.h"
-#include "input.h"
-#include "zlib.h"
 #include "driver.h"
+#include "emufile.h"
+#include "fc.h"
+#include "fceu.h"
+#include "input.h"
+#include "ppu.h"
+#include "sound.h"
+#include "state.h"
+#include "types.h"
+#include "utils/endian.h"
+#include "version.h"
+#include "x6502.h"
 
 #include "tracing.h"
 
@@ -57,7 +51,7 @@ int State::SubWrite(EmuFile *os, const vector<SFORMAT> &sf) {
   TRACE_SCOPED_STAY_ENABLED_IF(false);
 
   for (const SFORMAT &f : sf) {
-    CHECK(f.s != ~(uint32)0);
+    assert(f.s != ~(uint32)0);
     #if 0
     if (sf->s == ~(uint23)0) {
       // Link to another struct
@@ -121,7 +115,7 @@ int State::WriteStateChunk(EmuFile *os, int type,
 const SFORMAT *State::CheckS(const vector<SFORMAT> &sf,
                              uint32 tsize, SKEY desc) {
   for (const SFORMAT &f : sf) {
-    CHECK(f.s != ~(uint32)0);
+    assert(f.s != ~(uint32)0);
     if (f.desc == desc) {
       if (tsize != (f.s & (~FCEUSTATE_FLAGS))) return nullptr;
       return &f;
@@ -324,7 +318,7 @@ void State::AddExStateReal(void *v, uint32 s, int type, SKEY desc,
     }
   }
 
-  CHECK(s != ~(uint32)0);
+  assert(s != ~(uint32)0);
 
   SFORMAT sf{v, s, desc};
   if (type) sf.s |= FCEUSTATE_RLSB;

@@ -1,5 +1,11 @@
-#include <string.h>
 #include "suborkb.h"
+
+#include <cstring>
+
+#include "../fc.h"
+#include "../input.h"
+#include "../types.h"
+
 
 #define FKB_ESCAPE 0x01
 #define FKB_F1 0x02

@@ -1,9 +1,10 @@
 #ifndef _FCEULIB_ENDIAN_H
 #define _FCEULIB_ENDIAN_H
 
-#include <stdlib.h>
+#include <cstdlib>
 #include <iosfwd>
-#include <stdio.h>
+#include <cstdio>
+
 #include "../types.h"
 
 class EmuFile;

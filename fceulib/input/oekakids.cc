@@ -18,14 +18,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include <string.h>
-
-#include "cursor.h"
-#include "../types.h"
-#include "../input.h"
-#include "../fceu.h"
 
 #include "oekakids.h"
+
+#include "../fc.h"
+#include "../input.h"
+#include "../types.h"
+#include "cursor.h"
 
 namespace {
 struct OekaKids final : public InputCFC {

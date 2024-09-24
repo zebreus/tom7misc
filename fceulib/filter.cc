@@ -2,13 +2,16 @@
 
 #include <math.h>
 #include <stdio.h>
+
+#include "fc.h"
+#include "fcoeff-constants.h"
 #include "types.h"
 
-#include "sound.h"
-#include "x6502.h"
 #include "fceu.h"
 #include "filter.h"
 #include "fsettings.h"
+#include "sound.h"
+#include "x6502.h"
 
 // Maybe should be called "fcoeffs.inc" -tom7
 #include "fcoeffs.h"

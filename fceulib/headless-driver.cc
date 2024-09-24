@@ -1,24 +1,15 @@
+#include <process.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include <signal.h>
 #include <sys/time.h>
 #include <sys/stat.h>
-#include <string.h>
 #include <strings.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <iostream>
-#include <fstream>
 #include <limits.h>
 #include <math.h>
 
 #include "driver.h"
-
-#include "fceu.h"
-#include "version.h"
-
-#include "types.h"
 
 /**
  * Prints an error string to STDOUT.

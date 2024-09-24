@@ -18,16 +18,18 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include <string.h>
-#include <stdlib.h>
+#include "shadow.h"
 
-#include "cursor.h"
-#include "../types.h"
-#include "../input.h"
+#include <cstdlib>
+
+#include "../fc.h"
 #include "../fceu.h"
-#include "../ppu.h"
-#include "../x6502.h"
+#include "../input.h"
 #include "../palette.h"
+#include "../ppu.h"
+#include "../types.h"
+#include "../x6502.h"
+#include "cursor.h"
 
 namespace {
 struct ZAPPER {

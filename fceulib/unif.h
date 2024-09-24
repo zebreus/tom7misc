@@ -21,7 +21,10 @@
 #ifndef _FCEULIB_UNIF_H
 #define _FCEULIB_UNIF_H
 
+#include "cart.h"
+#include "fc.h"
 #include "fceu.h"
+#include "types.h"
 
 struct FceuFile;
 

@@ -18,10 +18,14 @@
 * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include <cassert>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <string>
 
+#include "fc.h"
+#include "git.h"
 #include "types.h"
 #include "x6502.h"
 #include "fceu.h"
@@ -33,7 +37,6 @@
 #include "state.h"
 #include "file.h"
 #include "cart.h"
-#include "driver.h"
 #include "fsettings.h"
 
 #include "tracing.h"
@@ -691,7 +694,7 @@ int FDS::FDSLoad(const char *name, FceuFile *fp) {
     }
   }
 
-  fc->fceu->GameInfo->type=GIT_FDS;
+  fc->fceu->GameInfo->type = GIT_FDS;
   fc->fceu->GameInterface = [](FC *fc, GI gi) {
     return fc->fds->FDSGI(gi);
   };
@@ -703,7 +706,7 @@ int FDS::FDSLoad(const char *name, FceuFile *fp) {
                           [](FC *fc) { return fc->fds->PostSave(); });
   FDSSoundStateAdd();
 
-  CHECK(TotalSides <= 8);
+  assert(TotalSides <= 8);
   for (int x=0; x < TotalSides; x++) {
     char temp[5] = "DDT_";
     temp[3] = "01234567"[x];

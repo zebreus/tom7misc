@@ -18,8 +18,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include <string.h>
 #include "fkb.h"
+
+#include <string.h>
+
+#include "../types.h"
+#include "../fc.h"
+#include "../input.h"
 
 #define FKB_F1 0x01
 #define FKB_F2 0x02

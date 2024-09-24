@@ -23,6 +23,7 @@
 
 #include <string.h>
 
+#include "fc.h"
 #include "types.h"
 #include "x6502.h"
 
@@ -251,7 +252,7 @@ void Sound::FrameSoundStuff(int V) {
   (this->*DoSQ2)();
   (this->*DoNoise)();
   (this->*DoTriangle)();
-  
+
   /* Envelope decay, linear counter, length counter, freq sweep */
   if (!(V & 1)) {
     if (!(PSG[8] & 0x80))
@@ -386,7 +387,7 @@ void Sound::SoundCPUHook(int cycles) {
   }
 
   DMCDMA();
-  
+
 #if !DISABLE_SOUND
   DMCacc -= cycles;
 
@@ -407,7 +408,7 @@ void Sound::SoundCPUHook(int cycles) {
   //      go, but control flow doesn't even depend on them -- it just
   //      affects the value of RawDAlatch, which is basically just part
   //      of the wave output sum.)
-  //    - But also, this can set DMCHaveDMA to 0, which sets 
+  //    - But also, this can set DMCHaveDMA to 0, which sets
   //
   // So, put another way: If we are not generating sound at all (or
   // don't care about the output wave being accurate), then we still
@@ -438,18 +439,18 @@ void Sound::SoundCPUHook(int cycles) {
     // Was formerly "Tester", but only called here.
     if (DMCBitCount == 0) {
       if (!DMCHaveDMA) {
-	DMCHaveSample = 0;
+  DMCHaveSample = 0;
       } else {
-	DMCHaveSample = 1;
-	DMCShift = DMCDMABuf;
-	DMCHaveDMA = 0;
+  DMCHaveSample = 1;
+  DMCShift = DMCDMABuf;
+  DMCHaveDMA = 0;
       }
     }
   }
 #else
 
   // This version doesn't output the sound, but I verified that
-  // it produces exactly the same cpu behavior. 
+  // it produces exactly the same cpu behavior.
   //
   // The call to DoPCM is not needed, and then a bunch of variables
   // become dead. We need to make sure that DMCacc and DMCHaveDMA are
@@ -515,7 +516,7 @@ void Sound::RDoSQ(int x) {
     while (V > 0) {
       rc--;
       if (!rc) {
-	rc = cf;
+  rc = cf;
       }
       V--;
     }
@@ -524,7 +525,7 @@ void Sound::RDoSQ(int x) {
     wlcount[x] = rc;
 
 #else
-    int32 amp = 
+    int32 amp =
       (EnvUnits[x].Mode & 0x1) ? EnvUnits[x].Speed : EnvUnits[x].decvolume;
 
     // Modify Square wave volume based on channel volume modifiers
@@ -542,7 +543,7 @@ void Sound::RDoSQ(int x) {
 
     const int32 rthresh = RectDuties[(PSG[(x << 2)] & 0xC0) >> 6];
     (void)rthresh;
-    
+
     int32 *D = &WaveHi[ChannelBC[x]];
     int32 V = SoundTS() - ChannelBC[x];
 
@@ -557,8 +558,8 @@ void Sound::RDoSQ(int x) {
       if (currdc < rthresh) *D += amp;
       rc--;
       if (!rc) {
-	rc = cf;
-	currdc = (currdc + 1) & 7;
+  rc = cf;
+  currdc = (currdc + 1) & 7;
       }
       V--;
       D++;
@@ -631,7 +632,7 @@ void Sound::RDoSQLQ() {
   int32 totalout =
          wlookup1[ttable[0][RectDutyCount[0]] + ttable[1][RectDutyCount[1]]];
   (void)totalout;
-  
+
   if (!inie[0] && !inie[1]) {
 #if !DISABLE_SOUND
     for (int32 V = start; V < end; V++) Wave[V >> 4] += totalout;
@@ -642,7 +643,7 @@ void Sound::RDoSQLQ() {
 #if !DISABLE_SOUND
       Wave[V >> 4] += totalout;  // tmpamp;
 #endif
-      
+
       sqacc[0] -= inie[0];
       sqacc[1] -= inie[1];
 
@@ -744,13 +745,13 @@ void Sound::RDoTriangleNoisePCMLQ() {
 
   int32 totalout = wlookup2[triangle_noise_tcout + noiseout + RawDALatch];
   (void)totalout;
-  
+
   if (inie[0] && inie[1]) {
     for (int32 V = start; V < end; V++) {
       #if !DISABLE_SOUND
       Wave[V >> 4] += totalout;
       #endif
-      
+
       triangle_noise_triacc -= inie[0];
       triangle_noise_noiseacc -= inie[1];
 
@@ -787,7 +788,7 @@ void Sound::RDoTriangleNoisePCMLQ() {
       #if !DISABLE_SOUND
       Wave[V >> 4] += totalout;
       #endif
-      
+
       triangle_noise_triacc -= inie[0];
 
       if (triangle_noise_triacc <= 0) {
@@ -854,7 +855,7 @@ void Sound::RDoNoise() {
 
   int32 outo = amptab[(nreg >> 0xe) & 1];
   (void)outo;
-  
+
   if (!lengthcount[3]) {
     outo = amptab[0] = 0;
   }
@@ -942,11 +943,11 @@ int Sound::FlushEmulateSound() {
   // If sound is disabled, we won't bother filling in the wave, but we
   // do call any GameExpSound (since those could definitely affect the
   // CPU).
-  
+
   if (FCEUS_SOUNDQ >= 1) {
     int32 *tmpo = &WaveHi[soundtsoffs];
     (void)tmpo;
-    
+
     if (GameExpSound.HiFill) GameExpSound.HiFill(fc);
 
 #if !DISABLE_SOUND
@@ -960,7 +961,7 @@ int Sound::FlushEmulateSound() {
     memmove(WaveHi, WaveHi + SoundTS() - left, left * sizeof(uint32));
     memset(WaveHi + left, 0, sizeof(WaveHi) - left * sizeof(uint32));
 #endif
-    
+
     if (GameExpSound.HiSync) GameExpSound.HiSync(fc, left);
     for (int x = 0; x < 5; x++) ChannelBC[x] = left;
   } else {

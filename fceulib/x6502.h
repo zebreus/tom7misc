@@ -29,9 +29,7 @@
 #include "tracing.h"
 #include "fceu.h"
 #include "fc.h"
-
-// XXX
-#include "base/logging.h"
+#include "types.h"
 
 struct X6502 {
   #undef VERBOSE_READ
@@ -135,7 +133,8 @@ private:
   }
 
   FC *fc = nullptr;
-  DISALLOW_COPY_AND_ASSIGN(X6502);
+  X6502(const X6502 &) = delete;
+  void operator=(const X6502&) = delete;
 };
 
 #define NTSC_CPU 1789772.7272727272727272

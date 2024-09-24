@@ -1,14 +1,10 @@
+#include "version.h"
+
 #include <string>
 
-#include "types.h"
-#include "version.h"
-#include "fceu.h"
-
-using namespace std;
-
 // returns a string suitable for use in an about box
-string FCEUI_GetAboutString() {
-  const string about =
+std::string FCEUI_GetAboutString() {
+  const std::string about =
     "FCEULib, by Tom 7 and based on\n"
     FCEU_NAME_AND_VERSION
     R"!(
@@ -39,7 +35,7 @@ ugetab
 
 " __TIME__ " " __DATE__ "\n)!";
 
-  const string compiler =
+  const std::string compiler =
     "g++ " __VERSION__;
 
   return about + compiler;

@@ -1,19 +1,18 @@
-#include <vector>
-#include <string>
-#include <set>
 #include <memory>
-
-#include <unistd.h>
-#include <sys/types.h>
-#include <string.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <string>
+#include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
+#include <utility>
+#include <vector>
 
 #include "emulator.h"
 #include "simplefm2.h"
-#include "../cc-lib/wavesave.h"
+#include "wavesave.h"
+#include "types.h"
 
 using namespace std;
 
@@ -24,7 +23,7 @@ using namespace std;
 int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "Usage: fm2wav romfile.nes moviefile.fm2\n"
-	    "\nWrites to moviefile.wav.\n");
+      "\nWrites to moviefile.wav.\n");
     return -1;
   }
   const string romfilename = argv[1];
@@ -33,11 +32,11 @@ int main(int argc, char **argv) {
   size_t dot = moviefilename.rfind(".");
   if (dot == string::npos) {
     fprintf(stderr, "Moviefilename [%s] should end with .fm2.\n",
-	    moviefilename.c_str());
+      moviefilename.c_str());
     return -1;
   }
   const string wavefilename = moviefilename.substr(0, dot) + (string)".wav";
-  
+
   std::unique_ptr<Emulator> emu{Emulator::Create(romfilename)};
   const vector<pair<uint8, uint8>> movie = SimpleFM2::ReadInputs2P(moviefilename);
 
@@ -56,8 +55,8 @@ int main(int argc, char **argv) {
     fprintf(stderr, "Couldn't write to %s...\n", wavefilename.c_str());
     return -1;
   }
-    
+
   fprintf(stderr, "Wrote %d frames of sound to %s.\n",
-	  (int)movie.size(), wavefilename.c_str());
+    (int)movie.size(), wavefilename.c_str());
   return 0;
 }

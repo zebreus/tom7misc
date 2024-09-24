@@ -18,10 +18,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include <string.h>
+#include "hypershot.h"
 
 #include "../input.h"
 #include "../types.h"
+#include "../fc.h"
 
 namespace {
 struct HyperShot final : public InputCFC {

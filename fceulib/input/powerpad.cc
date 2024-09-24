@@ -18,11 +18,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
+#include <cassert>
 #include <string.h>
 #include <stdlib.h>
 
 #include "../input.h"
 #include "../types.h"
+#include "../fc.h"
 
 namespace {
 template<bool is_side_a>
@@ -30,7 +32,7 @@ struct PowerPad final : public InputC {
   PowerPad(FC *fc, int w) : InputC(fc), which(w) {}
 
   uint8 Read(int w) override {
-    CHECK(which == w);
+    assert(which == w);
     uint8 ret = ((pprdata >> pprsb) & 1) << 3;
     ret |= ((pprdata >> (pprsb + 8)) & 1) << 4;
     if (pprsb >= 4) {
@@ -49,9 +51,9 @@ struct PowerPad final : public InputC {
 
   void Update(int w, void *data, int arg) override {
     static constexpr const uint8 shifttableA[12] = {8, 9, 0,  1, 11, 7,
-						    4, 2, 10, 6, 5,  3};
+                4, 2, 10, 6, 5,  3};
     static constexpr const uint8 shifttableB[12] = {1, 0,  9, 8, 2, 4,
-						    7, 11, 3, 5, 6, 10};
+                7, 11, 3, 5, 6, 10};
     pprdata = 0;
 
     if (is_side_a)

@@ -4,17 +4,17 @@
 // loop. It's sort of fiddly since there are negative moduluses and
 // things like that...
 
-#include <cstdint>
 #include <utility>
 #include <tuple>
 #include <sys/time.h>
+#include <string>
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
 #include "arcfour.h"
+#include "types.h"
 
-using int32 = int32_t;
-using uint8 = uint8_t;
+using namespace std;
 
 static int64 TimeUsec() {
   timeval tv;
@@ -49,12 +49,12 @@ static bool SameState(const State &a, const State &b) {
 
 static string PrintState(const State &a) {
   return StringPrintf("[acc %d, per %d, bit %02x, have %02x]",
-		      a.acc, a.period, a.bitcount, a.havedma);
+          a.acc, a.period, a.bitcount, a.havedma);
 }
 
 static State Original(State s, int cycles) {
   s.acc -= cycles;
-  
+
   while (s.acc <= 0) {
     s.acc += s.period;
     s.bitcount = (s.bitcount + 1) & 7;
@@ -63,7 +63,7 @@ static State Original(State s, int cycles) {
       s.havedma = 0;
     }
   }
-  
+
   return s;
 }
 
@@ -91,7 +91,7 @@ static State Simplified(State s, int cycles) {
     if (s.bitcount >> 3) s.havedma = 0;
     // s.havedma = s.havedma & ~(s.bitcount >> 3);
     #endif
-    
+
   } else {
     s.acc = t;
   }
@@ -163,7 +163,7 @@ static std::pair<State, int32> RandomExample(ArcFour *rc) {
 int main() {
   ArcFour rc{"dmctest2"};
   printf("2 / 54 = %d. -2 / 54 = %d. 2 / -54 = %d.\n",
-	  2 / 54, -2 / 54, 2 / -54);
+    2 / 54, -2 / 54, 2 / -54);
   printf("-2 %% 54 = %d.\n", -2 % 54);
 #define COUNT 10000000
   for (int i = 0; i < COUNT; i++) {
@@ -175,7 +175,7 @@ int main() {
     State actual = Simplified(example, cycles);
 
     CHECK(SameState(expected, actual)) <<
-      "On this example:\n" << 
+      "On this example:\n" <<
       PrintState(example) << "  for " << cycles << " cycles\n"
       "\nNot equal: \n" <<
       PrintState(expected) << "  (expected) vs.\n" <<
@@ -202,7 +202,7 @@ int main() {
   double original_seconds = original_timer.GetSeconds();
 
   printf("Original in   %.2f sec.\n", original_seconds);
-  
+
   ArcFour rc2{"bench"};
   Timer simplified_timer;
   for (int i = 0; i < COUNT * 100; i++) {

@@ -27,6 +27,8 @@ Can get rid of:
  - file wrappers can be massively simplified
  - file archive support
  - NSF code in mapper.h and the uncalled functions therein?
+ - zlib dependency; bake miniz?
+ - test-util.h can have dependency on cc-lib.
 
 Memory todo:
  - Need to check that various objects are actually having their Free or Kill
@@ -71,13 +73,13 @@ Possible performance improvements:
    be neat if these could coexist.
 
  - DISABLE_VIDEO
- 
+
  - Can the ZNTable be replaced with a computation on the value itself?
    See my comment in x6502.cc.
 
  - ppulut2 is just a bit shift of ppulut1; better for cache to just
    compute it?
- 
+
  - Is it possible to remove the indirection when reading/writing memory,
    perhaps in a special case? Currently ARead is populated with a bunch
    of function pointers (including special regions installed by various
@@ -110,20 +112,20 @@ $ nm -g -C *.o | grep '::' | grep -v 'Cart::' | grep -v 'CartInterface::' | grep
 
 # alias files='find . -type f | grep -v .svn | grep -v ".o$"'
 alias files="/bin/find . -type f | grep -v roms/ | grep -v roms_crash/ | grep -v .svn | grep -v '.nes$' | grep -v '.exe$' | grep -v '.o$'"
-(defun find-mentions () 
+(defun find-mentions ()
  (interactive "")
  (let ((sym (thing-at-point 'symbol)))
     (message sym)
-    	     ;; TODO: version that uses \\b here around sym for word
-	     ;; boundaries only (like if there's a prefix)
+             ;; TODO: version that uses \\b here around sym for word
+         ;; boundaries only (like if there's a prefix)
     (let ((cmd (concat "bash -c \"grep '"
-	                sym 
-	   	        "' `/bin/find /d/code/fceulib -type f | grep -v fix/ | grep -v roms/ | grep -v clean_ | grep -v roms_crash/ | grep -v .svn | grep -v '.nes$' | grep -v '.exe$' | grep -v '.o$'`\"")))
+                    sym
+                "' `/bin/find /d/code/fceulib -type f | grep -v fix/ | grep -v roms/ | grep -v clean_ | grep -v roms_crash/ | grep -v .svn | grep -v '.nes$' | grep -v '.exe$' | grep -v '.o$'`\"")))
       (message "%s" cmd)
         (let ((res (shell-command-to-string cmd)))
            (message "%s" (concat cmd "\n" res))
         )
-    )    
+    )
  )
 )
 
@@ -146,21 +148,21 @@ alias files="/bin/find . -type f | grep -v roms/ | grep -v roms_crash/ | grep -v
 (defun before-or-after ()
   (interactive)
   (let* ((curbuffer (current-buffer))
-	 (oldfile (buffer-file-name))
-	 (isbefore (string-match "-before" oldfile))
-	 (isafter  (string-match "-after" oldfile))
-	 (tobefore (replace-regexp-in-string "-after" "-before" oldfile))
-	 (toafter  (replace-regexp-in-string "-before" "-after" oldfile)))
+     (oldfile (buffer-file-name))
+     (isbefore (string-match "-before" oldfile))
+     (isafter  (string-match "-after" oldfile))
+     (tobefore (replace-regexp-in-string "-after" "-before" oldfile))
+     (toafter  (replace-regexp-in-string "-before" "-after" oldfile)))
     (message "%s" (concat oldfile ", " tobefore ", " toafter))
     (cond (isbefore
            (progn
-	    (message "AFTER: %s" toafter)
+        (message "AFTER: %s" toafter)
             (find-file toafter)))
-	  (isafter
-	   (progn
-	    (message "BEFORE: %s" tobefore)
-	    (find-file tobefore)))
-	  (t (message "Path must contain -before or -after.")))))
+      (isafter
+       (progn
+        (message "BEFORE: %s" tobefore)
+        (find-file tobefore)))
+      (t (message "Path must contain -before or -after.")))))
 
 ; (define-key map (kbd "C0") nil)
 

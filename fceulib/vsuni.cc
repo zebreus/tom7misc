@@ -18,20 +18,18 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <string.h>
 #include <stdio.h>
 
+#include "fc.h"
+#include "git.h"
 #include "types.h"
 #include "x6502.h"
 #include "fceu.h"
-#include "input.h"
 #include "vsuni.h"
-#include "state.h"
-#include "driver.h"
 #include "palette.h"
 
 #define IOPTION_GUN       0x1
-#define IOPTION_SWAPDIRAB       0x2
+#define IOPTION_SWAPDIRAB 0x2
 #define IOPTION_PREDIP    0x10
 
 VSUni::VSUni(FC *fc) : stateinfo {

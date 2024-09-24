@@ -1,5 +1,7 @@
 #include "cursor.h"
 
+#include "../types.h"
+
 static constexpr uint8 GunSight[] = {
   0,0,0,0,0,0,1,0,0,0,0,0,0,
   0,0,0,0,0,0,2,0,0,0,0,0,0,

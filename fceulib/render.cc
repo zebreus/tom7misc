@@ -1,23 +1,22 @@
-#include <vector>
-#include <string>
-#include <set>
 #include <memory>
-
-#include <unistd.h>
-#include <sys/types.h>
-#include <string.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <string>
+#include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
+#include <utility>
+#include <vector>
 
 #include "emulator.h"
-#include "simplefm2.h"
 #include "simplefm7.h"
 #include "stringprintf.h"
-#include "../cc-lib/wavesave.h"
 
-#include "../cc-lib/image.h"
+// cc-lib
+#include "types.h"
+#include "wavesave.h"
+#include "image.h"
 
 using namespace std;
 

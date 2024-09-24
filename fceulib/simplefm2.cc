@@ -1,8 +1,15 @@
 
 #include "simplefm2.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <stdlib.h>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "types.h"
 #include "util.h"
-#include "base/stringprintf.h"
 
 using namespace std;
 
@@ -218,7 +225,7 @@ string SimpleFM2::InputToColorString(uint8 input) {
       out += "<span style=\"color:" + this_color + "\">";
       color = this_color;
     }
-    out += StringPrintf("%c", c);
+    out.push_back(c);
   }
   if (color != "") out += "</span>";
   return out;

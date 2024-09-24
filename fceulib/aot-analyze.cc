@@ -1,26 +1,17 @@
 
 #include "emulator.h"
 
-#include <string>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <sys/time.h>
-#include <sstream>
 #include <unistd.h>
 #include <cstdio>
 
-#include "base/logging.h"
+#include "fc.h"
 #include "test-util.h"
-#include "arcfour.h"
 #include "simplefm2.h"
-#include "base/stringprintf.h"
-
 #include "x6502.h"
-
-#include <mutex>
-#include <thread>
-
-#include "tracing.h"
 
 #define ANSI_RED "\x1B[1;31;40m"
 #define ANSI_GREY "\x1B[1;30;40m"
@@ -42,7 +33,7 @@
 int main(int argc, char **argv) {
   std::unique_ptr<Emulator> emu(Emulator::Create("roms/contra.nes"));
   vector<uint8> start = emu->SaveUncompressed();
-  
+
   vector<pair<uint8, uint8>> movie =
     SimpleFM2::ReadInputs2P("../pftwo/contra2pwaterfall.fm2");
 
@@ -56,9 +47,9 @@ int main(int argc, char **argv) {
   for (int i = 0; i < 0x10000; i++) {
     int64 count = fc->X->pc_histo[i];
     if (i >= 0x8000 && i < 0xC000)
-      count_low += count; 
+      count_low += count;
     if (i >= 0xC000 && i < 0x10000)
-      count_high += count; 
+      count_high += count;
     all += count;
     if (count > 0) {
       printf("%04x: %lld\n", i, count);
@@ -66,9 +57,9 @@ int main(int argc, char **argv) {
   }
 
   printf("Low range total:  %lld [%.1f%%]\n"
-	 "High range total: %lld [%.1f%%]\n",
-	 count_low, (100.0 * count_low) / all,
-	 count_high, (100.0 * count_high) / all);
-  
+   "High range total: %lld [%.1f%%]\n",
+   count_low, (100.0 * count_low) / all,
+   count_high, (100.0 * count_high) / all);
+
   return 0;
 }

@@ -1,4 +1,6 @@
 
+#include <algorithm>
+#include <cstdio>
 #include <vector>
 #include <string>
 #include <list>

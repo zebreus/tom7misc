@@ -21,9 +21,9 @@
 /// \file
 /// \brief memory management services provided by FCEU core
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
+
 #include "../types.h"
 #include "../fceu.h"
 #include "memory.h"

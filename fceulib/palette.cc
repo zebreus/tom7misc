@@ -18,18 +18,18 @@
 * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include "palette.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <string.h>
 
+#include "fc.h"
+#include "git.h"
 #include "types.h"
-#include "file.h"
 #include "fceu.h"
-#include "driver.h"
 #include "boards/mapinc.h"
 
-#include "palette.h"
 #include "palettes/palettes.h"
 
 // TODO: Now that these are compile-time constants, some of this stuff
@@ -47,7 +47,7 @@ static constexpr PaletteEntry const *palpoint[] = {
 Palette::Palette(FC *fc) : fc(fc) {}
 
 void Palette::FCEUD_GetPalette(uint8 index,
-			       uint8 *r, uint8 *g, uint8 *b) const {
+                               uint8 *r, uint8 *g, uint8 *b) const {
   *r = s_psdl[index].r;
   *g = s_psdl[index].g;
   *b = s_psdl[index].b;

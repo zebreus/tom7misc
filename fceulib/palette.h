@@ -2,6 +2,7 @@
 #define _FCEULIB_PALETTE_H
 
 #include "fc.h"
+#include "types.h"
 
 struct PaletteEntry {
   uint8 r, g, b;

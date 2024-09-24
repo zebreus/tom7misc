@@ -4,11 +4,11 @@
 /// by Christophe Devine <devine@cr0.net>;
 /// this program is licensed under the GPL.
 
-#include <string>
-
-#include <string.h>
-#include "../types.h"
 #include "md5.h"
+
+#include <cstring>
+
+#include "../types.h"
 
 #define GET_UINT32(n,b,i) {                 \
     (n) = ( (uint32) (b)[(i) + 3] << 24 )       \

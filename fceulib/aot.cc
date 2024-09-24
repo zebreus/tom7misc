@@ -23,26 +23,23 @@
 // should contain *values*, but an intermediate write to a register
 // changes its value, duh. (This is mostly, or completely, done now.)
 
-#include "emulator.h"
-
-#include <string>
-#include <vector>
-#include <memory>
-#include <sys/time.h>
-#include <sstream>
-#include <unistd.h>
 #include <cstdio>
+#include <cstring>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <sys/time.h>
+#include <unistd.h>
+#include <vector>
 
 #include "base/logging.h"
-#include "test-util.h"
 #include "base/stringprintf.h"
+#include "emulator.h"
+#include "fc.h"
+#include "test-util.h"
 #include "threadutil.h"
-
 #include "x6502.h"
-#include "cart.h"
-
-#include <mutex>
-#include <thread>
 
 // When we emit a sequence of instructions, we use local variables
 // for the "registers" (registers + some other state) rather than
@@ -134,7 +131,8 @@ struct Code {
   }
 
 private:
-  DISALLOW_COPY_AND_ASSIGN(Code);
+  Code(const Code &other) = delete;
+  Code &operator =(const Code &other) = delete;
 };
 }
 

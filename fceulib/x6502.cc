@@ -18,7 +18,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include <string.h>
+#include <cassert>
+
+#include "fc.h"
 #include "types.h"
 #include "x6502.h"
 #include "fceu.h"
@@ -45,7 +47,7 @@
 
 
 X6502::X6502(FC *fc) : fc(fc) {
-  CHECK(fc != nullptr);
+  assert(fc != nullptr);
 }
 
 uint8 X6502::DMR(uint32 A) {

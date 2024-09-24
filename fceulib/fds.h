@@ -4,6 +4,7 @@
 // for GI enum.
 #include "fceu.h"
 #include "fc.h"
+#include "types.h"
 
 struct FceuFile;
 

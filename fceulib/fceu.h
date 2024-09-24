@@ -15,7 +15,7 @@ typedef uint8 (*readfunc)(FC *, uint32 A);
 // of the PPU (good idea; it is an incredible mess), but it
 // doesn't seem to work well. Some of the code is around;
 // maybe I should just give up on it.
-static constexpr int newppu = 0;
+// static constexpr int newppu = 0;
 
 // Declares a "Read" function, which takes an address and
 // returns the byte there. These are used as callbacks all

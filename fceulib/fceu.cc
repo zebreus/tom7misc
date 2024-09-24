@@ -18,42 +18,34 @@
 * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
+#include <cassert>
 #include <string>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <time.h>
-#include "types.h"
-#include "x6502.h"
-#include "fceu.h"
-#include "ppu.h"
-#include "sound.h"
-#include "file.h"
-#include "utils/endian.h"
-#include "utils/memory.h"
-#include "utils/crc32.h"
 
 #include "cart.h"
+#include "fc.h"
+#include "fceu.h"
 #include "fds.h"
-#include "ines.h"
-#include "unif.h"
-#include "palette.h"
-#include "state.h"
-#include "input.h"
 #include "file.h"
-#include "vsuni.h"
+#include "git.h"
 #include "ines.h"
+#include "input.h"
+#include "palette.h"
+#include "ppu.h"
+#include "sound.h"
+#include "state.h"
+#include "types.h"
+#include "unif.h"
+#include "utils/memory.h"
+#include "vsuni.h"
+#include "x6502.h"
 
 #include "driver.h"
 
 #include "tracing.h"
-
-#include <fstream>
-#include <sstream>
-
-// XXX
-#include "base/logging.h"
 
 using namespace std;
 
@@ -64,13 +56,9 @@ FCEU::FCEU(FC *fc) : fc(fc) {
   XBackBuf = (uint8*)FCEU_gmalloc(256 * 256);
 }
 
-FCEUGI::FCEUGI() { }
-
-FCEUGI::~FCEUGI() { }
-
 void FCEU::FCEU_CloseGame() {
   if (GameInfo != nullptr) {
-    CHECK(GameInterface != nullptr);
+    assert(GameInterface != nullptr);
     GameInterface(fc, GI_CLOSE);
 
     fc->state->ResetExState(nullptr, nullptr);
@@ -195,7 +183,7 @@ FCEUGI *FCEU::FCEUI_LoadGame(const char *name, int OverwriteVidMode) {
 
     return GameInfo;
   }
-    
+
   FCEU_PrintError("An error occurred while loading the file.");
   FCEU_fclose(fp);
 

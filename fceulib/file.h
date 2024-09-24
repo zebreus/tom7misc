@@ -1,8 +1,10 @@
 #ifndef _FCEULIB_FILE_H_
 #define _FCEULIB_FILE_H_
 
+#include <cstddef>
+#include <cstdio>
 #include <string>
-#include <iostream>
+
 #include "types.h"
 #include "emufile.h"
 

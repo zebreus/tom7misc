@@ -32,3 +32,6 @@ const char *ESIFC_Name(ESIFC esifc) {
   default: return "<invalid ESIFC>";
   }
 }
+
+FCEUGI::FCEUGI() { }
+FCEUGI::~FCEUGI() { }

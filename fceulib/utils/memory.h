@@ -25,7 +25,9 @@
 #ifndef _FCEULIB_MEMORY_H
 #define _FCEULIB_MEMORY_H
 
-#include <stdlib.h>
+#include <cstdlib>
+
+#include "../types.h"
 
 // #define FCEU_dwmemset(d,c,n) {int _x; for(_x=n-4;_x>=0;_x-=4) *(uint32 *)&(d)[_x]=c;}
 // Looks like memset but for 32-bit quantities, though n is still in bytes. -tom7

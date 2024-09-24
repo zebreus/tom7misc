@@ -24,16 +24,13 @@
 #include <vector>
 #include <unordered_set>
 #include <array>
-
-#include <string.h>
+#include <cassert>
+#include <cstring>
 
 #include "types.h"
-
 #include "fc.h"
 
-// XXX
-#include "base/logging.h"
-
+class EmuFile;
 using SKEY = std::array<char, 4>;
 
 struct SFORMAT {
@@ -52,7 +49,7 @@ struct SFORMAT {
   SFORMAT(void *v, uint32 s, const char *key) :
     v(v), s(s) {
     // PERF
-    CHECK(strlen(key) == 4) << "\nMust be exactly 4 bytes: " << key;
+    assert(strlen(key) == 4);
     // Discrepancy between C++11 and C++14 prevents using
     // brace initialization in initializer.
     // desc = {key[0], key[1], key[2], key[3]};
@@ -141,7 +138,7 @@ struct State {
   // avoid the linear time CheckS.
   std::unordered_set<SKEY, HashDesc, EqDesc> used_keys;
 
-  FC *fc = nullptr;  
+  FC *fc = nullptr;
   const std::vector<SFORMAT> sfcpu, sfcpuc;
 };
 

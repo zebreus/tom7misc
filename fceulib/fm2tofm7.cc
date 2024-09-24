@@ -1,14 +1,20 @@
 /* This standalone program is part of the fceulib distribution, but shouldn't
    be compiled into it. */
 
+#include <cstdio>
+#include <cstring>
+#include <utility>
 #include <vector>
 #include <string>
 
 #include "simplefm2.h"
 #include "simplefm7.h"
-#include "base/stringprintf.h"
-#include "base/logging.h"
 #include "util.h"
+#include "types.h"
+
+#include "base/logging.h"
+
+using namespace std;
 
 static void Usage() {
   fprintf(stderr,
@@ -16,7 +22,7 @@ static void Usage() {
           "Usage: fm2tofm7 [-cc] karate.fm2 [karate.fm7]\n\n"
           "If -cc is given (must be first) then output as C++ string\n"
           "literal. If no output file is given, writes to stdout.\n");
-}  
+}
 
 int main(int argc, char **argv) {
   if (argc < 2) {
@@ -39,7 +45,7 @@ int main(int argc, char **argv) {
 
   CHECK(infile != "-cc");
   CHECK(outfile != "-cc");
-  
+
   vector<pair<uint8, uint8>> inputs = SimpleFM2::ReadInputs2P(infile);
   fprintf(stderr, "Loaded %s with %lld inputs.\n",
           infile.c_str(), inputs.size());
