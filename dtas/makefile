@@ -1,4 +1,4 @@
-default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe
+default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -24,7 +24,7 @@ OPT=-O2
 CXXFLAGS=$(OPT) $(PLATFORM_CFLAGS) -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -I$(SQLITE) --std=c++20
 LFLAGS=$(PLATFORM_CFLAGS) -lz
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o $(CC_LIB)/csv.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o $(CC_LIB)/csv.o $(CC_LIB)/atomic-util.o
 
 SQLITE_OBJECTS=$(SQLITE)/sqlite3.o $(SQLITE)/database.o
 
@@ -72,6 +72,10 @@ collage.exe : collage.o mario-util.o $(OBJECTS)
 	@echo -n "!"
 
 solve.exe : solve.o mario-util.o $(OBJECTS) $(SQLITE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+minus-results.exe : minus-results.o mario-util.o $(OBJECTS) $(SQLITE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

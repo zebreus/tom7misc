@@ -28,6 +28,18 @@ inline constexpr int OPER_MODE = 0x0770;
 //              2:4 when win screen is fully displayed
 inline constexpr int OPER_MODE_TASK = 0x0772;
 
+// 0 blank between screen loads?
+// 2 when entering horiz pipe
+// 3 when going down pipe
+// 4 sliding down flagpole
+// 5 walking to exit, time countdown
+// 7 when coming out of vertical pipe, or interstitial
+// 8 during normal play, or dying
+// 9 when getting big
+// 10 when getting small
+// 12 when becoming fire mario
+inline constexpr int GAME_ENGINE_SUBROUTINE = 0x000e;
+
 // Pixels from top of screen; y increases downward.
 // Coordinates are of mario's top-left pixel (when
 // big, at least)
