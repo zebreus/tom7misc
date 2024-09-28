@@ -33,7 +33,7 @@ struct StatusBar {
   // Prints the status to the screen.
   void EmitStatus(const std::string &s);
 
-private:
+ private:
   void MoveUp();
 
   void EmitStatusLinesWithLock(
