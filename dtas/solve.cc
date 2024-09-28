@@ -12,6 +12,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -19,12 +20,15 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "atomic-util.h"
+#include "auto-histo.h"
 #include "image.h"
 #include "periodically.h"
 #include "randutil.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
+#include "hashing.h"
+#include "status-bar.h"
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
@@ -33,8 +37,9 @@
 #include "../fceulib/simplefm2.h"
 #include "../fceulib/simplefm7.h"
 
-#include "mario.h"
+#include "emulator-pool.h"
 #include "mario-util.h"
+#include "mario.h"
 #include "minus.h"
 
 using uint8 = uint8_t;
@@ -45,7 +50,8 @@ DECLARE_COUNTERS(emu_steps_total,
                  emu_steps_attempt,
                  levels_attempted,
                  futures_stuck,
-                 levels_solved, u1_, u2_, u3_);
+                 levels_solved,
+                 levels_skipped, u2_, u3_);
 
 // We're not trying to find a particularly short solution, just a solution.
 
@@ -339,11 +345,13 @@ struct Solver {
         future.save = emu->SaveUncompressed();
         future.eval = evaluator->Eval(emu.get());
         future.stuck = evaluator->Stuck(emu.get());
+        if (future.stuck) futures_stuck++;
         future.done = evaluator->Succeeded(emu.get());
         // (could return immediately if one of them wins!)
       }
       emu_steps_total += steps_run;
       emu_steps_attempt += steps_run;
+
 
       futures_stuck +=
         std::erase_if(futures,
@@ -354,11 +362,19 @@ struct Solver {
       // If any of these end up successful, we are done.
       for (const Future &f : futures) {
         if (f.done) {
+          // This seems unlikely at first, but it happens in practice.
+          // Two workers might simultaneously pick states that are
+          // right before the exit, for example.
+          if (GetOutcome() == Outcome::SUCCESS) {
+            printf(AYELLOW("Simultaneously solved")
+                   " %s! Ignored.\n", ColorLevel(level_id).c_str());
+            return;
+          }
           SetOutcome(Outcome::SUCCESS);
           std::vector<uint8_t> full_sol = start.movie;
           for (uint8_t b : f.moves) full_sol.push_back(b);
           db->AddSolution(level_id, full_sol, MinusDB::METHOD_SOLVE);
-          printf("Solved %s: %s\n",
+          printf(AGREEN("Solved") " %s: " AGREY("%s") "\n",
                  ColorLevel(level_id).c_str(),
                  SimpleFM7::EncodeOneLine(full_sol).c_str());
           levels_solved++;
@@ -414,8 +430,10 @@ struct Solver {
 
   Solver(MinusDB *db, uint8_t major, uint8_t minor, double solve_time = 3600.0,
          int num_threads = 8) :
+    status(STATUS_LINES),
     db(db),
     level_id((uint16_t(major) << 8) | minor) {
+
     emu_steps_attempt.Reset();
 
     solver_emu.reset(Emulator::Create(ROMFILE));
@@ -455,9 +473,9 @@ struct Solver {
       if (GetOutcome() != Outcome::RUNNING) {
         break;
       } else if (solve_timer.Seconds() > solve_time) {
-        printf("Solver on %s ran out of time (%s).\n",
-               ColorLevel(level_id).c_str(),
-               ANSI::Time(solve_timer.Seconds()).c_str());
+        status.Printf("Solver on %s ran out of time (%s).\n",
+                      ColorLevel(level_id).c_str(),
+                      ANSI::Time(solve_timer.Seconds()).c_str());
         SetOutcome(Outcome::TIMEOUT);
         break;
       }
@@ -468,37 +486,65 @@ struct Solver {
       }
 
       if (status_per.ShouldRun()) {
+
         MutexLock ml(&pop_m);
         uint64_t total_steps = emu_steps_total.Read();
         uint64_t attempt_steps = emu_steps_attempt.Read();
         double sps = attempt_steps / elapsed.Seconds();
-        printf("%lld attempted. %s steps (%lld here; %.1f/sec). "
-               "%lld stuck futures.\n",
-               levels_attempted.Read(),
-               FormatNum(total_steps).c_str(),
-               attempt_steps, sps,
-               futures_stuck.Read());
-        printf("Running on %s. Population size %d. Elapsed %s/%s.\n",
-               ColorLevel(level_id).c_str(),
-               (int)population.size(),
-               ANSI::Time(solve_timer.Seconds()).c_str(),
-               ANSI::Time(solve_time).c_str());
-        for (int i = 0; i < (int)population.size(); i++) {
-          printf(AGREY("%02d") " " AWHITE("%d") " moves. "
-                 "Eval " ABLUE("%.5f") "\n",
-                 i, (int)population[i].movie.size(),
-                 population[i].eval);
+
+        std::string lines;
+
+        StringAppendF(
+            &lines,
+            "%lld attempted. %s steps (%lld here; %.1f/sec). "
+            "Solved " AGREEN("%d") "\n",
+            levels_attempted.Read(),
+            FormatNum(total_steps).c_str(),
+            attempt_steps, sps,
+            (int)levels_solved.Read());
+        StringAppendF(
+            &lines,
+            "Running on %s. Pop size %d. %d stuck. "
+            "Elapsed %s/%s.\n",
+            ColorLevel(level_id).c_str(),
+            (int)population.size(),
+            (int)futures_stuck.Read(),
+            ANSI::Time(solve_timer.Seconds()).c_str(),
+            ANSI::Time(solve_time).c_str());
+
+        AutoHisto eval;
+        AutoHisto moves;
+        for (const State &state : population) {
+          eval.Observe(state.eval);
+          moves.Observe(state.movie.size());
+          /*
+            printf(AGREY("%02d") " " AWHITE("%d") " moves. "
+            "Eval " ABLUE("%.5f") "\n",
+            i, (int)population[i].movie.size(),
+            population[i].eval);
+          */
         }
+
+        StringAppendF(&lines,
+                      AWHITE("Eval") ":\n"
+                      "%s\n",
+                      eval.SimpleHorizANSI(12).c_str());
+        StringAppendF(&lines,
+                      AWHITE("Moves") ":\n"
+                      "%s\n",
+                      moves.SimpleHorizANSI(10).c_str());
+
+        status.EmitStatus(lines);
       }
 
       images_per.RunIf([&]() {
-          printf("Save images...\n");
+          status.Printf("Save images...\n");
           image_counter++;
           WriteImage(image_counter);
         });
     }
 
-    printf("Waiting for solve threads to exit.\n");
+    status.Printf("Waiting for solve threads to exit.\n");
     for (std::thread &t : workers) t.join();
     workers.clear();
 
@@ -511,8 +557,8 @@ struct Solver {
                 });
       if (!population.empty()) {
         db->AddPartial(level_id, population[0].movie);
-        printf("Saved one best solution: %d moves, %.3f eval\n",
-               (int)population[0].movie.size(), population[0].eval);
+        status.Printf("Saved one best solution: %d moves, %.3f eval\n",
+                      (int)population[0].movie.size(), population[0].eval);
       }
     }
 
@@ -582,8 +628,12 @@ struct Solver {
     std::string filename =
       StringPrintf("solve%d-%d_%d.png", major, minor, counter);
     img.Save(filename);
-    printf("Wrote %s.\n", filename.c_str());
+    status.Printf("Wrote %s.\n", filename.c_str());
   }
+
+  // two status lines; two histos, each two lines
+  static constexpr int STATUS_LINES = 8;
+  StatusBar status;
 
   Timer elapsed;
   // Not owned.
@@ -620,19 +670,29 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
     PackLevel(0, 0),
   };
 
-  #if 0
+  #if 1
   // Also, the whole main game.
   for (int maj = 0; maj < 8; maj++) {
-    for (int min = 0; min < 4; min++) {
+    // You might think there are four minor levels per
+    // major world, but the transition screen at the
+    // beginning of e.g. 1-2 is actually its own level!
+    for (int min = 0; min < 5; min++) {
       do_first.insert(PackLevel(maj, min));
     }
   }
   #endif
 
+  #if 0
   // Also, the whole left column.
   for (int maj = 0; maj < 256; maj++) {
     do_first.insert(PackLevel(maj, 0));
   }
+
+  // X-3
+  for (int maj = 0; maj < 256; maj++) {
+    do_first.insert(PackLevel(maj, 2));
+  }
+  #endif
 
   for (LevelId level : do_first) {
     if (!done.contains(level)) not_done.push_back(level);
@@ -660,35 +720,115 @@ static void Solve() {
   std::vector<LevelId> todo = GetTodo(&db, &rc);
 
   for (LevelId level : todo) {
+    if (db.HasSolution(level)) {
+      levels_skipped++;
+      printf("Level %s was solved in the meantime!\n",
+             ColorLevel(level).c_str());
+      continue;
+    }
     auto [major, minor] = UnpackLevel(level);
     Solver solver(&db, major, minor, SOLVE_TIME, 8);
   }
 }
 
+namespace {
+template<class F>
+struct ScopeExit {
+  ScopeExit(F &&f) : f(std::forward<F>(f)) {}
+  ~ScopeExit() { f(); }
+  F f;
+};
+}
+
+[[maybe_unused]]
 static void Cross() {
   MinusDB db;
   ArcFour rc(StringPrintf("cross.%lld", time(nullptr)));
 
+  StatusBar status(1);
+  status.Statusf("Preparing solutions.\n");
+
   std::vector<LevelId> todo = GetTodo(&db, &rc);
-  // TODO: Should dedupe these; now that I've used this
-  // strategy there are loads of duplicates in there.
-  std::vector<std::pair<LevelId, std::vector<uint8_t>>> sols =
-    db.GetSolutions();
+
+  // Get all the solutions. There are many duplicates (owing for example
+  // to this very strategy!) so we deduplicate them.
+  std::vector<MinusDB::SolutionRow> all_sols = db.GetSolutions();
+  status.Printf("There are " AGREEN("%d") " existing solutions.\n",
+                (int)all_sols.size());
+
+  // Index of the earliest instance of that solution.
+  std::unordered_map<std::vector<uint8_t>, int, Hashing<std::vector<uint8_t>>> provenance;
+  for (int idx = 0; idx < all_sols.size(); idx++){
+    const MinusDB::SolutionRow &row = all_sols[idx];
+    // Assume it's a duplicate (or actually a prefix) of an original
+    // solution, and skip it.
+    if (row.method == MinusDB::METHOD_CROSS)
+      continue;
+
+    auto it = provenance.find(row.movie);
+    if (it == provenance.end()) {
+      provenance[row.movie] = idx;
+    } else if (row.createdate < all_sols[it->second].createdate) {
+      it->second = idx;
+    }
+  }
+
+  status.Printf("There are " APURPLE("%d") " distinct original sols.\n",
+                (int)provenance.size());
+
+  // Now put it in the form we like.
+  std::vector<std::pair<int, std::vector<uint8_t>>> sols;
+  sols.reserve(provenance.size());
+  for (const auto &[m_, idx] : provenance)
+    sols.emplace_back(all_sols[idx].level, all_sols[idx].movie);
+
+  EmulatorPool emulator_pool(ROMFILE);
+
+  // These might be big. No need to keep them around.
+  provenance.clear();
+  all_sols.clear();
+
+  // const int64_t total_work = sols.size() * todo.size();
 
   Timer elapsed;
   Periodically status_per(1.0);
   ParallelApp(
       todo,
-      [&db, &todo, &sols, &elapsed, &status_per](LevelId level) {
+      [&db, &todo, &sols, &elapsed, &status, &status_per,
+       &emulator_pool](LevelId level) {
         const auto &[major, minor] = UnpackLevel(level);
-        // PERF if we didn't have to keep creating emulator
-        std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
+
+        if (db.HasSolution(level)) {
+          levels_skipped++;
+          status.Printf("Level %s was solved in the meantime!\n",
+                        ColorLevel(level).c_str());
+          return;
+        }
+
+
+        // Get emulator or create one.
+        std::unique_ptr<Emulator> emu;
+        {
+          MutexLock ml(&pool_mutex);
+          if (emulator_pool.empty()) {
+            emulator_pool.emplace_back(Emulator::Create(ROMFILE));
+          }
+
+          CHECK(!emulator_pool.empty());
+          emu = std::move(emulator_pool.back());
+          emulator_pool.pop_back();
+        }
+
+        // And return it no matter how we exit.
+        ScopeExit return_emulator([&]() {
+            MutexLock ml(&pool_mutex);
+            emulator_pool.push_back(std::move(emu));
+          });
+
         CHECK(emu.get() != nullptr) << ROMFILE;
         MarioUtil::WarpTo(emu.get(), major, minor, 0);
         std::vector<uint8_t> start_state = emu->SaveUncompressed();
         Evaluator eval(emu.get());
-
-        levels_attempted++;
 
         for (const auto &[source_level, movie] : sols) {
           emu->LoadUncompressed(start_state);
@@ -699,24 +839,65 @@ static void Cross() {
               std::vector<uint8_t> prefix = movie;
               prefix.resize(i + 1);
               db.AddSolution(level, prefix, MinusDB::METHOD_CROSS);
-              printf("Solved %s (via %s): %s\n",
-                     ColorLevel(level).c_str(),
-                     ColorLevel(source_level).c_str(),
-                     SimpleFM7::EncodeOneLine(prefix).c_str());
+              status.Printf("Solved %s (via %s): %s\n",
+                            ColorLevel(level).c_str(),
+                            ColorLevel(source_level).c_str(),
+                            SimpleFM7::EncodeOneLine(prefix).c_str());
+              levels_attempted++;
               levels_solved++;
               return;
             }
           }
 
           status_per.RunIf([&]() {
-              printf("Attempted %d/%d, solving %d. Elapsed %s\n",
-                     (int)levels_attempted.Read(),
-                     (int)todo.size(),
-                     (int)levels_solved.Read(),
-                     ANSI::Time(elapsed.Seconds()).c_str());
+              int64_t attempted = levels_attempted.Read();
+              int64_t solved = levels_solved.Read();
+              int64_t failed = attempted - solved;
+              const int64_t denom = todo.size();
+
+              const int WIDTH = 65;
+              double ff = failed / (double)denom;
+              double sf = solved / (double)denom;
+              // TODO: Skipped
+
+              std::string msg =
+                StringPrintf(
+                    AWHITE("%.1f%% ")
+                    AGREEN("%lld") " + "
+                    ARED("%lld")
+                    " / "
+                    "%d × %d",
+                    (attempted * 100.0) / denom,
+                    solved, failed,
+                    (int)sols.size(),
+                    (int)todo.size());
+
+              // eta
+              double seconds = elapsed.Seconds();
+              double spe = attempted > 0 ? seconds / attempted : 1.0;
+              double remaining_sec = (denom - attempted) * spe;
+              std::string eta = ANSI::Time(remaining_sec);
+
+              int fd = (int)std::round(ff * WIDTH);
+              int sd = std::clamp((int)std::round(sf * WIDTH), 0, WIDTH - fd);
+              int rd = WIDTH - fd - sd;
+              auto bgcolor =
+                ANSI::Rasterize({
+                      {0x6e1200, fd},
+                      {0x1e660f, sd},
+                      {0x222222, rd}},
+                  WIDTH);
+
+              const auto &[text, fgs, bgs_] = ANSI::Decompose(msg);
+              std::string bar = ANSI::Composite(text, fgs, bgcolor);
+
+              status.Statusf(AWHITE("[") "%s" AWHITE("]") " %s\n",
+                             bar.c_str(),
+                             eta.c_str());
             });
         }
 
+        levels_attempted++;
       },
       8);
 
@@ -728,8 +909,19 @@ static void Cross() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  // Solve();
-  Cross();
+  if (argc > 1) {
+    if (argv[1] == (std::string)"cross") {
+      Cross();
+    } else if (argv[1] == (std::string)"solve") {
+      Solve();
+    } else {
+      LOG(FATAL) << "Usage:\n"
+        "./solve.exe [cross|solve]\n"
+        "The default is solve.\n";
+    }
+  } else {
+    Solve();
+  }
 
   return 0;
 }

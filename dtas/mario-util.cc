@@ -38,6 +38,9 @@ void MarioUtil::WarpTo(Emulator *emu,
   // to do the desired warp.
   emu->SetRAM(WORLD_MAJOR, major);
   emu->SetRAM(WORLD_MINOR, minor);
+  // XXX This does not match the game, since it does not increment
+  // after transition levels like 1-2. What would be the best way
+  // to set it outside the main game?
   emu->SetRAM(WORLD_MINOR_DISPLAY, minor);
   emu->SetRAM(HALFWAY_PAGE, halfway);
 

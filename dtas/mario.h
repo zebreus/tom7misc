@@ -10,8 +10,14 @@ inline constexpr int COIN_TALLY = 0x075e;
 // Setting these on the title will begin the game at that level.
 inline constexpr int WORLD_MAJOR = 0x075f;
 inline constexpr int WORLD_MINOR = 0x0760;
-// On-screen display of the minor world. Might be purely cosmetic;
-// can set to the same thing as WORLD_MINOR.
+// On-screen display of the minor world. Might be purely cosmetic.
+// Note that in the game there are some transition levels where
+// Mario automatically goes down a pipe, like at the beginning
+// of 1-2. These are actually different minor worlds: The transition
+// is the real 1-2 (maj=0, min=1) and then the underground world
+// is actually 1-3 (maj=0, min=2). That's what this byte seems to
+// be for: It doesn't get incremented during the transition, so
+// that both display as 1-2 (and the real 1-4 shows as 1-3, etc.).
 inline constexpr int WORLD_MINOR_DISPLAY = 0x075c;
 // This sets the screen (within the level) we continue from after dying.
 inline constexpr int HALFWAY_PAGE = 0x075b;

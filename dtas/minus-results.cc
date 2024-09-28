@@ -6,6 +6,7 @@
 #include <unordered_set>
 
 #include "image.h"
+#include "auto-histo.h"
 
 // One-time update operations.
 static void Update() {
@@ -46,7 +47,7 @@ static void Report() {
   double done_pct = (done.size() * 100.0) / 65536.0;
   double att_pct = (attempted.size() * 100.0) / 65536.0;
   printf(AGREEN("%d") "/" ABLUE("65536") " done (%.2f%%)\n"
-         AORANGE("%d") " attmpted unsuccessfully (%.2f%%)\n",
+         AORANGE("%d") " attempted unsuccessfully (%.2f%%)\n",
          (int)done.size(), done_pct,
          (int)attempted.size(), att_pct);
 
@@ -68,6 +69,16 @@ static void Report() {
   }
 
   img.ScaleBy(2).Save("minus.png");
+
+
+  AutoHisto moves_histo(100000);
+  db.ForEachSolution([&moves_histo](const MinusDB::SolutionRow &r) {
+      moves_histo.Observe(r.movie.size());
+    });
+  printf(AWHITE("Number of moves") " (across %d solutions):\n"
+         "%s\n",
+         (int)moves_histo.NumSamples(),
+         moves_histo.SimpleANSI(24).c_str());
 }
 
 int main(int argc, char **argv) {

@@ -30,7 +30,7 @@ inline LevelId PackLevel(uint8_t major, uint8_t minor) {
 
 inline std::string ColorLevel(LevelId id) {
   const auto &[major, minor] = UnpackLevel(id);
-  return StringPrintf(ACYAN("%d") AGREY("-") ACYAN("%d"), major, minor);
+  return StringPrintf(ACYAN("%02x") AGREY("-") ACYAN("%02x"), major, minor);
 }
 
 
@@ -82,6 +82,18 @@ struct MinusDB {
     return done;
   }
 
+  bool HasSolution(LevelId level) {
+    std::unique_ptr<Query> q =
+      db->ExecuteString(
+          StringPrintf("select level from solutions where level = %d",
+                       level));
+    while (std::unique_ptr<Row> r = q->NextRow()) {
+      return true;
+    }
+    return false;
+  }
+
+
   // Get levels that have partial solutions. It may be in the done
   // set without having a partial solution, so to see all levels
   // with any result, get both.
@@ -113,17 +125,40 @@ struct MinusDB {
                      id, fm7.c_str(), time(nullptr)));
   }
 
-  // Get all existing solutions as (level, movie).
-  std::vector<std::pair<LevelId, std::vector<uint8_t>>> GetSolutions() {
+  // Get all existing solutions.
+  struct SolutionRow {
+    int64_t id = 0;
+    LevelId level = 0;
+    std::vector<uint8_t> movie;
+    int64_t createdate = 0;
+    int64_t method = 0;
+  };
 
-    std::vector<std::pair<LevelId, std::vector<uint8_t>>> sols;
+  template<class F>
+  requires requires(F f) {
+    f(std::declval<SolutionRow>());
+  }
+  void ForEachSolution(const F &f) {
     std::unique_ptr<Query> q =
-      db->ExecuteString("select level, fm7 from solutions");
+      db->ExecuteString("select "
+                        "id, level, fm7, createdate, method "
+                        "from solutions");
     while (std::unique_ptr<Row> r = q->NextRow()) {
-      const LevelId level = r->GetInt(0);
-      std::vector<uint8_t> movie = SimpleFM7::ParseString(r->GetString(1));
-      sols.emplace_back(level, std::move(movie));
+      SolutionRow row;
+      row.id = r->GetInt(0);
+      row.level = r->GetInt(1);
+      row.movie = SimpleFM7::ParseString(r->GetString(2));
+      row.createdate = r->GetInt(3);
+      row.method = r->GetInt(4);
+      f(std::move(row));
     }
+  }
+
+  std::vector<SolutionRow> GetSolutions() {
+    std::vector<SolutionRow> sols;
+    ForEachSolution([&sols](SolutionRow r) {
+        sols.push_back(std::move(r));
+      });
     return sols;
   }
 
