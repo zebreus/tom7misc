@@ -26,6 +26,9 @@
 // of the world. Instead we just modify the next major/minor world number
 // so that we can access all 256^2 levels.
 
+// PERF: In some use cases (e.g. validation) it would be nice to skip
+// emulating the first 33 frames, and instead just restore from the
+// title screen.
 void MarioUtil::WarpTo(Emulator *emu,
                        uint8_t major, uint8_t minor, uint8_t halfway) {
   for (int i = 0; i < 33; i++) {

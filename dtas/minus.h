@@ -154,6 +154,12 @@ struct MinusDB {
     }
   }
 
+  void DeleteSolution(int64_t rowid) {
+    db->ExecuteString(
+        StringPrintf("delete from solutions where id = %lld",
+                     rowid));
+  }
+
   std::vector<SolutionRow> GetSolutions() {
     std::vector<SolutionRow> sols;
     ForEachSolution([&sols](SolutionRow r) {

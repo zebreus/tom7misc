@@ -783,6 +783,11 @@ static void Cross() {
     sols.emplace_back(all_sols[idx].level, all_sols[idx].movie);
 
   EmulatorPool emulator_pool(ROMFILE);
+  std::vector<uint8_t> start_state;
+  {
+    EmulatorPool::Lease emu = emulator_pool.Acquire();
+    start_state = emu->SaveUncompressed();
+  }
 
   // These might be big. No need to keep them around.
   provenance.clear();
@@ -795,7 +800,7 @@ static void Cross() {
   ParallelApp(
       todo,
       [&db, &todo, &sols, &elapsed, &status, &status_per,
-       &emulator_pool](LevelId level) {
+       &emulator_pool, &start_state](LevelId level) {
         const auto &[major, minor] = UnpackLevel(level);
 
         if (db.HasSolution(level)) {
@@ -805,33 +810,15 @@ static void Cross() {
           return;
         }
 
-
-        // Get emulator or create one.
-        std::unique_ptr<Emulator> emu;
-        {
-          MutexLock ml(&pool_mutex);
-          if (emulator_pool.empty()) {
-            emulator_pool.emplace_back(Emulator::Create(ROMFILE));
-          }
-
-          CHECK(!emulator_pool.empty());
-          emu = std::move(emulator_pool.back());
-          emulator_pool.pop_back();
-        }
-
-        // And return it no matter how we exit.
-        ScopeExit return_emulator([&]() {
-            MutexLock ml(&pool_mutex);
-            emulator_pool.push_back(std::move(emu));
-          });
-
+        EmulatorPool::Lease emu = emulator_pool.Acquire();
         CHECK(emu.get() != nullptr) << ROMFILE;
+        emu->LoadUncompressed(start_state);
         MarioUtil::WarpTo(emu.get(), major, minor, 0);
-        std::vector<uint8_t> start_state = emu->SaveUncompressed();
+        std::vector<uint8_t> level_start_state = emu->SaveUncompressed();
         Evaluator eval(emu.get());
 
         for (const auto &[source_level, movie] : sols) {
-          emu->LoadUncompressed(start_state);
+          emu->LoadUncompressed(level_start_state);
           for (int i = 0; i < (int)movie.size(); i++) {
             emu->Step(movie[i], 0);
             emu_steps_total++;

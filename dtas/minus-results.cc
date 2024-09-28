@@ -1,12 +1,11 @@
 
-#include "minus.h"
-
-#include "ansi.h"
 #include <cstdio>
 #include <unordered_set>
 
-#include "image.h"
+#include "ansi.h"
 #include "auto-histo.h"
+#include "image.h"
+#include "minus.h"
 
 // One-time update operations.
 static void Update() {
