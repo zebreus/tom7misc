@@ -1,0 +1,33 @@
+
+#include "status-bar.h"
+
+#include <cstdio>
+
+#include "ansi.h"
+
+static void Test() {
+  StatusBar bar(3);
+
+  bar.EmitStatus(
+      "You should not see " ARED("ANY") " of these lines persist!\n"
+      "Not " ARED("this one") "...\n"
+      "Nor " ARED("this one either") "!!\n");
+
+  bar.Printf(AWHITE("This line should say forty-two: %d and be before the status.") "\n",
+             42);
+
+  bar.Statusf(
+      "| This is the three-line " ABLUE("status bar") ".\n"
+      "| It should appear below a single message line about 42.\n"
+      "| This is the end of the status bar. " ACYAN("♥") "\n");
+}
+
+int main(int argc, char **argv) {
+  ANSI::Init();
+
+  Test();
+
+  printf("^ This test requires visual inspection\n");
+  printf("OK\n");
+  return 0;
+}

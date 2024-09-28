@@ -73,6 +73,9 @@ struct BigInt {
   inline static BigInt Times(const BigInt &a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, int64_t b);
 
+  inline static BigInt Min(const BigInt &a, const BigInt &b);
+  inline static BigInt Max(const BigInt &a, const BigInt &b);
+
   // Truncates towards zero, like C.
   inline static BigInt Div(const BigInt &a, const BigInt &b);
   inline static BigInt Div(const BigInt &a, int64_t b);
@@ -304,6 +307,14 @@ inline BigInt BigInt::FromU64(uint64_t u) {
   uint32_t hi = (u >> 32) & 0xFFFFFFFF;
   uint32_t lo = u         & 0xFFFFFFFF;
   return BigInt::Plus(LeftShift(BigInt{hi}, 32), BigInt{lo});
+}
+
+inline BigInt BigInt::Max(const BigInt &a, const BigInt &b) {
+  return BigInt::Less(a, b) ? b : a;
+}
+
+inline BigInt BigInt::Min(const BigInt &a, const BigInt &b) {
+  return BigInt::Less(a, b) ? a : b;
 }
 
 #if BIG_USE_GMP

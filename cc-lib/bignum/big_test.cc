@@ -785,6 +785,48 @@ static void TestDivisibleBy() {
   CHECK(BigInt::DivisibleBy(p, 1));
 }
 
+static void TestCompare() {
+  BigInt zero{0};
+  BigInt one{1};
+  BigInt two{2};
+  BigInt neg_one{-1};
+  BigInt neg_two{-2};
+
+  BigInt large_pos("33333333333333333333333333333333333333333");
+  BigInt large_neg("-888888888888888888833333333333333333333333");
+
+  for (const auto &[a, b] :
+         std::initializer_list<std::pair<BigInt, BigInt>>{
+         {one, two},
+         {zero, one},
+         {zero, two},
+         {neg_one, zero},
+         {large_neg, zero},
+         {neg_one, two},
+         {neg_one, one},
+         {neg_two, neg_one},
+         {large_neg, large_pos},
+         {large_neg, neg_two},
+         {two, large_pos},
+       }) {
+      CHECK(BigInt::Less(a, b));
+      CHECK(!BigInt::Less(b, a));
+      CHECK(BigInt::LessEq(a, b));
+      CHECK(!BigInt::LessEq(b, a));
+      CHECK(BigInt::LessEq(a, a));
+      CHECK(BigInt::LessEq(b, b));
+      CHECK(!BigInt::Eq(a, b));
+      CHECK(!BigInt::Eq(b, a));
+
+      CHECK(BigInt::Greater(b, a));
+      CHECK(BigInt::GreaterEq(b, a));
+      CHECK(!BigInt::Greater(a, b));
+      CHECK(!BigInt::GreaterEq(a, b));
+      CHECK(BigInt::GreaterEq(a, a));
+      CHECK(BigInt::GreaterEq(b, b));
+  }
+}
+
 int main(int argc, char **argv) {
   printf("Start.\n");
   fflush(stdout);
@@ -793,6 +835,8 @@ int main(int argc, char **argv) {
   TestToString();
   TestSign();
   TestToU64();
+
+  TestCompare();
 
   TestDiv();
   TestCMod();
