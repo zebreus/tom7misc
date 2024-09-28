@@ -94,6 +94,14 @@ struct ScoredEntry {
   // the square <= the number, and the next square >.
   std::array<BigInt, 9> prev_sq;
   std::array<BigInt, 9> next_sq;
+
+  // If a reasonable size, factor into the largest shared
+  // square factor (gcd_square and the "base" square. This
+  // will be a magic square (if the original is) and will
+  // have squares in each position (that are squares in
+  // the entry).
+  BigInt gcd_square;
+  std::array<BigInt, 9> base_sq;
 };
 
 static bool IsMagicSquare(const ScoredEntry &scored) {
@@ -215,6 +223,18 @@ ScoredEntry Score(const Entry &entry) {
     }
   }
 
+  BigInt factor_limit{int64_t{1} << 62};
+  auto ReasonableSize = [&factor_limit, &entry]() {
+      for (int i = 0; i < 9; i++)
+        if (entry.square[i] > factor_limit)
+          return false;
+      return true;
+    };
+
+  if (ReasonableSize()) {
+
+
+  }
 
   return scored;
 }

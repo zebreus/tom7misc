@@ -377,10 +377,15 @@ static void Brute() {
   // int64_t x_end = int64_t{1} << 31;
 
   std::vector<std::tuple<uint64_t, uint64_t, int64_t>> todo = {
-    std::make_tuple(0, 16384, 1048576),
+    std::make_tuple(131072 * 2, 131072 * 4, 8),
+    std::make_tuple(16384, 65536, 65536),
+    std::make_tuple(4096, 16384, int64_t{1} << 22),
     std::make_tuple(131072, 131072 * 2, 8192),
+    std::make_tuple(0, 4096, int64_t{1} << 25),
+    // These are quite slow now and don't seem to produce
+    // any interesting squares.
     std::make_tuple(0, 2048, int64_t{1} << 31),
-    std::make_tuple(131072 * 2, 131072 * 3, 1024),
+    std::make_tuple(0, 4096, int64_t{1} << 28),
   };
 
 
@@ -398,8 +403,15 @@ static void Brute() {
       u_start++;
     }
 
+    std::string op = StringPrintf("%llu" AGREY("<=") "u" AGREY("<")
+                                  "%llu; x" AGREY("<") "%lld",
+                                  u_start, u_end, x_end);
+
     const int64_t total_u = u_end - u_start;
     int64_t total_squares = 0;
+
+    if (total_u == 0)
+      continue;
 
     auto MaybeStatus =
       [&]() {
@@ -414,6 +426,8 @@ static void Brute() {
 
           printf("\n");
           DisplayResults();
+
+          printf("Running %s\n", op.c_str());
 
           printf(ACYAN("%lld") " done; " APURPLE("%s") " reptd "
                  AORANGE("%s") " degen; " AYELLOW("%s") " not better\n",
@@ -436,10 +450,6 @@ static void Brute() {
                  bar.c_str());
         }
       };
-
-    printf("Running u %lld to %lld (%lld), x to <%lld\n\n",
-           u_start, u_end, total_u,
-           x_end);
 
     UnParallelComp(
         total_u,

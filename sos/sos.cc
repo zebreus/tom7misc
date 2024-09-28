@@ -1,7 +1,6 @@
 #include <cmath>
 #include <memory>
 #include <vector>
-#include <functional>
 #include <bit>
 #include <tuple>
 
@@ -10,7 +9,6 @@
 #include "clutil.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "base/port.h"
 #include "threadutil.h"
 #include "util.h"
 #include "periodically.h"
@@ -21,6 +19,7 @@
 #include "image.h"
 #include "factorization.h"
 #include "work-queue.h"
+#include "status-bar.h"
 
 #include "database.h"
 #include "sos-util.h"
@@ -70,98 +69,6 @@ static string FilledBar(int chars, float f) {
   }
   return ret;
 }
-
-// Everything takes a complete line.
-// Thread safe.
-struct StatusBar {
-  // Give the number of lines that the status bar uses.
-  explicit StatusBar(int num_lines) : num_lines(num_lines) {
-    CHECK(num_lines > 0);
-  }
-
-  // Print to the screen. Adds trailing newline if not present.
-  void Printf(const char* format, ...) PRINTF_ATTRIBUTE(1, 2) {
-    va_list ap;
-    va_start(ap, format);
-    string result;
-    StringAppendV(&result, format, ap);
-    va_end(ap);
-    Emit(result);
-  }
-
-  // Prints to the screen. Adds trailing newline if not present.
-  void Emit(const std::string &s) {
-    std::vector<std::string> lines = Util::SplitToLines(s);
-    MutexLock ml(&m);
-    MoveUp();
-    for (const string &line : lines) {
-      printf("%s\n", line.c_str());
-    }
-    // Maintain space for status.
-    if (prev_status_lines.empty()) {
-      for (int i = 0; i < num_lines; i++) {
-        printf("\n");
-      }
-    } else {
-      EmitStatusLinesWithLock(prev_status_lines);
-    }
-  }
-
-  // Update the status bar. This should be done in one call that
-  // contains num_lines lines. Trailing newline not necessary.
-  void Statusf(const char* format, ...) PRINTF_ATTRIBUTE(1, 2) {
-    va_list ap;
-    va_start(ap, format);
-    string result;
-    StringAppendV(&result, format, ap);
-    va_end(ap);
-    EmitStatus(result);
-  }
-
-  // Prints the status to the screen.
-  void EmitStatus(const std::string &s) {
-    std::vector<std::string> lines = Util::SplitToLines(s);
-    MutexLock ml(&m);
-    prev_status_lines = lines;
-    MoveUp();
-    EmitStatusLinesWithLock(lines);
-  }
-
-
-private:
-  // The idea is that we keep the screen in a state where there are
-  // num_lines of status at the bottom, right before the cursor. This
-  // is always throw-away space. When we print something other than
-  // status, we just pad with the number of blank lines so that the
-  // next call will not overwrite what we wrote.
-  void MoveUp() {
-    if (!first) {
-      for (int i = 0; i < num_lines; i++) {
-        printf(
-            // Cursor to beginning of previous line
-            ANSI_PREVLINE
-            // Clear line
-            ANSI_CLEARLINE
-               );
-      }
-    }
-    first = false;
-  }
-
-  void EmitStatusLinesWithLock(const std::vector<std::string> &lines) {
-    if (lines.size() != num_lines) {
-      printf(ARED("...wrong number of lines...") "\n");
-    }
-    for (const string &line : lines) {
-      printf("%s\n", line.c_str());
-    }
-  }
-
-  std::mutex m;
-  int num_lines = 0;
-  bool first = true;
-  std::vector<std::string> prev_status_lines;
-};
 
 // Tuned by sos-gpu_test.
 // static constexpr int GPU_HEIGHT = 49912;
