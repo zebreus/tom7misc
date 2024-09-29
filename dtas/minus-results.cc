@@ -72,6 +72,7 @@ static void Report() {
 
   AutoHisto moves_histo(100000);
   db.ForEachSolution([&moves_histo](const MinusDB::SolutionRow &r) {
+      // printf("%lld\n", r.movie.size());
       moves_histo.Observe(r.movie.size());
     });
   printf(AWHITE("Number of moves") " (across %d solutions):\n"

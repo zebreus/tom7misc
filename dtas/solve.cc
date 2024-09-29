@@ -840,38 +840,44 @@ static void Cross() {
               int64_t attempted = levels_attempted.Read();
               int64_t solved = levels_solved.Read();
               int64_t failed = attempted - solved;
+              int64_t skipped = levels_skipped.Read();
+              int64_t numer = skipped + attempted;
               const int64_t denom = todo.size();
 
               const int WIDTH = 65;
               double ff = failed / (double)denom;
               double sf = solved / (double)denom;
+              double kf = skipped / (double)denom;
               // TODO: Skipped
 
               std::string msg =
                 StringPrintf(
                     AWHITE("%.1f%% ")
                     AGREEN("%lld") " + "
-                    ARED("%lld")
+                    ARED("%lld") " + "
+                    AYELLOW("%lld")
                     " / "
                     "%d × %d",
-                    (attempted * 100.0) / denom,
-                    solved, failed,
+                    (numer * 100.0) / denom,
+                    solved, failed, skipped,
                     (int)sols.size(),
                     (int)todo.size());
 
               // eta
               double seconds = elapsed.Seconds();
-              double spe = attempted > 0 ? seconds / attempted : 1.0;
-              double remaining_sec = (denom - attempted) * spe;
+              double spe = numer > 0 ? seconds / numer : 1.0;
+              double remaining_sec = (denom - numer) * spe;
               std::string eta = ANSI::Time(remaining_sec);
 
               int fd = (int)std::round(ff * WIDTH);
               int sd = std::clamp((int)std::round(sf * WIDTH), 0, WIDTH - fd);
-              int rd = WIDTH - fd - sd;
+              int kd = std::clamp((int)std::round(kf * WIDTH), 0, WIDTH - fd - sd);
+              int rd = WIDTH - fd - sd - kd;
               auto bgcolor =
                 ANSI::Rasterize({
                       {0x6e1200, fd},
                       {0x1e660f, sd},
+                      {0x857f1b, kd},
                       {0x222222, rd}},
                   WIDTH);
 
@@ -886,7 +892,7 @@ static void Cross() {
 
         levels_attempted++;
       },
-      8);
+      12);
 
   printf("Finished cross in %s. New sols: " AGREEN("%d") "\n",
          ANSI::Time(elapsed.Seconds()).c_str(),

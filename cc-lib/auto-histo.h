@@ -146,10 +146,14 @@ struct AutoHisto {
       // We do this by rounding up to the next integer bucket
       // size, then expanding equally on the low and high ends.
       if (integral) {
+
         int64_t bucket_width = (int64_t)std::ceil((maxx - minx) / buckets);
-        int64_t full_width = width * buckets;
-        int64_t add_left = full_width / 2;
-        int64_t add_right = full_width - add_left;
+        int64_t full_width = bucket_width * buckets;
+
+        // XXX this isn't quite right...
+        int64_t leftover = (int64_t)std::round(full_width - (maxx - minx));
+        int64_t add_left = leftover / 2;
+        int64_t add_right = leftover - add_left;
 
         histo.min = minx - add_left;
         histo.max = maxx + add_right;
@@ -180,20 +184,33 @@ struct AutoHisto {
     for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
       const std::string label =
         PadLeft(StringPrintf("%.1f", histo.BucketLeft(bidx)), 10);
+      const std::string count =
+        StringPrintf("%lld", (int64_t)histo.buckets[bidx]);
       static constexpr int BAR_CHARS = 60;
       double f = histo.buckets[bidx] / histo.max_value;
-      // int on = std::clamp((int)std::round(f * BAR_CHARS), 0, BAR_CHARS);
-      // std::string bar(on, '*');
-      std::string bar = FilledBar(BAR_CHARS, f);
-      StringAppendF(&ret, "%s " AFGCOLOR(32, 32, 23, "|"), label.c_str());
 
-      if (bidx & 1) {
-        StringAppendF(&ret, AFGCOLOR(200, 200, 128, "%s") "\n",
+      const bool before = f > 0.5;
+      const uint32_t bar_color = (bidx & 1) ? 0xc8c880FF : 0xbebe76FF;
+
+      StringAppendF(&ret, "%s " AFGCOLOR(32, 32, 23, "|"), label.c_str());
+      if (before) {
+        int chars_used = 2 + (int)count.size();
+        std::string bar = FilledBar(BAR_CHARS, chars_used, f);
+        StringAppendF(&ret, "%s%s" " %s " ANSI_RESET "%s%s" ANSI_RESET,
+                      // But with black foreground.
+                      ANSI::BackgroundRGB32(bar_color).c_str(),
+                      ANSI::ForegroundRGB32(0x786800FF).c_str(),
+                      count.c_str(),
+                      ANSI::ForegroundRGB32(bar_color).c_str(),
                       bar.c_str());
       } else {
-        StringAppendF(&ret, AFGCOLOR(190, 190, 118, "%s") "\n",
-                      bar.c_str());
+        std::string bar = FilledBar(BAR_CHARS, 0, f);
+        StringAppendF(&ret, "%s%s" ANSI_RESET " " AGREY("%s"),
+                      ANSI::ForegroundRGB32(bar_color).c_str(),
+                      bar.c_str(), count.c_str());
       }
+
+      StringAppendF(&ret, "\n");
     }
     return ret;
   }
@@ -249,6 +266,8 @@ struct AutoHisto {
 
   bool Empty() const { return total_samples == 0; }
 
+  int64_t NumSamples() const { return total_samples; }
+
   // TODO: Simple one-line ANSI histo with colored bars.
 
   // Probably should have the caller do printing.
@@ -284,12 +303,17 @@ struct AutoHisto {
     else return Util::EncodeUTF8(0x2580 + px);
   }
 
+  // Generate a bar using unicode characters that is (f * chars * 8) - (used * 8)
+  // pixels long. (The 'used' parameter is for when part of the bar is already
+  // output, like with numbers over it.)
   // To unicode-utils?
-  static std::string FilledBar(int chars, float f) {
+  static std::string FilledBar(int chars, int used, float f) {
     if (chars <= 0) return "";
+    if (used >= chars) return "";
     // integer number of pixels
     f = std::clamp(f, 0.0f, 1.0f);
     int px = (int)std::round(f * (chars * 8));
+    px = std::max(px - used * 8, 0);
     int full = px / 8;
 
     std::string ret;
@@ -306,9 +330,11 @@ struct AutoHisto {
         remain--;
       }
 
+      /*
       for (int i = 0; i < remain; i++) {
         ret.push_back(' ');
       }
+      */
     }
     return ret;
   }
@@ -337,10 +363,12 @@ struct AutoHisto {
   }
 
   static void AddToHisto(Histo *h, double x, double count) {
+    // printf("Add v %.1f * ct %.1f: ", x, count);
     double f = (x - h->min) / h->histo_width;
     int64_t bucket = std::clamp((int64_t)(f * h->buckets.size()),
                                 (int64_t)0,
                                 (int64_t)h->buckets.size() - 1);
+    // printf("frac = %.3f  bucket = %lld\n", f, bucket);
     h->buckets[bucket] += count;
   }
 
