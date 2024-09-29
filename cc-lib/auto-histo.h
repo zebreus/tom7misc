@@ -217,6 +217,10 @@ struct AutoHisto {
 
   // Space-efficient horizontal layout.
   std::string SimpleHorizANSI(int buckets) const {
+    // TODO: In most cases, the factor limiting resolution is
+    // the width of the labels themselves. We should probably
+    // render at native resolution and just label it like an
+    // axis.
     const Histo histo = GetHisto(buckets);
 
     std::vector<std::string> labels;
@@ -224,8 +228,8 @@ struct AutoHisto {
     for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
       const std::string label =
         integral ?
-        StringPrintf("%.1f", histo.BucketLeft(bidx)) :
-        StringPrintf("%lld", (int64_t)histo.BucketLeft(bidx));
+        StringPrintf("%lld", (int64_t)histo.BucketLeft(bidx)) :
+        StringPrintf("%.1f", histo.BucketLeft(bidx));
       labels.emplace_back(label);
       max_label = std::max(max_label, (int)label.size());
     }
@@ -267,6 +271,8 @@ struct AutoHisto {
   bool Empty() const { return total_samples == 0; }
 
   int64_t NumSamples() const { return total_samples; }
+
+  bool IsIntegral() const { return integral; }
 
   // TODO: Simple one-line ANSI histo with colored bars.
 
