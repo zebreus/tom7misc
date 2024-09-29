@@ -177,6 +177,228 @@ struct Evaluator {
   uint8_t start_lives = 0;
 };
 
+struct Mazing {
+
+  struct State {
+    // Inputs starting after the WarpTo.
+    std::vector<uint8_t> movie;
+    // The save state.
+    std::vector<uint8_t> save;
+    double eval = 0.0;
+    int expansions = 0;
+  };
+
+  std::mutex mutex;
+  struct CellId {
+    CellId(int x, int y) : x(x), y(y) {}
+    int x;
+    int y;
+  };
+
+  struct HashCell {
+    inline size_t operator ()(const CellId &c) {
+      return c.x * 31337 ^ c.y;
+    }
+  };
+
+  // Maps from cells to a movie that reaches that cell.
+  std::unordered_map<CellId, State, HashCell> cells;
+
+  static inline CellId Cell(const Pos &pos) {
+    return CellId(pos.x + 8) / 16, (pos.y + 8) / 16);
+  }
+
+  enum class Outcome {
+    RUNNING,
+    TIMEOUT,
+    SUCCESS,
+  };
+
+  Outcome GetOutcome() {
+    std::unique_lock<std::mutex> ml(outcome_m);
+    return outcome;
+  }
+
+  void SetOutcome(Outcome out) {
+    std::unique_lock<std::mutex> ml(outcome_m);
+    outcome = out;
+  }
+
+  std::pair<CellId, CellId> GetCell() {
+    LOG(FATAL) << "Unimplemented";
+  }
+
+  // Euclidean distance, in cells.
+  static double CellDist(const CellId &a, const CellId &b) {
+    int dx = a.x - b.x, dy = a.y - b.y;
+    return sqrt(a * a + b * b);
+  }
+
+  void WorkThread(uint64_t seed) {
+    ArcFour rc(seed);
+    std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
+
+    for (;;) {
+      if (GetOutcome() != Outcome::RUNNING) return;
+
+      // Repeatedly: Pick a cell that hasn't been expanded
+      // much. Pick a nearby destination cell that is empty.
+
+      const auto &[src, dst] = GetCell();
+
+      // XXX load state for src.
+
+      // Generate moves that try to get us towards the
+      // cell. As we execute moves, populate cells if new
+      // (or better).
+      int max_depth =
+        std::clamp((int)std::ceil(16.0 * 2.0 * CellDist(src, dst)),
+                   1, 120);
+
+      // XXX chat that we are where we expect
+      CellId prev_cc = src;
+
+      std::vector<uint8_t> edge_movie;
+      edge_movie.reserve(max_depth);
+      while (max_depth--) {
+        // XXX use better heuristics, especially keeping
+        // buttons held longer.
+        uint8 b = 0;
+        if (dst.x < cc.x)
+          b |= INPUT_L;
+        if (dst.x > cc.y)
+          b |= INPUT_R;
+
+        if (dst.y < cc.y) {
+          if (rc.Byte() < 200) {
+            b |= INPUT_A;
+          }
+        }
+
+        if (rc.Byte() < 200)
+          b |= INPUT_B;
+
+        emu->Step(b, 0);
+        edge_movie.push_back(b);
+
+        Pos pos = MarioUtil::GetPos(emu.get());
+        CellId cc = Cell(pos);
+        if (cc != prev_cc)
+
+        bool is_new = false;
+        {
+          MutexLock ml(&mutex);
+          auto it = cells.find(cc);
+          is_new = it == cells.end();
+        }
+
+        if (is_new) {
+          // XXX insert the path into the cells map.
+          // Continue or don't!
+        }
+
+        if (cc == dst) {
+          break;
+        }
+      }
+
+      // Execute each and get stats.
+      int64_t steps_run = 0;
+      for (Future &future : futures) {
+        emu->LoadUncompressed(start.save);
+        for (const uint8_t b : future.moves) {
+          emu->Step(b, 0);
+        }
+        steps_run += future.moves.size();
+
+        future.save = emu->SaveUncompressed();
+        future.eval = evaluator->Eval(emu.get());
+        future.stuck = evaluator->Stuck(emu.get());
+        if (future.stuck) futures_stuck++;
+        future.done = evaluator->Succeeded(emu.get());
+        // (could return immediately if one of them wins!)
+      }
+      emu_steps_total += steps_run;
+      emu_steps_attempt += steps_run;
+
+
+      futures_stuck +=
+        std::erase_if(futures,
+                      [](const Future &f) {
+                        return f.stuck;
+                      });
+
+      // If any of these end up successful, we are done.
+      for (const Future &f : futures) {
+        if (f.done) {
+          // This seems unlikely at first, but it happens in practice.
+          // Two workers might simultaneously pick states that are
+          // right before the exit, for example.
+          if (GetOutcome() == Outcome::SUCCESS) {
+            printf(AYELLOW("Simultaneously solved")
+                   " %s! Ignored.\n", ColorLevel(level_id).c_str());
+            return;
+          }
+          SetOutcome(Outcome::SUCCESS);
+          std::vector<uint8_t> full_sol = start.movie;
+          for (uint8_t b : f.moves) full_sol.push_back(b);
+          db->AddSolution(level_id, full_sol, MinusDB::METHOD_SOLVE);
+          printf(AGREEN("Solved") " %s: " AGREY("%s") "\n",
+                 ColorLevel(level_id).c_str(),
+                 SimpleFM7::EncodeOneLine(full_sol).c_str());
+          levels_solved++;
+          return;
+        }
+      }
+
+      // Eliminate it if we've gone backwards...
+      std::erase_if(futures,
+                    [&start](const Future &f) {
+                      return f.eval < start.eval;
+                    });
+
+      for (Future &f : futures) {
+        // TODO: Score heuristics can include "random futures"
+        // or "do I just die if I wait here".
+        f.score = f.eval;
+      }
+
+      std::sort(futures.begin(), futures.end(),
+                [](const auto &a, const auto &b) {
+                  return a.score > b.score;
+                });
+
+      // Add one to the population.
+      if (!futures.empty()) {
+        // TODO: Use weighted random sampling. Include the possibility
+        // of adding more than one, too?
+        Future &best = futures[0];
+        State ext = start;
+        for (uint8_t b : best.moves) ext.movie.push_back(b);
+        ext.save = std::move(best.save);
+        ext.eval = best.eval;
+        futures.clear();
+
+        MutexLock ml(&pop_m);
+        population.push_back(std::move(ext));
+      }
+
+      // Reduce population if it's big enough.
+      {
+        MutexLock ml(&pop_m);
+        if (population.size() > MAX_POPULATION) {
+          std::sort(population.begin(), population.end(),
+                    [](const auto &a, const auto &b) {
+                      return a.eval > b.eval;
+                    });
+          population.resize(MAX_POPULATION);
+        }
+      }
+    }
+  }
+
+};
+
 struct State {
   // Inputs starting after the WarpTo.
   std::vector<uint8_t> movie;
