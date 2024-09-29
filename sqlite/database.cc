@@ -2,6 +2,7 @@
 #include "database.h"
 
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <memory>
@@ -134,12 +135,29 @@ static const char *ErrString(int status) {
   }
 }
 
+struct DatabaseImpl;
 struct RowImpl;
 struct QueryImpl : public Database::Query {
-  QueryImpl(sqlite3_stmt *stmt) : stmt(stmt), ready(true) {}
+  QueryImpl(DatabaseImpl *db, sqlite3_stmt *stmt) :
+    parent(db), stmt(stmt), ready(true) {}
 
   std::unique_ptr<Row> NextRow() override;
 
+  // Always need to finalize the statement, even if we didn't
+  // read all the rows.
+  ~QueryImpl() override {
+    // We could relax this? But it would certainly be illegal to
+    // access the row at this point.
+    CHECK(ready) << "Must destroy row before destroying query.";
+    // printf("Destroy Query.\n");
+    if (stmt != nullptr) {
+      // printf("Query cleanup.\n");
+      sqlite3_finalize(stmt);
+      stmt = nullptr;
+    }
+  }
+
+  DatabaseImpl *parent = nullptr;
   // Null for a query with an empty result set, or once we've
   // reached the end of the result set.
   sqlite3_stmt *stmt = nullptr;
@@ -172,6 +190,12 @@ struct RowImpl : public Database::Row {
     return std::string((const char *)sqlite3_column_text(parent->stmt, idx), sz);
   }
 
+  double GetFloat(int idx) override {
+    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::FLOAT) <<
+      "Index " << idx << " does not have FLOAT.";
+    return sqlite3_column_double(parent->stmt, idx);
+  }
+
   std::vector<uint8_t> GetBlob(int idx) override {
     CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::BLOB) <<
       "Index " << idx << " does not have BLOB.";
@@ -197,6 +221,12 @@ struct RowImpl : public Database::Row {
     CHECK(idx >= 0 && idx < (int)types.size());
     if (types[idx] != ColType::STRING) return std::nullopt;
     return {GetString(idx)};
+  }
+
+  std::optional<double> GetFloatOpt(int idx) override {
+    CHECK(idx >= 0 && idx < (int)types.size());
+    if (types[idx] != ColType::FLOAT) return std::nullopt;
+    return {GetFloat(idx)};
   }
 
   std::optional<std::vector<uint8_t>> GetBlobOpt(int idx) override {
@@ -246,6 +276,62 @@ RowImpl::~RowImpl() {
   parent->ready = true;
 }
 
+
+struct DatabaseImpl : public Database {
+
+  std::unique_ptr<Query> ExecuteString(const std::string &q) override {
+    sqlite3_stmt *stmt = nullptr;
+    int rc = sqlite3_prepare_v3(db, q.data(), (int)q.size(),
+                                // flags
+                                0,
+                                &stmt,
+                                nullptr);
+    CHECK(rc == SQLITE_OK) << "Could not prepare statement (parse error?): " << q
+                           << "\nError code: " << ErrString(rc);
+    return std::unique_ptr<Query>(new QueryImpl(this, stmt));
+  }
+
+  // Get the last error.
+  std::string Error() {
+    return sqlite3_errmsg(db);
+  }
+
+  void ExecuteAndPrint(const std::string &q) override {
+    std::unique_ptr<Query> query = ExecuteString(q);
+    while (std::unique_ptr<Row> row = query->NextRow()) {
+      auto types = row->Types();
+      for (int i = 0; i < types.size(); i++) {
+        switch (types[i]) {
+        case ColType::INT:
+          printf("%lld ", row->GetInt(i));
+          break;
+        case ColType::STRING:
+          printf("\"%s\" ", row->GetString(i).c_str());
+          break;
+        case ColType::SQL_NULL:
+          printf("NULL ");
+          break;
+        case ColType::FLOAT:
+          printf("%.11g ", row->GetFloat(i));
+          break;
+        case ColType::BLOB:
+          printf("(blob) ");
+          break;
+        }
+      }
+      printf("\n");
+    }
+  }
+
+  ~DatabaseImpl() override {
+    int rc = sqlite3_close(db);
+    db = nullptr;
+    CHECK(rc == SQLITE_OK) << "Database has pending operations? " << ErrString(rc);
+  }
+
+  sqlite3 *db = nullptr;
+};
+
 std::unique_ptr<Row> QueryImpl::NextRow() {
   CHECK(ready) << "The previous row must be destroyed before "
     "calling NextRow again.";
@@ -258,6 +344,7 @@ std::unique_ptr<Row> QueryImpl::NextRow() {
     int src = sqlite3_step(stmt);
     if (src == SQLITE_DONE) {
       sqlite3_finalize(stmt);
+      stmt = nullptr;
       return std::unique_ptr<Row>(nullptr);
     }
 
@@ -270,27 +357,11 @@ std::unique_ptr<Row> QueryImpl::NextRow() {
     }
 
     CHECK(src != SQLITE_MISUSE);
-    CHECK(src != SQLITE_ERROR);
-    LOG(FATAL) << "sqlite3 step failed: " << ErrString(src);
+    CHECK(src != SQLITE_ERROR) << ErrString(src) << "\n" << parent->Error();
+    LOG(FATAL) << "sqlite3 step failed: " << ErrString(src)
+               << "\n" << parent->Error();
   }
 }
-
-
-struct DatabaseImpl : public Database {
-
-  std::unique_ptr<Query> ExecuteString(const std::string &q) override {
-    sqlite3_stmt *stmt = nullptr;
-    int rc = sqlite3_prepare_v3(db, q.data(), (int)q.size(),
-                                // flags
-                                0,
-                                &stmt,
-                                nullptr);
-    CHECK(rc == SQLITE_OK) << "Could not prepare statement (parse error?): " << q;
-    return std::unique_ptr<Query>(new QueryImpl(stmt));
-  }
-
-  sqlite3 *db = nullptr;
-};
 
 }  // namespace
 

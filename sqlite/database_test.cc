@@ -18,20 +18,20 @@ static void Test() {
 
   {
     auto q = conn->ExecuteString("create table test ("
-                                "id int not null, "
-                                "name varchar(255) not null)");
+                                 "id int not null, "
+                                 "name varchar(255) not null)");
     CHECK(q->NextRow().get() == nullptr);
   }
 
   {
     auto q = conn->ExecuteString("insert into test (id, name) "
-                                "values (7, \"Tom\")");
+                                 "values (7, \"Tom\")");
     CHECK(q->NextRow().get() == nullptr);
   }
 
   {
     auto q = conn->ExecuteString("insert into test (id, name) "
-                                "values (24, \"Jack Bauer\")");
+                                 "values (24, \"Jack Bauer\")");
     CHECK(q->NextRow().get() == nullptr);
   }
 
