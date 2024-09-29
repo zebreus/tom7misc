@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <ctime>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -93,6 +94,16 @@ struct MinusDB {
     return false;
   }
 
+  std::optional<std::vector<uint8_t>> GetSolution(LevelId level) {
+    std::unique_ptr<Query> q =
+      db->ExecuteString(
+          StringPrintf("select fm7 from solutions where level = %d",
+                       level));
+    while (std::unique_ptr<Row> r = q->NextRow()) {
+      return {SimpleFM7::ParseString(r->GetString(0))};
+    }
+    return std::nullopt;
+  }
 
   // Get levels that have partial solutions. It may be in the done
   // set without having a partial solution, so to see all levels

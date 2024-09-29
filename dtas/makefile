@@ -1,4 +1,4 @@
-default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe minus-validate.exe
+default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe minus-validate.exe minus-map.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -80,6 +80,10 @@ minus-results.exe : minus-results.o mario-util.o $(OBJECTS) $(SQLITE_OBJECTS)
 	@echo -n "!"
 
 minus-validate.exe : minus-validate.o mario-util.o $(OBJECTS) $(SQLITE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+minus-map.exe : minus-map.o mario-util.o $(OBJECTS) $(SQLITE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

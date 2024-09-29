@@ -1,7 +1,9 @@
 
 #include "mario-util.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -51,8 +53,103 @@ void MarioUtil::WarpTo(Emulator *emu,
 
 }
 
+MarioUtil::Pos MarioUtil::GetPos(const Emulator *emu) {
+  uint8_t xhi = emu->ReadRAM(PLAYER_X_HI);
+  uint8_t xlo = emu->ReadRAM(PLAYER_X_LO);
+
+  uint16_t x = (uint16_t(xhi) << 8) | xlo;
+
+  // 0 if above screen, 1 if on screen, 2+ if below
+  uint8_t yscreen = emu->ReadRAM(PLAYER_Y_SCREEN);
+  uint8_t ypos = emu->ReadRAM(PLAYER_Y);
+
+  uint16_t y = (uint16_t(yscreen) << 8) | ypos;
+
+  return Pos{.x = x, .y = y};
+}
 
 ImageRGBA MarioUtil::Screenshot(Emulator *emu) {
   std::vector<uint8_t> rgba8 = emu->GetImage();
   return ImageRGBA(std::move(rgba8), 256, 256);
+}
+
+ImageRGBA MarioUtil::ScreenshotAny(Emulator *emu) {
+  std::vector<uint8_t> save = emu->SaveUncompressed();
+  emu->StepFull(0, 0);
+  std::vector<uint8_t> rgba8 = emu->GetImage();
+  ImageRGBA img(std::move(rgba8), 256, 256);
+  emu->LoadUncompressed(save);
+  return img;
+}
+
+ImageRGBA MarioUtil::MakeMap(Emulator *emu, const std::vector<uint8_t> &movie) {
+  std::unique_ptr<ImageRGBA> map(new ImageRGBA(1024, 256));
+  auto GrowToFit = [&map](int width) {
+      if (map->Width() < width) {
+        std::unique_ptr<ImageRGBA> wider(new ImageRGBA(map->Width() * 2, 256));
+        wider->CopyImage(0, 0, *map);
+        map = std::move(wider);
+      }
+    };
+
+  int max_width = 256;
+  for (int idx = 0; idx < (int)movie.size(); idx++) {
+    emu->StepFull(movie[idx], 0);
+
+    // XXX: There is some small error here, probably due to some
+    // trick with the scroll when mario is moving fast. It's
+    // serviceable but we should figure it out to make it look
+    // perfect!
+    int screenx = (emu->ReadRAM(SCREENLEFT_X_HI) << 8) |
+      emu->ReadRAM(SCREENLEFT_X_LO);
+
+    GrowToFit(screenx + 256);
+    max_width = std::max(max_width, screenx + 256);
+    ImageRGBA screen = Screenshot(emu);
+    map->CopyImage(screenx, 0, screen);
+  }
+
+  return map->Crop32(0, 0, max_width, 256);
+}
+
+static inline bool EqPos(const MarioUtil::Pos &a,
+                         const MarioUtil::Pos &b) {
+  return a.x == b.x && a.y == b.y;
+}
+
+std::vector<MarioUtil::Pos> MarioUtil::GetPath(
+    Emulator *emu,
+    const std::vector<uint8_t> &movie) {
+  std::vector<Pos> positions;
+  positions.reserve(movie.size() + 1);
+
+  Pos last_pos{.x = 9999, .y = 9998};
+
+  for (int idx = 0; idx < (int)movie.size(); idx++) {
+    Pos p = GetPos(emu);
+    if (!EqPos(p, last_pos)) {
+      positions.push_back(p);
+    }
+    last_pos = p;
+
+    emu->StepFull(movie[idx], 0);
+  }
+
+  Pos p = GetPos(emu);
+  if (!EqPos(p, last_pos)) {
+    positions.push_back(p);
+  }
+  return positions;
+}
+
+void MarioUtil::DrawPath(const std::vector<Pos> &path,
+                         ImageRGBA *img,
+                         uint32_t color) {
+  for (int i = 1; i < path.size(); i++) {
+    const Pos &a = path[i - 1];
+    const Pos &b = path[i];
+    // The y offset may be for top-left of tall mario. This
+    // places the y position at about small mario's moustache.
+    img->BlendThickLine32(a.x, a.y - 232, b.x, b.y - 232, 2.5f, color);
+  }
 }

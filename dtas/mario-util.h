@@ -4,6 +4,8 @@
 #define _MARIO_UTIL_H
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 #include "../fceulib/emulator.h"
 #include "image.h"
@@ -20,7 +22,39 @@ struct MarioUtil {
   static void WarpTo(Emulator *emu,
                      uint8_t major, uint8_t minor, uint8_t halfway);
 
+  // Take a screenshot in the current state. The last step needs to
+  // have been StepFull or the image might be stale.
   static ImageRGBA Screenshot(Emulator *emu);
+
+  // Does a full step and then takes a screenshot; then undoes the
+  // step so that the emulator state is unchanged.
+  static ImageRGBA ScreenshotAny(Emulator *emu);
+
+  // Play the movie at the current state. Expects that we stay on
+  // the same level. Generates an image stitched together of the
+  // level as seen during play.
+  static ImageRGBA MakeMap(Emulator *emu,
+                           const std::vector<uint8_t> &movie);
+
+  // TODO: Include velocity, sub-pixel values, etc?
+  struct Pos {
+    uint16_t x = 0;
+    uint16_t y = 0;
+  };
+
+  // Get raw global x,y coordinates of the player.
+  // x is as you'd expect. For y, 256-512 is on-screen.
+  static Pos GetPos(const Emulator *emu);
+
+  // Get Mario's path through a level, as a series of absolute
+  // coordinates. y coordinates of 256-512 are on-screen.
+  // Exact consecutive duplicates are removed.
+  static std::vector<Pos> GetPath(Emulator *emu,
+                                  const std::vector<uint8_t> &movie);
+
+  static void DrawPath(const std::vector<Pos> &path,
+                       ImageRGBA *img,
+                       uint32_t color);
 
 };
 

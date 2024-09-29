@@ -3,17 +3,13 @@
 #include <cstdio>
 #include <mutex>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 #include "base/stringprintf.h"
 #include "image.h"
-#include "auto-histo.h"
 #include "emulator-pool.h"
 #include "minus.h"
 #include "ansi.h"
-#include "mario-util.h"
-#include "mario.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "periodically.h"
@@ -21,6 +17,9 @@
 
 #include "../fceulib/simplefm7.h"
 #include "../fceulib/emulator.h"
+
+#include "mario-util.h"
+#include "mario.h"
 
 #define VALID_IMAGES 0
 #define INVALID_IMAGES 1
@@ -114,12 +113,14 @@ static void Validate() {
           valid++;
         } else {
           db.DeleteSolution(row.id);
-          status.Printf("Invalid for %s: " AGREY("%s") ". " ARED("Deleted") ".\n",
-                        ColorLevel(row.level).c_str(),
-                        SimpleFM7::EncodeOneLine(row.movie).c_str());
+          status.Printf(
+              "Invalid for %s: " AGREY("%s") ". " ARED("Deleted") ".\n",
+              ColorLevel(row.level).c_str(),
+              SimpleFM7::EncodeOneLine(row.movie).c_str());
           if (INVALID_IMAGES) {
-            MarioUtil::Screenshot(emu.get()).Save(StringPrintf("invalid-%d-%d.png",
-                                                               major, minor));
+            MarioUtil::Screenshot(emu.get()).Save(
+                StringPrintf("invalid-%d-%d.png",
+                             major, minor));
           }
           MutexLock ml(&m);
           invalid++;
@@ -143,7 +144,8 @@ static void Validate() {
       },
       8);
 
-  printf("Done. " AGREEN("%lld") " are valid. " ARED("%lld") " are invalid.\n",
+  printf("Done. " AGREEN("%lld") " are valid. "
+         ARED("%lld") " are invalid.\n",
          valid, invalid);
 }
 

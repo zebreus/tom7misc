@@ -43,8 +43,11 @@
 #include "minus.h"
 
 using uint8 = uint8_t;
+using Pos = MarioUtil::Pos;
 
 static constexpr const char *ROMFILE = "mario.nes";
+
+#define VIZ_MAP 1
 
 DECLARE_COUNTERS(emu_steps_total,
                  emu_steps_attempt,
@@ -98,9 +101,6 @@ struct Evaluator {
     const uint8_t oper_mode = emu->ReadRAM(OPER_MODE);
     const uint8_t oper_task = emu->ReadRAM(OPER_MODE_TASK);
 
-    // XXX Check this: It might be triggered when going into
-    // a pipe like before world 1-2?
-
     // We could also count tasks 0, 1, as these are normal
     // speedrun rules?
     const bool princess =
@@ -130,30 +130,13 @@ struct Evaluator {
     return false;
   }
 
-  // Get global x,y coordinates of the player.
-  // For y, 256-512 is on-screen.
-  static std::pair<uint16_t, uint16_t> GetXY(const Emulator *emu) {
-    uint8_t xhi = emu->ReadRAM(PLAYER_X_HI);
-    uint8_t xlo = emu->ReadRAM(PLAYER_X_LO);
-
-    uint16_t x = (uint16_t(xhi) << 8) | xlo;
-
-    // 0 if above screen, 1 if on screen, 2+ if below
-    uint8_t yscreen = emu->ReadRAM(PLAYER_Y_SCREEN);
-    uint8_t ypos = emu->ReadRAM(PLAYER_Y);
-
-    uint16_t y = (uint16_t(yscreen) << 8) | ypos;
-
-    return std::make_pair(x, y);
-  }
-
   double Eval(const Emulator *emu) const {
-    const auto &[x, y] = GetXY(emu);
+    const Pos pos = MarioUtil::GetPos(emu);
     // double xfrac = x / (double)0xFFFF;
 
     // Decimal part of score is x position (unless penalized);
     // fractional part is heuristics.
-    double score = x;
+    double score = pos.x;
 
     // Heuristics:
 
@@ -171,20 +154,20 @@ struct Evaluator {
 
     // Heuristics: Better to be high on the screen.
     // 256-512 is on-screen.
-    if (y > 511) {
+    if (pos.y > 511) {
       // Very bad to be off screen downward, as we will
       // definitely die.
       return -200000.0 + score;
-    } else if (y > 256 + 176) {
+    } else if (pos.y > 256 + 176) {
       // When on screen, we're uncomfortable if we're below 176,
       // which is below the bottom two rows of bricks.
 
-      int depth = y - (256 + 176);
+      int depth = pos.y - (256 + 176);
       return -100000.0 - depth + score;
     } else {
       // Otherwise we're not falling off the screen. But give
       // some bonus when we're higher up (lower y coordinate).
-      int height = -(y - (256 + 176));
+      int height = -(pos.y - (256 + 176));
 
       return score + (height * 0.05);
     }
@@ -312,7 +295,7 @@ struct Solver {
     double score = 0.0;
   };
 
-  static constexpr int MAX_POPULATION = 50;
+  static constexpr int MAX_POPULATION = 40;
 
   void WorkThread(uint64_t seed) {
     ArcFour rc(seed);
@@ -428,7 +411,8 @@ struct Solver {
     }
   }
 
-  Solver(MinusDB *db, uint8_t major, uint8_t minor, double solve_time = 3600.0,
+  Solver(MinusDB *db, uint8_t major, uint8_t minor,
+         double solve_time = 3600.0,
          int num_threads = 8) :
     status(STATUS_LINES),
     db(db),
@@ -463,9 +447,9 @@ struct Solver {
     }
 
     Timer solve_timer;
-    Periodically status_per(10.0);
-    // Every ten minutes, write images.
-    Periodically images_per(10.0 * 60.0);
+    Periodically status_per(5.0);
+    // Every 20 minutes, write images.
+    Periodically images_per(20.0 * 60.0);
     // Not useful to write immediately, though.
     images_per.SetPeriodOnce(60.0);
     int image_counter = 0;
@@ -526,12 +510,14 @@ struct Solver {
         }
 
         StringAppendF(&lines,
-                      AWHITE("Eval") ":\n"
+                      AWHITE("Eval") " %s:\n"
                       "%s\n",
+                      eval.IsIntegral() ? "(integral)" : "(float)",
                       eval.SimpleHorizANSI(12).c_str());
         StringAppendF(&lines,
-                      AWHITE("Moves") ":\n"
+                      AWHITE("Moves") " %s:\n"
                       "%s\n",
+                      moves.IsIntegral() ? "(integral)" : "(float)",
                       moves.SimpleHorizANSI(10).c_str());
 
         status.EmitStatus(lines);
@@ -547,6 +533,10 @@ struct Solver {
     status.Printf("Waiting for solve threads to exit.\n");
     for (std::thread &t : workers) t.join();
     workers.clear();
+
+    status.Printf("Save final images:\n");
+    image_counter++;
+    WriteImage(image_counter);
 
     MutexLock mlo(&outcome_m);
     if (outcome != Outcome::SUCCESS) {
@@ -572,8 +562,53 @@ struct Solver {
       pop = population;
     }
 
+    if (pop.empty()) {
+      status.Printf("No population! So no images.\n");
+      return;
+    }
+
     const auto &[major, minor] = UnpackLevel(level_id);
 
+    std::string filename =
+      StringPrintf("solve%d-%d_%d.png", major, minor, counter);
+
+    double best_eval = pop[0].eval;
+    int best_idx = 0;
+    for (int idx = 0; idx < (int)pop.size(); idx++) {
+      const State &state = pop[idx];
+      if (state.eval > best_eval) {
+        best_eval = state.eval;
+        best_idx = idx;
+      }
+    }
+
+    #if VIZ_MAP
+    // Generate map for best eval. Even better would be if we
+    // took the union of all maps (but this is also more expensive).
+    solver_emu->LoadUncompressed(start_state);
+    ImageRGBA map =
+      MarioUtil::MakeMap(solver_emu.get(), pop[best_idx].movie);
+
+    // PERF: Instead, do this in parallel?
+    for (int i = 0; i < (int)pop.size(); i++) {
+      solver_emu->LoadUncompressed(start_state);
+      std::vector<Pos> path = MarioUtil::GetPath(solver_emu.get(),
+                                                 pop[i].movie);
+
+      // Could use rainbows?
+      MarioUtil::DrawPath(path, &map, 0xFF000044);
+    }
+
+    map.BlendText2x32(1, 1, 0xFFFFFFFF,
+                      StringPrintf("Solving %d-%d. Best eval: %.4f    "
+                                   "Elapsed: %d sec",
+                                   major, minor, best_eval,
+                                   (int)elapsed.Seconds()).c_str());
+
+    map.Save(filename);
+    status.Printf("Wrote %s.\n", filename.c_str());
+
+    #else
     constexpr int MARGIN_TOP = 32;
     constexpr int ACROSS = 10;
     constexpr int DOWN = 5;
@@ -583,11 +618,6 @@ struct Solver {
     ImageRGBA text(ACROSS * BOX_W, MARGIN_TOP + DOWN * BOX_H);
     img.Clear32(0x000022FF);
     text.Clear32(0x00000000);
-
-    double best_eval = -999999.9;
-    for (const State &state : pop) {
-      best_eval = std::max(state.eval, best_eval);
-    }
 
     text.BlendText2x32(1, 1, 0xFFFFFFFF,
                        StringPrintf("Solving %d-%d. Best eval: %.4f    "
@@ -601,8 +631,7 @@ struct Solver {
       const State &state = pop[i];
       solver_emu->LoadUncompressed(state.save);
 
-      const auto &[playerx, playery] =
-        Evaluator::GetXY(solver_emu.get());
+      const Pos pos = MarioUtil::GetPos(solver_emu.get());
       // For screenshot, we need to make one step.
       solver_emu->StepFull(0, 0);
       emu_steps_total++;
@@ -615,7 +644,7 @@ struct Solver {
 
       text.BlendText32(ix + 2, iy + 240,
                        0xFF00FFCC,
-                       StringPrintf("^ %d,%d", playerx, playery));
+                       StringPrintf("^ %d,%d", pos.x, pos.y));
       text.BlendText32(ix + 2, iy + 250,
                        0x00FFFFCC,
                        StringPrintf("%d moves, eval %.4f",
@@ -624,11 +653,11 @@ struct Solver {
     }
 
     img.BlendImage(0, 0, text);
-
     std::string filename =
       StringPrintf("solve%d-%d_%d.png", major, minor, counter);
     img.Save(filename);
     status.Printf("Wrote %s.\n", filename.c_str());
+    #endif
   }
 
   // two status lines; two histos, each two lines
@@ -653,13 +682,13 @@ struct Solver {
   std::vector<State> population;
 };
 
-static constexpr double SOLVE_TIME = 900.0; // 3600.0 * 2.0;
+static constexpr double SOLVE_TIME = 600.0; // 3600.0 * 2.0;
 
 static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   std::unordered_set<LevelId> done = db->GetDone();
   CHECK(done.size() <= 65536);
-  std::vector<LevelId> not_done;
-  not_done.reserve(65536 - done.size());
+  std::vector<LevelId> todo;
+  todo.reserve(65536 - done.size());
 
   // Some levels that are easily solvable, for runs from scratch.
   std::unordered_set<LevelId> do_first = {
@@ -670,7 +699,7 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
     PackLevel(0, 0),
   };
 
-  #if 1
+  #if 0
   // Also, the whole main game.
   for (int maj = 0; maj < 8; maj++) {
     // You might think there are four minor levels per
@@ -682,12 +711,21 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   }
   #endif
 
+  #if 1
+  // Whole first row.
+  for (int min = 255; min >= 0; min--) {
+    do_first.insert(PackLevel(0, min));
+  }
+  #endif
+
   #if 0
   // Also, the whole left column.
   for (int maj = 0; maj < 256; maj++) {
     do_first.insert(PackLevel(maj, 0));
   }
+  #endif
 
+  #if 0
   // X-3
   for (int maj = 0; maj < 256; maj++) {
     do_first.insert(PackLevel(maj, 2));
@@ -695,7 +733,7 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   #endif
 
   for (LevelId level : do_first) {
-    if (!done.contains(level)) not_done.push_back(level);
+    if (!done.contains(level)) todo.push_back(level);
   }
 
   std::vector<LevelId> rest;
@@ -706,11 +744,11 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   }
   // In a random order.
   Shuffle(rc, &rest);
-  for (LevelId level : rest) not_done.push_back(level);
+  for (LevelId level : rest) todo.push_back(level);
 
-  printf("%d done. %d remain\n", (int)done.size(), (int)not_done.size());
+  printf("%d done. %d remain\n", (int)done.size(), (int)todo.size());
 
-  return not_done;
+  return todo;
 }
 
 static void Solve() {
@@ -718,9 +756,14 @@ static void Solve() {
   ArcFour rc(StringPrintf("solve.%lld", time(nullptr)));
 
   std::vector<LevelId> todo = GetTodo(&db, &rc);
+  std::unordered_set<LevelId> attempted = db.GetAttempted();
+
+  static constexpr bool ONLY_FRESH = true;
 
   for (LevelId level : todo) {
-    if (db.HasSolution(level)) {
+    if (ONLY_FRESH && attempted.contains(level)) {
+      continue;
+    } else if (db.HasSolution(level)) {
       levels_skipped++;
       printf("Level %s was solved in the meantime!\n",
              ColorLevel(level).c_str());
@@ -871,14 +914,15 @@ static void Cross() {
 
               int fd = (int)std::round(ff * WIDTH);
               int sd = std::clamp((int)std::round(sf * WIDTH), 0, WIDTH - fd);
-              int kd = std::clamp((int)std::round(kf * WIDTH), 0, WIDTH - fd - sd);
+              int kd = std::clamp((int)std::round(kf * WIDTH), 0,
+                                  WIDTH - fd - sd);
               int rd = WIDTH - fd - sd - kd;
               auto bgcolor =
                 ANSI::Rasterize({
-                      {0x6e1200, fd},
-                      {0x1e660f, sd},
-                      {0x857f1b, kd},
-                      {0x222222, rd}},
+                      {0x6e1200FF, fd},
+                      {0x1e660fFF, sd},
+                      {0x857f1bFF, kd},
+                      {0x111111FF, rd}},
                   WIDTH);
 
               const auto &[text, fgs, bgs_] = ANSI::Decompose(msg);
