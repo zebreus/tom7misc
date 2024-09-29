@@ -27,7 +27,7 @@ struct SimpleFM7 {
   static std::vector<std::pair<uint8_t, uint8_t>>
   ParseString2P(const std::string &contents);
   static std::vector<uint8> ParseString(const std::string &contents);
-  
+
   static void WriteInputs2P(
       const std::string &outputfile,
       const std::vector<std::pair<uint8_t, uint8_t>> &inputs);
@@ -35,9 +35,14 @@ struct SimpleFM7 {
   static void WriteInputs(const std::string &outputfile,
                           const std::vector<uint8_t> &inputs);
 
-  // Same, but to a string.
+  // Same, but to a string. This includes wrapping at newlines.
   static std::string EncodeInputs(const std::vector<uint8_t> &inputs);
   static std::string EncodeInputs2P(
+      const std::vector<std::pair<uint8_t, uint8_t>> &inputs);
+
+  // Encode as a single line.
+  static std::string EncodeOneLine(const std::vector<uint8_t> &inputs);
+  static std::string EncodeOneLine2P(
       const std::vector<std::pair<uint8_t, uint8_t>> &inputs);
 
   // Encode as a C++ string literal for easy embedding in source code.

@@ -186,10 +186,12 @@ void SimpleFM7::WriteInputs(const string &outputfile,
   WriteInputs2P(outputfile, SimpleFM2::ExpandTo2P(inputs));
 }
 
-// TODO: Don't wrap for EncodeInputs? Note it is used for output in
-// fm2tofm7.
 string SimpleFM7::EncodeInputs(const std::vector<uint8> &inputs) {
   return (string)"!" + Util::Join(Compress(inputs, DEFAULT_WRAP), "\n");
+}
+
+string SimpleFM7::EncodeOneLine(const std::vector<uint8> &inputs) {
+  return (string)"!" + Util::Join(Compress(inputs, DEFAULT_WRAP), "");
 }
 
 string SimpleFM7::EncodeInputs2P(
@@ -200,6 +202,16 @@ string SimpleFM7::EncodeInputs2P(
   return (string)"!" + Util::Join(Compress(p1, DEFAULT_WRAP), "\n") +
     "\n@" +
     Util::Join(Compress(p2, DEFAULT_WRAP), "\n");
+}
+
+string SimpleFM7::EncodeOneLine2P(
+    const vector<pair<uint8, uint8>> &inputs) {
+  vector<uint8> p1, p2;
+  SplitInputs(inputs, &p1, &p2);
+  // XXX skip second player if all empty
+  return (string)"!" + Util::Join(Compress(p1, DEFAULT_WRAP), "") +
+    "@" +
+    Util::Join(Compress(p2, DEFAULT_WRAP), "");
 }
 
 string SimpleFM7::EncodeInputsLiteral(const std::vector<uint8> &inputs,
