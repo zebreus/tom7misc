@@ -40,6 +40,7 @@ struct MinusDB {
 
   static constexpr int METHOD_SOLVE = 1;
   static constexpr int METHOD_CROSS = 2;
+  static constexpr int METHOD_MAZE = 3;
 
   using Query = Database::Query;
   using Row = Database::Row;
