@@ -1,11 +1,16 @@
 
+#include <cstdint>
 #include <cstdio>
+#include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "ansi.h"
 #include "auto-histo.h"
 #include "image.h"
 #include "minus.h"
+
+using SolutionRow = MinusDB::SolutionRow;
 
 // One-time update operations.
 static void Update() {
@@ -37,10 +42,15 @@ static void Report() {
   std::unordered_set<LevelId> done = db.GetDone();
   std::unordered_set<LevelId> attempted = db.GetAttempted();
 
-  // Remove levels that are done from the attempted set so that
-  // it reflects levels that were tried but not yet solved.
-  for (LevelId level : done) {
-    attempted.erase(level);
+  std::vector<SolutionRow> rows = db.GetSolutions();
+
+  std::unordered_map<int, int> method_count;
+
+  for (const SolutionRow &row : rows) {
+    // Remove levels that are done from the attempted set so that
+    // it reflects levels that were tried but not yet solved.
+    attempted.erase(row.level);
+    method_count[row.method]++;
   }
 
   double done_pct = (done.size() * 100.0) / 65536.0;
@@ -50,31 +60,48 @@ static void Report() {
          (int)done.size(), done_pct,
          (int)attempted.size(), att_pct);
 
+  printf(AWHITE(" SOLVE") ": %d\n"
+         AWHITE(" CROSS") ": %d\n"
+         AWHITE("  MAZE") ": %d\n"
+         AWHITE("MANUAL") ": %d\n",
+         method_count[MinusDB::METHOD_SOLVE],
+         method_count[MinusDB::METHOD_CROSS],
+         method_count[MinusDB::METHOD_MAZE],
+         method_count[MinusDB::METHOD_MANUAL]);
+
   ImageRGBA img(256, 256);
+  img.Clear32(0x000000FF);
   // Row-major.
   for (int y = 0; y < 256; y++) {
     for (int x = 0; x < 256; x++) {
       LevelId level = PackLevel(y, x);
-      if (done.contains(level)) {
-        img.SetPixel32(x, y, 0x00FF00FF);
-      } else if (attempted.contains(level)) {
-        // Orange
-        // img.SetPixel32(x, y, 0xF79B39FF);
-        img.SetPixel32(x, y, 0xFF0000FF);
-      } else {
-        img.SetPixel32(x, y, 0x000000FF);
+      if (attempted.contains(level)) {
+        img.SetPixel32(x, y, 0xFF5500FF);
       }
     }
   }
 
+  // Now color done cells by method.
+  for (const SolutionRow &row : rows) {
+    uint32_t c = 0xFF00FFFF;
+    switch (row.method) {
+    case MinusDB::METHOD_SOLVE: c = 0x00FF00FF; break;
+    case MinusDB::METHOD_CROSS: c = 0x77AA00FF; break;
+    case MinusDB::METHOD_MAZE: c = 0x0077AAFF; break;
+    case MinusDB::METHOD_MANUAL: c = 0xFF33AAFF; break;
+    default: break;
+    }
+    const auto &[major, minor] = UnpackLevel(row.level);
+    img.SetPixel32(minor, major, c);
+  }
+
   img.ScaleBy(2).Save("minus.png");
 
-
   AutoHisto moves_histo(100000);
-  db.ForEachSolution([&moves_histo](const MinusDB::SolutionRow &r) {
+  for (const SolutionRow &row : rows) {
       // printf("%lld\n", r.movie.size());
-      moves_histo.Observe(r.movie.size());
-    });
+      moves_histo.Observe(row.movie.size());
+  }
   printf(AWHITE("Number of moves") " (across %d solutions):\n"
          "%s\n",
          (int)moves_histo.NumSamples(),

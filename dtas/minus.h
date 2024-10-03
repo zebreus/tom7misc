@@ -41,6 +41,7 @@ struct MinusDB {
   static constexpr int METHOD_SOLVE = 1;
   static constexpr int METHOD_CROSS = 2;
   static constexpr int METHOD_MAZE = 3;
+  static constexpr int METHOD_MANUAL = 4;
 
   using Query = Database::Query;
   using Row = Database::Row;
@@ -166,18 +167,18 @@ struct MinusDB {
     }
   }
 
-  void DeleteSolution(int64_t rowid) {
-    db->ExecuteString(
-        StringPrintf("delete from solutions where id = %lld",
-                     rowid));
-  }
-
   std::vector<SolutionRow> GetSolutions() {
     std::vector<SolutionRow> sols;
     ForEachSolution([&sols](SolutionRow r) {
         sols.push_back(std::move(r));
       });
     return sols;
+  }
+
+  void DeleteSolution(int64_t rowid) {
+    db->ExecuteString(
+        StringPrintf("delete from solutions where id = %lld",
+                     rowid));
   }
 
   void ExecuteAndPrint(const std::string &s) {

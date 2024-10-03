@@ -1,6 +1,7 @@
 
 #include "mario-util.h"
 
+#include <string>
 #include <algorithm>
 #include <cstdint>
 #include <memory>
@@ -12,6 +13,8 @@
 #include "image.h"
 
 #include "mario.h"
+#include "base/stringprintf.h"
+#include "util.h"
 
 // Place the emulator state at the standard beginning of world-level.
 //
@@ -151,5 +154,25 @@ void MarioUtil::DrawPath(const std::vector<Pos> &path,
     // The y offset may be for top-left of tall mario. This
     // places the y position at about small mario's moustache.
     img->BlendThickLine32(a.x, a.y - 232, b.x, b.y - 232, 2.5f, color);
+  }
+}
+
+std::string MarioUtil::FormatNum(uint64_t n) {
+  if (n > 1'000'000) {
+    double m = n / 1'000'000.0;
+    if (m >= 1'000'000.0) {
+      return StringPrintf("%.1fT", m / 1'000'000.0);
+    } else if (m >= 1000.0) {
+      return StringPrintf("%.1fB", m / 1000.0);
+    } else if (m >= 100.0) {
+      return StringPrintf("%dM", (int)std::round(m));
+    } else if (m > 10.0) {
+      return StringPrintf("%.1fM", m);
+    } else {
+      // TODO: Integer division. color decimal place and suffix.
+      return StringPrintf("%.2fM", m);
+    }
+  } else {
+    return Util::UnsignedWithCommas(n);
   }
 }

@@ -57,29 +57,10 @@ DECLARE_COUNTERS(emu_steps_total,
                  levels_attempted,
                  futures_stuck,
                  levels_solved,
-                 levels_skipped, u2_, u3_);
+                 levels_skipped,
+                 u2_, u3_);
 
 // We're not trying to find a particularly short solution, just a solution.
-
-static std::string FormatNum(uint64_t n) {
-  if (n > 1'000'000) {
-    double m = n / 1'000'000.0;
-    if (m >= 1'000'000.0) {
-      return StringPrintf("%.1fT", m / 1'000'000.0);
-    } else if (m >= 1000.0) {
-      return StringPrintf("%.1fB", m / 1000.0);
-    } else if (m >= 100.0) {
-      return StringPrintf("%dM", (int)std::round(m));
-    } else if (m > 10.0) {
-      return StringPrintf("%.1fM", m);
-    } else {
-      // TODO: Integer division. color decimal place and suffix.
-      return StringPrintf("%.2fM", m);
-    }
-  } else {
-    return Util::UnsignedWithCommas(n);
-  }
-}
 
 struct Evaluator {
   // Initialize with some emulator state; we use that to read the current
@@ -213,6 +194,7 @@ struct MazeSolver {
   std::mutex mutex;
   // Maps from cells to a movie that reaches that cell.
   std::unordered_map<CellId, CellData, HashCell> cells;
+  int64_t cells_expanded = 0;
 
   static inline CellId Cell(const Pos &pos) {
     return CellId((pos.x + 8) / 16, (pos.y + 8) / 16);
@@ -283,6 +265,7 @@ struct MazeSolver {
       if (best_dst.has_value() &&
           (!best.has_value() || score > best_score)) {
         best = {std::make_pair(src, best_dst.value())};
+        best_score = score;
       }
     }
 
@@ -307,7 +290,10 @@ struct MazeSolver {
       // much. Pick a nearby destination cell that is empty.
 
       const auto obest = GetCell();
-      CHECK(obest.has_value()) << "Should be impossible?";
+      if (!obest.has_value()) {
+        status.Printf(ARED("No cells remain??") "\n");
+        return;
+      }
       const auto &[src, dst] = obest.value();
 
       // Load the source state. Copy the src movie so that
@@ -321,6 +307,7 @@ struct MazeSolver {
         src_movie = it->second.movie;
         emu->LoadUncompressed(it->second.save);
         it->second.expansions++;
+        cells_expanded++;
       }
 
       CHECK(src == Cell(MarioUtil::GetPos(emu.get()))) << "The "
@@ -337,26 +324,56 @@ struct MazeSolver {
 
       std::vector<uint8_t> edge_movie;
       edge_movie.reserve(depth_left);
-      while (depth_left--) {
-        // XXX use better heuristics, especially keeping
-        // buttons held longer.
-        uint8 b = 0;
-        if (dst.x < cur_cell.x)
-          b |= INPUT_L;
-        if (dst.x > cur_cell.x)
-          b |= INPUT_R;
 
-        if (dst.y < cur_cell.y) {
-          if (rc.Byte() < 200) {
-            b |= INPUT_A;
+      int move_time = 0;
+      uint8_t move_input = 0;
+
+      while (depth_left--) {
+
+        if (move_time == 0) {
+          // Choose a new move and duration.
+
+          move_time = 1 + RandTo(&rc, 60);
+
+          move_input = 0;
+
+          const uint8_t left_p = dst.x < cur_cell.x ? 220 : 32;
+          if (rc.Byte() < left_p)
+            move_input |= INPUT_L;
+
+          const uint8_t right_p = dst.x > cur_cell.x ? 220 : 32;
+          if (rc.Byte() < right_p) {
+            move_input |= INPUT_R;
           }
+
+          // Generally try to jump (or extend the jump) if we want to
+          // move up. But it's often helpful to hold A to extend jumps
+          // or avoid enemies anyway.
+          const uint8_t jump_p = dst.y < cur_cell.y ? 200 : 128;
+          if (rc.Byte() < jump_p) {
+            move_input |= INPUT_A;
+          }
+
+          // Usually helpful to hold B.
+          if (rc.Byte() < 200)
+            move_input |= INPUT_B;
+
+          // These are generally harmless, but
+          // they allow us to go down pipes and
+          // up vines.
+          if (dst.y > cur_cell.y) {
+            move_input |= INPUT_D;
+          }
+          if (dst.y < cur_cell.y) {
+            move_input |= INPUT_U;
+          }
+
+        } else {
+          move_time--;
         }
 
-        if (rc.Byte() < 200)
-          b |= INPUT_B;
-
-        emu->Step(b, 0);
-        edge_movie.push_back(b);
+        emu->Step(move_input, 0);
+        edge_movie.push_back(move_input);
 
         if (evaluator->Succeeded(emu.get())) {
           if (GetOutcome() == Outcome::SUCCESS) {
@@ -520,14 +537,17 @@ struct MazeSolver {
             "%lld attempted. %s steps (%lld here; %.1f/sec). "
             "Solved " AGREEN("%d") "\n",
             levels_attempted.Read(),
-            FormatNum(total_steps).c_str(),
+            MarioUtil::FormatNum(total_steps).c_str(),
             attempt_steps, sps,
             (int)levels_solved.Read());
         StringAppendF(
             &lines,
-            "Maze solver on %s. " AYELLOW("%d") " cells. "
-            "Elapsed %s/%s.\n",
-            ColorLevel(level_id).c_str(), num_cells,
+            "Maze solver on %s. " AYELLOW("%d") " cells from "
+            "%s expansions in "
+            " %s/%s.\n",
+            ColorLevel(level_id).c_str(),
+            num_cells,
+            MarioUtil::FormatNum(cells_expanded).c_str(),
             ANSI::Time(solve_timer.Seconds()).c_str(),
             ANSI::Time(solve_time).c_str());
 
@@ -906,7 +926,7 @@ struct Solver {
             "%lld attempted. %s steps (%lld here; %.1f/sec). "
             "Solved " AGREEN("%d") "\n",
             levels_attempted.Read(),
-            FormatNum(total_steps).c_str(),
+            MarioUtil::FormatNum(total_steps).c_str(),
             attempt_steps, sps,
             (int)levels_solved.Read());
         StringAppendF(
@@ -1121,7 +1141,7 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   };
 
   // This requires some backtracking.
-  do_first.insert(PackLevel(0x00, 0x12));
+  // do_first.insert(PackLevel(0x00, 0x12));
 
   #if 0
   // Also, the whole main game.
@@ -1142,7 +1162,7 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   }
   #endif
 
-  #if 0
+  #if 1
   // Also, the whole left column.
   for (int maj = 0; maj < 256; maj++) {
     do_first.insert(PackLevel(maj, 0));
@@ -1391,7 +1411,79 @@ static void Cross() {
          (int)levels_solved.Read());
 }
 
+static void Manual(const std::string &fm2file) {
+  MinusDB db;
 
+  std::vector<uint8_t> movie = SimpleFM2::ReadInputs(fm2file);
+  // But filter out start from the beginning.
+  for (int i = 0; i < (int)movie.size() && i < 60; i++) {
+    movie[i] &= ~INPUT_T;
+  }
+
+  uint8_t major = 0x14, minor = 0xC3;
+  const LevelId level = PackLevel(major, minor);
+  if (db.HasSolution(level)) {
+    printf(AORANGE("Already solved: ") "%s" "\n",
+           ColorLevel(level).c_str());
+    return;
+  }
+
+  std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
+  CHECK(emu.get() != nullptr);
+  MarioUtil::WarpTo(emu.get(), major, minor, 0);
+  std::vector<uint8_t> level_start_state = emu->SaveUncompressed();
+  Evaluator eval(emu.get());
+
+  static constexpr int MAX_PADDING = 48;
+  Timer timer;
+  Periodically status_per(1.0);
+  StatusBar status(1);
+  for (int p = -MAX_PADDING; p < MAX_PADDING; p++) {
+    emu->LoadUncompressed(level_start_state);
+
+    if (p > 0) {
+      for (int i = 0; i < p; i++) emu->Step(0, 0);
+    }
+
+    int start_idx = 0;
+    if (p < 0) start_idx = -p;
+
+    for (int idx = start_idx; idx < (int)movie.size(); idx++) {
+      if (idx == 340) {
+        MarioUtil::ScreenshotAny(emu.get()).Save(
+            StringPrintf("manual340-%d.png", p));
+      }
+
+      uint8_t b = movie[idx];
+      emu->Step(b, 0);
+      if (eval.Succeeded(emu.get())) {
+        std::vector<uint8_t> out;
+        if (p > 0) {
+          for (int i = 0; i < p; i++) out.push_back(0);
+        }
+        for (int i = start_idx; i <= idx; i++) out.push_back(movie[i]);
+        std::string fm7 = SimpleFM7::EncodeOneLine(out);
+        printf(AGREEN("Success!") " [pad %d] on %s: %s\n",
+               p, ColorLevel(level).c_str(),
+               fm7.c_str());
+        db.AddSolution(level, out, MinusDB::METHOD_MANUAL);
+        return;
+      }
+    }
+
+    MarioUtil::Screenshot(emu.get()).Save(
+        StringPrintf("manual-%d.png", p));
+
+    status_per.RunIf([&]() {
+        status.Emit(ANSI::ProgressBar(p + MAX_PADDING,
+                                      MAX_PADDING * 2 + 1,
+                                      "try offsets",
+                                      timer.Seconds()));
+      });
+  }
+
+  printf(ARED("Ended without solving.") "\n");
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -1403,6 +1495,10 @@ int main(int argc, char **argv) {
       Solve();
     } else if (argv[1] == (std::string)"maze") {
       Maze();
+    } else if (argv[1] == (std::string)"manual") {
+      CHECK(argc >= 3) << "Need fm2 file.";
+      std::string file = argv[2];
+      Manual(argv[2]);
     } else {
       LOG(FATAL) << "Usage:\n"
         "./solve.exe [cross|solve]\n"

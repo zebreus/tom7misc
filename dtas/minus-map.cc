@@ -50,10 +50,12 @@ int main(int argc, char **argv) {
   CHECK(argc == 3 || argc == 4) << "Usage:\n"
     "./minus-map.exe maj min [filename]\n"
     "\n"
-    "Use raw level ids [0-255]. Default output filename uses hex.\n";
+    "Use raw level ids [00-ff].\n";
 
-  int major = atoi(argv[1]);
-  int minor = atoi(argv[2]);
+  int major = strtol(argv[1], nullptr, 16);
+  int minor = strtol(argv[2], nullptr, 16);
+  CHECK(major >= 0 && major < 256 &&
+        minor >= 0 && minor < 256) << major << "-" << minor << "?";
   std::string filename =
     (argc == 4) ? std::string(argv[3]) :
     StringPrintf("map-%02x-%02x.png", major, minor);

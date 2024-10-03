@@ -4,6 +4,7 @@
 #define _MARIO_UTIL_H
 
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -56,6 +57,7 @@ struct MarioUtil {
                        ImageRGBA *img,
                        uint32_t color);
 
+  static std::string FormatNum(uint64_t n);
 };
 
 #endif
