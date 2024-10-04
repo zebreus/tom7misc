@@ -1155,14 +1155,14 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   }
   #endif
 
-  #if 0
-  // Whole first row.
+  #if 1
+  // Whole second row.
   for (int min = 255; min >= 0; min--) {
-    do_first.insert(PackLevel(0, min));
+    do_first.insert(PackLevel(1, min));
   }
   #endif
 
-  #if 1
+  #if 0
   // Also, the whole left column.
   for (int maj = 0; maj < 256; maj++) {
     do_first.insert(PackLevel(maj, 0));
