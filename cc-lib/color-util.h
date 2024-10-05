@@ -119,6 +119,9 @@ struct ColorUtil {
     GradRGB(1.0f, 0xFFFFFF)
   };
 
+  // TODO: Arrays of color values. A frequent thing I need
+  // is "a bunch of distinct colors that look good on a
+  // dark background."
 };
 
 

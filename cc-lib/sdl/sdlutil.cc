@@ -18,7 +18,7 @@ using namespace std;
 # define USE_DISPLAY_FORMAT 1
 #endif
 
-/* 
+/*
    XXX uses of these are probably always wrong. In addition
    to the host byte order (though you're probably compiling
    for x86 or x86-64, so this is probably not an issue), different
@@ -145,7 +145,7 @@ SDL_Surface *sdlutil::resize_canvas(SDL_Surface *s,
   return m;
 }
 
-// static 
+// static
 sdlutil::ByteOrder sdlutil::GetByteOrder(SDL_Surface *surf) {
   // PERF: Actually the R channel determines it completely.
   // But maybe nice to have the additional sanity check on A
@@ -172,9 +172,10 @@ sdlutil::ByteOrder sdlutil::GetByteOrder(SDL_Surface *surf) {
   abort();
 }
 
-static void CopyRGBA(const vector<Uint8> &rgba, SDL_Surface *surface) {
+// Assumes rgba vector is the same width/height as the surface.
+static void CopyRGBAVec(const vector<Uint8> &rgba,
+                        SDL_Surface *surface) {
   using ByteOrder = sdlutil::ByteOrder;
-  // Uint8 *p = (Uint8 *)surface->pixels;
   Uint32 *p = (Uint32 *)surface->pixels;
   int width = surface->w;
   int height = surface->h;
@@ -226,6 +227,79 @@ static void CopyRGBA(const vector<Uint8> &rgba, SDL_Surface *surface) {
   }
 }
 
+// Copies the full rgba image to (x, y) on the dst. Clips
+void sdlutil::CopyRGBARect(const ImageRGBA &img,
+                           int srcx, int srcy,
+                           int w, int h,
+                           int dstx, int dsty,
+                           SDL_Surface *surface) {
+  using ByteOrder = sdlutil::ByteOrder;
+  Uint32 *p = (Uint32 *)surface->pixels;
+  const int width = surface->w;
+  const int height = surface->h;
+
+  // First, clip.
+  if (dstx < 0) { w += dstx; srcx += dstx; dstx = 0; }
+  if (dsty < 0) { h += dsty; srcy += dsty; dsty = 0; }
+  if (w <= 0) return;
+  if (h <= 0) return;
+
+  const int yover = (dsty + h) - height;
+  if (yover > 0) h -= yover;
+  const int xover = (dstx + w) - width;
+  if (xover > 0) w -= xover;
+
+  if (w <= 0 || h <= 0) return;
+
+  // Now the rectangle given by (dstx,dsty,w,h) will fall within
+  // the destination surface's size.
+
+#define PACK4(a, b, c, d) \
+  (((uint32_t)(a) << 24) | ((uint32_t)(b) << 16) | \
+   ((uint32_t)(c) << 8) | ((uint32_t)(d)))
+
+  switch (sdlutil::GetByteOrder(surface)) {
+  case ByteOrder::ARGB:
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        const int pidx = ((dsty + y) * width + (dstx + x));
+        const auto &[r, g, b, a] = img.GetPixel(srcx + x, srcy + y);
+        p[pidx] = PACK4(a, r, g, b);
+      }
+    }
+    break;
+  case ByteOrder::RGBA:
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        const int pidx = ((dsty + y) * width + (dstx + x));
+        // // const auto &[r, g, b, a] = img.GetPixel(x, y);
+        // p[pidx] = PACK4(r, g, b, a);
+        p[pidx] = img.GetPixel32(srcx + x, srcy + y);
+      }
+    }
+    break;
+  case ByteOrder::ABGR:
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        const int pidx = ((dsty + y) * width + (dstx + x));
+        const auto &[r, g, b, a] = img.GetPixel(srcx + x, srcy + y);
+        p[pidx] = PACK4(a, b, g, r);
+      }
+    }
+    break;
+  case ByteOrder::BGRA:
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        const int pidx = ((dsty + y) * width + (dstx + x));
+        const auto &[r, g, b, a] = img.GetPixel(srcx + x, srcy + y);
+        p[pidx] = PACK4(b, g, r, a);
+      }
+    }
+    break;
+  }
+
+}
+
 SDL_Surface *sdlutil::FromRGBA(const ImageRGBA &rgba) {
   SDL_Surface *surf = makesurface(rgba.Width(), rgba.Height(), true);
   if (!surf) {
@@ -250,7 +324,7 @@ SDL_Surface *sdlutil::FromRGBA(const ImageRGBA &rgba) {
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
         const int pidx = (y * width + x);
-        const auto [r, g, b, a] = rgba.GetPixel(x, y);        
+        const auto [r, g, b, a] = rgba.GetPixel(x, y);
         p[pidx] = (r << 24) | (g << 16) | (b << 8) | a;
       }
     }
@@ -259,7 +333,7 @@ SDL_Surface *sdlutil::FromRGBA(const ImageRGBA &rgba) {
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
         const int pidx = (y * width + x);
-        const auto [r, g, b, a] = rgba.GetPixel(x, y);        
+        const auto [r, g, b, a] = rgba.GetPixel(x, y);
         p[pidx] = (a << 24) | (b << 16) | (g << 8) | r;
       }
     }
@@ -284,7 +358,7 @@ SDL_Surface *sdlutil::LoadImageFile(const string &filename) {
   Uint8 *stb_rgba = stbi_load(filename.c_str(),
                               &width, &height, &bpp, 4);
   if (!stb_rgba) return nullptr;
-  
+
   vector<Uint8> rgba;
   rgba.reserve(width * height * 4);
   for (int i = 0; i < width * height * 4; i++) {
@@ -296,7 +370,7 @@ SDL_Surface *sdlutil::LoadImageFile(const string &filename) {
   if (!surf) {
     return nullptr;
   }
-  CopyRGBA(rgba, surf);
+  CopyRGBAVec(rgba, surf);
 
   return surf;
 }
@@ -378,7 +452,7 @@ Uint32 sdlutil::mix2(Uint32 ia, Uint32 ib) {
   Uint32 b = 0;
 
   if ((aa + ba) > 0) {
-    /* really want 
+    /* really want
         (ar / 255) * (aa / 255) +
         (br / 255) * (ba / 255)
         -------------------------
@@ -387,7 +461,7 @@ Uint32 sdlutil::mix2(Uint32 ia, Uint32 ib) {
         to get r as a fraction. we then
         multiply by 255 to get the output
         as a byte.
-        
+
         but this is:
 
         ar * (aa / 255) +
@@ -396,7 +470,7 @@ Uint32 sdlutil::mix2(Uint32 ia, Uint32 ib) {
         (aa / 255) + (ba / 255)
 
         which can be simplified to
-        
+
         ar * aa + br * ba
         -----------------
              aa + ba
@@ -416,7 +490,7 @@ Uint32 sdlutil::mix2(Uint32 ia, Uint32 ib) {
 }
 
 Uint32 sdlutil::mix4(Uint32 a, Uint32 b, Uint32 c, Uint32 d) {
-  /* XXX PERF 
+  /* XXX PERF
 
      would probably get better results (less quant error) and
      better performance to write this directly, using the calculation
@@ -441,9 +515,9 @@ Uint32 sdlutil::Mix4(const SDL_Surface *surf,
   const Uint32 br = br8, bg = bg8, bb = bb8, ba = ba8;
   const Uint32 cr = cr8, cg = cg8, cb = cb8, ca = ca8;
   const Uint32 dr = dr8, dg = dg8, db = db8, da = da8;
-  
+
   // This is the same as idea as Mix2; see that for the math.
-  
+
   Uint32 r = 0;
   Uint32 g = 0;
   Uint32 b = 0;
@@ -470,7 +544,7 @@ Uint32 sdlutil::Mix2(const SDL_Surface *surf,
 
   Uint32 ar = ar8, ag = ag8, ab = ab8, aa = aa8;
   Uint32 br = br8, bg = bg8, bb = bb8, ba = ba8;
-  
+
   /* if these are all fractions 0..1,
      color output is
        color1 * alpha1 + color2 * alpha2
@@ -482,7 +556,7 @@ Uint32 sdlutil::Mix2(const SDL_Surface *surf,
   Uint32 b = 0;
 
   if ((aa + ba) > 0) {
-    /* really want 
+    /* really want
         (ar / 255) * (aa / 255) +
         (br / 255) * (ba / 255)
         -------------------------
@@ -491,7 +565,7 @@ Uint32 sdlutil::Mix2(const SDL_Surface *surf,
         to get r as a fraction. we then
         multiply by 255 to get the output
         as a byte.
-        
+
         but this is:
 
         ar * (aa / 255) +
@@ -500,7 +574,7 @@ Uint32 sdlutil::Mix2(const SDL_Surface *surf,
         (aa / 255) + (ba / 255)
 
         which can be simplified to
-        
+
         ar * aa + br * ba
         -----------------
              aa + ba
@@ -578,7 +652,7 @@ SDL_Surface *sdlutil::alphadim(SDL_Surface *src) {
   if (src->format->BytesPerPixel != 4) return nullptr;
 
   int ww = src->w, hh = src->h;
-  
+
   SDL_Surface *ret = makesurface(ww, hh);
 
   if (!ret) return nullptr;
@@ -589,18 +663,18 @@ SDL_Surface *sdlutil::alphadim(SDL_Surface *src) {
   for (int y = 0; y < hh; y++) {
     for (int x = 0; x < ww; x++) {
       Uint32 color = *((Uint32 *)src->pixels + y * src->pitch / 4 + x);
-      
+
       /* divide alpha channel by 2 */
       Uint8 r, g, b, a;
       SDL_GetRGBA(color, src->format, &r, &g, &b, &a);
       a >>= 1;
 
       color = SDL_MapRGBA(src->format, r, g, b, a);
-  
+
       *((Uint32 *)ret->pixels + y * ret->pitch / 4 + x) = color;
     }
   }
-    
+
   sulock(src);
   sulock(ret);
 
@@ -612,7 +686,7 @@ SDL_Surface *sdlutil::shrink50(SDL_Surface *src) {
   if (src->format->BytesPerPixel != 4) return nullptr;
 
   int ww = src->w, hh = src->h;
-  
+
   /* we need there to be at least two pixels for each destination
      pixel, so if the src dimensions are not even, then we ignore
      that last pixel. */
@@ -638,7 +712,7 @@ SDL_Surface *sdlutil::shrink50(SDL_Surface *src) {
       Uint32 c4 = *((Uint32 *)src->pixels + (y*2)*src->pitch/4 + (1+x*2));
 
       Uint32 color = Mix4(src, c1, c2, c3, c4);
-  
+
       *((Uint32 *)ret->pixels + y*ret->pitch/4 + x) = color;
     }
   }
@@ -654,7 +728,7 @@ SDL_Surface *sdlutil::grow2x(SDL_Surface *src) {
   if (src->format->BytesPerPixel != 4) return nullptr;
 
   int ww = src->w, hh = src->h;
-  
+
 
   SDL_Surface *ret = makesurface(ww << 1, hh << 1);
   if (!ret) return nullptr;
@@ -669,7 +743,7 @@ SDL_Surface *sdlutil::grow2x(SDL_Surface *src) {
   for (int y = 0; y < hh; y++) {
     for (int x = 0; x < ww; x++) {
       Uint32 rgba = *(Uint32*)(p + 4 * (y * ww + x));
-      
+
       // Write four pixels.
       int y2 = y << 1;
       int x2 = x << 1;
@@ -697,7 +771,7 @@ SDL_Surface *sdlutil::GrowX(SDL_Surface *src, int px) {
   if (!ret) {
     return nullptr;
   }
-  
+
   slock(ret);
   slock(src);
 
@@ -708,7 +782,7 @@ SDL_Surface *sdlutil::GrowX(SDL_Surface *src, int px) {
   for (int y = 0; y < hh; y++) {
     for (int x = 0; x < ww; x++) {
       const Uint32 rgba = *(Uint32*)(p + 4 * (y * ww + x));
-      
+
       // Write px * px pixels.
       for (int yu = 0; yu < px; yu++) {
         const int y2 = y * px + yu;
@@ -719,7 +793,7 @@ SDL_Surface *sdlutil::GrowX(SDL_Surface *src, int px) {
       }
     }
   }
-  
+
   sulock(src);
   sulock(ret);
 
@@ -730,13 +804,13 @@ SDL_Surface *sdlutil::GrowX(SDL_Surface *src, int px) {
 /* try to make a hardware surface, and, failing that,
    make a software surface */
 SDL_Surface *sdlutil::makesurface(int w, int h, bool alpha) {
-  /* PERF need to investigate relative performance 
+  /* PERF need to investigate relative performance
      of sw/hw surfaces */
   SDL_Surface *ss = 0;
 #if 0
     SDL_CreateRGBSurface(SDL_HWSURFACE |
                          (alpha?SDL_SRCALPHA:0),
-                         w, h, 32, 
+                         w, h, 32,
                          rmask, gmask, bmask,
                          amask);
 #endif
@@ -771,7 +845,7 @@ SDL_Surface *sdlutil::makealpharect(int w, int h, int r, int g, int b, int a) {
   Uint32 color = SDL_MapRGBA(ret->format, r, g, b, a);
 
   SDL_FillRect(ret, 0, color);
-  
+
   return ret;
 }
 
@@ -798,7 +872,7 @@ SDL_Surface *sdlutil::makealpharectgrad(int w, int h,
     rect.w = w;
     rect.h = 1;
     SDL_FillRect(ret, &rect, color);
-  }    
+  }
 
   return ret;
 }
@@ -904,19 +978,19 @@ SDL_Surface *sdlutil::makescreen(int w, int h) {
   /* Can't use HWSURFACE here, because not handling this SDL_BlitSurface
      case mentioned in the documentation:
 
-     "If either of the surfaces were in video memory, and the blit returns -2, 
-     the video memory was lost, so it should be reloaded with artwork 
-     and re-blitted." 
+     "If either of the surfaces were in video memory, and the blit returns -2,
+     the video memory was lost, so it should be reloaded with artwork
+     and re-blitted."
 
      Plus, on Windows, the only time you get HWSURFACE is with FULLSCREEN.
 
      -- Adam
   */
 
-  /* SDL_ANYFORMAT      
-     "Normally, if a video surface of the requested bits-per-pixel (bpp) 
-     is not available, SDL will emulate one with a shadow surface. 
-     Passing SDL_ANYFORMAT prevents this and causes SDL to use the 
+  /* SDL_ANYFORMAT
+     "Normally, if a video surface of the requested bits-per-pixel (bpp)
+     is not available, SDL will emulate one with a shadow surface.
+     Passing SDL_ANYFORMAT prevents this and causes SDL to use the
      video surface, regardless of its pixel depth."
 
      Probably should not pass this.
@@ -1048,7 +1122,7 @@ void sdlutil::setpixel(SDL_Surface *surface, int x, int y, Uint32 px) {
 }
 
 void sdlutil::drawline(SDL_Surface *screen, int x0, int y0,
-                       int x1, int y1, 
+                       int x1, int y1,
                        Uint8 R, Uint8 G, Uint8 B) {
   Line l{x0, y0, x1, y1};
 
@@ -1080,7 +1154,7 @@ void sdlutil::drawline(SDL_Surface *screen, int x0, int y0,
 }
 
 void sdlutil::DrawClipLine32(SDL_Surface *screen, int x0, int y0,
-                             int x1, int y1, 
+                             int x1, int y1,
                              Uint32 color) {
   // Only 32-bit!
   if (screen->format->BytesPerPixel != 4) return;
@@ -1095,7 +1169,7 @@ void sdlutil::DrawClipLine32(SDL_Surface *screen, int x0, int y0,
     return;
   if (y0 >= screen->h && y1 >= screen->h)
     return;
-  
+
   Line l{x0, y0, x1, y1};
 
   Uint32 *bufp = (Uint32 *)screen->pixels;
@@ -1103,7 +1177,7 @@ void sdlutil::DrawClipLine32(SDL_Surface *screen, int x0, int y0,
   auto SetPixel = [color, bufp, stride](int x, int y) {
       bufp[y * stride + x] = color;
     };
-  
+
   /* direct pixel access */
   slock(screen);
   int x, y;
@@ -1118,7 +1192,7 @@ void sdlutil::DrawClipLine32(SDL_Surface *screen, int x0, int y0,
 }
 
 void sdlutil::drawclipline(SDL_Surface *screen, int x0, int y0,
-                           int x1, int y1, 
+                           int x1, int y1,
                            Uint8 R, Uint8 G, Uint8 B) {
   /* PERF could maprgb once */
 
@@ -1137,7 +1211,7 @@ void sdlutil::drawclipline(SDL_Surface *screen, int x0, int y0,
     return;
   if (y0 >= screen->h && y1 >= screen->h)
     return;
-  
+
   Line l{x0, y0, x1, y1};
 
   /* direct pixel access */
@@ -1194,7 +1268,7 @@ bool sdlutil::clipsegment(float cx0, float cy0, float cx1, float cy1,
         y = cy0;
       } else if (code & LEFT) {
         y = y0 + (y1 - y0) * (cx0 - x0) / (x1 - x0);
-        x = cx0;        
+        x = cx0;
       } else if (code & RIGHT) {
         y = y0 + (y1 - y0) * (cx1 - x0) / (x1 - x0);
         x = cx1;
@@ -1321,7 +1395,7 @@ SDL_Surface *sdlutil::fliphoriz(SDL_Surface *src) {
 
   slock(src);
   slock(dst);
-  
+
   for (int y = 0; y < src->h; y++) {
     for (int x = 0; x < src->w; x++) {
       Uint32 px = getpixel(src, x, y);
@@ -1365,19 +1439,19 @@ static void BresenhamTriangle32(SDL_Surface *surf,
   int tmpx2 = x1, tmpy2 = y1;
 
   bool changed1 = false, changed2 = false;
-        
+
   int dx1 = std::abs(x2 - x1);
   int dy1 = std::abs(y2 - y1);
-        
+
   int dx2 = std::abs(x3 - x1);
   int dy2 = std::abs(y3 - y1);
 
   // Like copysign for ints. -1, 0, or 1
   auto Sign = [](int i) { return (i > 0) - (i < 0); };
-  
+
   int signx1 = Sign(x2 - x1);
   int signx2 = Sign(x3 - x1);
-        
+
   int signy1 = Sign(y2 - y1);
   int signy2 = Sign(y3 - y1);
 
@@ -1387,12 +1461,12 @@ static void BresenhamTriangle32(SDL_Surface *surf,
     std::swap(dy1, dx1);
     changed1 = true;
   }
-        
+
   if (dy2 > dx2) {
     std::swap(dx2, dy2);
     changed2 = true;
   }
-        
+
   int e1 = 2 * dy1 - dx1;
   int e2 = 2 * dy2 - dx2;
 
@@ -1409,12 +1483,12 @@ static void BresenhamTriangle32(SDL_Surface *surf,
         tmpy1 += signy1;
       e1 -= 2 * dx1;
     }
-            
+
     if (changed1)
       tmpy1 += signy1;
     else
-      tmpx1 += signx1;  
-    
+      tmpx1 += signx1;
+
     e1 += 2 * dy1;
 
     while (tmpy2 != tmpy1) {
@@ -1430,7 +1504,7 @@ static void BresenhamTriangle32(SDL_Surface *surf,
         tmpy2 += signy2;
       else
         tmpx2 += signx2;
-      
+
       e2 += 2 * dy2;
     }
   }
