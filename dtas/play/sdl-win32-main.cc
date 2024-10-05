@@ -6,6 +6,7 @@
     Hacked and modified multiple times by tom7.
 */
 
+#include <cctype>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -14,6 +15,10 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <libloaderapi.h>
+#include <processenv.h>
+#include <winnt.h>
+#include <minwindef.h>
 
 #ifdef _WIN32_WCE
 #define DIR_SEPERATOR TEXT("\\")
@@ -32,6 +37,8 @@
 /* Include the SDL main definition header */
 #include "SDL.h"
 #include "SDL_main.h"
+#include "SDL_stdinc.h"
+#include "SDL_error.h"
 
 #ifdef main
 #ifndef _WIN32_WCE_EMULATION

@@ -1169,10 +1169,9 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   }
   #endif
 
-  #if 0
-  // X-3
+  #if 1
   for (int maj = 0; maj < 256; maj++) {
-    do_first.insert(PackLevel(maj, 2));
+    do_first.insert(PackLevel(maj, 3));
   }
   #endif
 
