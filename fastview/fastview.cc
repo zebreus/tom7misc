@@ -1,16 +1,27 @@
 
+
+#include <cstdlib>
+#include <heapapi.h>
+#include <span>
 #include <string>
 
-#include <windows.h>
 #include <d2d1.h>
 #include <d2d1helper.h>
+#include <minwindef.h>
+#include <utility>
+#include <windef.h>
+#include <windows.h>
+#include <winerror.h>
+#include <winnt.h>
 
 #include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
+#include <cstdint>
 
 #include "image.h"
+#include "color-util.h"
 #include "base/stringprintf.h"
 
 // D2D1 example:
@@ -18,8 +29,9 @@
 
 
 using namespace std;
+using uint8 = uint8_t;
 
-#define assert(exp) \
+#define Assert(exp) \
   do { \
     if (! (exp) ) { Error("assertion failed: " #exp); exit(0); } \
   } while(0)
@@ -36,14 +48,24 @@ void Error(const string &msg) {
 }
 
 // Convert RGBA to BGRA and vice versa.
-static void ColorSwap(vector<uint8> *xyza) {
-  assert(xyza->size() % 4 == 0);
-  for (int i = 0; i < (int)xyza->size(); i += 4) {
-    // PERF: This approach does not appear to be vectorized with g++. :/
-    const uint8 x = (*xyza)[i];
-    const uint8 z = (*xyza)[i + 2];
-    (*xyza)[i] = z;
-    (*xyza)[i + 2] = x;
+[[maybe_unused]]
+static void ColorSwap32(std::span<uint32_t> xyza) {
+  for (int i = 0; i < (int)xyza.size(); i++) {
+    const auto &[x, y, z, a] = ColorUtil::Unpack32(xyza[i]);
+    xyza[i] = ColorUtil::Pack32(z, y, x, a);
+  }
+}
+
+static void ColorSwap(std::span<uint8_t> xyza) {
+  Assert(xyza.size() % 4 == 0);
+  for (int i = 0; i < (int)xyza.size(); i += 4) {
+    const uint8_t x = xyza[i + 0];
+    // const uint8_t y = (*xyza)[i + 1];
+    const uint8_t z = xyza[i + 2];
+    // const uint8_t a = (*xyza)[i + 3];
+
+    xyza[i + 0] = z;
+    xyza[i + 2] = x;
   }
 }
 
@@ -54,13 +76,13 @@ struct App {
   bool initialized = false;
 
   ID2D1Bitmap *test_bitmap = nullptr;
-  
+
   // XXX?
   ID2D1Factory *d2d_factory = nullptr;
   ID2D1HwndRenderTarget *render_target = nullptr;
 
   std::unique_ptr<ImageRGBA> test_image;
-  
+
   bool Init(const string &start_filename) {
 
     test_image.reset(ImageRGBA::Load(start_filename));
@@ -69,22 +91,21 @@ struct App {
       return false;
     }
 
-    const int initial_width = test_image->width;
-    const int initial_height = test_image->height;
-    
+    const int initial_width = test_image->Width();
+    const int initial_height = test_image->Height();
+
     // This is a "device independent" resource that can live the
     // length of the app.
     // In the example app this is all that CreateDeviceIndependentResources
     // does.
     //
     // XXX single threaded? no
-    if (S_OK != D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED,
-				  &d2d_factory)) {
+    if (S_OK !=
+        D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &d2d_factory)) {
       Error("d2d1");
       return false;
     }
-      
-    
+
     // Register the window class.
     // (XXX this is a weird initialization style. can we use .size = ?)
     WNDCLASSEX wcex = { sizeof(WNDCLASSEX) };
@@ -110,41 +131,38 @@ struct App {
 
     // Create the window.
     window = CreateWindowA(
-	"Fastview",
-	"Fastview test window",
-	WS_OVERLAPPEDWINDOW,
-	CW_USEDEFAULT,
-	CW_USEDEFAULT,
-	// XXX Maybe we should not actually use the dpi. We would like the
-	// window to be 1:1 with pixels in the image to start (or at least
-	// an integer multiple!)
-	static_cast<UINT>(ceil((float)initial_width * dpiX / 96.0f)),
-	static_cast<UINT>(ceil((float)initial_height * dpiY / 96.0f)),
-	nullptr,
-	nullptr,
-	GetInstance(),
-	this);
-    if (window == nullptr){
+        "Fastview", "Fastview test window", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        // XXX Maybe we should not actually use the dpi. We would like the
+        // window to be 1:1 with pixels in the image to start (or at least
+        // an integer multiple!)
+        static_cast<UINT>(ceil((float)initial_width * dpiX / 96.0f)),
+        static_cast<UINT>(ceil((float)initial_height * dpiY / 96.0f)),
+        nullptr, nullptr, GetInstance(), this);
+    if (window == nullptr) {
       Error("CreateWindow");
       return false;
     }
-  
+
+    // Move it to the foreground when we open. mintty likes to open
+    // it behind the terminal, which is not good.
+    SetForegroundWindow(window);
+
     ShowWindow(window, SW_SHOWNORMAL);
+
     UpdateWindow(window);
 
     UpdateRenderTarget();
-        
+
     // XXX not just one hard-coded bitmap!
-    D2D1_SIZE_U size = D2D1::SizeU(test_image->width, test_image->height);
+    D2D1_SIZE_U size = D2D1::SizeU(test_image->Width(), test_image->Height());
     D2D1_BITMAP_PROPERTIES props;
-    props.pixelFormat = 
-      D2D1::PixelFormat(
-	  // Note BGRA byte order. This is the best performance.
-	  DXGI_FORMAT_B8G8R8A8_UNORM,
-	  D2D1_ALPHA_MODE_IGNORE);
+    props.pixelFormat = D2D1::PixelFormat(
+        // Note BGRA byte order. This is the best performance.
+        DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE);
     props.dpiX = dpiX;
     props.dpiY = dpiY;
-    
+
     if (S_OK != render_target->CreateBitmap(size, props, &test_bitmap)) {
       Error("CreateBitmap");
     }
@@ -152,14 +170,16 @@ struct App {
       Error("null bitmap?");
     }
 
-    D2D1_RECT_U dst{.left = 0, .top = 0,
-	.right = (UINT32)test_image->width,
-	.bottom = (UINT32)test_image->width};
+    D2D1_RECT_U dst{.left = 0,
+                    .top = 0,
+                    .right = (UINT32)test_image->Width(),
+                    .bottom = (UINT32)test_image->Height()};
 
-    ColorSwap(&test_image->rgba);
-    if (S_OK !=
-	test_bitmap->CopyFromMemory(&dst, test_image->rgba.data(),
-				    test_image->width * 4)) {
+    std::vector<uint8_t> rgba = test_image->ToBuffer8();
+
+    ColorSwap(rgba);
+    if (S_OK != test_bitmap->CopyFromMemory(&dst, rgba.data(),
+                                            test_image->Width() * 4)) {
       Error("bitmap CopyFromMemory");
     }
 
@@ -169,44 +189,36 @@ struct App {
     initialized = true;
     return true;
   }
-  
+
   ~App() {
     if (d2d_factory) d2d_factory->Release();
-    if (render_target) render_target->Release();    
+    if (render_target) render_target->Release();
   }
 
   void UpdateRenderTarget() {
-    assert(window != nullptr);
+    Assert(window != nullptr);
     if (render_target) return;
 
     RECT rc;
     GetClientRect(window, &rc);
 
-    D2D1_SIZE_U size = D2D1::SizeU(
-	rc.right - rc.left,
-	rc.bottom - rc.top);
+    D2D1_SIZE_U size = D2D1::SizeU(rc.right - rc.left, rc.bottom - rc.top);
 
     // See this lengthy doc for pixel formats:
     // https://docs.microsoft.com/en-us/windows/win32/Direct2D/supported-pixel-formats-and-alpha-modes
-    D2D1_RENDER_TARGET_PROPERTIES props =
-      D2D1::RenderTargetProperties();
-    props.pixelFormat =
-      D2D1::PixelFormat(
-	  // Note BGRA byte order. This is the best performance.
-	  DXGI_FORMAT_B8G8R8A8_UNORM,
-	  D2D1_ALPHA_MODE_IGNORE);
-    
+    D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties();
+    props.pixelFormat = D2D1::PixelFormat(
+        // Note BGRA byte order. This is the best performance.
+        DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE);
+
     // Create a Direct2D render target.
-    if (S_OK !=
-	d2d_factory->CreateHwndRenderTarget(
-	    props,
-	    D2D1::HwndRenderTargetProperties(window, size),
-	    &render_target)) {
+    if (S_OK != d2d_factory->CreateHwndRenderTarget(
+                    props, D2D1::HwndRenderTargetProperties(window, size),
+                    &render_target)) {
       Error("CreateHwndRenderTarget");
     }
-   
   }
-  
+
   void MessageLoop() {
     MSG msg;
     while (GetMessage(&msg, nullptr, 0, 0)) {
@@ -215,7 +227,7 @@ struct App {
       DispatchMessage(&msg);
     }
   }
-  
+
   static LRESULT CALLBACK WndProc(
       HWND hWnd,
       UINT message,
@@ -232,38 +244,31 @@ struct App {
 
       // Use SetWindowLongPtrW to attach the app to the window
       // (Could just do this after the CreateWindow call??)
-      ::SetWindowLongPtrW(
-	  hWnd,
-	  GWLP_USERDATA,
-	  reinterpret_cast<LONG_PTR>(app));
+      ::SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
 
       return 1;
     } else {
       // Otherwise, get the app instance and dispatch
       // there.
       App *app = reinterpret_cast<App *>(
-	  static_cast<LONG_PTR>(::GetWindowLongPtrW(
-				    hWnd,
-				    GWLP_USERDATA)));
+          static_cast<LONG_PTR>(::GetWindowLongPtrW(hWnd, GWLP_USERDATA)));
 
       // If we haven't even gotten the CREATE message yet
       // (e.g. WM_NCCREATE) then just do the default.
       if (app == nullptr)
-	return DefWindowProc(hWnd, message, wParam, lParam);
+        return DefWindowProc(hWnd, message, wParam, lParam);
 
       // So too if Init hasn't finished. Note that it would be
       // possible to set up this member in WM_CREATE if we wanted.
       if (!app->initialized)
-	return DefWindowProc(hWnd, message, wParam, lParam);
-      
+        return DefWindowProc(hWnd, message, wParam, lParam);
+
       if (hWnd != app->window) {
-	Error(
-	    StringPrintf(
-		"I thought the hwnd passed to WndProc would "
-		"always be the same as the one we saved as "
-		"a member variable: %p vs %p",
-		hWnd, app->window));
-	exit(0);
+        Error(StringPrintf("I thought the hwnd passed to WndProc would "
+                           "always be the same as the one we saved as "
+                           "a member variable: %p vs %p",
+                           hWnd, app->window));
+        exit(0);
       }
 
       return app->Proc(message, wParam, lParam);
@@ -275,13 +280,13 @@ struct App {
       WPARAM wParam,
       LPARAM lParam) {
     // (Note: not called for WM_CREATE).
-    assert(initialized);
-    
+    Assert(initialized);
+
     switch (message) {
     case WM_DESTROY:
       PostQuitMessage(0);
       return 1;
-      
+
     case WM_PAINT: {
       Redraw();
       // this is what demo app does.. why?
@@ -290,7 +295,7 @@ struct App {
     case WM_DISPLAYCHANGE:
       InvalidateRect(window, nullptr, false);
       return 0;
-      
+
       // XXX implement!
     case WM_SIZE:
 
@@ -308,26 +313,24 @@ struct App {
 
     [[maybe_unused]] const int width = static_cast<int>(rtSize.width);
     [[maybe_unused]] const int height = static_cast<int>(rtSize.height);
-      
-    D2D1_RECT_F dst{.left = 0.0f, .top = 0.0f,
-	.right = (float)test_image->width,
-	.bottom = (float)test_image->height};
 
-    render_target->DrawBitmap(
-	test_bitmap,
-	dst,
-	1.0f,
-	D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
-	/* source rectangle is the same */
-	dst);
-      
+    D2D1_RECT_F dst{.left = 0.0f,
+                    .top = 0.0f,
+                    .right = (float)test_image->Width(),
+                    .bottom = (float)test_image->Height()};
+
+    render_target->DrawBitmap(test_bitmap, dst, 1.0f,
+                              D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+                              /* source rectangle is the same */
+                              dst);
+
     // XXX supposedly this can fail, and we need to recreate
     // resources in that case
     render_target->EndDraw();
 
     ValidateRect(window, nullptr);
   }
-  
+
 };
 
 vector<string> ParseCommandLine(const char *cmdline) {
@@ -346,10 +349,10 @@ vector<string> ParseCommandLine(const char *cmdline) {
       break;
     case ' ':
       if (in_dq) {
-	cur += c;
+        cur += c;
       } else {
-	toks.emplace_back(std::move(cur));
-	cur.clear();
+        toks.emplace_back(std::move(cur));
+        cur.clear();
       }
       break;
     default:
@@ -359,7 +362,7 @@ vector<string> ParseCommandLine(const char *cmdline) {
   }
   toks.emplace_back(std::move(cur));
   cur.clear();
-  
+
   // Now remove empties. This is the right thing to do because
   // consecutive spaces don't induce multiple arguments, and
   // empty arguments would be double-quoted.
@@ -376,20 +379,18 @@ vector<string> ParseCommandLine(const char *cmdline) {
       s = s.substr(1, s.size() - 2);
     }
   }
-  
+
   return ret;
 }
 
-int CALLBACK WinMain(HINSTANCE hInstance,
-		     HINSTANCE hPrevInstance,
-		     LPSTR lpCmdLine,
-		     int nCmdShow) {
+int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
+                     LPSTR lpCmdLine, int nCmdShow) {
   // If we aren't even able to get a message box here, it's probably
   // because some necessary DLL isn't linked in. We get no feedback in
   // this case!
   // See dependent DLLs with: x86_64-w64-mingw32-objdump -x fastview.exe
 
-  // MessageBoxA(nullptr, "hehe", "my programme", 0); 
+  // MessageBoxA(nullptr, "hehe", "my programme", 0);
 
   vector<string> args = ParseCommandLine(lpCmdLine);
   string filename = "test24.png";
@@ -398,7 +399,7 @@ int CALLBACK WinMain(HINSTANCE hInstance,
   // Is in demo app, seems like a good idea for debugging at least?
   // Apparently this is enabled for all 64-bit processes anyway?
   (void)HeapSetInformation(nullptr, HeapEnableTerminationOnCorruption,
-			   nullptr, 0);
+         nullptr, 0);
 
   // I think just linking in the app stuff causes this to fail to run
   // because it's failing to find some DLL. can we get a better error
@@ -423,10 +424,10 @@ int CALLBACK WinMain(HINSTANCE hInstance,
   // (up to about 16 million), so don't stress about it.
   // (There is also D2D1_RECT_U which is 32-bit ints; can we use it? Seems no,
   // at least not with DrawBitmap.)
-  
+
   // In Windows 8+ it looks like there are good interpolation modes:
   // https://docs.microsoft.com/en-us/windows/win32/api/d2d1_1/ne-d2d1_1-d2d1_interpolation_mode
-  
+
   return 0;
 }
 

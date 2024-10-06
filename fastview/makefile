@@ -1,20 +1,26 @@
 
 default: fastview.exe
 
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
-WINDRES=x86_64-w64-mingw32-windres
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
+# WINDRES=x86_64-w64-mingw32-windres
+
+# for msys2 clang
+CXX=g++
+CC=gcc
+WINDRES=windres
 
 CCLIB=../cc-lib
 
 DEFINES=-DWIN32=1 -D_WIN32_WINNT=0x0601
 INCLUDES=-I $(CCLIB)
 
-MINGWLIB=/usr/x86_64-w64-mingw32/sys-root/mingw/lib
-WINDOWS_OBJECTS=$(MINGWLIB)/libwinpthread.a $(MINGWLIB)/libd2d1.a
+# MINGWLIB=/usr/x86_64-w64-mingw32/sys-root/mingw/lib
+# WINDOWS_OBJECTS=$(MINGWLIB)/libwinpthread.a $(MINGWLIB)/libd2d1.a
+WINDOWS_OBJECTS=-ld2d1
 
 #  -flto
-CXXFLAGS=$(DEFINES) $(INCLUDES) -march=native -Wall --std=c++17 -O3
+CXXFLAGS=$(DEFINES) $(INCLUDES) -march=native -Wall --std=c++20 -O2
 LFLAGS=$(CXXFLAGS) -ffunction-sections -mwindows -static -static-libgcc -static-libstdc++ -s
 
 # Don't use -flto to see assembly!
