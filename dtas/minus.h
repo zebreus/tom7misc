@@ -59,6 +59,9 @@ struct MinusDB {
                         "id integer primary key, "
                         "level integer not null, "
                         "fm7 mediumtext not null, "
+                        // The default is not necessary if you
+                        // are starting from scratch.
+                        "method integer not null default 1, "
                         "createdate integer not null"
                         ")");
 

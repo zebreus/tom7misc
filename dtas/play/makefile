@@ -3,14 +3,18 @@ default: play.exe
 
 all: play.exe
 
-# -fno-strict-aliasing
-# -I/usr/local/include -I/usr/include
-CXXFLAGS=-Wall -Wno-format -Wno-unused-function -Wno-deprecated -ISDL/include -I. -I.. -I$(CC_LIB) -std=c++20
-OPT=-g -O2
-
 CC_LIB=../../cc-lib
 SQLITE=../../sqlite
 CODEC=../../codec
+
+# ASAN=-fsanitize=address
+# OPT=-g -O2
+OPT=-g -O
+
+# -fno-strict-aliasing
+# -I/usr/local/include -I/usr/include
+CXXFLAGS=$(ASAN) $(OPT) -Wall -Wno-format -Wno-unused-function -Wno-deprecated -ISDL/include -I. -I.. -I$(CC_LIB) -I$(SQLITE) --std=c++20
+
 
 # SDLOPATH=SDL/build
 # SDLOPATH=c:/code/SDL/build
@@ -28,7 +32,7 @@ FCEULIB_OBJECTS=$(FCEULIB)/mappers/6.o $(FCEULIB)/mappers/61.o $(FCEULIB)/mapper
 
 LINKSDL=  -lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/crypt/sha256.o
+UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/ansi.o
 
 # bad command line 2022
 # x86_64-w64-mingw32-g++ -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -ISDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++17 -DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 -g -O2 -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF -Ic:/code/SDL/include    -I / -I /re2 --std=c++20  -c -o ../../cc-lib/util.o ../../cc-lib/util.cc
@@ -38,7 +42,7 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 
 # old
 # XXX can't they just be in CXXFLAGS?
-CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO) -I $(CC_LIB) --std=c++20
+CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO)
 
 %.o : %.cc *.h makefile
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -48,10 +52,14 @@ $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=$(UTIL_OBJECTS) $(FCEULIB_OBJECTS)
+../%.o : ../%.cc makefile
+	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+	@echo -n "."
+
+OBJECTS=$(UTIL_OBJECTS) $(FCEULIB_OBJECTS) ../mario-util.o
 
 # XXX can maybe use miniz instead of zlib here? Is it for SDL?
-LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console -lz $(OPT) $(FLTO) -static
+LFLAGS= $(ASAN) -L. $(LINKSDL) -m64 -Wl,--subsystem,console -lz $(OPT) $(FLTO) -static
 
 play.exe : play.o $(OBJECTS) $(SDLOBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)

@@ -508,8 +508,8 @@ struct MazeSolver {
       if (GetOutcome() != Outcome::RUNNING) {
         break;
       } else if (solve_timer.Seconds() > solve_time) {
-        status.Printf("Solver on %s ran out of time with " AYELLOW("%d")
-                      "cells done (%s).\n",
+        status.Printf("Solver on %s ran out of time with "
+                      AYELLOW("%d") " cells done (%s).\n",
                       ColorLevel(level_id).c_str(),
                       (int)cells.size(),
                       ANSI::Time(solve_timer.Seconds()).c_str());

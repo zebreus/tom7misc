@@ -413,6 +413,7 @@ int WINAPI WinMain(HINSTANCE hInst,
   }
   ParseCommandLine(cmdline, argv);
 
+  fprintf(stderr, "Call console_main...\n");
   /* Run the main program (after a little SDL initialization) */
   console_main(argc, argv);
 

@@ -2,6 +2,7 @@
 #ifndef _DTAS_EMULATOR_POOL_H
 #define _DTAS_EMULATOR_POOL_H
 
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -15,7 +16,13 @@ struct EmulatorPool {
   struct Wrapper;
  public:
 
-  explicit EmulatorPool(const std::string &romfile) : romfile(romfile) {}
+  explicit EmulatorPool(const std::string &romfile) :
+    romfile(romfile),
+    // We create a single emulator and save the state so that
+    // it can be unprotected by the mutex.
+    start_state(Acquire()->SaveUncompressed()) {
+  }
+
   ~EmulatorPool() {
     std::unique_lock<std::mutex> ml(mutex);
     CHECK(ready.size() == all.size()) << "Not all emulators were returned.";
@@ -93,17 +100,26 @@ struct EmulatorPool {
     return Lease(this, w);
   }
 
+  Lease AcquireClean() {
+    auto lease = Acquire();
+    CHECK(!start_state.empty());
+    lease->LoadUncompressed(start_state);
+    return lease;
+  }
+
  private:
   struct Wrapper {
     std::unique_ptr<Emulator> emu;
     bool in_use = false;
   };
 
+  const std::string romfile;
+  // The (uncompressed) state right after loading the game.
+  const std::vector<uint8_t> start_state;
+
   std::mutex mutex;
   std::vector<std::unique_ptr<Wrapper>> all;
   std::vector<Wrapper *> ready;
-
-  std::string romfile;
 };
 
 #endif
