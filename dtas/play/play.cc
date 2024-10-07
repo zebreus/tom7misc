@@ -56,6 +56,8 @@ using namespace std;
 using int64 = int64_t;
 using uint32 = uint32_t;
 
+static constexpr bool TRACE = false;
+
 static constexpr int EMULATOR_THREADS = 8;
 static constexpr const char *ROMFILE = "../mario.nes";
 static EmulatorPool *emulator_pool = nullptr;
@@ -218,11 +220,9 @@ struct GameArray {
       games[i] = std::make_unique<Game>();
     }
 
-    /*
     for (int i = 0; i < EMULATOR_THREADS; i++) {
-      workers.emplace_back();
+      workers.emplace_back(&GameArray::WorkerThread, this);
     }
-    */
   }
 
   // Emulation is relatively expensive, so we do it in multiple
@@ -231,7 +231,7 @@ struct GameArray {
   // in parallel and won't block on each other. Generally we just
   // have one std::function per Game, updating its state.
   void WorkerThread() {
-    printf("GameArray thread start.\n");
+    printf("GameArray thread start.\n"); fflush(stdout);
     // TODO: Check exit condition.
     for (;;) {
       std::unique_lock<std::mutex> ml(m);
@@ -240,10 +240,18 @@ struct GameArray {
 
       auto task = std::move(work.front());
       work.pop_front();
+      running_tasks++;
 
       ml.unlock();
 
       task();
+
+      ml.lock();
+      running_tasks--;
+      ml.unlock();
+
+      // Parent needs to wake up if this is the last one.
+      cv_done.notify_all();
     }
   }
 
@@ -252,6 +260,7 @@ struct GameArray {
   // in each Game instance. When this returns, the
   // game states are all updated and have screenshots.
   void Step(uint8_t orig) {
+    if (TRACE) { printf("Step %02x\n", orig); fflush(stdout); }
     for (int i = 0; i < NUM_EMUS; i++) {
       {
         std::unique_lock<std::mutex> ml(m);
@@ -269,14 +278,25 @@ struct GameArray {
             games[i]->Step(b);
           });
       }
-      cv.notify_one();
+      cv.notify_all();
     }
 
+    if (TRACE) { printf("Wait on work.\n"); fflush(stdout); }
     // Wait until done.
-    {
+    for (;;) {
       std::unique_lock<std::mutex> ml(m);
-      cv.wait(ml, [this]() { return work.empty(); });
+      CHECK(work.empty() || !workers.empty()) << "There are no "
+        "worker threads, so this will never make progress!";
+      cv_done.wait(ml, [this]() {
+          return work.empty();
+        });
+
+      // printf("work queue empty, tasks=%lld\n", running_tasks);
+      // fflush(stdout);
+
+      if (running_tasks == 0) break;
     }
+    if (TRACE) { printf("Step %02x done.\n", orig); fflush(stdout); }
   }
 
   // Lock per game. The vector itself should not
@@ -288,7 +308,9 @@ struct GameArray {
 
   std::mutex m;
   std::condition_variable cv;
+  std::condition_variable cv_done;
   std::deque<std::function<void()>> work;
+  int64_t running_tasks = 0;
 };
 
 static GameArray *game_array = nullptr;
@@ -324,8 +346,6 @@ UI::UI() : fps_per(1.0 / 59.94) {
 }
 
 bool UI::MaybeRunEmulators(uint8_t buttons) {
-  printf("Run emulators? XXX NO\n");
-  return false;
 
   if (game_array == nullptr) {
     printf("No game array!\n");
@@ -456,13 +476,52 @@ UI::EventResult UI::HandleEvents() {
     }
 
     case SDL_JOYBUTTONDOWN:
-      printf("Button %d pressed.\n", event.jbutton.button);
+      //    4              5
+      //
+      //
+      //                   3
+      //
+      // 6    7        2       1
+      //
+      //                   0
+
+      switch (event.jbutton.button) {
+      case 6: current_gamepad |= INPUT_S; break;
+      case 7: current_gamepad |= INPUT_T; break;
+      case 0: current_gamepad |= INPUT_B; break;
+      case 1: current_gamepad |= INPUT_A; break;
+      default:
+        printf("Button %d unmapped.\n", event.jbutton.button);
+      }
       break;
+
     case SDL_JOYBUTTONUP:
-      printf("Button %d released.\n", event.jbutton.button);
+      switch (event.jbutton.button) {
+      case 6: current_gamepad &= ~INPUT_S; break;
+      case 7: current_gamepad &= ~INPUT_T; break;
+      case 0: current_gamepad &= ~INPUT_B; break;
+      case 1: current_gamepad &= ~INPUT_A; break;
+      default:
+        printf("Button %d unmapped.\n", event.jbutton.button);
+      }
+      break;
+
       break;
     case SDL_JOYHATMOTION:
-      printf("Hat %d moved to %d.\n", event.jhat.hat, event.jhat.value);
+      //    1
+      //
+      // 8     2
+      //
+      //    4
+      if (TRACE)
+        printf("Hat %d moved to %d.\n", event.jhat.hat, event.jhat.value);
+
+      current_gamepad &= ~(INPUT_U | INPUT_D | INPUT_L | INPUT_R);
+      if (event.jhat.value & 1) current_gamepad |= INPUT_U;
+      if (event.jhat.value & 4) current_gamepad |= INPUT_D;
+      if (event.jhat.value & 8) current_gamepad |= INPUT_L;
+      if (event.jhat.value & 2) current_gamepad |= INPUT_R;
+
       break;
 
     default:;
@@ -476,7 +535,7 @@ void UI::Loop() {
   for (;;) {
     bool ui_dirty = false;
 
-    printf("Handle events.\n");
+    if (TRACE) printf("Handle events.\n");
 
     switch (HandleEvents()) {
     case EventResult::EXIT: return;
@@ -490,7 +549,7 @@ void UI::Loop() {
     if (ui_dirty) {
       sdlutil::clearsurface(screen, 0xFFFFFFFF);
       Draw();
-      printf("Flip.\n");
+      // printf("Flip.\n");
       SDL_Flip(screen);
       ui_dirty = false;
     }
@@ -499,8 +558,8 @@ void UI::Loop() {
 }
 
 void UI::Draw() {
-  printf("Draw.\n");
-  if (false) {
+  if (TRACE) printf("Draw.\n");
+
   CHECK(font != nullptr);
   CHECK(drawing != nullptr);
   CHECK(screen != nullptr);
@@ -529,12 +588,11 @@ void UI::Draw() {
       }
     }
   }
-  }
 
   font->drawto(drawing, 5, 5, StringPrintf("Frames: ^2%lld", frames_drawn));
   sdlutil::blitall(drawing, screen, 0, 0);
   frames_drawn++;
-  printf("Drew %lld.\n", frames_drawn);
+  if (TRACE) printf("Drew %lld.\n", frames_drawn);
 }
 
 static void InitializeSDL() {
@@ -566,7 +624,7 @@ static void InitializeSDL() {
 
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen != nullptr);
-  printf("Created screen.\n");
+  if (TRACE) printf("Created screen.\n");
 
   font = Font::Create(screen,
                       FONT_PNG,
@@ -588,50 +646,51 @@ static void InitializeSDL() {
                          FONTCHARS,
                          FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font4x != nullptr) << "Couldn't load font.";
-  printf("Created fonts.\n");
+  if (TRACE) printf("Created fonts.\n");
 
   CHECK((cursor_arrow = Cursor::MakeArrow()));
   CHECK((cursor_bucket = Cursor::MakeBucket()));
   CHECK((cursor_hand = Cursor::MakeHand()));
   CHECK((cursor_hand_closed = Cursor::MakeHandClosed()));
   CHECK((cursor_eraser = Cursor::MakeEraser()));
-  printf("Created cursors.\n");
+  if (TRACE) printf("Created cursors.\n");
 
   SDL_SetCursor(cursor_arrow);
   SDL_ShowCursor(SDL_ENABLE);
 }
 
 int main(int argc, char **argv) {
-  fprintf(stderr, "In main...\n");
+  if (TRACE) fprintf(stderr, "In main...\n");
   ANSI::Init();
 
   CHECK(argc == 3) << "Usage:\n"
     "./play.exe major minor\n\n"
     "Major and minor are hex levels 00-ff.\n";
 
-  fprintf(stderr, "Try initialize SDL...\n");
+  if (TRACE) fprintf(stderr, "Try initialize SDL...\n");
   InitializeSDL();
 
   const uint8_t major = strtol(argv[1], nullptr, 16);
   const uint8_t minor = strtol(argv[1], nullptr, 16);
   const LevelId level = PackLevel(major, minor);
-  printf("Play %s\n", ColorLevel(level).c_str());
+  if (TRACE) printf("Play %s\n", ColorLevel(level).c_str());
 
 
   emulator_pool = new EmulatorPool(ROMFILE);
-  printf("Created emulator pool.\n");
+  if (TRACE) printf("Created emulator pool.\n");
   {
     CHECK(emulator_pool != nullptr);
     auto emu = emulator_pool->AcquireClean();
     MarioUtil::WarpTo(emu.get(), major, minor, 0);
     level_start = emu->SaveUncompressed();
   }
-  printf("Initialized emulator pool.\n");
+  if (TRACE) printf("Initialized emulator pool.\n");
 
   game_array = new GameArray;
-  printf("Created GameArray.\n");
+  if (TRACE) printf("Created GameArray.\n");
 
-  sleep(1);
+
+  printf("Begin UI loop.\n");
 
   UI ui;
   ui.Loop();
