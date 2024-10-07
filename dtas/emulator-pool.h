@@ -17,10 +17,11 @@ struct EmulatorPool {
  public:
 
   explicit EmulatorPool(const std::string &romfile) :
-    romfile(romfile),
+    romfile(romfile) {
     // We create a single emulator and save the state so that
     // it can be unprotected by the mutex.
-    start_state(Acquire()->SaveUncompressed()) {
+    auto emu = Acquire();
+    start_state = emu->SaveUncompressed();
   }
 
   ~EmulatorPool() {
@@ -59,10 +60,19 @@ struct EmulatorPool {
     }
 
     Lease& operator=(Lease&& other) noexcept {
-      wrapper = other.wrapper;
-      parent = other.parent;
-      other.wrapper = nullptr;
-      other.parent = nullptr;
+      if (this != &other) {
+        // If overwriting, return the lease.
+        if (wrapper != nullptr) {
+          std::unique_lock<std::mutex> ml(parent->mutex);
+          wrapper->in_use = false;
+          parent->ready.push_back(wrapper);
+        }
+
+        wrapper = other.wrapper;
+        parent = other.parent;
+        other.wrapper = nullptr;
+        other.parent = nullptr;
+      }
       return *this;
     }
 
@@ -107,6 +117,8 @@ struct EmulatorPool {
     return lease;
   }
 
+  const std::vector<uint8_t> &StartState() const { return start_state; }
+
  private:
   struct Wrapper {
     std::unique_ptr<Emulator> emu;
@@ -115,7 +127,8 @@ struct EmulatorPool {
 
   const std::string romfile;
   // The (uncompressed) state right after loading the game.
-  const std::vector<uint8_t> start_state;
+  // Morally const, and can be accessed without the mutex.
+  std::vector<uint8_t> start_state;
 
   std::mutex mutex;
   std::vector<std::unique_ptr<Wrapper>> all;

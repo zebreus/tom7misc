@@ -41,10 +41,14 @@ static void Report() {
   MinusDB db;
   std::unordered_set<LevelId> done = db.GetDone();
   std::unordered_set<LevelId> attempted = db.GetAttempted();
+  std::unordered_set<LevelId> rejected = db.GetRejected();
 
   std::vector<SolutionRow> rows = db.GetSolutions();
 
   std::unordered_map<int, int> method_count;
+
+  // TODO: Check for overlap between done/rejected; this should
+  // never happen!
 
   for (const SolutionRow &row : rows) {
     // Remove levels that are done from the attempted set so that
@@ -53,11 +57,18 @@ static void Report() {
     method_count[row.method]++;
   }
 
+  for (LevelId level : rejected) {
+    attempted.erase(level);
+  }
+
   double done_pct = (done.size() * 100.0) / 65536.0;
+  double rejected_pct = (rejected.size() * 100.0) / 65536.0;
   double att_pct = (attempted.size() * 100.0) / 65536.0;
-  printf(AGREEN("%d") "/" ABLUE("65536") " done (%.2f%%)\n"
-         AORANGE("%d") " attempted unsuccessfully (%.2f%%)\n",
+  printf(AGREEN("%d") "/" ABLUE("65536") " solved (%.2f%%)\n"
+         ARED("%d") "/" ABLUE("65536") " rejected (%.2f%%)\n"
+         AYELLOW("%d") " attempted unsuccessfully (%.2f%%)\n",
          (int)done.size(), done_pct,
+         (int)rejected.size(), rejected_pct,
          (int)attempted.size(), att_pct);
 
   printf(AWHITE(" SOLVE") ": %d\n"
@@ -75,8 +86,10 @@ static void Report() {
   for (int y = 0; y < 256; y++) {
     for (int x = 0; x < 256; x++) {
       LevelId level = PackLevel(y, x);
-      if (attempted.contains(level)) {
-        img.SetPixel32(x, y, 0xFF5500FF);
+      if (rejected.contains(level)) {
+        img.SetPixel32(x, y, 0xFF0000FF);
+      } else if (attempted.contains(level)) {
+        img.SetPixel32(x, y, 0x333300FF);
       }
     }
   }

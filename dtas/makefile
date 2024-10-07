@@ -20,10 +20,15 @@ CC_LIB=../cc-lib
 SQLITE=../sqlite
 CODEC=../codec
 
-# -fno-strict-aliasing
 OPT=-O2
-CXXFLAGS=$(OPT) $(PLATFORM_CFLAGS) -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB) -I$(SQLITE) --std=c++20
-LFLAGS=$(PLATFORM_CFLAGS) -lz
+
+# ASAN=-g -fsanitize=address
+# OPT=-O
+
+# -fno-strict-aliasing
+
+CXXFLAGS=$(ASAN) $(OPT) $(PLATFORM_CFLAGS) -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB) -I$(SQLITE) --std=c++20
+LFLAGS=$(ASAN) $(PLATFORM_CFLAGS) -lz
 
 CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o $(CC_LIB)/csv.o $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o
 

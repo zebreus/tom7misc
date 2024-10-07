@@ -62,15 +62,44 @@ DECLARE_COUNTERS(emu_steps_total,
 
 // We're not trying to find a particularly short solution, just a solution.
 
+static EmulatorPool *emulator_pool = nullptr;
+
 struct Evaluator {
   // Initialize with some emulator state; we use that to read the current
   // level and lives and so on.
-  Evaluator(const Emulator *emu) {
+  Evaluator(const Emulator *src_emu) {
+    // Clone the source emulator temporarily so that we can
+    // mess around with it.
+    CHECK(emulator_pool != nullptr);
+    EmulatorPool::Lease emu = emulator_pool->Acquire();
+    emu->LoadUncompressed(src_emu->SaveUncompressed());
+
+    bool started = false;
+
+    for (int i = 0; i < 200; i++) {
+      const uint8_t mode = emu->ReadRAM(OPER_MODE);
+      const uint8_t task = emu->ReadRAM(OPER_MODE_TASK);
+      // printf("%d: %02x.%02x\n", i, mode, task);
+      if (mode == 1 && task == 3) {
+        // Playing.
+        // printf("%d: Started! %02x.%02x\n\n\n\n", i, mode, task);
+        started = true;
+        break;
+      }
+      emu->Step(0, 0);
+    }
+
+    // Probably don't use these values if never_started is true.
     world_major = emu->ReadRAM(WORLD_MAJOR);
     world_minor = emu->ReadRAM(WORLD_MINOR);
-
     start_lives = emu->ReadRAM(NUMBER_OF_LIVES);
+
+    start_pos = MarioUtil::GetPos(emu.get());
+
+    never_started = !started;
   }
+
+  bool NeverStarted() const { return never_started; }
 
   // True if we've beaten the level.
   bool Succeeded(const Emulator *emu) const {
@@ -157,8 +186,10 @@ struct Evaluator {
     }
   }
 
+  MarioUtil::Pos start_pos{.x = 0, .y = 0};
   uint8_t world_major = 0, world_minor = 0;
   uint8_t start_lives = 0;
+  bool never_started = false;
 };
 
 struct MazeSolver {
@@ -281,7 +312,6 @@ struct MazeSolver {
   void WorkThread(uint64_t seed) {
     ArcFour rc(seed);
     std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
-
 
     for (;;) {
       if (GetOutcome() != Outcome::RUNNING) return;
@@ -1127,6 +1157,7 @@ struct Solver {
 
 static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   std::unordered_set<LevelId> done = db->GetDone();
+  std::unordered_set<LevelId> rejected = db->GetRejected();
   CHECK(done.size() <= 65536);
   std::vector<LevelId> todo;
   todo.reserve(65536 - done.size());
@@ -1155,7 +1186,7 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   }
   #endif
 
-  #if 1
+  #if 0
   // Whole second row.
   for (int min = 255; min >= 0; min--) {
     do_first.insert(PackLevel(1, min));
@@ -1169,7 +1200,7 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   }
   #endif
 
-  #if 1
+  #if 0
   for (int maj = 0; maj < 256; maj++) {
     do_first.insert(PackLevel(maj, 3));
   }
@@ -1178,7 +1209,7 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
   if (!do_first.empty()) {
     printf(AWHITE("Do first:"));
     for (LevelId level : do_first) {
-      if (!done.contains(level)) {
+      if (!done.contains(level) && !rejected.contains(level)) {
         printf(" %s", ColorLevel(level).c_str());
         todo.push_back(level);
       }
@@ -1188,7 +1219,8 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
 
   std::vector<LevelId> rest;
   for (int level = 0; level < 65536; level++) {
-    if (!done.contains(level) && !do_first.contains(level)) {
+    if (!done.contains(level) && !rejected.contains(level) &&
+        !do_first.contains(level)) {
       rest.push_back(level);
     }
   }
@@ -1292,12 +1324,7 @@ static void Cross() {
   for (const auto &[m_, idx] : provenance)
     sols.emplace_back(all_sols[idx].level, all_sols[idx].movie);
 
-  EmulatorPool emulator_pool(ROMFILE);
-  std::vector<uint8_t> start_state;
-  {
-    EmulatorPool::Lease emu = emulator_pool.Acquire();
-    start_state = emu->SaveUncompressed();
-  }
+  CHECK(emulator_pool != nullptr);
 
   // These might be big. No need to keep them around.
   provenance.clear();
@@ -1309,8 +1336,7 @@ static void Cross() {
   Periodically status_per(1.0);
   ParallelApp(
       todo,
-      [&db, &todo, &sols, &elapsed, &status, &status_per,
-       &emulator_pool, &start_state](LevelId level) {
+      [&db, &todo, &sols, &elapsed, &status, &status_per](LevelId level) {
         const auto &[major, minor] = UnpackLevel(level);
 
         if (db.HasSolution(level)) {
@@ -1320,9 +1346,8 @@ static void Cross() {
           return;
         }
 
-        EmulatorPool::Lease emu = emulator_pool.Acquire();
+        EmulatorPool::Lease emu = emulator_pool->AcquireClean();
         CHECK(emu.get() != nullptr) << ROMFILE;
-        emu->LoadUncompressed(start_state);
         MarioUtil::WarpTo(emu.get(), major, minor, 0);
         std::vector<uint8_t> level_start_state = emu->SaveUncompressed();
         Evaluator eval(emu.get());
@@ -1484,8 +1509,79 @@ static void Manual(const std::string &fm2file) {
   printf(ARED("Ended without solving.") "\n");
 }
 
+static void Never() {
+  MinusDB db;
+  const std::unordered_set<LevelId> solved = db.GetDone();
+  const std::unordered_set<LevelId> rejected = db.GetRejected();
+
+  printf("%lld already done, %lld already rejected.\n",
+         (int64_t)solved.size(), (int64_t)rejected.size());
+
+  Timer timer;
+  Periodically status_per(5.0);
+  StatusBar status(1);
+  ParallelComp(
+      65536,
+      [&db, &solved, &rejected, &timer, &status_per, &status](int idx) {
+        int major = idx / 256;
+        int minor = idx % 256;
+        const LevelId level = PackLevel(major, minor);
+        levels_attempted++;
+        if (solved.contains(level) || rejected.contains(level)) {
+          levels_skipped++;
+          return;
+        }
+
+        auto emu = emulator_pool->AcquireClean();
+        CHECK(emu.get() != nullptr);
+        MarioUtil::WarpTo(emu.get(), major, minor, 0);
+
+        if (false) {
+          const uint8_t oper_mode = emu->ReadRAM(OPER_MODE);
+          const uint8_t oper_task = emu->ReadRAM(OPER_MODE_TASK);
+          status.Printf("[%s] %02x.%02x\n",
+                        ColorLevel(level).c_str(),
+                        oper_mode, oper_task);
+        }
+        // std::vector<uint8_t> level_start_state = emu->SaveUncompressed();
+        Evaluator eval(emu.get());
+
+        if (eval.NeverStarted()) {
+          levels_solved++;
+          db.AddRejected(level, MinusDB::REJECT_NEVER);
+        }
+
+        status_per.RunIf([&](){
+            const int numer = levels_attempted.Read();
+            std::string bar =
+              ANSI::ProgressBar(
+                  numer, 65536,
+                  StringPrintf(
+                      "[%s] Rejected " ARED("%lld") " skipped "
+                      AWHITE("%lld"),
+                      ColorLevel(level).c_str(),
+                      levels_solved.Read(),
+                      levels_skipped.Read()),
+                  timer.Seconds());
+
+            status.EmitStatus(bar);
+          });
+      }, 16);
+
+  printf("\n"
+         "Finished. " ARED("%lld") " were rejected as unsolvable.\n"
+         AYELLOW("%lld") " were skipped (already done).\n"
+         "Took: %s\n",
+         levels_solved.Read(),
+         levels_skipped.Read(),
+         ANSI::Time(timer.Seconds()).c_str());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  emulator_pool = new EmulatorPool(ROMFILE);
+  CHECK(emulator_pool != nullptr);
 
   if (argc > 1) {
     if (argv[1] == (std::string)"cross") {
@@ -1498,6 +1594,8 @@ int main(int argc, char **argv) {
       CHECK(argc >= 3) << "Need fm2 file.";
       std::string file = argv[2];
       Manual(argv[2]);
+    } else if (argv[1] == (std::string)"never") {
+      Never();
     } else {
       LOG(FATAL) << "Usage:\n"
         "./solve.exe [cross|solve]\n"

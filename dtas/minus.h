@@ -43,6 +43,8 @@ struct MinusDB {
   static constexpr int METHOD_MAZE = 3;
   static constexpr int METHOD_MANUAL = 4;
 
+  static constexpr int REJECT_NEVER = 1000 + 1;
+
   using Query = Database::Query;
   using Row = Database::Row;
 
@@ -73,9 +75,27 @@ struct MinusDB {
                         "fm7 mediumtext not null, "
                         "createdate integer not null"
                         ")");
+
+    db->ExecuteAndPrint("create table "
+                        "if not exists "
+                        "rejected ("
+                        "id integer primary key, "
+                        "level integer not null, "
+                        "method integer not null, "
+                        "createdate integer not null"
+                        ")");
   }
 
-  // In an arbitrary order.
+  std::unordered_set<LevelId> GetRejected() {
+    std::unordered_set<LevelId> rejected;
+    std::unique_ptr<Query> q =
+      db->ExecuteString("select level from rejected");
+    while (std::unique_ptr<Row> r = q->NextRow()) {
+      rejected.insert((uint16_t)r->GetInt(0));
+    }
+    return rejected;
+  }
+
   std::unordered_set<LevelId> GetDone() {
     // db->ExecuteAndPrint("select level from solutions");
 
@@ -139,6 +159,14 @@ struct MinusDB {
         StringPrintf("insert into partial (level, fm7, createdate) "
                      "values (%d, \"%s\", %lld)",
                      id, fm7.c_str(), time(nullptr)));
+  }
+
+  void AddRejected(LevelId id, int method) {
+    db->ExecuteAndPrint(
+        StringPrintf(
+            "insert into rejected (level, createdate, method) "
+            "values (%d, %lld, %d)",
+            id, time(nullptr), method));
   }
 
   // Get all existing solutions.
