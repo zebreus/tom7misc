@@ -9,6 +9,7 @@
 #include <string>
 #include <tuple>
 #include <vector>
+#include <span>
 
 // ImageRGBA is recommended for most uses, but other formats are
 // supported below.
@@ -190,6 +191,10 @@ struct ImageRGBA {
 
   // Convert to R-G-B-A byte order.
   std::vector<uint8_t> ToBuffer8() const;
+
+  // View of the underlying words. There should be Width() * Height()
+  // pixels, each packed R-G-B-A regardless of host byte order.
+  std::span<uint32_t> data() const;
 
  private:
   friend struct ImageResize;

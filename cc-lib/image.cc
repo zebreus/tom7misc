@@ -214,6 +214,10 @@ std::vector<uint8_t> ImageRGBA::ToBuffer8() const {
   return ret;
 }
 
+std::span<uint32_t> ImageRGBA::data() const {
+  return std::span<uint32_t>((uint32_t*)rgba.data(), rgba.size());
+}
+
 bool ImageRGBA::Save(const std::string &filename) const {
   std::vector<uint8> buffer = ToBuffer8();
   CHECK((int)buffer.size() == width * height * 4);

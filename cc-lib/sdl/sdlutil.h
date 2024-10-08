@@ -47,10 +47,10 @@ struct sdlutil {
 
   // Copies the RGBA image to the surface. The source rectangle must
   // be in the bounds of the image, but it is clipped to the destination.
-  void CopyRGBARect(const ImageRGBA &img,
-                    int srcx, int srcy, int srcw, int srch,
-                    int dstx, int dsty,
-                    SDL_Surface *dst);
+  static void CopyRGBARect(const ImageRGBA &img,
+                           int srcx, int srcy, int srcw, int srch,
+                           int dstx, int dsty,
+                           SDL_Surface *dst);
 
   // Clone the surface. The copy will need to be freed with SDL_FreeSurface.
   static SDL_Surface *duplicate(SDL_Surface *surf);
