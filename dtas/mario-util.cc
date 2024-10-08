@@ -1,6 +1,7 @@
 
 #include "mario-util.h"
 
+#include <cmath>
 #include <string>
 #include <algorithm>
 #include <cstdint>

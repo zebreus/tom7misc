@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <memory>
 #include <mutex>
@@ -42,8 +43,8 @@
 #include "mario-util.h"
 #include "mario.h"
 #include "minus.h"
+#include "evaluator.h"
 
-using uint8 = uint8_t;
 using Pos = MarioUtil::Pos;
 
 static constexpr const char *ROMFILE = "mario.nes";
@@ -64,133 +65,6 @@ DECLARE_COUNTERS(emu_steps_total,
 
 static EmulatorPool *emulator_pool = nullptr;
 
-struct Evaluator {
-  // Initialize with some emulator state; we use that to read the current
-  // level and lives and so on.
-  Evaluator(const Emulator *src_emu) {
-    // Clone the source emulator temporarily so that we can
-    // mess around with it.
-    CHECK(emulator_pool != nullptr);
-    EmulatorPool::Lease emu = emulator_pool->Acquire();
-    emu->LoadUncompressed(src_emu->SaveUncompressed());
-
-    bool started = false;
-
-    for (int i = 0; i < 200; i++) {
-      const uint8_t mode = emu->ReadRAM(OPER_MODE);
-      const uint8_t task = emu->ReadRAM(OPER_MODE_TASK);
-      // printf("%d: %02x.%02x\n", i, mode, task);
-      if (mode == 1 && task == 3) {
-        // Playing.
-        // printf("%d: Started! %02x.%02x\n\n\n\n", i, mode, task);
-        started = true;
-        break;
-      }
-      emu->Step(0, 0);
-    }
-
-    // Probably don't use these values if never_started is true.
-    world_major = emu->ReadRAM(WORLD_MAJOR);
-    world_minor = emu->ReadRAM(WORLD_MINOR);
-    start_lives = emu->ReadRAM(NUMBER_OF_LIVES);
-
-    start_pos = MarioUtil::GetPos(emu.get());
-
-    never_started = !started;
-  }
-
-  bool NeverStarted() const { return never_started; }
-
-  // True if we've beaten the level.
-  bool Succeeded(const Emulator *emu) const {
-    // XXX I think there is also something like "win flag" for when
-    // you finish the game. We need to detect this since many levels
-    // are won by defeating Bowser, king of the shell people.
-
-    const bool next_level =
-      emu->ReadRAM(WORLD_MAJOR) > world_major ||
-      emu->ReadRAM(WORLD_MINOR) > world_minor;
-
-    const uint8_t oper_mode = emu->ReadRAM(OPER_MODE);
-    const uint8_t oper_task = emu->ReadRAM(OPER_MODE_TASK);
-
-    // We could also count tasks 0, 1, as these are normal
-    // speedrun rules?
-    const bool princess =
-      oper_mode == 2 &&
-      (oper_task == 3 || oper_task == 4);
-
-    const uint8_t subroutine =
-      emu->ReadRAM(GAME_ENGINE_SUBROUTINE);
-    const bool flagpole =
-      // slide down flagpole
-      subroutine == 0x04 ||
-      // walk to exit
-      subroutine == 0x05;
-
-    return next_level || princess || flagpole;
-  }
-
-  bool Stuck(const Emulator *emu) const {
-    // XXX Detect main menu.
-
-    // Note: Occasionally dying can be useful to warp to the halfway
-    // point.
-    if (emu->ReadRAM(NUMBER_OF_LIVES) < start_lives) {
-      return true;
-    }
-
-    return false;
-  }
-
-  double Eval(const Emulator *emu) const {
-    const Pos pos = MarioUtil::GetPos(emu);
-    // double xfrac = x / (double)0xFFFF;
-
-    // Decimal part of score is x position (unless penalized);
-    // fractional part is heuristics.
-    double score = pos.x;
-
-    // Heuristics:
-
-    // More time is better.
-    const int timer =
-      emu->ReadRAM(TIMER1) * 100 +
-      emu->ReadRAM(TIMER2) * 10 +
-      emu->ReadRAM(TIMER3);
-
-    const double tfrac = (timer / (double)400);
-
-    score += tfrac;
-
-    // TODO: Better to have high x velocity.
-
-    // Heuristics: Better to be high on the screen.
-    // 256-512 is on-screen.
-    if (pos.y > 511) {
-      // Very bad to be off screen downward, as we will
-      // definitely die.
-      return -200000.0 + score;
-    } else if (pos.y > 256 + 176) {
-      // When on screen, we're uncomfortable if we're below 176,
-      // which is below the bottom two rows of bricks.
-
-      int depth = pos.y - (256 + 176);
-      return -100000.0 - depth + score;
-    } else {
-      // Otherwise we're not falling off the screen. But give
-      // some bonus when we're higher up (lower y coordinate).
-      int height = -(pos.y - (256 + 176));
-
-      return score + (height * 0.05);
-    }
-  }
-
-  MarioUtil::Pos start_pos{.x = 0, .y = 0};
-  uint8_t world_major = 0, world_minor = 0;
-  uint8_t start_lives = 0;
-  bool never_started = false;
-};
 
 struct MazeSolver {
 
@@ -500,7 +374,7 @@ struct MazeSolver {
 
     start_state = solver_emu->SaveUncompressed();
 
-    evaluator.reset(new Evaluator(solver_emu.get()));
+    evaluator.reset(new Evaluator(emulator_pool, solver_emu.get()));
 
     levels_attempted++;
 
@@ -898,7 +772,7 @@ struct Solver {
     MarioUtil::WarpTo(solver_emu.get(), major, minor, 0);
     start_state = solver_emu->SaveUncompressed();
 
-    evaluator.reset(new Evaluator(solver_emu.get()));
+    evaluator.reset(new Evaluator(emulator_pool, solver_emu.get()));
 
     levels_attempted++;
 
@@ -1350,7 +1224,7 @@ static void Cross() {
         CHECK(emu.get() != nullptr) << ROMFILE;
         MarioUtil::WarpTo(emu.get(), major, minor, 0);
         std::vector<uint8_t> level_start_state = emu->SaveUncompressed();
-        Evaluator eval(emu.get());
+        Evaluator eval(emulator_pool, emu.get());
 
         for (const auto &[source_level, movie] : sols) {
           emu->LoadUncompressed(level_start_state);
@@ -1435,7 +1309,8 @@ static void Cross() {
          (int)levels_solved.Read());
 }
 
-static void Manual(const std::string &fm2file) {
+[[maybe_unused]]
+static void ManualOld(const std::string &fm2file) {
   MinusDB db;
 
   std::vector<uint8_t> movie = SimpleFM2::ReadInputs(fm2file);
@@ -1456,7 +1331,7 @@ static void Manual(const std::string &fm2file) {
   CHECK(emu.get() != nullptr);
   MarioUtil::WarpTo(emu.get(), major, minor, 0);
   std::vector<uint8_t> level_start_state = emu->SaveUncompressed();
-  Evaluator eval(emu.get());
+  Evaluator eval(emulator_pool, emu.get());
 
   static constexpr int MAX_PADDING = 48;
   Timer timer;
@@ -1509,6 +1384,96 @@ static void Manual(const std::string &fm2file) {
   printf(ARED("Ended without solving.") "\n");
 }
 
+static void Manual(LevelId level,
+                   const std::string &fm7file) {
+  MinusDB db;
+
+  std::vector<uint8_t> movie = SimpleFM7::ReadInputs(fm7file);
+
+  printf("Trying manual solution from " AWHITE("%s")
+         " (%d inputs) on %s.\n",
+         fm7file.c_str(), (int)movie.size(), ColorLevel(level).c_str());
+
+  const auto &[major, minor] = UnpackLevel(level);
+  bool do_write = true;
+
+  if (db.HasSolution(level)) {
+    printf(AORANGE("Already solved: ") "%s" "\n",
+           ColorLevel(level).c_str());
+    do_write = false;
+    // return;
+  }
+
+  EmulatorPool::Lease emu = emulator_pool->AcquireClean();
+  CHECK(emu.get() != nullptr);
+
+  MarioUtil::WarpTo(emu.get(), major, minor, 0);
+  std::vector<uint8_t> level_start_state = emu->SaveUncompressed();
+
+  Evaluator eval(emulator_pool, emu.get());
+
+  Timer timer;
+  Periodically status_per(0.5);
+  StatusBar status(1);
+
+  static constexpr bool WRITE_IMAGES = false;
+
+  bool solved = false;
+  std::vector<uint8_t> sol;
+  int frame = 0;
+  for (uint8_t b : movie) {
+    if (eval.Succeeded(emu.get())) {
+      std::string fm7 = SimpleFM7::EncodeOneLine(sol);
+      status.Printf(AGREEN("Success!") " on %s: %s\n",
+                    ColorLevel(level).c_str(),
+                    fm7.c_str());
+      if (do_write) {
+        db.AddSolution(level, sol, MinusDB::METHOD_MANUAL);
+      }
+
+      solved = true;
+
+      break;
+    }
+
+    emu->StepFull(b, 0);
+    sol.push_back(b);
+
+    if (WRITE_IMAGES) {
+      MarioUtil::Screenshot(emu.get()).Save(
+          StringPrintf("manual/manual%d.png", frame));
+      frame++;
+    }
+
+    status_per.RunIf([&]() {
+        status.Emit(ANSI::ProgressBar(sol.size(), movie.size(),
+                                      "replay",
+                                      timer.Seconds()));
+      });
+  }
+
+  {
+    auto map_emu = emulator_pool->Acquire();
+    map_emu->LoadUncompressed(level_start_state);
+    ImageRGBA map = MarioUtil::MakeMap(map_emu.get(), sol);
+
+    map_emu->LoadUncompressed(level_start_state);
+    std::vector<Pos> path = MarioUtil::GetPath(map_emu.get(), sol);
+
+    MarioUtil::DrawPath(path, &map, 0xFF000044);
+    map.Save("manual-map.png");
+    status.Printf("Wrote manual-map.png.");
+  }
+
+  MarioUtil::ScreenshotAny(emu.get()).Save("manual.png");
+  status.Printf("Wrote manual.png");
+
+  if (!solved) {
+    status.Printf(ARED("Ended without solving."));
+  }
+}
+
+
 static void Never() {
   MinusDB db;
   const std::unordered_set<LevelId> solved = db.GetDone();
@@ -1544,7 +1509,7 @@ static void Never() {
                         oper_mode, oper_task);
         }
         // std::vector<uint8_t> level_start_state = emu->SaveUncompressed();
-        Evaluator eval(emu.get());
+        Evaluator eval(emulator_pool, emu.get());
 
         if (eval.NeverStarted()) {
           levels_solved++;
@@ -1591,9 +1556,12 @@ int main(int argc, char **argv) {
     } else if (argv[1] == (std::string)"maze") {
       Maze();
     } else if (argv[1] == (std::string)"manual") {
-      CHECK(argc >= 3) << "Need fm2 file.";
-      std::string file = argv[2];
-      Manual(argv[2]);
+      CHECK(argc == 5) << "./solve.exe manual major minor movie.fm7";
+      const uint8_t major = strtol(argv[2], nullptr, 16);
+      const uint8_t minor = strtol(argv[3], nullptr, 16);
+      const LevelId level = PackLevel(major, minor);
+      std::string file = argv[4];
+      Manual(level, argv[4]);
     } else if (argv[1] == (std::string)"never") {
       Never();
     } else {
