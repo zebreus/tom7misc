@@ -20,18 +20,28 @@ struct StatusBar {
   // Must be greater than zero.
   explicit StatusBar(int num_lines);
 
-  // Print to the screen. Adds trailing newline if not present.
+  // Each of these immediately outputs to the screen.
+
+  // Prints a line above the status bar. Adds trailing newline if not present.
   void Printf(const char* format, ...); PRINTF_ATTRIBUTE(1, 2);
 
-  // Prints to the screen. Adds trailing newline if not present.
+  // Prints a line above the status bar. Adds trailing newline if not present.
   void Emit(const std::string &s);
 
   // Update the status bar. This should be done in one call that
   // contains num_lines lines. Trailing newline not necessary.
   void Statusf(const char* format, ...) PRINTF_ATTRIBUTE(1, 2);
 
-  // Prints the status to the screen.
+  // Update the status bar with a string, which should contain num_lines
+  // lines.
   void EmitStatus(const std::string &s);
+
+  // Update a particular line of the status bar. The index must be
+  // in [0, num_lines). Immediately outputs the entire status bar, so
+  // you should prefer one of the above routines if you are building the
+  // entire bar.
+  void LineStatusf(int idx, const char *format, ...) PRINTF_ATTRIBUTE(2, 3);
+  void EmitLine(int idx, const std::string &s);
 
  private:
   void MoveUp();

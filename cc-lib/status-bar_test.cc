@@ -13,13 +13,21 @@ static void Test() {
       "Not " ARED("this one") "...\n"
       "Nor " ARED("this one either") "!!\n");
 
-  bar.Printf(AWHITE("This line should say forty-two: %d and be before the status.") "\n",
+  bar.Printf(AWHITE("This line should say forty-two: %d and be before "
+                    "the status.") "\n",
              42);
 
   bar.Statusf(
       "| This is the three-line " ABLUE("status bar") ".\n"
-      "| It should appear below a single message line about 42.\n"
+      "# this one should get overwritten!!!\n"
       "| This is the end of the status bar. " ACYAN("♥") "\n");
+
+
+  bar.LineStatusf(
+      1,
+      // test that it strips the trailing newline
+      "| It should appear below a single %s line about 42.\n",
+      "status");
 }
 
 int main(int argc, char **argv) {
