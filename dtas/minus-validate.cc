@@ -32,7 +32,7 @@ static constexpr const char *ROMFILE = "mario.nes";
 static void Validate() {
   MinusDB db;
 
-  std::vector<SolutionRow> all = db.GetSolutions();
+  std::vector<SolutionRow> all = db.GetAllSolutions();
   printf("Validating %d solutions.\n", (int)all.size());
 
   EmulatorPool emulator_pool(ROMFILE);

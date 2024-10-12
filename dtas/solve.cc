@@ -1172,7 +1172,7 @@ static void Cross(int64_t start_time) {
   // Get all the solutions. There are many duplicates (owing for example
   // to this very strategy!) so we deduplicate them. We also only consider
   // solutions after the start_time.
-  std::vector<MinusDB::SolutionRow> all_sols = db.GetSolutions();
+  std::vector<MinusDB::SolutionRow> all_sols = db.GetAllSolutions();
   status.Printf("There are " AGREEN("%d") " existing solutions.\n",
                 (int)all_sols.size());
 
