@@ -13,7 +13,6 @@
 #include <stdarg.h>
 #include <string>
 
-#include "base/stl_decl.h"
 #include "base/port.h"
 
 // Return a C++ string

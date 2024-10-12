@@ -331,6 +331,10 @@
 // compiler supports it; see the 'format' attribute in
 // <http://gcc.gnu.org/onlinedocs/gcc-4.3.0/gcc/Function-Attributes.html>.
 //
+// e.g. printf would be marked PRINTF_ATTRIBUTE(1, 2) since the 1st arg
+// is the format string and the 2nd onward are the arguments. sprintf
+// would be marked PRINTF_ATTRIBUTE(2, 3).
+//
 // N.B.: As the GCC manual states, "[s]ince non-static C++ methods
 // have an implicit 'this' argument, the arguments of such methods
 // should be counted from two, not one."
@@ -701,7 +705,6 @@ extern inline void prefetch(const char *) {}
   #include <assert.h>
   #include <windows.h>
   #undef ERROR
-  #include "base/stl_decl.h"
 
   #include <float.h>  // for nextafter functionality on windows
   #include <math.h>  // for HUGE_VAL
