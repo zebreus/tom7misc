@@ -1,4 +1,4 @@
-default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe minus-validate.exe minus-map.exe
+default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe minus-validate.exe minus-map.exe minus-query.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -14,6 +14,15 @@ else
   # Linux
   CXX=g++
   CC=gcc
+
+  # Check if g++ is actually clang
+  ifeq ($(shell $(CXX) -v 2>&1 | grep "clang version" | wc -l), 1)
+    CLANG=true
+    PLATFORM_LDFLAGS += -Wl,--stack,167772160
+  else
+    # g++ says it supports --size but it doesn't work
+    PLATFORM_LDFLAGS += -Wl,-z,stack-size=167772160
+  endif
 endif
 
 CC_LIB=../cc-lib
@@ -28,7 +37,7 @@ OPT=-O2
 # -fno-strict-aliasing
 
 CXXFLAGS=$(ASAN) $(OPT) $(PLATFORM_CFLAGS) -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB) -I$(SQLITE) --std=c++20
-LFLAGS=$(ASAN) $(PLATFORM_CFLAGS) -lz
+LFLAGS=$(ASAN) $(PLATFORM_CFLAGS) $(PLATFORM_LDFLAGS) -lz
 
 CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o $(CC_LIB)/csv.o $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o
 
@@ -92,6 +101,10 @@ minus-validate.exe : minus-validate.o mario-util.o $(OBJECTS) $(SQLITE_OBJECTS)
 	@echo -n "!"
 
 minus-map.exe : minus-map.o mario-util.o $(OBJECTS) $(SQLITE_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+minus-query.exe : minus-query.o $(OBJECTS) $(SQLITE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

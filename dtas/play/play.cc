@@ -74,14 +74,13 @@ static Font *font = nullptr, *font2x = nullptr, *font4x = nullptr;
 static SDL_Cursor *cursor_arrow = nullptr, *cursor_bucket = nullptr;
 static SDL_Cursor *cursor_hand = nullptr, *cursor_hand_closed = nullptr;
 static SDL_Cursor *cursor_eraser = nullptr;
-#define VIDEOH 1080
-#define STATUSH 128
-#define SCREENW 1920
-#define SCREENH (VIDEOH + STATUSH)
 
-static constexpr int EMUS_TALL = 8;
+static constexpr int EMUS_TALL = 6;
 static constexpr int EMUS_WIDE = 8;
 static constexpr int NUM_EMUS = EMUS_TALL * EMUS_WIDE;
+
+#define SCREENW (EMUS_WIDE * (256 + 8))
+#define SCREENH ((240 + 8) * EMUS_TALL)
 
 static SDL_Joystick *joystick = nullptr;
 static SDL_Surface *screen = nullptr;
@@ -153,6 +152,19 @@ struct Movie {
     return (int)inputs.size();
   }
 
+  // Assuming the emulator is currently at the cursor, seek (up to)
+  // delta frames forward or backward (for negative deltas).
+  void Seek(int delta, Emulator *emu) {
+    // PERF: Save checkpoints so that this is not linear time!
+    emu->LoadUncompressed(level_start);
+    int new_cursor = std::clamp(cursor + delta, 0, (int)inputs.size());
+    cursor = 0;
+    while (cursor < new_cursor) {
+      emu->StepFull(inputs[cursor], 0);
+      cursor++;
+    }
+  }
+
   auto begin() const { return inputs.begin(); }
   auto end() const { return inputs.begin() + cursor; }
 
@@ -186,6 +198,12 @@ struct Game {
   ImageRGBA img;
   // TODO: Should have mario-specific metadata here that
   // allows us to display, etc.
+
+  void Seek(int delta) {
+    MutexLock ml(&m);
+    movie.Seek(delta, emu.get());
+    img = MarioUtil::Screenshot(emu.get());
+  }
 
   // Execute a step and get the emulator image.
   void Step(uint8_t b) {
@@ -321,6 +339,11 @@ struct GameArray {
     }
 
     if (TRACE) { printf("Wait on work.\n"); fflush(stdout); }
+    WaitThreads();
+    if (TRACE) { printf("Step %02x done.\n", orig); fflush(stdout); }
+  }
+
+  void WaitThreads() {
     // Wait until done.
     for (;;) {
       std::unique_lock<std::mutex> ml(m);
@@ -335,7 +358,30 @@ struct GameArray {
 
       if (running_tasks == 0) break;
     }
-    if (TRACE) { printf("Step %02x done.\n", orig); fflush(stdout); }
+  }
+
+  void Seek(int delta) {
+    CHECK(games.size() == NUM_EMUS);
+
+    RandomGaussian g(&rc);
+    for (int i = 0; i < NUM_EMUS; i++) {
+      {
+        int noise = g.Next() * 4;
+        int d = delta;
+        if (i != focus_idx) {
+          // Add a little noise to the seek
+          d += noise;
+        }
+
+        std::unique_lock<std::mutex> ml(m);
+        work.emplace_back([this, i, d]() {
+            games[i]->Seek(d);
+          });
+      }
+      cv.notify_all();
+    }
+
+    WaitThreads();
   }
 
   std::string FocusedFM7() const {
@@ -393,6 +439,8 @@ struct UI {
   void Draw();
   void PlayPause();
 
+  void Seek(int delta);
+
   Periodically fps_per;
   // Returns true if dirty.
   bool MaybeRunEmulators(uint8_t buttons);
@@ -413,6 +461,10 @@ UI::UI(LevelId level) : level(level), fps_per(1.0 / 59.94) {
   drawing = sdlutil::makesurface(SCREENW, SCREENH, true);
   CHECK(drawing != nullptr);
   sdlutil::ClearSurface(drawing, 0, 0, 0, 0);
+}
+
+void UI::Seek(int delta) {
+  game_array->Seek(delta);
 }
 
 bool UI::MaybeRunEmulators(uint8_t buttons) {
@@ -576,6 +628,15 @@ UI::EventResult UI::HandleEvents() {
       case 7: current_gamepad |= INPUT_T; break;
       case 0: current_gamepad |= INPUT_B; break;
       case 1: current_gamepad |= INPUT_A; break;
+      case 4:
+        Seek(-60);
+        ui_dirty = true;
+        break;
+      case 5:
+        Seek(+10);
+        ui_dirty = true;
+        break;
+
       default:
         printf("Button %d unmapped.\n", event.jbutton.button);
       }
@@ -801,6 +862,16 @@ int main(int argc, char **argv) {
   const uint8_t minor = strtol(argv[2], nullptr, 16);
   const LevelId level = PackLevel(major, minor);
   if (TRACE) printf("Play %s\n", ColorLevel(level).c_str());
+
+  {
+    MinusDB db;
+    if (db.HasSolution(level)) {
+      printf(AWHITE("Note") ": %s has a solution already\n",
+             ColorLevel(level).c_str());
+    } else {
+      printf("No solution in database.\n");
+    }
+  }
 
   std::vector<uint8_t> startmovie;
   if (argc >= 4) {

@@ -46,15 +46,30 @@ struct Evaluator {
 
   bool NeverStarted() const { return never_started; }
 
-  // True if we've beaten the level.
-  bool Succeeded(const Emulator *emu) const {
-    // XXX I think there is also something like "win flag" for when
-    // you finish the game. We need to detect this since many levels
-    // are won by defeating Bowser, king of the shell people.
+  // Bitmasks.
+  static constexpr int SOLVED_LEVEL = 1;
+  static constexpr int SOLVED_PRINCESS = 2;
+  static constexpr int SOLVED_FLAGPOLE = 4;
 
-    const bool next_level =
-      emu->ReadRAM(WORLD_MAJOR) > world_major ||
-      emu->ReadRAM(WORLD_MINOR) > world_minor;
+  int HowSolved(const Emulator *emu) const {
+    const uint8_t now_maj = emu->ReadRAM(WORLD_MAJOR);
+    const uint8_t now_min = emu->ReadRAM(WORLD_MINOR);
+
+    // Normally the level increases, but some levels have warp
+    // zones that go backwards. So we treat any level change
+    // as winning.
+    const bool change_level =
+      // If we don't have a valid start level, don't allow
+      // winning via this condition.
+      !never_started &&
+      // Don't allow warping to 0-0, since dying and returning
+      // and starting again is not "winning". It would be better
+      // if the evaluator saw every frame in between, and
+      // put us in a dead state if we ever see the main menu.
+      !(now_maj == 0 &&
+        now_min == 0) &&
+      (now_maj != world_major ||
+       now_min != world_minor);
 
     const uint8_t oper_mode = emu->ReadRAM(OPER_MODE);
     const uint8_t oper_task = emu->ReadRAM(OPER_MODE_TASK);
@@ -73,14 +88,57 @@ struct Evaluator {
       // walk to exit
       subroutine == 0x05;
 
-    return next_level || princess || flagpole;
+    int ret = 0;
+    if (change_level) ret |= SOLVED_LEVEL;
+    if (princess) ret |= SOLVED_PRINCESS;
+    if (flagpole) ret |= SOLVED_FLAGPOLE;
+
+    return ret;
+  }
+
+  // True if we've beaten the level.
+  // This is only accurate if you also check Stuck() on
+  // every intermediate frame, because it is usually possible
+  // to die and restart and then beat some levels.
+  bool Succeeded(const Emulator *emu) const {
+    return HowSolved(emu) != 0;
+  }
+
+  bool IsDead(const Emulator *emu) const {
+    // Two kinds of death. When you run into an enemy or run
+    // out of time, the subroutine becomes 11 and mario goes
+    // into his death animation.
+    //
+    // If you fall into a pit, the player's major Y coordinate
+    // becomes 2 or greater (and in fact we enter this case
+    // from the death animation).
+    const uint8_t mode = emu->ReadRAM(OPER_MODE);
+    const uint8_t task = emu->ReadRAM(OPER_MODE_TASK);
+    const uint8_t subroutine =
+      emu->ReadRAM(GAME_ENGINE_SUBROUTINE);
+    if (mode == 1 && task == 3) {
+      // Death animation.
+      if (subroutine == 11)
+        return true;
+
+      const uint8_t yscreen = emu->ReadRAM(PLAYER_Y_SCREEN);
+      if (yscreen >= 2)
+        return true;
+    }
+
+    return false;
   }
 
   bool Stuck(const Emulator *emu) const {
-    // XXX Detect main menu.
+    // This is the main menu.
+    if (emu->ReadRAM(OPER_MODE) == 0)
+      return true;
 
     // Note: Occasionally dying can be useful to warp to the halfway
     // point.
+    if (IsDead(emu)) return true;
+
+    // Death not detected by the above. Necessary?
     if (emu->ReadRAM(NUMBER_OF_LIVES) < start_lives) {
       return true;
     }

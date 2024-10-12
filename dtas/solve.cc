@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -278,6 +279,9 @@ struct MazeSolver {
 
         emu->Step(move_input, 0);
         edge_movie.push_back(move_input);
+
+        if (evaluator->Stuck(emu.get()))
+          break;
 
         if (evaluator->Succeeded(emu.get())) {
           if (GetOutcome() == Outcome::SUCCESS) {
@@ -1156,7 +1160,7 @@ static void Maze() {
 }
 
 [[maybe_unused]]
-static void Cross() {
+static void Cross(int64_t start_time) {
   MinusDB db;
   ArcFour rc(StringPrintf("cross.%lld", time(nullptr)));
 
@@ -1166,7 +1170,8 @@ static void Cross() {
   std::vector<LevelId> todo = GetTodo(&db, &rc);
 
   // Get all the solutions. There are many duplicates (owing for example
-  // to this very strategy!) so we deduplicate them.
+  // to this very strategy!) so we deduplicate them. We also only consider
+  // solutions after the start_time.
   std::vector<MinusDB::SolutionRow> all_sols = db.GetSolutions();
   status.Printf("There are " AGREEN("%d") " existing solutions.\n",
                 (int)all_sols.size());
@@ -1181,6 +1186,9 @@ static void Cross() {
     if (row.method == MinusDB::METHOD_CROSS)
       continue;
 
+    if (row.createdate < start_time)
+      continue;
+
     auto it = provenance.find(row.movie);
     if (it == provenance.end()) {
       provenance[row.movie] = idx;
@@ -1189,8 +1197,10 @@ static void Cross() {
     }
   }
 
-  status.Printf("There are " APURPLE("%d") " distinct original sols.\n",
-                (int)provenance.size());
+  status.Printf("There are " APURPLE("%d") " distinct original sols "
+                "after the start time of " ABLUE("%lld") ".\n",
+                (int)provenance.size(),
+                start_time);
 
   // Now put it in the form we like.
   std::vector<std::pair<int, std::vector<uint8_t>>> sols;
@@ -1231,7 +1241,10 @@ static void Cross() {
           for (int i = 0; i < (int)movie.size(); i++) {
             emu->Step(movie[i], 0);
             emu_steps_total++;
-            if (eval.Succeeded(emu.get())) {
+            if (eval.Stuck(emu.get())) {
+              futures_stuck++;
+              break;
+            } else if (eval.Succeeded(emu.get())) {
               std::vector<uint8_t> prefix = movie;
               prefix.resize(i + 1);
               db.AddSolution(level, prefix, MinusDB::METHOD_CROSS);
@@ -1355,6 +1368,10 @@ static void ManualOld(const std::string &fm2file) {
 
       uint8_t b = movie[idx];
       emu->Step(b, 0);
+      if (eval.Stuck(emu.get())) {
+        break;
+      }
+
       if (eval.Succeeded(emu.get())) {
         std::vector<uint8_t> out;
         if (p > 0) {
@@ -1390,9 +1407,13 @@ static void Manual(LevelId level,
 
   std::vector<uint8_t> movie = SimpleFM7::ReadInputs(fm7file);
 
+  static constexpr int FRAMES_DENOUMENT = 4 * 60;
   printf("Trying manual solution from " AWHITE("%s")
-         " (%d inputs) on %s.\n",
-         fm7file.c_str(), (int)movie.size(), ColorLevel(level).c_str());
+         " (%d inputs + %d denoument) on %s.\n",
+         fm7file.c_str(), (int)movie.size(), FRAMES_DENOUMENT,
+         ColorLevel(level).c_str());
+
+  for (int i = 0; i < FRAMES_DENOUMENT; i++) movie.push_back(0);
 
   const auto &[major, minor] = UnpackLevel(level);
   bool do_write = true;
@@ -1422,6 +1443,10 @@ static void Manual(LevelId level,
   std::vector<uint8_t> sol;
   int frame = 0;
   for (uint8_t b : movie) {
+    if (eval.Stuck(emu.get())) {
+      LOG(FATAL) << "Failed: Player is stuck/dead.";
+    }
+
     if (eval.Succeeded(emu.get())) {
       std::string fm7 = SimpleFM7::EncodeOneLine(sol);
       status.Printf(AGREEN("Success!") " on %s: %s\n",
@@ -1542,6 +1567,155 @@ static void Never() {
          ANSI::Time(timer.Seconds()).c_str());
 }
 
+static bool IsAlwaysDead(LevelId level,
+                         Emulator *emu, StatusBar *status) {
+  std::vector<uint8_t> start_state = emu->SaveUncompressed();
+  Evaluator eval(emulator_pool, emu);
+
+  Periodically status_per(5.0);
+
+  // The largest number of states in the hash set before we
+  // give up on this strategy.
+  //
+  // When the player is totally stuck, we want to detect this
+  // by running out the clock. This takes about 10,000 frames.
+  // On other levels we might be able to manipulate our state
+  // slightly, but always die quickly.
+  static constexpr int MAX_STATES = 100000;
+
+  // We are trying to create the entire state graph, where edges
+  // correspond to a single frame with a specific input. Rather than
+  // represent the graph explicitly, though, we put a state in this
+  // set only when we know that every descendent of it (possibly
+  // including itself) results in death. This will quickly get out
+  // of hand unless inputs usually have no effect on the state.
+  std::unordered_set<std::vector<uint8_t>, Hashing<std::vector<uint8_t>>>
+    states;
+
+  // Select does nothing so we don't bother. We don't allow pausing.
+  static constexpr uint8_t CONTROLLER_MASK =
+    INPUT_U | INPUT_D | INPUT_L | INPUT_R |
+    INPUT_B | INPUT_A;
+
+  // Do the search starting at the state that emu is currently in.
+
+  // Returns true if every descendant results in death. Returns false
+  // if we succeeded (!) or exhausted the state budget (typical).
+  std::function<bool(int, const Emulator *)> InsertRec =
+    [&level, &status_per, &status, &InsertRec, &eval, &states](
+        int depth, const Emulator *emu) {
+      // if ((int)states.size() > MAX_STATES) return false;
+      // Since the success case involves inserting all the states
+      // back to the root, we can exit once the depth exceeds
+      // the remaining space. This is also important for cases
+      // where the game is frozen and the death timer is not
+      // actually running.
+      if ((int)states.size() + depth > MAX_STATES) return false;
+      if (eval.Succeeded(emu)) return false;
+      if (eval.IsDead(emu)) return true;
+
+      if (status_per.ShouldRun()) {
+        status->Printf("On %s, depth %d, %lld states.\n",
+                       ColorLevel(level).c_str(), depth,
+                       (int64_t)states.size());
+      }
+
+      std::vector<uint8_t> current_state = emu->SaveUncompressed();
+      // It's essential that we memoize, or else this is
+      // intractable (unless e.g. we are always dead on the first frame)!
+      if (states.contains(current_state)) return true;
+
+      auto next = emulator_pool->Acquire();
+      for (int b = 0; b < 256; b++) {
+        // Only canonical button states.
+        if (b == (b & CONTROLLER_MASK)) {
+          // Try it.
+          next->LoadUncompressed(current_state);
+          next->Step(b, 0);
+          bool r = InsertRec(depth + 1, next.get());
+          if (!r) return false;
+        }
+      }
+
+      states.insert(current_state);
+      return true;
+    };
+
+  if (InsertRec(0, emu)) {
+    status->Printf("Always dead on %s (%lld reachable states).\n",
+                   ColorLevel(level).c_str(), (int64_t)states.size());
+    return true;
+  } else {
+    status->Printf("No joy on %s (%lld reachable states).\n",
+                   ColorLevel(level).c_str(), (int64_t)states.size());
+    return false;
+  }
+}
+
+static void AlwaysDead() {
+  MinusDB db;
+  const std::unordered_set<LevelId> solved = db.GetDone();
+  const std::unordered_set<LevelId> rejected = db.GetRejected();
+
+  printf("%lld already done, %lld already rejected.\n",
+         (int64_t)solved.size(), (int64_t)rejected.size());
+
+  Timer timer;
+  Periodically status_per(5.0);
+  StatusBar status(1);
+  ParallelComp(
+      65536,
+      [&db, &solved, &rejected, &timer, &status_per, &status](int idx) {
+        int major = idx / 256;
+        int minor = idx % 256;
+        const LevelId level = PackLevel(major, minor);
+        levels_attempted++;
+        if (solved.contains(level) || rejected.contains(level)) {
+          levels_skipped++;
+          return;
+        }
+
+        // Already did all of these.
+        if (major == 0x13) return;
+
+        if (major <= 0x02) {
+          auto emu = emulator_pool->AcquireClean();
+          CHECK(emu.get() != nullptr);
+          MarioUtil::WarpTo(emu.get(), major, minor, 0);
+
+          if (IsAlwaysDead(level, emu.get(), &status)) {
+            levels_solved++;
+            db.AddRejected(level, MinusDB::REJECT_ALWAYS_DEAD);
+          }
+        }
+
+        status_per.RunIf([&](){
+            const int numer = levels_attempted.Read();
+            std::string bar =
+              ANSI::ProgressBar(
+                  numer, 65536,
+                  StringPrintf(
+                      "[%s] Rejected " ARED("%lld") " skipped "
+                      AWHITE("%lld"),
+                      ColorLevel(level).c_str(),
+                      levels_solved.Read(),
+                      levels_skipped.Read()),
+                  timer.Seconds());
+
+            status.EmitStatus(bar);
+          });
+      }, 2);
+
+  printf("\n"
+         "Finished. " ARED("%lld") " were rejected as unsolvable.\n"
+         AYELLOW("%lld") " were skipped (already done).\n"
+         "Took: %s\n",
+         levels_solved.Read(),
+         levels_skipped.Read(),
+         ANSI::Time(timer.Seconds()).c_str());
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -1550,7 +1724,12 @@ int main(int argc, char **argv) {
 
   if (argc > 1) {
     if (argv[1] == (std::string)"cross") {
-      Cross();
+      int64_t start_time = 0;
+      if (argc > 2) {
+        start_time = strtoll(argv[2], nullptr, 10);
+      }
+
+      Cross(start_time);
     } else if (argv[1] == (std::string)"solve") {
       Solve();
     } else if (argv[1] == (std::string)"maze") {
@@ -1564,9 +1743,12 @@ int main(int argc, char **argv) {
       Manual(level, argv[4]);
     } else if (argv[1] == (std::string)"never") {
       Never();
+    } else if (argv[1] == (std::string)"alwaysdead") {
+      AlwaysDead();
+
     } else {
       LOG(FATAL) << "Usage:\n"
-        "./solve.exe [cross|solve]\n"
+        "./solve.exe [cross|solve|manual maj min file|never|alwaysdead]\n"
         "The default is solve.\n";
     }
   } else {

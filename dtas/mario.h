@@ -43,6 +43,7 @@ inline constexpr int OPER_MODE_TASK = 0x0772;
 // 8 during normal play, or dying
 // 9 when getting big
 // 10 when getting small
+// 11 when dying from damage (but not from falling into pit)
 // 12 when becoming fire mario
 inline constexpr int GAME_ENGINE_SUBROUTINE = 0x000e;
 

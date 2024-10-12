@@ -11,19 +11,22 @@
 #include "minus.h"
 
 using SolutionRow = MinusDB::SolutionRow;
+using RejectedRow = MinusDB::RejectedRow;
 
 // One-time update operations.
 static void Update() {
   /*
   MinusDB db;
-  db.ExecuteAndPrint("alter table solutions add column createdate integer not null "
+  db.ExecuteAndPrint("alter table solutions "
+                     "add column createdate integer not null "
                      "default 1727301666");
   */
 
   // Solve method as default.
   /*
   MinusDB db;
-  db.ExecuteAndPrint("alter table solutions add column method integer not null "
+  db.ExecuteAndPrint("alter table solutions "
+                     "add column method integer not null "
                      "default 1");
 
   db.ExecuteAndPrint("select * from solutions");
@@ -39,27 +42,43 @@ static void Dump() {
 static void Report() {
   printf("\n");
   MinusDB db;
-  std::unordered_set<LevelId> done = db.GetDone();
+
+  std::vector<SolutionRow> sol_rows = db.GetAllSolutions();
+  std::vector<RejectedRow> rej_rows = db.GetAllRejected();
+
+  // Levels with a conclusive answer.
+  std::unordered_set<LevelId> done;
+  // Known to be unsolvable.
+  std::unordered_set<LevelId> rejected;
+  // Known to be solvable, with a solution.
+  std::unordered_set<LevelId> solved;
+
+  // Levels that have been attempted (with the "solve" strategy)
+  // and thus have a partial solution, but no conclusive solution.
   std::unordered_set<LevelId> attempted = db.GetAttempted();
-  std::unordered_set<LevelId> rejected = db.GetRejected();
 
-  std::vector<SolutionRow> rows = db.GetSolutions();
-
+  // Indexed by both solution and rejection methods, which are
+  // disjoint.
   std::unordered_map<int, int> method_count;
 
-  // TODO: Check for overlap between done/rejected; this should
-  // never happen!
-
-  for (const SolutionRow &row : rows) {
+  for (const SolutionRow &row : sol_rows) {
+    done.insert(row.level);
+    solved.insert(row.level);
     // Remove levels that are done from the attempted set so that
     // it reflects levels that were tried but not yet solved.
     attempted.erase(row.level);
     method_count[row.method]++;
   }
 
-  for (LevelId level : rejected) {
-    attempted.erase(level);
+  for (const RejectedRow &row : rej_rows) {
+    done.insert(row.level);
+    rejected.insert(row.level);
+    attempted.erase(row.level);
+    method_count[row.method]++;
   }
+
+  // TODO: Check for overlap between done/rejected; this should
+  // never happen!
 
   double done_pct = (done.size() * 100.0) / 65536.0;
   double rejected_pct = (rejected.size() * 100.0) / 65536.0;
@@ -80,22 +99,33 @@ static void Report() {
          method_count[MinusDB::METHOD_MAZE],
          method_count[MinusDB::METHOD_MANUAL]);
 
+  printf("------" "\n"
+         AWHITE(" NEVER") ": %d\n"
+         AWHITE("ALWAYS") ": %d\n",
+         method_count[MinusDB::REJECT_NEVER],
+         method_count[MinusDB::REJECT_ALWAYS_DEAD]);
+
+  // First fill in the table with basic color (in case a method
+  // is missing).
   ImageRGBA img(256, 256);
-  img.Clear32(0x000000FF);
   // Row-major.
   for (int y = 0; y < 256; y++) {
     for (int x = 0; x < 256; x++) {
       LevelId level = PackLevel(y, x);
-      if (rejected.contains(level)) {
-        img.SetPixel32(x, y, 0xFF0000FF);
+      if (solved.contains(level)) {
+        img.SetPixel32(x, y, 0x007700FF);
+      } else if (rejected.contains(level)) {
+        img.SetPixel32(x, y, 0x770000FF);
       } else if (attempted.contains(level)) {
         img.SetPixel32(x, y, 0x333300FF);
+      } else {
+        img.SetPixel32(x, y, 0x000000FF);
       }
     }
   }
 
   // Now color done cells by method.
-  for (const SolutionRow &row : rows) {
+  for (const SolutionRow &row : sol_rows) {
     uint32_t c = 0xFF00FFFF;
     switch (row.method) {
     case MinusDB::METHOD_SOLVE: c = 0x00FF00FF; break;
@@ -108,10 +138,22 @@ static void Report() {
     img.SetPixel32(minor, major, c);
   }
 
+  // And rejected cells by method.
+  for (const RejectedRow &row : rej_rows) {
+    uint32_t c = 0x770000FF;
+    switch (row.method) {
+    case MinusDB::REJECT_NEVER: c = 0xAA0000FF; break;
+    case MinusDB::REJECT_ALWAYS_DEAD: c = 0xFF0000FF; break;
+    default: break;
+    }
+    const auto &[major, minor] = UnpackLevel(row.level);
+    img.SetPixel32(minor, major, c);
+  }
+
   img.ScaleBy(2).Save("minus.png");
 
   AutoHisto moves_histo(100000);
-  for (const SolutionRow &row : rows) {
+  for (const SolutionRow &row : sol_rows) {
       // printf("%lld\n", r.movie.size());
       moves_histo.Observe(row.movie.size());
   }

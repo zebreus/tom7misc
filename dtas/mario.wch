@@ -1,0 +1,14 @@
+
+12
+00000	000E	b	u	0	subroutine
+00001	0770	b	u	0	mode
+00002	0772	b	u	0	task
+00003	0000	S	S	0	----------------------------
+00004	075F	b	u	0	maj
+00005	0760	b	u	0	min
+00006	075C	b	u	0	min_disp
+00007	0000	S	S	0	----------------------------
+00008	071A	b	u	0	LEVELX_HI
+00009	071C	b	u	0	LEVELX_LO
+0000A	00B5	b	u	0	PLAYER_Y_HI
+0000B	00CE	b	u	0	PLAYER_Y_LO

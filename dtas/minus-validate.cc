@@ -5,61 +5,29 @@
 #include <string>
 #include <vector>
 
-#include "base/stringprintf.h"
-#include "image.h"
-#include "emulator-pool.h"
-#include "minus.h"
 #include "ansi.h"
+#include "base/stringprintf.h"
+#include "emulator-pool.h"
+#include "image.h"
+#include "minus.h"
+#include "periodically.h"
 #include "status-bar.h"
 #include "threadutil.h"
-#include "periodically.h"
 #include "timer.h"
 
 #include "../fceulib/simplefm7.h"
 #include "../fceulib/emulator.h"
 
+#include "evaluator.h"
 #include "mario-util.h"
-#include "mario.h"
 
 #define VALID_IMAGES 0
 #define INVALID_IMAGES 1
+#define DELETE_INVALID 1
 
 using SolutionRow = MinusDB::SolutionRow;
 
 static constexpr const char *ROMFILE = "mario.nes";
-
-static constexpr int SOLVED_LEVEL = 1;
-static constexpr int SOLVED_PRINCESS = 2;
-static constexpr int SOLVED_FLAGPOLE = 4;
-
-static int Solved(const Emulator *emu, LevelId level) {
-  const auto &[major, minor] = UnpackLevel(level);
-
-  const bool next_level =
-    emu->ReadRAM(WORLD_MAJOR) > major ||
-    emu->ReadRAM(WORLD_MINOR) > minor;
-
-  const uint8_t oper_mode = emu->ReadRAM(OPER_MODE);
-  const uint8_t oper_task = emu->ReadRAM(OPER_MODE_TASK);
-
-  // We could also count tasks 0, 1, as these are normal
-  // speedrun rules?
-  const bool princess = oper_mode == 2 && (oper_task == 3 || oper_task == 4);
-
-  const uint8_t subroutine = emu->ReadRAM(GAME_ENGINE_SUBROUTINE);
-  const bool flagpole =
-      // slide down flagpole
-      subroutine == 0x04 ||
-      // walk to exit
-      subroutine == 0x05;
-
-  int out = 0;
-  if (next_level) out |= SOLVED_LEVEL;
-  if (princess) out |= SOLVED_PRINCESS;
-  if (flagpole) out |= SOLVED_FLAGPOLE;
-
-  return out;
-}
 
 static void Validate() {
   MinusDB db;
@@ -91,19 +59,25 @@ static void Validate() {
         EmulatorPool::Lease emu = emulator_pool.Acquire();
         emu->LoadUncompressed(start_state);
         MarioUtil::WarpTo(emu.get(), major, minor, 0);
+        Evaluator eval(&emulator_pool, emu.get());
 
+        bool failed = false;
         for (uint8_t b : row.movie) {
           emu->Step(b, 0);
+          if (eval.Stuck(emu.get())) {
+            failed = true;
+            break;
+          }
         }
 
-        int solved = Solved(emu.get(), row.level);
-        if (solved != 0) {
+        int solved = eval.HowSolved(emu.get());
+        if (!failed && solved != 0) {
           if (VALID_IMAGES) {
             ImageRGBA img = MarioUtil::Screenshot(emu.get());
             std::string flags;
-            if (solved & SOLVED_LEVEL) flags += "LEVEL ";
-            if (solved & SOLVED_PRINCESS) flags += "PRINCESS ";
-            if (solved & SOLVED_FLAGPOLE) flags += "FLAGPOLE ";
+            if (solved & Evaluator::SOLVED_LEVEL) flags += "LEVEL ";
+            if (solved & Evaluator::SOLVED_PRINCESS) flags += "PRINCESS ";
+            if (solved & Evaluator::SOLVED_FLAGPOLE) flags += "FLAGPOLE ";
             img.BlendText32(1, 1, 0xFF00FFFF, flags);
             img.Save(StringPrintf("valid-%d-%d.png",
                                   major, minor));
@@ -112,11 +86,18 @@ static void Validate() {
           MutexLock ml(&m);
           valid++;
         } else {
-          db.DeleteSolution(row.id);
+          std::string what =
+            failed ? AORANGE("failed") : AYELLOW("not solved");
+          if (DELETE_INVALID) {
+            db.DeleteSolution(row.id);
+          }
           status.Printf(
-              "Invalid for %s: " AGREY("%s") ". " ARED("Deleted") ".\n",
+              AWHITE("#%lld") " Invalid (%s) for %s: " AGREY("%s") ".%s\n",
+              row.id,
+              what.c_str(),
               ColorLevel(row.level).c_str(),
-              SimpleFM7::EncodeOneLine(row.movie).c_str());
+              SimpleFM7::EncodeOneLine(row.movie).c_str(),
+              DELETE_INVALID ? " " ARED("Deleted") "." : "");
           if (INVALID_IMAGES) {
             MarioUtil::Screenshot(emu.get()).Save(
                 StringPrintf("invalid-%d-%d.png",
@@ -142,9 +123,10 @@ static void Validate() {
                             timer.Seconds()));
           });
       },
-      8);
+      12);
 
-  printf("Done. " AGREEN("%lld") " are valid. "
+  printf("\n\n"
+         "Done. " AGREEN("%lld") " are valid. "
          ARED("%lld") " are invalid.\n",
          valid, invalid);
 }

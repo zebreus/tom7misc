@@ -18,6 +18,7 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "util.h"
 
 // MAJOR:MINOR, big endian.
 using LevelId = uint16_t;
@@ -44,13 +45,32 @@ struct MinusDB {
   static constexpr int METHOD_MANUAL = 4;
 
   static constexpr int REJECT_NEVER = 1000 + 1;
+  static constexpr int REJECT_ALWAYS_DEAD = 1000 + 2;
 
   using Query = Database::Query;
   using Row = Database::Row;
 
   MinusDB() {
-    db = Database::Open(DBFILE);
-    CHECK(db.get() != nullptr);
+    // XXX this is a hack, obviously, but I want play/play.exe to
+    // be able to find and open the database when run from that
+    // directory.
+    std::string f = DBFILE;
+    for (int i = 0; i < 5; i++) {
+      if (Util::ExistsFile(f)) {
+        db = Database::Open(f);
+        CHECK(db.get() != nullptr) << f;
+        break;
+      }
+
+      f = StringPrintf("../%s", f.c_str());
+    }
+
+    if (db.get() == nullptr) {
+      // Otherwise create it here.
+      db = Database::Open(DBFILE);
+      CHECK(db.get() != nullptr) << DBFILE;
+    }
+
     Init();
   }
 
@@ -97,8 +117,6 @@ struct MinusDB {
   }
 
   std::unordered_set<LevelId> GetDone() {
-    // db->ExecuteAndPrint("select level from solutions");
-
     std::unordered_set<LevelId> done;
     std::unique_ptr<Query> q =
       db->ExecuteString("select level from solutions");
@@ -198,7 +216,7 @@ struct MinusDB {
     }
   }
 
-  std::vector<SolutionRow> GetSolutions() {
+  std::vector<SolutionRow> GetAllSolutions() {
     std::vector<SolutionRow> sols;
     ForEachSolution([&sols](SolutionRow r) {
         sols.push_back(std::move(r));
@@ -209,7 +227,47 @@ struct MinusDB {
   void DeleteSolution(int64_t rowid) {
     db->ExecuteString(
         StringPrintf("delete from solutions where id = %lld",
-                     rowid));
+                     rowid))->Exhaust();
+  }
+
+  struct RejectedRow {
+    int64_t id = 0;
+    LevelId level = 0;
+    int64_t createdate = 0;
+    int64_t method = 0;
+  };
+
+  template<class F>
+  requires requires(F f) {
+    f(std::declval<RejectedRow>());
+  }
+  void ForEachRejected(const F &f) {
+    std::unique_ptr<Query> q =
+      db->ExecuteString("select "
+                        "id, level, createdate, method "
+                        "from rejected");
+    while (std::unique_ptr<Row> r = q->NextRow()) {
+      RejectedRow row;
+      row.id = r->GetInt(0);
+      row.level = r->GetInt(1);
+      row.createdate = r->GetInt(2);
+      row.method = r->GetInt(3);
+      f(std::move(row));
+    }
+  }
+
+  std::vector<RejectedRow> GetAllRejected() {
+    std::vector<RejectedRow> rejs;
+    ForEachRejected([&rejs](RejectedRow r) {
+        rejs.push_back(std::move(r));
+      });
+    return rejs;
+  }
+
+  void DeleteRejected(int64_t rowid) {
+    db->ExecuteString(
+        StringPrintf("delete from rejected where id = %lld",
+                     rowid))->Exhaust();
   }
 
   void ExecuteAndPrint(const std::string &s) {
