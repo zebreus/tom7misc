@@ -12,6 +12,7 @@ using namespace std;
 
 StatusBar::StatusBar(int num_lines) : num_lines(num_lines) {
   CHECK(num_lines > 0);
+  prev_status_lines.resize(num_lines);
 }
 
 void StatusBar::Printf(const char* format, ...) PRINTF_ATTRIBUTE(1, 2) {
@@ -31,13 +32,7 @@ void StatusBar::Emit(const std::string &s) {
     printf("%s\n", line.c_str());
   }
   // Maintain space for status.
-  if (prev_status_lines.empty()) {
-    for (int i = 0; i < num_lines; i++) {
-      printf("\n");
-    }
-  } else {
-    EmitStatusLinesWithLock(prev_status_lines);
-  }
+  EmitStatusLinesWithLock(prev_status_lines);
 }
 
 void StatusBar::Statusf(const char* format, ...) PRINTF_ATTRIBUTE(1, 2) {

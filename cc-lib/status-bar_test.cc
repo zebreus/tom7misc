@@ -30,8 +30,17 @@ static void Test() {
       "status");
 }
 
+static void TestIndexed() {
+  StatusBar bar(10);
+
+  bar.LineStatusf(7, "Testing that I can index into a line without "
+                  "emitting first.");
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  TestIndexed();
 
   Test();
 

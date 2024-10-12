@@ -52,6 +52,7 @@ struct StatusBar {
   std::mutex m;
   int num_lines = 0;
   bool first = true;
+  // Always num_lines in length.
   std::vector<std::string> prev_status_lines;
 };
 

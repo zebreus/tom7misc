@@ -469,7 +469,8 @@ void ParallelComp3D(int64_t num1, int64_t num2, int64_t num3,
 }
 
 
-// Run exactly num_threads copies of f, each getting its thread id.
+// Run exactly num_threads copies of f, each getting a distinct
+// index in [0, num_threads).
 template<class F>
 void ParallelFan(int num_threads, const F &f) {
   std::vector<std::thread> threads;
@@ -485,7 +486,7 @@ void ParallelFan(int num_threads, const F &f) {
 // This is intended for use in situations like compressing and writing
 // a bunch of frames of a movie out to disk in a loop. There's
 // substantial parallelism opportunity, but it can be bad if we
-// eaglery generate the frames because they might fill the entire
+// eagerly generate the frames because they might fill the entire
 // memory. This automatically throttles once the specified level of
 // parallelism is reached, by waiting until there is at least one
 // thread free before returning from Run.
