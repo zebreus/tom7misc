@@ -3,7 +3,10 @@
 //
 //
 // These are weird things we need to do to get this compiling on
-// random systems (and on SWIG).
+// random systems.
+
+// TODO(tom7): Lots of stuff in here can be replaced with standard
+// C++ now. Also, lots of it is just not used (it was Google-specific).
 
 #ifndef BASE_PORT_H_
 #define BASE_PORT_H_
@@ -29,10 +32,6 @@
     #define __STDC_FORMAT_MACROS
   #endif  /* __STDC_FORMAT_MACROS */
 #endif  /* OS_MACOSX */
-
-/* Default for most OSes */
-/* We use SIGPWR since that seems unlikely to be used for other reasons. */
-#define GOOGLE_OBSCURE_SIGNAL  SIGPWR
 
 #if defined OS_LINUX || defined OS_CYGWIN
 
@@ -157,9 +156,9 @@
   // can use our own.
   #undef PATH_SEPARATOR
   #if OS_WINDOWS
-    const char PATH_SEPARATOR = '\\';
+    inline constexpr char PATH_SEPARATOR = '\\';
   #else
-    const char PATH_SEPARATOR = '/';
+    inline constexpr char PATH_SEPARATOR = '/';
   #endif
 #endif
 
@@ -275,10 +274,6 @@
   // Doesn't exist on OSX; used in google.cc for send() to mean "no flags".
   #define MSG_NOSIGNAL 0
 
-  // No SIGPWR on MacOSX.  SIGINFO seems suitably obscure.
-  #undef GOOGLE_OBSCURE_SIGNAL
-  #define GOOGLE_OBSCURE_SIGNAL  SIGINFO
-
 #elif defined(OS_CYGWIN)  // Cygwin-specific behavior.
 
   #if defined(__CYGWIN32__)
@@ -288,43 +283,13 @@
     #error "Cygwin is currently only 32-bit."
   #endif
 
-  // No signalling on Windows.
-  #undef GOOGLE_OBSCURE_SIGNAL
-  #define GOOGLE_OBSCURE_SIGNAL 0
-
-  struct stack_t {
-    void* ss_sp;
-    int ss_flags;
-    size_t ss_size;
-  };
-  inline int sigaltstack(stack_t* ss, stack_t* oss) { return 0; }
-
   #define PTHREAD_STACK_MIN 0  // Not provided by cygwin
-
-  // Scans memory for a character.
-  // memrchr is used in a few places, but it's linux-specific.
-  inline void* memrchr(const void* bytes, int find_char, size_t len) {
-    const unsigned char* cursor =
-        reinterpret_cast<const unsigned char*>(bytes) + len - 1;
-    unsigned char actual_char = find_char;
-    for (; cursor >= bytes; --cursor) {
-      if (*cursor == actual_char) {
-        return const_cast<void*>(reinterpret_cast<const void*>(cursor));
-      }
-    }
-    return NULL;
-  }
 
 #endif  // cygwin
 
-// Klocwork static analysis tool's C/C++ complier kwcc
-#if defined(__KLOCWORK__)
-  #define STATIC_ANALYSIS
-#endif // __KLOCWORK__
-
 // GCC-specific features
 
-#if (defined(COMPILER_GCC3) || defined(COMPILER_ICC) || defined(OS_MACOSX)) && !defined(SWIG)
+#if (defined(COMPILER_GCC3) || defined(COMPILER_ICC) || defined(OS_MACOSX))
 
 //
 // Tell the compiler to do printf format string checking if the
@@ -604,33 +569,6 @@ extern inline void prefetch(const char *x) {
 extern int posix_memalign(void **memptr, size_t alignment, size_t size);
 #endif
 
-inline void *aligned_malloc(size_t size, int minimum_alignment) {
-#if defined(OS_MACOSX)
-  // mac lacks memalign(), posix_memalign(), however, according to
-  // http://stackoverflow.com/questions/196329/osx-lacks-memalign
-  // mac allocs are already 16-byte aligned.
-  if (minimum_alignment <= 16)
-    return malloc(size);
-  // next, try to return page-aligned memory. perhaps overkill
-  if (minimum_alignment <= getpagesize())
-    return valloc(size);
-  // give up
-  return NULL;
-#elif defined(OS_CYGWIN)
-  return memalign(minimum_alignment, size);
-#else  // !OS_MACOSX && !OS_CYGWIN
-  void *ptr = NULL;
-  if (posix_memalign(&ptr, minimum_alignment, size) != 0)
-    return NULL;
-  else
-    return ptr;
-#endif
-}
-
-inline void aligned_free(void *aligned_memory) {
-  free(aligned_memory);
-}
-
 #else   // not GCC
 
 #define PRINTF_ATTRIBUTE(string_index, first_to_check)
@@ -709,12 +647,6 @@ extern inline void prefetch(const char *) {}
   #include <float.h>  // for nextafter functionality on windows
   #include <math.h>  // for HUGE_VAL
 
-  #ifndef HUGE_VALF
-    #define HUGE_VALF (static_cast<float>(HUGE_VAL))
-  #endif
-
-  using namespace std;
-
   // VC++ doesn't understand "uint"
   #ifndef HAVE_UINT
     #define HAVE_UINT 1
@@ -726,19 +658,6 @@ extern inline void prefetch(const char *) {}
   #define strtoll  _strtoi64
   #define strtoull _strtoui64
   #define atoll    _atoi64
-
-
-  // VC++ 6 and before ship without an ostream << operator for 64-bit ints
-  #if (_MSC_VER <= 1200)
-    #include <iosfwd>
-    using std::ostream;
-
-    inline ostream& operator<< (ostream& os, const unsigned __int64& num ) {
-      // Fake operator; doesn't actually do anything.
-      LOG(FATAL) << "64-bit ostream operator << not supported in VC++ 6";
-      return os;
-    }
-  #endif
 
   // You say tomato, I say atotom
   #define PATH_MAX MAX_PATH
@@ -768,84 +687,7 @@ extern inline void prefetch(const char *) {}
   // You say juxtapose, I say transpose
   #define bcopy(s, d, n) memcpy(d, s, n)
 
-  inline void *aligned_malloc(size_t size, int minimum_alignment) {
-    return _aligned_malloc(size, minimum_alignment);
-  }
-
-  inline void aligned_free(void *aligned_memory) {
-    _aligned_free(aligned_memory);
-  }
-
   // ----- BEGIN VC++ STUBS & FAKE DEFINITIONS ---------------------------------
-
-  // See http://en.wikipedia.org/wiki/IEEE_754 for details of
-  // floating point format.
-
-  enum {
-    FP_NAN,  //  is "Not a Number"
-    FP_INFINITE,  //  is either plus or minus infinity.
-    FP_ZERO,
-    FP_SUBNORMAL,  // is too small to be represented in normalized format.
-    FP_NORMAL  // if nothing of the above is correct that it must be a
-    // normal floating-point number.
-  };
-
-  inline int fpclassify_double(double x) {
-    const int float_point_class =_fpclass(x);
-    int c99_class;
-    switch  (float_point_class) {
-    case _FPCLASS_SNAN:  // Signaling NaN
-    case _FPCLASS_QNAN:  // Quiet NaN
-      c99_class = FP_NAN;
-      break;
-    case _FPCLASS_NZ:  // Negative zero ( -0)
-    case _FPCLASS_PZ:  // Positive 0 (+0)
-      c99_class = FP_ZERO;
-      break;
-    case _FPCLASS_NINF:  // Negative infinity ( -INF)
-    case _FPCLASS_PINF:  // Positive infinity (+INF)
-      c99_class = FP_INFINITE;
-      break;
-    case _FPCLASS_ND:  // Negative denormalized
-    case _FPCLASS_PD:  // Positive denormalized
-      c99_class = FP_SUBNORMAL;
-      break;
-    case _FPCLASS_NN:  // Negative normalized non-zero
-    case _FPCLASS_PN:  // Positive normalized non-zero
-      c99_class = FP_NORMAL;
-      break;
-    default:
-      c99_class = FP_NAN;  // Should never happen
-      break;
-    }
-    return  c99_class;
-  }
-
-  // This function handle the special subnormal case for float; it will
-  // become a normal number while casting to double.
-  // bit_cast is avoided to simplify dependency and to create a code that is
-  // easy to deploy in C code
-  inline int fpclassify_float(float x) {
-    uint32 bitwise_representation;
-    memcpy(&bitwise_representation, &x, 4);
-    if ((bitwise_representation & 0x7f800000) == 0 &&
-        (bitwise_representation & 0x007fffff) != 0)
-      return FP_SUBNORMAL;
-    return fpclassify_double(x);
-  }
-  //
-  // This define takes care of the denormalized float; the casting to
-  // double make it a normal number
-  #define fpclassify(x) ((sizeof(x) == sizeof(float)) ? fpclassify_float(x) : fpclassify_double(x))
-
-  #define isnan _isnan
-
-  inline int isinf(double x) {
-    const int float_point_class =_fpclass(x);
-    if (float_point_class == _FPCLASS_PINF) return 1;
-    if (float_point_class == _FPCLASS_NINF) return -1;
-    return 0;
-  }
 
   // #include "conflict-signal.h"
   typedef void (*sig_t)(int);
@@ -861,17 +703,6 @@ extern inline void prefetch(const char *) {}
   #define ENOTSOCK    WSAENOTSOCK
   #define EINPROGRESS WSAEINPROGRESS
   #define ECONNRESET  WSAECONNRESET
-
-
-  #include <utility>
-  using std::pair;
-  using std::make_pair;
-
-  #include <vector>
-  using std::vector;
-
-
-  typedef vector<pair<const char*, const char*> > KeyValVec;
 
   //
   // Really from <string.h>
@@ -903,15 +734,6 @@ extern inline void prefetch(const char *) {}
 #else
   struct PortableHashBase { };
 #endif
-
-// The SWIGged version of an abstract class must be concrete if any methods
-// return objects of the abstract type.
-//
-// This location is deprecated, the new preferred location is in base/macros.h.
-#ifndef SWIG
-  #define ABSTRACT = 0
-#endif
-
 
 #if defined(OS_WINDOWS) || defined(OS_MACOSX)
   // gethostbyname() *is* thread-safe for Windows native threads. It is also
