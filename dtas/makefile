@@ -89,7 +89,7 @@ collage.exe : collage.o mario-util.o $(OBJECTS)
 	@echo -n "!"
 
 solve.exe : solve.o mario-util.o $(OBJECTS) $(SQLITE_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
+	$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 minus-results.exe : minus-results.o mario-util.o $(OBJECTS) $(SQLITE_OBJECTS)

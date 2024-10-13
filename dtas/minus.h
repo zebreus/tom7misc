@@ -104,6 +104,19 @@ struct MinusDB {
                         "method integer not null, "
                         "createdate integer not null"
                         ")");
+
+    // Used to record that we tried a certain method
+    // (to a given "depth", an integer with an unspecified
+    // meaning) already.
+    db->ExecuteAndPrint("create table "
+                        "if not exists "
+                        "attempted ("
+                        "id integer primary key, "
+                        "level integer not null, "
+                        "method integer not null, "
+                        "depth integer not null, "
+                        "createdate integer not null"
+                        ")");
   }
 
   std::unordered_set<LevelId> GetRejected() {
@@ -124,6 +137,26 @@ struct MinusDB {
       done.insert((uint16_t)r->GetInt(0));
     }
     return done;
+  }
+
+  std::unordered_set<LevelId> GetAttemptedByMethod(int method) {
+    std::unordered_set<LevelId> att;
+    std::unique_ptr<Query> q =
+      db->ExecuteString(
+          StringPrintf("select level from attempted "
+                       "where method = %d", method));
+    while (std::unique_ptr<Row> r = q->NextRow()) {
+      att.insert((uint16_t)r->GetInt(0));
+    }
+    return att;
+  }
+
+  void AddAttempted(LevelId level, int method, int64_t depth) {
+    db->ExecuteAndPrint(
+        StringPrintf(
+            "insert into attempted (level, createdate, method, depth) "
+            "values (%d, %lld, %d, %lld)",
+            level, time(nullptr), method, depth));
   }
 
   bool HasSolution(LevelId level) {
@@ -151,7 +184,7 @@ struct MinusDB {
   // Get levels that have partial solutions. It may be in the done
   // set without having a partial solution, so to see all levels
   // with any result, get both.
-  std::unordered_set<LevelId> GetAttempted() {
+  std::unordered_set<LevelId> GetHasPartial() {
     std::unordered_set<LevelId> done;
     std::unique_ptr<Query> q =
       db->ExecuteString("select level from partial");

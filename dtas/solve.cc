@@ -3,6 +3,7 @@
 // game-specific logic as desired.
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -13,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -1117,7 +1119,7 @@ static void Solve() {
   ArcFour rc(StringPrintf("solve.%lld", time(nullptr)));
 
   std::vector<LevelId> todo = GetTodo(&db, &rc);
-  std::unordered_set<LevelId> attempted = db.GetAttempted();
+  std::unordered_set<LevelId> attempted = db.GetHasPartial();
 
   static constexpr bool ONLY_FRESH = true;
 
@@ -1141,7 +1143,7 @@ static void Maze() {
   ArcFour rc(StringPrintf("maze.%lld", time(nullptr)));
 
   std::vector<LevelId> todo = GetTodo(&db, &rc);
-  std::unordered_set<LevelId> attempted = db.GetAttempted();
+  std::unordered_set<LevelId> attempted = db.GetHasPartial();
 
   static constexpr bool ONLY_FRESH = false;
 
@@ -1567,21 +1569,24 @@ static void Never() {
          ANSI::Time(timer.Seconds()).c_str());
 }
 
+// The largest number of states in the hash set before we
+// give up on this strategy.
+//
+// When the player is totally stuck, we want to detect this
+// by running out the clock. This takes about 10,000 frames.
+// On other levels we might be able to manipulate our state
+// slightly, but always die quickly.
+static constexpr int ALWAYS_DEAD_MAX_STATES = 100000;
+
 static bool IsAlwaysDead(LevelId level,
-                         Emulator *emu, StatusBar *status) {
+                         Emulator *emu,
+                         int status_index,
+                         StatusBar *status) {
   std::vector<uint8_t> start_state = emu->SaveUncompressed();
   Evaluator eval(emulator_pool, emu);
 
-  Periodically status_per(5.0);
-
-  // The largest number of states in the hash set before we
-  // give up on this strategy.
-  //
-  // When the player is totally stuck, we want to detect this
-  // by running out the clock. This takes about 10,000 frames.
-  // On other levels we might be able to manipulate our state
-  // slightly, but always die quickly.
-  static constexpr int MAX_STATES = 100000;
+  Periodically status_per(2.0);
+  Timer timer;
 
   // We are trying to create the entire state graph, where edges
   // correspond to a single frame with a specific input. Rather than
@@ -1589,8 +1594,30 @@ static bool IsAlwaysDead(LevelId level,
   // set only when we know that every descendent of it (possibly
   // including itself) results in death. This will quickly get out
   // of hand unless inputs usually have no effect on the state.
-  std::unordered_set<std::vector<uint8_t>, Hashing<std::vector<uint8_t>>>
-    states;
+  //
+  // The save states themselves are kinda big, and we don't need
+  // the whole thing. Instead we use the processor state and RAM,
+  // assuming that the game outcomes don't depend on anything but
+  // this (it would not be true in general, but I think it is true
+  // for mario). We could improve recall (and performance) by
+  // ablating useless state here, although it would reduce
+  // confidence in the result.
+  // using State = std::array<uint8_t, 2048 + 8>;
+  using State = std::vector<uint8_t>;
+  auto GetState = [](const Emulator *emu) {
+      State state;
+      state.resize(2048 + 8);
+      std::span<uint8_t> out(state);
+      uint64_t reg = emu->Registers();
+      for (int i = 0; i < 8; i++) {
+        state[i] = reg & 0xFF;
+        reg >>= 8;
+      }
+      emu->CopyMemory(out.last(2048));
+      return state;
+    };
+
+  std::unordered_set<State, Hashing<State>> states;
 
   // Select does nothing so we don't bother. We don't allow pausing.
   static constexpr uint8_t CONTROLLER_MASK =
@@ -1598,55 +1625,87 @@ static bool IsAlwaysDead(LevelId level,
     INPUT_B | INPUT_A;
 
   // Do the search starting at the state that emu is currently in.
+  int64_t frames = 0, deaths = 0;
 
   // Returns true if every descendant results in death. Returns false
   // if we succeeded (!) or exhausted the state budget (typical).
-  std::function<bool(int, const Emulator *)> InsertRec =
-    [&level, &status_per, &status, &InsertRec, &eval, &states](
-        int depth, const Emulator *emu) {
+  //
+  // This modifies a single emulator (emu), reading it on
+  // input and leaving it in an unspecified state. Caller should
+  // save the state if they need it.
+  std::function<bool(int)> InsertRec =
+    [emu,
+     &level, &status_per, &timer, status_index, &status, &GetState,
+     &InsertRec, &eval, &states, &frames, &deaths](int depth) {
       // if ((int)states.size() > MAX_STATES) return false;
       // Since the success case involves inserting all the states
       // back to the root, we can exit once the depth exceeds
       // the remaining space. This is also important for cases
       // where the game is frozen and the death timer is not
       // actually running.
-      if ((int)states.size() + depth > MAX_STATES) return false;
+      if ((int)states.size() + depth > ALWAYS_DEAD_MAX_STATES) return false;
       if (eval.Succeeded(emu)) return false;
-      if (eval.IsDead(emu)) return true;
-
-      if (status_per.ShouldRun()) {
-        status->Printf("On %s, depth %d, %lld states.\n",
-                       ColorLevel(level).c_str(), depth,
-                       (int64_t)states.size());
+      if (eval.IsDead(emu)) {
+        deaths++;
+        return true;
       }
 
-      std::vector<uint8_t> current_state = emu->SaveUncompressed();
+      if (status_per.ShouldRun()) {
+        std::string msg =
+          StringPrintf(
+              "%s: " AYELLOW("↓") "%d, %lld st, %s fr, "
+              ARED("☠") "%s",
+              ColorLevel(level).c_str(),
+              depth,
+              (int64_t)states.size(),
+              MarioUtil::FormatNum(frames).c_str(),
+              MarioUtil::FormatNum(deaths).c_str());
+
+        std::string prog =
+          ANSI::ProgressBar(depth + states.size(), ALWAYS_DEAD_MAX_STATES,
+                            msg,
+                            timer.Seconds(),
+                            ANSI::ProgressBarOptions{
+                              .full_width = 72,
+                              .bar_filled = 0x420f6eFF,
+                              .bar_empty = 0x210936FF,
+                              .include_frac = false,
+                            });
+
+        status->EmitLine(status_index, prog);
+      }
+
+      const State current_state = GetState(emu);
       // It's essential that we memoize, or else this is
       // intractable (unless e.g. we are always dead on the first frame)!
       if (states.contains(current_state)) return true;
 
-      auto next = emulator_pool->Acquire();
+      std::vector<uint8_t> current_save = emu->SaveUncompressed();
+
       for (int b = 0; b < 256; b++) {
         // Only canonical button states.
         if (b == (b & CONTROLLER_MASK)) {
           // Try it.
-          next->LoadUncompressed(current_state);
-          next->Step(b, 0);
-          bool r = InsertRec(depth + 1, next.get());
+          emu->LoadUncompressed(current_save);
+          emu->Step(b, 0);
+          frames++;
+          bool r = InsertRec(depth + 1);
           if (!r) return false;
         }
       }
 
+      // If we get here than death is inevitable, so add it to the states
+      // vector.
       states.insert(current_state);
       return true;
     };
 
-  if (InsertRec(0, emu)) {
-    status->Printf("Always dead on %s (%lld reachable states).\n",
+  if (InsertRec(0)) {
+    status->Printf(AGREEN("Always dead") " on %s (%lld reachable states).\n",
                    ColorLevel(level).c_str(), (int64_t)states.size());
     return true;
   } else {
-    status->Printf("No joy on %s (%lld reachable states).\n",
+    status->Printf(AYELLOW("No joy") " on %s (%lld reachable states).\n",
                    ColorLevel(level).c_str(), (int64_t)states.size());
     return false;
   }
@@ -1657,54 +1716,108 @@ static void AlwaysDead() {
   const std::unordered_set<LevelId> solved = db.GetDone();
   const std::unordered_set<LevelId> rejected = db.GetRejected();
 
-  printf("%lld already done, %lld already rejected.\n",
-         (int64_t)solved.size(), (int64_t)rejected.size());
+  const std::unordered_set<LevelId> already =
+    db.GetAttemptedByMethod(MinusDB::REJECT_ALWAYS_DEAD);
+
+  printf("%lld already done.\n"
+         "%lld already attempted with this method.\n"
+         "%lld already rejected by any method.\n",
+         (int64_t)solved.size(),
+         (int64_t)already.size(),
+         (int64_t)rejected.size());
 
   Timer timer;
   Periodically status_per(5.0);
-  StatusBar status(1);
-  ParallelComp(
-      65536,
-      [&db, &solved, &rejected, &timer, &status_per, &status](int idx) {
-        int major = idx / 256;
-        int minor = idx % 256;
-        const LevelId level = PackLevel(major, minor);
-        levels_attempted++;
-        if (solved.contains(level) || rejected.contains(level)) {
-          levels_skipped++;
-          return;
-        }
 
-        // Already did all of these.
-        if (major == 0x13) return;
+  static constexpr int NUM_THREADS = 12;
+  // One status line at the bottom for the overall summary.
+  static constexpr int ALL_STATUS_IDX = NUM_THREADS;
+  StatusBar status(1 + NUM_THREADS);
 
-        if (major <= 0x02) {
+  std::mutex m;
+  std::vector<LevelId> todo;
+  for (int i = 0; i < 65536; i++) {
+    const auto &[major, minor] = UnpackLevel(i);
+
+    // In the future, we could try again with a higher depth budget.
+    if (already.contains(i)) continue;
+
+    // No point in doing it if we already have a definitive answer.
+    if (solved.contains(i)) continue;
+    if (rejected.contains(i)) continue;
+
+    // Already did all of these.
+    if (major == 0x13) continue;
+
+    // Just do one row.
+    if (major == 0x21) continue;
+
+    todo.push_back(i);
+  }
+
+  const int denominator = todo.size();
+
+  ParallelFan(
+      NUM_THREADS,
+      [&db, &timer, &status_per, &status,
+       &m, &todo, denominator](int thread_idx) {
+
+        for (;;) {
+          LevelId level = 0;
+          bool done = false;
+          {
+            MutexLock ml(&m);
+            if (todo.empty()) {
+              done = true;
+            } else {
+              level = todo.back();
+              todo.pop_back();
+            }
+          }
+
+          // Not holding lock.
+          if (done) {
+            status.EmitLine(thread_idx, "no more work");
+            return;
+          } else {
+            status.LineStatusf(
+                thread_idx,
+                "Start %s.", ColorLevel(level).c_str());
+          }
+
+          const auto &[major, minor] = UnpackLevel(level);
+          levels_attempted++;
+
           auto emu = emulator_pool->AcquireClean();
           CHECK(emu.get() != nullptr);
           MarioUtil::WarpTo(emu.get(), major, minor, 0);
 
-          if (IsAlwaysDead(level, emu.get(), &status)) {
+          if (IsAlwaysDead(level, emu.get(), thread_idx, &status)) {
             levels_solved++;
             db.AddRejected(level, MinusDB::REJECT_ALWAYS_DEAD);
+          } else {
+            db.AddAttempted(level, MinusDB::REJECT_ALWAYS_DEAD,
+                            ALWAYS_DEAD_MAX_STATES);
           }
+
+          // Perhaps this should be inside IsAlwaysDead?
+          status_per.RunIf([&](){
+              const int numer = levels_attempted.Read();
+              std::string bar =
+                ANSI::ProgressBar(
+                    numer, denominator,
+                    StringPrintf(
+                        "[%s] Rejected " ARED("%lld") " skipped "
+                        AWHITE("%lld"),
+                        ColorLevel(level).c_str(),
+                        levels_solved.Read(),
+                        levels_skipped.Read()),
+                    timer.Seconds());
+
+              status.EmitLine(ALL_STATUS_IDX, bar);
+            });
         }
-
-        status_per.RunIf([&](){
-            const int numer = levels_attempted.Read();
-            std::string bar =
-              ANSI::ProgressBar(
-                  numer, 65536,
-                  StringPrintf(
-                      "[%s] Rejected " ARED("%lld") " skipped "
-                      AWHITE("%lld"),
-                      ColorLevel(level).c_str(),
-                      levels_solved.Read(),
-                      levels_skipped.Read()),
-                  timer.Seconds());
-
-            status.EmitStatus(bar);
-          });
-      }, 2);
+      });
 
   printf("\n"
          "Finished. " ARED("%lld") " were rejected as unsolvable.\n"

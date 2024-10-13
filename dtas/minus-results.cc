@@ -55,7 +55,7 @@ static void Report() {
 
   // Levels that have been attempted (with the "solve" strategy)
   // and thus have a partial solution, but no conclusive solution.
-  std::unordered_set<LevelId> attempted = db.GetAttempted();
+  std::unordered_set<LevelId> partial = db.GetHasPartial();
 
   // Indexed by both solution and rejection methods, which are
   // disjoint.
@@ -66,14 +66,14 @@ static void Report() {
     solved.insert(row.level);
     // Remove levels that are done from the attempted set so that
     // it reflects levels that were tried but not yet solved.
-    attempted.erase(row.level);
+    partial.erase(row.level);
     method_count[row.method]++;
   }
 
   for (const RejectedRow &row : rej_rows) {
     done.insert(row.level);
     rejected.insert(row.level);
-    attempted.erase(row.level);
+    partial.erase(row.level);
     method_count[row.method]++;
   }
 
@@ -82,13 +82,13 @@ static void Report() {
 
   double done_pct = (done.size() * 100.0) / 65536.0;
   double rejected_pct = (rejected.size() * 100.0) / 65536.0;
-  double att_pct = (attempted.size() * 100.0) / 65536.0;
+  double att_pct = (partial.size() * 100.0) / 65536.0;
   printf(AGREEN("%d") "/" ABLUE("65536") " solved (%.2f%%)\n"
          ARED("%d") "/" ABLUE("65536") " rejected (%.2f%%)\n"
          AYELLOW("%d") " attempted unsuccessfully (%.2f%%)\n",
          (int)done.size(), done_pct,
          (int)rejected.size(), rejected_pct,
-         (int)attempted.size(), att_pct);
+         (int)partial.size(), att_pct);
 
   printf(AWHITE(" SOLVE") ": %d\n"
          AWHITE(" CROSS") ": %d\n"
@@ -116,7 +116,7 @@ static void Report() {
         img.SetPixel32(x, y, 0x007700FF);
       } else if (rejected.contains(level)) {
         img.SetPixel32(x, y, 0x770000FF);
-      } else if (attempted.contains(level)) {
+      } else if (partial.contains(level)) {
         img.SetPixel32(x, y, 0x333300FF);
       } else {
         img.SetPixel32(x, y, 0x000000FF);
