@@ -93,18 +93,75 @@ enum class Mode {
 // This wraps a movie (series of inputs), which is rooted at the
 // WarpTo state. The movie also has a cursor somewhere in its
 // bounds (because it may have been rewound) which is treated
-// as the default length of the movie unless specified.
+// as the default length of the movie unless specified. It keeps
+// save states periodically so that seeking is reasonably
+// efficient.
 //
-// In the future, we can store these more efficiently
-// as a DAG, since they are generally related and we want to
-// be able to seek efficiently (i.e. by storing save states periodically).
-// The general notion of "series of inputs rooted at some save state"
-// is probably right.
+// Should be managed from a single thread, but it can be
+// copied fairly cheaply (sharing the save states).
 struct Movie {
+  // Try to create a cached save periodically.
+  static constexpr int SAVE_EVERY = 60;
+
   // Empty.
   Movie() {}
-  explicit Movie(std::vector<uint8_t> m) : inputs(std::move(m)) {
+  explicit Movie(const std::vector<uint8_t> &m) {
+    // This does no caching (we have no emulator!).
+    inputs.reserve(m.size());
+    for (uint8_t b : m) {
+      inputs.emplace_back(Input{.save = nullptr, .buttons = b});
+    }
     cursor = (int)inputs.size();
+  }
+
+  // Take an emulator in any state, and put it at the state described
+  // by this movie. Can be linear time if nothing is cached.
+  void GoTo(Emulator *emu) {
+    // Backwards from cursor until we find the save to start
+    // from. Remember that the save state is the state *before*
+    // the button press at this index.
+    int start_idx = [this, emu]() {
+        for (int i = cursor - 1; i >= 0; i--) {
+          CHECK(i >= 0 && i < inputs.size());
+          if (inputs[i].save.get() != nullptr) {
+            emu->LoadUncompressed(*inputs[i].save);
+            return i;
+          }
+        }
+
+        // From the beginning, then.
+        emu->LoadUncompressed(level_start);
+        return 0;
+      }();
+
+    int last_save_idx = start_idx;
+    for (int idx = start_idx; idx < cursor; idx++) {
+      // Loop invariant:
+      // The emulator is in the state described by inputs[idx].save,
+      // if any.
+      CHECK(idx >= 0 && idx <= inputs.size());
+
+      // PERF: We should consider looking forward as well; in
+      // pathological cases we could end up with a save at every
+      // frame.
+      if (idx - last_save_idx >= SAVE_EVERY) {
+        if (inputs[idx].save.get() == nullptr) {
+          std::vector<uint8_t> *s = new std::vector<uint8_t>;
+          emu->SaveUncompressed(s);
+          inputs[idx].save.reset(s);
+        }
+
+        // Either way, there's a save now.
+        last_save_idx = idx;
+      }
+
+      // PERF This is probably a reasonable place to deal with
+      // the complexity of skipping video/sound when the frame
+      // is intermediate.
+      emu->StepFull(inputs[idx].buttons, 0);
+    }
+
+    // Done.
   }
 
   // Rewind up to n steps. Never rewinds past the beginning, of
@@ -178,10 +235,24 @@ struct Movie {
   }
 
  private:
-  std::vector<uint8_t> inputs;
+  using SharedSave = std::shared_ptr<const std::vector<uint8_t>>;
+  struct Input {
+    // The optional cached save *before* the button press.
+    // This is often null. We use shared pointer to make it
+    // relatively cheap to copy movies (we generate a lot
+    // of tree-structured shraring in this program).
+    SharedSave save;
+    // The executed buttons.
+    uint8_t buttons = 0;
+  };
+
+  std::vector<Input> inputs;
   // This is the size of the used region, or the index of
   // the next position that we would write.
   int cursor = 0;
+  // An estimate of the number of frames we have to go
+  // backwards before reaching a save (or the beginning).
+  int frames_since_save = 0;
 };
 
 // A single on-screen game. This has an emulator
