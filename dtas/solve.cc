@@ -440,6 +440,7 @@ struct MazeSolver {
         MutexLock ml(&mutex);
         int num_cells = (int)cells.size();
 
+
         std::string lines;
 
         StringAppendF(
@@ -765,7 +766,7 @@ struct Solver {
   Solver(MinusDB *db, uint8_t major, uint8_t minor,
          double solve_time = 3600.0,
          int num_threads = 8) :
-    status(STATUS_LINES),
+    status(SCREENSHOT_LINES + STATUS_LINES),
     db(db),
     level_id((uint16_t(major) << 8) | minor) {
 
@@ -829,7 +830,7 @@ struct Solver {
         uint64_t attempt_steps = emu_steps_attempt.Read();
         double sps = attempt_steps / elapsed.Seconds();
 
-        std::string lines;
+        std::string lines = ANSIScreenshotWithLock();
 
         StringAppendF(
             &lines,
@@ -1013,6 +1014,18 @@ struct Solver {
     #endif
   }
 
+  // Must hold lock.
+  std::string ANSIScreenshotWithLock() {
+    State state;
+    if (population.empty()) {
+      return std::string(SCREENSHOT_LINES, '\n');
+    }
+
+    solver_emu->LoadUncompressed(population[0].save);
+    return MarioUtil::ScreenshotANSI(solver_emu.get());
+  }
+
+  static constexpr int SCREENSHOT_LINES = 30;
   // two status lines; two histos, each two lines
   static constexpr int STATUS_LINES = 8;
   StatusBar status;

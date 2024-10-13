@@ -12,10 +12,13 @@
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
 #include "image.h"
+#include "util.h"
+#include "image-resize.h"
+#include "ansi-image.h"
+#include "base/stringprintf.h"
 
 #include "mario.h"
-#include "base/stringprintf.h"
-#include "util.h"
+
 
 // Place the emulator state at the standard beginning of world-level.
 //
@@ -84,6 +87,11 @@ ImageRGBA MarioUtil::ScreenshotAny(Emulator *emu) {
   ImageRGBA img(std::move(rgba8), 256, 256);
   emu->LoadUncompressed(save);
   return img;
+}
+
+std::string MarioUtil::ScreenshotANSI(Emulator *emu) {
+  ImageRGBA ss = ScreenshotAny(emu).Crop32(0, 0, 256, 240);
+  return ANSIImage::HalfChar(ImageResize::Resize(ss, 256 / 4, 240 / 4));
 }
 
 ImageRGBA MarioUtil::MakeMap(Emulator *emu, const std::vector<uint8_t> &movie) {

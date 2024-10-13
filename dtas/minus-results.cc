@@ -90,20 +90,25 @@ static void Report() {
          (int)rejected.size(), rejected_pct,
          (int)partial.size(), att_pct);
 
-  printf(AWHITE(" SOLVE") ": %d\n"
-         AWHITE(" CROSS") ": %d\n"
-         AWHITE("  MAZE") ": %d\n"
-         AWHITE("MANUAL") ": %d\n",
+#define AMINT(s) ANSI_FG(220, 250, 195) s ANSI_RESET
+#define APINK(s) ANSI_FG(255, 222, 237) s ANSI_RESET
+
+  printf(AMINT(" SOLVE") ": %d\n"
+         AMINT(" CROSS") ": %d\n"
+         AMINT("  MAZE") ": %d\n"
+         AMINT("MANUAL") ": %d\n",
          method_count[MinusDB::METHOD_SOLVE],
          method_count[MinusDB::METHOD_CROSS],
          method_count[MinusDB::METHOD_MAZE],
          method_count[MinusDB::METHOD_MANUAL]);
 
   printf("------" "\n"
-         AWHITE(" NEVER") ": %d\n"
-         AWHITE("ALWAYS") ": %d\n",
+         APINK(" NEVER") ": %d\n"
+         APINK("ALWAYS") ": %d\n",
          method_count[MinusDB::REJECT_NEVER],
          method_count[MinusDB::REJECT_ALWAYS_DEAD]);
+
+  printf("\n");
 
   // First fill in the table with basic color (in case a method
   // is missing).

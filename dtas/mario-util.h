@@ -31,6 +31,9 @@ struct MarioUtil {
   // step so that the emulator state is unchanged.
   static ImageRGBA ScreenshotAny(Emulator *emu);
 
+  // Return an ANSI image, 64 characters wide, 30 lines tall.
+  static std::string ScreenshotANSI(Emulator *emu);
+
   // Play the movie at the current state. Expects that we stay on
   // the same level. Generates an image stitched together of the
   // level as seen during play.
