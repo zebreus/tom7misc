@@ -260,5 +260,9 @@ status-bar_test.exe : status-bar.o status-bar_test.o ansi.o util.o $(BASE)
 top_n_test.exe : top_n_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+ansi-image_test.exe : ansi-image.o ansi-image_test.o ansi.o image.o stb_image.o stb_image_write.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+
 clean :
 	rm -f base/*.o bignum/*.o *.o *.exe *.deleteme test-*.png $(BASE) $(RE2_OBJECTS)

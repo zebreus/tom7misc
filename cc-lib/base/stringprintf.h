@@ -15,18 +15,18 @@
 
 #include "base/port.h"
 
-// Return a C++ string
+// Return a C++ string.
 extern std::string StringPrintf(const char* format, ...)
     // Tell the compiler to do printf format string checking.
     PRINTF_ATTRIBUTE(1,2);
 
-// Store result into a supplied string and return it
+// Store result into a supplied string and return it.
 extern const std::string& SStringPrintf(std::string* dst,
                                         const char* format, ...)
     // Tell the compiler to do printf format string checking.
     PRINTF_ATTRIBUTE(2,3);
 
-// Append result to a supplied string
+// Append result to a supplied string.
 extern void StringAppendF(std::string* dst, const char* format, ...)
     // Tell the compiler to do printf format string checking.
     PRINTF_ATTRIBUTE(2,3);
