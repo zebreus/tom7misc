@@ -108,6 +108,8 @@ struct ProgressBarOptions {
   // RGBA color of progress bar.
   uint32_t bar_filled = 0x0f1591FF;
   uint32_t bar_empty  = 0x00031aFF;
+  bool include_percent = true;
+  bool include_frac = true;
 };
 }
 

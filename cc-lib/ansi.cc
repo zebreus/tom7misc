@@ -52,7 +52,7 @@ static std::array<uint32_t, 8> BRIGHT_RGB = {
 
 // Duplicated from util.cc to make this file standalone.
 // Perhaps we should have a header-only UTF8 lib?
-static std::string EncodeUTF8(uint32_t codepoint) {
+static std::string UTF8Encode(uint32_t codepoint) {
   if (codepoint < 0x80) {
     string s;
     s.resize(1);
@@ -183,6 +183,20 @@ static std::vector<uint32_t> UTF8Codepoints(std::string_view utf8) {
   return ret;
 }
 
+static std::string UTF8Truncate(std::string_view utf8, int max_length) {
+  std::vector<uint32_t> codepoints = UTF8Codepoints(utf8);
+  if ((int)codepoints.size() > max_length) {
+    codepoints.resize(max_length);
+    std::string ret;
+    ret.resize(utf8.size());
+    for (uint32_t cp : codepoints) {
+      ret += UTF8Encode(cp);
+    }
+    return ret;
+  } else {
+    return std::string(utf8);
+  }
+}
 
 void ANSI::Init() {
   #ifdef __MINGW32__
@@ -344,9 +358,17 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
   // Number of characters that get background color.
   int filled_width = std::clamp((int)std::round(bar_width * frac),
                                 0, bar_width);
-  string bar_text = StringPrintf("%llu / %llu  (%.1f%%) %s", numer, denom,
-                                 frac * 100.0,
-                                 operation.c_str());
+  std::string bar_text;
+  if (options.include_frac) {
+    StringAppendF(&bar_text, "%llu / %llu", numer, denom);
+  }
+  if (options.include_percent) {
+    if (!bar_text.empty()) bar_text += "  ";
+    StringAppendF(&bar_text, "(%.1f%%)", frac * 100.0);
+  }
+
+  if (!bar_text.empty()) bar_text.push_back(' ');
+  bar_text += operation;
 
   // Strip codes from bar_text and generate the rasterized foreground
   // color. We discard the background color, since we use it to draw
@@ -362,10 +384,11 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
     bgraster[i] = i < filled_width ? options.bar_filled : options.bar_empty;
   }
 
-  // TODO: truncate using UTF-8
 
   // could do "..."
-  if ((int)bar_text_plain.size() > bar_width) bar_text_plain.resize(bar_width);
+  if ((int)bar_text_plain.size() > bar_width) {
+    bar_text_plain = UTF8Truncate(bar_text_plain, bar_width);
+  }
   bar_text_plain.reserve(bar_width);
   while ((int)bar_text_plain.size() < bar_width)
     bar_text_plain.push_back(' ');
@@ -458,7 +481,7 @@ std::string ANSI::Composite(
     }
 
     // And always add the text codepoint.
-    out += EncodeUTF8(codepoints[i]);
+    out += UTF8Encode(codepoints[i]);
   }
 
   return out + ANSI_RESET;
@@ -579,7 +602,7 @@ ANSI::Decompose(const std::string &text_with_codes,
 
     } else {
       // Encode back as UTF-8.
-      out += EncodeUTF8(s[0]);
+      out += UTF8Encode(s[0]);
       fgs.push_back(fg);
       bgs.push_back(bg);
       s = s.subspan(1);

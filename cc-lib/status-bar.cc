@@ -95,6 +95,7 @@ void StatusBar::EmitLine(int idx, const std::string &s) {
   std::string line = s;
   while (!line.empty() && line.back() == '\n') line.pop_back();
 
+  std::unique_lock<std::mutex> ml(m);
   prev_status_lines[idx] = std::move(line);
   MoveUp();
   EmitStatusLinesWithLock(prev_status_lines);
