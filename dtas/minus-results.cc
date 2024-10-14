@@ -80,14 +80,18 @@ static void Report() {
   // TODO: Check for overlap between done/rejected; this should
   // never happen!
 
-  double done_pct = (done.size() * 100.0) / 65536.0;
-  double rejected_pct = (rejected.size() * 100.0) / 65536.0;
-  double att_pct = (partial.size() * 100.0) / 65536.0;
+  const int total = (done.size() + rejected.size());
+  const double done_pct = (done.size() * 100.0) / 65536.0;
+  const double rejected_pct = (rejected.size() * 100.0) / 65536.0;
+  const double total_pct = total * 100.0 / 65536.0;
+  const double att_pct = (partial.size() * 100.0) / 65536.0;
   printf(AGREEN("%d") "/" ABLUE("65536") " solved (%.2f%%)\n"
          ARED("%d") "/" ABLUE("65536") " rejected (%.2f%%)\n"
+         APURPLE("%d") "/" ABLUE("65536") " done (%.2f%%)\n"
          AYELLOW("%d") " attempted unsuccessfully (%.2f%%)\n",
          (int)done.size(), done_pct,
          (int)rejected.size(), rejected_pct,
+         total, total_pct,
          (int)partial.size(), att_pct);
 
 #define AMINT(s) ANSI_FG(220, 250, 195) s ANSI_RESET

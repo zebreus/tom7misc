@@ -8,9 +8,11 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <tuple>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <cstdint>
@@ -90,6 +92,15 @@ enum class Mode {
   PAUSE,
 };
 
+namespace {
+template<class F>
+struct ScopeExit {
+  ScopeExit(F &&f) : f(std::forward<F>(f)) {}
+  ~ScopeExit() { f(); }
+  F f;
+};
+}
+
 // This wraps a movie (series of inputs), which is rooted at the
 // WarpTo state. The movie also has a cursor somewhere in its
 // bounds (because it may have been rewound) which is treated
@@ -100,17 +111,30 @@ enum class Mode {
 // Should be managed from a single thread, but it can be
 // copied fairly cheaply (sharing the save states).
 struct Movie {
-  // Try to create a cached save periodically.
-  static constexpr int SAVE_EVERY = 60;
+  // We only do saves at movie indices that are divisible by this
+  // number.
+  static constexpr int SAVE_EVERY = 64;
 
   // Empty.
-  Movie() {}
-  explicit Movie(const std::vector<uint8_t> &m) {
-    // This does no caching (we have no emulator!).
-    inputs.reserve(m.size());
-    for (uint8_t b : m) {
-      inputs.emplace_back(Input{.save = nullptr, .buttons = b});
+  Movie() : Movie(std::vector<uint8_t>{}) {}
+  explicit Movie(std::vector<uint8_t> m) : inputs(std::move(m)) {
+    auto emu = emulator_pool->Acquire();
+    emu->LoadUncompressed(level_start);
+    for (int idx = 0; idx < inputs.size(); idx++) {
+      // Save state comes before the step. Note that for simplicity,
+      // we don't save a state until after we execute the step for
+      // that frame. (We could do this on the last frame if it fall
+      // on the right divisor.)
+      if ((idx % SAVE_EVERY) == 0) {
+        CHECK(saves.size() == idx / SAVE_EVERY);
+        std::vector<uint8_t> *s = new std::vector<uint8_t>;
+        emu->SaveUncompressed(s);
+        saves.emplace_back(s);
+      }
+
+      emu->StepFull(inputs[idx], 0);
     }
+
     cursor = (int)inputs.size();
   }
 
@@ -120,12 +144,16 @@ struct Movie {
     // Backwards from cursor until we find the save to start
     // from. Remember that the save state is the state *before*
     // the button press at this index.
-    int start_idx = [this, emu]() {
-        for (int i = cursor - 1; i >= 0; i--) {
-          CHECK(i >= 0 && i < inputs.size());
-          if (inputs[i].save.get() != nullptr) {
-            emu->LoadUncompressed(*inputs[i].save);
-            return i;
+    const int start_idx = [this, emu]() {
+        if (cursor > 0) {
+          for (int save_idx = (cursor - 1) / SAVE_EVERY;
+               save_idx >= 0;
+               save_idx --) {
+            CHECK(save_idx >= 0 & save_idx < (int)saves.size());
+            if (saves[save_idx].get() != nullptr) {
+              emu->LoadUncompressed(*saves[save_idx]);
+              return save_idx * SAVE_EVERY;
+            }
           }
         }
 
@@ -134,31 +162,10 @@ struct Movie {
         return 0;
       }();
 
-    int last_save_idx = start_idx;
+    // Now just execute frames until we reach the cursor.
     for (int idx = start_idx; idx < cursor; idx++) {
-      // Loop invariant:
-      // The emulator is in the state described by inputs[idx].save,
-      // if any.
       CHECK(idx >= 0 && idx <= inputs.size());
-
-      // PERF: We should consider looking forward as well; in
-      // pathological cases we could end up with a save at every
-      // frame.
-      if (idx - last_save_idx >= SAVE_EVERY) {
-        if (inputs[idx].save.get() == nullptr) {
-          std::vector<uint8_t> *s = new std::vector<uint8_t>;
-          emu->SaveUncompressed(s);
-          inputs[idx].save.reset(s);
-        }
-
-        // Either way, there's a save now.
-        last_save_idx = idx;
-      }
-
-      // PERF This is probably a reasonable place to deal with
-      // the complexity of skipping video/sound when the frame
-      // is intermediate.
-      emu->StepFull(inputs[idx].buttons, 0);
+      emu->StepFull(inputs[idx], 0);
     }
 
     // Done.
@@ -180,23 +187,63 @@ struct Movie {
     return dist;
   }
 
-  // Push at the cursor. Destroys future inputs unless they
-  // match exactly.
-  void Push(uint8_t b) {
+  // Assumes the emulator is currently at the cursor. Execute a step
+  // and add it to the movie. Destroys future inputs unless they match
+  // exactly. Saves state as appropriate.
+  void Push(uint8_t b, Emulator *emu) {
     if ((int)inputs.size() > cursor) {
       if (inputs[cursor] == b) {
         // This is already the next input. In this case
         // we keep the future inputs.
+        CHECK(cursor < inputs.size());
+        cursor++;
+        emu->StepFull(b, 0);
+        return;
       } else {
+        // Otherwise we need to delete future inputs and
+        // future save states.
         inputs.resize(cursor);
-        inputs.push_back(b);
+
+        // We're about to push an input. Make sure we have the
+        // right number of save states first. For example, if
+        // this is input 0, we should have no save states yet.
+        // If it's 1, then we should have the start state saved.
+        // Similarly, if it is input 64 (with SAVE_EVERY=64), we
+        // should have just the start state, but we're about
+        // to save another.
+        if (cursor == 0) {
+          saves.clear();
+        } else {
+          const int new_size = 1 + ((cursor - 1) / SAVE_EVERY);
+          CHECK(saves.size() >= new_size);
+          saves.resize(new_size);
+        }
       }
-    } else {
-      inputs.push_back(b);
     }
-    // No matter what, we move the cursor forward.
-    CHECK(cursor < inputs.size());
+
+    CHECK(cursor == inputs.size());
+    // Now push a frame. We might need to save first.
+    if (inputs.size() % SAVE_EVERY == 0) {
+      const int num_saves_after = 1 + (inputs.size() / SAVE_EVERY);
+      CHECK(saves.size() == num_saves_after - 1) <<
+        "With inputs: " << inputs.size() << " saves are " <<
+        saves.size() << " vs " << (inputs.size() / SAVE_EVERY);
+      /*
+      printf("OK: saves %d (want %d), inputs %d\n",
+             (int)saves.size(), (int)(inputs.size() / SAVE_EVERY),
+             (int)inputs.size());
+      */
+      std::vector<uint8_t> *s = new std::vector<uint8_t>;
+      emu->SaveUncompressed(s);
+      saves.emplace_back(s);
+    }
+
+    emu->StepFull(b, 0);
+    inputs.push_back(b);
+
+    // And advance.
     cursor++;
+    CHECK(cursor == inputs.size());
   }
 
   // Returns the size of the movie up to the current cursor.
@@ -209,17 +256,11 @@ struct Movie {
     return (int)inputs.size();
   }
 
-  // Assuming the emulator is currently at the cursor, seek (up to)
-  // delta frames forward or backward (for negative deltas).
+  // With the emulator in any state, seek (up to) delta frames forward
+  // or backward (for negative deltas). Does not change the movie.
   void Seek(int delta, Emulator *emu) {
-    // PERF: Save checkpoints so that this is not linear time!
-    emu->LoadUncompressed(level_start);
-    int new_cursor = std::clamp(cursor + delta, 0, (int)inputs.size());
-    cursor = 0;
-    while (cursor < new_cursor) {
-      emu->StepFull(inputs[cursor], 0);
-      cursor++;
-    }
+    cursor = std::clamp(cursor + delta, 0, (int)inputs.size());
+    GoTo(emu);
   }
 
   auto begin() const { return inputs.begin(); }
@@ -234,25 +275,48 @@ struct Movie {
     return SimpleFM7::EncodeOneLine(trimmed);
   }
 
+  // Check that the movie is consistent with its savestates.
+  void Validate() {
+    CHECK(cursor >= 0 && cursor <= inputs.size());
+    auto emu = emulator_pool->Acquire();
+    emu->LoadUncompressed(level_start);
+    // Check every index. Cursor doesn't actually matter as long as
+    // it's in bounds.
+    for (int idx = 0; idx < inputs.size(); idx++) {
+      if (idx % SAVE_EVERY == 0) {
+        const int sidx = idx / SAVE_EVERY;
+        CHECK(sidx < saves.size());
+        auto save_emu = emulator_pool->Acquire();
+        CHECK(saves[sidx].get() != nullptr) << "We should be able "
+          "to leave these out, but for now it is expected that "
+          "they are always non-null.";
+        save_emu->LoadUncompressed(*saves[sidx]);
+
+        CHECK(save_emu->MachineChecksum() == emu->MachineChecksum());
+      }
+
+      emu->StepFull(inputs[idx], 0);
+    }
+  }
+
  private:
   using SharedSave = std::shared_ptr<const std::vector<uint8_t>>;
-  struct Input {
-    // The optional cached save *before* the button press.
-    // This is often null. We use shared pointer to make it
-    // relatively cheap to copy movies (we generate a lot
-    // of tree-structured shraring in this program).
-    SharedSave save;
-    // The executed buttons.
-    uint8_t buttons = 0;
-  };
 
-  std::vector<Input> inputs;
+  // Two parallel arrays, but we only have saves every 1/SAVE_EVERY
+  // frames.
+  //
+  // The executed button at each step.
+  std::vector<uint8_t> inputs;
+  // The save state at saves[idx] is from *before* the input at
+  // inputs[idx * SAVE_EVERY].
+  //
+  // We use shared pointer to make it relatively cheap to copy movies
+  // (we generate a lot of tree-structured shraring in this program).
+  std::vector<SharedSave> saves;
+
   // This is the size of the used region, or the index of
   // the next position that we would write.
   int cursor = 0;
-  // An estimate of the number of frames we have to go
-  // backwards before reaching a save (or the beginning).
-  int frames_since_save = 0;
 };
 
 // A single on-screen game. This has an emulator
@@ -279,8 +343,7 @@ struct Game {
   // Execute a step and get the emulator image.
   void Step(uint8_t b) {
     MutexLock ml(&m);
-    movie.Push(b);
-    emu->StepFull(b, 0);
+    movie.Push(b, emu.get());
     img = MarioUtil::Screenshot(emu.get());
   }
 
@@ -323,9 +386,7 @@ struct Game {
     CHECK(!level_start.empty());
     emu->LoadUncompressed(level_start);
 
-    for (uint8_t b : movie) {
-      emu->StepFull(b, 0);
-    }
+    movie.GoTo(emu.get());
     img = MarioUtil::Screenshot(emu.get());
   }
 
@@ -334,6 +395,11 @@ struct Game {
     MutexLock ml(&m);
     CHECK(img.Width() > 0 && img.Height() > 0);
     return img;
+  }
+
+  // TODO: Validate game state as well.
+  void Validate() {
+    movie.Validate();
   }
 };
 
@@ -477,6 +543,16 @@ struct GameArray {
   int FocusX() const { return focus_idx % EMUS_WIDE; }
   int FocusY() const { return focus_idx / EMUS_WIDE; }
 
+  void Validate() {
+    ParallelAppi(games,
+                 [](int idx, std::unique_ptr<Game> &g) {
+                   CHECK(g.get() != nullptr);
+                   printf("Validate %d\n", idx);
+                   g->Validate();
+                   printf("%d ok\n", idx);
+                }, 12);
+  }
+
   // Indicates one of the games that is the main focus. This one
   // always gets the unperturbed inputs and is never reclaimed.
   int focus_idx = 0;
@@ -574,7 +650,7 @@ UI::EventResult UI::HandleEvents() {
     case SDL_MOUSEMOTION: {
       SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent*)&event;
 
-      const int oldx = mousex, oldy = mousey;
+      [[maybe_unused]] const int oldx = mousex, oldy = mousey;
 
       mousex = e->x;
       mousey = e->y;
@@ -655,6 +731,13 @@ UI::EventResult UI::HandleEvents() {
         break;
       }
 
+      case SDLK_v: {
+        Timer timer;
+        game_array->Validate();
+        printf("Validated in %s.\n", ANSI::Time(timer.Seconds()).c_str());
+        break;
+      }
+
       default:;
       }
       break;
@@ -717,6 +800,8 @@ UI::EventResult UI::HandleEvents() {
       switch (event.jbutton.button) {
       case 2: break;
       case 3: break;
+      case 4: break;
+      case 5: break;
       case 6: current_gamepad &= ~INPUT_S; break;
       case 7: current_gamepad &= ~INPUT_T; break;
       case 0: current_gamepad &= ~INPUT_B; break;
@@ -918,30 +1003,130 @@ static void InitializeSDL() {
   SDL_ShowCursor(SDL_ENABLE);
 }
 
+// Simple interactive loop to pick a level.
+static std::optional<LevelId> GetLevel(MinusDB *db) {
+  std::unordered_set<LevelId> rejected = db->GetRejected();
+  std::unordered_set<LevelId> solved = db->GetSolved();
+
+  static constexpr int PX = 6;
+  ImageRGBA img(256 * PX, 256 * PX);
+  for (int y = 0; y < 256; y++) {
+    for (int x = 0; x < 256; x++) {
+      LevelId level = PackLevel(y, x);
+      uint32_t c = 0x000044FF;
+      if (rejected.contains(level)) {
+        c = 0xAA0000FF;
+      } else if (solved.contains(level)) {
+        c = 0x00AA00FF;
+      }
+
+      for (int yy = 0; yy < PX; yy++) {
+        for (int xx = 0; xx < PX; xx++) {
+          img.SetPixel32(x * PX + xx, y * PX + yy, c);
+        }
+      }
+    }
+  }
+
+  SDL_Surface *drawing = sdlutil::makesurface(SCREENW, SCREENH, true);
+  ScopeExit se([drawing]() {
+      SDL_FreeSurface(drawing);
+    });
+
+  sdlutil::CopyRGBARect(img, 0, 0, img.Width(), img.Height(),
+                        0, 0, drawing);
+
+  sdlutil::blitall(drawing, screen, 0, 0);
+  SDL_Flip(screen);
+
+  for (;;) {
+    SDL_Event event;
+    int mousex = 0, mousey = 0;
+    while (SDL_PollEvent(&event)) {
+      switch (event.type) {
+      case SDL_QUIT:
+        printf("QUIT.\n");
+        return std::nullopt;
+
+      case SDL_KEYDOWN: {
+        switch (event.key.keysym.sym) {
+        case SDLK_ESCAPE:
+          printf("ESCAPE.\n");
+          return std::nullopt;
+        default:
+          break;
+        }
+      }
+
+      case SDL_MOUSEMOTION: {
+        SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent*)&event;
+
+        [[maybe_unused]] const int oldx = mousex, oldy = mousey;
+
+        mousex = e->x;
+        mousey = e->y;
+
+        break;
+      }
+
+      case SDL_MOUSEBUTTONDOWN: {
+        SDL_MouseButtonEvent *e = (SDL_MouseButtonEvent*)&event;
+
+        if (e->button == SDL_BUTTON_LEFT) {
+          int major = e->y / PX;
+          int minor = e->x / PX;
+          printf("Click %d,%d\n", e->x, e->y);
+          if (major >= 0 && major < 256 &&
+              minor >= 0 && minor < 256) {
+            return {PackLevel(major, minor)};
+          }
+        }
+        break;
+      }
+
+      default:
+        break;
+      }
+    }
+  }
+
+  LOG(FATAL) << "Unreachable";
+  return std::nullopt;
+}
+
 int main(int argc, char **argv) {
   if (TRACE) fprintf(stderr, "In main...\n");
   ANSI::Init();
 
-  CHECK(argc >= 3) << "Usage:\n"
-    "./play.exe major minor [startmovie.fm7]\n\n"
-    "Major and minor are hex levels 00-ff.\n";
-
   if (TRACE) fprintf(stderr, "Try initialize SDL...\n");
   InitializeSDL();
 
-  const uint8_t major = strtol(argv[1], nullptr, 16);
-  const uint8_t minor = strtol(argv[2], nullptr, 16);
-  const LevelId level = PackLevel(major, minor);
+  MinusDB db;
+
+  LevelId level = 0;
+  if (argc < 3) {
+    if (auto lo = GetLevel(&db)) {
+      level = lo.value();
+    } else {
+      printf("Command-line usage:\n"
+             "./play.exe major minor [startmovie.fm7]\n\n"
+             "Major and minor are hex levels 00-ff.\n");
+      return -1;
+    }
+
+  } else {
+    const uint8_t major = strtol(argv[1], nullptr, 16);
+    const uint8_t minor = strtol(argv[2], nullptr, 16);
+    level = PackLevel(major, minor);
+  }
+
   if (TRACE) printf("Play %s\n", ColorLevel(level).c_str());
 
-  {
-    MinusDB db;
-    if (db.HasSolution(level)) {
-      printf(AWHITE("Note") ": %s has a solution already\n",
-             ColorLevel(level).c_str());
-    } else {
-      printf("No solution in database.\n");
-    }
+  if (db.HasSolution(level)) {
+    printf(AWHITE("Note") ": %s has a solution already\n",
+           ColorLevel(level).c_str());
+  } else {
+    printf("No solution in database.\n");
   }
 
   std::vector<uint8_t> startmovie;
@@ -950,6 +1135,8 @@ int main(int argc, char **argv) {
     printf("Start movie has " AWHITE("%d") " inputs.\n",
            (int)startmovie.size());
   }
+
+  const auto &[major, minor] = UnpackLevel(level);
 
   emulator_pool = new EmulatorPool(ROMFILE);
   if (TRACE) printf("Created emulator pool.\n");

@@ -1049,7 +1049,7 @@ struct Solver {
 };
 
 static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
-  std::unordered_set<LevelId> done = db->GetDone();
+  std::unordered_set<LevelId> done = db->GetSolved();
   std::unordered_set<LevelId> rejected = db->GetRejected();
   CHECK(done.size() <= 65536);
   std::vector<LevelId> todo;
@@ -1516,7 +1516,7 @@ static void Manual(LevelId level,
 
 static void Never() {
   MinusDB db;
-  const std::unordered_set<LevelId> solved = db.GetDone();
+  const std::unordered_set<LevelId> solved = db.GetSolved();
   const std::unordered_set<LevelId> rejected = db.GetRejected();
 
   printf("%lld already done, %lld already rejected.\n",
@@ -1726,7 +1726,7 @@ static bool IsAlwaysDead(LevelId level,
 
 static void AlwaysDead() {
   MinusDB db;
-  const std::unordered_set<LevelId> solved = db.GetDone();
+  const std::unordered_set<LevelId> solved = db.GetSolved();
   const std::unordered_set<LevelId> rejected = db.GetRejected();
 
   const std::unordered_set<LevelId> already =
@@ -1750,7 +1750,8 @@ static void AlwaysDead() {
   std::mutex m;
   std::vector<LevelId> todo;
   for (int i = 0; i < 65536; i++) {
-    const auto &[major, minor] = UnpackLevel(i);
+    // for (int i = 65535; i >= 0; i--) {
+    // const auto &[major, minor] = UnpackLevel(i);
 
     // In the future, we could try again with a higher depth budget.
     if (already.contains(i)) continue;
@@ -1758,12 +1759,6 @@ static void AlwaysDead() {
     // No point in doing it if we already have a definitive answer.
     if (solved.contains(i)) continue;
     if (rejected.contains(i)) continue;
-
-    // Already did all of these.
-    if (major == 0x13) continue;
-
-    // Just do one row.
-    if (major == 0x21) continue;
 
     todo.push_back(i);
   }

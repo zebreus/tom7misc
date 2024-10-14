@@ -129,7 +129,7 @@ struct MinusDB {
     return rejected;
   }
 
-  std::unordered_set<LevelId> GetDone() {
+  std::unordered_set<LevelId> GetSolved() {
     std::unordered_set<LevelId> done;
     std::unique_ptr<Query> q =
       db->ExecuteString("select level from solutions");
