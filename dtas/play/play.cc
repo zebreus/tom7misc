@@ -87,9 +87,14 @@ static constexpr int NUM_EMUS = EMUS_TALL * EMUS_WIDE;
 static SDL_Joystick *joystick = nullptr;
 static SDL_Surface *screen = nullptr;
 
-enum class Mode {
+enum class Speed {
   PLAY,
   PAUSE,
+};
+
+enum class View {
+  GRID,
+  GHOST,
 };
 
 namespace {
@@ -521,6 +526,20 @@ struct GameArray {
     WaitThreads();
   }
 
+  // Get the current (focused) movie as a checkpoint
+  // that can be recalled later.
+  Movie Checkpoint() const {
+    return games[focus_idx]->movie;
+  }
+
+  // Load the checkpoint into all slots.
+  void LoadCheckpoint(const Movie &movie) {
+    // PERF in threads?
+    for (int idx = 0; idx < NUM_EMUS; idx++) {
+      games[idx].reset(new Game(movie));
+    }
+  }
+
   std::string FocusedFM7() const {
     return games[focus_idx]->FM7();
   }
@@ -575,15 +594,20 @@ static GameArray *game_array = nullptr;
 
 struct UI {
   const LevelId level;
-  Mode mode = Mode::PLAY;
+  Speed speed = Speed::PLAY;
+  View view = View::GRID;
   uint8_t current_gamepad = 0;
   int64_t frames_drawn = 0;
   uint8_t last_jhat = 0;
   uint8_t major = 0, minor = 0;
 
+  std::optional<Movie> checkpoint = std::nullopt;
+
   UI(LevelId level);
   void Loop();
   void Draw();
+  void DrawGrid();
+  void DrawGhost();
   void PlayPause();
 
   void Seek(int delta);
@@ -621,7 +645,7 @@ bool UI::MaybeRunEmulators(uint8_t buttons) {
     return false;
   }
 
-  if (mode == Mode::PLAY &&
+  if (speed == Speed::PLAY &&
       fps_per.ShouldRun()) {
     game_array->Step(buttons);
     return true;
@@ -631,10 +655,10 @@ bool UI::MaybeRunEmulators(uint8_t buttons) {
 }
 
 void UI::PlayPause() {
-  if (mode == Mode::PAUSE) {
-    mode = Mode::PLAY;
+  if (speed == Speed::PAUSE) {
+    speed = Speed::PLAY;
   } else {
-    mode = Mode::PAUSE;
+    speed = Speed::PAUSE;
   }
 }
 
@@ -678,7 +702,7 @@ UI::EventResult UI::HandleEvents() {
       case SDLK_HOME: {
         // TODO: Restart level...
 
-        mode = Mode::PAUSE;
+        speed = Speed::PAUSE;
         ui_dirty = true;
         break;
       }
@@ -688,7 +712,7 @@ UI::EventResult UI::HandleEvents() {
       case SDLK_LEFT: {
         // TODO: Rewind all movies one step, and pause.
 
-        mode = Mode::PAUSE;
+        speed = Speed::PAUSE;
         ui_dirty = true;
         break;
       }
@@ -696,7 +720,7 @@ UI::EventResult UI::HandleEvents() {
       case SDLK_RIGHT: {
         // TODO: Forward all movies (if possible) ?
 
-        mode = Mode::PAUSE;
+        speed = Speed::PAUSE;
         ui_dirty = true;
         break;
       }
@@ -718,6 +742,16 @@ UI::EventResult UI::HandleEvents() {
       case SDLK_KP_MINUS:
       case SDLK_MINUS:
         // TODO: Speed down
+        ui_dirty = true;
+        break;
+
+      case SDLK_RETURN:
+      case SDLK_KP_ENTER:
+        switch (view) {
+        case View::GHOST: view = View::GRID; break;
+        case View::GRID: view = View::GHOST; break;
+        default: break;
+        }
         ui_dirty = true;
         break;
 
@@ -783,13 +817,27 @@ UI::EventResult UI::HandleEvents() {
       case 0: current_gamepad |= INPUT_B; break;
       case 1: current_gamepad |= INPUT_A; break;
       case 4:
-        Seek(-60);
-        ui_dirty = true;
+        if (checkpoint.has_value()) {
+          game_array->LoadCheckpoint(checkpoint.value());
+          ui_dirty = true;
+        } else {
+          Seek(-60);
+          ui_dirty = true;
+        }
         break;
       case 5:
         Seek(+10);
         ui_dirty = true;
         break;
+
+      case 8:
+        if (checkpoint.has_value()) {
+          checkpoint.reset();
+          printf("Cleared checkpoint.\n");
+        } else {
+          checkpoint = game_array->Checkpoint();
+          printf("Saved checkpoint.\n");
+        }
 
       default:
         printf("Button %d unmapped.\n", event.jbutton.button);
@@ -827,14 +875,14 @@ UI::EventResult UI::HandleEvents() {
       static constexpr uint8_t JHAT_LEFT = 8;
       static constexpr uint8_t JHAT_RIGHT = 2;
 
-      if (mode == Mode::PLAY) {
+      if (speed == Speed::PLAY) {
         // When playing, this is just mapped to the controller.
         current_gamepad &= ~(INPUT_U | INPUT_D | INPUT_L | INPUT_R);
         if (event.jhat.value & JHAT_UP) current_gamepad |= INPUT_U;
         if (event.jhat.value & JHAT_DOWN) current_gamepad |= INPUT_D;
         if (event.jhat.value & JHAT_LEFT) current_gamepad |= INPUT_L;
         if (event.jhat.value & JHAT_RIGHT) current_gamepad |= INPUT_R;
-      } else if (mode == Mode::PAUSE) {
+      } else if (speed == Speed::PAUSE) {
         // When paused, this navigates the focus (on edges).
 
         auto RisingEdge = [&](int bit) {
@@ -885,16 +933,7 @@ void UI::Loop() {
   }
 }
 
-void UI::Draw() {
-  if (TRACE) printf("Draw.\n");
-
-  CHECK(font != nullptr);
-  CHECK(drawing != nullptr);
-  CHECK(screen != nullptr);
-
-  CHECK(game_array != nullptr);
-  CHECK(game_array->games.size() == NUM_EMUS);
-
+void UI::DrawGrid() {
   static constexpr int EMU_MARGIN = 4;
 
   for (int ey = 0; ey < EMUS_TALL; ey++) {
@@ -931,6 +970,75 @@ void UI::Draw() {
                          256 - 2 * i, 240 - 2 * i,
                          0xFFFF0000);
     }
+  }
+
+}
+
+void UI::DrawGhost() {
+  static constexpr int PX = 6;
+
+  // All ghosts; absolute coordinates.
+  std::vector<MarioUtil::Pos> ghosts;
+  ghosts.reserve(game_array->games.size());
+  for (int i = 0; i < game_array->games.size(); i++) {
+    // No ghost for the focused game, though.
+    if (i != game_array->focus_idx) {
+      const Game *game = game_array->games[i].get();
+      ghosts.push_back(MarioUtil::GetPos(game->emu.get()));
+    }
+  }
+
+
+  Game *game = game_array->games[game_array->focus_idx].get();
+  if (game != nullptr) {
+    ImageRGBA shot = game->Screenshot();
+    sdlutil::CopyRGBARectNX(shot, PX, 0, 0, 256, 240,
+                            0, 0, drawing);
+  } else {
+    sdlutil::FillRectRGB(drawing,
+                         0, 0, 256 * PX, 240 * PX, 0x33, 0x00, 0x00);
+  }
+
+  int screenx = (game->emu->ReadRAM(SCREENLEFT_X_HI) << 8) |
+    game->emu->ReadRAM(SCREENLEFT_X_LO);
+
+  // Now add ghosts...
+  for (const MarioUtil::Pos &pos : ghosts) {
+
+    int yy = (int)pos.y - 232;
+    int xx = (int)pos.x - screenx + 8;
+
+    // XXX use the sprite from the game
+
+    sdlutil::DrawCircle32(drawing,
+                          xx * PX, yy * PX, PX * 4, 0xFF8833AA);
+  }
+}
+
+
+void UI::Draw() {
+  if (TRACE) printf("Draw.\n");
+
+  CHECK(font != nullptr);
+  CHECK(drawing != nullptr);
+  CHECK(screen != nullptr);
+
+  CHECK(game_array != nullptr);
+  CHECK(game_array->games.size() == NUM_EMUS);
+
+
+
+  switch (view) {
+  case View::GRID:
+    DrawGrid();
+    break;
+
+  case View::GHOST:
+    DrawGhost();
+    break;
+
+  default:
+    break;
   }
 
   font->drawto(drawing, 5, 5, StringPrintf("Frames: ^2%lld", frames_drawn));
@@ -1120,7 +1228,7 @@ int main(int argc, char **argv) {
     level = PackLevel(major, minor);
   }
 
-  if (TRACE) printf("Play %s\n", ColorLevel(level).c_str());
+  printf("Play %s\n", ColorLevel(level).c_str());
 
   if (db.HasSolution(level)) {
     printf(AWHITE("Note") ": %s has a solution already\n",
