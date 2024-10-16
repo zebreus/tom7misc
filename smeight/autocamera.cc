@@ -2,20 +2,27 @@
 #include "autocamera.h"
 #include "smeight.h"
 
-#include <unordered_set>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <mutex>
-#include <atomic>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
-
-#include "../cc-lib/threadutil.h"
 #include "../fceulib/ppu.h"
+
+#include "base/stringprintf.h"
+#include "threadutil.h"
 
 using namespace std;
 
 using uint8 = uint8_t;
 using uint16 = uint16_t;
+using uint32 = uint32_t;
 
 // Could also be done with a macro; maybe template parameter packs??
 inline static void StepPlayer(Emulator *emu, bool is_p1, uint8 input) {
@@ -288,8 +295,8 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
     vector<uint8> prev_mem;
   };
 
-  auto OneSeq = [this, lagmem, &sciences, SEQ_LEN, &uncompressed_state,
-                 x_num_frames](int seq) {
+  auto OneSeq = [this, lagmem, &sciences, SEQ_LEN, &uncompressed_state](
+      int seq) {
     Emulator *emu = emus[seq];
     emu->LoadUncompressed(uncompressed_state);
     Stepper stepper(first_player, lagmem, sciences, SEQ_LEN, emu, seq);

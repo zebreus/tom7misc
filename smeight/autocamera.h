@@ -2,10 +2,9 @@
 #ifndef _SMEIGHT_AUTOCAMERA_H
 #define _SMEIGHT_AUTOCAMERA_H
 
-#include "smeight.h"
-
-#include <memory>
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../fceulib/emulator.h"
@@ -83,15 +82,17 @@ struct AutoCamera {
 
   // Returns a vector of sprite indices that meet the criteria. Only
   // xmems will be filled in.
-  std::vector<XYSprite> GetXSprites(const std::vector<uint8_t> &uncompressed_state,
-                               int *num_frames);
+  std::vector<XYSprite> GetXSprites(
+      const std::vector<uint8_t> &uncompressed_state,
+      int *num_frames);
 
   // Upgrade a set of sprites with only x coordinates to ones with
   // both x and y coordinates.
-  std::vector<XYSprite> FindYCoordinates(const std::vector<uint8_t> &uncompressed_state,
-                                    int x_num_frames,
-                                    const std::vector<XYSprite> &xsprites,
-                                    std::vector<int> *player_sprites);
+  std::vector<XYSprite> FindYCoordinates(
+      const std::vector<uint8_t> &uncompressed_state,
+      int x_num_frames,
+      const std::vector<XYSprite> &xsprites,
+      std::vector<int> *player_sprites);
 
   // Must have x and y coordinates filled in, i.e. after FindYCoordinates.
   //

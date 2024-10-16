@@ -1,14 +1,27 @@
 
 #include "autotiles.h"
 
+#include <algorithm>
+#include <mutex>
+#include <thread>
+#include <cstdint>
+#include <cstdio>
+#include <utility>
+#include <vector>
+
 #include "../fceulib/emulator.h"
 #include "../fceulib/cart.h"
 #include "../fceulib/ppu.h"
 #include "../fceulib/simplefm2.h"
 
 #include "autocamera.h"
+#include "smeight.h"
 
 using namespace std;
+using uint8 = uint8_t;
+using uint16 = uint16_t;
+using uint32 = uint32_t;
+using uint64 = uint64_t;
 
 // These are NES constants.
 static constexpr int TILESW = 32;

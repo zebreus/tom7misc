@@ -4,20 +4,12 @@
 
 #include <string>
 #include <vector>
-#include <map>
-#include <cstdint>
-#include <memory>
-
-#include <thread>
-#include <mutex>
 
 #include "../fceulib/types.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/threadutil.h"
-
-#include "../cc-lib/stb_image_write.h"
 #include "../fceulib/emulator.h"
+
+#include "base/logging.h"
+#include "stb_image_write.h"
 
 // e.g. with C = map<int, string>. Third argument is the default.
 template<class K, class C>
@@ -105,7 +97,7 @@ struct AngleRule {
 };
 
 
-// XXX Move to utilities
+// XXX Use ImageRGBA.
 inline void SaveEmulatorImage(const Emulator *emu,
                               const std::string &filename) {
   std::vector<uint8> rgba = emu->GetImage();

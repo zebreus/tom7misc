@@ -4,7 +4,7 @@
 
 #include "smeight.h"
 
-#include <memory>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <unordered_map>

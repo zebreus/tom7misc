@@ -1,7 +1,13 @@
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <minwindef.h>
+#include <mutex>
+#include <stdlib.h>
+#include <thread>
 #include <vector>
 #include <string>
-#include <set>
 #include <memory>
 #include <unordered_map>
 #include <tuple>
@@ -15,13 +21,18 @@
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/stb_image.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/stb_image_write.h"
+#include "SDL_error.h"
+#include "SDL_events.h"
+#include "SDL_joystick.h"
+#include "SDL_keysym.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
+#include "sdl/sdlutil.h"
+#include "util.h"
+#include "arcfour.h"
+#include "threadutil.h"
+#include "stb_image_write.h"
+#include "base/stringprintf.h"
 
 // XXX make part of Emulator interface
 #include "../fceulib/ppu.h"
@@ -37,6 +48,10 @@
 #include "wave.h"
 
 using namespace std;
+using uint8 = uint8_t;
+using uint16 = uint16_t;
+using uint32 = uint32_t;
+using int16 = int16_t;
 
 static constexpr int WIDTH = 1920;
 static constexpr int HEIGHT = 1080;
@@ -645,7 +660,6 @@ struct SM {
   }
 
   void Loop() {
-    int frame = 0;
     int fastforward = 0;
 
     int start = SDL_GetTicks();
@@ -695,9 +709,6 @@ struct SM {
     };
 
     for (;;) {
-      // Frame counter advances even when paused.
-      frame++;
-
       // Also do event loop when paused.
       SDL_Event event;
       // Consume all active events right now.
