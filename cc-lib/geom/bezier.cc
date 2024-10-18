@@ -21,7 +21,6 @@
 // Ported to C++ by Tom Murphy VII in 2021. Also released to
 // the public domain.
 
-#include <cmath>
 #include <tuple>
 // #include "GraphicsGems.h"
 
@@ -64,6 +63,15 @@ static  Point2  Bezier();
 static  Vector2 V2ScaleII();
 */
 
+// std::ldexp is not constexpr until c++23. Once we are on C++23,
+// replace this with std::ldexp(f, exp).
+template<class Float>
+static inline constexpr Float ldexp_constexpr(Float f, int exp) {
+  for (; exp > 0; exp--) f *= Float(2.0);
+  for (; exp < 0; exp++) f *= Float(0.5);
+  return f;
+}
+
 // XXX parameterize on floats!
 
 // DEGREE 2 = quadratic bezier (one control point)
@@ -73,7 +81,7 @@ struct BezierImpl {
   /*  Maximum depth for recursion */
   static constexpr int MAXDEPTH = 64;
   /* Flatness control value */
-  static constexpr float EPSILON = std::ldexp(1.0, -MAXDEPTH - 1);
+  static constexpr float EPSILON = ldexp_constexpr(1.0f, -MAXDEPTH - 1);
 
   /*  Degree of eqn to find roots of. */
   static constexpr int W_DEGREE = 2 * DEGREE - 1;

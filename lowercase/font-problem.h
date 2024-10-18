@@ -2,12 +2,16 @@
 #ifndef _LOWERCASE_FONT_PROBLEM_H
 #define _LOWERCASE_FONT_PROBLEM_H
 
+#include <array>
+#include <cmath>
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 #include <algorithm>
-#include <bit>
 
 #include "fonts/ttf.h"
+#include "image.h"
 
 class Network;
 class ArcFour;

@@ -229,6 +229,18 @@ void ParallelAppi(const std::vector<T> &vec,
   ParallelComp(vec.size(), ff, max_concurrency);
 }
 
+template<class T, class F>
+void ParallelAppi(std::vector<T> &vec,
+                  const F &f,
+                  int max_concurrency) {
+
+  auto ff = [&vec, &f](int64_t idx) {
+      (void)f(idx, vec[idx]);
+    };
+  ParallelComp(vec.size(), ff, max_concurrency);
+}
+
+
 // Same, but the typical case that the index is not needed.
 template<class T, class F>
 void ParallelApp(const std::vector<T> &vec,

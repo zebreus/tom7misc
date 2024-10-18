@@ -1,8 +1,12 @@
 #include "fontdb.h"
 
-#include "stb_truetype.h"
-#include "util.h"
+#include <algorithm>
+#include <cstdio>
+#include <unordered_map>
+#include <vector>
 
+#include "util.h"
+#include "base/stringprintf.h"
 
 using namespace std;
 

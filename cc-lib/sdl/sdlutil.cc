@@ -1,13 +1,28 @@
 
-#include "SDL.h"
 #include "sdlutil.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <stdlib.h>
 #include <string>
 #include <vector>
 #include <utility>
+#include <cstdint>
 
-#include "../stb_image.h"
-#include "../stb_image_write.h"
-#include "../image.h"
+// XXX probably just prefer the ImageRGBA interface?
+#include "SDL_endian.h"
+#include "SDL_events.h"
+#include "SDL_timer.h"
+#include "stb_image.h"
+#include "stb_image_write.h"
+
+#include "image.h"
+
+#include "base/logging.h"
+
+#include "SDL_stdinc.h"
+#include "SDL_video.h"
 
 using namespace std;
 
@@ -37,23 +52,23 @@ using namespace std;
 
  */
 #if 0 /* SDL_BYTEORDER == SDL_BIG_ENDIAN */
-  static constexpr Uint32 rmask = 0xff000000;
-  static constexpr Uint32 gmask = 0x00ff0000;
-  static constexpr Uint32 bmask = 0x0000ff00;
-  static constexpr Uint32 amask = 0x000000ff;
-  static constexpr Uint32 rshift = 24;
-  static constexpr Uint32 gshift = 16;
-  static constexpr Uint32 bshift = 8;
-  static constexpr Uint32 ashift = 0;
+  static constexpr uint32_t rmask = 0xff000000;
+  static constexpr uint32_t gmask = 0x00ff0000;
+  static constexpr uint32_t bmask = 0x0000ff00;
+  static constexpr uint32_t amask = 0x000000ff;
+  static constexpr uint32_t rshift = 24;
+  static constexpr uint32_t gshift = 16;
+  static constexpr uint32_t bshift = 8;
+  static constexpr uint32_t ashift = 0;
 #else
-  static constexpr Uint32 rmask = 0x000000ff;
-  static constexpr Uint32 gmask = 0x0000ff00;
-  static constexpr Uint32 bmask = 0x00ff0000;
-  static constexpr Uint32 amask = 0xff000000;
-  static constexpr Uint32 ashift = 24;
-  static constexpr Uint32 bshift = 16;
-  static constexpr Uint32 gshift = 8;
-  static constexpr Uint32 rshift = 0;
+  static constexpr uint32_t rmask = 0x000000ff;
+  static constexpr uint32_t gmask = 0x0000ff00;
+  static constexpr uint32_t bmask = 0x00ff0000;
+  static constexpr uint32_t amask = 0xff000000;
+  static constexpr uint32_t ashift = 24;
+  static constexpr uint32_t bshift = 16;
+  static constexpr uint32_t gshift = 8;
+  static constexpr uint32_t rshift = 0;
 #endif
 
 // Local copy of util's "line" code, to avoid dependency on that and
@@ -130,13 +145,13 @@ struct Line {
 }  // namespace
 
 SDL_Surface *sdlutil::resize_canvas(SDL_Surface *s,
-                                    int w, int h, Uint32 color) {
+                                    int w, int h, uint32_t color) {
   SDL_Surface *m = makesurface(w, h);
   if (!m) return nullptr;
 
   for (int y = 0; y < h; y++)
     for (int x = 0; x < w; x++) {
-      Uint32 c = color;
+      uint32_t c = color;
       if (y < s->h && x < s->w)
         c = getpixel(s, x, y);
       setpixel(m, x, y, c);
@@ -173,10 +188,10 @@ sdlutil::ByteOrder sdlutil::GetByteOrder(SDL_Surface *surf) {
 }
 
 // Assumes rgba vector is the same width/height as the surface.
-static void CopyRGBAVec(const vector<Uint8> &rgba,
+static void CopyRGBAVec(const vector<uint8_t> &rgba,
                         SDL_Surface *surface) {
   using ByteOrder = sdlutil::ByteOrder;
-  Uint32 *p = (Uint32 *)surface->pixels;
+  uint32_t *p = (uint32_t *)surface->pixels;
   int width = surface->w;
   int height = surface->h;
   switch (sdlutil::GetByteOrder(surface)) {
@@ -185,7 +200,7 @@ static void CopyRGBAVec(const vector<Uint8> &rgba,
       for (int x = 0; x < width; x++) {
         const int pidx = (y * width + x);
         const int idx = pidx * 4;
-        const Uint32 r = rgba[idx + 0], g = rgba[idx + 1],
+        const uint32_t r = rgba[idx + 0], g = rgba[idx + 1],
           b = rgba[idx + 2], a = rgba[idx + 3];
         p[pidx] = (a << 24) | (r << 16) | (g << 8) | b;
       }
@@ -196,7 +211,7 @@ static void CopyRGBAVec(const vector<Uint8> &rgba,
       for (int x = 0; x < width; x++) {
         const int pidx = (y * width + x);
         const int idx = pidx * 4;
-        const Uint32 r = rgba[idx + 0], g = rgba[idx + 1],
+        const uint32_t r = rgba[idx + 0], g = rgba[idx + 1],
           b = rgba[idx + 2], a = rgba[idx + 3];
         p[pidx] = (r << 24) | (g << 16) | (b << 8) | a;
       }
@@ -207,7 +222,7 @@ static void CopyRGBAVec(const vector<Uint8> &rgba,
       for (int x = 0; x < width; x++) {
         const int pidx = (y * width + x);
         const int idx = pidx * 4;
-        const Uint32 r = rgba[idx + 0], g = rgba[idx + 1],
+        const uint32_t r = rgba[idx + 0], g = rgba[idx + 1],
           b = rgba[idx + 2], a = rgba[idx + 3];
         p[pidx] = (a << 24) | (b << 16) | (g << 8) | r;
       }
@@ -218,7 +233,7 @@ static void CopyRGBAVec(const vector<Uint8> &rgba,
       for (int x = 0; x < width; x++) {
         const int pidx = (y * width + x);
         const int idx = pidx * 4;
-        const Uint32 r = rgba[idx + 0], g = rgba[idx + 1],
+        const uint32_t r = rgba[idx + 0], g = rgba[idx + 1],
           b = rgba[idx + 2], a = rgba[idx + 3];
         p[pidx] = (b << 24) | (g << 16) | (r << 8) | a;
       }
@@ -227,29 +242,41 @@ static void CopyRGBAVec(const vector<Uint8> &rgba,
   }
 }
 
-// Copies the full rgba image to (x, y) on the dst. Clips
-void sdlutil::CopyRGBARect(const ImageRGBA &img,
-                           int srcx, int srcy,
-                           int w, int h,
-                           int dstx, int dsty,
-                           SDL_Surface *surface) {
-  using ByteOrder = sdlutil::ByteOrder;
-  Uint32 *p = (Uint32 *)surface->pixels;
-  const int width = surface->w;
-  const int height = surface->h;
+// Return false if there is nothing to do.
+static inline bool ClipTo(int width, int height,
+                          int &srcx, int &srcy,
+                          int &w, int &h,
+                          int &dstx, int &dsty) {
 
-  // First, clip.
   if (dstx < 0) { w += dstx; srcx += dstx; dstx = 0; }
   if (dsty < 0) { h += dsty; srcy += dsty; dsty = 0; }
-  if (w <= 0) return;
-  if (h <= 0) return;
+  if (w <= 0) return false;
+  if (h <= 0) return false;
 
   const int yover = (dsty + h) - height;
   if (yover > 0) h -= yover;
   const int xover = (dstx + w) - width;
   if (xover > 0) w -= xover;
 
-  if (w <= 0 || h <= 0) return;
+  if (w <= 0 || h <= 0) return false;
+
+  return true;
+}
+
+// Copies the full rgba image to (x, y) on the dst. Clips.
+void sdlutil::CopyRGBARect(const ImageRGBA &img,
+                           int srcx, int srcy,
+                           int w, int h,
+                           int dstx, int dsty,
+                           SDL_Surface *surface) {
+  using ByteOrder = sdlutil::ByteOrder;
+  uint32_t *p = (uint32_t *)surface->pixels;
+
+  // First, clip.
+  const int width = surface->w;
+  const int height = surface->h;
+  if (!ClipTo(width, height, srcx, srcy, w, h, dstx, dsty))
+    return;
 
   // Now the rectangle given by (dstx,dsty,w,h) will fall within
   // the destination surface's size.
@@ -258,56 +285,118 @@ void sdlutil::CopyRGBARect(const ImageRGBA &img,
   (((uint32_t)(a) << 24) | ((uint32_t)(b) << 16) | \
    ((uint32_t)(c) << 8) | ((uint32_t)(d)))
 
+#define LOOP(A, B, C, D) do {                                         \
+    for (int y = 0; y < h; y++) {                                     \
+      for (int x = 0; x < w; x++) {                                   \
+        const auto &[r, g, b, a] = img.GetPixel(srcx + x, srcy + y);  \
+        const uint32_t d = PACK4(A, B, C, D);                         \
+        const int pidx = ((dsty + y) * width + (dstx + x));           \
+        p[pidx] = d;                                                  \
+      }                                                               \
+    }                                                                 \
+  } while (false)
+
   switch (sdlutil::GetByteOrder(surface)) {
   case ByteOrder::ARGB:
-    for (int y = 0; y < h; y++) {
-      for (int x = 0; x < w; x++) {
-        const int pidx = ((dsty + y) * width + (dstx + x));
-        const auto &[r, g, b, a] = img.GetPixel(srcx + x, srcy + y);
-        p[pidx] = PACK4(a, r, g, b);
-      }
-    }
+    LOOP(a, r, g, b);
     break;
   case ByteOrder::RGBA:
-    for (int y = 0; y < h; y++) {
-      for (int x = 0; x < w; x++) {
-        const int pidx = ((dsty + y) * width + (dstx + x));
-        // // const auto &[r, g, b, a] = img.GetPixel(x, y);
-        // p[pidx] = PACK4(r, g, b, a);
-        p[pidx] = img.GetPixel32(srcx + x, srcy + y);
-      }
-    }
+    LOOP(r, g, b, a);
     break;
   case ByteOrder::ABGR:
-    for (int y = 0; y < h; y++) {
-      for (int x = 0; x < w; x++) {
-        const int pidx = ((dsty + y) * width + (dstx + x));
-        const auto &[r, g, b, a] = img.GetPixel(srcx + x, srcy + y);
-        p[pidx] = PACK4(a, b, g, r);
-      }
-    }
+    LOOP(a, b, g, r);
     break;
   case ByteOrder::BGRA:
-    for (int y = 0; y < h; y++) {
-      for (int x = 0; x < w; x++) {
-        const int pidx = ((dsty + y) * width + (dstx + x));
-        const auto &[r, g, b, a] = img.GetPixel(srcx + x, srcy + y);
-        p[pidx] = PACK4(b, g, r, a);
-      }
-    }
+    LOOP(b, g, r, a);
     break;
   }
+
+#undef PACK4
+#undef LOOP
 
 }
 
+// Copies the full rgba image to (x, y) on the dst. Clips.
+void sdlutil::CopyRGBARectNX(const ImageRGBA &img,
+                             int px,
+                             int srcx, int srcy,
+                             int w, int h,
+                             int dstx, int dsty,
+                             SDL_Surface *surface) {
+  using ByteOrder = sdlutil::ByteOrder;
+  uint32_t *p = (uint32_t *)surface->pixels;
+
+  CHECK((dstx % px) == 0 && (dsty % px) == 0) << "I should handle "
+    "this case by just drawing the last row/column of pixels in a "
+    "second pass.";
+
+  // First, clip.
+  const int width = surface->w;
+  const int height = surface->h;
+
+  int dstw = w * px, dsth = h * px;
+  if (!ClipTo(width, height, srcx, srcy, dstw, dsth, dstx, dsty))
+    return;
+
+  CHECK((dstw % px) == 0 && (dsth % px) == 0) << "This is implied "
+    "by dstx,dsty being aligned.";
+
+  w = dstw / px;
+  h = dsth / px;
+
+  // Now the rectangle given by (dstx,dsty,dstw,dsth) will fall within
+  // the destination surface's size.
+
+#define PACK4(a, b, c, d) \
+  (((uint32_t)(a) << 24) | ((uint32_t)(b) << 16) | \
+   ((uint32_t)(c) << 8) | ((uint32_t)(d)))
+
+#define LOOP(A, B, C, D) do {                                         \
+    for (int y = 0; y < h; y++) {                                     \
+      for (int x = 0; x < w; x++) {                                   \
+        const auto &[r, g, b, a] = img.GetPixel(srcx + x, srcy + y);  \
+        const uint32_t d = PACK4(A, B, C, D);                         \
+        for (int yy = 0; yy < px; yy++) {                             \
+          for (int xx = 0; xx < px; xx++) {                           \
+            const int pidx = ((dsty + y * px + yy) * width +          \
+                              (dstx + x * px + xx));                  \
+            p[pidx] = d;                                              \
+          }                                                           \
+        }                                                             \
+      }                                                               \
+    }                                                                 \
+  } while (false)
+
+  switch (sdlutil::GetByteOrder(surface)) {
+  case ByteOrder::ARGB:
+    LOOP(a, r, g, b);
+    break;
+  case ByteOrder::RGBA:
+    LOOP(r, g, b, a);
+    break;
+  case ByteOrder::ABGR:
+    LOOP(a, b, g, r);
+    break;
+  case ByteOrder::BGRA:
+    LOOP(b, g, r, a);
+    break;
+  }
+
+#undef PACK4
+#undef LOOP
+
+}
+
+
 SDL_Surface *sdlutil::FromRGBA(const ImageRGBA &rgba) {
   SDL_Surface *surf = makesurface(rgba.Width(), rgba.Height(), true);
-  if (!surf) {
+  if (surf == nullptr) {
     return nullptr;
   }
+
   using ByteOrder = sdlutil::ByteOrder;
-  // Uint8 *p = (Uint8 *)surface->pixels;
-  Uint32 *p = (Uint32 *)surf->pixels;
+  // uint8_t *p = (uint8_t *)surface->pixels;
+  uint32_t *p = (uint32_t *)surf->pixels;
   int width = surf->w;
   int height = surf->h;
   switch (sdlutil::GetByteOrder(surf)) {
@@ -355,11 +444,11 @@ SDL_Surface *sdlutil::FromRGBA(const ImageRGBA &rgba) {
 // symbol to LoadImageA etc. :(
 SDL_Surface *sdlutil::LoadImageFile(const string &filename) {
   int width, height, bpp;
-  Uint8 *stb_rgba = stbi_load(filename.c_str(),
+  uint8_t *stb_rgba = stbi_load(filename.c_str(),
                               &width, &height, &bpp, 4);
   if (!stb_rgba) return nullptr;
 
-  vector<Uint8> rgba;
+  vector<uint8_t> rgba;
   rgba.reserve(width * height * 4);
   for (int i = 0; i < width * height * 4; i++) {
     rgba.push_back(stb_rgba[i]);
@@ -378,11 +467,11 @@ SDL_Surface *sdlutil::LoadImageFile(const string &filename) {
 bool sdlutil::SavePNG(const string &filename, SDL_Surface *surf) {
   // This could be implemented for other formats, of course.
   if (surf->format->BytesPerPixel != 4) return false;
-  vector<Uint8> rgba;
+  vector<uint8_t> rgba;
   rgba.reserve(surf->w * surf->h * 4);
   for (int i = 0; i < surf->w * surf->h; i++) {
-    Uint8 r, g, b, a;
-    SDL_GetRGBA(((Uint32*)surf->pixels)[i], surf->format, &r, &g, &b, &a);
+    uint8_t r, g, b, a;
+    SDL_GetRGBA(((uint32_t*)surf->pixels)[i], surf->format, &r, &g, &b, &a);
     rgba.push_back(r);
     rgba.push_back(g);
     rgba.push_back(b);
@@ -396,7 +485,7 @@ SDL_Surface *sdlutil::duplicate(SDL_Surface *surf) {
   return SDL_ConvertSurface(surf, surf->format, surf->flags);
 }
 
-void sdlutil::eatevents(int ticks, Uint32 mask) {
+void sdlutil::eatevents(int ticks, uint32_t mask) {
   int now = SDL_GetTicks();
   const int destiny = now + ticks;
 
@@ -418,28 +507,28 @@ bool sdlutil::make_mipmaps(SDL_Surface **s, int nmips) {
   return make_mipmaps(&s[1], nmips - 1);
 }
 
-void sdlutil::clearsurface(SDL_Surface *s, Uint32 color) {
+void sdlutil::clearsurface(SDL_Surface *s, uint32_t color) {
   SDL_FillRect(s, 0, color);
 }
 
 void sdlutil::ClearSurface(SDL_Surface *s,
-                           Uint8 r, Uint8 g, Uint8 b, Uint8 a) {
-  Uint32 color = SDL_MapRGBA(s->format, r, g, b, a);
+                           uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+  uint32_t color = SDL_MapRGBA(s->format, r, g, b, a);
   SDL_FillRect(s, 0, color);
 }
 
-Uint32 sdlutil::mix2(Uint32 ia, Uint32 ib) {
-  Uint32 ar = (ia >> rshift) & 0xFF;
-  Uint32 br = (ib >> rshift) & 0xFF;
+uint32_t sdlutil::mix2(uint32_t ia, uint32_t ib) {
+  uint32_t ar = (ia >> rshift) & 0xFF;
+  uint32_t br = (ib >> rshift) & 0xFF;
 
-  Uint32 ag = (ia >> gshift) & 0xFF;
-  Uint32 bg = (ib >> gshift) & 0xFF;
+  uint32_t ag = (ia >> gshift) & 0xFF;
+  uint32_t bg = (ib >> gshift) & 0xFF;
 
-  Uint32 ab = (ia >> bshift) & 0xFF;
-  Uint32 bb = (ib >> bshift) & 0xFF;
+  uint32_t ab = (ia >> bshift) & 0xFF;
+  uint32_t bb = (ib >> bshift) & 0xFF;
 
-  Uint32 aa = (ia >> ashift) & 0xFF;
-  Uint32 ba = (ib >> ashift) & 0xFF;
+  uint32_t aa = (ia >> ashift) & 0xFF;
+  uint32_t ba = (ib >> ashift) & 0xFF;
 
   /* if these are all fractions 0..1,
      color output is
@@ -447,9 +536,9 @@ Uint32 sdlutil::mix2(Uint32 ia, Uint32 ib) {
        ---------------------------------
               alpha1 + alpha2               */
 
-  Uint32 r = 0;
-  Uint32 g = 0;
-  Uint32 b = 0;
+  uint32_t r = 0;
+  uint32_t g = 0;
+  uint32_t b = 0;
 
   if ((aa + ba) > 0) {
     /* really want
@@ -484,12 +573,12 @@ Uint32 sdlutil::mix2(Uint32 ia, Uint32 ib) {
   }
 
   /* alpha output is just the average */
-  Uint32 a = (aa + ba) >> 1;
+  uint32_t a = (aa + ba) >> 1;
 
   return (r << rshift) | (g << gshift) | (b << bshift) | (a << ashift);
 }
 
-Uint32 sdlutil::mix4(Uint32 a, Uint32 b, Uint32 c, Uint32 d) {
+uint32_t sdlutil::mix4(uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
   /* XXX PERF
 
      would probably get better results (less quant error) and
@@ -498,31 +587,31 @@ Uint32 sdlutil::mix4(Uint32 a, Uint32 b, Uint32 c, Uint32 d) {
   return mix2(mix2(a, b), mix2(c, d));
 }
 
-Uint32 sdlutil::Mix4(const SDL_Surface *surf,
-                     Uint32 ai, Uint32 bi, Uint32 ci, Uint32 di) {
+uint32_t sdlutil::Mix4(const SDL_Surface *surf,
+                     uint32_t ai, uint32_t bi, uint32_t ci, uint32_t di) {
 
-  Uint8 ar8, ag8, ab8, aa8;
-  Uint8 br8, bg8, bb8, ba8;
-  Uint8 cr8, cg8, cb8, ca8;
-  Uint8 dr8, dg8, db8, da8;
+  uint8_t ar8, ag8, ab8, aa8;
+  uint8_t br8, bg8, bb8, ba8;
+  uint8_t cr8, cg8, cb8, ca8;
+  uint8_t dr8, dg8, db8, da8;
 
   SDL_GetRGBA(ai, surf->format, &ar8, &ag8, &ab8, &aa8);
   SDL_GetRGBA(bi, surf->format, &br8, &bg8, &bb8, &ba8);
   SDL_GetRGBA(ci, surf->format, &cr8, &cg8, &cb8, &ca8);
   SDL_GetRGBA(di, surf->format, &dr8, &dg8, &db8, &da8);
 
-  const Uint32 ar = ar8, ag = ag8, ab = ab8, aa = aa8;
-  const Uint32 br = br8, bg = bg8, bb = bb8, ba = ba8;
-  const Uint32 cr = cr8, cg = cg8, cb = cb8, ca = ca8;
-  const Uint32 dr = dr8, dg = dg8, db = db8, da = da8;
+  const uint32_t ar = ar8, ag = ag8, ab = ab8, aa = aa8;
+  const uint32_t br = br8, bg = bg8, bb = bb8, ba = ba8;
+  const uint32_t cr = cr8, cg = cg8, cb = cb8, ca = ca8;
+  const uint32_t dr = dr8, dg = dg8, db = db8, da = da8;
 
   // This is the same as idea as Mix2; see that for the math.
 
-  Uint32 r = 0;
-  Uint32 g = 0;
-  Uint32 b = 0;
+  uint32_t r = 0;
+  uint32_t g = 0;
+  uint32_t b = 0;
 
-  const Uint32 denom = aa + ba + ca + da;
+  const uint32_t denom = aa + ba + ca + da;
   if (denom > 0) {
     r = (ar * aa + br * ba + cr * ca + dr * da) / denom;
     g = (ag * aa + bg * ba + cg * ca + dg * da) / denom;
@@ -530,20 +619,20 @@ Uint32 sdlutil::Mix4(const SDL_Surface *surf,
   }
 
   /* alpha output is just the average */
-  const Uint32 a = denom >> 2;
+  const uint32_t a = denom >> 2;
 
   return SDL_MapRGBA(surf->format, r, g, b, a);
 }
 
-Uint32 sdlutil::Mix2(const SDL_Surface *surf,
-                     Uint32 ia, Uint32 ib) {
-  Uint8 ar8, ag8, ab8, aa8;
-  Uint8 br8, bg8, bb8, ba8;
+uint32_t sdlutil::Mix2(const SDL_Surface *surf,
+                     uint32_t ia, uint32_t ib) {
+  uint8_t ar8, ag8, ab8, aa8;
+  uint8_t br8, bg8, bb8, ba8;
   SDL_GetRGBA(ia, surf->format, &ar8, &ag8, &ab8, &aa8);
   SDL_GetRGBA(ib, surf->format, &br8, &bg8, &bb8, &ba8);
 
-  Uint32 ar = ar8, ag = ag8, ab = ab8, aa = aa8;
-  Uint32 br = br8, bg = bg8, bb = bb8, ba = ba8;
+  uint32_t ar = ar8, ag = ag8, ab = ab8, aa = aa8;
+  uint32_t br = br8, bg = bg8, bb = bb8, ba = ba8;
 
   /* if these are all fractions 0..1,
      color output is
@@ -551,9 +640,9 @@ Uint32 sdlutil::Mix2(const SDL_Surface *surf,
        ---------------------------------
               alpha1 + alpha2               */
 
-  Uint32 r = 0;
-  Uint32 g = 0;
-  Uint32 b = 0;
+  uint32_t r = 0;
+  uint32_t g = 0;
+  uint32_t b = 0;
 
   if ((aa + ba) > 0) {
     /* really want
@@ -588,34 +677,34 @@ Uint32 sdlutil::Mix2(const SDL_Surface *surf,
   }
 
   /* alpha output is just the average */
-  const Uint32 a = (aa + ba) >> 1;
+  const uint32_t a = (aa + ba) >> 1;
 
   return SDL_MapRGBA(surf->format, r, g, b, a);
 }
 
 
-Uint32 sdlutil::mixfrac(Uint32 a, Uint32 b, float f) {
-  Uint32 factor  = (Uint32) (f * 0x100);
-  Uint32 ofactor = 0x100 - factor;
+uint32_t sdlutil::mixfrac(uint32_t a, uint32_t b, float f) {
+  uint32_t factor  = (uint32_t) (f * 0x100);
+  uint32_t ofactor = 0x100 - factor;
 
-  Uint32 o24 = (((a >> 24) & 0xFF) * factor +
+  uint32_t o24 = (((a >> 24) & 0xFF) * factor +
                 ((b >> 24) & 0xFF) * ofactor) >> 8;
 
-  Uint32 o16 = (((a >> 16) & 0xFF) * factor +
+  uint32_t o16 = (((a >> 16) & 0xFF) * factor +
                 ((b >> 16) & 0xFF) * ofactor) >> 8;
 
-  Uint32 o8 = (((a >> 8) & 0xFF) * factor +
+  uint32_t o8 = (((a >> 8) & 0xFF) * factor +
                 ((b >> 8) & 0xFF) * ofactor) >> 8;
 
 
-  Uint32 o = ((a & 0xFF) * factor +
+  uint32_t o = ((a & 0xFF) * factor +
               (b & 0xFF) * ofactor) >> 8;
 
   return (o24 << 24) | (o16 << 16) | (o8 << 8) | o;
 }
 
 
-Uint32 sdlutil::hsv(SDL_Surface *sur, float h, float s, float v, float a) {
+uint32_t sdlutil::hsv(SDL_Surface *sur, float h, float s, float v, float a) {
   int r, g, b;
   if (s == 0.0f) {
     r = (int)(v * 255);
@@ -662,16 +751,16 @@ SDL_Surface *sdlutil::alphadim(SDL_Surface *src) {
 
   for (int y = 0; y < hh; y++) {
     for (int x = 0; x < ww; x++) {
-      Uint32 color = *((Uint32 *)src->pixels + y * src->pitch / 4 + x);
+      uint32_t color = *((uint32_t *)src->pixels + y * src->pitch / 4 + x);
 
       /* divide alpha channel by 2 */
-      Uint8 r, g, b, a;
+      uint8_t r, g, b, a;
       SDL_GetRGBA(color, src->format, &r, &g, &b, &a);
       a >>= 1;
 
       color = SDL_MapRGBA(src->format, r, g, b, a);
 
-      *((Uint32 *)ret->pixels + y * ret->pitch / 4 + x) = color;
+      *((uint32_t *)ret->pixels + y * ret->pitch / 4 + x) = color;
     }
   }
 
@@ -706,14 +795,14 @@ SDL_Surface *sdlutil::shrink50(SDL_Surface *src) {
   for (int y = 0; y < ret->h; y++) {
     for (int x = 0; x < ret->w; x++) {
       /* get and mix four src pixels for each dst pixel */
-      Uint32 c1 = *((Uint32 *)src->pixels + (y*2)*src->pitch/4 + (x*2));
-      Uint32 c2 = *((Uint32 *)src->pixels + (1+y*2)*src->pitch/4 + (1+x*2));
-      Uint32 c3 = *((Uint32 *)src->pixels + (1+y*2)*src->pitch/4 + (x*2));
-      Uint32 c4 = *((Uint32 *)src->pixels + (y*2)*src->pitch/4 + (1+x*2));
+      uint32_t c1 = *((uint32_t *)src->pixels + (y*2)*src->pitch/4 + (x*2));
+      uint32_t c2 = *((uint32_t *)src->pixels + (1+y*2)*src->pitch/4 + (1+x*2));
+      uint32_t c3 = *((uint32_t *)src->pixels + (1+y*2)*src->pitch/4 + (x*2));
+      uint32_t c4 = *((uint32_t *)src->pixels + (y*2)*src->pitch/4 + (1+x*2));
 
-      Uint32 color = Mix4(src, c1, c2, c3, c4);
+      uint32_t color = Mix4(src, c1, c2, c3, c4);
 
-      *((Uint32 *)ret->pixels + y*ret->pitch/4 + x) = color;
+      *((uint32_t *)ret->pixels + y*ret->pitch/4 + x) = color;
     }
   }
 
@@ -736,21 +825,21 @@ SDL_Surface *sdlutil::grow2x(SDL_Surface *src) {
   slock(ret);
   slock(src);
 
-  Uint8 *p = (Uint8*)src->pixels;
-  Uint8 *pdest = (Uint8*)ret->pixels;
+  uint8_t *p = (uint8_t*)src->pixels;
+  uint8_t *pdest = (uint8_t*)ret->pixels;
 
   int ww2 = ww << 1;
   for (int y = 0; y < hh; y++) {
     for (int x = 0; x < ww; x++) {
-      Uint32 rgba = *(Uint32*)(p + 4 * (y * ww + x));
+      uint32_t rgba = *(uint32_t*)(p + 4 * (y * ww + x));
 
       // Write four pixels.
       int y2 = y << 1;
       int x2 = x << 1;
-      *(Uint32*)(pdest + 4 * (y2 * ww2 + x2)) = rgba;
-      *(Uint32*)(pdest + 4 * (y2 * ww2 + x2 + 1)) = rgba;
-      *(Uint32*)(pdest + 4 * ((y2 + 1) * ww2 + x2)) = rgba;
-      *(Uint32*)(pdest + 4 * ((y2 + 1) * ww2 + x2 + 1)) = rgba;
+      *(uint32_t*)(pdest + 4 * (y2 * ww2 + x2)) = rgba;
+      *(uint32_t*)(pdest + 4 * (y2 * ww2 + x2 + 1)) = rgba;
+      *(uint32_t*)(pdest + 4 * ((y2 + 1) * ww2 + x2)) = rgba;
+      *(uint32_t*)(pdest + 4 * ((y2 + 1) * ww2 + x2 + 1)) = rgba;
     }
   }
 
@@ -775,20 +864,20 @@ SDL_Surface *sdlutil::GrowX(SDL_Surface *src, int px) {
   slock(ret);
   slock(src);
 
-  Uint8 *p = (Uint8*)src->pixels;
-  Uint8 *pdest = (Uint8*)ret->pixels;
+  uint8_t *p = (uint8_t*)src->pixels;
+  uint8_t *pdest = (uint8_t*)ret->pixels;
 
   int ww2 = ww * px;
   for (int y = 0; y < hh; y++) {
     for (int x = 0; x < ww; x++) {
-      const Uint32 rgba = *(Uint32*)(p + 4 * (y * ww + x));
+      const uint32_t rgba = *(uint32_t*)(p + 4 * (y * ww + x));
 
       // Write px * px pixels.
       for (int yu = 0; yu < px; yu++) {
         const int y2 = y * px + yu;
         for (int xu = 0; xu < px; xu++) {
           const int x2 = x * px + xu;
-          *(Uint32*)(pdest + 4 * (y2 * ww2 + x2)) = rgba;
+          *(uint32_t*)(pdest + 4 * (y2 * ww2 + x2)) = rgba;
         }
       }
     }
@@ -842,7 +931,7 @@ SDL_Surface *sdlutil::makealpharect(int w, int h, int r, int g, int b, int a) {
 
   if (!ret) return nullptr;
 
-  Uint32 color = SDL_MapRGBA(ret->format, r, g, b, a);
+  uint32_t color = SDL_MapRGBA(ret->format, r, g, b, a);
 
   SDL_FillRect(ret, 0, color);
 
@@ -865,7 +954,7 @@ SDL_Surface *sdlutil::makealpharectgrad(int w, int h,
     int g = (int) ((g1 * frac) + (g2 * (1.0 - frac)));
     int b = (int) ((b1 * frac) + (b2 * (1.0 - frac)));
     int a = (int) ((a1 * frac) + (a2 * (1.0 - frac)));
-    Uint32 color = SDL_MapRGBA(ret->format, r, g, b, a);
+    uint32_t color = SDL_MapRGBA(ret->format, r, g, b, a);
     SDL_Rect rect;
     rect.x = 0;
     rect.y = i;
@@ -877,7 +966,7 @@ SDL_Surface *sdlutil::makealpharectgrad(int w, int h,
   return ret;
 }
 
-void sdlutil::fillrect(SDL_Surface *s, Uint32 color,
+void sdlutil::fillrect(SDL_Surface *s, uint32_t color,
                        int x, int y, int w, int h) {
   SDL_Rect dst;
   dst.x = x;
@@ -889,7 +978,7 @@ void sdlutil::fillrect(SDL_Surface *s, Uint32 color,
 
 void sdlutil::FillRectRGB(SDL_Surface *s,
                           int x, int y, int w, int h,
-                          Uint8 r, Uint8 g, Uint8 b) {
+                          uint8_t r, uint8_t g, uint8_t b) {
   SDL_Rect dst;
   dst.x = x;
   dst.y = y;
@@ -906,7 +995,7 @@ void sdlutil::blitall(SDL_Surface *src, SDL_Surface *dst, int x, int y) {
 }
 
 void sdlutil::outline(SDL_Surface *s, int n, int r, int g, int b, int a) {
-  Uint32 color = SDL_MapRGBA(s->format, r, g, b, a);
+  uint32_t color = SDL_MapRGBA(s->format, r, g, b, a);
 
   SDL_Rect dst;
   dst.x = 0;
@@ -927,11 +1016,11 @@ void sdlutil::outline(SDL_Surface *s, int n, int r, int g, int b, int a) {
 }
 
 void sdlutil::DrawCircle32(SDL_Surface *surf,
-                           int x0, int y0, int radius, Uint32 color) {
+                           int x0, int y0, int radius, uint32_t color) {
   // Only 32-bit!
   if (surf->format->BytesPerPixel != 4) return;
 
-  Uint32 *bufp = (Uint32 *)surf->pixels;
+  uint32_t *bufp = (uint32_t *)surf->pixels;
   const int stride = surf->pitch >> 2;
   const int width = surf->w, height = surf->h;
   auto SetPixel = [color, bufp, stride, width, height](int x, int y) {
@@ -1031,8 +1120,8 @@ void sdlutil::sulock(SDL_Surface *screen) {
 /* getpixel function only:
    Copyright (c) 2004 Bill Kendrick, Tom Murphy
    from the GPL "Tux Paint" */
-Uint32 sdlutil::getpixel(SDL_Surface *surface, int x, int y) {
-  Uint32 pixel = 0;
+uint32_t sdlutil::getpixel(SDL_Surface *surface, int x, int y) {
+  uint32_t pixel = 0;
 
   /* Check that x/y values are within the bounds of this surface... */
   if (x >= 0 && y >= 0 && x < surface -> w && y < surface -> h) {
@@ -1044,8 +1133,8 @@ Uint32 sdlutil::getpixel(SDL_Surface *surface, int x, int y) {
     /* Set a pointer to the exact location in memory of the pixel
        in question: */
 
-    Uint8 *p =
-      (Uint8 *) (((Uint8 *)surface->pixels) +  /* Start at top of RAM */
+    uint8_t *p =
+      (uint8_t *) (((uint8_t *)surface->pixels) +  /* Start at top of RAM */
                  (y * surface->pitch) +  /* Go down Y lines */
                  (x * bpp));             /* Go in X pixels */
 
@@ -1065,14 +1154,14 @@ Uint32 sdlutil::getpixel(SDL_Surface *surface, int x, int y) {
       else
         pixel = p[0] | p[1] << 8 | p[2] << 16;
     } else if (bpp == 4) {    /* 32-bit display */
-      pixel = *(Uint32 *)p;
+      pixel = *(uint32_t *)p;
     }
   }
   return pixel;
 }
 
 /* based on getpixel above */
-void sdlutil::setpixel(SDL_Surface *surface, int x, int y, Uint32 px) {
+void sdlutil::setpixel(SDL_Surface *surface, int x, int y, uint32_t px) {
   /* Check that x/y values are within the bounds of this surface... */
 
   if (x >= 0 && y >= 0 && x < surface -> w && y < surface -> h) {
@@ -1083,8 +1172,8 @@ void sdlutil::setpixel(SDL_Surface *surface, int x, int y, Uint32 px) {
     /* Set a pointer to the exact location in memory of the pixel
        in question: */
 
-    Uint8 *p =
-      (Uint8 *) (((Uint8 *)surface->pixels) +  /* Start at top of RAM */
+    uint8_t *p =
+      (uint8_t *) (((uint8_t *)surface->pixels) +  /* Start at top of RAM */
                  (y * surface->pitch) +  /* Go down Y lines */
                  (x * bpp));             /* Go in X pixels */
 
@@ -1116,25 +1205,25 @@ void sdlutil::setpixel(SDL_Surface *surface, int x, int y, Uint32 px) {
         }
       }
     } else if (bpp == 4) {    /* 32-bit display */
-      *(Uint32 *)p = px;
+      *(uint32_t *)p = px;
     }
   }
 }
 
 void sdlutil::drawline(SDL_Surface *screen, int x0, int y0,
                        int x1, int y1,
-                       Uint8 R, Uint8 G, Uint8 B) {
+                       uint8_t R, uint8_t G, uint8_t B) {
   Line l{x0, y0, x1, y1};
 
   /* direct pixel access */
   slock(screen);
 
   if (4 == screen->format->BytesPerPixel) {
-    const Uint32 color = SDL_MapRGB(screen->format, R, G, B);
+    const uint32_t color = SDL_MapRGB(screen->format, R, G, B);
     // This is the most common case, so unroll.
-    const Uint32 stride = screen->pitch/4;
+    const uint32_t stride = screen->pitch/4;
 
-    Uint32 *bufp = (Uint32 *)screen->pixels;
+    uint32_t *bufp = (uint32_t *)screen->pixels;
 
     bufp[y0 * stride + x0] = color;
     int x, y;
@@ -1155,7 +1244,7 @@ void sdlutil::drawline(SDL_Surface *screen, int x0, int y0,
 
 void sdlutil::DrawClipLine32(SDL_Surface *screen, int x0, int y0,
                              int x1, int y1,
-                             Uint32 color) {
+                             uint32_t color) {
   // Only 32-bit!
   if (screen->format->BytesPerPixel != 4) return;
 
@@ -1172,7 +1261,7 @@ void sdlutil::DrawClipLine32(SDL_Surface *screen, int x0, int y0,
 
   Line l{x0, y0, x1, y1};
 
-  Uint32 *bufp = (Uint32 *)screen->pixels;
+  uint32_t *bufp = (uint32_t *)screen->pixels;
   int stride = screen->pitch >> 2;
   auto SetPixel = [color, bufp, stride](int x, int y) {
       bufp[y * stride + x] = color;
@@ -1193,7 +1282,7 @@ void sdlutil::DrawClipLine32(SDL_Surface *screen, int x0, int y0,
 
 void sdlutil::drawclipline(SDL_Surface *screen, int x0, int y0,
                            int x1, int y1,
-                           Uint8 R, Uint8 G, Uint8 B) {
+                           uint8_t R, uint8_t G, uint8_t B) {
   /* PERF could maprgb once */
 
   /* PERF clipping can be much more efficient, but it is a
@@ -1229,7 +1318,7 @@ void sdlutil::drawclipline(SDL_Surface *screen, int x0, int y0,
 bool sdlutil::clipsegment(float cx0, float cy0, float cx1, float cy1,
                           float &x0, float &y0, float &x1, float &y1) {
   // Cohen--Sutherland clipping.
-  enum Code : Uint32 {
+  enum Code : uint32_t {
     LEFT = 1 << 0,
     RIGHT = 1 << 1,
     BOTTOM = 1 << 2,
@@ -1237,7 +1326,7 @@ bool sdlutil::clipsegment(float cx0, float cy0, float cx1, float cy1,
   };
 
   auto GetCode = [cx0, cy0, cx1, cy1](float x, float y) {
-    Uint32 code = 0;
+    uint32_t code = 0;
     if (x < cx0) code |= LEFT;
     else if (x > cx1) code |= RIGHT;
     if (y < cy0) code |= TOP;
@@ -1246,7 +1335,7 @@ bool sdlutil::clipsegment(float cx0, float cy0, float cx1, float cy1,
   };
 
   // Line completely misses screen.
-  Uint32 code0 = GetCode(x0, y0), code1 = GetCode(x1, y1);
+  uint32_t code0 = GetCode(x0, y0), code1 = GetCode(x1, y1);
   for (;;) {
     if (0 == (code0 | code1)) {
       // Both endpoints inside now.
@@ -1258,7 +1347,7 @@ bool sdlutil::clipsegment(float cx0, float cy0, float cx1, float cy1,
       return false;
 
     auto Update = [cx0, cy0, cx1, cy1, x0, y0, x1, y1, &GetCode]
-      (float &x, float &y, Uint32 &code) {
+      (float &x, float &y, uint32_t &code) {
       // (Beware that x aliases x0 or x1, etc.
       if (code & TOP) {
         x = x0 + (x1 - x0) * (cy1 - y0) / (y1 - y0);
@@ -1283,7 +1372,7 @@ bool sdlutil::clipsegment(float cx0, float cy0, float cx1, float cy1,
 }
 
 void sdlutil::drawbox(SDL_Surface *s, int x, int y, int w, int h,
-                      Uint8 r, Uint8 g, Uint8 b) {
+                      uint8_t r, uint8_t g, uint8_t b) {
   // PERF can unroll a lot of this. Also, straight lines can be
   // drawn much more easily than with Bresenham, and can be clipped
   // much more easily as well.
@@ -1298,7 +1387,7 @@ void sdlutil::drawbox(SDL_Surface *s, int x, int y, int w, int h,
 }
 
 void sdlutil::DrawBox32(SDL_Surface *s, int x, int y, int w, int h,
-                        Uint32 rgba) {
+                        uint32_t rgba) {
   // PERF: Same as above.
   // Top
   DrawClipLine32(s, x, y, x + w - 1, y, rgba);
@@ -1314,13 +1403,13 @@ void sdlutil::DrawBox32(SDL_Surface *s, int x, int y, int w, int h,
 /* XXX change to use function pointer? */
 /* lock before calling */
 void sdlutil::drawpixel(SDL_Surface *screen, int x, int y,
-                        Uint8 R, Uint8 G, Uint8 B) {
-  Uint32 color = SDL_MapRGB(screen->format, R, G, B);
+                        uint8_t R, uint8_t G, uint8_t B) {
+  uint32_t color = SDL_MapRGB(screen->format, R, G, B);
   switch (screen->format->BytesPerPixel) {
   case 1: // Assuming 8-bpp
     {
-      Uint8 *bufp;
-      bufp = (Uint8 *)screen->pixels + y*screen->pitch + x;
+      uint8_t *bufp;
+      bufp = (uint8_t *)screen->pixels + y*screen->pitch + x;
       *bufp = color;
     }
     break;
@@ -1333,8 +1422,8 @@ void sdlutil::drawpixel(SDL_Surface *screen, int x, int y,
     break;
   case 3: // Slow 24-bpp mode, usually not used
     {
-      Uint8 *bufp;
-      bufp = (Uint8 *)screen->pixels + y*screen->pitch + x * 3;
+      uint8_t *bufp;
+      bufp = (uint8_t *)screen->pixels + y*screen->pitch + x * 3;
       if (SDL_BYTEORDER == SDL_LIL_ENDIAN) {
         bufp[0] = color;
         bufp[1] = color >> 8;
@@ -1348,8 +1437,8 @@ void sdlutil::drawpixel(SDL_Surface *screen, int x, int y,
     break;
   case 4: // Probably 32-bpp
     {
-      Uint32 *bufp;
-      bufp = (Uint32 *)screen->pixels + y*screen->pitch/4 + x;
+      uint32_t *bufp;
+      bufp = (uint32_t *)screen->pixels + y*screen->pitch/4 + x;
       *bufp = color;
     }
     break;
@@ -1357,10 +1446,10 @@ void sdlutil::drawpixel(SDL_Surface *screen, int x, int y,
 }
 
 void sdlutil::drawclippixel(SDL_Surface *screen, int x, int y,
-                            Uint8 R, Uint8 G, Uint8 B) {
+                            uint8_t r, uint8_t g, uint8_t b) {
   if (x < 0 || y < 0 || x >= screen->w || y >= screen->h)
     return;
-  drawpixel(screen, x, y, R, G, B);
+  drawpixel(screen, x, y, r, g, b);
 }
 
 
@@ -1398,7 +1487,7 @@ SDL_Surface *sdlutil::fliphoriz(SDL_Surface *src) {
 
   for (int y = 0; y < src->h; y++) {
     for (int x = 0; x < src->w; x++) {
-      Uint32 px = getpixel(src, x, y);
+      uint32_t px = getpixel(src, x, y);
       setpixel(dst, (src->w - x) - 1, y, px);
     }
   }
@@ -1413,8 +1502,8 @@ SDL_Surface *sdlutil::fliphoriz(SDL_Surface *src) {
 // Bresenham's algorithm, then drawing a horizontal line between the generated x coordinates
 // when they advance. ASSUMES bpp = 4.
 static void BresenhamTriangle32(SDL_Surface *surf,
-                                int x1, int y1, int x2, int y23, int x3, Uint32 color) {
-  Uint32 *bufp = (Uint32 *)surf->pixels;
+                                int x1, int y1, int x2, int y23, int x3, uint32_t color) {
+  uint32_t *bufp = (uint32_t *)surf->pixels;
   const int height = surf->h;
   const int width = surf->w;
   const int stride = surf->pitch >> 2;
@@ -1427,7 +1516,7 @@ static void BresenhamTriangle32(SDL_Surface *surf,
       x1 = std::max(x1, 0);
       x2 = std::min(x2, width - 1);
 
-      Uint32 *p = &bufp[y * stride + x1];
+      uint32_t *p = &bufp[y * stride + x1];
       for (int i = 0; i < (x2 - x1); i++) {
         *p = color;
         p++;
@@ -1512,7 +1601,7 @@ static void BresenhamTriangle32(SDL_Surface *surf,
 
 void sdlutil::FillTriangle32(SDL_Surface *surf,
                              int x1, int y1, int x2, int y2, int x3, int y3,
-                             Uint32 color) {
+                             uint32_t color) {
   // Only 32-bit!
   if (surf->format->BytesPerPixel != 4) return;
 
@@ -1521,9 +1610,10 @@ void sdlutil::FillTriangle32(SDL_Surface *surf,
   // BresenhamTriangle32. To figure out what case we're in, sort the
   // three vertices such that y1 <= y2 <= y3.
 
-  // PERF: This is "sort all but the last, sort all but the first, and then sort all
-  // but the last" which is decent here (max 3 comparisons), although in some branches
-  // we can know that we don't need to execute other ones.
+  // PERF: This is "sort all but the last, sort all but the first, and
+  // then sort all but the last" which is decent here (max 3
+  // comparisons), although in some branches we can know that we don't
+  // need to execute other ones.
   if (y1 > y2) {
     SWAP(1, 2);
   }

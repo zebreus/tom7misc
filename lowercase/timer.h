@@ -55,7 +55,6 @@ struct Timer {
   // out. Use .QuadPart for the 64-bit quantity.
   LARGE_INTEGER starttime;
   double saved_ms = 0.0;
-  bool stopped = false;
 };
 
 #endif

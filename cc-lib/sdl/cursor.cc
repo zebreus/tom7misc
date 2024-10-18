@@ -1,10 +1,11 @@
 
 #include "cursor.h"
 
-#include "SDL.h"
+#include "SDL_mouse.h"
 // #include "base/logging.h"
 
 #include <vector>
+#include <cstdint>
 
 using namespace std;
 
@@ -12,11 +13,11 @@ using namespace std;
 SDL_Cursor *Cursor::MakeCursor(int width, int height, int hot_x, int hot_y,
                                const char *ascii_img) {
   if (width % 8) return nullptr;
-  std::vector<Uint8> mask(width * height / 8, 0);
-  std::vector<Uint8> data(width * height / 8, 0);
+  std::vector<uint8_t> mask(width * height / 8, 0);
+  std::vector<uint8_t> data(width * height / 8, 0);
 
   for (int i = 0; i < (width * height) / 8; i++) {
-    Uint8 db = 0, mb = 0;
+    uint8_t db = 0, mb = 0;
     for (int b = 0; b < 8; b++) {
       db <<= 1;
       mb <<= 1;
@@ -36,7 +37,7 @@ SDL_Cursor *Cursor::MakeCursor(int width, int height, int hot_x, int hot_y,
     data[i] = db;
     mask[i] = mb;
   }
-  
+
   return SDL_CreateCursor(data.data(), mask.data(), width, height,
                           hot_x, hot_y);
 }

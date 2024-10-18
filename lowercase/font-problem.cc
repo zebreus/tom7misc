@@ -2,13 +2,21 @@
 #include "font-problem.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <functional>
+#include <limits>
 #include <map>
+#include <mutex>
+#include <optional>
 #include <set>
 #include <string>
+#include <thread>
+#include <tuple>
+#include <utility>
 #include <vector>
-
-#include "base/stringprintf.h"
 
 #include "network.h"
 
@@ -22,6 +30,7 @@
 #include "geom/bezier.h"
 #include "timer.h"
 #include "opt/opt.h"
+#include "base/stringprintf.h"
 
 #include "network-util.h"
 
@@ -29,6 +38,7 @@ using namespace std;
 
 using Contour = TTF::Contour;
 using uint32 = uint32_t;
+using uint8 = uint8_t;
 
 #define EXTRA_CHECKS false
 

@@ -8,8 +8,10 @@
 #ifndef _CC_LIB_SDL_SDLUTIL_H
 #define _CC_LIB_SDL_SDLUTIL_H
 
-#include "SDL.h"
+#include "SDL_video.h"
+
 #include <string>
+#include <cstdint>
 
 struct ImageRGBA;
 
@@ -19,21 +21,21 @@ struct sdlutil {
   static void sulock(SDL_Surface *surf);
 
   /* eat and ignore all the events in the queue for a few ticks */
-  static void eatevents(int ticks, Uint32 mask = 0xFFFFFFFF);
+  static void eatevents(int ticks, uint32_t mask = 0xFFFFFFFF);
 
   /* for direct pixel access: lock first, unlock after */
   static void drawpixel(SDL_Surface *surf, int x, int y,
-                        Uint8 R, Uint8 G, Uint8 B);
+                        uint8_t r, uint8_t g, uint8_t b);
   static void drawclippixel(SDL_Surface *surf, int x, int y,
-                            Uint8 R, Uint8 G, Uint8 B);
-  static Uint32 getpixel(SDL_Surface *, int x, int y);
+                            uint8_t r, uint8_t g, uint8_t b);
+  static uint32_t getpixel(SDL_Surface *, int x, int y);
   static void   setpixel(SDL_Surface *, int x, int y,
-                         Uint32 color);
+                         uint32_t color);
 
   // Assumes 32-bit surface, no bounds checking, inlined.
-  inline static void SetPixel32(SDL_Surface *, int x, int y, Uint32 color);
+  inline static void SetPixel32(SDL_Surface *, int x, int y, uint32_t color);
   // With bounds checking.
-  inline static void ClipPixel32(SDL_Surface *, int x, int y, Uint32 color);
+  inline static void ClipPixel32(SDL_Surface *, int x, int y, uint32_t color);
 
   // Load supported files using stb_image.
   static SDL_Surface *LoadImageFile(const std::string &filename);
@@ -52,18 +54,25 @@ struct sdlutil {
                            int dstx, int dsty,
                            SDL_Surface *dst);
 
+  // px is the number of destination pixels (in each dimension) per
+  // input pixel. So px=2 yields 2x2 pixels.
+  static void CopyRGBARectNX(const ImageRGBA &img, int px,
+                             int srcx, int srcy, int srcw, int srch,
+                             int dstx, int dsty,
+                             SDL_Surface *dst);
+
   // Clone the surface. The copy will need to be freed with SDL_FreeSurface.
   static SDL_Surface *duplicate(SDL_Surface *surf);
 
   // Unchecked--don't draw outside the surface!
   static void drawline(SDL_Surface *, int x1, int y1, int x2, int y2,
-                       Uint8 R, Uint8 G, Uint8 B);
+                       uint8_t R, uint8_t G, uint8_t B);
 
   static void drawclipline(SDL_Surface *, int x1, int y1, int x2, int y2,
-                           Uint8 R, Uint8 G, Uint8 B);
+                           uint8_t R, uint8_t G, uint8_t B);
   // Sets pixels; doesn't blend alpha.
   static void DrawClipLine32(SDL_Surface *, int x1, int y1, int x2, int y2,
-                             Uint32 color);
+                             uint32_t color);
 
   // Efficiently clip the line segment (x0,y0)-(x1,y1) to the rectangle
   // (cx0,cy0)-(cx1,cy1). Modifies the endpoints to place them on the
@@ -75,15 +84,15 @@ struct sdlutil {
 
   // With clipping.
   static void drawbox(SDL_Surface *, int x1, int y1, int w, int h,
-                      Uint8 r, Uint8 g, Uint8 b);
+                      uint8_t r, uint8_t g, uint8_t b);
   static void DrawBox32(SDL_Surface *s, int x, int y, int w, int h,
-                        Uint32 rgba);
+                        uint32_t rgba);
 
   // Note: uint32 must be in the correct byte order for the surface.
-  static void clearsurface(SDL_Surface *, Uint32);
+  static void clearsurface(SDL_Surface *, uint32_t);
   // Correctly maps color to the surface's byte order.
-  static void ClearSurface(SDL_Surface *, Uint8 r, Uint8 g, Uint8 b,
-                           Uint8 a = 255);
+  static void ClearSurface(SDL_Surface *, uint8_t r, uint8_t g, uint8_t b,
+                           uint8_t a = 255);
 
   /* make a n pixel border around a surface. */
   static void outline(SDL_Surface *, int n, int r, int g, int b, int a);
@@ -93,24 +102,24 @@ struct sdlutil {
   static void blitall(SDL_Surface *src, SDL_Surface *dst, int x, int y);
 
   /* Just like SDL_Fillrect, but no need to create SDL_Rects */
-  static void fillrect(SDL_Surface *, Uint32 color,
+  static void fillrect(SDL_Surface *, uint32_t color,
                        int x, int y, int w, int h);
 
   static void FillRectRGB(SDL_Surface *,
                           int x, int y, int w, int h,
-                          Uint8 r, Uint8 g, Uint8 b);
+                          uint8_t r, uint8_t g, uint8_t b);
 
   // Draw a circle (outline only) centered at the point with the given
   // integer radius. Sets pixels (no alpha blending). Clipped. Only
   // supports 32-bit surfaces.
   static void DrawCircle32(SDL_Surface *,
-                           int x0, int y0, int radius, Uint32 color);
+                           int x0, int y0, int radius, uint32_t color);
 
   // Draw a filled triangle of the given color (no alpha blending). Clipped.
   // Only supports 32-bit surfaces.
   static void FillTriangle32(SDL_Surface *,
                              int x1, int y1, int x2, int y2, int x3, int y3,
-                             Uint32 color);
+                             uint32_t color);
 
   /* create a rectangle of the specified size, filled with a color
      at a certain alpha value. This can then be blit to the screen. */
@@ -131,7 +140,8 @@ struct sdlutil {
   /* make a new surface with the same contents as the old, or 'color' where
      undefined */
   // XXX version that doesn't need pre-mapped color
-  static SDL_Surface *resize_canvas(SDL_Surface *s, int w, int h, Uint32 color);
+  static SDL_Surface *resize_canvas(SDL_Surface *s, int w, int h,
+                                    uint32_t color);
 
   /* print out flags and maybe other things */
   static void printsurfaceinfo(SDL_Surface *surf);
@@ -160,24 +170,24 @@ struct sdlutil {
      Deprecated -- it's almost always wrong because we don't know
      which channel is alpha. Use Mix2.
    */
-  static Uint32 mix2(Uint32, Uint32);
-  static Uint32 Mix2(const SDL_Surface *surface_for, Uint32 j, Uint32 k);
+  static uint32_t mix2(uint32_t, uint32_t);
+  static uint32_t Mix2(const SDL_Surface *surface_for, uint32_t j, uint32_t k);
 
   /* mix four 32bit colors, byte-order agnostic */
   /* Deprecated -- it's almost always wrong because we don't know
      which channel is alpha. Use Mix4. */
-  static Uint32 mix4(Uint32, Uint32, Uint32, Uint32);
-  static Uint32 Mix4(const SDL_Surface *surface_for,
-                     Uint32 j, Uint32 k, Uint32 l, Uint32 m);
+  static uint32_t mix4(uint32_t, uint32_t, uint32_t, uint32_t);
+  static uint32_t Mix4(const SDL_Surface *surface_for,
+                     uint32_t j, uint32_t k, uint32_t l, uint32_t m);
 
   /* frac should be between 0 and 1, and we get frac of the first
      color and 1-frac of the second. Note that this does not
      treat alpha specially. */
-  static Uint32 mixfrac(Uint32, Uint32, float frac);
+  static uint32_t mixfrac(uint32_t, uint32_t, float frac);
 
   /* convert from hue-saturation-value-alpha space to RGBA (compatible
      with the supplied surface) */
-  static Uint32 hsv(SDL_Surface *surf, float h, float s, float v, float a);
+  static uint32_t hsv(SDL_Surface *surf, float h, float s, float v, float a);
 
   // This is like format.format in SDL 2.0.
   // Only works for 32 BPP pixel formats.
@@ -191,13 +201,13 @@ struct sdlutil {
 // Inline functions follow.
 
 inline void sdlutil::SetPixel32(SDL_Surface *surf, int x, int y,
-                                Uint32 color) {
-  Uint32 *bufp = (Uint32 *)surf->pixels;
+                                uint32_t color) {
+  uint32_t *bufp = (uint32_t *)surf->pixels;
   bufp[y * (surf->pitch >> 2) + x] = color;
 }
 
 inline void sdlutil::ClipPixel32(SDL_Surface *surf, int x, int y,
-                                 Uint32 color) {
+                                 uint32_t color) {
   if (x < 0 || y < 0) return;
   if (x >= surf->w) return;
   if (y >= surf->h) return;

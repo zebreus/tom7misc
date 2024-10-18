@@ -1,10 +1,12 @@
 
 #include "font.h"
-#include "SDL.h"
-#include "sdlutil.h"
 
+#include <cstdlib>
 #include <string>
 #include <memory>
+
+#include "sdlutil.h"
+#include "SDL_video.h"
 
 using namespace std;
 
