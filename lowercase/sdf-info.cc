@@ -1,12 +1,16 @@
 
+#include <cmath>
+#include <cstdio>
 #include <vector>
 #include <string>
 #include <algorithm>
 #include <cstdint>
 
+#include "font-problem.h"
 #include "loadfonts.h"
 #include "timer.h"
-#include "font-problem.h"
+
+#include "image.h"
 
 using namespace std;
 
@@ -66,7 +70,7 @@ int main(int argc, char **argv) {
     }
     done++;
     if (done % 1000 == 0) {
-      printf ("%lld/%lld done\n", done, (int64)loadfonts.fonts.size());
+      printf("%lld/%lld done\n", done, (int64)loadfonts.fonts.size());
     }
   }
   printf("Done in %.2f\n", avg_timer.MS() / 1000.0);
@@ -112,7 +116,7 @@ int main(int argc, char **argv) {
       else if (f >= 0.66) g = v;
       else r = g = b = v;
       thresh_out.SetPixel(x, y, r, g, b, 0xFF);
-      printf("%d ", count);
+      printf("%lld ", count);
     }
     printf("\n");
   }

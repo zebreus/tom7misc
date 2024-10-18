@@ -1,6 +1,8 @@
 
+#include <cstdio>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "network.h"
 #include "font-problem.h"

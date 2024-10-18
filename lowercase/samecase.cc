@@ -2,7 +2,9 @@
 // transformations (x = ax + b, y = cx + d) of A-Z.
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 #include <stdio.h>
 #include <unistd.h>
@@ -33,7 +35,7 @@ enum Result {
   NO_TRANSFORM,
   SAME_CASE,
 };
-  
+
 
 int main(int argc, char **argv) {
 
@@ -52,7 +54,7 @@ int main(int argc, char **argv) {
                  }
 
                  TTF ttf{filename};
-                 
+
                  optional<tuple<double, double, double>> same =
                    TTFOps::GetSameCase(ttf);
 
@@ -127,7 +129,7 @@ int main(int argc, char **argv) {
   CHECK(Util::WriteLinesToFile("bitmap_diffs.txt", outlines));
 
   printf("\nDone!\n");
-  
+
   return 0;
 }
 

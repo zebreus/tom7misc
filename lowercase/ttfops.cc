@@ -1,6 +1,8 @@
 
 #include "ttfops.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <vector>
 #include <utility>
@@ -8,7 +10,10 @@
 #include <tuple>
 #include <cmath>
 
+#include "base/logging.h"
+#include "fonts/ttf.h"
 #include "opt/opt.h"
+#include "stb_truetype.h"
 
 using namespace std;
 

@@ -1,10 +1,15 @@
 
+#include <cstdio>
+#include <mutex>
+#include <utility>
 #include <vector>
 #include <string>
 #include <algorithm>
 #include <cstdint>
 #include <memory>
 
+#include "fonts/ttf.h"
+#include "util.h"
 #include "timer.h"
 #include "font-problem.h"
 
@@ -34,15 +39,15 @@ struct Config {
 
   // Output name and file.
   string font_name;
-  string filename; 
+  string filename;
   string copyright;
-  
+
   float extra_scale = 1.0f;
   float linegap = 0.0f;
   float blank_width = 1.0f;
-  
+
   std::vector<int> row_max_points;
-  
+
   vector<Op> letters;
 };
 
@@ -61,7 +66,7 @@ Config Franklin() {
   cfg.linegap = -0.1f;
   */
   cfg.blank_width = 0.75f;
-  
+
   for (int i = 32; i < 127; i++) {
     cfg.letters.emplace_back(i, i);
   }
@@ -87,7 +92,7 @@ Config BuggyFuturda() {
   cfg.row_max_points = {
     38, 14, 10,
   };
-  
+
   for (int i = 32; i < 127; i++) {
     cfg.letters.emplace_back(i, i);
   }
@@ -110,7 +115,7 @@ Config FirstFuturda() {
   cfg.row_max_points = {
     100, 25, 16,
   };
-  
+
   for (int i = 32; i < 127; i++) {
     cfg.letters.emplace_back(i, i);
   }
@@ -129,7 +134,7 @@ Config NewFuturda() {
   cfg.row_max_points = {
     38, 14, 10,
   };
-  
+
   for (int i = 32; i < 127; i++) {
     cfg.letters.emplace_back(i, i);
   }
@@ -149,7 +154,7 @@ Config FirstSans() {
   cfg.row_max_points = {
     100, 25, 16,
   };
-  
+
   for (int i = 32; i < 127; i++) {
     cfg.letters.emplace_back(i, i);
   }
@@ -181,7 +186,7 @@ static void GenerateOne(const Network &net, Config cfg) {
 
                   FontProblem::VectorRemoveDegenerateContours(&ch,
                                                               0.05f);
-                  
+
                   FontProblem::GuessWidth(&ch);
 
                   return make_pair(op.output_char, ch);
@@ -225,7 +230,7 @@ int main(int argc, char **argv) {
   // const Config config = FirstFuturda();
   // const Config config = FirstSans();
   const Config config = NewFuturda();
-  
+
   std::unique_ptr<Network> make_lowercase;
   make_lowercase.reset(Network::ReadNetworkBinary(config.model));
 

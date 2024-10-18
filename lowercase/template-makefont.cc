@@ -1,36 +1,26 @@
 
+#include <cstdio>
+#include <initializer_list>
+#include <mutex>
+#include <utility>
 #include <vector>
 #include <string>
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 
-#include "timer.h"
 #include "font-problem.h"
+#include "fonts/ttf.h"
 
+#include "base/logging.h"
 #include "image.h"
-#include "lines.h"
-#include "base/stringprintf.h"
-
 #include "threadutil.h"
+#include "util.h"
 
 using namespace std;
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
 using int64 = int64_t;
-
-
-// XXX somehow needs to be shared?
-static constexpr int ROW0_MAX_PTS = 38;
-static constexpr int ROW1_MAX_PTS = 14;
-static constexpr int ROW2_MAX_PTS = 10;
-constexpr std::initializer_list<int> row_max_points = {
-  ROW0_MAX_PTS,
-  ROW1_MAX_PTS,
-  ROW2_MAX_PTS,
-};
-
 
 struct Op {
   char input_char;
@@ -52,7 +42,7 @@ struct Config {
   float blank_width = 0.66f;
 
   int BSIZE = 800;
-  
+
   vector<pair<string, string>> templates = {
     {"upperercase.png",
      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"},
@@ -99,7 +89,7 @@ static void GenerateOne(Config cfg) {
       bitmaps.emplace_back(ch, std::move(bitmap));
     }
   }
-  
+
   vector<pair<char, TTF::Char>> chars =
     ParallelMap(bitmaps,
                 [&](pair<char, ImageRGBA> letter) {
@@ -115,7 +105,7 @@ static void GenerateOne(Config cfg) {
                       bitmap.SetPixel(x, y, r > 0xA0 ? 0xFF : 0x00);
                     }
                   }
-                  
+
                   ImageF sdf(
                       FontProblem::SDFFromBitmap(SDF_CONFIG, bitmap));
 
@@ -137,7 +127,7 @@ static void GenerateOne(Config cfg) {
                     MutexLock ml(&out_m);
                     printf("[%c] \n", codepoint);
                   }
-                  
+
                   return make_pair((char)codepoint, ttf_char);
                 },
                 16);
@@ -154,7 +144,7 @@ static void GenerateOne(Config cfg) {
     space.width = cfg.blank_width;
     font.chars[' '] = space;
   }
-  
+
   Util::WriteFile(cfg.filename, font.ToSFD(cfg.font_name));
   printf("Wrote %s\n", cfg.filename.c_str());
 }

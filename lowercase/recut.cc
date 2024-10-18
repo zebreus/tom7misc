@@ -25,22 +25,6 @@ using int64 = int64_t;
 
 static bool LOWERCASE = true;
 
-static string Frontslash(const string &s) {
-  string ret;
-  for (const char c : s)
-    ret += (c == '\\' ? '/' : c);
-
-  if (ret.find("d:/") == 0) {
-    ret[0] = '/';
-    ret[1] = 'd';
-  } else if (ret.find("c:/") == 0) {
-    ret[0] = '/';
-    ret[1] = 'c';
-  }
-
-  return ret;
-}
-
 static string Backslash(const string &s) {
   string ret;
   for (const char c : s)

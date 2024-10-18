@@ -1,15 +1,22 @@
 
 #include "loadfonts.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <ctime>
 #include <functional>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
-#include <shared_mutex>
 #include <thread>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
+#include "fonts/ttf.h"
+#include "image.h"
 #include "threadutil.h"
 #include "arcfour.h"
 #include "randutil.h"
@@ -46,7 +53,7 @@ static bool CaseOK(const FontDB::Info &info) {
   // Otherwise, use classifier.
   // No data? reject.
   if (info.bitmap_diffs < 0) return false;
-  
+
   // Threshold comes from PR curve where precision first
   // dips below 90%. (Recall is about 80%).
   static constexpr float THRESHOLD = 0.06563;
@@ -69,7 +76,7 @@ void VectorLoadFonts::Init() {
       }
     }
   }
-  
+
   printf("%lld eligible fonts\n", (int64)filenames_todo.size());
   ParallelApp(filenames_todo,
               [this](const string &filename) {
@@ -79,13 +86,13 @@ void VectorLoadFonts::Init() {
                   if (fonts.size() >= max_fonts)
                     return;
                 }
-                
+
                 TTF *ttf = new TTF{filename};
 
                 vector<float> v;
                 v.resize(
                     FontProblem::BufferSizeForPoints(row_max_points));
-                
+
                 // Make sure ALL letters will fit in training data.
                 for (int c = 0; c < 26; c++) {
                   int upper = 'A' + c;
@@ -98,7 +105,7 @@ void VectorLoadFonts::Init() {
                     return;
                   }
                 }
-                  
+
                 // XXX other filters
                 {
                   WriteMutexLock ml(&fonts_m);
@@ -163,12 +170,12 @@ void SDFLoadFonts::Init() {
   // towards early items in the list.
   ArcFour rc(StringPrintf("%lld", time(nullptr)));
   Shuffle(&rc, &filenames_todo);
-  
+
   {
     WriteMutexLock ml(&fonts_m);
     fonts.reserve(std::min((int64)max_fonts, (int64)filenames_todo.size()));
   }
-  
+
   printf("%lld eligible fonts\n", (int64)filenames_todo.size());
   Timer timer;
   ParallelApp(filenames_todo,
@@ -181,11 +188,11 @@ void SDFLoadFonts::Init() {
                   if (fonts.size() >= max_fonts)
                     return;
                 }
-                
+
                 std::unique_ptr<TTF> ttf{new TTF{filename}};
 
                 Font font;
-                
+
                 // Create SDFs up front, since they are expensive.
                 // We also require that the SDF is computable for every
                 // letter.
@@ -206,16 +213,16 @@ void SDFLoadFonts::Init() {
                       WriteMutexLock ml(&fonts_m);
                       num_failed++;
                     }
-                        
+
                     return;
                   }
 
                   font.sdfs.emplace_back(std::move(sdf.value()));
                 }
-                
+
                 CHECK(font.sdfs.size() == 26 * 2);
                 font.ttf = ttf.release();
-                
+
                 {
                   WriteMutexLock ml(&fonts_m);
                   fonts.push_back(std::move(font));

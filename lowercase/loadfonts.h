@@ -3,11 +3,11 @@
 #define _LOWERCASE_LOADFONTS_H
 
 #include <functional>
-#include <string>
 #include <shared_mutex>
 #include <thread>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 #include "fontdb.h"
 #include "fonts/ttf.h"

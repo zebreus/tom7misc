@@ -3,16 +3,13 @@
 #define _LOWERCASE_FONTDB_H
 
 #include <string>
-#include <vector>
 #include <cstdint>
 #include <unordered_map>
 #include <utility>
 #include <optional>
 #include <map>
-#include <algorithm>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 // Keeps track of properties of fonts.
 // Fonts have at most one type.
@@ -21,7 +18,7 @@ struct FontDB {
   static constexpr const char *DATABASE_FILENAME = "font-db.txt";
   using int64 = int64_t;
   using string = std::string;
-  
+
   enum class Type {
     // good clean fonts. These should have "normal-looking"
     // letters with good construction, no effects like outlines etc.
@@ -68,10 +65,10 @@ struct FontDB {
     int slash = ff.rfind("\\");
     return slash == string::npos ? ff : ff.substr(slash + 1, string::npos);
   }
-  
+
   // Returns the true state, false state.
   // All chars should be distinct!
-  static const pair<char, char> FlagChar(Flag f) {
+  static const std::pair<char, char> FlagChar(Flag f) {
     switch (f) {
     case Flag::SAME_CASE:
       return {'C', 'c'};
@@ -81,7 +78,7 @@ struct FontDB {
     }
   }
 
-  static const pair<Flag, bool> CharFlag(char c) {
+  static const std::pair<Flag, bool> CharFlag(char c) {
     switch (c) {
     default:
       LOG(FATAL) << "Bad flag char";
@@ -133,7 +130,7 @@ struct FontDB {
     files[s].bitmap_diffs = bitmap_diffs;
     dirty = true;
   }
-  
+
   void AssignType(const string &s, Type t) {
     if (files[s].type != Type::UNKNOWN) num_sorted--;
     files[s].type = t;
@@ -149,9 +146,9 @@ struct FontDB {
   int64 NumSorted() const {
     return num_sorted;
   }
-  
+
   void Save();
-  
+
   int64 Size() const {
     return files.size();
   }
@@ -159,8 +156,8 @@ struct FontDB {
   const std::unordered_map<string, Info> &Files() const {
     return files;
   }
-  
-  
+
+
  private:
   static string FlagString(const std::map<Flag, bool> &flags) {
     if (flags.empty()) return "_";

@@ -1,15 +1,19 @@
 
 #include "modelinfo.h"
 
+#include <cstdio>
 #include <memory>
+#include <optional>
 #include <string>
 #include <cstdint>
 #include <cmath>
 #include <time.h>
+#include <vector>
 
 #include "network.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "image.h"
 
 using namespace std;
 
@@ -49,12 +53,14 @@ int main(int argc, char **argv) {
 
   strftime(dates, 127, "%d %b %Y  %H:%M", localtime(&tt));
   vector<string> lines = {
-    StringPrintf("%s  round %lld   examples %lld   bytes %lld   real layers %d",
-                 dates,
-                 net->rounds, net->examples, net->Bytes(), net->num_layers),
-    StringPrintf("  Input: %dx%dx%d = %d                %lld total params",
-                 net->width[0], net->height[0], net->channels[0], net->num_nodes[0],
-                 net->TotalParameters()),
+    StringPrintf(
+        "%s  round %lld   examples %lld   bytes %lld   real layers %d",
+        dates,
+        net->rounds, net->examples, net->Bytes(), net->num_layers),
+    StringPrintf(
+        "  Input: %dx%dx%d = %d                %lld total params",
+        net->width[0], net->height[0], net->channels[0], net->num_nodes[0],
+        net->TotalParameters()),
   };
 
   for (int layer_idx = 0; layer_idx < net->num_layers; layer_idx++) {

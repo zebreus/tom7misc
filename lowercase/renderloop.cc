@@ -1,4 +1,6 @@
 
+#include <cstdio>
+#include <optional>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -8,13 +10,12 @@
 #include "timer.h"
 #include "font-problem.h"
 
-#include "image.h"
-#include "lines.h"
 #include "base/stringprintf.h"
+#include "fonts/ttf.h"
 #include "geom/marching.h"
-
+#include "image.h"
 #include "network.h"
-#include "threadutil.h"
+#include "util.h"
 
 using namespace std;
 
@@ -94,7 +95,7 @@ int main(int argc, char **argv) {
   const Network *net =
     LOWER ? make_lowercase.get() : make_uppercase.get();
 
-  Timer timer;  
+  Timer timer;
   {
     std::optional<ImageA> sdfo =
       helvetica.GetSDF(THE_CHAR, SDF_CONFIG.sdf_size,
@@ -118,7 +119,7 @@ int main(int argc, char **argv) {
           vector<bool> loop =
             Threshold(sdf.ResizeBilinear(SDF_SIZE * SCALE,
                                          SDF_SIZE * SCALE));
-          
+
           CHECK(start == loop) << "Wasn't a loop as promised. Use findloop.exe";
         }
         break;
@@ -134,7 +135,7 @@ int main(int argc, char **argv) {
   constexpr int RENDER_SCALE = 4;
   constexpr int TILE = (SDF_SIZE * RENDER_SCALE) + 1;
   constexpr int MAX_WIDTH = 1920 / TILE; // XXX slop
-  
+
   const int num = (int)cycle.size();
   std::vector<int> factors = Util::Factorize(num);
   int width = 1;
@@ -149,14 +150,14 @@ int main(int argc, char **argv) {
   }
 
   printf("%d width. %d / %d = %d\n", width, num, width, num / width);
-  
+
   constexpr int QUALITY = 6;
   const int TILESW = 1; // width;
   const int TILESH =
     ((num % TILESW) == 0) ? (num / TILESW) : (num / TILESW) + 1;
   printf("tiles: %d x %d\n", TILESW, TILESH);
   ImageRGBA thresh_out(TILE * TILESW, TILE * TILESH);
-  ImageRGBA sdf_out(TILE * TILESW, TILE * TILESH);  
+  ImageRGBA sdf_out(TILE * TILESW, TILE * TILESH);
   thresh_out.Clear32(0x000055FF);
   sdf_out.Clear32(0x000000FF);
   for (int i = 0; i < cycle.size(); i++) {
@@ -171,7 +172,7 @@ int main(int argc, char **argv) {
                                        SDF_SIZE * RENDER_SCALE,
                                        SDF_SIZE * RENDER_SCALE,
                                        QUALITY).GreyscaleRGBA();
-    
+
     const int y = i / TILESW;
     const int x = i % TILESW;
     // printf("%d-> %d,%d\n", i, x, y);
@@ -195,15 +196,15 @@ int main(int argc, char **argv) {
   string filename_bits = StringPrintf("%c-x%.1f-%d-%d",
                                       (LOWER ? 'l' : 'u'),
                                       SCALE, CYCLE_START, CYCLE_END);
-  
+
   string thresh_filename = StringPrintf("cycle-%s.png", filename_bits.c_str());
   string sdf_filename = StringPrintf("cycle-%s-sdf.png",
                                      filename_bits.c_str());
-  
+
   thresh_out.Save(thresh_filename);
   sdf_out.Save(sdf_filename);
   printf("Saved %s, %s\n", thresh_filename.c_str(), sdf_filename.c_str());
-  
+
   // Now generate a triangulated mesh.
   // The input to the marching cubes algorithm is a 3D SDF, which we
   // make by just stacking up the SDFs we just computed. The x,y
@@ -211,23 +212,23 @@ int main(int argc, char **argv) {
   // is earlier.
 
   using Pos = MarchingCubes::Pos;
-  
+
   // Dimensions will be SDF_SIZE x SDF_SIZE x ZSIZE;
   constexpr float ZSIZE = 3.0f * SDF_SIZE;
   // Note that with linear filtering, the output mesh will
   // inherently be faceted, maybe a lot!
   constexpr float CELLSIZE = 0.5f;
-  
+
   auto SDF3D = [&cycle](Pos pos) -> float {
       // Trilinear filter: Find the two slices that this
       // point lies between, do bilinear sample of them,
       // and linearly interpolate.
       float zidx = (pos.z / ZSIZE) * (cycle.size() - 1);
-      
+
       const int z0 = zidx;
       const int z1 = z0 + 1;
       const float zf = zidx - z0;
-      
+
       auto Sample = [&cycle, &pos](int z) -> float {
           if (z < 0) return 0.0f;
           if (z >= cycle.size()) return 0.0f;
@@ -238,7 +239,7 @@ int main(int argc, char **argv) {
       const float s1 = Sample(z1);
 
       const float s = s0 * (1.0f - zf) + s1 * zf;
-      
+
       // s is in [0,1] with onedge_value/255 being the cutoff.
       // for mc we want 0 as onedge, with positive meaning outside.
 
@@ -254,7 +255,7 @@ int main(int argc, char **argv) {
                             Pos(SDF_SIZE, SDF_SIZE, ZSIZE),
                             CELLSIZE, SDF3D);
   printf("Got mesh in %.2fs\n", triangulate.MS() / 1000.0f);
-  
+
   using Vertex = MarchingCubes::Vertex;
   string obj = "o isosurface\n";
   for (const Vertex &v : mesh.vertices) {
@@ -271,13 +272,13 @@ int main(int argc, char **argv) {
   }
 
   Util::WriteFile("loop.obj", obj);
-  
+
   printf("Triangulated in %.2fs\n"
          "Mesh size %d verts, %d tris\n",
          triangulate.MS() / 1000.0f,
          (int)mesh.vertices.size(),
          (int)mesh.triangles.size());
-  
+
   printf("Done in %.2fs\n", timer.MS() / 1000.0);
   return 0;
 }

@@ -7,22 +7,21 @@
 // (a fake single-layer network) which can then be added to a model with
 // widen.exe.
 
-#include <string.h>
+#include <cstdint>
+#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
+#include <thread>
 #include <time.h>
 
 #include <unordered_map>
 #include <cmath>
-#include <chrono>
 #include <algorithm>
 #include <tuple>
 #include <utility>
-#include <set>
 #include <vector>
-#include <map>
 #include <unordered_set>
-#include <deque>
 #include <shared_mutex>
 
 #include "base/stringprintf.h"
@@ -31,7 +30,6 @@
 #include "util.h"
 #include "threadutil.h"
 #include "randutil.h"
-#include "base/macros.h"
 #include "color-util.h"
 #include "image.h"
 #include "lines.h"
@@ -39,6 +37,7 @@
 #include "loadfonts.h"
 #include "network.h"
 
+#include "ansi.h"
 #include "timer.h"
 #include "font-problem.h"
 #include "autoparallel.h"
@@ -63,6 +62,7 @@ using uchar = uint8_t;
 
 using uint32 = uint32_t;
 using uint64 = uint64_t;
+using int64 = int64_t;
 
 static constexpr int NUM_EVAL_EXAMPLES = 26 * 4096;
 // static constexpr int NUM_EVAL_EXAMPLES = 26 * 16; // FIXME just to test
@@ -124,16 +124,6 @@ static void CheckIsPermutation(const std::vector<int> &perm) {
   // (which implies found[i] for all i)
 }
 
-static std::tuple<uint8, uint8, uint8> FloatColor(float f) {
-  if (f > 0.0f) {
-    uint8 v = FloatByte(f);
-    return {0, v, 20};
-  } else {
-    uint8 v = FloatByte(-f);
-    return {v, 0, 20};
-  }
-}
-
 static constexpr float ByteFloat(uint8 b) {
   return b * (1.0 / 255.0f);
 }
@@ -163,21 +153,21 @@ static void Generate(const std::string &model_filename,
   const int num_best_features = num_output_features / TAKE_BEST_STDDEV;
 
   printf("Need to generate %d candidate features\n", num_features);
-  
+
   ArcFour rc(StringPrintf("%lld,%lld,%lld,%s",
-                          (int64)time(nullptr),
+                          (int64_t)time(nullptr),
                           net->rounds,
                           net->Bytes(),
                           model_filename.c_str()));
-  
+
   CHECK(net->channels[0] == 1) << "Only single-channel inputs are supported";
   const int width = net->width[0];
   const int height = net->height[0];
   printf("Input image is %dx%d\n", width, height);
-  
+
   const int feature_size = net->layers[0].indices_per_node;
   printf("Feature size (=ipn of first layer): %d\n", feature_size);
-  
+
   AutoParallelComp eval_comp(32, 500, false, "autoparallel.eval-feature.txt");
 
   CHECK(load_fonts != nullptr) << "LoadFonts must be created first.";
@@ -193,7 +183,7 @@ static void Generate(const std::string &model_filename,
         break;
     }
 
-    Printf("Not enough training data loaded yet (%d/%d)!\n",
+    Printf("Not enough training data loaded yet (%lld/%d)!\n",
            num_fonts, ENOUGH_FONTS);
     std::this_thread::sleep_for(1s);
     if (ReadWithLock(&should_die_m, &should_die))
@@ -204,7 +194,7 @@ static void Generate(const std::string &model_filename,
   examples.reserve(NUM_EVAL_EXAMPLES);
 
   double gen_examples_ms = 0.0, activate_ms = 0.0;
-  
+
   auto PopulateExampleFromFont = [&rc](bool lowercase_input,
                                        const SDFLoadFonts::Font &f,
                                        TrainingExample *example) {
@@ -223,9 +213,9 @@ static void Generate(const std::string &model_filename,
       example->letter = letter;
       // indices into Font::sdfs, which is a-z then A-Z.
       const int input_idx = lowercase_input ? letter : 26 + letter;
-      
-      example->input.resize(SDF_SIZE * SDF_SIZE);      
-      FillSDF(example->input.data(), f.sdfs[input_idx]);      
+
+      example->input.resize(SDF_SIZE * SDF_SIZE);
+      FillSDF(example->input.data(), f.sdfs[input_idx]);
     };
 
   struct ScoredFeature {
@@ -234,7 +224,7 @@ static void Generate(const std::string &model_filename,
     double mean = 0.0;
     double stdev = 0.0;
   };
-  
+
   vector<ScoredFeature> features;
 
   printf(ANSI_CLEAR_SCREEN);
@@ -254,15 +244,15 @@ static void Generate(const std::string &model_filename,
     examples.emplace_back(std::move(example));
     gen_examples_ms += gen_examples.MS();
   }
-  
+
   for (int feature_num = 0; feature_num < num_features; feature_num++) {
     // Move to beginning of screen
     // printf("\x1B[0;0H");
     // printf("Have %d examples    \n", (int)examples.size());
-    
+
     // Make a random feature, which is a set of distinct
     // indices mapped to a weight.
-    
+
     std::unordered_map<int, float> feature;
     // TODO: Support multiple geometries here!
 
@@ -293,11 +283,11 @@ static void Generate(const std::string &model_filename,
           int dy = (y1 - y0);
           float len = sqrtf(dx * dx + dy * dy);
         */
-        
+
         int x2 = RandTo(&rc, width);
         int y2 = RandTo(&rc, height);
         int x3 = RandTo(&rc, width);
-        int y3 = RandTo(&rc, height);   
+        int y3 = RandTo(&rc, height);
 
         if (!LineIntersection(x0, y0, x1, y1,
                               x2, y2, x3, y3).has_value()) {
@@ -311,8 +301,8 @@ static void Generate(const std::string &model_filename,
     // Order all inputs by their distance to these line segments.
     vector<pair<int, float>> pospts, negpts;
     pospts.reserve(width * height);
-    negpts.reserve(width * height);    
-    
+    negpts.reserve(width * height);
+
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
         const int idx = y * width + x;
@@ -328,7 +318,7 @@ static void Generate(const std::string &model_filename,
                                        std::get<3>(line2),
                                        x, y);
         pospts.emplace_back(idx, dpos);
-        negpts.emplace_back(idx, dneg); 
+        negpts.emplace_back(idx, dneg);
       }
     }
 
@@ -340,10 +330,10 @@ static void Generate(const std::string &model_filename,
     // In case of ties, start from a shuffled array to
     // avoid weird biases.
     Shuffle(&rc, &pospts);
-    Shuffle(&rc, &negpts);    
+    Shuffle(&rc, &negpts);
     std::sort(pospts.begin(), pospts.end(), ByDist);
-    std::sort(negpts.begin(), negpts.end(), ByDist);    
-    
+    std::sort(negpts.begin(), negpts.end(), ByDist);
+
     int negleft = feature_size / 2;
     // TODO: I think it would be better if the weights were reduced
     // as we got further from the line, right?
@@ -352,7 +342,7 @@ static void Generate(const std::string &model_filename,
     const float negweight = -1 / (float)negleft;
     int posleft = feature_size - negleft;
     const float posweight = 1 / (float)posleft;
-    
+
     int pi = 0, ni = 0;
     while (negleft > 0 || posleft > 0) {
       auto Next = [&feature](int &i, int &left,
@@ -375,7 +365,7 @@ static void Generate(const std::string &model_filename,
       Next(pi, posleft, pospts, posweight);
       Next(ni, negleft, negpts, negweight);
     }
-   
+
 
     // Run the feature on each of the examples, in parallel.
     Timer activate_timer;
@@ -392,7 +382,7 @@ static void Generate(const std::string &model_filename,
           });
 
     // eval_comp.PrintHisto();
-    
+
     double mean_activation = 0.0;
     for (float f : activations) mean_activation += f;
     mean_activation /= activations.size();
@@ -407,7 +397,7 @@ static void Generate(const std::string &model_filename,
 
     // Apply bias.
     for (float &a : activations) a -= mean_activation;
-    
+
     features.push_back({.inputs = std::move(feature),
                         .centered_act = std::move(activations),
                         .mean = mean_activation,
@@ -483,7 +473,7 @@ static void Generate(const std::string &model_filename,
       }
       img.Save(filename);
     };
-    
+
   MakeImage(features, best, "makefeatures.png");
 
 
@@ -496,7 +486,7 @@ static void Generate(const std::string &model_filename,
   }
 
   CHECK(features.size() == num_best_features);
-  
+
   // The features with the highest variance on examples might
   // nonetheless be highly correlated with one another (in fact this
   // seems very common). So next, find features that are different
@@ -517,7 +507,7 @@ static void Generate(const std::string &model_filename,
     for (int b = 0; b < a; b++) {
       double sqdist = 0.0;
       const vector<float> &aact = features[a].centered_act;
-      const vector<float> &bact = features[b].centered_act;      
+      const vector<float> &bact = features[b].centered_act;
       CHECK_EQ(aact.size(), bact.size());
       for (int i = 0; i < aact.size(); i++) {
         float d = aact[i] - bact[i];
@@ -548,12 +538,12 @@ static void Generate(const std::string &model_filename,
       CHECK(thread_id < rcs.size());
       ArcFour *rc = rcs[thread_id];
       printf("Thread %d: %02x\n", thread_id, rc->Byte());
-      
+
       for (int iter = 0; iter < TRIES_PER_THREAD; iter++) {
         // Generate a random permutation. The first num_output_features in
         // the permutation is the current selection.
 
-        
+
         vector<int> perm;
         perm.reserve(nbf);
         for (int i = 0; i < nbf; i++) perm.push_back(i);
@@ -569,7 +559,7 @@ static void Generate(const std::string &model_filename,
             }
             return dist;
           };
-        
+
         // Compute initial distance.
         double dist = GetDist();
 
@@ -596,7 +586,7 @@ static void Generate(const std::string &model_filename,
         // XXX Now try to hill-climb.
 
         CheckIsPermutation(perm);
-        
+
         int64 climbed = 0, swapped = 0;
         bool improved = false;
         do {
@@ -634,7 +624,7 @@ static void Generate(const std::string &model_filename,
                   double rdist = GetDist();
                   CHECK(fabs(dist - rdist) < 0.1) << dist << " vs " << rdist;
                 }
-                
+
                 improved = true;
               } else {
                 if (false)
@@ -657,7 +647,7 @@ static void Generate(const std::string &model_filename,
                dist);
       }
 
-      
+
     });
   const double dist_ms = dist_timer.MS();
 
@@ -666,11 +656,11 @@ static void Generate(const std::string &model_filename,
   printf("Max distance was %.2f, with these feature ids:\n", best_dist);
   for (int i : best_out) printf("%d, ", i);
   printf("\n");
-  
+
   MakeImage(features, best_out_set, "distfeatures.png");
 
   eval_comp.PrintHisto();
-  
+
   Timer make_timer;
   {
     // Now save 'em. We make a fake one-layer network since the
@@ -703,15 +693,15 @@ static void Generate(const std::string &model_filename,
         layer->weights.push_back(weight);
       }
     }
-      
+
     save.ReallocateInvertedIndices();
     Network::ComputeInvertedIndices(&save, 8);
     save.StructuralCheck();
-    Network::SaveNetworkBinary(save, "makefeatures.val");    
+    Network::SaveNetworkBinary(save, "makefeatures.val");
   }
   const double make_ms = make_timer.MS();
-  
-  
+
+
   printf("gen examples: %.2fs\n"
          "activations: %.2fs\n"
          "dist: %.2fs\n"
@@ -730,15 +720,8 @@ int main(int argc, char **argv) {
   // SetConsoleCursorPosition). In the modern world these are actually
   // deprecated; windows prefers you to use control sequences like ANSI.
   // But these are only enabled if VIRTUAL_TERMINAL_PROCSESING is on.
-  HANDLE stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);
-  DWORD out_mode;
-  if (stdout_handle != INVALID_HANDLE_VALUE &&
-      GetConsoleMode(stdout_handle, &out_mode)) {
-    // TODO: Could save old value and try to restore it on exit?
-    out_mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    (void)SetConsoleMode(stdout_handle, out_mode);
-  }
-  
+  ANSI::Init();
+
   // Start loading fonts in background.
   load_fonts = new SDFLoadFonts(
       []() { return ReadWithLock(&should_die_m, &should_die); },
@@ -749,7 +732,7 @@ int main(int argc, char **argv) {
   Generate("net1.val", 100, false);
 
   WriteWithLock(&should_die_m, &should_die, true);
-  
+
   return 0;
 }
 

@@ -1,8 +1,16 @@
 
 #ifdef WIN32
 #include <windows.h>
+#include <processthreadsapi.h>
 #endif
 
+#include <array>
+#include <cmath>
+#include <cstdio>
+#include <functional>
+#include <map>
+#include <mutex>
+#include <utility>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -10,16 +18,16 @@
 #include <memory>
 #include <unordered_map>
 
-#include "timer.h"
 #include "font-problem.h"
 #include "network.h"
-#include "opt/opt.h"
-#include "image.h"
-#include "threadutil.h"
+#include "timer.h"
+
 #include "base/stringprintf.h"
+#include "image.h"
 #include "lines.h"
-
-
+#include "opt/opt.h"
+#include "threadutil.h"
+#include "util.h"
 
 using namespace std;
 
@@ -148,6 +156,7 @@ static double TrianglePenalty(const vector<double> &inputs) {
 
 // Generate input values directly, hoping that it's an SDF,
 // with penalties if it is not (or too boring, etc).
+[[maybe_unused]]
 static ImageA DirectOptimizeSDF(const Network &net,
                                 int target_letter) {
   constexpr int sdf_size = SDF_CONFIG.sdf_size;
@@ -255,6 +264,7 @@ static bool PointInside(float x0, float y0,
 
 // Generate an SDF by generating a bitmap from some
 // parameterized shapes.
+[[maybe_unused]]
 static ImageA DrawBitmapShapes(const Network &net,
                                int target_letter) {
   constexpr int BITMAP_SIZE = 36 * 3;
@@ -380,6 +390,7 @@ static ImageA DrawBitmapShapes(const Network &net,
 }
 
 // Draw polygons, even-odd mode.
+[[maybe_unused]]
 static ImageA DrawPoly(const Network &net,
                        int target_letter) {
   constexpr int sdf_size = SDF_CONFIG.sdf_size;
@@ -477,6 +488,7 @@ static ImageA DrawPoly(const Network &net,
 
 // Generate an SDF by generating the SDF directly from
 // some parameterized shapes. EVEN_ODD mode only.
+[[maybe_unused]]
 static ImageA DrawSDFShapes(const Network &net,
                             int target_letter) {
   constexpr int sdf_size = SDF_CONFIG.sdf_size;
@@ -650,14 +662,14 @@ Random8x8(const Network &prednet, int target_letter) {
   int64 cache_hits = 0;
   // Cache results, since optimizer doesn't know that these doubles
   // are discretized to bools. Helps a lot!
-  std::unordered_map<uint64, double> cache;
-  
+  std::unordered_map<uint64_t, double> cache;
+
   std::function<double(const std::vector<double> &inputs)> IsLetter =
     [&prednet, target_letter, &Make8x8, &num_calls,
      &sdf_time, &run_time, &cache_hits, &cache](
         const std::vector<double> &inputs) -> double {
       num_calls++;
-      
+
       Timer sdf_timer;
       FontProblem::Image8x8 img8x8 = Make8x8(inputs);
       {
@@ -671,7 +683,7 @@ Random8x8(const Network &prednet, int target_letter) {
       ImageA sdf =
         FIND_UPPERCASE ? FontProblem::SDF36From8x8Uppercase(img8x8) :
         FontProblem::SDF36From8x8Lowercase(img8x8);
-      
+
       sdf_time += sdf_timer.MS();
       Timer run_timer;
       const auto pred =
@@ -696,7 +708,7 @@ Random8x8(const Network &prednet, int target_letter) {
       penalty += edges / 100.0;
 
       if (num_calls % 1000 == 0)
-        printf("[%c] %d calls %d hits, %d pixels, %d edges, penalty: %.4f\n",
+        printf("[%c] %d calls %lld hits, %d pixels, %d edges, penalty: %.4f\n",
                target_letter + 'a', num_calls,
                cache_hits, pixels, edges, penalty);
 
@@ -758,7 +770,7 @@ int main(int argc, char **argv) {
   std::mutex gen_m;
   // letter in 0-26, when making 8x8 bitmaps
   std::map<int, FontProblem::Image8x8> gen64;
-  
+
   ParallelComp(
       26,
       [&net, &prednet,
@@ -775,7 +787,7 @@ int main(int argc, char **argv) {
           MutexLock ml(&gen_m);
           gen64[target_letter] = img8;
         }
-            
+
         // Pass same net twice, we'll just use the "lowercase"
         constexpr int SIZE = 6;
         constexpr int QUALITY = 4;
@@ -863,6 +875,6 @@ int main(int argc, char **argv) {
     }
     Util::WriteFile("gen64.txt", out);
   }
-  
+
   return 0;
 }

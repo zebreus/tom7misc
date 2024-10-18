@@ -1,7 +1,10 @@
 
+#include <algorithm>
+#include <cstdio>
 #include <vector>
 #include <string>
 
+#include "fonts/ttf.h"
 #include "loadfonts.h"
 
 using namespace std;
@@ -19,12 +22,12 @@ int main(int argc, char **argv) {
   string letters =
     "abcdefghijklmnopqrstuvwxyz"
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  
+
   FILE *f = fopen("info.tsv", "wb");
 
   // we could use a ragged representation here where the
   // 2nd and 3rd contour have fewer points allocated...
-  
+
   fprintf(f, "# contours\tmax p 0\tmax p 1\t max p 2\n");
   for (TTF *ttf : loadfonts.fonts) {
     int mc = 0;
@@ -33,7 +36,7 @@ int main(int argc, char **argv) {
     int mp0 = 0, mp1 = 0, mp2 = 0;
     for (int idx = 0; idx < letters.size(); idx++) {
       int c = letters[idx];
-      
+
       std::vector<TTF::Contour> contours =
         // XXX just to ensure that expectations are met
         TTF::NormalizeOrder(
@@ -60,6 +63,6 @@ int main(int argc, char **argv) {
     fprintf(f, "%d\t%d\t%d\t%d\n", mc, mp0, mp1, mp2);
   }
   fclose(f);
-  
+
   return 0;
 }

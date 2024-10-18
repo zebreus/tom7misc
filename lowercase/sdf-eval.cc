@@ -1,4 +1,5 @@
 
+#include <cstdio>
 #include <memory>
 #include <string>
 
@@ -16,15 +17,15 @@ int main(int argc, char **argv) {
   printf("Load networks...\n");
   make_lowercase.reset(Network::ReadNetworkBinary("net0.val"));
   make_uppercase.reset(Network::ReadNetworkBinary("net1.val"));
-  
+
   CHECK(make_lowercase.get() != nullptr);
-  CHECK(make_uppercase.get() != nullptr);  
+  CHECK(make_uppercase.get() != nullptr);
 
   // XXX somehow needs to be shared?
   // (Right now the default instance is the one used in train.cc.)
   static constexpr FontProblem::SDFConfig SDF_CONFIG;
 
-  printf("Render image...\n");  
+  printf("Render image...\n");
   FontProblem::RenderSDF("helvetica.ttf",
                          *make_lowercase,
                          *make_uppercase,

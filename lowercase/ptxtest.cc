@@ -1,29 +1,20 @@
 
 #include <CL/cl.h>
+#include <CL/cl_platform.h>
 
+#include <cstdint>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 #include <time.h>
 
-#include <cmath>
-#include <chrono>
-#include <algorithm>
-#include <tuple>
-#include <utility>
-#include <set>
 #include <vector>
-#include <map>
-#include <unordered_set>
-#include <deque>
 #include <shared_mutex>
 
-#include "threadutil.h"
-#include "randutil.h"
 #include "image.h"
 
 #include "clutil.h"
-#include "timer.h"
 
 using namespace std;
 using uint8 = uint8_t;
@@ -57,7 +48,7 @@ int main(int argc, char **argv) {
   // %%laneid is a special register, giving the lane id within the current warp;
   // this is a CUDA-specific concept.
   // docs.nvidia.com/cuda/parallel-thread-execution/index.html#instruction-statements
-  
+
   const string kernel_src = R"(
 __kernel void GetLaneId(__global int *buffer, int length)
 {
@@ -77,12 +68,12 @@ __kernel void GetLaneId(__global int *buffer, int length)
   static constexpr int HEIGHT = 1080;
 
   vector<uint32> vec(WIDTH * HEIGHT, 0u);
-    
+
   cl_mem buffer =
     MoveMemoryToGPU(global_cl->context, global_cl->queue, false, &vec);
   clFinish(global_cl->queue);
 
-  auto [program, kernel] = 
+  auto [program, kernel] =
     global_cl->BuildOneKernel(kernel_src, "GetLaneId");
 
   cl_int length = WIDTH * HEIGHT;
@@ -112,7 +103,7 @@ __kernel void GetLaneId(__global int *buffer, int length)
 
   CopyBufferFromGPUTo(global_cl->queue, buffer, &vec);
   clFinish(global_cl->queue);
-  
+
   ImageRGBA img(WIDTH, HEIGHT);
   for (int y = 0; y < HEIGHT; y++) {
     for (int x = 0; x < WIDTH; x++) {
@@ -124,7 +115,7 @@ __kernel void GetLaneId(__global int *buffer, int length)
     }
   }
   img.Save("ptxtest.png");
-  
+
   clReleaseKernel(kernel);
   clReleaseProgram(program);
 

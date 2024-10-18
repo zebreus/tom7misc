@@ -2,6 +2,8 @@
 // For numbered files in a directory, copy them to a new directory
 // but with consecutive frame numbers (e.g. for VirtualDub).
 
+#include <cstdio>
+#include <utility>
 #include <vector>
 #include <string>
 #include <algorithm>

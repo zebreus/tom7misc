@@ -3,16 +3,14 @@
 // drawing fonts as pixel bitmaps, then fed back to (upcoming
 // program) to generate vector format.
 
-#include <vector>
+#include <optional>
 #include <string>
-#include <algorithm>
 #include <cstdint>
-#include <memory>
 
-#include "timer.h"
+#include "fonts/ttf.h"
 #include "font-problem.h"
-#include "network.h"
 
+#include "base/logging.h"
 #include "image.h"
 
 using namespace std;
@@ -38,7 +36,7 @@ static ImageF GetSDF(const TTF &ttf, char ch) {
 
 int main(int argc, char **argv) {
   TTF ttf("helvetica.ttf");
-  
+
   // string chars = "abcdefghijklmnopqrstuvwxyz";
   // string chars = "1234567890!@#$%^&*()";
   string chars = "-=_+[]{}\\|;:'\"<>?,./`~";
@@ -50,7 +48,7 @@ int main(int argc, char **argv) {
   ImageA empty(BSIZE, BSIZE);
   ImageA alpha(BSIZE, BSIZE);
   alpha.Clear(0x33);
-  
+
   for (int i = 0; i < chars.size(); i++) {
     const char chl = chars[i];
     const char chu =
@@ -58,10 +56,10 @@ int main(int argc, char **argv) {
       chars[i] - 32 :
       // Your choice! x-height?
       'x';
-      
+
     ImageF sdfl = GetSDF(ttf, chl);
     ImageF sdfu = GetSDF(ttf, chu);
-        
+
     ImageRGBA tpl(BSIZE, BSIZE);
     tpl.Clear32(0x000000FF);
     float pl = SDF_CONFIG.pad_left / (float)SDF_CONFIG.sdf_size;
@@ -102,12 +100,12 @@ int main(int argc, char **argv) {
         bitmapl.SetPixel(x, y, v);
       }
     }
-    
+
     ImageRGBA both = ImageRGBA::FromChannels(bitmapl, empty, bitmapu, alpha);
-    
+
     tpl.BlendImage(0, 0, both);
     tpl.Save("bitmap-template.png");
-      
+
     out.BlendImage(i * BSIZE, 0, tpl);
   }
 
