@@ -16,21 +16,14 @@
 #include <vector>
 #include <memory>
 #include <sys/time.h>
-#include <sstream>
 #include <unistd.h>
 #include <cstdio>
-#include <mutex>
-#include <thread>
-#include <optional>
-
-// XXX hack
-#define BASE_INT_TYPES_H_
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "test-util.h"
+#include "ansi.h"
 #include "arcfour.h"
-#include "rle.h"
 #include "simplefm2.h"
 #include "simplefm7.h"
 #include "timer.h"
@@ -161,7 +154,7 @@ static SerialResult RunGameSerially(
 
   SerialResult res;
 
-  Update(StringPrintf("Running %s...", game.cart.c_str()));
+  Update(StringPrintf("Running " AWHITE("%s") "...", game.cart.c_str()));
 
   // Check that the emulator's machine checksum currently
   // matches the argument.
@@ -584,10 +577,57 @@ static std::vector<TestCase> TestCases() {
       0x45ccd952861d5ad8, 0x6402da4519e800dc,
       NO_PAUSE_MASK);
 
+  AddCase(
+      "megaman7.nes",
+      "!620_10b187_6b44_11t275_10d30_8l17_6a425_13a17_10b16_7a104_8r9rb"
+      "10+a22rb14+a,rb6r,rb,r,rb,r,rb5r,rb,r,rb,r,rb,r,rb,r,rb,r,rb,r,rb"
+      "11r7rb19+a4rb20r46rb9r5ra27r3rb7r3rb7r3rb6r3rb6r5rb2r4_5b36_13r"
+      "2_4b6_4b5_4b5_4b5_4b5_5b4_4b5_5b2_4b8r7ra43r6_12a5_4b5_5b8l9la,a"
+      "2_4r4rb,b4_4b7_13a4_4rb2b3_7b8_11a5_4b4_5b9_10a5_4b18_13r27ra46r"
+      "19ra24r5_5b5_5b5_4b5_6b2_28r5rb5r5rb3r6ra5r5ra5r5rb5r6rb3r8rb2r"
+      "4_23a7ua242u3lu,l2lb3b3_5b5_2b4_20a8la8l4b6_4b4_5b5_5b4_3b5_4b5_"
+      "5b5_4b38_26a10la21l5lb6l3lb6l3lb6l4lb5l4lb5l5lb5l4lb5l3lb5l5lb5l"
+      "27la7l32la18l18la3+u9ua243u38_28r26ra9r19ra5r14ra20r19ra18r13ra"
+      ",a3_5b4_8b7_10l4_14r,_5l20la4a3ra48r11_14r25ra19r15ra,ua12la7l18_"
+      "7r,u11l9_5a4la10a17_16r26ra20r20ra5r4rb4r5rb2b68_3l7la17a8ra14r"
+      "17ra23r30_2l13la6a7ra19r20ra25r,_9a10la4a7_23l9_,r17ra113r14ra41r"
+      "19_76l3lb8l3lb6l3lb6l4lb6l3lb6l3lb5l4lb5l4lb6l5lb4l5lb40l7la24l"
+      "9_33r9ra73r14ra6r4rb4r,_5b4_4b4_4b5_4b4_5b4_4b5_4b3_6b77r19ra22r"
+      "5ra6r4rb5r5rb7r14ra13r85_139l7la29l6_8r3rd4d11da18d215_25l5_3a10la"
+      "5+d5ld8+b,ld6d,rd16r16ra29r27ra13r7_4b5_4b4_5b4_4b3_5b4_5b5_4b4_"
+      "5b5_3b3_8r27ra43r35_23r14_13r2_4b5_4b4_6b9_13a30_5a3ra8+b,rb3r6rb"
+      "3r7rb4r20ra41r,rd15d2_4a144_6l,ld4d11da18d12da13d12da11d10da2d2ld"
+      "5l,ld3d,rd5r,rb2b7_3b5_4b4_4b4_5b4_3b116r37ra14r3rb7r3rb5r5rb4r"
+      "5rb4r5rb11r5rb59r48_9a3_5b5_3b11_12a3_4b4_5b17_9a8ra9r19_10r2_15a"
+      "4b4_4b3_6b8_12a4_4b3_5b23_11r30ra19r266_11r19ra24r24ra11r3b6_2b"
+      "6_4b4_4b5_4b4_4b5_4b5rb10r20ra13r4rb5r6rb4r6rb3r15_3r6ra21r4b5_"
+      "4b4_6b15_8a,ra4r6rb5r15rba3r,rb5+a56r,rd16d5a98_73l2ld7d2da19+l"
+      "3la27l6_3r,rb4b5_4b4_5b2_5b3_4b4_42r7ra7r7ra4r6ra5r5ra4r5ra4r6ra"
+      "5r7ra4r8ra4r9ra118r19ra15r8_8a3_5b3_8b7_8l8la,a,ra4r2rb4b3_6b10_"
+      ",l18la,+d2rda3rd,r3rb,b4_14b7_2r13ra15r60_2a10ra,ba2b4_14b2_10l"
+      "4la4a,ra5r,rb4b4_6b49_8l36_3r27ra16r7ra,a13la,l30_3r7_4b5_4b,_18r"
+      "22ra15r13ra2+u8ua164u3lu7l25la12l82_25r11_14la26l11la24l15la10l"
+      "10la22l28la11l7la9a11ua175u,ua3+r9ra11+b2ra21r24_26r6ra24r22ra38r"
+      "4rb5r6rb5r6rb4r5rb4r8rb3r7rb13r7ra2a2_6b3_5b3r7_6a,ra,r3_3b3rb,r"
+      "3_6b7_7a,_4r2rb4b3_7b7_4a2ra5r,rb6b3_6b9_34r7ra10r11_7r7ra17r20ra"
+      "7r16ra8r11ra13r,_6r24ra31r23ra25r10_15l34_13l4lb7l5lb5l7lb142l43_"
+      "30l8_18r19ra29_5l16_14a,ra14r,rb5b4_5b5_4b5_5b4_6b3_6b57_19l21_"
+      ",r13ra11r13ra35r24ra5r16ra22r19ra25r34ra30r3_5b6_4b3_3r4rb5r6rb"
+      "5r6rb94r10ra12r19ra28r5ra20r4ra58r29ra27r3rb7r2rb7r3rb5r4rb5r3rb"
+      "5r4rb5r4rb4r4rb4r13rb6r3rb6r4rb6r4rb5r4rb7r2rb7r4rb6r4rb6r3rb7r"
+      "3rb7r3rb6r4rb6r5rb5r6rb4r7rb2r118_3b6r4rb6r4rb4r6rb5r3rb6r3rb6r"
+      "3rb5r4rb5r3rb5r4rb5r3rb6r3rb6r3rb6r3rb7r3rb6r2rb7r3rb6r3rb6r4rb"
+      "6r4rb5r4rb6r3rb6r4rb6r3rb5r14_67r,_3l3lb2l3_4b6_4b5_5b4_5b3_6b4_"
+      "5b4_6b4_5b4_6b4_,b4lb6l,ld,d4r4rb5r4rb,b4_5b5_4b5_5b4_5b5_4b5_5b",
+      0x0544fc256f3b12e2, 0x41db6210effcbda6,
+      0x041013f8654eec5d, 0x42d559957282c6d7,
+      NO_PAUSE_MASK);
+
   return cases;
 }
 
 int main(int argc, char **argv) {
+  ANSI::Init();
 
   Timer test_timer;
 
@@ -610,8 +650,9 @@ int main(int argc, char **argv) {
       result.img_after_random == tc.result.img_after_random;
     if (is_correct)  {
       correct++;
-      printf("%s [%.2fs]: correct!\n", tc.game.cart.c_str(),
-             serial_timer.Seconds());
+      printf("%s [%s]: " AGREEN("correct") "!\n",
+             tc.game.cart.c_str(),
+             ANSI::Time(serial_timer.Seconds()).c_str());
     } else {
       printf("%s [%.2fs]:\n"
              "      0x%016llx, 0x%016llx,\n"
@@ -625,7 +666,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  printf("Ran everything in %.2fs\n", test_timer.Seconds());
+  printf("Ran everything in %s\n", ANSI::Time(test_timer.Seconds()).c_str());
 
   CHECK(correct == total) << "Only " << correct << "/" << total
                           << " were correct.";

@@ -17,7 +17,6 @@ void FCEUD_PrintError(const char *errormsg) {
   fprintf(stderr, "%s\n", errormsg);
 }
 
-// morally FCEUD_
 unsigned int *FCEUD_GetKeyboard() {
   abort();
 }

@@ -211,7 +211,7 @@ int write8le(uint8 b, EmuFile*os)
 //well. just for the sake of consistency
 int read8le(uint8 *Bufo, EmuFile*is)
 {
-        if (is->_fread((char*)Bufo,1) != 1)
+        if (is->fread((char*)Bufo,1) != 1)
                 return 0;
         return 1;
 }
@@ -260,7 +260,7 @@ int write64le(uint64 b, EmuFile* os)
 int read32le(uint32 *Bufo, EmuFile *fp)
 {
         uint32 buf;
-        if (fp->_fread(&buf,4)<4)
+        if (fp->fread(&buf,4)<4)
                 return 0;
 #ifdef LOCAL_LE
         *(uint32*)Bufo=buf;
@@ -273,7 +273,7 @@ int read32le(uint32 *Bufo, EmuFile *fp)
 int read16le(uint16 *Bufo, EmuFile *is)
 {
         uint16 buf;
-        if (is->_fread((char*)&buf,2) != 2)
+        if (is->fread((char*)&buf,2) != 2)
                 return 0;
 #ifdef LOCAL_LE
         *Bufo=buf;
@@ -286,7 +286,7 @@ int read16le(uint16 *Bufo, EmuFile *is)
 int read64le(uint64 *Bufo, EmuFile *is)
 {
         uint64 buf;
-        if (is->_fread((char*)&buf,8) != 8)
+        if (is->fread((char*)&buf,8) != 8)
                 return 0;
 #ifdef LOCAL_LE
         *Bufo=buf;

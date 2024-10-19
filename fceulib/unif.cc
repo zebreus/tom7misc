@@ -22,23 +22,22 @@
 /* **INCOMPLETE**             */
 /* Override stuff: CHR RAM instead of CHR ROM,   mirroring. */
 
+#include <cstdint>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "types.h"
-#include "fceu.h"
-#include "cart.h"
-#include "unif.h"
-#include "ines.h"
-#include "utils/endian.h"
-#include "utils/memory.h"
-#include "utils/md5.h"
-#include "state.h"
-#include "file.h"
-#include "input.h"
-#include "driver.h"
 #include "boards/boards.h"
+#include "cart.h"
+#include "fceu.h"
+#include "file.h"
+#include "git.h"
+#include "ines.h"
+#include "state.h"
+#include "types.h"
+#include "unif.h"
+#include "utils/md5.h"
+#include "utils/memory.h"
 
 namespace {
 struct BMAPPING {
@@ -102,17 +101,18 @@ void Unif::MooMirroring() {
 }
 
 int Unif::DoMirroring(FceuFile *fp) {
-  const uint8 t = FCEU_fgetc(fp);
+  const uint8 t = fp->FGetc();
   mirrortodo = t;
 
   static constexpr const char *const stuffo[] = {
-      "Horizontal",
-      "Vertical",
-      "$2000",
-      "$2400",
-      "\"Four-screen\"",
-      "Controlled by Mapper Hardware"
+    "Horizontal",
+    "Vertical",
+    "$2000",
+    "$2400",
+    "\"Four-screen\"",
+    "Controlled by Mapper Hardware"
   };
+
   if (t < 6) FCEU_printf(" Name/Attribute Table Mirroring: %s\n", stuffo[t]);
   return 1;
 }
@@ -127,7 +127,7 @@ int Unif::NAME(FceuFile *fp) {
   FCEU_printf(" Name: ");
   index = 0;
 
-  while ((t = FCEU_fgetc(fp)) > 0)
+  while ((t = fp->FGetc()) > 0)
     if (index < 99) namebuf[index++] = t;
 
   namebuf[index] = 0;
@@ -138,20 +138,18 @@ int Unif::NAME(FceuFile *fp) {
 
 int Unif::DINF(FceuFile *fp) {
   char name[100], method[100];
-  uint8 d, m;
-  uint16 y;
   int t;
 
-  if (FCEU_fread(name, 1, 100, fp) != 100) return 0;
-  if ((t = FCEU_fgetc(fp)) == EOF) return 0;
-  d = t;
-  if ((t = FCEU_fgetc(fp)) == EOF) return 0;
-  m = t;
-  if ((t = FCEU_fgetc(fp)) == EOF) return 0;
-  y = t;
-  if ((t = FCEU_fgetc(fp)) == EOF) return 0;
+  if (fp->FRead(name, 1, 100) != 100) return 0;
+  if ((t = fp->FGetc()) == EOF) return 0;
+  uint8_t d = t;
+  if ((t = fp->FGetc()) == EOF) return 0;
+  uint8_t m = t;
+  if ((t = fp->FGetc()) == EOF) return 0;
+  uint16_t y = t;
+  if ((t = fp->FGetc()) == EOF) return 0;
   y |= t << 8;
-  if (FCEU_fread(method, 1, 100, fp) != 100) return 0;
+  if (fp->FRead(method, 1, 100) != 100) return 0;
   name[99] = method[99] = 0;
   FCEU_printf(" Dumped by: %s\n", name);
   FCEU_printf(" Dumped with: %s\n", method);
@@ -164,7 +162,7 @@ int Unif::DINF(FceuFile *fp) {
 }
 
 int Unif::CTRL(FceuFile *fp) {
-  int t = FCEU_fgetc(fp);
+  int t = fp->FGetc();
 
   if (t == EOF) return 0;
   /* The information stored in this byte isn't very helpful, but it's
@@ -184,7 +182,7 @@ int Unif::CTRL(FceuFile *fp) {
 
 int Unif::TVCI(FceuFile *fp) {
   int t;
-  if ((t = FCEU_fgetc(fp)) == EOF) return 0;
+  if ((t = fp->FGetc()) == EOF) return 0;
   if (t <= 2) {
     static constexpr const char *const stuffo[3] = {"NTSC", "PAL",
                                                     "NTSC and PAL"};
@@ -202,7 +200,7 @@ int Unif::TVCI(FceuFile *fp) {
 
 int Unif::EnableBattery(FceuFile *fp) {
   FCEU_printf(" Battery-backed.\n");
-  if (FCEU_fgetc(fp) == EOF) return 0;
+  if (fp->FGetc() == EOF) return 0;
   UNIFCart.battery = 1;
   return 1;
 }
@@ -217,7 +215,7 @@ int Unif::LoadPRG(FceuFile *fp) {
   if (!(malloced[z] = (uint8 *)FCEU_malloc(t))) return 0;
   mallocedsizes[z] = t;
   memset(malloced[z] + uchead.info, 0xFF, t - uchead.info);
-  if (FCEU_fread(malloced[z], 1, uchead.info, fp) != uchead.info) {
+  if (fp->FRead(malloced[z], 1, uchead.info) != uchead.info) {
     FCEU_printf("Read Error!\n");
     return 0;
   } else {
@@ -230,7 +228,7 @@ int Unif::LoadPRG(FceuFile *fp) {
 
 int Unif::SetBoardName(FceuFile *fp) {
   if (!(boardname = (uint8 *)FCEU_malloc(uchead.info + 1))) return 0;
-  FCEU_fread(boardname, 1, uchead.info, fp);
+  fp->FRead(boardname, 1, uchead.info);
   boardname[uchead.info] = 0;
   FCEU_printf(" Board name: %s\n", boardname);
   sboardname = boardname;
@@ -251,7 +249,7 @@ int Unif::LoadCHR(FceuFile *fp) {
   if (!(malloced[16 + z] = (uint8 *)FCEU_malloc(t))) return 0;
   mallocedsizes[16 + z] = t;
   memset(malloced[16 + z] + uchead.info, 0xFF, t - uchead.info);
-  if (FCEU_fread(malloced[16 + z], 1, uchead.info, fp) != uchead.info) {
+  if (fp->FRead(malloced[16 + z], 1, uchead.info) != uchead.info) {
     FCEU_printf("Read Error!\n");
     return 0;
   } else {
@@ -417,14 +415,14 @@ int Unif::LoadUNIFChunks(FceuFile *fp) {
   };
 
   for (;;) {
-    int t = FCEU_fread(&uchead, 1, 4, fp);
+    size_t t = fp->FRead(&uchead, 1, 4);
     if (t < 4) {
       if (t > 0) {
         return 0;
       }
       return 1;
     }
-    if (!(FCEU_read32le(&uchead.info, fp))) return 0;
+    if (!(fp->Read32LE(&uchead.info))) return 0;
     t = 0;
     // printf("Funky: %s\n",((uint8 *)&uchead));
     for (int x = 0; bfunc[x].name; x++) {
@@ -436,7 +434,7 @@ int Unif::LoadUNIFChunks(FceuFile *fp) {
       }
     }
     if (!t) {
-      if (FCEU_fseek(fp, uchead.info, SEEK_CUR) < 0) {
+      if (fp->FSeek(uchead.info, SEEK_CUR) < 0) {
         return 0;
       }
     }
@@ -496,16 +494,16 @@ void Unif::UNIFGI(GI h) {
 }
 
 int Unif::UNIFLoad(const char *name, FceuFile *fp) {
-  FCEU_fseek(fp, 0, SEEK_SET);
-  FCEU_fread(&unhead, 1, 4, fp);
+  fp->FSeek(0, SEEK_SET);
+  fp->FRead(&unhead, 1, 4);
   if (memcmp(&unhead, "UNIF", 4)) return 0;
 
   fc->cart->ResetCartMapping();
 
   fc->state->ResetExState(nullptr, nullptr);
   ResetUNIF();
-  if (!FCEU_read32le(&unhead.info, fp)) goto aborto;
-  if (FCEU_fseek(fp, 0x20, SEEK_SET) < 0) goto aborto;
+  if (!fp->Read32LE(&unhead.info)) goto aborto;
+  if (fp->FSeek(0x20, SEEK_SET) < 0) goto aborto;
   if (!LoadUNIFChunks(fp)) goto aborto;
 
   {
@@ -523,7 +521,7 @@ int Unif::UNIFLoad(const char *name, FceuFile *fp) {
     for (int x = 0; x < 16; x++) FCEU_printf("%02x", UNIFCart.MD5[x]);
     FCEU_printf("\n");
     memcpy(fc->fceu->GameInfo->MD5.data(), &UNIFCart.MD5,
-	   sizeof UNIFCart.MD5);
+     sizeof UNIFCart.MD5);
   }
 
   if (!InitializeBoard()) goto aborto;

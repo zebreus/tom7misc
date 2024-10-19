@@ -26,16 +26,17 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#include <string>
+
+#include "fc.h"
 #include "types.h"
 #include "fceu.h"
 #include "ppu.h"
-#include "driver.h"
 
 #include "cart.h"
 #include "x6502.h"
 
 #include "file.h"
-#include "utils/memory.h"
 
 #include "tracing.h"
 
@@ -46,7 +47,7 @@ Cart::Cart(FC *fc) : fc(fc) {}
 void Cart::SetPagePtr(int s, uint32 A, uint8 *p, bool is_ram) {
   const uint32 AB = A >> 11;
   if (DEBUG_BANKSWITCH) printf("setpageptr %d %04x %p %s   AB: %d\n",
-			       s, A, p, is_ram ? "RAM" : "not RAM", AB);
+             s, A, p, is_ram ? "RAM" : "not RAM", AB);
 
   if (p != nullptr) {
     for (int x = 0; x < (s >> 1); x++) {
@@ -88,7 +89,7 @@ void Cart::ResetCartMapping() {
 void Cart::SetupCartPRGMapping(int chip, uint8 *p, uint32 size, bool is_ram) {
   if (DEBUG_BANKSWITCH)
     printf("Setup PRG chip %d -> %p (size %d, %s)\n", chip, p, size,
-	   is_ram ? "RAM" : "not RAM");
+     is_ram ? "RAM" : "not RAM");
   PRGptr[chip] = p;
   PRGsize[chip] = size;
 
@@ -104,7 +105,7 @@ void Cart::SetupCartPRGMapping(int chip, uint8 *p, uint32 size, bool is_ram) {
 void Cart::SetupCartCHRMapping(int chip, uint8 *p, uint32 size, bool is_ram) {
   if (DEBUG_BANKSWITCH)
     printf("CHR chip %d -> %p (size %d, %s)\n", chip, p, size,
-	   is_ram ? "RAM" : "not RAM");
+     is_ram ? "RAM" : "not RAM");
 
   CHRptr[chip] = p;
   CHRsize[chip] = size;
@@ -177,7 +178,7 @@ void Cart::setprg4(uint32 A, uint32 V) {
 // always at least 8k?
 void Cart::setprg8r(int r, unsigned int A, unsigned int V) {
   if (DEBUG_BANKSWITCH) printf("setprg8r r=%d A=%x V=%u %s\n", r, A, V,
-			       PRGsize[r] >= 8192 ? " (big)" : " (small)");
+             PRGsize[r] >= 8192 ? " (big)" : " (small)");
   if (PRGsize[r] >= 8192) {
     V &= PRGmask8[r];
     SetPagePtr(8, A, PRGptr[r] ? &PRGptr[r][V << 13] : 0, PRGram[r]);
@@ -196,7 +197,7 @@ void Cart::setprg8(uint32 A, uint32 V) {
 
 void Cart::setprg16r(int r, unsigned int A, unsigned int V) {
   if (DEBUG_BANKSWITCH) printf("setprg16r r=%d A=%x V=%u %s\n", r, A, V,
-			       PRGsize[r] >= 16384 ? " (big)" : " (small)");
+             PRGsize[r] >= 16384 ? " (big)" : " (small)");
   if (PRGsize[r] >= 16384) {
     V &= PRGmask16[r];
     SetPagePtr(16, A, PRGptr[r] ? &PRGptr[r][V << 14] : 0, PRGram[r]);
@@ -392,7 +393,7 @@ void Cart::FCEU_SaveGameSave(CartInfo *LocalHWInfo) {
     FILE *sp;
 
     std::string f = FCEU_MakeSaveFilename();
-    if ((sp = FCEUD_UTF8fopen(f.c_str(), "wb")) == nullptr) {
+    if ((sp = fopen(f.c_str(), "wb")) == nullptr) {
       FCEU_PrintError("WRAM file \"%s\" cannot be written to.\n", f.c_str());
     } else {
       for (int x = 0; x < 4; x++) {
@@ -414,17 +415,17 @@ void Cart::FCEU_LoadGameSave(CartInfo *LocalHWInfo) {
       !disableBatteryLoading) {
     std::string f = FCEU_MakeSaveFilename();
     TRACEF("Save file %s", f.c_str());
-    if (FILE *sp = FCEUD_UTF8fopen(f.c_str(), "rb")) {
+    if (FILE *sp = fopen(f.c_str(), "rb")) {
       for (int x = 0; x < 4; x++) {
         if (LocalHWInfo->SaveGame[x]) {
           TRACEF("Doing it");
 
-		  if (LocalHWInfo->SaveGameLen[x] !=
-			  fread(LocalHWInfo->SaveGame[x], 1,
-					LocalHWInfo->SaveGameLen[x], sp)) {
-			// XXX should handle error...
-			return;
-		  }
+      if (LocalHWInfo->SaveGameLen[x] !=
+        fread(LocalHWInfo->SaveGame[x], 1,
+          LocalHWInfo->SaveGameLen[x], sp)) {
+      // XXX should handle error...
+      return;
+      }
         }
       }
     }

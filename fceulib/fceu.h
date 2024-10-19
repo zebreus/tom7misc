@@ -3,9 +3,6 @@
 
 #include "types.h"
 #include "git.h"
-
-#include "git.h"
-
 #include "fc.h"
 
 typedef void (*writefunc)(FC *, uint32 A, uint8 V);
@@ -13,9 +10,7 @@ typedef uint8 (*readfunc)(FC *, uint32 A);
 
 // The version of FCEUX I ported had an in-progress rewrite
 // of the PPU (good idea; it is an incredible mess), but it
-// doesn't seem to work well. Some of the code is around;
-// maybe I should just give up on it.
-// static constexpr int newppu = 0;
+// doesn't seem to work well. I gave up on it.
 
 // Declares a "Read" function, which takes an address and
 // returns the byte there. These are used as callbacks all
@@ -62,15 +57,14 @@ struct FCEU {
   writefunc GetWriteHandler(int32 a);
   readfunc GetReadHandler(int32 a);
 
-  void FCEU_CloseGame();
-  void FCEU_ResetVidSys();
-  bool FCEUI_Initialize();
+  void CloseGame();
+  bool Initialize();
 
   // Weird thing only used in Barcode game, but probably still working.
   int FCEUI_DatachSet(const uint8 *rcode);
 
   // Emulates a frame.
-  void FCEUI_Emulate(int video_and_sound_flags);
+  void EmulateFrame(int video_and_sound_flags);
 
   void ResetMapping();
   void ResetNES();
@@ -142,6 +136,7 @@ private:
   writefunc *BWriteG = nullptr;
 
   void ResetGameLoaded();
+  void ResetVidSys();
 
   FC *fc = nullptr;
 };
@@ -151,14 +146,5 @@ void FCEU_PrintError(const char *format, ...);
 void FCEU_printf(const char *format, ...);
 // Initialize memory to stripes of 0xFF and 0x00.
 void FCEU_InitMemory(uint8 *ptr, uint32 size);
-
-#define JOY_A   1
-#define JOY_B   2
-#define JOY_SELECT      4
-#define JOY_START       8
-#define JOY_UP  0x10
-#define JOY_DOWN        0x20
-#define JOY_LEFT        0x40
-#define JOY_RIGHT       0x80
 
 #endif

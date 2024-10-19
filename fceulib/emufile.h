@@ -57,8 +57,6 @@ class EmuFile {
 
   bool eof() { return size() == ftell(); }
 
-  size_t fread(void* ptr, size_t bytes) { return _fread(ptr, bytes); }
-
   void unget() { fseek(-1, SEEK_CUR); }
 
   virtual FILE* get_fp() = 0;
@@ -68,32 +66,28 @@ class EmuFile {
   virtual int fgetc() = 0;
   virtual int fputc(int c) = 0;
 
-  virtual size_t _fread(void* ptr, size_t bytes) = 0;
+  virtual size_t fread(void* ptr, size_t bytes) = 0;
 
   // removing these return values for now so we can find any code that
   // might be using them and make sure they handle the return values
   // correctly
   virtual void fwrite(const void* ptr, size_t bytes) = 0;
 
-  void write64le(uint64* val);
-  void write64le(uint64 val);
-  size_t read64le(uint64* val);
-  uint64 read64le();
   void write32le(uint32* val);
   void write32le(int32* val) { write32le((uint32*)val); }
   void write32le(uint32 val);
-  size_t read32le(uint32* val);
-  size_t read32le(int32* val);
+  bool read32le(uint32* val);
+  bool read32le(int32* val);
   uint32 read32le();
   void write16le(uint16* val);
   void write16le(int16* val) { write16le((uint16*)val); }
   void write16le(uint16 val);
-  size_t read16le(int16* Bufo);
-  size_t read16le(uint16* val);
+  bool read16le(int16* Bufo);
+  bool read16le(uint16* val);
   uint16 read16le();
   void write8le(uint8* val);
   void write8le(uint8 val);
-  size_t read8le(uint8* val);
+  bool read8le(uint8* val);
   uint8 read8le();
 
   virtual int fseek(int offset, int origin) = 0;
@@ -106,8 +100,8 @@ class EmuFile {
 class EmuFile_MEMORY : public EmuFile {
  protected:
   std::vector<uint8>* vec;
-  bool ownvec;
   int32 pos, len;
+  bool ownvec;
 
   void reserve(uint32 amt) {
     if (vec->size() < amt) vec->resize(amt);
@@ -116,21 +110,21 @@ class EmuFile_MEMORY : public EmuFile {
  public:
   EmuFile_MEMORY(std::vector<uint8>* underlying)
       : vec(underlying),
-        ownvec(false),
         pos(0),
-        len((int32)underlying->size()) {}
-  explicit EmuFile_MEMORY(uint32 preallocate)
-      : vec(new std::vector<uint8>()), ownvec(true), pos(0), len(0) {
+        len((int32)underlying->size()),
+        ownvec(false) {}
+  explicit EmuFile_MEMORY(uint32 preallocate) :
+    vec(new std::vector<uint8>()), pos(0), len(0), ownvec(true) {
     vec->resize(preallocate);
     len = preallocate;
   }
-  EmuFile_MEMORY()
-      : vec(new std::vector<uint8>()), ownvec(true), pos(0), len(0) {
+  EmuFile_MEMORY() :
+    vec(new std::vector<uint8>()), pos(0), len(0), ownvec(true) {
     vec->reserve(1024);
   }
 
-  EmuFile_MEMORY(void* buf, int32 size)
-      : vec(new std::vector<uint8>()), ownvec(true), pos(0), len(size) {
+  EmuFile_MEMORY(void* buf, int32 size) :
+    vec(new std::vector<uint8>()), pos(0), len(size), ownvec(true) {
     vec->resize(size);
     if (size != 0) memcpy(&vec->front(), buf, size);
   }
@@ -194,7 +188,7 @@ class EmuFile_MEMORY : public EmuFile {
     return 0;
   }
 
-  size_t _fread(void* ptr, size_t bytes) override;
+  size_t fread(void* ptr, size_t bytes) override;
 
   // removing these return values for now so we can find any code that
   // might be using them and make sure they handle the return values
@@ -263,7 +257,7 @@ class EmuFile_MEMORY_READONLY final : public EmuFile {
 
   int fputc(int c) override { abort(); }
 
-  size_t _fread(void* ptr, size_t bytes) override;
+  size_t fread(void* ptr, size_t bytes) override;
 
   // removing these return values for now so we can find any code that
   // might be using them and make sure they handle the return values
@@ -319,7 +313,7 @@ class EmuFile_FILE final : public EmuFile {
   int fgetc() override { return ::fgetc(fp); }
   int fputc(int c) override { return ::fputc(c, fp); }
 
-  size_t _fread(void *ptr, size_t bytes) override {
+  size_t fread(void *ptr, size_t bytes) override {
     size_t ret = ::fread((void*)ptr, 1, bytes, fp);
     if (ret < bytes) failbit = true;
     return ret;

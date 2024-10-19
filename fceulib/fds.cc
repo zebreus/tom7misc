@@ -19,6 +19,7 @@
 */
 
 #include <cassert>
+#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -86,8 +87,8 @@ void FDS::FDSStateRestore(int version) {
 }
 
 void FDS::FDSInit() {
-  memset(FDSRegs,0,sizeof(FDSRegs));
-  writeskip=DiskPtr=DiskSeekIRQ=0;
+  memset(FDSRegs, 0, sizeof(FDSRegs));
+  writeskip = DiskPtr = DiskSeekIRQ = 0;
   fc->cart->setmirror(1);
 
   fc->cart->setprg8r(0,0xe000,0);    // BIOS
@@ -119,31 +120,34 @@ void FDS::FDSInit() {
 }
 
 void FDS::FCEU_FDSInsert() {
-  if (TotalSides==0) {
+  if (TotalSides == 0) {
     fprintf(stderr, "Not FDS; can't eject disk.");
     return;
   }
-  if (InDisk==255) {
-    fprintf(stderr, "Disk %d Side %s Inserted",SelectDisk>>1,(SelectDisk&1)?"B":"A");
-    InDisk=SelectDisk;
+  if (InDisk == 255) {
+    fprintf(stderr, "Disk %d Side %s Inserted", SelectDisk >> 1,
+            (SelectDisk & 1) ? "B" : "A");
+    InDisk = SelectDisk;
   } else {
-    fprintf(stderr, "Disk %d Side %s Ejected",SelectDisk>>1,(SelectDisk&1)?"B":"A");
-    InDisk=255;
+    fprintf(stderr, "Disk %d Side %s Ejected", SelectDisk >> 1,
+            (SelectDisk & 1) ? "B" : "A");
+    InDisk = 255;
   }
 }
 
 void FDS::FCEU_FDSSelect() {
-  if (TotalSides==0) {
+  if (TotalSides == 0) {
     fprintf(stderr, "Not FDS; can't select disk.");
     return;
   }
 
-  if (InDisk!=255) {
+  if (InDisk != 255) {
     fprintf(stderr, "Eject disk before selecting.");
     return;
   }
-  SelectDisk=((SelectDisk+1)%TotalSides)&3;
-  fprintf(stderr, "Disk %d Side %c Selected",SelectDisk>>1,(SelectDisk&1)?'B':'A');
+  SelectDisk = ((SelectDisk + 1) % TotalSides) & 3;
+  fprintf(stderr, "Disk %d Side %c Selected", SelectDisk >> 1,
+          (SelectDisk & 1) ? 'B' : 'A');
 }
 
 void FDS::FDSFix(int a) {
@@ -583,21 +587,20 @@ int FDS::SubLoad(FceuFile *fp) {
   struct md5_context md5;
   uint8 header[16];
 
-  FCEU_fread(header,16,1,fp);
+  fp->FRead(header, 16, 1);
 
-  if (memcmp(header,"FDS\x1a",4)) {
-    if (!(memcmp(header+1,"*NINTENDO-HVC*",14))) {
+  if (memcmp(header, "FDS\x1a", 4)) {
+    if (!(memcmp(header + 1, "*NINTENDO-HVC*", 14))) {
       long t;
-      t=FCEU_fgetsize(fp);
-      if (t<65500)
-        t=65500;
-      TotalSides=t/65500;
-      FCEU_fseek(fp,0,SEEK_SET);
+      t = fp->Size();
+      if (t < 65500) t = 65500;
+      TotalSides = t / 65500;
+      fp->FSeek(0, SEEK_SET);
     } else {
       return 0;
     }
   } else {
-    TotalSides=header[4];
+    TotalSides = header[4];
   }
 
   md5_starts(&md5);
@@ -605,19 +608,18 @@ int FDS::SubLoad(FceuFile *fp) {
   if (TotalSides>8) TotalSides=8;
   if (TotalSides<1) TotalSides=1;
 
-  for (int x=0;x<TotalSides;x++) {
-    diskdata[x]=(uint8 *)FCEU_malloc(65500);
+  for (int x = 0; x < TotalSides; x++) {
+    diskdata[x] = (uint8 *)FCEU_malloc(65500);
     if (!diskdata[x]) {
       int zol;
-      for (zol=0;zol<x;zol++)
-        free(diskdata[zol]);
+      for (zol = 0; zol < x; zol++) free(diskdata[zol]);
       return 0;
     }
-    FCEU_fread(diskdata[x],1,65500,fp);
-    md5_update(&md5,diskdata[x],65500);
+    fp->FRead(diskdata[x], 1, 65500);
+    md5_update(&md5, diskdata[x], 65500);
   }
-  md5_finish(&md5,fc->fceu->GameInfo->MD5.data());
-  return(1);
+  md5_finish(&md5, fc->fceu->GameInfo->MD5.data());
+  return (1);
 }
 
 void FDS::PreSave() {
@@ -640,32 +642,32 @@ void FDS::PostSave() {
 }
 
 int FDS::FDSLoad(const char *name, FceuFile *fp) {
-  FILE *zp;
+  FILE *zp = nullptr;
 
-  FCEU_fseek(fp,0,SEEK_SET);
+  fp->FSeek(0, SEEK_SET);
 
   if (!SubLoad(fp))
     return(0);
 
   const std::string fn = FCEU_MakeFDSFilename();
 
-  if (!(zp=FCEUD_UTF8fopen(fn.c_str(), "rb"))) {
+  if (!(zp = fopen(fn.c_str(), "rb"))) {
     FCEU_PrintError("FDS BIOS ROM image missing: %s", fn.c_str());
     FreeFDSMemory();
     return 0;
   }
 
-  fseek( zp, 0L, SEEK_END );
-  if (ftell( zp ) != 8192) {
+  fseek(zp, 0L, SEEK_END);
+  if (ftell(zp) != 8192) {
     fclose(zp);
     FreeFDSMemory();
     FCEU_PrintError("FDS BIOS ROM image incompatible: %s",
                     FCEU_MakeFDSROMFilename().c_str());
     return 0;
   }
-  fseek( zp, 0L, SEEK_SET );
+  fseek(zp, 0L, SEEK_SET);
 
-  if (fread(FDSBIOS,1,8192,zp)!=8192) {
+  if (fread(FDSBIOS, 1, 8192, zp) != 8192) {
     fclose(zp);
     FreeFDSMemory();
     FCEU_PrintError("Error reading FDS BIOS ROM image.");
@@ -675,22 +677,20 @@ int FDS::FDSLoad(const char *name, FceuFile *fp) {
   fclose(zp);
 
   if (!fc->cart->disableBatteryLoading) {
-    FceuFile *tp;
     const std::string fn2 = FCEU_MakeFDSFilename();
 
-    for (int x=0;x<TotalSides;x++) {
-      diskdatao[x]=(uint8 *)FCEU_malloc(65500);
-      memcpy(diskdatao[x],diskdata[x],65500);
+    for (int x = 0; x < TotalSides; x++) {
+      diskdatao[x] = (uint8 *)FCEU_malloc(65500);
+      memcpy(diskdatao[x], diskdata[x], 65500);
     }
 
-    if ((tp = FCEU_fopen(fn2, "wb", 0))) {
+    if (std::unique_ptr<FceuFile> tp{FceuFile::FOpen(fn2, "wb")}) {
       FreeFDSMemory();
-      if (!SubLoad(tp)) {
+      if (!SubLoad(tp.get())) {
         FCEU_PrintError("Error reading auxillary FDS file.");
-        return(0);
+        return (0);
       }
-      FCEU_fclose(tp);
-      DiskWritten=1;  /* For save state handling. */
+      DiskWritten = 1; /* For save state handling. */
     }
   }
 
@@ -745,17 +745,16 @@ int FDS::FDSLoad(const char *name, FceuFile *fp) {
 }
 
 void FDS::FDSClose() {
-  FILE *fp;
-
   if (!DiskWritten) return;
 
   const std::string fn = FCEU_MakeFDSFilename();
-  if (!(fp=FCEUD_UTF8fopen(fn.c_str(), "wb"))) {
+  FILE *fp = fopen(fn.c_str(), "wb");
+  if (fp == nullptr) {
     return;
   }
 
-  for (int x=0;x<TotalSides;x++) {
-    if (fwrite(diskdata[x],1,65500,fp)!=65500) {
+  for (int x = 0; x < TotalSides; x++) {
+    if (fwrite(diskdata[x], 1, 65500, fp) != 65500) {
       FCEU_PrintError("Error saving FDS image!");
       fclose(fp);
       return;

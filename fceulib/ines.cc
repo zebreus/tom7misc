@@ -25,7 +25,11 @@
 #include <string.h>
 
 #include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "git.h"
 #include "types.h"
 #include "x6502.h"
 #include "fceu.h"
@@ -42,7 +46,6 @@
 #include "utils/md5.h"
 #include "utils/xstring.h"
 #include "vsuni.h"
-#include "driver.h"
 #include "boards/boards.h"
 
 #include "tracing.h"
@@ -843,7 +846,7 @@ std::pair<uint32, uint32> INes::GetRoundedROMSize() const {
 bool INes::iNESLoad(const char *name, FceuFile *fp, int OverwriteVidMode) {
   struct md5_context md5;
 
-  if (FCEU_fread(&head,1,16,fp)!=16)
+  if (fp->FRead(&head, 1, 16) != 16)
     return false;
 
   if (memcmp(&head,"NES\x1a",4))
@@ -888,7 +891,7 @@ bool INes::iNESLoad(const char *name, FceuFile *fp, int OverwriteVidMode) {
   /* Trainer */
   if (head.ROM_type & 4) {
     trainerdata = (uint8 *)FCEU_gmalloc(512);
-    FCEU_fread(trainerdata, 512, 1, fp);
+    fp->FRead(trainerdata, 512, 1);
   }
 
   fc->cart->ResetCartMapping();
@@ -901,10 +904,10 @@ bool INes::iNESLoad(const char *name, FceuFile *fp, int OverwriteVidMode) {
   // Read the appropriate number of 16k chunks from the file into
   // ROM. We may not fill all of ROM here, since it may have been
   // rounded up.
-  FCEU_fread(ROM, 0x4000, rom_size_to_read, fp);
+  fp->FRead(ROM, 0x4000, rom_size_to_read);
 
   if (VROM_size)
-    FCEU_fread(VROM, 0x2000, head.VROM_size, fp);
+    fp->FRead(VROM, 0x2000, head.VROM_size);
 
   md5_starts(&md5);
   md5_update(&md5, ROM, ROM_size << 14);

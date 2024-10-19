@@ -19,6 +19,7 @@
 */
 
 #include <cassert>
+#include <memory>
 #include <string>
 #include <string.h>
 #include <stdio.h>
@@ -56,7 +57,7 @@ FCEU::FCEU(FC *fc) : fc(fc) {
   XBackBuf = (uint8*)FCEU_gmalloc(256 * 256);
 }
 
-void FCEU::FCEU_CloseGame() {
+void FCEU::CloseGame() {
   if (GameInfo != nullptr) {
     assert(GameInterface != nullptr);
     GameInterface(fc, GI_CLOSE);
@@ -125,7 +126,7 @@ static DECLFR(ReadRamMask) {
 }
 
 void FCEU::ResetGameLoaded() {
-  if (GameInfo) FCEU_CloseGame();
+  if (GameInfo) CloseGame();
   GameStateRestore = nullptr;
   fc->ppu->PPU_hook = nullptr;
   fc->ppu->GameHBIRQHook = nullptr;
@@ -144,9 +145,9 @@ FCEUGI *FCEU::FCEUI_LoadGame(const char *name, int OverwriteVidMode) {
   //attempt to open the files
   // FCEU_printf("Loading %s...\n\n",name);
 
-  FceuFile *fp = FCEU_fopen(name,"rb",0);
+  std::unique_ptr<FceuFile> fp(FceuFile::FOpen(name, "rb"));
 
-  if (!fp) {
+  if (fp.get() == nullptr) {
     FCEU_PrintError("Error opening \"%s\"!",name);
     return 0;
   }
@@ -159,7 +160,7 @@ FCEUGI *FCEU::FCEUI_LoadGame(const char *name, int OverwriteVidMode) {
   // doesn't know to do the clearing.
   fc->ines->ClearMasterRomInfoParams();
 
-  FCEU_CloseGame();
+  CloseGame();
   GameInfo = new FCEUGI();
 
   GameInfo->type = GIT_CART;
@@ -169,12 +170,11 @@ FCEUGI *FCEU::FCEUI_LoadGame(const char *name, int OverwriteVidMode) {
   GameInfo->cspecial = SIS_NONE;
 
   // Try to load each different format
-  if (fc->ines->iNESLoad(name, fp, OverwriteVidMode) ||
-      fc->unif->UNIFLoad(name, fp) ||
-      fc->fds->FDSLoad(name, fp)) {
+  if (fc->ines->iNESLoad(name, fp.get(), OverwriteVidMode) ||
+      fc->unif->UNIFLoad(name, fp.get()) ||
+      fc->fds->FDSLoad(name, fp.get())) {
 
-    FCEU_fclose(fp);
-    FCEU_ResetVidSys();
+    ResetVidSys();
 
     PowerNES();
     TRACEF("PowerNES done.");
@@ -185,7 +185,6 @@ FCEUGI *FCEU::FCEUI_LoadGame(const char *name, int OverwriteVidMode) {
   }
 
   FCEU_PrintError("An error occurred while loading the file.");
-  FCEU_fclose(fp);
 
   delete GameInfo;
   GameInfo = nullptr;
@@ -195,7 +194,7 @@ FCEUGI *FCEU::FCEUI_LoadGame(const char *name, int OverwriteVidMode) {
 
 
 // Return: Flag that indicates whether the function was succesful or not.
-bool FCEU::FCEUI_Initialize() {
+bool FCEU::Initialize() {
   GameInterface = (void (*)(FC *, GI))0xDEADBEEF;
 
   fc->X->Init();
@@ -207,7 +206,7 @@ bool FCEU::FCEUI_Initialize() {
 // "skip" no longer does anything for PPU; I'm trying to accomplish this
 // with compile-time flags instead. Probably should remove it entirely.
 //  -tom7
-void FCEU::FCEUI_Emulate(int skip) {
+void FCEU::EmulateFrame(int skip) {
   fc->input->UpdateInput();
 
   // fprintf(stderr, "ppu loop..\n");
@@ -274,7 +273,7 @@ void FCEU::PowerNES() {
   // fprintf(stderr, "Power on\n");
 }
 
-void FCEU::FCEU_ResetVidSys() {
+void FCEU::ResetVidSys() {
   int w;
 
   if (GameInfo->vidsys == GIV_NTSC)
@@ -292,7 +291,7 @@ void FCEU::FCEU_ResetVidSys() {
 void FCEU::SetVidSystem(int a) {
   fsettings_pal = a ? 1 : 0;
   if (GameInfo) {
-    FCEU_ResetVidSys();
+    ResetVidSys();
     fc->palette->ResetPalette();
   }
 }

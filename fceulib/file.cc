@@ -18,42 +18,32 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
+#include <cstdint>
 #include <stdio.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <string>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fstream>
 
-#include "types.h"
-#include "file.h"
-#include "utils/endian.h"
-#include "utils/memory.h"
-#include "utils/md5.h"
-#include "driver.h"
-#include "types.h"
+#include "emufile.h"
 #include "fceu.h"
+#include "file.h"
 #include "state.h"
-#include "driver.h"
-#include "utils/xstring.h"
+#include "types.h"
 
 using namespace std;
 
 FceuFile::FceuFile() {}
 
 FceuFile::~FceuFile() {
-  delete stream;
+  Close();
 }
 
-uint64 FCEU_ftell(FceuFile *fp) {
-  return fp->stream->ftell();
-}
-
-// Opens a file, C++ style, to be read a byte at a time.
-FILE *FCEUD_UTF8fopen(const char *fn, const char *mode) {
-  return fopen(fn,mode);
+uint64_t FceuFile::FTell() {
+  return stream->ftell();
 }
 
 // Opens a file to be read a byte at a time.
@@ -61,9 +51,7 @@ static EmuFile_FILE *FCEUD_UTF8_fstream(const char *fn, const char *m) {
   return new EmuFile_FILE(fn, m);
 }
 
-// XXX: Get rid of "ext" param.
-FceuFile *FCEU_fopen(const std::string &path,
-                     const char *mode, const char *ext) {
+FceuFile *FceuFile::FOpen(const std::string &path, const char *mode) {
   // XXX simplify away; see below
   bool read = (string)mode == "rb";
   bool write = (string)mode == "wb";
@@ -93,37 +81,39 @@ FceuFile *FCEU_fopen(const std::string &path,
   FceuFile *fceufp = new FceuFile();
   fceufp->filename = path;
   fceufp->stream = fp;
-  FCEU_fseek(fceufp,0,SEEK_END);
-  fceufp->size = FCEU_ftell(fceufp);
-  FCEU_fseek(fceufp,0,SEEK_SET);
+  fceufp->FSeek(0, SEEK_END);
+  fceufp->size = fceufp->FTell();
+  fceufp->FSeek(0, SEEK_SET);
 
   return fceufp;
 }
 
-int FCEU_fclose(FceuFile *fp) {
-  delete fp;
-  return 1;
+void FceuFile::Close() {
+  if (stream != nullptr) {
+    delete stream;
+  }
+  stream = nullptr;
 }
 
-uint64 FCEU_fread(void *ptr, size_t size, size_t nmemb, FceuFile *fp) {
-  return fp->stream->fread((char*)ptr,size*nmemb);
+uint64 FceuFile::FRead(void *ptr, size_t size, size_t nmemb) {
+  return stream->fread((char *)ptr, size * nmemb);
 }
 
-int FCEU_fseek(FceuFile *fp, long offset, int whence) {
-  fp->stream->fseek(offset,whence);
-  return FCEU_ftell(fp);
+uint64_t FceuFile::FSeek(long offset, int whence) {
+  stream->fseek(offset, whence);
+  return FTell();
 }
 
-int FCEU_read32le(uint32 *Bufo, FceuFile *fp) {
-  return read32le(Bufo, fp->stream);
+bool FceuFile::Read32LE(uint32 *val) {
+  return stream->read32le(val);
 }
 
-int FCEU_fgetc(FceuFile *fp) {
-  return fp->stream->fgetc();
+int FceuFile::FGetc() {
+  return stream->fgetc();
 }
 
-uint64 FCEU_fgetsize(FceuFile *fp) {
-  return fp->size;
+uint64_t FceuFile::Size() const {
+  return size;
 }
 
 // TODO(tom7): We should probably not let this thing save battery backup

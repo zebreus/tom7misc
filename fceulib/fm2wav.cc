@@ -38,7 +38,8 @@ int main(int argc, char **argv) {
   const string wavefilename = moviefilename.substr(0, dot) + (string)".wav";
 
   std::unique_ptr<Emulator> emu{Emulator::Create(romfilename)};
-  const vector<pair<uint8, uint8>> movie = SimpleFM2::ReadInputs2P(moviefilename);
+  const vector<pair<uint8, uint8>> movie =
+      SimpleFM2::ReadInputs2P(moviefilename);
 
   vector<uint16> samples;
 
@@ -51,7 +52,8 @@ int main(int argc, char **argv) {
     for (int16 s : sound) samples.push_back(s);
   }
 
-  if (!WaveSave::SaveMono16(wavefilename, samples, Emulator::AUDIO_SAMPLE_RATE)) {
+  if (!WaveSave::SaveMono16(wavefilename, samples,
+                            Emulator::AUDIO_SAMPLE_RATE)) {
     fprintf(stderr, "Couldn't write to %s...\n", wavefilename.c_str());
     return -1;
   }

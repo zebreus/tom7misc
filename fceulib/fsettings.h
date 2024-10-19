@@ -31,7 +31,8 @@
 #define FCEUS_PAL_LASTSLINE 239
 
 // Sets up sound code to render sound at the specified rate, in samples
-// per second.  Only sample rates of 44100, 48000, and 96000 are currently supported.
+// per second.  Only sample rates of 44100, 48000, and 96000 are currently
+// supported.
 // If "Rate" equals 0, sound is disabled.
 #define FCEUS_SNDRATE 44100
 

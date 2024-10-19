@@ -24,6 +24,8 @@
 
 #include <vector>
 #include <string>
+#include <span>
+#include <cstdint>
 
 #include "types.h"
 
@@ -58,8 +60,10 @@ struct Emulator {
   void Step16(uint16 controllers);
 
   // Copy the 0x800 bytes of RAM.
-  void GetMemory(vector<uint8> *mem);
-  vector<uint8> GetMemory();
+  void GetMemory(vector<uint8> *mem) const;
+  vector<uint8> GetMemory() const;
+  // Must have 0x800 bytes of space.
+  void CopyMemory(std::span<uint8_t> out) const;
 
   // Fancy stuff.
 

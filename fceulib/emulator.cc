@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <span>
 #include <stdlib.h>
 #include <string>
 #include <vector>
@@ -29,14 +30,18 @@ using namespace std;
 static constexpr int RAM_BYTE_SIZE = 0x800;
 static constexpr int IMAGE_BYTE_SIZE = 256 * 256 * 4;
 
-void Emulator::GetMemory(vector<uint8> *mem) {
+void Emulator::GetMemory(vector<uint8> *mem) const {
   mem->resize(RAM_BYTE_SIZE);
   memcpy(mem->data(), fc->fceu->RAM, RAM_BYTE_SIZE);
 }
 
-vector<uint8> Emulator::GetMemory() {
+vector<uint8> Emulator::GetMemory() const {
   vector<uint8> mem(fc->fceu->RAM, fc->fceu->RAM + RAM_BYTE_SIZE);
   return mem;
+}
+
+void Emulator::CopyMemory(std::span<uint8_t> out) const {
+  memcpy(out.data(), fc->fceu->RAM, RAM_BYTE_SIZE);
 }
 
 uint8 Emulator::ReadRAM(int idx) const {
@@ -154,7 +159,7 @@ bool Emulator::DriverInitialize(FCEUGI *gi) {
 
    Returns true on success. */
 bool Emulator::LoadGame(const string &path) {
-  fc->fceu->FCEU_CloseGame();
+  fc->fceu->CloseGame();
   fc->fceu->GameInfo = nullptr;
 
   if (!fc->fceu->FCEUI_LoadGame(path.c_str(), 1)) {
@@ -181,7 +186,7 @@ bool Emulator::LoadGame(const string &path) {
 // TODO PERF: Looks like Emulator leaks a few hundred bytes
 // (tetris.nes, see pingu/tetris/size.cc).
 Emulator::~Emulator() {
-  fc->fceu->FCEU_CloseGame();
+  fc->fceu->CloseGame();
   fc->fceu->GameInfo = nullptr;
 
   delete fc;
@@ -196,7 +201,7 @@ Emulator *Emulator::Create(const string &romfile) {
   FC *fc = new FC;
 
   // initialize the infrastructure
-  int error = fc->fceu->FCEUI_Initialize();
+  int error = fc->fceu->Initialize();
   if (error != 1) {
     fprintf(stderr, "Error initializing.\n");
     delete fc;
@@ -251,7 +256,7 @@ void Emulator::Step(uint8 controller1, uint8 controller2) {
   // the bits are in the same order as in the fm2 file.
   joydata = ((uint32)controller2 << 8) | controller1;
   // Emulate a single frame.
-  fc->fceu->FCEUI_Emulate(SKIP_VIDEO_AND_SOUND);
+  fc->fceu->EmulateFrame(SKIP_VIDEO_AND_SOUND);
 }
 
 void Emulator::Step16(uint16 controllers) {
@@ -259,19 +264,19 @@ void Emulator::Step16(uint16 controllers) {
   // the bits are in the same order as in the fm2 file.
   joydata = (uint32)controllers;
   // Emulate a single frame.
-  fc->fceu->FCEUI_Emulate(SKIP_VIDEO_AND_SOUND);
+  fc->fceu->EmulateFrame(SKIP_VIDEO_AND_SOUND);
 }
 
 void Emulator::StepFull(uint8 controller1, uint8 controller2) {
   joydata = ((uint32)controller2 << 8) | controller1;
   // Emulate a single frame.
-  fc->fceu->FCEUI_Emulate(DO_VIDEO_AND_SOUND);
+  fc->fceu->EmulateFrame(DO_VIDEO_AND_SOUND);
 }
 
 void Emulator::StepFull16(uint16 controllers) {
   joydata = (uint32)controllers;
   // Emulate a single frame.
-  fc->fceu->FCEUI_Emulate(DO_VIDEO_AND_SOUND);
+  fc->fceu->EmulateFrame(DO_VIDEO_AND_SOUND);
 }
 
 const uint8 *Emulator::RawIndexedImage() const {
