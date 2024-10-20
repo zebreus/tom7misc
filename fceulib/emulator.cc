@@ -302,7 +302,7 @@ void Emulator::GetImage(vector<uint8> *rgba) const {
       uint8 r, g, b;
 
       // XBackBuf? or XBuf?
-      fc->palette->FCEUD_GetPalette(fc->fceu->XBuf[(y * 256) + x],
+      fc->palette->GetPalette(fc->fceu->XBuf[(y * 256) + x],
                                     &r, &g, &b);
 
       (*rgba)[y * 256 * 4 + x * 4 + 0] = r;
@@ -330,7 +330,7 @@ void Emulator::GetImageARGB(vector<uint8> *argb) const {
       uint8 r, g, b;
 
       // XBackBuf? or XBuf?
-      fc->palette->FCEUD_GetPalette(fc->fceu->XBuf[(y * 256) + x],
+      fc->palette->GetPalette(fc->fceu->XBuf[(y * 256) + x],
                                     &r, &g, &b);
 
       (*argb)[y * 256 * 4 + x * 4 + 0] = b;
@@ -370,11 +370,11 @@ void Emulator::Save(vector<uint8> *out) {
 }
 
 void Emulator::GetBasis(vector<uint8> *out) {
-  fc->state->FCEUSS_SaveRAW(out);
+  fc->state->SaveRAW(out);
 }
 
 void Emulator::SaveUncompressed(vector<uint8> *out) const {
-  fc->state->FCEUSS_SaveRAW(out);
+  fc->state->SaveRAW(out);
 }
 
 vector<uint8> Emulator::SaveUncompressed() const {
@@ -384,7 +384,7 @@ vector<uint8> Emulator::SaveUncompressed() const {
 }
 
 void Emulator::LoadUncompressed(const vector<uint8> &in) {
-  if (!fc->state->FCEUSS_LoadRAW(in)) {
+  if (!fc->state->LoadRAW(in)) {
     fprintf(stderr, "Couldn't restore from state\n");
     abort();
   }
@@ -434,7 +434,7 @@ void Emulator::SaveEx(const vector<uint8> *basis, vector<uint8> *state) {
   //    all mapper data even if we're not using it)
 
   vector<uint8> raw;
-  fc->state->FCEUSS_SaveRAW(&raw);
+  fc->state->SaveRAW(&raw);
 
   // Encode.
   int blen = (basis == nullptr) ? 0 : (min(basis->size(), raw.size()));
@@ -499,7 +499,7 @@ void Emulator::LoadEx(const vector<uint8> *basis, const vector<uint8> &state) {
     uncompressed[i] += (*basis)[i];
   }
 
-  if (!fc->state->FCEUSS_LoadRAW(uncompressed)) {
+  if (!fc->state->LoadRAW(uncompressed)) {
     fprintf(stderr, "Couldn't restore from state\n");
     abort();
   }

@@ -93,7 +93,7 @@ struct Mapper190 final : public CartInterface {
       fc->cart->setprg8r(0, 0xC000, (regs[4] & 0x3F));
 
     fc->cart->setprg8r(1, 0xE000, ~0);
-    fc->cart->setmirror(MI_V);
+    fc->cart->setmirror(Cart::MIRROR_V);
   }
 
   void M190Write(DECLFW_ARGS) {

@@ -62,7 +62,8 @@ struct Mapper85 final : public MapInterface {
   }
 
   void DaMirror(int V) {
-    int salpo[4] = {MI_V, MI_H, MI_0, MI_1};
+    int salpo[4] = {Cart::MIRROR_V, Cart::MIRROR_H,
+                    Cart::MIRROR_0, Cart::MIRROR_1};
     fc->cart->setmirror(salpo[V & 3]);
   }
 

@@ -34,12 +34,10 @@ class EmuFile;
 using SKEY = std::array<char, 4>;
 
 struct SFORMAT {
-  // a void* to the data or a void** to the data
+  // a void* to the data.
   void *v;
 
   // size, plus flags
-  // Also, if this is ~0, then that means that it's actually a link
-  // to another SFORMAT structure. Gross.
   uint32 s;
 
   // Four-byte description; should be printable ASCII or \0. No
@@ -75,11 +73,11 @@ struct FCState {
   explicit FCState(FC *fc);
 
   // Tom 7's simplified versions. These should only be used for in-memory saves!
-  bool FCEUSS_SaveRAW(std::vector<uint8> *out) const;
-  bool FCEUSS_LoadRAW(const std::vector<uint8> &in);
+  bool SaveRAW(std::vector<uint8> *out) const;
+  bool LoadRAW(const std::vector<uint8> &in);
 
   // I think these add additional locations to the set of saved memories.
-  void ResetExState(void (*PreSave)(FC *),void (*PostSave)(FC *));
+  void ResetExState(void (*PreSave)(FC *), void (*PostSave)(FC *));
 
   void AddExVec(const std::vector<SFORMAT> &formats);
 
@@ -148,10 +146,8 @@ struct FCState {
 
 // Got rid of this since it was only used for RAM, and not necessary
 // there. -tom7
-// void*v is actually a void** which will be indirected before reading
-// #define FCEUSTATE_INDIRECT            0x40000000
 // all FCEUSTATE flags together so that we can mask them out and get
 // the size
-#define FCEUSTATE_FLAGS (FCEUSTATE_RLSB /*|FCEUSTATE_INDIRECT */)
+#define FCEUSTATE_FLAGS FCEUSTATE_RLSB
 
 #endif

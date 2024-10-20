@@ -39,7 +39,7 @@ struct LE05 final : public CartInterface {
     fc->cart->setprg8r(1, 0xC000, 2);
 
     fc->cart->setchr8(chr & 1);
-    fc->cart->setmirror(MI_V);
+    fc->cart->setmirror(Cart::MIRROR_V);
   }
 
   void LE05Write(DECLFW_ARGS) {

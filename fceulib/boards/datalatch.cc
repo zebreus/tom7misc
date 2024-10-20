@@ -198,7 +198,7 @@ struct ANROM final : public DataLatch<false> {
   using DataLatch::DataLatch;
   void WSync() final override {
     fc->cart->setprg32(0x8000, latch & 0xf);
-    fc->cart->setmirror(MI_0 + ((latch >> 4) & 1));
+    fc->cart->setmirror(Cart::MIRROR_0 + ((latch >> 4) & 1));
     fc->cart->setchr8(0);
   }
 };
@@ -334,7 +334,7 @@ struct Mapper78 final : public DataLatch<false> {
     fc->cart->setprg16(0x8000, (latch & 7));
     fc->cart->setprg16(0xc000, ~0);
     fc->cart->setchr8(latch >> 4);
-    fc->cart->setmirror(MI_0 + ((latch >> 3) & 1));
+    fc->cart->setmirror(Cart::MIRROR_0 + ((latch >> 3) & 1));
   }
 };
 }
@@ -381,7 +381,7 @@ struct Mapper89 final : public DataLatch<false> {
     fc->cart->setprg16(0x8000, (latch >> 4) & 7);
     fc->cart->setprg16(0xc000, ~0);
     fc->cart->setchr8((latch & 7) | ((latch >> 4) & 8));
-    fc->cart->setmirror(MI_0 + ((latch >> 3) & 1));
+    fc->cart->setmirror(Cart::MIRROR_0 + ((latch >> 3) & 1));
   }
 };
 }
@@ -432,8 +432,8 @@ struct Mapper97 final : public DataLatch<false> {
     fc->cart->setprg16(0xc000, latch & 15);
     switch (latch >> 6) {
       case 0: break;
-      case 1: fc->cart->setmirror(MI_H); break;
-      case 2: fc->cart->setmirror(MI_V); break;
+    case 1: fc->cart->setmirror(Cart::MIRROR_H); break;
+    case 2: fc->cart->setmirror(Cart::MIRROR_V); break;
       case 3: break;
     }
     fc->cart->setchr8(((latch >> 1) & 1) | ((latch << 1) & 2));
@@ -500,7 +500,7 @@ struct Mapper152 final : public DataLatch<false> {
     fc->cart->setprg16(0x8000, (latch >> 4) & 7);
     fc->cart->setprg16(0xc000, ~0);
     fc->cart->setchr8(latch & 0xf);
-    fc->cart->setmirror(MI_0 +
+    fc->cart->setmirror(Cart::MIRROR_0 +
                         ((latch >> 7) & 1)); /* Saint Seiya...hmm. */
   }
 };
@@ -610,7 +610,7 @@ struct BMCA65AS final : public DataLatch<false> {
     }
     fc->cart->setchr8(0);
     if (latch & 0x80)
-      fc->cart->setmirror(MI_0 + (((latch >> 5) & 1)));
+      fc->cart->setmirror(Cart::MIRROR_0 + (((latch >> 5) & 1)));
     else
       fc->cart->setmirror(((latch >> 3) & 1) ^ 1);
   }

@@ -25,7 +25,7 @@ struct Palette {
   // Note that the index appears to take into account flags stuffed
   // into the high bits by the PPU emulator; it is not the native
   // NES palette. (TODO: examine what these are and document!) -tom7
-  void FCEUD_GetPalette(uint8 index, uint8 *r, uint8 *g, uint8 *b) const;
+  void GetPalette(uint8 index, uint8 *r, uint8 *g, uint8 *b) const;
 
  private:
   uint8 lastd = 0;
@@ -38,9 +38,9 @@ struct Palette {
   void ChoosePalette();
   void WritePalette();
 
-  void FCEUI_GetNTSCTH(int *tint, int *hue);
+  void GetNTSCTH(int *tint, int *hue);
 
-  void FCEUD_SetPalette(uint8 index, uint8 r, uint8 g, uint8 b);
+  void SetPalette(uint8 index, uint8 r, uint8 g, uint8 b);
 
   struct Color {
     Color() : r(0), g(0), b(0) {}

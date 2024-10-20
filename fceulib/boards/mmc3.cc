@@ -1497,13 +1497,13 @@ struct Tks final : public Nom {
     A &= 0x1FFF;
     A >>= 10;
     me->PPUCHRBus = A;
-    fc->cart->setmirror(MI_0 + me->TKSMIR[A]);
+    fc->cart->setmirror(Cart::MIRROR_0 + me->TKSMIR[A]);
   }
 
   void CWrap(uint32 A, uint8 V) final override {
     TKSMIR[A >> 10] = V >> 7;
     fc->cart->setchr1(A, V & 0x7F);
-    if (PPUCHRBus == (A >> 10)) fc->cart->setmirror(MI_0 + (V >> 7));
+    if (PPUCHRBus == (A >> 10)) fc->cart->setmirror(Cart::MIRROR_0 + (V >> 7));
   }
 
   Tks(FC *fc, CartInfo *info, int prg, int chr, int wram, int battery)

@@ -34,7 +34,7 @@ struct Mapper18 final : public CartInterface {
     fc->cart->setprg8(0xC000, preg[2]);
     fc->cart->setprg8(0xE000, ~0);
     if (mirr & 2)
-      fc->cart->setmirror(MI_0);
+      fc->cart->setmirror(Cart::MIRROR_0);
     else
       fc->cart->setmirror(mirr & 1);
   }

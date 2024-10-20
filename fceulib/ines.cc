@@ -107,7 +107,7 @@ void INes::iNES_ExecPower() {
 void INes::iNESGI(GI h) {
   switch (h) {
   case GI_RESETSAVE:
-    fc->cart->FCEU_ClearGameSave(&iNESCart);
+    fc->cart->ClearGameSave(&iNESCart);
     break;
 
   case GI_RESETM2:
@@ -122,7 +122,7 @@ void INes::iNESGI(GI h) {
     break;
 
   case GI_CLOSE:
-    fc->cart->FCEU_SaveGameSave(&iNESCart);
+    fc->cart->SaveGameSave(&iNESCart);
 
     fc->fceu->cartiface->Close();
     free(ROM);
@@ -968,7 +968,7 @@ bool INes::iNESLoad(const char *name, FceuFile *fp, int OverwriteVidMode) {
       partialmd5 |= (uint64)iNESCart.MD5[7 - x] << (x * 8);
     }
 
-    fc->vsuni->FCEU_VSUniCheck(partialmd5, &mapper_number, &iNESMirroring);
+    fc->vsuni->VSUniCheck(partialmd5, &mapper_number, &iNESMirroring);
   }
 
   /* Must remain here because above functions might change value of
@@ -995,7 +995,7 @@ bool INes::iNESLoad(const char *name, FceuFile *fp, int OverwriteVidMode) {
     return false;
   }
 
-  fc->cart->FCEU_LoadGameSave(&iNESCart);
+  fc->cart->LoadGameSave(&iNESCart);
   TRACEA(GMB_WRAM(fc), 8192);
 
   // Extract Filename only. Should account for Windows/Unix this way.
@@ -1101,11 +1101,10 @@ void INes::ROM_BANK32(uint32 V) {
 }
 
 void INes::onemir(uint8 V) {
-  if (iNESMirroring==2) return;
-  if (V>1)
-    V=1;
-  iNESMirroring=0x10|V;
-  fc->cart->setmirror(MI_0+V);
+  if (iNESMirroring == 2) return;
+  if (V > 1) V = 1;
+  iNESMirroring = 0x10 | V;
+  fc->cart->setmirror(Cart::MIRROR_0 + V);
 }
 
 void INes::MIRROR_SET2(uint8 V) {

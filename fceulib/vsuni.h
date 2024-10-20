@@ -18,13 +18,13 @@
 struct VSUni {
   explicit VSUni(FC *fc);
 
-  void FCEU_VSUniPower();
-  void FCEU_VSUniCheck(uint64 md5partial, int *, uint8 *);
-  void FCEU_VSUniDraw(uint8 *XBuf);
+  void VSUniPower();
+  void VSUniCheck(uint64 md5partial, int *, uint8 *);
+  void VSUniDraw(uint8 *XBuf);
 
-  void FCEU_VSUniToggleDIP(int);  /* For movies and netplay */
-  void FCEU_VSUniCoin();
-  void FCEU_VSUniSwap(uint8 *j0, uint8 *j1);
+  void VSUniToggleDIP(int);  /* For movies and netplay */
+  void VSUniCoin();
+  void VSUniSwap(uint8 *j0, uint8 *j1);
 
   DECLFR_RET A2002_Gumshoe_Direct(DECLFR_ARGS);
   DECLFR_RET VSSecRead_Direct(DECLFR_ARGS);
@@ -42,6 +42,7 @@ struct VSUni {
   // Accessed directly in input.cc.
   uint8 coinon = 0;
   uint8 vsdip = 0;
+
  private:
   const VSUniEntry *curvs = nullptr;
 

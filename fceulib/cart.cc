@@ -349,19 +349,19 @@ void Cart::setmirror(int t) {
   fc->ppu->LineUpdate();
   if (!mirrorhard) {
     switch (t) {
-    case MI_H:
+    case MIRROR_H:
       fc->ppu->vnapage[0] = fc->ppu->vnapage[1] = fc->ppu->NTARAM;
       fc->ppu->vnapage[2] = fc->ppu->vnapage[3] = fc->ppu->NTARAM + 0x400;
       break;
-    case MI_V:
+    case MIRROR_V:
       fc->ppu->vnapage[0] = fc->ppu->vnapage[2] = fc->ppu->NTARAM;
       fc->ppu->vnapage[1] = fc->ppu->vnapage[3] = fc->ppu->NTARAM + 0x400;
       break;
-    case MI_0:
+    case MIRROR_0:
       fc->ppu->vnapage[0] = fc->ppu->vnapage[1] = fc->ppu->vnapage[2] =
         fc->ppu->vnapage[3] = fc->ppu->NTARAM;
       break;
-    case MI_1:
+    case MIRROR_1:
       fc->ppu->vnapage[0] = fc->ppu->vnapage[1] = fc->ppu->vnapage[2] =
         fc->ppu->vnapage[3] = fc->ppu->NTARAM + 0x400;
       break;
@@ -384,7 +384,7 @@ void Cart::SetupCartMirroring(int m, int hard, uint8 *extra) {
   mirrorhard = hard;
 }
 
-void Cart::FCEU_SaveGameSave(CartInfo *LocalHWInfo) {
+void Cart::SaveGameSave(CartInfo *LocalHWInfo) {
   // XXX TODO: Make this part of the savestate system (if it's not,
   // already). Don't write to disk.
   // fprintf(stderr, "CART Tried to save game state. Blocked.\n");
@@ -406,8 +406,8 @@ void Cart::FCEU_SaveGameSave(CartInfo *LocalHWInfo) {
   }
 }
 
-void Cart::FCEU_LoadGameSave(CartInfo *LocalHWInfo) {
-  FCEU_ClearGameSave(LocalHWInfo);
+void Cart::LoadGameSave(CartInfo *LocalHWInfo) {
+  ClearGameSave(LocalHWInfo);
   // fprintf(stderr, "Blocked cart from loading save game state.\n");
   return;
   TRACEF("LoadSaveGame");
@@ -435,7 +435,7 @@ void Cart::FCEU_LoadGameSave(CartInfo *LocalHWInfo) {
 
 // clears all save memory. call this if you want to pretend the
 // saveram has been reset (it doesnt touch what is on disk though)
-void Cart::FCEU_ClearGameSave(CartInfo *LocalHWInfo) {
+void Cart::ClearGameSave(CartInfo *LocalHWInfo) {
   if (LocalHWInfo->battery && LocalHWInfo->SaveGame[0]) {
     for (int x = 0; x < 4; x++) {
       if (LocalHWInfo->SaveGame[x]) {

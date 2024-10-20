@@ -37,10 +37,10 @@ struct Sachen : public CartInterface {
 
   void S74LS374MSync(uint8 mirr) {
     switch (mirr & 3) {
-      case 0: fc->cart->setmirror(MI_V); break;
-      case 1: fc->cart->setmirror(MI_H); break;
-      case 2: fc->cart->setmirrorw(0, 1, 1, 1); break;
-      case 3: fc->cart->setmirror(MI_0); break;
+    case 0: fc->cart->setmirror(Cart::MIRROR_V); break;
+    case 1: fc->cart->setmirror(Cart::MIRROR_H); break;
+    case 2: fc->cart->setmirrorw(0, 1, 1, 1); break;
+    case 3: fc->cart->setmirror(Cart::MIRROR_0); break;
     }
   }
 
@@ -193,7 +193,7 @@ struct S8259 final : public Sachen {
     if (!(latch[7] & 1))
       S74LS374MSync(latch[7] >> 1);
     else
-      fc->cart->setmirror(MI_V);
+      fc->cart->setmirror(Cart::MIRROR_V);
   }
 
   void S8259Write(DECLFW_ARGS) {

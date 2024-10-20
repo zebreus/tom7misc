@@ -33,10 +33,10 @@ struct UNLVRC7 final : public CartInterface {
     fc->cart->setprg8(0xe000, ~0);
     for (uint8 i = 0; i < 8; i++) fc->cart->setchr1(i << 10, chr[i]);
     switch (mirr & 3) {
-      case 0: fc->cart->setmirror(MI_V); break;
-      case 1: fc->cart->setmirror(MI_H); break;
-      case 2: fc->cart->setmirror(MI_0); break;
-      case 3: fc->cart->setmirror(MI_1); break;
+      case 0: fc->cart->setmirror(Cart::MIRROR_V); break;
+      case 1: fc->cart->setmirror(Cart::MIRROR_H); break;
+      case 2: fc->cart->setmirror(Cart::MIRROR_0); break;
+      case 3: fc->cart->setmirror(Cart::MIRROR_1); break;
     }
   }
 

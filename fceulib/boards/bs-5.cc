@@ -35,7 +35,7 @@ struct BMCBS5 final : public CartInterface {
     fc->cart->setchr2(0x0800, reg_chr[1]);
     fc->cart->setchr2(0x1000, reg_chr[2]);
     fc->cart->setchr2(0x1800, reg_chr[3]);
-    fc->cart->setmirror(MI_V);
+    fc->cart->setmirror(Cart::MIRROR_V);
   }
 
   void MBS5Write(DECLFW_ARGS) {

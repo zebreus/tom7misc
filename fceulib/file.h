@@ -23,14 +23,10 @@ struct FceuFile {
   uint64_t FSeek(long offset, int whence);
   uint64_t FRead(void *ptr, size_t size, size_t nmemb);
 
-  enum {
-    READ, WRITE, READWRITE
-  } mode;
-
+ private:
   // the stream you can use to access the data
   EmuFile *stream = nullptr;
 
- private:
   uint64_t FTell();
 
   // the name of the file, or the logical name of the file within the archive

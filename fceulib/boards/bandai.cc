@@ -64,10 +64,10 @@ struct Bandai : public CartInterface {
       fc->cart->setprg16(0xC000, ~0);
     }
     switch (reg[9] & 3) {
-      case 0: fc->cart->setmirror(MI_V); break;
-      case 1: fc->cart->setmirror(MI_H); break;
-      case 2: fc->cart->setmirror(MI_0); break;
-      case 3: fc->cart->setmirror(MI_1); break;
+      case 0: fc->cart->setmirror(Cart::MIRROR_V); break;
+      case 1: fc->cart->setmirror(Cart::MIRROR_H); break;
+      case 2: fc->cart->setmirror(Cart::MIRROR_0); break;
+      case 3: fc->cart->setmirror(Cart::MIRROR_1); break;
     }
   }
 

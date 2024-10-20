@@ -999,7 +999,7 @@ int FCSound::GetSoundBuffer(int32 **w) {
 
 /* FIXME: Find out what sound registers get reset on reset. I know
    $4001/$4005 don't, due to that whole MegaMan 2 Game Genie thing. */
-void FCSound::FCEUSND_Reset() {
+void FCSound::Reset() {
   IRQFrameMode = 0x0;
   fhcnt = fhinc;
   fcnt = 0;
@@ -1042,10 +1042,10 @@ void FCSound::FCEUSND_Reset() {
   DMCBitCount = 0;
 }
 
-void FCSound::FCEUSND_Power() {
+void FCSound::Power() {
   SetNESSoundMap();
   memset(PSG, 0x00, sizeof(PSG));
-  FCEUSND_Reset();
+  Reset();
 
   memset(Wave, 0, sizeof(Wave));
   memset(WaveHi, 0, sizeof(WaveHi));
@@ -1170,9 +1170,9 @@ FCSound::FCSound(FC *fc)
           // Constructor, empty.
       };
 
-void FCSound::FCEUSND_SaveState() {}
+void FCSound::SaveState() {}
 
-void FCSound::FCEUSND_LoadState(int version) {
+void FCSound::LoadState(int version) {
   LoadDMCPeriod(DMCFormat & 0xF);
   RawDALatch &= 0x7F;
   DMCAddress &= 0x7FFF;

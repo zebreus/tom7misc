@@ -46,14 +46,14 @@ static constexpr PaletteEntry const *palpoint[] = {
 
 Palette::Palette(FC *fc) : fc(fc) {}
 
-void Palette::FCEUD_GetPalette(uint8 index,
+void Palette::GetPalette(uint8 index,
                                uint8 *r, uint8 *g, uint8 *b) const {
   *r = s_psdl[index].r;
   *g = s_psdl[index].g;
   *b = s_psdl[index].b;
 }
 
-void Palette::FCEUD_SetPalette(uint8 index, uint8 r, uint8 g, uint8 b) {
+void Palette::SetPalette(uint8 index, uint8 r, uint8 g, uint8 b) {
   s_psdl[index].r = r;
   s_psdl[index].g = g;
   s_psdl[index].b = b;
@@ -96,7 +96,7 @@ void Palette::SetNESDeemph(uint8 d, int force) {
       if (m > 0xff) m = 0xff;
       if (n > 0xff) n = 0xff;
       if (o > 0xff) o = 0xff;
-      FCEUD_SetPalette(x | 0xC0, m, n, o);
+      SetPalette(x | 0xC0, m, n, o);
     }
   }
   if (!d) return; /* No deemphasis, so return. */
@@ -116,7 +116,7 @@ void Palette::SetNESDeemph(uint8 d, int force) {
     if (n > 0xff) n = 0xff;
     if (o > 0xff) o = 0xff;
 
-    FCEUD_SetPalette(x | 0x40, m, n, o);
+    SetPalette(x | 0x40, m, n, o);
   }
 
   // PERF: Maybe should update lastd always? If d is 0, we already
@@ -190,14 +190,14 @@ void Palette::ChoosePalette() {
 
 void Palette::WritePalette() {
   for (int x = 0; x < 7; x++)
-    FCEUD_SetPalette(x, unvpalette[x].r, unvpalette[x].g, unvpalette[x].b);
+    SetPalette(x, unvpalette[x].r, unvpalette[x].g, unvpalette[x].b);
 
   for (int x = 0; x < 64; x++)
-    FCEUD_SetPalette(128 + x, palo[x].r, palo[x].g, palo[x].b);
+    SetPalette(128 + x, palo[x].r, palo[x].g, palo[x].b);
   SetNESDeemph(lastd, 1);
 }
 
-void Palette::FCEUI_GetNTSCTH(int *tint, int *hue) {
+void Palette::GetNTSCTH(int *tint, int *hue) {
   *tint = NTSCTINT;
   *hue = NTSCHUE;
 }

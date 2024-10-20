@@ -59,9 +59,14 @@ struct CartInfo {
 };
 
 struct Cart {
-  void FCEU_SaveGameSave(CartInfo *LocalHWInfo);
-  void FCEU_LoadGameSave(CartInfo *LocalHWInfo);
-  void FCEU_ClearGameSave(CartInfo *LocalHWInfo);
+  static constexpr int MIRROR_H = 0;
+  static constexpr int MIRROR_V = 1;
+  static constexpr int MIRROR_0 = 2;
+  static constexpr int MIRROR_1 = 3;
+
+  void SaveGameSave(CartInfo *LocalHWInfo);
+  void LoadGameSave(CartInfo *LocalHWInfo);
+  void ClearGameSave(CartInfo *LocalHWInfo);
 
   // Should use these accessors instead of modifying the pages
   // directly.
@@ -83,10 +88,10 @@ struct Cart {
   // TODO: Make private and use accessors so that we can either keep
   // the address offsetting trick internal, or even stamp it out
   // TODO: In the process of making these private. -tom7
-private:
+ private:
   uint8 *Page[32] = {};
   uint8 *VPage[8] = {};
-public:
+ public:
 
   // A cartridge consists of a set of PRG and CHR (video) ROMs (or RAMs),
   // each usually a chip on the board. These can be set up by the mapper
@@ -95,6 +100,7 @@ public:
   void ResetCartMapping();
   void SetupCartPRGMapping(int chip, uint8 *p, uint32 size, bool is_ram);
   void SetupCartCHRMapping(int chip, uint8 *p, uint32 size, bool is_ram);
+  // m is sometimes one of the mirroring types, sometimes 4; document!
   void SetupCartMirroring(int m, int hard, uint8 *extra);
 
   // Maybe should always be true? -tom7
@@ -177,7 +183,7 @@ public:
   static DECLFR_RET CartBR(DECLFR_ARGS);
   static DECLFR_RET CartBROB(DECLFR_ARGS);
 
-private:
+ private:
   bool PRGIsRAM[32] = { };  /* This page is/is not PRG RAM. */
 
   // See comment on ResetCartMapping where negative offsets of nothing
@@ -196,10 +202,5 @@ private:
 
   FC *fc;
 };
-
-#define MI_H 0
-#define MI_V 1
-#define MI_0 2
-#define MI_1 3
 
 #endif

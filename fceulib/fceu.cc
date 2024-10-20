@@ -227,8 +227,8 @@ void FCEU::EmulateFrame(int skip) {
 void FCEU::ResetNES() {
   if (GameInfo == nullptr) return;
   GameInterface(fc, GI_RESETM2);
-  fc->sound->FCEUSND_Reset();
-  fc->ppu->FCEUPPU_Reset();
+  fc->sound->Reset();
+  fc->ppu->Reset();
   fc->X->Reset();
 
   // clear back baffer
@@ -251,14 +251,14 @@ void FCEU::PowerNES() {
   SetWriteHandler(0x800, 0x1FFF, WriteRamMask);
 
   fc->input->InitializeInput();
-  fc->sound->FCEUSND_Power();
-  fc->ppu->FCEUPPU_Power();
+  fc->sound->Power();
+  fc->ppu->Power();
 
   // Have the external game hardware "powered" after the internal NES
   // stuff. Needed for the NSF code and VS System code.
   GameInterface(fc, GI_POWER);
   if (GameInfo->type == GIT_VSUNI)
-    fc->vsuni->FCEU_VSUniPower();
+    fc->vsuni->VSUniPower();
 
   // if we are in a movie, then reset the saveram
   if (fc->cart->disableBatteryLoading)

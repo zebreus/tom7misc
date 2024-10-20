@@ -40,7 +40,7 @@ struct UNLEDU2000 final : public CartInterface {
   }
 
   void Power() final override {
-    fc->cart->setmirror(MI_0);
+    fc->cart->setmirror(Cart::MIRROR_0);
     fc->fceu->SetReadHandler(0x6000, 0xFFFF, Cart::CartBR);
     fc->fceu->SetWriteHandler(0x6000, 0xFFFF, Cart::CartBW);
     fc->fceu->SetWriteHandler(0x8000, 0xFFFF, [](DECLFW_ARGS) {

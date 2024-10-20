@@ -32,7 +32,7 @@ struct Mapper230 final : public CartInterface {
     if (reset) {
       fc->cart->setprg16(0x8000, latch & 7);
       fc->cart->setprg16(0xC000, 7);
-      fc->cart->setmirror(MI_V);
+      fc->cart->setmirror(Cart::MIRROR_V);
     } else {
       uint32 bank = (latch & 0x1F) + 8;
       if (latch & 0x20) {

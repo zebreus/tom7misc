@@ -36,7 +36,7 @@ struct Mapper156 final : public CartInterface {
     if (mirrisused)
       fc->cart->setmirror(mirr ^ 1);
     else
-      fc->cart->setmirror(MI_0);
+      fc->cart->setmirror(Cart::MIRROR_0);
   }
 
   void M156Write(DECLFW_ARGS) {

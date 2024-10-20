@@ -90,7 +90,8 @@ int main(int argc, char **argv) {
     frame_num++;
   }
 
-  if (!WaveSave::SaveMono16(wavefilename, samples, Emulator::AUDIO_SAMPLE_RATE)) {
+  if (!WaveSave::SaveMono16(wavefilename, samples,
+                            Emulator::AUDIO_SAMPLE_RATE)) {
     fprintf(stderr, "Couldn't write to %s...\n", wavefilename.c_str());
     return -1;
   }

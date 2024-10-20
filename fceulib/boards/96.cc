@@ -27,7 +27,7 @@ struct Mapper96 final : public CartInterface {
   uint8 reg = 0, ppulatch = 0;
 
   void Sync() {
-    fc->cart->setmirror(MI_0);
+    fc->cart->setmirror(Cart::MIRROR_0);
     fc->cart->setprg32(0x8000, reg & 3);
     fc->cart->setchr4(0x0000, (reg & 4) | ppulatch);
     fc->cart->setchr4(0x1000, (reg & 4) | 3);

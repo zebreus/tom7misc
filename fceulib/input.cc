@@ -278,7 +278,7 @@ void Input::UpdateInput() {
   // TODO - should this apply to the movie data? should this be displayed in the
   // input hud?
   if (fc->fceu->GameInfo->type == GIT_VSUNI)
-    fc->vsuni->FCEU_VSUniSwap(&joy[0], &joy[1]);
+    fc->vsuni->VSUniSwap(&joy[0], &joy[1]);
 }
 
 DECLFR_RET Input::VSUNIRead0_Direct(DECLFR_ARGS) {
@@ -446,7 +446,7 @@ void Input::FCEU_DoSimpleCommand(int cmd) {
   switch (cmd) {
   case FCEUNPCMD_FDSINSERT: fc->fds->FCEU_FDSInsert(); break;
   case FCEUNPCMD_FDSSELECT: fc->fds->FCEU_FDSSelect(); break;
-  case FCEUNPCMD_VSUNICOIN: fc->vsuni->FCEU_VSUniCoin(); break;
+  case FCEUNPCMD_VSUNICOIN: fc->vsuni->VSUniCoin(); break;
   case FCEUNPCMD_VSUNIDIP0:
   case FCEUNPCMD_VSUNIDIP0 + 1:
   case FCEUNPCMD_VSUNIDIP0 + 2:
@@ -455,7 +455,7 @@ void Input::FCEU_DoSimpleCommand(int cmd) {
   case FCEUNPCMD_VSUNIDIP0 + 5:
   case FCEUNPCMD_VSUNIDIP0 + 6:
   case FCEUNPCMD_VSUNIDIP0 + 7:
-    fc->vsuni->FCEU_VSUniToggleDIP(cmd - FCEUNPCMD_VSUNIDIP0);
+    fc->vsuni->VSUniToggleDIP(cmd - FCEUNPCMD_VSUNIDIP0);
     break;
   case FCEUNPCMD_POWER: fc->fceu->PowerNES(); break;
   case FCEUNPCMD_RESET: fc->fceu->ResetNES(); break;

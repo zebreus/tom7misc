@@ -26,7 +26,7 @@ struct Mapper235 final : public CartInterface {
 
   void Sync() {
     if (cmdreg & 0x400)
-      fc->cart->setmirror(MI_0);
+      fc->cart->setmirror(Cart::MIRROR_0);
     else
       fc->cart->setmirror(((cmdreg >> 13) & 1) ^ 1);
     if (cmdreg & 0x800) {

@@ -20,6 +20,9 @@
 
 //  TODO: Add (better) file io error checking
 
+#include <bit>
+#include <cstdint>
+#include <cstring>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -51,46 +54,41 @@ int FCState::SubWrite(EmuFile *os, const vector<SFORMAT> &sf) {
   TRACE_SCOPED_STAY_ENABLED_IF(false);
 
   for (const SFORMAT &f : sf) {
+    // Port note: This used to be a nested subtree.
     assert(f.s != ~(uint32)0);
-    #if 0
-    if (sf->s == ~(uint23)0) {
-      // Link to another struct
-      const uint32 tmp = SubWrite(os, (const SFORMAT *)sf->v);
 
-      if (!tmp) return 0;
-      acc += tmp;
-      sf++;
-      continue;
-    }
-    #endif
+    const size_t size = f.s & ~FCEUSTATE_FLAGS;
 
     // 8 bytes for tag + size
     acc += 8;
-    acc += f.s & (~FCEUSTATE_FLAGS);
+    acc += size;
 
     // Are we writing or calculating the size of this block?
     if (os != nullptr) {
       os->fwrite(f.desc.data(), 4);
-      write32le(f.s & (~FCEUSTATE_FLAGS), os);
+      write32le(size, os);
 
       // TRACE_SCOPED_ENABLE_IF(f.desc[2] == 'P' && f.desc[3] == 'C');
       // TRACEF("%s for %d", f.desc, f.s & ~FCEUSTATE_FLAGS);
 
-      TRACEA((uint8 *)f.v, f.s & (~FCEUSTATE_FLAGS));
+      TRACEA((uint8 *)f.v, size);
 
-#ifndef LSB_FIRST
-      // TODO: Copy the data instead of byte-swapping in place. -tom7
-      if (f.s & FCEUSTATE_RLSB)
-        FlipByteOrder((uint8 *)f.v, f.s & (~FCEUSTATE_FLAGS));
-#endif
+      static_assert(std::endian::native == std::endian::big ||
+                    std::endian::native == std::endian::little,
+                    "This code needs to know the native byte order.");
 
-      os->fwrite((char *)f.v, f.s & (~FCEUSTATE_FLAGS));
-
-// Now restore the original byte order.
-#ifndef LSB_FIRST
-      if (f.s & FCEUSTATE_RLSB)
-        FlipByteOrder((uint8 *)f.v, f.s & (~FCEUSTATE_FLAGS));
-#endif
+      if (std::endian::native == std::endian::big &&
+          !!(f.s & FCEUSTATE_RLSB)) {
+        // On a big endian system, we need to reverse the byte order
+        // for values flagged as such (e.g. uint32 and uint16).
+        std::vector<uint8_t> bytes(size, 0);
+        memcpy(bytes.data(), (uint8_t*)f.v, size);
+        FlipByteOrder(bytes.data(), size);
+        os->fwrite((char *)bytes.data(), size);
+      } else {
+        // Little-endian systems, or it's just plain bytes.
+        os->fwrite((char *)f.v, size);
+      }
     }
   }
 
@@ -125,7 +123,7 @@ const SFORMAT *FCState::CheckS(const vector<SFORMAT> &sf,
 }
 
 bool FCState::ReadStateChunk(EmuFile *is,
-                           const vector<SFORMAT> &sf, int size) {
+                             const vector<SFORMAT> &sf, int size) {
   int temp = is->ftell();
 
   while (is->ftell() < temp + size) {
@@ -138,10 +136,10 @@ bool FCState::ReadStateChunk(EmuFile *is,
     if (const SFORMAT *tmp = CheckS(sf, tsize, toa)) {
       is->fread((char *)tmp->v, tmp->s & (~FCEUSTATE_FLAGS));
 
-#ifndef LSB_FIRST
-      if (tmp->s & FCEUSTATE_RLSB)
+      if (std::endian::native == std::endian::big &&
+          !!(tmp->s & FCEUSTATE_RLSB)) {
         FlipByteOrder((uint8 *)tmp->v, tmp->s & (~FCEUSTATE_FLAGS));
-#endif
+      }
     } else {
       is->fseek(tsize, SEEK_CUR);
     }
@@ -152,7 +150,6 @@ bool FCState::ReadStateChunk(EmuFile *is,
 bool FCState::ReadStateChunks(EmuFile *is, int32 totalsize) {
   uint32 size;
   bool ret = true;
-  bool warned = false;
 
   while (totalsize > 0) {
     int t = is->fgetc();
@@ -197,18 +194,12 @@ bool FCState::ReadStateChunks(EmuFile *is, int32 totalsize) {
         // for somebody's sanity's sake, at least warn about it:
         // XXX should probably just abort here since we don't try to provide
         // save-state compatibility. -tom7
-        if (!warned) {
-          char str[256];
-          sprintf(str,
-                  "Warning: Found unknown save chunk of type %d.\n"
-                  "This could indicate the save state is corrupted\n"
-                  "or made with a different (incompatible) emulator version.",
-                  t);
-          FCEUD_PrintError(str);
-          warned = true;
-        }
-        // if (fseek(st,size,SEEK_CUR)<0) goto endo;break;
-        is->fseek(size, SEEK_CUR);
+        fprintf(stderr, "Invalid save state with unknown chunk type %d.\n"
+                "Note that fceulib does not provide save-state "
+                "compatibility across versions.\n", t);
+        abort();
+        // is->fseek(size, SEEK_CUR);
+        break;
     }
   }
 
@@ -216,13 +207,13 @@ bool FCState::ReadStateChunks(EmuFile *is, int32 totalsize) {
 }
 
 // Simplified save that does not compress.
-bool FCState::FCEUSS_SaveRAW(std::vector<uint8> *out) const {
+bool FCState::SaveRAW(std::vector<uint8> *out) const {
   EmuFile_MEMORY os(out);
 
   uint32 totalsize = 0;
 
-  fc->ppu->FCEUPPU_SaveState();
-  fc->sound->FCEUSND_SaveState();
+  fc->ppu->SaveState();
+  fc->sound->SaveState();
   totalsize = WriteStateChunk(&os, 1, sfcpu);
   totalsize += WriteStateChunk(&os, 2, sfcpuc);
   //  TRACEF("PPU:");
@@ -256,7 +247,7 @@ bool FCState::FCEUSS_SaveRAW(std::vector<uint8> *out) const {
   return true;
 }
 
-bool FCState::FCEUSS_LoadRAW(const std::vector<uint8> &in) {
+bool FCState::LoadRAW(const std::vector<uint8> &in) {
   EmuFile_MEMORY_READONLY is{in};
 
   int totalsize = is.size();
@@ -270,8 +261,8 @@ bool FCState::FCEUSS_LoadRAW(const std::vector<uint8> &in) {
   }
 
   if (success) {
-    fc->ppu->FCEUPPU_LoadState(stateversion);
-    fc->sound->FCEUSND_LoadState(stateversion);
+    fc->ppu->LoadState(stateversion);
+    fc->sound->LoadState(stateversion);
     return true;
   } else {
     return false;
@@ -306,14 +297,14 @@ void FCState::AddExVec(const vector<SFORMAT> &vec) {
 }
 
 void FCState::AddExStateReal(void *v, uint32 s, int type, SKEY desc,
-                           const char *src) {
+                             const char *src) {
   // PERF: n^2. Use a map/set.
   for (const SFORMAT &sf : sfmdata) {
     if (sf.desc == desc) {
-      fprintf(stderr, "SFORMAT with duplicate key: %c%c%c%c\n"
+      fprintf(stderr,
+              "SFORMAT with duplicate key: %c%c%c%c\n"
               "Second called from %s\n",
-              desc[0], desc[1], desc[2], desc[3],
-              src);
+              desc[0], desc[1], desc[2], desc[3], src);
       abort();
     }
   }

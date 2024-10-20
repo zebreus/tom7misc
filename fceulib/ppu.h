@@ -15,16 +15,16 @@ struct PPU {
  public:
   PPU(FC *fc);
 
-  void FCEUPPU_Reset();
-  void FCEUPPU_Power();
+  void Reset();
+  void Power();
   // Runs one frame. The CPU is driven by the PPU timing.
   void FrameLoop();
 
   void LineUpdate();
   void SetVideoSystem(int w);
 
-  void FCEUPPU_SaveState();
-  void FCEUPPU_LoadState(int version);
+  void SaveState();
+  void LoadState(int version);
 
   // 0 to keep 8-sprites limitation, 1 to remove it.
   // Note that this does appear to affect the CPU behavior

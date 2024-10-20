@@ -476,8 +476,9 @@ int Unif::InitializeBoard() {
 
 void Unif::UNIFGI(GI h) {
   switch (h) {
-    case GI_RESETSAVE: fc->cart->FCEU_ClearGameSave(&UNIFCart); break;
-
+    case GI_RESETSAVE:
+      fc->cart->ClearGameSave(&UNIFCart);
+      break;
     case GI_RESETM2:
       fc->fceu->cartiface->Reset();
       break;
@@ -486,7 +487,7 @@ void Unif::UNIFGI(GI h) {
       if (UNIFchrrama) memset(UNIFchrrama, 0, 8192);
       break;
     case GI_CLOSE:
-      fc->cart->FCEU_SaveGameSave(&UNIFCart);
+      fc->cart->SaveGameSave(&UNIFCart);
       fc->fceu->cartiface->Close();
       FreeUNIF();
       break;
@@ -526,7 +527,7 @@ int Unif::UNIFLoad(const char *name, FceuFile *fp) {
 
   if (!InitializeBoard()) goto aborto;
 
-  fc->cart->FCEU_LoadGameSave(&UNIFCart);
+  fc->cart->LoadGameSave(&UNIFCart);
 
   fc->fceu->GameInterface = [](FC *fc, GI gi) {
     return fc->unif->UNIFGI(gi);

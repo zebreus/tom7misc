@@ -38,7 +38,7 @@ struct Mapper88 final : public CartInterface {
   }
 
   void MSync() {
-    if (is154) fc->cart->setmirror(MI_0 + (mirror & 1));
+    if (is154) fc->cart->setmirror(Cart::MIRROR_0 + (mirror & 1));
   }
 
   void M88Write(DECLFW_ARGS) {

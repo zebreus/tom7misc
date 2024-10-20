@@ -53,7 +53,7 @@ struct UNLPEC586 final : public CartInterface {
     fc->cart->setprg8r(0x10, 0x6000, 0);
     fc->cart->setprg16(0x8000, bs_tbl[reg[0] & 0x7f] >> 4);
     fc->cart->setprg16(0xc000, bs_tbl[reg[0] & 0x7f] & 0xf);
-    fc->cart->setmirror(MI_V);
+    fc->cart->setmirror(Cart::MIRROR_V);
   }
 
   void UNLPEC586Write(DECLFW_ARGS) {

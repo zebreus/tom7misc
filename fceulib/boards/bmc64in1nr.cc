@@ -40,9 +40,9 @@ struct BMC64in1nr final : public CartInterface {
       fc->cart->setprg16(0xC000, bank);
     }
     if (regs[0] & 0x20)
-      fc->cart->setmirror(MI_H);
+      fc->cart->setmirror(Cart::MIRROR_H);
     else
-      fc->cart->setmirror(MI_V);
+      fc->cart->setmirror(Cart::MIRROR_V);
     fc->cart->setchr8((regs[2] << 2) | ((regs[0] >> 1) & 3));
   }
 

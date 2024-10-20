@@ -1448,7 +1448,7 @@ void PPU::SetVideoSystem(int is_pal) {
 }
 
 
-void PPU::FCEUPPU_Reset() {
+void PPU::Reset() {
   VRAMBuffer = PPU_values[0] = PPU_values[1] = PPU_status = PPU_values[3] = 0;
   PPUSPL = 0;
   PPUGenLatch = 0;
@@ -1473,11 +1473,11 @@ void PPU::FCEUPPU_Reset() {
   #endif
 }
 
-void PPU::FCEUPPU_Power() {
+void PPU::Power() {
   memset(NTARAM,0x00,0x800);
   memset(PALRAM,0x00,0x20);
   memset(SPRAM,0x00,0x100);
-  FCEUPPU_Reset();
+  Reset();
 
   for (int x = 0x2000; x < 0x4000; x += 8) {
     fc->fceu->ARead[x] = A200x;
@@ -1603,7 +1603,7 @@ void PPU::FrameLoop() {
 
 // Why do we need to do this? -tom7
 // Note that weirdly, the T versions are 16-bit.
-void PPU::FCEUPPU_LoadState(int version) {
+void PPU::LoadState(int version) {
   TempAddr = TempAddrT;
   RefreshAddr = RefreshAddrT;
 }
@@ -1632,7 +1632,7 @@ PPU::PPU(FC *fc) :
   // Constructor, empty.
 }
 
-void PPU::FCEUPPU_SaveState() {
+void PPU::SaveState() {
   TempAddrT = TempAddr;
   RefreshAddrT = RefreshAddr;
 }

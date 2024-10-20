@@ -38,27 +38,6 @@ struct hash< unsigned long long > {
 }
 #endif
 
-#define UNIMPLEMENTED(message) \
-  do { fprintf(stderr, "%s:%s:%d. Unimplemented: %s\n", \
-               __FILE__, __func__, __LINE__, #message); \
-    fflush(stderr);                                     \
-    abort();                                            \
-  } while (0)
-
-// TODO: Move constructors too? Are they defined by default?
-#define NOT_COPYABLE(classname) \
-  private: \
-  classname(const classname &) = delete; \
-  classname &operator =(const classname &) = delete
-
-// TODO: Possible to verify there are no members?
-#define ALL_STATIC(classname) \
-  private: \
-  classname() = delete; \
-  NOT_COPYABLE(classname)
-
-using namespace std;
-
 // Can probably retire this; little chance that we compile with
 // MSVC any more, and anyway we should be using uint8.
 #ifdef COMPILER_MSVC
@@ -68,12 +47,12 @@ using namespace std;
 #endif
 #endif
 
-string ReadFile(const string &s);
-vector<string> ReadFileToLines(const string &s);
-vector<string> SplitToLines(const string &s);
-string Chop(string &s);
-string LoseWhiteL(const string &s);
-bool ExistsFile(const string &s);
+std::string ReadFile(const std::string &s);
+std::vector<std::string> ReadFileToLines(const std::string &s);
+std::vector<std::string> SplitToLines(const std::string &s);
+std::string Chop(std::string &s);
+std::string LoseWhiteL(const std::string &s);
+bool ExistsFile(const std::string &s);
 
 // Generally we just want reliable and portable names for specific
 // word sizes. C++11 actually gives these to us now; no more

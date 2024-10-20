@@ -99,7 +99,7 @@ struct UNLCC21 final : public AddrLatch {
   void WSync() final override {
     fc->cart->setprg32(0x8000, 0);
     fc->cart->setchr8(latch & 1);
-    fc->cart->setmirror(MI_0 + ((latch & 2) >> 1));
+    fc->cart->setmirror(Cart::MIRROR_0 + ((latch & 2) >> 1));
   }
 };
 }

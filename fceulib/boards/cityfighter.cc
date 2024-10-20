@@ -35,10 +35,10 @@ struct UNLCITYFIGHT final : public CartInterface {
     if (!prg_mode) fc->cart->setprg8(0xC000, prg_reg);
     for (int i = 0; i < 8; i++) fc->cart->setchr1(i << 10, chr_reg[i]);
     switch (mirr) {
-      case 0: fc->cart->setmirror(MI_V); break;
-      case 1: fc->cart->setmirror(MI_H); break;
-      case 2: fc->cart->setmirror(MI_0); break;
-      case 3: fc->cart->setmirror(MI_1); break;
+      case 0: fc->cart->setmirror(Cart::MIRROR_V); break;
+      case 1: fc->cart->setmirror(Cart::MIRROR_H); break;
+      case 2: fc->cart->setmirror(Cart::MIRROR_0); break;
+      case 3: fc->cart->setmirror(Cart::MIRROR_1); break;
     }
   }
 

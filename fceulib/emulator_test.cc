@@ -32,6 +32,8 @@
 #include "threadutil.h"
 #include "tracing.h"
 
+using namespace std;
+
 // Number of random inputs to run after the fixed inputs.
 // This of course affects the checksums, so it should
 // probably not be changed.
@@ -46,6 +48,7 @@ static constexpr bool TEST_COMPRESSED_SAVES = true;
 // same checksum.
 static constexpr uint64 EVERY_GAME_INITIAL_CHECKSUM = 5076988542167967341ULL;
 
+namespace {
 struct Game {
   string cart;
   vector<uint8> start_inputs;
@@ -146,6 +149,7 @@ struct InputStream {
   decltype(v.begin()) begin() { return v.begin(); }
   decltype(v.end()) end() { return v.end(); }
 };
+}
 
 // TODO: Add running checksums of ram, cpu.
 static SerialResult RunGameSerially(

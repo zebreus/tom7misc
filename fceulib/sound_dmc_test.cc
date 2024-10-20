@@ -4,6 +4,8 @@
 // loop. It's sort of fiddly since there are negative moduluses and
 // things like that...
 
+#include <_timeval.h>
+#include <cstdio>
 #include <utility>
 #include <tuple>
 #include <sys/time.h>

@@ -73,10 +73,10 @@ struct FCSound {
   uint32 soundtsi = 0;
   int32 sqacc[2] = {};
 
-  void FCEUSND_Power();
-  void FCEUSND_Reset();
-  void FCEUSND_SaveState();
-  void FCEUSND_LoadState(int version);
+  void Power();
+  void Reset();
+  void SaveState();
+  void LoadState(int version);
 
   // Called every CPU frame to update sound.
   void SoundCPUHook(int);
