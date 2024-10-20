@@ -263,6 +263,8 @@ top_n_test.exe : top_n_test.o $(BASE)
 ansi-image_test.exe : ansi-image.o ansi-image_test.o ansi.o image.o stb_image.o stb_image_write.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+stats_test.exe : stats_test.o ansi.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :
 	rm -f base/*.o bignum/*.o *.o *.exe *.deleteme test-*.png $(BASE) $(RE2_OBJECTS)
