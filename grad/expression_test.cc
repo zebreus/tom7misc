@@ -1,13 +1,23 @@
 
 #include "expression.h"
-#include "timer.h"
 
-#include "half.h"
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <string>
+
+#ifdef _WIN32
+#include <processthreadsapi.h>
+#include <windows.h>
+#include <winnt.h>
+#endif
 
 #include "grad-util.h"
+#include "half.h"
+#include "image.h"
+#include "timer.h"
 
-#include <windows.h>
-
+using namespace std;
 using Table = Exp::Table;
 
 static void TestIter() {
@@ -178,16 +188,19 @@ static void TestIter() {
 }
 
 static void TestStack() {
+#ifdef _WIN32
   ULONG_PTR lowLimit;
   ULONG_PTR highLimit;
   GetCurrentThreadStackLimits(&lowLimit, &highLimit);
 
   ptrdiff_t s = highLimit - lowLimit;
 
-  printf("Stack bytes: %lld\n", (int64)s);
+  printf("Stack bytes: %lld\n", (int64_t)s);
+#endif
 }
 
 int main(int argc, char **argv) {
+
   TestStack();
   // (void)GradUtil::MakeTable2();
   TestIter();

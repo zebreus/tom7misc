@@ -5,6 +5,7 @@
 #include "choppy.h"
 
 #include "base/logging.h"
+#include <cstdio>
 
 
 using Choppy = ChoppyGrid<256>;

@@ -2,6 +2,7 @@
 #ifndef _GRAD_EVAL_CIFAR10_H
 #define _GRAD_EVAL_CIFAR10_H
 
+#include <array>
 #include <memory>
 #include <vector>
 #include <string>

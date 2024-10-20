@@ -1,10 +1,13 @@
 
+#include <cstdio>
 #include <memory>
+#include <string>
 
+#include "util.h"
+#include "cifar10.h"
 #include "network.h"
 #include "clutil.h"
 
-#include "timer.h"
 #include "image.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"

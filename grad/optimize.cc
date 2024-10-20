@@ -2,30 +2,36 @@
 // Optimize a choppy database to make smaller equivalent expressions.
 // How did I not call this choptimize??
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
+#include <functional>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <array>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "expression.h"
 
-#include "choppy.h"
-#include "grad-util.h"
-#include "arcfour.h"
 #include "ansi.h"
+#include "arcfour.h"
+#include "choppy.h"
+#include "diff.h"
+#include "grad-util.h"
+#include "opt/large-optimizer.h"
+#include "periodically.h"
+#include "randutil.h"
 #include "threadutil.h"
 #include "timer.h"
-#include "periodically.h"
-#include "opt/large-optimizer.h"
-#include "diff.h"
-#include "randutil.h"
 #include "util.h"
 
+#include "expression.h"
 #include "state.h"
 
 using Choppy = ChoppyGrid<256>;
@@ -320,7 +326,7 @@ static const Exp *CleanRec(Allocator *alloc, const Exp *exp) {
     const Exp *ea = CleanRec(alloc, exp->a);
     if (ea->type == PLUS_C &&
         ea->c == exp->c) {
-      int32 new_iters = (int32)exp->iters + (int32)ea->iters;
+      int32_t new_iters = (int32_t)exp->iters + (int32_t)ea->iters;
       if (new_iters <= 65535) {
         return alloc->PlusC(ea->a, exp->c, new_iters);
       }
@@ -366,7 +372,7 @@ static const Exp *CleanRec(Allocator *alloc, const Exp *exp) {
                ea->c == exp->c) {
       // Collapse two iterated multiplications by the same
       // constant.
-      int32 new_iters = (int32)exp->iters + (int32)ea->iters;
+      int32_t new_iters = (int32_t)exp->iters + (int32_t)ea->iters;
       if (new_iters <= 65535) {
         return alloc->TimesC(ea->a, exp->c, new_iters);
       }

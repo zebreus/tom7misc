@@ -6,6 +6,8 @@
 #include <functional>
 
 #include "ansi.h"
+#include "base/stringprintf.h"
+#include "expression.h"
 #include "util.h"
 #include "edit-distance.h"
 

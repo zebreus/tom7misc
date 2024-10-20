@@ -1,30 +1,13 @@
 
-#include <cmath>
+#include <cstdint>
+#include <cstdio>
 #include <memory>
-#include <vector>
-#include <functional>
 #include <string>
-#include <ctype.h>
-#include <thread>
-#include <tuple>
 
-#include "chess.h"
-#include "pgn.h"
-#include "bigchess.h"
 #include "network.h"
-#include "clutil.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "threadutil.h"
-#include "image.h"
-#include "util.h"
-#include "timer.h"
-#include "periodically.h"
 #include "ansi.h"
 
-#include "nnchess.h"
 #include "eval-chess.h"
 
 using namespace std;

@@ -63,7 +63,7 @@ struct Stats {
     std::unique_lock<std::mutex> ml(m);
     int persec = done.load() / timer.Seconds();
     fprintf(stderr,
-            "Ran %lldk/%dM (%.1f%%; %d/s). %lld new %lld opt, "
+            "Ran %lldk/%lldM (%.1f%%; %d/s). %lld new %lld opt, "
             "%lld infeasible (%.1f%%)\n",
             done.load() / 1024, total / (1024 * 1024),
             (done.load() * 100.0) / total,

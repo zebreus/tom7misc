@@ -1,18 +1,17 @@
 
-#include <optional>
+#include <cstdio>
 #include <array>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "image.h"
 #include "expression.h"
-#include "half.h"
 #include "hashing.h"
 
 #include "choppy.h"
 #include "grad-util.h"
-#include "color-util.h"
-#include "arcfour.h"
 
 using Choppy = ChoppyGrid<256>;
 using DB = Choppy::DB;
@@ -212,7 +211,7 @@ static void Reduce(DB *db) {
 
           if (ar == DB::AddResult::SUCCESS_NEW ||
               ar == DB::AddResult::SUCCESS_SMALLER) {
-            printf("Solved col %d from %s\n", DB::KeyString(k).c_str());
+            printf("Solved col %d from %s\n", col, DB::KeyString(k).c_str());
             // XXX could continue to maybe find a
             // smaller solution
             goto next_columnwise_column;
