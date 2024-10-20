@@ -849,7 +849,7 @@ bool INes::iNESLoad(const char *name, FceuFile *fp, int OverwriteVidMode) {
   if (fp->FRead(&head, 1, 16) != 16)
     return false;
 
-  if (memcmp(&head,"NES\x1a",4))
+  if (memcmp(&head, "NES\x1a", 4))
     return false;
 
   CleanupHeader(&head);
@@ -1476,11 +1476,10 @@ void INes::iNESPower() {
   if (fc->fceu->GameInfo->type == GIT_VSUNI)
     fc->state->AddExState(fc->vsuni->FCEUVSUNI_STATEINFO(), ~0, 0, 0);
 
-  // Note: This used to save as "WRAM", but this is also used by
-  // many mappers. In some situation (I didn't dig in too deeply)
-  // the two could get confused, and e.g. Mapper 82 would some
-  // memory that was read during destruction. Gave it a unique name.
-  // -tom7
+  // Port note: This used to save as "WRAM", but this is also used by
+  // many mappers. In some situation (I didn't dig in too deeply) the
+  // two could get confused, and e.g. Mapper 82 would use some memory
+  // that was read during destruction. Gave it a unique name. -tom7
   fc->state->AddExState(GMB_WRAM(fc), 8192, 0, "iNWR");
   if (type == 19 || type == 6 || type == 69 || type == 85 || type == 96)
     fc->state->AddExState(GMB_MapperExRAM(fc), 32768, 0, "MEXR");

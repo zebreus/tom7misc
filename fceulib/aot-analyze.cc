@@ -29,6 +29,8 @@
 #error This will not work unless instrumentation is on in x6502.
 #endif
 
+using namespace std;
+
 // Oneoff analysis app. Could make this more general-purpose...
 int main(int argc, char **argv) {
   std::unique_ptr<Emulator> emu(Emulator::Create("roms/contra.nes"));

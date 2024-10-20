@@ -215,13 +215,3 @@ MapInterface *Mapper85_init(FC *fc) {
   m->VRC7SI();
   return m;
 }
-
-#if 0
-  // killed nsf -tom7
-void NSFVRC7_Init() {
-  fc->fceu->SetWriteHandler(0x9010, 0x901F, Mapper85_write);
-  fc->fceu->SetWriteHandler(0x9030, 0x903F, Mapper85_write);
-  VRC7SI();
-}
-
-#endif

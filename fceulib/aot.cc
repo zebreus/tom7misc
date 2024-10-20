@@ -41,6 +41,14 @@
 #include "threadutil.h"
 #include "x6502.h"
 
+using namespace std;
+
+// Lots of noise from these. Maybe worth fixing, but the code was
+// not written with this in mind (lots of lambdas that capture the
+// same set of stuff).
+#pragma GCC diagnostic ignored "-Wunused-lambda-capture"
+#pragma clang diagnostic ignored "-Wunused-lambda-capture"
+
 // When we emit a sequence of instructions, we use local variables
 // for the "registers" (registers + some other state) rather than
 // reading and writing through the X object, since locals should be

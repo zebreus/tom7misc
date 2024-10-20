@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <string>
-#include <tuple>
 #include <vector>
 #include <memory>
 #include <sys/time.h>
@@ -22,6 +21,8 @@
 static constexpr const char *ROMFILE = "mario.nes";
 static constexpr uint64 expected_nes = 0xde47a8ba400f0420ULL;
 static constexpr uint64 expected_img = 0x7effb50e22f4bb8cULL;
+
+using namespace std;
 
 void BenchmarkStep(Emulator *emu,
                    const vector<uint8> &start,

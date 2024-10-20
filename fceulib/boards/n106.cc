@@ -390,23 +390,6 @@ struct N106 : public CartInterface {
   }
 };
 
-// XXX excise nsf code?
-struct NSFN106 final : public N106 {
-  NSFN106(FC *fc, CartInfo *info) : N106(fc, info) {
-    fc->fceu->SetWriteHandler(0xf800, 0xffff, [](DECLFW_ARGS) {
-      ((NSFN106*)fc->fceu->cartiface)->Mapper19_write(DECLFW_FORWARD);
-    });
-    fc->fceu->SetWriteHandler(0x4800, 0x4fff, [](DECLFW_ARGS) {
-      ((NSFN106*)fc->fceu->cartiface)->Mapper19_write(DECLFW_FORWARD);
-    });
-    fc->fceu->SetReadHandler(0x4800, 0x4fff, [](DECLFR_ARGS) {
-      return ((NSFN106*)fc->fceu->cartiface)->
-        Namco_Read4800(DECLFR_FORWARD);
-    });
-    Mapper19_ESI();
-  }
-};
-
 struct Mapper19 final : public N106 {
   void Mapper19_StateRestore() {
     SyncPRG();
@@ -461,10 +444,6 @@ struct Mapper210 final : public N106 {
     fc->state->AddExVec(N106_StateRegs);
   }
 };
-}
-
-CartInterface *NSFN106_Init(FC *fc, CartInfo *info) {
-  return new NSFN106(fc, info);
 }
 
 CartInterface *Mapper19_Init(FC *fc, CartInfo *info) {

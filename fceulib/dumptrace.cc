@@ -1,15 +1,13 @@
 
+#include <cstdio>
 #include <vector>
 #include <string>
-#include <list>
 
 #include "trace.h"
 
 using namespace std;
 
 using Trace = Traces::Trace;
-
-static constexpr int MAX_HISTORY = 120;
 
 int main(int argc, char **argv) {
   if (argc != 2) {

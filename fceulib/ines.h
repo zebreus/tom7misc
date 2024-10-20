@@ -394,13 +394,8 @@ MapInterface *Mapper251_init(FC *fc);
 //MapInterface *Mapper255_init(FC *fc);
 
 // Probably can kill NSF code? -tom7
-// void NSFMMC5_Init();
-// void NSFAY_Init();
 // // n106
 // void NSFN106_Init(FC *fc, CartInfo *info);
-// void Mapper19_ESI(); // (now private -tom7)
-
-// void NSFVRC7_Init();
 
 // The new mappers.
 

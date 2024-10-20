@@ -26,7 +26,6 @@ Can get rid of:
  - ines.cpp "trainerpoo"
  - file wrappers can be massively simplified
  - file archive support
- - NSF code in mapper.h and the uncalled functions therein?
  - zlib dependency; bake miniz?
  - test-util.h can have dependency on cc-lib.
 
@@ -43,8 +42,6 @@ Cleanup to do:
  - CHECKs in Zapper
  - In MMC3, an EXPREGS[8] in each subclass, often obviously more than is
    necessary
- - look through Boards for Close.* and make sure they all contain override;
-   same for Power and Reset.
  - DECLFW_ARGS (etc.) have an FC parameter, but we don't need this
    when they're argument signatures for member functions.
  - Somehow look through boards for member variables that are not
