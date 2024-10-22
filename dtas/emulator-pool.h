@@ -35,6 +35,7 @@ struct EmulatorPool {
   // the pool when destroyed.
   struct Lease {
     Emulator *get() { return wrapper->emu.get(); }
+    const Emulator *get() const { return wrapper->emu.get(); }
     ~Lease() {
       if (wrapper != nullptr) {
         std::unique_lock<std::mutex> ml(parent->mutex);

@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <cmath>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
@@ -86,6 +87,8 @@ static constexpr int NUM_EMUS = EMUS_TALL * EMUS_WIDE;
 
 static SDL_Joystick *joystick = nullptr;
 static SDL_Surface *screen = nullptr;
+static ImageRGBA *mario = nullptr;
+static ImageRGBA *mario_ghost = nullptr;
 
 enum class Speed {
   PLAY,
@@ -141,6 +144,10 @@ struct Movie {
     }
 
     cursor = (int)inputs.size();
+  }
+
+  uint8_t operator [](size_t idx) const {
+    return inputs[idx];
   }
 
   // Take an emulator in any state, and put it at the state described
@@ -458,23 +465,54 @@ struct GameArray {
   // game states are all updated and have screenshots.
   void Step(uint8_t orig) {
     if (TRACE) { printf("Step %02x\n", orig); fflush(stdout); }
+    RandomGaussian gauss(&rc);
+    uint8_t prev_button = games[focus_idx]->movie.Size() == 0 ? 0 :
+      games[focus_idx]->movie[games[focus_idx]->movie.Size() - 1];
     for (int i = 0; i < NUM_EMUS; i++) {
       {
+        int jitter = std::clamp((int)std::round(gauss.Next() * 2.0), -4, 4);
         std::unique_lock<std::mutex> ml(m);
-        work.emplace_back([this, i, orig]() {
+        work.emplace_back([this, i, prev_button, orig, jitter]() {
             uint8_t b = orig;
-            if (i != focus_idx) {
-              // XXX: These need to be stateful. The idea
-              // should be more like to modify the frame
-              // on which an input happens than to randomly
-              // add noise to the inputs.
-              if (rc.Byte() < 24) b ^= INPUT_B;
-              if (rc.Byte() < 24) b &= ~INPUT_A;
-              if (rc.Byte() < 24) b ^= INPUT_R;
-              if (rc.Byte() < 24) b ^= INPUT_L;
-            }
+            if (i == focus_idx) {
+              // Always do the input faithfully on the focused
+              // game.
+              games[i]->Step(b);
+            } else {
 
-            games[i]->Step(b);
+              if (prev_button == b) {
+                // Rarely, fuzz the input a bit.
+                if (rc.Byte() < 12) {
+                  if (rc.Byte() < 8) b ^= INPUT_B;
+                  if (rc.Byte() < 8) b &= ~INPUT_A;
+                  if (rc.Byte() < 8) b ^= INPUT_R;
+                  if (rc.Byte() < 8) b ^= INPUT_L;
+                }
+
+                games[i]->Step(b);
+
+              } else {
+                // When the button state has changed, add time jitter.
+                // Add time jitter, forwards and backwards.
+                if (jitter < 0) {
+                  games[i]->Seek(jitter);
+                  // XXX This will keep the games synchronized, but we
+                  // do not need to do that.
+                  for (int i = 0; i < -jitter; i++) {
+                    games[i]->Step(b);
+                  }
+                } else if (jitter == 0) {
+                  games[i]->Step(b);
+                } else {
+                  int sz = games[i]->movie.Size();
+                  uint8_t oldb = sz == 0 ? 0 : games[i]->movie[sz - 1];
+                  for (int i = 0; i < jitter - 1; i++) {
+                    games[i]->Step(oldb);
+                  }
+                  games[i]->Step(b);
+                }
+              }
+            }
           });
       }
       cv.notify_all();
@@ -592,6 +630,49 @@ struct GameArray {
 
 static GameArray *game_array = nullptr;
 
+struct Watchlist {
+  struct MemLoc {
+    enum class DisplayType {
+      WORD,
+      DASH,
+      COLON,
+    };
+    MemLoc(const std::string &name, uint16_t addrhi, uint16_t addrlo,
+           DisplayType display_type = DisplayType::WORD) :
+      name(name), addrhi(addrhi), addrlo(addrlo), display_type(display_type) {}
+    // For single-byte locations.
+    MemLoc(const std::string &name, uint16_t addr) : MemLoc(name, addr, addr) {}
+
+    std::string RenderValue(const Emulator *emu) const {
+      if (addrhi == addrlo) {
+        return StringPrintf("%02x", emu->ReadRAM(addrhi));
+      } else {
+        uint8_t hi = emu->ReadRAM(addrhi);
+        uint8_t lo = emu->ReadRAM(addrlo);
+        switch (display_type) {
+        default:
+        case DisplayType::WORD:
+          return StringPrintf("%04x", (uint16_t(hi) << 8) | lo);
+        case DisplayType::DASH:
+          return StringPrintf("%02x-%02x", hi, lo);
+        case DisplayType::COLON:
+          return StringPrintf("%02x:%02x", hi, lo);
+        }
+      }
+    }
+
+    std::string name;
+    // If addrhi = addrlo, then this is just a single byte quantity.
+    uint16_t addrhi = 0;
+    uint16_t addrlo = 0;
+    DisplayType display_type = DisplayType::WORD;
+  };
+
+  Watchlist() {}
+  Watchlist(std::vector<MemLoc> e) : entries(std::move(e)) {}
+  std::vector<MemLoc> entries;
+};
+
 struct UI {
   const LevelId level;
   Speed speed = Speed::PLAY;
@@ -608,6 +689,10 @@ struct UI {
   void Draw();
   void DrawGrid();
   void DrawGhost();
+
+  void DrawWatchlist();
+  void DrawMemory();
+
   void PlayPause();
 
   void Seek(int delta);
@@ -625,6 +710,7 @@ struct UI {
 
   std::pair<int, int> drag_source = {-1, -1};
   int drag_handlex = 0, drag_handley = 0;
+  Watchlist watchlist;
 };
 
 UI::UI(LevelId level) : level(level), fps_per(1.0 / 59.94) {
@@ -632,6 +718,16 @@ UI::UI(LevelId level) : level(level), fps_per(1.0 / 59.94) {
   drawing = sdlutil::makesurface(SCREENW, SCREENH, true);
   CHECK(drawing != nullptr);
   sdlutil::ClearSurface(drawing, 0, 0, 0, 0);
+
+  using MemLoc = Watchlist::MemLoc;
+  watchlist = Watchlist({
+      MemLoc("X", PLAYER_X_HI, PLAYER_X_LO),
+      MemLoc("Y", PLAYER_Y_SCREEN, PLAYER_Y),
+      MemLoc("World", WORLD_MAJOR, WORLD_MINOR, MemLoc::DisplayType::DASH),
+      MemLoc("Mode:Task", OPER_MODE, OPER_MODE_TASK,
+             MemLoc::DisplayType::COLON),
+      MemLoc("Sub", GAME_ENGINE_SUBROUTINE),
+    });
 }
 
 void UI::Seek(int delta) {
@@ -988,33 +1084,84 @@ void UI::DrawGhost() {
     }
   }
 
-
+  // 1x screenshot.
   Game *game = game_array->games[game_array->focus_idx].get();
+  ImageRGBA shot = game->Screenshot();
   if (game != nullptr) {
     ImageRGBA shot = game->Screenshot();
-    sdlutil::CopyRGBARectNX(shot, PX, 0, 0, 256, 240,
-                            0, 0, drawing);
   } else {
-    sdlutil::FillRectRGB(drawing,
-                         0, 0, 256 * PX, 240 * PX, 0x33, 0x00, 0x00);
+    shot = ImageRGBA(256, 240);
+    shot.Clear32(0x330000FF);
   }
 
   int screenx = (game->emu->ReadRAM(SCREENLEFT_X_HI) << 8) |
     game->emu->ReadRAM(SCREENLEFT_X_LO);
 
+  CHECK(mario_ghost != nullptr);
   // Now add ghosts...
   for (const MarioUtil::Pos &pos : ghosts) {
 
-    int yy = (int)pos.y - 232;
-    int xx = (int)pos.x - screenx + 8;
+    int yy = (int)pos.y - 232 - 8;
+    int xx = (int)pos.x - screenx;
 
     // XXX use the sprite from the game
+    shot.BlendImage(xx, yy, *mario_ghost);
 
+    /*
     sdlutil::DrawCircle32(drawing,
                           xx * PX, yy * PX, PX * 4, 0xFF8833AA);
+    */
+
   }
+
+  sdlutil::CopyRGBARectNX(shot, PX, 0, 0, 256, 240,
+                          0, 0, drawing);
 }
 
+// TODO: These should probably take the destination position?
+void UI::DrawWatchlist() {
+  Game *game = game_array->games[game_array->focus_idx].get();
+  CHECK(game != nullptr);
+  const Emulator *emu = game->emu.get();
+
+  using MemLoc = Watchlist::MemLoc;
+  ImageRGBA img(256, watchlist.entries.size() * 10);
+  img.Clear32(0x000000FF);
+  int y = 0;
+  int col2 = 0;
+  for (const MemLoc &loc : watchlist.entries) {
+    col2 = std::max(col2, 10 + (int)loc.name.size() * 9);
+  }
+
+  for (const MemLoc &loc : watchlist.entries) {
+    img.BlendText32(0, y, 0xFFFF77FF, loc.name);
+    img.BlendText32(col2, y, 0xFFFFFFFF, loc.RenderValue(emu));
+    y += 10;
+  }
+
+  sdlutil::CopyRGBARectNX(img, 2,
+                          0, 0, img.Width(), img.Height(),
+                          256 * 6 + 8, 8, drawing);
+}
+
+void UI::DrawMemory() {
+  Game *game = game_array->games[game_array->focus_idx].get();
+  CHECK(game != nullptr);
+  const Emulator *emu = game->emu.get();
+
+  // 2048 bytes of memory
+  ImageRGBA img(64, 32);
+  for (int y = 0; y < 32; y++) {
+    for (int x = 0; x < 64; x++) {
+      uint8_t b = emu->ReadRAM(y * 64 + x);
+      img.SetPixel(x, y, b, b, b, 0xFF);
+    }
+  }
+
+  sdlutil::CopyRGBARectNX(img, 4,
+                          0, 0, img.Width(), img.Height(),
+                          256 * 6 + 8, 480, drawing);
+}
 
 void UI::Draw() {
   if (TRACE) printf("Draw.\n");
@@ -1027,7 +1174,6 @@ void UI::Draw() {
   CHECK(game_array->games.size() == NUM_EMUS);
 
 
-
   switch (view) {
   case View::GRID:
     DrawGrid();
@@ -1035,6 +1181,8 @@ void UI::Draw() {
 
   case View::GHOST:
     DrawGhost();
+    DrawWatchlist();
+    DrawMemory();
     break;
 
   default:
@@ -1202,12 +1350,27 @@ static std::optional<LevelId> GetLevel(MinusDB *db) {
   return std::nullopt;
 }
 
+void InitializeGraphics() {
+  mario = ImageRGBA::Load("mario.png");
+  CHECK(mario != nullptr);
+
+  mario_ghost = new ImageRGBA(*mario);
+  for (int y = 0; y < mario_ghost->Height(); y++) {
+    for (int x = 0; x < mario_ghost->Width(); x++) {
+      const auto [r, g, b, a] = mario_ghost->GetPixel(x, y);
+      mario_ghost->SetPixel(x, y, g, r, b, a * 0.33);
+    }
+  }
+}
+
 int main(int argc, char **argv) {
   if (TRACE) fprintf(stderr, "In main...\n");
   ANSI::Init();
 
   if (TRACE) fprintf(stderr, "Try initialize SDL...\n");
   InitializeSDL();
+
+  InitializeGraphics();
 
   MinusDB db;
 
@@ -1229,6 +1392,15 @@ int main(int argc, char **argv) {
   }
 
   printf("Play %s\n", ColorLevel(level).c_str());
+
+  db.ForEachRejected([level](const MinusDB::RejectedRow &row) {
+      if (row.level == level) {
+        printf("%s " ARED("REJECTED") " by %s on " AGREY("%lld") "\n",
+               ColorLevel(level).c_str(),
+               MinusDB::MethodName(row.method),
+               row.createdate);
+      }
+    });
 
   if (db.HasSolution(level)) {
     printf(AWHITE("Note") ": %s has a solution already\n",

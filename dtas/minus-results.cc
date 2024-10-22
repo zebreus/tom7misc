@@ -140,7 +140,7 @@ static void Report() {
     case MinusDB::METHOD_SOLVE: c = 0x00FF00FF; break;
     case MinusDB::METHOD_CROSS: c = 0x77AA00FF; break;
     case MinusDB::METHOD_MAZE: c = 0x0077AAFF; break;
-    case MinusDB::METHOD_MANUAL: c = 0xFF33AAFF; break;
+    case MinusDB::METHOD_MANUAL: c = 0xAAFFFFFF; break;
     default: break;
     }
     const auto &[major, minor] = UnpackLevel(row.level);

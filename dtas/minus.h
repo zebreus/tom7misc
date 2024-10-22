@@ -47,6 +47,18 @@ struct MinusDB {
   static constexpr int REJECT_NEVER = 1000 + 1;
   static constexpr int REJECT_ALWAYS_DEAD = 1000 + 2;
 
+  static const char *MethodName(int m) {
+    switch (m) {
+    case METHOD_SOLVE: return "METHOD_SOLVE";
+    case METHOD_CROSS: return "METHOD_CROSS";
+    case METHOD_MAZE: return "METHOD_MAZE";
+    case METHOD_MANUAL: return "METHOD_MANUAL";
+    case REJECT_NEVER: return "REJECT_NEVER";
+    case REJECT_ALWAYS_DEAD: return "REJECT_ALWAYS_DEAD";
+    default: return "UNKNOWN";
+    }
+  }
+
   using Query = Database::Query;
   using Row = Database::Row;
 
