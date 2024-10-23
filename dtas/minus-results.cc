@@ -108,7 +108,8 @@ static void Report() {
 
   printf("------" "\n"
          APINK(" NEVER") ": %d\n"
-         APINK("ALWAYS") ": %d\n",
+         APINK("ALWAYS") ": %d\n"
+         APINK("  LOOP") ": %d\n",
          method_count[MinusDB::REJECT_NEVER],
          method_count[MinusDB::REJECT_ALWAYS_DEAD]);
 
@@ -151,8 +152,9 @@ static void Report() {
   for (const RejectedRow &row : rej_rows) {
     uint32_t c = 0x770000FF;
     switch (row.method) {
-    case MinusDB::REJECT_NEVER: c = 0xAA0000FF; break;
-    case MinusDB::REJECT_ALWAYS_DEAD: c = 0xFF0000FF; break;
+    case MinusDB::REJECT_NEVER: c = 0x990000FF; break;
+    case MinusDB::REJECT_ALWAYS_DEAD: c = 0xAA0000FF; break;
+    case MinusDB::REJECT_LOOP: c = 0xFF0000FF; break;
     default: break;
     }
     const auto &[major, minor] = UnpackLevel(row.level);

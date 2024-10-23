@@ -31,7 +31,6 @@
 #include "randutil.h"
 #include "threadutil.h"
 #include "timer.h"
-#include "util.h"
 #include "hashing.h"
 #include "status-bar.h"
 
@@ -1337,85 +1336,6 @@ static void Cross(int64_t start_time) {
          (int)levels_solved.Read());
 }
 
-[[maybe_unused]]
-static void ManualOld(const std::string &fm2file) {
-  MinusDB db;
-
-  std::vector<uint8_t> movie = SimpleFM2::ReadInputs(fm2file);
-  // But filter out start from the beginning.
-  for (int i = 0; i < (int)movie.size() && i < 60; i++) {
-    movie[i] &= ~INPUT_T;
-  }
-
-  uint8_t major = 0x14, minor = 0xC3;
-  const LevelId level = PackLevel(major, minor);
-  if (db.HasSolution(level)) {
-    printf(AORANGE("Already solved: ") "%s" "\n",
-           ColorLevel(level).c_str());
-    return;
-  }
-
-  std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
-  CHECK(emu.get() != nullptr);
-  MarioUtil::WarpTo(emu.get(), major, minor, 0);
-  std::vector<uint8_t> level_start_state = emu->SaveUncompressed();
-  Evaluator eval(emulator_pool, emu.get());
-
-  static constexpr int MAX_PADDING = 48;
-  Timer timer;
-  Periodically status_per(1.0);
-  StatusBar status(1);
-  for (int p = -MAX_PADDING; p < MAX_PADDING; p++) {
-    emu->LoadUncompressed(level_start_state);
-
-    if (p > 0) {
-      for (int i = 0; i < p; i++) emu->Step(0, 0);
-    }
-
-    int start_idx = 0;
-    if (p < 0) start_idx = -p;
-
-    for (int idx = start_idx; idx < (int)movie.size(); idx++) {
-      if (idx == 340) {
-        MarioUtil::ScreenshotAny(emu.get()).Save(
-            StringPrintf("manual340-%d.png", p));
-      }
-
-      uint8_t b = movie[idx];
-      emu->Step(b, 0);
-      if (eval.Stuck(emu.get())) {
-        break;
-      }
-
-      if (eval.Succeeded(emu.get())) {
-        std::vector<uint8_t> out;
-        if (p > 0) {
-          for (int i = 0; i < p; i++) out.push_back(0);
-        }
-        for (int i = start_idx; i <= idx; i++) out.push_back(movie[i]);
-        std::string fm7 = SimpleFM7::EncodeOneLine(out);
-        printf(AGREEN("Success!") " [pad %d] on %s: %s\n",
-               p, ColorLevel(level).c_str(),
-               fm7.c_str());
-        db.AddSolution(level, out, MinusDB::METHOD_MANUAL);
-        return;
-      }
-    }
-
-    MarioUtil::Screenshot(emu.get()).Save(
-        StringPrintf("manual-%d.png", p));
-
-    status_per.RunIf([&]() {
-        status.Emit(ANSI::ProgressBar(p + MAX_PADDING,
-                                      MAX_PADDING * 2 + 1,
-                                      "try offsets",
-                                      timer.Seconds()));
-      });
-  }
-
-  printf(ARED("Ended without solving.") "\n");
-}
-
 static void Manual(LevelId level,
                    const std::string &fm7file) {
   MinusDB db;
@@ -1582,16 +1502,15 @@ static void Never() {
          ANSI::Time(timer.Seconds()).c_str());
 }
 
-// The largest number of states in the hash set before we
-// give up on this strategy.
+// max_states is the largest number of states in the hash set before
+// we give up on this strategy.
 //
 // When the player is totally stuck, we want to detect this
 // by running out the clock. This takes about 10,000 frames.
 // On other levels we might be able to manipulate our state
 // slightly, but always die quickly.
-static constexpr int ALWAYS_DEAD_MAX_STATES = 100000;
-
-static bool IsAlwaysDead(LevelId level,
+static bool IsAlwaysDead(int max_states,
+                         LevelId level,
                          Emulator *emu,
                          int status_index,
                          StatusBar *status) {
@@ -1647,16 +1566,16 @@ static bool IsAlwaysDead(LevelId level,
   // input and leaving it in an unspecified state. Caller should
   // save the state if they need it.
   std::function<bool(int)> InsertRec =
-    [emu,
+    [emu, max_states,
      &level, &status_per, &timer, status_index, &status, &GetState,
      &InsertRec, &eval, &states, &frames, &deaths](int depth) {
-      // if ((int)states.size() > MAX_STATES) return false;
+      // if ((int)states.size() > max_states) return false;
       // Since the success case involves inserting all the states
       // back to the root, we can exit once the depth exceeds
       // the remaining space. This is also important for cases
       // where the game is frozen and the death timer is not
       // actually running.
-      if ((int)states.size() + depth > ALWAYS_DEAD_MAX_STATES) return false;
+      if ((int)states.size() + depth > max_states) return false;
       if (eval.Succeeded(emu)) return false;
       if (eval.IsDead(emu)) {
         deaths++;
@@ -1675,7 +1594,7 @@ static bool IsAlwaysDead(LevelId level,
               MarioUtil::FormatNum(deaths).c_str());
 
         std::string prog =
-          ANSI::ProgressBar(depth + states.size(), ALWAYS_DEAD_MAX_STATES,
+          ANSI::ProgressBar(depth + states.size(), max_states,
                             msg,
                             timer.Seconds(),
                             ANSI::ProgressBarOptions{
@@ -1724,20 +1643,25 @@ static bool IsAlwaysDead(LevelId level,
   }
 }
 
-static void AlwaysDead() {
+template<class F>
+static void TryToReject(const std::string &method_name, int rejected_method,
+                        int64_t limit, const F &IsRejected) {
   MinusDB db;
   const std::unordered_set<LevelId> solved = db.GetSolved();
   const std::unordered_set<LevelId> rejected = db.GetRejected();
 
   const std::unordered_set<LevelId> already =
-    db.GetAttemptedByMethod(MinusDB::REJECT_ALWAYS_DEAD);
+    db.GetAttemptedByMethod(rejected_method);
 
-  printf("%lld already done.\n"
-         "%lld already attempted with this method.\n"
-         "%lld already rejected by any method.\n",
-         (int64_t)solved.size(),
-         (int64_t)already.size(),
-         (int64_t)rejected.size());
+  printf(
+      "Trying to reject with " AWHITE("%s") ".\n"
+      "%lld already done.\n"
+      "%lld already attempted with this method.\n"
+      "%lld already rejected by any method.\n",
+      method_name.c_str(),
+      (int64_t)solved.size(),
+      (int64_t)already.size(),
+      (int64_t)rejected.size());
 
   Timer timer;
   Periodically status_per(5.0);
@@ -1767,7 +1691,8 @@ static void AlwaysDead() {
 
   ParallelFan(
       NUM_THREADS,
-      [&db, &timer, &status_per, &status,
+      [&IsRejected, rejected_method, limit,
+       &db, &timer, &status_per, &status,
        &m, &todo, denominator](int thread_idx) {
 
         for (;;) {
@@ -1800,15 +1725,13 @@ static void AlwaysDead() {
           CHECK(emu.get() != nullptr);
           MarioUtil::WarpTo(emu.get(), major, minor, 0);
 
-          if (IsAlwaysDead(level, emu.get(), thread_idx, &status)) {
+          if (IsRejected(limit, level, emu.get(), thread_idx, &status)) {
             levels_solved++;
-            db.AddRejected(level, MinusDB::REJECT_ALWAYS_DEAD);
+            db.AddRejected(level, rejected_method);
           } else {
-            db.AddAttempted(level, MinusDB::REJECT_ALWAYS_DEAD,
-                            ALWAYS_DEAD_MAX_STATES);
+            db.AddAttempted(level, rejected_method, limit);
           }
 
-          // Perhaps this should be inside IsAlwaysDead?
           status_per.RunIf([&](){
               const int numer = levels_attempted.Read();
               std::string bar =
@@ -1836,6 +1759,14 @@ static void AlwaysDead() {
          ANSI::Time(timer.Seconds()).c_str());
 }
 
+
+static void AlwaysDead() {
+  TryToReject("alwaysdead", MinusDB::REJECT_ALWAYS_DEAD, 100000, IsAlwaysDead);
+}
+
+static void Loop() {
+  LOG(FATAL) << "Unimplemented";
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -1866,10 +1797,12 @@ int main(int argc, char **argv) {
       Never();
     } else if (argv[1] == (std::string)"alwaysdead") {
       AlwaysDead();
+    } else if (argv[1] == (std::string)"loop") {
+      Loop();
 
     } else {
       LOG(FATAL) << "Usage:\n"
-        "./solve.exe [cross|solve|manual maj min file|never|alwaysdead]\n"
+        "./solve.exe [cross|solve|manual maj min file|never|alwaysdead|loop]\n"
         "The default is solve.\n";
     }
   } else {
