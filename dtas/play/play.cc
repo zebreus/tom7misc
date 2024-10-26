@@ -466,8 +466,9 @@ struct GameArray {
   void Step(uint8_t orig) {
     if (TRACE) { printf("Step %02x\n", orig); fflush(stdout); }
     RandomGaussian gauss(&rc);
-    uint8_t prev_button = games[focus_idx]->movie.Size() == 0 ? 0 :
-      games[focus_idx]->movie[games[focus_idx]->movie.Size() - 1];
+    const int movie_size = games[focus_idx]->movie.Size();
+    uint8_t prev_button = movie_size == 0 ? 0 :
+      games[focus_idx]->movie[movie_size - 1];
     for (int i = 0; i < NUM_EMUS; i++) {
       {
         int jitter = std::clamp((int)std::round(gauss.Next() * 2.0), -4, 4);
@@ -498,7 +499,7 @@ struct GameArray {
                   games[i]->Seek(jitter);
                   // XXX This will keep the games synchronized, but we
                   // do not need to do that.
-                  for (int i = 0; i < -jitter; i++) {
+                  for (int j = 0; j < -jitter; j++) {
                     games[i]->Step(b);
                   }
                 } else if (jitter == 0) {
@@ -506,7 +507,7 @@ struct GameArray {
                 } else {
                   int sz = games[i]->movie.Size();
                   uint8_t oldb = sz == 0 ? 0 : games[i]->movie[sz - 1];
-                  for (int i = 0; i < jitter - 1; i++) {
+                  for (int j = 0; j < jitter - 1; j++) {
                     games[i]->Step(oldb);
                   }
                   games[i]->Step(b);
