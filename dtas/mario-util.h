@@ -63,4 +63,8 @@ struct MarioUtil {
   static std::string FormatNum(uint64_t n);
 };
 
+inline bool operator== (const MarioUtil::Pos &a, const MarioUtil::Pos &b) {
+  return a.x == b.x && a.y == b.y;
+}
+
 #endif

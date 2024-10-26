@@ -1643,6 +1643,172 @@ static bool IsAlwaysDead(int max_states,
   }
 }
 
+// Another common cause of impossible levels: The game is in a "cutscene"
+// mode (like used in 00-01) but mario is not moving. In this case the
+// game never exits the cutscene and is unplayable. "Always dead" doesn't
+// generally catch this because the timer doesn't initialize, and thus
+// mario will never actually die. Evaluator doesn't consider this
+// "never started" because we do have a level id and we ARE in mode:task
+// 1:3. (Subroutine is 7 (vert pipe/interstitial) rather than 8 (playing),
+// but we don't want to reject a level like 00-01 as it is solvable!).
+// See PlayerEntrance: in game code.
+//
+// An example level would be 13-4b. The player never gains control because
+// when mario's y position is less than 0x30, it autocontrols the player
+// with no input (I guess assuming that he will fall).
+static bool IsCutscene(int max_states,
+                       LevelId level,
+                       Emulator *emu,
+                       int status_index,
+                       StatusBar *status) {
+  ArcFour rc(StringPrintf("cutscene.%d", level));
+  Evaluator eval(emulator_pool, emu);
+
+  Periodically status_per(2.0);
+  Timer timer;
+
+  // Wait until the game gets into the interstitial mode.
+  status->LineStatusf(status_index, "Find intro subroutine");
+  for (int i = 0; i < 1000; i++) {
+    const uint8_t mode = emu->ReadRAM(OPER_MODE);
+    const uint8_t task = emu->ReadRAM(OPER_MODE_TASK);
+    const uint8_t sub = emu->ReadRAM(GAME_ENGINE_SUBROUTINE);
+    if (mode == 1 && task == 3) {
+      if (sub == 7) break;
+      if (sub == 8) {
+        // If the player ever gains control, this is not a cutscene.
+        break;
+      }
+      // But otherwise we allow various initialization subroutines to run.
+    }
+    emu->StepFull(0, 0);
+  }
+
+  {
+    const uint8_t mode = emu->ReadRAM(OPER_MODE);
+    const uint8_t task = emu->ReadRAM(OPER_MODE_TASK);
+    const uint8_t sub = emu->ReadRAM(GAME_ENGINE_SUBROUTINE);
+    // Also if we are using alt entrance control (pipe/vine) then this is
+    // not the kind of cutscene we know how to handle. This may never happen
+    // at level start, anyway.
+    const uint8_t aec = emu->ReadRAM(ALT_ENTRANCE_CONTROL);
+    if (mode != 1 || task != 3 || sub != 7 || aec == 2) {
+      status->Printf(AYELLOW("Not cutscene") " on %s (%02x:%02x:%02x).\n",
+                     ColorLevel(level).c_str(),
+                     mode, task, sub);
+      return false;
+    }
+  }
+
+  status->LineStatusf(status_index, "Running cutscene");
+
+  // If mario has y pos < 0x30, he is automatically controlled (no inputs).
+  //
+  // Otherwise, when PLAYER_ENTRANCE_CONTROL is 6 or 7, mario is automatically
+  // controlled (hold right). This condition ends if mario's sprite is set
+  // to background mode, which is a byproduct of entering a pipe.
+  //
+  // Otherwise, we enter the play state (1:3:8).
+  //
+  // Since mario is automatically controlled, and gaining a y position
+  // >= 30 or going in a pipe both require mario to move, we are stuck
+  // forever if mario is not moving. In principle there could be something
+  // temporary blocking him (moving platforms) or he could be killed by
+  // an enemy, but we assume that if this does not happen for a very long
+  // time, we are truly stuck.
+  // This is about 30 minutes of game time.
+  static constexpr int TARGET_STUCK_FRAMES = 100000;
+  static constexpr int MAX_FRAMES = TARGET_STUCK_FRAMES * 10;
+
+  // Select does nothing so we don't bother. We don't allow pausing.
+  static constexpr uint8_t CONTROLLER_MASK =
+    INPUT_U | INPUT_D | INPUT_L | INPUT_R |
+    INPUT_B | INPUT_A;
+
+  MarioUtil::Pos last_pos = MarioUtil::GetPos(emu);
+
+  int stuck_frames = 0;
+  for (int frames = 0; frames < MAX_FRAMES; frames++) {
+
+    if (status_per.ShouldRun()) {
+      std::string msg =
+        StringPrintf(
+            "%s: %d stuck %d total (" ABLUE("%d") "," ABLUE("%d") ")",
+            ColorLevel(level).c_str(),
+            stuck_frames, frames,
+            last_pos.x, last_pos.y);
+
+      std::string prog =
+        ANSI::ProgressBar(frames, MAX_FRAMES,
+                          msg,
+                          timer.Seconds(),
+                          ANSI::ProgressBarOptions{
+                            .full_width = 72,
+                            .bar_filled = 0x420f6eFF,
+                            .bar_empty = 0x210936FF,
+                            .include_frac = false,
+                          });
+
+      status->EmitLine(status_index, prog);
+    }
+
+    const uint8_t mode = emu->ReadRAM(OPER_MODE);
+    const uint8_t task = emu->ReadRAM(OPER_MODE_TASK);
+    const uint8_t sub = emu->ReadRAM(GAME_ENGINE_SUBROUTINE);
+
+    bool success = eval.Succeeded(emu);
+    bool dead = eval.IsDead(emu);
+    bool playing = mode == 1 && task == 3 && sub == 8;
+    if (success || dead || playing) {
+      // If we can win, die, or play, then we are not stuck.
+      status->Printf(AYELLOW("No joy") " on %s: %s%s%s\n",
+                     ColorLevel(level).c_str(),
+                     success ? "success " : "",
+                     dead ? "dead " : "",
+                     playing ? "playing " : "");
+      return false;
+    }
+
+    const uint8_t joy = emu->ReadRAM(LAST_JOYPAD);
+    if (!(joy == 0x00 || joy == 0x01)) {
+      status->Printf(AORANGE("Not cutscene") " on %s because we seem to have "
+                     "control still??\n",
+                     ColorLevel(level).c_str());
+      return false;
+    }
+
+    // We press random buttons to make sure we are actually being
+    // autocontrolled. This is more like a sanity check than part of
+    // the unsolvability argument.
+    const uint8_t b = rc.Byte() & CONTROLLER_MASK;
+    emu->StepFull(b, 0);
+
+    MarioUtil::Pos pos = MarioUtil::GetPos(emu);
+    if (pos != last_pos) {
+      // We moved. So reset the counter.
+      stuck_frames = 0;
+      last_pos = pos;
+    } else {
+      stuck_frames++;
+    }
+
+    if (stuck_frames == TARGET_STUCK_FRAMES) {
+      status->Printf(AGREEN("Stuck cutscene") " on %s after %d frames (%d stuck)\n",
+                     ColorLevel(level).c_str(),
+                     frames, stuck_frames);
+      return true;
+    }
+  }
+
+  // This is strange. We are moving for a long time but not reaching
+  // either condition.
+  status->Printf(AORANGE("Too many frames") " on %s. Stuck %d.\n",
+                 ColorLevel(level).c_str(),
+                 stuck_frames);
+  return false;
+}
+
+
 template<class F>
 static void TryToReject(const std::string &method_name, int rejected_method,
                         int64_t limit, const F &IsRejected) {
@@ -1764,8 +1930,8 @@ static void AlwaysDead() {
   TryToReject("alwaysdead", MinusDB::REJECT_ALWAYS_DEAD, 100000, IsAlwaysDead);
 }
 
-static void Loop() {
-  LOG(FATAL) << "Unimplemented";
+static void Cutscene() {
+  TryToReject("cutscene", MinusDB::REJECT_CUTSCENE, 100000, IsCutscene);
 }
 
 int main(int argc, char **argv) {
@@ -1797,12 +1963,19 @@ int main(int argc, char **argv) {
       Never();
     } else if (argv[1] == (std::string)"alwaysdead") {
       AlwaysDead();
-    } else if (argv[1] == (std::string)"loop") {
-      Loop();
+    } else if (argv[1] == (std::string)"cutscene") {
+      Cutscene();
 
     } else {
       LOG(FATAL) << "Usage:\n"
-        "./solve.exe [cross|solve|manual maj min file|never|alwaysdead|loop]\n"
+        "./solve.exe [method [args]]\n"
+        "Methods:\n"
+        "  cross\n"
+        "  solve\n"
+        "  manual maj min file\n"
+        "  never\n"
+        "  alwaysdead\n"
+        "  cutscene\n"
         "The default is solve.\n";
     }
   } else {

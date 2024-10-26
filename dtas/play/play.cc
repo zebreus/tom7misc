@@ -721,6 +721,7 @@ UI::UI(LevelId level) : level(level), fps_per(1.0 / 59.94) {
 
   using MemLoc = Watchlist::MemLoc;
   watchlist = Watchlist({
+      MemLoc("Frame", FRAME_COUNTER),
       MemLoc("X", PLAYER_X_HI, PLAYER_X_LO),
       MemLoc("Y", PLAYER_Y_SCREEN, PLAYER_Y),
       MemLoc("World", WORLD_MAJOR, WORLD_MINOR, MemLoc::DisplayType::DASH),

@@ -97,21 +97,22 @@ static void Report() {
 #define AMINT(s) ANSI_FG(220, 250, 195) s ANSI_RESET
 #define APINK(s) ANSI_FG(255, 222, 237) s ANSI_RESET
 
-  printf(AMINT(" SOLVE") ": %d\n"
-         AMINT(" CROSS") ": %d\n"
-         AMINT("  MAZE") ": %d\n"
-         AMINT("MANUAL") ": %d\n",
+  printf(AMINT("   SOLVE") ": %d\n"
+         AMINT("   CROSS") ": %d\n"
+         AMINT("    MAZE") ": %d\n"
+         AMINT("  MANUAL") ": %d\n",
          method_count[MinusDB::METHOD_SOLVE],
          method_count[MinusDB::METHOD_CROSS],
          method_count[MinusDB::METHOD_MAZE],
          method_count[MinusDB::METHOD_MANUAL]);
 
   printf("------" "\n"
-         APINK(" NEVER") ": %d\n"
-         APINK("ALWAYS") ": %d\n"
-         APINK("  LOOP") ": %d\n",
+         APINK("   NEVER") ": %d\n"
+         APINK("  ALWAYS") ": %d\n"
+         APINK("CUTSCENE") ": %d\n",
          method_count[MinusDB::REJECT_NEVER],
-         method_count[MinusDB::REJECT_ALWAYS_DEAD]);
+         method_count[MinusDB::REJECT_ALWAYS_DEAD],
+         method_count[MinusDB::REJECT_CUTSCENE]);
 
   printf("\n");
 
@@ -154,7 +155,7 @@ static void Report() {
     switch (row.method) {
     case MinusDB::REJECT_NEVER: c = 0x990000FF; break;
     case MinusDB::REJECT_ALWAYS_DEAD: c = 0xAA0000FF; break;
-    case MinusDB::REJECT_LOOP: c = 0xFF0000FF; break;
+    case MinusDB::REJECT_CUTSCENE: c = 0xFF0000FF; break;
     default: break;
     }
     const auto &[major, minor] = UnpackLevel(row.level);

@@ -2,6 +2,8 @@
 #ifndef _MARIO_H
 #define _MARIO_H
 
+inline constexpr int FRAME_COUNTER = 0x0009;
+
 inline constexpr int NUMBER_OF_LIVES = 0x075a;
 inline constexpr int COIN_TALLY = 0x075e;
 
@@ -46,6 +48,10 @@ inline constexpr int OPER_MODE_TASK = 0x0772;
 // 11 when dying from damage (but not from falling into pit)
 // 12 when becoming fire mario
 inline constexpr int GAME_ENGINE_SUBROUTINE = 0x000e;
+
+// Determines whether player entrance (subroutine 7) is using
+// pipe/vine (0x02) or "normal".
+inline constexpr int ALT_ENTRANCE_CONTROL = 0x0752;
 
 // Pixels from top of screen; y increases downward.
 // Coordinates are of mario's top-left pixel (when
@@ -97,5 +103,10 @@ inline constexpr int WARM_BOOT_VALIDATION = 0x07ff;
 // Five digits of the top score. Warm boot detection
 // checks for these all being less than 0x0A.
 inline constexpr int TOP_SCORE_DISPLAY = 0x07d7;
+
+// The controller bits processed by the player movement
+// routine. If the player is autocontrolled, then this
+// is the input from that (not the joystick).
+inline constexpr int LAST_JOYPAD = 0x06fc;
 
 #endif
