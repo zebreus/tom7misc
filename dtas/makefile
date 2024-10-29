@@ -84,7 +84,7 @@ bootdata.exe : bootdata.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-collage.exe : collage.o mario-util.o $(OBJECTS)
+collage.exe : collage.o mario-util.o $(OBJECTS) $(SQLITE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

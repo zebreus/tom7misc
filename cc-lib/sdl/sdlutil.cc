@@ -20,6 +20,7 @@
 #include "image.h"
 
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
 #include "SDL_stdinc.h"
 #include "SDL_video.h"
@@ -165,26 +166,36 @@ sdlutil::ByteOrder sdlutil::GetByteOrder(SDL_Surface *surf) {
   // PERF: Actually the R channel determines it completely.
   // But maybe nice to have the additional sanity check on A
   // until we know this works.
-  switch (surf->format->Ashift) {
-  case 0:
-    // Could be RGBA or BGRA
-    switch (surf->format->Rshift) {
-    case 24: return ByteOrder::RGBA;
-    case 8: return ByteOrder::BGRA;
+  if (surf->format->Aloss == 8) {
+    if (surf->format->Rshift == 16 &&
+        surf->format->Gshift == 8 &&
+        surf->format->Bshift == 0) {
+      return ByteOrder::ORGB;
     }
-    break;
-  case 24:
-    // Could be ARGB or ABGR
-    switch (surf->format->Rshift) {
-    case 16: return ByteOrder::ARGB;
-    case 0: return ByteOrder::ABGR;
+
+    // TODO: Probably there are other screen formats in practice.
+
+  } else {
+    switch (surf->format->Ashift) {
+    case 0:
+      // Could be RGBA or BGRA
+      switch (surf->format->Rshift) {
+      case 24: return ByteOrder::RGBA;
+      case 8: return ByteOrder::BGRA;
+      }
+      break;
+    case 24:
+      // Could be ARGB or ABGR
+      switch (surf->format->Rshift) {
+      case 16: return ByteOrder::ARGB;
+      case 0: return ByteOrder::ABGR;
+      }
+      break;
     }
-    break;
   }
-  fprintf(stderr,
-          "GetByteOrder: Surface not 32BPP or something else is wrong. %d %d",
-          surf->format->Ashift, surf->format->Rshift);
-  abort();
+
+  LOG(FATAL) << "GetByteOrder: Surface not 32BPP or something else is wrong:\n"
+             << SurfaceInfo(surf);
 }
 
 // Assumes rgba vector is the same width/height as the surface.
@@ -195,6 +206,17 @@ static void CopyRGBAVec(const vector<uint8_t> &rgba,
   int width = surface->w;
   int height = surface->h;
   switch (sdlutil::GetByteOrder(surface)) {
+  case ByteOrder::ORGB:
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        const int pidx = (y * width + x);
+        const int idx = pidx * 4;
+        const uint32_t r = rgba[idx + 0], g = rgba[idx + 1],
+          b = rgba[idx + 2], a = 0;
+        p[pidx] = (a << 24) | (r << 16) | (g << 8) | b;
+      }
+    }
+    break;
   case ByteOrder::ARGB:
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
@@ -297,6 +319,9 @@ void sdlutil::CopyRGBARect(const ImageRGBA &img,
   } while (false)
 
   switch (sdlutil::GetByteOrder(surface)) {
+  case ByteOrder::ORGB:
+    LOOP(0, r, g, b);
+    break;
   case ByteOrder::ARGB:
     LOOP(a, r, g, b);
     break;
@@ -368,6 +393,9 @@ void sdlutil::CopyRGBARectNX(const ImageRGBA &img,
   } while (false)
 
   switch (sdlutil::GetByteOrder(surface)) {
+  case ByteOrder::ORGB:
+    LOOP(0, r, g, b);
+    break;
   case ByteOrder::ARGB:
     LOOP(a, r, g, b);
     break;
@@ -387,6 +415,13 @@ void sdlutil::CopyRGBARectNX(const ImageRGBA &img,
 
 }
 
+// Copy the RGBA image to the screen as quickly as I know how.
+void sdlutil::CopyRGBAToScreen(const ImageRGBA &img, SDL_Surface *screen) {
+  CopyRGBARect(img,
+               0, 0, screen->w, screen->h,
+               0, 0, screen);
+}
+
 
 SDL_Surface *sdlutil::FromRGBA(const ImageRGBA &rgba) {
   SDL_Surface *surf = makesurface(rgba.Width(), rgba.Height(), true);
@@ -400,6 +435,10 @@ SDL_Surface *sdlutil::FromRGBA(const ImageRGBA &rgba) {
   int width = surf->w;
   int height = surf->h;
   switch (sdlutil::GetByteOrder(surf)) {
+  case ByteOrder::ORGB:
+    LOG(FATAL) << "This case is not supported. The destination "
+      "surface is expected to have an alpha channel.";
+    break;
   case ByteOrder::ARGB:
     for (int y = 0; y < height; y++) {
       for (int x = 0; x < width; x++) {
@@ -1452,14 +1491,60 @@ void sdlutil::drawclippixel(SDL_Surface *screen, int x, int y,
   drawpixel(screen, x, y, r, g, b);
 }
 
+std::string sdlutil::SurfaceInfo(SDL_Surface *surf) {
 
-void sdlutil::printsurfaceinfo(SDL_Surface *surf) {
-  int f = surf->flags;
+#if 0
+  Uint8  BitsPerPixel;
+  Uint8  BytesPerPixel;
+  Uint8  Rloss;
+  Uint8  Gloss;
+  Uint8  Bloss;
+  Uint8  Aloss;
+  Uint8  Rshift;
+  Uint8  Gshift;
+  Uint8  Bshift;
+  Uint8  Ashift;
+  Uint32 Rmask;
+  Uint32 Gmask;
+  Uint32 Bmask;
+  Uint32 Amask;
 
+  /** RGB color key information */
+  Uint32 colorkey;
+  /** Alpha value information (per-surface alpha) */
+  Uint8  alpha;
+#endif
+
+  std::string info =
+    StringPrintf("Surface sized %d x %d\n",
+                 surf->w, surf->h);
+
+  StringAppendF(
+      &info,
+      "  bits/bytes per pixel: %d/%d\n"
+      "  RGBA loss: %d %d %d %d\n"
+      "  RGBA shifts: %d %d %d %d\n"
+      "  RGBA masks: %x %x %x %x\n",
+      surf->format->BitsPerPixel,
+      surf->format->BytesPerPixel,
+      surf->format->Rloss,
+      surf->format->Gloss,
+      surf->format->Bloss,
+      surf->format->Aloss,
+      surf->format->Rshift,
+      surf->format->Gshift,
+      surf->format->Bshift,
+      surf->format->Ashift,
+      surf->format->Rmask,
+      surf->format->Gmask,
+      surf->format->Bmask,
+      surf->format->Amask);
+
+  const int f = surf->flags;
+
+  StringAppendF(&info, "Flags:\n");
 #define INFO(flag, str) \
-  printf(" %s " str "\n", (f & (flag))?"X":" ");
-
-  printf("==== info for surface at %p ====\n", surf);
+  StringAppendF(&info, "  %s " str "\n", (f & (flag))?"X":" ");
   INFO(SDL_HWSURFACE,   "In Video Memory");
   INFO(SDL_ASYNCBLIT,   "Asynch blits if possible");
   INFO(SDL_ANYFORMAT,   "Any pixel format");
@@ -1474,8 +1559,9 @@ void sdlutil::printsurfaceinfo(SDL_Surface *surf) {
   INFO(SDL_RLEACCEL,    "RLE accelerated blitting");
   INFO(SDL_SRCALPHA,    "Blit uses source alpha blending");
   INFO(SDL_PREALLOC,    "Uses preallocated memory");
-
 #undef INFO
+
+  return info;
 }
 
 SDL_Surface *sdlutil::fliphoriz(SDL_Surface *src) {

@@ -148,6 +148,11 @@ ImageRGBA::ImageRGBA(const std::vector<uint32> &rgba32,
   CHECK((int)rgba.size() == width * height);
 }
 
+ImageRGBA::ImageRGBA(std::vector<uint32> &&rgba, int width, int height) :
+  width(width), height(height), rgba(std::move(rgba)) {
+  CHECK((int)this->rgba.size() == width * height);
+}
+
 // static
 ImageRGBA *ImageRGBA::Load(const string &filename) {
   vector<uint8> ret;
@@ -421,6 +426,33 @@ void ImageRGBA::BlendRect(int x, int y, int w, int h,
 void ImageRGBA::BlendRect32(int x, int y, int w, int h, uint32 color) {
   const auto [r, g, b, a] = Unpack32(color);
   BlendRect(x, y, w, h, r, g, b, a);
+}
+
+void ImageRGBA::FillRect32(int x, int y, int w, int h, uint32 color) {
+  // Easy to clip this to the screen. We could call an unclipped
+  // version of BlendPixel here.
+  if (y < 0) { w += y; y = 0; }
+  if (x < 0) { h += x; x = 0; }
+
+  const int yover = (y + h) - height;
+  if (yover > 0) h -= yover;
+  const int xover = (x + w) - width;
+  if (xover > 0) w -= xover;
+
+  if (w <= 0 || h <= 0) return;
+
+  for (int yy = y; yy < y + h; yy++) {
+    for (int xx = x; xx < x + w; xx++) {
+      SetPixel32(xx, yy, color);
+    }
+  }
+}
+
+void ImageRGBA::FillRect(int x, int y, int w, int h,
+                         uint8 r, uint8 g, uint8 b, uint8 a) {
+  // This is faster to do with the packed color, since we do not
+  // need the components in order to write.
+  return FillRect32(x, y, w, h, Pack32(r, g, b, a));
 }
 
 void ImageRGBA::BlendBox32(int x, int y, int w, int h,

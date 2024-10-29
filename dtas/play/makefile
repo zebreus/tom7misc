@@ -13,7 +13,7 @@ OPT=-g -O
 
 # -fno-strict-aliasing
 # -I/usr/local/include -I/usr/include
-CXXFLAGS=$(ASAN) $(OPT) -Wall -Wno-format -Wno-unused-function -Wno-deprecated -ISDL/include -I. -I.. -I$(CC_LIB) -I$(SQLITE) --std=c++20
+CXXFLAGS=$(ASAN) $(OPT) -Wall -Wno-format -Wno-unused-function -Wno-deprecated -ISDL/include -I. -I.. -I$(CC_LIB) -I$(SQLITE) -I$(CODEC) --std=c++20
 
 
 # SDLOPATH=SDL/build
@@ -34,7 +34,9 @@ FCEULIB_OBJECTS=$(FCEULIB)/mappers/6.o $(FCEULIB)/mappers/61.o $(FCEULIB)/mapper
 
 LINKSDL=  -lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/ansi.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o
+UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/ansi.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o
+
+CODEC_OBJECTS=$(CODEC)/mov.o
 
 # bad command line 2022
 # x86_64-w64-mingw32-g++ -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -ISDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++17 -DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 -g -O2 -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF -Ic:/code/SDL/include    -I / -I /re2 --std=c++20  -c -o ../../cc-lib/util.o ../../cc-lib/util.cc
@@ -67,7 +69,7 @@ OBJECTS=$(UTIL_OBJECTS) $(FCEULIB_OBJECTS) ../mario-util.o
 # XXX can maybe use miniz instead of zlib here? Is it for SDL?
 LFLAGS= $(ASAN) -L. $(LINKSDL) -m64 -Wl,--subsystem,console -lz $(OPT) $(FLTO) -static
 
-play.exe : play.o $(OBJECTS) $(SDLOBJECTS) $(SQLITE_OBJECTS)
+play.exe : play.o $(OBJECTS) $(SDLOBJECTS) $(SQLITE_OBJECTS) $(CODEC_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

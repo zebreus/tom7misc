@@ -25,8 +25,8 @@ struct ImageRGBA {
   using uint8 = uint8_t;
   using uint32 = uint32_t;
   ImageRGBA(const std::vector<uint8> &rgba8, int width, int height);
-  // PERF: This can move the vector.
   ImageRGBA(const std::vector<uint32> &rgba32, int width, int height);
+  ImageRGBA(std::vector<uint32> &&rgba, int width, int height);
   ImageRGBA(int width, int height);
   ImageRGBA() : width(0), height(0) {}
 
@@ -96,6 +96,10 @@ struct ImageRGBA {
   void BlendRect(int x, int y, int w, int h,
                  uint8 r, uint8 g, uint8 b, uint8 a);
   void BlendRect32(int x, int y, int w, int h, uint32 color);
+  // Set to the pixel value.
+  void FillRect(int x, int y, int w, int h,
+                uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+  void FillRect32(int x, int y, int w, int h, uint32_t color);
 
   // Hollow box, one pixel width.
   // nullopt corner_color = color for a crisp box, but setting

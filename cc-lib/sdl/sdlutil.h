@@ -49,6 +49,7 @@ struct sdlutil {
 
   // Copies the RGBA image to the surface. The source rectangle must
   // be in the bounds of the image, but it is clipped to the destination.
+  // Assumes the destination has a 32-bit pixel format.
   static void CopyRGBARect(const ImageRGBA &img,
                            int srcx, int srcy, int srcw, int srch,
                            int dstx, int dsty,
@@ -56,10 +57,15 @@ struct sdlutil {
 
   // px is the number of destination pixels (in each dimension) per
   // input pixel. So px=2 yields 2x2 pixels.
+  // Assumes the destination has a 32-bit pixel format.
   static void CopyRGBARectNX(const ImageRGBA &img, int px,
                              int srcx, int srcy, int srcw, int srch,
                              int dstx, int dsty,
                              SDL_Surface *dst);
+
+  // Copy the RGBA image to the screen as quickly as I know how.
+  static void CopyRGBAToScreen(const ImageRGBA &img,
+                               SDL_Surface *screen);
 
   // Clone the surface. The copy will need to be freed with SDL_FreeSurface.
   static SDL_Surface *duplicate(SDL_Surface *surf);
@@ -143,8 +149,9 @@ struct sdlutil {
   static SDL_Surface *resize_canvas(SDL_Surface *s, int w, int h,
                                     uint32_t color);
 
-  /* print out flags and maybe other things */
-  static void printsurfaceinfo(SDL_Surface *surf);
+  // In an unspecified format (for debugging). Includes surface
+  // flags and pixel format information.
+  static std::string SurfaceInfo(SDL_Surface *surf);
 
   /* shrink a 32bpp surface to 50% of its original size,
      returning the new surface. */
@@ -194,7 +201,13 @@ struct sdlutil {
   // Note that this is independent of the host byte order (little- or
   // big-endian), so if you have uint8 pixel data, you also need to
   // tend to that.
-  enum class ByteOrder { ARGB, RGBA, ABGR, BGRA, };
+  enum class ByteOrder {
+    // This is for formats with alpha.
+    ARGB, RGBA, ABGR, BGRA,
+    // Some screen formats use 32 BPP but do not represent the alpha
+    // channel. In this case the unused byte is "O".
+    ORGB,
+  };
   static ByteOrder GetByteOrder(SDL_Surface *surf);
 };
 

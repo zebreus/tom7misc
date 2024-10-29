@@ -53,6 +53,13 @@ inline constexpr int GAME_ENGINE_SUBROUTINE = 0x000e;
 // pipe/vine (0x02) or "normal".
 inline constexpr int ALT_ENTRANCE_CONTROL = 0x0752;
 
+// 00 = on ground
+// 03 = climbing
+// 01 = jumping/swimming
+// 02 = falling (not from a jump!)
+// See ProcessPlayerAction.
+inline constexpr int PLAYER_STATE = 0x001D;
+
 // Pixels from top of screen; y increases downward.
 // Coordinates are of mario's top-left pixel (when
 // big, at least)
@@ -66,9 +73,12 @@ inline constexpr int PLAYER_X_LO = 0x0086;
 
 // Ranges from 0-31. Column of block to fill in the blockbuffer next.
 inline constexpr int BLOCKBUFFER_COLUMN_POS = 0x6A0;
-// I think this is the column within the page currently being decoded.
-// It ranges from 0-15 and is BLOCKBUFFER_COLUMN_POS % 16 in the
-// steady state.
+
+// This is the logical position in the level.
+inline constexpr int CURRENT_PAGE_LOC = 0x0725;
+// The current column, which can be thought of as low-order
+// bits of the page. It ranges from 0-15.
+// It is BLOCKBUFFER_COLUMN_POS % 16 in the steady state.
 inline constexpr int CURRENT_COLUMN_POS = 0x0726;
 
 // Pixel scroll position of the screen.
@@ -108,5 +118,10 @@ inline constexpr int TOP_SCORE_DISPLAY = 0x07d7;
 // routine. If the player is autocontrolled, then this
 // is the input from that (not the joystick).
 inline constexpr int LAST_JOYPAD = 0x06fc;
+
+// This is nonzero if we decoded a loop command, which
+// causes the map to repeat in certain conditions.
+// (See ProcLoopCommand.)
+inline constexpr int LOOP_COMMAND = 0x0745;
 
 #endif

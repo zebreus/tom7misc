@@ -58,6 +58,8 @@
 #include "minus.h"
 #include "evaluator.h"
 
+#include "mov.h"
+
 using namespace std;
 
 using int64 = int64_t;
@@ -705,30 +707,37 @@ struct UI {
   enum class EventResult { NONE, DIRTY, EXIT, };
   EventResult HandleEvents();
 
-  SDL_Surface *drawing = nullptr;
+  // SDL_Surface *drawing = nullptr;
+  std::unique_ptr<ImageRGBA> drawing;
   int mousex = 0, mousey = 0;
   bool dragging = false;
 
   std::pair<int, int> drag_source = {-1, -1};
   int drag_handlex = 0, drag_handley = 0;
   Watchlist watchlist;
+
+  std::unique_ptr<MOV::Out> mov;
 };
 
 UI::UI(LevelId level) : level(level), fps_per(1.0 / 59.94) {
   std::tie(major, minor) = UnpackLevel(level);
-  drawing = sdlutil::makesurface(SCREENW, SCREENH, true);
+  drawing.reset(new ImageRGBA(SCREENW, SCREENH));
   CHECK(drawing != nullptr);
-  sdlutil::ClearSurface(drawing, 0, 0, 0, 0);
+  drawing->Clear32(0x000000FF);
 
   using MemLoc = Watchlist::MemLoc;
   watchlist = Watchlist({
       MemLoc("Frame", FRAME_COUNTER),
       MemLoc("X", PLAYER_X_HI, PLAYER_X_LO),
       MemLoc("Y", PLAYER_Y_SCREEN, PLAYER_Y),
+      MemLoc("Player", PLAYER_STATE),
       MemLoc("World", WORLD_MAJOR, WORLD_MINOR, MemLoc::DisplayType::DASH),
       MemLoc("Mode:Task", OPER_MODE, OPER_MODE_TASK,
              MemLoc::DisplayType::COLON),
       MemLoc("Sub", GAME_ENGINE_SUBROUTINE),
+      MemLoc("Loop?", LOOP_COMMAND),
+      MemLoc("Page:Col", CURRENT_PAGE_LOC, CURRENT_COLUMN_POS,
+             MemLoc::DisplayType::COLON),
     });
 }
 
@@ -868,6 +877,18 @@ UI::EventResult UI::HandleEvents() {
         game_array->Validate();
         printf("Validated in %s.\n", ANSI::Time(timer.Seconds()).c_str());
         break;
+      }
+
+      case SDLK_r: {
+        if (mov.get() != nullptr) {
+          mov.reset();
+          printf("Stopped recording.\n");
+        } else {
+          std::string filename = StringPrintf("rec-%02x-%02x.mov",
+                                              major, minor);
+          mov = MOV::OpenOut(filename, SCREENW, SCREENH, MOV::DURATION_60,
+                             MOV::Codec::PNG_MINIZ);
+        }
       }
 
       default:;
@@ -1048,11 +1069,9 @@ void UI::DrawGrid() {
       CHECK(game != nullptr);
       if (game != nullptr) {
         ImageRGBA shot = game->Screenshot();
-        sdlutil::CopyRGBARect(shot, 0, 0, 256, 240,
-                              dx + 1, dy + 1, drawing);
+        drawing->CopyImageRect(dx + 1, dy + 1, shot, 0, 0, 256, 240);
       } else {
-        sdlutil::FillRectRGB(drawing,
-                             dx + 1, dy + 1, 256, 240, 0x33, 0x00, 0x00);
+        drawing->FillRect32(dx + 1, dy + 1, 256, 240, 0x330000FF);
       }
     }
   }
@@ -1062,11 +1081,10 @@ void UI::DrawGrid() {
     int fx = game_array->FocusX();
     int fy = game_array->FocusY();
     for (int i = 0; i < 4; i++) {
-      sdlutil::DrawBox32(drawing,
-                         fx * (256 + EMU_MARGIN) + i,
-                         fy * (240 + EMU_MARGIN) + i,
-                         256 - 2 * i, 240 - 2 * i,
-                         0xFFFF0000);
+      drawing->BlendBox32(fx * (256 + EMU_MARGIN) + i,
+                          fy * (240 + EMU_MARGIN) + i,
+                          256 - 2 * i, 240 - 2 * i,
+                          0xFF0000FF, {0xFF0000AA});
     }
   }
 
@@ -1108,16 +1126,31 @@ void UI::DrawGhost() {
 
     // XXX use the sprite from the game
     shot.BlendImage(xx, yy, *mario_ghost);
-
-    /*
-    sdlutil::DrawCircle32(drawing,
-                          xx * PX, yy * PX, PX * 4, 0xFF8833AA);
-    */
-
   }
 
-  sdlutil::CopyRGBARectNX(shot, PX, 0, 0, 256, 240,
-                          0, 0, drawing);
+  // XXX test: re-draw sprites from main game.
+  {
+    std::vector<Emulator::Sprite> sprites = game->emu->Sprites();
+    shot.BlendText32(10, 10, 0xFF00FFFF, StringPrintf("%d sprites",
+                                                      (int)sprites.size()));
+    for (Emulator::Sprite &sprite : sprites) {
+      if (true || sprite.y < 240) {
+        ImageRGBA simg(std::move(sprite.rgba), sprite.Width(), sprite.Height());
+        for (int y = 0; y < simg.Height(); y++) {
+          for (int x = 0; x < simg.Width(); x++) {
+            uint32_t c = simg.GetPixel32(x, y);
+            c &= 0xFFFFFFAA;
+            c |= 0x08000000;
+            simg.SetPixel32(x, y, c);
+          }
+        }
+        shot.BlendImage(sprite.x, sprite.y, simg);
+      }
+    }
+  }
+
+  // PERF Without an intermediate copy!
+  drawing->CopyImage(0, 0, shot.ScaleBy(PX));
 }
 
 // TODO: These should probably take the destination position?
@@ -1141,9 +1174,13 @@ void UI::DrawWatchlist() {
     y += 10;
   }
 
+  // PERF without intermediate copy.
+  drawing->CopyImage(256 * 6 + 8, 8, img.ScaleBy(2));
+  /*
   sdlutil::CopyRGBARectNX(img, 2,
                           0, 0, img.Width(), img.Height(),
                           256 * 6 + 8, 8, drawing);
+  */
 }
 
 void UI::DrawMemory() {
@@ -1160,9 +1197,12 @@ void UI::DrawMemory() {
     }
   }
 
+  drawing->CopyImage(256 * 6 + 8, 480, img.ScaleBy(4));
+  /*
   sdlutil::CopyRGBARectNX(img, 4,
                           0, 0, img.Width(), img.Height(),
                           256 * 6 + 8, 480, drawing);
+  */
 }
 
 void UI::Draw() {
@@ -1191,8 +1231,20 @@ void UI::Draw() {
     break;
   }
 
-  font->drawto(drawing, 5, 5, StringPrintf("Frames: ^2%lld", frames_drawn));
-  sdlutil::blitall(drawing, screen, 0, 0);
+  // XXX. Use ImageRGBA for off-screen image, then save to mov if active.
+
+  drawing->BlendText32(5, 5, 0xFFFF00AA,
+                       StringPrintf("Frames: %lld", frames_drawn));
+  // font->drawto(drawing, 5, 5, StringPrintf("Frames: ^2%lld", frames_drawn));
+  // sdlutil::blitall(drawing, screen, 0, 0);
+
+  /*
+  sdlutil::CopyRGBARect(*drawing,
+                        0, 0, SCREENW, SCREENH,
+                        0, 0, screen);
+  */
+  sdlutil::CopyRGBAToScreen(*drawing, screen);
+
   frames_drawn++;
   if (TRACE) printf("Drew %lld.\n", frames_drawn);
 }

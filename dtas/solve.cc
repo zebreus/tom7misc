@@ -1942,6 +1942,9 @@ int main(int argc, char **argv) {
 
   if (argc > 1) {
     if (argv[1] == (std::string)"cross") {
+      // e.g. to check all solutions that happened after the last
+      // time we succeeded with "cross" strategy:
+      // ./minus-query.exe "select * from solutions where method = 2 order by createdate desc limit 2"
       int64_t start_time = 0;
       if (argc > 2) {
         start_time = strtoll(argv[2], nullptr, 10);
