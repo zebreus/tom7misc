@@ -3,6 +3,12 @@ Misc:
 
 $ "/c/Program Files (x86)/Microsoft Concurrency Visualizer Collection Tools/CVCollectionCmd.exe" /Launch d:\\code\\fceulib\\emulator_test.exe /config cvconfig.xml /LaunchArgs "--output-file foo.txt"
 
+ - The rewrite I did of x6502 for the hfluint8 (GradIEEEnt Half Decent)
+   is very silly, but it started with a lot of cleanup of this to use
+   functions and templates and stuff instead of macro hell. I think
+   there was a good version in the svn history before I did the
+   silly stuff, in fact.
+
  - For uses that create a lot of emulators (e.g. tetru) it would
    be good to be able to load a cartridge once and then generate
    multiple emulators from it. We can at least make the initialization

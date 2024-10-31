@@ -9,9 +9,8 @@
 #include <stdlib.h>
 #include <string>
 #include <vector>
-#include <zlib.h>
+#include <cassert>
 
-#include "driver.h"
 #include "fceu.h"
 #include "git.h"
 #include "types.h"
@@ -22,13 +21,45 @@
 #include "input.h"
 #include "ppu.h"
 #include "opcodes.h"
+#include "cart.h"
 
 #include "fc.h"
+
+// Compression yields 2x slowdown, but states go from ~80kb to 1.4kb
+// Without screenshot, ~1.3kb and only 40% slowdown
+// XXX External interface now allows client to specify, so maybe just
+// make this a guarantee.
+#define USE_COMPRESSION 1
+
+#if USE_COMPRESSION
+#include <zconf.h>
+#include <zlib.h>
+#endif
 
 using namespace std;
 
 static constexpr int RAM_BYTE_SIZE = 0x800;
 static constexpr int IMAGE_BYTE_SIZE = 256 * 256 * 4;
+
+// 0xRRGGBBAA. Alpha is always FF for these.
+static constexpr uint32_t ntsc_palette_rgba[] = {
+  0x808080FF, 0x003DA6FF, 0x0012B0FF, 0x440096FF,
+  0xA1005EFF, 0xC70028FF, 0xBA0600FF, 0x8C1700FF,
+  0x5C2F00FF, 0x104500FF, 0x054A00FF, 0x00472EFF,
+  0x004166FF, 0x000000FF, 0x050505FF, 0x050505FF,
+  0xC7C7C7FF, 0x0077FFFF, 0x2155FFFF, 0x8237FAFF,
+  0xEB2FB5FF, 0xFF2950FF, 0xFF2200FF, 0xD63200FF,
+  0xC46200FF, 0x358000FF, 0x058F00FF, 0x008A55FF,
+  0x0099CCFF, 0x212121FF, 0x090909FF, 0x090909FF,
+  0xFFFFFFFF, 0x0FD7FFFF, 0x69A2FFFF, 0xD480FFFF,
+  0xFF45F3FF, 0xFF618BFF, 0xFF8833FF, 0xFF9C12FF,
+  0xFABC20FF, 0x9FE30EFF, 0x2BF035FF, 0x0CF0A4FF,
+  0x05FBFFFF, 0x5E5E5EFF, 0x0D0D0DFF, 0x0D0D0DFF,
+  0xFFFFFFFF, 0xA6FCFFFF, 0xB3ECFFFF, 0xDAABEBFF,
+  0xFFA8F9FF, 0xFFABB3FF, 0xFFD2B0FF, 0xFFEFA6FF,
+  0xFFF79CFF, 0xD7E895FF, 0xA6EDAFFF, 0xA2F2DAFF,
+  0x99FFFCFF, 0xDDDDDDFF, 0x111111FF, 0x111111FF,
+};
 
 void Emulator::GetMemory(vector<uint8> *mem) const {
   mem->resize(RAM_BYTE_SIZE);
@@ -194,7 +225,7 @@ Emulator::~Emulator() {
 
 Emulator::Emulator(FC *fc) : fc(fc) {}
 
-Emulator *Emulator::Create(const string &romfile) {
+Emulator *Emulator::Create(const std::string &romfile) {
   // XXX TODO: If AOT is enabled, then we should give an error if the
   // romfile doesn't match (or just make it possible to have multiple
   // AOT games compiled in, with fallback).
@@ -417,11 +448,138 @@ const char *const Emulator::Opcode(uint8_t op) {
   return fceulib_2a03_opcode_name[op];
 }
 
-// Compression yields 2x slowdown, but states go from ~80kb to 1.4kb
-// Without screenshot, ~1.3kb and only 40% slowdown
-// XXX External interface now allows client to specify, so maybe just
-// make this a guarantee.
-#define USE_COMPRESSION 1
+vector<uint8> Emulator::OAM() const {
+  vector<uint8> oam;
+  oam.resize(256);
+  memcpy(oam.data(), fc->ppu->SPRAM, 256);
+  return oam;
+}
+
+std::vector<Emulator::Sprite> Emulator::Sprites() const {
+  const PPU *ppu = fc->ppu;
+  std::span<const uint8_t> oam(ppu->SPRAM, 256);
+  const uint8_t ppu_ctrl = ppu->PPU_values[0];
+  const bool tall_sprites = !!(ppu_ctrl & (1 << 5));
+
+  // Note: This is ignored if sprites are tall (and determined instead
+  // from the tile's low bit).
+  const bool spr_pat_high = !!(ppu_ctrl & (1 << 3));
+
+  const uint8_t *palette_table = fc->ppu->PALRAM;
+
+  std::vector<Sprite> sprites;
+  sprites.reserve(64);
+  for (int s = 0; s < 64; s++) {
+    Sprite sprite;
+    sprite.y = oam[s * 4 + 0];
+    sprite.tile_idx = oam[s * 4 + 1];
+    uint8_t attrs = oam[s * 4 + 2];
+    sprite.palette_idx = attrs & 0b00000011;
+    sprite.behind_background = !!(attrs & 0b00100000);
+    sprite.flip_horiz = !!(attrs & 0b01000000);
+    sprite.flip_vert = !!(attrs & 0b10000000);
+    sprite.x = oam[s * 4 + 3];
+
+    sprite.tall = tall_sprites;
+    sprite.rgba.resize(8 * (tall_sprites ? 16 : 8));
+
+    // Render one 8x8 tile into the RGBA pointer, using pattern table $0000
+    // if first arg is false, $1000 if true. The tile index is the
+    // index into that pattern.
+    auto OneTile = [this, &sprite, palette_table](
+        bool patterntable_high,
+        uint8_t tile_idx,
+        uint32_t *rgba) {
+
+        const uint32_t spr_pat_addr = patterntable_high ? 0x1000 : 0x0000;
+        // PERF Really need to keep computing this?
+        const uint8_t *vram = fc->cart->VPagePointer(spr_pat_addr);
+
+        // This came from code that could write the sprite anywhere in
+        // some output image, but we always place it at (0, 0).
+        //
+        // upper-left corner of this tile within the rgba array.
+        // const int x0 = xdest - root.min_x;
+        // const int y0 = ydest - root.min_y;
+        static constexpr int x0 = 0;
+        static constexpr int y0 = 0;
+
+        const int addr = tile_idx * 16;
+        for (int row = 0; row < 8; row++) {
+          const uint8_t row_low = vram[addr + row];
+          const uint8_t row_high = vram[addr + row + 8];
+
+          // bit from msb to lsb.
+          for (int bit = 0; bit < 8; bit++) {
+            const uint8_t value =
+              ((row_low >> (7 - bit)) & 1) |
+              (((row_high >> (7 - bit)) & 1) << 1);
+
+            const int px = sprite.flip_horiz ? x0 + (7 - bit) : (x0 + bit);
+            const int py = sprite.flip_vert ? y0 + (7 - row) : (y0 + row);
+
+            const int pixel_idx = py * 8 + px;
+
+            // For sprites, transparent pixels need to be drawn with
+            // alpha 0. The palette doesn't matter; 0 means transparent
+            // in every palette.
+            if (value == 0) {
+              rgba[pixel_idx] = 0x00000000;
+            } else {
+              // Offset with palette table. Sprite palette entries come
+              // after the bg ones, so add 0x10.
+              const uint8_t palette_idx = 0x10 + ((sprite.palette_idx << 2) | value);
+              // ID of global NES color gamut.
+              const uint8_t color_id = palette_table[palette_idx];
+
+              // Put pixel in sprite image. These have alpha=FF.
+              rgba[pixel_idx] = ntsc_palette_rgba[color_id];
+            }
+          }
+        }
+      };
+
+    // Now draw one or two tiles.
+    if (tall_sprites) {
+      // Odd and even tile numbers are treated differently.
+      if ((sprite.tile_idx & 1) == 0) {
+        // This page:
+        // http://noelberry.ca/nes
+        // verifies that tiles t and t+1 are drawn top then bottom.
+        if (sprite.flip_vert) {
+          // in y-flip scenarios, we have to flip the
+          // y positions here so that the whole 8x16 sprite is flipping,
+          // rather than its two 8x8 components. So tile_idx actually goes
+          // on bottom.
+          OneTile(false, sprite.tile_idx, sprite.rgba.data() + 8 * 8);
+          OneTile(false, sprite.tile_idx + 1, sprite.rgba.data());
+        } else {
+          OneTile(false, sprite.tile_idx, sprite.rgba.data());
+          OneTile(false, sprite.tile_idx + 1, sprite.rgba.data() + 8 * 8);
+        }
+      } else {
+        // XXX I assume this drops the low bit? I don't see that
+        // documented but it wouldn't really make sense otherwise
+        // (unless tile 255 wraps to 0?)
+        if (sprite.flip_vert) {
+          OneTile(true, sprite.tile_idx - 1, sprite.rgba.data() + 8 * 8);
+          OneTile(true, sprite.tile_idx, sprite.rgba.data());
+        } else {
+          OneTile(true, sprite.tile_idx - 1, sprite.rgba.data());
+          OneTile(true, sprite.tile_idx, sprite.rgba.data() + 8 * 8);
+        }
+      }
+    } else {
+      // this is much easier but not used in zelda
+      // (I think it's needed for mario though)
+      OneTile(spr_pat_high, sprite.tile_idx, sprite.rgba.data());
+    }
+
+    sprites.push_back(sprite);
+  }
+  return sprites;
+};
+
 
 #if USE_COMPRESSION
 

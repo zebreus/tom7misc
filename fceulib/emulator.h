@@ -156,6 +156,44 @@ struct Emulator {
   // additional stuff to distinguish the addressing mode, etc.
   static const char *const Opcode(uint8 op);
 
+  // Interpret the PPU state to (for example) reconstruct an
+  // approximate image. This may not be accurate when the
+  // game does something tricky, like adjusting the tables
+  // between scanlines.
+
+  // OAM is Object Attribute Memory; sprite data.
+  // This returns exactly 256 bytes, representing 64 sprites.
+  vector<uint8> OAM() const;
+
+  // Decoded version of raw OAM representation.
+  // Since this also renders each sprite, if you lust for
+  // performance you should just work directly with the OAM and
+  // PPU data.
+  struct Sprite {
+    // The position of the top left of the sprite. Note that
+    // the sprite should be drawn at (x, y + 1).
+    uint8_t x = 0, y = 0;
+    // For 8x8 sprites, this is the index within the selected
+    // pattern table. For 8x16 sprites, the low order bit
+    // determines the the pattern table.
+    uint8_t tile_idx = 0;
+    // This can range from 0 to 3, corresponding to palettes 4-7.
+    uint8_t palette_idx = 0;
+    bool behind_background = false;
+    bool flip_horiz = false;
+    bool flip_vert = false;
+
+    // The sprite rendered using the current PPU settings.
+    int Width() const { return 8; }
+    int Height() const { return tall ? 16 : 8; }
+    // Width * Height RGBA pixels, row-major. Alpha is always 00 or FF.
+    std::vector<uint32_t> rgba;
+    bool tall = false;
+  };
+  // Gets 64 decoded sprites. Must be 256 bytes of OAM here.
+  std::vector<Sprite> Sprites() const;
+
+
   // XXXXX debugging only.
   FC *GetFC() { return fc; }
   const FC *GetFC() const { return fc; }
