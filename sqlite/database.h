@@ -9,6 +9,7 @@
 #include <cstdint>
 
 // Simplified SQL-like database.
+// The interface is thread safe.
 struct Database {
   virtual ~Database();
 
@@ -59,13 +60,22 @@ struct Database {
     //  The row must be destroyed before advancing to the next row.
     virtual std::unique_ptr<Row> NextRow() = 0;
 
+    // Run and discard the remaining rows.
+    virtual void Exhaust() = 0;
+
    protected:
     Query();
   };
 
+  // Note that the query may not take effect on the database until
+  // the query object is destroyed! You can explicitly call Exhaust
+  // if you want.
   virtual std::unique_ptr<Query> ExecuteString(const std::string &q) = 0;
   // Usually for debugging. Unspecified output format.
   virtual void ExecuteAndPrint(const std::string &q) = 0;
+
+  // Same, but outputting synchronously to a vector of lines.
+  virtual std::vector<std::string> ExecuteToLines(const std::string &q) = 0;
 
  protected:
   Database();

@@ -64,6 +64,25 @@ static void Test() {
     CHECK(q->NextRow().get() == nullptr);
   }
 
+  {
+    conn->ExecuteString("delete from test where id = 24")->Exhaust();
+
+    auto q = conn->ExecuteString("select name, id from test");
+
+    {
+      auto r1 = q->NextRow();
+      CHECK(r1.get() != nullptr);
+      const std::vector<ColType> &t1 = r1->Types();
+      CHECK(t1.size() == 2);
+      CHECK(t1[0] == ColType::STRING);
+      CHECK(t1[1] == ColType::INT);
+      CHECK(r1->GetString(0) == "Tom");
+      CHECK(r1->GetInt(1) == 7);
+    }
+
+    CHECK(q->NextRow().get() == nullptr);
+  }
+
 }
 
 int main(int argc, char **argv) {

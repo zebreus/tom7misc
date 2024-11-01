@@ -6,18 +6,31 @@
 #include <cstring>
 #include <string>
 #include <memory>
+#include <utility>
 #include <vector>
 #include <optional>
 #include <cstdint>
 
 #include "sqlite3.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
 using Row = Database::Row;
 using Query = Database::Query;
 using ColType = Database::ColType;
 
 namespace {
+
+static std::string JoinStrings(const std::vector<std::string> &v) {
+  if (v.empty()) return "";
+  if (v.size() == 1) return v[0];
+  std::string ret = v[0];
+  for (int i = 1; i < (int)v.size(); i++) {
+    ret.push_back(' ');
+    ret += v[i];
+  }
+  return ret;
+}
 
 static const char *ErrString(int status) {
   switch (status) {
@@ -142,6 +155,9 @@ struct QueryImpl : public Database::Query {
     parent(db), stmt(stmt), ready(true) {}
 
   std::unique_ptr<Row> NextRow() override;
+  void Exhaust() override {
+    while (NextRow().get() != nullptr) {}
+  }
 
   // Always need to finalize the statement, even if we didn't
   // read all the rows.
@@ -178,35 +194,38 @@ struct RowImpl : public Database::Row {
   }
 
   int64_t GetInt(int idx) override {
-    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::INT) <<
-      "Index " << idx << " does not have INT.";
+    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::INT)
+        << "Index " << idx << " does not have INT.";
     return sqlite3_column_int64(parent->stmt, idx);
   }
 
   std::string GetString(int idx) override {
-    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::STRING) <<
-      "Index " << idx << " does not have STRING.";
+    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::STRING)
+        << "Index " << idx << " does not have STRING.";
     size_t sz = sqlite3_column_bytes(parent->stmt, idx);
-    return std::string((const char *)sqlite3_column_text(parent->stmt, idx), sz);
+    return std::string((const char *)sqlite3_column_text(parent->stmt, idx),
+                       sz);
   }
 
   double GetFloat(int idx) override {
-    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::FLOAT) <<
-      "Index " << idx << " does not have FLOAT.";
+    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::FLOAT)
+        << "Index " << idx << " does not have FLOAT.";
     return sqlite3_column_double(parent->stmt, idx);
   }
 
   std::vector<uint8_t> GetBlob(int idx) override {
-    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::BLOB) <<
-      "Index " << idx << " does not have BLOB.";
+    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::BLOB)
+        << "Index " << idx << " does not have BLOB.";
     size_t sz = sqlite3_column_bytes(parent->stmt, idx);
     std::vector<uint8_t> ret(sz);
-    memcpy(ret.data(), (const uint8_t*)sqlite3_column_blob(parent->stmt, idx), sz);
+    memcpy(ret.data(), (const uint8_t *)sqlite3_column_blob(parent->stmt, idx),
+           sz);
     return ret;
   }
 
   void GetNull(int idx) override {
-    CHECK(idx >= 0 && idx < (int)types.size() && types[idx] == ColType::SQL_NULL) <<
+    CHECK(idx >= 0 && idx < (int)types.size() &&
+          types[idx] == ColType::SQL_NULL) <<
       "Index " << idx << " does not have SQL_NULL.";
     return;
   }
@@ -283,50 +302,68 @@ struct DatabaseImpl : public Database {
     sqlite3_stmt *stmt = nullptr;
     int rc = sqlite3_prepare_v3(db, q.data(), (int)q.size(),
                                 // flags
-                                0,
-                                &stmt,
-                                nullptr);
-    CHECK(rc == SQLITE_OK) << "Could not prepare statement (parse error?): " << q
-                           << "\nError code: " << ErrString(rc);
+                                0, &stmt, nullptr);
+    CHECK(rc == SQLITE_OK) << "Could not prepare statement (parse error?): "
+                           << q << "\nError code: " << ErrString(rc);
     return std::unique_ptr<Query>(new QueryImpl(this, stmt));
   }
 
-  // Get the last error.
+  // Get the last error. XXX thread safety problem here.
   std::string Error() {
     return sqlite3_errmsg(db);
   }
 
-  void ExecuteAndPrint(const std::string &q) override {
+  template<class F>
+  void ExecuteAndCall(const std::string &q, const F &f) {
     std::unique_ptr<Query> query = ExecuteString(q);
     while (std::unique_ptr<Row> row = query->NextRow()) {
       auto types = row->Types();
-      for (int i = 0; i < types.size(); i++) {
+      std::vector<std::string> rs;
+      for (int i = 0; i < (int)types.size(); i++) {
         switch (types[i]) {
         case ColType::INT:
-          printf("%lld ", row->GetInt(i));
+          rs.push_back(StringPrintf("%lld", row->GetInt(i)));
           break;
         case ColType::STRING:
-          printf("\"%s\" ", row->GetString(i).c_str());
+          rs.push_back(StringPrintf("\"%s\"", row->GetString(i).c_str()));
           break;
         case ColType::SQL_NULL:
-          printf("NULL ");
+          rs.push_back("NULL");
           break;
         case ColType::FLOAT:
-          printf("%.11g ", row->GetFloat(i));
+          rs.push_back(StringPrintf("%.11g ", row->GetFloat(i)));
           break;
         case ColType::BLOB:
-          printf("(blob) ");
+          rs.push_back("(blob");
           break;
         }
       }
-      printf("\n");
+      f(std::move(rs));
     }
+  }
+
+  void ExecuteAndPrint(const std::string &q) override {
+    ExecuteAndCall(q, [](const std::vector<std::string> &row) {
+        for (const std::string &c : row) {
+          printf("%s ", c.c_str());
+        }
+        printf("\n");
+      });
+  }
+
+  std::vector<std::string> ExecuteToLines(const std::string &q) override {
+    std::vector<std::string> lines;
+    ExecuteAndCall(q, [&lines](const std::vector<std::string> &row) {
+        lines.push_back(JoinStrings(row));
+      });
+    return lines;
   }
 
   ~DatabaseImpl() override {
     int rc = sqlite3_close(db);
     db = nullptr;
-    CHECK(rc == SQLITE_OK) << "Database has pending operations? " << ErrString(rc);
+    CHECK(rc == SQLITE_OK) << "Database has pending operations? "
+                           << ErrString(rc);
   }
 
   sqlite3 *db = nullptr;
