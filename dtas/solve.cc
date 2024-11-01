@@ -1520,6 +1520,19 @@ static bool IsAlwaysDead(int max_states,
   Periodically status_per(2.0);
   Timer timer;
 
+  // Unnecessary visualization!
+  // At every depth, a memory value count histogram. We assume
+  // that the values are low entropy, so we store them sparsely.
+  struct Depth {
+    // Size 2048. The histogram of values seen in that location.
+    std::vector<std::unordered_map<int, int>> memhisto;
+    // Number of times we were at this depth.
+    int occurrences = 0;
+  };
+  std::vector<Depth> depths;
+  static constexpr int MAX_DEPTH = 200;
+  depths.reserve(MAX_DEPTH);
+
   // We are trying to create the entire state graph, where edges
   // correspond to a single frame with a specific input. Rather than
   // represent the graph explicitly, though, we put a state in this
@@ -1566,7 +1579,7 @@ static bool IsAlwaysDead(int max_states,
   // input and leaving it in an unspecified state. Caller should
   // save the state if they need it.
   std::function<bool(int)> InsertRec =
-    [emu, max_states,
+    [emu, max_states, &depths,
      &level, &status_per, &timer, status_index, &status, &GetState,
      &InsertRec, &eval, &states, &frames, &deaths](int depth) {
       // if ((int)states.size() > max_states) return false;
@@ -1583,6 +1596,11 @@ static bool IsAlwaysDead(int max_states,
       }
 
       if (status_per.ShouldRun()) {
+        if (status_index == 0) {
+          std::string s = MarioUtil::ScreenshotANSI(emu);
+          status->Emit(s);
+        }
+
         std::string msg =
           StringPrintf(
               "%s: " AYELLOW("↓") "%d, %lld st, %s fr, "
@@ -1611,6 +1629,20 @@ static bool IsAlwaysDead(int max_states,
       // It's essential that we memoize, or else this is
       // intractable (unless e.g. we are always dead on the first frame)!
       if (states.contains(current_state)) return true;
+
+      if (depth < MAX_DEPTH) {
+        Depth &d = depths[depth];
+        d.occurrences++;
+        // Be lazy in case we don't reach the depth, but once we do we'll
+        // have at least one value for every memory address.
+        if (d.memhisto.empty()) {
+          d.memhisto.resize(2048);
+        }
+        for (int addr = 0; addr < 2048; addr++) {
+          uint8_t v = emu->ReadRAM(addr);
+          d.memhisto[addr][v]++;
+        }
+      }
 
       std::vector<uint8_t> current_save = emu->SaveUncompressed();
 
@@ -1808,9 +1840,14 @@ static bool IsCutscene(int max_states,
   return false;
 }
 
+// TODO: Another situation, seen on eg. 1f-fa, is that we are in a cutscene
+// and falling, but instantly die (TIME UP) upon exiting the cutscene. This is
+// not found by always dead since the player never actually gets control,
+// and it is not found by cutscene because the player is continuously moving.
 
 template<class F>
-static void TryToReject(const std::string &method_name, int rejected_method,
+static void TryToReject(std::optional<LevelId> args,
+                        const std::string &method_name, int rejected_method,
                         int64_t limit, const F &IsRejected) {
   MinusDB db;
   const std::unordered_set<LevelId> solved = db.GetSolved();
@@ -1832,25 +1869,32 @@ static void TryToReject(const std::string &method_name, int rejected_method,
   Timer timer;
   Periodically status_per(5.0);
 
-  static constexpr int NUM_THREADS = 12;
+  static constexpr int PARALLEL_THREADS = 12;
+  const int NUM_THREADS = args.has_value() ? 1 : PARALLEL_THREADS;
+
   // One status line at the bottom for the overall summary.
-  static constexpr int ALL_STATUS_IDX = NUM_THREADS;
+  const int all_status_idx = NUM_THREADS;
   StatusBar status(1 + NUM_THREADS);
 
   std::mutex m;
   std::vector<LevelId> todo;
-  for (int i = 0; i < 65536; i++) {
-    // for (int i = 65535; i >= 0; i--) {
-    // const auto &[major, minor] = UnpackLevel(i);
+  if (args.has_value()) {
+    printf("Running only %s.\n", ColorLevel(args.value()).c_str());
+    todo.push_back(args.value());
+  } else {
+    for (int i = 0; i < 65536; i++) {
+      // for (int i = 65535; i >= 0; i--) {
+      // const auto &[major, minor] = UnpackLevel(i);
 
-    // In the future, we could try again with a higher depth budget.
-    if (already.contains(i)) continue;
+      // In the future, we could try again with a higher depth budget.
+      if (already.contains(i)) continue;
 
-    // No point in doing it if we already have a definitive answer.
-    if (solved.contains(i)) continue;
-    if (rejected.contains(i)) continue;
+      // No point in doing it if we already have a definitive answer.
+      if (solved.contains(i)) continue;
+      if (rejected.contains(i)) continue;
 
-    todo.push_back(i);
+      todo.push_back(i);
+    }
   }
 
   const int denominator = todo.size();
@@ -1858,7 +1902,7 @@ static void TryToReject(const std::string &method_name, int rejected_method,
   ParallelFan(
       NUM_THREADS,
       [&IsRejected, rejected_method, limit,
-       &db, &timer, &status_per, &status,
+       &db, &timer, &status_per, &status, all_status_idx,
        &m, &todo, denominator](int thread_idx) {
 
         for (;;) {
@@ -1911,7 +1955,7 @@ static void TryToReject(const std::string &method_name, int rejected_method,
                         levels_skipped.Read()),
                     timer.Seconds());
 
-              status.EmitLine(ALL_STATUS_IDX, bar);
+              status.EmitLine(all_status_idx, bar);
             });
         }
       });
@@ -1926,12 +1970,12 @@ static void TryToReject(const std::string &method_name, int rejected_method,
 }
 
 
-static void AlwaysDead() {
-  TryToReject("alwaysdead", MinusDB::REJECT_ALWAYS_DEAD, 100000, IsAlwaysDead);
+static void AlwaysDead(std::optional<LevelId> args) {
+  TryToReject(args, "alwaysdead", MinusDB::REJECT_ALWAYS_DEAD, 100000, IsAlwaysDead);
 }
 
-static void Cutscene() {
-  TryToReject("cutscene", MinusDB::REJECT_CUTSCENE, 100000, IsCutscene);
+static void Cutscene(std::optional<LevelId> args) {
+  TryToReject(args, "cutscene", MinusDB::REJECT_CUTSCENE, 100000, IsCutscene);
 }
 
 int main(int argc, char **argv) {
@@ -1939,6 +1983,17 @@ int main(int argc, char **argv) {
 
   emulator_pool = new EmulatorPool(ROMFILE);
   CHECK(emulator_pool != nullptr);
+
+  // Parse args after the strategy. Either nothing (try all levels) or a
+  // single level id as major minor.
+  auto Args = [argc, argv]() -> std::optional<LevelId> {
+      if (argc == 2) return std::nullopt;
+      CHECK(argc == 4) << "Either give major minor, or nothing.";
+      const uint8_t major = strtol(argv[2], nullptr, 16);
+      const uint8_t minor = strtol(argv[3], nullptr, 16);
+      const LevelId level = PackLevel(major, minor);
+      return {level};
+    };
 
   if (argc > 1) {
     if (argv[1] == (std::string)"cross") {
@@ -1965,9 +2020,9 @@ int main(int argc, char **argv) {
     } else if (argv[1] == (std::string)"never") {
       Never();
     } else if (argv[1] == (std::string)"alwaysdead") {
-      AlwaysDead();
+      AlwaysDead(Args());
     } else if (argv[1] == (std::string)"cutscene") {
-      Cutscene();
+      Cutscene(Args());
 
     } else {
       LOG(FATAL) << "Usage:\n"

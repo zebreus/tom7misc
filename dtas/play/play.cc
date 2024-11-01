@@ -111,6 +111,81 @@ struct ScopeExit {
 };
 }
 
+// Asynchronous movie recording.
+// TODO: Move to codec/cc-lib
+struct MovRecorder {
+  explicit MovRecorder(std::unique_ptr<MOV::Out> out) :
+    out(std::move(out)),
+    write_thread(&MovRecorder::WriteThread, this) {
+
+  }
+
+  // Typically you can avoid the copy by std::moving the
+  // argument if you are done with the frame.
+  //
+  // TODO: MOV output can now encode the frames (that's
+  // the slow part) in parallel. So we can support
+  // multiple threads here, and probably get to real-time.
+  //
+  // TODO: Add a maximum size for the queue before we
+  // start blocking!
+  void AddFrame(ImageRGBA img) {
+    {
+      std::unique_lock ml(m);
+      frame_queue.emplace_back(std::move(img));
+    }
+    cv.notify_one();
+  }
+
+  void WriteThread() {
+    printf(AWHITE("MovRecorder thread") " started\n");
+    for (;;) {
+      std::unique_lock ml(m);
+      cv.wait(ml, [this]() {
+          return done || !frame_queue.empty();
+        });
+
+      // If we've signaled the end, then exit. But only if
+      // we've already finished all the frames!
+      if (done && frame_queue.empty()) {
+        printf(AWHITE("MovRecorder thread") " exit\n");
+        return;
+      }
+
+      CHECK(!frame_queue.empty()) << "Bug: Checked by cv::wait.";
+
+      ImageRGBA frame = std::move(*frame_queue.begin());
+      frame_queue.pop_front();
+      ml.unlock();
+
+      // Not holding lock, as this is the expensive part.
+      out->AddFrame(frame);
+    }
+  }
+
+  ~MovRecorder() {
+    {
+      std::unique_lock ml(m);
+      done = true;
+      printf(AWHITE("MovRecorder ") " has " AYELLOW("%d")
+             " outstanding frames.\n", (int)frame_queue.size());
+    }
+    cv.notify_one();
+    // Wait on thread to ensure all the frames are written.
+    write_thread.join();
+    // Finalize the output file.
+    out.reset(nullptr);
+  }
+
+ private:
+  std::mutex m;
+  std::condition_variable cv;
+  std::deque<ImageRGBA> frame_queue;
+  std::unique_ptr<MOV::Out> out;
+  std::thread write_thread;
+  bool done = false;
+};
+
 // This wraps a movie (series of inputs), which is rooted at the
 // WarpTo state. The movie also has a cursor somewhere in its
 // bounds (because it may have been rewound) which is treated
@@ -700,6 +775,8 @@ struct UI {
 
   void Seek(int delta);
 
+  void ForceMove(int dx, int dy);
+
   Periodically fps_per;
   // Returns true if dirty.
   bool MaybeRunEmulators(uint8_t buttons);
@@ -716,7 +793,7 @@ struct UI {
   int drag_handlex = 0, drag_handley = 0;
   Watchlist watchlist;
 
-  std::unique_ptr<MOV::Out> mov;
+  std::unique_ptr<MovRecorder> mov;
 };
 
 UI::UI(LevelId level) : level(level), fps_per(1.0 / 59.94) {
@@ -769,6 +846,19 @@ void UI::PlayPause() {
   }
 }
 
+void UI::ForceMove(int dx, int dy) {
+  // Mark game as invalid or something? The movie will no longer
+  // match the state.
+  Game *game = game_array->games[game_array->focus_idx].get();
+  MarioUtil::Pos pos = MarioUtil::GetPos(game->emu.get());
+  pos.x += dx;
+  pos.y += dy;
+  game->emu->SetRAM(PLAYER_X_HI, pos.x >> 8);
+  game->emu->SetRAM(PLAYER_X_LO, pos.x & 0xFF);
+  game->emu->SetRAM(PLAYER_Y_SCREEN, pos.y >> 8);
+  game->emu->SetRAM(PLAYER_Y, pos.y & 0xFF);
+}
+
 UI::EventResult UI::HandleEvents() {
   bool ui_dirty = false;
   SDL_Event event;
@@ -817,18 +907,26 @@ UI::EventResult UI::HandleEvents() {
       // Delete, backspace, ...?
 
       case SDLK_LEFT: {
-        // TODO: Rewind all movies one step, and pause.
-
-        speed = Speed::PAUSE;
-        ui_dirty = true;
-        break;
+        if (event.key.keysym.mod & KMOD_CTRL) {
+          ForceMove(-8, 0);
+          ui_dirty = true;
+        } else {
+          // TODO: Rewind all movies one step, and pause.
+          speed = Speed::PAUSE;
+          ui_dirty = true;
+          break;
+        }
       }
 
       case SDLK_RIGHT: {
-        // TODO: Forward all movies (if possible) ?
-
-        speed = Speed::PAUSE;
-        ui_dirty = true;
+        if (event.key.keysym.mod & KMOD_CTRL) {
+          ForceMove(+8, 0);
+          ui_dirty = true;
+        } else {
+          // TODO: Forward all movies (if possible) ?
+          speed = Speed::PAUSE;
+          ui_dirty = true;
+        }
         break;
       }
 
@@ -844,7 +942,6 @@ UI::EventResult UI::HandleEvents() {
         // TODO: Speed up
         ui_dirty = true;
         break;
-
 
       case SDLK_KP_MINUS:
       case SDLK_MINUS:
@@ -881,13 +978,18 @@ UI::EventResult UI::HandleEvents() {
 
       case SDLK_r: {
         if (mov.get() != nullptr) {
+          // Note that this does pause while we finish output, which I
+          // think is desirable. But we could make that also be
+          // asynchronous.
           mov.reset();
           printf("Stopped recording.\n");
         } else {
           std::string filename = StringPrintf("rec-%02x-%02x.mov",
                                               major, minor);
-          mov = MOV::OpenOut(filename, SCREENW, SCREENH, MOV::DURATION_60,
-                             MOV::Codec::PNG_MINIZ);
+          mov.reset(
+              new MovRecorder(MOV::OpenOut(filename, SCREENW, SCREENH,
+                                           MOV::DURATION_60,
+                                           MOV::Codec::PNG_MINIZ)));
         }
       }
 
@@ -1131,10 +1233,12 @@ void UI::DrawGhost() {
   // XXX test: re-draw sprites from main game.
   {
     std::vector<Emulator::Sprite> sprites = game->emu->Sprites();
+    /*
     shot.BlendText32(10, 10, 0xFF00FFFF, StringPrintf("%d sprites",
                                                       (int)sprites.size()));
+    */
     for (Emulator::Sprite &sprite : sprites) {
-      if (true || sprite.y < 240) {
+      if (sprite.y < 240) {
         ImageRGBA simg(std::move(sprite.rgba), sprite.Width(), sprite.Height());
         for (int y = 0; y < simg.Height(); y++) {
           for (int x = 0; x < simg.Width(); x++) {
@@ -1144,7 +1248,7 @@ void UI::DrawGhost() {
             simg.SetPixel32(x, y, c);
           }
         }
-        shot.BlendImage(sprite.x, sprite.y, simg);
+        shot.BlendImage(sprite.x, sprite.y + 1, simg);
       }
     }
   }
@@ -1244,6 +1348,11 @@ void UI::Draw() {
                         0, 0, screen);
   */
   sdlutil::CopyRGBAToScreen(*drawing, screen);
+
+  if (mov.get()) {
+    // TODO: Enqueue this.
+    mov->AddFrame(*drawing);
+  }
 
   frames_drawn++;
   if (TRACE) printf("Drew %lld.\n", frames_drawn);
