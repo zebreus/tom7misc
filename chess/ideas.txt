@@ -118,3 +118,13 @@ Exchange over its entire history.
 Luke Sciarappa:
 "Single Player" but looking for check, not mate, as mate is defined
 by the opponent's moves, which is not what single player is about!
+
+@petersmythe6262:
+Just have a fixed ordering of all of the possible moves. Play the first
+one that is legal. But try to get the list to be as good as possible.
+
+
+@kormagogthedestroyer:
+I know I am really late but I have an idea: PremoveFish
+It calculates the best move the opponent could make and plays the best response to it, regardless of what they actually played. (If the move is illegal, then play the next best move in that position) (If all possible premoves happen to be illegal, then play a random move)
+

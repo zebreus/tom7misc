@@ -313,7 +313,12 @@ const std::vector<int> &PageBit7Extended() {
     // Pile of poo
     0x1F4A9,
 
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // Film strip.
+    // I think there's also an emoji presentation of this
+    // when followed by U+FE0F.
+    0x1F39E,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,

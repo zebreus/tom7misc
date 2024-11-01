@@ -1,0 +1,5 @@
+*.val
+*.obj
+*~
+*.deleteme
+*.bin

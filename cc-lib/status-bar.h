@@ -22,10 +22,10 @@ struct StatusBar {
 
   // Each of these immediately outputs to the screen.
 
-  // Prints a line above the status bar. Adds trailing newline if not present.
+  // Prints lines above the status bar. Adds trailing newline if not present.
   void Printf(const char* format, ...); PRINTF_ATTRIBUTE(1, 2);
 
-  // Prints a line above the status bar. Adds trailing newline if not present.
+  // Prints lines above the status bar. Adds trailing newline if not present.
   void Emit(const std::string &s);
 
   // Update the status bar. This should be done in one call that

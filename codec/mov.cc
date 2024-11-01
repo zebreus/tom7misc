@@ -12,6 +12,7 @@
 #include <string_view>
 #include <cstdint>
 #include <cstdio>
+#include <utility>
 #include <vector>
 #include <initializer_list>
 
@@ -47,6 +48,12 @@ static std::vector<uint8_t> EncodeAsPNG(const ImageRGBA &img) {
 
 namespace internal {
 struct Buf {
+  Buf() {}
+
+  void Reserve(size_t n) {
+    bytes.reserve(n);
+  }
+
   void WB(const std::initializer_list<uint8_t> &bs) {
     for (uint8_t b : bs) bytes.push_back(b);
   }
@@ -133,15 +140,19 @@ struct Chunk : public Buf {
 using Buf = internal::Buf;
 using Chunk = internal::Chunk;
 
+MOV::Out::~Out() {
+  CHECK(file != nullptr);
+  FinalizeData();
+  WriteHeader();
+  WriteDelayed();
+
+  fclose(file);
+  file = nullptr;
+}
+
 void MOV::CloseOut(std::unique_ptr<Out> &out) {
+  CHECK(out.get() != nullptr);
   CHECK(out->file != nullptr);
-
-  out->FinalizeData();
-  out->WriteHeader();
-  out->WriteDelayed();
-
-  fclose(out->file);
-  out->file = nullptr;
   out.reset(nullptr);
 }
 
@@ -712,14 +723,15 @@ Chunk MOV::Out::GetFtypChunk() {
   return ftyp;
 }
 
-void MOV::Out::AddFrame(const ImageRGBA &img) {
-  CHECK(img.Height() == height && img.Width () == width);
-  Frame f{.pos = pos};
-
+std::vector<uint8_t> MOV::Out::EncodeFrame(const ImageRGBA &img) {
   switch (codec) {
+  default:
+    LOG(FATAL) << "Unsupported codec for EncodeFrame";
+    return {};
   case Codec::RAW_RGBA: {
     static constexpr int BYTES_PER_PIXEL = 4;
     Buf buf;
+    buf.Reserve(img.Height() * img.Width() * BYTES_PER_PIXEL);
     for (int y = 0; y < img.Height(); y++) {
       for (int x = 0; x < img.Width(); x++) {
         const auto &[r, g, b, a] = img.GetPixel(x, y);
@@ -729,30 +741,30 @@ void MOV::Out::AddFrame(const ImageRGBA &img) {
         buf.W8(a);
       }
     }
-    WriteBuf(buf);
-    f.size = img.Height() * img.Width() * BYTES_PER_PIXEL;
-    CHECK((int64_t)buf.Size() == (int64_t)f.size);
-    break;
+    return std::move(buf.bytes);
   }
-  case Codec::PNG: {
-    std::vector<uint8_t> png = img.SaveToVec();
-    WritePtr(png.data(), png.size());
-    f.size = png.size();
-    break;
+  case Codec::PNG:
+    return img.SaveToVec();
+  case Codec::PNG_MINIZ:
+    return EncodeAsPNG(img);
   }
-  case Codec::PNG_MINIZ: {
-    std::vector<uint8_t> png = EncodeAsPNG(img);
-    WritePtr(png.data(), png.size());
-    f.size = png.size();
-    break;
-  }
+}
 
-  default:
-    LOG(FATAL) << "Unimplemented codec?";
-    break;
-  }
+void MOV::Out::AddEncodedFrame(const std::vector<uint8_t> &bytes) {
+  Frame f{.pos = pos, .size = (int64_t)bytes.size()};
+
+  WritePtr(bytes.data(), bytes.size());
 
   frames.push_back(f);
+}
+
+void MOV::Out::AddFrame(const ImageRGBA &img) {
+  CHECK(img.Height() == height && img.Width () == width);
+
+  // In the future, this may need to support P- and B-frames, but
+  // right now every frame can be encoded independently, so we just
+  // use that facility.
+  AddEncodedFrame(EncodeFrame(img));
 }
 
 template<class T>

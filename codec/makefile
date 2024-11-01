@@ -2,8 +2,6 @@ default : mov_test.exe dump.exe testbed.exe
 
 codec : codec.dll
 
-# ASAN=true
-
 CC_LIB=../cc-lib
 
 CXXFLAGS = --std=c++20 -g -O3 -I. -I$(CC_LIB) -Wall -fPIC

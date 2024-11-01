@@ -49,6 +49,19 @@ struct MOV {
 
     void AddFrame(const ImageRGBA &img);
 
+    // Automatically finalizes.
+    ~Out();
+
+    // For advanced uses (e.g. multithreaded encoding).
+    // These only work for intraframe-only codecs (which is
+    // all of them right now).
+    // Encodes a frame but does not add it to the movie.
+    std::vector<uint8_t> EncodeFrame(const ImageRGBA &img);
+    // Add a previously encoded frame as the next one in
+    // the movie. The bytes should come from a call to
+    // EncodeFrame on this same object.
+    void AddEncodedFrame(const std::vector<uint8_t> &frame);
+
    private:
     friend struct MOV;
 
@@ -90,6 +103,8 @@ struct MOV {
                                       int duration = DURATION_60,
                                       Codec codec = Codec::PNG);
   // Finalizes the file; consumes the argument.
+  // This is the same as deleting the Out object, but it additionally
+  // validates that the file hasn't already been closed.
   static void CloseOut(std::unique_ptr<Out> &out);
 
   // Extremely basic parsing, basically just for writing debugging

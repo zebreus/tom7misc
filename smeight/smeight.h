@@ -2,6 +2,7 @@
 #ifndef _SMEIGHT_SMEIGHT_H
 #define _SMEIGHT_SMEIGHT_H
 
+#include <cstdio>
 #include <string>
 #include <vector>
 

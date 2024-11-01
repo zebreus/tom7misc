@@ -35,15 +35,6 @@ inline static void StepFullPlayer(Emulator *emu, bool is_p1, uint8 input) {
   else emu->StepFull(0, input);
 }
 
-// OAM is Object Attribute Memory, which is sprite data.
-static vector<uint8> OAM(Emulator *emu) {
-  const PPU *ppu = emu->GetFC()->ppu;
-  vector<uint8> oam;
-  oam.resize(256);
-  memcpy(oam.data(), ppu->SPRAM, 256);
-  return oam;
-};
-
 namespace {
 struct InputGenerator {
   explicit InputGenerator(int id) : id(id) {}
@@ -277,7 +268,7 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
         science->mem = now_mem;
       }
 
-      science->oam = OAM(emu);
+      science->oam = emu->OAM();
       // Shift memory to previous.
       prev_mem.swap(now_mem);
 
@@ -522,7 +513,7 @@ vector<AutoCamera::XYSprite> AutoCamera::FilterForConsequentiality(
   //
   // Now, pick candidate memory locations.
   for (const XYSprite &sprite : sprites) {
-    auto Consequential = [this, &savestates, &sprite,
+    auto Consequential = [this, &savestates,
                           &known_consequential, &known_inconsequential](
         pair<uint16, int> addr) {
       if (known_consequential[addr.first]) {
@@ -546,7 +537,7 @@ vector<AutoCamera::XYSprite> AutoCamera::FilterForConsequentiality(
 
         // PERF The control OAM will be the same every time;
         // compute it when computing savestates.
-        vector<uint8> ctrl_oam = OAM(emu);
+        vector<uint8> ctrl_oam = emu->OAM();
         vector<uint8> ctrl_mem = emu->GetMemory();
 
         // Same, but modifying the memory location:
@@ -564,7 +555,7 @@ vector<AutoCamera::XYSprite> AutoCamera::FilterForConsequentiality(
 
         StepFullPlayer(emu, first_player, 0);
         StepFullPlayer(emu, first_player, 0);
-        vector<uint8> expt_oam = OAM(emu);
+        vector<uint8> expt_oam = emu->OAM();
         vector<uint8> expt_mem = emu->GetMemory();
 
         if (ctrl_oam != expt_oam ||

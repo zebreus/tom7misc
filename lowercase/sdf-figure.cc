@@ -1,4 +1,5 @@
 
+#include <cstdio>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -90,7 +91,7 @@ int main(int argc, char **argv) {
   const int SCALE = 5;
   const int QUALITY = 4;
   const int TILE = SCALE * SDF_SIZE;
-  
+
   std::unique_ptr<ImageRGBA> input_rgba(
       ImageRGBA::Load("sdf-figure-input.png"));
   CHECK(input_rgba.get() != nullptr);
@@ -105,13 +106,13 @@ int main(int argc, char **argv) {
   }
   ImageA nearest = input.ResizeNearest(SDF_SIZE, SDF_SIZE);
   Invert(&nearest);
-  
+
   Timer sdf_timer;
   ImageA bitmap_sdf = FontProblem::SDFFromBitmap(SDF_CONFIG, input);
   printf("Took %.3f sec\n", sdf_timer.MS() / 1000.0);
 
   ImageRGBA out(TILE * 4, TILE);
-  
+
   ImageA thresh =
     FontProblem::SDFThresholdAAFloat(SDF_CONFIG.onedge_value / 255.0f,
                                      ImageF(bitmap_sdf),
@@ -125,7 +126,7 @@ int main(int argc, char **argv) {
                  bitmap_sdf.ResizeBilinear(TILE, TILE).GreyscaleRGBA());
   out.BlendImage(TILE * 3, 0,
                  thresh.GreyscaleRGBA());
-  
+
   out.Save("sdf-figure.png");
   printf("Wrote sdf-figure.png\n");
   return 0;

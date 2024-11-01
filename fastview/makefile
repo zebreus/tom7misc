@@ -10,6 +10,9 @@ CXX=g++
 CC=gcc
 WINDRES=windres
 
+# It will at least run with asan!
+# ASAN=-fsanitize=address
+
 CCLIB=../cc-lib
 
 DEFINES=-DWIN32=1 -D_WIN32_WINNT=0x0601
@@ -20,7 +23,7 @@ INCLUDES=-I $(CCLIB)
 WINDOWS_OBJECTS=-ld2d1
 
 #  -flto
-CXXFLAGS=$(DEFINES) $(INCLUDES) -march=native -Wall --std=c++20 -O2
+CXXFLAGS=$(ASAN) $(DEFINES) $(INCLUDES) -march=native -Wall --std=c++20 -O2
 LFLAGS=$(CXXFLAGS) -ffunction-sections -mwindows -static -static-libgcc -static-libstdc++ -s
 
 # Don't use -flto to see assembly!

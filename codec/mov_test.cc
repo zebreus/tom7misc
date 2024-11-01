@@ -15,11 +15,10 @@ using Out = MOV::Out;
 
 static constexpr int WIDTH = 1920;
 static constexpr int HEIGHT = 1080;
-static constexpr int FRAMES = 4;
-
+static constexpr int FRAMES = 200;
 
 static void MakeMovie() {
-  std::unique_ptr<Out> out = MOV::OpenOut("test.mov", 1920, 1080,
+  std::unique_ptr<Out> out = MOV::OpenOut("test.mov", WIDTH, HEIGHT,
                                           MOV::DURATION_60,
                                           MOV::Codec::PNG_MINIZ);
 

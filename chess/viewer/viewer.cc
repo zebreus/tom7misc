@@ -1,5 +1,8 @@
 
+#include <cstdio>
+#include <cstring>
 #include <string>
+#include <utility>
 #include <vector>
 #include <shared_mutex>
 #include <cstdint>
@@ -30,6 +33,7 @@
 #include "../letter-player.h"
 // #include "../nneval-player.h"
 #include "../grad-player.h"
+#include "../fates.h"
 #include "timer.h"
 
 // #include "unblinder.h"
@@ -681,8 +685,8 @@ struct UI {
 
 UI::UI() {
   drawing = sdlutil::makesurface(SCREENW, SCREENH, true);
-  sdlutil::ClearSurface(drawing, 0, 0, 0, 0);
   CHECK(drawing != nullptr);
+  sdlutil::ClearSurface(drawing, 0, 0, 0, 0);
   Position::ParseFEN(
       "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
       &position);

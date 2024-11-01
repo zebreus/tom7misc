@@ -1,46 +1,45 @@
-#include <algorithm>
-#include <cstdint>
-#include <cstring>
-#include <map>
-#include <minwindef.h>
-#include <mutex>
-#include <stdlib.h>
-#include <thread>
-#include <vector>
-#include <string>
-#include <memory>
-#include <unordered_map>
-#include <tuple>
-#include <utility>
-
-#include <cstdio>
-#include <cstdlib>
-#include <cmath>
 
 #include "smeight.h"
 
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <map>
+#include <memory>
+#include <minwindef.h>
+#include <mutex>
+#include <stdlib.h>
+#include <string>
+#include <thread>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+#include "SDL.h"
 #include "SDL_error.h"
 #include "SDL_events.h"
 #include "SDL_joystick.h"
 #include "SDL_keysym.h"
 #include "SDL_timer.h"
 #include "SDL_video.h"
-#include "sdl/sdlutil.h"
-#include "util.h"
-#include "arcfour.h"
-#include "threadutil.h"
-#include "stb_image_write.h"
-#include "base/stringprintf.h"
+#include <GL/gl.h>
+#include <GL/glext.h>
 
+#include "arcfour.h"
+#include "base/stringprintf.h"
+#include "stb_image_write.h"
+#include "threadutil.h"
+#include "util.h"
+
+#include "../fceulib/emulator.h"
+#include "../fceulib/simplefm2.h"
 // XXX make part of Emulator interface
 #include "../fceulib/ppu.h"
 #include "../fceulib/cart.h"
-
-#include "SDL.h"
-#include <GL/gl.h>
-#include <GL/glext.h>
 
 #include "matrices.h"
 #include "autocamera.h"
@@ -1441,8 +1440,8 @@ struct SM {
 
 
             // Clip pixels outside the
-            //             if (px < 0 || py < 0 || px >= SPRTEXW || py >= SPRTEXH)
-            // continue;
+            // if (px < 0 || py < 0 || px >= SPRTEXW || py >= SPRTEXH)
+            //    continue;
 
             const int pixel = (py * SPRTEXW + px) * 4;
 
