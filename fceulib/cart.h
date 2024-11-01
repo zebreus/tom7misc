@@ -188,9 +188,14 @@ struct Cart {
 
   // See comment on ResetCartMapping where negative offsets of nothing
   // are used..? TODO: Sort this out.
+  // Annoyingly, this will cause both "unused" and "unused annotation is
+  // ignored" problems, depending on the compiler.
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wattributes"
   [[maybe_unused]]
   uint8 nothing_safetynet[65536] = { };
   uint8 nothing[8192] = { };
+  #pragma GCC diagnostic pop
 
   /* 16 are (sort of) reserved for UNIF/iNES and 16 to map other stuff. */
   bool CHRram[32] = { };

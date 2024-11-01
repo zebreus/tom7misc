@@ -72,7 +72,7 @@ sound_load.h : sound.pack packsound.cc
 
 screenshot.exe : ${ESCLIBOBJECTS} ${CCLIBOBJECTS} screenshot.o
 	g++ ${CXXFLAGS} -o $@ $^ -static
-
+	strip screenshot.exe
 
 .dummy :
 

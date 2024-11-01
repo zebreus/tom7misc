@@ -33,6 +33,7 @@
 #include "timer.h"
 #include "hashing.h"
 #include "status-bar.h"
+#include "color-util.h"
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
@@ -1518,7 +1519,9 @@ static bool IsAlwaysDead(int max_states,
   Evaluator eval(emulator_pool, emu);
 
   Periodically status_per(2.0);
+  Periodically depths_per(60.0);
   Timer timer;
+
 
   // Unnecessary visualization!
   // At every depth, a memory value count histogram. We assume
@@ -1579,7 +1582,7 @@ static bool IsAlwaysDead(int max_states,
   // input and leaving it in an unspecified state. Caller should
   // save the state if they need it.
   std::function<bool(int)> InsertRec =
-    [emu, max_states, &depths,
+    [emu, max_states, &depths, &depths_per,
      &level, &status_per, &timer, status_index, &status, &GetState,
      &InsertRec, &eval, &states, &frames, &deaths](int depth) {
       // if ((int)states.size() > max_states) return false;
@@ -1600,7 +1603,6 @@ static bool IsAlwaysDead(int max_states,
           std::string s = MarioUtil::ScreenshotANSI(emu);
           status->Emit(s);
         }
-
         std::string msg =
           StringPrintf(
               "%s: " AYELLOW("↓") "%d, %lld st, %s fr, "
@@ -1641,6 +1643,101 @@ static bool IsAlwaysDead(int max_states,
         for (int addr = 0; addr < 2048; addr++) {
           uint8_t v = emu->ReadRAM(addr);
           d.memhisto[addr][v]++;
+        }
+
+        if (depths_per.ShouldRun()) {
+          // Save depths image.
+          ImageRGBA img(MAX_DEPTH, 2048);
+          img.Clear32(0x000000FF);
+
+          // Also, a text version since we definitely care about the
+          // specific memory locations.
+          std::string content;
+
+          for (int x = 0; x < MAX_DEPTH; x++) {
+            if (x >= depths.size() || depths[x].memhisto.empty())
+              continue;
+
+            StringAppendF(&content, "Depth %d:", x);
+
+            int variable_locations = 0;
+            for (int y = 0; y < 2048; y++) {
+              int distinct_values = (int)depths[x].memhisto[y].size();
+              if (distinct_values > 1) {
+                variable_locations++;
+              }
+            }
+
+            if (variable_locations == 0) StringAppendF(&content, " const.\n");
+            else StringAppendF(&content, "\n");
+
+            bool many = variable_locations > 64;
+            if (many) StringAppendF(&content, "  Many variable:");
+
+            for (int y = 0; y < 2048; y++) {
+              int distinct_values = (int)depths[x].memhisto[y].size();
+              CHECK(distinct_values != 0) << "This should be impossible, "
+                "since there always has to be a value in each memory "
+                "location.";
+              if (distinct_values == 1) {
+                // This is the boring case; don't draw anything.
+              } else {
+                // Otherwise, color according to how many different
+                // values are taken on. The maximum would be 256.
+                float f = sqrtf(distinct_values / 256.0f);
+                uint32_t c = ColorUtil::LinearGradient32(
+                    ColorUtil::HEATED_TEXT, f);
+                img.SetPixel32(x, y, c);
+                if (many) {
+                  StringAppendF(&content, " %04x", y);
+                } else {
+                  StringAppendF(&content, "  %04x: ", y);
+                  std::vector<std::pair<int, int>> val_count;
+                  for (const auto &[val, count] : depths[x].memhisto[y]) {
+                    CHECK(count != 0);
+                    val_count.emplace_back(val, count);
+                  }
+                  // Sort descending by count, then ascending by value.
+                  std::sort(val_count.begin(), val_count.end(),
+                            [](const auto &a, const auto &b) {
+                              if (a.second == b.second) return a.first < b.first;
+                              return a.second > b.second;
+                            });
+                  for (int i = 0; i < val_count.size() && i < 6; i++) {
+                    const auto &[val, count] = val_count[i];
+                    if (count == 1) {
+                      StringAppendF(&content, " %02x", val);
+                    } else {
+                      StringAppendF(&content, " %02xx%d", val, count);
+                    }
+                  }
+                  int remain = (int)val_count.size() - 6;
+                  if (remain > 0) {
+                    StringAppendF(&content, " (%d more)\n", remain);
+                  } else {
+                    StringAppendF(&content, "\n");
+                  }
+                }
+              }
+            }
+          }
+
+
+          const auto [major, minor] = UnpackLevel(level);
+          {
+            std::string filename =
+              StringPrintf("always-depths-%02x-%02x.png", major, minor);
+            img.Save(filename);
+            status->Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+          }
+          {
+            std::string filename =
+              StringPrintf("always-depths-%02x-%02x.txt", major, minor);
+            Util::WriteFile(filename, content);
+            status->Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+          }
+
+
         }
       }
 
