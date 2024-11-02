@@ -77,9 +77,6 @@ Possible performance improvements:
 
  - DISABLE_VIDEO
 
- - Can the ZNTable be replaced with a computation on the value itself?
-   See my comment in x6502.cc.
-
  - ppulut2 is just a bit shift of ppulut1; better for cache to just
    compute it?
 
@@ -91,8 +88,6 @@ Possible performance improvements:
 
  - JIT or AOT compile x6502 code to x86 and optimize.
    - lots of improvements to do in AOT.
-
- - nothing_safetynet in cart can probably go. I think I figured it out.
 
  - Is uint8 nothing[8192] = {}; necessary in MMC5? Can it be smaller?
 

@@ -19,6 +19,7 @@
  */
 
 #include <cassert>
+#include <cstdint>
 
 #include "fc.h"
 #include "types.h"
@@ -69,53 +70,20 @@ void X6502::DMW(uint32 A, uint8 V) {
 
 #define POP() RdRAM(0x100 + (++reg_S))
 
-// I think this stands for "zero and negative" table, which has the
-// zero and negative cpu flag set for each possible byte. The
-// information content is pretty low, and we might consider replacing
-// the ZN/ZNT macros with something that computes from the byte itself
-// (for example, the N flag is actually 0x80 which is the same bit as
-// what's tested to populate the table, so flags |= (b & 0x80)).
-// Anyway, I inlined the values rather than establishing them when the
-// emulator starts up, mostly for thread safety sake. -tom7
-static constexpr uint8 ZNTable[256] = {
-    Z_FLAG, 0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-};
-/* Some of these operations will only make sense if you know what the flag
-   constants are. */
-
+// These are the Zero and Negative flags that we should set for
+// the byte x. Zero is only set when the byte is zero, and the
+// negative flag when the negative bit is set.
+// This used to be a table, but this approach is just as fast,
+// and reduces code size.
+static inline constexpr uint8_t ZNFlags(uint8_t x) {
+  return ((x & 0b10000000) ? N_FLAG : 0) |
+    ((x == 0) ? Z_FLAG : 0);
+}
 
 #define X_ZN(zort)          \
   reg_P &= ~(Z_FLAG | N_FLAG); \
-  reg_P |= ZNTable[zort]
-#define X_ZNT(zort) reg_P |= ZNTable[zort]
+  reg_P |= ZNFlags(zort)
+#define X_ZNT(zort) reg_P |= ZNFlags(zort)
 
 #define JR(cond)                    \
   {                                 \
@@ -151,7 +119,7 @@ static constexpr uint8 ZNTable[256] = {
   X_ZN(reg_A)
 #define BIT                                \
   reg_P &= ~(Z_FLAG | V_FLAG | N_FLAG);    \
-  reg_P |= ZNTable[x & reg_A] & Z_FLAG;    \
+  reg_P |= ZNFlags(x & reg_A) & Z_FLAG;    \
   reg_P |= x & (V_FLAG | N_FLAG)
 #define EOR    \
   reg_A ^= x;  \
@@ -613,19 +581,6 @@ void X6502::Init() {
   DB = 0;
   timestamp = 0;
   MapIRQHook = nullptr;
-
-// Now initialized statically. -tom7
-#if 0
-  for(int i = 0; i < sizeof(ZNTable); i++) {
-    if (!i) {
-      ZNTable[i] = Z_FLAG;
-    } else if ( i & 0x80 ) {
-      ZNTable[i] = N_FLAG;
-    } else {
-      ZNTable[i] = 0;
-    }
-  }
-#endif
 }
 
 void X6502::Power() {
