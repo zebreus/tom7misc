@@ -93,7 +93,7 @@ For calls to FCEU_SoundHook, only save the necessary locals:
 
 unstripped:
 11721796        mario_65024.o   output code size is smaller as expected..
-896117674       total           
+896117674       total
 
 6701130 mario_65024.cc   and c++, obv
 547069531       total
@@ -470,15 +470,15 @@ Cutting out various unused stuff
 
 Took 38398.49 ms
 
-real	0m38.418s
-user	0m38.372s
-sys	0m0.020s
+real  0m38.418s
+user  0m38.372s
+sys 0m0.020s
 
 Took 38889.61 ms
 
-real	0m38.894s
-user	0m38.855s
-sys	0m0.021s
+real  0m38.894s
+user  0m38.855s
+sys 0m0.021s
 
 -O2:
 
@@ -492,6 +492,56 @@ First successful compile:
 
 Took 38064.33 ms
 
-real	0m38.068s
-user	0m38.046s
-sys	0m0.011s
+real  0m38.068s
+user  0m38.046s
+sys 0m0.011s
+
+--------------------------------------------------
+
+Remove nothing_safetynet.
+
+Create time (95%ile) : 344.833us ±105.805us.
+Create time histo (μs):
+     299.6 | 6237 ██████████████████████████████████████████████████████
+     331.2 |████████████████████▋ 2144
+     362.7 |████ 419
+     394.3 |███ 313
+     425.8 |██▋ 279
+     457.4 |███▏ 324
+     489.0 |█▎ 130
+     520.5 |▌ 51
+     552.1 |▎ 23
+     583.6 |▊ 80
+
+Benchmark load state.
+Load time (95%ile) : 1.887us ±1.415us.
+Load time histo (μs):
+       1.7 | 9668 ██████████████████████████████████▌
+       1.9 | 14316 █████████████████████████████████████████████████████
+       2.0 |█▍ 341
+       2.2 |█ 230
+       2.3 |▊ 169
+       2.5 |▏ 35
+       2.7 |▏ 22
+       2.8 |▏ 19
+       3.0 |▎ 67
+       3.1 |▌ 133
+
+Benchmark save state.
+Average save size: 13359.0 bytes
+Save time (95%ile) : 3.574us ±3.146us.
+Save time histo (μs):
+       3.2 |████████████████▌ 2846
+       3.4 | 10347 █████████████████████████████████████████████████████
+       3.5 | 9588 █████████████████████████████████████████████████▋
+       3.7 |███████▏ 1222
+       3.9 |██▊ 482
+       4.0 |▉ 150
+       4.2 |▍ 55
+       4.4 |▍ 61
+       4.6 |▎ 51
+       4.7 |█▏ 198
+
+Benchmark steps.
+Step time (95%ile) : 199.572us ±3.678us.
+OK

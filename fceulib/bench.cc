@@ -24,6 +24,7 @@ static constexpr uint64 expected_img = 0x7effb50e22f4bb8cULL;
 
 using namespace std;
 
+// TODO: Test both step and step full?
 void BenchmarkStep(Emulator *emu,
                    const vector<uint8> &start,
                    const vector<uint8> &movie) {
@@ -58,8 +59,14 @@ void BenchmarkStep(Emulator *emu,
     printf("Step time (95%%ile) : %s ±%s.\n",
            ANSI::Time(g.mean).c_str(),
            ANSI::Time(pm).c_str());
-    if (pm < 0.10 * g.mean)
+    if (pm < 0.10 * g.mean) {
+      /*
+      AutoHisto histo(10000);
+      for (double d : samples) histo.Observe(d * 1'000'000.0);
+      printf("Step time histo (μs):\n%s\n", histo.SimpleANSI(10).c_str());
+      */
       return;
+    }
   }
 }
 
@@ -73,19 +80,68 @@ static void BenchmarkCreate() {
     CHECK(emu.get() != nullptr);
   }
 
+  for (int i = 0; i < 10000; i++) {
+    Timer create_timer;
+    std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
+    CHECK(emu.get() != nullptr);
+    samples.push_back(create_timer.Seconds());
+  }
+
+  Stats::Gaussian g = Stats::EstimateGaussian(samples);
+  double pm = g.PlusMinus95();
+  printf("Create time (95%%ile) : %s ±%s.\n",
+         ANSI::Time(g.mean).c_str(),
+         ANSI::Time(pm).c_str());
+
+  AutoHisto histo(10000);
+  for (double d : samples) histo.Observe(d * 1'000'000.0);
+  printf("Create time histo (μs):\n%s\n", histo.SimpleANSI(10).c_str());
+}
+
+static void BenchmarkSaveState(Emulator *emu,
+                               const std::vector<uint8_t> &start,
+                               const vector<uint8> &movie) {
+  printf("Benchmark save state.\n");
+
+  emu->LoadUncompressed(start);
+
+  std::vector<double> samples_time;
+  int64_t total_size = 0;
+  int64_t num_saves = 0;
   for (;;) {
-    for (int i = 0; i < 10000; i++) {
-      Timer create_timer;
-      std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
-      CHECK(emu.get() != nullptr);
-      samples.push_back(create_timer.Seconds());
+    size_t movie_idx = 0;
+    for (int i = 0; i < 25000; i++) {
+      Timer save_timer;
+      std::vector<uint8_t> save = emu->SaveUncompressed();
+      samples_time.push_back(save_timer.Seconds());
+      total_size += save.size();
+      num_saves ++;
+
+      // Save in a different state each time.
+      if (movie_idx >= movie.size()) {
+        emu->LoadUncompressed(start);
+        movie_idx = 0;
+      } else {
+        emu->StepFull(movie[movie_idx], 0);
+        movie_idx++;
+      }
     }
 
-    Stats::Gaussian g = Stats::EstimateGaussian(samples);
+    printf("Average save size: " ABLUE("%.1f") " bytes\n",
+           total_size / (double)num_saves);
+
+    Stats::Gaussian g = Stats::EstimateGaussian(samples_time);
     double pm = g.PlusMinus95();
-    printf("Create time (95%%ile) : %s ±%s.\n",
+
+
+    printf("Save time (95%%ile) : %s ±%s.\n",
            ANSI::Time(g.mean).c_str(),
            ANSI::Time(pm).c_str());
+
+    AutoHisto histo(10000);
+    for (double d : samples_time) histo.Observe(d * 1'000'000.0);
+    printf("Save time histo (μs):\n%s\n", histo.SimpleANSI(10).c_str());
+
     return;
   }
 }
@@ -118,12 +174,12 @@ static void BenchmarkLoadState(Emulator *emu,
 
     AutoHisto histo(10000);
     for (double d : samples) histo.Observe(d * 1'000'000.0);
-    printf("Histo (μs):\n%s\n", histo.SimpleANSI(10).c_str());
+    printf("Load time histo (μs):\n%s\n", histo.SimpleANSI(10).c_str());
 
     return;
   }
-
 }
+
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -149,6 +205,8 @@ int main(int argc, char **argv) {
         "7r6rb37+a26rb28+a33rb7b,rb24+a18rb70b19rb15+a46rb50b93_");
 
   CHECK(!movie.empty());
+
+  BenchmarkSaveState(emu.get(), start, movie);
 
   BenchmarkStep(emu.get(), start, movie);
 

@@ -1,6 +1,6 @@
 
 This is Tom 7's attempt to make FCE Ultra into a thread-safe library.
-As of 13 Feb 2022, we have here:
+As of 2 Nov 2024, we have here:
 
  - The modernization I did for the Learnfun & Playfun project
    (../tasbot/) and major culling of unnecessary parts of FCEU.
@@ -14,17 +14,17 @@ As of 13 Feb 2022, we have here:
  - A test suite in emulator_test. It includes the ability to
    instrument the emulator with tracing in case I introduce a bug
    and want to see why a game is behaving differently.
+ - A more compact format for movies (simplefm7.h).
 
-This code might work now, but I still need to do some testing. The
-biggest risk at this point is not a lack of thread-safety (it's reasonably
-easy to verify that there are no globals or 'static' declarations), but
-that some piece of code accesses uninitialized memory and thus doesn't
-have repeatable behavior. This may not matter for your application, so
-go to town!
+I've used this code for a lot of projects now, although usually on
+older games with simple mappers. If you find any bugs (especially
+crashes or nondeterminism) I would like to know about them. (But I
+can't promise I'll be able to fix them!)
 
 Note that this port requires C++20 now and I have only tested 64-bit
 builds.
-On Windows I am using x86_64-w64-mingw32-g++ (GCC 11.4).
+On Windows I am using clang 18.1.8 through msys2, targeting x86_64-w64.
+It should also work well with modern G++ (say, 11+).
 
 The intention is that the library itself (emulator.h) has no external
 dependencies, other than zlib (courtesy of original FCEUX code), which

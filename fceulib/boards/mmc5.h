@@ -3,6 +3,7 @@
 
 #include "../types.h"
 #include "../cart.h"
+#include "../fc.h"
 
 // Unlike most mappers, this one has a "public" interface so that
 // hacks in the PPU can commune with it. It's gross. I've tried to

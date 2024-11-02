@@ -7,19 +7,19 @@ original FCE Ultra authors file is below; new contributions to Fceulib are:
     the Learnfun & Playfun project. Made it compile as a library. Made
     it thread safe. Modernized to C++11 where he could.
 
-  Adam Goode - Wrote the nes homebrew ESCAPE.NES, which is a port of
+  Adam Goode - Wrote the NES homebrew ESCAPE.NES, which is a port of
     Tom 7's computer game Escape to NES. The escape cart is GPL
     licensed and used for testing.
 
-Authors
-=======
+FCEU Authors
+============
 
-A list of people who have contributed code to FCE Ultra, or have had their code 
+A list of people who have contributed code to FCE Ultra, or have had their code
 placed in FCE Ultra by others.
 
 Pre-2.0 FCE / FCE Ultra Contributors
 ------------------------------------
-_These authors contributed exclusively to pre-2.0 versions, 
+_These authors contributed exclusively to pre-2.0 versions,
 but much of their code remains in 2.0 builds_
 
 * BERO - bero at geocities.co.jp - Base FCE code.
@@ -34,7 +34,7 @@ but much of their code remains in 2.0 builds_
 
 * Quietust - quietust at ircN dot org - VRC7 "translation" code.
 
-* Ben Parnell - Windows debugging tools 
+* Ben Parnell - Windows debugging tools
 
 * Parasyte & bbitmaster - Enhanced Windows debugging tools
 

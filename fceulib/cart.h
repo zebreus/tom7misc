@@ -82,13 +82,13 @@ struct Cart {
   // Ugh, even worse!
   void SetSpecificVPage(int num, uint32 A, uint8 *p) { VPage[num] = p - A; }
 
+ private:
   // Each page is a 2k chunk of memory, corresponding to the address
   // (A >> 11), but the pointer is offset such that it is still
   // indexed by A, not A & 2047. (TODO: verify, and maybe "fix" -tom7)
   // TODO: Make private and use accessors so that we can either keep
   // the address offsetting trick internal, or even stamp it out
   // TODO: In the process of making these private. -tom7
- private:
   uint8 *Page[32] = {};
   uint8 *VPage[8] = {};
  public:
@@ -186,16 +186,8 @@ struct Cart {
  private:
   bool PRGIsRAM[32] = { };  /* This page is/is not PRG RAM. */
 
-  // See comment on ResetCartMapping where negative offsets of nothing
-  // are used..? TODO: Sort this out.
-  // Annoyingly, this will cause both "unused" and "unused annotation is
-  // ignored" problems, depending on the compiler.
-  #pragma GCC diagnostic push
-  #pragma GCC diagnostic ignored "-Wattributes"
-  [[maybe_unused]]
-  uint8 nothing_safetynet[65536] = { };
+  // Used as an initial destination for page and vpage.
   uint8 nothing[8192] = { };
-  #pragma GCC diagnostic pop
 
   /* 16 are (sort of) reserved for UNIF/iNES and 16 to map other stuff. */
   bool CHRram[32] = { };

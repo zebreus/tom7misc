@@ -23,7 +23,13 @@
 #include "mapinc.h"
 #include "mmc5.h"
 
+#include <cstring>
 #include <initializer_list>
+#include <cstdint>
+
+using uint32 = uint32_t;
+using uint8 = uint8_t;
+using int32 = int32_t;
 
 namespace {
 struct CartData {
