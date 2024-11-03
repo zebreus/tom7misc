@@ -61,6 +61,8 @@ struct MarioUtil {
                        uint32_t color);
 
   static std::string FormatNum(uint64_t n);
+
+  static std::string DescribeAddress(uint16_t addr);
 };
 
 inline bool operator== (const MarioUtil::Pos &a, const MarioUtil::Pos &b) {

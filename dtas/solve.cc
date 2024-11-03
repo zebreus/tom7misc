@@ -34,6 +34,7 @@
 #include "hashing.h"
 #include "status-bar.h"
 #include "color-util.h"
+#include "util.h"
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
@@ -1519,7 +1520,7 @@ static bool IsAlwaysDead(int max_states,
   Evaluator eval(emulator_pool, emu);
 
   Periodically status_per(2.0);
-  Periodically depths_per(60.0);
+  Periodically depths_per(60.0, false);
   Timer timer;
 
 
@@ -1534,7 +1535,7 @@ static bool IsAlwaysDead(int max_states,
   };
   std::vector<Depth> depths;
   static constexpr int MAX_DEPTH = 200;
-  depths.reserve(MAX_DEPTH);
+  depths.resize(MAX_DEPTH);
 
   // We are trying to create the entire state graph, where edges
   // correspond to a single frame with a specific input. Rather than
@@ -1601,6 +1602,7 @@ static bool IsAlwaysDead(int max_states,
       if (status_per.ShouldRun()) {
         if (status_index == 0) {
           std::string s = MarioUtil::ScreenshotANSI(emu);
+          status->Printf("Depth %d:\n", depth);
           status->Emit(s);
         }
         std::string msg =
@@ -1658,7 +1660,8 @@ static bool IsAlwaysDead(int max_states,
             if (x >= depths.size() || depths[x].memhisto.empty())
               continue;
 
-            StringAppendF(&content, "Depth %d:", x);
+            StringAppendF(&content, "Depth %d (%d):", x,
+                          depths[x].occurrences);
 
             int variable_locations = 0;
             for (int y = 0; y < 2048; y++) {
@@ -1688,10 +1691,22 @@ static bool IsAlwaysDead(int max_states,
                 uint32_t c = ColorUtil::LinearGradient32(
                     ColorUtil::HEATED_TEXT, f);
                 img.SetPixel32(x, y, c);
+
+                static constexpr bool SYMBOLIC = true;
                 if (many) {
-                  StringAppendF(&content, " %04x", y);
+                  if (SYMBOLIC) {
+                    StringAppendF(&content, " %s",
+                                  MarioUtil::DescribeAddress(y).c_str());
+                  } else {
+                    StringAppendF(&content, " %04x", y);
+                  }
                 } else {
-                  StringAppendF(&content, "  %04x: ", y);
+                  if (SYMBOLIC) {
+                    StringAppendF(&content, " %s:",
+                                  MarioUtil::DescribeAddress(y).c_str());
+                  } else {
+                    StringAppendF(&content, "  %04x:", y);
+                  }
                   std::vector<std::pair<int, int>> val_count;
                   for (const auto &[val, count] : depths[x].memhisto[y]) {
                     CHECK(count != 0);
@@ -1700,7 +1715,8 @@ static bool IsAlwaysDead(int max_states,
                   // Sort descending by count, then ascending by value.
                   std::sort(val_count.begin(), val_count.end(),
                             [](const auto &a, const auto &b) {
-                              if (a.second == b.second) return a.first < b.first;
+                              if (a.second == b.second)
+                                return a.first < b.first;
                               return a.second > b.second;
                             });
                   for (int i = 0; i < val_count.size() && i < 6; i++) {
@@ -1708,7 +1724,7 @@ static bool IsAlwaysDead(int max_states,
                     if (count == 1) {
                       StringAppendF(&content, " %02x", val);
                     } else {
-                      StringAppendF(&content, " %02xx%d", val, count);
+                      StringAppendF(&content, " %02x[%d]", val, count);
                     }
                   }
                   int remain = (int)val_count.size() - 6;
@@ -1720,6 +1736,8 @@ static bool IsAlwaysDead(int max_states,
                 }
               }
             }
+
+            if (many) StringAppendF(&content, "\n");
           }
 
 
@@ -2068,7 +2086,7 @@ static void TryToReject(std::optional<LevelId> args,
 
 
 static void AlwaysDead(std::optional<LevelId> args) {
-  TryToReject(args, "alwaysdead", MinusDB::REJECT_ALWAYS_DEAD, 100000, IsAlwaysDead);
+  TryToReject(args, "alwaysdead", MinusDB::REJECT_ALWAYS_DEAD, 500000, IsAlwaysDead);
 }
 
 static void Cutscene(std::optional<LevelId> args) {

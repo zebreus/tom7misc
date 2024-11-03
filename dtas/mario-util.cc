@@ -2,6 +2,7 @@
 #include "mario-util.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <string>
 #include <algorithm>
 #include <cstdint>
@@ -16,8 +17,46 @@
 #include "image-resize.h"
 #include "ansi-image.h"
 #include "base/stringprintf.h"
+#include "base/logging.h"
 
 #include "mario.h"
+
+namespace {
+struct MemoryMap {
+  MemoryMap(const std::string &filename) : names(0x800, "") {
+    for (const std::string &line : Util::NormalizeLines(
+             Util::ReadFileToLines(filename))) {
+      if (line.empty() || line[0] == '#') continue;
+
+      std::vector<std::string> parts = Util::Split(line, ' ');
+      CHECK(parts.size() == 2) << "Bad memory map: " << filename;
+
+      int addr = strtol(parts[0].c_str(), nullptr, 16);
+      CHECK(addr >= 0 && addr < 0x800) << "Bad address: " << filename;
+      if (names[addr].empty()) names[addr] = parts[1];
+    }
+
+    // For the next part we want the invariant that there is always
+    // some name of an earlier address.
+    if (names[0].empty()) names[0] = "zero";
+    int prev = 0;
+    for (int i = 1; i < 0x800; i++) {
+      if (names[i].empty()) {
+        names[i] = StringPrintf("%s+%d", names[prev].c_str(), i - prev);
+      } else {
+        prev = i;
+      }
+    }
+  }
+
+  std::vector<std::string> names;
+};
+
+static const MemoryMap &GetMemoryMap() {
+  const MemoryMap *mm = new MemoryMap("mario.map");
+  return *mm;
+}
+}  // namespace
 
 
 // Place the emulator state at the standard beginning of world-level.
@@ -40,7 +79,9 @@
 // title screen.
 void MarioUtil::WarpTo(Emulator *emu,
                        uint8_t major, uint8_t minor, uint8_t halfway) {
-  for (int i = 0; i < 33; i++) {
+  // XXXXX!
+  static constexpr int MENU_FRAMES = 33;
+  for (int i = 0; i < MENU_FRAMES; i++) {
     // Wait 33 frames for the menu.
     emu->StepFull(0, 0);
   }
@@ -184,4 +225,9 @@ std::string MarioUtil::FormatNum(uint64_t n) {
   } else {
     return Util::UnsignedWithCommas(n);
   }
+}
+
+std::string MarioUtil::DescribeAddress(uint16_t addr) {
+  if (addr >= 0x800) return StringPrintf("%04x", addr);
+  return GetMemoryMap().names[addr];
 }

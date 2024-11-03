@@ -309,10 +309,11 @@ struct AutoHisto {
     else return Util::EncodeUTF8(0x2580 + px);
   }
 
-  // Generate a bar using unicode characters that is (f * chars * 8) - (used * 8)
-  // pixels long. (The 'used' parameter is for when part of the bar is already
+  // Generate a bar using unicode characters that is
+  // (f * chars * 8) - (used * 8) pixels long. (The 'used'
+  // parameter is for when part of the bar is already
   // output, like with numbers over it.)
-  // To unicode-utils?
+  // To unicode-utils? Or ANSIImage?
   static std::string FilledBar(int chars, int used, float f) {
     if (chars <= 0) return "";
     if (used >= chars) return "";

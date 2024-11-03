@@ -9,7 +9,7 @@ CODEC=../../codec
 
 # ASAN=-fsanitize=address
 # OPT=-g -O2
-OPT=-g -O
+OPT=-g -O3
 
 # -fno-strict-aliasing
 # -I/usr/local/include -I/usr/include

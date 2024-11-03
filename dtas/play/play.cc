@@ -768,8 +768,9 @@ struct UI {
   void DrawGrid();
   void DrawGhost();
 
-  void DrawWatchlist();
-  void DrawMemory();
+  void DrawMovie(int xx, int yy);
+  void DrawWatchlist(int xx, int yy);
+  void DrawMemory(int xx, int yy);
 
   void PlayPause();
 
@@ -1047,7 +1048,10 @@ UI::EventResult UI::HandleEvents() {
         }
         break;
       case 5:
-        Seek(+10);
+        // Single-step.
+        // Seek(+10);
+        speed = Speed::PAUSE;
+        game_array->Step(current_gamepad);
         ui_dirty = true;
         break;
 
@@ -1080,8 +1084,6 @@ UI::EventResult UI::HandleEvents() {
       }
       break;
 
-      break;
-
     case SDL_JOYHATMOTION:
       //    1
       //
@@ -1096,15 +1098,8 @@ UI::EventResult UI::HandleEvents() {
       static constexpr uint8_t JHAT_LEFT = 8;
       static constexpr uint8_t JHAT_RIGHT = 2;
 
-      if (speed == Speed::PLAY) {
-        // When playing, this is just mapped to the controller.
-        current_gamepad &= ~(INPUT_U | INPUT_D | INPUT_L | INPUT_R);
-        if (event.jhat.value & JHAT_UP) current_gamepad |= INPUT_U;
-        if (event.jhat.value & JHAT_DOWN) current_gamepad |= INPUT_D;
-        if (event.jhat.value & JHAT_LEFT) current_gamepad |= INPUT_L;
-        if (event.jhat.value & JHAT_RIGHT) current_gamepad |= INPUT_R;
-      } else if (speed == Speed::PAUSE) {
-        // When paused, this navigates the focus (on edges).
+      if (speed == Speed::PAUSE && view == View::GRID) {
+        // When paused in grid mode, this navigates the focus (on edges).
 
         auto RisingEdge = [&](int bit) {
             return !!(event.jhat.value & bit) && !(last_jhat & bit);
@@ -1116,6 +1111,13 @@ UI::EventResult UI::HandleEvents() {
         if (RisingEdge(JHAT_RIGHT)) game_array->MoveFocus(1, 0);
 
         ui_dirty = true;
+      } else {
+        // Otherwise, these are just mapped to the controller.
+        current_gamepad &= ~(INPUT_U | INPUT_D | INPUT_L | INPUT_R);
+        if (event.jhat.value & JHAT_UP) current_gamepad |= INPUT_U;
+        if (event.jhat.value & JHAT_DOWN) current_gamepad |= INPUT_D;
+        if (event.jhat.value & JHAT_LEFT) current_gamepad |= INPUT_L;
+        if (event.jhat.value & JHAT_RIGHT) current_gamepad |= INPUT_R;
       }
 
       last_jhat = event.jhat.value;
@@ -1144,7 +1146,6 @@ void UI::Loop() {
       ui_dirty = true;
 
     if (ui_dirty) {
-      sdlutil::clearsurface(screen, 0xFFFFFFFF);
       Draw();
       // printf("Flip.\n");
       SDL_Flip(screen);
@@ -1233,10 +1234,7 @@ void UI::DrawGhost() {
   // XXX test: re-draw sprites from main game.
   {
     std::vector<Emulator::Sprite> sprites = game->emu->Sprites();
-    /*
-    shot.BlendText32(10, 10, 0xFF00FFFF, StringPrintf("%d sprites",
-                                                      (int)sprites.size()));
-    */
+
     for (Emulator::Sprite &sprite : sprites) {
       if (sprite.y < 240) {
         ImageRGBA simg(std::move(sprite.rgba), sprite.Width(), sprite.Height());
@@ -1258,7 +1256,7 @@ void UI::DrawGhost() {
 }
 
 // TODO: These should probably take the destination position?
-void UI::DrawWatchlist() {
+void UI::DrawWatchlist(int xx, int yy) {
   Game *game = game_array->games[game_array->focus_idx].get();
   CHECK(game != nullptr);
   const Emulator *emu = game->emu.get();
@@ -1278,16 +1276,34 @@ void UI::DrawWatchlist() {
     y += 10;
   }
 
-  // PERF without intermediate copy.
-  drawing->CopyImage(256 * 6 + 8, 8, img.ScaleBy(2));
-  /*
-  sdlutil::CopyRGBARectNX(img, 2,
-                          0, 0, img.Width(), img.Height(),
-                          256 * 6 + 8, 8, drawing);
-  */
+  drawing->CopyImage(xx, yy, img.ScaleBy(2));
 }
 
-void UI::DrawMemory() {
+void UI::DrawMovie(int xx, int yy) {
+  Game *game = game_array->games[game_array->focus_idx].get();
+  CHECK(game != nullptr);
+  const Movie *movie = &game->movie;
+
+  ImageRGBA img(256, 10 + 2 + 8);
+  img.Clear32(0x000000FF);
+  img.BlendText32(0, 0, 0x99CCCCFF,
+                  StringPrintf("%d steps", movie->Size()));
+
+  int start = std::max(movie->Size() - 256, 0);
+  int x = 0;
+  for (int i = start; i < movie->Size(); i++) {
+    uint8_t b = (*movie)[i];
+    for (int y = 0; y < 8; y++) {
+      img.SetPixel32(x, y + 10, (b & 1) ? 0xCCCCAAFF : 0x333333FF);
+      b >>= 1;
+    }
+    x++;
+  }
+
+  drawing->CopyImage(xx, yy, img);
+}
+
+void UI::DrawMemory(int xx, int yy) {
   Game *game = game_array->games[game_array->focus_idx].get();
   CHECK(game != nullptr);
   const Emulator *emu = game->emu.get();
@@ -1301,12 +1317,7 @@ void UI::DrawMemory() {
     }
   }
 
-  drawing->CopyImage(256 * 6 + 8, 480, img.ScaleBy(4));
-  /*
-  sdlutil::CopyRGBARectNX(img, 4,
-                          0, 0, img.Width(), img.Height(),
-                          256 * 6 + 8, 480, drawing);
-  */
+  drawing->CopyImage(xx, yy, img.ScaleBy(4));
 }
 
 void UI::Draw() {
@@ -1325,11 +1336,14 @@ void UI::Draw() {
     DrawGrid();
     break;
 
-  case View::GHOST:
+  case View::GHOST: {
+    const int INFO_X = 256 * 6 + 8;
     DrawGhost();
-    DrawWatchlist();
-    DrawMemory();
+    DrawMovie(INFO_X, 480);
+    DrawWatchlist(INFO_X, 12);
+    DrawMemory(INFO_X, 640);
     break;
+  }
 
   default:
     break;
@@ -1339,14 +1353,6 @@ void UI::Draw() {
 
   drawing->BlendText32(5, 5, 0xFFFF00AA,
                        StringPrintf("Frames: %lld", frames_drawn));
-  // font->drawto(drawing, 5, 5, StringPrintf("Frames: ^2%lld", frames_drawn));
-  // sdlutil::blitall(drawing, screen, 0, 0);
-
-  /*
-  sdlutil::CopyRGBARect(*drawing,
-                        0, 0, SCREENW, SCREENH,
-                        0, 0, screen);
-  */
   sdlutil::CopyRGBAToScreen(*drawing, screen);
 
   if (mov.get()) {
