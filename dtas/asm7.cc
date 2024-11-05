@@ -10,14 +10,18 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "util.h"
+#include "parser-combinators.h"
 #include "re2/re2.h"
+#include "util.h"
 
 enum TokenType {
   // Singleton symbols
@@ -154,19 +158,59 @@ static std::vector<Token> Tokenize(int line_num,
   return ret;
 }
 
-// A delayed 16-bit address. These are written after we've finished
-// the first pass and know the value of every label. We simply
-// write the 16-bit address to the 16-bit dest_addr.
+enum class ExpType {
+  LABEL,
+  HIGH_BYTE,
+  LOW_BYTE,
+  PLUS,
+  MINUS,
+  NUMBER,
+};
+
+struct Exp {
+  ExpType type;
+  std::string label;
+  std::shared_ptr<Exp> a, b;
+  int64_t number = 0;
+};
+
+static std::string ExpString(const Exp *e) {
+  if (e == nullptr) return "??NULL??";
+  switch (e->type) {
+  case ExpType::LABEL:
+    return StringPrintf("'%s'", e->label.c_str());
+  case ExpType::NUMBER:
+    return StringPrintf("%lld", e->number);
+  case ExpType::HIGH_BYTE:
+    return StringPrintf(">%s", ExpString(e->a.get()).c_str());
+  case ExpType::LOW_BYTE:
+    return StringPrintf("<%s", ExpString(e->a.get()).c_str());
+  case ExpType::PLUS:
+    return StringPrintf("(%s + %s)",
+                        ExpString(e->a.get()).c_str(),
+                        ExpString(e->b.get()).c_str());
+  case ExpType::MINUS:
+    return StringPrintf("(%s - %s)",
+                        ExpString(e->a.get()).c_str(),
+                        ExpString(e->b.get()).c_str());
+  default:
+    return "??UNKNOWN??";
+  }
+}
+
+// A delayed 16-bit quantity. These are written after we've finished
+// the first pass and know the value of every label. We compute the
+// 16-bit value and write it to the 16-bit dest_addr.
 //
 // For clarity: The address here is a machine address, not an offset
 // into assembled bytes (but the offset can be computed using the
 // origin).
 struct Delayed16 {
-  std::string label;
+  std::shared_ptr<Exp> exp;
   uint16_t dest_addr = 0;
 };
 
-// A delayed signed 8-bit displacement. These are measured from a
+// A delayed 8-bit displacement. These are measured from a
 // source position. Note: It might be impossible to write the address
 // if it doesn't fit in an int8.
 // As above, both addresses here are machine addresses.
@@ -198,32 +242,228 @@ struct Bank {
   std::vector<DelayedRel8> delayedrel8;
 };
 
-
-
+template<TokenType t>
+struct IsToken {
+  using token_type = Token;
+  using out_type = Token;
+  constexpr IsToken() {}
+  Parsed<Token> operator()(TokenSpan<Token> toks) const {
+    if (toks.empty()) return Parsed<Token>::None();
+    if (toks[0].type == t) return Parsed(toks[0], 1);
+    else return Parsed<Token>::None();
+  }
+};
 
 static void Assemble(const std::string &filename) {
   std::vector<std::string> lines = Util::ReadFileToLines(filename);
 
   std::vector<Bank> banks;
 
+  using FixityElt = FixityItem<std::shared_ptr<Exp>>;
+  const auto ResolveExpFixity = [&](const std::vector<FixityElt> &elts) ->
+    std::optional<std::shared_ptr<Exp>> {
+    // No legal adjacency case.
+    return ResolveFixity<std::shared_ptr<Exp>>(elts, nullptr);
+  };
+
+  const FixityElt PlusElt = {
+    .fixity = Fixity::Infix,
+    .assoc = Associativity::Left,
+    .precedence = 9,
+    .item = nullptr,
+    .unop = nullptr,
+    .binop = [&](std::shared_ptr<Exp> a, std::shared_ptr<Exp> b) ->
+    std::shared_ptr<Exp> {
+      return std::make_shared<Exp>(Exp{
+          .type = ExpType::PLUS,
+          .a = std::move(a),
+          .b = std::move(b),
+        });
+    },
+  };
+
+  const FixityElt MinusElt = {
+    .fixity = Fixity::Infix,
+    .assoc = Associativity::Left,
+    .precedence = 9,
+    .item = nullptr,
+    .unop = nullptr,
+    .binop = [&](std::shared_ptr<Exp> a, std::shared_ptr<Exp> b) ->
+    std::shared_ptr<Exp> {
+      return std::make_shared<Exp>(Exp{
+          .type = ExpType::MINUS,
+          .a = std::move(a),
+          .b = std::move(b),
+        });
+    },
+  };
+
+  const FixityElt LessElt = {
+    .fixity = Fixity::Prefix,
+    .assoc = Associativity::Non,
+    .precedence = 9,
+    .item = nullptr,
+    .unop = [&](std::shared_ptr<Exp> a) -> std::shared_ptr<Exp> {
+      return std::make_shared<Exp>(Exp{
+          .type = ExpType::LOW_BYTE,
+          .a = std::move(a),
+        });
+    },
+    .binop = nullptr,
+  };
+
+  const FixityElt GreaterElt = {
+    .fixity = Fixity::Prefix,
+    .assoc = Associativity::Non,
+    .precedence = 9,
+    .item = nullptr,
+    .unop = [&](std::shared_ptr<Exp> a) -> std::shared_ptr<Exp> {
+      return std::make_shared<Exp>(Exp{
+          .type = ExpType::HIGH_BYTE,
+          .a = std::move(a),
+        });
+    },
+    .binop = nullptr,
+  };
+
+  const auto Expression =
+    Fix<Token, std::shared_ptr<Exp>>([&](const auto &Self) {
+        auto Number =
+          IsToken<NUMBER>() >[&](Token t) {
+              return std::make_shared<Exp>(Exp{
+                  .type = ExpType::NUMBER,
+                  .number = t.num,
+                });
+            };
+
+        auto Symbol =
+          IsToken<SYMBOL>() >[&](Token t) {
+              return std::make_shared<Exp>(Exp{
+                  .type = ExpType::LABEL,
+                  .label = t.str,
+                });
+            };
+
+        auto AtomicExp = Number || Symbol;
+
+        // Use prefix?
+        #if 0
+        auto ByteOfExp =
+          ((IsToken<GREATER>() >> AtomicExp) >[&](auto child) {
+              return std::make_shared<Exp>(Exp{
+                  .type = ExpType::HIGH_BYTE,
+                  .a = child,
+                });
+            }) ||
+          ((IsToken<LESS>() >> AtomicExp) >[&](auto child) {
+              return std::make_shared<Exp>(Exp{
+                  .type = ExpType::LOW_BYTE,
+                  .a = child,
+                });
+            });
+        #endif
+
+
+        auto FixityElement =
+          (IsToken<PLUS>() >> Succeed<Token, FixityElt>(PlusElt)) ||
+          (IsToken<MINUS>() >> Succeed<Token, FixityElt>(MinusElt)) ||
+          (IsToken<LESS>() >> Succeed<Token, FixityElt>(LessElt)) ||
+          (IsToken<GREATER>() >> Succeed<Token, FixityElt>(GreaterElt)) ||
+          (AtomicExp >[&](std::shared_ptr<Exp> e) {
+              FixityElt item;
+              item.fixity = Fixity::Atom;
+              item.item = std::move(e);
+              return item;
+            });
+
+        return +FixityElement /= ResolveExpFixity;
+      });
+
+
   for (int line_num = 0; line_num < (int)lines.size(); line_num++) {
     const std::string &line = lines[line_num];
-    std::vector<Token> tokens = Tokenize(line_num, line);
+    std::vector<Token> tokens_orig = Tokenize(line_num, line);
 
-    auto Error = [line_num, &line, &tokens]() {
+    auto Error = [line_num, &line, &tokens_orig]() {
         std::string toks;
-        for (int t = 0; t < (int)tokens.size(); t++) {
+        for (int t = 0; t < (int)tokens_orig.size(); t++) {
           if (t > 0) toks.push_back(' ');
           StringAppendF(&toks, "%s",
-                        TokenTypeString(tokens[t].type).c_str());
+                        TokenTypeString(tokens_orig[t].type).c_str());
         }
         return StringPrintf("\nLine %d:\n%s\n%s", line_num,
                             line.c_str(), toks.c_str());
       };
 
-    // Nothing to do on such lines.
-    if (tokens.empty() || tokens[0].type == COMMENT)
+    std::vector<Token> tokens = tokens_orig;
+
+    // Any line can have a trailing comment. Pull that off to start.
+    std::string trailing_comment;
+    if (!tokens.empty() && tokens.back().type == COMMENT) {
+      trailing_comment = tokens.back().str;
+      tokens.pop_back();
+    }
+
+    // Now there should be no other comments.
+    for (const Token &token : tokens) {
+      CHECK(token.type != COMMENT) << "Can't have multiple comments on "
+        "a line." << Error();
+    }
+
+    // Nothing to do on empty lines (or lines with just a comment).
+    if (tokens.empty())
       continue;
+
+    // The most common (and most complicated) thing is a series of
+    // comma-separated expressions.
+    auto GetCommaSeparatedExpressions =
+      [&Expression, &tokens, &Error](int start_offset) {
+
+        auto Program = Separate0(Expression, IsToken<COMMA>()) << End<Token>();
+
+        auto parseopt = Program(TokenSpan<Token>(tokens.data() + start_offset,
+                                                 tokens.size() - start_offset));
+        CHECK(parseopt.HasValue()) << "Expected comma separated expressions."
+                                   << Error();
+        return parseopt.Value();
+
+        #if 0
+        // Null means we haven't seen anything yet.
+        std::shared_ptr<Exp> current_exp;
+
+        for (int i = start_offset; i < tokens.size(); i++) {
+          switch (tokens[i].type) {
+          case COMMA:
+            CHECK(current_exp.get() != nullptr) << "Expected expression "
+              "before comma!" << Error();
+            exps.push_back(std::move(current_exp));
+            current_exp.reset();
+            break;
+
+          case NUMBER:
+            CHECK(current_exp.get() == nullptr) << "Unexpected number "
+              "after expression." << Error();
+            current_exp.reset(new Exp{
+                .type = ExpType::NUMBER,
+                .number = tokens[i].num,
+              });
+            break;
+
+          default:
+            LOG(FATAL) << "Unimplemented or unexpected token in expression."
+                       << Error();
+          }
+
+        }
+
+        if (current_exp.get() != nullptr) {
+          exps.push_back(std::move(current_exp));
+          current_exp.reset();
+        }
+
+        return exps;
+        #endif
+      };
 
     // Directives.
     if (tokens[0].type == PERIOD) {
@@ -257,15 +497,26 @@ static void Assemble(const std::string &filename) {
         // refer to labels that have not been output yet. And they
         // should be expressions (e.g. <Address or Address+1).
 
+        std::vector<std::shared_ptr<Exp>> exps =
+          GetCommaSeparatedExpressions(2);
+
+        for (const auto &e : exps) {
+          printf("  " AGREY("%s") "\n", ExpString(e.get()).c_str());
+        }
+
         LOG(FATAL) << "Unimplemented .db!" << Error();
 
       } else if (dir == "dw") {
         // A series of expressions denoting words, and
         // write them.
 
+        std::vector<std::shared_ptr<Exp>> exps =
+          GetCommaSeparatedExpressions(2);
+
         LOG(FATAL) << "Unimplemented .dw!" << Error();
 
       } else {
+
         LOG(FATAL) << "Unknown directive: " << dir << Error();
       }
 
