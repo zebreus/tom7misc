@@ -8,8 +8,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "base/logging.h"
@@ -51,6 +53,26 @@ struct Token {
 
 static Token SimpleToken(TokenType t) {
   return Token{.type = t};
+}
+
+static std::string TokenTypeString(TokenType t) {
+  switch (t) {
+  case COMMA: return "COMMA";
+  case EQUALS: return "EQUALS";
+  case LESS: return "LESS";
+  case GREATER: return "GREATER";
+  case PLUS: return "PLUS";
+  case MINUS: return "MINUS";
+  case HASH: return "HASH";
+  case COLON: return "COLON";
+  case PERIOD: return "PERIOD";
+  case LPAREN: return "LPAREN";
+  case RPAREN: return "RPAREN";
+  case NUMBER: return "NUMBER";
+  case SYMBOL: return "SYMBOL";
+  case COMMENT: return "COMMENT";
+  default: return "???";
+  }
 }
 
 // This is a line-based syntax, so we tokenize and parse a line
@@ -132,15 +154,127 @@ static std::vector<Token> Tokenize(int line_num,
   return ret;
 }
 
+// A delayed 16-bit address. These are written after we've finished
+// the first pass and know the value of every label. We simply
+// write the 16-bit address to the 16-bit dest_addr.
+//
+// For clarity: The address here is a machine address, not an offset
+// into assembled bytes (but the offset can be computed using the
+// origin).
+struct Delayed16 {
+  std::string label;
+  uint16_t dest_addr = 0;
+};
+
+// A delayed signed 8-bit displacement. These are measured from a
+// source position. Note: It might be impossible to write the address
+// if it doesn't fit in an int8.
+// As above, both addresses here are machine addresses.
+struct DelayedRel8 {
+  std::string label;
+  // The address that would have a displacement of 0.
+  uint16_t base_addr = 0;
+  // The place to write the 8-bit displacement.
+  uint16_t dest_addr = 0;
+};
+
+struct Bank {
+  // Creates an empty bank. The origin is required.
+  Bank(int origin) : origin(origin) {}
+
+  // The assembled data, which is expected to be loaded at the origin
+  // address. The next instruction assembled goes at the end.
+  std::vector<uint8_t> bytes;
+  // The origin where the bytes will be loaded in memory, e.g. 0x8000.
+  // This just affects what absolute value a label has.
+  int origin = 0;
+
+  // Named addresses. These are nominally uint16_t, but if -1,
+  // then we do not know the address yet. These are machine addresses,
+  // not offsets into bytes.
+  std::unordered_map<std::string, int> labels;
+
+  std::vector<Delayed16> delayed16;
+  std::vector<DelayedRel8> delayedrel8;
+};
+
+
+
+
 static void Assemble(const std::string &filename) {
   std::vector<std::string> lines = Util::ReadFileToLines(filename);
+
+  std::vector<Bank> banks;
 
   for (int line_num = 0; line_num < (int)lines.size(); line_num++) {
     const std::string &line = lines[line_num];
     std::vector<Token> tokens = Tokenize(line_num, line);
+
+    auto Error = [line_num, &line, &tokens]() {
+        std::string toks;
+        for (int t = 0; t < (int)tokens.size(); t++) {
+          if (t > 0) toks.push_back(' ');
+          StringAppendF(&toks, "%s",
+                        TokenTypeString(tokens[t].type).c_str());
+        }
+        return StringPrintf("\nLine %d:\n%s\n%s", line_num,
+                            line.c_str(), toks.c_str());
+      };
+
+    // Nothing to do on such lines.
+    if (tokens.empty() || tokens[0].type == COMMENT)
+      continue;
+
+    // Directives.
+    if (tokens[0].type == PERIOD) {
+      CHECK(tokens.size() > 1 &&
+            tokens[1].type == SYMBOL) << "Expected directive after period."
+                                      << Error();
+      const std::string &dir = tokens[1].str;
+      if (dir == "index") {
+        CHECK(tokens.size() == 3 &&
+              tokens[2].type == NUMBER &&
+              tokens[2].num == 8) << "Only .index 8 is supported, and "
+          "I also don't know what this means." << Error();
+      } else if (dir == "mem") {
+        CHECK(tokens.size() == 3 &&
+              tokens[2].type == NUMBER &&
+              tokens[2].num == 8) << "Only .mem 8 is supported, and "
+          "I also don't know what this means." << Error();
+
+      } else if (dir == "org") {
+        CHECK(tokens.size() == 3 &&
+              tokens[2].type == NUMBER &&
+              tokens[2].num >= 0 &&
+              tokens[2].num < 0x10000) << "Illegal .org directive."
+                                       << Error();
+        banks.emplace_back((int)tokens[2].num);
+      } else if (dir == "db") {
+        // Now read a series of expressions denoting bytes, and
+        // write them.
+        //
+        // TODO: These should actually be delayed, since they could
+        // refer to labels that have not been output yet. And they
+        // should be expressions (e.g. <Address or Address+1).
+
+        LOG(FATAL) << "Unimplemented .db!" << Error();
+
+      } else if (dir == "dw") {
+        // A series of expressions denoting words, and
+        // write them.
+
+        LOG(FATAL) << "Unimplemented .dw!" << Error();
+
+      } else {
+        LOG(FATAL) << "Unknown directive: " << dir << Error();
+      }
+
+    }
+
   }
 
-  printf("OK\n");
+
+
 }
 
 int main(int argc, char **argv) {
