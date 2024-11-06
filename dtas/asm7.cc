@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -214,6 +215,8 @@ struct Delayed16 {
 // source position. Note: It might be impossible to write the address
 // if it doesn't fit in an int8.
 // As above, both addresses here are machine addresses.
+// TODO: Should these be expressions? Should we compute the offset
+// in the expression?
 struct DelayedRel8 {
   std::string label;
   // The address that would have a displacement of 0.
@@ -233,14 +236,137 @@ struct Bank {
   // This just affects what absolute value a label has.
   int origin = 0;
 
-  // Named addresses. These are nominally uint16_t, but if -1,
-  // then we do not know the address yet. These are machine addresses,
-  // not offsets into bytes.
-  std::unordered_map<std::string, int> labels;
+  // Symbols that we know the values of already.
+  // The syntax does not distinguish between a declaration like
+  //   BuzzyBeetle = $02
+  // and
+  //   BowserOrigXPos = $0366
+  // even though the former is used as a constant byte, and the
+  // second as a memory address. Additionally, a label
+  //   WarpZoneWelcome:
+  // is a machine address (not byte offset) that could be used
+  // as a constant, or jumped to, etc. Basically, every symbol has
+  // a 16-bit value, but it is the use that tells us what it means.
+  std::unordered_map<std::string, uint16_t> symbols;
 
   std::vector<Delayed16> delayed16;
   std::vector<DelayedRel8> delayedrel8;
+
+  // TODO: Label memory addresses here for debugging symbols?
 };
+
+// Evaluate to a number if possible. Note the number may be out of
+// range for the target type.
+static std::optional<int64_t> Evaluate(
+    Bank *bank, const Exp *exp,
+    const std::function<std::string()> &Error) {
+  CHECK(exp != nullptr);
+  switch (exp->type) {
+  case ExpType::LABEL: {
+    auto it = bank->symbols.find(exp->label);
+    if (it == bank->symbols.end()) return std::nullopt;
+    return {it->second};
+  }
+
+  case ExpType::NUMBER:
+    return {exp->number};
+
+  case ExpType::HIGH_BYTE: {
+    if (auto io = Evaluate(bank, exp->a.get(), Error)) {
+      int64_t value = io.value();
+      CHECK(value >= 0 && value <= 0xFFFF) << "In a > expression, the "
+        "computed value is out of range: " << value << Error();
+      return 0xFF & (value >> 8);
+    } else {
+      return std::nullopt;
+    }
+  }
+  case ExpType::LOW_BYTE: {
+    if (auto io = Evaluate(bank, exp->a.get(), Error)) {
+      int64_t value = io.value();
+      CHECK(value >= 0 && value <= 0xFFFF) << "In a < expression, the "
+        "computed value is out of range: " << value << Error();
+      return 0xFF & value;
+    } else {
+      return std::nullopt;
+    }
+  }
+
+  case ExpType::PLUS: {
+    if (auto ao = Evaluate(bank, exp->a.get(), Error)) {
+      if (auto bo = Evaluate(bank, exp->b.get(), Error)) {
+        int64_t a = ao.value();
+        int64_t b = bo.value();
+        return {a + b};
+      }
+    }
+    return std::nullopt;
+  }
+  case ExpType::MINUS: {
+    if (auto ao = Evaluate(bank, exp->a.get(), Error)) {
+      if (auto bo = Evaluate(bank, exp->b.get(), Error)) {
+        int64_t a = ao.value();
+        int64_t b = bo.value();
+        return {a - b};
+      }
+    }
+    return std::nullopt;
+  }
+
+  default:
+    LOG(FATAL) << "Unknown/invalid expression in Evaluate.\n";
+    return std::nullopt;
+  }
+}
+
+#if 0
+
+static std::optional<uint16_t> Evaluate16(
+    Bank *bank, const Exp *exp,
+    const std::function<std::string()> &Error);
+
+static std::optional<uint8_t> Evaluate8(
+    Bank *bank, const Exp *exp,
+    const std::function<std::string()> &Error) {
+  CHECK(exp != nullptr);
+  switch (exp->type) {
+  case ExpType::LABEL: {
+    auto it = bank->labels.find(exp->label);
+    if (it == bank->labels.end()) return std::nullopt;
+    uint16_t val = it->second;
+    CHECK(val < 0x100) << "The symbol " << exp->label << " is used in "
+      "a context expecting a byte, but it has a value out of range: " <<
+      val << Error();
+    return {val};
+  }
+
+  case ExpType::NUMBER:
+    // TODO I guess we could support signed numbers? Probably not needed.
+    if (exp->number < 0 || exp->number > 0xFF) {
+      LOG(FATAL) << "The integer literal " << exp->number <<
+        " is used in a context expecting a byte, but it is out of range." <<
+        Error();
+    } else {
+      return {exp->number};
+    }
+
+  case ExpType::HIGH_BYTE:
+    return StringPrintf(">%s", ExpString(e->a.get()).c_str());
+  case ExpType::LOW_BYTE:
+    return StringPrintf("<%s", ExpString(e->a.get()).c_str());
+  case ExpType::PLUS:
+    return StringPrintf("(%s + %s)",
+                        ExpString(e->a.get()).c_str(),
+                        ExpString(e->b.get()).c_str());
+  case ExpType::MINUS:
+    return StringPrintf("(%s - %s)",
+                        ExpString(e->a.get()).c_str(),
+                        ExpString(e->b.get()).c_str());
+  default:
+    return "??UNKNOWN??";
+  }
+}
+#endif
 
 template<TokenType t>
 struct IsToken {
@@ -346,24 +472,6 @@ static void Assemble(const std::string &filename) {
 
         auto AtomicExp = Number || Symbol;
 
-        // Use prefix?
-        #if 0
-        auto ByteOfExp =
-          ((IsToken<GREATER>() >> AtomicExp) >[&](auto child) {
-              return std::make_shared<Exp>(Exp{
-                  .type = ExpType::HIGH_BYTE,
-                  .a = child,
-                });
-            }) ||
-          ((IsToken<LESS>() >> AtomicExp) >[&](auto child) {
-              return std::make_shared<Exp>(Exp{
-                  .type = ExpType::LOW_BYTE,
-                  .a = child,
-                });
-            });
-        #endif
-
-
         auto FixityElement =
           (IsToken<PLUS>() >> Succeed<Token, FixityElt>(PlusElt)) ||
           (IsToken<MINUS>() >> Succeed<Token, FixityElt>(MinusElt)) ||
@@ -426,43 +534,6 @@ static void Assemble(const std::string &filename) {
         CHECK(parseopt.HasValue()) << "Expected comma separated expressions."
                                    << Error();
         return parseopt.Value();
-
-        #if 0
-        // Null means we haven't seen anything yet.
-        std::shared_ptr<Exp> current_exp;
-
-        for (int i = start_offset; i < tokens.size(); i++) {
-          switch (tokens[i].type) {
-          case COMMA:
-            CHECK(current_exp.get() != nullptr) << "Expected expression "
-              "before comma!" << Error();
-            exps.push_back(std::move(current_exp));
-            current_exp.reset();
-            break;
-
-          case NUMBER:
-            CHECK(current_exp.get() == nullptr) << "Unexpected number "
-              "after expression." << Error();
-            current_exp.reset(new Exp{
-                .type = ExpType::NUMBER,
-                .number = tokens[i].num,
-              });
-            break;
-
-          default:
-            LOG(FATAL) << "Unimplemented or unexpected token in expression."
-                       << Error();
-          }
-
-        }
-
-        if (current_exp.get() != nullptr) {
-          exps.push_back(std::move(current_exp));
-          current_exp.reset();
-        }
-
-        return exps;
-        #endif
       };
 
     // Directives.
@@ -503,6 +574,8 @@ static void Assemble(const std::string &filename) {
         for (const auto &e : exps) {
           printf("  " AGREY("%s") "\n", ExpString(e.get()).c_str());
         }
+
+        // HERE!
 
         LOG(FATAL) << "Unimplemented .db!" << Error();
 
