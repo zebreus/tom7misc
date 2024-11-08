@@ -1,4 +1,4 @@
-all : decode-monika.exe pass.exe swipe-ambiguous.exe memtest.exe optional.exe bus.exe cubedex.exe cubedex2.exe extractpng.exe compress.exe decompress.exe
+all : decode-monika.exe pass.exe swipe-ambiguous.exe memtest.exe optional.exe bus.exe cubedex.exe cubedex2.exe extractpng.exe compress.exe decompress.exe clicks.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -20,7 +20,7 @@ CXXFLAGS= -mtune=native -march=native -pipe -Wall -I $(CC_LIB) --std=c++20 -O3 -
 
 # -Wno-write-strings
 
-CC_LIB_OBJECTS = $(CC_LIB)/base64.o $(CC_LIB)/util.o $(CC_LIB)/crypt/cryptrand.o $(CC_LIB)/crypt/aes.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o
+CC_LIB_OBJECTS = $(CC_LIB)/base64.o $(CC_LIB)/util.o $(CC_LIB)/crypt/cryptrand.o $(CC_LIB)/crypt/aes.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/ansi.o
 CC_LIB_IMAGE=$(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o
 
 CC_LIB_ZIP=$(CC_LIB)/zip.o $(CC_LIB)/miniz.o
@@ -73,16 +73,22 @@ qr.exe : qr.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o
 curve.exe : curve.o $(CC_LIB)/opt/opt.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-logo.exe : logo.o $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE) $(CC_LIB)/ansi.o
+logo.exe : logo.o $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-compress.exe : compress.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP) $(CC_LIB)/ansi.o
+compress.exe : compress.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-decompress.exe : decompress.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP) $(CC_LIB)/ansi.o
+decompress.exe : decompress.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 maxsquare.exe : maxsquare.o $(CC_LIB_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
+clicks.exe : clicks.o $(CC_LIB_OBJECTS) $(CC_LIB)/mp3.o $(CC_LIB_IMAGE)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
+randomize.exe : randomize.o $(CC_LIB_OBJECTS) $(CC_LIB)/crypt/cryptrand.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 clean :
