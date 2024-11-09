@@ -452,6 +452,7 @@ struct Addressing {
 static void Assemble(const std::string &asm_file,
                      const std::string &rom_file) {
   Assembly assembly;
+  int unimplemented = 0;
 
   // Single-byte opcodes which have implied addressing.
   const std::unordered_map<std::string, uint8_t> mode_implied = {
@@ -735,6 +736,24 @@ static void Assemble(const std::string &asm_file,
           }
         };
 
+    // Same, for an 8-bit expression.
+    auto WriteExp8 =
+      [&assembly, &EmitByte, &CurrentBank, &Error, line_num](
+          std::shared_ptr<Exp> exp) {
+          if (auto bo = Evaluate8(&assembly, exp.get(), Error)) {
+            uint8_t v = bo.value();
+            EmitByte(v);
+          } else {
+            CurrentBank().delayed8.push_back(Delayed{
+                .line_num = line_num,
+                .exp = std::move(exp),
+                .dest_addr = CurrentBank().NextAddress(),
+              });
+
+            EmitByte(0x00);
+          }
+        };
+
     std::vector<Token> tokens = tokens_orig;
 
     // Any line can have a trailing comment. Pull that off to start.
@@ -899,8 +918,6 @@ static void Assemble(const std::string &asm_file,
 
       std::string mnemonic = Util::lcase(tokens[0].str);
 
-
-
       if (auto it = mode_implied.find(mnemonic); it != mode_implied.end()) {
         EmitByte(it->second);
 
@@ -909,7 +926,72 @@ static void Assemble(const std::string &asm_file,
 
         Addressing mode = GetAddressingMode();
 
-        // TODO!
+        // There's only one special case here (for STA, #), which doesn't
+        // exist (and would not make sense).
+        [&]{
+          CHECK(mode.type != Addressing::ACCUMULATOR) << "Illegal addressing mode."
+                                                      << Error();
+          if (mode.type == Addressing::IMMEDIATE) {
+            CHECK(mnemonic != "sta") << "Illegal addressing mode." << Error();
+            EmitByte(opcode | 0b000'010'00);
+            WriteExp8(mode.exp);
+            return;
+          }
+
+          if (mode.type == Addressing::ADDR ||
+              mode.type == Addressing::ADDR_X) {
+            // For these two addressing modes, we could be using the zero page
+            // version or the full 16-bit version. We don't know which one we
+            // have without looking at the argument expression.
+            //
+            // Note this does not include ADDR_Y. There is no "zero page, Y"
+            // mode in this group.
+            if (auto bo = Evaluate16(&assembly, mode.exp.get(), Error)) {
+              uint16_t v = bo.value();
+
+              if (v < 0x100) {
+                // Zero page version.
+                uint8_t bbb =
+                  mode.type == Addressing::ADDR ? 0b000'001'00 : 0b000'101'00;
+                EmitByte(opcode | bbb);
+                // And the byte.
+                EmitByte(v);
+                return;
+              }
+            }
+          }
+
+          switch (mode.type) {
+          case Addressing::ACCUMULATOR:
+          case Addressing::INDIRECT:
+            LOG(FATAL) << "Illegal addressing mode."; break;
+          case Addressing::INDIRECT_X:
+            EmitByte(opcode | 0b000'000'00);
+            WriteExp8(mode.exp);
+            return;
+          case Addressing::INDIRECT_Y:
+            EmitByte(opcode | 0b000'100'00);
+            WriteExp8(mode.exp);
+            return;
+          default:
+            break;
+          }
+
+          // Otherwise, we have a 16 bit version, either because we didn't
+          // find an 8-bit value above or the expression's value is not
+          // known yet.
+          uint8_t bbb = 0;
+          switch (mode.type) {
+          case Addressing::ADDR: bbb = 0b000'011'00; break;
+          case Addressing::ADDR_X: bbb = 0b000'111'00; break;
+          case Addressing::ADDR_Y: bbb = 0b000'110'00; break;
+          default:
+            LOG(FATAL) << "Bug: All cases should be covered by now." << Error();
+          }
+
+          EmitByte(opcode | bbb);
+          WriteExp16(mode.exp);
+        }();
 
       } else if (auto it = group2.find(mnemonic); it != group2.end()) {
         uint8_t opcode = it->second;
@@ -917,6 +999,7 @@ static void Assemble(const std::string &asm_file,
         Addressing mode = GetAddressingMode();
 
         // TODO!
+        unimplemented++;
 
       } else if (auto it = group3.find(mnemonic); it != group3.end()) {
         uint8_t opcode = it->second;
@@ -924,6 +1007,7 @@ static void Assemble(const std::string &asm_file,
         Addressing mode = GetAddressingMode();
 
         // TODO!
+        unimplemented++;
 
       } else if (auto it = branches.find(mnemonic); it != branches.end()) {
 
@@ -935,6 +1019,7 @@ static void Assemble(const std::string &asm_file,
 
         EmitByte(opcode);
         // TODO: Need an expression that computes a signed displacement.
+        unimplemented++;
 
       } else if (mnemonic == "jmp") {
 
@@ -973,6 +1058,9 @@ static void Assemble(const std::string &asm_file,
   }
 
   printf(AYELLOW("assembly") "\n");
+  if (unimplemented > 0) {
+    printf("  %d " ARED("unimplemented") "\n", unimplemented);
+  }
   printf("  %d symbols\n", (int)assembly.symbols.size());
   printf("  %d delayed symbols\n", (int)assembly.delayed_symbols.size());
 
