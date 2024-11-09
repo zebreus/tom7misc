@@ -46,8 +46,6 @@ inline static bool PageUsesEmptyGlyphs(Page p) {
 //  - To move glyphs between pages, first duplicate them, then
 //    normalize, then set the sources to -1, then normalize again.
 
-// TODO: Move math page out of classic page.
-
 // Standard size is: 16x24
 const std::vector<int> &PageBit7Classic() {
   static const std::vector<int> CODEPOINTS = {
@@ -194,17 +192,9 @@ const std::vector<int> &PageBit7Classic() {
     // one unclaimed spot at the end of greek
     -1,
 
-    // math
-    // exists, forall
-    0x2203, 0x2200,
-    // rest of math, unclaimed
-    0x2213, // minus-plus
-    0x222B, // integral sign
-    0x2260, // not equal
-    0x2261, // identical to (triple-eq)
-    0x2243, // asymptotically equal to (~ on -)
-    0x2245, // almost equal (~ on =)
-
+    // This was once some basic math symbols, but I moved them
+    // to the proper unicode page.
+    -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1,
 
     // Block Elements, in unicode order

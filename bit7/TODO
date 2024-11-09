@@ -10,6 +10,8 @@ Glyphs todo:
  - U+2E17 ⸗ Double Oblique Hyphen would have been good for writing
    about Gutenberg bible.
  - irony mark (⸮) found in Unicode as U+2E2E
+ - Generally, do the supplemental punctuation:
+     https://www.compart.com/en/unicode/block/U+2E00
  - “ᴥ” (U+1D25) for ºᴥº
 
  - ∧ and ∨ and friends! Have some respect!
@@ -97,9 +99,7 @@ U+062f (د): 191930
 U+0648 (و): 189517
 U+306e (の): 177882
 U+0628 (ب): 170222
-U+30f3 (ン): 166363
 U+0119 (ę): 158383
-U+0259 (ə): 148583
 U+011f (ğ): 134466
 U+015b (ś): 124185
 
