@@ -400,9 +400,142 @@ struct IsToken {
   }
 };
 
+// This is all possible addressing modes; not all are
+// available for each mnemonic!
+struct Addressing {
+  enum Type {
+    // e.g. ROR A
+    ACCUMULATOR,
+    // immediate. has an expression that should
+    // evaluate to an 8-bit value.
+    IMMEDIATE,
+    // A specific address. Has an expression that
+    // evaluates to that 16-bit value.
+    //
+    // This covers both zero-page addressing and
+    // 16-bit addressing, which have different
+    // opcodes. But they are only distinguished
+    // in the syntax by the specific value, which
+    // requires evaluating the expression.
+    ADDR,
+    // address + x (which is written addr,x)
+    ADDR_X,
+    // address + y (written addr,y)
+    ADDR_Y,
+    // e.g. JMP ($fffc)
+    // Denotes the 16-bit value (e.g. target of the jump)
+    // that is contained at the 16-bit address.
+    INDIRECT,
+
+    // e.g. LDA ($42,X)
+    // Compute the indirect address by first adding X,
+    // then loading.
+    // Has an expression with an 8-bit value, which would typically be
+    // the beginning of a table of addresses in the zero page.
+    INDIRECT_X,
+    // e.g. LDA ($42),Y
+    // First get the indirect address from the zero page, then add y.
+    // Has an expression with an 8-bit value, which contains a 16-bit
+    // address (typically a pointer to a struct or array) in the
+    // the zero page.
+    INDIRECT_Y,
+
+  };
+  Type type = ACCUMULATOR;
+  std::shared_ptr<Exp> exp;
+
+  Addressing(Type t) : type(t) {}
+  Addressing(Type t, std::shared_ptr<Exp> exp_in) :
+    type(t), exp(std::move(exp_in)) {}
+};
+
 static void Assemble(const std::string &asm_file,
                      const std::string &rom_file) {
   Assembly assembly;
+
+  // Single-byte opcodes which have implied addressing.
+  const std::unordered_map<std::string, uint8_t> mode_implied = {
+    {"brk", 0x00},
+    {"clc", 0x18},
+    {"cld", 0xD8},
+    {"clv", 0xB8},
+    {"cli", 0x58},
+    {"dex", 0xCA},
+    {"dey", 0x88},
+    {"inx", 0xE8},
+    {"iny", 0xC8},
+    {"nop", 0xEA},
+    {"pha", 0x48},
+    {"php", 0x08},
+    {"pla", 0x68},
+    {"plp", 0x28},
+    {"rti", 0x40},
+    {"rts", 0x60},
+    {"sec", 0x38},
+    {"sed", 0xF8},
+    {"sei", 0x78},
+    {"tax", 0xAA},
+    {"tay", 0xA8},
+    {"tsx", 0xBA},
+    {"txa", 0x8A},
+    {"txs", 0x9A},
+    {"tya", 0x98},
+  };
+
+  // A typical instruction has the form
+  // aaabbbcc, where aaa and cc determine the mnemonic.
+
+  // Group 1: c=01
+  // The map's values are aaa00001.
+  const std::unordered_map<std::string, uint8_t> group1 = {
+    {"ora", 0b11100001},
+    {"and", 0b00100001},
+    {"eor", 0b01000001},
+    {"adc", 0b01100001},
+    {"sta", 0b10000001},
+    {"lda", 0b10100001},
+    {"cmp", 0b11000001},
+    {"sbc", 0b11100001},
+  };
+
+  // Group 2: c=10
+  // The map's values are aaa00010.
+  const std::unordered_map<std::string, uint8_t> group2 = {
+    {"asl", 0b00000010},
+    {"rol", 0b00100010},
+    {"lsr", 0b01000010},
+    {"ror", 0b01100010},
+    {"stx", 0b10000010},
+    {"ldx", 0b10100010},
+    {"dec", 0b11000010},
+    {"inc", 0b11100010},
+  };
+
+  // Group 3: c=00
+  // JMP is not included here since it only has two addressing
+  // modes, one of which is a special case.
+  // The map's values are aaa00000.
+  const std::unordered_map<std::string, uint8_t> group3 = {
+    {"bit", 0b00100000},
+    {"sty", 0b10000000},
+    {"ldy", 0b10100000},
+    {"cpy", 0b11000000},
+    {"cpx", 0b11100000},
+  };
+
+  // Branches are all of the form xxy10000. xx describes a flag
+  // and 1 is the comparison value. They take a signed displacement,
+  // but the value in the map is the full opcode.
+  const std::unordered_map<std::string, uint8_t> branches = {
+    {"bpl", 0x10},
+    {"bmi", 0x30},
+    {"bvc", 0x50},
+    {"bvs", 0x70},
+    {"bcc", 0x90},
+    {"bcs", 0xB0},
+    {"bne", 0xD0},
+    {"beq", 0xF0},
+  };
 
   std::vector<std::string> lines = Util::ReadFileToLines(asm_file);
 
@@ -508,6 +641,49 @@ static void Assemble(const std::string &asm_file,
         return +FixityElement /= ResolveExpFixity;
       });
 
+  // For detecting a specific register name. Case insensitive, but argument
+  // symbol should be lowercase.
+  auto IsSymbol = [&](const char *s) {
+      return IsToken<SYMBOL>() /= [s](const Token t) -> std::optional<char> {
+        return Util::lcase(t.str) == s ? std::make_optional('!') : std::nullopt;
+      };
+    };
+
+  auto AddressingExp =
+    ((IsToken<LPAREN>() >>
+      Expression << IsToken<COMMA>() << IsSymbol("x") <<
+      IsToken<RPAREN>()) >[&](auto e) {
+        return Addressing(Addressing::INDIRECT_X, e);
+      }) ||
+
+    ((IsToken<LPAREN>() >> Expression << IsToken<RPAREN>() <<
+      IsToken<COMMA>() << IsSymbol("y")) >[&](auto e) {
+        return Addressing(Addressing::INDIRECT_Y, e);
+      }) ||
+
+    ((IsToken<LPAREN>() >> Expression << IsToken<RPAREN>()) >[&](auto e) {
+        return Addressing(Addressing::INDIRECT, e);
+      }) ||
+    ((IsToken<HASH>() >> Expression) >[&](auto e) {
+        return Addressing(Addressing::IMMEDIATE, e);
+      }) ||
+    (Expression << IsToken<COMMA>() << IsSymbol("x") >[&](auto e) {
+        return Addressing(Addressing::ADDR_X, e);
+      }) ||
+    (Expression << IsToken<COMMA>() << IsSymbol("y") >[&](auto e) {
+        return Addressing(Addressing::ADDR_Y, e);
+      }) ||
+    (Expression >[&](auto e) {
+        return Addressing(Addressing::ADDR, e);
+      }) ||
+
+    // This assembler syntax lets you just write "ror" for "ror a".
+    (Opt(IsSymbol("a")) >[&](auto) {
+        return Addressing(Addressing::ACCUMULATOR);
+      }) ||
+
+    Fail<Token, Addressing>();
+
   for (int line_num = 0; line_num < (int)lines.size(); line_num++) {
     const std::string &line = lines[line_num];
     std::vector<Token> tokens_orig = Tokenize(line_num, line);
@@ -528,6 +704,36 @@ static void Assemble(const std::string &asm_file,
           "Use .origin to start one." << Error();
         return assembly.banks.back();
       };
+
+    auto EmitByte = [&CurrentBank](uint8_t v) {
+        CurrentBank().bytes.push_back(v);
+      };
+
+    // Write the value of the expression as a little-endian 16-bit
+    // word, either now or later.
+    auto WriteExp16 =
+      [&assembly, &EmitByte, &CurrentBank, &Error, line_num](
+          std::shared_ptr<Exp> exp) {
+          if (auto bo = Evaluate16(&assembly, exp.get(), Error)) {
+            uint16_t v = bo.value();
+            // printf(ACYAN("%04x") "\n", v);
+            // Write in little-endian order.
+            EmitByte(v & 0xFF);
+            v >>= 8;
+            EmitByte(v & 0xFF);
+
+          } else {
+            // printf(APURPLE("delayed") "\n");
+            CurrentBank().delayed16.push_back(Delayed{
+                .line_num = line_num,
+                .exp = std::move(exp),
+                .dest_addr = CurrentBank().NextAddress(),
+              });
+
+            EmitByte(0x00);
+            EmitByte(0x00);
+          }
+        };
 
     std::vector<Token> tokens = tokens_orig;
 
@@ -570,6 +776,20 @@ static void Assemble(const std::string &asm_file,
         auto parseopt = Program(TokenSpan<Token>(tokens.data() + start_offset,
                                                  tokens.size() - start_offset));
         CHECK(parseopt.HasValue()) << "Expected comma separated expressions."
+                                   << Error();
+        return parseopt.Value();
+      };
+
+    // Get the addressing mode for an instruction, which always begins
+    // at the second token.
+    auto GetAddressingMode =
+      [&AddressingExp, &tokens, &Error]() -> Addressing {
+
+        auto Program = AddressingExp << End<Token>();
+
+        auto parseopt = Program(TokenSpan<Token>(tokens.data() + 1,
+                                                 tokens.size() - 1));
+        CHECK(parseopt.HasValue()) << "Expected addressing mode."
                                    << Error();
         return parseopt.Value();
       };
@@ -619,7 +839,7 @@ static void Assemble(const std::string &asm_file,
           if (auto bo = Evaluate8(&assembly, e.get(), Error)) {
             uint8_t v = bo.value();
             if (verbose) printf(ACYAN("%02x") "\n", v);
-            CurrentBank().bytes.push_back(v);
+            EmitByte(v);
 
           } else {
             if (verbose) printf(APURPLE("delayed") "\n");
@@ -629,7 +849,7 @@ static void Assemble(const std::string &asm_file,
                 .dest_addr = CurrentBank().NextAddress(),
               });
 
-            CurrentBank().bytes.push_back(0x00);
+            EmitByte(0x00);
           }
         }
 
@@ -641,26 +861,7 @@ static void Assemble(const std::string &asm_file,
           GetCommaSeparatedExpressions(2);
 
         for (const auto &e : exps) {
-          printf("  " AGREY("%s") " -> ", ExpString(e.get()).c_str());
-          if (auto bo = Evaluate16(&assembly, e.get(), Error)) {
-            uint16_t v = bo.value();
-            printf(ACYAN("%04x") "\n", v);
-            // Write in little-endian order.
-            CurrentBank().bytes.push_back(v & 0xFF);
-            v >>= 8;
-            CurrentBank().bytes.push_back(v & 0xFF);
-
-          } else {
-            printf(APURPLE("delayed") "\n");
-            CurrentBank().delayed16.push_back(Delayed{
-                .line_num = line_num,
-                .exp = e,
-                .dest_addr = CurrentBank().NextAddress(),
-              });
-
-            CurrentBank().bytes.push_back(0x00);
-            CurrentBank().bytes.push_back(0x00);
-          }
+          WriteExp16(e);
         }
 
       } else {
@@ -696,7 +897,72 @@ static void Assemble(const std::string &asm_file,
       CHECK(!tokens.empty() && tokens[0].type == SYMBOL) << "Expected "
         "instruction mnemonic." << Error();
 
-      if (false) {
+      std::string mnemonic = Util::lcase(tokens[0].str);
+
+
+
+      if (auto it = mode_implied.find(mnemonic); it != mode_implied.end()) {
+        EmitByte(it->second);
+
+      } else if (auto it = group1.find(mnemonic); it != group1.end()) {
+        uint8_t opcode = it->second;
+
+        Addressing mode = GetAddressingMode();
+
+        // TODO!
+
+      } else if (auto it = group2.find(mnemonic); it != group2.end()) {
+        uint8_t opcode = it->second;
+
+        Addressing mode = GetAddressingMode();
+
+        // TODO!
+
+      } else if (auto it = group3.find(mnemonic); it != group3.end()) {
+        uint8_t opcode = it->second;
+
+        Addressing mode = GetAddressingMode();
+
+        // TODO!
+
+      } else if (auto it = branches.find(mnemonic); it != branches.end()) {
+
+        uint8_t opcode = it->second;
+
+        Addressing mode = GetAddressingMode();
+        CHECK(mode.type == Addressing::ADDR) << "Branches are only allowed "
+          "to absolute addresses." << Error();
+
+        EmitByte(opcode);
+        // TODO: Need an expression that computes a signed displacement.
+
+      } else if (mnemonic == "jmp") {
+
+        // This is sort of a group 3 instruction, but handled separately.
+        Addressing mode = GetAddressingMode();
+        switch (mode.type) {
+        case Addressing::ADDR:
+          EmitByte(0x4C);
+          WriteExp16(mode.exp);
+          break;
+        case Addressing::INDIRECT:
+          EmitByte(0x6C);
+          WriteExp16(mode.exp);
+          break;
+        default:
+          LOG(FATAL) << "Invalid addressing mode for JMP." << Error();
+          break;
+        }
+
+      } else if (mnemonic == "jsr") {
+        EmitByte(0x20);
+
+        std::vector<std::shared_ptr<Exp>> exps =
+          GetCommaSeparatedExpressions(1);
+        CHECK(exps.size() == 1) << "Expected a single 16-bit address "
+          "for jsr." << Error();
+
+        WriteExp16(exps[0]);
 
       } else {
         LOG(FATAL) << "Unimplemented instruction: " << tokens[0].str;
