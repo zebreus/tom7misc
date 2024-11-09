@@ -998,8 +998,70 @@ static void Assemble(const std::string &asm_file,
 
         Addressing mode = GetAddressingMode();
 
-        // TODO!
-        unimplemented++;
+        [&]() {
+          if (mode.type == Addressing::IMMEDIATE) {
+            CHECK(mnemonic == "ldx") << "Illegal addressing mode." << Error();
+            EmitByte(opcode | 0b000'000'00);
+            WriteExp8(mode.exp);
+            return;
+          }
+
+          if (mode.type == Addressing::ACCUMULATOR) {
+            CHECK(mnemonic == "asl" ||
+                  mnemonic == "rol" ||
+                  mnemonic == "lsr" ||
+                  mnemonic == "ror") << "Illegal addressing mode." << Error();
+            EmitByte(opcode | 0b000'010'00);
+            return;
+          }
+
+          // Whether ,X or ,Y versions are allowed depends on the
+          // mnemonic. Check this for errors.
+          if (mode.type == Addressing::ADDR_Y) {
+            CHECK(mnemonic == "stx" || mnemonic == "ldx") << Error();
+          }
+
+          if (mnemonic == "stx" || mnemonic == "ldx") {
+            CHECK(mode.type != Addressing::ADDR_X) << Error();
+          }
+
+          if (mode.type == Addressing::ADDR ||
+              mode.type == Addressing::ADDR_X ||
+              mode.type == Addressing::ADDR_Y) {
+            // See if we are using the zero page version, as above.
+
+            if (auto bo = Evaluate16(&assembly, mode.exp.get(), Error)) {
+              uint16_t v = bo.value();
+
+              if (v < 0x100) {
+                // Zero page version.
+                uint8_t bbb =
+                  mode.type == Addressing::ADDR ? 0b000'001'00 :
+                  // ADDR_X and ADDR_Y are encoded the same.
+                  0b000'101'00;
+                EmitByte(opcode | bbb);
+                // And the byte.
+                EmitByte(v);
+                return;
+              }
+            }
+          }
+
+          uint8_t bbb = 0;
+          switch (mode.type) {
+          case Addressing::ADDR: bbb = 0b000'011'00; break;
+          // Again, ADDR_X and ADDR_Y are encoded the same.
+          case Addressing::ADDR_X: bbb = 0b000'111'00; break;
+          case Addressing::ADDR_Y: bbb = 0b000'111'00; break;
+          default:
+            LOG(FATAL) << "Bug: Should have been handled by now." << Error();
+          }
+
+          EmitByte(opcode | bbb);
+          WriteExp16(mode.exp);
+
+        }();
+
 
       } else if (auto it = group3.find(mnemonic); it != group3.end()) {
         uint8_t opcode = it->second;
