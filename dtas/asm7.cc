@@ -18,11 +18,15 @@
 #include <utility>
 #include <vector>
 
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "parser-combinators.h"
+#include "randutil.h"
 #include "re2/re2.h"
 #include "util.h"
+
+static constexpr int VERBOSE = 1;
 
 enum TokenType {
   // Singleton symbols
@@ -199,35 +203,50 @@ static std::string ExpString(const Exp *e) {
   }
 }
 
-// A delayed 16-bit quantity. These are written after we've finished
+// A delayed expression. These are written after we've finished
 // the first pass and know the value of every label. We compute the
-// 16-bit value and write it to the 16-bit dest_addr.
+// value and write it to the 16-bit dest_addr. Whether we write an
+// 8-bit value or a 16-bit one needs to be determined by the context.
 //
 // For clarity: The address here is a machine address, not an offset
 // into assembled bytes (but the offset can be computed using the
 // origin).
-struct Delayed16 {
+struct Delayed {
+  int line_num = 0;
   std::shared_ptr<Exp> exp;
   uint16_t dest_addr = 0;
 };
 
+#if 0
 // A delayed 8-bit displacement. These are measured from a
 // source position. Note: It might be impossible to write the address
 // if it doesn't fit in an int8.
 // As above, both addresses here are machine addresses.
-// TODO: Should these be expressions? Should we compute the offset
-// in the expression?
-struct DelayedRel8 {
-  std::string label;
+struct Delayed8 {
+  std::shared_ptr<Exp> exp;
+  uint16_t dest
   // The address that would have a displacement of 0.
-  uint16_t base_addr = 0;
+  // uint16_t base_addr = 0;
   // The place to write the 8-bit displacement.
   uint16_t dest_addr = 0;
 };
+#endif
 
 struct Bank {
   // Creates an empty bank. The origin is required.
   Bank(int origin) : origin(origin) {}
+
+  uint16_t NextAddress() const {
+    return origin + (int)bytes.size();
+  }
+
+  void Write(uint16_t machine_addr, uint8_t v) {
+    int offset = (int)machine_addr - origin;
+    CHECK(offset >= 0 && offset < bytes.size()) <<
+      StringPrintf("Bug: Write outside of bank bounds. Addr: %04x",
+                   machine_addr);
+    bytes[offset] = v;
+  }
 
   // The assembled data, which is expected to be loaded at the origin
   // address. The next instruction assembled goes at the end.
@@ -235,6 +254,18 @@ struct Bank {
   // The origin where the bytes will be loaded in memory, e.g. 0x8000.
   // This just affects what absolute value a label has.
   int origin = 0;
+
+  std::vector<Delayed> delayed16;
+  std::vector<Delayed> delayed8;
+
+  // TODO: Label memory addresses here for debugging symbols?
+};
+
+struct Assembly {
+  // Symbolic constants include "Constant = $Value" and "Label:".
+  // These are global to the assembly (and must be globally unique),
+  // but an address might belong to a specific bank. The programmer
+  // just has to manage this.
 
   // Symbols that we know the values of already.
   // The syntax does not distinguish between a declaration like
@@ -246,25 +277,37 @@ struct Bank {
   //   WarpZoneWelcome:
   // is a machine address (not byte offset) that could be used
   // as a constant, or jumped to, etc. Basically, every symbol has
-  // a 16-bit value, but it is the use that tells us what it means.
-  std::unordered_map<std::string, uint16_t> symbols;
+  // a value, but it is the use that tells us what it means (and
+  // what the appropriate range of values is).
+  std::unordered_map<std::string, int64_t> symbols;
+  // Symbolic "constants" with delayed expressions. Note they may have
+  // forward references within this set. (There could even be cycles,
+  // which should be rejected later.) Note that the destination address
+  // here is unused; the value is never written anywhere. It just gets
+  // moved to the constants table.
+  std::unordered_map<std::string, Delayed> delayed_symbols;
 
-  std::vector<Delayed16> delayed16;
-  std::vector<DelayedRel8> delayedrel8;
+  // True if we already saw this symbol (even if we don't know its
+  // value yet).
+  bool HasSymbol(const std::string &sym) const {
+    return symbols.contains(sym) || delayed_symbols.contains(sym);
+  }
 
-  // TODO: Label memory addresses here for debugging symbols?
+  // The ROM banks. Each one is a contiguous series of bytes that
+  // will live at a given memory location (its origin).
+  std::vector<Bank> banks;
 };
 
 // Evaluate to a number if possible. Note the number may be out of
 // range for the target type.
 static std::optional<int64_t> Evaluate(
-    Bank *bank, const Exp *exp,
+    Assembly *assembly, const Exp *exp,
     const std::function<std::string()> &Error) {
   CHECK(exp != nullptr);
   switch (exp->type) {
   case ExpType::LABEL: {
-    auto it = bank->symbols.find(exp->label);
-    if (it == bank->symbols.end()) return std::nullopt;
+    auto it = assembly->symbols.find(exp->label);
+    if (it == assembly->symbols.end()) return std::nullopt;
     return {it->second};
   }
 
@@ -272,7 +315,7 @@ static std::optional<int64_t> Evaluate(
     return {exp->number};
 
   case ExpType::HIGH_BYTE: {
-    if (auto io = Evaluate(bank, exp->a.get(), Error)) {
+    if (auto io = Evaluate(assembly, exp->a.get(), Error)) {
       int64_t value = io.value();
       CHECK(value >= 0 && value <= 0xFFFF) << "In a > expression, the "
         "computed value is out of range: " << value << Error();
@@ -282,7 +325,7 @@ static std::optional<int64_t> Evaluate(
     }
   }
   case ExpType::LOW_BYTE: {
-    if (auto io = Evaluate(bank, exp->a.get(), Error)) {
+    if (auto io = Evaluate(assembly, exp->a.get(), Error)) {
       int64_t value = io.value();
       CHECK(value >= 0 && value <= 0xFFFF) << "In a < expression, the "
         "computed value is out of range: " << value << Error();
@@ -293,8 +336,8 @@ static std::optional<int64_t> Evaluate(
   }
 
   case ExpType::PLUS: {
-    if (auto ao = Evaluate(bank, exp->a.get(), Error)) {
-      if (auto bo = Evaluate(bank, exp->b.get(), Error)) {
+    if (auto ao = Evaluate(assembly, exp->a.get(), Error)) {
+      if (auto bo = Evaluate(assembly, exp->b.get(), Error)) {
         int64_t a = ao.value();
         int64_t b = bo.value();
         return {a + b};
@@ -303,8 +346,8 @@ static std::optional<int64_t> Evaluate(
     return std::nullopt;
   }
   case ExpType::MINUS: {
-    if (auto ao = Evaluate(bank, exp->a.get(), Error)) {
-      if (auto bo = Evaluate(bank, exp->b.get(), Error)) {
+    if (auto ao = Evaluate(assembly, exp->a.get(), Error)) {
+      if (auto bo = Evaluate(assembly, exp->b.get(), Error)) {
         int64_t a = ao.value();
         int64_t b = bo.value();
         return {a - b};
@@ -319,54 +362,31 @@ static std::optional<int64_t> Evaluate(
   }
 }
 
-#if 0
-
 static std::optional<uint16_t> Evaluate16(
-    Bank *bank, const Exp *exp,
-    const std::function<std::string()> &Error);
-
-static std::optional<uint8_t> Evaluate8(
-    Bank *bank, const Exp *exp,
+    Assembly *assembly, const Exp *exp,
     const std::function<std::string()> &Error) {
-  CHECK(exp != nullptr);
-  switch (exp->type) {
-  case ExpType::LABEL: {
-    auto it = bank->labels.find(exp->label);
-    if (it == bank->labels.end()) return std::nullopt;
-    uint16_t val = it->second;
-    CHECK(val < 0x100) << "The symbol " << exp->label << " is used in "
-      "a context expecting a byte, but it has a value out of range: " <<
-      val << Error();
-    return {val};
-  }
-
-  case ExpType::NUMBER:
-    // TODO I guess we could support signed numbers? Probably not needed.
-    if (exp->number < 0 || exp->number > 0xFF) {
-      LOG(FATAL) << "The integer literal " << exp->number <<
-        " is used in a context expecting a byte, but it is out of range." <<
-        Error();
-    } else {
-      return {exp->number};
-    }
-
-  case ExpType::HIGH_BYTE:
-    return StringPrintf(">%s", ExpString(e->a.get()).c_str());
-  case ExpType::LOW_BYTE:
-    return StringPrintf("<%s", ExpString(e->a.get()).c_str());
-  case ExpType::PLUS:
-    return StringPrintf("(%s + %s)",
-                        ExpString(e->a.get()).c_str(),
-                        ExpString(e->b.get()).c_str());
-  case ExpType::MINUS:
-    return StringPrintf("(%s - %s)",
-                        ExpString(e->a.get()).c_str(),
-                        ExpString(e->b.get()).c_str());
-  default:
-    return "??UNKNOWN??";
+  if (auto io = Evaluate(assembly, exp, Error)) {
+    int64_t value = io.value();
+    CHECK(value >= 0 && value <= 0xFFFF) << "Expected a 16-bit value "
+      "but the expression's value was out of range: " << value << Error();
+    return {(uint16_t)value};
+  } else {
+    return std::nullopt;
   }
 }
-#endif
+
+static std::optional<uint8_t> Evaluate8(
+    Assembly *assembly, const Exp *exp,
+    const std::function<std::string()> &Error) {
+  if (auto io = Evaluate(assembly, exp, Error)) {
+    int64_t value = io.value();
+    CHECK(value >= 0 && value <= 0xFF) << "Expected an 8-bit value "
+      "but the expression's value was out of range: " << value << Error();
+    return {(uint16_t)value};
+  } else {
+    return std::nullopt;
+  }
+}
 
 template<TokenType t>
 struct IsToken {
@@ -380,10 +400,11 @@ struct IsToken {
   }
 };
 
-static void Assemble(const std::string &filename) {
-  std::vector<std::string> lines = Util::ReadFileToLines(filename);
+static void Assemble(const std::string &asm_file,
+                     const std::string &rom_file) {
+  Assembly assembly;
 
-  std::vector<Bank> banks;
+  std::vector<std::string> lines = Util::ReadFileToLines(asm_file);
 
   using FixityElt = FixityItem<std::shared_ptr<Exp>>;
   const auto ResolveExpFixity = [&](const std::vector<FixityElt> &elts) ->
@@ -487,7 +508,6 @@ static void Assemble(const std::string &filename) {
         return +FixityElement /= ResolveExpFixity;
       });
 
-
   for (int line_num = 0; line_num < (int)lines.size(); line_num++) {
     const std::string &line = lines[line_num];
     std::vector<Token> tokens_orig = Tokenize(line_num, line);
@@ -501,6 +521,12 @@ static void Assemble(const std::string &filename) {
         }
         return StringPrintf("\nLine %d:\n%s\n%s", line_num,
                             line.c_str(), toks.c_str());
+      };
+
+    auto CurrentBank = [&assembly, &Error]() -> Bank & {
+        CHECK(!assembly.banks.empty()) << "There are no banks yet! "
+          "Use .origin to start one." << Error();
+        return assembly.banks.back();
       };
 
     std::vector<Token> tokens = tokens_orig;
@@ -518,7 +544,19 @@ static void Assemble(const std::string &filename) {
         "a line." << Error();
     }
 
-    // Nothing to do on empty lines (or lines with just a comment).
+    if (tokens.size() >= 2 &&
+        tokens[0].type == SYMBOL &&
+        tokens[1].type == COLON) {
+      std::string symbol = std::move(tokens[0].str);
+      CHECK(!assembly.HasSymbol(symbol)) << "Duplicate label: "
+                                         << symbol << Error();
+      assembly.symbols[symbol] = CurrentBank().NextAddress();
+
+      // Remove the label.
+      tokens.erase(tokens.begin(), tokens.begin() + 2);
+    }
+
+    // Nothing to do on empty lines (or lines with just a comment or label).
     if (tokens.empty())
       continue;
 
@@ -547,6 +585,7 @@ static void Assemble(const std::string &filename) {
               tokens[2].type == NUMBER &&
               tokens[2].num == 8) << "Only .index 8 is supported, and "
           "I also don't know what this means." << Error();
+
       } else if (dir == "mem") {
         CHECK(tokens.size() == 3 &&
               tokens[2].type == NUMBER &&
@@ -559,7 +598,8 @@ static void Assemble(const std::string &filename) {
               tokens[2].num >= 0 &&
               tokens[2].num < 0x10000) << "Illegal .org directive."
                                        << Error();
-        banks.emplace_back((int)tokens[2].num);
+        assembly.banks.emplace_back((int)tokens[2].num);
+
       } else if (dir == "db") {
         // Now read a series of expressions denoting bytes, and
         // write them.
@@ -572,12 +612,26 @@ static void Assemble(const std::string &filename) {
           GetCommaSeparatedExpressions(2);
 
         for (const auto &e : exps) {
-          printf("  " AGREY("%s") "\n", ExpString(e.get()).c_str());
+          const bool verbose = VERBOSE > 0 &&
+            e->type != ExpType::NUMBER;
+          if (verbose)
+            printf("  " AGREY("%s") " -> ", ExpString(e.get()).c_str());
+          if (auto bo = Evaluate8(&assembly, e.get(), Error)) {
+            uint8_t v = bo.value();
+            if (verbose) printf(ACYAN("%02x") "\n", v);
+            CurrentBank().bytes.push_back(v);
+
+          } else {
+            if (verbose) printf(APURPLE("delayed") "\n");
+            CurrentBank().delayed8.push_back(Delayed{
+                .line_num = line_num,
+                .exp = e,
+                .dest_addr = CurrentBank().NextAddress(),
+              });
+
+            CurrentBank().bytes.push_back(0x00);
+          }
         }
-
-        // HERE!
-
-        LOG(FATAL) << "Unimplemented .db!" << Error();
 
       } else if (dir == "dw") {
         // A series of expressions denoting words, and
@@ -586,19 +640,182 @@ static void Assemble(const std::string &filename) {
         std::vector<std::shared_ptr<Exp>> exps =
           GetCommaSeparatedExpressions(2);
 
-        LOG(FATAL) << "Unimplemented .dw!" << Error();
+        for (const auto &e : exps) {
+          printf("  " AGREY("%s") " -> ", ExpString(e.get()).c_str());
+          if (auto bo = Evaluate16(&assembly, e.get(), Error)) {
+            uint16_t v = bo.value();
+            printf(ACYAN("%04x") "\n", v);
+            // Write in little-endian order.
+            CurrentBank().bytes.push_back(v & 0xFF);
+            v >>= 8;
+            CurrentBank().bytes.push_back(v & 0xFF);
+
+          } else {
+            printf(APURPLE("delayed") "\n");
+            CurrentBank().delayed16.push_back(Delayed{
+                .line_num = line_num,
+                .exp = e,
+                .dest_addr = CurrentBank().NextAddress(),
+              });
+
+            CurrentBank().bytes.push_back(0x00);
+            CurrentBank().bytes.push_back(0x00);
+          }
+        }
 
       } else {
-
         LOG(FATAL) << "Unknown directive: " << dir << Error();
+      }
+
+    } else if (tokens.size() > 2 &&
+               tokens[0].type == SYMBOL &&
+               tokens[1].type == EQUALS) {
+      const std::string &sym = tokens[0].str;
+
+      CHECK(!assembly.HasSymbol(sym)) << "Duplicate symbol "
+                                      << sym << Error();
+
+      // Symbolic constant.
+      std::vector<std::shared_ptr<Exp>> exps =
+        GetCommaSeparatedExpressions(2);
+      CHECK(exps.size() == 1) << "Symbolic constant definition "
+        "just takes one expression." << Error();
+
+      auto io = Evaluate16(&assembly, exps[0].get(), Error);
+      if (io.has_value()) {
+        assembly.symbols[sym] = io.value();
+      } else {
+        assembly.delayed_symbols[sym] = Delayed{
+          .line_num = line_num,
+          .exp = std::move(exps[0]),
+          .dest_addr = 0x0000,
+        };
+      }
+
+    } else {
+      CHECK(!tokens.empty() && tokens[0].type == SYMBOL) << "Expected "
+        "instruction mnemonic." << Error();
+
+      if (false) {
+
+      } else {
+        LOG(FATAL) << "Unimplemented instruction: " << tokens[0].str;
       }
 
     }
 
   }
 
+  printf(AYELLOW("assembly") "\n");
+  printf("  %d symbols\n", (int)assembly.symbols.size());
+  printf("  %d delayed symbols\n", (int)assembly.delayed_symbols.size());
 
+  printf("  There are %d banks.\n", (int)assembly.banks.size());
+  for (const Bank &bank : assembly.banks) {
+    printf("  " AWHITE("bank") "\n");
+    printf("    %d delayed8\n", (int)bank.delayed8.size());
+    printf("    %d delayed16\n", (int)bank.delayed16.size());
+    printf("    %d bytes\n", (int)bank.bytes.size());
+  }
 
+  auto ErrorAt = [&lines](int line_num) {
+      return std::function<std::string()>(
+          [&lines, line_num]() {
+            CHECK(line_num >= 0 && line_num < lines.size());
+            return StringPrintf("\n On line %d:\n"
+                                "%s\n",
+                                line_num, lines[line_num].c_str());
+          });
+    };
+
+  // Second pass: Resolve symbolic constants.
+  // The best way to do this would be to generate a topological ordering
+  // and detect any cycles. But if there exists such a thing, then
+  // iteratively resolving them will terminate. In practice the number
+  // of required passes is very small.
+  {
+    ArcFour rc("second pass");
+    std::vector<std::pair<std::string, Delayed>> todo;
+    todo.reserve(assembly.delayed_symbols.size());
+    for (auto &[sym, delayed] : assembly.delayed_symbols) {
+      todo.emplace_back(sym, std::move(delayed));
+    }
+    assembly.delayed_symbols.clear();
+
+    while (!todo.empty()) {
+      const size_t start_size = todo.size();
+
+      std::vector<std::pair<std::string, Delayed>> remaining;
+
+      // ... do a pass ...
+      for (const auto &[sym, delayed] : todo) {
+        auto Error = ErrorAt(delayed.line_num);
+        auto io = Evaluate(&assembly, delayed.exp.get(), Error);
+        if (io.has_value()) {
+          printf("  " AGREY("%s") " => " ABLUE("%lld") "\n",
+                 sym.c_str(), io.value());
+          assembly.symbols[sym] = io.value();
+        } else {
+          remaining.emplace_back(sym, delayed);
+        }
+      }
+
+      const size_t end_size = remaining.size();
+      if (start_size == end_size) {
+        fprintf(stderr,
+                "In the second pass: Could not resolve symbolic "
+                "constants. There is probably an undefined symbol "
+                "or a cycle. These are the remaining symbols:\n");
+        for (const auto &[sym, delayed] : todo) {
+          fprintf(stderr, "  %s = %s\n",
+                  sym.c_str(), ExpString(delayed.exp.get()).c_str());
+        }
+        LOG(FATAL) << "Failed due to unresolve symbols.";
+      }
+
+      todo = std::move(remaining);
+
+      // To prevent pathological behavior (quadratic) when the
+      // symbols are just in a reversed dependency order, attend
+      // to them in a random order.
+      Shuffle(&rc, &todo);
+    }
+  }
+
+  // Third pass: Resolve delayed writes.
+  for (Bank &bank : assembly.banks) {
+    for (const Delayed &delayed : bank.delayed16) {
+      auto Error = ErrorAt(delayed.line_num);
+      auto vo = Evaluate16(&assembly, delayed.exp.get(), Error);
+      CHECK(vo.has_value()) << "Delayed 16-bit expression was "
+        "not evaluatable in the second pass. It's probably "
+        "using a label that was never defined: " <<
+        ExpString(delayed.exp.get()) << Error();
+
+      uint16_t v = vo.value();
+      bank.Write(delayed.dest_addr, v & 0xFF);
+      v >>= 8;
+      bank.Write(delayed.dest_addr, v & 0xFF);
+    }
+
+    for (const Delayed &delayed : bank.delayed8) {
+      auto Error = ErrorAt(delayed.line_num);
+      auto vo = Evaluate8(&assembly, delayed.exp.get(), Error);
+      CHECK(vo.has_value()) << "Delayed 8-bit expression was "
+        "not evaluatable in the second pass. It's probably "
+        "using a label that was never defined: " <<
+        ExpString(delayed.exp.get()) << Error();
+
+      uint8_t v = vo.value();
+      bank.Write(delayed.dest_addr, v);
+    }
+  }
+
+  // Now write the ROM, debugging symbols, and so on.
+  CHECK(assembly.banks.size() == 1) << "Actually I only know how to "
+    "write one bank right now, but this would be easily rectified.";
+  Util::WriteFileBytes(rom_file, assembly.banks[0].bytes);
+  printf("Wrote " AGREEN("%s") "\n", rom_file.c_str());
 }
 
 int main(int argc, char **argv) {
@@ -607,7 +824,7 @@ int main(int argc, char **argv) {
 
   CHECK(argc == 3) << "./asm7.exe source.nes out.rom\n";
 
-  Assemble(argv[1]);
+  Assemble(argv[1], argv[2]);
 
   return 0;
 }
