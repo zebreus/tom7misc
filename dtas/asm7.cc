@@ -217,21 +217,6 @@ struct Delayed {
   uint16_t dest_addr = 0;
 };
 
-#if 0
-// A delayed 8-bit displacement. These are measured from a
-// source position. Note: It might be impossible to write the address
-// if it doesn't fit in an int8.
-// As above, both addresses here are machine addresses.
-struct Delayed8 {
-  std::shared_ptr<Exp> exp;
-  uint16_t dest
-  // The address that would have a displacement of 0.
-  // uint16_t base_addr = 0;
-  // The place to write the 8-bit displacement.
-  uint16_t dest_addr = 0;
-};
-#endif
-
 struct Bank {
   // Creates an empty bank. The origin is required.
   Bank(int origin) : origin(origin) {}
@@ -255,8 +240,9 @@ struct Bank {
   // This just affects what absolute value a label has.
   int origin = 0;
 
-  std::vector<Delayed> delayed16;
-  std::vector<Delayed> delayed8;
+  std::vector<Delayed> delayed_16;
+  std::vector<Delayed> delayed_8;
+  std::vector<Delayed> delayed_s8;
 
   // TODO: Label memory addresses here for debugging symbols?
 };
@@ -388,6 +374,20 @@ static std::optional<uint8_t> Evaluate8(
   }
 }
 
+static std::optional<int8_t> EvaluateSigned8(
+    Assembly *assembly, const Exp *exp,
+    const std::function<std::string()> &Error) {
+  if (auto io = Evaluate(assembly, exp, Error)) {
+    int64_t value = io.value();
+    CHECK(value >= -128 && value <= 127) << "Expected a signed 8-bit value "
+      "but the expression's value was out of range. This likely means that "
+      "a relative jump was too far." << value << Error();
+    return {(int8_t)value};
+  } else {
+    return std::nullopt;
+  }
+}
+
 template<TokenType t>
 struct IsToken {
   using token_type = Token;
@@ -448,6 +448,20 @@ struct Addressing {
   Addressing(Type t, std::shared_ptr<Exp> exp_in) :
     type(t), exp(std::move(exp_in)) {}
 };
+
+
+static std::shared_ptr<Exp> DisplacementExp(
+    uint16_t base_address,
+    std::shared_ptr<Exp> target_address) {
+  return std::make_shared<Exp>(Exp{
+      .type = ExpType::MINUS,
+      .a = std::move(target_address),
+      .b = std::make_shared<Exp>(Exp{
+          .type = ExpType::NUMBER,
+          .number = base_address,
+        })
+    });
+}
 
 static void Assemble(const std::string &asm_file,
                      const std::string &rom_file) {
@@ -725,7 +739,7 @@ static void Assemble(const std::string &asm_file,
 
           } else {
             // printf(APURPLE("delayed") "\n");
-            CurrentBank().delayed16.push_back(Delayed{
+            CurrentBank().delayed_16.push_back(Delayed{
                 .line_num = line_num,
                 .exp = std::move(exp),
                 .dest_addr = CurrentBank().NextAddress(),
@@ -744,13 +758,31 @@ static void Assemble(const std::string &asm_file,
             uint8_t v = bo.value();
             EmitByte(v);
           } else {
-            CurrentBank().delayed8.push_back(Delayed{
+            CurrentBank().delayed_8.push_back(Delayed{
                 .line_num = line_num,
                 .exp = std::move(exp),
                 .dest_addr = CurrentBank().NextAddress(),
               });
 
             EmitByte(0x00);
+          }
+        };
+
+    auto WriteExpSigned8 =
+      [&assembly, &EmitByte, &CurrentBank, &Error, line_num](
+          std::shared_ptr<Exp> exp) {
+          if (auto bo = EvaluateSigned8(&assembly, exp.get(), Error)) {
+            int8_t v = bo.value();
+            EmitByte(v);
+            // EmitByte(0x99);
+          } else {
+            CurrentBank().delayed_s8.push_back(Delayed{
+                .line_num = line_num,
+                .exp = std::move(exp),
+                .dest_addr = CurrentBank().NextAddress(),
+              });
+
+            EmitByte(0x77);
           }
         };
 
@@ -862,7 +894,7 @@ static void Assemble(const std::string &asm_file,
 
           } else {
             if (verbose) printf(APURPLE("delayed") "\n");
-            CurrentBank().delayed8.push_back(Delayed{
+            CurrentBank().delayed_8.push_back(Delayed{
                 .line_num = line_num,
                 .exp = e,
                 .dest_addr = CurrentBank().NextAddress(),
@@ -1047,6 +1079,11 @@ static void Assemble(const std::string &asm_file,
             }
           }
 
+          if (mnemonic == "stx") {
+            CHECK(mode.type != Addressing::ADDR_X) << "For mysterious "
+              "reasons, 6502 does not support STX abs,x." << Error();
+          }
+
           uint8_t bbb = 0;
           switch (mode.type) {
           case Addressing::ADDR: bbb = 0b000'011'00; break;
@@ -1068,8 +1105,58 @@ static void Assemble(const std::string &asm_file,
 
         Addressing mode = GetAddressingMode();
 
-        // TODO!
-        unimplemented++;
+        [&]() {
+          if (mode.type == Addressing::IMMEDIATE) {
+            CHECK(mnemonic == "ldy" ||
+                  mnemonic == "cpy" ||
+                  mnemonic == "cpx") << "Illegal addressing mode." << Error();
+            EmitByte(opcode | 0b000'000'00);
+            WriteExp8(mode.exp);
+            return;
+          }
+
+          if (mode.type == Addressing::ADDR ||
+              mode.type == Addressing::ADDR_X) {
+
+            if (auto bo = Evaluate16(&assembly, mode.exp.get(), Error)) {
+              uint16_t v = bo.value();
+
+              if (v < 0x100) {
+                // Zero page version.
+                uint8_t bbb =
+                  mode.type == Addressing::ADDR ? 0b000'001'00 : 0b000'101'00;
+
+                if (mode.type == Addressing::ADDR_X) {
+                  CHECK(mnemonic == "ldy" || mnemonic == "sty")
+                    << "Illegal addressing mode." << Error();
+                }
+
+                EmitByte(opcode | bbb);
+                // And the byte.
+                EmitByte(v);
+                return;
+              }
+            }
+          }
+
+          // We know this is the abs,x mode now (not zp,x), and LDY is
+          // the only group 3 instruction that can use abs,x.
+          if (mode.type == Addressing::ADDR_X) {
+            CHECK(mnemonic == "ldy") << "Illegal addressing mode." << Error();
+          }
+
+          uint8_t bbb = 0;
+          switch (mode.type) {
+          case Addressing::ADDR: bbb = 0b000'011'00; break;
+          case Addressing::ADDR_X: bbb = 0b000'111'00; break;
+          default:
+            LOG(FATAL) << "Bug: Should have been handled by now." << Error();
+          }
+
+          EmitByte(opcode | bbb);
+          WriteExp16(mode.exp);
+
+        }();
 
       } else if (auto it = branches.find(mnemonic); it != branches.end()) {
 
@@ -1079,9 +1166,12 @@ static void Assemble(const std::string &asm_file,
         CHECK(mode.type == Addressing::ADDR) << "Branches are only allowed "
           "to absolute addresses." << Error();
 
+        // The displacement is relative to the instruction that follows
+        // this one (because the PC is incremented regardless). This is
+        // two bytes after the current address.
+        const uint16_t base_addr = CurrentBank().NextAddress() + 2;
         EmitByte(opcode);
-        // TODO: Need an expression that computes a signed displacement.
-        unimplemented++;
+        WriteExpSigned8(DisplacementExp(base_addr, mode.exp));
 
       } else if (mnemonic == "jmp") {
 
@@ -1129,8 +1219,8 @@ static void Assemble(const std::string &asm_file,
   printf("  There are %d banks.\n", (int)assembly.banks.size());
   for (const Bank &bank : assembly.banks) {
     printf("  " AWHITE("bank") "\n");
-    printf("    %d delayed8\n", (int)bank.delayed8.size());
-    printf("    %d delayed16\n", (int)bank.delayed16.size());
+    printf("    %d delayed8\n", (int)bank.delayed_8.size());
+    printf("    %d delayed16\n", (int)bank.delayed_16.size());
     printf("    %d bytes\n", (int)bank.bytes.size());
   }
 
@@ -1200,7 +1290,7 @@ static void Assemble(const std::string &asm_file,
 
   // Third pass: Resolve delayed writes.
   for (Bank &bank : assembly.banks) {
-    for (const Delayed &delayed : bank.delayed16) {
+    for (const Delayed &delayed : bank.delayed_16) {
       auto Error = ErrorAt(delayed.line_num);
       auto vo = Evaluate16(&assembly, delayed.exp.get(), Error);
       CHECK(vo.has_value()) << "Delayed 16-bit expression was "
@@ -1214,7 +1304,7 @@ static void Assemble(const std::string &asm_file,
       bank.Write(delayed.dest_addr, v & 0xFF);
     }
 
-    for (const Delayed &delayed : bank.delayed8) {
+    for (const Delayed &delayed : bank.delayed_8) {
       auto Error = ErrorAt(delayed.line_num);
       auto vo = Evaluate8(&assembly, delayed.exp.get(), Error);
       CHECK(vo.has_value()) << "Delayed 8-bit expression was "
@@ -1224,6 +1314,18 @@ static void Assemble(const std::string &asm_file,
 
       uint8_t v = vo.value();
       bank.Write(delayed.dest_addr, v);
+    }
+
+    for (const Delayed &delayed : bank.delayed_s8) {
+      auto Error = ErrorAt(delayed.line_num);
+      auto vo = EvaluateSigned8(&assembly, delayed.exp.get(), Error);
+      CHECK(vo.has_value()) << "Delayed signed 8-bit expression was "
+        "not evaluatable in the second pass. It's probably "
+        "using a label that was never defined: " <<
+        ExpString(delayed.exp.get()) << Error();
+
+      const int8_t v = vo.value();
+      bank.Write(delayed.dest_addr, (uint8_t)v);
     }
   }
 
