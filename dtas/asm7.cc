@@ -249,7 +249,8 @@ struct Bank {
   std::vector<Delayed> delayed_8;
   std::vector<Delayed> delayed_s8;
 
-  // TODO: Label memory addresses here for debugging symbols?
+  std::map<uint16_t, std::string> debug_labels;
+  // TODO: Comments too?
 };
 
 struct Assembly {
@@ -444,8 +445,8 @@ struct Addressing {
     // address (typically a pointer to a struct or array) in the
     // the zero page.
     INDIRECT_Y,
-
   };
+
   Type type = ACCUMULATOR;
   std::shared_ptr<Exp> exp;
 
@@ -811,7 +812,9 @@ static void Assemble(const std::string &asm_file,
       std::string symbol = std::move(tokens[0].str);
       CHECK(!assembly.HasSymbol(symbol)) << "Duplicate label: "
                                          << symbol << Error();
-      assembly.symbols[symbol] = CurrentBank().NextAddress();
+      uint16_t addr = CurrentBank().NextAddress();
+      assembly.symbols[symbol] = addr;
+      CurrentBank().debug_labels[addr] = symbol;
 
       // Remove the label.
       tokens.erase(tokens.begin(), tokens.begin() + 2);
@@ -878,34 +881,12 @@ static void Assemble(const std::string &asm_file,
       } else if (dir == "db") {
         // Now read a series of expressions denoting bytes, and
         // write them.
-        //
-        // TODO: These should actually be delayed, since they could
-        // refer to labels that have not been output yet. And they
-        // should be expressions (e.g. <Address or Address+1).
 
         std::vector<std::shared_ptr<Exp>> exps =
           GetCommaSeparatedExpressions(2);
 
         for (const auto &e : exps) {
-          const bool verbose = VERBOSE > 0 &&
-            e->type != ExpType::NUMBER;
-          if (verbose)
-            printf("  " AGREY("%s") " -> ", ExpString(e.get()).c_str());
-          if (auto bo = Evaluate8(&assembly, e.get(), Error)) {
-            uint8_t v = bo.value();
-            if (verbose) printf(ACYAN("%02x") "\n", v);
-            EmitByte(v);
-
-          } else {
-            if (verbose) printf(APURPLE("delayed") "\n");
-            CurrentBank().delayed_8.push_back(Delayed{
-                .line_num = line_num,
-                .exp = e,
-                .dest_addr = CurrentBank().NextAddress(),
-              });
-
-            EmitByte(0x00);
-          }
+          WriteExp8(e);
         }
 
       } else if (dir == "dw") {
@@ -1335,6 +1316,18 @@ static void Assemble(const std::string &asm_file,
     "write one bank right now, but this would be easily rectified.";
   Util::WriteFileBytes(rom_file, assembly.banks[0].bytes);
   printf("Wrote " AGREEN("%s") "\n", rom_file.c_str());
+
+  {
+    std::string contents;
+    for (const auto &[addr, name] : assembly.banks[0].debug_labels) {
+      StringAppendF(&contents, "$04x#%s#\n", addr, name.c_str());
+    }
+    std::string fbase = (std::string)Util::FileBaseOf(rom_file);
+    std::string nlfile = StringPrintf("%s.0.nl", fbase.c_str());
+    Util::WriteFile(nlfile, contents);
+    printf("Wrote " AGREEN("%s") "\n", nlfile.c_str());
+  }
+
 }
 
 int main(int argc, char **argv) {
