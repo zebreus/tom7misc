@@ -503,7 +503,7 @@ static void Assemble(const std::string &asm_file,
   // Group 1: c=01
   // The map's values are aaa00001.
   const std::unordered_map<std::string, uint8_t> group1 = {
-    {"ora", 0b11100001},
+    {"ora", 0b00000001},
     {"and", 0b00100001},
     {"eor", 0b01000001},
     {"adc", 0b01100001},
@@ -1301,7 +1301,7 @@ static void Assemble(const std::string &asm_file,
       uint16_t v = vo.value();
       bank.Write(delayed.dest_addr, v & 0xFF);
       v >>= 8;
-      bank.Write(delayed.dest_addr, v & 0xFF);
+      bank.Write(delayed.dest_addr + 1, v & 0xFF);
     }
 
     for (const Delayed &delayed : bank.delayed_8) {
