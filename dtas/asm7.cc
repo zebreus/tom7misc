@@ -1314,20 +1314,22 @@ static void Assemble(const std::string &asm_file,
   // Now write the ROM, debugging symbols, and so on.
   CHECK(assembly.banks.size() == 1) << "Actually I only know how to "
     "write one bank right now, but this would be easily rectified.";
+
+  // The ROM.
   Util::WriteFileBytes(rom_file, assembly.banks[0].bytes);
   printf("Wrote " AGREEN("%s") "\n", rom_file.c_str());
 
+  // Debugging info.
   {
     std::string contents;
     for (const auto &[addr, name] : assembly.banks[0].debug_labels) {
-      StringAppendF(&contents, "$04x#%s#\n", addr, name.c_str());
+      StringAppendF(&contents, "$%04x#%s#\n", addr, name.c_str());
     }
     std::string fbase = (std::string)Util::FileBaseOf(rom_file);
-    std::string nlfile = StringPrintf("%s.0.nl", fbase.c_str());
+    std::string nlfile = StringPrintf("%s.nes.0.nl", fbase.c_str());
     Util::WriteFile(nlfile, contents);
     printf("Wrote " AGREEN("%s") "\n", nlfile.c_str());
   }
-
 }
 
 int main(int argc, char **argv) {

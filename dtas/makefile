@@ -114,5 +114,8 @@ asm7.exe : asm7.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+mario.rom : mario.asm asm7.exe
+	./asm7.exe mario.asm $@
+
 clean :
 	rm -f *.o $(OBJECTS) $(SQLITE_OBJECTS)
