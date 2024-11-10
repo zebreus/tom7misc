@@ -1,8 +1,13 @@
 // Simple 6502 assembler.
-// Goal is to reproduce mario.nes (or really mario.prg) from mario.asm,
-// following what x816 would do (that assembler seems to be so old that
-// it needs DOSBox or similar to run!). I also want to generate the
-// memory maps (.nl files) for the fceux debugger.
+//
+// This reproduces mario.nes (or really mario.prg) byte-for-byte from
+// mario.asm, following what x816 would do (that assembler seems to be
+// so old that it needs DOSBox or similar to run!). I want to be able
+// to be able to (for example) generate memory maps (.nl files) for
+// the fceux debugger.
+//
+// It might have bugs outside of the instructions and techniques that
+// mario.asm uses; no guarantees!
 
 #include "ansi.h"
 
@@ -466,7 +471,6 @@ static std::shared_ptr<Exp> DisplacementExp(
 static void Assemble(const std::string &asm_file,
                      const std::string &rom_file) {
   Assembly assembly;
-  int unimplemented = 0;
 
   // Single-byte opcodes which have implied addressing.
   const std::unordered_map<std::string, uint8_t> mode_implied = {
@@ -1210,9 +1214,6 @@ static void Assemble(const std::string &asm_file,
   }
 
   printf(AYELLOW("assembly") "\n");
-  if (unimplemented > 0) {
-    printf("  %d " ARED("unimplemented") "\n", unimplemented);
-  }
   printf("  %d symbols\n", (int)assembly.symbols.size());
   printf("  %d delayed symbols\n", (int)assembly.delayed_symbols.size());
 
@@ -1276,7 +1277,7 @@ static void Assemble(const std::string &asm_file,
           fprintf(stderr, "  %s = %s\n",
                   sym.c_str(), ExpString(delayed.exp.get()).c_str());
         }
-        LOG(FATAL) << "Failed due to unresolve symbols.";
+        LOG(FATAL) << "Failed due to unresolved symbols.";
       }
 
       todo = std::move(remaining);
