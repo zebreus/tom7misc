@@ -7,7 +7,7 @@
 
 #include "base/logging.h"
 
-std::pair<int, uint32_t> UTF8::UTF8ToUTF32(const char *utf8, int len) {
+std::pair<int, uint32_t> UTF::UTF8ToUTF32(const char *utf8, int len) {
   CHECK(len > 0 && utf8 != nullptr);
 
   uint8_t mask = 0;
@@ -49,8 +49,8 @@ UTF8Codepoints::UTF8Codepoints(std::string_view s) :
 
 UTF8Codepoints::const_iterator &UTF8Codepoints::const_iterator::operator ++() {
   // prefix.
-  const auto &[code_len, code] = UTF8::UTF8ToUTF32(ptr, limit - ptr);
-  CHECK(code != UTF8::INVALID) << "Invalid UTF-8 encoding.";
+  const auto &[code_len, code] = UTF::UTF8ToUTF32(ptr, limit - ptr);
+  CHECK(code != UTF::INVALID) << "Invalid UTF-8 encoding.";
   ptr += code_len;
   return *this;
 }
@@ -58,14 +58,14 @@ UTF8Codepoints::const_iterator &UTF8Codepoints::const_iterator::operator ++() {
 UTF8Codepoints::const_iterator
 UTF8Codepoints::const_iterator::operator ++(int postfix) {
   auto old = *this;
-  const auto &[code_len, code] = UTF8::UTF8ToUTF32(ptr, limit - ptr);
-  CHECK(code != UTF8::INVALID) << "Invalid UTF-8 encoding.";
+  const auto &[code_len, code] = UTF::UTF8ToUTF32(ptr, limit - ptr);
+  CHECK(code != UTF::INVALID) << "Invalid UTF-8 encoding.";
   ptr += code_len;
   return old;
 }
 
 uint32_t UTF8Codepoints::const_iterator::operator *() const {
-  const auto &[code_len_, code] = UTF8::UTF8ToUTF32(ptr, limit - ptr);
+  const auto &[code_len_, code] = UTF::UTF8ToUTF32(ptr, limit - ptr);
   return code;
 }
 

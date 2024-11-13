@@ -12,6 +12,7 @@
 #include <vector>
 #include <cstdint>
 
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bignum/big.h"
@@ -19,8 +20,8 @@
 #include "inclusion.h"
 #include "lexing.h"
 #include "parser-combinators.h"
+#include "utf8.h"
 #include "util.h"
-#include "ansi.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -213,7 +214,7 @@ const Exp *Parsing::Parse(AstPool *pool,
 
           std::string_view ss(s);
           ss.remove_prefix(2);
-          std::vector<uint32_t> cps = Util::UTF8Codepoints(ss);
+          std::vector<uint32_t> cps = UTF8::Codepoints(ss);
           // Including the closing '
           CHECK(cps.size() == 2 && cps[1] == '\'') <<
             "Invalid codepoint literal " <<
@@ -394,10 +395,10 @@ const Exp *Parsing::Parse(AstPool *pool,
 
   // TODO: support patterns like this!
   // { name: string,
-  // regular: string option,
-  // bold: string option,
-  // italic: string option,
-  // bold-italic: string option
+  //   regular: string option,
+  //   bold: string option,
+  //   italic: string option,
+  //   bold-italic: string option }
   const auto TuplePat = [&](const auto &Pattern) {
       return ((IsToken<LPAREN>() >>
                Separate0(Pattern, IsToken<COMMA>()) <<

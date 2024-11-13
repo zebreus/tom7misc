@@ -7,7 +7,7 @@
 #include <string>
 #include <cmath>
 
-#include "util.h"
+#include "utf8.h"
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -306,7 +306,7 @@ struct AutoHisto {
   static std::string FilledColumnChar(float f) {
     const int px = std::clamp((int)std::round(f * 8), 0, 8);
     if (px == 0) return " ";
-    else return Util::EncodeUTF8(0x2580 + px);
+    else return UTF8::Encode(0x2580 + px);
   }
 
   // Generate a bar using unicode characters that is
@@ -325,7 +325,7 @@ struct AutoHisto {
 
     std::string ret;
     for (int i = 0; i < full; i++) {
-      ret += Util::EncodeUTF8(0x2588);
+      ret += UTF8::Encode(0x2588);
     }
 
     int remain = chars - full;
@@ -333,7 +333,7 @@ struct AutoHisto {
       int partial = px % 8;
       if (partial) {
         // partial
-        ret += Util::EncodeUTF8(0x2590 - partial);
+        ret += UTF8::Encode(0x2590 - partial);
         remain--;
       }
 

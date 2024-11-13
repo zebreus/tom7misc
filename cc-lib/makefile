@@ -245,6 +245,9 @@ boxes-and-glue_test.exe : boxes-and-glue_test.o boxes-and-glue.o ansi.o util.o c
 qr-code_test.exe : qr-code.o qr-code_test.o image.o stb_image.o stb_image_write.o ansi.o util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+auto-histo_test.exe : auto-histo_test.o ansi.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 image-resize_test.exe : image.o image-resize.o stb_image.o stb_image_write.o image-resize_test.o ansi.o util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 

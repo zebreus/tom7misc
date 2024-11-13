@@ -117,7 +117,7 @@ struct Parsed {
   bool HasValue() const { return ot_.has_value(); }
   const T &Value() const { return ot_.value(); }
   size_t Length() const { return length_; }
-private:
+ private:
   std::optional<T> ot_;
   size_t length_ = 0;
 };
@@ -206,6 +206,7 @@ struct Succeed {
   const Out r;
 };
 
+// Succeeds only on the empty stream.
 template<class Token>
 struct End {
   using token_type = Token;
@@ -327,6 +328,8 @@ inline auto operator &&(const A &a, const B &b) {
       }, "&&");
 }
 
+// Try parsing A and succeed with with that if it succeeds.
+// Otherwise, returns B. A and B must have the same result type.
 template<Parser A, Parser B>
 requires std::same_as<typename A::token_type,
                       typename B::token_type> &&
@@ -554,7 +557,7 @@ struct RecursiveParser {
   Parsed<Out> operator()(TokenSpan<Token> toks) const {
     return f(*this)(toks);
   }
-private:
+ private:
   F f;
 };
 
@@ -617,7 +620,7 @@ struct RecursiveParsers2 {
     else throw std::out_of_range("Invalid index");
   }
 
-private:
+ private:
   int padding1, padding2, padding3;
   std::shared_ptr<F1> f1;
   std::shared_ptr<F2> f2;
@@ -724,7 +727,7 @@ inline auto Separate0(const A &a, const B &b) {
 // caller can decide how to dynamically wrap items at the
 // time this is called.
 //
-// TODO: It would be nice to support n-ary operators, which
+// TODO: It would be nice to directly support n-ary operators, which
 // reduce a vector of inputs (e.g. * in type expressions).
 enum class Associativity {
   Left,
@@ -827,7 +830,7 @@ struct FixityResolver {
     }
   }
 
-private:
+ private:
   bool Reduce() {
     // Reduce the top of the stack, noting that the items are in reverse.
     if (xs.size() >= 2 &&
@@ -978,7 +981,7 @@ private:
   }
 
 
-private:
+ private:
   // Normal for these to be unset.
   Associativity adj_assoc = Associativity::Non;
   std::function<Out(Out, Out)> adj_op;

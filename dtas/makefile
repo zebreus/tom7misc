@@ -110,6 +110,10 @@ minus-query.exe : minus-query.o $(OBJECTS) $(SQLITE_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+diffemu.exe : diffemu.o mario-util.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 asm7.exe : asm7.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"

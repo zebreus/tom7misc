@@ -16,32 +16,53 @@ static void Histo(const std::vector<float> &samples) {
          histo.SimpleANSI(40).c_str());
 }
 
+static void Lowpass(std::vector<float> *samples) {
+  int window_size = 48;
+  std::vector<float> new_samples;
+  new_samples.reserve(samples->size());
+  for (int i = 0; i < (int)samples->size(); i++) {
+    double sum = 0.0;
+    for (int j = 0; j < window_size; j++) {
+      if (i - j >= 0) {
+        sum += abs((*samples)[i - j]);
+      }
+    }
+    sum /= window_size;
+    new_samples.push_back(sum);
+  }
+  *samples = std::move(new_samples);
+}
+
 
 static void Generate(const MP3 &mp3) {
   // Discretize.
   // Use 1/400th of a second (at 48khz).
   const int bucket_size = 240;
-  const float threshold = 9.0f;
+  const float threshold = 9.5f;
+
+  std::vector<float> lowpass_samples = mp3.samples;
+  Lowpass(&lowpass_samples);
 
   // Consider the coin flip "heads" if any sample in the
   // range exceeds the threshold.
   std::vector<bool> buckets;
-  buckets.reserve((mp3.samples.size() / bucket_size) + 1);
+  buckets.reserve((lowpass_samples.size() / bucket_size) + 1);
   int num_ones = 0;
   for (int bucket_start = 0;
-       bucket_start < (int)mp3.samples.size() - bucket_size;
+       bucket_start < (int)lowpass_samples.size() - bucket_size;
        bucket_start += bucket_size) {
     bool exceeds = false;
     for (int j = 0; j < bucket_size; j++) {
-      if (fabs(mp3.samples[bucket_start + j] * 100.0f) > threshold) {
+      if (fabs(lowpass_samples[bucket_start + j] * 100.0f) > threshold) {
         exceeds = true;
       }
     }
     if (exceeds) num_ones++;
     buckets.push_back(exceeds);
   }
-  printf("%d buckets. p=%.3f%%\n", (int)buckets.size(),
-         (100.0 * num_ones) / buckets.size());
+
+  double biased_p = num_ones / (double)buckets.size();
+  printf("%d buckets. p=%.3f%%\n", (int)buckets.size(), 100.0 * biased_p);
 
   // Make image.
   const int ppb = 10;
@@ -72,6 +93,54 @@ static void Generate(const MP3 &mp3) {
   }
 
   waveform.Save("waveform.png");
+
+  // Now use it as a series of independent coin tosses with
+  // probability p. We want to generate two 3-digit numbers.
+  // We'll generate 10 uniform bits and reject if >999, which
+  // will be rare.
+
+  int b = 0;
+  auto NextBiased = [&b, &buckets]() {
+      CHECK(b < buckets.size()) << "Out of samples. :(";
+      return buckets[b++];
+    };
+
+  for (int triples = 5; triples--;) {
+    int triple = 0;
+    for (int i = 0; i < 10; i++) {
+      float target_p = 0.5f;
+      for (;;) {
+        bool x = NextBiased();
+        if (target_p >= biased_p) {
+          if (x) {
+            // Accept with heads.
+            triple <<= 1;
+            triple |= 1;
+            goto next_bit;
+          } else {
+            // Use remaining probability mass on the next
+            // attempt.
+            target_p = (target_p - biased_p) / (1.0 - biased_p);
+          }
+
+        } else {
+          // target_p < biased_p
+          if (!x) {
+            // Accept with tails.
+            triple <<= 1;
+            goto next_bit;
+          } else {
+            target_p = target_p / biased_p;
+          }
+
+        }
+      }
+
+      next_bit:;
+    }
+
+    printf("Resulting number: %d\n", triple);
+  }
 
 }
 

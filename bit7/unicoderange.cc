@@ -5,9 +5,10 @@
 #include <cstdio>
 #include <cstdint>
 
-#include "util.h"
-#include "base/logging.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "utf8.h"
+#include "util.h"
 
 static void Dump(uint32_t start, uint32_t end) {
   std::unordered_map<uint32_t, std::string> names;
@@ -25,7 +26,7 @@ static void Dump(uint32_t start, uint32_t end) {
   for (uint32_t codepoint = start; codepoint < end; codepoint++) {
     printf("  0x%04x,  // (%s) %s\n",
            codepoint,
-           Util::EncodeUTF8(codepoint).c_str(),
+           UTF8::Encode(codepoint).c_str(),
            names[codepoint].c_str());
   }
 

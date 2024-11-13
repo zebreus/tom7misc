@@ -18,6 +18,7 @@
 #include "periodically.h"
 #include "threadutil.h"
 #include "timer.h"
+#include "utf8.h"
 #include "util.h"
 #include "wikipedia.h"
 
@@ -63,7 +64,7 @@ static void Process() {
       int64_t total = 0;
 
       auto OneString = [&low, &rest, &total](const std::string &s) {
-          std::vector<uint32_t> codepoints = Util::UTF8Codepoints(s);
+          std::vector<uint32_t> codepoints = UTF8::Codepoints(s);
           total += codepoints.size();
           for (uint32_t c : codepoints) {
             if (c >= 0 && c < 128) {
@@ -134,7 +135,7 @@ static void Process() {
               return a.second > b.second;
             });
   for (const auto &[code, count] : sorted) {
-    std::string utf8 = Util::EncodeUTF8(code);
+    std::string utf8 = UTF8::Encode(code);
     StringAppendF(&out, "U+%04x (%s): %lld\n", code, utf8.c_str(), count);
   }
 

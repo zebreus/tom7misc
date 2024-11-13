@@ -1,14 +1,13 @@
 #ifndef _REPHRASE_UTF_H
 #define _REPHRASE_UTF_H
 
-// XXX To cc-lib?
+// XXX Merge with cc-lib's utf8.h
 
 #include <utility>
 #include <cstdint>
 #include <string_view>
 
-struct UTF8 {
-
+struct UTF {
   // Convert up to len bytes of utf8 data to get one codepoint. Return
   // the number of bytes read and the codepoint. If the data are invalid,
   // reads one byte and returns 0xFFFFFFFF, which is an invalid codepoint.

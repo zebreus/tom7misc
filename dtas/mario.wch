@@ -1,5 +1,5 @@
 
-14
+18
 00000	000E	b	u	0	subroutine
 00001	0770	b	u	0	mode
 00002	0772	b	u	0	task
@@ -14,3 +14,7 @@
 0000B	00CE	b	u	0	PLAYER_Y_LO
 0000C	06FC	b	s	0	joypad
 0000D	0752	b	s	0	altent
+0000E	0000	S	S	0	----------------------------
+0000F	0400	b	h	0	.x
+00010	0416	b	h	0	.y
+00011	0057	b	s	0	DX

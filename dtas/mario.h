@@ -60,6 +60,11 @@ inline constexpr int ALT_ENTRANCE_CONTROL = 0x0752;
 // See ProcessPlayerAction.
 inline constexpr int PLAYER_STATE = 0x001D;
 
+// 01 = right
+// 02 = left
+// 03 = possible with L+R
+inline constexpr int PLAYER_FACING_DIR = 0x0033;
+
 // Pixels from top of screen; y increases downward.
 // Coordinates are of mario's top-left pixel (when
 // big, at least)
@@ -70,6 +75,11 @@ inline constexpr int PLAYER_Y_SCREEN = 0x00B5;
 // Position within the level.
 inline constexpr int PLAYER_X_HI = 0x006D;
 inline constexpr int PLAYER_X_LO = 0x0086;
+
+inline constexpr int PLAYER_X_SPEED = 0x0057;
+
+inline constexpr int PLAYER_X_SUBPIXEL = 0x0400;
+inline constexpr int PLAYER_Y_SUBPIXEL = 0x0416;
 
 // Ranges from 0-31. Column of block to fill in the blockbuffer next.
 inline constexpr int BLOCKBUFFER_COLUMN_POS = 0x6A0;
@@ -123,5 +133,9 @@ inline constexpr int LAST_JOYPAD = 0x06fc;
 // causes the map to repeat in certain conditions.
 // (See ProcLoopCommand.)
 inline constexpr int LOOP_COMMAND = 0x0745;
+
+// On world 7, the loop has special requirements.
+inline constexpr int MULTI_LOOP_CORRECT_COUNTER = 0x006d9;
+inline constexpr int MULTI_LOOP_PASS_COUNTER = 0x06da;
 
 #endif

@@ -3,15 +3,16 @@
 #define _CC_LIB_FONTS_TTF_H
 
 #include <array>
-#include <string>
-#include <vector>
-#include <cstdint>
-#include <optional>
 #include <cmath>
+#include <cstdint>
+#include <map>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "stb_truetype.h"
-#include "util.h"
+#include "utf8.h"
 #include "image.h"
 
 // "Simplified" interface to TrueType fonts (based on stb_truetype),
@@ -443,7 +444,7 @@ void TTF::BlitStringFloat(float x, float y, float size_px,
   // Should stay integral if subpixel is false.
   float xpos = x;
 
-  std::vector<uint32_t> codepoints = Util::UTF8Codepoints(text);
+  std::vector<uint32_t> codepoints = UTF8::Codepoints(text);
   for (int idx = 0; idx < (int)codepoints.size(); idx++) {
 
     int advance = 0, left_side_bearing = 0;

@@ -17,6 +17,7 @@
 #undef ARRAYSIZE
 #endif
 
+#include "utf8.h"
 // TODO: Would be good to avoid this dependency too.
 // We could use std::format in c++20, for example.
 #include "base/stringprintf.h"
@@ -24,8 +25,6 @@
 static constexpr bool VERBOSE = false;
 
 using std::string;
-
-static constexpr uint32_t REPLACEMENT_CODEPOINT = 0xFFFD;
 
 // Normal non-bright colors, as 00RRGGBB.
 static std::array<uint32_t, 8> DARK_RGB = {
@@ -49,154 +48,6 @@ static std::array<uint32_t, 8> BRIGHT_RGB = {
   0x00f0f0,  // Cyan
   0xffffff,  // White
 };
-
-// Duplicated from util.cc to make this file standalone.
-// Perhaps we should have a header-only UTF8 lib?
-static std::string UTF8Encode(uint32_t codepoint) {
-  if (codepoint < 0x80) {
-    string s;
-    s.resize(1);
-    s[0] = (uint8_t)codepoint;
-    return s;
-  } else if (codepoint < 0x800) {
-    string s;
-    s.resize(2);
-    s[0] = 0xC0 | (codepoint >> 6);
-    s[1] = 0x80 | (codepoint & 0x3F);
-    return s;
-  } else if (codepoint < 0x10000) {
-    string s;
-    s.resize(3);
-    s[0] = 0xE0 | (codepoint >> 12);
-    s[1] = 0x80 | ((codepoint >> 6) & 0x3F);
-    s[2] = 0x80 | (codepoint & 0x3F);
-    return s;
-  } else if (codepoint < 0x110000) {
-    string s;
-    s.resize(4);
-    s[0] = 0xF0 | (codepoint >> 18);
-    s[1] = 0x80 | ((codepoint >> 12) & 0x3F);
-    s[2] = 0x80 | ((codepoint >> 6) & 0x3F);
-    s[3] = 0x80 | (codepoint & 0x3F);
-    return s;
-  }
-  return "";
-}
-
-
-static std::vector<uint32_t> UTF8Codepoints(std::string_view utf8) {
-  std::vector<uint32_t> ret;
-  ret.reserve(utf8.size());
-  for (size_t i = 0; i < utf8.size(); i++) {
-    uint8_t c = utf8[i];
-    // valid sequences are
-    // 0xxxxxxx
-    // 110xxxxx 10xxxxxx
-    // 1110xxxx 10xxxxxx 10xxxxxx
-    // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-    if (c & 0x80) {
-      // high bit set.
-      if ((c & 0b11100000) == 0b11000000) {
-        // two-byte sequence.
-        if (i + 1 >= utf8.size()) {
-          ret.push_back(REPLACEMENT_CODEPOINT);
-          break;
-        }
-
-        uint8_t d = utf8[++i];
-
-        // 110xxxxx 10xxxxxx
-        if ((d & 0b11000000) == 0b10000000) {
-          uint32_t cp = c & 0b00011111;
-          cp <<= 6;
-          cp |= (d & 0b00111111);
-          ret.push_back(cp);
-        } else {
-          // second byte is invalid.
-          ret.push_back(REPLACEMENT_CODEPOINT);
-        }
-
-      } else if ((c & 0b11110000) == 0b11100000) {
-        // three bytes
-        if (i + 2 >= utf8.size()) {
-          ret.push_back(REPLACEMENT_CODEPOINT);
-          break;
-        }
-
-        uint8_t d = utf8[++i];
-        uint8_t e = utf8[++i];
-
-        // 1110xxxx 10xxxxxx 10xxxxxx
-        if ((d & 0b11000000) == 0b10000000 &&
-            (e & 0b11000000) == 0b10000000) {
-          uint32_t cp = c & 0b00001111;
-          cp <<= 6;
-          cp |= (d & 0b00111111);
-          cp <<= 6;
-          cp |= (e & 0b00111111);
-          ret.push_back(cp);
-        } else {
-          // second byte is invalid.
-          ret.push_back(REPLACEMENT_CODEPOINT);
-        }
-
-      } else if ((c & 0b11111000) == 0b11110000) {
-        // four bytes
-        if (i + 3 >= utf8.size()) {
-          ret.push_back(REPLACEMENT_CODEPOINT);
-          break;
-        }
-
-        uint8_t d = utf8[++i];
-        uint8_t e = utf8[++i];
-        uint8_t f = utf8[++i];
-
-        // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-        if ((d & 0b11000000) == 0b10000000 &&
-            (e & 0b11000000) == 0b10000000 &&
-            (f & 0b11000000) == 0b10000000) {
-          uint32_t cp = c & 0b00000111;
-          cp <<= 6;
-          cp |= (d & 0b00111111);
-          cp <<= 6;
-          cp |= (e & 0b00111111);
-          cp <<= 6;
-          cp |= (f & 0b00111111);
-          ret.push_back(cp);
-        } else {
-          // second byte is invalid.
-          ret.push_back(REPLACEMENT_CODEPOINT);
-        }
-
-      } else {
-        // If the broken encoding is multi-byte, there might be a
-        // better choice than inserting multiple replacement chars,
-        // but for now this is simplest.
-        ret.push_back(REPLACEMENT_CODEPOINT);
-      }
-    } else {
-      // ASCII
-      ret.push_back(c);
-    }
-  }
-
-  return ret;
-}
-
-static std::string UTF8Truncate(std::string_view utf8, int max_length) {
-  std::vector<uint32_t> codepoints = UTF8Codepoints(utf8);
-  if ((int)codepoints.size() > max_length) {
-    codepoints.resize(max_length);
-    std::string ret;
-    ret.resize(utf8.size());
-    for (uint32_t cp : codepoints) {
-      ret += UTF8Encode(cp);
-    }
-    return ret;
-  } else {
-    return std::string(utf8);
-  }
-}
 
 void ANSI::Init() {
   #ifdef __MINGW32__
@@ -387,7 +238,7 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
 
   // could do "..."
   if ((int)bar_text_plain.size() > bar_width) {
-    bar_text_plain = UTF8Truncate(bar_text_plain, bar_width);
+    bar_text_plain = UTF8::Truncate(bar_text_plain, bar_width);
   }
   bar_text_plain.reserve(bar_width);
   while ((int)bar_text_plain.size() < bar_width)
@@ -445,7 +296,7 @@ std::string ANSI::Composite(
 
   std::string text = StripCodes(text_raw);
 
-  std::vector<uint32_t> codepoints = UTF8Codepoints(text);
+  std::vector<uint32_t> codepoints = UTF8::Codepoints(text);
 
   if (width <= 0) return "";
   if ((int)codepoints.size() > width) codepoints.resize(width);
@@ -481,7 +332,7 @@ std::string ANSI::Composite(
     }
 
     // And always add the text codepoint.
-    out += UTF8Encode(codepoints[i]);
+    out += UTF8::Encode(codepoints[i]);
   }
 
   return out + ANSI_RESET;
@@ -499,7 +350,7 @@ ANSI::Decompose(const std::string &text_with_codes,
                 uint32_t default_bg) {
   if (VERBOSE) printf("[%s]\n", text_with_codes.c_str());
 
-  std::vector<uint32_t> codepoints = UTF8Codepoints(text_with_codes);
+  std::vector<uint32_t> codepoints = UTF8::Codepoints(text_with_codes);
 
   const int length = (int)codepoints.size();
   std::string out;
@@ -602,7 +453,7 @@ ANSI::Decompose(const std::string &text_with_codes,
 
     } else {
       // Encode back as UTF-8.
-      out += UTF8Encode(s[0]);
+      out += UTF8::Encode(s[0]);
       fgs.push_back(fg);
       bgs.push_back(bg);
       s = s.subspan(1);

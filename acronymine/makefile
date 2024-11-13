@@ -20,7 +20,10 @@ AMD_ARCH=x86_64
 AMDSDK=c:/code/AMD_SDK/
 
 # XXX maybe only enable -ffast-math for network.o? or call intrinsics there?
-CXXFLAGS=-march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 -ffast-math
+# -ffast-math is dangerous when using the cc-lib, which at least wants there
+# to be infinities! I turned it off, since if you want performance you use
+# GPU code anyway.
+CXXFLAGS=-march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
 OPT=-O3
 
 CLINCLUDES="-I$(AMDSDK)/include"

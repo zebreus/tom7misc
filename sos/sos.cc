@@ -51,7 +51,7 @@ static string FilledBar(int chars, float f) {
 
   string ret;
   for (int i = 0; i < full; i++) {
-    ret += Util::EncodeUTF8(0x2588);
+    ret += UTF8::Encode(0x2588);
   }
 
   int remain = chars - full;
@@ -59,7 +59,7 @@ static string FilledBar(int chars, float f) {
     int partial = px % 8;
     if (partial) {
       // partial
-      ret += Util::EncodeUTF8(0x2590 - partial);
+      ret += UTF8::Encode(0x2590 - partial);
       remain--;
     }
 

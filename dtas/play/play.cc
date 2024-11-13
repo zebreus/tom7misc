@@ -603,7 +603,7 @@ struct GameArray {
       dx == 32 &&
       emu->ReadRAM(PLAYER_FACING_DIR) == 0x01 &&
       // correct positioning
-      (emu->ReadRAM(PLAYER_X_LO) & 15) == 13 &&
+      (emu->ReadRAM(PLAYER_X_LO) & 15) == 9 &&
       emu->ReadRAM(PLAYER_X_SUBPIXEL) == 0xB0;
   }
   std::vector<uint8_t> walljump_motif_3 = {
@@ -674,7 +674,7 @@ struct GameArray {
           using Prerequisites = std::tuple<int8_t, uint8_t, uint8_t, uint8_t>;
           // always assume ground. then dx, facing, x mod, x subpixel
           static constexpr Prerequisites MOTIF_2_TARGETS = {39, 0x02, 5, 0x70};
-          static constexpr Prerequisites MOTIF_3_TARGETS = {32, 0x01, 13, 0xB0};
+          static constexpr Prerequisites MOTIF_3_TARGETS = {32, 0x01, 9, 0xB0};
 
           auto ShowDebug = [&](const Prerequisites &pre, const char *what) {
               int count = 0;

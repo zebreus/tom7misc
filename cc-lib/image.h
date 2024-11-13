@@ -198,7 +198,8 @@ struct ImageRGBA {
 
   // View of the underlying words. There should be Width() * Height()
   // pixels, each packed R-G-B-A regardless of host byte order.
-  std::span<uint32_t> data() const;
+  std::span<const uint32_t> data() const;
+  std::span<uint32_t> data();
 
  private:
   friend struct ImageResize;

@@ -29,6 +29,7 @@
 #include "rephrasing.h"
 #include "timer.h"
 #include "utf.h"
+#include "utf8.h"
 #include "util.h"
 
 namespace bc {
@@ -1062,7 +1063,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::STRING_FIRST_CODEPOINT: {
     const std::string &s = GetString("string-first-codepoint");
     if (s.empty()) return Obj({}, state);
-    const auto &[len, cp] = UTF8::UTF8ToUTF32(s.data(), s.size());
+    const auto &[len, cp] = UTF::UTF8ToUTF32(s.data(), s.size());
     std::string cp_field = StringPrintf(
         "%ccp", ObjectFieldTypeTag(ObjectFieldType::INT));
     std::string len_field = StringPrintf(
@@ -1081,7 +1082,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     if (!io.has_value()) return String("", state);
     const int64_t cp = io.value();
     if (cp >= 0x1'0000'0000) return String("", state);
-    return String(Util::EncodeUTF8((uint32_t)cp), state);
+    return String(UTF8::Encode((uint32_t)cp), state);
   }
 
   case Primop::NORMALIZE_WHITESPACE: {

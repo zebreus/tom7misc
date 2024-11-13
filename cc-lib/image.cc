@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "utf8.h"
 #include "lines.h"
 #include "stb_image.h"
 #include "stb_image_write.h"
@@ -219,7 +220,11 @@ std::vector<uint8_t> ImageRGBA::ToBuffer8() const {
   return ret;
 }
 
-std::span<uint32_t> ImageRGBA::data() const {
+std::span<const uint32_t> ImageRGBA::data() const {
+  return std::span<const uint32_t>((const uint32_t*)rgba.data(), rgba.size());
+}
+
+std::span<uint32_t> ImageRGBA::data() {
   return std::span<uint32_t>((uint32_t*)rgba.data(), rgba.size());
 }
 
@@ -499,6 +504,130 @@ void ImageRGBA::BlendBox32(int x, int y, int w, int h,
   BlendPixel32(x, y1, corner_color);
   BlendPixel32(x1, y1, corner_color);
 }
+
+static bool FindAndRemove(int x, std::vector<int> *left) {
+  return std::erase_if(*left, [x](int y) { return x == y; }) != 0;
+}
+
+#if 0
+// Returns one length parsed, codepoint (or zero if end of string), fg color, bg color.
+static std::tuple<int, uint32_t, uint32_t, uint32_t>
+ParseANSI(const std::string &text_with_codes,
+          uint32_t current_fg,
+          uint32_t current_bg) {
+  std::vector<uint32_t> codepoints = UTF8::Codepoints(text_with_codes);
+
+  const int length = (int)codepoints.size();
+  std::string out;
+  std::vector<uint32_t> fgs, bgs;
+  // n.b. Might not be this long because of color codes.
+  out.reserve(length);
+  fgs.reserve(length);
+  bgs.reserve(length);
+
+  uint32_t fg = default_fg;
+  uint32_t bg = default_bg;
+
+  std::span<uint32_t> s(codepoints.data(), codepoints.size());
+
+  while (!s.empty()) {
+    // Parse control codes. We just accept the grammar
+    // "\x1b["
+    //   followed by ([0-9]*;)*
+    //   followed by [a-z]
+    if (s.size() >= 2 && s[0] == '\x1b' && s[1] == '[') {
+      // Skip the escape sequence.
+      s = s.subspan(2);
+
+      const auto &[params, cmd] = [&s]() ->
+        std::pair<std::vector<int>, uint32_t> {
+          std::vector<int> params;
+          int value = 0;
+
+          while (!s.empty()) {
+            uint32_t c = *s.begin();
+            // Always consume; we want to consume the
+            // whole code including the command.
+            s = s.subspan(1);
+            if (c >= '0' && c <= '9') {
+              value *= 10;
+              value += (c - '0');
+            } else if (c == ';') {
+              params.push_back(value);
+              value = 0;
+            } else if (c >= 0x40 && c <= 0x7E) {
+              params.push_back(value);
+              value = 0;
+              return std::make_pair(std::move(params), c);
+            } else {
+              // "intermediate bytes" unsupported / ignored
+            }
+          }
+
+          return std::make_pair(std::vector<int>(), 'x');
+      }();
+
+      // The only command we support is 'm'.
+      if (cmd == 'm') {
+        // ANSI_RED = \x1B[1;31;40m
+
+        // 1 means bold. 30-37 are foreground, 40-47 are background.
+        // 0 means reset.
+        std::vector<int> pleft = params;
+        bool is_reset = FindAndRemove(0, &pleft);
+        // bool is_bright = FindAndRemove(1, &pleft);
+        bool is_bright = false;
+
+        if (is_reset) {
+          fg = default_fg;
+          bg = default_bg;
+        }
+
+        for (int p : pleft) {
+          if (p == 1) {
+            is_bright = true;
+          } else if (p >= 30 && p <= 37) {
+            if (is_bright) {
+              fg = (BRIGHT_RGB[p - 30] << 8) | 0xFF;
+            } else {
+              fg = (DARK_RGB[p - 30] << 8) | 0xFF;
+            }
+          } else if (p >= 40 && p <= 47) {
+            // Bright only affects foreground, not background.
+            bg = (DARK_RGB[p - 40] << 8) | 0xFF;
+          } else if (p >= 90 && p <= 97) {
+            // unusual: direct access to bright foreground.
+            fg = (BRIGHT_RGB[p - 90] << 8) | 0xFF;
+          } else if (p >= 100 && p <= 107) {
+            // unusual: direct access to bright background.
+            bg = (BRIGHT_RGB[p - 100] << 8) | 0xFF;
+          } else if (p == 39) {
+            fg = default_fg;
+          } else if (p == 49) {
+            bg = default_bg;
+          } else {
+            if (VERBOSE) printf("Unknown param %d\n", p);
+          }
+          // TODO: 38, 48 to set RGB colors.
+
+        }
+      } else {
+        if (VERBOSE) printf("Unknown command %c\n", cmd);
+      }
+
+
+    } else {
+      // Encode back as UTF-8.
+      out += UTF8Encode(s[0]);
+      fgs.push_back(fg);
+      bgs.push_back(bg);
+      s = s.subspan(1);
+    }
+  }
+
+  return std::make_tuple(std::move(out), std::move(fgs), std::move(bgs));
+}
+#endif
 
 // PERF: For many of these where we call blendpixel in a loop,
 // we could probably benefit by doing premultiplied alpha.
@@ -818,23 +947,7 @@ void ImageRGBA::BlendThickCircle32(float x, float y, float circle_radius,
 }
 
 
-// TODO: Does not handle overlap correctly.
-void ImageRGBA::BlendImage(int x, int y, const ImageRGBA &other) {
-  // PERF can factor out the pixel clipping here, supposing the
-  // compiler cannot.
-  for (int yy = 0; yy < other.height; yy++) {
-    int yyy = y + yy;
-    // Exit early if off-screen.
-    if (yyy >= height) break;
-    for (int xx = 0; xx < other.width; xx++) {
-      int xxx = x + xx;
-      if (xxx >= width) break;
-      BlendPixel32(xxx, yyy, other.GetPixel32(xx, yy));
-    }
-  }
-}
-
-// TODO: Does not handle overlap correctly.
+// TODO: Does not handle overlap correctly when self-blending.
 void ImageRGBA::BlendImageRect(int dstx, int dsty, const ImageRGBA &other,
                                int srcx, int srcy, int srcw, int srch) {
   for (int yy = 0; yy < srch; yy++) {
@@ -858,6 +971,11 @@ void ImageRGBA::BlendImageRect(int dstx, int dsty, const ImageRGBA &other,
       }
     }
   }
+}
+
+// TODO: Does not handle overlap correctly when self-blending.
+void ImageRGBA::BlendImage(int x, int y, const ImageRGBA &other) {
+  BlendImageRect(x, y, other, 0, 0, other.Width(), other.Height());
 }
 
 // This version assumes every pixel read/write is in bounds.

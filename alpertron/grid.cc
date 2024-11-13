@@ -1,7 +1,6 @@
 
 #include "quad.h"
 
-#include <bit>
 #include <array>
 #include <string>
 #include <cstdio>
@@ -16,9 +15,7 @@
 #include "periodically.h"
 #include "ansi.h"
 #include "atomic-util.h"
-#include "util.h"
 #include "auto-histo.h"
-#include "crypt/lfsr.h"
 #include "arcfour.h"
 #include "randutil.h"
 
@@ -32,8 +29,6 @@ static constexpr bool COMPUTE_F = true;
 // When computing F, number of bits we allow X and Y to be.
 static constexpr int XY_BITS = 30;
 static_assert(XY_BITS < 32);
-
-static constexpr uint64_t SEED = 0xCAFEBABE;
 
 using namespace std;
 

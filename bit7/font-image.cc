@@ -1,13 +1,14 @@
 #include "font-image.h"
 
-#include <string>
-#include <map>
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <string>
 
-#include "util.h"
-#include "image.h"
 #include "base/logging.h"
+#include "image.h"
+#include "utf8.h"
+#include "util.h"
 
 using namespace std;
 
@@ -1547,7 +1548,7 @@ int BitmapFont::Width(int cp) const {
 void BitmapFont::DrawText(ImageRGBA *img, int x, int y,
                            uint32_t color,
                            const std::string &s) const {
-  std::vector<uint32_t> cps = Util::UTF8Codepoints(s);
+  std::vector<uint32_t> cps = UTF8::Codepoints(s);
   for (uint32_t cp : cps) {
     const auto it = font.unicode_to_glyph.find(cp);
     if (it == font.unicode_to_glyph.end()) {

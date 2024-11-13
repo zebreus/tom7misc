@@ -5,7 +5,6 @@
 
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "../fceulib/emulator.h"

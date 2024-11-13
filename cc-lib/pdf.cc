@@ -49,8 +49,9 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "image.h"
-#include "stb_truetype.h"
 #include "qr-code.h"
+#include "stb_truetype.h"
+#include "utf8.h"
 #include "zip.h"
 
 // XXX maybe should avoid this dependency. Just
@@ -3776,6 +3777,7 @@ bool PDF::AddImageRGB(float x, float y,
 }
 
 namespace {
+// TODO: To utf8.h?
 struct UTF8Codepoints {
   UTF8Codepoints(const std::string &s) :
     begin_it(s.data(), s.data() + s.size()),
@@ -3865,7 +3867,7 @@ PDF::SpacedLine PDF::FontObj::KernText(const std::string &text) const {
       ret.emplace_back(chunk, k);
       chunk.clear();
     }
-    chunk += Util::EncodeUTF8(cp);
+    chunk += UTF8::Encode(cp);
     prev_cp = cp;
   }
 
@@ -4033,8 +4035,8 @@ std::string PDF::AddTTF(const std::string &filename) {
               if (VERBOSE) {
                 printf("U+%04x U+%04x = '%s' '%s': %d (= %.5f)\n",
                        c1, c2,
-                       Util::EncodeUTF8(c1).c_str(),
-                       Util::EncodeUTF8(c2).c_str(),
+                       UTF8::Encode(c1).c_str(),
+                       UTF8::Encode(c2).c_str(),
                        kern, advance);
               }
             }

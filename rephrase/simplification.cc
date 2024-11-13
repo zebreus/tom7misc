@@ -20,14 +20,15 @@
 #include "base/stringprintf.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
-#include "functional-map.h"
 #include "context.h"
+#include "functional-map.h"
 #include "il-pass.h"
 #include "il-typed-pass.h"
 #include "il-util.h"
 #include "il.h"
 #include "primop.h"
 #include "progress.h"
+#include "utf8.h"
 #include "util.h"
 
 static constexpr bool VERBOSE = false;
@@ -670,7 +671,7 @@ struct PeepholePass : public il::Pass<> {
           if (!io.has_value()) return pool->String("");
           uint64_t cp = io.value();
           if (cp >= 0x1'0000'0000) return pool->String("");
-          return pool->String(Util::EncodeUTF8(cp));
+          return pool->String(UTF8::Encode(cp));
         }
         break;
 

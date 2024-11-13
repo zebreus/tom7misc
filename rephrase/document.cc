@@ -18,18 +18,19 @@
 #include <vector>
 
 #include "achievements.h"
-#include "bignum/big.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "bc.h"
+#include "bignum/big.h"
+#include "boxes-and-glue.h"
+#include "color-util.h"
+#include "functional-set.h"
 #include "hyphenation.h"
 #include "image.h"
-#include "util.h"
-#include "bc.h"
 #include "utf.h"
-#include "functional-set.h"
-#include "boxes-and-glue.h"
-#include "base/stringprintf.h"
-#include "base/logging.h"
-#include "color-util.h"
+#include "utf8.h"
+#include "util.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -601,8 +602,8 @@ Document::BoxifyText(const TextProps &props,
 
         if (VERBOSE) {
           printf("[%s] -> [%s] %.3f width%s%s\n",
-                 Util::EncodeUTF8(prev).c_str(),
-                 Util::EncodeUTF8(codepoint).c_str(),
+                 UTF8::Encode(prev).c_str(),
+                 UTF8::Encode(codepoint).c_str(),
                  char_width,
                  break_for_kern ? " " AGREEN("kern") : "",
                  break_for_hyphen ? " " APURPLE("hyph") : "");
@@ -642,7 +643,7 @@ Document::BoxifyText(const TextProps &props,
           d.AddChild(TextDoc(chunk));
           out.push_back(std::move(d));
 
-          chunk = Util::EncodeUTF8(codepoint);
+          chunk = UTF8::Encode(codepoint);
           chunk_width = char_width;
           if (break_for_kern) {
             CHECK(kern.has_value());
@@ -652,17 +653,17 @@ Document::BoxifyText(const TextProps &props,
 
           if (VERBOSE) {
             printf("Kerned '%s'+'%s'; chunk now '%s'\n",
-                   Util::EncodeUTF8(prev).c_str(),
-                   Util::EncodeUTF8(codepoint).c_str(),
+                   UTF8::Encode(prev).c_str(),
+                   UTF8::Encode(codepoint).c_str(),
                    chunk.c_str());
           }
         } else {
           // Extend the chunk.
-          chunk += Util::EncodeUTF8(codepoint);
+          chunk += UTF8::Encode(codepoint);
           chunk_width += char_width;
           if (VERBOSE) {
             printf("Added '%s'; chunk now '%s'\n",
-                   Util::EncodeUTF8(codepoint).c_str(),
+                   UTF8::Encode(codepoint).c_str(),
                    chunk.c_str());
           }
         }
