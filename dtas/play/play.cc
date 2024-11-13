@@ -501,10 +501,131 @@ struct GameArray {
       games[i] = std::make_unique<Game>(movie);
     }
 
+    queued.resize(NUM_EMUS);
+
     for (int i = 0; i < EMULATOR_THREADS; i++) {
       workers.emplace_back(&GameArray::WorkerThread, this);
     }
   }
+
+  // Jump into a wall to the left.
+  std::vector<uint8_t> walljump_motif = {
+    // Jump from flat surface while at full speed
+    INPUT_A | INPUT_B | INPUT_L,
+    INPUT_A | INPUT_B | INPUT_L,
+    INPUT_A | INPUT_B | INPUT_L,
+    INPUT_A | INPUT_B | INPUT_L,
+    INPUT_A | INPUT_B | INPUT_L,
+    INPUT_B | INPUT_L,
+    INPUT_B | INPUT_L,
+    INPUT_B | INPUT_L,
+    INPUT_B | INPUT_L,
+    INPUT_B,
+    INPUT_L,
+    INPUT_L,
+    INPUT_R,
+    // Wait to enter wall
+    0, 0, 0, 0, 0, 0,
+    INPUT_A, 0, 0, 0,
+    INPUT_A, 0, 0, 0,
+    INPUT_A, 0, 0, 0,
+    INPUT_A, 0, 0, 0,
+    INPUT_A, 0, 0, 0,
+    INPUT_A, 0, 0, 0,
+  };
+
+  // Jump into the air with a single frame of
+  // reverse, turning around but maintaining
+  // full speed.
+  bool CanMotifReverse(const Emulator *emu) {
+    int8_t dx = emu->ReadRAM(PLAYER_X_SPEED);
+    // on ground
+    return emu->ReadRAM(PLAYER_STATE) == 0x00 &&
+      // max speed
+      dx == 40 &&
+      // facing right
+      emu->ReadRAM(PLAYER_FACING_DIR) == 0x01;
+  }
+  std::vector<uint8_t> reverse_motif = {
+    INPUT_B | INPUT_L,
+    INPUT_A | INPUT_B | INPUT_R,
+    INPUT_B | INPUT_R,
+    INPUT_B | INPUT_R,
+    INPUT_B | INPUT_R,
+    INPUT_B | INPUT_R,
+    // now just keep coasting...
+    INPUT_B | INPUT_B,
+  };
+
+
+  // Already at full speed (0x40), moving right but facing left,
+  // and on the ground. On the frame we jump subpixel is 112.
+  bool CanMotif2(const Emulator *emu) {
+    int8_t dx = emu->ReadRAM(PLAYER_X_SPEED);
+    return
+      // on ground
+      emu->ReadRAM(PLAYER_STATE) == 0x00 &&
+      // max speed, or able to achieve max speed with one more
+      // acceleration
+      dx >= 39 &&
+      // but facing left
+      emu->ReadRAM(PLAYER_FACING_DIR) == 0x02 &&
+      // correct positioning
+      (emu->ReadRAM(PLAYER_X_LO) & 15) == 5 &&
+      emu->ReadRAM(PLAYER_X_SUBPIXEL) == 0x70;
+  }
+  std::vector<uint8_t> walljump_motif_2 = {
+    INPUT_A | INPUT_B | INPUT_R,
+    INPUT_A | INPUT_B | INPUT_R,
+    INPUT_A | INPUT_B | INPUT_R,
+    INPUT_A | INPUT_B | INPUT_R,
+    INPUT_A | INPUT_B | INPUT_R,
+    INPUT_B, INPUT_B, INPUT_B, INPUT_B, INPUT_B, INPUT_B, INPUT_B,
+    // dx = 0, .x = 80
+    INPUT_B | INPUT_L,
+    // entering wall
+    INPUT_B, INPUT_B, INPUT_B, INPUT_B, INPUT_B, INPUT_B,
+    INPUT_A | INPUT_B,
+    INPUT_B, INPUT_B, INPUT_B,
+    INPUT_A | INPUT_B,
+    INPUT_B, INPUT_B, INPUT_B,
+    // Now just keep walking right
+    INPUT_B | INPUT_R,
+    INPUT_B | INPUT_R,
+    INPUT_B | INPUT_R,
+  };
+
+  bool CanMotif3(const Emulator *emu) {
+    int8_t dx = emu->ReadRAM(PLAYER_X_SPEED);
+    return
+      // on ground
+      emu->ReadRAM(PLAYER_STATE) == 0x00 &&
+      dx == 32 &&
+      emu->ReadRAM(PLAYER_FACING_DIR) == 0x01 &&
+      // correct positioning
+      (emu->ReadRAM(PLAYER_X_LO) & 15) == 13 &&
+      emu->ReadRAM(PLAYER_X_SUBPIXEL) == 0xB0;
+  }
+  std::vector<uint8_t> walljump_motif_3 = {
+    INPUT_A | INPUT_R,
+    INPUT_A | INPUT_R,
+    INPUT_A | INPUT_R,
+    INPUT_A | INPUT_R,
+    INPUT_A | INPUT_R,
+    INPUT_R, INPUT_R, INPUT_R, INPUT_R, INPUT_R,
+    0,
+    INPUT_L,
+    // clip into wall
+    0, 0, 0, 0, 0, 0,
+    // bounce
+    INPUT_A, 0, 0, 0,
+    INPUT_A, 0, 0,
+    INPUT_B | INPUT_R,
+    // walk...
+    INPUT_B | INPUT_R,
+    INPUT_B | INPUT_R,
+    INPUT_B | INPUT_R,
+  };
 
   // Emulation is relatively expensive, so we do it in multiple
   // separate threads. Each command in here is just a std::function to
@@ -536,11 +657,84 @@ struct GameArray {
     }
   }
 
+  std::vector<std::deque<uint8_t>> queued;
+
+  void MaybeTriggerMotifs() {
+    // XXX don't always trigger in all of them!
+    for (int i = 0; i < NUM_EMUS; i++) {
+      if (i != focus_idx) {
+        if (queued[i].empty()) {
+          Emulator *emu = games[i]->emu.get();
+          int8_t dx = emu->ReadRAM(PLAYER_X_SPEED);
+          bool ground = emu->ReadRAM(PLAYER_STATE) == 0x00;
+          uint8_t facing = emu->ReadRAM(PLAYER_FACING_DIR);
+          uint8_t xmod = emu->ReadRAM(PLAYER_X_LO) & 15;
+          uint8_t xsub = emu->ReadRAM(PLAYER_X_SUBPIXEL);
+
+          using Prerequisites = std::tuple<int8_t, uint8_t, uint8_t, uint8_t>;
+          // always assume ground. then dx, facing, x mod, x subpixel
+          static constexpr Prerequisites MOTIF_2_TARGETS = {39, 0x02, 5, 0x70};
+          static constexpr Prerequisites MOTIF_3_TARGETS = {32, 0x01, 13, 0xB0};
+
+          auto ShowDebug = [&](const Prerequisites &pre, const char *what) {
+              int count = 0;
+              const auto &[tdx, tfacing, txmod, txsub] = pre;
+              if (ground) count++;
+              if (dx == tdx) count++;
+              if (tfacing == facing) count++;
+              if (txmod == xmod) count++;
+              if (txsub == xsub) count++;
+
+              if (count > 3) {
+                printf("[%d] " ACYAN("%s") ": %s%02x %s%d %s%02x %s%d %s%02x "
+                       ANSI_RESET "\n",
+                       i, what,
+                       ground ? ANSI_GREEN : ANSI_GREY,
+                       emu->ReadRAM(PLAYER_STATE),
+                       dx == tdx ? ANSI_GREEN : ANSI_GREY,
+                       dx,
+                       facing == tfacing ? ANSI_GREEN : ANSI_GREY,
+                       facing,
+                       xmod == txmod ? ANSI_GREEN : ANSI_GREY,
+                       xmod,
+                       xsub == txsub ? ANSI_GREEN : ANSI_GREY,
+                       xsub);
+              }
+            };
+
+          ShowDebug(MOTIF_2_TARGETS, "motif2");
+          ShowDebug(MOTIF_3_TARGETS, "motif3");
+
+          if (CanMotif3(emu)) {
+            printf("Trigger walljump 3 in emu %d [xlo=%d]\n", i,
+                   emu->ReadRAM(PLAYER_X_LO));
+            EnqueueMotif(i, walljump_motif_3);
+          } else if (CanMotif2(emu)) {
+            printf("Trigger walljump in emu %d\n", i);
+            EnqueueMotif(i, walljump_motif_2);
+          } else if (false && CanMotifReverse(emu)) {
+            printf("Trigger rev on emu %d\n", i);
+            EnqueueMotif(i, reverse_motif);
+          }
+        }
+      }
+    }
+  }
+
+  void EnqueueMotif(int game_idx, const std::vector<uint8_t> &motif) {
+    for (uint8_t b : motif) {
+      queued[game_idx].push_back(b);
+    }
+  }
+
   // Perform a step using the user input.
   // This runs the step, or modifications of it,
   // in each Game instance. When this returns, the
   // game states are all updated and have screenshots.
   void Step(uint8_t orig) {
+    static constexpr int TURBO_JUMP_IDX = 3;
+    static constexpr int NUM_TURBO = 3;
+
     if (TRACE) { printf("Step %02x\n", orig); fflush(stdout); }
     RandomGaussian gauss(&rc);
     const int movie_size = games[focus_idx]->movie.Size();
@@ -550,15 +744,83 @@ struct GameArray {
       {
         int jitter = std::clamp((int)std::round(gauss.Next() * 2.0), -4, 4);
         std::unique_lock<std::mutex> ml(m);
-        work.emplace_back([this, i, prev_button, orig, jitter]() {
+        work.emplace_back([this, movie_size, i, prev_button, orig, jitter]() {
             uint8_t b = orig;
             if (i == focus_idx) {
               // Always do the input faithfully on the focused
               // game.
               games[i]->Step(b);
+            } else if (!queued[i].empty()) {
+              uint8_t q = queued[i].front();
+              queued[i].pop_front();
+              games[i]->Step(q);
+
+            } else if (i >= TURBO_JUMP_IDX && i < TURBO_JUMP_IDX + NUM_TURBO) {
+              // The right pace for walljumps is A,0,0. With a proper jump
+              // your existing momentum carries you through.
+
+              if (movie_size % 3 == (i - TURBO_JUMP_IDX)) {
+                b = INPUT_A;
+              } else {
+                b = 0;
+              }
+
+              /*
+              b = (b & ~INPUT_A) | ((prev_button & ~INPUT_A) ^ INPUT_A);
+              if (i == TURBO_JUMP_LEFT_IDX) {
+                b &= ~INPUT_R;
+                b |= INPUT_L;
+              }
+              */
+
+              games[i]->Step(b);
+
             } else {
 
               if (prev_button == b) {
+                const Emulator *emu = games[i]->emu.get();
+                const int8_t dx = emu->ReadRAM(PLAYER_X_SPEED);
+                const bool ground = emu->ReadRAM(PLAYER_STATE) == 0x00;
+                const uint8_t facing = emu->ReadRAM(PLAYER_FACING_DIR);
+                const uint8_t xmod = emu->ReadRAM(PLAYER_X_LO) & 15;
+                const uint8_t xsub = emu->ReadRAM(PLAYER_X_SUBPIXEL);
+
+                if (ground) {
+                  // On the ground, get different speeds
+                  if (dx > 32 && rc.Byte() < 12) {
+                    if ((b & INPUT_B) && rc.Byte() < 64) {
+                      b &= INPUT_B;
+                    } else if ((b & INPUT_R) && rc.Byte() < 64) {
+                      b &= INPUT_R;
+                    } else {
+                      b |= INPUT_L;
+                    }
+                  } else if (dx < 32 && rc.Byte() < 12) {
+                    if (!(b & INPUT_B) && rc.Byte() < 64) {
+                      b |= INPUT_B;
+                    } else if ((b & INPUT_L) && rc.Byte() < 64) {
+                      b &= INPUT_L;
+                    } else if (!(b & INPUT_R)) {
+                      b |= INPUT_R;
+                    }
+                  }
+
+                  /*
+                  if (rc.Byte() < 8) b ^= INPUT_B;
+                  if (b & INPUT_R) {
+                    // Change subpixel
+                    if (rc.Byte() < 8) b |= INPUT_L;
+                  }
+                  */
+
+                } else {
+                  // In the air, different subpixels
+                  if ((b & INPUT_R) && rc.Byte() < 8) {
+                    if (rc.Byte() < 8) b |= INPUT_L;
+                  }
+                }
+
+                #if 0
                 // Rarely, fuzz the input a bit.
                 if (rc.Byte() < 12) {
                   if (rc.Byte() < 8) b ^= INPUT_B;
@@ -566,6 +828,7 @@ struct GameArray {
                   if (rc.Byte() < 8) b ^= INPUT_R;
                   if (rc.Byte() < 8) b ^= INPUT_L;
                 }
+                #endif
 
                 games[i]->Step(b);
 
@@ -624,12 +887,16 @@ struct GameArray {
     RandomGaussian g(&rc);
     for (int i = 0; i < NUM_EMUS; i++) {
       {
+        #if 0
         int noise = g.Next() * 4;
         int d = delta;
         if (i != focus_idx) {
           // Add a little noise to the seek
           d += noise;
         }
+        #else
+        int d = delta;
+        #endif
 
         std::unique_lock<std::mutex> ml(m);
         work.emplace_back([this, i, d]() {
@@ -714,16 +981,24 @@ struct Watchlist {
       WORD,
       DASH,
       COLON,
+      SIGNED8,
     };
     MemLoc(const std::string &name, uint16_t addrhi, uint16_t addrlo,
            DisplayType display_type = DisplayType::WORD) :
       name(name), addrhi(addrhi), addrlo(addrlo), display_type(display_type) {}
     // For single-byte locations.
-    MemLoc(const std::string &name, uint16_t addr) : MemLoc(name, addr, addr) {}
+    MemLoc(const std::string &name, uint16_t addr,
+           DisplayType display_type = DisplayType::WORD) :
+      MemLoc(name, addr, addr, display_type) {}
 
     std::string RenderValue(const Emulator *emu) const {
       if (addrhi == addrlo) {
-        return StringPrintf("%02x", emu->ReadRAM(addrhi));
+        uint8_t value = emu->ReadRAM(addrhi);
+        if (display_type == DisplayType::SIGNED8) {
+          return StringPrintf("%d", (int8_t)value);
+        } else {
+          return StringPrintf("%02x", value);
+        }
       } else {
         uint8_t hi = emu->ReadRAM(addrhi);
         uint8_t lo = emu->ReadRAM(addrlo);
@@ -735,6 +1010,8 @@ struct Watchlist {
           return StringPrintf("%02x-%02x", hi, lo);
         case DisplayType::COLON:
           return StringPrintf("%02x:%02x", hi, lo);
+        case DisplayType::SIGNED8:
+          LOG(FATAL) << "Only for single-byte quantities.";
         }
       }
     }
@@ -806,14 +1083,20 @@ UI::UI(LevelId level) : level(level), fps_per(1.0 / 59.94) {
   using MemLoc = Watchlist::MemLoc;
   watchlist = Watchlist({
       MemLoc("Frame", FRAME_COUNTER),
+      MemLoc("ScreenX", SCREENLEFT_X_HI, SCREENLEFT_X_LO),
       MemLoc("X", PLAYER_X_HI, PLAYER_X_LO),
       MemLoc("Y", PLAYER_Y_SCREEN, PLAYER_Y),
+      MemLoc("dx", PLAYER_X_SPEED, MemLoc::DisplayType::SIGNED8),
+      MemLoc(".X", PLAYER_X_SUBPIXEL),
+      MemLoc(".Y", PLAYER_Y_SUBPIXEL),
       MemLoc("Player", PLAYER_STATE),
       MemLoc("World", WORLD_MAJOR, WORLD_MINOR, MemLoc::DisplayType::DASH),
       MemLoc("Mode:Task", OPER_MODE, OPER_MODE_TASK,
              MemLoc::DisplayType::COLON),
       MemLoc("Sub", GAME_ENGINE_SUBROUTINE),
       MemLoc("Loop?", LOOP_COMMAND),
+      MemLoc("L Corr", MULTI_LOOP_CORRECT_COUNTER),
+      MemLoc("L Pass", MULTI_LOOP_PASS_COUNTER),
       MemLoc("Page:Col", CURRENT_PAGE_LOC, CURRENT_COLUMN_POS,
              MemLoc::DisplayType::COLON),
     });
@@ -832,6 +1115,9 @@ bool UI::MaybeRunEmulators(uint8_t buttons) {
 
   if (speed == Speed::PLAY &&
       fps_per.ShouldRun()) {
+
+    game_array->MaybeTriggerMotifs();
+
     game_array->Step(buttons);
     return true;
   }
@@ -912,11 +1198,12 @@ UI::EventResult UI::HandleEvents() {
           ForceMove(-8, 0);
           ui_dirty = true;
         } else {
-          // TODO: Rewind all movies one step, and pause.
+          // Rewind all movies one step, and pause.
+          Seek(-1);
           speed = Speed::PAUSE;
           ui_dirty = true;
-          break;
         }
+        break;
       }
 
       case SDLK_RIGHT: {
@@ -924,8 +1211,25 @@ UI::EventResult UI::HandleEvents() {
           ForceMove(+8, 0);
           ui_dirty = true;
         } else {
-          // TODO: Forward all movies (if possible) ?
+          // Forward all movies, if possible.
+          Seek(+1);
           speed = Speed::PAUSE;
+          ui_dirty = true;
+        }
+        break;
+      }
+
+      case SDLK_UP: {
+        if (event.key.keysym.mod & KMOD_CTRL) {
+          ForceMove(0, -8);
+          ui_dirty = true;
+        }
+        break;
+      }
+
+      case SDLK_DOWN: {
+        if (event.key.keysym.mod & KMOD_CTRL) {
+          ForceMove(0, +8);
           ui_dirty = true;
         }
         break;
@@ -1217,11 +1521,13 @@ void UI::DrawGhost() {
     shot.Clear32(0x330000FF);
   }
 
-  int screenx = (game->emu->ReadRAM(SCREENLEFT_X_HI) << 8) |
+  int current_screen_x =
+    ((uint16_t)game->emu->ReadRAM(SCREENLEFT_X_HI) << 8) |
     game->emu->ReadRAM(SCREENLEFT_X_LO);
 
   CHECK(mario_ghost != nullptr);
   // Now add ghosts...
+#if 0
   for (const MarioUtil::Pos &pos : ghosts) {
 
     int yy = (int)pos.y - 232 - 8;
@@ -1230,6 +1536,44 @@ void UI::DrawGhost() {
     // XXX use the sprite from the game
     shot.BlendImage(xx, yy, *mario_ghost);
   }
+#endif
+
+  // Gather sprites from each ghost game, and figure out their
+  // global positions. Then draw them on the current emulator.
+  for (int i = 0; i < game_array->games.size(); i++) {
+    if (i != game_array->focus_idx) {
+      const Emulator *emu = game_array->games[i]->emu.get();
+      std::vector<Emulator::Sprite> sprites = emu->Sprites();
+
+      // To get absolute position, add the position of the
+      // left edge of the emulator's screen position.
+
+      const int ghost_screen_x =
+        ((uint16_t)emu->ReadRAM(SCREENLEFT_X_HI) << 8) |
+        emu->ReadRAM(SCREENLEFT_X_LO);
+
+      for (Emulator::Sprite &sprite : sprites) {
+        if (sprite.y < 240) {
+          ImageRGBA simg(std::move(sprite.rgba), sprite.Width(), sprite.Height());
+          // make ghostly
+          for (int y = 0; y < simg.Height(); y++) {
+            for (int x = 0; x < simg.Width(); x++) {
+              uint32_t c = simg.GetPixel32(x, y);
+              c &= 0x7F7FFF33;
+              c |= 0x00008000;
+              simg.SetPixel32(x, y, c);
+            }
+          }
+
+          const int abs_x = sprite.x + ghost_screen_x;
+
+          // Now put it on the focus screen.
+          shot.BlendImage(abs_x - current_screen_x, sprite.y + 1, simg);
+        }
+      }
+    }
+  }
+
 
   // XXX test: re-draw sprites from main game.
   {
