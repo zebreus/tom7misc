@@ -7,6 +7,7 @@
 
 #include "base/logging.h"
 #include "arcfour.h"
+#include "ansi.h"
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
@@ -354,6 +355,23 @@ static void TestRoundTripA1() {
   }
 }
 
+static void TestText() {
+  ImageRGBA img(256, 128);
+  img.Clear32(0x000000FF);
+
+  img.BlendBox32(10, 10, img.Width() - 10 - 10, img.Height() - 10 - 10,
+                 0x3333FFAA, 0x3333FF55);
+
+  // Note that ansi.h explicitly sets background color to black for
+  // these macros. We should implement the RGB fg and bg commands
+  // and test them here.
+  img.BlendText32(7, 7, 0xFFFFFFCC,
+                  "Some " ARED("red") " and " AYELLOW("yellow")
+                  " text that is long");
+
+  img.Save("image-test-text.png");
+}
+
 int main(int argc, char **argv) {
   TestCreateAndDestroy();
   TestCopies();
@@ -365,6 +383,7 @@ int main(int argc, char **argv) {
   TestFilledCircle();
   TestCopyImage();
 
+  TestText();
   TestVerticalText();
 
   TestRoundTripA1();

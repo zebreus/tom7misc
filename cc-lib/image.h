@@ -108,9 +108,10 @@ struct ImageRGBA {
                   uint32 color, std::optional<uint32> corner_color);
 
   // Embedded 9x9 pixel font.
-  // TODO: Add routines that interpret ANSI color codes.
   static constexpr int TEXT_WIDTH  = 9;
   static constexpr int TEXT_HEIGHT = 9;
+  // Supports ANSI color codes (only basic ones; experimental).
+  // XXX: Only these two routines work with ANSI today.
   void BlendText(int x, int y,
                  uint8 r, uint8 g, uint8 b, uint8 a,
                  const std::string &s);

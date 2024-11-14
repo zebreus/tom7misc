@@ -20,6 +20,7 @@
 
 
 // These are "bold" or "bright" foreground colors.
+// Note they explicitly set the background to black.
 #define ANSI_RED "\x1B[1;31;40m"
 #define ANSI_GREY "\x1B[1;30;40m"
 #define ANSI_BLUE "\x1B[1;34;40m"
@@ -31,6 +32,7 @@
 #define ANSI_RESET "\x1B[m"
 
 // These are "regular" foreground colors.
+// They also set the background to black.
 #define ANSI_DARK_RED "\x1B[31;40m"
 // dark grey = black
 #define ANSI_DARK_GREY "\x1B[30;40m"

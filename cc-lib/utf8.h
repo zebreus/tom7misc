@@ -30,6 +30,12 @@ struct UTF8 {
 
   // Truncate to at most the given number of codepoints.
   static inline std::string Truncate(std::string_view utf8, int max_length);
+
+  // Convert up to len bytes of utf8 data to get one codepoint. Return
+  // the number of bytes read and the codepoint. If the data are invalid,
+  // reads one byte and returns 0xFFFFFFFF, which is an invalid codepoint.
+  static inline std::pair<int, uint32_t> ParsePrefix(const char *utf8, int len);
+  static constexpr uint32_t INVALID = 0xFFFFFFFF;
 };
 
 
@@ -209,6 +215,40 @@ std::string UTF8::Truncate(std::string_view utf8, int max_length) {
     return std::string(utf8);
   }
 }
+
+std::pair<int, uint32_t> UTF8::ParsePrefix(const char *utf8, int len) {
+  uint8_t mask = 0;
+  uint32_t ch = *(const uint8_t *)utf8;
+  if ((ch & 0x80) == 0) {
+    len = 1;
+    mask = 0x7f;
+  } else if ((ch & 0xe0) == 0xc0 && len >= 2) {
+    len = 2;
+    mask = 0x1f;
+  } else if ((ch & 0xf0) == 0xe0 && len >= 3) {
+    len = 3;
+    mask = 0xf;
+  } else if ((ch & 0xf8) == 0xf0 && len >= 4) {
+    len = 4;
+    mask = 0x7;
+  } else {
+    return std::make_pair(1, INVALID);
+  }
+
+  ch = 0;
+  for (int i = 0; i < len; i++) {
+    int shift = (len - i - 1) * 6;
+    if (!*utf8)
+      return std::make_pair(1, INVALID);
+    if (i == 0)
+      ch |= ((uint32_t)(*utf8++) & mask) << shift;
+    else
+      ch |= ((uint32_t)(*utf8++) & 0x3f) << shift;
+  }
+
+  return std::make_pair(len, ch);
+}
+
 
 #endif
 

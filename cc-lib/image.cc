@@ -509,62 +509,105 @@ static bool FindAndRemove(int x, std::vector<int> *left) {
   return std::erase_if(*left, [x](int y) { return x == y; }) != 0;
 }
 
-#if 0
-// Returns one length parsed, codepoint (or zero if end of string), fg color, bg color.
-static std::tuple<int, uint32_t, uint32_t, uint32_t>
-ParseANSI(const std::string &text_with_codes,
-          uint32_t current_fg,
-          uint32_t current_bg) {
-  std::vector<uint32_t> codepoints = UTF8::Codepoints(text_with_codes);
+// Parse the leading codepoint.
+// Returns codepoint (or zero if end of string). Updates the input
+// string to remove the prefix, and the fg/bg colors.
+static uint32_t
+ParseANSI(std::string_view &s,
+          // Value to use on a 'reset'
+          uint32_t default_fg,
+          uint32_t default_bg,
+          // Current color; updated
+          uint32_t &current_fg,
+          uint32_t &current_bg) {
 
-  const int length = (int)codepoints.size();
-  std::string out;
-  std::vector<uint32_t> fgs, bgs;
-  // n.b. Might not be this long because of color codes.
-  out.reserve(length);
-  fgs.reserve(length);
-  bgs.reserve(length);
+  // Normal non-bright colors, as 00RRGGBB.
+  static std::array<uint32_t, 8> DARK_RGB = {
+    0x000000,  // Black
+    0xd42c3a,  // Red
+    0x1ca800,  // Green
+    0xc0a000,  // Yellow
+    0x005dff,  // Blue
+    0xb148c6,  // Magenta
+    0x00a89a,  // Cyan
+    0xBFBFBF,  // White
+  };
 
-  uint32_t fg = default_fg;
-  uint32_t bg = default_bg;
+  static std::array<uint32_t, 8> BRIGHT_RGB = {
+    0x606060,  // Black
+    0xff7676,  // Red
+    0x99f299,  // Green
+    0xf2f200,  // Yellow
+    0x7d97ff,  // Blue
+    0xff70ff,  // Magenta
+    0x00f0f0,  // Cyan
+    0xffffff,  // White
+  };
 
-  std::span<uint32_t> s(codepoints.data(), codepoints.size());
+  // Returns 0 at the end of the string.
+  // When required is not nullopt, we only consume the encoded part
+  // from s if it matches. See the call with '[' below.
+  auto CP = [&s](std::optional<uint32_t> required = {}) -> uint32_t {
+      if (s.empty()) return 0;
+      auto [len, cp] = UTF8::ParsePrefix(s.data(), s.size());
+      if (required.has_value()) {
+        if (cp == required.value()) {
+          s.remove_prefix(len);
+          return cp;
+        } else {
+          return cp;
+        }
+      } else {
+        s.remove_prefix(len);
+        return cp;
+      }
+    };
 
-  while (!s.empty()) {
-    // Parse control codes. We just accept the grammar
-    // "\x1b["
-    //   followed by ([0-9]*;)*
-    //   followed by [a-z]
-    if (s.size() >= 2 && s[0] == '\x1b' && s[1] == '[') {
-      // Skip the escape sequence.
-      s = s.subspan(2);
+  // We don't return until we find an actual character.
+  for (;;) {
+    uint32_t x = CP();
+    if (x == 0) return 0;
 
-      const auto &[params, cmd] = [&s]() ->
+    if (x == '\x1b') {
+      // Escape code.
+
+      // If we don't see a bracket here, then it wasn't an ansi
+      // escape, and we just want to output the escape character
+      // without consuming any more bytes.
+      // So we provide the optional arg to CP.
+      auto bracket = CP('[');
+      if (bracket != '[')
+        return x;
+
+      // Parse the control code. We just accept the grammar
+      // "\x1b["
+      //   followed by ([0-9]*;)*
+      //   followed by [a-z]
+
+      const auto &[params, cmd] = [&]() ->
         std::pair<std::vector<int>, uint32_t> {
-          std::vector<int> params;
-          int value = 0;
+        std::vector<int> params;
+        int value = 0;
 
-          while (!s.empty()) {
-            uint32_t c = *s.begin();
-            // Always consume; we want to consume the
-            // whole code including the command.
-            s = s.subspan(1);
-            if (c >= '0' && c <= '9') {
-              value *= 10;
-              value += (c - '0');
-            } else if (c == ';') {
-              params.push_back(value);
-              value = 0;
-            } else if (c >= 0x40 && c <= 0x7E) {
-              params.push_back(value);
-              value = 0;
-              return std::make_pair(std::move(params), c);
-            } else {
-              // "intermediate bytes" unsupported / ignored
-            }
+        for (;;) {
+          // If it ends early, we'll ignore it.
+          uint32_t c = CP();
+          if (c == 0) return {{}, 'x'};
+
+          if (c >= '0' && c <= '9') {
+            value *= 10;
+            value += (c - '0');
+          } else if (c == ';') {
+            params.push_back(value);
+            value = 0;
+          } else if (c >= 0x40 && c <= 0x7E) {
+            params.push_back(value);
+            value = 0;
+            return {std::move(params), c};
+          } else {
+            // "intermediate bytes" unsupported / ignored
           }
-
-          return std::make_pair(std::vector<int>(), 'x');
+        }
       }();
 
       // The only command we support is 'm'.
@@ -579,8 +622,8 @@ ParseANSI(const std::string &text_with_codes,
         bool is_bright = false;
 
         if (is_reset) {
-          fg = default_fg;
-          bg = default_bg;
+          current_fg = default_fg;
+          current_bg = default_bg;
         }
 
         for (int p : pleft) {
@@ -588,61 +631,75 @@ ParseANSI(const std::string &text_with_codes,
             is_bright = true;
           } else if (p >= 30 && p <= 37) {
             if (is_bright) {
-              fg = (BRIGHT_RGB[p - 30] << 8) | 0xFF;
+              current_fg = (BRIGHT_RGB[p - 30] << 8) | 0xFF;
             } else {
-              fg = (DARK_RGB[p - 30] << 8) | 0xFF;
+              current_fg = (DARK_RGB[p - 30] << 8) | 0xFF;
             }
-          } else if (p >= 40 && p <= 47) {
-            // Bright only affects foreground, not background.
-            bg = (DARK_RGB[p - 40] << 8) | 0xFF;
+          } else if (p >= 40 && p <= 47) {\
+            // Set background color.
+            // Note: Bright only affects foreground, not background.
+            current_bg = (DARK_RGB[p - 40] << 8) | 0xFF;
           } else if (p >= 90 && p <= 97) {
             // unusual: direct access to bright foreground.
-            fg = (BRIGHT_RGB[p - 90] << 8) | 0xFF;
+            current_fg = (BRIGHT_RGB[p - 90] << 8) | 0xFF;
           } else if (p >= 100 && p <= 107) {
             // unusual: direct access to bright background.
-            bg = (BRIGHT_RGB[p - 100] << 8) | 0xFF;
+            current_bg = (BRIGHT_RGB[p - 100] << 8) | 0xFF;
           } else if (p == 39) {
-            fg = default_fg;
+            current_fg = default_fg;
           } else if (p == 49) {
-            bg = default_bg;
+            current_bg = default_bg;
           } else {
-            if (VERBOSE) printf("Unknown param %d\n", p);
+            // Unknown param; ignore it.
           }
           // TODO: 38, 48 to set RGB colors.
-
         }
+
       } else {
-        if (VERBOSE) printf("Unknown command %c\n", cmd);
+        // unknown command; ignore it.
       }
 
-
     } else {
-      // Encode back as UTF-8.
-      out += UTF8Encode(s[0]);
-      fgs.push_back(fg);
-      bgs.push_back(bg);
-      s = s.subspan(1);
+      // Not an escape character. So we are done.
+      return x;
     }
   }
-
-  return std::make_tuple(std::move(out), std::move(fgs), std::move(bgs));
 }
-#endif
 
 // PERF: For many of these where we call blendpixel in a loop,
 // we could probably benefit by doing premultiplied alpha.
 
 void ImageRGBA::BlendText32(int x, int y, uint32 color, const string &s) {
-  auto SetPixel = [this, color](int xx, int yy) {
-      this->BlendPixel32(xx, yy, color);
-    };
   // SetPixel will clip, but exit early if we are totally off-screen.
   if (y >= height || y < -EmbeddedFont::HEIGHT) return;
-  for (int i = 0; i < (int)s.size(); i++) {
-    uint8 c = s[i];
-    int xx = x + i * EmbeddedFont::WIDTH;
-    if (xx >= width) return;
-    EmbeddedFont::Blit(c, xx, y, SetPixel, [](int, int) {});
+
+  std::string_view sv = s;
+  int xx = x;
+  uint32_t fg = color;
+  uint32_t bg = 0x00000000;
+
+  auto SetPixelFG = [this, &fg](int xx, int yy) {
+      this->BlendPixel32(xx, yy, fg);
+    };
+
+  auto SetPixelBG = [this, &bg](int xx, int yy) {
+      if (bg) {
+        this->BlendPixel32(xx, yy, bg);
+      }
+    };
+
+  while (xx < width) {
+    uint32_t c = ParseANSI(sv,
+                           // default background is transparent.
+                           color, 0x00000000,
+                           fg, bg);
+    // This indicates the end of the string.
+    if (c == 0) return;
+
+    if (c > 0 && c < 256) {
+      EmbeddedFont::Blit((int)c, xx, y, SetPixelFG, SetPixelBG);
+    }
+    xx += EmbeddedFont::WIDTH;
   }
 }
 
