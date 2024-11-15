@@ -659,7 +659,7 @@ struct GameArray {
 
   std::vector<std::deque<uint8_t>> queued;
 
-  void MaybeTriggerMotifs() {
+  bool MaybeTriggerMotifs() {
     // XXX don't always trigger in all of them!
     for (int i = 0; i < NUM_EMUS; i++) {
       if (i != focus_idx) {
@@ -709,6 +709,9 @@ struct GameArray {
             printf("Trigger walljump 3 in emu %d [xlo=%d]\n", i,
                    emu->ReadRAM(PLAYER_X_LO));
             EnqueueMotif(i, walljump_motif_3);
+            focus_idx = i;
+            // speed = Speed::PAUSE;
+            return true;
           } else if (CanMotif2(emu)) {
             printf("Trigger walljump in emu %d\n", i);
             EnqueueMotif(i, walljump_motif_2);
@@ -719,6 +722,7 @@ struct GameArray {
         }
       }
     }
+    return false;
   }
 
   void EnqueueMotif(int game_idx, const std::vector<uint8_t> &motif) {
@@ -746,14 +750,14 @@ struct GameArray {
         std::unique_lock<std::mutex> ml(m);
         work.emplace_back([this, movie_size, i, prev_button, orig, jitter]() {
             uint8_t b = orig;
-            if (i == focus_idx) {
-              // Always do the input faithfully on the focused
-              // game.
-              games[i]->Step(b);
-            } else if (!queued[i].empty()) {
+            if (!queued[i].empty()) {
               uint8_t q = queued[i].front();
               queued[i].pop_front();
               games[i]->Step(q);
+            } else if (i == focus_idx) {
+              // Always do the input faithfully on the focused
+              // game.
+              games[i]->Step(b);
 
             } else if (i >= TURBO_JUMP_IDX && i < TURBO_JUMP_IDX + NUM_TURBO) {
               // The right pace for walljumps is A,0,0. With a proper jump
@@ -1116,7 +1120,9 @@ bool UI::MaybeRunEmulators(uint8_t buttons) {
   if (speed == Speed::PLAY &&
       fps_per.ShouldRun()) {
 
-    game_array->MaybeTriggerMotifs();
+    if (game_array->MaybeTriggerMotifs()) {
+      speed = Speed::PAUSE;
+    }
 
     game_array->Step(buttons);
     return true;
@@ -1954,6 +1960,8 @@ int main(int argc, char **argv) {
 
   UI ui(level);
   ui.Loop();
+
+  printf("Quit %s\n", ColorLevel(level).c_str());
 
   SDL_Quit();
   return 0;
