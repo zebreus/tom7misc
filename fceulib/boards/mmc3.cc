@@ -252,7 +252,7 @@ MMC3::MMC3(FC *fc, CartInfo *info, int prg, int chr, int wram, int battery)
 
   if (wram) {
     mmc3opts |= 1;
-    MMC3_WRAM = (uint8 *)FCEU_gmalloc(wrams);
+    MMC3_WRAM = (uint8 *)FCEU_malloc(wrams);
     TRACEF("MMC3 Init %d %d %d %d", prg, chr, wram, battery);
     fc->cart->SetupCartPRGMapping(0x10, MMC3_WRAM, wrams, true);
     fc->state->AddExState(MMC3_WRAM, wrams, 0, "MRAM");
@@ -748,7 +748,7 @@ struct Mapper74 final : public MMC3 {
   Mapper74(FC *fc, CartInfo *info)
     : MMC3(fc, info, 512, 256, 8, info->battery) {
     CHRRAMSize = 2048;
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSize);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSize);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSize, true);
     fc->state->AddExState(CHRRAM, CHRRAMSize, 0, "CHRR");
   }
@@ -899,7 +899,7 @@ struct Mapper119 final : public MMC3 {
   Mapper119(FC *fc, CartInfo *info)
     : MMC3(fc, info, 512, 64, 0, 0) {
     CHRRAMSize = 8192;
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSize);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSize);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSize, true);
   }
 };
@@ -1004,7 +1004,7 @@ struct Mapper165 final : public MMC3 {
     : MMC3(fc, info, 512, 128, 8, info->battery) {
     fc->ppu->PPU_hook = M165PPU;
     CHRRAMSize = 4096;
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSize);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSize);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSize, true);
     fc->state->AddExState(CHRRAM, CHRRAMSize, 0, "CHRR");
     fc->state->AddExState(EXPREGS, 4, 0, "EXPR");
@@ -1027,7 +1027,7 @@ struct Mapper191 final : public MMC3 {
   Mapper191(FC *fc, CartInfo *info)
     : MMC3(fc, info, 256, 256, 8, info->battery) {
     CHRRAMSize = 2048;
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSize);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSize);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSize, true);
     fc->state->AddExState(CHRRAM, CHRRAMSize, 0, "CHRR");
   }
@@ -1053,7 +1053,7 @@ struct Mapper192 final : public MMC3 {
   Mapper192(FC *fc, CartInfo *info)
     : MMC3(fc, info, 512, 256, 8, info->battery) {
     CHRRAMSize = 4096;
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSize);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSize);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSize, true);
     fc->state->AddExState(CHRRAM, CHRRAMSize, 0, "CHRR");
   }
@@ -1078,7 +1078,7 @@ struct Mapper194 final : public MMC3 {
   Mapper194(FC *fc, CartInfo *info)
     : MMC3(fc, info, 512, 256, 8, info->battery) {
     CHRRAMSize = 2048;
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSize);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSize);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSize, true);
     fc->state->AddExState(CHRRAM, CHRRAMSize, 0, "CHRR");
   }
@@ -1119,10 +1119,10 @@ struct Mapper195 final : public MMC3 {
   Mapper195(FC *fc, CartInfo *info)
     : MMC3(fc, info, 512, 256, 8, info->battery) {
     CHRRAMSize = 4096;
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSize);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSize);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSize, true);
     wramsize = 4096;
-    wramtw = (uint8 *)FCEU_gmalloc(wramsize);
+    wramtw = (uint8 *)FCEU_malloc(wramsize);
     fc->cart->SetupCartPRGMapping(0x10, wramtw, wramsize, true);
     fc->state->AddExState(CHRRAM, CHRRAMSize, 0, "CHRR");
     fc->state->AddExState(wramtw, wramsize, 0, "TRAM");
@@ -1235,7 +1235,7 @@ struct Mapper198 final : public MMC3 {
   Mapper198(FC *fc, CartInfo *info)
     : MMC3(fc, info, 1024, 256, 8, info->battery) {
     wramsize = 4096;
-    wramtw = (uint8 *)FCEU_gmalloc(wramsize);
+    wramtw = (uint8 *)FCEU_malloc(wramsize);
     fc->cart->SetupCartPRGMapping(0x10, wramtw, wramsize, true);
     fc->state->AddExState(wramtw, wramsize, 0, "TRAM");
   }

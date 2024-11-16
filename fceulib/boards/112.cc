@@ -83,7 +83,7 @@ struct Mapper112 final : public CartInterface {
 
   Mapper112(FC *fc, CartInfo *info) : CartInterface(fc) {
     fc->fceu->GameStateRestore = StateRestore;
-    WRAM = (uint8 *)FCEU_gmalloc(8192);
+    WRAM = (uint8 *)FCEU_malloc(8192);
     fc->cart->SetupCartPRGMapping(0x10, WRAM, 8192, true);
     fc->state->AddExState(WRAM, 8192, 0, "WRAM");
     fc->state->AddExVec({

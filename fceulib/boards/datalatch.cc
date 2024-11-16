@@ -88,7 +88,7 @@ struct DataLatch : public CartInterface {
     : CartInterface(fc), latch_init(init), addrreg0(adr0), addrreg1(adr1) {
     fc->fceu->GameStateRestore = StateRestore;
     if (wram_flag) {
-      WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+      WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
       fc->cart->SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, true);
       if (info->battery) {
         info->SaveGame[0] = WRAM;
@@ -128,7 +128,7 @@ struct NROM final : public CartInterface {
   }
 
   NROM(FC *fc, CartInfo *info) : CartInterface(fc) {
-    WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+    WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
     fc->cart->SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, true);
     if (info->battery) {
       info->SaveGame[0] = WRAM;

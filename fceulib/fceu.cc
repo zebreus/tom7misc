@@ -51,10 +51,10 @@
 using namespace std;
 
 FCEU::FCEU(FC *fc) : fc(fc) {
-  GameMemBlock = (uint8*)FCEU_gmalloc(GAME_MEM_BLOCK_SIZE);
-  RAM = (uint8*)FCEU_gmalloc(0x800);
-  XBuf = (uint8*)FCEU_gmalloc(256 * 256);
-  XBackBuf = (uint8*)FCEU_gmalloc(256 * 256);
+  GameMemBlock = (uint8*)FCEU_malloc(GAME_MEM_BLOCK_SIZE);
+  RAM = (uint8*)FCEU_malloc(0x800);
+  XBuf = (uint8*)FCEU_malloc(256 * 256);
+  XBackBuf = (uint8*)FCEU_malloc(256 * 256);
 }
 
 void FCEU::CloseGame() {

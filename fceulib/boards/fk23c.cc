@@ -263,7 +263,7 @@ struct BMCFK23CA final : public BMCFK23C<true> {
   }
 
   BMCFK23CA(FC *fc, CartInfo *info) : BMCFK23C(fc, info) {
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSIZE);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSIZE);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSIZE, true);
     fc->state->AddExState(CHRRAM, CHRRAMSIZE, 0, "CRAM");
   }

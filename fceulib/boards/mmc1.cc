@@ -303,7 +303,7 @@ struct MMC1 final : public CartInterface {
     fc->cart->CHRmask8[0] &= (chr >> 13) - 1;
 
     if (wram) {
-      WRAM = (uint8 *)FCEU_gmalloc(wram * 1024);
+      WRAM = (uint8 *)FCEU_malloc(wram * 1024);
       // mbg 17-jun-08 - this shouldve been cleared to re-initialize save ram
       // ch4 10-dec-08 - nope, this souldn't
       // mbg 29-mar-09 - no time to debate this, we need to keep from breaking
@@ -322,7 +322,7 @@ struct MMC1 final : public CartInterface {
       }
     }
     if (!chr) {
-      CHRRAM = (uint8 *)FCEU_gmalloc(8192);
+      CHRRAM = (uint8 *)FCEU_malloc(8192);
       fc->cart->SetupCartCHRMapping(0, CHRRAM, 8192, true);
       fc->state->AddExState(CHRRAM, 8192, 0, "CHRR");
     }

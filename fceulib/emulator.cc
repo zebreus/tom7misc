@@ -445,7 +445,7 @@ uint32 Emulator::GetYScroll() const {
 }
 
 const char *const Emulator::Opcode(uint8_t op) {
-  return fceulib_2a03_opcode_name[op];
+  return Opcodes::opcode_name[op];
 }
 
 vector<uint8> Emulator::OAM() const {

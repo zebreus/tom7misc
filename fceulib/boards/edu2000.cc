@@ -61,7 +61,7 @@ struct UNLEDU2000 final : public CartInterface {
 
   UNLEDU2000(FC *fc, CartInfo *info) : CartInterface(fc) {
     fc->fceu->GameStateRestore = UNLEDU2000Restore;
-    WRAM = (uint8 *)FCEU_gmalloc(32768);
+    WRAM = (uint8 *)FCEU_malloc(32768);
     fc->cart->SetupCartPRGMapping(0x10, WRAM, 32768, true);
     if (info->battery) {
       info->SaveGame[0] = WRAM;

@@ -26,24 +26,19 @@
 #define _FCEULIB_MEMORY_H
 
 #include <cstdlib>
+#include <cstdint>
 
-#include "../types.h"
+// Like memset, but filling with 32-bit quantities in host byte
+// order. Looks like this assumes n_bytes is a multiple of 4.
+inline void FCEU_dwmemset(void *dest, uint32_t c, int n_bytes) {
+  const int nn = n_bytes >> 2;
+  uint32_t *dest32 = (uint32_t *)dest;
+  for (int i = nn - 1; i >= 0; i--) {
+    dest32[i] = c;
+  }
+}
 
-// #define FCEU_dwmemset(d,c,n) {int _x; for(_x=n-4;_x>=0;_x-=4) *(uint32 *)&(d)[_x]=c;}
-// Looks like memset but for 32-bit quantities, though n is still in bytes. -tom7
-// TODO: See if this is actually any faster than memset; excise if it is
-// not.
-#define FCEU_dwmemset(d, c, n)                  \
-  do {                                          \
-    int _nn = (n) >> 2;                         \
-    uint32 *_dest = (uint32 *)(d);              \
-    for(int _x = _nn - 1; _x >= 0; _x--) {      \
-      _dest[_x] = (c);                          \
-    }                                           \
-  } while(0)
-
-void *FCEU_malloc(uint32 size);
-void *FCEU_gmalloc(uint32 size);
-void FCEU_gfree(void *ptr);
+// Like malloc, but zeroes.
+void *FCEU_malloc(size_t size);
 
 #endif

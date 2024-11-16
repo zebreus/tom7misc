@@ -101,7 +101,7 @@ struct UNLKS7017 final : public CartInterface {
       ((UNLKS7017*)fc->fceu->cartiface)->UNL7017IRQ(a);
     };
 
-    WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+    WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
     fc->cart->SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, true);
     fc->state->AddExState(WRAM, WRAMSIZE, 0, "WRAM");
 

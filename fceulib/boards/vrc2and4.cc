@@ -237,7 +237,7 @@ struct VRC24 : public VRC<is_pirate, is_22> {
       ((VRC24 *)fc->fceu->cartiface)->VRC24IRQHook(a);
     };
 
-    this->WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+    this->WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
     this->fc->cart->SetupCartPRGMapping(0x10, this->WRAM, WRAMSIZE, true);
     this->fc->state->AddExState(this->WRAM, WRAMSIZE, 0, "WRAM");
 

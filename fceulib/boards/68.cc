@@ -169,7 +169,7 @@ struct Mapper68 final : public CartInterface {
 
   Mapper68(FC *fc, CartInfo *info) : CartInterface(fc) {
     fc->fceu->GameStateRestore = StateRestore;
-    WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+    WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
     fc->cart->SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, true);
     if (info->battery) {
       info->SaveGame[0] = WRAM;

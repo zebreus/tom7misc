@@ -890,7 +890,7 @@ bool INes::iNESLoad(const char *name, FceuFile *fp, int OverwriteVidMode) {
 
   /* Trainer */
   if (head.ROM_type & 4) {
-    trainerdata = (uint8 *)FCEU_gmalloc(512);
+    trainerdata = (uint8 *)FCEU_malloc(512);
     fp->FRead(trainerdata, 512, 1);
   }
 

@@ -139,7 +139,7 @@ struct UNLKS7030 final : public CartInterface {
   UNLKS7030(FC *fc, CartInfo *info) : CartInterface(fc) {
     fc->fceu->GameStateRestore = StateRestore;
 
-    WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+    WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
     fc->state->AddExState(WRAM, WRAMSIZE, 0, "WRAM");
 
     fc->state->AddExVec({{&reg0, 1, "REG0"}, {&reg1, 1, "REG1"}});

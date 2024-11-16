@@ -52,7 +52,7 @@ struct KS7037Base : public CartInterface {
   }
 
   KS7037Base(FC *fc, CartInfo *info) : CartInterface(fc) {
-    WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+    WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
     fc->cart->SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, true);
     fc->state->AddExState(WRAM, WRAMSIZE, 0, "WRAM");
 

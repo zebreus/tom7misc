@@ -188,11 +188,11 @@ struct Mapper190 final : public CartInterface {
     };
     // PPU_hook=Mapper190_PPU;
 
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRSIZE);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRSIZE);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRSIZE, true);
     fc->state->AddExState(CHRRAM, CHRSIZE, 0, "CRAM");
 
-    WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+    WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
     fc->cart->SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, true);
     fc->state->AddExState(WRAM, WRAMSIZE, 0, "WRAM");
 

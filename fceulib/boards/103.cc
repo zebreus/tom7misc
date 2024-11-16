@@ -18,7 +18,16 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include "mapinc.h"
+#include <cstdint>
+#include <cstdlib>
+
+#include "../cart.h"
+#include "../fc.h"
+#include "../fceu.h"
+#include "../state.h"
+#include "../utils/memory.h"
+
+using uint8 = uint8_t;
 
 static constexpr int WRAMSIZE = 16384;
 
@@ -111,7 +120,7 @@ struct Mapper103 final : public CartInterface {
   Mapper103(FC *fc, CartInfo *info) : CartInterface(fc) {
     fc->fceu->GameStateRestore = StateRestore;
 
-    WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+    WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
     fc->cart->SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, true);
     fc->state->AddExState(WRAM, WRAMSIZE, 0, "WRAM");
 

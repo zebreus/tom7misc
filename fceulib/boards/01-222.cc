@@ -35,11 +35,21 @@
 
 #include "mapinc.h"
 
+#include <vector>
+#include <cstdint>
+
+#include "../cart.h"
+#include "../state.h"
+#include "../fceu.h"
+#include "../fc.h"
+
+using uint8 = uint8_t;
+
 namespace {
 template<bool is172, bool is173>
 struct Mapper01_222 final : public CartInterface {
   uint8 reg[4] = {}, cmd = 0;
-  vector<SFORMAT> StateRegs;
+  std::vector<SFORMAT> StateRegs;
 
   void Sync() {
     fc->cart->setprg32(0x8000, (reg[2] >> 2) & 1);

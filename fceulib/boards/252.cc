@@ -126,11 +126,11 @@ struct Mapper252 final : public CartInterface {
       ((Mapper252 *)fc->fceu->cartiface)->M252IRQ(a);
     };
 
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSIZE);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSIZE);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSIZE, true);
     fc->state->AddExState(CHRRAM, CHRRAMSIZE, 0, "CRAM");
 
-    WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+    WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
     fc->cart->SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, true);
     fc->state->AddExState(WRAM, WRAMSIZE, 0, "WRAM");
     if (info->battery) {

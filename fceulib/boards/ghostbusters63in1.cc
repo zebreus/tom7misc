@@ -19,16 +19,23 @@
  * 63in1 ghostbusters
  */
 
-#include "mapinc.h"
+#include <cstdint>
 
-static constexpr uint8 banks[4] = {0, 0, 1, 2};
+#include "../cart.h"
+#include "../fc.h"
+#include "../fceu.h"
+#include "../state.h"
+#include "../utils/memory.h"
+#include "../x6502.h"
 
-static constexpr uint32 CHRROMSIZE = 8192;  // dummy CHRROM, VRAM disable
+static constexpr uint8_t banks[4] = {0, 0, 1, 2};
+
+static constexpr uint32_t CHRROMSIZE = 8192;  // dummy CHRROM, VRAM disable
 
 namespace {
 struct Ghostbusters final : public CartInterface {
-  uint8 reg[2], bank;
-  uint8 *CHRROM = nullptr;
+  uint8_t reg[2], bank;
+  uint8_t *CHRROM = nullptr;
 
   void Sync() {
     if (reg[0] & 0x20) {
@@ -84,7 +91,7 @@ struct Ghostbusters final : public CartInterface {
   }
 
   Ghostbusters(FC *fc, CartInfo *info) : CartInterface(fc) {
-    CHRROM = (uint8 *)FCEU_gmalloc(CHRROMSIZE);
+    CHRROM = (uint8_t *)FCEU_malloc(CHRROMSIZE);
     fc->cart->SetupCartPRGMapping(0x10, CHRROM, CHRROMSIZE, false);
     fc->state->AddExState(CHRROM, CHRROMSIZE, 0, "CROM");
 

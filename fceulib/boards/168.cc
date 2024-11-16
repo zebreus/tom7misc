@@ -72,7 +72,7 @@ struct Mapper168 final : public CartInterface {
     fc->fceu->GameStateRestore = StateRestore;
     fc->state->AddExVec({{&reg, 1, "REGS"}});
 
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSIZE);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSIZE);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSIZE, true);
     fc->state->AddExState(CHRRAM, CHRRAMSIZE, 0, "CRAM");
   }

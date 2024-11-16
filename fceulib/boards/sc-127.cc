@@ -100,7 +100,7 @@ struct UNLSC127 final : public CartInterface {
       ((UNLSC127 *)fc->fceu->cartiface)->UNLSC127IRQ();
     };
     fc->fceu->GameStateRestore = StateRestore;
-    WRAM = (uint8 *)FCEU_gmalloc(WRAMSIZE);
+    WRAM = (uint8 *)FCEU_malloc(WRAMSIZE);
     fc->cart->SetupCartPRGMapping(0x10, WRAM, WRAMSIZE, true);
     fc->state->AddExState(WRAM, WRAMSIZE, 0, "WRAM");
     fc->state->AddExVec({{reg, 8, "REGS"},

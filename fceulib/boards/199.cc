@@ -87,7 +87,7 @@ struct Mapper199 final : public MMC3 {
 
   Mapper199(FC *fc, CartInfo *info) :
     MMC3(fc, info, 512, 256, 8, info->battery) {
-    CHRRAM = (uint8 *)FCEU_gmalloc(CHRRAMSIZE);
+    CHRRAM = (uint8 *)FCEU_malloc(CHRRAMSIZE);
     fc->cart->SetupCartCHRMapping(0x10, CHRRAM, CHRRAMSIZE, true);
     fc->state->AddExState(CHRRAM, CHRRAMSIZE, 0, "CHRR");
     fc->state->AddExState(EXPREGS, 4, 0, "EXPR");
