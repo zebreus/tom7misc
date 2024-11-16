@@ -5,6 +5,7 @@
 
 #include "image.h"
 #include "util.h"
+#include "base/logging.h"
 
 using namespace std;
 using uint8 = uint8_t;

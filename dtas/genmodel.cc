@@ -1,5 +1,7 @@
 
+#include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <cstdint>
 #include <mutex>
@@ -7,24 +9,25 @@
 #include <unordered_set>
 
 #include "../fceulib/emulator.h"
+#include "../fceulib/fc.h"
+#include "../fceulib/opcodes.h"
 #include "../fceulib/simplefm2.h"
 #include "../fceulib/x6502.h"
-#include "../fceulib/fc.h"
 
 #include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "emulator-pool.h"
+#include "evaluator.h"
 #include "image.h"
+#include "interval-cover.h"
 #include "mario-util.h"
 #include "mario.h"
-#include "status-bar.h"
-#include "evaluator.h"
-#include "emulator-pool.h"
-#include "arcfour.h"
-#include "randutil.h"
 #include "periodically.h"
-#include "interval-cover.h"
+#include "status-bar.h"
 #include "threadutil.h"
+#include "util.h"
 
 static constexpr const char *ROMFILE = "mario.nes";
 
@@ -32,7 +35,43 @@ static constexpr const char *ROMFILE = "mario.nes";
 #error Please define AOT instrumentation for this one.
 #endif
 
+struct Bank {
+  static constexpr int ORIGIN = 0x8000;
+  // Only the address space from 0x8000-0xFFFF is mapped.
+  // Aborts on a read outside this space.
+  uint8_t Read(uint16_t addr) {
+    CHECK(addr >= ORIGIN) << "Out of ROM address space.";
+    // We could mirror the ROM here if it is small?
+    CHECK((int)addr < ORIGIN + rom.size());
+    return rom[addr - ORIGIN];
+  }
+  std::vector<uint8_t> rom;
+};
+
+static Bank GetPRG() {
+  static constexpr int HEADER_SIZE = 16;
+  std::vector<uint8_t> rombytes = Util::ReadFileBytes(ROMFILE);
+  CHECK(rombytes.size() >= 16 + 32768);
+
+  CHECK(0 == memcmp("NES\x1a", rombytes.data(), 4)) <<
+    "Not a NES file.";
+
+  const int prg_bytes = rombytes[4] * 16384;
+  [[maybe_unused]]
+  const int chr_bytes = rombytes[5] * 8192;
+
+  CHECK(rombytes.size() >= HEADER_SIZE + prg_bytes) << "Not enough "
+    "bytes in file for purported PRG size?";
+  Bank bank;
+  for (int i = 0; i < std::min(prg_bytes, 32768); i++) {
+    bank.rom.push_back(rombytes[HEADER_SIZE + i]);
+  }
+  return bank;
+}
+
 static void GenModel() {
+  Bank prg = GetPRG();
+
   // Not generating any model yet!
   // This is just collecting some statistics to assess the
   // feasibility.
@@ -119,13 +158,19 @@ static void GenModel() {
   printf("There are %d reached instructions.\n",
          (int)reached.size());
 
-  // This is maybe not a great representation, since for multibyte
-  // instructions the PC never takes on the immediate value. So we
-  // have an enormous number of holes. We should probably
-  // disassemble the instruction at the address to get its length.
+  // The PC counts only include the address of the start of the
+  // instruction. So when it is nonzero, we smear this to the
+  // rest of the instruction bytes to get a contiguous region.
   IntervalCover<int64_t> cover(0);
-  for (int addr = 0; addr < 0x10000; addr++) {
-    cover.SetPoint(addr, pc_histo[addr]);
+  for (int addr = 0x8000; addr < 0x10000; addr++) {
+    const int64_t count = pc_histo[addr];
+    if (count > 0) {
+      uint8_t opcode = prg.Read(addr);
+      uint8_t len = Opcodes::opcode_size[opcode];
+      for (int i = 0; i < len; i++) {
+        cover.SetPoint(addr + i, count);
+      }
+    }
   }
 
   for (uint64_t pt = cover.First(); !cover.IsAfterLast(pt);
