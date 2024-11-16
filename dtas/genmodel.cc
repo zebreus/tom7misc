@@ -5,6 +5,7 @@
 #include <memory>
 #include <cstdint>
 #include <mutex>
+#include <string>
 #include <vector>
 #include <unordered_set>
 
@@ -179,9 +180,31 @@ static void GenModel() {
     printf(AWHITE("%04x") "-" AWHITE("%04x") ": %lld\n", (int)s.start,
            (int)s.end, s.data);
   }
+
+  // Output the model as "assembly."
+  std::string content;
+  for (uint64_t pt = cover.First(); !cover.IsAfterLast(pt);
+       pt = cover.Next(pt)) {
+    IntervalCover<int64_t>::Span s = cover.GetPoint(pt);
+    if (s.data > 0) {
+      StringAppendF(&content, ";; [%04x, %04x) %lld times\n",
+                    (int)s.start, (int)s.end, s.data);
+      for (int addr = s.start; addr < s.end; /* in loop */) {
+        if (auto lo = MarioUtil::GetLabel(addr)) {
+          StringAppendF(&content, "%s:\n", lo.value().c_str());
+        }
+        const uint8_t opcode = prg.Read(addr);
+        StringAppendF(&content, "  %s\n", Opcodes::opcode_name[opcode]);
+        addr += Opcodes::opcode_size[opcode];
+      }
+    }
+  }
+  Util::WriteFile("mario.model", content);
+  printf("Wrote mario.model.\n");
+
+
+
 }
-
-
 
 int main(int argc, char **argv) {
   ANSI::Init();

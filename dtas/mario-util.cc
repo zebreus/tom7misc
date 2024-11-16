@@ -3,10 +3,12 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -52,10 +54,33 @@ struct MemoryMap {
   std::vector<std::string> names;
 };
 
-static const MemoryMap &GetMemoryMap() {
+struct Labels {
+  Labels(const std::string &filename) {
+    for (const std::string &line : Util::NormalizeLines(
+             Util::ReadFileToLines(filename))) {
+      if (line.empty() || line[0] == '#') continue;
+
+      std::vector<std::string> parts = Util::Split(line, ' ');
+      CHECK(parts.size() == 2) << "Bad memory map: " << filename;
+
+      int addr = strtol(parts[0].c_str(), nullptr, 16);
+      names[addr] = parts[1];
+    }
+  }
+
+  std::unordered_map<uint16_t, std::string> names;
+};
+
+static const MemoryMap &GetRamMap() {
   const MemoryMap *mm = new MemoryMap("mario.map");
   return *mm;
 }
+
+static const Labels &GetRomLabels() {
+  const Labels *ls = new Labels("mario-prg.map");
+  return *ls;
+}
+
 }  // namespace
 
 
@@ -229,5 +254,12 @@ std::string MarioUtil::FormatNum(uint64_t n) {
 
 std::string MarioUtil::DescribeAddress(uint16_t addr) {
   if (addr >= 0x800) return StringPrintf("%04x", addr);
-  return GetMemoryMap().names[addr];
+  return GetRamMap().names[addr];
+}
+
+std::optional<std::string> MarioUtil::GetLabel(uint16_t addr) {
+  const auto &l = GetRomLabels().names;
+  auto it = l.find(addr);
+  if (it == l.end()) return std::nullopt;
+  return {it->second};
 }

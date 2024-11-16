@@ -60,7 +60,9 @@ int main(int argc, char **argv) {
   }
 
   if (!got_type || args.size() != 2) {
-    fprintf(stderr, "usage: makeimage.exe [-mirror n] -prg|-chr cart.nes cart.rom\n");
+    fprintf(stderr,
+            "usage: makeimage.exe [-mirror n] -prg|-chr "
+            "cart.nes cart.rom\n");
     return -1;
   }
 

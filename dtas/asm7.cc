@@ -948,8 +948,8 @@ static void Assemble(const std::string &asm_file,
         // There's only one special case here (for STA, #), which doesn't
         // exist (and would not make sense).
         [&]{
-          CHECK(mode.type != Addressing::ACCUMULATOR) << "Illegal addressing mode."
-                                                      << Error();
+          CHECK(mode.type != Addressing::ACCUMULATOR) <<
+            "Illegal addressing mode." << Error();
           if (mode.type == Addressing::IMMEDIATE) {
             CHECK(mnemonic != "sta") << "Illegal addressing mode." << Error();
             EmitByte(opcode | 0b000'010'00);

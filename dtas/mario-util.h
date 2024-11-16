@@ -4,6 +4,7 @@
 #define _MARIO_UTIL_H
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -61,7 +62,12 @@ struct MarioUtil {
 
   static std::string FormatNum(uint64_t n);
 
+  // RAM is 0000 to 0800.
   static std::string DescribeAddress(uint16_t addr);
+
+  // For ROM addresses. If the address has a symbolic label (from the
+  // assembly file), return it.
+  static std::optional<std::string> GetLabel(uint16_t addr);
 };
 
 inline bool operator== (const MarioUtil::Pos &a, const MarioUtil::Pos &b) {
