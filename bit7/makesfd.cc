@@ -6,17 +6,17 @@
 // TODO: I changed this encoding and I need to update the DFX fonts!
 
 #include <cstdint>
+#include <map>
+#include <set>
 #include <string>
 #include <vector>
-#include <set>
-#include <map>
 
-#include "util.h"
-#include "image.h"
 #include "base/logging.h"
+#include "font-image.h"
 #include "fonts/island-finder.h"
 #include "fonts/ttf.h"
-#include "font-image.h"
+#include "image.h"
+#include "util.h"
 
 using namespace std;
 using uint8 = uint8_t;

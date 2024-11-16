@@ -1,7 +1,8 @@
 #ifndef _FCEULIB_GIT_H
 #define _FCEULIB_GIT_H
 
-#include "utils/md5.h"
+#include <array>
+#include <cstdint>
 
 enum EGIT {
   GIT_CART = 0,  // Cart
@@ -78,7 +79,7 @@ struct FCEUGI {
   // Special cart expansion: DIP switches, barcode reader, etc.
   ESIS cspecial = SIS_NONE;
 
-  MD5DATA MD5;
+  std::array<uint8_t, 16> MD5;
 };
 
 #endif

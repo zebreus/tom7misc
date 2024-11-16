@@ -44,31 +44,4 @@ using uint64 = uint64_t;
 #define DISABLE_VIDEO 0
 #endif
 
-// XXX why are styles 1 and 3 the same?
-#if PSS_STYLE==2
-
-#define PSS "\\"
-#define PS '\\'
-
-#elif PSS_STYLE==1
-
-#define PSS "/"
-#define PS '/'
-
-#elif PSS_STYLE==3
-
-#define PSS "\\"
-#define PS '\\'
-
-#elif PSS_STYLE==4
-
-#define PSS ":"
-#define PS ':'
-
-#else
-
-#error PSS_STYLE undefined or invalid; see "types.h" for possible values, and add as compile-time option.
-
-#endif
-
 #endif

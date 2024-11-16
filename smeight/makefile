@@ -12,7 +12,7 @@ OPT=-O2
 SYMBOLS=-g
 
 # to get assembly listing
-# g++ -DPSS_STYLE=1 -m64 -O2 -g -D__MINGW32__ -DHAVE_ALLOCA -I "../cc-lib" -I "../cc-lib/city" -I ../fceulib   --std=c++11 -Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I SDL/include -c -g -Wa,-alh smeight.cc > smeight.s
+# g++ -m64 -O2 -g -D__MINGW32__ -DHAVE_ALLOCA -I "../cc-lib" -I "../cc-lib/city" -I ../fceulib   --std=c++11 -Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I SDL/include -c -g -Wa,-alh smeight.cc > smeight.s
 
 # Tom, you may need to do this:
 # export PATH=/c/TDM-GCC-64/bin:${PATH}
@@ -59,7 +59,7 @@ PROFILE=
 INCLUDES=-I "../cc-lib" -I "../cc-lib/city" -I ../fceulib
 
 #  -DNOUNZIP -DDUMMY_UI -DHAVE_ASPRINTF  -DNOWINSTUFF -Wno-write-strings
-CPPFLAGS= -DPSS_STYLE=1 -m64 $(OPT) $(SYMBOLS) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++17
+CPPFLAGS= -m64 $(OPT) $(SYMBOLS) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++17
 
 CCLIB_OBJECTS=../cc-lib/util.o ../cc-lib/arcfour.o ../cc-lib/base/stringprintf.o ../cc-lib/city/city.o ../cc-lib/textsvg.o ../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/sdl/sdlutil.o ../cc-lib/base/logging.o
 

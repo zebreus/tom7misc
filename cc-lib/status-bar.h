@@ -13,6 +13,7 @@
 #include <mutex>
 
 #include "base/port.h"
+#include "timer.h"
 
 // Thread safe.
 struct StatusBar {
@@ -36,6 +37,13 @@ struct StatusBar {
   // lines.
   void EmitStatus(const std::string &s);
 
+  // Output an ANSI progress indicator in the last line of the status.
+  // This is a convenience method since it is a very common use.
+  // Uses the time since the status bar object was created. If you
+  // want something else, just call Emit(ANSI::ProgressBar(...)).
+  void Progressf(int64_t numer, int64_t denom, const char *format, ...);
+  PRINTF_ATTRIBUTE(3, 4);
+
   // Update a particular line of the status bar. The index must be
   // in [0, num_lines). Immediately outputs the entire status bar, so
   // you should prefer one of the above routines if you are building the
@@ -54,6 +62,7 @@ struct StatusBar {
   bool first = true;
   // Always num_lines in length.
   std::vector<std::string> prev_status_lines;
+  Timer timer;
 };
 
 

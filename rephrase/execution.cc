@@ -1063,7 +1063,7 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::STRING_FIRST_CODEPOINT: {
     const std::string &s = GetString("string-first-codepoint");
     if (s.empty()) return Obj({}, state);
-    const auto &[len, cp] = UTF::UTF8ToUTF32(s.data(), s.size());
+    const auto &[len, cp] = UTF8::ParsePrefix(s.data(), s.size());
     std::string cp_field = StringPrintf(
         "%ccp", ObjectFieldTypeTag(ObjectFieldType::INT));
     std::string len_field = StringPrintf(

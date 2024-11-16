@@ -7,6 +7,7 @@
 
 #include "util.h"
 #include "ansi.h"
+#include "timer.h"
 
 using namespace std;
 
@@ -42,6 +43,18 @@ void StatusBar::Statusf(const char* format, ...) PRINTF_ATTRIBUTE(1, 2) {
   StringAppendV(&result, format, ap);
   va_end(ap);
   EmitStatus(result);
+}
+
+void StatusBar::Progressf(int64_t numer, int64_t denom,
+                          const char *format, ...) {
+  va_list ap;
+  va_start(ap, format);
+  string result;
+  StringAppendV(&result, format, ap);
+  va_end(ap);
+  EmitLine(num_lines - 1,
+           ANSI::ProgressBar(numer, denom, result,
+                             timer.Seconds()));
 }
 
 void StatusBar::EmitStatus(const std::string &s) {

@@ -31,6 +31,7 @@
 #include "re2/re2.h"
 #include "util.h"
 
+[[maybe_unused]]
 static constexpr int VERBOSE = 1;
 
 enum TokenType {

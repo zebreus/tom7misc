@@ -3,18 +3,8 @@
 
 // XXX Merge with cc-lib's utf8.h
 
-#include <utility>
 #include <cstdint>
 #include <string_view>
-
-struct UTF {
-  // Convert up to len bytes of utf8 data to get one codepoint. Return
-  // the number of bytes read and the codepoint. If the data are invalid,
-  // reads one byte and returns 0xFFFFFFFF, which is an invalid codepoint.
-  static std::pair<int, uint32_t> UTF8ToUTF32(const char *utf8, int len);
-
-  static constexpr uint32_t INVALID = 0xFFFFFFFF;
-};
 
 // Iterate over the codepoints in a string.
 struct UTF8Codepoints {
