@@ -20,28 +20,28 @@
 
 
 // These are "bold" or "bright" foreground colors.
-// Note they explicitly set the background to black.
-#define ANSI_RED "\x1B[1;31;40m"
-#define ANSI_GREY "\x1B[1;30;40m"
-#define ANSI_BLUE "\x1B[1;34;40m"
-#define ANSI_CYAN "\x1B[1;36;40m"
-#define ANSI_YELLOW "\x1B[1;33;40m"
-#define ANSI_GREEN "\x1B[1;32;40m"
-#define ANSI_WHITE "\x1B[1;37;40m"
-#define ANSI_PURPLE "\x1B[1;35;40m"
+// Note: These used to set the background to black explicitly,
+// but that seems to be a bad idea.
+#define ANSI_RED "\x1B[1;31m"
+#define ANSI_GREY "\x1B[1;30m"
+#define ANSI_BLUE "\x1B[1;34m"
+#define ANSI_CYAN "\x1B[1;36m"
+#define ANSI_YELLOW "\x1B[1;33m"
+#define ANSI_GREEN "\x1B[1;32m"
+#define ANSI_WHITE "\x1B[1;37m"
+#define ANSI_PURPLE "\x1B[1;35m"
 #define ANSI_RESET "\x1B[m"
 
 // These are "regular" foreground colors.
-// They also set the background to black.
-#define ANSI_DARK_RED "\x1B[31;40m"
+#define ANSI_DARK_RED "\x1B[31m"
 // dark grey = black
-#define ANSI_DARK_GREY "\x1B[30;40m"
-#define ANSI_DARK_BLUE "\x1B[34;40m"
-#define ANSI_DARK_CYAN "\x1B[36;40m"
-#define ANSI_DARK_YELLOW "\x1B[33;40m"
-#define ANSI_DARK_GREEN "\x1B[32;40m"
-#define ANSI_DARK_WHITE "\x1B[37;40m"
-#define ANSI_DARK_PURPLE "\x1B[35;40m"
+#define ANSI_DARK_GREY "\x1B[30m"
+#define ANSI_DARK_BLUE "\x1B[34m"
+#define ANSI_DARK_CYAN "\x1B[36m"
+#define ANSI_DARK_YELLOW "\x1B[33m"
+#define ANSI_DARK_GREEN "\x1B[32m"
+#define ANSI_DARK_WHITE "\x1B[37m"
+#define ANSI_DARK_PURPLE "\x1B[35m"
 
 #define ARED(s) ANSI_RED s ANSI_RESET
 #define AGREY(s) ANSI_GREY s ANSI_RESET

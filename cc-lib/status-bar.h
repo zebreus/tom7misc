@@ -44,6 +44,9 @@ struct StatusBar {
   void Progressf(int64_t numer, int64_t denom, const char *format, ...);
   PRINTF_ATTRIBUTE(3, 4);
 
+  // TODO: Finish(), which replaces the final line of status with
+  // "complete" progress bar, giving the total time?
+
   // Update a particular line of the status bar. The index must be
   // in [0, num_lines). Immediately outputs the entire status bar, so
   // you should prefer one of the above routines if you are building the
