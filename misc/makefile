@@ -12,11 +12,11 @@ else
   CC=gcc
 endif
 
-LFLAGS=-static
+# LFLAGS=-static
 CC_LIB=../cc-lib
 
 # -fsanitize=address -fsanitize=undefined
-CXXFLAGS= -mtune=native -march=native -pipe -Wall -I $(CC_LIB) --std=c++20 -O3 -static $(FLTO)
+CXXFLAGS= -mtune=native -march=native -pipe -Wall -I $(CC_LIB) --std=c++20 -O3  $(FLTO)
 
 # -Wno-write-strings
 
@@ -83,6 +83,9 @@ decompress.exe : decompress.o $(CC_LIB_OBJECTS) $(CC_LIB_ZIP)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 maxsquare.exe : maxsquare.o $(CC_LIB_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
+santa.exe : santa.o $(CC_LIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 clicks.exe : clicks.o $(CC_LIB_OBJECTS) $(CC_LIB)/mp3.o $(CC_LIB_IMAGE)
