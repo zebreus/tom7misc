@@ -1,4 +1,4 @@
-default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe minus-validate.exe minus-map.exe minus-query.exe asm7.exe
+default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe minus-validate.exe minus-map.exe minus-query.exe modeling_test.exe asm7.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -10,8 +10,23 @@ ifeq ($(UNAME),Cygwin)
   PLATFORM_LFLAGS=-lpsapi -Wl,--subsystem,console -static
   CL_CFLAGS="-I$(AMDSDK)/include"
   CL_LFLAGS='-L${AMDSDK}/lib/${AMD_ARCH}' -lOpenCL
+else ifeq ($(UNAME),Darwin)
+
+  CXX=g++
+  CC=gcc
+
+  # Check if g++ is actually clang
+  ifeq ($(shell $(CXX) -v 2>&1 | grep "clang version" | wc -l | tr -cd '0-9'), 1)
+    CLANG=true
+    # not supported on osx?
+    # PLATFORM_LDFLAGS += -Wl,--stack,167772160
+  else
+    # g++ says it supports --size but it doesn't work
+    PLATFORM_LDFLAGS += -Wl,-z,stack-size=167772160
+  endif
+
 else
-  # Linux
+# Linux
   CXX=g++
   CC=gcc
 
@@ -124,7 +139,7 @@ genmodel.exe : genmodel.o mario-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-modeling_test.exe : modeling_test.o modeling.o $(OBJECTS)
+byteset_test.exe : byteset_test.o byteset.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
