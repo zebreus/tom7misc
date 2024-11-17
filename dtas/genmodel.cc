@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <unordered_set>
 
@@ -23,8 +24,10 @@
 #include "evaluator.h"
 #include "image.h"
 #include "interval-cover.h"
+#include "map-util.h"
 #include "mario-util.h"
 #include "mario.h"
+#include "modeling.h"
 #include "periodically.h"
 #include "status-bar.h"
 #include "threadutil.h"
@@ -35,19 +38,6 @@ static constexpr const char *ROMFILE = "mario.nes";
 #ifndef AOT_INSTRUMENTATION
 #error Please define AOT instrumentation for this one.
 #endif
-
-struct Bank {
-  static constexpr int ORIGIN = 0x8000;
-  // Only the address space from 0x8000-0xFFFF is mapped.
-  // Aborts on a read outside this space.
-  uint8_t Read(uint16_t addr) {
-    CHECK(addr >= ORIGIN) << "Out of ROM address space.";
-    // We could mirror the ROM here if it is small?
-    CHECK((int)addr < ORIGIN + rom.size());
-    return rom[addr - ORIGIN];
-  }
-  std::vector<uint8_t> rom;
-};
 
 static Bank GetPRG() {
   static constexpr int HEADER_SIZE = 16;
@@ -84,19 +74,23 @@ static void GenModel() {
   MarioUtil::WarpTo(emu.get(), 0xF4, 0x6B, 0);
 
   std::vector<uint8_t> start_state = emu->SaveUncompressed();
+
   Evaluator eval(&emu_pool, emu.get());
 
   // ArcFour rc("genmodel");
 
   std::unordered_set<uint16_t> reached;
 
+  // Should set higher for real times.
+  // const int NUM_REPS = 10000;
+  const int NUM_REPS = 1000;
+
   std::mutex m;
   Periodically status_per(0.5);
   StatusBar status(1);
-  const int NUM_REPS = 10000;
   int done = 0;
   ParallelComp(
-      10000,
+      NUM_REPS,
       [&](int idx) {
         ArcFour rc(StringPrintf("genmodel.%lld", idx));
         auto emu = emu_pool.Acquire();
@@ -156,8 +150,10 @@ static void GenModel() {
       12);
 
   // Output histo.
-  printf("There are %d reached instructions.\n",
+  printf("There are " AWHITE("%d") " reached instructions.\n",
          (int)reached.size());
+
+  std::unordered_map<uint8_t, int64_t> opcode_count;
 
   // The PC counts only include the address of the start of the
   // instruction. So when it is nonzero, we smear this to the
@@ -167,10 +163,21 @@ static void GenModel() {
     const int64_t count = pc_histo[addr];
     if (count > 0) {
       uint8_t opcode = prg.Read(addr);
+      opcode_count[opcode] += count;
       uint8_t len = Opcodes::opcode_size[opcode];
       for (int i = 0; i < len; i++) {
         cover.SetPoint(addr + i, count);
       }
+    }
+  }
+
+  printf("There are " AWHITE("%d") " distinct opcodes reached.\n",
+         (int)opcode_count.size());
+  for (const auto &[opcode, count] :
+         CountMapToDescendingVector(opcode_count)) {
+    if (count > 0) {
+      printf("%lld" AGREY(" × ") AYELLOW("%02x") ": %s\n",
+             count, opcode, Opcodes::opcode_name[opcode]);
     }
   }
 
@@ -201,10 +208,8 @@ static void GenModel() {
   }
   Util::WriteFile("mario.model", content);
   printf("Wrote mario.model.\n");
-
-
-
 }
+
 
 int main(int argc, char **argv) {
   ANSI::Init();

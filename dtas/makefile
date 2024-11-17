@@ -124,6 +124,10 @@ genmodel.exe : genmodel.o mario-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+modeling_test.exe : modeling_test.o modeling.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 mario.rom : mario.asm asm7.exe
 	./asm7.exe mario.asm $@
 

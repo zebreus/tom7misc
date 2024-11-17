@@ -17,28 +17,23 @@
 (assert (= initial-state (state initial-memory #x00 #x00 #x00 #x00)))
 
 ;; we say now that there is a function from time to a machine state.
+;; This could be a function, but arrays seem to work a little better (?)
 ; (declare-fun trace (Int) State)
 ; (assert (= (trace 0) initial-state))
 (declare-const trace (Array Int State))
 (assert (= (select trace 0) initial-state))
 
-; (assert
-;  (forall
-;   ((trace-idx Int))
-;   (implies (<= trace-idx 0) (= (trace trace-idx) initial-state))))
-;
-;; the index determines
-
-;; instruction 0: read memory at location 0 in to the register a.
-;; (declare-const memory0 Memory)
-
-
-;; now we give the graph.
-
 (assert
  (forall
   ((trace-idx Int))
-  (implies (and (> trace-idx 0) (< trace-idx 50))
+  (implies (<= trace-idx 0) (= (select trace trace-idx) initial-state))))
+
+;; Now we give a formula for computing state n+1 from state n, but
+;; only within a finite range.
+(assert
+ (forall
+  ((trace-idx Int))
+  (implies (and (> trace-idx 0) (< trace-idx 10))
   (let ((state-in (select trace trace-idx))
         (state-out (select trace (+ trace-idx 1))))
     (let ((pc (reg-pc state-in)))
@@ -48,6 +43,19 @@
       )))
  ))
 
+;; facts
+(assert (forall
+         ((trace-idx Int))
+         (= (mem (select trace trace-idx))
+            (mem (select trace (+ trace-idx 1))))))
+
+;;
+(assert (forall
+         ((trace-idx Int))
+         (implies (and (> trace-idx 0) (< trace-idx 50))
+                  (= (reg-pc (select trace trace-idx))
+                     ((_ int2bv 8) trace-idx))
+                  )))
 
 (check-sat)
 (get-model)
