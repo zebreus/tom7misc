@@ -240,6 +240,62 @@ static void TestByteSet64Intervals() {
   }
 }
 
+static void TestByteSet64Add() {
+  {
+    ByteSet64 bs;
+    for (int i = 0; i < 10; i++) {
+      bs.Add(i);
+      CHECK(bs.Contains(i)) << i << "\n" << ByteSet64String(bs);
+    }
+    // It cannot fit as individuals, and is not empty.
+    CHECK(bs.type == ByteSet64::RANGES);
+  }
+
+  {
+    ByteSet64 bs;
+    for (int i = 0; i < 256; i += 2) {
+      bs.Add(i);
+      CHECK(bs.Contains(i));
+    }
+
+    for (int i = 0; i < 256; i += 2) {
+      CHECK(bs.Contains(i));
+    }
+  }
+
+  ArcFour rc("add");
+  for (int iter = 0; iter < 10000; iter++) {
+    ByteSet64 s;
+    int n = RandTo(&rc, 7);
+    std::vector<std::pair<int, int>> ranges;
+    for (int i = 0; i < n; i++) {
+      ranges.emplace_back(rc.Byte(), rc.Byte());
+    }
+
+    for (const auto &[start, len] : ranges) {
+      for (int v = 0; v < len; v++) {
+        s.Add(start + v);
+        CHECK(s.Contains(start + v));
+      }
+    }
+
+    for (const auto &[start, len] : ranges) {
+      for (int v = 0; v < len; v++) {
+        CHECK(s.Contains(start + v));
+      }
+    }
+  }
+}
+
+static void TestByteSet64AddHeuristics() {
+  {
+    ByteSet64 bs;
+    bs.type = ByteSet64::RANGES;
+    // TODO: Construct some interesting insertions.
+  }
+
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -252,6 +308,9 @@ int main(int argc, char **argv) {
   TestByteSet64Universal();
   TestByteSet64OneMissing();
   TestByteSet64Intervals();
+
+  TestByteSet64Add();
+  TestByteSet64AddHeuristics();
 
   printf("OK\n");
   return 0;

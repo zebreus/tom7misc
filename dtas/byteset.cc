@@ -46,6 +46,143 @@ int ByteSet64::Size() const {
   return count;
 }
 
+void ByteSet64::Add(uint8_t v) {
+  auto AddToRanges = [this](uint8_t v) {
+      if (false)
+      printf("AddToRanges %02x. Currently: "
+             "%02x %02x %02x %02x %02x %02x %02x\n",
+             v,
+             payload[0],
+             payload[1],
+             payload[2],
+             payload[3],
+             payload[4],
+             payload[5],
+             payload[6]);
+      CHECK(type == RANGES);
+      // PERF: Better heuristics can produce better intervals here.
+      // PERF: We should also merge intervals once they overlap.
+      int bestscore = 9999;
+      int besti = -1;
+      uint8_t beststart = 0;
+      uint8_t bestlen = 0;
+      for (int i = 0; i < 3; i++) {
+        int start = payload[i * 2];
+        int length = payload[i * 2 + 1];
+        if (InInterval(start, length, v)) {
+          // Already included.
+          return;
+        }
+
+        // We can always include the point unless
+        // the length is already 255.
+        if (length < 255) {
+          // One past end. So 0 is the very end.
+          const uint8_t end = start + length;
+          // consider wrapping around.
+          if (length == 0) {
+            // Can claim an empty interval. But
+            // this is not better than extending
+            // an existing one.
+            if (2 < bestscore) {
+              besti = i;
+              bestscore = 2;
+              beststart = v;
+              bestlen = 1;
+            }
+          } else if (start == 0 && v == 255) {
+            besti = i;
+            bestscore = 1;
+            beststart = 255;
+            bestlen = length + 1;
+          } else if (v == 0 && end == 255) {
+            besti = i;
+            bestscore = 1;
+            beststart = start;
+            bestlen = length + 1;
+          } else if (v < start) {
+            // Expand downward.
+            int dist = start - v;
+            if (dist < bestscore) {
+              besti = i;
+              bestscore = dist;
+              beststart = v;
+              bestlen = length + dist;
+            }
+          } else if (v >= end) {
+            int dist = (int)(v - end) + 1;
+            if (dist < bestscore) {
+              besti = i;
+              bestscore = dist;
+              beststart = start;
+              bestlen = length + dist;
+            }
+          } else {
+            // TODO: Handle extending wraparound intervals.
+          }
+        }
+      }
+
+      if (besti == -1) {
+        payload[0] = 0;
+        payload[1] = 255;
+        payload[2] = 255;
+        payload[3] = 1;
+        payload[4] = 0;
+        payload[5] = 0;
+        payload[6] = 0;
+      } else {
+        payload[besti * 2] = beststart;
+        payload[besti * 2 + 1] = bestlen;
+      }
+    };
+
+  switch (type) {
+  case EMPTY: {
+    type = VALUES;
+    payload[0] = v;
+    for (int i = 1; i < 7; i++) {
+      payload[i] = 0;
+    }
+    break;
+  }
+
+  case VALUES: {
+    for (int i = 0; i < 7; i++) {
+      if (payload[i] == v) return;
+      if (i > 0 && payload[i] == payload[i - i]) {
+        // If there's a duplicate, then we have space
+        // to replace it.
+        payload[i] = v;
+        return;
+      }
+    }
+
+    // Otherwise, we need to create intervals.
+    // std::sort(payload.data(), payload.data() + 7);
+    uint8_t tmp[7];
+    for (int i = 0; i < 7; i++) {
+      tmp[i] = payload[i];
+      payload[i] = 0;
+    }
+    type = RANGES;
+    for (int i = 0; i < 7; i++) {
+      AddToRanges(tmp[i]);
+    }
+    // And the one we are trying to add.
+    AddToRanges(v);
+    break;
+  }
+
+  case RANGES:
+    AddToRanges(v);
+    break;
+
+  default:
+    LOG(FATAL) << "Unknown type";
+  }
+}
+
 ByteSet64::ByteSet64(const ByteSet& s) {
   if (s.Empty()) {
     type = EMPTY;
@@ -75,7 +212,7 @@ ByteSet64::ByteSet64(const ByteSet& s) {
     payload[2] = 255;
     payload[3] = 1;
     payload[4] = 0;
-    payload[4] = 0;
+    payload[5] = 0;
     return;
   }
 

@@ -1,3 +1,7 @@
+// Various representations of a set of bytes, for program
+// analysis applications.
+//
+// TODO: To cc-lib?
 
 #ifndef _BYTESET_H
 #define _BYTESET_H
@@ -85,6 +89,22 @@ struct ByteSet {
 };
 
 struct ByteSet64 {
+  // Deterministic. But note that there are multiple ways of
+  // representing a set, and this must be lossy for cardinality
+  // reasons. Always represents a superset of the input (and
+  // ideally the same set).
+  ByteSet64(const ByteSet &s);
+  ByteSet64() : type(EMPTY) {
+    for (int i = 0; i < 7; i++) payload[i] = 0;
+  }
+
+  bool Contains(uint8_t) const;
+  // Not cheap because of the possibility of duplicate
+  // values or overlapping ranges.
+  int Size() const;
+
+  void Add(uint8_t b);
+
   // The representation always fits in 8 bytes, but uses
   // different formats.
   //
@@ -95,8 +115,8 @@ struct ByteSet64 {
   // known-0).
   enum Type : uint8_t {
     EMPTY = 0,
-    // 7 specific values in ascending order. Repeat the
-    // last value if fewer than 7 in the set.
+    // 7 specific values. To store fewer than 7 values,
+    // repeat the last value.
     VALUES = 1,
     // 3 ranges, of the form (start,length). Order by
     // start byte and use ranges with length=0 if there.
@@ -107,18 +127,11 @@ struct ByteSet64 {
   uint8_t type = 0;
   uint8_t payload[7] = {};
 
-  bool Contains(uint8_t) const;
-  // Not cheap because of the possibility of duplicate
-  // values or overlapping ranges.
-  int Size() const;
-
-  // Deterministic. But note that there are multiple ways of
-  // representing a set, and this must be lossy for cardinality
-  // reasons. Always represents a superset of the input (and
-  // ideally the same set).
-  ByteSet64(const ByteSet &s);
-  ByteSet64() : type(EMPTY) {
-    for (int i = 0; i < 7; i++) payload[i] = 0;
+  static bool InInterval(uint8_t start, uint8_t len, uint8_t v) {
+    int end = (int)start + (int)len;
+    if (v >= start && v < end) return true;
+    if (v < start && v + 256 < end) return true;
+    return false;
   }
 };
 static_assert(sizeof(ByteSet64) == 8);
