@@ -6,6 +6,7 @@
 #include <vector>
 #include <bitset>
 
+#include "byteset.h"
 #include "base/stringprintf.h"
 #include "../fceulib/emulator.h"
 #include "../fceulib/x6502.h"
@@ -22,4 +23,25 @@ State State::FromEmulator(const Emulator *emu) {
     state.ram[i].Add(emu->ReadRAM(i));
   }
   return state;
+}
+
+bool EnterBlock(uint16_t addr, const State &state) {
+  std::unordered_map<uint16_t, int> block_index;
+  std::vector<BasicBlock> blocks;
+
+  auto it = block_index.find(addr);
+  if (it == block_index.end()) {
+    // New block.
+    block_index[addr] = blocks.size();
+    blocks.emplace_back(BasicBlock{.start_addr = addr, .state_in = state});
+    return true;
+  } else {
+
+  }
+
+}
+
+bool Modeling::Expand() {
+  //
+
 }

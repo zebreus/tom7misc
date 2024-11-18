@@ -8,11 +8,9 @@
 
 #include <cstddef>
 #include <iterator>
-#include <vector>
 #include <cstdint>
 #include <bitset>
-
-#include "base/logging.h"
+#include <compare>
 
 // Each of the following is a lattice (i.e. has subset, union, and
 // intersection operations) representing a set of bytes.
@@ -42,8 +40,7 @@ struct ByteSet {
   }
 
   // Allows iterating over bytes that are set. Note that this
-  // always takes 256 steps to iterate over the set, even if it
-  // is sparse.
+  // internally iterates over all 256 values, even if it is sparse.
   class const_iterator {
    public:
     using value_type = uint8_t;
@@ -79,6 +76,25 @@ struct ByteSet {
   const_iterator begin() const { return const_iterator(this, 0); }
   const_iterator end() const { return const_iterator(this, 256); }
 
+  // Weirdly, we need both operator== and operator<=>.
+  bool operator ==(const ByteSet &other) const {
+    return member == other.member;
+  }
+
+  std::strong_ordering operator <=>(const ByteSet &other) const {
+    // PERF: Again, with direct access to words, we could do
+    // this much faster.
+    for (int i = 0; i < 256; i++) {
+      bool a = member.test(i);
+      bool b = other.member.test(i);
+      if (a != b) {
+        return a ? std::strong_ordering::greater :
+          std::strong_ordering::less;
+      }
+    }
+    return std::strong_ordering::equal;
+  }
+
  private:
   friend class const_iterator;
   // TODO: I think I can make this more efficient. Iterating
@@ -104,6 +120,9 @@ struct ByteSet64 {
   int Size() const;
 
   void Add(uint8_t b);
+
+  bool operator ==(const ByteSet64 &other) const;
+  std::strong_ordering operator <=>(const ByteSet64 &other) const;
 
   // The representation always fits in 8 bytes, but uses
   // different formats.
@@ -132,6 +151,17 @@ struct ByteSet64 {
     if (v >= start && v < end) return true;
     if (v < start && v + 256 < end) return true;
     return false;
+  }
+  void Set(uint8_t typ, uint8_t p0 = 0, uint8_t p1 = 0, uint8_t p2 = 0,
+           uint8_t p3 = 0, uint8_t p4 = 0, uint8_t p5 = 0, uint8_t p6 = 0) {
+    type = typ;
+    payload[0] = p0;
+    payload[1] = p1;
+    payload[2] = p2;
+    payload[3] = p3;
+    payload[4] = p4;
+    payload[5] = p5;
+    payload[6] = p6;
   }
 };
 static_assert(sizeof(ByteSet64) == 8);

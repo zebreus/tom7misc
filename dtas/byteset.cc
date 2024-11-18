@@ -1,12 +1,15 @@
 
-#include "modeling.h"
+#include "byteset.h"
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
-#include <vector>
-#include <bitset>
+#include <cstdio>
 
 #include "base/stringprintf.h"
+#include "base/logging.h"
+
+static constexpr bool VERBOSE = false;
 
 bool ByteSet64::Contains(uint8_t b) const {
   switch (type) {
@@ -48,17 +51,18 @@ int ByteSet64::Size() const {
 
 void ByteSet64::Add(uint8_t v) {
   auto AddToRanges = [this](uint8_t v) {
-      if (false)
-      printf("AddToRanges %02x. Currently: "
-             "%02x %02x %02x %02x %02x %02x %02x\n",
-             v,
-             payload[0],
-             payload[1],
-             payload[2],
-             payload[3],
-             payload[4],
-             payload[5],
-             payload[6]);
+      if (VERBOSE) {
+        printf("AddToRanges %02x. Currently: "
+               "%02x %02x %02x %02x %02x %02x %02x\n",
+               v,
+               payload[0],
+               payload[1],
+               payload[2],
+               payload[3],
+               payload[4],
+               payload[5],
+               payload[6]);
+      }
       CHECK(type == RANGES);
       // PERF: Better heuristics can produce better intervals here.
       // PERF: We should also merge intervals once they overlap.
@@ -124,13 +128,7 @@ void ByteSet64::Add(uint8_t v) {
       }
 
       if (besti == -1) {
-        payload[0] = 0;
-        payload[1] = 255;
-        payload[2] = 255;
-        payload[3] = 1;
-        payload[4] = 0;
-        payload[5] = 0;
-        payload[6] = 0;
+        Set(RANGES, 0, 255, 0xFF, 1);
       } else {
         payload[besti * 2] = beststart;
         payload[besti * 2 + 1] = bestlen;
@@ -284,4 +282,21 @@ ByteSet64::ByteSet64(const ByteSet& s) {
   // We already handled the universal set, so the length
   // must be in range.
   payload[5] = upper_bound - last_start;
+}
+
+bool ByteSet64::operator ==(const ByteSet64 &other) const {
+  return (*this <=> other) == std::strong_ordering::equal;
+}
+
+std::strong_ordering ByteSet64::operator <=>(const ByteSet64 &other) const {
+  // Not much we can do to make this faster unless we normalize?
+  for (int i = 0; i < 256; i++) {
+    bool a = Contains(i);
+    bool b = other.Contains(i);
+    if (a != b) {
+      return a ? std::strong_ordering::greater :
+        std::strong_ordering::less;
+    }
+  }
+  return std::strong_ordering::equal;
 }

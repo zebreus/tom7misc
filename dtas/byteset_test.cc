@@ -1,9 +1,13 @@
 
-#include "modeling.h"
+#include "byteset.h"
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
+#include <numeric>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
@@ -90,6 +94,13 @@ static void TestByteSetBasic() {
   {
     ByteSet s;
     CHECK(s.Empty());
+    // Mostly check that these compile.
+    CHECK(s == s);
+    CHECK(!(s < s));
+    CHECK(!(s > s));
+    CHECK(s >= s);
+    CHECK(s <= s);
+    CHECK(!(s != s));
     for (int i = 0; i < 256; i++) {
       CHECK(!s.Contains(i));
     }
@@ -161,6 +172,101 @@ static void TestByteSet64Singleton() {
   }
 }
 
+static void TestByteSetComparison() {
+  ByteSet bs1;
+  bs1.Add(0x42);
+  bs1.Add(0xFF);
+
+  ByteSet bs2;
+  bs2.Add(0xFF);
+
+  CHECK(bs1 != bs2);
+  CHECK((bs1 < bs2) ^ (bs1 > bs2));
+  CHECK((bs1 <= bs2) ^ (bs1 >= bs2));
+  CHECK((bs1 < bs2) ^ (bs1 >= bs2));
+  CHECK((bs1 <= bs2) ^ (bs1 > bs2));
+  CHECK(!(bs1 == bs2));
+
+  bs2.Add(0x42);
+  CHECK(bs1 == bs2);
+  CHECK(!(bs1 < bs2));
+  CHECK(!(bs1 > bs2));
+  CHECK(!(bs1 != bs2));
+  CHECK(bs1 <= bs2);
+  CHECK(bs1 >= bs2);
+}
+
+static void TestByteSet64Comparison() {
+  {
+    ByteSet64 bs1;
+    bs1.Add(0x42);
+    bs1.Add(0xFF);
+
+    ByteSet64 bs2;
+    bs2.Add(0xFF);
+
+    CHECK(bs1 != bs2);
+    CHECK((bs1 < bs2) ^ (bs1 > bs2));
+    CHECK((bs1 <= bs2) ^ (bs1 >= bs2));
+    CHECK((bs1 < bs2) ^ (bs1 >= bs2));
+    CHECK((bs1 <= bs2) ^ (bs1 > bs2));
+    CHECK(!(bs1 == bs2));
+
+    bs2.Add(0x42);
+    CHECK(bs1 == bs2);
+    CHECK(!(bs1 < bs2));
+    CHECK(!(bs1 > bs2));
+    CHECK(!(bs1 != bs2));
+    CHECK(bs1 <= bs2);
+    CHECK(bs1 >= bs2);
+  }
+
+  // Now compare some different representations of the
+  // same set.
+  {
+    ByteSet64 a, b, c;
+    a.Set(ByteSet64::VALUES, 1, 80, 90, 90, 90, 90, 90);
+    b.Set(ByteSet64::VALUES, 80, 90, 1, 1, 1, 1, 1);
+    c.Set(ByteSet64::VALUES, 90, 1, 1, 1, 1, 1);
+    CHECK(a == b);
+    CHECK(a != c);
+    CHECK(c != b);
+    CHECK((c < b) ^ (c > b));
+    CHECK((b < c) ^ (b > c));
+
+    c.Set(ByteSet64::RANGES, 1, 1, 80, 1, 90, 1);
+    for (int i = 0; i < 256; i++) {
+      CHECK(b.Contains(i) == c.Contains(i)) << i;
+    }
+    CHECK(b == c) << ByteSet64String(b) << " " << ByteSet64String(c);
+    CHECK(a == c);
+
+    b.Set(ByteSet64::VALUES, 80, 1, 90, 80, 1, 1, 1);
+    CHECK(b == c);
+    CHECK(c == b);
+    CHECK(a == b);
+  }
+
+
+  {
+    ByteSet64 a, b, c;
+    a.Set(ByteSet64::VALUES, 0xFE, 0xFF, 0x00, 0x01, 0x42, 0x42, 0x42);
+    b.Set(ByteSet64::RANGES, 0xFE, 4, 0x42, 1, 0x00, 0);
+    c.Set(ByteSet64::RANGES, 0xFE, 3, 0x42, 1, 0x00, 0);
+    for (int i = 0; i < 256; i++) {
+      CHECK(a.Contains(i) == b.Contains(i)) << i << "\n" <<
+        ByteSet64String(a) << " " << ByteSet64String(b);
+    }
+    CHECK(a == b);
+    CHECK(a != c);
+    CHECK(c != b);
+    CHECK((c < b) ^ (c > b));
+    CHECK((b < c) ^ (b > c));
+  }
+
+
+}
+
 static void TestByteSet64OneMissing() {
   for (int b = 0; b < 256; b++) {
     ByteSet almost_set;
@@ -181,6 +287,12 @@ static void TestByteSet64OneMissing() {
     // Should be able to represent these exactly using ranges.
     CHECK_EQ(bs64.type, ByteSet64::RANGES) << Error();
     CHECK_EQUAL_SETS(almost_set, bs64);
+
+    // Now make sure we can close any final gap, since ranges
+    // of length 255 are a somewhat special case.
+    bs64.Add(b);
+    CHECK(bs64.Contains(b));
+    CHECK(bs64.Size() == 256);
   }
 }
 
@@ -264,7 +376,7 @@ static void TestByteSet64Add() {
   }
 
   ArcFour rc("add");
-  for (int iter = 0; iter < 10000; iter++) {
+  for (int iter = 0; iter < 20000; iter++) {
     ByteSet64 s;
     int n = RandTo(&rc, 7);
     std::vector<std::pair<int, int>> ranges;
@@ -285,13 +397,63 @@ static void TestByteSet64Add() {
       }
     }
   }
+
+
 }
 
+#define CHECK_IS(bs, typ, p0, p1, p2, p3, p4, p5, p6) do {    \
+    CHECK((typ) == bs.type);                                  \
+    std::array<uint8_t, 7> a = {p0, p1, p2, p3, p4, p5, p6};  \
+    for (int i = 0; i < 7; i++) {                             \
+      CHECK(bs.payload[i] == a[i]) << ByteSet64String(bs);    \
+    }                                                         \
+  } while (0)
+
+// These test heuristics for expanding ranges. The abstract type
+// does not guarantee that you get a specific result, so these
+// might break with future improvements.
 static void TestByteSet64AddHeuristics() {
+  // Test extending ranges on one side or the other.
   {
     ByteSet64 bs;
-    bs.type = ByteSet64::RANGES;
-    // TODO: Construct some interesting insertions.
+    bs.Set(ByteSet64::RANGES, 0x01, 9, 0xA0, 1, 0xB0, 1);
+    CHECK(!bs.Contains(0xA1));
+    // Extend second range upward.
+    bs.Add(0xA1);
+    CHECK_IS(bs, ByteSet64::RANGES, 0x01, 9, 0xA0, 2, 0xB0, 1, 0);
+    // Extend third range downward.
+    bs.Add(0xAF);
+    CHECK_IS(bs, ByteSet64::RANGES, 0x01, 9, 0xA0, 2, 0xAF, 2, 0);
+    // Already there; no-op.
+    bs.Add(0xA0);
+    CHECK_IS(bs, ByteSet64::RANGES, 0x01, 9, 0xA0, 2, 0xAF, 2, 0);
+    // Not close to the first range, but it's still the best choice.
+    bs.Add(0x30);
+    CHECK_IS(bs, ByteSet64::RANGES, 0x01, 48, 0xA0, 2, 0xAF, 2, 0);
+    // Extend first range downward, touching zero.
+    bs.Add(0x00);
+    CHECK_IS(bs, ByteSet64::RANGES, 0x00, 49, 0xA0, 2, 0xAF, 2, 0);
+
+    // TODO: Test wraparound by adding FF or something close here.
+    // But this behavior is not yet implemented!
+
+    constexpr int A = 137;
+    constexpr int B = 11;
+    static_assert(std::gcd(A, 256) == 1);
+    uint8_t x = 42;
+    for (int i = 0; i < 256; i++) {
+      bs.Add(x);
+      CHECK(bs.Contains(x));
+      x = A * x + B;
+    }
+
+    // There are multiple possible representations here, because
+    // we don't yet fuse ranges. So just check that it is the
+    // universal set.
+    CHECK(bs.Size() == 256);
+    for (int i = 0; i < 256; i++) {
+      CHECK(bs.Contains(i));
+    }
   }
 
 }
@@ -301,6 +463,7 @@ int main(int argc, char **argv) {
 
   TestByteSetBasic();
   TestByteSetMultiple();
+  TestByteSetComparison();
 
   TestByteSet64Empty();
   TestByteSet64Singleton();
@@ -308,6 +471,7 @@ int main(int argc, char **argv) {
   TestByteSet64Universal();
   TestByteSet64OneMissing();
   TestByteSet64Intervals();
+  TestByteSet64Comparison();
 
   TestByteSet64Add();
   TestByteSet64AddHeuristics();
