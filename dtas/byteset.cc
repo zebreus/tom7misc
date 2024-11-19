@@ -326,3 +326,12 @@ std::strong_ordering ByteSet64::operator <=>(const ByteSet64 &other) const {
   }
   return std::strong_ordering::equal;
 }
+
+ByteSet ByteSet64::ToByteSet() const {
+  ByteSet s;
+  // PERF Easy to do this with fewer steps.
+  for (int i = 0; i < 256; i++)
+    if (Contains(i))
+      s.Add(i);
+  return s;
+}

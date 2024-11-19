@@ -138,4 +138,7 @@ inline constexpr int LOOP_COMMAND = 0x0745;
 inline constexpr int MULTI_LOOP_CORRECT_COUNTER = 0x006d9;
 inline constexpr int MULTI_LOOP_PASS_COUNTER = 0x06da;
 
+// Code addresses.
+inline constexpr int NONMASKABLE_INTERRUPT = 0x8082;
+
 #endif

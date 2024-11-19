@@ -34,6 +34,12 @@ struct ByteSet {
     return s;
   }
 
+  static ByteSet Singleton(uint8_t b) {
+    ByteSet s;
+    s.Add(b);
+    return s;
+  }
+
   static ByteSet Union(const ByteSet &a, const ByteSet &b);
 
   int Size() const {
@@ -115,6 +121,8 @@ struct ByteSet64 {
   ByteSet64() : type(EMPTY) {
     for (int i = 0; i < 7; i++) payload[i] = 0;
   }
+
+  ByteSet ToByteSet() const;
 
   // imperative union
   void AddSet(const ByteSet64 &other);
