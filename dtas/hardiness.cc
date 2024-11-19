@@ -19,16 +19,15 @@
 
 using uint8 = uint8_t;
 
-static constexpr int NUM_THREADS = 12;
-
 static constexpr int MENU_FRAMES = 83;
-static constexpr int WIN_FRAMES = 1500;
 
 static EmulatorPool *pool = nullptr;
 
+#if 0
 static std::mutex db_mutex;
 static ImageRGBA *database = nullptr;
 static Periodically *save_per = nullptr;
+#endif
 
 struct Map {
   // What row are we currently filling?
@@ -38,7 +37,7 @@ struct Map {
   // XXX HERE
 };
 
-
+[[maybe_unused]]
 static void WorkThread(const std::vector<uint8> &movie, int address) {
   auto emu = pool->AcquireClean();
 

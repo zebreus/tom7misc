@@ -2,6 +2,7 @@
 #ifndef _MODELING_H
 #define _MODELING_H
 
+#include <compare>
 #include <cstddef>
 #include <unordered_map>
 #include <vector>
@@ -39,6 +40,14 @@ struct State {
   // sets for the registers. (We may need to do something about these,
   // especially the stack?)
   static State FromEmulator(const Emulator *emu);
+
+  bool operator ==(const State &other) const {
+    return (*this <=> other) == std::strong_ordering::equal;
+  }
+  std::strong_ordering operator <=>(const State &other) const;
+
+  // Union other into this state. Return true if anything changed.
+  bool MergeState(const State &other);
 };
 
 struct BasicBlock {

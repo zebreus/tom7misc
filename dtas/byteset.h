@@ -34,6 +34,8 @@ struct ByteSet {
     return s;
   }
 
+  static ByteSet Union(const ByteSet &a, const ByteSet &b);
+
   int Size() const {
     // beware: bitset<256>::size() is always 256.
     return member.count();
@@ -113,6 +115,11 @@ struct ByteSet64 {
   ByteSet64() : type(EMPTY) {
     for (int i = 0; i < 7; i++) payload[i] = 0;
   }
+
+  // imperative union
+  void AddSet(const ByteSet64 &other);
+
+  static ByteSet64 Union(const ByteSet64 &a, const ByteSet64 &b);
 
   bool Contains(uint8_t) const;
   // Not cheap because of the possibility of duplicate

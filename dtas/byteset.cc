@@ -11,6 +11,12 @@
 
 static constexpr bool VERBOSE = false;
 
+ByteSet ByteSet::Union(const ByteSet &a, const ByteSet &b) {
+  ByteSet ret = a;
+  ret.member |= b.member;
+  return ret;
+}
+
 bool ByteSet64::Contains(uint8_t b) const {
   switch (type) {
     case EMPTY:
@@ -47,6 +53,14 @@ int ByteSet64::Size() const {
     if (Contains(i)) count++;
   }
   return count;
+}
+
+ByteSet64 ByteSet64::Union(const ByteSet64 &a, const ByteSet64 &b) {
+  ByteSet64 ret = a;
+  for (int i = 0; i < 256; i++)
+    if (b.Contains(i))
+      ret.Add(i);
+  return ret;
 }
 
 void ByteSet64::Add(uint8_t v) {
@@ -181,7 +195,19 @@ void ByteSet64::Add(uint8_t v) {
   }
 }
 
-ByteSet64::ByteSet64(const ByteSet& s) {
+void ByteSet64::AddSet(const ByteSet64 &s) {
+  // PERF: We could have efficient iteration if we knew that
+  // intervals don't overlap and duplicates in the value
+  // case were all at the end. We could accomplish this
+  // pretty straightforwardly with a Normalize method.
+  for (int i = 0; i < 256; i++) {
+    if (s.Contains(i)) {
+      Add(i);
+    }
+  }
+}
+
+ByteSet64::ByteSet64(const ByteSet &s) {
   if (s.Empty()) {
     type = EMPTY;
     return;

@@ -1,4 +1,4 @@
-default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe minus-validate.exe minus-map.exe minus-query.exe modeling_test.exe asm7.exe
+default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe minus-validate.exe minus-map.exe minus-query.exe byteset_test.exe asm7.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
