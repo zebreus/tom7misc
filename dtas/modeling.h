@@ -115,6 +115,9 @@ struct Modeling {
   // RAM, we use the set in that slot from the state. If it's
   // memory-mapped, then we have special cases.
   ByteSet GetByteSet(const State &state, uint16_t addr) const;
+  // Conversely, write to an address (typically a RAM address).
+  void WriteByteSet64(State *state, uint16_t addr,
+                      const ByteSet64 &s) const;
 
   // Record that we can reach the address with the
   // given state. It may add a new basic block to our

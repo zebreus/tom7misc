@@ -16,6 +16,15 @@
 #include "base/stringprintf.h"
 #include "byteset.h"
 
+#define N_FLAG 0x80
+#define V_FLAG 0x40
+#define U_FLAG 0x20
+#define B_FLAG 0x10
+#define D_FLAG 0x08
+#define I_FLAG 0x04
+#define Z_FLAG 0x02
+#define C_FLAG 0x01
+
 State State::FromEmulator(const Emulator *emu) {
   State state;
   state.A = ByteSet::Top();
@@ -113,8 +122,76 @@ ByteSet Modeling::GetByteSet(const State &state, uint16_t addr) const {
 
   // Otherwise, treat it as though any value is possible.
   return ByteSet::Top();
+}
+
+// Write *addr = s.
+// If the address is in RAM, we simply set the state in ram to
+// that set. Writes to ROM are ignored. Writes to memory-mapped
+// regions may be treated specially.
+void Modeling::WriteByteSet64(State *state, uint16_t addr,
+                              const ByteSet64 &s) const {
+  // ROM writes are ignored.
+  if (addr >= rom.ORIGIN)
+    return;
+
+  // RAM.
+  if (addr < 2048) {
+    state->ram[addr] = s;
+    return;
+  }
+
+  // TODO: Special cases for memory-mapped addresses.
 };
 
+
+// Compute the values of the Z and N flags in the status
+// register, given the byteset. Preserves the values of
+// the other flags.
+void ZN(State *state, const ByteSet &s) {
+  ByteSet res;
+  bool contains_z = s.Contains(0);
+  bool contains_pos = false;
+  bool contains_neg = false;
+  for (int i = 0x80; i < 256; i++) {
+    if (s.Contains(i)) {
+      if (i < 0x80) {
+        contains_pos = true;
+      } else {
+        contains_neg = true;
+      }
+    }
+  }
+
+  // Possible values for the ZN flags.
+  // We never have both Z and N, so this
+  // is some subset of 00, 10, 01.
+
+  // {10} - When the set contains only zero.
+  // {10, 00} - When the set contains zero and positive numbers.
+  // {10, 01} - When the set contains zero and negative numbers.
+  // {01} - When the set contains only negative numbers.
+  // {00} - When the set contains only positive numbers.
+  // ...
+  std::vector<uint8_t> zflags;
+  if (contains_z) zflags.push_back(Z_FLAG);
+  if (contains_pos || contains_neg) zflags.push_back(0);
+
+  std::vector<uint8_t> nflags;
+  if (contains_pos || contains_z) nflags.push_back(0);
+  if (contains_neg) nflags.push_back(N_FLAG);
+
+  CHECK(!zflags.empty() && !nflags.empty());
+
+  for (uint8_t b : s) {
+    b &= ~(Z_FLAG | N_FLAG);
+
+    for (uint8_t z : zflags) {
+      for (uint8_t n : nflags) {
+        res.Add(b | z | n);
+      }
+    }
+  }
+}
 
 void Modeling::Expand() {
   // TODO:
@@ -186,8 +263,9 @@ void Modeling::Expand() {
 
     switch (opcode) {
     case 0x4c: { // JMP a
-      LOG(FATAL) << "Unimplemented 'JMP a'";
-      break;
+      uint16_t addr = Next16();
+      EnterBlock(addr, state);
+      return;
     }
     case 0xf0: { // BEQ *+d
       LOG(FATAL) << "Unimplemented 'BEQ *+d'";
@@ -200,6 +278,7 @@ void Modeling::Expand() {
     case 0xad: { // LDA a
       uint16_t addr = Next16();
       state.A = GetByteSet(state, addr);
+      ZN(&state, state.A);
       break;
     }
     case 0xc8: { // INY
@@ -207,7 +286,9 @@ void Modeling::Expand() {
       break;
     }
     case 0x29: { // AND #i
-      LOG(FATAL) << "Unimplemented 'AND #i'";
+      uint8_t imm = Next8();
+      state.A = state.A.Map([imm](uint8_t v) { return v + imm; });
+      ZN(&state, state.A);
       break;
     }
     case 0xbd: { // LDA a,x
@@ -219,7 +300,9 @@ void Modeling::Expand() {
       break;
     }
     case 0x88: { // DEY
-      LOG(FATAL) << "Unimplemented 'DEY'";
+      // y <- y-1
+      state.Y = state.Y.Map([](uint8_t v) { return v - 1; });
+      ZN(&state, state.Y);
       break;
     }
     case 0x4a: { // LSR
@@ -227,7 +310,9 @@ void Modeling::Expand() {
       break;
     }
     case 0xca: { // DEX
-      LOG(FATAL) << "Unimplemented 'DEX'";
+      // x <- x-1.
+      state.X = state.X.Map([](uint8_t v) { return v - 1; });
+      ZN(&state, state.X);
       break;
     }
     case 0x10: { // BPL *+d
@@ -235,7 +320,8 @@ void Modeling::Expand() {
       break;
     }
     case 0x8d: { // STA a
-      LOG(FATAL) << "Unimplemented 'STA a'";
+      uint16_t addr = Next16();
+      WriteByteSet64(&state, addr, ByteSet64(state.A));
       break;
     }
     case 0x99: { // STA a,y

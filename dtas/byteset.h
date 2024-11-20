@@ -47,6 +47,15 @@ struct ByteSet {
     return member.count();
   }
 
+  template<class F>
+  ByteSet Map(const F &f) {
+    ByteSet ret;
+    for (uint8_t v : *this) {
+      ret.Add(f(v));
+    }
+    return ret;
+  }
+
   // Allows iterating over bytes that are set. Note that this
   // internally iterates over all 256 values, even if it is sparse.
   class const_iterator {
