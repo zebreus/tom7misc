@@ -40,9 +40,12 @@ struct State {
   std::vector<ByteSet64> ram;
 
   // Start the state with the current exact memory, but with universal
-  // sets for the registers. (We may need to do something about these,
-  // especially the stack?)
-  static State FromEmulator(const Emulator *emu);
+  // sets for the registers. The stack is set to the constant
+  // value provided; you should observe this for your entry point.
+  // (Not knowing the value of the stack pointer is bad because it
+  // quickly leads to the entire stack having too many possible
+  // values.)
+  static State FromEmulator(const Emulator *emu, uint8_t sp);
 
   bool operator ==(const State &other) const {
     return (*this <=> other) == std::strong_ordering::equal;

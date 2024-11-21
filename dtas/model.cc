@@ -64,7 +64,8 @@ static void Model() {
   std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
   MarioUtil::WarpTo(emu.get(), 0xF4, 0x6B, 0);
   // std::vector<uint8_t> start_save = emu->SaveUncompressed();
-  const State start_state = State::FromEmulator(emu.get());
+  // The stack pointer is 0xFC when entering NonMaskableInterrupt.
+  const State start_state = State::FromEmulator(emu.get(), 0xFC);
 
   Modeling modeling(GetPRG());
 
@@ -93,7 +94,7 @@ static void Model() {
       int64_t denom = modeling.blocks.size();
       int64_t remain = modeling.dirty.Size();
       int64_t numer = denom - remain;
-      status.Progressf(numer, denom, ACYAN("%lld") " iters.", iters);
+      // status.Progressf(numer, denom, ACYAN("%lld") " iters.", iters);
     }
     modeling.Expand();
   }

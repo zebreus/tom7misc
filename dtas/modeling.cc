@@ -1,17 +1,17 @@
 
 #include "modeling.h"
 
-#include <bitset>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/opcodes.h"
-#include "../fceulib/x6502.h"
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "byteset.h"
@@ -25,12 +25,12 @@
 #define Z_FLAG 0x02
 #define C_FLAG 0x01
 
-State State::FromEmulator(const Emulator *emu) {
+State State::FromEmulator(const Emulator *emu, uint8_t sp) {
   State state;
   state.A = ByteSet::Top();
   state.X = ByteSet::Top();
   state.Y = ByteSet::Top();
-  state.S = ByteSet::Top();
+  state.S = ByteSet::Singleton(sp);
   state.P = ByteSet::Top();
   state.ram.resize(2048);
   for (int i = 0; i < 2048; i++) {
@@ -148,11 +148,21 @@ void Modeling::WriteByteSet64(State *state, uint16_t addr,
 // register, given the byteset. Preserves the values of
 // the other flags.
 void ZN(State *state, const ByteSet &s) {
+  constexpr bool VERBOSE = false;
+  CHECK(!s.Empty());
+  if (VERBOSE) {
+    printf("ZN flags for: {");
+    for (uint8_t v : s) {
+      printf("%02x, ", v);
+    }
+    printf("}\n");
+  }
+
   ByteSet res;
   bool contains_z = s.Contains(0);
   bool contains_pos = false;
   bool contains_neg = false;
-  for (int i = 0x80; i < 256; i++) {
+  for (int i = 0; i < 256; i++) {
     if (s.Contains(i)) {
       if (i < 0x80) {
         contains_pos = true;
@@ -160,6 +170,13 @@ void ZN(State *state, const ByteSet &s) {
         contains_neg = true;
       }
     }
+  }
+
+  if (VERBOSE) {
+    printf("Contains z: %c p: %c n: %c\n",
+           contains_z ? 'X' : '_',
+           contains_pos ? 'X' : '_',
+           contains_neg ? 'X' : '_');
   }
 
   // Possible values for the ZN flags.
@@ -229,6 +246,9 @@ void Modeling::Expand() {
   // intermediates.
   //
 
+  printf(AWHITE("== starting iteration! ==") "\n");
+  printf("Number of blocks: %d\n", (int)blocks.size());
+
   if (dirty.Empty())
     return;
 
@@ -256,10 +276,62 @@ void Modeling::Expand() {
       return ((uint16_t)hi << 8) | lo;
     };
 
+  // Handle branch instructions. Since this ends the basic
+  // block, the caller should return, not continue!
+  auto Branch = [&](uint8_t mask, uint8_t true_case) {
+      CHECK((mask & true_case) == true_case);
+      // In the false branch, we know that the bit is the
+      // opposite of whatever was in true_case.
+      const uint8_t false_case = mask & ~true_case;
+
+      // Displacement when branch taken.
+      int8_t displacement = (int8_t)Next8();
+      // All branches happen on flags. Compute the
+      // possible results of the flags.
+      bool has_true = false;
+      bool has_false = false;
+      for (int i = 0; i < 256; i++) {
+        if (state.P.Contains(i)) {
+          if ((i & mask) == true_case) {
+            has_true = true;
+          } else {
+            has_false = true;
+          }
+        }
+      }
+
+      CHECK(has_true || has_false);
+      if (has_true) {
+        // Do the branch.
+        State truestate = state;
+        truestate.P = truestate.P.Map([mask, true_case](uint8_t v) {
+            return (v & ~mask) | true_case;
+          });
+        // The displacement is relative to the instruction after
+        // the branch, which is what the pc now represents.
+        EnterBlock(pc + displacement, std::move(truestate));
+      }
+
+      if (has_false) {
+        // Don't take the branch; "jump" to the next
+        // instruction. We know that the tested flag
+        // has the value false_case when the branch was
+        // not taken.
+        state.P = state.P.Map([mask, false_case](uint8_t v) {
+            return (v & ~mask) | false_case;
+          });
+        EnterBlock(pc, state);
+      }
+
+    };
+
   // Keep reading instructions until we reach the end of the block.
   do {
     // Read the opcode, which advances the PC past it.
     const uint8_t opcode = Next8();
+
+    printf("Opcode: " ABLUE("%02x") " " AGREY("(%s)") "\n",
+           opcode, Opcodes::opcode_name[opcode]);
 
     switch (opcode) {
     case 0x4c: { // JMP a
@@ -268,12 +340,10 @@ void Modeling::Expand() {
       return;
     }
     case 0xf0: { // BEQ *+d
-      LOG(FATAL) << "Unimplemented 'BEQ *+d'";
-      break;
+      return Branch(Z_FLAG, Z_FLAG);
     }
     case 0xd0: { // BNE *+d
-      LOG(FATAL) << "Unimplemented 'BNE *+d'";
-      break;
+      return Branch(Z_FLAG, 0);
     }
     case 0xad: { // LDA a
       uint16_t addr = Next16();
@@ -305,8 +375,54 @@ void Modeling::Expand() {
       ZN(&state, state.Y);
       break;
     }
-    case 0x4a: { // LSR
-      LOG(FATAL) << "Unimplemented 'LSR'";
+    case 0x4a: { // LSR A
+      // a <- a>>1
+
+      bool has_odd = false;
+      bool has_even = false;
+      // After shifting.
+      bool has_zero = false;
+      bool has_nonzero = false;
+      for (int i = 0; i < 256; i++) {
+        if (state.A.Contains(i)) {
+          if (i & 1) has_odd = true;
+          else has_even = true;
+
+          if (i == 0 || i == 1) {
+            has_zero = true;
+          } else {
+            has_nonzero = true;
+          }
+        }
+
+      }
+      CHECK(has_odd || has_even);
+      std::vector<uint8_t> carry_flags;
+      if (has_odd) carry_flags.push_back(C_FLAG);
+      if (has_even) carry_flags.push_back(0);
+
+      CHECK(has_zero || has_nonzero);
+      std::vector<uint8_t> zero_flags;
+      if (has_zero) zero_flags.push_back(Z_FLAG);
+      if (has_nonzero) zero_flags.push_back(0);
+
+      state.A = state.A.Map([](uint8_t v) { return v >> 1; });
+      // N is impossible since the high bit will be zero after
+      //   shifting.
+      // Z flag is as usual.
+      // Carry flag from the bit shifted off.
+
+      ByteSet new_flags;
+      for (uint8_t v : state.P) {
+        v &= ~(Z_FLAG | N_FLAG);
+
+        for (uint8_t z : zero_flags) {
+          for (uint8_t c : carry_flags) {
+            new_flags.Add(v | z | c);
+          }
+        }
+      }
+      state.P = std::move(new_flags);
       break;
     }
     case 0xca: { // DEX
@@ -333,8 +449,73 @@ void Modeling::Expand() {
       break;
     }
     case 0x20: { // JSR a
-      LOG(FATAL) << "Unimplemented 'JSR a'";
-      break;
+      // Potentially hard?
+      // It writes into the stack, so want to have more
+      // certainty about where the stack pointer points.
+      // Otherwise this will make it look like the entire
+      // range $0100-$01FF can become the PC after any
+      // JSR is executed. We might also conflate stack
+      // data and addresses when we push/pop.
+      //
+      // Optimistically, we always jump to a subroutine
+      // with the stack pointer in the same place, and
+      // we always return to a single caller. This might
+      // be true and is checkable. We could start by
+      // seeing what happens in emulation.
+      //
+      // Turns out that the stack pointer is (empirically)
+      // always 0xFC when we call the NMI. Most instructions
+      // that use the stack are (empirically) executed with
+      // a single fixed stack pointer value, or else a small
+      // number. So it seems plausible that this simple
+      // approach will still work.
+
+      //               opcode
+      // (current pc)  dst lo
+      //               dst hi
+      // The thing pushed on the stack is actually pc+1,
+      // which is weird because it's between the two address bytes.
+      // I guess it's just a pipelining quirk. RTI adds 1 to the
+      // that it pops.
+      const uint16_t stored_pc = pc + 1;
+      // XXX Could be WriteStack etc.
+      if (state.S.Size() == 1) {
+        // Then it is definitely stored in the stack here,
+        // so we can replace the memory location.
+        uint16_t saddr = 0x0100 + *state.S.begin();
+        // Push low, then push high. Note this actually puts them
+        // in "big-endian" order if you are looking at memory,
+        // since the stack grows downward.
+        state.ram[saddr] = ByteSet64::Singleton(stored_pc & 0xFF);
+        state.ram[saddr - 1] = ByteSet64::Singleton(stored_pc >> 8);
+        state.S = ByteSet::Singleton(saddr - 2);
+      } else {
+        // Not great: The stack pointer has an uncertain value.
+        // We don't know where the stored_pc goes, and so we also
+        // can't overwrite these addresses; we just have to add
+        // to the set. This makes returns from the JSR pretty
+        // uncertain. (And even worse: If the stack pointers
+        // are not always aligned to 16 bits in this set, we
+        // could conflate high bytes with low bytes, and then
+        // it will look like we can return to nonsense addresses.)
+        for (uint8_t sp : state.S) {
+          uint16_t saddr = 0x0100 + sp;
+          // Push low, then push high. Note this actually puts them
+          // in "big-endian" order if you are looking at memory,
+          // since the stack grows downward.
+          state.ram[saddr].Add(stored_pc & 0xFF);
+          state.ram[saddr - 1].Add(stored_pc >> 8);
+        }
+        state.S = state.S.Map([](uint8_t v) {
+            return v - 2;
+          });
+      }
+
+      uint16_t daddr = Next16();
+      EnterBlock(daddr, state);
+
+      // Ends basic block.
+      return;
     }
     case 0xc9: { // CMP #i
       LOG(FATAL) << "Unimplemented 'CMP #i'";
@@ -345,8 +526,30 @@ void Modeling::Expand() {
       break;
     }
     case 0x60: { // RTS
-      LOG(FATAL) << "Unimplemented 'RTS'";
-      break;
+      // See JSR for some details.
+      for (uint8_t sp : state.S) {
+        uint16_t saddr = 0x0100 + sp;
+        if (state.ram[saddr + 1].Size() == 1 &&
+            state.ram[saddr + 2].Size() == 1) {
+          // Only one value for the stack at this point.
+          // This is the reasonable case.
+          uint16_t hi = state.ram[saddr + 1].GetSingleton();
+          uint16_t lo = state.ram[saddr + 2].GetSingleton();
+          // +1 is just how it works; a quirk of JSR and RTS.
+          uint16_t raddr = ((hi << 8) | lo) + 1;
+          State ret_state = state;
+          // Pop from this specific stack offset.
+          ret_state.S = ByteSet::Singleton(sp + 2);
+          EnterBlock(raddr, std::move(ret_state));
+        } else {
+          // Ugh.
+          printf("Warning: More than one possible RTS destination.\n");
+          LOG(FATAL) << "unimplemented";
+        }
+      }
+
+      // Ends the block.
+      return;
     }
     case 0xe8: { // INX
       LOG(FATAL) << "Unimplemented 'INX'";
@@ -369,7 +572,9 @@ void Modeling::Expand() {
       break;
     }
     case 0xa9: { // LDA #i
-      LOG(FATAL) << "Unimplemented 'LDA #i'";
+      uint8_t v = Next8();
+      state.A = ByteSet::Singleton(v);
+      ZN(&state, state.A);
       break;
     }
     case 0x2a: { // ROL
@@ -417,7 +622,9 @@ void Modeling::Expand() {
       break;
     }
     case 0xac: { // LDY a
-      LOG(FATAL) << "Unimplemented 'LDY a'";
+      uint16_t addr = Next16();
+      state.Y = GetByteSet(state, addr);
+      ZN(&state, state.Y);
       break;
     }
     case 0x69: { // ADC #i
@@ -477,7 +684,9 @@ void Modeling::Expand() {
       break;
     }
     case 0xae: { // LDX a
-      LOG(FATAL) << "Unimplemented 'LDX a'";
+      uint16_t addr = Next16();
+      state.X = GetByteSet(state, addr);
+      ZN(&state, state.X);
       break;
     }
     case 0xc5: { // CMP d
@@ -509,7 +718,9 @@ void Modeling::Expand() {
       break;
     }
     case 0x09: { // ORA #i
-      LOG(FATAL) << "Unimplemented 'ORA #i'";
+      const uint8_t imm = Next8();
+      state.A = state.A.Map([imm](uint8_t v) { return v | imm; });
+      ZN(&state, state.A);
       break;
     }
     case 0xce: { // DEC a

@@ -335,3 +335,23 @@ ByteSet ByteSet64::ToByteSet() const {
       s.Add(i);
   return s;
 }
+
+uint8_t ByteSet64::GetSingleton() const {
+  switch (type) {
+  case EMPTY:
+    LOG(FATAL) << "GetSingleton on empty.";
+    break;
+  case VALUES:
+    return payload[0];
+  case RANGES:
+    for (int i = 0; i < 3; i++) {
+      // As long as it's not empty, we can use the first
+      // element of the range.
+      if (payload[i * 2 + 1] > 0) {
+        return payload[i * 2];
+      }
+    }
+  default:
+    LOG(FATAL) << "Invalid type";
+  }
+}

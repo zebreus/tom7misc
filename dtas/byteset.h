@@ -131,12 +131,22 @@ struct ByteSet64 {
     for (int i = 0; i < 7; i++) payload[i] = 0;
   }
 
+  static ByteSet64 Singleton(uint8_t b) {
+    ByteSet64 s;
+    s.Set(VALUES, b, b, b, b, b, b, b);
+    return s;
+  }
+
   ByteSet ToByteSet() const;
 
   // imperative union
   void AddSet(const ByteSet64 &other);
 
   static ByteSet64 Union(const ByteSet64 &a, const ByteSet64 &b);
+
+  // Get one element from the set; intended for uses where
+  // the set has size 1. Aborts if the set is empty.
+  uint8_t GetSingleton() const;
 
   bool Contains(uint8_t) const;
   // Not cheap because of the possibility of duplicate

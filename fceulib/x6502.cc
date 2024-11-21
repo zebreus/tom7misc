@@ -702,6 +702,7 @@ void X6502::RunLoop() {
 
     switch (b1) {
       case 0x00: /* BRK */
+        RecordStack();
         reg_PC++;
         PUSH(reg_PC >> 8);
         PUSH(reg_PC);
@@ -713,6 +714,7 @@ void X6502::RunLoop() {
         break;
 
       case 0x40: /* RTI */
+        RecordStack();
         reg_P = POP();
         /* reg_PI=reg_P; This is probably incorrect, so it's commented out. */
         reg_PI = reg_P;
@@ -721,18 +723,29 @@ void X6502::RunLoop() {
         break;
 
       case 0x60: /* RTS */
+        RecordStack();
         reg_PC = POP();
         reg_PC |= POP() << 8;
         reg_PC++;
         break;
 
-      case 0x48: /* PHA */ PUSH(reg_A); break;
-      case 0x08: /* PHP */ PUSH(reg_P | U_FLAG | B_FLAG); break;
+      case 0x48: /* PHA */
+        RecordStack();
+        PUSH(reg_A);
+        break;
+      case 0x08: /* PHP */
+        RecordStack();
+        PUSH(reg_P | U_FLAG | B_FLAG);
+        break;
       case 0x68: /* PLA */
+        RecordStack();
         reg_A = POP();
         X_ZN(reg_A);
         break;
-      case 0x28: /* PLP */ reg_P = POP(); break;
+      case 0x28: /* PLP */
+        RecordStack();
+        reg_P = POP();
+        break;
       case 0x4C: {
         /* JMP ABSOLUTE */
         uint16 ptmp = reg_PC;
@@ -753,6 +766,7 @@ void X6502::RunLoop() {
       }
       case 0x20: /* JSR */
       {
+        RecordStack();
         uint8 npc;
         npc = RdMem(reg_PC);
         reg_PC++;

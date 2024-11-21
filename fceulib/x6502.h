@@ -31,6 +31,10 @@
 #include "fc.h"
 #include "types.h"
 
+#ifdef AOT_INSTRUMENTATION
+#include <unordered_map>
+#endif
+
 struct X6502 {
   #undef VERBOSE_READ
 
@@ -45,7 +49,17 @@ struct X6502 {
   // (prior to multiplication for NTSC/PAL). Last element means that
   // number or greater.
   int64 cycles_histo[1024] = {};
-  #endif
+
+  // On instruction (key), how often does the stack pointer have
+  // a particular value?
+  std::unordered_map<uint16_t, std::unordered_map<uint8_t, int64_t>>
+     stack_histo;
+  void RecordStack() {
+    stack_histo[reg_PC - 1][reg_S]++;
+  }
+# else
+  void RecordStack() {}
+# endif
   // int64 entered_aot[0x10000] = {};
 
   /* Temporary cycle counter */
@@ -57,7 +71,7 @@ struct X6502 {
 
   // Program counter.
   uint16 reg_PC;
-  // A is accumulator, X and Y other general purpose registes.
+  // A is accumulator, X and Y other general purpose registers.
   // S is the stack pointer. Stack grows "down" (push decrements).
   // P is processor flags (from msb to lsb: NVUBDIZC).
   // PI is another copy of the processor flags, maybe having
@@ -96,7 +110,7 @@ struct X6502 {
 
   void (*MapIRQHook)(FC *, int) = nullptr;
 
-private:
+ private:
   // normal memory read
   inline uint8 RdMem(unsigned int A) {
     // XXX

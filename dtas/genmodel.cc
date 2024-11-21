@@ -81,9 +81,13 @@ static void GenModel() {
 
   std::unordered_set<uint16_t> reached;
 
+  std::unordered_map<uint16_t, std::unordered_map<uint8_t, int64_t>>
+     stack_histo;
+
   // Should set higher for real times.
   // const int NUM_REPS = 10000;
   const int NUM_REPS = 1000;
+
 
   std::mutex m;
   Periodically status_per(0.5);
@@ -132,14 +136,21 @@ static void GenModel() {
 
         {
           MutexLock ml(&m);
+          auto *X = emu->GetFC()->X;
           // Accumulate into histo and reached set.
           for (int addr = 0; addr < 0x10000; addr++) {
-            auto *X = emu->GetFC()->X;
             if (X->pc_histo[addr] > 0) {
               reached.insert(addr);
               pc_histo[addr] += X->pc_histo[addr];
             }
           }
+          for (const auto &[addr, m] : X->stack_histo) {
+            auto &mm = stack_histo[addr];
+            for (const auto &[s, count] : m) {
+              mm[s] += count;
+            }
+          }
+
           done++;
           if (status_per.ShouldRun()) {
             status.Progressf(done, NUM_REPS, "%d insts reached",
@@ -201,6 +212,16 @@ static void GenModel() {
           StringAppendF(&content, "%s:\n", lo.value().c_str());
         }
         const uint8_t opcode = prg.Read(addr);
+        std::string stacks;
+        auto it = stack_histo.find(addr);
+        if (it != stack_histo.end()) {
+          StringAppendF(&content, ";; sp =");
+          for (const auto &[sp, count] : it->second) {
+            StringAppendF(&content, " %02x×%lld", sp, count);
+          }
+          StringAppendF(&content, "\n");
+        }
+
         StringAppendF(&content, "  %s\n", Opcodes::opcode_name[opcode]);
         addr += Opcodes::opcode_size[opcode];
       }

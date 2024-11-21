@@ -46,7 +46,7 @@ CODEC=../codec
 
 OPT=-O2
 
-# ASAN=-g -fsanitize=address
+ASAN=-g -fsanitize=address
 # OPT=-O
 
 # -fno-strict-aliasing
