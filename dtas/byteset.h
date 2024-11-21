@@ -21,6 +21,8 @@ struct ByteSet {
   bool Empty() const { return member.none(); }
   bool Contains(uint8_t b) const { return member.test(b); }
   void Add(uint8_t b) { member.set(b); }
+  void AddSet(const ByteSet &b);
+
   static ByteSet Top() {
     ByteSet s;
     s.member.reset();
@@ -54,6 +56,10 @@ struct ByteSet {
       ret.Add(f(v));
     }
     return ret;
+  }
+
+  void Clear() {
+    member.reset();
   }
 
   // Allows iterating over bytes that are set. Note that this
@@ -153,6 +159,7 @@ struct ByteSet64 {
   // values or overlapping ranges.
   int Size() const;
 
+  void Clear();
   void Add(uint8_t b);
 
   bool operator ==(const ByteSet64 &other) const;

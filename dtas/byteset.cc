@@ -13,8 +13,12 @@ static constexpr bool VERBOSE = false;
 
 ByteSet ByteSet::Union(const ByteSet &a, const ByteSet &b) {
   ByteSet ret = a;
-  ret.member |= b.member;
+  ret.AddSet(b);
   return ret;
+}
+
+void ByteSet::AddSet(const ByteSet &b) {
+  member |= b.member;
 }
 
 bool ByteSet64::Contains(uint8_t b) const {
@@ -61,6 +65,10 @@ ByteSet64 ByteSet64::Union(const ByteSet64 &a, const ByteSet64 &b) {
     if (b.Contains(i))
       ret.Add(i);
   return ret;
+}
+
+void ByteSet64::Clear() {
+  Set(EMPTY);
 }
 
 void ByteSet64::Add(uint8_t v) {

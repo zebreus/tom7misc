@@ -352,21 +352,28 @@ void Modeling::Expand() {
       break;
     }
     case 0xc8: { // INY
-      LOG(FATAL) << "Unimplemented 'INY'";
+      state.Y = state.Y.Map([](uint8_t v) { return v + 1; });
+      ZN(&state, state.Y);
       break;
     }
     case 0x29: { // AND #i
       uint8_t imm = Next8();
-      state.A = state.A.Map([imm](uint8_t v) { return v + imm; });
+      state.A = state.A.Map([imm](uint8_t v) { return v & imm; });
       ZN(&state, state.A);
       break;
     }
     case 0xbd: { // LDA a,x
-      LOG(FATAL) << "Unimplemented 'LDA a,x'";
+      uint16_t addr = Next16();
+      state.A.Clear();
+      for (uint8_t v : state.X) {
+        state.A.AddSet(GetByteSet(state, addr + v));
+      }
+      ZN(&state, state.A);
       break;
     }
     case 0x85: { // STA d
-      LOG(FATAL) << "Unimplemented 'STA d'";
+      uint16_t addr = Next8();
+      WriteByteSet64(&state, addr, ByteSet64(state.A));
       break;
     }
     case 0x88: { // DEY
@@ -522,9 +529,9 @@ void Modeling::Expand() {
       break;
     }
     case 0x90: { // BCC *+d
-      LOG(FATAL) << "Unimplemented 'BCC *+d'";
-      break;
+      return Branch(C_FLAG, 0);
     }
+
     case 0x60: { // RTS
       // See JSR for some details.
       for (uint8_t sp : state.S) {
@@ -551,8 +558,10 @@ void Modeling::Expand() {
       // Ends the block.
       return;
     }
+
     case 0xe8: { // INX
-      LOG(FATAL) << "Unimplemented 'INX'";
+      state.X = state.X.Map([](uint8_t v) { return v + 1; });
+      ZN(&state, state.X);
       break;
     }
     case 0x68: { // PLA
@@ -560,7 +569,15 @@ void Modeling::Expand() {
       break;
     }
     case 0xb1: { // LDA (d),y
-      LOG(FATAL) << "Unimplemented 'LDA (d),y'";
+      uint16_t indirect_addr = Next8();
+      state.A.Clear();
+      for (uint8_t addr : GetByteSet(state, indirect_addr)) {
+        for (uint8_t y : state.Y) {
+          uint16_t effective_addr = addr + y;
+          state.A.AddSet(GetByteSet(state, effective_addr));
+        }
+      }
+      ZN(&state, state.A);
       break;
     }
     case 0x48: { // PHA
@@ -568,6 +585,7 @@ void Modeling::Expand() {
       break;
     }
     case 0x0a: { // ASL
+      // Need to handle carry.
       LOG(FATAL) << "Unimplemented 'ASL'";
       break;
     }
@@ -582,8 +600,7 @@ void Modeling::Expand() {
       break;
     }
     case 0xb0: { // BCS *+d
-      LOG(FATAL) << "Unimplemented 'BCS *+d'";
-      break;
+      return Branch(C_FLAG, C_FLAG);
     }
     case 0xc0: { // CPY #i
       LOG(FATAL) << "Unimplemented 'CPY #i'";
@@ -594,7 +611,9 @@ void Modeling::Expand() {
       break;
     }
     case 0x18: { // CLC
-      LOG(FATAL) << "Unimplemented 'CLC'";
+      state.P = state.P.Map([](uint8_t v) {
+          return v & ~C_FLAG;
+        });
       break;
     }
     case 0xb9: { // LDA a,y
@@ -606,7 +625,8 @@ void Modeling::Expand() {
       break;
     }
     case 0xa8: { // TAY
-      LOG(FATAL) << "Unimplemented 'TAY'";
+      state.Y = state.A;
+      ZN(&state, state.Y);
       break;
     }
     case 0xe0: { // CPX #i
@@ -618,7 +638,9 @@ void Modeling::Expand() {
       break;
     }
     case 0xa0: { // LDY #i
-      LOG(FATAL) << "Unimplemented 'LDY #i'";
+      uint8_t imm = Next8();
+      state.Y = ByteSet::Singleton(imm);
+      ZN(&state, state.Y);
       break;
     }
     case 0xac: { // LDY a
@@ -639,8 +661,11 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'LDY d'";
       break;
     }
+
     case 0xa2: { // LDX #i
-      LOG(FATAL) << "Unimplemented 'LDX #i'";
+      uint8_t imm = Next8();
+      state.X = ByteSet::Singleton(imm);
+      ZN(&state, state.X);
       break;
     }
     case 0x86: { // STX d
@@ -651,8 +676,11 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'LDX d'";
       break;
     }
+
     case 0x38: { // SEC
-      LOG(FATAL) << "Unimplemented 'SEC'";
+      state.P = state.P.Map([](uint8_t v) {
+          return v | C_FLAG;
+        });
       break;
     }
     case 0x91: { // STA (d),y
@@ -679,8 +707,10 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'ADC a,y'";
       break;
     }
+
     case 0x98: { // TYA
-      LOG(FATAL) << "Unimplemented 'TYA'";
+      state.A = state.Y;
+      ZN(&state, state.A);
       break;
     }
     case 0xae: { // LDX a
@@ -702,7 +732,12 @@ void Modeling::Expand() {
       break;
     }
     case 0xbe: { // LDX a,y
-      LOG(FATAL) << "Unimplemented 'LDX a,y'";
+      uint16_t addr = Next16();
+      state.X.Clear();
+      for (uint8_t v : state.Y) {
+        state.X.AddSet(GetByteSet(state, addr + v));
+      }
+      ZN(&state, state.X);
       break;
     }
     case 0x84: { // STY d
@@ -736,7 +771,8 @@ void Modeling::Expand() {
       break;
     }
     case 0xaa: { // TAX
-      LOG(FATAL) << "Unimplemented 'TAX'";
+      state.X = state.A;
+      ZN(&state, state.X);
       break;
     }
     case 0xed: { // SBC a
@@ -820,7 +856,8 @@ void Modeling::Expand() {
       break;
     }
     case 0x8a: { // TXA
-      LOG(FATAL) << "Unimplemented 'TXA'";
+      state.A = state.X;
+      ZN(&state, state.A);
       break;
     }
     case 0xdd: { // CMP a,x
@@ -852,13 +889,39 @@ void Modeling::Expand() {
       break;
     }
     case 0xbc: { // LDY a,x
-      LOG(FATAL) << "Unimplemented 'LDY a,x'";
+      uint16_t addr = Next16();
+      state.Y.Clear();
+      for (uint8_t v : state.X) {
+        state.Y.AddSet(GetByteSet(state, addr + v));
+      }
+      ZN(&state, state.Y);
       break;
     }
     case 0x4e: { // LSR a
       LOG(FATAL) << "Unimplemented 'LSR a'";
       break;
     }
+
+      // Unused but easy.
+    case 0xBA: { // TSX
+      state.X = state.S;
+      ZN(&state, state.X);
+      break;
+    }
+
+    case 0x9A: { // TXS
+      state.S = state.X;
+      ZN(&state, state.S);
+      break;
+    }
+
+    case 0x78: { // SEI
+      state.P = state.P.Map([](uint8_t v) {
+          return v | I_FLAG;
+        });
+      break;
+    }
+
     default:
       LOG(FATAL) << "Unimplemented (and unexpected) instruction " <<
         StringPrintf("%02x (%s)", opcode, Opcodes::opcode_name[opcode]) <<
