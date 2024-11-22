@@ -222,7 +222,9 @@ static void GenModel() {
           StringAppendF(&content, "\n");
         }
 
-        StringAppendF(&content, "  %s\n", Opcodes::opcode_name[opcode]);
+        StringAppendF(&content, "%04x:  %s\n",
+                      addr,
+                      Opcodes::opcode_name[opcode]);
         addr += Opcodes::opcode_size[opcode];
       }
     }

@@ -49,6 +49,10 @@ struct ByteSet {
     return member.count();
   }
 
+  // Get one element from the set; intended for uses where
+  // the set has size 1. Aborts if the set is empty.
+  uint8_t GetSingleton() const;
+
   template<class F>
   ByteSet Map(const F &f) {
     ByteSet ret;
@@ -132,7 +136,7 @@ struct ByteSet64 {
   // representing a set, and this must be lossy for cardinality
   // reasons. Always represents a superset of the input (and
   // ideally the same set).
-  ByteSet64(const ByteSet &s);
+  explicit ByteSet64(const ByteSet &s);
   ByteSet64() : type(EMPTY) {
     for (int i = 0; i < 7; i++) payload[i] = 0;
   }
@@ -147,6 +151,7 @@ struct ByteSet64 {
 
   // imperative union
   void AddSet(const ByteSet64 &other);
+  void AddSet(const ByteSet &other);
 
   static ByteSet64 Union(const ByteSet64 &a, const ByteSet64 &b);
 

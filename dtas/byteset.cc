@@ -21,6 +21,12 @@ void ByteSet::AddSet(const ByteSet &b) {
   member |= b.member;
 }
 
+uint8_t ByteSet::GetSingleton() const {
+  auto it = begin();
+  CHECK(it != end()) << "GetSingleton on empty set";
+  return *it;
+}
+
 bool ByteSet64::Contains(uint8_t b) const {
   switch (type) {
     case EMPTY:
@@ -212,6 +218,12 @@ void ByteSet64::AddSet(const ByteSet64 &s) {
     if (s.Contains(i)) {
       Add(i);
     }
+  }
+}
+
+void ByteSet64::AddSet(const ByteSet &s) {
+  for (uint8_t v : s) {
+    Add(v);
   }
 }
 

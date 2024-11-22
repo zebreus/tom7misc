@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -128,6 +129,11 @@ ByteSet Modeling::GetByteSet(const State &state, uint16_t addr) const {
 // If the address is in RAM, we simply set the state in ram to
 // that set. Writes to ROM are ignored. Writes to memory-mapped
 // regions may be treated specially.
+//
+// This function assumes the write takes place to specifically that
+// address. Remember that when we write to an indeterminate address,
+// we don't know that the write even takes place at any given address,
+// so we need to *union* at each destination, not *overwrite*.
 void Modeling::WriteByteSet64(State *state, uint16_t addr,
                               const ByteSet64 &s) const {
   // ROM writes are ignored.
@@ -143,6 +149,42 @@ void Modeling::WriteByteSet64(State *state, uint16_t addr,
   // TODO: Special cases for memory-mapped addresses.
 };
 
+
+void CombineZNFlags(State *state,
+                    bool has_zero, bool has_nonzero,
+                    bool has_neg, bool has_nonneg) {
+  // Possible values for the ZN flags.
+  // We never have both Z and N, so this
+  // is some subset of 00, 10, 01.
+
+  // {10} - When the set contains only zero.
+  // {10, 00} - When the set contains zero and positive numbers.
+  // {10, 01} - When the set contains zero and negative numbers.
+  // {01} - When the set contains only negative numbers.
+  // {00} - When the set contains only positive numbers.
+  // ...
+  std::vector<uint8_t> zflags;
+  if (has_zero) zflags.push_back(Z_FLAG);
+  if (has_nonzero) zflags.push_back(0);
+
+  std::vector<uint8_t> nflags;
+  if (has_neg) nflags.push_back(N_FLAG);
+  if (has_nonneg) nflags.push_back(0);
+
+  CHECK(!zflags.empty() && !nflags.empty());
+
+  ByteSet new_flags;
+  for (uint8_t b : state->P) {
+    b &= ~(Z_FLAG | N_FLAG);
+
+    for (uint8_t z : zflags) {
+      for (uint8_t n : nflags) {
+        new_flags.Add(b | z | n);
+      }
+    }
+  }
+  state->P = std::move(new_flags);
+}
 
 // Compute the values of the Z and N flags in the status
 // register, given the byteset. Preserves the values of
@@ -179,35 +221,13 @@ void ZN(State *state, const ByteSet &s) {
            contains_neg ? 'X' : '_');
   }
 
-  // Possible values for the ZN flags.
-  // We never have both Z and N, so this
-  // is some subset of 00, 10, 01.
-
-  // {10} - When the set contains only zero.
-  // {10, 00} - When the set contains zero and positive numbers.
-  // {10, 01} - When the set contains zero and negative numbers.
-  // {01} - When the set contains only negative numbers.
-  // {00} - When the set contains only positive numbers.
-  // ...
-  std::vector<uint8_t> zflags;
-  if (contains_z) zflags.push_back(Z_FLAG);
-  if (contains_pos || contains_neg) zflags.push_back(0);
-
-  std::vector<uint8_t> nflags;
-  if (contains_pos || contains_z) nflags.push_back(0);
-  if (contains_neg) nflags.push_back(N_FLAG);
-
-  CHECK(!zflags.empty() && !nflags.empty());
-
-  for (uint8_t b : s) {
-    b &= ~(Z_FLAG | N_FLAG);
-
-    for (uint8_t z : zflags) {
-      for (uint8_t n : nflags) {
-        res.Add(b | z | n);
-      }
-    }
-  }
+  CombineZNFlags(state,
+                 contains_z,
+                 // nonzero
+                 contains_pos || contains_neg,
+                 contains_neg,
+                 // nonnegative
+                 contains_pos || contains_z);
 }
 
 void Modeling::Expand() {
@@ -325,13 +345,150 @@ void Modeling::Expand() {
 
     };
 
+  auto Compare = [](State *state, const ByteSet &reg, const ByteSet &op) {
+      // Relation    Z C N
+      // reg < op    0 0 sign-bit of result
+      // reg = op    1 1 0
+      // reg > op    0 1 sign-bit of result
+
+      // We don't do this one with separate boolean flags
+      // because not all combinations are possible.
+      ByteSet64 flags;
+
+      for (uint8_t r : reg) {
+        for (uint8_t o : op) {
+          uint32_t t = r - o;
+
+          uint8_t f = 0;
+          if (t == 0) f |= Z_FLAG;
+          if (t & 0x80) f |= N_FLAG;
+          if (r >= o) f |= C_FLAG;
+
+          flags.Add(f);
+        }
+      }
+
+      // PERF Ugh: Need iteration over ByteSet64!
+      std::vector<uint8_t> zncflags;
+      for (int i = 0; i < 256; i++)
+        if (flags.Contains(i))
+          zncflags.push_back(i);
+
+      // Now update flags.
+      ByteSet new_flags;
+      for (uint8_t v : state->P) {
+        v &= ~(Z_FLAG | N_FLAG | C_FLAG);
+
+        for (uint8_t b : zncflags) {
+          new_flags.Add(v | b);
+        }
+      }
+      state->P = std::move(new_flags);
+    };
+
+  // mem[addr+offset] = f(mem[addr+offset])
+  auto ReadModifyWrite = [this](State *state,
+                                uint16_t addr_base,
+                                const ByteSet &addr_offset,
+                                const auto &f) {
+      if (addr_offset.Size() == 1) {
+        uint16_t eaddr = addr_base + addr_offset.GetSingleton();
+        ByteSet before = this->GetByteSet(*state, eaddr);
+        ByteSet after = before.Map(f);
+        // Overwrite, since this is a definite address.
+        this->WriteByteSet64(state, eaddr, ByteSet64(after));
+        ZN(state, after);
+      } else {
+        bool has_zero = false;
+        bool has_nonzero = false;
+        bool has_neg = false;
+        bool has_nonneg = false;
+        for (uint8_t o : addr_offset) {
+          // TODO: Make sure we're handling page wrapping
+          // correctly here.
+          uint16_t eaddr = addr_base + o;
+          ByteSet before = this->GetByteSet(*state, eaddr);
+          // Since we don't know whether we're actually writing
+          // here, the write is added to the possibilities.
+          ByteSet after = before.Map(f);
+          ByteSet together = ByteSet::Union(before, after);
+          this->WriteByteSet64(state, eaddr, ByteSet64(together));
+          // But flags must come from a byte that was written
+          // somewhere, so only consider the after values.
+          for (uint8_t v : after) {
+            if (v == 0) has_zero = true;
+            else has_nonzero = true;
+            if (v & 0x80) has_neg = true;
+            else has_nonneg = true;
+          }
+        }
+        // Update with the possible flag values.
+        CombineZNFlags(state, has_zero, has_nonzero, has_neg, has_nonneg);
+      }
+    };
+
+  // A <- A + *addr + Carry
+  // updating neg, zero, carry, overflow flags
+  auto AddWithCarry = [this](State *state, uint16_t addr_base,
+                             const ByteSet &addr_offset) {
+      bool has_carry = false;
+      bool has_nocarry = false;
+      for (uint8_t flags : state->S) {
+        if (flags & C_FLAG) has_carry = true;
+        else has_nocarry = true;
+      }
+
+      // Use wide addition so that we can test for carry,
+      // overflow, etc. First blend possible carry flags
+      // with possible values for A.
+      std::unordered_set<uint32_t> acarry;
+      for (uint8_t a : state->A) {
+        if (has_nocarry) acarry.insert(a);
+        if (has_carry) acarry.insert(a + 1);
+      }
+
+      ByteSet all_values;
+      for (uint8_t off : addr_offset) {
+        uint16_t eaddr = addr_base + off;
+        all_values.AddSet(this->GetByteSet(*state, eaddr));
+      }
+
+      // Now all possible sums.
+      ByteSet flags_nzcv;
+      ByteSet results;
+      for (uint8_t v : all_values) {
+        for (uint32_t a : acarry) {
+          uint32_t l = a + v;
+
+          uint8_t res8 = l & 0xFF;
+          results.Add(res8);
+
+          uint8_t flags = ((l >> 8) & C_FLAG) |
+            (res8 == 0 ? Z_FLAG : 0) |
+            ((res8 & 0x80) ? N_FLAG : 0);
+          // FIXME! also the overflow flag
+          flags_nzcv.Add(flags);
+        }
+      }
+
+      state->A = std::move(results);
+      ByteSet new_flags;
+      for (uint8_t v : state->P) {
+        v &= ~(Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
+        for (uint8_t f : flags_nzcv) {
+          new_flags.Add(f | v);
+        }
+      }
+      state->P = std::move(new_flags);
+    };
+
   // Keep reading instructions until we reach the end of the block.
   do {
     // Read the opcode, which advances the PC past it.
     const uint8_t opcode = Next8();
 
-    printf("Opcode: " ABLUE("%02x") " " AGREY("(%s)") "\n",
-           opcode, Opcodes::opcode_name[opcode]);
+    printf("%04x: " ABLUE("%02x") " " AGREY("(%s)") "\n",
+           pc - 1, opcode, Opcodes::opcode_name[opcode]);
 
     switch (opcode) {
     case 0x4c: { // JMP a
@@ -339,12 +496,26 @@ void Modeling::Expand() {
       EnterBlock(addr, state);
       return;
     }
+
     case 0xf0: { // BEQ *+d
       return Branch(Z_FLAG, Z_FLAG);
     }
     case 0xd0: { // BNE *+d
       return Branch(Z_FLAG, 0);
     }
+    case 0x50: { // BVC *+d
+      return Branch(V_FLAG, 0);
+    }
+    case 0x70: { // BVS *+d
+      return Branch(V_FLAG, V_FLAG);
+    }
+    case 0xb0: { // BCS *+d
+      return Branch(C_FLAG, C_FLAG);
+    }
+    case 0x90: { // BCC *+d
+      return Branch(C_FLAG, 0);
+    }
+
     case 0xad: { // LDA a
       uint16_t addr = Next16();
       state.A = GetByteSet(state, addr);
@@ -447,14 +618,12 @@ void Modeling::Expand() {
       WriteByteSet64(&state, addr, ByteSet64(state.A));
       break;
     }
-    case 0x99: { // STA a,y
-      LOG(FATAL) << "Unimplemented 'STA a,y'";
-      break;
-    }
+
     case 0xa5: { // LDA d
       LOG(FATAL) << "Unimplemented 'LDA d'";
       break;
     }
+
     case 0x20: { // JSR a
       // Potentially hard?
       // It writes into the stack, so want to have more
@@ -485,6 +654,7 @@ void Modeling::Expand() {
       // I guess it's just a pipelining quirk. RTI adds 1 to the
       // that it pops.
       const uint16_t stored_pc = pc + 1;
+
       // XXX Could be WriteStack etc.
       if (state.S.Size() == 1) {
         // Then it is definitely stored in the stack here,
@@ -524,12 +694,11 @@ void Modeling::Expand() {
       // Ends basic block.
       return;
     }
+
     case 0xc9: { // CMP #i
-      LOG(FATAL) << "Unimplemented 'CMP #i'";
+      uint8_t imm = Next8();
+      Compare(&state, state.A, ByteSet::Singleton(imm));
       break;
-    }
-    case 0x90: { // BCC *+d
-      return Branch(C_FLAG, 0);
     }
 
     case 0x60: { // RTS
@@ -549,9 +718,25 @@ void Modeling::Expand() {
           ret_state.S = ByteSet::Singleton(sp + 2);
           EnterBlock(raddr, std::move(ret_state));
         } else {
-          // Ugh.
-          printf("Warning: More than one possible RTS destination.\n");
-          LOG(FATAL) << "unimplemented";
+          printf(ARED("Ugh") "! Multiple possible RTS destinations: ");
+          for (int hi = 0; hi < 256; hi++) {
+            if (state.ram[saddr + 1].Contains(hi)) {
+              for (int lo = 0; lo < 256; lo++) {
+                if (state.ram[saddr + 2].Contains(lo)) {
+                  uint16_t raddr = ((hi << 8) | lo) + 1;
+                  printf(" %04x", raddr);
+                  State ret_state = state;
+                  // We know where the stack points, and what was
+                  // there.
+                  ret_state.S = ByteSet::Singleton(sp + 2);
+                  ret_state.ram[saddr + 1] = ByteSet64::Singleton(hi);
+                  ret_state.ram[saddr + 2] = ByteSet64::Singleton(lo);
+                  EnterBlock(raddr, std::move(ret_state));
+                }
+              }
+            }
+          }
+          printf("\n");
         }
       }
 
@@ -565,7 +750,18 @@ void Modeling::Expand() {
       break;
     }
     case 0x68: { // PLA
-      LOG(FATAL) << "Unimplemented 'PLA'";
+      // Pull A from stack.
+
+      state.A.Clear();
+      for (uint8_t sp : state.S) {
+        uint16_t saddr = 0x0100 + sp;
+        state.A.AddSet(state.ram[saddr].ToByteSet());
+      }
+
+      state.S = state.S.Map([](uint8_t v) {
+          return v + 1;
+        });
+
       break;
     }
     case 0xb1: { // LDA (d),y
@@ -581,12 +777,94 @@ void Modeling::Expand() {
       break;
     }
     case 0x48: { // PHA
-      LOG(FATAL) << "Unimplemented 'PHA'";
+      // Push A onto stack.
+
+      if (state.S.Size() == 1) {
+        // Then it is definitely stored in the stack here,
+        // so we can replace the memory location.
+        uint16_t saddr = 0x0100 + *state.S.begin();
+        state.ram[saddr] = ByteSet64(state.A);
+        state.S = ByteSet::Singleton(saddr - 1);
+      } else {
+        for (uint8_t sp : state.S) {
+          uint16_t saddr = 0x0100 + sp;
+          state.ram[saddr].AddSet(state.A);
+        }
+        state.S = state.S.Map([](uint8_t v) {
+            return v - 1;
+          });
+      }
+
       break;
     }
     case 0x0a: { // ASL
-      // Need to handle carry.
-      LOG(FATAL) << "Unimplemented 'ASL'";
+      // Shift left, into carry.
+      // Here any of the Zero, Negative, and Carry
+      // flags are modified.
+
+      // Look at the values before shifting to
+      // determine the possible flags that can
+      // result:
+      bool has_carry = false;
+      bool has_no_carry = false;
+      bool has_zero = false;
+      bool has_nonzero = false;
+      bool has_neg = false;
+      bool has_pos = false;
+      for (int i = 0; i < 256; i++) {
+        if (state.A.Contains(i)) {
+          if (i & 0x80) {
+            has_carry = true;
+          } else {
+            has_no_carry = true;
+          }
+
+          if (i & 0x7f) {
+            has_nonzero = true;
+          } else {
+            has_zero = true;
+          }
+
+          // bit that gets shifted into negative bit.
+          if (i & 0b01000000) {
+            has_neg = true;
+          } else {
+            has_pos = true;
+          }
+        }
+      }
+
+      CHECK(has_carry || has_no_carry);
+      std::vector<uint8_t> carry_flags;
+      if (has_carry) carry_flags.push_back(C_FLAG);
+      if (has_no_carry) carry_flags.push_back(0);
+
+      CHECK(has_neg || has_pos);
+      std::vector<uint8_t> neg_flags;
+      if (has_neg) neg_flags.push_back(N_FLAG);
+      if (has_pos) neg_flags.push_back(0);
+
+      CHECK(has_zero || has_nonzero);
+      std::vector<uint8_t> zero_flags;
+      if (has_zero) zero_flags.push_back(Z_FLAG);
+      if (has_nonzero) zero_flags.push_back(0);
+
+      state.A = state.A.Map([](uint8_t v) { return v << 1; });
+      // No combination of flags is contradictory, so we
+      // add all of them:
+      ByteSet new_flags;
+      for (uint8_t v : state.P) {
+        v &= ~(C_FLAG | N_FLAG | Z_FLAG);
+
+        for (uint8_t c : carry_flags) {
+          for (uint8_t n : neg_flags) {
+            for (uint8_t z : zero_flags) {
+              new_flags.Add(v | c | n | z);
+            }
+          }
+        }
+      }
+      state.P = std::move(new_flags);
       break;
     }
     case 0xa9: { // LDA #i
@@ -599,38 +877,84 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'ROL'";
       break;
     }
-    case 0xb0: { // BCS *+d
-      return Branch(C_FLAG, C_FLAG);
-    }
+
     case 0xc0: { // CPY #i
-      LOG(FATAL) << "Unimplemented 'CPY #i'";
+      uint8_t imm = Next8();
+      Compare(&state, state.Y, ByteSet::Singleton(imm));
       break;
     }
     case 0x05: { // ORA d
       LOG(FATAL) << "Unimplemented 'ORA d'";
       break;
     }
-    case 0x18: { // CLC
+
+    case 0x38: { // SEC
       state.P = state.P.Map([](uint8_t v) {
-          return v & ~C_FLAG;
+          return v | C_FLAG;
         });
       break;
     }
+    case 0x18: { // CLC
+      state.P = state.P.Map([](uint8_t v) { return v & ~C_FLAG; });
+      break;
+    }
+    case 0xB8: { // CLV
+      state.P = state.P.Map([](uint8_t v) { return v & ~V_FLAG; });
+      break;
+    }
+    case 0x78: { // SEI
+      state.P = state.P.Map([](uint8_t v) { return v | I_FLAG; });
+      break;
+    }
+    case 0x58: { // CLI
+      state.P = state.P.Map([](uint8_t v) { return v & ~I_FLAG; });
+      break;
+      break;
+    }
+
+
     case 0xb9: { // LDA a,y
       LOG(FATAL) << "Unimplemented 'LDA a,y'";
       break;
     }
     case 0x9d: { // STA a,x
-      LOG(FATAL) << "Unimplemented 'STA a,x'";
+      uint16_t addr = Next16();
+      if (state.X.Size() == 1) {
+        // If the address is definite, then we can overwrite.
+        uint16_t eaddr = addr + state.X.GetSingleton();
+        WriteByteSet64(&state, eaddr, ByteSet64(state.A));
+      } else {
+        for (uint8_t x : state.X) {
+          uint16_t eaddr = addr + x;
+          state.ram[eaddr].AddSet(state.A);
+        }
+      }
       break;
     }
+
+    case 0x99: { // STA a,y
+      uint16_t addr = Next16();
+      if (state.Y.Size() == 1) {
+        // If the address is definite, then we can overwrite.
+        uint16_t eaddr = addr + state.Y.GetSingleton();
+        WriteByteSet64(&state, eaddr, ByteSet64(state.A));
+      } else {
+        for (uint8_t y : state.Y) {
+          uint16_t eaddr = addr + y;
+          state.ram[eaddr].AddSet(state.A);
+        }
+      }
+      break;
+    }
+
     case 0xa8: { // TAY
       state.Y = state.A;
       ZN(&state, state.Y);
       break;
     }
     case 0xe0: { // CPX #i
-      LOG(FATAL) << "Unimplemented 'CPX #i'";
+      uint8_t imm = Next8();
+      Compare(&state, state.X, ByteSet::Singleton(imm));
       break;
     }
     case 0xb5: { // LDA d,x
@@ -647,10 +971,6 @@ void Modeling::Expand() {
       uint16_t addr = Next16();
       state.Y = GetByteSet(state, addr);
       ZN(&state, state.Y);
-      break;
-    }
-    case 0x69: { // ADC #i
-      LOG(FATAL) << "Unimplemented 'ADC #i'";
       break;
     }
     case 0xf9: { // SBC a,y
@@ -677,34 +997,49 @@ void Modeling::Expand() {
       break;
     }
 
-    case 0x38: { // SEC
-      state.P = state.P.Map([](uint8_t v) {
-          return v | C_FLAG;
-        });
-      break;
-    }
     case 0x91: { // STA (d),y
       LOG(FATAL) << "Unimplemented 'STA (d),y'";
-      break;
-    }
-    case 0xe6: { // INC d
-      LOG(FATAL) << "Unimplemented 'INC d'";
       break;
     }
     case 0x7e: { // ROR a,x
       LOG(FATAL) << "Unimplemented 'ROR a,x'";
       break;
     }
-    case 0x65: { // ADC d
-      LOG(FATAL) << "Unimplemented 'ADC d'";
+
+    case 0x69: { // ADC #i
+      // Possible to use AddWithCarry for this?
+      LOG(FATAL) << "Unimplemented 'ADC #i'";
       break;
     }
-    case 0xf5: { // SBC d,x
-      LOG(FATAL) << "Unimplemented 'SBC d,x'";
+    case 0x6d: { // ADC a
+      uint16_t addr = Next16();
+      AddWithCarry(&state, addr, ByteSet::Singleton(0));
+      break;
+    }
+    case 0x65: { // ADC d
+      // A <- A + operand + carry
+      uint16_t addr = Next8();
+      AddWithCarry(&state, addr, ByteSet::Singleton(0));
       break;
     }
     case 0x79: { // ADC a,y
-      LOG(FATAL) << "Unimplemented 'ADC a,y'";
+      uint16_t addr = Next16();
+      AddWithCarry(&state, addr, state.Y);
+      break;
+    }
+    case 0x7d: { // ADC a,x
+      uint16_t addr = Next16();
+      AddWithCarry(&state, addr, state.X);
+      break;
+    }
+    case 0x75: { // ADC d,x
+      uint16_t addr = Next8();
+      AddWithCarry(&state, addr, state.X);
+      break;
+    }
+
+    case 0xf5: { // SBC d,x
+      LOG(FATAL) << "Unimplemented 'SBC d,x'";
       break;
     }
 
@@ -758,10 +1093,42 @@ void Modeling::Expand() {
       ZN(&state, state.A);
       break;
     }
+
     case 0xce: { // DEC a
-      LOG(FATAL) << "Unimplemented 'DEC a'";
+      uint16_t addr = Next16();
+      ReadModifyWrite(&state,
+                      addr,
+                      // no offset
+                      ByteSet::Singleton(0),
+                      [](uint8_t v) { return v - 1; });
       break;
     }
+    case 0xde: { // DEC a,x
+      uint16_t addr = Next16();
+      ReadModifyWrite(&state,
+                      addr,
+                      state.X,
+                      [](uint8_t v) { return v - 1; });
+      break;
+    }
+    case 0xc6: { // DEC d
+      uint16_t addr = Next8();
+      ReadModifyWrite(&state,
+                      addr,
+                      // no offset
+                      ByteSet::Singleton(0),
+                      [](uint8_t v) { return v - 1; });
+      break;
+    }
+    case 0xd6: { // DEC d,x
+      uint16_t addr = Next8();
+      ReadModifyWrite(&state,
+                      addr,
+                      state.X,
+                      [](uint8_t v) { return v - 1; });
+      break;
+    }
+
     case 0x49: { // EOR #i
       LOG(FATAL) << "Unimplemented 'EOR #i'";
       break;
@@ -795,16 +1162,8 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'STY a'";
       break;
     }
-    case 0xc6: { // DEC d
-      LOG(FATAL) << "Unimplemented 'DEC d'";
-      break;
-    }
     case 0x6a: { // ROR
       LOG(FATAL) << "Unimplemented 'ROR'";
-      break;
-    }
-    case 0x75: { // ADC d,x
-      LOG(FATAL) << "Unimplemented 'ADC d,x'";
       break;
     }
     case 0xd5: { // CMP d,x
@@ -819,10 +1178,6 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'BIT d'";
       break;
     }
-    case 0x7d: { // ADC a,x
-      LOG(FATAL) << "Unimplemented 'ADC a,x'";
-      break;
-    }
     case 0x40: { // RTI
       LOG(FATAL) << "Unimplemented 'RTI'";
       break;
@@ -835,24 +1190,48 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'AND a,y'";
       break;
     }
+
+    case 0xe6: { // INC d
+      uint16_t addr = Next8();
+      ReadModifyWrite(&state,
+                      addr,
+                      // no offset
+                      ByteSet::Singleton(0),
+                      [](uint8_t v) { return v + 1; });
+      break;
+    }
     case 0xee: { // INC a
-      LOG(FATAL) << "Unimplemented 'INC a'";
+      uint16_t addr = Next16();
+      ReadModifyWrite(&state,
+                      addr,
+                      // no offset
+                      ByteSet::Singleton(0),
+                      [](uint8_t v) { return v + 1; });
       break;
     }
-    case 0xde: { // DEC a,x
-      LOG(FATAL) << "Unimplemented 'DEC a,x'";
+    case 0xf6: { // INC d,x
+      uint16_t addr = Next8();
+      ReadModifyWrite(&state,
+                      addr,
+                      state.X,
+                      [](uint8_t v) { return v + 1; });
       break;
     }
+    case 0xfe: { // INC a,x
+      uint16_t addr = Next16();
+      ReadModifyWrite(&state,
+                      addr,
+                      state.X,
+                      [](uint8_t v) { return v + 1; });
+      break;
+    }
+
     case 0x8e: { // STX a
       LOG(FATAL) << "Unimplemented 'STX a'";
       break;
     }
     case 0x2c: { // BIT a
       LOG(FATAL) << "Unimplemented 'BIT a'";
-      break;
-    }
-    case 0x6d: { // ADC a
-      LOG(FATAL) << "Unimplemented 'ADC a'";
       break;
     }
     case 0x8a: { // TXA
@@ -912,13 +1291,6 @@ void Modeling::Expand() {
     case 0x9A: { // TXS
       state.S = state.X;
       ZN(&state, state.S);
-      break;
-    }
-
-    case 0x78: { // SEI
-      state.P = state.P.Map([](uint8_t v) {
-          return v | I_FLAG;
-        });
       break;
     }
 
