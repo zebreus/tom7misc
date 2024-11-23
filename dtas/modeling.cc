@@ -86,11 +86,15 @@ void Modeling::EnterBlock(uint16_t addr, const State &state) {
   if (it == block_index.end()) {
     // New block.
     if (0 == (zoning.addr[addr] & Zoning::X)) {
-      printf("\nTried to enter non-executable address " ARED("%04x") ".\n",
-             addr);
+      if (verbose > 0) {
+        printf("\nTried to enter non-executable address " ARED("%04x") ".\n",
+               addr);
+      }
       // Do nothing.
     } else {
-      printf("New block " AGREEN("%04x") "\n", addr);
+      if (verbose > 0) {
+        printf("New block " AGREEN("%04x") "\n", addr);
+      }
       const int bidx = (int)blocks.size();
       block_index[addr] = bidx;
       blocks.emplace_back(BasicBlock{.start_addr = addr, .state_in = state});
@@ -349,6 +353,94 @@ static void Compare(State *state, const ByteSet &reg, const ByteSet &op) {
   CombineFlags(state, zncflags, Z_FLAG | N_FLAG | C_FLAG);
 }
 
+// A <- A + Value + Carry
+// updating neg, zero, carry, overflow flags
+static void AddWithCarry(State *state, const ByteSet &values) {
+  bool has_carry = false;
+  bool has_nocarry = false;
+  for (uint8_t flags : state->S) {
+    if (flags & C_FLAG) has_carry = true;
+    else has_nocarry = true;
+  }
+
+  // Use wide addition so that we can test for carry,
+  // overflow, etc. First blend possible carry flags
+  // with possible values for A.
+  std::unordered_set<uint32_t> acarry;
+  for (uint8_t a : state->A) {
+    if (has_nocarry) acarry.insert(a);
+    if (has_carry) acarry.insert(a + 1);
+  }
+
+  // Now all possible sums.
+  ByteSet flags_nzcv;
+  ByteSet results;
+  for (uint8_t v : values) {
+    for (uint32_t a : acarry) {
+      uint32_t l = a + v;
+
+      uint8_t res8 = l & 0xFF;
+      results.Add(res8);
+
+      uint8_t flags =
+        ((l >> 8) & C_FLAG) |
+        (res8 == 0 ? Z_FLAG : 0) |
+        ((res8 & 0x80) ? N_FLAG : 0);
+      // FIXME! also the overflow flag
+      flags_nzcv.Add(flags);
+    }
+  }
+
+  state->A = std::move(results);
+  CombineFlags(state, flags_nzcv, Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
+}
+
+// A <- A - Value - ~Carry
+// updating neg, zero, carry, overflow flags
+static void SubtractWithCarry(State *state, const ByteSet &values) {
+  // Test whether we always/sometimes/never have carry bit.
+  bool has_carry = false;
+  bool has_nocarry = false;
+  for (uint8_t flags : state->S) {
+    if (flags & C_FLAG) has_carry = true;
+    else has_nocarry = true;
+  }
+
+  // Use wide addition so that we can test for carry,
+  // overflow, etc. First blend possible carry flags
+  // with possible values for A.
+  std::unordered_set<uint32_t> acarry;
+  for (uint8_t a : state->A) {
+    // Note: The sense of the carry bit is reversed here
+    // (carry ZERO means DO subtract 1).
+    if (has_carry) acarry.insert(a);
+    if (has_nocarry) acarry.insert(a - 1);
+  }
+
+  // Now all possible sums.
+  ByteSet flags_nzcv;
+  ByteSet results;
+  for (uint8_t v : values) {
+    for (uint32_t a : acarry) {
+      uint32_t l = a - v;
+
+      uint8_t res8 = l & 0xFF;
+      results.Add(res8);
+
+      uint8_t flags =
+        (((l >> 8) & C_FLAG) ^ C_FLAG) |
+        (res8 == 0 ? Z_FLAG : 0) |
+        ((res8 & 0x80) ? N_FLAG : 0);
+      // FIXME! also the overflow flag
+      flags_nzcv.Add(flags);
+    }
+  }
+
+  state->A = std::move(results);
+  CombineFlags(state, flags_nzcv, Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
+}
+
+
 void Modeling::Expand() {
   // TODO:
   //
@@ -520,104 +612,29 @@ void Modeling::Expand() {
       }
     };
 
-  // A <- A + *addr + Carry
+  // A <- A + Value + Carry
   // updating neg, zero, carry, overflow flags
-  auto AddWithCarry = [this](State *state, uint16_t addr_base,
-                             const ByteSet &addr_offset) {
-      bool has_carry = false;
-      bool has_nocarry = false;
-      for (uint8_t flags : state->S) {
-        if (flags & C_FLAG) has_carry = true;
-        else has_nocarry = true;
-      }
-
-      // Use wide addition so that we can test for carry,
-      // overflow, etc. First blend possible carry flags
-      // with possible values for A.
-      std::unordered_set<uint32_t> acarry;
-      for (uint8_t a : state->A) {
-        if (has_nocarry) acarry.insert(a);
-        if (has_carry) acarry.insert(a + 1);
-      }
-
+  auto ReadAddWithCarry = [this](State *state, uint16_t addr_base,
+                                 const ByteSet &addr_offset) {
       ByteSet all_values;
       for (uint8_t off : addr_offset) {
         uint16_t eaddr = addr_base + off;
         all_values.AddSet(this->GetByteSet(*state, eaddr));
       }
-
-      // Now all possible sums.
-      ByteSet flags_nzcv;
-      ByteSet results;
-      for (uint8_t v : all_values) {
-        for (uint32_t a : acarry) {
-          uint32_t l = a + v;
-
-          uint8_t res8 = l & 0xFF;
-          results.Add(res8);
-
-          uint8_t flags = ((l >> 8) & C_FLAG) |
-            (res8 == 0 ? Z_FLAG : 0) |
-            ((res8 & 0x80) ? N_FLAG : 0);
-          // FIXME! also the overflow flag
-          flags_nzcv.Add(flags);
-        }
-      }
-
-      state->A = std::move(results);
-      CombineFlags(state, flags_nzcv, Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
+      return AddWithCarry(state, all_values);
     };
 
   // A <- A - *addr - ~Carry
   // updating neg, zero, carry, overflow flags
-  auto SubtractWithCarry = [this](State *state, uint16_t addr_base,
-                                  const ByteSet &addr_offset) {
-      // Test whether we always/sometimes/never have carry bit.
-      bool has_carry = false;
-      bool has_nocarry = false;
-      for (uint8_t flags : state->S) {
-        if (flags & C_FLAG) has_carry = true;
-        else has_nocarry = true;
-      }
-
-      // Use wide addition so that we can test for carry,
-      // overflow, etc. First blend possible carry flags
-      // with possible values for A.
-      std::unordered_set<uint32_t> acarry;
-      for (uint8_t a : state->A) {
-        // Note: The sense of the carry bit is reversed here
-        // (carry ZERO means DO subtract 1).
-        if (has_carry) acarry.insert(a);
-        if (has_nocarry) acarry.insert(a - 1);
-      }
-
+  auto ReadSubtractWithCarry = [this](State *state, uint16_t addr_base,
+                                      const ByteSet &addr_offset) {
       ByteSet all_values;
       for (uint8_t off : addr_offset) {
         uint16_t eaddr = addr_base + off;
         all_values.AddSet(this->GetByteSet(*state, eaddr));
       }
 
-      // Now all possible sums.
-      ByteSet flags_nzcv;
-      ByteSet results;
-      for (uint8_t v : all_values) {
-        for (uint32_t a : acarry) {
-          uint32_t l = a - v;
-
-          uint8_t res8 = l & 0xFF;
-          results.Add(res8);
-
-          uint8_t flags =
-            (((l >> 8) & C_FLAG) ^ C_FLAG) |
-            (res8 == 0 ? Z_FLAG : 0) |
-            ((res8 & 0x80) ? N_FLAG : 0);
-          // FIXME! also the overflow flag
-          flags_nzcv.Add(flags);
-        }
-      }
-
-      state->A = std::move(results);
-      CombineFlags(state, flags_nzcv, Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
+      return SubtractWithCarry(state, all_values);
     };
 
   // For LSR. The operation itself is just a right shift, but it is
@@ -638,8 +655,10 @@ void Modeling::Expand() {
     // Read the opcode, which advances the PC past it.
     const uint8_t opcode = Next8();
 
-    printf("%04x: " ABLUE("%02x") " " AGREY("(%s)") "\n",
-           pc - 1, opcode, Opcodes::opcode_name[opcode]);
+    if (verbose > 1) {
+      printf("%04x: " ABLUE("%02x") " " AGREY("(%s)") "\n",
+             pc - 1, opcode, Opcodes::opcode_name[opcode]);
+    }
 
     switch (opcode) {
     case 0x4c: { // JMP a
@@ -824,12 +843,6 @@ void Modeling::Expand() {
       return;
     }
 
-    case 0xc9: { // CMP #i
-      uint8_t imm = Next8();
-      Compare(&state, state.A, ByteSet::Singleton(imm));
-      break;
-    }
-
     case 0x60: { // RTS
       // See JSR for some details.
       for (uint8_t sp : state.S) {
@@ -864,8 +877,10 @@ void Modeling::Expand() {
           // about how the code works. We should be tracking something
           // about static call graphs to do this better.
 
-          printf(ARED("Ugh") "! Multiple possible RTS destinations [sp="
-                 ACYAN("%02x") "]: ", sp);
+          if (verbose > 0) {
+            printf(ARED("Ugh") "! Multiple possible RTS destinations [sp="
+                   ACYAN("%02x") "]: ", sp);
+          }
           // printf("\n");
           for (int hi = 0; hi < 256; hi++) {
             if (state.ram[saddr + 1].Contains(hi)) {
@@ -906,7 +921,7 @@ void Modeling::Expand() {
                   }
 
                   if (allow) {
-                    printf(" %04x", raddr);
+                    if (verbose > 0) printf(" %04x", raddr);
                     State ret_state = state;
                     // We know where the stack points, and what was
                     // there.
@@ -915,15 +930,17 @@ void Modeling::Expand() {
                     ret_state.ram[saddr + 2] = ByteSet64::Singleton(lo);
                     EnterBlock(raddr, std::move(ret_state));
                   } else {
-                    printf(" %s%04x" ANSI_RESET,
-                           unzoned ? ANSI_DARK_RED : ANSI_RED,
-                           raddr);
+                    if (verbose > 0) {
+                      printf(" %s%04x" ANSI_RESET,
+                             unzoned ? ANSI_DARK_RED : ANSI_RED,
+                             raddr);
+                    }
                   }
                 }
               }
             }
           }
-          printf("\n");
+          if (verbose > 0) printf("\n");
         }
       }
 
@@ -1066,13 +1083,6 @@ void Modeling::Expand() {
       break;
     }
 
-
-    case 0xc0: { // CPY #i
-      uint8_t imm = Next8();
-      Compare(&state, state.Y, ByteSet::Singleton(imm));
-      break;
-    }
-
     case 0x38: { // SEC
       state.P = state.P.Map([](uint8_t v) {
           return v | C_FLAG;
@@ -1134,12 +1144,22 @@ void Modeling::Expand() {
       }
       break;
     }
-    case 0x91: { // STA (d),y
-      LOG(FATAL) << "Unimplemented 'STA (d),y'";
+    case 0x95: { // STA d,x
+      uint8_t zpg_addr = Next8();
+      if (state.X.Size() == 1) {
+        // If the address is definite, then we can overwrite.
+        uint8_t zpg_eaddr = zpg_addr + state.X.GetSingleton();
+        WriteByteSet64(&state, zpg_eaddr, ByteSet64(state.A));
+      } else {
+        for (uint8_t x : state.X) {
+          uint8_t zpg_eaddr = zpg_addr + x;
+          MergeWriteByteSet(&state, zpg_eaddr, state.A);
+        }
+      }
       break;
     }
-    case 0x95: { // STA d,x
-      LOG(FATAL) << "Unimplemented 'STA d,x'";
+    case 0x91: { // STA (d),y
+      LOG(FATAL) << "Unimplemented 'STA (d),y'";
       break;
     }
 
@@ -1147,11 +1167,6 @@ void Modeling::Expand() {
     case 0xa8: { // TAY
       state.Y = state.A;
       ZN(&state, state.Y);
-      break;
-    }
-    case 0xe0: { // CPX #i
-      uint8_t imm = Next8();
-      Compare(&state, state.X, ByteSet::Singleton(imm));
       break;
     }
     case 0xa0: { // LDY #i
@@ -1222,74 +1237,71 @@ void Modeling::Expand() {
     }
 
     case 0x69: { // ADC #i
-      // Possible to use AddWithCarry for this?
-      LOG(FATAL) << "Unimplemented 'ADC #i'";
+      uint8_t imm = Next8();
+      AddWithCarry(&state, ByteSet::Singleton(imm));
       break;
     }
     case 0x6d: { // ADC a
       uint16_t addr = Next16();
-      AddWithCarry(&state, addr, ByteSet::Singleton(0));
+      ReadAddWithCarry(&state, addr, ByteSet::Singleton(0));
       break;
     }
     case 0x65: { // ADC d
       // A <- A + operand + carry
       uint16_t addr = Next8();
-      AddWithCarry(&state, addr, ByteSet::Singleton(0));
+      ReadAddWithCarry(&state, addr, ByteSet::Singleton(0));
       break;
     }
     case 0x79: { // ADC a,y
       uint16_t addr = Next16();
-      AddWithCarry(&state, addr, state.Y);
+      ReadAddWithCarry(&state, addr, state.Y);
       break;
     }
     case 0x7d: { // ADC a,x
       uint16_t addr = Next16();
-      AddWithCarry(&state, addr, state.X);
+      ReadAddWithCarry(&state, addr, state.X);
       break;
     }
     case 0x75: { // ADC d,x
       uint16_t addr = Next8();
-      AddWithCarry(&state, addr, state.X);
+      ReadAddWithCarry(&state, addr, state.X);
       break;
     }
 
     case 0xed: { // SBC a
       uint16_t addr = Next16();
-      SubtractWithCarry(&state, addr, ByteSet::Singleton(0));
+      ReadSubtractWithCarry(&state, addr, ByteSet::Singleton(0));
       break;
     }
     case 0xe5: { // SBC d
       uint16_t addr = Next8();
-      SubtractWithCarry(&state, addr, ByteSet::Singleton(0));
+      ReadSubtractWithCarry(&state, addr, ByteSet::Singleton(0));
       break;
     }
     case 0xf9: { // SBC a,y
       uint16_t addr = Next16();
-      SubtractWithCarry(&state, addr, state.Y);
+      ReadSubtractWithCarry(&state, addr, state.Y);
       break;
     }
     case 0xfd: { // SBC a,x
       uint16_t addr = Next16();
-      SubtractWithCarry(&state, addr, state.X);
+      ReadSubtractWithCarry(&state, addr, state.X);
       break;
     }
     case 0xf5: { // SBC d,x
       uint16_t addr = Next8();
-      SubtractWithCarry(&state, addr, state.X);
+      ReadSubtractWithCarry(&state, addr, state.X);
       break;
     }
     case 0xe9: { // SBC #i
-      LOG(FATAL) << "Unimplemented 'SBC #i'";
+      uint8_t imm = Next8();
+      SubtractWithCarry(&state, ByteSet::Singleton(imm));
       break;
     }
 
     case 0x98: { // TYA
       state.A = state.Y;
       ZN(&state, state.A);
-      break;
-    }
-    case 0xc5: { // CMP d
-      LOG(FATAL) << "Unimplemented 'CMP d'";
       break;
     }
 
@@ -1418,8 +1430,34 @@ void Modeling::Expand() {
       break;
     }
 
+    case 0xe0: { // CPX #i
+      uint8_t imm = Next8();
+      Compare(&state, state.X, ByteSet::Singleton(imm));
+      break;
+    }
+    case 0xc0: { // CPY #i
+      uint8_t imm = Next8();
+      Compare(&state, state.Y, ByteSet::Singleton(imm));
+      break;
+    }
+    case 0xc9: { // CMP #i
+      uint8_t imm = Next8();
+      Compare(&state, state.A, ByteSet::Singleton(imm));
+      break;
+    }
+
+    case 0xdd: { // CMP a,x
+      LOG(FATAL) << "Unimplemented 'CMP a,x'";
+      break;
+    }
+    case 0xc5: { // CMP d
+      uint8_t zpg_addr = Next8();
+      Compare(&state, state.A, GetByteSet(state, zpg_addr));
+      break;
+    }
     case 0xcd: { // CMP a
-      LOG(FATAL) << "Unimplemented 'CMP a'";
+      uint16_t addr = Next16();
+      Compare(&state, state.A, GetByteSet(state, addr));
       break;
     }
     case 0xd5: { // CMP d,x
@@ -1430,13 +1468,46 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'CMP a,y'";
       break;
     }
+
     case 0x24: { // BIT d
       LOG(FATAL) << "Unimplemented 'BIT d'";
       break;
     }
+
     case 0x40: { // RTI
-      LOG(FATAL) << "Unimplemented 'RTI'";
-      break;
+
+      // Unnecessary because we are about to exit. But this
+      // is how it works.
+
+      state.P.Clear();
+      for (uint8_t sp : state.S) {
+        uint16_t saddr = 0x0100 + sp;
+        state.P.AddSet(state.ram[saddr].ToByteSet().Map([](uint8_t flags) {
+            // Note that this behavior differs in fceulib; see x6502.cc.
+            return flags & ~B_FLAG;
+          }));
+      }
+
+      // PC actually gets set to a value from the stack, but we have
+      // nothing to do with it here (especially if it is not definite).
+      pc = 0;
+
+      // Flags byte and pc popped from stack.
+      state.S = state.S.Map([](uint8_t v) {
+          return v + 3;
+        });
+
+      // We treat this as terminal for the analysis, as everything
+      // is happening within the nonmaskable interrupt, which is
+      // the entry point.
+      //
+      // TODO: This would be a good place to record the "final" state
+      // if we want to be able to ask what values are possible after a
+      // frame ends.
+      if (verbose > 1) {
+        printf(ANSI_DARK_GREEN "(return from interrupt)" "\n");
+      }
+      return;
     }
 
     case 0x29: { // AND #i
@@ -1547,10 +1618,6 @@ void Modeling::Expand() {
       ZN(&state, state.A);
       break;
     }
-    case 0xdd: { // CMP a,x
-      LOG(FATAL) << "Unimplemented 'CMP a,x'";
-      break;
-    }
     case 0xbc: { // LDY a,x
       uint16_t addr = Next16();
       state.Y.Clear();
@@ -1645,7 +1712,9 @@ void Modeling::Expand() {
     // Stop if we've encountered a new block (i.e., there is a jump
     // into this block from elsewhere).
   } while (!block_index.contains(pc));
-  printf(ANSI_DARK_BLUE "(block ends)" ANSI_RESET "\n");
+  if (verbose > 1) {
+    printf(ANSI_DARK_BLUE "(block ends)" ANSI_RESET "\n");
+  }
 
   // If we get here, then the basic block has ended, but we treat
   // it as an unconditional jump to the next instruction.

@@ -716,6 +716,11 @@ void X6502::RunLoop() {
       case 0x40: /* RTI */
         RecordStack();
         reg_P = POP();
+        // XXX Some information suggests that the B_FLAG is masked
+        // off when popped from the stack here. It might not matter
+        // since the B_FLAG in the register is not actually accessible.
+        // The hardware interrupts clear it. -tom7
+
         /* reg_PI=reg_P; This is probably incorrect, so it's commented out. */
         reg_PI = reg_P;
         reg_PC = POP();
@@ -744,6 +749,8 @@ void X6502::RunLoop() {
         break;
       case 0x28: /* PLP */
         RecordStack();
+        // XXX As in the RTI case, information suggests that B_FLAG
+        // would be masked off here (zeroed). -tom7
         reg_P = POP();
         break;
       case 0x4C: {

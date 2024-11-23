@@ -113,16 +113,17 @@ static void Model() {
       // status.Progressf(numer, denom, ACYAN("%lld") " iters.", iters);
     }
 
-    printf(AWHITE("== starting iteration %lld ==") "\n", iters);
-    printf("Number of blocks: " ACYAN("%d") "\n",
-           (int)modeling.blocks.size());
+    if (iters > 700) {
+      printf(AWHITE("== starting iteration %lld ==") "\n", iters);
+      printf("Number of blocks: " ACYAN("%d") "\n",
+             (int)modeling.blocks.size());
+      modeling.verbose = true;
+    }
     modeling.Expand();
   }
   status.Statusf("Done in " ACYAN("%lld") " iters.\n", iters);
 
-
 }
-
 
 int main(int argc, char **argv) {
   ANSI::Init();

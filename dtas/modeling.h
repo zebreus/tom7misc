@@ -115,6 +115,7 @@ struct Modeling {
   // might want to load a zoning file to make assumptions
   // about what addresses are actually code.
   Zoning zoning;
+  int verbose = 0;
 
   // True if the analysis is quiescent.
   bool Done() const;
