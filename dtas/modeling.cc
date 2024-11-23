@@ -279,6 +279,33 @@ static void ZN(State *state, const ByteSet &s) {
                    .has_nonneg = contains_pos || contains_z});
 }
 
+static void Compare(State *state, const ByteSet &reg, const ByteSet &op) {
+  // Relation    Z C N
+  // reg < op    0 0 sign-bit of result
+  // reg = op    1 1 0
+  // reg > op    0 1 sign-bit of result
+
+  // We don't do this one with separate boolean flags
+  // because not all combinations are possible.
+  ByteSet zncflags;
+
+  for (uint8_t r : reg) {
+    for (uint8_t o : op) {
+      uint32_t t = r - o;
+
+      uint8_t f = 0;
+      if (t == 0) f |= Z_FLAG;
+      if (t & 0x80) f |= N_FLAG;
+      if (r >= o) f |= C_FLAG;
+
+      zncflags.Add(f);
+    }
+  }
+
+  // Now update flags.
+  CombineFlags(state, zncflags, Z_FLAG | N_FLAG | C_FLAG);
+};
+
 void Modeling::Expand() {
   // TODO:
   //
@@ -314,9 +341,6 @@ void Modeling::Expand() {
   // benefit from not having to store the full state for
   // intermediates.
   //
-
-  printf(AWHITE("== starting iteration! ==") "\n");
-  printf("Number of blocks: %d\n", (int)blocks.size());
 
   if (dirty.Empty())
     return;
@@ -392,33 +416,6 @@ void Modeling::Expand() {
         EnterBlock(pc, state);
       }
 
-    };
-
-  auto Compare = [](State *state, const ByteSet &reg, const ByteSet &op) {
-      // Relation    Z C N
-      // reg < op    0 0 sign-bit of result
-      // reg = op    1 1 0
-      // reg > op    0 1 sign-bit of result
-
-      // We don't do this one with separate boolean flags
-      // because not all combinations are possible.
-      ByteSet zncflags;
-
-      for (uint8_t r : reg) {
-        for (uint8_t o : op) {
-          uint32_t t = r - o;
-
-          uint8_t f = 0;
-          if (t == 0) f |= Z_FLAG;
-          if (t & 0x80) f |= N_FLAG;
-          if (r >= o) f |= C_FLAG;
-
-          zncflags.Add(f);
-        }
-      }
-
-      // Now update flags.
-      CombineFlags(state, zncflags, Z_FLAG | N_FLAG | C_FLAG);
     };
 
   auto RotateLeft = [](State *state, const ByteSet &src) {
@@ -528,6 +525,19 @@ void Modeling::Expand() {
       CombineFlags(state, flags_nzcv, Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
     };
 
+  // For LSR. The operation itself is just a right shift, but it is
+  // nontrivial because it modifies the carry flag. (And Z, and N.)
+  auto LogicalShiftRight = [](uint8_t v) {
+      // Compute flags (on the input so that we can see if
+      // we will get carry). We cover the N flag, but it
+      // is always zero for LSR.
+      uint8_t f = 0;
+      if (v & 1) f |= C_FLAG;
+      if (v == 0 || v == 1) f |= Z_FLAG;
+
+      return std::make_pair(v >> 1, f);
+    };
+
   // Keep reading instructions until we reach the end of the block.
   do {
     // Read the opcode, which advances the PC past it.
@@ -579,15 +589,6 @@ void Modeling::Expand() {
       ZN(&state, state.A);
       break;
     }
-    case 0xbd: { // LDA a,x
-      uint16_t addr = Next16();
-      state.A.Clear();
-      for (uint8_t v : state.X) {
-        state.A.AddSet(GetByteSet(state, addr + v));
-      }
-      ZN(&state, state.A);
-      break;
-    }
     case 0x88: { // DEY
       // y <- y-1
       state.Y = state.Y.Map([](uint8_t v) { return v - 1; });
@@ -632,11 +633,33 @@ void Modeling::Expand() {
       break;
     }
     case 0xb9: { // LDA a,y
-      LOG(FATAL) << "Unimplemented 'LDA a,y'";
+      uint16_t base_addr = Next16();
+      state.A.Clear();
+      for (uint8_t y : state.Y) {
+        uint16_t effective_addr = base_addr + y;
+        state.A.AddSet(GetByteSet(state, effective_addr));
+      }
+      ZN(&state, state.A);
       break;
     }
     case 0xb5: { // LDA d,x
-      LOG(FATAL) << "Unimplemented 'LDA d,x'";
+      uint8_t zeropage_base = Next8();
+      state.A.Clear();
+      for (uint8_t x : state.X) {
+        // Overflow stays on the zero page.
+        uint8_t zeropage_effective = zeropage_base + x;
+        state.A.AddSet(GetByteSet(state, zeropage_effective));
+      }
+      ZN(&state, state.A);
+      break;
+    }
+    case 0xbd: { // LDA a,x
+      uint16_t addr = Next16();
+      state.A.Clear();
+      for (uint8_t v : state.X) {
+        state.A.AddSet(GetByteSet(state, addr + v));
+      }
+      ZN(&state, state.A);
       break;
     }
 
@@ -1010,10 +1033,6 @@ void Modeling::Expand() {
       ZN(&state, state.X);
       break;
     }
-    case 0x86: { // STX d
-      LOG(FATAL) << "Unimplemented 'STX d'";
-      break;
-    }
     case 0xa6: { // LDX d
       LOG(FATAL) << "Unimplemented 'LDX d'";
       break;
@@ -1112,6 +1131,18 @@ void Modeling::Expand() {
       WriteByteSet64(&state, addr, ByteSet64(state.Y));
       break;
     }
+
+    case 0x8e: { // STX a
+      uint16_t addr = Next16();
+      WriteByteSet64(&state, addr, ByteSet64(state.X));
+      break;
+    }
+    case 0x86: { // STX d
+      uint16_t addr = Next8();
+      WriteByteSet64(&state, addr, ByteSet64(state.X));
+      break;
+    }
+
 
     case 0x6c: { // JMP (a)
       LOG(FATAL) << "Unimplemented 'JMP (a)'";
@@ -1287,10 +1318,6 @@ void Modeling::Expand() {
       break;
     }
 
-    case 0x8e: { // STX a
-      LOG(FATAL) << "Unimplemented 'STX a'";
-      break;
-    }
     case 0x2c: { // BIT a
       LOG(FATAL) << "Unimplemented 'BIT a'";
       break;
@@ -1325,64 +1352,63 @@ void Modeling::Expand() {
     case 0x4a: { // LSR A
       // a <- a>>1
 
-      bool has_odd = false;
-      bool has_even = false;
-      // After shifting.
-      bool has_zero = false;
-      bool has_nonzero = false;
+      ByteSet znc_flags;
+      ByteSet new_a;
       for (int i = 0; i < 256; i++) {
         if (state.A.Contains(i)) {
-          if (i & 1) has_odd = true;
-          else has_even = true;
-
-          if (i == 0 || i == 1) {
-            has_zero = true;
-          } else {
-            has_nonzero = true;
-          }
-        }
-
-      }
-      CHECK(has_odd || has_even);
-      std::vector<uint8_t> carry_flags;
-      if (has_odd) carry_flags.push_back(C_FLAG);
-      if (has_even) carry_flags.push_back(0);
-
-      CHECK(has_zero || has_nonzero);
-      std::vector<uint8_t> zero_flags;
-      if (has_zero) zero_flags.push_back(Z_FLAG);
-      if (has_nonzero) zero_flags.push_back(0);
-
-      state.A = state.A.Map([](uint8_t v) { return v >> 1; });
-      // N is impossible since the high bit will be zero after
-      //   shifting.
-      // Z flag is as usual.
-      // Carry flag from the bit shifted off.
-
-      // TODO: CombineFlags
-      ByteSet new_flags;
-      for (uint8_t v : state.P) {
-        v &= ~(Z_FLAG | N_FLAG);
-
-        for (uint8_t z : zero_flags) {
-          for (uint8_t c : carry_flags) {
-            new_flags.Add(v | z | c);
-          }
+          const auto &[v, f] = LogicalShiftRight(i);
+          new_a.Add(v);
+          znc_flags.Add(f);
         }
       }
-      state.P = std::move(new_flags);
+
+      state.A = std::move(new_a);
+      CombineFlags(&state, znc_flags, Z_FLAG | N_FLAG | C_FLAG);
       break;
     }
+
     case 0x46: { // LSR d
-      LOG(FATAL) << "Unimplemented 'LSR d'";
+      uint16_t addr = Next8();
+      ReadModifyWrite(&state,
+                      C_FLAG | Z_FLAG | N_FLAG,
+                      addr,
+                      // no offset
+                      ByteSet::Singleton(0),
+                      LogicalShiftRight);
       break;
     }
     case 0x4e: { // LSR a
-      LOG(FATAL) << "Unimplemented 'LSR a'";
+      uint16_t addr = Next16();
+      ReadModifyWrite(&state,
+                      C_FLAG | Z_FLAG | N_FLAG,
+                      addr,
+                      // no offset
+                      ByteSet::Singleton(0),
+                      LogicalShiftRight);
       break;
     }
 
-      // Unused but easy.
+    case 0x56: { // LSR d,x
+      uint16_t addr = Next8();
+      ReadModifyWrite(&state,
+                      C_FLAG | Z_FLAG | N_FLAG,
+                      addr,
+                      state.X,
+                      LogicalShiftRight);
+      break;
+    }
+    case 0x5e: { // LSR a,x
+      uint16_t addr = Next16();
+      ReadModifyWrite(&state,
+                      C_FLAG | Z_FLAG | N_FLAG,
+                      addr,
+                      state.X,
+                      LogicalShiftRight);
+      break;
+    }
+
+    // Unused but easy instructions.
+
     case 0xBA: { // TSX
       state.X = state.S;
       ZN(&state, state.X);

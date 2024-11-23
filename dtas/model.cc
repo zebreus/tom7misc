@@ -93,9 +93,14 @@ static void Model() {
     if (status_per.ShouldRun()) {
       int64_t denom = modeling.blocks.size();
       int64_t remain = modeling.dirty.Size();
+      [[maybe_unused]]
       int64_t numer = denom - remain;
       // status.Progressf(numer, denom, ACYAN("%lld") " iters.", iters);
     }
+
+    printf(AWHITE("== starting iteration %lld ==") "\n", iters);
+    printf("Number of blocks: " ACYAN("%d") "\n",
+           (int)modeling.blocks.size());
     modeling.Expand();
   }
   status.Statusf("Done in " ACYAN("%lld") " iters.\n", iters);
