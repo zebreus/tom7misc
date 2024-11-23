@@ -111,6 +111,9 @@ struct Modeling {
   std::vector<BasicBlock> blocks;
   // The basic blocks that may need update.
   Dirty dirty;
+  // Default zoning marks everything as executable, but you
+  // might want to load a zoning file to make assumptions
+  // about what addresses are actually code.
   Zoning zoning;
 
   // True if the analysis is quiescent.
@@ -124,6 +127,10 @@ struct Modeling {
   // Conversely, write to an address (typically a RAM address).
   void WriteByteSet64(State *state, uint16_t addr,
                       const ByteSet64 &s) const;
+  // Merge the set with the memory address (typically a RAM address
+  // when the destination of the write is not definite).
+  void MergeWriteByteSet(State *state, uint16_t addr,
+                         const ByteSet &s) const;
 
   // When we have addr+x, x may take on multiple values. This merges
   // all the possibilities. We need to distinguish the full 16-bit

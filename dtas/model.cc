@@ -32,6 +32,7 @@
 #include "status-bar.h"
 #include "threadutil.h"
 #include "util.h"
+#include "zoning.h"
 
 static constexpr const char *ROMFILE = "mario.nes";
 
@@ -69,6 +70,7 @@ static void Model() {
 
   Modeling modeling(GetPRG());
 
+  #if 0
   // Ban some data regions that contain 0x20, the opcode for JSR.
   // These can look like possible valid return addresses, and
   // currently we are using heuristics to trace execution.
@@ -76,8 +78,11 @@ static void Model() {
   for (int addr = 0x8b08; addr < 0x8e04; addr++) {
     modeling.zoning.addr[addr] &= ~Zoning::X;
   }
+  #endif
 
+  modeling.zoning = Zoning::FromFile("mario.zoning");
   CHECK((modeling.zoning.addr[0x8e01] & Zoning::X) == 0);
+
 
   // These are the entry points that we actually care about:
   // NonMaskableInterrupt is the entry point for the frame,

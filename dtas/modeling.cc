@@ -17,6 +17,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "byteset.h"
+#include "zoning.h"
 
 #define N_FLAG 0x80
 #define V_FLAG 0x40
@@ -199,7 +200,22 @@ void Modeling::WriteByteSet64(State *state, uint16_t addr,
   }
 
   // TODO: Special cases for memory-mapped addresses.
-};
+}
+
+void Modeling::MergeWriteByteSet(State *state, uint16_t addr,
+                                 const ByteSet &s) const {
+  // ROM writes are ignored.
+  if (addr >= rom.ORIGIN)
+    return;
+
+  // RAM.
+  if (addr < 2048) {
+    state->ram[addr].AddSet(s);
+    return;
+  }
+
+  // TODO: Special cases for memory-mapped addresses.
+}
 
 
 // Update flags. This affects only the flags in mask, which are
@@ -552,6 +568,58 @@ void Modeling::Expand() {
       CombineFlags(state, flags_nzcv, Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
     };
 
+  // A <- A - *addr - ~Carry
+  // updating neg, zero, carry, overflow flags
+  auto SubtractWithCarry = [this](State *state, uint16_t addr_base,
+                                  const ByteSet &addr_offset) {
+      // Test whether we always/sometimes/never have carry bit.
+      bool has_carry = false;
+      bool has_nocarry = false;
+      for (uint8_t flags : state->S) {
+        if (flags & C_FLAG) has_carry = true;
+        else has_nocarry = true;
+      }
+
+      // Use wide addition so that we can test for carry,
+      // overflow, etc. First blend possible carry flags
+      // with possible values for A.
+      std::unordered_set<uint32_t> acarry;
+      for (uint8_t a : state->A) {
+        // Note: The sense of the carry bit is reversed here
+        // (carry ZERO means DO subtract 1).
+        if (has_carry) acarry.insert(a);
+        if (has_nocarry) acarry.insert(a - 1);
+      }
+
+      ByteSet all_values;
+      for (uint8_t off : addr_offset) {
+        uint16_t eaddr = addr_base + off;
+        all_values.AddSet(this->GetByteSet(*state, eaddr));
+      }
+
+      // Now all possible sums.
+      ByteSet flags_nzcv;
+      ByteSet results;
+      for (uint8_t v : all_values) {
+        for (uint32_t a : acarry) {
+          uint32_t l = a - v;
+
+          uint8_t res8 = l & 0xFF;
+          results.Add(res8);
+
+          uint8_t flags =
+            (((l >> 8) & C_FLAG) ^ C_FLAG) |
+            (res8 == 0 ? Z_FLAG : 0) |
+            ((res8 & 0x80) ? N_FLAG : 0);
+          // FIXME! also the overflow flag
+          flags_nzcv.Add(flags);
+        }
+      }
+
+      state->A = std::move(results);
+      CombineFlags(state, flags_nzcv, Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
+    };
+
   // For LSR. The operation itself is just a right shift, but it is
   // nontrivial because it modifies the carry flag. (And Z, and N.)
   auto LogicalShiftRight = [](uint8_t v) {
@@ -796,7 +864,8 @@ void Modeling::Expand() {
           // about how the code works. We should be tracking something
           // about static call graphs to do this better.
 
-          printf(ARED("Ugh") "! Multiple possible RTS destinations: ");
+          printf(ARED("Ugh") "! Multiple possible RTS destinations [sp="
+                 ACYAN("%02x") "]: ", sp);
           // printf("\n");
           for (int hi = 0; hi < 256; hi++) {
             if (state.ram[saddr + 1].Contains(hi)) {
@@ -806,6 +875,7 @@ void Modeling::Expand() {
 
                   // See above.
                   bool allow = false;
+                  bool unzoned = false;
                   // Only ROM code addresses.
                   if (raddr >= 0x8000) {
                     if (false) {
@@ -823,7 +893,15 @@ void Modeling::Expand() {
                     //            added 1 1)
                     if (raddr - 3 >= 0x8000 &&
                         rom.Read(raddr - 3) == 0x20) {
-                      allow = true;
+
+                      if (zoning.addr[raddr - 3] & Zoning::X) {
+                        allow = true;
+                      } else {
+                        // Disallow, but show in a different color
+                        // to distinguish it; this is a bit of a
+                        // stronger assumption.
+                        unzoned = true;
+                      }
                     }
                   }
 
@@ -837,7 +915,9 @@ void Modeling::Expand() {
                     ret_state.ram[saddr + 2] = ByteSet64::Singleton(lo);
                     EnterBlock(raddr, std::move(ret_state));
                   } else {
-                    printf(" " ARED("%04x"), raddr);
+                    printf(" %s%04x" ANSI_RESET,
+                           unzoned ? ANSI_DARK_RED : ANSI_RED,
+                           raddr);
                   }
                 }
               }
@@ -1014,7 +1094,6 @@ void Modeling::Expand() {
     case 0x58: { // CLI
       state.P = state.P.Map([](uint8_t v) { return v & ~I_FLAG; });
       break;
-      break;
     }
 
     case 0x85: { // STA d
@@ -1036,7 +1115,7 @@ void Modeling::Expand() {
       } else {
         for (uint8_t x : state.X) {
           uint16_t eaddr = addr + x;
-          state.ram[eaddr].AddSet(state.A);
+          MergeWriteByteSet(&state, eaddr, state.A);
         }
       }
       break;
@@ -1050,7 +1129,7 @@ void Modeling::Expand() {
       } else {
         for (uint8_t y : state.Y) {
           uint16_t eaddr = addr + y;
-          state.ram[eaddr].AddSet(state.A);
+          MergeWriteByteSet(&state, eaddr, state.A);
         }
       }
       break;
@@ -1101,10 +1180,42 @@ void Modeling::Expand() {
       break;
     }
     case 0xa6: { // LDX d
-      LOG(FATAL) << "Unimplemented 'LDX d'";
+      uint16_t addr = Next8();
+      state.X = GetByteSet(state, addr);
+      ZN(&state, state.X);
+      break;
+    }
+    case 0xae: { // LDX a
+      uint16_t addr = Next16();
+      state.X = GetByteSet(state, addr);
+      ZN(&state, state.X);
+      break;
+    }
+    case 0xbe: { // LDX a,y
+      uint16_t addr = Next16();
+      state.X.Clear();
+      for (uint8_t v : state.Y) {
+        state.X.AddSet(GetByteSet(state, addr + v));
+      }
+      ZN(&state, state.X);
+      break;
+    }
+    case 0xb6: { // LDX d,y
+      uint8_t addr = Next16();
+      state.X.Clear();
+      for (uint8_t v : state.Y) {
+        // Zero-page wraparound.
+        uint8_t eaddr = addr + v;
+        state.X.AddSet(GetByteSet(state, eaddr));
+      }
+      ZN(&state, state.X);
       break;
     }
 
+    case 0x6a: { // ROR
+      LOG(FATAL) << "Unimplemented 'ROR'";
+      break;
+    }
     case 0x7e: { // ROR a,x
       LOG(FATAL) << "Unimplemented 'ROR a,x'";
       break;
@@ -1142,24 +1253,33 @@ void Modeling::Expand() {
       break;
     }
 
+    case 0xed: { // SBC a
+      uint16_t addr = Next16();
+      SubtractWithCarry(&state, addr, ByteSet::Singleton(0));
+      break;
+    }
+    case 0xe5: { // SBC d
+      uint16_t addr = Next8();
+      SubtractWithCarry(&state, addr, ByteSet::Singleton(0));
+      break;
+    }
     case 0xf9: { // SBC a,y
-      LOG(FATAL) << "Unimplemented 'SBC a,y'";
+      uint16_t addr = Next16();
+      SubtractWithCarry(&state, addr, state.Y);
+      break;
+    }
+    case 0xfd: { // SBC a,x
+      uint16_t addr = Next16();
+      SubtractWithCarry(&state, addr, state.X);
       break;
     }
     case 0xf5: { // SBC d,x
-      LOG(FATAL) << "Unimplemented 'SBC d,x'";
+      uint16_t addr = Next8();
+      SubtractWithCarry(&state, addr, state.X);
       break;
     }
     case 0xe9: { // SBC #i
       LOG(FATAL) << "Unimplemented 'SBC #i'";
-      break;
-    }
-    case 0xed: { // SBC a
-      LOG(FATAL) << "Unimplemented 'SBC a'";
-      break;
-    }
-    case 0xe5: { // SBC d
-      LOG(FATAL) << "Unimplemented 'SBC d'";
       break;
     }
 
@@ -1168,23 +1288,8 @@ void Modeling::Expand() {
       ZN(&state, state.A);
       break;
     }
-    case 0xae: { // LDX a
-      uint16_t addr = Next16();
-      state.X = GetByteSet(state, addr);
-      ZN(&state, state.X);
-      break;
-    }
     case 0xc5: { // CMP d
       LOG(FATAL) << "Unimplemented 'CMP d'";
-      break;
-    }
-    case 0xbe: { // LDX a,y
-      uint16_t addr = Next16();
-      state.X.Clear();
-      for (uint8_t v : state.Y) {
-        state.X.AddSet(GetByteSet(state, addr + v));
-      }
-      ZN(&state, state.X);
       break;
     }
 
@@ -1315,10 +1420,6 @@ void Modeling::Expand() {
 
     case 0xcd: { // CMP a
       LOG(FATAL) << "Unimplemented 'CMP a'";
-      break;
-    }
-    case 0x6a: { // ROR
-      LOG(FATAL) << "Unimplemented 'ROR'";
       break;
     }
     case 0xd5: { // CMP d,x
