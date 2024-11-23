@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -103,6 +104,30 @@ bool Modeling::Done() const {
   return dirty.Empty();
 }
 
+template<class F>
+static auto Map2(const F &f, const ByteSet &s) ->
+  std::pair<ByteSet, ByteSet> {
+  ByteSet a, b;
+  for (uint8_t v : s) {
+    const auto &[va, vb] = f(v);
+    a.Add(va);
+    b.Add(vb);
+  }
+  return std::make_pair(a, b);
+}
+
+template<class F>
+static std::function<std::pair<uint8_t, uint8_t>(uint8_t)>
+WithZN(F f_in) {
+  return [f = std::move(f_in)](uint8_t x) ->
+    std::pair<uint8_t, uint8_t> {
+      uint8_t v = f(x);
+      uint8_t flags = 0;
+      if (v == 0) flags |= Z_FLAG;
+      if (v & 0x80) flags |= N_FLAG;
+      return std::make_pair(v, flags);
+    };
+}
 
 // Get the byteset for a specific memory location.
 // If it's in ROM, it will be a singleton set with the
@@ -150,9 +175,33 @@ void Modeling::WriteByteSet64(State *state, uint16_t addr,
 };
 
 
-void CombineZNFlags(State *state,
-                    bool has_zero, bool has_nonzero,
-                    bool has_neg, bool has_nonneg) {
+// Update flags. This affects only the flags in mask, which are
+// removed from the current state (other bits are preserved). The
+// set of argument flags must only have bits in the mask set, and
+// must be nonempty.
+static void CombineFlags(State *state, const ByteSet &flags, uint8_t mask) {
+  ByteSet new_flags;
+  for (uint8_t b : state->P) {
+    b &= ~mask;
+
+    for (uint8_t f : flags) {
+      new_flags.Add(b | f);
+    }
+  }
+  state->P = std::move(new_flags);
+}
+
+namespace {
+struct ZNBools {
+  bool has_zero = false;
+  bool has_nonzero = false;
+  bool has_neg = false;
+  bool has_nonneg = false;
+};
+}
+
+static void CombineZNFlags(State *state,
+                           ZNBools bools) {
   // Possible values for the ZN flags.
   // We never have both Z and N, so this
   // is some subset of 00, 10, 01.
@@ -164,12 +213,12 @@ void CombineZNFlags(State *state,
   // {00} - When the set contains only positive numbers.
   // ...
   std::vector<uint8_t> zflags;
-  if (has_zero) zflags.push_back(Z_FLAG);
-  if (has_nonzero) zflags.push_back(0);
+  if (bools.has_zero) zflags.push_back(Z_FLAG);
+  if (bools.has_nonzero) zflags.push_back(0);
 
   std::vector<uint8_t> nflags;
-  if (has_neg) nflags.push_back(N_FLAG);
-  if (has_nonneg) nflags.push_back(0);
+  if (bools.has_neg) nflags.push_back(N_FLAG);
+  if (bools.has_nonneg) nflags.push_back(0);
 
   CHECK(!zflags.empty() && !nflags.empty());
 
@@ -189,7 +238,7 @@ void CombineZNFlags(State *state,
 // Compute the values of the Z and N flags in the status
 // register, given the byteset. Preserves the values of
 // the other flags.
-void ZN(State *state, const ByteSet &s) {
+static void ZN(State *state, const ByteSet &s) {
   constexpr bool VERBOSE = false;
   CHECK(!s.Empty());
   if (VERBOSE) {
@@ -221,13 +270,13 @@ void ZN(State *state, const ByteSet &s) {
            contains_neg ? 'X' : '_');
   }
 
+
   CombineZNFlags(state,
-                 contains_z,
-                 // nonzero
-                 contains_pos || contains_neg,
-                 contains_neg,
-                 // nonnegative
-                 contains_pos || contains_z);
+                 ZNBools{
+                   .has_zero = contains_z,
+                   .has_nonzero = contains_pos || contains_neg,
+                   .has_neg = contains_neg,
+                   .has_nonneg = contains_pos || contains_z});
 }
 
 void Modeling::Expand() {
@@ -353,7 +402,7 @@ void Modeling::Expand() {
 
       // We don't do this one with separate boolean flags
       // because not all combinations are possible.
-      ByteSet64 flags;
+      ByteSet zncflags;
 
       for (uint8_t r : reg) {
         for (uint8_t o : op) {
@@ -364,45 +413,56 @@ void Modeling::Expand() {
           if (t & 0x80) f |= N_FLAG;
           if (r >= o) f |= C_FLAG;
 
-          flags.Add(f);
+          zncflags.Add(f);
         }
       }
-
-      // PERF Ugh: Need iteration over ByteSet64!
-      std::vector<uint8_t> zncflags;
-      for (int i = 0; i < 256; i++)
-        if (flags.Contains(i))
-          zncflags.push_back(i);
 
       // Now update flags.
-      ByteSet new_flags;
-      for (uint8_t v : state->P) {
-        v &= ~(Z_FLAG | N_FLAG | C_FLAG);
-
-        for (uint8_t b : zncflags) {
-          new_flags.Add(v | b);
-        }
-      }
-      state->P = std::move(new_flags);
+      CombineFlags(state, zncflags, Z_FLAG | N_FLAG | C_FLAG);
     };
 
-  // mem[addr+offset] = f(mem[addr+offset])
+  auto RotateLeft = [](State *state, const ByteSet &src) {
+      bool has_carry = false;
+      bool has_no_carry = false;
+      for (uint8_t f : state->P) {
+        if (f & C_FLAG) has_carry = true;
+        else has_carry = false;
+      }
+
+      ByteSet zncflags;
+      ByteSet new_a;
+      for (uint8_t b : src) {
+        uint8_t f = 0;
+        if (b & 0x80) f |= C_FLAG;
+        uint8_t v = b << 1;
+        if (v & 0x80) f |= N_FLAG;
+        else if (v == 0 && has_no_carry) f |= Z_FLAG;
+
+        if (has_carry) new_a.Add(v | 0x01);
+        if (has_no_carry) new_a.Add(v);
+
+        zncflags.Add(f);
+      }
+      state->A = std::move(new_a);
+      CombineFlags(state, zncflags, Z_FLAG | N_FLAG | C_FLAG);
+    };
+
+  // mem[addr+offset] = f(mem[addr+offset]).first
+  // flags = (flags & ~mask) | f(mem[addr+offset]).second
   auto ReadModifyWrite = [this](State *state,
+                                uint8_t flag_mask,
                                 uint16_t addr_base,
                                 const ByteSet &addr_offset,
                                 const auto &f) {
       if (addr_offset.Size() == 1) {
         uint16_t eaddr = addr_base + addr_offset.GetSingleton();
         ByteSet before = this->GetByteSet(*state, eaddr);
-        ByteSet after = before.Map(f);
+        const auto &[after, flags] = Map2(f, before);
         // Overwrite, since this is a definite address.
         this->WriteByteSet64(state, eaddr, ByteSet64(after));
-        ZN(state, after);
+        CombineFlags(state, flags, flag_mask);
       } else {
-        bool has_zero = false;
-        bool has_nonzero = false;
-        bool has_neg = false;
-        bool has_nonneg = false;
+        ByteSet merged_flags;
         for (uint8_t o : addr_offset) {
           // TODO: Make sure we're handling page wrapping
           // correctly here.
@@ -410,20 +470,13 @@ void Modeling::Expand() {
           ByteSet before = this->GetByteSet(*state, eaddr);
           // Since we don't know whether we're actually writing
           // here, the write is added to the possibilities.
-          ByteSet after = before.Map(f);
+          const auto &[after, flags] = Map2(f, before);
+          merged_flags.AddSet(flags);
           ByteSet together = ByteSet::Union(before, after);
           this->WriteByteSet64(state, eaddr, ByteSet64(together));
-          // But flags must come from a byte that was written
-          // somewhere, so only consider the after values.
-          for (uint8_t v : after) {
-            if (v == 0) has_zero = true;
-            else has_nonzero = true;
-            if (v & 0x80) has_neg = true;
-            else has_nonneg = true;
-          }
         }
         // Update with the possible flag values.
-        CombineZNFlags(state, has_zero, has_nonzero, has_neg, has_nonneg);
+        CombineFlags(state, merged_flags, flag_mask);
       }
     };
 
@@ -472,14 +525,7 @@ void Modeling::Expand() {
       }
 
       state->A = std::move(results);
-      ByteSet new_flags;
-      for (uint8_t v : state->P) {
-        v &= ~(Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
-        for (uint8_t f : flags_nzcv) {
-          new_flags.Add(f | v);
-        }
-      }
-      state->P = std::move(new_flags);
+      CombineFlags(state, flags_nzcv, Z_FLAG | N_FLAG | C_FLAG | V_FLAG);
     };
 
   // Keep reading instructions until we reach the end of the block.
@@ -515,13 +561,13 @@ void Modeling::Expand() {
     case 0x90: { // BCC *+d
       return Branch(C_FLAG, 0);
     }
-
-    case 0xad: { // LDA a
-      uint16_t addr = Next16();
-      state.A = GetByteSet(state, addr);
-      ZN(&state, state.A);
-      break;
+    case 0x30: { // BMI *+d
+      return Branch(N_FLAG, N_FLAG);
     }
+    case 0x10: { // BPL *+d
+      return Branch(N_FLAG, 0);
+    }
+
     case 0xc8: { // INY
       state.Y = state.Y.Map([](uint8_t v) { return v + 1; });
       ZN(&state, state.Y);
@@ -542,65 +588,10 @@ void Modeling::Expand() {
       ZN(&state, state.A);
       break;
     }
-    case 0x85: { // STA d
-      uint16_t addr = Next8();
-      WriteByteSet64(&state, addr, ByteSet64(state.A));
-      break;
-    }
     case 0x88: { // DEY
       // y <- y-1
       state.Y = state.Y.Map([](uint8_t v) { return v - 1; });
       ZN(&state, state.Y);
-      break;
-    }
-    case 0x4a: { // LSR A
-      // a <- a>>1
-
-      bool has_odd = false;
-      bool has_even = false;
-      // After shifting.
-      bool has_zero = false;
-      bool has_nonzero = false;
-      for (int i = 0; i < 256; i++) {
-        if (state.A.Contains(i)) {
-          if (i & 1) has_odd = true;
-          else has_even = true;
-
-          if (i == 0 || i == 1) {
-            has_zero = true;
-          } else {
-            has_nonzero = true;
-          }
-        }
-
-      }
-      CHECK(has_odd || has_even);
-      std::vector<uint8_t> carry_flags;
-      if (has_odd) carry_flags.push_back(C_FLAG);
-      if (has_even) carry_flags.push_back(0);
-
-      CHECK(has_zero || has_nonzero);
-      std::vector<uint8_t> zero_flags;
-      if (has_zero) zero_flags.push_back(Z_FLAG);
-      if (has_nonzero) zero_flags.push_back(0);
-
-      state.A = state.A.Map([](uint8_t v) { return v >> 1; });
-      // N is impossible since the high bit will be zero after
-      //   shifting.
-      // Z flag is as usual.
-      // Carry flag from the bit shifted off.
-
-      ByteSet new_flags;
-      for (uint8_t v : state.P) {
-        v &= ~(Z_FLAG | N_FLAG);
-
-        for (uint8_t z : zero_flags) {
-          for (uint8_t c : carry_flags) {
-            new_flags.Add(v | z | c);
-          }
-        }
-      }
-      state.P = std::move(new_flags);
       break;
     }
     case 0xca: { // DEX
@@ -609,20 +600,46 @@ void Modeling::Expand() {
       ZN(&state, state.X);
       break;
     }
-    case 0x10: { // BPL *+d
-      LOG(FATAL) << "Unimplemented 'BPL *+d'";
+
+    case 0xa9: { // LDA #i
+      uint8_t v = Next8();
+      state.A = ByteSet::Singleton(v);
+      ZN(&state, state.A);
       break;
     }
-    case 0x8d: { // STA a
+    case 0xad: { // LDA a
       uint16_t addr = Next16();
-      WriteByteSet64(&state, addr, ByteSet64(state.A));
+      state.A = GetByteSet(state, addr);
+      ZN(&state, state.A);
+      break;
+    }
+    case 0xa5: { // LDA d
+      uint16_t addr = Next8();
+      state.A = GetByteSet(state, addr);
+      ZN(&state, state.A);
+      break;
+    }
+    case 0xb1: { // LDA (d),y
+      uint16_t indirect_addr = Next8();
+      state.A.Clear();
+      for (uint8_t addr : GetByteSet(state, indirect_addr)) {
+        for (uint8_t y : state.Y) {
+          uint16_t effective_addr = addr + y;
+          state.A.AddSet(GetByteSet(state, effective_addr));
+        }
+      }
+      ZN(&state, state.A);
+      break;
+    }
+    case 0xb9: { // LDA a,y
+      LOG(FATAL) << "Unimplemented 'LDA a,y'";
+      break;
+    }
+    case 0xb5: { // LDA d,x
+      LOG(FATAL) << "Unimplemented 'LDA d,x'";
       break;
     }
 
-    case 0xa5: { // LDA d
-      LOG(FATAL) << "Unimplemented 'LDA d'";
-      break;
-    }
 
     case 0x20: { // JSR a
       // Potentially hard?
@@ -764,18 +781,6 @@ void Modeling::Expand() {
 
       break;
     }
-    case 0xb1: { // LDA (d),y
-      uint16_t indirect_addr = Next8();
-      state.A.Clear();
-      for (uint8_t addr : GetByteSet(state, indirect_addr)) {
-        for (uint8_t y : state.Y) {
-          uint16_t effective_addr = addr + y;
-          state.A.AddSet(GetByteSet(state, effective_addr));
-        }
-      }
-      ZN(&state, state.A);
-      break;
-    }
     case 0x48: { // PHA
       // Push A onto stack.
 
@@ -795,6 +800,11 @@ void Modeling::Expand() {
           });
       }
 
+      break;
+    }
+
+    case 0x0e: { // ASL a
+      LOG(FATAL) << "Unimplemented 'ASL a'";
       break;
     }
     case 0x0a: { // ASL
@@ -850,6 +860,8 @@ void Modeling::Expand() {
       if (has_nonzero) zero_flags.push_back(0);
 
       state.A = state.A.Map([](uint8_t v) { return v << 1; });
+
+      // TODO: CombineFlags
       // No combination of flags is contradictory, so we
       // add all of them:
       ByteSet new_flags;
@@ -867,24 +879,27 @@ void Modeling::Expand() {
       state.P = std::move(new_flags);
       break;
     }
-    case 0xa9: { // LDA #i
-      uint8_t v = Next8();
-      state.A = ByteSet::Singleton(v);
-      ZN(&state, state.A);
-      break;
-    }
+
     case 0x2a: { // ROL
-      LOG(FATAL) << "Unimplemented 'ROL'";
+      RotateLeft(&state, state.A);
       break;
     }
+    case 0x26: { // ROL d
+      // XXX this needs to be ReadModifyWrite
+      // uint16_t addr = Next8();
+      // RotateLeft(&state, GetByteSet(state, addr));
+      break;
+    }
+    case 0x2e: { // ROL a
+      // uint16_t addr = Next16();
+      // RotateLeft(&state, GetByteSet(state, addr));
+      break;
+    }
+
 
     case 0xc0: { // CPY #i
       uint8_t imm = Next8();
       Compare(&state, state.Y, ByteSet::Singleton(imm));
-      break;
-    }
-    case 0x05: { // ORA d
-      LOG(FATAL) << "Unimplemented 'ORA d'";
       break;
     }
 
@@ -912,9 +927,14 @@ void Modeling::Expand() {
       break;
     }
 
-
-    case 0xb9: { // LDA a,y
-      LOG(FATAL) << "Unimplemented 'LDA a,y'";
+    case 0x85: { // STA d
+      uint16_t addr = Next8();
+      WriteByteSet64(&state, addr, ByteSet64(state.A));
+      break;
+    }
+    case 0x8d: { // STA a
+      uint16_t addr = Next16();
+      WriteByteSet64(&state, addr, ByteSet64(state.A));
       break;
     }
     case 0x9d: { // STA a,x
@@ -931,7 +951,6 @@ void Modeling::Expand() {
       }
       break;
     }
-
     case 0x99: { // STA a,y
       uint16_t addr = Next16();
       if (state.Y.Size() == 1) {
@@ -946,6 +965,15 @@ void Modeling::Expand() {
       }
       break;
     }
+    case 0x91: { // STA (d),y
+      LOG(FATAL) << "Unimplemented 'STA (d),y'";
+      break;
+    }
+    case 0x95: { // STA d,x
+      LOG(FATAL) << "Unimplemented 'STA d,x'";
+      break;
+    }
+
 
     case 0xa8: { // TAY
       state.Y = state.A;
@@ -955,10 +983,6 @@ void Modeling::Expand() {
     case 0xe0: { // CPX #i
       uint8_t imm = Next8();
       Compare(&state, state.X, ByteSet::Singleton(imm));
-      break;
-    }
-    case 0xb5: { // LDA d,x
-      LOG(FATAL) << "Unimplemented 'LDA d,x'";
       break;
     }
     case 0xa0: { // LDY #i
@@ -973,12 +997,10 @@ void Modeling::Expand() {
       ZN(&state, state.Y);
       break;
     }
-    case 0xf9: { // SBC a,y
-      LOG(FATAL) << "Unimplemented 'SBC a,y'";
-      break;
-    }
     case 0xa4: { // LDY d
-      LOG(FATAL) << "Unimplemented 'LDY d'";
+      uint16_t addr = Next8();
+      state.Y = GetByteSet(state, addr);
+      ZN(&state, state.Y);
       break;
     }
 
@@ -997,10 +1019,6 @@ void Modeling::Expand() {
       break;
     }
 
-    case 0x91: { // STA (d),y
-      LOG(FATAL) << "Unimplemented 'STA (d),y'";
-      break;
-    }
     case 0x7e: { // ROR a,x
       LOG(FATAL) << "Unimplemented 'ROR a,x'";
       break;
@@ -1038,8 +1056,24 @@ void Modeling::Expand() {
       break;
     }
 
+    case 0xf9: { // SBC a,y
+      LOG(FATAL) << "Unimplemented 'SBC a,y'";
+      break;
+    }
     case 0xf5: { // SBC d,x
       LOG(FATAL) << "Unimplemented 'SBC d,x'";
+      break;
+    }
+    case 0xe9: { // SBC #i
+      LOG(FATAL) << "Unimplemented 'SBC #i'";
+      break;
+    }
+    case 0xed: { // SBC a
+      LOG(FATAL) << "Unimplemented 'SBC a'";
+      break;
+    }
+    case 0xe5: { // SBC d
+      LOG(FATAL) << "Unimplemented 'SBC d'";
       break;
     }
 
@@ -1058,14 +1092,6 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'CMP d'";
       break;
     }
-    case 0x46: { // LSR d
-      LOG(FATAL) << "Unimplemented 'LSR d'";
-      break;
-    }
-    case 0x95: { // STA d,x
-      LOG(FATAL) << "Unimplemented 'STA d,x'";
-      break;
-    }
     case 0xbe: { // LDX a,y
       uint16_t addr = Next16();
       state.X.Clear();
@@ -1075,16 +1101,57 @@ void Modeling::Expand() {
       ZN(&state, state.X);
       break;
     }
+
     case 0x84: { // STY d
-      LOG(FATAL) << "Unimplemented 'STY d'";
+      uint16_t addr = Next8();
+      WriteByteSet64(&state, addr, ByteSet64(state.Y));
       break;
     }
-    case 0x30: { // BMI *+d
-      LOG(FATAL) << "Unimplemented 'BMI *+d'";
+    case 0x8c: { // STY a
+      uint16_t addr = Next16();
+      WriteByteSet64(&state, addr, ByteSet64(state.Y));
       break;
     }
+
     case 0x6c: { // JMP (a)
       LOG(FATAL) << "Unimplemented 'JMP (a)'";
+      break;
+    }
+
+    case 0x05: { // ORA d
+      uint16_t addr = Next8();
+      ZNBools bools;
+      ByteSet new_a;
+      for (uint8_t a : state.A) {
+        for (uint8_t o : GetByteSet(state, addr)) {
+          uint8_t r = a | o;
+          new_a.Add(r);
+          if (r == 0) bools.has_zero = true;
+          else bools.has_nonzero = true;
+          if (r & 0x80) bools.has_neg = true;
+          else bools.has_nonneg = true;
+        }
+      }
+      state.A = std::move(new_a);
+      CombineZNFlags(&state, bools);
+      break;
+    }
+    case 0x0d: { // ORA a
+      uint16_t addr = Next16();
+      ZNBools bools;
+      ByteSet new_a;
+      for (uint8_t a : state.A) {
+        for (uint8_t o : GetByteSet(state, addr)) {
+          uint8_t r = a | o;
+          new_a.Add(r);
+          if (r == 0) bools.has_zero = true;
+          else bools.has_nonzero = true;
+          if (r & 0x80) bools.has_neg = true;
+          else bools.has_nonneg = true;
+        }
+      }
+      state.A = std::move(new_a);
+      CombineZNFlags(&state, bools);
       break;
     }
     case 0x09: { // ORA #i
@@ -1097,35 +1164,39 @@ void Modeling::Expand() {
     case 0xce: { // DEC a
       uint16_t addr = Next16();
       ReadModifyWrite(&state,
+                      Z_FLAG | N_FLAG,
                       addr,
                       // no offset
                       ByteSet::Singleton(0),
-                      [](uint8_t v) { return v - 1; });
+                      WithZN([](uint8_t v) { return v - 1; }));
       break;
     }
     case 0xde: { // DEC a,x
       uint16_t addr = Next16();
       ReadModifyWrite(&state,
+                      Z_FLAG | N_FLAG,
                       addr,
                       state.X,
-                      [](uint8_t v) { return v - 1; });
+                      WithZN([](uint8_t v) { return v - 1; }));
       break;
     }
     case 0xc6: { // DEC d
       uint16_t addr = Next8();
       ReadModifyWrite(&state,
+                      Z_FLAG | N_FLAG,
                       addr,
                       // no offset
                       ByteSet::Singleton(0),
-                      [](uint8_t v) { return v - 1; });
+                      WithZN([](uint8_t v) { return v - 1; }));
       break;
     }
     case 0xd6: { // DEC d,x
       uint16_t addr = Next8();
       ReadModifyWrite(&state,
+                      Z_FLAG | N_FLAG,
                       addr,
                       state.X,
-                      [](uint8_t v) { return v - 1; });
+                      WithZN([](uint8_t v) { return v - 1; }));
       break;
     }
 
@@ -1133,33 +1204,23 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'EOR #i'";
       break;
     }
-    case 0xe9: { // SBC #i
-      LOG(FATAL) << "Unimplemented 'SBC #i'";
+    case 0x45: { // EOR d
+      LOG(FATAL) << "Unimplemented 'EOR d'";
       break;
     }
+
     case 0xaa: { // TAX
       state.X = state.A;
       ZN(&state, state.X);
       break;
     }
-    case 0xed: { // SBC a
-      LOG(FATAL) << "Unimplemented 'SBC a'";
-      break;
-    }
-    case 0x26: { // ROL d
-      LOG(FATAL) << "Unimplemented 'ROL d'";
-      break;
-    }
+
     case 0xcd: { // CMP a
       LOG(FATAL) << "Unimplemented 'CMP a'";
       break;
     }
     case 0x3d: { // AND a,x
       LOG(FATAL) << "Unimplemented 'AND a,x'";
-      break;
-    }
-    case 0x8c: { // STY a
-      LOG(FATAL) << "Unimplemented 'STY a'";
       break;
     }
     case 0x6a: { // ROR
@@ -1182,10 +1243,6 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'RTI'";
       break;
     }
-    case 0x45: { // EOR d
-      LOG(FATAL) << "Unimplemented 'EOR d'";
-      break;
-    }
     case 0x39: { // AND a,y
       LOG(FATAL) << "Unimplemented 'AND a,y'";
       break;
@@ -1194,35 +1251,39 @@ void Modeling::Expand() {
     case 0xe6: { // INC d
       uint16_t addr = Next8();
       ReadModifyWrite(&state,
+                      Z_FLAG | N_FLAG,
                       addr,
                       // no offset
                       ByteSet::Singleton(0),
-                      [](uint8_t v) { return v + 1; });
+                      WithZN([](uint8_t v) { return v + 1; }));
       break;
     }
     case 0xee: { // INC a
       uint16_t addr = Next16();
       ReadModifyWrite(&state,
+                      Z_FLAG | N_FLAG,
                       addr,
                       // no offset
                       ByteSet::Singleton(0),
-                      [](uint8_t v) { return v + 1; });
+                      WithZN([](uint8_t v) { return v + 1; }));
       break;
     }
     case 0xf6: { // INC d,x
       uint16_t addr = Next8();
       ReadModifyWrite(&state,
+                      Z_FLAG | N_FLAG,
                       addr,
                       state.X,
-                      [](uint8_t v) { return v + 1; });
+                      WithZN([](uint8_t v) { return v + 1; }));
       break;
     }
     case 0xfe: { // INC a,x
       uint16_t addr = Next16();
       ReadModifyWrite(&state,
+                      Z_FLAG | N_FLAG,
                       addr,
                       state.X,
-                      [](uint8_t v) { return v + 1; });
+                      WithZN([](uint8_t v) { return v + 1; }));
       break;
     }
 
@@ -1251,22 +1312,6 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'AND d'";
       break;
     }
-    case 0x2e: { // ROL a
-      LOG(FATAL) << "Unimplemented 'ROL a'";
-      break;
-    }
-    case 0x0e: { // ASL a
-      LOG(FATAL) << "Unimplemented 'ASL a'";
-      break;
-    }
-    case 0x0d: { // ORA a
-      LOG(FATAL) << "Unimplemented 'ORA a'";
-      break;
-    }
-    case 0xe5: { // SBC d
-      LOG(FATAL) << "Unimplemented 'SBC d'";
-      break;
-    }
     case 0xbc: { // LDY a,x
       uint16_t addr = Next16();
       state.Y.Clear();
@@ -1274,6 +1319,62 @@ void Modeling::Expand() {
         state.Y.AddSet(GetByteSet(state, addr + v));
       }
       ZN(&state, state.Y);
+      break;
+    }
+
+    case 0x4a: { // LSR A
+      // a <- a>>1
+
+      bool has_odd = false;
+      bool has_even = false;
+      // After shifting.
+      bool has_zero = false;
+      bool has_nonzero = false;
+      for (int i = 0; i < 256; i++) {
+        if (state.A.Contains(i)) {
+          if (i & 1) has_odd = true;
+          else has_even = true;
+
+          if (i == 0 || i == 1) {
+            has_zero = true;
+          } else {
+            has_nonzero = true;
+          }
+        }
+
+      }
+      CHECK(has_odd || has_even);
+      std::vector<uint8_t> carry_flags;
+      if (has_odd) carry_flags.push_back(C_FLAG);
+      if (has_even) carry_flags.push_back(0);
+
+      CHECK(has_zero || has_nonzero);
+      std::vector<uint8_t> zero_flags;
+      if (has_zero) zero_flags.push_back(Z_FLAG);
+      if (has_nonzero) zero_flags.push_back(0);
+
+      state.A = state.A.Map([](uint8_t v) { return v >> 1; });
+      // N is impossible since the high bit will be zero after
+      //   shifting.
+      // Z flag is as usual.
+      // Carry flag from the bit shifted off.
+
+      // TODO: CombineFlags
+      ByteSet new_flags;
+      for (uint8_t v : state.P) {
+        v &= ~(Z_FLAG | N_FLAG);
+
+        for (uint8_t z : zero_flags) {
+          for (uint8_t c : carry_flags) {
+            new_flags.Add(v | z | c);
+          }
+        }
+      }
+      state.P = std::move(new_flags);
+      break;
+    }
+    case 0x46: { // LSR d
+      LOG(FATAL) << "Unimplemented 'LSR d'";
       break;
     }
     case 0x4e: { // LSR a
