@@ -150,6 +150,26 @@ ByteSet Modeling::GetByteSet(const State &state, uint16_t addr) const {
   return ByteSet::Top();
 }
 
+// For 16-bit addresses.
+ByteSet Modeling::GetByteSetFromOffsets16(
+    const State &state, uint16_t addr, const ByteSet &offsets) const {
+  ByteSet ret;
+  for (uint8_t o : offsets) {
+    ret.AddSet(GetByteSet(state, addr + o));
+  }
+  return ret;
+}
+
+ByteSet Modeling::GetByteSetFromOffsetsZpg(
+    const State &state, uint8_t addr, const ByteSet &offsets) const {
+  ByteSet ret;
+  for (uint8_t o : offsets) {
+    uint8_t zpg_addr = addr + o;
+    ret.AddSet(GetByteSet(state, zpg_addr));
+  }
+  return ret;
+}
+
 // Write *addr = s.
 // If the address is in RAM, we simply set the state in ram to
 // that set. Writes to ROM are ignored. Writes to memory-mapped
@@ -304,7 +324,7 @@ static void Compare(State *state, const ByteSet &reg, const ByteSet &op) {
 
   // Now update flags.
   CombineFlags(state, zncflags, Z_FLAG | N_FLAG | C_FLAG);
-};
+}
 
 void Modeling::Expand() {
   // TODO:
@@ -581,12 +601,6 @@ void Modeling::Expand() {
     case 0xc8: { // INY
       state.Y = state.Y.Map([](uint8_t v) { return v + 1; });
       ZN(&state, state.Y);
-      break;
-    }
-    case 0x29: { // AND #i
-      uint8_t imm = Next8();
-      state.A = state.A.Map([imm](uint8_t v) { return v & imm; });
-      ZN(&state, state.A);
       break;
     }
     case 0x88: { // DEY
@@ -1250,10 +1264,6 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'CMP a'";
       break;
     }
-    case 0x3d: { // AND a,x
-      LOG(FATAL) << "Unimplemented 'AND a,x'";
-      break;
-    }
     case 0x6a: { // ROR
       LOG(FATAL) << "Unimplemented 'ROR'";
       break;
@@ -1274,10 +1284,66 @@ void Modeling::Expand() {
       LOG(FATAL) << "Unimplemented 'RTI'";
       break;
     }
-    case 0x39: { // AND a,y
-      LOG(FATAL) << "Unimplemented 'AND a,y'";
+
+    case 0x29: { // AND #i
+      uint8_t imm = Next8();
+      state.A = state.A.Map([imm](uint8_t v) { return v & imm; });
+      ZN(&state, state.A);
       break;
     }
+    case 0x39: { // AND a,y
+      uint16_t addr = Next16();
+      ByteSet ms = GetByteSetFromOffsets16(state, addr, state.Y);
+
+      ByteSet new_a;
+      for (uint8_t m : ms) {
+        for (uint8_t a : state.A) {
+          new_a.Add(m & a);
+        }
+      }
+      state.A = std::move(new_a);
+      ZN(&state, state.A);
+      break;
+    }
+    case 0x3d: { // AND a,x
+      uint16_t addr = Next16();
+      ByteSet ms = GetByteSetFromOffsets16(state, addr, state.X);
+
+      ByteSet new_a;
+      for (uint8_t m : ms) {
+        for (uint8_t a : state.A) {
+          new_a.Add(m & a);
+        }
+      }
+      state.A = std::move(new_a);
+      ZN(&state, state.A);
+      break;
+    }
+    case 0x2d: { // AND a
+      uint16_t addr = Next16();
+      ByteSet new_a;
+      for (uint8_t m : GetByteSet(state, addr)) {
+        for (uint8_t a : state.A) {
+          new_a.Add(m & a);
+        }
+      }
+      state.A = std::move(new_a);
+      ZN(&state, state.A);
+      break;
+    }
+    case 0x25: { // AND d
+      uint16_t addr = Next8();
+      ByteSet new_a;
+      for (uint8_t m : GetByteSet(state, addr)) {
+        for (uint8_t a : state.A) {
+          new_a.Add(m & a);
+        }
+      }
+      state.A = std::move(new_a);
+      ZN(&state, state.A);
+      break;
+    }
+
 
     case 0xe6: { // INC d
       uint16_t addr = Next8();
@@ -1329,14 +1395,6 @@ void Modeling::Expand() {
     }
     case 0xdd: { // CMP a,x
       LOG(FATAL) << "Unimplemented 'CMP a,x'";
-      break;
-    }
-    case 0x2d: { // AND a
-      LOG(FATAL) << "Unimplemented 'AND a'";
-      break;
-    }
-    case 0x25: { // AND d
-      LOG(FATAL) << "Unimplemented 'AND d'";
       break;
     }
     case 0xbc: { // LDY a,x

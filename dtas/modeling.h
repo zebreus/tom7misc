@@ -122,6 +122,15 @@ struct Modeling {
   void WriteByteSet64(State *state, uint16_t addr,
                       const ByteSet64 &s) const;
 
+  // When we have addr+x, x may take on multiple values. This merges
+  // all the possibilities. We need to distinguish the full 16-bit
+  // address case from the zero page case, since the latter only
+  // wraps around on the zero page.
+  ByteSet GetByteSetFromOffsets16(
+      const State &state, uint16_t addr, const ByteSet &offsets) const;
+  ByteSet GetByteSetFromOffsetsZpg(
+      const State &state, uint8_t addr, const ByteSet &offsets) const;
+
   // Record that we can reach the address with the
   // given state. It may add a new basic block to our
   // analysis. Marks the block as dirty if it is new
