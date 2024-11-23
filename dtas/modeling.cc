@@ -84,10 +84,17 @@ void Modeling::EnterBlock(uint16_t addr, const State &state) {
   auto it = block_index.find(addr);
   if (it == block_index.end()) {
     // New block.
-    const int bidx = (int)blocks.size();
-    block_index[addr] = bidx;
-    blocks.emplace_back(BasicBlock{.start_addr = addr, .state_in = state});
-    dirty.Push(bidx);
+    if (0 == (zoning.addr[addr] & Zoning::X)) {
+      printf("\nTried to enter non-executable address " ARED("%04x") ".\n",
+             addr);
+      // Do nothing.
+    } else {
+      printf("New block " AGREEN("%04x") "\n", addr);
+      const int bidx = (int)blocks.size();
+      block_index[addr] = bidx;
+      blocks.emplace_back(BasicBlock{.start_addr = addr, .state_in = state});
+      dirty.Push(bidx);
+    }
   } else {
     const int bidx = it->second;
     CHECK(bidx >= 0 && bidx < (int)blocks.size());
@@ -772,20 +779,66 @@ void Modeling::Expand() {
           ret_state.S = ByteSet::Singleton(sp + 2);
           EnterBlock(raddr, std::move(ret_state));
         } else {
+          // Multiple RTS destinations. This is a bad situation.
+          // We can maybe handle the fact that we don't know *which*
+          // caller we return to here, but since the addresses are
+          // two bytes, when they are ambiguous we might get
+          // nonsensical addresses by combining the high byte of one
+          // with the low byte of another (or swapping low/hi bytes).
+          // To prevent the analysis from including these, we filter
+          // for addresses in ROM that contain a JSR at the appropriate
+          // offset. i.e., we only allow returning to places that might
+          // have called a subroutine. This excludes self-modifying
+          // code, multi-bank hijinks, manually manipulating the stack,
+          // exploitable bugs, and so on.
+          //
+          // XXX This is a justifiable hack but makes some assumptions
+          // about how the code works. We should be tracking something
+          // about static call graphs to do this better.
+
           printf(ARED("Ugh") "! Multiple possible RTS destinations: ");
+          // printf("\n");
           for (int hi = 0; hi < 256; hi++) {
             if (state.ram[saddr + 1].Contains(hi)) {
               for (int lo = 0; lo < 256; lo++) {
                 if (state.ram[saddr + 2].Contains(lo)) {
                   uint16_t raddr = ((hi << 8) | lo) + 1;
-                  printf(" %04x", raddr);
-                  State ret_state = state;
-                  // We know where the stack points, and what was
-                  // there.
-                  ret_state.S = ByteSet::Singleton(sp + 2);
-                  ret_state.ram[saddr + 1] = ByteSet64::Singleton(hi);
-                  ret_state.ram[saddr + 2] = ByteSet64::Singleton(lo);
-                  EnterBlock(raddr, std::move(ret_state));
+
+                  // See above.
+                  bool allow = false;
+                  // Only ROM code addresses.
+                  if (raddr >= 0x8000) {
+                    if (false) {
+                    for (int i = (int)raddr - 5; i < (int)raddr + 2; i++) {
+                      printf("%04x: %02x%s\n",
+                             i,
+                             rom.Read(i),
+                             i == raddr ? AYELLOW(" <- raddr") : "");
+                    }
+                    }
+                    // JSR memory layout is
+                    // 0x20 HI LO next
+                    //            ^
+                    //            raddr points here (we already
+                    //            added 1 1)
+                    if (raddr - 3 >= 0x8000 &&
+                        rom.Read(raddr - 3) == 0x20) {
+                      allow = true;
+                    }
+                  }
+
+                  if (allow) {
+                    printf(" %04x", raddr);
+                    State ret_state = state;
+                    // We know where the stack points, and what was
+                    // there.
+                    ret_state.S = ByteSet::Singleton(sp + 2);
+                    ret_state.ram[saddr + 1] = ByteSet64::Singleton(hi);
+                    ret_state.ram[saddr + 2] = ByteSet64::Singleton(lo);
+                    EnterBlock(raddr, std::move(ret_state));
+                  } else {
+                    printf(" " ARED("%04x"), raddr);
+                  }
                 }
               }
             }
@@ -1480,14 +1533,18 @@ void Modeling::Expand() {
     }
 
     default:
-      LOG(FATAL) << "Unimplemented (and unexpected) instruction " <<
-        StringPrintf("%02x (%s)", opcode, Opcodes::opcode_name[opcode]) <<
-        ". It was not seen when tracing real emulator execution.";
+      LOG(FATAL) << "Unimplemented (and unexpected) instruction:\n" <<
+        StringPrintf("%04x: 0x%02x (%s)",
+                     pc - 1, opcode, Opcodes::opcode_name[opcode]) <<
+        "\nIt was not seen when tracing real emulator execution, but\n"
+        "it could just be that the model can't rule it out, or found\n"
+        "a new possibility.\n";
     }
 
     // Stop if we've encountered a new block (i.e., there is a jump
     // into this block from elsewhere).
   } while (!block_index.contains(pc));
+  printf(ANSI_DARK_BLUE "(block ends)" ANSI_RESET "\n");
 
   // If we get here, then the basic block has ended, but we treat
   // it as an unconditional jump to the next instruction.

@@ -14,6 +14,7 @@
 #include "../fceulib/emulator.h"
 #include "base/logging.h"
 #include "byteset.h"
+#include "zoning.h"
 
 struct Bank {
   static constexpr int ORIGIN = 0x8000;
@@ -102,13 +103,15 @@ struct Modeling {
   explicit Modeling(Bank rom_in) : rom(std::move(rom_in)) {}
   // --- The program being analyzed ---
   // This is the source of instructions and any other
-  // read-only data accessed by the program.
+  // read-only data accessed by the program. We only support
+  // a single bank here.
   Bank rom;
   // We give each basic block a unique index.
   std::unordered_map<uint16_t, int> block_index;
   std::vector<BasicBlock> blocks;
   // The basic blocks that may need update.
   Dirty dirty;
+  Zoning zoning;
 
   // True if the analysis is quiescent.
   bool Done() const;

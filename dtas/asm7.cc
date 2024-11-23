@@ -31,9 +31,12 @@
 #include "randutil.h"
 #include "re2/re2.h"
 #include "util.h"
+#include "zoning.h"
 
 [[maybe_unused]]
 static constexpr int VERBOSE = 1;
+
+namespace {
 
 enum TokenType {
   // Singleton symbols
@@ -226,7 +229,13 @@ struct Delayed {
 
 struct Bank {
   // Creates an empty bank. The origin is required.
-  Bank(int origin) : origin(origin) {}
+  Bank(int origin) : origin(origin) {
+    // The zoning we generate is constructive; we only
+    // mark the addresses where we actually generated
+    // an instruction (with an instruction mnemonic) as
+    // executable. So begin with nothing set.
+    zoning.Clear();
+  }
 
   uint16_t NextAddress() const {
     return origin + (int)bytes.size();
@@ -253,6 +262,10 @@ struct Bank {
 
   std::map<uint16_t, std::string> debug_labels;
   // TODO: Comments too?
+
+  // Debugging information about what addresses represent
+  // instructions (that we assembled).
+  Zoning zoning;
 };
 
 struct Assembly {
@@ -935,6 +948,13 @@ static void Assemble(const std::string &asm_file,
       CHECK(!tokens.empty() && tokens[0].type == SYMBOL) << "Expected "
         "instruction mnemonic." << Error();
 
+      // Mark that we assembled an actual instruction here (just
+      // the first byte).
+      {
+        Bank &bank = CurrentBank();
+        bank.zoning.addr[bank.NextAddress()] |= Zoning::X;
+      }
+
       std::string mnemonic = Util::lcase(tokens[0].str);
 
       if (auto it = mode_implied.find(mnemonic); it != mode_implied.end()) {
@@ -1321,18 +1341,29 @@ static void Assemble(const std::string &asm_file,
   Util::WriteFileBytes(rom_file, assembly.banks[0].bytes);
   printf("Wrote " AGREEN("%s") "\n", rom_file.c_str());
 
+
   // Debugging info.
+  std::string fbase = (std::string)Util::FileBaseOf(rom_file);
+
+  // nl file
   {
     std::string contents;
     for (const auto &[addr, name] : assembly.banks[0].debug_labels) {
       StringAppendF(&contents, "$%04x#%s#\n", addr, name.c_str());
     }
-    std::string fbase = (std::string)Util::FileBaseOf(rom_file);
     std::string nlfile = StringPrintf("%s.nes.0.nl", fbase.c_str());
     Util::WriteFile(nlfile, contents);
     printf("Wrote " AGREEN("%s") "\n", nlfile.c_str());
   }
+
+  {
+    std::string zonefile = StringPrintf("%s.zoning", fbase.c_str());
+    assembly.banks[0].zoning.Save(zonefile);
+    printf("Wrote " AGREEN("%s") "\n", zonefile.c_str());
+  }
 }
+
+}  // namespace
 
 int main(int argc, char **argv) {
   ANSI::Init();
