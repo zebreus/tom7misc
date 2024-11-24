@@ -121,6 +121,43 @@ static double PlanarityError(const Polyhedron &p) {
   return error;
 }
 
+static Polyhedron Dodecahedron() {
+  constexpr double phi = std::numbers::phi; // double phi = (1.0 + sqrt(5.0)) / 2.0;
+
+  // The vertices have a nice combinatorial form.
+  std::vector<vec3> vertices;
+  for (bool i : {false, true}) {
+    for (bool j : {false, true}) {
+      for (bool k : {false, true}) {
+        // It's a beauty: The unit cube is in here.
+        vertices.emplace_back(vec3{
+            i ? 1.0 : -1.0,
+            j ? 1.0 : -1.0,
+            k ? 1.0 : -1.0,
+          });
+      }
+    }
+  }
+
+  for (bool j : {false, true}) {
+    for (bool k : {false, true}) {
+      double b = j ? phi : -phi;
+      double c = k ? 1.0 / phi : -1.0 / phi;
+      vertices.emplace_back(vec3{
+          .x = 0.0, .y = b, .z = c});
+      vertices.emplace_back(vec3{
+          .x = c, .y = 0.0, .z = b});
+      vertices.emplace_back(vec3{
+          .x = b, .y = c, .z = 0.0});
+    }
+  }
+
+  CHECK(vertices.size() == 20);
+
+  // XXXX
+  return Polyhedron();
+}
+
 static Polyhedron Cube() {
   //                  +y
   //      a------b     | +z
