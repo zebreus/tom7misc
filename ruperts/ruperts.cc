@@ -1,12 +1,14 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <functional>
+#include <initializer_list>
 #include <numbers>
 #include <utility>
 #include <vector>
@@ -121,22 +123,25 @@ static double PlanarityError(const Polyhedron &p) {
   return error;
 }
 
+[[maybe_unused]]
 static Polyhedron Dodecahedron() {
-  constexpr double phi = std::numbers::phi; // double phi = (1.0 + sqrt(5.0)) / 2.0;
+  // double phi = (1.0 + sqrt(5.0)) / 2.0;
+  constexpr double phi = std::numbers::phi;
 
   // The vertices have a nice combinatorial form.
   std::vector<vec3> vertices;
-  for (bool i : {false, true}) {
-    for (bool j : {false, true}) {
-      for (bool k : {false, true}) {
-        // It's a beauty: The unit cube is in here.
-        vertices.emplace_back(vec3{
-            i ? 1.0 : -1.0,
-            j ? 1.0 : -1.0,
-            k ? 1.0 : -1.0,
-          });
-      }
-    }
+
+  // It's a beauty: The unit cube is in here.
+  // The first eight vertices (0b000 - 0b111)
+  // will be the corners of the cube, where a zero bit means
+  // a coordinate of -1, and a one bit +1. The coordinates
+  // are in xyz order.
+  for (int i = 0b000; i < 0b1000; i++) {
+    vertices.emplace_back(vec3{
+        (i & 0b100) ? 1.0 : -1.0,
+        (i & 0b010) ? 1.0 : -1.0,
+        (i & 0b001) ? 1.0 : -1.0,
+      });
   }
 
   for (bool j : {false, true}) {
@@ -154,8 +159,109 @@ static Polyhedron Dodecahedron() {
 
   CHECK(vertices.size() == 20);
 
-  // XXXX
-  return Polyhedron();
+  // Rather than hard code faces, we find them from the
+  // vertices. Every vertex has exactly three edges,
+  // and they are to the three closest (other) vertices.
+
+  std::vector<std::vector<int>> neighbors(20);
+  for (int i = 0; i < vertices.size(); i++) {
+    std::vector<std::pair<int, double>> others;
+    others.reserve(19);
+    for (int o = 0; o < vertices.size(); o++) {
+      if (o != i) {
+        others.emplace_back(o, distance(vertices[i], vertices[o]));
+      }
+    }
+    std::sort(others.begin(), others.end(),
+              [](const auto &a, const auto &b) {
+                if (a.second == b.second) return a.first < b.first;
+                return a.second < b.second;
+              });
+    others.resize(3);
+    for (const auto &[idx, dist_] : others) {
+      printf("src %d, n %d, dist %.11g\n", i, idx, dist_);
+      neighbors[i].push_back(idx);
+    }
+  }
+
+  for (int i = 0; i < vertices.size(); i++) {
+    const vec3 &v = vertices[i];
+    printf("v " AWHITE("%d")
+           ". (" ARED("%.3f") ", " AGREEN("%.3f") ", " ABLUE("%.3f")
+           ") neighbors:", i, v.x, v.y, v.z);
+    for (int n : neighbors[i]) {
+      printf(" %d", n);
+    }
+    printf("\n");
+  }
+
+  // Return the common neighbor. Aborts if there is no such
+  // neighbor.
+  auto CommonNeighbor = [&neighbors](int a, int b) {
+      for (int aa : neighbors[a]) {
+        for (int bb : neighbors[b]) {
+          if (aa == bb) return aa;
+        }
+      }
+      LOG(FATAL) << "Vertices " << a << " and " << b << " do not "
+        "have a common neighbor.";
+      return -1;
+    };
+
+  // Get the single neighbor of a that lies on the plane a,b,c (and
+  // is not one of the arguments). Aborts if there is no such neighbor.
+  auto CoplanarNeighbor = [&vertices, &neighbors](int a, int b, int c) {
+      const vec3 &v0 = vertices[a];
+      const vec3 &v1 = vertices[b];
+      const vec3 &v3 = vertices[c];
+
+      const vec3 normal = yocto::normalize(yocto::cross(v1 - v0, v3 - v0));
+
+      for (int o : neighbors[a]) {
+        if (o == b || o == c) continue;
+
+        const vec3 &v = vertices[o];
+        double err = std::abs(yocto::dot(v - v0, normal));
+        // The other points won't even be close.
+        if (err < 0.00001) {
+          return o;
+        }
+      }
+
+      LOG(FATAL) << "Vertices " << a << ", " << b << ", " << c <<
+        " do not have a coplanar neighbor (for a).\n";
+      return -1;
+    };
+
+  Faces *faces = new Faces;
+
+  // Each face corresponds to an edge on the cube.
+  for (int a = 0b000; a < 0b1000; a++) {
+    for (int b = 0b000; b < 0b1000; b++) {
+      // When the Hamming distance is exactly 1, this is an edge
+      // of the cube. Consider only the case where a < b though.
+      if (a < b && std::popcount<uint8_t>(a ^ b) == 1) {
+
+        //       tip
+        //       ,'.
+        //    a,'   `.b
+        //     \     /
+        //      \___/
+        //     o1   o2
+
+        // These two points will share a neighbor, which is the
+        // tip of the pentagon illustrated above.
+        int tip = CommonNeighbor(a, b);
+
+        int o1 = CoplanarNeighbor(a, b, tip);
+        int o2 = CoplanarNeighbor(b, a, tip);
+
+        faces->v.push_back(std::vector<int>{tip, b, o2, o1, a});
+      }
+    }
+  }
+
+  return Polyhedron{.vertices = std::move(vertices), .faces = faces};
 }
 
 static Polyhedron Cube() {
@@ -249,14 +355,25 @@ static void Render(const Polyhedron &p, uint32_t color, ImageRGBA *img) {
   }
 }
 
-static std::array<uint32_t, 7> COLORS = {
+static std::vector<uint32_t> COLORS = {
   0xFF0000FF,
   0xFFFF00FF,
   0x00FF00FF,
   0x00FFFFFF,
   0x0000FFFF,
   0xFF00FFFF,
+  0x770000FF,
+  0x777700FF,
+  0x007700FF,
+  0x007777FF,
+  0x000077FF,
+  0x770077FF,
+  0xFF7777FF,
+  0xFFFF77FF,
+  0x77FF77FF,
+  0x77FFFFFF,
   0x7777FFFF,
+  0xFF77FFFF,
 };
 
 // Point-in-polygon test using the winding number algorithm
@@ -292,7 +409,9 @@ static void RenderMesh(const Mesh2D &mesh, ImageRGBA *img) {
   const int h = img->Height();
   const double scale = std::min(w, h) * 0.25;
 
-  CHECK(mesh.faces->v.size() < COLORS.size());
+  CHECK(mesh.faces->v.size() < COLORS.size()) << mesh.faces->v.size()
+                                              << " but have "
+                                              << COLORS.size();
 
   auto ToWorld = [w, h, scale](int sx, int sy) -> vec2 {
       // Center of screen should be 0,0.
@@ -340,15 +459,17 @@ static bool InMesh(const Mesh2D &mesh, const vec2 &pt) {
 }
 
 [[maybe_unused]]
-static void AnimateMesh(ArcFour *rc) {
-  const Polyhedron cube = Cube();
-  quat4 initial_rot = RandomQuaternion(rc);
+static void AnimateMesh() {
+  ArcFour rc("animate");
+  // const Polyhedron poly = Cube();
+  const Polyhedron poly = Dodecahedron();
+  quat4 initial_rot = RandomQuaternion(&rc);
 
   constexpr int SIZE = 1080;
   constexpr int FRAMES = 10 * 60;
   // constexpr int FRAMES = 10;
 
-  MovRecorder rec("cube.mov", SIZE, SIZE);
+  MovRecorder rec("animate.mov", SIZE, SIZE);
 
   StatusBar status(1);
   Periodically status_per(1.0);
@@ -365,11 +486,11 @@ static void AnimateMesh(ArcFour *rc) {
       QuatFromVec(yocto::rotation_quat<double>({0.0, 1.0, 0.0}, angle));
 
     quat4 final_rot = normalize(initial_rot * frame_rot);
-    Polyhedron rcube = Rotate(cube, yocto::rotation_frame(final_rot));
+    Polyhedron rpoly = Rotate(poly, yocto::rotation_frame(final_rot));
 
     ImageRGBA img(SIZE, SIZE);
     img.Clear32(0x000000FF);
-    Mesh2D mesh = Shadow(rcube);
+    Mesh2D mesh = Shadow(rpoly);
     RenderMesh(mesh, &img);
     rec.AddFrame(std::move(img));
   }
@@ -380,23 +501,23 @@ static void Visualize() {
   // ArcFour rc(StringPrintf("seed.%lld", time(nullptr)));
   ArcFour rc("fixed-seed");
 
-  const Polyhedron cube = Cube();
-  CHECK(PlanarityError(cube) < 1.0e-10);
+  // const Polyhedron poly = Cube();
+  const Polyhedron poly = Dodecahedron();
+  CHECK(PlanarityError(poly) < 1.0e-10);
 
   {
     ImageRGBA img(1920, 1080);
     img.Clear32(0x000000FF);
     for (int i = 0; i < 5; i++) {
       frame3 frame = yocto::rotation_frame(RandomQuaternion(&rc));
-      Polyhedron rcube = Rotate(cube, frame);
+      Polyhedron rpoly = Rotate(poly, frame);
 
-      CHECK(PlanarityError(rcube) < 1.0e10);
-      Render(rcube, COLORS[i], &img);
+      CHECK(PlanarityError(rpoly) < 1.0e10);
+      Render(rpoly, COLORS[i], &img);
     }
 
-    img.Save("cubes.png");
+    img.Save("wireframe.png");
   }
-
 
   {
     ImageRGBA img(1920, 1080);
@@ -405,9 +526,9 @@ static void Visualize() {
     quat4 q = RandomQuaternion(&rc);
     frame3 frame = yocto::rotation_frame(q);
 
-    Polyhedron rcube = Rotate(cube, frame);
+    Polyhedron rpoly = Rotate(poly, frame);
 
-    Mesh2D mesh = Shadow(rcube);
+    Mesh2D mesh = Shadow(rpoly);
     RenderMesh(mesh, &img);
 
     img.Save("shadow.png");
@@ -488,9 +609,13 @@ static void Solve(const Polyhedron &polyhedron) {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+  printf("\n");
+
+  Visualize();
+  AnimateMesh();
 
   printf("\n");
-  Solve(Cube());
+  // Solve(Cube());
 
   printf("OK\n");
   return 0;
