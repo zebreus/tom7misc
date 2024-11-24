@@ -59,6 +59,7 @@
 #include "evaluator.h"
 
 #include "mov.h"
+#include "mov-recorder.h"
 
 using namespace std;
 
@@ -110,81 +111,6 @@ struct ScopeExit {
   F f;
 };
 }
-
-// Asynchronous movie recording.
-// TODO: Move to codec/cc-lib
-struct MovRecorder {
-  explicit MovRecorder(std::unique_ptr<MOV::Out> out) :
-    out(std::move(out)),
-    write_thread(&MovRecorder::WriteThread, this) {
-
-  }
-
-  // Typically you can avoid the copy by std::moving the
-  // argument if you are done with the frame.
-  //
-  // TODO: MOV output can now encode the frames (that's
-  // the slow part) in parallel. So we can support
-  // multiple threads here, and probably get to real-time.
-  //
-  // TODO: Add a maximum size for the queue before we
-  // start blocking!
-  void AddFrame(ImageRGBA img) {
-    {
-      std::unique_lock ml(m);
-      frame_queue.emplace_back(std::move(img));
-    }
-    cv.notify_one();
-  }
-
-  void WriteThread() {
-    printf(AWHITE("MovRecorder thread") " started\n");
-    for (;;) {
-      std::unique_lock ml(m);
-      cv.wait(ml, [this]() {
-          return done || !frame_queue.empty();
-        });
-
-      // If we've signaled the end, then exit. But only if
-      // we've already finished all the frames!
-      if (done && frame_queue.empty()) {
-        printf(AWHITE("MovRecorder thread") " exit\n");
-        return;
-      }
-
-      CHECK(!frame_queue.empty()) << "Bug: Checked by cv::wait.";
-
-      ImageRGBA frame = std::move(*frame_queue.begin());
-      frame_queue.pop_front();
-      ml.unlock();
-
-      // Not holding lock, as this is the expensive part.
-      out->AddFrame(frame);
-    }
-  }
-
-  ~MovRecorder() {
-    {
-      std::unique_lock ml(m);
-      done = true;
-      printf(AWHITE("MovRecorder ") " has " AYELLOW("%d")
-             " outstanding frames.\n", (int)frame_queue.size());
-    }
-    cv.notify_one();
-    // Wait on thread to ensure all the frames are written.
-    write_thread.join();
-    // Finalize the output file.
-    out.reset(nullptr);
-  }
-
- private:
-  std::mutex m;
-  std::condition_variable cv;
-  std::deque<ImageRGBA> frame_queue;
-  std::unique_ptr<MOV::Out> out;
-  std::thread write_thread;
-  bool done = false;
-};
 
 // This wraps a movie (series of inputs), which is rooted at the
 // WarpTo state. The movie also has a cursor somewhere in its
