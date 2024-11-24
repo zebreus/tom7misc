@@ -1,4 +1,7 @@
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
@@ -9,11 +12,15 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "randutil.h"
+#include "image.h"
 
 #include "yocto_matht.h"
 #include "yocto_geometryt.h"
 
+using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;
+using vec4 = yocto::vec<double, 4>;
+using mat4 = yocto::mat<double, 4>;
 using quat4 = yocto::quat<double, 4>;
 using frame3 = yocto::frame<double, 3>;
 
@@ -113,18 +120,69 @@ static quat4 RandomQuaternion(ArcFour *rc) {
   return quat4{.x = x, .y = y, .z = z, .w = w};
 }
 
+static vec2 Project(const vec3 &point, const mat4 &proj) {
+  vec4 pp = proj * vec4{.x = point.x, .y = point.y, .z = point.z, .w = 1.0};
+  return vec2{.x = pp.x / pp.w, .y = pp.y / pp.w};
+}
+
+static void Render(const Polyhedron &p, uint32_t color, ImageRGBA *img) {
+  // Function to project a 3D point to 2D using a perspective projection
+
+  const double scale = std::min(img->Width(), img->Height()) * 0.75;
+
+  // Perspective projection matrix (example values)
+  // double aspect = (double)1920.0 / 1080.0;
+  constexpr double aspect = 1.0;
+  mat4 proj = yocto::perspective_mat(
+      yocto::radians(60.0), aspect, 0.1, 100.0);
+
+  frame3 camera_frame = yocto::lookat_frame<double>(
+      {0, 0, 5}, {0, 0, 0}, {0, 1, 0});
+  mat4 view_matrix = yocto::frame_to_mat(camera_frame);
+  mat4 model_view_projection = proj * view_matrix;
+
+  for (const std::vector<int> &face : p.faces) {
+    for (int i = 0; i < (int)face.size(); i++) {
+      vec3 v0 = p.vertices[face[i]];
+      vec3 v1 = p.vertices[face[(i + 1) % face.size()]];
+
+      vec2 p0 = Project(v0, model_view_projection);
+      vec2 p1 = Project(v1, model_view_projection);
+
+      float x0 = (p0.x * scale + img->Width() * 0.5);
+      float y0 = (p0.y * scale + img->Height() * 0.5);
+      float x1 = (p1.x * scale + img->Width() * 0.5);
+      float y1 = (p1.y * scale + img->Height() * 0.5);
+      img->BlendThickLine32(x0, y0, x1, y1, 4.0f, color & 0xFFFFFF88);
+    }
+  }
+}
+
+static constexpr uint32_t COLORS[] = {
+  0xFF0000FF,
+  0xFFFF00FF,
+  0x00FF00FF,
+  0x00FFFFFF,
+  0x0000FFFF,
+  0xFF00FFFF,
+};
+
 static void Run() {
   ArcFour rc(StringPrintf("seed.%lld", time(nullptr)));
   const Polyhedron cube = Cube();
   CHECK(PlanarityError(cube) < 1.0e-10);
 
-  for (int i = 0; i < 10; i++) {
+  ImageRGBA img(1920, 1080);
+  img.Clear32(0x000000FF);
+  for (int i = 0; i < 5; i++) {
     frame3 frame = yocto::rotation_frame(RandomQuaternion(&rc));
     Polyhedron rcube = Rotate(cube, frame);
 
     CHECK(PlanarityError(rcube) < 1.0e10);
+    Render(rcube, COLORS[i], &img);
   }
 
+  img.Save("cubes.png");
 }
 
 int main(int argc, char **argv) {
