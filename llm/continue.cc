@@ -13,7 +13,7 @@
 
 using namespace std;
 
-static constexpr bool SHOW_DIST = true;
+static constexpr bool SHOW_DIST = false;
 
 static void Continue(LLM *llm, const string &prompt, FILE *outfile) {
   printf("Loaded prompt of %d chars\n", (int)prompt.size());

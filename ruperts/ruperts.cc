@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <functional>
 #include <numbers>
 #include <utility>
 #include <vector>
@@ -14,15 +15,21 @@
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "randutil.h"
 #include "image.h"
-#include "mov.h"
 #include "mov-recorder.h"
-#include "status-bar.h"
+#include "mov.h"
+#include "opt/opt.h"
 #include "periodically.h"
+#include "randutil.h"
+#include "status-bar.h"
+#include "timer.h"
+#include "auto-histo.h"
+#include "atomic-util.h"
 
 #include "yocto_matht.h"
 #include "yocto_geometryt.h"
+
+DECLARE_COUNTERS(attempts, u1_, u2_, u3_, u4_, u5_, u6_, u7_);
 
 using vec2 = yocto::vec<double, 2>;
 using vec3 = yocto::vec<double, 3>;
@@ -230,7 +237,7 @@ bool PointInPolygon(const vec2 &point,
         if (point.x <= std::max(p0.x, p1.x)) {
           if (p0.y != p1.y) {
             double vt = (point.y - p0.y) / (p1.y - p0.y);
-            if (p0.x + vt * (p1.x - p0.x) < point.x) {
+            if (point.x < p0.x + vt * (p1.x - p0.x)) {
               winding_number++;
             }
           }
@@ -287,7 +294,52 @@ static void RenderMesh(const Mesh2D &mesh, ImageRGBA *img) {
   }
 }
 
-static void Run() {
+static bool InMesh(const Mesh2D &mesh, const vec2 &pt) {
+  for (const std::vector<int> &face : mesh.faces->v)
+    if (PointInPolygon(pt, mesh.vertices, face))
+      return true;
+
+  return false;
+}
+
+[[maybe_unused]]
+static void AnimateMesh(ArcFour *rc) {
+  const Polyhedron cube = Cube();
+  quat4 initial_rot = RandomQuaternion(rc);
+
+  constexpr int SIZE = 1080;
+  constexpr int FRAMES = 10 * 60;
+  // constexpr int FRAMES = 10;
+
+  MovRecorder rec("cube.mov", SIZE, SIZE);
+
+  StatusBar status(1);
+  Periodically status_per(1.0);
+  for (int i = 0; i < FRAMES; i++) {
+    if (status_per.ShouldRun()) {
+      status.Progressf(i, FRAMES, "rotate");
+    }
+
+    double t = i / (double)FRAMES;
+    double angle = t * 2.0 * std::numbers::pi;
+
+    // rotation quat actually returns vec4; isomorphic to quat4.
+    quat4 frame_rot =
+      QuatFromVec(yocto::rotation_quat<double>({0.0, 1.0, 0.0}, angle));
+
+    quat4 final_rot = normalize(initial_rot * frame_rot);
+    Polyhedron rcube = Rotate(cube, yocto::rotation_frame(final_rot));
+
+    ImageRGBA img(SIZE, SIZE);
+    img.Clear32(0x000000FF);
+    Mesh2D mesh = Shadow(rcube);
+    RenderMesh(mesh, &img);
+    rec.AddFrame(std::move(img));
+  }
+}
+
+[[maybe_unused]]
+static void Visualize() {
   // ArcFour rc(StringPrintf("seed.%lld", time(nullptr)));
   ArcFour rc("fixed-seed");
 
@@ -308,15 +360,13 @@ static void Run() {
     img.Save("cubes.png");
   }
 
-  /*
-      {
+
+  {
     ImageRGBA img(1920, 1080);
     img.Clear32(0x000000FF);
 
     quat4 q = RandomQuaternion(&rc);
     frame3 frame = yocto::rotation_frame(q);
-
-
 
     Polyhedron rcube = Rotate(cube, frame);
 
@@ -325,49 +375,85 @@ static void Run() {
 
     img.Save("shadow.png");
   }
-  */
+}
 
-  {
-    quat4 initial_rot = RandomQuaternion(&rc);
+static void Solve(const Polyhedron &polyhedron) {
+  ArcFour rc(StringPrintf("solve.%lld", time(nullptr)));
+  Timer run_timer;
+  StatusBar status(3);
+  Periodically status_per(1.0);
+  double best_error = 1.0e42;
+  AutoHisto error_histo(10000);
 
-    constexpr int SIZE = 1080;
-    constexpr int FRAMES = 10 * 60;
-    // constexpr int FRAMES = 10;
+  for (int iters = 0; true; iters++) {
+    quat4 outer_rot = RandomQuaternion(&rc);
+    Polyhedron outer = Rotate(polyhedron, yocto::rotation_frame(outer_rot));
+    Mesh2D souter = Shadow(outer);
 
-    MovRecorder rec("bug.mov", SIZE, SIZE);
+    // Starting orientation/position.
+    quat4 inner_rot = RandomQuaternion(&rc);
 
-    StatusBar status(1);
-    Periodically status_per(1.0);
-    for (int i = 0; i < FRAMES; i++) {
-      if (status_per.ShouldRun()) {
-        status.Progressf(i, FRAMES, "rotate");
-      }
+    static constexpr int D = 6;
+    std::function<double(const std::array<double, D> &)> Loss =
+      [&polyhedron, &souter, &inner_rot](const std::array<double, D> &args) {
+        attempts++;
+        const auto &[di, dj, dk, dl, dx, dy] = args;
+        quat4 tweaked_rot = normalize(quat4{
+            .x = inner_rot.x + di,
+            .y = inner_rot.y + dj,
+            .z = inner_rot.z + dk,
+            .w = inner_rot.w + dl,
+          });
+        frame3 rotate = yocto::rotation_frame(tweaked_rot);
+        frame3 translate = yocto::translation_frame(
+            vec3{.x = dx, .y = dy, .z = 0.0});
+        Polyhedron inner = Rotate(polyhedron, rotate * translate);
 
-      double t = i / (double)FRAMES;
-      double angle = t * 2.0 * std::numbers::pi;
+        Mesh2D sinner = Shadow(inner);
 
-      // rotation quat actually returns vec4; isomorphic to quat4.
-      quat4 frame_rot =
-        QuatFromVec(yocto::rotation_quat<double>({0.0, 1.0, 0.0}, angle));
+        // Does every vertex in inner fall inside the outer shadow?
+        double error = 0.0;
+        for (const vec2 &iv : sinner.vertices) {
+          if (!InMesh(souter, iv)) {
+            // PERF we should get the distance to the convex hull,
+            // but distance from the origin should at least have
+            // the right slope.
+            error += length(iv);
+          }
+        }
 
-      quat4 final_rot = normalize(initial_rot * frame_rot);
-      Polyhedron rcube = Rotate(cube, yocto::rotation_frame(final_rot));
+        return error;
+      };
 
-      ImageRGBA img(SIZE, SIZE);
-      img.Clear32(0x000000FF);
-      Mesh2D mesh = Shadow(rcube);
-      RenderMesh(mesh, &img);
-      rec.AddFrame(std::move(img));
+    const std::array<double, D> lb = {-0.1, -0.1, -0.1, -0.1, -0.1, -0.1};
+    const std::array<double, D> ub = {+0.1, +0.1, +0.1, +0.1, +0.1, +0.1};
+    const auto &[args, error] =
+      Opt::Minimize<D>(Loss, lb, ub, 1000);
+    error_histo.Observe(error);
+    best_error = std::min(best_error, error);
+
+    if (error == 0.0) {
+      printf("Solved! %d iters, %lld attempts, in %s\n",
+             iters,
+             attempts.Read(),
+             ANSI::Time(run_timer.Seconds()).c_str());
+      return;
+    }
+
+    if (status_per.ShouldRun()) {
+      status.Statusf("%s\n%d iters, best: %.11g",
+                     error_histo.SimpleHorizANSI(12).c_str(),
+                     iters, best_error);
     }
   }
 }
 
 
-
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  Run();
+  printf("\n");
+  Solve(Cube());
 
   printf("OK\n");
   return 0;

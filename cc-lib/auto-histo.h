@@ -215,7 +215,7 @@ struct AutoHisto {
     return ret;
   }
 
-  // Space-efficient horizontal layout.
+  // Space-efficient horizontal layout (two lines).
   std::string SimpleHorizANSI(int buckets) const {
     // TODO: In most cases, the factor limiting resolution is
     // the width of the labels themselves. We should probably
