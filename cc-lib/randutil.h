@@ -329,4 +329,30 @@ inline double RandomBeta(ArcFour *rc, double a, double b) {
   }
 }
 
+// Get a random 4D unit vector.
+inline std::tuple<double, double, double, double> RandomUnit4D(
+    ArcFour *rc) {
+  // TODO PERF: This can be done more efficiently using
+  // the Gaussian distribution, although it is also a fancier
+  // algorithm. For 4D, the rejection approach is reasonable
+  // (expected number of calls to RandomDouble is about 13).
+
+  // Conceptually we are generating a random point in a
+  // 2x2x2x2 hypercube and then checking whether it is in
+  // the unit 4d hypersphere. If so, we normalize it and we
+  // are done.
+  for (;;) {
+    double a = 2.0 * RandDouble(rc) - 1.0;
+    double b = 2.0 * RandDouble(rc) - 1.0;
+    double c = 2.0 * RandDouble(rc) - 1.0;
+    double d = 2.0 * RandDouble(rc) - 1.0;
+
+    double sq_dist = a * a + b * b + c * c + d * d;
+    if (sq_dist <= 1.0 && sq_dist > 0) {
+      double norm = 1.0 / std::sqrt(sq_dist);
+      return std::make_tuple(norm * a, norm * b, norm * c, norm *d);
+    }
+  }
+}
+
 #endif
