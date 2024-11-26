@@ -1,0 +1,587 @@
+
+#include "polyhedra.h"
+
+#include <unordered_set>
+#include <algorithm>
+#include <bit>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <numbers>
+#include <optional>
+#include <string>
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include "ansi.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "hashing.h"
+#include "set-util.h"
+#include "util.h"
+
+#include "yocto_matht.h"
+
+std::string VecString(const vec3 &v) {
+  return StringPrintf(
+      "(" ARED("%.4f") "," AGREEN("%.4f") "," ABLUE("%.4f") ")",
+      v.x, v.y, v.z);
+}
+
+std::string FrameString(const frame3 &f) {
+  return StringPrintf(
+      "frame3{.x = vec3(%.17g, %.17g, %.17g),\n"
+      "       .y = vec3(%.17g, %.17g, %.17g),\n"
+      "       .z = vec3(%.17g, %.17g, %.17g),\n"
+      "       .o = vec3(%.17g, %.17g, %.17g)}",
+      f.x.x, f.x.y, f.x.z,
+      f.y.x, f.y.y, f.y.z,
+      f.z.x, f.z.y, f.z.z,
+      f.o.x, f.o.y, f.o.z);
+}
+
+std::string FormatNum(uint64_t n) {
+  if (n > 1'000'000) {
+    double m = n / 1'000'000.0;
+    if (m >= 1'000'000.0) {
+      return StringPrintf("%.1fT", m / 1'000'000.0);
+    } else if (m >= 1000.0) {
+      return StringPrintf("%.1fB", m / 1000.0);
+    } else if (m >= 100.0) {
+      return StringPrintf("%dM", (int)std::round(m));
+    } else if (m > 10.0) {
+      return StringPrintf("%.1fM", m);
+    } else {
+      // TODO: Integer division. color decimal place and suffix.
+      return StringPrintf("%.2fM", m);
+    }
+  } else {
+    return Util::UnsignedWithCommas(n);
+  }
+}
+
+// Create the shadow of the polyhedron on the x-y plane.
+Mesh2D Shadow(const Polyhedron &p) {
+  Mesh2D mesh;
+  mesh.vertices.resize(p.vertices.size());
+  for (int i = 0; i < p.vertices.size(); i++) {
+    const vec3 &v = p.vertices[i];
+    mesh.vertices[i] = vec2{.x = v.x, .y = v.y};
+  }
+  mesh.faces = p.faces;
+  return mesh;
+}
+
+double DistanceToHull(
+    const Mesh2D &mesh, const std::vector<int> &hull,
+    const vec2 &pt) {
+
+  std::optional<double> best_dist;
+  for (int i = 0; i < hull.size(); i++) {
+    const vec2 &v0 = mesh.vertices[hull[i]];
+    const vec2 &v1 = mesh.vertices[hull[(i + 1) % hull.size()]];
+
+    double dist = DistanceToEdge(v0, v1, pt);
+    if (!best_dist.has_value() || dist < best_dist.value()) {
+      best_dist = {dist};
+    }
+  }
+  CHECK(best_dist.has_value());
+  return best_dist.value();
+}
+
+std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
+  CHECK(vertices.size() > 2);
+
+  // Find the starting point. This must be a point on
+  // the convex hull. The leftmost bottommost point is
+  // one.
+  const int start = [&]() {
+      int besti = 0;
+      for (int i = 1; i < vertices.size(); i++) {
+        if ((vertices[i].y < vertices[besti].y) ||
+            (vertices[i].y == vertices[besti].y &&
+             vertices[i].x < vertices[besti].x)) {
+          besti = i;
+        }
+      }
+      return besti;
+    }();
+
+  std::vector<int> hull;
+  int cur = start;
+  do {
+    hull.push_back(cur);
+
+    // We consider every other point, finding the one with
+    // the smallest angle from the current point.
+    int next = (cur + 1) % vertices.size();
+    for (int i = 0; i < vertices.size(); i++) {
+      if (i != cur && i != next) {
+        const vec2 &vcur = vertices[cur];
+        const vec2 &vnext = vertices[next];
+        const vec2 &vi = vertices[i];
+
+        // Compare against the current candidate, using cross
+        // product to find the "leftmost" one.
+        double angle = yocto::cross(vnext - vcur, vi - vcur);
+        if (angle < 0.0) {
+          next = i;
+        }
+      }
+    }
+
+    cur = next;
+
+  } while (cur != start);
+
+  return hull;
+}
+
+double PlanarityError(const Polyhedron &p) {
+  double error = 0.0;
+  for (const std::vector<int> &face : p.faces->v) {
+    // Only need to check for quads and larger.
+    if (face.size() > 3) {
+      // The first three vertices define a plane.
+      vec3 v0 = p.vertices[face[0]];
+      vec3 v1 = p.vertices[face[1]];
+      vec3 v2 = p.vertices[face[2]];
+
+      vec3 normal = yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
+
+      // Check error against this plane.
+      for (int i = 3; i < face.size(); i++) {
+        vec3 v = p.vertices[face[i]];
+        double err = std::abs(yocto::dot(v - v0, normal));
+        error += err;
+      }
+    }
+  }
+  return error;
+}
+
+bool PointInPolygon(const vec2 &point,
+                    const std::vector<vec2> &vertices,
+                    const std::vector<int> &polygon) {
+  int winding_number = 0;
+  for (int i = 0; i < polygon.size(); i++) {
+    const vec2 &p0 = vertices[polygon[i]];
+    const vec2 &p1 = vertices[polygon[(i + 1) % polygon.size()]];
+
+    // Check if the ray from the point to infinity intersects the edge
+    if (point.y > std::min(p0.y, p1.y)) {
+      if (point.y <= std::max(p0.y, p1.y)) {
+        if (point.x <= std::max(p0.x, p1.x)) {
+          if (p0.y != p1.y) {
+            double vt = (point.y - p0.y) / (p1.y - p0.y);
+            if (point.x < p0.x + vt * (p1.x - p0.x)) {
+              winding_number++;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Point is inside if the winding number is odd
+  return !!(winding_number & 1);
+}
+
+Polyhedron Dodecahedron() {
+  constexpr bool VERBOSE = false;
+
+  // double phi = (1.0 + sqrt(5.0)) / 2.0;
+  constexpr double phi = std::numbers::phi;
+
+  // The vertices have a nice combinatorial form.
+  std::vector<vec3> vertices;
+
+  // It's a beauty: The unit cube is in here.
+  // The first eight vertices (0b000 - 0b111)
+  // will be the corners of the cube, where a zero bit means
+  // a coordinate of -1, and a one bit +1. The coordinates
+  // are in xyz order.
+  for (int i = 0b000; i < 0b1000; i++) {
+    vertices.emplace_back(vec3{
+        (i & 0b100) ? 1.0 : -1.0,
+        (i & 0b010) ? 1.0 : -1.0,
+        (i & 0b001) ? 1.0 : -1.0,
+      });
+  }
+
+  for (bool j : {false, true}) {
+    for (bool k : {false, true}) {
+      double b = j ? phi : -phi;
+      double c = k ? 1.0 / phi : -1.0 / phi;
+      vertices.emplace_back(vec3{
+          .x = 0.0, .y = b, .z = c});
+      vertices.emplace_back(vec3{
+          .x = c, .y = 0.0, .z = b});
+      vertices.emplace_back(vec3{
+          .x = b, .y = c, .z = 0.0});
+    }
+  }
+
+  CHECK(vertices.size() == 20);
+
+  // Rather than hard code faces, we find them from the
+  // vertices. Every vertex has exactly three edges,
+  // and they are to the three closest (other) vertices.
+
+  std::vector<std::vector<int>> neighbors(20);
+  for (int i = 0; i < vertices.size(); i++) {
+    std::vector<std::pair<int, double>> others;
+    others.reserve(19);
+    for (int o = 0; o < vertices.size(); o++) {
+      if (o != i) {
+        others.emplace_back(o, distance(vertices[i], vertices[o]));
+      }
+    }
+    std::sort(others.begin(), others.end(),
+              [](const auto &a, const auto &b) {
+                if (a.second == b.second) return a.first < b.first;
+                return a.second < b.second;
+              });
+    others.resize(3);
+    for (const auto &[idx, dist_] : others) {
+      // printf("src %d, n %d, dist %.11g\n", i, idx, dist_);
+      neighbors[i].push_back(idx);
+    }
+  }
+
+  if (VERBOSE) {
+    for (int i = 0; i < vertices.size(); i++) {
+      const vec3 &v = vertices[i];
+      printf("v " AWHITE("%d")
+             ". (" ARED("%.3f") ", " AGREEN("%.3f") ", " ABLUE("%.3f")
+             ") neighbors:", i, v.x, v.y, v.z);
+      for (int n : neighbors[i]) {
+        printf(" %d", n);
+      }
+      printf("\n");
+    }
+  }
+
+  // Return the common neighbor. Aborts if there is no such
+  // neighbor.
+  auto CommonNeighbor = [&neighbors](int a, int b) {
+      for (int aa : neighbors[a]) {
+        for (int bb : neighbors[b]) {
+          if (aa == bb) return aa;
+        }
+      }
+      LOG(FATAL) << "Vertices " << a << " and " << b << " do not "
+        "have a common neighbor.";
+      return -1;
+    };
+
+  // Get the single neighbor of a that lies on the plane a,b,c (and
+  // is not one of the arguments). Aborts if there is no such neighbor.
+  auto CoplanarNeighbor = [&vertices, &neighbors](int a, int b, int c) {
+      const vec3 &v0 = vertices[a];
+      const vec3 &v1 = vertices[b];
+      const vec3 &v3 = vertices[c];
+
+      const vec3 normal = yocto::normalize(yocto::cross(v1 - v0, v3 - v0));
+
+      for (int o : neighbors[a]) {
+        if (o == b || o == c) continue;
+
+        const vec3 &v = vertices[o];
+        double err = std::abs(yocto::dot(v - v0, normal));
+        // The other points won't even be close.
+        if (err < 0.00001) {
+          return o;
+        }
+      }
+
+      LOG(FATAL) << "Vertices " << a << ", " << b << ", " << c <<
+        " do not have a coplanar neighbor (for a).\n";
+      return -1;
+    };
+
+  Faces *faces = new Faces;
+
+  // Each face corresponds to an edge on the cube.
+  for (int a = 0b000; a < 0b1000; a++) {
+    for (int b = 0b000; b < 0b1000; b++) {
+      // When the Hamming distance is exactly 1, this is an edge
+      // of the cube. Consider only the case where a < b though.
+      if (a < b && std::popcount<uint8_t>(a ^ b) == 1) {
+
+        //       tip
+        //       ,'.
+        //    a,'   `.b
+        //     \     /
+        //      \___/
+        //     o1   o2
+
+        // These two points will share a neighbor, which is the
+        // tip of the pentagon illustrated above.
+        int tip = CommonNeighbor(a, b);
+
+        int o1 = CoplanarNeighbor(a, b, tip);
+        int o2 = CoplanarNeighbor(b, a, tip);
+
+        faces->v.push_back(std::vector<int>{tip, b, o2, o1, a});
+      }
+    }
+  }
+
+  return Polyhedron{.vertices = std::move(vertices), .faces = faces};
+}
+
+Polyhedron SnubCube() {
+  static constexpr int VERBOSE = 1;
+
+  const double tribonacci =
+    (1.0 + std::cbrt(19.0 + 3.0 * std::sqrt(33.0)) +
+     std::cbrt(19.0 - 3.0 * std::sqrt(33.0))) / 3.0;
+
+  const double a = 1.0;
+  const double b = 1.0 / tribonacci;
+  const double c = tribonacci;
+
+  std::vector<vec3> vertices;
+
+  // All even permutations with an even number of plus signs.
+  //    (odd number of negative signs)
+  // (a, b, c) - even
+  // (b, c, a) - even
+  // (c, a, b) - even
+
+  // 1 = negative, 0 = positive
+  for (const uint8_t s : {0b100, 0b010, 0b001, 0b111}) {
+    vec3 signs{
+      .x = (s & 0b100) ? -1.0 : 1.0,
+      .y = (s & 0b010) ? -1.0 : 1.0,
+      .z = (s & 0b001) ? -1.0 : 1.0,
+    };
+
+    vertices.emplace_back(vec3(a, b, c) * signs);
+    vertices.emplace_back(vec3(b, c, a) * signs);
+    vertices.emplace_back(vec3(c, a, b) * signs);
+  }
+
+  // And all odd permutations with an odd number of plus signs.
+  //    (even number of negative signs).
+
+  // (a, c, b) - odd
+  // (b, a, c) - odd
+  // (c, b, a) - odd
+  // 1 = negative, 0 = positive
+  for (const uint8_t s : {0b011, 0b110, 0b101, 0b000}) {
+    vec3 signs{
+      .x = (s & 0b100) ? -1.0 : 1.0,
+      .y = (s & 0b010) ? -1.0 : 1.0,
+      .z = (s & 0b001) ? -1.0 : 1.0,
+    };
+
+    vertices.emplace_back(vec3(a, c, b) * signs);
+    vertices.emplace_back(vec3(b, a, c) * signs);
+    vertices.emplace_back(vec3(c, b, a) * signs);
+  }
+
+  // Idea: Generate vertices.
+  // Take all planes where all of the other vertices
+  // are on one side. (Basically, the 3D convex hull.)
+  // We can compute this pretty easily and it should
+  // work for all convex polyhedra!
+  // How do we order the vertices on a face, though?
+
+  // All faces (as a set of vertices) we've already found. The
+  // vertices in the face have not yet been ordered; they appear in
+  // ascending sorted order.
+  std::unordered_set<std::vector<int>, Hashing<std::vector<int>>>
+    all_faces;
+
+  // Given a plane defined by distinct points (v0, v1, v2), classify
+  // all of the other points as either above, below, or on the plane.
+  // If there are nonzero points both above and below, then this is
+  // not a face; return nullopt. Otherwise, return the indices of the
+  // vertices on the face, which will include at least i, j, and k.
+  // The vertices are returned in sorted order (by index), which may
+  // not be a proper winding for the polygon.
+  auto GetFace = [&vertices](int i, int j, int k) ->
+    std::optional<std::vector<int>> {
+    // Three vertices define a plane.
+    const vec3 &v0 = vertices[i];
+    const vec3 &v1 = vertices[j];
+    const vec3 &v2 = vertices[k];
+
+    // Classify every point depending on what side it's on (or
+    // whether it's on the plane). We don't need to worry about
+    // ambiguity from numerical error here, as for the polyhedra
+    // we consider, the points are either exactly on the plane or
+    // comfortably far from it.
+
+    const vec3 normal =
+      yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
+
+    if (VERBOSE > 1) {
+      printf("Try %s;%s;%s\n   Normal: %s\n",
+             VecString(v0).c_str(),
+             VecString(v1).c_str(),
+             VecString(v2).c_str(),
+             VecString(normal).c_str());
+    }
+
+    std::vector<int> coplanar;
+
+    bool above = false, below = false;
+
+    // Now for every other vertex...
+    for (int o = 0; o < vertices.size(); o++) {
+      if (o != i && o != j && o != k) {
+        const vec3 &v = vertices[o];
+        double dot = yocto::dot(v - v0, normal);
+        if (dot < -0.00001) {
+          if (above) return std::nullopt;
+          below = true;
+        } else if (dot > 0.00001) {
+          if (below) return std::nullopt;
+          above = true;
+        } else {
+          // On plane.
+          coplanar.push_back(o);
+        }
+      }
+    }
+
+    CHECK(!(below && above));
+    CHECK(below || above) << "This would only happen if we had "
+        "a degenerate, volumeless polyhedron, which we do not.";
+
+    coplanar.push_back(i);
+    coplanar.push_back(j);
+    coplanar.push_back(k);
+    std::sort(coplanar.begin(), coplanar.end());
+    return coplanar;
+  };
+
+  printf("There are %d vertices.\n", (int)vertices.size());
+
+  // wlog i > j > k.
+  for (int i = 0; i < vertices.size(); i++) {
+    for (int j = 0; j < i; j++) {
+      for (int k = 0; k < j; k++) {
+        if (std::optional<std::vector<int>> fo =
+            GetFace(i, j, k)) {
+          all_faces.insert(std::move(fo.value()));
+        }
+      }
+    }
+  }
+
+  printf("There are %d distinct faces.\n", (int)all_faces.size());
+
+  // TODO: Produce the right winding order. You can sort by angle
+  // from the centroid.
+  Faces *faces = new Faces;
+  // Make it deterministic.
+  std::vector<std::vector<int>> sfaces = SetToSortedVec(all_faces);
+
+  for (const std::vector<int> &vec : sfaces) {
+    CHECK(vec.size() >= 3);
+    const vec3 &v0 = vertices[vec[0]];
+    const vec3 &v1 = vertices[vec[1]];
+    const vec3 &v2 = vertices[vec[2]];
+
+    /*
+    const vec3 normal =
+      yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
+    */
+
+    // But we'll need to express the vertices on the face in terms of
+    // an orthonormal basis derived from the face's plane. This means
+    // computing two perpendicular vectors on the face. We'll use one
+    // of the edges (normalized) and then compute the other to lie
+    // in the same plane.
+
+    vec3 a = yocto::normalize(v1 - v0);
+    vec3 b = yocto::normalize(v2 - v0);
+    const vec3 u = yocto::orthonormalize(a, b);
+    const vec3 v = b;
+
+    // We'll compute the angle around the centroid.
+    vec3 centroid{0.0, 0.0, 0.0};
+    for (int index : vec) {
+      centroid += vertices[index];
+    }
+    centroid /= vec.size();
+
+    std::vector<std::pair<int, double>> iangle;
+    for (int i : vec) {
+      const vec3 &dir = vertices[i] - centroid;
+      double angle = std::atan2(yocto::dot(dir, v), yocto::dot(dir, u));
+      iangle.emplace_back(i, angle);
+    }
+
+    // Now order them according to the angle.
+    std::sort(iangle.begin(), iangle.end(),
+              [](const auto &a, const auto &b) {
+                return a.second < b.second;
+              });
+
+    // And output to the face.
+    std::vector<int> face;
+    face.reserve(iangle.size());
+    for (const auto &[i, angle_] : iangle) {
+      face.push_back(i);
+    }
+
+    faces->v.push_back(std::move(face));
+  }
+
+  return Polyhedron{.vertices = std::move(vertices), .faces = faces};
+}
+
+Polyhedron Cube() {
+  //                  +y
+  //      a------b     | +z
+  //     /|     /|     |/
+  //    / |    / |     0--- +x
+  //   d------c  |
+  //   |  |   |  |
+  //   |  e---|--f
+  //   | /    | /
+  //   |/     |/
+  //   h------g
+
+  std::vector<vec3> vertices;
+  auto AddVertex = [&vertices](double x, double y, double z) {
+      int idx = (int)vertices.size();
+      vertices.emplace_back(vec3{.x = x, .y = y, .z = z});
+      return idx;
+    };
+  int a = AddVertex(-1, +1, +1);
+  int b = AddVertex(+1, +1, +1);
+  int c = AddVertex(+1, +1, -1);
+  int d = AddVertex(-1, +1, -1);
+
+  int e = AddVertex(-1, -1, +1);
+  int f = AddVertex(+1, -1, +1);
+  int g = AddVertex(+1, -1, -1);
+  int h = AddVertex(-1, -1, -1);
+
+  Faces *faces = new Faces;
+  faces->v.reserve(6);
+
+  // top
+  faces->v.push_back({a, b, c, d});
+  // bottom
+  faces->v.push_back({e, f, g, h});
+  // left
+  faces->v.push_back({a, e, h, d});
+  // right
+  faces->v.push_back({b, f, g, c});
+  // front
+  faces->v.push_back({d, c, g, h});
+  // back
+  faces->v.push_back({a, b, f, e});
+
+
+  return Polyhedron{.vertices = std::move(vertices), .faces = faces};
+}
