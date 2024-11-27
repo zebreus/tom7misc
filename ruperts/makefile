@@ -59,7 +59,7 @@ CC_LIB_OBJECTS=$(RE2_OBJECTS) $(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/bas
 
 CODEC_OBJECTS=$(CODEC)/mov.o
 
-OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) polyhedra.o
+OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) polyhedra.o rendering.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@

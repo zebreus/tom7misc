@@ -121,11 +121,15 @@ double DistanceToHull(
     const Mesh2D &mesh, const std::vector<int> &hull,
     const vec2 &pt);
 
+double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt);
+
 // Returns the convex hull (a single polygon) as indices into the
 // vertex list (e.g. Mesh2D::vertices). This is the intuitive "gift
 // wrapping" algorithm; much faster approaches exist, but we have a
 // small number of vertices and this is in the outer loop.
 std::vector<int> ConvexHull(const std::vector<vec2> &vertices);
+
+double AreaOfHull(const Mesh2D &mesh, const std::vector<int> &hull);
 
 // Faces of a polyhedron must be planar. This computes the
 // total error across all faces. If it is far from zero,
@@ -142,6 +146,7 @@ double PlanarityError(const Polyhedron &p);
 Polyhedron Cube();
 Polyhedron Dodecahedron();
 Polyhedron SnubCube();
+Polyhedron Icosahedron();
 
 inline quat4 RandomQuaternion(ArcFour *rc) {
   const auto &[x, y, z, w] = RandomUnit4D(rc);

@@ -91,6 +91,18 @@ double DistanceToHull(
   return best_dist.value();
 }
 
+double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt) {
+  std::optional<double> best_dist;
+  for (const std::vector<int> &polygon : mesh.faces->v) {
+    double dist = DistanceToHull(mesh, polygon, pt);
+    if (!best_dist.has_value() || dist < best_dist.value()) {
+      best_dist = {dist};
+    }
+  }
+  CHECK(best_dist.has_value());
+  return best_dist.value();
+}
+
 std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
   CHECK(vertices.size() > 2);
 
@@ -187,6 +199,23 @@ bool PointInPolygon(const vec2 &point,
 
   // Point is inside if the winding number is odd
   return !!(winding_number & 1);
+}
+
+// via https://en.wikipedia.org/wiki/Shoelace_formula
+double AreaOfHull(const Mesh2D &mesh, const std::vector<int> &hull) {
+  if (hull.size() < 3) return 0.0;
+
+  double area = 0.0;
+  // Iterate through the polygon vertices, using the shoelace formula.
+  for (size_t i = 0; i < hull.size(); i++) {
+    const vec2 &v0 = mesh.vertices[hull[i]];
+    const vec2 &v1 = mesh.vertices[hull[(i + 1) % hull.size()]];
+    area += v0.x * v1.y - v1.x * v0.y;
+  }
+
+  // Sign depends on the winding order, but we always want a positive
+  // area.
+  return std::abs(area * 0.5);
 }
 
 Polyhedron Dodecahedron() {
@@ -333,63 +362,14 @@ Polyhedron Dodecahedron() {
   return Polyhedron{.vertices = std::move(vertices), .faces = faces};
 }
 
-Polyhedron SnubCube() {
+// Take all planes where all of the other vertices
+// are on one side. (Basically, the 3D convex hull.)
+// This is not fast but it should work for any convex polyhedron,
+// so it's a clean way to generate a wide variety from just the
+// vertices.
+static Polyhedron ConvexPolyhedronFromVertices(
+    std::vector<vec3> vertices) {
   static constexpr int VERBOSE = 1;
-
-  const double tribonacci =
-    (1.0 + std::cbrt(19.0 + 3.0 * std::sqrt(33.0)) +
-     std::cbrt(19.0 - 3.0 * std::sqrt(33.0))) / 3.0;
-
-  const double a = 1.0;
-  const double b = 1.0 / tribonacci;
-  const double c = tribonacci;
-
-  std::vector<vec3> vertices;
-
-  // All even permutations with an even number of plus signs.
-  //    (odd number of negative signs)
-  // (a, b, c) - even
-  // (b, c, a) - even
-  // (c, a, b) - even
-
-  // 1 = negative, 0 = positive
-  for (const uint8_t s : {0b100, 0b010, 0b001, 0b111}) {
-    vec3 signs{
-      .x = (s & 0b100) ? -1.0 : 1.0,
-      .y = (s & 0b010) ? -1.0 : 1.0,
-      .z = (s & 0b001) ? -1.0 : 1.0,
-    };
-
-    vertices.emplace_back(vec3(a, b, c) * signs);
-    vertices.emplace_back(vec3(b, c, a) * signs);
-    vertices.emplace_back(vec3(c, a, b) * signs);
-  }
-
-  // And all odd permutations with an odd number of plus signs.
-  //    (even number of negative signs).
-
-  // (a, c, b) - odd
-  // (b, a, c) - odd
-  // (c, b, a) - odd
-  // 1 = negative, 0 = positive
-  for (const uint8_t s : {0b011, 0b110, 0b101, 0b000}) {
-    vec3 signs{
-      .x = (s & 0b100) ? -1.0 : 1.0,
-      .y = (s & 0b010) ? -1.0 : 1.0,
-      .z = (s & 0b001) ? -1.0 : 1.0,
-    };
-
-    vertices.emplace_back(vec3(a, c, b) * signs);
-    vertices.emplace_back(vec3(b, a, c) * signs);
-    vertices.emplace_back(vec3(c, b, a) * signs);
-  }
-
-  // Idea: Generate vertices.
-  // Take all planes where all of the other vertices
-  // are on one side. (Basically, the 3D convex hull.)
-  // We can compute this pretty easily and it should
-  // work for all convex polyhedra!
-  // How do we order the vertices on a face, though?
 
   // All faces (as a set of vertices) we've already found. The
   // vertices in the face have not yet been ordered; they appear in
@@ -461,7 +441,9 @@ Polyhedron SnubCube() {
     return coplanar;
   };
 
-  printf("There are %d vertices.\n", (int)vertices.size());
+  if (VERBOSE > 0) {
+    printf("There are %d vertices.\n", (int)vertices.size());
+  }
 
   // wlog i > j > k.
   for (int i = 0; i < vertices.size(); i++) {
@@ -475,10 +457,10 @@ Polyhedron SnubCube() {
     }
   }
 
-  printf("There are %d distinct faces.\n", (int)all_faces.size());
+  if (VERBOSE > 0) {
+    printf("There are %d distinct faces.\n", (int)all_faces.size());
+  }
 
-  // TODO: Produce the right winding order. You can sort by angle
-  // from the centroid.
   Faces *faces = new Faces;
   // Make it deterministic.
   std::vector<std::vector<int>> sfaces = SetToSortedVec(all_faces);
@@ -488,11 +470,6 @@ Polyhedron SnubCube() {
     const vec3 &v0 = vertices[vec[0]];
     const vec3 &v1 = vertices[vec[1]];
     const vec3 &v2 = vertices[vec[2]];
-
-    /*
-    const vec3 normal =
-      yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
-    */
 
     // But we'll need to express the vertices on the face in terms of
     // an orthonormal basis derived from the face's plane. This means
@@ -536,6 +513,59 @@ Polyhedron SnubCube() {
   }
 
   return Polyhedron{.vertices = std::move(vertices), .faces = faces};
+}
+
+
+Polyhedron SnubCube() {
+  const double tribonacci =
+    (1.0 + std::cbrt(19.0 + 3.0 * std::sqrt(33.0)) +
+     std::cbrt(19.0 - 3.0 * std::sqrt(33.0))) / 3.0;
+
+  const double a = 1.0;
+  const double b = 1.0 / tribonacci;
+  const double c = tribonacci;
+
+  std::vector<vec3> vertices;
+
+  // All even permutations with an even number of plus signs.
+  //    (odd number of negative signs)
+  // (a, b, c) - even
+  // (b, c, a) - even
+  // (c, a, b) - even
+
+  // 1 = negative, 0 = positive
+  for (const uint8_t s : {0b100, 0b010, 0b001, 0b111}) {
+    vec3 signs{
+      .x = (s & 0b100) ? -1.0 : 1.0,
+      .y = (s & 0b010) ? -1.0 : 1.0,
+      .z = (s & 0b001) ? -1.0 : 1.0,
+    };
+
+    vertices.emplace_back(vec3(a, b, c) * signs);
+    vertices.emplace_back(vec3(b, c, a) * signs);
+    vertices.emplace_back(vec3(c, a, b) * signs);
+  }
+
+  // And all odd permutations with an odd number of plus signs.
+  //    (even number of negative signs).
+
+  // (a, c, b) - odd
+  // (b, a, c) - odd
+  // (c, b, a) - odd
+  // 1 = negative, 0 = positive
+  for (const uint8_t s : {0b011, 0b110, 0b101, 0b000}) {
+    vec3 signs{
+      .x = (s & 0b100) ? -1.0 : 1.0,
+      .y = (s & 0b010) ? -1.0 : 1.0,
+      .z = (s & 0b001) ? -1.0 : 1.0,
+    };
+
+    vertices.emplace_back(vec3(a, c, b) * signs);
+    vertices.emplace_back(vec3(b, a, c) * signs);
+    vertices.emplace_back(vec3(c, b, a) * signs);
+  }
+
+  return ConvexPolyhedronFromVertices(std::move(vertices));
 }
 
 Polyhedron Cube() {
@@ -585,3 +615,11 @@ Polyhedron Cube() {
 
   return Polyhedron{.vertices = std::move(vertices), .faces = faces};
 }
+
+#if 0
+Polyhedron Icosahedron() {
+  // (±1, ±φ, 0)
+  // (±φ, 0, ±1)
+  // (0, ±1, ±φ)
+}
+#endif
