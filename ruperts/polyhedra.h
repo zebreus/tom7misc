@@ -179,4 +179,6 @@ inline bool InHull(const Mesh2D &mesh, const std::vector<int> &hull,
   return PointInPolygon(pt, mesh.vertices, hull);
 }
 
+std::pair<int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly);
+
 #endif

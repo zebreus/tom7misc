@@ -15,9 +15,11 @@
 #include <vector>
 
 #include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "hashing.h"
+#include "randutil.h"
 #include "set-util.h"
 #include "util.h"
 
@@ -220,9 +222,9 @@ double PlanarityError(const Polyhedron &p) {
     // Only need to check for quads and larger.
     if (face.size() > 3) {
       // The first three vertices define a plane.
-      vec3 v0 = p.vertices[face[0]];
-      vec3 v1 = p.vertices[face[1]];
-      vec3 v2 = p.vertices[face[2]];
+      const vec3 &v0 = p.vertices[face[0]];
+      const vec3 &v1 = p.vertices[face[1]];
+      const vec3 &v2 = p.vertices[face[2]];
 
       vec3 normal = yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
 
@@ -279,6 +281,39 @@ double AreaOfHull(const Mesh2D &mesh, const std::vector<int> &hull) {
   // Sign depends on the winding order, but we always want a positive
   // area.
   return std::abs(area * 0.5);
+}
+
+bool FacesParallel(const Polyhedron &poly, int face1, int face2) {
+  if (face1 == face2) return true;
+  CHECK(poly.faces->v[face1].size() >= 3);
+  CHECK(poly.faces->v[face2].size() >= 3);
+
+
+  auto Normal = [&poly](int f) {
+      const auto &face = poly.faces->v[f];
+      const vec3 &v0 = poly.vertices[face[0]];
+      const vec3 &v1 = poly.vertices[face[1]];
+      const vec3 &v2 = poly.vertices[face[2]];
+
+      return yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
+    };
+
+  double dot = yocto::dot(Normal(face1), Normal(face2));
+  double angle = std::acos(std::abs(dot));
+  // Don't need to worry too much about "close to zero" since these
+  // polyhedra don't have nearly-parallel faces.
+  return angle < 1.0e-6;
+}
+
+std::pair<int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly) {
+  const int num_faces = (int)poly.faces->v.size();
+  for (;;) {
+    int f1 = RandTo(rc, num_faces);
+    int f2 = RandTo(rc, num_faces);
+    if (!FacesParallel(poly, f1, f2)) {
+      return std::make_pair(f1, f2);
+    }
+  }
 }
 
 Polyhedron Dodecahedron() {
@@ -711,3 +746,4 @@ Polyhedron TriakisTetrahedron() {
 
   return ConvexPolyhedronFromVertices(std::move(vertices));
 }
+

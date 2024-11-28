@@ -24,6 +24,7 @@
 #include "mov-recorder.h"
 #include "opt/opt.h"
 #include "periodically.h"
+#include "randutil.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
@@ -728,8 +729,61 @@ static void Solve3(const Polyhedron &polyhedron) {
       });
 }
 
-// Third approach: Joint optimization, but only consider rotations
-// around the z axis (and translations) for the inner.
+static quat4 AlignFaceNormalWithX(const std::vector<vec3> &vertices,
+                                  const std::vector<int> &face) {
+  if (face.size() < 3) return quat4{0.0, 0.0, 0.0, 1.0};
+  const vec3 &v0 = vertices[face[0]];
+  const vec3 &v1 = vertices[face[1]];
+  const vec3 &v2 = vertices[face[2]];
+
+  vec3 face_normal = yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
+
+  vec3 x_axis = vec3{1.0, 0.0, 0.0};
+  vec3 rot_axis = yocto::cross(face_normal, x_axis);
+  double rot_angle = yocto::angle(face_normal, x_axis);
+  return QuatFromVec(yocto::rotation_quat(rot_axis, rot_angle));
+}
+
+// face1 and face2 must not be parallel. Rotate the polyhedron such
+// that face1 and face2 are both parallel to the z axis. face1 is made
+// perpendicular to the x axis, and then face2 perpendicular to the xy
+// plane.
+quat4 MakeTwoFacesParallelToZ(const std::vector<vec3> &vertices,
+                              const std::vector<int> &face1,
+                              const std::vector<int> &face2) {
+  if (face1.size() < 3 || face1.size() < 3)
+    return quat4{0.0, 0.0, 0.0, 1.0};
+
+  auto Normal = [&vertices](const std::vector<int> &face) {
+      const vec3 &v0 = vertices[face[0]];
+      const vec3 &v1 = vertices[face[1]];
+      const vec3 &v2 = vertices[face[2]];
+
+      return yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
+    };
+
+  const vec3 face1_normal = Normal(face1);
+  const vec3 face2_normal = Normal(face2);
+
+  vec3 x_axis = vec3{1.0, 0.0, 0.0};
+  vec3 rot_axis = yocto::cross(face1_normal, x_axis);
+  double rot1_angle = yocto::angle(face1_normal, x_axis);
+
+  quat4 rot1 = QuatFromVec(yocto::rotation_quat(rot_axis, rot1_angle));
+
+  // Project face2's normal to the yz plane.
+  vec3 proj_normal = vec3{0.0, face2_normal.y, face2_normal.z};
+  double rot2_angle = yocto::angle(proj_normal, vec3{0.0, 1.0, 0.0});
+  quat4 rot2 = QuatFromVec(yocto::rotation_quat({1.0, 0.0, 0.0}, rot2_angle));
+
+  return normalize(rot1 * rot2);
+}
+
+
+// Third approach: Joint optimization, but place the inner in some
+// orientation where a face is parallel to the z axis. Then only
+// consider rotations around the z axis (and translations) for the
+// inner.
 [[maybe_unused]]
 static void Solve4(const Polyhedron &polyhedron) {
   static constexpr int HISTO_LINES = 32;
@@ -764,6 +818,19 @@ static void Solve4(const Polyhedron &polyhedron) {
           Timer prep_timer;
           const quat4 initial_outer_rot = RandomQuaternion(&rc);
 
+          // Get two face indices that are not parallel.
+          const auto &[face1, face2] = TwoNonParallelFaces(&rc, polyhedron);
+
+          /*
+          const quat4 initial_inner_rot = AlignFaceNormalWithX(
+              polyhedron.vertices,
+              polyhedron.faces->v[face1]);
+          */
+          const quat4 initial_inner_rot = MakeTwoFacesParallelToZ(
+              polyhedron.vertices,
+              polyhedron.faces->v[face1],
+              polyhedron.faces->v[face2]);
+
           // Get the frames from the appropriate positions in the
           // argument.
 
@@ -788,10 +855,9 @@ static void Solve4(const Polyhedron &polyhedron) {
               const std::array<double, D> &args) {
               const auto &[o0_, o1_, o2_, o3_,
                            theta, dx, dy] = args;
-              // PERF: Can probably create the rotation frame
-              // directly, since it's so simple.
-              quat4 q = QuatFromVec(
-                  yocto::rotation_quat<double>({0.0, 0.0, 1.0}, theta));
+              quat4 q = normalize(
+                  initial_inner_rot *
+                  QuatFromVec(yocto::rotation_quat<double>({0.0, 0.0, 1.0}, theta)));
               frame3 rotate = yocto::rotation_frame(q);
               frame3 translate = yocto::translation_frame(
                   vec3{.x = dx, .y = dy, .z = 0.0});
