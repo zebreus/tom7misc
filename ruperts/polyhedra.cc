@@ -89,6 +89,7 @@ Faces::Faces(int num_vertices, std::vector<std::vector<int>> v_in) :
   neighbors.resize(num_vertices);
   for (int i = 0; i < (int)collated.size(); i++) {
     neighbors[i] = SetToSortedVec(collated[i]);
+    // printf("#%d has %d neighbors\n", i, (int)neighbors[i].size());
     CHECK(!neighbors[i].empty());
   }
 }
@@ -200,6 +201,7 @@ double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt) {
 }
 
 std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
+  constexpr bool VERBOSE = false;
   CHECK(vertices.size() > 2);
 
   // Find the starting point. This must be a point on
@@ -216,6 +218,16 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
       }
       return besti;
     }();
+
+  if (VERBOSE) {
+    printf("Start idx: %d\n", start);
+
+    for (const vec2 &v : vertices) {
+      printf("vec2{%.17g, %.17g}, ", v.x, v.y);
+    }
+  }
+
+  const vec2 &vstart = vertices[start];
 
   std::vector<int> hull;
   int cur = start;
@@ -237,13 +249,19 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
         // Note that this excludes points that are exactly coincident
         // with vcur, which is what we want.
         if (angle < 0.0) {
-          next = i;
+          // However, if we get back to a point that's exactly equal
+          // to start, we want to use the start index (for one thing,
+          // so that this loop terminates).
+          if (vi == vstart) {
+            next = start;
+          } else {
+            next = i;
+          }
         }
       }
     }
 
     cur = next;
-
   } while (cur != start);
 
   return hull;
@@ -837,6 +855,7 @@ static Polyhedron ConvexPolyhedronFromVertices(
     fs.push_back(std::move(face));
   }
 
+  printf("Construct Faces object...\n");
   Faces *faces = new Faces(vertices.size(), std::move(fs));
   return Polyhedron{.vertices = std::move(vertices), .faces = faces};
 }
@@ -975,3 +994,20 @@ Polyhedron TriakisTetrahedron() {
   return ConvexPolyhedronFromVertices(std::move(vertices));
 }
 
+Polyhedron Rhombicuboctahedron() {
+  constexpr double u = 1.0 + std::numbers::sqrt2;
+  std::vector<vec3> vertices;
+  vertices.reserve(24);
+  for (int b = 0b000; b < 0b1000; b++) {
+    double s1 = (b & 0b100) ? -1 : +1;
+    double s2 = (b & 0b010) ? -1 : +1;
+    double s3 = (b & 0b001) ? -1 : +1;
+
+    vertices.emplace_back(s1 * u, s2, s3);
+    vertices.emplace_back(s1, s2 * u, s3);
+    vertices.emplace_back(s1, s2, s3 * u);
+  }
+
+  // printf("Get faces..\n");
+  return ConvexPolyhedronFromVertices(std::move(vertices));
+}

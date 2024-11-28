@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "arcfour.h"
@@ -157,6 +158,7 @@ Polyhedron Icosahedron();
 
 // Archimedean
 Polyhedron SnubCube();
+Polyhedron Rhombicuboctahedron();
 
 // Catalan
 Polyhedron TriakisTetrahedron();
@@ -189,6 +191,6 @@ inline bool InHull(const Mesh2D &mesh, const std::vector<int> &hull,
   return PointInPolygon(pt, mesh.vertices, hull);
 }
 
-std::pair<int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly);
+std::pair <int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly);
 
 #endif

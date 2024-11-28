@@ -186,6 +186,7 @@ static void Visualize(const Polyhedron &poly) {
   ArcFour rc("fixed-seed");
 
   CHECK(PlanarityError(poly) < 1.0e-10);
+  printf("Planarity OK.\n");
 
   {
     Rendering rendering(1920, 1080);
@@ -200,6 +201,8 @@ static void Visualize(const Polyhedron &poly) {
     rendering.img.Save("wireframe.png");
   }
 
+  printf("2====\n");
+
   {
     Rendering rendering(1920, 1080);
     // quat4 q = RandomQuaternion(&rc);
@@ -209,11 +212,13 @@ static void Visualize(const Polyhedron &poly) {
     Mesh2D mesh = Shadow(poly);
     rendering.RenderMesh(mesh);
 
+    printf("Get convex hull (%d vertices):\n",
+           (int)mesh.vertices.size());
     std::vector<int> hull = ConvexHull(mesh.vertices);
-    rendering.RenderHull(mesh, hull);
+    printf("Hull size %d\n", (int)hull.size());
+    // rendering.RenderHull(mesh, hull);
 
     rendering.img.Save("shadow.png");
-    printf("Wrote shadow.png\n");
   }
 }
 
@@ -1109,16 +1114,16 @@ int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
 
-  AnimateHull();
-  return 0;
+  // AnimateHull();
 
-  Polyhedron target = SnubCube();
+  // Polyhedron target = SnubCube();
+  Polyhedron target = Rhombicuboctahedron();
 
   // (void)SnubCube();
   Visualize(target);
   // AnimateMesh(target);
 
-  printf("\n");
+  printf("Solve:\n");
   // Solve(Cube());
   // Solve(Dodecahedron());
   // Solve2(SnubCube());
