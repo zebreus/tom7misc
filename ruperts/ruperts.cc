@@ -76,6 +76,110 @@ static void AnimateMesh(const Polyhedron &poly) {
   }
 }
 
+static void AnimateHull() {
+  ArcFour rc("animate");
+
+  constexpr int WIDTH = 1920;
+  constexpr int HEIGHT = 1080;
+  constexpr int SIZE = HEIGHT;
+  constexpr int FRAMES = 10 * 60;
+  constexpr int POINTS = 2000;
+  MovRecorder rec("animate-hull.mov", WIDTH, HEIGHT);
+
+  std::vector<vec2> points;
+  std::vector<vec2> vels;
+
+  RandomGaussian gauss(&rc);
+  for (int i = 0; i < POINTS; i++) {
+    double x = std::clamp(gauss.Next() * SIZE * 0.1 + SIZE * 0.5, 0.0, (double)SIZE);
+    double y = std::clamp(gauss.Next() * SIZE * 0.1 + SIZE * 0.5, 0.0, (double)SIZE);
+    points.emplace_back(vec2{x, y});
+    vels.emplace_back(
+        vec2{
+          .x = RandDouble(&rc) * 8.0 - 4.0,
+          .y = RandDouble(&rc) * 8.0 - 4.0,
+        });
+  }
+
+  double sec1 = 0.0, sec2 = 0.0;
+
+  StatusBar status(2);
+  Periodically status_per(1.0);
+  for (int i = 0; i < FRAMES; i++) {
+    if (status_per.ShouldRun()) {
+      status.Progressf(i, FRAMES, "hull");
+    }
+
+    ImageRGBA img(WIDTH, HEIGHT);
+    img.Clear32(0x000000FF);
+
+    for (int i = 0; i < (int)points.size(); i++) {
+      img.BlendFilledCircle32(points[i].x, points[i].y, 6.0f,
+                              (Rendering::Color(i) & 0xFFFFFFAA) |
+                              0x33333300);
+      img.BlendCircle32(points[i].x, points[i].y, 6.0f, 0xFFFFFF44);
+    }
+
+    Timer timer1;
+    std::vector<int> hull1 = ConvexHull(points);
+    sec1 += timer1.Seconds();
+
+    Timer timer2;
+    std::vector<int> hull2 = QuickHull(points);
+    sec2 += timer2.Seconds();
+
+    // printf("Got hull sized %d, %d\n", (int)hull1.size(), (int)hull2.size());
+
+    auto DrawHull = [&](const std::vector<int> &hull, int32_t color) {
+        for (int i = 0; i < hull.size(); i++) {
+          const vec2 &a = points[hull[i]];
+          const vec2 &b = points[hull[(i + 1) % hull.size()]];
+
+          img.BlendThickLine32(a.x, a.y, b.x, b.y, 2.0f, color);
+        }
+      };
+
+    DrawHull(hull1, 0xFFFFFF33);
+    DrawHull(hull2, 0x00FFFF33);
+
+    // img.Save(StringPrintf("hull%d.png", i));
+
+    rec.AddFrame(std::move(img));
+
+    for (int i = 0; i < (int)points.size(); i++) {
+      points[i] += vels[i];
+      if (points[i].x < 0.0) {
+        points[i].x = 0.0;
+        vels[i].x = -vels[i].x;
+      }
+      if (points[i].y < 0.0) {
+        points[i].y = 0.0;
+        vels[i].y = -vels[i].y;
+      }
+
+      if (points[i].x > SIZE) {
+        points[i].x = SIZE;
+        vels[i].x = -vels[i].x;
+      }
+
+      if (points[i].y > SIZE) {
+        points[i].y = SIZE;
+        vels[i].y = -vels[i].y;
+      }
+    }
+
+    // gravity :)
+    for (vec2 &d : vels) {
+      d += vec2{0.0, 0.05};
+    }
+
+  }
+
+  printf("Hull1: %s. Hull2: %s\n",
+         ANSI::Time(sec1).c_str(), ANSI::Time(sec2).c_str());
+
+}
+
 [[maybe_unused]]
 static void Visualize(const Polyhedron &poly) {
   // ArcFour rc(StringPrintf("seed.%lld", time(nullptr)));
@@ -813,7 +917,7 @@ static void Solve4(const Polyhedron &polyhedron) {
 
           // four params for outer rotation, one param for
           // inner rotation (around z axis), two for 2d translation of inner.
-          static constexpr int D = 7;
+          static constexpr int D = 6;
 
           Timer prep_timer;
           const quat4 initial_outer_rot = RandomQuaternion(&rc);
@@ -831,13 +935,15 @@ static void Solve4(const Polyhedron &polyhedron) {
               polyhedron.faces->v[face1],
               polyhedron.faces->v[face2]);
 
+          const frame3 initial_inner_frame =
+            yocto::rotation_frame(initial_inner_rot);
+
           // Get the frames from the appropriate positions in the
           // argument.
 
           auto OuterFrame = [&initial_outer_rot](
               const std::array<double, D> &args) {
-              const auto &[o0, o1, o2, o3,
-                           theta_, dx_, dy_] = args;
+              const auto &[o0, o1, o2, o3, dx_, dy_] = args;
               quat4 tweaked_rot = normalize(quat4{
                   .x = initial_outer_rot.x + o0,
                   .y = initial_outer_rot.y + o1,
@@ -847,21 +953,15 @@ static void Solve4(const Polyhedron &polyhedron) {
               return yocto::rotation_frame(tweaked_rot);
             };
 
-          // PERF: Maybe don't even bother rotating the inner one,
-          // since outer rotations along z axis give us the equivalent
-          // degrees of freedom. Then we can also compute the convex
-          // hull once.
-          auto InnerFrame = [&](
+          // PERF: The inner polyhedron is not rotated, so we should
+          // just compute the convex hull once. We could equivalently
+          // just be applying the translation to the outer polyhedron.
+          auto InnerFrame = [&initial_inner_frame](
               const std::array<double, D> &args) {
-              const auto &[o0_, o1_, o2_, o3_,
-                           theta, dx, dy] = args;
-              quat4 q = normalize(
-                  initial_inner_rot *
-                  QuatFromVec(yocto::rotation_quat<double>({0.0, 0.0, 1.0}, theta)));
-              frame3 rotate = yocto::rotation_frame(q);
+              const auto &[o0_, o1_, o2_, o3_, dx, dy] = args;
               frame3 translate = yocto::translation_frame(
                   vec3{.x = dx, .y = dy, .z = 0.0});
-              return rotate * translate;
+              return initial_inner_frame * translate;
             };
 
           auto WriteImage = [&](const std::string &filename,
@@ -923,14 +1023,14 @@ static void Solve4(const Polyhedron &polyhedron) {
               return error;
             };
 
-          constexpr double Q = 0.15;
+          constexpr double Q = 0.25;
 
           const std::array<double, D> lb =
             {-Q, -Q, -Q, -Q,
-             0.0, -0.5, -0.5};
+             -0.5, -0.5};
           const std::array<double, D> ub =
             {+Q, +Q, +Q, +Q,
-             4.0 * std::numbers::pi, +0.5, +0.5};
+             +0.5, +0.5};
           const double prep_sec = prep_timer.Seconds();
 
           Timer opt_timer;
@@ -1008,6 +1108,9 @@ static void Solve4(const Polyhedron &polyhedron) {
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
+
+  AnimateHull();
+  return 0;
 
   Polyhedron target = SnubCube();
 

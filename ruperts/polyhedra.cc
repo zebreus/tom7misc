@@ -31,6 +31,12 @@ std::string VecString(const vec3 &v) {
       v.x, v.y, v.z);
 }
 
+std::string VecString(const vec2 &v) {
+  return StringPrintf(
+      "(" ARED("%.4f") "," AGREEN("%.4f") ")",
+      v.x, v.y);
+}
+
 std::string FrameString(const frame3 &f) {
   return StringPrintf(
       "frame3{.x = vec3(%.17g, %.17g, %.17g),\n"
@@ -62,6 +68,31 @@ std::string FormatNum(uint64_t n) {
     return Util::UnsignedWithCommas(n);
   }
 }
+
+Faces::Faces(int num_vertices, std::vector<std::vector<int>> v_in) :
+  v(std::move(v_in)) {
+
+  std::vector<std::unordered_set<int>> collated(num_vertices);
+  for (const std::vector<int> &face : v) {
+    // Add each edge forwards and backwards.
+    for (int i = 0; i < (int)face.size(); i++) {
+      int v0 = face[i];
+      int v1 = face[(i + 1) % face.size()];
+      CHECK(v0 >= 0 && v0 < num_vertices);
+      CHECK(v1 >= 0 && v1 < num_vertices);
+      collated[v0].insert(v1);
+      collated[v1].insert(v0);
+    }
+  }
+
+  // Now flatten into vector.
+  neighbors.resize(num_vertices);
+  for (int i = 0; i < (int)collated.size(); i++) {
+    neighbors[i] = SetToSortedVec(collated[i]);
+    CHECK(!neighbors[i].empty());
+  }
+}
+
 
 // Return the closest point (to x,y) on the given line segment.
 // It may be one of the endpoints.
@@ -203,6 +234,8 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
         // Compare against the current candidate, using cross
         // product to find the "leftmost" one.
         double angle = yocto::cross(vnext - vcur, vi - vcur);
+        // Note that this excludes points that are exactly coincident
+        // with vcur, which is what we want.
         if (angle < 0.0) {
           next = i;
         }
@@ -215,6 +248,191 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
 
   return hull;
 }
+
+
+// The QuickHull implementation below and its helper routines are based on code
+// by Miguel Vieira (see LICENSES) although I have heavily modified it. Some changes:
+//  - Uses yocto library for more stuff
+//  - Uses vertex indices so it can be run directly on Polyhedron/Mesh2D.
+//  - Fixes some bugs relating to exactly equal or input points
+//  - Some algorithmic improvements (e.g. left and right sets in the recursive
+//    calls must be disjoint).
+
+// Returns the index of the farthest point from segment (a, b).
+static int GetFarthest(const vec2 &a, const vec2 &b, const std::vector<vec2> &v,
+                       const std::vector<int> &pts) {
+  CHECK(!pts.empty());
+  // The unsigned (squared?) distance of p from segment (a, b).
+
+  // Probably there is no reason to normalize, since it is the same for each?
+  double denom = yocto::length(a - b);
+  auto Dist = [&a, &b, denom](const vec2 &p) -> double {
+      return std::fabs((b.x - a.x) * (a.y - p.y) - (b.y - a.y) * (a.x - p.x)) /
+        denom;
+    };
+
+  int best_idx = pts[0];
+  double best_dist = Dist(v[best_idx]);
+
+  for (int i = 1; i < pts.size(); i++) {
+    int p = pts[i];
+    double d = Dist(v[p]);
+    if (d > best_dist) {
+      best_idx = p;
+      best_dist = d;
+    }
+  }
+
+  return best_idx;
+}
+
+// The z-value of the cross product of segments
+// (a, b) and (a, c). Positive means c is ccw
+// from (a, b), negative cw. Zero means it's colinear.
+static inline double CounterClockwise(const vec2 &a, const vec2 &b, const vec2 &c) {
+  // return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  return yocto::cross(b - a, c - a);
+}
+
+
+// Recursive call of the quickhull algorithm.
+static void QuickHullRec(const std::vector<vec2> &vertices,
+                         const std::vector<int> &pts,
+                         int a, int b,
+                         std::vector<int> *hull) {
+  static constexpr bool SELF_CHECK = false;
+  static constexpr int VERBOSE = 0;
+
+  if (VERBOSE == 1) {
+    printf("QuickHullRec(%d vs, %d pts, %d (%s), %d (%s))\n",
+           (int)vertices.size(), (int)pts.size(),
+           a, VecString(vertices[a]).c_str(),
+           b, VecString(vertices[b]).c_str());
+  } else if (VERBOSE > 0) {
+    printf("QuickHullRec(%d vs, %d pts, %d (%s), %d (%s)):",
+           (int)vertices.size(), (int)pts.size(),
+           a, VecString(vertices[a]).c_str(),
+           b, VecString(vertices[b]).c_str());
+    for (int p : pts) {
+      if (p == a || p == b) {
+        printf(" " ANSI_BG(0, 0, 128) "%s" ANSI_RESET,
+               VecString(vertices[p]).c_str());
+      } else {
+        printf(" %s", VecString(vertices[p]).c_str());
+      }
+    }
+    printf("\n");
+  }
+  if (pts.empty()) {
+    return;
+  }
+
+  if (SELF_CHECK) {
+    for (int x : pts) {
+      CHECK(x != a && x != b) << x << " candidate points should "
+        "not include the endpoints of the recursed upon segment.";
+      for (int y : *hull) {
+        CHECK(x != y) << x << " is already in the hull!";
+      }
+    }
+  }
+
+  const vec2 &aa = vertices[a];
+  const vec2 &bb = vertices[b];
+  int f = GetFarthest(aa, bb, vertices, pts);
+  const vec2 &ff = vertices[f];
+  if (VERBOSE) printf("Farthest is %d (%s)\n", f, VecString(ff).c_str());
+
+  // CHECK(CounterClockwise(aa, ff, aa) <= 0.0);
+  // CHECK(CounterClockwise(aa, ff, ff) <= 0.0);
+
+  // Collect points to the left of segment (a, f) and to the left
+  // of segment f, b (which we call "right"). A point cannot be in both
+  // sets, because that would require it to be farther away than f, but f
+  // is maximal.
+  //
+  //             f
+  //       left / \   right
+  //           /   \
+  //          a     b
+  //
+  std::vector<int> left, right;
+  for (int i : pts) {
+    const vec2 &ii = vertices[i];
+    // In the presence of exact duplicates for one of the endpoints,
+    // we need to filter them out here or else we can end up in
+    // infinite loops. Removing them does not affect the hull.
+    if (ii == aa || ii == bb || ii == ff) continue;
+
+    if (CounterClockwise(aa, ff, ii) > 0.0) {
+      left.push_back(i);
+    } else if (CounterClockwise(ff, bb, ii) > 0.0) {
+      right.push_back(i);
+    }
+  }
+  if (VERBOSE) printf("%d left, %d right vertices.\n",
+                      (int)left.size(), (int)right.size());
+  QuickHullRec(vertices, left, a, f, hull);
+
+  // Add f to the hull
+  hull->push_back(f);
+
+  if (VERBOSE) printf("%d right vertices.\n", (int)right.size());
+  QuickHullRec(vertices, right, f, b, hull);
+}
+
+// QuickHull algorithm.
+// https://en.wikipedia.org/wiki/QuickHull
+std::vector<int> QuickHull(const std::vector<vec2> &vertices) {
+  std::vector<int> hull;
+  if (vertices.empty()) return {};
+  if (vertices.size() == 1) return {0};
+  if (vertices.size() == 2) return {0, 1};
+
+  // Returns true if a is lexicographically before b.
+  auto LeftOf = [](const vec2 &a, const vec2 &b) -> bool {
+      return (a.x < b.x || (a.x == b.x && a.y < b.y));
+    };
+
+
+  // Get the leftmost (a) and rightmost (b) points.
+  int a = 0, b = 0;
+  for (int i = 1; i < (int)vertices.size(); i++) {
+    if (LeftOf(vertices[i], vertices[a])) a = i;
+    if (LeftOf(vertices[b], vertices[i])) b = i;
+  }
+
+  CHECK(a != b);
+
+  // Split the points on either side of segment (a, b).
+  std::vector<int> left, right;
+  for (int i = 0; i < (int)vertices.size(); i++) {
+    if (i != a && i != b) {
+      double side = CounterClockwise(vertices[a], vertices[b], vertices[i]);
+      if (side > 0.0) left.push_back(i);
+      else if (side < 0.0) right.push_back(i);
+      // Ignore if colinear.
+    }
+  }
+
+  // Be careful to add points to the hull
+  // in the correct order. Add our leftmost point.
+  hull.push_back(a);
+
+  // Add hull points from the left (top)
+  // printf("Outer call (top):\n");
+  QuickHullRec(vertices, left, a, b, &hull);
+
+  // Add our rightmost point
+  hull.push_back(b);
+
+  // Add hull points from the right (bottom)
+  // printf("Outer call (bottom):\n");
+  QuickHullRec(vertices, right, b, a, &hull);
+
+  return hull;
+}
+
 
 double PlanarityError(const Polyhedron &p) {
   double error = 0.0;
@@ -353,6 +571,8 @@ Polyhedron Dodecahedron() {
 
   CHECK(vertices.size() == 20);
 
+  // TODO: Can just use the convex hull here.
+
   // Rather than hard code faces, we find them from the
   // vertices. Every vertex has exactly three edges,
   // and they are to the three closest (other) vertices.
@@ -429,7 +649,7 @@ Polyhedron Dodecahedron() {
       return -1;
     };
 
-  Faces *faces = new Faces;
+  std::vector<std::vector<int>> fs;
 
   // Each face corresponds to an edge on the cube.
   for (int a = 0b000; a < 0b1000; a++) {
@@ -452,11 +672,12 @@ Polyhedron Dodecahedron() {
         int o1 = CoplanarNeighbor(a, b, tip);
         int o2 = CoplanarNeighbor(b, a, tip);
 
-        faces->v.push_back(std::vector<int>{tip, b, o2, o1, a});
+        fs.push_back(std::vector<int>{tip, b, o2, o1, a});
       }
     }
   }
 
+  Faces *faces = new Faces(vertices.size(), std::move(fs));
   return Polyhedron{.vertices = std::move(vertices), .faces = faces};
 }
 
@@ -559,10 +780,10 @@ static Polyhedron ConvexPolyhedronFromVertices(
     printf("There are %d distinct faces.\n", (int)all_faces.size());
   }
 
-  Faces *faces = new Faces;
   // Make it deterministic.
   std::vector<std::vector<int>> sfaces = SetToSortedVec(all_faces);
 
+  std::vector<std::vector<int>> fs;
   for (const std::vector<int> &vec : sfaces) {
     CHECK(vec.size() >= 3);
     const vec3 &v0 = vertices[vec[0]];
@@ -607,9 +828,10 @@ static Polyhedron ConvexPolyhedronFromVertices(
       face.push_back(i);
     }
 
-    faces->v.push_back(std::move(face));
+    fs.push_back(std::move(face));
   }
 
+  Faces *faces = new Faces(vertices.size(), std::move(fs));
   return Polyhedron{.vertices = std::move(vertices), .faces = faces};
 }
 
@@ -694,23 +916,23 @@ Polyhedron Cube() {
   int g = AddVertex(+1, -1, -1);
   int h = AddVertex(-1, -1, -1);
 
-  Faces *faces = new Faces;
-  faces->v.reserve(6);
+  std::vector<std::vector<int>> fs;
+  fs.reserve(6);
 
   // top
-  faces->v.push_back({a, b, c, d});
+  fs.push_back({a, b, c, d});
   // bottom
-  faces->v.push_back({e, f, g, h});
+  fs.push_back({e, f, g, h});
   // left
-  faces->v.push_back({a, e, h, d});
+  fs.push_back({a, e, h, d});
   // right
-  faces->v.push_back({b, f, g, c});
+  fs.push_back({b, f, g, c});
   // front
-  faces->v.push_back({d, c, g, h});
+  fs.push_back({d, c, g, h});
   // back
-  faces->v.push_back({a, b, f, e});
+  fs.push_back({a, b, f, e});
 
-
+  Faces *faces = new Faces(8, std::move(fs));
   return Polyhedron{.vertices = std::move(vertices), .faces = faces};
 }
 

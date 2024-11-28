@@ -26,13 +26,20 @@ using frame3 = yocto::frame<double, 3>;
 // We never change the connectivity of the objects
 // in question, so we can avoid copying the faces.
 //
-// A face is represented as the list of vertex (indices)
-// that circumscribe it. The vertices may appear in
-// clockwise or counter-clockwise order.
 struct Faces {
+  // Each face is represented as the list of vertex (indices) that
+  // circumscribe it. The vertices may appear in clockwise or
+  // counter-clockwise order.
   std::vector<std::vector<int>> v;
+  // For each vertex id, its immediate neighbors, in ascending order.
+  std::vector<std::vector<int>> neighbors;
   // Number of vertices we expect.
-  int num_vertices = 0;
+  int NumVertices() const { return (int)neighbors.size(); }
+
+  // Computes the neighbors from the faces. This assumes that
+  // very vertex is on at least one face, which will be true
+  // for well-formed polyhedra.
+  Faces(int num_vertices, std::vector<std::vector<int>> v);
 };
 
 struct Polyhedron {
@@ -64,6 +71,7 @@ inline quat4 QuatFromVec(const vec4 &q) {
 }
 
 std::string VecString(const vec3 &v);
+std::string VecString(const vec2 &v);
 std::string FrameString(const frame3 &f);
 std::string FormatNum(uint64_t n);
 
@@ -124,6 +132,8 @@ double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt);
 // add a neighbors vector to Faces and cut down the search space
 // a lot.
 std::vector<int> ConvexHull(const std::vector<vec2> &vertices);
+
+std::vector<int> QuickHull(const std::vector<vec2> &v);
 
 double AreaOfHull(const Mesh2D &mesh, const std::vector<int> &hull);
 
