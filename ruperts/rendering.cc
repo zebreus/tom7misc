@@ -5,14 +5,18 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <initializer_list>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "color-util.h"
 #include "image.h"
 #include "util.h"
 
@@ -76,6 +80,9 @@ static std::vector<uint32_t> COLORS = {
 Rendering::Rendering(int width_in, int height_in) :
   width(width_in), height(height_in), img(width, height) {
   scale = std::min(width, height) * 0.75;
+  // XXX compute this from the polyhedron's diameter
+  polyscale = std::min(width, height) * MESH_SCALE;
+  img.Clear32(0x000000FF);
 }
 
 void Rendering::Render(const Polyhedron &p, uint32_t color) {
@@ -106,24 +113,9 @@ void Rendering::Render(const Polyhedron &p, uint32_t color) {
 }
 
 void Rendering::RenderMesh(const Mesh2D &mesh) {
-  // XXX compute this from the polyhedron's diameter
-  const double polyscale = std::min(width, height) * MESH_SCALE;
-
   CHECK(mesh.faces->v.size() < COLORS.size()) << mesh.faces->v.size()
                                               << " but have "
                                               << COLORS.size();
-
-  auto ToWorld = [this, polyscale](int sx, int sy) -> vec2 {
-      // Center of screen should be 0,0.
-      double cy = sy - height / 2.0;
-      double cx = sx - width / 2.0;
-      return vec2{.x = cx / polyscale, .y = cy / polyscale};
-    };
-  auto ToScreen = [this, polyscale](const vec2 &pt) -> std::pair<int, int> {
-    double cx = pt.x * polyscale;
-    double cy = pt.y * polyscale;
-    return std::make_pair(cx + width / 2.0, cy + height / 2.0);
-  };
 
   // Draw filled polygons first.
   for (int sy = 0; sy < height; sy++) {
@@ -151,15 +143,6 @@ void Rendering::RenderMesh(const Mesh2D &mesh) {
 }
 
 void Rendering::RenderBadPoints(const Mesh2D &sinner, const Mesh2D &souter) {
-  // XXX compute this from the polyhedron's diameter
-  const double polyscale = std::min(width, height) * MESH_SCALE;
-
-  auto ToScreen = [this, polyscale](const vec2 &pt) -> std::pair<int, int> {
-    double cx = pt.x * polyscale;
-    double cy = pt.y * polyscale;
-    return std::make_pair(cx + width / 2.0, cy + height / 2.0);
-  };
-
   for (const vec2 &v : sinner.vertices) {
     if (!InMesh(souter, v)) {
       const auto &[sx, sy] = ToScreen(v);
@@ -169,16 +152,8 @@ void Rendering::RenderBadPoints(const Mesh2D &sinner, const Mesh2D &souter) {
 }
 
 void Rendering::RenderHull(const Mesh2D &mesh,
-                           const std::vector<int> &hull) {
-  // XXX compute this from the polyhedron's diameter
-  const double polyscale = std::min(width, height) * MESH_SCALE;
-
-  auto ToScreen = [this, polyscale](const vec2 &pt) -> std::pair<int, int> {
-    double cx = pt.x * polyscale;
-    double cy = pt.y * polyscale;
-    return std::make_pair(cx + width / 2.0, cy + height / 2.0);
-  };
-
+                           const std::vector<int> &hull,
+                           uint32_t color) {
   for (int i = 0; i < hull.size(); i++) {
     const vec2 &v0 = mesh.vertices[hull[i]];
     const vec2 &v1 = mesh.vertices[hull[(i + 1) % hull.size()]];
@@ -186,14 +161,39 @@ void Rendering::RenderHull(const Mesh2D &mesh,
     const auto &[x0, y0] = ToScreen(v0);
     const auto &[x1, y1] = ToScreen(v1);
 
-    img.BlendThickLine32(x0, y0, x1, y1, 2.0, 0x00FF00AA);
+    img.BlendThickLine32(x0, y0, x1, y1, 2.0, color);
   }
 
+  /*
   for (int i = 0; i < hull.size(); i++) {
     const vec2 &v0 = mesh.vertices[hull[i]];
     const auto &[x, y] = ToScreen(v0);
     img.BlendText32(x - 12, y - 12, 0xFFFF00FF,
                      StringPrintf("%d", i));
+  }
+  */
+}
+
+// Red for negative, black for 0, green for positive.
+// nominal range [-1, 1].
+static constexpr ColorUtil::Gradient DISTANCE{
+  GradRGB(-4.0f, 0xFFFF88),
+  GradRGB(-2.0f, 0xFFFF00),
+  GradRGB(-1.0f, 0xFF0000),
+  GradRGB( 0.0f, 0x440044),
+  GradRGB( 1.0f, 0x00FF00),
+  GradRGB(+2.0f, 0x00FFFF),
+  GradRGB(+4.0f, 0x88FFFF),
+};
+
+void Rendering::RenderHullDistance(const Mesh2D &mesh,
+                                   const std::vector<int> &hull) {
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      vec2 v = ToWorld(x, y);
+      double d = std::abs(DistanceToHull(mesh, hull, v));
+      img.BlendPixel32(x, y, ColorUtil::LinearGradient32(DISTANCE, d));
+    }
   }
 }
 
@@ -207,4 +207,9 @@ void Rendering::DarkenBG() {
 
 uint32_t Rendering::Color(int idx) {
   return COLORS[idx % COLORS.size()];
+}
+
+void Rendering::Save(const std::string &filename) {
+  img.Save(filename);
+  printf("Wrote " AGREEN("%s") "\n", filename.c_str());
 }

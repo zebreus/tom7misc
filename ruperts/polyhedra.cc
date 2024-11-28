@@ -61,6 +61,69 @@ std::string FormatNum(uint64_t n) {
   }
 }
 
+// Return the closest point (to x,y) on the given line segment.
+// It may be one of the endpoints.
+static vec2 ClosestPointOnSegment(
+    // Line segment
+    const vec2 &v0,
+    const vec2 &v1,
+    // Point to test
+    const vec2 &pt) {
+
+  auto SqDist = [](double x0, double y0,
+                   double x1, double y1) {
+      const double dx = x1 - x0;
+      const double dy = y1 - y0;
+      return dx * dx + dy * dy;
+    };
+
+  const double sqlen = SqDist(v0.x, v0.y, v1.x, v1.y);
+  if (sqlen == 0.0) {
+    // Degenerate case where line segment is just a point,
+    // so there is only one choice.
+    return v0;
+  }
+
+  const double tf =
+    ((pt.x - v0.x) * (v1.x - v0.x) + (pt.y - v0.y) * (v1.y - v0.y)) / sqlen;
+  // Make sure it is on the segment.
+  const double t = std::max(0.0, std::min(1.0, tf));
+  // Closest point, which is on the segment.
+
+  const double xx = v0.x + t * (v1.x - v0.x);
+  const double yy = v0.y + t * (v1.y - v0.y);
+  return vec2{xx, yy};
+}
+
+// Return the minimum distance between the point and the line segment.
+inline double PointLineDistance(
+    // Line segment
+    const vec2 &v0, const vec2 &v1,
+    // Point to test
+    const vec2 &pt) {
+
+  const vec2 c = ClosestPointOnSegment(v0, v1, pt);
+  const double dx = pt.x - c.x;
+  const double dy = pt.y - c.y;
+  return sqrt(dx * dx + dy * dy);
+}
+
+[[maybe_unused]]
+double BuggyDistanceToEdge(const vec2 &v0, const vec2 &v1, const vec2 &p) {
+  vec2 edge = v1 - v0;
+  vec2 p_edge = p - v0;
+  double cx = yocto::cross(edge, p_edge);
+  double dist = std::abs(cx / yocto::length(edge));
+  double d0 = yocto::length(p_edge);
+  double d1 = yocto::length(p - v1);
+
+  return std::min(std::min(d0, d1), dist);
+}
+
+double DistanceToEdge(const vec2 &v0, const vec2 &v1, const vec2 &p) {
+  return PointLineDistance(v0, v1, p);
+}
+
 // Create the shadow of the polyhedron on the x-y plane.
 Mesh2D Shadow(const Polyhedron &p) {
   Mesh2D mesh;
@@ -616,10 +679,35 @@ Polyhedron Cube() {
   return Polyhedron{.vertices = std::move(vertices), .faces = faces};
 }
 
-#if 0
 Polyhedron Icosahedron() {
+  constexpr double phi = std::numbers::phi;
   // (±1, ±φ, 0)
   // (±φ, 0, ±1)
   // (0, ±1, ±φ)
+  std::vector<vec3> vertices;
+  for (int b = 0b00; b < 0b100; b++) {
+    double s1 = (b & 0b10) ? -1 : +1;
+    double s2 = (b & 0b01) ? -1 : +1;
+    vertices.push_back(vec3{.x = s1, .y = s2 * phi, .z = 0.0});
+    vertices.push_back(vec3{.x = s1 * phi, .y = 0.0, .z = s2});
+    vertices.push_back(vec3{.x = 0.0, .y = s1, .z = s2 * phi});
+  }
+
+  return ConvexPolyhedronFromVertices(std::move(vertices));
 }
-#endif
+
+Polyhedron TriakisTetrahedron() {
+  constexpr double ft = 5.0 / 3.0;
+  std::vector<vec3> vertices = {
+    vec3{ft, ft, ft},
+    vec3{ft, -ft, -ft},
+    vec3{-ft, ft, -ft},
+    vec3{-ft, -ft, ft},
+    vec3{-1, 1, 1},
+    vec3{1, -1, 1},
+    vec3{1, 1, -1},
+    vec3{-1, -1, -1},
+  };
+
+  return ConvexPolyhedronFromVertices(std::move(vertices));
+}

@@ -43,16 +43,12 @@ using quat4 = yocto::quat<double, 4>;
 using frame3 = yocto::frame<double, 3>;
 
 [[maybe_unused]]
-static void AnimateMesh() {
+static void AnimateMesh(const Polyhedron &poly) {
   ArcFour rc("animate");
-  // const Polyhedron poly = Cube();
-  // const Polyhedron poly = Dodecahedron();
-  const Polyhedron poly = SnubCube();
   quat4 initial_rot = RandomQuaternion(&rc);
 
   constexpr int SIZE = 1080;
   constexpr int FRAMES = 10 * 60;
-  // constexpr int FRAMES = 10;
   MovRecorder rec("animate.mov", SIZE, SIZE);
 
   StatusBar status(2);
@@ -80,13 +76,10 @@ static void AnimateMesh() {
 }
 
 [[maybe_unused]]
-static void Visualize() {
+static void Visualize(const Polyhedron &poly) {
   // ArcFour rc(StringPrintf("seed.%lld", time(nullptr)));
   ArcFour rc("fixed-seed");
 
-  // const Polyhedron poly = Cube();
-  // const Polyhedron poly = Dodecahedron();
-  const Polyhedron poly = SnubCube();
   CHECK(PlanarityError(poly) < 1.0e-10);
 
   {
@@ -104,12 +97,11 @@ static void Visualize() {
 
   {
     Rendering rendering(1920, 1080);
-    quat4 q = RandomQuaternion(&rc);
-    frame3 frame = yocto::rotation_frame(q);
+    // quat4 q = RandomQuaternion(&rc);
+    // frame3 frame = yocto::rotation_frame(q);
+    // Polyhedron rpoly = Rotate(poly, frame);
 
-    Polyhedron rpoly = Rotate(poly, frame);
-
-    Mesh2D mesh = Shadow(rpoly);
+    Mesh2D mesh = Shadow(poly);
     rendering.RenderMesh(mesh);
 
     std::vector<int> hull = ConvexHull(mesh.vertices);
@@ -120,6 +112,7 @@ static void Visualize() {
   }
 }
 
+[[maybe_unused]]
 static void Solve(const Polyhedron &polyhedron) {
   // ArcFour rc(StringPrintf("solve.%lld", time(nullptr)));
 
@@ -313,6 +306,7 @@ static void Solve(const Polyhedron &polyhedron) {
 // be just right in order for it to be solvable; Solve() spends most
 // of its time trying different shapes of the hole and only random
 // samples for the shadow.
+[[maybe_unused]]
 static void Solve2(const Polyhedron &polyhedron) {
   static constexpr int HISTO_LINES = 32;
 
@@ -522,6 +516,7 @@ static void Solve2(const Polyhedron &polyhedron) {
 
 // Third approach: Maximize the area of the outer polygon before
 // optimizing the placement of the inner.
+[[maybe_unused]]
 static void Solve3(const Polyhedron &polyhedron) {
   static constexpr int HISTO_LINES = 32;
 
@@ -733,20 +728,233 @@ static void Solve3(const Polyhedron &polyhedron) {
       });
 }
 
+// Third approach: Joint optimization, but only consider rotations
+// around the z axis (and translations) for the inner.
+[[maybe_unused]]
+static void Solve4(const Polyhedron &polyhedron) {
+  static constexpr int HISTO_LINES = 32;
+
+  std::mutex m;
+  bool should_die = false;
+  Timer run_timer;
+  StatusBar status(3 + HISTO_LINES);
+  Periodically status_per(1.0);
+  Periodically image_per(10.0);
+  double best_error = 1.0e42;
+  AutoHisto error_histo(100000);
+  constexpr int NUM_THREADS = 4;
+
+  double prep_time = 0.0, opt_time = 0.0;
+
+  ParallelFan(
+      NUM_THREADS,
+      [&](int thread_idx) {
+        ArcFour rc(StringPrintf("solve.%d.%lld", thread_idx,
+                                time(nullptr)));
+        for (;;) {
+          {
+            MutexLock ml(&m);
+            if (should_die) return;
+          }
+
+          // four params for outer rotation, one param for
+          // inner rotation (around z axis), two for 2d translation of inner.
+          static constexpr int D = 7;
+
+          Timer prep_timer;
+          const quat4 initial_outer_rot = RandomQuaternion(&rc);
+
+          // Get the frames from the appropriate positions in the
+          // argument.
+
+          auto OuterFrame = [&initial_outer_rot](
+              const std::array<double, D> &args) {
+              const auto &[o0, o1, o2, o3,
+                           theta_, dx_, dy_] = args;
+              quat4 tweaked_rot = normalize(quat4{
+                  .x = initial_outer_rot.x + o0,
+                  .y = initial_outer_rot.y + o1,
+                  .z = initial_outer_rot.z + o2,
+                  .w = initial_outer_rot.w + o3,
+                });
+              return yocto::rotation_frame(tweaked_rot);
+            };
+
+          // PERF: Maybe don't even bother rotating the inner one,
+          // since outer rotations along z axis give us the equivalent
+          // degrees of freedom. Then we can also compute the convex
+          // hull once.
+          auto InnerFrame = [&](
+              const std::array<double, D> &args) {
+              const auto &[o0_, o1_, o2_, o3_,
+                           theta, dx, dy] = args;
+              // PERF: Can probably create the rotation frame
+              // directly, since it's so simple.
+              quat4 q = QuatFromVec(
+                  yocto::rotation_quat<double>({0.0, 0.0, 1.0}, theta));
+              frame3 rotate = yocto::rotation_frame(q);
+              frame3 translate = yocto::translation_frame(
+                  vec3{.x = dx, .y = dy, .z = 0.0});
+              return rotate * translate;
+            };
+
+          auto WriteImage = [&](const std::string &filename,
+                                const std::array<double, D> &args) {
+              Rendering rendering(3840, 2160);
+
+              auto outer_frame = OuterFrame(args);
+              auto inner_frame = InnerFrame(args);
+
+              Mesh2D souter = Shadow(Rotate(polyhedron, outer_frame));
+              Mesh2D sinner = Shadow(Rotate(polyhedron, inner_frame));
+
+              rendering.RenderMesh(souter);
+              rendering.DarkenBG();
+
+              rendering.RenderMesh(sinner);
+              rendering.RenderBadPoints(sinner, souter);
+
+              rendering.img.Save(filename);
+
+              status.Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+            };
+
+          auto Parameters = [&](const std::array<double, D> &args,
+                                double error) {
+              auto outer_frame = OuterFrame(args);
+              auto inner_frame = InnerFrame(args);
+              std::string contents =
+                StringPrintf("Error: %.17g\n", error);
+
+              contents += "Outer frame:\n";
+              contents += FrameString(outer_frame);
+              contents += "\nInner frame:\n";
+              contents += FrameString(inner_frame);
+              StringAppendF(&contents,
+                            "\nTook %lld iters, %lld attempts, %.3f seconds\n",
+                            iters.Read(), attempts.Read(), run_timer.Seconds());
+              return contents;
+            };
+
+          std::function<double(const std::array<double, D> &)> Loss =
+            [&polyhedron, &OuterFrame, &InnerFrame](
+                const std::array<double, D> &args) {
+              attempts++;
+              frame3 outer_frame = OuterFrame(args);
+              frame3 inner_frame = InnerFrame(args);
+              Mesh2D souter = Shadow(Rotate(polyhedron, outer_frame));
+              Mesh2D sinner = Shadow(Rotate(polyhedron, inner_frame));
+
+              // Does every vertex in inner fall inside the outer shadow?
+              double error = 0.0;
+              for (const vec2 &iv : sinner.vertices) {
+                if (!InMesh(souter, iv)) {
+                  // slow :(
+                  error += DistanceToMesh(souter, iv);
+                }
+              }
+
+              return error;
+            };
+
+          constexpr double Q = 0.15;
+
+          const std::array<double, D> lb =
+            {-Q, -Q, -Q, -Q,
+             0.0, -0.5, -0.5};
+          const std::array<double, D> ub =
+            {+Q, +Q, +Q, +Q,
+             4.0 * std::numbers::pi, +0.5, +0.5};
+          const double prep_sec = prep_timer.Seconds();
+
+          Timer opt_timer;
+          const auto &[args, error] =
+            Opt::Minimize<D>(Loss, lb, ub, 1000, 2);
+          const double opt_sec = opt_timer.Seconds();
+
+          if (error == 0.0) {
+            MutexLock ml(&m);
+            should_die = true;
+
+            status.Printf("Solved! %lld iters, %lld attempts, in %s\n",
+                          iters.Read(),
+                          attempts.Read(),
+                          ANSI::Time(run_timer.Seconds()).c_str());
+
+            WriteImage("solved.png", args);
+
+            std::string contents = Parameters(args, error);
+            StringAppendF(&contents,
+                          "\n%s\n",
+                          error_histo.SimpleAsciiString(50).c_str());
+
+            Util::WriteFile("solution.txt", contents);
+            status.Printf("Wrote " AGREEN("solution.txt") "\n");
+
+            return;
+          }
+
+          {
+            MutexLock ml(&m);
+            prep_time += prep_sec;
+            opt_time += opt_sec;
+            error_histo.Observe(log(error));
+            if (error < best_error) {
+              best_error = error;
+              if (image_per.ShouldRun()) {
+                std::string file_base =
+                  StringPrintf("best4.%lld", iters.Read());
+                WriteImage(file_base + ".png", args);
+                Util::WriteFile(file_base + ".txt", Parameters(args, error));
+              }
+            }
+
+            status_per.RunIf([&]() {
+                double total_time = prep_time + opt_time;
+
+                int64_t it = iters.Read();
+                double ips = it / total_time;
+
+                status.Statusf(
+                    "%s\n"
+                    "%s " ABLUE("prep") " %s " APURPLE("opt")
+                    " (" ABLUE("%.3f%%") " / " APURPLE("%.3f%%") ") "
+                    "[" AWHITE("%.3f") "/s]\n"
+                    "%s iters, %s attempts; best: %.11g",
+                    error_histo.SimpleANSI(HISTO_LINES).c_str(),
+                    ANSI::Time(prep_time).c_str(),
+                    ANSI::Time(opt_time).c_str(),
+                    (100.0 * prep_time) / total_time,
+                    (100.0 * opt_time) / total_time,
+                    ips,
+                    FormatNum(it).c_str(),
+                    FormatNum(attempts.Read()).c_str(),
+                    best_error);
+              });
+          }
+
+          iters++;
+        }
+      });
+}
+
 
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
 
+  Polyhedron target = SnubCube();
+
   // (void)SnubCube();
-  Visualize();
-  // AnimateMesh();
+  Visualize(target);
+  // AnimateMesh(target);
 
   printf("\n");
   // Solve(Cube());
   // Solve(Dodecahedron());
   // Solve2(SnubCube());
-  Solve3(SnubCube());
+  // Solve(SnubCube());
+  Solve4(target);
 
   printf("OK\n");
   return 0;

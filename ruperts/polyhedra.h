@@ -92,17 +92,7 @@ inline double SignedDistanceToEdge(const vec2 &v0, const vec2 &v1,
 }
 
 // Unsigned distance to the edge.
-inline double DistanceToEdge(const vec2 &v0, const vec2 &v1,
-                             const vec2 &p) {
-  vec2 edge = v1 - v0;
-  vec2 p_edge = p - v0;
-  double cx = yocto::cross(edge, p_edge);
-  double dist = std::abs(cx / yocto::length(edge));
-  double d0 = yocto::length(p_edge);
-  double d1 = yocto::length(p - v1);
-
-  return std::min(std::min(d0, d1), dist);
-}
+double DistanceToEdge(const vec2 &v0, const vec2 &v1, const vec2 &p);
 
 // Rotate the polyhedron. They share the same faces pointer.
 inline Polyhedron Rotate(const Polyhedron &p, const frame3 &frame) {
@@ -127,6 +117,12 @@ double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt);
 // vertex list (e.g. Mesh2D::vertices). This is the intuitive "gift
 // wrapping" algorithm; much faster approaches exist, but we have a
 // small number of vertices and this is in the outer loop.
+//
+// TODO: Now we have some need for a faster convex hull. I think
+// we can at least make this algorithm faster: The edges of the
+// hull are always edges on the convex polyhedron, right? We can
+// add a neighbors vector to Faces and cut down the search space
+// a lot.
 std::vector<int> ConvexHull(const std::vector<vec2> &vertices);
 
 double AreaOfHull(const Mesh2D &mesh, const std::vector<int> &hull);
@@ -143,10 +139,17 @@ double PlanarityError(const Polyhedron &p);
 // polynomial-time convex hull calculation) to find the connectivity.
 // It's better to reuse the base shape and share the faces object
 // than it is to keep generating new ones.
+
+// Platonic
 Polyhedron Cube();
 Polyhedron Dodecahedron();
-Polyhedron SnubCube();
 Polyhedron Icosahedron();
+
+// Archimedean
+Polyhedron SnubCube();
+
+// Catalan
+Polyhedron TriakisTetrahedron();
 
 inline quat4 RandomQuaternion(ArcFour *rc) {
   const auto &[x, y, z, w] = RandomUnit4D(rc);

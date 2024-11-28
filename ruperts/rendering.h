@@ -3,10 +3,12 @@
 #define _RUPERTS_RENDERING_H
 
 #include <cstdint>
+#include <string>
+#include <utility>
 #include <vector>
 
-#include "yocto_matht.h"
 #include "polyhedra.h"
+#include "yocto_matht.h"
 
 #include "image.h"
 
@@ -16,14 +18,34 @@ struct Rendering {
   void Render(const Polyhedron &p, uint32_t color);
   void RenderMesh(const Mesh2D &mesh);
   void RenderBadPoints(const Mesh2D &sinner, const Mesh2D &souter);
-  void RenderHull(const Mesh2D &mesh, const std::vector<int> &hull);
+  void RenderHull(const Mesh2D &mesh, const std::vector<int> &hull,
+                  uint32_t color = 0x00FF00AA);
+  void RenderHullDistance(const Mesh2D &mesh, const std::vector<int> &hull);
 
   void DarkenBG();
 
+  void Save(const std::string &filename);
+
   static uint32_t Color(int idx);
 
+  vec2 ToWorld(int sx, int sy) {
+      // Center of screen should be 0,0.
+      double cy = sy - height / 2.0;
+      double cx = sx - width / 2.0;
+      return vec2{.x = cx / polyscale, .y = cy / polyscale};
+    };
+
+  std::pair<int, int> ToScreen(const vec2 &pt) {
+    double cx = pt.x * polyscale;
+    double cy = pt.y * polyscale;
+    return std::make_pair(cx + width / 2.0, cy + height / 2.0);
+  }
+
+
   int width = 0, height = 0;
+  // TODO: explain and unify these
   double scale = 1.0;
+  double polyscale = 1.0;
   ImageRGBA img;
 };
 
