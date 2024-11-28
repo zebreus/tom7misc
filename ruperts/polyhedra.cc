@@ -259,16 +259,16 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
 //    calls must be disjoint).
 
 // Returns the index of the farthest point from segment (a, b).
+// Requires that all points are to the left of the segment (a,b) (or colinear).
+// (If you need it to handle both, you can just use fabs in the Dist function,
+// but for quickhull our candidate set always lies on the left of the edge.)
 static int GetFarthest(const vec2 &a, const vec2 &b, const std::vector<vec2> &v,
                        const std::vector<int> &pts) {
   CHECK(!pts.empty());
-  // The unsigned (squared?) distance of p from segment (a, b).
-
-  // Probably there is no reason to normalize, since it is the same for each?
-  double denom = yocto::length(a - b);
-  auto Dist = [&a, &b, denom](const vec2 &p) -> double {
-      return std::fabs((b.x - a.x) * (a.y - p.y) - (b.y - a.y) * (a.x - p.x)) /
-        denom;
+  const double dx = b.x - a.x;
+  const double dy = b.y - a.y;
+  auto Dist = [&](const vec2 &p) -> double {
+      return dx * (a.y - p.y) - dy * (a.x - p.x);
     };
 
   int best_idx = pts[0];
@@ -277,7 +277,7 @@ static int GetFarthest(const vec2 &a, const vec2 &b, const std::vector<vec2> &v,
   for (int i = 1; i < pts.size(); i++) {
     int p = pts[i];
     double d = Dist(v[p]);
-    if (d > best_dist) {
+    if (d < best_dist) {
       best_idx = p;
       best_dist = d;
     }
@@ -287,10 +287,9 @@ static int GetFarthest(const vec2 &a, const vec2 &b, const std::vector<vec2> &v,
 }
 
 // The z-value of the cross product of segments
-// (a, b) and (a, c). Positive means c is ccw
+// (a, b) and (a, c). Positive means c is ccw (to the left)
 // from (a, b), negative cw. Zero means it's colinear.
 static inline double CounterClockwise(const vec2 &a, const vec2 &b, const vec2 &c) {
-  // return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
   return yocto::cross(b - a, c - a);
 }
 
@@ -339,6 +338,15 @@ static void QuickHullRec(const std::vector<vec2> &vertices,
 
   const vec2 &aa = vertices[a];
   const vec2 &bb = vertices[b];
+
+  if (SELF_CHECK) {
+    for (int x : pts) {
+      const vec2 &xx = vertices[x];
+      CHECK(aa == xx || bb == xx ||
+            CounterClockwise(aa, bb, xx) > 0.0);
+    }
+  }
+
   int f = GetFarthest(aa, bb, vertices, pts);
   const vec2 &ff = vertices[f];
   if (VERBOSE) printf("Farthest is %d (%s)\n", f, VecString(ff).c_str());
@@ -420,14 +428,12 @@ std::vector<int> QuickHull(const std::vector<vec2> &vertices) {
   hull.push_back(a);
 
   // Add hull points from the left (top)
-  // printf("Outer call (top):\n");
   QuickHullRec(vertices, left, a, b, &hull);
 
   // Add our rightmost point
   hull.push_back(b);
 
   // Add hull points from the right (bottom)
-  // printf("Outer call (bottom):\n");
   QuickHullRec(vertices, right, b, a, &hull);
 
   return hull;
