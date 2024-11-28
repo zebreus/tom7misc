@@ -36,9 +36,11 @@ void MovRecorder::SetMaxQueueSize(int max_size) {
 void MovRecorder::AddFrame(ImageRGBA img) {
   {
     std::unique_lock ml(m);
-    cv.wait(ml, [this]() {
-        return frame_queue.size() < max_queue_size;
-      });
+    if (max_queue_size > 0) {
+      cv.wait(ml, [this]() {
+          return frame_queue.size() < max_queue_size;
+        });
+    }
 
     frame_queue.emplace_back(std::move(img));
   }
