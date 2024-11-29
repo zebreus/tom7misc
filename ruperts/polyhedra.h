@@ -156,6 +156,7 @@ Polyhedron Dodecahedron();
 Polyhedron Icosahedron();
 
 // Archimedean
+Polyhedron TruncatedTetrahedron();
 Polyhedron SnubCube();
 Polyhedron Cuboctahedron();
 Polyhedron Rhombicuboctahedron();

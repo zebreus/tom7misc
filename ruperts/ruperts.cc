@@ -947,7 +947,10 @@ static void Solve4(const Polyhedron &polyhedron) {
 
           const Mesh2D sinner = Shadow(Rotate(polyhedron, initial_inner_frame));
           const std::vector<vec2> inner_hull_pts = [&]() {
+              // status.Printf("[%d] Get convex hull.\n", thread_idx);
               const std::vector<int> inner_hull = ConvexHull(sinner.vertices);
+              // status.Printf("[%d] Done: Size %d.\n",
+              //            thread_idx, inner_hull.size());
               std::vector<vec2> v;
               v.reserve(inner_hull.size());
               for (int p : inner_hull) {
@@ -995,9 +998,21 @@ static void Solve4(const Polyhedron &polyhedron) {
               rendering.DarkenBG();
 
               rendering.RenderMesh(sinner);
+              std::vector<int> hull = ConvexHull(sinner.vertices);
+              status.Printf("Hull points: %d\n", (int)hull.size());
+              rendering.RenderHull(sinner, hull, 0x000000AA);
               rendering.RenderBadPoints(sinner, souter);
-
               rendering.img.Save(filename);
+
+              if (hull.size() < 3) {
+                printf("\n\n\n\n");
+                for (const vec2 &v : sinner.vertices) {
+                  printf("vec2{%.17g, %.17g},\n",
+                         v.x, v.y);
+                }
+                LOG(FATAL) << "INVALID HULL!";
+              }
+
 
               status.Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
             };

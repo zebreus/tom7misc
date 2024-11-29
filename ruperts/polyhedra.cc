@@ -25,6 +25,9 @@
 
 #include "yocto_matht.h"
 
+// XXX for debugging
+#include "rendering.h"
+
 std::string VecString(const vec3 &v) {
   return StringPrintf(
       "(" ARED("%.4f") "," AGREEN("%.4f") "," ABLUE("%.4f") ")",
@@ -202,7 +205,15 @@ double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt) {
 
 std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
   constexpr bool VERBOSE = false;
+  constexpr bool SELF_CHECK = true;
   CHECK(vertices.size() > 2);
+
+  // Explicitly mark vertices as used to avoid reusing them. This may
+  // not actually be necessary (I think the real issue was that I used
+  // to always start with "next" being node cur+1, even if that was an
+  // invalid choice) but it is pretty cheap and colinear/coincident
+  // points can cause tests to behave in countergeometric ways.
+  std::vector<bool> used(vertices.size(), false);
 
   // Find the starting point. This must be a point on
   // the convex hull. The leftmost bottommost point is
@@ -229,16 +240,75 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
 
   const vec2 &vstart = vertices[start];
 
+  if (VERBOSE) {
+    printf("\n");
+  }
+
   std::vector<int> hull;
   int cur = start;
   do {
+    if (VERBOSE) {
+      printf("Loop with cur=%s%d" ANSI_RESET "\n",
+             ANSI::ForegroundRGB32(Rendering::Color(cur)).c_str(),
+             cur);
+    }
+
+    if (SELF_CHECK) {
+      for (int a : hull) {
+        if (a == cur) {
+          fprintf(stderr, "About to add duplicate point %d to hull.\n"
+                  "Points so far:\n",
+                  cur);
+          for (int i = 0; i < (int)vertices.size(); i++) {
+            fprintf(stderr, "%d. vec2{%.17g, %.17g}\n",
+                    i, vertices[i].x, vertices[i].y);
+          }
+          fprintf(stderr, "Hull so far:");
+          for (int x : hull) {
+            fprintf(stderr, " %d%s", x,
+                    used[x] ? " used" : ARED(" not used??"));
+          }
+          fprintf(stderr, "\n");
+          LOG(FATAL) << "Infinite loop!";
+        }
+      }
+    }
+
     hull.push_back(cur);
+    used[cur] = true;
 
     // We consider every other point, finding the one with
     // the smallest angle from the current point.
-    int next = (cur + 1) % vertices.size();
+
+    // We need to choose a point that's not already used (unless
+    // we're closing the loop). So start is a good choice, except
+    // on the first step (because then the start-start edge is
+    // degenerate).
+    // int next = (cur == start) ? ((cur + 1) % vertices.size()) :
+    // start;
+    int next;
+
+    // First, find any point that's unused and not exactly the same as
+    // the current point.
     for (int i = 0; i < vertices.size(); i++) {
-      if (i != cur && i != next) {
+      if (i != cur && !used[i] && vertices[i] != vertices[cur]) {
+        next = i;
+        goto search;
+      }
+    }
+
+    // We exhausted all of the nodes, so we must be done.
+    return hull;
+
+    search:;
+
+    for (int i = 0; i < vertices.size(); i++) {
+      if (VERBOSE) {
+        printf("Inner loop w/ next=%s%d" ANSI_RESET ".\n",
+               ANSI::ForegroundRGB32(Rendering::Color(next)).c_str(),
+               next);
+      }
+      if (!used[i] && i != next) {
         const vec2 &vcur = vertices[cur];
         const vec2 &vnext = vertices[next];
         const vec2 &vi = vertices[i];
@@ -307,7 +377,8 @@ static int GetFarthest(const vec2 &a, const vec2 &b, const std::vector<vec2> &v,
 // The z-value of the cross product of segments
 // (a, b) and (a, c). Positive means c is ccw (to the left)
 // from (a, b), negative cw. Zero means it's colinear.
-static inline double CounterClockwise(const vec2 &a, const vec2 &b, const vec2 &c) {
+static inline double CounterClockwise(
+    const vec2 &a, const vec2 &b, const vec2 &c) {
   return yocto::cross(b - a, c - a);
 }
 
@@ -1064,6 +1135,39 @@ Polyhedron Rhombicosidodecahedron() {
   }
 
   CHECK(vertices.size() == 60) << vertices.size();
+  return ConvexPolyhedronFromVertices(std::move(vertices));
+}
+
+Polyhedron TruncatedTetrahedron() {
+  constexpr double sqrt2 = std::numbers::sqrt2;
+
+  std::vector<vec3> vertices;
+  constexpr double a = 3.0 * sqrt2 / 4.0;
+  constexpr double b = sqrt2 / 4.0;
+
+  for (uint8_t bits = 0b000; bits < 0b1000; bits++) {
+    double s1 = (bits & 0b100) ? -1 : +1;
+    double s2 = (bits & 0b010) ? -1 : +1;
+    double s3 = (bits & 0b001) ? -1 : +1;
+
+    // All permutations of (a, b, b), with even number of minus
+    // signs.
+    if ((std::popcount<uint8_t>(bits) & 1) == 0) {
+      vertices.emplace_back(s1 * a, s2 * b, s3 * b);
+      vertices.emplace_back(s3 * b, s1 * a, s2 * b);
+      vertices.emplace_back(s2 * b, s3 * b, s1 * a);
+
+      // These will duplicate the above if both occurrences of b
+      // have the same sign, so skip those.
+      if (s2 != s3) {
+        vertices.emplace_back(s1 * a, s2 * b, s3 * b);
+        vertices.emplace_back(s3 * b, s1 * a, s2 * b);
+        vertices.emplace_back(s2 * b, s3 * b, s1 * a);
+      }
+    }
+  }
+
+  CHECK(vertices.size() == 12);
   return ConvexPolyhedronFromVertices(std::move(vertices));
 }
 
