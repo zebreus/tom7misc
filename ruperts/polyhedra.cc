@@ -994,6 +994,19 @@ Polyhedron TriakisTetrahedron() {
   return ConvexPolyhedronFromVertices(std::move(vertices));
 }
 
+Polyhedron Cuboctahedron() {
+  std::vector<vec3> vertices;
+  vertices.reserve(24);
+  for (int b = 0b00; b < 0b100; b++) {
+    double s1 = (b & 0b10) ? -1 : +1;
+    double s2 = (b & 0b01) ? -1 : +1;
+    vertices.emplace_back(s1, s2, 0.0);
+    vertices.emplace_back(s1, 0.0, s2);
+    vertices.emplace_back(0.0, s1, s2);
+  }
+  return ConvexPolyhedronFromVertices(std::move(vertices));
+}
+
 Polyhedron Rhombicuboctahedron() {
   constexpr double u = 1.0 + std::numbers::sqrt2;
   std::vector<vec3> vertices;
@@ -1010,4 +1023,55 @@ Polyhedron Rhombicuboctahedron() {
 
   // printf("Get faces..\n");
   return ConvexPolyhedronFromVertices(std::move(vertices));
+}
+
+static void AddEvenPermutations(double a, double b, double c,
+                                std::vector<vec3> *vertices) {
+  // (a, b, c) - even
+  // (b, c, a) - even
+  // (c, a, b) - even
+
+  vertices->emplace_back(a, b, c);
+
+  if (a == b && b == c) return;
+
+  vertices->emplace_back(b, c, a);
+  vertices->emplace_back(c, a, b);
+}
+
+Polyhedron Rhombicosidodecahedron() {
+  constexpr double phi = std::numbers::phi;
+  constexpr double phi_squared = phi * phi;
+  constexpr double phi_cubed = phi_squared * phi;
+
+  std::vector<vec3> vertices;
+  for (int b = 0b000; b < 0b1000; b++) {
+    double s1 = (b & 0b100) ? -1 : +1;
+    double s2 = (b & 0b010) ? -1 : +1;
+    double s3 = (b & 0b001) ? -1 : +1;
+
+    // (±1, ±1, ±φ^3),
+    // (±φ^2, ±φ, ±2φ),
+    AddEvenPermutations(s1, s2, s3 * phi_cubed, &vertices);
+    AddEvenPermutations(s1 * phi_squared, s2 * phi, s3 * 2.0 * phi, &vertices);
+  }
+
+  for (int b = 0b00; b < 0b100; b++) {
+    double s1 = (b & 0b10) ? -1 : +1;
+    double s2 = (b & 0b01) ? -1 : +1;
+    // (±(2+φ), 0, ±φ^2),
+    AddEvenPermutations(s1 * (2.0 + phi), 0.0, s2 * phi_squared, &vertices);
+  }
+
+  CHECK(vertices.size() == 60) << vertices.size();
+  return ConvexPolyhedronFromVertices(std::move(vertices));
+}
+
+Polyhedron SnubDodecahedron() {
+  // Real root of x^3 + 2x^2 - phi^2.
+  constexpr double xi = 0.943151259243881817126719892570364159406650386;
+
+  // Iterate some rotations...
+
+  LOG(FATAL) << "Unimplemented";
 }

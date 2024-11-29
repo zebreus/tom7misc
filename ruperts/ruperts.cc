@@ -7,7 +7,6 @@
 #include <cstdlib>
 #include <ctime>
 #include <functional>
-#include <initializer_list>
 #include <mutex>
 #include <numbers>
 #include <string>
@@ -76,6 +75,7 @@ static void AnimateMesh(const Polyhedron &poly) {
   }
 }
 
+[[maybe_unused]]
 static void AnimateHull() {
   ArcFour rc("animate");
 
@@ -838,6 +838,7 @@ static void Solve3(const Polyhedron &polyhedron) {
       });
 }
 
+[[maybe_unused]]
 static quat4 AlignFaceNormalWithX(const std::vector<vec3> &vertices,
                                   const std::vector<int> &face) {
   if (face.size() < 3) return quat4{0.0, 0.0, 0.0, 1.0};
@@ -857,9 +858,9 @@ static quat4 AlignFaceNormalWithX(const std::vector<vec3> &vertices,
 // that face1 and face2 are both parallel to the z axis. face1 is made
 // perpendicular to the x axis, and then face2 perpendicular to the xy
 // plane.
-quat4 MakeTwoFacesParallelToZ(const std::vector<vec3> &vertices,
-                              const std::vector<int> &face1,
-                              const std::vector<int> &face2) {
+static quat4 MakeTwoFacesParallelToZ(const std::vector<vec3> &vertices,
+                                     const std::vector<int> &face1,
+                                     const std::vector<int> &face2) {
   if (face1.size() < 3 || face1.size() < 3)
     return quat4{0.0, 0.0, 0.0, 1.0};
 
@@ -943,30 +944,41 @@ static void Solve4(const Polyhedron &polyhedron) {
           const frame3 initial_inner_frame =
             yocto::rotation_frame(initial_inner_rot);
 
+
+          const Mesh2D sinner = Shadow(Rotate(polyhedron, initial_inner_frame));
+          const std::vector<vec2> inner_hull_pts = [&]() {
+              const std::vector<int> inner_hull = ConvexHull(sinner.vertices);
+              std::vector<vec2> v;
+              v.reserve(inner_hull.size());
+              for (int p : inner_hull) {
+                v.push_back(sinner.vertices[p]);
+              }
+              return v;
+            }();
+
           // Get the frames from the appropriate positions in the
           // argument.
 
           auto OuterFrame = [&initial_outer_rot](
               const std::array<double, D> &args) {
-              const auto &[o0, o1, o2, o3, dx_, dy_] = args;
+              const auto &[o0, o1, o2, o3, dx, dy] = args;
               quat4 tweaked_rot = normalize(quat4{
                   .x = initial_outer_rot.x + o0,
                   .y = initial_outer_rot.y + o1,
                   .z = initial_outer_rot.z + o2,
                   .w = initial_outer_rot.w + o3,
                 });
-              return yocto::rotation_frame(tweaked_rot);
+              frame3 translate = yocto::translation_frame(
+                  vec3{.x = dx, .y = dy, .z = 0.0});
+              return yocto::rotation_frame(tweaked_rot) * translate;
             };
 
           // PERF: The inner polyhedron is not rotated, so we should
           // just compute the convex hull once. We could equivalently
           // just be applying the translation to the outer polyhedron.
           auto InnerFrame = [&initial_inner_frame](
-              const std::array<double, D> &args) {
-              const auto &[o0_, o1_, o2_, o3_, dx, dy] = args;
-              frame3 translate = yocto::translation_frame(
-                  vec3{.x = dx, .y = dy, .z = 0.0});
-              return initial_inner_frame * translate;
+              const std::array<double, D> &args) -> const frame3 & {
+              return initial_inner_frame;
             };
 
           auto WriteImage = [&](const std::string &filename,
@@ -1008,17 +1020,15 @@ static void Solve4(const Polyhedron &polyhedron) {
             };
 
           std::function<double(const std::array<double, D> &)> Loss =
-            [&polyhedron, &OuterFrame, &InnerFrame](
+            [&polyhedron, &OuterFrame, &inner_hull_pts](
                 const std::array<double, D> &args) {
               attempts++;
               frame3 outer_frame = OuterFrame(args);
-              frame3 inner_frame = InnerFrame(args);
               Mesh2D souter = Shadow(Rotate(polyhedron, outer_frame));
-              Mesh2D sinner = Shadow(Rotate(polyhedron, inner_frame));
 
               // Does every vertex in inner fall inside the outer shadow?
               double error = 0.0;
-              for (const vec2 &iv : sinner.vertices) {
+              for (const vec2 &iv : inner_hull_pts) {
                 if (!InMesh(souter, iv)) {
                   // slow :(
                   error += DistanceToMesh(souter, iv);
@@ -1030,12 +1040,8 @@ static void Solve4(const Polyhedron &polyhedron) {
 
           constexpr double Q = 0.25;
 
-          const std::array<double, D> lb =
-            {-Q, -Q, -Q, -Q,
-             -0.5, -0.5};
-          const std::array<double, D> ub =
-            {+Q, +Q, +Q, +Q,
-             +0.5, +0.5};
+          const std::array<double, D> lb = {-Q, -Q, -Q, -Q, -0.5, -0.5};
+          const std::array<double, D> ub = {+Q, +Q, +Q, +Q, +0.5, +0.5};
           const double prep_sec = prep_timer.Seconds();
 
           Timer opt_timer;
@@ -1117,7 +1123,7 @@ int main(int argc, char **argv) {
   // AnimateHull();
 
   // Polyhedron target = SnubCube();
-  Polyhedron target = Rhombicuboctahedron();
+  Polyhedron target = Rhombicosidodecahedron();
 
   // (void)SnubCube();
   Visualize(target);

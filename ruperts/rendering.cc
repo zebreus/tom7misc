@@ -30,7 +30,7 @@ using mat4 = yocto::mat<double, 4>;
 using quat4 = yocto::quat<double, 4>;
 using frame3 = yocto::frame<double, 3>;
 
-constexpr double MESH_SCALE = 0.20;
+constexpr double MESH_SCALE = 0.10; // was 0.2
 
 static std::vector<uint32_t> COLORS = {
   0xFF0000FF,
@@ -57,12 +57,12 @@ static std::vector<uint32_t> COLORS = {
   0x003333FF,
   0x000033FF,
   0x330033FF,
-  0x77333377,
-  0x77773377,
-  0x33773377,
-  0x33777777,
-  0x33337777,
-  0x77337777,
+  0x773333FF,
+  0x777733FF,
+  0x337733FF,
+  0x337777FF,
+  0x333377FF,
+  0x773377FF,
   0xFFAAAAFF,
   0xFFFFAAFF,
   0xAAFFAAFF,
@@ -75,6 +75,30 @@ static std::vector<uint32_t> COLORS = {
   0x33FFFFFF,
   0x3333FFFF,
   0xFF33FFFF,
+  0x773333FF,
+  0x77FF33FF,
+  0x3377FFFF,
+  0x7733FFFF,
+  0xFF7733FF,
+  0x33FF77FF,
+  0x3333FFFF,
+  0xFF3377FF,
+  0x77AAAAFF,
+  0x77FFAAFF,
+  0xAA77FFFF,
+  0x77AAFFFF,
+  0xFF77AAFF,
+  0xAAFF77FF,
+  0xAAAAFFFF,
+  0xFFAA77FF,
+  0x33AAAAFF,
+  0x33FFAAFF,
+  0xAA33FFFF,
+  0x33AAFFFF,
+  0xFF33AAFF,
+  0xAAFF33FF,
+  0xAAAAFFFF,
+  0xFFAA33FF,
 };
 
 Rendering::Rendering(int width_in, int height_in) :

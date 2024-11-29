@@ -2,7 +2,6 @@
 #ifndef _RUPERTS_POLYHEDRA_H
 #define _RUPERTS_POLYHEDRA_H
 
-#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -158,7 +157,9 @@ Polyhedron Icosahedron();
 
 // Archimedean
 Polyhedron SnubCube();
+Polyhedron Cuboctahedron();
 Polyhedron Rhombicuboctahedron();
+Polyhedron Rhombicosidodecahedron();
 
 // Catalan
 Polyhedron TriakisTetrahedron();
@@ -191,6 +192,6 @@ inline bool InHull(const Mesh2D &mesh, const std::vector<int> &hull,
   return PointInPolygon(pt, mesh.vertices, hull);
 }
 
-std::pair <int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly);
+std::pair<int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly);
 
 #endif
