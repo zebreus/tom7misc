@@ -361,7 +361,7 @@ struct Optimizer {
         for (const auto &[arg, actual_score, ret_] : results) {
           const auto &[int_args, double_args] = arg;
           double computed_score = 0.0;
-          for (int i = 0; i < features.size(); i++) {
+          for (int i = 0; i < (int)features.size(); i++) {
             const Feature &f = features[i];
             const double coeff = coeffs[i];
             switch (f.type) {

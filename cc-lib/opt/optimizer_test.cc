@@ -81,8 +81,8 @@ static void ExactIntTest() {
       const auto &[intargs, doubles_] = arg;
       double sqdiff = 0.0;
       CHECK(intargs.size() == ints.size());
-      for (int i = 0; i < intargs.size(); i++) {
-        double d = intargs[i] - ints[i];
+      for (int i = 0; i < (int)intargs.size(); i++) {
+        double d = (double)intargs[i] - (double)ints[i];
         sqdiff += (d * d);
       }
       return std::make_pair(sqdiff, std::make_optional(0));
@@ -91,7 +91,7 @@ static void ExactIntTest() {
   ExactIntOptimizer optimizer(OptimizeMe);
 
   array<pair<int32_t, int32_t>, ints.size()> int_bounds;
-  for (int i = 0; i < ints.size(); i++) {
+  for (int i = 0; i < (int)ints.size(); i++) {
     int_bounds[i] = make_pair(-0x7FFFFFFE, +0x7FFFFFFE);
   }
 
@@ -105,11 +105,11 @@ static void ExactIntTest() {
   CHECK(bestints.size() == ints.size());
   if (false) {
     printf("Score: %.4f\n", score);
-    for (int i = 0; i < bestints.size(); i++) {
+    for (int i = 0; i < (int)bestints.size(); i++) {
       printf("%d. %d\n", i, bestints[i]);
     }
   }
-  for (int i = 0; i < bestints.size(); i++) {
+  for (int i = 0; i < (int)bestints.size(); i++) {
     CHECK(bestints[i] == ints[i]) << i << ". Got "
                                   << bestints[i]
                                   << " want "

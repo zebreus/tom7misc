@@ -53,7 +53,7 @@ static std::pair<double, bool> F1(const std::vector<double> &args) {
   for (double d : args) sum += abs(d);
 
   double neighbors = 0.0;
-  for (int i = 1; i < args.size(); i++) {
+  for (int i = 1; i < (int)args.size(); i++) {
     double d = args[i] - args[i - 1];
     neighbors += sqrt(d * d);
   }
@@ -89,7 +89,7 @@ static void SelfOptimize(int n) {
         // is feasible for this problem.
         std::vector<double> example(n);
         for (int i = 0; i < n; i++) {
-          example[i] = (((i ^ 97 + n) * 31337) % 200) - 100;
+          example[i] = (((i ^ (97 + n)) * 31337) % 200) - 100;
         }
         opt.Sample(example);
 
@@ -107,7 +107,7 @@ static void SelfOptimize(int n) {
         const auto &v = besto.value().first;
 
         // Infeasible if it didn't solve it!
-        for (int i = 0; i < v.size(); i++) {
+        for (int i = 0; i < (int)v.size(); i++) {
           double d = v[i];
           if (!(d >= -0.01 && d <= 0.01))
             return 10000000000.0;
@@ -128,7 +128,7 @@ static void OptF1(int n) {
   Timer run_timer;
   using Optimizer = LargeOptimizer<CACHE>;
   Optimizer opt([n](const std::vector<double> v) {
-      CHECK(v.size() == n);
+      CHECK((int)v.size() == n);
       return F1(v);
     }, n, 0);
 
@@ -136,7 +136,7 @@ static void OptF1(int n) {
   // is feasible for this problem.
   std::vector<double> example(n);
   for (int i = 0; i < n; i++) {
-    example[i] = (((i ^ 97 + n) * 31337) % 200) - 100;
+    example[i] = (((i ^ (97 + n)) * 31337) % 200) - 100;
   }
   opt.Sample(example);
 
@@ -148,9 +148,9 @@ static void OptF1(int n) {
   auto besto = opt.GetBest();
   CHECK(besto.has_value());
   const auto &v = besto.value().first;
-  CHECK(v.size() == n) << v.size() << " vs " << n;
+  CHECK((int)v.size() == n) << v.size() << " vs " << n;
   printf("Best (score %.3f):", besto.value().second);
-  for (int i = 0; i < v.size(); i++) {
+  for (int i = 0; i < (int)v.size(); i++) {
     if (i < 20) {
       double d = v[i];
       printf(" %.3f", d);
@@ -161,7 +161,7 @@ static void OptF1(int n) {
   }
   printf("\n");
 
-  for (int i = 0; i < v.size(); i++) {
+  for (int i = 0; i < (int)v.size(); i++) {
     double d = v[i];
     CHECK(d >= -0.01 && d <= 0.01) << "#" << i << ": " << d;
   }
@@ -235,7 +235,7 @@ static void OptDoubles() {
 
 std::pair<double, bool> LineFunction(const std::vector<double> &v) {
   double err = 0.0;
-  for (int i = 0; i < v.size(); i++) {
+  for (int i = 0; i < (int)v.size(); i++) {
     double diff = v[i] - (double)i;
     err += diff * diff;
   }

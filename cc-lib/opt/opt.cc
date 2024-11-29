@@ -14,12 +14,15 @@
 // as I believe was intended (otherwise it generates samples
 // outside the range). See: github.com/avaneev/biteopt/issues/6
 //
+// Fixed some memory leaks (using std::vector instead of explicit
+// init/delete buffers).
+//
 // Fixed some warnings (const cast, etc.)
 //
 // At the bottom are implementations of my wrapper in opt.h.
 
 
-//$ nocpp
+static constexpr bool VERBOSE = false;
 
 /**
  * @file biteaux.h
@@ -58,6 +61,8 @@
 #include <stdint.h>
 #include <math.h>
 #include <string.h>
+#include <cstdio>
+#include <vector>
 
 /**
  * Class that implements a pseudo-random number generator (PRNG). The default
@@ -1284,20 +1289,13 @@ private:
   }
 
 public:
-  CBiteOptBase()
-    : MinValues( NULL )
-    , MaxValues( NULL )
-    , DiffValues( NULL )
-    , DiffValuesI( NULL )
-    , BestValues( NULL )
-    , NewValues( NULL )
-    , HistCount( 0 )
+  CBiteOptBase() : HistCount( 0 )
   {
   }
 
   virtual const double* getBestParams() const
   {
-    return( BestValues );
+    return BestValues.data();
   }
 
   virtual double getBestCost() const
@@ -1346,20 +1344,20 @@ protected:
   using CBiteOptParPops< ptype > :: NeedCentUpdate;
   using CBiteOptParPops< ptype > :: resetCurPopPos;
 
-  double* MinValues; ///< Minimal parameter values.
+  std::vector<double> MinValues; ///< Minimal parameter values.
     ///<
-  double* MaxValues; ///< Maximal parameter values.
+  std::vector<double> MaxValues; ///< Maximal parameter values.
     ///<
-  double* DiffValues; ///< Difference between maximal and minimal parameter
+  std::vector<double> DiffValues; ///< Difference between maximal and minimal parameter
     ///< values.
     ///<
-  double* DiffValuesI; ///< Inverse DiffValues.
+  std::vector<double> DiffValuesI; ///< Inverse DiffValues.
     ///<
-  double* BestValues; ///< Best parameter vector.
+  std::vector<double> BestValues; ///< Best parameter vector.
     ///<
   double BestCost; ///< Cost of the best parameter vector.
     ///<
-  double* NewValues; ///< Temporary new parameter buffer, with real values.
+  std::vector<double> NewValues; ///< Temporary new parameter buffer, with real values.
     ///<
   int StallCount; ///< The number of iterations without improvement.
     ///<
@@ -1390,24 +1388,17 @@ protected:
   {
     CBiteOptParPops< ptype > :: initBuffers( aParamCount, aPopSize );
 
-    MinValues = new double[ ParamCount ];
-    MaxValues = new double[ ParamCount ];
-    DiffValues = new double[ ParamCount ];
-    DiffValuesI = new double[ ParamCount ];
-    BestValues = new double[ ParamCount ];
-    NewValues = new double[ ParamCount ];
+    MinValues.resize(ParamCount);
+    MaxValues.resize(ParamCount);
+    DiffValues.resize(ParamCount);
+    DiffValuesI.resize(ParamCount);
+    BestValues.resize(ParamCount);
+    NewValues.resize(ParamCount);
   }
 
   virtual void deleteBuffers()
   {
     CBiteOptParPops< ptype > :: deleteBuffers();
-
-    delete[] MinValues;
-    delete[] MaxValues;
-    delete[] DiffValues;
-    delete[] DiffValuesI;
-    delete[] BestValues;
-    delete[] NewValues;
   }
 
   /**
@@ -1482,7 +1473,7 @@ protected:
     {
       BestCost = NewCost;
 
-      memcpy( BestValues, UpdValues,
+      memcpy( BestValues.data(), UpdValues,
         ParamCount * sizeof( BestValues[ 0 ]));
     }
   }
@@ -1661,9 +1652,16 @@ protected:
 class CNMSeqOpt : public CBiteOptBase< double >
 {
 public:
-  CNMSeqOpt()
-    : x2( NULL )
-  {
+  CNMSeqOpt() {
+    if (VERBOSE) {
+      printf("create cnmseqopt() at %p\n", this);
+    }
+  }
+
+  ~CNMSeqOpt() override {
+    if (VERBOSE) {
+      printf("delete ~cnmseqopt() at %p\n", this);
+    }
   }
 
   /**
@@ -1688,6 +1686,9 @@ public:
     M = aPopSize;
     M1m = 1.0 / ( M - 1 );
 
+    if (VERBOSE) {
+      printf("cnms init from updateDims\n");
+    }
     initBuffers( N, M );
   }
 
@@ -1705,8 +1706,8 @@ public:
   void init( CBiteRnd& rnd, const double* const InitParams = NULL,
     const double InitRadius = 1.0 )
   {
-    getMinValues( MinValues );
-    getMaxValues( MaxValues );
+    getMinValues( MinValues.data() );
+    getMaxValues( MaxValues.data() );
 
     resetCommonVars( rnd );
 
@@ -1848,12 +1849,12 @@ public:
           x2[ i ] = x0[ i ] + gamma * ( x0[ i ] - xH[ i ]);
         }
 
-        const double y2 = eval( rnd, x2, OutCost, OutValues );
+        const double y2 = eval( rnd, x2.data(), OutCost, OutValues );
         xlo = xhi;
 
         if( y2 < y1 )
         {
-          copy( x2, y2 );
+          copy( x2.data(), y2 );
         }
         else
         {
@@ -1871,7 +1872,7 @@ public:
           x2[ i ] = x0[ i ] + rho * ( x0[ i ] - xH[ i ]);
         }
 
-        const double y2 = eval( rnd, x2, OutCost, OutValues );
+        const double y2 = eval( rnd, x2.data(), OutCost, OutValues );
 
         if( y2 < y[ xhi ])
         {
@@ -1880,7 +1881,7 @@ public:
             xlo = xhi;
           }
 
-          copy( x2, y2 );
+          copy( x2.data(), y2 );
           State = stReflection;
           StallCount = 0;
         }
@@ -1955,7 +1956,7 @@ private:
     ///<
   double y1; ///< Cost of temporary parameter vector 1.
     ///<
-  double* x2; ///< Temporary parameter vector 2.
+  std::vector<double> x2; ///< Temporary parameter vector 2.
     ///<
   double* rx; ///< Lowest cost parameter vector used during reduction.
     ///<
@@ -1987,14 +1988,19 @@ private:
     y = PopCosts;
     x0 = CentParams;
     x1 = TmpParams;
-    x2 = new double[ N ];
+    x2.resize(N);
+    if (VERBOSE) {
+      printf("init buffers cnmseqopt (%p)\n", this);
+    }
   }
 
   virtual void deleteBuffers()
   {
     CBiteOptBase :: deleteBuffers();
 
-    delete[] x2;
+    if (VERBOSE) {
+      printf("delete buffers cnmseqopt (%p)\n", this);
+    }
   }
 
   /**
@@ -2115,7 +2121,7 @@ private:
       NewValues[ i ] = wrapParamReal( rnd, p[ i ], i );
     }
 
-    const double cost = optcost( NewValues );
+    const double cost = optcost( NewValues.data() );
 
     if( OutCost != NULL )
     {
@@ -2124,10 +2130,10 @@ private:
 
     if( OutValues != NULL )
     {
-      memcpy( OutValues, NewValues, N * sizeof( OutValues[ 0 ]));
+      memcpy( OutValues, NewValues.data(), N * sizeof( OutValues[ 0 ]));
     }
 
-    updateBestCost( cost, NewValues );
+    updateBestCost( cost, NewValues.data() );
 
     return( cost );
   }
@@ -2183,10 +2189,7 @@ public:
     ///< at low dimensions. Usually, a fixed value.
     ///<
 
-  CSpherOpt()
-    : WPopCent( NULL )
-    , WPopRad( NULL )
-  {
+  CSpherOpt() {
     Jitter = 2.5;
 
     addHist( CentPowHist, "CentPowHist" );
@@ -2230,8 +2233,8 @@ public:
   void init( CBiteRnd& rnd, const double* const InitParams = NULL,
     const double InitRadius = 1.0 )
   {
-    getMinValues( MinValues );
-    getMaxValues( MaxValues );
+    getMinValues( MinValues.data() );
+    getMaxValues( MaxValues.data() );
 
     resetCommonVars( rnd );
 
@@ -2329,7 +2332,7 @@ public:
       }
     }
 
-    const double NewCost = optcost( NewValues );
+    const double NewCost = optcost( NewValues.data() );
 
     if( OutCost != NULL )
     {
@@ -2338,11 +2341,11 @@ public:
 
     if( OutValues != NULL )
     {
-      memcpy( OutValues, NewValues,
+      memcpy( OutValues, NewValues.data(),
         ParamCount * sizeof( OutValues[ 0 ]));
     }
 
-    updateBestCost( NewCost, NewValues );
+    updateBestCost( NewCost, NewValues.data() );
 
     if( CurPopPos < CurPopSize )
     {
@@ -2394,9 +2397,9 @@ public:
   }
 
 protected:
-  double* WPopCent; ///< Weighting coefficients for centroid.
+  std::vector<double> WPopCent; ///< Weighting coefficients for centroid.
     ///<
-  double* WPopRad; ///< Weighting coefficients for radius.
+  std::vector<double> WPopRad; ///< Weighting coefficients for radius.
     ///<
   double JitMult; ///< Jitter multiplier.
     ///<
@@ -2424,16 +2427,13 @@ protected:
   {
     CBiteOptBase< double > :: initBuffers( aParamCount, aPopSize );
 
-    WPopCent = new double[ aPopSize ];
-    WPopRad = new double[ aPopSize ];
+    WPopCent.resize(aPopSize);
+    WPopRad.resize(aPopSize);
   }
 
   virtual void deleteBuffers()
   {
     CBiteOptBase< double > :: deleteBuffers();
-
-    delete[] WPopCent;
-    delete[] WPopRad;
   }
 
   /**
@@ -2475,7 +2475,7 @@ protected:
 
     const double* ip = PopParams[ 0 ];
     double* const cp = CentParams;
-    const double* const wc = WPopCent;
+    const double* const wc = WPopCent.data();
     double w = wc[ 0 ] * s1;
 
     for( i = 0; i < ParamCount; i++ )
@@ -2496,7 +2496,7 @@ protected:
       }
     }
 
-    const double* const rc = WPopRad;
+    const double* const rc = WPopRad.data();
     Radius = 0.0;
 
     for( j = 0; j < CurPopSize; j++ )
@@ -2607,6 +2607,10 @@ public:
     addHist( *ParOpt.getHists()[ 0 ], "ParOpt.CentPowHist" );
     addHist( *ParOpt.getHists()[ 1 ], "ParOpt.RadPowHist" );
     addHist( *ParOpt.getHists()[ 2 ], "ParOpt.EvalFacHist" );
+
+    if (VERBOSE) {
+      printf("Create CBiteOpt.\n");
+    }
   }
 
   /**
@@ -2654,8 +2658,8 @@ public:
   void init( CBiteRnd& rnd, const double* const InitParams = NULL,
     const double InitRadius = 1.0 )
   {
-    getMinValues( MinValues );
-    getMaxValues( MaxValues );
+    getMinValues( MinValues.data() );
+    getMaxValues( MaxValues.data() );
 
     resetCommonVars( rnd );
 
@@ -2745,9 +2749,9 @@ public:
         NewValues[i] = getRealValue(p, i);
       }
 
-      const double NewCost = optcost( NewValues );
+      const double NewCost = optcost( NewValues.data() );
       sortPop( NewCost, CurPopPos );
-      updateBestCost( NewCost, NewValues );
+      updateBestCost( NewCost, NewValues.data() );
 
       CurPopPos++;
 
@@ -2808,7 +2812,7 @@ public:
       }
 
       if (UseParOpt == 0) {
-        const int sc = ParOpt.optimize(rnd, &NewCost, NewValues);
+        const int sc = ParOpt.optimize(rnd, &NewCost, NewValues.data() );
 
         if (sc > 0) {
           UseParOpt = 1; // On stall, select optimizer 2.
@@ -2821,7 +2825,7 @@ public:
 
         UpdPop = &ParOptPop;
       } else {
-        const int sc = ParOpt2.optimize( rnd, &NewCost, NewValues );
+        const int sc = ParOpt2.optimize( rnd, &NewCost, NewValues.data() );
 
         if (sc > 0) {
           UseParOpt = 0; // On stall, select optimizer 1.
@@ -2852,10 +2856,10 @@ public:
         NewValues[i] = getRealValue(TmpParams, i);
       }
 
-      NewCost = optcost( NewValues );
+      NewCost = optcost( NewValues.data() );
     }
 
-    updateBestCost( NewCost, NewValues );
+    updateBestCost( NewCost, NewValues.data() );
 
     if (!isAcceptedCost(NewCost)) {
       // Upper bound cost constraint check failed, reject this solution.
@@ -3522,10 +3526,16 @@ public:
     , OptCount( 0 )
     , Opts( NULL )
   {
+    if (VERBOSE) {
+      printf("Create CBiteOptDeep\n");
+    }
   }
 
   virtual ~CBiteOptDeep()
   {
+    if (VERBOSE) {
+      printf("~CBiteOptDeep()\n");
+    }
     deleteBuffers();
   }
 
@@ -3597,10 +3607,11 @@ public:
     OptCount = M;
     Opts = new CBiteOptWrap*[ OptCount ];
 
-    int i;
-
-    for( i = 0; i < OptCount; i++ )
+    for(int i = 0; i < OptCount; i++ )
     {
+      if (VERBOSE) {
+        printf("Allocate opts #%d:\n", i);
+      }
       Opts[ i ] = new CBiteOptWrap( this );
       Opts[ i ] -> updateDims( aParamCount, PopSize0 );
     }
@@ -3618,9 +3629,7 @@ public:
   void init( CBiteRnd& rnd, const double* const InitParams = NULL,
     const double InitRadius = 1.0 )
   {
-    int i;
-
-    for( i = 0; i < OptCount; i++ )
+    for(int i = 0; i < OptCount; i++ )
     {
       Opts[ i ] -> init( rnd, InitParams, InitRadius );
     }
@@ -3740,10 +3749,11 @@ protected:
   {
     if( Opts != NULL )
     {
-      int i;
-
-      for( i = 0; i < OptCount; i++ )
+      for(int i = 0; i < OptCount; i++ )
       {
+        if (VERBOSE) {
+          printf("Delete opts #%d\n", i);
+        }
         delete Opts[ i ];
       }
 
@@ -3824,8 +3834,8 @@ public:
 
 inline int biteopt_minimize(
     const int N, biteopt_func f, void* data,
-  const double* lb, const double* ub, double* x, double* minf,
-  const int iter, const int M, const int attc,
+    const double* lb, const double* ub, double* x, double* minf,
+    const int iter, const int M, const int attc,
     const int stopc,
     const int random_seed)
 {

@@ -43,7 +43,10 @@ void StringAppendV(string* dst, const char* format, va_list ap) {
 
     // Restore the va_list before we use it again
     va_copy(backup_ap, ap);
+#   pragma GCC diagnostic push
+#   pragma GCC diagnostic ignored "-Wformat-truncation"
     result = vsnprintf(buf, length, format, backup_ap);
+#   pragma GCC diagnostic pop
     va_end(backup_ap);
 
     if ((result >= 0) && (result < length)) {

@@ -139,7 +139,7 @@ struct LargeOptimizer {
   struct HashArg {
     size_t operator ()(const arg_type &arg) const {
       uint64_t result = 0xCAFEBABE;
-      for (int i = 0; i < arg.size(); i++) {
+      for (int i = 0; i < (int)arg.size(); i++) {
         result *= 0x113399557799;
         // This seems to be the most standards-compliant way to get
         // the bytes of a double?
@@ -268,7 +268,7 @@ inline void LargeOptimizer<CACHE>::Run(
 
   std::vector<int> optcounts(arginfos.size(), 0);
   std::vector<int> indices(arginfos.size());
-  for (int i = 0; i < indices.size(); i++) indices[i] = i;
+  for (int i = 0; i < (int)indices.size(); i++) indices[i] = i;
 
   auto Shuffle = [&RandTo32](std::vector<int> *v) {
       if (v->size() <= 1) return;
@@ -285,7 +285,7 @@ inline void LargeOptimizer<CACHE>::Run(
       Shuffle(&indices);
       std::vector<int> subset;
       subset.reserve(size);
-      for (int i = 0; i < indices.size() && i < size; i++)
+      for (int i = 0; i < (int)indices.size() && i < size; i++)
         subset.push_back(indices[i]);
 
       // Keep track of how many times we've used them.
