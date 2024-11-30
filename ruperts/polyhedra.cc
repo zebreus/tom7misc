@@ -1188,22 +1188,55 @@ Polyhedron TruncatedTetrahedron() {
       vertices.emplace_back(s1 * a, s2 * b, s3 * b);
       vertices.emplace_back(s3 * b, s1 * a, s2 * b);
       vertices.emplace_back(s2 * b, s3 * b, s1 * a);
-
-      // These will duplicate the above if both occurrences of b
-      // have the same sign, so skip those.
-      /*
-      if (s2 != s3) {
-        vertices.emplace_back(s1 * a, s2 * b, s3 * b);
-        vertices.emplace_back(s3 * b, s1 * a, s2 * b);
-        vertices.emplace_back(s2 * b, s3 * b, s1 * a);
-      }
-      */
     }
   }
 
   CHECK(vertices.size() == 12);
   return ConvexPolyhedronFromVertices(std::move(vertices),
                                       "truncatedtetrahedron");
+}
+
+Polyhedron TruncatedCube() {
+  constexpr double inv_silver = 1.0 / (std::numbers::sqrt2 + 1.0);
+  std::vector<vec3> vertices;
+
+  for (uint8_t bits = 0b000; bits < 0b1000; bits++) {
+    double s1 = (bits & 0b100) ? -1 : +1;
+    double s2 = (bits & 0b010) ? -1 : +1;
+    double s3 = (bits & 0b001) ? -1 : +1;
+
+    vertices.emplace_back(s1 * inv_silver, s2, s3);
+    vertices.emplace_back(s1, s2 * inv_silver, s3);
+    vertices.emplace_back(s1, s2, s3 * inv_silver);
+  }
+
+  CHECK(vertices.size() == 24);
+  return ConvexPolyhedronFromVertices(std::move(vertices),
+                                      "truncatedcube");
+}
+
+Polyhedron TruncatedOctahedron() {
+  std::vector<vec3> vertices;
+
+  constexpr double a = std::numbers::sqrt2;
+  constexpr double b = std::numbers::sqrt2 * 0.5;
+
+  for (uint8_t bits = 0b00; bits < 0b100; bits++) {
+    double s1 = (bits & 0b10) ? -1 : +1;
+    double s2 = (bits & 0b01) ? -1 : +1;
+
+    vertices.emplace_back(s1 * a, s2 * b, 0.0);
+    vertices.emplace_back(s1 * a, 0.0, s2 * b);
+    vertices.emplace_back(0.0, s1 * a, s2 * b);
+
+    vertices.emplace_back(s2 * b, s1 * a, 0.0);
+    vertices.emplace_back(s2 * b, 0.0, s1 * a);
+    vertices.emplace_back(0.0, s2 * b, s1 * a);
+  }
+
+  CHECK(vertices.size() == 24);
+  return ConvexPolyhedronFromVertices(std::move(vertices),
+                                      "truncatedoctahedron");
 }
 
 Polyhedron SnubDodecahedron() {

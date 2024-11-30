@@ -197,7 +197,7 @@ static void Visualize(const Polyhedron &poly) {
       Polyhedron rpoly = Rotate(poly, frame);
 
       CHECK(PlanarityError(rpoly) < 1.0e10);
-      rendering.Render(rpoly, Rendering::Color(i));
+      rendering.RenderPerspectiveWireframe(rpoly, Rendering::Color(i));
     }
 
     rendering.Save(StringPrintf("wireframe-%s.png", poly.name));
@@ -1159,11 +1159,12 @@ int main(int argc, char **argv) {
 
   // Polyhedron target = SnubCube();
   // Polyhedron target = Rhombicosidodecahedron();
-  Polyhedron target = TruncatedTetrahedron();
+  Polyhedron target = TruncatedOctahedron();
+  // Polyhedron target = TruncatedTetrahedron();
 
   // (void)SnubCube();
   Visualize(target);
-  AnimateMesh(target);
+  // AnimateMesh(target);
 
   // Solve(Cube());
   // Solve(Dodecahedron());

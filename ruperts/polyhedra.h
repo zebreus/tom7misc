@@ -162,10 +162,12 @@ Polyhedron Icosahedron();
 
 // Archimedean
 Polyhedron TruncatedTetrahedron();
-Polyhedron SnubCube();
 Polyhedron Cuboctahedron();
+Polyhedron TruncatedCube();
+Polyhedron TruncatedOctahedron();
 Polyhedron Rhombicuboctahedron();
 Polyhedron Rhombicosidodecahedron();
+Polyhedron SnubCube();
 
 // Catalan
 Polyhedron TriakisTetrahedron();

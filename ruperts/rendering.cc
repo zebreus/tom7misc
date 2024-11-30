@@ -2,7 +2,6 @@
 #include "rendering.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -10,15 +9,12 @@
 #include <ctime>
 #include <initializer_list>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "color-util.h"
 #include "image.h"
-#include "util.h"
 
 #include "yocto_matht.h"
 #include "polyhedra.h"
@@ -109,29 +105,31 @@ Rendering::Rendering(const Polyhedron &p, int width_in, int height_in) :
   polyscale = (std::min(width, height) / dia) * FIT_SCALE;
 }
 
-void Rendering::Render(const Polyhedron &p, uint32_t color) {
-  const double scale = std::min(width, height) * 0.75;
+void Rendering::RenderPerspectiveWireframe(const Polyhedron &p,
+                                           uint32_t color) {
   constexpr double aspect = 1.0;
-  mat4 proj = yocto::perspective_mat(
+  const mat4 proj = yocto::perspective_mat(
       yocto::radians(60.0), aspect, 0.1, 100.0);
 
-  frame3 camera_frame = yocto::lookat_frame<double>(
+  const frame3 camera_frame = yocto::lookat_frame<double>(
       {0, 0, 5}, {0, 0, 0}, {0, 1, 0});
-  mat4 view_matrix = yocto::frame_to_mat(camera_frame);
-  mat4 model_view_projection = proj * view_matrix;
+  const mat4 view_matrix = yocto::frame_to_mat(camera_frame);
+  const mat4 model_view_projection = proj * view_matrix;
 
   for (const std::vector<int> &face : p.faces->v) {
     for (int i = 0; i < (int)face.size(); i++) {
-      vec3 v0 = p.vertices[face[i]];
-      vec3 v1 = p.vertices[face[(i + 1) % face.size()]];
+      const vec3 v0 = p.vertices[face[i]];
+      const vec3 v1 = p.vertices[face[(i + 1) % face.size()]];
 
-      vec2 p0 = Project(v0, model_view_projection);
-      vec2 p1 = Project(v1, model_view_projection);
+      const vec2 p0 = Project(v0, model_view_projection);
+      const vec2 p1 = Project(v1, model_view_projection);
 
-      float x0 = (p0.x * scale + width * 0.5);
-      float y0 = (p0.y * scale + height * 0.5);
-      float x1 = (p1.x * scale + width * 0.5);
-      float y1 = (p1.y * scale + height * 0.5);
+      // Note that polyscale will fit an orthographic projection,
+      // but it might not fit a perspective one.
+      const float x0 = (p0.x * polyscale + width * 0.5);
+      const float y0 = (p0.y * polyscale + height * 0.5);
+      const float x1 = (p1.x * polyscale + width * 0.5);
+      const float y1 = (p1.y * polyscale + height * 0.5);
       img.BlendThickLine32(x0, y0, x1, y1, 4.0f, color & 0xFFFFFF88);
     }
   }
@@ -145,7 +143,7 @@ void Rendering::RenderMesh(const Mesh2D &mesh) {
   // Draw filled polygons first.
   for (int sy = 0; sy < height; sy++) {
     for (int sx = 0; sx < width; sx++) {
-      vec2 pt = ToWorld(sx, sy);
+      const vec2 pt = ToWorld(sx, sy);
       for (int i = 0; i < mesh.faces->v.size(); i++) {
         if (PointInPolygon(pt, mesh.vertices, mesh.faces->v[i])) {
           img.BlendPixel32(sx, sy, COLORS[i] & 0xFFFFFF22);
@@ -215,8 +213,8 @@ void Rendering::RenderHullDistance(const Mesh2D &mesh,
                                    const std::vector<int> &hull) {
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
-      vec2 v = ToWorld(x, y);
-      double d = std::abs(DistanceToHull(mesh, hull, v));
+      const vec2 v = ToWorld(x, y);
+      const double d = std::abs(DistanceToHull(mesh, hull, v));
       img.BlendPixel32(x, y, ColorUtil::LinearGradient32(DISTANCE, d));
     }
   }
