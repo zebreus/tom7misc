@@ -8,6 +8,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -625,6 +626,48 @@ void Modeling::Expand() {
       CHECK(!state->P.Empty());
     };
 
+  // Returns (values, flags)
+  auto RotateRight = [](const State &state, const ByteSet &src) ->
+    std::pair<ByteSet, ByteSet> {
+
+      bool has_carry = false;
+      bool has_no_carry = false;
+      for (uint8_t f : state.P) {
+        if (f & C_FLAG) has_carry = true;
+        else has_no_carry = true;
+      }
+
+      CHECK(has_carry || has_no_carry);
+
+      ByteSet new_a;
+      ByteSet zncflags;
+      for (uint8_t b : src) {
+        uint8_t f = 0;
+        if (b & 1) f |= C_FLAG;
+        uint8_t v = f >> 1;
+
+        if (has_carry) new_a.Add(v | 0x80);
+        if (has_no_carry) new_a.Add(v);
+
+        // C flag is always determined from the lsb of the input value.
+        // But the negative flag and zero flags depend on the old carry.
+        if (has_carry) {
+          // Can't be zero.
+          zncflags.Add(f | N_FLAG);
+        }
+        if (has_no_carry) {
+          if (v == 0) {
+            zncflags.Add(f | Z_FLAG);
+          } else {
+            zncflags.Add(f);
+          }
+        }
+      }
+
+      return std::make_pair(new_a, zncflags);
+    };
+
+  // f returns a pair of uint8_ts: (value, flags)
   // mem[addr+offset] = f(mem[addr+offset]).first
   // flags = (flags & ~mask) | f(mem[addr+offset]).second
   auto ReadModifyWrite = [this](State *state,
@@ -955,6 +998,8 @@ void Modeling::Expand() {
             printf(ARED("Ugh") "! Multiple possible RTS destinations [sp="
                    ACYAN("%02x") "]: ", sp);
           }
+
+          int num_rejected = 0;
           // printf("\n");
           for (int hi = 0; hi < 256; hi++) {
             if (state.ram[saddr + 1].Contains(hi)) {
@@ -968,12 +1013,12 @@ void Modeling::Expand() {
                   // Only ROM code addresses.
                   if (raddr >= 0x8000) {
                     if (false) {
-                    for (int i = (int)raddr - 5; i < (int)raddr + 2; i++) {
-                      printf("%04x: %02x%s\n",
-                             i,
-                             rom.Read(i),
-                             i == raddr ? AYELLOW(" <- raddr") : "");
-                    }
+                      for (int i = (int)raddr - 5; i < (int)raddr + 2; i++) {
+                        printf("%04x: %02x%s\n",
+                               i,
+                               rom.Read(i),
+                               i == raddr ? AYELLOW(" <- raddr") : "");
+                      }
                     }
                     // JSR memory layout is
                     // 0x20 HI LO next
@@ -1005,9 +1050,14 @@ void Modeling::Expand() {
                     EnterBlock(raddr, std::move(ret_state));
                   } else {
                     if (verbose > 0) {
-                      printf(" %s%04x" ANSI_RESET,
-                             unzoned ? ANSI_DARK_RED : ANSI_RED,
-                             raddr);
+                      num_rejected++;
+                      if (num_rejected < 10) {
+                        printf(" %s%04x" ANSI_RESET,
+                               unzoned ? ANSI_DARK_RED : ANSI_RED,
+                               raddr);
+                      } else if (num_rejected == 10) {
+                        printf(" " ARED("..."));
+                      }
                     }
                   }
                 }
@@ -1272,12 +1322,6 @@ void Modeling::Expand() {
       break;
     }
 
-
-    case 0xa8: { // TAY
-      state.Y = state.A;
-      ZN(&state, state.Y);
-      break;
-    }
     case 0xa0: { // LDY #i
       uint8_t imm = Next8();
       state.Y = ByteSet::Singleton(imm);
@@ -1291,8 +1335,26 @@ void Modeling::Expand() {
       break;
     }
     case 0xa4: { // LDY d
-      uint16_t addr = Next8();
+      uint8_t addr = Next8();
       state.Y = GetByteSet(state, addr);
+      ZN(&state, state.Y);
+      break;
+    }
+    case 0xbc: { // LDY a,x
+      uint8_t addr = Next16();
+      state.Y.Clear();
+      for (uint8_t v : state.X) {
+        state.Y.AddSet(GetByteSet(state, addr + v));
+      }
+      ZN(&state, state.Y);
+      break;
+    }
+    case 0xb4: { // LDY d,x
+      uint8_t zpg_addr = Next8();
+      state.Y.Clear();
+      for (uint8_t v : state.X) {
+        state.Y.AddSet(GetByteSet(state, zpg_addr + v));
+      }
       ZN(&state, state.Y);
       break;
     }
@@ -1337,7 +1399,9 @@ void Modeling::Expand() {
     }
 
     case 0x6a: { // ROR
-      LOG(FATAL) << "Unimplemented 'ROR'";
+      ByteSet flags;
+      std::tie(state.A, flags) = RotateRight(state, state.A);
+      CombineFlags(&state, flags, N_FLAG | Z_FLAG | C_FLAG);
       break;
     }
     case 0x7e: { // ROR a,x
@@ -1408,15 +1472,44 @@ void Modeling::Expand() {
       break;
     }
 
+    case 0xa8: { // TAY
+      state.Y = state.A;
+      ZN(&state, state.Y);
+      break;
+    }
     case 0x98: { // TYA
       state.A = state.Y;
       ZN(&state, state.A);
       break;
     }
 
+    case 0xaa: { // TAX
+      state.X = state.A;
+      ZN(&state, state.X);
+      break;
+    }
+    case 0x8a: { // TXA
+      state.A = state.X;
+      ZN(&state, state.A);
+      break;
+    }
+
     case 0x84: { // STY d
-      uint16_t addr = Next8();
-      WriteByteSet64(&state, addr, ByteSet64(state.Y));
+      uint8_t zpg_addr = Next8();
+      WriteByteSet64(&state, zpg_addr, ByteSet64(state.Y));
+      break;
+    }
+    case 0x94: { // STY d,x
+      uint8_t zpg_addr = Next8();
+      if (state.X.Size() == 1) {
+        uint8_t eaddr = zpg_addr + state.X.GetSingleton();
+        WriteByteSet64(&state, eaddr, ByteSet64(state.Y));
+      } else {
+        for (uint8_t x : state.X) {
+          uint8_t eaddr = zpg_addr + x;
+          MergeWriteByteSet(&state, eaddr, state.Y);
+        }
+      }
       break;
     }
     case 0x8c: { // STY a
@@ -1438,8 +1531,34 @@ void Modeling::Expand() {
 
 
     case 0x6c: { // JMP (a)
-      LOG(FATAL) << "Unimplemented 'JMP (a)'";
-      break;
+      // Indirect jump. Like RTS, this could create a lot
+      // of destinations if memory is uncertain, since
+      // we have to combine the two bytes.
+      uint16_t indirect_addr = Next16();
+
+      ByteSet addr_lo = GetByteSet(state, indirect_addr);
+      ByteSet addr_hi = GetByteSet(state, indirect_addr + 1);
+
+      int accepted = 0, rejected = 0;
+      for (uint8_t hi : addr_hi) {
+        for (uint8_t lo : addr_lo) {
+          uint16_t target_addr = Word16(hi, lo);
+
+          if (zoning.addr[target_addr] & Zoning::X) {
+            accepted++;
+            EnterBlock(target_addr, state);
+          } else {
+            rejected++;
+          }
+        }
+      }
+
+      if (verbose > 0) {
+        printf("Indirect jump: Accepted " AGREEN("%d") " dests; rejected "
+               ARED("%d") "\n", accepted, rejected);
+      }
+
+      return;
     }
 
     case 0x05: { // ORA d
@@ -1525,17 +1644,23 @@ void Modeling::Expand() {
     }
 
     case 0x49: { // EOR #i
-      LOG(FATAL) << "Unimplemented 'EOR #i'";
+      uint8_t imm = Next8();
+      state.A = state.A.Map([imm](uint8_t v) {
+          return imm ^ v;
+        });
+      ZN(&state, state.A);
       break;
     }
     case 0x45: { // EOR d
-      LOG(FATAL) << "Unimplemented 'EOR d'";
-      break;
-    }
-
-    case 0xaa: { // TAX
-      state.X = state.A;
-      ZN(&state, state.X);
+      uint8_t zpg_addr = Next8();
+      ByteSet new_a;
+      for (uint8_t a : state.A) {
+        for (uint8_t m : GetByteSet(state, zpg_addr)) {
+          new_a.Add(a ^ m);
+        }
+      }
+      state.A = std::move(new_a);
+      ZN(&state, state.A);
       break;
     }
 
@@ -1544,19 +1669,26 @@ void Modeling::Expand() {
       Compare(&state, state.X, ByteSet::Singleton(imm));
       break;
     }
+
     case 0xc0: { // CPY #i
       uint8_t imm = Next8();
       Compare(&state, state.Y, ByteSet::Singleton(imm));
       break;
     }
-    case 0xc9: { // CMP #i
-      uint8_t imm = Next8();
-      Compare(&state, state.A, ByteSet::Singleton(imm));
+    case 0xc4: { // CPY d
+      uint8_t zpg_addr = Next8();
+      Compare(&state, state.Y, GetByteSet(state, zpg_addr));
+      break;
+    }
+    case 0xcc: { // CPY a
+      uint16_t addr = Next16();
+      Compare(&state, state.Y, GetByteSet(state, addr));
       break;
     }
 
-    case 0xdd: { // CMP a,x
-      LOG(FATAL) << "Unimplemented 'CMP a,x'";
+    case 0xc9: { // CMP #i
+      uint8_t imm = Next8();
+      Compare(&state, state.A, ByteSet::Singleton(imm));
       break;
     }
     case 0xc5: { // CMP d
@@ -1564,17 +1696,27 @@ void Modeling::Expand() {
       Compare(&state, state.A, GetByteSet(state, zpg_addr));
       break;
     }
+    case 0xd5: { // CMP d,x
+      uint8_t zpg_addr = Next8();
+      Compare(&state, state.A,
+              GetByteSetFromOffsetsZpg(state, zpg_addr, state.X));
+      break;
+    }
     case 0xcd: { // CMP a
       uint16_t addr = Next16();
       Compare(&state, state.A, GetByteSet(state, addr));
       break;
     }
-    case 0xd5: { // CMP d,x
-      LOG(FATAL) << "Unimplemented 'CMP d,x'";
+    case 0xdd: { // CMP a,x
+      uint16_t addr = Next16();
+      Compare(&state, state.A,
+              GetByteSetFromOffsetsZpg(state, addr, state.X));
       break;
     }
     case 0xd9: { // CMP a,y
-      LOG(FATAL) << "Unimplemented 'CMP a,y'";
+      uint16_t addr = Next16();
+      Compare(&state, state.A,
+              GetByteSetFromOffsetsZpg(state, addr, state.Y));
       break;
     }
 
@@ -1721,21 +1863,6 @@ void Modeling::Expand() {
                       addr,
                       state.X,
                       WithZN([](uint8_t v) { return v + 1; }));
-      break;
-    }
-
-    case 0x8a: { // TXA
-      state.A = state.X;
-      ZN(&state, state.A);
-      break;
-    }
-    case 0xbc: { // LDY a,x
-      uint16_t addr = Next16();
-      state.Y.Clear();
-      for (uint8_t v : state.X) {
-        state.Y.AddSet(GetByteSet(state, addr + v));
-      }
-      ZN(&state, state.Y);
       break;
     }
 

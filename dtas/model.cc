@@ -4,11 +4,8 @@
 #include <cstring>
 #include <memory>
 #include <cstdint>
-#include <mutex>
 #include <string>
-#include <unordered_map>
 #include <vector>
-#include <unordered_set>
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/fc.h"
@@ -17,14 +14,8 @@
 #include "../fceulib/x6502.h"
 
 #include "ansi.h"
-#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "emulator-pool.h"
-#include "evaluator.h"
-#include "image.h"
-#include "interval-cover.h"
-#include "map-util.h"
 #include "mario-util.h"
 #include "mario.h"
 #include "modeling.h"
@@ -33,6 +24,7 @@
 #include "threadutil.h"
 #include "util.h"
 #include "zoning.h"
+#include "timer.h"
 
 static constexpr const char *ROMFILE = "mario.nes";
 
@@ -101,7 +93,10 @@ static void Model() {
          (int)modeling.dirty.Size());
   */
 
+  static constexpr int VERBOSE_ITER_START = 1425;
+
   StatusBar status(1);
+  Timer timer;
   Periodically status_per(1);
   int64_t iters = 0;
   for (int64_t iters = 0; !modeling.Done(); iters++) {
@@ -111,9 +106,11 @@ static void Model() {
       [[maybe_unused]]
       int64_t numer = denom - remain;
       // status.Progressf(numer, denom, ACYAN("%lld") " iters.", iters);
+      printf("%lld iters in %s\n", iters,
+             ANSI::Time(timer.Seconds()).c_str());
     }
 
-    if (iters > 775) {
+    if (iters > VERBOSE_ITER_START) {
       printf(AWHITE("== starting iteration %lld ==") "\n", iters);
       printf("Number of blocks: " ACYAN("%d") "\n",
              (int)modeling.blocks.size());

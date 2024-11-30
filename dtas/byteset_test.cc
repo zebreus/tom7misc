@@ -458,6 +458,31 @@ static void TestByteSet64AddHeuristics() {
 
 }
 
+static void TestMap() {
+  {
+    ByteSet s;
+    s.Add(10);
+    s.Add(10);
+    s.Add(20);
+    s.Add(255);
+
+    auto add_one = [](uint8_t x) { return x + 1; };
+    ByteSet mapped = s.Map(add_one);
+
+    ByteSet expected;
+    expected.Add(11);
+    expected.Add(21);
+    expected.Add(0);
+    CHECK(expected == mapped);
+  }
+
+  {
+    ByteSet s = ByteSet::Top();
+    ByteSet mapped = s.Map([](uint8_t x){ return x; });
+    CHECK(s == mapped);
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -475,6 +500,8 @@ int main(int argc, char **argv) {
 
   TestByteSet64Add();
   TestByteSet64AddHeuristics();
+
+  TestMap();
 
   printf("OK\n");
   return 0;
