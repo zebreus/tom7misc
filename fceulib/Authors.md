@@ -11,6 +11,9 @@ original FCE Ultra authors file is below; new contributions to Fceulib are:
     Tom 7's computer game Escape to NES. The escape cart is GPL
     licensed and used for testing.
 
+  I adapted NetworkDLS's CRC32 implementation to reduce dependencies
+  on zlib (MIT license). https://github.com/NTDLS/NSWFL
+
 FCEU Authors
 ============
 
@@ -52,7 +55,7 @@ FCEUX >= 2.0 Contributors
 
 * Luke Gustafson - (sf:???) - Windows TAS and movie recording enhancements
 
-* qfox - (sf:qfox) - lua scripting fucntions, luabot, basicbot (no longer implemented), various lua scripts
+* qfox - (sf:qfox) - lua scripting functions, luabot, basicbot (no longer implemented), various lua scripts
 
 * _mz - document thyself (mauzus) - Windows driver maintenance and cleanup
 
