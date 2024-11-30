@@ -59,7 +59,6 @@ struct Labels {
     for (const std::string &line : Util::NormalizeLines(
              Util::ReadFileToLines(filename))) {
       if (line.empty() || line[0] == '#') continue;
-
       std::vector<std::string> parts = Util::Split(line, ' ');
       CHECK(parts.size() == 2) << "Bad memory map: " << filename;
 
@@ -72,12 +71,12 @@ struct Labels {
 };
 
 static const MemoryMap &GetRamMap() {
-  const MemoryMap *mm = new MemoryMap("mario.map");
+  static const MemoryMap *mm = new MemoryMap("mario.map");
   return *mm;
 }
 
 static const Labels &GetRomLabels() {
-  const Labels *ls = new Labels("mario-prg.map");
+  static const Labels *ls = new Labels("mario-prg.map");
   return *ls;
 }
 
