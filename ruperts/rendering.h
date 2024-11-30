@@ -13,7 +13,7 @@
 #include "image.h"
 
 struct Rendering {
-  Rendering(int width, int height);
+  Rendering(const Polyhedron &p, int width, int height);
 
   void Render(const Polyhedron &p, uint32_t color);
   void RenderMesh(const Mesh2D &mesh);
@@ -43,8 +43,9 @@ struct Rendering {
 
 
   int width = 0, height = 0;
-  // TODO: explain and unify these
-  double scale = 1.0;
+  // Scale of the polyhedron to fit it comfortably in the image
+  // when projected from any angle. (This is based on its diameter.)
+  // Multiply world dimensions by this to get screen dimensions.
   double polyscale = 1.0;
   ImageRGBA img;
 };

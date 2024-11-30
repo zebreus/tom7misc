@@ -50,6 +50,8 @@ struct Polyhedron {
   std::vector<vec3> vertices;
   // Not owned.
   const Faces *faces = nullptr;
+  // The optional name of the polyhedron.
+  const char *name = "";
 };
 
 // A polyhedron projected to 2D. This generally creates
@@ -110,6 +112,9 @@ inline Polyhedron Rotate(const Polyhedron &p, const frame3 &frame) {
   }
   return ret;
 }
+
+// Maximum distance between any two points.
+double Diameter(const Polyhedron &p);
 
 // Create the shadow of the polyhedron on the x-y plane.
 // The mesh's faces object aliases the input polyhedron's.

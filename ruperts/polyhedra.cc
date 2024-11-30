@@ -339,7 +339,8 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
 
 
 // The QuickHull implementation below and its helper routines are based on code
-// by Miguel Vieira (see LICENSES) although I have heavily modified it. Some changes:
+// by Miguel Vieira (see LICENSES) although I have heavily modified it.
+// Some changes:
 //  - Uses yocto library for more stuff
 //  - Uses vertex indices so it can be run directly on Polyhedron/Mesh2D.
 //  - Fixes some bugs relating to exactly equal or input points
@@ -350,7 +351,8 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
 // Requires that all points are to the left of the segment (a,b) (or colinear).
 // (If you need it to handle both, you can just use fabs in the Dist function,
 // but for quickhull our candidate set always lies on the left of the edge.)
-static int GetFarthest(const vec2 &a, const vec2 &b, const std::vector<vec2> &v,
+static int GetFarthest(const vec2 &a, const vec2 &b,
+                       const std::vector<vec2> &v,
                        const std::vector<int> &pts) {
   CHECK(!pts.empty());
   const double dx = b.x - a.x;
@@ -528,6 +530,19 @@ std::vector<int> QuickHull(const std::vector<vec2> &vertices) {
   return hull;
 }
 
+// This can be done faster with "rotating calipers" although
+// it sounds pretty fiddly in 3D (especially since we will
+// have many parallel faces for these regular shapes).
+double Diameter(const Polyhedron &p) {
+  double dist = 0.0;
+  for (int i = 0; i < p.vertices.size(); i++) {
+    for (int j = i + 1; j < p.vertices.size(); j++) {
+      dist = std::max(dist, yocto::distance_squared(p.vertices[i],
+                                                    p.vertices[j]));
+    }
+  }
+  return std::sqrt(dist);
+}
 
 double PlanarityError(const Polyhedron &p) {
   double error = 0.0;
@@ -773,7 +788,11 @@ Polyhedron Dodecahedron() {
   }
 
   Faces *faces = new Faces(vertices.size(), std::move(fs));
-  return Polyhedron{.vertices = std::move(vertices), .faces = faces};
+  return Polyhedron{
+    .vertices = std::move(vertices),
+    .faces = faces,
+    .name = "dodecahedron",
+  };
 }
 
 // Take all planes where all of the other vertices
@@ -782,7 +801,7 @@ Polyhedron Dodecahedron() {
 // so it's a clean way to generate a wide variety from just the
 // vertices.
 static Polyhedron ConvexPolyhedronFromVertices(
-    std::vector<vec3> vertices) {
+    std::vector<vec3> vertices, const char *name = "") {
   static constexpr int VERBOSE = 1;
 
   // All faces (as a set of vertices) we've already found. The
@@ -856,7 +875,8 @@ static Polyhedron ConvexPolyhedronFromVertices(
   };
 
   if (VERBOSE > 0) {
-    printf("There are %d vertices.\n", (int)vertices.size());
+    printf("%s: There are %d vertices.\n",
+           name, (int)vertices.size());
   }
 
   // wlog i > j > k.
@@ -872,7 +892,8 @@ static Polyhedron ConvexPolyhedronFromVertices(
   }
 
   if (VERBOSE > 0) {
-    printf("There are %d distinct faces.\n", (int)all_faces.size());
+    printf("%s: There are %d distinct faces.\n",
+           name, (int)all_faces.size());
   }
 
   // Make it deterministic.
@@ -926,9 +947,12 @@ static Polyhedron ConvexPolyhedronFromVertices(
     fs.push_back(std::move(face));
   }
 
-  printf("Construct Faces object...\n");
   Faces *faces = new Faces(vertices.size(), std::move(fs));
-  return Polyhedron{.vertices = std::move(vertices), .faces = faces};
+  return Polyhedron{
+    .vertices = std::move(vertices),
+    .faces = faces,
+    .name = name,
+  };
 }
 
 
@@ -981,7 +1005,7 @@ Polyhedron SnubCube() {
     vertices.emplace_back(vec3(c, b, a) * signs);
   }
 
-  return ConvexPolyhedronFromVertices(std::move(vertices));
+  return ConvexPolyhedronFromVertices(std::move(vertices), "snubcube");
 }
 
 Polyhedron Cube() {
@@ -1029,7 +1053,11 @@ Polyhedron Cube() {
   fs.push_back({a, b, f, e});
 
   Faces *faces = new Faces(8, std::move(fs));
-  return Polyhedron{.vertices = std::move(vertices), .faces = faces};
+  return Polyhedron{
+    .vertices = std::move(vertices),
+    .faces = faces,
+    .name = "cube",
+  };
 }
 
 Polyhedron Icosahedron() {
@@ -1046,7 +1074,7 @@ Polyhedron Icosahedron() {
     vertices.push_back(vec3{.x = 0.0, .y = s1, .z = s2 * phi});
   }
 
-  return ConvexPolyhedronFromVertices(std::move(vertices));
+  return ConvexPolyhedronFromVertices(std::move(vertices), "icosahedron");
 }
 
 Polyhedron TriakisTetrahedron() {
@@ -1062,7 +1090,8 @@ Polyhedron TriakisTetrahedron() {
     vec3{-1, -1, -1},
   };
 
-  return ConvexPolyhedronFromVertices(std::move(vertices));
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "triakistetrahedron");
 }
 
 Polyhedron Cuboctahedron() {
@@ -1075,7 +1104,8 @@ Polyhedron Cuboctahedron() {
     vertices.emplace_back(s1, 0.0, s2);
     vertices.emplace_back(0.0, s1, s2);
   }
-  return ConvexPolyhedronFromVertices(std::move(vertices));
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "cuboctahedron");
 }
 
 Polyhedron Rhombicuboctahedron() {
@@ -1093,7 +1123,8 @@ Polyhedron Rhombicuboctahedron() {
   }
 
   // printf("Get faces..\n");
-  return ConvexPolyhedronFromVertices(std::move(vertices));
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "rhombicuboctahedron");
 }
 
 static void AddEvenPermutations(double a, double b, double c,
@@ -1135,7 +1166,8 @@ Polyhedron Rhombicosidodecahedron() {
   }
 
   CHECK(vertices.size() == 60) << vertices.size();
-  return ConvexPolyhedronFromVertices(std::move(vertices));
+  return ConvexPolyhedronFromVertices(std::move(vertices),
+                                      "rhombicosidodecahedron");
 }
 
 Polyhedron TruncatedTetrahedron() {
@@ -1159,20 +1191,24 @@ Polyhedron TruncatedTetrahedron() {
 
       // These will duplicate the above if both occurrences of b
       // have the same sign, so skip those.
+      /*
       if (s2 != s3) {
         vertices.emplace_back(s1 * a, s2 * b, s3 * b);
         vertices.emplace_back(s3 * b, s1 * a, s2 * b);
         vertices.emplace_back(s2 * b, s3 * b, s1 * a);
       }
+      */
     }
   }
 
   CHECK(vertices.size() == 12);
-  return ConvexPolyhedronFromVertices(std::move(vertices));
+  return ConvexPolyhedronFromVertices(std::move(vertices),
+                                      "truncatedtetrahedron");
 }
 
 Polyhedron SnubDodecahedron() {
   // Real root of x^3 + 2x^2 - phi^2.
+  [[maybe_unused]]
   constexpr double xi = 0.943151259243881817126719892570364159406650386;
 
   // Iterate some rotations...

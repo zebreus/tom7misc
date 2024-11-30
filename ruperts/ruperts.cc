@@ -49,7 +49,7 @@ static void AnimateMesh(const Polyhedron &poly) {
 
   constexpr int SIZE = 1080;
   constexpr int FRAMES = 10 * 60;
-  MovRecorder rec("animate.mov", SIZE, SIZE);
+  MovRecorder rec(StringPrintf("animate-%s.mov", poly.name), SIZE, SIZE);
 
   StatusBar status(2);
   Periodically status_per(1.0);
@@ -68,7 +68,7 @@ static void AnimateMesh(const Polyhedron &poly) {
     quat4 final_rot = normalize(initial_rot * frame_rot);
     Polyhedron rpoly = Rotate(poly, yocto::rotation_frame(final_rot));
 
-    Rendering rendering(SIZE, SIZE);
+    Rendering rendering(poly, SIZE, SIZE);
     Mesh2D mesh = Shadow(rpoly);
     rendering.RenderMesh(mesh);
     rec.AddFrame(std::move(rendering.img));
@@ -91,8 +91,10 @@ static void AnimateHull() {
 
   RandomGaussian gauss(&rc);
   for (int i = 0; i < POINTS; i++) {
-    double x = std::clamp(gauss.Next() * SIZE * 0.1 + SIZE * 0.5, 0.0, (double)SIZE);
-    double y = std::clamp(gauss.Next() * SIZE * 0.1 + SIZE * 0.5, 0.0, (double)SIZE);
+    double x =
+      std::clamp(gauss.Next() * SIZE * 0.1 + SIZE * 0.5, 0.0, (double)SIZE);
+    double y =
+      std::clamp(gauss.Next() * SIZE * 0.1 + SIZE * 0.5, 0.0, (double)SIZE);
     points.emplace_back(vec2{x, y});
     vels.emplace_back(
         vec2{
@@ -189,7 +191,7 @@ static void Visualize(const Polyhedron &poly) {
   printf("Planarity OK.\n");
 
   {
-    Rendering rendering(1920, 1080);
+    Rendering rendering(poly, 1920, 1080);
     for (int i = 0; i < 5; i++) {
       frame3 frame = yocto::rotation_frame(RandomQuaternion(&rc));
       Polyhedron rpoly = Rotate(poly, frame);
@@ -198,13 +200,11 @@ static void Visualize(const Polyhedron &poly) {
       rendering.Render(rpoly, Rendering::Color(i));
     }
 
-    rendering.img.Save("wireframe.png");
+    rendering.Save(StringPrintf("wireframe-%s.png", poly.name));
   }
 
-  printf("2====\n");
-
   {
-    Rendering rendering(1920, 1080);
+    Rendering rendering(poly, 1920, 1080);
     // quat4 q = RandomQuaternion(&rc);
     // frame3 frame = yocto::rotation_frame(q);
     // Polyhedron rpoly = Rotate(poly, frame);
@@ -218,13 +218,16 @@ static void Visualize(const Polyhedron &poly) {
     printf("Hull size %d\n", (int)hull.size());
     // rendering.RenderHull(mesh, hull);
 
-    rendering.img.Save("shadow.png");
+    rendering.Save(StringPrintf("shadow-%s.png", poly.name));
   }
 }
 
 [[maybe_unused]]
 static void Solve(const Polyhedron &polyhedron) {
   // ArcFour rc(StringPrintf("solve.%lld", time(nullptr)));
+
+  printf("Solve [method 1] " AWHITE("%s") ":\n",
+         polyhedron.name);
 
   static constexpr int HISTO_LINES = 32;
 
@@ -281,7 +284,7 @@ static void Solve(const Polyhedron &polyhedron) {
           auto WriteImage = [&](const std::string &filename,
                                 const std::array<double, D> &args) {
               // Show:
-              Rendering rendering(3840, 2160);
+              Rendering rendering(polyhedron, 3840, 2160);
 
               rendering.RenderMesh(souter);
               rendering.DarkenBG();
@@ -353,15 +356,17 @@ static void Solve(const Polyhedron &polyhedron) {
                           attempts.Read(),
                           ANSI::Time(run_timer.Seconds()).c_str());
 
-            WriteImage("solved.png", args);
+            WriteImage(StringPrintf("solved-%s.png", polyhedron.name), args);
 
             std::string contents = Parameters(args, error);
             StringAppendF(&contents,
                           "\n%s\n",
                           error_histo.SimpleAsciiString(50).c_str());
 
-            Util::WriteFile("solution.txt", contents);
-            status.Printf("Wrote " AGREEN("solution.txt") "\n");
+            std::string sfile = StringPrintf("solution-%s.txt",
+                                             polyhedron.name);
+            Util::WriteFile(sfile, contents);
+            status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
 
             return;
           }
@@ -375,7 +380,7 @@ static void Solve(const Polyhedron &polyhedron) {
               best_error = error;
               if (image_per.ShouldRun()) {
                 std::string file_base =
-                  StringPrintf("best.%lld", iters.Read());
+                  StringPrintf("best-%s.%lld", polyhedron.name, iters.Read());
                 WriteImage(file_base + ".png", args);
                 Util::WriteFile(file_base + ".txt", Parameters(args, error));
               }
@@ -418,6 +423,9 @@ static void Solve(const Polyhedron &polyhedron) {
 // samples for the shadow.
 [[maybe_unused]]
 static void Solve2(const Polyhedron &polyhedron) {
+  printf("Solve [method 2] " AWHITE("%s") ":\n",
+         polyhedron.name);
+
   static constexpr int HISTO_LINES = 32;
 
   std::mutex m;
@@ -485,7 +493,7 @@ static void Solve2(const Polyhedron &polyhedron) {
 
           auto WriteImage = [&](const std::string &filename,
                                 const std::array<double, D> &args) {
-              Rendering rendering(3840, 2160);
+              Rendering rendering(polyhedron, 3840, 2160);
 
               auto outer_frame = OuterFrame(args);
               auto inner_frame = InnerFrame(args);
@@ -566,15 +574,17 @@ static void Solve2(const Polyhedron &polyhedron) {
                           attempts.Read(),
                           ANSI::Time(run_timer.Seconds()).c_str());
 
-            WriteImage("solved.png", args);
+            WriteImage(StringPrintf("solved-%s.png", polyhedron.name), args);
 
             std::string contents = Parameters(args, error);
             StringAppendF(&contents,
                           "\n%s\n",
                           error_histo.SimpleAsciiString(50).c_str());
 
-            Util::WriteFile("solution.txt", contents);
-            status.Printf("Wrote " AGREEN("solution.txt") "\n");
+            std::string sfile = StringPrintf("solution-%s.txt",
+                                             polyhedron.name);
+            Util::WriteFile(sfile, contents);
+            status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
 
             return;
           }
@@ -588,7 +598,7 @@ static void Solve2(const Polyhedron &polyhedron) {
               best_error = error;
               if (image_per.ShouldRun()) {
                 std::string file_base =
-                  StringPrintf("best2.%lld", iters.Read());
+                  StringPrintf("best2-%s.%lld", polyhedron.name, iters.Read());
                 WriteImage(file_base + ".png", args);
                 Util::WriteFile(file_base + ".txt", Parameters(args, error));
               }
@@ -628,6 +638,9 @@ static void Solve2(const Polyhedron &polyhedron) {
 // optimizing the placement of the inner.
 [[maybe_unused]]
 static void Solve3(const Polyhedron &polyhedron) {
+  printf("Solve [method 3] " AWHITE("%s") ":\n",
+         polyhedron.name);
+
   static constexpr int HISTO_LINES = 32;
 
   std::mutex m;
@@ -711,7 +724,7 @@ static void Solve3(const Polyhedron &polyhedron) {
 
           auto WriteImage = [&](const std::string &filename,
                                 const std::array<double, D> &args) {
-              Rendering rendering(3840, 2160);
+              Rendering rendering(polyhedron, 3840, 2160);
               rendering.RenderMesh(souter);
               rendering.DarkenBG();
 
@@ -781,15 +794,17 @@ static void Solve3(const Polyhedron &polyhedron) {
                           attempts.Read(),
                           ANSI::Time(run_timer.Seconds()).c_str());
 
-            WriteImage("solved.png", args);
+            WriteImage(StringPrintf("solved-%s.png", polyhedron.name), args);
 
             std::string contents = Parameters(args, error);
             StringAppendF(&contents,
                           "\n%s\n",
                           error_histo.SimpleAsciiString(50).c_str());
 
-            Util::WriteFile("solution.txt", contents);
-            status.Printf("Wrote " AGREEN("solution.txt") "\n");
+            std::string sfile = StringPrintf("solution-%s.txt",
+                                             polyhedron.name);
+            Util::WriteFile(sfile, contents);
+            status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
 
             return;
           }
@@ -803,7 +818,7 @@ static void Solve3(const Polyhedron &polyhedron) {
               best_error = error;
               if (image_per.ShouldRun()) {
                 std::string file_base =
-                  StringPrintf("best.%lld", iters.Read());
+                  StringPrintf("best3-%s.%lld", polyhedron.name, iters.Read());
                 WriteImage(file_base + ".png", args);
                 Util::WriteFile(file_base + ".txt", Parameters(args, error));
               }
@@ -896,6 +911,9 @@ static quat4 MakeTwoFacesParallelToZ(const std::vector<vec3> &vertices,
 // inner.
 [[maybe_unused]]
 static void Solve4(const Polyhedron &polyhedron) {
+  printf("Solve [method 4] " AWHITE("%s") ":\n",
+         polyhedron.name);
+
   static constexpr int HISTO_LINES = 32;
 
   std::mutex m;
@@ -986,7 +1004,7 @@ static void Solve4(const Polyhedron &polyhedron) {
 
           auto WriteImage = [&](const std::string &filename,
                                 const std::array<double, D> &args) {
-              Rendering rendering(3840, 2160);
+              Rendering rendering(polyhedron, 3840, 2160);
 
               auto outer_frame = OuterFrame(args);
               auto inner_frame = InnerFrame(args);
@@ -1073,15 +1091,17 @@ static void Solve4(const Polyhedron &polyhedron) {
                           attempts.Read(),
                           ANSI::Time(run_timer.Seconds()).c_str());
 
-            WriteImage("solved.png", args);
+            WriteImage(StringPrintf("solved-%s.png", polyhedron.name), args);
 
             std::string contents = Parameters(args, error);
             StringAppendF(&contents,
                           "\n%s\n",
                           error_histo.SimpleAsciiString(50).c_str());
 
-            Util::WriteFile("solution.txt", contents);
-            status.Printf("Wrote " AGREEN("solution.txt") "\n");
+            std::string sfile = StringPrintf("solution-%s.txt",
+                                             polyhedron.name);
+            Util::WriteFile(sfile, contents);
+            status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
 
             return;
           }
@@ -1095,7 +1115,7 @@ static void Solve4(const Polyhedron &polyhedron) {
               best_error = error;
               if (image_per.ShouldRun()) {
                 std::string file_base =
-                  StringPrintf("best4.%lld", iters.Read());
+                  StringPrintf("best4-%s.%lld", polyhedron.name, iters.Read());
                 WriteImage(file_base + ".png", args);
                 Util::WriteFile(file_base + ".txt", Parameters(args, error));
               }
@@ -1138,18 +1158,19 @@ int main(int argc, char **argv) {
   // AnimateHull();
 
   // Polyhedron target = SnubCube();
-  Polyhedron target = Rhombicosidodecahedron();
+  // Polyhedron target = Rhombicosidodecahedron();
+  Polyhedron target = TruncatedTetrahedron();
 
   // (void)SnubCube();
   Visualize(target);
-  // AnimateMesh(target);
+  AnimateMesh(target);
 
-  printf("Solve:\n");
   // Solve(Cube());
   // Solve(Dodecahedron());
   // Solve2(SnubCube());
   // Solve(SnubCube());
-  Solve4(target);
+  Solve(target);
+  // Solve4(target);
 
   printf("OK\n");
   return 0;

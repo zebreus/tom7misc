@@ -30,7 +30,7 @@ using mat4 = yocto::mat<double, 4>;
 using quat4 = yocto::quat<double, 4>;
 using frame3 = yocto::frame<double, 3>;
 
-constexpr double MESH_SCALE = 0.10; // was 0.2
+constexpr double FIT_SCALE = 0.80;
 
 static std::vector<uint32_t> COLORS = {
   0xFF0000FF,
@@ -101,15 +101,16 @@ static std::vector<uint32_t> COLORS = {
   0xFFAA33FF,
 };
 
-Rendering::Rendering(int width_in, int height_in) :
+Rendering::Rendering(const Polyhedron &p, int width_in, int height_in) :
   width(width_in), height(height_in), img(width, height) {
-  scale = std::min(width, height) * 0.75;
-  // XXX compute this from the polyhedron's diameter
-  polyscale = std::min(width, height) * MESH_SCALE;
   img.Clear32(0x000000FF);
+
+  double dia = Diameter(p);
+  polyscale = (std::min(width, height) / dia) * FIT_SCALE;
 }
 
 void Rendering::Render(const Polyhedron &p, uint32_t color) {
+  const double scale = std::min(width, height) * 0.75;
   constexpr double aspect = 1.0;
   mat4 proj = yocto::perspective_mat(
       yocto::radians(60.0), aspect, 0.1, 100.0);

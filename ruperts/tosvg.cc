@@ -1,4 +1,7 @@
 
+// Even though this is called "tosvg", it just generates PNGs.
+// That was enough for me to debug my problem!
+
 #include "ansi.h"
 
 #include "polyhedra.h"
@@ -41,7 +44,7 @@ static void Good() {
   Mesh2D sinner = Shadow(inner);
 
   {
-    Rendering rendering(3840 * 2, 2160 * 2);
+    Rendering rendering(polyhedron, 3840 * 2, 2160 * 2);
     rendering.RenderMesh(souter);
     rendering.DarkenBG();
 
@@ -55,7 +58,7 @@ static void Good() {
   std::vector<int> inner_hull = ConvexHull(sinner.vertices);
 
   {
-    Rendering rendering(3840 * 2, 2160 * 2);
+    Rendering rendering(polyhedron, 3840 * 2, 2160 * 2);
     rendering.RenderHullDistance(souter, outer_hull);
     rendering.RenderHull(souter, outer_hull, 0x0000FFFF);
     rendering.RenderHull(sinner, inner_hull, 0x00FF0077);
