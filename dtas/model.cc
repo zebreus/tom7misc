@@ -113,11 +113,11 @@ static void Model() {
       // status.Progressf(numer, denom, ACYAN("%lld") " iters.", iters);
     }
 
-    if (iters > 700) {
+    if (iters > 775) {
       printf(AWHITE("== starting iteration %lld ==") "\n", iters);
       printf("Number of blocks: " ACYAN("%d") "\n",
              (int)modeling.blocks.size());
-      modeling.verbose = true;
+      modeling.verbose = 2;
     }
     modeling.Expand();
   }

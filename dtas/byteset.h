@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <bitset>
 #include <compare>
+#include <string>
 
 // Each of the following is a lattice (i.e. has subset, union, and
 // intersection operations) representing a set of bytes.
@@ -22,6 +23,8 @@ struct ByteSet {
   bool Contains(uint8_t b) const { return member.test(b); }
   void Add(uint8_t b) { member.set(b); }
   void AddSet(const ByteSet &b);
+
+  std::string DebugString() const;
 
   static ByteSet Top() {
     ByteSet s;
@@ -148,6 +151,7 @@ struct ByteSet64 {
   }
 
   ByteSet ToByteSet() const;
+  std::string DebugString() const;
 
   // imperative union
   void AddSet(const ByteSet64 &other);
@@ -164,6 +168,7 @@ struct ByteSet64 {
   // values or overlapping ranges.
   int Size() const;
 
+  bool Empty() const;
   void Clear();
   void Add(uint8_t b);
 

@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -19,6 +21,11 @@
 #include "byteset.h"
 #include "zoning.h"
 
+// For debugging symbols. We should just load
+// debugging symbols for the rom under test; this
+// need not be mario-specific.
+#include "mario-util.h"
+
 #define N_FLAG 0x80
 #define V_FLAG 0x40
 #define U_FLAG 0x20
@@ -27,6 +34,35 @@
 #define I_FLAG 0x04
 #define Z_FLAG 0x02
 #define C_FLAG 0x01
+
+static inline uint16_t Word16(uint8_t hi, uint8_t lo) {
+  return (((uint16_t)hi) << 8) | lo;
+}
+
+std::optional<std::string> Bank::GetLabel(uint16_t addr) const {
+  return MarioUtil::GetLabel(addr);
+}
+
+std::string State::DebugString() const {
+  // ByteSet A, X, Y, S, P;
+  // std::vector<ByteSet64> ram;
+  std::string ret;
+  StringAppendF(
+      &ret,
+      AWHITE(" == state == ") "\n"
+      AGREEN("A") ":%s\n"
+      ABLUE("X") ":%s\n"
+      ACYAN("Y") ":%s\n"
+      APURPLE("S") ":%s\n"
+      AORANGE("P") ":%s\n"
+      AGREY("(memory elided)") "\n",
+      A.DebugString().c_str(),
+      X.DebugString().c_str(),
+      Y.DebugString().c_str(),
+      S.DebugString().c_str(),
+      P.DebugString().c_str());
+  return ret;
+}
 
 State State::FromEmulator(const Emulator *emu, uint8_t sp) {
   State state;
@@ -85,6 +121,12 @@ void Modeling::EnterBlock(uint16_t addr, const State &state) {
   auto it = block_index.find(addr);
   if (it == block_index.end()) {
     // New block.
+    if (state.A.Empty() || state.X.Empty() || state.Y.Empty() ||
+        state.S.Empty() || state.P.Empty()) {
+      LOG(FATAL) << "Tried to enter block " << StringPrintf("%04x", addr) <<
+        " in impossible state:\n" << state.DebugString();
+    }
+
     if (0 == (zoning.addr[addr] & Zoning::X)) {
       if (verbose > 0) {
         printf("\nTried to enter non-executable address " ARED("%04x") ".\n",
@@ -528,7 +570,7 @@ void Modeling::Expand() {
         }
       }
 
-      CHECK(has_true || has_false);
+      CHECK(has_true || has_false) << state.DebugString();
       if (has_true) {
         // Do the branch.
         State truestate = state;
@@ -558,8 +600,10 @@ void Modeling::Expand() {
       bool has_no_carry = false;
       for (uint8_t f : state->P) {
         if (f & C_FLAG) has_carry = true;
-        else has_carry = false;
+        else has_no_carry = true;
       }
+
+      CHECK(has_carry || has_no_carry);
 
       ByteSet zncflags;
       ByteSet new_a;
@@ -577,6 +621,8 @@ void Modeling::Expand() {
       }
       state->A = std::move(new_a);
       CombineFlags(state, zncflags, Z_FLAG | N_FLAG | C_FLAG);
+      CHECK(!state->A.Empty());
+      CHECK(!state->P.Empty());
     };
 
   // mem[addr+offset] = f(mem[addr+offset]).first
@@ -650,14 +696,42 @@ void Modeling::Expand() {
       return std::make_pair(v >> 1, f);
     };
 
+  // A strange case.
+  auto Bit = [this](State *state, uint16_t addr) {
+      ByteSet nzv_flags;
+      ByteSet s = GetByteSet(*state, addr);
+      for (uint8_t b : s) {
+        const uint8_t nv = b & (N_FLAG | V_FLAG);
+        for (uint8_t a : state->A) {
+          uint8_t x = b & a;
+          nzv_flags.Add((x ? 0 : Z_FLAG) | nv);
+        }
+      }
+      CombineFlags(state, nzv_flags, N_FLAG | Z_FLAG | V_FLAG);
+    };
+
   // Keep reading instructions until we reach the end of the block.
   do {
+    const uint16_t instruction_pc = pc;
     // Read the opcode, which advances the PC past it.
     const uint8_t opcode = Next8();
 
+    if (state.A.Empty() || state.X.Empty() || state.Y.Empty() ||
+        state.S.Empty() || state.P.Empty()) {
+      LOG(FATAL) <<
+        StringPrintf("Tried to execute addr %04x " AGREY("(%s)") " in "
+                     "impossible state:\n%s\n",
+                     instruction_pc,
+                     Opcodes::opcode_name[opcode],
+                     state.DebugString().c_str());
+    }
+
     if (verbose > 1) {
+      if (auto lo = rom.GetLabel(instruction_pc)) {
+        printf(AWHITE("%s") ":\n", lo.value().c_str());
+      }
       printf("%04x: " ABLUE("%02x") " " AGREY("(%s)") "\n",
-             pc - 1, opcode, Opcodes::opcode_name[opcode]);
+             instruction_pc, opcode, Opcodes::opcode_name[opcode]);
     }
 
     switch (opcode) {
@@ -1072,12 +1146,14 @@ void Modeling::Expand() {
       break;
     }
     case 0x26: { // ROL d
+      LOG(FATAL) << "Unimplemented ROL";
       // XXX this needs to be ReadModifyWrite
       // uint16_t addr = Next8();
       // RotateLeft(&state, GetByteSet(state, addr));
       break;
     }
     case 0x2e: { // ROL a
+      LOG(FATAL) << "Unimplemented ROL";
       // uint16_t addr = Next16();
       // RotateLeft(&state, GetByteSet(state, addr));
       break;
@@ -1159,7 +1235,40 @@ void Modeling::Expand() {
       break;
     }
     case 0x91: { // STA (d),y
-      LOG(FATAL) << "Unimplemented 'STA (d),y'";
+      const uint16_t zpg_addr = Next8();
+
+      if (state.Y.Size() == 1) {
+        uint16_t ind_addr = zpg_addr + state.Y.GetSingleton();
+        ByteSet addr_lo = GetByteSet(state, ind_addr);
+        ByteSet addr_hi = GetByteSet(state, ind_addr + 1);
+        if (addr_hi.Size() == 1 && addr_lo.Size() == 1) {
+          // Then we have a definite address, and can overwrite.
+          uint16_t eaddr = Word16(addr_hi.GetSingleton(),
+                                  addr_lo.GetSingleton());
+          WriteByteSet64(&state, eaddr, ByteSet64(state.A));
+        } else {
+          // Have to merge it everywhere.
+          for (uint8_t hi : addr_hi) {
+            for (uint8_t lo : addr_lo) {
+              uint16_t eaddr = Word16(hi, lo);
+              MergeWriteByteSet(&state, eaddr, state.A);
+            }
+          }
+        }
+      } else {
+        for (uint8_t y : state.Y) {
+          uint16_t ind_addr = zpg_addr + y;
+          ByteSet addr_lo = GetByteSet(state, ind_addr);
+          ByteSet addr_hi = GetByteSet(state, ind_addr + 1);
+          for (uint8_t hi : addr_hi) {
+            for (uint8_t lo : addr_lo) {
+              uint16_t eaddr = Word16(hi, lo);
+              MergeWriteByteSet(&state, eaddr, state.A);
+            }
+          }
+        }
+      }
+
       break;
     }
 
@@ -1470,7 +1579,13 @@ void Modeling::Expand() {
     }
 
     case 0x24: { // BIT d
-      LOG(FATAL) << "Unimplemented 'BIT d'";
+      uint16_t addr = Next8();
+      Bit(&state, addr);
+      break;
+    }
+    case 0x2C: { // BIT a
+      uint16_t addr = Next16();
+      Bit(&state, addr);
       break;
     }
 
@@ -1609,10 +1724,6 @@ void Modeling::Expand() {
       break;
     }
 
-    case 0x2c: { // BIT a
-      LOG(FATAL) << "Unimplemented 'BIT a'";
-      break;
-    }
     case 0x8a: { // TXA
       state.A = state.X;
       ZN(&state, state.A);

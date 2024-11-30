@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
@@ -63,6 +64,13 @@ int ByteSet64::Size() const {
     if (Contains(i)) count++;
   }
   return count;
+}
+
+// PERF: It's possible to represent empty with zero-length
+// intervals. If we normalized, we could just test for the EMPTY
+// type here.
+bool ByteSet64::Empty() const {
+  return Size() == 0;
 }
 
 ByteSet64 ByteSet64::Union(const ByteSet64 &a, const ByteSet64 &b) {
@@ -374,4 +382,45 @@ uint8_t ByteSet64::GetSingleton() const {
   default:
     LOG(FATAL) << "Invalid type";
   }
+}
+
+std::string ByteSet::DebugString() const {
+  std::string ret;
+
+  int range_start = 0;
+  bool in_range = false;
+  auto EndRange = [&](int b) {
+      if (b - range_start == 1) {
+        StringAppendF(&ret, " %02x", range_start);
+        in_range = false;
+      } else {
+        StringAppendF(&ret, " %02x-%02x", range_start, b - 1);
+      }
+    };
+
+  for (int b = 0; b < 256; b++) {
+    if (Contains(b)) {
+      if (in_range) {
+        continue;
+      } else {
+        range_start = b;
+        in_range = true;
+      }
+    } else {
+      if (in_range) {
+        EndRange(b);
+      } else {
+        continue;
+      }
+    }
+  }
+
+  if (in_range) {
+    EndRange(256);
+  }
+  return ret;
+}
+
+std::string ByteSet64::DebugString() const {
+  return ToByteSet().DebugString();
 }

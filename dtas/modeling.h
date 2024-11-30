@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -27,6 +29,10 @@ struct Bank {
     return rom[addr - ORIGIN];
   }
   std::vector<uint8_t> rom;
+
+  // For ROM addresses. If the address has a symbolic label (from the
+  // assembly file), return it. (This is hard-coded to mario.nes!)
+  std::optional<std::string> GetLabel(uint16_t addr) const;
 };
 
 // Abstract state of the machine at a particular program point. It
@@ -55,6 +61,8 @@ struct State {
 
   // Union other into this state. Return true if anything changed.
   bool MergeState(const State &other);
+
+  std::string DebugString() const;
 };
 
 struct BasicBlock {
