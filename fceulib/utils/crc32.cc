@@ -21,10 +21,8 @@
 #include "crc32.h"
 
 #include <zlib.h>
+#include <cstdint>
 
-#include "../types.h"
-
-
-uint32 CalcCRC32(uint32 crc, uint8 *buf, uint32 len) {
+uint32_t CalcCRC32(uint32_t crc, const uint8_t *buf, uint32_t len) {
  return crc32(crc, buf, len);
 }

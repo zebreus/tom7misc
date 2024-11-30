@@ -1,7 +1,7 @@
 # Makefile made by tom7.
 default: bench.exe emulator_test.exe difftrace.exe aot.exe
 
-all: emulator_test.exe bench.exe fm2tofm7.exe difftrace.exe dumptrace.exe make-comprehensive-history.exe
+all: emulator_test.exe bench.exe fm2tofm7.exe difftrace.exe dumptrace.exe make-comprehensive-history.exe crc32_test.exe
 
 # -fno-strict-aliasing
 # -Wstrict-overflow=3
@@ -147,6 +147,9 @@ make-comprehensive-history.exe : $(BASEOBJECTS) make-comprehensive-history.o
 sound_dmc_test.exe : $(CCLIBOBJECTS) sound_dmc_test.o test-util.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+crc32_test.exe : $(UTILSOBJECTS) $(CCLIBOBJECTS) crc32_test.o
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 aot-analyze.exe : aot-analyze.o $(OBJECTS_NO_GAMES) ppu-noaot.o simplefm2.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
@@ -160,7 +163,8 @@ contra.cc : aot.exe aot-prelude.inc
 # mario.o : mario.cc
 # 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $< -g -c -o mario.o
 
-test : emulator_test.exe
+test : emulator_test.exe crc32_test.exe
+	./crc32_test.exe
 	time ./emulator_test.exe
 
 clean :

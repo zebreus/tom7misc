@@ -41,24 +41,13 @@ static_assert(std::endian::native == std::endian::little,
 # define LE_TO_LOCAL_64(x) ((((x)&0xff)<<56)|(((x)&0xff00)<<40)|(((x)&0xff0000)<<24)|(((x)&0xff000000)<<8)|(((x)>>8)&0xff000000)|(((x)>>24)&0xff00)|(((x)>>40)&0xff00)|(((x)>>56)&0xff))
 # define LOCAL_TO_LE_16(x) ((((x)&0xff)<<8)|(((x)>>8)&0xff))
 # define LOCAL_TO_LE_32(x) ((((x)&0xff)<<24)|(((x)&0xff00)<<8)|(((x)>>8)&0xff00)|(((x)>>24)&0xff))
-# define LOCAL_TO_LE_64(x) ((((x)&0xff)<<56)|(((x)&0xff00)<<40)|(((x)&0xff0000)<<24)|(((x)&0xff000000)<<8)|(((x)>>8)&0xff000000)|(((x)>>24)&0xff00)|(((x)>>40)&0xff00)|(((x)>>56)&0xff))
 #else           /* local arch is little endian */
 # define LE_TO_LOCAL_16(x) (x)
 # define LE_TO_LOCAL_32(x) (x)
 # define LE_TO_LOCAL_64(x) (x)
 # define LOCAL_TO_LE_16(x) (x)
 # define LOCAL_TO_LE_32(x) (x)
-# define LOCAL_TO_LE_64(x) (x)
 #endif
-
-// unpacks a 64bit little endian value from the provided byte array
-// into host byte order
-static uint64 FCEU_de64lsb(uint8 *morp) {
-  return morp[0] | (morp[1] << 8) | (morp[2] << 16) |
-    (morp[3] << 24) | ((uint64)morp[4] << 32) |
-    ((uint64)morp[5] << 40) | ((uint64)morp[6] << 48) |
-    ((uint64)morp[7] << 56);
-}
 
 // unpacks a 16bit little endian value from the provided byte array
 // into host byte order
@@ -117,22 +106,6 @@ int write32le(uint32 b, std::ostream* os)
         return 4;
 }
 
-int write64le(uint64 b, std::ostream* os)
-{
-        uint8 s[8];
-        s[0]=b;
-        s[1]=b>>8;
-        s[2]=b>>16;
-        s[3]=b>>24;
-        s[4]=b>>32;
-        s[5]=b>>40;
-        s[6]=b>>48;
-        s[7]=b>>56;
-        os->write((char*)&s,8);
-        return 8;
-}
-
-
 ///reads a little endian 32bit value from the specified file
 int read32le(uint32 *Bufo, FILE *fp)
 {
@@ -156,20 +129,6 @@ int read16le(uint16 *Bufo, std::istream *is)
         *Bufo=buf;
 #else
         *Bufo = FCEU_de16lsb((uint8*)&buf);
-#endif
-        return 1;
-}
-
-///reads a little endian 64bit value from the specified file
-int read64le(uint64 *Bufo, std::istream *is)
-{
-        uint64 buf;
-        if (is->read((char*)&buf,8).gcount() != 8)
-                return 0;
-#ifdef LSB_FIRST
-        *Bufo=buf;
-#else
-        *Bufo = FCEU_de64lsb((uint8*)&buf);
 #endif
         return 1;
 }
@@ -201,64 +160,27 @@ int read16le(char *d, FILE *fp)
 #endif
 }
 
-//well. just for the sake of consistency
-int write8le(uint8 b, EmuFile*os)
-{
-        os->fwrite((char*)&b,1);
-        return 1;
+// writes a little endian 16bit value to the specified file
+int write16le(uint16 b, EmuFile *fp) {
+  uint8 s[2];
+  s[0] = (uint8)b;
+  s[1] = (uint8)(b >> 8);
+  fp->fwrite(s, 2);
+  return 2;
 }
 
-//well. just for the sake of consistency
-int read8le(uint8 *Bufo, EmuFile*is)
-{
-        if (is->fread((char*)Bufo,1) != 1)
-                return 0;
-        return 1;
+// writes a little endian 32bit value to the specified file
+int write32le(uint32 b, EmuFile *fp) {
+  uint8 s[4];
+  s[0] = (uint8)b;
+  s[1] = (uint8)(b >> 8);
+  s[2] = (uint8)(b >> 16);
+  s[3] = (uint8)(b >> 24);
+  fp->fwrite(s, 4);
+  return 4;
 }
 
-///writes a little endian 16bit value to the specified file
-int write16le(uint16 b, EmuFile *fp)
-{
-        uint8 s[2];
-        s[0]=(uint8)b;
-        s[1]=(uint8)(b>>8);
-        fp->fwrite(s,2);
-        return 2;
-}
-
-
-///writes a little endian 32bit value to the specified file
-int write32le(uint32 b, EmuFile *fp)
-{
-        uint8 s[4];
-        s[0]=(uint8)b;
-        s[1]=(uint8)(b>>8);
-        s[2]=(uint8)(b>>16);
-        s[3]=(uint8)(b>>24);
-        fp->fwrite(s,4);
-        return 4;
-}
-
-void writebool(bool b, EmuFile* os) { write32le(b?1:0,os); }
-
-int write64le(uint64 b, EmuFile* os)
-{
-        uint8 s[8];
-        s[0]=(uint8)b;
-        s[1]=(uint8)(b>>8);
-        s[2]=(uint8)(b>>16);
-        s[3]=(uint8)(b>>24);
-        s[4]=(uint8)(b>>32);
-        s[5]=(uint8)(b>>40);
-        s[6]=(uint8)(b>>48);
-        s[7]=(uint8)(b>>56);
-        os->fwrite((char*)&s,8);
-        return 8;
-}
-
-
-int read32le(uint32 *Bufo, EmuFile *fp)
-{
+int read32le(uint32 *Bufo, EmuFile *fp) {
         uint32 buf;
         if (fp->fread(&buf,4)<4)
                 return 0;
@@ -279,19 +201,6 @@ int read16le(uint16 *Bufo, EmuFile *is)
         *Bufo=buf;
 #else
         *Bufo = LE_TO_LOCAL_16(buf);
-#endif
-        return 1;
-}
-
-int read64le(uint64 *Bufo, EmuFile *is)
-{
-        uint64 buf;
-        if (is->fread((char*)&buf,8) != 8)
-                return 0;
-#ifdef LOCAL_LE
-        *Bufo=buf;
-#else
-        *Bufo = LE_TO_LOCAL_64(buf);
 #endif
         return 1;
 }

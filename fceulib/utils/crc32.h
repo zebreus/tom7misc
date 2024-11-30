@@ -1,8 +1,8 @@
 #ifndef _FCEULIB_CRC32_H
 #define _FCEULIB_CRC32_H
 
-#include "../types.h"
+#include <cstdint>
 
-uint32 CalcCRC32(uint32 crc, uint8 *buf, uint32 len);
+uint32_t CalcCRC32(uint32_t crc, const uint8_t *buf, uint32_t len);
 
 #endif
