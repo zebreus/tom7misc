@@ -166,8 +166,14 @@ Polyhedron Cuboctahedron();
 Polyhedron TruncatedCube();
 Polyhedron TruncatedOctahedron();
 Polyhedron Rhombicuboctahedron();
-Polyhedron Rhombicosidodecahedron();
+Polyhedron TruncatedCuboctahedron(); // new
 Polyhedron SnubCube();
+Polyhedron Icosidodecahedron(); // new
+Polyhedron TruncatedDodecahedron(); // new
+Polyhedron TruncatedIcosahedron(); // new
+Polyhedron Rhombicosidodecahedron();
+Polyhedron TruncatedIcosidodecahedron(); // new
+Polyhedron SnubDodecahedron(); // new
 
 // Catalan
 Polyhedron TriakisTetrahedron();

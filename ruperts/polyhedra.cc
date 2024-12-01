@@ -452,7 +452,7 @@ static void QuickHullRec(const std::vector<vec2> &vertices,
   //
   //             f
   //       left / \   right
-  //           /   \
+  //      set  /   \   set
   //          a     b
   //
   std::vector<int> left, right;
@@ -1127,6 +1127,34 @@ Polyhedron Rhombicuboctahedron() {
       std::move(vertices), "rhombicuboctahedron");
 }
 
+Polyhedron TruncatedCuboctahedron() {
+  std::vector<vec3> vertices;
+  constexpr double a = 1.0;
+  constexpr double b = 1.0 + std::numbers::sqrt2;
+  constexpr double c = 1.0 + 2.0 * std::numbers::sqrt2;
+
+  for (int bits = 0b000; bits < 0b1000; bits++) {
+    const double s1 = (bits & 0b100) ? -1 : +1;
+    const double s2 = (bits & 0b010) ? -1 : +1;
+    const double s3 = (bits & 0b001) ? -1 : +1;
+
+    const double aa = s1 * a;
+    const double bb = s2 * b;
+    const double cc = s3 * c;
+
+    vertices.emplace_back(aa, bb, cc);
+    vertices.emplace_back(aa, cc, bb);
+    vertices.emplace_back(bb, aa, cc);
+    vertices.emplace_back(bb, cc, aa);
+    vertices.emplace_back(cc, aa, bb);
+    vertices.emplace_back(cc, bb, aa);
+  }
+
+  CHECK(vertices.size() == 48);
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "TruncatedCuboctahedron");
+}
+
 static void AddEvenPermutations(double a, double b, double c,
                                 std::vector<vec3> *vertices) {
   // (a, b, c) - even
@@ -1140,6 +1168,127 @@ static void AddEvenPermutations(double a, double b, double c,
   vertices->emplace_back(b, c, a);
   vertices->emplace_back(c, a, b);
 }
+
+Polyhedron Icosidodecahedron() {
+  constexpr double phi = std::numbers::phi;
+  constexpr double phi_squared = phi * phi;
+
+  std::vector<vec3> vertices;
+
+  for (int b = 0; b < 2; b++) {
+    double c = b ? -phi : phi;
+    vertices.emplace_back(0.0, 0.0, c);
+    vertices.emplace_back(0.0, c, 0.0);
+    vertices.emplace_back(c, 0.0, 0.0);
+  }
+
+  for (int b = 0b000; b < 0b1000; b++) {
+    const double s1 = (b & 0b100) ? -1 : +1;
+    const double s2 = (b & 0b010) ? -1 : +1;
+    const double s3 = (b & 0b001) ? -1 : +1;
+
+    AddEvenPermutations(s1 * 0.5,
+                        s2 * phi * 0.5,
+                        s3 * phi_squared * 0.5,
+                        &vertices);
+  }
+
+  CHECK(vertices.size() == 30);
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "icosidodecahedron");
+}
+
+Polyhedron TruncatedDodecahedron() {
+  constexpr double phi = std::numbers::phi;
+  constexpr double inv_phi = 1.0 / phi;
+  std::vector<vec3> vertices;
+
+  for (int b = 0b00; b < 0b100; b++) {
+    const double s1 = (b & 0b10) ? -1 : +1;
+    const double s2 = (b & 0b01) ? -1 : +1;
+
+    AddEvenPermutations(0.0, s1 * inv_phi, s2 * (2.0 + phi),
+                        &vertices);
+  }
+
+  for (int b = 0b000; b < 0b1000; b++) {
+    const double s1 = (b & 0b100) ? -1 : +1;
+    const double s2 = (b & 0b010) ? -1 : +1;
+    const double s3 = (b & 0b001) ? -1 : +1;
+
+    AddEvenPermutations(s1 * inv_phi, s2 * phi, s3 * 2.0 * phi,
+                        &vertices);
+    AddEvenPermutations(s1 * phi, s2 * 2.0, s3 * (phi + 1.0),
+                        &vertices);
+  }
+
+  CHECK(vertices.size() == 60);
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "truncateddodecahedron");
+}
+
+Polyhedron TruncatedIcosahedron() {
+  std::vector<vec3> vertices;
+
+  // Derive from the icosahedron.
+  Polyhedron ico = Icosahedron();
+  for (int i = 0; i < ico.vertices.size(); i++) {
+    for (int j : ico.faces->neighbors[i]) {
+      // Consider every edge, but only once.
+      if (i < j) {
+        const vec3 &v0 = ico.vertices[i];
+        const vec3 &v1 = ico.vertices[i];
+        const vec3 v = v1 - v0;
+        // Shrink the edge to its middle third.
+        vertices.emplace_back(v0 + v / 3.0);
+        vertices.emplace_back(v0 + (2.0 * v) / 3.0);
+      }
+    }
+  }
+  delete ico.faces;
+  ico.faces = nullptr;
+
+  CHECK(vertices.size() == 60);
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "truncatedicosahedron");
+}
+
+Polyhedron TruncatedIcosidodecahedron() {
+  constexpr double phi = std::numbers::phi;
+  constexpr double inv_phi = 1.0 / phi;
+
+  std::vector<vec3> vertices;
+  for (int b = 0b000; b < 0b1000; b++) {
+    double s1 = (b & 0b100) ? -1 : +1;
+    double s2 = (b & 0b010) ? -1 : +1;
+    double s3 = (b & 0b001) ? -1 : +1;
+
+    AddEvenPermutations(s1 * inv_phi,
+                        s2 * inv_phi,
+                        s3 * (3.0 + phi),
+                        &vertices);
+    AddEvenPermutations(s1 * 2.0 * inv_phi,
+                        s2 * phi,
+                        s3 * (1.0 + 2.0 * phi),
+                        &vertices);
+    AddEvenPermutations(s1 * inv_phi,
+                        s2 * phi * phi,
+                        s3 * (3.0 * phi - 1.0),
+                        &vertices);
+    AddEvenPermutations(s1 * (2.0 * phi - 1.0),
+                        s2 * 2.0,
+                        s3 * (2.0 + phi),
+                        &vertices);
+    AddEvenPermutations(s1 * phi, s2 * 3.0, s3 * 2.0 * phi,
+                        &vertices);
+  }
+
+  CHECK(vertices.size() == 120);
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "truncatedicosidodecahedron");
+}
+
+
 
 Polyhedron Rhombicosidodecahedron() {
   constexpr double phi = std::numbers::phi;
@@ -1240,11 +1389,65 @@ Polyhedron TruncatedOctahedron() {
 }
 
 Polyhedron SnubDodecahedron() {
-  // Real root of x^3 + 2x^2 - phi^2.
-  [[maybe_unused]]
-  constexpr double xi = 0.943151259243881817126719892570364159406650386;
+  constexpr double phi = std::numbers::phi;
+  constexpr double phi_squared = phi * phi;
 
-  // Iterate some rotations...
+  constexpr double term = std::sqrt(phi - 5.0 / 27.0);
+  constexpr double xi =
+    std::cbrt(0.5 * (phi + term)) +
+    std::cbrt(0.5 * (phi - term));
 
-  LOG(FATAL) << "Unimplemented";
+  constexpr double xi_squared = xi * xi;
+  constexpr double inv_xi = 1.0 / xi;
+
+  // Following
+  // https://polytope.miraheze.org/wiki/Snub_dodecahedron
+  // But with all of the vertex coordinates multiplied by 2
+  // to simplify the expressions.
+
+  std::vector<vec3> vertices;
+  for (uint8_t bits = 0b000; bits < 0b1000; bits++) {
+    double s1 = (bits & 0b100) ? -1 : +1;
+    double s2 = (bits & 0b010) ? -1 : +1;
+    double s3 = (bits & 0b001) ? -1 : +1;
+
+    if ((std::popcount<uint8_t>(bits) & 1) == 1) {
+      // Odd number of negative signs.
+
+      AddEvenPermutations(
+          s1 * phi * std::sqrt(phi * (xi - 1.0 - inv_xi)),
+          s2 * xi * phi * std::sqrt(3.0 - xi_squared),
+          s3 * phi * std::sqrt(xi * (xi + phi) + 1.0),
+          &vertices);
+      AddEvenPermutations(
+          s1 * phi * std::sqrt(3.0 - xi_squared),
+          s2 * xi * phi * std::sqrt(1.0 - xi + (1.0 + phi) / xi),
+          s3 * phi * std::sqrt(xi * (xi + 1.0)),
+          &vertices);
+      AddEvenPermutations(
+          s1 * xi_squared * phi * std::sqrt(phi * (xi - 1.0 - inv_xi)),
+          s2 * phi * std::sqrt(xi + 1.0 - phi),
+          s3 * std::sqrt(xi_squared * (1.0 + 2.0 * phi) - phi),
+          &vertices);
+
+    } else {
+      // Even number of negative signs.
+
+      AddEvenPermutations(
+          s1 * xi_squared * phi * std::sqrt(3.0 - xi_squared),
+          s2 * xi * phi * std::sqrt(phi * (xi - 1.0 - inv_xi)),
+          s3 * phi_squared * inv_xi * std::sqrt(xi * (xi + phi) + 1.0),
+          &vertices);
+
+      AddEvenPermutations(
+          s1 * std::sqrt(phi * (xi + 2.0) + 2.0),
+          s2 * phi * std::sqrt(1.0 - xi + (1.0 + phi) / xi),
+          s3 * xi * std::sqrt(xi * (1.0 + phi) - phi),
+          &vertices);
+    }
+  }
+
+  CHECK(vertices.size() == 60);
+  return ConvexPolyhedronFromVertices(std::move(vertices),
+                                      "snubdodecahedron");
 }
