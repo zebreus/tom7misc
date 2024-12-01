@@ -1841,3 +1841,22 @@ ImageA Image1::MonoA(uint8_t one, uint8_t zero) const {
   }
   return out;
 }
+
+void Image1::SetRect(int x, int y, int w, int h, bool value) {
+
+  if (y < 0) { w += y; y = 0; }
+  if (x < 0) { h += x; x = 0; }
+
+  const int yover = (y + h) - height;
+  if (yover > 0) h -= yover;
+  const int xover = (x + w) - width;
+  if (xover > 0) w -= xover;
+
+  if (w <= 0 || h <= 0) return;
+
+  for (int yy = y; yy < y + h; yy++) {
+    for (int xx = x; xx < x + w; xx++) {
+      Set(yy * width + xx, value);
+    }
+  }
+}

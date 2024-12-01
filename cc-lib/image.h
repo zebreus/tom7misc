@@ -422,6 +422,8 @@ struct Image1 {
   inline void SetPixel(int x, int y, bool v);
   inline bool GetPixel(int x, int y) const;
 
+  void SetRect(int x, int y, int w, int h, bool value = true);
+
 private:
   int width, height;
   // Size width * height / 64.
