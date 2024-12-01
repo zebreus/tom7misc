@@ -33,7 +33,7 @@ inline auto FindOrDefault(const M &m, const typename M::key_type &k,
 
 // Sorts the key-value pairs by the key.
 template<class M>
-requires MapContainer<M> && std::sortable<typename M::key_type>
+requires MapContainer<M> && std::totally_ordered<typename M::key_type>
 inline auto MapToSortedVec(const M &m) ->
   std::vector<std::pair<typename M::key_type, typename M::mapped_type>> {
   using K = typename M::key_type;

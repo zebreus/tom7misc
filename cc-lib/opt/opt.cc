@@ -1980,7 +1980,7 @@ private:
   EState State; ///< Current optimization state.
     ///<
 
-  virtual void initBuffers( const int aParamCount, const int aPopSize )
+  virtual void initBuffers( const int aParamCount, const int aPopSize ) override
   {
     CBiteOptBase :: initBuffers( aParamCount, aPopSize );
 
@@ -1994,7 +1994,7 @@ private:
     }
   }
 
-  virtual void deleteBuffers()
+  virtual void deleteBuffers() override
   {
     CBiteOptBase :: deleteBuffers();
 
@@ -3853,10 +3853,8 @@ inline int biteopt_minimize(
   const int sct = ( stopc <= 0 ? 0 : 64 * N * stopc );
   const int useiter = (int) ( iter * sqrt( (double) M ));
   int evals = 0;
-  int k;
 
-  for( k = 0; k < attc; k++ )
-  {
+  for(int k = 0; k < attc; k++ ) {
     opt.init( rnd );
 
     int i;
@@ -3881,7 +3879,7 @@ inline int biteopt_minimize(
     }
   }
 
-  return( evals );
+  return evals;
 }
 
 #endif // BITEOPT_INCLUDED
