@@ -28,5 +28,8 @@ dump.exe : dump.o mov.o $(CC_LIB_OBJECTS)
 testbed.exe : testbed.o $(CC_LIB_OBJECTS)
 	$(CXX) $(EXE_LDFLAGS) $^ -o $@
 
+mov-recorder_test.exe : mov-recorder_test.o mov.o mov-recorder.o $(CC_LIB_OBJECTS)
+	$(CXX) $(EXE_LDFLAGS) $^ -o $@
+
 clean:
 	rm -f *.o *.dll $(CC_LIB_OBJECTS)
