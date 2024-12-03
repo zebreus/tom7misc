@@ -81,7 +81,7 @@ static void Model() {
   // NonMaskableInterrupt is the entry point for the frame,
   // which happens during vblank. We actually know that we
   // enter with the captured emulator state, the first time.
-  modeling.EnterBlock(BlockTag("", NONMASKABLE_INTERRUPT), start_state);
+  modeling.EnterBlock(BlockTag("top", NONMASKABLE_INTERRUPT), start_state);
 
   // TODO: Sprite0Hit will spin waiting for a PPU status
   // register to change. We'll want to at least include
@@ -194,6 +194,7 @@ static void Model() {
   Periodically status_per(1);
   int64_t iters = 0;
   std::vector<int> num_blocks_at_iter;
+  modeling.verbose = 1;
   while (!modeling.Done()) {
     MaybeRender(modeling, iters);
     if (iters == 15000) break;

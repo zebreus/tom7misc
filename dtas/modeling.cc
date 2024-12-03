@@ -44,6 +44,19 @@ std::optional<std::string> Bank::GetLabel(uint16_t addr) const {
   return MarioUtil::GetLabel(addr);
 }
 
+// Manipulates labels for call stacks. This might not work as expected if
+// the program doesn't pair JSR and RTS, but it also isn't required for
+// correctness (it is always OK to split a block or conflate them; you
+// just increase cost or conservativity).
+static std::string PushLabel(const std::string &label, const std::string &suffix) {
+  return StringPrintf("%s.%s", label.c_str(), suffix.c_str());
+}
+static std::string PopLabel(const std::string &label) {
+  auto pos = label.rfind('.');
+  if (pos == std::string::npos) return label;
+  return label.substr(0, pos);
+}
+
 static std::string TagString(const BlockTag &tag) {
   return StringPrintf(ACYAN("%s") AGREY(":") AYELLOW("%04x"),
                       tag.label.c_str(), tag.addr);
@@ -144,8 +157,18 @@ void Modeling::EnterBlock(const BlockTag &tag, const State &state) {
       }
       // Do nothing.
     } else {
+      block_tags[tag.addr].push_back(tag);
       if (verbose > 0) {
-        printf("New block %s\n", TagString(tag).c_str());
+        const auto &v = block_tags[tag.addr];
+        if (v.size() == 1) {
+          printf("New block %s\n", TagString(tag).c_str());
+        } else {
+          printf("Addr " AYELLOW("%04x") " now has tags:", tag.addr);
+          for (const BlockTag &otag : v) {
+            printf(" " ACYAN("%s"), otag.label.c_str());
+          }
+          printf("\n");
+        }
       }
       const int bidx = (int)blocks.size();
       block_index[tag] = bidx;
@@ -539,7 +562,7 @@ void Modeling::Expand() {
   const BasicBlock &block = blocks[block_idx];
 
   State state = block.state_in;
-  const std::string &current_label = block.tag.label;
+  const std::string current_label = block.tag.label;
   uint16_t pc = block.StartAddr();
 
   auto Next8 = [&]() -> uint8_t {
@@ -901,26 +924,29 @@ void Modeling::Expand() {
 
     case 0x20: { // JSR a
       // Potentially hard?
-      // It writes into the stack, so want to have more
-      // certainty about where the stack pointer points.
-      // Otherwise this will make it look like the entire
-      // range $0100-$01FF can become the PC after any
-      // JSR is executed. We might also conflate stack
+      //
+      // It writes into the stack, so want to have more certainty
+      // about where the stack pointer points. Otherwise this will
+      // make it look like the entire range $0100-$01FF can become the
+      // PC after any JSR is executed. We might also conflate stack
       // data and addresses when we push/pop.
       //
-      // Optimistically, we always jump to a subroutine
-      // with the stack pointer in the same place, and
-      // we always return to a single caller. This might
-      // be true and is checkable. We could start by
-      // seeing what happens in emulation.
+      // Optimistically, we always jump to a subroutine with the stack
+      // pointer in the same place, and we always return to a single
+      // caller. In practice this is not true for mario.nes; there are
+      // some shared subroutines and the stack depth is not always the
+      // same.
       //
-      // Turns out that the stack pointer is (empirically)
-      // always 0xFC when we call the NMI. Most instructions
-      // that use the stack are (empirically) executed with
-      // a single fixed stack pointer value, or else a small
-      // number. So it seems plausible that this simple
-      // approach will still work.
-
+      // Turns out that the stack pointer is (empirically) always 0xFC
+      // when we call the NMI. Most instructions that use the stack
+      // are (empirically) executed with a single fixed stack pointer
+      // value, or else a small number. But it causes a lot of uncertainty
+      // when the stack pointer is not definite, and it's even worse
+      // in RTS when we don't know what PC to pop. So to hopefully
+      // control this, we track the call stack using block tags whenever
+      // we do a RTS (in essence duplicating the subroutine).
+      //
+      // What's pushed:
       //               opcode
       // (current pc)  dst lo
       //               dst hi
@@ -965,7 +991,12 @@ void Modeling::Expand() {
 
       uint16_t daddr = Next16();
       // TODO: Include history here.
-      EnterBlock(BlockTag(current_label, daddr), state);
+
+      BlockTag subroutine_tag =
+        BlockTag(PushLabel(current_label,
+                           StringPrintf("%04x", instruction_pc)),
+                 daddr);
+      EnterBlock(subroutine_tag, state);
 
       // Ends basic block.
       return;
@@ -987,7 +1018,9 @@ void Modeling::Expand() {
           // Pop from this specific stack offset.
           ret_state.S = ByteSet::Singleton(sp + 2);
           // TODO: could pop from history here?
-          EnterBlock(BlockTag(current_label, raddr), std::move(ret_state));
+          BlockTag ret_tag =
+            BlockTag(PopLabel(current_label), raddr);
+          EnterBlock(ret_tag, std::move(ret_state));
         } else {
           // Multiple RTS destinations. This is a bad situation.
           // We can maybe handle the fact that we don't know *which*
@@ -1061,9 +1094,17 @@ void Modeling::Expand() {
                     ret_state.S = ByteSet::Singleton(sp + 2);
                     ret_state.ram[saddr + 1] = ByteSet64::Singleton(hi);
                     ret_state.ram[saddr + 2] = ByteSet64::Singleton(lo);
-                    BlockTag tag(current_label, raddr);
-                    if (!HasBlock(tag)) born++;
-                    EnterBlock(tag, std::move(ret_state));
+
+                    // TODO: We might want to split by the value of the
+                    // stack pointer here, since it's quite bad if that
+                    // is indefinite (e.g. if we encounter another RTS).
+                    // The contents of the stack is not very important
+                    // though, because we just popped it.
+                    BlockTag ret_tag =
+                      BlockTag(PopLabel(current_label), raddr);
+
+                    if (!HasBlock(ret_tag)) born++;
+                    EnterBlock(ret_tag, std::move(ret_state));
                   } else {
                     num_rejected++;
                     if (verbose > 0) {

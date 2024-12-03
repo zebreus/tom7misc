@@ -77,7 +77,7 @@ struct State {
 // in an RTS instruction. The tag can be anything; "" is common.
 struct BlockTag {
   BlockTag(std::string lab, uint16_t a) : label(std::move(lab)), addr(a) {}
-  std::string label;
+  std::string label = "DEFAULT";
   uint16_t addr = 0;
 
   inline bool operator==(const BlockTag &other) const {
@@ -152,6 +152,7 @@ struct Modeling {
   // We give each basic block a unique index.
   std::unordered_map<BlockTag, int, Hashing<BlockTag>> block_index;
   std::vector<BasicBlock> blocks;
+  std::unordered_map<uint16_t, std::vector<BlockTag>> block_tags;
   // The basic blocks that may need update.
   Dirty dirty;
   // Default zoning marks everything as executable, but you
