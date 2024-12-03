@@ -103,6 +103,25 @@ struct DoNotCopy {
 };
 }
 
+static void TestSyncAsynchronously() {
+  static constexpr const char OBJ_MSG[] = "sync_async";
+
+  std::mutex m;
+  int ran = 0;
+
+  {
+    Asynchronously async(0);
+    for (int i = 0; i < 10; i++) {
+      async.Run([&m, &ran, dnc = DoNotCopy<OBJ_MSG>()]() {
+          std::unique_lock<std::mutex> ul(m);
+          ran++;
+        });
+    }
+  }
+
+  CHECK(ran == 10);
+}
+
 static void TestAsynchronously() {
   static constexpr int MAX_THREADS = 4;
   static constexpr const char OBJ_MSG[] = "async";
@@ -184,6 +203,7 @@ int main(int argc, char **argv) {
   TestMapi();
   TestAccumulate();
   TestAsynchronously();
+  TestSyncAsynchronously();
   TestInParallel();
 
   printf("OK.\n");

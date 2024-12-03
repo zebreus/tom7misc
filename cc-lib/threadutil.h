@@ -522,7 +522,7 @@ struct Asynchronously {
 
       // If we're not actually threading, just do the work.
       if (max_threads <= 0) {
-        m.unlock();
+        ul.unlock();
         f();
         return;
       }
@@ -552,8 +552,10 @@ struct Asynchronously {
   }
 
   ~Asynchronously() {
-    // TODO: Note that the function call f() will have completed,
-    // but f itself will not have been destroyed.
+    // TODO: Note that the function call f() will have completed, but
+    // f itself will not necessarily have been destroyed. Maybe we
+    // want to keep the threads and explicitly wait on them in this
+    // destructor.
     Wait();
   }
 
