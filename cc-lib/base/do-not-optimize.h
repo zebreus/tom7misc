@@ -11,6 +11,10 @@
 // Excerpted from google/benchmark. Apache 2.0 license.
 // https://github.com/google/benchmark/blob/main/LICENSE
 
+// This deprecation is probably worth listening to, but I am not
+// that careful!
+#define NO_DEPRECATION_WARNING 1
+
 #if defined(__GNUC__) || defined(__clang__)
 #define BENCHMARK_ALWAYS_INLINE __attribute__((always_inline))
 #elif defined(_MSC_VER) && !defined(__clang__)
@@ -45,6 +49,12 @@
       __LINE__) ") : warning note: " msg))
 #define BENCHMARK_DISABLE_DEPRECATED_WARNING
 #define BENCHMARK_RESTORE_DEPRECATED_WARNING
+#endif
+
+// Added by Tom 7.
+#if NO_DEPRECATION_WARNING
+#undef BENCHMARK_DEPRECATED_MSG
+#define BENCHMARK_DEPRECATED_MSG(msg)
 #endif
 
 #ifndef __has_builtin

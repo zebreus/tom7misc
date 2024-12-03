@@ -503,6 +503,9 @@ void ParallelFan(int num_threads, const F &f) {
 // parallelism is reached, by waiting until there is at least one
 // thread free before returning from Run.
 //
+// If the thread count is zero or negative, the function is always
+// run synchronously in the calling thread (this is mainly for testing).
+//
 // PERF: This could probably use a thread pool instead of spawning
 // for each task.
 struct Asynchronously {
@@ -510,17 +513,28 @@ struct Asynchronously {
 
   // Wait until we have thread budget, run the function
   // asynchronously, and return.
+  //
+  // The function is copied and it must outlive the Asynchronously
+  // object, since it is detached.
   void Run(std::function<void()> f) {
     {
       std::unique_lock<std::mutex> ul(m);
+
+      // If we're not actually threading, just do the work.
+      if (max_threads <= 0) {
+        m.unlock();
+        f();
+        return;
+      }
+
       // Wait (without the lock) until we have thread budget.
       cond.wait(ul, [this]{ return threads_active < max_threads; });
       threads_active++;
     }
 
     // Run the function asynchronously, without the lock.
-    std::thread t{[this, f]() {
-        f();
+    std::thread t{[this, fn = std::move(f)]() {
+        fn();
         {
           std::unique_lock<std::mutex> ul(m);
           threads_active--;
@@ -538,6 +552,8 @@ struct Asynchronously {
   }
 
   ~Asynchronously() {
+    // TODO: Note that the function call f() will have completed,
+    // but f itself will not have been destroyed.
     Wait();
   }
 
@@ -545,7 +561,7 @@ struct Asynchronously {
   std::mutex m;
   std::condition_variable cond;
   int threads_active = 0;
-  const int max_threads;
+  const int max_threads = 0;
 };
 
 #endif

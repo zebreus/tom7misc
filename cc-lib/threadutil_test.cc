@@ -6,6 +6,7 @@
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
+#include "base/do-not-optimize.h"
 #include "periodically.h"
 #include "timer.h"
 #include "ansi.h"
@@ -81,8 +82,30 @@ static void TestMapi() {
   }
 }
 
+// Test that objects in closures passed to Asynchronously are not
+// copied. A typical use case is to process some large data (e.g.
+// unencoded image) so we actually do care about copies.
+namespace {
+template<const char msg[]>
+struct DoNotCopy {
+  DoNotCopy() {};
+  DoNotCopy(DoNotCopy &&other) = default;
+  DoNotCopy(const DoNotCopy &other) {
+    printf(ARED("WARNING") ": Object copied (" AWHITE("%s") ")\n",
+           msg);
+  }
+  DoNotCopy &operator=(DoNotCopy &other) {
+    printf(ARED("WARNING") ": Object assigned (" AWHITE("%s") ")\n",
+           msg);
+  }
+  DoNotCopy &operator=(DoNotCopy &&other) = default;
+  std::string payload = msg;
+};
+}
+
 static void TestAsynchronously() {
   static constexpr int MAX_THREADS = 4;
+  static constexpr const char OBJ_MSG[] = "async";
 
   std::mutex m;
   int simultaneous = 0;
@@ -92,7 +115,9 @@ static void TestAsynchronously() {
   {
     Asynchronously async(MAX_THREADS);
     for (int i = 0; i < 100; i++) {
-      async.Run([&m, &simultaneous, &max_simultaneous, &ran]() {
+      DoNotCopy<OBJ_MSG> object;
+      async.Run([&m, &simultaneous, &max_simultaneous, &ran,
+                 obj = std::move(object)] () {
           {
             std::unique_lock<std::mutex> ul(m);
             simultaneous++;
@@ -101,6 +126,7 @@ static void TestAsynchronously() {
               std::max(simultaneous, max_simultaneous);
           }
           std::this_thread::sleep_for(50ms);
+          DoNotOptimize(obj);
           {
             std::unique_lock<std::mutex> ul(m);
             ran++;
