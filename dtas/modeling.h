@@ -2,6 +2,7 @@
 #ifndef _MODELING_H
 #define _MODELING_H
 
+#include <bit>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -16,6 +17,7 @@
 #include "../fceulib/emulator.h"
 #include "base/logging.h"
 #include "byteset.h"
+#include "hashing.h"
 #include "zoning.h"
 
 struct Bank {
@@ -65,13 +67,45 @@ struct State {
   std::string DebugString() const;
 };
 
+// The same code address can be inserted as a basic block multiple
+// times, by using a different tag for it. The reason to do this is
+// that if you know the conditions under which the block is entered,
+// it often reduces the possibilities for what can happen. This is
+// particularly important for blocks that are called as subroutines
+// from different places; splitting into two different blocks based
+// on the source makes it possible to know where we will return to
+// in an RTS instruction. The tag can be anything; "" is common.
+struct BlockTag {
+  BlockTag(std::string lab, uint16_t a) : label(std::move(lab)), addr(a) {}
+  std::string label;
+  uint16_t addr = 0;
+
+  inline bool operator==(const BlockTag &other) const {
+    return addr == other.addr && label == other.label;
+  }
+};
+
+
 struct BasicBlock {
+  BlockTag tag;
   // Machine address that begins the block.
-  uint16_t start_addr = 0;
-  // length, etc.??
+  uint16_t StartAddr() const { return tag.addr; }
+
+  // TODO: length, etc.??
 
   // The abstract state entering this block.
   State state_in;
+};
+
+template <>
+struct Hashing<BlockTag> {
+  size_t operator()(const BlockTag& tag) const {
+    size_t h = Hashing<std::string>()(tag.label);
+    h = std::rotl<size_t>(h, 11);
+    h *= 31337;
+    h += tag.addr;
+    return h;
+  }
 };
 
 // Blocks (as their indices) that need to be worked on. We maintain
@@ -114,8 +148,9 @@ struct Modeling {
   // read-only data accessed by the program. We only support
   // a single bank here.
   Bank rom;
+
   // We give each basic block a unique index.
-  std::unordered_map<uint16_t, int> block_index;
+  std::unordered_map<BlockTag, int, Hashing<BlockTag>> block_index;
   std::vector<BasicBlock> blocks;
   // The basic blocks that may need update.
   Dirty dirty;
@@ -124,6 +159,9 @@ struct Modeling {
   // about what addresses are actually code.
   Zoning zoning;
   int verbose = 0;
+  // Disable normal parsimonious messages like when we detect
+  // a state space explosion.
+  bool quiet = false;
 
   // True if the analysis is quiescent.
   bool Done() const;
@@ -150,11 +188,13 @@ struct Modeling {
   ByteSet GetByteSetFromOffsetsZpg(
       const State &state, uint8_t addr, const ByteSet &offsets) const;
 
+  // True if we have this block in our analysis.
+  bool HasBlock(const BlockTag &tag);
   // Record that we can reach the address with the
   // given state. It may add a new basic block to our
   // analysis. Marks the block as dirty if it is new
   // or has changed.
-  void EnterBlock(uint16_t addr, const State &state);
+  void EnterBlock(const BlockTag &tag, const State &state);
 
   // Run the abstract evaluation forward for the next block in the
   // queue (if there are any). This may insert new basic blocks (if we

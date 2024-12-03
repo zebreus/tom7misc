@@ -36,7 +36,7 @@ LINKSDL=  -lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
 
 UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/ansi.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o
 
-CODEC_OBJECTS=$(CODEC)/mov.o
+CODEC_OBJECTS=$(CODEC)/mov.o $(CODEC)/mov-recorder.o
 
 # bad command line 2022
 # x86_64-w64-mingw32-g++ -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -ISDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++17 -DHAVE_ASPRINTF -m64 -g -O2 -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF -Ic:/code/SDL/include    -I / -I /re2 --std=c++20  -c -o ../../cc-lib/util.o ../../cc-lib/util.cc

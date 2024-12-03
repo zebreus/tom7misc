@@ -44,6 +44,11 @@ std::optional<std::string> Bank::GetLabel(uint16_t addr) const {
   return MarioUtil::GetLabel(addr);
 }
 
+static std::string TagString(const BlockTag &tag) {
+  return StringPrintf(ACYAN("%s") AGREY(":") AYELLOW("%04x"),
+                      tag.label.c_str(), tag.addr);
+}
+
 std::string State::DebugString() const {
   // ByteSet A, X, Y, S, P;
   // std::vector<ByteSet64> ram;
@@ -118,29 +123,33 @@ bool State::MergeState(const State &other) {
   return changed;
 }
 
-void Modeling::EnterBlock(uint16_t addr, const State &state) {
-  auto it = block_index.find(addr);
+bool Modeling::HasBlock(const BlockTag &tag) {
+  return block_index.contains(tag);
+}
+
+void Modeling::EnterBlock(const BlockTag &tag, const State &state) {
+  auto it = block_index.find(tag);
   if (it == block_index.end()) {
     // New block.
     if (state.A.Empty() || state.X.Empty() || state.Y.Empty() ||
         state.S.Empty() || state.P.Empty()) {
-      LOG(FATAL) << "Tried to enter block " << StringPrintf("%04x", addr) <<
+      LOG(FATAL) << "Tried to enter block " << TagString(tag) <<
         " in impossible state:\n" << state.DebugString();
     }
 
-    if (0 == (zoning.addr[addr] & Zoning::X)) {
+    if (0 == (zoning.addr[tag.addr] & Zoning::X)) {
       if (verbose > 0) {
-        printf("\nTried to enter non-executable address " ARED("%04x") ".\n",
-               addr);
+        printf("\nTried to enter non-executable address %s.\n",
+               TagString(tag).c_str());
       }
       // Do nothing.
     } else {
       if (verbose > 0) {
-        printf("New block " AGREEN("%04x") "\n", addr);
+        printf("New block %s\n", TagString(tag).c_str());
       }
       const int bidx = (int)blocks.size();
-      block_index[addr] = bidx;
-      blocks.emplace_back(BasicBlock{.start_addr = addr, .state_in = state});
+      block_index[tag] = bidx;
+      blocks.emplace_back(BasicBlock{.tag = tag, .state_in = state});
       dirty.Push(bidx);
     }
   } else {
@@ -530,7 +539,8 @@ void Modeling::Expand() {
   const BasicBlock &block = blocks[block_idx];
 
   State state = block.state_in;
-  uint16_t pc = block.start_addr;
+  const std::string &current_label = block.tag.label;
+  uint16_t pc = block.StartAddr();
 
   auto Next8 = [&]() -> uint8_t {
       uint8_t ret = rom.Read(pc);
@@ -580,7 +590,8 @@ void Modeling::Expand() {
           });
         // The displacement is relative to the instruction after
         // the branch, which is what the pc now represents.
-        EnterBlock(pc + displacement, std::move(truestate));
+        EnterBlock(BlockTag(current_label, pc + displacement),
+                   std::move(truestate));
       }
 
       if (has_false) {
@@ -591,9 +602,8 @@ void Modeling::Expand() {
         state.P = state.P.Map([mask, false_case](uint8_t v) {
             return (v & ~mask) | false_case;
           });
-        EnterBlock(pc, state);
+        EnterBlock(BlockTag(current_label, pc), state);
       }
-
     };
 
   auto RotateLeft = [](State *state, const ByteSet &src) {
@@ -780,7 +790,7 @@ void Modeling::Expand() {
     switch (opcode) {
     case 0x4c: { // JMP a
       uint16_t addr = Next16();
-      EnterBlock(addr, state);
+      EnterBlock(BlockTag(current_label, addr), state);
       return;
     }
 
@@ -954,7 +964,8 @@ void Modeling::Expand() {
       }
 
       uint16_t daddr = Next16();
-      EnterBlock(daddr, state);
+      // TODO: Include history here.
+      EnterBlock(BlockTag(current_label, daddr), state);
 
       // Ends basic block.
       return;
@@ -975,7 +986,8 @@ void Modeling::Expand() {
           State ret_state = state;
           // Pop from this specific stack offset.
           ret_state.S = ByteSet::Singleton(sp + 2);
-          EnterBlock(raddr, std::move(ret_state));
+          // TODO: could pop from history here?
+          EnterBlock(BlockTag(current_label, raddr), std::move(ret_state));
         } else {
           // Multiple RTS destinations. This is a bad situation.
           // We can maybe handle the fact that we don't know *which*
@@ -999,7 +1011,8 @@ void Modeling::Expand() {
                    ACYAN("%02x") "]: ", sp);
           }
 
-          int num_rejected = 0;
+          int born = 0;
+          int num_accepted = 0, num_rejected = 0;
           // printf("\n");
           for (int hi = 0; hi < 256; hi++) {
             if (state.ram[saddr + 1].Contains(hi)) {
@@ -1040,6 +1053,7 @@ void Modeling::Expand() {
                   }
 
                   if (allow) {
+                    num_accepted++;
                     if (verbose > 0) printf(" %04x", raddr);
                     State ret_state = state;
                     // We know where the stack points, and what was
@@ -1047,10 +1061,12 @@ void Modeling::Expand() {
                     ret_state.S = ByteSet::Singleton(sp + 2);
                     ret_state.ram[saddr + 1] = ByteSet64::Singleton(hi);
                     ret_state.ram[saddr + 2] = ByteSet64::Singleton(lo);
-                    EnterBlock(raddr, std::move(ret_state));
+                    BlockTag tag(current_label, raddr);
+                    if (!HasBlock(tag)) born++;
+                    EnterBlock(tag, std::move(ret_state));
                   } else {
+                    num_rejected++;
                     if (verbose > 0) {
-                      num_rejected++;
                       if (num_rejected < 10) {
                         printf(" %s%04x" ANSI_RESET,
                                unzoned ? ANSI_DARK_RED : ANSI_RED,
@@ -1065,6 +1081,14 @@ void Modeling::Expand() {
             }
           }
           if (verbose > 0) printf("\n");
+
+          if (verbose > 0 || (born > 16 && !quiet)) {
+            printf("RTS at " ACYAN("%04x")
+                   " added " AORANGE("%d") " new blocks. "
+                   "[acc " AGREEN("%d") "; rej " ARED("%d") "]\n",
+                   instruction_pc, born, num_accepted, num_rejected);
+          }
+
         }
       }
 
@@ -1539,23 +1563,28 @@ void Modeling::Expand() {
       ByteSet addr_lo = GetByteSet(state, indirect_addr);
       ByteSet addr_hi = GetByteSet(state, indirect_addr + 1);
 
-      int accepted = 0, rejected = 0;
+      int accepted = 0, rejected = 0, born = 0;
       for (uint8_t hi : addr_hi) {
         for (uint8_t lo : addr_lo) {
           uint16_t target_addr = Word16(hi, lo);
 
           if (zoning.addr[target_addr] & Zoning::X) {
             accepted++;
-            EnterBlock(target_addr, state);
+            // TODO: This is another place to consider splitting blocks.
+            BlockTag tag(current_label, target_addr);
+            if (!HasBlock(tag)) born++;
+            EnterBlock(tag, state);
           } else {
             rejected++;
           }
         }
       }
 
-      if (verbose > 0) {
-        printf("Indirect jump: Accepted " AGREEN("%d") " dests; rejected "
-               ARED("%d") "\n", accepted, rejected);
+      if (verbose > 0 || (born > 16 && !quiet)) {
+        printf("Indirect JMP at " ACYAN("%04x")
+               " added " AORANGE("%d") " new blocks. "
+               "[acc " AGREEN("%d") "; rej " ARED("%d") "]\n",
+               instruction_pc, born, accepted, rejected);
       }
 
       return;
@@ -1949,12 +1978,13 @@ void Modeling::Expand() {
 
     // Stop if we've encountered a new block (i.e., there is a jump
     // into this block from elsewhere).
-  } while (!block_index.contains(pc));
+  } while (!block_index.contains(BlockTag(current_label, pc)));
+
   if (verbose > 1) {
     printf(ANSI_DARK_BLUE "(block ends)" ANSI_RESET "\n");
   }
 
   // If we get here, then the basic block has ended, but we treat
   // it as an unconditional jump to the next instruction.
-  EnterBlock(pc, state);
+  EnterBlock(BlockTag(current_label, pc), state);
 }
