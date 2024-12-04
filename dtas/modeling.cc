@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -191,7 +192,12 @@ bool Modeling::Done() const {
   return dirty.Empty();
 }
 
-template<class F>
+#if 0
+// with f : uint8 -> uint8 * uint8, returns
+// byteset(uint8) * byteset(uint8)
+template<class F> requires requires (F f) {
+  std::is_same<std::pair<uint8_t, uint8_t>, decltype(f((uint8_t)0))>();
+}
 static auto Map2(const F &f, const ByteSet &s) ->
   std::pair<ByteSet, ByteSet> {
   ByteSet a, b;
@@ -202,18 +208,27 @@ static auto Map2(const F &f, const ByteSet &s) ->
   }
   return std::make_pair(a, b);
 }
+#endif
 
+// Adapts a simple function from uint8 -> uint8 into an
+// argument appropriate for ReadModifyWrite, setting only
+// the Z and N flags.
 template<class F>
-static std::function<std::pair<uint8_t, uint8_t>(uint8_t)>
-WithZN(F f_in) {
-  return [f = std::move(f_in)](uint8_t x) ->
-    std::pair<uint8_t, uint8_t> {
-      uint8_t v = f(x);
+static std::function<std::pair<ByteSet, ByteSet>(ByteSet)>
+SimpleWithZN(F f_in) {
+  return [f = std::move(f_in)](const ByteSet &xs) ->
+    std::pair<ByteSet, ByteSet> {
+    ByteSet value_set, flags_set;
+    for (uint8_t x : xs) {
+      const uint8_t v = f(x);
       uint8_t flags = 0;
       if (v == 0) flags |= Z_FLAG;
       if (v & 0x80) flags |= N_FLAG;
-      return std::make_pair(v, flags);
+      value_set.Add(v);
+      flags_set.Add(flags);
     };
+    return std::make_pair(value_set, flags_set);
+  };
 }
 
 // Get the byteset for a specific memory location.
@@ -629,6 +644,7 @@ void Modeling::Expand() {
       }
     };
 
+  // XXX should do this like RotateRight, returning flags
   auto RotateLeft = [](State *state, const ByteSet &src) {
       bool has_carry = false;
       bool has_no_carry = false;
@@ -659,7 +675,9 @@ void Modeling::Expand() {
       CHECK(!state->P.Empty());
     };
 
-  // Returns (values, flags)
+  // Returns (values, flags).
+  // This depends on the state (and cannot just return one value) because
+  // the carry flag is rotated into the value.
   auto RotateRight = [](const State &state, const ByteSet &src) ->
     std::pair<ByteSet, ByteSet> {
 
@@ -700,9 +718,13 @@ void Modeling::Expand() {
       return std::make_pair(new_a, zncflags);
     };
 
-  // f returns a pair of uint8_ts: (value, flags)
+  // f takes ByteSet and returns a pair of ByteSets,
+  // which are the possible (values, flags) when f is applied to
+  // elements in the argument ByteSet.
   // mem[addr+offset] = f(mem[addr+offset]).first
   // flags = (flags & ~mask) | f(mem[addr+offset]).second
+  // FIXME: I think that we need a version for zero page, which
+  // wraps only to addresses on zero page.
   auto ReadModifyWrite = [this](State *state,
                                 uint8_t flag_mask,
                                 uint16_t addr_base,
@@ -711,7 +733,7 @@ void Modeling::Expand() {
       if (addr_offset.Size() == 1) {
         uint16_t eaddr = addr_base + addr_offset.GetSingleton();
         ByteSet before = this->GetByteSet(*state, eaddr);
-        const auto &[after, flags] = Map2(f, before);
+        const auto &[after, flags] = f(before);
         // Overwrite, since this is a definite address.
         this->WriteByteSet64(state, eaddr, ByteSet64(after));
         CombineFlags(state, flags, flag_mask);
@@ -724,7 +746,7 @@ void Modeling::Expand() {
           ByteSet before = this->GetByteSet(*state, eaddr);
           // Since we don't know whether we're actually writing
           // here, the write is added to the possibilities.
-          const auto &[after, flags] = Map2(f, before);
+          const auto &[after, flags] = f(before);
           merged_flags.AddSet(flags);
           ByteSet together = ByteSet::Union(before, after);
           this->WriteByteSet64(state, eaddr, ByteSet64(together));
@@ -761,7 +783,7 @@ void Modeling::Expand() {
 
   // For LSR. The operation itself is just a right shift, but it is
   // nontrivial because it modifies the carry flag. (And Z, and N.)
-  auto LogicalShiftRight = [](uint8_t v) {
+  auto LogicalShiftRightOne = [](uint8_t v) -> std::pair<uint8_t, uint8_t> {
       // Compute flags (on the input so that we can see if
       // we will get carry). We cover the N flag, but it
       // is always zero for LSR.
@@ -770,6 +792,16 @@ void Modeling::Expand() {
       if (v == 0 || v == 1) f |= Z_FLAG;
 
       return std::make_pair(v >> 1, f);
+    };
+
+  auto LogicalShiftRight = [&LogicalShiftRightOne](const ByteSet &xs) {
+      ByteSet val_set, flag_set;
+      for (uint8_t x : xs) {
+        const auto &[v, f] = LogicalShiftRightOne(x);
+        val_set.Add(v);
+        flag_set.Add(f);
+      }
+      return std::make_pair(val_set, flag_set);
     };
 
   // A strange case.
@@ -1469,8 +1501,29 @@ void Modeling::Expand() {
       CombineFlags(&state, flags, N_FLAG | Z_FLAG | C_FLAG);
       break;
     }
+
+    case 0x6e: { // ROR a
+      uint16_t addr = Next16();
+      ReadModifyWrite(&state,
+                      Z_FLAG | N_FLAG | C_FLAG,
+                      addr,
+                      // No offset.
+                      ByteSet::Singleton(0),
+                      [&](const ByteSet &xs) {
+                        return RotateRight(state, xs);
+                      });
+      break;
+    }
+
     case 0x7e: { // ROR a,x
-      LOG(FATAL) << "Unimplemented 'ROR a,x'";
+      uint16_t addr = Next16();
+      ReadModifyWrite(&state,
+                      Z_FLAG | N_FLAG | C_FLAG,
+                      addr,
+                      state.X,
+                      [&](const ByteSet &xs) {
+                        return RotateRight(state, xs);
+                      });
       break;
     }
 
@@ -1681,7 +1734,7 @@ void Modeling::Expand() {
                       addr,
                       // no offset
                       ByteSet::Singleton(0),
-                      WithZN([](uint8_t v) { return v - 1; }));
+                      SimpleWithZN([](uint8_t v) { return v - 1; }));
       break;
     }
     case 0xde: { // DEC a,x
@@ -1690,7 +1743,7 @@ void Modeling::Expand() {
                       Z_FLAG | N_FLAG,
                       addr,
                       state.X,
-                      WithZN([](uint8_t v) { return v - 1; }));
+                      SimpleWithZN([](uint8_t v) { return v - 1; }));
       break;
     }
     case 0xc6: { // DEC d
@@ -1700,7 +1753,7 @@ void Modeling::Expand() {
                       addr,
                       // no offset
                       ByteSet::Singleton(0),
-                      WithZN([](uint8_t v) { return v - 1; }));
+                      SimpleWithZN([](uint8_t v) { return v - 1; }));
       break;
     }
     case 0xd6: { // DEC d,x
@@ -1709,7 +1762,7 @@ void Modeling::Expand() {
                       Z_FLAG | N_FLAG,
                       addr,
                       state.X,
-                      WithZN([](uint8_t v) { return v - 1; }));
+                      SimpleWithZN([](uint8_t v) { return v - 1; }));
       break;
     }
 
@@ -1904,7 +1957,7 @@ void Modeling::Expand() {
                       addr,
                       // no offset
                       ByteSet::Singleton(0),
-                      WithZN([](uint8_t v) { return v + 1; }));
+                      SimpleWithZN([](uint8_t v) { return v + 1; }));
       break;
     }
     case 0xee: { // INC a
@@ -1914,7 +1967,7 @@ void Modeling::Expand() {
                       addr,
                       // no offset
                       ByteSet::Singleton(0),
-                      WithZN([](uint8_t v) { return v + 1; }));
+                      SimpleWithZN([](uint8_t v) { return v + 1; }));
       break;
     }
     case 0xf6: { // INC d,x
@@ -1923,7 +1976,7 @@ void Modeling::Expand() {
                       Z_FLAG | N_FLAG,
                       addr,
                       state.X,
-                      WithZN([](uint8_t v) { return v + 1; }));
+                      SimpleWithZN([](uint8_t v) { return v + 1; }));
       break;
     }
     case 0xfe: { // INC a,x
@@ -1932,7 +1985,7 @@ void Modeling::Expand() {
                       Z_FLAG | N_FLAG,
                       addr,
                       state.X,
-                      WithZN([](uint8_t v) { return v + 1; }));
+                      SimpleWithZN([](uint8_t v) { return v + 1; }));
       break;
     }
 
@@ -1941,13 +1994,7 @@ void Modeling::Expand() {
 
       ByteSet znc_flags;
       ByteSet new_a;
-      for (int i = 0; i < 256; i++) {
-        if (state.A.Contains(i)) {
-          const auto &[v, f] = LogicalShiftRight(i);
-          new_a.Add(v);
-          znc_flags.Add(f);
-        }
-      }
+      std::tie(new_a, znc_flags) = LogicalShiftRight(state.A);
 
       state.A = std::move(new_a);
       CombineFlags(&state, znc_flags, Z_FLAG | N_FLAG | C_FLAG);

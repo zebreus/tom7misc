@@ -103,12 +103,15 @@ static void Model() {
 
   // Write a diagnostic image to show the state of the model.
   // Slow! TODO: We could do this every 10 frames or whatever.
-  static constexpr bool WRITE_IMAGES = false;
+  static constexpr bool WRITE_IMAGES = true;
+  static constexpr int WRITE_EVERY = 10;
 
-  Asynchronously save_async(12);
+  Asynchronously save_async(0); // (12);
 
   auto MaybeRender = [&save_async](const Modeling &modeling, int frame) {
       if (!WRITE_IMAGES) return;
+      if ((frame % WRITE_EVERY) != 0) return;
+      printf("Render frame %d...\n", frame);
 
       ByteSet zero;
       constexpr int LEFT = 8;
@@ -157,18 +160,23 @@ static void Model() {
           }
         };
 
+      uint16_t prev_addr = 0xFFFF;
       for (int y = 0; y < MAX_BLOCKS; y++) {
         int yy = y + TOP;
         if (y < indices.size()) {
           const auto &[addr, index] = indices[y];
           const BasicBlock &block = modeling.blocks[index];
           const State &state = block.state_in;
+
+          // Make it clearer if we have split this block.
+          uint32_t addr_color = (addr == prev_addr) ? 0x999999FF : 0xFFFFFFFF;
           // draw address
           for (int i = 0; i < 16; i++) {
             if (addr & (1 << (15 - i))) {
-              img.SetPixel32(i + LEFT, yy, 0xFFFFFFFF);
+              img.SetPixel32(i + LEFT, yy, addr_color);
             }
           }
+          prev_addr = addr;
 
           // Now draw machine state at entry.
           // A, X, Y in RGB.
@@ -185,7 +193,9 @@ static void Model() {
       }
 
       save_async.Run([image = std::move(img), frame]() {
-          image.Save(StringPrintf("model-%d.png", frame));
+          std::string filename = StringPrintf("model-%d.png", frame);
+          image.Save(filename);
+          printf("Wrote %s\n", filename.c_str());
         });
     };
 
