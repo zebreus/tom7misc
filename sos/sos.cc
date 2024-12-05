@@ -6,7 +6,7 @@
 
 #include <windows.h>
 
-#include "clutil.h"
+#include "opencl/clutil.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "threadutil.h"

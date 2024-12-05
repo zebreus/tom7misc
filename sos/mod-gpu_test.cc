@@ -3,14 +3,15 @@
 
 #include <optional>
 #include <tuple>
+#include <vector>
+#include <cstdint>
 
-#include "clutil.h"
-
-#include "base/logging.h"
 #include "ansi.h"
 #include "arcfour.h"
-#include "randutil.h"
+#include "base/logging.h"
 #include "factorization.h"
+#include "opencl/clutil.h"
+#include "randutil.h"
 #include "timer.h"
 
 #include "mod-util.h"

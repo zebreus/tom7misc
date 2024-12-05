@@ -3,18 +3,17 @@
 #define _MOD_GPU_H
 
 #include <cstdint>
-#include <vector>
-#include <string>
 #include <mutex>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-#include "clutil.h"
-#include "util.h"
 #include "map-util.h"
-
+#include "opencl/clutil.h"
+#include "util.h"
 
 // For mod.exe: For a batch of primes and pairs (m, n), does a quick
 // test to see if the equation has a solution mod prime. Most triples
@@ -57,7 +56,7 @@ struct ModQuickPassGPU {
 
     std::string kernel_src = defines + Util::ReadFile("mod.cl");
     const auto &[prog, kernels] =
-      cl->BuildKernels(kernel_src, {"InitializeAtomic", "QuickPass"}, false);
+      cl->BuildKernels(kernel_src, {"InitializeAtomic", "QuickPass"}, 0);
 
     CHECK(prog != 0);
     program = prog;

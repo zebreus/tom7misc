@@ -13,22 +13,22 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-#include "threadutil.h"
 #include "ansi.h"
-#include "timer.h"
-#include "periodically.h"
-#include "factorization.h"
 #include "atomic-util.h"
+#include "auto-histo.h"
+#include "factorization.h"
+#include "hashing.h"
+#include "opencl/clutil.h"
+#include "periodically.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "util.h"
 #include "vector-util.h"
 #include "work-queue.h"
-#include "util.h"
-#include "hashing.h"
 
 #include "sos-gpu.h"
-#include "clutil.h"
 #include "mod-util.h"
 #include "mod-gpu.h"
-#include "auto-histo.h"
 
 constexpr bool SELF_CHECK = false;
 

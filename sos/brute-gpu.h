@@ -2,17 +2,17 @@
 #ifndef _SOS_BRUTE_GPU_H
 #define _SOS_BRUTE_GPU_H
 
-#include <utility>
 #include <mutex>
-#include <vector>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ansi.h"
-#include "threadutil.h"
-#include "clutil.h"
-#include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "opencl/clutil.h"
+#include "threadutil.h"
+#include "util.h"
 
 // Runs the (smart-ish) brute force search on GPU.
 struct BruteGPU {
@@ -37,7 +37,7 @@ struct BruteGPU {
 
     std::string kernel_src = defines + Util::ReadFile("brute.cl");
     const auto &[prog, kern] =
-      cl->BuildOneKernel(kernel_src, "BruteXY", false);
+      cl->BuildOneKernel(kernel_src, "BruteXY", 0);
     CHECK(prog != 0);
     program = prog;
     CHECK(kern != 0);

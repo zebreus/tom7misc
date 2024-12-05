@@ -1,11 +1,11 @@
 
 #include "ansi.h"
 
-#include <set>
-#include <unordered_set>
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
+#include <set>
+#include <unordered_set>
 
 #include "ansi.h"
 #include "atomic-util.h"
@@ -13,13 +13,13 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "interval-cover.h"
+#include "opencl/clutil.h"
 #include "periodically.h"
 #include "sos-util.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
 
-#include "clutil.h"
 #include "brute-gpu.h"
 #include "brute-util.h"
 

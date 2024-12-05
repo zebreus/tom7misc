@@ -1,7 +1,7 @@
 
 #include "sos-util.h"
 #include "sos-gpu.h"
-#include "clutil.h"
+#include "opencl/clutil.h"
 
 #include <mutex>
 #include <vector>

@@ -1,19 +1,14 @@
 
-#include <utility>
-#include <mutex>
 #include <vector>
 #include <string>
 #include <optional>
 
-#include "threadutil.h"
-#include "clutil.h"
+#include "opencl/clutil.h"
 #include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "timer.h"
 #include "ansi.h"
-#include "map-util.h"
-#include "sos-util.h"
 #include "arcfour.h"
 #include "randutil.h"
 
@@ -22,7 +17,7 @@ static CL *cl = nullptr;
 static void TestSqrt() {
   std::string kernel_src = Util::ReadFile("sqrt.cl");
   const auto &[program, kernel] =
-    cl->BuildOneKernel(kernel_src, "SquareRoot", false);
+    cl->BuildOneKernel(kernel_src, "SquareRoot", 0);
   CHECK(program != 0);
   CHECK(kernel != 0);
 

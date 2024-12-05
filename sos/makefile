@@ -5,15 +5,6 @@ CC_LIB=../cc-lib
 ALPERTRON64=../alpertron64
 ALPERTRON=../alpertron
 
-# Note, this builds against AMD's distribution of OpenCL, since that's
-# the card I had when I started. It also works fine with an NVIDIA GPU,
-# and nvidia libs are a bit hard to find since they love CUDA.
-AMD_ARCH=x86_64
-# AMDSDK="/c/Program Files (x86)/AMD APP SDK"
-# mingw wants /c/, but TDM likes c:/
-# AMDSDK=c:/Program Files (x86)/AMD APP SDK/3.0
-AMDSDK=c:/code/AMD_SDK/
-
 # ASAN=true
 
 UNAME := $(shell uname -o)
@@ -21,6 +12,16 @@ ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
+
+  # Note, this builds against AMD's distribution of OpenCL, since that's
+  # the card I had when I started. It also works fine with an NVIDIA GPU,
+  # and nvidia libs are a bit hard to find since they love CUDA.
+  AMD_ARCH=x86_64
+  # AMDSDK="/c/Program Files (x86)/AMD APP SDK"
+  # mingw wants /c/, but TDM likes c:/
+  # AMDSDK=c:/Program Files (x86)/AMD APP SDK/3.0
+  AMDSDK=c:/code/AMD_SDK/
+
   # XXX necessary?
   PLATFORM_CXXFLAGS=-D__MINGW32__
   PLATFORM_LFLAGS=-lpsapi -Wl,--subsystem,console -static
@@ -32,7 +33,7 @@ ifeq ($(UNAME),Cygwin)
   GMP_LFLAGS=$(LIBGMP)/.libs/libgmp.a
   GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
 else
-  # Linux
+  # Linux, msys2
   CXX=g++
   CC=gcc
   GMP_LFLAGS=-lgmp -lOpenCL
@@ -47,8 +48,6 @@ OPT=-O3
 # Alpertron uses variable-length arrays, so suppress the warning about
 # that extension (or rewrite).
 CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) $(OPT) $(FLTO) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-vla-cxx-extension -I. -I$(CC_LIB) -I$(ALPERTRON64) -I$(ALPERTRON) -std=c++20
-
-# CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -DHAVE_ALLOCA -DNOWINSTUFF $(FLTO) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. -m64 -lz $(CL_LFLAGS) -lz $(OPT) $(FLTO) $(PLATFORM_LFLAGS) $(GMP_LFLAGS)
@@ -72,7 +71,7 @@ ALPERTRON_OBJECTS= $(ALPERTRON)/quadmodll.o $(ALPERTRON)/quad.o $(ALPERTRON)/mod
 
 OBJECTS=sos-util.o sos-quad.o database.o predict.o polynomial.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS) $(ALPERTRON64_OBJECTS) $(ALPERTRON_OBJECTS)
 
-CL_OBJECTS=$(OBJECTS) sos-gpu.o mod-gpu.o clutil.o
+CL_OBJECTS=$(OBJECTS) sos-gpu.o mod-gpu.o $(CC_LIB)/opencl/clutil.o
 
 sos.exe : sos.o $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -94,7 +93,7 @@ tune-factorize.exe : tune-factorize.o $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-sqrt_test.exe : sqrt_test.o $(OBJECTS)
+sqrt_test.exe : sqrt_test.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

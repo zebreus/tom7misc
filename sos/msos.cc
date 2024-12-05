@@ -1,20 +1,12 @@
-#include <cmath>
-#include <memory>
 #include <vector>
-#include <functional>
 #include <string>
 #include <bit>
 
-#include "clutil.h"
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "threadutil.h"
+#include "opencl/clutil.h"
 #include "util.h"
-#include "periodically.h"
-#include "timer.h"
-#include "ansi.h"
 
 using namespace std;
 

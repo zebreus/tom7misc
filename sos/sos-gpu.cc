@@ -1,15 +1,15 @@
 
 #include "sos-gpu.h"
 
-#include <vector>
 #include <cstdint>
 #include <tuple>
 #include <utility>
+#include <vector>
 
-#include "clutil.h"
 #include "base/logging.h"
-#include "threadutil.h"
+#include "opencl/clutil.h"
 #include "sos-util.h"
+#include "threadutil.h"
 
 // TODO: Generate code to do the unrolled TRY loops as efficiently
 // as we can. (See notes in gen-try.cc. I think it may not work...)

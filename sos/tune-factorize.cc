@@ -1,18 +1,14 @@
 
 #include "sos-util.h"
 #include "sos-gpu.h"
-#include "clutil.h"
 
-#include "base/logging.h"
 #include "ansi.h"
-#include "periodically.h"
-#include "opt/opt.h"
-#include "opt/optimizer.h"
 #include "arcfour.h"
-#include "randutil.h"
-#include "threadutil.h"
 #include "atomic-util.h"
-#include "factorization.h"
+#include "base/logging.h"
+#include "opencl/clutil.h"
+#include "opt/optimizer.h"
+#include "randutil.h"
 
 static CL *cl = nullptr;
 

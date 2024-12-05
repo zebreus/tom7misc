@@ -7,11 +7,11 @@
 #include <string>
 
 #include "ansi.h"
-#include "threadutil.h"
-#include "clutil.h"
-#include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "opencl/clutil.h"
+#include "threadutil.h"
+#include "util.h"
 
 // Runs the (smart-ish) brute force search (with u,v squares) on GPU.
 // Based on brute-gpu.h

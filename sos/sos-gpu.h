@@ -8,7 +8,7 @@
 #include <string>
 
 #include "threadutil.h"
-#include "clutil.h"
+#include "opencl/clutil.h"
 #include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"

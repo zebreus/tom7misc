@@ -5,12 +5,12 @@
 #include <tuple>
 
 #include "ansi.h"
-#include "threadutil.h"
-#include "clutil.h"
-#include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "opencl/clutil.h"
 #include "periodically.h"
+#include "threadutil.h"
+#include "util.h"
 
 static CL *cl = nullptr;
 

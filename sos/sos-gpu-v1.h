@@ -10,14 +10,15 @@
 #include <vector>
 #include <string>
 
-#include "threadutil.h"
-#include "clutil.h"
-#include "util.h"
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "sos-util.h"
+#include "opencl/clutil.h"
+#include "threadutil.h"
 #include "timer.h"
-#include "ansi.h"
+#include "util.h"
+
+#include "sos-util.h"
 
 // Runs many in batch. Even though there's a lot of paralellism for
 // a single number, it does not even come close to beating the CPU

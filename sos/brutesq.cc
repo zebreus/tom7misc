@@ -18,9 +18,9 @@
 #include "timer.h"
 #include "util.h"
 
-#include "clutil.h"
-#include "brutesq-gpu.h"
 #include "brute-util.h"
+#include "brutesq-gpu.h"
+#include "opencl/clutil.h"
 
 static constexpr bool SELF_CHECK = false;
 
