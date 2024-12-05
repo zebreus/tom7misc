@@ -166,13 +166,13 @@ Polyhedron Cuboctahedron();
 Polyhedron TruncatedCube();
 Polyhedron TruncatedOctahedron();
 Polyhedron Rhombicuboctahedron();
-Polyhedron TruncatedCuboctahedron(); // new
+Polyhedron TruncatedCuboctahedron();
 Polyhedron SnubCube();
-Polyhedron Icosidodecahedron(); // new
-Polyhedron TruncatedDodecahedron(); // new
-Polyhedron TruncatedIcosahedron(); // new
+Polyhedron Icosidodecahedron();
+Polyhedron TruncatedDodecahedron();
+Polyhedron TruncatedIcosahedron();
 Polyhedron Rhombicosidodecahedron();
-Polyhedron TruncatedIcosidodecahedron(); // new
+Polyhedron TruncatedIcosidodecahedron();
 Polyhedron SnubDodecahedron(); // new
 
 // Catalan

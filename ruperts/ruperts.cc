@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <functional>
+#include <limits>
 #include <mutex>
 #include <numbers>
 #include <string>
@@ -349,6 +350,10 @@ static void Solve(const Polyhedron &polyhedron) {
 
           if (error == 0.0) {
             MutexLock ml(&m);
+            // For easy ones, many threads will solve it at once, and then
+            // write over each other's solutions.
+            if (should_die && iters.Read() < 1000)
+              return;
             should_die = true;
 
             status.Printf("Solved! %lld iters, %lld attempts, in %s\n",
@@ -567,6 +572,10 @@ static void Solve2(const Polyhedron &polyhedron) {
 
           if (error == 0.0) {
             MutexLock ml(&m);
+            // For easy ones, many threads will solve it at once, and then
+            // write over each other's solutions.
+            if (should_die && iters.Read() < 1000)
+              return;
             should_die = true;
 
             status.Printf("Solved! %lld iters, %lld attempts, in %s\n",
@@ -787,6 +796,10 @@ static void Solve3(const Polyhedron &polyhedron) {
 
           if (error == 0.0) {
             MutexLock ml(&m);
+            // For easy ones, many threads will solve it at once, and then
+            // write over each other's solutions.
+            if (should_die && iters.Read() < 1000)
+              return;
             should_die = true;
 
             status.Printf("Solved! %lld iters, %lld attempts, in %s\n",
@@ -1084,6 +1097,10 @@ static void Solve4(const Polyhedron &polyhedron) {
 
           if (error == 0.0) {
             MutexLock ml(&m);
+            // For easy ones, many threads will solve it at once, and then
+            // write over each other's solutions.
+            if (should_die && iters.Read() < 1000)
+              return;
             should_die = true;
 
             status.Printf("Solved! %lld iters, %lld attempts, in %s\n",
@@ -1159,18 +1176,23 @@ int main(int argc, char **argv) {
 
   // Polyhedron target = SnubCube();
   // Polyhedron target = Rhombicosidodecahedron();
-  Polyhedron target = TruncatedOctahedron();
+  // Polyhedron target = TruncatedCuboctahedron();
+  // Polyhedron target = TruncatedDodecahedron();
+  // Polyhedron target = TruncatedOctahedron();
   // Polyhedron target = TruncatedTetrahedron();
+  // Polyhedron target = TruncatedIcosahedron();
+  // Polyhedron target = TruncatedIcosidodecahedron();
+  Polyhedron target = SnubDodecahedron();
 
   // (void)SnubCube();
   Visualize(target);
-  // AnimateMesh(target);
+  AnimateMesh(target);
 
   // Solve(Cube());
   // Solve(Dodecahedron());
   // Solve2(SnubCube());
   // Solve(SnubCube());
-  Solve(target);
+  Solve2(target);
   // Solve4(target);
 
   printf("OK\n");

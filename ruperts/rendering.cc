@@ -136,17 +136,13 @@ void Rendering::RenderPerspectiveWireframe(const Polyhedron &p,
 }
 
 void Rendering::RenderMesh(const Mesh2D &mesh) {
-  CHECK(mesh.faces->v.size() < COLORS.size()) << mesh.faces->v.size()
-                                              << " but have "
-                                              << COLORS.size();
-
   // Draw filled polygons first.
   for (int sy = 0; sy < height; sy++) {
     for (int sx = 0; sx < width; sx++) {
       const vec2 pt = ToWorld(sx, sy);
       for (int i = 0; i < mesh.faces->v.size(); i++) {
         if (PointInPolygon(pt, mesh.vertices, mesh.faces->v[i])) {
-          img.BlendPixel32(sx, sy, COLORS[i] & 0xFFFFFF22);
+          img.BlendPixel32(sx, sy, Color(i) & 0xFFFFFF22);
         }
       }
     }

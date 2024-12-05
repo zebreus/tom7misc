@@ -1,6 +1,7 @@
 
 #include "polyhedra.h"
 
+#include <limits>
 #include <unordered_set>
 #include <algorithm>
 #include <bit>
@@ -27,6 +28,34 @@
 
 // XXX for debugging
 #include "rendering.h"
+
+static bool consteval IsFinite(double x) {
+  return x == x && x < std::numeric_limits<double>::infinity() &&
+                       x > -std::numeric_limits<double>::infinity();
+}
+
+static double consteval SqrtNewtons(double x, double cur, double prev) {
+  return cur == prev
+    ? cur
+    : SqrtNewtons(x, 0.5 * (cur + x / cur), cur);
+}
+
+// Compile-time sqrt using Newton's method.
+static double consteval Sqrt(double x) {
+  return x >= 0.0 && IsFinite(x) ? SqrtNewtons(x, x, 0.0) : 0.0 / 0.0;
+}
+
+static double consteval CbrtNewtons(double x, double cur, double prev) {
+  return cur == prev
+    ? cur
+    : CbrtNewtons(x, (2.0 * cur + x / (cur * cur)) / 3.0, cur);
+}
+
+// Compile-time sqrt using Newton's method.
+static double consteval Cbrt(double x) {
+  return IsFinite(x) ? CbrtNewtons(x, x, 0.0) : 0.0 / 0.0;
+}
+
 
 std::string VecString(const vec3 &v) {
   return StringPrintf(
@@ -1152,7 +1181,7 @@ Polyhedron TruncatedCuboctahedron() {
 
   CHECK(vertices.size() == 48);
   return ConvexPolyhedronFromVertices(
-      std::move(vertices), "TruncatedCuboctahedron");
+      std::move(vertices), "truncatedcuboctahedron");
 }
 
 static void AddEvenPermutations(double a, double b, double c,
@@ -1237,7 +1266,7 @@ Polyhedron TruncatedIcosahedron() {
       // Consider every edge, but only once.
       if (i < j) {
         const vec3 &v0 = ico.vertices[i];
-        const vec3 &v1 = ico.vertices[i];
+        const vec3 &v1 = ico.vertices[j];
         const vec3 v = v1 - v0;
         // Shrink the edge to its middle third.
         vertices.emplace_back(v0 + v / 3.0);
@@ -1392,10 +1421,10 @@ Polyhedron SnubDodecahedron() {
   constexpr double phi = std::numbers::phi;
   constexpr double phi_squared = phi * phi;
 
-  constexpr double term = std::sqrt(phi - 5.0 / 27.0);
+  constexpr double term = Sqrt(phi - 5.0 / 27.0);
   constexpr double xi =
-    std::cbrt(0.5 * (phi + term)) +
-    std::cbrt(0.5 * (phi - term));
+    Cbrt(0.5 * (phi + term)) +
+    Cbrt(0.5 * (phi - term));
 
   constexpr double xi_squared = xi * xi;
   constexpr double inv_xi = 1.0 / xi;

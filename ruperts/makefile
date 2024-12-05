@@ -1,5 +1,14 @@
 default : ruperts.exe tosvg.exe polyhedra_test.exe
 
+# Note, this builds against AMD's distribution of OpenCL, since that's
+# the card I had when I started. It also works fine with an NVIDIA GPU,
+# and nvidia libs are a bit hard to find since they love CUDA.
+AMD_ARCH=x86_64
+# AMDSDK="/c/Program Files (x86)/AMD APP SDK"
+# mingw wants /c/, but TDM likes c:/
+# AMDSDK=c:/Program Files (x86)/AMD APP SDK/3.0
+AMDSDK=c:/code/AMD_SDK/
+
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
@@ -38,6 +47,8 @@ else
     # g++ says it supports --size but it doesn't work
     PLATFORM_LDFLAGS += -Wl,-z,stack-size=167772160
   endif
+
+  CL_LFLAGS=-lOpenCL
 endif
 
 CC_LIB=../cc-lib
@@ -52,9 +63,9 @@ OPT=-O3
 # -fno-strict-aliasing
 
 CXXFLAGS=$(ASAN) $(OPT) $(PLATFORM_CFLAGS) -DDISABLE_SOUND=1 -DDUMMY_UI -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CODEC) --std=c++20
-LFLAGS=$(ASAN) $(PLATFORM_CFLAGS) $(PLATFORM_LDFLAGS) -lz
+LFLAGS=$(ASAN) $(PLATFORM_CFLAGS) $(PLATFORM_LDFLAGS) $(CL_LFLAGS) -lz
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o $(CC_LIB)/csv.o $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o $(CC_LIB)/csv.o $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/opencl/clutil.o
 
 CODEC_OBJECTS=$(CODEC)/mov.o $(CODEC)/mov-recorder.o
 
@@ -73,6 +84,10 @@ $(CODEC)/%.o : $(CODEC)/%.cc makefile
 	@echo -n "."
 
 ruperts.exe : ruperts.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+gpuperts.exe : gpuperts.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
