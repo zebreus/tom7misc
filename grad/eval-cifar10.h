@@ -9,7 +9,7 @@
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "clutil.h"
+#include "opencl/clutil.h"
 #include "network.h"
 #include "network-gpu.h"
 #include "image.h"

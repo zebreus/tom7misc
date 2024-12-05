@@ -9,21 +9,21 @@
 #include <set>
 #include <utility>
 #include <vector>
-#include <functional>
 #include <string>
 
-#include "network.h"
-#include "network-test-util.h"
-#include "clutil.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
+#include "opencl/clutil.h"
+#include "periodically.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "image.h"
-#include "train-util.h"
 #include "timer.h"
-#include "periodically.h"
+
+#include "train-util.h"
+#include "network.h"
+#include "network-test-util.h"
+
 
 using namespace std;
 

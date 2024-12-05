@@ -20,24 +20,24 @@
 #include <thread>
 #include <deque>
 
-#include "network.h"
-#include "network-test-util.h"
-#include "clutil.h"
+#include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
+#include "image.h"
+#include "opencl/clutil.h"
+#include "periodically.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "image.h"
-#include "util.h"
-#include "train-util.h"
-#include "periodically.h"
 #include "timer.h"
-#include "error-history.h"
-#include "ansi.h"
+#include "util.h"
 
-#include "eval-cifar10.h"
 #include "cifar10.h"
+#include "error-history.h"
+#include "eval-cifar10.h"
+#include "network-test-util.h"
+#include "network.h"
+#include "train-util.h"
 
 using namespace std;
 

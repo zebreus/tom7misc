@@ -21,9 +21,9 @@
 #include "base/logging.h"
 #include "base/macros.h"
 #include "base/stringprintf.h"
-#include "network.h"
-#include "clutil.h"
+#include "opencl/clutil.h"
 
+#include "network.h"
 #include "grad-util.h"
 
 // PERF: For many of these, we use mutexes to avoid setting a

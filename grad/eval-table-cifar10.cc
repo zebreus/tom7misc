@@ -9,7 +9,7 @@
 #include "util.h"
 #include "ansi.h"
 #include "network.h"
-#include "clutil.h"
+#include "opencl/clutil.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 

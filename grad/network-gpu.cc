@@ -16,11 +16,11 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-#include "util.h"
 #include "network.h"
-#include "timer.h"
-#include "clutil.h"
+#include "opencl/clutil.h"
 #include "threadutil.h"
+#include "timer.h"
+#include "util.h"
 
 using namespace std;
 using int64 = int64_t;

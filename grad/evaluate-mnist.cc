@@ -3,13 +3,12 @@
 #include <memory>
 #include <string>
 
-#include "network.h"
-#include "clutil.h"
-
-#include "image.h"
 #include "base/logging.h"
+#include "image.h"
+#include "opencl/clutil.h"
 
 #include "eval-mnist.h"
+#include "network.h"
 
 using namespace std;
 

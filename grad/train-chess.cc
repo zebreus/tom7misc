@@ -13,29 +13,29 @@
 #include <ctime>
 #include <memory>
 #include <optional>
-#include <utility>
-#include <vector>
 #include <string>
 #include <thread>
 #include <tuple>
+#include <utility>
+#include <vector>
 
-#include "chess.h"
-#include "network.h"
-#include "clutil.h"
+#include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
+#include "chess.h"
+#include "image.h"
+#include "opencl/clutil.h"
+#include "opt/optimizer.h"
+#include "periodically.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "image.h"
-#include "util.h"
-#include "train-util.h"
-#include "error-history.h"
 #include "timer.h"
-#include "periodically.h"
-#include "ansi.h"
-#include "opt/optimizer.h"
+#include "train-util.h"
+#include "util.h"
 
+#include "error-history.h"
+#include "network.h"
 #include "nnchess.h"
 
 using namespace std;

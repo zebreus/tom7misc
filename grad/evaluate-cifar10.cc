@@ -3,16 +3,15 @@
 #include <memory>
 #include <string>
 
-#include "util.h"
-#include "cifar10.h"
-#include "network.h"
-#include "clutil.h"
-
-#include "image.h"
-#include "base/stringprintf.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
+#include "image.h"
+#include "opencl/clutil.h"
+#include "util.h"
 
+#include "cifar10.h"
 #include "eval-cifar10.h"
+#include "network.h"
 
 using namespace std;
 

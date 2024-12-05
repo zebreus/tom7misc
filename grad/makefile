@@ -36,7 +36,7 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 
 CHESS_OBJECTS=$(CHESS)/chess.o $(CHESS)/pgn.o
 
-CL_OBJECTS=network.o network-gpu.o error-history.o clutil.o
+CL_OBJECTS=network.o network-gpu.o error-history.o $(CC_LIB)/opencl/clutil.o
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -66,7 +66,7 @@ network_test.exe : network.o network-test-util.o network_test.o $(CCLIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-network-gpu_test.exe : network.o network-gpu.o network-test-util.o network-gpu_test.o clutil.o $(CCLIB_OBJECTS)
+network-gpu_test.exe : network.o network-gpu.o network-test-util.o network-gpu_test.o $(CL_OBJECTS) $(CCLIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
