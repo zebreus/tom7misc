@@ -1,6 +1,7 @@
 
 #include "modeling.h"
 
+#include <algorithm>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
@@ -9,7 +10,6 @@
 #include <optional>
 #include <string>
 #include <tuple>
-#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -64,8 +64,6 @@ static std::string TagString(const BlockTag &tag) {
 }
 
 std::string State::DebugString() const {
-  // ByteSet A, X, Y, S, P;
-  // std::vector<ByteSet64> ram;
   std::string ret;
   StringAppendF(
       &ret,
@@ -81,6 +79,18 @@ std::string State::DebugString() const {
       Y.DebugString().c_str(),
       S.DebugString().c_str(),
       P.DebugString().c_str());
+  // Show stack, at least if stack is definite.
+  if (S.Size() == 1) {
+    uint8_t sp = S.GetSingleton();
+
+    for (int i = std::max((int)sp - 2, 0); i < std::min((int)sp + 6, 0xFF); i++) {
+      StringAppendF(&ret,
+                    "Stack[" APURPLE("%02x") "] %s = %s\n",
+                    i,
+                    (i == sp) ? ABLUE("**") : "  ",
+                    ram[0x100 + i].DebugString().c_str());
+    }
+  }
   return ret;
 }
 
@@ -191,24 +201,6 @@ void Modeling::EnterBlock(const BlockTag &tag, const State &state) {
 bool Modeling::Done() const {
   return dirty.Empty();
 }
-
-#if 0
-// with f : uint8 -> uint8 * uint8, returns
-// byteset(uint8) * byteset(uint8)
-template<class F> requires requires (F f) {
-  std::is_same<std::pair<uint8_t, uint8_t>, decltype(f((uint8_t)0))>();
-}
-static auto Map2(const F &f, const ByteSet &s) ->
-  std::pair<ByteSet, ByteSet> {
-  ByteSet a, b;
-  for (uint8_t v : s) {
-    const auto &[va, vb] = f(v);
-    a.Add(va);
-    b.Add(vb);
-  }
-  return std::make_pair(a, b);
-}
-#endif
 
 // Adapts a simple function from uint8 -> uint8 into an
 // argument appropriate for ReadModifyWrite, setting only
@@ -824,6 +816,12 @@ void Modeling::Expand() {
     // Read the opcode, which advances the PC past it.
     const uint8_t opcode = Next8();
 
+    int inst_verbose = verbose;
+    {
+      auto it = verbose_addrs.find(instruction_pc);
+      if (it != verbose_addrs.end()) inst_verbose = it->second;
+    }
+
     if (state.A.Empty() || state.X.Empty() || state.Y.Empty() ||
         state.S.Empty() || state.P.Empty()) {
       LOG(FATAL) <<
@@ -834,12 +832,26 @@ void Modeling::Expand() {
                      state.DebugString().c_str());
     }
 
-    if (verbose > 1) {
+    if (inst_verbose > 1) {
       if (auto lo = rom.GetLabel(instruction_pc)) {
         printf(AWHITE("%s") ":\n", lo.value().c_str());
       }
       printf("%04x: " ABLUE("%02x") " " AGREY("(%s)") "\n",
              instruction_pc, opcode, Opcodes::opcode_name[opcode]);
+
+      if (inst_verbose > 2) {
+        printf("Label: " ACYAN("%s") "\n", current_label.c_str());
+        printf("%s\n", state.DebugString().c_str());
+
+        // XXX make this configurable; this is hard coded for the
+        // mario JumpEngine
+        for (uint16_t addr : {0x0004, 0x0005, 0x0006, 0x007,
+            0x0770}) {
+          printf("RAM[" AWHITE("%04x") "]: %s\n",
+                 addr,
+                 GetByteSet(state, addr).DebugString().c_str());
+        }
+      }
     }
 
     switch (opcode) {
@@ -1071,7 +1083,7 @@ void Modeling::Expand() {
           // about how the code works. We should be tracking something
           // about static call graphs to do this better.
 
-          if (verbose > 0) {
+          if (inst_verbose > 0) {
             printf(ARED("Ugh") "! Multiple possible RTS destinations [sp="
                    ACYAN("%02x") "]: ", sp);
           }
@@ -1119,7 +1131,7 @@ void Modeling::Expand() {
 
                   if (allow) {
                     num_accepted++;
-                    if (verbose > 0) printf(" %04x", raddr);
+                    if (inst_verbose > 0) printf(" %04x", raddr);
                     State ret_state = state;
                     // We know where the stack points, and what was
                     // there.
@@ -1139,7 +1151,7 @@ void Modeling::Expand() {
                     EnterBlock(ret_tag, std::move(ret_state));
                   } else {
                     num_rejected++;
-                    if (verbose > 0) {
+                    if (inst_verbose > 0) {
                       if (num_rejected < 10) {
                         printf(" %s%04x" ANSI_RESET,
                                unzoned ? ANSI_DARK_RED : ANSI_RED,
@@ -1153,13 +1165,14 @@ void Modeling::Expand() {
               }
             }
           }
-          if (verbose > 0) printf("\n");
+          if (inst_verbose > 0) printf("\n");
 
-          if (verbose > 0 || (born > 16 && !quiet)) {
+          if (inst_verbose > 0 || (born > 16 && !quiet)) {
             printf("RTS at " ACYAN("%04x")
                    " added " AORANGE("%d") " new blocks. "
                    "[acc " AGREEN("%d") "; rej " ARED("%d") "]\n",
                    instruction_pc, born, num_accepted, num_rejected);
+            CHECK(born < 1000); // XXX
           }
 
         }
@@ -1179,7 +1192,8 @@ void Modeling::Expand() {
 
       state.A.Clear();
       for (uint8_t sp : state.S) {
-        uint16_t saddr = 0x0100 + sp;
+        // Or is it (sp + 1)? Not sure how this one wraps.
+        uint16_t saddr = 0x0100 + sp + 1;
         state.A.AddSet(state.ram[saddr].ToByteSet());
       }
 
@@ -1674,11 +1688,12 @@ void Modeling::Expand() {
         }
       }
 
-      if (verbose > 0 || (born > 16 && !quiet)) {
+      if (inst_verbose > 0 || (born > 16 && !quiet)) {
         printf("Indirect JMP at " ACYAN("%04x")
                " added " AORANGE("%d") " new blocks. "
                "[acc " AGREEN("%d") "; rej " ARED("%d") "]\n",
                instruction_pc, born, accepted, rejected);
+        CHECK(born < 1000);
       }
 
       return;
@@ -1884,7 +1899,7 @@ void Modeling::Expand() {
       // TODO: This would be a good place to record the "final" state
       // if we want to be able to ask what values are possible after a
       // frame ends.
-      if (verbose > 1) {
+      if (inst_verbose > 1) {
         printf(ANSI_DARK_GREEN "(return from interrupt)" "\n");
       }
       return;

@@ -1,5 +1,6 @@
 
 #include <CL/cl.h>
+#include <cstdio>
 #include <ctime>
 #include <string>
 #include <vector>
@@ -7,7 +8,6 @@
 #include "ansi.h"
 #include "base/stringprintf.h"
 #include "arcfour.h"
-#include "randutil.h"
 
 #include "opencl/clutil.h"
 #include "polyhedra.h"
@@ -30,10 +30,11 @@ struct RupertGPU {
     std::string kernel_src =
       defines +
       Util::ReadFile("gpuperts.cl");
-    const auto &[program, kernels] = cl->BuildKernels(
+    const auto &[prg, kernels] = cl->BuildKernels(
         kernel_src,
         {"RotateAndProject"},
         1);
+    program = prg;
 
     auto RequireKernel = [&kernels](const char *name) -> cl_kernel {
         auto it = kernels.find(name);
@@ -57,10 +58,16 @@ struct RupertGPU {
     outer_quats = CreateUninitializedGPUMemory<double>(cl->context, width * 4);
     translate = CreateUninitializedGPUMemory<double>(cl->context, width * 2);
 
-    outer_vertices = CreateUninitializedGPUMemory<double>(cl->context, width * 2);
-    inner_vertices = CreateUninitializedGPUMemory<double>(cl->context, width * 2);
+    // XXX implement translation
+    ZeroGPUMemory<double>(cl->queue, translate, width);
+
+    outer_vertices = CreateUninitializedGPUMemory<double>(cl->context,
+                                                          num_vertices * width * 2);
+    inner_vertices = CreateUninitializedGPUMemory<double>(cl->context,
+                                                          num_vertices * width * 2);
 
     clFinish(cl->queue);
+    printf("Finished initialization.\n");
   }
 
   void InitializeQuats(cl_mem quats_gpu) {
@@ -74,6 +81,7 @@ struct RupertGPU {
     }
 
     CopyBufferToGPU(cl->queue, quats, quats_gpu);
+    clFinish(cl->queue);
   }
 
   void Run() {
@@ -90,6 +98,7 @@ struct RupertGPU {
       // inner projection. This gives us the 2D coordinates.
 
       auto RotateQuat = [&](cl_mem quats, cl_mem vertices_out) {
+          printf("Do rotate.\n");
           CHECK_SUCCESS(clSetKernelArg(rot_kernel, 0, sizeof (cl_mem),
                                        (void *)&outer_quats));
           CHECK_SUCCESS(clSetKernelArg(rot_kernel, 1, sizeof (cl_mem),
@@ -150,7 +159,10 @@ struct RupertGPU {
 
     CHECK_SUCCESS(clReleaseMemObject(outer_quats));
     CHECK_SUCCESS(clReleaseMemObject(inner_quats));
-    // XXX...
+    CHECK_SUCCESS(clReleaseMemObject(translate));
+
+    CHECK_SUCCESS(clReleaseMemObject(outer_vertices));
+    CHECK_SUCCESS(clReleaseMemObject(inner_vertices));
   }
 
   ArcFour rc;
@@ -176,7 +188,6 @@ struct RupertGPU {
   // Temporary storage. Projected to 2D. Size width * num_vertices * 2.
   cl_mem outer_vertices;
   cl_mem inner_vertices;
-
 };
 
 static void Run() {
@@ -184,8 +195,10 @@ static void Run() {
   RupertGPU gpupert(target, 10000);
 
   gpupert.Run();
+  printf("Run done\n");
 
   delete target.faces;
+  target.faces = nullptr;
 }
 
 int main(int argc, char **argv) {
@@ -194,7 +207,7 @@ int main(int argc, char **argv) {
   cl = new CL;
   Run();
 
-
+  printf("Delete CL..\n");
   delete cl;
   return 0;
 }

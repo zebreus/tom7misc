@@ -102,9 +102,9 @@ static void Model() {
   // So maybe we just want to render a few of them.
 
   // Write a diagnostic image to show the state of the model.
-  // Slow! TODO: We could do this every 10 frames or whatever.
   static constexpr bool WRITE_IMAGES = true;
-  static constexpr int WRITE_EVERY = 10;
+  // It's slow if you do it often!
+  static constexpr int WRITE_EVERY = 50;
 
   Asynchronously save_async(0); // (12);
 
@@ -201,13 +201,25 @@ static void Model() {
 
   StatusBar status(1);
   Timer timer;
-  Periodically status_per(1);
+  Periodically status_per(2);
   int64_t iters = 0;
   std::vector<int> num_blocks_at_iter;
   modeling.verbose = 1;
+
+  // modeling.verbose_addrs = {{0x8e04, 3}, {0x8e16, 3}};
+  // The entire JumpEngine routine.
+  /*
+  for (uint16_t je : {
+      0x8e04, 0x8e05, 0x8e06, 0x8e07,
+        0x8e09, 0x8e0a, 0x8e0c, 0x8e0c, 0x8e0d, 0x8e0f, 0x8e11, 0x8e12,
+        0x8e14, 0x8e16}) {
+    modeling.verbose_addrs[je] = 3;
+  }
+  */
+
   while (!modeling.Done()) {
     MaybeRender(modeling, iters);
-    if (iters == 15000) break;
+    // if (iters == 15000) break;
 
     if (status_per.ShouldRun()) {
       Bounds bounds;

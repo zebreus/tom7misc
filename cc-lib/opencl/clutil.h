@@ -2,14 +2,15 @@
 #ifndef _CC_LIB_OPENCL_CLUTIL_H
 #define _CC_LIB_OPENCL_CLUTIL_H
 
+#include <concepts>
 #include <cstdint>
 #include <cstdio>
+#include <map>
+#include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
-#include <optional>
-#include <map>
-#include <set>
 
 #include <CL/cl.h>
 #include <CL/cl_platform.h>
@@ -98,7 +99,7 @@ static cl_mem BufferFromVector(cl_context context, bool readonly,
 // do not alias. Note that the command queue is not flushed, so you
 // should not touch the source memory until it is.
 template<class T>
-static cl_mem CopyMemoryToGPU(cl_context context, cl_command_queue cmd,
+static cl_mem CopyMemoryToGPU(cl_context context, cl_command_queue queue,
                               const std::vector<T> &v, bool readonly = false) {
   // TODO: Seems reasonable to allow empty memories, but clCreateBuffer
   // doesn't agree!
@@ -110,7 +111,7 @@ static cl_mem CopyMemoryToGPU(cl_context context, cl_command_queue cmd,
                               nullptr,
                               &create_error);
   CHECK_SUCCESS(create_error);
-  CHECK_SUCCESS(clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0,
+  CHECK_SUCCESS(clEnqueueWriteBuffer(queue, buf, CL_TRUE, 0,
                                      sizeof (T) * v.size(), v.data(), 0,
                                      nullptr, nullptr));
   CHECK(buf != 0);
@@ -143,7 +144,7 @@ static cl_mem CreateUninitializedGPUMemory(cl_context context, size_t n_items) {
 }
 
 template<class T>
-static std::vector<T> CopyBufferFromGPU(cl_command_queue cmd,
+static std::vector<T> CopyBufferFromGPU(cl_command_queue queue,
                                         cl_mem buf, int n) {
   CHECK(n > 0) << "Empty buffers not supported :(";
 
@@ -162,39 +163,39 @@ static std::vector<T> CopyBufferFromGPU(cl_command_queue cmd,
   vec.resize(n);
   size_t size_bytes = sizeof (T) * n;
   // printf("Size bytes: %zu\n", size_bytes);
-  CHECK_SUCCESS(clEnqueueReadBuffer(cmd, buf, CL_TRUE, 0, size_bytes,
+  CHECK_SUCCESS(clEnqueueReadBuffer(queue, buf, CL_TRUE, 0, size_bytes,
                                     vec.data(),
                                     // No wait-list or event.
                                     0, nullptr,
                                     nullptr));
-  clFinish(cmd);
+  clFinish(queue);
   return vec;
 }
 
 // Assumes the vector already has the correct size.
 template<class T>
-static void CopyBufferFromGPUTo(cl_command_queue cmd,
+static void CopyBufferFromGPUTo(cl_command_queue queue,
                                 cl_mem buf, std::vector<T> *vec) {
   // This would yield an error. We could support empty buffers
   // by just succeeding, I guess?
   CHECK(!vec->empty());
   CHECK_SUCCESS(
-      clEnqueueReadBuffer(cmd, buf, CL_TRUE, 0, sizeof (T) * vec->size(),
+      clEnqueueReadBuffer(queue, buf, CL_TRUE, 0, sizeof (T) * vec->size(),
                           vec->data(),
                           // No wait-list or event.
                           0, nullptr,
                           nullptr));
-  clFinish(cmd);
+  clFinish(queue);
 }
 
 template<class T>
-static void CopyBufferToGPU(cl_command_queue cmd,
+static void CopyBufferToGPU(cl_command_queue queue,
                             const std::vector<T> &vec, cl_mem buf) {
   // printf("%lld bytes\n", (int64_t)(sizeof (T) * vec.size()));
-  CHECK_SUCCESS(clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0,
+  CHECK_SUCCESS(clEnqueueWriteBuffer(queue, buf, CL_TRUE, 0,
                                      sizeof (T) * vec.size(), vec.data(), 0,
                                      nullptr, nullptr));
-  clFinish(cmd);
+  clFinish(queue);
 }
 
 // Create a sub-buffer of the given buffer that represents the
@@ -221,6 +222,24 @@ static cl_mem SliceGPUMemory(cl_mem values, int start_idx, int count) {
   CHECK_SUCCESS(create_sub_buffer_error);
   CHECK(sub_values != 0);
   return sub_values;
+}
+
+// Write n zero elements (of type T) to the cl memory. Intended for
+// numeric T.
+template<class T>
+requires std::integral<T> || std::floating_point<T>
+static void ZeroGPUMemory(cl_command_queue queue, cl_mem buf, size_t n) {
+  T zero = 0;
+  CHECK_SUCCESS(
+      clEnqueueFillBuffer(queue,
+                          buf,
+                          // pattern and its size in bytes
+                          &zero, sizeof (T),
+                          // offset and size to fill (in BYTES)
+                          0, (size_t)(n * sizeof (T)),
+                          // no wait list or event
+                          0, nullptr, nullptr));
+  clFinish(queue);
 }
 
 #endif

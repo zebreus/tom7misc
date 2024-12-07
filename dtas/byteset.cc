@@ -390,12 +390,12 @@ std::string ByteSet::DebugString() const {
   int range_start = 0;
   bool in_range = false;
   auto EndRange = [&](int b) {
-      if (b - range_start == 1) {
+      if (b - 1 == range_start) {
         StringAppendF(&ret, " %02x", range_start);
-        in_range = false;
       } else {
         StringAppendF(&ret, " %02x-%02x", range_start, b - 1);
       }
+      in_range = false;
     };
 
   for (int b = 0; b < 256; b++) {

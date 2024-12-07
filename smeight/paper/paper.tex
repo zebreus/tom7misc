@@ -31,7 +31,7 @@
 % go back to italics for emphasis, though
 \normalem
 
-\begin{document} 
+\begin{document}
 
 \title{The glEnd() of Zelda}
 \author{Dr.~Tom~Murphy~VII~Ph.D.\thanks{
@@ -83,7 +83,7 @@ copyrighted\footnote{Perhaps ironic, since Ravel's {Bol\'ero} itself
 \caption{Technical diagram of mathematical equations.} \label{fig:link3d}
 % \smallskip
 % caption can go here...
-% } 
+% }
 \end{figure}
 
 
@@ -251,7 +251,7 @@ about the properties, I just wanted to make a soda joke.
 
 \section[Three to D---$u$ and $v$]{Three to D---$u$ and $v$\footnote{Spoiler alert because I think
 this joke may be too abstruse. ``Free to Be You and Me'' was a
-semi-famous kids record (here meaning actual vinyl) by 
+semi-famous kids record (here meaning actual vinyl) by
 Marlo~Thomas. D is ``dimensions.'' $u$ and $v$ are common names of
 the axes for texture coordinates in computer graphics.}}
 
@@ -272,13 +272,13 @@ have hacked up almost beyond recognition. In normal operation, it
 
 I'll describe the interesting parts of these.
 
-\paragraph{Emulation.} 
+\paragraph{Emulation.}
 Well, this is not that interesting. I give the emulator its controller
 input and it does its thing, modifying the RAM and PPU and CPU state.
 I have been working on improvements to emulator technology but these
 are independent of this paper and better described elsewhere.
 
-\paragraph{Extracting boxes.} 
+\paragraph{Extracting boxes.}
 Yeah! Okay! Boxes are the three-dimensional version of squares, and
 are what give the game its 3Dness. I read the nametable in chunks of
 2x2 tiles, which is the size of one overworld tree (and the same size
@@ -341,7 +341,7 @@ how they like it.
 Sprites are the most difficult. Aside from just being more fiddly to
 implement, it is tricky to recover an important high-level structure.
 Although we know the location of each individual sprite and the two tiles
-(Zelda uses ``tall' 8x16 sprites; see Section~\ref{sec:sprites}) that
+(Zelda uses ``tall'' 8x16 sprites; see Section~\ref{sec:sprites}) that
 make it up, most game objects (like enemies) are in fact drawn with
 {\it two} sprites. These sprites could be in any of the 64 sprite
 slots (it's not at all obvious how Zelda allocates these, or that it

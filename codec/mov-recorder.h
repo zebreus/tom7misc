@@ -1,13 +1,13 @@
 #ifndef _MOV_RECORDER_H
 #define _MOV_RECORDER_H
 
+#include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <memory>
 #include <mutex>
 #include <string_view>
 #include <thread>
-#include <condition_variable>
 #include <variant>
 #include <vector>
 
@@ -15,9 +15,6 @@
 #include "image.h"
 
 // Asynchronous movie recording.
-// TODO: MOV output can now encode the frames (that's
-// the slow part) in parallel. So we can support
-// multiple threads here, and probably get to real-time.
 // TODO: Verbosity option
 struct MovRecorder {
   // Continue an existing recording, taking ownership.

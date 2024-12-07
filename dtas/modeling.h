@@ -164,6 +164,9 @@ struct Modeling {
   // a state space explosion.
   bool quiet = false;
 
+  // Override verbosity for specific addresses.
+  std::unordered_map<uint16_t, int> verbose_addrs;
+
   // True if the analysis is quiescent.
   bool Done() const;
 
