@@ -42,6 +42,25 @@ struct RupertGPU {
       };
 
     rot_kernel = RequireKernel("RotateAndProject");
+
+    std::vector<double> vd;
+    for (const vec3 &v : poly.vertices) {
+      vd.push_back(v.x);
+      vd.push_back(v.y);
+      vd.push_back(v.z);
+    }
+    vertices = CopyMemoryToGPU<double>(cl->context, cl->queue, vd,
+                                       // readonly
+                                       true);
+
+    inner_quats = CreateUninitializedGPUMemory<double>(cl->context, width * 4);
+    outer_quats = CreateUninitializedGPUMemory<double>(cl->context, width * 4);
+    translate = CreateUninitializedGPUMemory<double>(cl->context, width * 2);
+
+    outer_vertices = CreateUninitializedGPUMemory<double>(cl->context, width * 2);
+    inner_vertices = CreateUninitializedGPUMemory<double>(cl->context, width * 2);
+
+    clFinish(cl->queue);
   }
 
   void InitializeQuats(cl_mem quats_gpu) {
@@ -67,14 +86,40 @@ struct RupertGPU {
     // Now, repeatedly:
 
     for (int iter = 0; iter < 1000; iter++) {
-    // Transform vertices using each quat to make the outer projection and
-    // inner projection. This gives us the 2D coordinates.
-      {
-        CHECK_SUCCESS(clSetKernelArg(rot_kernel, 0, sizeof (cl_mem),
-                                     (void *)&outer_quats));
+      // Transform vertices using each quat to make the outer projection and
+      // inner projection. This gives us the 2D coordinates.
 
-        // apply to both outer and inner.
-      }
+      auto RotateQuat = [&](cl_mem quats, cl_mem vertices_out) {
+          CHECK_SUCCESS(clSetKernelArg(rot_kernel, 0, sizeof (cl_mem),
+                                       (void *)&outer_quats));
+          CHECK_SUCCESS(clSetKernelArg(rot_kernel, 1, sizeof (cl_mem),
+                                       (void *)&vertices));
+          CHECK_SUCCESS(clSetKernelArg(rot_kernel, 2, sizeof (cl_mem),
+                                       (void *)&outer_vertices));
+
+          // Simple 1D Kernel
+          size_t global_work_offset[] = { (size_t)0 };
+          size_t global_work_size[] = { (size_t)width };
+
+          CHECK_SUCCESS(
+              clEnqueueNDRangeKernel(cl->queue, rot_kernel,
+                                     // 1D
+                                     1,
+                                     // It does its own indexing
+                                     global_work_offset,
+                                     global_work_size,
+                                     // No local work
+                                     nullptr,
+                                     // No wait list
+                                     0, nullptr,
+                                     // no event
+                                     nullptr));
+
+          clFinish(cl->queue);
+        };
+
+      RotateQuat(outer_quats, outer_vertices);
+      RotateQuat(inner_quats, inner_vertices);
 
       //
       // Apply the translation to the inner projection.
@@ -100,6 +145,8 @@ struct RupertGPU {
   ~RupertGPU() {
     CHECK_SUCCESS(clReleaseKernel(rot_kernel));
     CHECK_SUCCESS(clReleaseProgram(program));
+
+    CHECK_SUCCESS(clReleaseMemObject(vertices));
 
     CHECK_SUCCESS(clReleaseMemObject(outer_quats));
     CHECK_SUCCESS(clReleaseMemObject(inner_quats));
@@ -132,11 +179,20 @@ struct RupertGPU {
 
 };
 
+static void Run() {
+  Polyhedron target = SnubCube();
+  RupertGPU gpupert(target, 10000);
+
+  gpupert.Run();
+
+  delete target.faces;
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   cl = new CL;
+  Run();
 
 
   delete cl;
