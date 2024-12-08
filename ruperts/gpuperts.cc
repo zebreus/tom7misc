@@ -130,9 +130,11 @@ struct RupertGPU {
       RotateQuat(outer_quats, outer_vertices);
       RotateQuat(inner_quats, inner_vertices);
 
-      //
-      // Apply the translation to the inner projection.
-      //
+      // TODO: Apply the translation to the inner projection. (Or make it part
+      // of the previous.)
+
+
+
       // Compute the loss, which is the distance from each vertex on the inner
       // projection to the outer projection's convex hull (or zero if inside).
       // This can also be computed as the minimum distance to any triangle

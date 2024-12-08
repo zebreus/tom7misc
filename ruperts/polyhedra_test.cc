@@ -19,9 +19,21 @@
 #include "randutil.h"
 #include "rendering.h"
 #include "yocto_matht.h"
+#include "color-util.h"
 
 static constexpr bool VERBOSE = false;
 
+// Red for negative, black for 0, green for positive.
+// nominal range [-1, 1].
+static constexpr ColorUtil::Gradient DISTANCE{
+  GradRGB(-2.0f, 0xFFFF88),
+  GradRGB(-1.0f, 0xFFFF00),
+  GradRGB(-0.5f, 0xFF0000),
+  GradRGB( 0.0f, 0x440044),
+  GradRGB( 0.5f, 0x00FF00),
+  GradRGB(+1.0f, 0x00FFFF),
+  GradRGB(+2.0f, 0x88FFFF),
+};
 
 // XXX To cc-lib?
 struct Dirty {
@@ -331,6 +343,52 @@ static void TestHull(F ComputeHull) {
 
 }
 
+static void TestSignedDistance() {
+  constexpr int width = 1920;
+  constexpr int height = 1080;
+
+  constexpr double scale = (double)std::min(width, height);
+
+  auto ToWorld = [](int sx, int sy) -> vec2 {
+      // Center of screen should be 0,0.
+      double cy = sy - height / 2.0;
+      double cx = sx - width / 2.0;
+      return vec2{.x = cx / scale, .y = cy / scale};
+    };
+
+  auto ToScreen = [](const vec2 &pt) -> std::pair<int, int> {
+    double cx = pt.x * scale;
+    double cy = pt.y * scale;
+    return std::make_pair(cx + width / 2.0, cy + height / 2.0);
+  };
+
+  // The triangle
+  vec2 pt0(0.15, 0.2);
+  vec2 pt1(0.35, -0.15);
+  vec2 pt2(-0.05, 0.25);
+
+  ImageRGBA img(width, height);
+  for (int y = 0; y < height; y++) {
+    for (int x = 0; x < width; x++) {
+      vec2 pt = ToWorld(x, y);
+      double dist = TriangleSignedDistance(pt0, pt1, pt2, pt);
+      img.BlendPixel32(x, y, ColorUtil::LinearGradient32(DISTANCE, dist));
+    }
+  }
+
+  auto DrawLine = [&](vec2 a, vec2 b) {
+      const auto &[x0, y0] = ToScreen(a);
+      const auto &[x1, y1] = ToScreen(b);
+      img.BlendLineAA32(x0, y0, x1, y1, 0xFFFFFF44);
+    };
+
+  DrawLine(pt0, pt1);
+  DrawLine(pt1, pt2);
+  DrawLine(pt2, pt0);
+
+  img.Save("triangle.png");
+  printf("Wrote " AGREEN("triangle.png") "\n");
+}
 
 
 int main(int argc, char **argv) {
@@ -345,6 +403,8 @@ int main(int argc, char **argv) {
 
   TestHull(ConvexHull);
   TestHull(QuickHull);
+
+  TestSignedDistance();
 
   printf("OK\n");
   return 0;

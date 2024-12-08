@@ -208,4 +208,6 @@ inline bool InHull(const Mesh2D &mesh, const std::vector<int> &hull,
 
 std::pair<int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly);
 
+double TriangleSignedDistance(vec2 p0, vec2 p1, vec2 p2, vec2 p);
+
 #endif
