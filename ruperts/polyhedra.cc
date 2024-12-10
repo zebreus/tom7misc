@@ -69,6 +69,15 @@ std::string VecString(const vec2 &v) {
       v.x, v.y);
 }
 
+std::string QuatString(const quat4 &q) {
+  return StringPrintf(
+      "quat4{.x = %.17g,\n"
+      "      .y = %.17g,\n"
+      "      .z = %.17g,\n"
+      "      .w = %.17g}",
+      q.x, q.y, q.z, q.w);
+}
+
 std::string FrameString(const frame3 &f) {
   return StringPrintf(
       "frame3{.x = vec3(%.17g, %.17g, %.17g),\n"
@@ -152,6 +161,16 @@ Faces::Faces(int num_vertices, std::vector<std::vector<int>> v_in) :
     neighbors[i] = SetToSortedVec(collated[i]);
     // printf("#%d has %d neighbors\n", i, (int)neighbors[i].size());
     CHECK(!neighbors[i].empty());
+  }
+
+  // And triangulate. Since the faces are convex, we can
+  // just do this by creating triangle fans.
+  for (const std::vector<int> &face : v) {
+    CHECK(face.size() >= 3);
+    int p0 = face[0];
+    for (int i = 1; i + 1 < face.size(); i++) {
+      triangulation.emplace_back(p0, face[i], face[i + 1]);
+    }
   }
 }
 

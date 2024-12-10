@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -33,6 +34,10 @@ struct Faces {
   std::vector<std::vector<int>> v;
   // For each vertex id, its immediate neighbors, in ascending order.
   std::vector<std::vector<int>> neighbors;
+  // An arbitrary triangulation of the polyhedron (each "face" is a
+  // triangle, but now faces can be coplanar).
+  std::vector<std::tuple<int, int, int>> triangulation;
+
   // Number of vertices we expect.
   int NumVertices() const { return (int)neighbors.size(); }
 
@@ -48,7 +53,8 @@ struct Polyhedron {
   // in the polyhedron. The indices of the vertices are
   // significant.
   std::vector<vec3> vertices;
-  // Not owned.
+  // Not owned. Note that the routines below allocate
+  // a new Faces object that you have to manage.
   const Faces *faces = nullptr;
   // The optional name of the polyhedron.
   const char *name = "";
@@ -74,6 +80,7 @@ inline quat4 QuatFromVec(const vec4 &q) {
 
 std::string VecString(const vec3 &v);
 std::string VecString(const vec2 &v);
+std::string QuatString(const quat4 &q);
 std::string FrameString(const frame3 &f);
 std::string FormatNum(uint64_t n);
 
@@ -111,6 +118,10 @@ inline Polyhedron Rotate(const Polyhedron &p, const frame3 &frame) {
     v = yocto::transform_point(frame, v);
   }
   return ret;
+}
+
+inline Polyhedron Rotate(const Polyhedron &p, const quat4 &quat) {
+  return Rotate(p, yocto::rotation_frame(quat));
 }
 
 // Maximum distance between any two points.
