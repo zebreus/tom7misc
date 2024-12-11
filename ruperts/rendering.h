@@ -21,6 +21,7 @@ struct Rendering {
   void RenderHull(const Mesh2D &mesh, const std::vector<int> &hull,
                   uint32_t color = 0x00FF00AA);
   void RenderHullDistance(const Mesh2D &mesh, const std::vector<int> &hull);
+  void RenderTriangulation(const Mesh2D &mesh, uint32_t color = 0x4444FFAA);
 
   void DarkenBG();
 
@@ -29,11 +30,11 @@ struct Rendering {
   static uint32_t Color(int idx);
 
   vec2 ToWorld(int sx, int sy) {
-      // Center of screen should be 0,0.
-      double cy = sy - height / 2.0;
-      double cx = sx - width / 2.0;
-      return vec2{.x = cx / polyscale, .y = cy / polyscale};
-    };
+    // Center of screen should be 0,0.
+    double cy = sy - height / 2.0;
+    double cx = sx - width / 2.0;
+    return vec2{.x = cx / polyscale, .y = cy / polyscale};
+  }
 
   std::pair<int, int> ToScreen(const vec2 &pt) {
     double cx = pt.x * polyscale;

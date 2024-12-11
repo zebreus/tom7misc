@@ -170,6 +170,17 @@ void Rendering::RenderBadPoints(const Mesh2D &sinner, const Mesh2D &souter) {
   }
 }
 
+void Rendering::RenderTriangulation(const Mesh2D &mesh, uint32_t color) {
+  for (const auto &[a, b, c] : mesh.faces->triangulation) {
+    const auto &[x0, y0] = ToScreen(mesh.vertices[a]);
+    const auto &[x1, y1] = ToScreen(mesh.vertices[b]);
+    const auto &[x2, y2] = ToScreen(mesh.vertices[c]);
+    img.BlendThickLine32(x0, y0, x1, y1, 3.0, color);
+    img.BlendThickLine32(x1, y1, x2, y2, 3.0, color);
+    img.BlendThickLine32(x2, y2, x0, y0, 3.0, color);
+  }
+}
+
 void Rendering::RenderHull(const Mesh2D &mesh,
                            const std::vector<int> &hull,
                            uint32_t color) {

@@ -1,28 +1,40 @@
 
 #include <CL/cl.h>
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <limits>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
 #include "ansi.h"
-#include "base/stringprintf.h"
 #include "arcfour.h"
-
+#include "base/stringprintf.h"
+#include "color-util.h"
+#include "image.h"
 #include "opencl/clutil.h"
+#include "periodically.h"
+#include "randutil.h"
+#include "status-bar.h"
+#include "timer.h"
+#include "util.h"
+
 #include "polyhedra.h"
 #include "rendering.h"
-#include "util.h"
+
 
 static CL *cl = nullptr;
 
 struct RupertGPU {
   // Step size when estimating derivative numerically.
   static constexpr double PARAM_H = 1.0e-7;
+
+  // One main error, four for each quaternion, two for the translation.
+  static constexpr int ERRORS_PER_CONFIG = 11;
 
   // Width is the number of problem instances. Note that each instance
   // is a candidate rotation (quaternion) for the inner and outer
@@ -35,7 +47,8 @@ struct RupertGPU {
                          num_vertices(poly.vertices.size()),
                          num_triangles(poly.faces->triangulation.size()),
                          width(width),
-                         num_quaternions(width * 5) {
+                         num_quaternions(width * 5),
+                         diameter(Diameter(poly)) {
     CHECK(width > 0);
 
     std::string defines =
@@ -53,6 +66,7 @@ struct RupertGPU {
         kernel_src,
         {"RotateAndProject",
          "TweakQuaternions",
+         "TweakTranslations",
          "ComputeError",
          "CheckForSolution",
          "GradientDescent",
@@ -67,7 +81,8 @@ struct RupertGPU {
       };
 
     rot_kernel = RequireKernel("RotateAndProject");
-    tweak_kernel = RequireKernel("TweakQuaternions");
+    tweakq_kernel = RequireKernel("TweakQuaternions");
+    tweakt_kernel = RequireKernel("TweakTranslations");
     err_kernel = RequireKernel("ComputeError");
     check_kernel = RequireKernel("CheckForSolution");
     grad_kernel = RequireKernel("GradientDescent");
@@ -96,10 +111,8 @@ struct RupertGPU {
         cl->context, num_quaternions * 4);
     outer_quats = CreateUninitializedGPUMemory<double>(
         cl->context, num_quaternions * 4);
-    translate = CreateUninitializedGPUMemory<double>(cl->context, width * 2);
-
-    // XXX implement translation
-    ZeroGPUMemory<double>(cl->queue, translate, width);
+    translate = CreateUninitializedGPUMemory<double>(
+        cl->context, width * 2 * 3);
 
     outer_vertices = CreateUninitializedGPUMemory<double>(
         cl->context, num_vertices * num_quaternions * 2);
@@ -107,7 +120,7 @@ struct RupertGPU {
         cl->context, num_vertices * num_quaternions * 2);
 
     error_values = CreateUninitializedGPUMemory<double>(
-        cl->context, width * 9);
+        cl->context, width * ERRORS_PER_CONFIG);
 
     std::vector<int32_t> sol;
     sol.push_back(std::numeric_limits<int32_t>::max());
@@ -115,6 +128,21 @@ struct RupertGPU {
 
     clFinish(cl->queue);
     printf("Finished initialization.\n");
+  }
+
+  void InitializeTranslations() {
+    std::vector<double> ts(width * 2 * 3);
+    for (int i = 0; i < width; i++) {
+      // It will never work to put the center outside of the
+      // outer polyhedron's radius, so confine to that distance
+      // in both directions.
+      double x = (RandDouble(&rc) - 0.5) * diameter;
+      double y = (RandDouble(&rc) - 0.5) * diameter;
+      ts[i * 2 * 3 + 0] = x;
+      ts[i * 2 * 3 + 1] = y;
+    }
+    CopyBufferToGPU(cl->queue, ts, translate);
+    clFinish(cl->queue);
   }
 
   void InitializeQuats(cl_mem quats_gpu) {
@@ -139,13 +167,13 @@ struct RupertGPU {
   // difference H to each parameter.
   void TweakQuaternions(cl_mem quats) {
     CHECK_SUCCESS(
-        clSetKernelArg(tweak_kernel, 0, sizeof(cl_mem), (void *)&quats));
+        clSetKernelArg(tweakq_kernel, 0, sizeof(cl_mem), (void *)&quats));
 
     size_t global_work_offset[] = {(size_t)0};
     // One per configuration.
     size_t global_work_size[] = {(size_t)width};
 
-    CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, tweak_kernel,
+    CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, tweakq_kernel,
                                          // 1D
                                          1,
                                          // It does its own indexing
@@ -158,7 +186,32 @@ struct RupertGPU {
                                          nullptr));
 
     clFinish(cl->queue);
-  };
+  }
+
+  // Same idea, but two additional tweaked translation parameters.
+  void TweakTranslations() {
+    CHECK_SUCCESS(
+        clSetKernelArg(tweakt_kernel, 0, sizeof(cl_mem), (void *)&translate));
+
+    size_t global_work_offset[] = {(size_t)0};
+    // One per configuration.
+    size_t global_work_size[] = {(size_t)width};
+
+    CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, tweakt_kernel,
+                                         // 1D
+                                         1,
+                                         // It does its own indexing
+                                         global_work_offset, global_work_size,
+                                         // No local work
+                                         nullptr,
+                                         // No wait list
+                                         0, nullptr,
+                                         // no event
+                                         nullptr));
+
+    clFinish(cl->queue);
+  }
+
 
   // Transform the polyhedron's vertices (shared) using each quat to make
   // the outer projection and inner projection. This gives us the 2D
@@ -190,7 +243,7 @@ struct RupertGPU {
     clFinish(cl->queue);
   }
 
-  void GetError() {
+  void ComputeError() {
     CHECK_SUCCESS(
         clSetKernelArg(err_kernel, 0, sizeof(cl_mem), (void *)&triangles));
     CHECK_SUCCESS(
@@ -198,11 +251,13 @@ struct RupertGPU {
     CHECK_SUCCESS(
         clSetKernelArg(err_kernel, 2, sizeof(cl_mem), (void *)&inner_vertices));
     CHECK_SUCCESS(
-        clSetKernelArg(err_kernel, 3, sizeof(cl_mem), (void *)&error_values));
+        clSetKernelArg(err_kernel, 3, sizeof(cl_mem), (void *)&translate));
+    CHECK_SUCCESS(
+        clSetKernelArg(err_kernel, 4, sizeof(cl_mem), (void *)&error_values));
 
     size_t global_work_offset[] = {(size_t)0};
     // Compute the error for a perturbed configuration (or the main one).
-    size_t global_work_size[] = {(size_t)width * 9};
+    size_t global_work_size[] = {(size_t)width * ERRORS_PER_CONFIG};
 
     CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, err_kernel,
                                          // 1D
@@ -218,7 +273,7 @@ struct RupertGPU {
     clFinish(cl->queue);
   }
 
-  std::optional<std::pair<quat4, quat4>> GetSolution() {
+  std::optional<std::tuple<quat4, quat4, vec2>> GetSolution() {
     CHECK_SUCCESS(
         clSetKernelArg(check_kernel, 0, sizeof(cl_mem), (void *)&error_values));
     CHECK_SUCCESS(
@@ -248,24 +303,58 @@ struct RupertGPU {
                                                            solutions,
                                                            1);
     if (sols[0] < std::numeric_limits<int32_t>::max()) {
-      int idx = sols[0];
+      const int idx = sols[0];
+
+      {
+        std::vector<double> err =
+          CopyBufferFromGPU<double>(cl->queue,
+                                    error_values,
+                                    width * ERRORS_PER_CONFIG);
+        CHECK(err[idx * ERRORS_PER_CONFIG] == 0.0) <<
+          err[idx * ERRORS_PER_CONFIG];
+        double m = 0.0;
+        for (double d : err) m = std::max(d, m);
+        printf("Max error: %.17g\n", m);
+        ImageRGBA eimg(width, ERRORS_PER_CONFIG);
+        eimg.Clear32(0x000000FF);
+        for (int x = 0; x < width; x++) {
+          for (int y = 0; y < ERRORS_PER_CONFIG; y++) {
+            int err_idx = x * ERRORS_PER_CONFIG + y;
+            double f = err[err_idx] / m;
+            eimg.SetPixel32(x, y,
+                            ColorUtil::LinearGradient32(
+                                ColorUtil::HEATED_METAL,
+                                f));
+
+          }
+        }
+        eimg.Save(StringPrintf("%s-err-debug.png", poly.name));
+      }
+
       printf("Success at index %d! Reading solution...\n", idx);
       std::vector<double> oq = CopyBufferFromGPU<double>(cl->queue,
                                                          outer_quats,
-                                                         num_quaternions);
+                                                         num_quaternions * 4);
       std::vector<double> iq = CopyBufferFromGPU<double>(cl->queue,
                                                          inner_quats,
-                                                         num_quaternions);
+                                                         num_quaternions * 4);
 
       auto GetQuat = [idx](const std::vector<double> &qs) -> quat4 {
-          CHECK(idx >= 0 && idx * 5 + 4 < qs.size());
-          return quat4(qs[idx * 5 + 0],
-                       qs[idx * 5 + 1],
-                       qs[idx * 5 + 2],
-                       qs[idx * 5 + 3]);
+          CHECK(idx >= 0 && idx * 5 * 4 + 4 <= qs.size()) << idx << " "
+                                                          << qs.size();
+          return quat4(qs[idx * 5 * 4 + 0],
+                       qs[idx * 5 * 4 + 1],
+                       qs[idx * 5 * 4 + 2],
+                       qs[idx * 5 * 4 + 3]);
         };
 
-      return std::make_pair(GetQuat(oq), GetQuat(iq));
+      std::vector<double> ts = CopyBufferFromGPU<double>(cl->queue,
+                                                         translate,
+                                                         width * 3 * 2);
+      CHECK(idx >= 0 && idx * 2 * 3 + 3 <= ts.size());
+      vec2 t = vec2(ts[idx * 3 * 2 + 0],
+                    ts[idx * 3 * 2 + 1]);
+      return std::make_tuple(GetQuat(oq), GetQuat(iq), t);
 
     } else {
       return std::nullopt;
@@ -278,7 +367,9 @@ struct RupertGPU {
     CHECK_SUCCESS(
         clSetKernelArg(grad_kernel, 1, sizeof(cl_mem), (void *)&inner_quats));
     CHECK_SUCCESS(
-        clSetKernelArg(grad_kernel, 2, sizeof(cl_mem), (void *)&error_values));
+        clSetKernelArg(grad_kernel, 2, sizeof(cl_mem), (void *)&translate));
+    CHECK_SUCCESS(
+        clSetKernelArg(grad_kernel, 3, sizeof(cl_mem), (void *)&error_values));
 
     size_t global_work_offset[] = {(size_t)0};
     size_t global_work_size[] = {(size_t)width};
@@ -298,24 +389,32 @@ struct RupertGPU {
   }
 
   void Run() {
-    // The slow part here is the optimization, and it is inherently
-    // serial. So we just do a lot of them at once. Generate random
-    // initial orientations:
+    static constexpr int NUM_ITERS = 1000;
 
-    for (;;) {
+    Timer run_timer;
+    Periodically status_per(1.0);
+    StatusBar status(1);
+    int64_t configs = 0;
+    for (int64_t loops = 0; true; loops++) {
+      // The slow part here is the optimization, and it is inherently
+      // serial. So we just do a lot of them at once. Generate random
+      // initial orientations:
+
       InitializeQuats(outer_quats);
       InitializeQuats(inner_quats);
+      InitializeTranslations();
 
       // Now, repeatedly:
 
-      for (int iter = 0; iter < 1000; iter++) {
-        printf("Start iter %d.\n", iter);
+      for (int iter = 0; iter < NUM_ITERS; iter++) {
+        // printf("Start iter %d.\n", iter);
         // Entering the loop, we have the current configuration in the
         // first of the five quaternions for each configuration; the
         // rest are garbage. Fill the next four with the samples to
         // estimate the derivative for each parameter.
         TweakQuaternions(outer_quats);
         TweakQuaternions(inner_quats);
+        TweakTranslations();
 
         RotateQuat(outer_quats, outer_vertices);
         RotateQuat(inner_quats, inner_vertices);
@@ -327,28 +426,34 @@ struct RupertGPU {
         // Get the error for each vertex in the inner mesh. This is the
         // min over all triangles in the triangulation, interpreted in
         // the outer vertices. We are performing numeric differentiation
-        // so we only need the error value, but note that we get 9 error
+        // so we only need the error value, but note that we get 11 error
         // values per configuration (the "main" one and one for each
         // perturbed parameter)!
-        GetError();
+        ComputeError();
 
         if (auto so = GetSolution()) {
-          const auto &[oq, iq] = so.value();
+          const auto &[oq, iq, t] = so.value();
 
-          printf("Solution found!\n"
+          printf("Solution found on iter %d (%lld loops, %lld configs)!\n"
                  "outer:\n"
                  "%s\n"
                  "inner:\n"
-                 "%s\n",
+                 "%s\n"
+                 "translation:\n"
+                 "x = %.17g\n"
+                 "y = %.17g\n",
+                 iter, loops, configs,
                  QuatString(oq).c_str(),
-                 QuatString(iq).c_str());
+                 QuatString(iq).c_str(),
+                 t.x, t.y);
 
           Rendering rendering(poly, 1920, 1080);
           Polyhedron outer = Rotate(poly, oq);
           Polyhedron inner = Rotate(poly, iq);
           Mesh2D souter = Shadow(outer);
-          Mesh2D sinner = Shadow(inner);
-          rendering.RenderMesh(souter);
+          Mesh2D sinner = Translate(Shadow(inner), t);
+          // rendering.RenderMesh(souter);
+          rendering.RenderTriangulation(souter);
           rendering.DarkenBG();
           rendering.RenderMesh(sinner);
           rendering.RenderBadPoints(sinner, souter);
@@ -358,13 +463,23 @@ struct RupertGPU {
 
         // Perform gradient descent, updating the parameters.
         GradientDescent();
+
+        configs += width;
+        if (status_per.ShouldRun()) {
+          double cps = configs / run_timer.Seconds();
+          status.Progressf(iter, NUM_ITERS,
+                           "%s configs (" ACYAN("%.1f") "/sec)",
+                           FormatNum(configs).c_str(),
+                           cps);
+        }
       }
     }
   }
 
   ~RupertGPU() {
     CHECK_SUCCESS(clReleaseKernel(rot_kernel));
-    CHECK_SUCCESS(clReleaseKernel(tweak_kernel));
+    CHECK_SUCCESS(clReleaseKernel(tweakq_kernel));
+    CHECK_SUCCESS(clReleaseKernel(tweakt_kernel));
     CHECK_SUCCESS(clReleaseKernel(err_kernel));
     CHECK_SUCCESS(clReleaseKernel(check_kernel));
     CHECK_SUCCESS(clReleaseKernel(grad_kernel));
@@ -390,10 +505,12 @@ struct RupertGPU {
   const int width = 0;
   // number of quaternions in each of the outer_quats and inner_quats arrays.
   const int num_quaternions = 0;
+  const double diameter = 0.0;
 
   cl_program program;
   cl_kernel rot_kernel;
-  cl_kernel tweak_kernel;
+  cl_kernel tweakq_kernel;
+  cl_kernel tweakt_kernel;
   cl_kernel err_kernel;
   cl_kernel check_kernel;
   cl_kernel grad_kernel;
@@ -417,7 +534,7 @@ struct RupertGPU {
   cl_mem outer_vertices;
   cl_mem inner_vertices;
 
-  // Error values. There are 9 error values per configuration.
+  // Error values. There are 11 error values per configuration.
   cl_mem error_values;
 
   cl_mem solutions;
@@ -425,6 +542,7 @@ struct RupertGPU {
 
 static void Run() {
   Polyhedron target = SnubCube();
+  // Polyhedron target = Dodecahedron();
   RupertGPU gpupert(target, 10000);
 
   gpupert.Run();

@@ -124,6 +124,14 @@ inline Polyhedron Rotate(const Polyhedron &p, const quat4 &quat) {
   return Rotate(p, yocto::rotation_frame(quat));
 }
 
+inline Mesh2D Translate(const Mesh2D &m, const vec2 &t) {
+  Mesh2D ret = m;
+  for (vec2 &v : ret.vertices) {
+    v += t;
+  }
+  return ret;
+}
+
 // Maximum distance between any two points.
 double Diameter(const Polyhedron &p);
 
