@@ -13,6 +13,8 @@
 #include "image.h"
 
 struct Rendering {
+  using vec2 = yocto::vec<double, 2>;
+
   Rendering(const Polyhedron &p, int width, int height);
 
   void RenderPerspectiveWireframe(const Polyhedron &p, uint32_t color);

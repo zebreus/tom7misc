@@ -138,6 +138,11 @@ struct RupertGPU {
       // in both directions.
       double x = (RandDouble(&rc) - 0.5) * diameter;
       double y = (RandDouble(&rc) - 0.5) * diameter;
+      // But also, heuristically, the translation should be pretty
+      // small.
+      x *= 0.1;
+      y *= 0.1;
+
       ts[i * 2 * 3 + 0] = x;
       ts[i * 2 * 3 + 1] = y;
     }
@@ -388,12 +393,15 @@ struct RupertGPU {
     clFinish(cl->queue);
   }
 
+#define TIME_START(field) Timer field ## _timer
+#define TIME_END(field) timing. field += field ## _timer.Seconds()
+
   void Run() {
     static constexpr int NUM_ITERS = 1000;
 
     Timer run_timer;
     Periodically status_per(1.0);
-    StatusBar status(1);
+    StatusBar status(2);
     int64_t configs = 0;
     for (int64_t loops = 0; true; loops++) {
       // The slow part here is the optimization, and it is inherently
@@ -412,16 +420,20 @@ struct RupertGPU {
         // first of the five quaternions for each configuration; the
         // rest are garbage. Fill the next four with the samples to
         // estimate the derivative for each parameter.
+        TIME_START(tweakq);
         TweakQuaternions(outer_quats);
         TweakQuaternions(inner_quats);
+        TIME_END(tweakq);
+        TIME_START(tweakt);
         TweakTranslations();
+        TIME_END(tweakt);
 
+        TIME_START(rotate);
         RotateQuat(outer_quats, outer_vertices);
         RotateQuat(inner_quats, inner_vertices);
-
-
-        // TODO: Apply the translation to the inner projection. (Or make it part
-        // of the previous.)
+        TIME_END(rotate);
+        // The translation is applied inside the ComputeError
+        // function, where it's a little easier to do.
 
         // Get the error for each vertex in the inner mesh. This is the
         // min over all triangles in the triangulation, interpreted in
@@ -429,23 +441,31 @@ struct RupertGPU {
         // so we only need the error value, but note that we get 11 error
         // values per configuration (the "main" one and one for each
         // perturbed parameter)!
+        TIME_START(error);
         ComputeError();
+        TIME_END(error);
 
+        TIME_START(solution);
         if (auto so = GetSolution()) {
           const auto &[oq, iq, t] = so.value();
 
-          printf("Solution found on iter %d (%lld loops, %lld configs)!\n"
-                 "outer:\n"
-                 "%s\n"
-                 "inner:\n"
-                 "%s\n"
-                 "translation:\n"
-                 "x = %.17g\n"
-                 "y = %.17g\n",
-                 iter, loops, configs,
-                 QuatString(oq).c_str(),
-                 QuatString(iq).c_str(),
-                 t.x, t.y);
+          std::string sol =
+            StringPrintf(
+                "Solution found on iter %d (%lld loops, %lld configs)!\n"
+                "outer:\n"
+                "%s\n"
+                "inner:\n"
+                "%s\n"
+                "translation:\n"
+                "x = %.17g\n"
+                "y = %.17g\n",
+                iter, loops, configs,
+                QuatString(oq).c_str(),
+                QuatString(iq).c_str(),
+                t.x, t.y);
+          Util::WriteFile(StringPrintf("%s-gpu-solved.txt", poly.name),
+                          sol);
+          printf("%s", sol.c_str());
 
           Rendering rendering(poly, 1920, 1080);
           Polyhedron outer = Rotate(poly, oq);
@@ -460,15 +480,34 @@ struct RupertGPU {
           rendering.Save(StringPrintf("%s-gpu-solved.png", poly.name));
           return;
         }
+        TIME_END(solution);
 
         // Perform gradient descent, updating the parameters.
+        TIME_START(grad);
         GradientDescent();
+        TIME_END(grad);
 
         configs += width;
         if (status_per.ShouldRun()) {
+          double total_time = run_timer.Seconds();
+          std::string t =
+            StringPrintf("%.1f%% q + %.1f%% t  "
+                         "%.1f%% ρ  "
+                         "%.1f%% e  "
+                         "%.1f%% s  "
+                         "%.1f%% Δ",
+                         (timing.tweakq * 100.0) / total_time,
+                         (timing.tweakt * 100.0) / total_time,
+                         (timing.rotate * 100.0) / total_time,
+                         (timing.error * 100.0) / total_time,
+                         (timing.solution * 100.0) / total_time,
+                         (timing.grad * 100.0) / total_time);
+          status.EmitLine(0, t);
+
           double cps = configs / run_timer.Seconds();
           status.Progressf(iter, NUM_ITERS,
-                           "%s configs (" ACYAN("%.1f") "/sec)",
+                           "%d loops %s configs (" ACYAN("%.1f") "/sec)",
+                           loops,
                            FormatNum(configs).c_str(),
                            cps);
         }
@@ -507,6 +546,18 @@ struct RupertGPU {
   const int num_quaternions = 0;
   const double diameter = 0.0;
 
+  // in seconds
+  struct Timing {
+    double tweakq = 0.0;
+    double tweakt = 0.0;
+    double rotate = 0.0;
+    double error = 0.0;
+    double solution = 0.0;
+    double grad = 0.0;
+  };
+
+  Timing timing;
+
   cl_program program;
   cl_kernel rot_kernel;
   cl_kernel tweakq_kernel;
@@ -541,7 +592,7 @@ struct RupertGPU {
 };
 
 static void Run() {
-  Polyhedron target = SnubCube();
+  Polyhedron target = Rhombicosidodecahedron();
   // Polyhedron target = Dodecahedron();
   RupertGPU gpupert(target, 10000);
 
@@ -552,10 +603,18 @@ static void Run() {
   target.faces = nullptr;
 }
 
+static void Info() {
+  for (const auto &[k, v] : cl->DeviceInfo()) {
+    printf(AWHITE("%s") ": %s\n",
+           k.c_str(), v.c_str());
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   cl = new CL;
+  Info();
   Run();
 
   printf("Delete CL..\n");

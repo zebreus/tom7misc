@@ -180,7 +180,7 @@ __kernel void TweakTranslations(// size width * 2 * 3
 
 __kernel void ComputeError(// One triangulation shared among all the
                            // configurations. NUM_TRIANGLES * 3
-                           __global const int *restrict triangles,
+                           __constant int *restrict triangles,
                            // The main configuration, and one tweaked
                            // version for each parameter.
                            // NUM_VERTICES * 2 * 5

@@ -282,7 +282,7 @@ double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt) {
 
 std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
   constexpr bool VERBOSE = false;
-  constexpr bool SELF_CHECK = true;
+  constexpr bool SELF_CHECK = false;
   CHECK(vertices.size() > 2);
 
   // Explicitly mark vertices as used to avoid reusing them. This may

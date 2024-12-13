@@ -1,72 +1,27 @@
-default : ruperts.exe tosvg.exe polyhedra_test.exe
+default : ruperts.exe tosvg.exe gpuperts.exe polyhedra_test.exe
 
-# Note, this builds against AMD's distribution of OpenCL, since that's
-# the card I had when I started. It also works fine with an NVIDIA GPU,
-# and nvidia libs are a bit hard to find since they love CUDA.
-AMD_ARCH=x86_64
-# AMDSDK="/c/Program Files (x86)/AMD APP SDK"
-# mingw wants /c/, but TDM likes c:/
-# AMDSDK=c:/Program Files (x86)/AMD APP SDK/3.0
-AMDSDK=c:/code/AMD_SDK/
+# This assumes OpenCL is installed as a system library, which
+# is now the case for msys2 clang64. If it's not, you could
+# see how I used to do this for the mingw toolchain in
+# ../cc-lib/opencl/makefile.
 
-UNAME := $(shell uname -o)
-ifeq ($(UNAME),Cygwin)
-  # for 64 bits on windows (mingw).
-  CXX=x86_64-w64-mingw32-g++
-  CC=x86_64-w64-mingw32-g++
-  # XXX necessary?
-  PLATFORM_CXXFLAGS=-D__MINGW32__
-  PLATFORM_LFLAGS=-lpsapi -Wl,--subsystem,console -static
-  CL_CFLAGS="-I$(AMDSDK)/include"
-  CL_LFLAGS='-L${AMDSDK}/lib/${AMD_ARCH}' -lOpenCL
-else ifeq ($(UNAME),Darwin)
-
-  CXX=g++
-  CC=gcc
-
-  # Check if g++ is actually clang
-  ifeq ($(shell $(CXX) -v 2>&1 | grep "clang version" | wc -l | tr -cd '0-9'), 1)
-    CLANG=true
-    # not supported on osx?
-    # PLATFORM_LDFLAGS += -Wl,--stack,167772160
-  else
-    # g++ says it supports --size but it doesn't work
-    PLATFORM_LDFLAGS += -Wl,-z,stack-size=167772160
-  endif
-
-else
-# Linux
-  CXX=g++
-  CC=gcc
-
-  # Check if g++ is actually clang
-  ifeq ($(shell $(CXX) -v 2>&1 | grep "clang version" | wc -l), 1)
-    CLANG=true
-    PLATFORM_LDFLAGS += -Wl,--stack,167772160
-  else
-    # g++ says it supports --size but it doesn't work
-    PLATFORM_LDFLAGS += -Wl,-z,stack-size=167772160
-  endif
-
-  CL_LFLAGS=-lOpenCL
-endif
+CL_LFLAGS=-lOpenCL
 
 CC_LIB=../cc-lib
 CODEC=../codec
 
-
 OPT=-O3
 
-ASAN=-g -fsanitize=address
+# ASAN=-g -fsanitize=address
 # OPT=-O
 
-# -fno-strict-aliasing
+CXXFLAGS=$(ASAN) $(OPT) -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CODEC) --std=c++20
+LFLAGS=$(ASAN) $(CL_LFLAGS) -lz
 
-CXXFLAGS=$(ASAN) $(OPT) $(PLATFORM_CFLAGS) -DDISABLE_SOUND=1 -DDUMMY_UI -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CODEC) --std=c++20
-LFLAGS=$(ASAN) $(PLATFORM_CFLAGS) $(PLATFORM_LDFLAGS) $(CL_LFLAGS) -lz
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o  $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/opencl/clutil.o
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o $(CC_LIB)/csv.o $(CC_LIB)/atomic-util.o $(CC_LIB)/status-bar.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/ansi-image.o $(CC_LIB)/image-resize.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/opencl/clutil.o
-
+# This is only for generating animations of polyhedra; it should be pretty
+# easy to excise the code if you're having trouble with it.
 CODEC_OBJECTS=$(CODEC)/mov.o $(CODEC)/mov-recorder.o
 
 OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) polyhedra.o rendering.o

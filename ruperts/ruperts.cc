@@ -1172,8 +1172,6 @@ int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
 
-  // AnimateHull();
-
   // Polyhedron target = SnubCube();
   // Polyhedron target = Rhombicosidodecahedron();
   // Polyhedron target = TruncatedCuboctahedron();
@@ -1184,15 +1182,19 @@ int main(int argc, char **argv) {
   // Polyhedron target = TruncatedIcosidodecahedron();
   Polyhedron target = SnubDodecahedron();
 
-  // (void)SnubCube();
-  Visualize(target);
-  AnimateMesh(target);
+  // These generate visualizations of the polyhedron;
+  // they are unrelated to solving
+  if (false) {
+    // AnimateHull();
+    Visualize(target);
+    AnimateMesh(target);
+  }
 
-  // Solve(Cube());
-  // Solve(Dodecahedron());
-  // Solve2(SnubCube());
-  // Solve(SnubCube());
+  // Call one of the solution procedures:
+
+  // Solve(target);
   Solve2(target);
+  // Solve3(target);
   // Solve4(target);
 
   printf("OK\n");

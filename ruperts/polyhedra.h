@@ -151,14 +151,19 @@ double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt);
 // small number of vertices and this is in the outer loop.
 //
 // TODO: Now we have some need for a faster convex hull. I think
-// we can at least make this algorithm faster: The edges of the
-// hull are always edges on the convex polyhedron, right? We can
-// add a neighbors vector to Faces and cut down the search space
-// a lot.
+// we can at least make this algorithm faster by using the connectivity
+// of the convex polyhedron we've projected. (Make sure to consider
+// the case that an entire polygonal face is projected to a line,
+// however!)
 std::vector<int> ConvexHull(const std::vector<vec2> &vertices);
 
+// Compute the convex hull, using the QuickHull algorithm. This
+// is not faster for the problem sizes here (~100 vertices) but
+// is O(n lg n) time asymptotically.
 std::vector<int> QuickHull(const std::vector<vec2> &v);
 
+// The area of the convex hull; should also work for any simple
+// polygon.
 double AreaOfHull(const Mesh2D &mesh, const std::vector<int> &hull);
 
 // Faces of a polyhedron must be planar. This computes the
@@ -166,36 +171,6 @@ double AreaOfHull(const Mesh2D &mesh, const std::vector<int> &hull);
 // something is wrong, but exact zero is not expected due
 // to floating point imprecision.
 double PlanarityError(const Polyhedron &p);
-
-// Generate some polyhedra. Note that each call new-ly allocates a
-// Faces object, which is then owned by the caller. Some of these are
-// not fast because they do some kind of search (e.g. a
-// polynomial-time convex hull calculation) to find the connectivity.
-// It's better to reuse the base shape and share the faces object
-// than it is to keep generating new ones.
-
-// Platonic
-Polyhedron Cube();
-Polyhedron Dodecahedron();
-Polyhedron Icosahedron();
-
-// Archimedean
-Polyhedron TruncatedTetrahedron();
-Polyhedron Cuboctahedron();
-Polyhedron TruncatedCube();
-Polyhedron TruncatedOctahedron();
-Polyhedron Rhombicuboctahedron();
-Polyhedron TruncatedCuboctahedron();
-Polyhedron SnubCube();
-Polyhedron Icosidodecahedron();
-Polyhedron TruncatedDodecahedron();
-Polyhedron TruncatedIcosahedron();
-Polyhedron Rhombicosidodecahedron();
-Polyhedron TruncatedIcosidodecahedron();
-Polyhedron SnubDodecahedron(); // new
-
-// Catalan
-Polyhedron TriakisTetrahedron();
 
 inline quat4 RandomQuaternion(ArcFour *rc) {
   const auto &[x, y, z, w] = RandomUnit4D(rc);
@@ -225,8 +200,42 @@ inline bool InHull(const Mesh2D &mesh, const std::vector<int> &hull,
   return PointInPolygon(pt, mesh.vertices, hull);
 }
 
+// Sample two faces from the polyhedron that are not parallel to each
+// other.
 std::pair<int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly);
 
+// Signed distance to the triangle from the point p. Vertex order
+// does not matter. Negative sign means the interior of the triangle.
 double TriangleSignedDistance(vec2 p0, vec2 p1, vec2 p2, vec2 p);
+
+// Generate some polyhedra. Note that each call new-ly allocates a
+// Faces object, which is then owned by the caller. Many of these are
+// not fast because they do some kind of search (e.g. a
+// polynomial-time convex hull calculation) to find the connectivity.
+// You should reuse the base shape and share the faces object rather
+// than keep generating new ones.
+
+// Platonic
+Polyhedron Cube();
+Polyhedron Dodecahedron();
+Polyhedron Icosahedron();
+
+// Archimedean
+Polyhedron TruncatedTetrahedron();
+Polyhedron Cuboctahedron();
+Polyhedron TruncatedCube();
+Polyhedron TruncatedOctahedron();
+Polyhedron Rhombicuboctahedron();
+Polyhedron TruncatedCuboctahedron();
+Polyhedron SnubCube();
+Polyhedron Icosidodecahedron();
+Polyhedron TruncatedDodecahedron();
+Polyhedron TruncatedIcosahedron();
+Polyhedron Rhombicosidodecahedron();
+Polyhedron TruncatedIcosidodecahedron();
+Polyhedron SnubDodecahedron(); // new
+
+// Catalan
+Polyhedron TriakisTetrahedron();
 
 #endif
