@@ -30,6 +30,7 @@
 #include "parser-combinators.h"
 #include "randutil.h"
 #include "re2/re2.h"
+#include "sourcemap.h"
 #include "util.h"
 #include "zoning.h"
 
@@ -229,7 +230,7 @@ struct Delayed {
 
 struct Bank {
   // Creates an empty bank. The origin is required.
-  Bank(int origin) : origin(origin) {
+  Bank(int origin, SourceMap sm) : origin(origin), source_map(std::move(sm)) {
     // The zoning we generate is constructive; we only
     // mark the addresses where we actually generated
     // an instruction (with an instruction mnemonic) as
@@ -266,9 +267,15 @@ struct Bank {
   // Debugging information about what addresses represent
   // instructions (that we assembled).
   Zoning zoning;
+
+  // Debugging information about where in the source code
+  // the code addresses (in this bank) came from.
+  SourceMap source_map;
 };
 
 struct Assembly {
+  Assembly() {}
+
   // Symbolic constants include "Constant = $Value" and "Label:".
   // These are global to the assembly (and must be globally unique),
   // but an address might belong to a specific bank. The programmer
@@ -486,6 +493,7 @@ static std::shared_ptr<Exp> DisplacementExp(
 
 static void Assemble(const std::string &asm_file,
                      const std::string &rom_file) {
+  const std::string asm_content = Util::ReadFile(asm_file);
   Assembly assembly;
 
   // Single-byte opcodes which have implied addressing.
@@ -572,7 +580,7 @@ static void Assemble(const std::string &asm_file,
     {"beq", 0xF0},
   };
 
-  std::vector<std::string> lines = Util::ReadFileToLines(asm_file);
+  const std::vector<std::string> lines = Util::SplitToLines(asm_content);
 
   using FixityElt = FixityItem<std::shared_ptr<Exp>>;
   const auto ResolveExpFixity = [&](const std::vector<FixityElt> &elts) ->
@@ -736,7 +744,7 @@ static void Assemble(const std::string &asm_file,
 
     auto CurrentBank = [&assembly, &Error]() -> Bank & {
         CHECK(!assembly.banks.empty()) << "There are no banks yet! "
-          "Use .origin to start one." << Error();
+          "Use .org to start one." << Error();
         return assembly.banks.back();
       };
 
@@ -794,7 +802,6 @@ static void Assemble(const std::string &asm_file,
           if (auto bo = EvaluateSigned8(&assembly, exp.get(), Error)) {
             int8_t v = bo.value();
             EmitByte(v);
-            // EmitByte(0x99);
           } else {
             CurrentBank().delayed_s8.push_back(Delayed{
                 .line_num = line_num,
@@ -891,7 +898,9 @@ static void Assemble(const std::string &asm_file,
               tokens[2].num >= 0 &&
               tokens[2].num < 0x10000) << "Illegal .org directive."
                                        << Error();
-        assembly.banks.emplace_back((int)tokens[2].num);
+        assembly.banks.emplace_back(
+            (int)tokens[2].num,
+            SourceMap(asm_file, asm_content));
 
       } else if (dir == "db") {
         // Now read a series of expressions denoting bytes, and
@@ -948,11 +957,13 @@ static void Assemble(const std::string &asm_file,
       CHECK(!tokens.empty() && tokens[0].type == SYMBOL) << "Expected "
         "instruction mnemonic." << Error();
 
-      // Mark that we assembled an actual instruction here (just
-      // the first byte).
       {
         Bank &bank = CurrentBank();
+        // Mark that we assembled an actual instruction here (just
+        // the first byte) in the zoning file.
         bank.zoning.addr[bank.NextAddress()] |= Zoning::X;
+        // Also mark where this instruction is in the source file.
+        bank.source_map.code[bank.NextAddress()] = line_num;
       }
 
       std::string mnemonic = Util::lcase(tokens[0].str);
@@ -1360,6 +1371,12 @@ static void Assemble(const std::string &asm_file,
     std::string zonefile = StringPrintf("%s.zoning", fbase.c_str());
     assembly.banks[0].zoning.Save(zonefile);
     printf("Wrote " AGREEN("%s") "\n", zonefile.c_str());
+  }
+
+  {
+    std::string smfile = StringPrintf("%s.sourcemap", fbase.c_str());
+    assembly.banks[0].source_map.Save(smfile);
+    printf("Wrote " AGREEN("%s") "\n", smfile.c_str());
   }
 }
 

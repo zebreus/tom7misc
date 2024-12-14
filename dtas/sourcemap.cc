@@ -1,0 +1,79 @@
+#include "sourcemap.h"
+
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "util.h"
+#include "map-util.h"
+#include "crypt/sha256.h"
+#include "base/stringprintf.h"
+#include "ansi.h"
+
+SourceMap::SourceMap(const std::string &filename,
+                     const std::string &contents) : filename(filename) {
+  lines = Util::SplitToLines(contents);
+  hash = SHA256::Ascii(SHA256::HashString(contents));
+}
+
+void SourceMap::Save(const std::string &outfile) const {
+  std::string out = StringPrintf("%s\n%s\n",
+                                 filename.c_str(),
+                                 hash.c_str());
+
+  std::vector<std::pair<uint16_t, int>> sorted =
+    MapToSortedVec(code);
+
+  for (const auto &[addr, line] : sorted) {
+    StringAppendF(&out, "%04x %d\n", addr, line);
+  }
+
+  Util::WriteFile(outfile, out);
+}
+
+SourceMap SourceMap::Empty() {
+  SourceMap sm;
+  sm.filename = "empty";
+  sm.hash = SHA256::Ascii(SHA256::HashString(""));
+  return sm;
+}
+
+SourceMap SourceMap::FromFile(const std::string &sourcemap_filename) {
+  std::vector<std::string> slines =
+    Util::ReadFileToLines(sourcemap_filename);
+
+  if (slines.size() < 2) return Empty();
+  SourceMap ret;
+  ret.filename = std::move(slines[0]);
+  ret.hash = std::move(slines[1]);
+  std::string contents = Util::ReadFile(ret.filename);
+  std::string actual_hash = SHA256::Ascii(SHA256::HashString(contents));
+
+  if (actual_hash != ret.hash) {
+    fprintf(stderr, AORANGE("Warning") ": Source file " AWHITE("%s")
+            " hash does not agree with source map " AWHITE("%s") ".\n"
+            "It must have changed; using empty source map.\n",
+            ret.filename.c_str(), sourcemap_filename.c_str());
+    return Empty();
+  }
+
+  ret.lines = Util::SplitToLines(contents);
+
+  for (int i = 2; i < slines.size(); i++) {
+    std::vector<std::string> parts = Util::Tokenize(slines[i], ' ');
+    if (parts.empty()) continue;
+    CHECK(parts.size() == 2) << "Malformed " << sourcemap_filename
+                             << " on line " << i;
+    uint16_t addr = strtol(parts[0].c_str(), nullptr, 16);
+    int line = strtol(parts[1].c_str(), nullptr, 10);
+    CHECK(line >= 0 && line < ret.lines.size()) << "Malformed " <<
+      sourcemap_filename << " on line " << i << ": Index is out of "
+      "bounds for the source file.";
+    ret.code[addr] = line;
+  }
+
+  return ret;
+}

@@ -96,11 +96,6 @@ static void Model() {
 
   static constexpr int VERBOSE_ITER_START = 142500;
 
-  // TODO: Animate progress. Each iteration can be a frame.
-  // For each block we can render the state (it's like 2048x256 bits?).
-  // but I guess that's just enormous! There are like a thousand blocks.
-  // So maybe we just want to render a few of them.
-
   // Write a diagnostic image to show the state of the model.
   static constexpr bool WRITE_IMAGES = true;
   // It's slow if you do it often!
