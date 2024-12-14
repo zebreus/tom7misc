@@ -17,6 +17,7 @@
 #include "base/logging.h"
 
 namespace google_base {
+
 DateLogger::DateLogger() {
 #if defined(_MSC_VER)
   _tzset();
@@ -29,7 +30,7 @@ const char* DateLogger::HumanDate() {
 #else
 # if defined(_MSC_VER)
   _strtime_s(buffer_, sizeof(buffer_));
-  time_t time_value = time(NULL);
+  time_t time_value = time(nullptr);
   struct tm now;
   localtime_r(&time_value, &now);
   snprintf(buffer_, sizeof(buffer_), "%02d:%02d:%02d\0",
@@ -38,4 +39,5 @@ const char* DateLogger::HumanDate() {
   return buffer_;
 #endif
 }
+
 }  // namespace google_base

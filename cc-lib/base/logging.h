@@ -16,9 +16,6 @@
 
 #include <stdlib.h>
 #include <iostream>
-#include <utility>
-
-#include "base/macros.h"
 
 // Always-on checking
 #define CHECK(x)        if(x){}else LogMessageFatal(__FILE__, __LINE__).stream() << "Check failed: " #x "\n"
@@ -93,7 +90,8 @@ class LogMessage {
 
  private:
   google_base::DateLogger pretty_date_;
-  DISALLOW_COPY_AND_ASSIGN(LogMessage);
+  LogMessage(const LogMessage &) = delete;
+  LogMessage &operator =(const LogMessage &) = delete;
 };
 
 class LogMessageFatal : public LogMessage {
@@ -112,7 +110,8 @@ class LogMessageFatal : public LogMessage {
     #endif
   }
  private:
-  DISALLOW_COPY_AND_ASSIGN(LogMessageFatal);
+  LogMessageFatal(const LogMessageFatal &) = delete;
+  LogMessageFatal &operator =(const LogMessageFatal &) = delete;
 };
 
 #endif  // BASE_LOGGING_H
