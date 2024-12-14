@@ -20,16 +20,12 @@
 #   define DIRSEPC '/'
 #endif
 
-#define UTIL_PI 3.141592653589f
-
 struct Util {
   using string = std::string;
   using string_view = std::string_view;
 
   static std::string itos(int i);
   static int stoi(const std::string &s);
-  // Hard-coded to two decimal places. Avoid.
-  static std::string dtos(double d);
 
   // No error handling; it just returns "".
   static string ReadFile(const string &filename);
@@ -86,30 +82,31 @@ struct Util {
   // Join({"z"}, ".") = "z"
   // Join({}, ".") = ""
   static string Join(const std::vector<std::string> &pieces,
-                     const std::string &sep);
+                     std::string_view sep);
 
   // Split the string on the given character. Consecutive separators
   // will yield empty elements. The output always contains at least
   // one element; Split("", 'x') returns {""}.
-  static std::vector<string> Split(const std::string &s, char sep);
+  static std::vector<string> Split(std::string_view s, char sep);
   // The separator must be non-empty. This takes the first occurrence
   // of the separator in case of self-overlap.
   static std::vector<string> SplitWith(std::string_view str,
                                        std::string_view sep);
 
+  // Like Split, but skipping empty fields. Result is empty if all characters
+  // are separators.
+  static std::vector<string> Tokenize(std::string_view str, char sep);
+
   // Like Split, but with an arbitrary function (char -> bool) determining
   // the separator.
   template<class F>
-  static std::vector<std::string> Fields(const std::string &s, F is_sep);
+  static std::vector<std::string> Fields(std::string_view s, F is_sep);
 
   // Like Fields, but skips empty fields. Result is empty if all characters
   // are separators.
   template<class F>
-  static std::vector<std::string> Tokens(const std::string &s, F is_sep);
+  static std::vector<std::string> Tokens(std::string_view s, F is_sep);
 
-  // XXX terrible names
-  static int shout(int, string, unsigned int &);
-  static string shint(int b, int i);
   /* converts int to byte string that represents it */
   static string sizes(int i);
 
@@ -117,8 +114,7 @@ struct Util {
   static bool HasMagic(string filename, const string &magic);
   static string ReadFileMagic(string filename, const string &magic);
 
-  static string ptos(void *);
-  static unsigned int hash(const string &s);
+  [[deprecated]] static unsigned int hash(const string &s);
   // give "/home/tom/" of "/home/tom/.bashrc"
   // or "." of "file.txt"
   static string PathOf(string_view s);
@@ -347,21 +343,6 @@ struct Util {
 // Deprecated: Call the ones in the Util class please!
 inline std::string itos(int i) { return Util::itos(i); }
 inline int stoi(const std::string &s) { return Util::stoi(s); }
-inline std::string dtos(double d) { return Util::dtos(d); }
-
-#if 0
-/* drawing lines with Bresenham's algorithm.
-   deprecated; please use lines.h
-*/
-struct line {
-  static line *create(int x0, int y0, int x1, int y1);
-  virtual void destroy() = 0;
-  virtual bool next(int &x, int &y) = 0;
-  virtual ~line() {};
-};
-#endif
-
-// Note: bitbuffer used to be here; moved to bitbuffer.h
 
 // Template implementations follow.
 
@@ -386,7 +367,7 @@ void Util::ForEachLine(const std::string &s, F f) {
 }
 
 template<class F>
-std::vector<std::string> Util::Tokens(const std::string &s, F f) {
+std::vector<std::string> Util::Tokens(std::string_view s, F f) {
   std::vector<std::string> out;
   int64_t start = 0;
   for (int64_t i = 0; i < (int64_t)s.size(); i++) {
@@ -405,7 +386,7 @@ std::vector<std::string> Util::Tokens(const std::string &s, F f) {
 }
 
 template<class F>
-std::vector<std::string> Util::Fields(const std::string &s, F f) {
+std::vector<std::string> Util::Fields(std::string_view s, F f) {
   std::vector<std::string> out;
   int64_t start = 0;
   for (int64_t i = 0; i < (int64_t)s.size(); i++) {

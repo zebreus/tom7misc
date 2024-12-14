@@ -130,6 +130,14 @@ static void TestPad() {
   CHECK_EQ("hello", Util::PadEx(-4, "hello", '_'));
 }
 
+static void TestPadEx() {
+  // Test with zero padding.
+  CHECK_EQ("hello", Util::PadEx(5, "hello", '\0'));
+  CHECK_EQ("hello", Util::PadEx(-5, "hello", '\0'));
+  CHECK_EQ("hello\0\0"sv, Util::PadEx(7, "hello", '\0'));
+  CHECK_EQ("\0\0hello"sv, Util::PadEx(-7, "hello", '\0'));
+}
+
 static void TestJoin() {
   CHECK_EQ("", Util::Join({}, "X"));
   CHECK_EQ("aYYbYYcde", Util::Join({"a", "b", "cde"}, "YY"));
@@ -140,15 +148,13 @@ static void TestSplit() {
   CHECK_SVEQ((vector<string>{"hello", "world"}),
              Util::Split("hello world", ' '));
 
-  /*
-  for (const string s : Util::Split("hello  world", ' '))
-    printf("(%s)\n", s.c_str());
-  */
-
   CHECK_SVEQ((vector<string>{"hello", "", "world"}),
              Util::Split("hello  world", ' '));
   CHECK_SVEQ((vector<string>{"", ""}), Util::Split(" ", ' '));
   CHECK_SVEQ(vector<string>{""}, Util::Split("", 'x'));
+
+  CHECK_SVEQ((vector<string>{"a", "", "b", "", "c"}),
+             Util::Split("a||b||c", '|'));
 }
 
 static void TestSplitWith() {
@@ -188,6 +194,17 @@ static void TestTokens() {
            Util::Tokens(" \n \n\n", IsSpace));
   CHECK_EQ((vector<string>{}),
            Util::Tokens("", IsSpace));
+}
+
+static void TestTokenize() {
+  CHECK_EQ((vector<string>{"hello", "world"}),
+           Util::Tokenize("....hello.world...", '.'));
+  CHECK_EQ((vector<string>{"hello", "world"}),
+           Util::Tokenize("hello.world", '.'));
+  CHECK_EQ((vector<string>{}),
+           Util::Tokenize("...", '.'));
+  CHECK_EQ((vector<string>{}),
+           Util::Tokenize("", '.'));
 }
 
 static void TestCdup() {
@@ -503,6 +520,72 @@ static void TestRemoveChars() {
             "eastnortheast");
 }
 
+static void TestLoseWhiteL() {
+  CHECK_EQ("", Util::LoseWhiteL(""));
+  CHECK_EQ("", Util::LoseWhiteL("   \t\r\n"));
+  CHECK_EQ("hello", Util::LoseWhiteL("   \t\r\nhello"));
+  CHECK_EQ("hello world", Util::LoseWhiteL("  hello world"));
+  CHECK_EQ("hello world  ", Util::LoseWhiteL("  hello world  "));
+}
+
+static void TestChop() {
+  {
+    string s = "  hello world";
+    CHECK_EQ(Util::chop(s), "hello");
+    CHECK_EQ(s, " world");
+  }
+
+  {
+    string s = "  hello";
+    CHECK_EQ(Util::chop(s), "hello");
+    CHECK_EQ(s, "");
+  }
+
+  {
+    string s = "hello";
+    CHECK_EQ(Util::chop(s), "hello");
+    CHECK_EQ(s, "");
+  }
+
+  {
+    string s = "   ";
+    CHECK_EQ(Util::chop(s), "");
+    CHECK_EQ(s, "");
+  }
+
+  {
+    string s = "";
+    CHECK_EQ(Util::chop(s), "");
+    CHECK_EQ(s, "");
+  }
+}
+
+static void TestChopTo() {
+  {
+    string s = "hello,world";
+    CHECK_EQ(Util::chopto(',', s), "hello");
+    CHECK_EQ(s, "world");
+  }
+
+  {
+    string s = "hello";
+    CHECK_EQ(Util::chopto(',', s), "hello");
+    CHECK_EQ(s, "");
+  }
+
+  {
+    string s = ",hello";
+    CHECK_EQ(Util::chopto(',', s), "");
+    CHECK_EQ(s, "hello");
+  }
+
+  {
+    string s = "";
+    CHECK_EQ(Util::chopto(',', s), "");
+    CHECK_EQ(s, "");
+  }
+}
+
 int main(int argc, char **argv) {
   TestItos();
   TestStoi();
@@ -510,11 +593,13 @@ int main(int argc, char **argv) {
   TestWriteFiles();
   TestWhitespace();
   TestPad();
+  TestPadEx();
   TestJoin();
   TestSplit();
   TestSplitWith();
   TestSplitToLines();
   TestTokens();
+  TestTokenize();
   TestCdup();
   TestPrefixSuffix();
   TestParseDouble();
@@ -530,6 +615,9 @@ int main(int argc, char **argv) {
   TestCase();
   TestPaths();
   TestRemoveChars();
+  TestLoseWhiteL();
+  TestChop();
+  TestChopTo();
 
   printf("OK\n");
   return 0;

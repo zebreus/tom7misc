@@ -95,12 +95,6 @@ int Util::stoi(const string &s) {
   return atoi(s.c_str());
 }
 
-string Util::dtos(double d) {
-  char s[64];
-  snprintf(s, 62, "%.2f", d);
-  return (string)s;
-}
-
 // TODO: I never tested this on posix.
 vector<string> Util::ListFiles(const string &s) {
   vector<string> v;
@@ -171,12 +165,6 @@ bool Util::MakeDir(const string &d) {
 # else /* posix */
   return !mkdir(d.c_str(), 0755);
 # endif
-}
-
-string Util::ptos(void *p) {
-  char s[64];
-  snprintf(s, 62, "%p", p);
-  return (string)s;
 }
 
 // Internal helper used by ReadFile, ReadFileMagic, ReadFileBytes.
@@ -576,23 +564,6 @@ string Util::sizes(int i) {
 }
 
 /* XXX these have terrible names */
-
-/* represent int i (as i mod (2^(b/8)))
-   using only b bytes */
-string Util::shint(int b, int i) {
-  return sizes(i).substr(4-b, b);
-}
-
-/* inverse of shint. does not check that
-   there is enough room in s to read b bytes
-   from idx ... */
-int Util::shout(int b, string s, unsigned int &idx) {
-  int r = 0;
-  while (b--) {
-    r = ((unsigned char)s[idx++]) + (r<<8);
-  }
-  return r;
-}
 
 unsigned int Util::hash(const string &s) {
   unsigned int h = 0x714FA5DD;
@@ -1346,7 +1317,7 @@ FILE *Util::fopenp(const string &f, const string &m) {
 }
 
 string Util::Join(const vector<string> &parts,
-                  const string &sep) {
+                  std::string_view sep) {
   if (parts.empty()) return "";
   if (parts.size() == 1) return parts[0];
   size_t result_len = 0;
@@ -1365,8 +1336,12 @@ string Util::Join(const vector<string> &parts,
   return out;
 }
 
-vector<string> Util::Split(const string &s, char sep) {
+vector<string> Util::Split(std::string_view s, char sep) {
   return Fields(s, [sep](char c) { return c == sep; });
+}
+
+vector<string> Util::Tokenize(std::string_view s, char sep) {
+  return Tokens(s, [sep](char c) { return c == sep; });
 }
 
 vector<string> Util::SplitWith(std::string_view str,

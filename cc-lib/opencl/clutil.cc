@@ -238,6 +238,184 @@ pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
   return make_pair(prog, it->second);
 }
 
+// Read an unspecified set of information about the device, so
+// that it can be printed out for debugging.
+std::map<std::string, std::string> CL::DeviceInfo() {
+  if (devices == 0) return {{"(error)", "(no devices)"}};
+
+  std::map<std::string, std::string> ret;
+
+  {
+    cl_ulong local_mem_size = 0;
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_LOCAL_MEM_SIZE,
+                              sizeof(local_mem_size), &local_mem_size, nullptr);
+    if (err == CL_SUCCESS) {
+      ret["local mem size"] =
+        StringPrintf("%lld kb", (int64_t)local_mem_size);
+    } else {
+      ret["local mem size"] = "(error)";
+    }
+  }
+
+  {
+    cl_ulong global_mem_size = 0;
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_GLOBAL_MEM_SIZE,
+                              sizeof(global_mem_size), &global_mem_size,
+                              nullptr);
+    if (err == CL_SUCCESS) {
+      ret["global mem size"] =
+        StringPrintf("%lld MB", (int64_t)(global_mem_size / (1024 * 1024)));
+    } else {
+      ret["global mem size"] = "(error)";
+    }
+  }
+
+  {
+    cl_uint max_compute_units = 0;
+    int err =
+        clGetDeviceInfo(devices[0], CL_DEVICE_MAX_COMPUTE_UNITS,
+                        sizeof(max_compute_units), &max_compute_units, nullptr);
+    if (err == CL_SUCCESS) {
+      ret["max compute units"] = StringPrintf("%d", max_compute_units);
+    } else {
+      ret["max compute units"] = "(error)";
+    }
+  }
+
+  {
+    size_t max_work_group_size = 0;
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_MAX_WORK_GROUP_SIZE,
+                              sizeof(max_work_group_size), &max_work_group_size,
+                              nullptr);
+    if (err == CL_SUCCESS) {
+      ret["max work group size"] =
+          StringPrintf("%lld", (int64_t)max_work_group_size);
+    } else {
+      ret["max work group size"] = "(error)";
+    }
+  }
+
+  {
+    cl_uint max_clock_frequency = 0;
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_MAX_CLOCK_FREQUENCY,
+                              sizeof(max_clock_frequency), &max_clock_frequency,
+                              nullptr);
+    if (err == CL_SUCCESS) {
+      ret["max clock frequency"] = StringPrintf("%d MHz", max_clock_frequency);
+    } else {
+      ret["max clock frequency"] = "(error)";
+    }
+  }
+
+  {
+    char device_name[1024];
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_NAME, sizeof(device_name),
+                          device_name, nullptr);
+    if (err == CL_SUCCESS) {
+      ret["device name"] = device_name;
+    } else {
+      ret["device name"] = "(error)";
+    }
+  }
+
+  {
+    char device_vendor[1024];
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_VENDOR,
+                              sizeof(device_vendor), device_vendor, nullptr);
+    if (err == CL_SUCCESS) {
+      ret["device vendor"] = device_vendor;
+    } else {
+      ret["device vendor"] = "(error)";
+    }
+  }
+
+  {
+    char device_version[1024];
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_VERSION,
+                              sizeof(device_version), device_version, nullptr);
+    if (err == CL_SUCCESS) {
+      ret["device version"] = device_version;
+    } else {
+      ret["device version"] = "(error)";
+    }
+  }
+
+  {
+    char driver_version[1024];
+    int err = clGetDeviceInfo(devices[0], CL_DRIVER_VERSION,
+                              sizeof(driver_version), driver_version, nullptr);
+    if (err == CL_SUCCESS) {
+      ret["driver version"] = driver_version;
+    } else {
+      ret["driver version"] = "(error)";
+    }
+  }
+
+  {
+    cl_ulong max_mem_alloc_size = 0;
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_MAX_MEM_ALLOC_SIZE,
+                              sizeof(max_mem_alloc_size), &max_mem_alloc_size,
+                              nullptr);
+    if (err == CL_SUCCESS) {
+      ret["max mem alloc size"] = StringPrintf(
+          "%lld MB", (int64_t)(max_mem_alloc_size / (1024 * 1024)));
+    } else {
+      ret["max mem alloc size"] = "(error)";
+    }
+  }
+
+  {
+    cl_ulong max_constant_buffer_size = 0;
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE,
+                              sizeof(max_constant_buffer_size),
+                              &max_constant_buffer_size, nullptr);
+    if (err == CL_SUCCESS) {
+      ret["max constant buffer size"] =
+          StringPrintf("%lld KB", (int64_t)(max_constant_buffer_size / 1024));
+    } else {
+      ret["max constant buffer size"] = "(error)";
+    }
+  }
+
+  {
+    cl_uint max_samplers = 0;
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_MAX_SAMPLERS,
+                              sizeof(max_samplers), &max_samplers, nullptr);
+    if (err == CL_SUCCESS) {
+      ret["max samplers"] = StringPrintf("%d", max_samplers);
+    } else {
+      ret["max samplers"] = "(error)";
+    }
+  }
+
+  {
+    cl_uint max_read_image_args = 0;
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_MAX_READ_IMAGE_ARGS,
+                              sizeof(max_read_image_args), &max_read_image_args,
+                              nullptr);
+    if (err == CL_SUCCESS) {
+      ret["max read image args"] = StringPrintf("%d", max_read_image_args);
+    } else {
+      ret["max read image args"] = "(error)";
+    }
+  }
+
+  {
+    cl_uint max_write_image_args = 0;
+    int err = clGetDeviceInfo(devices[0], CL_DEVICE_MAX_WRITE_IMAGE_ARGS,
+                              sizeof(max_write_image_args),
+                              &max_write_image_args, nullptr);
+    if (err == CL_SUCCESS) {
+      ret["max write image args"] = StringPrintf("%d", max_write_image_args);
+    } else {
+      ret["max write image args"] = "(error)";
+    }
+  }
+
+  // More here...
+  return ret;
+}
+
 
 // static
 const char *CL::ErrorString(cl_int err) {

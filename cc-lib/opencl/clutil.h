@@ -57,6 +57,10 @@ struct CL {
   // is text.
   static std::optional<std::string> DecodeProgram(cl_program p);
 
+  // Read an unspecified set of information about the device, so
+  // that it can be printed out for debugging.
+  std::map<std::string, std::string> DeviceInfo();
+
   // TODO: Make private.
   cl_uint num_devices = 0;
   cl_device_id *devices = nullptr;
