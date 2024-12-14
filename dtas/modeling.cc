@@ -923,12 +923,14 @@ void Modeling::Expand() {
       break;
     }
     case 0xb1: { // LDA (d),y
-      uint16_t indirect_addr = Next8();
+      uint8_t zpg_addr = Next8();
       state.A.Clear();
-      for (uint8_t addr : GetByteSet(state, indirect_addr)) {
-        for (uint8_t y : state.Y) {
-          uint16_t effective_addr = addr + y;
-          state.A.AddSet(GetByteSet(state, effective_addr));
+      for (uint8_t addr_lo : GetByteSet(state, zpg_addr)) {
+        for (uint8_t addr_hi : GetByteSet(state, (uint8_t)(zpg_addr + 1))) {
+          for (uint8_t y : state.Y) {
+            uint8_t effective_addr = Word16(addr_hi, addr_lo) + y;
+            state.A.AddSet(GetByteSet(state, effective_addr));
+          }
         }
       }
       ZN(&state, state.A);
@@ -1192,8 +1194,9 @@ void Modeling::Expand() {
 
       state.A.Clear();
       for (uint8_t sp : state.S) {
-        // Or is it (sp + 1)? Not sure how this one wraps.
-        uint16_t saddr = 0x0100 + sp + 1;
+        // Following what fceulib does for a stack pointer of 0xFF,
+        // we get a stack address of 0x0100.
+        uint16_t saddr = 0x0100 + (uint8_t)(sp + 1);
         state.A.AddSet(state.ram[saddr].ToByteSet());
       }
 
@@ -1207,11 +1210,12 @@ void Modeling::Expand() {
       // Push A onto stack.
 
       if (state.S.Size() == 1) {
+        uint8_t sp = *state.S.begin();
         // Then it is definitely stored in the stack here,
         // so we can replace the memory location.
-        uint16_t saddr = 0x0100 + *state.S.begin();
+        uint16_t saddr = 0x0100 + sp;
         state.ram[saddr] = ByteSet64(state.A);
-        state.S = ByteSet::Singleton(saddr - 1);
+        state.S = ByteSet::Singleton(sp - 1);
       } else {
         for (uint8_t sp : state.S) {
           uint16_t saddr = 0x0100 + sp;
@@ -1398,32 +1402,24 @@ void Modeling::Expand() {
     case 0x91: { // STA (d),y
       const uint16_t zpg_addr = Next8();
 
-      if (state.Y.Size() == 1) {
-        uint16_t ind_addr = zpg_addr + state.Y.GetSingleton();
-        ByteSet addr_lo = GetByteSet(state, ind_addr);
-        ByteSet addr_hi = GetByteSet(state, ind_addr + 1);
-        if (addr_hi.Size() == 1 && addr_lo.Size() == 1) {
-          // Then we have a definite address, and can overwrite.
-          uint16_t eaddr = Word16(addr_hi.GetSingleton(),
-                                  addr_lo.GetSingleton());
-          WriteByteSet64(&state, eaddr, ByteSet64(state.A));
-        } else {
-          // Have to merge it everywhere.
-          for (uint8_t hi : addr_hi) {
-            for (uint8_t lo : addr_lo) {
-              uint16_t eaddr = Word16(hi, lo);
-              MergeWriteByteSet(&state, eaddr, state.A);
-            }
-          }
-        }
+      ByteSet addr_lo = GetByteSet(state, zpg_addr);
+      ByteSet addr_hi = GetByteSet(state, (uint8_t)(zpg_addr + 1));
+
+      if (addr_hi.Size() == 1 && addr_lo.Size() == 1 &&
+          state.Y.Size() == 1) {
+
+        // Then we have a definite address, and can overwrite.
+        uint16_t eaddr =
+          Word16(addr_hi.GetSingleton(), addr_lo.GetSingleton()) +
+          state.Y.GetSingleton();
+        WriteByteSet64(&state, eaddr, ByteSet64(state.A));
+
       } else {
-        for (uint8_t y : state.Y) {
-          uint16_t ind_addr = zpg_addr + y;
-          ByteSet addr_lo = GetByteSet(state, ind_addr);
-          ByteSet addr_hi = GetByteSet(state, ind_addr + 1);
-          for (uint8_t hi : addr_hi) {
-            for (uint8_t lo : addr_lo) {
-              uint16_t eaddr = Word16(hi, lo);
+        // Have to merge it everywhere.
+        for (uint8_t hi : addr_hi) {
+          for (uint8_t lo : addr_lo) {
+            for (uint8_t y : state.Y) {
+              uint16_t eaddr = Word16(hi, lo) + y;
               MergeWriteByteSet(&state, eaddr, state.A);
             }
           }
