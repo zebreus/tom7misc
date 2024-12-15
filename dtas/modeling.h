@@ -20,6 +20,11 @@
 #include "hashing.h"
 #include "zoning.h"
 
+// Can use ByteSet64, which reduces the memory requirements to 25%,
+// but is slower and less accurate.
+using MemByteSet = ByteSet;
+#define RegByteSet(x) x
+
 struct Bank {
   static constexpr int ORIGIN = 0x8000;
   // Only the address space from 0x8000-0xFFFF is mapped.
@@ -46,7 +51,7 @@ struct Bank {
 struct State {
   // PC is determined by the program point, so we do not store it.
   ByteSet A, X, Y, S, P;
-  std::vector<ByteSet64> ram;
+  std::vector<MemByteSet> ram;
 
   // Start the state with the current exact memory, but with universal
   // sets for the registers. The stack is set to the constant
@@ -177,8 +182,8 @@ struct Modeling {
   // memory-mapped, then we have special cases.
   ByteSet GetByteSet(const State &state, uint16_t addr) const;
   // Conversely, write to an address (typically a RAM address).
-  void WriteByteSet64(State *state, uint16_t addr,
-                      const ByteSet64 &s) const;
+  void WriteMemByteSet(State *state, uint16_t addr,
+                       const MemByteSet &s) const;
   // Merge the set with the memory address (typically a RAM address
   // when the destination of the write is not definite).
   void MergeWriteByteSet(State *state, uint16_t addr,

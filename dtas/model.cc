@@ -96,7 +96,7 @@ static void Model() {
   static constexpr int VERBOSE_ITER_START = 142500;
 
   // Write a diagnostic image to show the state of the model.
-  static constexpr bool WRITE_IMAGES = false;
+  static constexpr bool WRITE_IMAGES = true;
   // It's slow if you do it often!
   static constexpr int WRITE_EVERY = 50;
 

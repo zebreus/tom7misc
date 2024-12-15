@@ -319,6 +319,14 @@ struct ByteSet64 {
   bool operator ==(const ByteSet64 &other) const;
   std::strong_ordering operator <=>(const ByteSet64 &other) const;
 
+  template<class F>
+  ByteSet64 Map(const F &f) {
+    ByteSet64 ret;
+    for (uint8_t v : *this) {
+      ret.Add(f(v));
+    }
+    return ret;
+  }
 
   // below is nominally private, but used in testing.
   friend class const_iterator;
