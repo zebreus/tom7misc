@@ -104,7 +104,7 @@ int main(int argc, char **argv) {
   BenchSizeASM();
   #endif
 
-  BenchByteSet<ByteSetOld>("old");
+  BenchByteSet<ByteSet64>("64");
   BenchByteSet<ByteSet>("new");
 
   printf("OK\n");

@@ -12,22 +12,6 @@
 
 static constexpr bool VERBOSE = false;
 
-ByteSetOld ByteSetOld::Union(const ByteSetOld &a, const ByteSetOld &b) {
-  ByteSetOld ret = a;
-  ret.AddSet(b);
-  return ret;
-}
-
-void ByteSetOld::AddSet(const ByteSetOld &b) {
-  member |= b.member;
-}
-
-uint8_t ByteSetOld::GetSingleton() const {
-  auto it = begin();
-  CHECK(it != end()) << "GetSingleton on empty set";
-  return *it;
-}
-
 bool ByteSet64::Contains(uint8_t b) const {
   switch (type) {
     case EMPTY:
@@ -382,43 +366,6 @@ uint8_t ByteSet64::GetSingleton() const {
   default:
     LOG(FATAL) << "Invalid type";
   }
-}
-
-std::string ByteSetOld::DebugString() const {
-  std::string ret;
-
-  int range_start = 0;
-  bool in_range = false;
-  auto EndRange = [&](int b) {
-      if (b - 1 == range_start) {
-        StringAppendF(&ret, " %02x", range_start);
-      } else {
-        StringAppendF(&ret, " %02x-%02x", range_start, b - 1);
-      }
-      in_range = false;
-    };
-
-  for (int b = 0; b < 256; b++) {
-    if (Contains(b)) {
-      if (in_range) {
-        continue;
-      } else {
-        range_start = b;
-        in_range = true;
-      }
-    } else {
-      if (in_range) {
-        EndRange(b);
-      } else {
-        continue;
-      }
-    }
-  }
-
-  if (in_range) {
-    EndRange(256);
-  }
-  return ret;
 }
 
 std::string ByteSet64::DebugString() const {

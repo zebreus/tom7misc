@@ -10,7 +10,6 @@
 #include <cstddef>
 #include <iterator>
 #include <cstdint>
-#include <bitset>
 #include <compare>
 #include <string>
 
@@ -116,7 +115,7 @@ struct ByteSet {
     u.a = u.b = u.c = u.d = 0;
   }
 
-  // Allows iterating over bytes that are set.
+  // Iterates over bytes that are set, in ascending order.
   class const_iterator {
    public:
     using value_type = uint8_t;
@@ -155,7 +154,9 @@ struct ByteSet {
         uint8_t v = idx;
         int i = v >> 6;
         int bit = v & 0b00111111;
-        // Mask zeroes for bits we've already passed.
+        // Mask zeroes for bits we've already passed; we can use
+        // countl_zero to quickly find the first set bit, but
+        // we don't want to count ones behind the iterator.
         uint64_t masked_word = bs->u.words[i] & ((~uint64_t{0}) >> bit);
         if (masked_word == 0) {
           // No bits left in this word; skip to the next.
@@ -231,128 +232,13 @@ struct ByteSet {
 };
 
 
-// Old version that uses std::bitset. It's almost what we need,
-// but iterating over a sparse set is slower than it should
-// be because we don't have access to the words for bit tricks.
-// TODO: Benchmark this and then delete it, assuming it's just
-// worse than ByteSet.
-struct ByteSetOld {
-  ByteSetOld() { member.reset(); }
-  bool Empty() const { return member.none(); }
-  bool Contains(uint8_t b) const { return member.test(b); }
-  void Add(uint8_t b) { member.set(b); }
-  void AddSet(const ByteSetOld &b);
-
-  std::string DebugString() const;
-
-  static ByteSetOld Top() {
-    ByteSetOld s;
-    s.member.reset();
-    s.member.flip();
-    return s;
-  }
-
-  static ByteSetOld Bottom() {
-    ByteSetOld s;
-    s.member.reset();
-    return s;
-  }
-
-  static ByteSetOld Singleton(uint8_t b) {
-    ByteSetOld s;
-    s.Add(b);
-    return s;
-  }
-
-  static ByteSetOld Union(const ByteSetOld &a, const ByteSetOld &b);
-
-  int Size() const {
-    // beware: bitset<256>::size() is always 256.
-    return member.count();
-  }
-
-  // Get one element from the set; intended for uses where
-  // the set has size 1. Aborts if the set is empty.
-  uint8_t GetSingleton() const;
-
-  template<class F>
-  ByteSetOld Map(const F &f) {
-    ByteSetOld ret;
-    for (uint8_t v : *this) {
-      ret.Add(f(v));
-    }
-    return ret;
-  }
-
-  void Clear() {
-    member.reset();
-  }
-
-  // Allows iterating over bytes that are set. Note that this
-  // internally iterates over all 256 values, even if it is sparse.
-  class const_iterator {
-   public:
-    using value_type = uint8_t;
-    using difference_type = std::ptrdiff_t;
-    // using reference = uint8_t;
-    using iterator_category = std::input_iterator_tag;
-
-    const_iterator(const ByteSetOld *bs, int idx_in) : bs(bs), idx(idx_in) {
-      // Advance to the next set bit:
-      while (idx < 256 && !bs->member.test(idx)) ++idx;
-    }
-
-    uint8_t operator*() const { return (uint8_t)idx; }
-    const_iterator& operator++() {
-      ++idx;
-      while (idx < 256 && !bs->member.test(idx)) ++idx;
-      return *this;
-    }
-    bool operator==(const const_iterator& other) const {
-      return idx == other.idx;
-    }
-    bool operator!=(const const_iterator& other) const {
-      return idx != other.idx;
-    }
-
-   private:
-    const ByteSetOld *bs = nullptr;
-    // 0-256, where 256 represents the end iterator.
-    // When 0-255, it is a byte in the set.
-    int idx = 0;
-  };
-
-  const_iterator begin() const { return const_iterator(this, 0); }
-  const_iterator end() const { return const_iterator(this, 256); }
-
-  // Weirdly, we need both operator== and operator<=>.
-  bool operator ==(const ByteSetOld &other) const {
-    return member == other.member;
-  }
-
-  std::strong_ordering operator <=>(const ByteSetOld &other) const {
-    // PERF: Again, with direct access to words, we could do
-    // this much faster.
-    for (int i = 0; i < 256; i++) {
-      bool a = member.test(i);
-      bool b = other.member.test(i);
-      if (a != b) {
-        return a ? std::strong_ordering::greater :
-          std::strong_ordering::less;
-      }
-    }
-    return std::strong_ordering::equal;
-  }
-
- private:
-  friend class const_iterator;
-  // TODO: I think I can make this more efficient. Iterating
-  // over the bits requires testing every value, but something
-  // like countl_zero should make it much faster for sparse sets.
-  std::bitset<256> member;
-  static_assert(sizeof(member) == 32);
-};
-
+// Packed 64-bit representation. Of course no such representation can
+// represent all sets accurately, so this always represents a
+// *superset* of what has been inserted. For small counts it is
+// exact, but I would not rely on any specific behavior.
+//
+// Note the only advantage of this is its compactness. The ByteSet
+// implementation is way faster.
 struct ByteSet64 {
   // Deterministic. But note that there are multiple ways of
   // representing a set, and this must be lossy for cardinality
@@ -391,8 +277,51 @@ struct ByteSet64 {
   void Clear();
   void Add(uint8_t b);
 
+  // Allows iterating over bytes that are set. Order is deterministic
+  // but arbitrary. Note that this internally iterates over all 256
+  // values, even if it is sparse. (PERF: This can be improved a lot,
+  // but it probably requires normalizing the representation.)
+  class const_iterator {
+   public:
+    using value_type = uint8_t;
+    using difference_type = std::ptrdiff_t;
+    // using reference = uint8_t;
+    using iterator_category = std::input_iterator_tag;
+
+    const_iterator(const ByteSet64 *bs, int idx_in) : bs(bs), idx(idx_in) {
+      // Advance to the next set bit:
+      while (idx < 256 && !bs->Contains(idx)) ++idx;
+    }
+
+    uint8_t operator*() const { return (uint8_t)idx; }
+    const_iterator& operator++() {
+      ++idx;
+      while (idx < 256 && !bs->Contains(idx)) ++idx;
+      return *this;
+    }
+    bool operator==(const const_iterator& other) const {
+      return idx == other.idx;
+    }
+    bool operator!=(const const_iterator& other) const {
+      return idx != other.idx;
+    }
+
+   private:
+    const ByteSet64 *bs = nullptr;
+    // 0-256, where 256 represents the end iterator.
+    // When 0-255, it is a byte in the set.
+    int idx = 0;
+  };
+
+  const_iterator begin() const { return const_iterator(this, 0); }
+  const_iterator end() const { return const_iterator(this, 256); }
+
   bool operator ==(const ByteSet64 &other) const;
   std::strong_ordering operator <=>(const ByteSet64 &other) const;
+
+
+  // below is nominally private, but used in testing.
+  friend class const_iterator;
 
   // The representation always fits in 8 bytes, but uses
   // different formats.

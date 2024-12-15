@@ -484,12 +484,120 @@ static void TestMap() {
   }
 }
 
+static void TestByteSetUnionIntersection() {
+  {
+    ByteSet s1;
+    s1.Add(10);
+    s1.Add(20);
+
+    ByteSet s2;
+    s2.Add(20);
+    s2.Add(30);
+
+    ByteSet union_set = ByteSet::Union(s1, s2);
+    CHECK(union_set.Contains(10));
+    CHECK(union_set.Contains(20));
+    CHECK(union_set.Contains(30));
+    CHECK_EQ(union_set.Size(), 3);
+
+    ByteSet intersection_set = ByteSet::Intersection(s1, s2);
+    CHECK(!intersection_set.Contains(10));
+    CHECK(intersection_set.Contains(20));
+    CHECK(!intersection_set.Contains(30));
+    CHECK_EQ(intersection_set.Size(), 1);
+  }
+
+  {
+    ByteSet s1;
+    ByteSet s2;
+    CHECK(ByteSet::Union(s1, s2).Empty());
+    CHECK(ByteSet::Intersection(s1, s2).Empty());
+  }
+
+  {
+    ByteSet s1 = ByteSet::Singleton(10);
+    ByteSet s2;
+
+    CHECK(ByteSet::Union(s1, s2) == s1);
+    CHECK(ByteSet::Intersection(s1, s2) == s2);
+  }
+
+  {
+    ByteSet s1 = ByteSet::Top();
+    CHECK_EQ(s1.Size(), 256);
+    ByteSet s2;
+    s2.Add(10);
+    CHECK(ByteSet::Union(s1, s2) == s1);
+    CHECK(ByteSet::Intersection(s1, s2) == s2);
+  }
+}
+
+static void TestByteSetClear() {
+  ByteSet s;
+  s.Add(10);
+  s.Add(20);
+  s.Add(100);
+  s.Add(129);
+  s.Add(195);
+  CHECK(!s.Empty());
+  s.Clear();
+  CHECK(s.Empty());
+  CHECK_EQ(s.Size(), 0);
+  for (int i = 0; i < 256; i++) {
+    CHECK(!s.Contains(i));
+  }
+}
+
+static void TestByteSetSingleton() {
+  for (int i = 0; i < 256; i++) {
+    ByteSet s = ByteSet::Singleton(i);
+    CHECK_EQ(s.Size(), 1);
+    CHECK(s.Contains(i));
+    CHECK_EQ(s.GetSingleton(), i);
+    for (int j = 0; j < 256; j++) {
+      if (i != j) {
+        CHECK(!s.Contains(j));
+      }
+    }
+  }
+}
+
+static void TestByteSetIterator() {
+  ArcFour rc("byteset");
+  for (int stride = 1; stride < 250; stride <<= 1) {
+    ByteSet s;
+    std::vector<uint8_t> expected_values;
+    for (int i = 0; i < 256; i += stride) {
+      expected_values.push_back(i);
+    }
+
+    // Add them in a random order.
+    std::vector<uint8_t> shuffled = expected_values;
+    Shuffle(&rc, &shuffled);
+    for (int i : shuffled) s.Add(i);
+
+    CHECK_EQ(s.Size(), expected_values.size());
+
+    // But iteration should always happen in sorted order.
+    std::vector<uint8_t> actual_values;
+    for (uint8_t v : s) {
+      actual_values.push_back(v);
+    }
+
+    CHECK(actual_values == expected_values);
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   TestByteSetBasic();
   TestByteSetMultiple();
   TestByteSetComparison();
+  TestByteSetUnionIntersection();
+  TestByteSetClear();
+  TestByteSetSingleton();
+  TestByteSetIterator();
 
   TestByteSet64Empty();
   TestByteSet64Singleton();
