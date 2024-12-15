@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -39,6 +40,14 @@ SourceMap SourceMap::Empty() {
   sm.filename = "empty";
   sm.hash = SHA256::Ascii(SHA256::HashString(""));
   return sm;
+}
+
+std::unordered_map<int, uint16_t> SourceMap::InvertCode() const {
+  std::unordered_map<int, uint16_t> invert;
+  for (const auto &[addr, line] : code) {
+    invert[line] = addr;
+  }
+  return invert;
 }
 
 SourceMap SourceMap::FromFile(const std::string &sourcemap_filename) {

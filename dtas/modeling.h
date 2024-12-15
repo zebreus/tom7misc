@@ -9,6 +9,7 @@
 #include <deque>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -18,6 +19,7 @@
 #include "base/logging.h"
 #include "byteset.h"
 #include "hashing.h"
+#include "sourcemap.h"
 #include "zoning.h"
 
 // Can use ByteSet64, which reduces the memory requirements to 25%,
@@ -199,7 +201,7 @@ struct Modeling {
       const State &state, uint8_t addr, const ByteSet &offsets) const;
 
   // True if we have this block in our analysis.
-  bool HasBlock(const BlockTag &tag);
+  bool HasBlock(const BlockTag &tag) const;
   // Record that we can reach the address with the
   // given state. It may add a new basic block to our
   // analysis. Marks the block as dirty if it is new
@@ -212,8 +214,15 @@ struct Modeling {
   // for any basic blocks.
   void Expand();
 
+  // Write the current model as an .asm file with annotations on
+  // basic blocks.
+  void WriteAnnotatedAssembly(const SourceMap &source_map,
+                              std::string_view filename) const;
+
   // Color to-string methods for modeling data types.
   static std::string TagString(const BlockTag &tag);
+  // No color.
+  static std::string PlainTagString(const BlockTag &tag);
 };
 
 #endif

@@ -21,6 +21,7 @@
 #include "mario.h"
 #include "modeling.h"
 #include "periodically.h"
+#include "sourcemap.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
@@ -75,6 +76,7 @@ static void Model() {
   modeling.zoning = Zoning::FromFile("mario.zoning");
   CHECK((modeling.zoning.addr[0x8e01] & Zoning::X) == 0);
 
+  SourceMap source_map = SourceMap::FromFile("mario.sourcemap");
 
   // These are the entry points that we actually care about:
   // NonMaskableInterrupt is the entry point for the frame,
@@ -96,7 +98,7 @@ static void Model() {
   static constexpr int VERBOSE_ITER_START = 142500;
 
   // Write a diagnostic image to show the state of the model.
-  static constexpr bool WRITE_IMAGES = true;
+  static constexpr bool WRITE_IMAGES = false;
   // It's slow if you do it often!
   static constexpr int WRITE_EVERY = 50;
 
@@ -212,6 +214,11 @@ static void Model() {
   }
   */
 
+  auto Write = [&modeling, &source_map](const std::string &file) {
+      modeling.WriteAnnotatedAssembly(source_map, file);
+      printf("Wrote " AGREEN("%s") "\n", file.c_str());
+    };
+
   while (!modeling.Done()) {
     MaybeRender(modeling, iters);
     // if (iters == 15000) break;
@@ -280,6 +287,7 @@ static void Model() {
           printf("At iteration " AWHITE("%lld") ", "
                  ARED("invariant violation") ":\n", iters);
           printf("%s\n", block.state_in.DebugString().c_str());
+          Write("violation.asm");
           LOG(FATAL) << "Invariant violation.";
         }
 
@@ -289,6 +297,7 @@ static void Model() {
           printf(" %s", Modeling::TagString(tag).c_str());
         }
         printf("\n");
+        Write("violation.asm");
         LOG(FATAL) << "Unexpected jumpengine call graph.";
       }
     }
@@ -298,7 +307,6 @@ static void Model() {
     iters++;
   }
   status.Statusf("Done in " ACYAN("%lld") " iters.\n", iters);
-
 }
 
 int main(int argc, char **argv) {

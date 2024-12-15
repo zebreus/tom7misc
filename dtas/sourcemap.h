@@ -35,6 +35,10 @@ struct SourceMap {
   // TODO: We could also annotate memory locations,
   // but perhaps it is better to do that symbolically.
 
+  // Get the inverted map, which maps each relevant line index to the
+  // address that is defined there.
+  std::unordered_map<int, uint16_t> InvertCode() const;
+
   // Create empty source map for this file, to build it during
   // assembly.
   SourceMap(const std::string &filename, const std::string &contents);
@@ -51,6 +55,7 @@ struct SourceMap {
   // sourcemap will be empty. If the file is malformed, abort.
   static SourceMap FromFile(const std::string &sourcemap_filename);
   bool IsEmpty() const { return code.empty(); }
+
 
  private:
   // Use Empty().

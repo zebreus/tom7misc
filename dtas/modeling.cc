@@ -9,6 +9,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -21,6 +22,8 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "byteset.h"
+#include "util.h"
+#include "sourcemap.h"
 #include "zoning.h"
 
 // For debugging symbols. We should just load
@@ -49,7 +52,8 @@ std::optional<std::string> Bank::GetLabel(uint16_t addr) const {
 // the program doesn't pair JSR and RTS, but it also isn't required for
 // correctness (it is always OK to split a block or conflate them; you
 // just increase cost or conservativity).
-static std::string PushLabel(const std::string &label, const std::string &suffix) {
+static std::string PushLabel(const std::string &label,
+                             const std::string &suffix) {
   return StringPrintf("%s.%s", label.c_str(), suffix.c_str());
 }
 static std::string PopLabel(const std::string &label) {
@@ -61,6 +65,10 @@ static std::string PopLabel(const std::string &label) {
 std::string Modeling::TagString(const BlockTag &tag) {
   return StringPrintf(ACYAN("%s") AGREY(":") AYELLOW("%04x"),
                       tag.label.c_str(), tag.addr);
+}
+
+std::string Modeling::PlainTagString(const BlockTag &tag) {
+  return StringPrintf("%s:%04x", tag.label.c_str(), tag.addr);
 }
 
 std::string State::DebugString() const {
@@ -149,7 +157,7 @@ bool State::MergeState(const State &other) {
   return changed;
 }
 
-bool Modeling::HasBlock(const BlockTag &tag) {
+bool Modeling::HasBlock(const BlockTag &tag) const {
   return block_index.contains(tag);
 }
 
@@ -2085,4 +2093,63 @@ void Modeling::Expand() {
   // If we get here, then the basic block has ended, but we treat
   // it as an unconditional jump to the next instruction.
   EnterBlock(BlockTag(current_label, pc), state);
+}
+
+
+// Write the current model as an .asm file with annotations on
+// basic blocks.
+void Modeling::WriteAnnotatedAssembly(const SourceMap &source_map,
+                                      std::string_view filename) const {
+  std::string out;
+  auto invert = source_map.InvertCode();
+  for (int line_num = 0; line_num < source_map.lines.size(); line_num++) {
+    auto it = invert.find(line_num);
+    if (it != invert.end()) {
+      const uint16_t addr = it->second;
+      auto bit = block_tags.find(addr);
+      if (bit != block_tags.end()) {
+        for (const BlockTag &tag : bit->second) {
+          // Then we have a basic block starting here.
+          auto blit = block_index.find(tag);
+          CHECK(blit != block_index.end());
+          const BasicBlock &block = blocks[blit->second];
+          CHECK(block.tag == tag);
+          StringAppendF(&out,
+                        ";** %s **\n",
+                        PlainTagString(block.tag).c_str());
+
+          const State &state = block.state_in;
+
+          StringAppendF(
+              &out,
+              "; A:%s\n"
+              "; X:%s\n"
+              "; Y:%s\n",
+              state.A.DebugString().c_str(),
+              state.X.DebugString().c_str(),
+              state.Y.DebugString().c_str());
+          // Show stack, at least if stack is definite.
+          if (state.S.Size() == 1) {
+            uint8_t sp = state.S.GetSingleton();
+
+            for (int i = std::max((int)sp - 2, 0);
+                 i < std::min((int)sp + 6, 0xFF);
+                 i++) {
+              StringAppendF(&out,
+                            "; Stack[%02x] %s = %s\n",
+                            i,
+                            (i == sp) ? "**" : "  ",
+                            state.ram[0x100 + i].DebugString().c_str());
+            }
+          }
+        }
+      }
+    }
+
+    StringAppendF(&out,
+                  "%s\n",
+                  source_map.lines[line_num].c_str());
+  }
+
+  Util::WriteFile(std::string(filename), out);
 }
