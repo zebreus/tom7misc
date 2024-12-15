@@ -44,6 +44,9 @@ void StringAppendV(string* dst, const char* format, va_list ap) {
     // Restore the va_list before we use it again
     va_copy(backup_ap, ap);
 #   pragma GCC diagnostic push
+    // Annoyingly, clang on OS X complains that it doesn't
+    // understand the GCC option, so also disable the complaint
+#   pragma GCC diagnostic ignored "-Wunknown-warning-option"
 #   pragma GCC diagnostic ignored "-Wformat-truncation"
     result = vsnprintf(buf, length, format, backup_ap);
 #   pragma GCC diagnostic pop

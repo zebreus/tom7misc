@@ -1154,23 +1154,6 @@ Polyhedron Icosahedron() {
   return ConvexPolyhedronFromVertices(std::move(vertices), "icosahedron");
 }
 
-Polyhedron TriakisTetrahedron() {
-  constexpr double ft = 5.0 / 3.0;
-  std::vector<vec3> vertices = {
-    vec3{ft, ft, ft},
-    vec3{ft, -ft, -ft},
-    vec3{-ft, ft, -ft},
-    vec3{-ft, -ft, ft},
-    vec3{-1, 1, 1},
-    vec3{1, -1, 1},
-    vec3{1, 1, -1},
-    vec3{-1, -1, -1},
-  };
-
-  return ConvexPolyhedronFromVertices(
-      std::move(vertices), "triakistetrahedron");
-}
-
 Polyhedron Cuboctahedron() {
   std::vector<vec3> vertices;
   vertices.reserve(24);
@@ -1527,4 +1510,179 @@ Polyhedron SnubDodecahedron() {
   CHECK(vertices.size() == 60);
   return ConvexPolyhedronFromVertices(std::move(vertices),
                                       "snubdodecahedron");
+}
+
+Polyhedron TriakisTetrahedron() {
+  constexpr double ft = 5.0 / 3.0;
+  std::vector<vec3> vertices = {
+    vec3{ft, ft, ft},
+    vec3{ft, -ft, -ft},
+    vec3{-ft, ft, -ft},
+    vec3{-ft, -ft, ft},
+    vec3{-1, 1, 1},
+    vec3{1, -1, 1},
+    vec3{1, 1, -1},
+    vec3{-1, -1, -1},
+  };
+
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "triakistetrahedron");
+}
+
+Polyhedron RhombicDodecahedron() {
+  std::vector<vec3> vertices;
+
+  // It contains a cube
+  for (uint8_t bits = 0b000; bits < 0b1000; bits++) {
+    double s1 = (bits & 0b100) ? -1 : +1;
+    double s2 = (bits & 0b010) ? -1 : +1;
+    double s3 = (bits & 0b001) ? -1 : +1;
+    vertices.emplace_back(s1, s2, s3);
+  }
+
+  // With pyramids on
+  for (double s : {-2.0, 2.0}) {
+    vertices.emplace_back(s, 0.0, 0.0);
+    vertices.emplace_back(0.0, s, 0.0);
+    vertices.emplace_back(0.0, 0.0, s);
+  }
+
+  CHECK(vertices.size() == 14);
+
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "rhombicdodecahedron");
+}
+
+Polyhedron TriakisOctahedron() {
+  std::vector<vec3> vertices;
+
+  constexpr double a = std::numbers::sqrt2 - 1.0;
+
+  // It contains a cube
+  for (uint8_t bits = 0b000; bits < 0b1000; bits++) {
+    double s1 = (bits & 0b100) ? -1 : +1;
+    double s2 = (bits & 0b010) ? -1 : +1;
+    double s3 = (bits & 0b001) ? -1 : +1;
+    vertices.emplace_back(s1 * a, s2 * a, s3 * a);
+  }
+
+  for (double s : {-1.0, 1.0}) {
+    vertices.emplace_back(s, 0.0, 0.0);
+    vertices.emplace_back(0.0, s, 0.0);
+    vertices.emplace_back(0.0, 0.0, s);
+  }
+
+  CHECK(vertices.size() == 14);
+
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "triakisoctahedron");
+}
+
+Polyhedron TetrakisHexahedron() {
+  std::vector<vec3> vertices;
+
+  // It contains a cube
+  for (uint8_t bits = 0b000; bits < 0b1000; bits++) {
+    double s1 = (bits & 0b100) ? -1 : +1;
+    double s2 = (bits & 0b010) ? -1 : +1;
+    double s3 = (bits & 0b001) ? -1 : +1;
+    vertices.emplace_back(s1, s2, s3);
+  }
+
+  for (double s : {-1.5, 1.5}) {
+    vertices.emplace_back(s, 0.0, 0.0);
+    vertices.emplace_back(0.0, s, 0.0);
+    vertices.emplace_back(0.0, 0.0, s);
+  }
+
+  CHECK(vertices.size() == 14);
+
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "tetrakishexahedron");
+}
+
+Polyhedron DeltoidalIcositetrahedron() {
+  std::vector<vec3> vertices;
+
+  constexpr double a = std::numbers::sqrt2 * 0.5;
+  constexpr double b = (2.0 * std::numbers::sqrt2 + 1.0) / 7.0;
+
+  for (double s : {-1.0, 1.0}) {
+    vertices.emplace_back(s, 0.0, 0.0);
+    vertices.emplace_back(0.0, s, 0.0);
+    vertices.emplace_back(0.0, 0.0, s);
+  }
+
+  for (uint8_t bits = 0b00; bits < 0b100; bits++) {
+    double s1 = (bits & 0b10) ? -1 : +1;
+    double s2 = (bits & 0b01) ? -1 : +1;
+    vertices.emplace_back(0, s1 * a, s2 * a);
+    vertices.emplace_back(s1 * a, 0, s2 * a);
+    vertices.emplace_back(s1 * a, s2 * a, 0);
+  }
+
+  for (uint8_t bits = 0b000; bits < 0b1000; bits++) {
+    double s1 = (bits & 0b100) ? -1 : +1;
+    double s2 = (bits & 0b010) ? -1 : +1;
+    double s3 = (bits & 0b001) ? -1 : +1;
+    vertices.emplace_back(s1 * b, s2 * b, s3 * b);
+  }
+
+  CHECK(vertices.size() == 26);
+
+  return ConvexPolyhedronFromVertices(
+    std::move(vertices), "deltoidalicositetrahedron");
+}
+
+Polyhedron DisdyakisDodecahedron() {
+  std::vector<vec3> vertices;
+
+  constexpr double a = 1.0 / (1.0 + 2.0 * std::numbers::sqrt2);
+  constexpr double b = 1.0 / (2.0 + 3.0 * std::numbers::sqrt2);
+  constexpr double c = 1.0 / (3.0 + 3.0 * std::numbers::sqrt2);
+
+  for (double s : {-a, a}) {
+    vertices.emplace_back(s, 0.0, 0.0);
+    vertices.emplace_back(0.0, s, 0.0);
+    vertices.emplace_back(0.0, 0.0, s);
+  }
+
+  for (uint8_t bits = 0b00; bits < 0b100; bits++) {
+    double s1 = (bits & 0b10) ? -1 : +1;
+    double s2 = (bits & 0b01) ? -1 : +1;
+    vertices.emplace_back(0, s1 * b, s2 * b);
+    vertices.emplace_back(s1 * b, 0, s2 * b);
+    vertices.emplace_back(s1 * b, s2 * b, 0);
+  }
+
+  // cube
+  for (uint8_t bits = 0b000; bits < 0b1000; bits++) {
+    double s1 = (bits & 0b100) ? -1 : +1;
+    double s2 = (bits & 0b010) ? -1 : +1;
+    double s3 = (bits & 0b001) ? -1 : +1;
+    vertices.emplace_back(s1 * c, s2 * c, s3 * c);
+  }
+
+  CHECK(vertices.size() == 26);
+
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "disdyakisdodecahedron");
+}
+
+Polyhedron PentagonalIcositetrahedron() {
+  std::vector<vec3> vertices;
+
+  const double tribonacci =
+    (1.0 + std::cbrt(19.0 + 3.0 * std::sqrt(33.0)) +
+     std::cbrt(19.0 - 3.0 * std::sqrt(33.0))) / 3.0;
+
+  const double tt = tribonacci * tribonacci;
+  const double ttt = tt * tribonacci;
+
+  LOG(FATAL) << "Unimplemented";
+
+  CHECK(vertices.size() == 38);
+
+  return ConvexPolyhedronFromVertices(
+      std::move(vertices), "pentagonalicositetrahedron");
 }

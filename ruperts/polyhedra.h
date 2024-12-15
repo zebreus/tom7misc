@@ -237,5 +237,12 @@ Polyhedron SnubDodecahedron(); // new
 
 // Catalan
 Polyhedron TriakisTetrahedron();
+Polyhedron RhombicDodecahedron();
+Polyhedron TriakisOctahedron();
+Polyhedron TetrakisHexahedron();
+Polyhedron DeltoidalIcositetrahedron();
+Polyhedron DisdyakisDodecahedron();
+Polyhedron PentagonalIcositetrahedron();
+
 
 #endif
