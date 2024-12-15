@@ -79,78 +79,16 @@ struct ByteSet {
     return ret;
   }
 
-  // TODO PERF: This version with std::popcount compiles into
-  // SIMD instructions with clang, which takes about twice as
-  // much time as using the POPCNT instruction. The assembly
-  // version below is straightforward, but I had problems where
-  // inline assembly would work but only in the presence of
-  // printfs. So I'm not confident that I am using the
-  // register constraints correctly.
   int Size() const {
+    // TODO PERF: This version with std::popcount compiles into
+    // SIMD instructions with clang, which takes about twice as
+    // much time as using the POPCNT instruction. The assembly
+    // version below is straightforward, but I had problems where
+    // inline assembly would work but only in the presence of
+    // printfs. So I'm not confident that I am using the
+    // register constraints correctly.
     return SizeSIMD();
   }
-
-  int SizeSIMD() const {
-    return std::popcount<uint64_t>(u.a) +
-      std::popcount<uint64_t>(u.b) +
-      std::popcount<uint64_t>(u.c) +
-      std::popcount<uint64_t>(u.d);
-  }
-
-  [[deprecated]]
-  int SizeASM1() const {
-    uint64_t a = u.a, b = u.b, c = u.c, d = u.d;
-    uint64_t a_count = 0, b_count = 0, c_count = 0, d_count = 0;
-
-    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(a_count) : "r"(a) :);
-    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(b_count) : "r"(b) :);
-    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(c_count) : "r"(c) :);
-    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(d_count) : "r"(d) :);
-
-    return a_count + b_count + c_count + d_count;
-  }
-
-  [[deprecated]]
-  int SizeASM1Old() const {
-    uint64_t a = u.a, b = u.b, c = u.c, d = u.d;
-    uint64_t a_count = 0, b_count = 0, c_count = 0, d_count = 0;
-
-    __asm__ volatile (
-      "popcnt %4, %0\n\t"
-      "popcnt %5, %1\n\t"
-      "popcnt %6, %2\n\t"
-      "popcnt %7, %3\n\t"
-      // output
-      : "=r"(a_count), "=r"(b_count), "=r"(c_count), "=r"(d_count)
-      // input
-      : "r"(a), "r"(b), "r"(c), "r"(d)
-      : // No clobbered registers
-    );
-
-    return a_count + b_count + c_count + d_count;
-  }
-
-  [[deprecated]]
-  int SizeASM2() const {
-    uint32_t total_count;
-
-    __asm__ volatile (
-        "popcnt %[a], %%rax\n\t"
-        "popcnt %[b], %%r10\n\t"
-        "add %%r10b, %%al\n\t"
-        "popcnt %[c], %%rcx\n\t"
-        "popcnt %[d], %%rdx\n\t"
-        "add %%dl, %%cl\n\t"
-        "add %%ecx, %%eax\n\t"
-        // output
-        : [total_count] "=a"(total_count)
-          // input
-        : [a] "r"(u.a), [b] "r"(u.b), [c] "r"(u.c), [d] "r"(u.d)
-        : "r10", "rcx", "rdx");
-
-    return (int)total_count;
-  }
-
 
   // Get one element from the set; intended for uses where
   // the set has size 1. Aborts if the set is empty.
@@ -257,7 +195,28 @@ struct ByteSet {
     return std::strong_ordering::equal;
   }
 
-  // private:
+  // Details exposed for benchmarking.
+  int SizeSIMD() const {
+    return std::popcount<uint64_t>(u.a) +
+      std::popcount<uint64_t>(u.b) +
+      std::popcount<uint64_t>(u.c) +
+      std::popcount<uint64_t>(u.d);
+  }
+
+  [[deprecated]]
+  int SizeASM() const {
+    uint64_t a = u.a, b = u.b, c = u.c, d = u.d;
+    uint64_t a_count = 0, b_count = 0, c_count = 0, d_count = 0;
+
+    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(a_count) : "r"(a) :);
+    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(b_count) : "r"(b) :);
+    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(c_count) : "r"(c) :);
+    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(d_count) : "r"(d) :);
+
+    return a_count + b_count + c_count + d_count;
+  }
+
+ private:
   friend class const_iterator;
   union {
     struct {
