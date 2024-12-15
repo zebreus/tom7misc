@@ -57,7 +57,6 @@ static Bank GetPRG() {
 static void Model() {
   std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
   MarioUtil::WarpTo(emu.get(), 0xF4, 0x6B, 0);
-  // std::vector<uint8_t> start_save = emu->SaveUncompressed();
   // The stack pointer is 0xFC when entering NonMaskableInterrupt.
   const State start_state = State::FromEmulator(emu.get(), 0xFC);
 
@@ -97,7 +96,7 @@ static void Model() {
   static constexpr int VERBOSE_ITER_START = 142500;
 
   // Write a diagnostic image to show the state of the model.
-  static constexpr bool WRITE_IMAGES = true;
+  static constexpr bool WRITE_IMAGES = false;
   // It's slow if you do it often!
   static constexpr int WRITE_EVERY = 50;
 
@@ -134,8 +133,9 @@ static void Model() {
       ImageRGBA img(WIDTH, MAX_BLOCKS);
       img.Clear32(0x000000FF);
 
-      auto Draw3 = [&img](int x, int y,
-                          const ByteSet &r, const ByteSet &g, const ByteSet &b) {
+      auto Draw3 =
+        [&img](int x, int y,
+               const ByteSet &r, const ByteSet &g, const ByteSet &b) {
           for (int i = 0; i < 256; i++) {
             uint32_t c = 0x000000FF;
             if (r.Contains(i)) c |= 0xFF000000;
@@ -250,6 +250,49 @@ static void Model() {
              (int)modeling.blocks.size());
       modeling.verbose = 2;
     }
+
+    // Check assertions.
+    // These should probably be imported from elsewhere (e.g. as annotations in
+    // the source code) but it turns out C++ is a general purpose programming
+    // language!
+
+    constexpr uint16_t JUMP_ENGINE = 0x8e04;
+    if (modeling.block_tags.contains(JUMP_ENGINE)) {
+      // Relevant JumpEngine call graphs:
+      //   top.8175.8215   (SkipSprite0 > OperModeExecutionTree)
+
+      if (modeling.block_tags[JUMP_ENGINE].size() == 1 &&
+          modeling.block_tags[JUMP_ENGINE][0].label == "top.8175.8215") {
+        const auto &tag = modeling.block_tags[JUMP_ENGINE][0];
+        auto idx_it = modeling.block_index.find(tag);
+        CHECK(idx_it != modeling.block_index.end());
+        const BasicBlock &block = modeling.blocks[idx_it->second];
+        auto OK = [&]() {
+            const auto &bs = block.state_in.ram[OPER_MODE];
+            for (int v = 4; v < 256; v++) {
+              if (block.state_in.A.Contains(v)) return false;
+              if (bs.Contains(v)) return false;
+            }
+            return true;
+          };
+
+        if (!OK()) {
+          printf("At iteration " AWHITE("%lld") ", "
+                 ARED("invariant violation") ":\n", iters);
+          printf("%s\n", block.state_in.DebugString().c_str());
+          LOG(FATAL) << "Invariant violation.";
+        }
+
+      } else {
+        printf("JumpEngine:");
+        for (const BlockTag &tag : modeling.block_tags[JUMP_ENGINE]) {
+          printf(" %s", Modeling::TagString(tag).c_str());
+        }
+        printf("\n");
+        LOG(FATAL) << "Unexpected jumpengine call graph.";
+      }
+    }
+
     modeling.Expand();
     num_blocks_at_iter.push_back(modeling.blocks.size());
     iters++;

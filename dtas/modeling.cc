@@ -58,7 +58,7 @@ static std::string PopLabel(const std::string &label) {
   return label.substr(0, pos);
 }
 
-static std::string TagString(const BlockTag &tag) {
+std::string Modeling::TagString(const BlockTag &tag) {
   return StringPrintf(ACYAN("%s") AGREY(":") AYELLOW("%04x"),
                       tag.label.c_str(), tag.addr);
 }
@@ -83,7 +83,9 @@ std::string State::DebugString() const {
   if (S.Size() == 1) {
     uint8_t sp = S.GetSingleton();
 
-    for (int i = std::max((int)sp - 2, 0); i < std::min((int)sp + 6, 0xFF); i++) {
+    for (int i = std::max((int)sp - 2, 0);
+         i < std::min((int)sp + 6, 0xFF);
+         i++) {
       StringAppendF(&ret,
                     "Stack[" APURPLE("%02x") "] %s = %s\n",
                     i,
@@ -524,8 +526,6 @@ static void SubtractWithCarry(State *state, const ByteSet &values) {
 
 
 void Modeling::Expand() {
-  // TODO:
-  //
   // Loop over basic blocks.
   // For each one, run the instructions forward, transforming
   // the state to get the possible next states. (We should
@@ -557,7 +557,6 @@ void Modeling::Expand() {
   // one as an individual instruction. I guess we get some
   // benefit from not having to store the full state for
   // intermediates.
-  //
 
   if (dirty.Empty())
     return;

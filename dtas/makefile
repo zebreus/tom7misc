@@ -46,8 +46,8 @@ CODEC=../codec
 
 OPT=-O3
 
-# ASAN=-g -fsanitize=address
-# OPT=-O
+ASAN=-g -fsanitize=address
+OPT=-O
 
 # -fno-strict-aliasing
 
@@ -145,6 +145,10 @@ byteset_test.exe : byteset_test.o $(OBJECTS)
 	@echo -n "!"
 
 model.exe : model.o modeling.o mario-util.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+byteset_bench.exe : byteset_bench.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

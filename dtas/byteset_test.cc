@@ -123,10 +123,11 @@ static void TestByteSetBasic() {
 
 static void TestByteSetMultiple() {
   ByteSet s;
+  CHECK_EQ(s.Size(), 0);
   s.Add(10);
-  CHECK_EQ(s.Size(), 1);
+  CHECK_EQ(s.Size(), 1) << s.Size();
   s.Add(20);
-  CHECK_EQ(s.Size(), 2);
+  CHECK_EQ(s.Size(), 2) << s.Size();
   s.Add(255);
   CHECK_EQ(s.Size(), 3);
   CHECK(s.Contains(10));

@@ -6,6 +6,7 @@
 #ifndef _BYTESET_H
 #define _BYTESET_H
 
+#include <bit>
 #include <cstddef>
 #include <iterator>
 #include <cstdint>
@@ -13,39 +14,298 @@
 #include <compare>
 #include <string>
 
+#include "base/logging.h"
+#include "base/macros.h"
+
 // Each of the following is a lattice (i.e. has subset, union, and
 // intersection operations) representing a set of bytes.
 
 // Represents the set of bytes exactly (the "free lattice").
 struct ByteSet {
-  ByteSet() { member.reset(); }
-  bool Empty() const { return member.none(); }
-  bool Contains(uint8_t b) const { return member.test(b); }
-  void Add(uint8_t b) { member.set(b); }
-  void AddSet(const ByteSet &b);
+  ByteSet() { u.a = u.b = u.c = u.d = 0; }
+  bool Empty() const {
+    return (u.a | u.b | u.c | u.d) == 0;
+  }
+  bool Contains(uint8_t v) const {
+    int i = v >> 6;
+    int bit = v & 0b00111111;
+    return !!(1 & (u.words[i] >> (63 - bit)));
+  }
+  void Add(uint8_t v) {
+    int i = v >> 6;
+    int bit = v & 0b00111111;
+    u.words[i] |= uint64_t{1} << (63 - bit);
+  }
+  void AddSet(const ByteSet &other) {
+    u.a |= other.u.a;
+    u.b |= other.u.b;
+    u.c |= other.u.c;
+    u.d |= other.u.d;
+  }
 
   std::string DebugString() const;
 
   static ByteSet Top() {
     ByteSet s;
+    s.u.a = s.u.b = s.u.c = s.u.d = ~uint64_t{0};
+    return s;
+  }
+
+  static ByteSet Bottom() {
+    return ByteSet();
+  }
+
+  static ByteSet Singleton(uint8_t v) {
+    ByteSet s;
+    s.Add(v);
+    return s;
+  }
+
+  static ByteSet Union(const ByteSet &s, const ByteSet &t) {
+    ByteSet ret;
+    ret.u.a = s.u.a | t.u.a;
+    ret.u.b = s.u.b | t.u.b;
+    ret.u.c = s.u.c | t.u.c;
+    ret.u.d = s.u.d | t.u.d;
+    return ret;
+  }
+
+  static ByteSet Intersection(const ByteSet &s, const ByteSet &t) {
+    ByteSet ret;
+    ret.u.a = s.u.a & t.u.a;
+    ret.u.b = s.u.b & t.u.b;
+    ret.u.c = s.u.c & t.u.c;
+    ret.u.d = s.u.d & t.u.d;
+    return ret;
+  }
+
+  // TODO PERF: This version with std::popcount compiles into
+  // SIMD instructions with clang, which takes about twice as
+  // much time as using the POPCNT instruction. The assembly
+  // version below is straightforward, but I had problems where
+  // inline assembly would work but only in the presence of
+  // printfs. So I'm not confident that I am using the
+  // register constraints correctly.
+  int Size() const {
+    return SizeSIMD();
+  }
+
+  int SizeSIMD() const {
+    return std::popcount<uint64_t>(u.a) +
+      std::popcount<uint64_t>(u.b) +
+      std::popcount<uint64_t>(u.c) +
+      std::popcount<uint64_t>(u.d);
+  }
+
+  [[deprecated]]
+  int SizeASM1() const {
+    uint64_t a = u.a, b = u.b, c = u.c, d = u.d;
+    uint64_t a_count = 0, b_count = 0, c_count = 0, d_count = 0;
+
+    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(a_count) : "r"(a) :);
+    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(b_count) : "r"(b) :);
+    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(c_count) : "r"(c) :);
+    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(d_count) : "r"(d) :);
+
+    return a_count + b_count + c_count + d_count;
+  }
+
+  [[deprecated]]
+  int SizeASM1Old() const {
+    uint64_t a = u.a, b = u.b, c = u.c, d = u.d;
+    uint64_t a_count = 0, b_count = 0, c_count = 0, d_count = 0;
+
+    __asm__ volatile (
+      "popcnt %4, %0\n\t"
+      "popcnt %5, %1\n\t"
+      "popcnt %6, %2\n\t"
+      "popcnt %7, %3\n\t"
+      // output
+      : "=r"(a_count), "=r"(b_count), "=r"(c_count), "=r"(d_count)
+      // input
+      : "r"(a), "r"(b), "r"(c), "r"(d)
+      : // No clobbered registers
+    );
+
+    return a_count + b_count + c_count + d_count;
+  }
+
+  [[deprecated]]
+  int SizeASM2() const {
+    uint32_t total_count;
+
+    __asm__ volatile (
+        "popcnt %[a], %%rax\n\t"
+        "popcnt %[b], %%r10\n\t"
+        "add %%r10b, %%al\n\t"
+        "popcnt %[c], %%rcx\n\t"
+        "popcnt %[d], %%rdx\n\t"
+        "add %%dl, %%cl\n\t"
+        "add %%ecx, %%eax\n\t"
+        // output
+        : [total_count] "=a"(total_count)
+          // input
+        : [a] "r"(u.a), [b] "r"(u.b), [c] "r"(u.c), [d] "r"(u.d)
+        : "r10", "rcx", "rdx");
+
+    return (int)total_count;
+  }
+
+
+  // Get one element from the set; intended for uses where
+  // the set has size 1. Aborts if the set is empty.
+  uint8_t GetSingleton() const {
+    auto GetSingleBit = [](int offset, uint64_t w) {
+        return offset + std::countl_zero<uint64_t>(w);
+      };
+    if (u.a) return GetSingleBit(0, u.a);
+    if (u.b) return GetSingleBit(64, u.b);
+    if (u.c) return GetSingleBit(128, u.c);
+    if (u.d) return GetSingleBit(192, u.d);
+    LOG(FATAL) << "GetSingleton on empty ByteSet.";
+  }
+
+  template<class F>
+  ByteSet Map(const F &f) {
+    ByteSet ret;
+    for (uint8_t v : *this) {
+      ret.Add(f(v));
+    }
+    return ret;
+  }
+
+  void Clear() {
+    u.a = u.b = u.c = u.d = 0;
+  }
+
+  // Allows iterating over bytes that are set.
+  class const_iterator {
+   public:
+    using value_type = uint8_t;
+    using difference_type = std::ptrdiff_t;
+    using iterator_category = std::input_iterator_tag;
+
+    const_iterator(const ByteSet *bs, int idx_in) : bs(bs), idx(idx_in) {
+      idx = NextFrom(idx);
+    }
+
+    uint8_t operator*() const {
+      // Invalid to dereference the end pointer.
+      ASSUME(idx >= 0 && idx < 256);
+      return (uint8_t)idx;
+    }
+    const_iterator& operator++() {
+      // Invalid to increment past the end.
+      ASSUME(idx >= 0 && idx < 256);
+      idx = NextFrom(idx + 1);
+      return *this;
+    }
+    bool operator==(const const_iterator& other) const {
+      return idx == other.idx;
+    }
+    bool operator!=(const const_iterator& other) const {
+      return idx != other.idx;
+    }
+
+   private:
+    // Find the next iterator position at idx or later:
+    // While idx is not end, and idx is not in the set,
+    // increment it.
+    int NextFrom(int idx) {
+      ASSUME(idx >= 0 && idx <= 256);
+      while (idx != 256) {
+        uint8_t v = idx;
+        int i = v >> 6;
+        int bit = v & 0b00111111;
+        // Mask zeroes for bits we've already passed.
+        uint64_t masked_word = bs->u.words[i] & ((~uint64_t{0}) >> bit);
+        if (masked_word == 0) {
+          // No bits left in this word; skip to the next.
+          i++;
+          idx = i * 64;
+        } else {
+          // Then we have another bit here.
+          int one_bit = std::countl_zero<uint64_t>(masked_word);
+          return i * 64 + one_bit;
+        }
+      }
+      return idx;
+    }
+
+    const ByteSet *bs = nullptr;
+    // 0-256, where 256 represents the end iterator.
+    // When 0-255, it is a byte in the set.
+    int idx = 0;
+  };
+
+  const_iterator begin() const { return const_iterator(this, 0); }
+  const_iterator end() const { return const_iterator(this, 256); }
+
+  // Weirdly, we need both operator== and operator<=>.
+  bool operator ==(const ByteSet &other) const {
+    for (int i = 0; i < 4; i++)
+      if (u.words[i] != other.u.words[i])
+        return false;
+    return true;
+  }
+
+  std::strong_ordering operator <=>(const ByteSet &other) const {
+    for (int i = 0; i < 4; i++) {
+      auto ord = u.words[i] <=> other.u.words[i];
+      if (ord != std::strong_ordering::equal) return ord;
+    }
+    return std::strong_ordering::equal;
+  }
+
+  // private:
+  friend class const_iterator;
+  union {
+    struct {
+      uint64_t a;
+      uint64_t b;
+      uint64_t c;
+      uint64_t d;
+    };
+    uint64_t words[4];
+  } u;
+  static_assert(sizeof(u) == 32);
+};
+
+
+// Old version that uses std::bitset. It's almost what we need,
+// but iterating over a sparse set is slower than it should
+// be because we don't have access to the words for bit tricks.
+// TODO: Benchmark this and then delete it, assuming it's just
+// worse than ByteSet.
+struct ByteSetOld {
+  ByteSetOld() { member.reset(); }
+  bool Empty() const { return member.none(); }
+  bool Contains(uint8_t b) const { return member.test(b); }
+  void Add(uint8_t b) { member.set(b); }
+  void AddSet(const ByteSetOld &b);
+
+  std::string DebugString() const;
+
+  static ByteSetOld Top() {
+    ByteSetOld s;
     s.member.reset();
     s.member.flip();
     return s;
   }
 
-  static ByteSet Bottom() {
-    ByteSet s;
+  static ByteSetOld Bottom() {
+    ByteSetOld s;
     s.member.reset();
     return s;
   }
 
-  static ByteSet Singleton(uint8_t b) {
-    ByteSet s;
+  static ByteSetOld Singleton(uint8_t b) {
+    ByteSetOld s;
     s.Add(b);
     return s;
   }
 
-  static ByteSet Union(const ByteSet &a, const ByteSet &b);
+  static ByteSetOld Union(const ByteSetOld &a, const ByteSetOld &b);
 
   int Size() const {
     // beware: bitset<256>::size() is always 256.
@@ -57,8 +317,8 @@ struct ByteSet {
   uint8_t GetSingleton() const;
 
   template<class F>
-  ByteSet Map(const F &f) {
-    ByteSet ret;
+  ByteSetOld Map(const F &f) {
+    ByteSetOld ret;
     for (uint8_t v : *this) {
       ret.Add(f(v));
     }
@@ -78,7 +338,7 @@ struct ByteSet {
     // using reference = uint8_t;
     using iterator_category = std::input_iterator_tag;
 
-    const_iterator(const ByteSet *bs, int idx_in) : bs(bs), idx(idx_in) {
+    const_iterator(const ByteSetOld *bs, int idx_in) : bs(bs), idx(idx_in) {
       // Advance to the next set bit:
       while (idx < 256 && !bs->member.test(idx)) ++idx;
     }
@@ -97,7 +357,7 @@ struct ByteSet {
     }
 
    private:
-    const ByteSet *bs = nullptr;
+    const ByteSetOld *bs = nullptr;
     // 0-256, where 256 represents the end iterator.
     // When 0-255, it is a byte in the set.
     int idx = 0;
@@ -107,11 +367,11 @@ struct ByteSet {
   const_iterator end() const { return const_iterator(this, 256); }
 
   // Weirdly, we need both operator== and operator<=>.
-  bool operator ==(const ByteSet &other) const {
+  bool operator ==(const ByteSetOld &other) const {
     return member == other.member;
   }
 
-  std::strong_ordering operator <=>(const ByteSet &other) const {
+  std::strong_ordering operator <=>(const ByteSetOld &other) const {
     // PERF: Again, with direct access to words, we could do
     // this much faster.
     for (int i = 0; i < 256; i++) {

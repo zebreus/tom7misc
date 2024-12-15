@@ -64,6 +64,7 @@ struct State {
   // Union other into this state. Return true if anything changed.
   bool MergeState(const State &other);
 
+  // Multiline color debug string. RAM is not shown.
   std::string DebugString() const;
 };
 
@@ -205,6 +206,9 @@ struct Modeling {
   // discover that they are reachable) and may expand the 'in' states
   // for any basic blocks.
   void Expand();
+
+  // Color to-string methods for modeling data types.
+  static std::string TagString(const BlockTag &tag);
 };
 
 #endif
