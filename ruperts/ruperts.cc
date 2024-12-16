@@ -30,9 +30,10 @@
 #include "timer.h"
 #include "util.h"
 
-#include "yocto_matht.h"
 #include "polyhedra.h"
 #include "rendering.h"
+#include "solutions.h"
+#include "yocto_matht.h"
 
 DECLARE_COUNTERS(iters, attempts, u1_, u2_, u3_, u4_, u5_, u6_);
 
@@ -42,6 +43,32 @@ using vec4 = yocto::vec<double, 4>;
 using mat4 = yocto::mat<double, 4>;
 using quat4 = yocto::quat<double, 4>;
 using frame3 = yocto::frame<double, 3>;
+
+static void SaveSolution(const Polyhedron &poly,
+                         const frame3 &outer_frame,
+                         const frame3 &inner_frame,
+                         int method) {
+  SolutionDB db;
+
+  // Compute error ratio.
+  Polyhedron outer = Rotate(poly, outer_frame);
+  Polyhedron inner = Rotate(poly, inner_frame);
+  Mesh2D souter = Shadow(outer);
+  Mesh2D sinner = Shadow(inner);
+
+  std::vector<int> outer_hull = ConvexHull(souter.vertices);
+  std::vector<int> inner_hull = ConvexHull(sinner.vertices);
+
+  double outer_area = AreaOfHull(souter, outer_hull);
+  double inner_area = AreaOfHull(sinner, inner_hull);
+
+  double ratio = inner_area / outer_area;
+
+  db.AddSolution(poly.name, outer_frame, inner_frame, method, ratio);
+  printf("Added solution (" AYELLOW("%s") ") to database with "
+         "ratio " APURPLE("%.17g") "\n",
+         poly.name, ratio);
+}
 
 [[maybe_unused]]
 static void AnimateMesh(const Polyhedron &poly) {
@@ -373,6 +400,10 @@ static void Solve(const Polyhedron &polyhedron) {
             Util::WriteFile(sfile, contents);
             status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
 
+            SaveSolution(polyhedron,
+                         outer_frame,
+                         InnerFrame(args),
+                         SolutionDB::METHOD_HULL);
             return;
           }
 
@@ -594,6 +625,11 @@ static void Solve2(const Polyhedron &polyhedron) {
                                              polyhedron.name);
             Util::WriteFile(sfile, contents);
             status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
+
+            SaveSolution(polyhedron,
+                         OuterFrame(args),
+                         InnerFrame(args),
+                         SolutionDB::METHOD_SIMUL);
 
             return;
           }
@@ -818,6 +854,11 @@ static void Solve3(const Polyhedron &polyhedron) {
                                              polyhedron.name);
             Util::WriteFile(sfile, contents);
             status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
+
+            SaveSolution(polyhedron,
+                         outer_frame,
+                         InnerFrame(args),
+                         SolutionDB::METHOD_MAX);
 
             return;
           }
@@ -1120,6 +1161,11 @@ static void Solve4(const Polyhedron &polyhedron) {
             Util::WriteFile(sfile, contents);
             status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
 
+            SaveSolution(polyhedron,
+                         OuterFrame(args),
+                         InnerFrame(args),
+                         SolutionDB::METHOD_PARALLEL);
+
             return;
           }
 
@@ -1167,7 +1213,6 @@ static void Solve4(const Polyhedron &polyhedron) {
       });
 }
 
-
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
@@ -1180,7 +1225,8 @@ int main(int argc, char **argv) {
   // Polyhedron target = TruncatedTetrahedron();
   // Polyhedron target = TruncatedIcosahedron();
   // Polyhedron target = TruncatedIcosidodecahedron();
-  Polyhedron target = SnubDodecahedron();
+  // Polyhedron target = SnubDodecahedron();
+  Polyhedron target = Dodecahedron();
 
   // These generate visualizations of the polyhedron;
   // they are unrelated to solving

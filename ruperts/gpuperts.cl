@@ -280,7 +280,7 @@ __kernel void CheckForSolution(__global const double* restrict error_values,
 
 const double LEARNING_RATE = 0.01;
 // Using the errors, estimate the gradient numerically for each of the
-// eight parameters. Use this to compute a new sample value, and write
+// ten parameters. Use this to compute a new sample value, and write
 // that over the first quaternion in each group. (The perturbed versions
 // are computed by TweakQuaternions.)
 __kernel void GradientDescent(// The main configuration's quaternion,
