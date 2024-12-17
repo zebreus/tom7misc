@@ -39,7 +39,7 @@ static std::vector<uint32_t> COLORS = {
   0x777700FF,
   0x007700FF,
   0x007777FF,
-  0x000077FF,
+  0x000088FF, // distinguish more from 55 below
   0x770077FF,
   0xFF7777FF,
   0xFFFF77FF,
@@ -51,7 +51,7 @@ static std::vector<uint32_t> COLORS = {
   0x333300FF,
   0x003300FF,
   0x003333FF,
-  0x000033FF,
+  0x000055FF, // 33 is a little too dark
   0x330033FF,
   0x773333FF,
   0x777733FF,

@@ -56,8 +56,8 @@ static void SaveSolution(const Polyhedron &poly,
   Mesh2D souter = Shadow(outer);
   Mesh2D sinner = Shadow(inner);
 
-  std::vector<int> outer_hull = ConvexHull(souter.vertices);
-  std::vector<int> inner_hull = ConvexHull(sinner.vertices);
+  std::vector<int> outer_hull = QuickHull(souter.vertices);
+  std::vector<int> inner_hull = QuickHull(sinner.vertices);
 
   double outer_area = AreaOfHull(souter, outer_hull);
   double inner_area = AreaOfHull(sinner, inner_hull);
@@ -116,7 +116,7 @@ static void AnimateHull() {
   constexpr int HEIGHT = 1080;
   constexpr int SIZE = HEIGHT;
   constexpr int FRAMES = 10 * 60;
-  constexpr int POINTS = 2000;
+  constexpr int POINTS = 100;
   MovRecorder rec("animate-hull.mov", WIDTH, HEIGHT);
 
   std::vector<vec2> points;
@@ -156,7 +156,7 @@ static void AnimateHull() {
     }
 
     Timer timer1;
-    std::vector<int> hull1 = ConvexHull(points);
+    std::vector<int> hull1 = GrahamScan(points);
     sec1 += timer1.Seconds();
 
     Timer timer2;
@@ -247,7 +247,7 @@ static void Visualize(const Polyhedron &poly) {
 
     printf("Get convex hull (%d vertices):\n",
            (int)mesh.vertices.size());
-    std::vector<int> hull = ConvexHull(mesh.vertices);
+    std::vector<int> hull = QuickHull(mesh.vertices);
     printf("Hull size %d\n", (int)hull.size());
     // rendering.RenderHull(mesh, hull);
 
@@ -292,7 +292,7 @@ static void Solve(const Polyhedron &polyhedron, StatusBar *status) {
           Polyhedron outer = Rotate(polyhedron, outer_frame);
           Mesh2D souter = Shadow(outer);
 
-          const std::vector<int> shadow_hull = ConvexHull(souter.vertices);
+          const std::vector<int> shadow_hull = QuickHull(souter.vertices);
 
           // Starting orientation/position.
           const quat4 inner_rot = RandomQuaternion(&rc);
@@ -733,7 +733,7 @@ static void Solve3(const Polyhedron &polyhedron, StatusBar *status) {
               Mesh2D souter = Shadow(outer);
 
               // PERF: Now we want a faster convex hull algorithm...
-              const std::vector<int> shadow_hull = ConvexHull(souter.vertices);
+              const std::vector<int> shadow_hull = QuickHull(souter.vertices);
               return -AreaOfHull(souter, shadow_hull);
             };
 
@@ -748,7 +748,7 @@ static void Solve3(const Polyhedron &polyhedron, StatusBar *status) {
           const frame3 outer_frame = OuterFrame(area_args);
           Polyhedron outer = Rotate(polyhedron, outer_frame);
           Mesh2D souter = Shadow(outer);
-          const std::vector<int> shadow_hull = ConvexHull(souter.vertices);
+          const std::vector<int> shadow_hull = QuickHull(souter.vertices);
 
           // Starting orientation/position for inner polyhedron.
           const quat4 inner_rot = RandomQuaternion(&rc);
@@ -1020,7 +1020,7 @@ static void Solve4(const Polyhedron &polyhedron, StatusBar *status) {
           const Mesh2D sinner = Shadow(Rotate(polyhedron, initial_inner_frame));
           const std::vector<vec2> inner_hull_pts = [&]() {
               // status->Printf("[%d] Get convex hull.\n", thread_idx);
-              const std::vector<int> inner_hull = ConvexHull(sinner.vertices);
+              const std::vector<int> inner_hull = QuickHull(sinner.vertices);
               // status->Printf("[%d] Done: Size %d.\n",
               //            thread_idx, inner_hull.size());
               std::vector<vec2> v;
@@ -1070,7 +1070,7 @@ static void Solve4(const Polyhedron &polyhedron, StatusBar *status) {
               rendering.DarkenBG();
 
               rendering.RenderMesh(sinner);
-              std::vector<int> hull = ConvexHull(sinner.vertices);
+              std::vector<int> hull = QuickHull(sinner.vertices);
               status->Printf("Hull points: %d\n", (int)hull.size());
               rendering.RenderHull(sinner, hull, 0x000000AA);
               rendering.RenderBadPoints(sinner, souter);

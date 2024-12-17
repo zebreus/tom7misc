@@ -21,6 +21,8 @@
 #include "yocto_matht.h"
 #include "color-util.h"
 
+using vec2 = yocto::vec<double, 2>;
+
 static constexpr bool VERBOSE = false;
 
 // Red for negative, black for 0, green for positive.
@@ -163,6 +165,49 @@ static void DrawPoints(const std::vector<vec2> &pts,
   printf("Wrote " AGREEN("%s") "\n", filename.c_str());
 }
 
+
+static void CheckHullProperties(int line_num,
+                                const std::vector<vec2> &v,
+                                const std::vector<int> &hull,
+                                const char *what) {
+  std::unordered_set<int> inhull;
+  for (int a : hull) inhull.insert(a);
+
+  auto FailWithImage = [line_num, what, &v, &hull](const char *err) {
+      DrawPoints(v, hull, StringPrintf("%s-test-fail.png",
+                                       what));
+      LOG(FATAL) << "\nFrom line " << line_num << "<" << what << ">"
+                 << ": Bad hull (" << err << ")";
+    };
+
+  if (!IsConvex(v, hull)) {
+    FailWithImage("not convex");
+  }
+
+  for (int i = 0; i < v.size(); i++) {
+    if (!inhull.contains(i)) {
+      vec2 pt = v[i];
+
+      if (!PointInPolygon(pt, v, hull) &&
+          DistanceToHull(v, hull, pt) > 0.0000001) {
+        printf("Erroneous point #%d at %.17g,%.17g\n",
+               i, pt.x, pt.y);
+        printf("Points:\n");
+        for (int j = 0; j < v.size(); j++) {
+          printf("  vec2{%.17g,%.17g}\n", v[j].x, v[j].y);
+        }
+
+        printf("Hull:\n");
+        for (int a : hull) {
+          vec2 pp = v[a];
+          printf("  #%d: %.17g,%.17g\n", a, pp.x, pp.y);
+        }
+        FailWithImage("doesn't contain all points");
+      }
+    }
+  }
+}
+
 template <class F> static void TestHullRegression2(
     const char *what, F ComputeHull) {
   std::vector<vec2> pts{
@@ -252,6 +297,20 @@ static void TestHullRegression1(const char *what, F ComputeHull) {
 }
 
 template<class F>
+static void TestHullRegression3(const char *what, F ComputeHull) {
+
+  // Three colinear points.
+  std::vector<vec2> pts{
+    vec2{-12,-1},
+    vec2{-13,-1},
+    vec2{-10,-1},
+  };
+
+  std::vector<int> hull = ComputeHull(pts);
+  CheckHullProperties(__LINE__, pts, hull, what);
+}
+
+template<class F>
 static void TestHull(const char *what, F ComputeHull) {
   {
     std::vector<vec2> square = {
@@ -263,6 +322,7 @@ static void TestHull(const char *what, F ComputeHull) {
 
     std::vector<int> hull = ComputeHull(square);
     CHECK(hull.size() == 4);
+    CheckHullProperties(__LINE__, square, hull, what);
   }
 
   {
@@ -273,6 +333,7 @@ static void TestHull(const char *what, F ComputeHull) {
     };
     std::vector<int> hull = ComputeHull(degenerate_triangle);
     CHECK(hull.size() == 2);
+    CheckHullProperties(__LINE__, degenerate_triangle, hull, what);
   }
 
   {
@@ -295,6 +356,8 @@ static void TestHull(const char *what, F ComputeHull) {
     }
 
     std::vector<int> hull = ComputeHull(shadow);
+    CheckHullProperties(__LINE__, shadow, hull, what);
+    DrawPoints(shadow, hull, StringPrintf("cubo-%s.png", what));
     CHECK(hull.size() == 8) << hull.size();
   }
 
@@ -353,37 +416,7 @@ static void TestHull(const char *what, F ComputeHull) {
 
           if (v.size() > 2) {
             std::vector<int> hull = ComputeHull(v);
-            std::unordered_set<int> inhull;
-            for (int a : hull) inhull.insert(a);
-            // XXX check properties of hull
-
-            auto FailWithImage = [what, &v, &hull](const char *err) {
-                DrawPoints(v, hull, StringPrintf("%s-test-fail.png",
-                                                 what));
-                LOG(FATAL) << what << ": Bad hull (" << err << ")";
-              };
-
-            if (!IsConvex(v, hull)) {
-              FailWithImage("not convex");
-            }
-
-            for (int i = 0; i < v.size(); i++) {
-              if (!inhull.contains(i)) {
-                vec2 pt = v[i];
-
-                if (!PointInPolygon(pt, v, hull) &&
-                    DistanceToHull(v, hull, pt) > 0.0000001) {
-                  printf("Erroneous point #%d at %.17g,%.17g\n",
-                         i, pt.x, pt.y);
-                  printf("Hull:\n");
-                  for (int a : hull) {
-                    vec2 pp = v[a];
-                    printf("  #%d: %.17g,%.17g\n", a, pp.x, pp.y);
-                  }
-                  FailWithImage("doesn't contain all points");
-                }
-              }
-            }
+            CheckHullProperties(__LINE__, v, hull, what);
 
             if (VERBOSE) {
               printf("Hull size: %d\n", (int)hull.size());
@@ -399,8 +432,8 @@ static void TestHull(const char *what, F ComputeHull) {
       }
     }
   }
-
 }
+
 
 static void TestSignedDistance() {
   constexpr int width = 1920;
@@ -453,6 +486,14 @@ static void TestSignedDistance() {
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
+
+  TestHullRegression3("graham", GrahamScan);
+  TestHullRegression2("graham", GrahamScan);
+  TestHullRegression1("graham", GrahamScan);
+  TestHull("graham", GrahamScan);
+
+  TestHullRegression3("wrap", ConvexHull);
+  TestHullRegression3("quick", QuickHull);
 
   TestHullRegression2("wrap", ConvexHull);
   TestHullRegression2("quick", QuickHull);

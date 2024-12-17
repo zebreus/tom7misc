@@ -285,6 +285,13 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
   constexpr bool SELF_CHECK = true;
   CHECK(vertices.size() > 2);
 
+  auto ColorIndex = [](int i) {
+      return StringPrintf(
+          "%s%d" ANSI_RESET,
+          ANSI::ForegroundRGB32(Rendering::Color(i)).c_str(),
+          i);
+    };
+
   // Explicitly mark vertices as used to avoid reusing them. This may
   // not actually be necessary (I think the real issue was that I used
   // to always start with "next" being node cur+1, even if that was an
@@ -308,7 +315,7 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
     }();
 
   if (VERBOSE) {
-    printf("Start idx: %d\n", start);
+    printf("Start idx: %s\n", ColorIndex(start).c_str());
 
     for (const vec2 &v : vertices) {
       printf("vec2{%.17g, %.17g}, ", v.x, v.y);
@@ -325,9 +332,7 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
   int cur = start;
   do {
     if (VERBOSE) {
-      printf("Loop with cur=%s%d" ANSI_RESET "\n",
-             ANSI::ForegroundRGB32(Rendering::Color(cur)).c_str(),
-             cur);
+      printf("Loop with cur=%s\n", ColorIndex(cur).c_str());
     }
 
     if (SELF_CHECK) {
@@ -376,14 +381,18 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
     }
 
     // We exhausted all of the nodes, so we must be done.
-    if (next == -1)
+    if (next == -1) {
+      if (VERBOSE) {
+        printf(ACYAN("No more nodes.") "\n");
+      }
       return hull;
+    }
 
     for (int i = 0; i < vertices.size(); i++) {
       if (VERBOSE) {
-        printf("Inner loop w/ next=%s%d" ANSI_RESET ".\n",
-               ANSI::ForegroundRGB32(Rendering::Color(next)).c_str(),
-               next);
+        printf("Inner loop at i=%s w/ next=%s.\n",
+               ColorIndex(i).c_str(),
+               ColorIndex(next).c_str());
       }
       // We need to consider the start point as a candidate
       // (which will always have been marked 'used') because
@@ -394,12 +403,24 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
         const vec2 &vnext = vertices[next];
         const vec2 &vi = vertices[i];
 
+        const vec2 to_next = vnext - vcur;
+        const vec2 to_i = vi - vcur;
+
         // Compare against the current candidate, using cross
         // product to find the "leftmost" one.
-        double angle = yocto::cross(vnext - vcur, vi - vcur);
-        // Note that this excludes points that are exactly coincident
-        // with vcur, which is what we want.
-        if (angle < 0.0) {
+        double angle = yocto::cross(to_next, to_i);
+
+        const bool is_strictly_left = angle < 0.0;
+
+        bool take = is_strictly_left;
+
+        if (VERBOSE) {
+          printf("  Angle: %.17g. %s %s\n", angle,
+                 is_strictly_left ? " left" : "",
+                 take ? " take." : "");
+        }
+
+        if (take) {
           // However, if we get back to a point that's exactly equal
           // to start, we want to use the start index (for one thing,
           // so that this loop terminates).
@@ -415,9 +436,117 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
     cur = next;
   } while (cur != start);
 
+  if (VERBOSE) {
+    printf(ACYAN("Returned to start.") "\n");
+  }
   return hull;
 }
 
+std::vector<int> GrahamScan(const std::vector<vec2> &vertices) {
+
+  // Place the leftmost bottommost point first in the
+  // working hull. This will be on the hull and it is the
+  // reference point.
+  const int ref = [&]() {
+      int besti = 0;
+      for (int i = 1; i < vertices.size(); i++) {
+        if ((vertices[i].y < vertices[besti].y) ||
+            (vertices[i].y == vertices[besti].y &&
+             vertices[i].x < vertices[besti].x)) {
+          besti = i;
+        }
+      }
+      return besti;
+    }();
+
+  const vec2 &vref = vertices[ref];
+
+  struct Point {
+    int idx;
+    double angle;
+    double distsq;
+  };
+  // Get the remainder of the point indices.
+  std::vector<Point> points;
+  points.reserve(vertices.size() - 1);
+  for (int i = 0; i < vertices.size(); i++) {
+    if (i != ref) {
+      const vec2 &v = vertices[i];
+      const vec2 e = v - vref;
+      points.emplace_back(Point{
+          .idx = i,
+          .angle = std::atan2(e.y, e.x),
+          .distsq = length_squared(e),
+        });
+    }
+  }
+
+  // Sort the remaining points by their polar angle.
+  std::sort(points.begin(),
+            points.end(),
+            [&](const Point &a, const Point &b) {
+              if (a.angle == b.angle) {
+                if (a.distsq == b.distsq) {
+                  return a.idx < b.idx;
+                } else {
+                  return a.distsq < b.distsq;
+                }
+              } else {
+                return a.angle < b.angle;
+              }
+            });
+
+  // Remove collinear points now. We keep the farthest
+  // one (and in the case of ties, break them using the
+  // largest index).
+  int new_size = 0;
+  for (int i = 0; i < points.size(); i++) {
+    // Skip a point if it has the same angle as the
+    // next one; the last point in such a sequence is the
+    // best one.
+    if (i + 1 < points.size() &&
+        points[i].angle == points[i + 1].angle) {
+      continue;
+    } else {
+      points[new_size++] = points[i];
+    }
+  }
+  points.resize(new_size);
+
+  // Now we have the candidate set.
+  // If it's trivial or degenerate, return those points.
+  if (points.size() <= 2) {
+    std::vector<int> hull = {ref};
+    for (const Point &p : points) hull.push_back(p.idx);
+    return hull;
+  }
+
+  // A proper set. Do the scan.
+  std::vector<int> hull = {ref, points[0].idx, points[1].idx};
+
+  // Taking vertex indices.
+  auto CCW = [&vertices] (int a, int b, int c) {
+      const vec2 &va = vertices[a];
+      const vec2 &vb = vertices[b];
+      const vec2 &vc = vertices[c];
+
+      return cross(vb - va, vc - va) < 0.0;
+    };
+
+  for (int i = 2; i < points.size(); i++) {
+    const Point &point = points[i];
+
+    while (hull.size() >= 2 && CCW(hull[hull.size() - 2],
+                                          hull[hull.size() - 1],
+                                          point.idx)) {
+      hull.pop_back();
+    }
+
+    hull.push_back(point.idx);
+  }
+
+  return hull;
+}
 
 // The QuickHull implementation below and its helper routines are based on code
 // by Miguel Vieira (see LICENSES) although I have heavily modified it.
@@ -1727,7 +1856,7 @@ Polyhedron PentagonalIcositetrahedron() {
      std::cbrt(19.0 - 3.0 * std::sqrt(33.0))) / 3.0;
 
   const double tt = tribonacci * tribonacci;
-  const double ttt = tt * tribonacci;
+  [[maybe_unused]] const double ttt = tt * tribonacci;
 
   LOG(FATAL) << "Unimplemented";
 

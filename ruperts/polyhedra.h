@@ -158,7 +158,14 @@ double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt);
 // of the convex polyhedron we've projected. (Make sure to consider
 // the case that an entire polygonal face is projected to a line,
 // however!)
-std::vector<int> ConvexHull(const std::vector<vec2> &vertices);
+//
+// This function doesn't handle collinear or coincident points well,
+// so it's not really recommended.
+std::vector<int> OldConvexHull(const std::vector<vec2> &vertices);
+
+// Compute the convex hull, using Graham's scan. O(n lg n).
+// This is typically slower than QuickHull.
+std::vector<int> GrahamScan(const std::vector<vec2> &vertices);
 
 // Compute the convex hull, using the QuickHull algorithm. This
 // is not faster for the problem sizes here (~100 vertices) but
