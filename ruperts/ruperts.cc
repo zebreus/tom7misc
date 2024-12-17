@@ -1261,10 +1261,6 @@ int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
 
-
-  AnimateHull();
-  return 0;
-
   // Polyhedron target = SnubCube();
   // Polyhedron target = Rhombicosidodecahedron();
   // Polyhedron target = TruncatedCuboctahedron();
