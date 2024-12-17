@@ -132,6 +132,9 @@ inline Mesh2D Translate(const Mesh2D &m, const vec2 &t) {
   return ret;
 }
 
+bool IsConvex(const std::vector<vec2> &points,
+              const std::vector<int> &polygon);
+
 // Maximum distance between any two points.
 double Diameter(const Polyhedron &p);
 
@@ -140,7 +143,7 @@ double Diameter(const Polyhedron &p);
 Mesh2D Shadow(const Polyhedron &p);
 
 double DistanceToHull(
-    const Mesh2D &mesh, const std::vector<int> &hull,
+    const std::vector<vec2> &points, const std::vector<int> &hull,
     const vec2 &pt);
 
 double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt);
@@ -216,9 +219,11 @@ double TriangleSignedDistance(vec2 p0, vec2 p1, vec2 p2, vec2 p);
 // than keep generating new ones.
 
 // Platonic
+Polyhedron Tetrahedron();
 Polyhedron Cube();
 Polyhedron Dodecahedron();
 Polyhedron Icosahedron();
+Polyhedron Octahedron();
 
 // Archimedean
 Polyhedron TruncatedTetrahedron();

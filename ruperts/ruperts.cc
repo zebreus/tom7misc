@@ -64,6 +64,11 @@ static void SaveSolution(const Polyhedron &poly,
 
   double ratio = inner_area / outer_area;
 
+  Rendering rendering(poly, 3840, 2160);
+  rendering.RenderHull(souter, outer_hull, 0xAA0000FF);
+  rendering.RenderHull(sinner, inner_hull, 0x00FF00AA);
+  rendering.Save(StringPrintf("hulls-%s.png", poly.name));
+
   db.AddSolution(poly.name, outer_frame, inner_frame, method, ratio);
   printf("Added solution (" AYELLOW("%s") ") to database with "
          "ratio " APURPLE("%.17g") "\n",
@@ -170,7 +175,7 @@ static void AnimateHull() {
       };
 
     DrawHull(hull1, 0xFFFFFF33);
-    DrawHull(hull2, 0x00FFFF33);
+    // DrawHull(hull2, 0x00FFFF33);
 
     // img.Save(StringPrintf("hull%d.png", i));
 
@@ -250,19 +255,18 @@ static void Visualize(const Polyhedron &poly) {
   }
 }
 
+static constexpr int HISTO_LINES = 32;
+
 [[maybe_unused]]
-static void Solve(const Polyhedron &polyhedron) {
+static void Solve(const Polyhedron &polyhedron, StatusBar *status) {
   // ArcFour rc(StringPrintf("solve.%lld", time(nullptr)));
 
-  printf("Solve [method 1] " AWHITE("%s") ":\n",
-         polyhedron.name);
-
-  static constexpr int HISTO_LINES = 32;
+  status->Printf("Solve [method 1] " AWHITE("%s") ":\n",
+                 polyhedron.name);
 
   std::mutex m;
   bool should_die = false;
   Timer run_timer;
-  StatusBar status(3 + HISTO_LINES);
   Periodically status_per(1.0);
   Periodically image_per(10.0);
   double best_error = 1.0e42;
@@ -325,7 +329,7 @@ static void Solve(const Polyhedron &polyhedron) {
 
               rendering.img.Save(filename);
 
-              status.Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+              status->Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
             };
 
           auto Parameters = [&](const std::array<double, D> &args,
@@ -357,7 +361,7 @@ static void Solve(const Polyhedron &polyhedron) {
               double error = 0.0;
               for (const vec2 &iv : sinner.vertices) {
                 if (!InHull(souter, shadow_hull, iv)) {
-                  error += DistanceToHull(souter, shadow_hull, iv);
+                  error += DistanceToHull(souter.vertices, shadow_hull, iv);
                 }
               }
 
@@ -383,10 +387,9 @@ static void Solve(const Polyhedron &polyhedron) {
               return;
             should_die = true;
 
-            status.Printf("Solved! %lld iters, %lld attempts, in %s\n",
-                          iters.Read(),
-                          attempts.Read(),
-                          ANSI::Time(run_timer.Seconds()).c_str());
+            status->Printf("Solved! %lld iters, %lld attempts, in %s\n",
+                           iters.Read(), attempts.Read(),
+                           ANSI::Time(run_timer.Seconds()).c_str());
 
             WriteImage(StringPrintf("solved-%s.png", polyhedron.name), args);
 
@@ -398,7 +401,7 @@ static void Solve(const Polyhedron &polyhedron) {
             std::string sfile = StringPrintf("solution-%s.txt",
                                              polyhedron.name);
             Util::WriteFile(sfile, contents);
-            status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
+            status->Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
 
             SaveSolution(polyhedron,
                          outer_frame,
@@ -428,7 +431,7 @@ static void Solve(const Polyhedron &polyhedron) {
                 int64_t it = iters.Read();
                 double ips = it / total_time;
 
-                status.Statusf(
+                status->Statusf(
                     "%s\n"
                     "%s " ABLUE("prep") " %s " APURPLE("opt")
                     " (" ABLUE("%.3f%%") " / " APURPLE("%.3f%%") ") "
@@ -458,16 +461,15 @@ static void Solve(const Polyhedron &polyhedron) {
 // of its time trying different shapes of the hole and only random
 // samples for the shadow.
 [[maybe_unused]]
-static void Solve2(const Polyhedron &polyhedron) {
-  printf("Solve [method 2] " AWHITE("%s") ":\n",
-         polyhedron.name);
+static void Solve2(const Polyhedron &polyhedron, StatusBar *status) {
+  status->Printf("Solve [method 2] " AWHITE("%s") ":\n",
+                 polyhedron.name);
 
   static constexpr int HISTO_LINES = 32;
 
   std::mutex m;
   bool should_die = false;
   Timer run_timer;
-  StatusBar status(3 + HISTO_LINES);
   Periodically status_per(1.0);
   Periodically image_per(10.0);
   double best_error = 1.0e42;
@@ -545,7 +547,7 @@ static void Solve2(const Polyhedron &polyhedron) {
 
               rendering.img.Save(filename);
 
-              status.Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+              status->Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
             };
 
           auto Parameters = [&](const std::array<double, D> &args,
@@ -609,10 +611,10 @@ static void Solve2(const Polyhedron &polyhedron) {
               return;
             should_die = true;
 
-            status.Printf("Solved! %lld iters, %lld attempts, in %s\n",
-                          iters.Read(),
-                          attempts.Read(),
-                          ANSI::Time(run_timer.Seconds()).c_str());
+            status->Printf("Solved! %lld iters, %lld attempts, in %s\n",
+                           iters.Read(),
+                           attempts.Read(),
+                           ANSI::Time(run_timer.Seconds()).c_str());
 
             WriteImage(StringPrintf("solved-%s.png", polyhedron.name), args);
 
@@ -624,7 +626,7 @@ static void Solve2(const Polyhedron &polyhedron) {
             std::string sfile = StringPrintf("solution-%s.txt",
                                              polyhedron.name);
             Util::WriteFile(sfile, contents);
-            status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
+            status->Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
 
             SaveSolution(polyhedron,
                          OuterFrame(args),
@@ -655,7 +657,7 @@ static void Solve2(const Polyhedron &polyhedron) {
                 int64_t it = iters.Read();
                 double ips = it / total_time;
 
-                status.Statusf(
+                status->Statusf(
                     "%s\n"
                     "%s " ABLUE("prep") " %s " APURPLE("opt")
                     " (" ABLUE("%.3f%%") " / " APURPLE("%.3f%%") ") "
@@ -682,16 +684,15 @@ static void Solve2(const Polyhedron &polyhedron) {
 // Third approach: Maximize the area of the outer polygon before
 // optimizing the placement of the inner.
 [[maybe_unused]]
-static void Solve3(const Polyhedron &polyhedron) {
-  printf("Solve [method 3] " AWHITE("%s") ":\n",
-         polyhedron.name);
+static void Solve3(const Polyhedron &polyhedron, StatusBar *status) {
+  status->Printf("Solve [method 3] " AWHITE("%s") ":\n",
+                 polyhedron.name);
 
   static constexpr int HISTO_LINES = 32;
 
   std::mutex m;
   bool should_die = false;
   Timer run_timer;
-  StatusBar status(3 + HISTO_LINES);
   Periodically status_per(1.0);
   Periodically image_per(10.0);
   double best_error = 1.0e42;
@@ -780,7 +781,7 @@ static void Solve3(const Polyhedron &polyhedron) {
               rendering.RenderBadPoints(sinner, souter);
 
               rendering.img.Save(filename);
-              status.Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+              status->Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
             };
 
           auto Parameters = [&](const std::array<double, D> &args,
@@ -812,7 +813,7 @@ static void Solve3(const Polyhedron &polyhedron) {
               double error = 0.0;
               for (const vec2 &iv : sinner.vertices) {
                 if (!InHull(souter, shadow_hull, iv)) {
-                  error += DistanceToHull(souter, shadow_hull, iv);
+                  error += DistanceToHull(souter.vertices, shadow_hull, iv);
                 }
               }
 
@@ -838,10 +839,10 @@ static void Solve3(const Polyhedron &polyhedron) {
               return;
             should_die = true;
 
-            status.Printf("Solved! %lld iters, %lld attempts, in %s\n",
-                          iters.Read(),
-                          attempts.Read(),
-                          ANSI::Time(run_timer.Seconds()).c_str());
+            status->Printf("Solved! %lld iters, %lld attempts, in %s\n",
+                           iters.Read(),
+                           attempts.Read(),
+                           ANSI::Time(run_timer.Seconds()).c_str());
 
             WriteImage(StringPrintf("solved-%s.png", polyhedron.name), args);
 
@@ -853,7 +854,7 @@ static void Solve3(const Polyhedron &polyhedron) {
             std::string sfile = StringPrintf("solution-%s.txt",
                                              polyhedron.name);
             Util::WriteFile(sfile, contents);
-            status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
+            status->Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
 
             SaveSolution(polyhedron,
                          outer_frame,
@@ -884,7 +885,7 @@ static void Solve3(const Polyhedron &polyhedron) {
                 int64_t it = iters.Read();
                 double ips = it / total_time;
 
-                status.Statusf(
+                status->Statusf(
                     "%s\n"
                     "%s " ABLUE("prep") " %s " APURPLE("opt")
                     " (" ABLUE("%.3f%%") " / " APURPLE("%.3f%%") ") "
@@ -964,16 +965,15 @@ static quat4 MakeTwoFacesParallelToZ(const std::vector<vec3> &vertices,
 // consider rotations around the z axis (and translations) for the
 // inner.
 [[maybe_unused]]
-static void Solve4(const Polyhedron &polyhedron) {
-  printf("Solve [method 4] " AWHITE("%s") ":\n",
-         polyhedron.name);
+static void Solve4(const Polyhedron &polyhedron, StatusBar *status) {
+  status->Printf("Solve [method 4] " AWHITE("%s") ":\n",
+                 polyhedron.name);
 
   static constexpr int HISTO_LINES = 32;
 
   std::mutex m;
   bool should_die = false;
   Timer run_timer;
-  StatusBar status(3 + HISTO_LINES);
   Periodically status_per(1.0);
   Periodically image_per(10.0);
   double best_error = 1.0e42;
@@ -1019,9 +1019,9 @@ static void Solve4(const Polyhedron &polyhedron) {
 
           const Mesh2D sinner = Shadow(Rotate(polyhedron, initial_inner_frame));
           const std::vector<vec2> inner_hull_pts = [&]() {
-              // status.Printf("[%d] Get convex hull.\n", thread_idx);
+              // status->Printf("[%d] Get convex hull.\n", thread_idx);
               const std::vector<int> inner_hull = ConvexHull(sinner.vertices);
-              // status.Printf("[%d] Done: Size %d.\n",
+              // status->Printf("[%d] Done: Size %d.\n",
               //            thread_idx, inner_hull.size());
               std::vector<vec2> v;
               v.reserve(inner_hull.size());
@@ -1071,7 +1071,7 @@ static void Solve4(const Polyhedron &polyhedron) {
 
               rendering.RenderMesh(sinner);
               std::vector<int> hull = ConvexHull(sinner.vertices);
-              status.Printf("Hull points: %d\n", (int)hull.size());
+              status->Printf("Hull points: %d\n", (int)hull.size());
               rendering.RenderHull(sinner, hull, 0x000000AA);
               rendering.RenderBadPoints(sinner, souter);
               rendering.img.Save(filename);
@@ -1086,7 +1086,7 @@ static void Solve4(const Polyhedron &polyhedron) {
               }
 
 
-              status.Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+              status->Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
             };
 
           auto Parameters = [&](const std::array<double, D> &args,
@@ -1144,7 +1144,7 @@ static void Solve4(const Polyhedron &polyhedron) {
               return;
             should_die = true;
 
-            status.Printf("Solved! %lld iters, %lld attempts, in %s\n",
+            status->Printf("Solved! %lld iters, %lld attempts, in %s\n",
                           iters.Read(),
                           attempts.Read(),
                           ANSI::Time(run_timer.Seconds()).c_str());
@@ -1159,7 +1159,7 @@ static void Solve4(const Polyhedron &polyhedron) {
             std::string sfile = StringPrintf("solution-%s.txt",
                                              polyhedron.name);
             Util::WriteFile(sfile, contents);
-            status.Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
+            status->Printf("Wrote " AGREEN("%s") "\n", sfile.c_str());
 
             SaveSolution(polyhedron,
                          OuterFrame(args),
@@ -1190,7 +1190,7 @@ static void Solve4(const Polyhedron &polyhedron) {
                 int64_t it = iters.Read();
                 double ips = it / total_time;
 
-                status.Statusf(
+                status->Statusf(
                     "%s\n"
                     "%s " ABLUE("prep") " %s " APURPLE("opt")
                     " (" ABLUE("%.3f%%") " / " APURPLE("%.3f%%") ") "
@@ -1213,9 +1213,57 @@ static void Solve4(const Polyhedron &polyhedron) {
       });
 }
 
+static void ReproduceEasySolutions(int method) {
+  SolutionDB db;
+  std::vector<SolutionDB::Solution> sols = db.GetAllSolutions();
+  auto HasSolutionWithMethod = [&](const Polyhedron &poly) {
+      for (const auto &sol : sols)
+        if (sol.method == method && sol.polyhedron == poly.name)
+          return true;
+      return false;
+    };
+
+  StatusBar status(3 + HISTO_LINES);
+
+  auto MaybeSolve = [&](Polyhedron poly) {
+      if (HasSolutionWithMethod(poly)) {
+        status.Printf(
+            "Already solved " AYELLOW("%s") " with " AWHITE("%s") "\n",
+            poly.name, SolutionDB::MethodName(method));
+      } else {
+        status.Printf("Solve " AYELLOW("%s") " with " AWHITE("%s") "...\n",
+                      poly.name, SolutionDB::MethodName(method));
+
+        switch (method) {
+        case SolutionDB::METHOD_HULL:
+          return Solve(poly, &status);
+        case SolutionDB::METHOD_SIMUL:
+          return Solve2(poly, &status);
+        case SolutionDB::METHOD_MAX:
+          return Solve3(poly, &status);
+        case SolutionDB::METHOD_PARALLEL:
+          return Solve4(poly, &status);
+        default:
+          LOG(FATAL) << "Method not available";
+        }
+      }
+    };
+
+  // Platonic
+  MaybeSolve(Tetrahedron());
+  MaybeSolve(Cube());
+  MaybeSolve(Dodecahedron());
+  MaybeSolve(Icosahedron());
+  MaybeSolve(Octahedron());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
+
+
+  AnimateHull();
+  return 0;
 
   // Polyhedron target = SnubCube();
   // Polyhedron target = Rhombicosidodecahedron();
@@ -1236,12 +1284,18 @@ int main(int argc, char **argv) {
     AnimateMesh(target);
   }
 
-  // Call one of the solution procedures:
+  if (true) {
+    ReproduceEasySolutions(SolutionDB::METHOD_SIMUL);
 
-  // Solve(target);
-  Solve2(target);
-  // Solve3(target);
-  // Solve4(target);
+  } else {
+    // Call one of the solution procedures:
+
+    StatusBar status(3 + HISTO_LINES);
+    // Solve(target);
+    Solve2(target, &status);
+    // Solve3(target);
+    // Solve4(target);
+  }
 
   printf("OK\n");
   return 0;

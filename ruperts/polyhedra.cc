@@ -251,13 +251,13 @@ Mesh2D Shadow(const Polyhedron &p) {
 }
 
 double DistanceToHull(
-    const Mesh2D &mesh, const std::vector<int> &hull,
+    const std::vector<vec2> &points, const std::vector<int> &hull,
     const vec2 &pt) {
 
   std::optional<double> best_dist;
   for (int i = 0; i < hull.size(); i++) {
-    const vec2 &v0 = mesh.vertices[hull[i]];
-    const vec2 &v1 = mesh.vertices[hull[(i + 1) % hull.size()]];
+    const vec2 &v0 = points[hull[i]];
+    const vec2 &v1 = points[hull[(i + 1) % hull.size()]];
 
     double dist = DistanceToEdge(v0, v1, pt);
     if (!best_dist.has_value() || dist < best_dist.value()) {
@@ -271,7 +271,7 @@ double DistanceToHull(
 double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt) {
   std::optional<double> best_dist;
   for (const std::vector<int> &polygon : mesh.faces->v) {
-    double dist = DistanceToHull(mesh, polygon, pt);
+    double dist = DistanceToHull(mesh.vertices, polygon, pt);
     if (!best_dist.has_value() || dist < best_dist.value()) {
       best_dist = {dist};
     }
@@ -282,7 +282,7 @@ double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt) {
 
 std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
   constexpr bool VERBOSE = false;
-  constexpr bool SELF_CHECK = false;
+  constexpr bool SELF_CHECK = true;
   CHECK(vertices.size() > 2);
 
   // Explicitly mark vertices as used to avoid reusing them. This may
@@ -363,21 +363,21 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
     // degenerate).
     // int next = (cur == start) ? ((cur + 1) % vertices.size()) :
     // start;
-    int next;
+    int next = -1;
 
     // First, find any point that's unused and not exactly the same as
     // the current point.
     for (int i = 0; i < vertices.size(); i++) {
-      if (i != cur && !used[i] && vertices[i] != vertices[cur]) {
+      if (i != cur && (i == start || !used[i]) &&
+          vertices[i] != vertices[cur]) {
         next = i;
-        goto search;
+        break;
       }
     }
 
     // We exhausted all of the nodes, so we must be done.
-    return hull;
-
-    search:;
+    if (next == -1)
+      return hull;
 
     for (int i = 0; i < vertices.size(); i++) {
       if (VERBOSE) {
@@ -385,7 +385,11 @@ std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
                ANSI::ForegroundRGB32(Rendering::Color(next)).c_str(),
                next);
       }
-      if (!used[i] && i != next) {
+      // We need to consider the start point as a candidate
+      // (which will always have been marked 'used') because
+      // it's how we actually end. It prevents us from choosing
+      // invalid points (that are not "to the left").
+      if ((i == start || !used[i]) && i != cur && i != next) {
         const vec2 &vcur = vertices[cur];
         const vec2 &vnext = vertices[next];
         const vec2 &vi = vertices[i];
@@ -643,6 +647,29 @@ double PlanarityError(const Polyhedron &p) {
   }
   return error;
 }
+
+bool IsConvex(const std::vector<vec2> &vertices,
+              const std::vector<int> &polygon) {
+  if (polygon.size() <= 3) return true;
+  std::optional<int> s;
+  for (int i = 0; i < polygon.size(); i++) {
+    const vec2 &p0 = vertices[polygon[i]];
+    const vec2 &p1 = vertices[polygon[(i + 1) % polygon.size()]];
+    const vec2 &p2 = vertices[polygon[(i + 2) % polygon.size()]];
+
+    vec2 e1 = p1 - p0;
+    vec2 e2 = p2 - p1;
+
+    double cx = cross(e1, e2);
+    if (std::abs(cx) < 1e-10) continue;
+    int sign = sgn(cx);
+    if (s.has_value() && s.value() != sign)
+      return false;
+    s = {sign};
+  }
+  return true;
+}
+
 
 bool PointInPolygon(const vec2 &point,
                     const std::vector<vec2> &vertices,
@@ -1085,6 +1112,17 @@ Polyhedron SnubCube() {
   return ConvexPolyhedronFromVertices(std::move(vertices), "snubcube");
 }
 
+Polyhedron Tetrahedron() {
+  std::vector<vec3> vertices{
+    vec3{1.0,   1.0,  1.0},
+    vec3{1.0,  -1.0, -1.0},
+    vec3{-1.0,  1.0, -1.0},
+    vec3{-1.0, -1.0,  1.0},
+  };
+
+  return ConvexPolyhedronFromVertices(std::move(vertices), "tetrahedron");
+}
+
 Polyhedron Cube() {
   //                  +y
   //      a------b     | +z
@@ -1135,6 +1173,18 @@ Polyhedron Cube() {
     .faces = faces,
     .name = "cube",
   };
+}
+
+Polyhedron Octahedron() {
+  std::vector<vec3> vertices;
+  for (double s : {-1.0, 1.0}) {
+    vertices.emplace_back(s, 0.0, 0.0);
+    vertices.emplace_back(0.0, s, 0.0);
+    vertices.emplace_back(0.0, 0.0, s);
+  }
+
+  CHECK(vertices.size() == 6);
+  return ConvexPolyhedronFromVertices(std::move(vertices), "octahedron");
 }
 
 Polyhedron Icosahedron() {

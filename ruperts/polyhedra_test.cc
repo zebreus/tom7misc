@@ -93,8 +93,10 @@ static void DrawPoints(const std::vector<vec2> &pts,
                        // Can be empty
                        const std::vector<int> &hull,
                        const std::string &filename) {
-  ImageRGBA img(3840, 2160);
-  Dirty dirty(3840, 2160);
+  constexpr int WIDTH = 1920;
+  constexpr int HEIGHT = 1080;
+  ImageRGBA img(WIDTH, HEIGHT);
+  Dirty dirty(WIDTH, HEIGHT);
   img.Clear32(0x000000FF);
 
   Bounds bounds;
@@ -102,8 +104,11 @@ static void DrawPoints(const std::vector<vec2> &pts,
     bounds.Bound(pt.x, pt.y);
   }
   bounds.AddMarginFrac(0.05);
+  printf("Bounds: %.11f,%.11f to %.11f,%.11f\n",
+         bounds.MinX(), bounds.MinY(),
+         bounds.MaxX(), bounds.MaxY());
 
-  Bounds::Scaler scaler = bounds.ScaleToFit(3840, 2160, true);
+  Bounds::Scaler scaler = bounds.ScaleToFit(WIDTH, HEIGHT, true);
 
   std::unordered_set<int> in_hull;
   if (!hull.empty()) {
@@ -133,9 +138,23 @@ static void DrawPoints(const std::vector<vec2> &pts,
     const int w = label.size() * ImageRGBA::TEXT2X_WIDTH;
     const int h = ImageRGBA::TEXT2X_HEIGHT;
     const auto &[x, y] =
-        dirty.PlaceNearby(sx - (w >> 1) - 1, sy - (h >> 1) - 1, w + 1, h + 1,
-                          60);
+      dirty.PlaceNearby(sx - (w >> 1) - 1, sy - (h >> 1) - 1, w + 1, h + 1,
+                        60);
     img.BlendText2x32(x, y, Rendering::Color(i), label);
+    dirty.MarkUsed(x, y, w, h);
+  }
+
+  // And label the hull points in order.
+  for (int i = 0; i < hull.size(); i++) {
+    int v = hull[i];
+    const auto &[sx, sy] = scaler.Scale(pts[v].x, pts[v].y);
+    std::string label = StringPrintf("=%d", i);
+    const int w = label.size() * ImageRGBA::TEXT2X_WIDTH;
+    const int h = ImageRGBA::TEXT2X_HEIGHT;
+    const auto &[x, y] =
+      dirty.PlaceNearby(sx - (w >> 1) - 1, sy - (h >> 1) - 1, w + 1, h + 1,
+                        60);
+    img.BlendText2x32(x, y, 0xFFFFFFFF, label);
     dirty.MarkUsed(x, y, w, h);
   }
 
@@ -144,7 +163,8 @@ static void DrawPoints(const std::vector<vec2> &pts,
   printf("Wrote " AGREEN("%s") "\n", filename.c_str());
 }
 
-template <class F> static void TestHullRegression2(F ComputeHull) {
+template <class F> static void TestHullRegression2(
+    const char *what, F ComputeHull) {
   std::vector<vec2> pts{
       vec2{1, -4.2360679774997898},
       vec2{-1.6180339887498953, -3.2360679774997902},
@@ -210,13 +230,13 @@ template <class F> static void TestHullRegression2(F ComputeHull) {
 
   // DrawPoints(pts, {}, "regression2.png");
   auto hull = ComputeHull(pts);
-  DrawPoints(pts, hull, "regression2.png");
+  DrawPoints(pts, hull, StringPrintf("regression-%s-2.png", what));
 
   CHECK(hull.size() >= 3) << hull.size();
 }
 
 template<class F>
-static void TestHullRegression1(F ComputeHull) {
+static void TestHullRegression1(const char *what, F ComputeHull) {
 
   std::vector<vec2> pts{
     // This point is not necessary to exhibit the bug, but
@@ -232,7 +252,7 @@ static void TestHullRegression1(F ComputeHull) {
 }
 
 template<class F>
-static void TestHull(F ComputeHull) {
+static void TestHull(const char *what, F ComputeHull) {
   {
     std::vector<vec2> square = {
       vec2(1.0, 1.0),
@@ -313,6 +333,8 @@ static void TestHull(F ComputeHull) {
 
   {
     ArcFour rc("hi");
+    [[maybe_unused]]
+    int count = 0;
     for (int num_pts = 3; num_pts < 16; num_pts++) {
       for (int i = 0; i < num_pts * num_pts * num_pts; i++) {
         std::vector<vec2> v;
@@ -331,10 +353,47 @@ static void TestHull(F ComputeHull) {
 
           if (v.size() > 2) {
             std::vector<int> hull = ComputeHull(v);
+            std::unordered_set<int> inhull;
+            for (int a : hull) inhull.insert(a);
             // XXX check properties of hull
+
+            auto FailWithImage = [what, &v, &hull](const char *err) {
+                DrawPoints(v, hull, StringPrintf("%s-test-fail.png",
+                                                 what));
+                LOG(FATAL) << what << ": Bad hull (" << err << ")";
+              };
+
+            if (!IsConvex(v, hull)) {
+              FailWithImage("not convex");
+            }
+
+            for (int i = 0; i < v.size(); i++) {
+              if (!inhull.contains(i)) {
+                vec2 pt = v[i];
+
+                if (!PointInPolygon(pt, v, hull) &&
+                    DistanceToHull(v, hull, pt) > 0.0000001) {
+                  printf("Erroneous point #%d at %.17g,%.17g\n",
+                         i, pt.x, pt.y);
+                  printf("Hull:\n");
+                  for (int a : hull) {
+                    vec2 pp = v[a];
+                    printf("  #%d: %.17g,%.17g\n", a, pp.x, pp.y);
+                  }
+                  FailWithImage("doesn't contain all points");
+                }
+              }
+            }
+
             if (VERBOSE) {
               printf("Hull size: %d\n", (int)hull.size());
             }
+
+            /*
+            DrawPoints(v, hull, StringPrintf("%s-%d-test.png",
+                                             what, count));
+            */
+            count++;
           }
         }
       }
@@ -395,14 +454,14 @@ int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
 
-  TestHullRegression2(ConvexHull);
-  TestHullRegression2(QuickHull);
+  TestHullRegression2("wrap", ConvexHull);
+  TestHullRegression2("quick", QuickHull);
 
-  TestHullRegression1(ConvexHull);
-  TestHullRegression1(QuickHull);
+  TestHullRegression1("wrap", ConvexHull);
+  TestHullRegression1("quick", QuickHull);
 
-  TestHull(ConvexHull);
-  TestHull(QuickHull);
+  TestHull("wrap", ConvexHull);
+  TestHull("quick", QuickHull);
 
   TestSignedDistance();
 

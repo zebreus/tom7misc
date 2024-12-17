@@ -221,7 +221,7 @@ void Rendering::RenderHullDistance(const Mesh2D &mesh,
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
       const vec2 v = ToWorld(x, y);
-      const double d = std::abs(DistanceToHull(mesh, hull, v));
+      const double d = std::abs(DistanceToHull(mesh.vertices, hull, v));
       img.BlendPixel32(x, y, ColorUtil::LinearGradient32(DISTANCE, d));
     }
   }
