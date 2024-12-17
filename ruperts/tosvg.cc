@@ -54,8 +54,8 @@ static void Good() {
     rendering.Save("tosvg.png");
   }
 
-  std::vector<int> outer_hull = ConvexHull(souter.vertices);
-  std::vector<int> inner_hull = ConvexHull(sinner.vertices);
+  std::vector<int> outer_hull = QuickHull(souter.vertices);
+  std::vector<int> inner_hull = QuickHull(sinner.vertices);
 
   {
     Rendering rendering(polyhedron, 3840 * 2, 2160 * 2);

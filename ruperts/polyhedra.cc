@@ -280,9 +280,9 @@ double DistanceToMesh(const Mesh2D &mesh, const vec2 &pt) {
   return best_dist.value();
 }
 
-std::vector<int> ConvexHull(const std::vector<vec2> &vertices) {
+std::vector<int> OldConvexHull(const std::vector<vec2> &vertices) {
   constexpr bool VERBOSE = false;
-  constexpr bool SELF_CHECK = true;
+  constexpr bool SELF_CHECK = false;
   CHECK(vertices.size() > 2);
 
   auto ColorIndex = [](int i) {

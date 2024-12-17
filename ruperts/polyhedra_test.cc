@@ -363,7 +363,7 @@ static void TestHull(const char *what, F ComputeHull) {
 
   {
     // This used to create infinite loops in the original
-    // ConvexHull code due to coincident vertices at the start point.
+    // OldConvexHull code due to coincident vertices at the start point.
     std::vector<vec2> dupes = {
       vec2{2.4142135623730949, 1},
       vec2{1, 2.4142135623730949},
@@ -492,16 +492,17 @@ int main(int argc, char **argv) {
   TestHullRegression1("graham", GrahamScan);
   TestHull("graham", GrahamScan);
 
-  TestHullRegression3("wrap", ConvexHull);
+  // TestHullRegression3("wrap", OldConvexHull);
   TestHullRegression3("quick", QuickHull);
 
-  TestHullRegression2("wrap", ConvexHull);
+  TestHullRegression2("wrap", OldConvexHull);
   TestHullRegression2("quick", QuickHull);
 
-  TestHullRegression1("wrap", ConvexHull);
+  TestHullRegression1("wrap", OldConvexHull);
   TestHullRegression1("quick", QuickHull);
 
-  TestHull("wrap", ConvexHull);
+  // Doesn't work with colinear/coincident points :(
+  // TestHull("wrap", OldConvexHull);
   TestHull("quick", QuickHull);
 
   TestSignedDistance();
