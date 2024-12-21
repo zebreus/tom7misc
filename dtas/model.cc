@@ -63,20 +63,15 @@ static void Model() {
 
   Modeling modeling(GetPRG());
 
-  #if 0
-  // Ban some data regions that contain 0x20, the opcode for JSR.
-  // These can look like possible valid return addresses, and
-  // currently we are using heuristics to trace execution.
-  // MetatileGraphics_Low to JumpEngine
-  for (int addr = 0x8b08; addr < 0x8e04; addr++) {
-    modeling.zoning.addr[addr] &= ~Zoning::X;
-  }
-  #endif
-
   modeling.zoning = Zoning::FromFile("mario.zoning");
   CHECK((modeling.zoning.addr[0x8e01] & Zoning::X) == 0);
 
   SourceMap source_map = SourceMap::FromFile("mario.sourcemap");
+
+  modeling.ram_constraints[OPER_MODE].push_back(ValueConstraint{
+    .comment = "Oper Mode",
+    .valid_values = ByteSet({0x00, 0x01, 0x02, 0x03}),
+    });
 
   // These are the entry points that we actually care about:
   // NonMaskableInterrupt is the entry point for the frame,
@@ -183,7 +178,7 @@ static void Model() {
 
           // Could fit memory as a count of bytes, I think.
           for (int m = 0; m < 2048; m++) {
-            uint8_t b = MapCount(state.ram[m].Size());
+            uint8_t b = MapCount(state.RAM(m).Size());
             img.SetPixel(RAM + m, yy, b, b, b, 0xFF);
           }
         }
@@ -207,7 +202,7 @@ static void Model() {
   // The entire JumpEngine routine.
   /*
   for (uint16_t je : {
-      0x8e04, 0x8e05, 0x8e06, 0x8e07,
+        0x8e04, 0x8e05, 0x8e06, 0x8e07,
         0x8e09, 0x8e0a, 0x8e0c, 0x8e0c, 0x8e0d, 0x8e0f, 0x8e11, 0x8e12,
         0x8e14, 0x8e16}) {
     modeling.verbose_addrs[je] = 3;
@@ -275,7 +270,7 @@ static void Model() {
         CHECK(idx_it != modeling.block_index.end());
         const BasicBlock &block = modeling.blocks[idx_it->second];
         auto OK = [&]() {
-            const auto &bs = block.state_in.ram[OPER_MODE];
+            const auto &bs = block.state_in.RAM(OPER_MODE);
             for (int v = 4; v < 256; v++) {
               if (block.state_in.A.Contains(v)) return false;
               if (bs.Contains(v)) return false;

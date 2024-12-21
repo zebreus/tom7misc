@@ -53,7 +53,11 @@ struct Bank {
 struct State {
   // PC is determined by the program point, so we do not store it.
   ByteSet A, X, Y, S, P;
-  std::vector<MemByteSet> ram;
+
+  const MemByteSet &RAM(uint16_t addr) const {
+    CHECK(addr < 2048);
+    return ram[addr];
+  }
 
   // Start the state with the current exact memory, but with universal
   // sets for the registers. The stack is set to the constant
@@ -73,6 +77,20 @@ struct State {
 
   // Multiline color debug string. RAM is not shown.
   std::string DebugString() const;
+
+ private:
+  friend struct Modeling;
+  std::vector<MemByteSet> ram;
+};
+
+// A global assertion about a memory location.
+// This should probably be generalized!
+//
+// These assertions are not taken as assumptions; they are checked during
+// modeling and we abort if any are violated.
+struct ValueConstraint {
+  std::string comment;
+  ByteSet valid_values;
 };
 
 // The same code address can be inserted as a basic block multiple
@@ -172,6 +190,11 @@ struct Modeling {
   // a state space explosion.
   bool quiet = false;
 
+  // Assertions about the values that can be stored in memory
+  // locations.
+  std::unordered_map<uint16_t, std::vector<ValueConstraint>>
+    ram_constraints;
+
   // Override verbosity for specific addresses.
   std::unordered_map<uint16_t, int> verbose_addrs;
 
@@ -213,6 +236,10 @@ struct Modeling {
   // discover that they are reachable) and may expand the 'in' states
   // for any basic blocks.
   void Expand();
+
+  // Check the invariants about the RAM address. Aborts if they are
+  // violated. This is mainly used internally.
+  void CheckMemoryInvariants(const State &state, uint16_t addr) const;
 
   // Write the current model as an .asm file with annotations on
   // basic blocks.

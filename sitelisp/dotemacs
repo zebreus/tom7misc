@@ -66,6 +66,21 @@
               (message "unable to find paragraph?"))
           ))))
 
+;; One annoyance of eglot quickfix is that it will use absolute paths
+;; to includes that are already in the include path. The most common
+;; one for me is headers from my cc-lib. There doesn't seem to be a clean
+;; way to fix this with configuration, so I just run a global search
+;; and replace after the command.
+(defun tom7-eglot-quickfix ()
+  (interactive)
+  (call-interactively 'eglot-code-action-quickfix)
+  (save-excursion
+    (let ((replace-from "#include \"c:/code/sf_svn/cc-lib/"))
+      (goto-char (point-min))
+      (while (search-forward replace-from nil t)
+        (replace-match "#include \"" nil t)))
+  ))
+
 ;; use "clangd --help". TODO: --path-mappings may be helpful here
 (with-eval-after-load 'eglot
   ;; configure paths for windows
@@ -100,7 +115,7 @@
                 (global-set-key [M-down] 'flymake-goto-next-error)
                 (global-set-key [M-up] 'flymake-goto-prev-error)
                 ;; rebind alt-/ to take the quickfix at cursor
-                (global-set-key [?\M-/] 'eglot-code-action-quickfix)
+                (global-set-key [?\M-/] 'tom7-eglot-quickfix)
                 (global-set-key [?\M-'] 'code-format-paragraph)
 
                 )))

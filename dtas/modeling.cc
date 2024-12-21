@@ -98,7 +98,7 @@ std::string State::DebugString() const {
                     "Stack[" APURPLE("%02x") "] %s = %s\n",
                     i,
                     (i == sp) ? ABLUE("**") : "  ",
-                    ram[0x100 + i].DebugString().c_str());
+                    RAM(0x100 + i).DebugString().c_str());
     }
   }
   return ret;
@@ -113,7 +113,7 @@ State State::FromEmulator(const Emulator *emu, uint8_t sp) {
   state.P = ByteSet::Top();
   state.ram.resize(2048);
   for (int i = 0; i < 2048; i++) {
-    state.ram[i].Add(emu->ReadRAM(i));
+    state.ram[i] = MemByteSet::Singleton(emu->ReadRAM(i));
   }
   return state;
 }
@@ -130,7 +130,7 @@ std::strong_ordering State::operator <=>(const State &other) const {
   LEX(S);
   LEX(P);
   for (int i = 0; i < 2048; i++) {
-    LEX(ram[i]);
+    LEX(RAM(i));
   }
 
   return std::strong_ordering::equal;
@@ -245,7 +245,7 @@ ByteSet Modeling::GetByteSet(const State &state, uint16_t addr) const {
 
   // RAM.
   if (addr < 2048) {
-    return RegByteSet(state.ram[addr]);
+    return RegByteSet(state.RAM(addr));
   }
 
   // TODO: Special cases for memory-mapped addresses.
@@ -292,6 +292,7 @@ void Modeling::WriteMemByteSet(State *state, uint16_t addr,
   // RAM.
   if (addr < 2048) {
     state->ram[addr] = s;
+    CheckMemoryInvariants(*state, addr);
     return;
   }
 
@@ -307,6 +308,7 @@ void Modeling::MergeWriteByteSet(State *state, uint16_t addr,
   // RAM.
   if (addr < 2048) {
     state->ram[addr].AddSet(s);
+    CheckMemoryInvariants(*state, addr);
     return;
   }
 
@@ -1017,8 +1019,10 @@ void Modeling::Expand() {
         // Push low, then push high. Note this actually puts them
         // in "big-endian" order if you are looking at memory,
         // since the stack grows downward.
-        state.ram[saddr] = MemByteSet::Singleton(stored_pc & 0xFF);
-        state.ram[saddr - 1] = MemByteSet::Singleton(stored_pc >> 8);
+        WriteMemByteSet(&state, saddr,
+                        MemByteSet::Singleton(stored_pc & 0xFF));
+        WriteMemByteSet(&state, saddr - 1,
+                        MemByteSet::Singleton(stored_pc >> 8));
         state.S = ByteSet::Singleton(saddr - 2);
       } else {
         // Not great: The stack pointer has an uncertain value.
@@ -1034,8 +1038,10 @@ void Modeling::Expand() {
           // Push low, then push high. Note this actually puts them
           // in "big-endian" order if you are looking at memory,
           // since the stack grows downward.
-          state.ram[saddr].Add(stored_pc & 0xFF);
-          state.ram[saddr - 1].Add(stored_pc >> 8);
+          MergeWriteByteSet(&state, saddr,
+                            MemByteSet::Singleton(stored_pc & 0xFF));
+          MergeWriteByteSet(&state, saddr - 1,
+                            MemByteSet::Singleton(stored_pc >> 8));
         }
         state.S = state.S.Map([](uint8_t v) {
             return v - 2;
@@ -1059,12 +1065,12 @@ void Modeling::Expand() {
       // See JSR for some details.
       for (uint8_t sp : state.S) {
         uint16_t saddr = 0x0100 + sp;
-        if (state.ram[saddr + 1].Size() == 1 &&
-            state.ram[saddr + 2].Size() == 1) {
+        if (state.RAM(saddr + 1).Size() == 1 &&
+            state.RAM(saddr + 2).Size() == 1) {
           // Only one value for the stack at this point.
           // This is the reasonable case.
-          uint16_t hi = state.ram[saddr + 1].GetSingleton();
-          uint16_t lo = state.ram[saddr + 2].GetSingleton();
+          uint16_t hi = state.RAM(saddr + 1).GetSingleton();
+          uint16_t lo = state.RAM(saddr + 2).GetSingleton();
           // +1 is just how it works; a quirk of JSR and RTS.
           uint16_t raddr = ((hi << 8) | lo) + 1;
           State ret_state = state;
@@ -1101,9 +1107,9 @@ void Modeling::Expand() {
           int num_accepted = 0, num_rejected = 0;
           // printf("\n");
           for (int hi = 0; hi < 256; hi++) {
-            if (state.ram[saddr + 1].Contains(hi)) {
+            if (state.RAM(saddr + 1).Contains(hi)) {
               for (int lo = 0; lo < 256; lo++) {
-                if (state.ram[saddr + 2].Contains(lo)) {
+                if (state.RAM(saddr + 2).Contains(lo)) {
                   uint16_t raddr = ((hi << 8) | lo) + 1;
 
                   // See above.
@@ -1145,8 +1151,10 @@ void Modeling::Expand() {
                     // We know where the stack points, and what was
                     // there.
                     ret_state.S = ByteSet::Singleton(sp + 2);
-                    ret_state.ram[saddr + 1] = MemByteSet::Singleton(hi);
-                    ret_state.ram[saddr + 2] = MemByteSet::Singleton(lo);
+                    WriteMemByteSet(&ret_state, saddr + 1,
+                                    MemByteSet::Singleton(hi));
+                    WriteMemByteSet(&ret_state, saddr + 2,
+                                    MemByteSet::Singleton(lo));
 
                     // TODO: We might want to split by the value of the
                     // stack pointer here, since it's quite bad if that
@@ -1204,7 +1212,7 @@ void Modeling::Expand() {
         // Following what fceulib does for a stack pointer of 0xFF,
         // we get a stack address of 0x0100.
         uint16_t saddr = 0x0100 + (uint8_t)(sp + 1);
-        state.A.AddSet(RegByteSet(state.ram[saddr]));
+        state.A.AddSet(RegByteSet(state.RAM(saddr)));
       }
 
       state.S = state.S.Map([](uint8_t v) {
@@ -1217,16 +1225,16 @@ void Modeling::Expand() {
       // Push A onto stack.
 
       if (state.S.Size() == 1) {
-        uint8_t sp = *state.S.begin();
+        const uint8_t sp = *state.S.begin();
         // Then it is definitely stored in the stack here,
         // so we can replace the memory location.
-        uint16_t saddr = 0x0100 + sp;
-        state.ram[saddr] = MemByteSet(state.A);
+        const uint16_t saddr = 0x0100 + sp;
+        WriteMemByteSet(&state, saddr, MemByteSet(state.A));
         state.S = ByteSet::Singleton(sp - 1);
       } else {
         for (uint8_t sp : state.S) {
-          uint16_t saddr = 0x0100 + sp;
-          state.ram[saddr].AddSet(state.A);
+          const uint16_t saddr = 0x0100 + sp;
+          MergeWriteByteSet(&state, saddr, state.A);
         }
         state.S = state.S.Map([](uint8_t v) {
             return v - 1;
@@ -1880,7 +1888,7 @@ void Modeling::Expand() {
       state.P.Clear();
       for (uint8_t sp : state.S) {
         uint16_t saddr = 0x0100 + sp;
-        state.P.AddSet(RegByteSet(state.ram[saddr].Map([](uint8_t flags) {
+        state.P.AddSet(RegByteSet(state.RAM(saddr).Map([](uint8_t flags) {
             // Note that this behavior differs in fceulib; see x6502.cc.
             return flags & ~B_FLAG;
           })));
@@ -2139,7 +2147,7 @@ void Modeling::WriteAnnotatedAssembly(const SourceMap &source_map,
                             "; Stack[%02x] %s = %s\n",
                             i,
                             (i == sp) ? "**" : "  ",
-                            state.ram[0x100 + i].DebugString().c_str());
+                            state.RAM(0x100 + i).DebugString().c_str());
             }
           }
         }
@@ -2152,4 +2160,8 @@ void Modeling::WriteAnnotatedAssembly(const SourceMap &source_map,
   }
 
   Util::WriteFile(std::string(filename), out);
+}
+
+void Modeling::CheckMemoryInvariants(const State &state, uint16_t addr) const {
+  // TODO
 }

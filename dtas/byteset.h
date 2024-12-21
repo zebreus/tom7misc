@@ -8,6 +8,7 @@
 
 #include <bit>
 #include <cstddef>
+#include <initializer_list>
 #include <iterator>
 #include <cstdint>
 #include <compare>
@@ -22,19 +23,27 @@
 // Represents the set of bytes exactly (the "free lattice").
 struct ByteSet {
   ByteSet() { u.a = u.b = u.c = u.d = 0; }
+  inline ByteSet(const std::initializer_list<uint8_t> &values);
+
   bool Empty() const {
     return (u.a | u.b | u.c | u.d) == 0;
   }
+
+  // TODO: It makes sense for these to be inline, but move most of this
+  // stuff to the bottom of the file.
+
   bool Contains(uint8_t v) const {
     int i = v >> 6;
     int bit = v & 0b00111111;
     return !!(1 & (u.words[i] >> (63 - bit)));
   }
+
   void Add(uint8_t v) {
     int i = v >> 6;
     int bit = v & 0b00111111;
     u.words[i] |= uint64_t{1} << (63 - bit);
   }
+
   void AddSet(const ByteSet &other) {
     u.a |= other.u.a;
     u.b |= other.u.b;
@@ -103,7 +112,7 @@ struct ByteSet {
   }
 
   template<class F>
-  ByteSet Map(const F &f) {
+  ByteSet Map(const F &f) const {
     ByteSet ret;
     for (uint8_t v : *this) {
       ret.Add(f(v));
@@ -320,7 +329,7 @@ struct ByteSet64 {
   std::strong_ordering operator <=>(const ByteSet64 &other) const;
 
   template<class F>
-  ByteSet64 Map(const F &f) {
+  ByteSet64 Map(const F &f) const {
     ByteSet64 ret;
     for (uint8_t v : *this) {
       ret.Add(f(v));
@@ -372,5 +381,12 @@ struct ByteSet64 {
   }
 };
 static_assert(sizeof(ByteSet64) == 8);
+
+
+// Inline implementations follow.
+
+ByteSet::ByteSet(const std::initializer_list<uint8_t> &values) {
+  for (uint8_t v : values) Add(v);
+}
 
 #endif
