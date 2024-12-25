@@ -286,6 +286,7 @@
     (setq explicit-shell-file-name "bash"))
 
 (require 'switch-files)
+(require 'select-buffers)
 
 ;; Goal here is to disable the behavior where C-x b avoids a buffer if
 ;; it's open in another frame. Often I want to have some piece of a source
