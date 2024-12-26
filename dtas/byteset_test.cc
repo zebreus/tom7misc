@@ -588,6 +588,13 @@ static void TestByteSetIterator() {
   }
 }
 
+static void TestByteSetConstructor() {
+  ByteSet b({0x00, 0x01, 0x02, 0x03});
+
+  CHECK(b.Size() == 4);
+  CHECK(!b.Contains(0xa2));
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -598,6 +605,7 @@ int main(int argc, char **argv) {
   TestByteSetClear();
   TestByteSetSingleton();
   TestByteSetIterator();
+  TestByteSetConstructor();
 
   TestByteSet64Empty();
   TestByteSet64Singleton();

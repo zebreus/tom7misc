@@ -68,10 +68,15 @@ static void Model() {
 
   SourceMap source_map = SourceMap::FromFile("mario.sourcemap");
 
+  // TODO: Get these from annotations in the assembly file.
   modeling.ram_constraints[OPER_MODE].push_back(ValueConstraint{
     .comment = "Oper Mode",
     .valid_values = ByteSet({0x00, 0x01, 0x02, 0x03}),
     });
+
+  for (const auto &vc : modeling.ram_constraints[OPER_MODE]) {
+    printf("Constraint: %s\n", vc.valid_values.DebugString().c_str());
+  }
 
   // These are the entry points that we actually care about:
   // NonMaskableInterrupt is the entry point for the frame,

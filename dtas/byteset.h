@@ -87,6 +87,11 @@ struct ByteSet {
     return ret;
   }
 
+  // true if a <= b.
+  static bool Subset(const ByteSet &a, const ByteSet &b) {
+    return a == Intersection(a, b);
+  }
+
   int Size() const {
     // TODO PERF: This version with std::popcount compiles into
     // SIMD instructions with clang, which takes about twice as
@@ -385,8 +390,10 @@ static_assert(sizeof(ByteSet64) == 8);
 
 // Inline implementations follow.
 
-ByteSet::ByteSet(const std::initializer_list<uint8_t> &values) {
-  for (uint8_t v : values) Add(v);
+ByteSet::ByteSet(const std::initializer_list<uint8_t> &values) : ByteSet() {
+  for (uint8_t v : values) {
+    Add(v);
+  }
 }
 
 #endif

@@ -284,7 +284,7 @@ ByteSet Modeling::GetByteSetFromOffsetsZpg(
 // we don't know that the write even takes place at any given address,
 // so we need to *union* at each destination, not *overwrite*.
 void Modeling::WriteMemByteSet(State *state, uint16_t addr,
-                              const MemByteSet &s) const {
+                               const MemByteSet &s) const {
   // ROM writes are ignored.
   if (addr >= rom.ORIGIN)
     return;
@@ -1700,7 +1700,7 @@ void Modeling::Expand() {
       }
 
       if (inst_verbose > 0 || (born > 16 && !quiet)) {
-        printf("Indirect JMP at " ACYAN("%04x")
+        printf("Indirect JMP at " AYELLOW("%04x")
                " added " AORANGE("%d") " new blocks. "
                "[acc " AGREEN("%d") "; rej " ARED("%d") "]\n",
                instruction_pc, born, accepted, rejected);
@@ -2163,5 +2163,22 @@ void Modeling::WriteAnnotatedAssembly(const SourceMap &source_map,
 }
 
 void Modeling::CheckMemoryInvariants(const State &state, uint16_t addr) const {
-  // TODO
+  CHECK(addr < 2048);
+
+  auto it = ram_constraints.find(addr);
+  if (it == ram_constraints.end()) return;
+
+  for (const ValueConstraint &vc : it->second) {
+    const MemByteSet &actual = state.ram[addr];
+    if (!ByteSet::Subset(actual, vc.valid_values)) {
+      printf("Memory invariant " AWHITE("%s") " violated.\n"
+             "Address " AYELLOW("%04x") " should contain only: %s\n"
+             "But it contained: %s\n",
+             vc.comment.c_str(),
+             addr,
+             vc.valid_values.DebugString().c_str(),
+             actual.DebugString().c_str());
+      LOG(FATAL) << "Memory invariant violation.\n";
+    }
+  }
 }
