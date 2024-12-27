@@ -5,21 +5,27 @@
 (defvar select-buffers-mode-map (make-sparse-keymap)
   "Keymap for select-buffers-mode.")
 
+(defvar select-buffers-priority-buffers
+  '("style-guide.txt")
+  "A list of buffer names that should be ordered first.")
+
 (define-minor-mode select-buffers-mode
   "Minor mode for selecting buffers."
   :lighter " Buffers"
   (if select-buffers-mode
       (progn
-        (use-local-map select-buffers-mode-map)
-        (select-buffers-highlight-selected))
+        (use-local-map select-buffers-mode-map))
     (progn
-      (use-local-map nil)
-      (select-buffers-remove-highlight))
+      (use-local-map nil))
     ))
 
 (defvar select-buffers-selected-face
   '(:background "#009" :foreground "#CCF")
   "Face used to highlight selected lines in select-buffers-mode.")
+
+(defvar select-buffers-priority-face
+  '(:foreground "#ffc")
+  "Face used to highlight priority lines in select-buffers-mode.")
 
 (defvar select-buffers-highlight-overlays nil
   "A list of overlays to keep track of highlights.")
@@ -32,10 +38,18 @@
     (insert
      (mapconcat
       (lambda (buffer)
-        (format
-         "%s %s"
-         (if (member buffer select-buffers-selected-buffers) "[x]" "[ ]")
-         (buffer-name buffer)))
+        (let* ((buffer-name (buffer-name buffer))
+               (checkbox (if (member buffer select-buffers-selected-buffers) "[x]" "[ ]"))
+               (base-face (if (member buffer select-buffers-selected-buffers)
+                              select-buffers-selected-face
+                            nil))
+               (merged-face
+                (if (member buffer-name select-buffers-priority-buffers)
+                    (face-remap-add-relative select-buffers-priority-face base-face)
+                  base-face)))
+          (propertize
+           (format "%s %s" checkbox buffer-name)
+           'face merged-face)))
       select-buffers-buffer-list
       "\n"))
     (when old-bro (setq buffer-read-only t))
@@ -43,16 +57,15 @@
 
 (defun select-buffers ()
   (interactive)
-  (let ((buf-list (buffer-list))
-        (buffer (generate-new-buffer "*Buffer Selector*")))
-    (setq select-buffers-buffer-list buf-list)
-    (setq select-buffers-selected-buffers nil)
+  (let ((buffer (generate-new-buffer "*Buffer Selector*")))
     (with-current-buffer buffer
-      (select-buffers-redraw)
+      (setq select-buffers-selected-buffers nil)
+      (select-buffers-refresh)
       (goto-char (point-min))
       (set-buffer-modified-p nil)
       (setq buffer-read-only t)
-      (select-buffers-mode 1) ; Enable the minor mode
+      ; Enable the minor mode
+      (select-buffers-mode 1)
       (switch-to-buffer buffer)
       (setq mode-line-format
             (list " "
@@ -77,8 +90,7 @@
     (select-buffers-redraw)
     (goto-char (point-min))
     ;; go back where we were, and then one more
-    (forward-line current-line)
-    (select-buffers-highlight-selected)))
+    (forward-line current-line)))
 
 (defun select-buffers-collect-and-sort ()
   (let* ((dependency-map (select-buffers-build-dependency-map select-buffers-selected-buffers))
@@ -175,29 +187,38 @@
 
 (defun select-buffers-reorder-buffer-names (buffer-names dependency-map)
   (message "Starting select-buffers-reorder-buffer-names with buffer-names: %s" buffer-names)
-  (labels ((reorder-recursive (input-list output-list)
-             (cond
-              ((null input-list)
-               (message "  Input list is nil, returning: %s" (reverse output-list))
-               (reverse output-list))
-              (t
-               (let* ((current-name (car input-list))
-                      (remaining-input (cdr input-list))
-                      (base-name (replace-regexp-in-string "\\.\\(h\\|hpp\\)$" "" current-name))
-                      (is-header (or (string-suffix-p ".h" current-name) (string-suffix-p ".hpp" current-name))))
-                 (message "  Processing current-name: %s, base-name: %s, is-header: %S"
-                          current-name base-name is-header)
-                 (cond
-                  (is-header
-                   ;; If it's a header, look for the corresponding source file
-                   (let* ((result (find-and-reorder-source base-name remaining-input nil dependency-map))
-                          (buffers-to-add (car result))
-                          (new-remaining-input (cdr result)))
-                     (reorder-recursive new-remaining-input (append (append buffers-to-add (list current-name)) output-list))))
-                  (t
-                   ;; If it's not a header, just add it to the output list
-                   (reorder-recursive remaining-input (cons current-name output-list)))))))))
-    (reorder-recursive buffer-names nil)))
+  (let ((priority-buffers nil)
+        (remaining-buffers nil))
+    ;; first, put priority buffers first.
+    (dolist (name buffer-names)
+      (if (member name select-buffers-priority-buffers)
+          (push name priority-buffers)
+        (push name remaining-buffers)))
+    (setq buffer-names (append (reverse priority-buffers) (reverse remaining-buffers)))
+    ;; now reorder based on dependency heuristics.
+    (labels ((reorder-recursive (input-list output-list)
+               (cond
+                ((null input-list)
+                 (message "  Input list is nil, returning: %s" (reverse output-list))
+                 (reverse output-list))
+                (t
+                 (let* ((current-name (car input-list))
+                        (remaining-input (cdr input-list))
+                        (base-name (replace-regexp-in-string "\\.\\(h\\|hpp\\)$" "" current-name))
+                        (is-header (or (string-suffix-p ".h" current-name) (string-suffix-p ".hpp" current-name))))
+                   (message "  Processing current-name: %s, base-name: %s, is-header: %S"
+                            current-name base-name is-header)
+                   (cond
+                    (is-header
+                     ;; If it's a header, look for the corresponding source file
+                     (let* ((result (find-and-reorder-source base-name remaining-input nil dependency-map))
+                            (buffers-to-add (car result))
+                            (new-remaining-input (cdr result)))
+                       (reorder-recursive new-remaining-input (append (append buffers-to-add (list current-name)) output-list))))
+                    (t
+                     ;; If it's not a header, just add it to the output list
+                     (reorder-recursive remaining-input (cons current-name output-list)))))))))
+      (reorder-recursive buffer-names nil))))
 
 (defun select-buffers-topological-sort (dependency-map)
   (let ((visited (make-hash-table :test 'equal))
@@ -224,37 +245,30 @@
         (setq sorted-list (reverse sorted-list)))
       sorted-list)))
 
-(defun select-buffers-remove-highlight ()
-  "Remove the highlighting in `select-buffers-mode`."
+(defun select-buffers-refresh ()
   (interactive)
-  (dolist (ov select-buffers-highlight-overlays)
-    (delete-overlay ov))
-  (setq select-buffers-highlight-overlays nil))
-
-(defun select-buffers-highlight-selected ()
-  "Highlight selected lines in select-buffers-mode."
-  (interactive)
-  (save-excursion
-    (select-buffers-remove-highlight)
-    (setq select-buffers-highlight-overlays nil)
-    (let ((line-number 1))
-      (goto-char (point-min))
-      (while (not (eobp))
-        (let ((line-start (line-beginning-position))
-              (line-end (line-end-position))
-              (buffer (nth (1- line-number) select-buffers-buffer-list)))
-          (when (member buffer select-buffers-selected-buffers)
-            (let ((ov (make-overlay line-start line-end)))
-              (overlay-put ov 'face select-buffers-selected-face)
-              (push ov select-buffers-highlight-overlays)))
-          )
-        (forward-line 1)
-        (setq line-number (1+ line-number))))))
+  (let* ((selected-names (mapcar 'buffer-name select-buffers-selected-buffers))
+         (new-buf-list (buffer-list))
+         (filtered-buf-list
+          (cl-remove-if
+           (lambda (buffer)
+             ;; exclude *Special Buffers*
+             ;; even if they have <disamb> at the end.
+             (string-match "^[ ]*\\*.*\\*\\(?:<.*>\\)?$" (buffer-name buffer)))
+           new-buf-list)))
+    (setq select-buffers-buffer-list filtered-buf-list)
+    (setq select-buffers-selected-buffers
+          (cl-remove-if-not
+           (lambda (buffer) (member (buffer-name buffer) selected-names))
+           filtered-buf-list))
+    (select-buffers-redraw)
+    (goto-char (point-min))))
 
 (define-key select-buffers-mode-map (kbd "q") 'select-buffers-exit)
 (define-key select-buffers-mode-map (kbd "<SPC>") 'select-buffers-toggle-checkbox)
 (define-key select-buffers-mode-map (kbd "<return>") 'select-buffers-exit)
 (define-key select-buffers-mode-map (kbd "<next>") 'forward-line)
 (define-key select-buffers-mode-map (kbd "<prior>") 'backward-line)
+(define-key select-buffers-mode-map (kbd "g") 'select-buffers-refresh)
 
 (provide 'select-buffers)
