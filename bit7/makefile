@@ -1,7 +1,7 @@
 
 all: default
 
-default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd
+default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd getcodepoints.exe
 
 ASAN=true
 
@@ -78,6 +78,9 @@ normalize : normalize.exe fixedersys1x.png fixedersys2x.png
 	./normalize.exe fixedersyslight2x.cfg
 
 unicoderange.exe : unicoderange.o $(CCLIB_OBJECTS)
+	$(CXX) $(LFLAGS) $^ -o $@
+
+getcodepoints.exe : getcodepoints.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
 clean :
