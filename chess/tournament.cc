@@ -59,7 +59,7 @@ static constexpr bool INCLUDE_NES = false;
 
 // Needs pi.txt and e.txt, which should be (for pi) "3." followed
 // by 10 million hexadecimal "digits".
-static constexpr bool INCLUDE_NUMBERS = false;
+static constexpr bool INCLUDE_BINARY_NUMBERS = false;
 
 // Needs stockfish.exe.
 static constexpr bool INCLUDE_STOCKFISH = false;
@@ -251,16 +251,14 @@ static vector<Entrant> *MakeEntrants() {
         });
   }
 
-  if (INCLUDE_NUMBERS) {
-    entrants->insert(
-      entrants->end(),
-      {
-        BinaryPi,
-        BinaryE,
+  // These are hard-coded constants.
+  entrants->push_back(RationalPi);
+  entrants->push_back(RationalE);
 
-        RationalPi,
-        RationalE,
-      });
+  // But these need large binary expansions.
+  if (INCLUDE_BINARY_NUMBERS) {
+    entrants->push_back(BinaryPi);
+    entrants->push_back(BinaryE);
   }
 
   entrants->insert(

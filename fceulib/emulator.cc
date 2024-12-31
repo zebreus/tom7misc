@@ -444,7 +444,7 @@ uint32 Emulator::GetYScroll() const {
   return ytable_select + (uint32)ypos;
 }
 
-const char *const Emulator::Opcode(uint8_t op) {
+const char *Emulator::Opcode(uint8_t op) {
   return Opcodes::opcode_name[op];
 }
 

@@ -4,17 +4,16 @@
 #include <cstdio>
 #include <ctime>
 #include <processthreadsapi.h>
-#include <string>
 #include <shared_mutex>
-#include <unordered_map>
-#include <vector>
-#include <utility>
+#include <string>
 #include <unistd.h>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
-#include "util.h"
-#include "city/city.h"
 #include "threadutil.h"
+#include "util.h"
 
 #include "bigchess.h"
 #include "packedgame.h"

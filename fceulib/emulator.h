@@ -154,7 +154,7 @@ struct Emulator {
   // Decode the single-byte 6502 instruction. The name here
   // starts with a 3-character mnemonic, but usually has
   // additional stuff to distinguish the addressing mode, etc.
-  static const char *const Opcode(uint8 op);
+  static const char *Opcode(uint8 op);
 
   // Interpret the PPU state to (for example) reconstruct an
   // approximate image. This may not be accurate when the

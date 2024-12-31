@@ -15,7 +15,6 @@
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
-#include "city/city.h"
 #include "textsvg.h"
 
 #include "gamestats.h"

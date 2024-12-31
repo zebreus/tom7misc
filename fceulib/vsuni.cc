@@ -306,7 +306,7 @@ static constexpr VSUni::VSUniEntry VSUniGames[] = {
   {"VS Super Mario Bros", 0x39d8cfa788e20b6cLL, 99, 2, RP2C05_004, 0},
   {"VS TKO Boxing", 0x6e1ee06171d8ce3aLL, 4, 1, RP2C04_003, IOPTION_PREDIP,
    0x00},
-  {0}};
+  {nullptr, 0, 0, 0, 0, 0, 0}};
 
 void VSUni::VSUniCheck(uint64 md5partial, int *mapper_no, uint8 *Mirroring) {
   const VSUniEntry *vs = VSUniGames;

@@ -8,11 +8,10 @@
 #include <unistd.h>
 
 #include "base/logging.h"
-#include "util.h"
-#include "city/city.h"
-#include "threadutil.h"
 #include "bigchess.h"
 #include "packedgame.h"
+#include "threadutil.h"
+#include "util.h"
 
 constexpr int MAX_PARALLELISM = 8;
 

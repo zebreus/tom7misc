@@ -34,7 +34,6 @@
 // month of January 2018. This program outputs the hashes
 // (PositionHash) of such "common" positions.
 
-#include "c:/code/sf_svn/cc-lib/threadutil.h"
 #include "chess.h"
 
 #include <algorithm>
@@ -53,7 +52,7 @@
 #include "base/stringprintf.h"
 #include "base/logging.h"
 #include "util.h"
-#include "city/city.h"
+#include "threadutil.h"
 
 #include "bigchess.h"
 #include "packedgame.h"

@@ -81,13 +81,13 @@ static constexpr const char *const PIECE_NAME[32] = {
   "h1 rook", };
 
 struct Processor {
-  Processor(uint32 want_crit_set) : want_crit_set(want_crit_set) {  }
+  Processor(uint32_t want_crit_set) : want_crit_set(want_crit_set) {  }
 
   // Get the subset of want_crit_set that the game actually
   // possesses. This is used to filter the game, and to decide
   // which stat buckets to accumulate results into.
-  uint32 GetCriteria(const PGN &pgn) const {
-    uint32 result = 0;
+  uint32_t GetCriteria(const PGN &pgn) const {
+    uint32_t result = 0;
 
     // PERF not expensive, but we could avoid computing this if we
     // have no time control criteria.
@@ -163,7 +163,7 @@ struct Processor {
       return;
 
     // Does it fit the criteria?
-    const uint32 has_crit_set = GetCriteria(pgn);
+    const uint32_t has_crit_set = GetCriteria(pgn);
     // Can just skip because it matches no criteria.
     if (0 == has_crit_set)
       return;
@@ -260,7 +260,7 @@ struct Processor {
   std::shared_mutex bad_games_m;
   int64 bad_games = 0LL;
   // Bitmask with (1 << crit).
-  const uint32 want_crit_set = 0LL;
+  const uint32_t want_crit_set = 0LL;
   // Always space for each criteria, even if we're not tallying them all.
 
   std::vector<Stats> stat_buckets{NUM_CRITERIA * NUM_BUCKETS};
@@ -268,7 +268,7 @@ struct Processor {
   PGNParser parser;
 };
 
-static void ReadLargePGN(uint32 want_crit_set,
+static void ReadLargePGN(uint32_t want_crit_set,
                          string input_filename,
                          string outputbase) {
   fprintf(stderr, "OK %s %s\n", input_filename.c_str(), outputbase.c_str());
@@ -376,8 +376,8 @@ Criteria ParseCriteria(const string &s) {
   return Criteria::ALL_GAMES;
 }
 
-uint32 ParseCriteriaSet(string s) {
-  uint32 res = 0;
+uint32_t ParseCriteriaSet(string s) {
+  uint32_t res = 0;
   for (;;) {
     string tok = Util::chopto(',', s);
     if (tok.empty()) return res;
@@ -391,7 +391,7 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  uint32 want_crit = ParseCriteriaSet(argv[1]);
+  uint32_t want_crit = ParseCriteriaSet(argv[1]);
   fprintf(stderr, "Criteria: 0%o\n", want_crit);
   const string inputfile = argv[2];
   const string outputbase = argv[3];

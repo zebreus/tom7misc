@@ -16,7 +16,6 @@
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "c:/code/sf_svn/cc-lib/base/type_traits.h"
 #include "util.h"
 #include "arcfour.h"
 #include "randutil.h"
