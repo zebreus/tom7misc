@@ -283,7 +283,8 @@ ByteSet Modeling::GetByteSetFromOffsetsZpg(
 // address. Remember that when we write to an indeterminate address,
 // we don't know that the write even takes place at any given address,
 // so we need to *union* at each destination, not *overwrite*.
-void Modeling::WriteMemByteSet(State *state, uint16_t addr,
+void Modeling::WriteMemByteSet(const ErrorLoc &loc,
+                               State *state, uint16_t addr,
                                const MemByteSet &s) const {
   // ROM writes are ignored.
   if (addr >= rom.ORIGIN)
@@ -292,14 +293,15 @@ void Modeling::WriteMemByteSet(State *state, uint16_t addr,
   // RAM.
   if (addr < 2048) {
     state->ram[addr] = s;
-    CheckMemoryInvariants(*state, addr);
+    CheckMemoryInvariants(loc, *state, addr);
     return;
   }
 
   // TODO: Special cases for memory-mapped addresses.
 }
 
-void Modeling::MergeWriteByteSet(State *state, uint16_t addr,
+void Modeling::MergeWriteByteSet(const ErrorLoc &loc,
+                                 State *state, uint16_t addr,
                                  const ByteSet &s) const {
   // ROM writes are ignored.
   if (addr >= rom.ORIGIN)
@@ -308,7 +310,7 @@ void Modeling::MergeWriteByteSet(State *state, uint16_t addr,
   // RAM.
   if (addr < 2048) {
     state->ram[addr].AddSet(s);
-    CheckMemoryInvariants(*state, addr);
+    CheckMemoryInvariants(loc, *state, addr);
     return;
   }
 
@@ -581,6 +583,10 @@ void Modeling::Expand() {
   const std::string current_label = block.tag.label;
   uint16_t pc = block.StartAddr();
 
+  ErrorLoc loc{
+    .pc = pc,
+  };
+
   auto Next8 = [&]() -> uint8_t {
       uint8_t ret = rom.Read(pc);
       pc++;
@@ -726,17 +732,17 @@ void Modeling::Expand() {
   // flags = (flags & ~mask) | f(mem[addr+offset]).second
   // FIXME: I think that we need a version for zero page, which
   // wraps only to addresses on zero page.
-  auto ReadModifyWrite = [this](State *state,
-                                uint8_t flag_mask,
-                                uint16_t addr_base,
-                                const ByteSet &addr_offset,
-                                const auto &f) {
+  auto ReadModifyWrite = [this, &loc](State *state,
+                                      uint8_t flag_mask,
+                                      uint16_t addr_base,
+                                      const ByteSet &addr_offset,
+                                      const auto &f) {
       if (addr_offset.Size() == 1) {
         uint16_t eaddr = addr_base + addr_offset.GetSingleton();
         ByteSet before = this->GetByteSet(*state, eaddr);
         const auto &[after, flags] = f(before);
         // Overwrite, since this is a definite address.
-        this->WriteMemByteSet(state, eaddr, MemByteSet(after));
+        this->WriteMemByteSet(loc, state, eaddr, MemByteSet(after));
         CombineFlags(state, flags, flag_mask);
       } else {
         ByteSet merged_flags;
@@ -750,7 +756,7 @@ void Modeling::Expand() {
           const auto &[after, flags] = f(before);
           merged_flags.AddSet(flags);
           ByteSet together = ByteSet::Union(before, after);
-          this->WriteMemByteSet(state, eaddr, MemByteSet(together));
+          this->WriteMemByteSet(loc, state, eaddr, MemByteSet(together));
         }
         // Update with the possible flag values.
         CombineFlags(state, merged_flags, flag_mask);
@@ -1019,9 +1025,9 @@ void Modeling::Expand() {
         // Push low, then push high. Note this actually puts them
         // in "big-endian" order if you are looking at memory,
         // since the stack grows downward.
-        WriteMemByteSet(&state, saddr,
+        WriteMemByteSet(loc, &state, saddr,
                         MemByteSet::Singleton(stored_pc & 0xFF));
-        WriteMemByteSet(&state, saddr - 1,
+        WriteMemByteSet(loc, &state, saddr - 1,
                         MemByteSet::Singleton(stored_pc >> 8));
         state.S = ByteSet::Singleton(saddr - 2);
       } else {
@@ -1038,9 +1044,9 @@ void Modeling::Expand() {
           // Push low, then push high. Note this actually puts them
           // in "big-endian" order if you are looking at memory,
           // since the stack grows downward.
-          MergeWriteByteSet(&state, saddr,
+          MergeWriteByteSet(loc, &state, saddr,
                             MemByteSet::Singleton(stored_pc & 0xFF));
-          MergeWriteByteSet(&state, saddr - 1,
+          MergeWriteByteSet(loc, &state, saddr - 1,
                             MemByteSet::Singleton(stored_pc >> 8));
         }
         state.S = state.S.Map([](uint8_t v) {
@@ -1151,9 +1157,9 @@ void Modeling::Expand() {
                     // We know where the stack points, and what was
                     // there.
                     ret_state.S = ByteSet::Singleton(sp + 2);
-                    WriteMemByteSet(&ret_state, saddr + 1,
+                    WriteMemByteSet(loc, &ret_state, saddr + 1,
                                     MemByteSet::Singleton(hi));
-                    WriteMemByteSet(&ret_state, saddr + 2,
+                    WriteMemByteSet(loc, &ret_state, saddr + 2,
                                     MemByteSet::Singleton(lo));
 
                     // TODO: We might want to split by the value of the
@@ -1229,12 +1235,12 @@ void Modeling::Expand() {
         // Then it is definitely stored in the stack here,
         // so we can replace the memory location.
         const uint16_t saddr = 0x0100 + sp;
-        WriteMemByteSet(&state, saddr, MemByteSet(state.A));
+        WriteMemByteSet(loc, &state, saddr, MemByteSet(state.A));
         state.S = ByteSet::Singleton(sp - 1);
       } else {
         for (uint8_t sp : state.S) {
           const uint16_t saddr = 0x0100 + sp;
-          MergeWriteByteSet(&state, saddr, state.A);
+          MergeWriteByteSet(loc, &state, saddr, state.A);
         }
         state.S = state.S.Map([](uint8_t v) {
             return v - 1;
@@ -1364,12 +1370,12 @@ void Modeling::Expand() {
 
     case 0x85: { // STA d
       uint16_t addr = Next8();
-      WriteMemByteSet(&state, addr, MemByteSet(state.A));
+      WriteMemByteSet(loc, &state, addr, MemByteSet(state.A));
       break;
     }
     case 0x8d: { // STA a
       uint16_t addr = Next16();
-      WriteMemByteSet(&state, addr, MemByteSet(state.A));
+      WriteMemByteSet(loc, &state, addr, MemByteSet(state.A));
       break;
     }
     case 0x9d: { // STA a,x
@@ -1377,11 +1383,11 @@ void Modeling::Expand() {
       if (state.X.Size() == 1) {
         // If the address is definite, then we can overwrite.
         uint16_t eaddr = addr + state.X.GetSingleton();
-        WriteMemByteSet(&state, eaddr, MemByteSet(state.A));
+        WriteMemByteSet(loc, &state, eaddr, MemByteSet(state.A));
       } else {
         for (uint8_t x : state.X) {
           uint16_t eaddr = addr + x;
-          MergeWriteByteSet(&state, eaddr, state.A);
+          MergeWriteByteSet(loc, &state, eaddr, state.A);
         }
       }
       break;
@@ -1391,11 +1397,11 @@ void Modeling::Expand() {
       if (state.Y.Size() == 1) {
         // If the address is definite, then we can overwrite.
         uint16_t eaddr = addr + state.Y.GetSingleton();
-        WriteMemByteSet(&state, eaddr, MemByteSet(state.A));
+        WriteMemByteSet(loc, &state, eaddr, MemByteSet(state.A));
       } else {
         for (uint8_t y : state.Y) {
           uint16_t eaddr = addr + y;
-          MergeWriteByteSet(&state, eaddr, state.A);
+          MergeWriteByteSet(loc, &state, eaddr, state.A);
         }
       }
       break;
@@ -1405,11 +1411,11 @@ void Modeling::Expand() {
       if (state.X.Size() == 1) {
         // If the address is definite, then we can overwrite.
         uint8_t zpg_eaddr = zpg_addr + state.X.GetSingleton();
-        WriteMemByteSet(&state, zpg_eaddr, MemByteSet(state.A));
+        WriteMemByteSet(loc, &state, zpg_eaddr, MemByteSet(state.A));
       } else {
         for (uint8_t x : state.X) {
           uint8_t zpg_eaddr = zpg_addr + x;
-          MergeWriteByteSet(&state, zpg_eaddr, state.A);
+          MergeWriteByteSet(loc, &state, zpg_eaddr, state.A);
         }
       }
       break;
@@ -1427,7 +1433,7 @@ void Modeling::Expand() {
         uint16_t eaddr =
           Word16(addr_hi.GetSingleton(), addr_lo.GetSingleton()) +
           state.Y.GetSingleton();
-        WriteMemByteSet(&state, eaddr, MemByteSet(state.A));
+        WriteMemByteSet(loc, &state, eaddr, MemByteSet(state.A));
 
       } else {
         // Have to merge it everywhere.
@@ -1435,7 +1441,7 @@ void Modeling::Expand() {
           for (uint8_t lo : addr_lo) {
             for (uint8_t y : state.Y) {
               uint16_t eaddr = Word16(hi, lo) + y;
-              MergeWriteByteSet(&state, eaddr, state.A);
+              MergeWriteByteSet(loc, &state, eaddr, state.A);
             }
           }
         }
@@ -1639,36 +1645,36 @@ void Modeling::Expand() {
 
     case 0x84: { // STY d
       uint8_t zpg_addr = Next8();
-      WriteMemByteSet(&state, zpg_addr, MemByteSet(state.Y));
+      WriteMemByteSet(loc, &state, zpg_addr, MemByteSet(state.Y));
       break;
     }
     case 0x94: { // STY d,x
       uint8_t zpg_addr = Next8();
       if (state.X.Size() == 1) {
         uint8_t eaddr = zpg_addr + state.X.GetSingleton();
-        WriteMemByteSet(&state, eaddr, MemByteSet(state.Y));
+        WriteMemByteSet(loc, &state, eaddr, MemByteSet(state.Y));
       } else {
         for (uint8_t x : state.X) {
           uint8_t eaddr = zpg_addr + x;
-          MergeWriteByteSet(&state, eaddr, state.Y);
+          MergeWriteByteSet(loc, &state, eaddr, state.Y);
         }
       }
       break;
     }
     case 0x8c: { // STY a
       uint16_t addr = Next16();
-      WriteMemByteSet(&state, addr, MemByteSet(state.Y));
+      WriteMemByteSet(loc, &state, addr, MemByteSet(state.Y));
       break;
     }
 
     case 0x8e: { // STX a
       uint16_t addr = Next16();
-      WriteMemByteSet(&state, addr, MemByteSet(state.X));
+      WriteMemByteSet(loc, &state, addr, MemByteSet(state.X));
       break;
     }
     case 0x86: { // STX d
       uint16_t addr = Next8();
-      WriteMemByteSet(&state, addr, MemByteSet(state.X));
+      WriteMemByteSet(loc, &state, addr, MemByteSet(state.X));
       break;
     }
 
@@ -2162,7 +2168,12 @@ void Modeling::WriteAnnotatedAssembly(const SourceMap &source_map,
   Util::WriteFile(std::string(filename), out);
 }
 
-void Modeling::CheckMemoryInvariants(const State &state, uint16_t addr) const {
+std::string Modeling::ErrorLocString(const ErrorLoc &loc) const {
+  return StringPrintf("PC: " AORANGE("%04x"), loc.pc);
+}
+
+void Modeling::CheckMemoryInvariants(const ErrorLoc &loc,
+                                     const State &state, uint16_t addr) const {
   CHECK(addr < 2048);
 
   auto it = ram_constraints.find(addr);
@@ -2171,10 +2182,12 @@ void Modeling::CheckMemoryInvariants(const State &state, uint16_t addr) const {
   for (const ValueConstraint &vc : it->second) {
     const MemByteSet &actual = state.ram[addr];
     if (!ByteSet::Subset(actual, vc.valid_values)) {
-      printf("Memory invariant " AWHITE("%s") " violated.\n"
+      printf("Memory invariant " AWHITE("%s") " violated."
+             "At: %s\n"
              "Address " AYELLOW("%04x") " should contain only: %s\n"
              "But it contained: %s\n",
              vc.comment.c_str(),
+             ErrorLocString(loc).c_str(),
              addr,
              vc.valid_values.DebugString().c_str(),
              actual.DebugString().c_str());

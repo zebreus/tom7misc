@@ -201,17 +201,29 @@ struct Modeling {
   // True if the analysis is quiescent.
   bool Done() const;
 
+
+  // The stuff below is mostly implementation details.
+
+
+  // Used internally to print the location of an error like a
+  // memory invariant violation.
+  struct ErrorLoc {
+    uint16_t pc = 0;
+  };
+
   // Get the byteset for a specific memory location. If it's in ROM,
   // it will be a singleton set with the fixed contents. If it's in
   // RAM, we use the set in that slot from the state. If it's
   // memory-mapped, then we have special cases.
   ByteSet GetByteSet(const State &state, uint16_t addr) const;
   // Conversely, write to an address (typically a RAM address).
-  void WriteMemByteSet(State *state, uint16_t addr,
+  void WriteMemByteSet(const ErrorLoc &loc,
+                       State *state, uint16_t addr,
                        const MemByteSet &s) const;
   // Merge the set with the memory address (typically a RAM address
   // when the destination of the write is not definite).
-  void MergeWriteByteSet(State *state, uint16_t addr,
+  void MergeWriteByteSet(const ErrorLoc &loc,
+                         State *state, uint16_t addr,
                          const ByteSet &s) const;
 
   // When we have addr+x, x may take on multiple values. This merges
@@ -239,7 +251,8 @@ struct Modeling {
 
   // Check the invariants about the RAM address. Aborts if they are
   // violated. This is mainly used internally.
-  void CheckMemoryInvariants(const State &state, uint16_t addr) const;
+  void CheckMemoryInvariants(const ErrorLoc &loc,
+                             const State &state, uint16_t addr) const;
 
   // Write the current model as an .asm file with annotations on
   // basic blocks.
@@ -250,6 +263,8 @@ struct Modeling {
   static std::string TagString(const BlockTag &tag);
   // No color.
   static std::string PlainTagString(const BlockTag &tag);
+  std::string ErrorLocString(const ErrorLoc &loc) const;
+
 };
 
 #endif

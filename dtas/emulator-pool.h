@@ -53,14 +53,14 @@ struct EmulatorPool {
     }
 
     // Move-only.
-    Lease(Lease&& other) noexcept :
+    Lease(Lease &&other) noexcept :
       parent(other.parent),
       wrapper(other.wrapper) {
       other.wrapper = nullptr;
       other.parent = nullptr;
     }
 
-    Lease& operator=(Lease&& other) noexcept {
+    Lease& operator=(Lease &&other) noexcept {
       if (this != &other) {
         // If overwriting, return the lease.
         if (wrapper != nullptr) {
