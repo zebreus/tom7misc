@@ -1780,6 +1780,7 @@ struct Lin {
 };
 }  // namespace
 
+[[maybe_unused]]
 static Lin operator +(const Lin &a, const Lin &b) {
   Lin ret = a;
   for (int i = 0; i < a.weights.size(); i++)

@@ -20,7 +20,7 @@ else
 endif
 
 # XXX undo all of these
-CXXFLAGS+=-Wno-write-strings -fpermissive -ferror-limit=1000
+CXXFLAGS+=-Wno-write-strings -fpermissive
 CXXFLAGS+=-I$(CC_LIB)
 
 CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o

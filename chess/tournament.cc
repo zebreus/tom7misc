@@ -46,28 +46,43 @@
 #include "letter-player.h"
 #include "eniac-player.h"
 #include "grad-player.h"
+#include "ansi.h"
 
 #define TESTING true
 
-// Cursor to beginning of previous line
-#define ANSI_PREVLINE "\x1B[F"
-#define ANSI_CLEARLINE "\x1B[2K"
-#define ANSI_CLEARTOEOL "\x1B[0K"
+// The following flags enable players that require external
+// dependencies.
 
-#define ANSI_RED "\x1B[1;31;40m"
-#define ANSI_GREY "\x1B[1;30;40m"
-#define ANSI_BLUE "\x1B[1;34;40m"
-#define ANSI_CYAN "\x1B[1;36;40m"
-#define ANSI_YELLOW "\x1B[1;33;40m"
-#define ANSI_GREEN "\x1B[1;32;40m"
-#define ANSI_WHITE "\x1B[1;37;40m"
-#define ANSI_PURPLE "\x1B[1;35;40m"
-#define ANSI_RESET "\x1B[m"
+// Needs chessmaster.nes, but otherwise the emulator code is
+// built in, and it should be pretty portable.
+static constexpr bool INCLUDE_NES = false;
 
-// Synchronous update
-// XXX they don't work?
-#define MINTTY_SYNCHRONOUS_START "\x1BP=1s\x1B\\"
-#define MINTTY_SYNCHRONOUS_END "\x1BP=2s\x1B\\"
+// Needs pi.txt and e.txt, which should be (for pi) "3." followed
+// by 10 million hexadecimal "digits".
+static constexpr bool INCLUDE_NUMBERS = false;
+
+// Needs stockfish.exe.
+static constexpr bool INCLUDE_STOCKFISH = false;
+
+// Needs topple_v0.3.5_znver1.exe.
+static constexpr bool INCLUDE_TOPPLE = false;
+
+// Needs a packed game almanac (common_map.bin). You may be
+// able to reproduce this from code in this directory
+// (makealmanac.cc?) and a bunch of games from lichess.
+static constexpr bool INCLUDE_ALMANAC = false;
+
+// Needs model weights; you could try reproducing these from the
+// code in the blind/ subdirectory, but it's not recommended.
+static constexpr bool INCLUDE_BLIND_NN = false;
+
+// Needs model weights; you could try reproducing these from
+// the weird code in ../grad, but it's really not recommended!
+static constexpr bool INCLUDE_GRAD_NN = false;
+
+// Needs model weights; you could try to reproduce these from
+// the weird code in ../lowercase, but it's really not recommended!
+static constexpr bool INCLUDE_LETTERS = false;
 
 using Move = Position::Move;
 using namespace std;
@@ -88,6 +103,7 @@ static constexpr int RUN_FOR_SECONDS = 60 * 20; // 60 * 60 * 4;
 // we don't bother prioritizing self-play at all.
 static constexpr int SELFPLAY_TARGET = 5;
 
+// "Entrant" is a function that allocates (with new) a Player.
 typedef Player *(*Entrant)();
 
 static Player *GradSigmoid() {
@@ -194,7 +210,6 @@ static Player *GradPlus64Fix() {
   return new BlendRandom<64>(Stockfish1M());
 }
 
-#if 0
 static Player *LetterA() { return Letter(0); }
 static Player *LetterB() { return Letter(1); }
 static Player *LetterC() { return Letter(2); }
@@ -221,194 +236,156 @@ static Player *LetterW() { return Letter(22); }
 static Player *LetterX() { return Letter(23); }
 static Player *LetterY() { return Letter(24); }
 static Player *LetterZ() { return Letter(25); }
-#endif
 
-#if 0
-const vector<Entrant> &GetEntrants() {
-  static vector<Entrant> *entrants =
-    new vector<Entrant>{
-    /*
-                        LetterA,
-                        LetterB,
-                        LetterC,
-                        LetterD,
-                        LetterE,
-                        LetterF,
-                        LetterG,
-                        LetterH,
-                        LetterI,
-                        LetterJ,
-                        LetterK,
-                        LetterL,
-                        LetterM,
-                        LetterN,
-                        LetterO,
-                        LetterP,
-                        LetterQ,
-                        LetterR,
-                        LetterS,
-                        LetterT,
-                        LetterU,
-                        LetterV,
-                        LetterW,
-                        LetterX,
-                        LetterY,
-                        LetterZ,
-    */
+static vector<Entrant> *MakeEntrants() {
+  std::vector<Entrant> *entrants = new std::vector<Entrant>;
 
-                        Eniac,
+  if (INCLUDE_LETTERS) {
+    entrants->insert(
+        entrants->end(),
+        {
+          LetterA, LetterB, LetterC, LetterD, LetterE, LetterF, LetterG,
+          LetterH, LetterI, LetterJ, LetterK, LetterL, LetterM, LetterN,
+          LetterO, LetterP, LetterQ, LetterR, LetterS, LetterT, LetterU,
+          LetterV, LetterW, LetterX, LetterY, LetterZ,
+        });
+  }
 
-                        Safe,
-                        Dangerous,
-                        Popular,
-                        Rare,
-                        Survivalist,
-                        Fatalist,
-                        Equalizer,
+  if (INCLUDE_NUMBERS) {
+    entrants->insert(
+      entrants->end(),
+      {
+        BinaryPi,
+        BinaryE,
 
-                        BlindYolo,
-                        BlindSingleKings,
-                        BlindSpycheck,
+        RationalPi,
+        RationalE,
+      });
+  }
 
-                        Worstfish,
+  entrants->insert(
+      entrants->end(),
+      {
+        Eniac,
 
-                        BinaryPi,
-                        BinaryE,
+        Safe,
+        Dangerous,
+        Popular,
+        Rare,
+        Survivalist,
+        Fatalist,
+        Equalizer,
 
-                        RationalPi,
-                        RationalE,
+        MinOpponentMoves,
+        MirrorYSymmetry,
+        MirrorXSymmetry,
+        Random,
+        Symmetry180,
+        FirstMove,
+        Alphabetical,
+        Pacifist,
+        Generous,
+        NoIInsist,
+        SameColor,
+        OppositeColor,
+        Huddle,
+        Swarm,
+        SuicideKing,
+        ReverseStarting,
+        CCCP,
 
-                        MinOpponentMoves,
-                        MirrorYSymmetry,
-                        MirrorXSymmetry,
-                        Random,
-                        Symmetry180,
-                        FirstMove,
-                        Alphabetical,
-                        Pacifist,
-                        Generous,
-                        NoIInsist,
-                        SameColor,
-                        OppositeColor,
-                        Huddle,
-                        Swarm,
-                        SuicideKing,
-                        ReverseStarting,
-                        CCCP,
+        SinglePlayer,
 
-                        SinglePlayer,
-                        AlmanacPopular,
+      });
 
-                        Topple10K,
-                        Topple1M,
 
-                        Chessmaster1,
-                        Chessmaster2,
+  if (INCLUDE_BLIND_NN) {
+    entrants->insert(
+        entrants->end(),
+        {
+          BlindYolo,
+          BlindSingleKings,
+          BlindSpycheck,
+        });
+  }
 
-                        Stockfish0,
-                        Stockfish5,
-                        Stockfish10,
-                        Stockfish15,
-                        Stockfish20,
+  if (INCLUDE_GRAD_NN) {
+    entrants->insert(
+        entrants->end(),
+        {
+          GradSigmoid,
+          GradTanh,
+          GradLeaky,
+          GradGrad1,
+          GradIdent,
+          GradDownshift,
+          GradPlus64,
 
-                        Stockfish1M,
+          // "Fixed" versions wrt mate
+          GradSigmoidFix,
+          GradTanhFix,
+          GradLeakyFix,
+          GradGrad1Fix,
+          GradIdentFix,
+          GradDownshiftFix,
+          GradPlus64Fix,
+        });
+  }
 
-                        Stockfish1M_64512,
-                        Stockfish1M_63488,
-                        Stockfish1M_61440,
-                        Stockfish1M_57344,
-                        Stockfish1M_49152,
-                        Stockfish1M_32768,
-                        Stockfish1M_16384,
-                        Stockfish1M_8192,
-                        Stockfish1M_4096,
-                        Stockfish1M_2048,
-                        Stockfish1M_1024,
-                        Stockfish1M_512,
-                        Stockfish1M_256,
-                        Stockfish1M_128,
-                        Stockfish1M_64,
-  };
+  if (INCLUDE_STOCKFISH) {
+    entrants->insert(
+        entrants->end(),
+        {
+          Worstfish,
+
+          Stockfish0,
+          Stockfish5,
+          Stockfish10,
+          Stockfish15,
+          Stockfish20,
+
+          Stockfish1M,
+
+          Stockfish1M_64512,
+          Stockfish1M_63488,
+          Stockfish1M_61440,
+          Stockfish1M_57344,
+          Stockfish1M_49152,
+          Stockfish1M_32768,
+          Stockfish1M_16384,
+          Stockfish1M_8192,
+          Stockfish1M_4096,
+          Stockfish1M_2048,
+          Stockfish1M_1024,
+          Stockfish1M_512,
+          Stockfish1M_256,
+          Stockfish1M_128,
+          Stockfish1M_64,
+        });
+  }
+
+  if (INCLUDE_ALMANAC) {
+    entrants->push_back(AlmanacPopular);
+  }
+
+  if (INCLUDE_TOPPLE) {
+    entrants->push_back(Topple10K);
+    entrants->push_back(Topple1M);
+  }
+
+  if (INCLUDE_NES) {
+    entrants->push_back(Chessmaster1);
+    entrants->push_back(Chessmaster2);
+  }
+
+  return entrants;
+}
+
+// Get the entrants (singleton).
+static const vector<Entrant> &GetEntrants() {
+  static vector<Entrant> *entrants = MakeEntrants();
   return *entrants;
 }
-#else
-// mini-tournament for grad paper players
-const vector<Entrant> &GetEntrants() {
-  static vector<Entrant> *entrants =
-    new vector<Entrant>{
-                        Worstfish,
-
-                        MinOpponentMoves,
-                        Random,
-                        SinglePlayer,
-
-                        /*
-                          // NN evaluation functions from
-                          // pluginvert experiments
-                        NNEval1,
-                        NNEval2,
-                        NNEval3,
-                        NNEval4,
-                        NNEval5,
-                        NNEval6,
-                        */
-
-                        GradSigmoid,
-                        GradTanh,
-                        GradLeaky,
-                        GradGrad1,
-                        GradIdent,
-                        GradDownshift,
-                        GradPlus64,
-
-                        // "Fixed" versions wrt mate
-                        GradSigmoidFix,
-                        GradTanhFix,
-                        GradLeakyFix,
-                        GradGrad1Fix,
-                        GradIdentFix,
-                        GradDownshiftFix,
-                        GradPlus64Fix,
-
-                        Chessmaster1,
-
-                        Stockfish0,
-                        Stockfish1M,
-
-                        Stockfish1M_64512,
-                        Stockfish1M_63488,
-                        Stockfish1M_61440,
-                        Stockfish1M_57344,
-                        Stockfish1M_49152,
-                        Stockfish1M_32768,
-
-                        // a bit more resolution...
-                        Stockfish1M_16384,
-                        Stockfish1M_24576,
-                        Stockfish1M_40960,
-
-                        /*
-                        Stockfish1M_64512,
-                        Stockfish1M_63488,
-                        Stockfish1M_61440,
-                        Stockfish1M_57344,
-                        Stockfish1M_49152,
-                        Stockfish1M_32768,
-                        Stockfish1M_16384,
-                        Stockfish1M_8192,
-                        Stockfish1M_4096,
-                        Stockfish1M_2048,
-                        Stockfish1M_1024,
-                        Stockfish1M_512,
-                        Stockfish1M_256,
-                        Stockfish1M_128,
-                        Stockfish1M_64,
-                        */
-  };
-  return *entrants;
-}
-#endif
-
 
 // Under FIDE rules, after 50 moves without a pawn move or capture, a
 // player may CLAIM a draw. We don't allow these computer players to
@@ -426,8 +403,8 @@ enum class Result {
   // DRAW_INSUFFICIENT,
 };
 
-Result PlayGame(Player *white_player, Player *black_player,
-                vector<Move> *moves) {
+static Result PlayGame(Player *white_player, Player *black_player,
+                       vector<Move> *moves) {
   std::unique_ptr<PlayerGame> white{white_player->CreateGame()};
   std::unique_ptr<PlayerGame> black{black_player->CreateGame()};
 
@@ -690,34 +667,7 @@ struct Status {
   int64 run_start = 0;
 };
 
-// Same as printf, but using WriteConsole on windows so that we
-// can communicate with pseudoterminal. Without this, ansi escape
-// codes will work (VirtualTerminalProcessing) but not mintty-
-// specific ones.
-// TODO: It would be better if we had a way of stripping the
-// terminal codes if they are not supported?
-static void CPrintf(const char* format, ...) {
-  // Do formatting.
-  va_list ap;
-  va_start(ap, format);
-  string result;
-  StringAppendV(&result, format, ap);
-  va_end(ap);
-
-  #ifdef __MINGW32__
-  DWORD n = 0;
-  WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE),
-               result.c_str(),
-               result.size(),
-               &n,
-               nullptr);
-  #else
-  printf("%s", result.c_str());
-  #endif
-}
-
-
-vector<Status> status;
+static vector<Status> status;
 // Gross that we send the Totals object, but it's easier than
 // managing our own status thread...
 static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
@@ -750,10 +700,8 @@ static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
                             minutes, seconds);
     };
 
-  CPrintf("%s", MINTTY_SYNCHRONOUS_START);
-
   for (int i = 0; i < status.size() + 3; i++) {
-    CPrintf("%s", ANSI_PREVLINE);
+    printf("%s", ANSI_PREVLINE);
   }
   int64 done_all = 0, free_all = 0;
   for (int i = 0; i < status.size(); i++) {
@@ -761,7 +709,7 @@ static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
     free_all += status[i].free_games;
   }
 
-  CPrintf("\n-------- %lld " ANSI_YELLOW " done " ANSI_RESET
+  printf("\n-------- %lld " ANSI_YELLOW " done " ANSI_RESET
          " -- %lld " ANSI_GREEN " free ----- "
          "%s"
          ANSI_WHITE " ---------" ANSI_CLEARTOEOL "\n",
@@ -773,7 +721,7 @@ static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
     if (status[i].run_start > 0)
       minsec = AnsiMinSec(now - status[i].run_start);
 
-    CPrintf(ANSI_GREY "[" ANSI_CYAN "%s. " ANSI_YELLOW "%s"
+    printf(ANSI_GREY "[" ANSI_CYAN "%s. " ANSI_YELLOW "%s"
            ANSI_GREY "] " ANSI_WHITE "%s" ANSI_GREEN " vs " ANSI_BLUE "%s"
            ANSI_RESET ": "
            ANSI_WHITE "%s   %s" ANSI_CLEARTOEOL "\n",
@@ -784,14 +732,13 @@ static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
            status[i].msg.c_str(),
            minsec.c_str());
   }
-  CPrintf(ANSI_PURPLE "Neediest: " ANSI_WHITE "%s"
+  printf(ANSI_PURPLE "Neediest: " ANSI_WHITE "%s"
          ANSI_GREEN " vs "
          ANSI_BLUE "%s" ANSI_RESET " -- " ANSI_YELLOW "%lld"
          ANSI_RESET " game(s) played" ANSI_CLEARTOEOL "\n",
          std::get<0>(neediest).c_str(),
          std::get<1>(neediest).c_str(),
          std::get<2>(neediest));
-  CPrintf("%s", MINTTY_SYNCHRONOUS_END);
 }
 
 static void TournamentThread(int thread_id,
@@ -991,6 +938,7 @@ static void RunTournament() {
 
 
 int main(int argc, char **argv) {
+  ANSI::Init();
   #ifdef __MINGW32__
   if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
     LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
@@ -1015,7 +963,9 @@ int main(int argc, char **argv) {
   // XXX: Topple sometimes hangs around even after we close its pipes
   // and try to kill the child process (probably I'm just doing it
   // wrong); kill them all (globally!)
-  system("taskkill /F /IM topple_v0.3.5_znver1.exe /T");
+  if (INCLUDE_TOPPLE) {
+    system("taskkill /F /IM topple_v0.3.5_znver1.exe /T");
+  }
   return 0;
 }
 

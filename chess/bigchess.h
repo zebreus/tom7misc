@@ -3,6 +3,7 @@
 #ifndef _BIGCHESS_H
 #define _BIGCHESS_H
 
+#include <algorithm>
 #include <cstdio>
 #include <shared_mutex>
 #include <cstdint>
@@ -60,7 +61,7 @@ struct WorkQueue {
             m.unlock();
           } else {
             if /* constexpr */ (max_chunk > 1LL) {
-              int64 get_up_to = std::max(1LL, pending / this->num_workers);
+              int64 get_up_to = std::max(int64_t{1}, pending / this->num_workers);
               std::vector<W> local_work;
               local_work.reserve(get_up_to);
               while (!todo.empty() && get_up_to--) {

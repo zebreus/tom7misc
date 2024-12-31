@@ -12,6 +12,7 @@
 #include <chrono>
 #include <thread>
 #include <tuple>
+#include <inttypes.h>
 
 #include "chess.h"
 #include "bigchess.h"
@@ -198,7 +199,7 @@ struct ExamplePool {
           }
           num_games++;
           if (num_games % 10000 == 0) {
-            printf(ANSI_GREY "Read %lld games, %lld pos from %s "
+            printf(ANSI_GREY "Read %" PRId64 " games, %" PRId64 " pos from %s "
                    ANSI_RESET "\n",
                    num_games, num_positions, filename.c_str());
           }
@@ -211,7 +212,7 @@ struct ExamplePool {
 
   done:
     printf("Done loading examples from %s.\n"
-           "%lld games, %lld positions, %lld errors\n",
+           "%" PRId64 " games, %" PRId64 " positions, %" PRId64 " errors\n",
            filename.c_str(), num_games, num_positions, parse_errors);
     done = true;
   }
