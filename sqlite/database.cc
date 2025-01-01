@@ -331,10 +331,10 @@ struct DatabaseImpl : public Database {
           rs.push_back("NULL");
           break;
         case ColType::FLOAT:
-          rs.push_back(StringPrintf("%.11g ", row->GetFloat(i)));
+          rs.push_back(StringPrintf("%.11g", row->GetFloat(i)));
           break;
         case ColType::BLOB:
-          rs.push_back("(blob");
+          rs.push_back("(blob)");
           break;
         }
       }
