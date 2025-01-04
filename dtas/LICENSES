@@ -1,0 +1,23 @@
+
+The C++ code in here is my own. It is released under the terms
+of the GNU GPL (see COPYING).
+
+
+mario.asm is a reverse engineering of the PRG data (only) of
+the original Super Mario Bros., which comes from doppelganger.
+It is "provided for your own use as-is." It's included here
+under (at least) a claim of fair use:
+  - It cannot be used to reproduce Super Mario Bros. without
+    the graphics data from the game (and also requires some
+    reformatting of the ROM that is not provided here)
+  - Its use here is academic (model checking 6502 code)
+    and substantially transformative, with many annotations
+    and explanations added.
+
+
+SMBDIS.ASM - A COMPREHENSIVE SUPER MARIO BROS. DISASSEMBLY
+by doppelganger (doppelheathen@gmail.com)
+
+This file is provided for your own use as-is. It will require the
+character rom data and an iNES file header to get it to work.
+
