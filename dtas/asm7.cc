@@ -27,9 +27,9 @@
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "parser-combinators.h"
+#include "formula.h"
+#include "parsing.h"
 #include "randutil.h"
-#include "re2/re2.h"
 #include "sourcemap.h"
 #include "util.h"
 #include "zoning.h"
@@ -39,180 +39,6 @@ static constexpr int VERBOSE = 1;
 
 namespace {
 
-enum TokenType {
-  // Singleton symbols
-  COMMA,
-  EQUALS,
-  LESS,
-  GREATER,
-  PLUS,
-  MINUS,
-  HASH,
-  COLON,
-  PERIOD,
-  LPAREN,
-  RPAREN,
-
-  // With payload.
-  // In any format; parsed into the number it denotes.
-  NUMBER,
-  // any alphanumeric symbol,
-  // including that part of directives, opcodes, register names,
-  // labels, etc.
-  SYMBOL,
-  // Until end of line. Doesn't include the comment chars.
-  COMMENT,
-};
-
-struct Token {
-  TokenType type;
-
-  int64_t num = 0;
-  std::string str;
-};
-
-static Token SimpleToken(TokenType t) {
-  return Token{.type = t};
-}
-
-static std::string TokenTypeString(TokenType t) {
-  switch (t) {
-  case COMMA: return "COMMA";
-  case EQUALS: return "EQUALS";
-  case LESS: return "LESS";
-  case GREATER: return "GREATER";
-  case PLUS: return "PLUS";
-  case MINUS: return "MINUS";
-  case HASH: return "HASH";
-  case COLON: return "COLON";
-  case PERIOD: return "PERIOD";
-  case LPAREN: return "LPAREN";
-  case RPAREN: return "RPAREN";
-  case NUMBER: return "NUMBER";
-  case SYMBOL: return "SYMBOL";
-  case COMMENT: return "COMMENT";
-  default: return "???";
-  }
-}
-
-// This is a line-based syntax, so we tokenize and parse a line
-// at a time.
-static std::vector<Token> Tokenize(int line_num,
-                                   const std::string &input_string) {
-  static const RE2 whitespace("[ \r\n\t]+");
-
-  // Numeric literals of various sorts.
-  // There are $hex, %binary, and decimal.
-  static const RE2 hex_numeric_lit("[$]([0-9a-fA-F]+)");
-  static const RE2 binary_numeric_lit("[%]([01]+)");
-  static const RE2 decimal_numeric_lit("(-?[0-9]+)");
-
-  static const RE2 ident("([A-Za-z_][A-Za-z_0-9]*)");
-
-  re2::StringPiece input(input_string);
-
-  std::vector<Token> ret;
-  auto AddSimpleToken = [&ret, &input](TokenType t) {
-      ret.push_back(SimpleToken(t));
-      input.remove_prefix(1);
-    };
-
-  while (!input.empty()) {
-    std::string match;
-    switch (input[0]) {
-    case '+': AddSimpleToken(PLUS); continue;
-    case '-': AddSimpleToken(MINUS); continue;
-    case '#': AddSimpleToken(HASH); continue;
-    case '<': AddSimpleToken(LESS); continue;
-    case '>': AddSimpleToken(GREATER); continue;
-    case '=': AddSimpleToken(EQUALS); continue;
-    case '.': AddSimpleToken(PERIOD); continue;
-    case ':': AddSimpleToken(COLON); continue;
-    case ',': AddSimpleToken(COMMA); continue;
-    case '(': AddSimpleToken(LPAREN); continue;
-    case ')': AddSimpleToken(RPAREN); continue;
-    case ';':
-      // Read to end of line, and then we are done.
-      ret.push_back(Token{.type = COMMENT, .str = (std::string)input});
-      input = "";
-      continue;
-    default:
-      break;
-    }
-
-    // Otherwise, try regex-based tokens.
-    if (RE2::Consume(&input, whitespace)) {
-      // No tokens.
-    } else if (int64_t num;
-               RE2::Consume(&input, decimal_numeric_lit, &num)) {
-      ret.push_back(Token{.type = NUMBER, .num = num});
-    } else if (std::string hex;
-               RE2::Consume(&input, hex_numeric_lit, &hex)) {
-      ret.push_back(Token{
-          .type = NUMBER,
-          .num = strtol(hex.c_str(), nullptr, 16),
-        });
-    } else if (std::string bin;
-               RE2::Consume(&input, binary_numeric_lit, &bin)) {
-      ret.push_back(Token{
-          .type = NUMBER,
-          .num = strtol(bin.c_str(), nullptr, 2),
-        });
-    } else if (std::string str;
-               RE2::Consume(&input, ident, &str)) {
-      ret.push_back(Token{
-          .type = SYMBOL,
-          .str = str,
-        });
-    } else {
-      LOG(FATAL) << "Could not parse line " << line_num
-                 << " (tokenization):\n"
-                 << input_string << "\n"
-                 << "Looking at: [" << input << "]\n";
-    }
-  }
-  return ret;
-}
-
-enum class ExpType {
-  LABEL,
-  HIGH_BYTE,
-  LOW_BYTE,
-  PLUS,
-  MINUS,
-  NUMBER,
-};
-
-struct Exp {
-  ExpType type;
-  std::string label;
-  std::shared_ptr<Exp> a, b;
-  int64_t number = 0;
-};
-
-static std::string ExpString(const Exp *e) {
-  if (e == nullptr) return "??NULL??";
-  switch (e->type) {
-  case ExpType::LABEL:
-    return StringPrintf("'%s'", e->label.c_str());
-  case ExpType::NUMBER:
-    return StringPrintf("%lld", e->number);
-  case ExpType::HIGH_BYTE:
-    return StringPrintf(">%s", ExpString(e->a.get()).c_str());
-  case ExpType::LOW_BYTE:
-    return StringPrintf("<%s", ExpString(e->a.get()).c_str());
-  case ExpType::PLUS:
-    return StringPrintf("(%s + %s)",
-                        ExpString(e->a.get()).c_str(),
-                        ExpString(e->b.get()).c_str());
-  case ExpType::MINUS:
-    return StringPrintf("(%s - %s)",
-                        ExpString(e->a.get()).c_str(),
-                        ExpString(e->b.get()).c_str());
-  default:
-    return "??UNKNOWN??";
-  }
-}
 
 // A delayed expression. These are written after we've finished
 // the first pass and know the value of every label. We compute the
@@ -416,68 +242,6 @@ static std::optional<int8_t> EvaluateSigned8(
   }
 }
 
-template<TokenType t>
-struct IsToken {
-  using token_type = Token;
-  using out_type = Token;
-  constexpr IsToken() {}
-  Parsed<Token> operator()(TokenSpan<Token> toks) const {
-    if (toks.empty()) return Parsed<Token>::None();
-    if (toks[0].type == t) return Parsed(toks[0], 1);
-    else return Parsed<Token>::None();
-  }
-};
-
-// This is all possible addressing modes; not all are
-// available for each mnemonic!
-struct Addressing {
-  enum Type {
-    // e.g. ROR A
-    ACCUMULATOR,
-    // immediate. has an expression that should
-    // evaluate to an 8-bit value.
-    IMMEDIATE,
-    // A specific address. Has an expression that
-    // evaluates to that 16-bit value.
-    //
-    // This covers both zero-page addressing and
-    // 16-bit addressing, which have different
-    // opcodes. But they are only distinguished
-    // in the syntax by the specific value, which
-    // requires evaluating the expression.
-    ADDR,
-    // address + x (which is written addr,x)
-    ADDR_X,
-    // address + y (written addr,y)
-    ADDR_Y,
-    // e.g. JMP ($fffc)
-    // Denotes the 16-bit value (e.g. target of the jump)
-    // that is contained at the 16-bit address.
-    INDIRECT,
-
-    // e.g. LDA ($42,X)
-    // Compute the indirect address by first adding X,
-    // then loading.
-    // Has an expression with an 8-bit value, which would typically be
-    // the beginning of a table of addresses in the zero page.
-    INDIRECT_X,
-    // e.g. LDA ($42),Y
-    // First get the indirect address from the zero page, then add y.
-    // Has an expression with an 8-bit value, which contains a 16-bit
-    // address (typically a pointer to a struct or array) in the
-    // the zero page.
-    INDIRECT_Y,
-  };
-
-  Type type = ACCUMULATOR;
-  std::shared_ptr<Exp> exp;
-
-  Addressing(Type t) : type(t) {}
-  Addressing(Type t, std::shared_ptr<Exp> exp_in) :
-    type(t), exp(std::move(exp_in)) {}
-};
-
-
 static std::shared_ptr<Exp> DisplacementExp(
     uint16_t base_address,
     std::shared_ptr<Exp> target_address) {
@@ -582,151 +346,6 @@ static void Assemble(const std::string &asm_file,
 
   const std::vector<std::string> lines = Util::SplitToLines(asm_content);
 
-  using FixityElt = FixityItem<std::shared_ptr<Exp>>;
-  const auto ResolveExpFixity = [&](const std::vector<FixityElt> &elts) ->
-    std::optional<std::shared_ptr<Exp>> {
-    // No legal adjacency case.
-    return ResolveFixity<std::shared_ptr<Exp>>(elts, nullptr);
-  };
-
-  const FixityElt PlusElt = {
-    .fixity = Fixity::Infix,
-    .assoc = Associativity::Left,
-    .precedence = 9,
-    .item = nullptr,
-    .unop = nullptr,
-    .binop = [&](std::shared_ptr<Exp> a, std::shared_ptr<Exp> b) ->
-    std::shared_ptr<Exp> {
-      return std::make_shared<Exp>(Exp{
-          .type = ExpType::PLUS,
-          .a = std::move(a),
-          .b = std::move(b),
-        });
-    },
-  };
-
-  const FixityElt MinusElt = {
-    .fixity = Fixity::Infix,
-    .assoc = Associativity::Left,
-    .precedence = 9,
-    .item = nullptr,
-    .unop = nullptr,
-    .binop = [&](std::shared_ptr<Exp> a, std::shared_ptr<Exp> b) ->
-    std::shared_ptr<Exp> {
-      return std::make_shared<Exp>(Exp{
-          .type = ExpType::MINUS,
-          .a = std::move(a),
-          .b = std::move(b),
-        });
-    },
-  };
-
-  const FixityElt LessElt = {
-    .fixity = Fixity::Prefix,
-    .assoc = Associativity::Non,
-    .precedence = 9,
-    .item = nullptr,
-    .unop = [&](std::shared_ptr<Exp> a) -> std::shared_ptr<Exp> {
-      return std::make_shared<Exp>(Exp{
-          .type = ExpType::LOW_BYTE,
-          .a = std::move(a),
-        });
-    },
-    .binop = nullptr,
-  };
-
-  const FixityElt GreaterElt = {
-    .fixity = Fixity::Prefix,
-    .assoc = Associativity::Non,
-    .precedence = 9,
-    .item = nullptr,
-    .unop = [&](std::shared_ptr<Exp> a) -> std::shared_ptr<Exp> {
-      return std::make_shared<Exp>(Exp{
-          .type = ExpType::HIGH_BYTE,
-          .a = std::move(a),
-        });
-    },
-    .binop = nullptr,
-  };
-
-  const auto Expression =
-    Fix<Token, std::shared_ptr<Exp>>([&](const auto &Self) {
-        auto Number =
-          IsToken<NUMBER>() >[&](Token t) {
-              return std::make_shared<Exp>(Exp{
-                  .type = ExpType::NUMBER,
-                  .number = t.num,
-                });
-            };
-
-        auto Symbol =
-          IsToken<SYMBOL>() >[&](Token t) {
-              return std::make_shared<Exp>(Exp{
-                  .type = ExpType::LABEL,
-                  .label = t.str,
-                });
-            };
-
-        auto AtomicExp = Number || Symbol;
-
-        auto FixityElement =
-          (IsToken<PLUS>() >> Succeed<Token, FixityElt>(PlusElt)) ||
-          (IsToken<MINUS>() >> Succeed<Token, FixityElt>(MinusElt)) ||
-          (IsToken<LESS>() >> Succeed<Token, FixityElt>(LessElt)) ||
-          (IsToken<GREATER>() >> Succeed<Token, FixityElt>(GreaterElt)) ||
-          (AtomicExp >[&](std::shared_ptr<Exp> e) {
-              FixityElt item;
-              item.fixity = Fixity::Atom;
-              item.item = std::move(e);
-              return item;
-            });
-
-        return +FixityElement /= ResolveExpFixity;
-      });
-
-  // For detecting a specific register name. Case insensitive, but argument
-  // symbol should be lowercase.
-  auto IsSymbol = [&](const char *s) {
-      return IsToken<SYMBOL>() /= [s](const Token t) -> std::optional<char> {
-        return Util::lcase(t.str) == s ? std::make_optional('!') : std::nullopt;
-      };
-    };
-
-  auto AddressingExp =
-    ((IsToken<LPAREN>() >>
-      Expression << IsToken<COMMA>() << IsSymbol("x") <<
-      IsToken<RPAREN>()) >[&](auto e) {
-        return Addressing(Addressing::INDIRECT_X, e);
-      }) ||
-
-    ((IsToken<LPAREN>() >> Expression << IsToken<RPAREN>() <<
-      IsToken<COMMA>() << IsSymbol("y")) >[&](auto e) {
-        return Addressing(Addressing::INDIRECT_Y, e);
-      }) ||
-
-    ((IsToken<LPAREN>() >> Expression << IsToken<RPAREN>()) >[&](auto e) {
-        return Addressing(Addressing::INDIRECT, e);
-      }) ||
-    ((IsToken<HASH>() >> Expression) >[&](auto e) {
-        return Addressing(Addressing::IMMEDIATE, e);
-      }) ||
-    (Expression << IsToken<COMMA>() << IsSymbol("x") >[&](auto e) {
-        return Addressing(Addressing::ADDR_X, e);
-      }) ||
-    (Expression << IsToken<COMMA>() << IsSymbol("y") >[&](auto e) {
-        return Addressing(Addressing::ADDR_Y, e);
-      }) ||
-    (Expression >[&](auto e) {
-        return Addressing(Addressing::ADDR, e);
-      }) ||
-
-    // This assembler syntax lets you just write "ror" for "ror a".
-    (Opt(IsSymbol("a")) >[&](auto) {
-        return Addressing(Addressing::ACCUMULATOR);
-      }) ||
-
-    Fail<Token, Addressing>();
-
   for (int line_num = 0; line_num < (int)lines.size(); line_num++) {
     const std::string &line = lines[line_num];
     std::vector<Token> tokens_orig = Tokenize(line_num, line);
@@ -815,148 +434,88 @@ static void Assemble(const std::string &asm_file,
 
     std::vector<Token> tokens = tokens_orig;
 
-    // Any line can have a trailing comment. Pull that off to start.
-    std::string trailing_comment;
-    if (!tokens.empty() && tokens.back().type == COMMENT) {
-      trailing_comment = tokens.back().str;
-      tokens.pop_back();
-    }
+    StripComments(&tokens, Error);
 
-    // Now there should be no other comments.
-    for (const Token &token : tokens) {
-      CHECK(token.type != COMMENT) << "Can't have multiple comments on "
-        "a line." << Error();
-    }
-
-    if (tokens.size() >= 2 &&
-        tokens[0].type == SYMBOL &&
-        tokens[1].type == COLON) {
-      std::string symbol = std::move(tokens[0].str);
+    if (std::optional<std::string> label = ConsumeLabel(&tokens, Error)) {
+      const std::string &symbol = label.value();
       CHECK(!assembly.HasSymbol(symbol)) << "Duplicate label: "
                                          << symbol << Error();
       uint16_t addr = CurrentBank().NextAddress();
       assembly.symbols[symbol] = addr;
       CurrentBank().debug_labels[addr] = symbol;
-
-      // Remove the label.
-      tokens.erase(tokens.begin(), tokens.begin() + 2);
     }
 
-    // Nothing to do on empty lines (or lines with just a comment or label).
-    if (tokens.empty())
-      continue;
+    Line parsed_line = ParseLine(tokens, Error);
 
-    // The most common (and most complicated) thing is a series of
-    // comma-separated expressions.
-    auto GetCommaSeparatedExpressions =
-      [&Expression, &tokens, &Error](int start_offset) {
+    switch (parsed_line.type) {
+    case Line::Type::NOTHING:
+      // Nothing to do on empty lines (or lines with just a comment or label).
+      break;
 
-        auto Program = Separate0(Expression, IsToken<COMMA>()) << End<Token>();
-
-        auto parseopt = Program(TokenSpan<Token>(tokens.data() + start_offset,
-                                                 tokens.size() - start_offset));
-        CHECK(parseopt.HasValue()) << "Expected comma separated expressions."
-                                   << Error();
-        return parseopt.Value();
-      };
-
-    // Get the addressing mode for an instruction, which always begins
-    // at the second token.
-    auto GetAddressingMode =
-      [&AddressingExp, &tokens, &Error]() -> Addressing {
-
-        auto Program = AddressingExp << End<Token>();
-
-        auto parseopt = Program(TokenSpan<Token>(tokens.data() + 1,
-                                                 tokens.size() - 1));
-        CHECK(parseopt.HasValue()) << "Expected addressing mode."
-                                   << Error();
-        return parseopt.Value();
-      };
-
-    // Directives.
-    if (tokens[0].type == PERIOD) {
-      CHECK(tokens.size() > 1 &&
-            tokens[1].type == SYMBOL) << "Expected directive after period."
-                                      << Error();
-      const std::string &dir = tokens[1].str;
-      if (dir == "index") {
-        CHECK(tokens.size() == 3 &&
-              tokens[2].type == NUMBER &&
-              tokens[2].num == 8) << "Only .index 8 is supported, and "
+    case Line::Type::DIRECTIVE_INDEX:
+      CHECK(parsed_line.num == 8) << "Only .index 8 is supported, and "
           "I also don't know what this means." << Error();
+      break;
 
-      } else if (dir == "mem") {
-        CHECK(tokens.size() == 3 &&
-              tokens[2].type == NUMBER &&
-              tokens[2].num == 8) << "Only .mem 8 is supported, and "
+    case Line::Type::DIRECTIVE_MEM:
+      CHECK(parsed_line.num == 8) << "Only .mem 8 is supported, and "
           "I also don't know what this means." << Error();
+      break;
 
-      } else if (dir == "org") {
-        CHECK(tokens.size() == 3 &&
-              tokens[2].type == NUMBER &&
-              tokens[2].num >= 0 &&
-              tokens[2].num < 0x10000) << "Illegal .org directive."
+    case Line::Type::DIRECTIVE_ORG:
+      CHECK(parsed_line.num >= 0 &&
+            parsed_line.num < 0x10000) << "Illegal .org directive."
                                        << Error();
-        assembly.banks.emplace_back(
-            (int)tokens[2].num,
-            SourceMap(asm_file, asm_content));
+      assembly.banks.emplace_back(
+          parsed_line.num,
+          SourceMap(asm_file, asm_content));
+      break;
 
-      } else if (dir == "db") {
-        // Now read a series of expressions denoting bytes, and
-        // write them.
-
-        std::vector<std::shared_ptr<Exp>> exps =
-          GetCommaSeparatedExpressions(2);
-
-        for (const auto &e : exps) {
-          WriteExp8(e);
-        }
-
-      } else if (dir == "dw") {
-        // A series of expressions denoting words, and
-        // write them.
-
-        std::vector<std::shared_ptr<Exp>> exps =
-          GetCommaSeparatedExpressions(2);
-
-        for (const auto &e : exps) {
-          WriteExp16(e);
-        }
-
-      } else {
-        LOG(FATAL) << "Unknown directive: " << dir << Error();
+    case Line::Type::DIRECTIVE_DB:
+      // A series of expressions denoting bytes.
+      for (const auto &e : parsed_line.exps) {
+        WriteExp8(e);
       }
+      break;
 
-    } else if (tokens.size() > 2 &&
-               tokens[0].type == SYMBOL &&
-               tokens[1].type == EQUALS) {
-      const std::string &sym = tokens[0].str;
+    case Line::Type::DIRECTIVE_DW:
+      // A series of expressions denoting 16-bit words.
 
-      CHECK(!assembly.HasSymbol(sym)) << "Duplicate symbol "
-                                      << sym << Error();
+      for (const auto &e : parsed_line.exps) {
+        WriteExp16(e);
+      }
+      break;
 
-      // Symbolic constant.
-      std::vector<std::shared_ptr<Exp>> exps =
-        GetCommaSeparatedExpressions(2);
-      CHECK(exps.size() == 1) << "Symbolic constant definition "
-        "just takes one expression." << Error();
+    case Line::Type::DIRECTIVE_ALWAYS:
 
-      auto io = Evaluate16(&assembly, exps[0].get(), Error);
+      // ParseFormula(XXX);
+      LOG(FATAL) << "Unimplemented";
+      break;
+
+    case Line::Type::CONSTANT_DECL: {
+      // Symbolic constant, like
+      // PPU_CTRL_REG1         = $2000
+
+      const std::string &sym = parsed_line.symbol;
+      CHECK(!assembly.HasSymbol(sym)) <<
+        "Duplicate symbol " << sym << Error();
+
+      CHECK(parsed_line.exps.size() == 1) << "Bug";
+
+      auto io = Evaluate16(&assembly, parsed_line.exps[0].get(), Error);
       if (io.has_value()) {
         assembly.symbols[sym] = io.value();
       } else {
         assembly.delayed_symbols[sym] = Delayed{
           .line_num = line_num,
-          .exp = std::move(exps[0]),
+          .exp = std::move(parsed_line.exps[0]),
           .dest_addr = 0x0000,
         };
       }
+      break;
+    }
 
-    } else {
-      CHECK(!tokens.empty() && tokens[0].type == SYMBOL) << "Expected "
-        "instruction mnemonic." << Error();
-
+    case Line::Type::INSTRUCTION: {
       {
         Bank &bank = CurrentBank();
         // Mark that we assembled an actual instruction here (just
@@ -966,15 +525,14 @@ static void Assemble(const std::string &asm_file,
         bank.source_map.code[bank.NextAddress()] = line_num;
       }
 
-      std::string mnemonic = Util::lcase(tokens[0].str);
+      std::string mnemonic = Util::lcase(parsed_line.symbol);
+      const Addressing &mode = parsed_line.addressing;
 
       if (auto it = mode_implied.find(mnemonic); it != mode_implied.end()) {
         EmitByte(it->second);
 
       } else if (auto it = group1.find(mnemonic); it != group1.end()) {
         uint8_t opcode = it->second;
-
-        Addressing mode = GetAddressingMode();
 
         // There's only one special case here (for STA, #), which doesn't
         // exist (and would not make sense).
@@ -1045,8 +603,6 @@ static void Assemble(const std::string &asm_file,
 
       } else if (auto it = group2.find(mnemonic); it != group2.end()) {
         uint8_t opcode = it->second;
-
-        Addressing mode = GetAddressingMode();
 
         [&]() {
           if (mode.type == Addressing::IMMEDIATE) {
@@ -1121,8 +677,6 @@ static void Assemble(const std::string &asm_file,
       } else if (auto it = group3.find(mnemonic); it != group3.end()) {
         uint8_t opcode = it->second;
 
-        Addressing mode = GetAddressingMode();
-
         [&]() {
           if (mode.type == Addressing::IMMEDIATE) {
             CHECK(mnemonic == "ldy" ||
@@ -1180,7 +734,6 @@ static void Assemble(const std::string &asm_file,
 
         uint8_t opcode = it->second;
 
-        Addressing mode = GetAddressingMode();
         CHECK(mode.type == Addressing::ADDR) << "Branches are only allowed "
           "to absolute addresses." << Error();
 
@@ -1194,7 +747,6 @@ static void Assemble(const std::string &asm_file,
       } else if (mnemonic == "jmp") {
 
         // This is sort of a group 3 instruction, but handled separately.
-        Addressing mode = GetAddressingMode();
         switch (mode.type) {
         case Addressing::ADDR:
           EmitByte(0x4C);
@@ -1212,17 +764,20 @@ static void Assemble(const std::string &asm_file,
       } else if (mnemonic == "jsr") {
         EmitByte(0x20);
 
-        std::vector<std::shared_ptr<Exp>> exps =
-          GetCommaSeparatedExpressions(1);
-        CHECK(exps.size() == 1) << "Expected a single 16-bit address "
-          "for jsr." << Error();
+        CHECK(mode.type == Addressing::ADDR) << "Expected an expression "
+          "denoting a 16-bit address (tyically the label of the subroutine) "
+          "in JSR.";
 
-        WriteExp16(exps[0]);
+        WriteExp16(mode.exp);
 
       } else {
         LOG(FATAL) << "Unimplemented instruction: " << tokens[0].str;
       }
+    }
+      break;
 
+    default:
+      LOG(FATAL) << "Unimplemented/invalid line type?";
     }
 
   }
@@ -1392,3 +947,4 @@ int main(int argc, char **argv) {
 
   return 0;
 }
+

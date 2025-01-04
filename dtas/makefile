@@ -46,8 +46,8 @@ CODEC=../codec
 
 OPT=-O3
 
-# ASAN=-g -fsanitize=address
-# OPT=-O
+ASAN=-g -fsanitize=address
+OPT=-O
 
 # -fno-strict-aliasing
 
@@ -132,7 +132,7 @@ diffemu.exe : diffemu.o mario-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-asm7.exe : asm7.o $(OBJECTS) $(RE2_OBJECTS)
+asm7.exe : asm7.o parsing.o $(OBJECTS) $(RE2_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
