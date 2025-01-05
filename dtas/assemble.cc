@@ -96,6 +96,10 @@ struct Bank {
   // Debugging information about where in the source code
   // the code addresses (in this bank) came from.
   SourceMap source_map;
+
+  // Constraints for modeling. For those that have addresses,
+  // the addresses (may) refer to the current bank.
+  std::vector<Constraint> constraints;
 };
 
 struct Assembly {

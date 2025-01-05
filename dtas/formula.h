@@ -52,4 +52,10 @@ struct BinForm {
 
 std::string ColorForm(const std::shared_ptr<Form> &form);
 
+struct AlwaysConstraint {
+  std::shared_ptr<Form> form;
+};
+
+using Constraint = std::variant<AlwaysConstraint>;
+
 #endif
