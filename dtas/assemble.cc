@@ -1,15 +1,5 @@
-// Simple 6502 assembler.
-//
-// This reproduces mario.nes (or really mario.prg) byte-for-byte from
-// mario.asm, following what x816 would do (that assembler seems to be
-// so old that it needs DOSBox or similar to run!). I want to be able
-// to be able to (for example) generate memory maps (.nl files) for
-// the fceux debugger.
-//
-// It might have bugs outside of the instructions and techniques that
-// mario.asm uses; no guarantees!
 
-#include "ansi.h"
+#include "assemble.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -24,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -37,109 +28,13 @@
 [[maybe_unused]]
 static constexpr int VERBOSE = 1;
 
-namespace {
-
-// A delayed expression. These are written after we've finished
-// the first pass and know the value of every label. We compute the
-// value and write it to the 16-bit dest_addr. Whether we write an
-// 8-bit value or a 16-bit one needs to be determined by the context.
-//
-// For clarity: The address here is a machine address, not an offset
-// into assembled bytes (but the offset can be computed using the
-// origin).
-struct Delayed {
-  int line_num = 0;
-  std::shared_ptr<Exp> exp;
-  uint16_t dest_addr = 0;
-};
-
-struct Bank {
-  // Creates an empty bank. The origin is required.
-  Bank(int origin, SourceMap sm) : origin(origin), source_map(std::move(sm)) {
-    // The zoning we generate is constructive; we only
-    // mark the addresses where we actually generated
-    // an instruction (with an instruction mnemonic) as
-    // executable. So begin with nothing set.
-    zoning.Clear();
-  }
-
-  uint16_t NextAddress() const {
-    return origin + (int)bytes.size();
-  }
-
-  void Write(uint16_t machine_addr, uint8_t v) {
-    int offset = (int)machine_addr - origin;
-    CHECK(offset >= 0 && offset < bytes.size()) <<
-      StringPrintf("Bug: Write outside of bank bounds. Addr: %04x",
-                   machine_addr);
-    bytes[offset] = v;
-  }
-
-  // The assembled data, which is expected to be loaded at the origin
-  // address. The next instruction assembled goes at the end.
-  std::vector<uint8_t> bytes;
-  // The origin where the bytes will be loaded in memory, e.g. 0x8000.
-  // This just affects what absolute value a label has.
-  int origin = 0;
-
-  std::vector<Delayed> delayed_16;
-  std::vector<Delayed> delayed_8;
-  std::vector<Delayed> delayed_s8;
-
-  std::map<uint16_t, std::string> debug_labels;
-  // TODO: Comments too?
-
-  // Debugging information about what addresses represent
-  // instructions (that we assembled).
-  Zoning zoning;
-
-  // Debugging information about where in the source code
-  // the code addresses (in this bank) came from.
-  SourceMap source_map;
-
-  // Constraints for modeling. For those that have addresses,
-  // the addresses (may) refer to the current bank.
-  std::vector<Constraint> constraints;
-};
-
-struct Assembly {
-  Assembly() {}
-
-  // Symbolic constants include "Constant = $Value" and "Label:".
-  // These are global to the assembly (and must be globally unique),
-  // but an address might belong to a specific bank. The programmer
-  // just has to manage this.
-
-  // Symbols that we know the values of already.
-  // The syntax does not distinguish between a declaration like
-  //   BuzzyBeetle = $02
-  // and
-  //   BowserOrigXPos = $0366
-  // even though the former is used as a constant byte, and the
-  // second as a memory address. Additionally, a label
-  //   WarpZoneWelcome:
-  // is a machine address (not byte offset) that could be used
-  // as a constant, or jumped to, etc. Basically, every symbol has
-  // a value, but it is the use that tells us what it means (and
-  // what the appropriate range of values is).
-  std::unordered_map<std::string, int64_t> symbols;
-  // Symbolic "constants" with delayed expressions. Note they may have
-  // forward references within this set. (There could even be cycles,
-  // which should be rejected later.) Note that the destination address
-  // here is unused; the value is never written anywhere. It just gets
-  // moved to the constants table.
-  std::unordered_map<std::string, Delayed> delayed_symbols;
-
-  // True if we already saw this symbol (even if we don't know its
-  // value yet).
-  bool HasSymbol(const std::string &sym) const {
-    return symbols.contains(sym) || delayed_symbols.contains(sym);
-  }
-
-  // The ROM banks. Each one is a contiguous series of bytes that
-  // will live at a given memory location (its origin).
-  std::vector<Bank> banks;
-};
+void Assembly::Bank::Write(uint16_t machine_addr, uint8_t v) {
+  int offset = (int)machine_addr - origin;
+  CHECK(offset >= 0 && offset < bytes.size()) <<
+    StringPrintf("Bug: Write outside of bank bounds. Addr: %04x",
+                 machine_addr);
+  bytes[offset] = v;
+}
 
 // Evaluate to a number if possible. Note the number may be out of
 // range for the target type.
@@ -258,8 +153,7 @@ static std::shared_ptr<Exp> DisplacementExp(
     });
 }
 
-static void Assemble(const std::string &asm_file,
-                     const std::string &rom_file) {
+Assembly Assembly::Assemble(const std::string &asm_file) {
   const std::string asm_content = Util::ReadFile(asm_file);
   Assembly assembly;
 
@@ -902,12 +796,16 @@ static void Assemble(const std::string &asm_file,
     }
   }
 
+  return assembly;
+}
+
+void Assembly::WriteToDisk(const std::string &rom_file) {
   // Now write the ROM, debugging symbols, and so on.
-  CHECK(assembly.banks.size() == 1) << "Actually I only know how to "
+  CHECK(banks.size() == 1) << "Actually I only know how to "
     "write one bank right now, but this would be easily rectified.";
 
   // The ROM.
-  Util::WriteFileBytes(rom_file, assembly.banks[0].bytes);
+  Util::WriteFileBytes(rom_file, banks[0].bytes);
   printf("Wrote " AGREEN("%s") "\n", rom_file.c_str());
 
 
@@ -917,7 +815,7 @@ static void Assemble(const std::string &asm_file,
   // nl file
   {
     std::string contents;
-    for (const auto &[addr, name] : assembly.banks[0].debug_labels) {
+    for (const auto &[addr, name] : banks[0].debug_labels) {
       StringAppendF(&contents, "$%04x#%s#\n", addr, name.c_str());
     }
     std::string nlfile = StringPrintf("%s.nes.0.nl", fbase.c_str());
@@ -927,27 +825,15 @@ static void Assemble(const std::string &asm_file,
 
   {
     std::string zonefile = StringPrintf("%s.zoning", fbase.c_str());
-    assembly.banks[0].zoning.Save(zonefile);
+    banks[0].zoning.Save(zonefile);
     printf("Wrote " AGREEN("%s") "\n", zonefile.c_str());
   }
 
   {
     std::string smfile = StringPrintf("%s.sourcemap", fbase.c_str());
-    assembly.banks[0].source_map.Save(smfile);
+    banks[0].source_map.Save(smfile);
     printf("Wrote " AGREEN("%s") "\n", smfile.c_str());
   }
 }
 
-}  // namespace
-
-int main(int argc, char **argv) {
-  ANSI::Init();
-
-
-  CHECK(argc == 3) << "./asm7.exe source.nes out.rom\n";
-
-  Assemble(argv[1], argv[2]);
-
-  return 0;
-}
 

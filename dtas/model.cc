@@ -12,10 +12,12 @@
 
 #include "ansi-image.h"
 #include "ansi.h"
+#include "assemble.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bounds.h"
 #include "byteset.h"
+#include "formula.h"
 #include "image.h"
 #include "mario-util.h"
 #include "mario.h"
@@ -28,6 +30,7 @@
 #include "util.h"
 #include "zoning.h"
 
+static constexpr const char *ASMFILE = "mario.asm";
 static constexpr const char *ROMFILE = "mario.nes";
 
 #ifndef AOT_INSTRUMENTATION
@@ -56,6 +59,9 @@ static Bank GetPRG() {
 }
 
 static void Model() {
+  // Assemble from scratch.
+  Assembly assembly = Assembly::Assemble(ASMFILE);
+
   std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
   MarioUtil::WarpTo(emu.get(), 0xF4, 0x6B, 0);
   // The stack pointer is 0xFC when entering NonMaskableInterrupt.
@@ -63,10 +69,14 @@ static void Model() {
 
   Modeling modeling(GetPRG());
 
-  modeling.zoning = Zoning::FromFile("mario.zoning");
-  CHECK((modeling.zoning.addr[0x8e01] & Zoning::X) == 0);
+  CHECK(assembly.banks.size() == 1) << "Only one bank is supported";
 
-  SourceMap source_map = SourceMap::FromFile("mario.sourcemap");
+  // modeling.zoning = Zoning::FromFile("mario.zoning");
+  // SourceMap source_map = SourceMap::FromFile("mario.sourcemap");
+
+  modeling.zoning = assembly.banks[0].zoning;
+  const SourceMap &source_map = assembly.banks[0].source_map;
+  CHECK((modeling.zoning.addr[0x8e01] & Zoning::X) == 0);
 
   // TODO: Get these from annotations in the assembly file.
   modeling.ram_constraints[OPER_MODE].push_back(ValueConstraint{
