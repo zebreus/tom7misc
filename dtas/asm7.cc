@@ -39,7 +39,6 @@ static constexpr int VERBOSE = 1;
 
 namespace {
 
-
 // A delayed expression. These are written after we've finished
 // the first pass and know the value of every label. We compute the
 // value and write it to the 16-bit dest_addr. Whether we write an
@@ -488,8 +487,8 @@ static void Assemble(const std::string &asm_file,
 
     case Line::Type::DIRECTIVE_ALWAYS:
 
-      // ParseFormula(XXX);
-      LOG(FATAL) << "Unimplemented";
+      printf("Ignoring formula: %s\n",
+             ColorForm(parsed_line.formula).c_str());
       break;
 
     case Line::Type::CONSTANT_DECL: {

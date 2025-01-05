@@ -12,7 +12,7 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "parser-combinators.h"
+#include "formula.h"
 
 enum TokenType {
   // Singleton symbols
@@ -27,6 +27,14 @@ enum TokenType {
   PERIOD,
   LPAREN,
   RPAREN,
+  LBRACE,
+  RBRACE,
+  ARROW,
+
+  // Symbolic keywords.
+  // Note that .directives and instructions are not keywords.
+  // This is just used for the formula language.
+  IN,
 
   // With payload.
   // In any format; parsed into the number it denotes.
@@ -46,7 +54,7 @@ struct Token {
   std::string str;
 };
 
-inline Token SimpleToken(TokenType t) {
+inline constexpr Token SimpleToken(TokenType t) {
   return Token{.type = t};
 }
 
@@ -148,6 +156,7 @@ struct Line {
   std::string symbol;
   Addressing addressing;
   std::vector<std::shared_ptr<Exp>> exps;
+  std::shared_ptr<Form> formula;
 };
 
 void StripComments(std::vector<Token> *tokens,

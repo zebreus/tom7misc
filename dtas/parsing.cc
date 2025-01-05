@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "base/stringprintf.h"
+#include "formula.h"
 #include "parser-combinators.h"
 #include "re2/re2.h"
 #include "util.h"
@@ -28,6 +29,10 @@ std::string TokenTypeString(TokenType t) {
   case PERIOD: return "PERIOD";
   case LPAREN: return "LPAREN";
   case RPAREN: return "RPAREN";
+  case LBRACE: return "LBRACE";
+  case RBRACE: return "RBRACE";
+  case ARROW: return "ARROW";
+
   case NUMBER: return "NUMBER";
   case SYMBOL: return "SYMBOL";
   case COMMENT: return "COMMENT";
@@ -56,6 +61,12 @@ std::vector<Token> Tokenize(int line_num,
     };
 
   while (!input.empty()) {
+    if (input.starts_with("->")) {
+      ret.push_back(SimpleToken(ARROW));
+      input.remove_prefix(2);
+      continue;
+    }
+
     std::string match;
     switch (input[0]) {
     case '+': AddSimpleToken(PLUS); continue;
@@ -69,6 +80,9 @@ std::vector<Token> Tokenize(int line_num,
     case ',': AddSimpleToken(COMMA); continue;
     case '(': AddSimpleToken(LPAREN); continue;
     case ')': AddSimpleToken(RPAREN); continue;
+    case '{': AddSimpleToken(LBRACE); continue;
+    case '}': AddSimpleToken(RBRACE); continue;
+
     case ';':
       // Read to end of line, and then we are done.
       ret.push_back(Token{.type = COMMENT, .str = (std::string)input});
@@ -98,10 +112,16 @@ std::vector<Token> Tokenize(int line_num,
         });
     } else if (std::string str;
                RE2::Consume(&input, ident, &str)) {
-      ret.push_back(Token{
-          .type = SYMBOL,
-          .str = str,
-        });
+
+      if (str == "in") {
+        AddSimpleToken(IN);
+        continue;
+      } else {
+        ret.push_back(Token{
+            .type = SYMBOL,
+            .str = str,
+          });
+      }
     } else {
       LOG(FATAL) << "Could not parse line " << line_num
                  << " (tokenization):\n"
@@ -136,7 +156,6 @@ std::string ExpString(const Exp *e) {
   }
 }
 
-// XXX maybe can stay in .cc
 template<TokenType t>
 struct IsToken {
   using token_type = Token;
@@ -148,6 +167,82 @@ struct IsToken {
     else return Parsed<Token>::None();
   }
 };
+
+static std::shared_ptr<Form> ParseForm(
+    const std::vector<Token> &tokens,
+    const std::function<std::string()> &Error) {
+
+  using FixityElt = FixityItem<std::shared_ptr<Form>>;
+  const auto ResolveFormFixity = [&](const std::vector<FixityElt> &elts) ->
+    std::optional<std::shared_ptr<Form>> {
+    // No legal adjacency case.
+    return ResolveFixity<std::shared_ptr<Form>>(elts, nullptr);
+  };
+
+  const FixityElt InElt = {
+    .fixity = Fixity::Infix,
+    .assoc = Associativity::Non,
+    .precedence = 9,
+    .item = nullptr,
+    .unop = nullptr,
+    .binop = [&](std::shared_ptr<Form> a, std::shared_ptr<Form> b) ->
+    std::shared_ptr<Form> {
+      return std::make_shared<Form>(BinForm{
+          .op = Binop::IN,
+          .lhs = std::move(a),
+          .rhs = std::move(b),
+        });
+    },
+  };
+
+  const auto FormExp =
+    Fix<Token, std::shared_ptr<Form>>([&](const auto &Self) {
+        auto Number =
+          IsToken<NUMBER>() >[&](Token t) {
+              return std::make_shared<Form>(IntForm{
+                  .value = t.num,
+                });
+            };
+
+        auto Var =
+          IsToken<SYMBOL>() >[&](Token t) {
+              return std::make_shared<Form>(VarForm{
+                  .name = t.str,
+                });
+            };
+
+        auto Set =
+          (IsToken<LBRACE>() >>
+           Separate0(Self, IsToken<COMMA>()) <<
+           IsToken<RBRACE>())
+          >[&](const std::vector<std::shared_ptr<Form>> &fs) {
+              return std::make_shared<Form>(NaryForm{
+                  .op = NaryOp::SET,
+                  .v = fs,
+                });
+            };
+
+        auto AtomicExp = Number || Var || Set;
+
+        auto FixityElement =
+          (IsToken<IN>() >> Succeed<Token, FixityElt>(InElt)) ||
+          (AtomicExp >[&](std::shared_ptr<Form> e) {
+              FixityElt item;
+              item.fixity = Fixity::Atom;
+              item.item = std::move(e);
+              return item;
+            });
+
+        return +FixityElement /= ResolveFormFixity;
+      });
+
+
+  auto Program = FormExp << End<Token>();
+  auto parseopt = Program(TokenSpan<Token>(tokens));
+  CHECK(parseopt.HasValue()) << "Expected formula."
+                             << Error();
+  return parseopt.Value();
+}
 
 Line ParseLine(const std::vector<Token> &tokens,
                const std::function<std::string()> &Error) {
@@ -308,14 +403,24 @@ Line ParseLine(const std::vector<Token> &tokens,
   };
 
 
-  auto GetCommaSeparatedExpressions = [&](int start_offset) ->
+  auto GetCommaSeparatedExpressions = [&](const std::vector<Token> &tokens) ->
     std::vector<std::shared_ptr<Exp>> {
     auto Program = Separate0(Expression, IsToken<COMMA>()) << End<Token>();
-    auto parseopt = Program(TokenSpan<Token>(tokens.data() + start_offset,
-                                             tokens.size() - start_offset));
+    auto parseopt = Program(TokenSpan<Token>(tokens));
     CHECK(parseopt.HasValue()) << "Expected comma separated expressions."
                                << Error();
     return parseopt.Value();
+  };
+
+  auto RestTokens = [&tokens, &Error](int skip) -> std::vector<Token> {
+    CHECK(skip <= tokens.size()) << skip << " / " << tokens.size()
+                                 << Error();
+    std::vector<Token> ret;
+    ret.reserve(tokens.size() - skip);
+    for (int i = skip; i < tokens.size(); i++) {
+      ret.push_back(tokens[i]);
+    }
+    return ret;
   };
 
   if (tokens.empty()) return Line{.type = Line::Type::NOTHING};
@@ -350,7 +455,12 @@ Line ParseLine(const std::vector<Token> &tokens,
       Line ret;
       ret.type = (dir == "db") ?
         Line::Type::DIRECTIVE_DB : Line::Type::DIRECTIVE_DW;
-      ret.exps = GetCommaSeparatedExpressions(2);
+      ret.exps = GetCommaSeparatedExpressions(RestTokens(2));
+      return ret;
+    } else if (dir == "always") {
+      Line ret;
+      ret.type = Line::Type::DIRECTIVE_ALWAYS;
+      ret.formula = ParseForm(RestTokens(2), Error);
       return ret;
     }
 
@@ -363,7 +473,7 @@ Line ParseLine(const std::vector<Token> &tokens,
     Line ret;
     ret.type = Line::Type::CONSTANT_DECL;
     ret.symbol = tokens[0].str;
-    ret.exps = GetCommaSeparatedExpressions(2);
+    ret.exps = GetCommaSeparatedExpressions(RestTokens(2));
     CHECK(ret.exps.size() == 1) << "Symbolic constant definition "
       "just takes one expression." << Error();
     return ret;
