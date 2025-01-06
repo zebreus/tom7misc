@@ -117,9 +117,9 @@
   (let ((output-buffer (generate-new-buffer "*Combined Buffers*")))
     (with-current-buffer output-buffer
       (dolist (pair sorted-contents)
-        (insert (format "--- %s ---\n" (car pair)))
+        (insert (format "The file `%s`:\n```\n" (car pair)))
         (insert (cdr pair))
-        (insert "\n\n"))
+        (insert "\n```\n\n"))
       (goto-char (point-min))
       (switch-to-buffer output-buffer))))
 

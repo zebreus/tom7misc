@@ -388,11 +388,20 @@
       "\n"
       "\nBonus math symbols:\n"
       "\n"
-      "∀  ∃  →  ¬  ×  ÷  ≠  ±\n"
+      "∀  ∃  →  ¬  ×  ÷  ≠  ±  ∞\n"
       "\n"
       "\nBonus punctuation:\n"
       "\n"
-      "en –  em —  “ ”   ‘ ’  « »\n"
+      "en –  em —  “ ”   ‘ ’  « »  ‹›  •  …\n"
+      "\nBonus symbols:\n"
+      "\n"
+      "∗∘∙·⋄⋅⋆⋇\n"
+      "⏹⏺▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▔▕▖▗▘▙▚▛▜▝▞▟■●\n"
+      "¿¡‼⸘‽€¢£¤¥©®™¯°ªº¹²³¸¼½¦§¶†‡※‾←↑→↓∁∄∅∆∇∈∉∊∋∌∍∏∐∓√∛∜∝∞∧∨∩∪\n"
+      "∫∬∭∮∯∰≃≅≆≇≈≉≊≋≠≡≣≤≥≦≧≨≩≪≫≬≮≯⊕⊖⊗⊘⊙⊚⊛⊜⊝⊢⊣⊤⊥⊦⊧⊨⊩⊪⊫⊬⊭⊮⊯⊶⊷⊸⊹⊺\n"
+      "⋐⋑⋒⋓⋔⋖⋗⋘⋙⋚⋛⋜⋝⋮⋯⋰⋱⋲⋳⋴⋵⋶⋷⋸⋹⋺⋻⋼⋽⋾\n"
+      "☠♔♕♕♖♗♘♙♚♛♜♝♞♟♥♫⚡⛔✓✔✗✘\n"
+      "☁"
       ))
     ))
 
@@ -682,7 +691,11 @@
   ;; functions. After the brace we are in defun-block-intro, but
   ;; also inside an inlambda.
   (c-set-offset 'inlambda 'c-basic-offset)
-  ;; set namespace blocks to be indented 0
+  ;; don't always put #define etc. in first column.
+  ;; an integer is multiplied by c-basic-offset.
+  (c-set-offset 'cpp-macro 0)
+  ;; set namespace blocks to be indented 0.
+  ;; a vector of offsets is treated as absolute.
   (c-set-offset 'innamespace [0]))
 (add-hook 'c++-mode-hook 'tom7-c-setup)
 
