@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "../fceulib/emulator.h"
@@ -22,8 +23,9 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "byteset.h"
-#include "util.h"
+#include "formula.h"
 #include "sourcemap.h"
+#include "util.h"
 #include "zoning.h"
 
 // For debugging symbols. We should just load
@@ -2193,5 +2195,14 @@ void Modeling::CheckMemoryInvariants(const ErrorLoc &loc,
              actual.DebugString().c_str());
       LOG(FATAL) << "Memory invariant violation.\n";
     }
+  }
+}
+
+void Modeling::AddConstraint(const Constraint &c) {
+  printf("Add constraint: %s\n", ColorConstraint(c).c_str());
+  if (const AlwaysConstraint *always = std::get_if<AlwaysConstraint>(&c)) {
+
+  } else {
+    printf("  (" ARED("not implemented") ")\n");
   }
 }

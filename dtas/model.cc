@@ -67,6 +67,8 @@ static void Model() {
   // The stack pointer is 0xFC when entering NonMaskableInterrupt.
   const State start_state = State::FromEmulator(emu.get(), 0xFC);
 
+  // TODO: Can get this from Assembly, though we should probably
+  // verify that it matches the historic ROM.
   Modeling modeling(GetPRG());
 
   CHECK(assembly.banks.size() == 1) << "Only one bank is supported";
@@ -77,6 +79,10 @@ static void Model() {
   modeling.zoning = assembly.banks[0].zoning;
   const SourceMap &source_map = assembly.banks[0].source_map;
   CHECK((modeling.zoning.addr[0x8e01] & Zoning::X) == 0);
+
+  for (const Constraint &c : assembly.banks[0].constraints) {
+    modeling.AddConstraint(c);
+  }
 
   // TODO: Get these from annotations in the assembly file.
   modeling.ram_constraints[OPER_MODE].push_back(ValueConstraint{

@@ -31,6 +31,8 @@ std::string TokenTypeString(TokenType t) {
   case RPAREN: return "RPAREN";
   case LBRACE: return "LBRACE";
   case RBRACE: return "RBRACE";
+  case LSQUARE: return "LSQUARE";
+  case RSQUARE: return "RSQUARE";
   case ARROW: return "ARROW";
 
   case NUMBER: return "NUMBER";
@@ -82,6 +84,8 @@ std::vector<Token> Tokenize(int line_num,
     case ')': AddSimpleToken(RPAREN); continue;
     case '{': AddSimpleToken(LBRACE); continue;
     case '}': AddSimpleToken(RBRACE); continue;
+    case '[': AddSimpleToken(LSQUARE); continue;
+    case ']': AddSimpleToken(RSQUARE); continue;
 
     case ';':
       // Read to end of line, and then we are done.
@@ -168,6 +172,23 @@ struct IsToken {
   }
 };
 
+// Like IsIdentifier("ram"). Note that it retains a pointer,
+// so it should typically be used with a string literal.
+namespace {
+struct IsIdentifier {
+  using token_type = Token;
+  using out_type = Token;
+  constexpr IsIdentifier(const char *s) : s(s) {}
+  Parsed<Token> operator()(TokenSpan<Token> toks) const {
+    if (toks.empty()) return Parsed<Token>::None();
+    if (toks[0].type == SYMBOL &&
+        toks[0].str == s) return Parsed(toks[0], 1);
+    else return Parsed<Token>::None();
+  }
+  const char *s = nullptr;
+};
+}
+
 static std::shared_ptr<Form> ParseForm(
     const std::vector<Token> &tokens,
     const std::function<std::string()> &Error) {
@@ -217,8 +238,20 @@ static std::shared_ptr<Form> ParseForm(
            IsToken<RBRACE>())
           >[&](const std::vector<std::shared_ptr<Form>> &fs) {
               return std::make_shared<Form>(NaryForm{
-                  .op = NaryOp::SET,
+                  .op = Naryop::SET,
                   .v = fs,
+                });
+            };
+
+        auto ReadRam =
+          (IsIdentifier("ram") >>
+           IsToken<LSQUARE>() >>
+           Self <<
+           IsToken<RSQUARE>())
+          >[&](const std::shared_ptr<Form> &form) {
+              return std::make_shared<Form>(UnForm{
+                  .op = Unop::RAM,
+                  .arg = form,
                 });
             };
 

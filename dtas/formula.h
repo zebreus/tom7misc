@@ -30,18 +30,26 @@ enum class Binop {
   IN,
 };
 
-enum class NaryOp {
+enum class Unop {
+  // Read RAM
+  RAM,
+};
+
+enum class Naryop {
+  // Form a set of the arguments
   SET,
 };
 
 struct SetForm;
 struct BinForm;
 struct NaryForm;
+struct UnForm;
 
-using Form = std::variant<ByteSetForm, IntForm, VarForm, NaryForm, BinForm>;
+using Form = std::variant<ByteSetForm, IntForm, VarForm, NaryForm,
+                          BinForm, UnForm>;
 
 struct NaryForm {
-  NaryOp op;
+  Naryop op;
   std::vector<std::shared_ptr<Form>> v;
 };
 
@@ -50,12 +58,20 @@ struct BinForm {
   std::shared_ptr<Form> lhs, rhs;
 };
 
-std::string ColorForm(const std::shared_ptr<Form> &form);
+struct UnForm {
+  Unop op;
+  std::shared_ptr<Form> arg;
+};
+
+// Constraints
 
 struct AlwaysConstraint {
   std::shared_ptr<Form> form;
 };
 
 using Constraint = std::variant<AlwaysConstraint>;
+
+std::string ColorForm(const std::shared_ptr<Form> &form);
+std::string ColorConstraint(const Constraint &c);
 
 #endif

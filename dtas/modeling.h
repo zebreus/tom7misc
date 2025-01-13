@@ -18,6 +18,7 @@
 #include "../fceulib/emulator.h"
 #include "base/logging.h"
 #include "byteset.h"
+#include "formula.h"
 #include "hashing.h"
 #include "sourcemap.h"
 #include "zoning.h"
@@ -200,6 +201,9 @@ struct Modeling {
 
   // True if the analysis is quiescent.
   bool Done() const;
+
+
+  void AddConstraint(const Constraint &c);
 
 
   // The stuff below is mostly implementation details.

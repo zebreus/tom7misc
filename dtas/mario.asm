@@ -51,7 +51,7 @@ GameEngineSubroutine  = $0e
 Mirror_PPU_CTRL_REG1  = $0778
 Mirror_PPU_CTRL_REG2  = $0779
 
-.always OperMode in {$00, $01, $02, $03}
+.always ram[OperMode] in {$00, $01, $02, $03}
 OperMode              = $0770
 OperMode_Task         = $0772
 ScreenRoutineTask     = $073c

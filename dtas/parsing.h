@@ -30,6 +30,8 @@ enum TokenType {
   LBRACE,
   RBRACE,
   ARROW,
+  LSQUARE,
+  RSQUARE,
 
   // Symbolic keywords.
   // Note that .directives and instructions are not keywords.
