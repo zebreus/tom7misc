@@ -1,5 +1,5 @@
 
-default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe polynomial_test.exe algebra.exe orbit-grid.exe recurrence.exe bestsq.exe kgrid.exe bhaskara-util_test.exe kline.exe leaderboard.exe mod.exe remain.exe prog.exe brute.exe brutesq.exe
+default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe algebra.exe orbit-grid.exe recurrence.exe bestsq.exe kgrid.exe bhaskara-util_test.exe kline.exe leaderboard.exe mod.exe remain.exe prog.exe brute.exe brutesq.exe
 
 CC_LIB=../cc-lib
 ALPERTRON64=../alpertron64
@@ -59,7 +59,7 @@ endif
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/int128.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/factorization.o $(CC_LIB)/atomic-util.o $(CC_LIB)/interval-cover.o $(CC_LIB)/bounds.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/numbers.o $(CC_LIB)/status-bar.o
+UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/int128.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/factorization.o $(CC_LIB)/atomic-util.o $(CC_LIB)/interval-cover.o $(CC_LIB)/bounds.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/numbers.o $(CC_LIB)/status-bar.o $(CC_LIB)/bignum/polynomial.o
 
 ALPERTRON64_OBJECTS= $(ALPERTRON64)/quadmodll64.o $(ALPERTRON64)/quad64.o
 
@@ -69,7 +69,7 @@ ALPERTRON_OBJECTS= $(ALPERTRON)/quadmodll.o $(ALPERTRON)/quad.o $(ALPERTRON)/mod
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=sos-util.o sos-quad.o database.o predict.o polynomial.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS) $(ALPERTRON64_OBJECTS) $(ALPERTRON_OBJECTS)
+OBJECTS=sos-util.o sos-quad.o database.o predict.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS) $(ALPERTRON64_OBJECTS) $(ALPERTRON_OBJECTS)
 
 CL_OBJECTS=$(OBJECTS) sos-gpu.o mod-gpu.o $(CC_LIB)/opencl/clutil.o
 
@@ -126,10 +126,6 @@ comet.exe : comet.o $(OBJECTS)
 	@echo -n "!"
 
 orbit-grid.exe : orbit-grid.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-polynomial_test.exe : polynomial_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

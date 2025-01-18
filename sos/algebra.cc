@@ -6,11 +6,21 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "bhaskara-util.h"
 #include "bignum/big.h"
 #include "bignum/polynomial.h"
 
 using namespace std;
+
+std::string LongRat(const BigRat &r) {
+  const auto &[n, d] = r.Parts();
+  if (d == BigInt(1)) {
+    return LongNum(n);
+  } else {
+    return StringPrintf("%s/%s", LongNum(n).c_str(), LongNum(d).c_str());
+  }
+}
 
 template<class F>
 static BigInt BigEval(const Term &t, const F &f) {
@@ -25,10 +35,10 @@ static BigInt BigEval(const Term &t, const F &f) {
 }
 
 template<class F>
-static BigInt BigEval(const Polynomial &p, const F &f) {
-  BigInt result(0);
+static BigRat BigEval(const Polynomial &p, const F &f) {
+  BigRat result(0);
   for (const auto &[t, c] : p.sum) {
-    result = BigInt::Plus(result, BigInt::Times(BigEval(t, f), c));
+    result = BigRat::Plus(result, BigRat::Times(BigEval(t, f), c));
   }
   return result;
 }
@@ -410,18 +420,18 @@ void Eval() {
     const auto [bi, ci] = GetIter<0>(n);
     const auto [bc, cc] = Manual(n);
 
-    BigInt x0 = BigEval(bi, F);
-    BigInt y0 = BigEval(ci, F);
+    BigRat x0 = BigEval(bi, F);
+    BigRat y0 = BigEval(ci, F);
 
-    BigInt x1 = BigEval(bc, F);
-    BigInt y1 = BigEval(cc, F);
+    BigRat x1 = BigEval(bc, F);
+    BigRat y1 = BigEval(cc, F);
 
     printf("--- %d ---\n", n);
-    printf("%s vs %s\n", LongNum(x0).c_str(), LongNum(x1).c_str());
-    printf("%s vs %s\n", LongNum(y0).c_str(), LongNum(y1).c_str());
+    printf("%s vs %s\n", LongRat(x0).c_str(), LongRat(x1).c_str());
+    printf("%s vs %s\n", LongRat(y0).c_str(), LongRat(y1).c_str());
 
-    CHECK(BigInt::Eq(x0, x1));
-    CHECK(BigInt::Eq(y0, y1));
+    CHECK(BigRat::Eq(x0, x1));
+    CHECK(BigRat::Eq(y0, y1));
   }
 }
 
