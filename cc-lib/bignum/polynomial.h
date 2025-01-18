@@ -7,8 +7,9 @@
 #include <utility>
 #include <optional>
 
-#include "base/stringprintf.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
+#include "big.h"
 
 // In a polynomial like 3x^2y - 4y + 7, this represents one of the
 // "x^2y", "y", or "" (multiplicative unit).
@@ -132,7 +133,7 @@ static inline bool operator <(const Term &a, const Term &b) {
   return a.product < b.product;
 }
 
-// Represents an integer polynomial. Open domain of variables, just
+// Represents a rational polynomial. Open domain of variables, just
 // represented as strings.
 struct Polynomial {
   // zero polynomial
