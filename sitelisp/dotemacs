@@ -32,6 +32,8 @@
 
 (add-to-list 'load-path "/Users/twm/tom7misc/sitelisp")
 
+(load "z3-mode")
+
 (defun code-format-paragraph ()
   "Either use eglot-format on the selected region, or set a region to the 'current paragraph' and then format it."
   (interactive "")
@@ -667,18 +669,27 @@
 ;; and you should probably avoid C++ keywords in C anyway.
 (add-to-list 'auto-mode-alist '("\\.h\\'" . c++-mode))
 
-(font-lock-add-keywords 'c++-mode '(
-("\\<\\(static_assert\\|export\\|nullptr\\|constexpr\\|final\\|override\\)\\>" . font-lock-keyword-face)
-))
-
 ;; (defconst tom7-cc-style
 ;; '("cc-mode"
 ;;    (c-offsets-alist . ((innamespace . [0])))))
 ;; (c-add-style "tom7-cc-mode" tom7-cc-style)
 
+(font-lock-add-keywords
+ 'c++-mode
+ '(
+   ("\\<\\(static_assert\\|export\\|nullptr\\|constexpr\\|final\\|override\\)\\>" . font-lock-keyword-face)))
+
+(font-lock-add-keywords
+ 'c++-mode
+ '(
+   ("\\(\\[\\[[a-z_]*\\]\\]\\)" 0 'c-attribute-face t)))
+
+
 ;; Protip: Use C-c C-o to see what context you're in, and experiment
 ;; with changes to this!
 (defun tom7-c-setup ()
+
+
   ;; allow first argument to functions to wrap to next line and
   ;; indent twice the basic offset.
   (c-set-offset 'arglist-intro '++)
@@ -698,6 +709,11 @@
   ;; a vector of offsets is treated as absolute.
   (c-set-offset 'innamespace [0]))
 (add-hook 'c++-mode-hook 'tom7-c-setup)
+
+(defface c-attribute-face
+    '((t (:foreground "#667788")))
+  "Face used to highlight C/C++ attributes."
+  :group 'c-faces)
 
 (defun revert-without-prompting ()
   "Revert the current buffer without prompting."
