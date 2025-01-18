@@ -7,7 +7,7 @@ SDL=/c/code/SDL
 
 #  -I GLEW/include
 # -I/usr/local/include
-CXXFLAGS=--std=c++20 -march=native -Wall -Wno-deprecated -Wno-sign-compare  -I $(SDL)/include
+CXXFLAGS=--std=c++23 -march=native -Wall -Wno-deprecated -Wno-sign-compare  -I $(SDL)/include
 OPT=-O2
 SYMBOLS=-g
 
@@ -31,14 +31,6 @@ SDLARCH=x64
 %.o : %.cc
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c -o $@ $<
 	@bash -c "echo -n '.'"
-
-#  GLEW_LIB=GLEW/lib/Release/x64/glew32.lib
-#  GLEW_DLL=GLEW/bin/Release/x64/glew32.dll
-#
-#  # make sure this uses TDM-GCC's dlltool!
-#  libglew32.a : $(GLEW_LIB) $(GLEW_DLL) makefile
-#  	dlltool --export-all-symbols -d glew32.def -D $(GLEW_DLL) -mi386:x86-64 -k -a -l $@
-#
 
 # -L. -lglew32
 LINKGL=-lopengl32
@@ -72,7 +64,7 @@ BOARDSOBJECTS=$(FCEULIB)/boards/mmc1.o $(FCEULIB)/boards/mmc5.o $(FCEULIB)/board
 
 INPUTOBJECTS=$(FCEULIB)/input/arkanoid.o $(FCEULIB)/input/ftrainer.o $(FCEULIB)/input/oekakids.o $(FCEULIB)/input/suborkb.o $(FCEULIB)/input/bworld.o $(FCEULIB)/input/hypershot.o $(FCEULIB)/input/powerpad.o $(FCEULIB)/input/toprider.o $(FCEULIB)/input/cursor.o $(FCEULIB)/input/mahjong.o $(FCEULIB)/input/quiz.o $(FCEULIB)/input/zapper.o $(FCEULIB)/input/fkb.o $(FCEULIB)/input/shadow.o
 
-FCEUOBJECTS=$(FCEULIB)/cart.o $(FCEULIB)/version.o $(FCEULIB)/emufile.o $(FCEULIB)/fceu.o $(FCEULIB)/fds.o $(FCEULIB)/file.o $(FCEULIB)/filter.o $(FCEULIB)/ines.o $(FCEULIB)/input.o $(FCEULIB)/palette.o $(FCEULIB)/ppu.o $(FCEULIB)/sound.o $(FCEULIB)/state.o $(FCEULIB)/unif.o $(FCEULIB)/vsuni.o $(FCEULIB)/x6502.o $(FCEULIB)/git.o $(FCEULIB)/fc.o
+FCEUOBJECTS=$(FCEULIB)/cart.o $(FCEULIB)/version.o $(FCEULIB)/emufile.o $(FCEULIB)/fceu.o $(FCEULIB)/fds.o $(FCEULIB)/file.o $(FCEULIB)/filter.o $(FCEULIB)/ines.o $(FCEULIB)/input.o $(FCEULIB)/palette.o $(FCEULIB)/ppu.o $(FCEULIB)/sound.o $(FCEULIB)/state.o $(FCEULIB)/unif.o $(FCEULIB)/vsuni.o $(FCEULIB)/x6502.o $(FCEULIB)/git.o $(FCEULIB)/fc.o $(FCEULIB)/opcodes.o
 
 FCEULIB_OBJECTS=$(FCEUOBJECTS) $(MAPPEROBJECTS) $(UTILSOBJECTS) $(PALLETESOBJECTS) $(BOARDSOBJECTS) $(INPUTOBJECTS) $(FCEULIB)/emulator.o $(FCEULIB)/headless-driver.o $(FCEULIB)/simplefm2.o $(FCEULIB)/stringprintf.o
 

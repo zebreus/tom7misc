@@ -1,13 +1,16 @@
 
 #include "predict.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <cstdint>
 
+#include "database.h"
 #include "opt/opt.h"
-#include "sos-util.h"
 #include "ansi.h"
 
 using namespace std;

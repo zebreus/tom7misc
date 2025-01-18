@@ -1,10 +1,14 @@
 
 #include "modelinfo.h"
 
-#include <memory>
+#include <algorithm>
+#include <limits>
+#include <optional>
 #include <string>
 #include <cstdint>
 #include <cmath>
+#include <tuple>
+#include <vector>
 
 #include "image.h"
 #include "network.h"
@@ -14,6 +18,7 @@
 using namespace std;
 using uint32 = uint32_t;
 using int64 = int64_t;
+using uint8 = uint8_t;
 
 namespace {
 // XXX could make sense as a standalone utility?
@@ -32,11 +37,12 @@ struct Histo {
     bound_low(bound_low), bound_high(bound_high) {}
 
   // Assumes width is the number of buckets you want.
-  // If tallest_bucket is, say, 0.9, the bars are stretched to go 90% of the way to
-  // the top of the image (1.0 is a sensible default but can be confusing in the
-  // presence of tick marks, say).
-  std::tuple<float, float, ImageA> MakeImage(int width, int height,
-                                             double tallest_bucket = 1.0) const {
+  // If tallest_bucket is, say, 0.9, the bars are stretched to go 90%
+  // of the way to the top of the image (1.0 is a sensible default but
+  // can be confusing in the presence of tick marks, say).
+  std::tuple<float, float, ImageA>
+  MakeImage(int width, int height,
+            double tallest_bucket = 1.0) const {
     ImageA img(width, height);
 
     float lo = std::numeric_limits<float>::infinity();

@@ -1,25 +1,39 @@
-#include <cmath>
-#include <memory>
-#include <vector>
+#include "numbers.h"
+
+#include <algorithm>
 #include <bit>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <thread>
 #include <tuple>
+#include <utility>
+#include <vector>
 
+#ifdef WIN32
 #include <windows.h>
+#endif
 
-#include "opencl/clutil.h"
+#include "ansi.h"
+#include "atomic-util.h"
+#include "autoparallel.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "threadutil.h"
-#include "util.h"
-#include "periodically.h"
-#include "timer.h"
-#include "ansi.h"
-#include "autoparallel.h"
-#include "atomic-util.h"
-#include "image.h"
 #include "factorization.h"
-#include "work-queue.h"
+#include "image.h"
+#include "opencl/clutil.h"
+#include "periodically.h"
 #include "status-bar.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "utf8.h"
+#include "util.h"
+#include "work-queue.h"
 
 #include "database.h"
 #include "sos-util.h"
@@ -31,6 +45,7 @@ using namespace std;
 
 static CL *cl = nullptr;
 
+using uint8 = uint8_t;
 using int64 = int64_t;
 using Square = Database::Square;
 
@@ -1440,7 +1455,7 @@ struct SOS {
     }
   }
 
-  void RunEpoch(uint64_t epoch_start, uint64 epoch_size) {
+  void RunEpoch(uint64_t epoch_start, uint64_t epoch_size) {
     CHECK(cl != nullptr);
 
     status.Printf(
@@ -1637,9 +1652,11 @@ int main(int argc, char **argv) {
   AnsiInit();
   cl = new CL;
 
+  #ifdef WIN32
   if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
     LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
   }
+  #endif
 
   Run();
 

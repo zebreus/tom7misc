@@ -5,6 +5,7 @@
 #include <cstdint>
 
 #include "emulator.h"
+#include "base/logging.h"
 
 using int64 = int64_t;
 

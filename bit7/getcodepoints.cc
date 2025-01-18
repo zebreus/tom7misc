@@ -1,5 +1,6 @@
 // Outputs all the unicode codepoints in a font, as UTF-8 strings.
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>

@@ -43,12 +43,12 @@
 #include <bit>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <ctype.h>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <string>
-#include <ctype.h>
-#include <cstring>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"

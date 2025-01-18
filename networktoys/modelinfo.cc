@@ -1,10 +1,15 @@
 
 #include "modelinfo.h"
 
+#include <algorithm>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <cstdint>
 #include <cmath>
+#include <tuple>
+#include <vector>
 
 #include "image.h"
 #include "network.h"
@@ -13,6 +18,7 @@
 #include "opt/opt.h"
 
 using namespace std;
+using uint8 = uint8_t;
 using uint32 = uint32_t;
 using int64 = int64_t;
 

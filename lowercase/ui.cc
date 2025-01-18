@@ -1,9 +1,16 @@
 
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
+#include <memory>
+#include <mutex>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <shared_mutex>
 #include <cstdint>
-#include <unordered_set>
 #include <unordered_map>
 #include <utility>
 #include <optional>
@@ -15,6 +22,10 @@
 #include "../cc-lib/base/logging.h"
 #include "../cc-lib/base/stringprintf.h"
 
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_mouse.h"
+#include "SDL_video.h"
 #include "timer.h"
 
 #include "SDL.h"
@@ -24,17 +35,14 @@
 #include "../cc-lib/sdl/font.h"
 #include "../cc-lib/stb_truetype.h"
 #include "../cc-lib/image.h"
-#include "../cc-lib/util.h"
 #include "../cc-lib/lines.h"
 #include "../cc-lib/re2/re2.h"
 
 #include "opt/opt.h"
 
-#include "ttfops.h"
 #include "fonts/ttf.h"
 #include "fontdb.h"
 #include "font-problem.h"
-#include "loadfonts.h"
 #include "network.h"
 
 #include "geom/bezier.h"
@@ -44,6 +52,8 @@
 
 using namespace std;
 
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 using int64 = int64_t;
 
 #define FONTWIDTH 9
@@ -197,7 +207,7 @@ struct UI {
 
   // Draw line into drawing. Coordinates are relative to drawing, but may
   // be outside it.
-  void DrawThick(int x0, int y0, int x1, int y1, Uint32 color);
+  void DrawThick(int x0, int y0, int x1, int y1, uint32_t color);
   void FloodFillToggle(int x, int y);
   void UpdateGamma();
 
@@ -414,14 +424,14 @@ double BitmapDifference(const TTF &ttf,
   float stb_scale = stbtt_ScaleForPixelHeight(info, scale);
 
   int width1, height1, xoff1, yoff1;
-  uint8 *bit1 = stbtt_GetCodepointBitmapSubpixel(info,
-                                                 // uniform scale
-                                                 stb_scale, stb_scale,
-                                                 // unshifted
-                                                 0.0f, 0.0f,
-                                                 c1,
-                                                 &width1, &height1,
-                                                 &xoff1, &yoff1);
+  uint8_t *bit1 = stbtt_GetCodepointBitmapSubpixel(info,
+                                                   // uniform scale
+                                                   stb_scale, stb_scale,
+                                                   // unshifted
+                                                   0.0f, 0.0f,
+                                                   c1,
+                                                   &width1, &height1,
+                                                   &xoff1, &yoff1);
   CHECK(bit1 != nullptr);
 
   // Get integral part and remainder (always in [0, 1)).
@@ -439,7 +449,7 @@ double BitmapDifference(const TTF &ttf,
   }
 
   int width2, height2, xoff2, yoff2;
-  uint8 *bit2 =
+  uint8_t *bit2 =
     stbtt_GetCodepointBitmapSubpixel(info,
                                      stb_scale * xscale2, stb_scale * yscale2,
                                      subpixel_x, subpixel_y,
@@ -1628,21 +1638,18 @@ void UI::DrawSDF() {
     constexpr int X6 = 500, Y6 = 800;
 
     auto DrawBitmap = [](int startx, int starty, const ImageA &sdf) {
-        int idx = 0;
         for (int y = 0; y < sdf.Height(); y++) {
           int yy = starty + y;
           for (int x = 0; x < sdf.Width(); x++) {
             uint8 v = sdf.GetPixel(x, y);
             int xx = startx + x;
             sdlutil::drawclippixel(screen, xx, yy, v, v, v);
-            idx++;
           }
         }
       };
 
     auto DrawBitmapThresh = [](uint8 thresh,
                                  int startx, int starty, const ImageA &sdf) {
-        int idx = 0;
         for (int y = 0; y < sdf.Height(); y++) {
           int yy = starty + y;
           for (int x = 0; x < sdf.Width(); x++) {
@@ -1651,14 +1658,12 @@ void UI::DrawSDF() {
 
             uint8 vv = v >= thresh ? 0xFF : 0x00;
             sdlutil::drawclippixel(screen, xx, yy, vv, vv, vv);
-            idx++;
           }
         }
       };
 
 
     auto DrawBitmap2x = [](int startx, int starty, const ImageA &sdf) {
-        int idx = 0;
         for (int y = 0; y < sdf.Height(); y++) {
           int yy = starty + y * 2;
           for (int x = 0; x < sdf.Width(); x++) {
@@ -1668,14 +1673,12 @@ void UI::DrawSDF() {
             sdlutil::drawclippixel(screen, xx + 1, yy, v, v, v);
             sdlutil::drawclippixel(screen, xx, yy + 1, v, v, v);
             sdlutil::drawclippixel(screen, xx + 1, yy + 1, v, v, v);
-            idx++;
           }
         }
       };
 
     auto DrawBitmapThresh2x = [](uint8 thresh,
                                  int startx, int starty, const ImageA &sdf) {
-        int idx = 0;
         for (int y = 0; y < sdf.Height(); y++) {
           int yy = starty + y * 2;
           for (int x = 0; x < sdf.Width(); x++) {
@@ -1687,8 +1690,6 @@ void UI::DrawSDF() {
             sdlutil::drawclippixel(screen, xx + 1, yy, vv, vv, vv);
             sdlutil::drawclippixel(screen, xx, yy + 1, vv, vv, vv);
             sdlutil::drawclippixel(screen, xx + 1, yy + 1, vv, vv, vv);
-
-            idx++;
           }
         }
       };
@@ -1748,7 +1749,7 @@ void UI::DrawDrawing() {
       // to be strongly negative
       constexpr int BAR_CENTER = 20;
 
-      auto DrawPred = [this](const std::array<float, 26> &pred,
+      auto DrawPred = [](const std::array<float, 26> &pred,
                              char base_char,
                              int xpos, int ypos) {
           for (int i = 0; i < 26; i++) {
@@ -2020,7 +2021,7 @@ void UI::Draw() {
     if (looptest_assignment.has_value())
       DrawAssignment(looptest_assignment.value());
 
-    auto DrawLoop = [this](const vector<FontProblem::Point> &pts,
+    auto DrawLoop = [](const vector<FontProblem::Point> &pts,
                            uint8 r, uint8 g, uint8 b) {
         for (int i = 0; i < pts.size(); i++) {
           const int next_i = i < pts.size() - 1 ? i + 1 : 0;

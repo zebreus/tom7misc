@@ -286,7 +286,7 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
     vector<uint8> prev_mem;
   };
 
-  auto OneSeq = [this, lagmem, &sciences, SEQ_LEN, &uncompressed_state](
+  auto OneSeq = [this, &sciences, SEQ_LEN, &uncompressed_state](
       int seq) {
     Emulator *emu = emus[seq];
     emu->LoadUncompressed(uncompressed_state);

@@ -1,23 +1,32 @@
 
+#include "base/stringprintf.h"
+#include "util.h"
 #include "sos-util.h"
 #include "sos-gpu.h"
 #include "opencl/clutil.h"
 
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <map>
 #include <mutex>
+#include <tuple>
 #include <vector>
 #include <utility>
 #include <optional>
 #include <string>
 
-#include "base/logging.h"
 #include "ansi.h"
-#include "periodically.h"
-#include "opt/opt.h"
 #include "arcfour.h"
+#include "atomic-util.h"
+#include "base/logging.h"
+#include "factorization.h"
+#include "opt/opt.h"
+#include "periodically.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "atomic-util.h"
-#include "factorization.h"
+#include "timer.h"
 
 using namespace std;
 

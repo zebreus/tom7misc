@@ -14,4 +14,4 @@ InlayHints:
   Enabled: No
 
 CompileFlags:
-  Add: [-xc++, -Wall, -Wshadow-field, --std=c++20, -I., -I../cc-lib]
+  Add: [-xc++, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib]

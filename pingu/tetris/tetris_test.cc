@@ -1,14 +1,10 @@
 
 #include "tetris.h"
 
+#include <cstdio>
 #include <string>
-#include <vector>
-#include <memory>
-#include <cstdint>
-#include <cmath>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 using Tetris = TetrisDepth<8>;
 

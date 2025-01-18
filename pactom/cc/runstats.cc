@@ -1,8 +1,14 @@
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <cstdio>
 
+#include "bounds.h"
+#include "image.h"
 #include "pactom-util.h"
 #include "pactom.h"
 #include "util.h"
@@ -106,7 +112,7 @@ int main(int argc, char **argv) {
           }
 
           double t = std::lerp(0.20, 1.0, miles / 35.0);
-          uint32 bar_color =
+          uint32_t bar_color =
             ColorUtil::LinearGradient32(ColorUtil::HEATED_METAL, t);
 
           /*
@@ -174,7 +180,7 @@ int main(int argc, char **argv) {
 
 
         double t = std::lerp(0.20, 1.0, dist / max_dist);
-        uint32 bar_color =
+        uint32_t bar_color =
           ColorUtil::LinearGradient32(ColorUtil::HEATED_METAL, t);
 
         // Always the run bar.

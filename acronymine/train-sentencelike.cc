@@ -7,43 +7,41 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
+#include <thread>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <functional>
-#include <string>
-#include <chrono>
-#include <thread>
-#include <deque>
-
-#include "network.h"
-#include "clutil.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "threadutil.h"
-#include "image.h"
-#include "util.h"
-#include "train-util.h"
-#include "periodically.h"
-#include "timer.h"
-#include "error-history.h"
-#include "ansi.h"
-#include "color-util.h"
 
 #include "acronym-util.h"
-#include "word2vec.h"
-#include "wikipedia.h"
+#include "ansi.h"
+#include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "clutil.h"
+#include "error-history.h"
 #include "freq.h"
+#include "image.h"
+#include "network.h"
+#include "periodically.h"
+#include "randutil.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "train-util.h"
+#include "util.h"
+#include "wikipedia.h"
+#include "word2vec.h"
 #include "wordnet.h"
 
 using namespace std;
@@ -59,6 +57,7 @@ static constexpr const char *WORD2VEC_FILL_FILE = "word2vecfill.txt";
 static constexpr const char *WORDNET_DIR = "wordnet";
 
 static constexpr const char *FREQ_FILE = "freq.txt";
+[[maybe_unused]]
 static constexpr const char *WORDLIST_FILE = "word-list.txt";
 
 static CL *cl = nullptr;

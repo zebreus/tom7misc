@@ -47,7 +47,7 @@ OPT=-O3
 # We also rely on sqrt(double) producing exact values.
 # Alpertron uses variable-length arrays, so suppress the warning about
 # that extension (or rewrite).
-CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) $(OPT) $(FLTO) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-vla-cxx-extension -I. -I$(CC_LIB) -I$(ALPERTRON64) -I$(ALPERTRON) -std=c++20
+CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) $(OPT) $(FLTO) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-vla-cxx-extension -I. -I$(CC_LIB) -I$(ALPERTRON64) -I$(ALPERTRON) -std=c++23
 
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. -m64 -lz $(CL_LFLAGS) -lz $(OPT) $(FLTO) $(PLATFORM_LFLAGS) $(GMP_LFLAGS)

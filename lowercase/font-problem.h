@@ -12,9 +12,9 @@
 
 #include "fonts/ttf.h"
 #include "image.h"
+#include "arcfour.h"
 
-class Network;
-class ArcFour;
+struct Network;
 
 struct FontProblem {
 

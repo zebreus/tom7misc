@@ -6,10 +6,10 @@ OPT=-O2
 CXXFLAGS=--std=c++20 -Wall $(OPT)
 SYMBOLS=-g
 
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
 
-CCLIB=../cc-lib
+CC_LIB=../cc-lib
 
 # PLATFORMCFLAGS=-D__MINGW32__ -DHAVE_ALLOCA -D_WIN32_WINNT=0x0602 -D_GLIBCXX_HAS_GTHREADS -mthreads
 # PLATFORMCFLAGS=-m64
@@ -17,39 +17,36 @@ CCLIB=../cc-lib
 PLATFORMLINK=-static
 
 #  -I/usr/include
-INCLUDES=-I "$(CCLIB)" -I "$(CCLIB)/re2"
+INCLUDES=-I "$(CC_LIB)" -I "$(CC_LIB)/re2"
 CPPFLAGS=$(INCLUDES) $(PLATFORMCFLAGS) $(SYMBOLS)
 
 # without static, can't find lz or lstdcxx maybe?
 #  -L/usr/lib -lprotobuf
 LFLAGS=$(PLATFORMLINK)
 
-CCLIB_OBJECTS=$(CCLIB)/base/logging.o $(CCLIB)/base/stringprintf.o $(CCLIB)/util.o $(CCLIB)/textsvg.o $(CCLIB)/arcfour.o $(CCLIB)/edit-distance.o $(CCLIB)/guitar/guitar.o
+CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/util.o $(CC_LIB)/textsvg.o $(CC_LIB)/arcfour.o $(CC_LIB)/edit-distance.o $(CC_LIB)/guitar/guitar.o
 
-RE2_OBJECTS=$(CCLIB)/re2/bitstate.o $(CCLIB)/re2/compile.o $(CCLIB)/re2/dfa.o $(CCLIB)/re2/filtered_re2.o $(CCLIB)/re2/mimics_pcre.o $(CCLIB)/re2/nfa.o $(CCLIB)/re2/onepass.o $(CCLIB)/re2/parse.o $(CCLIB)/re2/perl_groups.o $(CCLIB)/re2/prefilter.o $(CCLIB)/re2/prefilter_tree.o $(CCLIB)/re2/prog.o $(CCLIB)/re2/re2.o $(CCLIB)/re2/regexp.o $(CCLIB)/re2/set.o $(CCLIB)/re2/simplify.o $(CCLIB)/re2/stringpiece.o $(CCLIB)/re2/tostring.o $(CCLIB)/re2/unicode_casefold.o $(CCLIB)/re2/unicode_groups.o $(CCLIB)/re2/util/rune.o $(CCLIB)/re2/util/strutil.o
+RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
 %.o : %.cc *.h
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPT) -c -o $@ $<
 	@bash -c "echo -n '.'"
 
-$(CCLIB)/%.o : $(CCLIB)/%.cc
+$(CC_LIB)/%.o : $(CC_LIB)/%.cc
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(OPT) -c -o $@ $<
 	@bash -c "echo -n '_'"
 
-cleandb.exe : cleandb.o guitarchive.o headers.o $(CCLIB_OBJECTS) $(RE2_OBJECTS)
+cleandb.exe : cleandb.o guitarchive.o headers.o $(CC_LIB_OBJECTS) $(RE2_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-chords.exe : chords.o chord-parser.o guitarchive.o $(CCLIB_OBJECTS) $(RE2_OBJECTS)
+chords.exe : chords.o chord-parser.o guitarchive.o $(CC_LIB_OBJECTS) $(RE2_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-guitarchive_test.exe : guitarchive.o guitarchive_test.o $(CCLIB_OBJECTS) $(RE2_OBJECTS)
+guitarchive_test.exe : guitarchive.o guitarchive_test.o $(CC_LIB_OBJECTS) $(RE2_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-chord-parser_test.exe : chord-parser.o chord-parser_test.o $(CCLIB_OBJECTS) $(RE2_OBJECTS)
+chord-parser_test.exe : chord-parser.o chord-parser_test.o $(CC_LIB_OBJECTS) $(RE2_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 clean :
-	rm -f *.o *.exe
-
-veryclean : clean
-	rm -f $(CCLIB_OBJECTS) $(RE2_OBJECTS)
+	rm -f $(CC_LIB_OBJECTS) $(RE2_OBJECTS) *.o *.exe

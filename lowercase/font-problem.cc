@@ -470,7 +470,7 @@ void FontProblem::RenderSDF(
 
            // {(uint8)(config.onedge_value * 1.05), 0xFFFF00FF}
 
-           auto GetLayers = [&config, lowercasing, letter, iter]() {
+           auto GetLayers = [&config]() {
                // Could tweak this separtely for upper- and lowercase
                // models, iteration number...
                // float th1 = pow(0.95, iter);
@@ -1185,8 +1185,8 @@ static ImageA SDF36From8x8(FontProblem::Image8x8 img) {
 
 
   // Only need to search from LEFT - 1 to LEFT - 1 + WIDTH + 2, etc.
-  auto GetSqDistanceTo = [&Color, size](int x, int y, bool c,
-                                        int squared_bound) -> int {
+  auto GetSqDistanceTo = [&Color](int x, int y, bool c,
+                                  int squared_bound) -> int {
       int min_sqdist = squared_bound;
 
       // min and max (inclusive) ranges to search for pixels.

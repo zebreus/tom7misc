@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <functional>
 #include <map>
 #include <optional>
@@ -11,15 +12,14 @@
 #include <utility>
 #include <vector>
 
-#include "base/logging.h"
-#include "expression.h"
-
-#include "choppy.h"
-#include "grad-util.h"
 #include "ansi.h"
-#include "timer.h"
-#include "opt/large-optimizer.h"
+#include "base/logging.h"
+#include "choppy.h"
 #include "diff.h"
+#include "expression.h"
+#include "grad-util.h"
+#include "opt/large-optimizer.h"
+#include "timer.h"
 #include "util.h"
 
 using Choppy = ChoppyGrid<256>;
@@ -31,6 +31,7 @@ using namespace std;
 [[maybe_unused]]
 static constexpr int MAX_THREADS = 8;
 
+[[maybe_unused]]
 static double Cost(const Exp *e) {
   static constexpr double NODE = 100000.0;
   switch (e->type) {
@@ -57,6 +58,7 @@ static double Cost(const Exp *e) {
   }
 };
 
+[[maybe_unused]]
 static int NumParameters(const Exp *e) {
   switch (e->type) {
   case VAR:
@@ -75,8 +77,9 @@ static int NumParameters(const Exp *e) {
   }
 }
 
-static int64 TotalDepth(const Exp *e) {
-  int64 depth = 0;
+[[maybe_unused]]
+static int64_t TotalDepth(const Exp *e) {
+  int64_t depth = 0;
   std::function<void(const Exp *)> Rec = [&Rec, &depth](const Exp *e) {
       depth++;
       switch (e->type) {

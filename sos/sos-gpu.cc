@@ -1,15 +1,25 @@
 
 #include "sos-gpu.h"
 
+#include <CL/cl.h>
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "base/logging.h"
+#include "ansi.h"
+#include "numbers.h"
 #include "opencl/clutil.h"
 #include "sos-util.h"
 #include "threadutil.h"
+#include "timer.h"
+
+# define TIMER_START(d) Timer d ## _timer
+# define TIMER_END(d) t_ ## d += d ## _timer.Seconds()
 
 // TODO: Generate code to do the unrolled TRY loops as efficiently
 // as we can. (See notes in gen-try.cc. I think it may not work...)
@@ -73,7 +83,6 @@ ProcessGPUOutput(
   }
   return ret;
 }
-
 
 std::vector<std::vector<std::pair<uint64_t, uint64_t>>>
 // An input is a target sum, with its expected number of ways (use CWW).
@@ -478,7 +487,7 @@ TryFilterGPU::FilterWays(std::vector<TryMe> &input,
 // Returns a dense array of factors (MAX_FACTORS x height)
 // with the count of factors per input.
 std::pair<std::vector<uint64_t>,
-          std::vector<uint8>>
+          std::vector<uint8_t>>
 FactorizeGPU::Factorize(const std::vector<uint64_t> &nums) {
   // Only one GPU process at a time.
   MutexLock ml(&m);

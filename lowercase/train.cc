@@ -31,15 +31,29 @@
 //     allocate; it's fine to use the copy constructor.
 
 #include "SDL.h"
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_keysym.h"
 #include "SDL_main.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
+#include "fonts/ttf.h"
 #include "sdl/sdlutil.h"
 #include "sdl/font.h"
 
 #include <CL/cl.h>
 
+#include <CL/cl_platform.h>
+#include <cstdint>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <processthreadsapi.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
+#include <thread>
 #include <time.h>
 
 #include <cmath>
@@ -47,24 +61,20 @@
 #include <algorithm>
 #include <tuple>
 #include <utility>
-#include <set>
 #include <vector>
-#include <map>
 #include <unordered_set>
 #include <deque>
 #include <shared_mutex>
+#include <windows.h>
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
 #include "arcfour.h"
 #include "util.h"
-#include "vector-util.h"
 #include "threadutil.h"
 #include "randutil.h"
 #include "base/macros.h"
-#include "color-util.h"
 #include "image.h"
-#include "lines.h"
 #include "rolling-average.h"
 
 #include "loadfonts.h"
@@ -97,6 +107,7 @@ using uchar = uint8_t;
 
 using uint32 = uint32_t;
 using uint64 = uint64_t;
+using int64 = int64_t;
 
 using Contour = TTF::Contour;
 
@@ -548,6 +559,7 @@ struct TrainingRoundGPU {
 
 // XXX this is probably obsolete -- now we do more specializations
 // of constants in each wrapper's constructor.
+[[maybe_unused]]
 static std::pair<std::vector<cl_program>, std::vector<cl_kernel>>
 MakeTransferKernels(CL *cl, const char *base_file, const char *function_name) {
   std::vector<cl_program> programs;
@@ -1444,6 +1456,7 @@ static constexpr int EXPORT_EVERY = 10;
 
 static constexpr int EVAL_SCREENSHOT_EVERY = 1000;
 
+[[maybe_unused]]
 static constexpr bool DRAW_ERRORS = false;
 
 // Render the layer in the training UI for one example.
@@ -2075,7 +2088,6 @@ private:
   double current_total_error = 0.0;
 };
 
-
 static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
   [[maybe_unused]]
   constexpr int SDF_THREE_QUARTERS = SDF_SIZE * 0.75;
@@ -2374,7 +2386,7 @@ struct Training {
     Timer round_timer;
 
     if (VERBOSE > 2) Printf("\n\n");
-    Printf("[%d] ** NET ROUND %d (%d in this process) **\n",
+    Printf("[%d] ** NET ROUND %lld (%lld in this process) **\n",
            model_index, net->rounds, rounds_executed);
 
     // The learning rate should maybe depend on the number of examples
@@ -2470,9 +2482,9 @@ struct Training {
             return;
 
           if (VERBOSE > 0)
-            Printf("Blocked grabbing %s examples (still need %d)...\n",
+            Printf("Blocked grabbing %s examples (still need %lld)...\n",
                    type,
-                   target_num - examples.size());
+                   (int64_t)(target_num - examples.size()));
           std::this_thread::sleep_for(1s);
           if (ShouldDie()) return;
         }
@@ -2859,7 +2871,7 @@ private:
 
   static string GetRandomSeed(int idx) {
     const string start_seed = StringPrintf("%d  %lld  %d",
-                                           getpid(),
+                                           Util::getpid(),
                                            (int64)time(nullptr),
                                            idx);
     Printf("Start seed: [%s]\n", start_seed.c_str());
@@ -3207,7 +3219,7 @@ int SDL_main(int argc, char **argv) {
         static constexpr int ALLOWED_GAP = 2;
 
         Printf("lowercase rounds %lld, uppercase %lld\n",
-               lrounds, urounds);
+               (int64_t)lrounds, (int64_t)urounds);
         if (lrounds + ALLOWED_GAP < urounds || urounds >= MAX_ROUNDS) {
           Printf("Only running lowercase because it is behind.\n");
           make_lowercase->RunRound();

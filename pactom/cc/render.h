@@ -3,11 +3,26 @@
 
 #include <cmath>
 #include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <numbers>
+#include <optional>
+#include <tuple>
+#include <utility>
+#include <variant>
+#include <vector>
 
-#include "yocto_matht.h"
-#include "yocto_geometryt.h"
-
+#include "base/logging.h"
+#include "arcfour.h"
+#include "lines.h"
+#include "geom/latlon.h"
+#include "color-util.h"
+#include "image.h"
 #include "pactom-util.h"
+#include "pactom.h"
+#include "yocto_geometryt.h"
+#include "yocto_matht.h"
+#include "osm.h"
 
 struct ConvertUV {
   // uv coordinates here are given in terms of the earth
@@ -35,15 +50,19 @@ struct ConvertUV {
   // Near Pittsburgh. Assumes world is flat, which is of
   // course not true. Remember lat,lon is y,x.
   static constexpr std::pair<double, double> ToUV(double lat, double lon) {
-    return make_pair((lon - lon0) * lontox + xu0,
-                     (lat - lat0) * lattoy + yu0);
+    return std::make_pair((lon - lon0) * lontox + xu0,
+                          (lat - lat0) * lattoy + yu0);
   }
 
   static constexpr std::pair<double, double> ToLatLon(double u, double v) {
-    return make_pair((u - xu0) * xtolon + lon0,
-                     (v - yu0) * ytolat + lat0);
+    return std::make_pair((u - xu0) * xtolon + lon0,
+                          (v - yu0) * ytolat + lat0);
   }
 };
+
+inline constexpr double constexpr_abs(double a) {
+  return (a < 0.0) ? -a : a;
+}
 
 struct WideTile {
   // pulaski twp
@@ -63,9 +82,9 @@ struct WideTile {
     (tile_top.second + tile_bot.second) * 0.5;
 
   static constexpr double width_uv =
-    abs(tile_top.first - tile_bot.first);
+    constexpr_abs(tile_top.first - tile_bot.first);
   static constexpr double height_uv =
-    abs(tile_top.second - tile_bot.second);
+    constexpr_abs(tile_top.second - tile_bot.second);
 
   WideTile() {
     image.reset(ImageRGBA::Load("tilewide.png"));
@@ -78,7 +97,7 @@ struct WideTile {
   void Recolor() {
     for (int y = 0; y < image->Height(); y++) {
       for (int x = 0; x < image->Width(); x++) {
-        uint32 c = image->GetPixel32(x, y);
+        uint32_t c = image->GetPixel32(x, y);
         const auto [r, g, b] = RecolorPixel(c);
         image->SetPixel32(x, y, ColorUtil::FloatsTo32(r, g, b, 1.0f));
       }
@@ -86,7 +105,7 @@ struct WideTile {
   }
 
   static inline std::tuple<double, double, double>
-  RecolorPixel(uint32 color) {
+  RecolorPixel(uint32_t color) {
     static constexpr double ho = -.01; // 0.0; // -0.02143107475;
     static constexpr double so = 0.34924340224;
     static constexpr double vo = -0.025; // -0.05219921795;
@@ -105,7 +124,6 @@ struct WideTile {
 
     return ColorUtil::HSVToRGB(h, s, v);
   }
-
 
   std::unique_ptr<ImageRGBA> image;
 };
@@ -127,9 +145,9 @@ struct Tile {
     (tile_top.second + tile_bot.second) * 0.5;
 
   static constexpr double width_uv =
-    abs(tile_top.first - tile_bot.first);
+    constexpr_abs(tile_top.first - tile_bot.first);
   static constexpr double height_uv =
-    abs(tile_top.second - tile_bot.second);
+    constexpr_abs(tile_top.second - tile_bot.second);
 
   LatLon::Projection proj;
 
@@ -159,7 +177,7 @@ struct Tile {
   void Recolor() {
     for (int y = 0; y < image->Height(); y++) {
       for (int x = 0; x < image->Width(); x++) {
-        uint32 c = image->GetPixel32(x, y);
+        uint32_t c = image->GetPixel32(x, y);
         const auto [r, g, b] = RecolorPixel(c);
         image->SetPixel32(x, y, ColorUtil::FloatsTo32(r, g, b, 1.0f));
       }
@@ -167,7 +185,7 @@ struct Tile {
   }
 
   static inline std::tuple<double, double, double>
-  RecolorPixel(uint32 color) {
+  RecolorPixel(uint32_t color) {
     static constexpr double ho = -0.02143107475;
     static constexpr double so = 0.34924340224;
     static constexpr double vo = -0.05219921795;
@@ -210,7 +228,7 @@ struct Tile {
     static constexpr int RADIUS = 4;
 
     for (const auto &[name, path] : pactom->hoods) {
-      constexpr uint32 color = 0xFFFF99;
+      constexpr uint32_t color = 0xFFFF99;
       for (int i = 0; i < path.size() - 1; i++) {
         const LatLon latlon0 = path[i];
         const LatLon latlon1 = path[i + 1];
@@ -233,7 +251,7 @@ struct Tile {
 
     for (const auto &[way_id, way] : osm.ways) {
       if (DrawRoad(way.highway)) {
-        const uint32 color = 0x55101044;
+        const uint32_t color = 0x55101044;
         for (int i = 0; i < way.points.size() - 1; i++) {
           const uint64_t id0 = way.points[i];
           const uint64_t id1 = way.points[i + 1];
@@ -495,7 +513,7 @@ struct Scene {
 
     // XXX some more principled epsilon; nextafter?
     if (isect.hit) ray->tmin = isect.distance + 0.000001;
-    return make_pair(isect_idx, isect);
+    return std::make_pair(isect_idx, isect);
   }
 };
 

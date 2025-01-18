@@ -2,6 +2,7 @@
 #ifndef _LLM_NFA_UTIL_H
 #define _LLM_NFA_UTIL_H
 
+#include <algorithm>
 #include <string>
 #include <unordered_set>
 #include <utility>

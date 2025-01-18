@@ -8,6 +8,8 @@
 #include <thread>
 #include <condition_variable>
 
+// TODO: To cc-lib
+
 // TODO: Printf, which keeps the output separate from the input line(s).
 // TODO: Unbuffered IO.
 // Asynchronous console.

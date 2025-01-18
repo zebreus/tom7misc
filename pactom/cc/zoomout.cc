@@ -1,7 +1,11 @@
 
 #include "pactom.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <string>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <cstdint>
@@ -11,16 +15,13 @@
 #include "geom/latlon.h"
 #include "bounds.h"
 #include "image.h"
-#include "lines.h"
 #include "arcfour.h"
-#include "randutil.h"
-#include "color-util.h"
 #include "threadutil.h"
 #include "pactom-util.h"
 
 using namespace std;
 
-
+using uint32 = uint32_t;
 using int64 = int64_t;
 
 static constexpr int WIDTH = 1920;

@@ -15,18 +15,18 @@
 // No emulator stuff in here (see tetris-emu.h).
 // Could merge this with tetris.h?
 
-constexpr int MEM_RNG1 = 0x17;
-constexpr int MEM_RNG2 = 0x18;
+inline constexpr int MEM_RNG1 = 0x17;
+inline constexpr int MEM_RNG2 = 0x18;
 // "current" piece in its standard orientation
-constexpr int MEM_LAST_DROP = 0x19;
+inline constexpr int MEM_LAST_DROP = 0x19;
 // (mod 256)
-constexpr int MEM_DROP_COUNT = 0x1A;
+inline constexpr int MEM_DROP_COUNT = 0x1A;
 
-constexpr int MEM_BOARD_START = 0x400;
-constexpr int MEM_CURRENT_PIECE = 0x62;
-constexpr int MEM_NEXT_PIECE = 0xBF;
-constexpr int MEM_CURRENT_X = 0x40;
-constexpr int MEM_CURRENT_Y = 0x41;
+inline constexpr int MEM_BOARD_START = 0x400;
+inline constexpr int MEM_CURRENT_PIECE = 0x62;
+inline constexpr int MEM_NEXT_PIECE = 0xBF;
+inline constexpr int MEM_CURRENT_X = 0x40;
+inline constexpr int MEM_CURRENT_Y = 0x41;
 
 // 0x17-0x1A
 struct RNGState {
@@ -318,19 +318,20 @@ inline Shape DropShape(Piece p) {
 // Draw the shape on on the board (20x10, NES format) using the given
 // byte. The x,y coordinate is the BOTTOM left of the shape.
 inline void DrawShapeOnBoard(uint8_t b, Shape shape, int x, int y,
-               std::vector<uint8_t> *board) {
+                             std::vector<uint8_t> *board) {
 
   std::array<uint16_t, 4> mask = ShapeMaskInCol(shape, x);
   for (int my = 0; my < 4; my++) {
-  int yy = y - 3 + my;
-  if (yy < 0 || yy >= 20) continue;
+    int yy = y - 3 + my;
+    if (yy < 0 || yy >= 20)
+      continue;
 
-  uint16_t m = mask[my];
-  for (int x = 0; x < 10; x++) {
-    if (m & (1 << (9 - x))) {
-    (*board)[yy * 10 + x] = b;
+    uint16_t m = mask[my];
+    for (int x = 0; x < 10; x++) {
+      if (m & (1 << (9 - x))) {
+        (*board)[yy * 10 + x] = b;
+      }
     }
-  }
   }
 }
 

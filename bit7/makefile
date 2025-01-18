@@ -12,7 +12,7 @@ else
   OPTFLAGS=-O3 -march=native -mtune=native
 endif
 
-CXXFLAGS=--std=c++20 $(OPTFLAGS) -Wall -I../cc-lib/
+CXXFLAGS=--std=c++23 $(OPTFLAGS) -Wall -I../cc-lib/
 LFLAGS=$(OPTFLAGS) -static
 
 CCLIB_OBJECTS=../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/image.o ../cc-lib/base/logging.o ../cc-lib/base/stringprintf.o ../cc-lib/util.o ../cc-lib/ansi.o

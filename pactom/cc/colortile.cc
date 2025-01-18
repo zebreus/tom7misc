@@ -1,27 +1,19 @@
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
-#include <variant>
+#include <cstdio>
+#include <tuple>
 #include <utility>
-#include <optional>
 #include <functional>
-#include <cmath>
 #include <numbers>
 #include <mutex>
 
-#include "yocto_geometry.h"
 #include "threadutil.h"
 #include "image.h"
 #include "color-util.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "timer.h"
-#include "randutil.h"
-#include "arcfour.h"
 #include "opt/opt.h"
-#include "pactom.h"
-#include "lines.h"
 #include "threadutil.h"
 
 static constexpr double PI = std::numbers::pi;
@@ -32,7 +24,7 @@ static ImageRGBA *background = nullptr;
 static ImageRGBA *tile = nullptr;
 
 static inline std::tuple<double, double, double> Recolor(
-    uint32 color,
+    uint32_t color,
     double ho, double so, double vo) {
   auto [ro, go, bo, ao_] = ColorUtil::U32ToFloats(color);
   float h, s, v;
@@ -112,10 +104,10 @@ int main(int argc, char **argv) {
 
   for (int y = 0; y < tile->Height(); y++) {
     for (int x = 0; x < tile->Width(); x++) {
-      uint32 c = tile->GetPixel32(x, y);
+      uint32_t c = tile->GetPixel32(x, y);
 
       const auto [r, g, b] = Recolor(c, ho, so, vo);
-      uint32 cc = ColorUtil::FloatsTo32(r, g, b, 1.0f);
+      uint32_t cc = ColorUtil::FloatsTo32(r, g, b, 1.0f);
       tile->SetPixel32(x, y, cc);
     }
   }

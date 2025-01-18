@@ -1,21 +1,27 @@
 
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <initializer_list>
+#include <mutex>
+#include <set>
+#include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <set>
-#include <unordered_set>
-#include <mutex>
 
-#include "base/stringprintf.h"
-#include "base/logging.h"
 #include "ansi.h"
-#include "timer.h"
-#include "periodically.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 #include "factorization.h"
+#include "periodically.h"
 #include "threadutil.h"
+#include "timer.h"
 
 using namespace std;
 
+[[maybe_unused]]
 static std::string VecString(const std::vector<int> &v) {
   string out;
   for (int i : v) StringAppendF(&out, "%d, ", i);

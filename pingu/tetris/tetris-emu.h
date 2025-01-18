@@ -2,22 +2,16 @@
 #ifndef _PINGU_TETRIS_EMU_H
 #define _PINGU_TETRIS_EMU_H
 
+#include <cstdio>
 #include <string>
 #include <vector>
-#include <memory>
 #include <cstdint>
-#include <cmath>
 
 #include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../fceulib/simplefm7.h"
-#include "../fceulib/x6502.h"
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "image.h"
 
-#include "tetris.h"
 #include "nes-tetris.h"
 
 inline RNGState GetRNG(const Emulator &emu) {

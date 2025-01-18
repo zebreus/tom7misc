@@ -1,5 +1,9 @@
 
+#include "base/stringprintf.h"
 #include "ranker.h"
+#include <algorithm>
+#include <cstdio>
+#include <string>
 #include <vector>
 #include <cmath>
 

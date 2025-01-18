@@ -1,12 +1,15 @@
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <ctime>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
-#include <shared_mutex>
 #include <cstdint>
-#include <set>
 #include <unordered_set>
 
-#include "threadutil.h"
 #include "randutil.h"
 #include "arcfour.h"
 #include "base/logging.h"
@@ -19,6 +22,7 @@
 
 using namespace std;
 
+using uint8 = uint8_t;
 using int64 = int64_t;
 
 // How many nodes should we add on the target layers?
@@ -39,7 +43,7 @@ enum class Dimension {
   // TODO: Channels also makes sense
 };
 
-static constexpr char *SRC_NETWORK = "makefeatures.val";
+static constexpr const char *SRC_NETWORK = "makefeatures.val";
 static constexpr Dimension DIMENSION = Dimension::ONE_DIMENSIONAL;
 
 // The layer (as an index into layers[]) to widen. It's probably

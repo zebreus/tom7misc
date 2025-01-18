@@ -2,19 +2,13 @@
 #ifndef _PINGU_TETRIS_H
 #define _PINGU_TETRIS_H
 
+#include <array>
+#include <cstdio>
 #include <string>
-#include <vector>
-#include <memory>
 #include <cstdint>
-#include <cmath>
-#include <unordered_set>
-#include <tuple>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "image.h"
-
-#include "tetris.h"
 
 // unrotated piece identity
 enum Piece {
@@ -32,7 +26,7 @@ enum Piece {
 
 // A piece in a specific orientation, using the same byte as
 // the NES uses.
-enum Shape : uint8 {
+enum Shape : uint8_t {
   I_VERT = 0x11,
   I_HORIZ = 0x12,
   SQUARE = 0x0a,
@@ -64,6 +58,7 @@ enum Shape : uint8 {
 // Return the position that the NES considers the shape
 // to be in (MEM_CURRENT_X) when it is against the left
 // wall.
+[[maybe_unused]]
 static inline int ShapeXOffset(Shape s) {
   switch (s) {
   case I_VERT: return 0;
@@ -91,6 +86,7 @@ static inline int ShapeXOffset(Shape s) {
 
 // TODO: ShapeYOffset
 
+[[maybe_unused]]
 static inline Piece DecodePiece(Shape s) {
   switch (s) {
   case I_VERT:
@@ -119,6 +115,7 @@ static inline Piece DecodePiece(Shape s) {
 }
 
 // printable char
+[[maybe_unused]]
 static inline char PieceChar(Piece p) {
   switch (p) {
   case PIECE_O: return 'O';
@@ -142,6 +139,7 @@ static inline bool RowBit(uint16_t row, int x) {
   return !!(row & (1 << (9 - x)));
 }
 
+[[maybe_unused]]
 static inline std::string RowString(uint16_t row) {
   std::string ret;
   ret.resize(10);
@@ -154,8 +152,9 @@ static inline std::string RowString(uint16_t row) {
 }
 
 // char '#' is set; anything else clear.
+[[maybe_unused]]
 static inline uint16_t StringRow(const std::string s) {
-  uint16 row = 0;
+  uint16_t row = 0;
   for (int x = 0; x < 10; x++) {
     row <<= 1;
     row |= (s[x] == '#') ? 0b1 : 0b0;
@@ -163,6 +162,7 @@ static inline uint16_t StringRow(const std::string s) {
   return row;
 }
 
+[[maybe_unused]]
 static constexpr inline int ShapeWidth(Shape s) {
   switch (s) {
   case I_VERT: return 1;
@@ -299,6 +299,7 @@ static constexpr inline uint16_t ShapeBits(Shape s) {
 
 // Returns 4 rows (same representation as Game::rows) with a mask for
 // the shape in the given column. x must be a valid location for the shape.
+[[maybe_unused]]
 static inline constexpr std::array<uint16_t, 4>
 ShapeMaskInCol(Shape s, int x) {
   std::array<uint16_t, 4> rows = {};

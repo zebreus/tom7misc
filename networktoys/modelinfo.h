@@ -3,7 +3,6 @@
 #define _PLUGINVERT_MODELINFO_H
 
 #include <optional>
-#include <cstdint>
 
 #include "image.h"
 #include "network.h"

@@ -12,4 +12,4 @@ InlayHints:
   Enabled: No
 
 CompileFlags:
-  Add: [-xc++, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -Ic:/code/SDL/include, -DDISABLE_SOUND=1, -DDUMMY_UI]
+  Add: [-xc++, -DBIG_USE_GMP=1, -Wall, -Wshadow-field, --std=c++23, -I., -I../llama, -I../cc-lib]

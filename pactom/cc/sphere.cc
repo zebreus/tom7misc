@@ -2,12 +2,17 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <variant>
+#include <cstdio>
+#include <ctime>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <utility>
 #include <optional>
 #include <functional>
 #include <cmath>
 #include <numbers>
+#include <vector>
 
 #include "yocto_matht.h"
 #include "yocto_geometryt.h"
@@ -21,7 +26,6 @@
 #include "arcfour.h"
 #include "opt/opt.h"
 #include "pactom.h"
-#include "lines.h"
 #include "image-frgba.h"
 #include "osm.h"
 #include "render.h"
@@ -444,7 +448,7 @@ static ImageRGBA RenderFrame(
                 const auto [r, g, b] = ColorUtil::LinearGradient(
                     ATMOSPHERE, frac);
 
-                uint32 color = ColorUtil::FloatsTo32(
+                uint32_t color = ColorUtil::FloatsTo32(
                     r, g, b, frac);
 
                 blend.push_back(color);

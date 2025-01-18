@@ -2,6 +2,11 @@
 #ifndef _SOS_SOS_GPU_H
 #define _SOS_SOS_GPU_H
 
+#include <CL/cl.h>
+#include <cstdint>
+#include <cstdio>
+#include <optional>
+#include <tuple>
 #include <utility>
 #include <mutex>
 #include <vector>
@@ -13,7 +18,6 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "sos-util.h"
-#include "timer.h"
 #include "ansi.h"
 #include "map-util.h"
 
@@ -87,9 +91,6 @@ struct WaysGPU {
   double t_ret = 0.0;
 
   double t_all = 0.0;
-
-# define TIMER_START(d) Timer d ## _timer
-# define TIMER_END(d) t_ ## d += d ## _timer.Seconds()
 
   void PrintTimers() {
 #define ONETIMER(d) printf(ACYAN( #d ) ": %s\n", ANSI::Time(t_ ## d).c_str())
@@ -200,9 +201,6 @@ struct WaysGPUMerge {
   double t_ret = 0.0;
 
   double t_all = 0.0;
-
-# define TIMER_START(d) Timer d ## _timer
-# define TIMER_END(d) t_ ## d += d ## _timer.Seconds()
 
   void PrintTimers() {
 #define ONETIMER(d) printf(ACYAN( #d ) ": %s\n", ANSI::Time(t_ ## d).c_str())
@@ -511,7 +509,7 @@ struct FactorizeGPU {
   // Returns a dense array of factors (MAX_FACTORS x height)
   // with the count of factors per input.
   std::pair<std::vector<uint64_t>,
-            std::vector<uint8>>
+            std::vector<uint8_t>>
   Factorize(const std::vector<uint64_t> &nums);
 
   ~FactorizeGPU() {
@@ -587,7 +585,7 @@ struct TrialDivideGPU {
     // Small factors. height * MAX_FACTORS
     std::vector<uint32_t>,
     // Counts
-    std::vector<uint8>>
+    std::vector<uint8_t>>
   Factorize(const std::vector<uint64_t> &nums) {
     // Only one GPU process at a time.
     MutexLock ml(&m);

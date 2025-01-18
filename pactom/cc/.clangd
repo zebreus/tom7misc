@@ -4,7 +4,9 @@ Diagnostics:
     FastCheckFilter: Strict
   MissingIncludes: Strict
   Includes:
-    IgnoreHeader: [base/logging.h, <cstdint>, <cstddef>]
+    IgnoreHeader: base/logging.h
+    IgnoreHeader: <cstdint>
+    IgnoreHeader: <cstddef>
 
 # I'm not showing these, so disable them in the hopes of saving
 # time.
@@ -12,4 +14,4 @@ InlayHints:
   Enabled: No
 
 CompileFlags:
-  Add: [-xc++, -Wall, -Wshadow-field, --std=c++23, -I., -I../cc-lib, -Ic:/code/SDL/include, -DDISABLE_SOUND=1, -DDUMMY_UI]
+  Add: [-xc++, -Wall, -Wshadow-field, --std=c++23, -I., -I../../cc-lib]
