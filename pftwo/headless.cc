@@ -24,6 +24,7 @@
 #include "../cc-lib/textsvg.h"
 #include "../cc-lib/heap.h"
 #include "../cc-lib/randutil.h"
+#include "../cc-lib/base/stringprintf.h"
 
 #include "atom7ic.h"
 
@@ -42,7 +43,7 @@ struct ConsoleThread {
     const int64 start = time(nullptr);
     int64 last_wrote = 0LL;
     int64 last_minute = 0LL;
-    
+
     for (;;) {
       frame++;
       sleep(1);
@@ -55,52 +56,52 @@ struct ConsoleThread {
       // run for a few hours and in batch (so the checkpoint files
       // get mixed up anyway).
       if (experiment_file.empty() &&
-	  elapsed - last_wrote > TEN_MINUTES) {
-	string filename_part = StringPrintf("frame-%lld", frame);
-	string filename = search->SaveBestMovie(filename_part);
-	// XXX races are possible, and Util::copy does byte-by-byte.
-	// Should use posix link?
-	(void)Util::remove("latest.fm2");
-	if (!Util::copy(filename, "latest.fm2")) {
-	  printf("Couldn't copy to latest.fm2?\n");
-	}
-	last_wrote = elapsed;
+    elapsed - last_wrote > TEN_MINUTES) {
+  string filename_part = StringPrintf("frame-%lld", frame);
+  string filename = search->SaveBestMovie(filename_part);
+  // XXX races are possible, and Util::CopyFile does byte-by-byte.
+  // Should use posix link?
+  (void)Util::RemoveFile("latest.fm2");
+  if (!Util::CopyFileBytes(filename, "latest.fm2")) {
+    printf("Couldn't copy to latest.fm2?\n");
+  }
+  last_wrote = elapsed;
       }
 
       const int64 total_nes_frames =
-	search->UpdateApproximateNesFrames();
+  search->UpdateApproximateNesFrames();
 
       int64 minutes = elapsed / 60LL;
       int64 hours = minutes / 60LL;
       if (minutes != last_minute) {
-	last_minute = minutes;
-	const int64 sec = elapsed % 60LL;
-	const int64 min = minutes % 60LL;
-	string es = experiment_file.empty() ? "" :
-	  StringPrintf(" [%s]", experiment_file.c_str());
+  last_minute = minutes;
+  const int64 sec = elapsed % 60LL;
+  const int64 min = minutes % 60LL;
+  string es = experiment_file.empty() ? "" :
+    StringPrintf(" [%s]", experiment_file.c_str());
 
-	search->PrintPerfCounters();
-	string pct;
-	if (max_nes_frames > 0LL) {
-	  pct = StringPrintf(" (%.1f%%)",
-			     (100.0 * total_nes_frames) /
-			     max_nes_frames);
-	}
-	printf("%02d:%02d:%02d  %lld NES Frames%s; %.2fKframes/sec%s\n",
-	       (int)hours, (int)min, (int)sec,
-	       total_nes_frames,
-	       pct.c_str(),
-	       (double)total_nes_frames / ((double)elapsed * 1000.0),
-	       es.c_str());
-	fflush(stdout);
+  search->PrintPerfCounters();
+  string pct;
+  if (max_nes_frames > 0LL) {
+    pct = StringPrintf(" (%.1f%%)",
+           (100.0 * total_nes_frames) /
+           max_nes_frames);
+  }
+  printf("%02d:%02d:%02d  %lld NES Frames%s; %.2fKframes/sec%s\n",
+         (int)hours, (int)min, (int)sec,
+         total_nes_frames,
+         pct.c_str(),
+         (double)total_nes_frames / ((double)elapsed * 1000.0),
+         es.c_str());
+  fflush(stdout);
       }
 
       if (max_nes_frames > 0LL && total_nes_frames > max_nes_frames) {
-	if (!experiment_file.empty()) {
-	  string f = search->SaveBestMovie(experiment_file);
-	  printf("Wrote final experiment results to %s\n", f.c_str());
-	}
-	return;
+  if (!experiment_file.empty()) {
+    string f = search->SaveBestMovie(experiment_file);
+    printf("Wrote final experiment results to %s\n", f.c_str());
+  }
+  return;
       }
     }
   }
@@ -109,7 +110,7 @@ struct ConsoleThread {
   int64 max_nes_frames = 0LL;
   // And write the final movie here.
   string experiment_file;
-  
+
  private:
   TreeSearch *search = nullptr;
   int64 frame = 0LL;
@@ -142,14 +143,14 @@ int main(int argc, char *argv[]) {
     {
       ConsoleThread *console_thread = new ConsoleThread(&search);
       if (!experiment.empty()) {
-	console_thread->max_nes_frames = 3600 * 2 * 20000LL;
-	console_thread->experiment_file = experiment;
+  console_thread->max_nes_frames = 3600 * 2 * 20000LL;
+  console_thread->experiment_file = experiment;
       }
       console_thread->Run();
       delete console_thread;
     }
     search.DestroyThreads();
   }
-  
+
   return 0;
 }

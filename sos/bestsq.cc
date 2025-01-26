@@ -1,4 +1,8 @@
 
+#include <cstdio>
+#include <cstdlib>
+#include <optional>
+#include <utility>
 #include <vector>
 #include <string>
 #include <cstdint>
@@ -259,7 +263,7 @@ int main(int argc, char **argv) {
   // Search(200'000'000'000, 100'000'000'000);
   for (;;) {
     if (!Util::ReadFile("stop").empty()) {
-      Util::remove("stop");
+      Util::RemoveFile("stop");
       printf(AFGCOLOR(255, 255, 255, ABGCOLOR(180, 0, 0, " STOP ")) "\n");
       break;
     }

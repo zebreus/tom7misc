@@ -1,6 +1,7 @@
 
 #include "database.h"
 
+#include <cstdio>
 #include <vector>
 #include <memory>
 #include <string>
@@ -13,7 +14,7 @@ using Row = Database::Row;
 using ColType = Database::ColType;
 
 static void Test() {
-  Util::remove("database-test.sqlite");
+  Util::RemoveFile("database-test.sqlite");
   std::unique_ptr<Database> conn = Database::Open("database-test.sqlite");
 
   {

@@ -435,7 +435,7 @@ static void OpenWithEditor(const string &pass,
   if (!WipeFile(tmpname))
     fprintf(stderr, "Warning: Couldn't wipe %s\n", tmpname.c_str());
 
-  CHECK(Util::remove(tmpname));
+  CHECK(Util::RemoveFile(tmpname));
 }
 
 // Generate a password with the given number of chunks (each the
@@ -462,7 +462,7 @@ static string RandomChunks(int chunks,
           mask |= mask >> 8;
 
           for (;;) {
-            const uint32 x = cr.Byte() & mask;
+            const uint32_t x = cr.Byte() & mask;
             if (x < n) return x;
           }
         };

@@ -674,6 +674,12 @@
 ;;    (c-offsets-alist . ((innamespace . [0])))))
 ;; (c-add-style "tom7-cc-mode" tom7-cc-style)
 
+
+(defface c-attribute-face
+    '((t (:foreground "#667788")))
+  "Face used to highlight C/C++ attributes."
+  :group 'c-faces)
+
 (font-lock-add-keywords
  'c++-mode
  '(
@@ -709,11 +715,6 @@
   ;; a vector of offsets is treated as absolute.
   (c-set-offset 'innamespace [0]))
 (add-hook 'c++-mode-hook 'tom7-c-setup)
-
-(defface c-attribute-face
-    '((t (:foreground "#667788")))
-  "Face used to highlight C/C++ attributes."
-  :group 'c-faces)
 
 (defun revert-without-prompting ()
   "Revert the current buffer without prompting."
