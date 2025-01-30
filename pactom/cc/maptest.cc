@@ -1,6 +1,7 @@
 
 #include "pactom.h"
 
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <memory>
@@ -10,10 +11,7 @@
 #include "geom/latlon.h"
 #include "bounds.h"
 #include "image.h"
-#include "lines.h"
 #include "arcfour.h"
-#include "randutil.h"
-#include "color-util.h"
 #include "osm.h"
 #include "ansi.h"
 
@@ -24,7 +22,6 @@ using namespace std;
 using uint32 = uint32_t;
 using int64 = int64_t;
 
-static constexpr double METERS_TO_FEET = 3.28084;
 static constexpr int WIDTH = 1920;
 static constexpr int HEIGHT = 1080;
 static constexpr int SCALE = 4;
@@ -44,7 +41,7 @@ inline static uint32_t WayColor(OSM::Highway highway) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   ArcFour rc("pactom");
   unique_ptr<PacTom> pactom = PacTomUtil::Load(false);
@@ -75,7 +72,7 @@ int main(int argc, char **argv) {
   }
   printf("Total miles: %.6f\n", path_miles);
   printf("Including elev: %.6f\n", tripath_miles);
-  printf("%d/%d have dates\n", has_date, pactom->runs.size());
+  printf("%d/%d have dates\n", has_date, (int)pactom->runs.size());
 
   OSM osm;
   for (const string osmfile : {
@@ -96,7 +93,7 @@ int main(int argc, char **argv) {
 
   printf("Loaded %lld runs with %lld waypoints.\n",
          pactom->runs.size(), pts);
-  printf("There are %d hoods\n", pactom->hoods.size());
+  printf("There are %d hoods\n", (int)pactom->hoods.size());
 
   const LatLon home = LatLon::FromDegs(40.452911, -79.936313);
   LatLon::Projection Project = LatLon::Gnomonic(home);

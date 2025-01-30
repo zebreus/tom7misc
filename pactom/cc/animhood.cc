@@ -1,7 +1,9 @@
 
 #include "pactom.h"
 
+#include <cstdio>
 #include <string>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <cstdint>
@@ -48,7 +50,7 @@ inline static uint32_t WayColor(OSM::Highway highway) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   ArcFour rc("pactom");
 
@@ -79,7 +81,7 @@ int main(int argc, char **argv) {
 
   printf("Loaded %lld runs with %lld waypoints.\n",
          pactom->runs.size(), pts);
-  printf("There are %d hoods\n", pactom->hoods.size());
+  printf("There are %d hoods\n", (int)pactom->hoods.size());
 
   const LatLon home = LatLon::FromDegs(40.452911, -79.936313);
   LatLon::Projection Project = LatLon::Gnomonic(home);

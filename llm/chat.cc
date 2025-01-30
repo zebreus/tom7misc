@@ -11,9 +11,13 @@
 #include "llama.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 
@@ -617,7 +621,6 @@ int main(int argc, char ** argv) {
   CHECK(VectorContains(ppts, user)) << "The user " << user << " must be "
     "in the participants list. This is case-sensitive.";
 
-  // AnsiInit();
   Timer model_timer;
 
   // ContextParams cparams = Models::LLAMA_70B_F16;

@@ -890,7 +890,7 @@ static void Train(const string &dir, Network *net,
             const auto [r, g, b, a_] = ColorUtil::Unpack32(color);
             return
               StringPrintf("%s%.3f" ANSI_RESET,
-                           AnsiForegroundRGB(r, g, b).c_str(),
+                           ANSI::ForegroundRGB(r, g, b).c_str(),
                            f);
           };
         #endif
@@ -1095,7 +1095,7 @@ static unique_ptr<Network> NewSentencelikeNetwork() {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   CHECK(argc == 2) <<
     "./sentencelike.exe dir"

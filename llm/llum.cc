@@ -2,7 +2,11 @@
 #include "llama.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <cstring>
+#include <functional>
+#include <string>
 #include <vector>
 
 #include "base/logging.h"
@@ -30,7 +34,7 @@ struct BufferedInput {
       "start can't contain sentinel end!";
   }
 
-  void Insert(const string &s) { buffer += s; }
+  void Insert(const std::string &s) { buffer += s; }
 
   char GetChar(const std::function<string()> &GetToken,
                const std::function<void(string)> &Bracketed) {
@@ -156,7 +160,7 @@ static void RunUM(LLM *llm) {
 }
 
 int main(int argc, char ** argv) {
-  AnsiInit();
+  ANSI::Init();
   Timer model_timer;
 
   ContextParams cparams = Models::LLAMA_70B_F16;

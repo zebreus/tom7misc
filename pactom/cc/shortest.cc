@@ -1,6 +1,9 @@
 
 #include "pactom.h"
 
+#include <cstdio>
+#include <numbers>
+#include <optional>
 #include <string>
 #include <vector>
 #include <memory>
@@ -37,7 +40,7 @@ static constexpr int RADIUS = 2 * ZOOM;
 using SpanningTree = PacTom::SpanningTree;
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   ArcFour rc("pactom");
   unique_ptr<PacTom> pactom = PacTomUtil::Load(false);
@@ -67,7 +70,7 @@ int main(int argc, char **argv) {
   image.Clear32(0x000000FF);
 
   for (const auto &[name, path] : pactom->hoods) {
-    constexpr uint32 color = 0x909090FF;
+    constexpr uint32_t color = 0x909090FF;
     for (int i = 0; i < path.size() - 1; i++) {
       const LatLon latlon0 = path[i];
       const LatLon latlon1 = path[i + 1];

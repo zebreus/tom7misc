@@ -1,25 +1,20 @@
 
 #include "pactom.h"
 
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <memory>
 #include <cstdint>
 
 #include "base/logging.h"
-#include "geom/latlon.h"
-#include "bounds.h"
-#include "lines.h"
-#include "util.h"
 #include "ansi.h"
 #include "pactom-util.h"
-
-#include "timer.h"
 
 using namespace std;
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   std::unique_ptr<PacTom> pactom = PacTomUtil::Load(true);
 
@@ -48,7 +43,7 @@ int main(int argc, char **argv) {
   }
   printf("Total miles: %.6f\n", path_miles);
   printf("Including elev: %.6f\n", tripath_miles);
-  printf("%d/%d have dates\n", has_date, pactom->runs.size());
+  printf("%d/%d have dates\n", has_date, (int)pactom->runs.size());
 
   return 0;
 }

@@ -12,7 +12,6 @@
 #include "image.h"
 #include "lines.h"
 #include "arcfour.h"
-#include "randutil.h"
 #include "color-util.h"
 #include "ansi.h"
 
@@ -38,7 +37,7 @@ static bool HasZeroElev(const std::vector<std::pair<LatLon, double>> &path) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   ArcFour rc("pactom");
   unique_ptr<PacTom> pactom = PacTomUtil::Load(true);

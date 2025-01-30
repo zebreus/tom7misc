@@ -161,7 +161,7 @@ static void Process() {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   counts = new std::unordered_map<string, int64>;
   {

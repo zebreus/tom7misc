@@ -7,12 +7,14 @@
 #include <cassert>
 #include <cinttypes>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
-#include <fstream>
-#include <iostream>
+#include <limits>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/logging.h"
@@ -346,9 +348,10 @@ static void RunRoom(
 }
 
 int main(int argc, char ** argv) {
-  AnsiInit();
+  ANSI::Init();
 
-  CHECK(argc >= 3) << "./chat.exe filename.room user1.participant user2.participant...\n";
+  CHECK(argc >= 3) <<
+    "./chat.exe filename.room user1.participant user2.participant...\n";
   std::string room_file = argv[1];
   std::vector<std::string> ppt_files;
   for (int i = 2; i < argc; i++)

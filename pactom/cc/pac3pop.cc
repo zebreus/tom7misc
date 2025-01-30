@@ -1,6 +1,8 @@
 
 #include "pactom.h"
 
+#include <cmath>
+#include <cstdio>
 #include <unordered_set>
 #include <algorithm>
 #include <string>
@@ -47,7 +49,7 @@ static double EaseInOutSin(double f) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   ArcFour rc("pactom");
   // Need to load pac3 too!

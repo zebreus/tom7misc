@@ -443,7 +443,7 @@ int main(int argc, char ** argv) {
   std::string original =
     Util::NormalizeWhitespace(Util::Replace(input, "\n", " "));
 
-  // AnsiInit();
+  // ANSI::Init();
   Timer model_timer;
 
   // Best.

@@ -1,7 +1,12 @@
 
 #include <cstdio>
 #include <ctime>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 #include <optional>
 
@@ -79,10 +84,10 @@ static std::set<std::string> useful_common = {
 };
 
 int main(int argc, char ** argv) {
+  ANSI::Init();
   using RE = ByteRegEx;
   ArcFour rc(StringPrintf("acronymy.%lld", time(nullptr)));
 
-  AnsiInit();
   Timer model_timer;
 
   // ContextParams cparams = Models::LLAMA_70B_F16;

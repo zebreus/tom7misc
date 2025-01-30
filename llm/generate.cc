@@ -8,19 +8,12 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
-#include <fstream>
-#include <iostream>
 #include <string>
 #include <vector>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
 #include "timer.h"
-#include "util.h"
-#include "vector-util.h"
-#include "arcfour.h"
-#include "randutil.h"
 
 #include "llm.h"
 #include "models.h"
@@ -127,7 +120,7 @@ static void Generate(LLM *llm) {
 }
 
 int main(int argc, char ** argv) {
-  AnsiInit();
+  ANSI::Init();
   Timer model_timer;
 
   ContextParams cparams = Models::LLAMA_70B_F16;

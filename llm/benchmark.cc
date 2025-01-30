@@ -1,9 +1,12 @@
 
 #include "llama.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/logging.h"
@@ -439,7 +442,7 @@ static Result RunProblem(const Problem &problem,
 }
 
 int main(int argc, char ** argv) {
-  AnsiInit();
+  ANSI::Init();
   Timer model_timer;
   Timer total_timer;
 

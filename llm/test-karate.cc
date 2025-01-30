@@ -55,7 +55,7 @@ static string RandomAction(ArcFour *rc) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   Karate karate("stdin", "random");
 

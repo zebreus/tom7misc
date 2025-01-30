@@ -308,7 +308,7 @@ static void Process() {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   acronyms = new std::unordered_map<string, vector<pair<float, string>>>;
   num_acronyms = new std::map<int, int64>;
