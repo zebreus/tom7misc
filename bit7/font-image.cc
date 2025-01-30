@@ -1,9 +1,15 @@
 #include "font-image.h"
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <initializer_list>
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "image.h"
@@ -1025,12 +1031,90 @@ const std::vector<int> &PageBit7Math() {
     0x22fe,  // (⋾) SMALL CONTAINS WITH OVERBAR
     0x22ff,  // (⋿) Z NOTATION BAG MEMBERSHIP
 
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // Letter-like symbols
+    // (I think these are not the official unicode names; they come
+    // from Wikipedia)
+    0x2100,  // (℀) ACCOUNT OF
+    0x2101,  // (℁) ADDRESSED TO THE SUBJECT (I.E., CARE OF)
+    0x2102,  // (ℂ) DOUBLE-STRUCK CAPITAL C
+    0x2103,  // (℃) DEGREE CELSIUS
+    0x2104,  // (℄) CENTER LINE SYMBOL
+    0x2105,  // (℅) CARE OF
+    0x2106,  // (℆) CADA UNA[4]
+    0x2107,  // (ℇ) EULER CONSTANT[5]
+    0x2108,  // (℈) SCRUPLE
+    0x2109,  // (℉) DEGREE FAHRENHEIT
+    0x210A,  // (ℊ) SCRIPT SMALL G
+    0x210B,  // (ℋ) SCRIPT CAPITAL H
+    0x210C,  // (ℌ) BLACK-LETTER CAPITAL H
+    0x210D,  // (ℍ) DOUBLE-STRUCK CAPITAL H
+    0x210E,  // (ℎ) PLANCK CONSTANT
+    0x210F,  // (ℏ) REDUCED PLANCK CONSTANT (PLANCK CONSTANT OVER 2Π)
+    0x2110,  // (ℐ) SCRIPT CAPITAL I
+    0x2111,  // (ℑ) BLACK-LETTER CAPITAL I
+    0x2112,  // (ℒ) SCRIPT CAPITAL L
+    0x2113,  // (ℓ) SCRIPT SMALL L (LATEX: \ELL)
+    0x2114,  // (℔) L B BAR SYMBOL
+    0x2115,  // (ℕ) DOUBLE-STRUCK CAPITAL N
+    0x2116,  // (№) NUMERO SIGN
+    0x2117,  // (℗) SOUND RECORDING COPYRIGHT SYMBOL
+    0x2118,  // (℘) SCRIPT CAPITAL aka WEIERSTRASS ELLIPTIC FUNCTION
+    0x2119,  // (ℙ) DOUBLE-STRUCK CAPITAL P
+    0x211A,  // (ℚ) DOUBLE-STRUCK CAPITAL Q
+    0x211B,  // (ℛ) SCRIPT CAPITAL R
+    0x211C,  // (ℜ) BLACK-LETTER CAPITAL R
+    0x211D,  // (ℝ) DOUBLE-STRUCK CAPITAL R
+    0x211E,  // (℞) PRESCRIPTION TAKE
+    0x211F,  // (℟) RESPONSE
+    0x2120,  // (℠) SERVICE MARK
+    0x2121,  // (℡) TELEPHONE SIGN
+    0x2122,  // (™) TRADEMARK SIGN
+    0x2123,  // (℣) VERSICLE
+    0x2124,  // (ℤ) DOUBLE-STRUCK CAPITAL Z
+    0x2125,  // (℥) OUNCE SIGN
+    0x2126,  // (Ω) OHM SIGN
+    0x2127,  // (℧) INVERTED OHM SIGN
+    0x2128,  // (ℨ) BLACK-LETTER CAPITAL Z
+    0x2129,  // (℩) TURNED GREEK SMALL LETTER IOTA
+    0x212A,  // (K) KELVIN SIGN
+    0x212B,  // (Å) ÅNGSTRÖM SIGN
+    0x212C,  // (ℬ) SCRIPT CAPITAL B
+    0x212D,  // (ℭ) BLACK-LETTER CAPITAL C
+    0x212E,  // (℮) ESTIMATED SYMBOL
+    0x212F,  // (ℯ) SCRIPT SMALL E
+    0x2130,  // (ℰ) SCRIPT CAPITAL E
+    0x2131,  // (ℱ) SCRIPT CAPITAL F
+    0x2132,  // (Ⅎ) TURNED CAPITAL F
+    0x2133,  // (ℳ) SCRIPT CAPITAL M
+    0x2134,  // (ℴ) SCRIPT SMALL O
+    0x2135,  // (ℵ) ALEF SYMBOL
+    0x2136,  // (ℶ) BET SYMBOL
+    0x2137,  // (ℷ) GIMEL SYMBOL
+    0x2138,  // (ℸ) DALET SYMBOL
+    0x2139,  // (ℹ) INFORMATION SOURCE
+    0x213A,  // (℺) ROTATED CAPITAL Q
+    0x213B,  // (℻) FAX SIGN
+    0x213C,  // (ℼ) DOUBLE-STRUCK SMALL PI
+    0x213D,  // (ℽ) DOUBLE-STRUCK SMALL GAMMA
+    0x213E,  // (ℾ) DOUBLE-STRUCK CAPITAL GAMMA
+    0x213F,  // (ℿ) DOUBLE-STRUCK CAPITAL PI
+    0x2140,  // (⅀) DOUBLE-STRUCK N-ARY SUMMATION
+    0x2141,  // (⅁) TURNED SANS-SERIF CAPITAL G
+    0x2142,  // (⅂) TURNED SANS-SERIF CAPITAL L
+    0x2143,  // (⅃) REVERSED SANS-SERIF CAPITAL L
+    0x2144,  // (⅄) TURNED SANS-SERIF CAPITAL Y
+    0x2145,  // (ⅅ) DOUBLE-STRUCK ITALIC CAPITAL D
+    0x2146,  // (ⅆ) DOUBLE-STRUCK ITALIC SMALL D
+    0x2147,  // (ⅇ) DOUBLE-STRUCK ITALIC SMALL E
+    0x2148,  // (ⅈ) DOUBLE-STRUCK ITALIC SMALL I
+    0x2149,  // (ⅉ) DOUBLE-STRUCK ITALIC SMALL J
+    0x214A,  // (⅊) PROPERTY LINE
+    0x214B,  // (⅋) TURNED AMPERSAND
+    0x214C,  // (⅌) PER SIGN
+    0x214D,  // (⅍) AKTIESELSKAB
+    0x214E,  // (ⅎ) TURNED SMALL F
+    0x214F,  // (⅏) SYMBOL FOR SAMARITAN
 
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -1172,6 +1256,14 @@ REUSE_FOR = {
   {0x03A3, 0x01A9}, // Greek Σ -> esh
   {'!', 0x01C3},
   {0x04D9, 0x0259}, // Cyrillic schwa -> IPA schwa
+
+  // Letter-like symbols that are REALLY letter-like.
+  // Kelvin
+  {'K', 0x212A},
+  // A with circle -> Angstrom
+  {0x00C5, 0x212B},
+  // Omega -> Ohm sign
+  {0x03A9, 0x2126},
 };
 
 Config Config::ParseConfig(const string &cfgfile) {
