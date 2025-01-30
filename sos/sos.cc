@@ -1649,7 +1649,7 @@ static void Run() {
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   cl = new CL;
 
   #ifdef WIN32

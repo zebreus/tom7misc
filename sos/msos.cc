@@ -1,3 +1,6 @@
+#include <CL/cl.h>
+#include <cstdint>
+#include <cstdio>
 #include <vector>
 #include <string>
 #include <bit>
@@ -235,7 +238,7 @@ static void DoSearch(uint32_t a, uint32_t b, uint32_t c) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   cl = new CL;
   // DoSearch(0x0BADBEEF, 0x0123456, 0x0777777);
   DoSearch(29, 47, 1);
