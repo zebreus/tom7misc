@@ -71,7 +71,7 @@ static void MakeEvalTableMNIST(const string &outfile) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   cl = new CL;
 
   CHECK(argc == 2) << "./eval-table-mnist.exe outfile.tex";

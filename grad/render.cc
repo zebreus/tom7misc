@@ -421,7 +421,7 @@ static string Linearly(const string &var, const Exp *exp) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   CHECK(argc == 3) << "\n\nrender.exe basis.txt output.tex";
   const string dbfile = argv[1];

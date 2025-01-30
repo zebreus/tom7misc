@@ -309,7 +309,7 @@ static void Mandelbrot() {
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   // Frac1();
   SquareBrot();
   Mandelbrot();

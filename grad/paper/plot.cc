@@ -204,7 +204,7 @@ static double Tanh(half h) {
 }
 */
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   HalfStats();
 

@@ -67,7 +67,7 @@ static void MakeEvalTableChess(const string &outfile) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   CHECK(argc == 2) << "./eval-table-chess.exe outfile.tex";
   MakeEvalTableChess(argv[1]);

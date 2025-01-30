@@ -1,8 +1,11 @@
 
+#include <algorithm>
+#include <cstdio>
 #include <string>
 #include <cmath>
 #include <array>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 #include "base/logging.h"
@@ -475,7 +478,7 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   if (true) {
     State state = GradUtil::MakeTable1();

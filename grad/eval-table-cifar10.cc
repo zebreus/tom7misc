@@ -72,7 +72,7 @@ static void MakeEvalTableCIFAR10(const string &outfile) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   cl = new CL;
 
   CHECK(argc == 2) << "./eval-table-cifar10.exe outfile.tex";

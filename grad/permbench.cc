@@ -40,9 +40,9 @@ static inline void ExtractInOrder(uint64_t in,
   static_assert(sizeof... (U8s) > 0);
   if constexpr (sizeof... (U8s) == 1) {
     // Don't bother with a single bit.
-      // (Is there a better way to just get the single element
-      // from the parameter pack?)
-      constexpr uint8_t pos[1] = {U8s...};
+    // (Is there a better way to just get the single element
+    // from the parameter pack?)
+    constexpr uint8_t pos[1] = {U8s...};
     uint64_t bit = (in >> (63 - ( pos[0] ))) & 1;
     out <<= 1;
     out |= bit;
@@ -70,6 +70,7 @@ static constexpr std::array<uint8_t, 64> bit_indices = {
   18, 32, 21, 13, 20, 7, 25, 14,
 };
 
+[[maybe_unused]]
 static constexpr std::array<uint8_t, 64> inverted = {
   4, 53, 51, 15, 34, 23, 37, 61, 10, 52, 22, 24, 25, 59,
   63, 36, 26, 46, 56, 30, 60, 58, 32, 21, 42, 62, 44, 54,
@@ -78,6 +79,7 @@ static constexpr std::array<uint8_t, 64> inverted = {
   31, 41, 9, 28, 40, 55, 45,
 };
 
+[[maybe_unused]]
 static void Invert() {
   std::array<uint8_t, 64> inv;
   for (int i = 0; i < 64; i++) {

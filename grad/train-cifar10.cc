@@ -785,7 +785,7 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   CHECK(argc == 4) <<
     "./train-cifar10.exe dir transfer_function rounds\n"

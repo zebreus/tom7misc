@@ -212,7 +212,7 @@ static void Histos() {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   Histos();
 

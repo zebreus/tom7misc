@@ -774,7 +774,7 @@ static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   CHECK(argc == 4) <<
     "./train-mnist.exe dir transfer_function rounds\n"

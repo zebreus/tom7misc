@@ -250,7 +250,7 @@ static void RunRandomForward() {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   SimpleTests(NetworkTestUtil::SingleSparse());
   SimpleTests(NetworkTestUtil::SingleDense());

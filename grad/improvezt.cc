@@ -428,7 +428,7 @@ static const Exp *JointOpt(Allocator *alloc,
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   Timer run_timer;
 
   Allocator alloc;

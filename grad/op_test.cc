@@ -1,18 +1,22 @@
-#include "expression.h"
-#include "timer.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <array>
+#include <string>
 #include <utility>
 
 #include "half.h"
 
-#include "grad-util.h"
-#include "makefn-ops.h"
 #include "arcfour.h"
-#include "randutil.h"
+#include "base/stringprintf.h"
 #include "color-util.h"
+#include "expression.h"
+#include "grad-util.h"
+#include "image.h"
+#include "makefn-ops.h"
+#include "randutil.h"
 
 using Table = Exp::Table;
 using uint32 = uint32_t;
@@ -77,10 +81,10 @@ static bool IsZero(const Table &table) {
 struct Stats {
   Stats() {}
 
-  int64 samples_in = 0;
-  int64 samples_out = 0;
+  int64_t samples_in = 0;
+  int64_t samples_out = 0;
   int iszero = 0;
-  int64 denom = 0;
+  int64_t denom = 0;
 
   void Accumulate(const Table &result) {
     denom++;
@@ -98,7 +102,7 @@ struct Stats {
   }
 
   void Report() {
-    int64 total_samples = samples_out + samples_in;
+    int64_t total_samples = samples_out + samples_in;
     printf("Samples in: %.3f%% out: %.3f%%\n"
            "Zero: %d/%d (%.3f%%)\n",
            (samples_in * 100.0) / total_samples,
@@ -200,7 +204,7 @@ static void PlotShift() {
   }
 
   int ypos = 2;
-  auto Add = [&](const string &name,
+  auto Add = [&](const std::string &name,
                  const std::function<uint16(uint16)> &f,
                  uint32 color) {
       Table table;

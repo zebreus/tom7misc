@@ -20,6 +20,8 @@
 
 #include "mapinc.h"
 
+#include "tracing.h"
+
 namespace {
 struct Tengen final : public MapInterface {
 

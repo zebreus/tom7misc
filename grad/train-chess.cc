@@ -887,7 +887,7 @@ OptimizeMe(const TrainOptimizer::arg_type &args) {
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   cl = new CL;
 
 #if 0

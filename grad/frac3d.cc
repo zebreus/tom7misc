@@ -422,7 +422,7 @@ static void March() {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   // Mandelbrot();
   March();
 

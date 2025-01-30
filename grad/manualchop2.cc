@@ -802,7 +802,7 @@ static void HalfStats() {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   // HalfStats();
 
   // MakeChop();

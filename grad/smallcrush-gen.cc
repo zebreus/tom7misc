@@ -238,7 +238,7 @@ struct TheGenerator : public Generator {
 }  // namespace
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   CPrintf("Testing in-process.\n");
 
   {
@@ -354,7 +354,7 @@ int main(int argc, char **argv) {
     for (int y = 0; y < NUM_ROWS; y++) {
       for (int x = 0; x < NUM_COLUMNS; x++) {
         int idx = x * NUM_ROWS + y;
-        string name, pvalue;
+        std::string name, pvalue;
 
         // Can be out of bounds at the end.
         if (idx >= 0 && idx < flat.size()) {

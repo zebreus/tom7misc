@@ -4,6 +4,7 @@
 #ifndef _GRAD_HCOMPLEX_H
 #define _GRAD_HCOMPLEX_H
 
+#include <bit>
 #include <cstdint>
 #include <cstring>
 
@@ -52,18 +53,12 @@ struct hcomplex {
   }
 
  private:
-  static inline constexpr uint16_t GetU16(half h) {
-    uint16_t u;
-    static_assert(sizeof (h) == sizeof (u));
-    memcpy((void*)&u, (void*)&h, sizeof (u));
-    return u;
+  static constexpr inline uint16_t GetU16(half_float::half h) {
+    return std::bit_cast<uint16_t, half_float::half>(h);
   }
 
-  static inline constexpr half GetHalf(uint16_t u) {
-    half h;
-    static_assert(sizeof (h) == sizeof (u));
-    memcpy((void*)&h, (void*)&u, sizeof (u));
-    return h;
+  static constexpr inline half_float::half GetHalf(uint16_t u) {
+    return std::bit_cast<half_float::half, uint16_t>(u);
   }
 };
 

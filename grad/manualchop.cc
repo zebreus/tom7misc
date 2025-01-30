@@ -1,15 +1,25 @@
 // Semi-manual attempts to find a specific "choppy" function,
 // which I think was the "zero threshold" one.
 
+#include "base/stringprintf.h"
+#include "util.h"
+#include "image.h"
 #include "expression.h"
 #include "timer.h"
 
 #include <array>
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
 #include <functional>
 #include <array>
+#include <map>
+#include <optional>
+#include <string>
 #include <utility>
 #include <unordered_set>
+#include <vector>
 
 #include "half.h"
 
@@ -29,6 +39,8 @@ using uint32 = uint32_t;
 using uint8 = uint8_t;
 using Allocator = Exp::Allocator;
 using DB = Choppy::DB;
+
+using string = std::string;
 
 static constexpr int IMAGE_SIZE = 1920;
 
@@ -160,9 +172,9 @@ static void PrintExpressionStats(const Table &result) {
       };
     int i = color_pool.Get(u);
     if (i >= 0 && i < C.size()) {
-      return make_pair(C[i], ANSI_RESET);
+      return std::make_pair(C[i], ANSI_RESET);
     } else {
-      return make_pair("", "");
+      return std::make_pair("", "");
     }
   };
 
@@ -219,7 +231,7 @@ static void PrintExpressionStats(const Table &result) {
     }
 
     if (values.find(y) == values.end()) {
-      values[y] = make_pair(x, x);
+      values[y] = std::make_pair(x, x);
     } else {
       half pos = Exp::GetHalf(upos);
       auto &[first, last] = values[y];
@@ -311,9 +323,9 @@ const Exp *TweakExpressions(Allocator *caller_alloc) {
   img.Clear32(0x000000FF);
   GradUtil::Grid(&img);
 
-  int64 quickok = 0;
+  int64_t quickok = 0;
   int imaged = 0;
-  for (int64 iters = 0; true; iters++) {
+  for (int64_t iters = 0; true; iters++) {
 
     if (iters && ((iters < 1000 && iters % 10 == 0) || iters % 10000 == 0)) {
       printf("%d iters, %.3f%% qok\n", iters, (quickok * 100.0) / iters);
@@ -456,7 +468,7 @@ const Exp *TweakExpressions(Allocator *caller_alloc) {
         const auto [r, g, b] = ColorUtil::HSVToRGB(RandFloat(&rc), 1.0, 1.0);
         uint32 color = ColorUtil::FloatsTo32(r, g, b, 0x11 / (float)0xFF);
         GradUtil::Graph(result, color, &img);
-        printf("%");
+        printf("%%");
       } else if (imaged == NUM_TO_PLOT) {
         img.Save("tweak.png");
         printf("Wrote tweak.png\n");
@@ -786,11 +798,11 @@ static void Search() {
       return RandFloat(&rc) < p;
     };
 
-  int64 violations = 0;
-  int64 attempts = 0;
-  int64 improved = 0;
-  int64 backtracked = 0;
-  int64 restarts = 0;
+  int64_t violations = 0;
+  int64_t attempts = 0;
+  int64_t improved = 0;
+  int64_t backtracked = 0;
+  int64_t restarts = 0;
 
   {
     Allocator alloc;
@@ -800,7 +812,7 @@ static void Search() {
   int prev_distinct_values = NumDistinctValues(state.table);
   Timer loop_timer;
 
-  std::map<int, int64> successes;
+  std::map<int, int64_t> successes;
   for (;;) {
     if (attempts % 1000 == 0) {
       double aps = attempts / loop_timer.Seconds();
@@ -1359,7 +1371,7 @@ static void HalfStats() {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   HalfStats();
 
   // MakeChop();

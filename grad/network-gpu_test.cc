@@ -32,6 +32,7 @@ using TrainNet = NetworkTestUtil::TrainNet;
 using TestExample = NetworkTestUtil::TestExample;
 
 using int64 = int64_t;
+using uint8 = uint8_t;
 
 static CL *cl = nullptr;
 

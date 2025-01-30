@@ -688,7 +688,7 @@ static void PrintIf() {
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   // OptimizeShift();
   // MakeShiftAdd();
 

@@ -23,8 +23,8 @@
 
 #include <cstdint>
 #include <bit>
+#include <cstdint>
 
-#include "tracing.h"
 #include "fceu.h"
 #include "fc.h"
 
@@ -38,37 +38,37 @@ struct X6502 {
 
   // PERF: Cheap but unnecessary histogram of instructions
   // used.
-  int64 inst_histo[256] = {};
+  int64_t inst_histo[256] = {};
   void ClearInstHisto() {
     for (int i = 0; i < 256; i++) inst_histo[i] = 0;
   }
 
   /* Temporary cycle counter */
-  int32 tcount;
+  int32_t tcount;
 
   // XXX make sure if you change something you also change its
   // size in state.cc.
 
   // I think this is set for some instructions that halt the
   // processor until an interrupt.
-  uint8 jammed;
+  uint8_t jammed;
 
   uint16_t GetPC() const { return cpu.reg_PC.ToInt(); }
-  uint8 GetA() const { return cpu.reg_A.ToInt(); }
-  uint8 GetX() const { return cpu.reg_X.ToInt(); }
-  uint8 GetY() const { return cpu.reg_Y.ToInt(); }
-  uint8 GetS() const { return cpu.reg_S.ToInt(); }
-  uint8 GetP() const { return cpu.reg_P.ToInt(); }
-  uint8 GetPI() const { return cpu.reg_PI.ToInt(); }
+  uint8_t GetA() const { return cpu.reg_A.ToInt(); }
+  uint8_t GetX() const { return cpu.reg_X.ToInt(); }
+  uint8_t GetY() const { return cpu.reg_Y.ToInt(); }
+  uint8_t GetS() const { return cpu.reg_S.ToInt(); }
+  uint8_t GetP() const { return cpu.reg_P.ToInt(); }
+  uint8_t GetPI() const { return cpu.reg_PI.ToInt(); }
 
-  int32 count;
+  int32_t count;
   /* Simulated IRQ pin held low (or is it high?).
      And other junk hooked on for speed reasons. */
-  uint32 IRQlow;
+  uint32_t IRQlow;
   /* Data bus "cache" for reads from certain areas */
-  uint8 DB;
+  uint8_t DB;
 
-  void Run(int32 cycles);
+  void Run(int32_t cycles);
   void RunLoop();
 
   void Init();
@@ -83,10 +83,10 @@ struct X6502 {
 
   // DMA read and write, I think. Like normal memory read/write,
   // but consumes a CPU cycle. These are (only) used externally.
-  uint8 DMR(uint32 A);
-  void DMW(uint32 A, uint8 V);
+  uint8_t DMR(uint32_t A);
+  void DMW(uint32_t A, uint8_t V);
 
-  uint32 timestamp = 0;
+  uint32_t timestamp = 0;
 
   void (*MapIRQHook)(FC *, int) = nullptr;
 
@@ -895,7 +895,7 @@ struct X6502 {
       // Since p_carry_bit is at most 1, these can't both overflow.
       hfluint8 carry = hfluint8::PlusNoOverflow(carry1, carry2);
 
-      // uint32 l = reg_A.ToInt() + (x).ToInt() + p_carry_bit.ToInt();
+      // uint32_t l = reg_A.ToInt() + (x).ToInt() + p_carry_bit.ToInt();
       reg_P = hfluint8::AndWith<
         (uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
       // The overflow is for signed arithmetic. It tells us if we've
@@ -932,7 +932,7 @@ struct X6502 {
       // As in ADC.
       hfluint8 carry = hfluint8::PlusNoOverflow(carry1, carry2);
 
-      // uint32 l = reg_A.ToInt() - x.ToInt() - p_ncarry_bit.ToInt();
+      // uint32_t l = reg_A.ToInt() - x.ToInt() - p_ncarry_bit.ToInt();
       reg_P = hfluint8::AndWith<
         (uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
       // As above, detect overflow by looking at sign bits.
@@ -967,7 +967,7 @@ struct X6502 {
     void AXS(hfluint8 x) {
       auto [carry, diff] =
         hfluint8::SubtractWithCarry(reg_A & reg_X, x);
-      // uint32 t = (reg_A & reg_X).ToInt() - x.ToInt();
+      // uint32_t t = (reg_A & reg_X).ToInt() - x.ToInt();
       X_ZN(diff);
       reg_P =
         hfluint8::PlusNoOverflow(
@@ -1081,7 +1081,9 @@ private:
   static constexpr hfluint8 C_FLAG{C_FLAG8};
 
   FC *fc = nullptr;
-  DISALLOW_COPY_AND_ASSIGN(X6502);
+ private:
+  X6502(const X6502 &) = delete;
+  X6502 &operator=(const X6502 &) = delete;
 };
 
 #define NTSC_CPU 1789772.7272727272727272

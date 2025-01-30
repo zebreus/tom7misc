@@ -54,7 +54,7 @@ static const Exp *MakeCanonical(DB *db) {
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   DB db;
   db.LoadFile("basis8.txt");

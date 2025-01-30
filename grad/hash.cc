@@ -7,6 +7,9 @@
 // to reference offline, or tested for randomness) and benchmarks
 // the throughput.
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <cmath>
 
@@ -16,7 +19,6 @@
 #include "util.h"
 #include "image.h"
 #include "bounds.h"
-#include "opt/optimizer.h"
 #include "half.h"
 #include "color-util.h"
 #include "arcfour.h"
@@ -32,6 +34,9 @@
 #include "timer.h"
 
 using namespace std;
+
+using int64 = int64_t;
+using uint8 = uint8_t;
 
 using half_float::half;
 using namespace half_float::literal;
@@ -393,7 +398,7 @@ static inline uint64_t Permute(uint64_t data) {
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   DB db;
   db.LoadFile("basis8.txt");
 

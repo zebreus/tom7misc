@@ -1,18 +1,17 @@
 
-#include "diff.h"
-#include "expression.h"
-#include "ansi.h"
-#include "choppy.h"
-
-#include "base/logging.h"
 #include <cstdio>
 
+#include "ansi.h"
+#include "base/logging.h"
+#include "choppy.h"
+#include "diff.h"
+#include "expression.h"
 
 using Choppy = ChoppyGrid<256>;
 using DB = Choppy::DB;
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   CHECK(argc == 3) << "./colordiff.exe db1.txt db2.txt\n";
 

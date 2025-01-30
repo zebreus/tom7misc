@@ -23,7 +23,7 @@ static void RunEval(const Network &net) {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   CHECK(argc == 2) << "./evaluate-chess.exe modelfile\n";
 

@@ -25,6 +25,8 @@
 
 #include <initializer_list>
 
+#include "tracing.h"
+
 namespace {
 struct CartData {
   const uint32 crc32;

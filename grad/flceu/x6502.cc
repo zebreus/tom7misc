@@ -18,14 +18,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301 USA
  */
 
-#include <string.h>
+#include <array>
+#include <cstdint>
+#include <cstring>
+
 #include "types.h"
 #include "x6502.h"
 #include "fceu.h"
 #include "sound.h"
+#include "fc.h"
 
-#include "tracing.h"
 #include "threadutil.h"
+#include "hfluint8.h"
+#include "hfluint16.h"
 
 #define RUN_ALL_INSTRUCTIONS 1
 #define FAST_INSTRUCTION_DISPATCH 0

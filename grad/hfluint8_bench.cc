@@ -218,7 +218,7 @@ static void BenchAndT() {
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   /*
   BenchEq();

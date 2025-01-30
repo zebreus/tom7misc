@@ -1,7 +1,11 @@
 
+#include "base/stringprintf.h"
+#include "expression.h"
 #include "hash-util.h"
 
 #include <array>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 
 #include "ansi.h"
@@ -115,10 +119,10 @@ static void TestPerm1Bit(DB *basis) {
 
     half a = Norm(f_a + f_b + f_c + f_d + f_e + f_f + f_g + f_h);
     uint8_t a8 = HashUtil::HalfToBits(a);
-    string is = (a < -1.0_h || a > 1.0_h) ? (string)ARED("illegal") :
+    std::string is = (a < -1.0_h || a > 1.0_h) ? (std::string)ARED("illegal") :
       StringPrintf(APURPLE("%02x"), a8);
     printf("Sum " AYELLOW("%.6f") " which is %s\n", (float)a, is.c_str());
-    printf("Bit " AWHITE("%d") " set = " AWHITE("%016x") "\n", x, input);
+    printf("Bit " AWHITE("%d") " set = " AWHITE("%016llx") "\n", x, input);
     for (int i = 0; i < 64; i++) {
       if (i == x) printf(AGREEN("1"));
       else printf("0");
@@ -157,7 +161,7 @@ static void TestPermutation(DB *basis,
       return (h * (1.0_h / 128.0_h)) - 1.0_h;
     };
 
-  ArcFour rc(StringPrintf("perm.%s", seed));
+  ArcFour rc(StringPrintf("perm.%s", seed.c_str()));
   Timer t;
   for (int iter = 0; iter < iters; iter++) {
     const uint64_t input = Rand64(&rc);
@@ -243,11 +247,11 @@ static half ModularPlus(const Exp *modexp, half x, half y) {
   half msum = Exp::GetHalf(Exp::EvaluateOn(modexp, Exp::GetU16(asum)));
 
   if (false)
-  printf("%.6f + %.6f -> %.6f + %.6f = %.6f -> %.6f (%.6f)\n",
-         (float)x, (float)y,
-         (float)xx, (float)yy,
-         (float)sum, (float)asum,
-         (float)msum);
+    printf("%.6f + %.6f -> %.6f + %.6f = %.6f -> %.6f (%.6f)\n",
+           (float)x, (float)y,
+           (float)xx, (float)yy,
+           (float)sum, (float)asum,
+           (float)msum);
 
   return msum + HALF_GRID;
 }
@@ -360,7 +364,7 @@ static void TestMod() {
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   TestNewZT();
   return 0; // FIXME

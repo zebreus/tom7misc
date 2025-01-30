@@ -866,7 +866,7 @@ static void CycleStats() {
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   // CycleStats();
 
   // MakeBitPerm();

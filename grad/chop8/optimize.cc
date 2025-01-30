@@ -1,4 +1,5 @@
 
+#include <cstdio>
 #include <optional>
 #include <array>
 #include <utility>
@@ -684,7 +685,7 @@ static void OptimizeOne(DB *db,
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   CHECK(argc == 2) << "Give a database file on the command line.";
 
   DB db;

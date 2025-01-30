@@ -1,27 +1,26 @@
 
+#include "util.h"
 #include "emulator.h"
 
 #include <bit>
-#include <cmath>
+#include <ctime>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <memory>
 #include <sys/time.h>
-#include <sstream>
 #include <unistd.h>
 #include <cstdio>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "test-util.h"
-#include "rle.h"
-#include "simplefm2.h"
 #include "simplefm7.h"
 #include "timer.h"
-#include "image.h"
 #include "periodically.h"
 #include "ansi.h"
 
+#include "hfluint8.h"
 #include "opcodes.h"
 #include "x6502.h"
 
@@ -99,17 +98,16 @@ std::tuple<uint64, uint64, uint64, uint64, double> RunBenchmark(
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
-  char date[256] = {};
+  ANSI::Init();
   int64 now = time(nullptr);
-  strftime(date, 254, "%d-%b-%Y %H:%M:%S", localtime(&now));
+  std::string date = Util::FormatTime("%d-%b-%Y %H:%M:%S", now);
 
   string desc = "unknown";
   if (argc > 1) {
     desc = argv[1];
   }
   printf("Starting benchmark at [%s] called [%s]\n",
-         date, desc.c_str());
+         date.c_str(), desc.c_str());
 
   Timer warm_timer;
 
@@ -213,7 +211,7 @@ int main(int argc, char **argv) {
     FILE *f = fopen("bench.csv", "a");
     CHECK(f);
     fprintf(f, "%s,%s,%.4f,%.4f,%.4f,%lld,%.4f,%s\n",
-            date,
+            date.c_str(),
             status ? "FAIL" : "OK",
             // was warm_time
             0.0,

@@ -1,9 +1,13 @@
 
+#include <cstddef>
+#include <cstdio>
+#include <optional>
 #include <string>
 #include <cmath>
 #include <memory>
 #include <cstdint>
 #include <array>
+#include <utility>
 #include <vector>
 #include <algorithm>
 
@@ -221,7 +225,7 @@ static int DistinctValues(const std::vector<fptype> &samples_in) {
 }
 
 // N here has to agree with arity of F being optimized.
-using GradOptimizer = Optimizer<16, 0, uint8>;
+using GradOptimizer = Optimizer<16, 0, uint8_t>;
 
 template<class F>
 static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
@@ -237,7 +241,7 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
 
   // XXX We could even CHECK this now.
   for (const fptype f : fargs)
-    if (!std::isfinite(f))
+    if (!isfinite(f))
       return GradOptimizer::INFEASIBLE;
 
   vector<fptype> samples;
@@ -298,7 +302,7 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
 
   error /= SAMPLES;
 
-  double penalty = 0.0;
+  [[maybe_unused]] double penalty = 0.0;
   // Prefer output range in [-1,1].
   // e.g. if we have -3, then -1 - -3 = -1 + 3 = 2;
   if (f0 < -1.0) penalty += -1.0 - f0;

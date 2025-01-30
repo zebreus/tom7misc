@@ -1,4 +1,5 @@
 
+#include <cstdio>
 #include <optional>
 #include <array>
 #include <mutex>
@@ -28,10 +29,10 @@ using Table = Exp::Table;
 struct Stats {
   Timer timer;
   std::mutex m;
-  std::atomic<int64> done = 0;
-  std::atomic<int64> infeasible = 0;
-  std::atomic<int64> added_new = 0, added_smaller = 0;
-  std::atomic<int64> not_choppy = 0, outside_grid = 0, not_new = 0;
+  std::atomic<int64_t> done = 0;
+  std::atomic<int64_t> infeasible = 0;
+  std::atomic<int64_t> added_new = 0, added_smaller = 0;
+  std::atomic<int64_t> not_choppy = 0, outside_grid = 0, not_new = 0;
 
   void Observe(DB::AddResult ar) {
     switch (ar) {
@@ -53,7 +54,7 @@ struct Stats {
     }
   }
 
-  void Progress(int64 total) {
+  void Progress(int64_t total) {
     std::unique_lock<std::mutex> ml(m);
     int persec = done.load() / timer.Seconds();
     fprintf(stderr,
@@ -198,8 +199,8 @@ static void Explore5(DB *db) {
   const int LOOPS = 10;
   constexpr int NUM_THREADS = 4;
   // run a full grid. bc00 = -1, c600 = -6.
-  const int64 SIZE = 0xc600 - 0xbc00;
-  const int64 TOTAL = SIZE * SIZE * LOOPS;
+  const int64_t SIZE = 0xc600 - 0xbc00;
+  const int64_t TOTAL = SIZE * SIZE * LOOPS;
 
   Stats stats;
 
@@ -372,7 +373,7 @@ static void SeedDBFromHeader(DB *db) {
 static void LoadDB(DB *db) {
   std::vector<string> lines =
     Util::ReadFileToLines("chopdb.txt");
-  int64 rejected = 0;
+  int64_t rejected = 0;
   Allocator *alloc = &db->alloc;
   for (const string &line : lines) {
     if (line.empty()) continue;
@@ -394,7 +395,7 @@ static void LoadDB(DB *db) {
 
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   DB db;
   LoadDB(&db);
