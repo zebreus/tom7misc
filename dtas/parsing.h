@@ -19,7 +19,9 @@ enum TokenType {
   COMMA,
   EQUALS,
   LESS,
+  LESSEQ,
   GREATER,
+  GREATEREQ,
   PLUS,
   MINUS,
   HASH,
@@ -149,8 +151,9 @@ struct Line {
     CONSTANT_DECL,
     INSTRUCTION,
 
-    // TODO
+    // Meta-instructions to model checker.
     DIRECTIVE_ALWAYS,
+    DIRECTIVE_HERE,
   };
 
   Type type = Type::NOTHING;

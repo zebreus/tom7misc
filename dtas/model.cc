@@ -63,6 +63,7 @@ static void Model() {
   Assembly assembly = Assembly::Assemble(ASMFILE);
 
   std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
+  CHECK(emu.get() != nullptr) << "Failed to load " << ROMFILE;
   MarioUtil::WarpTo(emu.get(), 0xF4, 0x6B, 0);
   // The stack pointer is 0xFC when entering NonMaskableInterrupt.
   const State start_state = State::FromEmulator(emu.get(), 0xFC);

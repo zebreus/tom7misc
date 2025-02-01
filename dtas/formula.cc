@@ -13,6 +13,19 @@
 #define ACONSTRAINT(s) AFGCOLOR(240, 240, 120, s)
 #define AKEYWORD(s) AFGCOLOR(220, 220, 140, s)
 
+const char *BinopString(Binop op) {
+  switch (op) {
+    case Binop::IN: return "in";
+    case Binop::LESS: return "<";
+    case Binop::LESSEQ: return "<=";
+    case Binop::GREATER: return ">";
+    case Binop::GREATEREQ: return ">=";
+    case Binop::EQ: return "=";
+    default: return "???";
+  }
+}
+
+
 std::string ColorForm(const std::shared_ptr<Form> &form) {
   // ByteSetForm, , VarForm, NaryForm, BinForm
   if (const IntForm *i = std::get_if<IntForm>(form.get())) {
@@ -47,14 +60,11 @@ std::string ColorForm(const std::shared_ptr<Form> &form) {
   } else if (const BinForm *b = std::get_if<BinForm>(form.get())) {
     std::string l = ColorForm(b->lhs);
     std::string r = ColorForm(b->rhs);
-    switch (b->op) {
-    case Binop::IN:
-      return StringPrintf("%s " AKEYWORD("in") " %s",
-                          l.c_str(), r.c_str());
-    default:
-      // TODO
-      return "(bin)";
-    }
+
+    return StringPrintf("%s " AKEYWORD("%s") " %s",
+                        l.c_str(),
+                        BinopString(b->op),
+                        r.c_str());
   } else {
     return ARED("?? BAD VARIANT ??");
   }
@@ -64,6 +74,10 @@ std::string ColorConstraint(const Constraint &c) {
   if (const AlwaysConstraint *always = std::get_if<AlwaysConstraint>(&c)) {
     return StringPrintf(ACONSTRAINT("always") " %s",
                         ColorForm(always->form).c_str());
+  } else if (const HereConstraint *here = std::get_if<HereConstraint>(&c)) {
+    return StringPrintf(ACYAN("%04x") ": " ACONSTRAINT("here") " %s",
+                        here->address,
+                        ColorForm(here->form).c_str());
   } else {
     return ARED("?? BAD VARIANT ??");
   }

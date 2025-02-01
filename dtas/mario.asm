@@ -915,6 +915,7 @@ SetMiscOffset: lda SprDataOffset+5,y       ;load one of three OAM data offsets
 
 OperModeExecutionTree:
       lda OperMode     ;this is the heart of the entire program,
+      .here a < 4
       jsr JumpEngine   ;most of what goes on starts here
 
       .dw TitleScreenMode
@@ -943,8 +944,8 @@ SprInitLoop:  sta Sprite_Y_Position,y ;write 248 into OAM data's Y coordinate
 
 TitleScreenMode:
       lda OperMode_Task
+      .here a < 4
       jsr JumpEngine
-
       .dw InitializeGame
       .dw ScreenRoutines
       .dw PrimaryGameSetup
@@ -1108,6 +1109,7 @@ AutoPlayer: jsr RelativePlayerPosition  ;get player's relative coordinates
 
 VictoryModeSubroutines:
       lda OperMode_Task
+      .here a < 5
       jsr JumpEngine
 
       .dw BridgeCollapse
@@ -1347,6 +1349,7 @@ SetupNumSpr:  lda FloateyNum_Y_Pos,x       ;get vertical coordinate
 
 ScreenRoutines:
       lda ScreenRoutineTask        ;run one of the following subroutines
+      .here a < 15
       jsr JumpEngine
 
       .dw InitScreen
@@ -2943,8 +2946,9 @@ SetHalfway:  sta HalfwayPage          ;store as halfway page for player
 ;--------------------------------------------------
 
 GameOverMode:
-      lda OperMode_Task
-      jsr JumpEngine
+    lda OperMode_Task
+    .here a < 3
+    jsr JumpEngine
 
       .dw SetupGameOver
       .dw ScreenRoutines
@@ -3045,7 +3049,8 @@ DoAPTasks:    dey
 SkipATRender: rts
 
 AreaParserTasks:
-      jsr JumpEngine
+    .here a < 8
+    jsr JumpEngine
 
       .dw IncrementColumnPos
       .dw RenderAreaGraphics
@@ -3466,6 +3471,7 @@ StrAObj:  lda AreaDataOffset         ;if so, load area obj offset and store in b
 RunAObj:  lda $00                    ;get stored value and add offset to it
           clc                        ;then use the jump engine with current contents of A
           adc $07
+          .here a < 47
           jsr JumpEngine
 
 ;large objects (rows $00-$0b or 00-11, d6-d4 set)
@@ -3619,6 +3625,7 @@ ExitAFrenzy: sta EnemyFrenzyQueue  ;store enemy into frenzy queue
 
 AreaStyleObject:
       lda AreaStyle        ;load level object style and jump to the right sub
+      .here a < 3
       jsr JumpEngine
       .dw TreeLedge        ;also used for cloud type levels
       .dw MushroomLedge
@@ -5288,6 +5295,7 @@ L_WaterArea3:
 ;$0770 is set to 1
 GameMode:
       lda OperMode_Task
+      .here a < 4
       jsr JumpEngine
 
       .dw InitializeArea
@@ -5473,6 +5481,7 @@ GetScreenPosition:
     ;; at $B04A
 GameRoutines:
       lda GameEngineSubroutine  ;run routine based on number (a few of these routines are
+      .here a < 13
       jsr JumpEngine            ;merely placeholders as conditions for other routines)
 
       .dw Entrance_GameTimerSetup  ;;
@@ -5892,7 +5901,9 @@ ProcMove:  jsr PlayerPhysicsSub      ;run sub related to jumping and swimming
            beq MoveSubs              ;if climbing, branch ahead, leave timer unset
            ldy #$18
            sty ClimbSideTimer        ;otherwise reset timer now
-MoveSubs:  jsr JumpEngine
+MoveSubs:
+       .here a < 4
+       jsr JumpEngine
 
       .dw OnGroundStateSub
       .dw JumpSwimSub
@@ -7325,7 +7336,9 @@ BumpBlock:
            cmp #$09                ;if block number was within 0-8 range,
            bcc BlockCode           ;branch to use current number
            sbc #$05                ;otherwise subtract 5 for second set to get proper number
-BlockCode: jsr JumpEngine          ;run appropriate subroutine depending on block number
+BlockCode:
+      .here a < 9
+      jsr JumpEngine          ;run appropriate subroutine depending on block number
 
       .dw MushFlowerBlock
       .dw CoinBlock
@@ -8069,6 +8082,7 @@ CheckpointEnemyID:
         tya                          ;get identifier back and use as offset for jump engine
 
 InitEnemyRoutines:
+        .here a < 55
         jsr JumpEngine
 
 ;jump engine table for newly loaded enemy objects
@@ -8836,6 +8850,7 @@ InitEnemyFrenzy:
       sta EnemyFrenzyBuffer ;save in enemy frenzy buffer
       sec
       sbc #$12              ;subtract 12 and use as offset for jump engine
+      .here a < 6
       jsr JumpEngine
 
 ;frenzy object jump table
@@ -9014,7 +9029,9 @@ RunEnemyObjectsCore:
        bcc JmpEO
        tya               ;otherwise subtract $14 from the value and use
        sbc #$14          ;as value for jump engine
-JmpEO: jsr JumpEngine
+JmpEO:
+       .here a < 34
+       jsr JumpEngine
 
       .dw RunNormalEnemies  ;for objects $00-$14
 
@@ -9085,6 +9102,7 @@ SkipMove: jmp OffscreenBoundsCheck
 
 EnemyMovementSubs:
       lda Enemy_ID,x
+      .here a < 21
       jsr JumpEngine
 
       .dw MoveNormalEnemy      ;only objects $00-$14 use this table
@@ -9162,6 +9180,7 @@ LargePlatformSubroutines:
       lda Enemy_ID,x  ;subtract $24 to get proper offset for jump table
       sec
       sbc #$24
+      .here a < 7
       jsr JumpEngine
 
       .dw BalancePlatform   ;table used by objects $24-$2a
@@ -10459,6 +10478,7 @@ RunStarFlagObj:
       lda StarFlagTaskControl  ;check star flag object task number here
       cmp #$05                 ;if greater than 5, branch to exit
       bcs StarFlagExit
+      .here a < 5
       jsr JumpEngine           ;otherwise jump to appropriate sub
 
       .dw StarFlagExit

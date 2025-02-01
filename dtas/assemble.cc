@@ -389,6 +389,14 @@ Assembly Assembly::Assemble(const std::string &asm_file) {
              ColorForm(parsed_line.formula).c_str());
       break;
 
+    case Line::Type::DIRECTIVE_HERE: {
+      const uint16_t addr = CurrentBank().NextAddress();
+      printf("Ignoring formula (at %04x): %s\n",
+             addr,
+             ColorForm(parsed_line.formula).c_str());
+      break;
+    }
+
     case Line::Type::CONSTANT_DECL: {
       // Symbolic constant, like
       // PPU_CTRL_REG1         = $2000

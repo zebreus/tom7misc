@@ -28,6 +28,14 @@ enum class Binop {
   OR,
   // Value in Set
   IN,
+
+  // Unsigned comparisons
+  LESS,
+  LESSEQ,
+  GREATER,
+  GREATEREQ,
+
+  EQ,
 };
 
 enum class Unop {
@@ -49,28 +57,40 @@ using Form = std::variant<ByteSetForm, IntForm, VarForm, NaryForm,
                           BinForm, UnForm>;
 
 struct NaryForm {
-  Naryop op;
+  Naryop op = Naryop::SET;
   std::vector<std::shared_ptr<Form>> v;
 };
 
 struct BinForm {
-  Binop op;
+  Binop op = Binop::AND;
   std::shared_ptr<Form> lhs, rhs;
 };
 
 struct UnForm {
-  Unop op;
+  Unop op = Unop::RAM;
   std::shared_ptr<Form> arg;
 };
 
 // Constraints
 
+// An AlwaysConstraint is a formula that should always hold (from the
+// initial condition onward). For example, a memory location may take
+// on only some specific set of values.
 struct AlwaysConstraint {
   std::shared_ptr<Form> form;
 };
 
-using Constraint = std::variant<AlwaysConstraint>;
+// A HereConstraint is a formula that should hold at the program point
+// (when the PC has the given value; syntactically this is after the
+// previous instruction executes, and before the one below does).
+struct HereConstraint {
+  uint16_t address = 0;
+  std::shared_ptr<Form> form;
+};
 
+using Constraint = std::variant<AlwaysConstraint, HereConstraint>;
+
+const char *BinopString(Binop op);
 std::string ColorForm(const std::shared_ptr<Form> &form);
 std::string ColorConstraint(const Constraint &c);
 

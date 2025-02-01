@@ -71,84 +71,84 @@ OBJECTS=$(FCEULIB_OBJECTS) $(CC_LIB_OBJECTS) $(RE2_OBJECTS) sourcemap.o byteset.
 
 $(FCEULIB)/%.o : $(FCEULIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
-	@echo -n "."
+	@printf "."
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
-	@echo -n "."
+	@printf "."
 
 $(SQLITE)/%.o : $(SQLITE)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
-	@echo -n "."
+	@printf "."
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
-	@echo -n "."
+	@printf "."
 
 
 hardiness.exe : hardiness.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 dangerzones.exe : dangerzones.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 stochastic.exe : stochastic.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 bootdata.exe : bootdata.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 collage.exe : collage.o mario-util.o $(SQLITE_OBJECTS) $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 solve.exe : solve.o mario-util.o $(SQLITE_OBJECTS) $(OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 minus-results.exe : minus-results.o mario-util.o $(SQLITE_OBJECTS) $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 minus-validate.exe : minus-validate.o mario-util.o $(SQLITE_OBJECTS) $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 minus-map.exe : minus-map.o mario-util.o $(SQLITE_OBJECTS) $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 minus-query.exe : minus-query.o $(SQLITE_OBJECTS) $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 diffemu.exe : diffemu.o mario-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 asm7.exe : asm7.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 genmodel.exe : genmodel.o mario-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 byteset_test.exe : byteset_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 model.exe : model.o modeling.o mario-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 byteset_bench.exe : byteset_bench.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	@printf "!"
 
 mario.rom : mario.asm asm7.exe
 	./asm7.exe mario.asm $@
