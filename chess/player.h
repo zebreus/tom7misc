@@ -87,6 +87,7 @@ struct Player {
 Player *FirstMove();
 Player *Random();
 Player *Alphabetical();
+Player *AlphaMove();
 Player *CCCP();
 Player *Pacifist();
 Player *MinOpponentMoves();

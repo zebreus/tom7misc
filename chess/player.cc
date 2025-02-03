@@ -274,6 +274,61 @@ struct AlphabeticalPlayer : public StatelessPlayer {
   }
 };
 
+// https://xkcd.com/3045/
+// This picks the median move from the list ("rounding down").
+// Note that this is also related to the numeric player for 1/2.
+struct AlphaMovePlayer : public StatelessPlayer {
+
+  struct LabeledMove {
+    Move m;
+    string move_string;
+  };
+
+  Move MakeMove(const Position &orig_pos, Explainer *explainer) override {
+    Position pos = orig_pos;
+    std::vector<LabeledMove> labeled;
+    for (const Move &m : pos.GetLegalMoves()) {
+      LabeledMove lm;
+      lm.m = m;
+      lm.move_string = pos.ShortMoveString(m);
+      labeled.push_back(lm);
+    }
+    CHECK(!labeled.empty());
+
+    auto Compare = [](const LabeledMove &a,
+                      const LabeledMove &b) {
+        return a.move_string < b.move_string;
+      };
+
+    // We could use QuickSelect or whatever here, but sorting is
+    // not that bad.
+    std::sort(labeled.begin(), labeled.end(), Compare);
+
+    // By rounding "down" I presume we mean towards earlier
+    // indices.
+    int idx = (int)labeled.size() >> 1;
+    CHECK(idx >= 0 && idx < labeled.size());
+
+    if (explainer != nullptr) {
+      explainer->SetMessage(StringPrintf("%d/%d moves",
+                                         idx + 1, (int)labeled.size()));
+    }
+
+    return labeled[idx].m;
+  }
+
+  string Name() const override { return "alphamove"; }
+  string Desc() const override {
+    return "Return the alphabetically median move, using "
+      "standard algebraic notation.";
+  }
+
+  bool IsDeterministic() const override {
+    return true;
+  }
+};
+
+
 struct PacifistPlayer : public EvalResultPlayer {
 
   int64 PositionPenalty(Position *p) override {
@@ -911,6 +966,10 @@ Player *Random() {
 
 Player *Alphabetical() {
   return new MakeStateless<AlphabeticalPlayer>;
+}
+
+Player *AlphaMove() {
+  return new MakeStateless<AlphaMovePlayer>;
 }
 
 Player *CCCP() {

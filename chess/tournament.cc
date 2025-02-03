@@ -281,6 +281,7 @@ static vector<Entrant> *MakeEntrants() {
         Symmetry180,
         FirstMove,
         Alphabetical,
+        AlphaMove,
         Pacifist,
         Generous,
         NoIInsist,
