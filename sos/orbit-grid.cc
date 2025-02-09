@@ -2,7 +2,17 @@
 // Use a chakravala-like method to try to solve two pell-like
 // equations at once. No idea if this will work!
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
+#include <functional>
+#include <initializer_list>
+#include <mutex>
+#include <optional>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 #include <cstdint>
 #include <unordered_set>
@@ -97,9 +107,9 @@ struct Triple {
 
 struct HashTriple {
   size_t operator()(const Triple &tri) const {
-    return (size_t)(BigInt::LowWord(tri.k) * 0x314159 +
-                    BigInt::LowWord(tri.a) * 0x7FFFFFFF +
-                    BigInt::LowWord(tri.b));
+    return (size_t)(BigInt::HashCode(tri.k) * 0x314159 +
+                    BigInt::HashCode(tri.a) * 0x7FFFFFFF +
+                    BigInt::HashCode(tri.b));
   }
 };
 

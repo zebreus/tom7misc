@@ -70,8 +70,8 @@ struct BK {
 
 struct HashBK {
   size_t operator()(const BK &bk) const {
-    return (size_t)(BigInt::LowWord(bk.k) * 0x314159 +
-                    BigInt::LowWord(bk.b));
+    return (size_t)(BigInt::HashCode(bk.k) * 0x314159 +
+                    BigInt::HashCode(bk.b));
   }
 };
 

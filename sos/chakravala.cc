@@ -1,7 +1,12 @@
 
+#include <cstddef>
+#include <cstdio>
+#include <optional>
 #include <string>
 #include <cstdint>
+#include <tuple>
 #include <unordered_set>
+#include <utility>
 
 #include "ansi.h"
 #include "timer.h"
@@ -47,7 +52,7 @@ static std::pair<Sol, Sol> Combine(
 
 struct HashSol {
   size_t operator ()(const Sol &sol) const {
-    return (size_t)BigInt::LowWord(sol.first - sol.second);
+    return (size_t)BigInt::HashCode(sol.first - sol.second);
   }
 };
 
@@ -63,7 +68,7 @@ struct HashTriple {
   size_t operator()(const Triple &tri) const {
     const auto [sol, k] = tri;
     size_t s = HashSol()(sol);
-    return (size_t)(BigInt::LowWord(k) * 0x314159 + s);
+    return (size_t)(BigInt::HashCode(k) * 0x314159 + s);
   }
 };
 

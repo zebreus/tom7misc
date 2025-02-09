@@ -1,8 +1,14 @@
 
 #include "bignum/big.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdio>
+#include <functional>
+#include <optional>
 #include <unordered_set>
 #include <string>
+#include <utility>
 #include <vector>
 #include <cstdint>
 
@@ -86,8 +92,8 @@ struct BC {
 
 struct HashBC {
   size_t operator()(const BC &bc) const {
-    return (size_t)(BigInt::LowWord(bc.c) * 0x314159 +
-                    BigInt::LowWord(bc.b));
+    return (size_t)(BigInt::HashCode(bc.c) * 0x314159 +
+                    BigInt::HashCode(bc.b));
   }
 };
 

@@ -260,7 +260,7 @@ char ObjectFieldTypeTag(ObjectFieldType oft);
 
 inline std::size_t ValueHash::operator ()(const Value& obj) const {
   if (const BigInt *bi = std::get_if<BigInt>(&obj.v)) {
-    return 0xB10000000 + (size_t)BigInt::LowWord(*bi);
+    return 0xB10000000 + (size_t)BigInt::HashCode(*bi);
   } else if (const std::string *str = std::get_if<std::string>(&obj.v)) {
     return std::hash<std::string>()(*str);
   } else if (const uint64_t *u = std::get_if<uint64_t>(&obj.v)) {

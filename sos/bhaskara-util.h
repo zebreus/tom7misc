@@ -5,7 +5,12 @@
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <string>
 #include <vector>
 #include <utility>
 #include <unordered_set>
@@ -46,9 +51,9 @@ struct Triple {
 
 struct HashTriple {
   size_t operator()(const Triple &tri) const {
-    return (size_t)(BigInt::LowWord(tri.k) * 0x314159 +
-                    BigInt::LowWord(tri.a) * 0x7FFFFFFF +
-                    BigInt::LowWord(tri.b));
+    return (size_t)(BigInt::HashCode(tri.k) * 0x314159 +
+                    BigInt::HashCode(tri.a) * 0x7FFFFFFF +
+                    BigInt::HashCode(tri.b));
   }
 };
 
