@@ -257,6 +257,27 @@ static std::shared_ptr<Form> ParseForm(
   const FixityElt GreaterEqElt = MakeCmp(Binop::GREATEREQ);
   const FixityElt EqElt = MakeCmp(Binop::EQ);
 
+  auto MakeCast = [](Unop op) {
+      return FixityElt{
+        .fixity = Fixity::Pre,
+        .assoc = Associativity::Right,
+        .precedence = 6,
+        .item = nullptr,
+        .unop = [op](std::shared_ptr<Form> a) ->
+        std::shared_ptr<Form> {
+          return std::make_shared<Form>(UnForm{
+              .op = op,
+              .arg = std::move(a),
+            });
+        },
+        .binop = nullptr,
+      };
+    };
+
+  const FixityElt AsIntElt = MakeCast(Binop::AS_INT);
+  const FixityElt AsWord8Elt = MakeCast(Binop::AS_WORD8);
+  const FixityElt AsWord16Elt = MakeCast(Binop::AS_WORD16);
+
   const auto FormExp =
     Fix<Token, std::shared_ptr<Form>>([&](const auto &Self) {
         auto Number =
@@ -298,6 +319,7 @@ static std::shared_ptr<Form> ParseForm(
 
         auto AtomicExp = Number || ReadRam || Var || Set;
 
+        // TODO: Casts
         auto FixityElement =
           (IsToken<IN>() >> Succeed<Token, FixityElt>(InElt)) ||
           (IsToken<LESSEQ>() >>

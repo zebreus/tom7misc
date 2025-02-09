@@ -53,6 +53,15 @@ std::string ColorForm(const std::shared_ptr<Form> &form) {
     case Unop::RAM:
       return StringPrintf(AKEYWORD("ram") AWHITE("[") "%s" AWHITE("]"),
                           a.c_str());
+    case Unop::AS_INT:
+      return StringPrintf(AKEYWORD("as_int") AWHITE("(") "%s" AWHITE(")"),
+                          a.c_str());
+    case Unop::AS_WORD8:
+      return StringPrintf(AKEYWORD("as_w8") AWHITE("(") "%s" AWHITE(")"),
+                          a.c_str());
+    case Unop::AS_WORD16:
+      return StringPrintf(AKEYWORD("as_w16") AWHITE("(") "%s" AWHITE(")"),
+                          a.c_str());
     default:
       return ARED("(unknown unop)");
     }
