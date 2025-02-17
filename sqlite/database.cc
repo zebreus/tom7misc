@@ -300,9 +300,15 @@ struct DatabaseImpl : public Database {
 
   std::unique_ptr<Query> ExecuteString(const std::string &q) override {
     sqlite3_stmt *stmt = nullptr;
-    int rc = sqlite3_prepare_v3(db, q.data(), (int)q.size(),
-                                // flags
-                                0, &stmt, nullptr);
+    int rc = 0;
+
+    // Allow "busy" result, looping.
+    do {
+      rc = sqlite3_prepare_v3(db, q.data(), (int)q.size(),
+                              // flags
+                              0, &stmt, nullptr);
+    } while (rc == SQLITE_BUSY);
+
     CHECK(rc == SQLITE_OK) << "Could not prepare statement (parse error?): "
                            << q << "\nError code: " << ErrString(rc);
     return std::unique_ptr<Query>(new QueryImpl(this, stmt));
@@ -417,5 +423,8 @@ std::unique_ptr<Database> Database::Open(const std::string &filename) {
   int rc = sqlite3_open(filename.c_str(), &ret->db);
   CHECK(rc == SQLITE_OK) << "Couldn't open database from " << filename << "\n"
                          << ErrString(rc);
+  // Automatically sleep if busy.
+  sqlite3_busy_timeout(ret->db, 1000);
+
   return ret;
 }
