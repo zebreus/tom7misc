@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <unordered_map>
@@ -69,11 +70,20 @@ struct Execution {
   virtual void FailHook(const std::string &msg);
   virtual void ConsoleHook(const std::string &msg);
 
+  // Execution implements many primops, some of which need additional
+  // resources (like the document itself). TODO: It might be better to
+  // encapsulate the following into something like the "Execution
+  // environment."
+  //
   // Get the document. In normal situations we have one of these,
   // but for tests we sometimes provide a fake one.
   virtual Document *DocumentHook();
 
   virtual Rephrasing *RephrasingHook();
+
+  // Find a file that exists in the include paths and return its
+  // path (or just return the input string).
+  virtual std::string FindFileHook(std::string_view name);
 
   // For output of layout
   virtual void OutputLayoutHook(int page_idx, int frame_idx,

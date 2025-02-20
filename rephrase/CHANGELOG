@@ -1,3 +1,11 @@
+20 Feb 2025 (r6304)
+
+ * Primops that load files (notably font-load-file) now search include
+   paths (including by default the BoVeX program directory), which is
+   what you always wanted. This makes it easier to run bovex from
+   another directory, like if you write another SIGBOVIK paper using
+   it.
+
 21 Jun 2024 (r5931)
 
  * Fixed the bug with mutually-recursive functions that have polymorphic

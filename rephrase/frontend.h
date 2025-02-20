@@ -35,6 +35,10 @@ struct Frontend {
 
   il::AstPool *Pool() { return &il_pool; }
 
+  const std::vector<std::string> &GetIncludePaths() const {
+    return includepaths;
+  }
+
  private:
 
   il::Program RunFrontendInternal(

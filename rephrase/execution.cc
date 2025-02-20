@@ -2,6 +2,7 @@
 #include "execution.h"
 
 #include <algorithm>
+#include <string_view>
 #include <unordered_set>
 #include <cmath>
 #include <cstdint>
@@ -119,6 +120,11 @@ Document *Execution::DocumentHook() {
 Rephrasing *Execution::RephrasingHook() {
   LOG(FATAL) << "No rephrasing support in base Execution.";
   return nullptr;
+}
+
+std::string Execution::FindFileHook(std::string_view name) {
+  // No include paths in base Execution.
+  return std::string(name);
 }
 
 static std::string ColorValuePtrString(const Value *value) {
@@ -1212,13 +1218,13 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   }
 
   case Primop::FONT_LOAD_FILE: {
-    const std::string filename = GetString("font-load-file");
+    const std::string filename = FindFileHook(GetString("font-load-file"));
     std::string f = DocumentHook()->LoadFontFile(filename);
     return String(std::move(f), state);
   }
 
   case Primop::IMAGE_LOAD_FILE: {
-    const std::string filename = GetString("image-load-file");
+    const std::string filename = FindFileHook(GetString("image-load-file"));
     std::string f = DocumentHook()->LoadImageFile(filename);
     return String(std::move(f), state);
   }

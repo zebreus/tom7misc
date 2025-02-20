@@ -96,11 +96,15 @@ struct BovexOpt {
 };
 
 struct BovexExecution : public bc::Execution {
-  explicit BovexExecution(const bc::Program &pgm,
+  explicit BovexExecution(int verbose,
+                          const std::vector<std::string> &include_paths,
+                          const bc::Program &pgm,
                           Document *document,
                           Rephrasing *rephrasing,
                           BovexOpt *opt) :
     bc::Execution(pgm),
+    verbose(verbose),
+    include_paths(include_paths),
     document(document),
     rephrasing(rephrasing),
     opt(opt),
@@ -108,9 +112,6 @@ struct BovexExecution : public bc::Execution {
     save_rephrasing_per(60.0, false) {
     opt->Next();
   }
-
-  std::map<std::pair<int, int>, std::vector<DocTree>> pages;
-  double total_badness = 0.125;
 
   Document *DocumentHook() override { return document; }
   Rephrasing *RephrasingHook() override {
@@ -152,7 +153,30 @@ struct BovexExecution : public bc::Execution {
     return opt->GetValue(name, low, start, high);
   }
 
+  std::string FindFileHook(std::string_view filename) override {
+    // We take the first existing file.
+    for (const std::string &ipath : include_paths) {
+      std::string f = Util::DirPlus(ipath, filename);
+      if (Util::ExistsFile(f)) return f;
+    }
+    if (verbose > 0) {
+      printf("File " ARED("%s") " not found in any include path:\n",
+             std::string(filename).c_str());
+      for (const std::string &ipath : include_paths) {
+        printf("  " AGREY("%s") "\n", ipath.c_str());
+      }
+    }
+    return std::string(filename);
+  }
+
+  int verbose = 0;
+
+  std::map<std::pair<int, int>, std::vector<DocTree>> pages;
+  double total_badness = 0.125;
+
   bool did_rephrase = false;
+
+  std::vector<std::string> include_paths;
 
   // Not owned!
   Document *document = nullptr;
@@ -263,7 +287,9 @@ static int Bovex(const std::string &program_dir,
       return std::unique_ptr<Document>(nullptr);
     }();
 
-    BovexExecution execution(pgm, document.get(), rephrasing.get(),
+    BovexExecution execution(verbose,
+                             compiler.frontend.GetIncludePaths(),
+                             pgm, document.get(), rephrasing.get(),
                              &opt);
     BovexExecution::State state = execution.Start();
 
