@@ -1299,6 +1299,7 @@ UI::EventResult UI::HandleEvents() {
           checkpoint = game_array->Checkpoint();
           printf("Saved checkpoint.\n");
         }
+        break;
 
       default:
         printf("Button %d unmapped.\n", event.jbutton.button);
@@ -1625,7 +1626,7 @@ void UI::Draw() {
     break;
   }
 
-  // XXX. Use ImageRGBA for off-screen image, then save to mov if active.
+  // Use ImageRGBA for off-screen image, then save to mov if active.
 
   drawing->BlendText32(5, 5, 0xFFFF00AA,
                        StringPrintf("Frames: %lld", frames_drawn));
@@ -1662,10 +1663,7 @@ static void InitializeSDL() {
 
   SDL_EnableUNICODE(1);
 
-  SDL_Surface *icon = SDL_LoadBMP("icon.bmp");
-  if (icon != nullptr) {
-    SDL_WM_SetIcon(icon, nullptr);
-  }
+  sdlutil::SetIcon("icon.png");
 
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen != nullptr);
