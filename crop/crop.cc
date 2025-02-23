@@ -236,7 +236,7 @@ UI::EventResult UI::HandleEvents() {
 
       dragging = true;
 
-      printf("Mouse button: %d\n", e->button);
+      // printf("Mouse button: %d\n", e->button);
       if (e->button == 4) {
         // mousewheel up
         if (cropw >= 16 &&
@@ -319,7 +319,8 @@ void UI::Draw() {
   sdlutil::CopyRGBAToScreen(*drawing, screen);
 }
 
-static void InitializeSDL(int screen_width,
+static void InitializeSDL(std::string_view program_dir,
+                          int screen_width,
                           int screen_height) {
   // Initialize SDL.
   CHECK(SDL_Init(SDL_INIT_VIDEO |
@@ -333,20 +334,20 @@ static void InitializeSDL(int screen_width,
 
   SDL_EnableUNICODE(1);
 
-  // TODO: linked-in icon
-  SDL_Surface *icon = SDL_LoadBMP("icon.bmp");
-  if (icon != nullptr) {
-    SDL_WM_SetIcon(icon, nullptr);
-  }
+  // TODO: Use linked-in resources for this.
+  std::string icon_filename = Util::DirPlus(program_dir, "icon.png");
+  std::string font_filename = Util::DirPlus(program_dir, FONT_PNG);
+
+  sdlutil::SetIcon(icon_filename);
 
   screen = sdlutil::makescreen(screen_width, screen_height);
   CHECK(screen != nullptr);
 
   font = Font::Create(screen,
-                      FONT_PNG,
+                      font_filename,
                       FONTCHARS,
                       FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
-  CHECK(font != nullptr) << "Couldn't load font.";
+  CHECK(font != nullptr) << "Couldn't load font: " << font_filename;
 
   CHECK((cursor_arrow = Cursor::MakeArrow()));
   CHECK((cursor_bucket = Cursor::MakeBucket()));
@@ -361,10 +362,12 @@ static void InitializeSDL(int screen_width,
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  std::string program_dir = Util::BinaryDir(argv[0]);
+
   // TODO: Allow specifying crop rectangle, etc.
   // TODO: On windows, it's pretty easy to call
   // GetOpenFilename so that you don't have to
-  // type this on the filename.
+  // type this on the command line.
   CHECK(argc == 2) << "./crop.exe image.png\n";
 
   std::string image_filename = argv[1];
@@ -376,7 +379,8 @@ int main(int argc, char **argv) {
 
   PaddedOriginal original(image_filename, TARGET_W, TARGET_H);
 
-  InitializeSDL(original.Width(), original.Height());
+  InitializeSDL(program_dir,
+                original.Width(), original.Height());
 
   UI ui(original, output_filename);
   ui.Loop();
