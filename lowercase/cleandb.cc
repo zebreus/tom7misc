@@ -111,7 +111,9 @@ int main(int argc, char **argv) {
                   return;
                 }
 
-                if (!stbtt_InitFont(&font, ttf_bytes.data(), offset)) {
+                if (!stbtt_InitFont(&font,
+                                    ttf_bytes.data(), ttf_bytes.size(),
+                                    offset)) {
                   MutexLock ml(&out_m);
                   bad.push_back(filename);
                   counters["cant_init"]++;
