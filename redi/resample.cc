@@ -1,4 +1,6 @@
 #include <CL/cl.h>
+#include <CL/cl_platform.h>
+#include <functional>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,9 +9,9 @@
 
 #include <thread>
 #include <mutex>
+#include <utility>
+#include <vector>
 
-#include "mingw.thread.h"
-#include "mingw.mutex.h"
 // ugh, conflict...
 #undef ARRAYSIZE
 
@@ -26,14 +28,14 @@
 
 #include "constants.h"
 
-
+using namespace std;
 
 // Get the 1024x1024 square out of the center of the image.
 bool LoadImage1024(const string &filename, vector<uint8> *out) {
   // printf("%s\n", filename.c_str());
   int width, height, bpp_unused;
-  uint8 *stb_rgba = stbi_load(filename.c_str(), 
-			      &width, &height, &bpp_unused, 4);
+  uint8 *stb_rgba = stbi_load(filename.c_str(),
+            &width, &height, &bpp_unused, 4);
   if (stb_rgba == nullptr) {
     fprintf(stderr, "%s: error opening/parsing\n", filename.c_str());
     return false;
@@ -58,11 +60,11 @@ bool LoadImage1024(const string &filename, vector<uint8> *out) {
     for (int x = 0; x < 1024; x++) {
       int srcx = x + skip_left;
       int src = srcy * width * bpp +
-	(srcx * bpp);
+  (srcx * bpp);
       int dst = y * 1024 * bpp +
-	(x * bpp);
+  (x * bpp);
       for (int i = 0; i < 4; i++) {
-	(*out)[dst + i] = stb_rgba[src + i];
+  (*out)[dst + i] = stb_rgba[src + i];
       }
     }
   }
@@ -79,11 +81,11 @@ static void SaveImage(const string &filename, const vector<uint8> &img, int size
 
 struct ResamplerCL {
   ResamplerCL(cl_device_id *devices,
-	      cl_context context, cl_command_queue command_queue, int orig_width) :
+        cl_context context, cl_command_queue command_queue, int orig_width) :
     devices(devices), context(context), command_queue(command_queue),
     new_size(orig_width >> 1) {
 
-    const string kernel_src = 
+    const string kernel_src =
       StringPrintf("#define ORIG_WIDTH %d\n", orig_width) +
       Util::ReadFile("resample.cl");
 
@@ -94,11 +96,11 @@ struct ResamplerCL {
     if (CL_SUCCESS != clBuildProgram(program, 1, devices, nullptr, nullptr, nullptr)) {
       size_t blsize;
 
-      CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0], 
-						CL_PROGRAM_BUILD_LOG, 0, nullptr, &blsize));
+      CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0],
+            CL_PROGRAM_BUILD_LOG, 0, nullptr, &blsize));
       char *build_log = (char *)malloc(blsize + 1);
-      CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0], 
-						CL_PROGRAM_BUILD_LOG, blsize, build_log, nullptr));
+      CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0],
+            CL_PROGRAM_BUILD_LOG, blsize, build_log, nullptr));
       build_log[blsize] = 0;
       printf("Failed to compile:\n %s", build_log);
       exit(-1);
@@ -121,23 +123,23 @@ struct ResamplerCL {
 
     size_t global_work_offset[] = { 0 };
     size_t global_work_size[] = { (size_t)(new_size * new_size) };
-    CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(command_queue, kernel, 
-					       // work dimensions
-					       1, 
-					       // global work offset
-					       global_work_offset,
-					       // global work size
-					       global_work_size, 
-					       // local work size
-					       nullptr, 
-					       // no wait list
-					       0, nullptr, 
-					       // no event
-					       nullptr));
-  
+    CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(command_queue, kernel,
+                 // work dimensions
+                 1,
+                 // global work offset
+                 global_work_offset,
+                 // global work size
+                 global_work_size,
+                 // local work size
+                 nullptr,
+                 // no wait list
+                 0, nullptr,
+                 // no event
+                 nullptr));
+
     clFinish(command_queue);
 
-    vector<uchar> result = 
+    vector<uchar> result =
       CopyBufferFromGPU<uchar>(command_queue, output_buf, new_size * new_size * 4);
 
     CHECK_SUCCESS(clReleaseMemObject(img_buf));
@@ -170,7 +172,7 @@ int main(int argc, char* argv[])  {
   printf("[CPU] Has %d hardware concurrency\n", std::thread::hardware_concurrency());
 
   printf("[GPU] Initializing GPU.\n");
-  
+
   cl_uint numPlatforms;
   cl_platform_id platform = nullptr;
   CHECK(CL_SUCCESS == clGetPlatformIDs(0, nullptr, &numPlatforms));
@@ -207,43 +209,43 @@ int main(int argc, char* argv[])  {
 
   vector<vector<uchar>> images;
   {
-    std::mutex images_m;  
+    std::mutex images_m;
     uint64 bytes = 0ull;
     int loaded = 0, deleted = 0, failed = 0;
     int fs = (int)files.size();
     std::function<void(const string &s)> load_add = [&bytes, &loaded, &deleted, &failed, fs,
-						     &images, &images_m](const string &f) {
+                 &images, &images_m](const string &f) {
       const string path = (string)"corpus/" + f;
       // printf("%s\n", f.c_str());
       vector<uint8> img;
       if (LoadImage1024(path, &img)) {
-	MutexLock ml(&images_m);
-	bytes += img.size();
-	images.push_back(std::move(img));
-	loaded++;
+  MutexLock ml(&images_m);
+  bytes += img.size();
+  images.push_back(std::move(img));
+  loaded++;
 
-	if (images.size() % 10 == 0)
-	  printf("%d/%d (%.2f%%), %d MB [deleted %d, failed %d]\n", 
-		 loaded, fs,
-		 (100.0 * loaded) / fs,
-		 (int)(bytes / (1024 * 1024)),
-		 deleted, failed);
+  if (images.size() % 10 == 0)
+    printf("%d/%d (%.2f%%), %d MB [deleted %d, failed %d]\n",
+     loaded, fs,
+     (100.0 * loaded) / fs,
+     (int)(bytes / (1024 * 1024)),
+     deleted, failed);
 
       } else {
-	{
-	  MutexLock ml(&images_m);
-	  printf("Unable to load %s.\n", path.c_str());
-	}
+  {
+    MutexLock ml(&images_m);
+    printf("Unable to load %s.\n", path.c_str());
+  }
 
-	#if 1
-	if (0 == unlink(path.c_str())) {
-	  MutexLock ml(&images_m);
-	  deleted++;
-	} else {
-	  MutexLock ml(&images_m);
-	  failed++;
-	}
-	#endif
+  #if 1
+  if (0 == unlink(path.c_str())) {
+    MutexLock ml(&images_m);
+    deleted++;
+  } else {
+    MutexLock ml(&images_m);
+    failed++;
+  }
+  #endif
       }
     };
 
@@ -263,25 +265,25 @@ int main(int argc, char* argv[])  {
       const uint8 seed = seeds[i];
       vector<uchar> newimg = resampler1.Resample(v);
       vector<uchar> newimg2 = resampler2.Resample(newimg);
-      
+
       int local_done = 0;
       {
-	MutexLock ml(&m);
-	local_done = done;
-	done++;
+  MutexLock ml(&m);
+  local_done = done;
+  done++;
       }
 
       // About 4% of corpus goes to held-out set.
       if (seed < 11) {
-	SaveImage(StringPrintf("eval256/img%d.png", local_done), newimg2, 256);
+  SaveImage(StringPrintf("eval256/img%d.png", local_done), newimg2, 256);
       } else {
-	SaveImage(StringPrintf("corpus256/img%d.png", local_done), newimg2, 256);
+  SaveImage(StringPrintf("corpus256/img%d.png", local_done), newimg2, 256);
       }
 
       if (local_done % 10 == 0) {
-	MutexLock ml(&output);
-	printf("%d/%d (%.2f%%) written\n", local_done, num,
-	       (100.0 * local_done) / num);
+  MutexLock ml(&output);
+  printf("%d/%d (%.2f%%) written\n", local_done, num,
+         (100.0 * local_done) / num);
       }
     };
 

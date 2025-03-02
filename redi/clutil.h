@@ -1,10 +1,21 @@
 
+// XXX this is in cc-lib now
+
 #ifndef __CLUTIL_H
 #define __CLUTIL_H
 
 #include <CL/cl.h>
+#include <CL/cl_platform.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <stdlib.h>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include "timer.h"
+#include "base/logging.h"
 
 using namespace std;
 
@@ -46,13 +57,13 @@ struct CL {
   }
 
   cl_command_queue NewCommandQueue(bool out_of_order = true) {
-    return clCreateCommandQueue(context, devices[0], 
-				out_of_order ? CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE : 0,
-				nullptr);
+    return clCreateCommandQueue(context, devices[0],
+        out_of_order ? CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE : 0,
+        nullptr);
   }
 
   pair<cl_program, cl_kernel> BuildOneKernel(const string &kernel_src,
-					     const string &function_name) {
+               const string &function_name) {
     Timer gpu_compile;
     const char *sources[] = { kernel_src.c_str() };
     size_t source_size[] = { kernel_src.size() };
@@ -60,11 +71,11 @@ struct CL {
     if (CL_SUCCESS != clBuildProgram(program, 1, devices, nullptr, nullptr, nullptr)) {
       size_t blsize;
 
-      CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0], 
-						CL_PROGRAM_BUILD_LOG, 0, nullptr, &blsize));
+      CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0],
+            CL_PROGRAM_BUILD_LOG, 0, nullptr, &blsize));
       char *build_log = (char *)malloc(blsize + 1);
-      CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0], 
-						CL_PROGRAM_BUILD_LOG, blsize, build_log, nullptr));
+      CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0],
+            CL_PROGRAM_BUILD_LOG, blsize, build_log, nullptr));
       build_log[blsize] = 0;
       printf("Failed to compile:\n %s", build_log);
       exit(-1);
@@ -93,12 +104,12 @@ struct CL {
 // quite inefficient.
 template<class T>
 static cl_mem BufferFromVector(cl_context context, bool readonly, vector<T> *v) {
-  return clCreateBuffer(context, 
-			(readonly ? CL_MEM_READ_ONLY : 0) | 
-			CL_MEM_USE_HOST_PTR,
-			sizeof (T) * v->size(),
-			(void *) v->data(),
-			nullptr);
+  return clCreateBuffer(context,
+      (readonly ? CL_MEM_READ_ONLY : 0) |
+      CL_MEM_USE_HOST_PTR,
+      sizeof (T) * v->size(),
+      (void *) v->data(),
+      nullptr);
 }
 
 // Creates a new buffer on the GPU and copies the memory there. They do not alias.
@@ -106,28 +117,28 @@ static cl_mem BufferFromVector(cl_context context, bool readonly, vector<T> *v) 
 // memory until it is.
 template<class T>
 static cl_mem MoveMemoryToGPU(cl_context context, cl_command_queue cmd,
-			      bool readonly, vector<T> *v) {
-  cl_mem buf = clCreateBuffer(context, 
-			      (readonly ? CL_MEM_READ_ONLY : 0),
-			      sizeof (T) * v->size(),
-			      nullptr,
-			      nullptr);
-  clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0, 
-		       sizeof (T) * v->size(), v->data(), 0, nullptr, nullptr);
+            bool readonly, vector<T> *v) {
+  cl_mem buf = clCreateBuffer(context,
+            (readonly ? CL_MEM_READ_ONLY : 0),
+            sizeof (T) * v->size(),
+            nullptr,
+            nullptr);
+  clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0,
+           sizeof (T) * v->size(), v->data(), 0, nullptr, nullptr);
   return buf;
 }
 
 // Same, but with a constant vector. Implies read-only.
 template<class T>
 static cl_mem MoveMemoryToGPUConst(cl_context context, cl_command_queue cmd,
-				   const vector<T> &v) {
-  cl_mem buf = clCreateBuffer(context, 
-			      CL_MEM_READ_ONLY,
-			      sizeof (T) * v.size(),
-			      nullptr,
-			      nullptr);
-  clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0, 
-		       sizeof (T) * v.size(), v.data(), 0, nullptr, nullptr);
+           const vector<T> &v) {
+  cl_mem buf = clCreateBuffer(context,
+            CL_MEM_READ_ONLY,
+            sizeof (T) * v.size(),
+            nullptr,
+            nullptr);
+  clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0,
+           sizeof (T) * v.size(), v.data(), 0, nullptr, nullptr);
   return buf;
 }
 
@@ -141,10 +152,10 @@ static vector<T> CopyBufferFromGPU(cl_command_queue cmd, cl_mem buf, int n) {
   vector<T> vec;
   vec.resize(n);
   CHECK_SUCCESS(clEnqueueReadBuffer(cmd, buf, CL_TRUE, 0, sizeof (T) * n,
-				    vec.data(),
-				    // No wait-list or event.
-				    0, nullptr,
-				    nullptr));
+            vec.data(),
+            // No wait-list or event.
+            0, nullptr,
+            nullptr));
   clFinish(cmd);
   return vec;
 }
@@ -153,10 +164,10 @@ static vector<T> CopyBufferFromGPU(cl_command_queue cmd, cl_mem buf, int n) {
 template<class T>
 static void CopyBufferFromGPUTo(cl_command_queue cmd, cl_mem buf, vector<T> *vec) {
   CHECK_SUCCESS(clEnqueueReadBuffer(cmd, buf, CL_TRUE, 0, sizeof (T) * vec->size(),
-				    vec->data(),
-				    // No wait-list or event.
-				    0, nullptr,
-				    nullptr));
+            vec->data(),
+            // No wait-list or event.
+            0, nullptr,
+            nullptr));
   clFinish(cmd);
 }
 

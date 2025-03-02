@@ -1,22 +1,33 @@
-#include "../cc-lib/sdl/sdlutil.h"
+
 #include "SDL.h"
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_keysym.h"
 #include "SDL_main.h"
-#include "../cc-lib/sdl/chars.h"
-#include "../cc-lib/sdl/font.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
+#include "sdl/chars.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
 
 #include <CL/cl.h>
+#include <CL/cl_platform.h>
+#include <cstdint>
+#include <mutex>
+#include <processthreadsapi.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
+#include <thread>
 #include <time.h>
 
 #include <algorithm>
 #include <tuple>
 #include <utility>
-#include <set>
 #include <vector>
-#include <map>
 #include <unordered_set>
+#include <windows.h>
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
@@ -42,6 +53,7 @@ using uchar = uint8_t;
 
 using uint32 = uint32_t;
 using uint64 = uint64_t;
+using int64 = int64_t;
 
 #if 1
 #define ECHECK(a)
@@ -77,9 +89,9 @@ static_assert((NPP >= 3), "Must have at least R, G, B pixels.");
 // static_assert(RANDOM == 0, "random not yet supported.");
 
 std::mutex print_mutex;
-#define Printf(fmt, ...) do {		\
-  MutexLock Printf_ml(&print_mutex);		\
-  printf(fmt, ##__VA_ARGS__);			\
+#define Printf(fmt, ...) do {   \
+  MutexLock Printf_ml(&print_mutex);    \
+  printf(fmt, ##__VA_ARGS__);     \
   } while (0);
 
 template<class C>
@@ -90,22 +102,22 @@ static void DeleteElements(C *cont) {
   cont->clear();
 }
 
-struct ImageRGBA {
-  static ImageRGBA *Load(const string &filename) {
+struct RediImageRGBA {
+  static RediImageRGBA *Load(const string &filename) {
     vector<uint8> ret;
     int width, height, bpp_unused;
-    uint8 *stb_rgba = stbi_load(filename.c_str(), 
-				&width, &height, &bpp_unused, 4);
+    uint8 *stb_rgba = stbi_load(filename.c_str(),
+        &width, &height, &bpp_unused, 4);
     const int bytes = width * height * 4;
     ret.resize(bytes);
     if (stb_rgba == nullptr) return nullptr;
     memcpy(ret.data(), stb_rgba, bytes);
     // Does this move image data all the way in, or do we need to
     // write a move constructor manually? Better way?
-    return new ImageRGBA(std::move(ret), width, height);
+    return new RediImageRGBA(std::move(ret), width, height);
   }
 
-  ImageRGBA(const vector<uint8> &rgba, int width, int height) 
+  RediImageRGBA(const vector<uint8> &rgba, int width, int height)
     : width(width), height(height), rgba(rgba) {
     CHECK(rgba.size() == width * height * 4);
   }
@@ -115,8 +127,8 @@ struct ImageRGBA {
     stbi_write_png(filename.c_str(), width, height, 4, rgba.data(), 4 * width);
   }
 
-  ImageRGBA *Copy() const {
-    return new ImageRGBA(rgba, width, height);
+  RediImageRGBA *Copy() const {
+    return new RediImageRGBA(rgba, width, height);
   }
 
   // TODO:: Save a vector of images of the same size in a grid.
@@ -145,10 +157,10 @@ static void WriteLayerAsImage(const string &filename, const vector<float> &value
     rgba.push_back(0xFF);
   }
   CHECK_EQ(rgba.size(), SIZE * SIZE * 4);
-  ImageRGBA img(rgba, SIZE, SIZE);
+  RediImageRGBA img(rgba, SIZE, SIZE);
   img.Save(filename);
   Printf("Wrote %s...\n", filename.c_str());
- 
+
   // XXX PERF and as text file.
   if (false) {
     string tf = (string)"text-" + filename + (string)".txt";
@@ -164,8 +176,8 @@ static void WriteLayerAsImage(const string &filename, const vector<float> &value
 }
 
 // Single-channel bitmap.
-struct ImageA {
-  ImageA(const vector<uint8> &alpha, int width, int height)
+struct RediImageA {
+  RediImageA(const vector<uint8> &alpha, int width, int height)
     : width(width), height(height), alpha(alpha) {
     CHECK(alpha.size() == width * height);
   }
@@ -174,27 +186,24 @@ struct ImageA {
 };
 
 // Pretty much only useful for this application since it loads the whole font each time.
-static ImageA *FontChar(const string &filename, char c, int size) {
+static RediImageA *FontChar(const string &filename, char c, int size) {
   fflush(stdout);
 
-  FILE *file = fopen(filename.c_str(), "rb");
-  if (file == nullptr) {
+  std::vector<uint8_t> ttf_buffer = Util::ReadFileBytes(filename);
+  if (ttf_buffer.empty()) {
     fprintf(stderr, "Failed to fopen %s\n", filename.c_str());
     return nullptr;
   }
-  // XXX check read size
-  uint8 *ttf_buffer = (uint8*)malloc(1<<25);
-  fread(ttf_buffer, 1, 1 << 25, file);
-  fclose(file);
 
   stbtt_fontinfo font;
-  stbtt_InitFont(&font, ttf_buffer, stbtt_GetFontOffsetForIndex(ttf_buffer, 0));
+  stbtt_InitFont(&font, ttf_buffer.data(), ttf_buffer.size(),
+                 stbtt_GetFontOffsetForIndex(ttf_buffer.data(), 0));
   int width, height;
-  uint8 *bitmap = stbtt_GetCodepointBitmap(&font, 0, stbtt_ScaleForPixelHeight(&font, size),
-					   c, &width, &height, 0, 0);
+  uint8 *bitmap = stbtt_GetCodepointBitmap(
+      &font, 0, stbtt_ScaleForPixelHeight(&font, size),
+      c, &width, &height, 0, 0);
   if (bitmap == nullptr) {
     fprintf(stderr, "Failed to getcodepoint\n");
-    free(ttf_buffer);
     return nullptr;
   }
   const int bytes = width * height;
@@ -203,35 +212,33 @@ static ImageA *FontChar(const string &filename, char c, int size) {
   memcpy(ret.data(), bitmap, bytes);
   // Probably should call freebitmap here -tom7 in 2020
   // stbtt_FreeBitmap(bitmap, nullptr);
-  free(ttf_buffer);
-  return new ImageA(ret, width, height);
+  return new RediImageA(ret, width, height);
 }
 
-static void BlitChannel(uint8 r, uint8 g, uint8 b, const ImageA &channel, 
-			int xpos, int ypos,
-			ImageRGBA *dest) {
+static void BlitChannel(uint8 r, uint8 g, uint8 b, const RediImageA &channel,
+                        int xpos, int ypos, RediImageRGBA *dest) {
   for (int y = 0; y < channel.height; y++) {
     int dsty = ypos + y;
     if (dsty >= 0 && dsty < dest->height) {
       for (int x = 0; x < channel.width; x++) {
-	int dstx = xpos + x;
-	if (dstx >= 0 && dstx <= dest->width) {
-	  int sidx = x + channel.width * y;
-	  int ch = channel.alpha[sidx];
+        int dstx = xpos + x;
+        if (dstx >= 0 && dstx <= dest->width) {
+          int sidx = x + channel.width * y;
+          int ch = channel.alpha[sidx];
 
-	  auto Blend = [&dest](int idx, uint8 val, uint8 a) {
-	    uint8 old = dest->rgba[idx];
-	    uint8 oma = 0xFF - a;
-	    uint8 replacement = ((oma * (int)old) + (a * (int)val)) >> 8;
-	    dest->rgba[idx] = replacement;
-	  };
+          auto Blend = [&dest](int idx, uint8 val, uint8 a) {
+            uint8 old = dest->rgba[idx];
+            uint8 oma = 0xFF - a;
+            uint8 replacement = ((oma * (int)old) + (a * (int)val)) >> 8;
+            dest->rgba[idx] = replacement;
+          };
 
-	  int didx = dstx * 4 + (dsty * dest->width) * 4;
-	  Blend(didx + 0, r, ch);
-	  Blend(didx + 1, g, ch);
-	  Blend(didx + 2, b, ch);
-	  dest->rgba[didx + 3] = 0xFF;
-	}
+          int didx = dstx * 4 + (dsty * dest->width) * 4;
+          Blend(didx + 0, r, ch);
+          Blend(didx + 1, g, ch);
+          Blend(didx + 2, b, ch);
+          dest->rgba[didx + 3] = 0xFF;
+        }
       }
     }
   }
@@ -240,9 +247,8 @@ static void BlitChannel(uint8 r, uint8 g, uint8 b, const ImageA &channel,
 // This doesn't blend; it assumes we have 0 in every slot to start.
 // (This is only used to draw into the unused image channel in the
 // training data to try to coax it to recognize the position of the 'i').
-static void BlitNodeChannel(int ch_offset, const ImageA &channel,
-			    int xpos, int ypos,
-			    vector<float> *dest) {
+static void BlitNodeChannel(int ch_offset, const RediImageA &channel,
+                            int xpos, int ypos, vector<float> *dest) {
   CHECK_LT(ch_offset, NPP);
   CHECK_GE(ch_offset, 0);
   CHECK_EQ(dest->size(), SIZE * SIZE * NPP);
@@ -250,14 +256,14 @@ static void BlitNodeChannel(int ch_offset, const ImageA &channel,
     int dsty = ypos + y;
     if (dsty >= 0 && dsty < SIZE) {
       for (int x = 0; x < channel.width; x++) {
-	int dstx = xpos + x;
-	if (dstx >= 0 && dstx <= SIZE) {
-	  int sidx = x + channel.width * y;
-	  uint8 value = channel.alpha[sidx];
+        int dstx = xpos + x;
+        if (dstx >= 0 && dstx <= SIZE) {
+          int sidx = x + channel.width * y;
+          uint8 value = channel.alpha[sidx];
 
-	  int didx = (dsty * SIZE + dstx) * NPP + ch_offset;
-	  (*dest)[didx] = ByteFloat(value);
-	}
+          int didx = (dsty * SIZE + dstx) * NPP + ch_offset;
+          (*dest)[didx] = ByteFloat(value);
+        }
       }
     }
   }
@@ -265,7 +271,7 @@ static void BlitNodeChannel(int ch_offset, const ImageA &channel,
 
 struct Network {
   // Creates arrays of the appropriate size, but all zeroes.
-  Network(int num_layers) : 
+  Network(int num_layers) :
     num_layers(num_layers),
     indices(num_layers, vector<uint32>(INDICES_PER_NODE * NUM_NODES, 0)),
     weights(num_layers, vector<float>(INDICES_PER_NODE * NUM_NODES, 0.0f)),
@@ -274,7 +280,7 @@ struct Network {
     inverted_indices_length(num_layers, vector<uint32>(NUM_NODES, 0U)),
     inverted_indices(num_layers, vector<uint32>(INDICES_PER_NODE * NUM_NODES, 0)) {}
   int64 Bytes() const {
-    return 
+    return
       // indices
       (INDICES_PER_NODE * NUM_NODES * sizeof (uint32) * num_layers) +
       // weights
@@ -388,7 +394,7 @@ void ReadNetworkBinary(const string &filename, Network *net) {
 
   for (int i = 0; i < file_num_layers; i++)
     ReadFloats(&net->biases[i]);
-  
+
   fclose(file);
   Printf("Read from %s.\n", filename.c_str());
 }
@@ -438,17 +444,17 @@ static void WriteNetwork(const Network &net, const string &filename) {
   FILE *f = fopen(filename.c_str(), "wb");
   for (int layer = 0; layer < net.num_layers; layer++) {
     fprintf(f, "\n"
-	    "===================\n"
-	    "Layer %d:\n"
-	    "===================\n", layer);
+      "===================\n"
+      "Layer %d:\n"
+      "===================\n", layer);
 
     const int max_nodes = truncate ? 8 : NUM_NODES;
     for (int node_idx = 0; node_idx < max_nodes; node_idx++) {
       fprintf(f, "n %d: % f ", node_idx, net.biases[layer][node_idx]);
       for (int i = 0; i < INDICES_PER_NODE; i++) {
-	fprintf(f, " + %f*n%d",
-		net.weights[layer][node_idx * INDICES_PER_NODE + i],
-		net.indices[layer][node_idx * INDICES_PER_NODE + i]);
+        fprintf(f, " + %f*n%d",
+                net.weights[layer][node_idx * INDICES_PER_NODE + i],
+                net.indices[layer][node_idx * INDICES_PER_NODE + i]);
       }
       fprintf(f, "\n");
     }
@@ -470,10 +476,10 @@ static void CheckInvertedIndices(const Network &net) {
     for (int z = 0; z < starts.size(); z++) {
       // i is the index within the compacted inverted index.
       for (int i = starts[z]; i < starts[z] + lengths[z]; i++) {
-	// Global index into 'indices'.
-	const int gidx = inv[i];
-	// This should map back to our current node id.
-	CHECK_EQ(indices[gidx], z);
+        // Global index into 'indices'.
+        const int gidx = inv[i];
+        // This should map back to our current node id.
+        CHECK_EQ(indices[gidx], z);
       }
     }
   }
@@ -497,13 +503,12 @@ static void ComputeInvertedIndices(Network *net) {
     CHECK_EQ(NUM_NODES, lengths->size());
     vector<uint32> *inverted = &net->inverted_indices[layer];
     CHECK_EQ(INDICES_PER_NODE * NUM_NODES, inverted->size());
-    
+
     // Indexed by node id in the source layer.
     vector<vector<uint32>> occurrences;
     occurrences.resize(NUM_NODES);
     for (int dest_indices_idx = 0;
-	 dest_indices_idx < NUM_NODES * INDICES_PER_NODE;
-	 dest_indices_idx++) {
+         dest_indices_idx < NUM_NODES * INDICES_PER_NODE; dest_indices_idx++) {
       // This index gets put into exactly one place in occurrences.
       const int src_nodes_idx = net->indices[layer][dest_indices_idx];
       occurrences[src_nodes_idx].push_back(dest_indices_idx);
@@ -516,15 +521,13 @@ static void ComputeInvertedIndices(Network *net) {
 
     // Now flatten.
     int flat_size = 0;
-    for (int src_nodes_idx = 0;
-	 src_nodes_idx < NUM_NODES;
-	 src_nodes_idx++) {
+    for (int src_nodes_idx = 0; src_nodes_idx < NUM_NODES; src_nodes_idx++) {
       (*starts)[src_nodes_idx] = flat_size;
       (*lengths)[src_nodes_idx] = occurrences[src_nodes_idx].size();
 
       for (int val : occurrences[src_nodes_idx]) {
-	(*inverted)[flat_size] = val;
-	flat_size++;
+        (*inverted)[flat_size] = val;
+        flat_size++;
       }
     }
     CHECK_EQ(NUM_NODES * INDICES_PER_NODE, flat_size);
@@ -560,7 +563,7 @@ struct Stimulation {
 };
 
 struct Errors {
-  Errors(int num_layers) : 
+  Errors(int num_layers) :
     num_layers(num_layers),
     error(num_layers, vector<float>(NUM_NODES, 0.0f)) {
   }
@@ -584,7 +587,7 @@ static void SetOutputError(const Stimulation &stim, const vector<float> &expecte
   const vector<float> &output = stim.values[num_layers];
 
   ECHECK_EQ(NUM_NODES, expected.size());
-  ECHECK_EQ(NUM_NODES, output.size()); 
+  ECHECK_EQ(NUM_NODES, output.size());
   ECHECK(err->error.size() == num_layers);
   vector<float> *output_error = &err->error[num_layers - 1];
   ECHECK_EQ(NUM_NODES, output_error->size());
@@ -607,11 +610,11 @@ static void SetOutputError(const Stimulation &stim, const vector<float> &expecte
 // This is now a kernel, so this function is uncalled. But it should
 // still work.
 static void BackwardsError(const Network &net, const Stimulation &stim,
-			   int dest_layer, Errors *err) {
+                           int dest_layer, Errors *err) {
   // If we have
   //
   //   inputs     h        h'    outputs
-  //     o ------ o ------ o ------ o 
+  //     o ------ o ------ o ------ o
   //     o ------ o ------ o ------ o
   //     o ------ o ------ o ------ o
   //         layer 0   layer 1   layer 2
@@ -655,7 +658,7 @@ static void BackwardsError(const Network &net, const Stimulation &stim,
     // the places its output is sent.
     const uint32 start = starts[h];
     const uint32 length = lengths[h];
-    
+
     // The error for a hidden node is the sum of all the errors for
     // the next layer, but modulated by the weight of the edge.
     double weighted_error_sum = 0.0;
@@ -668,7 +671,7 @@ static void BackwardsError(const Network &net, const Stimulation &stim,
       const int dest_node_idx = gidx / INDICES_PER_NODE;
       weighted_error_sum += dest_weights[gidx] * dest_error[dest_node_idx];
     }
-    
+
     (*src_error)[h] = out_h * (1.0f - out_h) * weighted_error_sum;
   }
 }
@@ -682,68 +685,68 @@ static void BackwardsError(const Network &net, const Stimulation &stim,
 // Learning rate should be a small positive constant (0 < lr < 1) constant, probably
 // around 0.05, and decreasing as we run more rounds.
 static void UpdateWeights(const float learning_rate,
-			  Network *net, const Stimulation &stim, const Errors &err) {
+        Network *net, const Stimulation &stim, const Errors &err) {
   // This one is doing a simple thing with a lot of parallelism, but unfortunately
   // writes would collide if we tried to add in all the weight updates in parallel.
   // Not clear what the best approach is here. Parallelizing over layers is easy,
   // at least.
-  
+
   // Here we parallelize over all nodes in all layers; updating the weights and
   // bias for that node in a chunk.
   const int num_layers = net->num_layers;
   ParallelComp(num_layers * NUM_NODES,
-	       [learning_rate, &net, &stim, &err, num_layers](int work_id) {
-		 // Update the weights for this node.
-		 const int layer = work_id % num_layers;
-		 const int node_idx = work_id / num_layers;
+         [learning_rate, &net, &stim, &err, num_layers](int work_id) {
+     // Update the weights for this node.
+     const int layer = work_id % num_layers;
+     const int node_idx = work_id / num_layers;
 
-		 // Error term is for this node.
-		 // Since error is not represented for the input layer, 'layer' is
-		 // the correct index. (That is, the 0th layer is the earliest one
-		 // that has weights.)
-		 ECHECK_LT(layer, err.error.size());
-		 ECHECK_LT(node_idx, err.error[layer].size());
-		 const float delta_j = err.error[layer][node_idx];
-		 const float learning_rate_times_delta_j = learning_rate * delta_j;
+     // Error term is for this node.
+     // Since error is not represented for the input layer, 'layer' is
+     // the correct index. (That is, the 0th layer is the earliest one
+     // that has weights.)
+     ECHECK_LT(layer, err.error.size());
+     ECHECK_LT(node_idx, err.error[layer].size());
+     const float delta_j = err.error[layer][node_idx];
+     const float learning_rate_times_delta_j = learning_rate * delta_j;
 
-		 vector<float> *layer_weights = &net->weights[layer];
-		 const vector<uint32> &layer_indices = net->indices[layer];
+     vector<float> *layer_weights = &net->weights[layer];
+     const vector<uint32> &layer_indices = net->indices[layer];
 
-		 // Note since stim has an additional layer for the input, layer
-		 // here is referring to the output values of the previous layer,
-		 // which is what we want. (The 0th layer is the earliest one
-		 // that we read: the input layer.)
-		 ECHECK_LT(layer, stim.values.size());
-		 const vector<float> &layer_values = stim.values[layer];
+     // Note since stim has an additional layer for the input, layer
+     // here is referring to the output values of the previous layer,
+     // which is what we want. (The 0th layer is the earliest one
+     // that we read: the input layer.)
+     ECHECK_LT(layer, stim.values.size());
+     const vector<float> &layer_values = stim.values[layer];
 
-		 // There is one weight for each input index.
-		 for (int input_idx = 0; input_idx < INDICES_PER_NODE; input_idx++) {
-		   const int gidx = INDICES_PER_NODE * node_idx + input_idx;
-		   ECHECK_GE(gidx, 0);
-		   ECHECK_LT(gidx, layer_indices.size());
+     // There is one weight for each input index.
+     for (int input_idx = 0; input_idx < INDICES_PER_NODE; input_idx++) {
+       const int gidx = INDICES_PER_NODE * node_idx + input_idx;
+       ECHECK_GE(gidx, 0);
+       ECHECK_LT(gidx, layer_indices.size());
 
-		   // Offset of the node, which we use to get its output.
-		   const int src_idx = layer_indices[gidx];
-		   ECHECK_GE(src_idx, 0);
-		   ECHECK_LT(src_idx, NUM_NODES);
+       // Offset of the node, which we use to get its output.
+       const int src_idx = layer_indices[gidx];
+       ECHECK_GE(src_idx, 0);
+       ECHECK_LT(src_idx, NUM_NODES);
 
-		   ECHECK_LT(src_idx, layer_values.size());
-		   const float x_ji = layer_values[src_idx];
+       ECHECK_LT(src_idx, layer_values.size());
+       const float x_ji = layer_values[src_idx];
 
-		   (*layer_weights)[gidx] += learning_rate_times_delta_j * x_ji;
-		 }
+       (*layer_weights)[gidx] += learning_rate_times_delta_j * x_ji;
+     }
 
-		 // The bias terms are basically the same, but the output of that
-		 // node is 1. There's just one per node.
-		 ECHECK_LT(layer, net->biases.size());
-		 ECHECK_LT(node_idx, net->biases[layer].size());
-		 net->biases[layer][node_idx] += learning_rate_times_delta_j;
-	       }, 12);
+     // The bias terms are basically the same, but the output of that
+     // node is 1. There's just one per node.
+     ECHECK_LT(layer, net->biases.size());
+     ECHECK_LT(node_idx, net->biases[layer].size());
+     net->biases[layer][node_idx] += learning_rate_times_delta_j;
+         }, 12);
 }
 
 struct ForwardLayerCL {
   explicit ForwardLayerCL(CL *cl) : cl(cl) {
-    const string kernel_src = 
+    const string kernel_src =
       Util::ReadFile("constants.h") + "\n" +
       Util::ReadFile("forwardlayer.cl");
 
@@ -771,38 +774,43 @@ struct ForwardLayerCL {
       // onto the GPU before we can use it, because our working set for one kernel call
       // is pretty sizable compared to total gpu memory!
       cl_mem src_values = MoveMemoryToGPUConst(cl->context, cl->queue,
-					       stim->values[layer]);
+                 stim->values[layer]);
       cl_mem dst_values = CreateUninitializedGPUMemory<float>(cl->context,
-							      SIZE * SIZE * NPP);
+                    SIZE * SIZE * NPP);
 
       // Can't have multiple threads setting a kernel's argument at one time.
       {
-	MutexLock ml(&parent->m);
+        MutexLock ml(&parent->m);
 
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 0, sizeof(cl_mem), (void *)&src_values));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 1, sizeof(cl_mem), (void *)&indices));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 2, sizeof(cl_mem), (void *)&weights));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 3, sizeof(cl_mem), (void *)&biases));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 4, sizeof(cl_mem), (void *)&dst_values));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 0, sizeof(cl_mem),
+                                     (void *)&src_values));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 1, sizeof(cl_mem),
+                                     (void *)&indices));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 2, sizeof(cl_mem),
+                                     (void *)&weights));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 3, sizeof(cl_mem), (void *)&biases));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 4, sizeof(cl_mem),
+                                     (void *)&dst_values));
 
-	size_t global_work_offset[] = { 0 };
-	size_t global_work_size[] = { (size_t)(SIZE * SIZE * NPP) };
-	Timer kernel_timer;
-	CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(cl->queue, parent->kernel, 
-						   // work dimensions
-						   1, 
-						   // global work offset
-						   global_work_offset,
-						   // global work size
-						   global_work_size, 
-						   // local work size
-						   nullptr, 
-						   // no wait list
-						   0, nullptr, 
-						   // no event
-						   nullptr));
-	clFinish(cl->queue);
-	kernel_ms += kernel_timer.MS();
+        size_t global_work_offset[] = {0};
+        size_t global_work_size[] = {(size_t)(SIZE * SIZE * NPP)};
+        Timer kernel_timer;
+        CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(cl->queue, parent->kernel,
+                                                   // work dimensions
+                                                   1,
+                                                   // global work offset
+                                                   global_work_offset,
+                                                   // global work size
+                                                   global_work_size,
+                                                   // local work size
+                                                   nullptr,
+                                                   // no wait list
+                                                   0, nullptr,
+                                                   // no event
+                                                   nullptr));
+        clFinish(cl->queue);
+        kernel_ms += kernel_timer.MS();
       }
 
       // Immediately release stuff we don't need any more; other threads may be trying
@@ -813,7 +821,7 @@ struct ForwardLayerCL {
 
       CHECK_SUCCESS(clReleaseMemObject(dst_values));
     }
-    
+
     ~ForwardContext() {
       CHECK_SUCCESS(clReleaseMemObject(indices));
       CHECK_SUCCESS(clReleaseMemObject(weights));
@@ -844,7 +852,7 @@ struct ForwardLayerCL {
 
 struct BackwardLayerCL {
   explicit BackwardLayerCL(CL *cl) : cl(cl) {
-    const string kernel_src = 
+    const string kernel_src =
       Util::ReadFile("constants.h") + "\n" +
       Util::ReadFile("backwardlayer.cl");
 
@@ -860,15 +868,15 @@ struct BackwardLayerCL {
       // const int src_layer = dest_layer - 1;
 
       starts = MoveMemoryToGPUConst(cl->context, cl->queue,
-				    net.inverted_indices_start[gap]);
+            net.inverted_indices_start[gap]);
       lengths = MoveMemoryToGPUConst(cl->context, cl->queue,
-				    net.inverted_indices_length[gap]);
+            net.inverted_indices_length[gap]);
 
       inverted_index = MoveMemoryToGPUConst(cl->context, cl->queue,
-					    net.inverted_indices[gap]);
+              net.inverted_indices[gap]);
 
       dest_weights = MoveMemoryToGPUConst(cl->context, cl->queue,
-					  net.weights[dest_layer]);
+            net.weights[dest_layer]);
     }
 
     // TODO: Do we really want to share the same command queue across threads?
@@ -884,42 +892,49 @@ struct BackwardLayerCL {
       //  vector<float> *src_error = &err->error[src_layer];
 
       cl_mem src_output = MoveMemoryToGPUConst(cl->context, cl->queue,
-					       stim.values[src_layer + 1]);
+                 stim.values[src_layer + 1]);
       cl_mem dest_error = MoveMemoryToGPUConst(cl->context, cl->queue,
-					       err->error[dest_layer]);
+                 err->error[dest_layer]);
 
       cl_mem src_error = CreateUninitializedGPUMemory<float>(cl->context, NUM_NODES);
 
       // Can't have multiple threads setting a kernel's argument at one time.
       {
-	MutexLock ml(&parent->m);
+        MutexLock ml(&parent->m);
 
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 0, sizeof(cl_mem), (void *)&starts));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 1, sizeof(cl_mem), (void *)&lengths));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 2, sizeof(cl_mem), (void *)&inverted_index));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 3, sizeof(cl_mem), (void *)&dest_weights));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 4, sizeof(cl_mem), (void *)&src_output));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 5, sizeof(cl_mem), (void *)&dest_error));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 6, sizeof(cl_mem), (void *)&src_error));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 0, sizeof(cl_mem), (void *)&starts));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 1, sizeof(cl_mem),
+                                     (void *)&lengths));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 2, sizeof(cl_mem),
+                                     (void *)&inverted_index));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 3, sizeof(cl_mem),
+                                     (void *)&dest_weights));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 4, sizeof(cl_mem),
+                                     (void *)&src_output));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 5, sizeof(cl_mem),
+                                     (void *)&dest_error));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 6, sizeof(cl_mem),
+                                     (void *)&src_error));
 
-	size_t global_work_offset[] = { 0 };
-	size_t global_work_size[] = { (size_t)NUM_NODES };
-	Timer kernel_timer;
-	CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(cl->queue, parent->kernel, 
-						   // work dimensions
-						   1, 
-						   // global work offset
-						   global_work_offset,
-						   // global work size
-						   global_work_size, 
-						   // local work size
-						   nullptr, 
-						   // no wait list
-						   0, nullptr, 
-						   // no event
-						   nullptr));
-	clFinish(cl->queue);
-	kernel_ms += kernel_timer.MS();
+        size_t global_work_offset[] = {0};
+        size_t global_work_size[] = {(size_t)NUM_NODES};
+        Timer kernel_timer;
+        CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(cl->queue, parent->kernel,
+                                                   // work dimensions
+                                                   1,
+                                                   // global work offset
+                                                   global_work_offset,
+                                                   // global work size
+                                                   global_work_size,
+                                                   // local work size
+                                                   nullptr,
+                                                   // no wait list
+                                                   0, nullptr,
+                                                   // no event
+                                                   nullptr));
+        clFinish(cl->queue);
+        kernel_ms += kernel_timer.MS();
       }
 
       // Immediately release stuff we don't need any more; other threads may be trying
@@ -931,7 +946,7 @@ struct BackwardLayerCL {
 
       CHECK_SUCCESS(clReleaseMemObject(src_error));
     }
-    
+
     ~BackwardContext() {
       CHECK_SUCCESS(clReleaseMemObject(starts));
       CHECK_SUCCESS(clReleaseMemObject(lengths));
@@ -961,7 +976,7 @@ struct BackwardLayerCL {
 
 struct UpdateWeightsCL {
   explicit UpdateWeightsCL(CL *cl) : cl(cl) {
-    const string kernel_src = 
+    const string kernel_src =
       Util::ReadFile("constants.h") + "\n" +
       Util::ReadFile("updateweights.cl");
 
@@ -985,9 +1000,9 @@ struct UpdateWeightsCL {
       MutexLock ml(&parent->m);
 
       cl_mem layer_error = MoveMemoryToGPUConst(cl->context, cl->queue,
-						err.error[layer]);
+            err.error[layer]);
       cl_mem layer_values = MoveMemoryToGPUConst(cl->context, cl->queue,
-						 stim.values[layer]);
+             stim.values[layer]);
 
       CHECK_SUCCESS(clSetKernelArg(parent->kernel, 0, sizeof(cl_float), (void *)&learning_rate));
       CHECK_SUCCESS(clSetKernelArg(parent->kernel, 1, sizeof(cl_mem), (void *)&layer_error));
@@ -999,18 +1014,18 @@ struct UpdateWeightsCL {
       size_t global_work_offset[] = { 0 };
       size_t global_work_size[] = { (size_t)NUM_NODES };
       CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(cl->queue, parent->kernel,
-						 // work dimensions
-						 1, 
-						 // global work offset
-						 global_work_offset,
-						 // global work size
-						 global_work_size, 
-						 // local work size
-						 nullptr, 
-						 // no wait list
-						 0, nullptr, 
-						 // no event
-						 nullptr));
+             // work dimensions
+             1,
+             // global work offset
+             global_work_offset,
+             // global work size
+             global_work_size,
+             // local work size
+             nullptr,
+             // no wait list
+             0, nullptr,
+             // no event
+             nullptr));
       clFinish(cl->queue);
       CHECK_SUCCESS(clReleaseMemObject(layer_error));
       CHECK_SUCCESS(clReleaseMemObject(layer_values));
@@ -1050,7 +1065,7 @@ struct UpdateWeightsCL {
 };
 
 
-static void InitializeLayerFromImage(const ImageRGBA *rgba, vector<float> *values) {
+static void InitializeLayerFromImage(const RediImageRGBA *rgba, vector<float> *values) {
   CHECK_EQ(SIZE, rgba->width);
   CHECK_EQ(SIZE, rgba->height);
   CHECK_EQ(values->size(), NUM_NODES);
@@ -1091,7 +1106,7 @@ static void MakeIndices(ArcFour *rc, Network *net) {
   static_assert(STDDEV > 1.0, "surprisingly small stddev");
   static_assert(NEIGHBORHOOD >= 0, "must include the pixel itself.");
   static_assert((NEIGHBORHOOD * 2 + 1) * (NEIGHBORHOOD * 2 + 1) * NPP <= INDICES_PER_NODE,
-		"neighborhood doesn't fit in indices!");
+    "neighborhood doesn't fit in indices!");
   auto OneNode = [](ArcFour *rc, int x, int y, int channel) -> vector<uint32> {
     // PERF if not parallel, this can be outside and waste fewer tails...
     RandomGaussian gauss{rc};
@@ -1112,14 +1127,14 @@ static void MakeIndices(ArcFour *rc, Network *net) {
       ECHECK_LT(idx, NUM_NODES);
       indices.insert(idx);
     };
-    
+
     for (int ny = -NEIGHBORHOOD; ny <= NEIGHBORHOOD; ny++) {
       for (int nx = -NEIGHBORHOOD; nx <= NEIGHBORHOOD; nx++) {
-	for (int c = 0; c < NPP; c++) {
-	  // We take all three (or NPP) channels. Note that the pixel
-	  // may be clipped.
-	  AddNodeByCoordinates(x + nx, y + ny, c);
-	}
+        for (int c = 0; c < NPP; c++) {
+          // We take all three (or NPP) channels. Note that the pixel
+          // may be clipped.
+          AddNodeByCoordinates(x + nx, y + ny, c);
+        }
       }
     }
 
@@ -1127,31 +1142,31 @@ static void MakeIndices(ArcFour *rc, Network *net) {
 
     if (GAUSSIAN) {
       while (indices.size() < INDICES_PER_NODE) {
-	double dx = gauss.Next() * STDDEV;
-	double dy = gauss.Next() * STDDEV;
+        double dx = gauss.Next() * STDDEV;
+        double dy = gauss.Next() * STDDEV;
 
-	// XXX tiny bias if NPP doesn't divide 2^32. Make RandTo function.
-	int ch = Rand32(rc) % NPP;
-	// Insert symmetrically...
-	AddNodeByCoordinates((int)(x + dx), (int)(y + dy), ch);
-	if (SYMMETRIC_GAUSSIAN) {
-	  if (indices.size() < INDICES_PER_NODE)
-	    AddNodeByCoordinates((int)(x - dx), (int)(y + dy), ch);
-	  if (indices.size() < INDICES_PER_NODE)
-	    AddNodeByCoordinates((int)(x - dx), (int)(y - dy), ch);
-	  if (indices.size() < INDICES_PER_NODE)
-	    AddNodeByCoordinates((int)(x + dx), (int)(y - dy), ch);
-	}
+        // XXX tiny bias if NPP doesn't divide 2^32. Make RandTo function.
+        int ch = Rand32(rc) % NPP;
+        // Insert symmetrically...
+        AddNodeByCoordinates((int)(x + dx), (int)(y + dy), ch);
+        if (SYMMETRIC_GAUSSIAN) {
+          if (indices.size() < INDICES_PER_NODE)
+            AddNodeByCoordinates((int)(x - dx), (int)(y + dy), ch);
+          if (indices.size() < INDICES_PER_NODE)
+            AddNodeByCoordinates((int)(x - dx), (int)(y - dy), ch);
+          if (indices.size() < INDICES_PER_NODE)
+            AddNodeByCoordinates((int)(x + dx), (int)(y - dy), ch);
+        }
       }
     } else {
       while (indices.size() < INDICES_PER_NODE) {
-	// Assuming power of two...
-	int dx = Rand32(rc) % SIZE;
-	int dy = Rand32(rc) % SIZE;
-	// XXX tiny bias if NPP doesn't divide 2^32. Make RandTo function.
-	int ch = Rand32(rc) % NPP;
+        // Assuming power of two...
+        int dx = Rand32(rc) % SIZE;
+        int dy = Rand32(rc) % SIZE;
+        // XXX tiny bias if NPP doesn't divide 2^32. Make RandTo function.
+        int ch = Rand32(rc) % NPP;
 
-	AddNodeByCoordinates(dx, dy, ch);
+        AddNodeByCoordinates(dx, dy, ch);
       }
     }
 
@@ -1171,29 +1186,32 @@ static void MakeIndices(ArcFour *rc, Network *net) {
   for (int i = 0; i < net->num_layers; i++) rcs.push_back(Substream(rc, i));
 
   // Just for printf.
-  ParallelComp(net->num_layers, [&rcs, &OneNode, &net](int layer) {
-    Printf("Intializing indices for layer %d...\n", layer);
-    int node_idx = 0;
-    vector<uint32> *layer_indices = &net->indices[layer];
-    for (int y = 0; y < SIZE; y++) {
-      for (int x = 0; x < SIZE; x++) {
-	for (int c = 0; c < NPP; c++) {
-	  vector<uint32> indices = OneNode(rcs[layer], x, y, c);
-	  // Sort them, for better locality of access later.
-	  std::sort(indices.begin(), indices.end());
-	  CHECK_EQ(INDICES_PER_NODE, indices.size());
-	  const int start_idx = node_idx * INDICES_PER_NODE;
-	  for (int i = 0; i < INDICES_PER_NODE; i++) {
-	    (*layer_indices)[start_idx + i] = indices[i];
-	  }
-	  node_idx++;
-	}
-      }
-      if (y % 10 == 0) {
-	Printf("  [%d/%d] %.1f%%\n", y, SIZE, (100.0 * y) / SIZE);
-      }
-    }
-  }, 12);
+  ParallelComp(
+      net->num_layers,
+      [&rcs, &OneNode, &net](int layer) {
+        Printf("Intializing indices for layer %d...\n", layer);
+        int node_idx = 0;
+        vector<uint32> *layer_indices = &net->indices[layer];
+        for (int y = 0; y < SIZE; y++) {
+          for (int x = 0; x < SIZE; x++) {
+            for (int c = 0; c < NPP; c++) {
+              vector<uint32> indices = OneNode(rcs[layer], x, y, c);
+              // Sort them, for better locality of access later.
+              std::sort(indices.begin(), indices.end());
+              CHECK_EQ(INDICES_PER_NODE, indices.size());
+              const int start_idx = node_idx * INDICES_PER_NODE;
+              for (int i = 0; i < INDICES_PER_NODE; i++) {
+                (*layer_indices)[start_idx + i] = indices[i];
+              }
+              node_idx++;
+            }
+          }
+          if (y % 10 == 0) {
+            Printf("  [%d/%d] %.1f%%\n", y, SIZE, (100.0 * y) / SIZE);
+          }
+        }
+      },
+      12);
 
   DeleteElements(&rcs);
 }
@@ -1266,16 +1284,16 @@ void ExportStimulusToVideo(int example_id, const Stimulation &stim) {
 }
 
 
-vector<ImageRGBA *> LoadImagesFromDirectory(const string &dir) {
-  vector<string> filenames = 
+vector<RediImageRGBA *> LoadImagesFromDirectory(const string &dir) {
+  vector<string> filenames =
     Map(Util::ListFiles(dir),
-	[dir](const string &s) -> string { return dir + s; });
+  [dir](const string &s) -> string { return dir + s; });
 
   Printf("Loading %d files from %s...\n", (int)filenames.size(), dir.c_str());
-  vector<ImageRGBA *> result =
+  vector<RediImageRGBA *> result =
     ParallelMap(filenames,
-		[](const string &s) { return ImageRGBA::Load(s); },
-		16);
+    [](const string &s) { return RediImageRGBA::Load(s); },
+    16);
   CHECK(result.size() > 0);
   return result;
 }
@@ -1306,19 +1324,19 @@ void UIThread() {
 
   static constexpr int I_SIZE = 80;
   vector<string> font_filenames = Util::ListFiles("fonts/");
-  vector<ImageA *> fonts =
+  vector<RediImageA *> fonts =
     ParallelMap(font_filenames,
-		[](const string &s) { 
-		  ImageA *f = FontChar((string)"fonts/" + s, 'i', I_SIZE);
-		  CHECK(f != nullptr) << s;
-		  return f;
-		},
-		16);
+    [](const string &s) {
+      RediImageA *f = FontChar((string)"fonts/" + s, 'i', I_SIZE);
+      CHECK(f != nullptr) << s;
+      return f;
+    },
+    16);
   CHECK(fonts.size() > 0);
 
   // Just used in eval mode.
   // XXX leaked.
-  vector<ImageRGBA *> heldout_corpus = 
+  vector<RediImageRGBA *> heldout_corpus =
     // LoadImagesFromDirectory("corpus256/");
     LoadImagesFromDirectory("eval256/");
   CHECK(heldout_corpus.size() > 0);
@@ -1334,12 +1352,12 @@ void UIThread() {
     string menu = "";
     for (const ModeDescriptor &md : all_modes) {
       if (md.mode == mode) {
-	menu += StringPrintf("[^3%c: %s^<]   ", md.key, md.desc);
+        menu += StringPrintf("[^3%c: %s^<]   ", md.key, md.desc);
       } else {
-	menu += StringPrintf("^0%c^<^1: %s^<   ", md.key, md.desc);
+        menu += StringPrintf("^0%c^<^1: %s^<   ", md.key, md.desc);
       }
     }
-    
+
     if (allow_updates) {
       menu += "^0(space to pause)^<";
     } else {
@@ -1354,172 +1372,180 @@ void UIThread() {
     static constexpr int GAP = 10;
 
     auto DrawStimulus = [](int column, const Stimulation &stim) {
-	int sx = MARGIN + column * (SIZE + GAP);
-	for (int layer = 0; layer < NUM_LAYERS + 1; layer++) {
-	  int sy = MARGIN + layer * (SIZE + GAP);
-	  const vector<float> &values = stim.values[layer];
-	  for (int y = 0; y < SIZE; y++) {
-	    for (int x = 0; x < SIZE; x++) {
-	      int pixel_id = y * SIZE + x;
-	      const uint8 r = FloatByte(values[pixel_id * NPP + 0]);
-	      const uint8 g = FloatByte(values[pixel_id * NPP + 1]);
-	      const uint8 b = FloatByte(values[pixel_id * NPP + 2]);
-	      sdlutil::drawpixel(screen, sx + x, sy + y, r, g, b);
-	    }
-	  }
-	}
+      int sx = MARGIN + column * (SIZE + GAP);
+      for (int layer = 0; layer < NUM_LAYERS + 1; layer++) {
+        int sy = MARGIN + layer * (SIZE + GAP);
+        const vector<float> &values = stim.values[layer];
+        for (int y = 0; y < SIZE; y++) {
+          for (int x = 0; x < SIZE; x++) {
+            int pixel_id = y * SIZE + x;
+            const uint8 r = FloatByte(values[pixel_id * NPP + 0]);
+            const uint8 g = FloatByte(values[pixel_id * NPP + 1]);
+            const uint8 b = FloatByte(values[pixel_id * NPP + 2]);
+            sdlutil::drawpixel(screen, sx + x, sy + y, r, g, b);
+          }
+        }
+      }
     };
 
     if (mode == MODE_STIMULUS) {
       MutexLock ml(&video_export_m);
       for (int i = 0; i < current_stimulations.size(); i++) {
-	DrawStimulus(i, current_stimulations[i]);
+        DrawStimulus(i, current_stimulations[i]);
       }
     } else if (mode == MODE_NETWORK) {
       MutexLock ml(&video_export_m);
-      // In this mode, draw the different nodes per pixel as separate rectangles.
-      // We just show one example at a time.
+      // In this mode, draw the different nodes per pixel as separate
+      // rectangles. We just show one example at a time.
       const int ex = offset % current_stimulations.size();
       int show_channels = std::min(NPP, 7);
       for (int ch = 0; ch < show_channels; ch++) {
-	int sx = MARGIN + ch * (SIZE + GAP);
-	for (int layer = 0; layer < NUM_LAYERS + 1; layer++) {
-	  const vector<float> &values = current_stimulations[ex].values[layer];
-	  int sy = MARGIN + layer * (SIZE + GAP);
+        int sx = MARGIN + ch * (SIZE + GAP);
+        for (int layer = 0; layer < NUM_LAYERS + 1; layer++) {
+          const vector<float> &values = current_stimulations[ex].values[layer];
+          int sy = MARGIN + layer * (SIZE + GAP);
 
-	  for (int y = 0; y < SIZE; y++) {
-	    for (int x = 0; x < SIZE; x++) {
-	      int pixel_id = y * SIZE + x;
-	      const uint8 v = FloatByte(values[pixel_id * NPP + ch]);
+          for (int y = 0; y < SIZE; y++) {
+            for (int x = 0; x < SIZE; x++) {
+              int pixel_id = y * SIZE + x;
+              const uint8 v = FloatByte(values[pixel_id * NPP + ch]);
 
-	      if (ch == 0) {
-		sdlutil::drawpixel(screen, sx + x, sy + y, v, 0, 0);
-	      } else if (ch == 1) {
-		sdlutil::drawpixel(screen, sx + x, sy + y, 0, v, 0);
-	      } else if (ch == 2) {
-		sdlutil::drawpixel(screen, sx + x, sy + y, 0, 0, v);
-	      } else {
-		sdlutil::drawpixel(screen, sx + x, sy + y, v, v, v);
-	      }
-	    }
-	  }
-	}
+              if (ch == 0) {
+                sdlutil::drawpixel(screen, sx + x, sy + y, v, 0, 0);
+              } else if (ch == 1) {
+                sdlutil::drawpixel(screen, sx + x, sy + y, 0, v, 0);
+              } else if (ch == 2) {
+                sdlutil::drawpixel(screen, sx + x, sy + y, 0, 0, v);
+              } else {
+                sdlutil::drawpixel(screen, sx + x, sy + y, v, v, v);
+              }
+            }
+          }
+        }
 
-	// Is the mouse in one of the layers?
-	int mx = (mousex - MARGIN) / (SIZE + GAP);
-	int my = (mousey - MARGIN) / (SIZE + GAP);
-	if (mx >= 0 && mx < show_channels &&
-	    my >= 0 && my < NUM_LAYERS + 1) {
-	  int ox = (mousex - MARGIN) % (SIZE + GAP);
-	  int oy = (mousey - MARGIN) % (SIZE + GAP);
-	  if (ox >= 0 && oy >= 0 && ox < SIZE && oy < SIZE) {
-	    // Okay, we are actually pointing at a layer then.
-	    const int channel = mx;
-	    const int layer = my;
-	    int node_id = (oy * SIZE + ox) * NPP + channel;
-	    
-	    CHECK_GE(node_id, 0) << node_id << " " << oy << " " << ox << " " << channel;
-	    CHECK_GE(channel, 0);
-	    CHECK_GE(ox, 0);
-	    CHECK_GE(oy, 0);
-	    CHECK_LT(node_id, NUM_NODES);
-	    CHECK_LE(layer, NUM_LAYERS);
-	    CHECK_GE(node_id, 0);
-	    float value = current_stimulations[ex].values[layer][node_id];
+        // Is the mouse in one of the layers?
+        int mx = (mousex - MARGIN) / (SIZE + GAP);
+        int my = (mousey - MARGIN) / (SIZE + GAP);
+        if (mx >= 0 && mx < show_channels && my >= 0 && my < NUM_LAYERS + 1) {
+          int ox = (mousex - MARGIN) % (SIZE + GAP);
+          int oy = (mousey - MARGIN) % (SIZE + GAP);
+          if (ox >= 0 && oy >= 0 && ox < SIZE && oy < SIZE) {
+            // Okay, we are actually pointing at a layer then.
+            const int channel = mx;
+            const int layer = my;
+            int node_id = (oy * SIZE + ox) * NPP + channel;
 
-	    font->draw(2, SCREENH - FONTHEIGHT - 2,
-		       StringPrintf("layer %d channel %d x %d y %d node %d (val ^2%f^<)",
-				    layer, channel, ox, oy, node_id, value));
-	    // And draw its source indices.
-	    if (layer > 0) {
-	      int sy = MARGIN + (layer - 1) * (GAP + SIZE);
-	      for (int i = 0; i < INDICES_PER_NODE; i++) {
-		int src_idx = current_network.indices[layer - 1][node_id * INDICES_PER_NODE + i];
-		float weight = current_network.indices[layer - 1][node_id * INDICES_PER_NODE + i];
-		// Decompose source index:
-		int src_ch = src_idx % NPP;
-		int src_pixel = src_idx / NPP;
-		int src_y = src_pixel / SIZE;
-		int src_x = src_pixel % SIZE;
+            CHECK_GE(node_id, 0)
+                << node_id << " " << oy << " " << ox << " " << channel;
+            CHECK_GE(channel, 0);
+            CHECK_GE(ox, 0);
+            CHECK_GE(oy, 0);
+            CHECK_LT(node_id, NUM_NODES);
+            CHECK_LE(layer, NUM_LAYERS);
+            CHECK_GE(node_id, 0);
+            float value = current_stimulations[ex].values[layer][node_id];
 
-		int sx = MARGIN + src_ch * (GAP + SIZE);
-		if (weight > 0) {
-		  sdlutil::drawpixel(screen, sx + src_x, sy + src_y, 0xFF, 0xFF, 0);
-		} else {
-		  sdlutil::drawpixel(screen, sx + src_x, sy + src_y, 0, 0xFF, 0xFF);
-		}
-	      }
-	    }
-	  }
-	}
+            font->draw(2, SCREENH - FONTHEIGHT - 2,
+                       StringPrintf(
+                           "layer %d channel %d x %d y %d node %d (val ^2%f^<)",
+                           layer, channel, ox, oy, node_id, value));
+            // And draw its source indices.
+            if (layer > 0) {
+              int sy = MARGIN + (layer - 1) * (GAP + SIZE);
+              for (int i = 0; i < INDICES_PER_NODE; i++) {
+                int src_idx =
+                    current_network
+                        .indices[layer - 1][node_id * INDICES_PER_NODE + i];
+                float weight =
+                    current_network
+                        .indices[layer - 1][node_id * INDICES_PER_NODE + i];
+                // Decompose source index:
+                int src_ch = src_idx % NPP;
+                int src_pixel = src_idx / NPP;
+                int src_y = src_pixel / SIZE;
+                int src_x = src_pixel % SIZE;
+
+                int sx = MARGIN + src_ch * (GAP + SIZE);
+                if (weight > 0) {
+                  sdlutil::drawpixel(screen, sx + src_x, sy + src_y, 0xFF, 0xFF,
+                                     0);
+                } else {
+                  sdlutil::drawpixel(screen, sx + src_x, sy + src_y, 0, 0xFF,
+                                     0xFF);
+                }
+              }
+            }
+          }
+        }
       }
     } else if (mode == MODE_EVALUATE) {
       {
-	MutexLock ml(&video_export_m);
+  MutexLock ml(&video_export_m);
 
-	// XXX allow mouse-over
+  // XXX allow mouse-over
 
-	vector<Stimulation> stims;
-	stims.reserve(NUM_VIDEO_STIMULATIONS);
-	for (int i = 0; i < NUM_VIDEO_STIMULATIONS; i++) stims.emplace_back(NUM_LAYERS);
+  vector<Stimulation> stims;
+  stims.reserve(NUM_VIDEO_STIMULATIONS);
+  for (int i = 0; i < NUM_VIDEO_STIMULATIONS; i++)
+    stims.emplace_back(NUM_LAYERS);
 
-	for (int src = 0; src < NUM_LAYERS; src++) {
-	  ForwardLayerCL::ForwardContext fc(&forwardlayer, current_network, src);
-	  ParallelComp(NUM_VIDEO_STIMULATIONS,
-		       [&DrawStimulus, &heldout_corpus, &stims, &fc, 
-			&fonts,
-			mousex, mousey,
-			src, offset](int column) {
-			 Stimulation *stim = &stims[column];
-			 int example = (offset + column) % heldout_corpus.size();
-			 if (src == 0) {
-			   // PERF we only really need the copy if we are mousing
-			   // over it...
-			   ImageRGBA *img = heldout_corpus[example]->Copy();
+  for (int src = 0; src < NUM_LAYERS; src++) {
+    ForwardLayerCL::ForwardContext fc(&forwardlayer, current_network, src);
+    ParallelComp(
+        NUM_VIDEO_STIMULATIONS,
+        [&DrawStimulus, &heldout_corpus, &stims, &fc, &fonts, mousex, mousey,
+         src, offset](int column) {
+          Stimulation *stim = &stims[column];
+          int example = (offset + column) % heldout_corpus.size();
+          if (src == 0) {
+            // PERF we only really need the copy if we are mousing
+            // over it...
+            RediImageRGBA *img = heldout_corpus[example]->Copy();
 
-			   // Is the mouse in one of the layers?
-			   int mx = (mousex - MARGIN) / (SIZE + GAP);
-			   int my = (mousey - MARGIN) / (SIZE + GAP);
-			   if (mx == column &&
-			       // TODO: Would be interesting to draw into arbitrary
-			       // layer though?
-			       my == 0
-			       /* my >= 0 && my < NUM_LAYERS + 1 */ ) {
-			     int ox = (mousex - MARGIN) % (SIZE + GAP);
-			     int oy = (mousey - MARGIN) % (SIZE + GAP);
-			     if (ox >= 0 && oy >= 0 && ox < SIZE && oy < SIZE) {
-			       // Okay, we are actually pointing at the image. Draw
-			       // a red i to evaluate.
+            // Is the mouse in one of the layers?
+            int mx = (mousex - MARGIN) / (SIZE + GAP);
+            int my = (mousey - MARGIN) / (SIZE + GAP);
+            if (mx == column &&
+                // TODO: Would be interesting to draw into arbitrary
+                // layer though?
+                my == 0
+                /* my >= 0 && my < NUM_LAYERS + 1 */) {
+              int ox = (mousex - MARGIN) % (SIZE + GAP);
+              int oy = (mousey - MARGIN) % (SIZE + GAP);
+              if (ox >= 0 && oy >= 0 && ox < SIZE && oy < SIZE) {
+                // Okay, we are actually pointing at the image. Draw
+                // a red i to evaluate.
 
-			       // XXX uhhhh -- to match buggy logic in training data
-			       uint8 x_dice = ox & 0x255;
-			       uint8 y_dice = oy & 0x255;
+                // XXX uhhhh -- to match buggy logic in training data
+                uint8 x_dice = ox & 0x255;
+                uint8 y_dice = oy & 0x255;
 
-			       if (x_dice < 12) x_dice += 12;
-			       if (y_dice < 12) y_dice += 12;
-			       if (x_dice > 255 - I_SIZE) x_dice -= I_SIZE;
-			       if (y_dice > 255 - I_SIZE) y_dice -= I_SIZE;
+                if (x_dice < 12)
+                  x_dice += 12;
+                if (y_dice < 12)
+                  y_dice += 12;
+                if (x_dice > 255 - I_SIZE)
+                  x_dice -= I_SIZE;
+                if (y_dice > 255 - I_SIZE)
+                  y_dice -= I_SIZE;
 
+                BlitChannel(0xFF, 0x0, 0x0, *fonts[0], x_dice, y_dice, img);
+              }
+            }
 
-			       BlitChannel(0xFF, 0x0, 0x0, *fonts[0],
-					   x_dice, y_dice,
-					   img);
-			     }
-			   }
+            InitializeLayerFromImage(img, &stim->values[0]);
+            // And done with the temporary image.
+            delete img;
+          }
+          fc.Forward(stim);
 
-			   InitializeLayerFromImage(img, &stim->values[0]);
-			   // And done with the temporary image.
-			   delete img;
-			 }
-			 fc.Forward(stim);
-
-			 if (src == NUM_LAYERS - 1) {
-			   DrawStimulus(column, *stim);
-			 }
-		       }, 
-		       // Try to not starve training thread.
-		       6);
-	}
+          if (src == NUM_LAYERS - 1) {
+            DrawStimulus(column, *stim);
+          }
+        },
+        // Try to not starve training thread.
+        6);
+  }
       }
       Printf("(drew eval)\n");
 
@@ -1536,58 +1562,59 @@ void UIThread() {
     SDL_Event event;
     if (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
-	Printf("QUIT.\n");
-	return;
+        Printf("QUIT.\n");
+        return;
 
       } else if (event.type == SDL_MOUSEMOTION) {
-	SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent*)&event;
+        SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent *)&event;
 
-	mousex = e->x;
-	mousey = e->y;
-	// (and immediately redraw)
+        mousex = e->x;
+        mousey = e->y;
+        // (and immediately redraw)
 
       } else if (event.type == SDL_KEYDOWN) {
-	switch (event.key.keysym.sym) {
-	case SDLK_KP_PLUS:
-	case SDLK_PLUS:
-	case SDLK_EQUALS:
-	case SDLK_PAGEDOWN:
-	  if (mode == MODE_EVALUATE) {
-	    offset += NUM_VIDEO_STIMULATIONS;
-	  } else {
-	    offset++;
-	  }
-	  break;
+        switch (event.key.keysym.sym) {
+        case SDLK_KP_PLUS:
+        case SDLK_PLUS:
+        case SDLK_EQUALS:
+        case SDLK_PAGEDOWN:
+          if (mode == MODE_EVALUATE) {
+            offset += NUM_VIDEO_STIMULATIONS;
+          } else {
+            offset++;
+          }
+          break;
 
-	case SDLK_KP_MINUS:
-	case SDLK_MINUS:
-	case SDLK_PAGEUP:
-	  offset--;
-	  // Don't be negative or modulus goes negative :-(
-	  if (offset < 0) offset = 0;
-	  break;
+        case SDLK_KP_MINUS:
+        case SDLK_MINUS:
+        case SDLK_PAGEUP:
+          offset--;
+          // Don't be negative or modulus goes negative :-(
+          if (offset < 0)
+            offset = 0;
+          break;
 
-	case SDLK_ESCAPE:
-	  Printf("ESCAPE.\n");
-	  return;
-	case SDLK_s:
-	  Printf("Stimulus mode.\n");
-	  mode = MODE_STIMULUS;
-	  break;
-	case SDLK_n:
-	  Printf("Network mode.\n");
-	  mode = MODE_NETWORK;
-	  break;
-	case SDLK_e:
-	  Printf("Evaluate mode.\n");
-	  mode = MODE_EVALUATE;
-	  break;
-	case SDLK_SPACE: {
-	  MutexLock ml(&video_export_m);
-	  allow_updates = !allow_updates;
-	}
-	default:;
-	}
+        case SDLK_ESCAPE:
+          Printf("ESCAPE.\n");
+          return;
+        case SDLK_s:
+          Printf("Stimulus mode.\n");
+          mode = MODE_STIMULUS;
+          break;
+        case SDLK_n:
+          Printf("Network mode.\n");
+          mode = MODE_NETWORK;
+          break;
+        case SDLK_e:
+          Printf("Evaluate mode.\n");
+          mode = MODE_EVALUATE;
+          break;
+        case SDLK_SPACE: {
+          MutexLock ml(&video_export_m);
+          allow_updates = !allow_updates;
+        }
+        default:;
+        }
       }
     } else {
       // PERF
@@ -1598,8 +1625,8 @@ void UIThread() {
 
 void TrainThread() {
   Timer setup_timer;
-  
-  string start_seed = StringPrintf("%d  %lld", getpid(), (int64)time(NULL));
+
+  string start_seed = StringPrintf("%d  %lld", Util::getpid(), (int64)time(NULL));
   Printf("Start seed: [%s]\n", start_seed.c_str());
   ArcFour rc(start_seed);
   rc.Discard(2000);
@@ -1617,8 +1644,8 @@ void TrainThread() {
   // TODO: Serialize and load from disk if we have one.
   Timer initialize_network_timer;
   Network net{NUM_LAYERS};
-  printf("Network uses %.2fMB of storage (without overhead).\n", 
-	 net.Bytes() / (1000.0 * 1000.0));
+  printf("Network uses %.2fMB of storage (without overhead).\n",
+   net.Bytes() / (1000.0 * 1000.0));
 
   // printf("Network init:\n");
   // RandomizeNetwork(&rc, &net);
@@ -1634,18 +1661,18 @@ void TrainThread() {
   CheckInvertedIndices(net);
   printf("Initialized network in %.1fms.\n", initialize_network_timer.MS());
 
-  vector<ImageRGBA *> corpus = LoadImagesFromDirectory("corpus256/");
+  vector<RediImageRGBA *> corpus = LoadImagesFromDirectory("corpus256/");
 
   static constexpr int I_SIZE = 80;
   vector<string> font_filenames = Util::ListFiles("fonts/");
-  vector<ImageA *> fonts =
+  vector<RediImageA *> fonts =
     ParallelMap(font_filenames,
-		[](const string &s) { 
-		  ImageA *f = FontChar((string)"fonts/" + s, 'i', I_SIZE);
-		  CHECK(f != nullptr) << s;
-		  return f;
-		},
-		16);
+    [](const string &s) {
+      RediImageA *f = FontChar((string)"fonts/" + s, 'i', I_SIZE);
+      CHECK(f != nullptr) << s;
+      return f;
+    },
+    16);
   CHECK(fonts.size() > 0);
 
   {
@@ -1678,7 +1705,7 @@ void TrainThread() {
     Printf("\n\n ** ROUND %d **\n", round_number);
 
     // When starting from a fresh network, consider this:
-    // const float round_learning_rate = 
+    // const float round_learning_rate =
     // std::min(0.9,
     // std::max(0.05, 2 * exp(-0.2275 * (round_number + 1)/3.0)));
     const float round_learning_rate = 0.0025;
@@ -1699,14 +1726,14 @@ void TrainThread() {
     Timer setup_timer;
     Printf("Setting up batch:\n");
     // Shuffle corpus for this round (pointers alias originals).
-    vector<ImageRGBA *> corpuscopy = corpus;
+    vector<RediImageRGBA *> corpuscopy = corpus;
     Shuffle(&rc, &corpuscopy);
     // Don't run the full corpus.
     corpuscopy.resize(EXAMPLES_PER_ROUND);
 
     // Copy to make training data; same order.
     // TODO: These leak when we exit the thread early.
-    vector<ImageRGBA *> examples = Map(corpuscopy, [](ImageRGBA *img) { return img->Copy(); });
+    vector<RediImageRGBA *> examples = Map(corpuscopy, [](RediImageRGBA *img) { return img->Copy(); });
 
     // Expected is weights, because we want to use non-RGB channels to encode other facts.
     vector<vector<float>> expected(examples.size(), vector<float>(NUM_NODES, 0.0f));
@@ -1715,45 +1742,45 @@ void TrainThread() {
     seeds.reserve(examples.size());
     for (int i = 0; i < examples.size(); i++) seeds.push_back(Rand64(&rc));
     ParallelComp(examples.size(),
-		 [&seeds, &examples, &expected, &fonts](int i) {
-		   uint64 seed = seeds[i];
-		   const uint8 i_dice = seed & 0x7;
-		   seed >>= 3;
-		   
-		   // XXX uhhhh
-		   uint8 x_dice = seed & 0x255;
-		   seed >>= 8;
-		   uint8 y_dice = seed & 0x255;
-		   seed >>= 8;
+     [&seeds, &examples, &expected, &fonts](int i) {
+       uint64 seed = seeds[i];
+       const uint8 i_dice = seed & 0x7;
+       seed >>= 3;
 
-		   // Always fill it with the image floats, but we may also modify it
-		   // (particularly its non-RGBA channels).
-		   InitializeLayerFromImage(examples[i], &expected[i]);
+       // XXX uhhhh
+       uint8 x_dice = seed & 0x255;
+       seed >>= 8;
+       uint8 y_dice = seed & 0x255;
+       seed >>= 8;
 
-		   if (x_dice < 12) x_dice += 12;
-		   if (y_dice < 12) y_dice += 12;
-		   if (x_dice > 255 - I_SIZE) x_dice -= I_SIZE;
-		   if (y_dice > 255 - I_SIZE) y_dice -= I_SIZE;
+       // Always fill it with the image floats, but we may also modify it
+       // (particularly its non-RGBA channels).
+       InitializeLayerFromImage(examples[i], &expected[i]);
 
-		   // Most of the time, add an i.
-		   if (i_dice < 0x5) {
-		     // Blit to training example image.
-		     BlitChannel(0xFF, 0x0, 0x0, *fonts[0],
-				 x_dice, y_dice,
-				 examples[i]);
-		     // Printf("i at %d %d", (int)x_dice, (int)y_dice);
+       if (x_dice < 12) x_dice += 12;
+       if (y_dice < 12) y_dice += 12;
+       if (x_dice > 255 - I_SIZE) x_dice -= I_SIZE;
+       if (y_dice > 255 - I_SIZE) y_dice -= I_SIZE;
 
-		     // PERF This blitting can be done in parallel with the
-		     // forward stuff, because we only need it at the time we
-		     // compute error.
-		     // Blit to expected result's non-RGBA channel.
-		     if (NPP > 3) {
-		       BlitNodeChannel(3, *fonts[0],
-				       x_dice, y_dice,
-				       &expected[i]);
-		     }
-		   }
-		 }, 12);
+       // Most of the time, add an i.
+       if (i_dice < 0x5) {
+         // Blit to training example image.
+         BlitChannel(0xFF, 0x0, 0x0, *fonts[0],
+         x_dice, y_dice,
+         examples[i]);
+         // Printf("i at %d %d", (int)x_dice, (int)y_dice);
+
+         // PERF This blitting can be done in parallel with the
+         // forward stuff, because we only need it at the time we
+         // compute error.
+         // Blit to expected result's non-RGBA channel.
+         if (NPP > 3) {
+           BlitNodeChannel(3, *fonts[0],
+               x_dice, y_dice,
+               &expected[i]);
+         }
+       }
+     }, 12);
 
     // XXX Apply some effect to the example or expected!
     setup_ms += setup_timer.MS();
@@ -1776,19 +1803,18 @@ void TrainThread() {
       // Diagnostic only.
       int64 stim_bytes = 0ll, err_bytes = 0ll;
       for (int i = 0; i < examples.size(); i++) {
-	stim_bytes += stims[i].Bytes();
-	err_bytes += errs[i].Bytes();
+        stim_bytes += stims[i].Bytes();
+        err_bytes += errs[i].Bytes();
       }
       Printf("Size for all stimulations: %.1fMB, errors: %.1fMB\n",
-	     stim_bytes / (1000.0 * 1000.0),
-	     err_bytes / (1000.0 * 1000.0));
+             stim_bytes / (1000.0 * 1000.0), err_bytes / (1000.0 * 1000.0));
     }
-      
+
     // These are just memory copies; easy to do in parallel.
     ParallelComp(examples.size(),
-		 [&examples, &stims](int i) {
-		   InitializeLayerFromImage(examples[i], &stims[i].values[0]);		   
-		 }, 16);
+     [&examples, &stims](int i) {
+       InitializeLayerFromImage(examples[i], &stims[i].values[0]);
+     }, 16);
     stimulation_init_ms += stimulation_init_timer.MS();
 
     if (ShouldDie()) return;
@@ -1803,19 +1829,19 @@ void TrainThread() {
       // too many simultaneous value src/dst buffers.
       Timer forward_timer;
       ParallelComp(examples.size(),
-		   [&examples, &fc, &stims](int example) {
-		     fc.Forward(&stims[example]);
-		     if (example % 10 == 0) {
-		       Printf("[%d/%d] (%.2f%%) ", example, (int)examples.size(),
-			      100.0 * example / examples.size());
-		     }
-		     
-		     if (example < NUM_VIDEO_STIMULATIONS) {
-		       // Copy to screen.
-		       ExportStimulusToVideo(example, stims[example]);
-		     }
+       [&examples, &fc, &stims](int example) {
+         fc.Forward(&stims[example]);
+         if (example % 10 == 0) {
+           Printf("[%d/%d] (%.2f%%) ", example, (int)examples.size(),
+            100.0 * example / examples.size());
+         }
 
-		   }, 12);
+         if (example < NUM_VIDEO_STIMULATIONS) {
+           // Copy to screen.
+           ExportStimulusToVideo(example, stims[example]);
+         }
+
+       }, 12);
       forward_ms += forward_timer.MS();
       kernel_ms += fc.kernel_ms;
       Printf("\n");
@@ -1827,26 +1853,26 @@ void TrainThread() {
       // Write outputs as graphics.
       Timer writing_timer;
       ParallelComp(min((int)examples.size(), 10),
-		   [&stims, round_number](int example) {
-		     const Stimulation &stim = stims[example];
-		     for (int i = 0; i < stim.values.size(); i++) {
-		       string filename = StringPrintf("round-%d-ex-%d-layer-%d.png",
-						      round_number,
-						      example,
-						      i);
-		       WriteLayerAsImage(filename, stim.values[i]);
-		     }
-		   }, 16);
+       [&stims, round_number](int example) {
+         const Stimulation &stim = stims[example];
+         for (int i = 0; i < stim.values.size(); i++) {
+           string filename = StringPrintf("round-%d-ex-%d-layer-%d.png",
+                  round_number,
+                  example,
+                  i);
+           WriteLayerAsImage(filename, stim.values[i]);
+         }
+       }, 16);
       writing_ms += writing_timer.MS();
     }
-   
+
     if (ShouldDie()) return;
     Printf("Error calc.\n");
     Timer output_error_timer;
     ParallelComp(examples.size(),
-		 [&examples, &expected, &stims, &errs](int example) {
-		   SetOutputError(stims[example], expected[example], &errs[example]);
-		 }, 12);
+     [&expected, &stims, &errs](int example) {
+       SetOutputError(stims[example], expected[example], &errs[example]);
+     }, 12);
     output_error_ms += output_error_timer.MS();
 
     CHECK_EQ(examples.size(), errs.size());
@@ -1865,14 +1891,14 @@ void TrainThread() {
       bc_init_ms += bc_init_timer.MS();
 
       ParallelComp(examples.size(),
-		   [&examples, &stims, &errs, &bc](int example) {
-		     bc.Backward(stims[example], &errs[example]);
-		     // BackwardsError(net, stims[example], dst, &errs[example]);
-		     if (example % 5 == 0) {
-		       Printf("[%d/%d] (%.2f%%) ", example, (int)examples.size(),
-			      100.0 * example / examples.size());
-		     }
-		   }, 12);
+       [&examples, &stims, &errs, &bc](int example) {
+         bc.Backward(stims[example], &errs[example]);
+         // BackwardsError(net, stims[example], dst, &errs[example]);
+         if (example % 5 == 0) {
+           Printf("[%d/%d] (%.2f%%) ", example, (int)examples.size(),
+                  100.0 * example / examples.size());
+         }
+       }, 12);
       Printf("\n");
     }
     backward_ms += backward_timer.MS();
@@ -1890,12 +1916,13 @@ void TrainThread() {
     for (int layer = 0; layer < NUM_LAYERS; layer++) {
       UpdateWeightsCL::UpdateContext uc(&updateweights, &net, layer);
 
-      // PERF Faster to try to run these in parallel (maybe parallelizing memory traffic
-      // with kernel execution -- but we can't run the kernels at the same time).
+      // PERF Faster to try to run these in parallel (maybe parallelizing memory
+      // traffic with kernel execution -- but we can't run the kernels at the
+      // same time).
       for (int example = 0; example < examples.size(); example++) {
-	uc.Update(round_learning_rate, stims[example], errs[example], layer);
+        uc.Update(round_learning_rate, stims[example], errs[example], layer);
       }
-      
+
       // Must call this to copy weights back!
       uc.Finish();
     }
@@ -1908,30 +1935,29 @@ void TrainThread() {
     auto Pct = [total_ms](double d) { return (100.0 * d) / total_ms; };
     double denom = round_number + 1;
     Printf("Total so far %.1fs.\n"
-	   "Time per round: %.1fs.\n"
-	   "We spent %.1fms in setup (%.1f%%),\n"
-	   "%.1fms in stimulation init (%.1f%%),\n"
-	   "%.1fms in forward layer (%.1f%%),\n"
-	   "%.1fms in fc init (%.1f%%),\n"
-	   "%.1fms in forward layer kernel (at most; %.1f%%).\n"
-	   "%.1fms in bc init (%.1f%%),\n"
-	   "%.1fms in backwards pass (%.1f%%),\n"
-	   "%.1fms in error for output layer (%.1f%%),\n"
-	   "%.1fms in updating weights (%.1f%%),\n"
-	   "%.1fms in writing images (%.1f%%),\n",
-	   total_ms / 1000.0,
-	   (total_ms / 1000.0) / denom,
-	   setup_ms, Pct(setup_ms),
-	   stimulation_init_ms, Pct(stimulation_init_ms),
-	   forward_ms / denom, Pct(forward_ms),
-	   fc_init_ms / denom, Pct(fc_init_ms),
-	   kernel_ms / denom, Pct(kernel_ms),
-	   bc_init_ms / denom, Pct(bc_init_ms),
-	   backward_ms / denom, Pct(backward_ms),
-	   output_error_ms / denom, Pct(output_error_ms),
-	   update_ms / denom, Pct(update_ms),
-	   writing_ms / denom, Pct(writing_ms));
-
+           "Time per round: %.1fs.\n"
+           "We spent %.1fms in setup (%.1f%%),\n"
+           "%.1fms in stimulation init (%.1f%%),\n"
+           "%.1fms in forward layer (%.1f%%),\n"
+           "%.1fms in fc init (%.1f%%),\n"
+           "%.1fms in forward layer kernel (at most; %.1f%%).\n"
+           "%.1fms in bc init (%.1f%%),\n"
+           "%.1fms in backwards pass (%.1f%%),\n"
+           "%.1fms in error for output layer (%.1f%%),\n"
+           "%.1fms in updating weights (%.1f%%),\n"
+           "%.1fms in writing images (%.1f%%),\n",
+           total_ms / 1000.0,
+           (total_ms / 1000.0) / denom,
+           setup_ms, Pct(setup_ms),
+           stimulation_init_ms, Pct(stimulation_init_ms),
+           forward_ms / denom, Pct(forward_ms),
+           fc_init_ms / denom, Pct(fc_init_ms),
+           kernel_ms / denom, Pct(kernel_ms),
+           bc_init_ms / denom, Pct(bc_init_ms),
+           backward_ms / denom, Pct(backward_ms),
+           output_error_ms / denom, Pct(output_error_ms),
+           update_ms / denom, Pct(update_ms),
+           writing_ms / denom, Pct(writing_ms));
   }
 
   Printf(" ** Done. **");
@@ -1947,8 +1973,8 @@ int SDL_main(int argc, char* argv[]) {
 
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |
-		 SDL_INIT_TIMER | 
-		 SDL_INIT_AUDIO) >= 0);
+     SDL_INIT_TIMER |
+     SDL_INIT_AUDIO) >= 0);
   fprintf(stderr, "SDL initialized OK.\n");
 
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
@@ -1959,10 +1985,10 @@ int SDL_main(int argc, char* argv[]) {
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen);
 
-  font = Font::create(screen,
-		      "font.png",
-		      FONTCHARS,
-		      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+  font = Font::Create(screen,
+          "font.png",
+          FONTCHARS,
+          FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font != nullptr) << "Couldn't load font.";
 
   global_cl = new CL;
@@ -1970,16 +1996,16 @@ int SDL_main(int argc, char* argv[]) {
   std::thread train_thread(&TrainThread);
 
   UIThread();
-  
+
   Printf("Killing train thread (might need to wait for round to finish)...\n");
   WriteWithLock(&train_should_die_m, &train_should_die, true);
   train_thread.join();
 
   Printf("Train is dead; now UI exiting.\n");
   /*
-    BlitChannel(0xFF, 0x0, 0x0, *font, 
-		30, 30,
-		corpus[0]);
+    BlitChannel(0xFF, 0x0, 0x0, *font,
+    30, 30,
+    corpus[0]);
 
     printf("Save it..\n");
     corpus[0]->Save("testi.png");
