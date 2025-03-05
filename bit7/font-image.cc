@@ -1264,6 +1264,11 @@ REUSE_FOR = {
   {0x00C5, 0x212B},
   // Omega -> Ohm sign
   {0x03A9, 0x2126},
+  // Hebrew letters
+  {0x05D0, 0x2135},  // Alef
+  {0x05D1, 0x2136},  // Bet
+  {0x05D2, 0x2137},  // Gimel
+  {0x05D3, 0x2138},  // Dalet
 };
 
 Config Config::ParseConfig(const string &cfgfile) {

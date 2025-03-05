@@ -65,6 +65,8 @@ static SDL_Surface *screen = nullptr;
 // XXX make configurable!
 static constexpr int TARGET_W = 1280, TARGET_H = 1280;
 
+static int extra_padding = 0;
+
 struct PaddedOriginal {
   PaddedOriginal(const std::string &image_filename,
                  int target_width, int target_height) :
@@ -85,7 +87,12 @@ struct PaddedOriginal {
     if (xover > 0) { pad_left = pad_right = xover; }
     if (yover > 0) { pad_top = pad_bottom = yover; }
 
-    if (xover <= 0 && yover <= 0) {
+    pad_left += extra_padding / 2;
+    pad_right += extra_padding / 2;
+    pad_top += extra_padding / 2;
+    pad_bottom += extra_padding / 2;
+
+    if (pad_left + pad_right + pad_top + pad_bottom == 0) {
       // Avoid copying if we don't need to pad.
       img = std::move(original);
     } else {
@@ -109,13 +116,13 @@ struct PaddedOriginal {
 struct UI {
   UI(const PaddedOriginal &original,
      const std::string &output_filename);
-  void Loop();
+  bool Loop();
   void Draw();
   void Redraw();
 
   Periodically fps_per;
 
-  enum class EventResult { NONE, DIRTY, EXIT, };
+  enum class EventResult { NONE, DIRTY, EXIT, RESTART, };
   EventResult HandleEvents();
 
   int screenw = 0, screenh = 0;
@@ -128,6 +135,7 @@ struct UI {
 
   int cropx = 0, cropy = 0;
   int cropw = TARGET_W, croph = TARGET_H;
+  bool unlocked = false;
   void NormalizeCrop();
 
   std::pair<int, int> drag_source = {-1, -1};
@@ -142,13 +150,13 @@ void UI::NormalizeCrop() {
   if (xover > 0) cropx -= xover;
   if (yover > 0) cropy -= yover;
 
-  CHECK(cropx >= 0 && cropy >= 0)
-      << "Can't handle the "
-         "case where the original is smaller than the crop "
-         "rectangle yet!";
+  CHECK(cropx >= 0 && cropy >= 0) <<
+    "Can't handle the case where the original is smaller than "
+    "the crop rectangle yet!";
 }
 
-UI::UI(const PaddedOriginal &original, const std::string &output_filename) :
+UI::UI(const PaddedOriginal &original,
+       const std::string &output_filename) :
   fps_per(1.0 / 59.94),
   screenw(original.Width()), screenh(original.Height()),
   original(original),
@@ -205,6 +213,11 @@ UI::EventResult UI::HandleEvents() {
       case SDLK_KP_ENTER:
         // Save?
         break;
+
+      case SDLK_p: {
+        extra_padding += 128;
+        return EventResult::RESTART;
+      }
 
       case SDLK_s: {
         // Save?
@@ -281,14 +294,16 @@ UI::EventResult UI::HandleEvents() {
   return ui_dirty ? EventResult::DIRTY : EventResult::NONE;
 }
 
-void UI::Loop() {
+// Returns true if done.
+bool UI::Loop() {
   Redraw();
 
   for (;;) {
     bool ui_dirty = false;
 
     switch (HandleEvents()) {
-    case EventResult::EXIT: return;
+    case EventResult::EXIT: return true;
+    case EventResult::RESTART: return false;
     case EventResult::NONE: break;
     case EventResult::DIRTY: ui_dirty = true; break;
     }
@@ -377,15 +392,20 @@ int main(int argc, char **argv) {
   std::string output_filename =
     StringPrintf("%s-crop.jpg", string(output_file_base).c_str());
 
-  PaddedOriginal original(image_filename, TARGET_W, TARGET_H);
+  for (;;) {
+    PaddedOriginal original(image_filename, TARGET_W, TARGET_H);
 
-  InitializeSDL(program_dir,
-                original.Width(), original.Height());
+    InitializeSDL(program_dir,
+                  original.Width(), original.Height());
 
-  UI ui(original, output_filename);
-  ui.Loop();
+    UI ui(original, output_filename);
+    bool done = ui.Loop();
 
-  SDL_Quit();
+    SDL_Quit();
+    if (done)
+      break;
+  }
+
   return 0;
 }
 

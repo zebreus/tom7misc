@@ -1,8 +1,8 @@
 #ifndef _PACTOM_RENDER_H
 #define _PACTOM_RENDER_H
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <numbers>
@@ -12,17 +12,17 @@
 #include <variant>
 #include <vector>
 
-#include "base/logging.h"
 #include "arcfour.h"
-#include "lines.h"
-#include "geom/latlon.h"
+#include "base/logging.h"
 #include "color-util.h"
+#include "geom/latlon.h"
 #include "image.h"
+#include "lines.h"
+#include "osm.h"
 #include "pactom-util.h"
 #include "pactom.h"
 #include "yocto_geometryt.h"
 #include "yocto_matht.h"
-#include "osm.h"
 
 struct ConvertUV {
   // uv coordinates here are given in terms of the earth

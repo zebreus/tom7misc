@@ -4,32 +4,31 @@
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <functional>
 #include <memory>
+#include <numbers>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
-#include <optional>
-#include <functional>
-#include <cmath>
-#include <numbers>
 #include <vector>
 
-#include "yocto_matht.h"
-#include "yocto_geometryt.h"
-#include "threadutil.h"
-#include "image.h"
-#include "color-util.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "timer.h"
-#include "randutil.h"
-#include "arcfour.h"
-#include "opt/opt.h"
-#include "pactom.h"
+#include "color-util.h"
 #include "image-frgba.h"
+#include "image.h"
+#include "opt/opt.h"
 #include "osm.h"
-#include "render.h"
 #include "pactom-util.h"
+#include "pactom.h"
+#include "randutil.h"
+#include "render.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "yocto_geometryt.h"
+#include "yocto_matht.h"
 
 using namespace std;
 
