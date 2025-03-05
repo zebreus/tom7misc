@@ -1,6 +1,7 @@
 
-;; TODO!
-;; Add help text.
+;; M-X select-buffers allows selecting some open buffers, and then
+;; (when pressing enter) consolidates them into a single buffer. This
+;; can be useful for preparing prompts for an LLM, for example.
 
 (defvar select-buffers-mode-map (make-sparse-keymap)
   "Keymap for select-buffers-mode.")
@@ -29,7 +30,6 @@
 
 (defvar select-buffers-highlight-overlays nil
   "A list of overlays to keep track of highlights.")
-
 
 (defun select-buffers-redraw ()
   (let ((old-bro buffer-read-only))
@@ -121,7 +121,13 @@
         (insert (cdr pair))
         (insert "\n```\n\n"))
       (goto-char (point-min))
-      (switch-to-buffer output-buffer))))
+      (switch-to-buffer output-buffer)
+      (fundamental-mode)
+      ;; remove font colors, since I don't want to be confused
+      ;; about whether this is the original e.g. source code and
+      ;; start editing it!
+      (set-text-properties (point-min) (point-max) nil)
+       )))
 
 (defun select-buffers-exit ()
   (interactive)

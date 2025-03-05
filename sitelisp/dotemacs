@@ -412,6 +412,70 @@
       ))
     ))
 
+
+;; Helper for both single and double quotes, below.
+(defun insert-unicode-quote-internal (ascii uleft uright)
+  (let ((before (char-before))
+        (after (char-after)))
+
+    (cond
+     ;; First we check for the "toggle" behavior, if we are adjacent
+     ;; to a unicode double-quote character.
+
+     ;; If looking at one quote, swap for the other.
+    ((and after (= after uright))
+     (delete-forward-char 1)
+     (insert (string uleft))
+     (backward-char 1))
+
+    ((and after (= after uleft))
+     (delete-forward-char 1)
+     (insert (string uright))
+     (backward-char 1))
+
+    ;; or if after one quote, swap for the other
+    ((and before (= before uleft))
+     (delete-backward-char 1)
+     (insert (string uright)))
+
+    ((and before (= before uright))
+     (delete-backward-char 1)
+     (insert (string uleft)))
+
+    (t
+     (progn
+
+       ;; If on or before an ascii quote character, delete it;
+       ;; the next heuristic will insert a replacement.
+       (cond
+        ((and after (= after ascii)) (delete-forward-char 1))
+        ((and before (= before ascii)) (delete-backward-char 1)))
+
+       ;; now insert a double quote at point. If we are the beginning
+       ;; of the buffer, beginnig of line, or following a space, use
+       ;; the opening quote.
+       (cond
+        ((or (not before) (and before (or (= before ?\n) (= before ? ))))
+         (insert (string uleft)))
+        (t (insert (string uright))))
+       ))
+    )))
+
+
+(defun insert-unicode-double-quote ()
+  "Insert or replace with a Unicode double quote character."
+  (interactive)
+  (insert-unicode-quote-internal ?\" ?“ ?”))
+
+(defun insert-unicode-single-quote ()
+  "Insert or replace with a Unicode single quote character."
+  (interactive)
+  (insert-unicode-quote-internal ?\' ?‘ ?’))
+
+(global-set-key (kbd "C-\"") 'insert-unicode-double-quote)
+(global-set-key (kbd "C-'") 'insert-unicode-single-quote)
+
+
 (define-fringe-bitmap 'tom7-diag-stripes
     (vector #b00110011
             #b01100110
@@ -823,7 +887,9 @@
   (progn
     (add-hook 'before-save-hook
               (lambda ()
-                (if (not (no-untabify-file (buffer-file-name)))
+                (if (and
+                     (not (eq major-mode 'hexl-mode))
+                     (not (no-untabify-file (buffer-file-name))))
                     (untabify-before-save))))
     nil))
 
@@ -831,7 +897,9 @@
   (progn
     (add-hook 'before-save-hook
               (lambda ()
-                (if (not (no-remove-trailing-whitespace-file (buffer-file-name)))
+                (if (and
+                     (not (eq major-mode 'hexl-mode))
+                     (not (no-remove-trailing-whitespace-file (buffer-file-name))))
                     (delete-trailing-whitespace))))
     nil))
 
