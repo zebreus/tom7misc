@@ -1,3 +1,9 @@
+6 Mar 2025 (r6347)
+
+ * Generated PDFs now include width tables for built-in fonts, which
+   should increase compatibility. Some other minor bugfixes in PDF
+   export code.
+
 20 Feb 2025 (r6304)
 
  * Primops that load files (notably font-load-file) now search include
