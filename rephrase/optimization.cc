@@ -612,8 +612,10 @@ SaturateDataflow(const std::string &fname,
         dataflow.successors[std::make_pair(name, idx)] = jmp->lab;
         dataflow.predecessors[jmp->lab].emplace_back(name, idx);
       } else if (const inst::If *iff = std::get_if<inst::If>(&inst)) {
+        (void)iff;
         LOG(FATAL) << "The dataflow pass can only work on symbolic bytecode.";
-      } else if (const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
+      } else if ([[maybe_unused]]
+          const inst::Jump *jump = std::get_if<inst::Jump>(&inst)) {
         LOG(FATAL) << "The dataflow pass can only work on symbolic bytecode.";
       }
 

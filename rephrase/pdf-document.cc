@@ -28,7 +28,7 @@ using Transform = Document::Transform;
 static constexpr float DEFAULT_WIDTH  = PDF::PDF_LETTER_WIDTH;
 static constexpr float DEFAULT_HEIGHT = PDF::PDF_LETTER_HEIGHT;
 
-PDFFont::PDFFont(const PDF::FontObj *f) : pdf_font(f) {
+PDFFont::PDFFont(const PDF::Font *f) : pdf_font(f) {
   CHECK(f != nullptr);
 }
 
@@ -39,7 +39,7 @@ const Font *PDFDocument::GetDefaultFont() {
 
 std::string PDFDocument::LoadFontFile(const std::string &filename) {
   std::string name = pdf->AddTTF(filename);
-  const PDF::FontObj *fobj = pdf->GetFontByName(name);
+  const PDF::Font *fobj = pdf->GetFontByName(name);
   CHECK(fobj != nullptr) << "Couldn't find just-loaded font? " << filename;
   fonts[name] = std::make_unique<PDFFont>(fobj);
   return name;
@@ -49,7 +49,7 @@ void PDFDocument::InitBuiltInFonts() {
   CHECK(pdf.get() != nullptr) << "Needs the PDF object to be created first!";
   // Returns pointer; stores in fonts vector to maintain lifetime.
   auto GetBIF = [this](PDF::BuiltInFont bif) -> const PDFFont * {
-      const PDF::FontObj *fobj = pdf->GetBuiltInFont(bif);
+      const PDF::Font *fobj = pdf->GetBuiltInFont(bif);
       auto font = std::make_unique<PDFFont>(fobj);
       const PDFFont *f = font.get();
       CHECK(f != nullptr) << "Failed to load built-in font??";

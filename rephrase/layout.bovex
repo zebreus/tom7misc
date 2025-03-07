@@ -366,8 +366,17 @@ object Sticker of { x: float, y: float, scale: float,
                     (* Line. x,y give the starting point.
                        stroke-color and line-width are also
                        used. *)
-                    line-x1 : float,
-                    line-y1 : float,
+                    line-x1: float,
+                    line-y1: float,
+
+                    (* A closed polygon (using stroke-color,
+                       fill-color, line-width). Since we can
+                       only use base types here, this is a
+                       space-separated sequence of pairs of
+                       floats (decimal) as a string (!)
+                       XXX experimental; not working
+                       *)
+                    polygon: string,
 
                     video: string,
                     video-width: float,

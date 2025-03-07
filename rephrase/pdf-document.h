@@ -17,7 +17,7 @@ struct PDFFont : public Font {
   // Invalid state.
   PDFFont() = default;
 
-  explicit PDFFont(const PDF::FontObj *f);
+  explicit PDFFont(const PDF::Font *f);
   std::string Name() const override;
 
   std::optional<double>
@@ -32,7 +32,7 @@ struct PDFFont : public Font {
   friend struct PDFDocument;
   friend struct PDFPage;
   // Not owned.
-  const PDF::FontObj *pdf_font = nullptr;
+  const PDF::Font *pdf_font = nullptr;
 };
 
 struct PDFPage : public Page {
@@ -95,7 +95,7 @@ struct PDFDocument : public Document {
   double page_width = PDF::PDF_LETTER_WIDTH;
   double page_height = PDF::PDF_LETTER_HEIGHT;
   void InitBuiltInFonts();
-  const PDF::FontObj *AnyFontByName(const std::string &font_name);
+  const PDF::Font *AnyFontByName(const std::string &font_name);
   std::unique_ptr<PDF> pdf;
 };
 

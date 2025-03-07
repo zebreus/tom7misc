@@ -1411,8 +1411,8 @@ void Document::PlaceStickersRec(Context context,
                      0.0, color, 0x00000000);
     }
 
-    if (const BigInt *fill = doc.GetIntAttr("stroke-color")) {
-      uint32_t color = IntToColor("stroke-color", *fill);
+    if (const BigInt *stroke = doc.GetIntAttr("stroke-color")) {
+      uint32_t color = IntToColor("stroke-color", *stroke);
       const double *t = doc.GetDoubleAttr("line-width");
       CHECK(t != nullptr) << "rect sticker with stroke requires width, height, "
         "and linewidth.";
@@ -1425,14 +1425,30 @@ void Document::PlaceStickersRec(Context context,
   if (const double *x1 = doc.GetDoubleAttr("line-x1")) {
     const double *y1 = doc.GetDoubleAttr("line-y1");
     const double *t = doc.GetDoubleAttr("line-width");
-    const BigInt *fill = doc.GetIntAttr("stroke-color");
+    const BigInt *stroke = doc.GetIntAttr("stroke-color");
     CHECK(x1 != nullptr && y1 != nullptr && t != nullptr &&
-          fill != nullptr) << "sticker with line "
+          stroke != nullptr) << "sticker with line "
       "must have line-x1, line-y1, line-width, and stroke-color.";
-    uint32_t color = IntToColor("stroke-color", *fill);
+    uint32_t color = IntToColor("stroke-color", *stroke);
     Transform ct0 = Translate(transform, *x, *y);
     Transform ct1 = Translate(transform, *x1, *y1);
     page->DrawLine(ct0.dx, ct0.dy, ct1.dx, ct1.dy, *t, color);
+  }
+
+  if (const double *x1 = doc.GetDoubleAttr("polygon")) {
+    const double *t = doc.GetDoubleAttr("line-width");
+    const BigInt *stroke = doc.GetIntAttr("stroke-color");
+    const BigInt *fill = doc.GetIntAttr("fill-color");
+
+    // line-width and stroke-color should be optional,
+    // fill-color too (but you should have at least one?)
+    uint32_t stroke_color = IntToColor("stroke-color", *stroke);
+    uint32_t fill_color = IntToColor("fill-color", *fill);
+
+    Transform ct0 = Translate(transform, *x, *y);
+    LOG(FATAL) << "Need to parse the polygon, transform its "
+      "vertices, and then render.";
+    // page->DrawLine(ct0.dx, ct0.dy, ct1.dx, ct1.dy, *t, color);
   }
 
   if (const std::string *img = doc.GetStringAttr("img")) {
