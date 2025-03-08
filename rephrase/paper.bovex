@@ -915,7 +915,7 @@ the function [tt[tt]] is applied to a layout literal that contains
 text like [tt[paper.bovex]]. The [tt[tt]] function just adds the
 [tt[font-family]] attribute with value [tt["FixederSysLight"]] to the
 layout node. This is a custom monospaced bitmap font that I made for
-this paper using software I wrote. It is part of th FixederSys
+this paper using software I wrote. It is part of the FixederSys
 family.[cite fixedersys-site] Functions like [tt[b]] and [tt[it]]
 apply bold and italic text styles, but functions can do anything that
 you can do in a general-purpose programming language.

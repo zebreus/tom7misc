@@ -1,3 +1,9 @@
+7 Mar 2025 (r6348)
+
+ * More compatibility improvements for generated PDFs (e.g. Acrobat
+   should no longer warn about "invalid BBox"). Unicode TrueType fonts
+   are almost supported (display looks good; copy/paste is garbage).
+
 6 Mar 2025 (r6347)
 
  * Generated PDFs now include width tables for built-in fonts, which

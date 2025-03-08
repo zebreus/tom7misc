@@ -20,6 +20,7 @@
 #include "color-util.h"
 #include "image.h"
 #include "pdf.h"
+#include "util.h"
 
 #include "document.h"
 
@@ -203,6 +204,8 @@ void PDFPage::DrawText(const Font *font_in,
 
   CHECK(font->pdf_font != nullptr);
   pdf->SetFont(font->pdf_font);
+  // printf("Add text [%s] (%s)\n", text.c_str(),
+  //        Util::HexString(text).c_str());
   pdf->AddText(text, size,
                // We flip the y coordinate, but also then need to
                // measure from the top of the text, not its baseline.
