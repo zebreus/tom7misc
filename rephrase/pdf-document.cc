@@ -20,7 +20,6 @@
 #include "color-util.h"
 #include "image.h"
 #include "pdf.h"
-#include "util.h"
 
 #include "document.h"
 
@@ -39,7 +38,8 @@ const Font *PDFDocument::GetDefaultFont() {
 }
 
 std::string PDFDocument::LoadFontFile(const std::string &filename) {
-  std::string name = pdf->AddTTF(filename);
+  // We'll always use unicode encoding in BoVeX.
+  std::string name = pdf->AddTTF(filename, PDF::FontEncoding::UNICODE);
   const PDF::Font *fobj = pdf->GetFontByName(name);
   CHECK(fobj != nullptr) << "Couldn't find just-loaded font? " << filename;
   fonts[name] = std::make_unique<PDFFont>(fobj);

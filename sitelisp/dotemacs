@@ -785,6 +785,13 @@
   (c-set-offset 'innamespace [0]))
 (add-hook 'c++-mode-hook 'tom7-c-setup)
 
+(defun change-log-less-annoying ()
+  "Customization for change log mode so that you can just type."
+  (electric-indent-mode -1)
+  (setq left-margin 0))
+
+(add-hook 'change-log-mode-hook 'change-log-less-annoying)
+
 (defun revert-without-prompting ()
   "Revert the current buffer without prompting."
   (interactive "*")
