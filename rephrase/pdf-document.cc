@@ -20,6 +20,7 @@
 #include "color-util.h"
 #include "image.h"
 #include "pdf.h"
+#include "utf8.h"
 
 #include "document.h"
 
@@ -140,35 +141,93 @@ PDFDocument::PDFDocument(std::string_view dir) : Document(dir) {
   pdf.reset(new PDF(DEFAULT_WIDTH, DEFAULT_HEIGHT));
 
   PDF::Info info;
-  strncpy(info.creator, "BoVeX", 63);
-  strncpy(info.producer, "BoVeX", 63);
-  strncpy(info.title, "Untitled", 63);
-  strncpy(info.author, "", 63);
-  strncpy(info.subject, "", 63);
-  strncpy(info.date, DateTimeStamp().c_str(), 63);
+  info.creator = "BoVeX";
+  info.producer = "BoVeX";
+  info.title = "Untitled";
+  info.author = "";
+  info.subject = "";
+  info.date = DateTimeStamp();
+  info.keywords = "";
   pdf->SetInfo(info);
 
   InitBuiltInFonts();
+}
+
+static std::string TranslateUTF8Latin1Subset(std::string_view utf8) {
+  std::vector<uint32_t> cps = UTF8::Codepoints(utf8);
+  std::string ret;
+
+  for (uint32_t codepoint : cps) {
+    if ((codepoint >= 0x20 && codepoint <= 0x7E) ||
+        (codepoint >= 0xA0 && codepoint <= 0xFF)) {
+      // Already in Latin-1 subset.
+      ret.append(UTF8::Encode(codepoint));
+    }
+
+    // We have to translate it or drop it.
+    switch (codepoint) {
+
+    // We could support a lot more here, but the main thing is to
+    // make typographic quotes work correctly in titles.
+    case 0x2018:
+    case 0x2019:
+    case 0x201B:
+      ret.push_back('\'');
+      break;
+    case 0x201C:
+    case 0x201D:
+    case 0x201F:
+      ret.push_back('\"');
+      break;
+
+      // Mostly to illustrate that it can be more than one
+      // character in the output.
+    case 0x203D:
+      ret.append("?!");
+      break;
+
+      // Single guillemets
+    case 0x2039:
+      ret.push_back('<');
+      break;
+    case 0x203A:
+      ret.push_back('>');
+      break;
+
+    case 0x2013:
+      ret.push_back('-');
+      break;
+    case 0x2014:
+      ret.append("--");
+      break;
+
+    default:
+      // Nothing.
+      break;
+    }
+  }
+  return ret;
 }
 
 void PDFDocument::SetDocumentInfoStrings(
     const std::unordered_map<std::string, std::string> &m) {
 
   PDF::Info info = pdf->GetInfo();
-  auto AddIf = [&m](const std::string &key, char *field) {
+  auto AddIf = [&m](const std::string &key, std::string *field) {
       auto it = m.find(key);
       if (it == m.end()) return;
-      strncpy(field, it->second.data(), 63);
-      field[63] = '\0';
+      *field = TranslateUTF8Latin1Subset(it->second);
     };
 
-  AddIf("creator", info.creator);
-  AddIf("producer", info.producer);
-  AddIf("title", info.title);
-  AddIf("author", info.author);
-  AddIf("title", info.title);
-  AddIf("subject", info.subject);
-  AddIf("date", info.date);
+  // TODO: Translate these to Latin-1 subset of Unicode, especially
+  // stuff like typographic apostrophes, which can't be represented.
+
+  AddIf("creator", &info.creator);
+  AddIf("producer", &info.producer);
+  AddIf("title", &info.title);
+  AddIf("author", &info.author);
+  AddIf("subject", &info.subject);
+  AddIf("date", &info.date);
 
   pdf->SetInfo(info);
 }
@@ -219,12 +278,18 @@ void PDFPage::DrawImage(double x, double y,
                         const ImageRGBA &image) {
   CHECK(pdf_page != nullptr);
 
+  // TODO: Support actual alpha channel.
+  // Since we are compositing onto a white page in PDF, we
+  ImageRGB rgb(image.Width(), image.Height());
+  rgb.Clear32(0xFFFFFFFF);
+  rgb.BlendImage(0, 0, image);
+
   printf("Add image at %.11g %.11g.\n", x, y);
   CHECK(pdf->AddImageRGB(
             // Images are also measured from their baselines.
             x, FlipPageCoordinate(y + height),
             width, height,
-            image.IgnoreAlpha(),
+            rgb,
             PDF::CompressionType::PNG,
             pdf_page));
 }

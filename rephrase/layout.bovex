@@ -1046,6 +1046,22 @@ fun paragraph lay =
   span {(Span) font-bold = true} [[lay].] ^^
   box {(Box) width=3.0, glue-ideal=3.0, glue-expand = 1.5 } []
 
+(* TODO: Hanging indent. *)
+(* TODO: intra-bullet spacing. We need for them to not just be
+   interpreted as paragraphs in order for that to work, but then
+   they will not flow across columns. I think the right thing to
+   do is add more metadata to flowing text (margins, etc.) so
+   that the paragraph layout logic can handle it. *)
+fun ul laylist =
+  break() ^^
+  layout-concat
+  (list-map (fn lay =>
+             span {(Span) font-bold = true} [•] ^^
+             box {(Box) width=2.0, glue-ideal=2.0,
+                  glue-expand = 0.25, glue-contract = 0.75 } [] ^^
+             lay ^^ hfill() ^^ break())
+   laylist)
+
 fun no-rephrase lay = span {(Span) no-rephrase = true } lay
 
 object Rephrase of { rephrase-times : int }

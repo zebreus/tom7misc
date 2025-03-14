@@ -1,7 +1,13 @@
-8 Mar 2025 (r6360)
+14 Mar 2025 (r6371)
+
+ * When embedding a transparent image in a PDF, composite it on
+   white instead of just ignoring the alpha channel.
 
  * Unicode TrueType fonts are working now! There may still be a few
    minor problems.
+
+ * Document metadata is not limited to 64 characters any more, and
+   handles encoding a little bit better.
 
 7 Mar 2025 (r6348)
 
