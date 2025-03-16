@@ -39,14 +39,14 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 CODEC_OBJECTS=$(CODEC)/mov.o $(CODEC)/mov-recorder.o
 
 # bad command line 2022
-# x86_64-w64-mingw32-g++ -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -ISDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++17 -DHAVE_ASPRINTF -m64 -g -O2 -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF -Ic:/code/SDL/include    -I / -I /re2 --std=c++20  -c -o ../../cc-lib/util.o ../../cc-lib/util.cc
+# x86_64-w64-mingw32-g++ -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -ISDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++17 -DHAVE_ASPRINTF -m64 -g -O2 -D__MINGW32__ -DHAVE_ALLOCA -Ic:/code/SDL/include    -I / -I /re2 --std=c++20  -c -o ../../cc-lib/util.o ../../cc-lib/util.cc
 
 # good 2022
-# x86_64-w64-mingw32-g++ -DHAVE_ASPRINTF -m64 -O3 -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF -Ic:/code/SDL/include    -I ../../cc-lib/ -I ../../cc-lib/re2 --std=c++20 -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Ic:/code/SDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++20 -c viewping.cc -o viewping.o
+# x86_64-w64-mingw32-g++ -DHAVE_ASPRINTF -m64 -O3 -D__MINGW32__ -DHAVE_ALLOCA -Ic:/code/SDL/include    -I ../../cc-lib/ -I ../../cc-lib/re2 --std=c++20 -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Ic:/code/SDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++20 -c viewping.cc -o viewping.o
 
 # old
 # XXX can't they just be in CXXFLAGS?
-CPPFLAGS= -DDISABLE_SOUND=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO)
+CPPFLAGS= -DDISABLE_SOUND=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO)
 
 %.o : %.cc *.h makefile
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@

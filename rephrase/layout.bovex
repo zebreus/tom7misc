@@ -1036,12 +1036,24 @@ fun monospace-block lay =
                         font-size = 12.0,
                         attrs = {(Object) } } lay
 
-fun section lay = span {(Span) font-bold = true, font-size = 15.0 }
+(* TODO: Rationalize global config like this. *)
+val SECTION-FONT-SIZE = ref (point 15.0)
+
+fun section lay =
+  span {(Span) font-bold = true, font-size = !SECTION-FONT-SIZE }
   [[lay][hfill()][break()]]
 
-fun subsection lay = span {(Span) font-bold = true, font-size = 14.0 }
+val SUBSECTION-FONT-SIZE = ref (point 13.5)
+
+fun subsection lay =
+  span {(Span) font-bold = true, font-size = !SUBSECTION-FONT-SIZE }
   [[lay][hfill()][break()]]
 
+val SUBSUBSECTION-FONT-SIZE = ref (point 12.0)
+
+fun subsubsection lay =
+  span {(Span) font-bold = true, font-size = !SUBSUBSECTION-FONT-SIZE }
+  [[lay][hfill()][break()]]
 
 fun paragraph lay =
   span {(Span) font-bold = true} [[lay].] ^^

@@ -4,7 +4,7 @@ default: codebench.exe
 all: codebench.exe
 
 # -fno-strict-aliasing
-CXXFLAGS=-Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include 
+CXXFLAGS=-Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include
 OPT=-O2
 
 # for 64 bits on windows
@@ -27,8 +27,8 @@ CLLIBS=-L ${AMDSDK}/lib/${AMD_ARCH}
 UTILOBJECTS=../cc-lib/util.o ../cc-lib/arcfour.o ../cc-lib/base/stringprintf.o
 
 #  -DNOUNZIP
-CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++0x
-#  CPPFLAGS=-DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 -O -DHAVE_ALLOCA -DNOWINSTUFF $(PROFILE) -g
+CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++0x
+#  CPPFLAGS=-DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 -O -DHAVE_ALLOCA $(PROFILE) -g
 
 OBJECTS=codebench.o ${UTILOBJECTS}
 

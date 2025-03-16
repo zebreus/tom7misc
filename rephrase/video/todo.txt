@@ -1,0 +1,24 @@
+All that is remaining:
+
+   In "middle"
+      - humorous antidote drawing
+      - better visuals for "instructions"
+
+   Everywhere:
+      - audio normalization / mastering
+
+optional possible improvements:
+
+ - when talking about tool use, mention how I will sometimes just
+   fix the project to make it simpler to write about.
+    like you can make the paper shorter by just doing the "future work"
+
+ - llama:
+   - mention what model I'm using?
+     (it's there in a screenshot now)
+
+ - "knuth puts the book on hold" ->
+     but knuth doesn't just roll over.
+
+ - would be nice to illustrate how the BoVeX rephrasing algorithm
+   works...

@@ -4,7 +4,7 @@ default: all
 all: arst.exe arsw.exe script_test.exe
 
 # -fno-strict-aliasing
-CXXFLAGS=-Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include 
+CXXFLAGS=-Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include
 OPT=-O
 
 # for 64 bits on windows
@@ -30,7 +30,7 @@ PROFILE=
 INCLUDES=-I "../cc-lib" -I "../cc-lib/city"
 
 #  -DNOUNZIP
-CPPFLAGS= $(CCSDL) -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(INCLUDES) $(PROFILE) $(FLTO) --std=c++0x
+CPPFLAGS= $(CCSDL) -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++0x
 
 CCLIBOBJECTS=../cc-lib/util.o ../cc-lib/arcfour.o ../cc-lib/base/stringprintf.o ../cc-lib/city/city.o ../cc-lib/textsvg.o ../cc-lib/stb_image.o ../cc-lib/wavesave.o ../cc-lib/sdl/sdlutil.o ../cc-lib/sdl/font.o
 

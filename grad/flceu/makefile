@@ -57,7 +57,7 @@ CC_LIB=../../cc-lib
 INCLUDES=-I ".." -I "$(CC_LIB)" -I "$(CC_LIB)/city" -I "."
 
 # tom7 added -mthreads on 9/7!
-CPPFLAGS=-DPSS_STYLE=1 -DDUMMY_UI $(ARCH) $(OPT) $(PLATFORMCFLAGS) -DHAVE_ALLOCA -DNOWINSTUFF $(INCLUDES) $(PROFILE) $(FLTO) --std=c++20
+CPPFLAGS=-DPSS_STYLE=1 -DDUMMY_UI $(ARCH) $(OPT) $(PLATFORMCFLAGS) -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++20
 
 GRAD_OBJECTS=../hfluint8.o ../hfluint16.o
 

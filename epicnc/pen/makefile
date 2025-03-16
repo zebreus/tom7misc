@@ -2,7 +2,7 @@ default: all
 
 all: animate.exe
 
-CXXFLAGS=-Wall -fno-strict-aliasing -Wno-deprecated -Wno-sign-compare -I/usr/local/include 
+CXXFLAGS=-Wall -fno-strict-aliasing -Wno-deprecated -Wno-sign-compare -I/usr/local/include
 OPT=-O2
 
 # for 64 bits on windows
@@ -38,7 +38,7 @@ INCLUDES=-I "../cc-lib"
 
 # MINGW_ANSI_STDIO suppresses warnings about %lld by using ANSI printf
 # (maybe its own internal implementation). LGTM.
-CPPFLAGS= $(DEBUGGING) -D__USE_MINGW_ANSI_STDIO=1 $(CCSDL) -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(INCLUDES) $(PROFILE) $(FLTO) --std=c++0x
+CPPFLAGS= $(DEBUGGING) -D__USE_MINGW_ANSI_STDIO=1 $(CCSDL) -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++0x
 
 CCLIB_OBJECTS=../cc-lib/util.o ../cc-lib/arcfour.o ../cc-lib/base/stringprintf.o ../cc-lib/stb_image.o
 
@@ -55,7 +55,7 @@ LFLAGS=$(LINKSDL)  -m64 -Wl,--subsystem,console -lz $(OPT) $(FLTO) $(PROFILE) -s
 # -Wl,--subsystem,console
 # -static -fwhole-program
 
-animate.exe : $(OBJECTS) animate.o 
+animate.exe : $(OBJECTS) animate.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 clean :

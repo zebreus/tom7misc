@@ -42,7 +42,7 @@ CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 
 UTIL_OBJECTS=../../cc-lib/util.o ../../cc-lib/arcfour.o ../../cc-lib/base/stringprintf.o ../../cc-lib/base/logging.o ../../cc-lib/stb_image.o ../../cc-lib/stb_image_write.o ../../cc-lib/stb_truetype.o ../../cc-lib/color-util.o ../../cc-lib/image.o
 
-CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++14
+CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++14
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -53,7 +53,7 @@ OBJECTS=$(UTIL_OBJECTS) network.o arith.o ../horseutil.o
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -static
 
-netjs.exe : $(OBJECTS) netjs.o 
+netjs.exe : $(OBJECTS) netjs.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

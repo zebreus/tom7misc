@@ -928,8 +928,13 @@
   ;; don't use tab characters to indent
   (setq indent-tabs-mode nil))
 
+(defun disable-electric ()
+  "Turn off electric indent mode."
+  (electric-indent-local-mode -1))
+
 (add-hook 'aaph-mode-hook 'save-without-trailing-whitespace)
 (add-hook 'aaph-mode-hook 'aaph-set-tabs)
+(add-hook 'aaph-mode-hook 'disable-electric)
 
 (add-hook 'c-mode-common-hook 'tab-preferences)
 (add-hook 'c-mode-common-hook 'reset-keys)
