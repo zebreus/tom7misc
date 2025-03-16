@@ -37,13 +37,13 @@ UTIL_OBJECTS=../../cc-lib/util.o ../../cc-lib/arcfour.o ../../cc-lib/base/string
 CHESS_OBJECTS=../pgn.o ../chess.o ../stockfish.o ../subprocess.o ../player-util.o ../player.o ../pack.o ../packedgame.o ../common.o ../almanac-player.o ../blind-player.o ../blind/unblinder.o ../blind/unblinder-mk0.o ../chessmaster.o ../headless-graphics.o ../numeric-player.o ../letter-player.o ../stockfish-player.o ../fate-player.o ../all-fate-data.o ../../grad/network.o ../grad-player.o
 
 # bad command line 2022
-# x86_64-w64-mingw32-g++ -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -ISDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++17 -DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 -g -O2 -D__MINGW32__ -DHAVE_ALLOCA -Ic:/code/SDL/include    -I / -I /re2 --std=c++20  -c -o ../../cc-lib/util.o ../../cc-lib/util.cc
+# x86_64-w64-mingw32-g++ -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -ISDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++17 -DPSS_STYLE=1 -m64 -g -O2 -D__MINGW32__ -DHAVE_ALLOCA -Ic:/code/SDL/include    -I / -I /re2 --std=c++20  -c -o ../../cc-lib/util.o ../../cc-lib/util.cc
 
 # good 2022
-# x86_64-w64-mingw32-g++ -DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 -O3 -D__MINGW32__ -DHAVE_ALLOCA -Ic:/code/SDL/include    -I ../../cc-lib/ -I ../../cc-lib/re2 --std=c++20 -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Ic:/code/SDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++20 -c viewping.cc -o viewping.o
+# x86_64-w64-mingw32-g++ -DPSS_STYLE=1 -m64 -O3 -D__MINGW32__ -DHAVE_ALLOCA -Ic:/code/SDL/include    -I ../../cc-lib/ -I ../../cc-lib/re2 --std=c++20 -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Ic:/code/SDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++20 -c viewping.cc -o viewping.o
 
 # old
-CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO) -I ../../cc-lib/ --std=c++20
+CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO) -I ../../cc-lib/ --std=c++20
 
 %.o : %.cc *.h makefile
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@

@@ -29,7 +29,7 @@ CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.
 CXXFLAGS=$(ASAN) $(OPT) $(GMP_CFLAGS) $(SDLINCLUDES) -march=native -Wall -Wno-psabi -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CODEC) -I$(SQLITE) --std=c++23
 LFLAGS=$(ASAN) $(GMP_LFLAGS) -flto -lz
 
-# CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ --std=c++11
+# CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ --std=c++11
 
 %.o : %.cc clutil.h threadutil.h randutil.h constants.h makefile redi.pb.h
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@

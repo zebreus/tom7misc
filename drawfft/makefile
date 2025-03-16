@@ -22,7 +22,7 @@ CXXFLAGS=-Wall -march=native -Wno-format -Wno-unused-function -Wno-deprecated -W
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-gcc
 
-CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -march=native -m64 $(OPT) -DWIN32 -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO) -I ../cc-lib/ --std=c++20
+CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -march=native -m64 $(OPT) -DWIN32 -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO) -I ../cc-lib/ --std=c++20
 
 SDLARCH=x64
 SDLUTILOBJECTS=$(CCLIB)/sdl/sdlutil.o $(CCLIB)/sdl/font.o $(CCLIB)/sdl/cursor.o

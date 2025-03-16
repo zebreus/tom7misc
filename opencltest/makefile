@@ -27,8 +27,8 @@ CLLIBS=-L ${AMDSDK}/lib/${AMD_ARCH}
 UTILOBJECTS=../cc-lib/util.o ../cc-lib/arcfour.o ../cc-lib/base/stringprintf.o
 
 #  -DNOUNZIP
-CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++0x
-#  CPPFLAGS=-DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 -O -DHAVE_ALLOCA $(PROFILE) -g
+CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++0x
+#  CPPFLAGS=-DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 -O -DHAVE_ALLOCA $(PROFILE) -g
 
 OBJECTS=codebench.o ${UTILOBJECTS}
 

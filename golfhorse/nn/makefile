@@ -42,7 +42,7 @@ CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 
 UTIL_OBJECTS=../../cc-lib/util.o ../../cc-lib/arcfour.o ../../cc-lib/base/stringprintf.o ../../cc-lib/base/logging.o ../../cc-lib/stb_image.o ../../cc-lib/stb_image_write.o ../../cc-lib/stb_truetype.o ../../cc-lib/color-util.o ../../cc-lib/image.o
 
-CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++14
+CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++14
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@

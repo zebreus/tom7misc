@@ -25,7 +25,7 @@ endif
 UTILOBJECTS=util.o arcfour.o stringprintf.o logging.o textsvg.o color-util.o stb_image_write.o stb_image.o
 
 #  -D__MINGW32__
-CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++20
+CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 $(OPT) -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++20
 
 ALLDEPS=makefile ../cc-lib/interval-tree.h ../cc-lib/interval-tree-json.h
 
