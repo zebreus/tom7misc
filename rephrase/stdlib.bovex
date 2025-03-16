@@ -51,9 +51,17 @@ fun float-compare (a, b) =
        then EQUAL
        else GREATER
 
+val float-inf = 1.0 /. 0.0
 fun float-max (a, b) = if a <. b then b else a
 fun float-min (a, b) = if a <. b then a else b
 fun float-abs a = if a <. 0.0 then 0.0 -. a else a
+fun float-is-nan a = not (a ==. a)
+
+fun float-is-finite a =
+  not (float-is-nan a) andalso
+  (not (a ==. float-inf) andalso
+   not (a ==. (0.0 -. float-inf)))
+
 
 fun string-compare (a, b) =
   if string-less (a, b)
@@ -785,3 +793,4 @@ fun random () : float =
   in
     n / 0xFFFFFFFF
   end
+

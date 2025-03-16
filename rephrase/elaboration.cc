@@ -1338,8 +1338,17 @@ const il::Exp *Elaboration::ElabLayout(
 
   case el::LayoutType::EXP: {
     const auto &[ee, tt] = Elab(G, lay->exp);
-    Unification::Unify([](){ return "exp embedded in layout"; },
-                       tt, pool->LayoutType());
+    Unification::Unify(
+        [this, lay]() -> std::string {
+          size_t pos = ExpNearbyPos(lay->exp);
+          std::string loc = ErrorAtPos(pos);
+          return StringPrintf("%s\n"
+                              "Elaborating exp embedded in layout.\n"
+                              "Expression: %s\n",
+                              loc.c_str(),
+                              ShortColorExpString(lay->exp).c_str());
+        },
+        tt, pool->LayoutType());
     return ee;
   }
   }

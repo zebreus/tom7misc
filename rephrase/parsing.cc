@@ -750,14 +750,23 @@ const Exp *Parsing::Parse(AstPool *pool,
     };
 
   const auto IfExpr = [&](const auto &Expr) {
-      return ((IsToken<IF>() >> Expr) &&
-              (IsToken<THEN>() >> Expr) &&
-              (IsToken<ELSE>() >> Expr))
+      return
+        (((IsToken<IF>() >> Expr) &&
+         (IsToken<THEN>() >> Expr) &&
+         (IsToken<ELSE>() >> Expr))
         >[&](const auto &p) {
             const auto &[pp, f] = p;
             const auto &[cond, t] = pp;
             return pool->If(cond, t, f);
-          };
+          }) ||
+
+        (Mark(IsToken<IF>()) >[&](const auto &err) -> const Exp * {
+            const auto &[_, start, length] = err;
+            LOG(FATAL) << ErrorAtIndex(start, length) <<
+              "Expected IF EXP THEN EXP ELSE EXP after seeing "
+              "IF. At: " << start << " for " << length;
+            return nullptr;
+          });
     };
 
   const auto FnExpr = [&](const auto &Expr) {

@@ -82,6 +82,7 @@ Initial::Initial(AstPool *pool) {
 
     {"int-to-string", Primop::INT_TO_STRING},
     {"round", Primop::FLOAT_ROUND},
+    {"trunc", Primop::FLOAT_TRUNC},
 
     {"cos", Primop::COS},
     {"sin", Primop::SIN},

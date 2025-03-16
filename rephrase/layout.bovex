@@ -1039,8 +1039,9 @@ fun monospace-block lay =
 fun section lay = span {(Span) font-bold = true, font-size = 15.0 }
   [[lay][hfill()][break()]]
 
-fun subsection lay = span {(Span) font-bold = true, font-size = 13.5 }
+fun subsection lay = span {(Span) font-bold = true, font-size = 14.0 }
   [[lay][hfill()][break()]]
+
 
 fun paragraph lay =
   span {(Span) font-bold = true} [[lay].] ^^
@@ -1053,7 +1054,7 @@ fun paragraph lay =
    do is add more metadata to flowing text (margins, etc.) so
    that the paragraph layout logic can handle it. *)
 fun ul laylist =
-  break() ^^
+  hfill() ^^ break() ^^
   layout-concat
   (list-map (fn lay =>
              span {(Span) font-bold = true} [•] ^^

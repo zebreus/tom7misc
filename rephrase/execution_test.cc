@@ -578,6 +578,18 @@ static void FloatTests() {
       RunToString("print (int-to-string (round 32768.4))"),
       "32768");
 
+  CHECK_EQ(
+      RunToString("print (int-to-string (round 32768.9))"),
+      "32769");
+
+  CHECK_EQ(
+      RunToString("print (int-to-string (trunc 32768.1))"),
+      "32768");
+
+  CHECK_EQ(
+      RunToString("print (int-to-string (trunc 32768.9))"),
+      "32768");
+
   // Regression at r5766 where irreducible 2 *. x was "simplified" to -2
   CHECK_EQ(
       RunToString(R"(

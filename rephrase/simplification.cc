@@ -622,6 +622,19 @@ struct PeepholePass : public il::Pass<> {
         }
         break;
 
+      case Primop::FLOAT_TRUNC:
+        if (ees[0]->type == ExpType::FLOAT) {
+          const double d = ees[0]->Float();
+          // We can also support values outside this range, by
+          // just making sure we have the same behavior as execution.
+          // But currently we are a bit sloppy in execution, too.
+          if (d > -1e52 && d < 1e52) {
+            Simplified("float-trunc primop");
+            return pool->Int(std::llround(std::trunc(d)));
+          }
+        }
+        break;
+
       case Primop::COS:
         if (ees[0]->type == ExpType::FLOAT) {
           const double d = ees[0]->Float();

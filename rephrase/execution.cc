@@ -1024,6 +1024,11 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
     return Big(BigInt(std::llround(d)), state);
   }
 
+  case Primop::FLOAT_TRUNC: {
+    const double d = GetFloat("float-trunc");
+    return Big(BigInt(std::llround(std::trunc(d))), state);
+  }
+
   case Primop::COS: {
     const double d = GetFloat("cos");
     return Float(cos(d), state);

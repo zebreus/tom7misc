@@ -242,7 +242,7 @@ fun cite (c : bibsource) : layout =
     val n = add-citation c
   in
     (* XXX conveniently, changes in font size are top-aligned rather than
-       baseline-aligned like you'd expect. So for now this does create
+       baseline-aligned like you might expect. So for now this does create
        a superscript. *)
     span {(Span) font-size = 8.0,
           (* Don't rephrase the text in these. *)

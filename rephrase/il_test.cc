@@ -97,7 +97,7 @@ static void TestCompare() {
             pool.RecordType(
                 {{"a", pool.IntType()}, {"b", pool.StringType()}}),
             pool.RecordType(
-                {{"a", pool.IntType()}, {"c", pool.StringType()}})) == EQ);
+                {{"a", pool.IntType()}, {"c", pool.StringType()}})) != EQ);
 }
 
 }  // il

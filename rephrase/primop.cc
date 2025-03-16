@@ -56,6 +56,7 @@ const char *PrimopString(Primop po) {
   case Primop::FLOAT_GREATER: return "FLOAT_GREATER";
   case Primop::FLOAT_GREATEREQ: return "FLOAT_GREATEREQ";
   case Primop::FLOAT_ROUND: return "FLOAT_ROUND";
+  case Primop::FLOAT_TRUNC: return "FLOAT_TRUNC";
 
   case Primop::COS: return "COS";
   case Primop::SIN: return "SIN";
@@ -163,6 +164,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::FLOAT_GREATER: return std::make_tuple(0, 2);
   case Primop::FLOAT_GREATEREQ: return std::make_tuple(0, 2);
   case Primop::FLOAT_ROUND: return std::make_tuple(0, 1);
+  case Primop::FLOAT_TRUNC: return std::make_tuple(0, 1);
 
   case Primop::COS: return std::make_tuple(0, 1);
   case Primop::SIN: return std::make_tuple(0, 1);
@@ -287,6 +289,7 @@ bool IsPrimopTotal(Primop p) {
   case Primop::FLOAT_GREATER: return true;
   case Primop::FLOAT_GREATEREQ: return true;
   case Primop::FLOAT_ROUND: return true;
+  case Primop::FLOAT_TRUNC: return true;
 
   case Primop::COS: return true;
   case Primop::SIN: return true;
@@ -484,6 +487,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::FLOAT_GREATER: return {{}, BinOp(Float, Float, Bool)};
   case Primop::FLOAT_GREATEREQ: return {{}, BinOp(Float, Float, Bool)};
   case Primop::FLOAT_ROUND: return {{}, pool->Arrow(Float, Int)};
+  case Primop::FLOAT_TRUNC: return {{}, pool->Arrow(Float, Int)};
 
   case Primop::COS: return {{}, pool->Arrow(Float, Float)};
   case Primop::SIN: return {{}, pool->Arrow(Float, Float)};

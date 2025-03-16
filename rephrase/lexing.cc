@@ -191,6 +191,8 @@ std::optional<std::vector<Token>> Lexing::Lex(
   // In 1e100, the "e100" part.
   #define EXPONENT_SUFFIX "(?:[Ee][-+]?[0-9]+)"
 
+  // TODO: Support hex floats too.
+
   static const RE2 float_lit(
       "(?:"
       // with optional leading digits

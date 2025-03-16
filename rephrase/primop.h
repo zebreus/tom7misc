@@ -63,6 +63,7 @@ enum class Primop {
   FLOAT_GREATER,
   FLOAT_GREATEREQ,
   FLOAT_ROUND,
+  FLOAT_TRUNC,
 
   COS,
   SIN,
