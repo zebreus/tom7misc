@@ -1364,18 +1364,20 @@
  '(woman-bold-face ((t (:foreground "#AAEEFF" :weight bold))))
  '(zmacs-region ((t (:foreground "green" :background "darkslategrey")))))
 
-;; set comment face lighter on the console; otherwise emacs chooses black!!
-(unless window-system
-  (progn
-    (csf
-     '(region ((((class color) (background dark)) (:foreground "white" :background "darkslategray")))))
-    (csf
-     '(secondary-selection ((t (:foreground "white" :background "darkslategray")))))
-    (csf
-     '(font-lock-string-face ((t (:foreground "green")))))
-    (csf
-     '(font-lock-comment-face ((t (:foreground "Grey90")))))))
+(defun after-window-setup ()
+  ;; set comment face lighter on the console; otherwise emacs chooses black!!
+  (unless window-system
+    (progn
+      (csf
+       '(region ((((class color) (background dark)) (:foreground "white" :background "darkslategray")))))
+      (csf
+       '(secondary-selection ((t (:foreground "white" :background "darkslategray")))))
+      (csf
+       '(font-lock-string-face ((t (:foreground "green")))))
+      (csf
+       '(font-lock-comment-face ((t (:foreground "Grey90"))))))))
 
+(add-hook 'after-make-frame-functions 'after-window-setup)
 
 (message "(* Eighty Megabytes and Counting Still... *)")
 
