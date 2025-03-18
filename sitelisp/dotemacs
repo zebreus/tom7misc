@@ -420,7 +420,7 @@
 
     (cond
      ;; First we check for the "toggle" behavior, if we are adjacent
-     ;; to a unicode double-quote character.
+     ;; to a unicode quote character.
 
      ;; If looking at one quote, swap for the other.
     ((and after (= after uright))
@@ -445,20 +445,26 @@
     (t
      (progn
 
-       ;; If on or before an ascii quote character, delete it;
+       ;; If on or after an ascii quote character, delete it;
        ;; the next heuristic will insert a replacement.
        (cond
         ((and after (= after ascii)) (delete-forward-char 1))
         ((and before (= before ascii)) (delete-backward-char 1)))
 
-       ;; now insert a double quote at point. If we are the beginning
-       ;; of the buffer, beginnig of line, or following a space, use
-       ;; the opening quote.
-       (cond
-        ((or (not before) (and before (or (= before ?\n) (= before ? ))))
-         (insert (string uleft)))
-        (t (insert (string uright))))
-       ))
+       ;; but since we may have modified the buffer, refresh
+       ;; what's before/after.
+       (let ((before (char-before))
+             (after (char-after)))
+
+         ;; now insert a double quote at point. If we are the beginning
+         ;; of the buffer, beginning of line, or following a space, use
+         ;; the opening quote.
+         (cond
+           ((or (not before) (and before (or (= before ?\n) (= before ? ))))
+            (insert (string uleft)))
+           (t (insert (string uright))))
+         ))
+     )
     )))
 
 
