@@ -320,7 +320,12 @@ const Exp *Parsing::Parse(AstPool *pool,
         // An atomic type that doesn't start with (.
         auto UnparenthesizedAtomicType =
           RecordType ||
-          IdType >[&](const std::string &s) { return pool->VarType(s, {}); };
+          (Mark(IdType)
+           >[&](const auto &s_pos) -> const Type * {
+            const auto &[s, token_start, token_len] = s_pos;
+            const size_t pos = BytePos(token_start);
+            return pool->VarType(s, {}, pos);
+          });
 
         auto AtomicType =
           // Use CommaType to parse parenthesized expressions.
@@ -359,9 +364,11 @@ const Exp *Parsing::Parse(AstPool *pool,
                 }
               } else {
                 // Postfix applications.
-                const Type *t = pool->VarType(vapps[0], varg);
+                const Type *t = pool->VarType(vapps[0], varg,
+                                              SourceMap::BOGUS_POS);
                 for (int i = 1; i < (int)vapps.size(); i++) {
-                  t = pool->VarType(vapps[i], std::vector<const Type *>{t});
+                  t = pool->VarType(vapps[i], std::vector<const Type *>{t},
+                                    SourceMap::BOGUS_POS);
                 }
                 return {t};
               }
@@ -400,15 +407,17 @@ const Exp *Parsing::Parse(AstPool *pool,
   //   italic: string option,
   //   bold-italic: string option }
   const auto TuplePat = [&](const auto &Pattern) {
-      return ((IsToken<LPAREN>() >>
-               Separate0(Pattern, IsToken<COMMA>()) <<
-               IsToken<RPAREN>())
-              >[&](const std::vector<const Pat *> &ps) -> const Pat * {
+      return (Mark(IsToken<LPAREN>() >>
+                   Separate0(Pattern, IsToken<COMMA>()) <<
+                   IsToken<RPAREN>())
+              >[&](const auto &pats_pos) -> const Pat * {
+                  // const std::vector<const Pat *> &ps
+                  const auto &[ps, token_start, token_len] = pats_pos;
                   if (ps.size() == 1) {
                     // Then this is just a parenthesized pattern.
                     return ps[0];
                   } else {
-                    return pool->TuplePat(ps);
+                    return pool->TuplePat(ps, BytePos(token_start));
                   }
                 });
     };
@@ -548,7 +557,7 @@ const Exp *Parsing::Parse(AstPool *pool,
                   CHECK(fixity == Fixity::Infix);
                   item.binop = [&, v](const Pat *a, const Pat *b) {
                       return pool->AppPat(v,
-                                          pool->TuplePat({a, b}));
+                                          pool->TuplePat({a, b}, pos));
                     };
                 }
                 return item;
@@ -687,8 +696,20 @@ const Exp *Parsing::Parse(AstPool *pool,
               (IsToken<LAYOUT_COMMENT>() >>
                Succeed<Token, const Exp *>(nullptr));
 
+            auto LayoutParticle =
+              (IsToken<LBRACKET>() >> Nested << IsToken<RBRACKET>()) ||
+
+              (Mark(IsToken<LBRACKET>()) >[&](const auto &err) -> const Exp * {
+                  const auto &[_, start, length] = err;
+                  LOG(FATAL) << ErrorAtIndex(start, length) <<
+                    "Expected LBRACKET exp RBRACKET after seeing LBRACKET "
+                    "inside layout.\n"
+                    "At: " << start << " for " << length;
+                  return nullptr;
+                });
+
             return (LayoutLit &&
-              *((IsToken<LBRACKET>() >> Nested << IsToken<RBRACKET>()) &&
+              *(LayoutParticle &&
                 LayoutLit))
               >[&](const auto &p) {
                   const auto &[l1, v] = p;
@@ -839,7 +860,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         return pool->Fn(
             // Not recursive
             "",
-            {{pool->TuplePat(args), pool->Var(v, byte_pos)}},
+            {{pool->TuplePat(args, byte_pos), pool->Var(v, byte_pos)}},
             byte_pos);
       };
 

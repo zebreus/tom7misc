@@ -90,6 +90,7 @@ struct Type {
   const Type *b = nullptr;
   std::vector<const Type *> children;
   std::vector<std::pair<std::string, const Type *>> str_children;
+  size_t pos = SourceMap::BOGUS_POS;
   Type(TypeType t) : type(t) {}
 };
 
@@ -181,10 +182,12 @@ struct AstPool {
 
   // Types
   const Type *VarType(const std::string &s,
-                      std::vector<const Type *> v) {
+                      std::vector<const Type *> v,
+                      size_t pos) {
     Type *ret = NewType(TypeType::VAR);
     ret->var = s;
     ret->children = std::move(v);
+    ret->pos = pos;
     return ret;
   }
 
@@ -384,8 +387,8 @@ struct AstPool {
   const Exp *Fail(const Exp *e) {
     Exp *ret = NewExp(ExpType::FAIL);
     ret->a = e;
-    return ret;
     ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    return ret;
   }
 
   // Layout
@@ -528,10 +531,10 @@ struct AstPool {
     return &wild_pat_;
   }
 
-  const Pat *TuplePat(std::vector<const Pat *> v) {
+  const Pat *TuplePat(std::vector<const Pat *> v, size_t pos) {
     Pat *ret = NewPat(PatType::TUPLE);
     ret->children = std::move(v);
-    ret->pos = SourceMap::BOGUS_POS + __LINE__;
+    ret->pos = pos;
     return ret;
   }
 

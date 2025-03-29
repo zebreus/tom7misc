@@ -20,6 +20,9 @@ datatype provide-layout = REQUIRE-LAYOUT
 
 val LAYOUT-VERBOSE = false
 
+(* For debugging, emit glyphs in some otherwise invisible places. *)
+val SHOW-CODES = true
+
 (* For expand-contract, in places where we don't want to do any
    expansion or contraction (e.g. kerning points). *)
 val EPSILON-COEFFICIENT = 0.0000000005
@@ -502,7 +505,9 @@ fun layout-to-string l =
 
 fun break () =
   box {(Box) height = 0.0, width = 0.0,
-       glue-break-penalty = -9999999.0 } [ ]
+       glue-break-penalty = -9999999.0 } (if SHOW-CODES
+                                          then [|]
+                                          else [ ])
 
 fun break-ok () =
   box {(Box) height = 0.0, width = 0.0,
@@ -514,17 +519,17 @@ fun hfill () =
        (* happily take up more space, but don't become negative *)
        glue-expand = 1000000.0,
        glue-contract = EPSILON-COEFFICIENT,
-       glue-break-penalty = 0.0 } [ ]
+       glue-break-penalty = 0.0 } (if SHOW-CODES
+                                   then [-]
+                                   else [ ])
 
 fun vspace vdim =
-  let val doc =
-    (* Break before (0 size) and after (with given height). *)
-    [[break ()]
-     [box {(Box) height = vdim, width = 0.0,
-           glue-break-penalty = -9999999.0 } [ ]]]
-  in
-    doc
-  end
+  (* Break before (0 size) and after (with given height). *)
+  [[break ()]
+   [box {(Box) height = vdim, width = 0.0,
+         glue-break-penalty = -9999999.0 }
+    (if SHOW-CODES
+     then [v] else [ ])]]
 
 (* Generates boxes and glue from text, making this into "AllBox" format. *)
 fun get-boxes (content : layout) =
@@ -904,17 +909,12 @@ fun image { img = img as (Image img-handle), width } =
     val ratio : float = pixel-width / pixel-height
     val height = width /. ratio
 
-
-    (* Would it be cleaner to put the image sticker inside the box? *)
-    val doc =
+  in
     (* Break before (0 size) and after (with given height). *)
     [[break ()]
      [box {(Box) height = height, width = width,
            img = img-handle, img-width = width, img-height = height,
            glue-break-penalty = -9999999.0 } [ ]]]
-
-  in
-    doc
   end
 
 (* Here we give the height, since the typical usage is to make it flow

@@ -69,7 +69,7 @@ struct UncurryPass : public Pass<> {
         std::vector<std::pair<const Pat *, const Exp *>> case_clauses;
         case_clauses.reserve(fd.clauses.size());
         for (const auto &[ps, e] : fd.clauses) {
-          case_clauses.emplace_back(pool->TuplePat(ps), DoExp(e));
+          case_clauses.emplace_back(pool->TuplePat(ps, pos), DoExp(e));
         }
 
         const Exp *body = pool->Case(pool->Tuple(vrec, pos),

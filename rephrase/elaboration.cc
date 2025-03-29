@@ -93,11 +93,29 @@ static bool AllowedInObject(const il::Type *t) {
 
 const il::Type *Elaboration::ElabType(const Context &G,
                                       const el::Type *el_type) {
+
+  const size_t pos = el_type->pos;
+
+  auto Error = [&](const std::string &construct) ->
+    std::function<std::string()> {
+    return std::function<std::string()>([this, construct, pos, el_type]() {
+        std::string loc = ErrorAtPos(pos);
+        return StringPrintf("%s"
+                            "ElabType: %s\n"
+                            "Type: %s\n",
+                            loc.c_str(),
+                            construct.c_str(),
+                            TypeString(el_type).c_str());
+      });
+    };
+
   switch (el_type->type) {
   case el::TypeType::VAR: {
 
     const TypeVarInfo *k = G.FindType(el_type->var);
-    CHECK(k != nullptr) << "Unbound (type) variable: " << el_type->var;
+    CHECK(k != nullptr) << "Unbound (type) variable: "
+                        << el_type->var
+                        << "\nIn:\n" << Error("var")();
 
     const il::Type *t = k->type;
     if (VERBOSE) {
@@ -110,7 +128,7 @@ const il::Type *Elaboration::ElabType(const Context &G,
       "Type constructor '" << el_type->var << "' applied to the "
       "wrong number of arguments (want " << k->tyvars.size() <<
       "; got " << el_type->children.size() << ").\nIn:\n" <<
-      el::TypeString(el_type);
+      Error("var")();
 
     for (int i = 0; i < (int)k->tyvars.size(); i++) {
       const std::string &v = k->tyvars[i];
@@ -757,8 +775,9 @@ Elaboration::ElabDec(
         "declaration of object " << object.name;
       const il::Type *t = ElabType(G, el_type);
       CHECK(AllowedInObject(t)) << "Only base types are allowed "
-        "in object declarations. Declaring:\n  " << object.name <<
-        "Saw:\n  " << lab << " : " << TypeString(t);
+        "in object declarations.\n"
+        "Declaring: " ANSI_PURPLE << object.name << ANSI_RESET "\n"
+        "Saw:       " ANSI_BLUE << lab << ANSI_RESET " : " << TypeString(t);
       ovi.fields[lab] = t;
     }
 

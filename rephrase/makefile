@@ -14,6 +14,11 @@ all : default monospace.exe monofile.exe test-rephrase.exe
 # GPU acceleration
 LLAMA_CLBLAST = true
 
+# Optional, but if you have gmp, it is much faster.
+GMP_LFLAGS=-lgmp
+GMP_CFLAGS=-DBIG_USE_GMP
+
+
 # It's crashing or doing something weird? You're always
 # being too clever with std::move! Or you incremented
 # the wrong loop counter!
@@ -121,9 +126,9 @@ endif
 # Compile flags
 #
 
-CFLAGS   = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7) -std=c11 -fPIC $(PLATFORM_CFLAGS)
-CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7) -std=c++23 -fPIC $(PLATFORM_CFLAGS)
-LDFLAGS  = $(OPTFLAGS) -m64 $(PLATFORM_LDFLAGS)
+CFLAGS   = $(OPTFLAGS) -I. -I$(GMP_CFLAGS) I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7) -std=c11 -fPIC $(PLATFORM_CFLAGS)
+CXXFLAGS = $(OPTFLAGS) -I. -I$(GMP_CFLAGS) -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7) -std=c++23 -fPIC $(PLATFORM_CFLAGS)
+LDFLAGS  = $(OPTFLAGS) -m64 $(GMP_LFLAGS) $(PLATFORM_LDFLAGS)
 
 ifndef LLAMA_DEBUG
 	CFLAGS   += -DNDEBUG

@@ -21,7 +21,7 @@ struct Pass {
   virtual const Type *DoType(const Type *t, Args... args) {
     switch (t->type) {
     case TypeType::VAR:
-      return DoVarType(t->var, t->children, args...);
+      return DoVarType(t->var, t->children, t->pos, args...);
     case TypeType::ARROW:
       return DoArrow(t->a, t->b, args...);
     case TypeType::PRODUCT:
@@ -121,8 +121,9 @@ struct Pass {
   // Types.
   virtual const Type *DoVarType(const std::string &s,
                                 const std::vector<const Type *> &v,
+                                size_t pos,
                                 Args... args) {
-    return pool->VarType(s, DoTypes(v, args...));
+    return pool->VarType(s, DoTypes(v, args...), pos);
   }
 
   virtual const Type *DoProduct(const std::vector<const Type *> &v,
@@ -392,7 +393,7 @@ struct Pass {
     for (const Pat *p : v) {
       ps.push_back(DoPat(p, args...));
     }
-    return pool->TuplePat(std::move(ps));
+    return pool->TuplePat(std::move(ps), pos);
   }
 
   virtual const Pat *DoRecordPat(

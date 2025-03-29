@@ -163,13 +163,6 @@ fun list-mapi f l =
 
 
 
-fun list-map-partial f nil = nil
-  | list-map-partial f (h :: t) =
-    case f h of
-        NONE => list-map-partial f t
-      | SOME hh => hh :: list-map-partial f t
-
-
 (* PERF should be optimized to do less consing. (split mainly) *)
 fun list-sort cmp l =
   let
@@ -243,6 +236,12 @@ fun list-map-partial f nil = nil
   case f h of
     SOME x => x :: list-map-partial f t
   | NONE => list-map-partial f t
+
+fun list-find-partial f nil = NONE
+  | list-find-partial f (h :: t) =
+  case f h of
+    NONE => list-find-partial f t
+  | s => s
 
 fun list-exists _ nil = false
   | list-exists f (h :: t) = if f h then true
@@ -347,6 +346,22 @@ fun string-explode str : int list =
       | _ => nil
   in
     r str
+  end
+
+(* Returns the nth unicode codepoint. *)
+fun string-sub (s : string, pos : int) : int =
+  let
+    (* PERF: Should build this in if we're going to use it
+       regularly. It still needs to scan the string, but
+       does not need to do copying. *)
+    val c = substr-rest (s, pos)
+
+    (* Returns empty object if string is empty. *)
+    object ISFC of { cp : int, len : int }
+  in
+    case internal-string-first-codepoint s of
+      {(ISFC) cp, len} => cp
+    | _ => fail "string-sub out of bounds"
   end
 
 (* Split s1c1s2c2...cnsn into s1 :: s2 :: ... :: sn :: nil

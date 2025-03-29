@@ -59,13 +59,17 @@ object Article of { author : string, title : string,
                     url : string,
                     editor : string,
                     (* If in proceedings, the ISBN of that book. *)
-                    isbn : string }
+                    isbn : string,
+                    (* Without http:// or domain prefix. *)
+                    doi : string
+                    }
 
 object Book of { author : string, title : string,
                  year : int, month : int, day : int,
                  page-start : int, page-end : int,
                  isbn : string, pages : int,
                  publisher : string,
+                 location : string,
                  url : string }
 
 object Misc of { note : string,
@@ -307,12 +311,19 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
       | pages {(Pages) pages } = [[layout (int-to-string pages)] pages]
       | pages _ = []
 
+    (* Format as "Pittsburgh, 1942." *)
     (* Ignoring day for now. *)
-    object Date of { year : int, month : int, day : int }
+    object Date of { location : string, year : int, month : int, day : int }
     fun date {(Date) year, month } =
-      [[layout (monthname month)] [layout (int-to-string year)]]
-      | date {(Date) year } = layout (int-to-string year)
-      | date _ = []
+      SOME [[layout (monthname month)] [layout (int-to-string year)]]
+      | date {(Date) year } = SOME (layout (int-to-string year))
+      | date _ = NONE
+    fun location-date fields =
+      case (fields, date fields) of
+        ({(Date) location}, NONE) => layout location
+      | ({(Date) location}, SOME d) => [[layout location], [d]]
+      | (_, SOME d) => d
+      | _ => []
 
     (* Don't rephrase the cross-references. *)
     val num = span {(Span) no-rephrase = true}
@@ -346,7 +357,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
         in
           joindots (bib-url url ::
                     layout authors ::
-                    title :: date fields ::
+                    title :: location-date fields ::
                     nil)
         end
 
@@ -372,7 +383,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
 
           val r =
             joindots (layout authors :: ["[layout title]"] ::
-                      e :: jour :: date fields ::
+                      e :: jour :: location-date fields ::
                       pp :: nil)
 
         in
@@ -389,7 +400,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
             | _ => []
           val r =
             joindots (layout authors :: ["[layout title]"] ::
-                      j :: date fields ::
+                      j :: location-date fields ::
                       pp :: nil)
 
         in
