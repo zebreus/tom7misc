@@ -188,6 +188,8 @@ static void ExecTests() {
     end
    )") == "120");
 
+  CHECK_EQ(RunToString("print (float-to-string 3.125)"), "3.125");
+
   CHECK(RunToString(R"(
     let
       fun o(f, g) = fn x => f(g(x))
@@ -824,7 +826,6 @@ static void TestVectors() {
     let val v = vec-empty()
     in print (int-to-string (vec-size v))
     end)"), "0");
-
 }
 
 static void TestOps() {

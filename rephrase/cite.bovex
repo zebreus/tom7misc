@@ -22,7 +22,7 @@ val CITE-VERBOSE = false
 
 (* Basic source types. Some bibliography types are converted
    into one of these (e.g. PhD thesis). *)
-datatype bibsourcetype = Website | Article | Book | Misc
+datatype bibsourcetype = Website | Article | Book | Video | Misc
 datatype author-name =
   AuthorCommon of { first: string, middle: string option, last: string,
                     suffix: string option }
@@ -75,6 +75,16 @@ object Book of { author : string, title : string,
 object Misc of { note : string,
                  url : string }
 
+object Video of { title : string,
+                  author : string,
+                  year : int, month : int, day : int,
+                  duration-hour : int,
+                  duration-min : int,
+                  duration-sec : int,
+                  youtube-id : string,
+                  url : string,
+                  site : string }
+
 (* Derived forms. *)
 object PhdThesis of { author : string, title : string,
                       year : int, month : int, day : int,
@@ -96,6 +106,9 @@ fun bibsourcetype-compare (Website, Website) = EQUAL
   | bibsourcetype-compare (Book, Book) = EQUAL
   | bibsourcetype-compare (Book, _) = LESS
   | bibsourcetype-compare (_, Book) = GREATER
+  | bibsourcetype-compare (Video, Video) = EQUAL
+  | bibsourcetype-compare (Video, _) = LESS
+  | bibsourcetype-compare (_, Video) = GREATER
   | bibsourcetype-compare (Misc, Misc) = EQUAL
   | bibsourcetype-compare _ = fail "impossible"
 
@@ -185,6 +198,20 @@ fun bib-article (obj as {(Article) author}) =
              sort-key = author-sort-key authors key-rest, fields = obj }
   end
   | bib-article _ = fail "bib-article needs at least an author"
+
+fun bib-video (obj as {(Video) author}) =
+  let
+    val authors = bib-parse-authors author
+    val key-rest =
+      case obj of
+        {(Article) title} => title
+      | {(Article) year} => int-to-string year
+      | _ => ""
+  in
+    Source { t = Video, authors = authors,
+             sort-key = author-sort-key authors key-rest, fields = obj }
+  end
+  | bib-video _ = fail "bib-video needs at least an author"
 
 fun bib-book (obj as {(Article) author}) =
   let
@@ -303,6 +330,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
         layout-list-join [/[break-ok ()]] parts
       end
 
+    (* TODO: Get isbn, reformat dashes *)
 
     object Pages of { page-start : int, page-end : int, pages : int }
     fun pages {(Pages) page-start, page-end} =
@@ -310,6 +338,9 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
                                                  (int-to-string page-end))]]
       | pages {(Pages) pages } = [[layout (int-to-string pages)] pages]
       | pages _ = []
+
+    (* XXX fields for videos. At least H:M:S.
+       if youtube-id, construct URL that way (and set site) *)
 
     (* Format as "Pittsburgh, 1942." *)
     (* Ignoring day for now. *)
@@ -352,7 +383,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
         let
           val title =
             case fields of
-              {(Article) title} => ["[layout title]"]
+              {(Article) title} => [“[layout title]”]
             | _ => []
         in
           joindots (bib-url url ::
@@ -382,7 +413,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
             | _ => []
 
           val r =
-            joindots (layout authors :: ["[layout title]"] ::
+            joindots (layout authors :: [“[layout title]”] ::
                       e :: jour :: location-date fields ::
                       pp :: nil)
 
@@ -399,7 +430,7 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
               {(Article) publisher} => it(layout publisher)
             | _ => []
           val r =
-            joindots (layout authors :: ["[layout title]"] ::
+            joindots (layout authors :: [“[layout title]”] ::
                       j :: location-date fields ::
                       pp :: nil)
 
@@ -408,6 +439,57 @@ fun cite-render-one (Source { t, authors, sort-key = _, fields }, n) =
           CITE-VERBOSE andthen debug-print-doc (get-boxes r);
           r
         end
+
+    | (Video, {(Video) title}) =>
+        let
+          val j =
+            case fields of
+              {(Video) site} => it (layout site)
+            | {(Video) youtube-id} => it [YouTube]
+            | _ => []
+
+          val h =
+            case fields of
+              {(Video) duration-hour } =>
+                SOME (int-to-string duration-hour ^ "h")
+            | _ => NONE
+
+          val m =
+            case fields of
+              {(Video) duration-min } =>
+                SOME (int-to-string duration-min ^ "m")
+            | _ => NONE
+
+          val s =
+            case fields of
+              {(Video) duration-sec } =>
+                SOME (int-to-string duration-sec ^ "s")
+            | _ => NONE
+
+          val hms =
+            (case (h, m, s) of
+               (NONE, NONE, NONE) => []
+             | (NONE, NONE, SOME s) => layout s
+             | (NONE, SOME m, NONE) => layout m
+             | (NONE, SOME m, SOME s) => layout m ^^ layout s
+             | (SOME h, NONE, NONE) => layout h
+             | (SOME h, NONE, SOME s) => [[layout h]00m[layout s]]
+             | (SOME h, SOME m, SOME s) => [[layout h][layout m][layout s]]
+             | _ => fail "impossible")
+
+          val url =
+            (case fields of
+               {(Video) url} => bib-url url
+             | {(Video) youtube-id} =>
+                 bib-url ("http://youtu.be/" ^ youtube-id)
+             | _ => [])
+        in
+          joindots (layout authors :: [“[layout title]”] ::
+                      j :: location-date fields ::
+                      hms :: url :: nil)
+
+        end
+
     | (Misc, {(Misc) note }) =>
         let
           val r = joindots (layout note :: nil)

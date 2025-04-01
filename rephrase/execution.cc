@@ -2,6 +2,7 @@
 #include "execution.h"
 
 #include <algorithm>
+#include <format>
 #include <string_view>
 #include <unordered_set>
 #include <cmath>
@@ -1042,6 +1043,11 @@ Value *Execution::DoUnop(Primop primop, Value *a, State *state) {
   case Primop::INT_TO_STRING: {
     const BigInt &bi = GetInt("int_to_string");
     return String(bi.ToString(), state);
+  }
+
+  case Primop::FLOAT_TO_STRING: {
+    const double d = GetFloat("float_to_string");
+    return String(std::format("{:.17g}", d), state);
   }
 
   case Primop::INT_TO_FLOAT: {

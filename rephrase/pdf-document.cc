@@ -279,12 +279,14 @@ void PDFPage::DrawImage(double x, double y,
   CHECK(pdf_page != nullptr);
 
   // TODO: Support actual alpha channel.
-  // Since we are compositing onto a white page in PDF, we
+  // Since we are compositing onto a white page in PDF, we explicitly
+  // blend against white when converting to RGB, at least.
   ImageRGB rgb(image.Width(), image.Height());
   rgb.Clear32(0xFFFFFFFF);
   rgb.BlendImage(0, 0, image);
 
-  printf("Add image at %.11g %.11g.\n", x, y);
+  printf("Add image at %.11g %.11g dims %.11gx%.11g\n",
+         x, y, width, height);
   CHECK(pdf->AddImageRGB(
             // Images are also measured from their baselines.
             x, FlipPageCoordinate(y + height),

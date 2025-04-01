@@ -86,6 +86,7 @@ enum class Primop {
   STRING_UPPERCASE,
 
   INT_TO_STRING,
+  FLOAT_TO_STRING,
 
   // Lots of word operations make sense,
   // but we mainly use this for internally

@@ -1,3 +1,10 @@
+Known bugs:
+
+ - FIXME_TODO.bovex
+ - you can have the same field twice in an object literal; this
+   should not be allowed.
+
+
 Make document look better:
  - actual boxes-and-glue (vertical)
  - bibliography in order

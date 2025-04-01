@@ -505,6 +505,9 @@ fun layout-to-string l =
 
 fun break () =
   box {(Box) height = 0.0, width = 0.0,
+       glue-ideal = 0.0,
+       glue-expand = 1000000.0,
+       glue-contract = EPSILON-COEFFICIENT,
        glue-break-penalty = -9999999.0 } (if SHOW-CODES
                                           then [|]
                                           else [ ])
@@ -522,6 +525,14 @@ fun hfill () =
        glue-break-penalty = 0.0 } (if SHOW-CODES
                                    then [-]
                                    else [ ])
+
+(* Unbreakable horizontal space *)
+fun rigid-hspace dim =
+  box {(Box) height = 0.0, width = 0.0,
+       glue-ideal = dim,
+       glue-contract = 1000000.0,
+       glue-expand = 1000000.0,
+       glue-break-penalty = 9999999.0 } []
 
 fun vspace vdim =
   (* Break before (0 size) and after (with given height). *)
@@ -648,7 +659,9 @@ fun pack-boxes-vert (height : float, content : layout) : (float * layout list) =
  attributes onto the paragraph pieces, and join the
  first one and last one to surrounding paragraphs. *)
 
-fun get-paragraphs (ls : layout list) : layout list =
+datatype paragraph-item = ParaChunk of layout | ParaBreak of float
+
+fun get-paragraphs (ls : layout list) : paragraph-item list =
   let
     do LAYOUT-VERBOSE
       andthen
@@ -662,7 +675,10 @@ fun get-paragraphs (ls : layout list) : layout list =
         print "-----------------\n";
       end
 
-    val rev-paragraphs : layout list ref = ref nil
+    (* XXX This should depend on the font *)
+    val PARAGRAPH-VSPACE-BOTTOM = 12.0
+
+    val rev-paragraphs : paragraph-item list ref = ref nil
 
     (* Current paragraph being accumulated. *)
     val acc = ref []
@@ -672,9 +688,17 @@ fun get-paragraphs (ls : layout list) : layout list =
       let in
         (if layout-empty (!acc)
          then ()
-         else rev-paragraphs := !acc :: !rev-paragraphs);
+         else rev-paragraphs := ParaChunk (!acc) :: !rev-paragraphs);
         acc := []
       end
+
+    (* Add a break, but don't keep accumulating them if we already
+       had a break. *)
+    fun add-break amount =
+      case !rev-paragraphs of
+        ParaBreak old :: t =>
+          rev-paragraphs := ParaBreak (float-max (old, amount)) :: t
+      | _ => rev-paragraphs := ParaBreak amount :: !rev-paragraphs
 
     (* Normalize whitespace. This can probably be improved.
        We drop leading space from paragraphs (they are usually
@@ -699,11 +723,11 @@ fun get-paragraphs (ls : layout list) : layout list =
           let in
             append (layout (normalize (after-p, para)));
             next-paragraph ();
+            (* We saw \n\n, so this is a paragraph break. *)
+            add-break PARAGRAPH-VSPACE-BOTTOM;
             do-one-text (true, rest)
           end
       end
-
-    val merge-span = span
 
     fun do-one lay =
       case layoutcase lay of
@@ -711,25 +735,34 @@ fun get-paragraphs (ls : layout list) : layout list =
       | Node (BOX, _, _) => append lay
       | Node (SPAN, attrs, children) =>
           let
-            val paras = get-paragraphs children
+            val paras : paragraph-item list = get-paragraphs children
             (* Apply the same attributes to every paragraph. *)
-            val spans = list-map (fn ch => merge-span attrs ch) paras
+            fun merge-span (ParaChunk c) = ParaChunk (span attrs c)
+              | merge-span (ParaBreak b) = ParaBreak b
+            val spans = list-map merge-span paras
           in
             case spans of
               nil => append (span attrs [])
-            | p :: nil => append p
-            | p :: ps =>
+            | ParaChunk c :: nil => append c
+            | ParaChunk c :: ps =>
                 let
                   fun rec nil = ()
-                    | rec (p :: ps) =
+                    | rec (ParaChunk c :: ps) =
                     let in
                       next-paragraph ();
-                      append p;
+                      append c;
                       rec ps
                     end
+                    | rec (ParaBreak b :: ps) =
+                    let in
+                      next-paragraph ();
+                      add-break b;
+                      rec ps
+                    end
+
                 in
                   (* append the first one to the current paragraph. *)
-                  append p;
+                  append c;
                   (* now each one starts a new paragraph. but note
                      that we don't flush the last one. *)
                   rec ps
@@ -743,6 +776,9 @@ fun get-paragraphs (ls : layout list) : layout list =
               debug-print-doc lay;
               fail "this code doesn't preserve attrs on a group"
             end
+      | Node (STICKER, _, _) =>
+            fail ("not expecting to see stickers when getting " ^
+                  "paragraphs. You should put them inside a box.")
 
   in
     list-app do-one ls;
@@ -1354,17 +1390,19 @@ fun pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
 (* This returns multiple paragraphs because processing a paragraph
    may emit floaters. *)
 fun process-paragraph (COLUMN-WIDTH : float,
-                       PARAGRAPH-VSPACE-BOTTOM : float,
+                       (* PARAGRAPH-VSPACE-BOTTOM : float, *)
                        p : layout) : paragraph list =
   let
     val VERBOSE = false
     val lines = pack-one-paragraph COLUMN-WIDTH p
 
+
     (* Put a line at the end to space out the paragraph. We
        should do this with glue. *)
+      (*
     val lines = list-rcons
-      (lines, box {(Box) height = PARAGRAPH-VSPACE-BOTTOM} [])
-
+    (lines, box {(Box) height = PARAGRAPH-VSPACE-BOTTOM} [])
+      *)
 
     do VERBOSE andthen
       let in
@@ -1428,16 +1466,20 @@ fun main-text lay =
       (BODY-WIDTH -. (int-to-float (COLUMNS - 1) *. GUTTER))
       /. (int-to-float COLUMNS)
 
-    (* XXX This should depend on the font *)
-    val PARAGRAPH-VSPACE-BOTTOM = 12.0
+    fun process (ParaChunk chunk) =
+      process-paragraph (COLUMN-WIDTH, chunk)
+      | process (ParaBreak b) =
+      (Paragraph { lines =
+                   (box {(Box) height = b,
+                         width = COLUMN-WIDTH} []) :: nil }) :: nil
 
-    fun process p =
-      process-paragraph (COLUMN-WIDTH, PARAGRAPH-VSPACE-BOTTOM, p)
-
-    (* Parse layout to find paragraph breaks. Handle whitespace.
+    (* Parse layout to find paragraph breaks. Handle whitespace,
+       adding optional space after each paragraph.
        Normalize spans that contain paragraphs onto the constituent
        paragraphs. *)
-    val paras : layout list = get-paragraphs (lay :: nil)
+    (* datatype paragraph-item = ParaChunk of layout | ParaBreak of float *)
+
+    val paras : paragraph-item list = get-paragraphs (lay :: nil)
     (* Pull out floats.
        Do rephrasing if needed.
        Optimize line breaks for each paragraph.

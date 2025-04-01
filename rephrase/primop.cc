@@ -80,6 +80,7 @@ const char *PrimopString(Primop po) {
   case Primop::STRING_UPPERCASE: return "STRING_UPPERCASE";
 
   case Primop::INT_TO_STRING: return "INT_TO_STRING";
+  case Primop::FLOAT_TO_STRING: return "FLOAT_TO_STRING";
   case Primop::STRING_TO_LAYOUT: return "STRING_TO_LAYOUT";
 
   case Primop::WORD_EQ: return "WORD_EQ";
@@ -176,6 +177,7 @@ std::tuple<int, int> PrimopArity(Primop po) {
   case Primop::SET_PAGE_INFO: return std::make_tuple(0, 2);
 
   case Primop::INT_TO_STRING: return std::make_tuple(0, 1);
+  case Primop::FLOAT_TO_STRING: return std::make_tuple(0, 1);
   case Primop::STRING_TO_LAYOUT: return std::make_tuple(0, 1);
   case Primop::STRING_CONCAT: return std::make_tuple(0, 2);
   case Primop::STRING_EMPTY: return std::make_tuple(0, 1);
@@ -295,6 +297,8 @@ bool IsPrimopTotal(Primop p) {
   case Primop::SIN: return true;
 
   case Primop::INT_TO_STRING: return true;
+  case Primop::FLOAT_TO_STRING: return true;
+
   case Primop::STRING_TO_LAYOUT: return true;
   case Primop::STRING_CONCAT: return true;
   case Primop::STRING_EMPTY: return true;
@@ -513,6 +517,7 @@ PrimopType(il::AstPool *pool, Primop p) {
   case Primop::STRING_LOWERCASE: return {{}, pool->Arrow(String, String)};
   case Primop::STRING_UPPERCASE: return {{}, pool->Arrow(String, String)};
   case Primop::INT_TO_STRING: return {{}, pool->Arrow(Int, String)};
+  case Primop::FLOAT_TO_STRING: return {{}, pool->Arrow(Float, String)};
   case Primop::STRING_TO_LAYOUT: return {{}, pool->Arrow(String, Layout)};
   case Primop::OUT_STRING: return {{}, pool->Arrow(String, Unit())};
     // page/frame description, content

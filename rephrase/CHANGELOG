@@ -1,4 +1,6 @@
-29 Mar 2025
+30 Mar 2025
+
+ * Add float-to-string (%.17g) primop.
 
  * Improve error messages.
 

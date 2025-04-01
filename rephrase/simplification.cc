@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <functional>
 #include <map>
 #include <memory>
@@ -541,6 +542,14 @@ struct PeepholePass : public il::Pass<> {
           Simplified("int-to-string primop");
           const BigInt &b = ees[0]->Int();
           return pool->String(b.ToString());
+        }
+        break;
+
+      case Primop::FLOAT_TO_STRING:
+        if (ees[0]->type == ExpType::FLOAT) {
+          Simplified("float-to-string primop");
+          const double d = ees[0]->Float();
+          return pool->String(std::format("{:.17g}", d));
         }
         break;
 
