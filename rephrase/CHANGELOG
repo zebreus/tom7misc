@@ -1,5 +1,9 @@
 30 Mar 2025
 
+ * Now when using layout.bovex, you can write \\ for a line break,
+   which behaves just like a paragraph without a big gap after.
+   This is much nicer.
+
  * Add float-to-string (%.17g) primop.
 
  * Improve error messages.

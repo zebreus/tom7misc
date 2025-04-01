@@ -21,7 +21,7 @@ datatype provide-layout = REQUIRE-LAYOUT
 val LAYOUT-VERBOSE = false
 
 (* For debugging, emit glyphs in some otherwise invisible places. *)
-val SHOW-CODES = true
+val SHOW-CODES = false
 
 (* For expand-contract, in places where we don't want to do any
    expansion or contraction (e.g. kerning points). *)
@@ -677,6 +677,7 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
 
     (* XXX This should depend on the font *)
     val PARAGRAPH-VSPACE-BOTTOM = 12.0
+    val LINE-VSPACE-BOTTOM = 1.0
 
     val rev-paragraphs : paragraph-item list ref = ref nil
 
@@ -712,19 +713,47 @@ fun get-paragraphs (ls : layout list) : paragraph-item list =
       normalize-whitespace s
 
 
+    datatype break-type = BREAK-PARA | BREAK-LINE
+    fun chop-to-break big : (break-type * string * string) option =
+      let
+        (* Both two newlines and two backslashes are two characters. *)
+        val SIZE = 2
+        fun found (pos, what) =
+          let
+            val a = substr (big, 0, pos)
+            val b = substr-rest (big, pos + SIZE)
+          in
+            SOME(what, a, b)
+          end
+      in
+        case (string-find (big, "\n\n"),
+              string-find (big, "\\\\")) of
+          (NONE, NONE) => NONE
+        | (SOME pos, NONE) => found (pos, BREAK-PARA)
+        | (NONE, SOME pos) => found (pos, BREAK-LINE)
+        | (SOME p1, SOME p2) =>
+            if p1 < p2
+            then found (p1, BREAK-PARA)
+            else found (p2, BREAK-LINE)
+      end
+
     fun do-one-text (after-p, s) =
       let
         do LAYOUT-VERBOSE andthen print ("one text [" ^ s ^ "]")
       in
-      case string-chop "\n\n" s of
+      case chop-to-break s of
+        (* Tail of input. *)
         NONE => append (layout (normalize (after-p, s)))
-      | SOME (para, rest) =>
-          (* Got a paragraph. *)
+      | SOME (break-type, para, rest) =>
+          (* Got a paragraph, either ending with a paragraph
+             break or line break. *)
           let in
             append (layout (normalize (after-p, para)));
             next-paragraph ();
-            (* We saw \n\n, so this is a paragraph break. *)
-            add-break PARAGRAPH-VSPACE-BOTTOM;
+            add-break
+            (case break-type of
+               BREAK-PARA => PARAGRAPH-VSPACE-BOTTOM
+             | BREAK-LINE => LINE-VSPACE-BOTTOM);
             do-one-text (true, rest)
           end
       end
@@ -1108,7 +1137,7 @@ fun ul laylist =
              span {(Span) font-bold = true} [•] ^^
              box {(Box) width=2.0, glue-ideal=2.0,
                   glue-expand = 0.25, glue-contract = 0.75 } [] ^^
-             lay ^^ hfill() ^^ break())
+             lay ^^ [\\])
    laylist)
 
 fun no-rephrase lay = span {(Span) no-rephrase = true } lay
