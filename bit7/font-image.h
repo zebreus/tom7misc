@@ -12,6 +12,7 @@
 // A page maps glyph indices to unicode codepoints.
 enum class Page {
   BIT7_CLASSIC,
+  BIT7_LATINAB,
   BIT7_EXTENDED,
   BIT7_CYRILLIC,
   BIT7_MATH,

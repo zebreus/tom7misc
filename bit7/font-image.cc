@@ -24,6 +24,7 @@ static constexpr bool VERBOSE = true;
 
 Page Config::ParsePage(const std::string &p) {
   if (p == "bit7-classic") return Page::BIT7_CLASSIC;
+  if (p == "bit7-latinab") return Page::BIT7_LATINAB;
   if (p == "bit7-extended") return Page::BIT7_EXTENDED;
   if (p == "bit7-cyrillic") return Page::BIT7_CYRILLIC;
   if (p == "bit7-math") return Page::BIT7_MATH;
@@ -34,6 +35,8 @@ const char *Config::PageString(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC:
     return "bit7-classic";
+  case Page::BIT7_LATINAB:
+    return "bit7-latinab";
   case Page::BIT7_EXTENDED:
     return "bit7-extended";
   case Page::BIT7_CYRILLIC:
@@ -209,6 +212,163 @@ const std::vector<int> &PageBit7Classic() {
     0x2588, 0x2589, 0x258A, 0x258B, 0x258C, 0x258D, 0x258E, 0x258F,
     0x2590, 0x2591, 0x2592, 0x2593, 0x2594, 0x2595, 0x2596, 0x2597,
     0x2598, 0x2599, 0x259A, 0x259B, 0x259C, 0x259D, 0x259E, 0x259F,
+  };
+
+  return CODEPOINTS;
+}
+
+// Standard size is: 16x24
+const std::vector<int> &PageBit7LatinAB() {
+  static const std::vector<int> CODEPOINTS = {
+    // U+0100 through U+017F: Latin Extended-A
+    0x0100,  // (Ā) Latin Capital letter A with macron
+    0x0101,  // (ā) Latin Small letter A with macron
+    0x0102,  // (Ă) Latin Capital letter A with breve
+    0x0103,  // (ă) Latin Small letter A with breve
+    0x0104,  // (Ą) Latin Capital letter A with ogonek
+    0x0105,  // (ą) Latin Small letter A with ogonek
+    0x0106,  // (Ć) Latin Capital letter C with acute
+    0x0107,  // (ć) Latin Small letter C with acute
+    0x0108,  // (Ĉ) Latin Capital letter C with circumflex
+    0x0109,  // (ĉ) Latin Small letter C with circumflex
+    0x010A,  // (Ċ) Latin Capital letter C with dot above
+    0x010B,  // (ċ) Latin Small letter C with dot above
+    0x010C,  // (Č) Latin Capital letter C with caron
+    0x010D,  // (č) Latin Small letter C with caron
+    0x010E,  // (Ď) Latin Capital letter D with caron
+    0x010F,  // (ď) Latin Small letter D with caron
+    0x0110,  // (Đ) Latin Capital letter D with stroke
+    0x0111,  // (đ) Latin Small letter D with stroke
+    0x0112,  // (Ē) Latin Capital letter E with macron
+    0x0113,  // (ē) Latin Small letter E with macron
+    0x0114,  // (Ĕ) Latin Capital letter E with breve
+    0x0115,  // (ĕ) Latin Small letter E with breve
+    0x0116,  // (Ė) Latin Capital letter E with dot above
+    0x0117,  // (ė) Latin Small letter E with dot above
+    0x0118,  // (Ę) Latin Capital letter E with ogonek
+    0x0119,  // (ę) Latin Small letter E with ogonek
+    0x011A,  // (Ě) Latin Capital letter E with caron
+    0x011B,  // (ě) Latin Small letter E with caron
+    0x011C,  // (Ĝ) Latin Capital letter G with circumflex
+    0x011D,  // (ĝ) Latin Small letter G with circumflex
+    0x011E,  // (Ğ) Latin Capital letter G with breve
+    0x011F,  // (ğ) Latin Small letter G with breve
+    0x0120,  // (Ġ) Latin Capital letter G with dot above
+    0x0121,  // (ġ) Latin Small letter G with dot above
+    0x0122,  // (Ģ) Latin Capital letter G with cedilla
+    0x0123,  // (ģ) Latin Small letter G with cedilla
+    0x0124,  // (Ĥ) Latin Capital letter H with circumflex
+    0x0125,  // (ĥ) Latin Small letter H with circumflex
+    0x0126,  // (Ħ) Latin Capital letter H with stroke
+    0x0127,  // (ħ) Latin Small letter H with stroke
+    0x0128,  // (Ĩ) Latin Capital letter I with tilde
+    0x0129,  // (ĩ) Latin Small letter I with tilde
+    0x012A,  // (Ī) Latin Capital letter I with macron
+    0x012B,  // (ī) Latin Small letter I with macron
+    0x012C,  // (Ĭ) Latin Capital letter I with breve
+    0x012D,  // (ĭ) Latin Small letter I with breve
+    0x012E,  // (Į) Latin Capital letter I with ogonek
+    0x012F,  // (į) Latin Small letter I with ogonek
+    0x0130,  // (İ) Latin Capital letter I with dot above
+    0x0131,  // (ı) Latin Small letter dotless I
+    0x0132,  // (Ĳ) Latin Capital Ligature IJ
+    0x0133,  // (ĳ) Latin Small Ligature IJ
+    0x0134,  // (Ĵ) Latin Capital letter J with circumflex
+    0x0135,  // (ĵ) Latin Small letter J with circumflex
+    0x0136,  // (Ķ) Latin Capital letter K with cedilla
+    0x0137,  // (ķ) Latin Small letter K with cedilla
+    0x0138,  // (ĸ) Latin Small letter Kra
+    0x0139,  // (Ĺ) Latin Capital letter L with acute
+    0x013A,  // (ĺ) Latin Small letter L with acute
+    0x013B,  // (Ļ) Latin Capital letter L with cedilla
+    0x013C,  // (ļ) Latin Small letter L with cedilla
+    0x013D,  // (Ľ) Latin Capital letter L with caron
+    0x013E,  // (ľ) Latin Small letter L with caron
+    0x013F,  // (Ŀ) Latin Capital letter L with middle dot
+    0x0140,  // (ŀ) Latin Small letter L with middle dot
+    0x0141,  // (Ł) Latin Capital letter L with stroke
+    0x0142,  // (ł) Latin Small letter L with stroke
+    0x0143,  // (Ń) Latin Capital letter N with acute
+    0x0144,  // (ń) Latin Small letter N with acute
+    0x0145,  // (Ņ) Latin Capital letter N with cedilla
+    0x0146,  // (ņ) Latin Small letter N with cedilla
+    0x0147,  // (Ň) Latin Capital letter N with caron
+    0x0148,  // (ň) Latin Small letter N with caron
+    0x0149,  // (ŉ) Latin Small letter N preceded by apostrophe (deprecated!)
+    0x014A,  // (Ŋ) Latin Capital letter Eng
+    0x014B,  // (ŋ) Latin Small letter Eng
+    0x014C,  // (Ō) Latin Capital letter O with macron
+    0x014D,  // (ō) Latin Small letter O with macron
+    0x014E,  // (Ŏ) Latin Capital letter O with breve
+    0x014F,  // (ŏ) Latin Small letter O with breve
+    0x0150,  // (Ő) Latin Capital Letter O with double acute
+    0x0151,  // (ő) Latin Small Letter O with double acute
+    0x0152,  // (Œ) Latin Capital Ligature OE
+    0x0153,  // (œ) Latin Small Ligature OE
+    0x0154,  // (Ŕ) Latin Capital letter R with acute
+    0x0155,  // (ŕ) Latin Small letter R with acute
+    0x0156,  // (Ŗ) Latin Capital letter R with cedilla
+    0x0157,  // (ŗ) Latin Small letter R with cedilla
+    0x0158,  // (Ř) Latin Capital letter R with caron
+    0x0159,  // (ř) Latin Small letter R with caron
+    0x015A,  // (Ś) Latin Capital letter S with acute
+    0x015B,  // (ś) Latin Small letter S with acute
+    0x015C,  // (Ŝ) Latin Capital letter S with circumflex
+    0x015D,  // (ŝ) Latin Small letter S with circumflex
+    0x015E,  // (Ş) Latin Capital letter S with cedilla
+    0x015F,  // (ş) Latin Small letter S with cedilla
+    0x0160,  // (Š) Latin Capital letter S with caron
+    0x0161,  // (š) Latin Small letter S with caron
+    0x0162,  // (Ţ) Latin Capital letter T with cedilla
+    0x0163,  // (ţ) Latin Small letter T with cedilla
+    0x0164,  // (Ť) Latin Capital letter T with caron
+    0x0165,  // (ť) Latin Small letter T with caron
+    0x0166,  // (Ŧ) Latin Capital letter T with stroke
+    0x0167,  // (ŧ) Latin Small letter T with stroke
+    0x0168,  // (Ũ) Latin Capital letter U with tilde
+    0x0169,  // (ũ) Latin Small letter U with tilde
+    0x016A,  // (Ū) Latin Capital letter U with macron
+    0x016B,  // (ū) Latin Small letter U with macron
+    0x016C,  // (Ŭ) Latin Capital letter U with breve
+    0x016D,  // (ŭ) Latin Small letter U with breve
+    0x016E,  // (Ů) Latin Capital letter U with ring above
+    0x016F,  // (ů) Latin Small letter U with ring above
+    0x0170,  // (Ű) Latin Capital Letter U with double acute
+    0x0171,  // (ű) Latin Small Letter U with double acute
+    0x0172,  // (Ų) Latin Capital letter U with ogonek
+    0x0173,  // (ų) Latin Small letter U with ogonek
+    0x0174,  // (Ŵ) Latin Capital letter W with circumflex
+    0x0175,  // (ŵ) Latin Small letter W with circumflex
+    0x0176,  // (Ŷ) Latin Capital letter Y with circumflex
+    0x0177,  // (ŷ) Latin Small letter Y with circumflex
+    0x0178,  // (Ÿ) Latin Capital letter Y with diaeresis
+    0x0179,  // (Ź) Latin Capital letter Z with acute
+    0x017A,  // (ź) Latin Small letter Z with acute
+    0x017B,  // (Ż) Latin Capital letter Z with dot above
+    0x017C,  // (ż) Latin Small letter Z with dot above
+    0x017D,  // (Ž) Latin Capital letter Z with caron
+    0x017E,  // (ž) Latin Small letter Z with caron
+    0x017F,  // (ſ) Latin Small letter long S
+
+    // 128 unused slots
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    // 128 more unused slots
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   };
 
   return CODEPOINTS;
@@ -1126,6 +1286,7 @@ const std::vector<int> &PageBit7Math() {
 static const std::vector<int> &GetCodepointsForPage(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC: return PageBit7Classic();
+  case Page::BIT7_LATINAB: return PageBit7LatinAB();
   case Page::BIT7_EXTENDED: return PageBit7Extended();
   case Page::BIT7_CYRILLIC: return PageBit7Cyrillic();
   case Page::BIT7_MATH: return PageBit7Math();
