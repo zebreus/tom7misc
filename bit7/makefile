@@ -3,7 +3,7 @@ all: default
 
 default : makegrid.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe reencode.exe fixedersys1x.sfd fixedersys2x.sfd fixedersyslight2x.sfd dfx-snooty.sfd dfx-pasement.sfd dfx-wetar.sfd pacman.sfd getcodepoints.exe
 
-ASAN=true
+# ASAN=true
 
 ifdef ASAN
   OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
@@ -12,12 +12,17 @@ else
   OPTFLAGS=-O3 -march=native -mtune=native
 endif
 
-CXXFLAGS=--std=c++23 $(OPTFLAGS) -Wall -I../cc-lib/
+CC_LIB=../cc-lib
+
+CXXFLAGS=--std=c++23 $(OPTFLAGS) -Wall -I$(CC_LIB)
 LFLAGS=$(OPTFLAGS) -static
 
-CCLIB_OBJECTS=../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/image.o ../cc-lib/base/logging.o ../cc-lib/base/stringprintf.o ../cc-lib/util.o ../cc-lib/ansi.o
 
-CCLIB_FONT_OBJECTS=../cc-lib/fonts/island-finder.o ../cc-lib/fonts/ttf.o ../cc-lib/stb_truetype.o
+CCLIB_OBJECTS=$(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/util.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o $(CC_LIB)/zip.o
+
+RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
+
+CCLIB_FONT_OBJECTS=$(CC_LIB)/fonts/island-finder.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/stb_truetype.o
 
 %.o : %.cc
 	@$(CXX) $(CXXFLAGS) -c $^ -o $@
@@ -83,6 +88,16 @@ unicoderange.exe : unicoderange.o $(CCLIB_OBJECTS)
 getcodepoints.exe : getcodepoints.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
+../acronymine/%.o : ../acronymine/%.cc
+	@$(CXX) $(CXXFLAGS) -I ../acronymine -c $^ -o $@
+	@echo -n "."
+
+WIKIPEDIA_OBJECTS=../acronymine/wikipedia.o $(RE2_OBJECTS)
+
+wikipedia-unicode.exe : wikipedia-unicode.o font-image.o $(CCLIB_OBJECTS) $(WIKIPEDIA_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 clean :
-	rm -f *.o *.exe $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
+	rm -f *.o *.exe $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS) $(WIKIPEDIA_OBJECTS)
 

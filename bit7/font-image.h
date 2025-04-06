@@ -94,6 +94,8 @@ struct FontImage {
     return unicode_to_glyph;
   }
 
+  bool MappedCodepoint(uint32_t codepoint) const;
+
   // Maps from codepoint to glyph index in vector below.
   std::unordered_map<int, int> unicode_to_glyph;
 
@@ -103,7 +105,6 @@ struct FontImage {
 
  private:
   void AddPage(const ImageRGBA &img, Page p);
-  void InitUnicode();
 };
 
 // For drawing to ImageRGBA.

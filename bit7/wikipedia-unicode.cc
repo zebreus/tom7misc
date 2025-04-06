@@ -1,6 +1,4 @@
 
-#include "wikipedia.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <memory>
@@ -12,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+#include "../acronymine/wikipedia.h"
+
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -20,13 +20,10 @@
 #include "timer.h"
 #include "utf8.h"
 #include "util.h"
-#include "wikipedia.h"
+
+#include "font-image.h"
 
 using namespace std;
-
-using uint8 = uint8_t;
-using uint32 = uint32_t;
-using uint64 = uint64_t;
 
 [[maybe_unused]]
 static constexpr const char *WIKIPEDIA_FILE =
@@ -55,6 +52,10 @@ static void Process() {
       Wikipedia::Create(WIKIPEDIA_FILE));
   CHECK(wiki.get() != nullptr) << WIKIPEDIA_FILE;
   #endif
+
+  Config config = Config::ParseConfig("fixedersys2x.cfg");
+  FontImage font(config);
+  CHECK(font.MappedCodepoint('*')) << "Couldn't load the font?";
 
   Timer timer;
 
@@ -135,8 +136,10 @@ static void Process() {
               return a.second > b.second;
             });
   for (const auto &[code, count] : sorted) {
-    std::string utf8 = UTF8::Encode(code);
-    StringAppendF(&out, "U+%04x (%s): %lld\n", code, utf8.c_str(), count);
+    if (!font.MappedCodepoint(code)) {
+      std::string utf8 = UTF8::Encode(code);
+      StringAppendF(&out, "U+%04x (%s): %lld\n", code, utf8.c_str(), count);
+    }
   }
 
   Util::WriteFile("unicode.txt", out);

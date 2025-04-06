@@ -1782,7 +1782,8 @@ void FontImage::SaveImage(const std::string &filename) {
   out.Save(filename);
 }
 
-void FontImage::InitUnicode() {
+bool FontImage::MappedCodepoint(uint32_t codepoint) const {
+  return unicode_to_glyph.contains(codepoint);
 }
 
 BitmapFont::BitmapFont(FontImage font_in) :
