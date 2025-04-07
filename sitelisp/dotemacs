@@ -409,6 +409,17 @@
       "⊹⊺⊻⊼⊽⊾⊿⋀⋁⋂⋃⋄⋅⋆⋇⋈⋉⋊⋋⋌⋍⋎⋏⋐⋑⋒⋓⋔⋕⋮⋯⋰⋱⋲⋳⋴⋵⋶⋷⋸⋹⋺⋻⋼⋽⋾⋿\n"
       "☠♔♕♕♖♗♘♙♚♛♜♝♞♟♥♫⚡⛔✓✔✗✘\n"
       "☁"
+      "\n"
+      "Latin-1:\n"
+      " ¡¢£¤¥¦§¨©ª«¬ ®¯  °±²³´µ¶·¸¹º»¼½¾¿\n"
+      "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏ  ÐÑÒÓÔÕÖ×ØÙÚÛÜÝÞß\n"
+      "àáâãäåæçèéêëìíîï  ðñòóôõö÷øùúûüýþÿ\n"
+      "\n"
+      "Extended A:\n"
+      "ĀāĂăĄąĆćĈĉĊċČčĎď  ĐđĒēĔĕĖėĘęĚěĜĝĞğ\n"
+      "ĠġĢģĤĥĦħĨĩĪīĬĭĮį  İıĲĳĴĵĶķĸĹĺĻļĽľĿ\n"
+      "ŀŁłŃńŅņŇňŉŊŋŌōŎŏ  ŐőŒœŔŕŖŗŘřŚśŜŝŞş\n"
+      "ŠšŢţŤťŦŧŨũŪūŬŭŮů  ŰűŲųŴŵŶŷŸŹźŻżŽžſ\n"
       ))
     ))
 
@@ -478,8 +489,14 @@
   (interactive)
   (insert-unicode-quote-internal ?\' ?‘ ?’))
 
+(defun insert-unicode-dash ()
+  "Insert or replace with a Unicode single quote character."
+  (interactive)
+  (insert-unicode-quote-internal ?- ?– ?—))
+
 (global-set-key (kbd "C-\"") 'insert-unicode-double-quote)
 (global-set-key (kbd "C-'") 'insert-unicode-single-quote)
+(global-set-key (kbd "C-_") 'insert-unicode-dash)
 
 
 (define-fringe-bitmap 'tom7-diag-stripes
