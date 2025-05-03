@@ -1379,8 +1379,6 @@ REUSE_FOR = {
 
   // Full-width comma
   {',', 0xFF0C},
-  // Ideographic space
-  {' ', 0x3000},
   // Fullwidth parentheses
   // Actually we can just map these all from ascii?
   // en.wikipedia.org/wiki/Halfwidth_and_Fullwidth_Forms_(Unicode_block)
@@ -1433,6 +1431,25 @@ REUSE_FOR = {
   {0x05D1, 0x2136},  // Bet
   {0x05D2, 0x2137},  // Gimel
   {0x05D3, 0x2138},  // Dalet
+
+  // Various spaces. Since the font is fixed-width,
+  // we just render these the same as space. Most of these
+  // are not mapped in the font image.
+  {' ', 0x00A0},  // No-Break space
+  {' ', 0x2000},  // En Quad
+  {' ', 0x2001},  // Em Quad
+  {' ', 0x2002},  // En Space
+  {' ', 0x2003},  // Em Space
+  {' ', 0x2004},  // Three-Per-Em Space
+  {' ', 0x2005},  // Four-Per-Em Space
+  {' ', 0x2006},  // Six-Per-Em Space
+  {' ', 0x2007},  // Figure Space
+  {' ', 0x2008},  // Punctuation Space
+  {' ', 0x2009},  // Thin Space
+  {' ', 0x200A},  // Hair Space
+  {' ', 0x202F},  // Narrow No-Break Space
+  {' ', 0x205F},  // Medium Mathematical Space
+  {' ', 0x3000},  // Ideographic space
 };
 
 Config Config::ParseConfig(const string &cfgfile) {
