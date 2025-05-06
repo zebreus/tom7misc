@@ -1278,9 +1278,56 @@ const std::vector<int> &PageBit7Math() {
     0x214E,  // (ⅎ) TURNED SMALL F
     0x214F,  // (⅏) SYMBOL FOR SAMARITAN
 
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    // Also from wikipedia.
+    0x27C0,  // (⟀) THREE DIMENSIONAL ANGLE
+    0x27C1,  // (⟁) WHITE TRIANGLE CONTAINING SMALL WHITE TRIANGLE
+    0x27C2,  // (⟂) PERPENDICULAR
+    0x27C3,  // (⟃) OPEN SUBSET
+    0x27C4,  // (⟄) OPEN SUPERSET
+    0x27C5,  // (⟅) LEFT S-SHAPED BAG DELIMITER
+    0x27C6,  // (⟆) RIGHT S-SHAPED BAG DELIMITER
+    0x27C7,  // (⟇) OR WITH DOT INSIDE
+    0x27C8,  // (⟈) REVERSE SOLIDUS PRECEDING SUBSET
+    0x27C9,  // (⟉) SUPERSET PRECEDING SOLIDUS
+    0x27CA,  // (⟊) VERTICAL BAR WITH HORIZONTAL STROKE
+    0x27CB,  // (⟋) MATHEMATICAL RISING DIAGONAL
+    0x27CC,  // (⟌) LONG DIVISION
+    0x27CD,  // (⟍) MATHEMATICAL FALLING DIAGONAL
+    0x27CE,  // (⟎) SQUARED LOGICAL AND
+    0x27CF,  // (⟏) SQUARED LOGICAL OR
+    0x27D0,  // (⟐) WHITE DIAMOND WITH CENTERED DOT
+    0x27D1,  // (⟑) AND WITH DOT
+    0x27D2,  // (⟒) ELEMENT OF OPENING UPWARD
+    0x27D3,  // (⟓) LOWER RIGHT CORNER WITH DOT
+    0x27D4,  // (⟔) UPPER LEFT CORNER WITH DOT
+    0x27D5,  // (⟕) LEFT OUTER JOIN
+    0x27D6,  // (⟖) RIGHT OUTER JOIN
+    0x27D7,  // (⟗) FULL OUTER JOIN
+    0x27D8,  // (⟘) LARGE UP TACK
+    0x27D9,  // (⟙) LARGE DOWN TACK
+    0x27DA,  // (⟚) LEFT AND RIGHT DOUBLE TURNSTILE
+    0x27DB,  // (⟛) LEFT AND RIGHT TACK
+    0x27DC,  // (⟜) LEFT MULTIMAP
+    0x27DD,  // (⟝) LONG RIGHT TACK
+    0x27DE,  // (⟞) LONG LEFT TACK
+    0x27DF,  // (⟟) UP TACK WITH CIRCLE ABOVE
+    0x27E0,  // (⟠) LOZENGE DIVIDED BY HORIZONTAL RULE
+    0x27E1,  // (⟡) WHITE CONCAVE-SIDED DIAMOND
+    0x27E2,  // (⟢) WHITE CONCAVE-SIDED DIAMOND WITH LEFTWARD TICK
+    0x27E3,  // (⟣) WHITE CONCAVE-SIDED DIAMOND WITH RIGHTWARD TICK
+    0x27E4,  // (⟤) WHITE SQUARE WITH LEFTWARD TICK
+    0x27E5,  // (⟥) WHITE SQUARE WITH RIGHTWARD TICK
+    0x27E6,  // (⟦) MATHEMATICAL LEFT WHITE SQUARE BRACKET
+    0x27E7,  // (⟧) MATHEMATICAL RIGHT WHITE SQUARE BRACKET
+    0x27E8,  // (⟨) MATHEMATICAL LEFT ANGLE BRACKET
+    0x27E9,  // (⟩) MATHEMATICAL RIGHT ANGLE BRACKET
+    0x27EA,  // (⟪) MATHEMATICAL LEFT DOUBLE ANGLE BRACKET
+    0x27EB,  // (⟫) MATHEMATICAL RIGHT DOUBLE ANGLE BRACKET
+    0x27EC,  // (⟬) MATHEMATICAL LEFT WHITE TORTOISE SHELL BRACKET
+    0x27ED,  // (⟭) MATHEMATICAL RIGHT WHITE TORTOISE SHELL BRACKET
+    0x27EE,  // (⟮) MATHEMATICAL LEFT FLATTENED PARENTHESIS
+    0x27EF,  // (⟯) MATHEMATICAL RIGHT FLATTENED PARENTHESIS
   };
 
   return CODEPOINTS;
@@ -1620,9 +1667,10 @@ void FontImage::AddPage(const ImageRGBA &img, Page p) {
     if (cidx >= (int)codepoints.size()) {
       if (!ok_missing) {
         printf("Skipping glyph at %d,%d because it is outside the codepoint "
-               "array for page %s!\n",
+               "array for page %s! There are %d codepoints configured.\n",
                cidx % config.chars_across, cidx / config.chars_across,
-               Config::PageString(p));
+               Config::PageString(p),
+               (int)codepoints.size());
         printf("%s", GlyphString(glyph).c_str());
       }
       continue;
