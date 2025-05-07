@@ -1,0 +1,7 @@
+.svn
+*.exe
+*.o
+core
+*~
+*.so
+*.dll
