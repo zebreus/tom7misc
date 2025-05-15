@@ -350,27 +350,239 @@ const std::vector<int> &PageBit7LatinAB() {
     0x017E,  // (ž) Latin Small letter Z with caron
     0x017F,  // (ſ) Latin Small letter long S
 
-    // 128 unused slots
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // Latin Extended-B
+    0x0180,  // (ƀ) Latin Small Letter B with Stroke
+    0x0181,  // (Ɓ) Latin Capital Letter B with Hook
+    0x0182,  // (Ƃ) Latin Capital Letter B with Top Bar
+    0x0183,  // (ƃ) Latin Small Letter B with Top Bar
+    0x0184,  // (Ƅ) Latin Capital Letter Tone Six
+    0x0185,  // (ƅ) Latin Small Letter Tone Six
+    0x0186,  // (Ɔ) Latin Capital Letter Open O
+    0x0187,  // (Ƈ) Latin Capital Letter C with Hook
+    0x0188,  // (ƈ) Latin Small Letter C with Hook
+    0x0189,  // (Ɖ) Latin Capital Letter African D
+    0x018A,  // (Ɗ) Latin Capital Letter D with Hook
+    0x018B,  // (Ƌ) Latin Capital Letter D with Top Bar
+    0x018C,  // (ƌ) Latin Small Letter D with Top Bar
+    0x018D,  // (ƍ) Latin Small Letter Turned Delta
+    0x018E,  // (Ǝ) Latin Capital Letter Reversed E
+    0x018F,  // (Ə) Latin Capital Letter Schwa
+    0x0190,  // (Ɛ) Latin Capital Letter Open E (= Latin Capital Letter Epsilon)
+    0x0191,  // (Ƒ) Latin Capital Letter F with Hook
+    0x0192,  // (ƒ) Latin Small Letter F with Hook
+    0x0193,  // (Ɠ) Latin Capital Letter G with Hook
+    0x0194,  // (Ɣ) Latin Capital Letter Gamma
+    0x0195,  // (ƕ) Latin Small Letter HV
+    0x0196,  // (Ɩ) Latin Capital Letter Iota
+    0x0197,  // (Ɨ) Latin Capital Letter I with Stroke
+    0x0198,  // (Ƙ) Latin Capital Letter K with Hook
+    0x0199,  // (ƙ) Latin Small Letter K with Hook
+    0x019A,  // (ƚ) Latin Small Letter L with Bar
+    0x019B,  // (ƛ) Latin Small Letter Lambda with Stroke
+    0x019C,  // (Ɯ) Latin Capital Letter Turned M
+    0x019D,  // (Ɲ) Latin Capital Letter N with Left Hook
+    0x019E,  // (ƞ) Latin Small Letter N with Long Right Leg
+    0x019F,  // (Ɵ) Latin Capital Letter O with Middle Tilde
+    0x01A0,  // (Ơ) Latin Capital Letter O with Horn
+    0x01A1,  // (ơ) Latin Small Letter O with Horn
+    0x01A2,  // (Ƣ) Latin Capital Letter OI (= Latin Capital Letter Gha)
+    0x01A3,  // (ƣ) Latin Small Letter OI (= Latin Small Letter Gha)
+    0x01A4,  // (Ƥ) Latin Capital Letter P with Hook
+    0x01A5,  // (ƥ) Latin Small Letter P with Hook
+    0x01A6,  // (Ʀ) Latin Letter YR
+    0x01A7,  // (Ƨ) Latin Capital Letter Tone Two
+    0x01A8,  // (ƨ) Latin Small Letter Tone Two
+    0x01A9,  // (Ʃ) Latin Capital Letter Esh
+    0x01AA,  // (ƪ) Latin Letter Reversed Esh Loop
+    0x01AB,  // (ƫ) Latin Small Letter T with Palatal Hook
+    0x01AC,  // (Ƭ) Latin Capital Letter T with Hook
+    0x01AD,  // (ƭ) Latin Small Letter T with Hook
+    0x01AE,  // (Ʈ) Latin Capital Letter T with Retroflex Hook
+    0x01AF,  // (Ư) Latin Capital Letter U with Horn
+    0x01B0,  // (ư) Latin Small Letter U with Horn
+    0x01B1,  // (Ʊ) Latin Capital Letter Upsilon
+    0x01B2,  // (Ʋ) Latin Capital Letter V with Hook
+    0x01B3,  // (Ƴ) Latin Capital Letter Y with Hook
+    0x01B4,  // (ƴ) Latin Small Letter Y with Hook
+    0x01B5,  // (Ƶ) Latin Capital Letter Z with Stroke
+    0x01B6,  // (ƶ) Latin Small Letter Z with Stroke
+    0x01B7,  // (Ʒ) Latin Capital Letter Ezh
+    0x01B8,  // (Ƹ) Latin Capital Letter Ezh Reversed
+    0x01B9,  // (ƹ) Latin Small Letter Ezh Reversed
+    0x01BA,  // (ƺ) Latin Small Letter Ezh with Tail
+    0x01BB,  // (ƻ) Latin Letter Two with Stroke
+    0x01BC,  // (Ƽ) Latin Capital Letter Tone Five
+    0x01BD,  // (ƽ) Latin Small Letter Tone Five
+    0x01BE,  // (ƾ) Latin Letter Inverted Glottal Stop with Stroke
+    0x01BF,  // (ƿ) Latin Letter Wynn
+    // African letters for clicks
+    0x01C0,  // (ǀ) Latin Letter Dental Click
+    0x01C1,  // (ǁ) Latin Letter Lateral Click
+    0x01C2,  // (ǂ) Latin Letter Alveolar Click
+    0x01C3,  // (ǃ) Latin Letter Retroflex Click
+    // Croatian digraphs matching Serbian Cyrillic letters
+    0x01C4,  // (Ǆ) Latin Capital Letter DZ with Caron
+    0x01C5,  // (ǅ) Latin Capital Letter D with Small Letter Z with Caron
+    0x01C6,  // (ǆ) Latin Small Letter DZ with Caron
+    0x01C7,  // (Ǉ) Latin Capital Letter LJ
+    0x01C8,  // (ǈ) Latin Capital Letter L with Small Letter J
+    0x01C9,  // (ǉ) Latin Small Letter LJ
+    0x01CA,  // (Ǌ) Latin Capital Letter NJ
+    0x01CB,  // (ǋ) Latin Capital Letter N with Small Letter J
+    0x01CC,  // (ǌ) Latin Small Letter NJ
+    // Pinyin diacritic-vowel combinations
+    0x01CD,  // (Ǎ) Latin Capital Letter A with Caron
+    0x01CE,  // (ǎ) Latin Small Letter A with Caron
+    0x01CF,  // (Ǐ) Latin Capital Letter I with Caron
+    0x01D0,  // (ǐ) Latin Small Letter I with Caron
+    0x01D1,  // (Ǒ) Latin Capital Letter O with Caron
+    0x01D2,  // (ǒ) Latin Small Letter O with Caron
+    0x01D3,  // (Ǔ) Latin Capital Letter U with Caron
+    0x01D4,  // (ǔ) Latin Small Letter U with Caron
+    0x01D5,  // (Ǖ) Latin Capital Letter U with Diaeresis and Macron
+    0x01D6,  // (ǖ) Latin Small Letter U with Diaeresis and Macron
+    0x01D7,  // (Ǘ) Latin Capital Letter U with Diaeresis and Acute
+    0x01D8,  // (ǘ) Latin Small Letter U with Diaeresis and Acute
+    0x01D9,  // (Ǚ) Latin Capital Letter U with Diaeresis and Caron
+    0x01DA,  // (ǚ) Latin Small Letter U with Diaeresis and Caron
+    0x01DB,  // (Ǜ) Latin Capital Letter U with Diaeresis and Grave
+    0x01DC,  // (ǜ) Latin Small Letter U with Diaeresis and Grave
+    // Phonetic and historic letters
+    0x01DD,  // (ǝ) Latin Small Letter Turned E
+    0x01DE,  // (Ǟ) Latin Capital Letter A with Diaeresis and Macron
+    0x01DF,  // (ǟ) Latin Small Letter A with Diaeresis and Macron
+    0x01E0,  // (Ǡ) Latin Capital Letter A with Dot Above and Macron
+    0x01E1,  // (ǡ) Latin Small Letter A with Dot Above and Macron
+    0x01E2,  // (Ǣ) Latin Capital Letter AE with Macron
+    0x01E3,  // (ǣ) Latin Small Letter AE with Macron
+    0x01E4,  // (Ǥ) Latin Capital Letter G with Stroke
+    0x01E5,  // (ǥ) Latin Small Letter G with Stroke
+    0x01E6,  // (Ǧ) Latin Capital Letter G with Caron
+    0x01E7,  // (ǧ) Latin Small Letter G with Caron
+    0x01E8,  // (Ǩ) Latin Capital Letter K with Caron
+    0x01E9,  // (ǩ) Latin Small Letter K with Caron
+    0x01EA,  // (Ǫ) Latin Capital Letter O with Ogonek
+    0x01EB,  // (ǫ) Latin Small Letter O with Ogonek
+    0x01EC,  // (Ǭ) Latin Capital Letter O with Ogonek and Macron
+    //          (=Latin Capital Letter O with Macron and Ogonek)
+    0x01ED,  // (ǭ) Latin Small Letter O with Ogonek and Macron
+    //          (=Latin Small Letter O with Macron and Ogonek)
+    0x01EE,  // (Ǯ) Latin Capital Letter Ezh with Caron
+    0x01EF,  // (ǯ) Latin Small Letter Ezh with Caron
+    0x01F0,  // (ǰ) Latin Small Letter J with Caron
+    0x01F1,  // (Ǳ) Latin Capital Letter DZ
+    0x01F2,  // (ǲ) Latin Capital Letter D with Small Letter Z
+    0x01F3,  // (ǳ) Latin Small Letter DZ
+    0x01F4,  // (Ǵ) Latin Capital Letter G with Acute
+    0x01F5,  // (ǵ) Latin Small Letter G with Acute
+    0x01F6,  // (Ƕ) Latin Capital Letter Hwair
+    0x01F7,  // (Ƿ) Latin Capital Letter Wynn
+    0x01F8,  // (Ǹ) Latin Capital Letter N with Grave
+    0x01F9,  // (ǹ) Latin Small Letter N with Grave
+    0x01FA,  // (Ǻ) Latin Capital Letter A with Ring Above and Acute
+    0x01FB,  // (ǻ) Latin Small Letter A with Ring Above and Acute
+    0x01FC,  // (Ǽ) Latin Capital Letter AE with Acute
+    0x01FD,  // (ǽ) Latin Small Letter AE with Acute
+    0x01FE,  // (Ǿ) Latin Capital Letter O with Stroke and Acute
+    0x01FF,  // (ǿ) Latin Small Letter O with Stroke and Acute
+    // Additions for Slovenian and Croatian
+    0x0200,  // (Ȁ) Latin Capital Letter A with Double Grave
+    0x0201,  // (ȁ) Latin Small Letter A with Double Grave
+    0x0202,  // (Ȃ) Latin Capital Letter A with Inverted Breve
+    0x0203,  // (ȃ) Latin Small Letter A with Inverted Breve
+    0x0204,  // (Ȅ) Latin Capital Letter E with Double Grave
+    0x0205,  // (ȅ) Latin Small Letter E with Double Grave
+    0x0206,  // (Ȇ) Latin Capital Letter E with Inverted Breve
+    0x0207,  // (ȇ) Latin Small Letter E with Inverted Breve
+    0x0208,  // (Ȉ) Latin Capital Letter I with Double Grave
+    0x0209,  // (ȉ) Latin Small Letter I with Double Grave
+    0x020A,  // (Ȋ) Latin Capital Letter I with Inverted Breve
+    0x020B,  // (ȋ) Latin Small Letter I with Inverted Breve
+    0x020C,  // (Ȍ) Latin Capital Letter O with Double Grave
+    0x020D,  // (ȍ) Latin Small Letter O with Double Grave
+    0x020E,  // (Ȏ) Latin Capital Letter O with Inverted Breve
+    0x020F,  // (ȏ) Latin Small Letter O with Inverted Breve
+    0x0210,  // (Ȑ) Latin Capital Letter R with Double Grave
+    0x0211,  // (ȑ) Latin Small Letter R with Double Grave
+    0x0212,  // (Ȓ) Latin Capital Letter R with Inverted Breve
+    0x0213,  // (ȓ) Latin Small Letter R with Inverted Breve
+    0x0214,  // (Ȕ) Latin Capital Letter U with Double Grave
+    0x0215,  // (ȕ) Latin Small Letter U with Double Grave
+    0x0216,  // (Ȗ) Latin Capital Letter U with Inverted Breve
+    0x0217,  // (ȗ) Latin Small Letter U with Inverted Breve
+    // Additions for Romanian
+    0x0218,  // (Ș) Latin Capital Letter S with Comma Below
+    0x0219,  // (ș) Latin Small Letter S with Comma Below
+    0x021A,  // (Ț) Latin Capital Letter T with Comma Below
+    0x021B,  // (ț) Latin Small Letter T with Comma Below
+    // Miscellaneous additions
+    0x021C,  // (Ȝ) Latin Capital Letter Yogh
+    0x021D,  // (ȝ) Latin Small Letter Yogh
+    0x021E,  // (Ȟ) Latin Capital Letter H with Caron
+    0x021F,  // (ȟ) Latin Small Letter H with Caron
+    0x0220,  // (Ƞ) Latin Capital Letter N with Long Right Leg
+    0x0221,  // (ȡ) Latin Small Letter D with Curl
+    0x0222,  // (Ȣ) Latin Capital Letter OU
+    0x0223,  // (ȣ) Latin Small Letter OU
+    0x0224,  // (Ȥ) Latin Capital Letter Z with Hook
+    0x0225,  // (ȥ) Latin Small Letter Z with Hook
+    0x0226,  // (Ȧ) Latin Capital Letter A with Dot Above
+    0x0227,  // (ȧ) Latin Small Letter A with Dot Above
+    0x0228,  // (Ȩ) Latin Capital Letter E with Cedilla
+    0x0229,  // (ȩ) Latin Small Letter E with Cedilla
+    // Additions for Livonian
+    0x022A,  // (Ȫ) Latin Capital Letter O with Diaeresis and Macron
+    0x022B,  // (ȫ) Latin Small Letter O with Diaeresis and Macron
+    0x022C,  // (Ȭ) Latin Capital Letter O with Tilde and Macron
+    0x022D,  // (ȭ) Latin Small Letter O with Tilde and Macron
+    0x022E,  // (Ȯ) Latin Capital Letter O with Dot Above
+    0x022F,  // (ȯ) Latin Small Letter O with Dot Above
+    0x0230,  // (Ȱ) Latin Capital Letter O with Dot Above and Macron
+    0x0231,  // (ȱ) Latin Small Letter O with Dot Above and Macron
+    0x0232,  // (Ȳ) Latin Capital Letter Y with Macron
+    0x0233,  // (ȳ) Latin Small Letter Y with Macron
+    // Additions for Sinology
+    0x0234,  // (ȴ) Latin Small Letter L with Curl
+    0x0235,  // (ȵ) Latin Small Letter N with Curl
+    0x0236,  // (ȶ) Latin Small Letter T with Curl
+    // Miscellaneous addition
+    0x0237,  // (ȷ) Latin Small Letter Dotless J
+    // Additions for Africanist linguistics
+    0x0238,  // (ȸ) Latin Small Letter DB Digraph
+    0x0239,  // (ȹ) Latin Small Letter QP Digraph
+    // Additions for Sencoten
+    0x023A,  // (Ⱥ) Latin Capital Letter A with Stroke
+    0x023B,  // (Ȼ) Latin Capital Letter C with Stroke
+    0x023C,  // (ȼ) Latin Small Letter C with Stroke
+    0x023D,  // (Ƚ) Latin Capital Letter L with Bar
+    0x023E,  // (Ⱦ) Latin Capital Letter T with Diagonal Stroke
+    // Additions for Africanist linguistics
+    0x023F,  // (ȿ) Latin Small Letter S with Swash Tail
+    0x0240,  // (ɀ) Latin Small Letter Z with Swash Tail
+    // Miscellaneous additions
+    0x0241,  // (Ɂ) Latin Capital Letter Glottal Stop
+    0x0242,  // (ɂ) Latin Small Letter Glottal Stop
+    0x0243,  // (Ƀ) Latin Capital Letter B with Stroke
+    0x0244,  // (Ʉ) Latin Capital Letter U Bar
+    0x0245,  // (Ʌ) Latin Capital Letter Turned V
+    0x0246,  // (Ɇ) Latin Capital Letter E with Stroke
+    0x0247,  // (ɇ) Latin Small Letter E with Stroke
+    0x0248,  // (Ɉ) Latin Capital Letter J with Stroke
+    0x0249,  // (ɉ) Latin Small Letter J with Stroke
+    0x024A,  // (Ɋ) Latin Capital Letter Q with Hook Tail
+    0x024B,  // (ɋ) Latin Small Letter Q with Hook Tail
+    0x024C,  // (Ɍ) Latin Capital Letter R with Stroke
+    0x024D,  // (ɍ) Latin Small Letter R with Stroke
+    0x024E,  // (Ɏ) Latin Capital Letter Y with Stroke
+    0x024F,  // (ɏ) Latin Small Letter Y with Stroke
 
-    // 128 more unused slots
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // 48 unused slots
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   };
 
+  CHECK(CODEPOINTS.size() == 16 * 24) << CODEPOINTS.size();
   return CODEPOINTS;
 }
 
@@ -1461,10 +1673,17 @@ REUSE_FOR = {
   // Same for square
   {0x25A0, 0x23F9},
 
-  // Various for IPA (Latin Extended B)
+  // Various for IPA, Latin Extended B
   {0x03A3, 0x01A9}, // Greek Σ -> esh
   {'!', 0x01C3},
   {0x04D9, 0x0259}, // Cyrillic schwa -> IPA schwa
+  {0x04D9, 0x01DD}, // Cyrillic schwa -> Phoenecian turned e
+  {0x03A3, 0x01A9}, // Greek Sigma -> Capital Esh
+  {0x0510, 0x0190}, // Cyrillic reversed Ze -> Open E
+  {0x0511, 0x025B}, // Cyrillic reversed ze -> Open e
+
+  {0x04E0, 0x01B7}, // Cyrillic Capital Abkhasian Dze -> Ezh
+  {0x04E1, 0x0292}, // Lowercase dze -> ezh
 
   // Letter-like symbols that are REALLY letter-like.
   // Kelvin
