@@ -509,15 +509,25 @@ fun quote-slide slide title lay =
                      font-color = BODY-FONT-COLOR,
                      font-italic = true } lay
 
+    fun process (ParaChunk chunk) =
+      process-paragraph (COLUMN-WIDTH, chunk)
+      | process (ParaBreak b) =
+      (Paragraph { lines =
+                   (box {(Box) height = b,
+                         width = COLUMN-WIDTH} []) :: nil }) :: nil
+(*
     fun process p =
       let
         val p = (layout-map-text normalize-whitespace p)
       in
-        process-paragraph (COLUMN-WIDTH, PARAGRAPH-VSPACE-BOTTOM, p)
+        process-paragraph (COLUMN-WIDTH, p)
       end
+*)
 
-    val paras : paragraph list =
-      list-concat (list-map process (get-paragraphs (body :: nil)))
+    val para-items : paragraph-item list =
+      get-paragraphs (layout-map-text normalize-whitespace body :: nil)
+
+    val paras : paragraph list = list-concat (list-map process para-items)
 
     (*
     do print ("There are " ^ int-to-string (list-length paras) ^

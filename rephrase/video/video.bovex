@@ -861,8 +861,8 @@ https://gamefaqs.gamespot.com/snes/588741-super-metroid/faqs/10114]
       nil);
   end;
 
-
-  for 0 45 (fn i => just-image-2x ("../monospace-slides/frame" ^
+ (* This was once monospace-slides? - 24 May 2025 *)
+  for 0 45 (fn i => just-image-2x ("../monospace/frame" ^
                                    int-to-string i ^ ".png"));
 
   placeholder-slide [monospace30.mp4];

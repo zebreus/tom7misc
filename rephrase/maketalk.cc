@@ -17,8 +17,7 @@ int main(int argc, char **argv) {
   CHECK(talk.screen_width > 0 &&
         talk.screen_width > 0) << "Talk now requires a screen "
     "width and height; maybe you need to rebuild it?";
-  talk.screen_width = screen_width;
-  talk.screen_height = screen_height;
+
   talk.SaveJS(
       Util::BinaryDir(argv[0]),
       argv[1]);

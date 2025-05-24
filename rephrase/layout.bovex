@@ -1508,13 +1508,13 @@ fun main-text lay =
        paragraphs. *)
     (* datatype paragraph-item = ParaChunk of layout | ParaBreak of float *)
 
-    val paras : paragraph-item list = get-paragraphs (lay :: nil)
+    val para-items : paragraph-item list = get-paragraphs (lay :: nil)
     (* Pull out floats.
        Do rephrasing if needed.
        Optimize line breaks for each paragraph.
        Turn each paragraph into a series of vertical boxes (lines, which
        are stickers). *)
-    val paras : paragraph list = list-concat (list-map process paras)
+    val paras : paragraph list = list-concat (list-map process para-items)
   in
     pack-paragraphs (LEFT-MARGIN, TOP-MARGIN, GUTTER,
                      BODY-HEIGHT,
