@@ -42,14 +42,14 @@ png2ascii.exe : png2ascii.cc
 	g++ -std=c++11 -O2 $< -o $@
 
 paper/x86.txt : paper/x86.png png2ascii.exe makefile
-	./png2ascii "##234%%====---- " $< -newlines > $@
+	./png2ascii.exe "##234%%====---- " $< -newlines > $@
 
 paper/firstpage.2c : twocolumn.exe paper/firstpage.txt makefile
 	./twocolumn.exe -startline 0 -startcol 40 -pages 1 -endlines 76 -endcol 64 -botclearance 1 paper/firstpage.txt -o $@
 
 paper/postreloc.2c : twocolumn.exe paper/postreloc.txt makefile
 	./twocolumn.exe -topclearance 1 -startline 1 -startcol 0 -pages 5 -endlines 73 -endcol 64 -botclearance 2 paper/postreloc.txt -o $@
-#	./text2pdf -c160 -s6 -v6 -l128 debug0.page > debug0.pdf
+#	./text2pdf.exe -c160 -s6 -v6 -l128 debug0.page > debug0.pdf
 
 paper/postdata1.2c : twocolumn.exe paper/postdata1.txt makefile
 	./twocolumn.exe -startline 78 -topclearance 1 -startcol 64 -pages 2 paper/postdata1.txt -o $@
@@ -70,7 +70,7 @@ paper/sigbovik.txt : paper/sigbovik.png png2ascii.exe makefile
 	./png2ascii.exe "##23456:89ABC-- " $< > $@
 
 paper/paper.pdf : dos/paper.exe text2pdf.exe makefile
-	./text2pdf -c160 -s6 -v6 -l128 $< > paper/paper.pdf
+	./text2pdf.exe -c160 -s6 -v6 -l128 $< > paper/paper.pdf
 
 tests : $(addprefix dos/,$(TESTS)) dos/tests.bat
 

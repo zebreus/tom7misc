@@ -58,6 +58,21 @@ structure OldPrettyPrint :> OLD_PRETTYPRINT =
 	fun string ({consumer, linewidth, flush}, s) = consumer s
 	fun char ({consumer, linewidth, flush}, c) = consumer(str c)
 	fun flush {consumer, linewidth, flush} = flush()
+
+      (* XXX tom7 added these in 2025. I think probably newer mlton
+         has a newer version of this signature. These might be
+         quite wrong! *)
+    fun ellipses _ = ("...", 0)
+    fun indent (_, n) = ()
+    fun maxDepth _ = NONE
+    fun maxIndent _ = NONE
+    fun setEllipses (_, s) = ()
+    fun setLineWidth (_, w) = ()
+    fun setMaxDepth (_, d) = ()
+    fun setMaxIndent (_, i) = ()
+    fun setTextWidth (_, w) = ()
+    fun setEllipsesWithSz (_, s, i) = ()
+
       end
 
     structure PP = PPStreamFn(structure Token = StringToken structure Device = Dev)
