@@ -81,6 +81,7 @@ struct ImagePage : public Page {
  private:
   friend struct ImageDocument;
   friend struct TalkDocument;
+  friend struct MovieDocument;
   ImagePage(const ImagePage &other) = delete;
   ImagePage &operator =(const ImagePage &other) = delete;
 

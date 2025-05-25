@@ -1,0 +1,34 @@
+do REQUIRE-STDLIB
+do REQUIRE-LAYOUT
+
+datatype provide-animation = REQUIRE-ANIMATION
+
+(* See animation.h for details on these parameters. *)
+object AutoDrawArg of
+  { smooth-passes : int,
+    smooth-vote-threshold : float,
+
+    max-pen-radius : float,
+    min-pen-radius : float,
+
+    max-pen-velocity : float,
+
+    pen-acceleration : float,
+
+    timesteps-per-frame : int,
+
+    adjacent-deltae-threshold : float,
+    max-fragile-piece-size : int,
+
+    blend-frames : int,
+
+    verbosity : int }
+
+
+(* TODO: Might be nice to return an object from the internal
+   function that gives us access to debug frames. But that would
+   require storing vectors in objects, which is not (yet?) supported. *)
+
+(* Just unwrap and wrap as image-handle. *)
+fun auto-draw (Image img) (options : obj) : image-handle vec =
+  vec-map Image (internal-auto-draw (img, options))

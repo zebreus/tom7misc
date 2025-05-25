@@ -1,0 +1,15 @@
+(* Definitions for pdf-document format. *)
+
+object PDFInfo of { (* page size, in points *)
+                    width : float,
+                    height : float,
+                    (* pdf header. *)
+                    creator : string,
+                    producer : string,
+                    title : string,
+                    author : string,
+                    subject : string,
+                    (* Note: The current date will be used if
+                       this is absent. *)
+                    date : string }
+(* set-doc-info : obj -> unit *)

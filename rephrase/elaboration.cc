@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <functional>
 #include <optional>
 #include <tuple>
@@ -26,7 +27,6 @@
 #include "unification.h"
 #include "util.h"
 
-#include "base/stringprintf.h"
 #include "ansi.h"
 
 // This code has to mention both el and il stuff with the same
@@ -100,12 +100,12 @@ const il::Type *Elaboration::ElabType(const Context &G,
     std::function<std::string()> {
     return std::function<std::string()>([this, construct, pos, el_type]() {
         std::string loc = ErrorAtPos(pos);
-        return StringPrintf("%s"
-                            "ElabType: %s\n"
-                            "Type: %s\n",
-                            loc.c_str(),
-                            construct.c_str(),
-                            TypeString(el_type).c_str());
+        return std::format("{}"
+                           "ElabType: {}\n"
+                           "Type: {}\n",
+                           loc,
+                           construct,
+                           TypeString(el_type));
       });
     };
 
@@ -152,7 +152,7 @@ const il::Type *Elaboration::ElabType(const Context &G,
     for (int i = 0; i < (int)el_type->children.size(); i++) {
       const el::Type *t = el_type->children[i];
       const il::Type *tt = ElabType(G, t);
-      rec.emplace_back(StringPrintf("%d", i + 1), tt);
+      rec.emplace_back(std::format("{}", i + 1), tt);
     }
     return pool->RecordType(std::move(rec));
   }
@@ -187,12 +187,12 @@ Elaboration::ElabDec(
     std::function<std::string()> {
     return std::function<std::string()>([this, construct, pos, dec]() {
         std::string loc = ErrorAtPos(pos);
-        return StringPrintf("%s"
-                            "ElabDec: %s\n"
-                            "Declaration: %s\n",
-                            loc.c_str(),
-                            construct.c_str(),
-                            ShortColorDecString(dec).c_str());
+        return std::format("{}"
+                           "ElabDec: {}\n"
+                           "Declaration: {}\n",
+                           loc,
+                           construct,
+                           ShortColorDecString(dec));
       });
     };
 
@@ -420,7 +420,7 @@ Elaboration::ElabDec(
       global_syms.reserve(dec->funs.size());
       for (const el::FunDec &fun : dec->funs) {
         global_syms.push_back(
-            pool->NewVar(StringPrintf("g_%s", fun.name.c_str())));
+            pool->NewVar(std::format("g_{}", fun.name)));
       }
 
       // Now we can generate the global for each function.
@@ -510,7 +510,7 @@ Elaboration::ElabDec(
           for (const el::FunDec &fun : dec->funs)
             fnames.push_back(fun.name);
           return pool->NewVar(
-              StringPrintf("%s_env", Util::Join(fnames, "_").c_str()));
+              std::format("{}_env", Util::Join(fnames, "_")));
         }();
 
       std::vector<ILDec> ret;
@@ -733,9 +733,8 @@ Elaboration::ElabDec(
         if (VERBOSE) {
           std::string tyvars;
           if (!il_tyvars.empty()) {
-            tyvars = StringPrintf(
-                "(" AYELLOW("%s") ") ",
-                Util::Join(il_tyvars, ",").c_str());
+            tyvars = std::format("(" AYELLOW("{}") ") ",
+                                 Util::Join(il_tyvars, ","));
           }
           printf("Binding constructor " ABLUE("%s") " : "
                  "%s%s -> %s\n"
@@ -881,11 +880,11 @@ il::ObjFieldType Elaboration::ResolveObjFieldType(
   if (ovi != nullptr) {
     const auto it = ovi->fields.find(lab);
     auto FieldError = [this, pos, &lab, &objname]() {
-        return StringPrintf("%s"
-                            "For the field " ABLUE("%s") " in the object "
-                            "named " AORANGE("%s") ".",
-                            ErrorAtPos(pos).c_str(),
-                            lab.c_str(), objname.c_str());
+        return std::format("{}"
+                           "For the field " ABLUE("{}") " in the object "
+                           "named " AORANGE("{}") ".",
+                           ErrorAtPos(pos),
+                           lab, objname);
       };
 
     CHECK(it != ovi->fields.end()) <<
@@ -895,9 +894,9 @@ il::ObjFieldType Elaboration::ResolveObjFieldType(
 
       if (rhs_type != nullptr) {
       Unification::Unify([what, &FieldError]() {
-          return StringPrintf("%s\n"
-                              "Object field type: %s\n",
-                              FieldError().c_str(), what);
+          return std::format("{}\n"
+                             "Object field type: {}\n",
+                             FieldError(), what);
         }, rhs_type, it->second);
     } else {
       // e.g. for WITHOUT, where we don't even have an expression.
@@ -938,12 +937,12 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
           [this, construct, el_exp]() -> std::string {
             size_t pos = ExpNearbyPos(el_exp);
             std::string loc = ErrorAtPos(pos);
-            return StringPrintf("%s"
-                                "Elab: %s\n"
-                                "Expression: %s\n",
-                                loc.c_str(),
-                                construct.c_str(),
-                                ShortColorExpString(el_exp).c_str());
+            return std::format("{}"
+                               "Elab: {}\n"
+                               "Expression: {}\n",
+                               loc,
+                               construct,
+                               ShortColorExpString(el_exp));
       });
     };
 
@@ -987,7 +986,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     lce.reserve(el_exp->children.size());
 
     for (int i = 0; i < (int)el_exp->children.size(); i++) {
-      std::string lab = StringPrintf("%d", i + 1);
+      std::string lab = std::format("{}", i + 1);
       const auto &[e, t] = Elab(G, el_exp->children[i]);
       lce.emplace_back(lab, e);
       lct.emplace_back(lab, t);
@@ -1068,7 +1067,7 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
           "Mismatch between PrimopArity and PrimopType?";
 
         for (int i = 0; i < val_arity; i++) {
-          args.push_back(pool->Project(StringPrintf("%d", i + 1), dom, vx));
+          args.push_back(pool->Project(std::format("{}", i + 1), dom, vx));
         }
       }
 
@@ -1212,8 +1211,8 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
         el_pool->WildPat(),
         el_pool->Fail(
             el_pool->String(
-                StringPrintf("unhandled match at %s",
-                             SimplePos(pos).c_str()), pos)));
+                std::format("unhandled match at {}",
+                            SimplePos(pos)), pos)));
 
     const auto &[cexp, ctype] =
       pattern_compilation->Compile(GG, obj_var, ot, rows, pos);
@@ -1305,8 +1304,8 @@ const std::pair<const il::Exp *, const il::Type *> Elaboration::Elab(
     if (!el_exp->str.empty()) {
       ovi = G.FindObj(el_exp->str);
       CHECK(ovi != nullptr) << Error("object literal")() <<
-        StringPrintf("Unbound object name " AORANGE("%s") ".\n",
-                     el_exp->str.c_str());
+        std::format("Unbound object name " AORANGE("{}") ".\n",
+                    el_exp->str);
     }
 
     std::vector<
@@ -1361,11 +1360,11 @@ const il::Exp *Elaboration::ElabLayout(
         [this, lay]() -> std::string {
           size_t pos = ExpNearbyPos(lay->exp);
           std::string loc = ErrorAtPos(pos);
-          return StringPrintf("%s\n"
-                              "Elaborating exp embedded in layout.\n"
-                              "Expression: %s\n",
-                              loc.c_str(),
-                              ShortColorExpString(lay->exp).c_str());
+          return std::format("{}\n"
+                             "Elaborating exp embedded in layout.\n"
+                             "Expression: {}\n",
+                             loc,
+                             ShortColorExpString(lay->exp));
         },
         tt, pool->LayoutType());
     return ee;
@@ -1393,19 +1392,19 @@ std::string Elaboration::ErrorAtPos(size_t byte_pos) {
     // This can probably go once we have sufficient coverage of
     // position information in the parser. But for now it lets me
     // figure out which of the many missing positions got propagated.
-    return StringPrintf(AORANGE("BOGUS: ") "%lld\n", uint64_t(byte_pos));
+    return std::format(AORANGE("BOGUS: ") "%{}\n", uint64_t(byte_pos));
   } else {
     const std::string file = source_map.filecover[byte_pos];
     const int line = source_map.linecover[byte_pos];
-    return StringPrintf(
-        "\nAt byte %d which is "
-        AWHITE("%s") ":" AYELLOW("%d") ".\n",
-        byte_pos, file.c_str(), line);
+    return std::format(
+        "\nAt byte {} which is "
+        AWHITE("{}") ":" AYELLOW("{}") ".\n",
+        byte_pos, file, line);
   }
 }
 
 std::string Elaboration::SimplePos(size_t byte_pos) {
   const std::string file = source_map.filecover[byte_pos];
   const int line = source_map.linecover[byte_pos];
-  return StringPrintf("%s:%d", file.c_str(), line);
+  return std::format("{}:{}", file, line);
 }

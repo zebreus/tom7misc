@@ -80,8 +80,9 @@ endif
 
 # These come from tom7's repository.
 CC_LIB=../cc-lib
-BIT7=../bit7
+BIT7_DIR=../bit7
 LLM_DIR=../llm
+CODEC_DIR=../codec
 # This directory comes from github.com/ggerganov/llama.cpp/tree/master
 # I think I made some local changes, though :/
 LLAMA_DIR=../llama
@@ -90,7 +91,9 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 
 CC_LIB_OBJECTS=$(RE2_OBJECTS) $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/image.o $(CC_LIB)/image-resize.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/pdf.o $(CC_LIB)/qr-code.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/color-util.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/boxes-and-glue.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/opt/opt.o $(CC_LIB)/opt/opt-seq.o $(CC_LIB)/integer-voronoi.o $(CC_LIB)/bounds.o $(CC_LIB)/base64.o $(CC_LIB)/status-bar.o
 
-BIT7_OBJECTS=$(BIT7)/font-image.o
+BIT7_OBJECTS=$(BIT7_DIR)/font-image.o
+
+CODEC_OBJECTS=$(CODEC_DIR)/mov-recorder.o $(CODEC_DIR)/mov.o
 
 # This section is from llama.cpp's somewhat involved makefile.
 
@@ -126,8 +129,8 @@ endif
 # Compile flags
 #
 
-CFLAGS   = $(OPTFLAGS) -I. -I$(GMP_CFLAGS) I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7) -std=c11 -fPIC $(PLATFORM_CFLAGS)
-CXXFLAGS = $(OPTFLAGS) -I. -I$(GMP_CFLAGS) -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7) -std=c++23 -fPIC $(PLATFORM_CFLAGS)
+CFLAGS   = $(OPTFLAGS) -I. -I$(GMP_CFLAGS) I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7_DIR) -I$(CODEC_DIR) -std=c11 -fPIC $(PLATFORM_CFLAGS)
+CXXFLAGS = $(OPTFLAGS) -I. -I$(GMP_CFLAGS) -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7_DIR) -I$(CODEC_DIR) -std=c++23 -fPIC $(PLATFORM_CFLAGS)
 LDFLAGS  = $(OPTFLAGS) -m64 $(GMP_LFLAGS) $(PLATFORM_LDFLAGS)
 
 ifndef LLAMA_DEBUG
@@ -315,9 +318,9 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) $(LLM_DIR)/llm.o $(LLM_DIR)/ranker.o $(LLM_DIR)/console.o
 
-LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bc.o to-bytecode.o optimization.o assembling.o compiler.o document.o pdf-document.o image-document.o talk-document.o rephrasing.o achievements.o execution.o animation.o
+LANG_OBJECTS=utf.o html.o hyphenation.o el.o parsing.o lexing.o inclusion.o nullary.o uncurry.o il.o initial.o context.o unification.o primop.o pattern-compilation.o elaboration.o simplification.o il-util.o pp.o frontend.o closure-conversion.o flatten-globals.o bc.o to-bytecode.o optimization.o assembling.o compiler.o document.o pdf-document.o image-document.o talk-document.o movie-document.o rephrasing.o achievements.o execution.o animation.o
 
-BOVEX_OBJECTS=$(LANG_OBJECTS)
+BOVEX_OBJECTS=$(LANG_OBJECTS) $(CODEC_OBJECTS)
 BOVEX_HEADERS=*.h
 
 ifeq ($(ENABLE_LLM), true)

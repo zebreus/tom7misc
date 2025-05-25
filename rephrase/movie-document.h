@@ -1,5 +1,5 @@
-#ifndef _REPHRASE_TALK_DOCUMENT_H
-#define _REPHRASE_TALK_DOCUMENT_H
+#ifndef _REPHRASE_MOVIE_DOCUMENT_H
+#define _REPHRASE_MOVIE_DOCUMENT_H
 
 #include <map>
 #include <string_view>
@@ -7,10 +7,10 @@
 #include "document.h"
 #include "image-document.h"
 
-struct TalkDocument : public ImageDocument {
-  TalkDocument(std::string_view program_dir);
+struct MovieDocument : public ImageDocument {
+  MovieDocument(std::string_view program_dir);
 
-  // Outputs the image files and the .talk file.
+  // Outputs the movie file.
   void GenerateOutput(
       std::string_view dirname,
       const std::map<int, std::map<int, DocTree>> &pages) override;

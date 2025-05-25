@@ -34,7 +34,8 @@ static constexpr const char *DEFAULT_FONT_FILE = "fixedersys2x.ttf";
 using Transform = Document::Transform;
 
 ImageFont::ImageFont(const std::string &name,
-                   const std::string &filename) : name(name) {
+                     const std::string &filename) : name(name) {
+  fprintf(stderr, "Trying to load " AWHITE("%s") "\n", filename.c_str());
   ttf.reset(new TTF(filename));
   if (VERBOSE) {
     printf("** %s **\n", filename.c_str());
@@ -63,7 +64,8 @@ void ImageDocument::InitBuiltInFonts() {
   FontDescription desc;
   desc.font_family = DEFAULT_FONT_NAME;
   RegisterFont(desc, new ImageFont(desc.font_family,
-                                  DEFAULT_FONT_FILE));
+                                   Util::DirPlus(program_dir,
+                                                 DEFAULT_FONT_FILE)));
 }
 
 std::string ImageFont::Name() const {
@@ -217,7 +219,8 @@ void ImageDocument::GenerateOutput(
     "has to do this.";
 }
 
-ImageDocument::ImageDocument(std::string_view dir) : Document(dir) {
+ImageDocument::ImageDocument(std::string_view prog_dir) :
+    Document(prog_dir) {
   InitBuiltInFonts();
 }
 

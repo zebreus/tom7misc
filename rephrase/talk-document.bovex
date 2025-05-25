@@ -1,0 +1,4 @@
+
+(* Definitions for talk-document format. *)
+
+object TalkInfo of { width: float, height : float }

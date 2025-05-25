@@ -1,7 +1,6 @@
 (*   -*- electric-indent-local-mode: nil -*- *)
 
-(* slides info *)
-object TalkInfo of { width: float, height : float }
+import "talk-document.bovex"
 
 val tt = fixedersys
 

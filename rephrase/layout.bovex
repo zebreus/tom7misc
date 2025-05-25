@@ -33,21 +33,6 @@ fun mm (d : float) = d *. 2.8346456664
 (* We say that a pixel is the same as a point. *)
 fun pixel (d : float) = d
 
-object PDFInfo of { (* page size, in points *)
-                    width : float,
-                    height : float,
-                    (* pdf header; each has a maximum length
-                       of 64 characters *)
-                    creator : string,
-                    producer : string,
-                    title : string,
-                    author : string,
-                    subject : string,
-                    (* Note: The current date will be used if
-                       this is absent. *)
-                    date : string }
-(* set-doc-info : obj -> unit *)
-
 object OutputDest of { page : int, frame : int }
 (* internal-output : obj * layout -> unit *)
 

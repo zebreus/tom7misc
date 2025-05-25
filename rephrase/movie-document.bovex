@@ -1,0 +1,6 @@
+
+(* Definitions for movie-document format. *)
+(* TODO: Also FPS, etc. *)
+
+object MovieInfo of { width: float, height : float }
+

@@ -23,15 +23,17 @@
 #include "document.h"
 #include "execution.h"
 #include "frontend.h"
+#include "movie-document.h"
+#include "opt/opt-seq.h"
 #include "pdf-document.h"
-#include "talk-document.h"
 #include "periodically.h"
 #include "rephrasing.h"
-#include "opt/opt-seq.h"
+#include "talk-document.h"
 
 enum class OutputType {
   PDF,
   TALK,
+  MOVIE,
 };
 
 namespace {
@@ -157,7 +159,11 @@ struct BovexExecution : public bc::Execution {
     // We take the first existing file.
     for (const std::string &ipath : include_paths) {
       std::string f = Util::DirPlus(ipath, filename);
-      if (Util::ExistsFile(f)) return f;
+      if (Util::ExistsFile(f)) {
+        printf("Found " AGREEN("%s") " in " ACYAN("%s") "\n",
+               std::string(filename).c_str(), f.c_str());
+        return f;
+      }
     }
     if (verbose > 0) {
       printf("File " ARED("%s") " not found in any include path:\n",
@@ -250,6 +256,7 @@ static int Bovex(const std::string &program_dir,
   const OutputType output_type = [&ext]() {
       if (ext == "pdf") return OutputType::PDF;
       if (ext == "talk") return OutputType::TALK;
+      if (ext == "mov") return OutputType::MOVIE;
       LOG(FATAL) << "Unsupported output type: " << ext;
     }();
 
@@ -282,6 +289,8 @@ static int Bovex(const std::string &program_dir,
         return std::make_unique<PDFDocument>(program_dir);
       case OutputType::TALK:
         return std::make_unique<TalkDocument>(program_dir);
+      case OutputType::MOVIE:
+        return std::make_unique<MovieDocument>(program_dir);
       }
       LOG(FATAL) << "Unimplemented document type";
       return std::unique_ptr<Document>(nullptr);
