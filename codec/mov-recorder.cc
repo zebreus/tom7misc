@@ -42,7 +42,7 @@ void MovRecorder::SetEncodingThreads(int n) {
     std::unique_lock ml(m);
 
     // If we don't have enough, add threads.
-    CHECK(encode_threads.size() == max_encoding_threads);
+    CHECK((int)encode_threads.size() == max_encoding_threads);
     while (max_encoding_threads < n) {
       encode_threads.emplace_back(&MovRecorder::EncodeThread,
                                   this,
@@ -55,7 +55,7 @@ void MovRecorder::SetEncodingThreads(int n) {
   // Some threads may need to shut down.
   cv.notify_all();
 
-  while (encode_threads.size() > max_encoding_threads) {
+  while ((int)encode_threads.size() > max_encoding_threads) {
     encode_threads.back().join();
     encode_threads.pop_back();
   }
@@ -76,7 +76,7 @@ void MovRecorder::AddFrame(ImageRGBA img) {
     std::unique_lock ml(m);
     if (max_queue_size > 0) {
       cv.wait(ml, [this]() {
-          return frame_queue.size() < max_queue_size;
+          return (int)frame_queue.size() < max_queue_size;
         });
     }
 

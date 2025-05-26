@@ -1,4 +1,4 @@
-default : mov_test.exe dump.exe testbed.exe
+default : mov_test.exe mov-recorder_test.exe dump.exe testbed.exe
 
 codec : codec.dll
 

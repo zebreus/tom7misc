@@ -535,8 +535,19 @@ void MOV::Out::WriteHeader() {
           // flags
           stsz.WB({0, 0, 0});
           // RGBA
-          stsz.W32(width * height * 4);
+          // stsz.W32(width * height * 4);
+          // Variable sample size (compressed frames); the
+          // sizes will appear right after the count below.
+          stsz.W32(0);
+          // Number of frames.
           stsz.W32(frames.size());
+
+          // Frame
+          for (const Frame &f : frames) {
+            CHECK(f.size < int64_t{0x100000000}) << "Compressed frame "
+              "too large to encode!";
+            stsz.W32((uint32_t)f.size);
+          }
 
           stbl.AddChunk(stsz);
         }
