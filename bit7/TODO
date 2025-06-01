@@ -20,8 +20,9 @@ Glyphs todo:
     2666 ; UQ   # ♦ E0.6 diamond suit
     2663 ; UQ   # ♣ E0.6 club suit
  - I want to use ↻ and friends!!
- - Latin Extended B
 
+For math like lean:
+ - Superscripts and Subscripts
 
 // Common in Wikipedia:
 U+02c8 (ˈ): 130261
@@ -30,7 +31,6 @@ U+02d0 (ː): 84841
 U+03ac (ά): 67724
 U+03cc (ό): 56472
 U+03ad (έ): 45479
-U+025b (ɛ): 43318
 U+026a (ɪ): 41570
 U+300c (「): 30788
 U+300d (」): 30753
@@ -41,10 +41,6 @@ obviously
 □◇○ (and ◊)
 
 
-This kind of thing:
-U+27e6 Ps MATHEMATICAL LEFT WHITE SQUARE BRACKET ⟦
-U+27e7 Pe MATHEMATICAL RIGHT WHITE SQUARE BRACKET ⟧
-
 Popular from wikipedia:
 
 U+0627 (ا): 562605
@@ -52,7 +48,6 @@ U+0644 (ل): 283104
 U+0631 (ر): 264108
 U+064a (ي): 233681
 U+0646 (ن): 225484
-U+0219 (ș): 211495
 U+0645 (م): 210553
 U+062f (د): 191930
 U+0648 (و): 189517

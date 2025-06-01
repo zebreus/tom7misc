@@ -8,8 +8,11 @@
 #include "base/logging.h"
 #include "font-image.h"
 #include "utf8.h"
+#include "ansi.h"
 
 int main(int argc, char **argv) {
+  ANSI::Init();
+
   CHECK(argc == 2) << "./getcodepoints.exe font.cfg\n";
 
   Config config = Config::ParseConfig(argv[1]);
