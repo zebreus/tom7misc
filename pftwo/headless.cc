@@ -1,4 +1,7 @@
+
 #include <algorithm>
+#include <ctime>
+#include <unistd.h>
 #include <vector>
 #include <string>
 #include <set>
@@ -10,13 +13,16 @@
 #include <windows.h>
 #undef byte
 #undef ARRAYSIZE
+#undef CopyMemory
 #endif
 
 #include <cstdio>
 #include <cstdlib>
+#include <format>
 
 #include "pftwo.h"
 
+#include "options.h"
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
 #include "../cc-lib/util.h"
@@ -25,6 +31,7 @@
 #include "../cc-lib/heap.h"
 #include "../cc-lib/randutil.h"
 #include "../cc-lib/base/stringprintf.h"
+#include "../cc-lib/nice.h"
 
 #include "atom7ic.h"
 
@@ -32,6 +39,8 @@
 #include "problem-twoplayer.h"
 
 #include "treesearch.h"
+
+using int64 = int64_t;
 
 // Note: This is not actually a std::thread -- it's really the main
 // thread. SDL really doesn't like being called outside the main
@@ -55,53 +64,49 @@ struct ConsoleThread {
       // We don't bother if running an experment, since these only
       // run for a few hours and in batch (so the checkpoint files
       // get mixed up anyway).
-      if (experiment_file.empty() &&
-    elapsed - last_wrote > TEN_MINUTES) {
-  string filename_part = StringPrintf("frame-%lld", frame);
-  string filename = search->SaveBestMovie(filename_part);
-  // XXX races are possible, and Util::CopyFile does byte-by-byte.
-  // Should use posix link?
-  (void)Util::RemoveFile("latest.fm2");
-  if (!Util::CopyFileBytes(filename, "latest.fm2")) {
-    printf("Couldn't copy to latest.fm2?\n");
-  }
-  last_wrote = elapsed;
+      if (experiment_file.empty() && elapsed - last_wrote > TEN_MINUTES) {
+        string filename_part = StringPrintf("frame-%lld", frame);
+        string filename = search->SaveBestMovie(filename_part);
+        // XXX races are possible, and Util::CopyFile does byte-by-byte.
+        // Should use posix link?
+        (void)Util::RemoveFile("latest.fm2");
+        if (!Util::CopyFileBytes(filename, "latest.fm2")) {
+          printf("Couldn't copy to latest.fm2?\n");
+        }
+        last_wrote = elapsed;
       }
 
-      const int64 total_nes_frames =
-  search->UpdateApproximateNesFrames();
+      const int64 total_nes_frames = search->UpdateApproximateNesFrames();
 
       int64 minutes = elapsed / 60LL;
       int64 hours = minutes / 60LL;
       if (minutes != last_minute) {
-  last_minute = minutes;
-  const int64 sec = elapsed % 60LL;
-  const int64 min = minutes % 60LL;
-  string es = experiment_file.empty() ? "" :
-    StringPrintf(" [%s]", experiment_file.c_str());
+        last_minute = minutes;
+        const int64 sec = elapsed % 60LL;
+        const int64 min = minutes % 60LL;
+        string es = experiment_file.empty()
+                        ? ""
+                        : StringPrintf(" [%s]", experiment_file.c_str());
 
-  search->PrintPerfCounters();
-  string pct;
-  if (max_nes_frames > 0LL) {
-    pct = StringPrintf(" (%.1f%%)",
-           (100.0 * total_nes_frames) /
-           max_nes_frames);
-  }
-  printf("%02d:%02d:%02d  %lld NES Frames%s; %.2fKframes/sec%s\n",
-         (int)hours, (int)min, (int)sec,
-         total_nes_frames,
-         pct.c_str(),
-         (double)total_nes_frames / ((double)elapsed * 1000.0),
-         es.c_str());
-  fflush(stdout);
+        search->PrintPerfCounters();
+        string pct;
+        if (max_nes_frames > 0LL) {
+          pct = StringPrintf(" (%.1f%%)",
+                             (100.0 * total_nes_frames) / max_nes_frames);
+        }
+        printf("%02d:%02d:%02d  %lld NES Frames%s; %.2fKframes/sec%s\n",
+               (int)hours, (int)min, (int)sec, total_nes_frames, pct.c_str(),
+               (double)total_nes_frames / ((double)elapsed * 1000.0),
+               es.c_str());
+        fflush(stdout);
       }
 
       if (max_nes_frames > 0LL && total_nes_frames > max_nes_frames) {
-  if (!experiment_file.empty()) {
-    string f = search->SaveBestMovie(experiment_file);
-    printf("Wrote final experiment results to %s\n", f.c_str());
-  }
-  return;
+        if (!experiment_file.empty()) {
+          string f = search->SaveBestMovie(experiment_file);
+          printf("Wrote final experiment results to %s\n", f.c_str());
+        }
+        return;
       }
     }
   }
@@ -117,13 +122,9 @@ struct ConsoleThread {
 };
 
 int main(int argc, char *argv[]) {
-  #ifdef __MINGW32__
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
-  #endif
+  Nice::SetLowPriority();
 
-  TreeSearch::Options options;
+  Options options;
 
   // XXX not general-purpose!
   string experiment;
@@ -134,7 +135,7 @@ int main(int argc, char *argv[]) {
     // options.node_batch_size = (int)d;
     options.p_stay_on_node = d;
     options.random_seed = (int)(d * 100002.0);
-    experiment = StringPrintf("expt-%s", argv[1]);
+    experiment = std::format("expt-{}", argv[1]);
   }
 
   {

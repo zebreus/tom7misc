@@ -7,13 +7,6 @@
 #include <memory>
 #include <list>
 
-#ifdef __MINGW32__
-#define byte win_byte_override
-#include <windows.h>
-#undef byte
-#undef ARRAYSIZE
-#endif
-
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -53,6 +46,8 @@
 
 using LivesLoc = AutoLives::LivesLoc;
 using TimerLoc = AutoTimer::TimerLoc;
+
+using namespace std;
 
 static string Rtos(double d) {
   if (std::isnan(d)) return "NaN";
@@ -149,78 +144,78 @@ static vector<uint8> GetSpriteSheet(Emulator *emu, int rotate = 0) {
     // sprites, we'll make two calls to this.
     auto OneTile =
       [emu, &rgba, v_flip, h_flip, colorbits, palette_table](
-	  bool patterntable_high, uint8 tile_idx, int x0, int y0) {
+    bool patterntable_high, uint8 tile_idx, int x0, int y0) {
       const uint32 spr_pat_addr = patterntable_high ? 0x1000 : 0x0000;
       const uint8 *vram = emu->GetFC()->cart->VPagePointer(spr_pat_addr);
 
       const int addr = tile_idx * 16;
       for (int row = 0; row < 8; row++) {
-	const uint8 row_low = vram[addr + row];
-	const uint8 row_high = vram[addr + row + 8];
+  const uint8 row_low = vram[addr + row];
+  const uint8 row_high = vram[addr + row + 8];
 
-	// bit from msb to lsb.
-	for (int bit = 0; bit < 8; bit++) {
-	  const uint8 value =
-	    ((row_low >> (7 - bit)) & 1) |
-	    (((row_high >> (7 - bit)) & 1) << 1);
+  // bit from msb to lsb.
+  for (int bit = 0; bit < 8; bit++) {
+    const uint8 value =
+      ((row_low >> (7 - bit)) & 1) |
+      (((row_high >> (7 - bit)) & 1) << 1);
 
-	  const int px = h_flip ? x0 + (7 - bit) : (x0 + bit);
-	  const int py = v_flip ? y0 + (7 - row) : (y0 + row);
-	  const int pixel = (py * SPRITESHEET_WIDTH + px) * 4;
+    const int px = h_flip ? x0 + (7 - bit) : (x0 + bit);
+    const int py = v_flip ? y0 + (7 - row) : (y0 + row);
+    const int pixel = (py * SPRITESHEET_WIDTH + px) * 4;
 
-	  // For sprites, transparent pixels need to be drawn with
-	  // alpha 0. The palette doesn't matter; 0 means transparent
-	  // in every palette.
-	  if (value == 0) {
-	    rgba[pixel + 0] = 0x00;
-	    rgba[pixel + 1] = 0x00;
-	    rgba[pixel + 2] = 0x00;
-	    rgba[pixel + 3] = 0x00;
-	  } else {
-	    // Offset with palette table. Sprite palette entries come
-	    // after the bg ones, so add 0x10.
-	    const uint8 palette_idx = 0x10 + ((colorbits << 2) | value);
-	    // ID of global NES color gamut.
-	    const uint8 color_id = palette_table[palette_idx];
+    // For sprites, transparent pixels need to be drawn with
+    // alpha 0. The palette doesn't matter; 0 means transparent
+    // in every palette.
+    if (value == 0) {
+      rgba[pixel + 0] = 0x00;
+      rgba[pixel + 1] = 0x00;
+      rgba[pixel + 2] = 0x00;
+      rgba[pixel + 3] = 0x00;
+    } else {
+      // Offset with palette table. Sprite palette entries come
+      // after the bg ones, so add 0x10.
+      const uint8 palette_idx = 0x10 + ((colorbits << 2) | value);
+      // ID of global NES color gamut.
+      const uint8 color_id = palette_table[palette_idx];
 
-	    // Put pixel in sprite texture:
-	    rgba[pixel + 0] = ntsc_palette[color_id * 3 + 0];
-	    rgba[pixel + 1] = ntsc_palette[color_id * 3 + 1];
-	    rgba[pixel + 2] = ntsc_palette[color_id * 3 + 2];
-	    rgba[pixel + 3] = 0xFF;
-	  }
-	}
+      // Put pixel in sprite texture:
+      rgba[pixel + 0] = ntsc_palette[color_id * 3 + 0];
+      rgba[pixel + 1] = ntsc_palette[color_id * 3 + 1];
+      rgba[pixel + 2] = ntsc_palette[color_id * 3 + 2];
+      rgba[pixel + 3] = 0xFF;
+    }
+  }
       }
     };
 
     if (tall_sprites) {
       // Odd and even tile numbers are treated differently.
       if ((tile_idx & 1) == 0) {
-	// This page:
-	// http://noelberry.ca/nes
-	// verifies that tiles t and t+1 are drawn top then bottom.
-	if (v_flip) {
-	  // in y-flip scenarios, we have to flip the
-	  // y positions here so that the whole 8x16 sprite is flipping,
-	  // rather than its two 8x8 components. So tile_idx actually goes
-	  // on bottom.
-	  OneTile(false, tile_idx, xpos, ypos + 8);
-	  OneTile(false, tile_idx + 1, xpos, ypos);
-	} else {
-	  OneTile(false, tile_idx, xpos, ypos);
-	  OneTile(false, tile_idx + 1, xpos, ypos + 8);
-	}
+  // This page:
+  // http://noelberry.ca/nes
+  // verifies that tiles t and t+1 are drawn top then bottom.
+  if (v_flip) {
+    // in y-flip scenarios, we have to flip the
+    // y positions here so that the whole 8x16 sprite is flipping,
+    // rather than its two 8x8 components. So tile_idx actually goes
+    // on bottom.
+    OneTile(false, tile_idx, xpos, ypos + 8);
+    OneTile(false, tile_idx + 1, xpos, ypos);
+  } else {
+    OneTile(false, tile_idx, xpos, ypos);
+    OneTile(false, tile_idx + 1, xpos, ypos + 8);
+  }
       } else {
-	// XXX I assume this drops the low bit? I don't see that
-	// documented but it wouldn't really make sense otherwise
-	// (unless tile 255 wraps to 0?)
-	if (v_flip) {
-	  OneTile(true, tile_idx - 1, xpos, ypos + 8);
-	  OneTile(true, tile_idx, xpos, ypos);
-	} else {
-	  OneTile(true, tile_idx - 1, xpos, ypos);
-	  OneTile(true, tile_idx, xpos, ypos + 8);
-	}
+  // XXX I assume this drops the low bit? I don't see that
+  // documented but it wouldn't really make sense otherwise
+  // (unless tile 255 wraps to 0?)
+  if (v_flip) {
+    OneTile(true, tile_idx - 1, xpos, ypos + 8);
+    OneTile(true, tile_idx, xpos, ypos);
+  } else {
+    OneTile(true, tile_idx - 1, xpos, ypos);
+    OneTile(true, tile_idx, xpos, ypos + 8);
+  }
       }
     } else {
       OneTile(spr_pat_high, tile_idx, xpos, ypos);
@@ -249,7 +244,7 @@ struct UIThread {
   LastNBuffer<uint64> last_pcs{100, 0ULL};
 
   UIThread(const string &game,
-	   const string &moviefile) : game(game) {
+     const string &moviefile) : game(game) {
     vector<pair<int, string>> subs;
     movie = Util::EndsWith(moviefile, ".fm2") ?
       SimpleFM2::ReadInputsEx(moviefile, &subs) :
@@ -295,13 +290,13 @@ struct UIThread {
     BlitRGBA(spritesheet, 512, 16, startx, starty + 512 + 8, screen);
 
     font->draw(startx, 4, StringPrintf("%d^2/^<%d",
-				       frameidx, (int)movie.size()));
+               frameidx, (int)movie.size()));
 
     const uint32 xscroll = e->GetXScroll();
     const uint32 yscroll = e->GetYScroll();
     font->draw(startx + 128, 4,
-	       StringPrintf("^2scroll: ^1%d^2,^<%d",
-			    (int)xscroll, (int)yscroll));
+         StringPrintf("^2scroll: ^1%d^2,^<%d",
+          (int)xscroll, (int)yscroll));
     // And sprites.
     for (int absolute_s = 0; absolute_s < 64; absolute_s++) {
       int s = (absolute_s + rot) % 64;
@@ -309,7 +304,7 @@ struct UIThread {
       int sy = oam[s * 4 + 0];
 
       fontsmall->draw(startx + 2 * sx, starty + 2 * sy,
-		      StringPrintf("%d", s));
+          StringPrintf("%d", s));
     }
 
     const PPU *ppu = emu->GetFC()->ppu;
@@ -318,17 +313,17 @@ struct UIThread {
       uint8 ys = ppu->interframe_y[sl];
       // Given x,y as NES screen coordinates
       auto DrawPixel =
-	[this, startx, starty](int x, int y,
-			       uint8 r, uint8 g, uint8 b) {
-	  SetPixelRGB(startx + x * 2, starty + y * 2,
-		      r, g, b, screen);
-	  SetPixelRGB(startx + x * 2 + 1, starty + y * 2,
-		      r, g, b, screen);
-	  SetPixelRGB(startx + x * 2, starty + y * 2 + 1,
-		      r, g, b, screen);
-	  SetPixelRGB(startx + x * 2 + 1, starty + y * 2 + 1,
-		      r, g, b, screen);
-	};
+  [this, startx, starty](int x, int y,
+             uint8 r, uint8 g, uint8 b) {
+    SetPixelRGB(startx + x * 2, starty + y * 2,
+          r, g, b, screen);
+    SetPixelRGB(startx + x * 2 + 1, starty + y * 2,
+          r, g, b, screen);
+    SetPixelRGB(startx + x * 2, starty + y * 2 + 1,
+          r, g, b, screen);
+    SetPixelRGB(startx + x * 2 + 1, starty + y * 2 + 1,
+          r, g, b, screen);
+  };
       DrawPixel(ys, sl, 0, 0xFF, 0);
       DrawPixel(xs, sl, 0xFF, 0, 0);
     }
@@ -347,264 +342,264 @@ struct UIThread {
       SDL_Event event;
 
       if (SDL_PollEvent(&event)) {
-	switch (event.type) {
-	case SDL_QUIT:
-	  return;
-	case SDL_KEYDOWN:
-	  switch (event.key.keysym.sym) {
-	  case SDLK_ESCAPE:
-	    return;
+  switch (event.type) {
+  case SDL_QUIT:
+    return;
+  case SDL_KEYDOWN:
+    switch (event.key.keysym.sym) {
+    case SDLK_ESCAPE:
+      return;
 
-	  case SDLK_SPACE:
-	    switch (mode) {
-	    case Mode::FFWD:
-	    case Mode::ADVANCE:
-	    case Mode::PAUSE:
-	      mode = Mode::PLAY;
-	      break;
-	    case Mode::PLAY:
-	      mode = Mode::PAUSE;
-	      break;
-	    }
-	    break;
+    case SDLK_SPACE:
+      switch (mode) {
+      case Mode::FFWD:
+      case Mode::ADVANCE:
+      case Mode::PAUSE:
+        mode = Mode::PLAY;
+        break;
+      case Mode::PLAY:
+        mode = Mode::PAUSE;
+        break;
+      }
+      break;
 
-	  case SDLK_t: {
-	    // (expects verbose printout...)
-	    vector<TimerLoc> timers =
-	      autotimer->FindTimers(emu->SaveUncompressed());
-	    (void)timers;
-	    break;
-	  }
+    case SDLK_t: {
+      // (expects verbose printout...)
+      vector<TimerLoc> timers =
+        autotimer->FindTimers(emu->SaveUncompressed());
+      (void)timers;
+      break;
+    }
 
-	  case SDLK_l: {
-	    vector<LivesLoc> lives =
-	      autolives->FindLives(emu->SaveUncompressed(),
-				   XLOC, YLOC,
-				   false);
-	    (void)lives;
-	    break;
-	  }
+    case SDLK_l: {
+      vector<LivesLoc> lives =
+        autolives->FindLives(emu->SaveUncompressed(),
+           XLOC, YLOC,
+           false);
+      (void)lives;
+      break;
+    }
 
-	  case SDLK_i:
-	    show_control = !show_control;
-	    break;
+    case SDLK_i:
+      show_control = !show_control;
+      break;
 
-	  case SDLK_PERIOD:
-	    mode = Mode::ADVANCE;
-	    break;
+    case SDLK_PERIOD:
+      mode = Mode::ADVANCE;
+      break;
 
-	  case SDLK_MINUS:
-	    // XLOC--;
-	    YLOC--;
-	    printf("%d,%d = %04x,%04x\n", XLOC, YLOC, XLOC, YLOC);
-	    break;
-	  case SDLK_EQUALS:
-	  case SDLK_PLUS:
-	    // XLOC++;
-	    YLOC++;
-	    printf("%d,%d = %04x,%04x\n", XLOC, YLOC, XLOC, YLOC);
-	    break;
+    case SDLK_MINUS:
+      // XLOC--;
+      YLOC--;
+      printf("%d,%d = %04x,%04x\n", XLOC, YLOC, XLOC, YLOC);
+      break;
+    case SDLK_EQUALS:
+    case SDLK_PLUS:
+      // XLOC++;
+      YLOC++;
+      printf("%d,%d = %04x,%04x\n", XLOC, YLOC, XLOC, YLOC);
+      break;
 
-	  case SDLK_LEFTBRACKET:
-	    loop_left = frameidx;
-	    loop_left_save = emu->SaveUncompressed();
-	    if (loop_left >= loop_right) loop_left = 0;
-	    break;
+    case SDLK_LEFTBRACKET:
+      loop_left = frameidx;
+      loop_left_save = emu->SaveUncompressed();
+      if (loop_left >= loop_right) loop_left = 0;
+      break;
 
-	  case SDLK_RIGHTBRACKET:
-	    loop_right = frameidx;
-	    if (loop_right <= loop_left) loop_left = 0;
-	    break;
+    case SDLK_RIGHTBRACKET:
+      loop_right = frameidx;
+      if (loop_right <= loop_left) loop_left = 0;
+      break;
 
 
-	  case SDLK_KP_MINUS:
-	  case SDLK_KP_PLUS: {
-	    uint8 *ram = emu->GetFC()->fceu->RAM;
-	    ram[LIVES] += event.key.keysym.sym == SDLK_KP_PLUS ? 1 : -1;
-	    break;
-	  }
+    case SDLK_KP_MINUS:
+    case SDLK_KP_PLUS: {
+      uint8 *ram = emu->GetFC()->fceu->RAM;
+      ram[LIVES] += event.key.keysym.sym == SDLK_KP_PLUS ? 1 : -1;
+      break;
+    }
 
-	    // Numpad cardinal directions modify the value at XLOC,YLOC.
-	  // XXX: Should probably discard snapshots when this
-	  // happens?
-	  case SDLK_KP6:
-	  case SDLK_KP4: {
-	    uint8 *ram = emu->GetFC()->fceu->RAM;
-	    ram[XLOC] += event.key.keysym.sym == SDLK_KP6 ? 5 : -5;
-	    printf("now %d,%d\n", ram[XLOC], ram[YLOC]);
-	    break;
-	  }
+      // Numpad cardinal directions modify the value at XLOC,YLOC.
+    // XXX: Should probably discard snapshots when this
+    // happens?
+    case SDLK_KP6:
+    case SDLK_KP4: {
+      uint8 *ram = emu->GetFC()->fceu->RAM;
+      ram[XLOC] += event.key.keysym.sym == SDLK_KP6 ? 5 : -5;
+      printf("now %d,%d\n", ram[XLOC], ram[YLOC]);
+      break;
+    }
 
-	  case SDLK_KP8:
-	  case SDLK_KP2: {
-	    uint8 *ram = emu->GetFC()->fceu->RAM;
-	    ram[YLOC] += event.key.keysym.sym == SDLK_KP2 ? 5 : -5;
-	    printf("now %d,%d\n", ram[XLOC], ram[YLOC]);
-	    break;
-	  }
+    case SDLK_KP8:
+    case SDLK_KP2: {
+      uint8 *ram = emu->GetFC()->fceu->RAM;
+      ram[YLOC] += event.key.keysym.sym == SDLK_KP2 ? 5 : -5;
+      printf("now %d,%d\n", ram[XLOC], ram[YLOC]);
+      break;
+    }
 
-	  case SDLK_2: {
-	    AutoCamera2 ac{game};
-	    vector<uint8> save = emu->SaveUncompressed();
-	    auto Report = [](const string &s) {
-			    printf("AC2: %s\n", s.c_str());
-			  };
-	    vector<AutoCamera2::Linkage> links =
-	      ac.FindLinkages(save, Report);
+    case SDLK_2: {
+      AutoCamera2 ac{game};
+      vector<uint8> save = emu->SaveUncompressed();
+      auto Report = [](const string &s) {
+          printf("AC2: %s\n", s.c_str());
+        };
+      vector<AutoCamera2::Linkage> links =
+        ac.FindLinkages(save, Report);
 
-	    for (const AutoCamera2::Linkage &l : links) {
-	      printf("  %.2f: %d/%d = 0x%04x,0x%04x\n",
-		     l.score, l.xloc, l.yloc,
-		     l.xloc, l.yloc);
-	    }
+      for (const AutoCamera2::Linkage &l : links) {
+        printf("  %.2f: %d/%d = 0x%04x,0x%04x\n",
+         l.score, l.xloc, l.yloc,
+         l.xloc, l.yloc);
+      }
 
-	    // XXX 2p
-	    vector<AutoCamera2::XLoc> xlocs =
-	      ac.FindXLocs(save, false, Report);
+      // XXX 2p
+      vector<AutoCamera2::XLoc> xlocs =
+        ac.FindXLocs(save, false, Report);
 
-	    printf("AC2: %d xlocs:\n", (int)xlocs.size());
-	    for (const AutoCamera2::XLoc &x : xlocs) {
-	      printf("  %.2f: %d = 0x%04x\n",
-		     x.score, x.xloc, x.xloc);
-	    }
+      printf("AC2: %d xlocs:\n", (int)xlocs.size());
+      for (const AutoCamera2::XLoc &x : xlocs) {
+        printf("  %.2f: %d = 0x%04x\n",
+         x.score, x.xloc, x.xloc);
+      }
 
-	    // XXX merge scores
+      // XXX merge scores
 
-	    if (links.empty()) {
-	      AutoCamera2::Linkage best = links[0];
-	      printf("Set loc to %d,%d = 0x%2x,0x%2x (score %.2f)\n",
-		     best.xloc, best.yloc,
-		     best.xloc, best.yloc,
-		     best.score);
-	      XLOC = best.xloc;
-	      YLOC = best.yloc;
-	    }
-	    break;
-	  }
+      if (links.empty()) {
+        AutoCamera2::Linkage best = links[0];
+        printf("Set loc to %d,%d = 0x%2x,0x%2x (score %.2f)\n",
+         best.xloc, best.yloc,
+         best.xloc, best.yloc,
+         best.score);
+        XLOC = best.xloc;
+        YLOC = best.yloc;
+      }
+      break;
+    }
 
-	  case SDLK_c: {
-	    AutoCamera autocamera{game};
-	    bool exited = false;
-	    auto Callback = [this, &exited](int depth,
-					    int total_displacement,
-					    Emulator *lemu,
-					    Emulator *nemu,
-					    Emulator *remu) {
-	      sdlutil::clearsurface(screen, 0x44000044);
+    case SDLK_c: {
+      AutoCamera autocamera{game};
+      bool exited = false;
+      auto Callback = [this, &exited](int depth,
+              int total_displacement,
+              Emulator *lemu,
+              Emulator *nemu,
+              Emulator *remu) {
+        sdlutil::clearsurface(screen, 0x44000044);
 
-	      DrawEmulatorAt(lemu, total_displacement, 0, 0);
-	      DrawEmulatorAt(nemu, total_displacement, 512 + 4, 0);
-	      DrawEmulatorAt(remu, total_displacement, 1024 + 8, 0);
+        DrawEmulatorAt(lemu, total_displacement, 0, 0);
+        DrawEmulatorAt(nemu, total_displacement, 512 + 4, 0);
+        DrawEmulatorAt(remu, total_displacement, 1024 + 8, 0);
 
-	      SDL_Flip(screen);
+        SDL_Flip(screen);
 
-	      if (exited) return;
-	      for (;;) {
-		SDL_Event event;
-		if (SDL_PollEvent(&event)) {
-		  switch (event.type) {
-		  case SDL_QUIT:
-		    exited = true;
-		    return;
-		  case SDL_KEYDOWN:
-		    switch (event.key.keysym.sym) {
-		    case SDLK_ESCAPE:
-		      exited = true;
-		      return;
-		    case SDLK_SPACE:
-		      return;
-		    default:
-		      break;
-		    }
-		    break;
-		  default:
-		    break;
-		  }
-		}
-	      }
-	    };
-	    // using XYSprite = AutoCamera::XYSprite;
-	    using XSprites = AutoCamera::XSprites;
-	    const vector<uint8> save = emu->SaveUncompressed();
-	    const XSprites xcand = autocamera.GetXSprites(save, Callback);
-	    printf("-----\n");
-	    mode = Mode::PAUSE;
-	  }
+        if (exited) return;
+        for (;;) {
+    SDL_Event event;
+    if (SDL_PollEvent(&event)) {
+      switch (event.type) {
+      case SDL_QUIT:
+        exited = true;
+        return;
+      case SDL_KEYDOWN:
+        switch (event.key.keysym.sym) {
+        case SDLK_ESCAPE:
+          exited = true;
+          return;
+        case SDLK_SPACE:
+          return;
+        default:
+          break;
+        }
+        break;
+      default:
+        break;
+      }
+    }
+        }
+      };
+      // using XYSprite = AutoCamera::XYSprite;
+      using XSprites = AutoCamera::XSprites;
+      const vector<uint8> save = emu->SaveUncompressed();
+      const XSprites xcand = autocamera.GetXSprites(save, Callback);
+      printf("-----\n");
+      mode = Mode::PAUSE;
+    }
 
-	  case SDLK_LEFT: {
-	    mode = Mode::PAUSE;
+    case SDLK_LEFT: {
+      mode = Mode::PAUSE;
 
-	    auto it = snapshots.lower_bound(frameidx);
-	    if (it == snapshots.begin()) break;
-	    --it;
-	    fprintf(stderr, "Seek to %lld\n", it->first);
-	    frameidx = it->first;
-	    emu->LoadUncompressed(it->second);
-	    // XXX need to execute a frame in order
-	    // to have something to show..
-	    break;
-	  }
+      auto it = snapshots.lower_bound(frameidx);
+      if (it == snapshots.begin()) break;
+      --it;
+      fprintf(stderr, "Seek to %lld\n", it->first);
+      frameidx = it->first;
+      emu->LoadUncompressed(it->second);
+      // XXX need to execute a frame in order
+      // to have something to show..
+      break;
+    }
 
-	  case SDLK_RIGHT: {
-	    auto it = snapshots.lower_bound(frameidx + 1);
-	    if (it == snapshots.end()) {
-	      mode = Mode::FFWD;
-	      break;
-	    } else {
-	      // Have snapshot; just seek.
-	      fprintf(stderr, "Seek to %lld\n", it->first);
-	      frameidx = it->first;
-	      emu->LoadUncompressed(it->second);
+    case SDLK_RIGHT: {
+      auto it = snapshots.lower_bound(frameidx + 1);
+      if (it == snapshots.end()) {
+        mode = Mode::FFWD;
+        break;
+      } else {
+        // Have snapshot; just seek.
+        fprintf(stderr, "Seek to %lld\n", it->first);
+        frameidx = it->first;
+        emu->LoadUncompressed(it->second);
 
-	      mode = Mode::PAUSE;
-	      break;
-	    }
-	  }
-	  default:
-	    break;
-	  }
-	  break;
-	default:
-	  break;
-	}
+        mode = Mode::PAUSE;
+        break;
+      }
+    }
+    default:
+      break;
+    }
+    break;
+  default:
+    break;
+  }
       }
 
       if (mode == Mode::PLAY || mode == Mode::ADVANCE ||
-	  mode == Mode::FFWD) {
+    mode == Mode::FFWD) {
 
-	if (frameidx == loop_right) {
-	  frameidx = loop_left;
-	  emu->LoadUncompressed(loop_left_save);
-	}
+  if (frameidx == loop_right) {
+    frameidx = loop_left;
+    emu->LoadUncompressed(loop_left_save);
+  }
 
-	// Can we execute at least one frame?
-	if (frameidx >= movie.size()) {
-	  mode = Mode::PAUSE;
-	} else {
+  // Can we execute at least one frame?
+  if (frameidx >= movie.size()) {
+    mode = Mode::PAUSE;
+  } else {
 
-	  uint8 p1, p2;
-	  std::tie(p1, p2) = movie[frameidx];
-	  frameidx++;
-	  emu->StepFull(p1, p2);
-	  // GetFC()->X->reg_PC
-	  last_pcs.push_back(emu->Registers());
+    uint8 p1, p2;
+    std::tie(p1, p2) = movie[frameidx];
+    frameidx++;
+    emu->StepFull(p1, p2);
+    // GetFC()->X->reg_PC
+    last_pcs.push_back(emu->Registers());
 
-	  if (0 == frameidx % SNAPSHOT_EVERY) {
-	    // XX only do this the first time..?
-	    snapshots[frameidx] = emu->SaveUncompressed();
-	    if (mode == Mode::FFWD) {
-	      mode = Mode::PAUSE;
-	    }
-	  }
-	}
+    if (0 == frameidx % SNAPSHOT_EVERY) {
+      // XX only do this the first time..?
+      snapshots[frameidx] = emu->SaveUncompressed();
+      if (mode == Mode::FFWD) {
+        mode = Mode::PAUSE;
+      }
+    }
+  }
 
-	if (mode == Mode::ADVANCE) {
-	  mode = Mode::PAUSE;
-	}
+  if (mode == Mode::ADVANCE) {
+    mode = Mode::PAUSE;
+  }
       }
 
       if (mode == Mode::FFWD)
-	continue;
+  continue;
 
       // PERF: Don't need to clear the game part.
       sdlutil::clearsurface(screen, 0x00000000);
@@ -613,119 +608,119 @@ struct UIThread {
       DrawEmulatorAt(emu.get(), rot, 0, 0);
 
       if (show_control) {
-	vector<uint8> save = emu->SaveUncompressed();
-	float controlf = autolives->IsInControl(save, XLOC, YLOC, false);
-	font->draw(16, 500,
-		   StringPrintf("%sCONTROL: %.2f",
-				controlf > 0.3f ? "^5" : "^2", controlf));
+  vector<uint8> save = emu->SaveUncompressed();
+  float controlf = autolives->IsInControl(save, XLOC, YLOC, false);
+  font->draw(16, 500,
+       StringPrintf("%sCONTROL: %.2f",
+        controlf > 0.3f ? "^5" : "^2", controlf));
       }
 
       if (false) {
-	std::unordered_map<uint64, int> reg_counts;
-	last_pcs.App([&reg_counts](uint64 reg) {
-		       reg_counts[reg]++;
-		     });
-	vector<std::pair<int, uint64>> counted;
-	for (const auto &p : reg_counts)
-	  counted.emplace_back(p.second, p.first);
-	std::sort(counted.begin(), counted.end(),
-		  [](const std::pair<int, uint64> &a,
-		     const std::pair<int, uint64> &b) {
-		    return a.second > b.second;
-		  });
+  std::unordered_map<uint64, int> reg_counts;
+  last_pcs.App([&reg_counts](uint64 reg) {
+           reg_counts[reg]++;
+         });
+  vector<std::pair<int, uint64>> counted;
+  for (const auto &p : reg_counts)
+    counted.emplace_back(p.second, p.first);
+  std::sort(counted.begin(), counted.end(),
+      [](const std::pair<int, uint64> &a,
+         const std::pair<int, uint64> &b) {
+        return a.second > b.second;
+      });
 
-	int xx = 2;
-	int yy = 600;
-	for (const auto &row : counted) {
-	  uint16 pc = row.second >> (5 * 8) & 65535;
-	  uint8 a = (row.second >> (4 * 8)) & 255;
-	  uint8 x = (row.second >> (3 * 8)) & 255;
-	  uint8 y = (row.second >> (2 * 8)) & 255;
-	  uint8 s = (row.second >> (1 * 8)) & 255;
-	  uint8 p = row.second & 255;
-	  font->draw(xx, yy,
-		     StringPrintf("%5d  ^1%04x^2%02x^3%02x^4%02x^5%02x^6%02x",
-				  row.first, pc, a, x, y, s, p));
-	  yy += FONTHEIGHT;
-	  if (yy > HEIGHT - FONTHEIGHT) {
-	    yy = 600;
-	    xx += 150;
-	  }
-	}
+  int xx = 2;
+  int yy = 600;
+  for (const auto &row : counted) {
+    uint16 pc = row.second >> (5 * 8) & 65535;
+    uint8 a = (row.second >> (4 * 8)) & 255;
+    uint8 x = (row.second >> (3 * 8)) & 255;
+    uint8 y = (row.second >> (2 * 8)) & 255;
+    uint8 s = (row.second >> (1 * 8)) & 255;
+    uint8 p = row.second & 255;
+    font->draw(xx, yy,
+         StringPrintf("%5d  ^1%04x^2%02x^3%02x^4%02x^5%02x^6%02x",
+          row.first, pc, a, x, y, s, p));
+    yy += FONTHEIGHT;
+    if (yy > HEIGHT - FONTHEIGHT) {
+      yy = 600;
+      xx += 150;
+    }
+  }
       }
 
       // Draw
       if (mode == Mode::PLAY) {
-	font->draw(0, HEIGHT - FONTHEIGHT, "^2PLAY");
+  font->draw(0, HEIGHT - FONTHEIGHT, "^2PLAY");
       } else {
-	font->draw(0, HEIGHT - FONTHEIGHT, "PAUSED");
+  font->draw(0, HEIGHT - FONTHEIGHT, "PAUSED");
       }
 
       {
-	uint8 *ram = emu->GetFC()->fceu->RAM;
-	uint8 lives = ram[LIVES];
-	font->draw(16, 516, StringPrintf("Lives: ^4%d", lives));
+  uint8 *ram = emu->GetFC()->fceu->RAM;
+  uint8 lives = ram[LIVES];
+  font->draw(16, 516, StringPrintf("Lives: ^4%d", lives));
       }
 
       {
-	uint8 *ram = emu->GetFC()->fceu->RAM;
-	const PPU *ppu = emu->GetFC()->ppu;
+  uint8 *ram = emu->GetFC()->fceu->RAM;
+  const PPU *ppu = emu->GetFC()->ppu;
 
-	// end-of-frame scroll values.
-	const uint32 xscroll = emu->GetXScroll();
-	const uint32 yscroll = emu->GetYScroll();
+  // end-of-frame scroll values.
+  const uint32 xscroll = emu->GetXScroll();
+  const uint32 yscroll = emu->GetYScroll();
 
-	// Find the single most-common scroll value across all
-	// scanlines; arg should be 256 bytes (like
-	// ppu->interframe_x).
-	auto GetMajorityScroll =
-	  [&](const uint8 *sls) {
-	    uint8 counts[256] = {};
-	    for (int i = 0; i < 240; i++) {
-	      counts[sls[i]]++;
-	    }
-	    // Find max...
-	    int maxi = 0, maxv = 0;
-	    for (int i = 0; i < 256; i++) {
-	      if (counts[i] > maxv) {
-		maxi = i;
-		maxv = counts[i];
-	      }
-	    }
-	    return maxi;
-	  };
+  // Find the single most-common scroll value across all
+  // scanlines; arg should be 256 bytes (like
+  // ppu->interframe_x).
+  auto GetMajorityScroll =
+    [&](const uint8 *sls) {
+      uint8 counts[256] = {};
+      for (int i = 0; i < 240; i++) {
+        counts[sls[i]]++;
+      }
+      // Find max...
+      int maxi = 0, maxv = 0;
+      for (int i = 0; i < 256; i++) {
+        if (counts[i] > maxv) {
+    maxi = i;
+    maxv = counts[i];
+        }
+      }
+      return maxi;
+    };
 
-	// TODO: get the appropriate offset based on the scanline.
-	// We could use ram[YLOC] to determine the scanline, but
-	// if yscroll isn't zero, then this isn't the scanline that
-	// the sprite is actually drawn on. Would we need to find
-	// a memory location that tells us the "game area" y scroll?
+  // TODO: get the appropriate offset based on the scanline.
+  // We could use ram[YLOC] to determine the scanline, but
+  // if yscroll isn't zero, then this isn't the scanline that
+  // the sprite is actually drawn on. Would we need to find
+  // a memory location that tells us the "game area" y scroll?
 
-	//  ... so as a heuristic, use the most common scroll position
-	// on-screen. This assumes that more than half of the screen
-	// is the game area, which seems like a good assumption,
-	// except perhaps for in split-screen two-player.
-	const uint8 xmaj = GetMajorityScroll(ppu->interframe_x);
-	const uint8 ymaj = GetMajorityScroll(ppu->interframe_y);
+  //  ... so as a heuristic, use the most common scroll position
+  // on-screen. This assumes that more than half of the screen
+  // is the game area, which seems like a good assumption,
+  // except perhaps for in split-screen two-player.
+  const uint8 xmaj = GetMajorityScroll(ppu->interframe_x);
+  const uint8 ymaj = GetMajorityScroll(ppu->interframe_y);
 
-	const uint8 xx = ram[XLOC], yy = ram[YLOC];
-	auto DrawBox =
-	  [this](int x, int y, uint8 r, uint8 g, uint8 b) {
-	    // shadow first
-	    sdlutil::drawbox(screen, x * 2 + 2, y * 2 + 2, 15, 15, 0, 0, 0);
-	    sdlutil::drawbox(screen, x * 2, y * 2, 16, 16, r, g, b);
-	    sdlutil::drawbox(screen, x * 2 + 1, y * 2 + 1, 14, 14, r, g, b);
-	  };
-	// RED is unmodified coordinates.
-	DrawBox(xx, yy, 0xFF, 0, 0);
-	// GREEN is offset by scroll.
-	DrawBox((uint8)(xx - xscroll), (uint8)(yy - yscroll), 0, 0xFF, 0);
-	// BLUE is offset by majority scroll.
-	DrawBox((uint8)(xx - xmaj), (uint8)(yy - ymaj), 0x77, 0x77, 0xFF);
+  const uint8 xx = ram[XLOC], yy = ram[YLOC];
+  auto DrawBox =
+    [this](int x, int y, uint8 r, uint8 g, uint8 b) {
+      // shadow first
+      sdlutil::drawbox(screen, x * 2 + 2, y * 2 + 2, 15, 15, 0, 0, 0);
+      sdlutil::drawbox(screen, x * 2, y * 2, 16, 16, r, g, b);
+      sdlutil::drawbox(screen, x * 2 + 1, y * 2 + 1, 14, 14, r, g, b);
+    };
+  // RED is unmodified coordinates.
+  DrawBox(xx, yy, 0xFF, 0, 0);
+  // GREEN is offset by scroll.
+  DrawBox((uint8)(xx - xscroll), (uint8)(yy - yscroll), 0, 0xFF, 0);
+  // BLUE is offset by majority scroll.
+  DrawBox((uint8)(xx - xmaj), (uint8)(yy - ymaj), 0x77, 0x77, 0xFF);
 
-	font->draw(400, 4,
-		   StringPrintf("^4maj: ^1%d^2,^<%d",
-				(int)xmaj, (int)ymaj));
+  font->draw(400, 4,
+       StringPrintf("^4maj: ^1%d^2,^<%d",
+        (int)xmaj, (int)ymaj));
       }
 
       SDL_Flip(screen);
@@ -738,22 +733,22 @@ struct UIThread {
     CHECK(screen);
 
     font = Font::Create(screen,
-			"font.png",
-			FONTCHARS,
-			FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+      "font.png",
+      FONTCHARS,
+      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
     CHECK(font != nullptr) << "Couldn't load font.";
 
     fontsmall = Font::Create(screen,
-			     "fontsmall.png",
-			     FONTCHARS,
-			     SMALLFONTWIDTH, SMALLFONTHEIGHT,
-			     FONTSTYLES, 0, 3);
+           "fontsmall.png",
+           FONTCHARS,
+           SMALLFONTWIDTH, SMALLFONTHEIGHT,
+           FONTSTYLES, 0, 3);
     CHECK(fontsmall != nullptr) << "Couldn't load smallfont.";
 
     fontmax = Font::Create(screen,
-			   "fontmax.png",
-			   FONTCHARS,
-			   MAXFONTWIDTH, MAXFONTHEIGHT, FONTSTYLES, 4, 3);
+         "fontmax.png",
+         FONTCHARS,
+         MAXFONTWIDTH, MAXFONTHEIGHT, FONTSTYLES, 4, 3);
     CHECK(fontmax != nullptr) << "Couldn't load fontmax.";
 
     Loop();

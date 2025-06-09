@@ -29,7 +29,7 @@ WeightedObjectives::WeightedObjectives(const vector<vector<int>> &objs) {
 }
 
 WeightedObjectives::WeightedObjectives(vector<pair<vector<int>, double>>
-				       w_objs) :
+               w_objs) :
   weighted(w_objs) {
 }
 
@@ -50,16 +50,16 @@ WeightedObjectives::LoadFromFile(const string &filename) {
   wo.reserve(lines.size());
   for (int i = 0; i < lines.size(); i++) {
     string line = lines[i];
-    Util::losewhitel(line);
+    Util::LoseWhiteL(line);
     if (!line.empty() && !Util::StartsWith(line, "#")) {
       stringstream ss(line, stringstream::in);
       double d;
       ss >> d;
       vector<int> locs;
       while (!ss.eof()) {
-	int i;
-	ss >> i;
-	locs.push_back(i);
+  int i;
+  ss >> i;
+  locs.push_back(i);
       }
       wo.push_back({std::move(locs), d});
     }
@@ -67,7 +67,7 @@ WeightedObjectives::LoadFromFile(const string &filename) {
 
   return new WeightedObjectives(wo);
 }
-  
+
 void WeightedObjectives::SaveToFile(const string &filename) const {
   string out;
   for (const auto &row : weighted) {
@@ -81,9 +81,9 @@ void WeightedObjectives::SaveToFile(const string &filename) const {
   printf("Saved weighted objectives to %s\n", filename.c_str());
 }
 
-static bool LessObjective(const vector<uint8> &mem1, 
-			  const vector<uint8> &mem2,
-			  const vector<int> &order) {
+static bool LessObjective(const vector<uint8> &mem1,
+        const vector<uint8> &mem2,
+        const vector<int> &order) {
   for (int i = 0; i < order.size(); i++) {
     int p = order[i];
     if (mem1[p] > mem2[p])
@@ -99,9 +99,9 @@ static bool LessObjective(const vector<uint8> &mem1,
 // Order 1 means mem1 < mem2, -1 means mem1 > mem2, 0 means equal.
 // (note this is backwards from strcmp. Think of it like a multiplier
 // for the weight.)
-static int Order(const vector<uint8> &mem1, 
-		 const vector<uint8> &mem2,
-		 const vector<int> &order) {
+static int Order(const vector<uint8> &mem1,
+     const vector<uint8> &mem2,
+     const vector<int> &order) {
   for (int i = 0; i < order.size(); i++) {
     int p = order[i];
     if (mem1[p] > mem2[p])
@@ -115,7 +115,7 @@ static int Order(const vector<uint8> &mem1,
 }
 
 double WeightedObjectives::WeightedLess(const vector<uint8> &mem1,
-					const vector<uint8> &mem2) const {
+          const vector<uint8> &mem2) const {
   double score = 0.0;
   for (const auto &wobj : weighted) {
     const vector<int> &objective = wobj.first;
@@ -128,7 +128,7 @@ double WeightedObjectives::WeightedLess(const vector<uint8> &mem1,
 }
 
 double WeightedObjectives::Evaluate(const vector<uint8> &mem1,
-				    const vector<uint8> &mem2) const {
+            const vector<uint8> &mem2) const {
   double score = 0.0;
   for (const auto &wobj : weighted) {
     const vector<int> &objective = wobj.first;
@@ -144,7 +144,7 @@ double WeightedObjectives::Evaluate(const vector<uint8> &mem1,
 }
 
 static vector<uint8> GetValues(const vector<uint8> &mem,
-			       const vector<int> &objective) {
+             const vector<int> &objective) {
   vector<uint8> out;
   out.resize(objective.size());
   for (int i = 0; i < objective.size(); i++) {
@@ -156,12 +156,12 @@ static vector<uint8> GetValues(const vector<uint8> &mem,
 
 static vector<vector<uint8>>
 GetUniqueValues(const vector<vector<uint8 >> &memories,
-		const vector<int> &objective) {
+    const vector<int> &objective) {
   set<vector<uint8>> values;
   for (int i = 0; i < memories.size(); i++) {
     values.insert(GetValues(memories[i], objective));
   }
-    
+
   vector<vector<uint8>> uvalues;
   uvalues.insert(uvalues.begin(), values.begin(), values.end());
   return uvalues;
@@ -170,12 +170,12 @@ GetUniqueValues(const vector<vector<uint8 >> &memories,
 // Find the index of the vector now within the values
 // array, which is sorted and unique.
 static inline int GetValueIndex(const vector<vector<uint8>> &values,
-				const vector<uint8> &now) {
+        const vector<uint8> &now) {
   return lower_bound(values.begin(), values.end(), now) - values.begin();
 }
 
 static inline double GetValueFrac(const vector<vector<uint8>> &values,
-				  const vector<uint8> &now) {
+          const vector<uint8> &now) {
   int idx = GetValueIndex(values, now);
   // -1, since it can never be the size itself?
   // and what should the value be if values is empty or singleton?
@@ -192,7 +192,7 @@ struct SampleObservations : public Observations {
   }
 
   static bool CompareByKeyDesc(const pair<uint32, vector<uint8>> &a,
-			       const pair<uint32, vector<uint8>> &b) {
+             const pair<uint32, vector<uint8>> &b) {
     // In case of key ties (should be extremely rare), use the vectors
     // to ensure stability.
     if (a.first == b.first)
@@ -202,7 +202,7 @@ struct SampleObservations : public Observations {
   }
 
   static bool CompareByValue(const pair<uint32, vector<uint8>> &a,
-			     const pair<uint32, vector<uint8>> &b) {
+           const pair<uint32, vector<uint8>> &b) {
     // Should be no need to break ties by key, because keys are not
     // used when sorted this way (except to re-sort by key).
     return a.second < b.second;
@@ -212,21 +212,21 @@ struct SampleObservations : public Observations {
   // the random key.
   static inline
   int GetKValueIndex(const vector<pair<uint32, vector<uint8>>> &values,
-		     const vector<uint8> &now) {
+         const vector<uint8> &now) {
     return lower_bound(values.begin(), values.end(), make_pair(0, now),
-		       CompareByValue) -
+           CompareByValue) -
       values.begin();
   }
 
   static inline
   double GetKValueFrac(const vector<pair<uint32, vector<uint8>>> &values,
-		       const vector<uint8> &now) {
+           const vector<uint8> &now) {
     int idx = GetKValueIndex(values, now);
     // -1, since it can never be the size itself?
     // and what should the value be if values is empty or singleton?
     return (double)idx / values.size();
   }
-  
+
   void Accumulate(const vector<uint8> &memory) override {
     MutexLock ml(&acc_mutex);
     for (int i = 0; i < wo.Size(); i++) {
@@ -237,14 +237,14 @@ struct SampleObservations : public Observations {
       // this keeps the space usage bounded at least.
       const uint32 key = Rand32(&rc);
       if (key < watermark[i]) {
-	watermark_discarded++;
-	continue;
+  watermark_discarded++;
+  continue;
       }
 
       // OK, we'll keep the sample. Compute its value.
-      
+
       vector<uint8> value = WeightedObjectives::Value(memory, obj.first);
-      
+
       acc_values[i].push_back({key, std::move(value)});
     }
   }
@@ -267,12 +267,12 @@ struct SampleObservations : public Observations {
       // For example, all new accumulations were instantly
       // discarded for having keys too small.
       if (av.empty()) {
-	acc_mutex.unlock();
-	continue;
+  acc_mutex.unlock();
+  continue;
       }
 
       accumulated += av.size();
-      
+
       vector<pair<uint32, vector<uint8>>> &ov = obs_values[i];
 
       // Move into observations.
@@ -280,14 +280,14 @@ struct SampleObservations : public Observations {
       for (auto &v : av) ov.push_back(std::move(v));
       av.clear();
       acc_mutex.unlock();
-      
+
       // Now sort by key (descending) so that we can take only the largest.
       // We only need to do this once the vector is full.
       if (ov.size() > max_samples) {
-	dropped += ov.size() - max_samples;
-	std::sort(ov.begin(), ov.end(), CompareByKeyDesc);
-	ov.resize(max_samples);
-	watermark[i] = ov.back().first;
+  dropped += ov.size() - max_samples;
+  std::sort(ov.begin(), ov.end(), CompareByKeyDesc);
+  ov.resize(max_samples);
+  watermark[i] = ov.back().first;
       }
 
       // Now put it in sorted order by value (ascending).
@@ -297,7 +297,7 @@ struct SampleObservations : public Observations {
     }
 
     printf("Committed %lld, dropped %lld, discarded %lld. Have %lld\n",
-	   accumulated, dropped, discarded, in_mem);
+     accumulated, dropped, discarded, in_mem);
   }
 
   vector<double> GetNormalizedValues(const vector<uint8> &mem) override {
@@ -306,9 +306,9 @@ struct SampleObservations : public Observations {
     {
       MutexLock mlo(&obs_mutex);
       for (int i = 0; i < wo.Size(); i++) {
-	const vector<int> &obj = wo.Get(i).first;
-	vector<uint8> cur = WeightedObjectives::Value(mem, obj);
-	vals.push_back(GetKValueFrac(obs_values[i], cur));
+  const vector<int> &obj = wo.Get(i).first;
+  vector<uint8> cur = WeightedObjectives::Value(mem, obj);
+  vals.push_back(GetKValueFrac(obs_values[i], cur));
       }
     }
 
@@ -321,12 +321,12 @@ struct SampleObservations : public Observations {
     {
       MutexLock mlo(&obs_mutex);
       for (int i = 0; i < wo.Size(); i++) {
-	const vector<int> &obj = wo.Get(i).first;
-	vector<uint8> cur = WeightedObjectives::Value(mem, obj);
-	sum += GetKValueFrac(obs_values[i], cur);
+  const vector<int> &obj = wo.Get(i).first;
+  vector<uint8> cur = WeightedObjectives::Value(mem, obj);
+  sum += GetKValueFrac(obs_values[i], cur);
       }
     }
-      
+
     sum /= (double)wo.Size();
     return sum;
   }
@@ -334,21 +334,21 @@ struct SampleObservations : public Observations {
   double GetWeightedValue(const vector<uint8> &mem) override {
     double numer = 0.0;
     double total_weight = 0.0;
-    
+
     {
       MutexLock mlo(&obs_mutex);
       for (int i = 0; i < wo.Size(); i++) {
-	const vector<int> &obj = wo.Get(i).first;
-	const double weight = wo.Get(i).second;
-	vector<uint8> cur = WeightedObjectives::Value(mem, obj);
-	numer += GetKValueFrac(obs_values[i], cur) * weight;
-	total_weight += weight;
+  const vector<int> &obj = wo.Get(i).first;
+  const double weight = wo.Get(i).second;
+  vector<uint8> cur = WeightedObjectives::Value(mem, obj);
+  numer += GetKValueFrac(obs_values[i], cur) * weight;
+  total_weight += weight;
       }
     }
-      
+
     return numer / total_weight;
   }
-  
+
   // Maximum samples to keep in our permanent observations.
   const int max_samples;
 
@@ -360,12 +360,12 @@ struct SampleObservations : public Observations {
   // all samples.
   vector<uint32> watermark;
   int64 watermark_discarded = 0;
-  
+
   // Parallel to the weighted objectives. Sample keys and observed
   // value, sorted by value. No more than max_samples in each vector;
   // keys are all greater than or equal to watermark.
   vector<vector<pair<uint32, vector<uint8>>>> obs_values;
- 
+
   ArcFour rc{"sample"};
   // Parallel to the weighted objectives. Queue of keys (less than the
   // watermark) along with the value. These will be considered for the
@@ -386,16 +386,16 @@ struct MixedBaseObservations : public Observations {
     }
     obs_maxbytes = acc_maxbytes;
   }
-  
+
   void Accumulate(const vector<uint8> &memory) override {
     MutexLock ml(&acc_mutex);
     for (int i = 0; i < wo.Size(); i++) {
       const vector<int> &obj = wo.Get(i).first;
       // Now just do pointwise max.
       for (int j = 0; j < obj.size(); j++) {
-	const uint8 val = memory[obj[j]];
-	uint8 &old = acc_maxbytes[i][j];
-	if (val > old) old = val;
+  const uint8 val = memory[obj[j]];
+  uint8 &old = acc_maxbytes[i][j];
+  if (val > old) old = val;
       }
     }
   }
@@ -412,37 +412,37 @@ struct MixedBaseObservations : public Observations {
     {
       MutexLock mlo(&obs_mutex);
       for (int i = 0; i < wo.Size(); i++) {
-	const vector<int> &obj = wo.Get(i).first;
-	// PERF inline
-	vector<uint8> cur = WeightedObjectives::Value(mem, obj);
+  const vector<int> &obj = wo.Get(i).first;
+  // PERF inline
+  vector<uint8> cur = WeightedObjectives::Value(mem, obj);
 
-	// Let's say the max byte observed for each position is
-	// a, b, c, d, ..., y, z.
-	// The largest number that can be represented given our
-	// current understanding of the base would be to place the
-	// max byte in each position; then we have
-	//
-	// 1.0 = (z-1) + (y-1)*z + (x-1)*(z*y) + ...
-	//       (b-1) * (c*d*...*y*z) + (a-1) * (b*c*d*...*y*z)
-	//     = a*b*c*d*...*y*z - 1
-	//
-	// Since this involves factorials it gets big awfully
-	// quickly. For now, doubles maybe give us the sensitivity
-	// we need. (Otherwise: We can compute this as an arbitrary
-	// precision int, as long as we can then do division?)
-	double multiplier = 1.0;
-	double seen = 0.0;
-	for (int j = cur.size() - 1; j >= 0; j--) {
-	  seen += cur[j] * multiplier;
-	  // Radix is largest byte seen but plus one.
-	  multiplier *= ((int)obs_maxbytes[i][j] + 1);
-	}
+  // Let's say the max byte observed for each position is
+  // a, b, c, d, ..., y, z.
+  // The largest number that can be represented given our
+  // current understanding of the base would be to place the
+  // max byte in each position; then we have
+  //
+  // 1.0 = (z-1) + (y-1)*z + (x-1)*(z*y) + ...
+  //       (b-1) * (c*d*...*y*z) + (a-1) * (b*c*d*...*y*z)
+  //     = a*b*c*d*...*y*z - 1
+  //
+  // Since this involves factorials it gets big awfully
+  // quickly. For now, doubles maybe give us the sensitivity
+  // we need. (Otherwise: We can compute this as an arbitrary
+  // precision int, as long as we can then do division?)
+  double multiplier = 1.0;
+  double seen = 0.0;
+  for (int j = cur.size() - 1; j >= 0; j--) {
+    seen += cur[j] * multiplier;
+    // Radix is largest byte seen but plus one.
+    multiplier *= ((int)obs_maxbytes[i][j] + 1);
+  }
 
-	vals[i] = seen / multiplier;
-	// This can probably happen for reasonable inputs. Might
-	// need some arbitrary precision thing here.
-	CHECK(!isnan(vals[i])) << "\n" << seen << " " << multiplier;
-	CHECK(vals[i] >= 0.0);
+  vals[i] = seen / multiplier;
+  // This can probably happen for reasonable inputs. Might
+  // need some arbitrary precision thing here.
+  CHECK(!isnan(vals[i])) << "\n" << seen << " " << multiplier;
+  CHECK(vals[i] >= 0.0);
       }
     }
 
@@ -455,7 +455,7 @@ struct MixedBaseObservations : public Observations {
     double sum = 0.0;
     for (const double val : GetNormalizedValues(mem))
       sum += val;
-      
+
     sum /= (double)wo.Size();
     return sum;
   }
@@ -501,7 +501,7 @@ struct MixedBaseObservations : public Observations {
 
     text->push_back(StringPrintf("    == %.3f", numer / total_weight));
   }
-  
+
   vector<vector<uint8>> obs_maxbytes, acc_maxbytes;
   std::mutex obs_mutex, acc_mutex;
 };
@@ -512,7 +512,7 @@ Observations::Observations(const WeightedObjectives &wo) : wo(wo) {}
 Observations::~Observations() {}
 
 Observations *Observations::SampleObservations(const WeightedObjectives &wo,
-					       int max_samples) {
+                 int max_samples) {
   return new ::SampleObservations(wo, max_samples);
 }
 
@@ -529,7 +529,7 @@ SampleObservations(const vector<uint8> &mem) {
   for (Weighted::iterator it = weighted.begin(); it != weighted.end(); ++it) {
     const vector<int> &obj = it->first;
     Info *info = &*it->second;
-    
+
     vector<uint8> cur;
     cur.reserve(obj.size());
     for (int i = 0; i < obj.size(); i++) {
@@ -545,7 +545,7 @@ SampleObservations(const vector<uint8> &mem) {
 
 static vector<pair<vector<int>, double>>
   WeightByExamples(const vector<vector<int>> &objs,
-		   const vector<vector<uint8>> &memories) {
+       const vector<vector<uint8>> &memories) {
   vector<pair<vector<int>, double>> out;
   out.reserve(objs.size());
   for (const vector<int> &obj : objs) {
@@ -556,7 +556,7 @@ static vector<pair<vector<int>, double>>
     CHECK(memories.size() > 0);
     double score_end =
       GetValueFrac(values, GetValues(memories[memories.size() - 1], obj));
-    double score_begin = 
+    double score_begin =
       GetValueFrac(values, GetValues(memories[0], obj));
     CHECK(score_end >= 0 && score_end <= 1);
     CHECK(score_begin >= 0 && score_begin <= 1);
@@ -564,7 +564,7 @@ static vector<pair<vector<int>, double>>
 
     if (score <= 0.0) {
       printf("Bad objective lost more than gained: %f / %s\n",
-	     score, ObjectiveToString(obj).c_str());
+       score, ObjectiveToString(obj).c_str());
       // XXX delete it?
       out.push_back({obj, 0.0});
     } else {
@@ -575,5 +575,5 @@ static vector<pair<vector<int>, double>>
 }
 
 WeightedObjectives::WeightedObjectives(const vector<vector<int>> &objs,
-				       const vector<vector<uint8>> &memories) :
+               const vector<vector<uint8>> &memories) :
   WeightedObjectives(WeightByExamples(objs, memories)) { }

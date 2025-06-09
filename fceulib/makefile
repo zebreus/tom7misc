@@ -12,7 +12,7 @@ CXXFLAGS=-std=c++20 -Wall -Wno-deprecated -I/usr/local/include
 # XXX -O2
 OPT=-g -O2  # -O3 -fno-strict-aliasing
 # try -flto!
-FLTO=
+FLTO=-flto=thin
 
 ARCH=-m64
 # ARCH=-m32
@@ -37,6 +37,8 @@ PLATFORMLINK=-mthreads -Wl,--subsystem,console -lwinpthread -L. -static
 endif
 endif
 
+CC_LIB=../cc-lib
+
 # Suppress compilation commands, but show some indication of progress.
 # (Explicitly invoke bash to get shell builtin, since on OS X echo
 # otherwise treats -n literally.)
@@ -58,13 +60,13 @@ INSTRUMENT=-DAOT_INSTRUMENTATION=1
 LINKSDL= -mno-cygwin -lm -luser32 -lgdi32 -lwinmm -ldxguid
 
 # Emulator uses city, yeah? See if we can make this work with no deps.
-INCLUDES=-I "../cc-lib" -I "../cc-lib/city" -I "."
+INCLUDES=-I $(CC_LIB) -I $(CC_LIB)/city -I "."
 
 # tom7 added -mthreads on 9/7!
-CPPFLAGS=-DDUMMY_UI $(ARCH) $(OPT) $(PLATFORMCFLAGS) -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++11
+CPPFLAGS=-DDUMMY_UI $(ARCH) $(OPT) $(PLATFORMCFLAGS) -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++20
 
 # Should just be used for testing/utilities.
-CCLIBOBJECTS=../cc-lib/util.o ../cc-lib/arcfour.o ../cc-lib/base/logging.o ../cc-lib/base/stringprintf.o ../cc-lib/city/city.o ../cc-lib/rle.o ../cc-lib/image.o ../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/wavesave.o ../cc-lib/ansi.o
+CCLIBOBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/city/city.o $(CC_LIB)/rle.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/wavesave.o $(CC_LIB)/ansi.o $(CC_LIB)/nice.o
 
 MAPPEROBJECTS=mappers/6.o mappers/61.o mappers/24and26.o mappers/51.o mappers/69.o mappers/77.o mappers/40.o mappers/mmc2and4.o mappers/71.o mappers/79.o mappers/41.o mappers/72.o mappers/80.o mappers/42.o mappers/62.o mappers/73.o mappers/85.o mappers/emu2413.o mappers/46.o mappers/65.o mappers/75.o mappers/50.o mappers/67.o mappers/76.o mappers/tengen.o
 

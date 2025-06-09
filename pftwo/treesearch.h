@@ -1,7 +1,10 @@
-#ifndef __TREESEARCH_H
-#define __TREESEARCH_H
+#ifndef _PFTWO_TREESEARCH_H
+#define _PFTWO_TREESEARCH_H
 
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <utility>
 #include <vector>
 #include <string>
 #include <set>
@@ -13,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "../fceulib/types.h"
 #include "pftwo.h"
 
 #include "../cc-lib/util.h"
@@ -64,7 +68,7 @@ struct Tree {
   using Seq = vector<Problem::Input>;
   // static constexpr int UPDATE_FREQUENCY = 1000 / (NODE_BATCH_SIZE * 2);
   // static_assert(UPDATE_FREQUENCY > 0, "configuration range");
-  
+
   // Want to do a commit shortly after starting, because
   // until then, scores are frequently >1 (we don't have
   // an accurate maximum to normalize against).
@@ -88,7 +92,7 @@ struct Tree {
     const int depth = 0;
     // Length of the sequence that gets us here.
     const int64 seqlength = 0LL;
-    
+
     // Child nodes. Currently, no guarantee that these don't
     // share prefixes, but there cannot be duplicates.
     map<Seq, Node *> children;
@@ -107,7 +111,7 @@ struct Tree {
     // If true, then we did the "in control check" and it returned
     // true.
     bool checked_in_control = false;
-    
+
     // Total number of times chosen for expansion. This will
     // be related to the number of children, but can be more
     // in the case that the tree is pruned or children collide.
@@ -133,10 +137,10 @@ struct Tree {
     // Number of references from the grid, which also keeps nodes
     // alive.
     int used_in_grid = 0;
-    
+
     // Same, but for marathon cell(s).
     int used_in_marathon = 0;
-    
+
     // Should only be used inside the tree cleanup procedure. Marks
     // nodes that should not be garbage collected because they are
     // among the best.
@@ -155,7 +159,7 @@ struct Tree {
 
     // Mutex protects the below.
     std::shared_mutex node_m;
-    
+
     // The sequence that brings us closest to the goal.
     Seq closest_seq;
     // And the state that results from that sequence.
@@ -173,7 +177,7 @@ struct Tree {
     // Explorations that were bad (e.g., death). Just for display.
     int bad = 0;
   };
-  
+
   Tree(double score, State state) {
     root = new Node(std::move(state), nullptr, 0);
     heap.Insert(-score, root);
@@ -187,7 +191,7 @@ struct Tree {
   int64 MaxNodes() const {
     return BASE_NODE_BUDGET + max_depth * NODE_BUDGET_BONUS_PER_DEPTH;
   }
-  
+
   // Tree prioritized by negation of score at current epoch. Negation
   // is used so that the minimum node is actually the node with the
   // best score.
@@ -205,7 +209,7 @@ struct Tree {
     Node *node = nullptr;
     GridCell(double score, Node *node) : score(score), node(node) {}
   };
-  
+
   // Experimental: Keep around a node that has a high score (relative
   // to the best-scoring node in the heap), where the players are in
   // control, and which has a high depth.
@@ -229,7 +233,7 @@ struct Tree {
   // position is part of the objective function.)
   // We then try to find the highest depth.
   MarathonCell marathon;
-  
+
   // If this has anything in it, we're in exploration mode.
   std::list<ExploreNode *> explore_queue;
   // Stuckness estimate from the last reheap.
@@ -239,7 +243,7 @@ struct Tree {
   // the tree, since we have to at least retain the path back
   // to the root for the best node.
   int max_depth = 0;
-  
+
   Node *root = nullptr;
   // Number of steps until we update reheap and thin the tree.
   int steps_until_update = STEPS_TO_FIRST_UPDATE;
@@ -256,7 +260,7 @@ struct TreeSearch {
   std::unique_ptr<Problem> problem;
 
   TreeSearch(Options options);
-  
+
   // Initialized by one of the workers with the post-warmup
   // state.
   Tree *tree = nullptr;
@@ -270,10 +274,10 @@ struct TreeSearch {
 
   // Periodically call this to update the number of frames that have
   // been executed across all workers. Also returns the updated value.
-  int64 UpdateApproximateNesFrames();
-  
+  int64_t UpdateApproximateNesFrames();
+
   void PrintPerfCounters();
-  
+
   struct Stats {
     // Generated the same exact move sequence for a node
     // more than once.
@@ -291,7 +295,7 @@ struct TreeSearch {
 
   // Returns the actual file written.
   string SaveBestMovie(const string &filename_part);
-  
+
   // Not holding the lock.
   void StartThreads();
   void DestroyThreads();
@@ -300,14 +304,14 @@ struct TreeSearch {
   // Should hold the lock or ensure the number of workers
   // is not changed.
   vector<Worker *> WorkersWithLock() const;
-  
+
  private:
   friend struct WorkThread;
   const Options opt;
   // Updated by the UI thread.
-  std::atomic<int64> approx_sec{0LL};
+  std::atomic<int64_t> approx_sec{0LL};
 
-  std::atomic<int64> approx_total_nes_frames{0LL};
+  std::atomic<int64_t> approx_total_nes_frames{0LL};
 
   // Approximately one per logical CPU. Created at startup and lives
   // until should_die becomes true. Pointers owned by TreeSearch.

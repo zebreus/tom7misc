@@ -15,10 +15,6 @@
 #include <utility>
 #include <vector>
 
-#ifdef WIN32
-#include <windows.h>
-#endif
-
 #include "ansi.h"
 #include "atomic-util.h"
 #include "autoparallel.h"
@@ -26,6 +22,7 @@
 #include "base/stringprintf.h"
 #include "factorization.h"
 #include "image.h"
+#include "nice.h"
 #include "opencl/clutil.h"
 #include "periodically.h"
 #include "status-bar.h"
@@ -1652,11 +1649,7 @@ int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
 
-  #ifdef WIN32
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
-  #endif
+  Nice::SetLowPriority();
 
   Run();
 

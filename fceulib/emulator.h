@@ -63,6 +63,9 @@ struct Emulator {
   void GetMemory(vector<uint8> *mem) const;
   vector<uint8> GetMemory() const;
   // Must have 0x800 bytes of space.
+  #ifdef CopyMemory
+  #error windows.h may define this as a macro?
+  #endif
   void CopyMemory(std::span<uint8_t> out) const;
 
   // Fancy stuff.

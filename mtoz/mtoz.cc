@@ -1,12 +1,11 @@
 // This code was forked from ../redi, so read there for some
 // development history / thoughts.
 
-#include "../cc-lib/sdl/sdlutil.h"
+// Also, it doesn't compile. I think I was in the middle of
+// a rewrite or something?
+
 #include "SDL.h"
 #include "SDL_main.h"
-#include "../cc-lib/sdl/chars.h"
-#include "../cc-lib/sdl/font.h"
-
 #include <CL/cl.h>
 
 #include <string.h>
@@ -24,6 +23,9 @@
 #include <unordered_set>
 #include <deque>
 
+#include "../cc-lib/sdl/chars.h"
+#include "../cc-lib/sdl/font.h"
+#include "../cc-lib/sdl/sdlutil.h"
 #include "../cc-lib/base/stringprintf.h"
 #include "../cc-lib/base/logging.h"
 #include "../cc-lib/arcfour.h"
@@ -36,6 +38,7 @@
 #include "../cc-lib/base/macros.h"
 #include "../cc-lib/color-util.h"
 #include "../cc-lib/image.h"
+#include "../cc-lib/nice.h"
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
@@ -287,7 +290,7 @@ struct GPUErrors {
   // stimulation pointer? I think we may want to delete the stimulation
   // as soon as we have errors.)
   System *system = nullptr;
-  Stimulation *stimulation = nullptr;
+  GPUStimulation *stimulation = nullptr;
 };
 
 
@@ -327,8 +330,8 @@ struct System {
   // populated.
   virtual void Forward(GPUStimulation *stim) = 0;
 
-  virtual void PropagateErrors(
-
+  // I guess I never finished this? -tom7 8 Jun 2025
+  // virtual void PropagateErrors(
 
 };
 
@@ -1851,8 +1854,8 @@ static void ExportStimulusToVideo(int example_id, const Stimulation &stim) {
       // When starting from a fresh network, consider this:
       //   // std::min(0.95, std::max(0.10, 4 * exp(-0.2275 * (round_number + 1)/3.0)));
 
-      const float round_learning_rate =
-        std::min(0.125, std::max(0.002, 2 * exp(-0.2275 * (net->rounds + 1)/3.0)));
+      const float round_learning_rate = std::min(
+          0.125, std::max(0.002, 2 * exp(-0.2275 * (net->rounds + 1) / 3.0)));
       // const float round_learning_rate = 0.0025;
 
       Printf("Learning rate: %.4f\n", round_learning_rate);
@@ -1989,9 +1992,8 @@ static void ExportStimulusToVideo(int example_id, const Stimulation &stim) {
       } while (examples.size() < EXAMPLES_PER_ROUND);
 
       Printf("Setting up expected:\n");
-      vector<vector<float>> expected = Map(examples, [](const TrainingExample &te) {
-          return te.vals;
-        });
+      vector<vector<float>> expected =
+          Map(examples, [](const TrainingExample &te) { return te.vals; });
 
       setup_ms += setup_timer.MS();
 
@@ -2168,9 +2170,7 @@ static void ExportStimulusToVideo(int example_id, const Stimulation &stim) {
 
 
 int SDL_main(int argc, char **argv) {
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
+  Nice::SetLowPriority();
 
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |

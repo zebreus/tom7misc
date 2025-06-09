@@ -1,8 +1,5 @@
 #include "SDL.h"
 #include "SDL_main.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/sdl/chars.h"
-#include "../cc-lib/sdl/font.h"
 
 #include <CL/cl.h>
 
@@ -21,19 +18,23 @@
 #include <unordered_set>
 #include <deque>
 
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/base/logging.h"
 #include "../cc-lib/arcfour.h"
-#include "../cc-lib/util.h"
+#include "../cc-lib/base/logging.h"
+#include "../cc-lib/base/macros.h"
+#include "../cc-lib/base/stringprintf.h"
+#include "../cc-lib/color-util.h"
+#include "../cc-lib/image.h"
+#include "../cc-lib/lines.h"
+#include "../cc-lib/nice.h"
+#include "../cc-lib/randutil.h"
+#include "../cc-lib/sdl/chars.h"
+#include "../cc-lib/sdl/font.h"
+#include "../cc-lib/sdl/sdlutil.h"
 #include "../cc-lib/stb_image.h"
 #include "../cc-lib/stb_image_write.h"
-#include "../cc-lib/vector-util.h"
 #include "../cc-lib/threadutil.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/color-util.h"
-#include "../cc-lib/base/macros.h"
-#include "../cc-lib/lines.h"
-#include "../cc-lib/image.h"
+#include "../cc-lib/util.h"
+#include "../cc-lib/vector-util.h"
 
 #include "clutil.h"
 #include "timer.h"
@@ -75,6 +76,7 @@ static constexpr uint8 best_permutation[] = {
   0x27, 0x28, 0x29, 0x2a, 0x38, 0x2b, 0x20, 0x30,
 };
 
+[[maybe_unused]]
 static constexpr uint8 smoothest_permutation[] = {
   0x2c, 0x3c, 0x20, 0x21, 0x22, 0x23, 0x24, 0x13,
   0x2b, 0x31, 0x30, 0x32, 0x1c, 0x34, 0x14, 0x12,
@@ -86,6 +88,7 @@ static constexpr uint8 smoothest_permutation[] = {
   0x27, 0x16, 0x17, 0x06, 0x0a, 0x0f, 0x0e, 0x0d,
 };
 
+[[maybe_unused]]
 static constexpr uint8 most_linear_permutation[] = {
   0x0d, 0x2e, 0x2f, 0x0a, 0x19, 0x2b, 0x1a, 0x29,
   0x0f, 0x1f, 0x0b, 0x09, 0x3a, 0x1b, 0x39, 0x2a,
@@ -95,7 +98,7 @@ static constexpr uint8 most_linear_permutation[] = {
   0x11, 0x01, 0x04, 0x35, 0x36, 0x10, 0x17, 0x27,
   0x02, 0x23, 0x14, 0x25, 0x05, 0x32, 0x3d, 0x16,
   0x13, 0x12, 0x24, 0x34, 0x15, 0x33, 0x20, 0x30,
-};  
+};
 
 // LAB colors for each palette entry.
 static array<std::tuple<float, float, float>, 64>
@@ -107,7 +110,7 @@ PINNED = {
   std::make_pair(0x0d, 0),
   // pure white pinned to last two
   std::make_pair(0x20, 62),
-  std::make_pair(0x30, 63),  
+  std::make_pair(0x30, 63),
 };
 
 // Graphics.
@@ -288,9 +291,9 @@ static float Linearity() {
   for (int y = 1; y < HEIGHT; y++) {
     AddLine(0, y, y, 0);
   }
-  
+
   // XXX diagonals too
-  
+
   return err;
 }
 
@@ -369,14 +372,14 @@ static void UIThread() {
     string code = StringPrintf("#%02x%02x%02x", r, g, b);
     rev[code].push_back(i);
   }
-  
-  for (const auto [code, idxs] : rev) {
+
+  for (const auto &[code, idxs] : rev) {
     printf("%s:", code.c_str());
     for (int i : idxs) printf (" %02x", i);
     printf("\n");
   }
   printf("%d distinct colors\n", (int)rev.size());
-  
+
   Printf("Init delta_e table.\n");
   auto GetLab = [](int i) {
       return ColorUtil::RGBToLAB(ntsc_palette[i * 3 + 0] / 255.0f,
@@ -405,7 +408,7 @@ static void UIThread() {
          all_delta_e[std::round(0.50f * all_delta_e.size())],
          all_delta_e[std::round(0.75f * all_delta_e.size())],
          all_delta_e.back());
-  
+
   Printf("Init pixels.\n");
   for (int i = 0; i < 64; i++) {
     // int idx = i;
@@ -434,7 +437,7 @@ static void UIThread() {
     }
     printf("\n");
   }
-  
+
   // For each color, its pinned position or -1 if free.
   std::array<int, 64> pin_color;
   for (int i = 0; i < 64; i++) {
@@ -472,11 +475,11 @@ static void UIThread() {
         }
       }
     };
-  
+
   Printf("Initial draw:\n");
   Redraw();
 
-  
+
   bool paused = false;
   int mousex = 0, mousey = 0;
   bool mousemoved = true;
@@ -500,7 +503,7 @@ static void UIThread() {
       int x = i % WIDTH;
       return pin_pos[y][x] >= 0;
     };
-  
+
   auto Swap2 = [&PinnedIndex, &swaps, &current_error](int i, int j) {
       if (i != j) {
         if (PinnedIndex(i) || PinnedIndex(j)) return;
@@ -540,7 +543,7 @@ static void UIThread() {
       for (int i = a; i < c; i++)
         if (PinnedIndex(i))
           return;
-      
+
       const int w = b - a;
       if (w > 0) {
         vector<Pixel> newpixels;
@@ -716,7 +719,7 @@ static void UIThread() {
         case SDLK_SPACE:
           mode = (Mode)(((int)mode + 1) % NUM_MODES);
           Redraw();
-          SDL_Flip(screen);          
+          SDL_Flip(screen);
           break;
         case SDLK_ESCAPE:
           Save();
@@ -731,9 +734,7 @@ static void UIThread() {
 
 int SDL_main(int argc, char **argv) {
   /*
-    if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-    }
+    Nice::SetLowPriority();
   */
 
   /* Initialize SDL and network, if we're using it. */

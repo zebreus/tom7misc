@@ -40,6 +40,7 @@
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
+#include "nice.h"
 
 using namespace std;
 
@@ -1942,9 +1943,7 @@ void TrainThread() {
 
 int SDL_main(int argc, char* argv[]) {
 
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
+  Nice::SetLowPriority();
 
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |

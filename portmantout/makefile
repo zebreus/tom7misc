@@ -1,5 +1,5 @@
 
-default: spans.exe
+default: all
 
 all: particles.exe join.exe grid.exe portmantout.exe validate.exe scroll.exe spans.exe makeparticles_test.exe
 
@@ -22,7 +22,7 @@ endif
 
 # -fno-strict-aliasing
 
-UTILOBJECTS=util.o arcfour.o stringprintf.o logging.o textsvg.o color-util.o stb_image_write.o stb_image.o
+UTILOBJECTS=util.o arcfour.o stringprintf.o logging.o textsvg.o color-util.o stb_image_write.o stb_image.o nice.o
 
 #  -D__MINGW32__
 CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 $(OPT) -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++20

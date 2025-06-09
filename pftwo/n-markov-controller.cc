@@ -1,8 +1,17 @@
 #include "n-markov-controller.h"
 
+#include <string>
+#include <cstdint>
+
 #include "pftwo.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/randutil.h"
+
+#include "arcfour.h"
+#include "randutil.h"
+
+using namespace std;
+using uint8 = uint8_t;
+using uint32 = uint32_t;
+using uint64 = uint64_t;
 
 NMarkovController::History NMarkovController::HistoryInDomain() const {
   return history_in_domain;
@@ -79,7 +88,7 @@ NMarkovController::NMarkovController(const vector<uint8> &v, int n)
   : n(n), history_bitmask(MakeHistoryBitmask(n)) {
   CHECK(n >= 0 && n <= 8) << "The history must fit in a uint64, so "
     "only up to 8 states are supported.";
-  
+
   CHECK(!v.empty());
 
   // We treat the input cyclically, so make the history_in_domain be
@@ -115,7 +124,7 @@ NMarkovController::NMarkovController(const vector<uint8> &v, int n)
       transitions[h][dst]++;
       h = Push(h, dst);
     }
-    
+
     CHECK(h == history_in_domain) <<
       "Bug. Expected h to be the history_in_domain sequence, which "
       "is the very tail of the input:\n  " <<
@@ -148,21 +157,21 @@ NMarkovController::NMarkovController(const vector<uint8> &v, int n)
 
     for (const auto &p : dests) {
       if (row.size() == num_dests - 1) {
-	// Make sure it adds exactly to ~0 by using the leftover
-	// value in the last slot.
-	if (leftover > 0) row.push_back({leftover, p.first});
+  // Make sure it adds exactly to ~0 by using the leftover
+  // value in the last slot.
+  if (leftover > 0) row.push_back({leftover, p.first});
       } else {
-	const double frac = p.second / total;
-	// Truncates (rounding down) -- this way can never use
-	// up more than the leftover value.
-	const uint32 mass = frac * scale;
-	if (mass > 0) row.push_back({mass, p.first});
+  const double frac = p.second / total;
+  // Truncates (rounding down) -- this way can never use
+  // up more than the leftover value.
+  const uint32 mass = frac * scale;
+  if (mass > 0) row.push_back({mass, p.first});
 
-	CHECK(mass <= leftover);
-	leftover -= mass;
+  CHECK(mass <= leftover);
+  leftover -= mass;
       }
     }
-      
+
     // PERF: Sorting here will make "indexing" into the probability
     // mass more efficient, but doesn't affect correctness.
     matrix[h] = std::move(row);
@@ -176,7 +185,7 @@ NMarkovController::NMarkovController(const vector<uint8> &v, int n)
     }
     CHECK(sum == 0xFFFFFFFF);
   }
-  
+
   CHECK(matrix.find(history_in_domain) != matrix.end());
 }
 
@@ -185,12 +194,12 @@ void NMarkovController::Stats() const {
   for (const auto &row : matrix) {
     counts[(int)row.second.size()]++;
   }
-  
+
   fprintf(stderr,
-	  "NMarkovController with n=%d.\n"
-	  "There are %d distinct states of length n.\n"
-	  "Of those, %d are singletons.\n",
-	  n, (int)matrix.size(), counts[1]);
+    "NMarkovController with n=%d.\n"
+    "There are %d distinct states of length n.\n"
+    "Of those, %d are singletons.\n",
+    n, (int)matrix.size(), counts[1]);
 
   for (const auto &c : counts) {
     fprintf(stderr, "%d destinations: %d rows\n", c.first, c.second);

@@ -1,13 +1,13 @@
 
-#ifndef __EMULATOR_POOL_H
-#define __EMULATOR_POOL_H
+#ifndef _PFTWO_EMULATOR_POOL_H
+#define _PFTWO_EMULATOR_POOL_H
 
 #include <string>
 #include <unordered_set>
 #include <vector>
 #include <mutex>
 
-class Emulator;
+struct Emulator;
 
 // Thread-safe collection of Emulator objects for a given game.
 //
@@ -35,7 +35,7 @@ struct EmulatorPool {
   ~EmulatorPool();
 
   // TODO: scoped_emulator?
-  
+
  private:
   const std::string romfile;
   Emulator *CreateNew() const;

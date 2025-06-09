@@ -21,9 +21,9 @@ using std::map;
 using std::unordered_map;
 
 #include "../fceulib/types.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/threadutil.h"
+#include "base/stringprintf.h"
+#include "base/logging.h"
+#include "threadutil.h"
 
 // Status of a worker. This is basically stuff that the UI can
 // display.
@@ -50,8 +50,8 @@ T SharedReadWithLock(std::shared_mutex *m, const T *t) {
 // GetDefault(m, "missing_key", "temporary").
 template<class K, class C>
 auto GetDefault(const C &container,
-		const K &key,
-		const decltype(container.find(key)->second) &def) ->
+    const K &key,
+    const decltype(container.find(key)->second) &def) ->
   typename std::remove_reference<
     decltype(container.find(key)->second)>::type {
   auto it = container.find(key);

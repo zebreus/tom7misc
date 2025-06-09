@@ -61,6 +61,7 @@
 #include "network.h"
 #include "network-gpu.h"
 
+#include "nice.h"
 #include "clutil.h"
 #include "timer.h"
 #include "top.h"
@@ -1726,9 +1727,7 @@ int SDL_main(int argc, char **argv) {
   // Assumes that processors 0-16 are available.
   // CHECK(SetProcessAffinityMask(GetCurrentProcess(), 0xF));
 
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
+  Nice::SetLowPriority();
 
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |

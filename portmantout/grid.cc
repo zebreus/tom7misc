@@ -1,15 +1,19 @@
 // Makes an SVG of the portmanteau graph of English.
 
-#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <format>
+#include <map>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <algorithm>
-#include <deque>
+#include <vector>
 
 #include "util.h"
 #include "timer.h"
-#include "threadutil.h"
 #include "arcfour.h"
 #include "randutil.h"
 #include "base/logging.h"
@@ -21,11 +25,12 @@ using namespace std;
 struct Word;
 using smap = unordered_map<string, vector<Word *>>;
 using sset = unordered_set<string>;
+using uint8 = uint8_t;
 
 std::mutex print_mutex;
-#define Printf(fmt, ...) do {			\
-  MutexLock Printf_ml(&print_mutex);		\
-  printf(fmt, ##__VA_ARGS__);			\
+#define Printf(fmt, ...) do {     \
+  MutexLock Printf_ml(&print_mutex);    \
+  printf(fmt, ##__VA_ARGS__);     \
   } while (0);
 
 // Number of cells in word grid.
@@ -75,7 +80,7 @@ static void WriteSVG(const string &filename, const vector<Word> &words) {
     while (!s.empty() && (s[s.size() - 1] == '0' || s[s.size() - 1] == '.')) {
       s.resize(s.size() - 1);
     }
-    
+
     if (s.empty()) return string("0");
     else return s;
   };
@@ -85,10 +90,10 @@ static void WriteSVG(const string &filename, const vector<Word> &words) {
     svg += StringPrintf("<g fill-opacity=\"0.2\">\n");
     for (const Word &w : words) {
       svg += StringPrintf("<circle cx=\"%s\" cy=\"%s\" "
-			  "r=\"%s\"/>\n",
-			  F(w.X() * DOTSIZE + HALFDOT).c_str(),
-			  F(w.Y() * DOTSIZE + HALFDOT).c_str(),
-			  F(DOTSIZE * 0.4).c_str());
+        "r=\"%s\"/>\n",
+        F(w.X() * DOTSIZE + HALFDOT).c_str(),
+        F(w.Y() * DOTSIZE + HALFDOT).c_str(),
+        F(DOTSIZE * 0.4).c_str());
     }
     svg += "</g>\n";
   }
@@ -96,13 +101,13 @@ static void WriteSVG(const string &filename, const vector<Word> &words) {
   // Color based on the shared string. Generate all the lines and put
   // them in the map with their shared string, so that we can then
   // make colors for those.
-  map<string, vector<string>> lines;
+  std::map<string, vector<string>> lines;
 
   // Return the longest overlap from a to b.
   auto Shared = [](const string &a, const string &b) -> string {
     for (int i = std::min((int)a.size(), (int)b.size()); i >= 0; i--) {
       if (a.substr(a.size() - i, i) == b.substr(0, i)) {
-	return b.substr(0, i);
+        return b.substr(0, i);
       }
     }
     return "";
@@ -111,11 +116,12 @@ static void WriteSVG(const string &filename, const vector<Word> &words) {
   for (const Word &w : words) {
     for (const Word *other : w.neighbors) {
       lines[Shared(w.w, other->w)].push_back(
-	  StringPrintf(R"(<line x1="%s" y1="%s" x2="%s" y2="%s"/>)" "\n",
-		       F(w.X() * DOTSIZE + HALFDOT).c_str(),
-		       F(w.Y() * DOTSIZE + HALFDOT).c_str(),
-		       F(other->X() * DOTSIZE + HALFDOT).c_str(),
-		       F(other->Y() * DOTSIZE + HALFDOT).c_str()));
+          StringPrintf(R"(<line x1="%s" y1="%s" x2="%s" y2="%s"/>)"
+                       "\n",
+                       F(w.X() * DOTSIZE + HALFDOT).c_str(),
+                       F(w.Y() * DOTSIZE + HALFDOT).c_str(),
+                       F(other->X() * DOTSIZE + HALFDOT).c_str(),
+                       F(other->Y() * DOTSIZE + HALFDOT).c_str()));
     }
   }
 
@@ -132,10 +138,11 @@ static void WriteSVG(const string &filename, const vector<Word> &words) {
     double r = (s[0] - 'a') / 26.0;
     double g = (s[1] - 'a') / 26.0;
     double b = (s[2] - 'a') / 26.0;
-    string stroke = StringPrintf("%2x%2x%2x",
-				 uint8(r * 255.0), uint8(g * 255.0), uint8(b * 255.0));
-    svg += StringPrintf("<g stroke-width=\"0.2\" stroke=\"#%s\" stroke-opacity=\"0.5\">\n",
-			stroke.c_str());
+    string stroke = StringPrintf("%2x%2x%2x", uint8(r * 255.0),
+                                 uint8(g * 255.0), uint8(b * 255.0));
+    svg += StringPrintf(
+        "<g stroke-width=\"0.2\" stroke=\"#%s\" stroke-opacity=\"0.5\">\n",
+        stroke.c_str());
     for (const string &line : p.second) {
       svg += line;
     }
@@ -165,10 +172,11 @@ int MakeGrid(ArcFour *rc, const vector<string> &dict) {
   perm.reserve(dict.size());
   for (const string &s : dict) {
     // Should strip.
-    if (s.empty()) continue;
+    if (s.empty())
+      continue;
     for (char c : s) {
       if (c < 'a' || c > 'z') {
-	printf("Bad: [%s]\n", s.c_str());
+        printf("Bad: [%s]\n", s.c_str());
       }
     }
     words.push_back(Word{s, (int)words.size()});
@@ -212,11 +220,11 @@ int MakeGrid(ArcFour *rc, const vector<string> &dict) {
   for (Word &w : words) {
     for (const string &suff : w.suffixes) {
       if (suff.size() > 4) {
-	const vector<Word *> &neighbors = Forward(suff);
-	for (Word *other : neighbors) {
-	  w.neighbors.push_back(other);
-	  other->rev_neighbors.push_back(&w);
-	}
+        const vector<Word *> &neighbors = Forward(suff);
+        for (Word *other : neighbors) {
+          w.neighbors.push_back(other);
+          other->rev_neighbors.push_back(&w);
+        }
       }
     }
   }
@@ -262,8 +270,8 @@ int MakeGrid(ArcFour *rc, const vector<string> &dict) {
   Timer running;
 
   int framenum = 1;
-  auto TrySwap = [&rc, &words, &perm, &energy, &swaps, &running, &framenum,
-		  &GetBothEnergy](int a, int b) {
+  auto TrySwap = [&words, &perm, &energy, &swaps, &running, &framenum,
+                  &GetBothEnergy](int a, int b) {
     if (a != b) {
       int aidx = words[a].idx;
       int bidx = words[b].idx;
@@ -276,27 +284,27 @@ int MakeGrid(ArcFour *rc, const vector<string> &dict) {
       double neweng = GetBothEnergy(words[a]) + GetBothEnergy(words[b]);
 
       if (neweng < oldeng) {
-	// Keep swap.
-	perm[bidx] = &words[a];
-	perm[aidx] = &words[b];
+        // Keep swap.
+        perm[bidx] = &words[a];
+        perm[aidx] = &words[b];
 
-	swaps++;
-	energy = energy - oldeng + neweng;
-	if (swaps % 17000 == 0) {
-	  WriteSVG(StringPrintf("frame-%d.svg", framenum), words);
-	  WriteData(StringPrintf("frame-%d.txt", framenum), words);
-	  framenum++;
-	}
-	  
-	// Or if it's been a minute...
-	if (running.MS() > 60 * 1000) {
-	  WriteSVG(StringPrintf("grid.svg", swaps), words);
-	  running.Start();
-	}
+        swaps++;
+        energy = energy - oldeng + neweng;
+        if (swaps % 17000 == 0) {
+          WriteSVG(StringPrintf("frame-%d.svg", framenum), words);
+          WriteData(StringPrintf("frame-%d.txt", framenum), words);
+          framenum++;
+        }
+
+        // Or if it's been a minute...
+        if (running.MS() > 60 * 1000) {
+          WriteSVG(std::format("grid-{}.svg", swaps), words);
+          running.Start();
+        }
       } else {
-	// Undo.
-	words[a].idx = aidx;
-	words[b].idx = bidx;
+        // Undo.
+        words[a].idx = aidx;
+        words[b].idx = bidx;
       }
     }
   };
@@ -310,31 +318,30 @@ int MakeGrid(ArcFour *rc, const vector<string> &dict) {
 
       // Try the little neighborhood for micro-optimizations.
       for (int dx = -1; dx <= 1; dx++) {
-	for (int dy = -1; dy <= 1; dy++) {
-	  if (dx != 0 || dy != 0) {
-	    int bx = words[a].X() + dx;
-	    int by = words[a].Y() + dy;
-	    if (bx >= 0 && bx < WWIDTH &&
-		by >= 0 && by < WHEIGHT) {
-	      int bidx = by * WWIDTH + bx;
-	      CHECK(bidx >= 0);
-	      // Even though it's in the grid, the last row is
-	      // ragged. So check that it's actually in the
-	      // vector!
-	      if (bidx < perm.size()) {
-		// Word at that pos.
-		Word *bword = perm[bidx];
-		CHECK(&words[bword->vector_idx] == bword);
-		TrySwap(a, bword->vector_idx);
-	      }
-	    }
-	  }
-	}
+        for (int dy = -1; dy <= 1; dy++) {
+          if (dx != 0 || dy != 0) {
+            int bx = words[a].X() + dx;
+            int by = words[a].Y() + dy;
+            if (bx >= 0 && bx < WWIDTH && by >= 0 && by < WHEIGHT) {
+              int bidx = by * WWIDTH + bx;
+              CHECK(bidx >= 0);
+              // Even though it's in the grid, the last row is
+              // ragged. So check that it's actually in the
+              // vector!
+              if (bidx < perm.size()) {
+                // Word at that pos.
+                Word *bword = perm[bidx];
+                CHECK(&words[bword->vector_idx] == bword);
+                TrySwap(a, bword->vector_idx);
+              }
+            }
+          }
+        }
       }
 
       for (int i = 0; i < 12; i++) {
-	int b = RandTo(rc, words.size());
-	TrySwap(a, b);
+        int b = RandTo(rc, words.size());
+        TrySwap(a, b);
       }
     }
 
@@ -342,7 +349,7 @@ int MakeGrid(ArcFour *rc, const vector<string> &dict) {
   }
 
   // WriteSVG("grid.svg", words);
-  
+
   return 1;
 }
 
@@ -350,7 +357,7 @@ int main () {
   vector<string> dict = Util::ReadFileToLines("wordlist.asc");
   printf("%d words.\n", (int)dict.size());
   ArcFour rc("portmantout");
-  
+
   MakeGrid(&rc, dict);
 
   return 0;

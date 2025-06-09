@@ -1,9 +1,6 @@
-#include "../cc-lib/sdl/sdlutil.h"
+
 #include "SDL.h"
 #include "SDL_main.h"
-#include "../cc-lib/sdl/chars.h"
-#include "../cc-lib/sdl/font.h"
-
 #include <CL/cl.h>
 
 #include <string.h>
@@ -20,18 +17,22 @@
 #include <unordered_set>
 #include <deque>
 
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/base/logging.h"
 #include "../cc-lib/arcfour.h"
-#include "../cc-lib/util.h"
+#include "../cc-lib/base/logging.h"
+#include "../cc-lib/base/macros.h"
+#include "../cc-lib/base/stringprintf.h"
+#include "../cc-lib/color-util.h"
+#include "../cc-lib/image.h"
+#include "../cc-lib/nice.h"
+#include "../cc-lib/randutil.h"
+#include "../cc-lib/sdl/chars.h"
+#include "../cc-lib/sdl/font.h"
+#include "../cc-lib/sdl/sdlutil.h"
 #include "../cc-lib/stb_image.h"
 #include "../cc-lib/stb_image_write.h"
-#include "../cc-lib/vector-util.h"
 #include "../cc-lib/threadutil.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/color-util.h"
-#include "../cc-lib/base/macros.h"
-#include "../cc-lib/image.h"
+#include "../cc-lib/util.h"
+#include "../cc-lib/vector-util.h"
 
 #include "clutil.h"
 #include "timer.h"
@@ -455,9 +456,7 @@ static void UIThread() {
 
 int SDL_main(int argc, char **argv) {
   /*
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
+  Nice::SetLowPriority();
   */
 
   /* Initialize SDL and network, if we're using it. */

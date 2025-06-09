@@ -1,6 +1,6 @@
 
-#ifndef __OPTIONS_H
-#define __OPTIONS_H
+#ifndef _PFTWO_OPTIONS_H
+#define _PFTWO_OPTIONS_H
 
 // Tunable parameters with their default values. This should
 // grow to include booleans for any doubtful features so that
@@ -32,7 +32,7 @@ struct Options {
   bool symmetric_markov = true;
 
   bool use_marathon = false;
-  
+
   // Tune me!
   // Maximum chance of expanding the marathon node when it's eligible.
   double p_expand_marathon = 0.10;

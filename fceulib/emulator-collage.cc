@@ -27,13 +27,14 @@
 // XXX hack
 #define BASE_INT_TYPES_H_
 
-#include "base/logging.h"
-#include "test-util.h"
 #include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "nice.h"
 #include "rle.h"
 #include "simplefm2.h"
-#include "base/stringprintf.h"
 #include "stb_image_write.h"
+#include "test-util.h"
 
 #include <mutex>
 #include <thread>
@@ -565,10 +566,7 @@ static SerialResult RunGameSerially(
 }
 
 int main(int argc, char **argv) {
-
-  #ifdef __MINGW32__
-  CHECK(SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS));
-  #endif
+  Nice::SetLowPriority();
 
   string output_file;
   string romdir = "roms/";

@@ -20,19 +20,20 @@
 #include <unordered_set>
 #include <deque>
 
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/base/logging.h"
 #include "../cc-lib/arcfour.h"
-#include "../cc-lib/util.h"
+#include "../cc-lib/base/logging.h"
+#include "../cc-lib/base/macros.h"
+#include "../cc-lib/base/stringprintf.h"
+#include "../cc-lib/color-util.h"
+#include "../cc-lib/image.h"
+#include "../cc-lib/lines.h"
+#include "../cc-lib/nice.h"
+#include "../cc-lib/randutil.h"
 #include "../cc-lib/stb_image.h"
 #include "../cc-lib/stb_image_write.h"
-#include "../cc-lib/vector-util.h"
 #include "../cc-lib/threadutil.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/color-util.h"
-#include "../cc-lib/base/macros.h"
-#include "../cc-lib/lines.h"
-#include "../cc-lib/image.h"
+#include "../cc-lib/util.h"
+#include "../cc-lib/vector-util.h"
 
 #include "clutil.h"
 #include "timer.h"
@@ -74,6 +75,7 @@ static constexpr uint8 best_permutation[] = {
   0x19, 0x0a, 0x09, 0x0b, 0x3e, 0x2f, 0x0f, 0x0d,
 };
 
+[[maybe_unused]]
 static constexpr uint8 smoothest_permutation[] = {
   0x2c, 0x3c, 0x20, 0x21, 0x22, 0x23, 0x24, 0x13,
   0x2b, 0x31, 0x30, 0x32, 0x1c, 0x34, 0x14, 0x12,
@@ -500,9 +502,7 @@ static void UIThread() {
 
 int SDL_main(int argc, char **argv) {
   /*
-    if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-    }
+    Nice::SetLowPriority();
   */
 
   /* Initialize SDL and network, if we're using it. */

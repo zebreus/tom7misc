@@ -5,14 +5,15 @@
 //
 // Also needed to add 2P support.
 
-#ifndef __AUTOCAMERA_H
-#define __AUTOCAMERA_H
+#ifndef _PFTWO_AUTOCAMERA_H
+#define _PFTWO_AUTOCAMERA_H
 
 #include "pftwo.h"
 
+#include <cstdint>
 #include <functional>
-#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../fceulib/emulator.h"
@@ -28,14 +29,17 @@
 //    a third view type for this? PPU scrolling may be the
 //    right way to distinguish.
 struct AutoCamera {
+  using string = std::string;
+  using uint8 = uint8_t;
+  using uint16 = uint16_t;
   static constexpr int NUM_EMULATORS = 16;
-  
+
   // Since emulator startup is a little expensive, this keeps
   // around an emulator instance (pass the cartridge filename).
   AutoCamera(const string &game, bool first_player = true);
 
   ~AutoCamera();
-  
+
   // TODO: Make the search procedure use multiple threads.
   //
   // All of this is predicated on the idea that there should
@@ -84,49 +88,49 @@ struct AutoCamera {
     // Memory locations that had the same x value as the sprite,
     // perhaps lagged by a frame, along with the offset (mem[addr] +
     // offset = sprite_x). Always nonempty.
-    vector<pair<uint16, int>> xmems;
+    std::vector<std::pair<uint16, int>> xmems;
     // Same, but for y coordinates.
-    vector<pair<uint16, int>> ymems;
+    std::vector<std::pair<uint16, int>> ymems;
     XYSprite() {}
-    XYSprite(int sprite_idx, bool oldmem, 
-	     vector<pair<uint16, int>> xmems,
-	     vector<pair<uint16, int>> ymems) :
-      sprite_idx(sprite_idx), oldmem(oldmem),
-      xmems(xmems), ymems(ymems) {}
+    XYSprite(int sprite_idx, bool oldmem,
+             std::vector<std::pair<uint16, int>> xmems,
+             std::vector<std::pair<uint16, int>> ymems)
+        : sprite_idx(sprite_idx), oldmem(oldmem), xmems(xmems), ymems(ymems) {}
   };
 
   // Maybe these should stay private?
-  static vector<uint8> OAM(Emulator *emu);
-  static int BestDisplacement(const vector<uint8> &oldoam, 
-			      const vector<uint8> &newoam);
+  static std::vector<uint8> OAM(Emulator *emu);
+  static int BestDisplacement(const std::vector<uint8> &oldoam,
+                              const std::vector<uint8> &newoam);
 
   struct XSprites {
     // The best displacement values we used; there is one entry
     // for each frame we executed.
-    vector<int> displacements;
+    std::vector<int> displacements;
     // ymems not yet filled in.
-    vector<XYSprite> sprites;
+    std::vector<XYSprite> sprites;
     int NumFrames() const { return displacements.size(); }
   };
 
   // Returns a vector of sprite indices that meet the criteria. Only
   // xmems will be filled in.
-  XSprites GetXSprites(const vector<uint8> &uncompressed_state,
-		       std::function<void(int depth,
-					  int total_displacement,
-					  Emulator *lemu,
-					  Emulator *nemu,
-					  Emulator *remu)> DebugCallback);
+  XSprites GetXSprites(const std::vector<uint8> &uncompressed_state,
+                       std::function<void(int depth,
+                                          int total_displacement,
+                                          Emulator *lemu,
+                                          Emulator *nemu,
+                                          Emulator *remu)> DebugCallback);
 
   // Upgrade a set of sprites with only x coordinates to ones with
-  // both x and y coordinates. 
-  vector<XYSprite> FindYCoordinates(const vector<uint8> &uncompressed_state,
-				    const XSprites &xsprites,
-				    // If not null, the array is populated with
-				    // the sprite indices (at the start frame)
-				    // that are believed to correspond to the
-				    // player.
-				    vector<int> *player_sprites);
+  // both x and y coordinates.
+  std::vector<XYSprite> FindYCoordinates(
+      const std::vector<uint8> &uncompressed_state,
+      const XSprites &xsprites,
+      // If not null, the array is populated with
+      // the sprite indices (at the start frame)
+      // that are believed to correspond to the
+      // player.
+      std::vector<int> *player_sprites);
 
   // Must have x and y coordinates filled in, i.e. after FindYCoordinates.
   //
@@ -143,19 +147,19 @@ struct AutoCamera {
   // coordinates in RAM (for example, we may have found a screen position
   // that is derived from some "real" physical position by adding the
   // scroll offset?)
-  vector<XYSprite> FilterForConsequentiality(
-      const vector<uint8> &uncompressed_state,
+  std::vector<XYSprite> FilterForConsequentiality(
+      const std::vector<uint8> &uncompressed_state,
       int x_num_frames,
-      const vector<XYSprite> &xysprites);
+      const std::vector<XYSprite> &xysprites);
 
   // Detect ViewType (SIDE or TOP) using xysprites, which are expected
   // to have consequential memory locations (it conducts experiments writing
   // into these locations). Returns true if successful, and sets is_top
   // accordingly.
-  bool DetectViewType(const vector<uint8> &uncompressed_state,
-		      int x_num_frames,
-		      const vector<XYSprite> &consequential_sprites,
-		      bool *is_top);
+  bool DetectViewType(const std::vector<uint8> &uncompressed_state,
+                      int x_num_frames,
+                      const std::vector<XYSprite> &consequential_sprites,
+                      bool *is_top);
 
   // Detect the camera angle address. This is assumed to be a single
   // byte in memory that takes different values depending on whether
@@ -164,23 +168,24 @@ struct AutoCamera {
   //
   // Sprites do not have to be consequential.
   enum CameraStatus { CAMERA_ALL, CAMERA_LR, CAMERA_FAILED };
-  CameraStatus DetectCameraAngle(const vector<uint8> &uncompressed_state,
-				 int x_num_frames,
-				 const vector<XYSprite> &xysprites,
-				 uint16 *addr,
-				 uint8 *up, uint8 *down,
-				 uint8 *left, uint8 *right);
+  CameraStatus DetectCameraAngle(
+      const std::vector<uint8> &uncompressed_state,
+      int x_num_frames,
+      const std::vector<XYSprite> &xysprites,
+      uint16 *addr,
+      uint8 *up, uint8 *down,
+      uint8 *left, uint8 *right);
 
   // For printing out memory address (with optional offset) in XYSprite.
-  static string AddrOffset(pair<uint16, int> p);
-  
+  static string AddrOffset(std::pair<uint16, int> p);
+
  private:
-  void GetSavestates(const vector<uint8> &uncompressed_state,
-		     int num_experiments,
-		     int x_num_frames,
-		     vector<vector<uint8>> *savestates);
+  void GetSavestates(const std::vector<uint8> &uncompressed_state,
+                     int num_experiments,
+                     int x_num_frames,
+                     std::vector<std::vector<uint8>> *savestates);
   const bool first_player = false;
-  vector<Emulator *> emus;
+  std::vector<Emulator *> emus;
 };
 
 #endif

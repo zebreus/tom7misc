@@ -37,6 +37,7 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 #include "stb_truetype.h"
+#include "nice.h"
 
 #include "threadutil.h"
 #include "clutil.h"
@@ -1966,10 +1967,7 @@ void TrainThread() {
 }
 
 int SDL_main(int argc, char* argv[]) {
-
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
+  Nice::SetLowPriority();
 
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |

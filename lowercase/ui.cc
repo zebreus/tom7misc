@@ -21,6 +21,7 @@
 #include "../cc-lib/arcfour.h"
 #include "../cc-lib/base/logging.h"
 #include "../cc-lib/base/stringprintf.h"
+#include "../cc-lib/nice.h"
 
 #include "SDL_events.h"
 #include "SDL_keyboard.h"
@@ -2200,9 +2201,7 @@ int main(int argc, char **argv) {
   // CHECK(SetProcessAffinityMask(GetCurrentProcess(), 0xF));
 
   /*
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
+  Nice::SetLowPriority();
   */
 
   /* Initialize SDL and network, if we're using it. */

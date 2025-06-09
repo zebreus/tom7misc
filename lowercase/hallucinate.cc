@@ -1,4 +1,5 @@
 
+#include <span>
 #ifdef WIN32
 #include <windows.h>
 #include <processthreadsapi.h>
@@ -25,6 +26,7 @@
 #include "base/stringprintf.h"
 #include "image.h"
 #include "lines.h"
+#include "nice.h"
 #include "opt/opt.h"
 #include "threadutil.h"
 #include "util.h"
@@ -85,7 +87,7 @@ static inline double LetterPenalty(int target_letter,
 }
 
 // Rejects SDFs that are too bright on the edges.
-static double BrightPenalty(const vector<double> &inputs) {
+static double BrightPenalty(std::span<const double> inputs) {
   static constexpr int sdf_size = SDF_CONFIG.sdf_size;
   static constexpr double OFF = 0.25;
   double penalty = 0.0;
@@ -107,7 +109,7 @@ static double BrightPenalty(const vector<double> &inputs) {
 
 // Rejects SDFs that don't have enough "on" pixels, or
 // too many of them.
-static double BoringPenalty(const vector<double> &inputs) {
+static double BoringPenalty(std::span<const double> inputs) {
   static constexpr int sdf_size = SDF_CONFIG.sdf_size;
   static constexpr double ON = (double)SDF_CONFIG.onedge_value / 255.0;
   static constexpr int ENOUGH = 0.10 * (sdf_size * sdf_size);
@@ -124,7 +126,7 @@ static double BoringPenalty(const vector<double> &inputs) {
 // If feasible, returns 0.0.
 // Otherwise, a penalty that should reduce as it gets closer
 // to the feasible region.
-static double TrianglePenalty(const vector<double> &inputs) {
+static double TrianglePenalty(std::span<const double> inputs) {
   static constexpr int sdf_size = SDF_CONFIG.sdf_size;
   // maximum falloff difference of two adjacent pixels
   static constexpr double MAX_AXIAL =
@@ -161,9 +163,9 @@ static ImageA DirectOptimizeSDF(const Network &net,
                                 int target_letter) {
   constexpr int sdf_size = SDF_CONFIG.sdf_size;
 
-  std::function<double(const std::vector<double> &inputs)> IsLetter =
+  std::function<double(std::span<const double> inputs)> IsLetter =
     [&net, target_letter](
-        const std::vector<double> &inputs) -> double {
+        std::span<const double> inputs) -> double {
 
       const double bright_penalty = BrightPenalty(inputs);
 
@@ -286,7 +288,7 @@ static ImageA DrawBitmapShapes(const Network &net,
 
   constexpr int N = BOX_START + NUM_BOXES * BOX_SIZE;
 
-  auto MakeSDF = [](const std::vector<double> &inputs) {
+  auto MakeSDF = [](std::span<const double> inputs) {
       // Put in local coordinates. PERF: Could instead just generate
       // in these native coordinates...
       vector<float> scaled_inputs;
@@ -345,9 +347,9 @@ static ImageA DrawBitmapShapes(const Network &net,
     };
 
   int num_calls = 0;
-  std::function<double(const std::vector<double> &inputs)> IsLetter =
+  std::function<double(std::span<const double> inputs)> IsLetter =
     [&net, target_letter, &MakeSDF, &num_calls](
-        const std::vector<double> &inputs) -> double {
+        std::span<const double> inputs) -> double {
 
       ImageA sdf = MakeSDF(inputs);
       const auto [out_sdf, pred] =
@@ -401,7 +403,7 @@ static ImageA DrawPoly(const Network &net,
   constexpr int N = NUM_VERTICES * VERTEX_SIZE;
 
   // Unlike the above, arguments are in [0, sdf_size].
-  auto MakeSDF = [](const std::vector<double> &inputs) {
+  auto MakeSDF = [](std::span<const double> inputs) {
       ImageA sdf(sdf_size, sdf_size);
 
       // Draw the shapes.
@@ -445,9 +447,9 @@ static ImageA DrawPoly(const Network &net,
     };
 
   int num_calls = 0;
-  std::function<double(const std::vector<double> &inputs)> IsLetter =
+  std::function<double(std::span<const double> inputs)> IsLetter =
     [&net, target_letter, &MakeSDF, &num_calls](
-        const std::vector<double> &inputs) -> double {
+        std::span<const double> inputs) -> double {
 
       ImageA sdf = MakeSDF(inputs);
       const auto [out_sdf, pred] =
@@ -510,7 +512,7 @@ static ImageA DrawSDFShapes(const Network &net,
   constexpr int N = BOX_START + NUM_BOXES * BOX_SIZE;
 
   // Unlike the above, arguments are in [0, sdf_size].
-  auto MakeSDF = [](const std::vector<double> &inputs) {
+  auto MakeSDF = [](std::span<const double> inputs) {
       ImageA sdf(sdf_size, sdf_size);
 
       // Draw the shapes.
@@ -596,9 +598,9 @@ static ImageA DrawSDFShapes(const Network &net,
     };
 
   int num_calls = 0;
-  std::function<double(const std::vector<double> &inputs)> IsLetter =
+  std::function<double(std::span<const double> inputs)> IsLetter =
     [&net, target_letter, &MakeSDF, &num_calls](
-        const std::vector<double> &inputs) -> double {
+        std::span<const double> inputs) -> double {
 
       ImageA sdf = MakeSDF(inputs);
       const auto [out_sdf, pred] =
@@ -645,7 +647,7 @@ static std::pair<FontProblem::Image8x8, ImageA>
 Random8x8(const Network &prednet, int target_letter) {
   constexpr int N = 8 * 8;
 
-  auto Make8x8 = [](const std::vector<double> &inputs) {
+  auto Make8x8 = [](std::span<const double> inputs) {
       FontProblem::Image8x8 img8;
       for (int i = 0; i < 64; i++) {
         int y = i / 8;
@@ -664,10 +666,10 @@ Random8x8(const Network &prednet, int target_letter) {
   // are discretized to bools. Helps a lot!
   std::unordered_map<uint64_t, double> cache;
 
-  std::function<double(const std::vector<double> &inputs)> IsLetter =
+  std::function<double(std::span<const double> inputs)> IsLetter =
     [&prednet, target_letter, &Make8x8, &num_calls,
      &sdf_time, &run_time, &cache_hits, &cache](
-        const std::vector<double> &inputs) -> double {
+        std::span<const double> inputs) -> double {
       num_calls++;
 
       Timer sdf_timer;
@@ -744,11 +746,7 @@ Random8x8(const Network &prednet, int target_letter) {
 
 
 int main(int argc, char **argv) {
-  #ifdef WIN32
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
-  #endif
+  Nice::SetLowPriority();
 
   // XXX make command-line option
   const string model_file =

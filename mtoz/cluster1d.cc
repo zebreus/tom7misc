@@ -1,9 +1,5 @@
-#include "../cc-lib/sdl/sdlutil.h"
 #include "SDL.h"
 #include "SDL_main.h"
-#include "../cc-lib/sdl/chars.h"
-#include "../cc-lib/sdl/font.h"
-
 #include <CL/cl.h>
 
 #include <string.h>
@@ -20,17 +16,21 @@
 #include <unordered_set>
 #include <deque>
 
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/base/logging.h"
 #include "../cc-lib/arcfour.h"
-#include "../cc-lib/util.h"
+#include "../cc-lib/base/logging.h"
+#include "../cc-lib/base/macros.h"
+#include "../cc-lib/base/stringprintf.h"
+#include "../cc-lib/color-util.h"
+#include "../cc-lib/nice.h"
+#include "../cc-lib/randutil.h"
+#include "../cc-lib/sdl/chars.h"
+#include "../cc-lib/sdl/font.h"
+#include "../cc-lib/sdl/sdlutil.h"
 #include "../cc-lib/stb_image.h"
 #include "../cc-lib/stb_image_write.h"
-#include "../cc-lib/vector-util.h"
 #include "../cc-lib/threadutil.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/color-util.h"
-#include "../cc-lib/base/macros.h"
+#include "../cc-lib/util.h"
+#include "../cc-lib/vector-util.h"
 
 #include "clutil.h"
 #include "timer.h"
@@ -61,6 +61,7 @@ static constexpr uint8 ntsc_palette[64 * 3] = {
   0x99,0xFF,0xFC, 0xDD,0xDD,0xDD, 0x11,0x11,0x11, 0x11,0x11,0x11,
 };
 
+[[maybe_unused]]
 static constexpr uint8 best_permutation[] = {
   0x0b, 0x1b, 0x1a, 0x19, 0x0a, 0x09, 0x08, 0x07, 0x06, 0x05, 0x04,
   0x35, 0x25, 0x15, 0x16, 0x17, 0x18, 0x26, 0x27, 0x28, 0x38, 0x37,
@@ -81,18 +82,21 @@ static Font *font = nullptr;
 #define SCREENH (HEIGHT << SCALE)
 static SDL_Surface *screen = nullptr;
 
+using namespace std;
+using uint8 = uint8_t;
+
 std::mutex print_mutex;
-#define Printf(fmt, ...) do {		\
-  MutexLock Printf_ml(&print_mutex);		\
-  printf(fmt, ##__VA_ARGS__);			\
+#define Printf(fmt, ...) do {   \
+  MutexLock Printf_ml(&print_mutex);    \
+  printf(fmt, ##__VA_ARGS__);     \
   } while (0);
 
 struct ImageRGBA {
   static ImageRGBA *Load(const string &filename) {
     vector<uint8> ret;
     int width, height, bpp_unused;
-    uint8 *stb_rgba = stbi_load(filename.c_str(), 
-				&width, &height, &bpp_unused, 4);
+    uint8 *stb_rgba = stbi_load(filename.c_str(),
+        &width, &height, &bpp_unused, 4);
     const int bytes = width * height * 4;
     ret.resize(bytes);
     if (stb_rgba == nullptr) return nullptr;
@@ -102,7 +106,7 @@ struct ImageRGBA {
     return new ImageRGBA(std::move(ret), width, height);
   }
 
-  ImageRGBA(const vector<uint8> &rgba, int width, int height) 
+  ImageRGBA(const vector<uint8> &rgba, int width, int height)
     : width(width), height(height), rgba(rgba) {
     CHECK(rgba.size() == width * height * 4);
   }
@@ -153,9 +157,9 @@ inline void DrawChunk(int x, int y, const Pixel &p) {
   }
 #else
   sdlutil::FillRectRGB(screen,
-		       x << SCALE, y << SCALE,
-		       1 << SCALE, 1 << SCALE,
-		       p.r, p.g, p.b);
+           x << SCALE, y << SCALE,
+           1 << SCALE, 1 << SCALE,
+           p.r, p.g, p.b);
   #if SCALE >= 4
   font->drawto_plain(screen, (x << SCALE) + 1, (y << SCALE) + 1, StringPrintf("%02x", p.idx));
   #endif
@@ -170,13 +174,13 @@ inline void UpdatePixel(int x, int y) {
 // Do two rectangles of the same size overlap?
 // XXX might be off-by-one problems here
 inline bool Overlap(int w, int h,
-		    int ax, int ay,
-		    int bx, int by) {
+        int ax, int ay,
+        int bx, int by) {
   const int axx = ax + w, ayy = ay + h;
   const int bxx = bx + w, byy = by + h;
 
   return !(ax > bxx || bx > axx ||
-	   ay < byy || by < ayy);
+     ay < byy || by < ayy);
 }
 
 static void Redraw() {
@@ -212,17 +216,17 @@ static void UIThread() {
   Printf("Init NES palette.\n");
   for (int i = 0; i < 64; i++) {
     pixels[i] = Pixel{(uint8)i,
-		      ntsc_palette[i * 3 + 0],
-		      ntsc_palette[i * 3 + 1],
-		      ntsc_palette[i * 3 + 2]};
+          ntsc_palette[i * 3 + 0],
+          ntsc_palette[i * 3 + 1],
+          ntsc_palette[i * 3 + 2]};
   }
 
   Printf("Init delta_e table.\n");
   auto GetLab = [](int i, float *l, float *a, float *b) {
     ColorUtil::RGBToLAB(ByteFloat(pixels[i].r),
-			ByteFloat(pixels[i].g),
-			ByteFloat(pixels[i].b),
-			l, a, b);
+      ByteFloat(pixels[i].g),
+      ByteFloat(pixels[i].b),
+      l, a, b);
   };
   for (int i = 0; i < 64; i++) {
     float il, ia, ib;
@@ -234,11 +238,12 @@ static void UIThread() {
     }
   }
 
- 
+
   Printf("Initial draw:\n");
   Redraw();
 
   int swaps = 0, segments = 0;;
+  [[maybe_unused]]
   auto SwapPixels = [&swaps](int ax, int ay, int bx, int by) {
     swaps++;
     const Pixel tmp = pixels[ay * WIDTH + ax];
@@ -252,10 +257,9 @@ static void UIThread() {
   vector<Pixel> best = pixels;
   float best_error = current_error;
 
-  auto Save = [&best_error, &best]() {
+  auto Save = [&best_error]() {
     printf("Best error: %.4f\n", best_error);
-    for (const Pixel &p : pixels)
-      printf("0x%02x, ", p.idx);
+    for (const Pixel &p : pixels) printf("0x%02x, ", p.idx);
     printf("\n");
   };
 
@@ -268,13 +272,13 @@ static void UIThread() {
       pixels[j] = tmp;
       const float after = Error();
       if (after < before) {
-	current_error = after;
-	swaps++;
+        current_error = after;
+        swaps++;
       } else {
-	// swap back.
-	const Pixel tmp = pixels[i];
-	pixels[i] = pixels[j];
-	pixels[j] = tmp;
+        // swap back.
+        const Pixel tmp = pixels[i];
+        pixels[i] = pixels[j];
+        pixels[j] = tmp;
       }
     }
   };
@@ -283,12 +287,12 @@ static void UIThread() {
     // Try moving a single segment. wlog the swap can be
     // defined by three points 0 <= A <= B <= C <= pixels.size
     //
-    //     A          B         C  
+    //     A          B         C
     //  +-------------------------------------------+
     //  |  |##########|         |                   |
     //  +-------------------------------------------+
     //
-    //     AB         C           
+    //     AB         C
     //  +-------------------------------------------+
     //  |  ||         |##########                   |
     //  +-------------------------------------------+
@@ -305,12 +309,12 @@ static void UIThread() {
       pixels.swap(newpixels);
       const float after = Error();
       if (after < current_error) {
-	swaps += w;
-	segments++;
-	current_error = after;
+        swaps += w;
+        segments++;
+        current_error = after;
       } else {
-	// undo
-	newpixels.swap(pixels);
+        // undo
+        newpixels.swap(pixels);
       }
     }
   };
@@ -340,18 +344,19 @@ static void UIThread() {
 
     if (swaps == old_swaps) {
       if (round & 1) {
-	for (int swap_dst = swap_src + 1; swap_dst < (WIDTH * HEIGHT); swap_dst++) {
-	  Swap2(swap_src, swap_dst);
-	}
-	swap_src = (swap_src + 1) % (WIDTH * HEIGHT);
+        for (int swap_dst = swap_src + 1; swap_dst < (WIDTH * HEIGHT);
+             swap_dst++) {
+          Swap2(swap_src, swap_dst);
+        }
+        swap_src = (swap_src + 1) % (WIDTH * HEIGHT);
       } else {
-	// printf("All segs.\n");
-	for (int seg_b = seg_a + 1; seg_b < WIDTH * HEIGHT; seg_b++) {
-	  for (int seg_c = seg_b + 1; seg_c < WIDTH * HEIGHT + 1; seg_c++) {
-	    SwapSeg(seg_a, seg_b, seg_c);
-	  }
-	}
-	seg_a = (seg_a + 1) % (WIDTH * HEIGHT);
+        // printf("All segs.\n");
+        for (int seg_b = seg_a + 1; seg_b < WIDTH * HEIGHT; seg_b++) {
+          for (int seg_c = seg_b + 1; seg_c < WIDTH * HEIGHT + 1; seg_c++) {
+            SwapSeg(seg_a, seg_b, seg_c);
+          }
+        }
+        seg_a = (seg_a + 1) % (WIDTH * HEIGHT);
       }
     }
 
@@ -359,83 +364,79 @@ static void UIThread() {
       // Still no successes...
       successive_failures++;
       if (successive_failures > 128) {
-	if (current_error < best_error) {
-	  best = pixels;
-	  best_error = current_error;
-	}
-	printf("Randomize!");
-	for (int i = 0; i < WIDTH * HEIGHT; i++) {
-	  int j = RandTo(&rc, WIDTH * HEIGHT);
-	  if (j != i) {
-	    Pixel tmp = pixels[i];
-	    pixels[i] = pixels[j];
-	    pixels[j] = tmp;
-	  }
-	}
-	current_error = Error();
-	swaps = 0;
-	segments = 0;
-	successive_failures = 0;
-	// seg_a = 0;
-	// swap_src = 0;
+  if (current_error < best_error) {
+    best = pixels;
+    best_error = current_error;
+  }
+  printf("Randomize!");
+  for (int i = 0; i < WIDTH * HEIGHT; i++) {
+    int j = RandTo(&rc, WIDTH * HEIGHT);
+    if (j != i) {
+      Pixel tmp = pixels[i];
+      pixels[i] = pixels[j];
+      pixels[j] = tmp;
+    }
+  }
+  current_error = Error();
+  swaps = 0;
+  segments = 0;
+  successive_failures = 0;
+  // seg_a = 0;
+  // swap_src = 0;
       }
     } else {
       successive_failures = 0;
       printf("%.4f error (best %.4f). %d swaps. %d segs.\n", current_error,
-	     best_error, swaps, segments);
+       best_error, swaps, segments);
       Redraw();
       SDL_Flip(screen);
     }
-      
+
     SDL_Event event;
     if (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
-	Save();
-	Printf("QUIT.\n");
-	return;
+        Save();
+        Printf("QUIT.\n");
+        return;
 
       } else if (event.type == SDL_KEYDOWN) {
-	switch (event.key.keysym.sym) {
-	case SDLK_ESCAPE:
-	  Save();
-	  Printf("ESCAPE.\n");
-	  return;
-	default:;
-	}
+        switch (event.key.keysym.sym) {
+          case SDLK_ESCAPE:
+            Save();
+            Printf("ESCAPE.\n");
+            return;
+          default:;
+        }
       }
-    } 
+    }
   }
 }
 
 int SDL_main(int argc, char **argv) {
   /*
-    if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-    }
+    Nice::SetLowPriority();
   */
-  
+
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |
-		 SDL_INIT_TIMER | 
-		 SDL_INIT_AUDIO) >= 0);
+     SDL_INIT_TIMER |
+     SDL_INIT_AUDIO) >= 0);
   fprintf(stderr, "SDL initialized OK.\n");
 
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
-		      SDL_DEFAULT_REPEAT_INTERVAL);
+          SDL_DEFAULT_REPEAT_INTERVAL);
 
   SDL_EnableUNICODE(1);
 
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen);
 
-  font = Font::create(screen,
-		      "font.png",
-		      FONTCHARS,
-		      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+  font = Font::Create(screen, "font.png", FONTCHARS, FONTWIDTH, FONTHEIGHT,
+                      FONTSTYLES, 1, 3);
   CHECK(font != nullptr) << "Couldn't load font.";
-  
+
   UIThread();
-  
+
   SDL_Quit();
   return 0;
 }

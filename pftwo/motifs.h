@@ -1,14 +1,17 @@
 
-#ifndef __MOTIFS_H
-#define __MOTIFS_H
+#ifndef _PFTWO_MOTIFS_H
+#define _PFTWO_MOTIFS_H
 
+#include <cstdint>
+#include <utility>
 #include <vector>
 #include <map>
 #include <string>
 
 #include "pftwo.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/randutil.h"
+
+#include "arcfour.h"
+#include "randutil.h"
 // #include "util.h"
 
 // Motifs are little sequences of inputs that are copied from
@@ -16,6 +19,8 @@
 // main source of inputs in the original Playfun algorithm,
 // but pftwo currently just uses NMarkovController.
 struct Motifs {
+  using uint8 = uint8_t;
+
   // Create empty.
   Motifs();
 
@@ -72,7 +77,7 @@ private:
     double weight;
     int picked;
     // Optional, for diagnostics.
-    std::vector< pair<int, double> > history;
+    std::vector< std::pair<int, double> > history;
   };
 
   struct Resorted;
@@ -90,11 +95,11 @@ private:
 // Template implementations follow.
 
 // See the related methods in the .cc file for commentary.
-template<class Container>
-const std::vector<uint8> *Motifs::RandomWeightedMotifNotIn(const Container &c) {
+template <class Container>
+const std::vector<uint8_t> *
+Motifs::RandomWeightedMotifNotIn(const Container &c) {
   double totalweight = 0.0;
-  for (Weighted::const_iterator it = motifs.begin();
-       it != motifs.end(); ++it) {
+  for (Weighted::const_iterator it = motifs.begin(); it != motifs.end(); ++it) {
     if (c.find(it->first) == c.end()) {
       totalweight += it->second.weight;
     }
@@ -113,8 +118,7 @@ const std::vector<uint8> *Motifs::RandomWeightedMotifNotIn(const Container &c) {
     }
   }
 
-  return NULL;
+  return nullptr;
 }
-
 
 #endif
