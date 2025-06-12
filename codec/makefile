@@ -4,7 +4,7 @@ codec : codec.dll
 
 CC_LIB=../cc-lib
 
-CXXFLAGS = --std=c++20 -g -O3 -I. -I$(CC_LIB) -Wall -fPIC
+CXXFLAGS = --std=c++23 -g -O3 -I. -I$(CC_LIB) -Wall -fPIC
 DLL_LDFLAGS = -shared -fPIC
 EXE_LDFLAGS =
 # EXE_LDFLAGS = -static

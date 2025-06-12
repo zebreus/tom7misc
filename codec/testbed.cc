@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <format>
 #include <functional>
 #include <initializer_list>
 #include <memory>
@@ -23,11 +24,11 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "color-util.h"
 #include "image.h"
 #include "timer.h"
-#include "zip.h"
 #include "util.h"
-#include "color-util.h"
+#include "zip.h"
 
 #include "opt/optimizer.h"
 
@@ -37,6 +38,8 @@
 //   Pixel indices fit in int.
 //   Width and height fit in 16 bits each.
 // TODO: Can relax some of these with varint representations.
+
+// TODO: Quadtree could actually be octree, using time dimension?
 
 // Tuning run crashed (?), but this was good: 35 39 1.04 2.05
 // It looks like setting the quadtree cost quite high is the
@@ -90,7 +93,7 @@ static const char *PixelFormatString(PixelFormat p) {
 
 static std::string ColorString(uint32_t c) {
   const auto &[r, g, b, a] = ColorUtil::Unpack32(c);
-  return StringPrintf("#%02x%02x%02x%02x", r, g, b, a);
+  return std::format("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a);
 }
 
 // Output buffer; defaulting to big-endian numbers.
@@ -318,18 +321,18 @@ static std::string MaskString(const Mask &mask) {
   if (const AllMask *a = std::get_if<AllMask>(&mask)) {
     return "ALL";
   } else if (const RectMask *r = std::get_if<RectMask>(&mask)) {
-    return StringPrintf("RECT(@%d,%d %dx%d)",
-                        r->x, r->y,
-                        r->width, r->height);
+    return std::format("RECT(@{},{} {}x{})",
+                       r->x, r->y,
+                       r->width, r->height);
   } else if (const RLEMask *r = std::get_if<RLEMask>(&mask)) {
-    return StringPrintf("RLE(%d runs)",
-                        (int)r->runs.size());
+    return std::format("RLE({} runs)",
+                       r->runs.size());
   } else if (const QuadTreeMask *r = std::get_if<QuadTreeMask>(&mask)) {
     return "QUADTREE";
 
   } else {
     LOG(FATAL) << "Bad mask";
-    return 0;
+    return "BAD";
   }
 }
 
@@ -563,9 +566,9 @@ GetForegroundRectMask(const ImageRGBA &frame, uint32_t *bgcolor) {
   // Regardless we can use opposite corners as the two candidates.
   if ((a == b && c == d) || (a == d && b == c)) {
     /*
-    StringPrintf("\n"
-                 "%08x %08x\n"
-                 "%08x %08x\n", a, b, d, c);
+    std::format("\n"
+                "{:08x} {:08x}\n"
+                "{:08x} {:08x}\n", a, b, d, c);
     */
     CHECK(a != c);
 
@@ -1661,10 +1664,10 @@ static TestStats RunTestcase(const Testcase &t) {
   for (int i = 0; i < t.num; i++) {
     int n = t.start + i;
     std::string filename =
-      StringPrintf("%s%d%s",
-                   t.file_prefix.c_str(),
+      std::format("{}{}{}",
+                   t.file_prefix,
                    n,
-                   t.file_suffix.c_str());
+                   t.file_suffix);
     std::unique_ptr<ImageRGBA> frame(ImageRGBA::Load(filename));
     CHECK(frame.get() != nullptr) << filename;
     frames.emplace_back(std::move(*frame));
@@ -1823,9 +1826,9 @@ static void Tune() {
   auto ArgString = [](const IFrameOpt::arg_type &args) {
       const auto &[qtmr, rmbr] = args.first;
       const auto &[qtbpn, bgbpp] = args.second;
-      return StringPrintf("%d %d %.2f %.2f",
-                          qtmr, rmbr,
-                          qtbpn, bgbpp);
+      return std::format("{} {} {:.2f} {:.2f}",
+                         qtmr, rmbr,
+                         qtbpn, bgbpp);
     };
 
   int runs = 0;
@@ -1848,9 +1851,9 @@ static void Tune() {
         total += h777.size();
       }
 
-      printf("[%s] Corpus compressed: " AWHITE("%zu") "\n",
+      printf("[%s] Corpus compressed: " AWHITE("%lld") "\n",
              ArgString(args).c_str(),
-             total);
+             (int64_t)total);
 
       return std::make_pair((double)total, std::make_optional('o'));
     },
