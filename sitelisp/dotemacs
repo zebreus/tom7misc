@@ -220,12 +220,8 @@
          ;; Working OS X font: http://tom7.org/fixedersys/
          ;; Don't use FixedSys Excelsior 2 or 3; they are "anti"-aliased!
 
-         ; "FixederSys 1x-16:antialias=false:hinting=false"
-         "FixederSys 2x-32:antialias=false:hinting=false"
-
-         ;; "-*-Menlo-bold-normal-normal-*-17-*-*-*-m-0-iso10646-1"
-
-         ;; "FixedSys-15"
+          "FixederSys 1x-16:antialias=false:hinting=false"
+         ; "FixederSys 2x-32:antialias=false:hinting=false"
 
          )
 
@@ -990,6 +986,9 @@
 ;; (add-hook 'cc-mode-hook 'save-without-tabs)
 ;; (add-hook 'cc-mode-hook 'save-without-trailing-whitespace)
 ;;
+
+(add-hook 'cc-mode-hook 'disable-electric)
+
 (put 'downcase-region 'disabled nil)
 
 (put 'upcase-region 'disabled nil)

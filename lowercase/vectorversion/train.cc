@@ -72,6 +72,7 @@
 #include "color-util.h"
 #include "image.h"
 #include "lines.h"
+#include "nice.h"
 
 #include "loadfonts.h"
 #include "network.h"
@@ -1459,7 +1460,7 @@ struct UI {
             // These are not filled in atomically, so it's possible
             // that we have stimulations but not expected values yet.
             if (expected.empty()) continue;
-            
+
             // Skip if not yet set. These get initialized to empty
             // sentinels and then updated by the training thread
             // periodically.
@@ -1471,7 +1472,7 @@ struct UI {
             CHECK(stim.values.size() == current_network->renderstyle.size());
             CHECK(err.error.size() == current_network->num_layers);
             CHECK(expected.size() == current_network->num_nodes.back());
-            
+
             const int xstart = 4 + s * max_width;
             if (xstart >= SCREENW)
               break;
@@ -1551,13 +1552,13 @@ struct UI {
                         Line(ax, ay, ex, ey, 0x7F, 40, 40);
                       }
                     }
-                    
+
                     for (int i = 0; i < num_pts; i++) {
                       float cx = values[idx + 2 + i * 4 + 0];
                       float cy = values[idx + 2 + i * 4 + 1];
                       float dx = values[idx + 2 + i * 4 + 2];
                       float dy = values[idx + 2 + i * 4 + 3];
-                      
+
                       for (const auto [xx, yy] :
                              TesselateQuadraticBezier<double>(
                                  x, y, cx, cy, dx, dy, sqerr)) {
@@ -1572,7 +1573,7 @@ struct UI {
                 if (render_style == RENDERSTYLE_OUTPUTXY) {
                   DrawPath(nullptr, expected,
                            0, ROW0_MAX_PTS, 40, 0x7F, 40);
-                  
+
                   DrawPath(nullptr, expected, 2 + ROW0_MAX_PTS * 4,
                            ROW1_MAX_PTS, 0x00, 0x5F, 0x00);
                   DrawPath(nullptr, expected,
@@ -1581,7 +1582,7 @@ struct UI {
                            ROW2_MAX_PTS, 0x00, 0x5F, 0xFF);
 
                 }
-                
+
                 DrawPath(
                     render_style == RENDERSTYLE_OUTPUTXY ?
                     &expected : nullptr,
@@ -1971,7 +1972,7 @@ static void TrainThread() {
     for (int j = 0; j < 64; j++) init.push_back(rc.Byte());
     example_rc.emplace_back(init);
   }
-  
+
   // Load the existing network from disk or create the initial one.
   Timer initialize_network_timer;
   std::unique_ptr<Network> net;
@@ -2182,7 +2183,7 @@ static void TrainThread() {
   AutoParallelComp prep_expected_comp{32, 50, true,
                                       StringPrintf("autoparallel.%s.exp.txt",
                                                    experiment.c_str())};
-  
+
   AutoParallelComp error_comp{32, 50, false,
                               StringPrintf("autoparallel.%s.err.txt",
                                            experiment.c_str())};
@@ -2434,8 +2435,8 @@ static void TrainThread() {
 
     const int num_examples = examples.size();
 
-    
-    
+
+
     if (ShouldDie()) return;
 
     // Compute expected.
@@ -2480,7 +2481,7 @@ static void TrainThread() {
           }
         });
     prep_expected_ms += prep_expected_timer.MS();
-    
+
     if (VERBOSE > 2) Printf("Error calc.\n");
     Timer output_error_timer;
     error_comp.ParallelComp(
@@ -2585,7 +2586,7 @@ static void TrainThread() {
              "%.1fms in forward layer (%.1f%%),\n"
              "%.1fms in fc init (%.1f%%),\n"
              "%.1fms in forward layer kernel (at most; %.1f%%).\n"
-             "%.1fms in prep expected (%.1f%%),\n"           
+             "%.1fms in prep expected (%.1f%%),\n"
              "%.1fms in error for output layer (%.1f%%),\n"
              "%.1fms in bc init (%.1f%%),\n"
              "%.1fms in backwards pass (%.1f%%),\n"
@@ -2632,9 +2633,7 @@ int SDL_main(int argc, char **argv) {
   // Assumes that processors 0-16 are available.
   CHECK(SetProcessAffinityMask(GetCurrentProcess(), 0xF));
 
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
+  Nice::SetLowPriority();
 
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |

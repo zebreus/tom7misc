@@ -8,21 +8,18 @@ CC_LIB=../cc-lib
 # CXX=g++
 # CC=gcc
 
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
 
 # Note, this builds against AMD's distribution of OpenCL, since that's
 # the card I had when I started. It also works fine with an NVIDIA GPU,
 # and nvidia libs are a bit hard to find since they love CUDA.
 AMD_ARCH=x86_64
-# AMDSDK="/c/Program Files (x86)/AMD APP SDK"
-# mingw wants /c/, but TDM likes c:/
-# AMDSDK=c:/Program Files (x86)/AMD APP SDK/2.9
-AMDSDK=c:/code/AMD_SDK/
+AMDSDK=../../AMD_SDK/
 
 # SDLOPATH=SDL/build
 # SDLOPATH=c:/code/SDL/build
-SDLSDK=c:/code/SDL
+SDLSDK=../../SDL
 SDLOPATH=$(SDLSDK)/build
 # SDLINCLUDES=-ISDL/include
 SDLINCLUDES=-I$(SDLSDK)/include
