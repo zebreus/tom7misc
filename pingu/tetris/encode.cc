@@ -1,15 +1,6 @@
 
 #include <cstdarg>
 #include <ctime>
-#ifdef __MINGW32__
-#include <windows.h>
-#include <minwindef.h>
-#include <processenv.h>
-#include <processthreadsapi.h>
-#include <wincon.h>
-#include <winnt.h>
-#undef ARRAYSIZE
-#endif
 
 #include <algorithm>
 #include <string>
@@ -22,34 +13,20 @@
 #include <cstdio>
 #include <map>
 
+#include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
-#include "timer.h"
-#include "threadutil.h"
+#include "nice.h"
 #include "randutil.h"
+#include "threadutil.h"
+#include "timer.h"
 
 #include "tetris.h"
 #include "encoding.h"
 
 static constexpr int MAX_PARALLELISM = 12;
 static constexpr bool ENDLESS = true;
-
-// TODO: Console stuff to cc-lib
-// Cursor to beginning of previous line
-#define ANSI_PREVLINE "\x1B[F"
-#define ANSI_CLEARLINE "\x1B[2K"
-#define ANSI_CLEARTOEOL "\x1B[0K"
-
-#define ANSI_RED "\x1B[1;31;40m"
-#define ANSI_GREY "\x1B[1;30;40m"
-#define ANSI_BLUE "\x1B[1;34;40m"
-#define ANSI_CYAN "\x1B[1;36;40m"
-#define ANSI_YELLOW "\x1B[1;33;40m"
-#define ANSI_GREEN "\x1B[1;32;40m"
-#define ANSI_WHITE "\x1B[1;37;40m"
-#define ANSI_PURPLE "\x1B[1;35;40m"
-#define ANSI_RESET "\x1B[m"
 
 #define ANSI_HIDE_CURSOR "\x1B[?25h"
 #define ANSI_SHOW_CURSOR "\x1B[?25l"
@@ -58,32 +35,6 @@ static constexpr bool ENDLESS = true;
 // XXX they don't work?
 #define MINTTY_SYNCHRONOUS_START "\x1BP=1s\x1B\\"
 #define MINTTY_SYNCHRONOUS_END "\x1BP=2s\x1B\\"
-
-// Same as printf, but using WriteConsole on windows so that we
-// can communicate with pseudoterminal. Without this, ansi escape
-// codes will work (VirtualTerminalProcessing) but not mintty-
-// specific ones.
-// TODO: It would be better if we had a way of stripping the
-// terminal codes if they are not supported?
-static void CPrintf(const char* format, ...) {
-  // Do formatting.
-  va_list ap;
-  va_start(ap, format);
-  std::string result;
-  StringAppendV(&result, format, ap);
-  va_end(ap);
-
-  #ifdef __MINGW32__
-  DWORD n = 0;
-  WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE),
-               result.c_str(),
-               result.size(),
-               &n,
-               nullptr);
-  #else
-  printf("%s", result.c_str());
-  #endif
-}
 
 
 using namespace std;
@@ -141,7 +92,7 @@ static vector<Move> Encode(uint8 target,
   // Be actually random if ENDLESS mode is on, otherwise we'll just keep
   // producing the same solution.
   ArcFour rc(StringPrintf("%02x.%lld", target,
-                          ENDLESS ? time(nullptr) : 0));
+                          ENDLESS ? (int64_t)time(nullptr) : 0));
 
   // If set, only play the first move of the best sequence, then replan.
   // This is probably better, but slower -- otherwise we require the
@@ -712,7 +663,7 @@ static void AppendSolution(int idx, const std::vector<Move> &movie,
 }
 
 static void SolveAll() {
-  for (int i = 0; i < 38; i++) CPrintf("\n");
+  for (int i = 0; i < 38; i++) printf("\n");
 
   const std::map<uint8, std::vector<Move>> startsols =
     Encoding::ParseSolutions(solsfile);
@@ -731,9 +682,9 @@ static void SolveAll() {
       MutexLock ml(&m);
 
       constexpr int STATUS_LINES = 32;
-      CPrintf("%s", MINTTY_SYNCHRONOUS_START ANSI_HIDE_CURSOR);
+      printf("%s", MINTTY_SYNCHRONOUS_START ANSI_HIDE_CURSOR);
       for (int i = 0; i < STATUS_LINES; i++) {
-        CPrintf("%s", ANSI_PREVLINE);
+        printf("%s", ANSI_PREVLINE);
       }
 
       static_assert(256 % STATUS_LINES == 0);
@@ -751,12 +702,12 @@ static void SolveAll() {
             s == -1 ? ANSI_BLUE :
             s == -2 ? ANSI_YELLOW :
             ANSI_PURPLE;
-          CPrintf(ANSI_WHITE "%02x" ANSI_GREY ":%s% 4d" ANSI_RESET "  ",
+          printf(ANSI_WHITE "%02x" ANSI_GREY ":%s% 4d" ANSI_RESET "  ",
                   idx, color, status[idx]);
         }
-        CPrintf(ANSI_CLEARTOEOL "\n");
+        printf(ANSI_CLEARTOEOL "\n");
       }
-      CPrintf("%s", MINTTY_SYNCHRONOUS_END ANSI_SHOW_CURSOR);
+      printf("%s", MINTTY_SYNCHRONOUS_END ANSI_SHOW_CURSOR);
     };
 
   ParallelComp(256,
@@ -802,7 +753,7 @@ static void SolveAll() {
 }
 
 static void EndlessImprove() {
-  for (int i = 0; i < 38; i++) CPrintf("\n");
+  for (int i = 0; i < 38; i++) printf("\n");
 
   const std::map<uint8, std::vector<Move>> startsols =
     Encoding::ParseSolutions(solsfile);
@@ -828,14 +779,14 @@ static void EndlessImprove() {
 
       constexpr int STATUS_LINES = 32;
       constexpr int SUMMARY_LINES = 2;
-      CPrintf("%s", MINTTY_SYNCHRONOUS_START ANSI_HIDE_CURSOR);
+      printf("%s", MINTTY_SYNCHRONOUS_START ANSI_HIDE_CURSOR);
       for (int i = 0; i < STATUS_LINES + SUMMARY_LINES; i++) {
-        CPrintf("%s", ANSI_PREVLINE);
+        printf("%s", ANSI_PREVLINE);
       }
 
       double seconds = run_timer.Seconds();
       double ipm = moves_saved / (seconds / 60.0);
-      CPrintf(ANSI_BLUE "%0.1f" ANSI_RESET " sec, "
+      printf(ANSI_BLUE "%0.1f" ANSI_RESET " sec, "
               ANSI_PURPLE "%0.3f" ANSI_RESET " imp/minute. "
               ANSI_GREEN "%d" ANSI_RESET " moves saved.\n"
               ANSI_GREY "-------------------------------------------\n",
@@ -856,16 +807,16 @@ static void EndlessImprove() {
             working[idx] > 1 ? ANSI_PURPLE "=" :
             working[idx] == 1 ? ANSI_BLUE "=" :
             ANSI_GREY ":";
-          CPrintf("%s%02x%s%s% 3d" ANSI_RESET "   ",
+          printf("%s%02x%s%s% 3d" ANSI_RESET "   ",
                   idx_color,
                   idx, colon, color, (int)best[idx].size());
         }
-        CPrintf(ANSI_CLEARTOEOL "\n");
+        printf(ANSI_CLEARTOEOL "\n");
       }
-      CPrintf("%s", MINTTY_SYNCHRONOUS_END ANSI_SHOW_CURSOR);
+      printf("%s", MINTTY_SYNCHRONOUS_END ANSI_SHOW_CURSOR);
     };
 
-  ArcFour rc(StringPrintf("ro-%lld", time(nullptr)));
+  ArcFour rc(StringPrintf("ro-%lld", (int64_t)time(nullptr)));
 
   [[maybe_unused]]
   const uint8 random_offset = rc.Byte();
@@ -873,12 +824,10 @@ static void EndlessImprove() {
   // Skip if this many moves or fewer
   static constexpr int ABS_TO_SKIP = 17;
 
-  ParallelFan(
-      MAX_PARALLELISM,
-      [&m, &working, &improved, &skipping, &best,
-       &moves_saved,
-       &PrintTable](int thread_idx) {
-        ArcFour rc(StringPrintf("%d.th.%lld", thread_idx, time(nullptr)));
+  ParallelFan(MAX_PARALLELISM, [&m, &working, &improved, &skipping, &best,
+                                &moves_saved, &PrintTable](int thread_idx) {
+    ArcFour rc(StringPrintf("%d.th.%lld", thread_idx,
+                            (int64_t)time(nullptr)));
 
        int next_start = (thread_idx + rc.Byte()) & 0xFF;
        for (;;) {
@@ -970,19 +919,9 @@ static void EndlessImprove() {
 }
 
 int main(int argc, char **argv) {
-  // Enable ANSI output on win32.
-  #ifdef __MINGW32__
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
+  ANSI::Init();
+  Nice::SetLowPriority();
 
-  HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-  // mingw headers may not know about this new flag
-  static constexpr int kVirtualTerminalProcessing = 0x0004;
-  DWORD old_mode = 0;
-  GetConsoleMode(hStdOut, &old_mode);
-  SetConsoleMode(hStdOut, old_mode | kVirtualTerminalProcessing);
-  #endif
 
   if (ENDLESS) {
     EndlessImprove();

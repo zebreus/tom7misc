@@ -1,60 +1,40 @@
 
 #include "movie-maker.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdarg>
 #include <cstdint>
+#include <ctime>
+#include <format>
+#include <limits>
+#include <mutex>
+#include <optional>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 #include <cstdio>
 #include <unordered_map>
 
-#include "threadutil.h"
+#include "../fceulib/emulator.h"
+#include "../fceulib/types.h"
+#include "ansi.h"
 #include "arcfour.h"
-#include "randutil.h"
-#include "timer.h"
+#include "base/stringprintf.h"
 #include "image.h"
-
-#ifdef __MINGW32__
-#include <windows.h>
-#endif
+#include "nice.h"
+#include "randutil.h"
+#include "tetris.h"
+#include "threadutil.h"
+#include "timer.h"
 
 using namespace std;
 using uint64 = uint64_t;
-
-#define ANSI_RED "\x1B[1;31;40m"
-#define ANSI_GREY "\x1B[1;30;40m"
-#define ANSI_BLUE "\x1B[1;34;40m"
-#define ANSI_CYAN "\x1B[1;36;40m"
-#define ANSI_YELLOW "\x1B[1;33;40m"
-#define ANSI_GREEN "\x1B[1;32;40m"
-#define ANSI_WHITE "\x1B[1;37;40m"
-#define ANSI_PURPLE "\x1B[1;35;40m"
-#define ANSI_RESET "\x1B[m"
-
-static void CPrintf(const char* format, ...) {
-  // Do formatting.
-  va_list ap;
-  va_start(ap, format);
-  string result;
-  StringAppendV(&result, format, ap);
-  va_end(ap);
-
-  #ifdef __MINGW32__
-  DWORD n = 0;
-  WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE),
-               result.c_str(),
-               result.size(),
-               &n,
-               nullptr);
-  #else
-  printf("%s", result.c_str());
-  #endif
-}
-
+using uint8 = uint8_t;
 
 static constexpr int NUM_THREADS = 4;
 static constexpr int NUM_BYTES = 10;
-
-
 
 namespace {
 // From pluginvert/modelinfo, with modifications. Probably should be
@@ -62,7 +42,7 @@ namespace {
 struct Histo {
 
   Histo(const std::unordered_map<int, int> &values) : values(values) {}
-  
+
   // Assumes width is the number of buckets you want.
   // If tallest_bucket is, say, 0.9, the bars are stretched to go 90%
   // of the way to the top of the image (1.0 is a sensible default but
@@ -87,8 +67,8 @@ struct Histo {
     }
 
     if (lbound.has_value()) lo = lbound.value();
-    if (ubound.has_value()) hi = ubound.value();    
-    
+    if (ubound.has_value()) hi = ubound.value();
+
     const float ival = hi - lo;
     const float bucket_width = ival / width;
     const float oval = 1.0f / ival;
@@ -113,7 +93,7 @@ struct Histo {
 
     if (max_count <= 0)
       return make_tuple(lo, hi, img);
-    
+
     // Finally, fill in the image.
     for (int bucket = 0; bucket < width; bucket++) {
       CHECK(bucket >= 0 && bucket < (int)count.size());
@@ -144,7 +124,7 @@ struct Histo {
 
     // Label the mode.
     float center = lo + ((maxi + 0.5f) * bucket_width);
-    string label = StringPrintf("%.4f", center);
+    string label = std::format("{:.4f}", center);
     int lw = label.size() * 9;
     // Align on left or right of the label so as not to run off the screen
     // (we could also try to avoid other buckets?)
@@ -215,7 +195,7 @@ static std::pair<int, int> RunOne(uint64 run_seed) {
   Timer one_timer;
   MovieMaker mm("best-solutions.txt", "tetris.nes", mm_seed);
 
-  CPrintf("Encode [" ANSI_YELLOW "%s" ANSI_RESET "] "
+  printf("Encode [" ANSI_YELLOW "%s" ANSI_RESET "] "
           "with seed [" ANSI_WHITE "%llx" ANSI_RESET "]\n",
           VecBytes(encode).c_str(), mm_seed);
 
@@ -240,7 +220,7 @@ static std::pair<int, int> RunOne(uint64 run_seed) {
 
   vector<uint8> movie = mm.Play(encode, callbacks);
 
-  CPrintf("Done: [" ANSI_YELLOW "%s" ANSI_RESET "] "
+  printf("Done: [" ANSI_YELLOW "%s" ANSI_RESET "] "
           "with seed [" ANSI_WHITE "%llx" ANSI_RESET "], "
           ANSI_PURPLE "%.2f" ANSI_WHITE "s"
           ANSI_RESET "\n",
@@ -251,7 +231,7 @@ static std::pair<int, int> RunOne(uint64 run_seed) {
 
 static void RunForever() {
 
-  ArcFour rc(StringPrintf("mmt.%lld", time(nullptr)));
+  ArcFour rc(std::format("mmt.{}", time(nullptr)));
 
   Asynchronously async(NUM_THREADS);
 
@@ -273,7 +253,7 @@ static void RunForever() {
       }
       return sum / (double)num;
     };
-  
+
   // Holding mutex
   auto HistoImage = [](const std::unordered_map<int, int> &um,
                        const string &name,
@@ -331,7 +311,7 @@ static void RunForever() {
                                    (num_done * (double)NUM_BYTES) / sec));
       out.Save("movie-maker-test.png");
     };
-  
+
   for (;;) {
     const uint64 seed = Rand64(&rc);
     async.Run([&m, &num_done, &steps_histo, &movie_histo, seed]() {
@@ -353,7 +333,7 @@ static void RunForever() {
         double sec = run_timer.Seconds();
         double avg_steps = Average(steps_histo);
         double avg_movie = Average(movie_histo);
-        CPrintf(ANSI_WHITE "%lld " ANSI_RESET " done in "
+        printf(ANSI_WHITE "%lld " ANSI_RESET " done in "
                 ANSI_BLUE "%.2f" ANSI_WHITE "s"
                 ANSI_RESET " = " ANSI_PURPLE "%.4f "
                 ANSI_WHITE "bytes" ANSI_RESET "/" ANSI_WHITE "sec "
@@ -371,18 +351,8 @@ static void RunForever() {
 
 
 int main(int argc, char **argv) {
-  #ifdef __MINGW32__
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
-
-  HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-  // mingw headers may not know about this new flag
-  static constexpr int kVirtualTerminalProcessing = 0x0004;
-  DWORD old_mode = 0;
-  GetConsoleMode(hStdOut, &old_mode);
-  SetConsoleMode(hStdOut, old_mode | kVirtualTerminalProcessing);
-  #endif
+  ANSI::Init();
+  Nice::SetLowPriority();
 
   RunForever();
   return 0;
