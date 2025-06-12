@@ -1,23 +1,25 @@
 
-#ifdef __MINGW32__
-#include <windows.h>
-#undef ARRAYSIZE
-#endif
-
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "util.h"
-#include "threadutil.h"
-#include "re2/re2.h"
 #include "citation-util.h"
+#include "nice.h"
+#include "re2/re2.h"
 #include "threadutil.h"
+#include "util.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <utility>
 #include <vector>
 #include <string>
 #include <map>
 #include <unordered_map>
 #include <unordered_set>
+
+using namespace std;
+using int64 = int64_t;
 
 struct Stats {
   int64 articles = 0;
@@ -35,17 +37,15 @@ struct Title {
 };
 
 int main(int argc, char **argv) {
-  #ifdef __MINGW32__
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
-  #endif
+  Nice::SetLowPriority();
 
-  CHECK_GE(argc, 5) << "worstpapers.exe words.txt best-output-papers.txt worst-output-papers.txt title1.txt title2.txt ... titlen.txt\n";
+  CHECK_GE(argc, 5)
+      << "worstpapers.exe words.txt best-output-papers.txt "
+         "worst-output-papers.txt title1.txt title2.txt ... titlen.txt\n";
   string wordfile = argv[1];
   string bestfile = argv[2];
   string worstfile = argv[3];
-  
+
   vector<string> titlefiles;
   for (int i = 4; i < argc; i++) {
     titlefiles.emplace_back(argv[i]);
@@ -65,25 +65,24 @@ int main(int argc, char **argv) {
     }
   }
 
-  printf("Read %lld titles.\n", titles.size());
+  printf("Read %zu titles.\n", titles.size());
 
   static constexpr int64 MIN_ARTICLES = 100;
   static constexpr int64 MIN_CITATIONS = 1;
   static constexpr int64 MAX_TITLE_WORDS = 20;
-  
+
   // Now, probabilities for all words.
   printf("Reading words...");
   std::unordered_map<string, Stats> word_stats;
   int64 articles_kept = 0LL, citations_kept = 0LL;
-  RE2 line_re{"([^\t]*)\t([\\d]+)\t([\\d]+)"};  
+  RE2 line_re{"([^\t]*)\t([\\d]+)\t([\\d]+)"};
   for (const string &line : Util::ReadFileToLines(wordfile)) {
     string word;
     int64 articles = 0LL, citations = 0LL;
     CHECK(RE2::FullMatch(line, line_re, &word, &articles, &citations)) << line;
 
-    if (citations >= MIN_CITATIONS &&
-	articles >= MIN_ARTICLES &&
-	IsAllAscii(word)) {
+    if (citations >= MIN_CITATIONS && articles >= MIN_ARTICLES &&
+        IsAllAscii(word)) {
       Stats &stats = word_stats[word];
       stats.articles += articles;
       stats.citations += citations;
@@ -91,8 +90,8 @@ int main(int argc, char **argv) {
       citations_kept += citations;
     }
   };
-  printf(" got %lld.\n", word_stats.size());
-  
+  printf(" got %zu.\n", word_stats.size());
+
   // Average citation rate (over all title words).
   const double avg = (double)citations_kept / articles_kept;
   const double inv_avg = 1.0 / avg;
@@ -104,11 +103,11 @@ int main(int argc, char **argv) {
   }
 
   printf("Got stats for %lld words.\n"
-	 "Total kept articles: %lld  and citations: %lld\n"
-	 "Average citations per paper: %.04f\n",
-	 (int64)word_stats.size(), 
-	 articles_kept, citations_kept,
-	 avg);
+   "Total kept articles: %lld  and citations: %lld\n"
+   "Average citations per paper: %.04f\n",
+   (int64)word_stats.size(),
+   articles_kept, citations_kept,
+   avg);
 
   // Bunch of Indonesian(?) papers flood the worst 5000. Try to
   // filter them out so that we get some English ones.
@@ -387,48 +386,48 @@ int main(int argc, char **argv) {
     "p",
     "pages",
     "isbn-13",
-    
+
   };
-  
+
   // Now score each title.
   ParallelComp(
       titles.size(),
       [&titles, &word_stats, &blacklist](int title_idx) {
-	string title = titles[title_idx].title;
-	if (title.find("$") != string::npos) {
-	  titles[title_idx].cite_probability = -1;
-	  return;
-	}
-	double prob = 1.0;
-	int words = 0;
-	while (!title.empty()) {
-	  string token = Normalize(Util::chop(title));
-	  if (ContainsKey(blacklist, token)) {
-	    prob = -1.0;
-	    break;
-	  }
-	  words++;
-	  auto it = word_stats.find(token);
-	  if (it == word_stats.end())
-	    continue;
-	  prob *= it->second.citation_multiplier;
-	}
-	if (words <= MAX_TITLE_WORDS) {
-	  titles[title_idx].cite_probability = prob;
-	} else {
-	  // This will cause it to be deleted below.
-	  titles[title_idx].cite_probability = -1.0;
-	}
+        string title = titles[title_idx].title;
+        if (title.find("$") != string::npos) {
+          titles[title_idx].cite_probability = -1;
+          return;
+        }
+        double prob = 1.0;
+        int words = 0;
+        while (!title.empty()) {
+          string token = Normalize(Util::chop(title));
+          if (ContainsKey(blacklist, token)) {
+            prob = -1.0;
+            break;
+          }
+          words++;
+          auto it = word_stats.find(token);
+          if (it == word_stats.end())
+            continue;
+          prob *= it->second.citation_multiplier;
+        }
+        if (words <= MAX_TITLE_WORDS) {
+          titles[title_idx].cite_probability = prob;
+        } else {
+          // This will cause it to be deleted below.
+          titles[title_idx].cite_probability = -1.0;
+        }
       },
       12);
   printf("Scored titles.\n");
 
   // Sort descending by citation rate.
   std::sort(titles.begin(), titles.end(),
-	    [](const Title &a,
-	       const Title &b) {
-	      return a.cite_probability > b.cite_probability;
-	    });
+      [](const Title &a,
+         const Title &b) {
+        return a.cite_probability > b.cite_probability;
+      });
 
   printf("Sorted.\n");
 
@@ -439,7 +438,7 @@ int main(int argc, char **argv) {
   }
 
   printf("Dropped %lld titles that were too long.\n", too_long);
-  
+
   // Now write output files.
   {
     FILE *out = fopen(bestfile.c_str(), "wb");
@@ -447,16 +446,16 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 5000 && i < titles.size(); i++) {
       const Title &title = titles[i];
       fprintf(out, "%d.  %.17g\t%s\t%s\n",
-	      i,
-	      title.cite_probability,
-	      title.id.c_str(), title.title.c_str());
+        i,
+        title.cite_probability,
+        title.id.c_str(), title.title.c_str());
     }
     printf("Wrote %s.\n", bestfile.c_str());
     fclose(out);
   }
 
   std::unordered_map<string, int> worstwordcounts;
-  
+
   {
     FILE *out = fopen(worstfile.c_str(), "wb");
     CHECK(out != nullptr) << worstfile.c_str();
@@ -464,13 +463,11 @@ int main(int argc, char **argv) {
       const Title &title = titles[i];
       string words = title.title;
       while (!words.empty()) {
-	string word = Normalize(Util::chop(words));
-	worstwordcounts[word]++;
+        string word = Normalize(Util::chop(words));
+        worstwordcounts[word]++;
       }
-      fprintf(out, "%d.  %.17g\t%s\t%s\n",
-	      i,
-	      title.cite_probability,
-	      title.id.c_str(), title.title.c_str());
+      fprintf(out, "%d.  %.17g\t%s\t%s\n", i, title.cite_probability,
+              title.id.c_str(), title.title.c_str());
     }
     printf("Wrote %s.\n", worstfile.c_str());
     fclose(out);
@@ -481,12 +478,10 @@ int main(int argc, char **argv) {
   for (const auto &p : worstwordcounts) {
     wc.push_back({p.first, p.second});
   }
-  std::sort(
-      wc.begin(), wc.end(),
-      [](const pair<string, int64> &a,
-	 const pair<string, int64> &b) {
-	return a.second > b.second;
-      });
+  std::sort(wc.begin(), wc.end(),
+            [](const pair<string, int64> &a, const pair<string, int64> &b) {
+              return a.second > b.second;
+            });
 
   {
     FILE *out = fopen("worstpaperwords.txt", "wb");
@@ -496,6 +491,6 @@ int main(int argc, char **argv) {
     printf("Also wrote worstpaperwords.txt\n");
     fclose(out);
   }
-  
+
   return 0;
 }

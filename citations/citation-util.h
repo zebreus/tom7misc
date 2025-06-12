@@ -2,8 +2,11 @@
 #include "util.h"
 
 #include <cmath>
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
+#include <format>
 
 using namespace std;
 
@@ -23,9 +26,8 @@ inline static void LocalForEachLine(const string &filename, F f) {
 
 inline static string Rtos(double d) {
   if (std::isnan(d)) return "NaN";
-  char out[16];
-  sprintf(out, "%.5f", d);
-  char *o = out;
+  std::string out = std::format("{:.5f}", d);
+  const char *o = out.c_str();
   while (*o == '0') o++;
   return string{o};
 }
@@ -42,8 +44,8 @@ inline static void Reverse(vector<T> *v) {
 
 
 struct CiteStats {
-  int64 articles = 0;
-  int64 citations = 0;
+  int64_t articles = 0;
+  int64_t citations = 0;
 };
 
 inline static string LightNormalization(string w) {
@@ -93,21 +95,21 @@ inline static string Normalize(string w) {
       case '\r':
       case '\t':
       case '\0':
-	break;
+  break;
       default:
-	other += c;
+  other += c;
       }
     }
     other.swap(w);
   }
-    
-  
+
+
   // Nonstandard quotation marks
   w = Util::Replace(std::move(w), "”", "\"");
   w = Util::Replace(std::move(w), "“", "\"");
   w = Util::Replace(std::move(w), "‘", "'");
   w = Util::Replace(std::move(w), "’", "'");
-  
+
   // Remove punctuation from the end of words.
   [&w]() {
     while (!w.empty()) {
@@ -122,10 +124,10 @@ inline static string Normalize(string w) {
       case '\"':
       case ')':
       case ']':
-	w.resize(w.size() - 1);
-	break;
+  w.resize(w.size() - 1);
+  break;
       default:
-	return;
+  return;
       }
     }
   }();
@@ -138,14 +140,14 @@ inline static string Normalize(string w) {
       case '\'':
       case '\"':
       case '[':
-	break;
+  break;
       default:
-	return w.substr(i, string::npos);
+  return w.substr(i, string::npos);
       }
     }
     return "";
   }(w);
-  
+
   // U+2013 EN DASH becomes hyphen
   // w = Util::Replace(std::move(w), "\u2013", "-");
   w = Util::Replace(std::move(w), "–", "-");
@@ -167,16 +169,16 @@ static bool Dictionaryize(string author, string *dict) {
 
   if (backward_order)
     Reverse(&tokens);
-  
+
   // Make sure it fits somewhere in alphabetical order.
   if (tokens[0][0] >= 'a' && tokens[0][0] <= 'z') {
     dict->clear();
     for (const string &tok : tokens) {
       if (dict->empty()) {
-	*dict = tok;
+  *dict = tok;
       } else {
-	*dict += " ";
-	*dict += tok;
+  *dict += " ";
+  *dict += tok;
       }
     }
     return true;

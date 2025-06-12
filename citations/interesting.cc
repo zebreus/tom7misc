@@ -1,16 +1,14 @@
 
-#ifdef __MINGW32__
-#include <windows.h>
-#undef ARRAYSIZE
-#endif
-
 #include "rapidjson/document.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "util.h"
 #include "citation-util.h"
 #include "threadutil.h"
+#include "nice.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <mutex>
 #include <vector>
 #include <string>
@@ -20,17 +18,14 @@
 
 using namespace rapidjson;
 using namespace std;
+using int64 = int64_t;
 
 int main(int argc, char **argv) {
-#ifdef __MINGW32__
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
-#endif
+  Nice::SetLowPriority();
 
   CHECK_EQ(argc, 2) << "./interesting.exe filename";
   const string filename = argv[1];
-  
+
   std::unordered_set<string> interesting = {
     "53e9a66eb7602d9702fa2ee0", // grid grid grid
     // loads of repeated articles like this.
@@ -59,7 +54,7 @@ int main(int argc, char **argv) {
     Document article;
     CHECK(!article.Parse(j.c_str()).HasParseError());
     CHECK(article.IsObject());
-	    
+
     CHECK(article.HasMember("id")) << j;
     const Value &id_value = article["id"];
     CHECK(id_value.IsString()) << j;
