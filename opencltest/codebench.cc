@@ -1,4 +1,5 @@
 #include <CL/cl.h>
+#include <cstdint>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,8 @@
 #include "arcfour.h"
 
 using namespace std;
+using int64 = int64_t;
+using uint8 = uint8_t;
 
 // Little byte machine.
 typedef unsigned char uint8;
@@ -29,8 +32,8 @@ static const int64 kNumIters = 100000;
 static const int64 kMaxItersPerKernel = 190000000;
 
 // Mem is 256 bytes.
-void ByteMachine(const vector<uint8> &rom, 
-		 uint8 *mem, int iters) {
+void ByteMachine(const vector<uint8> &rom,
+     uint8 *mem, int iters) {
   for (int i = 0; i < iters; i++) {
     // byte 0 is instruction pointer
     uint8 inst = rom[mem[0]];
@@ -74,11 +77,11 @@ void ByteMachine(const vector<uint8> &rom,
     case 4: {
       // Add if zero.
       if (!mem[reg_srcb]) {
-	mem[reg_dst] += mem[reg_srca];
+  mem[reg_dst] += mem[reg_srca];
       }
       break;
     }
-      
+
     case 5: {
       // Left shift.
       uint8 res = mem[reg_srca] << reg_srcb;
@@ -148,9 +151,9 @@ vector<bool> MakeFallthrough(const vector<uint8> &rom) {
       // Swap 1th register with nth.
       uchar lreg = inst & 15;
       if (lreg != 1) {
-	fallthrough[i] = lreg != 0;
+  fallthrough[i] = lreg != 0;
       } else {
-	fallthrough[i] = true;
+  fallthrough[i] = true;
       }
       break;
     }
@@ -210,16 +213,16 @@ vector<uint32> MakeDeadRegs(const vector<uint8> &rom) {
     case 1:
       // Reads from A and B, so those are live.
       dead[i] = (next_dead  ADD(reg_dst))
-	SIMPLE_READ(reg_srca)
-	SIMPLE_READ(reg_srcb);
+  SIMPLE_READ(reg_srca)
+  SIMPLE_READ(reg_srcb);
       break;
 
     case 7:
       // Like add, though PERF when reg_srca == reg_srcb
       // since we don't actually need to read it.
       dead[i] = (next_dead  ADD(reg_dst))
-	SIMPLE_READ(reg_srca)
-	SIMPLE_READ(reg_srcb);
+  SIMPLE_READ(reg_srca)
+  SIMPLE_READ(reg_srcb);
       break;
 
     case 2:
@@ -238,9 +241,9 @@ vector<uint32> MakeDeadRegs(const vector<uint8> &rom) {
       // dead -- this is handled at the top when
       // we check for fallthrough.)
       dead[i] = next_dead
-	REMOVE(reg_srca)
-	REMOVE(reg_srcb)
-	REMOVE(reg_dst);
+  REMOVE(reg_srca)
+  REMOVE(reg_srcb)
+  REMOVE(reg_dst);
       break;
 
     default:
@@ -253,16 +256,16 @@ vector<uint32> MakeDeadRegs(const vector<uint8> &rom) {
       // from dst (+=). However, if it falls though then we can still
       // inherit deadness.
       dead[i] = next_dead
-	REMOVE(reg_dst)
-	SIMPLE_READ(reg_srca)
-	SIMPLE_READ(reg_srcb);
+  REMOVE(reg_dst)
+  SIMPLE_READ(reg_srca)
+  SIMPLE_READ(reg_srcb);
       break;
 
     case 5:
       // Left shift. Reads one reg, writes another.
       // reg_b is used as data, not a register name
       dead[i] = (next_dead  ADD(reg_dst))
-	SIMPLE_READ(reg_srca);
+  SIMPLE_READ(reg_srca);
       break;
 
     case 6: {
@@ -273,26 +276,26 @@ vector<uint32> MakeDeadRegs(const vector<uint8> &rom) {
 
       /*
       printf("inst %d nextdead %d  %s %s %s ",
-	     i, next_dead,
-	     deadone ? "ONE" : "_",
-	     deaddst ? "DST" : "_",
-	     fallthrough[i] ? "FT" : "br");
+       i, next_dead,
+       deadone ? "ONE" : "_",
+       deaddst ? "DST" : "_",
+       fallthrough[i] ? "FT" : "br");
       */
 
       // Clear both.
       next_dead = next_dead
-	REMOVE(1)
-	REMOVE(lreg);
+  REMOVE(1)
+  REMOVE(lreg);
 
       // Now add them back, but swapped.
       if (deadone) {
-	next_dead = next_dead
-	  ADD(lreg);
+  next_dead = next_dead
+    ADD(lreg);
       }
 
       if (deaddst) {
-	next_dead = next_dead
-	  ADD(1);
+  next_dead = next_dead
+    ADD(1);
       }
 
       printf(" -> %d\n", next_dead);
@@ -351,7 +354,7 @@ static string MakeKernel(const vector<uint8> &rom) {
   int skip_set_ip = 0;
   int skip_deadwrite = 0;
 
-  // PERF: If setting m[0] to a constant and breaking, 
+  // PERF: If setting m[0] to a constant and breaking,
   // can set to that value + 1, then continue.
   for (int i = 0; i < 256; i++) {
     string deadmask = "/* ";
@@ -361,8 +364,8 @@ static string MakeKernel(const vector<uint8> &rom) {
     deadmask += fallthrough[i] ? " F" : " -";
     deadmask += " */";
 
-    code += StringPrintf("  %s case %d: ", 
-			 deadmask.c_str(), i);
+    code += StringPrintf("  %s case %d: ",
+       deadmask.c_str(), i);
     uchar inst = rom[i];
     // 3 bits opcode, 5 bits regs/data
     uchar opcode = inst >> 5;
@@ -380,7 +383,7 @@ static string MakeKernel(const vector<uint8> &rom) {
 
     // But most of the time we can tell that the IP was
     // not modified. In that case we can fall through.
-    string set_ip = DEADWRITE(0) ? 
+    string set_ip = DEADWRITE(0) ?
       " /* m0 dead */ " :
       StringPrintf(" m[0] = %d; ", (i + 1) & 255);
     string next_fallthrough =
@@ -402,54 +405,54 @@ static string MakeKernel(const vector<uint8> &rom) {
       // Load immediate.
       uchar imm = (inst & 15);
       code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
-		       StringPrintf("m[%d] = %d;",
-				    reg_dst, imm));
+           StringPrintf("m[%d] = %d;",
+            reg_dst, imm));
       break;
     }
 
     case 1:
       // Add mod 256.
       code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
-		       StringPrintf("m[%d] = %s + %s;",
-				    reg_dst,
-				    RegExp(i, reg_srca).c_str(),
-				    RegExp(i, reg_srcb).c_str()));
+           StringPrintf("m[%d] = %s + %s;",
+            reg_dst,
+            RegExp(i, reg_srca).c_str(),
+            RegExp(i, reg_srcb).c_str()));
       break;
 
     case 2:
       // Load indirect.
       code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
-		       StringPrintf("m[%d] = "
-				    "m[(uchar)(%s + %s)];",
-				    reg_dst,
-				    RegExp(i, reg_srca).c_str(),
-				    RegExp(i, reg_srcb).c_str()));
+           StringPrintf("m[%d] = "
+            "m[(uchar)(%s + %s)];",
+            reg_dst,
+            RegExp(i, reg_srca).c_str(),
+            RegExp(i, reg_srcb).c_str()));
       break;
 
     case 3:
       // Store indirect. Can't be known to be dead.
       code += StringPrintf("m[(uchar)(%s + %s)] = "
-			   "%s;",
-			   RegExp(i, reg_srca).c_str(), 
-			   RegExp(i, reg_srcb).c_str(),
-			   RegExp(i, reg_dst).c_str());
+         "%s;",
+         RegExp(i, reg_srca).c_str(),
+         RegExp(i, reg_srcb).c_str(),
+         RegExp(i, reg_dst).c_str());
       break;
 
     case 4:
       // Add if zero.
       // PERF nice simplification if reg happens to be 0
       if (reg_srcb == reg_srca) {
-	// Then this is:
-	// if (a == 0) { d += a; }
-	// which never has any effect.
-	code += "CADD_ZERO;";
+  // Then this is:
+  // if (a == 0) { d += a; }
+  // which never has any effect.
+  code += "CADD_ZERO;";
       } else {
-	code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
-			 StringPrintf("if (!%s) { "
-				      "m[%d] += %s; }",
-				      RegExp(i, reg_srcb).c_str(), 
-				      reg_dst, 
-				      RegExp(i, reg_srca).c_str()));
+  code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
+       StringPrintf("if (!%s) { "
+              "m[%d] += %s; }",
+              RegExp(i, reg_srcb).c_str(),
+              reg_dst,
+              RegExp(i, reg_srca).c_str()));
       }
       break;
 
@@ -457,16 +460,16 @@ static string MakeKernel(const vector<uint8> &rom) {
       // Left shift.
       // TODO: Maybe should mean shift by srcb+1.
       if (reg_srcb > 0) {
-	code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
-			 StringPrintf("m[%d] = %s << %d;",
-				      reg_dst,
-				      RegExp(i, reg_srca).c_str(), reg_srcb));
+  code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
+       StringPrintf("m[%d] = %s << %d;",
+              reg_dst,
+              RegExp(i, reg_srca).c_str(), reg_srcb));
       } else {
-	// Constant shift by zero, but still have to move.
-	code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
-			 StringPrintf("m[%d] = %s;",
-				      reg_dst, 
-				      RegExp(i, reg_srca).c_str()));
+  // Constant shift by zero, but still have to move.
+  code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
+       StringPrintf("m[%d] = %s;",
+              reg_dst,
+              RegExp(i, reg_srca).c_str()));
       }
       break;
 
@@ -475,10 +478,10 @@ static string MakeKernel(const vector<uint8> &rom) {
       // PERF don't do it if both are dead, I guess?
       uchar lreg = inst & 15;
       if (lreg != 1) {
-	code += StringPrintf("{ uchar tmp = m[1]; m[1] = %s; m[%d] = tmp; }",
-			     RegExp(i, lreg).c_str(), lreg);
+  code += StringPrintf("{ uchar tmp = m[1]; m[1] = %s; m[%d] = tmp; }",
+           RegExp(i, lreg).c_str(), lreg);
       } else {
-	code += "SELF_SWAP;";
+  code += "SELF_SWAP;";
       }
       break;
     }
@@ -486,15 +489,15 @@ static string MakeKernel(const vector<uint8> &rom) {
     case 7:
       // xor
       if (reg_srca == reg_srcb) {
-	code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
-			 StringPrintf("m[%d] = 0; SELF_XOR;",
-				      reg_dst));
+  code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
+       StringPrintf("m[%d] = 0; SELF_XOR;",
+              reg_dst));
       } else {
-	code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
-			 StringPrintf("m[%d] = %s ^ %s;",
-				      reg_dst,
-				      RegExp(i, reg_srca).c_str(), 
-				      RegExp(i, reg_srcb).c_str()));
+  code += DeadWrap(DEADWRITE(reg_dst), &skip_deadwrite,
+       StringPrintf("m[%d] = %s ^ %s;",
+              reg_dst,
+              RegExp(i, reg_srca).c_str(),
+              RegExp(i, reg_srcb).c_str()));
       }
       break;
     }
@@ -504,7 +507,7 @@ static string MakeKernel(const vector<uint8> &rom) {
     // Newline after next_break or next_safe.
     code += "\n";
   }
-      
+
   // End switch.
   code += "  }\n";
 
@@ -534,23 +537,23 @@ static string MakeKernel(const vector<uint8> &rom) {
 }
 
 static void BenchmarkCPU(const vector<uint8> &rom,
-			 vector<uint8> *mems) {
+       vector<uint8> *mems) {
   printf("[CPU] Running sequentially on CPU.\n");
   Timer timer;
-  
+
   for (int i = 0; i < kNumProblems; i++) {
     ByteMachine(rom,
-		&(*mems)[i * 256], 
-		kNumIters);
+    &(*mems)[i * 256],
+    kNumIters);
   }
 
-  double used_time = timer.MS() / 1000.0;
+  double used_time = timer.Seconds();
   printf("[CPU] Ran %d problems for %d iterations in %.4f seconds.\n"
-	 " (%.2f mega-iters/s)\n",
-	 kNumProblems, kNumIters, 
-	 (double)used_time,
-	 (double)(kNumProblems * kNumIters) / 
-	 (double)(used_time * 1000000.0));
+   " (%.2f mega-iters/s)\n",
+   kNumProblems, kNumIters,
+   (double)used_time,
+   (double)(kNumProblems * kNumIters) /
+   (double)(used_time * 1000000.0));
 }
 
 int main(int argc, char* argv[])  {
@@ -587,7 +590,7 @@ int main(int argc, char* argv[])  {
   PrintMems(cpu_mem);
 
   printf("[GPU] Initializing GPU.\n");
-  
+
   // const string kernel_src = Util::ReadFile("codebench.cl");
 
   const string kernel_src = MakeKernel(rom);
@@ -616,41 +619,43 @@ int main(int argc, char* argv[])  {
 
   /* Step 3: Create context. */
   cl_context context = clCreateContext(NULL, 1, devices, NULL, NULL, NULL);
-        
+
   /* Step 4: Creating command queue associate with the context. */
   cl_command_queue command_queue = clCreateCommandQueue(context, devices[0], 0, NULL);
 
   Timer gpu_compile;
   /* Step 5: Create program object */
   string full_src = StringPrintf("#define ITERS %lld\n\n%s",
-				 kNumIters,
-				 kernel_src.c_str());
+         kNumIters,
+         kernel_src.c_str());
   const char *sources[] = { full_src.c_str() };
   size_t source_size[] = { full_src.size() };
   cl_program program = clCreateProgramWithSource(context, 1, sources,
                                                  source_size, NULL);
-        
+
   /* Step 6: Build program. */
   if (CL_SUCCESS != clBuildProgram(program, 1, devices, NULL, NULL, NULL)) {
 
     size_t blsize;
-    
-    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0], 
-					      CL_PROGRAM_BUILD_LOG, 0, NULL, &blsize));
+
+    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0],
+                CL_PROGRAM_BUILD_LOG, 0, NULL, &blsize));
     char *build_log = (char *)malloc(blsize + 1);
-    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0], 
-					      CL_PROGRAM_BUILD_LOG, blsize, build_log, NULL));
+    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0],
+                CL_PROGRAM_BUILD_LOG, blsize, build_log, NULL));
     build_log[blsize] = 0;
     printf("Failed to compile:\n %s", build_log);
     exit(-1);
   }
   double gpu_compile_ms = gpu_compile.MS();
 
-  cl_mem rom_buffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-				     rom.size(), (void *) &rom[0], NULL);
+  cl_mem rom_buffer =
+      clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
+                     rom.size(), (void *)&rom[0], NULL);
 
-  cl_mem input_buffer = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, 
-                                       gpu_mem.size(), (void *) &gpu_mem[0], NULL);
+  cl_mem input_buffer =
+      clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
+                     gpu_mem.size(), (void *)&gpu_mem[0], NULL);
 
   /* Step 8: Create kernel object */
   printf("[GPU] Running on GPU.\n");
@@ -658,43 +663,45 @@ int main(int argc, char* argv[])  {
 
   Timer gputimer;
   /* Step 9: Sets Kernel arguments. */
-  CHECK(CL_SUCCESS == clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&rom_buffer));
-  CHECK(CL_SUCCESS == clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&input_buffer));
+  CHECK(CL_SUCCESS ==
+        clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&rom_buffer));
+  CHECK(CL_SUCCESS ==
+        clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&input_buffer));
 
-  // Start multiple kernels pointing at the same arg. Conceptually this is a single
-  // 1D kernel with work size kNumProblems, but we want to keep each Kernel
-  // small enough that it doesn't freeze the screen or make Windows think the driver
-  // has crashed.
+  // Start multiple kernels pointing at the same arg. Conceptually this is a
+  // single 1D kernel with work size kNumProblems, but we want to keep each
+  // Kernel small enough that it doesn't freeze the screen or make Windows think
+  // the driver has crashed.
 
   // Note, it's also possible to chunk by iteration count; just call the kernel
   // multiple times on the same global id.
   // Implicit floor.
   int64 problems_per_kernel = kMaxItersPerKernel / kNumIters;
   if (!problems_per_kernel) problems_per_kernel = 1;
-  printf("[GPU] Total %d iters, max per kernel %d\n", 
-	 kNumProblems * kNumIters, kMaxItersPerKernel);
+  printf("[GPU] Total %d iters, max per kernel %d\n",
+   kNumProblems * kNumIters, kMaxItersPerKernel);
 
   printf("[GPU] Running %d problem(s) (= %d iters) per kernel.\n",
-	 problems_per_kernel, problems_per_kernel * kNumIters);
+   problems_per_kernel, problems_per_kernel * kNumIters);
 
   for (int i = 0; i < kNumProblems; i += problems_per_kernel) {
     int num_problems = min(problems_per_kernel, kNumProblems - i);
     printf("[GPU] Running %d at offset %d\n", num_problems, i);
     size_t global_work_offset[] = { i };
     size_t global_work_size[] = { num_problems };
-    CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(command_queue, kernel, 
-					       // work dimensions
-					       1, 
-					       // global work offset
-					       global_work_offset, 
-					       // global work size
-					       global_work_size, 
-					       // local work size
-					       NULL, 
-					       // no wait list
-					       0, NULL, 
-					       // no event
-					       NULL));
+    CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(command_queue, kernel,
+                 // work dimensions
+                 1,
+                 // global work offset
+                 global_work_offset,
+                 // global work size
+                 global_work_size,
+                 // local work size
+                 NULL,
+                 // no wait list
+                 0, NULL,
+                 // no event
+                 NULL));
     // PERF any way to make this not have to FINISH the tasks?
     clFinish(command_queue);
     // Flush "works" but seems to slow down the interface more without
@@ -709,44 +716,42 @@ int main(int argc, char* argv[])  {
   // www.khronos.org/registry/cl/sdk/1.0/docs/man/xhtml/clCreateCommandQueue.html
   cl_int errcode;
   clEnqueueMapBuffer(command_queue, input_buffer,
-		     // Blocking.
-		     CL_TRUE,
-		     CL_MAP_READ | CL_MAP_WRITE,
-		     // Offset, size.
-		     0, gpu_mem.size(),
-		     // wait list.
-		     0, NULL,
-		     // event
-		     NULL,
-		     &errcode);
+         // Blocking.
+         CL_TRUE,
+         CL_MAP_READ | CL_MAP_WRITE,
+         // Offset, size.
+         0, gpu_mem.size(),
+         // wait list.
+         0, NULL,
+         // event
+         NULL,
+         &errcode);
   CHECK(CL_SUCCESS == errcode);
 
   double gpu_ms = gputimer.MS();
-  
+
   printf(" **** GPU AFTER **** \n");
   PrintMems(gpu_mem);
 
   CHECK(gpu_mem.size() == cpu_mem.size());
   for (int i = 0; i < gpu_mem.size(); i++) {
     if (gpu_mem[i] != cpu_mem[i]) {
-      printf("Didn't work: gpu_mem[%d] is %02x but expected %02x\n",
-	     i, gpu_mem[i], cpu_mem[i]);
+      printf("Didn't work: gpu_mem[%d] is %02x but expected %02x\n", i,
+             gpu_mem[i], cpu_mem[i]);
       exit(-1);
     }
-  } 
-  
+  }
+
   printf("OK!\n");
 
   double used_time = gpu_ms / 1000.0;
   printf("[GPU] Program generation/compilation took %.1f ms.\n",
-	 gpu_compile_ms);
+         gpu_compile_ms);
   printf("[GPU] Ran %d problems for %d iterations in %.4f seconds.\n"
-	 " (%.2f mega-iters/s)\n",
-	 kNumProblems, kNumIters, 
-	 (double)used_time,
-	 (double)(kNumProblems * kNumIters) / 
-	 (double)(used_time * 1000000.0));
-  		     
+         " (%.2f mega-iters/s)\n",
+         kNumProblems, kNumIters, (double)used_time,
+         (double)(kNumProblems * kNumIters) / (double)(used_time * 1000000.0));
+
   // TODO: Should probably clEnqueueUnmapMemObject.
 
   /* Step 12: Clean the resources. */

@@ -1,7 +1,9 @@
 #include <CL/cl.h>
+
+#include <cstdint>
 #include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <time.h>
 
@@ -11,6 +13,8 @@
 #include "arcfour.h"
 
 using namespace std;
+using int64 = int64_t;
+using uint8 = uint8_t;
 
 // Little byte machine.
 typedef unsigned char uint8;
@@ -28,13 +32,9 @@ static const int64 kNumIters = 100000;
 // with this, but one way is to split up the work.
 static const int64 kMaxItersPerKernel = 110000000;
 
-uint64 MicroTime() {
-  
-}
-
 // Mem is 256 bytes.
-void ByteMachine(const vector<uint8> &rom, 
-		 uint8 *mem, int iters) {
+void ByteMachine(const vector<uint8> &rom,
+     uint8 *mem, int iters) {
   for (int i = 0; i < iters; i++) {
     // byte 0 is instruction pointer
     uint8 inst = rom[mem[0]];
@@ -78,11 +78,11 @@ void ByteMachine(const vector<uint8> &rom,
     case 4: {
       // Add if zero.
       if (!mem[reg_srcb]) {
-	mem[reg_dst] += mem[reg_srca];
+  mem[reg_dst] += mem[reg_srca];
       }
       break;
     }
-      
+
     case 5: {
       // Left shift.
       uint8 res = mem[reg_srca] << reg_srcb;
@@ -167,52 +167,52 @@ static string MakeKernel(const vector<uint8> &rom) {
       // Load immediate.
       uchar imm = (inst & 15);
       code += StringPrintf("m[%d] = %d;",
-			   reg_dst, imm);
+         reg_dst, imm);
       break;
     }
 
     case 1:
       // Add mod 256.
       code += StringPrintf("m[%d] = m[%d] + m[%d];",
-	                   reg_dst,
-			   reg_srca, reg_srcb);
+                     reg_dst,
+         reg_srca, reg_srcb);
       break;
 
     case 2:
       // Load indirect.
       code += StringPrintf("m[%d] = "
-			   "m[(uchar)(m[%d] + m[%d])];",
-			   reg_dst,
-			   reg_srca, reg_srcb);
+         "m[(uchar)(m[%d] + m[%d])];",
+         reg_dst,
+         reg_srca, reg_srcb);
       break;
 
     case 3:
       // Store indirect.
       code += StringPrintf("m[(uchar)(m[%d] + m[%d])] = "
-			   "m[%d];",
-			   reg_srca, reg_srcb,
-			   reg_dst);
+         "m[%d];",
+         reg_srca, reg_srcb,
+         reg_dst);
       break;
 
     case 4:
       // Add if zero.
       code += StringPrintf("if (!m[%d]) { "
-			   "m[%d] += m[%d]; }",
-			   reg_srcb, 
-			   reg_dst, reg_srca);
+         "m[%d] += m[%d]; }",
+         reg_srcb,
+         reg_dst, reg_srca);
       break;
 
     case 5:
       // Left shift.
       // TODO: Maybe should mean shift by srcb+1.
       if (reg_srcb > 0) {
-	code += StringPrintf("m[%d] = m[%d] << %d;",
-			     reg_dst,
-			     reg_srca, reg_srcb);
+  code += StringPrintf("m[%d] = m[%d] << %d;",
+           reg_dst,
+           reg_srca, reg_srcb);
       } else {
-	// Constant shift by zero, but still have to move.
-	code += StringPrintf("m[%d] = m[%d];",
-			     reg_dst, reg_srca);
+  // Constant shift by zero, but still have to move.
+  code += StringPrintf("m[%d] = m[%d];",
+           reg_dst, reg_srca);
       }
       break;
 
@@ -220,10 +220,10 @@ static string MakeKernel(const vector<uint8> &rom) {
       // Swap 1th register with nth.
       uchar lreg = inst & 15;
       if (lreg != 1) {
-	code += StringPrintf("{ uchar tmp = m[1]; m[1] = m[%d]; m[%d] = tmp; }",
-			     lreg, lreg);
+  code += StringPrintf("{ uchar tmp = m[1]; m[1] = m[%d]; m[%d] = tmp; }",
+           lreg, lreg);
       } else {
-	code += "    /* Swap 1 with 1 = nop */\n";
+  code += "    /* Swap 1 with 1 = nop */\n";
       }
       break;
     }
@@ -231,12 +231,12 @@ static string MakeKernel(const vector<uint8> &rom) {
     case 7:
       // xor
       if (reg_srca == reg_srcb) {
-	code += StringPrintf("m[%d] = 0; /* self-xor */",
-			     reg_dst);
+  code += StringPrintf("m[%d] = 0; /* self-xor */",
+           reg_dst);
       } else {
-	code += StringPrintf("m[%d] = m[%d] ^ m[%d];",
-			     reg_dst,
-			     reg_srca, reg_srcb);
+  code += StringPrintf("m[%d] = m[%d] ^ m[%d];",
+           reg_dst,
+           reg_srca, reg_srcb);
       }
       break;
     }
@@ -244,7 +244,7 @@ static string MakeKernel(const vector<uint8> &rom) {
     // On every instruction, break out of switch
     code += " break;\n";
   }
-      
+
   // End switch.
   code += "  }\n";
 
@@ -266,23 +266,23 @@ static string MakeKernel(const vector<uint8> &rom) {
 }
 
 static void BenchmarkCPU(const vector<uint8> &rom,
-			 vector<uint8> *mems) {
+       vector<uint8> *mems) {
   printf("[CPU] Running sequentially on CPU.\n");
   Timer timer;
-  
+
   for (int i = 0; i < kNumProblems; i++) {
     ByteMachine(rom,
-		&(*mems)[i * 256], 
-		kNumIters);
+    &(*mems)[i * 256],
+    kNumIters);
   }
 
   double used_time = timer.MS() / 1000.0;
   printf("[CPU] Ran %d problems for %d iterations in %.4f seconds.\n"
-	 " (%.2f mega-iters/s)\n",
-	 kNumProblems, kNumIters, 
-	 (double)used_time,
-	 (double)(kNumProblems * kNumIters) / 
-	 (double)(used_time * 1000000.0));
+   " (%.2f mega-iters/s)\n",
+   kNumProblems, kNumIters,
+   (double)used_time,
+   (double)(kNumProblems * kNumIters) /
+   (double)(used_time * 1000000.0));
 }
 
 int main(int argc, char* argv[])  {
@@ -319,7 +319,7 @@ int main(int argc, char* argv[])  {
   PrintMems(cpu_mem);
 
   printf("[GPU] Initializing GPU.\n");
-  
+
   // const string kernel_src = Util::ReadFile("codebench.cl");
 
   const string kernel_src = MakeKernel(rom);
@@ -348,30 +348,30 @@ int main(int argc, char* argv[])  {
 
   /* Step 3: Create context. */
   cl_context context = clCreateContext(NULL, 1, devices, NULL, NULL, NULL);
-        
+
   /* Step 4: Creating command queue associate with the context. */
   cl_command_queue command_queue = clCreateCommandQueue(context, devices[0], 0, NULL);
 
   Timer gpu_compile;
   /* Step 5: Create program object */
   string full_src = StringPrintf("#define ITERS %lld\n\n%s",
-				 kNumIters,
-				 kernel_src.c_str());
+         kNumIters,
+         kernel_src.c_str());
   const char *sources[] = { full_src.c_str() };
   size_t source_size[] = { full_src.size() };
   cl_program program = clCreateProgramWithSource(context, 1, sources,
                                                  source_size, NULL);
-        
+
   /* Step 6: Build program. */
   if (CL_SUCCESS != clBuildProgram(program, 1, devices, NULL, NULL, NULL)) {
 
     size_t blsize;
-    
-    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0], 
-					      CL_PROGRAM_BUILD_LOG, 0, NULL, &blsize));
+
+    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0],
+                CL_PROGRAM_BUILD_LOG, 0, NULL, &blsize));
     char *build_log = (char *)malloc(blsize + 1);
-    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0], 
-					      CL_PROGRAM_BUILD_LOG, blsize, build_log, NULL));
+    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0],
+                CL_PROGRAM_BUILD_LOG, blsize, build_log, NULL));
     build_log[blsize] = 0;
     printf("Failed to compile:\n %s", build_log);
     exit(-1);
@@ -379,9 +379,9 @@ int main(int argc, char* argv[])  {
   double gpu_compile_ms = gpu_compile.MS();
 
   cl_mem rom_buffer = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR,
-				     rom.size(), (void *) &rom[0], NULL);
+             rom.size(), (void *) &rom[0], NULL);
 
-  cl_mem input_buffer = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, 
+  cl_mem input_buffer = clCreateBuffer(context, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR,
                                        gpu_mem.size(), (void *) &gpu_mem[0], NULL);
 
   /* Step 8: Create kernel object */
@@ -403,30 +403,30 @@ int main(int argc, char* argv[])  {
   // Implicit floor.
   int64 problems_per_kernel = kMaxItersPerKernel / kNumIters;
   if (!problems_per_kernel) problems_per_kernel = 1;
-  printf("[GPU] Total %d iters, max per kernel %d\n", 
-	 kNumProblems * kNumIters, kMaxItersPerKernel);
+  printf("[GPU] Total %d iters, max per kernel %d\n",
+   kNumProblems * kNumIters, kMaxItersPerKernel);
 
   printf("[GPU] Running %d problem(s) (= %d iters) per kernel.\n",
-	 problems_per_kernel, problems_per_kernel * kNumIters);
+   problems_per_kernel, problems_per_kernel * kNumIters);
 
   for (int i = 0; i < kNumProblems; i += problems_per_kernel) {
     int num_problems = min(problems_per_kernel, kNumProblems - i);
     printf("[GPU] Running %d at offset %d\n", num_problems, i);
     size_t global_work_offset[] = { i };
     size_t global_work_size[] = { num_problems };
-    CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(command_queue, kernel, 
-					       // work dimensions
-					       1, 
-					       // global work offset
-					       global_work_offset, 
-					       // global work size
-					       global_work_size, 
-					       // local work size
-					       NULL, 
-					       // no wait list
-					       0, NULL, 
-					       // no event
-					       NULL));
+    CHECK(CL_SUCCESS == clEnqueueNDRangeKernel(command_queue, kernel,
+                 // work dimensions
+                 1,
+                 // global work offset
+                 global_work_offset,
+                 // global work size
+                 global_work_size,
+                 // local work size
+                 NULL,
+                 // no wait list
+                 0, NULL,
+                 // no event
+                 NULL));
     // PERF any way to make this not have to FINISH the tasks?
     clFinish(command_queue);
     // Flush "works" but seems to slow down the interface more without
@@ -441,20 +441,20 @@ int main(int argc, char* argv[])  {
   // www.khronos.org/registry/cl/sdk/1.0/docs/man/xhtml/clCreateCommandQueue.html
   cl_int errcode;
   clEnqueueMapBuffer(command_queue, input_buffer,
-		     // Blocking.
-		     CL_TRUE,
-		     CL_MAP_READ | CL_MAP_WRITE,
-		     // Offset, size.
-		     0, gpu_mem.size(),
-		     // wait list.
-		     0, NULL,
-		     // event
-		     NULL,
-		     &errcode);
+         // Blocking.
+         CL_TRUE,
+         CL_MAP_READ | CL_MAP_WRITE,
+         // Offset, size.
+         0, gpu_mem.size(),
+         // wait list.
+         0, NULL,
+         // event
+         NULL,
+         &errcode);
   CHECK(CL_SUCCESS == errcode);
 
   double gpu_ms = gputimer.MS();
-  
+
   printf(" **** GPU AFTER **** \n");
   PrintMems(gpu_mem);
 
@@ -462,23 +462,23 @@ int main(int argc, char* argv[])  {
   for (int i = 0; i < gpu_mem.size(); i++) {
     if (gpu_mem[i] != cpu_mem[i]) {
       printf("Didn't work: gpu_mem[%d] is %02x but expected %02x\n",
-	     i, gpu_mem[i], cpu_mem[i]);
+       i, gpu_mem[i], cpu_mem[i]);
       exit(-1);
     }
-  } 
-  
+  }
+
   printf("OK!\n");
 
   double used_time = gpu_ms / 1000.0;
   printf("[GPU] Program generation/compilation took %.1f ms.\n",
-	 gpu_compile_ms);
+   gpu_compile_ms);
   printf("[GPU] Ran %d problems for %d iterations in %.4f seconds.\n"
-	 " (%.2f mega-iters/s)\n",
-	 kNumProblems, kNumIters, 
-	 (double)used_time,
-	 (double)(kNumProblems * kNumIters) / 
-	 (double)(used_time * 1000000.0));
-  		     
+   " (%.2f mega-iters/s)\n",
+   kNumProblems, kNumIters,
+   (double)used_time,
+   (double)(kNumProblems * kNumIters) /
+   (double)(used_time * 1000000.0));
+
   // TODO: Should probably clEnqueueUnmapMemObject.
 
   /* Step 12: Clean the resources. */

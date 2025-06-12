@@ -8,8 +8,8 @@ CXXFLAGS=-Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include
 OPT=-O2
 
 # for 64 bits on windows
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-g++
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-g++
 SDLARCH=x64
 
 # If you don't have SDL, you can leave these out, and maybe it still works.
