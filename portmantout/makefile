@@ -10,8 +10,10 @@ ifeq ($(UNAME),Cygwin)
   CC=x86_64-w64-mingw32-g++
   CXXFLAGS=-march=native -pipe -Wall -I. --std=c++20 -O3 -static -flto=auto
   SOCK_LFLAGS= -lws2_32
+  PLATFORM_LFLAGS=-Wl,--subsystem,console -static
+
 else
-  # Linux
+# Linux, OS X, msys2, etc.
   CXX=g++
   CC=gcc
   # no-psabi suppresses warnings all over STL in GCC 7.1 for ARM (e.g. pi)
@@ -24,8 +26,7 @@ endif
 
 UTILOBJECTS=util.o arcfour.o stringprintf.o logging.o textsvg.o color-util.o stb_image_write.o stb_image.o nice.o
 
-#  -D__MINGW32__
-CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 $(OPT) -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++20
+CPPFLAGS= -Wno-write-strings -m64 $(OPT) $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++20
 
 ALLDEPS=makefile ../cc-lib/interval-tree.h ../cc-lib/interval-tree-json.h
 
@@ -42,10 +43,10 @@ ALLDEPS=makefile ../cc-lib/interval-tree.h ../cc-lib/interval-tree-json.h
 	@echo -n "."
 
 
-OBJECTS=${UTILOBJECTS}
+OBJECTS=$(UTILOBJECTS)
 
 # without static, can't find lz or lstdcxx maybe?
-LFLAGS= -m64 -Wl,--subsystem,console $(CLLIBS) -lz $(OPT) $(FLTO) $(PROFILE) -static
+LFLAGS= -m64 $(CLLIBS) -lz $(OPT) $(FLTO) $(PROFILE) $(PLATFORM_LFLAGS)
 # LFLAGS = -m64 -Wl $(CLLIBS) -lz $(OPT) $(FLTO) $(PROFILE)
 
 table-two.tex : join.exe

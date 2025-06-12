@@ -12,13 +12,14 @@
 #include <unordered_set>
 #include <vector>
 
-#include "util.h"
-#include "timer.h"
 #include "arcfour.h"
-#include "randutil.h"
 #include "base/logging.h"
-#include "textsvg.h"
 #include "base/stringprintf.h"
+#include "periodically.h"
+#include "randutil.h"
+#include "textsvg.h"
+#include "timer.h"
+#include "util.h"
 
 using namespace std;
 
@@ -267,11 +268,11 @@ int MakeGrid(ArcFour *rc, const vector<string> &dict) {
 
   // Now, choose random pairs to swap.
   int swaps = 0;
-  Timer running;
+  Periodically save_per(60.0);
 
   int framenum = 1;
-  auto TrySwap = [&words, &perm, &energy, &swaps, &running, &framenum,
-                  &GetBothEnergy](int a, int b) {
+  auto TrySwap = [&words, &perm, &energy, &swaps, &framenum,
+                  &GetBothEnergy, &save_per](int a, int b) {
     if (a != b) {
       int aidx = words[a].idx;
       int bidx = words[b].idx;
@@ -297,9 +298,8 @@ int MakeGrid(ArcFour *rc, const vector<string> &dict) {
         }
 
         // Or if it's been a minute...
-        if (running.MS() > 60 * 1000) {
+        if (save_per.ShouldRun()) {
           WriteSVG(std::format("grid-{}.svg", swaps), words);
-          running.Start();
         }
       } else {
         // Undo.
