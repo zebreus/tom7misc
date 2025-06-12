@@ -1,7 +1,8 @@
 
-#ifndef __ARITH_H
-#define __ARITH_H
+#ifndef _GOLFHORSE_ARITH_H
+#define _GOLFHORSE_ARITH_H
 
+#include <utility>
 #include <vector>
 #include <deque>
 #include <string>
@@ -22,7 +23,7 @@ struct Big {
   // Zero.
   explicit Big(int base) : denom_exp(1), base(base) {}
   Big(int base, int num, int denom_exp) : denom_exp(denom_exp),
-					  base(base) {
+            base(base) {
     CHECK(num >= 0);
     while (num > 0) {
       numer.push_back(num % base);
@@ -43,13 +44,13 @@ struct Big {
   }
 
   void Validate() const;
-  
-  string ToString() const;
 
-  deque<int> numer;
+  std::string ToString() const;
+
+  std::deque<int> numer;
   int denom_exp = 1;
 
-  int base = 2; 
+  int base = 2;
 };
 
 // Losing precision, drop digits from the numerator and powers
@@ -84,19 +85,20 @@ struct ArithEncoder {
 
   // If allow_zero is true, then an item with exactly 0.0 is treated
   // as impossible and given a probability of 0. It cannot be encoded.
-  vector<pair<int, int>> Discretize(const vector<double> &out,
-				    bool allow_zero);
+  std::vector<std::pair<int, int>> Discretize(const std::vector<double> &out,
+                                              bool allow_zero);
 
-  static void Norm(vector<double> *v);
-  
-  virtual vector<pair<int, int>> Predict(const deque<int> &hist) = 0;
+  static void Norm(std::vector<double> *v);
 
-  vector<int> Decode(const vector<int> &start_symbols,
-		     Big z,
-		     int num);
-  
-  Big Encode(const vector<int> &symbols);
-  
+  virtual std::vector<std::pair<int, int>> Predict(
+      const std::deque<int> &hist) = 0;
+
+  std::vector<int> Decode(const std::vector<int> &start_symbols,
+                          Big z,
+                          int num);
+
+  Big Encode(const std::vector<int> &symbols);
+
   const int H, nsymbols, B, W;
 };
 

@@ -5,14 +5,13 @@
 #include <cstdint>
 #include <deque>
 
-#include "../../cc-lib/threadutil.h"
 #include "../../cc-lib/randutil.h"
 #include "../../cc-lib/arcfour.h"
 #include "../../cc-lib/base/logging.h"
 #include "../../cc-lib/base/stringprintf.h"
 #include "../../cc-lib/util.h"
+#include "../../cc-lib/timer.h"
 
-#include "timer.h"
 #include "arith.h"
 
 #define VERBOSE false
@@ -35,34 +34,30 @@ string Big::ToString() const {
   if (base == 10) {
     if (numer.size() > denom_exp) {
       // We allow 10^k/10^k to represent e.g. the upper bound in [0, 1).
-      auto Is1 =
-	[this]() {
-	  if (numer.size() != denom_exp + 1)
-	    return false;
-	  if (numer.back() != 1)
-	    return false;
-	  for (int i = 0; i < numer.size() - 1; i++)
-	    if (numer[i] != 0)
-	      return false;
-	  return true;
-	};
+      auto Is1 = [this]() {
+        if (numer.size() != denom_exp + 1) return false;
+        if (numer.back() != 1) return false;
+        for (int i = 0; i < numer.size() - 1; i++)
+          if (numer[i] != 0) return false;
+        return true;
+      };
       if (Is1()) {
-	// "exp" zeroes?
-	s = "1.0";
-	return s;
+        // "exp" zeroes?
+        s = "1.0";
+        return s;
       } else {
-	s = "ILL-FORMED ";
-	// Fall through to general case.
+        s = "ILL-FORMED ";
+        // Fall through to general case.
       }
     } else {
       s = "0.";
       for (int i = denom_exp - 1; i >= 0; i--) {
-	int d = i < numer.size() ? numer[i] : 0;
-	if (d < 0 || d > 9) {
-	  StringAppendF(&s, "[%d]", d);
-	} else {
-	  StringAppendF(&s, "%d", d);
-	}
+        int d = i < numer.size() ? numer[i] : 0;
+        if (d < 0 || d > 9) {
+          StringAppendF(&s, "[%d]", d);
+        } else {
+          StringAppendF(&s, "%d", d);
+        }
       }
       // necessary?
       StringAppendF(&s, " / %d^%d", base, denom_exp);
@@ -70,9 +65,9 @@ string Big::ToString() const {
       StringAppendF(&s, "  *aka*  ");
       // return s;
     }
-  } 
+  }
   // TODO: also allow base 100
-    
+
   // Note: May already have something like "ILL-FORMED " in s.
 
   for (int i = numer.size() - 1; i >= 0; i--)
@@ -133,10 +128,10 @@ Big Scale(const Big &a, int s, int y) {
     r.numer.push_back(carry % r.base);
     carry /= r.base;
   }
-  
+
   // Now divide by B^y.
   r.denom_exp += y;
-      
+
   return r;
 }
 
@@ -213,7 +208,7 @@ bool LessEq(const Big &a, const Big &b) {
   int alen = a.numer.size() + right_pad_a;
   int blen = b.numer.size() + right_pad_b;
   int digits = std::max(alen, blen);
-  
+
   // Now pad zeroes on the left. This is independent of the decision
   // above. (PERF: if we're adding zero padding, then it is LESS
   // unless the other one also has zeroes there..)
@@ -223,24 +218,24 @@ bool LessEq(const Big &a, const Big &b) {
 
   /*
   printf("LESS():\n"
-	 "a: %s\n"
-	 "b: %s\n"
-	 "left: %d, %d; right: %d; digits: %d\n",
-	 a.ToString().c_str(),
-	 b.ToString().c_str(),
-	 left_pad_a, left_pad_b,
-	 right_pad_a, right_pad_b,
-	 digits);
+   "a: %s\n"
+   "b: %s\n"
+   "left: %d, %d; right: %d; digits: %d\n",
+   a.ToString().c_str(),
+   b.ToString().c_str(),
+   left_pad_a, left_pad_b,
+   right_pad_a, right_pad_b,
+   digits);
   */
 
-  // Get the ith digit. 
+  // Get the ith digit.
   auto Get =
     [](const Big &g, int lpad, int rpad, int idx) {
       /*
       printf("Get %d,%d [%d] from:\n",
-	     lpad, rpad, idx);
+       lpad, rpad, idx);
       for (int x : g.numer)
-	printf("%d, ", x);
+  printf("%d, ", x);
       printf("\n");
       */
 
@@ -263,7 +258,7 @@ bool LessEq(const Big &a, const Big &b) {
     printf("[%d] %d vs %d\n", i, aa, bb);
   }
   */
-  
+
   for (int i = 0; i < digits; i++) {
     int aa = Get(a, left_pad_a, right_pad_a, i);
     int bb = Get(b, left_pad_b, right_pad_b, i);
@@ -275,8 +270,8 @@ bool LessEq(const Big &a, const Big &b) {
 
 
 vector<int> ArithEncoder::Decode(const vector<int> &start_symbols,
-				 Big z,
-				 int num) {
+         Big z,
+         int num) {
   CHECK(H == start_symbols.size()) << H << " / " << start_symbols.size();
   deque<int> hist;
   for (int i = 0; i < H; i++) {
@@ -292,7 +287,7 @@ vector<int> ArithEncoder::Decode(const vector<int> &start_symbols,
 
     printf("Decoding %d symbols!\n", num);
   }
-      
+
   // These have to stay the same denominator, but do not
   // have to agree with z (we only use LessEq).
   Big a(B, 0, 1);
@@ -309,63 +304,63 @@ vector<int> ArithEncoder::Decode(const vector<int> &start_symbols,
     Big w = MinusSameDenom(b, a);
     if (VERBOSE) {
       printf("\nDecode %dth\n"
-	     "a: %s\n"
-	     "z: %s\n"
-	     "b: %s\n"
-	     "w: %s\n",
-	     count,
-	     a.ToString().c_str(),
-	     z.ToString().c_str(),
-	     b.ToString().c_str(),
-	     w.ToString().c_str());
+       "a: %s\n"
+       "z: %s\n"
+       "b: %s\n"
+       "w: %s\n",
+       count,
+       a.ToString().c_str(),
+       z.ToString().c_str(),
+       b.ToString().c_str(),
+       w.ToString().c_str());
     }
-	
+
     a.Shift(W);
     // z.Shift(W);
 
     Big a0 = a;
     for (const auto &p : pmf) {
-      // Big wc = Scale(w, prob_sum, W); 
+      // Big wc = Scale(w, prob_sum, W);
       // Big a0 = PlusSameDenom(a, wc);
 
       // Big wd = Scale(w, prob_sum, W);
       // Big b0 = PlusSameDenom(a, wd);
       Big wi = Scale(w, p.second, W);
       Big b0 = PlusSameDenom(a0, wi);
-	
+
       // a0.Unzero();
       /*
       b0.Unzero();
       CHECK(a0.denom_exp == z.denom_exp &&
-	    b0.denom_exp == z.denom_exp) <<
-	a0.denom_exp << " / " << z.denom_exp << " / " <<
-	b0.denom_exp;
+      b0.denom_exp == z.denom_exp) <<
+  a0.denom_exp << " / " << z.denom_exp << " / " <<
+  b0.denom_exp;
       */
       if (VERBOSE) {
-	printf("[%c,%d]:\n"
-	       "a0: %s\n"
-	       " z: %s\n"
-	       "b0: %s\n",
-	       p.first + 'a', p.second,
-	       a0.ToString().c_str(),
-	       z.ToString().c_str(),
-	       b0.ToString().c_str());
+  printf("[%c,%d]:\n"
+         "a0: %s\n"
+         " z: %s\n"
+         "b0: %s\n",
+         p.first + 'a', p.second,
+         a0.ToString().c_str(),
+         z.ToString().c_str(),
+         b0.ToString().c_str());
       }
       if (LessEq(a0, z) && Less(z, b0)) {
-	output.push_back(p.first);
-	if (VERBOSE) {
-	  printf("\n[[%c]]\n", p.first + 'a');
-	  fflush(stdout);
-	}
-	a = std::move(a0);
-	b = std::move(b0);
+  output.push_back(p.first);
+  if (VERBOSE) {
+    printf("\n[[%c]]\n", p.first + 'a');
+    fflush(stdout);
+  }
+  a = std::move(a0);
+  b = std::move(b0);
 
-	if (H > 0) {
-	  hist.pop_front();
-	  hist.push_back(p.first);
-	}
+  if (H > 0) {
+    hist.pop_front();
+    hist.push_back(p.first);
+  }
 
-	goto next;
+  goto next;
       }
       // Shift starting point of interval to be previous
       // ending point.
@@ -376,10 +371,10 @@ vector<int> ArithEncoder::Decode(const vector<int> &start_symbols,
     CHECK(false) << "Nothing matched!!";
   next:;
   }
-        
+
   return output;
 }
-  
+
 Big ArithEncoder::Encode(const vector<int> &symbols) {
   Timer encode_timer;
   for (int x : symbols) {
@@ -387,7 +382,7 @@ Big ArithEncoder::Encode(const vector<int> &symbols) {
   }
 
   CHECK(H <= symbols.size()) << H << " / " << symbols.size();
-    
+
   // Initialize.
   deque<int> hist;
   printf("Hist: ");
@@ -396,7 +391,7 @@ Big ArithEncoder::Encode(const vector<int> &symbols) {
     hist.push_back(symbols[i]);
   }
   printf("\n");
-    
+
   // (We assume the decoder is also told the starting
   // configuration. Could use anything agreed-upon here, like
   // zeroes.)
@@ -415,46 +410,46 @@ Big ArithEncoder::Encode(const vector<int> &symbols) {
     b.Unzero();
     CHECK_EQ(a.denom_exp, b.denom_exp);
     CHECK(Less(a, b));
-    
+
     // PERF: Should be safe to reduce the fraction if both
     // numerators are divisible by the base? This would
     // represent the same number, and probably does happen.
-    // But 
-      
+    // But
+
     int actual = symbols[idx];
     if (VERBOSE) {
       printf("Encoding [[%c]]\n", actual + 'a');
       printf("----- ");
       for (int s : hist) {
-	printf("%c", (s + 'a'));
+  printf("%c", (s + 'a'));
       }
       printf(" -----\n");
     }
-	
+
     vector<pair<int, int>> pmf = Predict(hist);
 
     if (VERBOSE) {
       printf(" == \n");
       for (const auto &p : pmf) {
-	printf("%c %d%s\n", p.first + 'a', p.second,
-	       (actual == p.first) ? " <-" : "");
-	if (actual == p.first) break;
+  printf("%c %d%s\n", p.first + 'a', p.second,
+         (actual == p.first) ? " <-" : "");
+  if (actual == p.first) break;
       }
     }
-      
+
     // Find c, which is the sum of mass we skip over to get to
     // the symbol we want to output. We treat them as being
     // arranged in sorted order (pmf):
     int cnum = 0, dnum = 0;
     for (const auto &p : pmf) {
       if (p.first == actual) {
-	CHECK(p.second > 0) << "Must have positive probability!";
-	// The interval [c, d) comprises the mass assigned to
-	// the expected character.
-	dnum = cnum + p.second;
-	break;
+  CHECK(p.second > 0) << "Must have positive probability!";
+  // The interval [c, d) comprises the mass assigned to
+  // the expected character.
+  dnum = cnum + p.second;
+  break;
       } else {
-	cnum += p.second;
+  cnum += p.second;
       }
     }
 
@@ -465,17 +460,17 @@ Big ArithEncoder::Encode(const vector<int> &symbols) {
     if (VERBOSE) {
       printf("a: %s\n", a.ToString().c_str());
       printf("b: %s\n", b.ToString().c_str());
-	
+
       printf("c = %d/%d^%d, d = %d/%d^%d\n",
-	     cnum, B, W, dnum, B, W);
+       cnum, B, W, dnum, B, W);
     }
-      
+
     // width of the interval.
     Big w = MinusSameDenom(b, a);
     if (VERBOSE) {
       printf("w: %s\n", w.ToString().c_str());
     }
-	     
+
     // now we want
     // a = a + w * c
     // which rs expands to like
@@ -519,14 +514,14 @@ Big ArithEncoder::Encode(const vector<int> &symbols) {
     printf("Final a: %s\n", a.ToString().c_str());
     printf("Final b: %s\n", b.ToString().c_str());
   }
-      
+
   if (a.numer.size() == b.numer.size()) {
     printf("Same size numerator: %d\n",
-	   (int)a.numer.size());
+     (int)a.numer.size());
     int drop_zeroes = 0;
     while (drop_zeroes < a.numer.size() &&
-	   a.numer[drop_zeroes] == 0 &&
-	   b.numer[drop_zeroes] == 0)
+     a.numer[drop_zeroes] == 0 &&
+     b.numer[drop_zeroes] == 0)
       drop_zeroes++;
 
     // Drop em!
@@ -536,26 +531,26 @@ Big ArithEncoder::Encode(const vector<int> &symbols) {
     b.denom_exp -= drop_zeroes;
 
     printf("Dropped %d zeroes, yielding %d\n",
-	   drop_zeroes,
-	   (int)a.numer.size());
+     drop_zeroes,
+     (int)a.numer.size());
     // PERF: We can safely drop trailing zeroes by just reducing the
     // denominator. Right?
     int shared_prefix_size = 0;
     for (int i = a.numer.size() - 1; i >= 0; i--) {
       if (a.numer[i] != b.numer[i]) {
-	break;
+  break;
       }
       shared_prefix_size++;
     }
     printf("Length of shared prefix: %d\n", shared_prefix_size);
   } else {
     printf("Not even the same size numerator! %d vs %d\n",
-	   (int)a.numer.size(), (int)b.numer.size());
+     (int)a.numer.size(), (int)b.numer.size());
   }
 
   printf("Encoding took: %.2fs\n", encode_timer.MS() / 1000.0);
   fflush(stdout);
-    
+
   vector<int> start_symbols;
   for (int i = 0; i < H; i++)
     start_symbols.push_back(symbols[i]);
@@ -567,7 +562,7 @@ Big ArithEncoder::Encode(const vector<int> &symbols) {
   Big atenth = Scale(a, 1, B);
   Big btenth = Scale(b, 1, B);
   Big midpoint = Scale(PlusSameDenom(a, b), B / 2, 1);
-  
+
   // Now try to find a short prefix of a that decodes correctly.
   // [lower_bound, upper_bound).
   // Invariant is that something below upper_bound works,
@@ -576,25 +571,25 @@ Big ArithEncoder::Encode(const vector<int> &symbols) {
   while (lower_bound < upper_bound) {
     int w = upper_bound - lower_bound;
     int t = lower_bound + (w >> 1);
-      
+
     auto DecodesCorrectly =
       [this, &symbols, &start_symbols, lower_bound, upper_bound, t](
-	  const Big &z) {
-	printf("[%d,%d] try %d ", lower_bound, upper_bound, t);
-	fflush(stdout);
-	Timer trydecode_timer;
-	vector<int> decoded = Decode(start_symbols, z, symbols.size() - H);
-	printf("Decoding took: %.2fs\n",
-	       trydecode_timer.MS() / 1000.0);
-	for (int i = 0; i < decoded.size(); i++) {
-	  if (symbols[i + H] != decoded[i]) {
-	    printf(" ... failed @%d/%d\n", (int)i, (int)decoded.size());
-	    return false;
-	  }
-	}
-	printf(" ... and worked!\n");
-	fflush(stdout);
-	return true;
+    const Big &z) {
+  printf("[%d,%d] try %d ", lower_bound, upper_bound, t);
+  fflush(stdout);
+  Timer trydecode_timer;
+  vector<int> decoded = Decode(start_symbols, z, symbols.size() - H);
+  printf("Decoding took: %.2fs\n",
+         trydecode_timer.MS() / 1000.0);
+  for (int i = 0; i < decoded.size(); i++) {
+    if (symbols[i + H] != decoded[i]) {
+      printf(" ... failed @%d/%d\n", (int)i, (int)decoded.size());
+      return false;
+    }
+  }
+  printf(" ... and worked!\n");
+  fflush(stdout);
+  return true;
       };
 
     Big z = Truncate(midpoint, t);
@@ -649,22 +644,22 @@ vector<pair<int, int>> ArithEncoder::Discretize(
 
   for (const auto &p : output)
     CHECK(!std::isnan(p.second));
-    
+
   // In order to simplify discretizing the probabilities
   // later, we sort this in descending order. Unknown
   // whether sorting affects encoding? It might make
   // a difference?
   std::sort(output.begin(), output.end(),
-	    [](const pair<int, double> &a,
-	       const pair<int, double> &b) {
-	      // Stable in case of ties.
-	      if (b.second == a.second)
-		return a.first < b.first;
+      [](const pair<int, double> &a,
+         const pair<int, double> &b) {
+        // Stable in case of ties.
+        if (b.second == a.second)
+    return a.first < b.first;
 
-	      // descending by probability
-	      return b.second < a.second;
-	    });
-    
+        // descending by probability
+        return b.second < a.second;
+      });
+
   // Now, discretize the probabilities into units of 1/(B^W).
   // Some experimentation here is worthwhile, including
   // setting minimum probabilities.
@@ -676,7 +671,7 @@ vector<pair<int, int>> ArithEncoder::Discretize(
     sum += p.second;
   }
   CHECK(!std::isnan(sum));
-  
+
   // Now all of the values are non-negative and sum to sum. Assign a
   // discrete probability to each, and make sure that none is zero,
   // because we need to be able to encode any symbol even if we really
@@ -692,7 +687,7 @@ vector<pair<int, int>> ArithEncoder::Discretize(
 
   int mass_left = ipow(B, W);
   double total_mass = mass_left;
-    
+
   // TODO: Experiment with rounding to the closest, etc. Need to
   // keep this simple though, because it has to be replicated in JS.
   vector<pair<int, int>> discrete_out;
@@ -702,7 +697,7 @@ vector<pair<int, int>> ArithEncoder::Discretize(
     int sym = output[i].first;
     double r = (output[i].second / sum) * total_mass;
     printf("%d. sym %d  (%.6f / %.6f) * %.6f = %.6f)\n",
-	   i, sym, output[i].second, sum, total_mass, r);
+     i, sym, output[i].second, sum, total_mass, r);
     if (allow_zero && r == 0.0) {
       printf("Allowing zero probability for sym %d\n", sym);
       discrete_out[i] = {sym, 0};
@@ -710,7 +705,7 @@ vector<pair<int, int>> ArithEncoder::Discretize(
       mass_left--;
       discrete_out[i] = {sym, 1};
     } else {
-      int d = (int)round(r); // (int)r;  
+      int d = (int)round(r); // (int)r;
       CHECK(d >= 1) << d;
       mass_left -= d;
       discrete_out[i] = {sym, d};
@@ -719,10 +714,10 @@ vector<pair<int, int>> ArithEncoder::Discretize(
   // Always assign the remainder to the biggest (first) bucket.
   CHECK(mass_left > 0);
   printf("Symbol %d gets the rest, %d (= %.6f) (would have been %.6f)\n",
-	 output[0].first, mass_left, mass_left / (double)total_mass,
-	 (output[0].second / sum) * total_mass);
+   output[0].first, mass_left, mass_left / (double)total_mass,
+   (output[0].second / sum) * total_mass);
   discrete_out[0] = {output[0].first, mass_left};
   mass_left = 0;
-  
+
   return discrete_out;
 }
