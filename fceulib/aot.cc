@@ -25,6 +25,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -34,12 +35,12 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "emulator.h"
 #include "fc.h"
 #include "test-util.h"
 #include "threadutil.h"
 #include "x6502.h"
+#include "timer.h"
 
 using namespace std;
 
@@ -60,21 +61,6 @@ using namespace std;
 #define USE_LOCALS 0
 
 // TODO: Mapper metadata.
-
-static int64 TimeUsec() {
-  timeval tv;
-  gettimeofday(&tv, nullptr);
-  return tv.tv_sec * 1000000LL + tv.tv_usec;
-}
-
-struct Timer {
-  Timer() : start_time(TimeUsec()) {}
-  const int64 start_time;
-  int64 GetUsec() const { return TimeUsec() - start_time; }
-  double GetSeconds() const {
-    return (TimeUsec() - start_time) / 1000000.0;
-  }
-};
 
 // From x6502.
 static constexpr uint8 CycTable[256] = {
@@ -578,11 +564,11 @@ struct Exp {
 // Specializations for various types.
 template<>
 string Exp<uint8>::StringInternal() const {
-  return StringPrintf("0x%02x", value);
+  return std::format("0x{:02x}", value);
 }
 template<>
 string Exp<uint16>::StringInternal() const {
-  return StringPrintf("0x%04x", value);
+  return std::format("0x{:04x}", value);
 }
 
 [[maybe_unused]]
@@ -590,7 +576,7 @@ static Exp<uint16> Extend8to16(Exp<uint8> v) {
   if (v.Known()) {
     return Exp<uint16>((uint16)v.Value());
   } else {
-    return Exp<uint16>(StringPrintf("((uint16)(%s))", v.String().c_str()));
+    return Exp<uint16>(std::format("((uint16)({}))", v.String()));
   }
 }
 
@@ -837,7 +823,7 @@ struct AheadOfTime {
       // that can do anything.
 
       Exp<uint8> unused = ReadMem(
-          Exp<uint16>(StringPrintf("(%s ^ 0x100)", sym.c_str())));
+          Exp<uint16>(std::format("({} ^ 0x100)", sym)));
       fprintf(f, I "  (void) %s;  // Unused GetABIRD\n",
               unused.String().c_str());
       ADDCYC(f, 1);
@@ -885,7 +871,7 @@ struct AheadOfTime {
       // Also anded with 0xFFFF, but I left it out because I think
       // sym can just be 16 bits.
       Exp<uint8> unused = ReadMem(
-          Exp<uint16>(StringPrintf("(%s ^ 0x100)", sym.c_str())));
+          Exp<uint16>(std::format("({} ^ 0x100)", sym)));
       fprintf(f, I "(void) %s;  // Unused GetIYRD\n", unused.String().c_str());
       ADDCYC(f, 1);
       fprintf(f, "}\n");
@@ -908,8 +894,8 @@ struct AheadOfTime {
               I "const uint16 %s = %s + (uint16)" LOCAL_Y ";\n",
               sym.c_str(), rt.c_str());
       Exp<uint8> unused = ReadMem(
-          Exp<uint16>(StringPrintf("((%s & 0x00FF) | (%s & 0xFF00))",
-                                   sym.c_str(), rt.c_str())));
+          Exp<uint16>(std::format("(({} & 0x00FF) | ({} & 0xFF00))",
+                                  sym, rt)));
       fprintf(f, I "(void) %s;  // Unused GetIYWR\n", unused.String().c_str());
       return Exp<uint16>(sym);
     };
@@ -921,8 +907,8 @@ struct AheadOfTime {
       fprintf(f, I "const uint16 %s = %s + (uint16)(%s);\n",
               sym.c_str(), rt.String().c_str(), idx.String().c_str());
       Exp<uint8> unused = ReadMem(
-          Exp<uint16>(StringPrintf("((%s & 0x00FF) | ((%s) & 0xFF00))",
-                                   sym.c_str(), rt.String().c_str())));
+          Exp<uint16>(std::format("(({} & 0x00FF) | (({}) & 0xFF00))",
+                                  sym, rt.String())));
       fprintf(f, I "(void) %s;  // Unused GetABIWR\n",
               unused.String().c_str());
       return Exp<uint16>(sym);
@@ -1311,7 +1297,7 @@ struct AheadOfTime {
       fprintf(f, I "const uint32 %s = (uint32)(%s) - (uint32)(%s);\n",
               sym.c_str(),
               reg.c_str(), a2.String().c_str());
-      X_ZN(StringPrintf("%s & 0xFF", sym.c_str()));
+      X_ZN(std::format("{} & 0xFF", sym));
       fprintf(f, I LOCAL_P " = (" LOCAL_P " & ~C_FLAG) |\n");
       fprintf(f, I "  (((%s >> 8) & C_FLAG) ^ C_FLAG);\n",
               sym.c_str());
@@ -1327,7 +1313,7 @@ struct AheadOfTime {
       fprintf(f, I "const uint16 %s =\n"
               I "  (uint16)(" LOCAL_A " & " LOCAL_X ") - (uint16)(%s);\n",
               sym.c_str(), x.String().c_str());
-      X_ZN(StringPrintf("(%s & 0xFF)", sym.c_str()));
+      X_ZN(std::format("({} & 0xFF)", sym));
       fprintf(f,
               I LOCAL_P " = (" LOCAL_P " & ~C_FLAG) |\n"
               I "  (((%s >> 8) & C_FLAG) ^ C_FLAG);\n", sym.c_str());
@@ -1532,8 +1518,8 @@ struct AheadOfTime {
       Exp<uint16> tmp_plus_1 =
         tmp.Known() ?
         Exp<uint16>(((tmp.Value() + 1) & 0x00FF) | (tmp.Value() & 0xFF00)) :
-        Exp<uint16>(StringPrintf("((((%s) + 1) & 0x00FF) | ((%s) & 0xFF00))",
-                                 tmp.String().c_str(), tmp.String().c_str()));
+        Exp<uint16>(std::format("(((({}) + 1) & 0x00FF) | (({}) & 0xFF00))",
+                                tmp.String(), tmp.String()));
       Exp<uint8> pc_high = ReadMem(tmp_plus_1);
 
       if (pc_low.Known() && pc_high.Known()) {
@@ -2101,50 +2087,50 @@ struct AheadOfTime {
       /* BCC */
     case 0x90: {
       Exp<uint8> p = Read(f, REG_P);
-      JR(Exp<uint8>(StringPrintf("(!(%s & C_FLAG))", p.String().c_str())));
+      JR(Exp<uint8>(std::format("(!({} & C_FLAG))", p.String())));
       return pc_addr;
     }
       /* BCS */
     case 0xB0: {
       Exp<uint8> p = Read(f, REG_P);
-      JR(Exp<uint8>(StringPrintf("(%s & C_FLAG)", p.String().c_str())));
+      JR(Exp<uint8>(std::format("({} & C_FLAG)", p.String())));
       return pc_addr;
     }
       /* BEQ */
     case 0xF0: {
       Exp<uint8> p = Read(f, REG_P);
-      JR(Exp<uint8>(StringPrintf("(%s & Z_FLAG)", p.String().c_str())));
+      JR(Exp<uint8>(std::format("({} & Z_FLAG)", p.String())));
       return pc_addr;
     }
       /* BNE */
     case 0xD0: {
       Exp<uint8> p = Read(f, REG_P);
-      JR(Exp<uint8>(StringPrintf("(!(%s & Z_FLAG))", p.String().c_str())));
+      JR(Exp<uint8>(std::format("(!({} & Z_FLAG))", p.String())));
       return pc_addr;
     }
       /* BMI */
     case 0x30: {
       Exp<uint8> p = Read(f, REG_P);
-      JR(Exp<uint8>(StringPrintf("(%s & N_FLAG)", p.String().c_str())));
+      JR(Exp<uint8>(std::format("({} & N_FLAG)", p.String())));
       return pc_addr;
     }
 
       /* BPL */
     case 0x10: {
       Exp<uint8> p = Read(f, REG_P);
-      JR(Exp<uint8>(StringPrintf("(!(%s & N_FLAG))", p.String().c_str())));
+      JR(Exp<uint8>(std::format("(!({} & N_FLAG))", p.String())));
       return pc_addr;
     }
       /* BVC */
     case 0x50: {
       Exp<uint8> p = Read(f, REG_P);
-      JR(Exp<uint8>(StringPrintf("(!(%s & V_FLAG))", p.String().c_str())));
+      JR(Exp<uint8>(std::format("(!({} & V_FLAG))", p.String())));
       return pc_addr;
     }
       /* BVS */
     case 0x70: {
       Exp<uint8> p = Read(f, REG_P);
-      JR(Exp<uint8>(StringPrintf("(%s & V_FLAG)", p.String().c_str())));
+      JR(Exp<uint8>(std::format("({} & V_FLAG)", p.String())));
       return pc_addr;
     }
 
@@ -2164,32 +2150,32 @@ struct AheadOfTime {
     case 0x87: {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
-      ST_ZP(Exp<uint8>(StringPrintf("(%s & %s)",
-                                    a.String().c_str(), x.String().c_str())));
+      ST_ZP(Exp<uint8>(std::format("({} & {})",
+                                    a.String(), x.String())));
       return pc_addr;
     }
 
     case 0x97: {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
-      ST_ZPY(Exp<uint8>(StringPrintf("(%s & %s)",
-                                    a.String().c_str(), x.String().c_str())));
+      ST_ZPY(Exp<uint8>(std::format("({} & {})",
+                                    a.String(), x.String())));
       return pc_addr;
     }
 
     case 0x8F: {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
-      ST_AB(Exp<uint8>(StringPrintf("(%s & %s)",
-                                    a.String().c_str(), x.String().c_str())));
+      ST_AB(Exp<uint8>(std::format("({} & {})",
+                                   a.String(), x.String())));
       return pc_addr;
     }
 
     case 0x83: {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
-      ST_IX(Exp<uint8>(StringPrintf("(%s & %s)",
-                                    a.String().c_str(), x.String().c_str())));
+      ST_IX(Exp<uint8>(std::format("({} & {})",
+                                   a.String(), x.String())));
       return pc_addr;
     }
       /* ARR - ARGH, MATEY! */
@@ -2685,11 +2671,11 @@ struct AheadOfTime {
         Exp<uint8> x = Read(f, REG_X);
         Exp<uint8> y = Read(f, REG_Y);
         return Exp<uint8>(
-            StringPrintf("(%s & %s & "
-                         "((((uint16)(%s) - %s) >> 8) + 1))",
-                         a.String().c_str(), x.String().c_str(),
-                         aa.String().c_str(),
-                         y.String().c_str()));
+            std::format("({} & {} & "
+                         "((((uint16)({}) - {}) >> 8) + 1))",
+                         a.String(), x.String(),
+                         aa.String(),
+                         y.String()));
       });
       return pc_addr;
 
@@ -2699,12 +2685,12 @@ struct AheadOfTime {
         Exp<uint8> x = Read(f, REG_X);
         Exp<uint8> y = Read(f, REG_Y);
         return Exp<uint8>(
-            StringPrintf(
-                "(%s & %s & "
-                "((((uint16)(%s) - %s) >> 8) + 1))",
-                a.String().c_str(), x.String().c_str(),
-                aa.String().c_str(),
-                y.String().c_str()));
+            std::format(
+                "({} & {} & "
+                "((((uint16)({}) - {}) >> 8) + 1))",
+                a.String(), x.String(),
+                aa.String(),
+                y.String()));
       });
       return pc_addr;
 
@@ -2714,11 +2700,11 @@ struct AheadOfTime {
         Exp<uint8> x = Read(f, REG_X);
         Exp<uint8> y = Read(f, REG_Y);
         return Exp<uint8>(
-            StringPrintf(
-                "(%s & ((((uint16)(%s) - %s) >> 8) + 1))",
-                y.String().c_str(),
-                aa.String().c_str(),
-                x.String().c_str()));
+            std::format(
+                "({} & ((((uint16)({}) - {}) >> 8) + 1))",
+                y.String(),
+                aa.String(),
+                x.String()));
       });
       return pc_addr;
 
@@ -2728,11 +2714,11 @@ struct AheadOfTime {
         Exp<uint8> x = Read(f, REG_X);
         Exp<uint8> y = Read(f, REG_Y);
         return Exp<uint8>(
-            StringPrintf(
-                "(%s & ((((uint16)(%s) - %s) >> 8) + 1))",
-                x.String().c_str(),
-                aa.String().c_str(),
-                y.String().c_str()));
+            std::format(
+                "({} & ((((uint16)({}) - {}) >> 8) + 1))",
+                x.String(),
+                aa.String(),
+                y.String()));
       });
       return pc_addr;
 
@@ -2743,11 +2729,11 @@ struct AheadOfTime {
         Exp<uint8> s = Read(f, REG_S);
         Exp<uint8> y = Read(f, REG_Y);
         return Exp<uint8>(
-            StringPrintf(
-                "(%s & ((((uint16)(%s) - %s) >> 8) + 1))",
-                s.String().c_str(),
-                aa.String().c_str(),
-                y.String().c_str()));
+            std::format(
+                "({} & ((((uint16)({}) - {}) >> 8) + 1))",
+                s.String(),
+                aa.String(),
+                y.String()));
       });
       return pc_addr;
 
@@ -2778,7 +2764,7 @@ struct AheadOfTime {
 
     default:;
     }
-    LOG(FATAL) << "Unimplemented inst " << StringPrintf("0x%02x", b1) << "\n"
+    LOG(FATAL) << "Unimplemented inst " << std::format("0x{:02x}", b1) << "\n"
     "(or forgot to return pc_addr, fell through or did break).";
     return 0xFFFFFFFF;
   }
@@ -2949,7 +2935,7 @@ struct AheadOfTime {
 
   string GenSym(const string &base) {
     next_symbol++;
-    return StringPrintf("_%s_%lld", base.c_str(), next_symbol);
+    return std::format("_{}_{}", base, next_symbol);
   }
 
   string GenSym() { return GenSym("sym"); }
@@ -2992,7 +2978,7 @@ static vector<string> GenerateCode(const CodeConfig &config,
   auto F = [&config, &code, addr_start, addr_past_end, &symbol, &cart_name,
             &ret_m, &ret](int i) {
     AheadOfTime aot;
-    string filebase = StringPrintf("%s_%d", symbol.c_str(), i);
+    string filebase = std::format("{}_{}", symbol.c_str(), i);
     string filename = filebase + ".cc";
     FILE *f = fopen(filename.c_str(), "w");
 
@@ -3192,7 +3178,7 @@ int main(int argc, char **argv) {
   {
     // This just makes it easier to manually build makefiles during
     // development. XXX do this a better way.
-    FILE *mf = fopen(StringPrintf("%s.makefile", game.c_str()).c_str(),
+    FILE *mf = fopen(std::format("{}.makefile", game).c_str(),
                      "w");
     CHECK(mf != nullptr);
     fprintf(mf, "FCEULIB_GAME_OBJECTS= ");
@@ -3203,7 +3189,7 @@ int main(int argc, char **argv) {
     fclose(mf);
   }
 
-  double compile_seconds = compile_timer.GetSeconds();
+  double compile_seconds = compile_timer.Seconds();
 
   fprintf(stderr, "Finished.\n"
           "Compile time: %.4fs\n",

@@ -384,7 +384,7 @@ DECLFR_RET MMC5::MMC5_ExRAMRd(DECLFR_ARGS) {
 }
 
 DECLFR_RET MMC5::MMC5_read(DECLFR_ARGS) {
-  TRACEF("MMC5_read %d %02x %02x", A, mul[0], mul[1]);
+  TRACE("MMC5_read {} {:02x} {:02x}", A, mul[0], mul[1]);
   switch (A) {
   case 0x5204: {
     fc->X->IRQEnd(FCEU_IQEXT);
@@ -447,7 +447,7 @@ void MMC5::MMC5Synco() {
 }
 
 void MMC5::MMC5HackHB(int scanline) {
-  TRACEF("MMC5_hb %d %02x %02x", scanline, MMC5LineCounter, MMC5IRQR);
+  TRACE("MMC5_hb {} {:02x} {:02x}", scanline, MMC5LineCounter, MMC5IRQR);
   if (scanline == 240) {
     MMC5LineCounter = 0;
     MMC5IRQR = 0x40;

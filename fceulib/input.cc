@@ -120,7 +120,7 @@ Input::Input(FC *fc)
           {joy, 4, "JOYS"},
           {&LastStrobe, 1, "LSTS"},
       }, fc(fc) {
-  // TRACEF("Constructing input object..");
+  // TRACE("Constructing input object..");
   // Constructor body.
 }
 
@@ -325,7 +325,7 @@ void Input::SetInputStuff(int port) {
 }
 
 void Input::SetInputStuffFC() {
-  TRACEF("portfc type %d", portFC.type);
+  TRACE("portfc type {}", portFC.type);
   switch (portFC.type) {
   case SIFC_NONE: portFC.driver = new InputCFC(fc); break;
   case SIFC_4PLAYER:

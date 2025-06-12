@@ -69,7 +69,7 @@ int FCState::SubWrite(EmuFile *os, const vector<SFORMAT> &sf) {
       write32le(size, os);
 
       // TRACE_SCOPED_ENABLE_IF(f.desc[2] == 'P' && f.desc[3] == 'C');
-      // TRACEF("%s for %d", f.desc, f.s & ~FCEUSTATE_FLAGS);
+      // TRACE("{} for {}", f.desc, f.s & ~FCEUSTATE_FLAGS);
 
       TRACEA((uint8 *)f.v, size);
 
@@ -101,7 +101,7 @@ int FCState::WriteStateChunk(EmuFile *os, int type,
   os->fputc(type);
   const int bsize = SubWrite(nullptr, sf);
   write32le(bsize, os);
-  // TRACEF("Write %s etc. sized %d", sf->desc, bsize);
+  // TRACE("Write {} etc. sized {}", sf->desc, bsize);
 
   if (!SubWrite(os, sf)) {
     return 5;
@@ -216,7 +216,7 @@ bool FCState::SaveRAW(std::vector<uint8> *out) const {
   fc->sound->SaveState();
   totalsize = WriteStateChunk(&os, 1, sfcpu);
   totalsize += WriteStateChunk(&os, 2, sfcpuc);
-  //  TRACEF("PPU:");
+  //  TRACE("PPU:");
   totalsize += WriteStateChunk(&os, 3, fc->ppu->FCEUPPU_STATEINFO());
   // TRACEV(*out);
   totalsize += WriteStateChunk(&os, 4, fc->input->FCEUINPUT_STATEINFO());
@@ -227,7 +227,7 @@ bool FCState::SaveRAW(std::vector<uint8> *out) const {
   // saved. It is indeed used for "WRAM", "LATC", "BUSC". -tom7
   // M probably stands for Mapper, but I also use it in input, at least.
   //
-  // TRACEF("SFMDATA:");
+  // TRACE("SFMDATA:");
   totalsize += WriteStateChunk(&os, 0x10, sfmdata);
   // TRACEV(*out);
   // Was just spre, but that seems wrong -tom7

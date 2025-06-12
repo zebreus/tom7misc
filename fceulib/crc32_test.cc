@@ -4,13 +4,13 @@
 #include <string>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 #define CHECK_CRC(e1, e2) do {                                        \
     uint32_t crc = (e1);                                              \
-    CHECK_EQ(crc, e2) << #e1 << ": " << StringPrintf("0x%08x", crc);  \
+    CHECK_EQ(crc, e2) << #e1 << ": " << std::format("0x{:08x}", crc); \
   } while (0)
 
 static uint32_t CRCString(uint32_t init,
@@ -38,7 +38,6 @@ static void TestKnown() {
 }
 
 int main(int argc, char **argv) {
-
   TestKnown();
 
   printf("OK\n");

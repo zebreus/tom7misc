@@ -243,7 +243,7 @@ DECLFR_RET PPU::A2002(DECLFR_ARGS) {
 }
 
 DECLFR_RET PPU::A2002_Direct(DECLFR_ARGS) {
-  TRACEF("A2002 %d", PPU_status);
+  TRACE("A2002 {}", PPU_status);
 
   LineUpdate();
   uint8 ret = PPU_status;
@@ -537,7 +537,7 @@ void PPU::LineUpdate() {
 }
 
 void PPU::CheckSpriteHit(int p) {
-  TRACEF("CheckSpriteHit %d %d %02x", p, sprite_hit_x, sprite_hit_mask);
+  TRACE("CheckSpriteHit {} {} {:02x}", p, sprite_hit_x, sprite_hit_mask);
   if (sprite_hit_x == 0x100) return;
 
   // Port note: This used to check x < 255 in the loop, but why loop
@@ -701,9 +701,9 @@ void PPU::RefreshLine(int lastpixel) {
      LineUpdate, which call this function. */
   if (norecurse) return;
 
-  TRACEF("RefreshLine %d %u %u %u %u %d",
-         lastpixel, pshift[0], pshift[1], atlatch, refreshaddr_local,
-         norecurse);
+  TRACE("RefreshLine {} {} {} {} {} {}",
+        lastpixel, pshift[0], pshift[1], atlatch, refreshaddr_local,
+        norecurse);
 
   int lasttile = lastpixel >> 3;
 
@@ -833,10 +833,10 @@ void PPU::RefreshLine(int lastpixel) {
     }
   }
 
-  TRACEF("After PPU: %d %d", fc->X->reg_PC, refreshaddr_local);
-  TRACEF("Moreover: %d %u %u %u %u %d",
-         lastpixel, pshift[0], pshift[1], atlatch, refreshaddr_local,
-         norecurse);
+  TRACE("After PPU: {} {}", fc->X->reg_PC, refreshaddr_local);
+  TRACE("Moreover: {} {} {} {} {} {}"
+        lastpixel, pshift[0], pshift[1], atlatch, refreshaddr_local,
+        norecurse);
   TRACEA(PPU_values, 4);
 
   // Reverse changes made before.
@@ -1504,16 +1504,16 @@ void PPU::FrameLoop() {
   if (true) {
     TRACE_SCOPED_ENABLE_IF(true);
     TRACEFUN();
-    TRACEF("%d %d %d | "
-           "%d %d %d | "
-           "%d %d %d | "
-           "%d %d %d | "
-           "%d",
-           cycle_parity, ppudead, PPUSPL,
-           RefreshAddrT, TempAddrT, VRAMBuffer,
-           PPUGenLatch, pshift[0], pshift[1],
-           XOffset, vtoggle, sprite_hit_x,
-           sprite_hit_mask);
+    TRACE("{} {} {} | "
+          "{} {} {} | "
+          "{} {} {} | "
+          "{} {} {} | "
+          "{}",
+          cycle_parity, ppudead, PPUSPL,
+          RefreshAddrT, TempAddrT, VRAMBuffer,
+          PPUGenLatch, pshift[0], pshift[1],
+          XOffset, vtoggle, sprite_hit_x,
+          sprite_hit_mask);
   }
 
   // Needed for Knight Rider, possibly others.

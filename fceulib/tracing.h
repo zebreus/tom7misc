@@ -2,7 +2,7 @@
 #define _FCEULIB_TRACING_H
 
 #include "trace.h"
-#include "stringprintf.h"
+#include <format>
 
 // This file declares a global trace (if tracing is enabled) and macros
 // for actually doing tracing within FCEUlib.
@@ -16,16 +16,16 @@
 // This one doesn't go into the FC object and can only be used
 // single-threaded.
 extern Traces fceulib__traces;
-// Avoid calling StringPrintf if we're discarding the arg; this allows us
-// to have TRACEF deep in the emulator inner loops, but enable it only
+// Avoid calling std::format if we're discarding the arg; this allows us
+// to have TRACE deep in the emulator inner loops, but enable it only
 // for the specific iteration of interest, without big performance overhead.
-#define TRACEF(...) if (!fceulib__traces.IsEnabled()) {} else fceulib__traces.TraceString(FCEU_StringPrintf( __VA_ARGS__ ))
+#define TRACE(...) if (!fceulib__traces.IsEnabled()) {} else fceulib__traces.TraceString(std::format( __VA_ARGS__ ))
 #define TRACEV(v) if (!fceulib__traces.IsEnabled()) {} else fceulib__traces.TraceMemory(v)
 #define TRACEA(p, s) if (!fceulib__traces.IsEnabled()) {} else fceulib__traces.TraceArray(p, s)
 #define TRACEN(n) if (!fceulib__traces.IsEnabled()) {} else fceulib__traces.TraceNumber((uint64)n)
 #define TRACEFUN() if (!fceulib__traces.IsEnabled()) {} else fceulib__traces.TraceString(__func__)
 // When the files have changed a lot, TRACELOC should not use __LINE__.
-#define TRACELOC() if (!fceulib__traces.IsEnabled()) {} else fceulib__traces.TraceString(FCEU_StringPrintf(__FILE__ ":%s:%d", __func__, 0 /* __LINE__ */))
+#define TRACELOC() if (!fceulib__traces.IsEnabled()) {} else fceulib__traces.TraceString(std::format(__FILE__ ":{}:{}", __func__, 0 /* __LINE__ */))
 
 #define TRACE_ENABLE() fceulib__traces.SetEnabled(true)
 #define TRACE_DISABLE() fceulib__traces.SetEnabled(false)
@@ -49,7 +49,7 @@ extern Traces fceulib__traces;
 
 #else
 
-#define TRACEF(...) do { } while (0)
+#define TRACE(...) do { } while (0)
 #define TRACEV(v) do { } while (0)
 #define TRACEA(p, s) do { } while (0)
 #define TRACEN(n) do { } while (0)

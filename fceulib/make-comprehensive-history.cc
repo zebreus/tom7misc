@@ -1,12 +1,11 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <format>
 #include <string>
-#include <vector>
 #include <unistd.h>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 using namespace std;
 
@@ -41,9 +40,9 @@ int main(int argc, char **argv) {
 
   {
     string commandline =
-      StringPrintf("svn checkout -r %d "
-                   "svn://svn.code.sf.net/p/tom7misc/svn/trunk/fceulib "
-                   "clean_%d", rev, rev);
+      std::format("svn checkout -r {} "
+                  "svn://svn.code.sf.net/p/tom7misc/svn/trunk/fceulib "
+                  "clean_{}", rev, rev);
     // This seems to work fine if it's already there.
     System(commandline);
   }
@@ -54,16 +53,16 @@ int main(int argc, char **argv) {
   // consistent results.
   {
     string commandline =
-      StringPrintf("cp emulator_test.cc *.nes %s clean_%d/",
-                   additional_files.c_str(),
-                   rev);
+      std::format("cp emulator_test.cc *.nes {} clean_{}/",
+                  additional_files.c_str(),
+                  rev);
     System(commandline);
   }
 
   // build and run emulator_test with --make-comprehensive result_%d.txt
   {
     string commandline =
-      StringPrintf("make -j 12 -C clean_%d emulator_test.exe", rev);
+      std::format("make -j 12 -C clean_{} emulator_test.exe", rev);
     System(commandline);
   }
 
@@ -71,22 +70,22 @@ int main(int argc, char **argv) {
   {
     // Merely specifying --output-file enables comprehensive mode.
     string commandline =
-      StringPrintf("cd clean_%d && emulator_test.exe "
+      std::format("cd clean_{} && emulator_test.exe "
                    "--romdir ../roms/ "
-                   "--output-file ../results-%d.txt", rev, rev);
+                   "--output-file ../results-{}.txt", rev, rev);
     System(commandline);
   }
 
   // Clean up the source after.
   {
     string commandline =
-      StringPrintf("make -C clean_%d clean", rev);
+      std::format("make -C clean_{} clean", rev);
     System(commandline);
   }
 
   {
     string commandline =
-      StringPrintf("rm -f clean_%d/*.nes", rev);
+      std::format("rm -f clean_{}/*.nes", rev);
     System(commandline);
   }
 

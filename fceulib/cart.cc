@@ -410,15 +410,15 @@ void Cart::LoadGameSave(CartInfo *LocalHWInfo) {
   ClearGameSave(LocalHWInfo);
   // fprintf(stderr, "Blocked cart from loading save game state.\n");
   return;
-  TRACEF("LoadSaveGame");
+  TRACE("LoadSaveGame");
   if (LocalHWInfo->battery && LocalHWInfo->SaveGame[0] &&
       !disableBatteryLoading) {
     std::string f = FCEU_MakeSaveFilename();
-    TRACEF("Save file %s", f.c_str());
+    TRACE("Save file {}", f);
     if (FILE *sp = fopen(f.c_str(), "rb")) {
       for (int x = 0; x < 4; x++) {
         if (LocalHWInfo->SaveGame[x]) {
-          TRACEF("Doing it");
+          TRACE("Doing it");
 
       if (LocalHWInfo->SaveGameLen[x] !=
         fread(LocalHWInfo->SaveGame[x], 1,

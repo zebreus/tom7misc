@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <format>
 #include <string>
 #include <vector>
 #include <memory>
@@ -16,24 +17,11 @@
 #include "base/logging.h"
 #include "fc.h"
 #include "test-util.h"
-#include "base/stringprintf.h"
+#include "timer.h"
 
 #include "x6502.h"
 
-static int64 TimeUsec() {
-  timeval tv;
-  gettimeofday(&tv, nullptr);
-  return tv.tv_sec * 1000000LL + tv.tv_usec;
-}
-
-struct Timer {
-  Timer() : start_time(TimeUsec()) {}
-  const int64 start_time;
-  int64 GetUsec() const { return TimeUsec() - start_time; }
-  double GetSeconds() const {
-    return (TimeUsec() - start_time) / 1000000.0;
-  }
-};
+using namespace std;
 
 static string ReadFileToString(const string &fn) {
   FILE *f = fopen(fn.c_str(), "rb");
@@ -106,19 +94,18 @@ static void GenerateOuter(const CodeConfig &config,
 
   auto LT16 = [](const string &lhs, uint32 rhs) -> string {
     if (rhs == 0) return "false /* < 0 */";
-    else if (rhs > 0xFFFF) return StringPrintf("true /* < %x */", rhs);
-    else return StringPrintf("%s < 0x%04x", lhs.c_str(), rhs);
+    else if (rhs > 0xFFFF) return std::format("true /* < {:x} */", rhs);
+    else return std::format("{} < 0x{:04x}", lhs, rhs);
   };
 
   // Now, which chunk to call?
   // PERF
   fprintf(f, "  const uint16 pc = X->reg_PC;\n");
   fprintf(f, "  if (%s) { X->RunLoop(); return; }\n",
-    LT16("pc", addr_start).c_str());
+          LT16("pc", addr_start).c_str());
   for (uint32 i = addr_start; i < addr_past_end; i += (1 << CHUNK_SIZE)) {
     fprintf(f, "  else if (%s) { %s_chunk_%04x(fc); }\n",
-      LT16("pc", i + (1 << CHUNK_SIZE)).c_str(),
-      symbol.c_str(), i);
+            LT16("pc", i + (1 << CHUNK_SIZE)).c_str(), symbol.c_str(), i);
   }
   fprintf(f, "  else { X->RunLoop(); return; }\n");
 
@@ -800,7 +787,7 @@ int main(int argc, char **argv) {
          code, 0x8000, 0x10000,
          "mario", "mario.cc", "mario.nes");
 
-  double compile_seconds = compile_timer.GetSeconds();
+  double compile_seconds = compile_timer.Seconds();
 
   fprintf(stderr, "Finished.\n"
           "Compile time: %.4fs\n",

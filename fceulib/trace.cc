@@ -4,16 +4,18 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string>
 #include <utility>
 #include <vector>
+#include <format>
 
 #include "types.h"
-#include "stringprintf.h"
 
 using namespace std;
+using uint8 = uint8_t;
 
 // RLE compression and decompression from cc-lib.
 namespace {
@@ -251,24 +253,23 @@ static const char *TypeString(Traces::TraceType ty) {
   return "??";
 }
 
-#define StringPrintf FCEU_StringPrintf
 string Traces::Difference(const Trace &l, const Trace &r) {
   if (Equal(l, r)) return "Equal.";
   if (l.type != r.type) {
-    string s = StringPrintf("Types are different: %s vs %s",
-                            TypeString(l.type), TypeString(r.type));
+    string s = std::format("Types are different: {} vs {}",
+                           TypeString(l.type), TypeString(r.type));
     return s + ". Values:\n" + LineString(l) + "\n" + LineString(r);
   }
 
   switch (l.type) {
   case STRING:
-    return StringPrintf("%s\nvs.\n%s",
-                        l.data_string.c_str(),
-                        r.data_string.c_str());
+    return std::format("{}\nvs.\n{}",
+                       l.data_string,
+                       r.data_string);
   case MEMORY: {
     string how =
       l.data_memory.size() != r.data_memory.size() ?
-      StringPrintf("Memories (different sizes: %lld vs %lld): ",
+      std::format("Memories (different sizes: {} vs {}): ",
                    l.data_memory.size(),
                    r.data_memory.size()) :
       "Memories (same size): ";
@@ -284,13 +285,13 @@ string Traces::Difference(const Trace &l, const Trace &r) {
         num_differences++;
         if (first_difference == -1)
           first_difference = i;
-        how += StringPrintf("%02x|%02x ", ll, rr);
+        how += std::format("{:02x}|{:02x} ", ll, rr);
       } else {
-        how += StringPrintf("%02x ", ll);
+        how += std::format("{:02x} ", ll);
       }
     }
 
-    how += StringPrintf("\n%d difference(s), first at offset %d.\n",
+    how += std::format("\n{} difference(s), first at offset {}.\n",
                         num_differences, first_difference);
     return how;
 
@@ -301,16 +302,16 @@ string Traces::Difference(const Trace &l, const Trace &r) {
       if (ll != rr) {
         if (how.length() > 70)
           return how + "...";
-        how += StringPrintf("@%d %02x != %02x  ", i, ll, rr);
+        how += std::format("@{} {:02x} != {:02x}  ", i, ll, rr);
       }
     }
     return how + " (only)";
     break;
   }
   case NUMBER:
-    return StringPrintf("%llu vs. %llu",
-                        l.data_number,
-                        r.data_number);
+    return std::format("{} vs. {}",
+                       l.data_number,
+                       r.data_number);
   }
   return "Bad types!";
 }
@@ -319,10 +320,10 @@ string Traces::LineString(const Trace &t) {
  switch (t.type) {
  case STRING:
    if (t.data_string.size() > 75) {
-     return StringPrintf("\"%s...\"",
-                         t.data_string.substr(0, 75).c_str());
+     return std::format("\"{}...\"",
+                        t.data_string.substr(0, 75));
    } else {
-     return StringPrintf("\"%s\"", t.data_string.c_str());
+     return std::format("\"{}\"", t.data_string);
    }
  case MEMORY: {
    bool any_nonzero = false;
@@ -330,16 +331,16 @@ string Traces::LineString(const Trace &t) {
    if (any_nonzero && t.data_memory.size() <= 16) {
      string out = "[MEMORY ";
      for (uint8 b : t.data_memory) {
-       out += StringPrintf("%2x ", b);
+       out += std::format("{:2x} ", b);
      }
      return out + "]";
    } else {
-     return StringPrintf("[MEMORY %d bytes (%s)]", t.data_memory.size(),
-                         any_nonzero ? "nonzero" : "all zero");
+     return std::format("[MEMORY {} bytes ({})]", t.data_memory.size(),
+                        any_nonzero ? "nonzero" : "all zero");
    }
  }
  case NUMBER:
-   return StringPrintf("%llu", t.data_number);
+   return std::format("{}", t.data_number);
  }
  return "??";
 }

@@ -8,10 +8,10 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include <format>
 
 #include "emulator.h"
 #include "simplefm7.h"
-#include "stringprintf.h"
 
 // cc-lib
 #include "types.h"
@@ -86,7 +86,7 @@ int main(int argc, char **argv) {
 
     vector<uint8> rgba = emu->GetImage();
     ImageRGBA img(rgba, 256, 256);
-    img.Save(FCEU_StringPrintf("%s_%05d.png", pngbase.c_str(), frame_num));
+    img.Save(std::format("{}_{:05d}.png", pngbase, frame_num));
     frame_num++;
   }
 

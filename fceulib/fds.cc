@@ -181,7 +181,7 @@ static DECLFR(FDSRead4030) {
   uint8 ret = 0;
 
   /* Cheap hack. */
-  TRACEF("FDSRead IRQlow %02x", fc->X->IRQlow);
+  TRACE("FDSRead IRQlow {:02x}", fc->X->IRQlow);
   if (fc->X->IRQlow&FCEU_IQEXT) ret|=1;
   if (fc->X->IRQlow&FCEU_IQEXT2) ret|=2;
 

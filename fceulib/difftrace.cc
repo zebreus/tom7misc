@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <vector>
 #include <string>
@@ -22,20 +23,27 @@ int main(int argc, char **argv) {
   }
 
   vector<Trace> left = Traces::ReadFromFile(argv[1]);
-  fprintf(stderr, "Loaded %lld traces from %s.\n", left.size(), argv[1]);
+  fprintf(stderr, "Loaded %lld traces from %s.\n",
+          (int64_t)left.size(), argv[1]);
   vector<Trace> right = Traces::ReadFromFile(argv[2]);
-  fprintf(stderr, "Loaded %lld traces from %s.\n", right.size(), argv[2]);
+  fprintf(stderr, "Loaded %lld traces from %s.\n",
+          (int64_t)right.size(), argv[2]);
 
   bool same = true;
   for (int i = 0; i < (int)max(left.size(), right.size()); i++) {
     if (i >= (int)left.size()) {
-      printf("The right trace is longer (%lld vs. %lld) but they\n"
-             "are the same up to that point.\n", left.size(), right.size());
+      printf(
+          "The right trace is longer (%lld vs. %lld) but they\n"
+          "are the same up to that point.\n",
+          (int64_t)left.size(),
+          (int64_t)right.size());
       same = false;
       break;
     } else if (i >= (int)right.size()) {
-      printf("The left trace is longer (%lld vs. %lld) but they\n"
-             "are the same up to that point.\n", left.size(), right.size());
+      printf(
+          "The left trace is longer (%lld vs. %lld) but they\n"
+          "are the same up to that point.\n",
+          (int64_t)left.size(), (int64_t)right.size());
       same = false;
       break;
     }

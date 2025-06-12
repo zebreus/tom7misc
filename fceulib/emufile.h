@@ -61,8 +61,6 @@ class EmuFile {
 
   virtual FILE* get_fp() = 0;
 
-  virtual int fprintf(const char* format, ...) = 0;
-
   virtual int fgetc() = 0;
   virtual int fputc(int c) = 0;
 
@@ -140,27 +138,7 @@ class EmuFile_MEMORY : public EmuFile {
 
   std::vector<uint8>* get_vec() { return vec; };
 
-  FILE* get_fp() override { return nullptr; }
-
-  int fprintf(const char* format, ...) override {
-    va_list argptr;
-    va_start(argptr, format);
-
-    // we don't generate straight into the buffer because it will null
-    // terminate (one more byte than we want)
-    int amt = vsnprintf(0, 0, format, argptr);
-    char* tempbuf = new char[amt + 1];
-
-    va_end(argptr);
-    va_start(argptr, format);
-    vsprintf(tempbuf, format, argptr);
-
-    fwrite(tempbuf, amt);
-    delete[] tempbuf;
-
-    va_end(argptr);
-    return amt;
-  };
+  FILE *get_fp() override { return nullptr; }
 
   int fgetc() override {
     uint8 temp;
@@ -242,8 +220,6 @@ class EmuFile_MEMORY_READONLY final : public EmuFile {
 
   FILE* get_fp() override { return nullptr; }
 
-  int fprintf(const char* format, ...) override { abort(); }
-
   int fgetc() override {
     uint32 remain = len - pos;
     if (remain < 1) {
@@ -301,14 +277,6 @@ class EmuFile_FILE final : public EmuFile {
   FILE* get_fp() override { return fp; }
 
   bool is_open() { return fp != nullptr; }
-
-  int fprintf(const char* format, ...) override {
-    va_list argptr;
-    va_start(argptr, format);
-    int ret = ::vfprintf(fp, format, argptr);
-    va_end(argptr);
-    return ret;
-  };
 
   int fgetc() override { return ::fgetc(fp); }
   int fputc(int c) override { return ::fputc(c, fp); }

@@ -330,7 +330,7 @@ bool INes::MapperInit() {
 
     fc->fceu->cartiface = new OldCartiface(fc);
     if (head.ROM_type & 2) {
-      TRACEF("Set savegame %d", head.ROM_type);
+      TRACE("Set savegame {}", head.ROM_type);
       iNESCart.SaveGame[0] = GMB_WRAM(fc);
       iNESCart.SaveGameLen[0] = 8192;
     }
@@ -1442,7 +1442,7 @@ void INes::iNESPower() {
 
   printf("Ugh! Old iNESPower mapper code!\n");
 
-  TRACEF("iNESPower %d", mapper_number);
+  TRACE("iNESPower {}", mapper_number);
   int type = mapper_number;
 
   fc->fceu->SetReadHandler(0x8000, 0xFFFF, Cart::CartBR);
@@ -1519,7 +1519,7 @@ void INes::iNESPower() {
 
 int INes::NewiNES_Init(int num) {
   const BoardMapping *tmp = board_map;
-  TRACEF("NewiNES_Init %d", num);
+  TRACE("NewiNES_Init {}", num);
 
   CHRRAMSize = -1;
 
@@ -1546,7 +1546,7 @@ int INes::NewiNES_Init(int num) {
       if (head.ROM_type & 8)
         fc->state->AddExState(GMB_ExtraNTARAM(fc), 2048, 0, "EXNR");
       fc->fceu->cartiface = tmp->init(fc, &iNESCart);
-      TRACEF("NewiNES init done.");
+      TRACE("NewiNES init done.");
       return 1;
     }
     tmp++;

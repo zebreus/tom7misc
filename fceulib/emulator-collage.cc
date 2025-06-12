@@ -9,49 +9,39 @@
 
 #include "emulator.h"
 
-#ifdef __MINGW32__
-// For setting priority.
-#define byte win_byte_override
-#include <windows.h>
-#undef byte
-#endif
-
-#include <string>
-#include <vector>
-#include <memory>
-#include <sys/time.h>
-#include <sstream>
-#include <unistd.h>
 #include <cstdio>
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <format>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <string>
+#include <sys/time.h>
+#include <thread>
+#include <unistd.h>
+#include <utility>
+#include <vector>
 
 // XXX hack
 #define BASE_INT_TYPES_H_
 
+#include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "nice.h"
 #include "rle.h"
 #include "simplefm2.h"
 #include "stb_image_write.h"
 #include "test-util.h"
-
-#include <mutex>
-#include <thread>
-
 #include "threadutil.h"
+#include "timer.h"
+#include "util.h"
 
 #include "tracing.h"
 
-#define ANSI_RED "\x1B[1;31;40m"
-#define ANSI_GREY "\x1B[1;30;40m"
-#define ANSI_BLUE "\x1B[1;34;40m"
-#define ANSI_CYAN "\x1B[1;36;40m"
-#define ANSI_YELLOW "\x1B[1;33;40m"
-#define ANSI_GREEN "\x1B[1;32;40m"
-#define ANSI_WHITE "\x1B[1;37;40m"
-#define ANSI_PURPLE "\x1B[1;35;40m"
-#define ANSI_RESET "\x1B[m"
 // Clear screen and go to 0,0
 #define ANSI_CLS "\x1b[2J\x1b[;H"
 
@@ -64,6 +54,10 @@ static constexpr uint64 kEveryGameUponLoad =
 static bool FULL = false;
 static bool COMPREHENSIVE = false;
 static bool MAKE_COMPREHENSIVE = false;
+
+using namespace std;
+using uint8 = uint8_t;
+using uint64 = uint64_t;
 
 struct Game {
   string cart;
@@ -90,12 +84,6 @@ struct Game {
     image_after_inputs(iai), image_after_random(iar),
     random_seed(seed) {}
 };
-
-static int64 TimeUsec() {
-  timeval tv;
-  gettimeofday(&tv, nullptr);
-  return tv.tv_sec * 1000000LL + tv.tv_usec;
-}
 
 struct InputStream {
   InputStream(const string &seed, int length) {
@@ -220,7 +208,7 @@ struct Collage {
   void Flush() {
     if (nextx > 0 || nexty > 0) {
       string filename =
-        StringPrintf("%s-%d.png", filename_base.c_str(), file_number);
+        std::format("{}-{}.png", filename_base.c_str(), file_number);
       stbi_write_png(filename.c_str(), WIDTH, HEIGHT, 4, cur.data(),
                      4 * WIDTH);
       fprintf(stderr, "Flushed %d-image collage to %s.\n",
@@ -250,16 +238,16 @@ static SerialResult RunGameSerially(
   // XXX
   // auto Update = [](const string &s) {};
 
-  Update(StringPrintf("Running %s...", game.cart.c_str()));
+  Update(std::format("Running {}...", game.cart.c_str()));
          // printf("Testing %s...\n" , game.cart.c_str());
-# define CHECK_RAM(field) do {                       \
-    const uint64 cx = emu->MachineChecksum();            \
-    CHECK_EQ(cx, (field))                            \
-      << "\nExpected ram to be " << #field << " = "  \
-      << (field) << "\nbut got " << cx;              \
-  } while(0)
+  # define CHECK_RAM(field) do {                         \
+      const uint64 cx = emu->MachineChecksum();          \
+      CHECK_EQ(cx, (field))                              \
+        << "\nExpected ram to be " << #field << " = "    \
+        << (field) << "\nbut got " << cx;                \
+    } while(0)
 
-  TRACEF("Serially %s", game.cart.c_str());
+  TRACE("Serially {}", game.cart.c_str());
 
   // Once we've collected the states, we have not just the checksums
   // but the actual RAMs (in full mode), so we can print better
@@ -271,7 +259,7 @@ static SerialResult RunGameSerially(
     CHECK(idx >= 0);                                            \
     CHECK(idx < (int)checksums.size());                         \
     CHECK(!FULL || idx < actual_rams.size());                   \
-    const uint64 cx = emu->MachineChecksum();                       \
+    const uint64 cx = emu->MachineChecksum();                   \
     if (cx != checksums[idx]) {                                 \
       fprintf(stderr, "Bad RAM checksum at step %d (%s). "      \
               "Expected\n %llu\nbut got %llu.\n", idx, #i,      \
@@ -284,9 +272,9 @@ static SerialResult RunGameSerially(
         for (int j = 0; j < 0x800; j++) {                       \
           if (mem[j] != actual_rams[idx][j]) {                  \
             mismatches.push_back(                               \
-                 StringPrintf("@%d %02x!=%02x",                 \
-                              j, mem[j],                        \
-                              actual_rams[idx][j]));            \
+                std::format("@{} {:02x}!={:02x}",               \
+                            j, mem[j],                          \
+                            actual_rams[idx][j]));              \
           }                                                     \
         }                                                       \
         fprintf(stderr, "Total of %d byte mismatch(es):\n",     \
@@ -302,12 +290,12 @@ static SerialResult RunGameSerially(
       } else {                                                  \
         fprintf(stderr, "Run with --full to see details.\n");   \
       }                                                         \
-      TRACEF("(crashed)");                                      \
+      TRACE("(crashed)");                                      \
       abort();                                                  \
     }                                                           \
   } while (0)
 
-  TRACEF("RunGameSerially %s.", game.cart.c_str());
+  TRACE("RunGameSerially {}.", game.cart);
 
   // Save files are being successfully written and loaded now. TODO(twm):
   // Need to make the emulator not secretly touch the filesystem. These
@@ -316,7 +304,7 @@ static SerialResult RunGameSerially(
     fprintf(stderr, "NOTE: Removed .sav file before RunGameSerially.\n");
   }
 
-  if (0 == remove(".sav")) {
+  if (!Util::RemoveFile(".sav")) {
     fprintf(stderr, "NOTE: Removed .sav file (C++ style).\n");
   }
 
@@ -358,7 +346,7 @@ static SerialResult RunGameSerially(
 
   CHECK(emu.get() != nullptr) << game.cart.c_str();
   CHECK_RAM(game.after_load);
-  TRACEF("after_load %llu.", emu->MachineChecksum());
+  TRACE("after_load {}.", emu->MachineChecksum());
 
   vector<uint8> basis;
   emu->GetBasis(&basis);
@@ -368,13 +356,13 @@ static SerialResult RunGameSerially(
     // This is debugging task specific. Copy and paste the target
     // in here!
     const bool match = false;
-    TRACEF(".. %llu", cx);
+    TRACE(".. {}", cx);
     TRACE_SCOPED_ENABLE_IF(match);
     if (match) {
       fprintf(stderr, "Enabling tracing because of ram match %llu.\n", cx);
-      TRACEF("RAM match %llu so tracing input [%s].",
-             cx,
-             SimpleFM2::InputToString(b).c_str());
+      TRACE("RAM match {} so tracing input [{}].",
+            cx,
+            SimpleFM2::InputToString(b));
     }
     emu->StepFull(b, 0);
   };
@@ -384,11 +372,11 @@ static SerialResult RunGameSerially(
                       &game, &emu, &saves, &inputs, &checksums,
                       &actual_rams, &images,
                       &compressed_saves, &basis](uint8 b) {
-    TRACEF("Step %d: %s", step_counter, SimpleFM2::InputToString(b).c_str());
+    TRACE("Step {}: {}", step_counter, SimpleFM2::InputToString(b));
     step_counter++;
     vector<uint8> save;
     emu->SaveUncompressed(&save);
-    TRACEF("Saved.");
+    TRACE("Saved.");
     // TRACEV(save);
 
     saves.push_back(std::move(save));
@@ -417,7 +405,7 @@ static SerialResult RunGameSerially(
     CHECK_EQ(game.image_after_inputs, iret1) << iret1;
     // XXX check cpu state
   }
-  TRACEF("after_inputs %llu.", emu->MachineChecksum());
+  TRACE("after_inputs {}.", emu->MachineChecksum());
 
   // fprintf(stderr, "Random inputs:\n");
   Update("Random inputs.");
@@ -434,7 +422,7 @@ static SerialResult RunGameSerially(
     CHECK_EQ(game.image_after_random, iret2) << iret2;
     // XXX check cpu state
   }
-  // TRACEF("after_random %llu.", emu->MachineChecksum());
+  // TRACE("after_random {}.", emu->MachineChecksum());
 
   if (FULL) {
     // Go backwards to avoid just accidentally having the correct
@@ -527,7 +515,7 @@ static SerialResult RunGameSerially(
     for (int i = 0; i < v.size(); i++) {
       sz += v[i].size();
     }
-    return StringPrintf("%llu=%llu", v.size(), sz);
+    return std::format("{}={}", v.size(), sz);
   };
 
   auto VVClear = [](vector<vector<uint8>> &v) {
@@ -538,12 +526,12 @@ static SerialResult RunGameSerially(
   };
 
   auto Progress = [&](const char *what) {
-    Update(StringPrintf("delete vecs: %s %s %llu %s %s %llu %s",
-                        VVSize(saves).c_str(),
-                        VVSize(compressed_saves).c_str(),
+      Update(std::format("delete vecs: {} {} {} {} {} {} {}",
+                        VVSize(saves),
+                        VVSize(compressed_saves),
                         8 * checksums.size(),
-                        VVSize(actual_rams).c_str(),
-                        VVSize(images).c_str(),
+                        VVSize(actual_rams),
+                        VVSize(images),
                         inputs.size(),
                         what));
   };
@@ -566,6 +554,7 @@ static SerialResult RunGameSerially(
 }
 
 int main(int argc, char **argv) {
+  ANSI::Init();
   Nice::SetLowPriority();
 
   string output_file;
@@ -833,7 +822,7 @@ int main(int argc, char **argv) {
       };
   #endif
 
-  const int64 start_us = TimeUsec();
+  Timer run_timer;
 
   TRACE_DISABLE();
 
@@ -898,7 +887,7 @@ int main(int argc, char **argv) {
       string f = Chop(line);
       string filename = LoseWhiteL(line);
 
-      Update(StringPrintf("running %s", filename.c_str()));
+      Update(std::format("running {}", filename));
 
       if (!filename.empty()) {
         uint64 after_inputs, after_random,
@@ -930,11 +919,10 @@ int main(int argc, char **argv) {
           // vector, but we're trying to exercise the emu code, not
           // the test harness.
           results[line_num] =
-            StringPrintf("%llu %llu %llu %llu %llu %llu %s",
+            std::format("{} {} {} {} {}",
                          sr.after_inputs, sr.after_random,
                          sr.image_after_inputs, sr.image_after_random,
-                         sr.cpu_after_inputs, sr.cpu_after_random,
-                         filename.c_str());
+                         filename);
 
           num_done++;
           fprintf(stderr, "Did %d/%d = %.1f%%.\n",
@@ -945,9 +933,7 @@ int main(int argc, char **argv) {
           if (sr.after_inputs != after_inputs ||
               sr.after_random != after_random ||
               sr.image_after_inputs != image_after_inputs ||
-              sr.image_after_random != image_after_random ||
-              sr.cpu_after_inputs != cpu_after_inputs ||
-              sr.cpu_after_random != cpu_after_random) {
+              sr.image_after_random != image_after_random) {
             fprintf(stderr, "(Note, didn't match last time: %s)\n",
                     filename.c_str());
           }
@@ -993,9 +979,9 @@ int main(int argc, char **argv) {
            &index_m, &next_index, num_romlines](const string &s) {
             const int done = ReadWithLock(&index_m, &next_index);
             MutexLock ml(&status_m);
-            status[thread_id] = StringPrintf(ANSI_CYAN "%3d"
-                                             ANSI_RESET " : %s",
-                                             my_index, s.c_str());
+            status[thread_id] = std::format(ANSI_CYAN "{:3d}"
+                                            ANSI_RESET " : {}",
+                                            my_index, s.c_str());
             // If ANSI is available, clear screen.
             printf("\n" ANSI_CLS
                    "--------------------------------------------------\n"
@@ -1043,9 +1029,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  const int64 end_us = TimeUsec();
-  const int64 elapsed_us = end_us - start_us;
-  printf("Took %.2f ms\n", elapsed_us / 1000.0);
+  printf("Took %s\n", ANSI::Time(run_timer.Seconds()).c_str());
 
   return 0;
 }

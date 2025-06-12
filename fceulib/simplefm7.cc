@@ -45,6 +45,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctype.h>
+#include <format>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -52,19 +53,16 @@
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "util.h"
 #include "simplefm2.h"
+#include "util.h"
 
 using namespace std;
 using uint8 = uint8_t;
 
 static constexpr int DEFAULT_WRAP = 75;
 
-static int AppendInt(int n, string *out) {
-  char s[16];
-  sprintf(s, "%d", n);
-  *out += &s[0];
-  return strlen(s);
+static inline void AppendInt(int n, string *out) {
+  out->append(std::format("{}", n));
 }
 
 static bool AllEmpty(const std::vector<uint8> &inputs) {
@@ -232,20 +230,20 @@ string SimpleFM7::EncodeInputsLiteral2P(
   {
     bool is_first = true;
     for (const string &line : Compress(p1, width)) {
-      StringAppendF(&out, "%s\"%s%s\"\n",
-                    pad.c_str(),
-                    is_first ? "!" : "",
-                    line.c_str());
+      AppendFormat(&out, "{}\"{}{}\"\n",
+                   pad,
+                   is_first ? "!" : "",
+                   line);
       is_first = false;
     }
   }
   if (!AllEmpty(p2)) {
     bool is_first = true;
     for (const string &line : Compress(p2, width)) {
-      StringAppendF(&out, "%s\"%s%s\"\n",
-                    pad.c_str(),
-                    is_first ? "@" : "",
-                    line.c_str());
+      AppendFormat(&out, "{}\"{}{}\"\n",
+                   pad,
+                   is_first ? "@" : "",
+                   line);
       is_first = false;
     }
   }

@@ -2,6 +2,7 @@
 #include "emulator.h"
 
 #include <cstdint>
+#include <format>
 #include <string>
 #include <vector>
 #include <memory>
@@ -12,7 +13,6 @@
 #include "ansi.h"
 #include "auto-histo.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "simplefm7.h"
 #include "stats.h"
 #include "test-util.h"
@@ -45,11 +45,11 @@ void BenchmarkStep(Emulator *emu,
       uint64_t image = emu->ImageChecksum();
       CHECK(machine == expected_nes &&
             image == expected_img) <<
-        StringPrintf("Bug:\n"
-                     "machine: %016llx want %016llx\n"
-                     "image:   %016llx want %016llx\n",
-                     machine, expected_nes,
-                     image, expected_img);
+        std::format("Bug:\n"
+                    "machine: {:016x} want {:016x}\n"
+                    "image:   {:016x} want {:016x}\n",
+                    machine, expected_nes,
+                    image, expected_img);
       CHECK(image == expected_img);
       samples.push_back(exec_seconds / movie.size());
     }

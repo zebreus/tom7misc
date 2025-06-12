@@ -34,7 +34,7 @@ struct Tengen final : public MapInterface {
   void RAMBO1_IRQHook(int a) {
     if (!IRQmode) return;
 
-    TRACEF("RAMBO1: %d %d %02x %02x", a, smallcount, IRQCount, IRQa);
+    TRACE("RAMBO1: {} {} {:02x} {:02x}", a, smallcount, IRQCount, IRQa);
 
     smallcount += a;
     while (smallcount >= 4) {

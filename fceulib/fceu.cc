@@ -80,7 +80,7 @@ static DECLFW(BNull) {
 }
 
 static DECLFR(ANull) {
-  TRACEF("Read unmapped: %02x", fc->X->DB);
+  TRACE("Read unmapped: {:02x}", fc->X->DB);
   return fc->X->DB;
 }
 
@@ -177,7 +177,7 @@ FCEUGI *FCEU::FCEUI_LoadGame(const char *name, int OverwriteVidMode) {
     ResetVidSys();
 
     PowerNES();
-    TRACEF("PowerNES done.");
+    TRACE("PowerNES done.");
 
     fc->palette->ResetPalette();
 

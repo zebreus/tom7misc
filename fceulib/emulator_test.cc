@@ -8,29 +8,28 @@
 #include "emulator.h"
 
 #include <cstdint>
+#include <cstdio>
+#include <format>
 #include <functional>
+#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string>
-#include <utility>
-#include <vector>
-#include <memory>
 #include <sys/time.h>
 #include <unistd.h>
-#include <cstdio>
+#include <utility>
+#include <vector>
 
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "test-util.h"
 #include "ansi.h"
 #include "arcfour.h"
+#include "base/logging.h"
+#include "randutil.h"
 #include "simplefm2.h"
 #include "simplefm7.h"
+#include "test-util.h"
 #include "timer.h"
-#include "randutil.h"
-
-#include "threadutil.h"
 #include "tracing.h"
+#include "util.h"
 
 using namespace std;
 
@@ -158,7 +157,7 @@ static SerialResult RunGameSerially(
 
   SerialResult res;
 
-  Update(StringPrintf("Running " AWHITE("%s") "...", game.cart.c_str()));
+  Update(std::format("Running " AWHITE("{}") "...", game.cart.c_str()));
 
   // Check that the emulator's machine checksum currently
   // matches the argument.
@@ -170,7 +169,7 @@ static SerialResult RunGameSerially(
       << (field) << "\nbut got " << cx;         \
   } while(0)
 
-  TRACEF("RunGameSerially %s.", game.cart.c_str());
+  TRACE("RunGameSerially {}.", game.cart.c_str());
 
   // Save files are being successfully written and loaded now. TODO(twm):
   // Need to make the emulator not secretly touch the filesystem. These
@@ -179,7 +178,7 @@ static SerialResult RunGameSerially(
     fprintf(stderr, "NOTE: Removed .sav file before RunGameSerially.\n");
   }
 
-  if (0 == remove(".sav")) {
+  if (!Util::RemoveFile(".sav")) {
     fprintf(stderr, "NOTE: Removed .sav file (C++ style).\n");
   }
 
@@ -237,7 +236,7 @@ static SerialResult RunGameSerially(
         for (int j = 0; j < 0x800; j++) {
           if (mem[j] != actual_rams[idx][j]) {
             mismatches.push_back(
-                StringPrintf("@%d %02x!=%02x",
+                std::format("@{} {:02x}!={:02x}",
                              j, mem[j],
                              actual_rams[idx][j]));
           }
@@ -253,7 +252,7 @@ static SerialResult RunGameSerially(
         }
         fprintf(stderr, "\n");
 
-        TRACEF("(crashed)");
+        TRACE("(crashed)");
         abort();
       }
     };
@@ -267,11 +266,11 @@ static SerialResult RunGameSerially(
 
   int step_counter = 0;
   auto SaveAndStep = [&](uint8 b) {
-      TRACEF("Step %d: %s", step_counter, SimpleFM2::InputToString(b).c_str());
+      TRACE("Step {}: {}", step_counter, SimpleFM2::InputToString(b));
       step_counter++;
 
       saves.push_back(emu->SaveUncompressed());
-      TRACEF("Saved.");
+      TRACE("Saved.");
 
       if (TEST_COMPRESSED_SAVES) {
         vector<uint8> compressed_save;
@@ -292,7 +291,7 @@ static SerialResult RunGameSerially(
   res.nes_after_fixed = emu->MachineChecksum();
   res.img_after_fixed = emu->ImageChecksum();
 
-  TRACEF("after_fixed %llu.", res.after_fixed);
+  TRACE("after_fixed {}.", res.after_fixed);
 
   Update("Random inputs.");
 

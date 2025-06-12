@@ -429,17 +429,17 @@ static inline constexpr uint8_t ZNFlags(uint8_t x) {
     op;                \
     break;             \
   }
-#define LD_AB(op)                     \
-  {                                   \
-    unsigned int AA;                  \
-    uint8 x;                          \
-    GetAB(AA);                        \
-    TRACEN(AA);                       \
-    x = RdMem(AA);                    \
-    TRACEF("Read %d -> %02x", AA, x); \
-    (void) x;                         \
-    op;                               \
-    break;                            \
+#define LD_AB(op)                      \
+  {                                    \
+    unsigned int AA;                   \
+    uint8 x;                           \
+    GetAB(AA);                         \
+    TRACEN(AA);                        \
+    x = RdMem(AA);                     \
+    TRACE("Read {} -> {:02x}", AA, x); \
+    (void) x;                          \
+    op;                                \
+    break;                             \
   }
 #define LD_ABI(reg, op) \
   {                     \
@@ -544,12 +544,12 @@ static constexpr uint8 CycTable[256] = {
 };
 
 void X6502::IRQBegin(int w) {
-  TRACEF("IRQBegin %d", w);
+  TRACE("IRQBegin {}", w);
   IRQlow |= w;
 }
 
 void X6502::IRQEnd(int w) {
-  TRACEF("IRQEnd %d", w);
+  TRACE("IRQEnd {}", w);
   IRQlow &= ~w;
 }
 
@@ -593,7 +593,7 @@ void X6502::Power() {
 }
 
 #define TRACE_MACHINEFMT \
-  "X: %d %04x %02x %02x %02x %02x %02x %02x / %02x %u %02x"
+  "X: {} {:04x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} / {:02x} {} {:02x}"
 #define TRACE_MACHINEARGS \
   count, reg_PC, reg_A, reg_X, reg_Y, reg_S, reg_P, reg_PI, \
   jammed, IRQlow, DB
@@ -603,8 +603,8 @@ void X6502::Run(int32 cycles) {
   // we're intereted in.
   // TRACE_SCOPED_STAY_ENABLED_IF(false);
   TRACE_SCOPED_STAY_ENABLED_IF(false);
-  TRACEF("x6502_Run(%d) @ %d " TRACE_MACHINEFMT, cycles, timestamp,
-         TRACE_MACHINEARGS);
+  TRACE("x6502_Run({}) @ {} " TRACE_MACHINEFMT, cycles, timestamp,
+        TRACE_MACHINEARGS);
   TRACEA(fc->fceu->RAM, 0x800);
   // TRACEA(fc->ppu->PPU_values, 4);
 
@@ -626,11 +626,11 @@ void X6502::Run(int32 cycles) {
 void X6502::RunLoop() {
   while (count > 0) {
     TRACE_SCOPED_STAY_ENABLED_IF(false);
-    TRACEF("while " TRACE_MACHINEFMT, TRACE_MACHINEARGS);
+    TRACE("while " TRACE_MACHINEFMT, TRACE_MACHINEARGS);
     TRACEA(fc->fceu->RAM, 0x800);
 
     if (IRQlow) {
-      TRACEF("IRQlow set.");
+      TRACE("IRQlow set.");
       if (IRQlow & FCEU_IQRESET) {
         reg_PC = RdMem(0xFFFC);
         reg_PC |= RdMem(0xFFFD) << 8;
@@ -1200,6 +1200,6 @@ void X6502::RunLoop() {
         LD_IM(AND);
     }
   }
-  TRACEF("Exiting X6502_Run normally: " TRACE_MACHINEFMT, TRACE_MACHINEARGS);
+  TRACE("Exiting X6502_Run normally: " TRACE_MACHINEFMT, TRACE_MACHINEARGS);
   TRACEA(fc->fceu->RAM, 0x800);
 }

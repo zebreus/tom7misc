@@ -4,34 +4,19 @@
 // loop. It's sort of fiddly since there are negative moduluses and
 // things like that...
 
-#include <_timeval.h>
 #include <cstdio>
+#include <format>
 #include <utility>
 #include <tuple>
 #include <sys/time.h>
 #include <string>
 
-#include "base/stringprintf.h"
 #include "base/logging.h"
 #include "arcfour.h"
 #include "types.h"
+#include "timer.h"
 
 using namespace std;
-
-static int64 TimeUsec() {
-  timeval tv;
-  gettimeofday(&tv, nullptr);
-  return tv.tv_sec * 1000000LL + tv.tv_usec;
-}
-
-struct Timer {
-  Timer() : start_time(TimeUsec()) {}
-  const int64 start_time;
-  int64 GetUsec() const { return TimeUsec() - start_time; }
-  double GetSeconds() const {
-    return (TimeUsec() - start_time) / 1000000.0;
-  }
-};
 
 namespace {
 struct State {
@@ -50,7 +35,7 @@ static bool SameState(const State &a, const State &b) {
 }
 
 static string PrintState(const State &a) {
-  return StringPrintf("[acc %d, per %d, bit %02x, have %02x]",
+  return std::format("[acc {}, per {}, bit {:02x}, have {:02x}]",
           a.acc, a.period, a.bitcount, a.havedma);
 }
 

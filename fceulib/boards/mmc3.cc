@@ -253,7 +253,7 @@ MMC3::MMC3(FC *fc, CartInfo *info, int prg, int chr, int wram, int battery)
   if (wram) {
     mmc3opts |= 1;
     MMC3_WRAM = (uint8 *)FCEU_malloc(wrams);
-    TRACEF("MMC3 Init %d %d %d %d", prg, chr, wram, battery);
+    TRACE("MMC3 Init {} {} {} {}", prg, chr, wram, battery);
     fc->cart->SetupCartPRGMapping(0x10, MMC3_WRAM, wrams, true);
     fc->state->AddExState(MMC3_WRAM, wrams, 0, "MRAM");
 
@@ -268,7 +268,7 @@ MMC3::MMC3(FC *fc, CartInfo *info, int prg, int chr, int wram, int battery)
   }
 
   if (battery) {
-    TRACEF("Adding savegame");
+    TRACE("Adding savegame");
     mmc3opts |= 2;
     info->SaveGame[0] = MMC3_WRAM;
     info->SaveGameLen[0] = wrams;
@@ -312,7 +312,7 @@ MMC3::MMC3(FC *fc, CartInfo *info, int prg, int chr, int wram, int battery)
     me->GenMMC3Restore(fc, version);
   };
 
-  TRACEF("MMC3_WRAM is %d...", wrams);
+  TRACE("MMC3_WRAM is {}...", wrams);
   TRACEA(MMC3_WRAM, wrams);
 }
 
@@ -327,7 +327,7 @@ struct Mapper4 final : public MMC3 {
   int hackm4 = 0;
 
   void Power() final override {
-    TRACEF("M4power %d...", hackm4);
+    TRACE("M4power {}...", hackm4);
     MMC3::Power();
     A000B = (hackm4 ^ 1) & 1;
     fc->cart->setmirror(hackm4);

@@ -98,7 +98,7 @@ EMUOBJECTS=$(FCEUOBJECTS) $(MAPPEROBJECTS) $(UTILSOBJECTS) $(PALLETESOBJECTS) $(
 # included in all tests, etc.
 BASEOBJECTS=$(CCLIBOBJECTS)
 
-FCEULIB_OBJECTS=emulator.o headless-driver.o stringprintf.o trace.o tracing.o
+FCEULIB_OBJECTS=emulator.o headless-driver.o trace.o tracing.o
 # simplefm2.o emulator.o util.o
 
 # experimental! Need a much better way to do this...
@@ -122,10 +122,10 @@ results-%.txt : make-comprehensive-history.exe
 fm2tofm7.exe : $(CCLIBOBJECTS) fm2tofm7.o simplefm2.o simplefm7.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-difftrace.exe : stringprintf.o trace.o difftrace.o
+difftrace.exe : trace.o difftrace.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-dumptrace.exe : stringprintf.o trace.o dumptrace.o
+dumptrace.exe : trace.o dumptrace.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 emulator_test.exe : $(OBJECTS) test-util.o emulator_test.o simplefm2.o simplefm7.o
