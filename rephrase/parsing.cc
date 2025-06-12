@@ -2,6 +2,7 @@
 #include "parsing.h"
 
 #include <cstdio>
+#include <format>
 #include <functional>
 #include <optional>
 #include <string>
@@ -118,10 +119,10 @@ const Exp *Parsing::Parse(AstPool *pool,
     const std::string file = source_map.filecover[byte_pos];
     const int line = source_map.linecover[byte_pos];
     // TODO: Compute the line in the file.
-    return StringPrintf(
-        "\nAt byte %d which is "
-        AWHITE("%s") ":" AYELLOW("%d") ".\n",
-        byte_pos, file.c_str(), line);
+    return std::format(
+        "\nAt byte {} which is "
+        AWHITE("{}") ":" AYELLOW("{}") ".\n",
+        byte_pos, file, line);
   };
 
   // Given as a range of token indices.

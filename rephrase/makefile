@@ -43,11 +43,13 @@ ifeq ($(UNAME),Cygwin)
   PLATFORM_CFLAGS=
   OPTFLAGS= -O3 -flto=auto -march=native -mtune=native
 #  OPTFLAGS=-O -g
+
 else ifeq ($(UNAME),Darwin)
-  CC=/usr/local/opt/llvm/bin/clang
-  CXX=/usr/local/opt/llvm/bin/clang++
-  LDFLAGS += -L/usr/local/opt/llvm/lib/c++ -Wl,-rpath,/usr/local/opt/llvm/lib/c++ -L/usr/local/opt/llvm/lib
-  CPPFLAGS += -I/usr/local/opt/llvm/include
+  GMP_LFLAGS=`pkg-config --libs gmp`
+  GMP_CFLAGS=`pkg-config --cflags gmp` -DBIG_USE_GMP
+  CXX=g++
+  CC=gcc
+
   ifdef ASAN
     OPTFLAGS=-O -g -fsanitize=address -march=native -mtune=native
     # PLATFORM_LDFLAGS += -Wl,--stack,167772160
@@ -129,8 +131,8 @@ endif
 # Compile flags
 #
 
-CFLAGS   = $(OPTFLAGS) -I. -I$(GMP_CFLAGS) I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7_DIR) -I$(CODEC_DIR) -std=c11 -fPIC $(PLATFORM_CFLAGS)
-CXXFLAGS = $(OPTFLAGS) -I. -I$(GMP_CFLAGS) -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7_DIR) -I$(CODEC_DIR) -std=c++23 -fPIC $(PLATFORM_CFLAGS)
+CFLAGS   = $(OPTFLAGS) -I. $(GMP_CFLAGS) I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7_DIR) -I$(CODEC_DIR) -std=c11 -fPIC $(PLATFORM_CFLAGS)
+CXXFLAGS = $(OPTFLAGS) -I. $(GMP_CFLAGS) -I$(LLAMA_DIR) -I$(CC_LIB) -I$(LLM_DIR) -I$(BIT7_DIR) -I$(CODEC_DIR) -std=c++23 -fPIC $(PLATFORM_CFLAGS)
 LDFLAGS  = $(OPTFLAGS) -m64 $(GMP_LFLAGS) $(PLATFORM_LDFLAGS)
 
 ifndef LLAMA_DEBUG
@@ -330,7 +332,7 @@ ifeq ($(ENABLE_LLM), true)
 endif
 
 %.o : %.cc $(BOVEX_HEADERS)
-	@$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
 # Parser takes a uniquely long time to compile, so don't make it
