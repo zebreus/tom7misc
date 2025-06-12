@@ -31,6 +31,7 @@
 #include "threadutil.h"
 #include "util.h"
 #include "gtl/top_n.h"
+#include "nice.h"
 
 #include "chess.h"
 #include "player.h"
@@ -938,24 +939,7 @@ static void RunTournament() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
-  #ifdef __MINGW32__
-  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
-    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
-  }
-
-  // Turn on ANSI support in Windows 10+. (Otherwise, use ANSICON etc.)
-  // https://docs.microsoft.com/en-us/windows/console/setconsolemode
-  //
-  // TODO: This works but seems to subsequently break control keys
-  // and stuff like that in cygwin bash?
-  HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-  // mingw headers may not know about this new flag
-  static constexpr int kVirtualTerminalProcessing = 0x0004;
-  DWORD old_mode = 0;
-  GetConsoleMode(hStdOut, &old_mode);
-  // printf("%lld\n", old_mode);
-  SetConsoleMode(hStdOut, old_mode | kVirtualTerminalProcessing);
-  #endif
+  Nice::SetLowPriority();
 
   RunTournament();
 

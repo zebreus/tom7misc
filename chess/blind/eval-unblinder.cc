@@ -1,4 +1,6 @@
 
+#include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 #include <shared_mutex>
@@ -8,11 +10,11 @@
 #include "../../cc-lib/randutil.h"
 #include "../../cc-lib/arcfour.h"
 #include "../../cc-lib/base/logging.h"
+#include "../../cc-lib/timer.h"
 
 #include "../chess.h"
 #include "../pgn.h"
 #include "../bigchess.h"
-#include "timer.h"
 
 #include "unblinder.h"
 #include "unblinder-mk0.h"
@@ -29,7 +31,7 @@ static bool Eligible(const PGN &pgn) {
   if (pgn.result == PGN::Result::OTHER) {
     return false;
   }
-    
+
   if (pgn.GetTermination() != PGN::Termination::NORMAL) {
     return false;
   }
@@ -39,9 +41,9 @@ static bool Eligible(const PGN &pgn) {
 
 
 static vector<Position> LoadPositions(const string &filename,
-				      int64 num_positions,
-				      float sample_rate,
-				      const string &seed) {
+              int64 num_positions,
+              float sample_rate,
+              const string &seed) {
   vector<Position> positions;
   positions.reserve(num_positions);
   ArcFour rc{seed};
@@ -60,16 +62,16 @@ static vector<Position> LoadPositions(const string &filename,
       const bool move_ok = pos.ParseMove(m.move.c_str(), &move);
 
       if (!move_ok) {
-	fprintf(stderr, "Bad move %s from full PGN:\n%s",
-		m.move.c_str(), pgn_text.c_str());
-	goto next_pgn;
+  fprintf(stderr, "Bad move %s from full PGN:\n%s",
+    m.move.c_str(), pgn_text.c_str());
+  goto next_pgn;
       }
 
       pos.ApplyMove(move);
 
       if (RandFloat(&rc) < sample_rate) {
-	positions.push_back(pos);
-	if (positions.size() >= num_positions) return positions;
+  positions.push_back(pos);
+  if (positions.size() >= num_positions) return positions;
       }
     }
 
@@ -87,7 +89,7 @@ bool PieceMatch(uint8 p1, uint8 p2) {
 
   if (p1 == p2)
     return true;
-  
+
   if (p1 == Position::C_ROOK && p2 == Position::ROOK)
     return true;
   if (p1 == Position::ROOK && p2 == Position::C_ROOK)
@@ -106,23 +108,19 @@ int main(int argc, char **argv) {
   fprintf(stderr, "Evaluating model %s...\n", model.c_str());
   fflush(stderr);
   Timer positions_timer;
-  vector<Position> positions = 
-    LoadPositions(
-	"d:/chess/lichess_db_standard_rated_2018-02.pgn",
-	50000,
-	0.01f,
-	"eval");
-  fprintf(stderr, "Loaded %lld positions in %.2fs\n",
-	  (int64)positions.size(), positions_timer.MS() / 1000.0);
+  vector<Position> positions = LoadPositions(
+      "d:/chess/lichess_db_standard_rated_2018-02.pgn", 50000, 0.01f, "eval");
+  fprintf(stderr, "Loaded %lld positions in %.2fs\n", (int64)positions.size(),
+          positions_timer.Seconds());
   fflush(stderr);
-  
+
   Timer model_timer;
   std::unique_ptr<Unblinder> unblinder{UnblinderMk0::LoadFromFile(model)};
   CHECK(unblinder.get()) << model;
   fprintf(stderr, "Loaded model in %.2fs\n",
-	  model_timer.MS() / 1000.0);
+          model_timer.Seconds());
   fflush(stderr);
-  
+
   Timer eval_timer;
   std::shared_mutex counters_m;
   int64 total_positions = 0LL;
@@ -132,85 +130,82 @@ int main(int argc, char **argv) {
   int64 piece_mistakes = 0LL;
   int64 castling_mistakes = 0LL;
   int64 move_mistakes = 0LL;
-  auto AppMe =
-    [&unblinder, &counters_m, &total_positions, &exactly_correct,
-     &piece_mistakes, &castling_mistakes, &move_mistakes](
-	const Position &pos) {
-      uint64 bits = Unblinder::Blind(pos);
+  auto AppMe = [&unblinder, &counters_m, &total_positions, &exactly_correct,
+                &piece_mistakes, &castling_mistakes,
+                &move_mistakes](const Position &pos) {
+    uint64 bits = Unblinder::Blind(pos);
 
-      // XXX something is wrong! Error rate is almost as high (27.24 vs 27.61)
-      // as just guessing a totally empty board, which we definitely do better
-      // than. I guess maybe it's not being simulated correctly?
-      Position guess = unblinder->Unblind(USE_SINGLE_KING, bits);
+    // XXX something is wrong! Error rate is almost as high (27.24 vs 27.61)
+    // as just guessing a totally empty board, which we definitely do better
+    // than. I guess maybe it's not being simulated correctly?
+    Position guess = unblinder->Unblind(USE_SINGLE_KING, bits);
 
-      int piecem = 0;
-      for (int r = 0; r < 8; r++) {
-	for (int c = 0; c < 8; c++) {
-	  // This includes the castling state check.
-	  if (!PieceMatch(pos.PieceAt(r, c), guess.PieceAt(r, c)))
-	    piecem++;
-	}
+    int piecem = 0;
+    for (int r = 0; r < 8; r++) {
+      for (int c = 0; c < 8; c++) {
+        // This includes the castling state check.
+        if (!PieceMatch(pos.PieceAt(r, c), guess.PieceAt(r, c))) piecem++;
       }
+    }
 
-      int castlem = 0;
-      if (pos.CanStillCastle(false, false) != guess.CanStillCastle(false, false))
-	castlem++;
-      if (pos.CanStillCastle(false, true) != guess.CanStillCastle(false, true))
-	castlem++;
-      if (pos.CanStillCastle(true, false) != guess.CanStillCastle(true, false))
-	castlem++;
-      if (pos.CanStillCastle(true, true) != guess.CanStillCastle(true, true))
-	castlem++;
-      
-      int movem = 0;
-      if (pos.BlackMove() != guess.BlackMove())
-	movem++;
+    int castlem = 0;
+    if (pos.CanStillCastle(false, false) != guess.CanStillCastle(false, false))
+      castlem++;
+    if (pos.CanStillCastle(false, true) != guess.CanStillCastle(false, true))
+      castlem++;
+    if (pos.CanStillCastle(true, false) != guess.CanStillCastle(true, false))
+      castlem++;
+    if (pos.CanStillCastle(true, true) != guess.CanStillCastle(true, true))
+      castlem++;
 
-      const int tot = piecem + castlem + movem;
-      {
-	WriteMutexLock ml(&counters_m);
+    int movem = 0;
+    if (pos.BlackMove() != guess.BlackMove()) movem++;
 
-	/*
-	string bitstring;
-	for (int x = 0; x < 64; x++) {
-	  if ((x & 7) == 0) bitstring = "\n" + bitstring;
-	  bitstring = ((string)((bits & 1) ? "1" : "0")) + bitstring;
-	  bits >>= 1;
-	}
-	printf("\n===================\nActual:\n%sBits:\n%sGuess:\n%s\n",
-	       pos.BoardString().c_str(),
-	       bitstring.c_str(),
-	       guess.BoardString().c_str());
-	*/
-	
-	total_positions++;
-	if (tot == 0) exactly_correct++;
-	piece_mistakes += piecem;
-	castling_mistakes += castlem;
-	move_mistakes += movem;
+    const int tot = piecem + castlem + movem;
+    {
+      WriteMutexLock ml(&counters_m);
+
+      /*
+      string bitstring;
+      for (int x = 0; x < 64; x++) {
+        if ((x & 7) == 0) bitstring = "\n" + bitstring;
+        bitstring = ((string)((bits & 1) ? "1" : "0")) + bitstring;
+        bits >>= 1;
       }
-    };
+      printf("\n===================\nActual:\n%sBits:\n%sGuess:\n%s\n",
+             pos.BoardString().c_str(),
+             bitstring.c_str(),
+             guess.BoardString().c_str());
+      */
+
+      total_positions++;
+      if (tot == 0) exactly_correct++;
+      piece_mistakes += piecem;
+      castling_mistakes += castlem;
+      move_mistakes += movem;
+    }
+  };
 
   ParallelApp(positions, AppMe, 30);
-  fprintf(stderr, "Ran eval in %.2fs\n", eval_timer.MS() / 1000.0);
+  fprintf(stderr, "Ran eval in %.2fs\n", eval_timer.Seconds());
   fflush(stderr);
-  
+
   int64 total_mistakes = piece_mistakes + castling_mistakes + move_mistakes;
-  
+
   printf("ModelInfo [%s]\n"
          "Over %lld positions:\n"
-	 "  %lld exactly correct (%.2f%%)\n"
-	 "  %lld piece mistakes (%.2f/pos)\n"
-	 "  %lld castling mistakes (%.2f/pos)\n"
-	 "  %lld move mistakes (%.2f/pos)\n"
-	 "  %lld total mistakes (%.2f/pos)\n",
-	 unblinder->ModelInfo().c_str(),
-	 total_positions,
-	 exactly_correct, (exactly_correct * 100.0) / total_positions,
-	 piece_mistakes, (piece_mistakes / (double)total_positions),
-	 castling_mistakes, (castling_mistakes / (double)total_positions),
-	 move_mistakes, (move_mistakes / (double)total_positions),
-	 total_mistakes, (total_mistakes / (double)total_positions));
+         "  %lld exactly correct (%.2f%%)\n"
+         "  %lld piece mistakes (%.2f/pos)\n"
+         "  %lld castling mistakes (%.2f/pos)\n"
+         "  %lld move mistakes (%.2f/pos)\n"
+         "  %lld total mistakes (%.2f/pos)\n",
+         unblinder->ModelInfo().c_str(),
+         total_positions,
+         exactly_correct, (exactly_correct * 100.0) / total_positions,
+         piece_mistakes, (piece_mistakes / (double)total_positions),
+         castling_mistakes, (castling_mistakes / (double)total_positions),
+         move_mistakes, (move_mistakes / (double)total_positions),
+         total_mistakes, (total_mistakes / (double)total_positions));
 
   return 0;
 }
