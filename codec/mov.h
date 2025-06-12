@@ -1,5 +1,6 @@
 
-// Incomplete!
+// Incomplete! But it can successfully write simple files.
+//
 // The MOV file format. This is sometimes also known as the QuickTime
 // file format. It's structurally identical to MP4, so you could
 // possibly use this to work with MP4 files.
@@ -44,9 +45,11 @@ struct MOV {
   static constexpr int DURATION_24 = 2500;
 
   // An in-progress output stream (open file). Only basic video
-  // is supported now. Create this with OpenOut below.
+  // is supported now. Create this with OpenOut below. Single threaded!
   struct Out {
 
+    // Most uses just call AddFrame to add the next frame, and
+    // everything else is taken care of.
     void AddFrame(const ImageRGBA &img);
 
     // Automatically finalizes.

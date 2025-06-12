@@ -1,4 +1,5 @@
 
+#include <cstdint>
 #include <vector>
 
 #include "image.h"
@@ -57,6 +58,9 @@ struct Animation {
     // averaged together. Increasing this is the simplest way to
     // get fewer frames in the output.
     int blend_frames = 20;
+
+    // If this is not zero, start with a canvas of the given color.
+    uint32_t background_color = 0x00000000;
 
     // 0 = no output
     int verbosity = 1;

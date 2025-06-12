@@ -6,9 +6,11 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <numbers>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -35,6 +37,10 @@ namespace {
 static constexpr bool DEBUG_ANIMATION = false;
 
 struct Region {
+  // Optional priority for ordering; lower numbers are drawn
+  // first. Priority of zero is the default and these are
+  // ordered by layer size or other heuristics.
+  int64_t priority = 0;
   std::unordered_set<int> pixels;
   // L*A*B* color for nearest (perceptual) color computation.
   float l = 0.0, a = 0.0, b = 0.0;
@@ -421,6 +427,17 @@ struct AnimationImpl : public Animation {
     Prep();
 
     // First thing we do is order the regions.
+    //
+    // If we have a background color, that layer should
+    // be first, as it is trivially satisfied.
+    if (opt.background_color != 0x00000000) {
+      CHECK(regions.contains(opt.background_color)) << "There must be "
+        "pixels of exactly the background color. This could be 'fixed' "
+        "I guess, but it is probably a mistake?";
+      regions[opt.background_color].priority =
+        std::numeric_limits<int64_t>::min();
+    }
+
     // The simplest heuristic is to order by the number of
     // total pixels; this makes the big chunks of color go
     // first, and the highlights and shadows go after those.
@@ -429,8 +446,13 @@ struct AnimationImpl : public Animation {
       layer_colors.push_back(c);
     std::sort(layer_colors.begin(), layer_colors.end(),
               [this](uint32_t c1, uint32_t c2) {
-                return regions[c1].pixels.size() >
-                  regions[c2].pixels.size();
+                const Region &r1 = regions[c1];
+                const Region &r2 = regions[c2];
+                if (r1.priority == r2.priority) {
+                  return r1.pixels.size() > r1.pixels.size();
+                } else {
+                  return r1.priority < r2.priority;
+                }
               });
 
     std::unordered_map<uint32_t, int> region_to_layer;
@@ -464,6 +486,9 @@ struct AnimationImpl : public Animation {
     }
 
     ImageRGBA frame(in.Width(), in.Height());
+    if (opt.background_color != 0x00000000) {
+      frame.Clear32(opt.background_color);
+    }
 
     std::vector<ImageRGBA> all_frames;
 
@@ -905,7 +930,11 @@ struct AnimationImpl : public Animation {
     using Pos = typename Tree2D<int, char>::Pos;
     for (int idx : region.pixels) {
       const auto &[x, y] = UnIdx(idx);
-      remaining.Insert(x, y, 0);
+      // The image may already have the correct color, primarily
+      // when it is the background color.
+      if (frame->GetPixel32(x, y) != layer_colors[z]) {
+        remaining.Insert(x, y, 0);
+      }
     }
     const int start_pixels = remaining.Size();
 

@@ -22,6 +22,11 @@ object AutoDrawArg of
 
     blend-frames : int,
 
+    (* As hex color with alpha. Ignored if 0x00000000.
+       This is the starting color of the frame; must
+       be a color in the image. *)
+    background-color : int,
+
     verbosity : int }
 
 

@@ -786,6 +786,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
       .max_fragile_piece_size = 10,
       .timesteps_per_frame = 8,
       .blend_frames = 20,
+      .background_color = 0x00000000,
       .verbosity = 0,
     };
 
@@ -812,6 +813,7 @@ Value *Execution::DoBinop(Primop primop, Value *a, Value *b,
     SET_INT_FIELD(timesteps_per_frame, "timesteps-per-frame");
     SET_INT_FIELD(blend_frames, "blend-frames");
     SET_INT_FIELD(verbosity, "verbosity");
+    SET_INT_FIELD(background_color, "background-color");
 
     Document *doc = DocumentHook();
     const ImageRGBA *image = doc->GetImageByName(*imghandle);

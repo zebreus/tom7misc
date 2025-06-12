@@ -17,7 +17,7 @@
 #include "image.h"
 #include "ansi.h"
 
-static constexpr int VERBOSE = 1;
+static constexpr int VERBOSE = 0;
 
 MovRecorder::MovRecorder(std::unique_ptr<MOV::Out> out) :
   out(std::move(out)),
