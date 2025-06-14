@@ -18,24 +18,21 @@
 
 #include "quad64.h"
 
-#include <memory>
-#include <vector>
-#include <optional>
-#include <utility>
-#include <numeric>
 #include <bit>
 #include <cstdint>
-
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
+#include <cstdio>
+#include <memory>
+#include <numeric>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "quadmodll64.h"
 
-#include "numbers.h"
-#include "base/stringprintf.h"
+#include "base/int128.h"
 #include "base/logging.h"
 #include "factorization.h"
+#include "numbers.h"
 
 using namespace std;
 

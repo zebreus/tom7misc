@@ -1,7 +1,6 @@
 #ifndef _QUAD64_H
 #define _QUAD64_H
 
-#include <string>
 #include <vector>
 #include <utility>
 #include <cstdint>

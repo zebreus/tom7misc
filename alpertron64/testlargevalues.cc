@@ -41,7 +41,7 @@ static void SimpleMaxValues() {
       std::vector<std::pair<uint64_t, int>> factors =
         Factorization::Factorize(pow);
 
-      Solutions sol = SolveQuad64(pow, factors);
+      Solutions64 sol = SolveQuad64(pow, factors);
       (void)sol;
     }
 
@@ -74,7 +74,7 @@ static void ProductOfTwo() {
           std::vector<std::pair<uint64_t, int>> factors =
             Factorization::Factorize(pow.value());
 
-          Solutions sol = SolveQuad64(pow.value(), factors);
+          Solutions64 sol = SolveQuad64(pow.value(), factors);
           (void)sol;
         }
       }

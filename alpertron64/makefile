@@ -1,4 +1,4 @@
-default: quad.exe test.exe maxvalues.exe grid.exe testlargepowers.exe
+default: quad.exe test.exe maxvalues.exe grid.exe testlargevalues.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -15,10 +15,12 @@ ifeq ($(UNAME),Cygwin)
   PLATFORM_LFLAGS=-static
 else ifeq ($(UNAME),Darwin)
   # Mac OS X
+  GMP_LFLAGS=`pkg-config --libs gmp`
+  GMP_CFLAGS=`pkg-config --cflags gmp` -DBIG_USE_GMP
   CXX=g++
   CC=gcc
-  GMP_LFLAGS=-lgmp
-  GMP_CFLAGS=-DBIG_USE_GMP
+
+
 else
   # Linux
   CXX=g++

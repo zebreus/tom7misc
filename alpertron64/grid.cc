@@ -1,11 +1,14 @@
 
-#include "quad.h"
+#include "quad64.h"
 
-#include <bit>
-#include <array>
+#include <ctime>
+#include <format>
+#include <mutex>
 #include <string>
 #include <cstdio>
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -16,27 +19,15 @@
 #include "periodically.h"
 #include "ansi.h"
 #include "atomic-util.h"
-#include "util.h"
 #include "auto-histo.h"
-#include "crypt/lfsr.h"
 #include "arcfour.h"
-#include "randutil.h"
 #include "factorization.h"
 
 #include "sos-util.h"
 
-static constexpr int MAX_COEFF = 12;
-// Positive and negative, zero
-static constexpr int RADIX = MAX_COEFF * 2 + 1;
-// Only test two random x,y pairs.
-static constexpr int RADIX_F = 2;
-
-static constexpr bool COMPUTE_F = true;
 // When computing F, number of bits we allow X and Y to be.
 static constexpr int XY_BITS = 30;
 static_assert(XY_BITS < 32);
-
-static constexpr uint64_t SEED = 0xCAFEBABE;
 
 using namespace std;
 
@@ -52,24 +43,24 @@ DECLARE_COUNTERS(count_any,
                  count_done);
 
 static string CounterString() {
-  return StringPrintf(ABLUE("%lld") " any "
-                      AGREEN("%lld") " quad "
-                      APURPLE("%lld") " lin "
-                      ACYAN("%lld") " pt "
-                      AYELLOW("%lld") " rec "
-                      AGREY("%lld") " none "
-                      ARED("%lld") " int",
-                      count_any.Read(),
-                      count_quad.Read(),
-                      count_linear.Read(),
-                      count_point.Read(),
-                      count_recursive.Read(),
-                      count_none.Read(),
-                      count_interesting.Read());
+  return std::format(ABLUE("{}") " any "
+                     AGREEN("{}") " quad "
+                     APURPLE("{}") " lin "
+                     ACYAN("{}") " pt "
+                     AYELLOW("{}") " rec "
+                     AGREY("{}") " none "
+                     ARED("{}") " int",
+                     count_any.Read(),
+                     count_quad.Read(),
+                     count_linear.Read(),
+                     count_point.Read(),
+                     count_recursive.Read(),
+                     count_none.Read(),
+                     count_interesting.Read());
 }
 
 static void RunGrid() {
-  std::string seed = StringPrintf("grid.%lld", time(nullptr));
+  std::string seed = std::format("grid.{}", time(nullptr));
   ArcFour rc(seed);
 
   for (int i = 0; i < 80; i++)
@@ -132,7 +123,7 @@ static void RunGrid() {
           std::vector<std::pair<uint64_t, int>> factors =
             Factorization::Factorize(f);
 
-          Solutions sols = SolveQuad(f, factors);
+          Solutions64 sols = SolveQuad64(f, factors);
           const double sol_ms = sol_timer.Seconds() * 1000.0;
           local_timing.push_back(sol_ms);
 
@@ -148,7 +139,7 @@ static void RunGrid() {
             fclose(file);
           }
 
-          for (const PointSolution &point : sols.points) {
+          for (const PointSolution64 &point : sols.points) {
             count_point++;
             Assert("point", point.X, point.Y);
           }

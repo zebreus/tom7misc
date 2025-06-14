@@ -18,20 +18,24 @@
 
 #include "quadmodll64.h"
 
+#include <bit>
+#include <cstdint>
+#include <format>
+#include <optional>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <cassert>
 #include <memory>
 #include <cstdio>
+#include <utility>
+#include <vector>
 
-#include "numbers.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-#include "montgomery64.h"
-
-#include "base/stringprintf.h"
+#include "base/int128.h"
 #include "base/logging.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "numbers.h"
 
 static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
@@ -42,12 +46,6 @@ static constexpr bool VERBOSE = false;
 // This used to be exposed to the caller for teach mode, but is
 // now fully internal.
 namespace {
-
-inline uint64_t GetU64(const BigInt &b) {
-  std::optional<uint64_t> uo = b.ToU64();
-  CHECK(uo.has_value());
-  return uo.value();
-}
 
 // This used to be four parallel arrays.
 struct Solution {
@@ -359,8 +357,8 @@ struct QuadModLL {
       };
 
     if (VERBOSE)
-    printf("Starting loop; cbits: %d nbits: %d\n",
-           correctBits, nbrBitsSquareRoot);
+      printf("Starting loop; cbits: %d nbits: %d\n",
+             correctBits, nbrBitsSquareRoot);
 
 
     while (correctBits < nbrBitsSquareRoot) {
@@ -380,31 +378,31 @@ struct QuadModLL {
       // Tmp1 = Tmp2 * discr;
 
       if (VERBOSE)
-      printf("tmp2 * discr = %s\n",
-             Big128(tmp1b).ToString().c_str());
+        printf("tmp2 * discr = %s\n",
+               Big128(tmp1b).ToString().c_str());
 
       if (VERBOSE)
-      fprintf(stderr,
-              "CSRMP(%llu, %llu, %llu, %llu, %d). Q=%s Sqrt=%s\n",
-              base, prime, discr, term, nbrBitsSquareRoot,
-              // q.ToString().c_str(),
-              Big128(q).ToString().c_str(),
-              Big128(sqr_root).ToString().c_str());
+        fprintf(stderr,
+                "CSRMP(%llu, %llu, %llu, %llu, %d). Q=%s Sqrt=%s\n",
+                base, prime, discr, term, nbrBitsSquareRoot,
+                // q.ToString().c_str(),
+                Big128(q).ToString().c_str(),
+                Big128(sqr_root).ToString().c_str());
 
       uint128_t tmp2b = tmp1b % q;
       CHECK((int128_t)tmp2b >= 0);
 
       if (VERBOSE)
-      printf("tmp2b: %s = %s\n",
-             Big128(tmp2b).ToString().c_str(),
-             Big128i((int128_t)tmp2b).ToString().c_str());
+        printf("tmp2b: %s = %s\n",
+               Big128(tmp2b).ToString().c_str(),
+               Big128i((int128_t)tmp2b).ToString().c_str());
       // Tmp2 = Tmp1 % Big128(q);
       int128_t tmp2c = (int128_t)3 - (int128_t)tmp2b;
 
       if (VERBOSE)
-      printf("threeminus: %s  sqr_root: %s\n",
-             Big128i(tmp2c).ToString().c_str(),
-             Big128(sqr_root).ToString().c_str());
+        printf("threeminus: %s  sqr_root: %s\n",
+               Big128i(tmp2c).ToString().c_str(),
+               Big128(sqr_root).ToString().c_str());
 
       tmp2c %= term;
       if (tmp2c < 0) tmp2c += term;
@@ -413,9 +411,9 @@ struct QuadModLL {
       // Tmp1 = Tmp2 * SqrRoot;
 
       if (VERBOSE)
-      printf("%s * sqr_root = %s\n",
-             Big128i(tmp2c).ToString().c_str(),
-             Big128i(tmp1c).ToString().c_str());
+        printf("%s * sqr_root = %s\n",
+               Big128i(tmp2c).ToString().c_str(),
+               Big128i(tmp1c).ToString().c_str());
 
       int128_t tmp1d = tmp1c % (int128_t)term;
       if (tmp1d < 0) tmp1d += term;
@@ -429,7 +427,7 @@ struct QuadModLL {
       }
 
       if (VERBOSE)
-      printf("now even tmp1: %s\n", Big128(tmp1e).ToString().c_str());
+        printf("now even tmp1: %s\n", Big128(tmp1e).ToString().c_str());
 
       tmp1e >>= 1;
       tmp1e %= q;
@@ -437,14 +435,14 @@ struct QuadModLL {
       sqr_root = tmp1e;
 
       if (VERBOSE)
-      printf("  Loop bot: SqrRoot %s, Q %s\n",
-             Big128(sqr_root).ToString().c_str(),
-             Big128(q).ToString().c_str());
+        printf("  Loop bot: SqrRoot %s, Q %s\n",
+               Big128(sqr_root).ToString().c_str(),
+               Big128(q).ToString().c_str());
     }
 
     if (VERBOSE)
-    printf("After loop, sqr_root: %s\n",
-           Big128(sqr_root).ToString().c_str());
+      printf("After loop, sqr_root: %s\n",
+             Big128(sqr_root).ToString().c_str());
 
     // Get square root of discriminant from its inverse by multiplying
     // by discriminant.
@@ -457,17 +455,17 @@ struct QuadModLL {
     sqr_root %= term;
 
     auto Problem = [&]() {
-        return StringPrintf(
-            "Sqrt(%llu) mod p=%llu (discr: %lld, term: %llu; bits: %d)\n"
-            "Result = %llu\n"
-            "With Q: %s\n",
+        return std::format(
+            "Sqrt({}) mod p={} (discr: {}, term: {}; bits: {})\n"
+            "Result = {}\n"
+            "With Q: {}\n",
             base,
             prime,
             discr,
             term,
             nbrBitsSquareRoot,
-            sqr_root,
-            Big128(q).ToString().c_str());
+            Big128(sqr_root).ToString(),
+            Big128(q).ToString());
       };
 
     if (VERBOSE)

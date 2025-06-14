@@ -1,32 +1,38 @@
 
-#include "quad.h"
+#include "quad64.h"
 
 #include <bit>
 #include <array>
+#include <ctime>
+#include <format>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <cstdio>
 #include <cstdint>
+#include <tuple>
+#include <utility>
+#include <vector>
 
+#include "ansi.h"
+#include "arcfour.h"
+#include "atomic-util.h"
+#include "auto-histo.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "threadutil.h"
-#include "bignum/big.h"
 #include "bignum/big-overloads.h"
-#include "timer.h"
-#include "periodically.h"
-#include "ansi.h"
-#include "atomic-util.h"
-#include "util.h"
-#include "auto-histo.h"
+#include "bignum/big.h"
 #include "crypt/lfsr.h"
-#include "arcfour.h"
-#include "randutil.h"
 #include "factorization.h"
+#include "periodically.h"
+#include "randutil.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "util.h"
 
 #include "sos-util.h"
 
 static constexpr int BITS = 45;
-static constexpr uint64_t SEED = 0xCAFEBABE;
 
 using namespace std;
 
@@ -40,26 +46,27 @@ DECLARE_COUNTERS(count_done,
                  count_u7);
 
 static string CounterString() {
-  return StringPrintf(ABLUE("%lld") " done "
-                      // AGREEN("%lld") " quad "
-                      // APURPLE("%lld") " lin "
-                      // ACYAN("%lld") " pt "
-                      // AYELLOW("%lld") " rec "
-                      // AGREY("%lld") " none "
-                      ARED("%lld") " int",
-                      count_done.Read(),
-                      /*
-                        count_quad.Read(),
-                      count_linear.Read(),
-                      count_point.Read(),
-                      count_recursive.Read(),
-                      count_none.Read(), */
-                      count_interesting.Read()
-                      );
+  return std::format(ABLUE("{}") " done "
+                     // AGREEN("{}") " quad "
+                     // APURPLE("{}") " lin "
+                     // ACYAN("{}") " pt "
+                     // AYELLOW("{}") " rec "
+                     // AGREY("{}") " none "
+                     ARED("{}") " int",
+                     count_done.Read(),
+                     /*
+                       count_quad.Read(),
+                       count_linear.Read(),
+                       count_point.Read(),
+                       count_recursive.Read(),
+                       count_none.Read(), */
+                     count_interesting.Read()
+                     );
 }
 
+[[maybe_unused]]
 static void RunGrid() {
-  std::string seed = StringPrintf("grid.%lld", time(nullptr));
+  std::string seed = std::format("grid.{}", time(nullptr));
   ArcFour rc(seed);
 
   for (int i = 0; i < 80; i++)
@@ -133,7 +140,7 @@ static void RunGrid() {
           std::vector<std::pair<uint64_t, int>> factors =
             Factorization::Factorize(f);
 
-          Solutions sols = SolveQuad(f, factors);
+          Solutions64 sols = SolveQuad64(f, factors);
           /*
           local_max.emplace_back(
               BigInt::LogBase2(sols.vsquared.max),
@@ -152,7 +159,7 @@ static void RunGrid() {
             fclose(file);
           }
 
-          for (const PointSolution &point : sols.points) {
+          for (const PointSolution64 &point : sols.points) {
             Assert("point", point.X, point.Y);
           }
 
@@ -248,7 +255,7 @@ static void SimpleMaxValues() {
       std::vector<std::pair<uint64_t, int>> factors =
         Factorization::Factorize(pow);
 
-      Solutions sol = SolveQuad(pow, factors);
+      Solutions64 sol = SolveQuad64(pow, factors);
       (void)sol;
     }
 
@@ -278,7 +285,7 @@ static void ProductOfTwo() {
           std::vector<std::pair<uint64_t, int>> factors =
             Factorization::Factorize(pow.value());
 
-          Solutions sol = SolveQuad(pow.value(), factors);
+          Solutions64 sol = SolveQuad64(pow.value(), factors);
           (void)sol;
         }
       }
