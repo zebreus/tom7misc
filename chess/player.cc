@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <format>
 #include <string>
 #include <cstdint>
 #include <tuple>
@@ -905,16 +906,16 @@ struct SinglePlayerPlayer : public StatelessPlayer {
           p.ApplyMove(moves_rev[i]);
           p.SetBlackMove(black);
         }
-        explainer->SetMessage(StringPrintf("Mate in %d:%s",
-                                           moves_rev.size(),
-                                           mate.c_str()));
+        explainer->SetMessage(std::format("Mate in {}:{}",
+                                          moves_rev.size(),
+                                          mate));
         explainer->SetPosition(p);
       }
       return moves_rev[moves_rev.size() - 1];
     } else {
       if (explainer)
-        explainer->SetMessage(StringPrintf("(mate not found within %d)",
-                                           max_depth));
+        explainer->SetMessage(std::format("(mate not found within {})",
+                                          max_depth));
       std::vector<Position::Move> legal = pos.GetLegalMoves();
       CHECK(!legal.empty());
       return legal[RandTo32(&rc, legal.size())];

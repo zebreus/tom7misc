@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <format>
 #include <mutex>
 #include <memory>
 #include <shared_mutex>
@@ -813,14 +814,14 @@ static void TournamentThread(int thread_id,
           white_name, black_name,
           [&](Cell *cell) {
             auto Error = [&]() {
-                return StringPrintf(
-                    "---- %s vs %s ----\n"
+                return std::format(
+                    "---- {} vs {} ----\n"
                     "Supposedly deterministic matchup, but...:\n"
-                    "white wins: %d\n"
-                    "white loses: %d\n"
-                    "draw: %d\n",
-                    white_name.c_str(),
-                    black_name.c_str(),
+                    "white wins: {}\n"
+                    "white loses: {}\n"
+                    "draw: {}\n",
+                    white_name,
+                    black_name,
                     cell->white_wins,
                     cell->white_losses,
                     cell->draws);
