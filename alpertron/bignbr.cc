@@ -13,19 +13,21 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
+// along with Alpertron Calculators.  If not, see
+// <http://www.gnu.org/licenses/>.
 
+#include <cstdint>
+#include <format>
 #include <stdio.h>
 #include <string.h>
-#include <math.h>
-#include <assert.h>
-
-#include "bignbr.h"
-#include "modmult.h"
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "bigconv.h"
+#include "bignbr.h"
+#include "bignum/big.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -36,12 +38,12 @@ static std::string LongNum(const BigInt &a) {
   if (num.size() > 80) {
     static constexpr int SHOW_SIDE = 8;
     int skipped = num.size() - (SHOW_SIDE * 2);
-    return StringPrintf("%s%s…(%d)…%s",
-                        sign.c_str(),
-                        num.substr(0, SHOW_SIDE).c_str(),
-                        skipped,
-                        num.substr(num.size() - SHOW_SIDE,
-                                   std::string::npos).c_str());
+    return std::format("%s%s…(%d)…%s",
+                       sign,
+                       num.substr(0, SHOW_SIDE),
+                       skipped,
+                       num.substr(num.size() - SHOW_SIDE,
+                                  std::string::npos));
   } else if (num.size() < 7) {
     return sign + num;
   } else {

@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <utility>
+#include <vector>
 
 #include "bignum/big.h"
 #include "bignbr.h"

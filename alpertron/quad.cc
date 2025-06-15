@@ -18,23 +18,23 @@
 
 #include "quad.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <memory>
-#include <vector>
 #include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-
-#include "quadmodll.h"
-#include "modmult.h"
-#include "bigconv.h"
-
-#include "base/stringprintf.h"
 #include "base/logging.h"
-#include "bignum/big.h"
+#include "base/stringprintf.h"
+#include "bigconv.h"
+#include "bignbr.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "modmult.h"
+#include "quadmodll.h"
 
 using namespace std;
 
@@ -1233,12 +1233,12 @@ struct Quad {
       }
 
       if (VERBOSE)
-      printf("FS: %c %s %s %s %d\n",
-             isBeven ? 'e' : 'o',
-             V.ToString().c_str(),
-             Alpha.ToString().c_str(),
-             Beta.ToString().c_str(),
-             periodNbr);
+        printf("FS: %c %s %s %s %d\n",
+               isBeven ? 'e' : 'o',
+               V.ToString().c_str(),
+               Alpha.ToString().c_str(),
+               Beta.ToString().c_str(),
+               periodNbr);
 
       // V must have the correct sign.
       if ((sign == SIGN_NEGATIVE) ? V >= 0 : V < 0) {

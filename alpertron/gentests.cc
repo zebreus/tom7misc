@@ -1,9 +1,11 @@
 
-#include "arcfour.h"
-#include "randutil.h"
+#include <cstdint>
+#include <cstdio>
 
-#include "bignum/big.h"
+#include "arcfour.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "randutil.h"
 
 int main(int argc, char **argv) {
 

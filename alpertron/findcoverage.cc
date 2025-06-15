@@ -1,21 +1,23 @@
 
-#include <string>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <format>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "ansi.h"
 #include "arcfour.h"
-#include "randutil.h"
-
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "subprocess.h"
-#include "ansi.h"
-#include "timer.h"
-#include "periodically.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
 #include "factorization.h"
+#include "periodically.h"
+#include "randutil.h"
+#include "subprocess.h"
+#include "timer.h"
 
 #define MAGNITUDE 16384
 
@@ -37,7 +39,7 @@ static std::vector<std::string> RunCmd(const std::string &cmd) {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  string seed = StringPrintf("findcoverage.%lld", time(nullptr));
+  string seed = std::format("findcoverage.{}", time(nullptr));
   ArcFour rc(seed);
 
   CHECK(argc == 2) << "./findcoverage.exe target_string";

@@ -18,20 +18,21 @@
 
 #include "quadmodll.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <cassert>
-#include <memory>
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
-
-#include "bignbr.h"
-#include "modmult.h"
-#include "bigconv.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
+#include <math.h>
+#include <memory>
+#include <string.h>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
+#include "bigconv.h"
+#include "bignbr.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "modmult.h"
 
 static constexpr bool VERBOSE = false;
 

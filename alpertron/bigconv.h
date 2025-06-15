@@ -2,6 +2,7 @@
 #ifndef _BIGCONV_H
 #define _BIGCONV_H
 
+#include <cstddef>
 #include <string>
 
 #include "bignum/big.h"

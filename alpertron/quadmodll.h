@@ -13,13 +13,15 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
+// along with Alpertron Calculators. If not, see
+// <http://www.gnu.org/licenses/>.
 
 #ifndef _QUADMODLL_H
 #define _QUADMODLL_H
 
-#include "bignbr.h"
 #include <functional>
+
+#include "bignum/big.h"
 
 using SolutionFn = std::function<void(const BigInt &value)>;
 

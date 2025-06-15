@@ -13,15 +13,16 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
+// along with Alpertron Calculators. If not, see
+// <http://www.gnu.org/licenses/>.
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <string>
 
+#include "bignum/big.h"
 #include "bignbr.h"
-#include "quad.h"
 #include "bigconv.h"
+#include "quad.h"
 
 int main(int argc, char* argv[]) {
   if (argc != 7) {
@@ -47,7 +48,7 @@ int main(int argc, char* argv[]) {
 
   static constexpr int TIMES = 1;
   if (TIMES > 1)
-  fprintf(stderr, "Running %d times!\n", TIMES);
+    fprintf(stderr, "Running %d times!\n", TIMES);
   for (int i = 0; i < TIMES; i++) {
     std::string output;
     QuadBigInt(a, b, c, d, e, f, &output);

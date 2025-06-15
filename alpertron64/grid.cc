@@ -1,27 +1,26 @@
 
 #include "quad64.h"
 
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <format>
 #include <mutex>
 #include <string>
-#include <cstdio>
-#include <cstdint>
 #include <utility>
 #include <vector>
 
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "threadutil.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-#include "timer.h"
-#include "periodically.h"
 #include "ansi.h"
+#include "arcfour.h"
 #include "atomic-util.h"
 #include "auto-histo.h"
-#include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 #include "factorization.h"
+#include "periodically.h"
+#include "threadutil.h"
+#include "timer.h"
 
 #include "sos-util.h"
 
@@ -114,7 +113,7 @@ static void RunGrid() {
 
                 printf("\n\n" ARED("Problem") ": %s\n\n\n",
                        problem.c_str());
-                abort();
+                std::abort();
               }
             };
 

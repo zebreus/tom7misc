@@ -18,9 +18,8 @@
 #ifndef _BIGNBR_H
 #define _BIGNBR_H
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdio.h>
+#include <utility>
+#include <vector>
 
 #include "bignum/big.h"
 
@@ -51,7 +50,8 @@ void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
                    int len);
 
 // Modular. Perhaps should be in modmult.
-void SubtractBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pDiff, int nbrLen);
+void SubtractBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pDiff,
+                    int nbrLen);
 
 static inline int UintToInt(unsigned int value) {
   return (int)value;

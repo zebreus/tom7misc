@@ -1,20 +1,11 @@
 
-#include "quad.h"
-
-#include <array>
 #include <string>
 #include <cstdio>
-#include <cstdint>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "threadutil.h"
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
-#include "timer.h"
-#include "periodically.h"
 #include "ansi.h"
-#include "atomic-util.h"
 
 using namespace std;
 

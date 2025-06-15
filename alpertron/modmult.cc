@@ -13,25 +13,25 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
+// along with Alpertron Calculators. If not, see
+// <http://www.gnu.org/licenses/>.
 
 #include "modmult.h"
 
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <stdint.h>
-#include <assert.h>
-
+#include <algorithm>
 #include <bit>
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <memory>
 
-#include "bignbr.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
 #include "base/logging.h"
 #include "bigconv.h"
-#include "base/stringprintf.h"
+#include "bignbr.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
 
 static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;

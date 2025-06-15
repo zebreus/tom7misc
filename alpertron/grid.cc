@@ -2,22 +2,29 @@
 #include "quad.h"
 
 #include <array>
-#include <string>
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <format>
+#include <mutex>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "threadutil.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-#include "timer.h"
-#include "periodically.h"
 #include "ansi.h"
+#include "arcfour.h"
 #include "atomic-util.h"
 #include "auto-histo.h"
-#include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "periodically.h"
 #include "randutil.h"
+#include "threadutil.h"
+#include "timer.h"
 
 static constexpr int MAX_COEFF = 12;
 // Positive and negative, zero
@@ -31,8 +38,9 @@ static constexpr int XY_BITS = 30;
 static_assert(XY_BITS < 32);
 
 using namespace std;
+using int64 = int64_t;
 
-std::mutex file_mutex;
+static std::mutex file_mutex;
 
 DECLARE_COUNTERS(count_any,
                  count_quad,
@@ -71,7 +79,7 @@ static inline int64_t PosNeg(int64_t center, int64_t n) {
 }
 
 static void RunGrid() {
-  std::string seed = StringPrintf("grid.%lld", time(nullptr));
+  std::string seed = std::format("grid.{}", time(nullptr));
   ArcFour rc(seed);
 
   for (int i = 0; i < 80; i++)
@@ -247,7 +255,7 @@ static void RunGrid() {
 
                 printf("\n\n" ARED("Problem") ": %s\n\n\n",
                        problem.c_str());
-                abort();
+                std::abort();
               }
             };
 
@@ -377,8 +385,7 @@ static void RunGrid() {
 
               printf("\n\n" ARED("Problem") ": %s\n\n\n",
                      problem.c_str());
-              abort();
-
+              std::abort();
             }
           }
 

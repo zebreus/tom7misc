@@ -13,13 +13,13 @@ ifeq ($(UNAME),Cygwin)
   CC=x86_64-w64-mingw32-g++
   PLATFORM_CFLAGS=
   PLATFORM_LFLAGS=-static
+
 else ifeq ($(UNAME),Darwin)
   # Mac OS X
   GMP_LFLAGS=`pkg-config --libs gmp`
   GMP_CFLAGS=`pkg-config --cflags gmp` -DBIG_USE_GMP
   CXX=g++
   CC=gcc
-
 
 else
   # Linux

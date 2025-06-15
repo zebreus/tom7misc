@@ -2,14 +2,14 @@
 #include "quad64.h"
 
 #include <bit>
-#include <array>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <ctime>
 #include <format>
 #include <mutex>
 #include <optional>
 #include <string>
-#include <cstdio>
-#include <cstdint>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -25,7 +25,6 @@
 #include "crypt/lfsr.h"
 #include "factorization.h"
 #include "periodically.h"
-#include "randutil.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
@@ -36,14 +35,7 @@ static constexpr int BITS = 45;
 
 using namespace std;
 
-DECLARE_COUNTERS(count_done,
-                 count_interesting,
-                 count_u2,
-                 count_u3,
-                 count_u4,
-                 count_u5,
-                 count_u6,
-                 count_u7);
+DECLARE_COUNTERS(count_done, count_interesting);
 
 static string CounterString() {
   return std::format(ABLUE("{}") " done "
@@ -133,7 +125,7 @@ static void RunGrid() {
 
                 printf("\n\n" ARED("Problem") ": %s\n\n\n",
                        problem.c_str());
-                abort();
+                std::abort();
               }
             };
 

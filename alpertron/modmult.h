@@ -2,7 +2,9 @@
 #define _MODMULT_H
 
 #include <memory>
+#include <vector>
 
+#include "bignum/big.h"
 #include "bignbr.h"
 
 // These used to be globals. Now calling GetMontgomeryParams* creates them.

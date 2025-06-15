@@ -1,28 +1,16 @@
 
-#include <bit>
-#include <array>
-#include <string>
+#include <optional>
 #include <cstdio>
 #include <cstdint>
+#include <utility>
+#include <vector>
 
-#include "quad64.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "threadutil.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-#include "timer.h"
-#include "periodically.h"
 #include "ansi.h"
-#include "atomic-util.h"
-#include "util.h"
-#include "auto-histo.h"
-#include "crypt/lfsr.h"
-#include "arcfour.h"
-#include "randutil.h"
+#include "base/logging.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
 #include "factorization.h"
-
-#include "sos-util.h"
+#include "quad64.h"
 
 using namespace std;
 
