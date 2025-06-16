@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <functional>
 #include <optional>
 #include <string>
@@ -19,10 +20,11 @@
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/opcodes.h"
+
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "byteset.h"
+#include "byte-set.h"
 #include "formula.h"
 #include "sourcemap.h"
 #include "util.h"
@@ -56,7 +58,7 @@ std::optional<std::string> Bank::GetLabel(uint16_t addr) const {
 // just increase cost or conservativity).
 static std::string PushLabel(const std::string &label,
                              const std::string &suffix) {
-  return StringPrintf("%s.%s", label.c_str(), suffix.c_str());
+  return std::format("{}.{}", label, suffix);
 }
 static std::string PopLabel(const std::string &label) {
   auto pos = label.rfind('.');
@@ -65,30 +67,30 @@ static std::string PopLabel(const std::string &label) {
 }
 
 std::string Modeling::TagString(const BlockTag &tag) {
-  return StringPrintf(ACYAN("%s") AGREY(":") AYELLOW("%04x"),
-                      tag.label.c_str(), tag.addr);
+  return std::format(ACYAN("{}") AGREY(":") AYELLOW("{:04x}"),
+                     tag.label, tag.addr);
 }
 
 std::string Modeling::PlainTagString(const BlockTag &tag) {
-  return StringPrintf("%s:%04x", tag.label.c_str(), tag.addr);
+  return std::format("{}:{:04x}", tag.label, tag.addr);
 }
 
 std::string State::DebugString() const {
   std::string ret;
-  StringAppendF(
+  AppendFormat(
       &ret,
       AWHITE(" == state == ") "\n"
-      AGREEN("A") ":%s\n"
-      ABLUE("X") ":%s\n"
-      ACYAN("Y") ":%s\n"
-      APURPLE("S") ":%s\n"
-      AORANGE("P") ":%s\n"
+      AGREEN("A") ":{}\n"
+      ABLUE("X") ":{}\n"
+      ACYAN("Y") ":{}\n"
+      APURPLE("S") ":{}\n"
+      AORANGE("P") ":{}\n"
       AGREY("(memory elided)") "\n",
-      A.DebugString().c_str(),
-      X.DebugString().c_str(),
-      Y.DebugString().c_str(),
-      S.DebugString().c_str(),
-      P.DebugString().c_str());
+      A.DebugString(),
+      X.DebugString(),
+      Y.DebugString(),
+      S.DebugString(),
+      P.DebugString());
   // Show stack, at least if stack is definite.
   if (S.Size() == 1) {
     uint8_t sp = S.GetSingleton();
@@ -96,11 +98,11 @@ std::string State::DebugString() const {
     for (int i = std::max((int)sp - 2, 0);
          i < std::min((int)sp + 6, 0xFF);
          i++) {
-      StringAppendF(&ret,
-                    "Stack[" APURPLE("%02x") "] %s = %s\n",
-                    i,
-                    (i == sp) ? ABLUE("**") : "  ",
-                    RAM(0x100 + i).DebugString().c_str());
+      AppendFormat(&ret,
+                   "Stack[" APURPLE("{:02x}") "] {} = {}\n",
+                   i,
+                   (i == sp) ? ABLUE("**") : "  ",
+                   RAM(0x100 + i).DebugString());
     }
   }
   return ret;
@@ -842,11 +844,11 @@ void Modeling::Expand() {
     if (state.A.Empty() || state.X.Empty() || state.Y.Empty() ||
         state.S.Empty() || state.P.Empty()) {
       LOG(FATAL) <<
-        StringPrintf("Tried to execute addr %04x " AGREY("(%s)") " in "
-                     "impossible state:\n%s\n",
+        std::format("Tried to execute addr {:04x} " AGREY("({})") " in "
+                     "impossible state:\n{}\n",
                      instruction_pc,
                      Opcodes::opcode_name[opcode],
-                     state.DebugString().c_str());
+                     state.DebugString());
     }
 
     if (inst_verbose > 1) {
@@ -1061,7 +1063,7 @@ void Modeling::Expand() {
 
       BlockTag subroutine_tag =
         BlockTag(PushLabel(current_label,
-                           StringPrintf("%04x", instruction_pc)),
+                           std::format("{:04x}", instruction_pc)),
                  daddr);
       EnterBlock(subroutine_tag, state);
 
@@ -2091,8 +2093,8 @@ void Modeling::Expand() {
 
     default:
       LOG(FATAL) << "Unimplemented (and unexpected) instruction:\n" <<
-        StringPrintf("%04x: 0x%02x (%s)",
-                     pc - 1, opcode, Opcodes::opcode_name[opcode]) <<
+        std::format("{:04x}: 0x{:02x} ({})",
+                    pc - 1, opcode, Opcodes::opcode_name[opcode]) <<
         "\nIt was not seen when tracing real emulator execution, but\n"
         "it could just be that the model can't rule it out, or found\n"
         "a new possibility.\n";
@@ -2171,7 +2173,7 @@ void Modeling::WriteAnnotatedAssembly(const SourceMap &source_map,
 }
 
 std::string Modeling::ErrorLocString(const ErrorLoc &loc) const {
-  return StringPrintf("PC: " AORANGE("%04x"), loc.pc);
+  return std::format("PC: " AORANGE("{:04x}"), loc.pc);
 }
 
 void Modeling::CheckMemoryInvariants(const ErrorLoc &loc,

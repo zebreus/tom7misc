@@ -16,7 +16,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bounds.h"
-#include "byteset.h"
+#include "byte-set.h"
 #include "formula.h"
 #include "image.h"
 #include "mario-util.h"

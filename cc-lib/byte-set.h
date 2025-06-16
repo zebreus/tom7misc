@@ -1,10 +1,8 @@
 // Various representations of a set of bytes, for program
 // analysis applications.
-//
-// TODO: To cc-lib?
 
-#ifndef _BYTESET_H
-#define _BYTESET_H
+#ifndef _CC_LIB_BYTE_SET_H
+#define _CC_LIB_BYTE_SET_H
 
 #include <bit>
 #include <cstddef>
@@ -25,13 +23,7 @@ struct ByteSet {
   ByteSet() { u.a = u.b = u.c = u.d = 0; }
   inline ByteSet(const std::initializer_list<uint8_t> &values);
 
-  bool Empty() const {
-    return (u.a | u.b | u.c | u.d) == 0;
-  }
-
-  // TODO: It makes sense for these to be inline, but move most of this
-  // stuff to the bottom of the file.
-
+  inline bool Empty() const;
   inline bool Contains(uint8_t v) const;
   inline void Add(uint8_t v);
   inline void AddSet(const ByteSet &other);
@@ -160,25 +152,9 @@ struct ByteSet {
   }
 
   // Details exposed for benchmarking.
-  int SizeSIMD() const {
-    return std::popcount<uint64_t>(u.a) +
-      std::popcount<uint64_t>(u.b) +
-      std::popcount<uint64_t>(u.c) +
-      std::popcount<uint64_t>(u.d);
-  }
-
+  inline int SizeSIMD() const;
   [[deprecated]]
-  int SizeASM() const {
-    uint64_t a = u.a, b = u.b, c = u.c, d = u.d;
-    uint64_t a_count = 0, b_count = 0, c_count = 0, d_count = 0;
-
-    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(a_count) : "r"(a) :);
-    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(b_count) : "r"(b) :);
-    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(c_count) : "r"(c) :);
-    __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(d_count) : "r"(d) :);
-
-    return a_count + b_count + c_count + d_count;
-  }
+  inline int SizeASM() const;
 
  private:
   friend class const_iterator;
@@ -398,6 +374,10 @@ ByteSet ByteSet::Intersection(const ByteSet &s, const ByteSet &t) {
   return ret;
 }
 
+bool ByteSet::Empty() const {
+  return (u.a | u.b | u.c | u.d) == 0;
+}
+
 int ByteSet::Size() const {
   // TODO PERF: This version with std::popcount compiles into
   // SIMD instructions with clang, which takes about twice as
@@ -407,6 +387,27 @@ int ByteSet::Size() const {
   // printfs. So I'm not confident that I am using the
   // register constraints correctly.
   return SizeSIMD();
+}
+
+// Details exposed for benchmarking.
+int ByteSet::SizeSIMD() const {
+  return std::popcount<uint64_t>(u.a) +
+    std::popcount<uint64_t>(u.b) +
+    std::popcount<uint64_t>(u.c) +
+    std::popcount<uint64_t>(u.d);
+}
+
+[[deprecated]]
+int ByteSet::SizeASM() const {
+  uint64_t a = u.a, b = u.b, c = u.c, d = u.d;
+  uint64_t a_count = 0, b_count = 0, c_count = 0, d_count = 0;
+
+  __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(a_count) : "r"(a) :);
+  __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(b_count) : "r"(b) :);
+  __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(c_count) : "r"(c) :);
+  __asm__ volatile ("popcnt %1, %0\n\t" : "=r"(d_count) : "r"(d) :);
+
+  return a_count + b_count + c_count + d_count;
 }
 
 #endif

@@ -6,7 +6,7 @@
 #include "timer.h"
 
 #include "base/do-not-optimize.h"
-#include "byteset.h"
+#include "byte-set.h"
 
 static constexpr int OUTER = 10000;
 static constexpr int INNER = 1'000'000;

@@ -81,7 +81,12 @@
       (goto-char (point-min))
       (while (search-forward replace-from nil t)
         (replace-match "#include \"" nil t)))
-  ))
+    ;;; and on a mac...
+    (let ((replace-from "#include \"/Users/twm/tom7misc/cc-lib/"))
+      (goto-char (point-min))
+      (while (search-forward replace-from nil t)
+        (replace-match "#include \"" nil t)))
+    ))
 
 ;; use "clangd --help". TODO: --path-mappings may be helpful here
 (with-eval-after-load 'eglot
@@ -840,8 +845,6 @@
           (lambda ()
             (local-set-key "g" 'revert-without-prompting)))
 
-
-
 ;; added this to suppress "free variable" warning at startup in 26.1.
 ;; not sure if it's the right way -tom7 28 Jul 2018
 (setq langelem nil)
@@ -965,8 +968,13 @@
   (setq indent-tabs-mode nil))
 
 (defun disable-electric ()
+  (interactive)
   "Turn off electric indent mode."
   (electric-indent-local-mode -1))
+
+;; But also, eglot with clangd will try reformatting
+;; as you type. I'm ignoring this by customizing
+;; onTypeFormatting in eglot-ignored-server-capabilities.
 
 (add-hook 'aaph-mode-hook 'save-without-trailing-whitespace)
 (add-hook 'aaph-mode-hook 'aaph-set-tabs)
@@ -1426,6 +1434,7 @@
  '(comint-input-ignoredups t)
  '(echo-keystrokes 0.5)
  '(flymake-mode-line-lighter "🪰")
+ '(eglot-ignored-server-capabilities '(:documentOnTypeFormattingProvider :inlayHintProvider))
  '(flyspell-issue-welcome-flag nil)
  '(show-paren-delay 0.0)
  '(show-paren-style (quote expression)))

@@ -17,7 +17,7 @@
 
 #include "../fceulib/emulator.h"
 #include "base/logging.h"
-#include "byteset.h"
+#include "byte-set.h"
 #include "formula.h"
 #include "hashing.h"
 #include "sourcemap.h"

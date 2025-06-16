@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "byteset.h"
+#include "byte-set.h"
 
 struct ByteSetForm {
   ByteSet bs;
