@@ -32,75 +32,24 @@ struct ByteSet {
   // TODO: It makes sense for these to be inline, but move most of this
   // stuff to the bottom of the file.
 
-  bool Contains(uint8_t v) const {
-    int i = v >> 6;
-    int bit = v & 0b00111111;
-    return !!(1 & (u.words[i] >> (63 - bit)));
-  }
-
-  void Add(uint8_t v) {
-    int i = v >> 6;
-    int bit = v & 0b00111111;
-    u.words[i] |= uint64_t{1} << (63 - bit);
-  }
-
-  void AddSet(const ByteSet &other) {
-    u.a |= other.u.a;
-    u.b |= other.u.b;
-    u.c |= other.u.c;
-    u.d |= other.u.d;
-  }
+  inline bool Contains(uint8_t v) const;
+  inline void Add(uint8_t v);
+  inline void AddSet(const ByteSet &other);
+  inline int Size() const;
 
   std::string DebugString() const;
 
-  static ByteSet Top() {
-    ByteSet s;
-    s.u.a = s.u.b = s.u.c = s.u.d = ~uint64_t{0};
-    return s;
-  }
+  inline static ByteSet Top();
+  inline static ByteSet Bottom();
 
-  static ByteSet Bottom() {
-    return ByteSet();
-  }
+  inline static ByteSet Singleton(uint8_t v);
 
-  static ByteSet Singleton(uint8_t v) {
-    ByteSet s;
-    s.Add(v);
-    return s;
-  }
-
-  static ByteSet Union(const ByteSet &s, const ByteSet &t) {
-    ByteSet ret;
-    ret.u.a = s.u.a | t.u.a;
-    ret.u.b = s.u.b | t.u.b;
-    ret.u.c = s.u.c | t.u.c;
-    ret.u.d = s.u.d | t.u.d;
-    return ret;
-  }
-
-  static ByteSet Intersection(const ByteSet &s, const ByteSet &t) {
-    ByteSet ret;
-    ret.u.a = s.u.a & t.u.a;
-    ret.u.b = s.u.b & t.u.b;
-    ret.u.c = s.u.c & t.u.c;
-    ret.u.d = s.u.d & t.u.d;
-    return ret;
-  }
+  inline static ByteSet Union(const ByteSet &s, const ByteSet &t);
+  inline static ByteSet Intersection(const ByteSet &s, const ByteSet &t);
 
   // true if a <= b.
   static bool Subset(const ByteSet &a, const ByteSet &b) {
     return a == Intersection(a, b);
-  }
-
-  int Size() const {
-    // TODO PERF: This version with std::popcount compiles into
-    // SIMD instructions with clang, which takes about twice as
-    // much time as using the POPCNT instruction. The assembly
-    // version below is straightforward, but I had problems where
-    // inline assembly would work but only in the presence of
-    // printfs. So I'm not confident that I am using the
-    // register constraints correctly.
-    return SizeSIMD();
   }
 
   // Get one element from the set; intended for uses where
@@ -394,6 +343,70 @@ ByteSet::ByteSet(const std::initializer_list<uint8_t> &values) : ByteSet() {
   for (uint8_t v : values) {
     Add(v);
   }
+}
+
+bool ByteSet::Contains(uint8_t v) const {
+  int i = v >> 6;
+  int bit = v & 0b00111111;
+  return !!(1 & (u.words[i] >> (63 - bit)));
+}
+
+void ByteSet::Add(uint8_t v) {
+  int i = v >> 6;
+  int bit = v & 0b00111111;
+  u.words[i] |= uint64_t{1} << (63 - bit);
+}
+
+void ByteSet::AddSet(const ByteSet &other) {
+  u.a |= other.u.a;
+  u.b |= other.u.b;
+  u.c |= other.u.c;
+  u.d |= other.u.d;
+}
+
+ByteSet ByteSet::Top() {
+  ByteSet s;
+  s.u.a = s.u.b = s.u.c = s.u.d = ~uint64_t{0};
+  return s;
+}
+
+ByteSet ByteSet::Bottom() {
+  return ByteSet();
+}
+
+ByteSet ByteSet::Singleton(uint8_t v) {
+  ByteSet s;
+  s.Add(v);
+  return s;
+}
+
+ByteSet ByteSet::Union(const ByteSet &s, const ByteSet &t) {
+  ByteSet ret;
+  ret.u.a = s.u.a | t.u.a;
+  ret.u.b = s.u.b | t.u.b;
+  ret.u.c = s.u.c | t.u.c;
+  ret.u.d = s.u.d | t.u.d;
+  return ret;
+}
+
+ByteSet ByteSet::Intersection(const ByteSet &s, const ByteSet &t) {
+  ByteSet ret;
+  ret.u.a = s.u.a & t.u.a;
+  ret.u.b = s.u.b & t.u.b;
+  ret.u.c = s.u.c & t.u.c;
+  ret.u.d = s.u.d & t.u.d;
+  return ret;
+}
+
+int ByteSet::Size() const {
+  // TODO PERF: This version with std::popcount compiles into
+  // SIMD instructions with clang, which takes about twice as
+  // much time as using the POPCNT instruction. The assembly
+  // version below is straightforward, but I had problems where
+  // inline assembly would work but only in the presence of
+  // printfs. So I'm not confident that I am using the
+  // register constraints correctly.
+  return SizeSIMD();
 }
 
 #endif

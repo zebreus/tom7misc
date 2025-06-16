@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <format>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -21,7 +22,7 @@ std::string TokenTypeString(TokenType t) {
   case COMMA: return "COMMA";
   case EQUALS: return "EQUALS";
   case LESS: return "LESS";
-  case LESSEQ: return "LESS";
+  case LESSEQ: return "LESSEQ";
   case GREATER: return "GREATER";
   case GREATEREQ: return "GREATEREQ";
   case PLUS: return "PLUS";
@@ -118,21 +119,23 @@ std::vector<Token> Tokenize(int line_num,
     } else if (int64_t num;
                RE2::Consume(&input, decimal_numeric_lit, &num)) {
       ret.push_back(Token{.type = NUMBER, .num = num});
+
     } else if (std::string hex;
                RE2::Consume(&input, hex_numeric_lit, &hex)) {
       ret.push_back(Token{
           .type = NUMBER,
           .num = strtol(hex.c_str(), nullptr, 16),
         });
+
     } else if (std::string bin;
                RE2::Consume(&input, binary_numeric_lit, &bin)) {
       ret.push_back(Token{
           .type = NUMBER,
           .num = strtol(bin.c_str(), nullptr, 2),
         });
+
     } else if (std::string str;
                RE2::Consume(&input, ident, &str)) {
-
       if (str == "in") {
         AddSimpleToken(IN);
         continue;
@@ -142,6 +145,7 @@ std::vector<Token> Tokenize(int line_num,
             .str = str,
           });
       }
+
     } else {
       LOG(FATAL) << "Could not parse line " << line_num
                  << " (tokenization):\n"
@@ -156,21 +160,21 @@ std::string ExpString(const Exp *e) {
   if (e == nullptr) return "??NULL??";
   switch (e->type) {
   case ExpType::LABEL:
-    return StringPrintf("'%s'", e->label.c_str());
+    return std::format("'{}'", e->label);
   case ExpType::NUMBER:
-    return StringPrintf("%lld", e->number);
+    return std::format("{}", e->number);
   case ExpType::HIGH_BYTE:
-    return StringPrintf(">%s", ExpString(e->a.get()).c_str());
+    return std::format(">{}", ExpString(e->a.get()));
   case ExpType::LOW_BYTE:
-    return StringPrintf("<%s", ExpString(e->a.get()).c_str());
+    return std::format("<{}", ExpString(e->a.get()));
   case ExpType::PLUS:
-    return StringPrintf("(%s + %s)",
-                        ExpString(e->a.get()).c_str(),
-                        ExpString(e->b.get()).c_str());
+    return std::format("({} + {})",
+                       ExpString(e->a.get()),
+                       ExpString(e->b.get()));
   case ExpType::MINUS:
-    return StringPrintf("(%s - %s)",
-                        ExpString(e->a.get()).c_str(),
-                        ExpString(e->b.get()).c_str());
+    return std::format("({} - {})",
+                       ExpString(e->a.get()),
+                       ExpString(e->b.get()));
   default:
     return "??UNKNOWN??";
   }
@@ -259,9 +263,9 @@ static std::shared_ptr<Form> ParseForm(
 
   auto MakeCast = [](Unop op) {
       return FixityElt{
-        .fixity = Fixity::Pre,
+        .fixity = Fixity::Prefix,
         .assoc = Associativity::Right,
-        .precedence = 6,
+        .precedence = 8,
         .item = nullptr,
         .unop = [op](std::shared_ptr<Form> a) ->
         std::shared_ptr<Form> {
@@ -274,9 +278,9 @@ static std::shared_ptr<Form> ParseForm(
       };
     };
 
-  const FixityElt AsIntElt = MakeCast(Binop::AS_INT);
-  const FixityElt AsWord8Elt = MakeCast(Binop::AS_WORD8);
-  const FixityElt AsWord16Elt = MakeCast(Binop::AS_WORD16);
+  const FixityElt AsIntElt = MakeCast(Unop::AS_INT);
+  const FixityElt AsWord8Elt = MakeCast(Unop::AS_WORD8);
+  const FixityElt AsWord16Elt = MakeCast(Unop::AS_WORD16);
 
   const auto FormExp =
     Fix<Token, std::shared_ptr<Form>>([&](const auto &Self) {
@@ -319,7 +323,23 @@ static std::shared_ptr<Form> ParseForm(
 
         auto AtomicExp = Number || ReadRam || Var || Set;
 
-        // TODO: Casts
+        auto SucceedElt = [](const auto &elt) {
+            return Succeed<Token, FixityElt>(elt);
+          };
+
+        auto ParenthesizedElt =
+          (IsToken<LPAREN>() >>
+           ((IsIdentifier("int") >> SucceedElt(AsIntElt)) ||
+            (IsIdentifier("u8") >> SucceedElt(AsWord8Elt)) ||
+            (IsIdentifier("u16") >> SucceedElt(AsWord16Elt)) ||
+            (Self >[&](std::shared_ptr<Form> e) {
+                FixityElt item;
+                item.fixity = Fixity::Atom;
+                item.item = std::move(e);
+                return item;
+              }))
+           << IsToken<RPAREN>());
+
         auto FixityElement =
           (IsToken<IN>() >> Succeed<Token, FixityElt>(InElt)) ||
           (IsToken<LESSEQ>() >>
@@ -332,6 +352,9 @@ static std::shared_ptr<Form> ParseForm(
            Succeed<Token, FixityElt>(GreaterElt)) ||
           (IsToken<EQUALS>() >>
            Succeed<Token, FixityElt>(EqElt)) ||
+
+          ParenthesizedElt ||
+
           (AtomicExp >[&](std::shared_ptr<Form> e) {
               FixityElt item;
               item.fixity = Fixity::Atom;
@@ -357,7 +380,11 @@ Line ParseLine(const std::vector<Token> &tokens,
   const auto ResolveExpFixity = [&](const std::vector<FixityElt> &elts) ->
     std::optional<std::shared_ptr<Exp>> {
     // No legal adjacency case.
-    return ResolveFixity<std::shared_ptr<Exp>>(elts, nullptr);
+    std::string error;
+    auto ret = ResolveFixity<std::shared_ptr<Exp>>(elts, &error);
+    CHECK(ret.has_value()) << "Couldn't parse expression sequence: "
+                           << error;
+    return ret;
   };
 
   const FixityElt PlusElt = {

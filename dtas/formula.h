@@ -29,18 +29,24 @@ enum class Binop {
   // Value in Set
   IN,
 
+  EQ,
+
   // Unsigned comparisons
   LESS,
   LESSEQ,
   GREATER,
   GREATEREQ,
 
-  EQ,
+  MULT,
 };
 
 enum class Unop {
   // Read RAM
   RAM,
+  // Casts
+  AS_INT,
+  AS_WORD8,
+  AS_WORD16,
 };
 
 enum class Naryop {

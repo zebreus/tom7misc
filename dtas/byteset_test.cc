@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <numeric>
 #include <string>
 #include <utility>
@@ -21,18 +22,18 @@ static std::string ByteSetString(const ByteSet &s) {
   std::string ret;
   for (uint8_t b : s) {
     cover.SetPoint(b, 1);
-    StringAppendF(&ret, " %02x", b);
+    AppendFormat(&ret, " {:02x}", b);
   }
-  StringAppendF(&ret, " (which is:");
+  AppendFormat(&ret, " (which is:");
   for (uint64_t pt = cover.First(); !cover.IsAfterLast(pt);
        pt = cover.Next(pt)) {
     IntervalCover<int>::Span s = cover.GetPoint(pt);
     if (s.data > 0) {
-      StringAppendF(&ret, " %02x" AGREY("-") "%02x",
-                    (int)s.start, (int)s.end - 1);
+      AppendFormat(&ret, " {:02x}" AGREY("-") "{:02x}",
+                   (int)s.start, (int)s.end - 1);
     }
   }
-  StringAppendF(&ret, ")");
+  AppendFormat(&ret, ")");
 
   return ret;
 }
@@ -42,25 +43,25 @@ static std::string ByteSet64String(const ByteSet64 &bs) {
   case ByteSet64::EMPTY: {
     std::string ret = "EMPTY ";
     for (int i = 0; i < 7; i++) {
-      StringAppendF(&ret, "%02x", bs.payload[i]);
+      AppendFormat(&ret, "{:02x}", bs.payload[i]);
     }
     return ret;
   }
   case ByteSet64::VALUES: {
     std::string ret = "VALUES ";
     for (int i = 0; i < 7; i++) {
-      StringAppendF(&ret, " %02x", bs.payload[i]);
+      AppendFormat(&ret, " {:02x}", bs.payload[i]);
     }
     return ret;
   }
   case ByteSet64::RANGES: {
     std::string ret = "RANGES ";
     for (int i = 0; i < 6; i += 2) {
-      StringAppendF(&ret, " %02x" AGREY("×") "%02x",
-                    bs.payload[i],
-                    bs.payload[i + 1]);
+      AppendFormat(&ret, " {:02x}" AGREY("×") "{:02x}",
+                   bs.payload[i],
+                   bs.payload[i + 1]);
     }
-    StringAppendF(&ret, " (%02x)", bs.payload[6]);
+    AppendFormat(&ret, " ({:02x})", bs.payload[6]);
     return ret;
   }
   default:
@@ -277,12 +278,12 @@ static void TestByteSet64OneMissing() {
     ByteSet64 bs64(almost_set);
 
     auto Error = [&]() {
-        return StringPrintf("\nb %02x.\n"
-                            "set:\n%s\n"
-                            "set64:\n%s\n",
+        return std::format("\nb {:02x}.\n"
+                            "set:\n{}\n"
+                            "set64:\n{}\n",
                             b,
-                            ByteSetString(almost_set).c_str(),
-                            ByteSet64String(bs64).c_str());
+                            ByteSetString(almost_set),
+                            ByteSet64String(bs64));
       };
 
     // Should be able to represent these exactly using ranges.
@@ -308,12 +309,12 @@ static void TestByteSet64Pair() {
       // Should be able to represent all pairs exactly.
       CHECK_EQ(bs64.type, ByteSet64::VALUES);
       auto Error = [&]() {
-          return StringPrintf("\nb1 %02x b2 %02x.\n"
-                              "set:\n%s\n"
-                              "set64:\n%s\n",
+          return std::format("\nb1 {:02x} b2 {:02x}.\n"
+                              "set:\n{}\n"
+                              "set64:\n{}\n",
                               b1, b2,
-                              ByteSetString(s).c_str(),
-                              ByteSet64String(bs64).c_str());
+                              ByteSetString(s),
+                              ByteSet64String(bs64));
         };
       CHECK(bs64.Contains(b1)) << b1 << Error();
       CHECK(bs64.Contains(b2)) << b2 << Error();
