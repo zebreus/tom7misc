@@ -10,6 +10,8 @@ CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-g++
 SDLARCH=x64
 
+CC_LIB=../../cc-lib
+
 # -Wl,--subsystem,console
 DEBUGGING=-DDEBUG=1 -g -fno-omit-frame-pointer
 # XXX OPT mode with fomit-frame-pointer.
@@ -34,19 +36,19 @@ PROFILE=
 # FLTO=-flto
 FLTO=
 
-INCLUDES=-I "../cc-lib"
+INCLUDES=-I "$(CC_LIB)"
 
 # MINGW_ANSI_STDIO suppresses warnings about %lld by using ANSI printf
 # (maybe its own internal implementation). LGTM.
-CPPFLAGS= $(DEBUGGING) -D__USE_MINGW_ANSI_STDIO=1 $(CCSDL) -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++0x
+CPPFLAGS= $(DEBUGGING) -D__USE_MINGW_ANSI_STDIO=1 $(CCSDL) -m64 $(OPT) -D__MINGW32__ $(INCLUDES) $(PROFILE) $(FLTO) --std=c++20
 
-CCLIB_OBJECTS=../cc-lib/util.o ../cc-lib/arcfour.o ../cc-lib/base/stringprintf.o ../cc-lib/stb_image.o
+CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/stb_image.o
 
-CCLIBSDL_OBJECTS=../cc-lib/sdl/sdlutil.o ../cc-lib/sdl/font.o
+CCLIBSDL_OBJECTS=$(CC_LIB)/sdl/sdlutil.o $(CC_LIB)/sdl/font.o
 
 BASE_OBJECTS=$(CCLIB_OBJECTS)
 
-GTEST_OBJECTS=../cc-lib/gtest/gtest-all.o
+GTEST_OBJECTS=$(CC_LIB)/gtest/gtest-all.o
 
 OBJECTS=$(BASE_OBJECTS) $(SDL_OBJECTS) $(CCLIBSDL_OBJECTS) mesh.o
 

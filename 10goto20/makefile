@@ -48,7 +48,7 @@ INCLUDES=-I "$(CC_LIB)"
 
 # MINGW_ANSI_STDIO suppresses warnings about %lld by using ANSI printf
 # (maybe its own internal implementation). LGTM.
-CPPFLAGS= $(DEBUGGING) -D__USE_MINGW_ANSI_STDIO=1 $(CCSDL) -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO)
+CPPFLAGS= $(DEBUGGING) -D__USE_MINGW_ANSI_STDIO=1 $(CCSDL) -m64 $(OPT) -D__MINGW32__ $(INCLUDES) $(PROFILE) $(FLTO)
 
 CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/city/city.o $(CC_LIB)/textsvg.o $(CC_LIB)/stb_image.o $(CC_LIB)/wavesave.o $(CC_LIB)/stb_image_write.o
 

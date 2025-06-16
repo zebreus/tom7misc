@@ -11,7 +11,6 @@ SYMBOLS=-g
 
 CC_LIB=../cc-lib
 
-# PLATFORMCFLAGS=-D__MINGW32__ -DHAVE_ALLOCA -D_WIN32_WINNT=0x0602 -D_GLIBCXX_HAS_GTHREADS -mthreads
 # PLATFORMCFLAGS=-m64
 # PLATFORMLINK=-lwinpthread -lpsapi -L. -static libz.a -Wl,--subsystem,console -L.
 PLATFORMLINK=-static

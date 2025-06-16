@@ -63,7 +63,7 @@ LINKSDL= -mno-cygwin -lm -luser32 -lgdi32 -lwinmm -ldxguid
 INCLUDES=-I $(CC_LIB) -I $(CC_LIB)/city -I "."
 
 # tom7 added -mthreads on 9/7!
-CPPFLAGS=-DDUMMY_UI $(ARCH) $(OPT) $(PLATFORMCFLAGS) -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++20
+CPPFLAGS=$(ARCH) $(OPT) $(PLATFORMCFLAGS) $(INCLUDES) $(PROFILE) $(FLTO) --std=c++20
 
 # Should just be used for testing/utilities.
 CCLIBOBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/city/city.o $(CC_LIB)/rle.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/wavesave.o $(CC_LIB)/ansi.o $(CC_LIB)/nice.o

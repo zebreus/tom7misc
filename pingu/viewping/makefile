@@ -22,7 +22,7 @@ LINKSDL=-lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
 
 UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/textsvg.o $(CC_LIB)/opt/opt.o
 
-CPPFLAGS=-DPSS_STYLE=1 -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20
+CPPFLAGS=-m64 $(OPT) -D__MINGW32__ $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20
 
 %.o : %.cc *.h makefile
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@

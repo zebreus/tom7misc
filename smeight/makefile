@@ -50,8 +50,7 @@ PROFILE=
 
 INCLUDES=-I "../cc-lib" -I "../cc-lib/city" -I ../fceulib
 
-#  -DNOUNZIP -DDUMMY_UI -Wno-write-strings
-CPPFLAGS= -m64 $(OPT) $(SYMBOLS) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++17
+CPPFLAGS= -m64 $(OPT) $(SYMBOLS) -D__MINGW32__ $(INCLUDES) $(PROFILE) $(FLTO) --std=c++17
 
 CCLIB_OBJECTS=../cc-lib/util.o ../cc-lib/arcfour.o ../cc-lib/base/stringprintf.o ../cc-lib/city/city.o ../cc-lib/textsvg.o ../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/sdl/sdlutil.o ../cc-lib/base/logging.o
 

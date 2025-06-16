@@ -30,7 +30,7 @@ PROFILE=
 INCLUDES=-I "../cc-lib" -I "../cc-lib/city"
 
 #  -DNOUNZIP
-CPPFLAGS= $(CCSDL) -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) --std=c++0x
+CPPFLAGS= $(CCSDL) -m64 $(OPT) -D__MINGW32__ $(INCLUDES) $(PROFILE) $(FLTO) --std=c++20
 
 CCLIBOBJECTS=../cc-lib/util.o ../cc-lib/arcfour.o ../cc-lib/base/stringprintf.o ../cc-lib/city/city.o ../cc-lib/textsvg.o ../cc-lib/stb_image.o ../cc-lib/wavesave.o ../cc-lib/sdl/sdlutil.o ../cc-lib/sdl/font.o
 

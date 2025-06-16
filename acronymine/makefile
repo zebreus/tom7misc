@@ -29,9 +29,8 @@ OPT=-O3
 CLINCLUDES="-I$(AMDSDK)/include"
 CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 
-#  -Wno-write-strings
 FLTO=-flto=auto
-CPPFLAGS=-DPSS_STYLE=1 -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
+CPPFLAGS= -m64 $(OPT) -D__MINGW32__ $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -lpsapi -static

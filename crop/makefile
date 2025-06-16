@@ -33,7 +33,7 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 
 # old
 # XXX can't they just be in CXXFLAGS?
-CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -Wno-write-strings -m64 -D__MINGW32__ -DHAVE_ALLOCA $(SDLINCLUDES) $(PROFILE) $(FLTO)
+CPPFLAGS= -DDISABLE_SOUND=1 -Wno-write-strings -m64 -D__MINGW32__  $(SDLINCLUDES) $(PROFILE) $(FLTO)
 
 %.o : %.cc *.h makefile
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
