@@ -1,4 +1,4 @@
-default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe minus-validate.exe minus-map.exe minus-query.exe model.exe asm7.exe parsing_test.exe
+default : hardiness.exe dangerzones.exe stochastic.exe bootdata.exe solve.exe minus-results.exe minus-validate.exe minus-map.exe minus-query.exe model.exe asm7.exe profile.exe parsing_test.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -135,7 +135,7 @@ asm7.exe : asm7.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@printf "!"
 
-genmodel.exe : genmodel.o mario-util.o $(OBJECTS)
+profile.exe : profile.o mario-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@printf "!"
 
