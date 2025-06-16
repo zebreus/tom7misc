@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <memory>
 #include <cstdint>
 #include <mutex>
@@ -96,7 +97,7 @@ static void GenModel() {
   ParallelComp(
       NUM_REPS,
       [&](int idx) {
-        ArcFour rc(StringPrintf("genmodel.%lld", idx));
+        ArcFour rc(std::format("genmodel.{}", idx));
         auto emu = emu_pool.Acquire();
         emu->LoadUncompressed(start_state);
 

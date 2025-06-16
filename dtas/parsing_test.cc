@@ -141,6 +141,22 @@ static void TestParseFormulas() {
     const UnForm *ram_uf = std::get_if<UnForm>(cast_uf->arg.get());
     CHECK(ram_uf != nullptr && ram_uf->op == Unop::RAM);
   }
+
+  {
+    Line line = PARSE(".always ram[A] < 100 && 3 < 4 || ram[X] >= ram[Y]");
+    CHECK(line.type == Line::Type::DIRECTIVE_ALWAYS);
+    CHECK(line.formula != nullptr);
+
+    const BinForm *bf = std::get_if<BinForm>(line.formula.get());
+    CHECK(bf != nullptr && bf->op == Binop::OR);
+
+    const BinForm *lhs = std::get_if<BinForm>(bf->lhs.get());
+    CHECK(lhs != nullptr && lhs->op == Binop::AND);
+
+    const BinForm *rhs = std::get_if<BinForm>(bf->rhs.get());
+    CHECK(rhs != nullptr && rhs->op == Binop::GREATEREQ);
+  }
+
 }
 
 int main(int argc, char **argv) {

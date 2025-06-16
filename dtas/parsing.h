@@ -34,6 +34,9 @@ enum TokenType {
   ARROW,
   LSQUARE,
   RSQUARE,
+  ANDAND,
+  OROR,
+  TIMES,
 
   // Symbolic keywords.
   // Note that .directives and instructions are not keywords.

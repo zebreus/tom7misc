@@ -1,12 +1,12 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <mutex>
 #include <string>
 #include <vector>
 
 #include "ansi.h"
-#include "base/stringprintf.h"
 #include "emulator-pool.h"
 #include "image.h"
 #include "minus.h"
@@ -79,8 +79,8 @@ static void Validate() {
             if (solved & Evaluator::SOLVED_PRINCESS) flags += "PRINCESS ";
             if (solved & Evaluator::SOLVED_FLAGPOLE) flags += "FLAGPOLE ";
             img.BlendText32(1, 1, 0xFF00FFFF, flags);
-            img.Save(StringPrintf("valid-%d-%d.png",
-                                  major, minor));
+            img.Save(std::format("valid-{}-{}.png",
+                                 major, minor));
           }
 
           MutexLock ml(&m);
@@ -100,8 +100,8 @@ static void Validate() {
               DELETE_INVALID ? " " ARED("Deleted") "." : "");
           if (INVALID_IMAGES) {
             MarioUtil::Screenshot(emu.get()).Save(
-                StringPrintf("invalid-%d-%d.png",
-                             major, minor));
+                std::format("invalid-{}-{}.png",
+                            major, minor));
           }
           MutexLock ml(&m);
           invalid++;
@@ -114,12 +114,12 @@ static void Validate() {
               MutexLock ml(&m);
               done += valid;
               done += invalid;
-              msg = StringPrintf(AGREEN("%lld") " + " ARED("%lld"),
-                                 valid, invalid);
+              msg = std::format(AGREEN("{}") " + " ARED("{}"),
+                                valid, invalid);
             }
             status.Emit(ANSI::ProgressBar(
                             done, all.size(),
-                            StringPrintf("Validate: %s", msg.c_str()),
+                            std::format("Validate: {}", msg),
                             timer.Seconds()));
           });
       },

@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <ctime>
+#include <format>
 #include <memory>
 #include <optional>
 #include <string>
@@ -32,7 +33,7 @@ inline LevelId PackLevel(uint8_t major, uint8_t minor) {
 
 inline std::string ColorLevel(LevelId id) {
   const auto &[major, minor] = UnpackLevel(id);
-  return StringPrintf(ACYAN("%02x") AGREY("-") ACYAN("%02x"), major, minor);
+  return std::format(ACYAN("{:02x}") AGREY("-") ACYAN("{:02x}"), major, minor);
 }
 
 
@@ -76,7 +77,7 @@ struct MinusDB {
         break;
       }
 
-      f = StringPrintf("../%s", f.c_str());
+      f = std::format("../{}", f);
     }
 
     if (db.get() == nullptr) {
@@ -157,8 +158,8 @@ struct MinusDB {
     std::unordered_set<LevelId> att;
     std::unique_ptr<Query> q =
       db->ExecuteString(
-          StringPrintf("select level from attempted "
-                       "where method = %d", method));
+          std::format("select level from attempted "
+                      "where method = {}", method));
     while (std::unique_ptr<Row> r = q->NextRow()) {
       att.insert((uint16_t)r->GetInt(0));
     }
@@ -167,17 +168,17 @@ struct MinusDB {
 
   void AddAttempted(LevelId level, int method, int64_t depth) {
     db->ExecuteAndPrint(
-        StringPrintf(
+        std::format(
             "insert into attempted (level, createdate, method, depth) "
-            "values (%d, %lld, %d, %lld)",
+            "values ({}, {}, {}, {})",
             level, time(nullptr), method, depth));
   }
 
   bool HasSolution(LevelId level) {
     std::unique_ptr<Query> q =
       db->ExecuteString(
-          StringPrintf("select level from solutions where level = %d",
-                       level));
+          std::format("select level from solutions where level = {}",
+                      level));
     while (std::unique_ptr<Row> r = q->NextRow()) {
       return true;
     }
@@ -187,8 +188,8 @@ struct MinusDB {
   std::optional<std::vector<uint8_t>> GetSolution(LevelId level) {
     std::unique_ptr<Query> q =
       db->ExecuteString(
-          StringPrintf("select fm7 from solutions where level = %d",
-                       level));
+          std::format("select fm7 from solutions where level = {}",
+                      level));
     while (std::unique_ptr<Row> r = q->NextRow()) {
       return {SimpleFM7::ParseString(r->GetString(0))};
     }
@@ -212,25 +213,25 @@ struct MinusDB {
                    int method) {
     std::string fm7 = SimpleFM7::EncodeOneLine(sol);
     db->ExecuteAndPrint(
-        StringPrintf(
+        std::format(
             "insert into solutions (level, fm7, createdate, method) "
-            "values (%d, \"%s\", %lld, %d)",
-            id, fm7.c_str(), time(nullptr), method));
+            "values ({}, \"{}\", {}, {})",
+            id, fm7, time(nullptr), method));
   }
 
   void AddPartial(LevelId id, const std::vector<uint8_t> &sol) {
     std::string fm7 = SimpleFM7::EncodeOneLine(sol);
     db->ExecuteAndPrint(
-        StringPrintf("insert into partial (level, fm7, createdate) "
-                     "values (%d, \"%s\", %lld)",
-                     id, fm7.c_str(), time(nullptr)));
+        std::format("insert into partial (level, fm7, createdate) "
+                    "values ({}, \"{}\", {})",
+                    id, fm7, time(nullptr)));
   }
 
   void AddRejected(LevelId id, int method) {
     db->ExecuteAndPrint(
-        StringPrintf(
+        std::format(
             "insert into rejected (level, createdate, method) "
-            "values (%d, %lld, %d)",
+            "values ({}, {}, {})",
             id, time(nullptr), method));
   }
 
@@ -273,8 +274,8 @@ struct MinusDB {
 
   void DeleteSolution(int64_t rowid) {
     db->ExecuteString(
-        StringPrintf("delete from solutions where id = %lld",
-                     rowid))->Exhaust();
+        std::format("delete from solutions where id = {}",
+                    rowid))->Exhaust();
   }
 
   struct RejectedRow {
@@ -313,8 +314,8 @@ struct MinusDB {
 
   void DeleteRejected(int64_t rowid) {
     db->ExecuteString(
-        StringPrintf("delete from rejected where id = %lld",
-                     rowid))->Exhaust();
+        std::format("delete from rejected where id = {}",
+                    rowid))->Exhaust();
   }
 
   void ExecuteAndPrint(const std::string &s) {

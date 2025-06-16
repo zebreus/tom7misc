@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <format>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -139,7 +140,7 @@ struct MazeSolver {
 
     MutexLock ml(&mutex);
     CHECK(!cells.empty());
-    // status.Printf("There are %d cells.\n", (int)cells.size());
+    // status.Print("There are {} cells.\n", cells.size());
     std::optional<std::pair<CellId, CellId>> best;
     double best_score = -9999.0;
     for (const auto &[src, data] : cells) {
@@ -158,7 +159,7 @@ struct MazeSolver {
           if (dy != 0 || dy != 0) {
             CellId dst(src.x + dx, src.y + dy);
             /*
-            status.Printf("Dst %d,%d. OnScreen: %s\n",
+            status.Print("Dst {},{}. OnScreen: {}\n",
                           dst.x, dst.y, OnScreen(dst) ? "Y" : "N");
             */
             if (OnScreen(dst) && !cells.contains(dst)) {
@@ -199,7 +200,7 @@ struct MazeSolver {
 
       const auto obest = GetCell();
       if (!obest.has_value()) {
-        status.Printf(ARED("No cells remain??") "\n");
+        status.Print(ARED("No cells remain??") "\n");
         return;
       }
       const auto &[src, dst] = obest.value();
@@ -395,8 +396,8 @@ struct MazeSolver {
       cell.movie = preamble;
       cell.eval = evaluator->Eval(solver_emu.get());
       cells[start_cell] = std::move(cell);
-      status.Printf(
-          "Start pos: %d,%d = cell: %d,%d\n",
+      status.Print(
+          "Start pos: {},{} = cell: {},{}\n",
           start_pos.x, start_pos.y,
           start_cell.x, start_cell.y);
     }
@@ -419,11 +420,11 @@ struct MazeSolver {
       if (GetOutcome() != Outcome::RUNNING) {
         break;
       } else if (solve_timer.Seconds() > solve_time) {
-        status.Printf("Solver on %s ran out of time with "
-                      AYELLOW("%d") " cells done (%s).\n",
-                      ColorLevel(level_id).c_str(),
-                      (int)cells.size(),
-                      ANSI::Time(solve_timer.Seconds()).c_str());
+        status.Print("Solver on {} ran out of time with "
+                     AYELLOW("{}") " cells done ({}).\n",
+                     ColorLevel(level_id),
+                     (int)cells.size(),
+                     ANSI::Time(solve_timer.Seconds()));
         SetOutcome(Outcome::TIMEOUT);
         break;
       }
@@ -444,40 +445,40 @@ struct MazeSolver {
 
         std::string lines;
 
-        StringAppendF(
+        AppendFormat(
             &lines,
-            "%lld attempted. %s steps (%lld here; %.1f/sec). "
-            "Solved " AGREEN("%d") "\n",
+            "{} attempted. {} steps ({} here; {:.1f}/sec). "
+            "Solved " AGREEN("{}") "\n",
             levels_attempted.Read(),
-            MarioUtil::FormatNum(total_steps).c_str(),
+            MarioUtil::FormatNum(total_steps),
             attempt_steps, sps,
             (int)levels_solved.Read());
-        StringAppendF(
+        AppendFormat(
             &lines,
-            "Maze solver on %s. " AYELLOW("%d") " cells from "
-            "%s expansions in "
-            " %s/%s.\n",
-            ColorLevel(level_id).c_str(),
+            "Maze solver on {}. " AYELLOW("{}") " cells from "
+            "{} expansions in "
+            " {}/{}.\n",
+            ColorLevel(level_id),
             num_cells,
-            MarioUtil::FormatNum(cells_expanded).c_str(),
-            ANSI::Time(solve_timer.Seconds()).c_str(),
-            ANSI::Time(solve_time).c_str());
+            MarioUtil::FormatNum(cells_expanded),
+            ANSI::Time(solve_timer.Seconds()),
+            ANSI::Time(solve_time));
 
         status.EmitStatus(lines);
       }
 
       images_per.RunIf([&]() {
-          status.Printf("Save images...\n");
+          status.Print("Save images...\n");
           image_counter++;
           WriteImage(image_counter);
         });
     }
 
-    status.Printf("Waiting for solve threads to exit.\n");
+    status.Print("Waiting for solve threads to exit.\n");
     for (std::thread &t : workers) t.join();
     workers.clear();
 
-    status.Printf("Save final images:\n");
+    status.Print("Save final images:\n");
     image_counter++;
     WriteImage(image_counter);
 
@@ -498,7 +499,7 @@ struct MazeSolver {
         }
       }
       if (!r.has_value()) {
-        status.Printf(ARED("No cells!?") "\n");
+        status.Print(ARED("No cells!?") "\n");
         return;
       }
       movie = cells[r.value()].movie;
@@ -514,18 +515,18 @@ struct MazeSolver {
       map.BlendRect32(cx, cy,
                       16, 16, 0xFF000044);
       map.BlendText32(cx, cy, 0xFF000066,
-                      StringPrintf("%d", expansions));
+                      std::format("{}", expansions));
     }
 
     const auto &[major, minor] = UnpackLevel(level_id);
     map.BlendText32(1, 1, 0xFFFFFFFF,
-                    StringPrintf("Maze (%02x-%02x): %d cells",
+                    std::format("Maze ({:02x}-{:02x}): {} cells",
                                  major, minor, (int)done.size()));
 
-    std::string filename = StringPrintf("maze-%02x-%02x-%d.png",
-                                        major, minor, counter);
+    std::string filename = std::format("maze-{:02x}-{:02x}-{}.png",
+                                       major, minor, counter);
     map.Save(filename);
-    status.Printf("Wrote " ABLUE("%s") "\n", filename.c_str());
+    status.Print("Wrote " ABLUE("{}") "\n", filename);
   }
 
 };
@@ -812,9 +813,9 @@ struct Solver {
       if (GetOutcome() != Outcome::RUNNING) {
         break;
       } else if (solve_timer.Seconds() > solve_time) {
-        status.Printf("Maze solver on %s ran out of time (%s).\n",
-                      ColorLevel(level_id).c_str(),
-                      ANSI::Time(solve_timer.Seconds()).c_str());
+        status.Print("Maze solver on {} ran out of time ({}).\n",
+                     ColorLevel(level_id),
+                     ANSI::Time(solve_timer.Seconds()));
         SetOutcome(Outcome::TIMEOUT);
         break;
       }
@@ -879,17 +880,17 @@ struct Solver {
       }
 
       images_per.RunIf([&]() {
-          status.Printf("Save images...\n");
+          status.Print("Save images...\n");
           image_counter++;
           WriteImage(image_counter);
         });
     }
 
-    status.Printf("Waiting for solve threads to exit.\n");
+    status.Print("Waiting for solve threads to exit.\n");
     for (std::thread &t : workers) t.join();
     workers.clear();
 
-    status.Printf("Save final images:\n");
+    status.Print("Save final images:\n");
     image_counter++;
     WriteImage(image_counter);
 
@@ -902,8 +903,8 @@ struct Solver {
                 });
       if (!population.empty()) {
         db->AddPartial(level_id, population[0].movie);
-        status.Printf("Saved one best solution: %d moves, %.3f eval\n",
-                      (int)population[0].movie.size(), population[0].eval);
+        status.Print("Saved one best solution: {} moves, {:.3f} eval\n",
+                     (int)population[0].movie.size(), population[0].eval);
       }
     }
 
@@ -918,14 +919,14 @@ struct Solver {
     }
 
     if (pop.empty()) {
-      status.Printf("No population! So no images.\n");
+      status.Print("No population! So no images.\n");
       return;
     }
 
     const auto &[major, minor] = UnpackLevel(level_id);
 
     std::string filename =
-      StringPrintf("solve%02x-%02x_%d.png", major, minor, counter);
+      std::format("solve{:02x}-{:02x}_{}.png", major, minor, counter);
 
     double best_eval = pop[0].eval;
     int best_idx = 0;
@@ -955,13 +956,13 @@ struct Solver {
     }
 
     map.BlendText2x32(1, 1, 0xFFFFFFFF,
-                      StringPrintf("Solving %02x-%02x. Best eval: %.4f    "
-                                   "Elapsed: %d sec",
-                                   major, minor, best_eval,
-                                   (int)elapsed.Seconds()).c_str());
+                      std::format("Solving {:02x}-{:02x}. Best eval: {:.4f}  "
+                                  "Elapsed: {} sec",
+                                  major, minor, best_eval,
+                                  (int)elapsed.Seconds()));
 
     map.Save(filename);
-    status.Printf("Wrote %s.\n", filename.c_str());
+    status.Print("Wrote {}.\n", filename);
 
     #else
     constexpr int MARGIN_TOP = 32;
@@ -975,10 +976,10 @@ struct Solver {
     text.Clear32(0x00000000);
 
     text.BlendText2x32(1, 1, 0xFFFFFFFF,
-                       StringPrintf("Solving %02x-%02x. Best eval: %.4f    "
-                                    "Elapsed: %d sec",
-                                    major, minor, best_eval,
-                                    (int)elapsed.Seconds()).c_str());
+                       std::format("Solving {:02x}-{:02x}. Best eval: {:.4f}  "
+                                   "Elapsed: {} sec",
+                                   major, minor, best_eval,
+                                   (int)elapsed.Seconds()));
 
     for (int i = 0; i < (int)pop.size(); i++) {
       const int sy = i / ACROSS;
@@ -999,19 +1000,19 @@ struct Solver {
 
       text.BlendText32(ix + 2, iy + 240,
                        0xFF00FFCC,
-                       StringPrintf("^ %d,%d", pos.x, pos.y));
+                       std::format("^ {},{}", pos.x, pos.y));
       text.BlendText32(ix + 2, iy + 250,
                        0x00FFFFCC,
-                       StringPrintf("%d moves, eval %.4f",
-                                    (int)state.movie.size(),
-                                    state.eval));
+                       std::format("{} moves, eval {:.4f}",
+                                   (int)state.movie.size(),
+                                   state.eval));
     }
 
     img.BlendImage(0, 0, text);
     std::string filename =
-      StringPrintf("solve%02x-%02x_%d.png", major, minor, counter);
+      std::format("solve{:02x}-{:02x}_{}.png", major, minor, counter);
     img.Save(filename);
-    status.Printf("Wrote %s.\n", filename.c_str());
+    status.Print("Wrote {}.\n", filename);
     #endif
   }
 
@@ -1130,7 +1131,7 @@ static std::vector<LevelId> GetTodo(MinusDB *db, ArcFour *rc) {
 [[maybe_unused]]
 static void Solve() {
   MinusDB db;
-  ArcFour rc(StringPrintf("solve.%lld", time(nullptr)));
+  ArcFour rc(std::format("solve.{}", time(nullptr)));
 
   std::vector<LevelId> todo = GetTodo(&db, &rc);
   std::unordered_set<LevelId> attempted = db.GetHasPartial();
@@ -1154,7 +1155,7 @@ static void Solve() {
 [[maybe_unused]]
 static void Maze() {
   MinusDB db;
-  ArcFour rc(StringPrintf("maze.%lld", time(nullptr)));
+  ArcFour rc(std::format("maze.{}", time(nullptr)));
 
   std::vector<LevelId> todo = GetTodo(&db, &rc);
   std::unordered_set<LevelId> attempted = db.GetHasPartial();
@@ -1178,7 +1179,7 @@ static void Maze() {
 [[maybe_unused]]
 static void Cross(int64_t start_time) {
   MinusDB db;
-  ArcFour rc(StringPrintf("cross.%lld", time(nullptr)));
+  ArcFour rc(std::format("cross.{}", time(nullptr)));
 
   StatusBar status(1);
   status.Statusf("Preparing solutions.\n");
@@ -1189,8 +1190,8 @@ static void Cross(int64_t start_time) {
   // to this very strategy!) so we deduplicate them. We also only consider
   // solutions after the start_time.
   std::vector<MinusDB::SolutionRow> all_sols = db.GetAllSolutions();
-  status.Printf("There are " AGREEN("%d") " existing solutions.\n",
-                (int)all_sols.size());
+  status.Print("There are " AGREEN("{}") " existing solutions.\n",
+               (int)all_sols.size());
 
   // Index of the earliest instance of that solution.
   std::unordered_map<std::vector<uint8_t>, int,
@@ -1213,10 +1214,10 @@ static void Cross(int64_t start_time) {
     }
   }
 
-  status.Printf("There are " APURPLE("%d") " distinct original sols "
-                "after the start time of " ABLUE("%lld") ".\n",
-                (int)provenance.size(),
-                start_time);
+  status.Print("There are " APURPLE("{}") " distinct original sols "
+               "after the start time of " ABLUE("{}") ".\n",
+               (int)provenance.size(),
+               start_time);
 
   // Now put it in the form we like.
   std::vector<std::pair<int, std::vector<uint8_t>>> sols;
@@ -1241,8 +1242,8 @@ static void Cross(int64_t start_time) {
 
         if (db.HasSolution(level)) {
           levels_skipped++;
-          status.Printf("Level %s was solved in the meantime!\n",
-                        ColorLevel(level).c_str());
+          status.Print("Level {} was solved in the meantime!\n",
+                       ColorLevel(level).c_str());
           return;
         }
 
@@ -1264,10 +1265,10 @@ static void Cross(int64_t start_time) {
               std::vector<uint8_t> prefix = movie;
               prefix.resize(i + 1);
               db.AddSolution(level, prefix, MinusDB::METHOD_CROSS);
-              status.Printf("Solved %s (via %s): %s\n",
-                            ColorLevel(level).c_str(),
-                            ColorLevel(source_level).c_str(),
-                            SimpleFM7::EncodeOneLine(prefix).c_str());
+              status.Print("Solved {} (via {}): {}\n",
+                           ColorLevel(level),
+                           ColorLevel(source_level),
+                           SimpleFM7::EncodeOneLine(prefix));
               levels_attempted++;
               levels_solved++;
               return;
@@ -1289,13 +1290,13 @@ static void Cross(int64_t start_time) {
               // TODO: Skipped
 
               std::string msg =
-                StringPrintf(
-                    AWHITE("%.1f%% ")
-                    AGREEN("%lld") " + "
-                    ARED("%lld") " + "
-                    AYELLOW("%lld")
+                std::format(
+                    AWHITE("{:.1f}% ")
+                    AGREEN("{}") " + "
+                    ARED("{}") " + "
+                    AYELLOW("{}")
                     " / "
-                    "%d × %d",
+                    "{} × {}",
                     (numer * 100.0) / denom,
                     solved, failed, skipped,
                     (int)sols.size(),
@@ -1386,9 +1387,8 @@ static void Manual(LevelId level,
 
     if (eval.Succeeded(emu.get())) {
       std::string fm7 = SimpleFM7::EncodeOneLine(sol);
-      status.Printf(AGREEN("Success!") " on %s: %s\n",
-                    ColorLevel(level).c_str(),
-                    fm7.c_str());
+      status.Print(AGREEN("Success!") " on {}: {}\n",
+                   ColorLevel(level), fm7);
       if (do_write) {
         db.AddSolution(level, sol, MinusDB::METHOD_MANUAL);
       }
@@ -1403,7 +1403,7 @@ static void Manual(LevelId level,
 
     if (WRITE_IMAGES) {
       MarioUtil::Screenshot(emu.get()).Save(
-          StringPrintf("manual/manual%d.png", frame));
+          std::format("manual/manual{}.png", frame));
       frame++;
     }
 
@@ -1424,14 +1424,14 @@ static void Manual(LevelId level,
 
     MarioUtil::DrawPath(path, &map, 0xFF000044);
     map.Save("manual-map.png");
-    status.Printf("Wrote manual-map.png.");
+    status.Print("Wrote manual-map.png.");
   }
 
   MarioUtil::ScreenshotAny(emu.get()).Save("manual.png");
-  status.Printf("Wrote manual.png");
+  status.Print("Wrote manual.png");
 
   if (!solved) {
-    status.Printf(ARED("Ended without solving."));
+    status.Print(ARED("Ended without solving."));
   }
 }
 
@@ -1466,9 +1466,9 @@ static void Never() {
         if (false) {
           const uint8_t oper_mode = emu->ReadRAM(OPER_MODE);
           const uint8_t oper_task = emu->ReadRAM(OPER_MODE_TASK);
-          status.Printf("[%s] %02x.%02x\n",
-                        ColorLevel(level).c_str(),
-                        oper_mode, oper_task);
+          status.Print("[{}] {:02x}.{:02x}\n",
+                       ColorLevel(level),
+                       oper_mode, oper_task);
         }
         // std::vector<uint8_t> level_start_state = emu->SaveUncompressed();
         Evaluator eval(emulator_pool, emu.get());
@@ -1483,10 +1483,10 @@ static void Never() {
             std::string bar =
               ANSI::ProgressBar(
                   numer, 65536,
-                  StringPrintf(
-                      "[%s] Rejected " ARED("%lld") " skipped "
-                      AWHITE("%lld"),
-                      ColorLevel(level).c_str(),
+                  std::format(
+                      "[{}] Rejected " ARED("{}") " skipped "
+                      AWHITE("{}"),
+                      ColorLevel(level),
                       levels_solved.Read(),
                       levels_skipped.Read()),
                   timer.Seconds());
@@ -1602,18 +1602,18 @@ static bool IsAlwaysDead(int max_states,
       if (status_per.ShouldRun()) {
         if (status_index == 0) {
           std::string s = MarioUtil::ScreenshotANSI(emu);
-          status->Printf("Depth %d:\n", depth);
+          status->Print("Depth {}:\n", depth);
           status->Emit(s);
         }
         std::string msg =
-          StringPrintf(
-              "%s: " AYELLOW("↓") "%d, %lld st, %s fr, "
-              ARED("☠") "%s",
-              ColorLevel(level).c_str(),
+          std::format(
+              "{}: " AYELLOW("↓") "{}, {} st, {} fr, "
+              ARED("☠") "{}",
+              ColorLevel(level),
               depth,
               (int64_t)states.size(),
-              MarioUtil::FormatNum(frames).c_str(),
-              MarioUtil::FormatNum(deaths).c_str());
+              MarioUtil::FormatNum(frames),
+              MarioUtil::FormatNum(deaths));
 
         std::string prog =
           ANSI::ProgressBar(depth + states.size(), max_states,
@@ -1744,15 +1744,15 @@ static bool IsAlwaysDead(int max_states,
           const auto [major, minor] = UnpackLevel(level);
           {
             std::string filename =
-              StringPrintf("always-depths-%02x-%02x.png", major, minor);
+              std::format("always-depths{:02x}-{:02x}.png", major, minor);
             img.Save(filename);
-            status->Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+            status->Print("Wrote " AGREEN("{}") "\n", filename);
           }
           {
             std::string filename =
-              StringPrintf("always-depths-%02x-%02x.txt", major, minor);
+              std::format("always-depths-{:02x}-{:02x}.txt", major, minor);
             Util::WriteFile(filename, content);
-            status->Printf("Wrote " AGREEN("%s") "\n", filename.c_str());
+            status->Print("Wrote " AGREEN("{}") "\n", filename);
           }
 
 
@@ -1780,12 +1780,12 @@ static bool IsAlwaysDead(int max_states,
     };
 
   if (InsertRec(0)) {
-    status->Printf(AGREEN("Always dead") " on %s (%lld reachable states).\n",
-                   ColorLevel(level).c_str(), (int64_t)states.size());
+    status->Print(AGREEN("Always dead") " on {} ({} reachable states).\n",
+                  ColorLevel(level), (int64_t)states.size());
     return true;
   } else {
-    status->Printf(AYELLOW("No joy") " on %s (%lld reachable states).\n",
-                   ColorLevel(level).c_str(), (int64_t)states.size());
+    status->Print(AYELLOW("No joy") " on {} ({} reachable states).\n",
+                  ColorLevel(level), (int64_t)states.size());
     return false;
   }
 }
@@ -1808,7 +1808,7 @@ static bool IsCutscene(int max_states,
                        Emulator *emu,
                        int status_index,
                        StatusBar *status) {
-  ArcFour rc(StringPrintf("cutscene.%d", level));
+  ArcFour rc(std::format("cutscene.{}", level));
   Evaluator eval(emulator_pool, emu);
 
   Periodically status_per(2.0);
@@ -1879,9 +1879,9 @@ static bool IsCutscene(int max_states,
 
     if (status_per.ShouldRun()) {
       std::string msg =
-        StringPrintf(
-            "%s: %d stuck %d total (" ABLUE("%d") "," ABLUE("%d") ")",
-            ColorLevel(level).c_str(),
+        std::format(
+            "{}: {} stuck {} total (" ABLUE("{}") "," ABLUE("{}") ")",
+            ColorLevel(level),
             stuck_frames, frames,
             last_pos.x, last_pos.y);
 
@@ -2062,10 +2062,10 @@ static void TryToReject(std::optional<LevelId> args,
               std::string bar =
                 ANSI::ProgressBar(
                     numer, denominator,
-                    StringPrintf(
-                        "[%s] Rejected " ARED("%lld") " skipped "
-                        AWHITE("%lld"),
-                        ColorLevel(level).c_str(),
+                    std::format(
+                        "[{}] Rejected " ARED("{}") " skipped "
+                        AWHITE("{}"),
+                        ColorLevel(level),
                         levels_solved.Read(),
                         levels_skipped.Read()),
                     timer.Seconds());

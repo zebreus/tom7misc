@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <format>
 #include <functional>
 #include <map>
 #include <memory>
@@ -31,8 +32,8 @@ static constexpr int VERBOSE = 1;
 void Assembly::Bank::Write(uint16_t machine_addr, uint8_t v) {
   int offset = (int)machine_addr - origin;
   CHECK(offset >= 0 && offset < bytes.size()) <<
-    StringPrintf("Bug: Write outside of bank bounds. Addr: %04x",
-                 machine_addr);
+    std::format("Bug: Write outside of bank bounds. Addr: {:04x}",
+                machine_addr);
   bytes[offset] = v;
 }
 
@@ -251,11 +252,11 @@ Assembly Assembly::Assemble(const std::string &asm_file) {
         std::string toks;
         for (int t = 0; t < (int)tokens_orig.size(); t++) {
           if (t > 0) toks.push_back(' ');
-          StringAppendF(&toks, "%s",
-                        TokenTypeString(tokens_orig[t].type).c_str());
+          AppendFormat(&toks, "{}",
+                       TokenTypeString(tokens_orig[t].type));
         }
-        return StringPrintf("\nLine %d:\n%s\n%s", line_num,
-                            line.c_str(), toks.c_str());
+        return std::format("\nLine {}:\n{}\n{}", line_num,
+                           line, toks);
       };
 
     auto CurrentBank = [&assembly, &Error]() -> Bank & {
@@ -703,9 +704,9 @@ Assembly Assembly::Assemble(const std::string &asm_file) {
       return std::function<std::string()>(
           [&lines, line_num]() {
             CHECK(line_num >= 0 && line_num < lines.size());
-            return StringPrintf("\n On line %d:\n"
-                                "%s\n",
-                                line_num, lines[line_num].c_str());
+            return std::format("\n On line {}:\n"
+                               "{}\n",
+                               line_num, lines[line_num]);
           });
     };
 
@@ -824,21 +825,21 @@ void Assembly::WriteToDisk(const std::string &rom_file) {
   {
     std::string contents;
     for (const auto &[addr, name] : banks[0].debug_labels) {
-      StringAppendF(&contents, "$%04x#%s#\n", addr, name.c_str());
+      AppendFormat(&contents, "${:04x}#{}#\n", addr, name);
     }
-    std::string nlfile = StringPrintf("%s.nes.0.nl", fbase.c_str());
+    std::string nlfile = std::format("{}.nes.0.nl", fbase);
     Util::WriteFile(nlfile, contents);
     printf("Wrote " AGREEN("%s") "\n", nlfile.c_str());
   }
 
   {
-    std::string zonefile = StringPrintf("%s.zoning", fbase.c_str());
+    std::string zonefile = std::format("{}.zoning", fbase);
     banks[0].zoning.Save(zonefile);
     printf("Wrote " AGREEN("%s") "\n", zonefile.c_str());
   }
 
   {
-    std::string smfile = StringPrintf("%s.sourcemap", fbase.c_str());
+    std::string smfile = std::format("{}.sourcemap", fbase);
     banks[0].source_map.Save(smfile);
     printf("Wrote " AGREEN("%s") "\n", smfile.c_str());
   }

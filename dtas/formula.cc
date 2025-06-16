@@ -1,5 +1,6 @@
 #include "formula.h"
 
+#include <format>
 #include <string>
 #include <memory>
 #include <cinttypes>
@@ -7,7 +8,6 @@
 #include <vector>
 
 #include "ansi.h"
-#include "base/stringprintf.h"
 #include "util.h"
 
 #define ACONSTRAINT(s) AFGCOLOR(240, 240, 120, s)
@@ -15,6 +15,8 @@
 
 const char *BinopString(Binop op) {
   switch (op) {
+    case Binop::AND: return "&&";
+    case Binop::OR: return "||";
     case Binop::IN: return "in";
     case Binop::LESS: return "<";
     case Binop::LESSEQ: return "<=";
@@ -27,12 +29,11 @@ const char *BinopString(Binop op) {
 
 
 std::string ColorForm(const std::shared_ptr<Form> &form) {
-  // ByteSetForm, , VarForm, NaryForm, BinForm
+  // ByteSetForm, VarForm, NaryForm, BinForm
   if (const IntForm *i = std::get_if<IntForm>(form.get())) {
-    return StringPrintf("%" PRId64, i->value);
+    return std::format("{}", i->value);
   } else if (const VarForm *v = std::get_if<VarForm>(form.get())) {
-    return StringPrintf(AFGCOLOR(150, 170, 220, "%s"),
-                        v->name.c_str());
+    return std::format(AFGCOLOR(150, 170, 220, "{}"), v->name);
   } else if (const NaryForm *n = std::get_if<NaryForm>(form.get())) {
     std::vector<std::string> s;
     s.reserve(n->v.size());
@@ -40,8 +41,8 @@ std::string ColorForm(const std::shared_ptr<Form> &form) {
 
     switch (n->op) {
     case Naryop::SET:
-      return StringPrintf(AWHITE("{") "%s" AWHITE("}"),
-                          Util::Join(s, ", ").c_str());
+      return std::format(AWHITE("{{") "{}" AWHITE("}}"),
+                          Util::Join(s, ", "));
     default:
       // TODO
       return "(unknown n-ary op)";
@@ -51,17 +52,13 @@ std::string ColorForm(const std::shared_ptr<Form> &form) {
     std::string a = ColorForm(u->arg);
     switch (u->op) {
     case Unop::RAM:
-      return StringPrintf(AKEYWORD("ram") AWHITE("[") "%s" AWHITE("]"),
-                          a.c_str());
+      return std::format(AKEYWORD("ram") AWHITE("[") "{}" AWHITE("]"), a);
     case Unop::AS_INT:
-      return StringPrintf(AKEYWORD("as_int") AWHITE("(") "%s" AWHITE(")"),
-                          a.c_str());
+      return std::format(AKEYWORD("(int)") AWHITE("(") "{}" AWHITE(")"), a);
     case Unop::AS_WORD8:
-      return StringPrintf(AKEYWORD("as_w8") AWHITE("(") "%s" AWHITE(")"),
-                          a.c_str());
+      return std::format(AKEYWORD("(u8)") AWHITE("(") "{}" AWHITE(")"), a);
     case Unop::AS_WORD16:
-      return StringPrintf(AKEYWORD("as_w16") AWHITE("(") "%s" AWHITE(")"),
-                          a.c_str());
+      return std::format(AKEYWORD("(u16)") AWHITE("(") "{}" AWHITE(")"), a);
     default:
       return ARED("(unknown unop)");
     }
@@ -70,10 +67,14 @@ std::string ColorForm(const std::shared_ptr<Form> &form) {
     std::string l = ColorForm(b->lhs);
     std::string r = ColorForm(b->rhs);
 
-    return StringPrintf("%s " AKEYWORD("%s") " %s",
-                        l.c_str(),
+    return std::format("{} " AKEYWORD("{}") " {}",
+                        l,
                         BinopString(b->op),
-                        r.c_str());
+                        r);
+  } else if (const ByteSetForm *s = std::get_if<ByteSetForm>(form.get())) {
+    return std::format(AWHITE("{{") " "
+                       ARED("unimplemented: byteset")
+                       " " AWHITE("}}"));
   } else {
     return ARED("?? BAD VARIANT ??");
   }
@@ -81,12 +82,12 @@ std::string ColorForm(const std::shared_ptr<Form> &form) {
 
 std::string ColorConstraint(const Constraint &c) {
   if (const AlwaysConstraint *always = std::get_if<AlwaysConstraint>(&c)) {
-    return StringPrintf(ACONSTRAINT("always") " %s",
-                        ColorForm(always->form).c_str());
+    return std::format(ACONSTRAINT("always") " {}",
+                       ColorForm(always->form));
   } else if (const HereConstraint *here = std::get_if<HereConstraint>(&c)) {
-    return StringPrintf(ACYAN("%04x") ": " ACONSTRAINT("here") " %s",
-                        here->address,
-                        ColorForm(here->form).c_str());
+    return std::format(ACYAN("{:04x}") ": " ACONSTRAINT("here") " {}",
+                       here->address,
+                       ColorForm(here->form));
   } else {
     return ARED("?? BAD VARIANT ??");
   }

@@ -2,10 +2,12 @@
 #include <algorithm>
 #include <cmath>
 #include <condition_variable>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <deque>
+#include <format>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -13,11 +15,10 @@
 #include <string>
 #include <thread>
 #include <tuple>
+#include <unistd.h>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <cstdint>
-#include <unistd.h>
 
 #include "SDL_error.h"
 #include "SDL_events.h"
@@ -31,7 +32,6 @@
 #include "randutil.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 #include "timer.h"
 #include "ansi.h"
@@ -421,7 +421,7 @@ struct Game {
 
 struct GameArray {
   GameArray(Movie movie) : games(NUM_EMUS),
-                           rc(StringPrintf("ga%lld", time(nullptr))) {
+                           rc(std::format("ga{}", time(nullptr))) {
     CHECK((int)games.size() == NUM_EMUS);
     for (int i = 0; i < NUM_EMUS; i++) {
       games[i] = std::make_unique<Game>(movie);
@@ -925,9 +925,9 @@ struct Watchlist {
       if (addrhi == addrlo) {
         uint8_t value = emu->ReadRAM(addrhi);
         if (display_type == DisplayType::SIGNED8) {
-          return StringPrintf("%d", (int8_t)value);
+          return std::format("{}", (int8_t)value);
         } else {
-          return StringPrintf("%02x", value);
+          return std::format("{:02x}", value);
         }
       } else {
         uint8_t hi = emu->ReadRAM(addrhi);
@@ -935,11 +935,11 @@ struct Watchlist {
         switch (display_type) {
         default:
         case DisplayType::WORD:
-          return StringPrintf("%04x", (uint16_t(hi) << 8) | lo);
+          return std::format("{:04x}", (uint16_t(hi) << 8) | lo);
         case DisplayType::DASH:
-          return StringPrintf("%02x-%02x", hi, lo);
+          return std::Format("{:02x}-{:02x}", hi, lo);
         case DisplayType::COLON:
-          return StringPrintf("%02x:%02x", hi, lo);
+          return std::format("{:02x}:{:02x}", hi, lo);
         case DisplayType::SIGNED8:
           LOG(FATAL) << "Only for single-byte quantities.";
         }
@@ -1198,8 +1198,8 @@ UI::EventResult UI::HandleEvents() {
 
       case SDLK_s: {
         std::string fm7 = game_array->FocusedFM7();
-        std::string filename = StringPrintf("manual-%02x-%02x.fm7",
-                                            major, minor);
+        std::string filename = std::format("manual-{:02x}-{:02x}.fm7",
+                                           major, minor);
         Util::WriteFile(filename, fm7);
         printf("Saved " ACYAN("%s") ": " AGREY("%s") "\n",
                filename.c_str(), fm7.c_str());
@@ -1221,8 +1221,8 @@ UI::EventResult UI::HandleEvents() {
           mov.reset();
           printf("Stopped recording.\n");
         } else {
-          std::string filename = StringPrintf("rec-%02x-%02x.mov",
-                                              major, minor);
+          std::string filename = std::format("rec-{:02x}-{:02x}.mov",
+                                             major, minor);
           mov.reset(
               new MovRecorder(MOV::OpenOut(filename, SCREENW, SCREENH,
                                            MOV::DURATION_60,
@@ -1564,7 +1564,7 @@ void UI::DrawMovie(int xx, int yy) {
   ImageRGBA img(256, 10 + 2 + 8);
   img.Clear32(0x000000FF);
   img.BlendText32(0, 0, 0x99CCCCFF,
-                  StringPrintf("%d steps", movie->Size()));
+                  std::format("{} steps", movie->Size()));
 
   int start = std::max(movie->Size() - 256, 0);
   int x = 0;
@@ -1629,7 +1629,7 @@ void UI::Draw() {
   // Use ImageRGBA for off-screen image, then save to mov if active.
 
   drawing->BlendText32(5, 5, 0xFFFF00AA,
-                       StringPrintf("Frames: %lld", frames_drawn));
+                       std::format("Frames: {}", frames_drawn));
   sdlutil::CopyRGBAToScreen(*drawing, screen);
 
   if (mov.get()) {

@@ -37,6 +37,9 @@ std::string TokenTypeString(TokenType t) {
   case LSQUARE: return "LSQUARE";
   case RSQUARE: return "RSQUARE";
   case ARROW: return "ARROW";
+  case ANDAND: return "ANDAND";
+  case OROR: return "OROR";
+  case TIMES: return "TIMES";
 
   case IN: return "IN";
 
@@ -86,6 +89,18 @@ std::vector<Token> Tokenize(int line_num,
       continue;
     }
 
+    if (input.starts_with("&&")) {
+      ret.push_back(SimpleToken(ANDAND));
+      input.remove_prefix(2);
+      continue;
+    }
+
+    if (input.starts_with("||")) {
+      ret.push_back(SimpleToken(OROR));
+      input.remove_prefix(2);
+      continue;
+    }
+
     std::string match;
     switch (input[0]) {
     case '+': AddSimpleToken(PLUS); continue;
@@ -103,6 +118,7 @@ std::vector<Token> Tokenize(int line_num,
     case '}': AddSimpleToken(RBRACE); continue;
     case '[': AddSimpleToken(LSQUARE); continue;
     case ']': AddSimpleToken(RSQUARE); continue;
+    case '*': AddSimpleToken(TIMES); continue;
 
     case ';':
       // Read to end of line, and then we are done.
@@ -255,6 +271,27 @@ static std::shared_ptr<Form> ParseForm(
         }};
     };
 
+  auto MakeJunc = [](Binop op, int prec) {
+      return FixityElt{
+        .fixity = Fixity::Infix,
+        .assoc = Associativity::Left,
+        .precedence = prec,
+        .item = nullptr,
+        .unop = nullptr,
+        .binop = [op](std::shared_ptr<Form> a, std::shared_ptr<Form> b) ->
+        std::shared_ptr<Form> {
+          // printf("Make form %d (%s)\n", (int)op, BinopString(op));
+          return std::make_shared<Form>(BinForm{
+              .op = op,
+              .lhs = std::move(a),
+              .rhs = std::move(b),
+            });
+        }};
+    };
+
+  const FixityElt AndElt = MakeJunc(Binop::AND, 3);
+  const FixityElt OrElt = MakeJunc(Binop::OR, 2);
+
   const FixityElt LessElt = MakeCmp(Binop::LESS);
   const FixityElt LessEqElt = MakeCmp(Binop::LESSEQ);
   const FixityElt GreaterElt = MakeCmp(Binop::GREATER);
@@ -341,17 +378,15 @@ static std::shared_ptr<Form> ParseForm(
            << IsToken<RPAREN>());
 
         auto FixityElement =
-          (IsToken<IN>() >> Succeed<Token, FixityElt>(InElt)) ||
-          (IsToken<LESSEQ>() >>
-           Succeed<Token, FixityElt>(LessEqElt)) ||
-          (IsToken<LESS>() >>
-           Succeed<Token, FixityElt>(LessElt)) ||
-          (IsToken<GREATEREQ>() >>
-           Succeed<Token, FixityElt>(GreaterEqElt)) ||
-          (IsToken<GREATER>() >>
-           Succeed<Token, FixityElt>(GreaterElt)) ||
-          (IsToken<EQUALS>() >>
-           Succeed<Token, FixityElt>(EqElt)) ||
+          (IsToken<IN>() >> SucceedElt(InElt)) ||
+          (IsToken<LESSEQ>() >> SucceedElt(LessEqElt)) ||
+          (IsToken<LESS>() >> SucceedElt(LessElt)) ||
+          (IsToken<GREATEREQ>() >> SucceedElt(GreaterEqElt)) ||
+          (IsToken<GREATER>() >> SucceedElt(GreaterElt)) ||
+          (IsToken<EQUALS>() >> SucceedElt(EqElt)) ||
+
+          (IsToken<ANDAND>() >> SucceedElt(AndElt)) ||
+          (IsToken<OROR>() >> SucceedElt(OrElt)) ||
 
           ParenthesizedElt ||
 

@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 
-#include "base/stringprintf.h"
 #include "image.h"
 #include "minus.h"
 #include "ansi.h"
@@ -58,7 +57,7 @@ int main(int argc, char **argv) {
         minor >= 0 && minor < 256) << major << "-" << minor << "?";
   std::string filename =
     (argc == 4) ? std::string(argv[3]) :
-    StringPrintf("map-%02x-%02x.png", major, minor);
+    std::format("map-{:02x}-{:02x}.png", major, minor);
 
   MakeMap(PackLevel(major, minor), filename);
 

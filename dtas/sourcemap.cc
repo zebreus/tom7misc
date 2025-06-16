@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <format>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -21,15 +22,13 @@ SourceMap::SourceMap(const std::string &filename,
 }
 
 void SourceMap::Save(const std::string &outfile) const {
-  std::string out = StringPrintf("%s\n%s\n",
-                                 filename.c_str(),
-                                 hash.c_str());
+  std::string out = std::format("{}\n{}\n", filename, hash);
 
   std::vector<std::pair<uint16_t, int>> sorted =
     MapToSortedVec(code);
 
   for (const auto &[addr, line] : sorted) {
-    StringAppendF(&out, "%04x %d\n", addr, line);
+    AppendFormat(&out, "{:04x} {}\n", addr, line);
   }
 
   Util::WriteFile(outfile, out);

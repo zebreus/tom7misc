@@ -207,7 +207,7 @@ static void Model() {
       }
 
       save_async.Run([image = std::move(img), frame]() {
-          std::string filename = StringPrintf("model-%d.png", frame);
+          std::string filename = std::format("model-{}.png", frame);
           image.Save(filename);
           printf("Wrote %s\n", filename.c_str());
         });

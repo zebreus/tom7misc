@@ -1,4 +1,5 @@
 
+#include <format>
 #include <memory>
 #include <cstdint>
 
@@ -66,11 +67,11 @@ static void Diff2() {
     sxs.CopyImage(0, TOP, MarioUtil::Screenshot(emu1.get()));
     sxs.CopyImage(256 + MARGIN, TOP, MarioUtil::Screenshot(emu2.get()));
 
-    sxs.BlendText32(1, 1, 0xFFFFFFFF, StringPrintf("Frame %d.", frame_num));
+    sxs.BlendText32(1, 1, 0xFFFFFFFF, std::format("Frame {}.", frame_num));
 
-    sxs.Save(StringPrintf("diff/frame%d.png", frame_num));
+    sxs.Save(std::format("diff/frame{}.png", frame_num));
     frame_num++;
-    status.Printf("%d/%d", i, 300);
+    status.Print("{}/{}", i, 300);
 
     emu1->StepFull(0, 0);
     emu2->StepFull(0, 0);

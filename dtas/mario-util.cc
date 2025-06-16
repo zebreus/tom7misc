@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <format>
 #include <optional>
 #include <string>
 #include <algorithm>
@@ -14,14 +15,13 @@
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
-#include "image.h"
-#include "util.h"
-#include "image-resize.h"
-#include "ansi-image.h"
-#include "base/stringprintf.h"
-#include "base/logging.h"
 
+#include "ansi-image.h"
+#include "base/logging.h"
+#include "image-resize.h"
+#include "image.h"
 #include "mario.h"
+#include "util.h"
 
 namespace {
 struct MemoryMap {
@@ -44,7 +44,7 @@ struct MemoryMap {
     int prev = 0;
     for (int i = 1; i < 0x800; i++) {
       if (names[i].empty()) {
-        names[i] = StringPrintf("%s+%d", names[prev].c_str(), i - prev);
+        names[i] = std::format("{}+{}", names[prev], i - prev);
       } else {
         prev = i;
       }
@@ -235,16 +235,16 @@ std::string MarioUtil::FormatNum(uint64_t n) {
   if (n > 1'000'000) {
     double m = n / 1'000'000.0;
     if (m >= 1'000'000.0) {
-      return StringPrintf("%.1fT", m / 1'000'000.0);
+      return std::format("{:.1f}T", m / 1'000'000.0);
     } else if (m >= 1000.0) {
-      return StringPrintf("%.1fB", m / 1000.0);
+      return std::format("{:.1f}B", m / 1000.0);
     } else if (m >= 100.0) {
-      return StringPrintf("%dM", (int)std::round(m));
+      return std::format("{}M", (int)std::round(m));
     } else if (m > 10.0) {
-      return StringPrintf("%.1fM", m);
+      return std::format("{:.1f}M", m);
     } else {
       // TODO: Integer division. color decimal place and suffix.
-      return StringPrintf("%.2fM", m);
+      return std::format("{:.2f}M", m);
     }
   } else {
     return Util::UnsignedWithCommas(n);
@@ -252,7 +252,7 @@ std::string MarioUtil::FormatNum(uint64_t n) {
 }
 
 std::string MarioUtil::DescribeAddress(uint16_t addr) {
-  if (addr >= 0x800) return StringPrintf("%04x", addr);
+  if (addr >= 0x800) return std::format("{:04x}", addr);
   return GetRamMap().names[addr];
 }
 

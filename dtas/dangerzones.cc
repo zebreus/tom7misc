@@ -1,13 +1,13 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <format>
 #include <memory>
 #include <cstdint>
 #include <vector>
 
 #include "image.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 static constexpr int NUM_SHOW = 11;
 int main(int argc, char **argv) {
@@ -19,7 +19,7 @@ int main(int argc, char **argv) {
     for (int val = 0; val < 256; val++) {
       uint32_t c = database->GetPixel32(addr, val);
       CHECK(c != 0x000000FF) <<
-        StringPrintf("Incomplete at %04x = %02x\n", addr, val);
+        std::format("Incomplete at {:04x} = {:02x}\n", addr, val);
 
 
       bool is_ok = c != 0xFF0000FF;

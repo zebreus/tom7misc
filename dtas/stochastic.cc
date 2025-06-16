@@ -1,6 +1,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -59,7 +60,7 @@ int main(int argc, char **argv) {
   ParallelComp(
       MAX_DENOM,
       [&](int numer) {
-        ArcFour rc(StringPrintf("stochastic.%d", numer));
+        ArcFour rc(std::format("stochastic.{}", numer));
 
         // Chance of randomly flipping a bit.
         const double prob = numer / (double)DENOM;
@@ -104,9 +105,9 @@ int main(int argc, char **argv) {
 
   std::string tsv;
   for (const auto &[numer, ok] : count_ok) {
-    StringAppendF(&tsv, "%.7f\t%.7f\n",
-                  numer / (double)DENOM,
-                  ok / (double)NUM_TRIALS);
+    AppendFormat(&tsv, "{:.7f}\t{:.7f}\n",
+                 numer / (double)DENOM,
+                 ok / (double)NUM_TRIALS);
   }
 
   Util::WriteFile("stochastic.tsv", tsv);

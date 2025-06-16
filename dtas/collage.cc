@@ -1,6 +1,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <memory>
 #include <string>
 #include <unordered_set>
@@ -81,7 +82,7 @@ int main(int argc, char **argv) {
             ImageRGBA img = Render(level);
             const auto &[major, minor] = UnpackLevel(level);
             img.BlendText32(1, 1, 0x00FFFFFF,
-                            StringPrintf("%02x-%02x", major, minor));
+                            std::format("{:02x}-{:02x}", major, minor));
 
             images_done++;
             if (status_per.ShouldRun()) {
@@ -130,7 +131,7 @@ int main(int argc, char **argv) {
         out.CopyImageRect(x * 256, y * 256, images[i], 0, 0, 256, 256);
       }
 
-      std::string filename = StringPrintf("world_%d-x.png", major);
+      std::string filename = std::format("world_{}-x.png", major);
       out.Save(filename);
 
       if (status_per.ShouldRun()) {
