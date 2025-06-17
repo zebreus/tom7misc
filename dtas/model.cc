@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <memory>
 #include <cstdint>
 #include <string>
@@ -14,7 +15,6 @@
 #include "ansi.h"
 #include "assemble.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "bounds.h"
 #include "byte-set.h"
 #include "formula.h"
@@ -86,14 +86,14 @@ static void Model() {
   }
 
   // TODO: Get these from annotations in the assembly file.
-  modeling.ram_constraints[OPER_MODE].push_back(ValueConstraint{
+  modeling.ram_constraints[OPER_MODE] = ValueConstraint{
     .comment = "Oper Mode",
     .valid_values = ByteSet({0x00, 0x01, 0x02, 0x03}),
-    });
+    };
 
-  for (const auto &vc : modeling.ram_constraints[OPER_MODE]) {
-    printf("Constraint: %s\n", vc.valid_values.DebugString().c_str());
-  }
+  printf("Constraint: %s\n",
+         modeling.ram_constraints[OPER_MODE].
+         valid_values.DebugString().c_str());
 
   // These are the entry points that we actually care about:
   // NonMaskableInterrupt is the entry point for the frame,
@@ -264,7 +264,7 @@ static void Model() {
       // status.Progressf(numer, denom, ACYAN("%lld") " iters.", iters);
       printf("%lld iters, " ACYAN("%lld") " blocks in %s\n",
              iters,
-             modeling.blocks.size(),
+             (int64_t)modeling.blocks.size(),
              ANSI::Time(timer.Seconds()).c_str());
     }
 

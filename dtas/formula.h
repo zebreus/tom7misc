@@ -47,11 +47,17 @@ enum class Unop {
   AS_INT,
   AS_WORD8,
   AS_WORD16,
+  // Boolean negation
+  NOT,
 };
 
 enum class Naryop {
   // Form a set of the arguments
   SET,
+};
+
+struct BoolForm {
+  bool value = false;
 };
 
 struct SetForm;
@@ -60,7 +66,7 @@ struct NaryForm;
 struct UnForm;
 
 using Form = std::variant<ByteSetForm, IntForm, VarForm, NaryForm,
-                          BinForm, UnForm>;
+                          BinForm, UnForm, BoolForm>;
 
 struct NaryForm {
   Naryop op = Naryop::SET;
@@ -99,5 +105,16 @@ using Constraint = std::variant<AlwaysConstraint, HereConstraint>;
 const char *BinopString(Binop op);
 std::string ColorForm(const std::shared_ptr<Form> &form);
 std::string ColorConstraint(const Constraint &c);
+
+// Assuming the formula computes a boolean condition, simplify it.
+// When we have comparisons like ram[x] < 200, put the literal on
+// the right-hand side.
+// The result should be taken as a conjunction.
+std::vector<std::shared_ptr<Form>> SimplifyBoolFormula(
+    std::shared_ptr<Form> form);
+
+// Simplify a formula that produces a number.
+std::shared_ptr<Form> SimplifyNumberFormula(
+    const std::shared_ptr<Form> &form);
 
 #endif

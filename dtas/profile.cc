@@ -1,4 +1,7 @@
 
+// Generates statistics about the target program by running
+// it with instrumentation enabled.
+
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -23,11 +26,9 @@
 #include "base/stringprintf.h"
 #include "emulator-pool.h"
 #include "evaluator.h"
-#include "image.h"
 #include "interval-cover.h"
 #include "map-util.h"
 #include "mario-util.h"
-#include "mario.h"
 #include "modeling.h"
 #include "periodically.h"
 #include "status-bar.h"
@@ -61,7 +62,7 @@ static Bank GetPRG() {
   return bank;
 }
 
-static void GenModel() {
+static void GenProfile() {
   Bank prg = GetPRG();
 
   // Not generating any model yet!
@@ -77,8 +78,6 @@ static void GenModel() {
   std::vector<uint8_t> start_state = emu->SaveUncompressed();
 
   Evaluator eval(&emu_pool, emu.get());
-
-  // ArcFour rc("genmodel");
 
   std::unordered_set<uint16_t> reached;
 
@@ -97,7 +96,7 @@ static void GenModel() {
   ParallelComp(
       NUM_REPS,
       [&](int idx) {
-        ArcFour rc(std::format("genmodel.{}", idx));
+        ArcFour rc(std::format("genprofile.{}", idx));
         auto emu = emu_pool.Acquire();
         emu->LoadUncompressed(start_state);
 
@@ -238,7 +237,7 @@ static void GenModel() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  GenModel();
+  GenProfile();
 
   return 0;
 }

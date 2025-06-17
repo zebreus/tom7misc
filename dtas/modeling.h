@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -85,7 +86,8 @@ struct State {
 };
 
 // A global assertion about a memory location.
-// This should probably be generalized!
+// This is a common form of .always assertion, so we treat them
+// specially for simplicity.
 //
 // These assertions are not taken as assumptions; they are checked during
 // modeling and we abort if any are violated.
@@ -193,11 +195,17 @@ struct Modeling {
 
   // Assertions about the values that can be stored in memory
   // locations.
-  std::unordered_map<uint16_t, std::vector<ValueConstraint>>
-    ram_constraints;
+  std::unordered_map<uint16_t, ValueConstraint> ram_constraints;
 
   // Override verbosity for specific addresses.
   std::unordered_map<uint16_t, int> verbose_addrs;
+
+  // All these formulas are expected to always hold. This is not
+  // an assumption; it (should be) checked by the model checker.
+  // TODO: We may want a more efficient representation if there
+  // are a lot of formulas. The only thing we do efficiently is
+  // promote a constraint like ram[123] in S to ram_constraints.
+  std::vector<std::shared_ptr<Form>> always_formulas;
 
   // True if the analysis is quiescent.
   bool Done() const;

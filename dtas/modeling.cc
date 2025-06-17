@@ -3,11 +3,11 @@
 
 #include <algorithm>
 #include <compare>
-#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <format>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -2183,26 +2183,39 @@ void Modeling::CheckMemoryInvariants(const ErrorLoc &loc,
   auto it = ram_constraints.find(addr);
   if (it == ram_constraints.end()) return;
 
-  for (const ValueConstraint &vc : it->second) {
-    const MemByteSet &actual = state.ram[addr];
-    if (!ByteSet::Subset(actual, vc.valid_values)) {
-      printf("Memory invariant " AWHITE("%s") " violated."
-             "At: %s\n"
-             "Address " AYELLOW("%04x") " should contain only: %s\n"
-             "But it contained: %s\n",
-             vc.comment.c_str(),
-             ErrorLocString(loc).c_str(),
-             addr,
-             vc.valid_values.DebugString().c_str(),
-             actual.DebugString().c_str());
-      LOG(FATAL) << "Memory invariant violation.\n";
-    }
+  const ValueConstraint &vc = it->second;
+  const MemByteSet &actual = state.ram[addr];
+  if (!ByteSet::Subset(actual, vc.valid_values)) {
+    printf("Memory invariant " AWHITE("%s") " violated."
+           "At: %s\n"
+           "Address " AYELLOW("%04x") " should contain only: %s\n"
+           "But it contained: %s\n",
+           vc.comment.c_str(),
+           ErrorLocString(loc).c_str(),
+           addr,
+           vc.valid_values.DebugString().c_str(),
+           actual.DebugString().c_str());
+    LOG(FATAL) << "Memory invariant violation.\n";
   }
 }
+
 
 void Modeling::AddConstraint(const Constraint &c) {
   printf("Add constraint: %s\n", ColorConstraint(c).c_str());
   if (const AlwaysConstraint *always = std::get_if<AlwaysConstraint>(&c)) {
+    // Top-level AND constraints are the same as individual ones.
+
+    std::vector<std::shared_ptr<Form>> conj =
+      SimplifyBoolFormula(always->form);
+
+    for (const std::shared_ptr<Form> &form : conj) {
+      // Find formulas of the form ram[constant] in S, and promote
+      // those to ValueConstraints.
+      //
+      // For other formulas, add them to a vector of all the always
+      // formulas.
+      LOG(FATAL) << "Unimplemented";
+    }
 
   } else {
     printf("  (" ARED("not implemented") ")\n");
