@@ -1,19 +1,20 @@
 
+#include <cmath>
+#include <cstdio>
+#include <mutex>
+#include <optional>
+#include <utility>
 #include <vector>
 #include <string>
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 
-#include "timer.h"
 #include "font-problem.h"
-
+#include "fonts/ttf.h"
 #include "image.h"
-#include "lines.h"
-#include "base/stringprintf.h"
-
 #include "network.h"
 #include "threadutil.h"
+#include "util.h"
 
 using namespace std;
 

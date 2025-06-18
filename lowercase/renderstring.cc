@@ -3,17 +3,15 @@
 #include <optional>
 #include <vector>
 #include <string>
-#include <algorithm>
 #include <cstdint>
-#include <memory>
 
-#include "timer.h"
-#include "font-problem.h"
-
+#include "base/logging.h"
 #include "base/stringprintf.h"
+#include "font-problem.h"
 #include "fonts/ttf.h"
 #include "geom/marching.h"
 #include "image.h"
+#include "timer.h"
 #include "util.h"
 
 using namespace std;
@@ -36,10 +34,12 @@ vector<bool> Threshold(const ImageF &a) {
   return ret;
 }
 
+/*
 constexpr float SCALE = 2.0;
 constexpr int CYCLE_START = 245;
 constexpr int CYCLE_END = 377;
 constexpr bool LOWER = false;
+*/
 
 /*
 constexpr float SCALE = 1.5;

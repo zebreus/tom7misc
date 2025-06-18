@@ -89,7 +89,6 @@ int main(int argc, char **argv) {
 
   const int SDF_SIZE = SDF_CONFIG.sdf_size;
   const int SCALE = 5;
-  const int QUALITY = 4;
   const int TILE = SCALE * SDF_SIZE;
 
   std::unique_ptr<ImageRGBA> input_rgba(

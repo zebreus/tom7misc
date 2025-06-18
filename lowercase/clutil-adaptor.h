@@ -1,9 +1,13 @@
 
-#ifndef _CLUTIL_H
-#define _CLUTIL_H
+// All deprecated.
+// Just use the one in cc-lib/opencl directly.
+
+#ifndef _LOWERCASE_CLUTIL_ADAPTOR_H
+#define _LOWERCASE_CLUTIL_ADAPTOR_H
 
 #include <CL/cl.h>
 #include <CL/cl_platform.h>
+
 #include <cstdint>
 #include <cstdio>
 #include <stdlib.h>
@@ -11,58 +15,29 @@
 #include <utility>
 #include <vector>
 
+#include "opencl/clutil.h"
+
 using uint8 = uint8_t;
 // Better compatibility with CL.
 using uchar = uint8_t;
-
 using uint64 = uint64_t;
 
-#define CHECK_SUCCESS(e) do {                                           \
-    const int ret = (e);                                                \
-    if (ret != CL_SUCCESS) {                                            \
-      fprintf(stderr, __FILE__ ":%d in %s:\n"                           \
-              "Not successful with code %d (%s).\n",                    \
-              __LINE__, __func__,                                       \
-              ret, CL::ErrorString(ret));                               \
-      abort();                                                          \
-    }                                                                   \
-  } while (0)
+// Creates a new buffer on the GPU and copies the memory there. They
+// do not alias. Note that the command queue is not flushed, so you
+// should not touch the source memory until it is.
+template<class T>
+inline cl_mem MoveMemoryToGPU(cl_context context, cl_command_queue cmd,
+                              bool readonly, std::vector<T> *v) {
+  return CopyMemoryToGPU(context, cmd, *v, readonly);
+}
 
-// Boilerplate. There should probably just be one of these per program.
-struct CL {
-  CL();
+template<class T>
+inline cl_mem MoveMemoryToGPUConst(cl_context context, cl_command_queue cmd,
+                                   const std::vector<T> &v) {
+  return CopyMemoryToGPU(context, cmd, v, true);
+}
 
-  static const char *ErrorString(cl_int err);
-
-  /*
-  cl_command_queue NewCommandQueue(bool out_of_order = true) {
-    cl_queue_properties props =
-      out_of_order ? CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE : 0;
-    return clCreateCommandQueueWithProperties(
-        context, devices[0],
-        &props,
-        nullptr);
-  }
-  */
-
-  std::pair<cl_program, cl_kernel>
-  BuildOneKernel(const std::string &kernel_src,
-                 const std::string &function_name);
-
-  ~CL() {
-    printf("Destroying CL.\n");
-    CHECK_SUCCESS(clReleaseCommandQueue(queue));
-    CHECK_SUCCESS(clReleaseContext(context));
-    free(devices);
-    printf("OK.\n");
-  }
-
-  cl_uint num_devices = 0;
-  cl_device_id *devices = nullptr;
-  cl_context context;
-  cl_command_queue queue;
-};
-
+#if 0
 // Shares with the host memory and we don't control when it gets copied. This is
 // quite inefficient.
 template<class T>
@@ -154,5 +129,6 @@ static void CopyBufferToGPU(cl_command_queue cmd,
                                      nullptr, nullptr));
   clFinish(cmd);
 }
+#endif
 
 #endif

@@ -1,17 +1,15 @@
 
+#include <cstdio>
+#include <initializer_list>
+#include <utility>
 #include <vector>
 #include <string>
-#include <algorithm>
 #include <cstdint>
-#include <memory>
 
-#include "timer.h"
 #include "font-problem.h"
-
+#include "fonts/ttf.h"
 #include "image.h"
-#include "lines.h"
-#include "base/stringprintf.h"
-
+#include "util.h"
 #include "threadutil.h"
 
 using namespace std;
@@ -19,12 +17,13 @@ using namespace std;
 using uint8 = uint8_t;
 using uint32 = uint32_t;
 using int64 = int64_t;
-
+using uint64 = uint64_t;
 
 // XXX somehow needs to be shared?
 static constexpr int ROW0_MAX_PTS = 38;
 static constexpr int ROW1_MAX_PTS = 14;
 static constexpr int ROW2_MAX_PTS = 10;
+[[maybe_unused]]
 constexpr std::initializer_list<int> row_max_points = {
   ROW0_MAX_PTS,
   ROW1_MAX_PTS,
@@ -101,7 +100,7 @@ struct Config {
     {'x', 0x70717c3c1c1c0110},
     {'y', 0x40078f9f1fc8008},
     {'z', 0x8c3f1c606072f000},
-    
+
     {' ', 0x0000000000000000},
   };
 };
@@ -110,10 +109,12 @@ static bool IsUppercase(char c) {
   return (c >= 'A' && c <= 'Z');
 }
 
+[[maybe_unused]]
 static bool IsLowercase(char c) {
   return (c >= 'a' && c <= 'z');
 }
 
+[[maybe_unused]]
 static bool IsLetter(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
@@ -122,8 +123,6 @@ static constexpr FontProblem::SDFConfig SDF_CONFIG = {};
 
 // Just making a TTF from precomputed bitmaps.
 static void GenerateOne(Config cfg) {
-  std::mutex out_m;
-
   vector<pair<char, TTF::Char>> chars =
     ParallelMap(cfg.chars,
                 [&](pair<char, uint64> letter) {
@@ -134,7 +133,7 @@ static void GenerateOne(Config cfg) {
                   // and this would produce more faithful results!
                   // Fake SDF.
                   ImageF sdf(
-                      IsUppercase(codepoint) ? 
+                      IsUppercase(codepoint) ?
                       FontProblem::SDF36From8x8Uppercase(img8) :
                       FontProblem::SDF36From8x8Lowercase(img8));
 
@@ -147,10 +146,10 @@ static void GenerateOne(Config cfg) {
 
                   // XXX hax
                   TTF::MapCoords(
-                      [&cfg](float x, float y) {
+                      [](float x, float y) {
                         return make_pair(x + 4.0f/36.0f, y);
                       }, &ttf_char);
-                  
+
                   return make_pair((char)codepoint, ttf_char);
                 },
                 13);

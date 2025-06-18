@@ -36,25 +36,35 @@
 //     allocate; it's fine to use the copy constructor.
 
 #include "SDL.h"
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_keysym.h"
 #include "SDL_main.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
+#include "fonts/ttf.h"
 #include "sdl/sdlutil.h"
 #include "sdl/font.h"
 
 #include <CL/cl.h>
 
+#include <CL/cl_platform.h>
+#include <cstdint>
+#include <format>
+#include <memory>
+#include <optional>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
+#include <thread>
 #include <time.h>
 
 #include <cmath>
-#include <chrono>
 #include <algorithm>
 #include <tuple>
 #include <utility>
-#include <set>
 #include <vector>
-#include <map>
 #include <unordered_set>
 #include <deque>
 #include <shared_mutex>
@@ -63,27 +73,23 @@
 #include "base/logging.h"
 #include "arcfour.h"
 #include "util.h"
-#include "stb_image.h"
-#include "stb_image_write.h"
-#include "vector-util.h"
 #include "threadutil.h"
 #include "randutil.h"
 #include "base/macros.h"
-#include "color-util.h"
-#include "image.h"
 #include "lines.h"
 #include "nice.h"
 
-#include "loadfonts.h"
-#include "network.h"
+#include "../loadfonts.h"
+#include "../network.h"
 
-#include "clutil.h"
+#include "opencl/clutil.h"
+#include "../clutil-adaptor.h"
 #include "timer.h"
 #include "top.h"
-#include "font-problem.h"
+#include "../font-problem.h"
 #include "autoparallel.h"
 
-#include "../bit7/embed9x9.h"
+#include "../../bit7/embed9x9.h"
 
 #define FONTCHARS " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?" /* removed icons */
 #define FONTSTYLES 7
@@ -100,6 +106,7 @@ using uint8 = uint8_t;
 // Better compatibility with CL.
 using uchar = uint8_t;
 
+using int64 = int64_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
 
@@ -198,6 +205,7 @@ static uint8 FloatByte(float f) {
   else return f * 255.0;
 }
 
+[[maybe_unused]]
 static constexpr float ByteFloat(uint8 b) {
   return b * (1.0 / 255.0f);
 }
@@ -1355,8 +1363,8 @@ struct UI {
     case RENDERSTYLE_INPUTXY:
       return {NOMINAL_CHAR_SIZE, NOMINAL_CHAR_SIZE, 1};
     case RENDERSTYLE_OUTPUTXY:
-      return {std::max(NOMINAL_CHAR_SIZE, EmbeddedFont::CHAR_WIDTH * 26),
-              NOMINAL_CHAR_SIZE + 1 + EmbeddedFont::CHAR_HEIGHT,
+      return {std::max(NOMINAL_CHAR_SIZE, EmbeddedFont::WIDTH * 26),
+              NOMINAL_CHAR_SIZE + 1 + EmbeddedFont::HEIGHT,
               1};
     }
   }
@@ -1489,14 +1497,14 @@ struct UI {
                 for (int i = 0; i < 26; i++) {
                   const uint8 v = FloatByte(outs[INPUT_LAYER_SIZE + i]);
                   EmbeddedFont::Blit('A' + i,
-                                     xstart + EmbeddedFont::CHAR_HEIGHT * i,
+                                     xstart + EmbeddedFont::HEIGHT * i,
                                      ystart + NOMINAL_CHAR_SIZE + 1,
-                                     [this, v](int x, int y) {
+                                     [v](int x, int y) {
                                        sdlutil::drawclippixel(
                                            screen, x, y,
                                            v, v, 0xFF);
                                      },
-                                     [this](int x, int y) {
+                                     [](int x, int y) {
                                        sdlutil::drawclippixel(
                                            screen, x, y,
                                            0, 0, 0);
@@ -1932,7 +1940,7 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
 }
 
 static UI *ui = nullptr;
-static LoadFonts *load_fonts = nullptr;
+static VectorLoadFonts *load_fonts = nullptr;
 
 static void TrainThread() {
   Timer setup_timer;
@@ -1955,7 +1963,7 @@ static void TrainThread() {
   // speed can vary a lot based on other parameters!
   static constexpr int VERBOSE_ROUND_EVERY = 250;
 
-  string start_seed = StringPrintf("%d  %lld", getpid(), (int64)time(nullptr));
+  string start_seed = std::format("{}  {}", Util::getpid(), time(nullptr));
   Printf("Start seed: [%s]\n", start_seed.c_str());
   ArcFour rc(start_seed);
   rc.Discard(2000);
@@ -2204,19 +2212,14 @@ static void TrainThread() {
     if (ShouldDie()) return;
 
     while (std::optional<string> excl = GetExclusiveApp()) {
-      // Don't keep time while deliberately stopped.
-      total_timer.Stop();
-      round_timer.Stop();
       Printf("(Sleeping because of exclusive app %s)\n",
              excl.value().c_str());
       std::this_thread::sleep_for(5000ms);
-      total_timer.Start();
-      round_timer.Start();
     }
 
     if (VERBOSE > 2) Printf("\n\n");
-    Printf("** NET ROUND %d (%d in this process) **\n",
-           net->rounds, rounds_executed);
+    Printf("** NET ROUND %lld (%d in this process) **\n",
+           (int64_t)net->rounds, rounds_executed);
 
     // When starting from a fresh network, consider this:
 
@@ -2312,8 +2315,8 @@ static void TrainThread() {
     do {
       if (!examples.empty()) {
         if (VERBOSE > 0)
-          Printf("Blocked grabbing examples (still need %d)...\n",
-                 EXAMPLES_PER_ROUND - examples.size());
+          Printf("Blocked grabbing examples (still need %lld)...\n",
+                 (int64_t)(EXAMPLES_PER_ROUND - examples.size()));
         std::this_thread::sleep_for(100ms);
       }
       WriteMutexLock ml{&training_examples_m};
@@ -2486,9 +2489,7 @@ static void TrainThread() {
     Timer output_error_timer;
     error_comp.ParallelComp(
         num_examples,
-        [rounds_executed,
-         &setoutputerror, &net_gpu, &training, &examples](int example_idx) {
-
+        [&setoutputerror, &net_gpu, &training, &examples](int example_idx) {
           // Now copy back to GPU and compute output error.
           training[example_idx]->LoadExpected(examples[example_idx].output);
           SetOutputErrorCL::Context sc{&setoutputerror, &net_gpu};
@@ -2512,7 +2513,7 @@ static void TrainThread() {
 
       backward_comp.ParallelComp(
           num_examples,
-          [num_examples, &training, &bc](int example) {
+          [&training, &bc](int example) {
             bc.Backward(training[example]);
           });
       if (VERBOSE > 2) Printf("\n");
@@ -2631,7 +2632,9 @@ static std::optional<string> GetExclusiveApp() {
 int SDL_main(int argc, char **argv) {
   // XXX This is specific to my machine. You probably want to remove it.
   // Assumes that processors 0-16 are available.
+  /*
   CHECK(SetProcessAffinityMask(GetCurrentProcess(), 0xF));
+  */
 
   Nice::SetLowPriority();
 
@@ -2654,7 +2657,7 @@ int SDL_main(int argc, char **argv) {
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen);
 
-  font = Font::create(screen,
+  font = Font::Create(screen,
                       "font.png",
                       FONTCHARS,
                       FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
@@ -2663,7 +2666,7 @@ int SDL_main(int argc, char **argv) {
   global_cl = new CL;
 
   // Start loading fonts in background.
-  load_fonts = new LoadFonts(
+  load_fonts = new VectorLoadFonts(
       []() { return ReadWithLock(&train_should_die_m, &train_should_die); },
       {ROW0_MAX_PTS, ROW1_MAX_PTS, ROW2_MAX_PTS},
       12,

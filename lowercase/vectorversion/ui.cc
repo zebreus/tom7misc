@@ -1,4 +1,6 @@
 
+#include <cstdio>
+#include <format>
 #include <string>
 #include <vector>
 #include <shared_mutex>
@@ -8,30 +10,33 @@
 #include <utility>
 #include <optional>
 
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "SDL_keyboard.h"
+#include "SDL_video.h"
+#include "threadutil.h"
+#include "randutil.h"
+#include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 
 #include "timer.h"
 
 #include "SDL.h"
 #include "SDL_main.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/stb_truetype.h"
-#include "../cc-lib/image.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/lines.h"
-#include "../cc-lib/re2/re2.h"
+#include "sdl/sdlutil.h"
+#include "sdl/font.h"
+#include "stb_truetype.h"
+#include "image.h"
+#include "util.h"
+#include "lines.h"
+#include "re2/re2.h"
+#include "fonts/ttf.h"
 
 #include "opt/opt.h"
 
-#include "ttfops.h"
-#include "ttf.h"
-#include "fontdb.h"
-#include "font-problem.h"
+#include "../ttfops.h"
+
+#include "../fontdb.h"
+#include "../font-problem.h"
 
 #define FONTCHARS " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?" /* removed icons */
 #define FONTSTYLES 7
@@ -47,6 +52,9 @@ static Font *font = nullptr, *font2x = nullptr;
 #define SCREENW 1920
 #define SCREENH 1280
 static SDL_Surface *screen = nullptr;
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 enum class Mode {
   BITMAP,
@@ -151,7 +159,7 @@ double BitmapDifference(const TTF &ttf,
                         float xmov2, float ymov2,
                         bool draw = false) {
 
-  const stbtt_fontinfo *info = ttf.Font();
+  const stbtt_fontinfo *info = ttf.FontInfo();
   CHECK(info != nullptr);
 
   if (draw) {
@@ -757,8 +765,8 @@ int UI::DrawChar(TTF *ttf, int sx, int sy, float scale, char c, char nc) {
   const double sqerr = 1.0f / (scale * scale);
 
   for (const auto &contour : contours) {
-    float x = contour.startx;
-    float y = contour.starty;
+    float x = contour.StartX();
+    float y = contour.StartY();
     for (const auto &p : contour.paths) {
       switch (p.type) {
       case TTF::PathType::LINE: {
@@ -793,7 +801,7 @@ int UI::DrawChar(TTF *ttf, int sx, int sy, float scale, char c, char nc) {
   if (draw_points) {
     // Now draw vertices to give a hint when there are "too many" control points.
     for (const auto &contour : contours) {
-      PointAt(contour.startx, contour.starty);
+      PointAt(contour.StartX(), contour.StartY());
 
       for (const auto &p : contour.paths) {
         switch (p.type) {
@@ -855,12 +863,11 @@ void UI::DrawSortition() {
 
   {
     double pct = (100.0 * fontdb.NumSorted()) / (double)fontdb.Size();
-    string progress = StringPrintf("^6%.2f^4%%^<  %d^4/^<%d",
-                                   pct, cur, cur_filenames.size());
-    font2x->draw(SCREENW - font2x->sizex(progress) - 8, SCREENH - font2x->height - 2,
-                 progress);
+    string progress =
+        std::format("^6{:.2f}^4%^<  {}^4/^<{}", pct, cur, cur_filenames.size());
+    font2x->draw(SCREENW - font2x->sizex(progress) - 8,
+                 SCREENH - font2x->height - 2, progress);
   }
-
 
   int xpos = 64;
   int ypos = 64;
@@ -1039,8 +1046,8 @@ void UI::Draw() {
     double sqerr = 1.0f / (SCALE * SCALE);
 
     for (const auto &contour : contours) {
-      float x = contour.startx;
-      float y = contour.starty;
+      float x = contour.StartX();
+      float y = contour.StartY();
       printf("CONTOUR. Start %.5f %.5f\n", x, y);
       Point(x, y, -1);
       for (int i = 0; i < contour.paths.size(); i++) {
@@ -1140,7 +1147,7 @@ int main(int argc, char **argv) {
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen);
 
-  font = Font::create(screen,
+  font = Font::Create(screen,
                       "font.png",
                       FONTCHARS,
                       FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);

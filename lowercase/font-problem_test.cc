@@ -1,19 +1,27 @@
 
 #include "font-problem.h"
 
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <initializer_list>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
 #include "arcfour.h"
+#include "fonts/ttf.h"
 #include "timer.h"
 #include "image.h"
 #include "arcfour.h"
 #include "randutil.h"
 
 using namespace std;
+
+using uint64 = uint64_t;
 
 static constexpr bool EXTRA_CHECKS = true;
 
@@ -24,6 +32,7 @@ static float SqDistance(const Point &a, const Point &b) {
   return dx * dx + dy * dy;
 }
 
+[[maybe_unused]]
 static void TestLoopAssignment() {
   ArcFour rc{"test"};
 
@@ -239,11 +248,12 @@ static void Test8x8SDF() {
     Try64(Rand64(&rc));
 }
 
+[[maybe_unused]]
 static void Test8x8() {
   FontProblem::Image8x8 pix;
   int onpixels = 0;
   for (int i = 0; i < 64; i++) {
-    char *c =
+    const char *c =
       "  ###   "
       "  ###   "
       " ## ##  "
@@ -281,11 +291,11 @@ static void TestOptimized() {
 }
 
 int main(int argc, char **argv) {
-  // TestLoopAssignment();
+  TestLoopAssignment();
   // BenchmarkBitmapSDF();
 
-  // Test8x8SDF();
-  // Test8x8();
+  Test8x8SDF();
+  Test8x8();
 
   TestOptimized();
 

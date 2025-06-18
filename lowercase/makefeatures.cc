@@ -42,15 +42,6 @@
 #include "font-problem.h"
 #include "autoparallel.h"
 
-
-#define ANSI_RED "\x1B[1;31;40m"
-#define ANSI_GREY "\x1B[1;30;40m"
-#define ANSI_BLUE "\x1B[1;34;40m"
-#define ANSI_CYAN "\x1B[1;36;40m"
-#define ANSI_YELLOW "\x1B[1;33;40m"
-#define ANSI_GREEN "\x1B[1;32;40m"
-#define ANSI_WHITE "\x1B[1;37;40m"
-#define ANSI_PURPLE "\x1B[1;35;40m"
 #define ANSI_RESET "\x1B[m"
 #define ANSI_CLEAR_SCREEN "\x1B[2J\x1B[H"
 
@@ -132,6 +123,7 @@ static constexpr FontProblem::SDFConfig SDF_CONFIG;
 static constexpr int SDF_SIZE = SDF_CONFIG.sdf_size;
 
 // SDF is square with an edge this length.
+[[maybe_unused]]
 static constexpr int INPUT_LAYER_SIZE = SDF_SIZE * SDF_SIZE;
 
 static SDFLoadFonts *load_fonts = nullptr;

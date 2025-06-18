@@ -14,7 +14,8 @@
 
 #include "image.h"
 
-#include "clutil.h"
+#include "opencl/clutil.h"
+#include "clutil-adaptor.h"
 
 using namespace std;
 using uint8 = uint8_t;

@@ -45,6 +45,7 @@
 
 #include <CL/cl_platform.h>
 #include <cstdint>
+#include <format>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -80,14 +81,15 @@
 #include "loadfonts.h"
 #include "network.h"
 
+#include "autoparallel.h"
+#include "clutil-adaptor.h"
+#include "error-history.h"
+#include "font-problem.h"
+#include "modelinfo.h"
 #include "nice.h"
-#include "clutil.h"
+#include "opencl/clutil.h"
 #include "timer.h"
 #include "top.h"
-#include "font-problem.h"
-#include "autoparallel.h"
-#include "error-history.h"
-#include "modelinfo.h"
 
 #include "../bit7/embed9x9.h"
 
@@ -1908,9 +1910,9 @@ struct UI {
                   << current_network->num_layers;
                 const vector<float> &vals = stim.values[vlayer];
                 font->draw(xstart, yz,
-                           StringPrintf("Layer %d/%d, stim #%d-%d..\n",
-                                        vlayer, stim.values.size(),
-                                        voffset, voffset + VIEW_STIM_SIZE - 1));
+                           std::format("Layer {}/{}, stim #{}-{}..\n",
+                                       vlayer, stim.values.size(),
+                                       voffset, voffset + VIEW_STIM_SIZE - 1));
                 yz += FONTHEIGHT;
                 float minv = std::numeric_limits<float>::infinity();
                 float maxv = -std::numeric_limits<float>::infinity();

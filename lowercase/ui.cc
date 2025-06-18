@@ -4,9 +4,11 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <format>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <vector>
 #include <shared_mutex>
@@ -16,37 +18,33 @@
 #include <optional>
 #include <condition_variable>
 
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/nice.h"
-
 #include "SDL_events.h"
 #include "SDL_keyboard.h"
+#include "SDL_keysym.h"
 #include "SDL_mouse.h"
 #include "SDL_video.h"
-#include "timer.h"
-
 #include "SDL.h"
 #include "SDL_main.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/sdl/cursor.h"
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/stb_truetype.h"
-#include "../cc-lib/image.h"
-#include "../cc-lib/lines.h"
-#include "../cc-lib/re2/re2.h"
 
-#include "opt/opt.h"
-
-#include "fonts/ttf.h"
-#include "fontdb.h"
+#include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 #include "font-problem.h"
-#include "network.h"
-
+#include "fontdb.h"
+#include "fonts/ttf.h"
 #include "geom/bezier.h"
+#include "image.h"
+#include "lines.h"
+#include "network.h"
+#include "opt/opt.h"
+#include "randutil.h"
+#include "re2/re2.h"
+#include "sdl/cursor.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
+#include "stb_truetype.h"
+#include "threadutil.h"
+#include "timer.h"
 
 #define FONTCHARS " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?" /* removed icons */
 #define FONTSTYLES 7
@@ -657,12 +655,12 @@ UI::UI() {
     cur_filenames = std::move(cut);
   }
 
-  printf("All fonts: %d\n"
+  printf("All fonts: %lld\n"
          "Sorted fonts: %lld\n"
          "Unsorted fonts: %lld\n"
          "Case marked: %lld\n"
          "Case unmarked: %lld\n",
-         fontdb.Size(),
+         (int64_t)fontdb.Size(),
          sorted,
          unsorted,
          case_marked,
@@ -734,7 +732,7 @@ void UI::RecomputeLoop() {
 
 void UI::DrawThick(int x0, int y0,
                    int x1, int y1,
-                   Uint32 color) {
+                   uint32 color) {
   static constexpr int THICKNESS = 6;
   Line<int> l{x0, y0, x1, y1};
 
@@ -742,7 +740,7 @@ void UI::DrawThick(int x0, int y0,
     std::unique_lock<std::mutex> guard(result_m);
     const int w = drawing->w, h = drawing->h;
 
-    Uint32 *bufp = (Uint32 *)drawing->pixels;
+    uint32 *bufp = (uint32 *)drawing->pixels;
     int stride = drawing->pitch >> 2;
     auto SetPixel = [color, w, h, bufp, stride](int x, int y) {
         if (x >= 0 && y >= 0 &&
@@ -814,7 +812,7 @@ void UI::UpdateGamma() {
 
 void UI::FloodFillToggle(int x, int y) {
   {
-    static constexpr Uint32 COLOR = 0xFFFFFFFF;
+    static constexpr uint32 COLOR = 0xFFFFFFFF;
 
     std::unique_lock<std::mutex> guard(result_m);
 
@@ -823,11 +821,11 @@ void UI::FloodFillToggle(int x, int y) {
     if (x < 0 || y < 0 || x >= w || y >= h)
       return;
 
-    Uint32 *bufp = (Uint32 *)drawing->pixels;
+    uint32 *bufp = (uint32 *)drawing->pixels;
     int stride = drawing->pitch >> 2;
 
-    const Uint32 source_color = bufp[y * stride + x];
-    const Uint32 replacement_color =
+    const uint32 source_color = bufp[y * stride + x];
+    const uint32 replacement_color =
       source_color == COLOR ? 0xFF000000 : COLOR;
 
     auto GetPixel =
@@ -854,7 +852,7 @@ void UI::FloodFillToggle(int x, int y) {
       const auto [xx, yy] = todo.back();
       todo.pop_back();
 
-      Uint32 c = GetPixel(xx, yy);
+      uint32 c = GetPixel(xx, yy);
       if (c == source_color) {
         SetPixel(xx, yy);
         todo.emplace_back(xx - 1, yy);
@@ -1531,7 +1529,7 @@ void UI::DrawSortition() {
 
   {
     double pct = (100.0 * fontdb.NumSorted()) / (double)fontdb.Size();
-    string progress = StringPrintf("^6%.2f^4%%^<  %d^4/^<%d",
+    string progress = std::format("^6{:.2f}^4%^<  {}^4/^<{}",
                                    pct, cur, cur_filenames.size());
     font2x->draw(SCREENW - font2x->sizex(progress) - 8,
                  SCREENH - font2x->height - 2,
@@ -1902,7 +1900,7 @@ void UI::DrawZoom() {
 
   sdlutil::FillRectRGB(screen, CTRX, CTRY, 200, font->height + 2,
                        0, 0, 0);
-  font->draw(CTRX, CTRY, StringPrintf("[%.3f] %d %s ^1%d/%d",
+  font->draw(CTRX, CTRY, std::format("[{:.3f}] {} {} ^1{}/{}",
                                       zoom_gamma,
                                       zoom_iters,
                                       (zoom_loop ? "^2loop" : ""),
@@ -2072,8 +2070,8 @@ void UI::Draw() {
     string epts = MakePts(looptest_expected);
     string apts = MakePts(looptest_actual);
 
-    font->draw(12, LINE1, StringPrintf("^5Expected:^< %s", epts.c_str()));
-    font->draw(12, LINE2, StringPrintf("^8  Actual:^< %s", apts.c_str()));
+    font->draw(12, LINE1, std::format("^5Expected:^< {}", epts));
+    font->draw(12, LINE2, std::format("^8  Actual:^< {}", apts));
     if (looptest_assignment.has_value()) {
       string assn = StringPrintf("Assignment: ^2Point0^< = %d ^3groups^< = ",
                                  looptest_assignment->point0);

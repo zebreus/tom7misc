@@ -1,9 +1,11 @@
 
+#include <cstdio>
 #include <memory>
 #include <string>
+#include <vector>
 
-#include "network.h"
-#include "font-problem.h"
+#include "../network.h"
+#include "../font-problem.h"
 
 using namespace std;
 
@@ -30,12 +32,10 @@ int main(int argc, char **argv) {
     ROW2_MAX_PTS,
   };
 
-
   FontProblem::RenderVector("helvetica.ttf",
                             *net,
                             row_max_points,
                             "eval.png");
-
 
   printf("Done.\n");
   return 0;

@@ -5,6 +5,8 @@
 #include <cmath>
 
 #include <algorithm>
+#include <format>
+#include <memory>
 #include <utility>
 #include <cstdint>
 #include <string>
@@ -193,7 +195,7 @@ void Network::RunForwardVerbose(Stimulation *stim) const {
       // Start with bias.
       double potential = biases[node_idx];
       printf("%d|L %d n %d. bias: %f\n",
-             rounds, src, node_idx, potential);
+             (int)rounds, src, node_idx, potential);
       CHECK(!std::isnan(potential)) << node_idx;
       const int my_weights = node_idx * indices_per_node;
       const int my_indices = node_idx * indices_per_node;
@@ -207,7 +209,7 @@ void Network::RunForwardVerbose(Stimulation *stim) const {
         CHECK(!std::isnan(w) &&
               !std::isnan(v) &&
               !std::isnan(potential)) <<
-          StringPrintf("L %d, n %d. [%d=%d] %f * %f + %f\n",
+          std::format("L {}, n {}. [{}={}] {} * {} + {}\n",
                        src,
                        node_idx,
                        i, srci, w, v, potential);
@@ -238,10 +240,11 @@ void Network::NaNCheck(const std::string &message) const {
   if (has_nans) {
     string err;
     for (int i = 0; i < layer_nans.size(); i++) {
-      err += StringPrintf("(real) layer %d. %d/%d weights, %d/%d biases\n",
-                          i,
-                          layer_nans[i].first, layers[i].weights.size(),
-                          layer_nans[i].second, layers[i].biases.size());
+      AppendFormat(&err,
+                   "(real) layer {}. {}/{} weights, {}/{} biases\n",
+                   i,
+                   layer_nans[i].first, layers[i].weights.size(),
+                   layer_nans[i].second, layers[i].biases.size());
     }
     CHECK(false) << "[" << message << "] The network has NaNs :-(\n" << err;
   }
@@ -643,9 +646,9 @@ void Stimulation::NaNCheck(const std::string &message) const {
   if (has_nans) {
     string err;
     for (int i = 0; i < layer_nans.size(); i++) {
-      err += StringPrintf("stim layer %d. %d/%d values\n",
-                          i,
-                          layer_nans[i], values[i].size());
+      AppendFormat(&err, "stim layer {}. {}/{} values\n",
+                   i,
+                   layer_nans[i], values[i].size());
     }
     CHECK(false) << "[" << message
                  << "] The stimulation has NaNs :-(\n" << err;

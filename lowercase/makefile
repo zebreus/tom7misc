@@ -1,15 +1,13 @@
 
-default: train.exe collate-errors.exe vacuum.exe cull.exe widen.exe deepen.exe ui.exe
-
-all: ui.exe cleandb.exe samecase.exe train.exe collate-errors.exe vacuum.exe widen.exe get-modelinfo.exe font-problem_test.exe vector-eval.exe sdf-eval.exe vector-info.exe sdf-info.exe area.exe get-layerweights.exe makefeatures.exe plot.exe bitmap-sdf.exe trace-sdf.exe vector-makefont.exe bitmap-makefont.exe makefont.exe hallucinate.exe sdf-figure.exe findloop.exe renderloop.exe renderstring.exe makestegfont.exe font-template.exe template-makefont.exe resequence.exe recut.exe cyberspace.exe middlecase.exe
+default: ui.exe cleandb.exe samecase.exe train.exe collate-errors.exe vacuum.exe widen.exe get-modelinfo.exe font-problem_test.exe vector-eval.exe sdf-eval.exe vector-info.exe sdf-info.exe area.exe get-layerweights.exe makefeatures.exe plot.exe bitmap-sdf.exe trace-sdf.exe vector-makefont.exe bitmap-makefont.exe makefont.exe hallucinate.exe sdf-figure.exe findloop.exe renderloop.exe renderstring.exe makestegfont.exe font-template.exe template-makefont.exe resequence.exe recut.exe cyberspace.exe middlecase.exe
 
 modelinfos: modelinfo0.png modelinfo1.png
 layerweights: weights0-layer0.png weights1-layer0.png
 
 CC_LIB=../cc-lib
 
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
 
 # Note, this builds against AMD's distribution of OpenCL, since that's
 # the card I had when I started. It also works fine with an NVIDIA GPU,
@@ -28,7 +26,7 @@ SDLOPATH=$(SDLSDK)/build
 SDLINCLUDES=-I$(SDLSDK)/include
 
 # -I/usr/local/include -I/usr/include
-CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare  $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
+CXXFLAGS=-march=native -m64 -Wall -Wno-unused-function -Wno-sign-compare  $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++23
 OPT=-O2
 
 SDLARCH=x64
@@ -42,9 +40,9 @@ CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/edit-distance.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/geom/marching.o $(CC_LIB)/fonts/island-finder.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/bezier.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/status-bar.o $(CC_LIB)/nice.o
+UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/edit-distance.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/geom/marching.o $(CC_LIB)/fonts/island-finder.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/geom/bezier.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/status-bar.o $(CC_LIB)/nice.o $(CC_LIB)/opencl/clutil.o
 
-CPPFLAGS= -DDISABLE_SOUND=1 -Wno-write-strings -m64 $(OPT) -D__MINGW32__ $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ --std=c++20
+CPPFLAGS=-m64 $(OPT) -D__MINGW32__ $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ --std=c++20
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -59,7 +57,7 @@ ui.exe : $(OBJECTS) $(SDLOBJECTS) ui.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-train.exe : $(OBJECTS) $(SDLOBJECTS) clutil.o train.o loadfonts.o
+train.exe : $(OBJECTS) $(SDLOBJECTS) train.o loadfonts.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

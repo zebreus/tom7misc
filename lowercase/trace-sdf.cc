@@ -1,16 +1,19 @@
 
+#include <cstdio>
+#include <optional>
 #include <vector>
 #include <string>
 #include <algorithm>
 #include <cstdint>
 #include <memory>
 
-#include "timer.h"
+#include "base/stringprintf.h"
 #include "font-problem.h"
-
+#include "fonts/ttf.h"
 #include "image.h"
 #include "lines.h"
-#include "base/stringprintf.h"
+#include "timer.h"
+#include "util.h"
 
 #include "network.h"
 
@@ -221,7 +224,7 @@ int main(int argc, char **argv) {
 
   FontProblem::Image8x8 pix;
   for (int i = 0; i < 64; i++) {
-    char *c =
+    const char *c =
       "  ###   "
       "  ###   "
       " ## ##  "

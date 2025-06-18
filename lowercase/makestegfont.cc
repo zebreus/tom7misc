@@ -1,20 +1,22 @@
 
+#include <cmath>
+#include <cstdio>
+#include <functional>
+#include <mutex>
+#include <optional>
+#include <utility>
 #include <vector>
 #include <string>
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <set>
 
-#include "timer.h"
 #include "font-problem.h"
-
+#include "fonts/ttf.h"
 #include "image.h"
-#include "lines.h"
-#include "base/stringprintf.h"
-
 #include "network.h"
 #include "threadutil.h"
+#include "util.h"
 
 using namespace std;
 
@@ -116,7 +118,7 @@ static void GenerateOne(const Network &make_lowercase,
           }
 
           constexpr float onedge = SDF_CONFIG.onedge_value / 255.0f;
-          
+
           // Reduce gamma until at least TARGET_FRAC of pixels are
           // above threshold.
           const int target_count =
@@ -138,7 +140,7 @@ static void GenerateOne(const Network &make_lowercase,
             gamma -= 0.01f;
             adjusted = true;
           }
-          
+
           if (gamma != 1.0f) {
             if (adjusted) {
               MutexLock ml(&out_m);
