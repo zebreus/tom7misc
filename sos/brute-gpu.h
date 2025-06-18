@@ -2,7 +2,14 @@
 #ifndef _SOS_BRUTE_GPU_H
 #define _SOS_BRUTE_GPU_H
 
+#include <CL/cl.h>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <format>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,14 +33,14 @@ struct BruteGPU {
 
   BruteGPU(CL *cl, const int report_threshold[10]) : cl(cl) {
     std::string defines =
-      StringPrintf("#define MAX_INTERESTING %d\n", MAX_INTERESTING);
+      std::format("#define MAX_INTERESTING {}\n", MAX_INTERESTING);
 
-    defines += "static uint INTERESTING_THRESHOLD[10] = {\n";
+    defines.append("static uint INTERESTING_THRESHOLD[10] = {\n");
     for (int i = 0; i < 10; i++) {
-      StringAppendF(&defines, "  %d,  // %d non-squares\n",
-                    report_threshold[i]);
+      AppendFormat(&defines, "  {},\n",
+                   report_threshold[i]);
     }
-    StringAppendF(&defines, "};\n\n");
+    defines.append("};\n\n");
 
     std::string kernel_src = defines + Util::ReadFile("brute.cl");
     const auto &[prog, kern] =

@@ -2,15 +2,16 @@
 #ifndef _MOD_GPU_H
 #define _MOD_GPU_H
 
+#include <CL/cl.h>
+#include <cstddef>
 #include <cstdint>
+#include <format>
 #include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
-
 #include "map-util.h"
 #include "opencl/clutil.h"
 #include "util.h"
@@ -45,11 +46,11 @@ struct ModQuickPassGPU {
                                                          width(width),
                                                          height(height) {
     std::string defines =
-      StringPrintf(
-          "#define MAX_FULL_RUNS %d\n"
-          "#define QUICK_PASS_SIZE %d\n"
-          "#define WIDTH %d\n"
-          "#define HEIGHT %d\n",
+      std::format(
+          "#define MAX_FULL_RUNS {}\n"
+          "#define QUICK_PASS_SIZE {}\n"
+          "#define WIDTH {}\n"
+          "#define HEIGHT {}\n",
           MAX_FULL_RUNS,
           QUICK_PASS_SIZE,
           width, height);

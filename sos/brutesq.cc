@@ -1,26 +1,32 @@
 
 #include "ansi.h"
 
+#include <array>
+#include <cstdlib>
+#include <ctime>
+#include <string>
+#include <tuple>
 #include <unordered_set>
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
+#include <utility>
+#include <vector>
 
 #include "ansi.h"
 #include "atomic-util.h"
 #include "auto-histo.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "brute-util.h"
+#include "brutesq-gpu.h"
 #include "interval-cover.h"
+#include "opencl/clutil.h"
 #include "periodically.h"
 #include "sos-util.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-
-#include "brute-util.h"
-#include "brutesq-gpu.h"
-#include "opencl/clutil.h"
 
 static constexpr bool SELF_CHECK = false;
 
@@ -343,7 +349,7 @@ static inline void ConsiderOne(int64_t base, int64_t x, int64_t y) {
                                         not_square, total_err);
       StringAppendF(&result, "SQUARE");
       for (int cell : sq)
-        StringAppendF(&result, " %lld", cell);
+        AppendFormat(&result, " {}", cell);
       StringAppendF(&result, " prsq%lld_%lld_%lld\n", base, x, y);
       printf("\n\n%s\n\n", result.c_str());
       if (total_err <= save_threshold[not_square]) {

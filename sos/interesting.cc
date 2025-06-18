@@ -1,14 +1,22 @@
 
+#include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
+#include <cstdlib>
+#include <format>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 #include <string>
 #include <unordered_set>
 #include <cstdint>
 
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-
-#include "ansi.h"
 #include "bignum/big.h"
 #include "bounds.h"
 #include "color-util.h"
@@ -16,6 +24,7 @@
 #include "factorization.h"
 #include "hashing.h"
 #include "image.h"
+#include "interval-cover.h"
 #include "map-util.h"
 #include "numbers.h"
 #include "predict.h"
@@ -521,7 +530,7 @@ static void Interesting() {
       plot.BlendText32(
           tx, ty,
           0xFFFFFF66,
-          StringPrintf("%lld", d).c_str());
+          std::format("{}", d));
       int w = (d > 9 ? 2 : 1);
       plot.BlendText32(
           tx + ImageRGBA::TEXT_WIDTH * w, ty,
