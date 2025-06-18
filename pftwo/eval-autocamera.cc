@@ -16,7 +16,6 @@
 #include "../fceulib/types.h"
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm7.h"
-// #include "autocamera.h"
 
 #include "ansi.h"
 #include "autocamera2.h"

@@ -57,17 +57,18 @@
    This is great easy.
  */
 
-#ifndef __OBJECTIVE_ENUMERATOR_H
-#define __OBJECTIVE_ENUMERATOR_H
+#ifndef _PFTWO_OBJECTIVE_ENUMERATOR_H
+#define _PFTWO_OBJECTIVE_ENUMERATOR_H
 
+#include <cstdint>
 #include <vector>
 #include <functional>
 
-#include "pftwo.h"
-
 struct ObjectiveEnumerator {
+  using uint8 = uint8_t;
   // Matrix of memories must be non-empty and rectangular.
-  explicit ObjectiveEnumerator(const vector<vector<uint8>> &memories);
+  explicit ObjectiveEnumerator(
+      const std::vector<std::vector<uint8>> &memories);
 
   // TODO: Make it possible to enumerate 10 lex orderings
   // that aren't necessarily the FIRST 10. Just shuffle
@@ -80,12 +81,13 @@ struct ObjectiveEnumerator {
 
   // Run the callback on up to limit number of lex orderings.
   // -1 means no limit.
-  void EnumerateFull(const vector<int> &look,
-		     const std::function<void(const vector<int> &ordering)> &cb,
-                     int limit, int seed);
+  void EnumerateFull(
+      const std::vector<int> &look,
+      const std::function<void(const std::vector<int> &ordering)> &cb,
+      int limit, int seed);
 
   void EnumerateFullAll(
-      const std::function<void(const vector<int> &ordering)> &cb,
+      const std::function<void(const std::vector<int> &ordering)> &cb,
       int limit, int seed);
 
 private:
@@ -99,20 +101,20 @@ private:
   // All arguments are morally constant, but can be modified and replaced
   // during recursion.
   // XXX docs
-  void EnumeratePartial(const vector<int> &look,
-                        vector<int> *prefix,
-                        const vector<int> &left,
-                        vector<int> *remain,
-                        vector<int> *candidates);
+  void EnumeratePartial(const std::vector<int> &look,
+                        std::vector<int> *prefix,
+                        const std::vector<int> &left,
+                        std::vector<int> *remain,
+                        std::vector<int> *candidates);
 
   void EnumeratePartialRec(
-      const vector<int> &look,
-      vector<int> *prefix,
-      const vector<int> &left,
-      const std::function<void(const vector<int> &ordering)> &cb,
+      const std::vector<int> &look,
+      std::vector<int> *prefix,
+      const std::vector<int> &left,
+      const std::function<void(const std::vector<int> &ordering)> &cb,
       int *limit, int seed);
-  
-  const vector<vector<uint8>> &memories;
+
+  const std::vector<std::vector<uint8>> &memories;
 };
 
 #endif

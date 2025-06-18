@@ -1,19 +1,21 @@
 
-#ifndef __AUTOUTIL_H
-#define __AUTOUTIL_H
+#ifndef _PFTWO_AUTOUTIL_H
+#define _PFTWO_AUTOUTIL_H
 
+#include <memory>
 #include <unordered_map>
 #include <vector>
-#include "../cc-lib/gtl/top_n.h"
+
+#include "gtl/top_n.h"
 
 // Utilities for AutoLives, AutoCamera, etc.
 // T must have fields called 'loc' (int) and 'score' (float).
 // T must have a default constructor that zeroes the score field.
 template<typename T, typename GetLoc>
 std::vector<T> MergeAndBest(const std::vector<std::vector<T>> &vv,
-			    GetLoc getloc,
-			    float min_score,
-			    int n_best);
+                            GetLoc getloc,
+                            float min_score,
+                            int n_best);
 
 // Template implementations follow.
 
@@ -26,24 +28,23 @@ struct BetterScore {
 };
 }
 
-template<typename T>
+template <typename T>
 std::vector<T> MergeAndBest(const std::vector<std::vector<T>> &vv,
-			    float min_score,
-			    int n_best) {
+                            float min_score, int n_best) {
   std::unordered_map<int, T> merged;
   for (const auto &v : vv) {
     for (const T &l : v) {
       const int loc = l.loc;
       auto it = merged.find(loc);
       if (it == merged.end()) {
-	// PERF two lookups
-	merged[loc] = l;
+        // PERF two lookups
+        merged[loc] = l;
       } else {
-	it->second.score += l.score;
-	// XXX actually we should be passing some merge
-	// function here. For example in autotimer, we want
-	// to average the two periods, and reject the result
-	// item if it has inconsistent direction.
+        it->second.score += l.score;
+        // XXX actually we should be passing some merge
+        // function here. For example in autotimer, we want
+        // to average the two periods, and reject the result
+        // item if it has inconsistent direction.
       }
     }
   }

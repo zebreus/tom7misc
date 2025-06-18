@@ -1,21 +1,23 @@
 
 #include "motifs.h"
 
-#include <algorithm>
-#include <set>
+#include <cstdint>
+#include <cstdio>
+#include <format>
 #include <string>
 #include <iostream>
 #include <sstream>
+#include <utility>
+#include <vector>
 
-#include "pftwo.h"
-#include "../cc-lib/arcfour.h"
+#include "arcfour.h"
+#include "randutil.h"
 #include "util.h"
-#include "../cc-lib/util.h"
-#include "../fceulib/simplefm2.h"
-#include "../cc-lib/randutil.h"
 // #include "motifs-style.h"
 
 using namespace std;
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 Motifs::Motifs() : rc("motifs") {}
 
@@ -75,13 +77,13 @@ void Motifs::SaveToFile(const string &filename) const {
   for (Weighted::const_iterator it = motifs.begin();
        it != motifs.end(); ++it) {
     const vector<uint8> &inputs = it->first;
-    string s = StringPrintf("%f ", it->second.weight);
+    string s = std::format("{} ", it->second.weight);
     s += InputsToString(inputs);
     out += s + "\n";
   }
   // printf("%s\n", out.c_str());
   printf("Wrote %d motifs to %s.\n",
-	 (int)motifs.size(), filename.c_str());
+         (int)motifs.size(), filename.c_str());
   Util::WriteFile(filename, out);
 }
 
@@ -103,8 +105,8 @@ void Motifs::AddInputs(const vector<uint8> &inputs) {
   }
 }
 
-vector< vector<uint8> > Motifs::AllMotifs() const {
-  vector< vector<uint8> > motifvec;
+vector<vector<uint8>> Motifs::AllMotifs() const {
+  vector<vector<uint8>> motifvec;
   for (Weighted::const_iterator it = motifs.begin();
        it != motifs.end(); ++it) {
     motifvec.push_back(it->first);

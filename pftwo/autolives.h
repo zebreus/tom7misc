@@ -19,33 +19,27 @@
 //  - Can filter out memory locations that are write-before-read
 //    (i.e, temporaries)
 
-#ifndef __AUTOLIVES_H
-#define __AUTOLIVES_H
+#ifndef _PFTWO_AUTOLIVES_H
+#define _PFTWO_AUTOLIVES_H
 
-#include "pftwo.h"
-
-#include <functional>
-#include <memory>
-#include <string>
+#include <cstdint>
 #include <vector>
-#include <functional>
 
-#include "../fceulib/emulator.h"
-#include "../cc-lib/arcfour.h"
-#include "n-markov-controller.h"
-
-#include "random-pool.h"
 #include "emulator-pool.h"
+#include "n-markov-controller.h"
+#include "random-pool.h"
 
 // As with autocamera, focus is on quality and debuggability, not
 // performance.
 //
 // Thread safe.
 struct AutoLives {
+  using string = std::string;
+
   // Creates some private emulator instances that it can reuse.
   // Wants a markov model for generating inputs.
   AutoLives(const string &game,
-	    NMarkovController nmarkov);
+            NMarkovController nmarkov);
   ~AutoLives();
 
   // Returns a score in [0, 1] indicating whether we seem to be
@@ -53,9 +47,9 @@ struct AutoLives {
   // Has to simulate a bunch of frames, so this is fairly slow.
   // xloc and yloc must be memory locations that represent the
   // player's location.
-  float IsInControl(const vector<uint8> &save,
-		    int xloc, int yloc,
-		    bool player_two);
+  float IsInControl(const std::vector<uint8_t> &save,
+                    int xloc, int yloc,
+                    bool player_two);
 
   struct LivesLoc {
     int loc = 0;
@@ -63,19 +57,20 @@ struct AutoLives {
     LivesLoc() {}
     LivesLoc(int loc, float score) : loc(loc), score(score) {}
   };
-  
+
   // Find and score memory locations that might be lives, starting
   // from the given state. This is expensive since among other things,
   // it needs to play randomly in order to find inputs that "kill" the
   // player.
-  vector<LivesLoc> FindLives(const vector<uint8> &save,
-			     int xloc, int yloc,
-			     bool player_two);
+  std::vector<LivesLoc> FindLives(const std::vector<uint8_t> &save,
+                                  int xloc, int yloc,
+                                  bool player_two);
 
   // Merge and sort by summing scores.
-  static vector<LivesLoc> MergeLives(const vector<vector<LivesLoc>> &lv);
-  
-private:
+  static std::vector<LivesLoc> MergeLives(
+      const std::vector<std::vector<LivesLoc>> &lv);
+
+ private:
   RandomPool random_pool;
   EmulatorPool emulator_pool;
   const NMarkovController nmarkov;

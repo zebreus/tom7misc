@@ -1,39 +1,47 @@
+
 #include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <cstdint>
+#include <functional>
+#include <map>
+#include <mutex>
+#include <stdlib.h>
+#include <thread>
+#include <utility>
 #include <vector>
 #include <string>
 #include <set>
 #include <memory>
 #include <list>
 #include <unordered_set>
+#include <cstdio>
+#include <cstdlib>
 
 #ifdef __MINGW32__
 #define byte win_byte_override
 #include <windows.h>
+#include <profileapi.h>
+#include <winnt.h>
 #undef byte
 #undef ARRAYSIZE
 #undef CopyMemory
 #endif
 
-#include <cstdio>
-#include <cstdlib>
-
-#include "pftwo.h"
-
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/textsvg.h"
-#include "../cc-lib/heap.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/list-util.h"
 
+#include "base/stringprintf.h"
+#include "threadutil.h"
+#include "arcfour.h"
 #include "atom7ic.h"
-
+#include "heap.h"
+#include "list-util.h"
 #include "options.h"
-#include "weighted-objectives.h"
-#include "treesearch.h"
 #include "problem-twoplayer.h"
+#include "randutil.h"
+#include "treesearch.h"
+#include "util.h"
 
 // Base "max" nodes in heap. We start cleaning the heap when there are
 // more than this number of nodes, although we often have to keep more
@@ -55,6 +63,10 @@
 // Number of loops a single thread does when expanding the explore
 // queue.
 #define LOOPS_PER_EXPLORE_ITER 50
+
+using namespace std;
+using uint64 = uint64_t;
+using int64 = int64_t;
 
 static std::mutex print_mutex;
 #define Printf(fmt, ...) do {     \
@@ -212,10 +224,10 @@ struct WorkThread {
     for (int idx = 0; idx < search->tree->grid.size(); idx++) {
       const Tree::GridCell &gc = search->tree->grid[idx];
       if (gc.node != nullptr && gc.score >= gminscore) {
-  const double p = (gc.score - gminscore) * ival_norm;
-  if (RandDouble(&rc) < p) {
-    eligible->push_back(idx);
-  }
+        const double p = (gc.score - gminscore) * ival_norm;
+        if (RandDouble(&rc) < p) {
+          eligible->push_back(idx);
+        }
       }
     }
   }
@@ -236,14 +248,14 @@ struct WorkThread {
     // to be stuck. Take a grid node proportional to the number
     // of grid nodes.
     if (!eligible_grid.empty() &&
-  RandDouble(&rc) <
-  // Always a reasonable chance of picking from the grid
-  // (if any is eligible).
-  0.25 +
-  // When the grid is full, an additional 25% chance.
-  0.25 *
-  // Fraction of the grid that was eligible
-  (eligible_grid.size() / (double)Problem::num_grid_cells)) {
+        RandDouble(&rc) <
+        // Always a reasonable chance of picking from the grid
+        // (if any is eligible).
+        0.25 +
+        // When the grid is full, an additional 25% chance.
+        0.25 *
+        // Fraction of the grid that was eligible
+        (eligible_grid.size() / (double)Problem::num_grid_cells)) {
       const int idx = eligible_grid[RandTo(&rc, eligible_grid.size())];
       ret = tree->grid[idx].node;
     }
@@ -254,17 +266,16 @@ struct WorkThread {
     // expand if we lose control. That may put us in a situation where
     // we randomly chip away at a boss, but then never actually beat
     // the level (which often involves losing control).
-    if (ret == nullptr &&
-  opt.use_marathon &&
-  tree->stuckness > 0.75 && tree->marathon.node != nullptr) {
+    if (ret == nullptr && opt.use_marathon && tree->stuckness > 0.75 &&
+        tree->marathon.node != nullptr) {
       const double bestscore = -tree->heap.GetMinimum().priority;
       const double mminscore = MARATHON_BESTSCORE_FRAC * bestscore;
 
       if (tree->marathon.score >= mminscore &&
-    RandDouble(&rc) <
-    // Reach p_expand_marathon probability when stuckness is 1.0.
-    opt.p_expand_marathon * ((tree->stuckness - 0.75) * 4.0)) {
-  ret = tree->marathon.node;
+          RandDouble(&rc) <
+              // Reach p_expand_marathon probability when stuckness is 1.0.
+              opt.p_expand_marathon * ((tree->stuckness - 0.75) * 4.0)) {
+        ret = tree->marathon.node;
       }
     }
 
@@ -285,16 +296,16 @@ struct WorkThread {
     // that they're dead ends).
     for (;;) {
       if (ret->parent == nullptr)
-  break;
+        break;
 
       // TODO: Here, incorporate the number of expansions that caused
       // the score to go down (a lot?)?
       double p_to_ascend = 0.1 +
-  // Sigmoid with a chance of ~3.5% for cell that's never been chosen
-  // before, a 50% chance around 300, and a plateau at 80%.
-  (0.8 / (1.0 + exp((ret->chosen - 300.0) * -.01)));
+        // Sigmoid with a chance of ~3.5% for cell that's never been chosen
+        // before, a 50% chance around 300, and a plateau at 80%.
+        (0.8 / (1.0 + exp((ret->chosen - 300.0) * -.01)));
       if (RandDouble(&rc) >= p_to_ascend)
-  break;
+        break;
       // printf("[A]");
       ret = ret->parent;
     }
@@ -324,9 +335,9 @@ struct WorkThread {
     Node *child = new Node(std::move(newstate), parent,
          parent->seqlength + seq_length);
     child->nes_frames = search->approx_total_nes_frames.load(
-  std::memory_order_relaxed);
+        std::memory_order_relaxed);
     child->walltime_seconds = search->approx_sec.load(
-      std::memory_order_relaxed);
+        std::memory_order_relaxed);
     return child;
   }
 
@@ -388,7 +399,7 @@ struct WorkThread {
     // for IsInControl, and it was true.
     bool checked_in_control = false;
     QueuedUpdate(Node *src, Tree::Seq seq, Node *dst, double newscore,
-     bool checked_in_control) :
+                 bool checked_in_control) :
       src(src), seq(std::move(seq)), dst(dst), newscore(newscore),
       checked_in_control(checked_in_control) {}
   };
@@ -525,48 +536,48 @@ struct WorkThread {
     {
       // worker->SetStatus("Tree: Reheap");
       {
-  PERF_WRITE_MUTEX_LOCK(PE_L_UPDATE_TREE_B, &search->tree_m);
+        PERF_WRITE_MUTEX_LOCK(PE_L_UPDATE_TREE_B, &search->tree_m);
 
-  printf("Clear grid ...");
-  // First, just clear the grid since every node has a chance to
-  // become the best in a cell below, including the ones that are
-  // already there.
-  for (Tree::GridCell &gc : search->tree->grid) {
-    if (gc.node != nullptr) {
-      gc.node->used_in_grid--;
-      gc.score = 0.0;
-      gc.node = nullptr;
-    }
-  }
+        printf("Clear grid ...");
+        // First, just clear the grid since every node has a chance to
+        // become the best in a cell below, including the ones that are
+        // already there.
+        for (Tree::GridCell &gc : search->tree->grid) {
+          if (gc.node != nullptr) {
+            gc.node->used_in_grid--;
+            gc.score = 0.0;
+            gc.node = nullptr;
+          }
+        }
 
-  printf("Reheap ...\n");
+        printf("Reheap ...\n");
 
-  // tree->heap.Clear();
+        // tree->heap.Clear();
 
-  std::function<void(Node *)> ReHeapRec =
-    [this, tree, &ReHeapRec](Node *n) {
-    // Act on the node if it's in the heap.
-    if (n->location != -1) {
-      const double new_score = search->problem->Score(n->state);
-      // Note negation of score so that bigger real scores
-      // are more minimum for the heap ordering.
-      tree->heap.AdjustPriority(n, -new_score);
-      CHECK(n->location != -1);
-      if (n->checked_in_control)  // XXX experimental
-        AddToGridWithLock(n, new_score);
-    }
-    for (pair<const Tree::Seq, Node *> &child : n->children) {
-      ReHeapRec(child.second);
-    }
-  };
-  ReHeapRec(tree->root);
+        std::function<void(Node *)> ReHeapRec = [this, tree,
+                                                 &ReHeapRec](Node *n) {
+          // Act on the node if it's in the heap.
+          if (n->location != -1) {
+            const double new_score = search->problem->Score(n->state);
+            // Note negation of score so that bigger real scores
+            // are more minimum for the heap ordering.
+            tree->heap.AdjustPriority(n, -new_score);
+            CHECK(n->location != -1);
+            if (n->checked_in_control) // XXX experimental
+              AddToGridWithLock(n, new_score);
+          }
+          for (pair<const Tree::Seq, Node *> &child : n->children) {
+            ReHeapRec(child.second);
+          }
+        };
+        ReHeapRec(tree->root);
 
-  // We cleared the grid so its scores are vacuously accurate,
-  // but we need to make sure the marathon node at least has
-  // the right normalized score.
-  if (tree->marathon.node != nullptr)
-    tree->marathon.score =
-      search->problem->Score(tree->marathon.node->state);
+        // We cleared the grid so its scores are vacuously accurate,
+        // but we need to make sure the marathon node at least has
+        // the right normalized score.
+        if (tree->marathon.node != nullptr)
+          tree->marathon.score =
+              search->problem->Score(tree->marathon.node->state);
       }
     }
 
@@ -574,231 +585,223 @@ struct WorkThread {
       PERF_WRITE_MUTEX_LOCK(PE_L_UPDATE_TREE_C, &search->tree_m);
       const int64 MAX_NODES = search->tree->MaxNodes();
       if (tree->num_nodes > MAX_NODES) {
-  printf("Trim tree (have %llu, max: %llu)...\n",
-         tree->num_nodes, MAX_NODES);
+        printf("Trim tree (have %llu, max: %llu)...\n", tree->num_nodes,
+               MAX_NODES);
 
-  // Here we want to delete the worst-scoring nodes in order
-  // to stay under our budget. We can't delete ancestors of
-  // nodes we keep, and we can't delete a node that a worker
-  // is currently using.
+        // Here we want to delete the worst-scoring nodes in order
+        // to stay under our budget. We can't delete ancestors of
+        // nodes we keep, and we can't delete a node that a worker
+        // is currently using.
 
-  // What we'll do is pop the best MAX_NODES nodes from the
-  // heap. This is better than the old way of sorting all the
-  // scores to get a cutoff score, because it's like
-  // MAX_NODES*lg(MAX_NODES) rather than num_nodes*lg(num_nodes)
-  // and it also allows us to arbitrarily break ties. (The tie
-  // situation can get very bad when we have a flat objective
-  // function and are stuck--there can be tens of millions of
-  // nodes with the same score).
+        // What we'll do is pop the best MAX_NODES nodes from the
+        // heap. This is better than the old way of sorting all the
+        // scores to get a cutoff score, because it's like
+        // MAX_NODES*lg(MAX_NODES) rather than num_nodes*lg(num_nodes)
+        // and it also allows us to arbitrarily break ties. (The tie
+        // situation can get very bad when we have a flat objective
+        // function and are stuck--there can be tens of millions of
+        // nodes with the same score).
 
-  // We also compute the 'area under the curve' (auc) for the
-  // nodes we're keeping. This is high when all the nodes have
-  // almost the maximum score, which suggests that we are
-  // 'stuck.'
-  //
-  // The objective-function-based score is normalized against
-  // the best value we've ever seen, so it's typical for the
-  // best score to be 1.0. But in some cases, we might Observe a
-  // good-looking state but not insert it into the tree. For
-  // example, we might beat a level but with one of the players
-  // dead. In this case, Score()s might be forever small. So
-  // here we normalize against the single best score when
-  // computing AUC.
-  const double best_score = -tree->heap.GetMinimum().priority;
-  // Predivided normalization factor, and negated because priorities
-  // are negative scores.
-  const double negative_one_over_best_score =
-    best_score <= 0.0 ? 0.0 : (-1.0 / best_score);
-  double auc = 0.0;
-  double worst_kept_score = -1.0;
-  for (int i = 0; i < MAX_NODES && !tree->heap.Empty(); i++) {
-    Heap<double, Node>::Cell best = tree->heap.PopMinimum();
-    auc += best.priority * negative_one_over_best_score;
-    best.value->keep = true;
-    worst_kept_score = -best.priority;
-  }
+        // We also compute the 'area under the curve' (auc) for the
+        // nodes we're keeping. This is high when all the nodes have
+        // almost the maximum score, which suggests that we are
+        // 'stuck.'
+        //
+        // The objective-function-based score is normalized against
+        // the best value we've ever seen, so it's typical for the
+        // best score to be 1.0. But in some cases, we might Observe a
+        // good-looking state but not insert it into the tree. For
+        // example, we might beat a level but with one of the players
+        // dead. In this case, Score()s might be forever small. So
+        // here we normalize against the single best score when
+        // computing AUC.
+        const double best_score = -tree->heap.GetMinimum().priority;
+        // Predivided normalization factor, and negated because priorities
+        // are negative scores.
+        const double negative_one_over_best_score =
+            best_score <= 0.0 ? 0.0 : (-1.0 / best_score);
+        double auc = 0.0;
+        double worst_kept_score = -1.0;
+        for (int i = 0; i < MAX_NODES && !tree->heap.Empty(); i++) {
+          Heap<double, Node>::Cell best = tree->heap.PopMinimum();
+          auc += best.priority * negative_one_over_best_score;
+          best.value->keep = true;
+          worst_kept_score = -best.priority;
+        }
 
-  tree->stuckness = auc * (1.0 / MAX_NODES);
-  printf("\n ... auc %.2f; stuckness %.4f\n", auc, tree->stuckness);
-  printf("\n ... kept nodes range in score from %.4f to %.4f\n",
-         worst_kept_score, best_score);
+        tree->stuckness = auc * (1.0 / MAX_NODES);
+        printf("\n ... auc %.2f; stuckness %.4f\n", auc, tree->stuckness);
+        printf("\n ... kept nodes range in score from %.4f to %.4f\n",
+               worst_kept_score, best_score);
 
-  // We popped off the best nodes, so now the heap only contains
-  // nodes we'll probably delete.
-  tree->heap.Clear();
+        // We popped off the best nodes, so now the heap only contains
+        // nodes we'll probably delete.
+        tree->heap.Clear();
 
-  // Now make a pass over the tree and clean out nodes where we
-  // can. This loop also computes the new maximum depth.
-  int max_depth = 0;
-  uint64 deleted_nodes = 0ULL;
-  uint64 kept_score = 0ULL, kept_worker = 0ULL, kept_parent = 0ULL,
-    kept_grid = 0ULL, kept_marathon = 0LL;
-  std::function<bool(Node *)> CleanRec =
-    // Returns true if we should keep this node; otherwise,
-    // the node is deleted.
-    [this, tree, &max_depth, &deleted_nodes,
-     &kept_score, &kept_worker, &kept_parent, &kept_grid,
-     &kept_marathon,
-     &CleanRec](Node *n) -> bool {
-    if (n->keep)
-      kept_score++;
-    if (n->num_workers_using)
-      kept_worker++;
-    if (n->used_in_grid)
-      kept_grid++;
-    if (n->used_in_marathon)
-      kept_marathon++;
+        // Now make a pass over the tree and clean out nodes where we
+        // can. This loop also computes the new maximum depth.
+        int max_depth = 0;
+        uint64 deleted_nodes = 0ULL;
+        uint64 kept_score = 0ULL, kept_worker = 0ULL, kept_parent = 0ULL,
+               kept_grid = 0ULL, kept_marathon = 0LL;
+        std::function<bool(Node *)> CleanRec =
+            // Returns true if we should keep this node; otherwise,
+            // the node is deleted.
+            [this, tree, &max_depth, &deleted_nodes, &kept_score, &kept_worker,
+             &kept_parent, &kept_grid, &kept_marathon,
+             &CleanRec](Node *n) -> bool {
+          if (n->keep)
+            kept_score++;
+          if (n->num_workers_using)
+            kept_worker++;
+          if (n->used_in_grid)
+            kept_grid++;
+          if (n->used_in_marathon)
+            kept_marathon++;
 
-    bool keep = n->keep ||
-        n->num_workers_using > 0 ||
-        n->used_in_grid > 0 ||
-        n->used_in_marathon > 0;
+          bool keep = n->keep || n->num_workers_using > 0 ||
+                      n->used_in_grid > 0 || n->used_in_marathon > 0;
 
-    map<Tree::Seq, Node *> new_children;
-    bool child_keep = false;
-    for (auto &p : n->children) {
-      if (CleanRec(p.second)) {
-        new_children.insert({p.first, p.second});
-        child_keep = true;
-      }
-    }
-    n->children.swap(new_children);
+          map<Tree::Seq, Node *> new_children;
+          bool child_keep = false;
+          for (auto &p : n->children) {
+            if (CleanRec(p.second)) {
+              new_children.insert({p.first, p.second});
+              child_keep = true;
+            }
+          }
+          n->children.swap(new_children);
 
-    if (child_keep)
-      kept_parent++;
-    keep = child_keep || keep;
+          if (child_keep)
+            kept_parent++;
+          keep = child_keep || keep;
 
-    if (keep) {
-      max_depth = std::max(n->depth, max_depth);
-      // PERF: We have to recompute the score AGAIN here;
-      // particularly for nodes we're keeping because a worker
-      // is using it. We just cleared the entire heap so we
-      // don't even have its score.
-      const double new_score = search->problem->Score(n->state);
-      tree->heap.Insert(-new_score, n);
-      n->keep = false;
-      CHECK(n->location != -1);
-    } else {
-      deleted_nodes++;
-      tree->num_nodes--;
-      delete n;
-    }
+          if (keep) {
+            max_depth = std::max(n->depth, max_depth);
+            // PERF: We have to recompute the score AGAIN here;
+            // particularly for nodes we're keeping because a worker
+            // is using it. We just cleared the entire heap so we
+            // don't even have its score.
+            const double new_score = search->problem->Score(n->state);
+            tree->heap.Insert(-new_score, n);
+            n->keep = false;
+            CHECK(n->location != -1);
+          } else {
+            deleted_nodes++;
+            tree->num_nodes--;
+            delete n;
+          }
 
-    return keep;
-  };
+          return keep;
+        };
 
-  // This should not happen for multiple reasons -- there should
-  // always be a worker working within it, and since it contains
-  // all nodes, one of the MAX_NODES best scores should be beneath
-  // the root!
-  CHECK(CleanRec(tree->root)) << "Uh, the root was deleted.";
+        // This should not happen for multiple reasons -- there should
+        // always be a worker working within it, and since it contains
+        // all nodes, one of the MAX_NODES best scores should be beneath
+        // the root!
+        CHECK(CleanRec(tree->root)) << "Uh, the root was deleted.";
 
-  tree->max_depth = max_depth;
+        tree->max_depth = max_depth;
 
-  printf(" ... Reasons for keeping nodes:\n"
-         "     score is good: %llu\n"
-         "     worker using: %llu\n"
-         "     in grid: %llu\n"
-         "     in marathon: %llu\n"
-         "     child is kept: %llu\n",
-         kept_score, kept_worker, kept_grid, kept_marathon,
-         kept_parent);
+        printf(" ... Reasons for keeping nodes:\n"
+               "     score is good: %llu\n"
+               "     worker using: %llu\n"
+               "     in grid: %llu\n"
+               "     in marathon: %llu\n"
+               "     child is kept: %llu\n",
+               kept_score, kept_worker, kept_grid, kept_marathon, kept_parent);
 
-  printf(" ... Deleted %llu; now the tree is size %llu.\n"
-         " ... Max depth is %d.\n",
-         deleted_nodes,
-         tree->num_nodes,
-         max_depth);
+        printf(" ... Deleted %llu; now the tree is size %llu.\n"
+               " ... Max depth is %d.\n",
+               deleted_nodes, tree->num_nodes, max_depth);
 
-  // Now, find some nodes for exploration.
-  CHECK(tree->explore_queue.empty());
-  if (tree->stuckness > 0.50) {
-    static constexpr int NUM_EXPLORE_NODES = 50;
+        // Now, find some nodes for exploration.
+        CHECK(tree->explore_queue.empty());
+        if (tree->stuckness > 0.50) {
+          static constexpr int NUM_EXPLORE_NODES = 50;
 
-    // Holding the lock, add the explore node, including adding
-    // to the source node's reference count.
-    auto AddExploreNode = [this, tree](
-        Node *source, Problem::Goal goal) {
-        // Note that each "iteration" does LOOPS_PER_EXPLORE_ITER
+          // Holding the lock, add the explore node, including adding
+          // to the source node's reference count.
+          auto AddExploreNode = [this, tree](Node *source, Problem::Goal goal) {
+            // Note that each "iteration" does LOOPS_PER_EXPLORE_ITER
             // loops.
-      static constexpr int NUM_EXPLORE_ITERATIONS = 10;
-      source->num_workers_using += LOOPS_PER_EXPLORE_ITER *
-        NUM_EXPLORE_ITERATIONS;
-      Tree::ExploreNode *en = new Tree::ExploreNode;
-      en->source = source;
-      en->goal = goal;
-      en->closest_state = source->state;
-      en->distance =
-        search->problem->GoalDistance(goal, source->state);
-      en->iterations_left = NUM_EXPLORE_ITERATIONS;
-      en->iterations_in_progress = 0;
-      tree->explore_queue.push_back(en);
-    };
+            static constexpr int NUM_EXPLORE_ITERATIONS = 10;
+            source->num_workers_using +=
+                LOOPS_PER_EXPLORE_ITER * NUM_EXPLORE_ITERATIONS;
+            Tree::ExploreNode *en = new Tree::ExploreNode;
+            en->source = source;
+            en->goal = goal;
+            en->closest_state = source->state;
+            en->distance = search->problem->GoalDistance(goal, source->state);
+            en->iterations_left = NUM_EXPLORE_ITERATIONS;
+            en->iterations_in_progress = 0;
+            tree->explore_queue.push_back(en);
+          };
 
-    // More stuck = more exploration.
-    int num_explore = NUM_EXPLORE_NODES * tree->stuckness;
-    printf("Making %d explore nodes.\n", num_explore);
-    int explore_adj = 0, explore_random = 0;
+          // More stuck = more exploration.
+          int num_explore = NUM_EXPLORE_NODES * tree->stuckness;
+          printf("Making %d explore nodes.\n", num_explore);
+          int explore_adj = 0, explore_random = 0;
 
-    // Prioritize using existing cells if we have them.
-    vector<int> goodcells;
-    EligibleGridNodesWithMutex(&goodcells);
-    std::unordered_set<int> isgood;
-    for (int c : goodcells) isgood.insert(c);
+          // Prioritize using existing cells if we have them.
+          vector<int> goodcells;
+          EligibleGridNodesWithMutex(&goodcells);
+          std::unordered_set<int> isgood;
+          for (int c : goodcells)
+            isgood.insert(c);
 
-    // Do these in a random order in case there are so many
-    // eligible expansions that we exhaust the list.
-    Shuffle(&rc, &goodcells);
-    printf("  ... with %d goodcells ...\n", (int)goodcells.size());
-    while (!goodcells.empty() && num_explore > 0) {
-      // For any eligible cell, consider its adjacent neighbors.
-      int cell = goodcells.back();
-      goodcells.pop_back();
-      vector<int> adj = Problem::AdjacentCells(cell);
-      for (int adjcell : adj) {
-        // If we don't have an eligible cell, try going there.
-        // Also some (smaller) chance to try anyway.
-        if (isgood.find(adjcell) == isgood.end() ||
-      rc.Byte() < 32) {
-    Node *source = search->tree->grid[cell].node;
-    Problem::Goal goal =
-      search->problem->RandomGoalInCell(&rc, adjcell);
-    // printf("Explore %s -> %s (%d,%d)");
-    // printf("Explore adj %d -> %d (goal %d,%d)\n",
-    // cell, adjcell, goal.goalx, goal.goaly);
+          // Do these in a random order in case there are so many
+          // eligible expansions that we exhaust the list.
+          Shuffle(&rc, &goodcells);
+          printf("  ... with %d goodcells ...\n", (int)goodcells.size());
+          while (!goodcells.empty() && num_explore > 0) {
+            // For any eligible cell, consider its adjacent neighbors.
+            int cell = goodcells.back();
+            goodcells.pop_back();
+            vector<int> adj = Problem::AdjacentCells(cell);
+            for (int adjcell : adj) {
+              // If we don't have an eligible cell, try going there.
+              // Also some (smaller) chance to try anyway.
+              if (isgood.find(adjcell) == isgood.end() || rc.Byte() < 32) {
+                Node *source = search->tree->grid[cell].node;
+                Problem::Goal goal =
+                    search->problem->RandomGoalInCell(&rc, adjcell);
+                // printf("Explore %s -> %s (%d,%d)");
+                // printf("Explore adj %d -> %d (goal %d,%d)\n",
+                // cell, adjcell, goal.goalx, goal.goaly);
 
-    AddExploreNode(source, goal);
-    explore_adj++;
-    num_explore--;
-    if (num_explore == 0) break;
+                AddExploreNode(source, goal);
+                explore_adj++;
+                num_explore--;
+                if (num_explore == 0)
+                  break;
+              }
+            }
+          }
+
+          if (num_explore > 0) {
+            printf("  ... pad with %d random goals ...\n", num_explore);
+          }
+
+          // If we have leftover quota, just do random goals.
+          // TODO: Rather than choosing random goals, choose goals that aren't
+          // already represented in the grid, and perhaps choose ones that are
+          // adjacent to covered cells.
+          while (num_explore--) {
+            // XXX I think it would be better if we required the
+            // score to be close to the max score, because otherwise
+            // there's basically no chance of this helping.
+            Node *source = FindGoodNodeWithMutex();
+            Problem::Goal goal = search->problem->RandomGoal(&rc);
+            // printf("Explore random (goal %d,%d)\n", goal.goalx, goal.goaly);
+            AddExploreNode(source, goal);
+            explore_random++;
+          }
+          printf("Made %d explore nodes (%d adj, %d rand)\n",
+                 explore_adj + explore_random, explore_adj, explore_random);
         }
       }
     }
-
-    if (num_explore > 0) {
-      printf("  ... pad with %d random goals ...\n", num_explore);
-    }
-
-    // If we have leftover quota, just do random goals.
-    // TODO: Rather than choosing random goals, choose goals that aren't
-    // already represented in the grid, and perhaps choose ones that are
-    // adjacent to covered cells.
-    while (num_explore--) {
-      // XXX I think it would be better if we required the
-      // score to be close to the max score, because otherwise
-      // there's basically no chance of this helping.
-      Node *source = FindGoodNodeWithMutex();
-      Problem::Goal goal = search->problem->RandomGoal(&rc);
-      // printf("Explore random (goal %d,%d)\n", goal.goalx, goal.goaly);
-      AddExploreNode(source, goal);
-      explore_random++;
-    }
-    printf("Made %d explore nodes (%d adj, %d rand)\n",
-     explore_adj + explore_random, explore_adj, explore_random);
-  }
-      }
-    }
-
 
     {
       PERF_WRITE_MUTEX_LOCK(PE_L_UPDATE_TREE_D, &search->tree_m);
@@ -1499,24 +1502,24 @@ string TreeSearch::SaveBestMovie(const string &filename) {
       const Tree::Node *parent = n->parent;
 
       auto GetKey = [n, parent]() -> const Tree::Seq * {
-  // Find among my siblings.
-  for (const auto &p : parent->children) {
-    if (p.second == n) {
-      return &p.first;
-    }
-  };
-  return nullptr;
+        // Find among my siblings.
+        for (const auto &p : parent->children) {
+          if (p.second == n) {
+            return &p.first;
+          }
+        };
+        return nullptr;
       };
 
       const Tree::Seq *seq = GetKey();
       CHECK(seq != nullptr) << "Oops, when saving, I couldn't find "
-  "the path to this node; it must have been misparented!";
+        "the path to this node; it must have been misparented!";
 
       string subtitle =
-  StringPrintf("f %lld s %lld g %d,%d",
-         n->nes_frames / 1024,
-         n->walltime_seconds,
-         n->goalx, n->goaly);
+        StringPrintf("f %lld s %lld g %d,%d",
+                     n->nes_frames / 1024,
+                     n->walltime_seconds,
+                     n->goalx, n->goaly);
 
       path.emplace_front(subtitle, *seq);
       n = parent;
@@ -1527,10 +1530,9 @@ string TreeSearch::SaveBestMovie(const string &filename) {
     for (const pair<string, Tree::Seq> &p : path) {
       // Could put more info from the node here...
       subtitles.emplace_back((int)all_inputs.size(),
-           StringPrintf("%d. %s", node_num,
-            p.first.c_str()));
+                             StringPrintf("%d. %s", node_num, p.first.c_str()));
       for (const Problem::Input input : p.second)
-  all_inputs.push_back(input);
+        all_inputs.push_back(input);
       node_num++;
     }
   }
@@ -1555,7 +1557,7 @@ void TreeSearch::PrintPerfCounters() {
     for (WorkThread *w : workers) {
       total_denom += w->PerfGetTotal();
       for (int i = 0; i < NUM_PERFEVENTS; i++) {
-  totals[i] += w->perf_counters[i];
+        totals[i] += w->perf_counters[i];
       }
     }
   }

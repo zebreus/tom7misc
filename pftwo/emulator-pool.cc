@@ -5,9 +5,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include "../cc-lib/threadutil.h"
 #include "../fceulib/emulator.h"
-#include "../cc-lib/base/logging.h"
+#include "base/logging.h"
+#include "threadutil.h"
 
 using namespace std;
 
@@ -38,7 +38,7 @@ Emulator *EmulatorPool::Acquire() {
   auto NextOrNew =
     [this]() {
       if (ready.empty())
-	return CreateNew();
+  return CreateNew();
       Emulator *e = ready.back();
       ready.pop_back();
       return e;
@@ -53,7 +53,7 @@ Emulator *EmulatorPool::Acquire() {
 
 void EmulatorPool::Release(Emulator *e) {
   CHECK(e != nullptr);
-  
+
   MutexLock ml(&sets_m);
   CHECK(1 == claimed.erase(e))
     << "Tried to return foreign/unclaimed emulator " << e;

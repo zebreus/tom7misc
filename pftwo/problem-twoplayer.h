@@ -1,29 +1,38 @@
 // "Problem" definition for two-player games. The input
 // state is an input for each controller (uint16).
 
-#ifndef __PROBLEM_TWOPLAYER_H
-#define __PROBLEM_TWOPLAYER_H
+#ifndef _PFTWO_PROBLEM_TWOPLAYER_H
+#define _PFTWO_PROBLEM_TWOPLAYER_H
 
 #include "pftwo.h"
 
+#include <map>
 #include <cmath>
+#include <cstdint>
+#include <memory>
 #include <mutex>
 #include <atomic>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include "n-markov-controller.h"
 #include "../fceulib/emulator.h"
+
+#include "arcfour.h"
+#include "n-markov-controller.h"
+#include "threadutil.h"
 #include "weighted-objectives.h"
-#include "../cc-lib/randutil.h"
+#include "randutil.h"
 #include "autotimer.h"
 #include "autolives.h"
 #include "options.h"
 
 struct EmulatorPool;
 
-using namespace std;
-
 struct TwoPlayerProblem {
+  using uint8 = uint8_t;
+  using int64 = int64_t;
+  using string = std::string;
   // Player 1 and Player 2 controllers.
 
   // In simple problem instances, this is just a controller input,
@@ -57,7 +66,7 @@ struct TwoPlayerProblem {
   // at will, and they are portable betwen workers.
   struct State {
     // Emulator savestate.
-    vector<uint8> save;
+    std::vector<uint8> save;
     // PERF This is actually part of save. But we use it to
     // compute objective functions without having to restore
     // the save. If memory becomes a big problem, we could
@@ -72,7 +81,7 @@ struct TwoPlayerProblem {
     // functions.)
     // Note that we use the mem for other stuff, like player position
     // and death heuristics.
-    vector<uint8> mem;
+    std::vector<uint8> mem;
     // Number of NES frames
     int depth;
     ControllerHistory prev1, prev2;
@@ -99,9 +108,9 @@ struct TwoPlayerProblem {
   };
 
   string SaveSolution(const string &filename_part,
-		      const vector<Input> &inputs,
-		      const vector<pair<int, string>> &subtitles,
-		      const string &info);
+                      const std::vector<Input> &inputs,
+                      const std::vector<std::pair<int, string>> &subtitles,
+                      const string &info);
 
   Goal RandomGoal(ArcFour *rc) const {
     Goal goal;
@@ -156,7 +165,7 @@ struct TwoPlayerProblem {
     State Save() {
       MutexLock ml(&mutex);
       return State{ emu->SaveUncompressed(), emu->GetMemory(), depth,
-	            previous1, previous2 };
+              previous1, previous2 };
     }
 
     void Restore(const State &state) {
@@ -169,6 +178,7 @@ struct TwoPlayerProblem {
       previous1 = state.prev1;
       previous2 = state.prev2;
     }
+
     void Exec(Input input) {
       MutexLock ml(&mutex);
       const uint8 input1 = Player1(input), input2 = Player2(input);
@@ -193,13 +203,13 @@ struct TwoPlayerProblem {
       // XXX, we could at least test if inputs have some effect
       // on memory, etc.
       if (x1_loc < 0 || y1_loc < 0 ||
-	  x2_loc < 0 || y2_loc < 0) return false;
+          x2_loc < 0 || y2_loc < 0) return false;
 
-      vector<uint8> save = emu->SaveUncompressed();
+      std::vector<uint8> save = emu->SaveUncompressed();
       // XXX this should count towards IncrementNESFrames
       // XXX how to set this threshold?
       return autolives1.IsInControl(save, x1_loc, y1_loc, false) >= 0.8 &&
-	     autolives2.IsInControl(save, x2_loc, y2_loc, true) >= 0.8;
+        autolives2.IsInControl(save, x2_loc, y2_loc, true) >= 0.8;
     }
 
     // After executing some inputs, observe the current state.
@@ -211,11 +221,11 @@ struct TwoPlayerProblem {
     // Visualize the current state, by drawing pixels into the
     // ARGB array, which has size 256x256 pixels. The goal
     // pointer will be null if there is no current goal.
-    void Visualize(const Goal *goal, vector<uint8> *argb256x256);
+    void Visualize(const Goal *goal, std::vector<uint8> *argb256x256);
     // Append lines to the vector that describe the current state
     // for visualization purposes. The strings should fit in a
     // column 256 pixels wide.
-    void VizText(const Goal *goal, vector<string> *text);
+    void VizText(const Goal *goal, std::vector<string> *text);
 
     // Status and counters just used for the UI.
     void ClearStatus() {
@@ -274,7 +284,7 @@ struct TwoPlayerProblem {
     double res = 1.0;
     for (int loc : protect_loc)
       if (new_state.mem[loc] < old_state.mem[loc])
-	res *= 0.5;
+  res *= 0.5;
     return res;
   }
 
@@ -330,7 +340,7 @@ struct TwoPlayerProblem {
   // coordinates. 1 would yield four quadrants. Exponential!
   static constexpr int GRID_DIVISIONS = 3;
   static_assert(GRID_DIVISIONS > 0 && GRID_DIVISIONS < 8,
-		"valid range");
+    "valid range");
 
   static constexpr int GRID_CELLS_W = 1 << GRID_DIVISIONS;
   static constexpr int DIVI_X = 256 >> GRID_DIVISIONS;
@@ -359,7 +369,7 @@ struct TwoPlayerProblem {
 
   bool GetSpatialGridCell(const State &state, int *cell) const {
     if (x1_loc == -1 || y1_loc == -1 ||
-	x2_loc == -1 || y2_loc == -1) return false;
+  x2_loc == -1 || y2_loc == -1) return false;
 
     const int p1x = state.mem[x1_loc];
     const int p1y = state.mem[y1_loc];
@@ -382,24 +392,24 @@ struct TwoPlayerProblem {
   }
 
   // Get all of the cells that are "adjacent" to this one.
-  static vector<int> AdjacentCells(int cell);
+  static std::vector<int> AdjacentCells(int cell);
 
   // Must be thread safe and leave Worker in a valid state.
   Worker *CreateWorker();
 
-  explicit TwoPlayerProblem(const map<string, string> &config,
-			    const Options &opt);
+  explicit TwoPlayerProblem(const std::map<string, string> &config,
+                            const Options &opt);
 
  private:
-  void InitTimers(const map<string, string> &config,
-		  EmulatorPool *pool,
-		  const vector<uint8> &start);
-  void InitCameras(const map<string, string> &config,
-		   EmulatorPool *pool,
-		   const vector<uint8> &start);
-  void InitLives(const map<string, string> &config,
-		 EmulatorPool *pool,
-		 const vector<uint8> &start);
+  void InitTimers(const std::map<string, string> &config,
+                  EmulatorPool *pool,
+                  const std::vector<uint8> &start);
+  void InitCameras(const std::map<string, string> &config,
+                   EmulatorPool *pool,
+                   const std::vector<uint8> &start);
+  void InitLives(const std::map<string, string> &config,
+                 EmulatorPool *pool,
+                 const std::vector<uint8> &start);
 
   const Options opt;
 
@@ -429,7 +439,7 @@ struct TwoPlayerProblem {
 // Input needs a < operator so that pftwo can use vectors of inputs
 // as keys in a map.
 inline bool operator <(const TwoPlayerProblem::Input &a,
-		       const TwoPlayerProblem::Input &b) {
+           const TwoPlayerProblem::Input &b) {
   return std::tie(a.p1, a.p2) < std::tie(b.p1, b.p2);
 }
 

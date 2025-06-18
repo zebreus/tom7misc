@@ -1,32 +1,28 @@
 #ifndef _PFTWO_TREESEARCH_H
 #define _PFTWO_TREESEARCH_H
 
-#include <algorithm>
 #include <atomic>
 #include <cstdint>
-#include <utility>
-#include <vector>
-#include <string>
-#include <set>
-#include <memory>
-#include <list>
-#include <shared_mutex>
-#include <mutex>
-
 #include <cstdio>
 #include <cstdlib>
+#include <list>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "../fceulib/types.h"
-#include "pftwo.h"
-
-#include "../cc-lib/util.h"
-#include "../cc-lib/heap.h"
 
 #include "atom7ic.h"
-
+#include "heap.h"
 #include "options.h"
-#include "weighted-objectives.h"
+#include "pftwo.h"
 #include "problem-twoplayer.h"
+#include "util.h"
+#include "weighted-objectives.h"
 
 // Base "max" nodes in heap. We start cleaning the heap when there are
 // more than this number of nodes, although we often have to keep more
@@ -65,7 +61,7 @@ struct WorkThread;
 // a heap for prioritizing the next nodes to expand.
 struct Tree {
   using State = Problem::State;
-  using Seq = vector<Problem::Input>;
+  using Seq = std::vector<Problem::Input>;
   // static constexpr int UPDATE_FREQUENCY = 1000 / (NODE_BATCH_SIZE * 2);
   // static_assert(UPDATE_FREQUENCY > 0, "configuration range");
 
@@ -95,7 +91,7 @@ struct Tree {
 
     // Child nodes. Currently, no guarantee that these don't
     // share prefixes, but there cannot be duplicates.
-    map<Seq, Node *> children;
+    std::map<Seq, Node *> children;
 
     // Benchmark info for this node, only used for movie output. This
     // makes it possible to compare the efficiency of progress (both
@@ -223,7 +219,7 @@ struct Tree {
     MarathonCell() {}
   };
 
-  vector<GridCell> grid;
+  std::vector<GridCell> grid;
 
   // Note: Normal for node to be nullptr.
   // If there is something in here, it must be IsInControl.
@@ -256,6 +252,8 @@ struct Tree {
 };
 
 struct TreeSearch {
+  using string = std::string;
+
   // Should not be modified after initialization.
   std::unique_ptr<Problem> problem;
 
@@ -303,7 +301,7 @@ struct TreeSearch {
   // For UI thread; returns the current workers.
   // Should hold the lock or ensure the number of workers
   // is not changed.
-  vector<Worker *> WorkersWithLock() const;
+  std::vector<Worker *> WorkersWithLock() const;
 
  private:
   friend struct WorkThread;
@@ -315,7 +313,7 @@ struct TreeSearch {
 
   // Approximately one per logical CPU. Created at startup and lives
   // until should_die becomes true. Pointers owned by TreeSearch.
-  vector<WorkThread *> workers;
+  std::vector<WorkThread *> workers;
   int num_workers = 0;
 
   bool should_die = false;

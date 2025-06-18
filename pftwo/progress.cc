@@ -1,30 +1,29 @@
 
 #include <algorithm>
-#include <vector>
-#include <string>
-#include <set>
-#include <memory>
-#include <list>
-
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-
-#include "pftwo.h"
+#include <list>
+#include <memory>
+#include <mutex>
+#include <set>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/textsvg.h"
-#include "../cc-lib/bounds.h"
-#include "../cc-lib/re2/re2.h"
+#include "../fceulib/types.h"
 
-static std::mutex print_mutex;
-#define Printf(fmt, ...) do {			\
-    MutexLock Printf_ml(&print_mutex);		\
-    printf(fmt, ##__VA_ARGS__);			\
-    fflush(stdout);				\
-  } while (0)
+#include "base/logging.h"
+#include "bounds.h"
+#include "re2/re2.h"
+#include "textsvg.h"
+#include "threadutil.h"
+#include "util.h"
+
+using namespace std;
 
 static string Rtos(double d) {
   if (std::isnan(d)) return "NaN";
@@ -48,12 +47,12 @@ struct Plots {
 };
 
 static Plots OneMovie(const string &game,
-		      const string &moviename,
-		      const string &shared_prefix) {
+          const string &moviename,
+          const string &shared_prefix) {
   vector<pair<int, string>> subs;
   vector<pair<uint8, uint8>> movie =
     SimpleFM2::ReadInputsEx(moviename, &subs);
-  CHECK(!movie.empty()) << "Couldn't read movie: " << moviename; 
+  CHECK(!movie.empty()) << "Couldn't read movie: " << moviename;
   unique_ptr<Emulator> emu{Emulator::Create(game)};
   CHECK(emu.get() != nullptr) << game;
 
@@ -63,7 +62,7 @@ static Plots OneMovie(const string &game,
   // XXX more principled?
   if (Util::EndsWith(ret.caption, ".fm2"))
     ret.caption = ret.caption.substr(0, ret.caption.size() - 4);
-  
+
   RE2 subtitle_re{"f +([0-9]+) +s +([0-9]+)"};
 
   uint8 max_stage = 0, max_room = 0, max_scroll = 0;
@@ -75,14 +74,14 @@ static Plots OneMovie(const string &game,
     if (r == 255) return 255;
     else return (int)((r * 255.0) / 21.0);
   };
-  
+
   int subidx = 0;
   for (int frame = 0; frame < movie.size(); frame++) {
     uint8 p1, p2;
     std::tie(p1, p2) = movie[frame];
     emu->Step(p1, p2);
     vector<uint8> mem = emu->GetMemory();
-    
+
     // Note: Contra-specific. Could come from .objectives file?
     // But note also the manual mapping with MapRoom.
     uint8 stage = mem[48];
@@ -97,16 +96,16 @@ static Plots OneMovie(const string &game,
 
     if (subidx < subs.size() && subs[subidx].first == frame) {
       int64 nes_frames, secs;
-      if (RE2::PartialMatch(subs[subidx].second, subtitle_re,
-			    &nes_frames, &secs)) {
-	ret.mframes_pos.points.push_back({(double)nes_frames, pos});
-	ret.walltime_pos.points.push_back({(double)secs, pos});
+      if (RE2::PartialMatch(subs[subidx].second, subtitle_re, &nes_frames,
+                            &secs)) {
+        ret.mframes_pos.points.push_back({(double)nes_frames, pos});
+        ret.walltime_pos.points.push_back({(double)secs, pos});
       }
       subidx++;
     }
-    
+
     if (frame % 10000 == 0) {
-      Printf("%s %d/%d\n", moviename.c_str(), frame, (int)movie.size());
+      printf("%s %d/%d\n", moviename.c_str(), frame, (int)movie.size());
     }
   }
 
@@ -133,9 +132,9 @@ static vector<string> &Colors() {
 
 template<class Get>
 static void DrawPlots(const vector<Plots> &plotses,
-		      double width, double height,
-		      const string &filename,
-		      const Get &get) {
+          double width, double height,
+          const string &filename,
+          const Get &get) {
   FILE *f = fopen(filename.c_str(), "w");
   fprintf(f, "%s", TextSVG::Header(width, height).c_str());
 
@@ -157,28 +156,28 @@ static void DrawPlots(const vector<Plots> &plotses,
     if (!series.points.empty()) {
       const string &color = Colors()[coloridx];
       fprintf(f, "<polyline stroke-linejoin=\"round\" "
-	      "fill=\"none\" stroke=\"%s\" stroke-opacity=\"0.75\" "
-	      "stroke-width=\"1.5\" points=\"",
-	      color.c_str());
+        "fill=\"none\" stroke=\"%s\" stroke-opacity=\"0.75\" "
+        "stroke-width=\"1.5\" points=\"",
+        color.c_str());
 
       // Put all scaled points in new vector so we can simplify.
       vector<pair<double, double>> pts;
       pts.reserve(series.points.size());
       for (const std::pair<double, double> pt : series.points) {
-	double x, y;
-	std::tie(x, y) = scaler.Scale(pt);
-	pts.emplace_back(x, y);
+        double x, y;
+        std::tie(x, y) = scaler.Scale(pt);
+        pts.emplace_back(x, y);
       }
-      
+
       vector<pair<double, double>> simplified = TextSVG::RemoveColinear(pts,
-									0.00001);
-      
+                  0.00001);
+
       for (const std::pair<double, double> pt : simplified) {
-	fprintf(f, "%s,%s ", Rtos(pt.first).c_str(), Rtos(pt.second).c_str());
+        fprintf(f, "%s,%s ", Rtos(pt.first).c_str(), Rtos(pt.second).c_str());
       }
       fprintf(f, "\"/>\n");
     }
-    coloridx ++;
+    coloridx++;
     coloridx %= Colors().size();
   }
 
@@ -190,13 +189,14 @@ static void DrawPlots(const vector<Plots> &plotses,
       const string &color = Colors()[coloridx];
       double x, y;
       std::tie(x, y) = scaler.Scale(series.points[series.points.size() - 1]);
-      fprintf(f, TextSVG::Text(x, y, "sans-serif", 12.0,
-			       {{color, plots.caption}}).c_str());
+      fprintf(f, "%s",
+              TextSVG::Text(x, y, "sans-serif", 12.0,
+                            {{color, plots.caption}}).c_str());
     }
     coloridx ++;
     coloridx %= Colors().size();
   }
-  
+
   fprintf(f, "%s", TextSVG::Footer().c_str());
 }
 
@@ -211,7 +211,7 @@ string SharedPrefix(const vector<string> &v) {
       const string &s = v[x];
       if (s.size() < len) return false;
       for (int i = 0; i < len; i++) {
-	if (s[i] != first[i]) return false;
+  if (s[i] != first[i]) return false;
       }
     }
     return true;
@@ -220,13 +220,13 @@ string SharedPrefix(const vector<string> &v) {
   int best = 0;
   for (int i = 0; i < first.size(); i++) {
     if (first[i] == '.' ||
-	first[i] == '-') {
+  first[i] == '-') {
       printf("first[%d] = '%c'\n", i, first[i]);
       if (AllShared(i + 1)) {
-	printf("Allshared.\n");
-	best = i + 1;
+  printf("Allshared.\n");
+  best = i + 1;
       } else {
-	break;
+  break;
       }
     }
   }
@@ -234,28 +234,28 @@ string SharedPrefix(const vector<string> &v) {
 }
 
 static void WriteTSV(vector<Plots> plotses,
-		     const string &filename) {
+         const string &filename) {
 
   RE2 numeric_re{"([0-9]+.?[0-9]*)"};
 
   const bool all_numeric = [&]{
     for (const Plots &a : plotses)
       if (!RE2::FullMatch(a.caption, numeric_re))
-	return false;
+  return false;
     return true;
   }();
 
   if (all_numeric) {
     std::sort(plotses.begin(), plotses.end(),
-	      [&](const Plots &a, const Plots &b) {
-		double af = 0.0, bf = 0.0;
-		// PERF obviously, parsing over and over is wasteful
-		CHECK(RE2::FullMatch(a.caption, numeric_re, &af));
-		CHECK(RE2::FullMatch(a.caption, numeric_re, &bf));
-		return af < bf;
-	      });
+        [&](const Plots &a, const Plots &b) {
+    double af = 0.0, bf = 0.0;
+    // PERF obviously, parsing over and over is wasteful
+    CHECK(RE2::FullMatch(a.caption, numeric_re, &af));
+    CHECK(RE2::FullMatch(a.caption, numeric_re, &bf));
+    return af < bf;
+        });
   }
-    
+
   FILE *f = fopen(filename.c_str(), "w");
 
   // This normalization is problematic, because if we get stuck before
@@ -275,21 +275,21 @@ static void WriteTSV(vector<Plots> plotses,
     return s.points.back().second;
   };
   (void)LastValue;
-  
+
   fprintf(f, "expt\tmframes\tdepth\twalltime\n");
   for (const Plots &plots : plotses) {
     fprintf(f, "%s\t%.3f\t%.3f\t%.3f\n",
-	    plots.caption.c_str(),
-	    LastValue(plots.mframes_pos),
-	    LastValue(plots.depth_pos),
-	    LastValue(plots.walltime_pos));
+      plots.caption.c_str(),
+      LastValue(plots.mframes_pos),
+      LastValue(plots.depth_pos),
+      LastValue(plots.walltime_pos));
   }
   fclose(f);
 }
 
 int main(int argc, char *argv[]) {
   (void)Rtos;
-  
+
   if (argc < 3) {
     fprintf(stderr, "progress.exe game.nes movie1.fm2 movie2.fm2 ...\n");
     return -1;
@@ -300,33 +300,33 @@ int main(int argc, char *argv[]) {
   for (int i = 2; i < argc; i++) {
     movies.push_back(argv[i]);
   }
-  
+
   if (game != GAME) {
     fprintf(stderr, "Sorry, " GAME " is hardcoded because of AOT.\n");
     return -1;
   }
-  
+
   const string shared_prefix = SharedPrefix(movies);
   printf("Prefix shared by all movies (stripped): %s\n",
-	 shared_prefix.c_str());
-  
+   shared_prefix.c_str());
+
   vector<Plots> plotses =
     ParallelMap(movies,
-		[&game, &shared_prefix](const string &moviename) {
-		  return OneMovie(game, moviename, shared_prefix);
-		}, 30);
+    [&game, &shared_prefix](const string &moviename) {
+      return OneMovie(game, moviename, shared_prefix);
+    }, 30);
 
   // Now collate and write plots.
   DrawPlots(plotses, 1024, 1024, "depth-pos.svg",
-	    [](const Plots &p) { return p.depth_pos; });
+      [](const Plots &p) { return p.depth_pos; });
 
   DrawPlots(plotses, 1024, 1024, "mframes-pos.svg",
-	    [](const Plots &p) { return p.mframes_pos; });
+      [](const Plots &p) { return p.mframes_pos; });
 
   DrawPlots(plotses, 1024, 1024, "walltime-pos.svg",
-	    [](const Plots &p) { return p.walltime_pos; });
+      [](const Plots &p) { return p.walltime_pos; });
 
   WriteTSV(plotses, "plots.tsv");
-  
+
   return 0;
 }

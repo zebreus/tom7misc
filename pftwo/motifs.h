@@ -12,7 +12,6 @@
 
 #include "arcfour.h"
 #include "randutil.h"
-// #include "util.h"
 
 // Motifs are little sequences of inputs that are copied from
 // the human player during the learning process. This was the
@@ -68,7 +67,7 @@ struct Motifs {
   // drawn with DrawSVG.
   void Checkpoint(int framenum);
 
-  void SaveHTML(const string &filename) const;
+  void SaveHTML(const std::string &filename) const;
 
 private:
   struct Info {

@@ -1,7 +1,7 @@
 
 default: pftwo.exe eval-autocamera.exe debug-autocamera.exe
 
-all: testui.exe pftwo.exe eval-autocamera.exe debug-autocamera.exe
+all: testui.exe pftwo.exe eval-autocamera.exe debug-autocamera.exe progress.exe playback.exe headless.exe
 
 CXXFLAGS=--std=c++23 -Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I SDL/include
 OPT=-O2

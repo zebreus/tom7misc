@@ -1,12 +1,11 @@
 
-#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <ctime>
-#include <unistd.h>
-#include <vector>
+#include <format>
 #include <string>
-#include <set>
-#include <memory>
-#include <list>
+#include <unistd.h>
 
 #ifdef __MINGW32__
 #define byte win_byte_override
@@ -16,30 +15,13 @@
 #undef CopyMemory
 #endif
 
-#include <cstdio>
-#include <cstdlib>
-#include <format>
-
-#include "pftwo.h"
-
 #include "options.h"
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/textsvg.h"
-#include "../cc-lib/heap.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/nice.h"
-
-#include "atom7ic.h"
-
-#include "weighted-objectives.h"
-#include "problem-twoplayer.h"
-
+#include "base/stringprintf.h"
+#include "nice.h"
 #include "treesearch.h"
+#include "util.h"
 
+using namespace std;
 using int64 = int64_t;
 
 // Note: This is not actually a std::thread -- it's really the main

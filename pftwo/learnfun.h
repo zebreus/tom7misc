@@ -9,33 +9,32 @@
    to produce much better results than this algorithm. So there's
    probably significant improvement to be had here.
 */
-#ifndef __LEARNFUN_H
-#define __LEARNFUN_H
+#ifndef _PFTWO_LEARNFUN_H
+#define _PFTWO_LEARNFUN_H
 
+#include <cstdint>
 #include <vector>
-
-#include "pftwo.h"
 
 struct WeightedObjectives;
 struct ObjectiveEnumerator;
 struct Learnfun {
   // Argument must outlast object.
-  explicit Learnfun(const vector<vector<uint8>> &memories);
-  
+  explicit Learnfun(const std::vector<std::vector<uint8_t>> &memories);
+
   // Caller owns new-ly allocated pointer.
   WeightedObjectives *MakeWeighted();
-  
- private:
-  const vector<vector<uint8>> &memories;
-  vector<vector<int>> objectives;
 
-  void MakeObjectives(const vector<vector<uint8>> &memories);
+ private:
+  const std::vector<std::vector<uint8_t>> &memories;
+  std::vector<std::vector<int>> objectives;
+
+  void MakeObjectives(const std::vector<std::vector<uint8_t>> &memories);
   void GenerateNthSlices(int divisor, int num,
-			 ObjectiveEnumerator *obj);
+                         ObjectiveEnumerator *obj);
   void GenerateOccasional(int stride, int offsets, int num,
-			  ObjectiveEnumerator *obj);
-  
-  void PrintAndSave(const vector<int> &ordering);
+                          ObjectiveEnumerator *obj);
+
+  void PrintAndSave(const std::vector<int> &ordering);
 };
 
 #endif

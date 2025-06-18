@@ -50,7 +50,7 @@ struct WeightedObjectives {
   static const std::vector<uint8_t> Value(
       const std::vector<uint8_t> &memory,
       const std::vector<int> &objective) {
-    vector<uint8_t> ret;
+    std::vector<uint8_t> ret;
     ret.resize(objective.size());
     for (int i = 0; i < objective.size(); i++)
       ret[i] = memory[objective[i]];
@@ -102,7 +102,7 @@ struct Observations {
   // returns one value fraction per objective, in the same order they
   // appear within the WeightedObjectives object.
   // Weights are ignored. Does not observe the memory.
-  virtual vector<double> GetNormalizedValues(
+  virtual std::vector<double> GetNormalizedValues(
       const std::vector<uint8_t> &memory) = 0;
 
   // Write some short strings into the text to describe the memory.

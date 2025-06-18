@@ -1,16 +1,26 @@
 // This is a one-off (presumably) for developing/debugging autocamera.
 
 #include <algorithm>
-#include <vector>
-#include <string>
-#include <set>
-#include <memory>
-#include <list>
-
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <format>
+#include <map>
+#include <memory>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
+#include "SDL_audio.h"
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_keysym.h"
+#include "SDL_video.h"
+#include "base/stringprintf.h"
 #include "pftwo.h"
 
 #include "../fceulib/emulator.h"
@@ -18,13 +28,13 @@
 #include "../fceulib/simplefm7.h"
 #include "../fceulib/cart.h"
 #include "../fceulib/ppu.h"
-#include "../fceulib/x6502.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/sdl/chars.h"
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/re2/re2.h"
-#include "../cc-lib/lastn-buffer.h"
+
+#include "sdl/sdlutil.h"
+#include "util.h"
+#include "sdl/chars.h"
+#include "sdl/font.h"
+#include "lastn-buffer.h"
+
 #include "autocamera.h"
 #include "autocamera2.h"
 #include "autolives.h"
@@ -48,6 +58,11 @@ using LivesLoc = AutoLives::LivesLoc;
 using TimerLoc = AutoTimer::TimerLoc;
 
 using namespace std;
+using uint8 = uint8_t;
+using uint32 = uint32_t;
+using int64 = int64_t;
+using uint64 = uint64_t;
+using uint16 = uint16_t;
 
 static string Rtos(double d) {
   if (std::isnan(d)) return "NaN";
@@ -142,80 +157,78 @@ static vector<uint8> GetSpriteSheet(Emulator *emu, int rotate = 0) {
     //
     // When drawing 8x8 sprites, this will be all the work. For tall
     // sprites, we'll make two calls to this.
-    auto OneTile =
-      [emu, &rgba, v_flip, h_flip, colorbits, palette_table](
-    bool patterntable_high, uint8 tile_idx, int x0, int y0) {
+    auto OneTile = [emu, &rgba, v_flip, h_flip, colorbits, palette_table](
+                       bool patterntable_high, uint8 tile_idx, int x0, int y0) {
       const uint32 spr_pat_addr = patterntable_high ? 0x1000 : 0x0000;
       const uint8 *vram = emu->GetFC()->cart->VPagePointer(spr_pat_addr);
 
       const int addr = tile_idx * 16;
       for (int row = 0; row < 8; row++) {
-  const uint8 row_low = vram[addr + row];
-  const uint8 row_high = vram[addr + row + 8];
+        const uint8 row_low = vram[addr + row];
+        const uint8 row_high = vram[addr + row + 8];
 
-  // bit from msb to lsb.
-  for (int bit = 0; bit < 8; bit++) {
-    const uint8 value =
-      ((row_low >> (7 - bit)) & 1) |
-      (((row_high >> (7 - bit)) & 1) << 1);
+        // bit from msb to lsb.
+        for (int bit = 0; bit < 8; bit++) {
+          const uint8 value = ((row_low >> (7 - bit)) & 1) |
+                              (((row_high >> (7 - bit)) & 1) << 1);
 
-    const int px = h_flip ? x0 + (7 - bit) : (x0 + bit);
-    const int py = v_flip ? y0 + (7 - row) : (y0 + row);
-    const int pixel = (py * SPRITESHEET_WIDTH + px) * 4;
+          const int px = h_flip ? x0 + (7 - bit) : (x0 + bit);
+          const int py = v_flip ? y0 + (7 - row) : (y0 + row);
+          const int pixel = (py * SPRITESHEET_WIDTH + px) * 4;
 
-    // For sprites, transparent pixels need to be drawn with
-    // alpha 0. The palette doesn't matter; 0 means transparent
-    // in every palette.
-    if (value == 0) {
-      rgba[pixel + 0] = 0x00;
-      rgba[pixel + 1] = 0x00;
-      rgba[pixel + 2] = 0x00;
-      rgba[pixel + 3] = 0x00;
-    } else {
-      // Offset with palette table. Sprite palette entries come
-      // after the bg ones, so add 0x10.
-      const uint8 palette_idx = 0x10 + ((colorbits << 2) | value);
-      // ID of global NES color gamut.
-      const uint8 color_id = palette_table[palette_idx];
+          // For sprites, transparent pixels need to be drawn with
+          // alpha 0. The palette doesn't matter; 0 means transparent
+          // in every palette.
+          if (value == 0) {
+            rgba[pixel + 0] = 0x00;
+            rgba[pixel + 1] = 0x00;
+            rgba[pixel + 2] = 0x00;
+            rgba[pixel + 3] = 0x00;
+          } else {
+            // Offset with palette table. Sprite palette entries come
+            // after the bg ones, so add 0x10.
+            const uint8 palette_idx = 0x10 + ((colorbits << 2) | value);
+            // ID of global NES color gamut.
+            const uint8 color_id = palette_table[palette_idx];
 
-      // Put pixel in sprite texture:
-      rgba[pixel + 0] = ntsc_palette[color_id * 3 + 0];
-      rgba[pixel + 1] = ntsc_palette[color_id * 3 + 1];
-      rgba[pixel + 2] = ntsc_palette[color_id * 3 + 2];
-      rgba[pixel + 3] = 0xFF;
-    }
-  }
+            // Put pixel in sprite texture:
+            rgba[pixel + 0] = ntsc_palette[color_id * 3 + 0];
+            rgba[pixel + 1] = ntsc_palette[color_id * 3 + 1];
+            rgba[pixel + 2] = ntsc_palette[color_id * 3 + 2];
+            rgba[pixel + 3] = 0xFF;
+          }
+        }
       }
     };
 
     if (tall_sprites) {
       // Odd and even tile numbers are treated differently.
       if ((tile_idx & 1) == 0) {
-  // This page:
-  // http://noelberry.ca/nes
-  // verifies that tiles t and t+1 are drawn top then bottom.
-  if (v_flip) {
-    // in y-flip scenarios, we have to flip the
-    // y positions here so that the whole 8x16 sprite is flipping,
-    // rather than its two 8x8 components. So tile_idx actually goes
-    // on bottom.
-    OneTile(false, tile_idx, xpos, ypos + 8);
-    OneTile(false, tile_idx + 1, xpos, ypos);
-  } else {
-    OneTile(false, tile_idx, xpos, ypos);
-    OneTile(false, tile_idx + 1, xpos, ypos + 8);
-  }
+        // This page:
+        // http://noelberry.ca/nes
+        // verifies that tiles t and t+1 are drawn top then bottom.
+        if (v_flip) {
+          // in y-flip scenarios, we have to flip the
+          // y positions here so that the whole 8x16 sprite is flipping,
+          // rather than its two 8x8 components. So tile_idx actually goes
+          // on bottom.
+          OneTile(false, tile_idx, xpos, ypos + 8);
+          OneTile(false, tile_idx + 1, xpos, ypos);
+        } else {
+          OneTile(false, tile_idx, xpos, ypos);
+          OneTile(false, tile_idx + 1, xpos, ypos + 8);
+        }
       } else {
-  // XXX I assume this drops the low bit? I don't see that
-  // documented but it wouldn't really make sense otherwise
-  // (unless tile 255 wraps to 0?)
-  if (v_flip) {
-    OneTile(true, tile_idx - 1, xpos, ypos + 8);
-    OneTile(true, tile_idx, xpos, ypos);
-  } else {
-    OneTile(true, tile_idx - 1, xpos, ypos);
-    OneTile(true, tile_idx, xpos, ypos + 8);
-  }
+        // XXX I assume this drops the low bit? I don't see that
+        // documented but it wouldn't really make sense otherwise
+        // (unless tile 255 wraps to 0?)
+        if (v_flip) {
+          OneTile(true, tile_idx - 1, xpos, ypos + 8);
+          OneTile(true, tile_idx, xpos, ypos);
+        } else {
+          OneTile(true, tile_idx - 1, xpos, ypos);
+          OneTile(true, tile_idx, xpos, ypos + 8);
+        }
       }
     } else {
       OneTile(spr_pat_high, tile_idx, xpos, ypos);
@@ -289,14 +302,14 @@ struct UIThread {
     BlitRGBA2x(rgba, 256, 256, startx, starty, screen);
     BlitRGBA(spritesheet, 512, 16, startx, starty + 512 + 8, screen);
 
-    font->draw(startx, 4, StringPrintf("%d^2/^<%d",
-               frameidx, (int)movie.size()));
+    font->draw(startx, 4, std::format("{}^2/^<{}",
+                                      frameidx, (int)movie.size()));
 
     const uint32 xscroll = e->GetXScroll();
     const uint32 yscroll = e->GetYScroll();
     font->draw(startx + 128, 4,
          StringPrintf("^2scroll: ^1%d^2,^<%d",
-          (int)xscroll, (int)yscroll));
+                      (int)xscroll, (int)yscroll));
     // And sprites.
     for (int absolute_s = 0; absolute_s < 64; absolute_s++) {
       int s = (absolute_s + rot) % 64;
@@ -312,18 +325,13 @@ struct UIThread {
       uint8 xs = ppu->interframe_x[sl];
       uint8 ys = ppu->interframe_y[sl];
       // Given x,y as NES screen coordinates
-      auto DrawPixel =
-  [this, startx, starty](int x, int y,
-             uint8 r, uint8 g, uint8 b) {
-    SetPixelRGB(startx + x * 2, starty + y * 2,
-          r, g, b, screen);
-    SetPixelRGB(startx + x * 2 + 1, starty + y * 2,
-          r, g, b, screen);
-    SetPixelRGB(startx + x * 2, starty + y * 2 + 1,
-          r, g, b, screen);
-    SetPixelRGB(startx + x * 2 + 1, starty + y * 2 + 1,
-          r, g, b, screen);
-  };
+      auto DrawPixel = [this, startx, starty](int x, int y,
+                                              uint8 r, uint8 g, uint8 b) {
+        SetPixelRGB(startx + x * 2, starty + y * 2, r, g, b, screen);
+        SetPixelRGB(startx + x * 2 + 1, starty + y * 2, r, g, b, screen);
+        SetPixelRGB(startx + x * 2, starty + y * 2 + 1, r, g, b, screen);
+        SetPixelRGB(startx + x * 2 + 1, starty + y * 2 + 1, r, g, b, screen);
+      };
       DrawPixel(ys, sl, 0, 0xFF, 0);
       DrawPixel(xs, sl, 0xFF, 0, 0);
     }
@@ -342,226 +350,219 @@ struct UIThread {
       SDL_Event event;
 
       if (SDL_PollEvent(&event)) {
-  switch (event.type) {
-  case SDL_QUIT:
-    return;
-  case SDL_KEYDOWN:
-    switch (event.key.keysym.sym) {
-    case SDLK_ESCAPE:
-      return;
-
-    case SDLK_SPACE:
-      switch (mode) {
-      case Mode::FFWD:
-      case Mode::ADVANCE:
-      case Mode::PAUSE:
-        mode = Mode::PLAY;
-        break;
-      case Mode::PLAY:
-        mode = Mode::PAUSE;
-        break;
-      }
-      break;
-
-    case SDLK_t: {
-      // (expects verbose printout...)
-      vector<TimerLoc> timers =
-        autotimer->FindTimers(emu->SaveUncompressed());
-      (void)timers;
-      break;
-    }
-
-    case SDLK_l: {
-      vector<LivesLoc> lives =
-        autolives->FindLives(emu->SaveUncompressed(),
-           XLOC, YLOC,
-           false);
-      (void)lives;
-      break;
-    }
-
-    case SDLK_i:
-      show_control = !show_control;
-      break;
-
-    case SDLK_PERIOD:
-      mode = Mode::ADVANCE;
-      break;
-
-    case SDLK_MINUS:
-      // XLOC--;
-      YLOC--;
-      printf("%d,%d = %04x,%04x\n", XLOC, YLOC, XLOC, YLOC);
-      break;
-    case SDLK_EQUALS:
-    case SDLK_PLUS:
-      // XLOC++;
-      YLOC++;
-      printf("%d,%d = %04x,%04x\n", XLOC, YLOC, XLOC, YLOC);
-      break;
-
-    case SDLK_LEFTBRACKET:
-      loop_left = frameidx;
-      loop_left_save = emu->SaveUncompressed();
-      if (loop_left >= loop_right) loop_left = 0;
-      break;
-
-    case SDLK_RIGHTBRACKET:
-      loop_right = frameidx;
-      if (loop_right <= loop_left) loop_left = 0;
-      break;
-
-
-    case SDLK_KP_MINUS:
-    case SDLK_KP_PLUS: {
-      uint8 *ram = emu->GetFC()->fceu->RAM;
-      ram[LIVES] += event.key.keysym.sym == SDLK_KP_PLUS ? 1 : -1;
-      break;
-    }
-
-      // Numpad cardinal directions modify the value at XLOC,YLOC.
-    // XXX: Should probably discard snapshots when this
-    // happens?
-    case SDLK_KP6:
-    case SDLK_KP4: {
-      uint8 *ram = emu->GetFC()->fceu->RAM;
-      ram[XLOC] += event.key.keysym.sym == SDLK_KP6 ? 5 : -5;
-      printf("now %d,%d\n", ram[XLOC], ram[YLOC]);
-      break;
-    }
-
-    case SDLK_KP8:
-    case SDLK_KP2: {
-      uint8 *ram = emu->GetFC()->fceu->RAM;
-      ram[YLOC] += event.key.keysym.sym == SDLK_KP2 ? 5 : -5;
-      printf("now %d,%d\n", ram[XLOC], ram[YLOC]);
-      break;
-    }
-
-    case SDLK_2: {
-      AutoCamera2 ac{game};
-      vector<uint8> save = emu->SaveUncompressed();
-      auto Report = [](const string &s) {
-          printf("AC2: %s\n", s.c_str());
-        };
-      vector<AutoCamera2::Linkage> links =
-        ac.FindLinkages(save, Report);
-
-      for (const AutoCamera2::Linkage &l : links) {
-        printf("  %.2f: %d/%d = 0x%04x,0x%04x\n",
-         l.score, l.xloc, l.yloc,
-         l.xloc, l.yloc);
-      }
-
-      // XXX 2p
-      vector<AutoCamera2::XLoc> xlocs =
-        ac.FindXLocs(save, false, Report);
-
-      printf("AC2: %d xlocs:\n", (int)xlocs.size());
-      for (const AutoCamera2::XLoc &x : xlocs) {
-        printf("  %.2f: %d = 0x%04x\n",
-         x.score, x.xloc, x.xloc);
-      }
-
-      // XXX merge scores
-
-      if (links.empty()) {
-        AutoCamera2::Linkage best = links[0];
-        printf("Set loc to %d,%d = 0x%2x,0x%2x (score %.2f)\n",
-         best.xloc, best.yloc,
-         best.xloc, best.yloc,
-         best.score);
-        XLOC = best.xloc;
-        YLOC = best.yloc;
-      }
-      break;
-    }
-
-    case SDLK_c: {
-      AutoCamera autocamera{game};
-      bool exited = false;
-      auto Callback = [this, &exited](int depth,
-              int total_displacement,
-              Emulator *lemu,
-              Emulator *nemu,
-              Emulator *remu) {
-        sdlutil::clearsurface(screen, 0x44000044);
-
-        DrawEmulatorAt(lemu, total_displacement, 0, 0);
-        DrawEmulatorAt(nemu, total_displacement, 512 + 4, 0);
-        DrawEmulatorAt(remu, total_displacement, 1024 + 8, 0);
-
-        SDL_Flip(screen);
-
-        if (exited) return;
-        for (;;) {
-    SDL_Event event;
-    if (SDL_PollEvent(&event)) {
-      switch (event.type) {
-      case SDL_QUIT:
-        exited = true;
-        return;
-      case SDL_KEYDOWN:
-        switch (event.key.keysym.sym) {
-        case SDLK_ESCAPE:
-          exited = true;
+        switch (event.type) {
+        case SDL_QUIT:
           return;
-        case SDLK_SPACE:
-          return;
+        case SDL_KEYDOWN:
+          switch (event.key.keysym.sym) {
+          case SDLK_ESCAPE:
+            return;
+
+          case SDLK_SPACE:
+            switch (mode) {
+            case Mode::FFWD:
+            case Mode::ADVANCE:
+            case Mode::PAUSE:
+              mode = Mode::PLAY;
+              break;
+            case Mode::PLAY:
+              mode = Mode::PAUSE;
+              break;
+            }
+            break;
+
+          case SDLK_t: {
+            // (expects verbose printout...)
+            vector<TimerLoc> timers =
+                autotimer->FindTimers(emu->SaveUncompressed());
+            (void)timers;
+            break;
+          }
+
+          case SDLK_l: {
+            vector<LivesLoc> lives = autolives->FindLives(
+                emu->SaveUncompressed(), XLOC, YLOC, false);
+            (void)lives;
+            break;
+          }
+
+          case SDLK_i:
+            show_control = !show_control;
+            break;
+
+          case SDLK_PERIOD:
+            mode = Mode::ADVANCE;
+            break;
+
+          case SDLK_MINUS:
+            // XLOC--;
+            YLOC--;
+            printf("%d,%d = %04x,%04x\n", XLOC, YLOC, XLOC, YLOC);
+            break;
+          case SDLK_EQUALS:
+          case SDLK_PLUS:
+            // XLOC++;
+            YLOC++;
+            printf("%d,%d = %04x,%04x\n", XLOC, YLOC, XLOC, YLOC);
+            break;
+
+          case SDLK_LEFTBRACKET:
+            loop_left = frameidx;
+            loop_left_save = emu->SaveUncompressed();
+            if (loop_left >= loop_right)
+              loop_left = 0;
+            break;
+
+          case SDLK_RIGHTBRACKET:
+            loop_right = frameidx;
+            if (loop_right <= loop_left)
+              loop_left = 0;
+            break;
+
+          case SDLK_KP_MINUS:
+          case SDLK_KP_PLUS: {
+            uint8 *ram = emu->GetFC()->fceu->RAM;
+            ram[LIVES] += event.key.keysym.sym == SDLK_KP_PLUS ? 1 : -1;
+            break;
+          }
+
+            // Numpad cardinal directions modify the value at XLOC,YLOC.
+          // XXX: Should probably discard snapshots when this
+          // happens?
+          case SDLK_KP6:
+          case SDLK_KP4: {
+            uint8 *ram = emu->GetFC()->fceu->RAM;
+            ram[XLOC] += event.key.keysym.sym == SDLK_KP6 ? 5 : -5;
+            printf("now %d,%d\n", ram[XLOC], ram[YLOC]);
+            break;
+          }
+
+          case SDLK_KP8:
+          case SDLK_KP2: {
+            uint8 *ram = emu->GetFC()->fceu->RAM;
+            ram[YLOC] += event.key.keysym.sym == SDLK_KP2 ? 5 : -5;
+            printf("now %d,%d\n", ram[XLOC], ram[YLOC]);
+            break;
+          }
+
+          case SDLK_2: {
+            AutoCamera2 ac{game};
+            vector<uint8> save = emu->SaveUncompressed();
+            auto Report = [](const string &s) {
+              printf("AC2: %s\n", s.c_str());
+            };
+            vector<AutoCamera2::Linkage> links = ac.FindLinkages(save, Report);
+
+            for (const AutoCamera2::Linkage &l : links) {
+              printf("  %.2f: %d/%d = 0x%04x,0x%04x\n", l.score, l.xloc, l.yloc,
+                     l.xloc, l.yloc);
+            }
+
+            // XXX 2p
+            vector<AutoCamera2::XLoc> xlocs = ac.FindXLocs(save, false, Report);
+
+            printf("AC2: %d xlocs:\n", (int)xlocs.size());
+            for (const AutoCamera2::XLoc &x : xlocs) {
+              printf("  %.2f: %d = 0x%04x\n", x.score, x.xloc, x.xloc);
+            }
+
+            // XXX merge scores
+
+            if (links.empty()) {
+              AutoCamera2::Linkage best = links[0];
+              printf("Set loc to %d,%d = 0x%2x,0x%2x (score %.2f)\n", best.xloc,
+                     best.yloc, best.xloc, best.yloc, best.score);
+              XLOC = best.xloc;
+              YLOC = best.yloc;
+            }
+            break;
+          }
+
+          case SDLK_c: {
+            AutoCamera autocamera{game};
+            bool exited = false;
+            auto Callback = [this, &exited](int depth, int total_displacement,
+                                            Emulator *lemu, Emulator *nemu,
+                                            Emulator *remu) {
+              sdlutil::clearsurface(screen, 0x44000044);
+
+              DrawEmulatorAt(lemu, total_displacement, 0, 0);
+              DrawEmulatorAt(nemu, total_displacement, 512 + 4, 0);
+              DrawEmulatorAt(remu, total_displacement, 1024 + 8, 0);
+
+              SDL_Flip(screen);
+
+              if (exited)
+                return;
+              for (;;) {
+                SDL_Event event;
+                if (SDL_PollEvent(&event)) {
+                  switch (event.type) {
+                  case SDL_QUIT:
+                    exited = true;
+                    return;
+                  case SDL_KEYDOWN:
+                    switch (event.key.keysym.sym) {
+                    case SDLK_ESCAPE:
+                      exited = true;
+                      return;
+                    case SDLK_SPACE:
+                      return;
+                    default:
+                      break;
+                    }
+                    break;
+                  default:
+                    break;
+                  }
+                }
+              }
+            };
+            // using XYSprite = AutoCamera::XYSprite;
+            using XSprites = AutoCamera::XSprites;
+            const vector<uint8> save = emu->SaveUncompressed();
+            const XSprites xcand = autocamera.GetXSprites(save, Callback);
+            printf("-----\n");
+            mode = Mode::PAUSE;
+          }
+
+          case SDLK_LEFT: {
+            mode = Mode::PAUSE;
+
+            auto it = snapshots.lower_bound(frameidx);
+            if (it == snapshots.begin())
+              break;
+            --it;
+            fprintf(stderr, "Seek to %lld\n", it->first);
+            frameidx = it->first;
+            emu->LoadUncompressed(it->second);
+            // XXX need to execute a frame in order
+            // to have something to show..
+            break;
+          }
+
+          case SDLK_RIGHT: {
+            auto it = snapshots.lower_bound(frameidx + 1);
+            if (it == snapshots.end()) {
+              mode = Mode::FFWD;
+              break;
+            } else {
+              // Have snapshot; just seek.
+              fprintf(stderr, "Seek to %lld\n", it->first);
+              frameidx = it->first;
+              emu->LoadUncompressed(it->second);
+
+              mode = Mode::PAUSE;
+              break;
+            }
+          }
+          default:
+            break;
+          }
+          break;
         default:
           break;
         }
-        break;
-      default:
-        break;
-      }
-    }
-        }
-      };
-      // using XYSprite = AutoCamera::XYSprite;
-      using XSprites = AutoCamera::XSprites;
-      const vector<uint8> save = emu->SaveUncompressed();
-      const XSprites xcand = autocamera.GetXSprites(save, Callback);
-      printf("-----\n");
-      mode = Mode::PAUSE;
-    }
-
-    case SDLK_LEFT: {
-      mode = Mode::PAUSE;
-
-      auto it = snapshots.lower_bound(frameidx);
-      if (it == snapshots.begin()) break;
-      --it;
-      fprintf(stderr, "Seek to %lld\n", it->first);
-      frameidx = it->first;
-      emu->LoadUncompressed(it->second);
-      // XXX need to execute a frame in order
-      // to have something to show..
-      break;
-    }
-
-    case SDLK_RIGHT: {
-      auto it = snapshots.lower_bound(frameidx + 1);
-      if (it == snapshots.end()) {
-        mode = Mode::FFWD;
-        break;
-      } else {
-        // Have snapshot; just seek.
-        fprintf(stderr, "Seek to %lld\n", it->first);
-        frameidx = it->first;
-        emu->LoadUncompressed(it->second);
-
-        mode = Mode::PAUSE;
-        break;
-      }
-    }
-    default:
-      break;
-    }
-    break;
-  default:
-    break;
-  }
       }
 
       if (mode == Mode::PLAY || mode == Mode::ADVANCE ||
@@ -599,7 +600,7 @@ struct UIThread {
       }
 
       if (mode == Mode::FFWD)
-  continue;
+        continue;
 
       // PERF: Don't need to clear the game part.
       sdlutil::clearsurface(screen, 0x00000000);
@@ -608,45 +609,43 @@ struct UIThread {
       DrawEmulatorAt(emu.get(), rot, 0, 0);
 
       if (show_control) {
-  vector<uint8> save = emu->SaveUncompressed();
-  float controlf = autolives->IsInControl(save, XLOC, YLOC, false);
-  font->draw(16, 500,
-       StringPrintf("%sCONTROL: %.2f",
-        controlf > 0.3f ? "^5" : "^2", controlf));
+        vector<uint8> save = emu->SaveUncompressed();
+        float controlf = autolives->IsInControl(save, XLOC, YLOC, false);
+        font->draw(16, 500,
+                   StringPrintf("%sCONTROL: %.2f",
+                                controlf > 0.3f ? "^5" : "^2", controlf));
       }
 
       if (false) {
-  std::unordered_map<uint64, int> reg_counts;
-  last_pcs.App([&reg_counts](uint64 reg) {
-           reg_counts[reg]++;
-         });
-  vector<std::pair<int, uint64>> counted;
-  for (const auto &p : reg_counts)
-    counted.emplace_back(p.second, p.first);
-  std::sort(counted.begin(), counted.end(),
-      [](const std::pair<int, uint64> &a,
-         const std::pair<int, uint64> &b) {
-        return a.second > b.second;
-      });
+        std::unordered_map<uint64, int> reg_counts;
+        last_pcs.App([&reg_counts](uint64 reg) { reg_counts[reg]++; });
+        vector<std::pair<int, uint64>> counted;
+        for (const auto &p : reg_counts)
+          counted.emplace_back(p.second, p.first);
+        std::sort(counted.begin(), counted.end(),
+                  [](const std::pair<int, uint64> &a,
+                     const std::pair<int, uint64> &b) {
+                    return a.second > b.second;
+                  });
 
-  int xx = 2;
-  int yy = 600;
-  for (const auto &row : counted) {
-    uint16 pc = row.second >> (5 * 8) & 65535;
-    uint8 a = (row.second >> (4 * 8)) & 255;
-    uint8 x = (row.second >> (3 * 8)) & 255;
-    uint8 y = (row.second >> (2 * 8)) & 255;
-    uint8 s = (row.second >> (1 * 8)) & 255;
-    uint8 p = row.second & 255;
-    font->draw(xx, yy,
-         StringPrintf("%5d  ^1%04x^2%02x^3%02x^4%02x^5%02x^6%02x",
-          row.first, pc, a, x, y, s, p));
-    yy += FONTHEIGHT;
-    if (yy > HEIGHT - FONTHEIGHT) {
-      yy = 600;
-      xx += 150;
-    }
-  }
+        int xx = 2;
+        int yy = 600;
+        for (const auto &row : counted) {
+          uint16 pc = row.second >> (5 * 8) & 65535;
+          uint8 a = (row.second >> (4 * 8)) & 255;
+          uint8 x = (row.second >> (3 * 8)) & 255;
+          uint8 y = (row.second >> (2 * 8)) & 255;
+          uint8 s = (row.second >> (1 * 8)) & 255;
+          uint8 p = row.second & 255;
+          font->draw(xx, yy,
+                     StringPrintf("%5d  ^1%04x^2%02x^3%02x^4%02x^5%02x^6%02x",
+                                  row.first, pc, a, x, y, s, p));
+          yy += FONTHEIGHT;
+          if (yy > HEIGHT - FONTHEIGHT) {
+            yy = 600;
+            xx += 150;
+          }
+        }
       }
 
       // Draw
@@ -725,7 +724,6 @@ struct UIThread {
 
       SDL_Flip(screen);
     }
-
   }
 
   void Run() {

@@ -5,20 +5,18 @@
 
 #include "learnfun.h"
 
-#include <unistd.h>
-#include <sys/types.h>
-#include <string.h>
-#include <errno.h>
+#include <cstdint>
 #include <stdio.h>
 #include <stdlib.h>
-#include <map>
+#include <sys/types.h>
+#include <unistd.h>
+#include <vector>
 
-#include "pftwo.h"
-#include "../fceulib/emulator.h"
-#include "simplefm2.h"
 #include "objective-enumerator.h"
 #include "weighted-objectives.h"
-#include "motifs.h"
+
+using namespace std;
+using uint8 = uint8_t;
 
 // Not thread safe.
 void Learnfun::PrintAndSave(const vector<int> &ordering) {
@@ -32,8 +30,8 @@ void Learnfun::PrintAndSave(const vector<int> &ordering) {
 
 // With e.g. an divisor of 3, generate slices covering
 // the first third, middle third, and last third.
-void Learnfun::GenerateNthSlices(int divisor, int num, 
-				 ObjectiveEnumerator *oe) {
+void Learnfun::GenerateNthSlices(int divisor, int num,
+                                 ObjectiveEnumerator *oe) {
   const int onenth = memories.size() / divisor;
   for (int slicenum = 0; slicenum < divisor; slicenum++) {
     vector<int> look;
@@ -44,16 +42,16 @@ void Learnfun::GenerateNthSlices(int divisor, int num,
     // printf("For slice %ld-%ld:\n", low, low + onenth - 1);
     for (int i = 0; i < num; i++) {
       oe->EnumerateFull(look,
-			 [this](const vector<int> &ordering) {
-			   PrintAndSave(ordering);
-			 },
-			 1, slicenum * 0xBEAD + i);
+       [this](const vector<int> &ordering) {
+         PrintAndSave(ordering);
+       },
+       1, slicenum * 0xBEAD + i);
     }
   }
 }
 
 void Learnfun::GenerateOccasional(int stride, int offsets, int num,
-				  ObjectiveEnumerator *oe) {
+                                  ObjectiveEnumerator *oe) {
   for (int off = 0; off < offsets; off++) {
     vector<int> look;
     // Consider starting at various places throughout the first stide?
@@ -63,10 +61,10 @@ void Learnfun::GenerateOccasional(int stride, int offsets, int num,
     // printf("For occasional @%d (every %d):\n", off, stride);
     for (int i = 0; i < num; i++) {
       oe->EnumerateFull(look,
-			 [this](const vector<int> &ordering) {
-			   PrintAndSave(ordering);
-			 },
-			 1, off * 0xF00D + i);
+       [this](const vector<int> &ordering) {
+         PrintAndSave(ordering);
+       },
+       1, off * 0xF00D + i);
     }
   }
 }
@@ -74,7 +72,7 @@ void Learnfun::GenerateOccasional(int stride, int offsets, int num,
 void Learnfun::MakeObjectives(const vector<vector<uint8>> &memories) {
   printf("Now generating objectives.\n");
   ObjectiveEnumerator oe(memories);
-    
+
   // Going to generate a bunch of objective functions.
   // Some things will never violate the objective, like
   // [world number, stage number] or [score]. So generate
@@ -108,7 +106,7 @@ void Learnfun::MakeObjectives(const vector<vector<uint8>> &memories) {
   // This one looks okay; noisy at times.
   GenerateOccasional(1000, 10, 1, &oe);
 }
-  
+
 Learnfun::Learnfun(const vector<vector<uint8>> &memories)
   : memories(memories) {
   printf("%d memories.\n", (int)memories.size());

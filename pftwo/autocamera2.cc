@@ -4,6 +4,10 @@
 
 #include "autocamera2.h"
 
+#include <cstdint>
+#include <format>
+#include <memory>
+#include <unordered_map>
 #include <vector>
 #include <utility>
 #include <functional>
@@ -13,15 +17,19 @@
 #include <stdlib.h>
 
 #include "../fceulib/ppu.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/hashing.h"
-#include "../cc-lib/gtl/top_n.h"
+#include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
 
-#include "random-pool.h"
+#include "arcfour.h"
 #include "emulator-pool.h"
+#include "gtl/top_n.h"
+#include "hashing.h"
+#include "random-pool.h"
 
 using namespace std;
+using uint8 = uint8_t;
+using uint16 = uint16_t;
+using uint32 = uint32_t;
 
 static constexpr int NUM_SPRITES = 64;
 // Absolute difference allowed between memory location and sprite
@@ -30,7 +38,7 @@ static constexpr int NUM_SPRITES = 64;
 static constexpr int LINKAGE_MARGIN = 2;
 static constexpr int MIN_RANDOM_DISTANCE = 8;
 static_assert(MIN_RANDOM_DISTANCE > (LINKAGE_MARGIN >> 1),
-        "precondition");
+              "precondition");
 // When moving a sprite by changing its memory location, we allow
 // the sprite's vector to differ by up to this amount in each component.
 static constexpr int DELTA_SLOP = 3;
@@ -44,7 +52,7 @@ namespace {
 struct OAM {
   // Copies from emu, so emu can be modified after construction.
   OAM(Emulator *emu) : mem(emu->GetFC()->ppu->SPRAM,
-         emu->GetFC()->ppu->SPRAM + 256) {}
+                           emu->GetFC()->ppu->SPRAM + 256) {}
   inline uint8 X(int sprite_idx) const { return mem[sprite_idx * 4 + 3]; }
   inline uint8 Y(int sprite_idx) const { return mem[sprite_idx * 4 + 0]; }
   inline uint8 Byte(int byte_idx) const { return mem[byte_idx]; }
@@ -97,7 +105,7 @@ struct BetterXLoc {
 
 using ScoredLocationMap =
   std::unordered_map<pair<int, int>, float,
-         Hashing<pair<int, int>>>;
+                     Hashing<pair<int, int>>>;
 
 
 // TODO: Use autoutil.h ?
@@ -112,7 +120,7 @@ static vector<Linkage> GetBestLinkages(
 }
 
 AutoCamera2::AutoCamera2(const string &game) : random_pool(game, 1),
-                 emu_pool(game, 3) {
+                                               emu_pool(game, 3) {
 }
 
 AutoCamera2::~AutoCamera2() {}
@@ -181,27 +189,28 @@ vector<Linkage> AutoCamera2::FindLinkages(
   }
 
   if (report)
-    report(StringPrintf("%lld x potential locations and %lld y",
-      xcand.size(), ycand.size()));
+    report(std::format("{} x potential locations and {} y",
+                       xcand.size(), ycand.size()));
 
   // get new x,y that are not close to oldx,oldy
   // XXX also newx should not be close to newy, and dx should not
   // be close to dy
   // The value must also be between low and high, inclusive. Make
   // sure this interval is wide enough, or it may not terminate!
-  auto GetNewCoord =
-    [rc](uint8 old, uint8 low, uint8 high) {
-      for (;;) {
-  const uint8 z = rc->Byte();
-  if (z >= low && z <= high) {
-    if (z < old) {
-      if (old - z >= MIN_RANDOM_DISTANCE) return z;
-    } else if (old < z) {
-      if (z - old >= MIN_RANDOM_DISTANCE) return z;
-    }
-  }
+  auto GetNewCoord = [rc](uint8 old, uint8 low, uint8 high) {
+    for (;;) {
+      const uint8 z = rc->Byte();
+      if (z >= low && z <= high) {
+        if (z < old) {
+          if (old - z >= MIN_RANDOM_DISTANCE)
+            return z;
+        } else if (old < z) {
+          if (z - old >= MIN_RANDOM_DISTANCE)
+            return z;
+        }
       }
-    };
+    }
+  };
 
   // Keep away from the edges of the screen. For y coordinate,
   // don't draw outside the visible scanlines, either.
@@ -214,36 +223,36 @@ vector<Linkage> AutoCamera2::FindLinkages(
     // Memoize, since there can be overlap between x and y candidates.
     std::unordered_map<int, bool> coord_memo;
     vector<int> xcand_new, ycand_new;
-    auto NoEffect =
-      [emu, &coord_memo, &save, &orig_mem, &orig_oam, &GetNewCoord](
-    int loc, uint8 low, uint8 high) {
-  auto it = coord_memo.find(loc);
-  if (it != coord_memo.end()) return it->second;
-  emu->LoadUncompressed(save);
-  // Mem is orig_mem at this point.
-  const uint8 oldv = orig_mem[loc];
-  const uint8 newv = GetNewCoord(oldv, low, high);
+    auto NoEffect = [emu, &coord_memo, &save, &orig_mem, &orig_oam,
+                     &GetNewCoord](int loc, uint8 low, uint8 high) {
+      auto it = coord_memo.find(loc);
+      if (it != coord_memo.end())
+        return it->second;
+      emu->LoadUncompressed(save);
+      // Mem is orig_mem at this point.
+      const uint8 oldv = orig_mem[loc];
+      const uint8 newv = GetNewCoord(oldv, low, high);
 
-  uint8 *ram = emu->GetFC()->fceu->RAM;
-  ram[loc] = newv;
-  StepEmu(emu);
-  OAM new_oam{emu};
-  const bool no_effect = new_oam.Equals(orig_oam);
-  coord_memo[loc] = no_effect;
-  return no_effect;
-      };
+      uint8 *ram = emu->GetFC()->fceu->RAM;
+      ram[loc] = newv;
+      StepEmu(emu);
+      OAM new_oam{emu};
+      const bool no_effect = new_oam.Equals(orig_oam);
+      coord_memo[loc] = no_effect;
+      return no_effect;
+    };
     for (int i : xcand) {
       if (NoEffect(i, X_LOW, X_HIGH)) {
-  filtered++;
+        filtered++;
       } else {
-  xcand_new.push_back(i);
+        xcand_new.push_back(i);
       }
     }
     for (int i : ycand) {
       if (NoEffect(i, Y_LOW, Y_HIGH)) {
-  filtered++;
+        filtered++;
       } else {
-  ycand_new.push_back(i);
+        ycand_new.push_back(i);
       }
     }
     xcand = std::move(xcand_new);
@@ -251,9 +260,9 @@ vector<Linkage> AutoCamera2::FindLinkages(
   }
 
   if (report)
-    report(StringPrintf(
-         "[filtered] %lld x potential locations and %lld y",
-         xcand.size(), ycand.size()));
+    report(std::format(
+               "[filtered] {} x potential locations and {} y",
+               xcand.size(), ycand.size()));
 
   ScoredLocationMap scores;
 
@@ -262,44 +271,43 @@ vector<Linkage> AutoCamera2::FindLinkages(
     for (int yc : ycand) {
       // The memory locations must be distinct!
       if (xc == yc)
-  continue;
+        continue;
 
       tried++;
 
       // XXX: Actually, should check that the *same sprites* are moving
       // on each iteration, right?
       for (int iters = 6; iters--;) {
-  // We'll restore before frame, then modify the candidate memory
-  // locations, then execute a frame.
-  emu->LoadUncompressed(save);
-  // Mem is orig_mem at this point.
-  const uint8 oldx = orig_mem[xc], oldy = orig_mem[yc];
-  const uint8 newx = GetNewCoord(oldx, X_LOW, X_HIGH);
-  const uint8 newy = GetNewCoord(oldy, Y_LOW, Y_HIGH);
+        // We'll restore before frame, then modify the candidate memory
+        // locations, then execute a frame.
+        emu->LoadUncompressed(save);
+        // Mem is orig_mem at this point.
+        const uint8 oldx = orig_mem[xc], oldy = orig_mem[yc];
+        const uint8 newx = GetNewCoord(oldx, X_LOW, X_HIGH);
+        const uint8 newy = GetNewCoord(oldy, Y_LOW, Y_HIGH);
 
-  uint8 *ram = emu->GetFC()->fceu->RAM;
-  ram[xc] = newx;
-  ram[yc] = newy;
-  StepEmu(emu);
-  OAM new_oam{emu};
+        uint8 *ram = emu->GetFC()->fceu->RAM;
+        ram[xc] = newx;
+        ram[yc] = newy;
+        StepEmu(emu);
+        OAM new_oam{emu};
 
-  const int dx = (int)newx - (int)oldx, dy = (int)newy - (int)oldy;
-  // Otherwise, for each changed sprite, compute the delta.
-  // TODO: Since warping might update the scroll, we should
-  // be including changes to (scanline-specific) scroll positions
-  // here.
-  // TODO: Consider wraparound (unsigned distance?) here, since
-  // x usually will overflow from 255 to 0, for example. This
-  // can be mid-screen when scroll is nonzero.
-  for (int s = 0; s < 64; s++) {
-    const int dsx = (int)new_oam.X(s) - (int)orig_oam.X(s);
-    const int dsy = (int)new_oam.Y(s) - (int)orig_oam.Y(s);
-    if (abs(dsx - dx) <= DELTA_SLOP &&
-        abs(dsy - dy) <= DELTA_SLOP) {
-      // Penalize when not exactly equal?
-      scores[make_pair(xc, yc)] += 1.0f;
-    }
-  }
+        const int dx = (int)newx - (int)oldx, dy = (int)newy - (int)oldy;
+        // Otherwise, for each changed sprite, compute the delta.
+        // TODO: Since warping might update the scroll, we should
+        // be including changes to (scanline-specific) scroll positions
+        // here.
+        // TODO: Consider wraparound (unsigned distance?) here, since
+        // x usually will overflow from 255 to 0, for example. This
+        // can be mid-screen when scroll is nonzero.
+        for (int s = 0; s < 64; s++) {
+          const int dsx = (int)new_oam.X(s) - (int)orig_oam.X(s);
+          const int dsy = (int)new_oam.Y(s) - (int)orig_oam.Y(s);
+          if (abs(dsx - dx) <= DELTA_SLOP && abs(dsy - dy) <= DELTA_SLOP) {
+            // Penalize when not exactly equal?
+            scores[make_pair(xc, yc)] += 1.0f;
+          }
+        }
       }
     }
   }
@@ -337,27 +345,24 @@ static constexpr int MAX_DIST_PER_FRAME = 5;
 // True if the value 'now' is strictly lower than 'prev'. Writes a
 // score in [0, 1] to the score argument. Lower is treated modularly,
 // and must be no more than the supplied maximum distance.
-static bool ModularLess(uint8 maxdist, uint8 prev, uint8 now,
-      float *score) {
+static bool ModularLess(uint8 maxdist, uint8 prev, uint8 now, float *score) {
   *score = 0.0f;
-  auto D =
-    [maxdist, score](int d) {
-      if (d < maxdist) {
-  switch (d) {
-  case 1: *score = 1.0f; break;
-  case 2: *score = 0.8f; break;
-  case 3: *score = 0.5f; break;
-  case 4: *score = 0.25f; break;
-  default:
-    *score = 0.10f;
-    break;
-  }
-  return true;
-      } else {
-  return false;
+  auto D = [maxdist, score](int d) {
+    if (d < maxdist) {
+      switch (d) {
+      case 1: *score = 1.0f; break;
+      case 2: *score = 0.8f; break;
+      case 3: *score = 0.5f; break;
+      case 4: *score = 0.25f; break;
+      default: *score = 0.10f; break;
       }
-    };
-  if (now == prev) return false;
+      return true;
+    } else {
+      return false;
+    }
+  };
+  if (now == prev)
+    return false;
   else if (now < prev) {
     // Normal.
     return D(prev - now);
@@ -368,7 +373,7 @@ static bool ModularLess(uint8 maxdist, uint8 prev, uint8 now,
 }
 
 static inline bool ModularGreater(uint8 maxdist, uint8 prev, uint8 now,
-          float *score) {
+                                  float *score) {
   return ModularLess(maxdist, now, prev, score);
 }
 
@@ -440,16 +445,16 @@ vector<XLoc> AutoCamera2::FindXLocs(
       // Only consider the memory location if it didn't change in the
       // original.
       if (now_nmem[idx] == orig_mem[idx]) {
-  float lscore = 0.0f, rscore = 0.0f;
-  bool lok = ModularLess(MAX_DIST_PER_FRAME, lmem[idx], now_lmem[idx],
-             &lscore);
-  bool rok = ModularGreater(MAX_DIST_PER_FRAME,
-          rmem[idx], now_rmem[idx],
-          &rscore);
-  float score = lscore + rscore;
-  // Penalize if we didn't see both move.
-  if (!lok || !rok) score *= 0.5f;
-  scores[idx] += score;
+        float lscore = 0.0f, rscore = 0.0f;
+        bool lok =
+            ModularLess(MAX_DIST_PER_FRAME, lmem[idx], now_lmem[idx], &lscore);
+        bool rok = ModularGreater(MAX_DIST_PER_FRAME, rmem[idx], now_rmem[idx],
+                                  &rscore);
+        float score = lscore + rscore;
+        // Penalize if we didn't see both move.
+        if (!lok || !rok)
+          score *= 0.5f;
+        scores[idx] += score;
       }
     }
     // Shift memories. No need to shift nmem, since we always test

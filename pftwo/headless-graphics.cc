@@ -1,16 +1,18 @@
 #include "headless-graphics.h"
 
+#include <cstdint>
 #include <vector>
 #include <string>
 
-#include "pftwo.h"
+#include "base/logging.h"
+#include "stb_image_write.h"
 
-#include "../cc-lib/stb_image.h"
-#include "../cc-lib/stb_image_write.h"
+using namespace std;
+using uint8 = uint8_t;
 
 void SetPixel(int w, int h, int x, int y,
-	      uint8 a, uint8 r, uint8 g, uint8 b,
-	      vector<uint8> *argb) {
+              uint8 a, uint8 r, uint8 g, uint8 b,
+              vector<uint8> *argb) {
   int i = (w * y + x) * 4;
   (*argb)[i + 0] = a;
   (*argb)[i + 1] = r;
@@ -19,7 +21,7 @@ void SetPixel(int w, int h, int x, int y,
 }
 
 void SaveARGB(const vector<uint8> &argb, int width, int height,
-	      const string &filename) {
+              const string &filename) {
   CHECK(argb.size() == width * height * 4);
   vector<uint8> rgba;
   rgba.resize(width * height * 4);
@@ -31,7 +33,7 @@ void SaveARGB(const vector<uint8> &argb, int width, int height,
     uint8 g = argb[i + 1];
     uint8 r = argb[i + 2];
     uint8 a = argb[i + 3];
-    
+
     rgba[i + 0] = r;
     rgba[i + 1] = g;
     rgba[i + 2] = b;

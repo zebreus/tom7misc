@@ -37,7 +37,7 @@
 //      - (But note that the sprites actually drawn tend to lag the
 //         memory location by a single frame.)
 //  - Next, for these candidates, we can modify the memory location and
-//    test that the sprite is drawn at a new location. 
+//    test that the sprite is drawn at a new location.
 //      - Here, we'll compare the sprites drawn at various x locations.
 //        We assume that the x coordinate is not a factor in choosing
 //        whether the sprite is drawn (flickering) and the animation
@@ -128,24 +128,22 @@
 // value is actually derived from the "authoritative" value, stored
 // elsewhere, like on a 1-frame lag.
 
-#ifndef __AUTOCAMERA2_H
-#define __AUTOCAMERA2_H
+#ifndef _PFTWO_AUTOCAMERA2_H
+#define _PFTWO_AUTOCAMERA2_H
 
-#include "pftwo.h"
-
-#include <functional>
-#include <memory>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <functional>
 
-#include "../fceulib/emulator.h"
-#include "../cc-lib/arcfour.h"
 #include "random-pool.h"
 #include "emulator-pool.h"
 
 // Focus is on quality and debuggability, not performance.
 struct AutoCamera2 {
+  using string = std::string;
+  using uint8 = uint8_t;
+
   // Creates some private emulator instances that it can reuse.
   explicit AutoCamera2(const string &game);
   ~AutoCamera2();
@@ -157,7 +155,7 @@ struct AutoCamera2 {
     Linkage(int xloc, int yloc, float score) :
       xloc(xloc), yloc(yloc), score(score) {}
   };
-  
+
   // For one uncompressed save state sample, find linkages between
   // pair of memory locations and a nonempty cluster of sprites
   // on-screen.
@@ -167,13 +165,13 @@ struct AutoCamera2 {
   //
   // If report is non-empty (e.g. default ctor) then it is called
   // periodically with progress.
-  vector<Linkage> FindLinkages(const vector<uint8> &save,
-			       const std::function<void(string)> &report);
+  std::vector<Linkage> FindLinkages(const std::vector<uint8> &save,
+             const std::function<void(string)> &report);
 
   // Take the results of several calls to FindLinkages and merge them
   // by summing the scores.
-  static vector<Linkage> MergeLinkages(
-      const vector<vector<Linkage>> &samples);
+  static std::vector<Linkage> MergeLinkages(
+      const std::vector<std::vector<Linkage>> &samples);
 
   // Find memory locations that may be an x coordinate controlled by
   // the player. We assume that the player moves left and right with
@@ -187,16 +185,17 @@ struct AutoCamera2 {
     float score = 0.0f;
     XLoc(int xloc, float score) : xloc(xloc), score(score) {}
   };
-  vector<XLoc> FindXLocs(const vector<uint8> &save,
-			 bool player_two,
-			 const std::function<void(string)> &report);
+  std::vector<XLoc> FindXLocs(const std::vector<uint8> &save,
+       bool player_two,
+       const std::function<void(string)> &report);
 
   // Merge the output of several calls of FindXLocs by summing scores.
-  static vector<XLoc> MergeXLocs(const vector<vector<XLoc>> &samples);
+  static std::vector<XLoc> MergeXLocs(
+      const std::vector<std::vector<XLoc>> &samples);
 
 private:
   RandomPool random_pool;
   EmulatorPool emu_pool;
 };
-  
+
 #endif

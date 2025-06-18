@@ -1,5 +1,5 @@
-#ifndef __DUMPTREE_H
-#define __DUMPTREE_H
+#ifndef _PFTWO_DUMPTREE_H
+#define _PFTWO_DUMPTREE_H
 
 struct TreeSearch;
 

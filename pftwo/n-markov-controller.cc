@@ -1,9 +1,12 @@
 #include "n-markov-controller.h"
 
-#include <string>
 #include <cstdint>
-
-#include "pftwo.h"
+#include <cstdio>
+#include <map>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "arcfour.h"
 #include "randutil.h"
@@ -190,16 +193,16 @@ NMarkovController::NMarkovController(const vector<uint8> &v, int n)
 }
 
 void NMarkovController::Stats() const {
-  map<int, int> counts;
+  std::map<int, int> counts;
   for (const auto &row : matrix) {
     counts[(int)row.second.size()]++;
   }
 
   fprintf(stderr,
-    "NMarkovController with n=%d.\n"
-    "There are %d distinct states of length n.\n"
-    "Of those, %d are singletons.\n",
-    n, (int)matrix.size(), counts[1]);
+          "NMarkovController with n=%d.\n"
+          "There are %d distinct states of length n.\n"
+          "Of those, %d are singletons.\n",
+          n, (int)matrix.size(), counts[1]);
 
   for (const auto &c : counts) {
     fprintf(stderr, "%d destinations: %d rows\n", c.first, c.second);

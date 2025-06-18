@@ -13,21 +13,14 @@
 // TODO: Game timers are often represented as multibyte quantities,
 // usually using BCD (but usually in adjacent bytes or nybbles).
 
-#ifndef __AUTOTIMER_H
-#define __AUTOTIMER_H
+#ifndef _PFTWO_AUTOTIMER_H
+#define _PFTWO_AUTOTIMER_H
 
-#include "pftwo.h"
-
-#include <functional>
-#include <memory>
+#include <cstdint>
 #include <string>
 #include <vector>
-#include <functional>
 
-#include "../fceulib/emulator.h"
-#include "../cc-lib/arcfour.h"
 #include "n-markov-controller.h"
-
 #include "random-pool.h"
 #include "emulator-pool.h"
 
@@ -35,8 +28,8 @@
 struct AutoTimer {
   // Creates some private emulator instances that it can reuse.
   // Wants a markov model for generating inputs.
-  AutoTimer(const string &game,
-	    NMarkovController nmarkov);
+  AutoTimer(const std::string &game,
+            NMarkovController nmarkov);
   ~AutoTimer();
 
   struct TimerLoc {
@@ -50,15 +43,16 @@ struct AutoTimer {
     TimerLoc(int loc, float score, float period, bool incrementing) :
       loc(loc), score(score), period(period), incrementing(incrementing) {}
   };
-  
+
   // Find and score memory locations that may be timers. Expensive
   // since it needs to simulate frames.
-  vector<TimerLoc> FindTimers(const vector<uint8> &save);
+  std::vector<TimerLoc> FindTimers(const std::vector<uint8_t> &save);
 
   // Merge and sort by summing scores.
-  static vector<TimerLoc> MergeTimers(const vector<vector<TimerLoc>> &lv);
-  
-private:
+  static std::vector<TimerLoc> MergeTimers(
+      const std::vector<std::vector<TimerLoc>> &lv);
+
+ private:
   RandomPool random_pool;
   EmulatorPool emulator_pool;
   const NMarkovController nmarkov;

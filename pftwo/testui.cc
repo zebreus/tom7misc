@@ -1,3 +1,8 @@
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <stdlib.h>
+#include <utility>
 #include <vector>
 #include <string>
 #include <set>
@@ -6,6 +11,13 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "SDL_events.h"
+#include "SDL_keysym.h"
+#include "SDL_main.h"
+#include "SDL_stdinc.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
+#include "c:/code/sf_svn/fceulib/types.h"
 #include "pftwo.h"
 
 #include "../fceulib/emulator.h"
@@ -25,11 +37,13 @@
 SDL_Surface *screen = 0;
 
 
+using namespace std;
+using uint8 = uint8_t;
 
 // assumes ARGB, surfaces exactly the same size, etc.
 static void CopyARGB(const vector<uint8> &argb, SDL_Surface *surface) {
   // int bpp = surface->format->BytesPerPixel;
-  Uint8 * p = (Uint8 *)surface->pixels;
+  uint8 *p = (uint8 *)surface->pixels;
   memcpy(p, &argb[0], surface->w * surface->h * 4);
 }
 
@@ -45,12 +59,12 @@ static void HalveARGB(const vector<uint8> &argb, int width, int height, SDL_Surf
   argb_half.resize(halfwidth * halfheight * 4);
   for (int y = 0; y < halfheight; y++) {
     for (int x = 0; x < halfwidth; x++) {
-      #define PIXEL(i) \
-	argb_half[(y * halfwidth + x) * 4 + (i)] =	\
-	  Mix4(argb[(y * 2 * width + x * 2) * 4 + (i)], \
-	       argb[(y * 2 * width + x * 2 + 1) * 4 + (i)], \
-	       argb[((y * 2 + 1) * width + x * 2) * 4 + (i)],	\
-	       argb[((y * 2 + 1) * width + x * 2 + 1) * 4 + (i)])
+      #define PIXEL(i)                        \
+        argb_half[(y * halfwidth + x) * 4 + (i)] =  \
+          Mix4(argb[(y * 2 * width + x * 2) * 4 + (i)], \
+               argb[(y * 2 * width + x * 2 + 1) * 4 + (i)], \
+               argb[((y * 2 + 1) * width + x * 2) * 4 + (i)], \
+               argb[((y * 2 + 1) * width + x * 2 + 1) * 4 + (i)])
       PIXEL(0);
       PIXEL(1);
       PIXEL(2);
@@ -66,8 +80,8 @@ struct Graphic {
   // From a PNG file.
   explicit Graphic(const string &filename) {
     int bpp;
-    uint8 *stb_rgba = stbi_load(filename.c_str(), 
-				&width, &height, &bpp, 4);
+    uint8 *stb_rgba = stbi_load(filename.c_str(),
+        &width, &height, &bpp, 4);
     CHECK(stb_rgba);
     for (int i = 0; i < width * height * 4; i++) {
       rgba.push_back(stb_rgba[i]);
@@ -77,8 +91,8 @@ struct Graphic {
     }
     stbi_image_free(stb_rgba);
     fprintf(stderr, "%s is %dx%d @%dbpp = %d bytes\n",
-	    filename.c_str(), width, height, bpp,
-	    rgba.size());
+      filename.c_str(), width, height, bpp,
+      rgba.size());
 
     surf = sdlutil::makesurface(width, height, true);
     CHECK(surf);
@@ -194,7 +208,7 @@ struct Testui {
     int frame = 0;
 
     vector<pair<uint8, uint8>> inputs = SimpleFM2::ReadInputs2P("contra2p.fm2");
-    
+
     for (pair<uint8, uint8> inputp : inputs) {
       uint8 inputa = inputp.first;
       uint8 inputb = inputp.second;
@@ -206,38 +220,38 @@ struct Testui {
       SDL_PollEvent(&event);
       switch (event.type) {
       case SDL_QUIT:
-	return;
+        return;
       case SDL_KEYDOWN:
-	switch (event.key.keysym.sym) {
-	  
-	case SDLK_ESCAPE:
-	  return;
-	default:;
-	}
-	break;
+        switch (event.key.keysym.sym) {
+
+        case SDLK_ESCAPE:
+          return;
+        default:;
+        }
+        break;
       default:;
       }
-      
+
       SDL_Delay(1000.0 / 60.0);
-      
+
       emu->StepFull(inputa, inputb);
 
       if (frame % 1 == 0) {
-	vector<uint8> image = emu->GetImageARGB();
-	CopyARGB(image, surf);
-	HalveARGB(image, 256, 256, surfhalf);
-	
-	sdlutil::clearsurface(screen, 0x00000000);
+        vector<uint8> image = emu->GetImageARGB();
+        CopyARGB(image, surf);
+        HalveARGB(image, 256, 256, surfhalf);
 
-	// Draw pixels to screen...
-	sdlutil::blitall(surf, screen, 0, 0);
-	sdlutil::blitall(surfhalf, screen, 260, 0);
-	
-	SDL_Flip(screen);
+        sdlutil::clearsurface(screen, 0x00000000);
+
+        // Draw pixels to screen...
+        sdlutil::blitall(surf, screen, 0, 0);
+        sdlutil::blitall(surfhalf, screen, 260, 0);
+
+        SDL_Flip(screen);
       }
     }
   }
-  
+
   ArcFour rc;
 };
 

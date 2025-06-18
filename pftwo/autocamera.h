@@ -8,8 +8,6 @@
 #ifndef _PFTWO_AUTOCAMERA_H
 #define _PFTWO_AUTOCAMERA_H
 
-#include "pftwo.h"
-
 #include <cstdint>
 #include <functional>
 #include <string>

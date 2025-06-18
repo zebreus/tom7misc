@@ -1,13 +1,16 @@
 
 #include "objective-enumerator.h"
 
-#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <stdlib.h>
+#include <string>
 #include <vector>
 #include <functional>
 
-#include "pftwo.h"
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/randutil.h"
+#include "arcfour.h"
+#include "randutil.h"
+#include "base/logging.h"
 
 // Self-check input and output.
 #define DEBUG_OBJECTIVE 1
@@ -15,11 +18,14 @@
 
 #define VPRINTF if (VERBOSE_OBJECTIVE) printf
 
+using namespace std;
+using uint8 = uint8_t;
+
 ObjectiveEnumerator::ObjectiveEnumerator(const vector<vector<uint8>> &mm) :
   memories(mm) {
   CHECK(!memories.empty());
   VPRINTF("Each memory is size %d and there are %d memories.\n",
-	  (int)memories[0].size(), (int)memories.size());
+    (int)memories[0].size(), (int)memories.size());
   #if DEBUG_OBJECTIVE
   int width = memories[0].size();
   for (const auto &m : memories) {
@@ -39,9 +45,9 @@ static void ShuffleWithSeed(vector<int> *v, int seed) {
   Shuffle(&rc, v);
 }
 
-static bool EqualOnPrefix(const vector<uint8> &mem1, 
-			  const vector<uint8> &mem2,
-			  const vector<int> &prefix) {
+static bool EqualOnPrefix(const vector<uint8> &mem1,
+                          const vector<uint8> &mem2,
+                          const vector<int> &prefix) {
   for (int i = 0; i < prefix.size(); i++) {
     int p = prefix[i];
     // printf("  eop %d: %d vs %d\n", p, mem1[i], mem2[i]);
@@ -53,9 +59,9 @@ static bool EqualOnPrefix(const vector<uint8> &mem1,
   return true;
 }
 
-static bool LessEqual(const vector<uint8> &mem1, 
-		      const vector<uint8> &mem2,
-		      const vector<int> &order) {
+static bool LessEqual(const vector<uint8> &mem1,
+          const vector<uint8> &mem2,
+          const vector<int> &order) {
   for (int i = 0; i < order.size(); i++) {
     int p = order[i];
     VPRINTF("  %d: %d vs %d ", p, mem1[p], mem2[p]);
@@ -71,10 +77,10 @@ static bool LessEqual(const vector<uint8> &mem1,
 }
 
 void ObjectiveEnumerator::EnumeratePartial(const vector<int> &look,
-					   vector<int> *prefix,
-					   const vector<int> &left,
-					   vector<int> *remain,
-					   vector<int> *candidates) {
+             vector<int> *prefix,
+             const vector<int> &left,
+             vector<int> *remain,
+             vector<int> *candidates) {
   // First step is to remove any candidates from left that
   // are not interesting here. For c to be interesting, there
   // must be some i,j within look where i < j and memory[i][c] <
@@ -112,8 +118,8 @@ void ObjectiveEnumerator::EnumeratePartial(const vector<int> &look,
     // prefix.)
     for (int i = 0; i < prefix->size(); i++) {
       if ((*prefix)[i] == c) {
-	VPRINTF("  skip %d in prefix\n", c);
-	goto skip;
+        VPRINTF("  skip %d in prefix\n", c);
+        goto skip;
       }
     }
 
@@ -122,11 +128,11 @@ void ObjectiveEnumerator::EnumeratePartial(const vector<int> &look,
       int i = look[lo], j = look[lo + 1];
       VPRINTF("  at lo %d. i=%d, j=%d\n", lo, i, j);
       if (memories[i][c] > memories[j][c]) {
-	// It may be legal later, but not a candidate.
-	remain->push_back(c);
-	VPRINTF("  skip %d because memories #%d and #%d have %d->%d\n",
-		c, i, j, memories[i][c], memories[j][c]);
-	goto skip;
+        // It may be legal later, but not a candidate.
+        remain->push_back(c);
+        VPRINTF("  skip %d because memories #%d and #%d have %d->%d\n", c, i, j,
+                memories[i][c], memories[j][c]);
+        goto skip;
       }
 
       less = less || memories[i][c] < memories[j][c];
@@ -146,8 +152,8 @@ void ObjectiveEnumerator::EnumeratePartial(const vector<int> &look,
 }
 
 static void CheckOrdering(const vector<int> &look,
-			  const vector<vector<uint8>> &memories,
-			  const vector<int> &ordering) {
+        const vector<vector<uint8>> &memories,
+        const vector<int> &ordering) {
   VPRINTF("CheckOrdering [");
   for (int i = 0; i < ordering.size(); i++) {
     VPRINTF("%d ", ordering[i]);
@@ -175,29 +181,28 @@ static void CheckOrdering(const vector<int> &look,
     if (!LessEqual(mem1, mem2, ordering)) {
       printf("On these memories (note this ignores look):\n");
       for (int i = 0; i < memories.size(); i++) {
-	const vector<uint8> &mem = memories[i];
-	for (int j = 0; j < mem.size(); j++) {
-	  printf("%3d ", mem[j]);
-	}
-	printf("\n");
+        const vector<uint8> &mem = memories[i];
+        for (int j = 0; j < mem.size(); j++) {
+          printf("%3d ", mem[j]);
+        }
+        printf("\n");
       }
 
       printf("Illegal ordering: [");
       for (int i = 0; i < ordering.size(); i++) {
-	printf("%d ", ordering[i]);
+        printf("%d ", ordering[i]);
       }
       printf("] at memories #%d and #%d:\n", ii, jj);
 
       for (int i = 0; i < ordering.size(); i++) {
-	int p = ordering[i];
-	printf ("%d is %d vs %d\n", p, mem1[p], mem2[p]);
+        int p = ordering[i];
+        printf("%d is %d vs %d\n", p, mem1[p], mem2[p]);
       }
 
       abort();
     }
-    
   }
-  
+
 }
 
 void ObjectiveEnumerator::EnumeratePartialRec(
@@ -250,20 +255,21 @@ void ObjectiveEnumerator::EnumeratePartialRec(
 
   // If this is a maximal prefix, output it. Otherwise, extend.
   if (candidates.empty()) {
-#   ifdef DEBUG_OBJECTIVE
+#ifdef DEBUG_OBJECTIVE
     CheckOrdering(look, memories, *prefix);
     // printf("Checked:\n");
-#   endif
+#endif
     f(*prefix);
-    if (*limit > 0) --*limit;
+    if (*limit > 0)
+      --*limit;
   } else {
     prefix->resize(prefix->size() + 1);
     for (int i = 0; i < candidates.size(); i++) {
       (*prefix)[prefix->size() - 1] = candidates[i];
       EnumeratePartialRec(look, prefix, remain, f, limit, seed);
       if (*limit == 0) {
-	prefix->resize(prefix->size() - 1);
-	return;
+        prefix->resize(prefix->size() - 1);
+        return;
       }
     }
     prefix->resize(prefix->size() - 1);

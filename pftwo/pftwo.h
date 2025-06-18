@@ -1,27 +1,18 @@
 
-#ifndef __PFTWO_H
-#define __PFTWO_H
+#ifndef _PFTWO_PFTWO_H
+#define _PFTWO_PFTWO_H
 
-#include <string>
-#include <vector>
-#include <map>
 #include <cstdint>
-#include <memory>
-#include <unordered_map>
 #include <type_traits>
 
-#include <thread>
-#include <mutex>
 #include <shared_mutex>
 
 // using namespace std;
-using std::string;
-using std::vector;
-using std::map;
-using std::unordered_map;
+// using std::string;
+// using std::vector;
+// using std::map;
+// using std::unordered_map;
 
-#include "../fceulib/types.h"
-#include "base/stringprintf.h"
 #include "base/logging.h"
 #include "threadutil.h"
 
@@ -75,7 +66,7 @@ struct DisjointBitsC;
 
 template<class T, class ...Argtypes>
 struct DisjointBitsC<T, Argtypes...> {
-  static constexpr bool F(uint64 used, T head, Argtypes... tail) {
+  static constexpr bool F(uint64_t used, T head, Argtypes... tail) {
     return !(used & head) &&
       DisjointBitsC<Argtypes...>::F(used | head, tail...);
   }
@@ -83,7 +74,7 @@ struct DisjointBitsC<T, Argtypes...> {
 
 template<>
 struct DisjointBitsC<> {
-  static constexpr bool F(uint64 used_unused) {
+  static constexpr bool F(uint64_t used_unused) {
     return true;
   }
 };
