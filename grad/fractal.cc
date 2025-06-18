@@ -173,6 +173,8 @@ static void Render(const std::pair<Table, Table> &tables,
                    yp, SIZE);
           }
 
+          (void)rtable;
+          (void)itable;
 
           const int xpos = xp - XMARGIN;
           const int ypos = yp - YMARGIN;

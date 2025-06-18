@@ -1,37 +1,32 @@
 // Semi-manual attempts to find a specific "choppy" function,
 // which I think was the "zero threshold" one.
 
-#include "base/stringprintf.h"
-#include "util.h"
-#include "image.h"
-#include "expression.h"
-#include "timer.h"
-
 #include <array>
-#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <functional>
-#include <array>
 #include <map>
 #include <optional>
 #include <string>
-#include <utility>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
-#include "half.h"
-
-#include "grad-util.h"
-#include "makefn-ops.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "color-util.h"
-#include "state.h"
-
-#include "choppy.h"
 #include "ansi.h"
+#include "arcfour.h"
+#include "base/stringprintf.h"
+#include "choppy.h"
+#include "color-util.h"
+#include "expression.h"
+#include "grad-util.h"
+#include "half.h"
+#include "image.h"
+#include "makefn-ops.h"
+#include "randutil.h"
+#include "state.h"
+#include "timer.h"
+#include "util.h"
 
 using Choppy = ChoppyGrid<16>;
 using Table = Exp::Table;
@@ -89,10 +84,12 @@ static ExpWrapper IteratedPlus(ExpWrapper e, uint16_t c, int iters) {
 }
 
 
+[[maybe_unused]]
 static ExpWrapper operator+ (ExpWrapper a, ExpWrapper b) {
   return ExpWrapper(a.alloc, a.alloc->PlusE(a.exp, b.exp));
 }
 
+[[maybe_unused]]
 static ExpWrapper operator- (ExpWrapper a, ExpWrapper b) {
   return ExpWrapper(a.alloc,
                     a.alloc->PlusE(a.exp,
@@ -328,7 +325,7 @@ const Exp *TweakExpressions(Allocator *caller_alloc) {
   for (int64_t iters = 0; true; iters++) {
 
     if (iters && ((iters < 1000 && iters % 10 == 0) || iters % 10000 == 0)) {
-      printf("%d iters, %.3f%% qok\n", iters, (quickok * 100.0) / iters);
+      printf("%lld iters, %.3f%% qok\n", iters, (quickok * 100.0) / iters);
     }
 
     Allocator alloc;
@@ -493,6 +490,7 @@ const Exp *TweakExpressions(Allocator *caller_alloc) {
 // Just need something that has different and nonzero
 // values around 0, and we should be done. Seems like
 // this should be easy to do manually?
+[[maybe_unused]]
 static void MakeChop() {
   ImageRGBA img(IMAGE_SIZE, IMAGE_SIZE);
   img.Clear32(0x000000FF);
@@ -988,7 +986,7 @@ static void Search() {
              ANSI_BLUE "%lld" ANSI_RESET " values  "
              ANSI_GREY "(%s)" ANSI_RESET "\n",
              state.steps.size(),
-             prev_distinct_values,
+             (int64_t)prev_distinct_values,
              succ.c_str());
 
       #if 0
@@ -1061,6 +1059,7 @@ static void Search() {
   }
 }
 
+[[maybe_unused]]
 static void Study() {
   Allocator alloc;
 

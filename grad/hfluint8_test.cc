@@ -1,7 +1,10 @@
 
 #include "hfluint8.h"
 
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <format>
 
 #include "expression.h"
 #include "half.h"
@@ -420,7 +423,7 @@ static void TestRightShift() {
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt()) <<
-          StringPrintf("%02x (%d) >> %d = %02x (%d) want %02x (%d)",
+          std::format("{:02x} ({}) >> {} = {:02x} ({}) want {:02x} ({})",
                        x, x, N,
                        zf.ToInt(), zf.ToInt(), z, z);
         CHECK_CANONICAL("rightshift", zf, x, N);

@@ -127,7 +127,6 @@ MakeFn(Allocator *alloc,
   const int64_t seed3 = seed++;
   const int64_t seed4 = seed++;
   const int64_t seed5 = seed++;
-  const int64_t seed6 = seed++;
 
   InParallel(
       [alloc, low, high, &target, time_sec, &m, &results, seed1]() {
@@ -373,6 +372,7 @@ static Table DiffTable(const Table &a, const Table &b) {
   return ret;
 }
 
+[[maybe_unused]]
 static constexpr ColorUtil::Gradient GREEN_BLUE {
   GradRGB(0.0f,  0x00FF00),
   GradRGB(1.0f,  0x0000FF),

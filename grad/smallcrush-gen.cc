@@ -30,6 +30,7 @@ extern "C" {
 
 #include "testu01.h"
 
+[[maybe_unused]]
 static constexpr int TARGET_FLOATS = 51320000;
 
 using int64 = int64_t;
@@ -316,7 +317,7 @@ int main(int argc, char **argv) {
       CHECK(half_version[i] == ref_version[i]) << i;
     }
     printf(AGREEN("OK") ": Matched " ABLUE("%d") " bytes against "
-           "half version\n");
+           "half version\n", (int)half_version.size());
   }
 
   /*

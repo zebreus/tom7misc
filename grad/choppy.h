@@ -196,11 +196,11 @@ struct ChoppyGrid {
             // Not the same exact value for the interval.
 
             AddFailure(
-                StringPrintf(
-                    "%d. %04x to %04x (%.4f to %.4f). "
-                    "now %04x=%.4f. got %04x, had %04x\n",
+                std::format(
+                    "{}. {:04x} to {:04x} ({:.4f} to {:.4f}). "
+                    "now {:04x}={:.4f}. got {:04x}, had {:04x}\n",
                     i, ulow, uhigh,
-                    Exp::GetHalf(ulow), Exp::GetHalf(uhigh),
+                    (float)Exp::GetHalf(ulow), (float)Exp::GetHalf(uhigh),
                     upos, (float)Exp::GetHalf(upos),
                     v, val[i]));
             int sx = MapCoord(x, 0).first;

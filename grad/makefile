@@ -1,7 +1,5 @@
 
-default: iter.exe train-mnist.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe train-chess.exe evaluate-chess.exe train-cifar10.exe hfluint8_test.exe makechop.exe manualchop2.exe histo.exe race.exe eval-table-mnist.exe eval-table-cifar10.exe eval-table-chess.exe zt.exe improvezt.exe
-
-all: grad.exe iter.exe make-data.exe mnist_test.exe train-mnist.exe evaluate-mnist.exe train-chess.exe evaluate-chess.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe manualchop2.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe hash-util_test.exe cifar10_test.exe evaluate-cifar10.exe hfluint8_bench.exe
+all: grad.exe iter.exe make-data.exe mnist_test.exe train-mnist.exe evaluate-mnist.exe train-chess.exe evaluate-chess.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe manualchop2.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe hash-util_test.exe cifar10_test.exe evaluate-cifar10.exe hfluint8_bench.exe zt.exe improvezt.exe eval-table-chess.exe eval-table-cifar10.exe eval-table-mnist.exe race.exe histo.exe makechop.exe hfluint8_test.exe train-cifar10.exe colordiff.exe
 
 CC_LIB=../cc-lib
 CHESS=../chess
@@ -28,7 +26,7 @@ CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 # TODO: This may help if not already enabled?
 # -DHALF_ENABLE_F16C_INTRINSICS=1
 OPT=-O2
-CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -I$(CHESS) $(CLINCLUDES) -std=c++20 $(OPT)
+CXXFLAGS=-march=native -m64 -Wall -Wno-unused-function -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -I$(CHESS) $(CLINCLUDES) -std=c++20 $(OPT)
 
 CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/bitbuffer.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big.o $(CC_LIB)/geom/marching.o $(CC_LIB)/edit-distance.o $(CC_LIB)/ansi.o
 

@@ -1014,7 +1014,7 @@ std::vector<BigCrushTestResult> ParallelBigCrush(
 
   auto AddWalk = [&](long N, long n, int r, int s, long L0, long L1) {
       tests.emplace_back(
-          StringPrintf("randomwalk%d_%d", L0, r),
+          std::format("randomwalk{}_{}", L0, r),
           [N, n, r, s, L0, L1](unif01_Gen *gen) {
             swalk_Res *res = swalk_CreateRes();
             swalk_RandomWalk1(gen, res, N, n, r, s, L0, L1);

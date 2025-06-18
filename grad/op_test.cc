@@ -1,5 +1,6 @@
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <functional>
@@ -104,14 +105,15 @@ struct Stats {
   void Report() {
     int64_t total_samples = samples_out + samples_in;
     printf("Samples in: %.3f%% out: %.3f%%\n"
-           "Zero: %d/%d (%.3f%%)\n",
+           "Zero: %d/%lld (%.3f%%)\n",
            (samples_in * 100.0) / total_samples,
            (samples_out * 100.0) / total_samples,
-           iszero, denom, (iszero * 100.0) / denom);
+           iszero, (int64_t)denom, (iszero * 100.0) / denom);
   }
 
 };
 
+[[maybe_unused]]
 static void PlotOp2() {
   ArcFour rc("op2");
   // Not used by op2.
@@ -262,6 +264,7 @@ static int StrobeOffsetI(int s) {
   return (s & 1) ? (s >> 1) : -(s >> 1);
 }
 
+[[maybe_unused]]
 static void PlotOp3() {
   ArcFour rc("op3");
   // Not used by op3.

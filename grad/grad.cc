@@ -1,6 +1,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <format>
 #include <optional>
 #include <string>
 #include <cmath>
@@ -11,17 +12,14 @@
 #include <vector>
 #include <algorithm>
 
+#include "array-util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-
-#include "util.h"
-#include "image.h"
 #include "bounds.h"
-#include "opt/optimizer.h"
-#include "half.h"
-#include "array-util.h"
-
 #include "grad-util.h"
+#include "half.h"
+#include "image.h"
+#include "opt/optimizer.h"
 
 using namespace std;
 
@@ -70,6 +68,7 @@ struct Func {
     return f;
   }
 
+  virtual ~Func() {}
   virtual string Exp() const  = 0;
   std::array<fptype, N> args;
 };
@@ -131,8 +130,8 @@ struct Function4 : public Func<half, 2> {
   string Exp() const override {
     const auto &[scale, off] = args;
 
-    return StringPrintf("((f * %.9g) * %.9g) / %.9g) / %.9g",
-                        off, scale, scale, off);
+    return std::format("((f * {:.9g}) * {:.9g}) / {:.9g}) / {:.9g}",
+                       (float)off, (float)scale, (float)scale, (float)off);
   }
 };
 
@@ -147,8 +146,8 @@ struct Function5 : public Func<half, 2> {
   }
   string Exp() const override {
     const auto &[scale, off] = args;
-    return StringPrintf("((f + %.9g) * %.9g) / %.9g) - %.9g",
-                        off, scale, scale, off);
+    return std::format("((f + {:.9g}) * {:.9g}) / {:.9g}) - {:.9g}",
+                       (float)off, (float)scale, (float)scale, (float)off);
   }
 };
 

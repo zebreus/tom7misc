@@ -8,21 +8,11 @@
 #include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-
-#include "util.h"
-#include "image.h"
-#include "bounds.h"
-#include "opt/optimizer.h"
-#include "half.h"
-#include "color-util.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "threadutil.h"
-
 #include "grad-util.h"
-#include "ansi.h"
+#include "image.h"
 
 using namespace std;
 
@@ -73,8 +63,10 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
       double x = GradUtil::GetHalf(input);
       double y = GradUtil::GetHalf(output);
 
-      int xs = (int)std::round((img.Width() / 2) + x * (img.Width() / XBOUNDS));
-      int ys = (int)std::round((img.Height() / 2) + -y * (img.Width() / YBOUNDS));
+      int xs = (int)std::round((img.Width() / 2.0f) +
+                               x * (img.Width() / XBOUNDS));
+      int ys = (int)std::round((img.Height() / 2.0f) +
+                               -y * (img.Width() / YBOUNDS));
 
       // ys = std::clamp(ys, 0, size - 1);
 
@@ -282,7 +274,8 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
               if (!deriv[v].empty()) {
                 CHECK(!deriv[v].empty());
                 CHECK(deriv[v].size() > 0);
-                if (verbose) printf("return 0000-7c00: %d\n", deriv[v].size());
+                if (verbose) printf("return 0000-7c00: %lld\n",
+                                    (int64_t)deriv[v].size());
                 return std::make_pair(v, deriv[v]);
               }
             }
@@ -291,9 +284,11 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
             for (int v = u + dir;
                  v >= 0x8000 && v <= 0xfc00;
                  v += dir) {
-              if (verbose) printf("Try %04x.. %d\n", v, deriv[v].size());
+              if (verbose) printf("Try %04x.. %lld\n", v,
+                                  (int64_t)deriv[v].size());
               if (!deriv[v].empty()) {
-                if (verbose) printf("return 8000-fc00: %d\n", deriv[v].size());
+                if (verbose) printf("return 8000-fc00: %lld\n",
+                                    (int64_t)deriv[v].size());
                 return std::make_pair(v, deriv[v]);
               }
             }
@@ -426,16 +421,16 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
 
   if (DRAW_DERIVATIVE) {
     const double scale = ((IMAGE_SIZE / 2.0) * 0.9) / max_mag;
-    GradUtil::ForNeg1To1Ascending([&table, &img, &deriv_out, scale](uint16 yu) {
+    GradUtil::ForNeg1To1Ascending([&img, &deriv_out, scale](uint16 yu) {
         // Or plot some error pixels. But we assert this above.
         if (!std::isfinite(deriv_out[yu])) return;
 
         // Scaled
         double y = Unpack16AsFloat(yu);
-        int ys = (int)std::round((IMAGE_SIZE / 2) + -y * (IMAGE_SIZE / 2.0));
+        int ys = (int)std::round((IMAGE_SIZE / 2.0f) + -y * (IMAGE_SIZE / 2.0));
 
         double d = deriv_out[yu] * scale;
-        int ds = (int)std::round((IMAGE_SIZE / 2) + d);
+        int ds = (int)std::round((IMAGE_SIZE / 2.0f) + d);
         img.BlendPixel32(ds, ys, 0xFFFF0077);
       });
   }
