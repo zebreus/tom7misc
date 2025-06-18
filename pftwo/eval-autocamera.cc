@@ -2,34 +2,33 @@
 // known good memory locations.
 
 #include <algorithm>
+#include <mutex>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include <string>
-#include <set>
 #include <memory>
-#include <list>
 
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
-#include "pftwo.h"
-
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/util.h"
+#include "../fceulib/types.h"
 #include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
 #include "../fceulib/simplefm7.h"
-#include "../fceulib/cart.h"
-#include "../fceulib/ppu.h"
 // #include "autocamera.h"
-#include "n-markov-controller.h"
-#include "autocamera2.h"
-#include "autotimer.h"
-#include "autolives.h"
-#include "game-database.h"
+
 #include "ansi.h"
+#include "autocamera2.h"
+#include "autolives.h"
+#include "autotimer.h"
+#include "base/stringprintf.h"
+#include "game-database.h"
+#include "n-markov-controller.h"
 #include "nice.h"
+#include "pftwo.h"
+#include "threadutil.h"
+#include "util.h"
 
 // XXX get from config.txt?
 static constexpr int MAX_CONCURRENCY = 60;
@@ -250,7 +249,7 @@ struct Evaluation {
   void StartGames(const vector<Game> &game) {
     games = ParallelMap(
         game,
-        [this](const Game &game) {
+        [](const Game &game) {
           vector<pair<uint8, uint8>> movie =
               SimpleFM7::ReadInputs2P(game.moviefile);
           CHECK(!movie.empty()) << game.romfile;

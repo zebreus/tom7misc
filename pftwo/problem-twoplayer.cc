@@ -1,18 +1,25 @@
 #include "problem-twoplayer.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <initializer_list>
 #include <iostream>
-#include <map>
 #include <sstream>
 #include <stdlib.h>
-#include <unordered_set>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "../fceulib/simplefm2.h"
 #include "../fceulib/simplefm7.h"
 #include "arcfour.h"
+#include "base/stringprintf.h"
 #include "n-markov-controller.h"
+#include "options.h"
+#include "pftwo.h"
 #include "weighted-objectives.h"
 #include "learnfun.h"
 #include "util.h"
@@ -35,6 +42,7 @@ static constexpr bool ALLOW_CHEATS = false;
 
 using TPP = TwoPlayerProblem;
 using Worker = TPP::Worker;
+
 using namespace std;
 using uint8 = uint8_t;
 
@@ -369,7 +377,7 @@ void TPP::InitCameras(const map<string, string> &config,
         samples.size(),
         // 2 players, 1 linkages
         3,
-        [pool, &samples, &linkages, &xlocs1, &xlocs2,
+        [&samples, &linkages, &xlocs1, &xlocs2,
          &autocamera](int sample, int channel) {
           const vector<uint8> &save = samples[sample];
 

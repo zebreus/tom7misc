@@ -144,8 +144,8 @@ int main(int argc, char *argv[]) {
     {
       ConsoleThread *console_thread = new ConsoleThread(&search);
       if (!experiment.empty()) {
-  console_thread->max_nes_frames = 3600 * 2 * 20000LL;
-  console_thread->experiment_file = experiment;
+        console_thread->max_nes_frames = 3600 * 2 * 20000LL;
+        console_thread->experiment_file = experiment;
       }
       console_thread->Run();
       delete console_thread;

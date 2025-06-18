@@ -2,23 +2,30 @@
 #include "weighted-objectives.h"
 
 #include <algorithm>
-#include <set>
-#include <string>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <format>
 #include <iostream>
+#include <mutex>
+#include <set>
 #include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include <mutex>
-
+#include "arcfour.h"
+#include "base/stringprintf.h"
 #include "pftwo.h"
-#include "../cc-lib/arcfour.h"
+#include "randutil.h"
+#include "threadutil.h"
 #include "util.h"
 
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/randutil.h"
-
 using namespace std;
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
+using int64 = int64_t;
 
 WeightedObjectives::WeightedObjectives(const vector<vector<int>> &objs) {
   weighted.clear();
@@ -29,7 +36,7 @@ WeightedObjectives::WeightedObjectives(const vector<vector<int>> &objs) {
 }
 
 WeightedObjectives::WeightedObjectives(vector<pair<vector<int>, double>>
-               w_objs) :
+                                       w_objs) :
   weighted(w_objs) {
 }
 
@@ -43,8 +50,7 @@ static string ObjectiveToString(const vector<int> &obj) {
   return s;
 }
 
-WeightedObjectives *
-WeightedObjectives::LoadFromFile(const string &filename) {
+WeightedObjectives *WeightedObjectives::LoadFromFile(const string &filename) {
   vector<pair<vector<int>, double>> wo;
   vector<string> lines = Util::ReadFileToLines(filename);
   wo.reserve(lines.size());
@@ -57,9 +63,9 @@ WeightedObjectives::LoadFromFile(const string &filename) {
       ss >> d;
       vector<int> locs;
       while (!ss.eof()) {
-  int i;
-  ss >> i;
-  locs.push_back(i);
+        int i;
+        ss >> i;
+        locs.push_back(i);
       }
       wo.push_back({std::move(locs), d});
     }
@@ -74,7 +80,7 @@ void WeightedObjectives::SaveToFile(const string &filename) const {
     if (row.second > 0.0) {
       const vector<int> &obj = row.first;
       double d = row.second;
-      out += StringPrintf("%f %s\n", d, ObjectiveToString(obj).c_str());
+      AppendFormat(&out, "{} {}\n", d, ObjectiveToString(obj));
     }
   }
   Util::WriteFile(filename, out);
@@ -99,9 +105,8 @@ static bool LessObjective(const vector<uint8> &mem1,
 // Order 1 means mem1 < mem2, -1 means mem1 > mem2, 0 means equal.
 // (note this is backwards from strcmp. Think of it like a multiplier
 // for the weight.)
-static int Order(const vector<uint8> &mem1,
-     const vector<uint8> &mem2,
-     const vector<int> &order) {
+static int Order(const vector<uint8> &mem1, const vector<uint8> &mem2,
+                 const vector<int> &order) {
   for (int i = 0; i < order.size(); i++) {
     int p = order[i];
     if (mem1[p] > mem2[p])
@@ -115,7 +120,7 @@ static int Order(const vector<uint8> &mem1,
 }
 
 double WeightedObjectives::WeightedLess(const vector<uint8> &mem1,
-          const vector<uint8> &mem2) const {
+                                        const vector<uint8> &mem2) const {
   double score = 0.0;
   for (const auto &wobj : weighted) {
     const vector<int> &objective = wobj.first;
@@ -128,7 +133,7 @@ double WeightedObjectives::WeightedLess(const vector<uint8> &mem1,
 }
 
 double WeightedObjectives::Evaluate(const vector<uint8> &mem1,
-            const vector<uint8> &mem2) const {
+                                    const vector<uint8> &mem2) const {
   double score = 0.0;
   for (const auto &wobj : weighted) {
     const vector<int> &objective = wobj.first;
@@ -144,7 +149,7 @@ double WeightedObjectives::Evaluate(const vector<uint8> &mem1,
 }
 
 static vector<uint8> GetValues(const vector<uint8> &mem,
-             const vector<int> &objective) {
+                               const vector<int> &objective) {
   vector<uint8> out;
   out.resize(objective.size());
   for (int i = 0; i < objective.size(); i++) {
@@ -155,8 +160,8 @@ static vector<uint8> GetValues(const vector<uint8> &mem,
 }
 
 static vector<vector<uint8>>
-GetUniqueValues(const vector<vector<uint8 >> &memories,
-    const vector<int> &objective) {
+GetUniqueValues(const vector<vector<uint8>> &memories,
+                const vector<int> &objective) {
   set<vector<uint8>> values;
   for (int i = 0; i < memories.size(); i++) {
     values.insert(GetValues(memories[i], objective));
@@ -184,10 +189,10 @@ static inline double GetValueFrac(const vector<vector<uint8>> &values,
 
 namespace {
 struct SampleObservations : public Observations {
-  SampleObservations(const WeightedObjectives &wo, int max_samples) :
-    Observations(wo), max_samples(max_samples), watermark(wo.Size(), 0),
-    obs_values(wo.Size(), vector<pair<uint32, vector<uint8>>>{}),
-    acc_values(wo.Size(), vector<pair<uint32, vector<uint8>>>{}) {
+  SampleObservations(const WeightedObjectives &wob, int max_samples) :
+    Observations(wob), max_samples(max_samples), watermark(wob.Size(), 0),
+    obs_values(wob.Size(), vector<pair<uint32, vector<uint8>>>{}),
+    acc_values(wob.Size(), vector<pair<uint32, vector<uint8>>>{}) {
 
   }
 
@@ -267,8 +272,8 @@ struct SampleObservations : public Observations {
       // For example, all new accumulations were instantly
       // discarded for having keys too small.
       if (av.empty()) {
-  acc_mutex.unlock();
-  continue;
+        acc_mutex.unlock();
+        continue;
       }
 
       accumulated += av.size();
@@ -284,10 +289,10 @@ struct SampleObservations : public Observations {
       // Now sort by key (descending) so that we can take only the largest.
       // We only need to do this once the vector is full.
       if (ov.size() > max_samples) {
-  dropped += ov.size() - max_samples;
-  std::sort(ov.begin(), ov.end(), CompareByKeyDesc);
-  ov.resize(max_samples);
-  watermark[i] = ov.back().first;
+        dropped += ov.size() - max_samples;
+        std::sort(ov.begin(), ov.end(), CompareByKeyDesc);
+        ov.resize(max_samples);
+        watermark[i] = ov.back().first;
       }
 
       // Now put it in sorted order by value (ascending).
@@ -376,10 +381,10 @@ struct SampleObservations : public Observations {
 
 
 struct MixedBaseObservations : public Observations {
-  MixedBaseObservations(const WeightedObjectives &wo) :
-    Observations(wo), acc_maxbytes(wo.Size()) {
+  MixedBaseObservations(const WeightedObjectives &wob) :
+    Observations(wob), acc_maxbytes(wob.Size()) {
     for (int i = 0; i < wo.Size(); i++) {
-      const vector<int> &obj = wo.Get(i).first;
+      const vector<int> &obj = wob.Get(i).first;
       // Everything is max byte 0 to start.
       acc_maxbytes[i].resize(obj.size(), 0);
       // acc_maxbytes.push_back(vector<uint8>{obj.size(), 0});
@@ -393,9 +398,10 @@ struct MixedBaseObservations : public Observations {
       const vector<int> &obj = wo.Get(i).first;
       // Now just do pointwise max.
       for (int j = 0; j < obj.size(); j++) {
-  const uint8 val = memory[obj[j]];
-  uint8 &old = acc_maxbytes[i][j];
-  if (val > old) old = val;
+        const uint8 val = memory[obj[j]];
+        uint8 &old = acc_maxbytes[i][j];
+        if (val > old)
+          old = val;
       }
     }
   }
@@ -412,37 +418,37 @@ struct MixedBaseObservations : public Observations {
     {
       MutexLock mlo(&obs_mutex);
       for (int i = 0; i < wo.Size(); i++) {
-  const vector<int> &obj = wo.Get(i).first;
-  // PERF inline
-  vector<uint8> cur = WeightedObjectives::Value(mem, obj);
+        const vector<int> &obj = wo.Get(i).first;
+        // PERF inline
+        vector<uint8> cur = WeightedObjectives::Value(mem, obj);
 
-  // Let's say the max byte observed for each position is
-  // a, b, c, d, ..., y, z.
-  // The largest number that can be represented given our
-  // current understanding of the base would be to place the
-  // max byte in each position; then we have
-  //
-  // 1.0 = (z-1) + (y-1)*z + (x-1)*(z*y) + ...
-  //       (b-1) * (c*d*...*y*z) + (a-1) * (b*c*d*...*y*z)
-  //     = a*b*c*d*...*y*z - 1
-  //
-  // Since this involves factorials it gets big awfully
-  // quickly. For now, doubles maybe give us the sensitivity
-  // we need. (Otherwise: We can compute this as an arbitrary
-  // precision int, as long as we can then do division?)
-  double multiplier = 1.0;
-  double seen = 0.0;
-  for (int j = cur.size() - 1; j >= 0; j--) {
-    seen += cur[j] * multiplier;
-    // Radix is largest byte seen but plus one.
-    multiplier *= ((int)obs_maxbytes[i][j] + 1);
-  }
+        // Let's say the max byte observed for each position is
+        // a, b, c, d, ..., y, z.
+        // The largest number that can be represented given our
+        // current understanding of the base would be to place the
+        // max byte in each position; then we have
+        //
+        // 1.0 = (z-1) + (y-1)*z + (x-1)*(z*y) + ...
+        //       (b-1) * (c*d*...*y*z) + (a-1) * (b*c*d*...*y*z)
+        //     = a*b*c*d*...*y*z - 1
+        //
+        // Since this involves factorials it gets big awfully
+        // quickly. For now, doubles maybe give us the sensitivity
+        // we need. (Otherwise: We can compute this as an arbitrary
+        // precision int, as long as we can then do division?)
+        double multiplier = 1.0;
+        double seen = 0.0;
+        for (int j = cur.size() - 1; j >= 0; j--) {
+          seen += cur[j] * multiplier;
+          // Radix is largest byte seen but plus one.
+          multiplier *= ((int)obs_maxbytes[i][j] + 1);
+        }
 
-  vals[i] = seen / multiplier;
-  // This can probably happen for reasonable inputs. Might
-  // need some arbitrary precision thing here.
-  CHECK(!isnan(vals[i])) << "\n" << seen << " " << multiplier;
-  CHECK(vals[i] >= 0.0);
+        vals[i] = seen / multiplier;
+        // This can probably happen for reasonable inputs. Might
+        // need some arbitrary precision thing here.
+        CHECK(!std::isnan(vals[i])) << "\n" << seen << " " << multiplier;
+        CHECK(vals[i] >= 0.0);
       }
     }
 
@@ -481,13 +487,14 @@ struct MixedBaseObservations : public Observations {
     return numer / total_weight;
   }
 
-  virtual void VizText(const vector<uint8> &mem, vector<string> *text) {
+  void VizText(const vector<uint8> &mem, vector<string> *text) override {
     double numer = 0.0;
     double total_weight = 0.0;
 
     const vector<double> vals = GetNormalizedValues(mem);
     for (int i = 0; i < vals.size(); i++) {
-      text->push_back(StringPrintf("%.2f x %.3f", wo.Get(i).second, vals[i]));
+      text->push_back(
+          std::format("{:.2f} x {:.3f}", wo.Get(i).second, vals[i]));
     }
 
     for (int i = 0; i < vals.size(); i++) {
@@ -499,7 +506,7 @@ struct MixedBaseObservations : public Observations {
       total_weight += weight;
     }
 
-    text->push_back(StringPrintf("    == %.3f", numer / total_weight));
+    text->push_back(std::format("    == {:.3f}", numer / total_weight));
   }
 
   vector<vector<uint8>> obs_maxbytes, acc_maxbytes;

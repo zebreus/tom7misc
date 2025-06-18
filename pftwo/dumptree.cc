@@ -1,32 +1,32 @@
-#include <algorithm>
-#include <vector>
-#include <string>
-#include <set>
-#include <memory>
-#include <list>
-
-#include <cstdio>
-#include <cstdlib>
-
-#include "pftwo.h"
-
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../cc-lib/util.h"
-
-#include "atom7ic.h"
-#include "weighted-objectives.h"
-#include "headless-graphics.h"
-#include "problem-twoplayer.h"
-#include "treesearch.h"
 
 #include "dumptree.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <string>
+
+#include "base/stringprintf.h"
+#include "headless-graphics.h"
+#include "pftwo.h"
+#include "problem-twoplayer.h"
+#include "threadutil.h"
+#include "treesearch.h"
+#include "util.h"
+
+using namespace std;
+using uint8 = uint8_t;
+
 // XXX move to library?
 static std::mutex print_mutex;
-#define Printf(fmt, ...) do {			\
-    MutexLock Printf_ml(&print_mutex);		\
-    printf(fmt, ##__VA_ARGS__);			\
+#define Printf(fmt, ...) do {     \
+    MutexLock Printf_ml(&print_mutex);    \
+    printf(fmt, ##__VA_ARGS__);     \
   } while (0)
 
 // Dump the tree to the "tree" subdirectory as some HTML/JSON/PNGs.
@@ -51,7 +51,7 @@ void TreeDumping::DumpTree(TreeSearch *search) {
 
   vector<int> expansion_cutoff;
   std::function<void(const Tree::Node *)> Count =
-    [search, &expansion_cutoff, &Count](const Tree::Node *node) {
+    [&expansion_cutoff, &Count](const Tree::Node *node) {
     if (node->chosen > 0) {
       expansion_cutoff.push_back(node->chosen);
     }
@@ -61,14 +61,14 @@ void TreeDumping::DumpTree(TreeSearch *search) {
   };
   Count(search->tree->root);
   std::sort(expansion_cutoff.begin(), expansion_cutoff.end(),
-	    std::greater<int>());
+      std::greater<int>());
 
   static constexpr int kMaxImages = 1000;
   const int cutoff = expansion_cutoff.size() > kMaxImages ?
     expansion_cutoff[kMaxImages] : 0;
   expansion_cutoff.clear();
   printf("Nodes expanded more than %d times will have images.\n",
-	 cutoff);
+   cutoff);
 
   int images = 0;
   int node_num = 0;
@@ -108,9 +108,9 @@ void TreeDumping::DumpTree(TreeSearch *search) {
     if (!node->children.empty()) {
       string ch;
       for (const auto &p : node->children) {
-	if (!ch.empty()) ch += ",";
-	// Note, discards sequence.
-	ch += Rec(p.second);
+  if (!ch.empty()) ch += ",";
+  // Note, discards sequence.
+  ch += Rec(p.second);
       }
       ret += ",c:[";
       ret += ch;

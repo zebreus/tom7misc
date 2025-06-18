@@ -74,41 +74,42 @@
 // (Of course, the PRNG might really matter, since perhaps we are
 // waiting for some random event to happen?)
 
-#include <algorithm>
-#include <vector>
-#include <string>
-#include <set>
-#include <memory>
-#include <list>
-
-#include <cstdio>
-#include <cstdlib>
-
 #include "pftwo.h"
 
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/heap.h"
-#include "../cc-lib/nice.h"
-#include "../cc-lib/randutil.h"
-#include "../cc-lib/sdl/chars.h"
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/textsvg.h"
-#include "../cc-lib/util.h"
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <format>
+#include <functional>
+#include <list>
+#include <mutex>
+#include <string>
+#include <vector>
 
-#include "atom7ic.h"
-
-#include "weighted-objectives.h"
+#include "arcfour.h"
+#include "heap.h"
+#include "nice.h"
+#include "sdl/chars.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
+#include "util.h"
 
 #include "SDL.h"
-#include "graphics.h"
+#include "SDL_events.h"
+#include "SDL_keysym.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
+#include "atom7ic.h"
 
-#include "problem-twoplayer.h"
-
-#include "treesearch.h"
 #include "dumptree.h"
+#include "graphics.h"
+#include "options.h"
+#include "problem-twoplayer.h"
+#include "threadutil.h"
+#include "treesearch.h"
 
 // Screen dimensions.
 // #define WIDTH 1920
@@ -118,6 +119,11 @@
 #define WIDTH 1920
 #define HEIGHT 880
 
+using namespace std;
+
+using int64 = int64_t;
+using uint8 = uint8_t;
+
 // XXX move to library?
 static std::mutex print_mutex;
 #define Printf(fmt, ...) do {     \
@@ -126,6 +132,7 @@ static std::mutex print_mutex;
   } while (0)
 
 namespace {
+// TODO: Use cc-lib version
 struct Periodically {
   explicit Periodically(int every_seconds) :
     start(time(nullptr)),
@@ -214,7 +221,7 @@ struct UIThread {
       // Every half hour, write the best movie.
       // TODO: Superimpose all of the trees at once.
       if (save_movie.ShouldDo(now)) {
-        string filename_part = StringPrintf("frame-%lld", frame);
+        string filename_part = std::format("frame-{}", frame);
         string filename = search->SaveBestMovie(filename_part);
         (void)Util::RemoveFile("latest.fm2");
         if (!Util::CopyFileBytes(filename, "latest.fm2")) {
@@ -236,14 +243,14 @@ struct UIThread {
           (double)search->stats.sequences_improved_denom.Get();
       font->draw(
           1, 0,
-          StringPrintf("Frame %d! "
-                       "%lld tree nodes  "
-                       "%d collisions  "
-                       "%.3f%% improvement rate  "
-                       "%d/%d explore deaths",
-                       frame, tree_size, search->stats.same_expansion.Get(),
-                       improvement_pct, search->stats.explore_deaths.Get(),
-                       search->stats.explore_iters.Get()));
+          std::format("Frame {}! "
+                      "{} tree nodes  "
+                      "{} collisions  "
+                      "{:.3f}% improvement rate  "
+                      "{}/{} explore deaths",
+                      frame, tree_size, search->stats.same_expansion.Get(),
+                      improvement_pct, search->stats.explore_deaths.Get(),
+                      search->stats.explore_iters.Get()));
 
       {
         int xx = 256 * 6 + 10;
@@ -313,8 +320,8 @@ struct UIThread {
           // XXX Ugh, there's no good way to visualize in a queue-centric
           // way, because we need a worker in order to compute a screenshot.
           font->draw(30, STARTY,
-                     StringPrintf("^2EXPLORE QUEUE SIZE: %d",
-                                  search->tree->explore_queue.size()));
+                     std::format("^2EXPLORE QUEUE SIZE: {}",
+                                 search->tree->explore_queue.size()));
 
           int ypos = STARTY + FONTHEIGHT + 2;
           ;
@@ -323,15 +330,15 @@ struct UIThread {
               break;
             ReadMutexLock mln(&en->node_m);
             font->draw(30, ypos,
-                       StringPrintf("Goal ^3%d^<,^3%d^<  "
-                                    "distance ^4%.2f^<  "
-                                    "seq ^5%d^<   ^1%d^<|^4%d^<  "
-                                    "bad ^2%d^<",
-                                    // XXX hard-coded TPP
-                                    en->goal.goalx, en->goal.goaly,
-                                    en->distance, (int)en->closest_seq.size(),
-                                    en->iterations_left,
-                                    en->iterations_in_progress, en->bad));
+                       std::format("Goal ^3{}^<,^3{}^<  "
+                                   "distance ^4{:.2f}^<  "
+                                   "seq ^5{}^<   ^1{}^<|^4{}^<  "
+                                   "bad ^2{}^<",
+                                   // XXX hard-coded TPP
+                                   en->goal.goalx, en->goal.goaly,
+                                   en->distance, en->closest_seq.size(),
+                                   en->iterations_left,
+                                   en->iterations_in_progress, en->bad));
             ypos += FONTHEIGHT;
           }
         }
@@ -378,8 +385,8 @@ struct UIThread {
           }
         }
         smallfont->draw(GRIDX, GRIDY,
-                        StringPrintf("best ^3%.4f^< / ^2%.4f", bestscore,
-                                     cutoff_bestscore));
+                        std::format("best ^3{:.4f}^< / ^2{:.4f}", bestscore,
+                                    cutoff_bestscore));
 
         // And the memory grid...
         // PERF!
@@ -530,8 +537,9 @@ struct UIThread {
       if (marathon_seqlength > 0) {
         smallfont->draw(
             256 * 6 + 10, 200,
-            StringPrintf(
-                "Marathon score ^3%.4f^</^2%.4f^<, seq ^3%lld^<   (f ^2%lld^<)",
+            std::format(
+                "Marathon score ^3{:.4f}^</^2{:.4f}^<, seq ^3{}^<   "
+                "(f ^2{}^<)",
                 marathon_score, best_score, marathon_seqlength,
                 search->stats.failed_marathon.Get()));
       }
@@ -540,14 +548,14 @@ struct UIThread {
       // treestats.statebytes / (1024.0 * treestats.nodes)
       smallfont->draw(
           256 * 6 + 10, 220,
-          StringPrintf("^3%d^</^2%d^< nodes, ^3%d^< leaves, "
-           "^3%d^< depth, "
-           "^3%lld^< MB ",
-           treestats.nodes,
-           max_nodes,
-           treestats.leaves,
-           max_depth,
-           treestats.nodebytes / (1024LL * 1024LL)));
+          std::format("^3{}^</^2{}^< nodes, ^3{}^< leaves, "
+                      "^3{}^< depth, "
+                      "^3{}^< MB ",
+                      treestats.nodes,
+                      max_nodes,
+                      treestats.leaves,
+                      max_depth,
+                      treestats.nodebytes / (1024LL * 1024LL)));
 
       {
         // Could compute this from font height; depends on number of workers
@@ -570,14 +578,14 @@ struct UIThread {
             // Would be nice to do a visual bar graph, but it has to
             // work when we have like 60 threads!
             const string w =
-                levels[i].workers ? StringPrintf("%d", levels[i].workers) : "";
+              levels[i].workers ? std::format("{}", levels[i].workers) : "";
 
             smallfont->draw(256 * 6 + 10, yy,
-                            StringPrintf("^4%2d^<: ^3%d^< n %lld c %d mc, "
-                                         "%.3f ^5%s",
+                            std::format("^4{}^<: ^3{}^< n {} c {} mc, "
+                                         "{:.3f} ^5{}",
                                          i, levels[i].count, levels[i].chosen,
                                          levels[i].max_chosen,
-                                         levels[i].best_score, w.c_str()));
+                                         levels[i].best_score, w));
             yy += SMALLFONTHEIGHT;
           } else if (i == dots_index) {
             // XXX could show workers within this region?
@@ -598,12 +606,12 @@ struct UIThread {
         min %= 60;
 
         font->draw(10, HEIGHT - FONTHEIGHT,
-                   StringPrintf("%.2f NES Mframes in %d^2:^<%02d^2:^<%02d "
-                                "= %.2f NES kFPS "
-                                "%.2f UI FPS",
-                                total_nes_frames / 1000000.0, hrs, min, sec,
-                                (total_nes_frames / (double)total_sec) / 1000.0,
-                                frame / (double)total_sec));
+                   std::format("{:.2f} NES Mframes in {}^2:^<{:02}^2:^<{:02} "
+                               "= {:.2f} NES kFPS "
+                               "{:.2f} UI FPS",
+                               total_nes_frames / 1000000.0, hrs, min, sec,
+                               (total_nes_frames / (double)total_sec) / 1000.0,
+                               frame / (double)total_sec));
       }
 
       // XXX maybe show the grid cells in the histo
@@ -635,7 +643,7 @@ struct UIThread {
       sdlutil::sulock(screen);
 
       hugefont->draw(10, HEIGHT - HISTO_HEIGHT / 2 - HUGEFONTHEIGHT / 2,
-                     StringPrintf("^2%.2f%%", search->tree->stuckness));
+                     std::format("^2{:.2f}%", search->tree->stuckness));
 
       SDL_Flip(screen);
     }
