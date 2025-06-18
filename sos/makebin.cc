@@ -1,6 +1,7 @@
 
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
+#include <initializer_list>
 
 int main(int argc, char **argv) {
 

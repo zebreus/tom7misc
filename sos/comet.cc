@@ -5,7 +5,17 @@
 //
 // (This doesn't compile... did I break it? Or was it never born?)
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
+#include <ctime>
+#include <functional>
+#include <initializer_list>
+#include <optional>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 #include <cstdint>
 #include <unordered_set>

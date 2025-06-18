@@ -8,23 +8,26 @@
 // (via algebraic methods).
 
 #include <cstdint>
+#include <cstdio>
+#include <format>
 #include <map>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "ansi.h"
-#include "timer.h"
-#include "periodically.h"
 #include "atomic-util.h"
-
 #include "base/logging.h"
 #include "base/stringprintf.h"
-
-#include "mod-util.h"
-#include "bignum/big.h"
 #include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "mod-util.h"
+#include "periodically.h"
+#include "timer.h"
 
 // for longnum. probably should move that...
 #include "bhaskara-util.h"
-
 #include "quad.h"
 
 static constexpr bool ALLOW_SAVE = true;
@@ -238,6 +241,7 @@ static void EliminateNegation(Diamond *work) {
   int64_t skipped = 0;
   for (int64_t modulus = 2; modulus < MAX_MODULUS; modulus++) {
     if (int64_t ntz = HasNontrivialZeroResidue(modulus)) {
+      (void)ntz;
       /*
       printf("Skip %lld because %lld^2 mod %lld = 0\n",
              modulus, ntz, modulus);
@@ -291,6 +295,7 @@ static void EliminateEqual(Diamond *work) {
   int64_t skipped = 0;
   for (int64_t modulus = 2; modulus < MAX_MODULUS; modulus++) {
     if (int64_t ntz = HasNontrivialZeroResidue(modulus)) {
+      (void)ntz;
       /*
       printf("Skip %lld because %lld^2 mod %lld = 0\n",
              modulus, ntz, modulus);
@@ -371,7 +376,7 @@ static void DoWork() {
     status_per.RunIf([&]() {
         printf(ANSI_UP "%s\n",
                ANSI::ProgressBar(idx, todo.size(),
-                                 StringPrintf("Solved %d m, %d n",
+                                 std::format("Solved {} m, {} n",
                                               msols.size(),
                                               nsols.size()),
                                  sol_timer.Seconds()).c_str());

@@ -1,6 +1,18 @@
 
+#include "base/stringprintf.h"
 #include "sos-util.h"
 #include "sos-gpu.h"
+
+#include <algorithm>
+#include <array>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
@@ -9,6 +21,8 @@
 #include "opencl/clutil.h"
 #include "opt/optimizer.h"
 #include "randutil.h"
+#include "timer.h"
+#include "util.h"
 
 static CL *cl = nullptr;
 

@@ -1,5 +1,5 @@
 
-default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe algebra.exe orbit-grid.exe recurrence.exe bestsq.exe kgrid.exe bhaskara-util_test.exe kline.exe leaderboard.exe mod.exe remain.exe prog.exe brute.exe brutesq.exe floatsqrt.exe
+default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe algebra.exe orbit-grid.exe recurrence.exe bestsq.exe kgrid.exe bhaskara-util_test.exe kline.exe leaderboard.exe mod.exe makebin.exe findbug.exe mod-gpu_test.exe remain.exe solve.exe prog.exe brute.exe brutesq.exe floatsqrt.exe sqrt_test.exe tune-factorize.exe
 
 CC_LIB=../cc-lib
 ALPERTRON64=../alpertron64
@@ -121,9 +121,10 @@ orbit.exe : orbit.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-comet.exe : comet.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+# doesn't build
+# comet.exe : comet.o $(OBJECTS)
+# 	@$(CXX) $^ -o $@ $(LFLAGS)
+# 	@echo -n "!"
 
 orbit-grid.exe : orbit-grid.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
