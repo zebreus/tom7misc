@@ -4,6 +4,10 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
+#include <unordered_map>
+#include <string>
+#include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"

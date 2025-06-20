@@ -26,6 +26,7 @@ Page Config::ParsePage(const std::string &p) {
   if (p == "bit7-classic") return Page::BIT7_CLASSIC;
   if (p == "bit7-latinab") return Page::BIT7_LATINAB;
   if (p == "bit7-extended") return Page::BIT7_EXTENDED;
+  if (p == "bit7-extended2") return Page::BIT7_EXTENDED2;
   if (p == "bit7-cyrillic") return Page::BIT7_CYRILLIC;
   if (p == "bit7-math") return Page::BIT7_MATH;
   LOG(FATAL) << "Unknown page " << p;
@@ -39,6 +40,8 @@ const char *Config::PageString(Page p) {
     return "bit7-latinab";
   case Page::BIT7_EXTENDED:
     return "bit7-extended";
+  case Page::BIT7_EXTENDED2:
+    return "bit7-extended2";
   case Page::BIT7_CYRILLIC:
     return "bit7-cyrillic";
   case Page::BIT7_MATH:
@@ -814,6 +817,88 @@ const std::vector<int> &PageBit7Extended() {
 }
 
 
+// Standard size is: 16x24
+const std::vector<int> &PageBit7Extended2() {
+  static const std::vector<int> CODEPOINTS = {
+    // Unicode superscripts and subscripts. Note that
+    // there are some codepoints unassigned, and some
+    // of these symbols appear in other blocks.
+    0x2070, // (⁰) Superscript Zero
+    0x2071, // (ⁱ) Superscript Latin Small Letter I
+    0x2074, // (⁴) Superscript Four
+    0x2075, // (⁵) Superscript Five
+    0x2076, // (⁶) Superscript Six
+    0x2077, // (⁷) Superscript Seven
+    0x2078, // (⁸) Superscript Eight
+    0x2079, // (⁹) Superscript Nine
+    0x207A, // (⁺) Superscript Plus Sign
+    0x207B, // (⁻) Superscript Minus
+    0x207C, // (⁼) Superscript Equals Sign
+    0x207D, // (⁽) Superscript Left Parenthesis
+    0x207E, // (⁾) Superscript Right Parenthesis
+    0x207F, // (ⁿ) Superscript Latin Small Letter N
+    0x2080, // (₀) Subscript Zero
+
+    0x2081, // (₁) Subscript One
+    0x2082, // (₂) Subscript Two
+    0x2083, // (₃) Subscript Three
+    0x2084, // (₄) Subscript Four
+    0x2085, // (₅) Subscript Five
+    0x2086, // (₆) Subscript Six
+    0x2087, // (₇) Subscript Seven
+    0x2088, // (₈) Subscript Eight
+    0x2089, // (₉) Subscript Nine
+    0x208A, // (₊) Subscript Plus Sign
+    0x208B, // (₋) Subscript Minus
+    0x208C, // (₌) Subscript Equals Sign
+    0x208D, // (₍) Subscript Left Parenthesis
+    0x208E, // (₎) Subscript Right Parenthesis
+    0x2090, // (ₐ) Latin Subscript Small Letter A
+
+    0x2091, // (ₑ) Latin Subscript Small Letter E
+    0x2092, // (ₒ) Latin Subscript Small Letter O
+    0x2093, // (ₓ) Latin Subscript Small Letter X
+    0x2094, // (ₔ) Latin Subscript Small Letter Schwa
+    0x2095, // (ₕ) Latin Subscript Small Letter H
+    0x2096, // (ₖ) Latin Subscript Small Letter K
+    0x2097, // (ₗ) Latin Subscript Small Letter L
+    0x2098, // (ₘ) Latin Subscript Small Letter M
+    0x2099, // (ₙ) Latin Subscript Small Letter N
+    0x209A, // (ₚ) Latin Subscript Small Letter P
+    0x209B, // (ₛ) Latin Subscript Small Letter S
+    0x209C, // (ₜ) Latin Subscript Small Letter T
+
+    // Unused
+    -1, -1, -1, -1, -1, -1,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  };
+
+  CHECK(CODEPOINTS.size() == 16 * 24) << CODEPOINTS.size();
+  return CODEPOINTS;
+};
+
 const std::vector<int> &PageBit7Cyrillic() {
   static const std::vector<int> CODEPOINTS = {
     // Cyrillic, exactly as Unicode U+0400 to U+04FF.
@@ -1550,6 +1635,7 @@ static const std::vector<int> &GetCodepointsForPage(Page p) {
   case Page::BIT7_CLASSIC: return PageBit7Classic();
   case Page::BIT7_LATINAB: return PageBit7LatinAB();
   case Page::BIT7_EXTENDED: return PageBit7Extended();
+  case Page::BIT7_EXTENDED2: return PageBit7Extended2();
   case Page::BIT7_CYRILLIC: return PageBit7Cyrillic();
   case Page::BIT7_MATH: return PageBit7Math();
   }
@@ -1684,6 +1770,9 @@ REUSE_FOR = {
 
   {0x04E0, 0x01B7}, // Cyrillic Capital Abkhasian Dze -> Ezh
   {0x04E1, 0x0292}, // Lowercase dze -> ezh
+
+  // Math black star to Symbol star
+  {0x22c6, 0x2605},
 
   // Letter-like symbols that are REALLY letter-like.
   // Kelvin

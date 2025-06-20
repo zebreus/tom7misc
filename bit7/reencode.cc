@@ -1,6 +1,7 @@
 // Loads a font from one config, and writes it back out using another.
 
 #include <cstdint>
+#include <cstdio>
 #include <string>
 
 #include "base/logging.h"
