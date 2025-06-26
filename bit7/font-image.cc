@@ -838,8 +838,8 @@ const std::vector<int> &PageBit7Extended2() {
     0x207E, // (⁾) Superscript Right Parenthesis
     0x207F, // (ⁿ) Superscript Latin Small Letter N
     0x2080, // (₀) Subscript Zero
-
     0x2081, // (₁) Subscript One
+
     0x2082, // (₂) Subscript Two
     0x2083, // (₃) Subscript Three
     0x2084, // (₄) Subscript Four
@@ -854,9 +854,9 @@ const std::vector<int> &PageBit7Extended2() {
     0x208D, // (₍) Subscript Left Parenthesis
     0x208E, // (₎) Subscript Right Parenthesis
     0x2090, // (ₐ) Latin Subscript Small Letter A
-
     0x2091, // (ₑ) Latin Subscript Small Letter E
     0x2092, // (ₒ) Latin Subscript Small Letter O
+
     0x2093, // (ₓ) Latin Subscript Small Letter X
     0x2094, // (ₔ) Latin Subscript Small Letter Schwa
     0x2095, // (ₕ) Latin Subscript Small Letter H
@@ -871,11 +871,94 @@ const std::vector<int> &PageBit7Extended2() {
     // Unused
     -1, -1, -1, -1, -1, -1,
 
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // Spacing Modifier Letters
+    0x02B0, // (ʰ) Modifier Letter Small H
+    0x02B1, // (ʱ) Modifier Letter Small H with hook
+    0x02B2, // (ʲ) Modifier Letter Small J
+    0x02B3, // (ʳ) Modifier Letter Small R
+    0x02B4, // (ʴ) Modifier Letter Small Turned R
+    0x02B5, // (ʵ) Modifier Letter Small Turned R with hook
+    0x02B6, // (ʶ) Modifier Letter Small Capital Inverted R
+    0x02B7, // (ʷ) Modifier Letter Small W
+    0x02B8, // (ʸ) Modifier Letter Small Y
+    0x02B9, // (ʹ) Modifier Letter Prime
+    0x02BA, // (ʺ) Modifier Letter Double Prime
+    0x02BB, // (ʻ) Modifier Letter Turned Comma
+    0x02BC, // (ʼ) Modifier Letter Apostrophe
+    0x02BD, // (ʽ) Modifier Letter Reversed Comma
+    0x02BE, // (ʾ) Modifier Letter Right Half Ring
+    0x02BF, // (ʿ) Modifier Letter Left Half Ring
+
+    0x02C0, // (ˀ) Modifier Letter Glottal Stop
+    0x02C1, // (ˁ) Modifier Letter Reversed Glottal Stop
+    0x02C2, // (˂) Modifier Letter Left Arrowhead
+    0x02C3, // (˃) Modifier Letter Right Arrowhead
+    0x02C4, // (˄) Modifier Letter Up Arrowhead
+    0x02C5, // (˅) Modifier Letter Down Arrowhead
+    0x02C6, // (ˆ) Modifier Letter Circumflex Accent
+    0x02C7, // (ˇ) Caron
+    0x02C8, // (ˈ) Modifier Letter Vertical Line
+    0x02C9, // (ˉ) Modifier Letter Macron
+    0x02CA, // (ˊ) Modifier Letter Acute Accent
+    0x02CB, // (ˋ) Modifier Letter Grave Accent
+    0x02CC, // (ˌ) Modifier Letter Low Vertical Line
+    0x02CD, // (ˍ) Modifier Letter Low Macron
+    0x02CE, // (ˎ) Modifier Letter Low Grave Accent
+    0x02CF, // (ˏ) Modifier Letter Low Acute Accent
+
+    0x02D0, // (ː) Modifier Letter Triangular Colon
+    0x02D1, // (ˑ) Modifier Letter Half Triangular Colon
+    0x02D2, // (˒) Modifier Letter Centered Right Half Ring
+    0x02D3, // (˓) Modifier Letter Centered Left Half Ring
+    0x02D4, // (˔) Modifier Letter Up Tack
+    0x02D5, // (˕) Modifier Letter Down Tack
+    0x02D6, // (˖) Modifier Letter Plus Sign
+    0x02D7, // (˗) Modifier Letter Minus Sign
+    0x02D8, // (˘ &#728) Breve
+    0x02D9, // (˙ &#729) Dot Above
+    0x02DA, // (˚ &#730) Ring Above
+    0x02DB, // (˛ &#731) Ogonek
+    0x02DC, // (˜) Small Tilde
+    0x02DD, // (˝) Double Acute Accent
+    0x02DE, // (˞) Modifier Letter Rhotic Hook
+    0x02DF, // (˟) Modifier Letter Cross Accent
+
+    0x02E0, // (ˠ) Modifier Letter Small Gamma
+    0x02E1, // (ˡ) Modifier Letter Small L
+    0x02E2, // (ˢ) Modifier Letter Small S
+    0x02E3, // (ˣ) Modifier Letter Small X
+    0x02E4, // (ˤ) Modifier Letter Small Reversed Glottal Stop
+    0x02E5, // (˥) Modifier Letter Extra-High Tone Bar
+    0x02E6, // (˦) Modifier Letter High Tone Bar
+    0x02E7, // (˧) Modifier Letter Mid Tone Bar
+    0x02E8, // (˨) Modifier Letter Low Tone Bar
+    0x02E9, // (˩) Modifier Letter Extra-Low Tone Bar
+    0x02EA, // (˪) Extended Bopomofo Yin Departing
+    0x02EB, // (˫) Extended Bopomofo Yang Departing
+    0x02EC, // (ˬ) Modifier Letter Voicing
+    0x02ED, // (˭) Modifier Letter Unaspirated
+    0x02EE, // (ˮ) Modifier Letter Double Apostrophe
+    0x02EF, // (˯) Modifier Letter Low Down Arrowhead
+
+    0x02F0, // (˰) Modifier Letter Low Up Arrowhead
+    0x02F1, // (˱) Modifier Letter Low Left Arrowhead
+    0x02F2, // (˲) Modifier Letter Low Right Arrowhead
+    0x02F3, // (˳) Modifier Letter Low Ring
+    0x02F4, // (˴) Modifier Letter Middle Grave Accent
+    0x02F5, // (˵) Modifier Letter Middle Double Grave Accent
+    0x02F6, // (˴) Modifier Letter Middle Double Acute Accent
+    0x02F7, // (˷) Modifier Letter Low Tilde
+    0x02F8, // (˸) Modifier Letter Raised Colon
+    0x02F9, // (˹) Modifier Letter Begin High Tone
+    0x02FA, // (˺) Modifier Letter End High Tone
+    0x02FB, // (˻) Modifier Letter Begin Low Tone
+    0x02FC, // (˼) Modifier Letter End Low Tone
+    0x02FD, // (˽) Modifier Letter Shelf
+    0x02FE, // (˾) Modifier Letter Open Shelf
+    0x02FF, // (˿) Modifier Letter Low Left Arrow
+
+    // Free to a good home
+
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -885,14 +968,17 @@ const std::vector<int> &PageBit7Extended2() {
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
     -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
   };
 
   CHECK(CODEPOINTS.size() == 16 * 24) << CODEPOINTS.size();
