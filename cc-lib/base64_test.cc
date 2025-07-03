@@ -1,6 +1,7 @@
 
 #include "base64.h"
 
+#include <cstdio>
 #include <string>
 
 #include "base/logging.h"

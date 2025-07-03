@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <array>
+#include <cstdio>
 #include <tuple>
 #include <format>
 

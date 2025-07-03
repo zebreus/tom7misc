@@ -1,10 +1,13 @@
 
 #include "base64.h"
 
-#include <cstdio>
+#include <algorithm>
+#include <array>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using namespace std;
 
@@ -14,34 +17,32 @@ using namespace std;
 
 using uint8 = uint8_t;
 
+static constexpr std::array<uint8_t, 64> DTABLE = []{
+    std::array<uint8_t, 64> dtable;
+    for (int i = 0; i < 9; i++) {
+      dtable[i] = 'A' + i;
+      dtable[i + 9] = 'J' + i;
+
+      dtable[26 + i] = 'a' + i;
+      dtable[26 + i + 9] = 'j' + i;
+    }
+
+    for (int i = 0; i < 8; i++) {
+      dtable[i + 18] = 'S' + i;
+      dtable[26 + i + 18] = 's' + i;
+    }
+
+    for (int i = 0; i < 10; i++) {
+      dtable[52 + i] = '0' + i;
+    }
+
+    dtable[62] = '+';
+    dtable[63] = '/';
+    return dtable;
+  }();
+
 static string EncodePtr(const uint8 *in, unsigned int length) {
-  int i, hiteof = 0;
-
-  uint8 dtable[256] = {};
-
-  /* PERF should not be needed with dtable = {} above? */
-  for (i = 0; i < 256; i++) dtable[i] = 0;
-
-  for (i = 0; i < 9; i++) {
-    dtable[i] = 'A' + i;
-    dtable[i + 9] = 'J' + i;
-
-    dtable[26 + i] = 'a' + i;
-    dtable[26 + i + 9] = 'j' + i;
-  }
-
-  for (i = 0; i < 8; i++) {
-    dtable[i + 18] = 'S' + i;
-    dtable[26 + i + 18] = 's' + i;
-  }
-
-  for (i = 0; i < 10; i++) {
-    dtable[52 + i] = '0' + i;
-  }
-
-  dtable[62] = '+';
-  dtable[63] = '/';
-
+  int hiteof = 0;
 
   unsigned int idx = 0;
   string ou;
@@ -61,10 +62,10 @@ static string EncodePtr(const uint8 *in, unsigned int length) {
 
     if (n > 0) {
 
-      ogroup[0] = dtable[igroup[0] >> 2];
-      ogroup[1] = dtable[((igroup[0] & 3) << 4) | (igroup[1] >> 4)];
-      ogroup[2] = dtable[((igroup[1] & 0xF) << 2) | (igroup[2] >> 6)];
-      ogroup[3] = dtable[igroup[2] & 0x3F];
+      ogroup[0] = DTABLE[igroup[0] >> 2];
+      ogroup[1] = DTABLE[((igroup[0] & 3) << 4) | (igroup[1] >> 4)];
+      ogroup[2] = DTABLE[((igroup[1] & 0xF) << 2) | (igroup[2] >> 6)];
+      ogroup[3] = DTABLE[igroup[2] & 0x3F];
 
       if (n < 3) {
         ogroup[3] = '=';
@@ -73,7 +74,7 @@ static string EncodePtr(const uint8 *in, unsigned int length) {
         }
       }
 
-      for (i = 0; i < 4; i++) {
+      for (int i = 0; i < 4; i++) {
         ou += (char)ogroup[i];
       }
 
@@ -92,20 +93,23 @@ string Base64::EncodeV(const std::vector<uint8> &in) {
 
 template<class C>
 static C DecodeC(string_view in) {
-  uint8 dtable[256];
-
-  /* strange magic for EBCDIC. I'm not touching it! */
-  for (int i = 0; i < 255; i++) dtable[i] = 0x80;
-  for (int i = 'A'; i <= 'I'; i++) dtable[i] = 0 + (i - 'A');
-  for (int i = 'J'; i <= 'R'; i++) dtable[i] = 9 + (i - 'J');
-  for (int i = 'S'; i <= 'Z'; i++) dtable[i] = 18 + (i - 'S');
-  for (int i = 'a'; i <= 'i'; i++) dtable[i] = 26 + (i - 'a');
-  for (int i = 'j'; i <= 'r'; i++) dtable[i] = 35 + (i - 'j');
-  for (int i = 's'; i <= 'z'; i++) dtable[i] = 44 + (i - 's');
-  for (int i = '0'; i <= '9'; i++) dtable[i] = 52 + (i - '0');
-  dtable[(unsigned char)'+'] = 62;
-  dtable[(unsigned char)'/'] = 63;
-  dtable[(unsigned char)'='] = 0;
+  static constexpr std::array<uint8_t, 256> dtable = []{
+      std::array<uint8_t, 256> dtable;
+      std::fill(dtable.begin(), dtable.end(), 0);
+      /* strange magic for EBCDIC. I'm not touching it! */
+      for (int i = 0; i < 255; i++) dtable[i] = 0x80;
+      for (int i = 'A'; i <= 'I'; i++) dtable[i] = 0 + (i - 'A');
+      for (int i = 'J'; i <= 'R'; i++) dtable[i] = 9 + (i - 'J');
+      for (int i = 'S'; i <= 'Z'; i++) dtable[i] = 18 + (i - 'S');
+      for (int i = 'a'; i <= 'i'; i++) dtable[i] = 26 + (i - 'a');
+      for (int i = 'j'; i <= 'r'; i++) dtable[i] = 35 + (i - 'j');
+      for (int i = 's'; i <= 'z'; i++) dtable[i] = 44 + (i - 's');
+      for (int i = '0'; i <= '9'; i++) dtable[i] = 52 + (i - '0');
+      dtable[(unsigned char)'+'] = 62;
+      dtable[(unsigned char)'/'] = 63;
+      dtable[(unsigned char)'='] = 0;
+      return dtable;
+    }();
 
   unsigned int idx = 0;
   C ou;

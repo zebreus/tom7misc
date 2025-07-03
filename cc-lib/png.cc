@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/macros.h"
 #include "image.h"
 #include "miniz.h"
 #include "zip.h"
@@ -235,7 +236,7 @@ std::vector<uint8_t> PNG::EncodeInMemory(const ImageRGBA &img,
 
   buf.AddChunk(ihdr);
 
-  fprintf(stderr, "Palette size: %d\n", (int)palette.size());
+  // fprintf(stderr, "Palette size: %d\n", (int)palette.size());
 
   Chunk plte("PLTE");
   for (const auto &[rgba, count_] : palette) {
@@ -284,7 +285,7 @@ std::vector<uint8_t> PNG::EncodeInMemory(const ImageRGBA &img,
       uint8_t idx = it->second;
       switch (bpp) {
       case 1: {
-        [[assume(idx < 2)]];
+        ASSUME(idx < 2);
         current_byte <<= 1;
         current_byte |= idx;
         if ((x & 0b111) == 0b111) {
@@ -294,7 +295,7 @@ std::vector<uint8_t> PNG::EncodeInMemory(const ImageRGBA &img,
         break;
       }
       case 2: {
-        [[assume(idx < 4)]];
+        ASSUME(idx < 4);
         current_byte <<= 2;
         current_byte |= idx;
         if ((x & 0b11) == 0b11) {
@@ -304,7 +305,7 @@ std::vector<uint8_t> PNG::EncodeInMemory(const ImageRGBA &img,
         break;
       }
       case 4: {
-        [[assume(idx < 16)]];
+        ASSUME(idx < 16);
         current_byte <<= 4;
         current_byte |= idx;
         if (x & 1) {

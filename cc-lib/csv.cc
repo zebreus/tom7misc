@@ -14,6 +14,8 @@
 //   - Since it was just a bunch of files pasted together,
 //     I consolidated the headers at the top (they should
 //     not be in an anonymous namespace!)
+//   - Fixed up warnings for clangd.
+//   - Deleted some dead code (e.g. many complex hedley macros)
 
 #include "csv.h"
 
@@ -53,6 +55,7 @@ SOFTWARE.
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
 #include <fstream>
@@ -72,15 +75,23 @@ SOFTWARE.
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
+# include <errhandlingapi.h>
+# include <fileapi.h>
+# include <handleapi.h>
+# include <memoryapi.h>
+# include <minwindef.h>
+# include <sysinfoapi.h>
 # include <windows.h>
+# include <winnt.h>
 #else
-# include <unistd.h>
 # include <fcntl.h>
 # include <sys/mman.h>
 # include <sys/stat.h>
+# include <unistd.h>
 # define INVALID_HANDLE_VALUE -1
 #endif
 
@@ -95,22 +106,25 @@ static size_t get_file_size(std::string_view filename) {
 
 /* Copyright 2017 https://github.com/mandreyel
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy of this
- * software and associated documentation files (the "Software"), to deal in the Software
- * without restriction, including without limitation the rights to use, copy, modify,
- * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to the following
- * conditions:
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use, copy,
+ * modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * The above copyright notice and this permission notice shall be included in all copies
- * or substantial portions of the Software.
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
- * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
- * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
- * CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
- * OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
 
 #ifndef MIO_MMAP_HEADER
@@ -119,22 +133,25 @@ static size_t get_file_size(std::string_view filename) {
 // #include "mio/page.hpp"
 /* Copyright 2017 https://github.com/mandreyel
  *
- * Permission is hereby granted, free of charge, to any person obtaining a copy of this
- * software and associated documentation files (the "Software"), to deal in the Software
- * without restriction, including without limitation the rights to use, copy, modify,
- * merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
- * permit persons to whom the Software is furnished to do so, subject to the following
- * conditions:
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use, copy,
+ * modify, merge, publish, distribute, sublicense, and/or sell copies
+ * of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * The above copyright notice and this permission notice shall be included in all copies
- * or substantial portions of the Software.
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
  *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
- * PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
- * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
- * CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
- * OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
  */
 
 #ifndef MIO_PAGE_HEADER
@@ -3618,33 +3635,6 @@ nssv_RESTORE_WARNINGS()
 #  define HEDLEY_GCC_HAS_EXTENSION(extension,major,minor,patch) HEDLEY_GCC_VERSION_CHECK(major,minor,patch)
 #endif
 
-#if defined(HEDLEY_HAS_DECLSPEC_ATTRIBUTE)
-#  undef HEDLEY_HAS_DECLSPEC_ATTRIBUTE
-#endif
-#if defined(__has_declspec_attribute)
-#  define HEDLEY_HAS_DECLSPEC_ATTRIBUTE(attribute) __has_declspec_attribute(attribute)
-#else
-#  define HEDLEY_HAS_DECLSPEC_ATTRIBUTE(attribute) (0)
-#endif
-
-#if defined(HEDLEY_GNUC_HAS_DECLSPEC_ATTRIBUTE)
-#  undef HEDLEY_GNUC_HAS_DECLSPEC_ATTRIBUTE
-#endif
-#if defined(__has_declspec_attribute)
-#  define HEDLEY_GNUC_HAS_DECLSPEC_ATTRIBUTE(attribute,major,minor,patch) __has_declspec_attribute(attribute)
-#else
-#  define HEDLEY_GNUC_HAS_DECLSPEC_ATTRIBUTE(attribute,major,minor,patch) HEDLEY_GNUC_VERSION_CHECK(major,minor,patch)
-#endif
-
-#if defined(HEDLEY_GCC_HAS_DECLSPEC_ATTRIBUTE)
-#  undef HEDLEY_GCC_HAS_DECLSPEC_ATTRIBUTE
-#endif
-#if defined(__has_declspec_attribute)
-#  define HEDLEY_GCC_HAS_DECLSPEC_ATTRIBUTE(attribute,major,minor,patch) __has_declspec_attribute(attribute)
-#else
-#  define HEDLEY_GCC_HAS_DECLSPEC_ATTRIBUTE(attribute,major,minor,patch) HEDLEY_GCC_VERSION_CHECK(major,minor,patch)
-#endif
-
 #if defined(HEDLEY_HAS_WARNING)
 #  undef HEDLEY_HAS_WARNING
 #endif
@@ -3670,26 +3660,6 @@ nssv_RESTORE_WARNINGS()
 #  define HEDLEY_GCC_HAS_WARNING(warning,major,minor,patch) __has_warning(warning)
 #else
 #  define HEDLEY_GCC_HAS_WARNING(warning,major,minor,patch) HEDLEY_GCC_VERSION_CHECK(major,minor,patch)
-#endif
-
-#if \
-  (defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)) || \
-  defined(__clang__) || \
-  HEDLEY_GCC_VERSION_CHECK(3,0,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-  HEDLEY_IAR_VERSION_CHECK(8,0,0) || \
-  HEDLEY_PGI_VERSION_CHECK(18,4,0) || \
-  HEDLEY_ARM_VERSION_CHECK(4,1,0) || \
-  HEDLEY_TI_VERSION_CHECK(6,0,0) || \
-  HEDLEY_CRAY_VERSION_CHECK(5,0,0) || \
-  HEDLEY_TINYC_VERSION_CHECK(0,9,17) || \
-  HEDLEY_SUNPRO_VERSION_CHECK(8,0,0) || \
-  (HEDLEY_IBM_VERSION_CHECK(10,1,0) && defined(__C99_PRAGMA_OPERATOR))
-#  define HEDLEY_PRAGMA(value) _Pragma(#value)
-#elif HEDLEY_MSVC_VERSION_CHECK(15,0,0)
-#  define HEDLEY_PRAGMA(value) __pragma(value)
-#else
-#  define HEDLEY_PRAGMA(value)
 #endif
 
 #if defined(HEDLEY_DIAGNOSTIC_PUSH)
@@ -3722,67 +3692,6 @@ nssv_RESTORE_WARNINGS()
 #else
 #  define HEDLEY_DIAGNOSTIC_PUSH
 #  define HEDLEY_DIAGNOSTIC_POP
-#endif
-
-#if defined(HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED)
-#  undef HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED
-#endif
-#if HEDLEY_HAS_WARNING("-Wdeprecated-declarations")
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED _Pragma("clang diagnostic ignored \"-Wdeprecated-declarations\"")
-#elif HEDLEY_INTEL_VERSION_CHECK(13,0,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED _Pragma("warning(disable:1478 1786)")
-#elif HEDLEY_PGI_VERSION_CHECK(17,10,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED _Pragma("diag_suppress 1215,1444")
-#elif HEDLEY_GCC_VERSION_CHECK(4,3,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED _Pragma("GCC diagnostic ignored \"-Wdeprecated-declarations\"")
-#elif HEDLEY_MSVC_VERSION_CHECK(15,0,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED __pragma(warning(disable:4996))
-#elif HEDLEY_TI_VERSION_CHECK(8,0,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED _Pragma("diag_suppress 1291,1718")
-#elif HEDLEY_SUNPRO_VERSION_CHECK(5,13,0) && !defined(__cplusplus)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED _Pragma("error_messages(off,E_DEPRECATED_ATT,E_DEPRECATED_ATT_MESS)")
-#elif HEDLEY_SUNPRO_VERSION_CHECK(5,13,0) && defined(__cplusplus)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED _Pragma("error_messages(off,symdeprecated,symdeprecated2)")
-#elif HEDLEY_IAR_VERSION_CHECK(8,0,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED _Pragma("diag_suppress=Pe1444,Pe1215")
-#elif HEDLEY_PELLES_VERSION_CHECK(2,90,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED _Pragma("warn(disable:2241)")
-#else
-#  define HEDLEY_DIAGNOSTIC_DISABLE_DEPRECATED
-#endif
-
-#if defined(HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS)
-#  undef HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS
-#endif
-#if HEDLEY_HAS_WARNING("-Wunknown-pragmas")
-#  define HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS _Pragma("clang diagnostic ignored \"-Wunknown-pragmas\"")
-#elif HEDLEY_INTEL_VERSION_CHECK(13,0,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS _Pragma("warning(disable:161)")
-#elif HEDLEY_PGI_VERSION_CHECK(17,10,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS _Pragma("diag_suppress 1675")
-#elif HEDLEY_GCC_VERSION_CHECK(4,3,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS _Pragma("GCC diagnostic ignored \"-Wunknown-pragmas\"")
-#elif HEDLEY_MSVC_VERSION_CHECK(15,0,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS __pragma(warning(disable:4068))
-#elif HEDLEY_TI_VERSION_CHECK(8,0,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS _Pragma("diag_suppress 163")
-#elif HEDLEY_IAR_VERSION_CHECK(8,0,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS _Pragma("diag_suppress=Pe161")
-#else
-#  define HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS
-#endif
-
-#if defined(HEDLEY_DIAGNOSTIC_DISABLE_CAST_QUAL)
-#  undef HEDLEY_DIAGNOSTIC_DISABLE_CAST_QUAL
-#endif
-#if HEDLEY_HAS_WARNING("-Wcast-qual")
-#  define HEDLEY_DIAGNOSTIC_DISABLE_CAST_QUAL _Pragma("clang diagnostic ignored \"-Wcast-qual\"")
-#elif HEDLEY_INTEL_VERSION_CHECK(13,0,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_CAST_QUAL _Pragma("warning(disable:2203 2331)")
-#elif HEDLEY_GCC_VERSION_CHECK(3,0,0)
-#  define HEDLEY_DIAGNOSTIC_DISABLE_CAST_QUAL _Pragma("GCC diagnostic ignored \"-Wcast-qual\"")
-#else
-#  define HEDLEY_DIAGNOSTIC_DISABLE_CAST_QUAL
 #endif
 
 #if defined(HEDLEY_DEPRECATED)
@@ -3936,32 +3845,6 @@ nssv_RESTORE_WARNINGS()
 #  define HEDLEY_UNREACHABLE_RETURN(value) HEDLEY_UNREACHABLE()
 #endif
 
-#if defined(HEDLEY_ASSUME)
-#  undef HEDLEY_ASSUME
-#endif
-#if \
-  HEDLEY_MSVC_VERSION_CHECK(13,10,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0)
-#  define HEDLEY_ASSUME(expr) __assume(expr)
-#elif HEDLEY_HAS_BUILTIN(__builtin_assume)
-#  define HEDLEY_ASSUME(expr) __builtin_assume(expr)
-#elif HEDLEY_TI_VERSION_CHECK(6,0,0)
-#  if defined(__cplusplus)
-#    define HEDLEY_ASSUME(expr) std::_nassert(expr)
-#  else
-#    define HEDLEY_ASSUME(expr) _nassert(expr)
-#  endif
-#elif \
-  (HEDLEY_HAS_BUILTIN(__builtin_unreachable) && !defined(HEDLEY_ARM_VERSION)) || \
-  HEDLEY_GCC_VERSION_CHECK(4,5,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-  HEDLEY_IBM_VERSION_CHECK(13,1,5)
-#  define HEDLEY_ASSUME(expr) ((void) ((expr) ? 1 : (__builtin_unreachable(), 1)))
-#else
-#  define HEDLEY_ASSUME(expr) ((void) (expr))
-#endif
-
-
 HEDLEY_DIAGNOSTIC_PUSH
 #if \
   HEDLEY_HAS_WARNING("-Wvariadic-macros") || \
@@ -3985,119 +3868,6 @@ HEDLEY_DIAGNOSTIC_PUSH
 #  define HEDLEY_NON_NULL(...)
 #endif
 HEDLEY_DIAGNOSTIC_POP
-
-#if defined(HEDLEY_PRINTF_FORMAT)
-#  undef HEDLEY_PRINTF_FORMAT
-#endif
-#if defined(__MINGW32__) && HEDLEY_GCC_HAS_ATTRIBUTE(format,4,4,0) && !defined(__USE_MINGW_ANSI_STDIO)
-#  define HEDLEY_PRINTF_FORMAT(string_idx,first_to_check) __attribute__((__format__(ms_printf, string_idx, first_to_check)))
-#elif defined(__MINGW32__) && HEDLEY_GCC_HAS_ATTRIBUTE(format,4,4,0) && defined(__USE_MINGW_ANSI_STDIO)
-#  define HEDLEY_PRINTF_FORMAT(string_idx,first_to_check) __attribute__((__format__(gnu_printf, string_idx, first_to_check)))
-#elif \
-  HEDLEY_HAS_ATTRIBUTE(format) || \
-  HEDLEY_GCC_VERSION_CHECK(3,1,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-  HEDLEY_ARM_VERSION_CHECK(5,6,0) || \
-  HEDLEY_IBM_VERSION_CHECK(10,1,0) || \
-  HEDLEY_TI_VERSION_CHECK(8,0,0) || \
-  (HEDLEY_TI_VERSION_CHECK(7,3,0) && defined(__TI_GNU_ATTRIBUTE_SUPPORT__))
-#  define HEDLEY_PRINTF_FORMAT(string_idx,first_to_check) __attribute__((__format__(__printf__, string_idx, first_to_check)))
-#elif HEDLEY_PELLES_VERSION_CHECK(6,0,0)
-#  define HEDLEY_PRINTF_FORMAT(string_idx,first_to_check) __declspec(vaformat(printf,string_idx,first_to_check))
-#else
-#  define HEDLEY_PRINTF_FORMAT(string_idx,first_to_check)
-#endif
-
-#if defined(HEDLEY_CONSTEXPR)
-#  undef HEDLEY_CONSTEXPR
-#endif
-#if defined(__cplusplus)
-#  if __cplusplus >= 201103L
-#    define HEDLEY_CONSTEXPR constexpr
-#  endif
-#endif
-#if !defined(HEDLEY_CONSTEXPR)
-#  define HEDLEY_CONSTEXPR
-#endif
-
-#if defined(HEDLEY_PREDICT)
-#  undef HEDLEY_PREDICT
-#endif
-#if defined(HEDLEY_LIKELY)
-#  undef HEDLEY_LIKELY
-#endif
-#if defined(HEDLEY_UNLIKELY)
-#  undef HEDLEY_UNLIKELY
-#endif
-#if defined(HEDLEY_UNPREDICTABLE)
-#  undef HEDLEY_UNPREDICTABLE
-#endif
-#if HEDLEY_HAS_BUILTIN(__builtin_unpredictable)
-#  define HEDLEY_UNPREDICTABLE(expr) __builtin_unpredictable(!!(expr))
-#endif
-#if \
-  HEDLEY_HAS_BUILTIN(__builtin_expect_with_probability) || \
-  HEDLEY_GCC_VERSION_CHECK(9,0,0)
-#  define HEDLEY_PREDICT(expr, value, probability) __builtin_expect_with_probability(expr, value, probability)
-#  define HEDLEY_PREDICT_TRUE(expr, probability) __builtin_expect_with_probability(!!(expr), 1, probability)
-#  define HEDLEY_PREDICT_FALSE(expr, probability) __builtin_expect_with_probability(!!(expr), 0, probability)
-#  define HEDLEY_LIKELY(expr) __builtin_expect(!!(expr), 1)
-#  define HEDLEY_UNLIKELY(expr) __builtin_expect(!!(expr), 0)
-#  if !defined(HEDLEY_BUILTIN_UNPREDICTABLE)
-#    define HEDLEY_BUILTIN_UNPREDICTABLE(expr) __builtin_expect_with_probability(!!(expr), 1, 0.5)
-#  endif
-#elif \
-  HEDLEY_HAS_BUILTIN(__builtin_expect) || \
-  HEDLEY_GCC_VERSION_CHECK(3,0,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-  (HEDLEY_SUNPRO_VERSION_CHECK(5,15,0) && defined(__cplusplus)) || \
-  HEDLEY_ARM_VERSION_CHECK(4,1,0) || \
-  HEDLEY_IBM_VERSION_CHECK(10,1,0) || \
-  HEDLEY_TI_VERSION_CHECK(6,1,0) || \
-  HEDLEY_TINYC_VERSION_CHECK(0,9,27)
-#  define HEDLEY_PREDICT(expr, expected, probability) \
-  (((probability) >= 0.9) ? __builtin_expect(!!(expr), (expected)) : (((void) (expected)), !!(expr)))
-#  define HEDLEY_PREDICT_TRUE(expr, probability) \
-     (__extension__ ({ \
-       HEDLEY_CONSTEXPR double hedley_probability_ = (probability); \
-       ((hedley_probability_ >= 0.9) ? __builtin_expect(!!(expr), 1) : ((hedley_probability_ <= 0.1) ? __builtin_expect(!!(expr), 0) : !!(expr))); \
-     }))
-#  define HEDLEY_PREDICT_FALSE(expr, probability) \
-     (__extension__ ({ \
-       HEDLEY_CONSTEXPR double hedley_probability_ = (probability); \
-       ((hedley_probability_ >= 0.9) ? __builtin_expect(!!(expr), 0) : ((hedley_probability_ <= 0.1) ? __builtin_expect(!!(expr), 1) : !!(expr))); \
-     }))
-#  define HEDLEY_LIKELY(expr)   __builtin_expect(!!(expr), 1)
-#  define HEDLEY_UNLIKELY(expr) __builtin_expect(!!(expr), 0)
-#else
-#  define HEDLEY_PREDICT(expr, expected, probability) (((void) (expected)), !!(expr))
-#  define HEDLEY_PREDICT_TRUE(expr, probability) (!!(expr))
-#  define HEDLEY_PREDICT_FALSE(expr, probability) (!!(expr))
-#  define HEDLEY_LIKELY(expr) (!!(expr))
-#  define HEDLEY_UNLIKELY(expr) (!!(expr))
-#endif
-#if !defined(HEDLEY_UNPREDICTABLE)
-#  define HEDLEY_UNPREDICTABLE(expr) HEDLEY_PREDICT(expr, 1, 0.5)
-#endif
-
-#if defined(HEDLEY_MALLOC)
-#  undef HEDLEY_MALLOC
-#endif
-#if \
-  HEDLEY_HAS_ATTRIBUTE(malloc) || \
-  HEDLEY_GCC_VERSION_CHECK(3,1,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-  HEDLEY_SUNPRO_VERSION_CHECK(5,11,0) || \
-  HEDLEY_ARM_VERSION_CHECK(4,1,0) || \
-  HEDLEY_IBM_VERSION_CHECK(12,1,0) || \
-  HEDLEY_TI_VERSION_CHECK(8,0,0) || \
-  (HEDLEY_TI_VERSION_CHECK(7,3,0) && defined(__TI_GNU_ATTRIBUTE_SUPPORT__))
-#  define HEDLEY_MALLOC __attribute__((__malloc__))
-#elif HEDLEY_MSVC_VERSION_CHECK(14, 0, 0)
-#  define HEDLEY_MALLOC __declspec(restrict)
-#else
-#  define HEDLEY_MALLOC
-#endif
 
 #if defined(HEDLEY_PURE)
 #  undef HEDLEY_PURE
@@ -4137,520 +3907,8 @@ HEDLEY_DIAGNOSTIC_POP
 #  define HEDLEY_CONST HEDLEY_PURE
 #endif
 
-#if defined(HEDLEY_RESTRICT)
-#  undef HEDLEY_RESTRICT
-#endif
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) && !defined(__cplusplus)
-#  define HEDLEY_RESTRICT restrict
-#elif \
-  HEDLEY_GCC_VERSION_CHECK(3,1,0) || \
-  HEDLEY_MSVC_VERSION_CHECK(14,0,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-  HEDLEY_ARM_VERSION_CHECK(4,1,0) || \
-  HEDLEY_IBM_VERSION_CHECK(10,1,0) || \
-  HEDLEY_PGI_VERSION_CHECK(17,10,0) || \
-  HEDLEY_TI_VERSION_CHECK(8,0,0) || \
-  (HEDLEY_SUNPRO_VERSION_CHECK(5,14,0) && defined(__cplusplus)) || \
-  HEDLEY_IAR_VERSION_CHECK(8,0,0) || \
-  defined(__clang__)
-#  define HEDLEY_RESTRICT __restrict
-#elif HEDLEY_SUNPRO_VERSION_CHECK(5,3,0) && !defined(__cplusplus)
-#  define HEDLEY_RESTRICT _Restrict
-#else
-#  define HEDLEY_RESTRICT
-#endif
-
-#if defined(HEDLEY_INLINE)
-#  undef HEDLEY_INLINE
-#endif
-#if \
-  (defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)) || \
-  (defined(__cplusplus) && (__cplusplus >= 199711L))
-#  define HEDLEY_INLINE inline
-#elif \
-  defined(HEDLEY_GCC_VERSION) || \
-  HEDLEY_ARM_VERSION_CHECK(6,2,0)
-#  define HEDLEY_INLINE __inline__
-#elif \
-  HEDLEY_MSVC_VERSION_CHECK(12,0,0) || \
-  HEDLEY_ARM_VERSION_CHECK(4,1,0) || \
-  HEDLEY_TI_VERSION_CHECK(8,0,0)
-#  define HEDLEY_INLINE __inline
-#else
-#  define HEDLEY_INLINE
-#endif
-
-#if defined(HEDLEY_ALWAYS_INLINE)
-#  undef HEDLEY_ALWAYS_INLINE
-#endif
-#if \
-  HEDLEY_HAS_ATTRIBUTE(always_inline) || \
-  HEDLEY_GCC_VERSION_CHECK(4,0,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-  HEDLEY_SUNPRO_VERSION_CHECK(5,11,0) || \
-  HEDLEY_ARM_VERSION_CHECK(4,1,0) || \
-  HEDLEY_IBM_VERSION_CHECK(10,1,0) || \
-  HEDLEY_TI_VERSION_CHECK(8,0,0) || \
-  (HEDLEY_TI_VERSION_CHECK(7,3,0) && defined(__TI_GNU_ATTRIBUTE_SUPPORT__))
-#  define HEDLEY_ALWAYS_INLINE __attribute__((__always_inline__)) HEDLEY_INLINE
-#elif HEDLEY_MSVC_VERSION_CHECK(12,0,0)
-#  define HEDLEY_ALWAYS_INLINE __forceinline
-#elif HEDLEY_TI_VERSION_CHECK(7,0,0) && defined(__cplusplus)
-#  define HEDLEY_ALWAYS_INLINE _Pragma("FUNC_ALWAYS_INLINE;")
-#elif HEDLEY_IAR_VERSION_CHECK(8,0,0)
-#  define HEDLEY_ALWAYS_INLINE _Pragma("inline=forced")
-#else
-#  define HEDLEY_ALWAYS_INLINE HEDLEY_INLINE
-#endif
-
-#if defined(HEDLEY_NEVER_INLINE)
-#  undef HEDLEY_NEVER_INLINE
-#endif
-#if \
-  HEDLEY_HAS_ATTRIBUTE(noinline) || \
-  HEDLEY_GCC_VERSION_CHECK(4,0,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-  HEDLEY_SUNPRO_VERSION_CHECK(5,11,0) || \
-  HEDLEY_ARM_VERSION_CHECK(4,1,0) || \
-  HEDLEY_IBM_VERSION_CHECK(10,1,0) || \
-  HEDLEY_TI_VERSION_CHECK(8,0,0) || \
-  (HEDLEY_TI_VERSION_CHECK(7,3,0) && defined(__TI_GNU_ATTRIBUTE_SUPPORT__))
-#  define HEDLEY_NEVER_INLINE __attribute__((__noinline__))
-#elif HEDLEY_MSVC_VERSION_CHECK(13,10,0)
-#  define HEDLEY_NEVER_INLINE __declspec(noinline)
-#elif HEDLEY_PGI_VERSION_CHECK(10,2,0)
-#  define HEDLEY_NEVER_INLINE _Pragma("noinline")
-#elif HEDLEY_TI_VERSION_CHECK(6,0,0) && defined(__cplusplus)
-#  define HEDLEY_NEVER_INLINE _Pragma("FUNC_CANNOT_INLINE;")
-#elif HEDLEY_IAR_VERSION_CHECK(8,0,0)
-#  define HEDLEY_NEVER_INLINE _Pragma("inline=never")
-#elif HEDLEY_COMPCERT_VERSION_CHECK(3,2,0)
-#  define HEDLEY_NEVER_INLINE __attribute((noinline))
-#elif HEDLEY_PELLES_VERSION_CHECK(9,0,0)
-#  define HEDLEY_NEVER_INLINE __declspec(noinline)
-#else
-#  define HEDLEY_NEVER_INLINE
-#endif
-
-#if defined(HEDLEY_PRIVATE)
-#  undef HEDLEY_PRIVATE
-#endif
-#if defined(HEDLEY_PUBLIC)
-#  undef HEDLEY_PUBLIC
-#endif
-#if defined(HEDLEY_IMPORT)
-#  undef HEDLEY_IMPORT
-#endif
-#if defined(_WIN32) || defined(__CYGWIN__)
-#  define HEDLEY_PRIVATE
-#  define HEDLEY_PUBLIC   __declspec(dllexport)
-#  define HEDLEY_IMPORT   __declspec(dllimport)
-#else
-#  if \
-    HEDLEY_HAS_ATTRIBUTE(visibility) || \
-    HEDLEY_GCC_VERSION_CHECK(3,3,0) || \
-    HEDLEY_SUNPRO_VERSION_CHECK(5,11,0) || \
-    HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-    HEDLEY_ARM_VERSION_CHECK(4,1,0) || \
-    HEDLEY_IBM_VERSION_CHECK(13,1,0) || \
-    HEDLEY_TI_VERSION_CHECK(8,0,0) || \
-    (HEDLEY_TI_VERSION_CHECK(7,3,0) && defined(__TI_EABI__) && defined(__TI_GNU_ATTRIBUTE_SUPPORT__))
-#    define HEDLEY_PRIVATE __attribute__((__visibility__("hidden")))
-#    define HEDLEY_PUBLIC  __attribute__((__visibility__("default")))
-#  else
-#    define HEDLEY_PRIVATE
-#    define HEDLEY_PUBLIC
-#  endif
-#  define HEDLEY_IMPORT    extern
-#endif
-
-#if defined(HEDLEY_NO_THROW)
-#  undef HEDLEY_NO_THROW
-#endif
-#if \
-  HEDLEY_HAS_ATTRIBUTE(nothrow) || \
-  HEDLEY_GCC_VERSION_CHECK(3,3,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0)
-#  define HEDLEY_NO_THROW __attribute__((__nothrow__))
-#elif \
-  HEDLEY_MSVC_VERSION_CHECK(13,1,0) || \
-  HEDLEY_ARM_VERSION_CHECK(4,1,0)
-#  define HEDLEY_NO_THROW __declspec(nothrow)
-#else
-#  define HEDLEY_NO_THROW
-#endif
-
-#if defined(HEDLEY_FALL_THROUGH)
-#  undef HEDLEY_FALL_THROUGH
-#endif
-#if \
-     defined(__cplusplus) && \
-     (!defined(HEDLEY_SUNPRO_VERSION) || HEDLEY_SUNPRO_VERSION_CHECK(5,15,0)) && \
-     !defined(HEDLEY_PGI_VERSION)
-#  if \
-     (__cplusplus >= 201703L) || \
-     ((__cplusplus >= 201103L) && HEDLEY_HAS_CPP_ATTRIBUTE(fallthrough))
-#    define HEDLEY_FALL_THROUGH [[fallthrough]]
-#  elif (__cplusplus >= 201103L) && HEDLEY_HAS_CPP_ATTRIBUTE(clang::fallthrough)
-#    define HEDLEY_FALL_THROUGH [[clang::fallthrough]]
-#  elif (__cplusplus >= 201103L) && HEDLEY_GCC_VERSION_CHECK(7,0,0)
-#    define HEDLEY_FALL_THROUGH [[gnu::fallthrough]]
-#  endif
-#endif
-#if !defined(HEDLEY_FALL_THROUGH)
-#  if HEDLEY_GNUC_HAS_ATTRIBUTE(fallthrough,7,0,0) && !defined(HEDLEY_PGI_VERSION)
-#    define HEDLEY_FALL_THROUGH __attribute__((__fallthrough__))
-#  elif defined(__fallthrough) /* SAL */
-#    define HEDLEY_FALL_THROUGH __fallthrough
-#  else
-#    define HEDLEY_FALL_THROUGH
-#  endif
-#endif
-
-#if defined(HEDLEY_RETURNS_NON_NULL)
-#  undef HEDLEY_RETURNS_NON_NULL
-#endif
-#if \
-  HEDLEY_HAS_ATTRIBUTE(returns_nonnull) || \
-  HEDLEY_GCC_VERSION_CHECK(4,9,0)
-#  define HEDLEY_RETURNS_NON_NULL __attribute__((__returns_nonnull__))
-#elif defined(_Ret_notnull_) /* SAL */
-#  define HEDLEY_RETURNS_NON_NULL _Ret_notnull_
-#else
-#  define HEDLEY_RETURNS_NON_NULL
-#endif
-
-#if defined(HEDLEY_ARRAY_PARAM)
-#  undef HEDLEY_ARRAY_PARAM
-#endif
-#if \
-  defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) && \
-  !defined(__STDC_NO_VLA__) && \
-  !defined(__cplusplus) && \
-  !defined(HEDLEY_PGI_VERSION) && \
-  !defined(HEDLEY_TINYC_VERSION)
-#  define HEDLEY_ARRAY_PARAM(name) (name)
-#else
-#  define HEDLEY_ARRAY_PARAM(name)
-#endif
-
-#if defined(HEDLEY_IS_CONSTANT)
-#  undef HEDLEY_IS_CONSTANT
-#endif
-#if defined(HEDLEY_REQUIRE_CONSTEXPR)
-#  undef HEDLEY_REQUIRE_CONSTEXPR
-#endif
-/* Note the double-underscore. For internal use only; no API
- * guarantees! */
-#if defined(HEDLEY__IS_CONSTEXPR)
-#  undef HEDLEY__IS_CONSTEXPR
-#endif
-
-#if \
-  HEDLEY_HAS_BUILTIN(__builtin_constant_p) || \
-  HEDLEY_GCC_VERSION_CHECK(3,4,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-  HEDLEY_TINYC_VERSION_CHECK(0,9,19) || \
-  HEDLEY_ARM_VERSION_CHECK(4,1,0) || \
-  HEDLEY_IBM_VERSION_CHECK(13,1,0) || \
-  HEDLEY_TI_VERSION_CHECK(6,1,0) || \
-  HEDLEY_SUNPRO_VERSION_CHECK(5,10,0) || \
-  HEDLEY_CRAY_VERSION_CHECK(8,1,0)
-#  define HEDLEY_IS_CONSTANT(expr) __builtin_constant_p(expr)
-#endif
-#if !defined(__cplusplus)
-#  if \
-       HEDLEY_HAS_BUILTIN(__builtin_types_compatible_p) || \
-       HEDLEY_GCC_VERSION_CHECK(3,4,0) || \
-       HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-       HEDLEY_IBM_VERSION_CHECK(13,1,0) || \
-       HEDLEY_CRAY_VERSION_CHECK(8,1,0) || \
-       HEDLEY_ARM_VERSION_CHECK(5,4,0) || \
-       HEDLEY_TINYC_VERSION_CHECK(0,9,24)
-#    if defined(__INTPTR_TYPE__)
-#      define HEDLEY__IS_CONSTEXPR(expr) __builtin_types_compatible_p(__typeof__((1 ? (void*) ((__INTPTR_TYPE__) ((expr) * 0)) : (int*) 0)), int*)
-#    else
-#      include <stdint.h>
-#      define HEDLEY__IS_CONSTEXPR(expr) __builtin_types_compatible_p(__typeof__((1 ? (void*) ((intptr_t) ((expr) * 0)) : (int*) 0)), int*)
-#    endif
-#  elif \
-       (defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L) && !defined(HEDLEY_SUNPRO_VERSION) && !defined(HEDLEY_PGI_VERSION)) || \
-       HEDLEY_HAS_EXTENSION(c_generic_selections) || \
-       HEDLEY_GCC_VERSION_CHECK(4,9,0) || \
-       HEDLEY_INTEL_VERSION_CHECK(17,0,0) || \
-       HEDLEY_IBM_VERSION_CHECK(12,1,0) || \
-       HEDLEY_ARM_VERSION_CHECK(5,3,0)
-#    if defined(__INTPTR_TYPE__)
-#      define HEDLEY__IS_CONSTEXPR(expr) _Generic((1 ? (void*) ((__INTPTR_TYPE__) ((expr) * 0)) : (int*) 0), int*: 1, void*: 0)
-#    else
-#      include <stdint.h>
-#      define HEDLEY__IS_CONSTEXPR(expr) _Generic((1 ? (void*) ((intptr_t) * 0) : (int*) 0), int*: 1, void*: 0)
-#    endif
-#  elif \
-       defined(HEDLEY_GCC_VERSION) || \
-       defined(HEDLEY_INTEL_VERSION) || \
-       defined(HEDLEY_TINYC_VERSION) || \
-       defined(HEDLEY_TI_VERSION) || \
-       defined(__clang__)
-#    define HEDLEY__IS_CONSTEXPR(expr) ( \
-         sizeof(void) != \
-         sizeof(*( \
-           1 ? \
-             ((void*) ((expr) * 0L) ) : \
-             ((struct { char v[sizeof(void) * 2]; } *) 1) \
-           ) \
-         ) \
-       )
-#  endif
-#endif
-#if defined(HEDLEY__IS_CONSTEXPR)
-#  if !defined(HEDLEY_IS_CONSTANT)
-#    define HEDLEY_IS_CONSTANT(expr) HEDLEY__IS_CONSTEXPR(expr)
-#  endif
-#  define HEDLEY_REQUIRE_CONSTEXPR(expr) (HEDLEY__IS_CONSTEXPR(expr) ? (expr) : (-1))
-#else
-#  if !defined(HEDLEY_IS_CONSTANT)
-#    define HEDLEY_IS_CONSTANT(expr) (0)
-#  endif
-#  define HEDLEY_REQUIRE_CONSTEXPR(expr) (expr)
-#endif
-
-#if defined(HEDLEY_BEGIN_C_DECLS)
-#  undef HEDLEY_BEGIN_C_DECLS
-#endif
-#if defined(HEDLEY_END_C_DECLS)
-#  undef HEDLEY_END_C_DECLS
-#endif
-#if defined(HEDLEY_C_DECL)
-#  undef HEDLEY_C_DECL
-#endif
-#if defined(__cplusplus)
-#  define HEDLEY_BEGIN_C_DECLS extern "C" {
-#  define HEDLEY_END_C_DECLS }
-#  define HEDLEY_C_DECL extern "C"
-#else
-#  define HEDLEY_BEGIN_C_DECLS
-#  define HEDLEY_END_C_DECLS
-#  define HEDLEY_C_DECL
-#endif
-
-#if defined(HEDLEY_STATIC_ASSERT)
-#  undef HEDLEY_STATIC_ASSERT
-#endif
-#if \
-  !defined(__cplusplus) && ( \
-      (defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)) || \
-      HEDLEY_HAS_FEATURE(c_static_assert) || \
-      HEDLEY_GCC_VERSION_CHECK(6,0,0) || \
-      HEDLEY_INTEL_VERSION_CHECK(13,0,0) || \
-      defined(_Static_assert) \
-    )
-#  define HEDLEY_STATIC_ASSERT(expr, message) _Static_assert(expr, message)
-#elif \
-  (defined(__cplusplus) && (__cplusplus >= 201703L)) || \
-  HEDLEY_MSVC_VERSION_CHECK(16,0,0) || \
-  (defined(__cplusplus) && HEDLEY_TI_VERSION_CHECK(8,3,0))
-#  define HEDLEY_STATIC_ASSERT(expr, message) static_assert(expr, message)
-#elif defined(__cplusplus) && (__cplusplus >= 201103L)
-#  define HEDLEY_STATIC_ASSERT(expr, message) static_assert(expr)
-#else
-#  define HEDLEY_STATIC_ASSERT(expr, message)
-#endif
-
-#if defined(HEDLEY_CONST_CAST)
-#  undef HEDLEY_CONST_CAST
-#endif
-#if defined(__cplusplus)
-#  define HEDLEY_CONST_CAST(T, expr) (const_cast<T>(expr))
-#elif \
-  HEDLEY_HAS_WARNING("-Wcast-qual") || \
-  HEDLEY_GCC_VERSION_CHECK(4,6,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0)
-#  define HEDLEY_CONST_CAST(T, expr) (__extension__ ({ \
-      HEDLEY_DIAGNOSTIC_PUSH \
-      HEDLEY_DIAGNOSTIC_DISABLE_CAST_QUAL \
-      ((T) (expr)); \
-      HEDLEY_DIAGNOSTIC_POP \
-    }))
-#else
-#  define HEDLEY_CONST_CAST(T, expr) ((T) (expr))
-#endif
-
-#if defined(HEDLEY_REINTERPRET_CAST)
-#  undef HEDLEY_REINTERPRET_CAST
-#endif
-#if defined(__cplusplus)
-#  define HEDLEY_REINTERPRET_CAST(T, expr) (reinterpret_cast<T>(expr))
-#else
-#  define HEDLEY_REINTERPRET_CAST(T, expr) (*((T*) &(expr)))
-#endif
-
-#if defined(HEDLEY_STATIC_CAST)
-#  undef HEDLEY_STATIC_CAST
-#endif
-#if defined(__cplusplus)
-#  define HEDLEY_STATIC_CAST(T, expr) (static_cast<T>(expr))
-#else
-#  define HEDLEY_STATIC_CAST(T, expr) ((T) (expr))
-#endif
-
-#if defined(HEDLEY_CPP_CAST)
-#  undef HEDLEY_CPP_CAST
-#endif
-#if defined(__cplusplus)
-#  define HEDLEY_CPP_CAST(T, expr) static_cast<T>(expr)
-#else
-#  define HEDLEY_CPP_CAST(T, expr) (expr)
-#endif
-
-#if defined(HEDLEY_MESSAGE)
-#  undef HEDLEY_MESSAGE
-#endif
-#if HEDLEY_HAS_WARNING("-Wunknown-pragmas")
-#  define HEDLEY_MESSAGE(msg) \
-  HEDLEY_DIAGNOSTIC_PUSH \
-  HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS \
-  HEDLEY_PRAGMA(message msg) \
-  HEDLEY_DIAGNOSTIC_POP
-#elif \
-  HEDLEY_GCC_VERSION_CHECK(4,4,0) || \
-  HEDLEY_INTEL_VERSION_CHECK(13,0,0)
-#  define HEDLEY_MESSAGE(msg) HEDLEY_PRAGMA(message msg)
-#elif HEDLEY_CRAY_VERSION_CHECK(5,0,0)
-#  define HEDLEY_MESSAGE(msg) HEDLEY_PRAGMA(_CRI message msg)
-#elif HEDLEY_IAR_VERSION_CHECK(8,0,0)
-#  define HEDLEY_MESSAGE(msg) HEDLEY_PRAGMA(message(msg))
-#elif HEDLEY_PELLES_VERSION_CHECK(2,0,0)
-#  define HEDLEY_MESSAGE(msg) HEDLEY_PRAGMA(message(msg))
-#else
-#  define HEDLEY_MESSAGE(msg)
-#endif
-
-#if defined(HEDLEY_WARNING)
-#  undef HEDLEY_WARNING
-#endif
-#if HEDLEY_HAS_WARNING("-Wunknown-pragmas")
-#  define HEDLEY_WARNING(msg) \
-  HEDLEY_DIAGNOSTIC_PUSH \
-  HEDLEY_DIAGNOSTIC_DISABLE_UNKNOWN_PRAGMAS \
-  HEDLEY_PRAGMA(clang warning msg) \
-  HEDLEY_DIAGNOSTIC_POP
-#elif \
-  HEDLEY_GCC_VERSION_CHECK(4,8,0) || \
-  HEDLEY_PGI_VERSION_CHECK(18,4,0)
-#  define HEDLEY_WARNING(msg) HEDLEY_PRAGMA(GCC warning msg)
-#elif HEDLEY_MSVC_VERSION_CHECK(15,0,0)
-#  define HEDLEY_WARNING(msg) HEDLEY_PRAGMA(message(msg))
-#else
-#  define HEDLEY_WARNING(msg) HEDLEY_MESSAGE(msg)
-#endif
-
-#if defined(HEDLEY_REQUIRE_MSG)
-#  undef HEDLEY_REQUIRE_MSG
-#endif
-#if HEDLEY_HAS_ATTRIBUTE(diagnose_if)
-#  if HEDLEY_HAS_WARNING("-Wgcc-compat")
-#    define HEDLEY_REQUIRE_MSG(expr, msg) \
-  HEDLEY_DIAGNOSTIC_PUSH \
-  _Pragma("clang diagnostic ignored \"-Wgcc-compat\"") \
-  __attribute__((__diagnose_if__(!(expr), msg, "error"))) \
-  HEDLEY_DIAGNOSTIC_POP
-#  else
-#    define HEDLEY_REQUIRE_MSG(expr, msg) __attribute__((__diagnose_if__(!(expr), msg, "error")))
-#  endif
-#else
-#  define HEDLEY_REQUIRE_MSG(expr, msg)
-#endif
-
-#if defined(HEDLEY_REQUIRE)
-#  undef HEDLEY_REQUIRE
-#endif
-#define HEDLEY_REQUIRE(expr) HEDLEY_REQUIRE_MSG(expr, #expr)
-
-#if defined(HEDLEY_FLAGS)
-#  undef HEDLEY_FLAGS
-#endif
-#if HEDLEY_HAS_ATTRIBUTE(flag_enum)
-#  define HEDLEY_FLAGS __attribute__((__flag_enum__))
-#endif
-
-#if defined(HEDLEY_FLAGS_CAST)
-#  undef HEDLEY_FLAGS_CAST
-#endif
-#if HEDLEY_INTEL_VERSION_CHECK(19,0,0)
-#  define HEDLEY_FLAGS_CAST(T, expr) (__extension__ ({ \
-  HEDLEY_DIAGNOSTIC_PUSH \
-      _Pragma("warning(disable:188)") \
-      ((T) (expr)); \
-      HEDLEY_DIAGNOSTIC_POP \
-    }))
-#else
-#  define HEDLEY_FLAGS_CAST(T, expr) HEDLEY_STATIC_CAST(T, expr)
-#endif
-
-/* Remaining macros are deprecated. */
-
-#if defined(HEDLEY_GCC_NOT_CLANG_VERSION_CHECK)
-#  undef HEDLEY_GCC_NOT_CLANG_VERSION_CHECK
-#endif
-#if defined(__clang__)
-#  define HEDLEY_GCC_NOT_CLANG_VERSION_CHECK(major,minor,patch) (0)
-#else
-#  define HEDLEY_GCC_NOT_CLANG_VERSION_CHECK(major,minor,patch) HEDLEY_GCC_VERSION_CHECK(major,minor,patch)
-#endif
-
-#if defined(HEDLEY_CLANG_HAS_ATTRIBUTE)
-#  undef HEDLEY_CLANG_HAS_ATTRIBUTE
-#endif
-#define HEDLEY_CLANG_HAS_ATTRIBUTE(attribute) HEDLEY_HAS_ATTRIBUTE(attribute)
-
-#if defined(HEDLEY_CLANG_HAS_CPP_ATTRIBUTE)
-#  undef HEDLEY_CLANG_HAS_CPP_ATTRIBUTE
-#endif
-#define HEDLEY_CLANG_HAS_CPP_ATTRIBUTE(attribute) HEDLEY_HAS_CPP_ATTRIBUTE(attribute)
-
-#if defined(HEDLEY_CLANG_HAS_BUILTIN)
-#  undef HEDLEY_CLANG_HAS_BUILTIN
-#endif
-#define HEDLEY_CLANG_HAS_BUILTIN(builtin) HEDLEY_HAS_BUILTIN(builtin)
-
-#if defined(HEDLEY_CLANG_HAS_FEATURE)
-#  undef HEDLEY_CLANG_HAS_FEATURE
-#endif
-#define HEDLEY_CLANG_HAS_FEATURE(feature) HEDLEY_HAS_FEATURE(feature)
-
-#if defined(HEDLEY_CLANG_HAS_EXTENSION)
-#  undef HEDLEY_CLANG_HAS_EXTENSION
-#endif
-#define HEDLEY_CLANG_HAS_EXTENSION(extension) HEDLEY_HAS_EXTENSION(extension)
-
-#if defined(HEDLEY_CLANG_HAS_DECLSPEC_DECLSPEC_ATTRIBUTE)
-#  undef HEDLEY_CLANG_HAS_DECLSPEC_DECLSPEC_ATTRIBUTE
-#endif
-#define HEDLEY_CLANG_HAS_DECLSPEC_ATTRIBUTE(attribute) HEDLEY_HAS_DECLSPEC_ATTRIBUTE(attribute)
-
-#if defined(HEDLEY_CLANG_HAS_WARNING)
-#  undef HEDLEY_CLANG_HAS_WARNING
-#endif
-#define HEDLEY_CLANG_HAS_WARNING(warning) HEDLEY_HAS_WARNING(warning)
 
 #endif /* !defined(HEDLEY_VERSION) || (HEDLEY_VERSION < X) */
-
-
-/**
- *  @def IF_CONSTEXPR
- *  Expands to `if constexpr` in C++17 and `if` otherwise
- *
- *  @def CONSTEXPR_VALUE
- *  Expands to `constexpr` in C++17 and `const` otherwise.
- *  Mainly used for global variables.
- *
- *  @def CONSTEXPR
- *  Expands to `constexpr` in decent compilers and `inline` otherwise.
- *  Intended for functions and methods.
- */
-
-#define STATIC_ASSERT(x) static_assert(x, "Assertion failed")
 
 #if CMAKE_CXX_STANDARD == 17 || __cplusplus >= 201703L
 #define CSV_HAS_CXX17
@@ -4660,46 +3918,12 @@ HEDLEY_DIAGNOSTIC_POP
 #define CSV_HAS_CXX14
 #endif
 
-#ifdef CSV_HAS_CXX17
-    #define IF_CONSTEXPR if constexpr
-    #define CONSTEXPR_VALUE constexpr
-
-    #define CONSTEXPR_17 constexpr
-#else
-    #define IF_CONSTEXPR if
-    #define CONSTEXPR_VALUE const
-
-    #define CONSTEXPR_17 inline
-#endif
-
 #ifdef CSV_HAS_CXX14
     template<bool B, class T = void>
     using enable_if_t = std::enable_if_t<B, T>;
-
-    #define CONSTEXPR_14 constexpr
-    #define CONSTEXPR_VALUE_14 constexpr
 #else
     template<bool B, class T = void>
     using enable_if_t = typename std::enable_if<B, T>::type;
-
-    #define CONSTEXPR_14 inline
-    #define CONSTEXPR_VALUE_14 const
-#endif
-
-    // Resolves g++ bug with regard to constexpr methods
-    // See: https://stackoverflow.com/questions/36489369/constexpr-non-static-member-function-with-non-constexpr-constructor-gcc-clang-d
-#if defined __GNUC__ && !defined __clang__
-    #if (__GNUC__ >= 7 &&__GNUC_MINOR__ >= 2) || (__GNUC__ >= 8)
-        #define CONSTEXPR constexpr
-    #endif
-    #else
-        #ifdef CSV_HAS_CXX17
-        #define CONSTEXPR constexpr
-    #endif
-#endif
-
-#ifndef CONSTEXPR
-#define CONSTEXPR inline
 #endif
 
 namespace {
@@ -4761,22 +3985,22 @@ constexpr ParseFlags quote_escape_flag(ParseFlags flag, bool quote_escape) noexc
 
 // Assumed to be true by parsing functions: allows for testing
 // if an item is DELIMITER or NEWLINE with a >= statement
-STATIC_ASSERT(ParseFlags::DELIMITER < ParseFlags::NEWLINE);
+static_assert(ParseFlags::DELIMITER < ParseFlags::NEWLINE);
 
 /** Optimizations for reducing branching in parsing loop
  *
  *  Idea: The meaning of all non-quote characters changes depending
  *  on whether or not the parser is in a quote-escaped mode (0 or 1)
  */
-STATIC_ASSERT(quote_escape_flag(ParseFlags::NOT_SPECIAL, false) == ParseFlags::NOT_SPECIAL);
-STATIC_ASSERT(quote_escape_flag(ParseFlags::QUOTE, false) == ParseFlags::QUOTE);
-STATIC_ASSERT(quote_escape_flag(ParseFlags::DELIMITER, false) == ParseFlags::DELIMITER);
-STATIC_ASSERT(quote_escape_flag(ParseFlags::NEWLINE, false) == ParseFlags::NEWLINE);
+static_assert(quote_escape_flag(ParseFlags::NOT_SPECIAL, false) == ParseFlags::NOT_SPECIAL);
+static_assert(quote_escape_flag(ParseFlags::QUOTE, false) == ParseFlags::QUOTE);
+static_assert(quote_escape_flag(ParseFlags::DELIMITER, false) == ParseFlags::DELIMITER);
+static_assert(quote_escape_flag(ParseFlags::NEWLINE, false) == ParseFlags::NEWLINE);
 
-STATIC_ASSERT(quote_escape_flag(ParseFlags::NOT_SPECIAL, true) == ParseFlags::NOT_SPECIAL);
-STATIC_ASSERT(quote_escape_flag(ParseFlags::QUOTE, true) == ParseFlags::QUOTE_ESCAPE_QUOTE);
-STATIC_ASSERT(quote_escape_flag(ParseFlags::DELIMITER, true) == ParseFlags::NOT_SPECIAL);
-STATIC_ASSERT(quote_escape_flag(ParseFlags::NEWLINE, true) == ParseFlags::NOT_SPECIAL);
+static_assert(quote_escape_flag(ParseFlags::NOT_SPECIAL, true) == ParseFlags::NOT_SPECIAL);
+static_assert(quote_escape_flag(ParseFlags::QUOTE, true) == ParseFlags::QUOTE_ESCAPE_QUOTE);
+static_assert(quote_escape_flag(ParseFlags::DELIMITER, true) == ParseFlags::NOT_SPECIAL);
+static_assert(quote_escape_flag(ParseFlags::NEWLINE, true) == ParseFlags::NOT_SPECIAL);
 
 /** An array which maps ASCII chars to a parsing flag */
 using ParseFlagMap = std::array<ParseFlags, 256>;
@@ -4899,13 +4123,13 @@ public:
     }
 
     /** Tells the parser how to handle columns of a different length than the others */
-    CONSTEXPR_14 CSVFormat& variable_columns(VariableColumnPolicy policy = VariableColumnPolicy::IGNORE_ROW) {
+    constexpr CSVFormat& variable_columns(VariableColumnPolicy policy = VariableColumnPolicy::IGNORE_ROW) {
         this->variable_column_policy = policy;
         return *this;
     }
 
     /** Tells the parser how to handle columns of a different length than the others */
-    CONSTEXPR_14 CSVFormat& variable_columns(bool policy) {
+    constexpr CSVFormat& variable_columns(bool policy) {
         this->variable_column_policy = (VariableColumnPolicy)policy;
         return *this;
     }
@@ -4920,12 +4144,12 @@ public:
         return this->possible_delimiters.at(0);
     }
 
-    CONSTEXPR bool is_quoting_enabled() const { return !this->no_quote; }
-    CONSTEXPR char get_quote_char() const { return this->quote_char; }
-    CONSTEXPR int get_header() const { return this->header; }
+    constexpr bool is_quoting_enabled() const { return !this->no_quote; }
+    constexpr char get_quote_char() const { return this->quote_char; }
+    constexpr int get_header() const { return this->header; }
     std::vector<char> get_possible_delims() const { return this->possible_delimiters; }
     std::vector<char> get_trim_chars() const { return this->trim_chars; }
-    CONSTEXPR VariableColumnPolicy get_variable_column_policy() const { return this->variable_column_policy; }
+    constexpr VariableColumnPolicy get_variable_column_policy() const { return this->variable_column_policy; }
     #endif
 
     /** CSVFormat for guessing the delimiter */
@@ -4994,7 +4218,7 @@ static_assert(DataType::CSV_INT64 < DataType::CSV_DOUBLE, "Integer types should 
 
 /** Compute 10 to the power of n */
 template<typename T>
-HEDLEY_CONST CONSTEXPR_14
+HEDLEY_CONST constexpr
 long double pow10(const T& n) noexcept {
     long double multiplicand = n > 0 ? 10 : 0.1,
         ret = 1;
@@ -5011,7 +4235,7 @@ long double pow10(const T& n) noexcept {
 
 /** Compute 10 to the power of n */
 template<>
-HEDLEY_CONST CONSTEXPR_14
+HEDLEY_CONST constexpr
 long double pow10(const unsigned& n) noexcept {
     long double multiplicand = n > 0 ? 10 : 0.1,
         ret = 1;
@@ -5058,7 +4282,7 @@ inline DataType type_num<std::nullptr_t>() { return DataType::CSV_NULL; }
 template<> [[maybe_unused]]
 inline DataType type_num<std::string>() { return DataType::CSV_STRING; }
 
-CONSTEXPR_14 DataType data_type(std::string_view in, long double* const out = nullptr);
+constexpr DataType data_type(std::string_view in, long double* const out = nullptr);
 #endif
 
 /** Given a byte size, return the largest number than can be stored in
@@ -5068,27 +4292,27 @@ CONSTEXPR_14 DataType data_type(std::string_view in, long double* const out = nu
  *  byte sizes
  */
 template<size_t Bytes>
-CONSTEXPR_14 long double get_int_max() {
+constexpr long double get_int_max() {
     static_assert(Bytes == 1 || Bytes == 2 || Bytes == 4 || Bytes == 8,
         "Bytes must be a power of 2 below 8.");
 
-    IF_CONSTEXPR (sizeof(signed char) == Bytes) {
+    if constexpr (sizeof(signed char) == Bytes) {
         return (long double)std::numeric_limits<signed char>::max();
     }
 
-    IF_CONSTEXPR (sizeof(short) == Bytes) {
+    if constexpr (sizeof(short) == Bytes) {
         return (long double)std::numeric_limits<short>::max();
     }
 
-    IF_CONSTEXPR (sizeof(int) == Bytes) {
+    if constexpr (sizeof(int) == Bytes) {
         return (long double)std::numeric_limits<int>::max();
     }
 
-    IF_CONSTEXPR (sizeof(long int) == Bytes) {
+    if constexpr (sizeof(long int) == Bytes) {
         return (long double)std::numeric_limits<long int>::max();
     }
 
-    IF_CONSTEXPR (sizeof(long long int) == Bytes) {
+    if constexpr (sizeof(long long int) == Bytes) {
         return (long double)std::numeric_limits<long long int>::max();
     }
 
@@ -5099,27 +4323,27 @@ CONSTEXPR_14 long double get_int_max() {
  *  an unsigned integer of that size
  */
 template<size_t Bytes>
-CONSTEXPR_14 long double get_uint_max() {
+constexpr long double get_uint_max() {
     static_assert(Bytes == 1 || Bytes == 2 || Bytes == 4 || Bytes == 8,
         "Bytes must be a power of 2 below 8.");
 
-    IF_CONSTEXPR(sizeof(unsigned char) == Bytes) {
+    if constexpr(sizeof(unsigned char) == Bytes) {
         return (long double)std::numeric_limits<unsigned char>::max();
     }
 
-    IF_CONSTEXPR(sizeof(unsigned short) == Bytes) {
+    if constexpr(sizeof(unsigned short) == Bytes) {
         return (long double)std::numeric_limits<unsigned short>::max();
     }
 
-    IF_CONSTEXPR(sizeof(unsigned int) == Bytes) {
+    if constexpr(sizeof(unsigned int) == Bytes) {
         return (long double)std::numeric_limits<unsigned int>::max();
     }
 
-    IF_CONSTEXPR(sizeof(unsigned long int) == Bytes) {
+    if constexpr(sizeof(unsigned long int) == Bytes) {
         return (long double)std::numeric_limits<unsigned long int>::max();
     }
 
-    IF_CONSTEXPR(sizeof(unsigned long long int) == Bytes) {
+    if constexpr(sizeof(unsigned long long int) == Bytes) {
         return (long double)std::numeric_limits<unsigned long long int>::max();
     }
 
@@ -5127,38 +4351,38 @@ CONSTEXPR_14 long double get_uint_max() {
 }
 
 /** Largest number that can be stored in a 8-bit integer */
-CONSTEXPR_VALUE_14 long double CSV_INT8_MAX = get_int_max<1>();
+constexpr long double CSV_INT8_MAX = get_int_max<1>();
 
 /** Largest number that can be stored in a 16-bit integer */
-CONSTEXPR_VALUE_14 long double CSV_INT16_MAX = get_int_max<2>();
+constexpr long double CSV_INT16_MAX = get_int_max<2>();
 
 /** Largest number that can be stored in a 32-bit integer */
-CONSTEXPR_VALUE_14 long double CSV_INT32_MAX = get_int_max<4>();
+constexpr long double CSV_INT32_MAX = get_int_max<4>();
 
 /** Largest number that can be stored in a 64-bit integer */
-CONSTEXPR_VALUE_14 long double CSV_INT64_MAX = get_int_max<8>();
+constexpr long double CSV_INT64_MAX = get_int_max<8>();
 
 /** Largest number that can be stored in a 8-bit unsigned integer */
 [[maybe_unused]]
-CONSTEXPR_VALUE_14 long double CSV_UINT8_MAX = get_uint_max<1>();
+constexpr long double CSV_UINT8_MAX = get_uint_max<1>();
 
 /** Largest number that can be stored in a 16-bit unsigned integer */
 [[maybe_unused]]
-CONSTEXPR_VALUE_14 long double CSV_UINT16_MAX = get_uint_max<2>();
+constexpr long double CSV_UINT16_MAX = get_uint_max<2>();
 
 /** Largest number that can be stored in a 32-bit unsigned integer */
 [[maybe_unused]]
-CONSTEXPR_VALUE_14 long double CSV_UINT32_MAX = get_uint_max<4>();
+constexpr long double CSV_UINT32_MAX = get_uint_max<4>();
 
 /** Largest number that can be stored in a 64-bit unsigned integer */
 [[maybe_unused]]
-CONSTEXPR_VALUE_14 long double CSV_UINT64_MAX = get_uint_max<8>();
+constexpr long double CSV_UINT64_MAX = get_uint_max<8>();
 
 /** Given a pointer to the start of what is start of
  *  the exponential part of a number written (possibly) in scientific notation
  *  parse the exponent
  */
-HEDLEY_PRIVATE CONSTEXPR_14
+static constexpr
 DataType _process_potential_exponential(
     std::string_view exponential_part,
     const long double& coeff,
@@ -5178,7 +4402,7 @@ DataType _process_potential_exponential(
 /** Given the absolute value of an integer, determine what numeric type
  *  it fits in
  */
-HEDLEY_PRIVATE HEDLEY_PURE CONSTEXPR_14
+static constexpr
 DataType _determine_integral_type(const long double& number) noexcept {
     // We can assume number is always non-negative
     assert(number >= 0);
@@ -5206,7 +4430,7 @@ DataType _determine_integral_type(const long double& number) noexcept {
  *  @param[out] out Pointer to long double where results of numeric parsing
  *                  get stored
  */
-CONSTEXPR_14
+constexpr
 DataType data_type(std::string_view in, long double *const out) {
   // Empty string --> NULL
   if (in.size() == 0)
@@ -5468,20 +4692,20 @@ public:
    *
    */
   template <typename T = std::string> T get() {
-    IF_CONSTEXPR(std::is_arithmetic<T>::value) {
+    if constexpr(std::is_arithmetic<T>::value) {
       // Note: this->type() also converts the CSV value to float
       if (this->type() <= DataType::CSV_STRING) {
         throw std::runtime_error(ERROR_NAN);
       }
     }
 
-    IF_CONSTEXPR(std::is_integral<T>::value) {
+    if constexpr(std::is_integral<T>::value) {
       // Note: this->is_float() also converts the CSV value to float
       if (this->is_float()) {
         throw std::runtime_error(ERROR_FLOAT_TO_INT);
       }
 
-      IF_CONSTEXPR(std::is_unsigned<T>::value) {
+      if constexpr(std::is_unsigned<T>::value) {
         if (this->value < 0) {
           throw std::runtime_error(ERROR_NEG_TO_UNSIGNED);
         }
@@ -5489,8 +4713,8 @@ public:
     }
 
     // Allow fallthrough from previous if branch
-    IF_CONSTEXPR(!std::is_floating_point<T>::value) {
-      IF_CONSTEXPR(std::is_unsigned<T>::value) {
+    if constexpr(!std::is_floating_point<T>::value) {
+      if constexpr(std::is_unsigned<T>::value) {
         // Quick hack to perform correct unsigned integer boundary checks
         if (this->value > get_uint_max<sizeof(T)>()) {
           throw std::runtime_error(ERROR_OVERFLOW);
@@ -5520,7 +4744,7 @@ public:
    *  @sa      csv::CSVField::operator==(const char * other)
    *  @sa      csv::CSVField::operator==(std::string_view other)
    */
-  template <typename T> CONSTEXPR_14 bool operator==(T other) const noexcept {
+  template <typename T> constexpr bool operator==(T other) const noexcept {
     static_assert(std::is_arithmetic<T>::value, "T should be a numeric value.");
 
     if (this->_type != DataType::UNKNOWN) {
@@ -5540,30 +4764,30 @@ public:
   }
 
   /** Return a string view over the field's contents */
-  CONSTEXPR std::string_view get_sv() const noexcept { return this->sv; }
+  constexpr std::string_view get_sv() const noexcept { return this->sv; }
 
   /** Returns true if field is an empty string or string of whitespace
    * characters */
-  CONSTEXPR_14 bool is_null() noexcept { return type() == DataType::CSV_NULL; }
+  constexpr bool is_null() noexcept { return type() == DataType::CSV_NULL; }
 
   /** Returns true if field is a non-numeric, non-empty string */
-  CONSTEXPR_14 bool is_str() noexcept { return type() == DataType::CSV_STRING; }
+  constexpr bool is_str() noexcept { return type() == DataType::CSV_STRING; }
 
   /** Returns true if field is an integer or float */
-  CONSTEXPR_14 bool is_num() noexcept { return type() >= DataType::CSV_INT8; }
+  constexpr bool is_num() noexcept { return type() >= DataType::CSV_INT8; }
 
   /** Returns true if field is an integer */
-  CONSTEXPR_14 bool is_int() noexcept {
+  constexpr bool is_int() noexcept {
     return (type() >= DataType::CSV_INT8) && (type() <= DataType::CSV_INT64);
   }
 
   /** Returns true if field is a floating point value */
-  CONSTEXPR_14 bool is_float() noexcept {
+  constexpr bool is_float() noexcept {
     return type() == DataType::CSV_DOUBLE;
   };
 
   /** Return the type of the underlying CSV data */
-  CONSTEXPR_14 DataType type() noexcept {
+  constexpr DataType type() noexcept {
     this->get_value();
     return _type;
   }
@@ -5572,7 +4796,7 @@ public:
   long double value = 0;    /**< Cached numeric value */
   std::string_view sv = ""; /**< A pointer to this field's text */
   DataType _type = DataType::UNKNOWN; /**< Cached data type value */
-  CONSTEXPR_14 void get_value() noexcept {
+  constexpr void get_value() noexcept {
     /* Check to see if value has been cached previously, if not
      * evaluate it
      */
@@ -5595,10 +4819,10 @@ public:
       : data(_data), data_start(_data_start), fields_start(_field_bounds) {}
 
   /** Indicates whether row is empty or not */
-  CONSTEXPR bool empty() const noexcept { return this->size() == 0; }
+  constexpr bool empty() const noexcept { return this->size() == 0; }
 
   /** Return the number of fields in this row */
-  CONSTEXPR size_t size() const noexcept { return row_length; }
+  constexpr size_t size() const noexcept { return row_length; }
 
   /** @name Value Retrieval */
   ///@{
@@ -5652,11 +4876,11 @@ public:
         iterator operator-(difference_type n) const;
 
         /** Two iterators are equal if they point to the same field */
-        CONSTEXPR bool operator==(const iterator& other) const noexcept {
+        constexpr bool operator==(const iterator& other) const noexcept {
             return this->i == other.i;
         };
 
-        CONSTEXPR bool operator!=(const iterator& other) const noexcept { return !operator==(other); }
+        constexpr bool operator!=(const iterator& other) const noexcept { return !operator==(other); }
 
 #ifndef NDEBUG
         friend CSVRow;
@@ -5709,13 +4933,13 @@ inline std::string CSVField::get<std::string>() {
  *           CSVRow is still alive.
  */
 template<>
-CONSTEXPR_14 std::string_view CSVField::get<std::string_view>() {
+constexpr std::string_view CSVField::get<std::string_view>() {
     return this->sv;
 }
 
 /** Retrieve this field's value as a long double */
 template<>
-CONSTEXPR_14 long double CSVField::get<long double>() {
+constexpr long double CSVField::get<long double>() {
     if (!is_num())
         throw std::runtime_error(ERROR_NAN);
 
@@ -5724,14 +4948,14 @@ CONSTEXPR_14 long double CSVField::get<long double>() {
 
 /** Compares the contents of this field to a string */
 template<>
-CONSTEXPR bool CSVField::operator==(const char * other) const noexcept
+constexpr bool CSVField::operator==(const char * other) const noexcept
 {
     return this->sv == other;
 }
 
 /** Compares the contents of this field to a string */
 template<>
-CONSTEXPR bool CSVField::operator==(std::string_view other) const noexcept
+constexpr bool CSVField::operator==(std::string_view other) const noexcept
 {
     return this->sv == other;
 }
@@ -5747,7 +4971,7 @@ static inline std::ostream &operator<<(std::ostream &os,
  *  ASCII number for a character and, v[i + 128] labels it according to
  *  the CSVReader::ParseFlags enum
  */
-HEDLEY_CONST CONSTEXPR_17 ParseFlagMap make_parse_flags(char delimiter) {
+HEDLEY_CONST constexpr ParseFlagMap make_parse_flags(char delimiter) {
     std::array<ParseFlags, 256> ret = {};
     for (int i = -128; i < 128; i++) {
         const int arr_idx = i + 128;
@@ -5768,7 +4992,7 @@ HEDLEY_CONST CONSTEXPR_17 ParseFlagMap make_parse_flags(char delimiter) {
  *  ASCII number for a character and, v[i + 128] labels it according to
  *  the CSVReader::ParseFlags enum
  */
-HEDLEY_CONST CONSTEXPR_17 ParseFlagMap make_parse_flags(char delimiter, char quote_char) {
+HEDLEY_CONST constexpr ParseFlagMap make_parse_flags(char delimiter, char quote_char) {
     std::array<ParseFlags, 256> ret = make_parse_flags(delimiter);
     ret[(size_t)quote_char + 128] = ParseFlags::QUOTE;
     return ret;
@@ -5778,7 +5002,7 @@ HEDLEY_CONST CONSTEXPR_17 ParseFlagMap make_parse_flags(char delimiter, char quo
  *  ASCII number for a character c and, v[i + 128] is true if
  *  c is a whitespace character
  */
-HEDLEY_CONST CONSTEXPR_17 WhitespaceMap make_ws_flags(const char* ws_chars, size_t n_chars) {
+HEDLEY_CONST constexpr WhitespaceMap make_ws_flags(const char* ws_chars, size_t n_chars) {
     std::array<bool, 256> ret = {};
     for (int i = -128; i < 128; i++) {
         const int arr_idx = i + 128;
@@ -5922,16 +5146,16 @@ public:
     /** Indicate the last block of data has been parsed */
     void end_feed();
 
-    CONSTEXPR_17 ParseFlags parse_flag(const char ch) const noexcept {
+    constexpr ParseFlags parse_flag(const char ch) const noexcept {
         return _parse_flags.data()[ch + 128];
     }
 
-    CONSTEXPR_17 ParseFlags compound_parse_flag(const char ch) const noexcept {
+    constexpr ParseFlags compound_parse_flag(const char ch) const noexcept {
         return quote_escape_flag(parse_flag(ch), this->quote_escape);
     }
 
     /** Whether or not this CSV has a UTF-8 byte order mark */
-    CONSTEXPR bool utf8_bom() const { return this->_utf8_bom; }
+    constexpr bool utf8_bom() const { return this->_utf8_bom; }
 
     void set_output(RowCollection& rows) { this->_records = &rows; }
 
@@ -5945,7 +5169,8 @@ protected:
     int field_start = UNINITIALIZED_FIELD;
     size_t field_length = 0;
 
-    /** An array where the (i + 128)th slot gives the ParseFlags for ASCII character i */
+    /** An array where the (i + 128)th slot gives the ParseFlags for
+        ASCII character i */
     ParseFlagMap _parse_flags;
     ///@}
 
@@ -5958,7 +5183,7 @@ protected:
     ///@}
 
     /** Whether or not source needs to be read in chunks */
-    CONSTEXPR bool no_chunk() const { return this->source_size < ITERATION_CHUNK_SIZE; }
+    constexpr bool no_chunk() const { return this->source_size < ITERATION_CHUNK_SIZE; }
 
     /** Parse the current chunk of data *
      *
@@ -5969,8 +5194,8 @@ protected:
     /** Create a new RawCSVDataPtr for a new chunk of data */
     void reset_data_ptr();
 private:
-    /** An array where the (i + 128)th slot determines whether ASCII character i should
-     *  be trimmed
+    /** An array where the (i + 128)th slot determines whether ASCII
+     *  character i should be trimmed
      */
     WhitespaceMap _ws_flags;
     bool quote_escape = false;
@@ -5986,7 +5211,7 @@ private:
     /** Where complete rows should be pushed to */
     RowCollection* _records = nullptr;
 
-    CONSTEXPR_17 bool ws_flag(const char ch) const noexcept {
+    constexpr bool ws_flag(const char ch) const noexcept {
         return _ws_flags.data()[ch + 128];
     }
 
@@ -6145,10 +5370,10 @@ class CSVReader {
     iterator(CSVReader *, CSVRow &&);
 
     /** Access the CSVRow held by the iterator */
-    CONSTEXPR_14 reference operator*() { return this->row; }
+    constexpr reference operator*() { return this->row; }
 
     /** Return a pointer to the CSVRow the iterator has stopped at */
-    CONSTEXPR_14 pointer operator->() { return &(this->row); }
+    constexpr pointer operator->() { return &(this->row); }
 
     iterator &operator++();   /**< Pre-increment iterator */
     iterator operator++(int); /**< Post-increment ierator */
@@ -6157,11 +5382,11 @@ class CSVReader {
     /** Returns true if iterators were constructed from the same CSVReader
      *  and point to the same row
      */
-    CONSTEXPR bool operator==(const iterator &other) const noexcept {
+    constexpr bool operator==(const iterator &other) const noexcept {
       return (this->daddy == other.daddy) && (this->i == other.i);
     }
 
-    CONSTEXPR bool operator!=(const iterator &other) const noexcept {
+    constexpr bool operator!=(const iterator &other) const noexcept {
       return !operator==(other);
     }
 
@@ -6234,10 +5459,10 @@ class CSVReader {
    *  @note Gives an accurate answer regardless of when it is called.
    *
    */
-  CONSTEXPR bool empty() const noexcept { return this->n_rows() == 0; }
+  constexpr bool empty() const noexcept { return this->n_rows() == 0; }
 
   /** Retrieves the number of rows that have been read so far */
-  CONSTEXPR size_t n_rows() const noexcept { return this->_n_rows; }
+  constexpr size_t n_rows() const noexcept { return this->_n_rows; }
 
   /** Whether or not CSV was prefixed with a UTF-8 bom */
   bool utf8_bom() const noexcept { return this->parser->utf8_bom(); }
@@ -6586,7 +5811,7 @@ private:
         , int> = 0
     >
     std::string csv_escape(T in) {
-        IF_CONSTEXPR(std::is_convertible<T, std::string_view>::value) {
+        if constexpr(std::is_convertible<T, std::string_view>::value) {
             return _csv_escape(in);
         }
 
@@ -6637,7 +5862,7 @@ private:
     typename std::enable_if<Index < sizeof...(T), void>::type write_tuple(const std::tuple<T...>& record) {
         out << csv_escape(std::get<Index>(record));
 
-        IF_CONSTEXPR (Index + 1 < sizeof...(T)) out << Delim;
+        if constexpr (Index + 1 < sizeof...(T)) out << Delim;
 
         this->write_tuple<Index + 1>(record);
     }
@@ -6652,7 +5877,7 @@ private:
     /** Ends a line in 'out' and flushes, if Flush is true.*/
     void end_out() {
         out << '\n';
-        IF_CONSTEXPR(Flush) out.flush();
+        if constexpr(Flush) out.flush();
     }
 
     OutputStream & out;

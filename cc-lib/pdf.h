@@ -175,7 +175,6 @@ private:
   // files somewhat larger and more complicated.
   enum class FontEncoding {
     WIN_ANSI,
-    // XXX: Experimental! Doesn't work yet!
     UNICODE,
   };
 
