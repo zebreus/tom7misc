@@ -2,18 +2,23 @@
 #include "rle.h"
 
 #include <cstdio>
+#include <string_view>
 #include <vector>
 #include <string>
 #include <cstdint>
 
-#include "base/stringprintf.h"
-#include "base/logging.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "timer.h"
 #include "ansi.h"
+#include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "hexdump.h"
+#include "randutil.h"
+#include "status-bar.h"
+#include "timer.h"
 
 using uint8 = uint8_t;
+
+static constexpr bool VERBOSE = false;
 
 using namespace std;
 
@@ -74,19 +79,77 @@ static void EncoderTests() {
                   RLE::Compress({42, 42, 42, 42, 0, 99, 99, 8}));
 }
 
-int main(int argc, char **argv) {
-  ANSI::Init();
+static void TestOffByOne() {
+  // Regression: This used to be unable to decode an anti-run at
+  // the very end of the stream.
+  vector<uint8> buggy_input = {129, 10, 20};
+
+  vector<uint8> out;
+  CHECK(RLE::DecompressEx(buggy_input, 128, &out));
+  CheckSameVector({10, 20}, out);
+}
+
+static void TestRoundTrip(int line, std::string_view s) {
+  std::vector<uint8_t> orig;
+  for (size_t i = 0; i < s.size(); i++)
+    orig.push_back(s[i]);
+  std::vector<uint8_t> enc = RLE::Compress(orig);
+  std::vector<uint8_t> dec;
+  bool success = RLE::DecompressEx(enc, RLE::DEFAULT_CUTOFF, &dec);
+
+  if (VERBOSE) {
+    LOG(INFO) <<
+      "On line " << line << "!\n"
+      "Input: " << s << "\n"
+      "Encoded to:\n" << HexDump::Color(enc) << "\n"
+      "Decode: " << (success ? AGREEN("true") : ARED("false")) << "\n"
+      "To:\n" << HexDump::Color(dec) << "\n";
+  }
+
+  CHECK(success && orig == dec) <<
+    "Failed on line " << line << "!\n"
+    "Input: " << s << "\n"
+    "Encoded to:\n" << HexDump::Color(enc) << "\n"
+    "Decode: " << (success ? AGREEN("true") : ARED("false")) << "\n"
+    "To:\n" << HexDump::Color(dec) << "\n";
+}
+
+static void TestRoundTrips() {
+  #define TEST_ROUND_TRIP(s_in) TestRoundTrip(__LINE__, s_in "");
+
+  TEST_ROUND_TRIP("");
+  TEST_ROUND_TRIP("a");
+  TEST_ROUND_TRIP("ab");
+  TEST_ROUND_TRIP("abc");
+  TEST_ROUND_TRIP("abcabc");
+  TEST_ROUND_TRIP("abcabcabcabc");
+  TEST_ROUND_TRIP("abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc"
+                  "abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc"
+                  "abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc"
+                  "abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc"
+                  "abcabcabcabcabcabcabcabcabcabcabcabcabcabcabcabc");
+  TEST_ROUND_TRIP("baa");
+  TEST_ROUND_TRIP("baaaaaaaaaaa");
+  TEST_ROUND_TRIP("baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  TEST_ROUND_TRIP("baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  TEST_ROUND_TRIP("baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+}
+
+static void TestMany() {
   ArcFour rc{"rle_test"};
-
-  DecoderTests();
-  EncoderTests();
-
   int64_t compressed_bytes = 0, uncompressed_bytes = 0;
   #define NUM_TESTS 2000
   Timer timer;
+  StatusBar status(1);
   for (int cutoff = 0; cutoff < 256; cutoff++) {
     if (cutoff % 10 == 0) {
-      printf("%.1f%% ... ", (100.0 * cutoff) / 256);
+      status.Progress(cutoff, 256, "benchmark / test");
     }
 
     const uint8 run_cutoff = cutoff;
@@ -137,6 +200,18 @@ int main(int argc, char **argv) {
          (double)uncompressed_bytes / compressed_bytes,
          ANSI::Time(elapsed).c_str(),
          (uncompressed_bytes / 1000.0) / elapsed);
+}
+
+int main(int argc, char **argv) {
+  ANSI::Init();
+
+  DecoderTests();
+  EncoderTests();
+  TestRoundTrips();
+
+  TestOffByOne();
+
+  TestMany();
 
   return 0;
 }

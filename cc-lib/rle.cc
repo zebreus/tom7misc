@@ -73,9 +73,15 @@ vector<uint8> RLE::CompressEx(const vector<uint8> &in,
       // same.
       int anti_run_length = 1;
       while (anti_run_length < max_antirun_length &&
-             i + anti_run_length + 1 < (int)in.size() &&
-             in[i + anti_run_length] != 
-             in[i + anti_run_length + 1]) {
+             anti_run_length + i < (int)in.size()) {
+        // But also: If we're at the end of the buffer, we do want
+        // to continue the anti-run. Formerly this would always end
+        // with a run of length 1.
+        if (i + anti_run_length + 1 < (int)in.size() &&
+            in[i + anti_run_length] ==
+            in[i + anti_run_length + 1]) {
+          break;
+        }
         anti_run_length++;
       }
 
@@ -104,7 +110,7 @@ vector<uint8> RLE::CompressEx(const vector<uint8> &in,
   return out;
 }
 
-// static 
+// static
 bool RLE::DecompressEx(const vector<uint8> &in,
                        uint8 run_cutoff,
                        vector<uint8> *out) {
@@ -113,20 +119,20 @@ bool RLE::DecompressEx(const vector<uint8> &in,
   // make a sub-linear pass to compute this (then remove the reserves
   // below).
   out->clear();
-  
+
   for (int i = 0; i < (int)in.size(); /* in loop */) {
     const uint8 control = in[i];
     i++;
     if (control <= run_cutoff) {
       // If less than the run cutoff, we treat it as a run.
       const int run_length = control + 1;
-      
+
       if (i >= (int)in.size()) {
         // printf("Run of length %d, i now %d, in.size() is %d\n",
         // run_length, i, (int)in.size());
         return false;
       }
-      
+
       const uint8 b = in[i];
       i++;
       out->reserve(out->size() + run_length);
@@ -140,15 +146,15 @@ bool RLE::DecompressEx(const vector<uint8> &in,
       // anti-run of length 0 (pointless) or 1 (same as run of 1,
       // represented as 0) so we code starting at 2.
       const int antirun_length = control - run_cutoff + 1;
-      
-      if (i + antirun_length >= (int)in.size()) {
+
+      if (i + antirun_length > (int)in.size()) {
         // printf("Antirun of length %d, i now %d, in.size() is %d\n",
         // antirun_length, i, (int)in.size());
         return false;
       }
 
       out->reserve(out->size() + antirun_length);
-      
+
       for (int j = 0; j < antirun_length; j++) {
         out->push_back(in[i]);
         i++;
@@ -157,4 +163,4 @@ bool RLE::DecompressEx(const vector<uint8> &in,
   }
 
   return true;
-};
+}
