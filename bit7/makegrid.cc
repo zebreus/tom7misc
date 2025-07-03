@@ -1,13 +1,14 @@
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <format>
 #include <memory>
 #include <string>
 
-#include "image.h"
-
-#include "base/stringprintf.h"
 #include "base/logging.h"
 #include "font-image.h"
+#include "image.h"
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
@@ -105,7 +106,7 @@ int main(int argc, char **argv) {
   }
 
   // XXX filename from config if present?
-  grid.Save(StringPrintf("grid%dx%d.png", CHAR_WIDTH, CHAR_HEIGHT));
+  grid.Save(std::format("grid{}x{}.png", CHAR_WIDTH, CHAR_HEIGHT));
 
   for (int y = 0; y < CHARS_DOWN; y++) {
     for (int x = 0; x < CHARS_ACROSS; x++) {

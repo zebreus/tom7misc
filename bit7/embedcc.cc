@@ -2,6 +2,9 @@
 // png file.
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <format>
 #include <memory>
 #include <string>
 #include <vector>
@@ -29,7 +32,7 @@ int main(int argc, char **argv) {
   CHECK(char_width > 0) << "Width must be a number";
   CHECK(char_height > 0) << "Height must be a number";
 
-  string filename = StringPrintf("test%dx%d.png", char_width, char_height);
+  string filename = std::format("test{}x{}.png", char_width, char_height);
   std::unique_ptr<ImageRGBA> input(ImageRGBA::Load(filename));
   CHECK(input.get() != nullptr) << "Couldn't load: " << filename;
 
@@ -115,11 +118,11 @@ int main(int argc, char **argv) {
     }
   })";
 
-  StringAppendF(
+  AppendFormat(
       &out,
       "\n\n"
       " private:\n"
-      "  static constexpr uint64_t words[%d] = {", // newline below
+      "  static constexpr uint64_t words[{}] = {{", // newline below
       num_words);
 
   for (int i = 0; i < (int)words.size(); i++) {
@@ -127,15 +130,14 @@ int main(int argc, char **argv) {
       out += "\n  ";
     else
       out += " ";
-    StringAppendF(&out, "0x%016llxULL,", words[i]);
+    AppendFormat(&out, "0x{:016x}ULL,", words[i]);
   }
 
-  StringAppendF(&out,
-                "\n"
-                "  };\n"
-                "};\n");
+  out.append("\n"
+             "  };\n"
+             "};\n");
 
-  StringAppendF(&out, "\n#endif\n");
+  out.append("\n#endif\n");
 
   printf("%s\n", out.c_str());
 

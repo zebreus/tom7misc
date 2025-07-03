@@ -1,7 +1,9 @@
 // Create a test pattern.
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "util.h"

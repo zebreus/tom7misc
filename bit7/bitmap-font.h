@@ -8,6 +8,7 @@
 #ifndef _BIT7_BITMAP_FONT_H
 #define _BIT7_BITMAP_FONT_H
 
+#include <utility>
 #include <vector>
 
 template<int W, int H>
@@ -41,7 +42,7 @@ struct FixedBitmapFont {
 
   explicit FixedBitmapFont(std::vector<bool> bits) : bits(std::move(bits)) {}
 
-private:
+ private:
   // Bits are arranged as if all the characters are in one tall column
   // with width W.
   // This improves cache locality somewhat.
