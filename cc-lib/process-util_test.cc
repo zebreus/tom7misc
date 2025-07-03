@@ -1,9 +1,11 @@
 #include "process-util.h"
 
+#include <cstdio>
+#include <format>
+#include <optional>
 #include <string>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 using namespace std;
 
@@ -29,7 +31,7 @@ int main(int argc, char **argv) {
 #endif
 
     {
-      string cmd1 = StringPrintf("%s -child", argv[0]);
+      string cmd1 = std::format("{} -child", argv[0]);
       printf("running self: [%s]\n", cmd1.c_str());
 
       std::optional<string> reso =
@@ -40,7 +42,7 @@ int main(int argc, char **argv) {
     }
 
     {
-      string cmd2 = StringPrintf("%s -longchild", argv[0]);
+      string cmd2 = std::format("{} -longchild", argv[0]);
       printf("running self: [%s]\n", cmd2.c_str());
 
       std::optional<string> reso =

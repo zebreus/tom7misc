@@ -4,27 +4,33 @@
 // that is more semantic (starting with this encoding, which is more
 // efficient than one based on letters).
 
-#include "network-gpu.h"
-
+#include <algorithm>
 #include <cmath>
-#include <memory>
-#include <vector>
-#include <functional>
-#include <string>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
 #include <ctype.h>
+#include <format>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "network.h"
-#include "network-test-util.h"
-#include "clutil.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
+#include "clutil.h"
+#include "error-history.h"
+#include "image.h"
+#include "network-gpu.h"
+#include "network-test-util.h"
+#include "network.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "image.h"
+#include "timer.h"
 #include "util.h"
 #include "wikipedia.h"
-#include "error-history.h"
 
 using namespace std;
 
@@ -49,7 +55,7 @@ static bool AllLetters(const string &s) {
 struct Wikibits {
   static constexpr int NUM_SHARDS = 128;
 
-  Wikibits() : rc("wikibits" + StringPrintf("%lld", time(nullptr))) {
+  Wikibits() : rc(std::format("wikibits{}", time(nullptr))) {
     std::vector<string> filenames;
     for (int i = 0; i < NUM_SHARDS; i++)
       filenames.push_back(StringPrintf("wikibits/wiki-%d.txt", i));
@@ -546,7 +552,7 @@ static void Train(Network *net) {
           CHECK(layer.chunks.size() > 0);
           const Chunk &chunk = layer.chunks[0];
           auto ToScreenY = [](float w) {
-              int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
+              int yrev = w * float(IMAGE_HEIGHT >> 2) + (IMAGE_HEIGHT >> 1);
               int y = IMAGE_HEIGHT - yrev;
               // Always draw on-screen.
               return std::clamp(y, 0, IMAGE_HEIGHT - 1);
@@ -612,7 +618,7 @@ static void Train(Network *net) {
     if (SAVE_INTERMEDIATE && (save_timeout || finished ||
                               iter == 1000 || iter % 5000 == 0)) {
       net_gpu->ReadFromGPU();
-      const string file = StringPrintf("lex.val", iter);
+      const string file = "lex.val";
       net->SaveToFile(file);
       if (VERBOSE)
         printf("Wrote %s\n", file.c_str());

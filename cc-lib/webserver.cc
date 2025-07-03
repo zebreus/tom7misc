@@ -58,6 +58,7 @@ See web_test.cc for example.
 */
 
 
+#include <format>
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -82,9 +83,9 @@ See web_test.cc for example.
 #include <optional>
 
 #if defined(WIN32) || defined(__MINGW32__)
-  #include <WinSock2.h>
-  #include <Ws2tcpip.h>
-  #include <Windows.h>
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+  #include <windows.h>
 
   using ssize_t = int64_t;
   using sockettype = SOCKET;
@@ -208,11 +209,8 @@ static constexpr bool OptionPrintWholeRequest = false;
    big enough to fread(buffer) -> send(buffer) */
 #define SEND_RECV_BUFFER_SIZE (16 * 1024)
 
-// Trying to avoid StringPrintf dependency in here, maybe unwisely...
 static string Itoa(int64 i) {
-  char buf[32];
-  snprintf(buf, 32, "%lld", i);
-  return buf;
+  return std::format("{}", i);
 }
 
 static void ignoreSIGPIPE();

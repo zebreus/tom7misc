@@ -1,14 +1,16 @@
 
 #include "wikipedia.h"
 
+#include <cstdint>
 #include <string>
 #include <optional>
 #include <memory>
 #include <stdio.h>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
-#include "util.h"
 #include "re2/re2.h"
 #include "timer.h"
 #include "city/city.h"

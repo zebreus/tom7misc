@@ -574,7 +574,7 @@ static bool IsPrimeInternal(uint64_t n) {
     q >>= 1;
 
   CHECK(k == kk && q == qq) <<
-    StringPrintf("%llu: %d vs %d, %llu vs %llu\n",
+    std::format("{}: {} vs {}, {} vs {}\n",
                  n, k, kk, q, qq);
   int k = kk;
   q = qq;

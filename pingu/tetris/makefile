@@ -1,4 +1,4 @@
-all : lucky.exe encode.exe tetris_test.exe play.exe makemovie.exe nes-tetris_test.exe movie-maker_test.exe makegraphic.exe render.exe
+all : lucky.exe encode.exe tetris_test.exe play.exe makemovie.exe nes-tetris_test.exe movie-maker_test.exe makegraphic.exe render.exe size.exe multris.exe
 
 CC_LIB=../../cc-lib
 FCEULIB=../../fceulib
@@ -12,7 +12,7 @@ FCEULIB=../../fceulib
 # linux
 # PLATFORM_LFLAGS=-lz -lpthread
 
-CXXFLAGS=-Wall -Werror --std=c++20 -O -DPSS_STYLE=2 -I $(CC_LIB) -I $(FCEULIB)
+CXXFLAGS=-Wall -Werror --std=c++20 -O -I $(CC_LIB) -I $(FCEULIB)
 LFLAGS=$(PLATFORM_LFLAGS) -lz
 
 CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/city/city.o $(CC_LIB)/textsvg.o $(CC_LIB)/color-util.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/image.o $(CC_LIB)/ansi.o $(CC_LIB)/nice.o

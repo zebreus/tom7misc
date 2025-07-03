@@ -1,15 +1,11 @@
 
-#include "modelinfo.h"
-
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <string>
-#include <cstdint>
-#include <cmath>
-#include <time.h>
 
 #include "network.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 using namespace std;
 

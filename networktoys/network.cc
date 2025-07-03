@@ -1,24 +1,24 @@
 
 #include "network.h"
 
-#include <cstdio>
-#include <cmath>
-#include <cstring>
-
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <format>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-
-#include "threadutil.h"
 #include "randutil.h"
-#include "arcfour.h"
+#include "threadutil.h"
 
 using namespace std;
 
@@ -698,25 +698,25 @@ struct Reader {
 
 struct FileReader : public Reader {
   static Reader *Create(const std::string &filename,
-                        bool verbose = false) {
+                        bool verbose_in = false) {
     FILE *file = fopen(filename.c_str(), "rb");
     if (file == nullptr) {
-      if (verbose) {
+      if (verbose_in) {
         printf("Failed to open %s. If it's present, there may be a "
                "permissions problem?\n", filename.c_str());
         fflush(stdout);
       }
       return nullptr;
     } else {
-      if (verbose) {
+      if (verbose_in) {
         printf("Reading [%s]\n", filename.c_str());
       }
     }
-    return new FileReader(file, filename, verbose);
+    return new FileReader(file, filename, verbose_in);
   }
 
-  FileReader(FILE *file, const std::string filename, bool verbose) :
-    Reader(filename, verbose), file(file) {}
+  FileReader(FILE *file, const std::string filename, bool verbose_in) :
+    Reader(filename, verbose_in), file(file) {}
 
   ~FileReader() override {
     fclose(file);
@@ -737,8 +737,8 @@ struct FileReader : public Reader {
 
 struct VecReader : public Reader {
   static Reader *Create(const std::vector<uint8_t> &bytes,
-                        bool verbose = false) {
-    return new VecReader(bytes, verbose);
+                        bool verbose_in = false) {
+    return new VecReader(bytes, verbose_in);
   }
 
   uint8_t ReadByte() override {
@@ -747,8 +747,8 @@ struct VecReader : public Reader {
   }
 
   explicit VecReader(const std::vector<uint8_t> &bytes,
-                     bool verbose = false) :
-    Reader("memory", verbose), bytes(bytes) {}
+                     bool verbose_in = false) :
+    Reader("memory", verbose_in), bytes(bytes) {}
   const std::vector<uint8_t> &bytes;
   int64_t pos = 0;
 };
@@ -786,20 +786,20 @@ struct Writer {
 
 struct FileWriter : public Writer {
   static Writer *Create(const std::string &filename,
-                        bool verbose = false) {
+                        bool verbose_in = false) {
     FILE *file = fopen(filename.c_str(), "wb");
     if (file == nullptr) {
-      if (verbose) {
+      if (verbose_in) {
         printf("Failed to open %s for writing?", filename.c_str());
         fflush(stdout);
       }
       return nullptr;
     }
-    return new FileWriter(file, filename, verbose);
+    return new FileWriter(file, filename, verbose_in);
   }
 
-  FileWriter(FILE *file, const std::string filename, bool verbose) :
-    Writer(filename, verbose), file(file) {}
+  FileWriter(FILE *file, const std::string filename, bool verbose_in) :
+    Writer(filename, verbose_in), file(file) {}
 
   ~FileWriter() override {
     fclose(file);
@@ -815,8 +815,8 @@ struct FileWriter : public Writer {
 };
 
 struct VecWriter : public Writer {
-  static Writer *Create(std::vector<uint8_t> *vec, bool verbose = false) {
-    return new VecWriter(vec, verbose);
+  static Writer *Create(std::vector<uint8_t> *vec, bool verbose_in = false) {
+    return new VecWriter(vec, verbose_in);
   }
 
   inline void WriteByte(uint8_t b) override {
@@ -824,8 +824,8 @@ struct VecWriter : public Writer {
   }
 
   explicit VecWriter(std::vector<uint8_t> *vec,
-                     bool verbose = false) :
-    Writer("memory", verbose), vec(vec) {}
+                     bool verbose_in = false) :
+    Writer("memory", verbose_in), vec(vec) {}
 
   std::vector<uint8_t> *vec = nullptr;
 };
@@ -1161,7 +1161,7 @@ void Stimulation::NaNCheck(const std::string &message) const {
   if (has_nans) {
     string err;
     for (int i = 0; i < layer_nans.size(); i++) {
-      err += StringPrintf("stim layer %d. %d/%d values\n",
+      err += std::format("stim layer {}. {}/{} values\n",
                           i,
                           layer_nans[i], values[i].size());
     }

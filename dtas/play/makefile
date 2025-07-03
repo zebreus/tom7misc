@@ -40,7 +40,7 @@ CODEC_OBJECTS=$(CODEC)/mov.o $(CODEC)/mov-recorder.o
 
 # old
 # XXX can't they just be in CXXFLAGS?
-CPPFLAGS= -DDISABLE_SOUND=1 -Wno-write-strings -m64 -D__MINGW32__ $(SDLINCLUDES) $(PROFILE) $(FLTO)
+CPPFLAGS= -DDISABLE_SOUND=1 -m64 -D__MINGW32__ $(SDLINCLUDES) $(PROFILE) $(FLTO)
 
 %.o : %.cc *.h makefile
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -58,12 +58,12 @@ $(SQLITE)/%.o : $(SQLITE)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=$(UTIL_OBJECTS) $(FCEULIB_OBJECTS) ../mario-util.o
+OBJECTS=$(UTIL_OBJECTS) $(FCEULIB_OBJECTS) $(CODEC_OBJECTS) $(SQLITE_OBJECTS) ../mario-util.o
 
 # XXX can maybe use miniz instead of zlib here? Is it for SDL?
 LFLAGS= $(ASAN) -L. $(LINKSDL) -m64 -Wl,--subsystem,console -lz $(OPT) $(FLTO) -static
 
-play.exe : play.o $(OBJECTS) $(SDLOBJECTS) $(SQLITE_OBJECTS) $(CODEC_OBJECTS)
+play.exe : play.o $(OBJECTS) $(SDLOBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

@@ -29,6 +29,7 @@
 #include "timer.h"
 #include "util.h"
 #include "zip.h"
+#include "png.h"
 
 #include "opt/optimizer.h"
 
@@ -1698,8 +1699,11 @@ static TestStats RunTestcase(const Testcase &t) {
 
     // Size comparison.
     std::vector<uint8_t> miniz_png =
+      /*
       ZIP::EncodeAsPNG(frame.Width(), frame.Height(),
                        frame.ToBuffer8());
+      */
+      PNG::EncodeInMemory(frame, 9);
     [[maybe_unused]] double miniz_png_ratio = orig / (double)miniz_png.size();
 
     stats.png_bytes += miniz_png.size();

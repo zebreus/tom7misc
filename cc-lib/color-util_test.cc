@@ -1,14 +1,13 @@
 #include "color-util.h"
 
+#include <cmath>
+#include <cstdint>
+#include <format>
 #include <stdio.h>
 #include <string>
-#include <cstdint>
-#include <cmath>
-
-#include "base/logging.h"
-#include "base/stringprintf.h"
 
 #include "arcfour.h"
+#include "base/logging.h"
 #include "image.h"
 #include "timer.h"
 
@@ -57,7 +56,7 @@ static void TestRGBToHSV() {
     CHECK(v >= 0.0f && v <= 1.0f);
     const auto [rr, gg, bb] = ColorUtil::HSVToRGB(h, s, v);
     const uint32 cc = ColorUtil::FloatsTo32(rr, gg, bb, 1.0f);
-    CHECK(c == cc) << StringPrintf("%08x vs %08x", c, cc);
+    CHECK(c == cc) << std::format("{:08x} vs {:08x}", c, cc);
   }
 }
 
@@ -151,7 +150,7 @@ static void TestConvert() {
     const uint32_t rgba2 = ColorUtil::FloatsTo32(rf, gf, bf, af);
 
     CHECK(rgba == rgba2) <<
-      StringPrintf("%08x vs %08x\n", rgba, rgba2);
+      std::format("{:08x} vs {:08x}\n", rgba, rgba2);
   }
 }
 

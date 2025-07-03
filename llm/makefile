@@ -27,7 +27,7 @@ else
   # PLATFORM_CFLAGS=-fsanitize=address -g -D_GNU_SOURCE
   # OPTFLAGS=-O
   PLATFORM_CFLAGS=-g -D_GNU_SOURCE
-  OPTFLAGS=-O3 -march=native -mtune=native
+  OPTFLAGS=-O3 -flto=auto -march=native -mtune=native
 endif
 
 

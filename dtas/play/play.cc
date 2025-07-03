@@ -711,8 +711,11 @@ struct GameArray {
                 const Emulator *emu = games[i]->emu.get();
                 const int8_t dx = emu->ReadRAM(PLAYER_X_SPEED);
                 const bool ground = emu->ReadRAM(PLAYER_STATE) == 0x00;
+                [[maybe_unused]]
                 const uint8_t facing = emu->ReadRAM(PLAYER_FACING_DIR);
+                [[maybe_unused]]
                 const uint8_t xmod = emu->ReadRAM(PLAYER_X_LO) & 15;
+                [[maybe_unused]]
                 const uint8_t xsub = emu->ReadRAM(PLAYER_X_SUBPIXEL);
 
                 if (ground) {
@@ -937,7 +940,7 @@ struct Watchlist {
         case DisplayType::WORD:
           return std::format("{:04x}", (uint16_t(hi) << 8) | lo);
         case DisplayType::DASH:
-          return std::Format("{:02x}-{:02x}", hi, lo);
+          return std::format("{:02x}-{:02x}", hi, lo);
         case DisplayType::COLON:
           return std::format("{:02x}:{:02x}", hi, lo);
         case DisplayType::SIGNED8:

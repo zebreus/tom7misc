@@ -1,7 +1,8 @@
 
-#ifndef _PLUGINVERT_FRAME_QUEUE
-#define _PLUGINVERT_FRAME_QUEUE
+#ifndef _NETWORKTOYS_FRAME_QUEUE
+#define _NETWORKTOYS_FRAME_QUEUE
 
+#include <memory>
 #include <vector>
 #include <shared_mutex>
 #include <thread>

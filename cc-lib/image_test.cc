@@ -1,26 +1,28 @@
 
 #include "image.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <format>
 #include <unordered_set>
 #include <functional>
 #include <cstdint>
+#include <vector>
 
-#include "ansi-image.h"
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
 
 // TODO: Show the color swatches!
-#define CHECK_COLOR_EQ(cexp1, cexp2) do {               \
-  const uint32_t c1 = (cexp1), c2 = (cexp2);            \
-  CHECK(c1 == c2) <<                                    \
-    StringPrintf("Colors not equal: #%08X != #%08X\n" \
-                 "First expression:\n  %s\nSecond:\n  %s\n", \
-                 c1, c2, #cexp1, #cexp2);                    \
+#define CHECK_COLOR_EQ(cexp1, cexp2) do {                              \
+    const uint32_t c1 = (cexp1), c2 = (cexp2);                         \
+    CHECK(c1 == c2) <<                                                 \
+      std::format("Colors not equal: #{:08X} != #{:08X}\n"             \
+                  "First expression:\n  {}\nSecond:\n  {}\n",          \
+                  c1, c2, #cexp1, #cexp2);                             \
   } while (0)
 
 static void TestCreateAndDestroy() {

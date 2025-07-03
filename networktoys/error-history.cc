@@ -1,9 +1,11 @@
 
 #include "error-history.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <optional>
 #include <map>
+#include <utility>
 #include <vector>
 #include <string>
 
@@ -43,7 +45,7 @@ void ErrorHistory::Save() {
             r.is_eval ? 't' : 'f',
             r.error_per_example);
   }
-  
+
   fclose(f);
   printf("Wrote %lld error records to %s\n", (int64_t)records.size(),
          filename.c_str());
@@ -74,7 +76,7 @@ void ErrorHistory::WriteMergedTSV(const string &outfile,
   std::map<int64, vector<Record>> collated_records;
   for (const auto &record : records)
     collated_records[record.round_number].push_back(record);
-  
+
   vector<bool> had_error(num_models, false);
   auto AllHadError = [&had_error]() {
       for (bool b : had_error) if (!b) return false;
@@ -110,7 +112,7 @@ void ErrorHistory::WriteMergedTSV(const string &outfile,
     CHECK(span > 0) << "rounds not sorted!?";
     const double ival = span / (double)out_points;
     #endif
-    
+
     vector<std::pair<int64, vector<double>>> out;
     out.reserve(out_points);
 
@@ -147,7 +149,7 @@ void ErrorHistory::WriteMergedTSV(const string &outfile,
 
     rows = std::move(out);
   }
-  
+
   FILE *f = fopen(outfile.c_str(), "wb");
   for (const auto &[round, vals] : rows) {
     fprintf(f, "%lld", round);

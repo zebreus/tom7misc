@@ -5,6 +5,8 @@
 //
 // In this version, I hope to add support for convolutional
 // layers!
+//
+// I think I broke this one by changing the network format.
 
 // TODO: Show timer breakdown in GUI.
 
@@ -21,16 +23,14 @@
 //     because we copy assign them to video. Maybe better to heap
 //     allocate; it's fine to use the copy constructor.
 
-#include "SDL.h"
-#include "SDL_main.h"
-#include "sdl/sdlutil.h"
-#include "sdl/font.h"
-
-#include <CL/cl.h>
-
+#include <array>
+#include <cstdint>
+#include <optional>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
+#include <thread>
 #include <time.h>
 
 #include <cmath>
@@ -45,35 +45,43 @@
 #include <deque>
 #include <shared_mutex>
 
-#include "base/stringprintf.h"
-#include "base/logging.h"
-#include "arcfour.h"
-#include "util.h"
-#include "vector-util.h"
-#include "threadutil.h"
-#include "randutil.h"
-#include "base/macros.h"
-#include "color-util.h"
-#include "image.h"
-#include "lines.h"
-#include "rolling-average.h"
+#include <CL/cl.h>
 
-#include "network.h"
-#include "network-gpu.h"
-
-#include "nice.h"
-#include "clutil.h"
-#include "timer.h"
-#include "top.h"
-#include "autoparallel.h"
-#include "error-history.h"
-#include "modelinfo.h"
-
-#include "ntsc2d.h"
-#include "problem.h"
-#include "frame-queue.h"
+#include "SDL.h"
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_keysym.h"
+#include "SDL_main.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
+#include "sdl/sdlutil.h"
+#include "sdl/font.h"
 
 #include "../bit7/embed9x9.h"
+#include "arcfour.h"
+#include "autoparallel.h"
+#include "base/logging.h"
+#include "base/macros.h"
+#include "base/stringprintf.h"
+#include "clutil.h"
+#include "color-util.h"
+#include "error-history.h"
+#include "frame-queue.h"
+#include "image.h"
+#include "lines.h"
+#include "modelinfo.h"
+#include "network-gpu.h"
+#include "network.h"
+#include "nice.h"
+#include "ntsc2d.h"
+#include "problem.h"
+#include "randutil.h"
+#include "rolling-average.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "top.h"
+#include "util.h"
+#include "vector-util.h"
 
 #define FONTCHARS " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?" /* removed icons */
 #define FONTSTYLES 7
@@ -90,6 +98,7 @@ using uint8 = uint8_t;
 // Better compatibility with CL.
 using uchar = uint8_t;
 
+using int64 = int64_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
 
@@ -1719,7 +1728,7 @@ static std::optional<string> GetExclusiveApp() {
     // Can add more here, including regexes etc...
   }
 
-  return nullopt;
+  return std::nullopt;
 }
 
 int SDL_main(int argc, char **argv) {

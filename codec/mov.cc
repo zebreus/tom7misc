@@ -19,6 +19,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "image.h"
+#include "png.h"
 #include "zip.h"
 
 using Out = MOV::Out;
@@ -42,7 +43,7 @@ static constexpr uint32_t IDENTITY_MATRIX[9] = {
   0, 0, FRACT32_ONE,
 };
 
-static std::vector<uint8_t> EncodeAsPNG(const ImageRGBA &img) {
+static std::vector<uint8_t> MinizEncodeAsPNG(const ImageRGBA &img) {
   return ZIP::EncodeAsPNG(img.Width(), img.Height(), img.ToBuffer8());
 }
 
@@ -58,7 +59,7 @@ struct Buf {
     for (uint8_t b : bs) bytes.push_back(b);
   }
 
-  void WPascal(const std::string &s) {
+  void WPascal(std::string_view s) {
     CHECK(s.size() < 256) << "String too large to be stored "
       "as a Pascal string!";
     bytes.push_back((uint8_t)s.size());
@@ -627,6 +628,7 @@ Chunk MOV::Out::GetVideoFormatChunk() const {
   Chunk entry = [&]() {
       switch (codec) {
       case Codec::PNG_MINIZ:
+      case Codec::PNG_CCLIB:
       case Codec::PNG: return Chunk("png ");
       case Codec::RAW_RGBA: return Chunk("RGBA");
       default:
@@ -757,7 +759,9 @@ std::vector<uint8_t> MOV::Out::EncodeFrame(const ImageRGBA &img) {
   case Codec::PNG:
     return img.SaveToVec();
   case Codec::PNG_MINIZ:
-    return EncodeAsPNG(img);
+    return MinizEncodeAsPNG(img);
+  case Codec::PNG_CCLIB:
+    return PNG::EncodeInMemory(img, 9);
   }
 }
 

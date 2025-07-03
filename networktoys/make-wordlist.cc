@@ -1,14 +1,13 @@
 // Generate the list of most frequent N words in wikipedia.
 
-#include <cmath>
-#include <memory>
-#include <vector>
-#include <functional>
-#include <string>
-#include <ctype.h>
-#include <chrono>
-#include <thread>
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
+#include <ctype.h>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -181,7 +180,7 @@ static void MakeWordlist() {
   FILE *f = fopen(WORDLIST, "wb");
   CHECK(f != nullptr);
   for (const auto &[s, c] : all) {
-    fprintf(f, "%s\n", s.c_str(), c);
+    fprintf(f, "%s\n", s.c_str());
   }
   fclose(f);
   printf("Wrote %s\n", WORDLIST);

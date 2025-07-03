@@ -1,40 +1,38 @@
 
-#include "SDL.h"
-#include "SDL_main.h"
-#include "sdl/sdlutil.h"
-#include "sdl/font.h"
+// XXX Broken?
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <deque>
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include <CL/cl.h>
 
-#include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
+#include "SDL.h"
+#include "SDL_audio.h"
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_keysym.h"
+#include "SDL_main.h"
+#include "SDL_timer.h"
+#include "SDL_video.h"
+#include "sdl/sdlutil.h"
+#include "sdl/font.h"
 
-#include <cmath>
-#include <chrono>
-#include <algorithm>
-#include <tuple>
-#include <utility>
-#include <set>
-#include <vector>
-#include <map>
-#include <unordered_set>
-#include <deque>
-#include <shared_mutex>
 
-#include "base/stringprintf.h"
 #include "base/logging.h"
-#include "arcfour.h"
-#include "util.h"
-#include "vector-util.h"
 #include "threadutil.h"
-#include "randutil.h"
-#include "base/macros.h"
-#include "color-util.h"
 #include "image.h"
-#include "lines.h"
-#include "rolling-average.h"
 #include "../fceulib/simplefm2.h"
 #include "../fceulib/emulator.h"
 
@@ -43,12 +41,9 @@
 
 #include "clutil.h"
 #include "timer.h"
-#include "top.h"
 
 #include "ntsc2d.h"
 #include "problem.h"
-
-#include "../bit7/embed9x9.h"
 
 #define FONTCHARS " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?" /* removed icons */
 #define FONTSTYLES 7

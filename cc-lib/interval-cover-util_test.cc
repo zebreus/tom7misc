@@ -1,7 +1,14 @@
 
 #include "interval-cover-util.h"
 
+#include <cstdio>
+#include <format>
+#include <string>
+#include <string_view>
+#include <vector>
+
 #include "ansi.h"
+#include "interval-cover.h"
 #include "util.h"
 
 namespace {
@@ -17,7 +24,7 @@ static inline bool operator==(const A &a, const A &b) {
 }
 
 static std::string AToString(const A &a) {
-  return StringPrintf("%d|%d", a.x, a.y);
+  return std::format("{}|{}", a.x, a.y);
 }
 
 static A AFromString(std::string_view s) {

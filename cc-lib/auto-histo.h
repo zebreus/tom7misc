@@ -125,7 +125,7 @@ struct AutoHisto {
   // are already bucketed, aliasing artifacts are unavoidable.
   void MergeOther(const AutoHisto &other) {
     if (other.Bucketed()) {
-      for (int i = 0; i < other.data.size(); i++) {
+      for (size_t i = 0; i < other.data.size(); i++) {
         if (other.data[i] > 0.0) {
           // Treat it as being in the center of the bucket.
           double x = other.min + other.width * (i + 0.5);

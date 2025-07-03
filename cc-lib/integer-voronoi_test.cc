@@ -2,22 +2,21 @@
 
 #include <cstdio>
 #include <cstdlib>
-#include <vector>
-#include <utility>
+#include <ctime>
+#include <format>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include "image.h"
 #include "arcfour.h"
-#include "randutil.h"
-#include "color-util.h"
-
-#include "hashing.h"
-
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "color-util.h"
+#include "hashing.h"
+#include "image.h"
+#include "randutil.h"
 
 int main(int, char **) {
-  ArcFour rc(StringPrintf("voronoi.%lld", time(nullptr)));
+  ArcFour rc(std::format("voronoi.{}", time(nullptr)));
 
   int num_points = 256;
   int width = 1024;

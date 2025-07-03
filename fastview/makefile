@@ -22,13 +22,13 @@ INCLUDES=-I $(CCLIB)
 # WINDOWS_OBJECTS=$(MINGWLIB)/libwinpthread.a $(MINGWLIB)/libd2d1.a
 WINDOWS_OBJECTS=-ld2d1
 
-#  -flto
-CXXFLAGS=$(ASAN) $(DEFINES) $(INCLUDES) -march=native -Wall --std=c++20 -O2
+OPT=-O3 -flto=auto -march=native -mtune=native
+CXXFLAGS=$(OPT) $(ASAN) $(DEFINES) $(INCLUDES) -Wall --std=c++23
 LFLAGS=$(CXXFLAGS) -ffunction-sections -mwindows -static -static-libgcc -static-libstdc++ -s
 
-# Don't use -flto to see assembly!
+# Don't use -flto if you want to see assembly!
 fastview.s : fastview.cc makefile
-	$(CXX) $(DEFINES) $(INCLUDES) -march=native -Wall --std=c++17 -O3 -g -Wa,-aslh $^ -c > $@
+	$(CXX) $(DEFINES) $(INCLUDES) -march=native -Wall --std=c++23 -O3 -g -Wa,-aslh $^ -c > $@
 
 ../cc-lib/%.o : ../cc-lib/%.cc
 	@$(CXX) $(CXXFLAGS) -c $< -o $@

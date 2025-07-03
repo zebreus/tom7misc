@@ -4,10 +4,11 @@
 #ifndef _CC_LIB_ANSI_H
 #define _CC_LIB_ANSI_H
 
-#include <string>
 #include <cstdint>
-#include <vector>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #define ANSI_PREVLINE "\x1B[F"
 #define ANSI_CLEARLINE "\x1B[2K"
@@ -102,7 +103,7 @@
 // can communicate with pseudoterminal. Without this, ansi escape
 // codes will work (VirtualTerminalProcessing) but not mintty-
 // specific ones. Calls normal printf on other platforms, which
-// hopefully support the ansi codes.
+// hopefully support the ansi codes. Probably avoid this.
 void CPrintf(const char* format, ...);
 
 namespace internal {
@@ -136,11 +137,11 @@ struct ANSI {
   // Strip ANSI codes. Only CSI codes are supported (which is everything
   // in this file), and they are not validated. There are many nonstandard
   // codes that would be treated incorrectly here.
-  static std::string StripCodes(const std::string &s);
+  static std::string StripCodes(std::string_view s);
 
   // Return the number of characters after stripping ANSI codes. Same
   // caveats as above.
-  static int StringWidth(const std::string &s);
+  static int StringWidth(std::string_view s);
 
   // Return an ansi-colored representation of the duration, with arbitrary
   // but Tom 7-approved choices of color and significant figures.
@@ -153,7 +154,7 @@ struct ANSI {
   static std::string ProgressBar(uint64_t numer, uint64_t denom,
                                  // This currently can't have ANSI Codes,
                                  // because we need to split it into pieces.
-                                 const std::string &operation,
+                                 std::string_view operation,
                                  double taken,
                                  ProgressBarOptions options =
                                  ProgressBarOptions{});
@@ -165,7 +166,7 @@ struct ANSI {
   // extended to fill. Text is truncated if it's too long.
   static std::string Composite(
       // ANSI codes are stripped.
-      const std::string &text,
+      std::string_view text,
       // entries are RGBA. Alpha is composited.
       const std::vector<uint32_t> &fgcolors,
       // entries are RGBA. Alpha is ignored.

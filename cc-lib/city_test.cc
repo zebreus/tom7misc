@@ -1,12 +1,17 @@
 
 #include "city/city.h"
+
+#include <cstdio>
+#include <format>
+
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 using namespace std;
 
-#define CHECK_EQ64(a, b) CHECK(a == b) << StringPrintf("%llx", a) \
-  << " vs " << StringPrintf("%llx", b);
+#define CHECK_EQ64(a, b) do {                             \
+    CHECK(a == b) << std::format("{:x}", a)               \
+                  << " vs " << std::format("{:x}", b);    \
+  } while (0)
 
 static void TestKnown() {
   CHECK_EQ64(CityHash64("archaeopteryx"), 0xbf8577469841d551ULL);

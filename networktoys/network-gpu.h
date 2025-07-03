@@ -5,6 +5,7 @@
 #ifndef _NETWORK_GPU_H
 #define _NETWORK_GPU_H
 
+#include <CL/cl.h>
 #include <string>
 #include <optional>
 #include <vector>
@@ -14,7 +15,6 @@
 #include "base/logging.h"
 
 #include "network.h"
-#include "timer.h"
 #include "clutil.h"
 
 // PERF: For many of these, we use mutexes to avoid setting a
@@ -94,7 +94,7 @@ struct NetworkGPU {
                             nullptr));
   }
 
-  DISALLOW_COPY_AND_ASSIGN(NetworkGPU);
+  NetworkGPU() = delete;
 };
 
 // Data on the GPU for a single training round: A fixed-size array of
@@ -246,7 +246,7 @@ struct TrainingRoundGPU {
                             nullptr));
   }
 
-  DISALLOW_COPY_AND_ASSIGN(TrainingRoundGPU);
+  TrainingRoundGPU() = delete;
 };
 
 
@@ -276,7 +276,7 @@ struct ForwardLayerCL {
 
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(ForwardLayerCL);
+  ForwardLayerCL() = delete;
 };
 
 // Set the error values from the actual and expected outputs, possibly
@@ -313,7 +313,7 @@ struct SetOutputErrorCL {
 
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(SetOutputErrorCL);
+  SetOutputErrorCL() = delete;
 };
 
 // Propagate errors backwards. Note that errors flow from "dst" to "src".
@@ -356,7 +356,7 @@ struct BackwardLayerCL {
 
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(BackwardLayerCL);
+  BackwardLayerCL() = delete;
 };
 
 // Optional and unprincipled L2-like regularization.
@@ -375,7 +375,7 @@ struct DecayWeightsCL {
   cl_kernel kernel;
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(DecayWeightsCL);
+  DecayWeightsCL() = delete;
 };
 
 
@@ -427,7 +427,6 @@ struct UpdateWeightsCL {
 
  private:
   const int examples_per_round = 0;
-  const float adam_epsilon = DEFAULT_ADAM_EPSILON;
   struct ChunkKernel {
     cl_program program1 = 0;
     cl_kernel kernel1 = 0;
@@ -462,7 +461,7 @@ struct UpdateWeightsCL {
 
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(UpdateWeightsCL);
+  UpdateWeightsCL() = delete;
 };
 
 #endif

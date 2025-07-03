@@ -1,6 +1,7 @@
 
 #include "wikipedia.h"
 
+#include <cstdio>
 #include <memory>
 #include <string>
 

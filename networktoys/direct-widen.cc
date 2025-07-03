@@ -1,7 +1,10 @@
 
 #include "direct-word-problem.h"
 
-#include <string>
+#include <cmath>
+#include <ctime>
+#include <format>
+#include <utility>
 #include <vector>
 #include <cstdio>
 #include <memory>
@@ -11,7 +14,6 @@
 #include "randutil.h"
 #include "network.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 using namespace std;
 
@@ -20,11 +22,11 @@ using int64 = int64_t;
 constexpr int64 WORDLIST_SIZE_BEFORE = 1024 + 128;
 constexpr int64 WORDLIST_SIZE_AFTER = 2048;
 
-static_assert(WORDLIST_SIZE == WORDLIST_SIZE_BEFORE);
-
-
 static void AddWordsToModel() {
-  ArcFour rc(StringPrintf("widen.%lld", time(nullptr)));
+  CHECK(WORDLIST_SIZE == WORDLIST_SIZE_BEFORE) << "I think this is "
+    "a oneoff that should only be run with specific sizes hard-coded.";
+
+  ArcFour rc(std::format("widen.{}", time(nullptr)));
 
   std::unique_ptr<Network> net(
       Network::ReadFromFile(MODEL_NAME));

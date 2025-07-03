@@ -6,6 +6,8 @@
 
 #include "interval-cover.h"
 
+#include <cstdio>
+#include <format>
 #include <set>
 #include <vector>
 #include <string>
@@ -26,12 +28,12 @@ static bool ContainsKey(const set<T> &s, const T &k) {
   return s.find(k) != s.end();
 }
 
-string SpanString(const IntervalCover<string>::Span &span) {
-  string st = StringPrintf("%lld", span.start);
+static string SpanString(const IntervalCover<string>::Span &span) {
+  string st = std::format("{}", span.start);
   string en = (span.end == MAX64) ? "MAX" :
-    StringPrintf("%lld", span.end);
-  return StringPrintf("[%s, \"%s\", %s)",
-          st.c_str(), span.data.c_str(), en.c_str());
+    std::format("{}", span.end);
+  return std::format("[{}, \"{}\", {})",
+          st, span.data, en);
 }
 
 

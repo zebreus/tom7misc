@@ -1,7 +1,9 @@
 
 #include "network-test-util.h"
 
-#include <functional>
+#include <algorithm>
+#include <array>
+#include <cstdint>
 #include <vector>
 #include <string>
 

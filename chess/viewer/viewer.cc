@@ -1,7 +1,11 @@
 
 #include <cstdio>
 #include <cstring>
+#include <format>
+#include <memory>
 #include <string>
+#include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 #include <shared_mutex>
@@ -11,16 +15,9 @@
 #include <unistd.h>
 #include <cmath>
 
-#include "../../cc-lib/threadutil.h"
-#include "../../cc-lib/randutil.h"
-#include "../../cc-lib/arcfour.h"
-#include "../../cc-lib/base/logging.h"
-#include "../../cc-lib/base/stringprintf.h"
-
 #include "../chess.h"
 #include "../pgn.h"
 #include "../bigchess.h"
-#include "../subprocess.h"
 #include "../stockfish.h"
 #include "../player-util.h"
 #include "../almanac-player.h"
@@ -34,19 +31,33 @@
 // #include "../nneval-player.h"
 #include "../grad-player.h"
 #include "../fates.h"
-#include "timer.h"
-
-// #include "unblinder.h"
-// #include "unblinder-mk0.h"
 
 #include "SDL.h"
 #include "SDL_main.h"
-#include "../cc-lib/sdl/sdlutil.h"
-#include "../cc-lib/sdl/font.h"
-#include "../cc-lib/sdl/cursor.h"
-#include "../cc-lib/lines.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/image.h"
+#include "SDL_events.h"
+#include "SDL_keyboard.h"
+#include "SDL_keysym.h"
+#include "SDL_mouse.h"
+#include "SDL_stdinc.h"
+#include "SDL_video.h"
+
+#include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "image.h"
+#include "lines.h"
+#include "player.h"
+#include "randutil.h"
+#include "sdl/cursor.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
+#include "subprocess.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "util.h"
+
+// #include "unblinder.h"
+// #include "unblinder-mk0.h"
 
 /* there are some non-ascii symbols in the font */
 #define CHECKMARK "\xF2"
@@ -129,7 +140,7 @@ static constexpr uint32 COLORS[] = {
 };
 
 // Mode basically controls what happens when we use the mouse.
-enum class Mode {
+enum class Speed {
   ERASING,
   DRAWING,
   FILLING,
@@ -518,7 +529,8 @@ private:
     }
 
     void SetScoredMoves(
-        const vector<tuple<Position::Move, int64_t, string>> &v) override {
+        const std::vector<std::tuple<
+            Position::Move, int64_t, string>> &v) override {
       em->moves.clear();
       for (const auto &t : v) {
         const Position::Move &m = std::get<0>(t);
@@ -541,7 +553,7 @@ private:
       em->position = pos;
     }
 
-    void SetGraphic(const ImageRGBA &img) {
+    void SetGraphic(const ImageRGBA &img) override {
       em->graphic = img;
     }
 
@@ -576,7 +588,7 @@ private:
 };
 
 struct UI {
-  Mode mode = Mode::CHESS;
+  Speed mode = Speed::CHESS;
   bool ui_dirty = true;
 
   Interpolation interp_meter;
@@ -827,10 +839,10 @@ void UI::Loop() {
 
         if (dragging) {
           switch (mode) {
-          case Mode::DRAWING:
+          case Speed::DRAWING:
             DrawThick(drawing, oldx, oldy, mousex, mousey, GetColor());
             break;
-          case Mode::ERASING:
+          case Speed::ERASING:
             DrawThick(drawing, oldx, oldy, mousex, mousey, 0x00000000);
             break;
           default:;
@@ -899,7 +911,7 @@ void UI::Loop() {
         }
 
         case SDLK_e: {
-          mode = Mode::ERASING;
+          mode = Speed::ERASING;
           SDL_SetCursor(cursor_eraser);
           ui_dirty = true;
           break;
@@ -913,21 +925,21 @@ void UI::Loop() {
         }
 
         case SDLK_d: {
-          mode = Mode::DRAWING;
+          mode = Speed::DRAWING;
           SDL_SetCursor(cursor_arrow);
           ui_dirty = true;
           break;
         }
 
         case SDLK_f: {
-          mode = Mode::FILLING;
+          mode = Speed::FILLING;
           SDL_SetCursor(cursor_bucket);
           ui_dirty = true;
           break;
         }
 
         case SDLK_c: {
-          mode = Mode::CHESS;
+          mode = Speed::CHESS;
           SDL_SetCursor(cursor_hand);
           ui_dirty = true;
           break;
@@ -965,7 +977,7 @@ void UI::Loop() {
             drawing = undo_buffer.back();
             undo_buffer.pop_back();
             ui_dirty = true;
-            printf("Undo size %d\n", undo_buffer.size());
+            printf("Undo size %d\n", (int)undo_buffer.size());
             fflush(stdout);
           }
           break;
@@ -1080,23 +1092,23 @@ void UI::Loop() {
         mousey = e->y;
 
         dragging = true;
-        if (mode == Mode::DRAWING) {
+        if (mode == Speed::DRAWING) {
           SaveUndo();
           // Make sure that a click also makes a pixel.
           DrawThick(drawing, mousex, mousey, mousex, mousey, GetColor());
           ui_dirty = true;
-        } else if (mode == Mode::ERASING) {
+        } else if (mode == Speed::ERASING) {
           SaveUndo();
           DrawThick(drawing, mousex, mousey, mousex, mousey, 0x00000000);
           ui_dirty = true;
 
-        } else if (mode == Mode::FILLING) {
+        } else if (mode == Speed::FILLING) {
           SaveUndo();
 
           FloodFill(drawing, mousex, mousey, GetColor());
 
           ui_dirty = true;
-        } else if (mode == Mode::CHESS) {
+        } else if (mode == Speed::CHESS) {
 
           SDL_SetCursor(cursor_hand_closed);
           ui_dirty = true;
@@ -1124,7 +1136,7 @@ void UI::Loop() {
         // LMB/RMB, drag, etc.
         dragging = false;
 
-        if (mode == Mode::CHESS) {
+        if (mode == Speed::CHESS) {
           std::pair<int, int> square;
           if (InSquare(mousex, mousey, &square)) {
             Move m;
@@ -1261,19 +1273,19 @@ void UI::DrawStatus() {
   int chesscolor = 1;
 
   switch (mode) {
-  case Mode::ERASING:
+  case Speed::ERASING:
     erasecolor = 2;
     break;
 
-  case Mode::DRAWING:
+  case Speed::DRAWING:
     drawcolor = 2;
     break;
 
-  case Mode::FILLING:
+  case Speed::FILLING:
     fillcolor = 2;
     break;
 
-  case Mode::CHESS:
+  case Speed::CHESS:
     chesscolor = 2;
     break;
   }
@@ -1287,19 +1299,19 @@ void UI::DrawStatus() {
 
 #define KEY(s) "^3" s "^<"
   const string modestring =
-    StringPrintf(KEY("E") "^%drase^<  "
-                 KEY("D") "^%draw^<  "
-                 KEY("F") "^%dill^<  "
-                 KEY("C") "^%dhess^<  "
+    std::format(KEY("E") "^{}rase^<  "
+                 KEY("D") "^{}raw^<  "
+                 KEY("F") "^{}ill^<  "
+                 KEY("C") "^{}hess^<  "
 
-                 KEY("A") "utoplay %s  "
-                 KEY("B") "its %s  "
-                 KEY("S") "tockfish %s  "
-                 "e" KEY("X") "plain %s  "
-                 KEY("M") "oves %s  "
-                 "b" KEY("O") "ard %s  "
-                 "me" KEY("T") "er %s  "
-                 "fa" KEY("J") "es %s  "
+                 KEY("A") "utoplay {}  "
+                 KEY("B") "its {}  "
+                 KEY("S") "tockfish {}  "
+                 "e" KEY("X") "plain {}  "
+                 KEY("M") "oves {}  "
+                 "b" KEY("O") "ard {}  "
+                 "me" KEY("T") "er {}  "
+                 "fa" KEY("J") "es {}  "
                  ,
                  erasecolor,
                  drawcolor, fillcolor, chesscolor,
@@ -1318,9 +1330,9 @@ void UI::DrawStatus() {
 
   // Color swatches.
   switch (mode) {
-  case Mode::ERASING:
-  case Mode::DRAWING:
-  case Mode::FILLING: {
+  case Speed::ERASING:
+  case Speed::DRAWING:
+  case Speed::FILLING: {
     const int yy = SCREENH - (FONTHEIGHT * 4) - 1;
     static constexpr int SWATCHWIDTH = 64;
     for (int i = 0; i < 10; i++) {
@@ -1328,7 +1340,7 @@ void UI::DrawStatus() {
                         SWATCHWIDTH * i, yy,
                         SWATCHWIDTH, FONTHEIGHT * 2);
       font2x->draw(SWATCHWIDTH * i + (SWATCHWIDTH >> 1) - FONTWIDTH, yy + 1,
-                   StringPrintf("%d", (i + 1) % 10));
+                   std::format("{}", (i + 1) % 10));
       if ((COLORS[i] & 0x00FFFFFF) ==
           (current_color & 0x00FFFFFF)) {
         uint32 fake_brightness = (current_color & 0xFF) +
@@ -1351,7 +1363,7 @@ void UI::DrawStatus() {
     break;
   }
 
-  case Mode::CHESS:
+  case Speed::CHESS:
     font2x->draw(5, SCREENH - (FONTHEIGHT * 4) - 1,
                  "[home] [<-] [->] navigate movie, ...");
     break;
@@ -1472,9 +1484,9 @@ void UI::Draw() {
       // make it white's perspective.
       if (position.BlackMove()) value = -value;
       font2x->draw(5, 16,
-                   StringPrintf("%s%d",
-                                (current_eval->score.is_mate ? "#" : ""),
-                                value));
+                   std::format("{}{}",
+                               (current_eval->score.is_mate ? "#" : ""),
+                               value));
 
       break;
     }
@@ -1714,7 +1726,7 @@ void UI::Draw() {
 
   if (draw_only_bits) {
     font2x->draw(CHESSX, CHESSY + 8 * CHESSSCALE + 8,
-                 StringPrintf("0x%llx", PositionBits()));
+                 std::format("0x{:x}", PositionBits()));
   }
 
   if (draw_fates == 2) {
@@ -1781,19 +1793,19 @@ void UI::Draw() {
                        FONTHEIGHT * count[pos];
       if (fate & Fates::DIED) {
         // red 'x'
-        font->draw(xx, yy, StringPrintf("^2x"));
+        font->draw(xx, yy, "^2x");
         xx += FONTWIDTH * 2;
       }
       fates_font->draw(
           xx, yy,
-          StringPrintf("^%d%s", fcolor, piece_names[i]));
+          std::format("^{}{}", fcolor, piece_names[i]));
       count[pos]++;
     }
   }
 
   if (draw_movelist) {
     Typewriter t{font2x, 900, 16, 1900 - 900, 1000 - 16};
-    // t.Write(StringPrintf("^3Move %d. ", movie_idx));
+    // t.Write(std::format("^3Move {}. ", movie_idx));
 
     for (int i = 0; i < movie.size(); i++) {
       int color = i < movie_idx ? (i == movie_idx - 1 ? 6 : 0) : 4;
@@ -1807,10 +1819,10 @@ void UI::Draw() {
       const char *ann = ""; // has_explanation ? "^4" HEART : "";
       if (i & 1) {
         // Black's move.
-        t.Write(StringPrintf("^%d%s%s  ", color, ms.c_str(), ann));
+        t.Write(std::format("^{}{}{}  ", color, ms, ann));
       } else {
-        t.Write(StringPrintf("^%d%d. %s%s ", color, (i >> 1) + 1,
-                             ms.c_str(), ann));
+        t.Write(std::format("^{}{}. {}{} ", color, (i >> 1) + 1,
+                             ms, ann));
       }
     }
   }
@@ -1882,7 +1894,7 @@ void UI::Draw() {
         }
 
         // And the pieces
-        auto ExDrawPieceAt = [this](int x, int y, uint8 piece) {
+        auto ExDrawPieceAt = [](int x, int y, uint8 piece) {
             uint8 typ = piece & Position::TYPE_MASK;
             if (typ == Position::C_ROOK) typ = Position::ROOK;
             string str = " ";

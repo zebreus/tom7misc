@@ -4,6 +4,7 @@
 #include <compare>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <string>
 
 #include "base/stringprintf.h"
@@ -274,7 +275,7 @@ ByteSet64::ByteSet64(const ByteSet &s) {
     CHECK(hi < 255 && lo > 0 && hi <= lo) << "Since we know "
       "this is not the universal set, there must be some "
       "element between 0 and 255 that is not contained. " <<
-      StringPrintf("lo: %02x hi: %02x", lo, hi);
+      std::format("lo: {:02x} hi: {:02x}", lo, hi);
     payload[range_idx * 2] = lo + 1;
     payload[range_idx * 2 + 1] = (hi + 256) - (lo + 1);
     range_idx++;
@@ -378,9 +379,9 @@ std::string ByteSet::DebugString() const {
   bool in_range = false;
   auto EndRange = [&](int b) {
       if (b - 1 == range_start) {
-        StringAppendF(&ret, " %02x", range_start);
+        AppendFormat(&ret, " {:02x}", range_start);
       } else {
-        StringAppendF(&ret, " %02x-%02x", range_start, b - 1);
+        AppendFormat(&ret, " {:02x}-{:02x}", range_start, b - 1);
       }
       in_range = false;
     };

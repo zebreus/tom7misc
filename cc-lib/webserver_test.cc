@@ -1,5 +1,7 @@
 #include "webserver.h"
 
+#include <format>
+#include <string>
 #include <time.h>
 #include <thread>
 #include <chrono>
@@ -17,22 +19,22 @@ static WebServer::Response SlashHandler(const WebServer::Request &request) {
 
   string table = "<table>\n";
   for (const auto &[k, v] : request.Params()) {
-    StringAppendF(&table,
-                  "<tr><td>%s</td><td>%s</td><tr>\n",
-                  WebServer::HTMLEscape(k).c_str(),
-                  WebServer::HTMLEscape(v).c_str());
+    AppendFormat(&table,
+                 "<tr><td>{}</td><td>{}</td><tr>\n",
+                 WebServer::HTMLEscape(k),
+                 WebServer::HTMLEscape(v));
   }
   table += "</table>\n";
   response.body =
-    StringPrintf(
-        "<html><h1>The time in seconds is %lld</h1>\n"
-        "<p>Path: %s\n"
+    std::format(
+        "<html><h1>The time in seconds is {}</h1>\n"
+        "<p>Path: {}\n"
         "<p>Params:\n"
-        "%s"
+        "{}"
         "</html>",
         (int64_t)time(nullptr),
-        request.path.c_str(),
-        table.c_str());
+        request.path,
+        table);
   return response;
 }
 
@@ -85,8 +87,8 @@ static void ServerThread() {
                        response.status = "OK";
                        response.content_type = "text/html; charset=UTF-8";
                        response.body =
-                         StringPrintf("Counter: %lld\n",
-                                      connections->Value());
+                         std::format("Counter: {}\n",
+                                     connections->Value());
                        return response;
                      });
   server->AddHandler("/params", TestParamsHandler);

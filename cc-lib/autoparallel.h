@@ -1,8 +1,14 @@
 #ifndef _CC_LIB_AUTOPARALLEL_H
 #define _CC_LIB_AUTOPARALLEL_H
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <format>
 #include <limits>
 #include <vector>
 #include <string>
@@ -56,7 +62,7 @@ struct AutoParallelComp {
     }
     last_status = run_timer.MS();
     rc = std::make_unique<ArcFour>(
-        StringPrintf("apc%lld.%f", time(nullptr), last_save));
+        std::format("apc{}.{}", time(nullptr), last_save));
   }
 
   // with f(idx, value), ignoring result
@@ -254,10 +260,10 @@ struct AutoParallelComp {
     int total_samples = 0;
     for (int i = 0; i < (int)experiments.size(); i++) {
       if (!experiments[i].sample_ms.empty()) {
-        std::string line = StringPrintf("%d", i);
+        std::string line = std::format("{}", i);
         for (double s : experiments[i].sample_ms) {
           total_samples++;
-          StringAppendF(&line, " %.7f", s);
+          AppendFormat(&line, " {:.7f}", s);
         }
         lines.push_back(line);
       }
@@ -305,20 +311,20 @@ struct AutoParallelComp {
     std::string out;
     //      123 12345 12345678
     //      12345678901234567890
-    StringAppendF(&out, "th |  # | avg %s |\n", units);
+    AppendFormat(&out, "th |  # | avg {} |\n", units);
     static constexpr int HW = 59;
     for (int i = 0; i < (int)experiments.size(); i++) {
       const Experiment &expt = experiments[i];
       // '% 2d' doesn't really work; the space is allocated
       // to the missing '+' sign.
-      std::string th = StringPrintf("%d", i + 1);
+      std::string th = std::format("{}", i + 1);
       while (th.size() < 2) th = (std::string)" " + th;
-      std::string sam = StringPrintf("%d", (int)expt.sample_ms.size());
+      std::string sam = std::format("{}", (int)expt.sample_ms.size());
       while (sam.size() < 3) sam = (std::string)" " + sam;
-      std::string avg = StringPrintf("%.2f", expt.current_mean * scale);
+      std::string avg = std::format("{:.2f}", expt.current_mean * scale);
       while (avg.size() < 8) avg = (std::string)" " + avg;
-      StringAppendF(&out, "%s |%s |%s| ",
-                    th.c_str(), sam.c_str(), avg.c_str());
+      AppendFormat(&out, "{} |{} |{}| ",
+                   th, sam, avg);
 
       // No need to scale these, since they are already normalized.
       double emin = (expt.current_mean - expt.current_stdev);
@@ -338,7 +344,7 @@ struct AutoParallelComp {
         else if (x > iavg && x < imax) c = '-';
         out.push_back(c);
       }
-      StringAppendF(&out, "\n");
+      AppendFormat(&out, "\n");
     }
     return out;
   }

@@ -3,6 +3,7 @@ default: smeight.exe
 
 all: smeight.exe
 
+CC_LIB=../cc-lib
 SDL=/c/code/SDL
 
 #  -I GLEW/include
@@ -12,17 +13,11 @@ OPT=-O2
 SYMBOLS=-g
 
 # to get assembly listing
-# g++ -m64 -O2 -g -D__MINGW32__ -DHAVE_ALLOCA -I "../cc-lib" -I "../cc-lib/city" -I ../fceulib   --std=c++11 -Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I SDL/include -c -g -Wa,-alh smeight.cc > smeight.s
-
-# Tom, you may need to do this:
-# export PATH=/c/TDM-GCC-64/bin:${PATH}
-
-# CXX=g++
-# CC=gcc
+# g++ -m64 -O2 -g -D__MINGW32__ -I "$(CC_LIB)" -I "$(CC_LIB)/city" -I ../fceulib   --std=c++11 -Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I SDL/include -c -g -Wa,-alh smeight.cc > smeight.s
 
 # for 64 bits on windows
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-g++
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-g++
 SDLARCH=x64
 
 # Suppress compilation commands, but show some indication of progress.
@@ -48,11 +43,11 @@ PROFILE=
 # FLTO=-flto
 # FLTO=
 
-INCLUDES=-I "../cc-lib" -I "../cc-lib/city" -I ../fceulib
+INCLUDES=-I "$(CC_LIB)" -I "$(CC_LIB)/city" -I ../fceulib
 
-CPPFLAGS= -m64 $(OPT) $(SYMBOLS) -D__MINGW32__ $(INCLUDES) $(PROFILE) $(FLTO) --std=c++17
+CPPFLAGS= -m64 $(OPT) $(SYMBOLS) -D__MINGW32__ $(INCLUDES) $(PROFILE) $(FLTO) --std=c++23
 
-CCLIB_OBJECTS=../cc-lib/util.o ../cc-lib/arcfour.o ../cc-lib/base/stringprintf.o ../cc-lib/city/city.o ../cc-lib/textsvg.o ../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/sdl/sdlutil.o ../cc-lib/base/logging.o
+CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/city/city.o $(CC_LIB)/textsvg.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/sdl/sdlutil.o $(CC_LIB)/base/logging.o $(CC_LIB)/image.o
 
 FCEULIB=../fceulib
 MAPPEROBJECTS=$(FCEULIB)/mappers/6.o $(FCEULIB)/mappers/61.o $(FCEULIB)/mappers/24and26.o $(FCEULIB)/mappers/51.o $(FCEULIB)/mappers/69.o $(FCEULIB)/mappers/77.o $(FCEULIB)/mappers/40.o $(FCEULIB)/mappers/mmc2and4.o $(FCEULIB)/mappers/71.o $(FCEULIB)/mappers/79.o $(FCEULIB)/mappers/41.o $(FCEULIB)/mappers/72.o $(FCEULIB)/mappers/80.o $(FCEULIB)/mappers/42.o $(FCEULIB)/mappers/62.o $(FCEULIB)/mappers/73.o $(FCEULIB)/mappers/85.o $(FCEULIB)/mappers/emu2413.o $(FCEULIB)/mappers/46.o $(FCEULIB)/mappers/65.o $(FCEULIB)/mappers/75.o $(FCEULIB)/mappers/50.o $(FCEULIB)/mappers/67.o $(FCEULIB)/mappers/76.o $(FCEULIB)/mappers/tengen.o
@@ -65,7 +60,7 @@ INPUTOBJECTS=$(FCEULIB)/input/arkanoid.o $(FCEULIB)/input/ftrainer.o $(FCEULIB)/
 
 FCEUOBJECTS=$(FCEULIB)/cart.o $(FCEULIB)/version.o $(FCEULIB)/emufile.o $(FCEULIB)/fceu.o $(FCEULIB)/fds.o $(FCEULIB)/file.o $(FCEULIB)/filter.o $(FCEULIB)/ines.o $(FCEULIB)/input.o $(FCEULIB)/palette.o $(FCEULIB)/ppu.o $(FCEULIB)/sound.o $(FCEULIB)/state.o $(FCEULIB)/unif.o $(FCEULIB)/vsuni.o $(FCEULIB)/x6502.o $(FCEULIB)/git.o $(FCEULIB)/fc.o $(FCEULIB)/opcodes.o
 
-FCEULIB_OBJECTS=$(FCEUOBJECTS) $(MAPPEROBJECTS) $(UTILSOBJECTS) $(PALLETESOBJECTS) $(BOARDSOBJECTS) $(INPUTOBJECTS) $(FCEULIB)/emulator.o $(FCEULIB)/headless-driver.o $(FCEULIB)/simplefm2.o $(FCEULIB)/stringprintf.o
+FCEULIB_OBJECTS=$(FCEUOBJECTS) $(MAPPEROBJECTS) $(UTILSOBJECTS) $(PALLETESOBJECTS) $(BOARDSOBJECTS) $(INPUTOBJECTS) $(FCEULIB)/emulator.o $(FCEULIB)/headless-driver.o $(FCEULIB)/simplefm2.o
 
 # without static, can't find lz or lstdcxx maybe?
 # (actually seems to work on 14 Feb 2016. but I like static -tom7)

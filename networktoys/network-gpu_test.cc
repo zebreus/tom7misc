@@ -1,23 +1,29 @@
 #include "network-gpu.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <format>
 #include <memory>
+#include <utility>
 #include <vector>
 #include <functional>
 #include <string>
-#include <set>
 
-#include "network.h"
-#include "network-test-util.h"
-#include "clutil.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
+#include "clutil.h"
+#include "image.h"
+#include "network-test-util.h"
+#include "network.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "image.h"
+#include "timer.h"
 
 using namespace std;
+using int64 = int64_t;
 
 using TestNet = NetworkTestUtil::TestNet;
 using TrainNet = NetworkTestUtil::TrainNet;
@@ -168,9 +174,9 @@ static void TrainTest(TrainNet train_net,
     images.back()->Clear32(0x000000FF);
     images.back()->BlendText2x32(
         2, 2, 0x9999AAFF,
-        StringPrintf("Train test: %s | Layer %d | 1px = %d rounds ",
-                     train_net.name.c_str(), i,
-                     train_net.net.rounds, IMAGE_EVERY));
+        std::format("Train test: {} | Layer {} | 1px = {} rounds ",
+                    train_net.name, i,
+                    train_net.net.rounds, IMAGE_EVERY));
   }
 
   printf("\n--------------------------\n"
@@ -374,7 +380,7 @@ static void TrainTest(TrainNet train_net,
           CHECK(layer.chunks.size() > 0);
           const Chunk &chunk = layer.chunks[0];
           auto ToScreenY = [](float w) {
-              int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
+              int yrev = w * float(IMAGE_HEIGHT >> 2) + (IMAGE_HEIGHT >> 1);
               int y = IMAGE_HEIGHT - yrev;
               // Always draw on-screen.
               return std::clamp(y, 0, IMAGE_HEIGHT - 1);

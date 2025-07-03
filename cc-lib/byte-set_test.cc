@@ -577,7 +577,7 @@ static void TestByteSetIterator() {
     Shuffle(&rc, &shuffled);
     for (int i : shuffled) s.Add(i);
 
-    CHECK_EQ(s.Size(), expected_values.size());
+    CHECK_EQ((size_t)s.Size(), expected_values.size());
 
     // But iteration should always happen in sorted order.
     std::vector<uint8_t> actual_values;

@@ -4,18 +4,19 @@
 // with -march=native                Decoded 512 times in 20 sec = 25.6000 images/sec
 // with -march=native -O3 -flto      Decoded 512 times in 18 sec = 28.4444 images/sec
 
-
-#include <vector>
 #include <cstdint>
+#include <cstdio>
 #include <ctime>
+#include <format>
+#include <tuple>
+#include <utility>
+#include <vector>
 
-#include "image.h"
-#include "stb_image.h"
-#include "stb_image_write.h"
 #include "arcfour.h"
-#include "randutil.h"
-#include "base/stringprintf.h"
 #include "base/logging.h"
+#include "image.h"
+#include "randutil.h"
+#include "stb_image.h"
 
 using namespace std;
 using uint8 = uint8_t;
@@ -74,7 +75,7 @@ static void BenchmarkPNG() {
   for (int i = 0; i < 2000; i++) {
     const auto [x0, y0, x1, y1] = RandBox(&rc);
     image.BlendText32(x0, y0, 0x000000FF,
-                      StringPrintf("%d,%d", x1, y1));
+                      std::format("{},{}", x1, y1));
   }
 
   const std::vector<uint8> imgbytes = image.SaveToVec();

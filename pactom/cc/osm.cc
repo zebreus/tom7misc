@@ -1,16 +1,19 @@
 
 #include "osm.h"
 
-#include <memory>
-#include <vector>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
-#include "xml.h"
+#include "base/logging.h"
 #include "geom/latlon.h"
 #include "util.h"
-#include "base/logging.h"
+#include "xml.h"
 
 using namespace std;
 using NodeType = XML::NodeType;
@@ -69,7 +72,7 @@ void OSM::AddFile(const string &filename) {
   CHECK(top.type == NodeType::Element &&
         top.tag == "osm") << filename << ": "
                           << "Expected top-level <osm> tag.\n";
-  printf("<osm> children: %d\n", top.children.size());
+  printf("<osm> children: %d\n", (int)top.children.size());
 
   for (const Node &ch : top.children) {
     if (ch.type == NodeType::Element) {

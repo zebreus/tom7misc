@@ -667,7 +667,7 @@ static void Train(Network *net) {
 
         if (verbose_round) {
           printf("%d passes, %d examples (recycled %d) -> %d\n",
-                 passes, eqsize, recycled, example_queue.size());
+                 passes, eqsize, recycled, (int)example_queue.size());
         }
 
         CHECK(inputs.size() == INPUT_SIZE * EXAMPLES_PER_ROUND);

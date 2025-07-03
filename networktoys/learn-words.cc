@@ -1,27 +1,36 @@
 #include "network-gpu.h"
 
-#include <cmath>
-#include <memory>
-#include <vector>
-#include <functional>
-#include <string>
-#include <ctype.h>
+#include <algorithm>
+#include <array>
 #include <chrono>
-#include <thread>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <ctype.h>
 #include <deque>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
-#include "network.h"
-#include "network-test-util.h"
-#include "clutil.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
+#include "clutil.h"
+#include "error-history.h"
+#include "image.h"
+#include "network-test-util.h"
+#include "network.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "image.h"
+#include "timer.h"
 #include "util.h"
 #include "wikipedia.h"
-#include "error-history.h"
 
 using namespace std;
 
@@ -32,6 +41,7 @@ using TestExample = NetworkTestUtil::TestExample;
 static CL *cl = nullptr;
 
 using int64 = int64_t;
+using uint32 = uint32_t;
 
 static constexpr const char *MODEL_NAME = "semantic-words.val";
 
@@ -306,7 +316,7 @@ struct Wikibits {
       }
     }
 
-    printf("Gave %d distinct words ids\n", id_to_word.size());
+    printf("Gave %d distinct words ids\n", (int)id_to_word.size());
 
     for (const auto &[m_, frags] : processed) {
       for (const auto &f : frags) {
@@ -476,7 +486,7 @@ struct ExampleThread {
   ExampleThread(LexEncode *lex_encode,
                 Wikibits *wikibits) : lex_encode(lex_encode),
                                       wikibits(wikibits) {
-    work_thread.reset(new std::thread(&Generate, this));
+    work_thread.reset(new std::thread(&ExampleThread::Generate, this));
   }
 
   ~ExampleThread() {
@@ -929,7 +939,7 @@ static void Train(Network *net) {
           // so we can skip the copy chunks
           const Chunk &chunk = layer.chunks.back();
           auto ToScreenY = [](float w) {
-              int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
+              int yrev = w * float(IMAGE_HEIGHT >> 2) + (IMAGE_HEIGHT >> 1);
               int y = IMAGE_HEIGHT - yrev;
               // Always draw on-screen.
               return std::clamp(y, 0, IMAGE_HEIGHT - 1);
@@ -1091,9 +1101,9 @@ static Network *NewNetwork() {
   // weights across the words. Note that these have to be effectively
   // dense, as that is the only kind of convolution we support.
 
-  auto ConvChunk = [&rc](int input_word_size,
-                         int num_words,
-                         int output_word_size) {
+  auto ConvChunk = [](int input_word_size,
+                      int num_words,
+                      int output_word_size) {
       Chunk chunk;
       chunk.type = CHUNK_CONVOLUTION_ARRAY;
       chunk.num_features = output_word_size;

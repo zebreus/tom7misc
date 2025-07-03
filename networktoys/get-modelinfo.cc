@@ -1,15 +1,18 @@
 
-#include "modelinfo.h"
-
+#include <cstdio>
+#include <format>
 #include <memory>
+#include <optional>
 #include <string>
-#include <cstdint>
-#include <cmath>
 #include <time.h>
+#include <utility>
+#include <vector>
 
-#include "network.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "image.h"
+#include "modelinfo.h"
+#include "network.h"
 
 using namespace std;
 
@@ -49,11 +52,11 @@ int main(int argc, char **argv) {
 
   strftime(dates, 127, "%d %b %Y  %H:%M", localtime(&tt));
   vector<string> lines = {
-    StringPrintf("%s  round %lld   examples %lld   bytes %lld   layers %d",
-                 dates,
-                 net->rounds, net->examples, net->Bytes(), net->layers.size()),
-    StringPrintf("                                      %lld total params",
-                 net->TotalParameters()),
+    std::format("{}  round {}   examples {}   bytes {}   layers {}",
+                dates,
+                net->rounds, net->examples, net->Bytes(), net->layers.size()),
+    std::format("                                      {} total params",
+                net->TotalParameters()),
   };
 
   for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {

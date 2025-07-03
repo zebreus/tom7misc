@@ -1,6 +1,6 @@
 
-#ifndef _PLUGINVERT_MODELINFO_H
-#define _PLUGINVERT_MODELINFO_H
+#ifndef _NETWORKTOYS_MODELINFO_H
+#define _NETWORKTOYS_MODELINFO_H
 
 #include <optional>
 

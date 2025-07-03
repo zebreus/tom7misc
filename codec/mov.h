@@ -34,6 +34,7 @@ struct MOV {
     PNG,
     RAW_RGBA,
     PNG_MINIZ,
+    PNG_CCLIB,
   };
 
   static constexpr int TIME_SCALE = 60000;
@@ -104,7 +105,7 @@ struct MOV {
   static std::unique_ptr<Out> OpenOut(std::string_view filename,
                                       int width, int height,
                                       int duration = DURATION_60,
-                                      Codec codec = Codec::PNG);
+                                      Codec codec = Codec::PNG_CCLIB);
   // Finalizes the file; consumes the argument.
   // This is the same as deleting the Out object, but it additionally
   // validates that the file hasn't already been closed.

@@ -1,10 +1,17 @@
 
 #include "modelinfo.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <cstdint>
 #include <cmath>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "image.h"
 #include "network.h"
@@ -15,6 +22,7 @@
 using namespace std;
 using uint32 = uint32_t;
 using int64 = int64_t;
+using uint8 = uint8_t;
 
 static constexpr int MAX_PIXELS = 64000000;
 

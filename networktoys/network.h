@@ -4,9 +4,10 @@
 // cc-lib, but for now I've been cloning and making improvements
 // with each ML project.
 
-#ifndef _NETWORK_H
-#define _NETWORK_H
+#ifndef _NETWORKTOYS_NETWORK_H
+#define _NETWORKTOYS_NETWORK_H
 
+#include <tuple>
 #include <vector>
 #include <string>
 #include <cstdint>

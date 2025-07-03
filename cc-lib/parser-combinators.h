@@ -4,15 +4,20 @@
 #ifndef _CC_LIB_PARSER_COMBINATORS_H
 #define _CC_LIB_PARSER_COMBINATORS_H
 
-#include <memory>
-#include <string>
-#include <vector>
-#include <optional>
-#include <functional>
-#include <concepts>
-#include <utility>
-#include <deque>
 #include <bit>
+#include <concepts>
+#include <cstdio>
+#include <deque>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <tuple>
+#include <type_traits>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 

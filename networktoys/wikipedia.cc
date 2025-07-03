@@ -1,8 +1,15 @@
 
 #include "wikipedia.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <optional>
 #include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "re2/re2.h"

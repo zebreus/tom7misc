@@ -2,17 +2,23 @@
 #ifndef _PLUGINVERT_TRAIN_UTIL_H
 #define _PLUGINVERT_TRAIN_UTIL_H
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdint>
-#include <vector>
+#include <cstdio>
+#include <format>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "network.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "image.h"
-#include "threadutil.h"
 #include "color-util.h"
+#include "image.h"
+#include "network.h"
+#include "threadutil.h"
 #include "util.h"
 
 // A single image storing history of some data, which is drawn a single column
@@ -237,8 +243,8 @@ struct TrainingImages {
 
           // top
 
-          auto TopToScreenY = [this, weight_height](float w) {
-              int yrev = w * float(weight_height / 4) + (weight_height / 2);
+          auto TopToScreenY = [weight_height](float w) {
+              int yrev = w * float(weight_height >> 2) + (weight_height >> 1);
               int y = weight_height - yrev;
               // Always draw on-screen.
               return std::clamp(y, 0, weight_height - 1);
@@ -294,7 +300,7 @@ struct TrainingImages {
           // bottom
 
           auto BotToScreenY = [this, weight_height, stim_height](float w) {
-              int yrev = w * float(stim_height / 4) + (stim_height / 2);
+              int yrev = w * float(stim_height >> 2) + (stim_height >> 1);
               int y = weight_height + stim_height - yrev;
               // Always draw on-screen.
               return std::clamp(y, weight_height, image_col_height - 1);
@@ -357,9 +363,10 @@ struct TrainingImages {
   }
 
 private:
-  string FilenameFor(const std::string &basename, int layer, int chunk) const {
-    return StringPrintf("%s-%d.%d.png",
-                        basename.c_str(), layer, chunk);
+  std::string FilenameFor(const std::string &basename,
+                          int layer, int chunk) const {
+    return std::format("{}-{}.{}.png",
+                       basename, layer, chunk);
   }
 
   static constexpr ColorUtil::Gradient RAINBOW{
@@ -508,9 +515,9 @@ struct ErrorImage {
       const auto &[expected, actual] = ex[i];
       const float diff = actual - expected;
 
-      const uint32 ce = ColorUtil::LinearGradient32(RED_GREEN, expected);
-      const uint32 ca = ColorUtil::LinearGradient32(RED_GREEN, actual);
-      const uint32 cd = ColorUtil::LinearGradient32(RED_GREEN, diff);
+      const uint32_t ce = ColorUtil::LinearGradient32(RED_GREEN, expected);
+      const uint32_t ca = ColorUtil::LinearGradient32(RED_GREEN, actual);
+      const uint32_t cd = ColorUtil::LinearGradient32(RED_GREEN, diff);
 
       image->SetPixel32(image_x, MARGIN + i, ce);
       image->SetPixel32(

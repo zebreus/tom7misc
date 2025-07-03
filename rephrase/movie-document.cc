@@ -107,8 +107,9 @@ void MovieDocument::GenerateOutput(
         MOV::DURATION_60,
         // Maybe this could be configurable too, but since we are running
         // offline there would be very little reason to want a faster but
-        // worse codec, which is all that the other options provide.
-        MOV::Codec::PNG_MINIZ);
+        // worse codec. The Main thing would maybe be avoiding
+        // indexed-color PNGs for compatibility sake.
+        MOV::Codec::PNG_CCLIB);
 
   // XXX configurable?
   recorder->SetEncodingThreads(12);
@@ -121,8 +122,8 @@ void MovieDocument::GenerateOutput(
       LOG(FATAL) << "Sorry, movie documents cannot have nested movies.";
     }
 
-    // TODO: We could easily repeat frames when the duration is set. But I should
-    // figure out what the right semantics is.
+    // TODO: We could easily repeat frames when the duration is set.
+    // But I should figure out what the right semantics is.
     if (frame.duration != 0) {
       fprintf(stderr, "Note: Ignoring duration\n");
     }

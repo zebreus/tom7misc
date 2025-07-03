@@ -1,9 +1,13 @@
 
 #include "error-history.h"
 
+#include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <optional>
 #include <map>
+#include <tuple>
+#include <utility>
 #include <vector>
 #include <string>
 #include <cmath>
@@ -25,7 +29,7 @@ static inline auto FindWithDefault(const C &cont, const K &key, V v) -> V {
   return cit->second;
 }
 
-static inline constexpr HalfAlpha(uint32_t c) {
+static inline constexpr uint32_t HalfAlpha(uint32_t c) {
   uint32 rgb = c & 0xFFFFFF00;
   uint32 a = (c & 0xFF) >> 1;
   return rgb | a;

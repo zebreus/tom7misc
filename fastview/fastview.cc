@@ -1,10 +1,14 @@
 
-
 #include <cstdlib>
-#include <heapapi.h>
 #include <span>
 #include <string>
+#include <cmath>
+#include <memory>
+#include <string>
+#include <vector>
+#include <cstdint>
 
+#include <heapapi.h>
 #include <d2d1.h>
 #include <d2d1helper.h>
 #include <minwindef.h>
@@ -13,12 +17,6 @@
 #include <windows.h>
 #include <winerror.h>
 #include <winnt.h>
-
-#include <cmath>
-#include <memory>
-#include <string>
-#include <vector>
-#include <cstdint>
 
 #include "image.h"
 #include "color-util.h"

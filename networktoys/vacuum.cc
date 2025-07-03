@@ -15,6 +15,10 @@
 // have no references. It often makes sense to run this (especially the
 // latter option) after vacuuming.
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 #include <shared_mutex>

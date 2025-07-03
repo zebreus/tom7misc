@@ -3,10 +3,10 @@
 // "core" enough to be part of Network itself.
 //
 // XXX This needs to be rewritten to work with convolutional_array
-// layers and "chunks" when that comes.
+// layers and "chunks" when that comes. It doesn't currently compile.
 
-#ifndef _PLUGINVERT_NETWORK_UTIL_H
-#define _PLUGINVERT_NETWORK_UTIL_H
+#ifndef _NETWORKTOYS_NETWORK_UTIL_H
+#define _NETWORKTOYS_NETWORK_UTIL_H
 
 #include <string>
 #include <vector>

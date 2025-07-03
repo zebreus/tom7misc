@@ -1,24 +1,27 @@
 
 #include "frame-queue.h"
 
-#include <memory>
-#include <vector>
-#include <string>
-#include <cstdint>
-#include <thread>
-#include <shared_mutex>
 #include <array>
-
-#include "base/stringprintf.h"
-#include "base/logging.h"
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <memory>
+#include <shared_mutex>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
 #include "../fceulib/simplefm7.h"
 
-#include "threadutil.h"
-#include "randutil.h"
 #include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "image.h"
+#include "randutil.h"
+#include "threadutil.h"
 
 using namespace std;
 using uint8 = uint8_t;

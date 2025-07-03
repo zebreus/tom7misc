@@ -1,13 +1,15 @@
 
-default: train.exe collate-errors.exe vacuum.exe cull.exe deepen.exe play.exe
+default: all
 
 # widen.exe
-all: train.exe collate-errors.exe vacuum.exe cull.exe get-modelinfo.exe get-layerweights.exe network_test.exe
+all: collate-errors.exe get-modelinfo.exe get-layerweights.exe network_test.exe direct-guess.exe direct-widen.exe collate-errors.exe make-wordlist.exe print-weights.exe direct-words.exe learn-words.exe
+
+broken: deepen.exe train.exe cull.exe vacuum.exe play.exe
 
 CC_LIB=../cc-lib
 
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
 
 # Note, this builds against AMD's distribution of OpenCL, since that's
 # the card I had when I started. It also works fine with an NVIDIA GPU,
@@ -23,8 +25,7 @@ SDLOPATH=$(SDLSDK)/build
 # SDLINCLUDES=-ISDL/include
 SDLINCLUDES=-I$(SDLSDK)/include
 
-# XXX maybe only enable -ffast-math for network.o? or call intrinsics there?
-CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 -ffast-math
+CXXFLAGS=-march=native -m64 -Wall -Wno-unused-function -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
 OPT=-O3
 
 SDLARCH=x64

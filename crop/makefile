@@ -7,11 +7,11 @@ CC_LIB=../cc-lib
 
 # ASAN=-fsanitize=address
 # OPT=-g -O2
-OPT=-g -O3
+OPT=-g -O3 -flto=auto
 
 # -fno-strict-aliasing
 # -I/usr/local/include -I/usr/include
-CXXFLAGS=$(ASAN) $(OPT) -Wall -Wno-format -Wno-unused-function -Wno-deprecated -ISDL/include -I. -I.. -I$(CC_LIB) --std=c++20
+CXXFLAGS=$(ASAN) $(OPT) -Wall -Wno-format -Wno-unused-function -Wno-deprecated -ISDL/include -I. -I.. -I$(CC_LIB) --std=c++23
 
 
 # SDLOPATH=SDL/build
@@ -33,11 +33,11 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 
 # old
 # XXX can't they just be in CXXFLAGS?
-CPPFLAGS= -DDISABLE_SOUND=1 -Wno-write-strings -m64 -D__MINGW32__  $(SDLINCLUDES) $(PROFILE) $(FLTO)
+CPPFLAGS= -Wno-write-strings -m64 -D__MINGW32__  $(SDLINCLUDES) $(PROFILE) $(FLTO)
 
 %.o : %.cc *.h makefile
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
-	echo -n "."
+	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+	@echo -n "."
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@

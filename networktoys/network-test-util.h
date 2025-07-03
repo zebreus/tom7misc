@@ -1,6 +1,6 @@
 
-#ifndef _NETWORK_TEST_UTIL_H
-#define _NETWORK_TEST_UTIL_H
+#ifndef _NETWORKTOYS_NETWORK_TEST_UTIL_H
+#define _NETWORKTOYS_NETWORK_TEST_UTIL_H
 
 #include <vector>
 #include <functional>

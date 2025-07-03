@@ -2,11 +2,13 @@
 // GPU (OpenCL) implementation of inference and training; goes
 // with network.h.
 
-#ifndef _NETWORK_GPU_H
-#define _NETWORK_GPU_H
+#ifndef _PLUGINVERT_NETWORK_GPU_H
+#define _PLUGINVERT_NETWORK_GPU_H
 
+#include <CL/cl.h>
 #include <string>
 #include <optional>
+#include <utility>
 #include <vector>
 #include <mutex>
 #include <cstdint>
@@ -114,8 +116,8 @@ struct NetworkGPU {
                                        nullptr));
   }
 
-
-  DISALLOW_COPY_AND_ASSIGN(NetworkGPU);
+ private:
+  NetworkGPU() = delete;
 };
 
 // Data on the GPU for a single training round: A fixed-size array of
@@ -281,7 +283,8 @@ struct TrainingRoundGPU {
                             nullptr));
   }
 
-  DISALLOW_COPY_AND_ASSIGN(TrainingRoundGPU);
+ private:
+  TrainingRoundGPU() = delete;
 };
 
 
@@ -314,7 +317,7 @@ struct ForwardLayerCL {
 
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(ForwardLayerCL);
+  ForwardLayerCL() = delete;
 };
 
 // TODO: Rename this to like, TrainingParams.
@@ -414,7 +417,7 @@ struct SetOutputErrorCL {
 
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(SetOutputErrorCL);
+  SetOutputErrorCL() = delete;
 };
 
 // Propagate errors backwards. Note that errors flow from "dst" to "src".
@@ -463,7 +466,7 @@ struct BackwardLayerCL {
 
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(BackwardLayerCL);
+  BackwardLayerCL() = delete;
 };
 
 // Optional and unprincipled L2-like regularization.
@@ -487,7 +490,7 @@ struct DecayWeightsCL {
   cl_kernel kernel;
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(DecayWeightsCL);
+  DecayWeightsCL() = delete;
 };
 
 
@@ -550,7 +553,7 @@ struct UpdateWeightsCL {
 
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(UpdateWeightsCL);
+  UpdateWeightsCL() = delete;
 };
 
 // Replaces example 0's errors with the mean value over all
@@ -573,7 +576,7 @@ struct SummaryStatisticsCL {
   cl_kernel kernel;
   std::mutex m;
 
-  DISALLOW_COPY_AND_ASSIGN(SummaryStatisticsCL);
+  SummaryStatisticsCL() = delete;
 };
 
 

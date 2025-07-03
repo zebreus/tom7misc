@@ -1,51 +1,36 @@
 
 #include <algorithm>
-#include <cmath>
-#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
-#include <deque>
-#include <functional>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <thread>
-#include <tuple>
 #include <utility>
-#include <vector>
 #include <cstdint>
 #include <unistd.h>
 
-#include "SDL_error.h"
 #include "SDL_events.h"
 #include "SDL_keyboard.h"
 #include "SDL_keysym.h"
 #include "SDL_timer.h"
 #include "SDL_video.h"
-
-#include "threadutil.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
-
-#include "timer.h"
-#include "ansi.h"
-#include "periodically.h"
-
 #include "SDL.h"
 #include "SDL_main.h"
 #include "SDL_mouse.h"
 
-#include "util.h"
-#include "image.h"
+#include "ansi.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 #include "image-resize.h"
-
-#include "sdl/sdlutil.h"
-#include "sdl/font.h"
-#include "sdl/cursor.h"
+#include "image.h"
+#include "periodically.h"
 #include "sdl/chars.h"
+#include "sdl/cursor.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
+#include "util.h"
 
 using namespace std;
 

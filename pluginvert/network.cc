@@ -7,8 +7,10 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <format>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -1465,9 +1467,9 @@ void Stimulation::NaNCheck(const std::string &message) const {
   if (has_nans) {
     string err;
     for (int i = 0; i < layer_nans.size(); i++) {
-      err += StringPrintf("stim layer %d. %d/%d values\n",
-                          i,
-                          layer_nans[i], values[i].size());
+      err += std::format("stim layer {}. {}/{} values\n",
+                         i,
+                         layer_nans[i], values[i].size());
     }
     CHECK(false) << "[" << message
                  << "] The stimulation has NaNs :-(\n" << err;

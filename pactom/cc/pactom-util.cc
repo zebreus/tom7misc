@@ -1,12 +1,16 @@
 
 #include "pactom-util.h"
 
+#include <algorithm>
+#include <cstdio>
 #include <memory>
 #include <vector>
 #include <string>
 #include <cmath>
 #include <cstdint>
 
+#include "arcfour.h"
+#include "pactom.h"
 #include "util.h"
 #include "edit-distance.h"
 #include "threadutil.h"
@@ -40,7 +44,7 @@ std::unique_ptr<PacTom> PacTomUtil::Load(bool merge_dates) {
         tomdir.push_back(Util::DirPlus(TOMDIR, f));
       }
     }
-    printf("%d runs in tomdir\n", tomdir.size());
+    printf("%d runs in tomdir\n", (int)tomdir.size());
 
     unique_ptr<PacTom> tompac = PacTom::FromFiles(tomdir, "", "", true);
     CHECK(tompac.get() != nullptr);

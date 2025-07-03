@@ -4,9 +4,9 @@ default : maptest.exe sphere.exe zoomout.exe colortile.exe datemerge.exe runstat
 CC_LIB=../../cc-lib
 
 # for 64 bits on windows
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-g++
-CXXFLAGS=-march=native -I$(CC_LIB) --std=c++20 -O3 -static -flto=auto
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-g++
+CXXFLAGS=-march=native -I$(CC_LIB) --std=c++23 -O3 -static -flto=auto
 
 # For linux, others...
 # CXX=g++

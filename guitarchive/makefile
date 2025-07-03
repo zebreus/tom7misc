@@ -2,8 +2,8 @@
 default : cleandb.exe chords.exe
 all: cleandb.exe chords.exe guitarchive_test.exe chord-parser_test.exe
 
-OPT=-O2
-CXXFLAGS=--std=c++20 -Wall $(OPT)
+OPT=-O2 -flto=auto
+CXXFLAGS=--std=c++23 -Wall $(OPT)
 SYMBOLS=-g
 
 # CXX=x86_64-w64-mingw32-g++

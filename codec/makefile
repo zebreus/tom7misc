@@ -11,7 +11,7 @@ EXE_LDFLAGS =
 
 OBJECTS = codec.o
 
-CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o $(CC_LIB)/zip.o $(CC_LIB)/util.o $(CC_LIB)/opt/opt.o
+CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/ansi.o $(CC_LIB)/miniz.o $(CC_LIB)/zip.o $(CC_LIB)/png.o $(CC_LIB)/util.o $(CC_LIB)/opt/opt.o
 
 codec.dll: codec.o
 	$(CXX) $(CXXFLAGS) $(DLL_LDFLAGS) -o $@ $<

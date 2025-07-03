@@ -11,6 +11,7 @@
 static constexpr int OUTER = 10000;
 static constexpr int INNER = 1'000'000;
 
+[[maybe_unused]]
 static void BenchSizeSIMD() {
   double total_sec = 0.0;
   for (int i = 0; i < OUTER; i++) {
@@ -32,6 +33,7 @@ static void BenchSizeSIMD() {
          ANSI::Time(total_sec).c_str());
 }
 
+[[maybe_unused]] [[deprecated]]
 static void BenchSizeASM() {
   double total_sec = 0.0;
   for (int i = 0; i < OUTER; i++) {

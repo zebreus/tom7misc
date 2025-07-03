@@ -1,5 +1,5 @@
-#ifndef _PLUGINVERT_ERROR_HISTORY_H
-#define _PLUGINVERT_ERROR_HISTORY_H
+#ifndef _NETWORKTOYS_ERROR_HISTORY_H
+#define _NETWORKTOYS_ERROR_HISTORY_H
 
 #include <string>
 #include <vector>

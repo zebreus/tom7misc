@@ -2,34 +2,42 @@
 // Try predicting the middle word using a simple one-hot dictionary
 // of words.
 
-#include "network-gpu.h"
-
-#include <cmath>
-#include <memory>
-#include <vector>
-#include <functional>
-#include <string>
-#include <ctype.h>
-#include <chrono>
-#include <thread>
-#include <deque>
-
-#include "network.h"
-#include "network-test-util.h"
-#include "clutil.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "arcfour.h"
-#include "randutil.h"
-#include "threadutil.h"
-#include "image.h"
-#include "util.h"
-#include "wikipedia.h"
-#include "error-history.h"
-
 #include "direct-word-problem.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <ctype.h>
+#include <deque>
+#include <format>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
+
+#include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "clutil.h"
+#include "error-history.h"
+#include "image.h"
+#include "network-gpu.h"
+#include "network-test-util.h"
+#include "network.h"
+#include "randutil.h"
+#include "threadutil.h"
+#include "timer.h"
+#include "util.h"
+#include "wikipedia.h"
+
 using namespace std;
+using int64 = int64_t;
+using uint32 = uint32_t;
 
 using TestNet = NetworkTestUtil::TestNet;
 using TrainNet = NetworkTestUtil::TrainNet;
@@ -37,29 +45,13 @@ using TestExample = NetworkTestUtil::TestExample;
 
 static CL *cl = nullptr;
 
-using int64 = int64_t;
-
-static bool OkChars(const string &s) {
-  if (s.empty()) return false;
-  if (s[0] == '\'') return false;
-  for (int i = 0; i < s.size(); i++) {
-    if (s[i] == '\'' ||
-        (s[i] >= 'a' && s[i] <= 'z')) {
-      // ok
-    } else {
-      return false;
-    }
-  }
-  return true;
-}
-
 struct Wikibits {
   static constexpr int NUM_SHARDS = 128;
   // static constexpr int NUM_SHARDS = 1;
 
   Wikibits(Wordlist wordlist) :
     wordlist(std::move(wordlist)),
-    rc("wikibits" + StringPrintf("%lld", time(nullptr))) {
+    rc(std::format("wikibits{}", time(nullptr))) {
 
     Init();
   }
@@ -67,7 +59,7 @@ struct Wikibits {
   void Init() {
     std::vector<string> filenames;
     for (int i = 0; i < NUM_SHARDS; i++)
-      filenames.push_back(StringPrintf("wikibits/wiki-%d.txt", i));
+      filenames.push_back(std::format("wikibits/wiki-{}.txt", i));
     // Sequences of words from wordlists, represented by their
     // indices.
     std::vector<std::vector<std::vector<int>>> processed =
@@ -257,7 +249,7 @@ struct ExampleThread {
   }
 
   ExampleThread(Wikibits *wikibits) : wikibits(wikibits) {
-    work_thread.reset(new std::thread(&Generate, this));
+    work_thread.reset(new std::thread(&ExampleThread::Generate, this));
   }
 
   ~ExampleThread() {
@@ -720,7 +712,7 @@ static void Train(Network *net) {
           // so we can skip the copy chunks
           const Chunk &chunk = layer.chunks.back();
           auto ToScreenY = [](float w) {
-              int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
+              int yrev = w * float(IMAGE_HEIGHT >> 2) + (IMAGE_HEIGHT >> 1);
               int y = IMAGE_HEIGHT - yrev;
               // Always draw on-screen.
               return std::clamp(y, 0, IMAGE_HEIGHT - 1);
@@ -882,9 +874,9 @@ static Network *NewNetwork() {
   // weights across the words. Note that these have to be effectively
   // dense, as that is the only kind of convolution we support.
 
-  auto ConvChunk = [&rc](int input_word_size,
-                         int num_words,
-                         int output_word_size) {
+  auto ConvChunk = [](int input_word_size,
+                      int num_words,
+                      int output_word_size) {
       Chunk chunk;
       chunk.type = CHUNK_CONVOLUTION_ARRAY;
       chunk.num_features = output_word_size;

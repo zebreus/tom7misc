@@ -10,6 +10,7 @@ else
   # Linux and msys2
   CXX=g++
   CC=gcc
+  FLTO=-flto=auto
 endif
 
 # LFLAGS=-static

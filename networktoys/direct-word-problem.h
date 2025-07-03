@@ -1,8 +1,7 @@
-#ifndef __PLUGINVERT_DIRECT_WORD_PROBLEM_H
-#define __PLUGINVERT_DIRECT_WORD_PROBLEM_H
+#ifndef _NETWORKTOYS_DIRECT_WORD_PROBLEM_H
+#define _NETWORKTOYS_DIRECT_WORD_PROBLEM_H
 
 #include <vector>
-#include <cstdint>
 #include <string>
 #include <unordered_map>
 
@@ -10,19 +9,19 @@
 #include "base/logging.h"
 
 // make-wordlist.exe
-static constexpr const char *WORDLIST = "wordlist.txt";
+inline constexpr const char *WORDLIST = "wordlist.txt";
 // Can get this from the wordlist, but it is useful as a compile-time
 // constant.
 // static constexpr int WORDLIST_SIZE = 65536;
 // static constexpr int WORDLIST_SIZE = 2048;
-static constexpr int WORDLIST_SIZE = 1024;
+inline constexpr int WORDLIST_SIZE = 1024;
 
-static constexpr const char *MODEL_NAME = "direct-words.val";
+inline constexpr const char *MODEL_NAME = "direct-words.val";
 
 // This network predicts a middle word given some words before
 // and some words after.
-static constexpr int WORDS_BEFORE = 3, WORDS_AFTER = 2;
-static constexpr int NUM_WORDS = WORDS_BEFORE + WORDS_AFTER + 1;
+inline constexpr int WORDS_BEFORE = 3, WORDS_AFTER = 2;
+inline constexpr int NUM_WORDS = WORDS_BEFORE + WORDS_AFTER + 1;
 
 struct Wordlist {
   Wordlist() : words(Util::ReadFileToLines(WORDLIST)) {
@@ -52,7 +51,7 @@ struct Wordlist {
     return it->second;
   }
 
-private:
+ private:
   std::vector<std::string> words;
   std::unordered_map<std::string, int> word_to_id;
 };

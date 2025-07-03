@@ -1,7 +1,9 @@
 
 #include "zip.h"
 
+#include <algorithm>
 #include <cstdio>
+#include <format>
 #include <vector>
 #include <string_view>
 #include <cstdint>
@@ -70,7 +72,7 @@ static std::string StreamZipString(const std::string &s, int level) {
 
 
 static std::string DumpString(std::string_view s) {
-  std::string out = StringPrintf("%d bytes:\n", (int)s.size());
+  std::string out = std::format("{} bytes:\n", (int)s.size());
 
   for (int p = 0; p < (int)s.size(); p += 16) {
     // Print line, first hex, then ascii
@@ -78,29 +80,29 @@ static std::string DumpString(std::string_view s) {
       int idx = p + i;
       if (idx < (int)s.size()) {
         uint8_t c = s[idx];
-        StringAppendF(&out, "%02x ", c);
+        AppendFormat(&out, "{:02x} ", c);
       } else {
-        StringAppendF(&out, " . ");
+        AppendFormat(&out, " . ");
       }
     }
 
-    StringAppendF(&out, "| ");
+    AppendFormat(&out, "| ");
 
     for (int i = 0; i < 16; i++) {
       int idx = p + i;
       if (idx < (int)s.size()) {
         uint8_t c = s[idx];
         if (c >= 32 && c < 127) {
-          StringAppendF(&out, "%c", c);
+          AppendFormat(&out, "{}", (char)c);
         } else {
-          StringAppendF(&out, ".");
+          AppendFormat(&out, ".");
         }
       } else {
-        StringAppendF(&out, " ");
+        AppendFormat(&out, " ");
       }
     }
 
-    StringAppendF(&out, "\n");
+    AppendFormat(&out, "\n");
   }
 
   return out;
@@ -108,8 +110,8 @@ static std::string DumpString(std::string_view s) {
 
 static std::string DumpStringDiff(std::string_view s1,
                                   std::string_view s2) {
-  std::string out = StringPrintf("%d bytes vs %d bytes\n",
-                                 (int)s1.size(), (int)s2.size());
+  std::string out = std::format("{} bytes vs {} bytes\n",
+                                (int)s1.size(), (int)s2.size());
 # define ANSI_LEFT  ANSI_FG(210, 128, 128)
 # define ANSI_RIGHT ANSI_FG(210, 160, 112)
 
@@ -129,8 +131,8 @@ static std::string DumpStringDiff(std::string_view s1,
       continue;
     } else if (equal_prefix) {
       if (p > 0) {
-        StringAppendF(&out,
-            AGREY("...") " " ABLUE("%d equal bytes") " " AGREY("...") "\n",
+        AppendFormat(&out,
+            AGREY("...") " " ABLUE("{} equal bytes") " " AGREY("...") "\n",
             p);
       }
       equal_prefix = false;
@@ -143,47 +145,47 @@ static std::string DumpStringDiff(std::string_view s1,
       const int c2 = idx < s2.size() ? (uint8_t)s2[idx] : -1;
       if (c1 == c2) {
         if (c1 >= 0) {
-          StringAppendF(&out, AGREY("%02x=="), (uint8_t)c1);
+          AppendFormat(&out, AGREY("{:02x}=="), (uint8_t)c1);
         } else {
-          StringAppendF(&out, AGREY("::::"));
+          AppendFormat(&out, AGREY("::::"));
         }
       } else {
         #define L
-        StringAppendF(&out, ANSI_LEFT);
+        AppendFormat(&out, ANSI_LEFT);
         if (c1 >= 0) {
-          StringAppendF(&out, "%02x", (uint8_t)c1);
+          AppendFormat(&out, "{:02x}", (uint8_t)c1);
         } else {
-          StringAppendF(&out, "__");
+          AppendFormat(&out, "__");
         }
 
-        StringAppendF(&out, ANSI_RIGHT);
+        AppendFormat(&out, ANSI_RIGHT);
         if (c2 >= 0) {
-          StringAppendF(&out, "%02x", (uint8_t)c2);
+          AppendFormat(&out, "{:02x}", (uint8_t)c2);
         } else {
-          StringAppendF(&out, "__");
+          AppendFormat(&out, "__");
         }
       }
     }
 
     #if 0
-    StringAppendF(&out, "| ");
+    AppendFormat(&out, "| ");
 
     for (int i = 0; i < 16; i++) {
       int idx = p + i;
       if (idx < (int)s.size()) {
         uint8_t c = s[idx];
         if (c >= 32 && c < 127) {
-          StringAppendF(&out, "%c", c);
+          AppendFormat(&out, "{}", (char)c);
         } else {
-          StringAppendF(&out, ".");
+          AppendFormat(&out, ".");
         }
       } else {
-        StringAppendF(&out, " ");
+        AppendFormat(&out, " ");
       }
     }
     #endif
 
-    StringAppendF(&out, ANSI_RESET "\n");
+    AppendFormat(&out, ANSI_RESET "\n");
   }
 
   return out;

@@ -450,6 +450,7 @@ struct Chatting {
       // allow next command...
 
       return false;
+
     } else if (Util::TryStripPrefix("/dump", &input)) {
       // /dump
 
@@ -460,6 +461,10 @@ struct Chatting {
 
       printf("Tokens used: " AWHITE("%d") "\n",
              llm->context.NumLast());
+
+      if (!input.empty()) {
+        printf(ARED("Warning") ": /dump with args... did you mean /save?\n");
+      }
 
       // allow next command...
       return false;
@@ -473,6 +478,7 @@ struct Chatting {
     } else if (input.empty()) {
       printf(AGREY("Ignoring blank line.") "\n");
       return false;
+
     } else {
       // Normal chat, continuing the prompt (whether it's <User> or * User).
       CHECK(!current_line.empty()) << "Bug";

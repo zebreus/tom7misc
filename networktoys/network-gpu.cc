@@ -1,23 +1,29 @@
 
 #include "network-gpu.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <optional>
+#include <utility>
 #include <vector>
-#include <mutex>
 #include <cmath>
+
+#include <CL/cl.h>
+#include <CL/cl_platform.h>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-
-#include "util.h"
-#include "network.h"
-#include "timer.h"
 #include "clutil.h"
+#include "network.h"
 #include "threadutil.h"
+#include "timer.h"
+#include "util.h"
 
 using namespace std;
-
+using int64 = int64_t;
 
 NetworkGPU::NetworkGPU(CL *cl, Network *net) : cl(cl), net(net) {
   layers.resize(net->layers.size());
@@ -805,7 +811,7 @@ static int64 FindNoHat(float b) {
 UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
                                  int examples_per_round,
                                  float adam_epsilon) :
-  examples_per_round(examples_per_round), adam_epsilon(adam_epsilon), cl(cl) {
+  examples_per_round(examples_per_round), cl(cl) {
   // Note that this one doesn't depend on the transfer function/derivative.
 
   // constexpr float EPS = 1.0f - std::nextafterf(1.0f, 0.0f);

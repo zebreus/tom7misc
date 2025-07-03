@@ -2,19 +2,20 @@
 #include "modelinfo.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <string>
-#include <cstdint>
-#include <cmath>
 #include <tuple>
+#include <utility>
 #include <vector>
 
-#include "image.h"
-#include "network.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "image.h"
+#include "network.h"
 #include "opt/opt.h"
 
 using namespace std;

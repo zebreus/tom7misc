@@ -1,10 +1,12 @@
 
-#ifndef _PLUGINVERT_NTSC2D_H
-#define _PLUGINVERT_NTSC2D_H
+#ifndef _NETWORKTOYS_NTSC2D_H
+#define _NETWORKTOYS_NTSC2D_H
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <tuple>
+#include <utility>
 
 #include "image.h"
 

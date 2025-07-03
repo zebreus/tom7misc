@@ -2,7 +2,15 @@
 // Simplify a network by removing nodes that never have significant
 // activation.
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <ctime>
+#include <initializer_list>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 #include <shared_mutex>
 #include <cstdint>
@@ -348,7 +356,7 @@ static std::unordered_set<int> GetUnreferenced(const Network &net,
   return unreferenced;
 }
 
-static uint8 FloatByte(float f) {
+static uint8_t FloatByte(float f) {
   int x = roundf(f * 255.0f);
   return std::clamp(x, 0, 255);
 }

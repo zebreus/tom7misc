@@ -2,6 +2,14 @@
 
 #include "timer.h"
 #include <CL/cl.h>
+#include <CL/cl_platform.h>
+#include <cstdio>
+#include <cstdlib>
+#include <optional>
+#include <stdlib.h>
+#include <string>
+#include <utility>
+#include <vector>
 #include "base/logging.h"
 
 using namespace std;
@@ -43,7 +51,7 @@ CL::CL() {
               "% 4d. %s (%s):\n"
               "      %s; %s\n",
               i, props[2].value, props[0].value,
-              props[1].value, props[3].value, props[4].value);
+              props[1].value, props[3].value);
 
       cl_uint platform_devices = 0;
       if (CL_SUCCESS == clGetDeviceIDs(platforms[i], CL_DEVICE_TYPE_GPU,

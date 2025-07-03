@@ -2,8 +2,11 @@
 #include "ansi.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <format>
 #include <span>
@@ -15,6 +18,12 @@
 
 #ifdef __MINGW32__
 #include <windows.h>
+#include <winnt.h>
+#include <processenv.h>
+#include <consoleapi2.h>
+#include <consoleapi.h>
+#include <minwindef.h>
+#include <winnls.h>
 #undef ARRAYSIZE
 #endif
 
@@ -70,7 +79,7 @@ void ANSI::Init() {
   // XXX Not related to ANSI; enables utf-8 output.
   // Maybe we should separate this out? Someone might want to use
   // high-ascii output?
-  SetConsoleOutputCP( CP_UTF8 );
+  SetConsoleOutputCP(CP_UTF8);
   #endif
 }
 
@@ -170,7 +179,7 @@ std::string ANSI::Time(double seconds) {
   }
 }
 
-std::string ANSI::StripCodes(const std::string &s) {
+std::string ANSI::StripCodes(std::string_view s) {
   std::string out;
   out.reserve(s.size());
   bool in_escape = false;
@@ -192,14 +201,14 @@ std::string ANSI::StripCodes(const std::string &s) {
   return out;
 }
 
-int ANSI::StringWidth(const std::string &s) {
+int ANSI::StringWidth(std::string_view s) {
   // PERF could do this without copying.
   return StripCodes(s).size();
 }
 
 
 std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
-                              const std::string &operation,
+                              std::string_view operation,
                               double seconds,
                               ProgressBarOptions options) {
   double frac = numer / (double)denom;
@@ -217,11 +226,11 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
                                 0, bar_width);
   std::string bar_text;
   if (options.include_frac) {
-    StringAppendF(&bar_text, "%llu / %llu", numer, denom);
+    AppendFormat(&bar_text, "{} / {}", numer, denom);
   }
   if (options.include_percent) {
     if (!bar_text.empty()) bar_text += "  ";
-    StringAppendF(&bar_text, "(%.1f%%)", frac * 100.0);
+    AppendFormat(&bar_text, "({:.1f}%)", frac * 100.0);
   }
 
   if (!bar_text.empty()) bar_text.push_back(' ');
@@ -293,7 +302,7 @@ std::vector<uint32_t> ANSI::Rasterize(
 }
 
 std::string ANSI::Composite(
-    const std::string &text_raw,
+    std::string_view text_raw,
     const std::vector<uint32_t> &fgcolors,
     const std::vector<uint32_t> &bgcolors) {
 
@@ -326,13 +335,13 @@ std::string ANSI::Composite(
 
     if (i == 0 || bgcolor != last_bg) {
       const auto &[r, g, b, a_] = Unpack32(bgcolor);
-      StringAppendF(&out, "\x1B[48;2;%d;%d;%dm", r, g, b);
+      AppendFormat(&out, "\x1B[48;2;{};{};{}m", r, g, b);
       last_bg = bgcolor;
     }
 
     if (i == 0 || fgcolor != last_fg) {
       const auto &[r, g, b, a_] = Unpack32(fgcolor);
-      StringAppendF(&out, "\x1B[38;2;%d;%d;%dm", r, g, b);
+      AppendFormat(&out, "\x1B[38;2;{};{};{}m", r, g, b);
       last_fg = fgcolor;
     }
 

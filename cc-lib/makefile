@@ -81,7 +81,7 @@ tuple-util_test.exe : tuple-util_test.o $(BASE)
 rle_test.o : rle_test.cc rle.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-rle_test.exe : rle_test.o rle.o $(BASE) $(TEST_UTIL) arcfour.o
+rle_test.exe : rle_test.o rle.o $(BASE) $(TEST_UTIL) arcfour.o hexdump.o status-bar.o
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 arcfour_test.exe : arcfour_test.o arcfour.o $(BASE)

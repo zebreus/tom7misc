@@ -1,6 +1,8 @@
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include <cstdio>
+#include <string>
 
 static void TestPrintf() {
   std::string s = StringPrintf("Hello %s", "world");
