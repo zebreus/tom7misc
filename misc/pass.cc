@@ -1,20 +1,18 @@
 
-#include <vector>
-#include <string>
 #include <cstdint>
-#include <unordered_set>
+#include <cstdio>
+#include <string>
 #include <time.h>
-#include <stdio.h>
+#include <unordered_set>
+#include <vector>
 
-#include "crypt/aes.h"
-#include "crypt/sha256.h"
 #include "arcfour.h"
-#include "crypt/cryptrand.h"
-
 #include "base/logging.h"
 #include "base/stringprintf.h"
-
 #include "base64.h"
+#include "crypt/aes.h"
+#include "crypt/cryptrand.h"
+#include "crypt/sha256.h"
 #include "util.h"
 
 using namespace std;
@@ -72,7 +70,9 @@ static void DisableEchoExcursion(F f) {
 namespace {
 struct HashHash {
   size_t operator ()(const std::vector<uint8> &v) const noexcept {
-    return *(uint64 *)v.data();
+    uint64_t hash;
+    memcpy(&hash, v.data(), sizeof (uint64_t));
+    return hash;
   }
 };
 }
@@ -84,6 +84,48 @@ static std::vector<uint8> CryptRandom(int bytes) {
   // PERF!
   for (int i = 0; i < bytes; i++) ret.push_back(cr.Byte());
   return ret;
+}
+
+// Like WipeFile, but for a file that does not exist. We just write
+// random data until it fails (we assume: because we've filled the disk).
+static void FillDisk(const string &filename_base) {
+  CryptRand cr;
+  ArcFour rc(std::format("{:x}.{:x}", cr.Word64(), (uint64)time(nullptr)));
+  rc.Discard(2049);
+
+  int64_t bytes_written = 0;
+  static constexpr int CHUNK_SIZE = 1 << 20;
+  // 8 GB files
+  static constexpr int CHUNKS_PER_FILE = 1 << 13;
+  std::vector<uint8_t> bytes(CHUNK_SIZE);
+  bool done = false;
+  for (int files = 0; !done; files++) {
+    std::string filename = std::format("{}.{}", filename_base, files);
+    FILE *f = fopen(filename.c_str(), "wb");
+    CHECK(f != nullptr) << "Unable to fill file " << filename;
+    printf("Filling %s...\n", filename.c_str());
+
+    for (int chunks = 0; chunks < CHUNKS_PER_FILE; chunks++) {
+      for (int i = 0; i < CHUNK_SIZE; i++) {
+        bytes[i] = rc.Byte();
+      }
+
+      if (fwrite(bytes.data(), bytes.size(), 1, f) < 1) {
+        done = true;
+        break;
+      }
+
+      bytes_written += CHUNK_SIZE;
+      if (chunks % 1024 == 0) {
+        printf("Wrote %d files + %d chunks. %lld total bytes.\n",
+               files, chunks, bytes_written);
+      }
+    }
+    fclose(f);
+  }
+
+  printf("Disk looks full now.\n"
+         "Wrote %lld total bytes.\n", bytes_written);
 }
 
 static bool WipeFile(const string &filename) {
@@ -99,7 +141,7 @@ static bool WipeFile(const string &filename) {
   OnReturn ae(f);
 
   CryptRand cr;
-  ArcFour rc(StringPrintf("%llx.%llx", cr.Word64(), (uint64)time(nullptr)));
+  ArcFour rc(std::format("{:x}.{:x}", cr.Word64(), (uint64)time(nullptr)));
   rc.Discard(2049);
 
   // seek_end and ftell are not really portable, but neither is our
@@ -211,7 +253,7 @@ static bool IsBase64String(const string &s) {
 }
 
 static string Encrypt(const string &passphrase,
-          const string &contents) {
+                      const string &contents) {
   std::vector<string> lines = Util::SplitToLines(contents);
   CHECK(lines.size() > 0);
   string saltspec = lines[0];
@@ -223,7 +265,7 @@ static string Encrypt(const string &passphrase,
 
   std::vector<uint8> salt = Base64::DecodeV(salt_str);
   CHECK(salt.size() == 32) << "Invalid base64 salt? " << salt.size();
-  string result = StringPrintf("salt %s\n", salt_str.c_str());
+  string result = std::format("salt {}\n", salt_str);
   fflush(stdout);
 
   std::unordered_set<std::vector<uint8>, HashHash> seen_ivs;
@@ -337,8 +379,8 @@ static bool Decrypt(const string &passphrase, const string &contents,
     if (line.empty()) continue;
 
     CHECK(line.size() ==
-    LINE_IV_BASE64_LENGTH + 1 + LINE_PAYLOAD_BASE64_LENGTH &&
-    line[LINE_IV_BASE64_LENGTH] == '|') << "Invalid line: " << line;
+          LINE_IV_BASE64_LENGTH + 1 + LINE_PAYLOAD_BASE64_LENGTH &&
+          line[LINE_IV_BASE64_LENGTH] == '|') << "Invalid line: " << line;
 
     string iv_base64 = line.substr(0, LINE_IV_BASE64_LENGTH) + "==";
 
@@ -499,7 +541,7 @@ static string RandomEZOld() {
 }
 
 int main(int argc, char **argv) {
-  CHECK(argc >= 2);
+  CHECK(argc >= 2) << "Must have command-line arguments.";
 
   const string cmd = argv[1];
   // Commands without arguments...
@@ -594,6 +636,11 @@ int main(int argc, char **argv) {
   } else if (cmd == "wipe") {
 
     CHECK(WipeFile(file)) << file;
+
+
+  } else if (cmd == "fill") {
+
+    FillDisk(file);
 
   } else {
     LOG(FATAL) << "Unknown command " << cmd;

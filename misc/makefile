@@ -5,19 +5,18 @@ ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
-  FLTO=-flto=auto
 else
   # Linux and msys2
   CXX=g++
   CC=gcc
-  FLTO=-flto=auto
 endif
 
-# LFLAGS=-static
+LFLAGS=-static
 CC_LIB=../cc-lib
 
-# -fsanitize=address -fsanitize=undefined
-CXXFLAGS= -mtune=native -march=native -pipe -Wall -I $(CC_LIB) --std=c++20 -O3  $(FLTO)
+OPT=-O3 -flto=auto
+# OPT=-O -g -fsanitize=address -fsanitize=undefined
+CXXFLAGS= -mtune=native -march=native -pipe -Wall -I $(CC_LIB) --std=c++20 $(OPT)
 
 # -Wno-write-strings
 
@@ -96,5 +95,5 @@ randomize.exe : randomize.o $(CC_LIB_OBJECTS) $(CC_LIB)/crypt/cryptrand.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 clean :
-	rm -f *.exe *.o core *.s $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE)
+	rm -f *.exe *.o core *.s $(CC_LIB_OBJECTS) $(CC_LIB_IMAGE) $(CC_LIB_ZIP)
 
