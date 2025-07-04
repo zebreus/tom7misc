@@ -1,7 +1,10 @@
 
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <initializer_list>
 #include <numeric>
+#include <optional>
 
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
@@ -51,9 +54,6 @@ static void TestOneModularInverse() {
 
   const int64_t ainv = ModularInverse64(a, b);
 
-  // XXX need ModInverse and ExtendedGCD without GMP to cleanly test
-  // this here...
-  #if 0
   std::optional<BigInt> oainv2 = BigInt::ModInverse(BigInt(a), BigInt(b));
   CHECK(oainv2.has_value()) << a << "," << b;
   if (abs(b) != 1) {
@@ -66,7 +66,6 @@ static void TestOneModularInverse() {
       << "\nGot inv: " << ainv
       << "\nBut BigInt::ModInverse: " << oainv2.value().ToString();
   }
-  #endif
 
   // Following GMP, we use |b|
   int128_t r = (int128_t(a) * int128_t(ainv)) % int128_t(abs(b));
@@ -105,8 +104,6 @@ static void TestGCD() {
       CHECK(gcd == gcd4) << a << "," << b << ": gcd="
                          << gcd << " but GCD=" << gcd3;
 
-      #if 0
-      // XXX need ExtendedGCD without GMP to test this cleanly here.
       const auto &[big_gcd, big_x, big_y] =
         BigInt::ExtendedGCD(BigInt(a), BigInt(b));
 
@@ -120,7 +117,6 @@ static void TestGCD() {
         "\nBigEGCD: " << big_gcd.ToString() << " " << big_x.ToString()
         << " " << big_y.ToString();
       */
-      #endif
 
       // Even though the gcd must be 64-bit, the intermediate products
       // can overflow.
@@ -135,8 +131,6 @@ static void TestGCD() {
       if (false && gcd == 1 && b != 0) {
         int64_t ainv = ModularInverse64(a, b);
 
-        // XXX need ModInverse without GMP
-        #if 0
         std::optional<BigInt> oainv2 = BigInt::ModInverse(BigInt(a), BigInt(b));
         CHECK(oainv2.has_value()) << a << "," << b;
         if (abs(b) != 1) {
@@ -149,7 +143,6 @@ static void TestGCD() {
             << "\nGot inv: " << ainv
             << "\nBut BigInt::ModInverse: " << oainv2.value().ToString();
         }
-        #endif
 
         // Following GMP, we use |b|
         int128_t r = (int128_t(a) * int128_t(ainv)) % int128_t(abs(b));
@@ -223,8 +216,7 @@ int main(int argc, char **argv) {
   TestDivFloor();
   TestGCD();
 
-  // XXX broken until I fix bignum
-  // TestJacobi();
+  TestJacobi();
 
   TestSqrtModPExhaustive();
   TestSqrtModPRandom();

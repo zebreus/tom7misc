@@ -1,18 +1,23 @@
 
 #include "bignum/big.h"
-#include <numbers>
-#ifndef BIG_USE_GMP
-#include "bignum/bign.h"
-#endif
 
 #include <array>
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <format>
+#include <initializer_list>
+#include <numbers>
+#include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <unordered_set>
+
+#ifndef BIG_USE_GMP
+#include "bignum/bign.h"
+#endif
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -748,15 +753,11 @@ static void TestDivFloor() {
 }
 
 static void TestJacobi() {
-  #if BIG_USE_GMP
-  // XXX It's broken outside of GMP?
-
   CHECK(BigInt::Jacobi(BigInt(11), BigInt(17)) == -1);
   CHECK(BigInt::Jacobi(BigInt(1), BigInt(1)) == 1);
   CHECK(BigInt::Jacobi(BigInt(6), BigInt(15)) == 0);
 
   CHECK(BigInt::Jacobi(BigInt(30), BigInt(59)) == -1);
-  #endif
 }
 
 static void TestModRem() {

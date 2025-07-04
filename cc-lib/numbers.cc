@@ -1,12 +1,14 @@
 #include "numbers.h"
 
-#include <stdlib.h>
-#include <math.h>
-#include <stdint.h>
-
+#include <algorithm>
 #include <bit>
-#include <tuple>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <optional>
+#include <tuple>
+#include <utility>
 
 #include "base/logging.h"
 #include "montgomery64.h"

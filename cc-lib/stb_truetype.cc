@@ -4,13 +4,14 @@
 
 #include "stb_truetype.h"
 
-// XXX just for debugging output
-#include <stdio.h>
+#include <bit>
+#include <span>
+#include <unordered_map>
+#include <vector>
 
 // XXX
-#include "hexdump.h"
 #include "base/logging.h"
-#include "ansi.h"
+
 
 #define STB_TRUETYPE_IMPLEMENTATION 1
 // #define STBTT_RASTERIZER_VERSION 1
@@ -20,6 +21,11 @@
 #pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 
 #define VERBOSE false
+#if VERBOSE
+#include <cstdio>
+#include "hexdump.h"
+#include "ansi.h"
+#endif
 
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////

@@ -4,8 +4,11 @@
 #ifndef _CC_LIB_BIGNUM_BIG_H
 #define _CC_LIB_BIGNUM_BIG_H
 
+#include <tuple>
+#include <vector>
 #ifdef BIG_USE_GMP
 # include <gmp.h>
+# include <type_traits>
 #else
 # include "bignum/bigz.h"
 # include "bignum/bign.h"
@@ -23,7 +26,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <utility>
 
 struct BigInt {
@@ -1259,7 +1261,7 @@ int BigInt::Jacobi(const BigInt &a_input,
 
   while (!Eq(a, 0)) {
 
-    while (a.IsOdd()) {
+    while (a.IsEven()) {
       a = RightShift(a, 1);
       const uint64_t r = BitwiseAnd(n, 7);
       if (r == 3 || r == 5) {

@@ -1,9 +1,12 @@
 #ifndef _NUMBERS_H
 #define _NUMBERS_H
 
+#include <cmath>
+#include <cstdlib>
 #include <tuple>
 #include <cstdint>
 #include <optional>
+#include <utility>
 
 #include "base/int128.h"
 #include "base/logging.h"
