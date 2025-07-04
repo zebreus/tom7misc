@@ -2,8 +2,6 @@
 // Trains a network to predict the next word using word2vec
 // embeddings.
 
-#include "network-gpu.h"
-
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -23,25 +21,25 @@
 #include <thread>
 #include <deque>
 
-#include "network.h"
-#include "clutil.h"
+#include "acronym-util.h"
+#include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
+#include "color-util.h"
+#include "error-history.h"
+#include "image.h"
+#include "network-gpu.h"
+#include "network.h"
+#include "opencl/clutil.h"
+#include "periodically.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "image.h"
-#include "util.h"
-#include "train-util.h"
-#include "periodically.h"
 #include "timer.h"
-#include "error-history.h"
-#include "ansi.h"
-#include "color-util.h"
-
-#include "word2vec.h"
+#include "train-util.h"
+#include "util.h"
 #include "wikipedia.h"
-#include "acronym-util.h"
+#include "word2vec.h"
 
 using namespace std;
 

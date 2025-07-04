@@ -16,7 +16,7 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "clutil.h"
+#include "opencl/clutil.h"
 #include "freq.h"
 #include "gtl/top_n.h"
 #include "sentencelike.h"

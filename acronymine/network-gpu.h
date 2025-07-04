@@ -16,9 +16,8 @@
 
 #include "base/logging.h"
 #include "base/macros.h"
-
 #include "network.h"
-#include "clutil.h"
+#include "opencl/clutil.h"
 
 // PERF: For many of these, we use mutexes to avoid setting a
 // kernels arguments from multiple threads. But we could have

@@ -14,8 +14,7 @@
 
 #include "network.h"
 #include "network-gpu.h"
-#include "clutil.h"
-
+#include "opencl/clutil.h"
 #include "freq.h"
 #include "word2vec.h"
 #include "wordnet.h"

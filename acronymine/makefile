@@ -1,5 +1,5 @@
 
-default: acronymy.exe word2vec_test.exe nextword.exe server.exe compute-freq.exe freq_test.exe wordnet_test.exe train-sentencelike.exe unicode.exe typos.exe
+default: acronymy.exe word2vec_test.exe nextword.exe server.exe compute-freq.exe freq_test.exe wordnet_test.exe train-sentencelike.exe typos.exe
 
 CC_LIB=../cc-lib
 
@@ -37,7 +37,7 @@ SOCK_LFLAGS= -lws2_32
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/mp3.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/bounds.o $(CC_LIB)/edit-distance.o $(CC_LIB)/atomic-util.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/wikipedia.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/mp3.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/bounds.o $(CC_LIB)/edit-distance.o $(CC_LIB)/atomic-util.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/wikipedia.o $(CC_LIB)/opencl/clutil.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -47,7 +47,7 @@ $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=network.o error-history.o network-gpu.o clutil.o freq.o word2vec.o wordnet.o acronym-util.o sentencelike.o $(RE2_OBJECTS) $(CC_LIB_OBJECTS)
+OBJECTS=network.o error-history.o network-gpu.o freq.o word2vec.o wordnet.o acronym-util.o sentencelike.o $(RE2_OBJECTS) $(CC_LIB_OBJECTS)
 
 acronymy.exe : acronymy.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -67,10 +67,6 @@ train-sentencelike.exe : train-sentencelike.o $(OBJECTS)
 
 server.exe : server.o $(OBJECTS) $(CC_LIB)/webserver.o
 	@$(CXX) $^ -o $@ $(LFLAGS) $(SOCK_LFLAGS) -lpthread
-	@echo -n "!"
-
-unicode.exe : unicode.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 typos.exe : typos.o $(OBJECTS)
