@@ -1,8 +1,8 @@
 
-// TODO: To cc-lib?
+// Sometimes you want to run over all of the text in Wikipedia!
 
-#ifndef _WIKIPEDIA_H
-#define _WIKIPEDIA_H
+#ifndef _CC_LIB_WIKIPEDIA_H
+#define _CC_LIB_WIKIPEDIA_H
 
 #include <string>
 #include <optional>
@@ -11,8 +11,10 @@
 // 'parsing' of the XML dump.
 struct Wikipedia {
 
+  // Create from a .xml dump file.
   static Wikipedia *Create(const std::string &filename);
-  // Takes a .ccz file.
+
+  // Takes a .ccz file (see zip.h and/or ../misc/compress.cc).
   // Running over the compressed file is a bit slower (40%) but
   // requires about 25% of the disk space.
   static Wikipedia *CreateFromCompressed(const std::string &filename);
@@ -41,7 +43,8 @@ struct Wikipedia {
   // Remove wikilinks. For example, "[[Pejorative|term of abuse]]" is
   // replaced with just "term of abuse". [[Image:whatever.jpg...] is
   // just dropped. [[Category:whatever]] is also just dropped.
-  // {{templates}} are just dropped, although for cases like
+  // {{templates}} are usually just dropped unless it's something like
+  // {{epsilon}} that has a standard replacement. For cases like
   // {{infobox start}}...{{infobox end}} this may not do what you
   // want.
   virtual void RemoveWikilinks(std::string *body) = 0;

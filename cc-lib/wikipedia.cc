@@ -52,7 +52,7 @@ struct BufferedFile {
   std::optional<string> GetLine() {
     if (AtEof()) return {};
     string ret;
-    for (int i = bpos; i < bytes.size(); i++) {
+    for (int64_t i = bpos; i < (int64_t)bytes.size(); i++) {
       if (bytes[i] == '\n') {
         ret.resize(i - bpos);
         memcpy(ret.data(), bytes.data() + bpos, i - bpos);
@@ -109,7 +109,7 @@ struct BufferedFile {
 
   // After Refresh, we are either at_eof or have bytes.
   void Refresh() {
-    CHECK(bpos == bytes.size());
+    CHECK(bpos == (int64_t)bytes.size());
     // No matter what, we have used up the bytes.
     bpos = 0;
     bytes.clear();
@@ -178,7 +178,7 @@ struct BufferedFile {
   }
 
   const string filename;
-  int64 bpos = 0;
+  int64_t bpos = 0;
   int64_t out_bytes = 0;
   vector<uint8> bytes;
   std::unique_ptr<ZIP::DecodeBuffer> db;
@@ -186,6 +186,7 @@ struct BufferedFile {
   bool at_eof = false;
 };
 
+// XXX Or use UTF-8 and let ASCIIfy translate them?
 static bool SelfExpandingTemplate(const string &t) {
   static std::unordered_set<string> &all = *new std::unordered_set<string>{
     "pi", "tau", "phi", "xi", "upsilon", "sigma", "mu", "lambda", "kappa",
@@ -380,15 +381,15 @@ struct WikipediaImpl : public Wikipedia {
     // if > 0, then we're inside a {{template}}.
     int template_start = 0;
     int depth = 0;
-    for (int i = 0; i < in.size(); i++) {
-      if (in[i] == '{' && i < in.size() - 1 &&
+    for (int64_t i = 0; i < (int64_t)in.size(); i++) {
+      if (in[i] == '{' && i < (int64_t)in.size() - 1 &&
           in[i + 1] == '{') {
         depth++;
         // skip second brace
         i++;
         // (and ignore it)
         if (depth == 1) template_start = i + 1;
-      } else if (in[i] == '}' && i < in.size() - 1 &&
+      } else if (in[i] == '}' && i < (int64_t)in.size() - 1 &&
                  in[i + 1] == '}') {
         i++;
         if (depth == 0) {
@@ -432,15 +433,15 @@ struct WikipediaImpl : public Wikipedia {
     // if > 0, then we're inside a {{template}}.
     int depth = 0;
     int link_start = 0;
-    for (int i = 0; i < in.size(); i++) {
-      if (in[i] == '[' && i < in.size() - 1 &&
+    for (int64_t i = 0; i < (int64_t)in.size(); i++) {
+      if (in[i] == '[' && i < (int64_t)in.size() - 1 &&
           in[i + 1] == '[') {
         depth++;
         // skip second bracket
         i++;
         // (and ignore it)
         if (depth == 1) link_start = i + 1;
-      } else if (in[i] == ']' && i < in.size() - 1 &&
+      } else if (in[i] == ']' && i < (int64_t)in.size() - 1 &&
                  in[i + 1] == ']') {
         i++;
         if (depth == 0) {
@@ -534,8 +535,6 @@ struct WikipediaImpl : public Wikipedia {
   const RE2 redirect_re;
   int64_t total_articles = 0;
   int64_t no_title = 0, no_body = 0;
-  // const RE2 title_re, title_end_re;
-  // const RE2 body_re, body_end_re;
 };
 
 }  // namespace

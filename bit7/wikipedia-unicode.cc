@@ -10,8 +10,6 @@
 #include <utility>
 #include <vector>
 
-#include "../acronymine/wikipedia.h"
-
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -20,6 +18,7 @@
 #include "timer.h"
 #include "utf8.h"
 #include "util.h"
+#include "wikipedia.h"
 
 #include "font-image.h"
 

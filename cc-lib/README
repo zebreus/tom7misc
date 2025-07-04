@@ -278,6 +278,9 @@ top:
   Enumerate the names of the running processes.
 utf8:
   Utilities for manipulating UTF8-encoded strings.
+wikipedia:
+  Library for running a multithreaded process over all of
+  the text in a Wikipedia dump.
 work-queue:
   Thread-safe work queue, which can batch inputs.
 

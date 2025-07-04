@@ -45,13 +45,16 @@ static void TestRemoveTags() {
 
   {
     const string s =
-      wiki->RemoveTags("This<ref>ignore this</ref> stuff<ref>and this</ref> left");
+      wiki->RemoveTags("This<ref>ignore this</ref> stuff"
+                       "<ref>and this</ref> left");
     CHECK_EQ("This stuff left", s) << s;
   }
 
   {
     const string s =
-      wiki->RemoveTags("A<ref name=\"first\">ignore this</ref> B<ref>and this</ref> C<ref group=\"gg\" >delete</ref>");
+      wiki->RemoveTags("A<ref name=\"first\">ignore this</ref> "
+                       "B<ref>and this</ref> "
+                       "C<ref group=\"gg\" >delete</ref>");
     CHECK_EQ("A B C", s) << s;
   }
 

@@ -88,11 +88,7 @@ unicoderange.exe : unicoderange.o $(CCLIB_OBJECTS)
 getcodepoints.exe : getcodepoints.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
-../acronymine/%.o : ../acronymine/%.cc
-	@$(CXX) $(CXXFLAGS) -I ../acronymine -c $^ -o $@
-	@echo -n "."
-
-WIKIPEDIA_OBJECTS=../acronymine/wikipedia.o $(RE2_OBJECTS)
+WIKIPEDIA_OBJECTS = $(CC_LIB)/wikipedia.o $(RE2_OBJECTS)
 
 wikipedia-unicode.exe : wikipedia-unicode.o font-image.o $(CCLIB_OBJECTS) $(WIKIPEDIA_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)

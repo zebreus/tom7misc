@@ -4,8 +4,8 @@ default: acronymy.exe word2vec_test.exe nextword.exe server.exe compute-freq.exe
 CC_LIB=../cc-lib
 
 # Normal people set this to g++ and gcc (or just comment it out)
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
 
 
 # For targets that need OpenCL
@@ -23,14 +23,13 @@ AMDSDK=c:/code/AMD_SDK/
 # -ffast-math is dangerous when using the cc-lib, which at least wants there
 # to be infinities! I turned it off, since if you want performance you use
 # GPU code anyway.
+OPT=-O3 -flto=auto
 CXXFLAGS=-march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
-OPT=-O3
 
 CLINCLUDES="-I$(AMDSDK)/include"
 CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 
-FLTO=-flto=auto
-CPPFLAGS= -m64 $(OPT) -D__MINGW32__ $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
+CPPFLAGS= -m64 $(OPT) -D__MINGW32__ $(SDLINCLUDES) $(PROFILE) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -lpsapi -static
@@ -38,7 +37,7 @@ SOCK_LFLAGS= -lws2_32
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/mp3.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/bounds.o $(CC_LIB)/edit-distance.o $(CC_LIB)/atomic-util.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/mp3.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/bounds.o $(CC_LIB)/edit-distance.o $(CC_LIB)/atomic-util.o $(CC_LIB)/zip.o $(CC_LIB)/miniz.o $(CC_LIB)/wikipedia.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -48,7 +47,7 @@ $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=network.o error-history.o network-gpu.o clutil.o wikipedia.o freq.o word2vec.o wordnet.o acronym-util.o sentencelike.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
+OBJECTS=network.o error-history.o network-gpu.o clutil.o freq.o word2vec.o wordnet.o acronym-util.o sentencelike.o $(RE2_OBJECTS) $(CC_LIB_OBJECTS)
 
 acronymy.exe : acronymy.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -90,9 +89,5 @@ wordnet_test.exe : wordnet_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-wikipedia_test.exe : wikipedia_test.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
 clean :
-	rm -f *.o $(UTIL_OBJECTS) $(OBJECTS) *.exe
+	rm -f *.o $(CC_LIB_OBJECTS) $(OBJECTS) *.exe

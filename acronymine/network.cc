@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <format>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -609,9 +610,9 @@ Chunk Network::MakeRandomSparseChunk(
         // disjoint, ok
       } else {
         LOG(FATAL) <<
-          StringPrintf("SparseSpan %d (%d->%d) overlaps %d (%d->%d)",
-                       s, ss.span_start, ss_end,
-                       c, os.span_start, os_end);
+          std::format("SparseSpan {} ({}->{}) overlaps {} ({}->{})",
+                      s, ss.span_start, ss_end,
+                      c, os.span_start, os_end);
       }
     }
   }
@@ -1000,25 +1001,25 @@ struct Reader {
 
 struct FileReader : public Reader {
   static Reader *Create(const std::string &filename,
-                        bool verbose = false) {
+                        bool verbose_arg = false) {
     FILE *file = fopen(filename.c_str(), "rb");
     if (file == nullptr) {
-      if (verbose) {
+      if (verbose_arg) {
         printf("Failed to open %s. If it's present, there may be a "
                "permissions problem?\n", filename.c_str());
         fflush(stdout);
       }
       return nullptr;
     } else {
-      if (verbose) {
+      if (verbose_arg) {
         printf("Reading [%s]\n", filename.c_str());
       }
     }
-    return new FileReader(file, filename, verbose);
+    return new FileReader(file, filename, verbose_arg);
   }
 
-  FileReader(FILE *file, const std::string filename, bool verbose) :
-    Reader(filename, verbose), file(file) {}
+  FileReader(FILE *file, const std::string filename, bool verbose_arg) :
+    Reader(filename, verbose_arg), file(file) {}
 
   ~FileReader() override {
     fclose(file);
@@ -1039,8 +1040,8 @@ struct FileReader : public Reader {
 
 struct VecReader : public Reader {
   static Reader *Create(const std::vector<uint8_t> &bytes,
-                        bool verbose = false) {
-    return new VecReader(bytes, verbose);
+                        bool verbose_arg = false) {
+    return new VecReader(bytes, verbose_arg);
   }
 
   uint8_t ReadByte() override {
@@ -1049,8 +1050,8 @@ struct VecReader : public Reader {
   }
 
   explicit VecReader(const std::vector<uint8_t> &bytes,
-                     bool verbose = false) :
-    Reader("memory", verbose), bytes(bytes) {}
+                     bool verbose_arg = false) :
+    Reader("memory", verbose_arg), bytes(bytes) {}
   const std::vector<uint8_t> &bytes;
   int64_t pos = 0;
 };
@@ -1088,20 +1089,20 @@ struct Writer {
 
 struct FileWriter : public Writer {
   static Writer *Create(const std::string &filename,
-                        bool verbose = false) {
+                        bool verbose_arg = false) {
     FILE *file = fopen(filename.c_str(), "wb");
     if (file == nullptr) {
-      if (verbose) {
+      if (verbose_arg) {
         printf("Failed to open %s for writing?", filename.c_str());
         fflush(stdout);
       }
       return nullptr;
     }
-    return new FileWriter(file, filename, verbose);
+    return new FileWriter(file, filename, verbose_arg);
   }
 
-  FileWriter(FILE *file, const std::string filename, bool verbose) :
-    Writer(filename, verbose), file(file) {}
+  FileWriter(FILE *file, const std::string filename, bool verbose_arg) :
+    Writer(filename, verbose_arg), file(file) {}
 
   ~FileWriter() override {
     fclose(file);
@@ -1117,8 +1118,9 @@ struct FileWriter : public Writer {
 };
 
 struct VecWriter : public Writer {
-  static Writer *Create(std::vector<uint8_t> *vec, bool verbose = false) {
-    return new VecWriter(vec, verbose);
+  static Writer *Create(std::vector<uint8_t> *vec,
+                        bool verbose_arg = false) {
+    return new VecWriter(vec, verbose_arg);
   }
 
   inline void WriteByte(uint8_t b) override {
@@ -1126,8 +1128,8 @@ struct VecWriter : public Writer {
   }
 
   explicit VecWriter(std::vector<uint8_t> *vec,
-                     bool verbose = false) :
-    Writer("memory", verbose), vec(vec) {}
+                     bool verbose_arg = false) :
+    Writer("memory", verbose_arg), vec(vec) {}
 
   std::vector<uint8_t> *vec = nullptr;
 };
@@ -1466,9 +1468,9 @@ void Stimulation::NaNCheck(const std::string &message) const {
   if (has_nans) {
     string err;
     for (int i = 0; i < layer_nans.size(); i++) {
-      err += StringPrintf("stim layer %d. %d/%d values\n",
-                          i,
-                          layer_nans[i], values[i].size());
+      err += std::format("stim layer {}. {}/{} values\n",
+                         i,
+                         layer_nans[i], values[i].size());
     }
     CHECK(false) << "[" << message
                  << "] The stimulation has NaNs :-(\n" << err;
@@ -1484,14 +1486,16 @@ int64 Errors::Bytes() const {
 }
 
 string RandomizationParams::ToString() const {
-  return StringPrintf("{.sigmoid_uniform = %s, "
-                      ".sigmoid_mag = %.11g, "
-                      ".zeromean_uniform = %s, "
-                      ".zeromean_numer = %.11g}",
-                      sigmoid_uniform ? "true" : "false",
-                      sigmoid_mag,
-                      zeromean_uniform ? "true" : "false",
-                      zeromean_numer);
+  return std::format("{{"
+                     ".sigmoid_uniform = {}, "
+                     ".sigmoid_mag = {:.11g}, "
+                     ".zeromean_uniform = {}, "
+                     ".zeromean_numer = {:.11g}"
+                     "}}",
+                     sigmoid_uniform ? "true" : "false",
+                     sigmoid_mag,
+                     zeromean_uniform ? "true" : "false",
+                     zeromean_numer);
 }
 
 // .. utils
