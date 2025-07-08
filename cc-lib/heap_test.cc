@@ -1,17 +1,26 @@
 
 #include "heap.h"
 
-#include <stdio.h>
+#include <cinttypes>
 #include <cstdint>
+#include <cstdio>
+#include <format>
+#include <vector>
+
+#include "base/logging.h"
 
 using namespace std;
 
 using uint64 = uint64_t;
 
+static constexpr bool VERBOSE = false;
+
+namespace {
 struct TestValue : public Heapable {
   TestValue(uint64 i) : i(i) {}
   uint64 i;
 };
+}  // namespace
 
 static uint64 CrapHash(int a) {
   uint64 ret = ~a;
@@ -24,7 +33,7 @@ static uint64 CrapHash(int a) {
   return ret;
 }
 
-int main () {
+static void Simple() {
   static constexpr int kNumValues = 1000;
 
   Heap<uint64, TestValue> heap;
@@ -41,19 +50,17 @@ int main () {
   TestValue *last = heap.PopMinimumValue();
   while (!heap.Empty()) {
     TestValue *now = heap.PopMinimumValue();
-    fprintf(stderr, "%llu %llu\n", last->i, now->i);
-    if (now->i < last->i) {
-      printf("FAIL: %llu %llu\n", last->i, now->i);
-      return -1;
+    if (VERBOSE) {
+      fprintf(stderr, "%" PRIu64 " %" PRIu64 "\n", last->i, now->i);
     }
+    CHECK(now->i >= last->i) <<
+      std::format("FAIL: {} {}\n", last->i, now->i);
     last = now;
   }
 
   for (int i = 0; i < (int)values.size(); i++) {
-    if (values[i].location != -1) {
-      printf("FAIL! %d still in heap at %d\n", i, values[i].location);
-      return -1;
-    }
+    CHECK(values[i].location == -1) <<
+      std::format("{} still in heap at {}\n", i, values[i].location);
   }
 
   for (int i = 0; i < (int)values.size() / 2; i++) {
@@ -61,17 +68,16 @@ int main () {
   }
 
   heap.Clear();
-  if (!heap.Empty()) {
-    printf("FAIL: Heap not empty after clear?\n");
-    return -1;
-  }
+  CHECK(heap.Empty()) << "Heap not empty after clear?\n";
 
   for (int i = 0; i < (int)values.size() / 2; i++) {
-    if (values[i].location != -1) {
-      printf("FAIL (B)! %d still in heap at %d\n", i, values[i].location);
-      return -1;
-    }
+    CHECK(values[i].location == -1) <<
+      std::format("FAIL (B)! {} still in heap at {}\n", i, values[i].location);
   }
+}
+
+int main () {
+  Simple();
 
   printf("OK\n");
   return 0;

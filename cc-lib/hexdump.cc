@@ -52,3 +52,9 @@ std::string HexDump::Color(std::span<const uint8_t> bytes,
   }
   return ret;
 }
+
+std::string HexDump::Color(const std::string &str,
+                           uint32_t start_addr) {
+  return Color(std::span<const uint8_t>((const uint8_t*)str.data(),
+                                        str.size()), start_addr);
+}

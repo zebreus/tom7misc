@@ -1,6 +1,7 @@
 #include "randutil.h"
 
 #include <array>
+#include <cinttypes>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -66,7 +67,7 @@ static void TestShuffle(int n, double absolute_error) {
   double correct_prob = 1.0 / factorial(n);
   for (const auto &p : counts) {
     double observed_prob = p.second / (double)ITERS;
-    printf("%s: %lld (p = %.8f)\n", p.first.c_str(),
+    printf("%s: %" PRIi64 " (p = %.8f)\n", p.first.c_str(),
            p.second, p.second / (double)ITERS);
     if (fabs(observed_prob - correct_prob) >
         absolute_error) {

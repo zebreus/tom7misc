@@ -13,6 +13,9 @@ struct HexDump {
                            // displayed in the left column.
                            uint32_t start_addr = 0x00000000);
 
+  static std::string Color(const std::string &str,
+                           uint32_t start_addr = 0x00000000);
+
  private:
   // All static.
   HexDump() = delete;

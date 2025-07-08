@@ -4,6 +4,7 @@
 // with -march=native                Decoded 512 times in 20 sec = 25.6000 images/sec
 // with -march=native -O3 -flto      Decoded 512 times in 18 sec = 28.4444 images/sec
 
+#include <cinttypes>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
@@ -97,7 +98,7 @@ static void BenchmarkPNG() {
     if (i % 10 == 0) printf(".");
   }
   const int64 took = time(nullptr) - start;
-  printf("Decoded %d times in %lld sec = %.4f images/sec\n",
+  printf("Decoded %d times in %" PRIi64 " sec = %.4f images/sec\n",
          TIMES, took, (double)TIMES / took);
 }
 

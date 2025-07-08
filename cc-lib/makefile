@@ -57,7 +57,7 @@ stb_image_bench.exe : stb_image.o stb_image_write.o stb_image_bench.o image.o ar
 heap_test.o : heap_test.cc heap.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-heap_test.exe : heap_test.o
+heap_test.exe : heap_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 list-util_test.o : list-util_test.cc list-util.h

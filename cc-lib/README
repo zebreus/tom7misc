@@ -186,7 +186,8 @@ mp3:
   on the public-domain minimp3.
 crypt:
   Simple implementations of cryptographic algorithms like AES,
-  SHA256 and (deprecated) MD5. Perhaps arcfour should be in here too.
+  SHA256, SHA512 and (deprecated) MD5. Perhaps arcfour should be in here
+  too.
 pi:
   Some code for working on the raspberry pi, particularly for doing GPIO.
 bignum:
