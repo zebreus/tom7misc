@@ -16,7 +16,7 @@ else
 endif
 
 OPT=-O3 -flto=auto -march=native -mtune=native
-CXXFLAGS=-pipe -Wall -I.. --std=c++20 -static
+CXXFLAGS=-pipe -Wall -I.. --std=c++20 -static $(OPT)
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -38,6 +38,15 @@ sha256_test.o : sha256_test.cc sha256.h
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
 sha256_test.exe : sha256.o sha256_test.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+sha512.o : sha512.cc sha512.h
+	$(CXX) $(CXXFLAGS) $< -o $@ -c
+
+sha512_test.o : sha512_test.cc sha512.h
+	$(CXX) $(CXXFLAGS) $< -o $@ -c
+
+sha512_test.exe : sha512.o sha512_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 cryptrand.o : cryptrand.cc cryptrand.h
