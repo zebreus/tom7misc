@@ -1,8 +1,10 @@
 
-#include "cryptrand.h"
-#include "base/logging.h"
-#include "timer.h"
+#include "crypt/cryptrand.h"
 
+#include <cstdint>
+#include <string>
+
+#include "base/logging.h"
 
 // TODO: In the future, std::random_device may be a good way to avoid
 // the differences per platform. But note that as of early 2019, this
@@ -12,6 +14,9 @@
 #  include <stdio.h>
 #  include <windows.h>
 #  include <wincrypt.h>
+#  include <winnt.h>
+#  include <minwindef.h>
+#  include <errhandlingapi.h>
 
 BOOLEAN RtlGenRandom(
   PVOID RandomBuffer,

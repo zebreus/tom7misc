@@ -8,11 +8,14 @@
  * https://www.openssl.org/source/license.html
  */
 
-#include "sha256.h"
+#include "crypt/sha256.h"
 
+#include <array>
 #include <cstdint>
+#include <span>
 #include <string.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using uint8 = uint8_t;
@@ -56,6 +59,12 @@ std::vector<uint8> SHA256::FinalVector(SHA256::Ctx *ctx) {
   return result;
 }
 
+std::array<uint8, 32> SHA256::FinalArray(SHA256::Ctx *ctx) {
+  std::array<uint8, 32> result;
+  SHA256::Finalize(ctx, result.data());
+  return result;
+}
+
 std::vector<uint8> SHA256::HashString(const string &s) {
   SHA256::Ctx c;
   SHA256::Init(&c);
@@ -64,6 +73,13 @@ std::vector<uint8> SHA256::HashString(const string &s) {
 }
 
 std::vector<uint8> SHA256::HashVector(const vector<uint8> &v) {
+  SHA256::Ctx c;
+  SHA256::Init(&c);
+  SHA256::Update(&c, (const uint8 *)v.data(), v.size());
+  return SHA256::FinalVector(&c);
+}
+
+std::vector<uint8> SHA256::HashSpan(std::span<const uint8> v) {
   SHA256::Ctx c;
   SHA256::Init(&c);
   SHA256::Update(&c, (const uint8 *)v.data(), v.size());
@@ -84,7 +100,11 @@ std::vector<uint8> SHA256::HashStringView(std::string_view s) {
   return SHA256::FinalVector(&c);
 }
 
-void SHA256::UpdateString(Ctx *c, const string &s) {
+void SHA256::UpdateString(Ctx *c, std::string_view s) {
+  SHA256::Update(c, (const uint8 *)s.data(), s.size());
+}
+
+void SHA256::UpdateSpan(Ctx *c, std::span<const uint8_t> s) {
   SHA256::Update(c, (const uint8 *)s.data(), s.size());
 }
 
@@ -291,7 +311,13 @@ string SHA256::Ascii(const std::vector<uint8> &s) {
   return ret;
 }
 
-/* XXX doesn't check each char is 0-9a-fA-f */
+static inline bool IsHexChar(unsigned char c) {
+  if (c >= '0' && c <= '9') return true;
+  if (c >= 'a' && c <= 'f') return true;
+  if (c >= 'A' && c <= 'F') return true;
+  return false;
+}
+
 bool SHA256::UnAscii(const string &s, std::vector<uint8> *out) {
   size_t sz = s.length();
   if (sz != 64) return false;
@@ -300,8 +326,11 @@ bool SHA256::UnAscii(const string &s, std::vector<uint8> *out) {
   out->reserve(32);
 
   for (size_t i = 0; i < 32; i++) {
-    out->push_back((((s[i * 2] | 4400) % 55) << 4) |
-                   ((s[i * 2 + 1] | 4400) % 55));
+    unsigned char hi = s[i * 2];
+    unsigned char lo = s[i * 2 + 1];
+    if (!IsHexChar(hi) || !IsHexChar(lo)) return false;
+    out->push_back((((hi | 4400) % 55) << 4) |
+                   ((lo | 4400) % 55));
   }
 
   return true;

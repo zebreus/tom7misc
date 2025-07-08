@@ -7,7 +7,7 @@
 #ifndef _CC_LIB_CRYPT_MD5_H
 #define _CC_LIB_CRYPT_MD5_H
 
-#include <stdio.h>
+#include <cstdio>
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -16,10 +16,11 @@
 struct MD5 {
   // (There used to be Init() here, but it is no longer
   // necessary. You can just delete the call.)
-  
+
   static std::string Hash(const std::string &s);
   static std::string Hashv(const std::vector<uint8_t> &v);
-  // Hashes the remainder of the file.
+  // Hashes the remainder of the file. Doesn't close it.
+  [[deprecated]]
   static std::string Hashf(FILE *f);
   // Converts the input string into lowercase hex ascii.
   static std::string Ascii(const std::string &s);

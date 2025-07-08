@@ -1,5 +1,5 @@
-#ifndef _CC_LIB_CRYPT_AES_H_
-#define _CC_LIB_CRYPT_AES_H_
+#ifndef _CC_LIB_CRYPT_AES_H
+#define _CC_LIB_CRYPT_AES_H
 
 #include <cstdint>
 
@@ -37,7 +37,7 @@ struct AES {
 
   static void InitCtxIV(struct Ctx *ctx,
                         const uint8_t *key, const uint8_t *iv);
-  static void Ctx_set_iv(struct Ctx *ctx, const uint8_t *iv);
+  static void SetIV(struct Ctx *ctx, const uint8_t *iv);
 
   // Buffer size is exactly BLOCKLEN bytes.
   // You need only InitCtx as IV is not used in ECB
@@ -49,7 +49,7 @@ struct AES {
   // buffer size MUST be mutile of BLOCKLEN;
   // Suggest https://en.wikipedia.org/wiki/Padding_(cryptography)#PKCS7
   //   for padding scheme.
-  // NOTES: you need to set IV in ctx via InitCtxIV() or Ctx_set_iv()
+  // NOTES: you need to set IV in ctx via InitCtxIV() or SetIV()
   //        no IV should ever be reused with the same key
   static void EncryptCBC(struct Ctx *ctx, uint8_t *buf, uint32_t length);
   static void DecryptCBC(struct Ctx *ctx, uint8_t *buf, uint32_t length);
@@ -60,7 +60,7 @@ struct AES {
   // XOR-compliment for output.
   // Suggest https://en.wikipedia.org/wiki/Padding_(cryptography)#PKCS7
   //   for padding scheme.
-  // NOTES: you need to set IV in ctx with InitCtxIV() or Ctx_set_iv()
+  // NOTES: you need to set IV in ctx with InitCtxIV() or SetIV()
   //        no IV should ever be reused with the same key
   static void XcryptCTR(struct Ctx *ctx, uint8_t *buf, uint32_t length);
 };

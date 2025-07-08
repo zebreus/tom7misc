@@ -1,6 +1,8 @@
 
-#include <cstdint>
 #include "crypt/lfsr.h"
+
+#include <cstdint>
+#include <cstdio>
 
 #include "base/logging.h"
 #include "timer.h"

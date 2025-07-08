@@ -1,26 +1,22 @@
 
 default : aes_test.exe sha256_test.exe cryptrand_test.exe md5_test.exe hash_bench.exe
 
-CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o ../util.o
+# For tests.
+CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o ../ansi.o ../util.o ../hexdump.o
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
-  FLTO=-flto=auto
 else
   # Linux and msys2
   CXX=g++
   CC=gcc
 endif
 
-CXXFLAGS=-march=native -pipe -Wall -I. -I.. --std=c++20 -O3 -static $(FLTO)
-
-# For linux, others...
-# CXX=g++
-# CC=gcc
-# CXXFLAGS=-I. -I.. --std=c++17 -O2 -DNDEBUG=1
+OPT=-O3 -flto=auto -march=native -mtune=native
+CXXFLAGS=-pipe -Wall -I.. --std=c++20 -static
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@

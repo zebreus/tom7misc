@@ -1,25 +1,47 @@
-#include "md5.h"
+#include "crypt/md5.h"
 
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
-#include <cstdint>
 
+#include "hexdump.h"
 #include "base/logging.h"
 
 using namespace std;
 
-#define EXPECT_EQ(a, b) do { auto aa = (a); auto bb = (b); \
-    CHECK(aa == bb) << \
-      "Expected equality of these two expressions:\n  " #a \
-      "\n  " #b "\nBut the results were:\n  " << aa << \
-      "\n  " << bb; \
+#define EXPECT_EQ(a, b) do { auto aa = (a); auto bb = (b);  \
+    CHECK(aa == bb) <<                                      \
+      "Expected equality of these two expressions:\n  " #a  \
+      "\n  " #b "\nBut the results were:\n  " << aa <<      \
+      "\n  " << bb;                                         \
   } while (0)
 
+static void TestAscii() {
+  std::string out;
+  CHECK(!MD5::UnAscii("wrong length", out));
+
+  std::string raw = MD5::Hash("coffee");
+  std::string asc = MD5::Ascii(raw);
+  CHECK(asc.size() == 32);
+  CHECK(MD5::UnAscii(asc, out));
+  CHECK(raw == out) << "From ascii:\n" << asc
+                    << "Raw:\n" << HexDump::Color(raw)
+                    << "Out:\n" << HexDump::Color(out);
+}
+
 int main(int argc, char **argv) {
-  // XXX check these against a known good implementation
-  EXPECT_EQ("d41d8cd98f00b204e9800998ecf8427e", MD5::Ascii(MD5::Hash("")));
-  EXPECT_EQ("5eb63bbbe01eeed093cb22bb8f5acdc3", MD5::Ascii(MD5::Hash("hello world")));
+  EXPECT_EQ("d41d8cd98f00b204e9800998ecf8427e",
+            MD5::Ascii(MD5::Hash("")));
+  EXPECT_EQ("5eb63bbbe01eeed093cb22bb8f5acdc3",
+            MD5::Ascii(MD5::Hash("hello world")));
+
   std::vector<uint8_t> v;
   for (int i = 0; i < 256; i++) v.push_back((uint8_t)i);
   EXPECT_EQ("e2c865db4162bed963bfaa9ef6ac18f0", MD5::Ascii(MD5::Hashv(v)));
+
+  TestAscii();
+
+  printf("OK\n");
+  return 0;
 }

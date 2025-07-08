@@ -38,7 +38,8 @@ NOTE: String length must be evenly divisible by 16 bytes.
       larger.
 */
 
-#include "aes.h"
+#include "crypt/aes.h"
+
 #include <cstdint>
 #include <string.h>
 
@@ -200,7 +201,7 @@ static void KeyExpansion(uint8 *round_key, const uint8 *Key) {
     }
 
     // Is this AES256?
-    if (KEY_WORDS == 8) {
+    if constexpr (KEY_WORDS == 8) {
       if (i % KEY_WORDS == 4) {
         // Function Subword()
         tempa[0] = getSBoxValue(tempa[0]);
@@ -232,7 +233,7 @@ void AES<KEYBITS>::InitCtxIV(struct Ctx *ctx,
 }
 
 template<int KEYBITS>
-void AES<KEYBITS>::Ctx_set_iv(struct Ctx *ctx, const uint8 *iv) {
+void AES<KEYBITS>::SetIV(struct Ctx *ctx, const uint8 *iv) {
   memcpy(ctx->iv, iv, BLOCKLEN);
 }
 
@@ -247,7 +248,7 @@ static void AddRoundKey(uint8 round, state_t *state,
   }
 }
 
-// The SubBytes Function Substitutes the values in the
+// The SubBytes function substitutes the values in the
 // state matrix with values in an S-box.
 static void SubBytes(state_t *state) {
   for (uint8 i = 0; i < 4; ++i) {

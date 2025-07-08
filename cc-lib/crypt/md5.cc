@@ -13,9 +13,10 @@
 
 */
 
-#include "md5.h"
+#include "crypt/md5.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -33,7 +34,7 @@ struct MD5Context {
 };
 }
 
-#define GET_UINT32(b, i) \
+#define GET_UINT32(b, i)                        \
   (( (uint32) (b)[(i) + 3] << 24 )              \
    | ( (uint32) (b)[(i) + 2] << 16 )            \
    | ( (uint32) (b)[(i) + 1] <<  8 )            \
@@ -57,24 +58,24 @@ static void md5_starts(MD5Context *ctx) {
 }
 
 static void md5_process( MD5Context *ctx, const uint8 *data ) {
-  uint32 A, B, C, D, X[16];
+  uint32 X[16];
 
-   X[0] =  GET_UINT32( data,  0 );
-   X[1] =  GET_UINT32( data,  4 );
-   X[2] =  GET_UINT32( data,  8 );
-   X[3] =  GET_UINT32( data, 12 );
-   X[4] =  GET_UINT32( data, 16 );
-   X[5] =  GET_UINT32( data, 20 );
-   X[6] =  GET_UINT32( data, 24 );
-   X[7] =  GET_UINT32( data, 28 );
-   X[8] =  GET_UINT32( data, 32 );
-   X[9] =  GET_UINT32( data, 36 );
-   X[10] = GET_UINT32( data, 40 );
-   X[11] = GET_UINT32( data, 44 );
-   X[12] = GET_UINT32( data, 48 );
-   X[13] = GET_UINT32( data, 52 );
-   X[14] = GET_UINT32( data, 56 );
-   X[15] = GET_UINT32( data, 60 );
+  X[0] =  GET_UINT32( data,  0 );
+  X[1] =  GET_UINT32( data,  4 );
+  X[2] =  GET_UINT32( data,  8 );
+  X[3] =  GET_UINT32( data, 12 );
+  X[4] =  GET_UINT32( data, 16 );
+  X[5] =  GET_UINT32( data, 20 );
+  X[6] =  GET_UINT32( data, 24 );
+  X[7] =  GET_UINT32( data, 28 );
+  X[8] =  GET_UINT32( data, 32 );
+  X[9] =  GET_UINT32( data, 36 );
+  X[10] = GET_UINT32( data, 40 );
+  X[11] = GET_UINT32( data, 44 );
+  X[12] = GET_UINT32( data, 48 );
+  X[13] = GET_UINT32( data, 52 );
+  X[14] = GET_UINT32( data, 56 );
+  X[15] = GET_UINT32( data, 60 );
 
 #define S(x,n) ((x << n) | ((x & 0xFFFFFFFF) >> (32 - n)))
 
@@ -82,10 +83,10 @@ static void md5_process( MD5Context *ctx, const uint8 *data ) {
      a += F(b,c,d) + X[k] + t; a = S(a,s) + b;          \
    } while (0)
 
-  A = ctx->state[0];
-  B = ctx->state[1];
-  C = ctx->state[2];
-  D = ctx->state[3];
+  uint32 A = ctx->state[0];
+  uint32 B = ctx->state[1];
+  uint32 C = ctx->state[2];
+  uint32 D = ctx->state[3];
 
 #define F(x,y,z) (z ^ (x & (y ^ z)))
 
@@ -296,7 +297,13 @@ string MD5::Ascii(const string &s) {
   return out;
 }
 
-/* XXX doesn't check each char is 0-9a-fA-f */
+static inline bool IsHexChar(unsigned char c) {
+  if (c >= '0' && c <= '9') return true;
+  if (c >= 'a' && c <= 'f') return true;
+  if (c >= 'A' && c <= 'F') return true;
+  return false;
+}
+
 bool MD5::UnAscii(const string &s, string &out) {
   if (&s == &out) {
     // Doesn't work if s and out are the same object, so
@@ -308,12 +315,14 @@ bool MD5::UnAscii(const string &s, string &out) {
 
     if (sz != 32) return false;
 
-    out = "0123456789abcdef";
+    out.resize(16);
 
     for (size_t i = 0; i < 16; i++) {
-      out[i] = 
-        (((s[i * 2] | 4400) % 55) << 4) |
-        ((s[i * 2 + 1] | 4400) % 55);
+      unsigned char hi = s[i * 2];
+      unsigned char lo = s[i * 2 + 1];
+      if (!IsHexChar(hi) || !IsHexChar(lo)) return false;
+      out[i] = ((((hi | 4400) % 55) << 4) |
+                ((lo | 4400) % 55));
     }
 
     return true;

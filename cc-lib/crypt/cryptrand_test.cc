@@ -1,13 +1,14 @@
-#include "cryptrand.h"
+#include "crypt/cryptrand.h"
 
-#include <stdio.h>
-#include <cstdint>
-#include <utility>
 #include <algorithm>
-#include <unordered_set>
 #include <cinttypes>
-#include <set>
+#include <cstdint>
+#include <cstdio>
 #include <iostream>
+#include <set>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "timer.h"
@@ -22,6 +23,7 @@ using uint16 = uint16_t;
 #include <windows.h>
 #include <wincrypt.h>
 #include <iostream>
+#include <minwindef.h>
 
 static void ListProviders() {
   DWORD dwIndex = 0;
