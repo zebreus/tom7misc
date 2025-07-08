@@ -1,6 +1,7 @@
 
 #include "parser-combinators.h"
 
+#include <format>
 #include <optional>
 #include <string>
 #include <utility>
@@ -210,10 +211,12 @@ static void TestBasic() {
   {
     auto parser = (Is('a') || Is('b')) /=
       [](char c) -> std::optional<char> {
-        if (c == 'a') return std::make_optional('y');
-        else return std::nullopt;
+        // Note weird gcc 13.3 warning if you just try
+        // to return std::nullopt here?
+        std::optional<char> co;
+        if (c == 'a') co = std::make_optional('y');
+        return co;
       };
-
     {
       std::string s = "a";
       Parsed<char> po = parser(CharSpan(s));
