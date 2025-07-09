@@ -270,6 +270,9 @@ Polyhedron NormalizeRadius(const Polyhedron &p);
 // mass of its vertices.
 Polyhedron Recenter(const Polyhedron &p);
 
+// Scale all vertices by the factor.
+Polyhedron Scale(const Polyhedron &p, double s);
+
 // Create the shadow of the polyhedron on the x-y plane.
 // The mesh's faces object aliases the input polyhedron's.
 Mesh2D Shadow(const Polyhedron &p);

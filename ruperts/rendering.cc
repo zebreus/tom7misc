@@ -105,8 +105,13 @@ Rendering::Rendering(const Polyhedron &p, int width_in, int height_in) :
   polyscale = (std::min(width, height) / dia) * FIT_SCALE;
 }
 
+void Rendering::ClearToAlpha() {
+  img.Clear32(0x00000000);
+}
+
 void Rendering::RenderPerspectiveWireframe(const Polyhedron &p,
-                                           uint32_t color) {
+                                           uint32_t color,
+                                           float thickness) {
   const double scale = polyscale;
   constexpr double aspect = 1.0;
   const mat4 proj = yocto::perspective_mat(
@@ -135,7 +140,7 @@ void Rendering::RenderPerspectiveWireframe(const Polyhedron &p,
       const float y0 = (p0.y * scale + height * 0.5);
       const float x1 = (p1.x * scale + width * 0.5);
       const float y1 = (p1.y * scale + height * 0.5);
-      img.BlendThickLine32(x0, y0, x1, y1, 4.0f, color & 0xFFFFFF88);
+      img.BlendThickLine32(x0, y0, x1, y1, thickness, color & 0xFFFFFF88);
     }
   }
 }

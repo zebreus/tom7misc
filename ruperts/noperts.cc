@@ -1674,19 +1674,37 @@ static double NonPlanarity(const vec3 &v0,
   return numerator / denom;
 }
 
-static void DoFlatten76() {
+struct Flattening76 {
   SolutionDB db;
-  Polyhedron source_poly = db.AnyPolyhedronByName("nopert_76");
-
+  Polyhedron source_poly;
   AutoHisto iter_histo;
   Timer run_time;
   int64_t notplanar = 0;
 
-  // This polyhedron has 5-fold symmetry around the z axis,
-  // and 4 points with different z coordinates. There should
-  // be four with (x, y) close to (0, 1).
+  // rotate 1/5
+  frame2 rot2d;
+  std::array<vec3, 4> canon_root1;
 
-  const std::array<vec3, 4> canon_root1 = [&]() {
+  enum class QuadType {
+    Q1_3,
+    Q2_2,
+    Q3_1,
+  };
+
+  struct Target {
+    QuadType quad_type = QuadType::Q2_2;
+    // index of the vertex (col offset from root; always 0 or 1)
+    int c0 = 0, c1 = 0, c2 = 0, c3 = 0;
+    // index of the vertex (row).
+    int v0 = 0, v1 = 0, v2 = 0, v3 = 0;
+  };
+
+  Flattening76() : source_poly(db.AnyPolyhedronByName("nopert_76")) {
+
+    // This polyhedron has 5-fold symmetry around the z axis,
+    // and 4 points with different z coordinates. There should
+    // be four with (x, y) close to (0, 1).
+    {
       std::vector<vec3> canon;
       for (const vec3 &v : source_poly.vertices) {
         const vec3 ref(0, 1, v.z);
@@ -1701,267 +1719,343 @@ static void DoFlatten76() {
                   return a.z < b.z;
                 });
 
-      std::array<vec3, 4> ret;
-      memcpy(ret.data(), canon.data(), sizeof (vec3) * canon.size());
-      return ret;
-    }();
-  CHECK(canon_root1.size() == 4);
+      CHECK(canon.size() == 4);
+      memcpy(canon_root1.data(),
+             canon.data(), sizeof (vec3) * canon.size());
+    }
 
-  for (int i = 0; i < 4; i++) {
-    printf("Canon Root %d: %s\n",
-           i, VecString(canon_root1[i]).c_str());
+    for (int i = 0; i < 4; i++) {
+      printf("Canon Root %d: %s\n",
+             i, VecString(canon_root1[i]).c_str());
+    }
+
+    // rotate 1/5
+    rot2d = rotation_frame2(std::numbers::pi * 2.0 / 5.0);
+
+
   }
 
-  // rotate 1/5
-  const frame2 rot2d = rotation_frame2(std::numbers::pi * 2.0 / 5.0);
-
-  auto Rootate = [&rot2d](const std::array<vec3, 4> &root) {
-      std::array<vec3, 4> root2;
-      for (int i = 0; i < 4; i++) {
-        vec2 p = vec2(root[i].x, root[i].y);
-        vec2 p2 = transform_point(rot2d, p);
-        root2[i].x = p2.x;
-        root2[i].y = p2.y;
-        root2[i].z = root[i].z;
-      }
-      return root2;
-    };
-
-  const std::array<vec3, 4> canon_root2 = Rootate(canon_root1);
-
-  // Now our goal is to place vertices nearby the original ones,
-  // but such that they produce some rectangular faces instead
-  // of triangular ones. Of course we still want it to be a
-  // nopert!
-
-  // Looking at the four vertices from top to bottom,
-
-  //    a0---b0
-  //     | / |
-  //    a1---b1
-  //     | / |
-  //    a2---b2
-  //     | \ |
-  //    a3---b3
-
-  // We always have an axis-aligned edge a-b because of the 5-fold
-  // symmetry. a0-a1 (etc.) are not axis aligned. The question is
-  // whether we can make e.g. the quad a0-b0-b1-a1 planar, or the
-  // quad a2-b1-b0-a1. The quad might have been triangulated one way
-  // or the other, but we don't care about that here because we will
-  // reconstruct the 3D convex hull.
-
-  // I should probably also consider quads that are 1+3 and 3+1
-  // instead of 2+2. There is one of these in #76 that is nearly
-  // planar.
-
-  // There are also quads that cross the "root", but I don't try
-  // flattening these. They are far from planar in the input and
-  // flattening them symmetrically can easily lead to degeneracy.
-
-  // We only care about solutions here where we have an actual rhombic
-  // face; otherwise it is not an improvement over nopert_76. So we
-  // select one of these quads and make its vertices planar, then test
-  // the resulting shape.
-
-  Periodically status_per(1.0);
-  ArcFour rc(std::format("flatten-{}", time(nullptr)));
-  double temp = 0.0;
-  RandomGaussian gauss(&rc);
-  int64_t solved = 0, successes = 0;
-  for (;;) {
-    std::array<vec3, 4> noise_root1;
+  std::array<vec3, 4> Rootate(const std::array<vec3, 4> &root) {
+    std::array<vec3, 4> root2;
     for (int i = 0; i < 4; i++) {
-      noise_root1[i].x = canon_root1[i].x + gauss.Next() * temp;
-      noise_root1[i].y = canon_root1[i].y + gauss.Next() * temp;
-      noise_root1[i].z = canon_root1[i].z + gauss.Next() * temp;
+      vec2 p = vec2(root[i].x, root[i].y);
+      vec2 p2 = transform_point(rot2d, p);
+      root2[i].x = p2.x;
+      root2[i].y = p2.y;
+      root2[i].z = root[i].z;
     }
+    return root2;
+  }
 
-    // Which quad will we make planar? The only valid starting
-    // points are vertices 0, 1, 2, since we will take it to be
-    // the upper left corner of the quad.
-    int v0 = RandTo(&rc, 3);
-    // -1, 0, or 1. Whether we go up (-1), across (0), or down
-    // when we move from the first row to the second. We then
-    // always go down, then back to the first row with -delta.
-    //
-    // 0
-    //
-    // 1   1
-    //   /
-    // 2   2
-    //   /
-    // 3   3
-    int delt = 0;
-    switch (v0) {
-    case 0:
-      // across or down
-      delt = RandTo(&rc, 1);
-      break;
-    case 1:
-      // because we always go down, this is
-      // the only general case.
-      delt = RandTo(&rc, 2) - 1;
-      break;
-    case 2:
-      // up or across
-      delt = RandTo(&rc, 1) - 1;
-      break;
+  static Target GetTarget(ArcFour *rc) {
+    Target target;
+
+    // Choose one of the three types of quads. The type determines
+    // which vertices are on the root and which are on the next
+    // column over.
+    switch (RandTo(rc, 3)) {
     default:
-      LOG(FATAL) << "Impossible.";
+    case 0: target.quad_type = QuadType::Q2_2; break;
+    case 1: target.quad_type = QuadType::Q1_3; break;
+    case 2: target.quad_type = QuadType::Q3_1; break;
     }
 
-    // v1 and v2 are in the second row.
-    const int v1 = v0 + delt;
-    const int v2 = v0 + delt + 1;
-    const int v3 = v0 + delt + 1 - delt;
-    // the span of points involved.
-    int first_edit = std::min({v0, v1, v2, v3});
-    int last_edit = std::max({v0, v1, v2, v3});
-    // number of indices, inclusive
-    int edit_size = last_edit - first_edit + 1;
-    CHECK(first_edit < last_edit && (edit_size == 2 || edit_size == 3)) <<
-      std::format("vs: {} {} {} {}, delt {}, f {} l {} s {}",
-                  v0, v1, v2, v3, delt,
-                  first_edit, last_edit, edit_size);
+    if (target.quad_type == QuadType::Q2_2) {
+      // Which quad will we make planar? The only valid starting
+      // points are vertices 0, 1, 2, since we will take it to be
+      // the upper left corner of the quad.
+      target.v0 = RandTo(rc, 3);
 
-    // edit_size * 3 parameters.
-    auto MakeRoot = [&noise_root1, first_edit, edit_size](
-        std::span<const double> args) ->
-      std::array<vec3, 4> {
-      std::array<vec3, 4> root;
-      memcpy(root.data(), noise_root1.data(), sizeof (vec3) * root.size());
-
-      for (int i = 0; i < edit_size; i++) {
-        root[first_edit + i].x += args[3 * i + 0];
-        root[first_edit + i].y += args[3 * i + 1];
-        root[first_edit + i].z += args[3 * i + 2];
+      // -1, 0, or 1. Whether we go up (-1), across (0), or down
+      // when we move from the first row to the second. We then
+      // always go down, then back to the first row with -delta.
+      //
+      // 0
+      //
+      // 1   1
+      //   /
+      // 2   2
+      //   /
+      // 3   3
+      int delt = 0;
+      switch (target.v0) {
+      case 0:
+        // across or down
+        delt = RandTo(rc, 1);
+        break;
+      case 1:
+        // because we always go down, this is
+        // the only general case.
+        delt = RandTo(rc, 2) - 1;
+        break;
+      case 2:
+        // up or across
+        delt = RandTo(rc, 1) - 1;
+        break;
+      default:
+        LOG(FATAL) << "Impossible.";
       }
 
-      return root;
-    };
+      // v1 and v2 are in the second column.
+      target.c0 = 0;
+      target.c1 = 1;
+      target.c2 = 1;
+      target.c3 = 0;
 
-    // Use optimizer. We optimize over four parameters,
-    // which are the x,y coordinates of the two involved
-    // levels.
-    auto Loss = [&](std::span<const double> args) {
-        std::array<vec3, 4> root1 = MakeRoot(args);
-        // column to the right
-        std::array<vec3, 4> root2 = Rootate(root1);
+      target.v1 = target.v0 + delt;
+      target.v2 = target.v0 + delt + 1;
+      target.v3 = target.v0 + delt + 1 - delt;
+    } else if (target.quad_type == QuadType::Q1_3 ||
+               target.quad_type == QuadType::Q3_1) {
 
-        // Total squared deviation from the original vertices.
-        double err = 0.0;
-        err += distance_squared(canon_root1[v0], root1[v0]);
-        err += distance_squared(canon_root2[v1], root2[v1]);
-        err += distance_squared(canon_root2[v2], root2[v2]);
-        err += distance_squared(canon_root1[v3], root1[v3]);
+      // Here we just pick three levels to involve,
+      // and then one of the three levels is the
+      // singleton point.
 
-        // Now, check the planarity of the quad we're interested
-        // in.
-        const vec3 &q0 = root1[v0];
-        const vec3 &q1 = root2[v1];
-        const vec3 &q2 = root2[v2];
-        const vec3 &q3 = root1[v3];
+      int start_level = RandTo(rc, 1);
+      int singleton_pt = start_level + RandTo(rc, 3);
+      CHECK(singleton_pt < 4);
 
-        err += NonPlanarity(q0, q1, q2, q3);
-        return err;
-      };
+      target.v0 = singleton_pt;
+      target.v1 = start_level;
+      target.v2 = start_level + 1;
+      target.v3 = start_level + 2;
 
-    // Minimize.
-    const int n = edit_size * 3;
-    // only move a little
-    std::vector<double> lb(n, -0.1);
-    std::vector<double> ub(n, +0.1);
-    std::vector<double> best_args =
-      Opt::Minimize(n, Loss, lb, ub, 2000).first;
-
-    // Then make the polyhedron.
-    std::vector<vec3> vertices;
-    const auto broot = MakeRoot(best_args);
-    for (const vec3 &v : broot) {
-      vec2 p = vec2(v.x, v.y);
-      for (int i = 0; i < 5; i++) {
-        frame2 rot2d = rotation_frame2(
-            (i * std::numbers::pi * 2.0) / 5.0);
-        vec2 p2 = transform_point(rot2d, p);
-        vertices.emplace_back(p2.x, p2.y, v.z);
-      }
-    }
-
-    if (false) {
-      DebugPointCloudAsSTL(vertices,
-                           "flat76-debug.stl");
-      CHECK(vertices.size() == 20);
-
-      for (int i = 0; i < 4; i++) {
-        printf("Root %d: %s\n",
-               i, VecString(broot[i]).c_str());
-      }
-    }
-
-    std::optional<Polyhedron> opoly =
-      PolyhedronFromConvexVertices(vertices, "flat76");
-
-    if (!opoly.has_value()) {
-      degenerate++;
-    } else {
-      const Polyhedron &poly = opoly.value();
-
-      // The top and bottom faces are always pentagons. The triangle strip
-      // along the side is 6 triangles, so we have 6 * 5 + 2 = 32 faces if
-      // the polyhedron's sides consist only of triangles.
-      if (poly.faces->v.size() >= 32) {
-        notplanar++;
+      if (target.quad_type == QuadType::Q1_3) {
+        target.c0 = 0;
+        target.c1 = 1;
+        target.c2 = 1;
+        target.c3 = 1;
       } else {
-        if (solved % 1000 == 0) {
-          std::string filename = std::format("flat76.{}.stl", solved);
-          SaveAsSTL(poly, filename);
-          status->Print("Wrote {}", filename);
+        target.c0 = 1;
+        target.c1 = 0;
+        target.c2 = 0;
+        target.c3 = 0;
+      }
+    } else {
+      LOG(FATAL) << "Bad type";
+    }
+
+    return target;
+  }
+
+
+  void Run() {
+    // Now our goal is to place vertices nearby the original ones,
+    // but such that they produce some rectangular faces instead
+    // of triangular ones. Of course we still want it to be a
+    // nopert!
+
+    // Looking at the four vertices from top to bottom,
+
+    //    a0---b0
+    //     | / |
+    //    a1---b1
+    //     | / |
+    //    a2---b2
+    //     | \ |
+    //    a3---b3
+
+    // We always have an axis-aligned edge a-b because of the 5-fold
+    // symmetry. a0-a1 (etc.) are not axis aligned. The question is
+    // whether we can make e.g. the quad a0-b0-b1-a1 planar, or the
+    // quad a2-b1-b0-a1. The quad might have been triangulated one way
+    // or the other, but we don't care about that here because we will
+    // reconstruct the 3D convex hull.
+
+    // I should probably also consider quads that are 1+3 and 3+1
+    // instead of 2+2. There is one of these in #76 that is nearly
+    // planar.
+
+    // There are also quads that cross the "root", but I don't try
+    // flattening these. They are far from planar in the input and
+    // flattening them symmetrically can easily lead to degeneracy.
+
+    // We only care about solutions here where we have an actual rhombic
+    // face; otherwise it is not an improvement over nopert_76. So we
+    // select one of these quads and make its vertices planar, then test
+    // the resulting shape.
+
+
+    ArcFour rc(std::format("flatten-{}", time(nullptr)));
+
+    Periodically status_per(1.0);
+    double temp = 1.0e-60;  // or 0.0
+    RandomGaussian gauss(&rc);
+    int64_t solved = 0, successes = 0;
+    for (;;) {
+      // Always add a small amount of noise to the points so that
+      // we settle on different solutions each time.
+      std::array<vec3, 4> noise_root1;
+      for (int i = 0; i < 4; i++) {
+        noise_root1[i].x = canon_root1[i].x + gauss.Next() * temp;
+        noise_root1[i].y = canon_root1[i].y + gauss.Next() * temp;
+        noise_root1[i].z = canon_root1[i].z + gauss.Next() * temp;
+      }
+
+      Target target = GetTarget(&rc);
+
+      // the span of points involved.
+      const int first_edit =
+        std::min({target.v0, target.v1, target.v2, target.v3});
+      const int last_edit =
+        std::max({target.v0, target.v1, target.v2, target.v3});
+      // number of indices, inclusive
+      const int edit_size = last_edit - first_edit + 1;
+      CHECK(first_edit < last_edit && (edit_size == 2 || edit_size == 3)) <<
+        std::format("vs: {} {} {} {}, f {} l {} s {}",
+                    target.v0, target.v1, target.v2, target.v3,
+                    first_edit, last_edit, edit_size);
+
+      // edit_size * 3 parameters.
+      auto MakeRoot = [&noise_root1, first_edit, edit_size](
+          std::span<const double> args) ->
+        std::array<vec3, 4> {
+        std::array<vec3, 4> root;
+        memcpy(root.data(), noise_root1.data(), sizeof (vec3) * root.size());
+
+        for (int i = 0; i < edit_size; i++) {
+          root[first_edit + i].x += args[3 * i + 0];
+          root[first_edit + i].y += args[3 * i + 1];
+          root[first_edit + i].z += args[3 * i + 2];
         }
 
-        // Multithreaded solve.
-        if (auto io = ParallelSolve(12,
-                                    &rc, poly,
-                                    nullptr, nullptr)) {
-          iter_histo.Observe(io.value());
-          solved++;
+        return root;
+      };
+
+      // Use optimizer. We optimize over edit_size * 3
+      // parameters; these are x,y,z deltas for the vertex
+      // in the root for the affected levels.
+      auto Loss = [&](std::span<const double> args) {
+          std::array<vec3, 4> root1 = MakeRoot(args);
+
+          // Total squared deviation from the original vertices.
+          // Here we don't care about root1 vs root2, since the
+          // distance will be the same either way.
+          double err = 0.0;
+          err += distance_squared(canon_root1[target.v0], root1[target.v0]);
+          err += distance_squared(canon_root1[target.v1], root1[target.v1]);
+          err += distance_squared(canon_root1[target.v2], root1[target.v2]);
+          err += distance_squared(canon_root1[target.v3], root1[target.v3]);
+
+          // column to the right
+          std::array<vec3, 4> root2 = Rootate(root1);
+
+          // Now, check the planarity of the quad we're interested
+          // in.
+          const vec3 &q0 = (target.c0 ? root2 : root1)[target.v0];
+          const vec3 &q1 = (target.c1 ? root2 : root1)[target.v1];
+          const vec3 &q2 = (target.c2 ? root2 : root1)[target.v2];
+          const vec3 &q3 = (target.c3 ? root2 : root1)[target.v3];
+          err += NonPlanarity(q0, q1, q2, q3);
+
+          return err;
+        };
+
+      // Minimize.
+      const int n = edit_size * 3;
+      // only move a little
+      std::vector<double> lb(n, -0.1);
+      std::vector<double> ub(n, +0.1);
+      std::vector<double> best_args =
+        Opt::Minimize(n, Loss, lb, ub, 2000).first;
+
+      // Then make the polyhedron.
+      std::vector<vec3> vertices;
+      const auto broot = MakeRoot(best_args);
+      for (const vec3 &v : broot) {
+        vec2 p = vec2(v.x, v.y);
+        for (int i = 0; i < 5; i++) {
+          frame2 rot2d = rotation_frame2(
+              (i * std::numbers::pi * 2.0) / 5.0);
+          vec2 p2 = transform_point(rot2d, p);
+          vertices.emplace_back(p2.x, p2.y, v.z);
+        }
+      }
+
+      if (false) {
+        DebugPointCloudAsSTL(vertices,
+                             "flat76-debug.stl");
+        CHECK(vertices.size() == 20);
+
+        for (int i = 0; i < 4; i++) {
+          printf("Root %d: %s\n",
+                 i, VecString(broot[i]).c_str());
+        }
+      }
+
+      std::optional<Polyhedron> opoly =
+        PolyhedronFromConvexVertices(vertices, "flat76");
+
+      if (!opoly.has_value()) {
+        degenerate++;
+      } else {
+        const Polyhedron &poly = opoly.value();
+
+        // The top and bottom faces are always pentagons. The triangle strip
+        // along the side is 6 triangles, so we have 6 * 5 + 2 = 32 faces if
+        // the polyhedron's sides consist only of triangles.
+        if (poly.faces->v.size() >= 32) {
+          notplanar++;
         } else {
-          // Nopert!
-          SolutionDB db;
-          db.AddNopert(poly, SolutionDB::NOPERT_METHOD_FLATTEN76);
-          successes++;
-          status->Print(AGREEN("Success!") "\n");
-          if (successes > 5) {
-            status->Print("That is enough noperts.\n");
-            return;
+          if (solved % 1000 == 0) {
+            std::string filename = std::format("flat76.{}.stl", solved);
+            SaveAsSTL(poly, filename);
+            status->Print("Wrote {}", filename);
+          }
+
+          // Multithreaded solve.
+          if (auto io = ParallelSolve(12,
+                                      &rc, poly,
+                                      nullptr, nullptr)) {
+            iter_histo.Observe(io.value());
+            solved++;
+          } else {
+            // Nopert!
+            SolutionDB db;
+            db.AddNopert(poly, SolutionDB::NOPERT_METHOD_FLATTEN76);
+            successes++;
+            status->Print(AGREEN("Success!") "\n");
+            if (successes > 5) {
+              status->Print("That is enough noperts.\n");
+              return;
+            }
           }
         }
       }
+
+      temp += 1e-100;
+      temp *= 1.001;
+
+      status_per.RunIf([&]() {
+
+          std::string info =
+            std::format("Flatten 76. " AYELLOW("{}") " solved. "
+                        APURPLE("{:.5g}") ARED("°") " "
+                        AORANGE("{}") AWHITE("⊲") " "
+                        ARED("{}") ABLOOD("☠") " ",
+                        solved, temp, notplanar, degenerate.Read());
+
+          std::string timing =
+            std::format("Run for {}. Useful candidates: {} ea.",
+                        ANSI::Time(run_time.Seconds()),
+                        ANSI::Time(run_time.Seconds() / (solved + successes)));
+
+          status->Status(
+              "{}\n"
+              "{}\n"
+              "{}\n",
+              iter_histo.SimpleANSI(HISTO_LINES),
+              timing,
+              info);
+        });
     }
-
-    temp += 1e-100;
-    temp *= 1.001;
-
-    status_per.RunIf([&]() {
-
-        std::string info =
-          std::format("Flatten 76. " AYELLOW("{}") " solved. "
-                      APURPLE("{}") ARED("🔥") " "
-                      AORANGE("{}") " not planar. "
-                      ARED("{}") AFGCOLOR(148, 75, 19, "💩") " ",
-                      solved, temp, notplanar, degenerate.Read());
-
-        std::string timing = ANSI::Time(run_time.Seconds());
-
-        status->Status(
-            "{}\n"
-            "{}\n"
-            "{}\n",
-            iter_histo.SimpleANSI(HISTO_LINES),
-            timing,
-            info);
-      });
   }
+};
+
+static void DoFlatten76() {
+  Flattening76 flattening;
+  flattening.Run();
 
   LOG(FATAL) << "Unimplemented";
 }

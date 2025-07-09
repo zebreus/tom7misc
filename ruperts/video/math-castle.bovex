@@ -5,9 +5,9 @@ let
   import "animation.bovex"
   import "movie-document.bovex"
 
-  val FRAME-WIDTH = 3840.0
-  val FRAME-HEIGHT = 2160.0
-  val POST-SCALE : int = 2
+  val FRAME-WIDTH = 1920.0
+  val FRAME-HEIGHT = 1080.0
+  val POST-SCALE : int = 1
 
   do set-doc-info { (MovieInfo)
                     width = pixel FRAME-WIDTH,
@@ -40,7 +40,7 @@ let
 in
 
   let
-    val portrait = image-load "d:\\video\\ruperts\\rupert-portrait.png"
+    val portrait = image-load "d:\\video\\ruperts\\math-castle.png"
 
     val anim-frames : image-handle vec = auto-draw portrait
       {(AutoDrawArg)
@@ -55,7 +55,9 @@ in
        max-fragile-piece-size = 10,
        blend-frames = 10,
        (* maroon pub color *)
-       background-color = 0x2b1414ff,
+       (* background-color = 0x2b1414ff, *)
+       (* Dark hair color; want to start in "dark mode" *)
+       background-color = 0x4d1a17ff,
        verbosity = 1 }
 
     do print ("Got " ^ int-to-string (vec-size anim-frames) ^

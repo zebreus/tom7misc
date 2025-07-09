@@ -40,7 +40,8 @@ static void AnimateHull(std::string_view filename) {
   constexpr int SIZE = HEIGHT;
   constexpr int FRAMES = 20 * 60;
   constexpr int POINTS = 100;
-  MovRecorder rec(filename, WIDTH, HEIGHT);
+  MovRecorder rec(filename, WIDTH, HEIGHT, MOV::DURATION_60,
+                  MOV::Codec::PNG_CCLIB);
 
   std::vector<vec2> points;
   std::vector<vec2> vels;
@@ -82,9 +83,11 @@ static void AnimateHull(std::string_view filename) {
     std::vector<int> hull1 = GrahamScan(points);
     sec1 += timer1.Seconds();
 
+    #if 0
     Timer timer2;
     std::vector<int> hull2 = QuickHull(points);
     sec2 += timer2.Seconds();
+    #endif
 
     // printf("Got hull sized %d, %d\n", (int)hull1.size(), (int)hull2.size());
 
@@ -141,19 +144,22 @@ static void AnimateHull(std::string_view filename) {
 [[maybe_unused]]
 static void Visualize(const Polyhedron &poly) {
   // ArcFour rc(std::format("seed.{}", time(nullptr)));
-  ArcFour rc("fixed-seed");
+  ArcFour rc("fixed-seed2");
 
   CHECK(PlanarityError(poly) < 1.0e-10);
   printf("Planarity OK.\n");
 
   {
+    Polyhedron spoly = Scale(poly, 1.6);
     Rendering rendering(poly, 1920, 1080);
-    for (int i = 0; i < 5; i++) {
+    rendering.ClearToAlpha();
+    constexpr int NUM_ORIENTATIONS = 1;
+    for (int i = 0; i < NUM_ORIENTATIONS; i++) {
       frame3 frame = yocto::rotation_frame(RandomQuaternion(&rc));
-      Polyhedron rpoly = Rotate(poly, frame);
+      Polyhedron rpoly = Rotate(spoly, frame);
 
       CHECK(PlanarityError(rpoly) < 1.0e10);
-      rendering.RenderPerspectiveWireframe(rpoly, Rendering::Color(i));
+      rendering.RenderPerspectiveWireframe(rpoly, Rendering::Color(i), 6.0f);
     }
 
     rendering.Save(std::format("wireframe-{}.png", poly.name));
@@ -182,9 +188,9 @@ int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
 
-  Polyhedron target = DeltoidalHexecontahedron();
-
   AnimateHull("animate-hull-bouncing.mov");
+
+  // Polyhedron target = SnubCube(); // DeltoidalHexecontahedron();
   // Visualize(target);
 
   return 0;

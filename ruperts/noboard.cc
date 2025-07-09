@@ -3,13 +3,16 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <format>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
 #include "ansi.h"
+#include "polyhedra.h"
 #include "solutions.h"
 #include "util.h"
 
@@ -17,6 +20,8 @@ using Solution = SolutionDB::Solution;
 using Nopert = SolutionDB::Nopert;
 using Attempt = SolutionDB::Attempt;
 using NopertAttempt = SolutionDB::NopertAttempt;
+
+#define ABLOOD(s) AFGCOLOR(148, 0, 0, s)
 
 static void PrintAll() {
   SolutionDB db;
@@ -49,11 +54,27 @@ static void PrintAll() {
             });
 
   for (const Nopert &nopert : noperts) {
+    std::string method = SolutionDB::NopertMethodName(nopert.method);
+    (void)Util::TryStripPrefix("NOPERT_METHOD_", &method);
+
+
+    std::optional<Polyhedron> poly =
+      PolyhedronFromConvexVertices(nopert.vertices,
+                                   std::format("nopert_{}", nopert.id));
+
+    std::string faces = ABLOOD("☠");
+    if (poly.has_value()) {
+      faces = std::format(AWHITE("{}") "f",
+                          (int)poly.value().faces->v.size());
+    }
+
     printf(AGREY("% 3d.") " " AWHITE("%4d") AGREY("v")
+           " %s"
            " via " ACYAN("%s") " (%s)",
            nopert.id,
            (int)nopert.vertices.size(),
-           SolutionDB::NopertMethodName(nopert.method),
+           faces.c_str(),
+           method.c_str(),
            Util::FormatTime("%Y-%m-%d %H:%M", nopert.createdate).c_str());
 
     std::string name = SolutionDB::NopertName(nopert.id);
@@ -72,6 +93,7 @@ static void PrintAll() {
       ok++;
       smallest = std::min(smallest, (int)nopert.vertices.size());
     }
+
     printf("\n");
   }
 

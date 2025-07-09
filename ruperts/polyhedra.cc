@@ -299,6 +299,13 @@ Faces::Faces(int num_vertices, std::vector<std::vector<int>> v_in) {
   CHECK(Init(num_vertices, std::move(v_in))) << num_vertices;
 }
 
+Polyhedron Scale(const Polyhedron &p, double s) {
+  Polyhedron ret = p;
+  for (vec3 &v : ret.vertices) {
+    v = s * v;
+  }
+  return ret;
+}
 
 Polyhedron ReflectXY(const Polyhedron &p) {
   Polyhedron ret = p;

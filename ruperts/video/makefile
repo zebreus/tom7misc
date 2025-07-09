@@ -1,5 +1,5 @@
 
-default : math-hole.mov math-hole-sit.mov rupert-portrait.mov rupert-pub.mov
+default : math-hole.mov math-hole-sit.mov rupert-portrait.mov rupert-pub.mov math-castle.mov
 
 REPHRASE=../../rephrase
 BOVEX=$(REPHRASE)/bovex.exe
@@ -15,5 +15,8 @@ rupert-portrait.mov : rupert-portrait.bovex
 
 rupert-pub.mov : rupert-pub.bovex
 	$(BOVEX) rupert-pub.bovex -o $@
+
+math-castle.mov : math-castle.bovex
+	$(BOVEX) math-castle.bovex -o $@
 
 clean :

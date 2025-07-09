@@ -16,8 +16,10 @@ struct Rendering {
   using vec2 = yocto::vec<double, 2>;
 
   Rendering(const Polyhedron &p, int width, int height);
+  void ClearToAlpha();
 
-  void RenderPerspectiveWireframe(const Polyhedron &p, uint32_t color);
+  void RenderPerspectiveWireframe(const Polyhedron &p, uint32_t color,
+                                  float line_thickness = 4.0f);
   void RenderMesh(const Mesh2D &mesh, float thickness = 3.0f);
   void RenderBadPoints(const Mesh2D &sinner, const Mesh2D &souter);
   void RenderHull(const Mesh2D &mesh, const std::vector<int> &hull,
