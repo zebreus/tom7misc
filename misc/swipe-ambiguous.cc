@@ -1,11 +1,12 @@
 
-#include <vector>
+#include <cstdio>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
-#include "../cc-lib/util.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/base/logging.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "util.h"
 
 using namespace std;
 
@@ -27,7 +28,7 @@ struct Keyboard {
     for (int y = 0; y < lines.size(); y++) {
       const string &line = lines[y];
       for (int x = 0; x < line.size(); x++) {
-	points[(int)line[x]] = Point{x, y};
+        points[(int)line[x]] = Point{x, y};
       }
     }
   }
@@ -43,7 +44,7 @@ struct ColinearRemover {
     ONE_POINT,
     LINE,
   };
-  
+
   void Push(Point pt, vector<Point> *out) {
     switch (state) {
     case EMPTY:
@@ -54,32 +55,32 @@ struct ColinearRemover {
 
     case ONE_POINT:
       if (pt.x != a.x || pt.y != a.y) {
-	b = pt;
-	state = LINE;
-	return;
+        b = pt;
+        state = LINE;
+        return;
       }
       return;
 
     case LINE:
       if (a.y == b.y && b.y == pt.y &&
-	  ((a.x <= b.x && b.x <= pt.x) ||
-	   (a.x >= b.x && b.x >= pt.x))) {
-	// Drop the interior point.
-	b = pt;
-	return;
+          ((a.x <= b.x && b.x <= pt.x) || (a.x >= b.x && b.x >= pt.x))) {
+        // Drop the interior point.
+        b = pt;
+        return;
       } else {
-	// Shift.
-	out->push_back(a);
-	a = b;
-	b = pt;
-	return;
+        // Shift.
+        out->push_back(a);
+        a = b;
+        b = pt;
+        return;
       }
     }
   }
-  
+
   void Flush(vector<Point> *out) {
     switch (state) {
-    case EMPTY: return;
+    case EMPTY:
+      return;
     case ONE_POINT:
       out->push_back(a);
       break;
@@ -109,7 +110,7 @@ vector<Point> Normalize(const vector<Point> &code) {
 string CodeString(const vector<Point> &code) {
   string s;
   for (Point p : code) {
-    StringAppendF(&s, " %d,%d", p.x, p.y);
+    AppendFormat(&s, " {},{}", p.x, p.y);
   }
   return s;
 }
@@ -129,7 +130,7 @@ int main(int argc, char **argv) {
   vector<string> words = Util::ReadFileToLines("../manarags/wordlist.asc");
 
   std::unordered_map<string, vector<string>> coded;
-  
+
   for (const string &word : words) {
     vector<Point> code = GetCode(word);
     // printf("%s %s\n", word.c_str(), CodeString(code).c_str());
@@ -142,7 +143,7 @@ int main(int argc, char **argv) {
     if (p.second.size() > 1) {
       // printf("%s:\n  ", p.first.c_str());
       for (const string &w : p.second) {
-	printf("%s  ", w.c_str());
+        printf("%s  ", w.c_str());
       }
       printf("\n");
       ambiguous++;
@@ -150,6 +151,6 @@ int main(int argc, char **argv) {
   }
 
   printf("\n%d ambiguous clusters.\n", ambiguous);
-  
+
   return 0;
 }

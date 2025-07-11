@@ -1,9 +1,11 @@
 
-#include "arcfour.h"
-#include "randutil.h"
-#include "image.h"
+#include <cstdio>
+#include <string>
 
+#include "arcfour.h"
 #include "auto-histo.h"
+#include "base/logging.h"
+#include "randutil.h"
 
 static void Plot() {
   // The proposition is that the following two functions produce

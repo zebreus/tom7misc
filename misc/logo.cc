@@ -1,12 +1,13 @@
 
 #include <functional>
+#include <utility>
+#include <vector>
 
-#include "image.h"
 #include "arcfour.h"
-#include "randutil.h"
 #include "base/logging.h"
+#include "image.h"
+#include "randutil.h"
 #include "threadutil.h"
-#include "base/stringprintf.h"
 
 static constexpr double PI = 3.141592653589;
 
@@ -288,9 +289,9 @@ ImageRGBA RenderOne(int frame, float yaw, float pitch, float roll) {
 }
 
 static void Render() {
-  constexpr double YAW = ToRad(15.0);
-  constexpr double PITCH = ToRad(15.0);
-  constexpr double ROLL = ToRad(15.0);
+  [[maybe_unused]] constexpr double YAW = ToRad(15.0);
+  [[maybe_unused]] constexpr double PITCH = ToRad(15.0);
+  [[maybe_unused]] constexpr double ROLL = ToRad(15.0);
 
   Asynchronously async(12);
   static constexpr int NUM_FRAMES = 600;
@@ -301,7 +302,7 @@ static void Render() {
                                     YAW,
                                     ToRad(8.0 + 360.0 * t),
                                     ROLL);
-        frame.Save(StringPrintf("logo%03d.png", i));
+        frame.Save(std::format("logo{:03}.png", i));
         printf("%d\n", i);
       });
 

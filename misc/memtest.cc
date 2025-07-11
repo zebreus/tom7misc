@@ -16,19 +16,44 @@
 // case, sequential access is realistic so we care about validating it!
 
 #include <vector>
-#include <utility>
-
 #include <cstdint>
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 
+#include "arcfour.h"
+#include "base/logging.h"
+#include "randutil.h"
+#include "threadutil.h"
+
+
+#if defined(WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
 #include <windows.h>
 
-#include "../cc-lib/arcfour.h"
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/threadutil.h"
-#include "../cc-lib/randutil.h"
+static inline uint64_t *Alloc64(size_t num_words) {
+  return (uint64_t*)_aligned_malloc(num_words * sizeof (uint64_t),
+                                    sizeof (uint64_t));
+}
+
+static inline void Free64(uint64_t *ptr) {
+  _aligned_free(ptr);
+}
+
+#else
+
+// C++17 now supports this standard. Maybe should just retire the
+// windows-specific calls?
+
+static inline uint64_t *Alloc64(size_t num_words) {
+  return (uint64_t*)aligned_alloc(sizeof(uint64_t),
+                                  num_words * sizeof(uint64_t));
+}
+
+static inline void Free64(uint64_t *ptr) {
+  free(ptr);
+}
+
+#endif
+
 
 using uint64 = uint64_t;
 using int64 = int64_t;
@@ -36,7 +61,7 @@ using int64 = int64_t;
 using namespace std;
 
 static_assert(sizeof (size_t) == sizeof (uint64),
-        "size_t needs to be 64 bit");
+              "size_t needs to be 64 bit");
 
 static inline uint64_t Hash3(uint64 seed1, uint64 seed2, uint64 input) {
   // This is basically from CityHash, but instead of reusing the
@@ -83,15 +108,14 @@ int main(int argc, char **argv) {
 
   vector<uint64*> chunks;
   for (int i = 0; i < gb; i++) {
-    size_t alloc = ONE_GIG;
-    uint64 *data = (uint64*)_aligned_malloc(alloc, sizeof (uint64));
+    uint64 *data = Alloc64(GIG_IN_64);
     CHECK(data != nullptr);
     chunks.push_back(data);
-    printf("Allocated %lld at %p...\n", alloc, data);
+    printf("Allocated %lld at %p...\n", ONE_GIG, data);
     fflush(stdout);
   }
 
-  string seed = StringPrintf("seed %llx", time(nullptr));
+  string seed = std::format("seed {:x}", time(nullptr));
   printf("Seed: [%s]\n", seed.c_str());
   ArcFour rc(seed);
   for (int i = 0; i < times; i++) {
@@ -126,7 +150,7 @@ int main(int argc, char **argv) {
   for (uint64 *p : chunks) {
     printf("Freeing at %p...\n", p);
     fflush(stdout);
-    _aligned_free(p);
+    Free64(p);
   }
   return 0;
 }

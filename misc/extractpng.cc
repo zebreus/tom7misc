@@ -2,8 +2,8 @@
 #include "util.h"
 
 #include <cstring>
+
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 namespace {
 struct PNGChunk {
@@ -49,8 +49,8 @@ static void GetPNGs(const std::string &contents) {
                                             full_size - (next - start),
                                             png_sig, 8))) {
     const char *png_start = next;
-    std::string outfile = StringPrintf("offset%lld.png",
-                                       (int64_t)(next - start));
+    std::string outfile = std::format("offset{}.png",
+                                      (int64_t)(next - start));
 
     // Found PNG header here.
     // [[maybe_unused]]
@@ -86,7 +86,7 @@ static void GetPNGs(const std::string &contents) {
 
 int main(int argc, char **argv) {
   CHECK(argc == 2) << "./extractpng.exe source-file\n"
-    "Puts the output in [offset 1].png, [offset 2].png ...\n";
+    "Puts the output in offset[offset 1].png, offset[offset 2].png ...\n";
 
   std::string contents = Util::ReadFile(argv[1]);
   CHECK(!contents.empty()) << argv[1];

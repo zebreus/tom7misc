@@ -1,15 +1,19 @@
 
+// This is an implementation of Fidel's Dungeon Rescue rules,
+// and a simple solver.
+
 #include <cstdint>
+#include <ctime>
 #include <unordered_map>
 #include <vector>
-#include <ctime>
 
-#include "../cc-lib/base/logging.h"
-#include "../cc-lib/heap.h"
-#include "../cc-lib/base/stringprintf.h"
+#include "base/logging.h"
+#include "heap.h"
 
 using namespace std;
 using uint8 = uint8_t;
+using uint64 = uint64_t;
+using int64 = int64_t;
 
 enum class Rules {
   // Triple and perfect kills reset health
@@ -73,7 +77,7 @@ struct State {
     // MUSHROOM, // TODO
     // TODO: Green turtles
   };
-  
+
   Tile tiles[WIDTH * HEIGHT];
   uint8 x, y, streak, xp, damage;
 
@@ -83,31 +87,31 @@ struct State {
   void SetTile(int xx, int yy, Tile t) {
     tiles[WIDTH * yy + xx] = t;
   }
-  
+
   bool MakeMove(Move m) {
     if (damage > MAX_DAMAGE)
       return false;
-    
+
     int dx = 0, dy = 0;
     switch (m) {
     case BARK: {
       auto Visit = [this](int ax, int ay, Tile turtle) {
-	  if (ax >= 0 && ax < WIDTH &&
-	      ay >= 0 && ay < HEIGHT) {
-	    switch (TileAt(ax, ay)) {
-	    case SMALL:
-	      SetTile(ax, ay, EMPTY);
-	      break;
-	    case TN:
-	    case TS:
-	    case TE:
-	    case TW:
-	      SetTile(ax, ay, turtle);
-	      break;
-	    default:;
-	    }
-	  }
-	};
+          if (ax >= 0 && ax < WIDTH &&
+              ay >= 0 && ay < HEIGHT) {
+            switch (TileAt(ax, ay)) {
+            case SMALL:
+              SetTile(ax, ay, EMPTY);
+              break;
+            case TN:
+            case TS:
+            case TE:
+            case TW:
+              SetTile(ax, ay, turtle);
+              break;
+            default:;
+            }
+          }
+        };
       Visit((int)x - 1, y, TE);
       Visit((int)x + 1, y, TW);
       Visit(x, (int)y - 1, TS);
@@ -162,34 +166,34 @@ struct State {
 
     case DRACULA:
       if (rules == Rules::ROBOT || damage == MAX_DAMAGE) {
-	// is this right?
-	if (rules == Rules::ZOMBIE) damage = 0;
-	xp += 5;
-	streak++;
+        // is this right?
+        if (rules == Rules::ZOMBIE) damage = 0;
+        xp += 5;
+        streak++;
       } else {
-	if (PERFECT_KILLS)
-	  return false;
-	streak = 0;
-	damage = MAX_DAMAGE;
+        if (PERFECT_KILLS)
+          return false;
+        streak = 0;
+        damage = MAX_DAMAGE;
       }
       break;
-      
+
     case SKING: {
       int num_soldiers = 0;
       for (int i = 0; i < WIDTH * HEIGHT; i++) {
-	if (tiles[i] == SOLDIER) {
-	  if (!PERFECT_KILLS) tiles[i] = EMPTY;
-	  num_soldiers++;
-	}
+        if (tiles[i] == SOLDIER) {
+          if (!PERFECT_KILLS) tiles[i] = EMPTY;
+          num_soldiers++;
+        }
       }
       if (num_soldiers > 0) {
-	if (PERFECT_KILLS) return false;
-	damage += 2;
-	streak = 0;
+        if (PERFECT_KILLS) return false;
+        damage += 2;
+        streak = 0;
       } else {
-	if (rules == Rules::ZOMBIE) damage = 0;
-	xp += 15;
-	streak++;
+        if (rules == Rules::ZOMBIE) damage = 0;
+        xp += 15;
+        streak++;
       }
       break;
     }
@@ -197,58 +201,58 @@ struct State {
     case FLOWER: {
       int num_petals = 0;
       auto Visit = [this, &num_petals](int ax, int ay) {
-	  if (ax >= 0 && ax < WIDTH &&
-	      ay >= 0 && ay < HEIGHT &&
-	      TileAt(ax, ay) == PETAL) {
-	    if (!PERFECT_KILLS)
-	      SetTile(ax, ay, EMPTY);
-	    num_petals++;
-	  }
-	};
+          if (ax >= 0 && ax < WIDTH &&
+              ay >= 0 && ay < HEIGHT &&
+              TileAt(ax, ay) == PETAL) {
+            if (!PERFECT_KILLS)
+              SetTile(ax, ay, EMPTY);
+            num_petals++;
+          }
+        };
       Visit((int)tx - 1, ty);
       Visit((int)tx + 1, ty);
       Visit(tx, (int)ty - 1);
       Visit(tx, (int)ty + 1);
       if (num_petals > 0) {
-	if (PERFECT_KILLS) return false;
-	damage += 2;
-	streak = 0;
+        if (PERFECT_KILLS) return false;
+        damage += 2;
+        streak = 0;
       } else {
-	if (rules == Rules::ZOMBIE) damage = 0;
-	xp += 5;
-	streak++;
+        if (rules == Rules::ZOMBIE) damage = 0;
+        xp += 5;
+        streak++;
       }
       break;
     }
-      
+
     case TN:
     case TS:
     case TE:
     case TW:
       if ((m == N && t == TN) ||
-	  (m == S && t == TS) ||
-	  (m == W && t == TW) ||
-	  (m == E && t == TE)) {
-	// Clean kill.
-	if (rules == Rules::ZOMBIE) damage = 0;
-	xp += 3;
-	streak++;
+          (m == S && t == TS) ||
+          (m == W && t == TW) ||
+          (m == E && t == TE)) {
+        // Clean kill.
+        if (rules == Rules::ZOMBIE) damage = 0;
+        xp += 3;
+        streak++;
       } else {
-	if (PERFECT_KILLS) return false;
-	// Takes damage.
-	damage += 2;
-	streak = 0;
+        if (PERFECT_KILLS) return false;
+        // Takes damage.
+        damage += 2;
+        streak = 0;
       }
     }
 
     // Triple!
     if (streak == 3) {
       if (damage <= MAX_DAMAGE &&
-	  rules == Rules::ZOMBIE) damage = 0;
+          rules == Rules::ZOMBIE) damage = 0;
       xp += 3;
       streak = 0;
     }
-    
+
     SetTile(x, y, LEASH);
     SetTile(tx, ty, EMPTY);
     x = tx;
@@ -257,38 +261,38 @@ struct State {
   }
 
   string ToString() const {
-    string ret = StringPrintf("%d,%d  %d xp %d streak %d dmg\n",
-			      x, y, xp, streak, damage);
+    string ret = std::format("{},{}  {} xp {} streak {} dmg\n",
+                             x, y, xp, streak, damage);
     for (int yy = 0; yy < HEIGHT; yy++) {
       for (int xx = 0; xx < WIDTH; xx++) {
-	if (xx == x && yy == y) {
-	  ret += "@";
-	} else {
-	  switch (TileAt(xx, yy)) {
-	  case EMPTY: ret += "."; break;
-	  case LEASH: ret += "="; break;
-	  case SMALL: ret += "o"; break;
-	  case PETAL: ret += "*"; break;
-	  case FLOWER: ret += "F"; break;
-	  case DRACULA: ret += "D"; break;
-	  case WALL: ret += "#"; break;
-	  case SKING: ret += "$"; break;
-	  case SOLDIER: ret += "S"; break;
-	  case SPIDER: ret += "x"; break;
-	  case HEAL: ret += "+"; break;
-	  case TN: ret += "^"; break;
-	  case TS: ret += "v"; break;
-	  case TE: ret += ">"; break;
-	  case TW: ret += "<"; break;
-	  default: ret += "?"; break;
-	  }
-	}
+        if (xx == x && yy == y) {
+          ret += "@";
+        } else {
+          switch (TileAt(xx, yy)) {
+          case EMPTY: ret += "."; break;
+          case LEASH: ret += "="; break;
+          case SMALL: ret += "o"; break;
+          case PETAL: ret += "*"; break;
+          case FLOWER: ret += "F"; break;
+          case DRACULA: ret += "D"; break;
+          case WALL: ret += "#"; break;
+          case SKING: ret += "$"; break;
+          case SOLDIER: ret += "S"; break;
+          case SPIDER: ret += "x"; break;
+          case HEAL: ret += "+"; break;
+          case TN: ret += "^"; break;
+          case TS: ret += "v"; break;
+          case TE: ret += ">"; break;
+          case TW: ret += "<"; break;
+          default: ret += "?"; break;
+          }
+        }
       }
       ret += "\n";
     }
     return ret;
   }
-  
+
   bool Prune() const {
     // n.b. this is covered by the below
     if (TileAt(EXIT_X, EXIT_Y) != EMPTY)
@@ -299,14 +303,14 @@ struct State {
     // We also insist that there is enough XP still reachable,
     // assuming perfect kills (and assuming we can streak
     // every entity regardless of where they are).
-    
+
     // is v<b> actually good here?
     vector<int> reachable(WIDTH * HEIGHT, false);
     auto Test = [&reachable](int x, int y) {
-	return !!reachable[y * WIDTH + x];
+        return !!reachable[y * WIDTH + x];
       };
     auto Set = [&reachable](int x, int y, bool b) {
-	reachable[y * WIDTH + x] = b;
+        reachable[y * WIDTH + x] = b;
       };
 
     // When we mark a square as reachable, we increment
@@ -314,9 +318,9 @@ struct State {
     // to a streak.
     int reachable_ents = 0;
     // ... and the reachable_xp with the best XP that can
-    // be gotten from killing the entity, modulo 
+    // be gotten from killing the entity, modulo
     int reachable_xp = 0;
-    
+
     // Anything in q should already be marked reachable.
     Set(x, y, true);
     vector<pair<int, int>> q = {{x, y}};
@@ -328,77 +332,81 @@ struct State {
 
       // XXX should avoid expanding through the exit; this
       // is not actually possible!
-      
+
       // n.b. can exit early if we've met both the xp
       // and exit conditions...
-      
-      auto Try = [this, &Test, &Set, &reachable_ents, &reachable_xp, &q](
-	  int xx, int yy) {
-	  // Already marked reachable.
-	  if (Test(xx, yy))
-	    return;
 
-	  // Entity/xp count.
-	  switch (TileAt(xx, yy)) {
-	  case LEASH:
-	  case WALL:
-	  case EMPTY:
-	  case HEAL:
-	    break;
-	  case SMALL:
-	  case PETAL:
-	    reachable_ents++;
-	    break;
+      auto Try = [this, &Test, &Set, &reachable_ents, &reachable_xp,
+                  &q](int xx, int yy) {
+        // Already marked reachable.
+        if (Test(xx, yy))
+          return;
 
-	  case SPIDER:
-	  case SOLDIER:
-	    reachable_ents++;
-	    reachable_xp++;
-	    break;
+        // Entity/xp count.
+        switch (TileAt(xx, yy)) {
+        case LEASH:
+        case WALL:
+        case EMPTY:
+        case HEAL:
+          break;
+        case SMALL:
+        case PETAL:
+          reachable_ents++;
+          break;
 
-	  case DRACULA:
-	    reachable_xp += 5;
-	    reachable_ents++;
-	    break;
-	  case SKING:
-	    reachable_xp += 15;
-	    reachable_ents++;
-	    break;
-	  case FLOWER:
-	    reachable_xp += 5;
-	    reachable_ents++;
-	    break;
-	  case TN:
-	  case TS:
-	  case TE:
-	  case TW:
-	    reachable_xp += 3;
-	    reachable_ents++;
-	    break;
-	  default:
-	    // Need to cover this case for correctness.
-	    CHECK(false) << "unimplemented!";
-	    break;
-	  }
+        case SPIDER:
+        case SOLDIER:
+          reachable_ents++;
+          reachable_xp++;
+          break;
 
-	  // Now reachability...
-	  
-	  switch (TileAt(xx, yy)) {
-	  case WALL:
-	  case LEASH:
-	    // Impassable.
-	    return;
-	  default:
-	    // Reachable.
-	    Set(xx, yy, true);
-	    q.emplace_back(xx, yy);
-	    return;
-	  }
-	};
-      if (xx > 0) Try(xx - 1, yy);
-      if (xx < WIDTH - 1) Try(xx + 1, yy);
-      if (yy > 0) Try(xx, yy - 1);
-      if (yy < HEIGHT - 1) Try(xx, yy + 1);
+        case DRACULA:
+          reachable_xp += 5;
+          reachable_ents++;
+          break;
+        case SKING:
+          reachable_xp += 15;
+          reachable_ents++;
+          break;
+        case FLOWER:
+          reachable_xp += 5;
+          reachable_ents++;
+          break;
+        case TN:
+        case TS:
+        case TE:
+        case TW:
+          reachable_xp += 3;
+          reachable_ents++;
+          break;
+        default:
+          // Need to cover this case for correctness.
+          CHECK(false) << "unimplemented!";
+          break;
+        }
+
+        // Now reachability...
+
+        switch (TileAt(xx, yy)) {
+        case WALL:
+        case LEASH:
+          // Impassable.
+          return;
+        default:
+          // Reachable.
+          Set(xx, yy, true);
+          q.emplace_back(xx, yy);
+          return;
+        }
+      };
+      if (xx > 0)
+        Try(xx - 1, yy);
+      if (xx < WIDTH - 1)
+        Try(xx + 1, yy);
+      if (yy > 0)
+        Try(xx, yy - 1);
+      if (yy < HEIGHT - 1)
+        Try(xx, yy + 1);
     }
 
     int max_streak = streak + reachable_ents;
@@ -440,7 +448,7 @@ struct State {
       std::abs((int)x - EXIT_X) +
       std::abs((int)y - EXIT_Y);
   }
-  
+
   static State StartState() {
     /*
     Tile init[] = {
@@ -474,7 +482,7 @@ struct State {
       SPIDER, PETAL, FLOWER, EMPTY, EMPTY, HEAL, EMPTY, EMPTY, EMPTY,
       SPIDER, SPIDER, PETAL, EMPTY, EMPTY, EMPTY, SPIDER, SPIDER, SPIDER,
     };
-    */    
+    */
 
     /*
     Tile init[] = {
@@ -502,7 +510,7 @@ struct State {
     (void)D;
     (void)R;
     (void)K;
-    
+
     /*
     Tile init[] = {
       S, S, H, _, _, O, S, _, S,
@@ -538,7 +546,7 @@ struct State {
     };
 
     static_assert(sizeof(init) == WIDTH * HEIGHT);
-    
+
     State start;
     for (int i = 0; i < WIDTH * HEIGHT; i++) {
       start.tiles[i] = init[i];
@@ -574,8 +582,8 @@ struct StateHash {
     for (int y = 0; y < State::HEIGHT; y++) {
       uint64 row = 0LL;
       for (int x = 0; x < State::WIDTH; x++) {
-	values <<= 3;
-	values ^= k.TileAt(x, y);
+        values <<= 3;
+        values ^= k.TileAt(x, y);
       }
       values ^= row;
       values *= 31337;
@@ -586,43 +594,43 @@ struct StateHash {
 
 static void Tests() {
   {
-  State start = State::StartState();
-  const State start1 = State::StartState();
+    State start = State::StartState();
+    const State start1 = State::StartState();
 
-  CHECK(!start.MakeMove(W));
-  CHECK(start == start);
-  CHECK(start == start1);
-  CHECK(start.MakeMove(E));
-  CHECK(!(start == start1));
-  CHECK(start.streak == 1);
-  CHECK(!start.MakeMove(W));
+    CHECK(!start.MakeMove(W));
+    CHECK(start == start);
+    CHECK(start == start1);
+    CHECK(start.MakeMove(E));
+    CHECK(!(start == start1));
+    CHECK(start.streak == 1);
+    CHECK(!start.MakeMove(W));
 
-  printf("%s\n", start.ToString().c_str());
+    printf("%s\n", start.ToString().c_str());
   }
 
   {
-  State s = State::StartState();
-  CHECK(s.MakeMove(S));
-  CHECK(s.MakeMove(S));
-  CHECK(s.MakeMove(E));
-  CHECK(s.MakeMove(E));
-  CHECK(s.MakeMove(N));
-  CHECK(s.streak == 1);
-  CHECK(s.MakeMove(E));
-  CHECK(s.xp == 3);
-  CHECK(s.streak == 2);
-  CHECK(s.MakeMove(N));
-  CHECK(s.xp == 6);
-  CHECK(s.streak == 0);
-  printf("%s\n", s.ToString().c_str());
+    State s = State::StartState();
+    CHECK(s.MakeMove(S));
+    CHECK(s.MakeMove(S));
+    CHECK(s.MakeMove(E));
+    CHECK(s.MakeMove(E));
+    CHECK(s.MakeMove(N));
+    CHECK(s.streak == 1);
+    CHECK(s.MakeMove(E));
+    CHECK(s.xp == 3);
+    CHECK(s.streak == 2);
+    CHECK(s.MakeMove(N));
+    CHECK(s.xp == 6);
+    CHECK(s.streak == 0);
+    printf("%s\n", s.ToString().c_str());
   }
 
   {
     State s = State::StartState();
     for (Move m : { S, S, E, E,
-	  N, E, N, W,
-	  W, N, E, BARK,
-	  N, E, E, S, W}) {
+        N, E, N, W,
+        W, N, E, BARK,
+        N, E, E, S, W}) {
       CHECK(s.MakeMove(m));
     }
     printf("%s\n", s.ToString().c_str());
@@ -644,7 +652,7 @@ static void Tests3() {
   State s = State::StartState();
   for (Move m : {
       N, E, N, N, N, W, W, W, S, E, S, S, S, W, W, W, N, E, E, N,
-	W, N, W, N, N, E
+  W, N, W, N, N, E
     }) {
     printf("%s\n", s.ToString().c_str());
     CHECK(s.MakeMove(m));
@@ -665,7 +673,7 @@ using StateTable = unordered_map<State, Item *, StateHash>;
 int main(int argc, char **argv) {
   printf("Hi?\n");
   fflush(stdout);
-  
+
   (void)Tests;
   (void)Tests2;
   (void)Tests3;
@@ -680,7 +688,7 @@ int main(int argc, char **argv) {
   State start = State::StartState();
   printf("Start:\n%s\n", start.ToString().c_str());
   fflush(stdout);
-  
+
   Item *start_item = new Item(start, {});
   table[start] = start_item;
   heap.Insert(0, start_item);
@@ -695,47 +703,47 @@ int main(int argc, char **argv) {
       pruned++;
       continue;
     }
-    
+
     for (Move m : {BARK, N, S, E, W}) {
       State s = item->state;
       if (s.MakeMove(m)) {
-	// Have we already been here?
-	if (table.find(s) != table.end()) {
-	  // TODO: Replace with shorter path if
-	  // possible. For now we don't even care.
-	  continue;
-	}
+        // Have we already been here?
+        if (table.find(s) != table.end()) {
+          // TODO: Replace with shorter path if
+          // possible. For now we don't even care.
+          continue;
+        }
 
-	vector<Move> moves = item->moves;
-	moves.push_back(m);
-	
-	// Did we win?
-	if (s.IsGoal()) {
-	  printf("Done!\n");
-	  printf("%s\n", s.ToString().c_str());
-	  for (Move mm : moves) {
-	    printf("%c, ", MoveChar(mm));
-	  }
-	  printf("\n");
-	  return 0;
-	}
+        vector<Move> moves = item->moves;
+        moves.push_back(m);
 
-	// Otherwise, push and continue...
-	// int num_moves = (int)moves.size();
-	double h = s.Heuristic();
-	Item *new_item = new Item(s, std::move(moves));
-	table[s] = new_item;
-	heap.Insert(h, new_item);
-	num_states++;
+        // Did we win?
+        if (s.IsGoal()) {
+          printf("Done!\n");
+          printf("%s\n", s.ToString().c_str());
+          for (Move mm : moves) {
+            printf("%c, ", MoveChar(mm));
+          }
+          printf("\n");
+          return 0;
+        }
+
+        // Otherwise, push and continue...
+        // int num_moves = (int)moves.size();
+        double h = s.Heuristic();
+        Item *new_item = new Item(s, std::move(moves));
+        table[s] = new_item;
+        heap.Insert(h, new_item);
+        num_states++;
       }
     }
-    
+
     num_iters++;
     if (num_iters % 10000 == 0) {
       int64 elapsed = time(nullptr) - time_start;
       double ssec = num_states / (double)elapsed;
       printf("%lld iters, %lld states, %lld pruned, %.1f st/sec\n",
-	     num_iters, num_states, pruned, ssec);
+       num_iters, num_states, pruned, ssec);
       printf("%s\n", item->state.ToString().c_str());
       fflush(stdout);
     }

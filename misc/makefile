@@ -46,7 +46,7 @@ decode-monika.exe : decode-monika.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_wr
 swipe-ambiguous.exe : swipe-ambiguous.o $(CC_LIB)/base/logging.o $(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-memtest.exe : memtest.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/arcfour.o
+memtest.exe : memtest.o $(CC_LIB)/base/logging.o $(CC_LIB)/arcfour.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 path.exe : path.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/arcfour.o

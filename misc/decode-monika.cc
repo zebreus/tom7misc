@@ -1,9 +1,7 @@
-#include "../cc-lib/stb_image.h"
 
 #include <memory>
 
-#include "../cc-lib/base/stringprintf.h"
-#include "../cc-lib/base/logging.h"
+#include "base/logging.h"
 #include "image.h"
 
 using namespace std;
@@ -19,25 +17,25 @@ int main(int argc, char **argv) {
   CHECK(image.get() != nullptr);
 
   auto Bit = [&image](int i) -> int {
-	  const int x = i % image->Width();
-	  const int y = i / image->Width();
-	  const auto [r, g, b, a] = image->GetPixel(x, y);
-	  return (r > 128) ? 1 : 0;
+    const int x = i % image->Width();
+    const int y = i / image->Width();
+    const auto [r, g, b, a] = image->GetPixel(x, y);
+    return (r > 128) ? 1 : 0;
   };
-  
+
   for (int i = 0; i < image->Width() * image->Height(); i += 8) {
     /*
     if (i < 10)
     printf("%c%c%c%c%c\n",
-	   (Bit(i + 0) ? '#' : '_'),
-	   (Bit(i + 1) ? '#' : '_'),
-	   (Bit(i + 2) ? '#' : '_'),
-	   (Bit(i + 3) ? '#' : '_'),
-	   (Bit(i + 4) ? '#' : '_'));
-    */	   
+     (Bit(i + 0) ? '#' : '_'),
+     (Bit(i + 1) ? '#' : '_'),
+     (Bit(i + 2) ? '#' : '_'),
+     (Bit(i + 3) ? '#' : '_'),
+     (Bit(i + 4) ? '#' : '_'));
+    */
     int c =
       Bit(i + 0) * 128 +
-      Bit(i + 1) * 64 +      
+      Bit(i + 1) * 64 +
       Bit(i + 2) * 32 +
       Bit(i + 3) * 16 +
       Bit(i + 4) * 8 +

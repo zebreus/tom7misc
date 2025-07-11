@@ -20,8 +20,8 @@ static constexpr array<int, 4> NUM = { 1, 4, 3, 1, };
 
 static inline bool Okay(const array<int, 9> &board) {
   const auto [a, b, c,
-        d, _, f,
-        g, h, i] = board;
+              d, _, f,
+              g, h, i] = board;
 
   return (a + d + g) == (c + f + i) &&
     (a + b + c) == (g + h + i) &&
@@ -39,30 +39,30 @@ int main(int argc, char **argv) {
           array<int, 9> &board,
           int idx) {
      if (idx == board.size()) {
-  if (Okay(board)) {
-    const auto [a, b, c,
-          d, e, f,
-          g, h, i] = board;
-    printf("Yes:\n"
-     "%d %d %d\n"
-     "%d %d %d\n"
-     "%d %d %d\n",
-     a, b, c,
-     d, e, f,
-     g, h, i);
-    exit(0);
-  }
-      } else {
-  for (int i = 0; i < 4; i++) {
-    if (left[i] > 0) {
-      left[i]--;
-      board[idx] = WEIGHTS[i];
-      Rec(left, board, idx + 1);
-      // No need to clean up board; we will overwrite.
-      left[i]++;
-    }
-  }
-      }
+       if (Okay(board)) {
+         const auto [a, b, c,
+                     d, e, f,
+                     g, h, i] = board;
+         printf("Yes:\n"
+                "%d %d %d\n"
+                "%d %d %d\n"
+                "%d %d %d\n",
+                a, b, c,
+                d, e, f,
+                g, h, i);
+         exit(0);
+       }
+     } else {
+       for (int i = 0; i < 4; i++) {
+         if (left[i] > 0) {
+           left[i]--;
+           board[idx] = WEIGHTS[i];
+           Rec(left, board, idx + 1);
+           // No need to clean up board; we will overwrite.
+           left[i]++;
+         }
+       }
+     }
     };
 
   array<int, 4> left = NUM;
