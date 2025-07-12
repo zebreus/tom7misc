@@ -1,6 +1,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <span>
 #include <string>
 #include <time.h>
 #include <unordered_set>
@@ -12,13 +13,47 @@
 #include "base64.h"
 #include "crypt/aes.h"
 #include "crypt/cryptrand.h"
-#include "crypt/sha256.h"
+#include "crypt/sha512.h"
 #include "util.h"
+
+#include "timer.h"
+#include "ansi.h"
 
 using namespace std;
 using uint8 = uint8_t;
 using uint64 = uint64_t;
 using int64 = int64_t;
+
+// The salt proper is the output of the hash algorithm (SHA-512).
+// This is not secret; it is present in the first line of the ciphertext
+// as base64.
+static constexpr int SALT_BYTES = 64;
+static_assert(SALT_BYTES == SHA512::DIGEST_LENGTH);
+// Two padding characters dropped.
+static constexpr int SALT_BASE64_LENGTH = 86;
+
+// The salt was computed from a secret preimage, which can be used to
+// validate correct decryption. Here are the number of bytes in the
+// salt's preimage. Its base64-encoded value needs to be 64 or fewer
+// bytes, since we use a fixed size line length for encryption, and it
+// appears on a normal line.
+static constexpr int PREIMAGE_BYTES = 48;
+static constexpr int PREIMAGE_BASE64_LENGTH = 64;
+
+// Each ciphertext line starts with a base64-encoded initialization
+// vector used to decode that line. This allows the ciphertext lines
+// to be manipulated independently (including e.g. three-way merges in
+// a revision control system).
+//
+// 128 bits in base64. This takes 24 characters formally, but always
+// has two bytes of padding with =. So we actually leave that off.
+static constexpr int LINE_IV_BASE64_LENGTH = 22;
+// The remainder of a ciphertext line is a fixed-size series of blocks,
+// encoded as base64. We have 64 bytes of raw data, which formally
+// encodes to 88 characters in base64, but we omit the final two
+// padding characters.
+static constexpr int LINE_PAYLOAD_BASE64_LENGTH = 86;
+
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #define byte win_byte_override
@@ -29,6 +64,8 @@ using int64 = int64_t;
 # include <unistd.h>
 #endif
 
+// Call the function f with terminal echo disabled, and then restore
+// it. This is used for password entry.
 template<class F>
 static void DisableEchoExcursion(F f) {
 #if defined(__MINGW32__) || defined(__MINGW64__)
@@ -69,12 +106,40 @@ static void DisableEchoExcursion(F f) {
 // Assumes vector is high-entropy data, and at least 64 bits long.
 namespace {
 struct HashHash {
-  size_t operator ()(const std::vector<uint8> &v) const noexcept {
+  size_t operator ()(std::span<const uint8_t> v) const noexcept {
     uint64_t hash;
     memcpy(&hash, v.data(), sizeof (uint64_t));
     return hash;
   }
 };
+}
+
+// base64 with no padding. This is the same as RFC 4648 but we don't
+// bother to store the final = or ==.
+static std::string B64NpEncode(std::span<const uint8_t> s) {
+  std::string e = Base64::EncodeV(s);
+  while (!e.empty() && e.back() == '=') e.pop_back();
+  return e;
+}
+
+static std::vector<uint8_t> B64NpDecode(std::string_view s) {
+  std::string pad(s);
+  switch (pad.size() % 4) {
+  case 0:
+    break;
+  default:
+  case 1:
+    LOG(FATAL) << "Invalid base64 string.";
+    break;
+  case 2:
+    pad.append("==");
+    break;
+  case 3:
+    pad.append("=");
+    break;
+  }
+
+  return Base64::DecodeV(pad);
 }
 
 static std::vector<uint8> CryptRandom(int bytes) {
@@ -88,7 +153,10 @@ static std::vector<uint8> CryptRandom(int bytes) {
 
 // Like WipeFile, but for a file that does not exist. We just write
 // random data until it fails (we assume: because we've filled the disk).
-static void FillDisk(const string &filename_base) {
+// This is for casual purposes (e.g. archiving a drive that has unknown
+// stuff in its free space) since it just does a single pass and will
+// likely not succeed in overwriting every last byte.
+static void FillDisk(std::string_view filename_base) {
   CryptRand cr;
   ArcFour rc(std::format("{:x}.{:x}", cr.Word64(), (uint64)time(nullptr)));
   rc.Discard(2049);
@@ -128,10 +196,15 @@ static void FillDisk(const string &filename_base) {
          "Wrote %lld total bytes.\n", bytes_written);
 }
 
-static bool WipeFile(const string &filename) {
+// Overwrite the file's data three times (with a fixed pattern and
+// then random data). Doesn't remove the file, so that you can see
+// that it worked. Note that there is not really any guarantee that
+// the OS won't also store the old data (write-leveling SSD, etc.),
+// so this should only be considered for casual purposes.
+static bool WipeFile(std::string_view filename) {
   // Careful on the mode here; some modes will truncate the file
   // (which will prevent us from overwriting the bytes)!
-  FILE *f = fopen(filename.c_str(), "rb+");
+  FILE *f = fopen(std::string(filename).c_str(), "rb+");
   if (!f) return false;
   struct OnReturn {
     OnReturn(FILE *f) : ff(f) {}
@@ -165,85 +238,98 @@ static bool WipeFile(const string &filename) {
 }
 
 // Keyed hash.
-// This is basically SHA256(key :: SHA256(key :: passphrase)), with
+// This is basically SHA512(key :: SHA512(key :: passphrase)), with
 // the two keys being modified by flipping some of their bits.
-static std::vector<uint8> HMAC_SHA256(const string &passphrase,
-                                      const std::vector<uint8> &key) {
+static std::vector<uint8> HMAC_SHA512(const string &passphrase,
+                                      std::span<const uint8> key) {
   // It's good for this code to be efficient, since we run it hundreds
   // of thousands of times. We should assume an attacker has the
   // fastest possible implementation of this.
 
-  CHECK(key.size() == 32);
-  std::vector<uint8> lkey, rkey;
-  lkey.resize(64);
-  rkey.resize(64);
+  CHECK(key.size() == 64);
+  std::array<uint8, 128> lkey, rkey;
 
-  for (int i = 0; i < 32; i++) {
+  for (int i = 0; i < 64; i++) {
     lkey[i] = key[i] ^ 0x5c;
     rkey[i] = key[i] ^ 0x36;
   }
-  for (int i = 0; i < 32; i++) {
-    lkey[32 + i] = 0x5c;
-    rkey[32 + i] = 0x36;
+  for (int i = 0; i < 64; i++) {
+    lkey[64 + i] = 0x5c;
+    rkey[64 + i] = 0x36;
   }
 
-  SHA256::Ctx ctx;
-  // Inner hash SHA256(rkey :: passphrase)
-  SHA256::Init(&ctx);
-  SHA256::Update(&ctx, rkey.data(), rkey.size());
-  SHA256::UpdateString(&ctx, passphrase);
-  std::vector<uint8> inner = SHA256::FinalVector(&ctx);
+  SHA512::Ctx ctx;
+  // Inner hash SHA512(rkey :: passphrase)
+  SHA512::Init(&ctx);
+  SHA512::Update(&ctx, rkey.data(), rkey.size());
+  SHA512::UpdateString(&ctx, passphrase);
+  std::array<uint8, SHA512::DIGEST_LENGTH> inner =
+    SHA512::FinalArray(&ctx);
 
-  // Outer hash SHA256(lkey :: inner)
-  SHA256::Init(&ctx);
-  SHA256::Update(&ctx, lkey.data(), lkey.size());
-  SHA256::Update(&ctx, inner.data(), inner.size());
-  return SHA256::FinalVector(&ctx);
+  // Outer hash SHA512(lkey :: inner)
+  SHA512::Init(&ctx);
+  SHA512::Update(&ctx, lkey.data(), lkey.size());
+  SHA512::Update(&ctx, inner.data(), inner.size());
+  return SHA512::FinalVector(&ctx);
 }
 
-
+// - dest and src must not overlap
+// - LEN must be a multiple of 8
 template<int LEN>
-static void XorInto(vector<uint8> &dest, const vector<uint8> &src) {
+static inline void XorInto(std::span<uint8> dest, std::span<const uint8> src) {
   static_assert(LEN % 8 == 0, "using uint64 for this...");
-  constexpr int words = LEN / 8;
-  uint64 *dest64 = (uint64 *)dest.data();
-  const uint64 *src64 = (uint64 *)src.data();
-  // PERF unroll?
-  for (int i = 0; i < words; i++) {
-    dest64[i] ^= src64[i];
-  }
+  CHECK(dest.size() == LEN);
+  CHECK(src.size() == LEN);
+  auto XI8Ptr = [](uint8_t * __restrict__ v1,
+                   const uint8_t * __restrict__ v2) {
+      for (int i = 0; i < LEN; i++) {
+        v1[i] ^= v2[i];
+      }
+    };
+
+  XI8Ptr(dest.data(), src.data());
 }
 
-// Get 32-byte AES-256 key from passphrase and file-specific salt.
-// This is like PBKDF2 (NIST 800-132).
-static std::vector<uint8> GetKey(const string &passphrase,
-                                 const std::vector<uint8> &salt) {
-  // PBKDF2 would create a series of chunks to fill the
-  // key's width, but here SHA-256 produces a 32-byte key, which
-  // is exactly the width we need. So we just have one chunk.
+using AESKey = std::array<uint8_t, AES256::KEYLEN>;
+struct KeyPair {
+  // Just used to permute the IV via encryption.
+  AESKey iv_key;
+  // Normal encryption/decryption key.
+  AESKey content_key;
+};
 
-  // Takes about 500ms on high-end desktop in 2019.
+// Get two 32-byte AES-256 keys from passphrase and file-specific salt.
+// This is like PBKDF2 (NIST 800-132).
+static KeyPair GetKeys(const string &passphrase,
+                       const std::vector<uint8> &salt) {
+  // PBKDF2 would create a series of chunks to fill the
+  // key's width, but here SHA-512 produces 64 bytes, which gives
+  // us two 32-byte keys as desired. So we just have one chunk.
+
+  // Takes about 500ms on high-end desktop in 2025.
   static constexpr int C = 300000;
 
-  // T starts as 0, and we keep XOR-ing into it.
-  std::vector<uint8> key(32, 0);
+  static constexpr int BUFFER_LEN = AES256::KEYLEN * 2;
 
-  CHECK(salt.size() == 32);
+  // T starts as 0, and we keep XOR-ing into it.
+  std::vector<uint8> t(BUFFER_LEN, 0);
+
+  CHECK(salt.size() == SHA512::DIGEST_LENGTH);
   std::vector<uint8> u = salt;
   for (int i = 0; i < C; i++) {
-    std::vector<uint8> hash = HMAC_SHA256(passphrase, u);
-    XorInto<32>(key, hash);
+    std::vector<uint8> hash = HMAC_SHA512(passphrase, u);
+    XorInto<BUFFER_LEN>(t, hash);
     u = std::move(hash);
   }
-  return key;
-}
 
-// 128 bits in base64. This takes 24 characters formally, but always
-// has two bytes of padding with =. So we actually leave that off.
-static int LINE_IV_BASE64_LENGTH = 22;
-// Same for the encrypted payload, which is formally 88 characters but
-// has two = padding characters.
-static int LINE_PAYLOAD_BASE64_LENGTH = 86;
+  CHECK(t.size() == AES256::KEYLEN * 2);
+  KeyPair keys;
+  memcpy(keys.iv_key.data(),
+         t.data() + 0, AES256::KEYLEN);
+  memcpy(keys.content_key.data(),
+         t.data() + AES256::KEYLEN, AES256::KEYLEN);
+  return keys;
+}
 
 static bool IsBase64String(const string &s) {
   for (int i = 0; i < s.size(); i++)
@@ -252,6 +338,85 @@ static bool IsBase64String(const string &s) {
   return true;
 }
 
+// Like cipherblock chaining, but the previous ciphertext is permuted
+// (using AES-256 encryption with the a different key, iv_key) before
+// using it as the IV for the next block. The purpose of this is to
+// prevent tampering with the plaintext via simple modifications of
+// the IV or ciphertext ("bit flipping attacks").
+static void EncryptCXBC(
+    const KeyPair &keys,
+    // Must be AES::BLOCKLEN bytes.
+    std::span<const uint8_t> initial_iv,
+    // Must be a multiple of AES::BLOCKLEN bytes.
+    std::span<uint8_t> data) {
+  CHECK(initial_iv.size() == AES256::BLOCKLEN);
+  CHECK((data.size() % AES256::BLOCKLEN) == 0);
+
+  // PERF: We don't have to do the key expansion for each line;
+  // we could compute that once up front.
+
+  // This will be used in ECB mode (forward only).
+  AES256::Ctx ivctx;
+  AES256::InitCtx(&ivctx, keys.iv_key.data());
+
+  std::array<uint8_t, AES256::BLOCKLEN> iv;
+  memcpy(iv.data(), initial_iv.data(), AES256::BLOCKLEN);
+  AES256::EncryptECB(&ivctx, iv.data());
+
+  AES256::Ctx ctx;
+  AES256::InitCtx(&ctx, keys.content_key.data());
+  const int num_blocks = data.size() / AES256::BLOCKLEN;
+  for (int i = 0; i < num_blocks; i++) {
+    std::span<uint8_t> block = data.subspan(AES256::BLOCKLEN * i,
+                                            AES256::BLOCKLEN);
+    XorInto<AES256::BLOCKLEN>(block, iv);
+    AES256::EncryptECB(&ctx, block.data());
+
+    memcpy(iv.data(), block.data(), AES256::BLOCKLEN);
+    AES256::EncryptECB(&ivctx, iv.data());
+  }
+}
+
+// Inverse of the above.
+static void DecryptCXBC(
+    const KeyPair &keys,
+    // Must be AES::BLOCKLEN bytes.
+    std::span<const uint8_t> initial_iv,
+    // Must be a multiple of AES::BLOCKLEN bytes.
+    std::span<uint8_t> data) {
+  CHECK(initial_iv.size() == AES256::BLOCKLEN);
+  CHECK((data.size() % AES256::BLOCKLEN) == 0);
+
+  // This will be used in ECB mode (forward only).
+  AES256::Ctx ivctx;
+  AES256::InitCtx(&ivctx, keys.iv_key.data());
+
+  std::array<uint8_t, AES256::BLOCKLEN> iv;
+  memcpy(iv.data(), initial_iv.data(), AES256::BLOCKLEN);
+  // Note that we are not decrypting IVs. We are just using
+  // AES as a keyed one-way function.
+  AES256::EncryptECB(&ivctx, iv.data());
+
+  AES256::Ctx ctx;
+  AES256::InitCtx(&ctx, keys.content_key.data());
+  const int num_blocks = data.size() / AES256::BLOCKLEN;
+  for (int i = 0; i < num_blocks; i++) {
+    std::span<uint8_t> block = data.subspan(AES256::BLOCKLEN * i,
+                                            AES256::BLOCKLEN);
+
+    // ciphertext, used for next round.
+    std::array<uint8_t, AES256::BLOCKLEN> next_iv;
+    memcpy(next_iv.data(), block.data(), AES256::BLOCKLEN);
+    // .. after pemuting it
+    AES256::EncryptECB(&ivctx, next_iv.data());
+
+    AES256::DecryptECB(&ctx, block.data());
+    XorInto<AES256::BLOCKLEN>(block, iv);
+    memcpy(iv.data(), next_iv.data(), AES256::BLOCKLEN);
+  }
+}
+
+// Encrypt a file.
 static string Encrypt(const string &passphrase,
                       const string &contents) {
   std::vector<string> lines = Util::SplitToLines(contents);
@@ -260,19 +425,23 @@ static string Encrypt(const string &passphrase,
   CHECK(Util::chop(saltspec) == "salt") << "First line of the file "
     "needs to specify the salt.";
   string salt_str = Util::chop(saltspec);
-  CHECK(salt_str.size() == 44) << "Should have 44 bytes of base64-encoded "
-    "salt now.";
+  if (salt_str.size() == 44) {
+    CHECK(false) << "This file looks like an old-style one. You'll "
+      "need to use an older version of pass.exe then.";
+  }
+  CHECK(salt_str.size() == SALT_BASE64_LENGTH) << "Should have a fixed "
+    "number of base64-encoded salt now.";
 
-  std::vector<uint8> salt = Base64::DecodeV(salt_str);
-  CHECK(salt.size() == 32) << "Invalid base64 salt? " << salt.size();
+  std::vector<uint8> salt = B64NpDecode(salt_str);
+  CHECK(salt.size() == SALT_BYTES) << "Invalid base64 salt? " << salt.size();
   string result = std::format("salt {}\n", salt_str);
   fflush(stdout);
 
   std::unordered_set<std::vector<uint8>, HashHash> seen_ivs;
 
-  std::vector<uint8> key = GetKey(passphrase, salt);
+  KeyPair keys = GetKeys(passphrase, salt);
 
-  // Now, each line may start with some base64-encoded salt. We recognize this
+  // Now, each line may start with a base64-encoded IV. We recognize this
   // by finding a | separator in the appropriate column.
   for (int lineno = 1; lineno < lines.size(); lineno++) {
     string &line = lines[lineno];
@@ -281,19 +450,19 @@ static string Encrypt(const string &passphrase,
     if (line.size() >= LINE_IV_BASE64_LENGTH + 1 &&
         line[LINE_IV_BASE64_LENGTH] == '|') {
       string iv_base64 = line.substr(0, LINE_IV_BASE64_LENGTH);
-      iv_base64 += "==";
       CHECK(IsBase64String(iv_base64)) << "Found apparent IV but it is not "
         "base64: " << iv_base64;
+      iv = B64NpDecode(iv_base64);
       line = line.substr(LINE_IV_BASE64_LENGTH + 1, string::npos);
-      iv = Base64::DecodeV(iv_base64);
     } else {
       iv = CryptRandom(16);
     }
     CHECK(iv.size() == 16);
 
     CHECK(seen_ivs.find(iv) == seen_ivs.end()) << "Found a duplicate IV (" <<
-      Base64::EncodeV(iv) << ")!\nThis weakens security. Just delete the IV "
+      B64NpEncode(iv) << ")!\nThis weakens security. Just delete the IV "
       "from the line and fresh one will be generated.";
+    seen_ivs.insert(iv);
 
     // To encrypt, we need a multiple of the block in bytes.
     // To avoid leaking information, we actually use a fixed size for each line.
@@ -306,27 +475,21 @@ static string Encrypt(const string &passphrase,
     CHECK(line.size() <= 64) << "An input line must be at most 64 characters, "
       "not including the iv| prefix. But found one of length " << line.size();
 
-    AES256::Ctx ctx;
-    AES256::InitCtxIV(&ctx, key.data(), iv.data());
     vector<uint8> data(64, (uint8)' ');
     for (int i = 0; i < line.size(); i++) {
       data[i] = line[i];
     }
-    AES256::EncryptCBC(&ctx, data.data(), data.size());
-    string iv64 = Base64::EncodeV(iv);
-    CHECK(iv64.length() == LINE_IV_BASE64_LENGTH + 2) << iv64.size()
-                                                      << "\n" << iv64;
-    CHECK(iv64[iv64.length() - 1] == '=');
-    CHECK(iv64[iv64.length() - 2] == '=');
-    iv64.resize(LINE_IV_BASE64_LENGTH);
-    string enc = Base64::EncodeV(data);
-    CHECK(enc.size() == LINE_PAYLOAD_BASE64_LENGTH + 2) << enc.size();
-    CHECK(enc[enc.length() - 1] == '=');
-    CHECK(enc[enc.length() - 2] == '=');
-    enc.resize(LINE_PAYLOAD_BASE64_LENGTH);
+
+    EncryptCXBC(keys, iv, data);
+
+    string iv64 = B64NpEncode(iv);
+    CHECK(iv64.length() == LINE_IV_BASE64_LENGTH) << iv64.size()
+                                                  << "\n" << iv64;
+    string enc = B64NpEncode(data);
+    CHECK(enc.size() == LINE_PAYLOAD_BASE64_LENGTH) << enc.size();
 
     string outline = iv64 + "|" + enc;
-    StringAppendF(&result, "%s\n", outline.c_str());
+    AppendFormat(&result, "{}\n", outline);
   }
   return result;
 }
@@ -336,7 +499,7 @@ static string FlattenDecrypted(
     const std::vector<std::pair<string, string>> &lines) {
   string result = header;
   for (const auto &p : lines) {
-    StringAppendF(&result, "%s|%s\n", p.first.c_str(), p.second.c_str());
+    AppendFormat(&result, "{}|{}\n", p.first, p.second);
   }
   return result;
 }
@@ -361,13 +524,16 @@ static bool Decrypt(const string &passphrase, const string &contents,
   CHECK(Util::chop(saltspec) == "salt") << "First line of the file "
     "needs to specify the salt.";
   string salt_str = Util::chop(saltspec);
-  CHECK(salt_str.size() == 44) << "Should have 44 bytes of base64-encoded "
-    "salt now.";
-  std::vector<uint8> salt = Base64::DecodeV(salt_str);
-  CHECK(salt.size() == 32) << "Invalid base64 salt? " << salt.size();
+  CHECK(salt_str.size() == SALT_BASE64_LENGTH) << "Should have a "
+    "fixed length base64-encoded salt now (" << salt_str.size() << ")";
+  std::vector<uint8> salt = B64NpDecode(salt_str);
+  CHECK(salt.size() == SALT_BYTES) << "Invalid base64 salt? " << salt.size();
 
-  std::vector<uint8> key = GetKey(passphrase, salt);
-  *header = StringPrintf("salt %s\n", salt_str.c_str());
+  Timer timer;
+  KeyPair keys = GetKeys(passphrase, salt);
+  fprintf(stderr, "Generating keys took %s\n",
+          ANSI::Time(timer.Seconds()).c_str());
+  *header = std::format("salt {}\n", salt_str);
 
   // Decrypting is simpler because every line must have exactly the
   // same format, which is LINE_IV_BASE64_LENGTH characters of
@@ -382,24 +548,21 @@ static bool Decrypt(const string &passphrase, const string &contents,
           LINE_IV_BASE64_LENGTH + 1 + LINE_PAYLOAD_BASE64_LENGTH &&
           line[LINE_IV_BASE64_LENGTH] == '|') << "Invalid line: " << line;
 
-    string iv_base64 = line.substr(0, LINE_IV_BASE64_LENGTH) + "==";
+    string iv_base64 = line.substr(0, LINE_IV_BASE64_LENGTH);
 
     CHECK(IsBase64String(iv_base64)) << "Found apparent IV but it is not "
       "base64: " << iv_base64;
 
     string payload_base64 =
-      line.substr(LINE_IV_BASE64_LENGTH + 1, string::npos) + "==";
+      line.substr(LINE_IV_BASE64_LENGTH + 1, string::npos);
 
-    std::vector<uint8> iv = Base64::DecodeV(iv_base64);
-    CHECK(iv.size() == 16);
+    std::vector<uint8> iv = B64NpDecode(iv_base64);
+    CHECK(iv.size() == AES256::BLOCKLEN);
 
-    std::vector<uint8> payload = Base64::DecodeV(payload_base64);
+    std::vector<uint8> payload = B64NpDecode(payload_base64);
     CHECK(payload.size() == 64);
 
-    // Decrypt the line with the IV.
-    AES256::Ctx ctx;
-    AES256::InitCtxIV(&ctx, key.data(), iv.data());
-    AES256::DecryptCBC(&ctx, payload.data(), payload.size());
+    DecryptCXBC(keys, iv, payload);
 
     // Strip trailing whitespace.
     int sz = payload.size();
@@ -410,8 +573,7 @@ static bool Decrypt(const string &passphrase, const string &contents,
     decoded.reserve(sz);
     for (int i = 0; i < sz; i++) decoded.push_back(payload[i]);
 
-    // Drop == padding.
-    iv_base64.resize(LINE_IV_BASE64_LENGTH);
+    CHECK(iv_base64.size() == LINE_IV_BASE64_LENGTH);
     lines_out->emplace_back(iv_base64, decoded);
 
     // For the first line, verify that it contains a correct preimage
@@ -421,11 +583,13 @@ static bool Decrypt(const string &passphrase, const string &contents,
     if (lineno == 1) {
       if (!IsBase64String(decoded)) {
         fprintf(stderr, "Preimage not base64.\n");
+        fprintf(stderr, "XXX: %s\n", decoded.c_str());
         return false;
       }
 
       std::vector<uint8> preimage = Base64::DecodeV(decoded);
-      std::vector<uint8> image = SHA256::HashVector(preimage);
+      CHECK(preimage.size() == PREIMAGE_BYTES);
+      std::vector<uint8> image = SHA512::HashSpan(preimage);
       if (image != salt) {
         fprintf(stderr, "Preimage does not hash to salt.\n");
         return false;
@@ -452,7 +616,7 @@ static void OpenWithEditor(const string &pass,
                            const string &file,
                            const string &cmd) {
   CryptRand cr;
-  const string tmpname = StringPrintf("deleteme-%llx.txt", cr.Word64());
+  const string tmpname = std::format("deleteme-{:x}.txt", cr.Word64());
   const string enctext = Util::ReadFile(file);
 
   // If we had the wrong password (typo), it's important that we
@@ -465,8 +629,7 @@ static void OpenWithEditor(const string &pass,
   string plaintext = FlattenDecrypted(header, lines);
   Util::WriteFile(tmpname, plaintext);
 
-  std::system(StringPrintf(
-      "%s %s", cmd.c_str(), tmpname.c_str()).c_str());
+  std::system(std::format("{} {}", cmd, tmpname).c_str());
 
   string newplain = Util::ReadFile(tmpname);
   // Note we can use a version that merges IVs from old, and checks
@@ -501,7 +664,6 @@ static string RandomChunks(int chunks,
           mask |= mask >> 1;
           mask |= mask >> 2;
           mask |= mask >> 4;
-          mask |= mask >> 8;
 
           for (;;) {
             const uint32_t x = cr.Byte() & mask;
@@ -547,13 +709,15 @@ int main(int argc, char **argv) {
   // Commands without arguments...
   if (cmd == "gen") {
     // Generate a strong random password.
-    const string pass = Base64::EncodeV(CryptRandom(24));
+    const string pass = B64NpEncode(CryptRandom(24));
     printf("%s\n", pass.c_str());
     return 0;
+
   } else if (cmd == "ezgen") {
     const string pass = RandomEZOld();
     printf("%s\n", pass.c_str());
     return 0;
+
   } else if (cmd == "lowgen") {
     const string pass =
       RandomChunks(
@@ -621,15 +785,22 @@ int main(int argc, char **argv) {
     const string pass = ReadPass();
 
     // Generate a random salt preimage, and then a random salt from it.
-    std::vector<uint8> preimage = CryptRandom(32);
-    std::vector<uint8> salt = SHA256::HashVector(preimage);
+    std::vector<uint8> preimage = CryptRandom(PREIMAGE_BYTES);
+    std::vector<uint8> salt = SHA512::HashSpan(preimage);
+    CHECK(preimage.size() == PREIMAGE_BYTES);
+    CHECK(salt.size() == SALT_BYTES);
 
     // We generate a decrypted file.
-    string salt64 = Base64::EncodeV(salt);
-    string preimage64 = Base64::EncodeV(preimage);
-    string contents = StringPrintf("salt %s\n"
-                                   "%s\n",
-                                   salt64.c_str(), preimage64.c_str());
+    string salt64 = B64NpEncode(salt);
+    string preimage64 = B64NpEncode(preimage);
+    CHECK(salt64.size() == SALT_BASE64_LENGTH) << salt64;
+
+    // No padding.
+    CHECK(preimage64.size() == PREIMAGE_BASE64_LENGTH);
+
+    string contents = std::format("salt {}\n"
+                                  "{}\n",
+                                  salt64, preimage64);
     string enc = Encrypt(pass, contents);
     Util::WriteFile(file, enc);
 
