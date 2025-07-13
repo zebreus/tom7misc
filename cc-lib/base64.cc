@@ -87,7 +87,7 @@ string Base64::Encode(string_view in) {
   return EncodePtr((const uint8 *)in.data(), in.size());
 }
 
-string Base64::EncodeV(const std::vector<uint8> &in) {
+string Base64::EncodeV(std::span<const uint8> in) {
   return EncodePtr((const uint8 *)in.data(), in.size());
 }
 

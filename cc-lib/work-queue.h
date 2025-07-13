@@ -8,9 +8,9 @@
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <utility>
 #include <vector>
 
-#include "threadutil.h"
 #include "base/logging.h"
 
 // Thread-safe work queues. Accumulate work items and fetch them in
@@ -161,9 +161,8 @@ struct BatchedWorkQueue {
 // pre-batched work).
 template<class Item>
 struct WorkQueue {
-  // TODO: Could support max queue size pretty easily.
-  WorkQueue() {
-  }
+  WorkQueue(std::optional<int64_t> max_size = {}) :
+    max_size(max_size) {}
 
   // Consumers of the work queue call this in a loop. If nullopt,
   // then the queue is done.
@@ -186,15 +185,20 @@ struct WorkQueue {
     return {item};
   }
 
+  std::optional<int64_t> MaxSize() const {
+    return max_size;
+  }
+
   int64_t Size() {
     std::unique_lock ml(mutex);
     return queue.size();
   }
 
+  // If the queue is at the maximum size, block until there
+  // is space.
   void WaitAdd(const Item &item) {
     {
-      std::unique_lock ml(mutex);
-      CHECK(!done);
+      std::unique_lock ml = LockForInsert();
       queue.push_back(item);
     }
     cond.notify_all();
@@ -202,13 +206,14 @@ struct WorkQueue {
 
   void WaitAdd(Item &&item) {
     {
-      std::unique_lock ml(mutex);
-      CHECK(!done);
+      std::unique_lock ml = LockForInsert();
       queue.emplace_back(item);
     }
     cond.notify_all();
   }
 
+  // All WaitAdd() calls must have completed before calling this.
+  // May only call this once.
   void MarkDone() {
     {
       std::unique_lock ml(mutex);
@@ -218,7 +223,36 @@ struct WorkQueue {
     cond.notify_all();
   }
 
-private:
+  // Consume all the items currently in the queue, as though with
+  // WaitGet.
+  void Clear() {
+    {
+      std::unique_lock ml(mutex);
+      CHECK(!done);
+      queue.clear();
+    }
+    cond.notify_all();
+  }
+
+ private:
+  std::unique_lock<std::mutex> LockForInsert() {
+    if (max_size.has_value()) {
+      std::unique_lock<std::mutex> ml(mutex);
+      CHECK(!done);
+
+      cond.wait(ml, [this] {
+          return queue.size() < max_size.value();
+        });
+      return ml;
+    } else {
+      std::unique_lock<std::mutex> ml(mutex);
+      CHECK(!done);
+      return ml;
+    }
+  }
+
+  // Fixed at construction time.
+  const std::optional<int64_t> max_size = std::nullopt;
   std::mutex mutex;
   std::condition_variable cond;
   // The items. Can be empty.

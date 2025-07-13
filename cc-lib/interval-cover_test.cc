@@ -6,12 +6,13 @@
 
 #include "interval-cover.h"
 
+#include <cinttypes>
 #include <cstdio>
 #include <format>
-#include <set>
-#include <vector>
-#include <string>
 #include <memory>
+#include <set>
+#include <string>
+#include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
@@ -338,7 +339,7 @@ static void SetSpan2() {
            !ic.IsAfterLast(pt);
            pt = ic.Next(pt)) {
         auto span = ic.GetPoint(pt);
-        printf("%llu-%llu %s\n", span.start, span.end,
+        printf("%" PRIu64 "-%{" PRIu64 " %s\n", span.start, span.end,
                span.data ? "true" : "false");
       }
     };

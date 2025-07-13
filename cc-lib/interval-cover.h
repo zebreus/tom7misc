@@ -24,10 +24,12 @@
 #ifndef _CC_LIB_INTERVAL_COVER_H
 #define _CC_LIB_INTERVAL_COVER_H
 
-#include <optional>
-#include <map>
 #include <cstdint>
 #include <cstdio>
+#include <map>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "base/logging.h"
 

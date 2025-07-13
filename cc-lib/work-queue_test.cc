@@ -1,6 +1,8 @@
 
 #include "work-queue.h"
 
+#include <cstdio>
+#include <optional>
 #include <string>
 
 // Extremely basic single-threaded test. XXX Test the multi-threaded

@@ -5331,11 +5331,6 @@ struct GuessScore {
   size_t header;
 };
 
-[[maybe_unused]]
-static std::vector<std::string> get_col_names(
-    std::string_view filename,
-    const CSVFormat format = CSVFormat::guess_csv());
-
 /** @class CSVReader
  *  @brief Main class for parsing CSVs from files and in-memory sources
  *
