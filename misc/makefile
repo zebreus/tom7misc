@@ -5,13 +5,21 @@ ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
+  PLATFORM_LFLAGS=-static
+
+else ifeq ($(UNAME),Darwin)
+  CXX=g++
+  CC=gcc
+  PLATFORM_LFLAGS=
+
 else
   # Linux and msys2
   CXX=g++
   CC=gcc
+  PLATFORM_LFLAGS=-static
 endif
 
-LFLAGS=-static
+LFLAGS=$(PLATFORM_LFLAGS)
 CC_LIB=../cc-lib
 
 OPT=-O3 -flto=auto
