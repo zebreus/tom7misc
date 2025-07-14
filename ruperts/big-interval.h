@@ -1,6 +1,4 @@
 
-#error "Experimental! Unimplemented!"
-
 // Interval arithmetic with rationals.
 
 // Conceptually, a Bigival represents a specific number but for which
@@ -9,7 +7,9 @@
 // non-inclusive at each end. Any big rational can be represented
 // exactly as a Bigival where the bounds are equal and inclusive. All
 // bigivals are non-empty, since they conceptually represent an actual
-// quantity.
+// quantity. Another informative property is that a value like x * x
+// is always positive, even if x's interval includes negative numbers;
+// we know that it is the same number from the interval each time.
 //
 // We support various algebraic operations on these intervals. The
 // operations may lose accuracy only in the sense that intervals
@@ -57,6 +57,22 @@ struct Bigival {
                    Max(Max(x, y), Max(z, w)));
   }
 
+  Bigival Div(const Bigival &b) const {
+    return Times(b.Reciprocal());
+  }
+
+  // 1/b
+  Bigival Reciprocal() const {
+    CHECK(!ContainsZero()) << "Division by zero is not defined.";
+
+    CHECK(BigRat::Sign(lb.r) != 0 &&
+          BigRat::Sign(ub.r) != 0) << "This makes the interval "
+      "arbitrarily large, so it is not handled. It could be supported "
+      "by adding an infinity sentinel if it is useful.";
+
+    return Bigival(Reciprocal(lb), Reciprocal(ub));
+  }
+
   Bigival Negate() const {
     return Bigival(-ub.r, -lb.r, IncludesUB(), IncludesLB());
   }
@@ -68,14 +84,22 @@ struct Bigival {
                      Max(lb, ub));
     }
 
-    // Then the sign of the two must be different...
-    CHECK(false) << "TODO";
-    return *this;
+    // Then the sign of the two must be the same.
+    const int sign1 = BigRat::Sign(lb.r);
+    const int sign2 = BigRat::Sign(ub.r);
+    CHECK(sign1 == sign2) << "Bug: Should not be possible!";
+
+    Point alb = Abs(lb);
+    Point aub = Abs(ub);
+
+    // PERF: Can avoid comparing twice, copying...
+    return Bigival(Min(alb, aub), Max(alb, aub));
   }
 
   Bigival Squared() const {
-    CHECK(false) << "WRONG";
-    return Bigival(lb * lb, ub * ub);
+    Bigival o = Abs();
+    // now we know lb and ub are both nonnegative.
+    return Bigival(o.lb * o.lb, o.ub * o.ub);
   }
 
   const BigRat &LB() const { return lb.r; }
@@ -143,6 +167,15 @@ struct Bigival {
     Normalize();
   }
 
+  static Point Abs(const Point &a) {
+    switch (BigRat::Sign(a.r)) {
+      // Non-negative
+    default:
+    case 1: return a;
+    case 0: return a;
+    case -1: return Point(-a.r, a.included);
+    }
+  }
 
   friend Point operator +(const Point &a, const Point &b) {
     return Point(a.r + b.r, a.included && b.included);
@@ -156,7 +189,11 @@ struct Bigival {
     return Point(a.r * b.r, a.included && b.included);
   }
 
-  friend Point Min(const Point &a, const Point &b) {
+  static Point Reciprocal(const Point &a) {
+    return Point(BigRat::Inverse(a.r), a.included);
+  }
+
+  static Point Min(const Point &a, const Point &b) {
     if (a.r == b.r) {
       // this is a.included || b.included, but with the
       // hopes that the compiler will not copy.
@@ -166,7 +203,7 @@ struct Bigival {
     }
   }
 
-  friend Point Max(const Point &a, const Point &b) {
+  static Point Max(const Point &a, const Point &b) {
     if (a.r == b.r) {
       return a.included ? a : b;
     } else {
@@ -200,6 +237,14 @@ inline Bigival operator-(const Bigival &a, const Bigival &b) {
 
 inline Bigival operator-(const Bigival &a) {
   return a.Negate();
+}
+
+inline Bigival operator*(const Bigival &a, const Bigival &b) {
+  return a.Times(b);
+}
+
+inline Bigival operator/(const Bigival &a, const Bigival &b) {
+  return a.Div(b);
 }
 
 #endif

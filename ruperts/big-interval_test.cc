@@ -86,6 +86,31 @@ static void Simple() {
       });
   }
 
+  {
+    Bigival a(BigRat(-1), BigRat(2), true, true);
+    Bigival b(BigRat(3), BigRat(8), false, false);
+
+    Bigival c = a * b;
+    Sample(a, [&](const BigRat &sa) {
+        Sample(b, [&](const BigRat &sb) {
+            CHECK_CONTAINS(c, sa * sb);
+          });
+      });
+  }
+
+  {
+    Bigival a(BigRat(-1), BigRat(2), true, true);
+    Bigival b(BigRat(3), BigRat(8), false, false);
+
+    Bigival c = a / b;
+    Sample(a, [&](const BigRat &sa) {
+        Sample(b, [&](const BigRat &sb) {
+            CHECK_CONTAINS(c, sa / sb);
+          });
+      });
+  }
+
+
 }
 
 static void Special() {
@@ -94,7 +119,7 @@ static void Special() {
 
     Bigival bb = b.Squared();
 
-    CHECK(bb.LB() == BigRat(4));
+    CHECK(bb.LB() == BigRat(0));
     CHECK(bb.UB() == BigRat(9));
     CHECK(bb.IncludesLB());
     CHECK(bb.IncludesUB());
