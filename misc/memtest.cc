@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
 
   const int gb = atoi(argv[1]);
   const size_t bytes = (size_t)gb * ONE_GIG;
-  printf("Allocating %d GB = %lld bytes\n", gb, bytes);
+  printf("Allocating %d GB = %zu bytes\n", gb, bytes);
   CHECK(bytes % (sizeof (uint64)) == 0);
 
   int threads = 6;
@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
     uint64 *data = Alloc64(GIG_IN_64);
     CHECK(data != nullptr);
     chunks.push_back(data);
-    printf("Allocated %lld at %p...\n", ONE_GIG, data);
+    printf("Allocated %zu at %p...\n", ONE_GIG, data);
     fflush(stdout);
   }
 

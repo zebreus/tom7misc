@@ -14,30 +14,6 @@
 #include <utility>
 #include <cstdint>
 
-#ifdef __GNUC__
-#include <ext/hash_map>
-#include <ext/hash_set>
-#else
-#include <hash_map>
-#include <hash_set>
-#endif
-
-#ifdef __GNUC__
-namespace std {
-using namespace __gnu_cxx;
-}
-
-// Needed on cygwin, at least. Maybe not all gnuc?
-namespace __gnu_cxx {
-template<>
-struct hash< unsigned long long > {
-  size_t operator()( const unsigned long long& x ) const {
-    return x;
-  }
-};
-}
-#endif
-
 // Can probably retire this; little chance that we compile with
 // MSVC any more, and anyway we should be using uint8.
 #ifdef COMPILER_MSVC

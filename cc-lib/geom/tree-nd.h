@@ -479,7 +479,7 @@ void TreeND<Num, T>::InitBatchTo(
     std::span<std::pair<std::span<const Num>, T>> items) {
 
   if (VERBOSE) {
-    printf("InitBatchTo (%lld items)\n", items.size());
+    printf("InitBatchTo (%zu items)\n", items.size());
   }
 
   CHECK(cursor.get() == nullptr);
@@ -519,7 +519,7 @@ void TreeND<Num, T>::InitBatchTo(
   }
 
   if (VERBOSE) {
-    printf("%lld pts. Best axis is %d with variance %.11g\n",
+    printf("%zu pts. Best axis is %d with variance %.11g\n",
            items.size(),
            best_axis, best_ssq / items.size());
   }
@@ -584,8 +584,8 @@ void TreeND<Num, T>::InitBatchTo(
                    }) - items.begin();
 
   if (VERBOSE) {
-    printf("Median idx was %lld. Median value = Split pt is %.11g\n"
-           "Partition idx: %lld\n", median_idx, split_pt, partition_idx);
+    printf("Median idx was %zu. Median value = Split pt is %.11g\n"
+           "Partition idx: %zu\n", median_idx, split_pt, partition_idx);
   }
 
   // XXX make sure the split is not degenerate. Maybe combined

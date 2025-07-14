@@ -1759,7 +1759,7 @@ static TestStats RunTestcase(const Testcase &t) {
 [[maybe_unused]]
 static void RunTests() {
   std::vector<Testcase> testcases = {
-
+#if 0
     Testcase{
       .name = "ee",
       .file_prefix = "../rephrase/ee/ee-",
@@ -1782,6 +1782,14 @@ static void RunTests() {
       .file_suffix = ".png",
       .start = 123,
       .num = 1,
+    },
+#endif
+    Testcase{
+        .name = "perm-all",
+        .file_prefix = "perm-all-",
+        .file_suffix = ".png",
+        .start = 1,
+        .num = 1,
     },
   };
 

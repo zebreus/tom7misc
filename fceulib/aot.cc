@@ -2967,7 +2967,7 @@ static vector<string> GenerateCode(const CodeConfig &config,
 
   vector<int> start_addrs;
   for (int i = addr_start;
-       i < addr_past_end;
+       i < (int)addr_past_end;
        i += config.entrypoints_per_file) {
     start_addrs.push_back(i);
   }
@@ -3007,7 +3007,7 @@ static vector<string> GenerateCode(const CodeConfig &config,
 
     // Then, a function for each address entry point.
     for (uint32 j = i;
-         j < addr_past_end && j < i + config.entrypoints_per_file;
+         j < addr_past_end && j < i + (uint32)config.entrypoints_per_file;
          j++) {
       aot.GenerateEntry(config, code, j, addr_past_end, symbol, f);
     }
@@ -3041,7 +3041,7 @@ static void GenerateDispatcher(const CodeConfig &config,
           "#include \"fceu.h\"\n\n");
 
   // Avoid needing a header file; just generate the externs here.
-  for (int i = addr_start; i < addr_past_end; i++) {
+  for (int i = addr_start; i < (int)addr_past_end; i++) {
     fprintf(f, "void %s_%04x(FC *);\n", symbol.c_str(), i);
   }
 
@@ -3052,7 +3052,7 @@ static void GenerateDispatcher(const CodeConfig &config,
 
   fprintf(f, "static void (*entries[0x10000])(FC *fc) = {\n");
   for (int i = 0; i < 0x10000; i++) {
-    if (i < addr_start || i >= addr_past_end)
+    if (i < (int)addr_start || i >= (int)addr_past_end)
       fprintf(f, "  &%s_any,\n", symbol.c_str());
     else
       fprintf(f, "  &%s_%04x,\n", symbol.c_str(), i);
@@ -3153,7 +3153,7 @@ int main(int argc, char **argv) {
   // to cart rom (CartBR).
   Code code;
   for (uint32 addr = rom.code_addr_start;
-       addr < rom.code_addr_after_end;
+       addr < (uint32)rom.code_addr_after_end;
        addr++) {
     code.known[addr] = true;
     code.code[addr] = fc->fceu->ARead[addr](fc, addr);

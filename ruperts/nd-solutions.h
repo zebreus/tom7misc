@@ -274,7 +274,7 @@ template<size_t N>
 NDSolutions<N>::NDSolutions(std::string_view filename, bool verbose) : filename(filename) {
   // Note that these will easily exceed 32-bit byte indices.
   std::vector<uint8_t> bytes = Util::ReadFileBytes(filename);
-  if (verbose) { printf("Read %lld bytes.\n", bytes.size()); }
+  if (verbose) { printf("Read %zu bytes.\n", bytes.size()); }
   if (!bytes.empty()) {
     CHECK(bytes.size() >= 4 &&
           0 == memcmp(bytes.data(), MAGIC, 4))
@@ -298,7 +298,7 @@ NDSolutions<N>::NDSolutions(std::string_view filename, bool verbose) : filename(
       // if (verbose && (idx % 1000 == 0)) printf("idx %lld\n", idx);
     }
   }
-  if (verbose) printf("Read %lld bytes OK\n", bytes.size());
+  if (verbose) printf("Read %zu bytes OK\n", bytes.size());
 
   // Index is created on demand.
 }

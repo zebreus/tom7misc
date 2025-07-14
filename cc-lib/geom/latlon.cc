@@ -57,7 +57,7 @@ std::pair<double, double> LatLon::ToDegs() const {
 
 optional<LatLon> LatLon::FromString(const string &s_orig) {
   string s = s_orig;
-  int p = s.find(',');
+  size_t p = s.find(',');
   if (p == string::npos) {
     return nullopt;
   }

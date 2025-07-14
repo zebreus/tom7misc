@@ -31,7 +31,6 @@ GMP_CFLAGS=-DBIG_USE_GMP
 
 UNAME := $(shell uname -o)
 
-
 ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
   CC=x86_64-w64-mingw32-gcc
@@ -333,14 +332,14 @@ endif
 
 %.o : %.cc $(BOVEX_HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
-	@echo -n "."
+	@bash -c echo -n "."
 
 # Parser takes a uniquely long time to compile, so don't make it
 # depend on every header.
 CXXFLAGS_PARSING=$(filter-out -O3,$(CXXFLAGS)) -O
 parsing.o : parsing.cc parsing.h inclusion.h el.h lexing.h $(CC_LIB)/parser-combinators.h
 	@$(CXX) $(CXXFLAGS_PARSING) -c $< -o $@
-	@echo -n ":"
+	@bash -c echo -n ":"
 
 
 # These programs require LLM

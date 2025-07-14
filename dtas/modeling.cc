@@ -2217,6 +2217,8 @@ void Modeling::AddConstraint(const Constraint &c) {
       LOG(FATAL) << "Unimplemented";
     }
 
+
+
   } else {
     printf("  (" ARED("not implemented") ")\n");
   }

@@ -67,8 +67,8 @@ static void Brightness() {
 // small bases.
 static void Inv() {
   for (int base = 1; base < 11; base++) {
-    const int side = 1 << base;
-    for (int d = 0; d < side * side; d++) {
+    const uint32_t side = 1 << base;
+    for (uint64_t d = 0; d < side * side; d++) {
       const auto [x, y] = HilbertCurve::To2D(base, d);
       CHECK(x >= 0 && x < side);
       CHECK(y >= 0 && y < side);

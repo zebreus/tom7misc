@@ -18,6 +18,12 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
+#ifdef __APPLE__
+// fstat64 is deprecated; force fstat to be 64-bit
+#define stat64 stat
+#define fstat64 fstat
+#endif
+
 // 4 Mb
 static constexpr int BUFFER_SIZE = 1 << 22;
 

@@ -17,35 +17,36 @@ FLTO=-flto=thin
 ARCH=-m64
 # ARCH=-m32
 
-ifdef OSX
-CXX=g++
-CC=gcc
+UNAME := $(shell uname -o)
+ifeq ($(UNAME),Cygwin)
+  # for 64 bits on windows (mingw).
+  CXX=x86_64-w64-mingw32-g++
+  CC=x86_64-w64-mingw32-g++
+  FLTO=-flto=auto
+  PLATFORM_LFLAGS=-static
+else ifeq ($(UNAME),Darwin)
+  # mac OS X
+  CXX=clang++
+  CC=clang
 else
-ifdef LINUX
-CXX=g++
-CC=gcc
-PLATFORMLINK=-lpthread -static
-else
-# for 64 bits on windows
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+  # Linux, msys2
+  CXX=g++
+  CC=gcc
+  FLTO=-flto=auto
+  PLATFORM_LFLAGS=-static
+endif
 
-# PLATFORMCFLAGS= -D__MINGW32__ -D_GLIBCXX_HAS_GTHREADS -mthreads
-PLATFORMCFLAGS=
-# without static, can't find lz or lstdcxx maybe?
-PLATFORMLINK=-mthreads -Wl,--subsystem,console -lwinpthread -L. -static
-endif
-endif
+CXXFLAGS=-march=native -Wall -Wextra -Wno-unused-parameter -I. --std=c++23 -g -O2 $(FLTO)
 
 CC_LIB=../cc-lib
-
-# Suppress compilation commands, but show some indication of progress.
-# (Explicitly invoke bash to get shell builtin, since on OS X echo
-# otherwise treats -n literally.)
 
 # AOT_INSTRUMENTATION is cheap but not free instrumentation in x6502
 # core that's used to histogram the PC locations that are executed.
 INSTRUMENT=-DAOT_INSTRUMENTATION=1
+
+# Suppress compilation commands, but show some indication of progress.
+# (Explicitly invoke bash to get shell builtin, since on OS X echo
+# otherwise treats -n literally.)
 
 %.o : %.cc
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(INSTRUMENT) -DAOT=1 -c -o $@ $<

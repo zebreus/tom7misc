@@ -6,17 +6,19 @@ ifeq ($(UNAME),Cygwin)
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
   PLATFORM_LFLAGS=-static
-
+  DOT=echo -n "."
 else ifeq ($(UNAME),Darwin)
   CXX=g++
   CC=gcc
   PLATFORM_LFLAGS=
+  DOT=bash -c echo -n "."
 
 else
   # Linux and msys2
   CXX=g++
   CC=gcc
   PLATFORM_LFLAGS=-static
+  DOT=echo -n "."
 endif
 
 LFLAGS=$(PLATFORM_LFLAGS)
@@ -35,7 +37,7 @@ CC_LIB_ZIP=$(CC_LIB)/zip.o $(CC_LIB)/miniz.o
 
 %.o : %.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
-	@echo -n "."
+	@$(DOT)
 
 pass.s : pass.cc
 	$(CXX) -g -m64 --std=c++20 $(CXXFLAGS) -O2 -Wa,-aslh $^ -c > $@

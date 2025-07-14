@@ -453,7 +453,7 @@ static void BigSnubHulls() {
 
     std::string filename = "bigsnubcloud.ply";
     Util::WriteFile(filename, outply);
-    printf("Wrote %lld bytes to %s.\n",
+    printf("Wrote %zu bytes to %s.\n",
            outply.size(),
            filename.c_str());
   }
@@ -622,7 +622,7 @@ static void SnubHulls() {
 
     std::string filename = "snubcloud.ply";
     Util::WriteFile(filename, outply);
-    printf("Wrote %lld bytes to %s.\n",
+    printf("Wrote %zu bytes to %s.\n",
            outply.size(),
            filename.c_str());
   }

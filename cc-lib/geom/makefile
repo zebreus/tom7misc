@@ -3,10 +3,10 @@ default : latlon_test.exe bezier_test.exe hilbert-curve_test.exe tree-2d_test.ex
 
 CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../image.o ../stb_image_write.o ../stb_image.o ../arcfour.o ../status-bar.o ../ansi.o ../util.o
 
-CXXFLAGS=-march=native -I.. --std=c++20 --static
+CXXFLAGS=-march=native -I.. --std=c++20 -static
 
-OPT=-fsanitize=address -O
-ASAN=-O3 $(FLTO)
+# OPT=-fsanitize=address -O
+OPT=-O3 $(FLTO)
 
 CXXFLAGS=-I.. $(OPT) -march=native -Wall -Wextra -Wno-unused-parameter -I. --std=c++23 -g
 
