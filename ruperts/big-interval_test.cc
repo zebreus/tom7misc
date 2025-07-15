@@ -1,12 +1,14 @@
 
 #include "big-interval.h"
 
+#include <string>
 #include <cstdio>
 
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
-
 #include "ansi.h"
+
+static constexpr bool VERBOSE = false;
 
 #define CHECK_CONTAINS(ival_exp, v_exp) do {             \
   auto ival = (ival_exp);                                \
@@ -74,42 +76,65 @@ static void Simple() {
     CHECK(b.ContainsZero());
   }
 
-  {
-    Bigival a(BigRat(-1), BigRat(2), true, true);
-    Bigival b(BigRat(3), BigRat(8), false, false);
+  for (Bigival a : {
+      Bigival(BigRat(-1), BigRat(2), true, true),
+      Bigival(BigRat(1), BigRat(6, 5), false, true),
+      Bigival(BigRat(3), BigRat(16, 5), false, false),
+      Bigival(BigRat(-1), BigRat(1), true, false),
+      Bigival(BigRat(-3)),
+      Bigival(BigRat(0)),
+    }) {
+    for (Bigival b : {
+        Bigival(BigRat(3), BigRat(8), false, false),
+        Bigival(BigRat(-2, 3), BigRat(0), false, false),
+        Bigival(BigRat(-8, 3), BigRat(-1), false, true),
+        Bigival(BigRat(1, 8), BigRat(1, 7), true, false),
+        Bigival(BigRat(-1), BigRat(3), true, true),
+        Bigival(BigRat(1)),
+        Bigival(BigRat(-1)),
+        Bigival(BigRat(0)),
+      }) {
 
-    Bigival c = a + b;
-    Sample(a, [&](const BigRat &sa) {
-        Sample(b, [&](const BigRat &sb) {
-            CHECK_CONTAINS(c, sa + sb);
+      if (VERBOSE) {
+        printf("%s @ %s\n",
+               a.ToString().c_str(), b.ToString().c_str());
+      }
+
+      Bigival sum = a + b;
+      Sample(a, [&](const BigRat &sa) {
+          Sample(b, [&](const BigRat &sb) {
+              CHECK_CONTAINS(sum, sa + sb);
+            });
+        });
+
+      Bigival difference = a - b;
+      Sample(a, [&](const BigRat &sa) {
+          Sample(b, [&](const BigRat &sb) {
+              CHECK_CONTAINS(difference, sa - sb);
+            });
+        });
+
+      Bigival product = a * b;
+      Sample(a, [&](const BigRat &sa) {
+          Sample(b, [&](const BigRat &sb) {
+              CHECK_CONTAINS(product, sa * sb);
+            });
+        });
+
+      // Only when defined and supported.
+      if (!b.ContainsZero() &&
+          b.LB() != 0 &&
+          b.UB() != 0) {
+        Bigival quotient = a / b;
+        Sample(a, [&](const BigRat &sa) {
+            Sample(b, [&](const BigRat &sb) {
+                CHECK_CONTAINS(quotient, sa / sb);
+              });
           });
-      });
+      }
+
+    }
   }
-
-  {
-    Bigival a(BigRat(-1), BigRat(2), true, true);
-    Bigival b(BigRat(3), BigRat(8), false, false);
-
-    Bigival c = a * b;
-    Sample(a, [&](const BigRat &sa) {
-        Sample(b, [&](const BigRat &sb) {
-            CHECK_CONTAINS(c, sa * sb);
-          });
-      });
-  }
-
-  {
-    Bigival a(BigRat(-1), BigRat(2), true, true);
-    Bigival b(BigRat(3), BigRat(8), false, false);
-
-    Bigival c = a / b;
-    Sample(a, [&](const BigRat &sa) {
-        Sample(b, [&](const BigRat &sb) {
-            CHECK_CONTAINS(c, sa / sb);
-          });
-      });
-  }
-
 
 }
 

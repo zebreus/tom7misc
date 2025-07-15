@@ -35,7 +35,7 @@ struct Bigival {
   Bigival(BigRat lb_in, BigRat ub_in, bool include_lb, bool include_ub) :
     Bigival(Point(std::move(lb_in), include_lb),
             Point(std::move(ub_in), include_ub)) {
-    CHECK(lb.r <= ub.r);
+    CHECK(lb.r <= ub.r) << lb.r.ToString() << " " << ub.r.ToString();
     Normalize();
   }
 
