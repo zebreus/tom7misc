@@ -258,6 +258,14 @@ inline bool operator==(const BigRat &a, const BigRat &b) {
   return (a <=> b) == std::strong_ordering::equal;
 }
 
+inline bool operator==(const BigRat &a, int64_t b) {
+  return BigRat::Eq(a, b);
+}
+
+inline bool operator==(int64_t a, BigRat &b) {
+  return BigRat::Eq(b, a);
+}
+
 inline BigRat operator+(const BigRat &a, const BigRat &b) {
   return BigRat::Plus(a, b);
 }

@@ -300,6 +300,7 @@ struct BigRat {
   // Returns -1, 0, or 1.
   inline static int Compare(const BigRat &a, const BigRat &b);
   inline static bool Eq(const BigRat &a, const BigRat &b);
+  inline static bool Eq(const BigRat &a, int64_t b);
   inline static bool Less(const BigRat &a, const BigRat &b);
   inline static bool LessEq(const BigRat &a, const BigRat &b);
   inline static bool Greater(const BigRat &a, const BigRat &b);
@@ -307,6 +308,7 @@ struct BigRat {
 
   inline static BigRat Abs(const BigRat &a);
   inline static BigRat Div(const BigRat &a, const BigRat &b);
+  // The reciprocal, 1/r.
   inline static BigRat Inverse(const BigRat &a);
   inline static BigRat Times(const BigRat &a, const BigRat &b);
   inline static BigRat Negate(const BigRat &a);
@@ -1015,6 +1017,19 @@ int BigRat::Compare(const BigRat &a, const BigRat &b) {
 
 bool BigRat::Eq(const BigRat &a, const BigRat &b) {
   return mpq_cmp(a.rep, b.rep) == 0;
+}
+bool BigRat::Eq(const BigRat &a, int64_t b) {
+  // To be equal to an integer, the denominator must be 1.
+  if (mpz_cmp_si(mpq_denref(a.rep), 1) != 0)
+    return false;
+
+  if (internal::FitsLongInt(b)) {
+    signed long int sb = b;
+    return mpz_cmp_si(mpq_numref(a.rep), sb) == 0;
+  } else {
+    BigInt rhs(b);
+    return mpz_cmp(mpq_numref(a.rep), rhs.rep) == 0;
+  }
 }
 
 BigRat BigRat::Abs(const BigRat &a) {

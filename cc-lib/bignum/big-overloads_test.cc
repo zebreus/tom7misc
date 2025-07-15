@@ -91,6 +91,8 @@ static void TestCompareRat() {
   BigRat b(10, 3);
   BigRat c(-3, 777);
 
+  BigRat d(11);
+
   CHECK(a < b);
   CHECK(a <= b);
   CHECK(!(a == b));
@@ -108,6 +110,12 @@ static void TestCompareRat() {
   CHECK(b >= c);
   CHECK(!(b == c));
   CHECK(b != c);
+
+  CHECK(d == 11);
+  CHECK(11 == d);
+
+  CHECK(d != 10);
+  CHECK(-11 != d);
 }
 
 int main(int argc, char **argv) {
