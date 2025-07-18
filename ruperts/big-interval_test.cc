@@ -19,6 +19,14 @@ static constexpr bool VERBOSE = false;
     v.ToString();                                        \
  } while (0)
 
+#define CHECK_HAS(opt_exp) [&]() {                      \
+  auto opt = (opt_exp);                                 \
+  CHECK(opt.has_value()) << "Expected the optional "    \
+    "expression " #opt_exp " to result in a value, "    \
+    "but it was nullopt.\n";                            \
+  return opt.value();                                   \
+  }()
+
 // Sample some points in the interval. Call f on them.
 template<class F>
 void Sample(const Bigival &v, const F &f) {
@@ -157,12 +165,59 @@ static void Special() {
 
 }
 
+static void IntervalOps() {
+  {
+    auto i = Bigival::MaybeIntersection(Bigival(1, 2, false, false),
+                                        Bigival(3, 4, false, false));
+    CHECK(!i.has_value());
+  }
+
+  {
+    Bigival i = CHECK_HAS(
+        Bigival::MaybeIntersection(Bigival(1, 2, false, true),
+                                   Bigival(2, 3, true, false)));
+    CHECK(i.Singular());
+    CHECK(i.UB() == i.LB());
+    CHECK(i.LB() == 2);
+  }
+
+
+  {
+    auto i = Bigival::MaybeIntersection(Bigival(1, 2, false, false),
+                                        Bigival(2));
+    CHECK(!i.has_value()) << "The endpoint 2 is not included, so there "
+      "is no overlap.";
+  }
+}
+
+static void Comparisons() {
+  CHECK((Bigival(BigRat(2)) == Bigival(BigRat(2))) ==
+        Bigival::MaybeBool::True);
+
+  CHECK((Bigival(BigRat(2)) == Bigival(BigRat(3))) ==
+        Bigival::MaybeBool::False);
+  CHECK((Bigival(BigRat(2), BigRat(3), false, true) == Bigival(BigRat(3))) ==
+        Bigival::MaybeBool::Unknown);
+
+  CHECK((Bigival(BigRat(2), BigRat(3), false, false) == Bigival(BigRat(3))) ==
+        Bigival::MaybeBool::False);
+
+
+  CHECK((Bigival(BigRat(2), BigRat(4), true, true) == Bigival(BigRat(3))) ==
+        Bigival::MaybeBool::Unknown);
+
+  CHECK((Bigival(BigRat(2), BigRat(4), true, true) ==
+         Bigival(BigRat(-1), BigRat(0), true, true)) ==
+        Bigival::MaybeBool::False);
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   Simple();
   Special();
+  IntervalOps();
+  Comparisons();
 
   printf("OK\n");
   return 0;

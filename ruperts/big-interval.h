@@ -31,6 +31,7 @@
 struct Bigival {
   Bigival(const BigRat &pt) : Bigival(pt, pt, true, true) {}
   Bigival(const BigInt &pt) : Bigival(BigRat(pt)) {}
+  Bigival(int64_t i) : Bigival(BigRat(i)) {}
 
   Bigival(BigRat lb_in, BigRat ub_in, bool include_lb, bool include_ub) :
     Bigival(Point(std::move(lb_in), include_lb),
@@ -38,6 +39,11 @@ struct Bigival {
     CHECK(lb.r <= ub.r) << lb.r.ToString() << " " << ub.r.ToString();
     Normalize();
   }
+  Bigival(BigInt lb, BigInt ub, bool include_lb, bool include_ub) :
+    Bigival(BigRat(std::move(lb)), BigRat(std::move(ub)),
+            include_lb, include_ub) {}
+  Bigival(int64_t lb, int64_t ub, bool include_lb, bool include_ub) :
+    Bigival(BigRat(lb), BigRat(ub), include_lb, include_ub) {}
 
   Bigival Plus(const Bigival &b) const {
     return Bigival(lb + b.lb, ub + b.ub);
@@ -144,6 +150,90 @@ struct Bigival {
   bool IncludesLB() const { return lb.included; }
   bool IncludesUB() const { return ub.included; }
 
+  enum class MaybeBool {
+    True,
+    False,
+    Unknown,
+  };
+
+  // Returns nullopt if there is no possible intersection.
+  static std::optional<Bigival> MaybeIntersection(const Bigival &a,
+                                                  const Bigival &b) {
+    // No overlap at all
+    if (a.ub.r < b.lb.r) {
+      return std::nullopt;
+    } else if (b.ub.r < a.lb.r) {
+      return std::nullopt;
+    } else {
+      // PERF: Maybe the above logic falls out of this? Check carefully.
+      // I think Min/Max doesn't do what we want for this situation?
+      // (Or maybe they are just wrong!)
+      Point lb = Max(a.lb, b.lb);
+      Point ub = Min(a.ub, b.ub);
+
+      printf("lb: %s\n"
+             "ub: %s\n",
+             lb.ToString().c_str(),
+             ub.ToString().c_str());
+      if (lb.r == ub.r && !lb.included && !ub.included) {
+        // Empty intersection.
+        return std::nullopt;
+      }
+      return {Bigival(lb, ub)};
+    }
+  }
+
+  // True if the interval contains just one number; the number
+  // is then equal to the LB (and UB).
+  bool Singular() const {
+    return lb.r == ub.r;
+  }
+
+  // These predicates are talking about the two underlying
+  // unknown values, not the intervals.
+  MaybeBool Eq(const Bigival &r) const {
+    std::optional<Bigival> isect = MaybeIntersection(*this, r);
+    if (!isect.has_value()) return MaybeBool::False;
+    // The only way we know they are equal is if both sies
+    // are singletons. Since we also checked that the intersection
+    // is non-empty, this means they are the same.
+    if (Singular() && r.Singular()) return MaybeBool::True;
+    // Otherwise, they intersect, but we can't conclude the values
+    // are equal.
+    return MaybeBool::Unknown;
+  }
+
+  MaybeBool Less(const Bigival &r) const {
+    std::optional<Bigival> isect = MaybeIntersection(*this, r);
+    if (!isect.has_value()) {
+      // Then it is either less than or greater.
+      return ub.r < r.lb.r ? MaybeBool::True : MaybeBool::False;
+    }
+
+    // If they are definitely equal, then it is not less.
+    if (Singular() && r.Singular()) return MaybeBool::False;
+
+    // Otherwise, since there is nonempty overlap, they may be
+    // equal (at those points).
+    return MaybeBool::Unknown;
+  }
+
+  MaybeBool LessEq(const Bigival &r) const {
+    std::optional<Bigival> isect = MaybeIntersection(*this, r);
+    if (!isect.has_value()) {
+      // Then it is either less than or greater.
+      return ub.r < r.lb.r ? MaybeBool::True : MaybeBool::False;
+    }
+
+    // If we know both values, we may know that they are equal,
+    // and thus less-than or equal.
+    if (Singular() && r.Singular()) return MaybeBool::True;
+
+    // Otherwise, since there is nonempty overlap, they may be
+    // equal (at those points).
+    return MaybeBool::Unknown;
+  }
+
   std::string ToString() const {
     return std::format("{}{}, {}{}",
                        IncludesLB() ? "[" : "(",
@@ -157,6 +247,9 @@ struct Bigival {
     Point(BigRat rr, bool inc) : r(std::move(rr)), included(inc) {}
     BigRat r;
     bool included = false;
+    std::string ToString() const {
+      return std::format("{}{}", included ? "⏺" : "∘", r.ToString());
+    }
   };
 
   // Notation note: [] are closed endpoints, () are open, and {}
@@ -245,6 +338,26 @@ inline Bigival operator*(const Bigival &a, const Bigival &b) {
 
 inline Bigival operator/(const Bigival &a, const Bigival &b) {
   return a.Div(b);
+}
+
+inline Bigival::MaybeBool operator ==(const Bigival &a, const Bigival &b) {
+  return a.Eq(b);
+}
+
+inline Bigival::MaybeBool operator <(const Bigival &a, const Bigival &b) {
+  return a.Less(b);
+}
+
+inline Bigival::MaybeBool operator <=(const Bigival &a, const Bigival &b) {
+  return a.LessEq(b);
+}
+
+inline Bigival::MaybeBool operator >(const Bigival &a, const Bigival &b) {
+  return b.Less(a);
+}
+
+inline Bigival::MaybeBool operator >=(const Bigival &a, const Bigival &b) {
+  return b.LessEq(a);
 }
 
 #endif
