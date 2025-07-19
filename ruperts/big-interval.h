@@ -179,10 +179,12 @@ struct Bigival {
       // of the upper bounds. But we want to round towards the
       // inside of the interval, since we are intersecting.
 
+      /*
       printf("lb: %s\n"
              "ub: %s\n",
              lb.ToString().c_str(),
              ub.ToString().c_str());
+      */
       if (lb.r == ub.r && (!lb.included || !ub.included)) {
         // Empty intersection.
         return std::nullopt;
@@ -212,33 +214,31 @@ struct Bigival {
   }
 
   MaybeBool Less(const Bigival &r) const {
-    std::optional<Bigival> isect = MaybeIntersection(*this, r);
-    if (!isect.has_value()) {
-      // Then it is either less than or greater.
-      return ub.r < r.lb.r ? MaybeBool::True : MaybeBool::False;
-    }
+    // This interval entirely less than the other
+    if (ub.r < r.lb.r) return MaybeBool::True;
+    if (ub.r == r.lb.r && (!IncludesUB() || !r.IncludesLB()))
+      return MaybeBool::True;
+
+    // Other interval entirely less than this
+    if (r.ub.r < lb.r) return MaybeBool::False;
+    if (r.ub.r == lb.r && (!r.IncludesUB() || !IncludesLB()))
+      return MaybeBool::False;
 
     // If they are definitely equal, then it is not less.
-    if (Singular() && r.Singular()) return MaybeBool::False;
+    if (Singular() && r.Singular() && ub.r == r.ub.r)
+      return MaybeBool::False;
 
-    // Otherwise, since there is nonempty overlap, they may be
-    // equal (at those points).
     return MaybeBool::Unknown;
   }
 
   MaybeBool LessEq(const Bigival &r) const {
-    std::optional<Bigival> isect = MaybeIntersection(*this, r);
-    if (!isect.has_value()) {
-      // Then it is either less than or greater.
-      return ub.r < r.lb.r ? MaybeBool::True : MaybeBool::False;
-    }
+    // Entirely less, or touching (eq).
+    if (ub.r <= r.lb.r) return MaybeBool::True;
 
-    // If we know both values, we may know that they are equal,
-    // and thus less-than or equal.
-    if (Singular() && r.Singular()) return MaybeBool::True;
+    if (r.ub.r < lb.r) return MaybeBool::False;
+    if (r.ub.r == lb.r && (!r.IncludesUB() || !IncludesLB()))
+      return MaybeBool::False;
 
-    // Otherwise, since there is nonempty overlap, they may be
-    // equal (at those points).
     return MaybeBool::Unknown;
   }
 

@@ -158,11 +158,58 @@ static void Special() {
     CHECK(bb.IncludesUB());
 
     Sample(b, [&bb](const BigRat &s) {
-        printf("Sample: %s\n", s.ToString().c_str());
+        // printf("Sample: %s\n", s.ToString().c_str());
         CHECK_CONTAINS(bb, s * s);
       });
   }
 
+  // Abs:
+  {
+    // Contains zero, negative side has larger magnitude.
+    Bigival a(-5, 2, true, true);
+    Bigival aa = a.Abs();
+    CHECK(aa.LB() == 0);
+    CHECK(aa.UB() == 5);
+    Sample(a, [&aa](const BigRat &s) {
+        CHECK_CONTAINS(aa, BigRat::Abs(s));
+      });
+  }
+  {
+    // All negative.
+    Bigival b(-5, -2, false, true);
+    Bigival bb = b.Abs();
+    CHECK(bb.LB() == 2);
+    CHECK(bb.UB() == 5);
+    CHECK(bb.IncludesLB());
+    CHECK(!bb.IncludesUB());
+    Sample(b, [&bb](const BigRat &s) {
+        CHECK_CONTAINS(bb, BigRat::Abs(s));
+      });
+  }
+
+  // Tests for Reciprocal()
+ {
+    // All positive.
+    Bigival c(2, 4, true, false);
+    Bigival cc = c.Reciprocal();
+    CHECK(cc.LB() == BigRat(1, 4));
+    CHECK(cc.UB() == BigRat(1, 2));
+    CHECK(!cc.IncludesLB());
+    CHECK(cc.IncludesUB());
+    Sample(c, [&cc](const BigRat &s) {
+        CHECK_CONTAINS(cc, BigRat::Inverse(s));
+      });
+  }
+  {
+    // All negative.
+    Bigival d(-4, -2, true, true);
+    Bigival dd = d.Reciprocal();
+    CHECK(dd.LB() == BigRat(-1, 2));
+    CHECK(dd.UB() == BigRat(-1, 4));
+    Sample(d, [&dd](const BigRat &s) {
+        CHECK_CONTAINS(dd, BigRat::Inverse(s));
+      });
+  }
 }
 
 static void IntervalOps() {
@@ -208,6 +255,38 @@ static void Comparisons() {
 
   CHECK((Bigival(BigRat(2), BigRat(4), true, true) ==
          Bigival(BigRat(-1), BigRat(0), true, true)) ==
+        Bigival::MaybeBool::False);
+
+  CHECK((Bigival(BigRat(1), BigRat(2), true, false) <
+         Bigival(BigRat(2), BigRat(3), false, false)) == Bigival::MaybeBool::True) <<
+        "2 is not included in either interval, so every value is less.";
+
+  // <
+  CHECK((Bigival(1, 2, true, true) < Bigival(3, 4, true, true)) ==
+        Bigival::MaybeBool::True);
+  CHECK((Bigival(1, 2, true, false) < Bigival(2, 3, true, true)) ==
+        Bigival::MaybeBool::True);
+  CHECK((Bigival(2) < Bigival(2)) ==
+        Bigival::MaybeBool::False);
+  CHECK((Bigival(1, 3, true, true) < Bigival(2, 4, true, true)) ==
+        Bigival::MaybeBool::Unknown);
+  CHECK((Bigival(3, 4, true, true) < Bigival(1, 2, true, true)) ==
+        Bigival::MaybeBool::False);
+  CHECK((Bigival(2, 3, true, true) < Bigival(1, 2, true, false)) ==
+        Bigival::MaybeBool::False);
+
+  // <=
+  CHECK((Bigival(1, 2, true, true) <= Bigival(2, 3, true, true)) ==
+        Bigival::MaybeBool::True);
+  CHECK((Bigival(1, 2, true, false) <= Bigival(2, 3, true, true)) ==
+        Bigival::MaybeBool::True);
+  CHECK((Bigival(2) <= Bigival(2)) ==
+        Bigival::MaybeBool::True);
+  CHECK((Bigival(1, 3, true, true) <= Bigival(2, 4, true, true)) ==
+        Bigival::MaybeBool::Unknown);
+  CHECK((Bigival(3, 4, true, true) <= Bigival(1, 2, true, true)) ==
+        Bigival::MaybeBool::False);
+  CHECK((Bigival(2, 3, false, true) <= Bigival(1, 2, true, false)) ==
         Bigival::MaybeBool::False);
 }
 
