@@ -186,7 +186,7 @@ static void IntervalOps() {
     auto i = Bigival::MaybeIntersection(Bigival(1, 2, false, false),
                                         Bigival(2));
     CHECK(!i.has_value()) << "The endpoint 2 is not included, so there "
-      "is no overlap.";
+      "is no overlap. But got: " << i.value().ToString();
   }
 }
 

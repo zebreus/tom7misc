@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <format>
-#include <numbers>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -16,6 +15,7 @@
 #include "arcfour.h"
 #include "image.h"
 #include "mov-recorder.h"
+#include "mov.h"
 #include "periodically.h"
 #include "polyhedra.h"
 #include "randutil.h"

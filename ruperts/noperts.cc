@@ -36,14 +36,15 @@
 #include "polyhedra.h"
 #include "randutil.h"
 #include "rendering.h"
+#include "smallest-sphere.h"
 #include "solutions.h"
 #include "status-bar.h"
 #include "symmetry-groups.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
+#include "work-queue.h"
 #include "yocto_matht.h"
-#include "smallest-sphere.h"
 
 // Try to find counterexamples.
 
@@ -202,6 +203,7 @@ static std::optional<int> DoSolve(int thread_idx,
   return std::nullopt;
 }
 
+[[maybe_unused]]
 static std::optional<int> ParallelSolve(
     int num_threads,
     ArcFour *rc_all, const Polyhedron &poly,
@@ -1677,9 +1679,21 @@ static double NonPlanarity(const vec3 &v0,
 struct Flattening76 {
   SolutionDB db;
   Polyhedron source_poly;
-  AutoHisto iter_histo;
   Timer run_time;
+  WorkQueue<Polyhedron> work_queue;
+
+  // Initially I thought we would want to use really small tweaks, but
+  // for reasons I don't really understand yet, they're all easily
+  // solvable when the temperature is very low. A temperature closer
+  // to 0.10 is where I start to see viable noperts (hard to say
+  // because of the queue; should maybe improve the metadata output).
+  // But we also get lots more degenerate/non-planar ones here.
+  static constexpr double MEDIUM_TEMPERATURE = 1.0e-16;
+
+  std::mutex mu;
   int64_t notplanar = 0;
+  int64_t solved = 0, successes = 0;
+  AutoHisto iter_histo;
 
   // rotate 1/5
   frame2 rot2d;
@@ -1699,7 +1713,9 @@ struct Flattening76 {
     int v0 = 0, v1 = 0, v2 = 0, v3 = 0;
   };
 
-  Flattening76() : source_poly(db.AnyPolyhedronByName("nopert_76")) {
+  Flattening76() : db(),
+                   source_poly(db.AnyPolyhedronByName("nopert_76")),
+                   work_queue(std::make_optional(100)) {
 
     // This polyhedron has 5-fold symmetry around the z axis,
     // and 4 points with different z coordinates. There should
@@ -1731,11 +1747,9 @@ struct Flattening76 {
 
     // rotate 1/5
     rot2d = rotation_frame2(std::numbers::pi * 2.0 / 5.0);
-
-
   }
 
-  std::array<vec3, 4> Rootate(const std::array<vec3, 4> &root) {
+  std::array<vec3, 4> Rootate(const std::array<vec3, 4> &root) const {
     std::array<vec3, 4> root2;
     for (int i = 0; i < 4; i++) {
       vec2 p = vec2(root[i].x, root[i].y);
@@ -1839,8 +1853,46 @@ struct Flattening76 {
     return target;
   }
 
+  void SolveThread(int thread_idx) {
+    ArcFour rc(std::format("{}.{}", thread_idx, time(nullptr)));
+
+    for (;;) {
+      std::optional<Polyhedron> opoly = work_queue.WaitGet();
+      if (!opoly.has_value()) {
+        printf("Solve thread terminating.\n");
+        return;
+      }
+
+      const Polyhedron &poly = opoly.value();
+
+      // Multithreaded solve.
+      if (auto io = DoSolve(thread_idx,
+                            &rc, poly,
+                            nullptr, nullptr); io.has_value()) {
+        CHECK(io.value() >= 0);
+        MutexLock ml(&mu);
+        iter_histo.Observe(io.value());
+        solved++;
+
+      } else {
+        // Nopert!
+        MutexLock ml(&mu);
+        db.AddNopert(poly, SolutionDB::NOPERT_METHOD_FLATTEN76);
+        successes++;
+        status->Print(AGREEN("Success!") "\n");
+      }
+    }
+  }
+
+  std::vector<std::unique_ptr<std::thread>> solve_threads;
 
   void Run() {
+    static constexpr int SOLVE_THREADS = 8;
+    for (int i = 0; i < SOLVE_THREADS; i++) {
+      solve_threads.emplace_back(
+          new std::thread(&Flattening76::SolveThread, this, i));
+    }
+
     // Now our goal is to place vertices nearby the original ones,
     // but such that they produce some rectangular faces instead
     // of triangular ones. Of course we still want it to be a
@@ -1863,10 +1915,8 @@ struct Flattening76 {
     // or the other, but we don't care about that here because we will
     // reconstruct the 3D convex hull.
 
-    // I should probably also consider quads that are 1+3 and 3+1
-    // instead of 2+2. There is one of these in #76 that is nearly
-    // planar.
-
+    // The quads we're interesting are the 2+2 type (two vertices on
+    // the 'a' column and two on the 'b') as well as 1+3 and 3+1.
     // There are also quads that cross the "root", but I don't try
     // flattening these. They are far from planar in the input and
     // flattening them symmetrically can easily lead to degeneracy.
@@ -1880,10 +1930,19 @@ struct Flattening76 {
     ArcFour rc(std::format("flatten-{}", time(nullptr)));
 
     Periodically status_per(1.0);
-    double temp = 1.0e-60;  // or 0.0
+    double temp = MEDIUM_TEMPERATURE;  // or 0.0
     RandomGaussian gauss(&rc);
-    int64_t solved = 0, successes = 0;
     for (;;) {
+      {
+        MutexLock ml(&mu);
+        if (successes > 5) {
+          status->Print("That is enough noperts.\n");
+          work_queue.Clear();
+          work_queue.MarkDone();
+          return;
+        }
+      }
+
       // Always add a small amount of noise to the points so that
       // we settle on different solutions each time.
       std::array<vec3, 4> noise_root1;
@@ -1988,58 +2047,45 @@ struct Flattening76 {
         PolyhedronFromConvexVertices(vertices, "flat76");
 
       if (!opoly.has_value()) {
+        MutexLock ml(&mu);
         degenerate++;
       } else {
-        const Polyhedron &poly = opoly.value();
-
         // The top and bottom faces are always pentagons. The triangle strip
         // along the side is 6 triangles, so we have 6 * 5 + 2 = 32 faces if
         // the polyhedron's sides consist only of triangles.
-        if (poly.faces->v.size() >= 32) {
+        if (opoly.value().faces->v.size() >= 32) {
+          MutexLock ml(&mu);
           notplanar++;
         } else {
-          if (solved % 1000 == 0) {
-            std::string filename = std::format("flat76.{}.stl", solved);
-            SaveAsSTL(poly, filename);
-            status->Print("Wrote {}", filename);
-          }
-
-          // Multithreaded solve.
-          if (auto io = ParallelSolve(12,
-                                      &rc, poly,
-                                      nullptr, nullptr)) {
-            iter_histo.Observe(io.value());
-            solved++;
-          } else {
-            // Nopert!
-            SolutionDB db;
-            db.AddNopert(poly, SolutionDB::NOPERT_METHOD_FLATTEN76);
-            successes++;
-            status->Print(AGREEN("Success!") "\n");
-            if (successes > 5) {
-              status->Print("That is enough noperts.\n");
-              return;
-            }
-          }
+          work_queue.WaitAdd(std::move(opoly.value()));
         }
       }
 
       temp += 1e-100;
       temp *= 1.001;
 
-      status_per.RunIf([&]() {
+      if (temp > 1.0) temp = MEDIUM_TEMPERATURE;
 
+      status_per.RunIf([&]() {
+          int64_t qs = work_queue.Size();
+
+          MutexLock ml(&mu);
           std::string info =
-            std::format("Flatten 76. " AYELLOW("{}") " solved. "
+            std::format("Flatten 76. "
+                        AGREEN("{}") "! "
+                        AYELLOW("{}") " solved. "
                         APURPLE("{:.5g}") ARED("°") " "
                         AORANGE("{}") AWHITE("⊲") " "
                         ARED("{}") ABLOOD("☠") " ",
+                        successes,
                         solved, temp, notplanar, degenerate.Read());
 
           std::string timing =
-            std::format("Run for {}. Useful candidates: {} ea.",
+            std::format("Run for {}. Useful candidates: {} ea. "
+                        ACYAN("{}") " Q",
                         ANSI::Time(run_time.Seconds()),
-                        ANSI::Time(run_time.Seconds() / (solved + successes)));
+                        ANSI::Time(run_time.Seconds() / (solved + successes)),
+                        qs);
 
           status->Status(
               "{}\n"

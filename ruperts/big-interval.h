@@ -27,6 +27,11 @@
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 #include "base/logging.h"
+#include <cstdio>
+#include <format>
+#include <optional>
+#include <string>
+#include <utility>
 
 struct Bigival {
   Bigival(const BigRat &pt) : Bigival(pt, pt, true, true) {}
@@ -76,7 +81,7 @@ struct Bigival {
       "arbitrarily large, so it is not handled. It could be supported "
       "by adding an infinity sentinel if it is useful.";
 
-    return Bigival(Reciprocal(lb), Reciprocal(ub));
+    return Bigival(Reciprocal(ub), Reciprocal(lb));
   }
 
   Bigival Negate() const {
@@ -84,19 +89,19 @@ struct Bigival {
   }
 
   Bigival Abs() const {
+    Point alb = Abs(lb);
+    Point aub = Abs(ub);
+
     // I think abs requires case analysis. It is not monotone.
     if (ContainsZero()) {
       return Bigival(Point(BigRat(0), true),
-                     Max(lb, ub));
+                     Max(alb, aub));
     }
 
     // Then the sign of the two must be the same.
     const int sign1 = BigRat::Sign(lb.r);
     const int sign2 = BigRat::Sign(ub.r);
     CHECK(sign1 == sign2) << "Bug: Should not be possible!";
-
-    Point alb = Abs(lb);
-    Point aub = Abs(ub);
 
     // PERF: Can avoid comparing twice, copying...
     return Bigival(Min(alb, aub), Max(alb, aub));
@@ -166,16 +171,19 @@ struct Bigival {
       return std::nullopt;
     } else {
       // PERF: Maybe the above logic falls out of this? Check carefully.
-      // I think Min/Max doesn't do what we want for this situation?
-      // (Or maybe they are just wrong!)
-      Point lb = Max(a.lb, b.lb);
-      Point ub = Min(a.ub, b.ub);
+      // Note that we only include an endpoint of both arguments include it.
+      Point lb = MaxAnd(a.lb, b.lb);
+      Point ub = MinAnd(a.ub, b.ub);
+
+      // The intersection is the max of the lower bounds to the min
+      // of the upper bounds. But we want to round towards the
+      // inside of the interval, since we are intersecting.
 
       printf("lb: %s\n"
              "ub: %s\n",
              lb.ToString().c_str(),
              ub.ToString().c_str());
-      if (lb.r == ub.r && !lb.included && !ub.included) {
+      if (lb.r == ub.r && (!lb.included || !ub.included)) {
         // Empty intersection.
         return std::nullopt;
       }
@@ -238,7 +246,7 @@ struct Bigival {
     return std::format("{}{}, {}{}",
                        IncludesLB() ? "[" : "(",
                        LB().ToString(),
-                       LB().ToString(),
+                       UB().ToString(),
                        IncludesUB() ? "]" : ")");
   }
 
@@ -299,6 +307,24 @@ struct Bigival {
   static Point Max(const Point &a, const Point &b) {
     if (a.r == b.r) {
       return a.included ? a : b;
+    } else {
+      return a.r > b.r ? a : b;
+    }
+  }
+
+  static Point MinAnd(const Point &a, const Point &b) {
+    if (a.r == b.r) {
+      if (a.included && b.included) return a;
+      else return Point(a.r, false);
+    } else {
+      return a.r < b.r ? a : b;
+    }
+  }
+
+  static Point MaxAnd(const Point &a, const Point &b) {
+    if (a.r == b.r) {
+      if (a.included && b.included) return a;
+      else return Point(a.r, false);
     } else {
       return a.r > b.r ? a : b;
     }

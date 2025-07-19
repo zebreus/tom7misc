@@ -79,13 +79,17 @@ static void PrintAll() {
 
     std::string name = SolutionDB::NopertName(nopert.id);
 
+    const auto ait = attempt_count.find(name);
+    int64_t a = ait == attempt_count.end() ? 0 : ait->second;
+
     int nsol = solved[nopert.id];
     if (nsol > 0) {
       printf("  " ARED("✘") " solved");
+      if (a > 0) {
+        printf(" " AGREY("(%s)"), FormatNum(a).c_str());
+      }
     } else {
 
-      const auto ait = attempt_count.find(name);
-      int64_t a = ait == attempt_count.end() ? 0 : ait->second;
       if (a > 0) {
         printf("  " AYELLOW("⚡") "%s", FormatNum(a).c_str());
       }

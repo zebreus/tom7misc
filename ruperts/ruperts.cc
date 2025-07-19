@@ -1152,6 +1152,14 @@ static void GrindNoperts() {
     // already have plenty of coverage for this believed nopert,
     // but I want the other small ones to get good coverage too
     76,
+
+    // So too for these. They are not better than #76.
+    177, 179,
+
+    // should grind these more, but let's get one we're confident in
+    // first (#214)
+    212, 216, 220, 221, 225, 226,
+
   };
 
   constexpr int MAX_VERTICES = 20;
@@ -1179,6 +1187,14 @@ static void GrindNoperts() {
 
     status.Print("There are " AWHITE("{}") " eligible noperts "
                  "to grind.", noperts_unsolved.size());
+    if (noperts_unsolved.size() < 10) {
+      std::string s = "They are: ";
+      for (const Nopert &nopert : noperts_unsolved) {
+        AppendFormat(&s, "#" APURPLE("{}") " " AGREY("({}v)") ", ",
+                     nopert.id, nopert.vertices.size());
+      }
+      status.Print("{}", s);
+    }
 
     // Otherwise, pick one and grind it.
     std::sort(noperts_unsolved.begin(),
