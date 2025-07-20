@@ -7,8 +7,11 @@
 
 #include "bignum/big.h"
 
+#include <compare>
 #include <cstdint>
 #include <cstddef>
+#include <functional>
+#include <utility>
 
 // TODO modifying operators
 // TODO spaceship
@@ -262,7 +265,7 @@ inline bool operator==(const BigRat &a, int64_t b) {
   return BigRat::Eq(a, b);
 }
 
-inline bool operator==(int64_t a, BigRat &b) {
+inline bool operator==(int64_t a, const BigRat &b) {
   return BigRat::Eq(b, a);
 }
 
@@ -278,8 +281,24 @@ inline BigRat operator*(const BigRat &a, const BigRat &b) {
   return BigRat::Times(a, b);
 }
 
+inline BigRat operator*(int64_t a, const BigRat b) {
+  return BigRat::Times(BigRat(a), b);
+}
+
+inline BigRat operator*(const BigRat &a, int64_t b) {
+  return BigRat::Times(a, BigRat(b));
+}
+
 inline BigRat operator/(const BigRat &a, const BigRat &b) {
   return BigRat::Div(a, b);
+}
+
+inline BigRat operator/(const BigRat &a, int64_t b) {
+  return BigRat::Div(a, BigRat(b));
+}
+
+inline BigRat operator/(int64_t a, const BigRat &b) {
+  return BigRat::Div(BigRat(a), b);
 }
 
 inline BigRat operator-(const BigRat &a) {

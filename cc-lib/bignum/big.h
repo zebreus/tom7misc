@@ -312,6 +312,7 @@ struct BigRat {
   inline static BigRat Inverse(const BigRat &a);
   inline static BigRat Times(const BigRat &a, const BigRat &b);
   inline static BigRat Negate(const BigRat &a);
+  inline static BigRat Negate(BigRat &&a);
   inline static BigRat Plus(const BigRat &a, const BigRat &b);
   inline static BigRat Minus(const BigRat &a, const BigRat &b);
   inline static BigRat Pow(const BigRat &a, uint64_t exponent);
@@ -1052,11 +1053,17 @@ BigRat BigRat::Times(const BigRat &a, const BigRat &b) {
   mpq_mul(ret.rep, a.rep, b.rep);
   return ret;
 }
+
 BigRat BigRat::Negate(const BigRat &a) {
   BigRat ret;
   mpq_neg(ret.rep, a.rep);
   return ret;
 }
+BigRat BigRat::Negate(BigRat &&a) {
+  mpq_neg(a.rep, a.rep);
+  return a;
+}
+
 BigRat BigRat::Plus(const BigRat &a, const BigRat &b) {
   BigRat ret;
   mpq_add(ret.rep, a.rep, b.rep);
@@ -1634,6 +1641,10 @@ BigRat BigRat::Times(const BigRat &a, const BigRat &b) {
 BigRat BigRat::Negate(const BigRat &a) {
   return BigRat{BqNegate(a.rep), nullptr};
 }
+BigRat BigRat::Negate(BigRat &&a) {
+  return BigRat{BqNegate(a.rep), nullptr};
+}
+
 BigRat BigRat::Plus(const BigRat &a, const BigRat &b) {
   Rep res = BqAdd(a.rep, b.rep);
   return BigRat{res, nullptr};
@@ -1675,6 +1686,7 @@ BigRat BigRat::FromDouble(double num) {
   if (exponent == 0) {
     // Subnormals
     numerator = fraction_bits;
+    denom = 1;
     exponent -= (1023 + 52 - 1);
   } else {
     // Implied leading 1.

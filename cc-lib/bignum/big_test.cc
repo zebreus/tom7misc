@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <format>
 #include <initializer_list>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <string>
@@ -187,6 +188,15 @@ static void TestRatFromDouble() {
   BigRat thirdish = BigRat::FromDouble(0.3333333);
   double t = thirdish.ToDouble();
   CHECK(std::abs(t - 0.3333333) < 0.0000001) << thirdish.ToString();
+
+  {
+    // Subnormals.
+    const double d_min = std::numeric_limits<double>::denorm_min();
+    CHECK(d_min > 0.0);
+    const BigRat correct_r(BigInt(1), BigInt::Pow(BigInt(2), 1074));
+    const BigRat r = BigRat::FromDouble(d_min);
+    CHECK(BigRat::Eq(r, correct_r));
+  }
 
   printf("Rat FromDouble: OK\n");
 }
@@ -1071,6 +1081,7 @@ static void TestRatTruncate() {
     CHECK(r.ToString() == "-355/113") << r.ToString();
   }
 
+
   {
     BigRat r = BigRat::Truncate(pi, BigInt(2000000));
     CHECK(r.ToString() == "5419351/1725033") << r.ToString();
@@ -1084,6 +1095,13 @@ static void TestRatTruncate() {
     BigRat r = BigRat::Truncate(phi, BigInt(40000000));
     CHECK(r.ToString() == "63245986/39088169") << r.ToString();
   }
+}
+
+static void TestRatNegate() {
+  BigRat pp("1234567891234567891/10000000000000000000");
+  BigRat r = BigRat::Negate(std::move(pp));
+  CHECK(r.ToString() == "-1234567891234567891/10000000000000000000")
+    << r.ToString();
 }
 
 static void TestCtz() {
@@ -1267,6 +1285,7 @@ int main(int argc, char **argv) {
   TestPowMod();
 
   TestRatTruncate();
+  TestRatNegate();
 
   TestPrimeFactors();
 

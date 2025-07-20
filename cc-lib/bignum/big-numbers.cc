@@ -1,8 +1,10 @@
 #include "bignum/big-numbers.h"
 
+#include <cassert>
 #include <cstdio>
 #include <cstdint>
 #include <deque>
+#include <utility>
 
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
