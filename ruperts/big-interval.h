@@ -24,14 +24,16 @@
 #ifndef _RUPERTS_BIG_INTERVAL_H
 #define _RUPERTS_BIG_INTERVAL_H
 
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-#include "base/logging.h"
 #include <cstdio>
 #include <format>
 #include <optional>
 #include <string>
 #include <utility>
+
+#include "base/logging.h"
+#include "bignum/big-numbers.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
 
 struct Bigival {
   Bigival(const BigRat &pt) : Bigival(pt, pt, true, true) {}
@@ -70,6 +72,11 @@ struct Bigival {
 
   Bigival Div(const Bigival &b) const {
     return Times(b.Reciprocal());
+  }
+
+  // Width of the interval, ignoring the open/closedness of endpoints.
+  BigRat Width() const {
+    return UB() - LB();
   }
 
   // 1/b
@@ -154,6 +161,90 @@ struct Bigival {
 
   bool IncludesLB() const { return lb.included; }
   bool IncludesUB() const { return ub.included; }
+
+  static Bigival Pi(const BigRat &epsilon) {
+    BigRat half_epsilon = epsilon / 2;
+    BigRat approx_pi = BigNumbers::Pi(half_epsilon);
+    return Bigival(approx_pi - half_epsilon, approx_pi + half_epsilon,
+                   false, false);
+  }
+
+  // Compute sin(x) as a Bigival with a width of no more than epsilon.
+  static Bigival Sin(const BigRat &x, const BigRat &epsilon) {
+    CHECK(BigRat::Sign(epsilon) == 1);
+    if (BigRat::Sign(x) == 0) return Bigival(0);
+
+    const BigRat target_error = epsilon / 2;
+
+    BigRat sum(0);
+
+    const BigRat x_squared = x * x;
+
+    // Taylor series is x^1/1! - x^3/3! + x^5/5! - ...
+    //                  term_0   term_1   term_2
+    BigRat current_term = x;
+
+    for (BigInt k(1); true; ++k) {
+      // For an alternating series, the next term is also a bound
+      // on the absolute error.
+      const BigRat error_bound = BigRat::Abs(current_term);
+      if (error_bound <= target_error) {
+        return Bigival(sum - error_bound, sum + error_bound, true, true);
+      }
+
+      sum += current_term;
+
+      // term_k = x^(2k + 1) / (2k + 1)!
+      // So to get term_k+1, we want an additional factor of x^2 for the
+      // numerator, and a factor of 1 / ((2k + 1) * 2k) for the
+      // denominator.
+
+      BigInt two_k = k << 1;
+      BigRat next_term = BigRat::Negate(std::move(current_term)) * x_squared /
+        ((two_k + 1) * two_k);
+
+      current_term = std::move(next_term);
+    }
+  }
+
+  static Bigival Cos(const BigRat &x, const BigRat &epsilon) {
+    CHECK(BigRat::Sign(epsilon) == 1);
+    if (BigRat::Sign(x) == 0) return Bigival(1);
+
+    const BigRat target_error = epsilon / 2;
+
+    BigRat sum(0);
+
+    const BigRat x_squared = x * x;
+
+    // Taylor series is x^0/0! -  x^2/2! + x^4/4! - ...
+    //                  term_0    term_1   term_2
+    BigRat current_term(1);
+
+    for (BigInt k(1); true; ++k) {
+      const BigRat error_bound = BigRat::Abs(current_term);
+      if (error_bound <= target_error) {
+        return Bigival(sum - error_bound, sum + error_bound, true, true);
+      }
+
+      sum += current_term;
+
+      BigInt two_k = k << 1;
+
+      current_term = BigRat::Negate(std::move(current_term)) * x_squared /
+        (two_k * (two_k - 1));
+    }
+  }
+
+  Bigival Sin(const BigRat &epsilon) const {
+    BigRat width = Width();
+    if (width == 0) {
+      return Sin(LB(), epsilon);
+    }
+
+    // ...
+    LOG(FATAL) << "Unimplemented";
+  }
 
   enum class MaybeBool {
     True,

@@ -52,7 +52,7 @@ CL_OBJECTS=$(CC_LIB)/opencl/clutil.o
 
 SQLITE_OBJECTS=$(SQLITE)/database.o $(SQLITE)/sqlite3.o
 
-OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) $(SQLITE_OBJECTS) polyhedra.o big-csg.o rendering.o solutions.o shrinklutions.o hull.o hull3d.o big-polyhedra.o symmetry-groups.o mesh.o textured-mesh.o smallest-sphere.o dyson.o z3.o run-z3.o patches.o
+OBJECTS=$(CC_LIB_OBJECTS) $(CODEC_OBJECTS) $(SQLITE_OBJECTS) polyhedra.o big-csg.o rendering.o solutions.o shrinklutions.o hull.o hull3d.o big-polyhedra.o symmetry-groups.o mesh.o textured-mesh.o smallest-sphere.o dyson.o z3.o run-z3.o patches.o big-interval.o
 
 $(CC_LIB)/%.o : $(CC_LIB)/%.cc makefile
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -271,9 +271,12 @@ big-interval_test.exe : big-interval_test.o big-interval.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+inub.exe : inub.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 clean :
 	rm -f *.o *.exe $(OBJECTS)
-
 
 
 ifeq ($(OPT),)

@@ -1,6 +1,7 @@
 
 #include "big-interval.h"
 
+#include <cmath>
 #include <string>
 #include <cstdio>
 
@@ -290,6 +291,35 @@ static void Comparisons() {
         Bigival::MaybeBool::False);
 }
 
+static void Transcendental() {
+
+  BigRat epsilon = BigRat(1, 1000000);
+
+  for (double x : { -2.999999997, -1.0, 0.0,
+      1.1e-16, 1.0, 1.1, 1.2, 2.9, 3.0, 400.0 }) {
+    Bigival sinx = Bigival::Sin(BigRat::FromDouble(x), epsilon);
+    BigRat actual = BigRat::FromDouble(std::sin(x));
+
+    printf("sin(%f) = %s\n", x, sinx.ToString().c_str());
+
+    CHECK_CONTAINS(sinx, actual);
+    // Moreover, the interval must be small enough.
+    CHECK(sinx.Width() <= epsilon);
+  }
+
+  for (double x : { -2.999999997, -1.0, 0.0,
+      1.1e-16, 1.0, 1.1, 1.2, 2.9, 3.0, 400.0 }) {
+    Bigival cosx = Bigival::Cos(BigRat::FromDouble(x), epsilon);
+    BigRat actual = BigRat::FromDouble(std::cos(x));
+
+    printf("cos(%f) = %s\n", x, cosx.ToString().c_str());
+
+    CHECK_CONTAINS(cosx, actual);
+    CHECK(cosx.Width() <= epsilon);
+  }
+
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -297,6 +327,8 @@ int main(int argc, char **argv) {
   Special();
   IntervalOps();
   Comparisons();
+
+  Transcendental();
 
   printf("OK\n");
   return 0;
