@@ -30,6 +30,7 @@
 #include <string>
 #include <utility>
 
+#include "ansi.h"
 #include "base/logging.h"
 #include "bignum/big-numbers.h"
 #include "bignum/big-overloads.h"
@@ -162,6 +163,15 @@ struct Bigival {
   bool IncludesLB() const { return lb.included; }
   bool IncludesUB() const { return ub.included; }
 
+  // True if the interval contains any exact integer.
+  bool ContainsInteger() const {
+    // Floor is a little faster than ceil.
+    BigInt i = BigRat::Floor(UB());
+    if (IncludesUB() && i == UB()) return true;
+    --i;
+    return IncludesLB() ? i >= LB() : i > LB();
+  }
+
   static Bigival Pi(const BigRat &epsilon) {
     BigRat half_epsilon = epsilon / 2;
     BigRat approx_pi = BigNumbers::Pi(half_epsilon);
@@ -170,11 +180,13 @@ struct Bigival {
   }
 
   // Compute sin(x) as a Bigival with a width of no more than epsilon.
+  // This is only appropriate for x with small magnitude.
   static Bigival Sin(const BigRat &x, const BigRat &epsilon) {
     CHECK(BigRat::Sign(epsilon) == 1);
+    // This is the one case where we can have an exact rational result.
+    // We return open intervals below, so this test is also required
+    // for correctness.
     if (BigRat::Sign(x) == 0) return Bigival(0);
-
-    const BigRat target_error = epsilon / 2;
 
     BigRat sum(0);
 
@@ -184,12 +196,22 @@ struct Bigival {
     //                  term_0   term_1   term_2
     BigRat current_term = x;
 
+    bool decreasing = false;
     for (BigInt k(1); true; ++k) {
       // For an alternating series, the next term is also a bound
-      // on the absolute error.
-      const BigRat error_bound = BigRat::Abs(current_term);
-      if (error_bound <= target_error) {
-        return Bigival(sum - error_bound, sum + error_bound, true, true);
+      // on the absolute error. We also know that the current term is
+      // an upper (or lower) bound on the true value. But in order
+      // to use this fact, we must be in the phase of the sequence
+      // where the terms are decreasing.
+      if (decreasing) {
+        const BigRat error_bound = BigRat::Abs(current_term);
+        if (error_bound <= epsilon) {
+          if (BigRat::Sign(current_term) > 0) {
+            return Bigival(sum, sum + current_term, false, false);
+          } else {
+            return Bigival(sum + current_term, sum, false, false);
+          }
+        }
       }
 
       sum += current_term;
@@ -200,18 +222,23 @@ struct Bigival {
       // denominator.
 
       BigInt two_k = k << 1;
-      BigRat next_term = BigRat::Negate(std::move(current_term)) * x_squared /
-        ((two_k + 1) * two_k);
 
-      current_term = std::move(next_term);
+      BigRat next_factor = x_squared / (two_k * (two_k + 1));
+      if (!decreasing && next_factor < BigRat(1)) {
+        decreasing = true;
+      }
+
+      current_term =  BigRat::Negate(std::move(current_term)) * next_factor;
     }
   }
 
+  // This is only appropriate for x with small magnitude.
   static Bigival Cos(const BigRat &x, const BigRat &epsilon) {
     CHECK(BigRat::Sign(epsilon) == 1);
+    // This is the one case where we can have an exact rational result.
+    // We return open intervals below, so this test is also required
+    // for correctness.
     if (BigRat::Sign(x) == 0) return Bigival(1);
-
-    const BigRat target_error = epsilon / 2;
 
     BigRat sum(0);
 
@@ -221,18 +248,29 @@ struct Bigival {
     //                  term_0    term_1   term_2
     BigRat current_term(1);
 
+    bool decreasing = false;
     for (BigInt k(1); true; ++k) {
-      const BigRat error_bound = BigRat::Abs(current_term);
-      if (error_bound <= target_error) {
-        return Bigival(sum - error_bound, sum + error_bound, true, true);
+      if (decreasing) {
+        const BigRat error_bound = BigRat::Abs(current_term);
+        if (error_bound <= epsilon) {
+          if (BigRat::Sign(current_term) > 0) {
+            return Bigival(sum, sum + current_term, false, false);
+          } else {
+            return Bigival(sum + current_term, sum, false, false);
+          }
+        }
       }
 
       sum += current_term;
 
       BigInt two_k = k << 1;
 
-      current_term = BigRat::Negate(std::move(current_term)) * x_squared /
-        (two_k * (two_k - 1));
+      BigRat next_factor = x_squared / (two_k * (two_k - 1));
+      if (!decreasing && next_factor < BigRat(1)) {
+        decreasing = true;
+      }
+
+      current_term = BigRat::Negate(std::move(current_term)) * next_factor;
     }
   }
 
@@ -242,8 +280,46 @@ struct Bigival {
       return Sin(LB(), epsilon);
     }
 
-    // ...
-    LOG(FATAL) << "Unimplemented";
+    // Endpoints bound the result unless it contains a peak or
+    // trough.
+    const BigRat half_epsilon = epsilon / 2;
+    Bigival a = Sin(lb.r, half_epsilon);
+    Bigival b = Sin(ub.r, half_epsilon);
+    Point lower = Min(a.lb, b.lb);
+    Point upper = Max(a.ub, b.ub);
+
+    // The tricky part is that we might have a peak or trough
+    // of the sine function inside that interval, so the endpoints
+    // are not the max/min value. Peaks happen at π * (2k + 0.5)
+    // and troughs happen at π * (2k - 0.5).
+
+    // Use an approximation of pi that is accurate compared to the
+    // width of the current interval.
+    Bigival pi = Pi(width / 1024);
+
+    // If the interval is big enough, then it contains both a peak and
+    // trough for sure. Probably can just rely on the thing below.
+    // PERF could use lower-res pi for this
+    if (width >= pi.UB() * 2) {
+      return Bigival(-1, 1, true, true);
+    }
+
+    // Determine k such that π * (2k + 0.5) might fall in the interval.
+    // p = π * (2k + 0.5)
+    // p/π - 0.5 = 2k
+    // (p/π - 0.5)/2 = k
+    Bigival kpeak = Div(pi).Minus(BigRat(1, 2)).Div(2);
+    // And similar for troughs.
+    Bigival ktrough = Div(pi).Plus(BigRat(1, 2)).Div(2);
+    if (kpeak.ContainsInteger()) {
+      printf(AYELLOW("Interval %s had integer") ".\n", kpeak.ToString().c_str());
+      upper = Point(BigRat(1), true);
+    }
+    if (ktrough.ContainsInteger()) {
+      lower = Point(BigRat(-1), true);
+    }
+
+    return Bigival(lower, upper);
   }
 
   enum class MaybeBool {

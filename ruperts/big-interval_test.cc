@@ -2,6 +2,7 @@
 #include "big-interval.h"
 
 #include <cmath>
+#include <numbers>
 #include <string>
 #include <cstdio>
 
@@ -298,11 +299,19 @@ static void Transcendental() {
   for (double x : { -2.999999997, -1.0, 0.0,
       1.1e-16, 1.0, 1.1, 1.2, 2.9, 3.0, 400.0 }) {
     Bigival sinx = Bigival::Sin(BigRat::FromDouble(x), epsilon);
-    BigRat actual = BigRat::FromDouble(std::sin(x));
 
-    printf("sin(%f) = %s\n", x, sinx.ToString().c_str());
+    // std::sin also rounds, so the true value must be somewhere
+    // in (nextafter(s, -1), nextafter(s, +1)).
+    double s = std::sin(x);
+    Bigival actual = Bigival(BigRat::FromDouble(std::nextafter(s, -2)),
+                             BigRat::FromDouble(std::nextafter(s, +2)),
+                             false, false);
 
-    CHECK_CONTAINS(sinx, actual);
+    printf("sin(%f) = %s\n"
+           "Want: %s\n", x, sinx.ToString().c_str(),
+           actual.ToString().c_str());
+
+    CHECK(Bigival::MaybeIntersection(sinx, actual).has_value()) << x;
     // Moreover, the interval must be small enough.
     CHECK(sinx.Width() <= epsilon);
   }
@@ -310,12 +319,67 @@ static void Transcendental() {
   for (double x : { -2.999999997, -1.0, 0.0,
       1.1e-16, 1.0, 1.1, 1.2, 2.9, 3.0, 400.0 }) {
     Bigival cosx = Bigival::Cos(BigRat::FromDouble(x), epsilon);
-    BigRat actual = BigRat::FromDouble(std::cos(x));
+    double c = std::cos(x);
+    Bigival actual = Bigival(BigRat::FromDouble(std::nextafter(c, -2)),
+                             BigRat::FromDouble(std::nextafter(c, +2)),
+                             false, false);
 
-    printf("cos(%f) = %s\n", x, cosx.ToString().c_str());
+    printf("cos(%.17g) = %s = %.17g\n"
+           "Want: %s\n",
+           x, cosx.ToString().c_str(), c,
+           actual.ToString().c_str());
 
-    CHECK_CONTAINS(cosx, actual);
+    CHECK(Bigival::MaybeIntersection(cosx, actual).has_value()) << x;
     CHECK(cosx.Width() <= epsilon);
+  }
+
+  // Sin of intervals.
+  {
+    Bigival a = Bigival(BigRat::FromDouble(0.3), BigRat::FromDouble(0.31), true, true);
+    Bigival sina = a.Sin(BigRat(1, 1024 * 1024));
+    CHECK_CONTAINS(sina, BigRat::FromDouble(std::sin(0.301)));
+    CHECK_CONTAINS(sina, BigRat::FromDouble(std::sin(0.305)));
+    CHECK_CONTAINS(sina, BigRat::FromDouble(std::sin(0.30999)));
+
+    CHECK(!sina.Contains(BigRat::FromDouble(std::sin(0.311))));
+    CHECK(!sina.Contains(BigRat::FromDouble(std::sin(0.299))));
+    CHECK(!sina.Contains(BigRat(1)));
+    CHECK(!sina.Contains(BigRat(-1)));
+    CHECK(!sina.Contains(BigRat(0)));
+  }
+
+  {
+    // Very small interval around 26.5π, which is a peak.
+    Bigival a = Bigival(BigRat::FromDouble(26.5 * std::numbers::pi - 1.0e-12),
+                        BigRat::FromDouble(26.5 * std::numbers::pi + 1.0e-12),
+                        false, false);
+    Bigival sina = a.Sin(BigRat(1, 1024 * 1024));
+    CHECK_CONTAINS(sina, BigRat(1));
+    CHECK(!sina.Contains(BigRat(-1)));
+    CHECK(!sina.Contains(BigRat(0)));
+  }
+
+  {
+    printf("----------------------------------\n");
+    // Very small interval after (and not including) 26.5π, which is a peak.
+    Bigival a = Bigival(BigRat::FromDouble(26.5 * std::numbers::pi + 1.0e-6),
+                        BigRat::FromDouble(26.5 * std::numbers::pi + 2.0e-6),
+                        false, false);
+    Bigival sina = a.Sin(BigRat::FromDouble(1.0e-24));
+    CHECK(!sina.Contains(BigRat(1)));
+    // Should be a small interval, since the input interval is small and we
+    // requested a small epsilon.
+    CHECK(sina.Width() <= BigRat(1, 1024));
+  }
+
+  {
+    // Very small interval before (and not including) 26.5π, which is a peak.
+    Bigival a = Bigival(BigRat::FromDouble(26.5 * std::numbers::pi - 2.0e-6),
+                        BigRat::FromDouble(26.5 * std::numbers::pi - 1.0e-6),
+                        false, false);
+    Bigival sina = a.Sin(BigRat::FromDouble(1.0e-24));
+    CHECK(!sina.Contains(BigRat(1)));
+    CHECK(sina.Width() <= BigRat(1, 1024));
   }
 
 }
