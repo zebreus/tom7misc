@@ -319,6 +319,11 @@ struct BigRat {
   inline static BigRat Min(const BigRat &a, const BigRat &b);
   inline static BigRat Max(const BigRat &a, const BigRat &b);
 
+  // Compute the largest integer less than or equal to r.
+  inline static BigInt Floor(const BigRat &r);
+  // And the smallest integer greater than or equal to r.
+  inline static BigInt Ceil(const BigRat &r);
+
   // Returns a rational approximation to the square root of a,
   // which differs from the correct answer by no more than
   // 1/inv_epsilon.
@@ -1796,6 +1801,15 @@ bool BigRat::GreaterEq(const BigRat &a, const BigRat &b) {
 
 bool BigRat::IsZero(const BigRat &a) {
   return Sign(a) == 0;
+}
+
+BigInt BigRat::Floor(const BigRat &r) {
+  const auto &[numer, denom] = r.Parts();
+  return BigInt::DivFloor(numer, denom);
+}
+
+BigInt BigRat::Ceil(const BigRat &r) {
+  return BigInt::Negate(Floor(BigRat::Negate(r)));
 }
 
 #endif

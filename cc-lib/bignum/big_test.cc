@@ -36,12 +36,20 @@ static constexpr bool RUN_BENCHMARKS = false;
                     << "\nValues:\n" << aa << "\n" << bb << "\n";       \
   } while (false)
 
+#define CHECK_IEQ(a, b) do {                                            \
+    BigInt aa = BigInt(a);                                              \
+    BigInt bb = BigInt(b);                                              \
+    CHECK(BigInt::Eq(aa, bb)) << "Expected equal BigInts:\n" <<         \
+      #a << "\n" << #b << "\nWhich had values:\n" <<                    \
+      aa.ToString() << "\n" << bb.ToString() << "\n";                   \
+  } while (false)
+
 static void TestToString() {
   for (int i = -100000; i < 100000; i++) {
     BigInt bi(i);
     string s = bi.ToString();
     CHECK(!s.empty());
-    CHECK(BigInt::Eq(BigInt(s), bi));
+    CHECK_IEQ(BigInt(s), bi);
     // We do some resizing tricks in the GMP version, which
     // can inadvertently leave nul bytes.
     for (char c : s) CHECK(c != 0) << i;
@@ -68,7 +76,9 @@ static void CopyAndAssign() {
   }
   CHECK(a.ToInt() == 8888);
 
-  string s = "190237849028374901872390876190872349817230948719023874190827349817239048712903847190283740918273490817230948798767676767676738347482712341";
+  string s = "19023784902837490187239087619087234981723094871902"
+    "38741908273498172390487129038471902837409182734908172309487"
+    "98767676767676738347482712341";
   BigInt big(s);
   CHECK(big.ToString() == s);
   big = a;
@@ -257,17 +267,17 @@ static void TestToDouble() {
 }
 
 static void TestMod() {
-  CHECK(BigInt::Eq(BigInt::Mod(BigInt{3}, BigInt{5}), BigInt{3}));
-  CHECK(BigInt::Eq(BigInt::Mod(BigInt{7}, BigInt{5}), BigInt{2}));
-  CHECK(BigInt::Eq(BigInt::Mod(BigInt{10}, BigInt{5}), BigInt{0}));
-  CHECK(BigInt::Eq(BigInt::Mod(BigInt{-1}, BigInt{5}), BigInt{4}));
+  CHECK_IEQ(BigInt::Mod(BigInt{3}, BigInt{5}), BigInt{3});
+  CHECK_IEQ(BigInt::Mod(BigInt{7}, BigInt{5}), BigInt{2});
+  CHECK_IEQ(BigInt::Mod(BigInt{10}, BigInt{5}), BigInt{0});
+  CHECK_IEQ(BigInt::Mod(BigInt{-1}, BigInt{5}), BigInt{4});
 }
 
 static void TestEq() {
   BigInt a{1234};
   BigInt b{5678};
 
-  CHECK(BigInt::Eq(BigInt::Times(a, b), 7006652));
+  CHECK_IEQ(BigInt::Times(a, b), 7006652);
 }
 
 static void TestPow() {
@@ -1212,8 +1222,14 @@ static void TestRatHashCode() {
   }
   CHECK(distinct.size() == 4);
 
-  BigInt n{"190237849028374901872390876190872349817230948719023874190827349817239048712903847190283740918273490817230948798767676767676738347482712341"};
-  BigInt d{"2398198723048348182374029384190823049810881688181811116747484774117777777777777777777777772039488118060668834743080000273410875486776387"};
+  BigInt n{
+    "1902378490283749018723908761908723498172309487190"
+    "2387419082734981723904871290384719028374091827349"
+    "0817230948798767676767676738347482712341"};
+  BigInt d{
+    "2398198723048348182374029384190823049810881688181"
+    "8111167474847741177777777777777777777777720394881"
+    "18060668834743080000273410875486776387"};
 
   distinct.insert(BigRat::HashCode(BigRat(n, d)));
   CHECK(distinct.size() == 5);
@@ -1237,6 +1253,43 @@ static void TestRatSign() {
   CHECK(BigRat::Sign(BigRat(0, -1)) == 0);
   CHECK(BigRat::Sign(BigRat(3215, 75)) == 1);
   CHECK(BigRat::Sign(BigRat(-3, -4)) == 1);
+}
+
+static void TestRatFloorCeil() {
+  CHECK_IEQ(BigRat::Floor(BigRat(1, 2)), 0);
+  CHECK_IEQ(BigRat::Floor(BigRat(0)), 0);
+  CHECK_IEQ(BigRat::Floor(BigRat::FromDouble(1.0e-12)), 0);
+  CHECK_IEQ(BigRat::Floor(BigRat::FromDouble(1.0 + 1.0e-12)), 1);
+  CHECK_IEQ(BigRat::Floor(BigRat::FromDouble(-1.0 + 1.0e-12)), -1);
+  CHECK_IEQ(BigRat::Floor(BigRat("36893488147419103232")),
+            BigInt("36893488147419103232"));
+  CHECK_IEQ(BigRat::Floor(BigRat::Plus(BigRat("36893488147419103232"),
+                                       BigRat(1, 357))),
+            BigInt("36893488147419103232"));
+  CHECK_IEQ(BigRat::Floor(BigRat::Plus(BigRat("-36893488147419103232"),
+                                       BigRat(1, 357))),
+            BigInt("-36893488147419103232"));
+
+  // Ceil
+  CHECK_IEQ(BigRat::Ceil(BigRat(1, 2)), 1);
+  CHECK_IEQ(BigRat::Ceil(BigRat(0)), 0);
+  CHECK_IEQ(BigRat::Ceil(BigRat(-1)), -1);
+  CHECK_IEQ(BigRat::Ceil(BigRat::FromDouble(1.0e-12)), 1);
+  CHECK_IEQ(BigRat::Ceil(BigRat::FromDouble(1.0 + 1.0e-12)), 2);
+  CHECK_IEQ(BigRat::Ceil(BigRat::FromDouble(1.0 - 1.0e-12)), 1);
+  CHECK_IEQ(BigRat::Ceil(BigRat::FromDouble(-1.0 + 1.0e-12)), 0);
+  CHECK_IEQ(BigRat::Ceil(BigRat("36893488147419103232")),
+            BigInt("36893488147419103232"));
+  CHECK_IEQ(BigRat::Ceil(BigRat::Plus(BigRat("36893488147419103232"),
+                                       BigRat(1, 357))),
+            BigInt("36893488147419103233"));
+  CHECK_IEQ(BigRat::Ceil(BigRat::Plus(BigRat("-36893488147419103232"),
+                                       BigRat(1, 357))),
+            BigInt("-36893488147419103231"));
+  CHECK_IEQ(BigRat::Ceil(BigRat::Minus(BigRat("-36893488147419103232"),
+                                       BigRat(1, 357))),
+            BigInt("-36893488147419103232"));
+
 }
 
 int main(int argc, char **argv) {
@@ -1306,6 +1359,7 @@ int main(int argc, char **argv) {
   TestRatSqrt();
   TestRatCbrt();
   TestRatSign();
+  TestRatFloorCeil();
 
   TestRatHashCode();
 

@@ -30,6 +30,7 @@
 #ifndef _CC_LIB_BIGNUM_BIGQ_H
 #define _CC_LIB_BIGNUM_BIGQ_H
 
+#include "bignum/bign.h"
 #include "bignum/bigz.h"
 
 #define BQ_PURE_FUNCTION                BN_PURE_FUNCTION
