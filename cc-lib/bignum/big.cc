@@ -1,9 +1,18 @@
 
 #include "bignum/big.h"
 
+#include <algorithm>
 #include <array>
 #include <bit>
+#include <cassert>
 #include <cstdint>
+#include <cstdio>
+#include <functional>
+#include <limits>
+#include <optional>
+#include <stdlib.h>
+#include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -1573,7 +1582,11 @@ BigRat BigRat::Sqrt(const BigRat &xx, const BigInt &inv_epsilon) {
   const BigRat two(2);
   assert(BigRat::Sign(xx) != -1);
 
-  const BigRat epsilon{BigInt(1), inv_epsilon};
+  // Since we also truncate at the end, we split epsilon in half so
+  // that compound error is still less than 1/inv_epsilon.
+  const BigInt two_inv_epsilon = BigInt::LeftShift(inv_epsilon, 1);
+
+  const BigRat epsilon{BigInt(1), two_inv_epsilon};
 
   // "Heron's Method".
   // This approach converges quickly without producing excessively large
@@ -1583,7 +1596,7 @@ BigRat BigRat::Sqrt(const BigRat &xx, const BigInt &inv_epsilon) {
     // So we have xx = x * y.
     BigRat y = BigRat::Div(xx, x);
     if (BigRat::Less(BigRat::Abs(BigRat::Minus(x, y)), epsilon)) {
-      return BigRat::Truncate(y, inv_epsilon);
+      return BigRat::Truncate(y, two_inv_epsilon);
     }
     x = BigRat::Div(BigRat::Plus(x, y), two);
   }
@@ -1592,9 +1605,13 @@ BigRat BigRat::Sqrt(const BigRat &xx, const BigInt &inv_epsilon) {
 BigRat BigRat::Cbrt(const BigRat &in, const BigInt &inv_epsilon) {
   const BigRat three(3);
 
-  const BigRat epsilon{BigInt(1), inv_epsilon};
+  // Both the estimate and the final truncation incur error, so
+  // apportion half to each.
+  const BigInt two_inv_epsilon = BigInt::LeftShift(inv_epsilon, 1);
+  const BigRat half_epsilon{BigInt(1), two_inv_epsilon};
+
   // We use a bit more precision for intermediate truncation.
-  const BigInt four_inv_epsilon = BigInt::Times(inv_epsilon, 4);
+  const BigInt four_inv_epsilon = BigInt::LeftShift(two_inv_epsilon, 1);
 
   int sign = BigRat::Sign(in);
   if (sign == 0) return in;
@@ -1613,8 +1630,8 @@ BigRat BigRat::Cbrt(const BigRat &in, const BigInt &inv_epsilon) {
 
     BigRat next_x = BigRat::Minus(x, BigRat::Div(numerator, denominator));
 
-    if (BigRat::Less(BigRat::Abs(BigRat::Minus(next_x, x)), epsilon)) {
-      return Truncate(next_x, inv_epsilon);
+    if (BigRat::Less(BigRat::Abs(BigRat::Minus(next_x, x)), half_epsilon)) {
+      return Truncate(next_x, two_inv_epsilon);
     }
 
     // If the denominator has gotten too big, truncate.

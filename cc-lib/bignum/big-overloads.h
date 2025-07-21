@@ -116,6 +116,11 @@ inline BigInt &operator ++(BigInt &a) {
   return a;
 }
 
+inline BigInt &operator --(BigInt &a) {
+  a = std::move(a) - 1;
+  return a;
+}
+
 // PERF: Use versions that modify a in place.
 // PERF: Versions with int64_t rhs.
 
