@@ -325,27 +325,11 @@ struct BigRat {
   // And the smallest integer greater than or equal to r.
   inline static BigInt Ceil(const BigRat &r);
 
-  // Returns a rational approximation to the square root of a,
-  // which differs from the correct answer by no more than
-  // 1/inv_epsilon.
+  // Returns a good rational approximation to the square root of a,
+  // with a denominator of no larger than inv_epsilon.
   static BigRat Sqrt(const BigRat &a, const BigInt &inv_epsilon);
   // Same, for cube root.
   static BigRat Cbrt(const BigRat &a, const BigInt &inv_epsilon);
-
-  #if 0
-  // Lower quality, faster approximations.
-  //
-  // Round 'a' to a rational number with denominator no larger than
-  // inv_epsilon, and no further than 1/inv_epsilon away. This is just
-  // the n/inv_epsilon that comes closest to a, though it may reduce.
-  static BigRat Round(const BigRat &a, const BigInt &inv_epsilon);
-  // Find a smaller (or equal) rational with denominator no
-  // larger than inv_epsilon.
-  static BigRat LowerBound(const BigRat &a, const BigInt &inv_epsilon);
-  // Find the next larger (or equal) rational with denominator no
-  // larger than inv_epsilon.
-  static BigRat UpperBound(const BigRat &a, const BigInt &inv_epsilon);
-  #endif
 
   // Considering only rationals with denominator <= inv_epsilon,
   // find lb <= a <= ub such that lb and ub are as close as possible
@@ -356,17 +340,13 @@ struct BigRat {
   SimpleBounds(const BigRat &a, const BigInt &inv_epsilon);
 
   // Truncate 'a' to a good rational approximation (with denominator
-  // no larger than inv_epsilon), using convergents of the continued
-  // fraction. Note that this does not necessarily produce the best
-  // approximation, and the error may be more than 1/inv_epsilon!
-  // This can be used to reduce precision during iterative
-  // approximations, like those used above.
+  // no larger than inv_epsilon), using only convergents of the
+  // continued fraction. This is a little faster than SimpleBounds,
+  // but does not necessarily produce the best approximation, and the
+  // error may be more than 1/inv_epsilon! An appropriate use would be
+  // to reduce precision during iterative approximations, like those
+  // used above.
   static BigRat Truncate(const BigRat &a, const BigInt &inv_epsilon);
-
-  // Same, but the rational that is less (resp. greater) than the
-  // input rational.
-  static BigRat TruncateLowerBound(const BigRat &a, const BigInt &inv_epsilon);
-  static BigRat TruncateUpperBound(const BigRat &a, const BigInt &inv_epsilon);
 
   inline void Swap(BigRat *other);
 

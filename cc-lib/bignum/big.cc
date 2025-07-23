@@ -1525,6 +1525,21 @@ BigRat BigRat::FromDecimal(std::string_view num) {
 }
 
 
+// TODO: Since SimpleBounds is a bit expensive, we might consider
+// offering functions like these:
+//   // Lower quality, faster approximations.
+//   //
+//   // Round 'a' to a rational number with denominator no larger than
+//   // inv_epsilon, and no further than 1/inv_epsilon away. This is just
+//   // the n/inv_epsilon that comes closest to a, though it may reduce.
+//   static BigRat Round(const BigRat &a, const BigInt &inv_epsilon);
+//   // Find a smaller (or equal) rational with denominator no
+//   // larger than inv_epsilon.
+//   static BigRat LowerBound(const BigRat &a, const BigInt &inv_epsilon);
+//   // Find the next larger (or equal) rational with denominator no
+//   // larger than inv_epsilon.
+//   static BigRat UpperBound(const BigRat &a, const BigInt &inv_epsilon);
+
 // Note: The fact that this produces an interval of no larger than 1/inv_epsilon
 // in width is implied by the fact that it produces the closest lb and ub to 'a'.
 // This is because we could always find n/inv_epsilon and (n+1)/inv_epsilon that
@@ -1551,7 +1566,7 @@ BigRat::SimpleBounds(const BigRat &a, const BigInt &inv_epsilon) {
     num = BigInt::Negate(std::move(num));
   }
 
-  // 2. Coarse Search: Find the last convergent c_k = p1/q1 that fits,
+  // Find the last convergent c_k = p1/q1 that fits,
   // and the one before it, c_{k-1} = p2/q2.
   BigInt p2{0}, q2{1};
   BigInt p1{1}, q1{0};
@@ -1619,45 +1634,17 @@ BigRat::SimpleBounds(const BigRat &a, const BigInt &inv_epsilon) {
   }
 }
 
-enum class BoundType {
-  UPPER,
-  LOWER,
-  EITHER,
-};
 
-static inline BoundType FlipBound(BoundType type) {
-  switch (type) {
-  case BoundType::UPPER: return BoundType::LOWER;
-  case BoundType::LOWER: return BoundType::UPPER;
-  case BoundType::EITHER: return BoundType::EITHER;
-  }
-}
-
-[[maybe_unused]]
-static const char *BoundTypeName(BoundType type) {
-  switch (type) {
-  case BoundType::UPPER: return "UPPER";
-  case BoundType::LOWER: return "LOWER";
-  case BoundType::EITHER: return "EITHER";
-  }
-}
-
-static BigRat TruncateInternal(const BigRat &a_in,
-                               const BigInt &inv_epsilon,
-                               BoundType bound_type) {
-  int sign = BigRat::Sign(a_in);
-  if (sign == 0) return a_in;
+BigRat BigRat::Truncate(const BigRat &a, const BigInt &inv_epsilon) {
+  int sign = BigRat::Sign(a);
+  if (sign == 0) return a;
 
   BigInt r2, r1;
 
-  // The algorithm works on positive numbers. Note that if we
-  // are negating, we also have to reverse the sense of lower
-  // and upper bounds.
   if (sign < 0) {
-    std::tie(r2, r1) = BigRat::Negate(a_in).Parts();
-    bound_type = FlipBound(bound_type);
+    std::tie(r2, r1) = BigRat::Negate(a).Parts();
   } else {
-    std::tie(r2, r1) = a_in.Parts();
+    std::tie(r2, r1) = a.Parts();
   }
 
   // PERF: Short circuit if denominator is already smaller than inv_epsilon.
@@ -1669,19 +1656,13 @@ static BigRat TruncateInternal(const BigRat &a_in,
   BigInt p1{1};
   BigInt q1{0};
 
-  // Best current approximation that matches the bound type.
-  BigInt best_numer{0}, best_denom{0};
-
-  for (int n = 0; ; n++) {
+  while (true) {
     // Do we have an exact representation?
     if (BigInt::Sign(r1) == 0) {
-      // This is valid for any rounding mode, so just return it.
       BigRat ret = BigRat(p1, q1);
       return (sign < 0) ? BigRat::Negate(ret) : ret;
     }
 
-    // PERF: QuotRem should work here,
-    // but it was a lot slower! Causes copying?
     // a_i = floor(r_{i-2} / r_{i-1})
     BigInt a = BigInt::DivFloor(r2, r1);
     // r_i = r_{i-2} mod r_{i-1}
@@ -1692,55 +1673,22 @@ static BigRat TruncateInternal(const BigRat &a_in,
     // q_n = a_n * q_{n-1} + q_{n-2}
     BigInt q = BigInt::Plus(BigInt::Times(a, q1), q2);
 
-    // If the numerator has gotten too big, return the best approximation
-    // that we have.
+    // If the numerator has gotten too big, return the previous value.
     if (BigInt::Greater(q, inv_epsilon)) {
-      BigRat ret;
-      if (BigInt::Sign(best_numer) == 0 &&
-          BigInt::Sign(best_denom) == 0) [[unlikely]] {
-        BigRat abs_a = BigRat::Abs(a_in);
-
-        printf("Fallback! %s %s\n", abs_a.ToString().c_str(),
-               BoundTypeName(bound_type));
-
-        // If we didn't run enough iterations to find the bound type
-        // we wanted, use an integer approximation.
-        switch (bound_type) {
-        case BoundType::LOWER:
-          ret = BigRat(BigRat::Floor(abs_a), BigInt(1));
-          break;
-        case BoundType::UPPER:
-          ret = BigRat(BigRat::Ceil(abs_a), BigInt(1));
-          break;
-        case BoundType::EITHER: {
-          // Compute both and take the closer one.
-          // (not sure this is even possible?)
-          BigRat floor = BigRat::Floor(abs_a);
-          BigRat ceil = BigRat::Ceil(abs_a);
-          if (BigRat::Less(BigRat::Minus(ceil, abs_a),
-                           BigRat::Minus(abs_a, floor))) {
-            ret = ceil;
-          } else {
-            ret = floor;
-          }
-          break;
-        }
-        }
-
+      if (BigInt::Sign(q1) == 0) [[unlikely]] {
+        // If we didn't even run a single iteration, then use
+        // an integer approximation.
+        // (We could test both the floor and ceiling here to find
+        // the closer one, but this function does not make any
+        // promises about finding the best approximation!)
+        //
+        // Note that in this fallback we are using the original a,
+        // so it has the correct sign already.
+        return BigRat::Floor(a);
       } else {
-        // Normal case.
-        ret = BigRat(std::move(best_numer), std::move(best_denom));
+        BigRat ret = BigRat(p1, q1);
+        return (sign < 0) ? BigRat::Negate(ret) : ret;
       }
-
-      return (sign < 0) ? BigRat::Negate(std::move(ret)) : ret;
-    }
-
-    const bool is_odd = !!(n & 1);
-    if (bound_type == BoundType::EITHER ||
-        (is_odd ?
-         (bound_type == BoundType::UPPER) : (bound_type == BoundType::LOWER))) {
-      best_numer = p;
-      best_denom = q;
     }
 
     // Shift values for next iteration
@@ -1752,20 +1700,6 @@ static BigRat TruncateInternal(const BigRat &a_in,
     q1 = std::move(q);
   }
 }
-
-
-BigRat BigRat::Truncate(const BigRat &a, const BigInt &inv_epsilon) {
-  return TruncateInternal(a, inv_epsilon, BoundType::EITHER);
-}
-
-BigRat BigRat::TruncateLowerBound(const BigRat &a, const BigInt &inv_epsilon) {
-  return TruncateInternal(a, inv_epsilon, BoundType::LOWER);
-}
-
-BigRat BigRat::TruncateUpperBound(const BigRat &a, const BigInt &inv_epsilon) {
-  return TruncateInternal(a, inv_epsilon, BoundType::UPPER);
-}
-
 
 BigRat BigRat::Sqrt(const BigRat &xx, const BigInt &inv_epsilon) {
   const BigRat two(2);
