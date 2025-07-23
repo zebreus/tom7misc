@@ -38,6 +38,7 @@ struct BigInt {
 
   // Value semantics with linear-time copies (like std::vector).
   inline BigInt(const BigInt &other);
+  inline BigInt(BigInt &&other);
   inline BigInt &operator =(const BigInt &other);
   inline BigInt &operator =(BigInt &&other);
 
@@ -331,10 +332,41 @@ struct BigRat {
   // Same, for cube root.
   static BigRat Cbrt(const BigRat &a, const BigInt &inv_epsilon);
 
-  // Truncate 'a' to the nearest rational with denominator no
-  // larger than inv_epsilon. This can be used to reduce precision
-  // during iterative approximations, like those used above.
+  #if 0
+  // Lower quality, faster approximations.
+  //
+  // Round 'a' to a rational number with denominator no larger than
+  // inv_epsilon, and no further than 1/inv_epsilon away. This is just
+  // the n/inv_epsilon that comes closest to a, though it may reduce.
+  static BigRat Round(const BigRat &a, const BigInt &inv_epsilon);
+  // Find a smaller (or equal) rational with denominator no
+  // larger than inv_epsilon.
+  static BigRat LowerBound(const BigRat &a, const BigInt &inv_epsilon);
+  // Find the next larger (or equal) rational with denominator no
+  // larger than inv_epsilon.
+  static BigRat UpperBound(const BigRat &a, const BigInt &inv_epsilon);
+  #endif
+
+  // Considering only rationals with denominator <= inv_epsilon,
+  // find lb <= a <= ub such that lb and ub are as close as possible
+  // to a. The distance between lb and ub is <= 1/inv_epsilon.
+  // This considers the convergents of the continued fraction,
+  // but also the semiconvergents.
+  static std::pair<BigRat, BigRat>
+  SimpleBounds(const BigRat &a, const BigInt &inv_epsilon);
+
+  // Truncate 'a' to a good rational approximation (with denominator
+  // no larger than inv_epsilon), using convergents of the continued
+  // fraction. Note that this does not necessarily produce the best
+  // approximation, and the error may be more than 1/inv_epsilon!
+  // This can be used to reduce precision during iterative
+  // approximations, like those used above.
   static BigRat Truncate(const BigRat &a, const BigInt &inv_epsilon);
+
+  // Same, but the rational that is less (resp. greater) than the
+  // input rational.
+  static BigRat TruncateLowerBound(const BigRat &a, const BigInt &inv_epsilon);
+  static BigRat TruncateUpperBound(const BigRat &a, const BigInt &inv_epsilon);
 
   inline void Swap(BigRat *other);
 
@@ -418,6 +450,13 @@ BigInt::BigInt(std::integral auto ni) {
 BigInt::BigInt(const BigInt &other) {
   mpz_init(rep);
   mpz_set(rep, other.rep);
+}
+
+BigInt::BigInt(BigInt &&other) {
+  mpz_init(rep);
+  // We don't care how we leave other, but it needs to be valid (e.g. for
+  // the destructor). Swap is a good way to do this.
+  mpz_swap(rep, other.rep);
 }
 
 BigInt &BigInt::operator =(const BigInt &other) {
@@ -1170,6 +1209,12 @@ BigInt::BigInt(std::integral auto ni) {
 }
 
 BigInt::BigInt(const BigInt &other) : rep(BzCopy(other.rep)) { }
+BigInt::BigInt(BigInt &&other) : rep(other.rep) {
+  // Take ownership. Only valid thing to do with other is
+  // destroy it.
+  other.rep = nullptr;
+}
+
 BigInt &BigInt::operator =(const BigInt &other) {
   // Self-assignment does nothing.
   if (this == &other) return *this;
@@ -1185,6 +1230,8 @@ BigInt &BigInt::operator =(BigInt &&other) {
 }
 
 BigInt::~BigInt() {
+  // Note: rep can be null (source of move constructor), but
+  // BzFree can free null (it's just free()).
   BzFree(rep);
   rep = nullptr;
 }

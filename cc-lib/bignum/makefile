@@ -38,23 +38,23 @@ CXXFLAGS= $(PLATFORM_CXXFLAGS) -march=native -Wall -I.. --std=c++20 -g -O3
 
 # Just used for testing; bignum itself should not depend on cc-lib.
 # This assumes that cc-lib doesn't depend on GMP flags.
-CCLIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../util.o ../ansi.o
+CCLIB_TEST_OBJECTS=../base/logging.o ../base/stringprintf.o ../util.o ../arcfour.o ../ansi.o ../status-bar.o
 
 %.o : %.cc *.h makefile
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $< -o $@ -c
 
 # with GMP; don't need bigz.o bign.o bigq.o
-big_test.exe : big.o big_test.o $(CCLIB_OBJECTS)
+big_test.exe : big.o big_test.o $(CCLIB_TEST_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
 # bigz.o bign.o bigq.o
-big-overloads_test.exe : big.o big-overloads_test.o $(CCLIB_OBJECTS)
+big-overloads_test.exe : big.o big-overloads_test.o $(CCLIB_TEST_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
-big-numbers_test.exe : big-numbers_test.o big.o big-numbers.o $(CCLIB_OBJECTS)
+big-numbers_test.exe : big-numbers_test.o big.o big-numbers.o $(CCLIB_TEST_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
-polynomial_test.exe : polynomial_test.o polynomial.o big.o big-numbers.o $(CCLIB_OBJECTS)
+polynomial_test.exe : polynomial_test.o polynomial.o big.o big-numbers.o $(CCLIB_TEST_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
 
@@ -66,16 +66,16 @@ BIG_NOGMP_OBJECTS=bigz-nogmp.o bign-nogmp.o bigq-nogmp.o
 %-nogmp.o : %.cc *.h makefile
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
-big-nogmp_test.exe : big-nogmp.o big_test-nogmp.o $(CCLIB_OBJECTS) $(BIG_NOGMP_OBJECTS)
+big-nogmp_test.exe : big-nogmp.o big_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
-big-overloads-nogmp_test.exe : big-nogmp.o big-overloads_test-nogmp.o $(CCLIB_OBJECTS) $(BIG_NOGMP_OBJECTS)
+big-overloads-nogmp_test.exe : big-nogmp.o big-overloads_test-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
-big-numbers-nogmp_test.exe : big-numbers_test-nogmp.o big-nogmp.o big-numbers-nogmp.o $(CCLIB_OBJECTS) $(BIG_NOGMP_OBJECTS)
+big-numbers-nogmp_test.exe : big-numbers_test-nogmp.o big-nogmp.o big-numbers-nogmp.o $(CCLIB_TEST_OBJECTS) $(BIG_NOGMP_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
-polynomial-nogmp_test.exe : polynomial_test-nogmp.o polynomial-nogmp.o big-nogmp.o big-numbers-nogmp.o bigz-nogmp.o bign-nogmp.o bigq-nogmp.o $(CCLIB_OBJECTS)
+polynomial-nogmp_test.exe : polynomial_test-nogmp.o polynomial-nogmp.o big-nogmp.o big-numbers-nogmp.o bigz-nogmp.o bign-nogmp.o bigq-nogmp.o $(CCLIB_TEST_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
 clean :

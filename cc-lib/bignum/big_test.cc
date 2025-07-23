@@ -3,6 +3,7 @@
 
 #include <array>
 #include <bit>
+#include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -21,9 +22,13 @@
 #endif
 
 #include "ansi.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "randutil.h"
 #include "timer.h"
+#include "status-bar.h"
+#include "periodically.h"
 
 using int64 = int64_t;
 using namespace std;
@@ -85,6 +90,16 @@ static void CopyAndAssign() {
   big = a;
   CHECK(big.ToInt() == 8888);
   CHECK(big.ToU64() == 8888u);
+
+
+  BigInt d{7777};
+  BigInt e{8888};
+  d = std::move(e);
+  CHECK(d.ToString() == "8888");
+  e = BigInt::Plus(d, 1);
+  CHECK(e.ToString() == "8889");
+  BigInt f(std::move(e));
+  CHECK(f.ToString() == "8889");
 }
 
 static void TestToU64() {
@@ -1144,7 +1159,180 @@ static void TestRatTruncate() {
     BigRat r = BigRat::Truncate(phi, BigInt(40000000));
     CHECK(r.ToString() == "63245986/39088169") << r.ToString();
   }
+
+  {
+    BigRat r = BigRat::Truncate(pi, BigInt(1));
+    CHECK(r.ToString() == "3") << r.ToString();
+  }
 }
+
+static void TestRatTruncateBounds() {
+
+  // Exact fractions.
+  {
+    BigRat r = BigRat::TruncateLowerBound(BigRat{7, 11}, BigInt(1000));
+    CHECK(r.ToString() == "7/11") << r.ToString();
+  }
+
+  {
+    BigRat r = BigRat::TruncateUpperBound(BigRat{7, 11}, BigInt(1000));
+    CHECK(r.ToString() == "7/11") << r.ToString();
+  }
+
+  {
+    BigRat r = BigRat::TruncateLowerBound(BigRat{27, 11}, BigInt(1));
+    CHECK(r.ToString() == "2");
+  }
+
+  {
+    BigRat r = BigRat::TruncateUpperBound(BigRat{27, 11}, BigInt(1));
+    CHECK(r.ToString() == "3") << r.ToString();
+  }
+
+  Timer timer;
+  Periodically status_per(1.0);
+  StatusBar status(1);
+  const int64_t TIMES = 1'000'000;
+  ArcFour rc("test");
+  for (int i = 0; i < TIMES; i++) {
+    // Include negative values.
+    double d = RandDouble(&rc) * 128.0 - 64.0;
+
+    uint64_t denom =
+      (rc.Byte() < 20) ?
+      1 + RandTo(&rc, 1024) :
+      // To 2^50.
+      1 + RandTo(&rc, uint64_t{1125899906842624});
+    BigInt inv_epsilon(denom);
+
+    BigRat r = BigRat::FromDouble(d);
+    BigRat lb = BigRat::TruncateLowerBound(r, inv_epsilon);
+    BigRat ub = BigRat::TruncateUpperBound(r, inv_epsilon);
+
+    CHECK(BigRat::LessEq(lb, r)) << "Wanted " << lb.ToString() << " <= "
+                                 << r.ToString();
+    CHECK(BigRat::LessEq(r, ub)) << "Wanted " << r.ToString() << " <= "
+                                 << ub.ToString();
+
+    // Alas, with the continued fractions we cannot guarantee
+    // anything about the amount of error relative to the input.
+
+    const auto [ln, ld] = lb.Parts();
+    const auto [un, ud] = ub.Parts();
+
+    CHECK(BigInt::LessEq(ld, inv_epsilon));
+    CHECK(BigInt::LessEq(ud, inv_epsilon));
+
+    status_per.RunIf([&]() {
+        status.Progress(i, TIMES, "Truncate lb/ub");
+      });
+  }
+
+  printf("Truncated lb/ub %" PRIi64 " in %s\n",
+         TIMES, ANSI::Time(timer.Seconds()).c_str());
+}
+
+static void TestRatSimpleBounds() {
+
+  {
+    // If the fraction already fits in the denominator,
+    // the result is exact.
+    const auto &[lb, ub] =
+      BigRat::SimpleBounds(BigRat{7, 11}, BigInt(1000));
+    CHECK(lb.ToString() == "7/11" & ub.ToString() == "7/11");
+  }
+
+  {
+    const auto &[lb, ub] =
+      BigRat::SimpleBounds(BigRat{-16, 171}, BigInt(1000));
+    CHECK(lb.ToString() == "-16/171" & ub.ToString() == "-16/171");
+  }
+
+  {
+    // Denegerates to Floor/Ceil with a denominator of 1.
+    const auto &[lb, ub] =
+      BigRat::SimpleBounds(BigRat{27, 11}, BigInt(1));
+    CHECK(lb.ToString() == "2" & ub.ToString() == "3");
+  }
+
+  {
+    // Denegerates to Floor/Ceil with a denominator of 1.
+    const auto &[lb, ub] =
+      BigRat::SimpleBounds(BigRat(27), BigInt(1));
+    CHECK(lb.ToString() == "27" & ub.ToString() == "27");
+  }
+
+  {
+    // Zero is a special case.
+    const auto &[lb, ub] =
+      BigRat::SimpleBounds(BigRat(0), BigInt(1000));
+    CHECK(lb.ToString() == "0" & ub.ToString() == "0");
+  }
+
+  {
+    // Interesting cases where we were very close to a simple
+    // fraction.
+    BigRat a = BigRat::FromDouble(0.50000001);
+    const auto &[lb, ub] = BigRat::SimpleBounds(a, BigInt(1000));
+    CHECK(BigRat::LessEq(BigRat::Minus(a, lb), BigRat(1, 1000)));
+    CHECK(BigRat::LessEq(BigRat::Minus(ub, a), BigRat(1, 1000)));
+    CHECK(lb.ToString() == "1/2") << lb.ToString();
+    CHECK(ub.ToString() == "500/999") << ub.ToString();
+  }
+
+  {
+    BigRat a = BigRat::FromDouble(0.33333332);
+    const auto &[lb, ub] = BigRat::SimpleBounds(a, BigInt(1000));
+    CHECK(lb.ToString() == "333/1000") << lb.ToString();
+    CHECK(ub.ToString() == "1/3") << ub.ToString();
+  }
+
+  Timer timer;
+  Periodically status_per(1.0);
+  StatusBar status(1);
+  const int64_t TIMES = 1'000'000;
+  ArcFour rc("test");
+  for (int i = 0; i < TIMES; i++) {
+    // Include negative values.
+    double d = RandDouble(&rc) * 128.0 - 64.0;
+
+    uint64_t denom =
+      (rc.Byte() < 20) ?
+      1 + RandTo(&rc, 1024) :
+      // To 2^50.
+      1 + RandTo(&rc, uint64_t{1125899906842624});
+    BigInt inv_epsilon(denom);
+
+    BigRat r = BigRat::FromDouble(d);
+    const auto &[lb, ub] = BigRat::SimpleBounds(r, inv_epsilon);
+
+    CHECK(BigRat::LessEq(lb, r)) << "Wanted " << lb.ToString() << " <= "
+                                 << r.ToString();
+    CHECK(BigRat::LessEq(r, ub)) << "Wanted " << r.ToString() << " <= "
+                                 << ub.ToString();
+
+    // The width of the interval must be no more than the
+    // requested one.
+    BigRat width = BigRat::Minus(ub, lb);
+    BigRat epsilon = BigRat(BigInt(1), inv_epsilon);
+    CHECK(BigRat::LessEq(width, epsilon))
+      << "Width was: " << width.ToString();
+
+    const auto [ln, ld] = lb.Parts();
+    const auto [un, ud] = ub.Parts();
+
+    CHECK(BigInt::LessEq(ld, inv_epsilon));
+    CHECK(BigInt::LessEq(ud, inv_epsilon));
+
+    status_per.RunIf([&]() {
+        status.Progress(i, TIMES, "SimpleBounds test");
+      });
+  }
+
+  printf("SimpleBounds x %" PRIi64 " in %s\n",
+         TIMES, ANSI::Time(timer.Seconds()).c_str());
+}
+
 
 static void TestRatNegate() {
   BigRat pp("1234567891234567891/10000000000000000000");
@@ -1378,6 +1566,7 @@ int main(int argc, char **argv) {
   TestPowMod();
 
   TestRatTruncate();
+  TestRatTruncateBounds();
   TestRatNegate();
 
   TestPrimeFactors();
@@ -1402,6 +1591,8 @@ int main(int argc, char **argv) {
   TestRatFloorCeil();
 
   TestRatHashCode();
+
+  TestRatSimpleBounds();
 
   printf("OK\n");
 }
