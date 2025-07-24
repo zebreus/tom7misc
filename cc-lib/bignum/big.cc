@@ -16,10 +16,12 @@
 #include <utility>
 #include <vector>
 
+using namespace std;
+
+static constexpr bool VERBOSE = false;
+
 // TODO: Move to big-util or something so that we don't
 // need to include it by default?
-
-using namespace std;
 
 /* Factorization derives from the GPL factor.c, which is part of GNU
    coreutils. Copyright (C) 1986-2023 Free Software Foundation, Inc.
@@ -1546,7 +1548,7 @@ BigRat BigRat::FromDecimal(std::string_view num) {
 // bracket 'a', and those differ by exactly n/inv_epsilon. Since lb and ub are
 // at least as good, they will be at least as close.
 std::pair<BigRat, BigRat>
-BigRat::SimpleBounds(const BigRat &a, const BigInt &inv_epsilon) {
+BigRat::ElementaryBounds(const BigRat &a, const BigInt &inv_epsilon) {
   const int sign = BigRat::Sign(a);
   if (sign == 0) {
     return {a, a};
@@ -1660,7 +1662,7 @@ BigRat BigRat::Truncate(const BigRat &a, const BigInt &inv_epsilon) {
     // Do we have an exact representation?
     if (BigInt::Sign(r1) == 0) {
       BigRat ret = BigRat(p1, q1);
-      return (sign < 0) ? BigRat::Negate(ret) : ret;
+      return (sign < 0) ? BigRat::Negate(std::move(ret)) : std::move(ret);
     }
 
     // a_i = floor(r_{i-2} / r_{i-1})
@@ -1687,7 +1689,7 @@ BigRat BigRat::Truncate(const BigRat &a, const BigInt &inv_epsilon) {
         return BigRat::Floor(a);
       } else {
         BigRat ret = BigRat(p1, q1);
-        return (sign < 0) ? BigRat::Negate(ret) : ret;
+        return (sign < 0) ? BigRat::Negate(std::move(ret)) : std::move(ret);
       }
     }
 
@@ -1701,15 +1703,106 @@ BigRat BigRat::Truncate(const BigRat &a, const BigInt &inv_epsilon) {
   }
 }
 
+std::tuple<BigRat, std::optional<BigRat>, BigRat>
+BigRat::SimplifyInterval(const BigRat &lower, const BigRat &upper,
+                         const BigInt &inv_epsilon) {
+  // Elementary interval for the upper bound.
+  auto [upper_lb, upper_ub] = ElementaryBounds(upper, inv_epsilon);
+
+  if (BigRat::GreaterEq(lower, upper_lb)) {
+    // Check if the lower bound is inside the upper interval, then
+    // just use that one.
+    return std::make_tuple(std::move(upper_lb), std::nullopt, std::move(upper_ub));
+  } else {
+    // Otherwise we must be straddling a simple fraction.
+    // We'll need the other bound too.
+    auto [lower_lb, lower_ub] = ElementaryBounds(lower, inv_epsilon);
+
+    // If the precondition is met, then lower_ub = s = upper_lb.
+
+    return std::make_tuple(lower_lb,
+                           std::make_optional(std::move(upper_lb)),
+                           upper_ub);
+  }
+}
+
+std::pair<BigRat, BigRat>
+BigRat::SqrtBounds(const BigRat &xx, const BigInt &inv_epsilon) {
+  const BigRat two(2);
+  const int sgn = BigRat::Sign(xx);
+  assert(sgn != -1);
+  if (sgn == 0) {
+    return {BigRat(0), BigRat(0)};
+  }
+
+  // We need an accurate enough interval for the square root such that
+  // we can guarantee the final interval is no more than 1/inv_epsilon
+  // (to satisfy the precondition of SimplifyInterval). This interval
+  // needs to be 1/(d^2). Fortunately this is just like one or two
+  // more steps of the algorithm.
+  const BigInt sq_inv_epsilon = BigInt::Times(inv_epsilon, inv_epsilon);
+  const BigRat epsilon{BigInt(1), sq_inv_epsilon};
+
+  // "Heron's Method".
+  // This approach converges quickly (approximately doubling the number of
+  // correct digits with each step) without producing excessively large
+  // intermediate denominators. So we only perform truncation at the end.
+  BigRat x = BigInt(1);
+  for (;;) {
+    // So we have xx = x * y.
+    BigRat y = BigRat::Div(xx, x);
+    BigRat diff = BigRat::Abs(BigRat::Minus(x, y));
+    // Exact result.
+    if (BigRat::Sign(diff) == 0)
+      return std::make_pair(x, x);
+
+    if (BigRat::Less(diff, epsilon)) {
+      // Then x and y are bounds on the true square root.
+      if (BigRat::Less(y, x)) {
+        y.Swap(&x);
+      }
+      // so now x <= sqrt(xx) <= y, and the interval size
+      // is no more than inv_epsilon.
+
+      // PERF: We only use one endpoint of each interval, so we
+      // could at least avoid copying. There may be some more efficient
+      // way to compute these together, too.
+      if (VERBOSE) {
+        printf("Simplify bounds %s to %s.\n",
+               x.ToString().c_str(), y.ToString().c_str());
+      }
+
+      auto [lb, s, ub] = SimplifyInterval(x, y, inv_epsilon);
+      if (s.has_value()) {
+        // This happens when the interval bracketed a very simple
+        // fraction, which is often because it is the exact rational
+        // root. In any case, to satisfy the inv_epsilon bound, we
+        // need to know which of the two sides to use (the total
+        // width could be as high as inv_epsilon*2.
+        BigRat ss = BigRat::Times(s.value(), s.value());
+        const int cmp = BigRat::Compare(ss, xx);
+        if (cmp == 0) {
+          return std::make_pair(s.value(), s.value());
+        } else if (cmp == -1) {
+          return std::make_pair(std::move(lb), std::move(s.value()));
+        } else {
+          return std::make_pair(std::move(s.value()), std::move(ub));
+        }
+      }
+
+      // Otherwise we are in the simple, common case where we already
+      // have an elementary interval.
+      return std::make_pair(std::move(lb), std::move(ub));
+    }
+    x = BigRat::Div(BigRat::Plus(x, y), two);
+  }
+}
+
 BigRat BigRat::Sqrt(const BigRat &xx, const BigInt &inv_epsilon) {
   const BigRat two(2);
   assert(BigRat::Sign(xx) != -1);
 
-  // Since we also truncate at the end, we split epsilon in half so
-  // that compound error is still less than 1/inv_epsilon.
-  const BigInt two_inv_epsilon = BigInt::LeftShift(inv_epsilon, 1);
-
-  const BigRat epsilon{BigInt(1), two_inv_epsilon};
+  const BigRat epsilon{BigInt(1), inv_epsilon};
 
   // "Heron's Method".
   // This approach converges quickly without producing excessively large
@@ -1719,7 +1812,7 @@ BigRat BigRat::Sqrt(const BigRat &xx, const BigInt &inv_epsilon) {
     // So we have xx = x * y.
     BigRat y = BigRat::Div(xx, x);
     if (BigRat::Less(BigRat::Abs(BigRat::Minus(x, y)), epsilon)) {
-      return BigRat::Truncate(y, two_inv_epsilon);
+      return BigRat::Truncate(y, inv_epsilon);
     }
     x = BigRat::Div(BigRat::Plus(x, y), two);
   }

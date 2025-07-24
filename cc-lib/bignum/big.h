@@ -331,21 +331,48 @@ struct BigRat {
   // Same, for cube root.
   static BigRat Cbrt(const BigRat &a, const BigInt &inv_epsilon);
 
+
+  // Return accurate bounds on the square root of a,
+  // with a denominator no larger than inv_epsilon and where
+  // the width of the interval is no more than 1/inv_epsilon.
+  static std::pair<BigRat, BigRat> SqrtBounds(const BigRat &a,
+                                              const BigInt &inv_epsilon);
+
   // Considering only rationals with denominator <= inv_epsilon,
   // find lb <= a <= ub such that lb and ub are as close as possible
   // to a. The distance between lb and ub is <= 1/inv_epsilon.
-  // This considers the convergents of the continued fraction,
+  // Formally they are Farey neighbors in F_{inv_epsilon}, and
+  // we call this an elementary interval.
+  // It works by using the convergents of the continued fraction,
   // but also the semiconvergents.
   static std::pair<BigRat, BigRat>
-  SimpleBounds(const BigRat &a, const BigInt &inv_epsilon);
+  ElementaryBounds(const BigRat &a, const BigInt &inv_epsilon);
+
+  // Turns a high precision interval into a high quality one. The
+  // input [lb, ub] must have width no more than 1/(inv_epsilon^2).
+  // Computes new lower and upper bounds that contain the original
+  // interval, and use denominators no more than inv_epsilon. These
+  // are the first and last components of the returned triple. If the
+  // middle element is absent, then the new bounds are Farey neighbors
+  // in F_{inv_epsilon} and are thus no more than 1/inv_epsilon apart.
+  // If the middle element is present, then this is a Farey triple
+  // (lb, s, ub), where s is a simple fraction (often much simpler)
+  // that falls in the interval. In this case, the full interval may
+  // be up to 2/inv_epsilon in width. You may be able to determine one
+  // of the two sub-intervals to choose with further tests (and
+  // heuristically, the middle element may be the exact rational
+  // answer you are trying to approximate).
+  static std::tuple<BigRat, std::optional<BigRat>, BigRat>
+  SimplifyInterval(const BigRat &lb, const BigRat &ub,
+                   const BigInt &inv_epsilon);
 
   // Truncate 'a' to a good rational approximation (with denominator
   // no larger than inv_epsilon), using only convergents of the
-  // continued fraction. This is a little faster than SimpleBounds,
-  // but does not necessarily produce the best approximation, and the
-  // error may be more than 1/inv_epsilon! An appropriate use would be
-  // to reduce precision during iterative approximations, like those
-  // used above.
+  // continued fraction. This is a little faster than
+  // ElementaryBounds, but does not necessarily produce the best
+  // approximation, and the error may be more than 1/inv_epsilon! An
+  // appropriate use would be to reduce precision during iterative
+  // approximations, like those used above.
   static BigRat Truncate(const BigRat &a, const BigInt &inv_epsilon);
 
   inline void Swap(BigRat *other);

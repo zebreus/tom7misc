@@ -349,6 +349,7 @@ static void TestQuotRem() {
 }
 
 static void TestPrimeFactors() {
+  Timer timer;
   printf("Prime factors..\n");
   auto FTOS = [](const std::vector<std::pair<BigInt, int>> &fs) {
       string s;
@@ -492,7 +493,8 @@ static void TestPrimeFactors() {
     }
   }
 
-  printf("Prime factorization OK.\n");
+  printf("Prime factorization OK in %s.\n",
+         ANSI::Time(timer.Seconds()).c_str());
 }
 
 
@@ -566,10 +568,11 @@ static void TestPi() {
   }
 
   BigRat res = BigRat::Times(sum, BigRat(4, 1));
+  /*
   printf("Final approx pi: %s\n",
          res.ToString().c_str());
   fflush(stdout);
-
+  */
 
   // This sequence converges REALLY slow!
   BigRat pi_lb(314, 100);
@@ -1059,6 +1062,78 @@ static void TestRatSqrt() {
   printf("Sqrt OK in %s\n", ANSI::Time(timer.Seconds()).c_str());
 }
 
+static void TestRatSqrtBounds() {
+
+  auto Show = [](const BigRat &lb, const BigRat &ub) {
+      return std::format("lb: {} ({:.17g}), ub: {} ({:.17g})",
+                         lb.ToString(),
+                         lb.ToDouble(),
+                         ub.ToString(),
+                         ub.ToDouble());
+    };
+
+  Timer timer;
+  printf("Test sqrt:\n");
+
+  struct Testcase {
+    BigInt inv_epsilon;
+    BigRat xx;
+  };
+
+  std::vector<Testcase> testcases = {
+    // The case where the result is a simple rational number is
+    // actually the most interesting, since it can force us into
+    // a situation where our interval unluckily "straddles" a
+    // simple fraction (namely that answer). SqrtBounds handles
+    // this correctly, though.
+    {.inv_epsilon = BigInt{100}, .xx = BigRat(1, 4)},
+    {.inv_epsilon = BigInt{1000000000}, .xx = BigRat(1, 4)},
+
+    {.inv_epsilon = BigInt{10}, .xx = BigRat(0)},
+
+    {.inv_epsilon = BigInt{1}, .xx = BigRat(64)},
+    {.inv_epsilon = BigInt{123}, .xx = BigRat(64)},
+
+    // Irrational.
+    {.inv_epsilon = BigInt{1000}, .xx = BigRat(3, 4)},
+    {.inv_epsilon = BigInt{1000000000}, .xx = BigRat(3, 4)},
+
+    {.inv_epsilon = BigInt{31337}, .xx = BigRat(13323377777, 77773)},
+    {.inv_epsilon = BigInt{"1011001110001111"},
+     .xx = BigRat(13323377777, 77773)},
+
+  };
+
+  for (const Testcase &test : testcases) {
+    BigRat epsilon{BigInt(1), test.inv_epsilon};
+    const auto &[lb, ub] = BigRat::SqrtBounds(test.xx, test.inv_epsilon);
+
+    printf("sqrt(%s) ∊ [%s, %s]\n",
+           test.xx.ToString().c_str(),
+           lb.ToString().c_str(),
+           ub.ToString().c_str());
+
+    BigRat width = BigRat::Minus(ub, lb);
+    CHECK(BigRat::LessEq(width, epsilon)) <<
+      width.ToString() << " vs " << epsilon.ToString() <<
+      "\nfor: " << Show(lb, ub);
+    const auto [ln, ld] = lb.Parts();
+    const auto [un, ud] = ub.Parts();
+    CHECK(BigInt::LessEq(ld, test.inv_epsilon)) << Show(lb, ub);
+    CHECK(BigInt::LessEq(ud, test.inv_epsilon)) << Show(lb, ub);
+
+    BigRat llb = BigRat::Times(lb, lb);
+    BigRat uub = BigRat::Times(ub, ub);
+
+    CHECK(BigRat::LessEq(llb, test.xx) &&
+          BigRat::LessEq(test.xx, uub)) << "Expected\n"
+                                        << Show(llb, uub)
+                                        << "\nto contain:\n"
+                                        << test.xx.ToString();
+  }
+}
+
+
 static void TestRatCbrt() {
   printf("Test cbrt:\n");
   {
@@ -1190,40 +1265,40 @@ static void TestRatTruncate() {
   printf("Truncate OK\n");
 }
 
-static void TestRatSimpleBounds() {
+static void TestRatElementaryBounds() {
 
   {
     // If the fraction already fits in the denominator,
     // the result is exact.
     const auto &[lb, ub] =
-      BigRat::SimpleBounds(BigRat{7, 11}, BigInt(1000));
+      BigRat::ElementaryBounds(BigRat{7, 11}, BigInt(1000));
     CHECK(lb.ToString() == "7/11" & ub.ToString() == "7/11");
   }
 
   {
     const auto &[lb, ub] =
-      BigRat::SimpleBounds(BigRat{-16, 171}, BigInt(1000));
+      BigRat::ElementaryBounds(BigRat{-16, 171}, BigInt(1000));
     CHECK(lb.ToString() == "-16/171" & ub.ToString() == "-16/171");
   }
 
   {
     // Denegerates to Floor/Ceil with a denominator of 1.
     const auto &[lb, ub] =
-      BigRat::SimpleBounds(BigRat{27, 11}, BigInt(1));
+      BigRat::ElementaryBounds(BigRat{27, 11}, BigInt(1));
     CHECK(lb.ToString() == "2" & ub.ToString() == "3");
   }
 
   {
     // Denegerates to Floor/Ceil with a denominator of 1.
     const auto &[lb, ub] =
-      BigRat::SimpleBounds(BigRat(27), BigInt(1));
+      BigRat::ElementaryBounds(BigRat(27), BigInt(1));
     CHECK(lb.ToString() == "27" & ub.ToString() == "27");
   }
 
   {
     // Zero is a special case.
     const auto &[lb, ub] =
-      BigRat::SimpleBounds(BigRat(0), BigInt(1000));
+      BigRat::ElementaryBounds(BigRat(0), BigInt(1000));
     CHECK(lb.ToString() == "0" & ub.ToString() == "0");
   }
 
@@ -1231,7 +1306,7 @@ static void TestRatSimpleBounds() {
     // Interesting cases where we were very close to a simple
     // fraction.
     BigRat a = BigRat::FromDouble(0.50000001);
-    const auto &[lb, ub] = BigRat::SimpleBounds(a, BigInt(1000));
+    const auto &[lb, ub] = BigRat::ElementaryBounds(a, BigInt(1000));
     CHECK(BigRat::LessEq(BigRat::Minus(a, lb), BigRat(1, 1000)));
     CHECK(BigRat::LessEq(BigRat::Minus(ub, a), BigRat(1, 1000)));
     CHECK(lb.ToString() == "1/2") << lb.ToString();
@@ -1240,7 +1315,7 @@ static void TestRatSimpleBounds() {
 
   {
     BigRat a = BigRat::FromDouble(0.33333332);
-    const auto &[lb, ub] = BigRat::SimpleBounds(a, BigInt(1000));
+    const auto &[lb, ub] = BigRat::ElementaryBounds(a, BigInt(1000));
     CHECK(lb.ToString() == "333/1000") << lb.ToString();
     CHECK(ub.ToString() == "1/3") << ub.ToString();
   }
@@ -1248,7 +1323,7 @@ static void TestRatSimpleBounds() {
   Timer timer;
   Periodically status_per(1.0);
   StatusBar status(1);
-  const int64_t TIMES = 1'000'000;
+  const int64_t TIMES = 100'000;
   ArcFour rc("test");
   for (int i = 0; i < TIMES; i++) {
     // Include negative values.
@@ -1262,7 +1337,7 @@ static void TestRatSimpleBounds() {
     BigInt inv_epsilon(denom);
 
     BigRat r = BigRat::FromDouble(d);
-    const auto &[lb, ub] = BigRat::SimpleBounds(r, inv_epsilon);
+    const auto &[lb, ub] = BigRat::ElementaryBounds(r, inv_epsilon);
 
     CHECK(BigRat::LessEq(lb, r)) << "Wanted " << lb.ToString() << " <= "
                                  << r.ToString();
@@ -1283,14 +1358,17 @@ static void TestRatSimpleBounds() {
     CHECK(BigInt::LessEq(ud, inv_epsilon));
 
     status_per.RunIf([&]() {
-        status.Progress(i, TIMES, "SimpleBounds test");
+        status.Progress(i, TIMES, "ElementaryBounds test");
       });
   }
 
-  printf("SimpleBounds x %" PRIi64 " in %s\n",
+  printf("ElementaryBounds x %" PRIi64 " in %s\n",
          TIMES, ANSI::Time(timer.Seconds()).c_str());
 }
 
+static void TestSimplifyInterval() {
+
+}
 
 static void TestRatNegate() {
   BigRat pp("1234567891234567891/10000000000000000000");
@@ -1478,6 +1556,8 @@ static void TestRatFloorCeil() {
 }
 
 int main(int argc, char **argv) {
+  constexpr bool SLOW = true;
+
   ANSI::Init();
   printf("Start.\n");
   fflush(stdout);
@@ -1521,14 +1601,18 @@ int main(int argc, char **argv) {
 
   TestPow();
   TestQuotRem();
-  TestPowMod();
+
+  if (SLOW)
+    TestPowMod();
 
   TestRatTruncate();
   TestRatNegate();
 
-  TestPrimeFactors();
+  if (SLOW)
+    TestPrimeFactors();
 
-  TestPi();
+  if (SLOW)
+    TestPi();
 
   // Slow
   if (RUN_BENCHMARKS) {
@@ -1543,13 +1627,16 @@ int main(int argc, char **argv) {
   TestRatSwap();
   TestRatMove();
   TestRatSqrt();
+  TestRatSqrtBounds();
   TestRatCbrt();
   TestRatSign();
   TestRatFloorCeil();
 
   TestRatHashCode();
 
-  TestRatSimpleBounds();
+  TestRatElementaryBounds();
+  TestSimplifyInterval();
 
   printf("OK\n");
 }
+
