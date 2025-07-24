@@ -71,11 +71,11 @@ bool Boundaries::HasCodeAssumingMask(
       const BigVec3 &normal = big_planes[i];
       BigRat d = dot(v, normal);
       int s = BigRat::Sign(d);
+      // Here we allow the point on the boundary.
       if (s == 0) {
         return include_boundary;
       }
 
-      // Here we allow the point on the boundary.
       if (pos & code) {
         // Sign should be positive
         if (s != 1) return false;

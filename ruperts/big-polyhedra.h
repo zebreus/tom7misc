@@ -303,7 +303,8 @@ struct BigMat3 {
       LOG(FATAL) << "Index out of bounds.";
     }
   }
-  const BigVec3& operator[](int i) const {
+
+  const BigVec3 &operator[](int i) const {
     switch (i) {
     case 0: return x;
     case 1: return y;
