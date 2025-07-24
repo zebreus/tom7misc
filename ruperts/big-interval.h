@@ -179,6 +179,13 @@ struct Bigival {
                    false, false);
   }
 
+  // TODO: Maybe we should standardize on inv_epsilon. It's nice
+  // to know it has this special form.
+  static Bigival Sqrt(const BigRat &a, const BigInt &inv_epsilon) {
+    auto [lb, ub] = BigRat::SqrtBounds(a, inv_epsilon);
+    return Bigival(std::move(lb), std::move(ub), true, true);
+  }
+
   // Compute sin(x) as a Bigival with a width of no more than epsilon.
   // This is only appropriate for x with small magnitude.
   static Bigival Sin(const BigRat &x, const BigRat &epsilon) {
@@ -322,6 +329,40 @@ struct Bigival {
     return Bigival(lower, upper);
   }
 
+  Bigival Cos(const BigRat &epsilon) const {
+    BigRat width = Width();
+    if (width == 0) {
+      return Cos(LB(), epsilon);
+    }
+
+    // Same approach as Sin(), except that the peaks/troughs
+    // appear at different points.
+    const BigRat half_epsilon = epsilon / 2;
+    Bigival a = Cos(lb.r, half_epsilon);
+    Bigival b = Cos(ub.r, half_epsilon);
+    Point lower = Min(a.lb, b.lb);
+    Point upper = Max(a.ub, b.ub);
+
+    Bigival pi = Pi(width / 1024);
+    if (width >= pi.UB() * 2) {
+      return Bigival(-1, 1, true, true);
+    }
+
+    // Peaks of cos(x) = 1 occur at x = 2kπ.
+    Bigival kpeak = Div(pi.Times(2));
+    // Troughs of cos(x) = -1 occur at x = (2k+1)π.
+    // Solving for k: k = (x/π - 1) / 2.
+    Bigival ktrough = Div(pi).Minus(BigRat(1)).Div(2);
+    if (kpeak.ContainsInteger()) {
+      upper = Point(BigRat(1), true);
+    }
+    if (ktrough.ContainsInteger()) {
+      lower = Point(BigRat(-1), true);
+    }
+
+    return Bigival(lower, upper);
+  }
+
   enum class MaybeBool {
     True,
     False,
@@ -338,7 +379,7 @@ struct Bigival {
       return std::nullopt;
     } else {
       // PERF: Maybe the above logic falls out of this? Check carefully.
-      // Note that we only include an endpoint of both arguments include it.
+      // Note that we only include an endpoint if both arguments include it.
       Point lb = MaxAnd(a.lb, b.lb);
       Point ub = MinAnd(a.ub, b.ub);
 
@@ -364,6 +405,14 @@ struct Bigival {
   // is then equal to the LB (and UB).
   bool Singular() const {
     return lb.r == ub.r;
+  }
+
+  bool MayBeNegative() const {
+    return BigRat::Sign(LB()) == -1;
+  }
+
+  bool MayBePositive() const {
+    return BigRat::Sign(UB()) == 1;
   }
 
   // These predicates are talking about the two underlying

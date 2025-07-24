@@ -382,6 +382,70 @@ static void Transcendental() {
     CHECK(sina.Width() <= BigRat(1, 1024));
   }
 
+  {
+    Bigival sina = Bigival(BigRat(-10), BigRat(10), false, false).Sin(BigRat(1, 10));
+    CHECK(sina.LB() == -1);
+    CHECK(sina.UB() == 1);
+    CHECK(sina.IncludesLB() && sina.IncludesUB());
+  }
+
+
+  // Cos of intervals.
+  {
+    Bigival a = Bigival(BigRat::FromDouble(0.3), BigRat::FromDouble(0.31), true, true);
+    Bigival cosa = a.Cos(BigRat(1, 1024 * 1024));
+    CHECK_CONTAINS(cosa, BigRat::FromDouble(std::cos(0.301)));
+    CHECK_CONTAINS(cosa, BigRat::FromDouble(std::cos(0.305)));
+    CHECK_CONTAINS(cosa, BigRat::FromDouble(std::cos(0.30999)));
+
+    CHECK(!cosa.Contains(BigRat::FromDouble(std::cos(0.311))));
+    CHECK(!cosa.Contains(BigRat::FromDouble(std::cos(0.299))));
+    CHECK(!cosa.Contains(BigRat(1)));
+    CHECK(!cosa.Contains(BigRat(-1)));
+    CHECK(!cosa.Contains(BigRat(0)));
+  }
+
+  {
+    // Very small interval around 26π, which is a peak.
+    Bigival a = Bigival(BigRat::FromDouble(26 * std::numbers::pi - 1.0e-12),
+                        BigRat::FromDouble(26 * std::numbers::pi + 1.0e-12),
+                        false, false);
+    Bigival cosa = a.Cos(BigRat(1, 1024 * 1024));
+    CHECK_CONTAINS(cosa, BigRat(1));
+    CHECK(!cosa.Contains(BigRat(-1)));
+    CHECK(!cosa.Contains(BigRat(0)));
+  }
+
+  {
+    printf("----------------------------------\n");
+    // Very small interval after (and not including) 26π, which is a peak.
+    Bigival a = Bigival(BigRat::FromDouble(26 * std::numbers::pi + 1.0e-6),
+                        BigRat::FromDouble(26 * std::numbers::pi + 2.0e-6),
+                        false, false);
+    Bigival cosa = a.Cos(BigRat::FromDouble(1.0e-24));
+    CHECK(!cosa.Contains(BigRat(1)));
+    // Should be a small interval, since the input interval is small and we
+    // requested a small epsilon.
+    CHECK(cosa.Width() <= BigRat(1, 1024));
+  }
+
+  {
+    // Very small interval before (and not including) 26π, which is a peak.
+    Bigival a = Bigival(BigRat::FromDouble(26 * std::numbers::pi - 2.0e-6),
+                        BigRat::FromDouble(26 * std::numbers::pi - 1.0e-6),
+                        false, false);
+    Bigival cosa = a.Cos(BigRat::FromDouble(1.0e-24));
+    CHECK(!cosa.Contains(BigRat(1)));
+    CHECK(cosa.Width() <= BigRat(1, 1024));
+  }
+
+  {
+    Bigival cosa = Bigival(BigRat(-10), BigRat(10), false, false).Cos(BigRat(1, 10));
+    CHECK(cosa.LB() == -1);
+    CHECK(cosa.UB() == 1);
+    CHECK(cosa.IncludesLB() && cosa.IncludesUB());
+  }
+
 }
 
 int main(int argc, char **argv) {
