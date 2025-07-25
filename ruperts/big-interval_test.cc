@@ -449,6 +449,21 @@ static void Transcendental() {
 
 }
 
+static void ContainsInteger() {
+  CHECK(Bigival(0).ContainsInteger());
+  CHECK(Bigival(2).ContainsInteger());
+  CHECK(Bigival(-27).ContainsInteger());
+  CHECK(!Bigival(BigRat(-1, 2)).ContainsInteger());
+  CHECK(!Bigival(BigRat(1, 3)).ContainsInteger());
+
+  CHECK(Bigival(BigRat(-1), BigRat(1), false, false).ContainsInteger());
+  CHECK(Bigival(BigRat(-1), BigRat(1), true, false).ContainsInteger());
+  CHECK(Bigival(BigRat(-1), BigRat(1), false, true).ContainsInteger());
+  CHECK(Bigival(BigRat(-1), BigRat(1), true, true).ContainsInteger());
+
+  CHECK(Bigival(BigRat(3, 4), BigRat(5, 4), false, false).ContainsInteger());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -456,6 +471,7 @@ int main(int argc, char **argv) {
   Special();
   IntervalOps();
   Comparisons();
+  ContainsInteger();
 
   Transcendental();
 

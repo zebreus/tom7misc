@@ -174,8 +174,10 @@ struct Bigival {
   bool ContainsInteger() const {
     // Floor is a little faster than ceil.
     BigInt i = BigRat::Floor(UB());
-    if (IncludesUB() && i == UB()) return true;
-    --i;
+    if (i == UB()) {
+      if (IncludesUB()) return true;
+      --i;
+    }
     return IncludesLB() ? i >= LB() : i > LB();
   }
 
@@ -337,7 +339,7 @@ struct Bigival {
     // And similar for troughs.
     Bigival ktrough = Div(pi).Plus(BigRat(1, 2)).Div(2);
     if (kpeak.ContainsInteger()) {
-      printf(AYELLOW("Interval %s had integer") ".\n", kpeak.ToString().c_str());
+      // printf(AYELLOW("Interval %s had integer") ".\n", kpeak.ToString().c_str());
       upper = Point(BigRat(1), true);
     }
     if (ktrough.ContainsInteger()) {
