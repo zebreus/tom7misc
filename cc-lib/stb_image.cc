@@ -4,6 +4,9 @@
 
 #undef DEBUG_STB_IMAGE
 
+// This file was not written to be compliant with this warning.
+#pragma GCC diagnostic ignored "-Wcast-qual"
+
 #if defined(STBI_ONLY_JPEG) || defined(STBI_ONLY_PNG) || defined(STBI_ONLY_BMP) \
   || defined(STBI_ONLY_TGA) || defined(STBI_ONLY_GIF) || defined(STBI_ONLY_PSD) \
   || defined(STBI_ONLY_HDR) || defined(STBI_ONLY_PIC) || defined(STBI_ONLY_PNM) \

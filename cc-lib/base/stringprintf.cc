@@ -44,6 +44,9 @@ void StringAppendV(string* dst, const char* format, va_list ap) {
     // Restore the va_list before we use it again
     va_copy(backup_ap, ap);
 #   pragma GCC diagnostic push
+    // And annoyingly, GCC 13 doesn't like the next pragma,
+    // so disable warnings about pragmas!
+#   pragma GCC diagnostic ignored "-Wpragmas"
     // Annoyingly, clang on OS X complains that it doesn't
     // understand the GCC option, so also disable the complaint
 #   pragma GCC diagnostic ignored "-Wunknown-warning-option"
