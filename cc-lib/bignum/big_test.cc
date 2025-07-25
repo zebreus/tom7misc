@@ -1062,6 +1062,35 @@ static void TestRatSqrt() {
   printf("Sqrt OK in %s\n", ANSI::Time(timer.Seconds()).c_str());
 }
 
+static void TestRatParts() {
+  {
+    BigRat r("1234567/77773");
+    CHECK(r.Numerator().ToString() == "1234567");
+    CHECK(r.Denominator().ToString() == "77773");
+    const auto &[n, d] = r.Parts();
+    CHECK(BigInt::Eq(n, r.Numerator()));
+    CHECK(BigInt::Eq(d, r.Denominator()));
+  }
+
+  {
+    BigRat r("-1/3");
+    CHECK(r.Numerator().ToString() == "-1");
+    CHECK(r.Denominator().ToString() == "3");
+    const auto &[n, d] = r.Parts();
+    CHECK(BigInt::Eq(n, r.Numerator()));
+    CHECK(BigInt::Eq(d, r.Denominator()));
+  }
+
+  {
+    BigRat r("7");
+    CHECK(r.Numerator().ToString() == "7");
+    CHECK(r.Denominator().ToString() == "1");
+    const auto &[n, d] = r.Parts();
+    CHECK(BigInt::Eq(n, r.Numerator()));
+    CHECK(BigInt::Eq(d, r.Denominator()));
+  }
+}
+
 static void TestRatSqrtBounds() {
 
   auto Show = [](const BigRat &lb, const BigRat &ub) {
@@ -1626,6 +1655,7 @@ int main(int argc, char **argv) {
   TestSwap();
   TestRatSwap();
   TestRatMove();
+  TestRatParts();
   TestRatSqrt();
   TestRatSqrtBounds();
   TestRatCbrt();

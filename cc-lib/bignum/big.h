@@ -285,7 +285,10 @@ struct BigRat {
   // too large. Without GMP, not very efficient (does binary search).
   inline double ToDouble() const;
   // Get the numerator and denominator.
+  // For negative rationals, the numerator will be the negative one.
   inline std::pair<BigInt, BigInt> Parts() const;
+  inline BigInt Denominator() const;
+  inline BigInt Numerator() const;
 
   // Get 64 bits from both the numerator and denominator. Will be the
   // same for equal inputs, but has no other meaning. Might not be
@@ -1145,6 +1148,18 @@ std::pair<BigInt, BigInt> BigRat::Parts() const {
   return std::make_pair(numer, denom);
 }
 
+BigInt BigRat::Numerator() const {
+  BigInt numer;
+  mpz_set(numer.rep, mpq_numref(rep));
+  return numer;
+}
+
+BigInt BigRat::Denominator() const {
+  BigInt denom;
+  mpz_set(denom.rep, mpq_denref(rep));
+  return denom;
+}
+
 BigRat BigRat::FromDouble(double num) {
   BigRat ret;
   mpq_set_d(ret.rep, num);
@@ -1723,6 +1738,14 @@ std::string BigRat::ToString() const {
 std::pair<BigInt, BigInt> BigRat::Parts() const {
   return std::make_pair(BigInt(BzCopy(BqGetNumerator(rep)), nullptr),
                         BigInt(BzCopy(BqGetDenominator(rep)), nullptr));
+}
+
+BigInt BigRat::Numerator() const {
+  return BigInt(BzCopy(BqGetNumerator(rep)), nullptr);
+}
+
+BigInt BigRat::Denominator() const {
+  return BigInt(BzCopy(BqGetDenominator(rep)), nullptr);
 }
 
 BigRat BigRat::FromDouble(double num) {
