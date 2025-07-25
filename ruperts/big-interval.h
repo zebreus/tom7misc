@@ -20,7 +20,7 @@
 // with higher-level operations. An example would be x.Squared()
 // instead of x*x; we know that x.Squared() is always positive.
 
-// XXX to cc-lib/bignum?
+// XXX to cc-lib/bignum
 #ifndef _RUPERTS_BIG_INTERVAL_H
 #define _RUPERTS_BIG_INTERVAL_H
 
@@ -172,24 +172,31 @@ struct Bigival {
     return IncludesLB() ? i >= LB() : i > LB();
   }
 
-  static Bigival Pi(const BigRat &epsilon) {
-    BigRat half_epsilon = epsilon / 2;
+  static Bigival Pi(const BigInt &inv_epsilon) {
+    BigRat half_epsilon = BigRat(BigInt(1), inv_epsilon * 2);
     BigRat approx_pi = BigNumbers::Pi(half_epsilon);
     return Bigival(approx_pi - half_epsilon, approx_pi + half_epsilon,
                    false, false);
   }
 
-  // TODO: Maybe we should standardize on inv_epsilon. It's nice
-  // to know it has this special form.
-  static Bigival Sqrt(const BigRat &a, const BigInt &inv_epsilon) {
-    auto [lb, ub] = BigRat::SqrtBounds(a, inv_epsilon);
-    return Bigival(std::move(lb), std::move(ub), true, true);
+  static Bigival Sqrt(const Bigival &a, const BigInt &inv_epsilon) {
+    if (a.Singular()) {
+      auto [lb, ub] = BigRat::SqrtBounds(a.LB(), inv_epsilon);
+      return Bigival(std::move(lb), std::move(ub), true, true);
+    } else {
+      auto [lba, uba] = BigRat::SqrtBounds(a.LB(), inv_epsilon);
+      auto [lbb, ubb] = BigRat::SqrtBounds(a.UB(), inv_epsilon);
+
+      return Bigival(BigRat::Min(lba, lbb),
+                     BigRat::Max(uba, ubb),
+                     true, true);
+    }
   }
 
-  // Compute sin(x) as a Bigival with a width of no more than epsilon.
+  // Compute sin(x) as a Bigival with a width of no more than 1/inv_epsilon.
   // This is only appropriate for x with small magnitude.
-  static Bigival Sin(const BigRat &x, const BigRat &epsilon) {
-    CHECK(BigRat::Sign(epsilon) == 1);
+  static Bigival Sin(const BigRat &x, const BigInt &inv_epsilon) {
+    CHECK(BigInt::Sign(inv_epsilon) == 1);
     // This is the one case where we can have an exact rational result.
     // We return open intervals below, so this test is also required
     // for correctness.
@@ -202,6 +209,8 @@ struct Bigival {
     // Taylor series is x^1/1! - x^3/3! + x^5/5! - ...
     //                  term_0   term_1   term_2
     BigRat current_term = x;
+
+    const BigRat epsilon{BigInt(1), inv_epsilon};
 
     bool decreasing = false;
     for (BigInt k(1); true; ++k) {
@@ -240,12 +249,14 @@ struct Bigival {
   }
 
   // This is only appropriate for x with small magnitude.
-  static Bigival Cos(const BigRat &x, const BigRat &epsilon) {
-    CHECK(BigRat::Sign(epsilon) == 1);
+  static Bigival Cos(const BigRat &x, const BigInt &inv_epsilon) {
+    CHECK(BigRat::Sign(inv_epsilon) == 1);
     // This is the one case where we can have an exact rational result.
     // We return open intervals below, so this test is also required
     // for correctness.
     if (BigRat::Sign(x) == 0) return Bigival(1);
+
+    const BigRat epsilon{BigInt(1), inv_epsilon};
 
     BigRat sum(0);
 
@@ -281,17 +292,17 @@ struct Bigival {
     }
   }
 
-  Bigival Sin(const BigRat &epsilon) const {
+  Bigival Sin(const BigInt &inv_epsilon) const {
     BigRat width = Width();
     if (width == 0) {
-      return Sin(LB(), epsilon);
+      return Sin(LB(), inv_epsilon);
     }
 
     // Endpoints bound the result unless it contains a peak or
     // trough.
-    const BigRat half_epsilon = epsilon / 2;
-    Bigival a = Sin(lb.r, half_epsilon);
-    Bigival b = Sin(ub.r, half_epsilon);
+    const BigInt double_inv_epsilon = inv_epsilon * 2;
+    Bigival a = Sin(lb.r, double_inv_epsilon);
+    Bigival b = Sin(ub.r, double_inv_epsilon);
     Point lower = Min(a.lb, b.lb);
     Point upper = Max(a.ub, b.ub);
 
@@ -302,7 +313,7 @@ struct Bigival {
 
     // Use an approximation of pi that is accurate compared to the
     // width of the current interval.
-    Bigival pi = Pi(width / 1024);
+    Bigival pi = Pi(width.Denominator() * 1024);
 
     // If the interval is big enough, then it contains both a peak and
     // trough for sure. Probably can just rely on the thing below.
@@ -329,21 +340,21 @@ struct Bigival {
     return Bigival(lower, upper);
   }
 
-  Bigival Cos(const BigRat &epsilon) const {
+  Bigival Cos(const BigInt &inv_epsilon) const {
     BigRat width = Width();
     if (width == 0) {
-      return Cos(LB(), epsilon);
+      return Cos(LB(), inv_epsilon);
     }
 
     // Same approach as Sin(), except that the peaks/troughs
     // appear at different points.
-    const BigRat half_epsilon = epsilon / 2;
-    Bigival a = Cos(lb.r, half_epsilon);
-    Bigival b = Cos(ub.r, half_epsilon);
+    const BigInt double_inv_epsilon = inv_epsilon * 2;
+    Bigival a = Cos(lb.r, double_inv_epsilon);
+    Bigival b = Cos(ub.r, double_inv_epsilon);
     Point lower = Min(a.lb, b.lb);
     Point upper = Max(a.ub, b.ub);
 
-    Bigival pi = Pi(width / 1024);
+    Bigival pi = Pi(width.Denominator() * 1024);
     if (width >= pi.UB() * 2) {
       return Bigival(-1, 1, true, true);
     }

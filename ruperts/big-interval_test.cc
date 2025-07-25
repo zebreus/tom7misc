@@ -294,11 +294,12 @@ static void Comparisons() {
 
 static void Transcendental() {
 
-  BigRat epsilon = BigRat(1, 1000000);
+  BigInt inv_epsilon{1000000};
+  BigRat epsilon{BigInt(1), inv_epsilon};
 
   for (double x : { -2.999999997, -1.0, 0.0,
       1.1e-16, 1.0, 1.1, 1.2, 2.9, 3.0, 400.0 }) {
-    Bigival sinx = Bigival::Sin(BigRat::FromDouble(x), epsilon);
+    Bigival sinx = Bigival::Sin(BigRat::FromDouble(x), inv_epsilon);
 
     // std::sin also rounds, so the true value must be somewhere
     // in (nextafter(s, -1), nextafter(s, +1)).
@@ -318,7 +319,7 @@ static void Transcendental() {
 
   for (double x : { -2.999999997, -1.0, 0.0,
       1.1e-16, 1.0, 1.1, 1.2, 2.9, 3.0, 400.0 }) {
-    Bigival cosx = Bigival::Cos(BigRat::FromDouble(x), epsilon);
+    Bigival cosx = Bigival::Cos(BigRat::FromDouble(x), inv_epsilon);
     double c = std::cos(x);
     Bigival actual = Bigival(BigRat::FromDouble(std::nextafter(c, -2)),
                              BigRat::FromDouble(std::nextafter(c, +2)),
@@ -336,7 +337,7 @@ static void Transcendental() {
   // Sin of intervals.
   {
     Bigival a = Bigival(BigRat::FromDouble(0.3), BigRat::FromDouble(0.31), true, true);
-    Bigival sina = a.Sin(BigRat(1, 1024 * 1024));
+    Bigival sina = a.Sin(BigInt(1024 * 1024));
     CHECK_CONTAINS(sina, BigRat::FromDouble(std::sin(0.301)));
     CHECK_CONTAINS(sina, BigRat::FromDouble(std::sin(0.305)));
     CHECK_CONTAINS(sina, BigRat::FromDouble(std::sin(0.30999)));
@@ -353,7 +354,7 @@ static void Transcendental() {
     Bigival a = Bigival(BigRat::FromDouble(26.5 * std::numbers::pi - 1.0e-12),
                         BigRat::FromDouble(26.5 * std::numbers::pi + 1.0e-12),
                         false, false);
-    Bigival sina = a.Sin(BigRat(1, 1024 * 1024));
+    Bigival sina = a.Sin(BigInt(1024 * 1024));
     CHECK_CONTAINS(sina, BigRat(1));
     CHECK(!sina.Contains(BigRat(-1)));
     CHECK(!sina.Contains(BigRat(0)));
@@ -365,7 +366,7 @@ static void Transcendental() {
     Bigival a = Bigival(BigRat::FromDouble(26.5 * std::numbers::pi + 1.0e-6),
                         BigRat::FromDouble(26.5 * std::numbers::pi + 2.0e-6),
                         false, false);
-    Bigival sina = a.Sin(BigRat::FromDouble(1.0e-24));
+    Bigival sina = a.Sin(BigInt::Pow(BigInt(10), 24));
     CHECK(!sina.Contains(BigRat(1)));
     // Should be a small interval, since the input interval is small and we
     // requested a small epsilon.
@@ -377,13 +378,13 @@ static void Transcendental() {
     Bigival a = Bigival(BigRat::FromDouble(26.5 * std::numbers::pi - 2.0e-6),
                         BigRat::FromDouble(26.5 * std::numbers::pi - 1.0e-6),
                         false, false);
-    Bigival sina = a.Sin(BigRat::FromDouble(1.0e-24));
+    Bigival sina = a.Sin(BigInt::Pow(BigInt(10), 24));
     CHECK(!sina.Contains(BigRat(1)));
     CHECK(sina.Width() <= BigRat(1, 1024));
   }
 
   {
-    Bigival sina = Bigival(BigRat(-10), BigRat(10), false, false).Sin(BigRat(1, 10));
+    Bigival sina = Bigival(BigRat(-10), BigRat(10), false, false).Sin(BigInt(10));
     CHECK(sina.LB() == -1);
     CHECK(sina.UB() == 1);
     CHECK(sina.IncludesLB() && sina.IncludesUB());
@@ -393,7 +394,7 @@ static void Transcendental() {
   // Cos of intervals.
   {
     Bigival a = Bigival(BigRat::FromDouble(0.3), BigRat::FromDouble(0.31), true, true);
-    Bigival cosa = a.Cos(BigRat(1, 1024 * 1024));
+    Bigival cosa = a.Cos(BigInt(1024 * 1024));
     CHECK_CONTAINS(cosa, BigRat::FromDouble(std::cos(0.301)));
     CHECK_CONTAINS(cosa, BigRat::FromDouble(std::cos(0.305)));
     CHECK_CONTAINS(cosa, BigRat::FromDouble(std::cos(0.30999)));
@@ -410,7 +411,7 @@ static void Transcendental() {
     Bigival a = Bigival(BigRat::FromDouble(26 * std::numbers::pi - 1.0e-12),
                         BigRat::FromDouble(26 * std::numbers::pi + 1.0e-12),
                         false, false);
-    Bigival cosa = a.Cos(BigRat(1, 1024 * 1024));
+    Bigival cosa = a.Cos(BigInt(1024 * 1024));
     CHECK_CONTAINS(cosa, BigRat(1));
     CHECK(!cosa.Contains(BigRat(-1)));
     CHECK(!cosa.Contains(BigRat(0)));
@@ -422,7 +423,7 @@ static void Transcendental() {
     Bigival a = Bigival(BigRat::FromDouble(26 * std::numbers::pi + 1.0e-6),
                         BigRat::FromDouble(26 * std::numbers::pi + 2.0e-6),
                         false, false);
-    Bigival cosa = a.Cos(BigRat::FromDouble(1.0e-24));
+    Bigival cosa = a.Cos(BigInt::Pow(BigInt(10), 24));
     CHECK(!cosa.Contains(BigRat(1)));
     // Should be a small interval, since the input interval is small and we
     // requested a small epsilon.
@@ -434,13 +435,13 @@ static void Transcendental() {
     Bigival a = Bigival(BigRat::FromDouble(26 * std::numbers::pi - 2.0e-6),
                         BigRat::FromDouble(26 * std::numbers::pi - 1.0e-6),
                         false, false);
-    Bigival cosa = a.Cos(BigRat::FromDouble(1.0e-24));
+    Bigival cosa = a.Cos(BigInt::Pow(BigInt(10), 24));
     CHECK(!cosa.Contains(BigRat(1)));
     CHECK(cosa.Width() <= BigRat(1, 1024));
   }
 
   {
-    Bigival cosa = Bigival(BigRat(-10), BigRat(10), false, false).Cos(BigRat(1, 10));
+    Bigival cosa = Bigival(BigRat(-10), BigRat(10), false, false).Cos(BigInt(10));
     CHECK(cosa.LB() == -1);
     CHECK(cosa.UB() == 1);
     CHECK(cosa.IncludesLB() && cosa.IncludesUB());
