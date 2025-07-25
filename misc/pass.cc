@@ -1,4 +1,5 @@
 
+#include <cinttypes>
 #include <cstdint>
 #include <cstdio>
 #include <span>
@@ -185,7 +186,7 @@ static void FillDisk(std::string_view filename_base) {
 
       bytes_written += CHUNK_SIZE;
       if (chunks % 1024 == 0) {
-        printf("Wrote %d files + %d chunks. %lld total bytes.\n",
+        printf("Wrote %d files + %d chunks. %" PRIi64 " total bytes.\n",
                files, chunks, bytes_written);
       }
     }
@@ -193,7 +194,7 @@ static void FillDisk(std::string_view filename_base) {
   }
 
   printf("Disk looks full now.\n"
-         "Wrote %lld total bytes.\n", bytes_written);
+         "Wrote %" PRIi64 " total bytes.\n", bytes_written);
 }
 
 // Overwrite the file's data three times (with a fixed pattern and
@@ -443,7 +444,7 @@ static string Encrypt(const string &passphrase,
 
   // Now, each line may start with a base64-encoded IV. We recognize this
   // by finding a | separator in the appropriate column.
-  for (int lineno = 1; lineno < lines.size(); lineno++) {
+  for (size_t lineno = 1; lineno < lines.size(); lineno++) {
     string &line = lines[lineno];
 
     std::vector<uint8> iv;
@@ -476,7 +477,7 @@ static string Encrypt(const string &passphrase,
       "not including the iv| prefix. But found one of length " << line.size();
 
     vector<uint8> data(64, (uint8)' ');
-    for (int i = 0; i < line.size(); i++) {
+    for (int i = 0; i < (int)line.size(); i++) {
       data[i] = line[i];
     }
 
@@ -539,7 +540,7 @@ static bool Decrypt(const string &passphrase, const string &contents,
   // same format, which is LINE_IV_BASE64_LENGTH characters of
   // base64-encoded IV, then |, then LINE_PAYLOAD_BASE64_LENGTH
   // characters of base64-encoded payload.
-  for (int lineno = 1; lineno < lines.size(); lineno++) {
+  for (size_t lineno = 1; lineno < lines.size(); lineno++) {
     string &line = lines[lineno];
     // Allow and ignore totally blank lines.
     if (line.empty()) continue;
@@ -629,7 +630,7 @@ static void OpenWithEditor(const string &pass,
   string plaintext = FlattenDecrypted(header, lines);
   Util::WriteFile(tmpname, plaintext);
 
-  std::system(std::format("{} {}", cmd, tmpname).c_str());
+  (void)std::system(std::format("{} {}", cmd, tmpname).c_str());
 
   string newplain = Util::ReadFile(tmpname);
   // Note we can use a version that merges IVs from old, and checks
@@ -654,7 +655,7 @@ static string RandomChunks(int chunks,
   CryptRand cr;
 
   auto CharFrom = [&cr](const string &s) -> char {
-      auto RandTo8 = [&cr](int n) -> uint8 {
+      auto RandTo8 = [&cr](uint32_t n) -> uint8 {
           CHECK(n > 0) << "Must be non-empty!";
           CHECK(n <= 256) << "Only implemented for one-byte stream";
           // e.g. for seps = ".", avoid possibly expensive
@@ -671,8 +672,8 @@ static string RandomChunks(int chunks,
           }
         };
 
-      int idx = RandTo8(s.size());
-      CHECK(idx >= 0 && idx < s.size()) << idx;
+      int idx = RandTo8((uint32_t)s.size());
+      CHECK(idx >= 0 && idx < (int)s.size()) << idx;
       return s[idx];
     };
 

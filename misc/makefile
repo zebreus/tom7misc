@@ -24,7 +24,7 @@ endif
 LFLAGS=$(PLATFORM_LFLAGS)
 CC_LIB=../cc-lib
 
-OPT=-O3 -flto=auto
+OPT=-O3 -flto=thin
 # OPT=-O -g -fsanitize=address -fsanitize=undefined
 CXXFLAGS= -mtune=native -march=native -pipe -Wall -I $(CC_LIB) --std=c++20 $(OPT)
 
