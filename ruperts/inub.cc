@@ -215,23 +215,43 @@ static Vec3ival Cross(const Vec3ival &a, const Vec3ival &b) {
     a.x * b.y - a.y * b.x);
 }
 
+static Bigival Length(const Vec3ival &v, const BigInt &inv_epsilon) {
+  return Bigival::Sqrt(v.x.Squared() + v.y.Squared() + v.z.Squared(),
+                       inv_epsilon);
+}
+
+static Vec3ival Normalize(const Vec3ival &v, const BigInt &inv_epsilon) {
+  Bigival len = Length(v, inv_epsilon);
+  return Vec3ival(
+      v.x / len,
+      v.y / len,
+      v.z / len);
+}
+
 // view pos must be "normal"
-Frame3ival FrameFromViewPos(const Vec3ival &view) {
+Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   const Vec3ival &frame_z = view;
 
-  const Vec3ival up_z = {BigRat(0), BigRat(0), BigRat(1)};
-  vec3 frame_x = normalize(Cross(up_z, frame_z));
+  Vec3ival up_z = {BigRat(0), BigRat(0), BigRat(1)};
+  Vec3ival frame_x = Normalize(Cross(up_z, frame_z), inv_epsilon);
+  Vec3ival frame_y = Cross(frame_z, frame_x);
 
-  frame3 frame{
-    .x = frame_x,
-    .y = cross(frame_z, frame_x),
-    .z = frame_z,
-    .o = vec3{0, 0, 0},
+  // Following patches.cc, the convention was opposite of what
+  // ViewPosFromNonUnitQuat did, so invert this frame. Since
+  // the origin is zero, the inverse is just the transpose.
+  Vec3ival xt = Vec3ival(std::move(frame_x.x),
+                         std::move(frame_y.x), frame_z.x);
+  Vec3ival yt = Vec3ival(std::move(frame_x.y),
+                         std::move(frame_y.y), frame_z.y);
+  Vec3ival zt = Vec3ival(std::move(frame_z.x),
+                         std::move(frame_z.y), frame_z.z);
+
+  return Frame3ival{
+    .x = std::move(xt),
+    .y = std::move(yt),
+    .z = std::move(zt),
+    .o = Vec3ival{0, 0, 0},
   };
-
-  // The convention was opposite of what ViewPosFromNonUnitQuat
-  // did, so invert this. (PERF)
-  return inverse(frame);
 }
 
 
@@ -281,62 +301,43 @@ struct Hypersolver {
               BigRat::Min(inner_azimuth.Width(),
                           inner_angle.Width())));
 
-    const BigRat epsilon = min_width / (1024 * 1024);
+    BigInt inv_epsilon = min_width.Denominator() * 1024 * 1024;
+    // const BigRat epsilon = min_width / (1024 * 1024);
 
-    Bigival osina = outer_angle.Sin(epsilon);
+    Bigival osina = outer_angle.Sin(inv_epsilon);
     Vec3ival oviewpos = Vec3ival(
-        osina * outer_azimuth.Cos(epsilon),
-        osina * outer_azimuth.Sin(epsilon),
-        outer_angle.Cos(epsilon));
+        osina * outer_azimuth.Cos(inv_epsilon),
+        osina * outer_azimuth.Sin(inv_epsilon),
+        outer_angle.Cos(inv_epsilon));
 
     if (!MightHaveCode(outer_code, outer_mask, oviewpos)) {
       return {Impossible()};
     }
 
-    // XXX if it's not the case that we're entirely within the
-    // outer patch, prioritize splitting outer angle/azimuth,
-    // unless the cells are tiny.
+    // XXX if it's not the case that we're entirely within the outer
+    // patch, prioritize splitting outer angle/azimuth, unless the
+    // cells are tiny. We could maybe get into a situation where we
+    // are unable to make progress because we are not actually in the
+    // patch, and the hull is no longer even close to an attainable
+    // shape (there may actually be true solutions out there!).
 
-    Bigival isina = inner_angle.Sin(epsilon);
+    Bigival isina = inner_angle.Sin(inv_epsilon);
     Vec3ival iviewpos = Vec3ival(
-        isina * inner_azimuth.Cos(epsilon),
-        isina * inner_azimuth.Sin(epsilon),
-        inner_angle.Cos(epsilon));
+        isina * inner_azimuth.Cos(inv_epsilon),
+        isina * inner_azimuth.Sin(inv_epsilon),
+        inner_angle.Cos(inv_epsilon));
 
     if (!MightHaveCode(inner_code, inner_mask, iviewpos)) {
       return {Impossible()};
     }
 
-    // XXX if it's not the case that we're entirely within the
-    // inner patch, prioritize splitting inner angle/azimuth
-    // unless the cells are tiny.
-
     // Get outer and inner frame.
-    frame3 FrameFromViewPos(const vec3 &view);
+    Frame3ival outer_frame = FrameFromViewPos(oviewpos, inv_epsilon);
+    Frame3ival inner_frame = FrameFromViewPos(iviewpos, inv_epsilon);
 
-
+    LOG(FATAL) << "Unimplemented";
+    // XXX HERE!
   }
-
-  frame3 FrameFromViewPos(const vec3 &view) {
-    CHECK(length(view) > 1e-9);
-
-    vec3 frame_z = yocto::normalize(view);
-
-    const vec3 up_z = {0.0, 0.0, 1.0};
-    vec3 frame_x = normalize(cross(up_z, frame_z));
-
-    frame3 frame{
-      .x = frame_x,
-      .y = cross(frame_z, frame_x),
-      .z = frame_z,
-      .o = vec3{0, 0, 0},
-    };
-
-    // The convention was opposite of what ViewPosFromNonUnitQuat
-    // did, so invert this. (PERF)
-    return inverse(frame);
-  }
-
 
   void Expand() {
     // Get all the unsolved leaves.
@@ -365,6 +366,8 @@ struct Hypersolver {
         // accordance with the split's mask) but we should consider being
         // systematic about it?
 
+        (void)split;
+        LOG(FATAL) << "Unimplemented";
 
         break;
       } else {
