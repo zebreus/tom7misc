@@ -26,15 +26,15 @@ static constexpr int SCUBE_DIGITS = 24;
 
 // We'd get the fewest parameters as:
 //  - outer view position (azimuth, angle)
-//  - outer rotation (theta)
-//  - outer translation (x, y)
 //  - inner view position (azimuth, angle)
+//  - inner rotation (theta)
+//  - inner translation (x, y)
 
 // This is 7 parameters.
 
 // We have a 7-hypercube for those parameters.
-// Azimuths are in [0, π].
-// Angles are in [0, 2π].
+// Azimuths are in [0, 2π].
+// Polar angles (inclination) are in [0, π].
 // Theta is in [0, 2π],
 // Translations are like [-diameter, diameter].
 
@@ -52,11 +52,12 @@ static constexpr int SCUBE_DIGITS = 24;
 
 inline constexpr int OUTER_AZIMUTH = 0;
 inline constexpr int OUTER_ANGLE = 1;
-inline constexpr int OUTER_ROT = 2;
-inline constexpr int OUTER_X = 3;
-inline constexpr int OUTER_Y = 4;
-inline constexpr int INNER_AZIMUTH = 5;
-inline constexpr int INNER_ANGLE = 6;
+inline constexpr int INNER_AZIMUTH = 2;
+inline constexpr int INNER_ANGLE = 3;
+inline constexpr int INNER_ROT = 4;
+inline constexpr int INNER_X = 5;
+inline constexpr int INNER_Y = 6;
+
 inline constexpr int NUM_DIMENSIONS = 7;
 
 using Volume = std::vector<Bigival>;
@@ -147,6 +148,8 @@ Bigival Dot(const Vec3ival &a, const BigVec3 &b) {
   return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
+// PERF: I think we only need Rot3 for this task; the origin is always
+// zero. Can save ourselves some pointless addition.
 struct Frame3ival {
   Vec3ival x = {BigRat(1), BigRat(0), BigRat(0)};
   Vec3ival y = {BigRat(0), BigRat(1), BigRat(0)};
@@ -176,6 +179,14 @@ struct Frame3ival {
       return x;
     }
   }
+};
+
+// Vec2 where each component is an interval.
+struct Vec2ival {
+  Bigival x, y;
+  Vec2ival(Bigival xx, Bigival yy) :
+    x(std::move(xx)), y(std::move(yy)) {}
+  Vec2ival() : x(0), y(0) {}
 };
 
 // Small Fixed-size matrices stored in column major format.
@@ -228,7 +239,40 @@ static Vec3ival Normalize(const Vec3ival &v, const BigInt &inv_epsilon) {
       v.z / len);
 }
 
+inline static Vec3ival operator +(const Vec3ival &a,
+                                  const Vec3ival &b) {
+  return Vec3ival(a.x + b.x, a.y + b.y, a.z + b.z);
+}
+
+[[maybe_unused]]
+inline static Vec3ival operator *(const Vec3ival &a,
+                                  const Vec3ival &b) {
+  return Vec3ival(a.x * b.x, a.y * b.y, a.z * b.z);
+}
+
+[[maybe_unused]]
+inline static Vec3ival operator *(const Vec3ival &a,
+                                  const BigVec3 &b) {
+  return Vec3ival(a.x * b.x, a.y * b.y, a.z * b.z);
+}
+
+inline static Vec3ival operator *(const Vec3ival &a,
+                                  const BigRat &s) {
+  return Vec3ival(a.x * s, a.y * s, a.z * s);
+}
+
+// This can certainly work on Vec3ival, but our input data at this point
+// is a single point and this is in inner loops.
+static Vec2ival TransformPointTo2D(const Frame3ival &frame,
+                                   const BigVec3 &v) {
+  // PERF don't even compute z component!
+  Vec3ival v3 = frame.x * v.x + frame.y * v.y + frame.z * v.z + frame.o;
+  return Vec2ival(std::move(v3.x), std::move(v3.y));
+}
+
+
 // view pos must be "normal"
+// This also requires that the z-axis is not included in the view interval.
 Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   const Vec3ival &frame_z = view;
 
@@ -243,8 +287,8 @@ Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
                          std::move(frame_y.x), frame_z.x);
   Vec3ival yt = Vec3ival(std::move(frame_x.y),
                          std::move(frame_y.y), frame_z.y);
-  Vec3ival zt = Vec3ival(std::move(frame_z.x),
-                         std::move(frame_z.y), frame_z.z);
+  Vec3ival zt = Vec3ival(std::move(frame_x.z),
+                         std::move(frame_y.z), frame_z.z);
 
   return Frame3ival{
     .x = std::move(xt),
@@ -252,6 +296,23 @@ Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
     .z = std::move(zt),
     .o = Vec3ival{0, 0, 0},
   };
+}
+
+// Note: Here we have the dependency problem. This one might be
+// solvable with somewhat straightforward analysis. I think what we
+// want to do is think of this as rotating an axis-aligned rectangle
+// (the 2D bounds) and then getting the axis-aligned rectangle that
+// contains that.
+// This is also one of the very last things we do, so it's plausible
+// that we could just do some geometric reasoning about the actual
+// rotated rectangle at this point.
+static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
+                         const BigInt &inv_epsilon) {
+  Bigival sin_a = angle.Sin(inv_epsilon);
+  Bigival cos_a = angle.Cos(inv_epsilon);
+
+  return Vec2ival(v.x * cos_a - v.y * sin_a,
+                  v.x * sin_a + v.y * cos_a);
 }
 
 
@@ -280,29 +341,31 @@ struct Hypersolver {
                            std::unique_ptr<Hypercube::Node> *node) {
     const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
     const Bigival &outer_angle = volume[OUTER_ANGLE];
-    const Bigival &outer_rot = volume[OUTER_ROT];
-    const Bigival &outer_x = volume[OUTER_X];
-    const Bigival &outer_y = volume[OUTER_Y];
     const Bigival &inner_azimuth = volume[INNER_AZIMUTH];
     const Bigival &inner_angle = volume[INNER_ANGLE];
+    const Bigival &inner_rot = volume[INNER_ROT];
+    const Bigival &inner_x = volume[INNER_X];
+    const Bigival &inner_y = volume[INNER_Y];
 
-    // XXX Should have some principled derivation of epsilon here.
-    // It needs to at least get smaller as the intervals get
-    // smaller.
     const BigRat min_width =
       BigRat::Min(
           BigRat::Min(
               BigRat::Min(outer_azimuth.Width(),
                           outer_angle.Width()),
-              BigRat::Min(outer_x.Width(),
-                          outer_y.Width())),
+              BigRat::Min(inner_x.Width(),
+                          inner_y.Width())),
           BigRat::Min(
-              outer_rot.Width(),
+              inner_rot.Width(),
               BigRat::Min(inner_azimuth.Width(),
                           inner_angle.Width())));
 
+    // XXX Should have some principled derivation of epsilon here.
+    // There's no correctness problem, but I just pulled
+    // one one-millionth out of thin air and maybe it should be
+    // much smaller (or larger?).
+    // It does need to at least get smaller as the intervals get
+    // smaller.
     BigInt inv_epsilon = min_width.Denominator() * 1024 * 1024;
-    // const BigRat epsilon = min_width / (1024 * 1024);
 
     Bigival osina = outer_angle.Sin(inv_epsilon);
     Vec3ival oviewpos = Vec3ival(
@@ -332,11 +395,55 @@ struct Hypersolver {
     }
 
     // Get outer and inner frame.
+    // TODO: This has a precondition that the z-axis not contained in
+    // the view interval. Since we know that none of the canonical
+    // patches contain the z axis, we should just subdivide if that's
+    // the case. But we probably do need to detect it, in case these
+    // intervals are too conservative.
     Frame3ival outer_frame = FrameFromViewPos(oviewpos, inv_epsilon);
     Frame3ival inner_frame = FrameFromViewPos(iviewpos, inv_epsilon);
 
+    // Compute the initial hulls. This is the final outer hull, but
+    // the inner hull still needs to be rotated and translated.
+    std::vector<Vec2ival> outer_shadow;
+    outer_shadow.reserve(outer_hull.size());
+    for (int idx : outer_hull) {
+      const BigVec3 &original_v = scube.vertices[idx];
+      outer_shadow.push_back(
+          TransformPointTo2D(outer_frame, original_v));
+    }
+
+    // TODO: If the outer shadow has edges where the endpoint intervals
+    // are not disjoint, then we might just want to bisect.
+
+    // Compute the inner hull point-by-point. We can exit early
+    // if any of these points are definitely outside the inner hull.
+    for (int idx : inner_hull) {
+      const BigVec3 &original_v = scube.vertices[idx];
+      Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
+      // Also rotate and translate it.
+      Vec2ival rot_v = Rotate2D(proj_v, inner_rot, inv_epsilon);
+      Vec2ival v(rot_v.x + inner_x, rot_v.y + inner_y);
+
+      // Now, we reject this cell if the point is definitely outside
+      // the outer hull. Since the outer hull is a convex hull
+      // containing the origin, in clockwise winding order, we can
+      // just do this as a series of line-side tests.
+      for (int start = 0; start < outer_shadow.size(); start++) {
+        int end = (start + 1) % outer_shadow.size();
+        const Vec2ival &va = outer_shadow[start];
+        const Vec2ival &vb = outer_shadow[end];
+
+        // HERE: Do line-side test. Specifically, we can assume the
+        // origin is clockwise from the edge va->vb. Then we want
+        // to ask if point v's interval is definitely completely
+        // on the other side of the edge.
+
+      }
+    }
+
+
     LOG(FATAL) << "Unimplemented";
-    // XXX HERE!
   }
 
   void Expand() {
@@ -404,20 +511,21 @@ struct Hypersolver {
     // slightly larger than pi. accurate to 16 digits.
     BigRat big_pi(165707065, 52746197);
     Volume bounds;
-    bounds[OUTER_AZIMUTH] = Bigival(BigRat(0), big_pi, true, true);
-    bounds[OUTER_ANGLE] = Bigival(BigRat(0), big_pi * 2, true, true);
-    bounds[OUTER_ROT] = Bigival(BigRat(0), big_pi * 2, true, true);
-    bounds[OUTER_X] = Bigival(BigRat(-4), BigRat(4), true, true);
-    bounds[OUTER_Y] = Bigival(BigRat(-4), BigRat(4), true, true);
-    bounds[INNER_AZIMUTH] = Bigival(BigRat(0), big_pi, true, true);
-    bounds[INNER_ANGLE] = Bigival(BigRat(0), big_pi * 2, true, true);
+    bounds.resize(7);
+    bounds[OUTER_AZIMUTH] = Bigival(BigRat(0), big_pi * 2, true, true);
+    bounds[OUTER_ANGLE] = Bigival(BigRat(0), big_pi, true, true);
+    bounds[INNER_AZIMUTH] = Bigival(BigRat(0), big_pi * 2, true, true);
+    bounds[INNER_ANGLE] = Bigival(BigRat(0), big_pi, true, true);
+    bounds[INNER_ROT] = Bigival(BigRat(0), big_pi * 2, true, true);
+    bounds[INNER_X] = Bigival(BigRat(-4), BigRat(4), true, true);
+    bounds[INNER_Y] = Bigival(BigRat(-4), BigRat(4), true, true);
 
     hypercube.reset(new Hypercube(bounds));
 
     // Test this out with a single pair to start.
     std::vector<std::pair<uint64_t, PatchInfo::CanonicalPatch>> canonical;
     for (const auto &[cc, p] : patch_info.canonical) {
-      canonical.emplace_back(cc, p.mask);
+      canonical.emplace_back(cc, p);
     }
     std::sort(canonical.begin(), canonical.end(),
               [](const auto &a,
@@ -428,6 +536,8 @@ struct Hypersolver {
 
     const PatchInfo::CanonicalPatch &outer = canonical[0].second;
     const PatchInfo::CanonicalPatch &inner = canonical[1].second;
+
+    // TODO: Check that the hull contains the origin.
 
     outer_code = outer.code;
     inner_code = inner.code;

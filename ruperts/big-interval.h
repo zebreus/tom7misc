@@ -37,6 +37,7 @@
 #include "bignum/big.h"
 
 struct Bigival {
+  Bigival() : Bigival(0) {}
   Bigival(const BigRat &pt) : Bigival(pt, pt, true, true) {}
   Bigival(const BigInt &pt) : Bigival(BigRat(pt)) {}
   Bigival(int64_t i) : Bigival(BigRat(i)) {}
@@ -69,6 +70,12 @@ struct Bigival {
 
     return Bigival(Min(Min(x, y), Min(z, w)),
                    Max(Max(x, y), Max(z, w)));
+  }
+
+  // When we know that one argument is exact, we can save some steps.
+  Bigival Times(const BigRat &b) const {
+    // PERF do so!
+    return Times(Bigival(b));
   }
 
   Bigival Div(const Bigival &b) const {
@@ -586,6 +593,10 @@ inline Bigival operator-(const Bigival &a) {
 }
 
 inline Bigival operator*(const Bigival &a, const Bigival &b) {
+  return a.Times(b);
+}
+
+inline Bigival operator*(const Bigival &a, const BigRat &b) {
   return a.Times(b);
 }
 
