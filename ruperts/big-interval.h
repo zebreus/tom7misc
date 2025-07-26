@@ -24,19 +24,19 @@
 #ifndef _RUPERTS_BIG_INTERVAL_H
 #define _RUPERTS_BIG_INTERVAL_H
 
-#include <cstdio>
 #include <format>
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "ansi.h"
 #include "base/logging.h"
 #include "bignum/big-numbers.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 
 struct Bigival {
+  static constexpr bool SELF_CHECK = true;
+
   Bigival() : Bigival(0) {}
   Bigival(const BigRat &pt) : Bigival(pt, pt, true, true) {}
   Bigival(const BigInt &pt) : Bigival(BigRat(pt)) {}
@@ -113,10 +113,22 @@ struct Bigival {
                      Max(alb, aub));
     }
 
-    // Then the sign of the two must be the same.
-    const int sign1 = BigRat::Sign(lb.r);
-    const int sign2 = BigRat::Sign(ub.r);
-    CHECK(sign1 == sign2) << "Bug: Should not be possible!";
+    if (SELF_CHECK) {
+      // First note the possibility of an open interval at zero.
+      const int sign1 = BigRat::Sign(lb.r);
+      const int sign2 = BigRat::Sign(ub.r);
+      if (sign1 == 0) {
+        CHECK(!IncludesLB());
+      }
+      if (sign2 == 0) {
+        CHECK(!IncludesUB());
+      }
+      if (sign1 != 0 && sign2 != 0) {
+        CHECK(sign1 == sign2) << "Bug: Should not be possible! We had this:\n" <<
+          ToString() << "\nWith alb: " << alb.ToString() << "\nAnd  aub: " <<
+          aub.ToString();
+      }
+    }
 
     // PERF: Can avoid comparing twice, copying...
     return Bigival(Min(alb, aub), Max(alb, aub));

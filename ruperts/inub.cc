@@ -1,24 +1,38 @@
 
 #include <algorithm>
+#include <bit>
 #include <cstdio>
 #include <ctime>
+#include <format>
 #include <initializer_list>
 #include <memory>
+#include <mutex>
+#include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include "ansi.h"
+#include "arcfour.h"
+#include "atomic-util.h"
 #include "base/logging.h"
 #include "big-interval.h"
 #include "big-polyhedra.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "patches.h"
+#include "periodically.h"
+#include "randutil.h"
 #include "status-bar.h"
+#include "threadutil.h"
+
+DECLARE_COUNTERS(counter_processed, counter_completed, counter_split);
 
 static constexpr int SCUBE_DIGITS = 24;
+
+StatusBar status = StatusBar(8);
 
 // Adaptation of Jason's idea.
 // Take a pair of patches, one for outer and one for inner.
@@ -59,6 +73,59 @@ inline constexpr int INNER_X = 5;
 inline constexpr int INNER_Y = 6;
 
 inline constexpr int NUM_DIMENSIONS = 7;
+
+struct ParameterSet {
+  // Default empty.
+  ParameterSet() : bits(0) {}
+  static ParameterSet All() {
+    return ParameterSet((1 << NUM_DIMENSIONS) - 1);
+  }
+
+  bool Empty() const { return !bits; }
+
+  // With a list of dimensions to allow.
+  explicit ParameterSet(const std::initializer_list<int> &dimensions) {
+    bits = 0;
+    for (int x : dimensions) {
+      CHECK(x >= 0 && x < NUM_DIMENSIONS);
+      bits |= (1 << x);
+    }
+  }
+
+  void Add(int d) {
+    CHECK(d >= 0 && d < NUM_DIMENSIONS);
+    bits |= (1 << d);
+  }
+
+  int Size() const {
+    return std::popcount<uint32_t>(bits);
+  }
+
+  int operator[](int idx) const {
+    uint32_t shift = bits;
+    int dim = 0;
+    for (;;) {
+      CHECK(shift != 0);
+      if (!(shift & 1)) {
+        int skip = std::countr_zero<uint32_t>(shift);
+        dim += skip;
+        shift >>= skip;
+      }
+
+      CHECK(shift & 1);
+      if (idx == 0) {
+        return dim;
+      }
+      idx--;
+      shift >>= 1;
+      dim++;
+    }
+  }
+
+ private:
+  ParameterSet(uint32_t b) : bits(b) {}
+  uint32_t bits = 0;
+};
 
 using Volume = std::vector<Bigival>;
 
@@ -142,6 +209,11 @@ struct Vec3ival {
   Vec3ival(Bigival xx, Bigival yy, Bigival zz) :
     x(std::move(xx)), y(std::move(yy)), z(std::move(zz)) {}
   Vec3ival() : x(0), y(0), z(0) {}
+
+  std::string ToString() const {
+    return std::format("x: {}, y: {}, z: {}",
+                       x.ToString(), y.ToString(), z.ToString());
+  }
 };
 
 Bigival Dot(const Vec3ival &a, const BigVec3 &b) {
@@ -219,6 +291,10 @@ struct Mat3ival {
   }
 };
 
+static Bigival Cross(const Vec2ival &a, const Vec2ival &b) {
+  return a.x * b.y - a.y * b.x;
+}
+
 static Vec3ival Cross(const Vec3ival &a, const Vec3ival &b) {
   return Vec3ival(
     a.y * b.z - a.z * b.y,
@@ -233,6 +309,8 @@ static Bigival Length(const Vec3ival &v, const BigInt &inv_epsilon) {
 
 static Vec3ival Normalize(const Vec3ival &v, const BigInt &inv_epsilon) {
   Bigival len = Length(v, inv_epsilon);
+  CHECK(!len.ContainsZero()) << "Can't normalize if the length might be "
+    "zero. v was: " << v.ToString();
   return Vec3ival(
       v.x / len,
       v.y / len,
@@ -276,6 +354,8 @@ static Vec2ival TransformPointTo2D(const Frame3ival &frame,
 Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   const Vec3ival &frame_z = view;
 
+  status.Print("Frame for view: {}", view.ToString());
+
   Vec3ival up_z = {BigRat(0), BigRat(0), BigRat(1)};
   Vec3ival frame_x = Normalize(Cross(up_z, frame_z), inv_epsilon);
   Vec3ival frame_y = Cross(frame_z, frame_x);
@@ -298,6 +378,42 @@ Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   };
 }
 
+std::string VolumeString(const Volume &volume, bool multiline = false) {
+  auto DimString = [](const Bigival &bi) {
+      double lb = bi.LB().ToDouble();
+      double ub = bi.UB().ToDouble();
+      // TODO: Use dynamic precision here.
+      return std::format(AGREY("[") "{:.8g}" AGREY(",") "{:.8g}" AGREY("]"),
+                         lb, ub);
+    };
+
+  if (multiline) {
+    return std::format("O φ:{}\n"
+                       "O θ:{}\n"
+                       "I φ:{}\n"
+                       "I θ:{}\n"
+                       "I α:{}\n"
+                       "I x:{}\n"
+                       "I y:{}",
+                       DimString(volume[OUTER_AZIMUTH]),
+                       DimString(volume[OUTER_ANGLE]),
+                       DimString(volume[INNER_AZIMUTH]),
+                       DimString(volume[INNER_ANGLE]),
+                       DimString(volume[INNER_ROT]),
+                       DimString(volume[INNER_X]),
+                       DimString(volume[INNER_Y]));
+  } else {
+    return std::format("O φ:{} θ:{}, I φ:{} θ:{} α:{}, x:{}, y:{}",
+                       DimString(volume[OUTER_AZIMUTH]),
+                       DimString(volume[OUTER_ANGLE]),
+                       DimString(volume[INNER_AZIMUTH]),
+                       DimString(volume[INNER_ANGLE]),
+                       DimString(volume[INNER_ROT]),
+                       DimString(volume[INNER_X]),
+                       DimString(volume[INNER_Y]));
+  }
+}
+
 // Note: Here we have the dependency problem. This one might be
 // solvable with somewhat straightforward analysis. I think what we
 // want to do is think of this as rotating an axis-aligned rectangle
@@ -315,33 +431,48 @@ static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
                   v.x * sin_a + v.y * cos_a);
 }
 
-
 struct Hypersolver {
   enum RejectionReason {
     UNKNOWN = 0,
     OUTSIDE_OUTER_PATCH = 1,
     OUTSIDE_INNER_PATCH = 2,
-    POINT_OUTSIDE = 3,
+    POINT_OUTSIDE1 = 3,
+    POINT_OUTSIDE2 = 4,
+    POINT_OUTSIDE3 = 5,
   };
 
+  std::string_view RejectionReasonString(RejectionReason r) {
+    switch (r) {
+    default:
+    case UNKNOWN:
+      return ARED("MISSING?");
+    case OUTSIDE_OUTER_PATCH:
+      return "OUTSIDE_OUTER_PATCH";
+    case OUTSIDE_INNER_PATCH:
+      return "OUTSIDE_INNER_PATCH";
+    case POINT_OUTSIDE1:
+      return "POINT_OUTSIDE1";
+    case POINT_OUTSIDE2:
+      return "POINT_OUTSIDE2";
+    case POINT_OUTSIDE3:
+      return "POINT_OUTSIDE3";
+    };
+  }
+
   struct Split {
-    // By default, all dimensions.
-    uint64_t split_mask = (1 << NUM_DIMENSIONS) - 1;
-    Split() {}
+    ParameterSet parameters;
+    Split() : parameters(ParameterSet::All()) {}
+    explicit Split(ParameterSet params) : parameters(params) {}
     // With a list of dimensions to allow.
-    explicit Split(const std::initializer_list<int> &dimensions) {
-      split_mask = 0;
-      for (int x : dimensions) {
-        CHECK(x >= 0 && x < NUM_DIMENSIONS);
-        split_mask |= (1 << x);
-      }
-      CHECK(split_mask != 0);
+    explicit Split(const std::initializer_list<int> &dimensions) :
+      parameters(ParameterSet(dimensions)) {
+      CHECK(!parameters.Empty());
     }
   };
 
   struct Impossible {
     RejectionReason reason = UNKNOWN;
-    Impossible(RejectionReason r = UNKNOWN) {}
+    Impossible(RejectionReason r = UNKNOWN) : reason(r) {}
     // For POINT_OUTSIDE, maybe could also record the point and
     // edge?
   };
@@ -358,19 +489,46 @@ struct Hypersolver {
     const Bigival &inner_x = volume[INNER_X];
     const Bigival &inner_y = volume[INNER_Y];
 
+    // To start with, we require the width of the intervals describing
+    // the spherical coordinates to be modest. The main issue is that
+    // when we convert this to a view position, we need that vector
+    // (now represented three-dimensional axis-aligned bounding box) to
+    // not include something degenerate like the origin, or else
+    // we won't even be able to compute intervals to later reject it
+    // as too coarse.
+
+    // 2/5 is about π/8, which should be enough to avoid degeneracy.
+    // We don't want to go overboard with this gridding here, because
+    // we have n^4 cells just to start...
+    BigRat MIN_ANGLE = BigRat(2, 5);
+    BigRat oz_width = outer_azimuth.Width();
+    BigRat oa_width = outer_angle.Width();
+    ParameterSet must_split;
+    if (oz_width > MIN_ANGLE) must_split.Add(OUTER_AZIMUTH);
+    if (oa_width > MIN_ANGLE) must_split.Add(OUTER_ANGLE);
+
+    // Actually should first check if we are in outer patch?
+
+    BigRat iz_width = inner_azimuth.Width();
+    BigRat ia_width = inner_angle.Width();
+    if (iz_width > MIN_ANGLE) must_split.Add(INNER_AZIMUTH);
+    if (ia_width > MIN_ANGLE) must_split.Add(INNER_ANGLE);
+
+    if (!must_split.Empty()) {
+      return {Split(must_split)};
+    }
+
     const BigRat min_width =
       BigRat::Min(
           BigRat::Min(
-              BigRat::Min(outer_azimuth.Width(),
-                          outer_angle.Width()),
+              BigRat::Min(oz_width, oa_width),
               BigRat::Min(inner_x.Width(),
                           inner_y.Width())),
           BigRat::Min(
               inner_rot.Width(),
-              BigRat::Min(inner_azimuth.Width(),
-                          inner_angle.Width())));
+              BigRat::Min(iz_width, ia_width)));
 
-    // XXX Should have some principled derivation of epsilon here.
+    // TODO: Should have some principled derivation of epsilon here.
     // There's no correctness problem, but I just pulled
     // one one-millionth out of thin air and maybe it should be
     // much smaller (or larger?).
@@ -388,7 +546,7 @@ struct Hypersolver {
       return {Impossible(OUTSIDE_OUTER_PATCH)};
     }
 
-    // XXX if it's not the case that we're entirely within the outer
+    // TODO: if it's not the case that we're entirely within the outer
     // patch, prioritize splitting outer angle/azimuth, unless the
     // cells are tiny. We could maybe get into a situation where we
     // are unable to make progress because we are not actually in the
@@ -411,13 +569,12 @@ struct Hypersolver {
     // patches contain the z axis, we should just subdivide if that's
     // the case. But we probably do need to detect it, in case these
     // intervals are too conservative.
-    if ((oviewpos.x.ContainsZero() && oviewpos.y.ContainsZero()) ||
-        (iviewpos.x.ContainsZero() && iviewpos.y.ContainsZero())) {
-      LOG(FATAL) << "This will fail the precondition in FrameFromViewPos. "
-        "Should do something like split (the view pos) here, since "
-        "MightHaveCode should "
-        "eventually just reject intervals that are this far from "
-        "the patch.";
+    if (oviewpos.x.ContainsZero() && oviewpos.y.ContainsZero()) {
+      return {Split({OUTER_AZIMUTH, OUTER_ANGLE})};
+    }
+
+    if (iviewpos.x.ContainsZero() && iviewpos.y.ContainsZero()) {
+      return {Split({INNER_AZIMUTH, INNER_ANGLE})};
     }
 
     Frame3ival outer_frame = FrameFromViewPos(oviewpos, inv_epsilon);
@@ -427,14 +584,20 @@ struct Hypersolver {
     // the inner hull still needs to be rotated and translated.
     std::vector<Vec2ival> outer_shadow;
     outer_shadow.reserve(outer_hull.size());
+    // TODO: Probably much better to get the edge (pb-pa) first and then
+    // rotate that!
     for (int idx : outer_hull) {
       const BigVec3 &original_v = scube.vertices[idx];
       outer_shadow.push_back(
           TransformPointTo2D(outer_frame, original_v));
     }
 
-    // TODO: If the outer shadow has edges where the endpoint intervals
-    // are not disjoint, then we might just want to bisect.
+    // TODO: If the outer shadow has edges where the endpoint
+    // intervals are not disjoint, then we might just want to bisect.
+    // I think in this case we couldn't say anything useful about the
+    // cross product (the edge could be in any direction) and it might
+    // even lead to degeneracy. (This may be too conservative with the
+    // new calculation based on the original 3D cross product, though.)
 
     // Compute the inner hull point-by-point. We can exit early
     // if any of these points are definitely outside the inner hull.
@@ -454,23 +617,63 @@ struct Hypersolver {
         const Vec2ival &va = outer_shadow[start];
         const Vec2ival &vb = outer_shadow[end];
 
-        // HERE: Do line-side test. Specifically, we can assume the
-        // origin is clockwise from the edge va->vb. Then we want
-        // to ask if point v's interval is definitely completely
-        // on the other side of the edge.
-        Bigival cross_product =
+        // Do line-side test. Specifically, we can assume the origin
+        // is clockwise from the edge va->vb. Then we want to ask if
+        // point v's interval is definitely completely on the other
+        // side of the edge.
+
+        // There are multiple ways to test this, and they could have
+        // different types of over-conservativity (from dependency problem)
+        // in different situations. So we perform multiple tests to
+        // try to reject the cell.
+
+        // Note dependency problem: va.x and va.y both appear twice.
+        // vb and va depend on one another because they are the result
+        // of a 2D rotation (and of course they both depend on the
+        // outer orientation).
+        Bigival cross_product1 =
           (vb.x - va.x) * (v.y - va.y) - (vb.y - va.y) * (v.x - va.x);
 
         // The cross product would have to be negative in order
         // to be strictly inside, so if this is not possible, then we
         // know this cell is impossible.
-        if (!cross_product.MightBeNegative()) {
-          return {Impossible(POINT_OUTSIDE)};
+        if (!cross_product1.MightBeNegative()) {
+          return {Impossible(POINT_OUTSIDE1)};
         }
+
+        Bigival cross_vb_v_plus_cross_v_va =
+          Cross(vb, v) + Cross(v, va);
+
+        // This is arranged so that only the term Cross(va, vb) has
+        // the dependency problem. The edge and point are independent
+        // because they only depend on the outer and inner parameters,
+        // respectively.
+        Bigival cross_product2 =
+          Cross(va, vb) + cross_vb_v_plus_cross_v_va;
+
+        if (!cross_product2.MightBeNegative()) {
+          return {Impossible(POINT_OUTSIDE2)};
+        }
+
+        // TODO: Try the trick of deriving terms from the exact
+        // 3D cross product.
+
       }
     }
 
+    // Failed to rule out this cell. Perform any split.
     return {Split()};
+  }
+
+  ArcFour rc;
+  std::mutex mu;
+
+  int RandomDimensionFromSplitMask(ParameterSet params) {
+    CHECK(!params.Empty()) << "No dimensions to split on?";
+    const int num = params.Size();
+    MutexLock ml(&mu);
+    int idx = RandTo(&rc, num);
+    return params[idx];
   }
 
   void Expand() {
@@ -480,30 +683,84 @@ struct Hypersolver {
 
     printf("Remaining leaves: %zu\n", leaves.size());
 
+    Periodically status_per(1);
+
     while (!leaves.empty()) {
       Volume volume;
       std::unique_ptr<Hypercube::Node> *node;
       std::tie(volume, node) = leaves.back();
       leaves.pop_back();
 
+      status_per.RunIf([&]() {
+          status.Status(
+              "{}\n"
+              "{} processed, {} completed, {} split. {} queued",
+              VolumeString(volume, true),
+              counter_processed.Read(),
+              counter_completed.Read(),
+              counter_split.Read(),
+              leaves.size());
+        });
+
       ProcessResult res = ProcessOne(volume, node);
+      counter_processed++;
 
       if (Impossible *imp = std::get_if<Impossible>(&res)) {
         (void)imp;
+
+        // Lazily create leaf if needed.
+        if (node->get() == nullptr) {
+          node->reset(new Hypercube::Node(Hypercube::Leaf()));
+        }
+
         // Then mark the node as a leaf that has been ruled out.
         Hypercube::Leaf *leaf = std::get_if<Hypercube::Leaf>(node->get());
         CHECK(leaf != nullptr) << "Bug: We only expand leaves!";
         leaf->completed = time(nullptr);
-        break;
+
+        counter_completed++;
+
+        status.Print(AGREEN("Success!") " Excluded cell (" ACYAN("{}") "). "
+                     " Now {}.\n",
+                     RejectionReasonString(imp->reason),
+                     counter_completed.Read());
+
+
       } else if (Split *split = std::get_if<Split>(&res)) {
         // Can't rule it out. So split. We use a random direction here (in
         // accordance with the split's mask) but we should consider being
-        // systematic about it?
+        // systematic about it (e.g. split the longest dimension)?
 
-        (void)split;
-        LOG(FATAL) << "Unimplemented";
+        int dim = RandomDimensionFromSplitMask(split->parameters);
+        CHECK(dim >= 0 && dim < NUM_DIMENSIONS);
+        Hypercube::Split split_node;
+        split_node.axis = dim;
 
-        break;
+        const Bigival &oldival = volume[dim];
+        Volume left = volume, right = volume;
+        BigRat mid = (oldival.LB() + oldival.UB()) / 2;
+
+        // TODO: Choose a split point that's close to half way, but prefer
+        // simple fractions! The endpoints form the basis of the intervals
+        // that we calculate with, so higher quality fractions are much
+        // preferable (and we don't really care about where we split as
+        // long as we are getting logarithmic size reduction).
+
+        // left side is <, right side is >=.
+        left[dim] = Bigival(oldival.LB(), mid, oldival.IncludesLB(), false);
+        right[dim] = Bigival(mid, oldival.UB(), true, oldival.IncludesUB());
+        split_node.split = std::move(mid);
+        // Leave left and right child as nullptr; they get filled in
+        // when we explore them.
+
+        // But enqueue these.
+        leaves.emplace_back(std::move(left), &split_node.left);
+        leaves.emplace_back(std::move(right), &split_node.right);
+
+        node->reset(new Hypercube::Node(std::move(split_node)));
+
+        counter_split++;
+
       } else {
         LOG(FATAL) << "Bad processresult";
       }
@@ -533,9 +790,14 @@ struct Hypersolver {
   }
 
 
-  Hypersolver() : scube(BigScube(SCUBE_DIGITS)), boundaries(scube) {
+  Hypersolver() : rc("hyper"), scube(BigScube(SCUBE_DIGITS)),
+    boundaries(scube) {
     patch_info = LoadPatchInfo("scube-patchinfo.txt");
-    // slightly larger than pi. accurate to 16 digits.
+    // We don't want every volume's endpoints to involve some subdivision
+    // of an extremely accurate pi, and we don't need them to; we just
+    // need the starting interval to cover [0, π]. So we use a simple
+    // rational upper bound to π.
+    // Slightly larger than π. Accurate to 16 digits.
     BigRat big_pi(165707065, 52746197);
     Volume bounds;
     bounds.resize(7);
@@ -573,17 +835,33 @@ struct Hypersolver {
 
     outer_hull = outer.hull;
     inner_hull = inner.hull;
+
+    outer_cx.reserve(outer_hull.size());
+    for (int n = 0; n < outer_hull.size(); n++) {
+      const BigVec3 &va = scube.vertices[outer_hull[n]];
+      const BigVec3 &vb = scube.vertices[outer_hull[(n + 1) % outer_hull.size()]];
+
+      outer_cx.push_back(cross(va, vb));
+    }
   }
 
   BigPoly scube;
   Boundaries boundaries;
   PatchInfo patch_info;
-  StatusBar status = StatusBar(1);
   std::unique_ptr<Hypercube> hypercube;
   uint64_t outer_code = 0, outer_mask = 0;
   uint64_t inner_code = 0, inner_mask = 0;
 
   std::vector<int> outer_hull, inner_hull;
+
+  // Some expressions can equivalently be written in terms of cross
+  // products of the original exact coordinates. This is much better
+  // since we don't get propagated error from the dependency problem.
+  // outer_cx[n] is cross(va, vb)
+  // where va is scube.vertices[outer_hull[n]]
+  //   and vb is scube.vertices[outer_hull[(n + 1) % outer_hull.size()]],
+  // that is, an edge of the outer hull starting at the nth vertex.
+  std::vector<BigVec3> outer_cx;
 };
 
 int main(int argc, char **argv) {

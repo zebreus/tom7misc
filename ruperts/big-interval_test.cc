@@ -189,8 +189,16 @@ static void Special() {
       });
   }
 
+  {
+    Bigival b = Bigival(BigRat{0}, BigRat{"52/73"}, false, false);
+    Bigival bb = b.Abs();
+    Sample(b, [&bb](const BigRat &s) {
+        CHECK_CONTAINS(bb, BigRat::Abs(s));
+      });
+  }
+
   // Tests for Reciprocal()
- {
+  {
     // All positive.
     Bigival c(2, 4, true, false);
     Bigival cc = c.Reciprocal();
