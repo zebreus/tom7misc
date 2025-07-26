@@ -317,9 +317,17 @@ static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
 
 
 struct Hypersolver {
+  enum RejectionReason {
+    UNKNOWN = 0,
+    OUTSIDE_OUTER_PATCH = 1,
+    OUTSIDE_INNER_PATCH = 2,
+    POINT_OUTSIDE = 3,
+  };
+
   struct Split {
     // By default, all dimensions.
     uint64_t split_mask = (1 << NUM_DIMENSIONS) - 1;
+    Split() {}
     // With a list of dimensions to allow.
     explicit Split(const std::initializer_list<int> &dimensions) {
       split_mask = 0;
@@ -332,7 +340,10 @@ struct Hypersolver {
   };
 
   struct Impossible {
-    // Nothing...
+    RejectionReason reason = UNKNOWN;
+    Impossible(RejectionReason r = UNKNOWN) {}
+    // For POINT_OUTSIDE, maybe could also record the point and
+    // edge?
   };
 
   using ProcessResult = std::variant<Split, Impossible>;
@@ -374,7 +385,7 @@ struct Hypersolver {
         outer_angle.Cos(inv_epsilon));
 
     if (!MightHaveCode(outer_code, outer_mask, oviewpos)) {
-      return {Impossible()};
+      return {Impossible(OUTSIDE_OUTER_PATCH)};
     }
 
     // XXX if it's not the case that we're entirely within the outer
@@ -391,7 +402,7 @@ struct Hypersolver {
         inner_angle.Cos(inv_epsilon));
 
     if (!MightHaveCode(inner_code, inner_mask, iviewpos)) {
-      return {Impossible()};
+      return {Impossible(OUTSIDE_INNER_PATCH)};
     }
 
     // Get outer and inner frame.
@@ -400,6 +411,15 @@ struct Hypersolver {
     // patches contain the z axis, we should just subdivide if that's
     // the case. But we probably do need to detect it, in case these
     // intervals are too conservative.
+    if ((oviewpos.x.ContainsZero() && oviewpos.y.ContainsZero()) ||
+        (iviewpos.x.ContainsZero() && iviewpos.y.ContainsZero())) {
+      LOG(FATAL) << "This will fail the precondition in FrameFromViewPos. "
+        "Should do something like split (the view pos) here, since "
+        "MightHaveCode should "
+        "eventually just reject intervals that are this far from "
+        "the patch.";
+    }
+
     Frame3ival outer_frame = FrameFromViewPos(oviewpos, inv_epsilon);
     Frame3ival inner_frame = FrameFromViewPos(iviewpos, inv_epsilon);
 
@@ -438,12 +458,19 @@ struct Hypersolver {
         // origin is clockwise from the edge va->vb. Then we want
         // to ask if point v's interval is definitely completely
         // on the other side of the edge.
+        Bigival cross_product =
+          (vb.x - va.x) * (v.y - va.y) - (vb.y - va.y) * (v.x - va.x);
 
+        // The cross product would have to be negative in order
+        // to be strictly inside, so if this is not possible, then we
+        // know this cell is impossible.
+        if (!cross_product.MightBeNegative()) {
+          return {Impossible(POINT_OUTSIDE)};
+        }
       }
     }
 
-
-    LOG(FATAL) << "Unimplemented";
+    return {Split()};
   }
 
   void Expand() {
@@ -496,9 +523,9 @@ struct Hypersolver {
         Bigival d = Dot(v, normal);
         if (pos & code) {
           // Must include positive region.
-          if (!d.MayBePositive()) return false;
+          if (!d.MightBePositive()) return false;
         } else {
-          if (!d.MayBeNegative()) return false;
+          if (!d.MightBeNegative()) return false;
         }
       }
     }
@@ -537,7 +564,7 @@ struct Hypersolver {
     const PatchInfo::CanonicalPatch &outer = canonical[0].second;
     const PatchInfo::CanonicalPatch &inner = canonical[1].second;
 
-    // TODO: Check that the hull contains the origin.
+    // TODO: Verify that the hull contains the origin.
 
     outer_code = outer.code;
     inner_code = inner.code;

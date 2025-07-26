@@ -427,11 +427,11 @@ struct Bigival {
     return lb.r == ub.r;
   }
 
-  bool MayBeNegative() const {
+  bool MightBeNegative() const {
     return BigRat::Sign(LB()) == -1;
   }
 
-  bool MayBePositive() const {
+  bool MightBePositive() const {
     return BigRat::Sign(UB()) == 1;
   }
 
