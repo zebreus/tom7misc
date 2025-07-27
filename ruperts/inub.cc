@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstdio>
 #include <ctime>
 #include <format>
 #include <initializer_list>
@@ -41,7 +42,7 @@ static constexpr bool SELF_CHECK = true;
 
 static constexpr int SCUBE_DIGITS = 24;
 
-StatusBar status = StatusBar(12);
+StatusBar status = StatusBar(13);
 
 // Adaptation of Jason's idea.
 // Take a pair of patches, one for outer and one for inner.
@@ -144,6 +145,15 @@ struct ParameterSet {
 
 // Represents a (hyper)rectangular volume within the search space.
 using Volume = std::vector<Bigival>;
+
+// The n-dimensional hypervolume of the cell.
+BigRat Hypervolume(const Volume &vol) {
+  BigRat product(1);
+  for (int d = 0; d < NUM_DIMENSIONS; d++) {
+    product *= vol[d].Width();
+  }
+  return product;
+}
 
 // Hypercube using big rationals. (It's actually a hyperrectangle
 // because the sides are not all the same length...)
@@ -682,7 +692,8 @@ struct Hypersolver {
     // cells are tiny. We could maybe get into a situation where we
     // are unable to make progress because we are not actually in the
     // patch, and the hull is no longer even close to an attainable
-    // shape (there may actually be true solutions out there!).
+    // shape. In that case, there may be actual solutions, and we
+    // might keep trying to bisect to rule them out (but can't).
 
     // Now the same idea for the inner patch.
 
@@ -719,6 +730,7 @@ struct Hypersolver {
     // the outer hull, whose vertices we call va, vb, etc.
 
     // The raw rotated vertices of the hull; va.
+#if 0
     std::vector<Vec2ival> outer_shadow;
     outer_shadow.reserve(outer_hull.size());
     for (int vidx : outer_hull) {
@@ -726,6 +738,7 @@ struct Hypersolver {
       outer_shadow.push_back(
           TransformPointTo2D(outer_frame, pa));
     }
+#endif
 
     // The hull edge vb-va, rotated by the outer frame.
     // We already precomputed the exact 3D vectors, so we
@@ -761,13 +774,11 @@ struct Hypersolver {
       // the outer hull. Since the outer hull is a convex hull
       // containing the origin, in clockwise winding order, we can
       // just do this as a series of line-side tests.
-      CHECK(outer_hull.size() == outer_shadow.size());
+      // CHECK(outer_hull.size() == outer_shadow.size());
       CHECK(outer_hull.size() == outer_edge.size());
       CHECK(outer_hull.size() == outer_cross_va_vb.size());
-      for (int start = 0; start < outer_shadow.size(); start++) {
-        int end = (start + 1) % outer_shadow.size();
-        const Vec2ival &va = outer_shadow[start];
-        const Vec2ival &vb = outer_shadow[end];
+      for (int start = 0; start < outer_hull.size(); start++) {
+        [[maybe_unused]] int end = (start + 1) % outer_hull.size();
 
         // Do line-side test. Specifically, we can assume the origin
         // is clockwise from the edge va->vb. Then we want to ask if
@@ -781,6 +792,10 @@ struct Hypersolver {
         // (Many of these are redundant and the first few are pretty
         // insensitive because of many reuses of dependent terms. Should
         // clean this up!)
+
+        #if 0
+        [[maybe_unused]] const Vec2ival &va = outer_shadow[start];
+        [[maybe_unused]] const Vec2ival &vb = outer_shadow[end];
 
         // The naive test.
         // Note dependency problem: va.x and va.y both appear twice.
@@ -832,7 +847,7 @@ struct Hypersolver {
         if (!cross_product3.MightBeNegative()) {
           return {Impossible(POINT_OUTSIDE3)};
         }
-
+        #endif
 
         // We also have a better way of computing the
         // other terms. Rather than rotate the endpoints and
@@ -846,6 +861,7 @@ struct Hypersolver {
         //     dependency problem.
         const Vec2ival &edge = outer_edge[start];
 
+        const Bigival &cross_va_vb = outer_cross_va_vb[start];
         Bigival cross_product4 =
           edge.x * v.y - edge.y * v.x + cross_va_vb;
 
@@ -864,6 +880,15 @@ struct Hypersolver {
   std::unordered_map<RejectionReason, int64_t> rejection_count;
   int64_t times_split[NUM_DIMENSIONS] = {};
   Timer run_timer;
+  // The hypervolume now done (this includes regions that we
+  // determined are out of scope). Compare against the full volume.
+  double volume_done = 0.0;
+  // The volume that is excluded for being out of scope. Compare
+  // against the full volume.
+  double volume_outscope = 0.0;
+  // The hypervolume where we definitively ruled out a solution.
+  // Can compare this against (full - volume_outscope).
+  double volume_proved = 0.0;
 
   int RandomParameterFromSet(ParameterSet params) {
     CHECK(!params.Empty()) << "No dimensions to split on?";
@@ -902,6 +927,9 @@ struct Hypersolver {
 
     Periodically status_per(1);
 
+    BigRat full_volume = Hypervolume(hypercube->bounds);
+    double full_volume_d = full_volume.ToDouble();
+
     while (!leaves.empty()) {
       Volume volume;
       std::shared_ptr<Hypercube::Node> node;
@@ -925,6 +953,14 @@ struct Hypersolver {
           double time_each =
             run_timer.Seconds() / counter_processed.Read();
 
+          double done_pct = (volume_done * 100.0) /
+            full_volume_d;
+
+          // Proved percentage is provide volume over the
+          // amount that is in scope.
+          double proved_pct = (volume_proved * 100.0) /
+            (full_volume_d - volume_outscope);
+
           status.Status(
               AWHITE("—————————————————————————————————————————") "\n"
               // "Put volume information here!\n"
@@ -932,6 +968,7 @@ struct Hypersolver {
               "{}\n"
               "{}\n"
               "Bad midpoint: {}\n"
+              "Done: {:.8g} {:.6f}% Proved: {:.8g} {:.6f}%\n"
               "{} processed, "
               "{} " AGREEN("✔") ", "
               "{} " AORANGE("⊹") ". "
@@ -940,6 +977,8 @@ struct Hypersolver {
               VolumeString(volume, true),
               rr,
               counter_bad_midpoint.Read(),
+              volume_done, done_pct,
+              volume_proved, proved_pct,
               counter_processed.Read(),
               counter_completed.Read(),
               counter_split.Read(),
@@ -959,6 +998,18 @@ struct Hypersolver {
         leaf->completed = time(nullptr);
 
         counter_completed++;
+
+        double v = Hypervolume(volume).ToDouble();
+        volume_done += v;
+        switch (imp->reason) {
+        case OUTSIDE_OUTER_PATCH:
+        case OUTSIDE_INNER_PATCH:
+          volume_outscope += v;
+          break;
+        default:
+          volume_proved += v;
+          break;
+        }
 
         /*
         status.Print(AGREEN("Success!") " Excluded cell (" ACYAN("{}") "). "
@@ -1007,6 +1058,8 @@ struct Hypersolver {
         LOG(FATAL) << "Bad processresult";
       }
     }
+
+    printf("Success " AGREEN(":)") "\n");
   }
 
   // PERF: Might actually make sense to do all of the plane-side
