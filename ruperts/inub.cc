@@ -5,6 +5,7 @@
 #include <ctime>
 #include <format>
 #include <initializer_list>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -33,13 +34,14 @@
 #include "timer.h"
 #include "util.h"
 
-DECLARE_COUNTERS(counter_processed, counter_completed, counter_split);
+DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
+                 counter_bad_midpoint);
 
 static constexpr bool SELF_CHECK = true;
 
 static constexpr int SCUBE_DIGITS = 24;
 
-StatusBar status = StatusBar(11);
+StatusBar status = StatusBar(12);
 
 // Adaptation of Jason's idea.
 // Take a pair of patches, one for outer and one for inner.
@@ -100,6 +102,10 @@ struct ParameterSet {
     }
   }
 
+  bool Contains(int d) {
+    return !!(bits & (1 << d));
+  }
+
   void Add(int d) {
     CHECK(d >= 0 && d < NUM_DIMENSIONS);
     bits |= (1 << d);
@@ -129,6 +135,7 @@ struct ParameterSet {
       dim++;
     }
   }
+
 
  private:
   ParameterSet(uint32_t b) : bits(b) {}
@@ -505,6 +512,41 @@ static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
                   v.x * sin_a + v.y * cos_a);
 }
 
+// Bisect an interval. We choose a split point that's close to half
+// way, but prefer simple fractions! The endpoints form the basis of
+// the intervals that we calculate with, so higher quality fractions
+// are much preferable (and we don't really care about where we split
+// as long as we are getting logarithmic size reduction).
+static BigRat SplitInterval(const Bigival &ival) {
+  // return (ival.LB() + ival.UB()) / 2;
+
+  BigRat sum = ival.LB() + ival.UB();
+
+  BigRat mid = sum / 2;
+
+  // We'll require the split point to be in the middle third of
+  // the interval; this guarantees we get logarithmic reduction.
+  BigRat lthird = (sum + ival.LB()) / 3;
+  BigRat uthird = (sum + ival.UB()) / 3;
+
+  // Try simplifying.
+  BigInt inv_epsilon = BigInt::Sqrt(mid.Denominator());
+  BigRat simple_mid = BigRat::Truncate(mid, inv_epsilon);
+
+  // Truncate doesn't really make any guarantees about the
+  // error on the result, so it could be too far from the
+  // midpoint (even outside the original bounds!).
+
+  if (simple_mid >= lthird && simple_mid <= uthird) {
+    // Found a high quality rational that's close enough to the middle.
+    return simple_mid;
+  } else {
+    // Return the exact midpoint, even if it is low quality.
+    counter_bad_midpoint++;
+    return mid;
+  }
+}
+
 struct Hypersolver {
   enum RejectionReason {
     UNKNOWN = 0,
@@ -805,7 +847,7 @@ struct Hypersolver {
         const Vec2ival &edge = outer_edge[start];
 
         Bigival cross_product4 =
-          v.x * edge.y - v.y * edge.x + cross_va_vb;
+          edge.x * v.y - edge.y * v.x + cross_va_vb;
 
         if (!cross_product4.MightBeNegative()) {
           return {Impossible(POINT_OUTSIDE4)};
@@ -829,6 +871,26 @@ struct Hypersolver {
     MutexLock ml(&mu);
     int idx = RandTo(&rc, num);
     return params[idx];
+  }
+
+  // Choose the parameter that has the largest absolute width.
+  int BestParameterFromSet(const Volume &volume, ParameterSet params) {
+    CHECK(!params.Empty());
+    if (params.Size() == 1) return params[0];
+
+    int best_d = params[0];
+    BigRat best_w = volume[best_d].Width();
+    for (int d = best_d + 1; d < NUM_DIMENSIONS; d++) {
+      if (params.Contains(d)) {
+        BigRat w = volume[d].Width();
+        if (w > best_w) {
+          best_d = d;
+          best_w = std::move(w);
+        }
+      }
+    }
+
+    return best_d;
   }
 
   void Expand() {
@@ -869,11 +931,15 @@ struct Hypersolver {
               "Split count: {}\n"
               "{}\n"
               "{}\n"
-              "{} processed, {} " AGREEN("✔") ", {} " AORANGE("⊹") ". "
+              "Bad midpoint: {}\n"
+              "{} processed, "
+              "{} " AGREEN("✔") ", "
+              "{} " AORANGE("⊹") ". "
               "{} queued, {} ea.",
               splitcount,
               VolumeString(volume, true),
               rr,
+              counter_bad_midpoint.Read(),
               counter_processed.Read(),
               counter_completed.Read(),
               counter_split.Read(),
@@ -907,7 +973,8 @@ struct Hypersolver {
         // accordance with the split's mask) but we should consider being
         // systematic about it (e.g. split the longest dimension)?
 
-        int dim = RandomParameterFromSet(split->parameters);
+        // int dim = RandomParameterFromSet(split->parameters);
+        int dim = BestParameterFromSet(volume, split->parameters);
         CHECK(dim >= 0 && dim < NUM_DIMENSIONS);
         times_split[dim]++;
         Hypercube::Split split_node;
@@ -915,13 +982,7 @@ struct Hypersolver {
 
         const Bigival &oldival = volume[dim];
         Volume left = volume, right = volume;
-        BigRat mid = (oldival.LB() + oldival.UB()) / 2;
-
-        // TODO: Choose a split point that's close to half way, but prefer
-        // simple fractions! The endpoints form the basis of the intervals
-        // that we calculate with, so higher quality fractions are much
-        // preferable (and we don't really care about where we split as
-        // long as we are getting logarithmic size reduction).
+        BigRat mid = SplitInterval(oldival);
 
         // left side is <, right side is >=.
         left[dim] = Bigival(oldival.LB(), mid, oldival.IncludesLB(), false);
