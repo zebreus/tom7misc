@@ -32,9 +32,9 @@ CODEC=../codec
 SQLITE=../sqlite
 
 # OPT=-O -g
-# OPT=-O3 -flto=thin
-ASAN=-g -fsanitize=address -fsanitize=undefined
-OPT=-O
+OPT=-O3 -flto=thin
+# ASAN=-g -fsanitize=address -fsanitize=undefined
+# OPT=-O
 
 # REMARKS=-Rpass=loop-vectorize -Rpass-missed=loop-vectorize -Rpass-analysis=loop-vectorize
 

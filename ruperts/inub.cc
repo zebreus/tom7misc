@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -18,6 +19,7 @@
 #include "arcfour.h"
 #include "atomic-util.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "big-interval.h"
 #include "big-polyhedra.h"
 #include "bignum/big-overloads.h"
@@ -32,7 +34,7 @@ DECLARE_COUNTERS(counter_processed, counter_completed, counter_split);
 
 static constexpr int SCUBE_DIGITS = 24;
 
-StatusBar status = StatusBar(8);
+StatusBar status = StatusBar(9);
 
 // Adaptation of Jason's idea.
 // Take a pair of patches, one for outer and one for inner.
@@ -155,44 +157,48 @@ struct Hypercube {
     int axis = 0;
     // left side is <, right side is >=.
     BigRat split;
-    std::unique_ptr<Node> left, right;
+    std::shared_ptr<Node> left, right;
   };
 
   static std::pair<Volume, Volume>
   SplitVolume(const Volume &volume, int axis, const BigRat &split) {
     Volume left = volume;
     Volume right = volume;
-    left[axis] = Bigival(left[axis].LB(), split, left[axis].IncludesLB(), false);
-    right[axis] = Bigival(split, right[axis].UB(), true, right[axis].IncludesUB());
+    left[axis] = Bigival(left[axis].LB(), split,
+                         left[axis].IncludesLB(), false);
+    right[axis] = Bigival(split, right[axis].UB(),
+                          true, right[axis].IncludesUB());
     return std::make_pair(left, right);
   }
 
-  std::vector<std::pair<Volume, std::unique_ptr<Hypercube::Node> *>> GetLeaves() {
-    std::vector<std::pair<Volume, std::unique_ptr<Hypercube::Node> *>> leaves;
+  std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> GetLeaves() {
+    std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> leaves;
 
-    std::vector<std::pair<Volume, std::unique_ptr<Hypercube::Node> *>> stack = {
-      {bounds, &root}
+    std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> stack = {
+      {bounds, root}
     };
 
     while (!stack.empty()) {
       Volume volume;
-      std::unique_ptr<Hypercube::Node> *node;
+      std::shared_ptr<Hypercube::Node> node;
       std::tie(volume, node) = std::move(stack.back());
       stack.pop_back();
 
-      if (Leaf *leaf = std::get_if<Leaf>(node->get())) {
+      CHECK(node.get() != nullptr);
+
+      if (Leaf *leaf = std::get_if<Leaf>(node.get())) {
         if (leaf->completed == 0) {
           leaves.emplace_back(std::move(volume), node);
         }
       } else {
-        Split *split = std::get_if<Split>(node->get());
+        Split *split = std::get_if<Split>(node.get());
         CHECK(split != nullptr) << "Must be leaf or split.";
 
-        std::pair<Volume, Volume> vols = SplitVolume(volume,
-                                                     split->axis, split->split);
+        std::pair<Volume, Volume> vols =
+          SplitVolume(volume, split->axis, split->split);
 
-        stack.emplace_back(vols.first, &split->left);
-        stack.emplace_back(vols.second, &split->right);
+        stack.emplace_back(vols.first, split->left);
+        stack.emplace_back(vols.second, split->right);
       }
     }
 
@@ -200,7 +206,7 @@ struct Hypercube {
   }
 
   Volume bounds;
-  std::unique_ptr<Node> root;
+  std::shared_ptr<Node> root;
 };
 
 // Vec3 where each component is an interval.
@@ -354,7 +360,7 @@ static Vec2ival TransformPointTo2D(const Frame3ival &frame,
 Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   const Vec3ival &frame_z = view;
 
-  status.Print("Frame for view: {}", view.ToString());
+  // status.Print("Frame for view: {}", view.ToString());
 
   Vec3ival up_z = {BigRat(0), BigRat(0), BigRat(1)};
   Vec3ival frame_x = Normalize(Cross(up_z, frame_z), inv_epsilon);
@@ -479,8 +485,7 @@ struct Hypersolver {
 
   using ProcessResult = std::variant<Split, Impossible>;
 
-  ProcessResult ProcessOne(const Volume &volume,
-                           std::unique_ptr<Hypercube::Node> *node) {
+  ProcessResult ProcessOne(const Volume &volume) {
     const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
     const Bigival &outer_angle = volume[OUTER_ANGLE];
     const Bigival &inner_azimuth = volume[INNER_AZIMUTH];
@@ -665,8 +670,9 @@ struct Hypersolver {
     return {Split()};
   }
 
-  ArcFour rc;
   std::mutex mu;
+  ArcFour rc;
+  std::unordered_map<RejectionReason, int64_t> rejection_count;
 
   int RandomDimensionFromSplitMask(ParameterSet params) {
     CHECK(!params.Empty()) << "No dimensions to split on?";
@@ -678,7 +684,7 @@ struct Hypersolver {
 
   void Expand() {
     // Get all the unsolved leaves.
-    std::vector<std::pair<Volume, std::unique_ptr<Hypercube::Node> *>> leaves =
+    std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> leaves =
       hypercube->GetLeaves();
 
     printf("Remaining leaves: %zu\n", leaves.size());
@@ -687,44 +693,51 @@ struct Hypersolver {
 
     while (!leaves.empty()) {
       Volume volume;
-      std::unique_ptr<Hypercube::Node> *node;
+      std::shared_ptr<Hypercube::Node> node;
       std::tie(volume, node) = leaves.back();
       leaves.pop_back();
 
+      CHECK(node.get() != nullptr);
+
       status_per.RunIf([&]() {
+          std::string rr;
+          for (const auto &[reason, count] : rejection_count) {
+            AppendFormat(&rr, ACYAN("{}") ": {}  ",
+                         RejectionReasonString(reason), count);
+          }
+
           status.Status(
+              "{}\n"
               "{}\n"
               "{} processed, {} completed, {} split. {} queued",
               VolumeString(volume, true),
+              rr,
               counter_processed.Read(),
               counter_completed.Read(),
               counter_split.Read(),
               leaves.size());
         });
 
-      ProcessResult res = ProcessOne(volume, node);
+      ProcessResult res = ProcessOne(volume);
       counter_processed++;
 
       if (Impossible *imp = std::get_if<Impossible>(&res)) {
         (void)imp;
 
-        // Lazily create leaf if needed.
-        if (node->get() == nullptr) {
-          node->reset(new Hypercube::Node(Hypercube::Leaf()));
-        }
-
         // Then mark the node as a leaf that has been ruled out.
-        Hypercube::Leaf *leaf = std::get_if<Hypercube::Leaf>(node->get());
+        Hypercube::Leaf *leaf = std::get_if<Hypercube::Leaf>(node.get());
         CHECK(leaf != nullptr) << "Bug: We only expand leaves!";
         leaf->completed = time(nullptr);
 
         counter_completed++;
 
+        /*
         status.Print(AGREEN("Success!") " Excluded cell (" ACYAN("{}") "). "
                      " Now {}.\n",
                      RejectionReasonString(imp->reason),
                      counter_completed.Read());
-
+        */
+        rejection_count[imp->reason]++;
 
       } else if (Split *split = std::get_if<Split>(&res)) {
         // Can't rule it out. So split. We use a random direction here (in
@@ -750,14 +763,18 @@ struct Hypersolver {
         left[dim] = Bigival(oldival.LB(), mid, oldival.IncludesLB(), false);
         right[dim] = Bigival(mid, oldival.UB(), true, oldival.IncludesUB());
         split_node.split = std::move(mid);
-        // Leave left and right child as nullptr; they get filled in
-        // when we explore them.
 
-        // But enqueue these.
-        leaves.emplace_back(std::move(left), &split_node.left);
-        leaves.emplace_back(std::move(right), &split_node.right);
+        // Pending leaves.
+        split_node.left = std::make_shared<Hypercube::Node>(
+            Hypercube::Leaf());
+        split_node.right = std::make_shared<Hypercube::Node>(
+            Hypercube::Leaf());
 
-        node->reset(new Hypercube::Node(std::move(split_node)));
+        // Enqueue the leaves.
+        leaves.emplace_back(std::move(left), split_node.left);
+        leaves.emplace_back(std::move(right), split_node.right);
+
+        node.reset(new Hypercube::Node(std::move(split_node)));
 
         counter_split++;
 
@@ -793,10 +810,10 @@ struct Hypersolver {
   Hypersolver() : rc("hyper"), scube(BigScube(SCUBE_DIGITS)),
     boundaries(scube) {
     patch_info = LoadPatchInfo("scube-patchinfo.txt");
-    // We don't want every volume's endpoints to involve some subdivision
-    // of an extremely accurate pi, and we don't need them to; we just
-    // need the starting interval to cover [0, π]. So we use a simple
-    // rational upper bound to π.
+    // We don't want every volume's endpoints to involve some
+    // subdivision of an extremely accurate pi, and we don't need them
+    // to; we just need the starting interval to *cover* [0, π] (or
+    // 2π). So we use a simple rational upper bound to π.
     // Slightly larger than π. Accurate to 16 digits.
     BigRat big_pi(165707065, 52746197);
     Volume bounds;
