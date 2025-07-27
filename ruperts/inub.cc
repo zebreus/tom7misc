@@ -961,6 +961,23 @@ struct Hypersolver {
           double proved_pct = (volume_proved * 100.0) /
             (full_volume_d - volume_outscope);
 
+          // Progress bar wants integer fraction.
+          const uint64_t denom = int64_t{1'000'000'000'000};
+          const uint64_t numer = (proved_pct / 100.0) * denom;
+
+          ANSI::ProgressBarOptions opt;
+          opt.include_frac = false;
+          opt.include_percent = false;
+          std::string progress =
+            ANSI::ProgressBar(
+                numer, denom,
+                std::format(
+                    "Done: {:.8g} {:.6f}% Proved: {:.8g} {:.6f}%",
+                    volume_done, done_pct,
+                    volume_proved, proved_pct),
+                run_timer.Seconds(),
+                opt);
+
           status.Status(
               AWHITE("—————————————————————————————————————————") "\n"
               // "Put volume information here!\n"
@@ -968,22 +985,22 @@ struct Hypersolver {
               "{}\n"
               "{}\n"
               "Bad midpoint: {}\n"
-              "Done: {:.8g} {:.6f}% Proved: {:.8g} {:.6f}%\n"
               "{} processed, "
               "{} " AGREEN("✔") ", "
               "{} " AORANGE("⊹") ". "
-              "{} queued, {} ea.",
+              "{} queued, {} ea.\n"
+              "{}\n" // bar
+              ,
               splitcount,
               VolumeString(volume, true),
               rr,
               counter_bad_midpoint.Read(),
-              volume_done, done_pct,
-              volume_proved, proved_pct,
               counter_processed.Read(),
               counter_completed.Read(),
               counter_split.Read(),
               leaves.size(),
-              ANSI::Time(time_each));
+              ANSI::Time(time_each),
+              progress);
         });
 
       ProcessResult res = ProcessOne(volume);
