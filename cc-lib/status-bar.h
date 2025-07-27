@@ -27,7 +27,7 @@ struct StatusBar {
 
   // Prints lines above the status bar. Adds trailing newline if not present.
   void Printf(const char *format, ...) PRINTF_ATTRIBUTE_MEMBER(1, 2);
-  // Like std::
+  // Like std::print.
   template<typename... Args>
   void Print(std::format_string<Args...> fmt, Args&&... args);
 

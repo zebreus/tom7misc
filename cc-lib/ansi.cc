@@ -152,17 +152,17 @@ std::string ANSI::Time(double seconds) {
   } else if (seconds < 60.0) {
     return std::format(AYELLOW("{:.3f}") "s", seconds);
   } else if (seconds < 60.0 * 60.0) {
-    int sec = std::round(seconds);
-    int omin = sec / 60;
-    int osec = sec % 60;
+    int64_t sec = std::round(seconds);
+    int64_t omin = sec / 60;
+    int64_t osec = sec % 60;
     return std::format(AYELLOW("{}") "m" AYELLOW("{:02}") "s",
                        omin, osec);
   } else {
-    int sec = std::round(seconds);
-    int ohour = sec / 3600;
+    int64_t sec = std::round(seconds);
+    int64_t ohour = sec / 3600;
     sec -= ohour * 3600;
-    int omin = sec / 60;
-    int osec = sec % 60;
+    int64_t omin = sec / 60;
+    int64_t osec = sec % 60;
     if (ohour <= 24) {
       return std::format(AYELLOW("{}") "h"
                          AYELLOW("{}") "m"
@@ -171,10 +171,20 @@ std::string ANSI::Time(double seconds) {
     } else {
       int odays = ohour / 24;
       ohour %= 24;
-      return std::format(AYELLOW("{}") "d"
-                         AYELLOW("{}") "h"
-                         AYELLOW("{}") "m",
-                         odays, ohour, omin);
+
+      if (odays <= 365 * 2) {
+        return std::format(AYELLOW("{}") "d"
+                           AYELLOW("{}") "h"
+                           AYELLOW("{}") "m",
+                           odays, ohour, omin);
+      } else {
+        int oyears = odays / 365;
+        odays %= 365;
+        return std::format(AYELLOW("{}") "y"
+                           AYELLOW("{}") "d"
+                           AYELLOW("{}") "h",
+                           oyears, odays, ohour);
+      }
     }
   }
 }
@@ -211,12 +221,19 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
                               std::string_view operation,
                               double seconds,
                               ProgressBarOptions options) {
+
+  // Newlines at the end will break the progress bar; and this
+  // is generally just an accident, so help the caller out.
+  while (!operation.empty() &&
+         (operation.back() == '\n' || operation.back() == ' '))
+    operation.remove_suffix(1);
+
   double frac = numer / (double)denom;
 
   double spe = numer > 0 ? seconds / numer : 1.0;
   double remaining_sec = (denom - numer) * spe;
   string eta =
-    (std::isfinite(remaining_sec) && remaining_sec >= 0.0) ?
+    (numer > 0 && std::isfinite(remaining_sec) && remaining_sec >= 0.0) ?
     Time(remaining_sec) : std::string("∞");
   int eta_len = StringWidth(eta);
 
@@ -224,6 +241,7 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
   // Number of characters that get background color.
   int filled_width = std::clamp((int)std::round(bar_width * frac),
                                 0, bar_width);
+
   std::string bar_text;
   if (options.include_frac) {
     AppendFormat(&bar_text, "{} / {}", numer, denom);
@@ -250,7 +268,18 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
     bgraster[i] = i < filled_width ? options.bar_filled : options.bar_empty;
   }
 
+  // The length when we composite is governed by the fg/bg raster, so
+  // make sure these are the right length.
+  if (fgraster.size() > bar_width) {
+    fgraster.resize(bar_width);
+  } else {
+    while ((int)fgraster.size() < bar_width) {
+      fgraster.push_back(options.fg);
+    }
+  }
+
   // could do "..."
+  // TODO: Should count codepoints, not bytes.
   if ((int)bar_text_plain.size() > bar_width) {
     bar_text_plain = UTF8::Truncate(bar_text_plain, bar_width);
   }
