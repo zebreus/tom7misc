@@ -1699,6 +1699,10 @@ int BigRat::Compare(const BigRat &a, const BigRat &b) {
 bool BigRat::Eq(const BigRat &a, const BigRat &b) {
   return BqCompare(a.rep, b.rep) == BQ_EQ;
 }
+bool BigRat::Eq(const BigRat &a, int64_t b) {
+  return Eq(a, BigRat(b));
+}
+
 
 BigRat BigRat::Abs(const BigRat &a) {
   return BigRat{BqAbs(a.rep), nullptr};

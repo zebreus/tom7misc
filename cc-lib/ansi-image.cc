@@ -4,8 +4,8 @@
 #include <string>
 #include <cstdint>
 
-#include "base/stringprintf.h"
 #include "ansi.h"
+#include "image.h"
 
 std::string ANSIImage::HalfChar(const ImageRGBA &img_in,
                                 uint32_t background_color) {

@@ -1,4 +1,5 @@
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <stdio.h>
@@ -8,12 +9,10 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "hexdump.h"
 #include "stb_truetype.h"
 #include "util.h"
-#include "base/stringprintf.h"
 
-static std::array<const char *, 8> shades = {
+static constexpr std::array<const char *, 8> shades = {
   " ",
   "⋅",
   "·",

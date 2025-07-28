@@ -8,6 +8,7 @@
 #include <string_view>
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct UTF8 {

@@ -1,12 +1,17 @@
 
 #include "image.h"
 
+#include <array>
 #include <cmath>
 #include <bit>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <functional>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -525,7 +530,7 @@ ParseANSI(std::string_view &s,
           uint32_t &current_bg) {
 
   // Normal non-bright colors, as 00RRGGBB.
-  static std::array<uint32_t, 8> DARK_RGB = {
+  static constexpr std::array<uint32_t, 8> DARK_RGB = {
     0x000000,  // Black
     0xd42c3a,  // Red
     0x1ca800,  // Green
@@ -536,7 +541,7 @@ ParseANSI(std::string_view &s,
     0xBFBFBF,  // White
   };
 
-  static std::array<uint32_t, 8> BRIGHT_RGB = {
+  static constexpr std::array<uint32_t, 8> BRIGHT_RGB = {
     0x606060,  // Black
     0xff7676,  // Red
     0x99f299,  // Green

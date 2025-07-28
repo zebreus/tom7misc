@@ -3,7 +3,6 @@
 #include "base/logging.h"
 #include <stdio.h>
 #include <cstdint>
-#include <vector>
 #include <string>
 
 #include "timer.h"

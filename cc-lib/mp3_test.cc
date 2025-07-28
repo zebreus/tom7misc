@@ -3,6 +3,7 @@
 
 #include "base/logging.h"
 
+#include <cstdio>
 #include <memory>
 #include <vector>
 #include <cstdint>

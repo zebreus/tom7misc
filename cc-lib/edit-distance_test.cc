@@ -1,7 +1,9 @@
 
 #include "edit-distance.h"
 
+#include <algorithm>
 #include <stdio.h>
+#include <string>
 
 #include "base/logging.h"
 

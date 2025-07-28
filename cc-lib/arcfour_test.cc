@@ -1,10 +1,11 @@
 #include "arcfour.h"
 
-#include "base/logging.h"
 #include <stdio.h>
 #include <cstdint>
 #include <vector>
 #include <string>
+
+#include "base/logging.h"
 
 using namespace std;
 using uint8 = uint8_t;
@@ -40,7 +41,7 @@ static void TestBasic() {
       0x13, 0x81, 0x80, 0x75, 0x51, 0x7b, 0x1b, 0xa2,
     };
     ArcFour rc(init);
-    
+
     TestCase(expected, &rc);
   }
 }

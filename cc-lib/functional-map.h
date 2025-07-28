@@ -2,13 +2,16 @@
 #ifndef _CC_LIB_FUNCTIONAL_MAP_H
 #define _CC_LIB_FUNCTIONAL_MAP_H
 
-#include <unordered_map>
-#include <variant>
 #include <functional>
 #include <memory>
+#include <tuple>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
 
-#include "hashing.h"
 #include "base/logging.h"
+#include "hashing.h"
 
 // This is a limited functional map type. The canonical use is a
 // context in a programming language implementation, which contains

@@ -21,9 +21,7 @@
 // times it just makes a huge series of branches. We should see
 // if there ways to coax the compiler.
 
-#include <array>
 #include <cstddef>
-#include <tuple>
 #include <utility>
 
 #define CAS(a, b) do {                              \

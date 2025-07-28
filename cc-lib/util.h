@@ -212,6 +212,12 @@ struct Util {
   // Same, but for a string view.
   static std::string_view Chop(std::string_view *line);
 
+  // Ignores leading and trailing whitespace. Doesn't support
+  // hex prefix or plus sign.
+  static int64_t ParseInt64(std::string_view s,
+                            int64_t default_value = 0);
+  static std::optional<int64_t> ParseInt64Opt(std::string_view s);
+
   static double ParseDouble(std::string_view s,
                             double default_value = 0.0);
   static std::optional<double> ParseDoubleOpt(std::string_view s);
@@ -253,16 +259,11 @@ struct Util {
   // Remove trailing whitespace.
   static string LoseWhiteR(string s);
 
-  // Pads the string to n characters by appending spaces if
-  // it is shorter. (Longer strings are unmodified.) If n is
-  // negative, adds space on the left instead.
-  static string Pad(int n, string s);
-  // Same, with the given character instead of ' '.
-  static string PadEx(int n, string s, char c);
-
   // All whitespace becomes a single space. Leading and trailing
   // whitespace is dropped.
   static string NormalizeWhitespace(std::string_view s);
+  // Only removes whitesapce from beginning and end.
+  static void RemoveOuterWhitespace(std::string_view *s);
 
   static bool IsWhitespace(char c);
 
@@ -272,6 +273,12 @@ struct Util {
 
   static std::string RemoveChar(std::string_view s, char c);
 
+  // Pads the string to n characters by appending spaces if
+  // it is shorter. (Longer strings are unmodified.) If n is
+  // negative, adds space on the left instead.
+  static string Pad(int n, string s);
+  // Same, with the given character instead of ' '.
+  static string PadEx(int n, string s, char c);
 
   /* try to remove the file. If it
      doesn't exist or is successfully

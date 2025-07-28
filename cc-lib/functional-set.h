@@ -2,8 +2,10 @@
 #ifndef _CC_LIB_FUNCTIONAL_SET_H
 #define _CC_LIB_FUNCTIONAL_SET_H
 
-#include <unordered_set>
 #include <functional>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "functional-map.h"
 #include "hashing.h"

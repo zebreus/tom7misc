@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "base/logging.h"
+#include "image.h"
 
 #define CHECK_FEQ(f1, f2) do {                  \
   const float delta = fabs((f1) - (f2));        \

@@ -1,10 +1,12 @@
 #include "vector-util.h"
 
-#include "base/logging.h"
-#include <stdio.h>
 #include <cstdint>
-#include <vector>
+#include <stdio.h>
 #include <string>
+#include <utility>
+#include <vector>
+
+#include "base/logging.h"
 
 using namespace std;
 

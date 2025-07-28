@@ -5,7 +5,6 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
-#include <deque>
 #include <mutex>
 #include <optional>
 #include <utility>
@@ -241,7 +240,7 @@ struct WorkQueue {
       CHECK(!done);
 
       cond.wait(ml, [this] {
-          return queue.size() < max_size.value();
+          return (int64_t)queue.size() < max_size.value();
         });
       return ml;
     } else {

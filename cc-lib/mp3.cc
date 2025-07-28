@@ -1,15 +1,16 @@
 
 #include "mp3.h"
 
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <limits.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
 
 // Local changes:
 // - remove 'extern C'
 // - include both minimp3.h and minimp3_ex.h
+
+// TODO: Can probably drop windows-specific ring buffer stuff.
 
 #define MINIMP3_FLOAT_OUTPUT 1
 
@@ -3011,6 +3012,13 @@ error:
 #endif /*MINIMP3_ENABLE_RING*/
 #elif defined(_WIN32)
 #include <windows.h>
+#include <memoryapi.h>
+#include <winnt.h>
+#include <fileapi.h>
+#include <minwindef.h>
+#include <handleapi.h>
+#include <errhandlingapi.h>
+#include <winerror.h>
 
 static void mp3dec_close_file(mp3dec_map_info_t *map_info)
 {
@@ -3272,7 +3280,7 @@ static std::unique_ptr<MP3> FillFromInfo([[maybe_unused]] mp3dec_t *mp3d,
   if (info->buffer == nullptr) return {};
   if (info->channels <= 0) return {};
   if (info->hz <= 0) return {};
-  
+
   auto mp3 = std::make_unique<MP3>();
   mp3->sample_rate_hz = info->hz;
   mp3->channels = info->channels;
@@ -3292,7 +3300,7 @@ std::unique_ptr<MP3> MP3::Load(const std::string &filename) {
 
   mp3dec_file_info_t info;
   memset(&info, 0, sizeof(info));
-  
+
   int res = mp3dec_load(&mp3d, filename.c_str(), &info, 0, 0);
   if (res != 0) return {};
 
@@ -3305,7 +3313,7 @@ std::unique_ptr<MP3> MP3::Decode(const std::vector<uint8_t> &bytes) {
 
   mp3dec_file_info_t info;
   memset(&info, 0, sizeof(info));
-  
+
   int res = mp3dec_load_buf(&mp3d, bytes.data(), bytes.size(), &info, 0, 0);
   if (res != 0) return {};
 

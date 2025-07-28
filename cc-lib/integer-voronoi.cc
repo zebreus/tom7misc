@@ -23,9 +23,12 @@
 
 #include "integer-voronoi.h"
 
-#include <stdlib.h>
-#include <cstdint>
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <stdlib.h>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "image.h"

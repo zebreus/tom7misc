@@ -9,7 +9,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/logging.h"
@@ -118,6 +121,20 @@ static void TestWhitespace() {
   CHECK(Util::IsWhitespace('\t'));
   CHECK(!Util::IsWhitespace('_'));
   CHECK(!Util::IsWhitespace('\0'));
+
+  {
+    std::string orig = "\t  y  east \n ";
+    std::string_view v(orig);
+    Util::RemoveOuterWhitespace(&v);
+    CHECK(v == "y  east");
+  }
+
+  {
+    std::string empty;
+    std::string_view v(empty);
+    Util::RemoveOuterWhitespace(&v);
+    CHECK(v.empty());
+  }
 }
 
 static void TestNormalizeLines() {
@@ -336,6 +353,25 @@ static void TestWriteFiles() {
   vector<string> rlines = Util::ReadFileToLines(f);
   CHECK(lines == rlines);
 }
+
+static void TestParseInt64() {
+  CHECK(Util::ParseInt64("27") == 27);
+  CHECK(Util::ParseInt64(" -3 ") == -3);
+  CHECK(Util::ParseInt64("  -31337 ") == -31337);
+  CHECK(Util::ParseInt64("0", -1) == 0);
+
+  CHECK(Util::ParseInt64("", -1) == -1);
+  CHECK(Util::ParseInt64("e", -1) == -1);
+  CHECK(Util::ParseInt64("1e100", -1) == -1);
+  CHECK(Util::ParseInt64("+1", -1) == -1);
+  CHECK(Util::ParseInt64("-1234!", -1) == -1);
+  CHECK(Util::ParseInt64("12 34", -1) == -1);
+
+  CHECK(Util::ParseInt64Opt("123").has_value());
+  CHECK(Util::ParseInt64Opt("-123").has_value());
+  CHECK(!Util::ParseInt64Opt("123?").has_value());
+}
+
 
 static void TestParseDouble() {
   CHECK(Util::ParseDouble(" +3 ") == 3.0);
@@ -751,6 +787,7 @@ int main(int argc, char **argv) {
   TestNextToken();
   TestCdup();
   TestPrefixSuffix();
+  TestParseInt64();
   TestParseDouble();
   TestFactorize();
   TestMatchSpec();

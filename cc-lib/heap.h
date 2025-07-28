@@ -11,6 +11,7 @@
 #define _CC_LIB_HEAP_H
 
 #include <cstdlib>
+#include <stdlib.h>
 #include <vector>
 #include <cstdio>
 #include <cstdlib>

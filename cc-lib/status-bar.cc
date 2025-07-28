@@ -1,18 +1,19 @@
 
 #include "status-bar.h"
 
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "base/port.h"
-
-#include "util.h"
-#include "ansi.h"
 #include "timer.h"
+#include "util.h"
 
 using namespace std;
 

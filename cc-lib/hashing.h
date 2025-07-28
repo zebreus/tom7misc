@@ -14,12 +14,14 @@
 #ifndef _CC_LIB_HASHING_H
 #define _CC_LIB_HASHING_H
 
+#include <array>
+#include <bit>
+#include <cstddef>
+#include <functional>
+#include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
-#include <tuple>
-#include <array>
-#include <cstddef>
-#include <bit>
 
 template<class T>
 struct Hashing;

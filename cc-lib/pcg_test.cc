@@ -1,7 +1,7 @@
 
 #include "pcg.h"
 
-#include <string>
+#include <cstdio>
 
 #include "base/logging.h"
 

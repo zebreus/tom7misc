@@ -1,19 +1,30 @@
 #include "subprocess.h"
 
+#include <stdio.h>
+#include <string>
+#include <deque>
+#include <memory>
+#include <utility>
+
+#include "base/logging.h"
+
+
 #ifdef __MINGW32__
 
 // TODO: Implement this for Posix (popen).
 
+#include <fileapi.h>
+#include <handleapi.h>
+#include <minwinbase.h>
+#include <minwindef.h>
+#include <namedpipeapi.h>
+#include <processthreadsapi.h>
 #include <windows.h>
+#include <winnt.h>
+
+// These two have to be in this order; ugh!
 #include <tchar.h>
-#include <stdio.h>
 #include <strsafe.h>
-
-#include <string>
-#include <deque>
-#include <memory>
-
-#include "/base/logging.h"
 
 using namespace std;
 

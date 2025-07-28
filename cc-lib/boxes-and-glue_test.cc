@@ -1,6 +1,9 @@
 
 #include "boxes-and-glue.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 

@@ -3,6 +3,7 @@
 #if defined(__MINGW32__) || defined(_WIN32)
 
 #include <windows.h>
+#include <processthreadsapi.h>
 #undef ARRAYSIZE
 
 void Nice::SetLowestPriority() {

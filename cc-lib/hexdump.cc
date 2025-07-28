@@ -18,14 +18,14 @@ std::string HexDump::Color(std::span<const uint8_t> bytes,
   for (size_t p = 0; p < lines; p++) {
     // Print line: first addre, then hex, then ascii.
     uint32_t line_addr = start_addr + p * 16;
-    StringAppendF(&ret, ANSI_FG(86, 82, 97) "%08x " ANSI_RESET,
+    AppendFormat(&ret, ANSI_FG(86, 82, 97) "{:08x} " ANSI_RESET,
                   line_addr);
     for (int i = 0; i < 16; i++) {
       size_t addr = p * 16 + i;
       if (addr < bytes.size()) {
         char c = bytes[addr];
         // TODO: color
-        StringAppendF(&ret, "%02x ", (uint8_t)c);
+        AppendFormat(&ret, "{:02x} ", (uint8_t)c);
       } else {
         ret.append(ANSI_FG(56, 5, 2) " ⋯ ");
       }

@@ -1,20 +1,22 @@
 #include "factorization.h"
 
+#include <array>
 #include <bit>
 #include <cmath>
-#include <initializer_list>
 #include <cstdint>
-#include <vector>
+#include <cstdio>
+#include <initializer_list>
+#include <string>
 #include <utility>
-#include <array>
+#include <vector>
 
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "timer.h"
-#include "crypt/lfsr.h"
 #include "ansi.h"
 #include "arcfour.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
+#include "crypt/lfsr.h"
 #include "randutil.h"
+#include "timer.h"
 
 using namespace std;
 

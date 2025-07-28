@@ -2,6 +2,7 @@
 #ifndef _CC_LIB_LASTN_BUFFER_H
 #define _CC_LIB_LASTN_BUFFER_H
 
+#include <iterator>
 #include <vector>
 #include <cstddef>
 

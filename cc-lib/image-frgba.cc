@@ -1,10 +1,16 @@
 
 #include "image-frgba.h"
-#include "tinyexr.h"
-#include "image.h"
-#include "color-util.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+#include <tuple>
+#include <vector>
 
 #include "base/logging.h"
+#include "color-util.h"
+#include "image.h"
+#include "tinyexr.h"
 #include "util.h"
 
 ImageFRGBA::ImageFRGBA(const std::vector<float> &rgbaf,

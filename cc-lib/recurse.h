@@ -3,7 +3,6 @@
 #define _CC_LIB_RECURSE_H
 
 #include <functional>
-#include <type_traits>
 
 #include "base/logging.h"
 

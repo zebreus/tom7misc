@@ -67,6 +67,20 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "tinyexr.h"
 
+#include <climits>
+#include <ostream>
+#include <string.h>
+#include <algorithm>
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <sstream>
+#include <limits>
+#include <string>
+#include <vector>
+#include <set>
+
 #ifdef _WIN32
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -79,19 +93,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #endif
 
-#include <algorithm>
-#include <cassert>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <sstream>
-
 //#include <iostream> // debug
-
-#include <limits>
-#include <string>
-#include <vector>
-#include <set>
 
 #if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || \
     defined(__i386) || defined(__i486__) || defined(__i486) ||  \
@@ -101,7 +103,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define TINYEXR_X86_OR_X64_CPU 0
 #endif
 
-// Disable PIZ comporession when applying cpplint.
+// Disable PIZ compression when applying cpplint.
 #ifndef TINYEXR_USE_PIZ
 #define TINYEXR_USE_PIZ (1)
 #endif

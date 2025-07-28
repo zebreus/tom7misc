@@ -4,8 +4,8 @@
 #ifndef _CC_LIB_WIKIPEDIA_H
 #define _CC_LIB_WIKIPEDIA_H
 
-#include <string>
 #include <optional>
+#include <string>
 
 // Wikipedia as a large corpus of text. Unprincipled
 // 'parsing' of the XML dump.

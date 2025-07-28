@@ -3,7 +3,6 @@
 #define _CC_LIB_ZIP_H
 
 #include <cstdint>
-#include <span>
 #include <string>
 #include <string_view>
 #include <vector>

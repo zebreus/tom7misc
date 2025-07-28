@@ -1,8 +1,11 @@
 
 #include "stats.h"
 
-#include "base/logging.h"
+#include <cmath>
+#include <cstdio>
+
 #include "ansi.h"
+#include "base/logging.h"
 
 using Gaussian = Stats::Gaussian;
 

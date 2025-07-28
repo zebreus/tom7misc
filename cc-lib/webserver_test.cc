@@ -1,13 +1,13 @@
 #include "webserver.h"
 
+#include <chrono>
 #include <format>
 #include <string>
-#include <time.h>
 #include <thread>
-#include <chrono>
+#include <time.h>
 
-#include "util.h"
 #include "base/stringprintf.h"
+#include "util.h"
 
 using namespace std;
 
@@ -48,19 +48,19 @@ static WebServer::Response TestParamsHandler(
   auto sparam = request.StringURLParam("string");
   auto iparam = request.IntURLParam("int");
 
-  StringAppendF(&response.body,
-                "<p>Value of param 'string': '%s'\n",
-                sparam.has_value() ?
-                WebServer::HTMLEscape(sparam.value()).c_str() :
-                "(absent)");
+  AppendFormat(&response.body,
+               "<p>Value of param 'string': '{}'\n",
+               sparam.has_value() ?
+               WebServer::HTMLEscape(sparam.value()) :
+               "(absent)");
 
   if (iparam.has_value()) {
-    StringAppendF(&response.body,
-                  "<p>Value of param 'int': '%lld'\n",
+    AppendFormat(&response.body,
+                  "<p>Value of param 'int': '{}'\n",
                   iparam.value());
   } else {
-    StringAppendF(&response.body,
-                  "<p>The param 'int' is not present or isn't an integer.\n");
+    AppendFormat(&response.body,
+                 "<p>The param 'int' is not present or isn't an integer.\n");
   }
   return response;
 }

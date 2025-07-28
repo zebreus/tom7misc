@@ -1,16 +1,20 @@
 #ifndef _AUTO_HISTO_H
 #define _AUTO_HISTO_H
 
-#include <cstdint>
 #include <algorithm>
-#include <vector>
-#include <string>
 #include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <format>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "utf8.h"
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "utf8.h"
 
 // TODO: This is still experimental.
 //
@@ -91,8 +95,8 @@ struct AutoHisto {
         if (flag_max.has_value())
           max = std::max(max, flag_max.value());
 
-        CHECK(min <= max) << StringPrintf("%.17g - %.17g",
-                                          min, max);
+        CHECK(min <= max) << std::format("{:.17g} - {:.17g}",
+                                         min, max);
 
         width = max - min;
 
@@ -266,32 +270,32 @@ struct AutoHisto {
         PadLeft(std::format("{:.{}f}", histo.BucketLeft(bidx), places),
                 label_column);
       const std::string count =
-        StringPrintf("%lld", (int64_t)histo.buckets[bidx]);
+        std::format("{}", (int64_t)histo.buckets[bidx]);
       const int BAR_CHARS = 70 - label_column;
       double f = histo.buckets[bidx] / histo.max_value;
 
       const bool before = f > 0.5;
       const uint32_t bar_color = (bidx & 1) ? 0xc8c880FF : 0xbebe76FF;
 
-      StringAppendF(&ret, "%s " AFGCOLOR(32, 32, 23, "|"), label.c_str());
+      AppendFormat(&ret, "{} " AFGCOLOR(32, 32, 23, "|"), label);
       if (before) {
         int chars_used = 2 + (int)count.size();
         std::string bar = FilledBar(BAR_CHARS, chars_used, f);
-        StringAppendF(&ret, "%s%s" " %s " ANSI_RESET "%s%s" ANSI_RESET,
+        AppendFormat(&ret, "{}{}" " {} " ANSI_RESET "{}{}" ANSI_RESET,
                       // But with black foreground.
-                      ANSI::BackgroundRGB32(bar_color).c_str(),
-                      ANSI::ForegroundRGB32(0x786800FF).c_str(),
-                      count.c_str(),
-                      ANSI::ForegroundRGB32(bar_color).c_str(),
-                      bar.c_str());
+                     ANSI::BackgroundRGB32(bar_color),
+                     ANSI::ForegroundRGB32(0x786800FF),
+                     count,
+                     ANSI::ForegroundRGB32(bar_color),
+                     bar);
       } else {
         std::string bar = FilledBar(BAR_CHARS, 0, f);
-        StringAppendF(&ret, "%s%s" ANSI_RESET " " AGREY("%s"),
-                      ANSI::ForegroundRGB32(bar_color).c_str(),
-                      bar.c_str(), count.c_str());
+        AppendFormat(&ret, "{}{}" ANSI_RESET " " AGREY("{}"),
+                     ANSI::ForegroundRGB32(bar_color),
+                     bar, count);
       }
 
-      StringAppendF(&ret, "\n");
+      AppendFormat(&ret, "\n");
     }
     return ret;
   }
@@ -309,8 +313,8 @@ struct AutoHisto {
     for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
       const std::string label =
         integral ?
-        StringPrintf("%lld", (int64_t)histo.BucketLeft(bidx)) :
-        StringPrintf("%.1f", histo.BucketLeft(bidx));
+        std::format("{}", (int64_t)histo.BucketLeft(bidx)) :
+        std::format("{:.1f}", histo.BucketLeft(bidx));
       labels.emplace_back(label);
       max_label = std::max(max_label, (int)label.size());
     }
@@ -328,22 +332,22 @@ struct AutoHisto {
       }
 
       if (bidx & 1) {
-        StringAppendF(&ret, AFGCOLOR(200, 200, 128, "%s"),
-                      bar.c_str());
+        AppendFormat(&ret, AFGCOLOR(200, 200, 128, "{}"),
+                     bar);
       } else {
-        StringAppendF(&ret, AFGCOLOR(190, 190, 118, "%s"),
-                      bar.c_str());
+        AppendFormat(&ret, AFGCOLOR(190, 190, 118, "{}"),
+                     bar);
       }
     }
-    StringAppendF(&ret, "\n");
+    AppendFormat(&ret, "\n");
 
     // Column labels.
     for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
       std::string label = PadLeft(labels[bidx], bar_width);
       if (bidx & 1) {
-        StringAppendF(&ret, AFGCOLOR(170, 170, 170, "%s"), label.c_str());
+        AppendFormat(&ret, AFGCOLOR(170, 170, 170, "{}"), label);
       } else {
-        StringAppendF(&ret, AFGCOLOR(150, 150, 150, "%s"), label.c_str());
+        AppendFormat(&ret, AFGCOLOR(150, 150, 150, "{}"), label);
       }
     }
     return ret;
@@ -375,19 +379,19 @@ struct AutoHisto {
   }
 
   std::string SimpleAsciiString(int buckets) const {
-    std::string ret = StringPrintf("%lld samples in %d buckets. "
-                                   "%.6f min. %.6f max\n",
-                                   total_samples, buckets,
-                                   Min(), Max());
+    std::string ret = std::format("{} samples in {} buckets. "
+                                  "{:.6f} min. {:.6f} max\n",
+                                  total_samples, buckets,
+                                  Min(), Max());
 
     const Histo histo = GetHisto(buckets);
 
 
     for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
-      StringAppendF(&ret, "%.4f: %.4f (%.4f%%)\n",
-                    histo.BucketLeft(bidx),
-                    histo.buckets[bidx],
-                    (histo.buckets[bidx] * 100.0) / total_samples);
+      AppendFormat(&ret, "{:.4f}: {:.4f} ({:.4f}%)\n",
+                   histo.BucketLeft(bidx),
+                   histo.buckets[bidx],
+                   (histo.buckets[bidx] * 100.0) / total_samples);
     }
 
     return ret;

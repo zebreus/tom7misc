@@ -1,15 +1,15 @@
 
 #include "simpledxf.h"
 
-#include <cstdio>
 #include <cstdint>
+#include <cstdio>
 #include <string>
-#include <vector>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
-#include "re2/re2.h"
 #include "base/logging.h"
+#include "re2/re2.h"
 #include "util.h"
 
 using namespace std;
@@ -67,7 +67,7 @@ vector<SimpleDXF::Field> SimpleDXF::GetFields(const string &contents) {
   RE2 integer_re = {SPACE_RE "*(-?[0-9]+)" SPACE_RE "*"};
   RE2 float_re = {SPACE_RE "*(-?[0-9.]+)" SPACE_RE "*"};
   /* string_re is just the whole line. */
-  
+
   vector<string> lines = Util::SplitToLines(contents);
   vector<Field> fields;
   fields.reserve(lines.size() >> 1);

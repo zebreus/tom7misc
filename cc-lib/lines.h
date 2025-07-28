@@ -5,7 +5,9 @@
 #ifndef _CC_LIB_LINES_H
 #define _CC_LIB_LINES_H
 
+#include <algorithm>
 #include <cassert>
+#include <tuple>
 #include <utility>
 #include <cmath>
 #include <type_traits>

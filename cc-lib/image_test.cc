@@ -1,12 +1,12 @@
 
 #include "image.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <format>
-#include <unordered_set>
 #include <functional>
-#include <cstdint>
+#include <unordered_set>
 #include <vector>
 
 #include "ansi.h"

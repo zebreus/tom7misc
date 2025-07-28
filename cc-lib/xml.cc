@@ -1,5 +1,10 @@
 #include "xml.h"
 
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
 // This parser is based on yxml, which is a single-file low-level
 // parser (maybe "tokenizer") included right here. yxml is available
 // under a MIT license (below). I made minor changes to assume C++,

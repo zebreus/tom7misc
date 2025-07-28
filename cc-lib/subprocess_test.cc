@@ -1,6 +1,8 @@
 
 #include "subprocess.h"
 
+#include <cstdio>
+
 #include "base/logging.h"
 
 int main(int argc, char **argv) {
@@ -8,4 +10,5 @@ int main(int argc, char **argv) {
   printf("TODO: Test something!\n");
 
   printf("OK\n");
+  return 0;
 }

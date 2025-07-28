@@ -1,5 +1,7 @@
 #include "bounds.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <utility>
 #include <initializer_list>
 

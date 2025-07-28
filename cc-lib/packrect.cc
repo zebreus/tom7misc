@@ -1,11 +1,14 @@
 
 #include "packrect.h"
 
-#include <tuple>
-#include <vector>
-#include <utility>
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
+#include <optional>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "opt/optimizer.h"
@@ -213,11 +216,7 @@ struct stbrp_context
 #define STBRP_ASSERT assert
 #endif
 
-#ifdef _MSC_VER
 #define STBRP__NOTUSED(v)  (void)(v)
-#else
-#define STBRP__NOTUSED(v)  (void)sizeof(v)
-#endif
 
 enum
 {

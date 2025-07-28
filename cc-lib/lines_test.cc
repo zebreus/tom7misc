@@ -1,15 +1,14 @@
 
 #include "lines.h"
 
+#include <cmath>
+#include <cstdio>
 #include <optional>
-#include <unordered_set>
+#include <utility>
 
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "hashing.h"
 #include "randutil.h"
-#include "set-util.h"
 
 using namespace std;
 

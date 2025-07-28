@@ -2,15 +2,17 @@
 #include "pdf.h"
 
 #include <cmath>
+#include <cstdio>
+#include <initializer_list>
 #include <numbers>
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 
-#include "base/logging.h"
 #include "ansi.h"
-#include "image.h"
 #include "arcfour.h"
+#include "base/logging.h"
+#include "image.h"
 #include "util.h"
 
 static constexpr std::initializer_list<const char *> FONTS = {

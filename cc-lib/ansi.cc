@@ -270,7 +270,7 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
 
   // The length when we composite is governed by the fg/bg raster, so
   // make sure these are the right length.
-  if (fgraster.size() > bar_width) {
+  if ((int)fgraster.size() > bar_width) {
     fgraster.resize(bar_width);
   } else {
     while ((int)fgraster.size() < bar_width) {

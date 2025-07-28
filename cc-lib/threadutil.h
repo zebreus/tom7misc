@@ -2,15 +2,19 @@
 #ifndef _CC_LIB_THREADUTIL_H
 #define _CC_LIB_THREADUTIL_H
 
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cmath>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <mutex>
 #include <thread>
 #include <type_traits>
+#include <utility>
 #include <vector>
-#include <cmath>
-#include <cassert>
 
 #if __cplusplus >= 201703L
 // shared_mutex only available in C++17 and later.

@@ -1,6 +1,7 @@
 
 #include "atomic-util.h"
 
+#include <cstdio>
 #include <vector>
 #include <thread>
 

@@ -339,7 +339,7 @@ static void SetSpan2() {
            !ic.IsAfterLast(pt);
            pt = ic.Next(pt)) {
         auto span = ic.GetPoint(pt);
-        printf("%" PRIu64 "-%{" PRIu64 " %s\n", span.start, span.end,
+        printf("%" PRIu64 "-%" PRIu64 " %s\n", span.start, span.end,
                span.data ? "true" : "false");
       }
     };

@@ -2,9 +2,9 @@
 #include "re2/re2.h"
 
 #include <stdio.h>
+#include <string>
 
 #include "base/logging.h"
-#include "util.h"
 
 using namespace std;
 

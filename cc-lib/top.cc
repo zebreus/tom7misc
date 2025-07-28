@@ -8,12 +8,14 @@
 
 #if defined(WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
 
-#include <windows.h>
+#include <handleapi.h>
+#include <minwindef.h>
+#include <processthreadsapi.h>
+#include <psapi.h>
 #include <stdio.h>
 #include <tchar.h>
-#include <psapi.h>
-
-
+#include <windows.h>
+#include <winnt.h>
 
 using namespace std;
 

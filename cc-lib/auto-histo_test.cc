@@ -2,6 +2,7 @@
 
 #include <cstdio>
 
+#include "ansi.h"
 #include "base/logging.h"
 
 static void TestHisto() {

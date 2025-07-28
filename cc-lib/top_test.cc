@@ -1,7 +1,9 @@
 
-#include <vector>
-
 #include "top.h"
+
+#include <cstdio>
+#include <string>
+
 
 using namespace std;
 

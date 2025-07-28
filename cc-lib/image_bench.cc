@@ -2,6 +2,7 @@
 #include "image.h"
 
 #include <cstdint>
+#include <cstdio>
 
 #include "base/logging.h"
 #include "timer.h"

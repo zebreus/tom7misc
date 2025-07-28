@@ -1,10 +1,11 @@
 
 #include "xml.h"
 
-#include "base/stringprintf.h"
+#include <cstdio>
+#include <string>
+#include <optional>
+
 #include "base/logging.h"
-#include "arcfour.h"
-#include "randutil.h"
 
 using namespace std;
 

@@ -2,6 +2,7 @@
 #ifndef _STATS_H
 #define _STATS_H
 
+#include <cmath>
 #include <vector>
 
 
@@ -67,7 +68,7 @@ inline Stats::Gaussian Stats::EstimateGaussian(
       // printf("+ %.6f^2 -> %.6f\n", d, variance);
     }
     variance /= (samples.size() - 1);
-    stddev = sqrt(variance);
+    stddev = std::sqrt(variance);
   }
 
   Gaussian g;

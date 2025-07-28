@@ -10,16 +10,16 @@
 #include <ctime>
 #include <format>
 #include <limits>
-#include <vector>
-#include <string>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "arcfour.h"
-#include "randutil.h"
-#include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "randutil.h"
 #include "threadutil.h"
+#include "util.h"
 
 // Assumes the workload has constant cost over time. (Typical usage is
 // for training a neural network, where the values change each round,

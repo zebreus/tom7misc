@@ -1,6 +1,7 @@
 
 #include "interval-tree.h"
 
+#include <cstdio>
 #include <set>
 #include <vector>
 #include <string>

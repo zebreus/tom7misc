@@ -1,9 +1,10 @@
 #include "lastn-buffer.h"
 
-#include "base/logging.h"
-#include <stdio.h>
+#include <cstdio>
 #include <string>
 #include <functional>
+
+#include "base/logging.h"
 
 using namespace std;
 

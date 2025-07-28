@@ -1,6 +1,9 @@
 
 #include "autoparallel.h"
 
+#include <cstdio>
+#include <vector>
+
 static void Simple() {
   AutoParallelComp apc(12, 10, false);
 

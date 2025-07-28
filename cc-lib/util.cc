@@ -1,4 +1,5 @@
 
+#include <charconv>
 #ifdef __APPLE__
 // fstat64 is deprecated; force fstat to be 64-bit
 #define _DARWIN_USE_64_BIT_INODE 1
@@ -9,20 +10,24 @@
 #include <algorithm>
 #include <bit>
 #include <cassert>
+#include <cctype>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <format>
+#include <map>
 #include <optional>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <string>
 #include <string_view>
 #include <sys/stat.h>
 #include <system_error>
-#include <type_traits>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 // Note: It is a design goal for this to only depend on the standard
 // library (not even base/*)!
@@ -36,21 +41,20 @@
 #  include <time.h>
    /* rename */
 #  include <io.h>
-   /* setclipboard */
 
 // For C++17, avoid conflicts with std::byte
-#define byte win_byte_override
+#  define byte win_byte_override
 #  include <windows.h>
-#undef byte
+#  undef byte
 
-#if defined(__MINGW32__) || defined(__MINGW64__)
-#  include <dirent.h>
-#endif
+#  if defined(__MINGW32__) || defined(__MINGW64__)
+#    include <dirent.h>
+#  endif
 
 // Visual studio only.
-#if defined(WIN32) && !defined(__MINGW32__) && !defined(__MINGW64__)
-# pragma warning(disable: 4996)
-#endif
+#  if defined(WIN32) && !defined(__MINGW32__) && !defined(__MINGW64__)
+#    pragma warning(disable: 4996)
+#  endif
 
 #else /* posix */
    /* chdir, unlink */
@@ -65,8 +69,8 @@
 
 #ifdef __APPLE__
 // fstat64 is deprecated; force fstat to be 64-bit
-#define stat64 stat
-#define fstat64 fstat
+#  define stat64 stat
+#  define fstat64 fstat
 #endif
 
 #if defined(WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
@@ -412,8 +416,8 @@ vector<string> Util::SplitToLines(string_view s) {
   return v;
 }
 
-map<string, string> Util::ReadFileToMap(const string &f) {
-  map<string, string> m;
+std::map<string, string> Util::ReadFileToMap(const string &f) {
+  std::map<string, string> m;
   vector<string> lines = ReadFileToLines(f);
   for (int i = 0; i < (int)lines.size(); i++) {
     string rest = lines[i];
@@ -803,11 +807,36 @@ std::string_view Util::Chop(std::string_view *line) {
   return ret;
 }
 
+int64_t Util::ParseInt64(std::string_view s,
+                         int64_t default_value) {
+  RemoveOuterWhitespace(&s);
+  int64_t ret = default_value;
+  auto res = std::from_chars(s.data(), s.data() + s.size(), ret);
+  // Must consume entire remaining string.
+  if (res.ec == std::errc{} && res.ptr == s.data() + s.size()) {
+    return ret;
+  } else {
+    return default_value;
+  }
+}
+
+std::optional<int64_t> Util::ParseInt64Opt(std::string_view s) {
+  RemoveOuterWhitespace(&s);
+  int64_t ret = 0;
+  auto res = std::from_chars(s.data(), s.data() + s.size(), ret);
+  if (res.ec == std::errc{} && res.ptr == s.data() + s.size()) {
+    return {ret};
+  } else {
+    return std::nullopt;
+  }
+}
 
 optional<double> Util::ParseDoubleOpt(std::string_view s) {
   // To get rid of leading and trailing whitespace. strtod will skip
   // it anyway, but we want to be able to check that the whole
   // string was consumed in a simple way.
+
+  // PERF: Do this without copying. from_chars supports floats.
   string ss = NormalizeWhitespace(s);
   char *endptr = nullptr;
   double d = strtod(ss.c_str(), &endptr);
@@ -900,6 +929,14 @@ bool Util::IsWhitespace(char c) {
 
 string Util::RemoveChar(std::string_view s, char c) {
   return RemoveCharsMatching(s, [c](char cc) { return c == cc; });
+}
+
+void Util::RemoveOuterWhitespace(std::string_view *s) {
+  while (!s->empty() && IsWhitespace((*s)[0]))
+    s->remove_prefix(1);
+
+  while (!s->empty() && IsWhitespace(s->back()))
+    s->remove_suffix(1);
 }
 
 string Util::NormalizeWhitespace(std::string_view s) {
