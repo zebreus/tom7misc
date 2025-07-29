@@ -1,5 +1,6 @@
 #include "gtl/top_n.h"
 
+#include <cstdio>
 #include <memory>
 #include <vector>
 

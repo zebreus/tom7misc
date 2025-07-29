@@ -1,6 +1,7 @@
 
 #include "functional-map.h"
 
+#include <cstdio>
 #include <string>
 
 #include "base/logging.h"

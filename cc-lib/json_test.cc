@@ -1,6 +1,7 @@
 
 #include "rapidjson/document.h"
 
+#include <cstdio>
 #include <string>
 
 #include "base/logging.h"

@@ -1,10 +1,13 @@
 
 #include "map-util.h"
 
+#include <cstdio>
 #include <map>
 #include <unordered_map>
 #include <string>
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 

@@ -1,6 +1,7 @@
 
 #include "set-util.h"
 
+#include <cstdio>
 #include <unordered_set>
 #include <vector>
 

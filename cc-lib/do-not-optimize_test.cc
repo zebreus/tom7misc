@@ -1,6 +1,8 @@
 
 #include "base/do-not-optimize.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 
 #include "base/logging.h"

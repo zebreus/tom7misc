@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 
+#include "ansi.h"
 #include "base/logging.h"
 
 using namespace std;
@@ -27,7 +28,8 @@ int main(int argc, char **argv) {
   } else {
 
 #ifdef __MINGW64__
-  fprintf(stderr, "\n\nNote: This is known to fail on Windows.\n\n");
+    fprintf(stderr, "\n\nNote: "
+            ARED("This is known to fail on Windows") ".\n\n");
 #endif
 
     {

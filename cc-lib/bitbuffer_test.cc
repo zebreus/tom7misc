@@ -1,6 +1,7 @@
 
 #include "bitbuffer.h"
 
+#include <cstdio>
 #include <vector>
 #include <cstdint>
 

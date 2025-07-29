@@ -259,6 +259,9 @@ packrect:
 periodically:
   Little wrapper for periodic actions inside loops, like printing
   or saving status.
+png:
+  Homegrown PNG encoder (using miniz) which will generate
+  index-color images.
 process-util:
   Run a command and get its output. Should put more process
   utilities like that, and probably unify it with Subprocess.

@@ -3,7 +3,9 @@
 
 #include <cassert>
 #include <algorithm>
+#include <cstdlib>
 #include <string>
+#include <utility>
 #include <vector>
 #include <functional>
 #include <cstdint>

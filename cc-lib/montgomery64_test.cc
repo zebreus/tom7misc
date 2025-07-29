@@ -2,6 +2,7 @@
 #include "montgomery64.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <initializer_list>
 #include <unordered_set>
 

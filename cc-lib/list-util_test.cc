@@ -1,5 +1,6 @@
 #include "list-util.h"
 
+#include <cstdio>
 #include <list>
 #include <vector>
 

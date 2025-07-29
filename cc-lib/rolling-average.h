@@ -4,6 +4,7 @@
 #ifndef _CC_LIB_ROLLING_AVERAGE_H
 #define _CC_LIB_ROLLING_AVERAGE_H
 
+#include <limits>
 #include <vector>
 
 struct RollingAverage {
@@ -24,7 +25,7 @@ struct RollingAverage {
   double Average(bool recompute = false);
 
   int NumSamples() const;
-  
+
 private:
   int max_samples = 0;
   std::vector<double> samples;

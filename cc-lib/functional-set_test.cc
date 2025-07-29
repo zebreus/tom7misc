@@ -1,6 +1,7 @@
 
 #include "functional-set.h"
 
+#include <cstdio>
 #include <string>
 
 #include "base/logging.h"

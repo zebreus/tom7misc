@@ -3,6 +3,7 @@
 #define _CC_LIB_QR_CODE_H
 
 #include "image.h"
+#include <string>
 
 struct QRCode {
   // TODO: ECC settings, border, etc.

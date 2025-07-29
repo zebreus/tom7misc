@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <optional>
+#include <stdio.h>
 #include <string>
 
 using namespace std;
@@ -25,7 +26,7 @@ std::optional<string> ProcessUtil::GetOutput(const string &cmd) {
     ret.append(buf, count);
     if (count < CHUNK_SIZE) break;
   }
-  
+
   pclose(f);
 
   return {ret};

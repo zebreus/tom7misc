@@ -1,6 +1,7 @@
 
 #include "hashing.h"
 
+#include <cstdio>
 #include <utility>
 #include <tuple>
 #include <string>

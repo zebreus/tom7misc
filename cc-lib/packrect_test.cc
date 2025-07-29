@@ -1,6 +1,7 @@
 
 #include "packrect.h"
 
+#include <cstdio>
 #include <set>
 #include <vector>
 #include <utility>

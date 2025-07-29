@@ -1,9 +1,13 @@
 
 #include "parser-combinators.h"
 
+#include <cstdio>
 #include <format>
+#include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 

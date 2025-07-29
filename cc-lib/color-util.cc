@@ -1,6 +1,7 @@
 
 #include "color-util.h"
 
+#include <algorithm>
 #include <cmath>
 #include <tuple>
 #include <cmath>

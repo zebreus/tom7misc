@@ -7,6 +7,8 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <vector>
 
 #include "base/stringprintf.h"
 #include "interval-cover.h"

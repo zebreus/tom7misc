@@ -52,7 +52,7 @@ Top::Enumerate() {
     // the first for simplicity.
     HMODULE module;
     DWORD bytes_needed;
-    if (EnumProcessModules(handle, &module, sizeof (module),
+    if (EnumProcessModules(handle, &module, sizeof (HMODULE),
                            &bytes_needed)) {
       char name[MAX_PATH + 1] = "";
       if (0 != GetModuleBaseNameA(handle, module, name, MAX_PATH)) {
