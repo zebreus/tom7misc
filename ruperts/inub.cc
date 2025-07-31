@@ -741,6 +741,12 @@ struct Hypersolver {
     Impossible(RejectionReason r = UNKNOWN) : reason(r) {}
     // For POINT_OUTSIDE, maybe could also record the point and
     // edge?
+
+    // The bounds for the inner points that we processed, set only
+    // when reason = POINT_OUTSIDE. We stop as soon as we find a
+    // point that is definitely outside, so this is usually a
+    // prefix of the hull points.
+    std::vector<Vec2ival> inner;
   };
 
   using ProcessResult = std::variant<Split, Impossible>;
@@ -920,6 +926,11 @@ struct Hypersolver {
       outer_cross_va_vb.push_back(Dot(oviewpos, edge_cross));
     }
 
+    // XXX just debugging. We should only compute this if we are
+    // going to save an image!
+    std::vector<Vec2ival> inner;
+    inner.reserve(inner_hull.size());
+
     // Compute the inner hull point-by-point, which we call v. We can
     // exit early if any of these points are definitely outside the
     // outer hull.
@@ -929,6 +940,8 @@ struct Hypersolver {
       // Also rotate and translate it.
       Vec2ival rot_v = Rotate2D(proj_v, inner_rot, inv_epsilon);
       Vec2ival v(rot_v.x + inner_x, rot_v.y + inner_y);
+
+      inner.push_back(v);
 
       // Now, we reject this cell if the point is definitely outside
       // the outer hull. Since the outer hull is a convex hull
@@ -1027,7 +1040,9 @@ struct Hypersolver {
           edge.x * v.y - edge.y * v.x + cross_va_vb;
 
         if (!cross_product4.MightBePositive()) {
-          return {Impossible(POINT_OUTSIDE4)};
+          Impossible imp(POINT_OUTSIDE4);
+          imp.inner = std::move(inner);
+          return {std::move(imp)};
         }
       }
     }
@@ -1293,6 +1308,22 @@ struct Hypersolver {
         } else {
           img.BlendThickCircleAA32(sx, sy, 3.0, 1.0, 0x33FF3399);
         }
+      }
+    }
+
+    if (const Impossible *imp = std::get_if<Impossible>(&pr)) {
+      for (const Vec2ival &v : imp->inner) {
+        double x0 = v.x.LB().ToDouble();
+        double x1 = v.x.UB().ToDouble();
+        double y0 = v.y.LB().ToDouble();
+        double y1 = v.y.UB().ToDouble();
+
+        // Draw AABB. We should include this in the bounds above
+        // or at least indicate if it's going off-screen?
+        const auto &[sx0, sy0] = scaler.Scale(x0, y0);
+        const auto &[sx1, sy1] = scaler.Scale(x1, y1);
+        img.BlendBox32(sx0, sy0, sx1 - sx0, sy1 - sy0, 0x33FF3366,
+                       {0x33FF3333});
       }
     }
 
