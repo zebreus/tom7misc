@@ -60,6 +60,7 @@ static void Simple() {
   {
     Bigival b(BigRat(-2), BigRat(3), true, true);
     CHECK(b.ContainsZero());
+    CHECK(b.ContainsOrApproachesZero());
 
     CHECK_CONTAINS(b, BigRat(0));
     CHECK_CONTAINS(b, BigRat(-2));
@@ -74,16 +75,25 @@ static void Simple() {
   {
     Bigival b(BigRat(3), BigRat(4), true, true);
     CHECK(!b.ContainsZero());
+    CHECK(!b.ContainsOrApproachesZero());
   }
 
   {
     Bigival b(BigRat(-4), BigRat(0), true, false);
     CHECK(!b.ContainsZero());
+    CHECK(b.ContainsOrApproachesZero());
+  }
+
+  {
+    Bigival b(BigRat(0), BigRat(4), false, true);
+    CHECK(!b.ContainsZero());
+    CHECK(b.ContainsOrApproachesZero());
   }
 
   {
     Bigival b(BigRat(-4), BigRat(0), false, true);
     CHECK(b.ContainsZero());
+    CHECK(b.ContainsOrApproachesZero());
   }
 
   for (Bigival a : {
@@ -132,7 +142,7 @@ static void Simple() {
         });
 
       // Only when defined and supported.
-      if (!b.ContainsZero() &&
+      if (!b.ContainsOrApproachesZero() &&
           b.LB() != 0 &&
           b.UB() != 0) {
         Bigival quotient = a / b;

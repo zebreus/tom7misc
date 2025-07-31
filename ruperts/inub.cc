@@ -1,12 +1,13 @@
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <cstdio>
 #include <ctime>
+#include <deque>
 #include <format>
 #include <initializer_list>
-#include <iterator>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -27,20 +28,26 @@
 #include "big-polyhedra.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
+#include "bounds.h"
+#include "image.h"
 #include "patches.h"
 #include "periodically.h"
+#include "polyhedra.h"
 #include "randutil.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
+#include "yocto_matht.h"
 
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
-                 counter_bad_midpoint);
+                 counter_bad_midpoint, counter_inside);
 
-static constexpr bool SELF_CHECK = true;
+static constexpr bool SELF_CHECK = false;
 
 static constexpr int SCUBE_DIGITS = 24;
+
+using vec2 = yocto::vec<double, 2>;
 
 StatusBar status = StatusBar(13);
 
@@ -73,6 +80,23 @@ StatusBar status = StatusBar(13);
 //
 // If it may contain a solution, we split one of the parameters and
 // try again.
+//
+// Remember that the intervals represent bounds on the true underlying
+// values that we are reasoning about. For example we often know that
+// a 3d vector is unit length, but the bounds on each component do not
+// express this (it is always an axis-aligned bounding box). Nonetheless,
+// we can still draw conclusions that rely on properties of the underlying
+// values. For example, we can take the cross product of two unit-length,
+// orthogonal vectors (even if their bounds would include non-unit vectors
+// or non-orthogonal vectors) and know that the result is unit length
+// (though its bounds will also include non unit-length vectors).
+//
+// In this code it's important to be careful about winding order, and
+// in particular since we are sometimes using a flipped coordinate
+// system for graphics (y down), "clockwise" is ambiguous. This code
+// tries to be careful about "screen clockwise" and "cartesian
+// clockwise." The hulls tested here are in screen clockwise (which is
+// cartesian counter-clockwise) winding order.
 
 inline constexpr int OUTER_AZIMUTH = 0;
 inline constexpr int OUTER_ANGLE = 1;
@@ -147,7 +171,7 @@ struct ParameterSet {
 using Volume = std::vector<Bigival>;
 
 // The n-dimensional hypervolume of the cell.
-BigRat Hypervolume(const Volume &vol) {
+static BigRat Hypervolume(const Volume &vol) {
   BigRat product(1);
   for (int d = 0; d < NUM_DIMENSIONS; d++) {
     product *= vol[d].Width();
@@ -164,7 +188,113 @@ struct Hypercube {
     root.reset(new Node(Leaf{.completed = 0}));
   }
 
-  // TODO: Serialize, deserialize
+  void FromDisk(const std::string &filename) {
+    // The file format is line based. Each line is a node;
+    // either:
+    // L completed
+    // or
+    // S axis split
+    //
+    // The nodes are in post order, so we process them with
+    // a stack:
+
+    std::vector<std::shared_ptr<Hypercube::Node>> stack;
+
+    Util::ForEachLine(
+        filename,
+        [&](const std::string &raw_line) {
+          std::string line_string = Util::NormalizeWhitespace(raw_line);
+          std::string_view line(line_string);
+          if (line.empty()) return;
+          CHECK(line.size() > 2);
+
+          char cmd = line[0];
+          line.remove_prefix(2);
+          if (cmd == 'L') {
+            int64_t comp = Util::ParseInt64(Util::Chop(&line), -1);
+            CHECK(comp >= 0) << line;
+            auto leaf =
+              std::make_shared<Hypercube::Node>(Leaf{
+                  .completed = comp,
+                });
+            stack.push_back(std::move(leaf));
+          } else if (cmd == 'S') {
+            int axis = Util::ParseInt64(Util::Chop(&line), -1);
+            CHECK(axis >= 0 && axis < NUM_DIMENSIONS) << line;
+            BigRat split_pt(Util::Chop(&line));
+
+            CHECK(stack.size() >= 2) << "Saw split node, so there "
+              "should be two children in the stack!";
+
+            auto split =
+              std::make_shared<Hypercube::Node>(Split{
+                  .axis = axis,
+                  .split = std::move(split_pt),
+                  .left = std::move(stack[stack.size() - 2]),
+                  .right = std::move(stack[stack.size() - 1]),
+                });
+
+            stack.pop_back();
+            stack.pop_back();
+            stack.push_back(std::move(split));
+
+          } else {
+            LOG(FATAL) << "Bad line in cube file: " << line;
+          }
+        });
+
+    CHECK(stack.size() == 1) << "Expected a single root node to "
+      "result.";
+    root = std::move(stack[0]);
+    stack.clear();
+  }
+
+  void ToDisk(const std::string &filename) {
+    FILE *f = fopen(filename.c_str(), "wb");
+    CHECK(f != nullptr);
+
+    using StackElt = std::variant<
+      std::string,
+      std::shared_ptr<Hypercube::Node>
+      >;
+
+
+    std::vector<StackElt> stack = {StackElt(root)};
+
+    while (!stack.empty()) {
+      StackElt &elt = stack.back();
+      if (std::string *s = std::get_if<std::string>(&elt)) {
+        fprintf(f, "%s", s->c_str());
+        stack.pop_back();
+
+      } else {
+        auto *p = std::get_if<std::shared_ptr<Hypercube::Node>>(&elt);
+        CHECK(p != nullptr);
+        std::shared_ptr<Hypercube::Node> node = std::move(*p);
+        stack.pop_back();
+
+        CHECK(node.get() != nullptr);
+
+        if (Leaf *leaf = std::get_if<Leaf>(node.get())) {
+          std::string line = std::format("L {}\n", leaf->completed);
+          fprintf(f, "%s", line.c_str());
+        } else {
+          Split *split = std::get_if<Split>(node.get());
+          CHECK(split != nullptr) << "Must be leaf or split.";
+
+          std::string line = std::format("S {} {}\n",
+                                         split->axis,
+                                         split->split.ToString());
+          stack.emplace_back(line);
+          stack.emplace_back(split->right);
+          stack.emplace_back(split->left);
+        }
+      }
+    }
+
+    fclose(f);
+  }
+
 
   struct Split;
   struct Leaf;
@@ -208,7 +338,8 @@ struct Hypercube {
   // Though we store the state as a tree, we mostly work with
   // a queue containing all of the unexplored leaves. Extract
   // those.
-  std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> GetLeaves() {
+  std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> GetLeaves(
+      double *volume_done) {
     std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> leaves;
 
     std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> stack = {
@@ -226,6 +357,8 @@ struct Hypercube {
       if (Leaf *leaf = std::get_if<Leaf>(node.get())) {
         if (leaf->completed == 0) {
           leaves.emplace_back(std::move(volume), node);
+        } else {
+          *volume_done += Hypervolume(volume).ToDouble();
         }
       } else {
         Split *split = std::get_if<Split>(node.get());
@@ -335,6 +468,7 @@ struct Mat3ival {
   }
 };
 
+[[maybe_unused]]
 static Bigival Cross(const Vec2ival &a, const Vec2ival &b) {
   return a.x * b.y - a.y * b.x;
 }
@@ -549,6 +683,9 @@ static BigRat SplitInterval(const Bigival &ival) {
 
   if (simple_mid >= lthird && simple_mid <= uthird) {
     // Found a high quality rational that's close enough to the middle.
+    if (SELF_CHECK) {
+      CHECK(simple_mid >= ival.LB() && simple_mid <= ival.UB());
+    }
     return simple_mid;
   } else {
     // Return the exact midpoint, even if it is low quality.
@@ -683,7 +820,8 @@ struct Hypersolver {
     // canonical patches contain the z axis, we just subdivide if it
     // might be included. Do this ASAP so that we don't have to keep
     // encountering this after splitting other params.
-    if (oviewpos.x.ContainsZero() && oviewpos.y.ContainsZero()) {
+    if (oviewpos.x.ContainsOrApproachesZero() &&
+        oviewpos.y.ContainsOrApproachesZero()) {
       return {Split({OUTER_AZIMUTH, OUTER_ANGLE})};
     }
 
@@ -717,9 +855,31 @@ struct Hypersolver {
       return {Impossible(OUTSIDE_INNER_PATCH)};
     }
 
-    if (iviewpos.x.ContainsZero() && iviewpos.y.ContainsZero()) {
+    // As above: Can't contain the z axis.
+    if (iviewpos.x.ContainsOrApproachesZero() &&
+        iviewpos.y.ContainsOrApproachesZero()) {
       return {Split({INNER_AZIMUTH, INNER_ANGLE})};
     }
+
+
+    // Now, our interval overlaps the patches. But further
+    // subdivide unless it is entirely within the patch, or
+    // is small. (Heuristic)
+    if (!VolumeInsidePatches(volume)) {
+      // About one degree.
+      BigRat MIN_SMALL_ANGLE(3, 172);
+
+      ParameterSet must_split;
+      if (oz_width > MIN_SMALL_ANGLE) must_split.Add(OUTER_AZIMUTH);
+      if (oa_width > MIN_SMALL_ANGLE) must_split.Add(OUTER_ANGLE);
+      if (iz_width > MIN_SMALL_ANGLE) must_split.Add(INNER_AZIMUTH);
+      if (ia_width > MIN_SMALL_ANGLE) must_split.Add(INNER_ANGLE);
+
+      if (!must_split.Empty()) {
+        return {Split(must_split)};
+      }
+    }
+
 
     // Get outer and inner frame.
     Frame3ival outer_frame = FrameFromViewPos(oviewpos, inv_epsilon);
@@ -772,8 +932,9 @@ struct Hypersolver {
 
       // Now, we reject this cell if the point is definitely outside
       // the outer hull. Since the outer hull is a convex hull
-      // containing the origin, in clockwise winding order, we can
-      // just do this as a series of line-side tests.
+      // containing the origin, in screen clockwise (cartesian ccw)
+      // winding order, we can just do this as a series of line-side
+      // tests.
       // CHECK(outer_hull.size() == outer_shadow.size());
       CHECK(outer_hull.size() == outer_edge.size());
       CHECK(outer_hull.size() == outer_cross_va_vb.size());
@@ -781,7 +942,7 @@ struct Hypersolver {
         [[maybe_unused]] int end = (start + 1) % outer_hull.size();
 
         // Do line-side test. Specifically, we can assume the origin
-        // is clockwise from the edge va->vb. Then we want to ask if
+        // is screen-clockwise from the edge va->vb. Then we want to ask if
         // point v's interval is definitely completely on the other
         // side of the edge.
 
@@ -805,10 +966,10 @@ struct Hypersolver {
         Bigival cross_product1 =
           (vb.x - va.x) * (v.y - va.y) - (vb.y - va.y) * (v.x - va.x);
 
-        // The cross product would have to be negative in order
+        // The cross product would have to be positive in order
         // to be strictly inside, so if this is not possible, then we
         // know this cell is impossible.
-        if (!cross_product1.MightBeNegative()) {
+        if (!cross_product1.MightBePositive()) {
           return {Impossible(POINT_OUTSIDE1)};
         }
 
@@ -822,7 +983,7 @@ struct Hypersolver {
         Bigival cross_product2 =
           Cross(va, vb) + cross_vb_v_plus_cross_v_va;
 
-        if (!cross_product2.MightBeNegative()) {
+        if (!cross_product2.MightBePositive()) {
           return {Impossible(POINT_OUTSIDE2)};
         }
 
@@ -844,7 +1005,7 @@ struct Hypersolver {
         Bigival cross_product3 =
           cross_va_vb + cross_vb_v_plus_cross_v_va;
 
-        if (!cross_product3.MightBeNegative()) {
+        if (!cross_product3.MightBePositive()) {
           return {Impossible(POINT_OUTSIDE3)};
         }
         #endif
@@ -865,7 +1026,7 @@ struct Hypersolver {
         Bigival cross_product4 =
           edge.x * v.y - edge.y * v.x + cross_va_vb;
 
-        if (!cross_product4.MightBeNegative()) {
+        if (!cross_product4.MightBePositive()) {
           return {Impossible(POINT_OUTSIDE4)};
         }
       }
@@ -918,23 +1079,342 @@ struct Hypersolver {
     return best_d;
   }
 
+  std::array<double, NUM_DIMENSIONS> SampleFromVolume(const Volume &volume) {
+    // Access random
+    MutexLock ml(&mu);
+    std::array<double, NUM_DIMENSIONS> sample;
+    for (int d = 0; d < NUM_DIMENSIONS; d++) {
+      double w = volume[d].Width().ToDouble();
+      // If the widths are too small to even be distinct doubles,
+      // we probably should just avoid sampling?
+      if (w == 0.0) {
+        sample[d] = volume[d].LB().ToDouble();
+      } else {
+        sample[d] = volume[d].LB().ToDouble() +
+          w * RandDouble(&rc);
+      }
+    }
+    return sample;
+  }
+
+
+  // Corner of the hypervolume indicated by bitmask.
+  std::array<double, NUM_DIMENSIONS> VolumeCorner(const Volume &volume,
+                                                  uint32_t corner) {
+    std::array<double, NUM_DIMENSIONS> sample;
+    for (int d = 0; d < NUM_DIMENSIONS; d++) {
+      if (corner & (1 << d)) {
+        sample[d] = volume[d].LB().ToDouble();
+      } else {
+        sample[d] = volume[d].UB().ToDouble();
+      }
+    }
+    return sample;
+  }
+
+  vec3 ViewFromSpherical(double angle, double azimuth) {
+    double sina = std::sin(angle);
+    vec3 view(
+        sina * std::cos(azimuth),
+        sina * std::sin(azimuth),
+        std::cos(angle));
+    return view;
+  }
+
+  void MakeSampleImage(const Volume &volume, const ProcessResult &pr,
+                       std::string_view msg) {
+    std::string filename = std::format("inubs/sample-{}-{}.png",
+                                       time(nullptr), msg);
+    status.Print("Sample volume:\n{}\n",
+                 VolumeString(volume, true));
+
+    constexpr int N_SAMPLES = 512;
+
+    auto TransformHull = [this](const std::vector<int> &hull,
+                                const frame3 &f) -> std::vector<vec2> {
+        std::vector<vec2> shadow;
+        for (int idx : hull) {
+          const vec3 &pt = small_scube.vertices[idx];
+          vec3 v = transform_point(f, pt);
+          shadow.push_back(vec2(v.x, v.y));
+        }
+        return shadow;
+      };
+
+    auto RotateAndTranslate = [](double alpha, double tx, double ty,
+                                 std::vector<vec2> *shadow) {
+
+        double sina = std::sin(alpha);
+        double cosa = std::cos(alpha);
+
+        for (int i = 0; i < shadow->size(); i++) {
+          vec2 v = (*shadow)[i];
+          vec2 r(v.x * cosa - v.y * sina,
+                 v.x * sina + v.y * cosa);
+          r.x += tx;
+          r.y += ty;
+          (*shadow)[i] = r;
+        }
+      };
+
+    const int WIDTH = 1024, HEIGHT = 1024;
+    ImageRGBA img(WIDTH, HEIGHT);
+    img.Clear32(0x000000FF);
+
+    struct Shadows {
+      std::vector<vec2> outer;
+      std::vector<vec2> inner;
+      bool opatch = false, ipatch = false;
+      bool corner = false;
+    };
+
+    std::vector<Shadows> shadows;
+
+    // PERF: Could compute the double-based intervals once
+    for (int s = 0; s < N_SAMPLES; s++) {
+      std::array<double, NUM_DIMENSIONS> sample;
+      // Sample the extremities (corners) exhaustively,
+      // then some random samples.
+      const bool corner = s < (1 << NUM_DIMENSIONS);
+      if (corner) {
+        sample = VolumeCorner(volume, s);
+      } else {
+        sample = SampleFromVolume(volume);
+      }
+
+      // XXXX!!
+      // vec3 oview = GetVec3InPatch(&rc, boundaries, outer_code);
+
+      vec3 oview = ViewFromSpherical(
+          sample[OUTER_ANGLE],
+          sample[OUTER_AZIMUTH]);
+      frame3 oviewpos = FrameFromViewPos(oview);
+      const bool opatch = boundaries.GetCode(oview) == outer_code;
+
+      vec3 iview = ViewFromSpherical(
+          sample[INNER_ANGLE],
+          sample[INNER_AZIMUTH]);
+      frame3 iviewpos = FrameFromViewPos(iview);
+      const bool ipatch = boundaries.GetCode(iview) == inner_code;
+
+      // Plot hulls.
+      std::vector<vec2> outer_shadow =
+        TransformHull(outer_hull, oviewpos);
+
+      std::vector<vec2> inner_shadow =
+        TransformHull(inner_hull, iviewpos);
+
+      // And rotate.
+      RotateAndTranslate(sample[INNER_ROT],
+                         sample[INNER_X], sample[INNER_Y],
+                         &inner_shadow);
+
+
+      shadows.push_back(Shadows{
+          .outer = outer_shadow,
+          .inner = inner_shadow,
+          .opatch = opatch,
+          .ipatch = ipatch,
+          .corner = corner});
+    }
+
+    Bounds bounds;
+    for (const Shadows &s : shadows) {
+      for (vec2 v : s.outer)
+        bounds.Bound(v.x, v.y);
+      for (vec2 v : s.inner)
+        bounds.Bound(v.x, v.y);
+    }
+
+    Bounds::Scaler scaler =
+      bounds.ScaleToFitWithMargin(WIDTH, HEIGHT, 16, true);
+
+    int num_corners = 0;
+    // Random samples
+    int num_samples = 0;
+    int num_corners_in_inner = 0;
+    int num_corners_in_outer = 0;
+    int num_samples_in_inner = 0;
+    int num_samples_in_outer = 0;
+    for (const Shadows &s : shadows) {
+      if (s.corner) {
+        num_corners++;
+
+        if (s.opatch) num_corners_in_outer++;
+        if (s.ipatch) num_corners_in_inner++;
+
+      } else {
+        num_samples++;
+
+        if (s.opatch) num_samples_in_outer++;
+        if (s.ipatch) num_samples_in_inner++;
+      }
+    }
+
+    // Draw 'em.
+    // We don't care about the correspondence between inner/outer;
+    // were just trying to visualize the intervals.
+    for (int i = 0; i < shadows.size(); i++) {
+      const Shadows &s = shadows[i];
+      if (i == 0) {
+        for (int a = 0; a < s.outer.size(); a++) {
+          int b = (a + 1) % s.outer.size();
+          const auto &[ax, ay] = scaler.Scale(s.outer[a].x, s.outer[a].y);
+          const auto &[bx, by] = scaler.Scale(s.outer[b].x, s.outer[b].y);
+          img.BlendLine32(ax, ay, bx, by, 0xFF333388);
+        }
+      }
+      for (const vec2 &v : s.outer) {
+        const auto &[sx, sy] = scaler.Scale(v.x, v.y);
+        if (s.opatch) {
+          img.BlendFilledCircleAA32(sx, sy, 2, 0xFF333399);
+        } else {
+          // Hollow means we're not actually in the patch.
+          img.BlendThickCircleAA32(sx, sy, 3.0, 1.0, 0xFF333399);
+        }
+      }
+    }
+
+    for (int i = 0; i < shadows.size(); i++) {
+      const Shadows &s = shadows[i];
+      if (i == 0) {
+        for (int a = 0; a < s.inner.size(); a++) {
+          int b = (a + 1) % s.inner.size();
+          const auto &[ax, ay] = scaler.Scale(s.inner[a].x, s.inner[a].y);
+          const auto &[bx, by] = scaler.Scale(s.inner[b].x, s.inner[b].y);
+          img.BlendLine32(ax, ay, bx, by, 0x33FF3388);
+        }
+      }
+
+      for (const vec2 &v : s.inner) {
+        const auto &[sx, sy] = scaler.Scale(v.x, v.y);
+        if (s.ipatch) {
+          img.BlendFilledCircleAA32(sx, sy, 2, 0x33FF3399);
+        } else {
+          img.BlendThickCircleAA32(sx, sy, 3.0, 1.0, 0x33FF3399);
+        }
+      }
+    }
+
+    std::vector<std::string> vs =
+      Util::SplitToLines(VolumeString(volume, true));
+    int yy = 8;
+    for (const std::string &v : vs) {
+      img.BlendText32(8, yy, 0xAAAAAAFF, v);
+      yy += ImageRGBA::TEXT_HEIGHT + 2;
+    }
+
+    auto PctString = [](std::string_view label, int n, int d){
+        return
+          std::format("{}: {}" AGREY("/") "{} "
+                      AGREY("(") "{:.1f}%" AGREY(")"),
+                      label,
+                      n, d,
+                      (100.0 * n) / d);
+      };
+
+    yy += ImageRGBA::TEXT_HEIGHT + 2;
+    img.BlendText32(
+        8, yy, 0xFFCCCCFF,
+        PctString("outer corners", num_corners_in_outer, num_corners));
+    yy += ImageRGBA::TEXT_HEIGHT + 2;
+    img.BlendText32(
+        8, yy, 0xFFCCCCFF,
+        PctString("outer sample", num_samples_in_outer, num_samples));
+    yy += ImageRGBA::TEXT_HEIGHT + 2;
+    img.BlendText32(
+        8, yy, 0xCCFFCCFF,
+        PctString("inner corners", num_corners_in_inner, num_corners));
+    yy += ImageRGBA::TEXT_HEIGHT + 2;
+    img.BlendText32(
+        8, yy, 0xCCFFCCFF,
+        PctString("inner sample", num_samples_in_inner, num_samples));
+
+    yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
+    if (const Impossible *imp = std::get_if<Impossible>(&pr)) {
+      img.BlendText32(8, yy, 0xFFFF33FF,
+                      std::format("Result: Impossible! " ACYAN("{}"),
+                                  RejectionReasonString(imp->reason)));
+    } else {
+      img.BlendText32(8, yy, 0x33FFFFFF,
+                      "Result: Split");
+    }
+
+
+    img.Save(filename);
+    status.Print("Wrote " AGREEN("{}"), filename);
+  }
+
+  std::optional<uint64_t> GetCornerCode(const Volume &volume,
+                                        int angle, int azimuth) {
+    CHECK(angle >= 0 && angle < NUM_DIMENSIONS);
+    CHECK(azimuth >= 0 && azimuth < NUM_DIMENSIONS);
+    const Bigival &angle_ival = volume[angle];
+    const Bigival &azimuth_ival = volume[azimuth];
+
+    uint64_t all_code = 0;
+    for (int b = 0; b < 0b11; b++) {
+      double angle = (b & 0b01) ? angle_ival.LB().ToDouble() :
+        angle_ival.UB().ToDouble();
+      double azimuth = (b & 0b10) ? azimuth_ival.LB().ToDouble() :
+        azimuth_ival.UB().ToDouble();
+
+      vec3 view = ViewFromSpherical(angle, azimuth);
+      uint64_t code = boundaries.GetCodeSloppy(view);
+      if (b == 0 || code == all_code) {
+        all_code = code;
+      } else {
+        return {};
+      }
+    }
+
+    return {all_code};
+  }
+
+  // Assumes double precision works, but is otherwise exact.
+  bool VolumeInsidePatches(const Volume &volume) {
+    std::optional<uint64_t> oc =
+      GetCornerCode(volume, OUTER_ANGLE, OUTER_AZIMUTH);
+    if (!oc.has_value() || oc.value() != outer_code)
+      return false;
+
+    std::optional<uint64_t> ic =
+      GetCornerCode(volume, INNER_ANGLE, INNER_AZIMUTH);
+    if (!ic.has_value() || ic.value() != inner_code)
+      return false;
+
+    return true;
+  }
+
   void Expand() {
     // Get all the unsolved leaves.
-    std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> leaves =
-      hypercube->GetLeaves();
+    std::deque<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> q;
 
-    status.Print("Start Expand. Remaining leaves: {}\n", leaves.size());
+    for (auto &p : hypercube->GetLeaves(&volume_done)) {
+      q.emplace_back(std::move(p));
+    }
+
+    status.Print("Start Expand. Remaining leaves: {}\n", q.size());
 
     Periodically status_per(1);
+    Periodically save_per(15 * 60);
+    Periodically sample_per(60 * 10);
+    Periodically sample_proved_per(60 * 1);
 
     BigRat full_volume = Hypervolume(hypercube->bounds);
     double full_volume_d = full_volume.ToDouble();
 
-    while (!leaves.empty()) {
+    while (!q.empty()) {
       Volume volume;
       std::shared_ptr<Hypercube::Node> node;
-      std::tie(volume, node) = leaves.back();
-      leaves.pop_back();
+
+      if (q.size() > 8192) {
+        std::tie(volume, node) = q.back();
+        q.pop_back();
+      } else {
+        std::tie(volume, node) = q.front();
+        q.pop_front();
+      }
 
       CHECK(node.get() != nullptr);
 
@@ -972,7 +1452,7 @@ struct Hypersolver {
             ANSI::ProgressBar(
                 numer, denom,
                 std::format(
-                    "Done: {:.8g} {:.6f}% Proved: {:.8g} {:.6f}%",
+                    "Done: {:.8g} {:.2f}% Proved: {:.8g} {:.6f}%",
                     volume_done, done_pct,
                     volume_proved, proved_pct),
                 run_timer.Seconds(),
@@ -984,7 +1464,7 @@ struct Hypersolver {
               "Split count: {}\n"
               "{}\n"
               "{}\n"
-              "Bad midpoint: {}\n"
+              "Bad midpoint: {}  In: {}  Full volume: {}\n"
               "{} processed, "
               "{} " AGREEN("✔") ", "
               "{} " AORANGE("⊹") ". "
@@ -995,16 +1475,32 @@ struct Hypersolver {
               VolumeString(volume, true),
               rr,
               counter_bad_midpoint.Read(),
+              counter_inside.Read(),
+              full_volume_d,
               counter_processed.Read(),
               counter_completed.Read(),
               counter_split.Read(),
-              leaves.size(),
+              q.size(),
               ANSI::Time(time_each),
               progress);
         });
 
+      save_per.RunIf([&](){
+          status.Print("Saving to {}...\n", filename);
+          hypercube->ToDisk(filename);
+        });
+
       ProcessResult res = ProcessOne(volume);
       counter_processed++;
+
+
+      if (VolumeInsidePatches(volume)) {
+        counter_inside++;
+        // Sometimes also sample.
+        sample_per.RunIf([&]() {
+            MakeSampleImage(volume, res, "inside");
+          });
+      }
 
       if (Impossible *imp = std::get_if<Impossible>(&res)) {
         (void)imp;
@@ -1025,6 +1521,9 @@ struct Hypersolver {
           break;
         default:
           volume_proved += v;
+          sample_proved_per.RunIf([&]() {
+              MakeSampleImage(volume, res, "proved");
+            });
           break;
         }
 
@@ -1064,10 +1563,10 @@ struct Hypersolver {
             Hypercube::Leaf());
 
         // Enqueue the leaves.
-        leaves.emplace_back(std::move(left), split_node.left);
-        leaves.emplace_back(std::move(right), split_node.right);
+        q.emplace_back(std::move(left), split_node.left);
+        q.emplace_back(std::move(right), split_node.right);
 
-        node.reset(new Hypercube::Node(std::move(split_node)));
+        *node = Hypercube::Node(std::move(split_node));
 
         counter_split++;
 
@@ -1076,18 +1575,20 @@ struct Hypersolver {
       }
     }
 
+    hypercube->ToDisk(filename);
     printf("Success " AGREEN(":)") "\n");
   }
 
   // PERF: Might actually make sense to do all of the plane-side
   // tests; it's more work, but when we can exclude a point then
   // it saves us work across all dimensions!
+  static constexpr bool TEST_ALL_PLANES = true;
   bool MightHaveCode(
       uint64_t code, uint64_t mask,
       const Vec3ival &v) const {
     for (int i = 0; i < boundaries.big_planes.size(); i++) {
       uint64_t pos = uint64_t{1} << i;
-      if (pos & mask) {
+      if (TEST_ALL_PLANES || !!(pos & mask)) {
         const BigVec3 &normal = boundaries.big_planes[i];
         Bigival d = Dot(v, normal);
         if (pos & code) {
@@ -1110,6 +1611,7 @@ struct Hypersolver {
     // to; we just need the starting interval to *cover* [0, π] (or
     // 2π). So we use a simple rational upper bound to π.
     // Slightly larger than π. Accurate to 16 digits.
+    // (Actually this is 3.1416...!)
     BigRat big_pi(165707065, 52746197);
     Volume bounds;
     bounds.resize(7);
@@ -1138,6 +1640,8 @@ struct Hypersolver {
     const PatchInfo::CanonicalPatch &outer = canonical[0].second;
     const PatchInfo::CanonicalPatch &inner = canonical[1].second;
 
+    small_scube = SmallPoly(scube);
+
     // TODO: Verify that the hull contains the origin.
 
     outer_code = outer.code;
@@ -1147,6 +1651,11 @@ struct Hypersolver {
 
     outer_hull = outer.hull;
     inner_hull = inner.hull;
+
+    // This program assumes the hulls have screen-clockwise (cartesian
+    // ccw) winding order when viewed from within the patch.
+    CheckHullRepresentation(outer_code, outer_mask, outer_hull);
+    CheckHullRepresentation(inner_code, inner_mask, inner_hull);
 
     outer_cx3d.reserve(outer_hull.size());
     outer_edge3d.reserve(outer_hull.size());
@@ -1158,12 +1667,42 @@ struct Hypersolver {
       outer_cx3d.push_back(cross(va, vb));
       outer_edge3d.push_back(vb - va);
     }
+
+    filename = std::format("hc-{}-{}.cube", outer_code, inner_code);
+
+    if (Util::ExistsFile(filename)) {
+      status.Print("Continuing from {}", filename);
+      hypercube->FromDisk(filename);
+    }
   }
 
+  void CheckHullRepresentation(uint64_t code, uint64_t mask,
+                               const std::vector<int> &hull) {
+    vec3 view = GetVec3InPatch(&rc, boundaries, code, mask);
+    frame3 view_frame = FrameFromViewPos(view);
+    Mesh2D mesh = RotateAndProject(view_frame, small_scube);
+
+    // Want screen clockwise (cartesian ccw) winding order. This
+    // means positive area.
+    CHECK(SignedAreaOfHull(mesh, hull) > 0.0);
+    // Of course convex hull should be convex.
+    CHECK(IsHullConvex(mesh.vertices, hull));
+    // Must contain the origin.
+    CHECK(PointInPolygon(vec2{0, 0}, mesh.vertices, hull));
+
+    printf("Hull:\n");
+    for (int p : hull) {
+      vec2 v = mesh.vertices[p];
+      printf("  (%.4f, %.4f),\n", v.x, v.y);
+    }
+  }
+
+  Polyhedron small_scube;
   BigPoly scube;
   Boundaries boundaries;
   PatchInfo patch_info;
   std::unique_ptr<Hypercube> hypercube;
+  std::string filename;
   uint64_t outer_code = 0, outer_mask = 0;
   uint64_t inner_code = 0, inner_mask = 0;
 

@@ -243,6 +243,7 @@ frame3 FrameFromViewPos(const vec3 &view) {
   return inverse(frame);
 }
 
+
 BigQuat RandomBigQuaternion(ArcFour *rc) {
   quat4 s = RandomQuaternion(rc);
   return BigQuat(BigRat::ApproxDouble(s.x, 1000000),

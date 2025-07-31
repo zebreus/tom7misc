@@ -124,9 +124,9 @@ struct Bigival {
         CHECK(!IncludesUB());
       }
       if (sign1 != 0 && sign2 != 0) {
-        CHECK(sign1 == sign2) << "Bug: Should not be possible! We had this:\n" <<
-          ToString() << "\nWith alb: " << alb.ToString() << "\nAnd  aub: " <<
-          aub.ToString();
+        CHECK(sign1 == sign2) << "Bug: Should not be possible! "
+          "We had this:\n" << ToString() << "\nWith alb: " <<
+          alb.ToString() << "\nAnd  aub: " << aub.ToString();
       }
     }
 
@@ -161,6 +161,17 @@ struct Bigival {
     case 1:
       return false;
     }
+  }
+
+  bool ContainsOrApproachesZero() const {
+    const int ls = BigRat::Sign(LB());
+    const int us = BigRat::Sign(UB());
+
+    // Open endpoints mean it approaches zero.
+    if (ls == 0 || us == 0) return true;
+
+    // Otherwise, check if the interval spans zero.
+    return ls != us;
   }
 
   bool Contains(const BigRat &r) const {

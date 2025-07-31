@@ -1369,6 +1369,31 @@ std::pair<int, int> TwoNonParallelFaces(ArcFour *rc, const Polyhedron &poly) {
   }
 }
 
+inline vec2 TransformAndProjectPoint(const frame3 &f, const vec3 &v) {
+  // scale vector, but discard the z coordinate
+  auto Times3To2 = [](const vec3 &u, double r) {
+    return vec2(u.x * r, u.y * r);
+  };
+
+  vec2 fx = Times3To2(f.x, v.x);
+  vec2 fy = Times3To2(f.y, v.y);
+  vec2 fz = Times3To2(f.z, v.z);
+  // PERF this is always zero for our problems
+  vec2 o = vec2(f.o.x, f.o.y);
+
+  return fx + fy + fz + o;
+}
+
+Mesh2D RotateAndProject(const frame3 &frame, const Polyhedron &p) {
+  std::vector<vec2> vertices;
+  vertices.reserve(p.vertices.size());
+  for (const vec3 &v : p.vertices) {
+    vertices.push_back(TransformAndProjectPoint(frame, v));
+  }
+  return Mesh2D{.vertices = std::move(vertices), .faces = p.faces};
+}
+
+
 // PERF: See polyehdra_benchmark for different approaches. This
 // was the winner for the snub cube, but the tradeoffs are likely
 // different for other shapes. (In particular, QuickHull may be
@@ -1619,12 +1644,16 @@ void DebugPointCloudAsSTL(const std::vector<vec3> &vertices,
 
       vec3 normal = yocto::normalize(yocto::cross(p1 - p0, p2 - p0));
 
-      AppendFormat(&contents, "  facet normal {:f} {:f} {:f}\n", normal.x, normal.y,
+      AppendFormat(&contents,
+                   "  facet normal {:f} {:f} {:f}\n", normal.x, normal.y,
                    normal.z);
       AppendFormat(&contents, "    outer loop\n");
-      AppendFormat(&contents, "      vertex {:f} {:f} {:f}\n", p0.x, p0.y, p0.z);
-      AppendFormat(&contents, "      vertex {:f} {:f} {:f}\n", p1.x, p1.y, p1.z);
-      AppendFormat(&contents, "      vertex {:f} {:f} {:f}\n", p2.x, p2.y, p2.z);
+      AppendFormat(&contents,
+                   "      vertex {:f} {:f} {:f}\n", p0.x, p0.y, p0.z);
+      AppendFormat(&contents,
+                   "      vertex {:f} {:f} {:f}\n", p1.x, p1.y, p1.z);
+      AppendFormat(&contents,
+                   "      vertex {:f} {:f} {:f}\n", p2.x, p2.y, p2.z);
       AppendFormat(&contents, "    endloop\n");
       AppendFormat(&contents, "  endfacet\n");
     }

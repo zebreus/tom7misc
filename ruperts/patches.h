@@ -24,6 +24,7 @@
 #include "yocto_matht.h"
 
 using vec3 = yocto::vec<double, 3>;
+using frame3 = yocto::frame<double, 3>;
 
 struct Boundaries {
   // 1 bit means dot product is positive, 0 means negative.
@@ -191,7 +192,7 @@ void AddHulls(const Boundaries &boundaries,
               PatchInfo *info);
 
 // Get the points on the hull when in this view patch. Exact.
-// Clockwise winding order.
+// Screen clockwise (cartesian ccw) winding order.
 std::vector<int> ComputeHullForPatch(
     const Boundaries &boundaries,
     uint64_t code,

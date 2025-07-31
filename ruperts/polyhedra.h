@@ -236,6 +236,8 @@ inline Polyhedron Rotate(const Polyhedron &p, const quat4 &quat) {
   return Rotate(p, yocto::rotation_frame(quat));
 }
 
+// Shadow(Rotate(frame, p))
+Mesh2D RotateAndProject(const frame3 &frame, const Polyhedron &p);
 
 // Reflect the polyhedron across the XY plane.
 // Shares faces with the argument (but they will be inside-out).
