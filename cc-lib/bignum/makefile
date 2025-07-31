@@ -79,4 +79,4 @@ polynomial-nogmp_test.exe : polynomial_test-nogmp.o polynomial-nogmp.o big-nogmp
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
 clean :
-	rm -f *.o *.exe
+	rm -f *.o *.exe $(CCLIB_TEST_OBJECTS)

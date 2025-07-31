@@ -1301,34 +1301,34 @@ static void TestRatElementaryBounds() {
     // the result is exact.
     const auto &[lb, ub] =
       BigRat::ElementaryBounds(BigRat{7, 11}, BigInt(1000));
-    CHECK(lb.ToString() == "7/11" & ub.ToString() == "7/11");
+    CHECK(lb.ToString() == "7/11" && ub.ToString() == "7/11");
   }
 
   {
     const auto &[lb, ub] =
       BigRat::ElementaryBounds(BigRat{-16, 171}, BigInt(1000));
-    CHECK(lb.ToString() == "-16/171" & ub.ToString() == "-16/171");
+    CHECK(lb.ToString() == "-16/171" && ub.ToString() == "-16/171");
   }
 
   {
     // Denegerates to Floor/Ceil with a denominator of 1.
     const auto &[lb, ub] =
       BigRat::ElementaryBounds(BigRat{27, 11}, BigInt(1));
-    CHECK(lb.ToString() == "2" & ub.ToString() == "3");
+    CHECK(lb.ToString() == "2" && ub.ToString() == "3");
   }
 
   {
     // Denegerates to Floor/Ceil with a denominator of 1.
     const auto &[lb, ub] =
       BigRat::ElementaryBounds(BigRat(27), BigInt(1));
-    CHECK(lb.ToString() == "27" & ub.ToString() == "27");
+    CHECK(lb.ToString() == "27" && ub.ToString() == "27");
   }
 
   {
     // Zero is a special case.
     const auto &[lb, ub] =
       BigRat::ElementaryBounds(BigRat(0), BigInt(1000));
-    CHECK(lb.ToString() == "0" & ub.ToString() == "0");
+    CHECK(lb.ToString() == "0" && ub.ToString() == "0");
   }
 
   {
