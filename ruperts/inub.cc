@@ -747,7 +747,52 @@ struct Hypersolver {
     // point that is definitely outside, so this is usually a
     // prefix of the hull points.
     std::vector<Vec2ival> inner;
+    std::vector<std::array<Vec2ival, 4>> quads;
   };
+
+  // Rotate the point v_in by rot and translate it by tx,ty.
+  // However, instead of representing the result as a single AABB,
+  // return the four corners of a quad (not axis-aligned in general)
+  // that represents the bounding region. Each corner is a (hopefully
+  // much tighter) AABB.
+  std::array<Vec2ival, 4>
+  GetQuad(const Vec2ival &v_in, const Bigival &angle,
+          const BigInt &inv_epsilon,
+          const Bigival &tx, const Bigival &ty) {
+
+    Bigival sin_a = angle.Sin(inv_epsilon);
+    Bigival cos_a = angle.Cos(inv_epsilon);
+    Vec2ival loose_box(Bigival(v_in.x) * cos_a - Bigival(v_in.y) * sin_a,
+                       Bigival(v_in.x) * sin_a + Bigival(v_in.y) * cos_a);
+
+    // The idea is to compute a quad that surrounds the shape swept by
+    // rotating the AABB containing v_in by the angle (and then translate
+    // it by tx, ty).
+    //
+    // If the sweep might cross an axis, it gets complicated because
+    // this is where sin/cos change direction. As an extreme example,
+    // if angle can take on all values [0, 2π] then computing the
+    // endpoints of the swept shape is degenerate (they are the same)
+    // but obviously the sweep covers the whole circular region.
+    // So we just detect if the loose bounds cross an axis; the calling
+    // code might need to subdivide. (But also note that near the axes
+    // is where AABBs are more likely to be tight bounds, so it may
+    // also not matter!)
+
+    if (loose_box.x.ContainsOrApproachesZero() ||
+        loose_box.y.ContainsOrApproachesZero()) {
+      return std::array<Vec2ival, 4>{
+          Vec2ival(loose_box.x.LB(), loose_box.y.LB()),
+          Vec2ival(loose_box.x.LB(), loose_box.y.UB()),
+          Vec2ival(loose_box.x.UB(), loose_box.y.LB()),
+          Vec2ival(loose_box.x.UB(), loose_box.y.UB())};
+    } else {
+
+      // HERE!
+      LOG(FATAL) << "Unimplemented";
+    }
+  }
+
 
   using ProcessResult = std::variant<Split, Impossible>;
 
@@ -896,6 +941,7 @@ struct Hypersolver {
     // the outer hull, whose vertices we call va, vb, etc.
 
     // The raw rotated vertices of the hull; va.
+    // We don't actually use these now!
 #if 0
     std::vector<Vec2ival> outer_shadow;
     outer_shadow.reserve(outer_hull.size());
@@ -931,17 +977,47 @@ struct Hypersolver {
     std::vector<Vec2ival> inner;
     inner.reserve(inner_hull.size());
 
+    std::vector<std::array<Vec2ival, 4>> quads;
+    quads.reserve(inner_hull.size());
+
     // Compute the inner hull point-by-point, which we call v. We can
     // exit early if any of these points are definitely outside the
     // outer hull.
     for (int idx : inner_hull) {
       const BigVec3 &original_v = scube.vertices[idx];
       Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
-      // Also rotate and translate it.
-      Vec2ival rot_v = Rotate2D(proj_v, inner_rot, inv_epsilon);
-      Vec2ival v(rot_v.x + inner_x, rot_v.y + inner_y);
 
-      inner.push_back(v);
+      // The simpler thing here would be to compute bounds on the point
+      // v as a Vec2ival. These are axis-aligned bounding boxes. But
+      // since they are axis-aligned, rotating (especially by e.g. 45°)
+      // and creating a new AABB will lose information. This is especially
+      // pernicious for these line-side tests, since it's easy to have a
+      // situation where the corner of the AABB intersects an edge, but
+      // none of the bounded points would have.
+      //
+      // Instead we treat the bounds of the points as a quad. We can
+      // just use an AABB as a quad (and we do this if we are in a
+      // delicate situation) but we can also just represent a rotated
+      // rectangle. There is still some uncertainty on the location
+      // of each corner, so we represent each one as a Vec2ival.
+      //
+      // Now instead of doing the line-side test below against
+      // the single original point (represented as a loose AABB)
+      // we do the line side test against each of the four rotated
+      // corners; each of these is an AABB but with much tighter
+      // bounds.
+
+      std::array<Vec2ival, 4> quad =
+        GetQuad(proj_v, inner_rot, inv_epsilon, inner_x, inner_y);
+      quads.push_back(quad);
+
+      // Just for visualization!
+      {
+        // Also rotate and translate it.
+        Vec2ival rot_v = Rotate2D(proj_v, inner_rot, inv_epsilon);
+        Vec2ival v(rot_v.x + inner_x, rot_v.y + inner_y);
+        inner.push_back(v);
+      }
 
       // Now, we reject this cell if the point is definitely outside
       // the outer hull. Since the outer hull is a convex hull
@@ -967,61 +1043,35 @@ struct Hypersolver {
         // insensitive because of many reuses of dependent terms. Should
         // clean this up!)
 
-        #if 0
-        [[maybe_unused]] const Vec2ival &va = outer_shadow[start];
-        [[maybe_unused]] const Vec2ival &vb = outer_shadow[end];
-
-        // The naive test.
+        // The naive test would be a simple cross product.
         // Note dependency problem: va.x and va.y both appear twice.
         // vb and va depend on one another because they are the result
         // of a 2D rotation (and of course they both depend on the
         // outer orientation).
-        Bigival cross_product1 =
-          (vb.x - va.x) * (v.y - va.y) - (vb.y - va.y) * (v.x - va.x);
+        // Bigival cross_product1 =
+        //   (vb.x - va.x) * (v.y - va.y) - (vb.y - va.y) * (v.x - va.x);
 
-        // The cross product would have to be positive in order
-        // to be strictly inside, so if this is not possible, then we
-        // know this cell is impossible.
-        if (!cross_product1.MightBePositive()) {
-          return {Impossible(POINT_OUTSIDE1)};
-        }
-
-        Bigival cross_vb_v_plus_cross_v_va =
-          Cross(vb, v) + Cross(v, va);
-
-        // This is arranged so that only the term Cross(va, vb) has
+        // We can rearrange this so that only the term Cross(va, vb) has
         // the dependency problem. The edge and point are independent
         // because they only depend on the outer and inner parameters,
         // respectively.
-        Bigival cross_product2 =
-          Cross(va, vb) + cross_vb_v_plus_cross_v_va;
+        // Bigival cross_product2 =
+        //   Cross(va, vb) + cross_vb_v_plus_cross_v_va;
 
-        if (!cross_product2.MightBePositive()) {
-          return {Impossible(POINT_OUTSIDE2)};
-        }
-
-        // Same, but use some precomputed values that should be much
-        // more accurate. The idea here is that we can compute the
-        // cross product for the 3D triangle (origin, pa, pb) ahead
-        // of time (no intervals; just the exact vector). This vector
-        // is like a representation of the triangle's area.
-        // The area of that triangle's 2D shadow is related to the cross
-        // product we want, and we can directly compute it from the
-        // view position, because
+        // Even better is to use some precomputed values, which is
+        // both faster and more accurate. The idea here is that we can
+        // compute the cross product for the 3D triangle (origin, pa,
+        // pb) ahead of time (no intervals; just the exact vector).
+        // This vector is like a representation of the triangle's
+        // area. The area of that triangle's 2D shadow is related to
+        // the cross product we want, and we can directly compute it
+        // from the view position, because
         //  * oviewpos is exactly a unit vector (even though the
         //    interval representation will be inexact)
         //  * outer_frame here is the rotation that aligns oviewpos
         //    with the z axis
         //  * the projection is orthographic (ignoring z).
         const Bigival &cross_va_vb = outer_cross_va_vb[start];
-
-        Bigival cross_product3 =
-          cross_va_vb + cross_vb_v_plus_cross_v_va;
-
-        if (!cross_product3.MightBePositive()) {
-          return {Impossible(POINT_OUTSIDE3)};
-        }
-        #endif
 
         // We also have a better way of computing the
         // other terms. Rather than rotate the endpoints and
@@ -1035,13 +1085,25 @@ struct Hypersolver {
         //     dependency problem.
         const Vec2ival &edge = outer_edge[start];
 
-        const Bigival &cross_va_vb = outer_cross_va_vb[start];
-        Bigival cross_product4 =
-          edge.x * v.y - edge.y * v.x + cross_va_vb;
 
-        if (!cross_product4.MightBePositive()) {
+        // Now, all four corners need to be outside the edge.
+        bool all_corners_definitely_outside = true;
+        for (const Vec2ival &corner : quad) {
+          Bigival cross_product4 =
+            edge.x * corner.y - edge.y * corner.x + cross_va_vb;
+
+          if (!cross_product4.MightBePositive()) {
+            // ok
+          } else {
+            all_corners_definitely_outside = false;
+            break;
+          }
+        }
+
+        if (all_corners_definitely_outside) {
           Impossible imp(POINT_OUTSIDE4);
           imp.inner = std::move(inner);
+          imp.quads = std::move(quads);
           return {std::move(imp)};
         }
       }
