@@ -747,49 +747,98 @@ struct Hypersolver {
     // point that is definitely outside, so this is usually a
     // prefix of the hull points.
     std::vector<Vec2ival> inner;
-    std::vector<std::array<Vec2ival, 4>> quads;
+    // Experimental: Bounding complexes for the rotated inner points.
+    // A bounding complex is a union of some AABBs.
+    // For this problem, this should be interpreted as "if all of
+    // these AABBs are outside an edge, then the point is definitely
+    // outside the edge."
+    std::vector<std::vector<Vec2ival>> complexes;
   };
 
   // Rotate the point v_in by rot and translate it by tx,ty.
   // However, instead of representing the result as a single AABB,
-  // return the four corners of a quad (not axis-aligned in general)
-  // that represents the bounding region. Each corner is a (hopefully
-  // much tighter) AABB.
-  std::array<Vec2ival, 4>
-  GetQuad(const Vec2ival &v_in, const Bigival &angle,
-          const BigInt &inv_epsilon,
-          const Bigival &tx, const Bigival &ty) {
+  // represent it as a set of AABBs whose union represents the bounding
+  // region more precisely.
+  std::vector<Vec2ival>
+  GetBoundingComplex(const Vec2ival &v_in, const Bigival &angle,
+                     const BigInt &inv_epsilon,
+                     const Bigival &tx, const Bigival &ty) {
+
+    auto Translate = [&](const Vec2ival &v) {
+        return Vec2ival(v.x + tx, v.y + ty);
+      };
 
     Bigival sin_a = angle.Sin(inv_epsilon);
     Bigival cos_a = angle.Cos(inv_epsilon);
     Vec2ival loose_box(Bigival(v_in.x) * cos_a - Bigival(v_in.y) * sin_a,
                        Bigival(v_in.x) * sin_a + Bigival(v_in.y) * cos_a);
 
-    // The idea is to compute a quad that surrounds the shape swept by
+    return {Translate(loose_box)};
+
+    // The idea is to compute a bounding volume for the shape swept by
     // rotating the AABB containing v_in by the angle (and then translate
-    // it by tx, ty).
+    // it by tx, ty). The volume is represented by a set of AABBs.
     //
     // If the sweep might cross an axis, it gets complicated because
     // this is where sin/cos change direction. As an extreme example,
     // if angle can take on all values [0, 2π] then computing the
     // endpoints of the swept shape is degenerate (they are the same)
-    // but obviously the sweep covers the whole circular region.
-    // So we just detect if the loose bounds cross an axis; the calling
-    // code might need to subdivide. (But also note that near the axes
-    // is where AABBs are more likely to be tight bounds, so it may
-    // also not matter!)
+    // but obviously the sweep covers the whole circular region. So if
+    // the loose bounds cross an axis, we just use those loose bounds.
+    // The calling code might need to subdivide. (But also note that
+    // near the axes is where AABBs are more likely to be tight
+    // bounds, so it may also not matter!)
 
     if (loose_box.x.ContainsOrApproachesZero() ||
         loose_box.y.ContainsOrApproachesZero()) {
-      return std::array<Vec2ival, 4>{
-          Vec2ival(loose_box.x.LB(), loose_box.y.LB()),
-          Vec2ival(loose_box.x.LB(), loose_box.y.UB()),
-          Vec2ival(loose_box.x.UB(), loose_box.y.LB()),
-          Vec2ival(loose_box.x.UB(), loose_box.y.UB())};
+      return {Translate(loose_box)};
     } else {
+      // Otherwise, we can compute some tighter bounds.
 
-      // HERE!
-      LOG(FATAL) << "Unimplemented";
+      // HERE: Ways to compute a complex of AABBs that more tightly
+      // bounds the swept AABB.
+
+      const std::array<std::pair<BigRat, BigRat>, 4> corners = {
+        std::make_pair(v_in.x.LB(), v_in.y.LB()),
+        std::make_pair(v_in.x.LB(), v_in.y.UB()),
+        std::make_pair(v_in.x.UB(), v_in.y.LB()),
+        std::make_pair(v_in.x.UB(), v_in.y.UB()),
+      };
+
+      // The extremes of the angle being swept.
+      Bigival sin_lb = Bigival::Sin(angle.LB(), inv_epsilon);
+      Bigival cos_lb = Bigival::Cos(angle.LB(), inv_epsilon);
+      Bigival sin_ub = Bigival::Sin(angle.UB(), inv_epsilon);
+      Bigival cos_ub = Bigival::Cos(angle.UB(), inv_epsilon);
+
+      std::vector<Vec2ival> volume;
+      volume.reserve(4);
+
+      for (const auto &[px, py] : corners) {
+        // Here we have an exact rational point px, py.
+        // Get the point's extreme values by rotating it by the
+        // bounds on the angle.
+        Vec2ival lb(px * cos_lb - py * sin_lb, px * sin_lb + py * cos_lb);
+        Vec2ival ub(px * cos_ub - py * sin_ub, px * sin_ub + py * cos_ub);
+
+        // The bound for the rotated corner is the AABB of these two points.
+        Vec2ival rot_corner(
+            Bigival(BigRat::Min(lb.x.LB(), ub.x.LB()),
+                    BigRat::Max(lb.x.UB(), ub.x.UB()), true, true),
+            Bigival(BigRat::Min(lb.y.LB(), ub.y.LB()),
+                    BigRat::Max(lb.y.UB(), ub.y.UB()), true, true));
+
+        volume.push_back(Translate(rot_corner));
+      }
+
+      // PERF: We can do much better than this! The key thing is that
+      // when the angle is near 45°, the shape of the sweep is more
+      // like a diagonal line. So AABBs are inefficient in the
+      // worst way for our problem (the inner corner of the AABB is
+      // unoccupied, and appears to intersect the similarly-angled edge
+      // that we test against).
+
+      return volume;
     }
   }
 
@@ -977,8 +1026,8 @@ struct Hypersolver {
     std::vector<Vec2ival> inner;
     inner.reserve(inner_hull.size());
 
-    std::vector<std::array<Vec2ival, 4>> quads;
-    quads.reserve(inner_hull.size());
+    std::vector<std::vector<Vec2ival>> complexes;
+    complexes.reserve(inner_hull.size());
 
     // Compute the inner hull point-by-point, which we call v. We can
     // exit early if any of these points are definitely outside the
@@ -995,21 +1044,13 @@ struct Hypersolver {
       // situation where the corner of the AABB intersects an edge, but
       // none of the bounded points would have.
       //
-      // Instead we treat the bounds of the points as a quad. We can
-      // just use an AABB as a quad (and we do this if we are in a
-      // delicate situation) but we can also just represent a rotated
-      // rectangle. There is still some uncertainty on the location
-      // of each corner, so we represent each one as a Vec2ival.
-      //
-      // Now instead of doing the line-side test below against
-      // the single original point (represented as a loose AABB)
-      // we do the line side test against each of the four rotated
-      // corners; each of these is an AABB but with much tighter
-      // bounds.
-
-      std::array<Vec2ival, 4> quad =
-        GetQuad(proj_v, inner_rot, inv_epsilon, inner_x, inner_y);
-      quads.push_back(quad);
+      // Instead we allow the possibility of a union of multiple AABBs
+      // to represent the possible locations of the point. We call
+      // this a "complex."
+      std::vector<Vec2ival> complex =
+        GetBoundingComplex(proj_v, inner_rot, inv_epsilon, inner_x, inner_y);
+      // PERF copying!
+      complexes.push_back(complex);
 
       // Just for visualization!
       {
@@ -1086,24 +1127,24 @@ struct Hypersolver {
         const Vec2ival &edge = outer_edge[start];
 
 
-        // Now, all four corners need to be outside the edge.
-        bool all_corners_definitely_outside = true;
-        for (const Vec2ival &corner : quad) {
+        // Now we test every AABB in the complex.
+        bool entire_complex_definitely_outside = true;
+        for (const Vec2ival &aabb : complex) {
           Bigival cross_product4 =
-            edge.x * corner.y - edge.y * corner.x + cross_va_vb;
+            edge.x * aabb.y - edge.y * aabb.x + cross_va_vb;
 
           if (!cross_product4.MightBePositive()) {
             // ok
           } else {
-            all_corners_definitely_outside = false;
+            entire_complex_definitely_outside = false;
             break;
           }
         }
 
-        if (all_corners_definitely_outside) {
+        if (entire_complex_definitely_outside) {
           Impossible imp(POINT_OUTSIDE4);
           imp.inner = std::move(inner);
-          imp.quads = std::move(quads);
+          imp.complexes = std::move(complexes);
           return {std::move(imp)};
         }
       }
@@ -1374,18 +1415,28 @@ struct Hypersolver {
     }
 
     if (const Impossible *imp = std::get_if<Impossible>(&pr)) {
-      for (const Vec2ival &v : imp->inner) {
-        double x0 = v.x.LB().ToDouble();
-        double x1 = v.x.UB().ToDouble();
-        double y0 = v.y.LB().ToDouble();
-        double y1 = v.y.UB().ToDouble();
+      auto DrawAABB = [&](const Vec2ival &v, uint32_t color) {
+          double x0 = v.x.LB().ToDouble();
+          double x1 = v.x.UB().ToDouble();
+          double y0 = v.y.LB().ToDouble();
+          double y1 = v.y.UB().ToDouble();
 
-        // Draw AABB. We should include this in the bounds above
-        // or at least indicate if it's going off-screen?
-        const auto &[sx0, sy0] = scaler.Scale(x0, y0);
-        const auto &[sx1, sy1] = scaler.Scale(x1, y1);
-        img.BlendBox32(sx0, sy0, sx1 - sx0, sy1 - sy0, 0x33FF3366,
-                       {0x33FF3333});
+          // Draw AABB. We should include this in the bounds above
+          // or at least indicate if it's going off-screen?
+          const auto &[sx0, sy0] = scaler.Scale(x0, y0);
+          const auto &[sx1, sy1] = scaler.Scale(x1, y1);
+          img.BlendBox32(sx0, sy0, sx1 - sx0, sy1 - sy0, color, {});
+        };
+
+      for (const Vec2ival &v : imp->inner) {
+        DrawAABB(v, 0x33FF3366);
+      }
+
+      // And the complexes.
+      for (const std::vector<Vec2ival> &complex : imp->complexes) {
+        for (const Vec2ival &v : complex) {
+          DrawAABB(v, 0xAAFF3366);
+        }
       }
     }
 
