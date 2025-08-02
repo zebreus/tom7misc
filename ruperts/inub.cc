@@ -474,6 +474,105 @@ struct Mat3ival {
   }
 };
 
+// A bounding sphere (not ball), represented as an center (usually
+// very accurate) and an interval on its radius (could be wide). To be
+// clear, this is the shell; it does not generally contain the origin
+// for example.
+struct Sphereival {
+  Vec3ival center;
+  Bigival radius;
+  Sphereival(Vec3ival c, Bigival r) : center(std::move(c)),
+                                      radius(std::move(r)) {
+    CHECK(!r.MightBeNegative()) << r.ToString();
+  }
+};
+
+// Bounding ball.
+struct Ballival {
+  // An exact center.
+  BigVec3 center;
+  // Upper bound on the radius.
+  BigRat radius;
+  // TODO: We could probably have a constructor that took
+  // Vec3ival center and/or Bigival radius, and computed a
+  // bounding sphere from those. But we aren't using that
+  // today.
+  Ballival(BigVec3 c, BigRat r) : center(std::move(c)),
+                                  radius(std::move(r)) {
+    CHECK(BigRat::Sign(r) != -1) << r.ToString();
+  }
+};
+
+// Compute a bounding ball for the patch on the unit sphere
+// given by the azimuth and angle (this is the view position).
+// The patch must be smaller than a hemisphere or you will
+// get a degenerate (but correct) result.
+static Ballival SphericalPatchBall(const Bigival &azimuth,
+                                   const Bigival &angle,
+                                   const BigInt &inv_epsilon) {
+
+  // We need the chosen center to be in the convex hull of the patch.
+  // This is easy for small patches, but like elsewhere if the patch
+  // is a whole hemisphere we'd need to start checking other points.
+  // Just return a conservative but degenerate ball (full unit ball)
+  // if the intervals are too wide.
+  if (azimuth.Width() > BigRat(3) || angle.Width() > BigRat(3)) {
+    return Ballival(BigVec3(BigRat(0), BigRat(0), BigRat(0)),
+                    BigRat(1));
+  }
+
+  // Compute a good center.
+  BigRat mid_azimuth = azimuth.Midpoint();
+  BigRat mid_angle = angle.Midpoint();
+
+  Bigival mid_sinz = Bigival::Sin(mid_azimuth, inv_epsilon);
+  Bigival mid_cosz = Bigival::Cos(mid_azimuth, inv_epsilon);
+  Bigival mid_sina = Bigival::Sin(mid_angle, inv_epsilon);
+  Bigival mid_cosa = Bigival::Cos(mid_angle, inv_epsilon);
+
+  // We have an approximate center (AABB) because of the
+  // transcendental functions. We have our choice of center
+  // for the bounding ball that we create, though! So
+  // we just use the midpoint of this tiny interval.
+  // Uncertainty essentially gets transferred into the
+  // radius.
+  BigVec3 center = BigVec3(
+      (mid_sina * mid_cosz).Midpoint(),
+      (mid_sina * mid_sinz).Midpoint(),
+      (mid_cosa).Midpoint());
+
+  BigRat max_sqdist(0);
+
+  // The corners of the patch are the furthest away from the
+  // chosen center. The furthest of these will determine the
+  // radius.
+  for (const BigRat &az_c : {azimuth.LB(), azimuth.UB()}) {
+    for (const BigRat &an_c : {angle.LB(), angle.UB()}) {
+      // The location of the corner.
+      Bigival c_sinz = Bigival::Sin(az_c, inv_epsilon);
+      Bigival c_cosz = Bigival::Cos(az_c, inv_epsilon);
+      Bigival c_sina = Bigival::Sin(an_c, inv_epsilon);
+      Bigival c_cosa = Bigival::Cos(an_c, inv_epsilon);
+      Vec3ival corner(c_sina * c_cosz, c_sina * c_sinz, c_cosa);
+
+      // Distance to the actual center.
+      // PERF: We could do a bit less computation here because we are
+      // only using the upper bound.
+      Bigival dx = corner.x - center.x;
+      Bigival dy = corner.y - center.y;
+      Bigival dz = corner.z - center.z;
+      Bigival sqdist = dx.Squared() + dy.Squared() + dz.Squared();
+
+      max_sqdist = BigRat::Max(max_sqdist, sqdist.UB());
+    }
+  }
+
+  // We want the radius, not the squared radius. We can just take
+  // the upper bound here since we are producing a bounding ball.
+  const auto &[slb, sub] = BigRat::SqrtBounds(max_sqdist, inv_epsilon);
+  return Ballival(std::move(center), sub);
+}
+
 [[maybe_unused]]
 static Bigival Cross(const Vec2ival &a, const Vec2ival &b) {
   return a.x * b.y - a.y * b.x;
@@ -722,10 +821,12 @@ struct Hypersolver {
     UNKNOWN = 0,
     OUTSIDE_OUTER_PATCH = 1,
     OUTSIDE_INNER_PATCH = 2,
-    POINT_OUTSIDE1 = 3,
-    POINT_OUTSIDE2 = 4,
-    POINT_OUTSIDE3 = 5,
-    POINT_OUTSIDE4 = 6,
+    OUTSIDE_OUTER_PATCH_BALL = 3,
+    OUTSIDE_INNER_PATCH_BALL = 4,
+    POINT_OUTSIDE1 = 5,
+    POINT_OUTSIDE2 = 6,
+    POINT_OUTSIDE3 = 7,
+    POINT_OUTSIDE4 = 8,
   };
 
   std::string_view RejectionReasonString(RejectionReason r) {
@@ -737,6 +838,10 @@ struct Hypersolver {
       return "OUTSIDE_OUTER_PATCH";
     case OUTSIDE_INNER_PATCH:
       return "OUTSIDE_INNER_PATCH";
+    case OUTSIDE_OUTER_PATCH_BALL:
+      return "OUTSIDE_OUTER_PATCH_BALL";
+    case OUTSIDE_INNER_PATCH_BALL:
+      return "OUTSIDE_INNER_PATCH_BALL";
     case POINT_OUTSIDE1:
       return "POINT_OUTSIDE1";
     case POINT_OUTSIDE2:
@@ -920,6 +1025,15 @@ struct Hypersolver {
       return {Impossible(OUTSIDE_OUTER_PATCH)};
     }
 
+    {
+      Ballival oviewposball = SphericalPatchBall(outer_azimuth,
+                                                 outer_angle,
+                                                 inv_epsilon);
+      if (!MightHaveCodeWithBall(outer_code, outer_mask, oviewposball)) {
+        return {Impossible(OUTSIDE_OUTER_PATCH_BALL)};
+      }
+    }
+
     // Generating the frames has a precondition that the z-axis not
     // contained in the view interval. Since we know that none of the
     // canonical patches contain the z axis, we just subdivide if it
@@ -958,6 +1072,15 @@ struct Hypersolver {
 
     if (!MightHaveCode(inner_code, inner_mask, iviewpos)) {
       return {Impossible(OUTSIDE_INNER_PATCH)};
+    }
+
+    {
+      Ballival iviewposball = SphericalPatchBall(inner_azimuth,
+                                                 inner_angle,
+                                                 inv_epsilon);
+      if (!MightHaveCodeWithBall(inner_code, inner_mask, iviewposball)) {
+        return {Impossible(OUTSIDE_INNER_PATCH_BALL)};
+      }
     }
 
     // As above: Can't contain the z axis.
@@ -1759,6 +1882,8 @@ struct Hypersolver {
         switch (imp->reason) {
         case OUTSIDE_OUTER_PATCH:
         case OUTSIDE_INNER_PATCH:
+        case OUTSIDE_OUTER_PATCH_BALL:
+        case OUTSIDE_INNER_PATCH_BALL:
           volume_outscope += v;
           break;
         default:
@@ -1847,6 +1972,50 @@ struct Hypersolver {
     return true;
   }
 
+  // Same idea, but with the view position bounded by a ball instead
+  // of an AABB.
+  bool MightHaveCodeWithBall(
+      uint64_t code, uint64_t mask,
+      const Ballival &ball) {
+    for (int i = 0; i < boundaries.big_planes.size(); i++) {
+      const uint64_t pos = uint64_t{1} << i;
+      if (TEST_ALL_PLANES || !!(pos & mask)) {
+        const BigVec3 &normal = boundaries.big_planes[i];
+
+        // The center needs to be on the correct side
+        // of the plane; the sign of the dot product gives us the
+        // side.
+        BigRat d_center = dot(ball.center, normal);
+
+        // The ball's radius must be smaller than the distance to
+        // the plane, or else it crosses the plane and we cannot
+        // produce a definitive result here.
+        //
+        //   |dot(c, n)| / |n| > R
+        //
+        // We'll actually test the squared distances:
+        //   dot(c, n)² / |n|² > R²
+        //   dot(c, n)² > R² * |n|²
+
+        BigRat margin_sq = ball.radius * ball.radius * length_squared(normal);
+
+        if (d_center * d_center > margin_sq) {
+          // So the ball is entirely on one side or the other.
+          // If it's on the wrong side, it cannot be in this patch.
+          if (!!(pos & code)) {
+            // Want positive dot product.
+            if (BigRat::Sign(d_center) == -1) return false;
+          } else {
+            // Want negative dot product.
+            if (BigRat::Sign(d_center) == 1) return false;
+          }
+        }
+
+      }
+    }
+
+    return true;
+  }
 
   Hypersolver() : rc("hyper"), scube(BigScube(SCUBE_DIGITS)),
     boundaries(scube) {

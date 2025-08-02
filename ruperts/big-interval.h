@@ -450,6 +450,11 @@ struct Bigival {
     return lb.r == ub.r;
   }
 
+  BigRat Midpoint() const {
+    if (lb.r == ub.r) return lb.r;
+    return (lb.r + ub.r) / 2;
+  }
+
   bool MightBeNegative() const {
     return BigRat::Sign(LB()) == -1;
   }

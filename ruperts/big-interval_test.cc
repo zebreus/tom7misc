@@ -66,6 +66,7 @@ static void Simple() {
     CHECK_CONTAINS(b, BigRat(-2));
     CHECK_CONTAINS(b, BigRat(1));
     CHECK_CONTAINS(b, BigRat(1, 2));
+    CHECK(b.Midpoint() == BigRat(1, 2));
 
     Sample(b, [&](const BigRat &s) {
         CHECK_CONTAINS(b, s);
@@ -104,6 +105,9 @@ static void Simple() {
       Bigival(BigRat(-3)),
       Bigival(BigRat(0)),
     }) {
+
+    CHECK_CONTAINS(a, a.Midpoint());
+
     for (Bigival b : {
         Bigival(BigRat(3), BigRat(8), false, false),
         Bigival(BigRat(-2, 3), BigRat(0), false, false),
@@ -367,7 +371,8 @@ static void Transcendental() {
 
   // Sin of intervals.
   {
-    Bigival a = Bigival(BigRat::FromDouble(0.3), BigRat::FromDouble(0.31), true, true);
+    Bigival a = Bigival(BigRat::FromDouble(0.3),
+                        BigRat::FromDouble(0.31), true, true);
     Bigival sina = a.Sin(BigInt(1024 * 1024));
     CHECK_CONTAINS(sina, BigRat::FromDouble(std::sin(0.301)));
     CHECK_CONTAINS(sina, BigRat::FromDouble(std::sin(0.305)));
@@ -415,7 +420,8 @@ static void Transcendental() {
   }
 
   {
-    Bigival sina = Bigival(BigRat(-10), BigRat(10), false, false).Sin(BigInt(10));
+    Bigival sina = Bigival(BigRat(-10), BigRat(10),
+                           false, false).Sin(BigInt(10));
     CHECK(sina.LB() == -1);
     CHECK(sina.UB() == 1);
     CHECK(sina.IncludesLB() && sina.IncludesUB());
@@ -424,7 +430,8 @@ static void Transcendental() {
 
   // Cos of intervals.
   {
-    Bigival a = Bigival(BigRat::FromDouble(0.3), BigRat::FromDouble(0.31), true, true);
+    Bigival a = Bigival(BigRat::FromDouble(0.3), BigRat::FromDouble(0.31),
+                        true, true);
     Bigival cosa = a.Cos(BigInt(1024 * 1024));
     CHECK_CONTAINS(cosa, BigRat::FromDouble(std::cos(0.301)));
     CHECK_CONTAINS(cosa, BigRat::FromDouble(std::cos(0.305)));
@@ -472,7 +479,8 @@ static void Transcendental() {
   }
 
   {
-    Bigival cosa = Bigival(BigRat(-10), BigRat(10), false, false).Cos(BigInt(10));
+    Bigival cosa = Bigival(BigRat(-10), BigRat(10),
+                           false, false).Cos(BigInt(10));
     CHECK(cosa.LB() == -1);
     CHECK(cosa.UB() == 1);
     CHECK(cosa.IncludesLB() && cosa.IncludesUB());

@@ -50,7 +50,8 @@ struct Boundaries {
 
   size_t Size() const { return big_planes.size(); }
 
-  // Exact.
+  // Exact, but note that we can't make these normals be unit length
+  // because they are rational.
   std::vector<BigVec3> big_planes;
   BigPoly big_poly;
 
