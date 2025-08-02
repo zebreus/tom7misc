@@ -255,6 +255,18 @@ static void IntervalOps() {
     CHECK(!i.has_value()) << "The endpoint 2 is not included, so there "
       "is no overlap. But got: " << i.value().ToString();
   }
+
+  {
+    // One interval contains the other.
+    Bigival i = CHECK_HAS(
+        Bigival::MaybeIntersection(Bigival(0, 10, true, true),
+                                   Bigival(2, 5, true, false)));
+    CHECK(!i.Singular());
+    CHECK(i.LB() == 2);
+    CHECK(i.UB() == 5);
+    CHECK(i.IncludesLB());
+    CHECK(!i.IncludesUB());
+  }
 }
 
 static void Comparisons() {
@@ -278,8 +290,9 @@ static void Comparisons() {
         Bigival::MaybeBool::False);
 
   CHECK((Bigival(BigRat(1), BigRat(2), true, false) <
-         Bigival(BigRat(2), BigRat(3), false, false)) == Bigival::MaybeBool::True) <<
-        "2 is not included in either interval, so every value is less.";
+         Bigival(BigRat(2), BigRat(3), false, false)) ==
+        Bigival::MaybeBool::True)
+      << "2 is not included in either interval, so every value is less.";
 
   // <
   CHECK((Bigival(1, 2, true, true) < Bigival(3, 4, true, true)) ==

@@ -329,6 +329,8 @@ std::vector<int> QuickHull(const std::vector<vec2> &v);
 // The area of the convex hull; should also work for any simple
 // polygon.
 double AreaOfHull(const Mesh2D &mesh, const std::vector<int> &hull);
+double AreaOfHull(const std::vector<vec2> &vertices,
+                  const std::vector<int> &hull);
 // Positive if screen clockwise (cartesian ccw) winding order;
 // negative for screen ccw (cartesian cw).
 double SignedAreaOfHull(const Mesh2D &mesh, const std::vector<int> &hull);

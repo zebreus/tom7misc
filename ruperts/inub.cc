@@ -49,7 +49,7 @@ static constexpr int SCUBE_DIGITS = 24;
 
 using vec2 = yocto::vec<double, 2>;
 
-StatusBar status = StatusBar(13);
+StatusBar status = StatusBar(14);
 
 // Adaptation of Jason's idea.
 // Take a pair of patches, one for outer and one for inner.
@@ -431,11 +431,17 @@ struct Frame3ival {
 };
 
 // Vec2 where each component is an interval.
+// This is an axis-aligned bounding box (AABB).
 struct Vec2ival {
   Bigival x, y;
   Vec2ival(Bigival xx, Bigival yy) :
     x(std::move(xx)), y(std::move(yy)) {}
   Vec2ival() : x(0), y(0) {}
+
+  // The exact area of the AABB.
+  BigRat Area() const {
+    return x.Width() * y.Width();
+  }
 };
 
 // Small Fixed-size matrices stored in column major format.
@@ -485,6 +491,7 @@ static Bigival Length(const Vec3ival &v, const BigInt &inv_epsilon) {
                        inv_epsilon);
 }
 
+[[maybe_unused]]
 static Vec3ival Normalize(const Vec3ival &v, const BigInt &inv_epsilon) {
   Bigival len = Length(v, inv_epsilon);
   CHECK(!len.ContainsZero()) << "Can't normalize if the length might be "
@@ -538,10 +545,26 @@ static Vec2ival TransformPointTo2D(const Frame3ival &frame,
 Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   const Vec3ival &frame_z = view;
 
-  // status.Print("Frame for view: {}", view.ToString());
+  // Vec3ival up_z = {BigRat(0), BigRat(0), BigRat(1)};
+  // We want frame_x = Normalize(Cross(up_z, frame_z)).
+  // cross(a, b) is a2b3 - a3b2,  a3b1 - a1b3,  a1b2 - a2b1
+  // cross(up_z, b) is 0*b3 - 1*b2,  1*b1 - 0*b3,  0*b2 - 0*b1
+  //                so -b.y, b.x, 0
+  // So we have c = (-frame_z.y, frame_z.x, 0).
+  // |c| is sqrt(frame_z.y² + frame_z.x²).
+  // But since frame_z is unit length, we have
+  //   1 = frame_z.x² + frame_z.y² + frame_z.z²
+  // And so |c| = sqrt(1 - frame_z.z²).
+  // (The purpose of rearranging this is to avoid dependency
+  // problems between the vector components.)
 
-  Vec3ival up_z = {BigRat(0), BigRat(0), BigRat(1)};
-  Vec3ival frame_x = Normalize(Cross(up_z, frame_z), inv_epsilon);
+  Bigival len = Bigival::Sqrt(1 - frame_z.z.Squared(), inv_epsilon);
+  if (SELF_CHECK) {
+    CHECK(!len.ContainsOrApproachesZero()) << len.ToString();
+  }
+  Vec3ival frame_x = Vec3ival(-frame_z.y / len, frame_z.x / len, 0);
+  // Since frame_z and frame_x are orthogonal unit vectors, their
+  // cross product is a unit vector.
   Vec3ival frame_y = Cross(frame_z, frame_x);
 
   // Following patches.cc, the convention was opposite of what
@@ -756,9 +779,14 @@ struct Hypersolver {
   };
 
   // Rotate the point v_in by rot and translate it by tx,ty.
-  // However, instead of representing the result as a single AABB,
-  // represent it as a set of AABBs whose union represents the bounding
-  // region more precisely.
+  // Since v_in is an AABB and rot is an interval, the resulting
+  // shape here is a rectangle swept along a circular arc. We
+  // will call this the "swept shape."
+  //
+  // Since the precision of the result's representation is important
+  // for efficiency in the search, we allow the result to be a
+  // union of a set of AABBs. (However, it currently always returns
+  // one AABB.)
   std::vector<Vec2ival>
   GetBoundingComplex(const Vec2ival &v_in, const Bigival &angle,
                      const BigInt &inv_epsilon,
@@ -796,56 +824,33 @@ struct Hypersolver {
       // Otherwise, we can compute some tighter bounds.
 
       // HERE: Ways to compute a complex of AABBs that more tightly
-      // bounds the swept AABB.
+      // bounds the swept AABB. Currently we just do the same as above,
+      // which is pointless!
 
-      const std::array<std::pair<BigRat, BigRat>, 4> corners = {
-        std::make_pair(v_in.x.LB(), v_in.y.LB()),
-        std::make_pair(v_in.x.LB(), v_in.y.UB()),
-        std::make_pair(v_in.x.UB(), v_in.y.LB()),
-        std::make_pair(v_in.x.UB(), v_in.y.UB()),
-      };
 
-      // The extremes of the angle being swept.
-      Bigival sin_lb = Bigival::Sin(angle.LB(), inv_epsilon);
-      Bigival cos_lb = Bigival::Cos(angle.LB(), inv_epsilon);
-      Bigival sin_ub = Bigival::Sin(angle.UB(), inv_epsilon);
-      Bigival cos_ub = Bigival::Cos(angle.UB(), inv_epsilon);
+      // PERF: We can do much better than to use a union of AABBs
+      // here! The key thing is that when the angle is near 45°, the
+      // shape of the sweep is more like a diagonal line. So AABBs are
+      // inefficient in the worst way for our problem (the inner
+      // corner of the AABB is unoccupied, and appears to intersect
+      // the similarly-angled edge that we test against).
+      //
+      // Note: Currently we document the meaning of the return value
+      // here as "every point in the swept shape is in the union of
+      // the AABBs," which is nice and simple. But when we actually
+      // test this against the outer hull below, we only use a weaker
+      // implication: "If every AABB is certainly on the wrong side of
+      // the line, then all the points in the swept shape are on the
+      // wrong side of the line."
 
-      std::vector<Vec2ival> volume;
-      volume.reserve(4);
-
-      for (const auto &[px, py] : corners) {
-        // Here we have an exact rational point px, py.
-        // Get the point's extreme values by rotating it by the
-        // bounds on the angle.
-        Vec2ival lb(px * cos_lb - py * sin_lb, px * sin_lb + py * cos_lb);
-        Vec2ival ub(px * cos_ub - py * sin_ub, px * sin_ub + py * cos_ub);
-
-        // The bound for the rotated corner is the AABB of these two points.
-        Vec2ival rot_corner(
-            Bigival(BigRat::Min(lb.x.LB(), ub.x.LB()),
-                    BigRat::Max(lb.x.UB(), ub.x.UB()), true, true),
-            Bigival(BigRat::Min(lb.y.LB(), ub.y.LB()),
-                    BigRat::Max(lb.y.UB(), ub.y.UB()), true, true));
-
-        volume.push_back(Translate(rot_corner));
-      }
-
-      // PERF: We can do much better than this! The key thing is that
-      // when the angle is near 45°, the shape of the sweep is more
-      // like a diagonal line. So AABBs are inefficient in the
-      // worst way for our problem (the inner corner of the AABB is
-      // unoccupied, and appears to intersect the similarly-angled edge
-      // that we test against).
-
-      return volume;
+      return {Translate(loose_box)};
     }
   }
 
 
   using ProcessResult = std::variant<Split, Impossible>;
 
-  ProcessResult ProcessOne(const Volume &volume) {
+  ProcessResult ProcessOne(const Volume &volume, bool get_stats) {
     const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
     const Bigival &outer_angle = volume[OUTER_ANGLE];
     const Bigival &inner_azimuth = volume[INNER_AZIMUTH];
@@ -1024,14 +1029,19 @@ struct Hypersolver {
     // XXX just debugging. We should only compute this if we are
     // going to save an image!
     std::vector<Vec2ival> inner;
-    inner.reserve(inner_hull.size());
+    if (get_stats) {
+      inner.reserve(inner_hull.size());
+    }
 
     std::vector<std::vector<Vec2ival>> complexes;
-    complexes.reserve(inner_hull.size());
+    if (get_stats) {
+      complexes.reserve(inner_hull.size());
+    }
 
     // Compute the inner hull point-by-point, which we call v. We can
     // exit early if any of these points are definitely outside the
     // outer hull.
+    bool proved = false;
     for (int idx : inner_hull) {
       const BigVec3 &original_v = scube.vertices[idx];
       Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
@@ -1049,11 +1059,10 @@ struct Hypersolver {
       // this a "complex."
       std::vector<Vec2ival> complex =
         GetBoundingComplex(proj_v, inner_rot, inv_epsilon, inner_x, inner_y);
-      // PERF copying!
-      complexes.push_back(complex);
+      if (get_stats) {
+        // PERF copying!
+        complexes.push_back(complex);
 
-      // Just for visualization!
-      {
         // Also rotate and translate it.
         Vec2ival rot_v = Rotate2D(proj_v, inner_rot, inv_epsilon);
         Vec2ival v(rot_v.x + inner_x, rot_v.y + inner_y);
@@ -1142,12 +1151,19 @@ struct Hypersolver {
         }
 
         if (entire_complex_definitely_outside) {
-          Impossible imp(POINT_OUTSIDE4);
-          imp.inner = std::move(inner);
-          imp.complexes = std::move(complexes);
-          return {std::move(imp)};
+          proved = true;
+          // We only need to finish all the points if we are getting
+          // stats!
+          if (get_stats) break;
         }
       }
+    }
+
+    if (proved) {
+      Impossible imp(POINT_OUTSIDE4);
+      imp.inner = std::move(inner);
+      imp.complexes = std::move(complexes);
+      return {std::move(imp)};
     }
 
     // Failed to rule out this cell. Perform any split.
@@ -1239,14 +1255,16 @@ struct Hypersolver {
     return view;
   }
 
-  void MakeSampleImage(const Volume &volume, const ProcessResult &pr,
-                       std::string_view msg) {
-    std::string filename = std::format("inubs/sample-{}-{}.png",
-                                       time(nullptr), msg);
-    status.Print("Sample volume:\n{}\n",
-                 VolumeString(volume, true));
+  struct Shadows {
+    std::vector<vec2> outer;
+    std::vector<vec2> inner;
+    bool opatch = false, ipatch = false;
+    bool corner = false;
+  };
 
-    constexpr int N_SAMPLES = 512;
+  static constexpr int N_SAMPLES = 512;
+  std::vector<Shadows> SampleShadows(const Volume &volume,
+                                     const ProcessResult &pr) {
 
     auto TransformHull = [this](const std::vector<int> &hull,
                                 const frame3 &f) -> std::vector<vec2> {
@@ -1275,17 +1293,6 @@ struct Hypersolver {
         }
       };
 
-    const int WIDTH = 1024, HEIGHT = 1024;
-    ImageRGBA img(WIDTH, HEIGHT);
-    img.Clear32(0x000000FF);
-
-    struct Shadows {
-      std::vector<vec2> outer;
-      std::vector<vec2> inner;
-      bool opatch = false, ipatch = false;
-      bool corner = false;
-    };
-
     std::vector<Shadows> shadows;
 
     // PERF: Could compute the double-based intervals once
@@ -1299,9 +1306,6 @@ struct Hypersolver {
       } else {
         sample = SampleFromVolume(volume);
       }
-
-      // XXXX!!
-      // vec3 oview = GetVec3InPatch(&rc, boundaries, outer_code);
 
       vec3 oview = ViewFromSpherical(
           sample[OUTER_ANGLE],
@@ -1336,6 +1340,66 @@ struct Hypersolver {
           .corner = corner});
     }
 
+    return shadows;
+  }
+
+
+  // Get the average efficiency of intervals (this just looks at
+  // the inner intervals right now) if possible. Stats must have been
+  // computed and the result has to be Impossible (point_outside).
+  std::optional<double> ComputeEfficiency(const Volume &volume,
+                                          const ProcessResult &pr,
+                                          const std::vector<Shadows> &shadows) {
+    double efficiency_numer = 0.0;
+    int efficiency_denom = 0;
+    if (const Impossible *imp = std::get_if<Impossible>(&pr)) {
+      for (int p = 0; p < imp->inner.size(); p++) {
+        // We have an AABB to measure against.
+        // Get all the sampled points for this vertex.
+
+        std::vector<vec2> sampled_points;
+        sampled_points.reserve(N_SAMPLES);
+        for (const auto &s : shadows) {
+          CHECK(p < s.inner.size());
+          sampled_points.push_back(s.inner[p]);
+        }
+
+        // This is an estimate of how much area the actual
+        // shape takes up. (Some of the shapes are non-convex,
+        // like if the rotation angle ranges from 0 to 2π then
+        // you get a kind of donut. So to be perfectly clear,
+        // effiency here is judged relative to the convex hull
+        // of the shape.)
+        std::vector<int> sample_hull = QuickHull(sampled_points);
+        double hull_area = AreaOfHull(sampled_points, sample_hull);
+
+        const Vec2ival &aabb = imp->inner[p];
+
+        double efficiency = hull_area / aabb.Area().ToDouble();
+        efficiency_numer += efficiency;
+        efficiency_denom++;
+      }
+    }
+
+    return efficiency_denom ?
+      std::make_optional(efficiency_numer / efficiency_denom) :
+      std::nullopt;
+  }
+
+  void MakeSampleImage(const Volume &volume, const ProcessResult &pr,
+                       std::string_view msg) {
+    std::string filename = std::format("inubs/sample-{}-{}.png",
+                                       time(nullptr), msg);
+    status.Print("Sample volume:\n{}\n",
+                 VolumeString(volume, true));
+
+
+    const int WIDTH = 1024, HEIGHT = 1024;
+    ImageRGBA img(WIDTH, HEIGHT);
+    img.Clear32(0x000000FF);
+
+    std::vector<Shadows> shadows = SampleShadows(volume, pr);
+
     Bounds bounds;
     for (const Shadows &s : shadows) {
       for (vec2 v : s.outer)
@@ -1347,6 +1411,10 @@ struct Hypersolver {
     Bounds::Scaler scaler =
       bounds.ScaleToFitWithMargin(WIDTH, HEIGHT, 16, true);
 
+    std::optional<double> efficiency =
+      ComputeEfficiency(volume, pr, shadows);
+
+    // Stats on patch containment.
     int num_corners = 0;
     // Random samples
     int num_samples = 0;
@@ -1474,6 +1542,14 @@ struct Hypersolver {
         8, yy, 0xCCFFCCFF,
         PctString("inner sample", num_samples_in_inner, num_samples));
 
+    if (efficiency.has_value()) {
+      yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
+      img.BlendText32(
+          8, yy, 0x33CCFFFF,
+          std::format("inner AABB efficiency: " AWHITE("{:.2f}") "%",
+                      efficiency.value() * 100.0));
+    }
+
     yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
     if (const Impossible *imp = std::get_if<Impossible>(&pr)) {
       img.BlendText32(8, yy, 0xFFFF33FF,
@@ -1529,6 +1605,9 @@ struct Hypersolver {
 
     return true;
   }
+
+  double efficiency_total = 0.0;
+  int64_t efficiency_count = 0;
 
   void Expand() {
     // Get all the unsolved leaves.
@@ -1602,6 +1681,13 @@ struct Hypersolver {
                 run_timer.Seconds(),
                 opt);
 
+          std::string eff_str =
+            efficiency_count > 0 ?
+            std::format(APURPLE("{:.4f}") "% " AGREY("({})"),
+                        (efficiency_total * 100.0) / efficiency_count,
+                        efficiency_count) :
+            ARED("??");
+
           status.Status(
               AWHITE("—————————————————————————————————————————") "\n"
               // "Put volume information here!\n"
@@ -1613,6 +1699,7 @@ struct Hypersolver {
               "{} " AGREEN("✔") ", "
               "{} " AORANGE("⊹") ". "
               "{} queued, {} ea.\n"
+              "AABB efficiency: {}\n"
               "{}\n" // bar
               ,
               splitcount,
@@ -1626,6 +1713,7 @@ struct Hypersolver {
               counter_split.Read(),
               q.size(),
               ANSI::Time(time_each),
+              eff_str,
               progress);
         });
 
@@ -1634,9 +1722,19 @@ struct Hypersolver {
           hypercube->ToDisk(filename);
         });
 
-      ProcessResult res = ProcessOne(volume);
+      bool get_stats = false;
+      get_stats = (counter_processed.Read() % 64) == 0;
+
+      ProcessResult res = ProcessOne(volume, get_stats);
       counter_processed++;
 
+      if (get_stats) {
+        if (std::optional<double> efficiency =
+            ComputeEfficiency(volume, res, SampleShadows(volume, res))) {
+          efficiency_count++;
+          efficiency_total += efficiency.value();
+        }
+      }
 
       if (VolumeInsidePatches(volume)) {
         counter_inside++;
@@ -1723,9 +1821,12 @@ struct Hypersolver {
     printf("Success " AGREEN(":)") "\n");
   }
 
-  // PERF: Might actually make sense to do all of the plane-side
-  // tests; it's more work, but when we can exclude a point then
-  // it saves us work across all dimensions!
+  // Note we perform all the plane-side tests, even though only the
+  // ones in the mask are sufficient. Because of idiosyncracies of how
+  // the AABBs might intersect planes, though, we may get less
+  // conservative rejection if we test all the planes. This is more
+  // work up front, but it'd definitely be worth it to be able to save
+  // all the work across the remaining dimensions!
   static constexpr bool TEST_ALL_PLANES = true;
   bool MightHaveCode(
       uint64_t code, uint64_t mask,
