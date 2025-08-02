@@ -869,18 +869,6 @@ struct Hypersolver {
     Impossible(RejectionReason r = UNKNOWN) : reason(r) {}
     // For POINT_OUTSIDE, maybe could also record the point and
     // edge?
-
-    // The bounds for the inner points that we processed, set only
-    // when reason = POINT_OUTSIDE. We stop as soon as we find a
-    // point that is definitely outside, so this is usually a
-    // prefix of the hull points.
-    std::vector<Vec2ival> inner;
-    // Experimental: Bounding complexes for the rotated inner points.
-    // A bounding complex is a union of some AABBs.
-    // For this problem, this should be interpreted as "if all of
-    // these AABBs are outside an edge, then the point is definitely
-    // outside the edge."
-    std::vector<std::vector<Vec2ival>> complexes;
   };
 
   // Rotate the point v_in by rot and translate it by tx,ty.
@@ -952,8 +940,22 @@ struct Hypersolver {
     }
   }
 
+  struct ProcessResult {
+    std::variant<Split, Impossible> result;
 
-  using ProcessResult = std::variant<Split, Impossible>;
+    // Debug info / stats when requested.
+
+    // The bounds for the inner points. We only have these if we
+    // make it to a certain point in the test.
+    std::vector<Vec2ival> inner;
+    // Experimental: Bounding complexes for the rotated inner points.
+    // A bounding complex is a union of some AABBs.
+    // For this problem, this should be interpreted as "if all of
+    // these AABBs are outside an edge, then the point is definitely
+    // outside the edge."
+    std::vector<std::vector<Vec2ival>> complexes;
+  };
+
 
   ProcessResult ProcessOne(const Volume &volume, bool get_stats) {
     const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
@@ -998,7 +1000,7 @@ struct Hypersolver {
       if (oa_width > MIN_ANGLE) must_split.Add(OUTER_ANGLE);
 
       if (!must_split.Empty()) {
-        return {Split(must_split)};
+        return ProcessResult{.result = Split(must_split)};
       }
     }
 
@@ -1022,7 +1024,7 @@ struct Hypersolver {
         outer_angle.Cos(inv_epsilon));
 
     if (!MightHaveCode(outer_code, outer_mask, oviewpos)) {
-      return {Impossible(OUTSIDE_OUTER_PATCH)};
+      return ProcessResult{.result = Impossible(OUTSIDE_OUTER_PATCH)};
     }
 
     {
@@ -1030,7 +1032,7 @@ struct Hypersolver {
                                                  outer_angle,
                                                  inv_epsilon);
       if (!MightHaveCodeWithBall(outer_code, outer_mask, oviewposball)) {
-        return {Impossible(OUTSIDE_OUTER_PATCH_BALL)};
+        return ProcessResult{.result = Impossible(OUTSIDE_OUTER_PATCH_BALL)};
       }
     }
 
@@ -1041,7 +1043,7 @@ struct Hypersolver {
     // encountering this after splitting other params.
     if (oviewpos.x.ContainsOrApproachesZero() &&
         oviewpos.y.ContainsOrApproachesZero()) {
-      return {Split({OUTER_AZIMUTH, OUTER_ANGLE})};
+      return ProcessResult{.result = Split({OUTER_AZIMUTH, OUTER_ANGLE})};
     }
 
     // TODO: if it's not the case that we're entirely within the outer
@@ -1060,7 +1062,7 @@ struct Hypersolver {
       if (ia_width > MIN_ANGLE) must_split.Add(INNER_ANGLE);
 
       if (!must_split.Empty()) {
-        return {Split(must_split)};
+        return ProcessResult{.result = Split(must_split)};
       }
     }
 
@@ -1079,14 +1081,14 @@ struct Hypersolver {
                                                  inner_angle,
                                                  inv_epsilon);
       if (!MightHaveCodeWithBall(inner_code, inner_mask, iviewposball)) {
-        return {Impossible(OUTSIDE_INNER_PATCH_BALL)};
+        return ProcessResult{.result = Impossible(OUTSIDE_INNER_PATCH_BALL)};
       }
     }
 
     // As above: Can't contain the z axis.
     if (iviewpos.x.ContainsOrApproachesZero() &&
         iviewpos.y.ContainsOrApproachesZero()) {
-      return {Split({INNER_AZIMUTH, INNER_ANGLE})};
+      return ProcessResult{.result = Split({INNER_AZIMUTH, INNER_ANGLE})};
     }
 
 
@@ -1104,7 +1106,7 @@ struct Hypersolver {
       if (ia_width > MIN_SMALL_ANGLE) must_split.Add(INNER_ANGLE);
 
       if (!must_split.Empty()) {
-        return {Split(must_split)};
+        return ProcessResult{.result = Split(must_split)};
       }
     }
 
@@ -1283,21 +1285,22 @@ struct Hypersolver {
     }
 
     if (proved) {
-      Impossible imp(POINT_OUTSIDE4);
-      imp.inner = std::move(inner);
-      imp.complexes = std::move(complexes);
-      return {std::move(imp)};
+      ProcessResult res;
+      res.result = Impossible(POINT_OUTSIDE4);
+      res.inner = std::move(inner);
+      res.complexes = std::move(complexes);
+      return {res};
     }
 
     // Failed to rule out this cell. Perform any split.
-    return {Split()};
+    return {ProcessResult{.result = Split()}};
   }
 
   std::mutex mu;
   ArcFour rc;
   std::unordered_map<RejectionReason, int64_t> rejection_count;
   int64_t times_split[NUM_DIMENSIONS] = {};
-  Timer run_timer;
+
   // The hypervolume now done (this includes regions that we
   // determined are out of scope). Compare against the full volume.
   double volume_done = 0.0;
@@ -1475,33 +1478,31 @@ struct Hypersolver {
                                           const std::vector<Shadows> &shadows) {
     double efficiency_numer = 0.0;
     int efficiency_denom = 0;
-    if (const Impossible *imp = std::get_if<Impossible>(&pr)) {
-      for (int p = 0; p < imp->inner.size(); p++) {
-        // We have an AABB to measure against.
-        // Get all the sampled points for this vertex.
+    for (int p = 0; p < pr.inner.size(); p++) {
+      // We have an AABB to measure against.
+      // Get all the sampled points for this vertex.
 
-        std::vector<vec2> sampled_points;
-        sampled_points.reserve(N_SAMPLES);
-        for (const auto &s : shadows) {
-          CHECK(p < s.inner.size());
-          sampled_points.push_back(s.inner[p]);
-        }
-
-        // This is an estimate of how much area the actual
-        // shape takes up. (Some of the shapes are non-convex,
-        // like if the rotation angle ranges from 0 to 2π then
-        // you get a kind of donut. So to be perfectly clear,
-        // effiency here is judged relative to the convex hull
-        // of the shape.)
-        std::vector<int> sample_hull = QuickHull(sampled_points);
-        double hull_area = AreaOfHull(sampled_points, sample_hull);
-
-        const Vec2ival &aabb = imp->inner[p];
-
-        double efficiency = hull_area / aabb.Area().ToDouble();
-        efficiency_numer += efficiency;
-        efficiency_denom++;
+      std::vector<vec2> sampled_points;
+      sampled_points.reserve(N_SAMPLES);
+      for (const auto &s : shadows) {
+        CHECK(p < s.inner.size());
+        sampled_points.push_back(s.inner[p]);
       }
+
+      // This is an estimate of how much area the actual
+      // shape takes up. (Some of the shapes are non-convex,
+      // like if the rotation angle ranges from 0 to 2π then
+      // you get a kind of donut. So to be perfectly clear,
+      // effiency here is judged relative to the convex hull
+      // of the shape.)
+      std::vector<int> sample_hull = QuickHull(sampled_points);
+      double hull_area = AreaOfHull(sampled_points, sample_hull);
+
+      const Vec2ival &aabb = pr.inner[p];
+
+      double efficiency = hull_area / aabb.Area().ToDouble();
+      efficiency_numer += efficiency;
+      efficiency_denom++;
     }
 
     return efficiency_denom ?
@@ -1605,29 +1606,27 @@ struct Hypersolver {
       }
     }
 
-    if (const Impossible *imp = std::get_if<Impossible>(&pr)) {
-      auto DrawAABB = [&](const Vec2ival &v, uint32_t color) {
-          double x0 = v.x.LB().ToDouble();
-          double x1 = v.x.UB().ToDouble();
-          double y0 = v.y.LB().ToDouble();
-          double y1 = v.y.UB().ToDouble();
+    auto DrawAABB = [&](const Vec2ival &v, uint32_t color) {
+        double x0 = v.x.LB().ToDouble();
+        double x1 = v.x.UB().ToDouble();
+        double y0 = v.y.LB().ToDouble();
+        double y1 = v.y.UB().ToDouble();
 
-          // Draw AABB. We should include this in the bounds above
-          // or at least indicate if it's going off-screen?
-          const auto &[sx0, sy0] = scaler.Scale(x0, y0);
-          const auto &[sx1, sy1] = scaler.Scale(x1, y1);
-          img.BlendBox32(sx0, sy0, sx1 - sx0, sy1 - sy0, color, {});
-        };
+        // Draw AABB. We should include this in the bounds above
+        // or at least indicate if it's going off-screen?
+        const auto &[sx0, sy0] = scaler.Scale(x0, y0);
+        const auto &[sx1, sy1] = scaler.Scale(x1, y1);
+        img.BlendBox32(sx0, sy0, sx1 - sx0, sy1 - sy0, color, {});
+      };
 
-      for (const Vec2ival &v : imp->inner) {
-        DrawAABB(v, 0x33FF3366);
-      }
+    for (const Vec2ival &v : pr.inner) {
+      DrawAABB(v, 0x33FF3366);
+    }
 
-      // And the complexes.
-      for (const std::vector<Vec2ival> &complex : imp->complexes) {
-        for (const Vec2ival &v : complex) {
-          DrawAABB(v, 0xAAFF3366);
-        }
+    // And the complexes.
+    for (const std::vector<Vec2ival> &complex : pr.complexes) {
+      for (const Vec2ival &v : complex) {
+        DrawAABB(v, 0xAAFF3366);
       }
     }
 
@@ -1674,7 +1673,7 @@ struct Hypersolver {
     }
 
     yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
-    if (const Impossible *imp = std::get_if<Impossible>(&pr)) {
+    if (const Impossible *imp = std::get_if<Impossible>(&pr.result)) {
       img.BlendText32(8, yy, 0xFFFF33FF,
                       std::format("Result: Impossible! " ACYAN("{}"),
                                   RejectionReasonString(imp->reason)));
@@ -1741,6 +1740,7 @@ struct Hypersolver {
     }
 
     status.Print("Start Expand. Remaining leaves: {}\n", q.size());
+    Timer run_timer;
 
     Periodically status_per(1);
     Periodically save_per(15 * 60);
@@ -1867,7 +1867,7 @@ struct Hypersolver {
           });
       }
 
-      if (Impossible *imp = std::get_if<Impossible>(&res)) {
+      if (Impossible *imp = std::get_if<Impossible>(&res.result)) {
         (void)imp;
 
         // Then mark the node as a leaf that has been ruled out.
@@ -1902,7 +1902,7 @@ struct Hypersolver {
         */
         rejection_count[imp->reason]++;
 
-      } else if (Split *split = std::get_if<Split>(&res)) {
+      } else if (Split *split = std::get_if<Split>(&res.result)) {
         // Can't rule it out. So split. We use a random direction here (in
         // accordance with the split's mask) but we should consider being
         // systematic about it (e.g. split the longest dimension)?
