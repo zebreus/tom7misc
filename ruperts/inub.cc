@@ -478,6 +478,7 @@ struct Mat3ival {
 // very accurate) and an interval on its radius (could be wide). To be
 // clear, this is the shell; it does not generally contain the origin
 // for example.
+#if 0
 struct Sphereival {
   Vec3ival center;
   Bigival radius;
@@ -486,20 +487,26 @@ struct Sphereival {
     CHECK(!r.MightBeNegative()) << r.ToString();
   }
 };
+#endif
 
 // Bounding ball.
 struct Ballival {
   // An exact center.
   BigVec3 center;
-  // Upper bound on the radius.
-  BigRat radius;
+  // Upper bound on the *squared* radius.
+  BigRat radius_sq;
   // TODO: We could probably have a constructor that took
   // Vec3ival center and/or Bigival radius, and computed a
   // bounding sphere from those. But we aren't using that
   // today.
-  Ballival(BigVec3 c, BigRat r) : center(std::move(c)),
-                                  radius(std::move(r)) {
-    CHECK(BigRat::Sign(r) != -1) << r.ToString();
+  Ballival(BigVec3 c, BigRat rsq) : center(std::move(c)),
+                                    radius_sq(std::move(rsq)) {
+    CHECK(BigRat::Sign(radius_sq) != -1) << radius_sq.ToString();
+  }
+
+  // Upper bound on the radius.
+  BigRat Radius(const BigInt &inv_epsilon) const {
+    return BigRat::SqrtBounds(radius_sq, inv_epsilon).second;
   }
 };
 
@@ -541,6 +548,7 @@ static Ballival SphericalPatchBall(const Bigival &azimuth,
       (mid_sina * mid_sinz).Midpoint(),
       (mid_cosa).Midpoint());
 
+  // Find a squared radius that will include all the corners.
   BigRat max_sqdist(0);
 
   // The corners of the patch are the furthest away from the
@@ -567,11 +575,32 @@ static Ballival SphericalPatchBall(const Bigival &azimuth,
     }
   }
 
-  // We want the radius, not the squared radius. We can just take
-  // the upper bound here since we are producing a bounding ball.
-  const auto &[slb, sub] = BigRat::SqrtBounds(max_sqdist, inv_epsilon);
-  return Ballival(std::move(center), sub);
+  return Ballival(std::move(center), std::move(max_sqdist));
 }
+
+#if 0
+// Bounding disc.
+struct Discival {
+  // An exact center.
+  BigVec2 center;
+  // Upper bound on the squared radius.
+  BigRat radius_sq;
+  Discival(BigVec2 c, BigRat r_sq) : center(std::move(c)),
+                                     radius_sq(std::move(r_sq)) {
+    CHECK(BigRat::Sign(r) != -1) << r.ToString();
+  }
+
+  Discival(const Vec2ival &v) : center(v.x.Midpoint(),
+                                       v.y.Midpoint()) {
+
+  }
+
+  // Upper bound on the radius.
+  BigRat Radius(const BigInt &inv_epsilon) const {
+    return BigRat::SqrtBounds(radius_sq, inv_epsilon).second;
+  }
+};
+#endif
 
 [[maybe_unused]]
 static Bigival Cross(const Vec2ival &a, const Vec2ival &b) {
@@ -1750,6 +1779,7 @@ struct Hypersolver {
     BigRat full_volume = Hypervolume(hypercube->bounds);
     double full_volume_d = full_volume.ToDouble();
 
+    bool get_stats_next = false;
     while (!q.empty()) {
       Volume volume;
       std::shared_ptr<Hypercube::Node> node;
@@ -1845,13 +1875,16 @@ struct Hypersolver {
           hypercube->ToDisk(filename);
         });
 
-      bool get_stats = false;
-      get_stats = (counter_processed.Read() % 64) == 0;
+      // Periodically turn on stats gathering until we get some
+      // data.
+      get_stats_next = get_stats_next || (counter_processed.Read() % 64) == 0;
 
-      ProcessResult res = ProcessOne(volume, get_stats);
+      ProcessResult res = ProcessOne(volume, get_stats_next);
       counter_processed++;
 
-      if (get_stats) {
+      if (!res.inner.empty()) {
+        // Got data to compute stats.
+        get_stats_next = false;
         if (std::optional<double> efficiency =
             ComputeEfficiency(volume, res, SampleShadows(volume, res))) {
           efficiency_count++;
@@ -1977,6 +2010,7 @@ struct Hypersolver {
   bool MightHaveCodeWithBall(
       uint64_t code, uint64_t mask,
       const Ballival &ball) {
+
     for (int i = 0; i < boundaries.big_planes.size(); i++) {
       const uint64_t pos = uint64_t{1} << i;
       if (TEST_ALL_PLANES || !!(pos & mask)) {
@@ -1997,7 +2031,7 @@ struct Hypersolver {
         //   dot(c, n)² / |n|² > R²
         //   dot(c, n)² > R² * |n|²
 
-        BigRat margin_sq = ball.radius * ball.radius * length_squared(normal);
+        BigRat margin_sq = ball.radius_sq * length_squared(normal);
 
         if (d_center * d_center > margin_sq) {
           // So the ball is entirely on one side or the other.
@@ -2056,8 +2090,6 @@ struct Hypersolver {
 
     small_scube = SmallPoly(scube);
 
-    // TODO: Verify that the hull contains the origin.
-
     outer_code = outer.code;
     inner_code = inner.code;
     outer_mask = outer.mask;
@@ -2067,7 +2099,8 @@ struct Hypersolver {
     inner_hull = inner.hull;
 
     // This program assumes the hulls have screen-clockwise (cartesian
-    // ccw) winding order when viewed from within the patch.
+    // ccw) winding order when viewed from within the patch, and that
+    // they contain the origin.
     CheckHullRepresentation(outer_code, outer_mask, outer_hull);
     CheckHullRepresentation(inner_code, inner_mask, inner_hull);
 
