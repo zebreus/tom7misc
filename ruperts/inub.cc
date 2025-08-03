@@ -41,9 +41,10 @@
 #include "yocto_matht.h"
 
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
-                 counter_bad_midpoint, counter_inside);
+                 counter_bad_midpoint, counter_inside,
+                 counter_degenerate_disc);
 
-static constexpr bool SELF_CHECK = false;
+static constexpr bool SELF_CHECK = true;
 
 static constexpr int SCUBE_DIGITS = 24;
 
@@ -108,6 +109,19 @@ inline constexpr int INNER_Y = 6;
 
 inline constexpr int NUM_DIMENSIONS = 7;
 
+const char *ParameterName(int param) {
+  switch (param) {
+  case OUTER_AZIMUTH: return "O_AZ";
+  case OUTER_ANGLE: return "O_AN";
+  case INNER_AZIMUTH: return "I_AZ";
+  case INNER_ANGLE: return "I_AN";
+  case INNER_ROT: return "I_R";
+  case INNER_X: return "I_X";
+  case INNER_Y: return "I_Y";
+  default: return "??";
+  }
+}
+
 // A set of those 7 parameters. Value semantics.
 struct ParameterSet {
   // Default empty.
@@ -127,7 +141,7 @@ struct ParameterSet {
     }
   }
 
-  bool Contains(int d) {
+  bool Contains(int d) const {
     return !!(bits & (1 << d));
   }
 
@@ -442,6 +456,15 @@ struct Vec2ival {
   BigRat Area() const {
     return x.Width() * y.Width();
   }
+
+  std::string ToString() const {
+    return std::format("(⏹ x: {}, y: {})",
+                       x.ToString(), y.ToString());
+  }
+
+  bool Contains(const BigVec2 &v) const {
+    return x.Contains(v.x) && y.Contains(v.y);
+  }
 };
 
 // Small Fixed-size matrices stored in column major format.
@@ -578,7 +601,6 @@ static Ballival SphericalPatchBall(const Bigival &azimuth,
   return Ballival(std::move(center), std::move(max_sqdist));
 }
 
-#if 0
 // Bounding disc.
 struct Discival {
   // An exact center.
@@ -587,20 +609,57 @@ struct Discival {
   BigRat radius_sq;
   Discival(BigVec2 c, BigRat r_sq) : center(std::move(c)),
                                      radius_sq(std::move(r_sq)) {
-    CHECK(BigRat::Sign(r) != -1) << r.ToString();
+    CHECK(BigRat::Sign(radius_sq) != -1) << radius_sq.ToString();
   }
 
   Discival(const Vec2ival &v) : center(v.x.Midpoint(),
                                        v.y.Midpoint()) {
+    // All corners are the same distance from the exact
+    // center.
+    BigRat dx = v.x.Width() / 2;
+    BigRat dy = v.y.Width() / 2;
+    radius_sq = dx * dx + dy * dy;
 
+    if (SELF_CHECK) {
+      CHECK(v.Contains(center));
+    }
+
+    /*
+    status.Print("Input AABB: {:.5f},{:.5f} to {:.5f},{:.5f}. "
+                 "Output disc: {} rad: {}",
+                 v.x.LB().ToDouble(),
+                 v.y.LB().ToDouble(),
+                 v.x.UB().ToDouble(),
+                 v.y.UB().ToDouble(),
+                 ToString(),
+                 std::sqrt(radius_sq.ToDouble())
+                 );
+    */
+
+    /*
+    status.Print("Input AABB: {} " AGREY("(Width: {} Height: {}  ≅  {}x{})")
+                 ". Output Disc: {}",
+                 v.ToString(),
+                 v.x.Width().ToString(),
+                 v.y.Width().ToString(),
+                 v.x.Width().ToDouble(),
+                 v.y.Width().ToDouble(),
+                 ToString());
+    */
   }
 
   // Upper bound on the radius.
   BigRat Radius(const BigInt &inv_epsilon) const {
     return BigRat::SqrtBounds(radius_sq, inv_epsilon).second;
   }
+
+  std::string ToString() const {
+    return std::format("(⏺ c: {}, r²: {} " ABLUE("≅ {}") ")",
+                       VecString(center), radius_sq.ToString(),
+                       radius_sq.ToDouble()
+                       );
+  }
 };
-#endif
 
 [[maybe_unused]]
 static Bigival Cross(const Vec2ival &a, const Vec2ival &b) {
@@ -616,6 +675,12 @@ static Vec3ival Cross(const Vec3ival &a, const Vec3ival &b) {
 
 static Bigival Length(const Vec3ival &v, const BigInt &inv_epsilon) {
   return Bigival::Sqrt(v.x.Squared() + v.y.Squared() + v.z.Squared(),
+                       inv_epsilon);
+}
+
+[[maybe_unused]]
+static Bigival Length(const Vec2ival &v, const BigInt &inv_epsilon) {
+  return Bigival::Sqrt(v.x.Squared() + v.y.Squared(),
                        inv_epsilon);
 }
 
@@ -651,6 +716,13 @@ inline static Vec3ival operator *(const Vec3ival &a,
                                   const BigRat &s) {
   return Vec3ival(a.x * s, a.y * s, a.z * s);
 }
+
+[[maybe_unused]]
+inline static Vec2ival operator -(const Vec2ival &a,
+                                  const BigVec2 &b) {
+  return Vec2ival(a.x - b.x, a.y - b.y);
+}
+
 
 // This can certainly work on Vec3ival, but our input data at this point
 // is a single point and this is in inner loops.
@@ -807,6 +879,189 @@ static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
                   v.x * sin_a + v.y * cos_a);
 }
 
+
+// Given an AABB, find the squared magnitude of the point within it
+// that is furthest from the origin. This is the same as the maximum
+// squared length of the vector described by the interval.
+[[maybe_unused]]
+static BigRat MaxSqLength(const Vec2ival &v) {
+  auto MaxAbs = [](const Bigival &i) {
+    return BigRat::Max(BigRat::Abs(i.LB()), BigRat::Abs(i.UB()));
+  };
+  BigRat x = MaxAbs(v.x);
+  BigRat y = MaxAbs(v.y);
+  return x * x + y * y;
+}
+
+// Rotates a disc by an angle interval, producing a new, larger disc that
+// bounds the entire swept shape. There are many choices of bounding disc;
+// this code uses one that is biased away from the origin, because in the
+// success case where we are able to prove the point is on the outside of
+// the edge, we want to minimize the error on the *inside* and don't really
+// care about the outside. (If the disc gets *too* big then it might
+// intersect the edge somewhere else, so we don't go crazy here.)
+// See rotate-disc-inner-bias.png.
+//
+// To simplify the math, the angle interval's width must be reasonable (less
+// than 3) or the resulting disc will be very conservative.
+static Discival RotateDiscInnerBias(
+    const Discival &disc,
+    const Bigival &angle,
+    // A factor > 1 pushes the center away from the origin
+    // to create a tighter inner bound. 1.0 is unbiased.
+    const BigRat &bias,
+    const BigInt &inv_epsilon_orig) {
+
+  // Use a much smaller epsilon to assess the hypothesis.
+  // BigInt inv_epsilon = inv_epsilon_orig * inv_epsilon_orig;
+  const BigInt &inv_epsilon = inv_epsilon_orig;
+
+  if (angle.Width() > BigRat(3)) {
+    // We can't get a good disc with this method. Just return
+    // something correct. A really simple choice is just a
+    // disc centered at the origin, whose radius is though
+    // we sweep the input disc over the entire circle.
+    counter_degenerate_disc++;
+    BigRat center_dist = BigRat::SqrtBounds(dot(disc.center, disc.center),
+                                            inv_epsilon).second;
+    BigRat radius = BigRat::SqrtBounds(disc.radius_sq, inv_epsilon).second;
+
+    BigRat bounding_radius = center_dist + radius;
+    return Discival(BigVec2(BigRat(0), BigRat(0)),
+                    bounding_radius * bounding_radius);
+  }
+
+
+  // The center of the disc will be on the same vector as the center
+  // of the arc, just further out (according to the bias parameter).
+  // Using the exact center would be nice here (the distance to the
+  // arc endpoints is equal on the perpendicular bisector) but we
+  // can't compute it precisely since we have the transcendentals.
+  // We'll just commit to a point decently close to the geometric center,
+  // and then compute a radius that definitely includes the sweep
+  // for the chosen point.
+
+
+
+  BigRat mid_angle = angle.Midpoint();
+  Bigival sin_ma = Bigival::Sin(mid_angle, inv_epsilon);
+  Bigival cos_ma = Bigival::Cos(mid_angle, inv_epsilon);
+  Vec2ival arc_center_ival(
+      disc.center.x * cos_ma - disc.center.y * sin_ma,
+      disc.center.x * sin_ma + disc.center.y * cos_ma);
+  BigVec2 arc_center = {arc_center_ival.x.Midpoint(),
+                        arc_center_ival.y.Midpoint()};
+
+  // Push this center away from the origin by the bias.
+  BigVec2 bounding_center = arc_center * bias;
+
+  // Radius for the bounding disc.
+  // The radius must be large enough to contain the furthest point on
+  // the swept shape, which will be on the circumference of one of the
+  // endpoint discs. We use the triangle inequality:
+
+  // Upper bound on the input disc's actual radius.
+  BigRat in_r = BigRat::SqrtBounds(disc.radius_sq, inv_epsilon).second;
+
+  // The AABBs for the disc's center rotated to the angle's endpoints.
+  // PERF: These should be very tight intervals, but we could probably
+  // do better here with a routine that computes a disc for a rotated
+  // point.
+  auto RotatePt = [&](const BigRat &angle, const BigVec2 &p) {
+      Bigival sina = Bigival::Sin(angle, inv_epsilon);
+      Bigival cosa = Bigival::Cos(angle, inv_epsilon);
+      return Vec2ival(p.x * cosa - p.y * sina,
+                      p.x * sina + p.y * cosa);
+    };
+
+  // Very tight AABBs bounding the centers of the rotated disc at
+  // the angle lower bound and upper bound.
+  Vec2ival center_lb = RotatePt(angle.LB(), disc.center);
+  Vec2ival center_ub = RotatePt(angle.UB(), disc.center);
+
+  // Now find the maximum squared distance to the two rotated endpoints.
+  // These should be almost the same except for the small amount of error
+  // from estimating Sin and Cos. But we need to get a result that is
+  // correct, so we need to incorporate the error in the radius.
+  // This requires picking the corner of the AABB that is furthest.
+
+  BigRat max_arc_dist_sq(0);
+  auto TryCorners = [&](const Vec2ival &c) {
+      for (const BigRat &x : {c.x.LB(), c.x.UB()}) {
+        BigRat dx = x - bounding_center.x;
+        BigRat dxx = dx * dx;
+        for (const BigRat &y : {c.y.LB(), c.y.UB()}) {
+          BigRat dy = y - bounding_center.y;
+          BigRat dyy = dy * dy;
+
+          BigRat dist_sq = dxx + dyy;
+          if (dist_sq > max_arc_dist_sq)
+            max_arc_dist_sq = std::move(dist_sq);
+        }
+      }
+    };
+
+  TryCorners(center_lb);
+  TryCorners(center_ub);
+
+  /*
+  Vec2ival delta_lb = center_lb - bounding_center;
+  Vec2ival delta_ub = center_ub - bounding_center;
+  BigRat max_arc_dist_sq = BigRat::Max(MaxSqLength(delta_lb),
+                                       MaxSqLength(delta_ub));
+  */
+
+  BigRat center_r = BigRat::SqrtBounds(max_arc_dist_sq, inv_epsilon).second;
+  // The radius is bounded by the sum of the distance to the arc and the
+  // distance from the arc to the arc's circumference (input disc's radius),
+  // because of the triangle inequality.
+  BigRat bounding_radius = center_r + in_r;
+
+  return Discival(std::move(bounding_center),
+                  bounding_radius * bounding_radius);
+}
+
+// Check if a disc is guaranteed to be strictly on the "outside" of an
+// edge. "Outside" means the side of the line that doesn't contain the
+// origin.
+static bool IsDiscOutsideEdge(const Discival &disc,
+                              const Vec2ival &outer_edge,
+                              const Bigival &outer_cross_va_vb) {
+  // We want to test if for all points p in the disc, the line-side test
+  //   L(p) = edge.x * p.y - edge.y * p.x + cross_va_vb
+  // is strictly negative.
+
+  // The value of the test at the disc's exact center is:
+  Bigival l_at_center =
+    outer_edge.x * disc.center.y -
+    outer_edge.y * disc.center.x +
+    outer_cross_va_vb;
+
+  // If the center might be on the inside, then we defintiely aren't
+  // going to prove the whole thing is outside!
+  if (l_at_center.MightBePositive()) {
+    return false;
+  }
+
+  // The center is outside. So the whole disc is outside if the distance
+  // from the center to the line is more than the disc's radius.
+  //   distance² > radius²
+  //   L(center)² / |edge|² > R²
+  //   L(center)² > R² * |edge|²
+
+  // To prove this we want to compute the smallest L(center)² and
+  // the largest R² * |edge|².
+  // l_at_center is not positive, so the smallest value of
+  // L(center)² is l_at_center.UB()² (value closer to zero).
+  // Just compute that rather than the whole interval.
+  BigRat min_l_at_center_sq = l_at_center.UB() * l_at_center.UB();
+  Bigival edge_len_sq = outer_edge.x.Squared() + outer_edge.y.Squared();
+  Bigival margin_sq = edge_len_sq * disc.radius_sq;
+
+  // Now, check whether the inequality can hold.
+  return min_l_at_center_sq > margin_sq.UB();
+}
+
 // Bisect an interval. We choose a split point that's close to half
 // way, but prefer simple fractions! The endpoints form the basis of
 // the intervals that we calculate with, so higher quality fractions
@@ -845,6 +1100,39 @@ static BigRat SplitInterval(const Bigival &ival) {
   }
 }
 
+// Translates a disc by an interval (tx, ty), producing a new, larger disc
+// that bounds the entire resulting shape (a roundrect).
+static Discival TranslateDisc(
+    const Discival &disc,
+    const Bigival &tx,
+    const Bigival &ty,
+    const BigInt &inv_epsilon) {
+
+  // Exact center for the bounding disc. We have our choice here, but
+  // the midpoint is the best option and is easy to compute.
+  BigVec2 bound_center(
+      (disc.center.x + tx).Midpoint(),
+      (disc.center.y + ty).Midpoint());
+
+  // Now compute a radius that's sufficient to contain the entire
+  // roundrect. Using the triangle inequality, the max distance to a
+  // corner plus the original radius is an upper bound. All the
+  // corners are the same distance from the center:
+  BigRat half_w = tx.Width() / 2;
+  BigRat half_h = ty.Width() / 2;
+  BigRat corner_dist =
+    BigRat::SqrtBounds(half_w * half_w + half_h * half_h, inv_epsilon).second;
+
+  BigRat original_radius =
+    BigRat::SqrtBounds(disc.radius_sq, inv_epsilon).second;
+
+  // And the original radius.
+  BigRat bound_radius = corner_dist + original_radius;
+
+  return Discival(std::move(bound_center),
+                  bound_radius * bound_radius);
+}
+
 struct Hypersolver {
   enum RejectionReason {
     UNKNOWN = 0,
@@ -856,6 +1144,7 @@ struct Hypersolver {
     POINT_OUTSIDE2 = 6,
     POINT_OUTSIDE3 = 7,
     POINT_OUTSIDE4 = 8,
+    POINT_OUTSIDE5 = 9,
   };
 
   std::string_view RejectionReasonString(RejectionReason r) {
@@ -864,21 +1153,23 @@ struct Hypersolver {
     case UNKNOWN:
       return ARED("MISSING?");
     case OUTSIDE_OUTER_PATCH:
-      return "OUTSIDE_OUTER_PATCH";
+      return "OUT_PATCH";
     case OUTSIDE_INNER_PATCH:
-      return "OUTSIDE_INNER_PATCH";
+      return "IN_PATCH";
     case OUTSIDE_OUTER_PATCH_BALL:
-      return "OUTSIDE_OUTER_PATCH_BALL";
+      return "OUT_PATCH_B";
     case OUTSIDE_INNER_PATCH_BALL:
-      return "OUTSIDE_INNER_PATCH_BALL";
+      return "IN_PATCH_B";
     case POINT_OUTSIDE1:
-      return "POINT_OUTSIDE1";
+      return "PT1";
     case POINT_OUTSIDE2:
-      return "POINT_OUTSIDE2";
+      return "PT2";
     case POINT_OUTSIDE3:
-      return "POINT_OUTSIDE3";
+      return "PT3";
     case POINT_OUTSIDE4:
-      return "POINT_OUTSIDE4";
+      return "PT4";
+    case POINT_OUTSIDE5:
+      return "PT5";
     };
   }
 
@@ -983,6 +1274,8 @@ struct Hypersolver {
     // these AABBs are outside an edge, then the point is definitely
     // outside the edge."
     std::vector<std::vector<Vec2ival>> complexes;
+
+    std::vector<Discival> discs;
   };
 
 
@@ -1180,8 +1473,6 @@ struct Hypersolver {
       outer_cross_va_vb.push_back(Dot(oviewpos, edge_cross));
     }
 
-    // XXX just debugging. We should only compute this if we are
-    // going to save an image!
     std::vector<Vec2ival> inner;
     if (get_stats) {
       inner.reserve(inner_hull.size());
@@ -1192,10 +1483,15 @@ struct Hypersolver {
       complexes.reserve(inner_hull.size());
     }
 
+    std::vector<Discival> discs;
+    if (get_stats) {
+      discs.reserve(inner_hull.size());
+    }
+
     // Compute the inner hull point-by-point, which we call v. We can
     // exit early if any of these points are definitely outside the
     // outer hull.
-    bool proved = false;
+    std::optional<RejectionReason> proved = std::nullopt;
     for (int idx : inner_hull) {
       const BigVec3 &original_v = scube.vertices[idx];
       Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
@@ -1213,6 +1509,13 @@ struct Hypersolver {
       // this a "complex."
       std::vector<Vec2ival> complex =
         GetBoundingComplex(proj_v, inner_rot, inv_epsilon, inner_x, inner_y);
+
+      // XXX bias: BigRat(11, 10)
+      Discival disc_in(proj_v);
+      Discival rot_disc = RotateDiscInnerBias(
+          disc_in, inner_rot, BigRat(3, 2), inv_epsilon);
+      Discival disc = TranslateDisc(rot_disc, inner_x, inner_y, inv_epsilon);
+
       if (get_stats) {
         // PERF copying!
         complexes.push_back(complex);
@@ -1221,6 +1524,15 @@ struct Hypersolver {
         Vec2ival rot_v = Rotate2D(proj_v, inner_rot, inv_epsilon);
         Vec2ival v(rot_v.x + inner_x, rot_v.y + inner_y);
         inner.push_back(v);
+        discs.push_back(disc);
+      }
+
+      // If we already succeeded, the only thing we need to do is
+      // compute the inputs for get_stats. We shouldn't even get
+      // here unless get_stats is on.
+      if (proved.has_value()) {
+        CHECK(get_stats) << "Bug";
+        continue;
       }
 
       // Now, we reject this cell if the point is definitely outside
@@ -1305,24 +1617,36 @@ struct Hypersolver {
         }
 
         if (entire_complex_definitely_outside) {
-          proved = true;
+          proved = {POINT_OUTSIDE4};
           // We only need to finish all the points if we are getting
           // stats!
-          if (get_stats) break;
+          if (!get_stats) break;
+        }
+
+        // Or is the disc outside?
+        if (IsDiscOutsideEdge(disc, edge, cross_va_vb)) {
+          proved = {POINT_OUTSIDE5};
+          if (!get_stats) break;
         }
       }
+
+      if (proved.has_value() && !get_stats) break;
     }
 
-    if (proved) {
-      ProcessResult res;
-      res.result = Impossible(POINT_OUTSIDE4);
-      res.inner = std::move(inner);
-      res.complexes = std::move(complexes);
-      return {res};
+    ProcessResult res;
+    // Always include these if we have them.
+    res.inner = std::move(inner);
+    res.complexes = std::move(complexes);
+    res.discs = std::move(discs);
+
+    if (proved.has_value()) {
+      res.result = Impossible(proved.value());
+    } else {
+      // Failed to rule out this cell. Perform any split.
+      res.result = Split();
     }
 
-    // Failed to rule out this cell. Perform any split.
-    return {ProcessResult{.result = Split()}};
+    return res;
   }
 
   std::mutex mu;
@@ -1648,6 +1972,29 @@ struct Hypersolver {
         img.BlendBox32(sx0, sy0, sx1 - sx0, sy1 - sy0, color, {});
       };
 
+    auto DrawCircle = [&](const Discival &disc, uint32_t color) {
+        const auto &[sx, sy] = scaler.Scale(disc.center.x.ToDouble(),
+                                            disc.center.y.ToDouble());
+        // assume 1:1 aspect ratio
+
+        double r = std::sqrt(disc.radius_sq.ToDouble());
+
+        double sr = scaler.ScaleX(disc.center.x.ToDouble() + r) - sx;
+
+        /*
+        // XXX can go back to std::sqrt(rsq.todouble)
+        const auto &[slb, sub] =
+          BigRat::SqrtBounds(disc.radius_sq,
+                             BigInt(1024 * 1024 * 1024) * 1024 * 1024);
+        double r1 = scaler.ScaleX(slb.ToDouble());
+        double r2 = scaler.ScaleY(slb.ToDouble());
+        img.BlendCircle32(sx, sy, r1, color);
+        img.BlendCircle32(sx, sy, r2, color | 0xFF000000);
+        */
+
+        img.BlendCircle32(sx, sy, sr, color);
+      };
+
     for (const Vec2ival &v : pr.inner) {
       DrawAABB(v, 0x33FF3366);
     }
@@ -1657,6 +2004,10 @@ struct Hypersolver {
       for (const Vec2ival &v : complex) {
         DrawAABB(v, 0xAAFF3366);
       }
+    }
+
+    for (const Discival &disc : pr.discs) {
+      DrawCircle(disc, 0xCCFF3366);
     }
 
     std::vector<std::string> vs =
@@ -1706,9 +2057,16 @@ struct Hypersolver {
       img.BlendText32(8, yy, 0xFFFF33FF,
                       std::format("Result: Impossible! " ACYAN("{}"),
                                   RejectionReasonString(imp->reason)));
-    } else {
+    } else if (const Split *split = std::get_if<Split>(&pr.result)) {
+      std::string par;
+      for (int p = 0; p < NUM_DIMENSIONS; p++) {
+        if (split->parameters.Contains(p)) {
+          if (!par.empty()) par += ", ";
+          par += ParameterName(p);
+        }
+      }
       img.BlendText32(8, yy, 0x33FFFFFF,
-                      "Result: Split");
+                      std::format("Result: Split ({})", par));
     }
 
 
@@ -1775,6 +2133,7 @@ struct Hypersolver {
     Periodically save_per(15 * 60);
     Periodically sample_per(60 * 10);
     Periodically sample_proved_per(60 * 1);
+    Periodically render_per(60 * 1.1); // 0.1);
 
     BigRat full_volume = Hypervolume(hypercube->bounds);
     double full_volume_d = full_volume.ToDouble();
@@ -1812,10 +2171,12 @@ struct Hypersolver {
           double done_pct = (volume_done * 100.0) /
             full_volume_d;
 
+          double in_volume_d = (full_volume_d - volume_outscope);
+
           // Proved percentage is provide volume over the
           // amount that is in scope.
           double proved_pct = (volume_proved * 100.0) /
-            (full_volume_d - volume_outscope);
+            in_volume_d;
 
           // Progress bar wants integer fraction.
           const uint64_t denom = int64_t{1'000'000'000'000};
@@ -1847,25 +2208,28 @@ struct Hypersolver {
               "Split count: {}\n"
               "{}\n"
               "{}\n"
-              "Bad midpoint: {}  In: {}  Full volume: {}\n"
+              "Full vol: {:.5f}  in vol: {:.5f}  out vol: {:.5f}\n"
               "{} processed, "
               "{} " AGREEN("✔") ", "
               "{} " AORANGE("⊹") ". "
               "{} queued, {} ea.\n"
-              "AABB efficiency: {}\n"
+              AORANGE("X") "mid: {}  "
+              AORANGE("X") "disc: {}  "
+              "In: {}   AABB efficiency: {}\n"
               "{}\n" // bar
               ,
               splitcount,
               VolumeString(volume, true),
               rr,
-              counter_bad_midpoint.Read(),
-              counter_inside.Read(),
-              full_volume_d,
+              full_volume_d, in_volume_d, volume_outscope,
               counter_processed.Read(),
               counter_completed.Read(),
               counter_split.Read(),
               q.size(),
               ANSI::Time(time_each),
+              counter_bad_midpoint.Read(),
+              counter_degenerate_disc.Read(),
+              counter_inside.Read(),
               eff_str,
               progress);
         });
@@ -1881,6 +2245,10 @@ struct Hypersolver {
 
       ProcessResult res = ProcessOne(volume, get_stats_next);
       counter_processed++;
+
+      if (get_stats_next && render_per.ShouldRun()) {
+        MakeSampleImage(volume, res, "any");
+      }
 
       if (!res.inner.empty()) {
         // Got data to compute stats.

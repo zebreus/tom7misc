@@ -108,6 +108,8 @@ static void Simple() {
 
     CHECK_CONTAINS(a, a.Midpoint());
 
+    CHECK_EQ(a.Midpoint(), (a.LB() + a.UB()) / 2);
+
     for (Bigival b : {
         Bigival(BigRat(3), BigRat(8), false, false),
         Bigival(BigRat(-2, 3), BigRat(0), false, false),
