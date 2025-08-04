@@ -44,7 +44,7 @@ DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
                  counter_bad_midpoint, counter_inside,
                  counter_degenerate_disc);
 
-static constexpr bool SELF_CHECK = true;
+static constexpr bool SELF_CHECK = false; // true;
 
 static constexpr int SCUBE_DIGITS = 24;
 
@@ -585,6 +585,50 @@ struct Ballival {
   }
 };
 
+// More expensive than Bigival::Sin, but produces higher quality
+// intervals.
+static Bigival NiceSin(const BigRat &r, const BigInt &inv_epsilon) {
+  // PERF Can avoid recomputing this over and over.
+  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) * 4;
+
+  Bigival fine_sin = Bigival::Sin(r, fine_epsilon);
+
+  // We use the whole interval even if there's a simple fraction
+  // in the middle. It's not easy to test which side the true value
+  // falls into. So this can return an interval with width up to
+  // 1/2*inv_epsilon. We pass in inv_epsilon/2 so that the target
+  // error is still inv_epsilon.
+  // Note potential round-off error; we don't actually have any
+  // real requirement on the intervals except that they are small
+  // and get smaller. So this doesn't affect correctness.
+  auto tpl = BigRat::SimplifyInterval(fine_sin.LB(), fine_sin.UB(),
+                                      inv_epsilon >> 1);
+
+  // Sin can never be outside [-1, 1] and SimplifyInterval doesn't
+  // really guarantee that it wouldn't expand past these points
+  // (though you would expect it to choose the intervals!), so enforce
+  // that bound here.
+  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
+                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
+                 true, true);
+}
+
+// As above, but cosine.
+static Bigival NiceCos(const BigRat &r, const BigInt &inv_epsilon) {
+  // PERF Can avoid recomputing this over and over.
+  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) * 4;
+
+  Bigival fine_cos = Bigival::Cos(r, fine_epsilon);
+
+  auto tpl = BigRat::SimplifyInterval(fine_cos.LB(), fine_cos.UB(),
+                                      inv_epsilon >> 1);
+
+  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
+                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
+                 true, true);
+}
+
+
 // We work with spherical coordinates (azimuth/angle intervals) to
 // represent the bounds on the outer and inner view positions.
 // Various operations will use the intervals for the corners of
@@ -601,23 +645,22 @@ struct ViewBoundsTrig {
     CHECK(azimuth.Width() < BigRat(3) &&
           angle.Width() < BigRat(3)) << "Precondition!";
 
-    // PERF: Since we use these a lot of times, we might want
-    // to spend time up front to compute higher-quality bounds
-    // (simpler rationals). We can still stay within the
-    // inv_epsilon target.
+    // Since we use these a lot of times, we spend extra time up front
+    // to compute higher quality bounds (simpler rationals). We can
+    // still stay approximately within the inv_epsilon target.
     sin_cos_az[0] =
-      std::make_pair(Bigival::Sin(azimuth.LB(), inv_epsilon),
-                     Bigival::Cos(azimuth.LB(), inv_epsilon));
+      std::make_pair(NiceSin(azimuth.LB(), inv_epsilon),
+                     NiceCos(azimuth.LB(), inv_epsilon));
     sin_cos_az[1] =
-      std::make_pair(Bigival::Sin(azimuth.UB(), inv_epsilon),
-                     Bigival::Cos(azimuth.UB(), inv_epsilon));
+      std::make_pair(NiceSin(azimuth.UB(), inv_epsilon),
+                     NiceCos(azimuth.UB(), inv_epsilon));
 
     sin_cos_an[0] =
-      std::make_pair(Bigival::Sin(angle.LB(), inv_epsilon),
-                     Bigival::Cos(angle.LB(), inv_epsilon));
+      std::make_pair(NiceSin(angle.LB(), inv_epsilon),
+                     NiceCos(angle.LB(), inv_epsilon));
     sin_cos_an[1] =
-      std::make_pair(Bigival::Sin(angle.UB(), inv_epsilon),
-                     Bigival::Cos(angle.UB(), inv_epsilon));
+      std::make_pair(NiceSin(angle.UB(), inv_epsilon),
+                     NiceCos(angle.UB(), inv_epsilon));
   }
 
   // TODO: Can efficiently compute azimuth.Cos() etc. We have
@@ -1423,7 +1466,7 @@ struct Hypersolver {
     std::vector<Discival> discs;
   };
 
-  double trig_time = 0.0;
+  double trig_time = 0.0, loop_time = 0.0;
 
   // Process one volume, either proving it impossible or requesting
   // a split. If get_stats is true, it computes some additional data
@@ -1492,6 +1535,14 @@ struct Hypersolver {
     ViewBoundsTrig outer_trig(outer_azimuth, outer_angle, inv_epsilon);
     ViewBoundsTrig inner_trig(inner_azimuth, inner_angle, inv_epsilon);
     trig_time += trig_timer.Seconds();
+
+    /*
+    status.Print("osin: {} (w: {}) ocos: {} (w: {})\n",
+                 outer_trig.sin_cos_az[0].first.ToString(),
+                 outer_trig.sin_cos_az[0].first.Width().ToDouble(),
+                 outer_trig.sin_cos_az[0].second.ToString(),
+                 outer_trig.sin_cos_az[0].second.Width().ToDouble());
+    */
 
     // This is enough to test whether we're in the outer patch;
     // we'd like to exclude large regions ASAP (without e.g. forcing
@@ -1660,6 +1711,7 @@ struct Hypersolver {
       discs.reserve(inner_hull.size());
     }
 
+    Timer loop_timer;
     // Compute the inner hull point-by-point, which we call v. We can
     // exit early if any of these points are definitely outside the
     // outer hull.
@@ -1829,6 +1881,8 @@ struct Hypersolver {
       res.result = Split();
     }
 
+    loop_time += loop_timer.Seconds();
+
     return res;
   }
 
@@ -1839,16 +1893,26 @@ struct Hypersolver {
     return params[idx];
   }
 
-  // Choose the parameter that has the largest absolute width.
-  static int BestParameterFromSet(const Volume &volume, ParameterSet params) {
+  // Choose the parameter that has the largest width relative to
+  // that dimension's maximum width.
+  static int BestParameterFromSet(const Hypercube &cube,
+                                  const Volume &volume, ParameterSet params) {
     CHECK(!params.Empty());
     if (params.Size() == 1) return params[0];
 
+    auto InitialWidth = [&cube](int d) {
+        return cube.bounds[d].Width();
+      };
+
+    // Only consider dimensions actually in the set. Initialize
+    // with the first one:
     int best_d = params[0];
-    BigRat best_w = volume[best_d].Width();
+    BigRat best_w = volume[best_d].Width() / InitialWidth(best_d);
+
+    // And then try the remainder (if in the set).
     for (int d = best_d + 1; d < NUM_DIMENSIONS; d++) {
       if (params.Contains(d)) {
-        BigRat w = volume[d].Width();
+        BigRat w = volume[d].Width() / InitialWidth(d);
         if (w > best_w) {
           best_d = d;
           best_w = std::move(w);
@@ -2375,8 +2439,9 @@ struct Hypersolver {
               "Full vol: {:.5f}  in vol: {:.5f}  out vol: {:.5f}\n"
               "{} processed, "
               "{} " AGREEN("✔") ", "
-              "{} " AORANGE("⊹") ". "
-              "{} queued, {} ea. " ABLUE("{:.3f}") "% trig\n"
+              "{} " ARED("⊹") ". "
+              "{} " AORANGE("q") ", {} ea. " ABLUE("{:.3f}") "% trig "
+              ABLUE("{:.3f}") "% loop\n"
               AORANGE("X") "mid: {}  "
               AORANGE("X") "disc: {}  "
               "In: {}   AABB efficiency: {}\n"
@@ -2392,6 +2457,7 @@ struct Hypersolver {
               q.size(),
               ANSI::Time(time_each),
               (trig_time * 100.0) / run_time,
+              (loop_time * 100.0) / run_time,
               counter_bad_midpoint.Read(),
               counter_degenerate_disc.Read(),
               counter_inside.Read(),
@@ -2475,8 +2541,9 @@ struct Hypersolver {
         // systematic about it (e.g. split the longest dimension)?
 
         // int dim = RandomParameterFromSet(&rc, split->parameters);
-        int dim = BestParameterFromSet(volume, split->parameters);
+        int dim = BestParameterFromSet(*hypercube, volume, split->parameters);
         CHECK(dim >= 0 && dim < NUM_DIMENSIONS);
+        // status.Print("Split dim {}, which is {}", dim, ParameterName(dim));
         times_split[dim]++;
         Hypercube::Split split_node;
         split_node.axis = dim;
