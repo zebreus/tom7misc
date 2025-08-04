@@ -98,10 +98,18 @@ static void RenderAny(std::string_view name) {
   TriangularMesh3D residue = BigMakeHole(outer, polygon);
   OrientMesh(&residue);
 
-  std::string filename = std::format("{}-residue.stl", name);
-  SaveAsSTL(residue, filename);
-  printf("Took %s. Wrote %s\n",
-         ANSI::Time(timer.Seconds()).c_str(), filename.c_str());
+  std::string outer_filename = std::format("{}-outer.stl", name);
+  std::string inner_filename = std::format("{}-inner.stl", name);
+  std::string residue_filename = std::format("{}-residue.stl", name);
+
+  SaveAsSTL(residue, residue_filename);
+  printf(
+      "%s\n",
+      std::format("Took {}. Wrote {}, {}, {}.",
+                  ANSI::Time(timer.Seconds()),
+                  residue_filename,
+                  outer_filename,
+                  inner_filename).c_str());
 }
 
 int main(int argc, char **argv) {

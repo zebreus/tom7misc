@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <ctime>
@@ -13,6 +14,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -1330,7 +1332,7 @@ static Discival TranslateDisc(
 
 struct Hypersolver {
 
-  std::string_view RejectionReasonString(RejectionReason r) {
+  static std::string_view RejectionReasonString(RejectionReason r) {
     switch (r) {
     default:
     case REJECTION_UNKNOWN:
@@ -1466,12 +1468,11 @@ struct Hypersolver {
     std::vector<Discival> discs;
   };
 
-  double trig_time = 0.0, loop_time = 0.0;
-
   // Process one volume, either proving it impossible or requesting
   // a split. If get_stats is true, it computes some additional data
   // for visualization or estimating AABB efficiency (more expensive).
-  // This is where all the work happens. Thread safe and lock-free.
+  // This is where all the work happens. Thread safe and only takes
+  // locks for really fast stuff (accumulating stats).
   ProcessResult ProcessOne(const Volume &volume, bool get_stats) {
     const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
     const Bigival &outer_angle = volume[OUTER_ANGLE];
@@ -1534,7 +1535,10 @@ struct Hypersolver {
     Timer trig_timer;
     ViewBoundsTrig outer_trig(outer_azimuth, outer_angle, inv_epsilon);
     ViewBoundsTrig inner_trig(inner_azimuth, inner_angle, inv_epsilon);
-    trig_time += trig_timer.Seconds();
+    {
+      MutexLock ml(&mu);
+      trig_time += trig_timer.Seconds();
+    }
 
     /*
     status.Print("osin: {} (w: {}) ocos: {} (w: {})\n",
@@ -1881,7 +1885,10 @@ struct Hypersolver {
       res.result = Split();
     }
 
-    loop_time += loop_timer.Seconds();
+    {
+      MutexLock ml(&mu);
+      loop_time += loop_timer.Seconds();
+    }
 
     return res;
   }
@@ -1972,8 +1979,9 @@ struct Hypersolver {
 
   // Used for visualization and efficiency estimate.
   static constexpr int N_SAMPLES = 512;
-  std::vector<Shadows> SampleShadows(const Volume &volume,
-                                     const ProcessResult &pr) {
+  std::vector<Shadows> SampleShadows(ArcFour *rc,
+                                     const Volume &volume,
+                                     const ProcessResult &pr) const {
 
     auto TransformHull = [this](const std::vector<int> &hull,
                                 const frame3 &f) -> std::vector<vec2> {
@@ -2013,7 +2021,7 @@ struct Hypersolver {
       if (corner) {
         sample = VolumeCorner(volume, s);
       } else {
-        sample = SampleFromVolume(&rc, volume);
+        sample = SampleFromVolume(rc, volume);
       }
 
       vec3 oview = ViewFromSpherical(
@@ -2056,9 +2064,10 @@ struct Hypersolver {
   // Get the average efficiency of intervals (this just looks at
   // the inner intervals right now) if possible. Stats must have been
   // computed and the result has to be Impossible (point_outside).
-  std::optional<double> ComputeEfficiency(const Volume &volume,
-                                          const ProcessResult &pr,
-                                          const std::vector<Shadows> &shadows) {
+  std::optional<double> ComputeEfficiency(
+      const Volume &volume,
+      const ProcessResult &pr,
+      const std::vector<Shadows> &shadows) const {
     double efficiency_numer = 0.0;
     int efficiency_denom = 0;
     for (int p = 0; p < pr.inner.size(); p++) {
@@ -2093,8 +2102,9 @@ struct Hypersolver {
       std::nullopt;
   }
 
-  void MakeSampleImage(const Volume &volume, const ProcessResult &pr,
-                       std::string_view msg) {
+  void MakeSampleImage(ArcFour *rc,
+                       const Volume &volume, const ProcessResult &pr,
+                       std::string_view msg) const {
     std::string filename = std::format("inubs/sample-{}-{}.png",
                                        time(nullptr), msg);
     status.Print("Sample volume:\n{}\n",
@@ -2105,7 +2115,7 @@ struct Hypersolver {
     ImageRGBA img(WIDTH, HEIGHT);
     img.Clear32(0x000000FF);
 
-    std::vector<Shadows> shadows = SampleShadows(volume, pr);
+    std::vector<Shadows> shadows = SampleShadows(rc, volume, pr);
 
     Bounds bounds;
     for (const Shadows &s : shadows) {
@@ -2339,133 +2349,145 @@ struct Hypersolver {
     return true;
   }
 
-  void Expand() {
-    // Get all the unsolved leaves.
-    std::deque<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> q;
+  void MaybeStatus(const Volume &volume) {
+    status_per.RunIf([&]() {
+        MutexLock ml(&mu);
+        std::string rr;
+        for (const auto &[reason, count] : rejection_count) {
+          AppendFormat(&rr, ACYAN("{}") ": {}  ",
+                       RejectionReasonString(reason), count);
+        }
 
+        std::string splitcount;
+        for (int d = 0; d < NUM_DIMENSIONS; d++) {
+          AppendFormat(&splitcount, "{} ", times_split[d]);
+        }
+
+        double run_time = run_timer.Seconds();
+
+        double time_each =
+          run_time / counter_processed.Read();
+
+        double done_pct = (volume_done * 100.0) /
+          full_volume_d;
+
+        double in_volume_d = (full_volume_d - volume_outscope);
+
+        // Proved percentage is provide volume over the
+        // amount that is in scope.
+        double proved_pct = (volume_proved * 100.0) /
+          in_volume_d;
+
+        // Progress bar wants integer fraction.
+        const uint64_t denom = int64_t{1'000'000'000'000};
+        const uint64_t numer = (proved_pct / 100.0) * denom;
+
+        ANSI::ProgressBarOptions opt;
+        opt.include_frac = false;
+        opt.include_percent = false;
+        std::string progress =
+          ANSI::ProgressBar(
+              numer, denom,
+              std::format(
+                  "Done: {:.8g} {:.2f}% Proved: {:.8g} {:.6f}%",
+                  volume_done, done_pct,
+                  volume_proved, proved_pct),
+              run_timer.Seconds(),
+              opt);
+
+        std::string eff_str =
+          efficiency_count > 0 ?
+          std::format(APURPLE("{:.4f}") "% " AGREY("({})"),
+                      (efficiency_total * 100.0) / efficiency_count,
+                      efficiency_count) :
+          ARED("??");
+
+        status.Status(
+            AWHITE("—————————————————————————————————————————") "\n"
+            // "Put volume information here!\n"
+            "Split count: {}\n"
+            "{}\n"
+            "{}\n"
+            "Full vol: {:.5f}  in vol: {:.5f}  out vol: {:.5f}\n"
+            "{} processed, "
+            "{} " AGREEN("✔") ", "
+            "{} " ARED("⊹") ". "
+            "{} " AORANGE("q") ", {} ea. " ABLUE("{:.3f}") "% trig "
+            ABLUE("{:.3f}") "% loop\n"
+            AORANGE("X") "mid: {}  "
+            AORANGE("X") "disc: {}  "
+            "In: {}   AABB efficiency: {}\n"
+            "{}\n" // bar
+            ,
+            splitcount,
+            VolumeString(volume, true),
+            rr,
+            full_volume_d, in_volume_d, volume_outscope,
+            counter_processed.Read(),
+            counter_completed.Read(),
+            counter_split.Read(),
+            node_queue.size(),
+            ANSI::Time(time_each),
+            (trig_time * 100.0) / process_time,
+            (loop_time * 100.0) / process_time,
+            counter_bad_midpoint.Read(),
+            counter_degenerate_disc.Read(),
+            counter_inside.Read(),
+            eff_str,
+            progress);
+      });
+  }
+
+  void Init() {
+    // Initialize queue.
     {
       auto leaves = hypercube->GetLeaves(&volume_outscope, &volume_proved);
 
       for (auto &p : leaves)
-        q.emplace_back(std::move(p));
+        node_queue.emplace_back(std::move(p));
 
       volume_done = volume_outscope + volume_proved;
     }
 
-    status.Print("Start Expand. Remaining leaves: {}\n", q.size());
-    Timer run_timer;
+    status.Print("Initialized. Remaining leaves: {}\n", node_queue.size());
+  }
 
-    Periodically status_per(1);
-    Periodically save_per(15 * 60);
-    Periodically sample_per(60 * 10);
-    Periodically sample_proved_per(60 * 9.1);
-    Periodically render_per(60 * 10.1);
-
-    BigRat full_volume = Hypervolume(hypercube->bounds);
-    double full_volume_d = full_volume.ToDouble();
+  void WorkThread(int thread_idx) {
+    ArcFour rc(std::format("{}.{}", thread_idx, time(nullptr)));
 
     bool get_stats_next = false;
-    while (!q.empty()) {
+
+    for (;;) {
       Volume volume;
       std::shared_ptr<Hypercube::Node> node;
 
-      if (q.size() > 8192) {
-        std::tie(volume, node) = q.back();
-        q.pop_back();
-      } else {
-        std::tie(volume, node) = q.front();
-        q.pop_front();
+      {
+        mu.lock();
+        if (node_queue.empty()) {
+          // TODO: Need to detect true completion!
+          mu.unlock();
+          status.Print("Thread " ARED("{}") " idle!", thread_idx);
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+          continue;
+        } else {
+          // Perhaps select at random?
+          if (node_queue.size() > 8192) {
+            std::tie(volume, node) = node_queue.back();
+            node_queue.pop_back();
+          } else {
+            std::tie(volume, node) = node_queue.front();
+            node_queue.pop_front();
+          }
+        }
+        mu.unlock();
       }
 
       CHECK(node.get() != nullptr);
 
-      status_per.RunIf([&]() {
-          std::string rr;
-          for (const auto &[reason, count] : rejection_count) {
-            AppendFormat(&rr, ACYAN("{}") ": {}  ",
-                         RejectionReasonString(reason), count);
-          }
-
-          std::string splitcount;
-          for (int d = 0; d < NUM_DIMENSIONS; d++) {
-            AppendFormat(&splitcount, "{} ", times_split[d]);
-          }
-
-          double run_time = run_timer.Seconds();
-
-          double time_each =
-            run_time / counter_processed.Read();
-
-          double done_pct = (volume_done * 100.0) /
-            full_volume_d;
-
-          double in_volume_d = (full_volume_d - volume_outscope);
-
-          // Proved percentage is provide volume over the
-          // amount that is in scope.
-          double proved_pct = (volume_proved * 100.0) /
-            in_volume_d;
-
-          // Progress bar wants integer fraction.
-          const uint64_t denom = int64_t{1'000'000'000'000};
-          const uint64_t numer = (proved_pct / 100.0) * denom;
-
-          ANSI::ProgressBarOptions opt;
-          opt.include_frac = false;
-          opt.include_percent = false;
-          std::string progress =
-            ANSI::ProgressBar(
-                numer, denom,
-                std::format(
-                    "Done: {:.8g} {:.2f}% Proved: {:.8g} {:.6f}%",
-                    volume_done, done_pct,
-                    volume_proved, proved_pct),
-                run_timer.Seconds(),
-                opt);
-
-          std::string eff_str =
-            efficiency_count > 0 ?
-            std::format(APURPLE("{:.4f}") "% " AGREY("({})"),
-                        (efficiency_total * 100.0) / efficiency_count,
-                        efficiency_count) :
-            ARED("??");
-
-          status.Status(
-              AWHITE("—————————————————————————————————————————") "\n"
-              // "Put volume information here!\n"
-              "Split count: {}\n"
-              "{}\n"
-              "{}\n"
-              "Full vol: {:.5f}  in vol: {:.5f}  out vol: {:.5f}\n"
-              "{} processed, "
-              "{} " AGREEN("✔") ", "
-              "{} " ARED("⊹") ". "
-              "{} " AORANGE("q") ", {} ea. " ABLUE("{:.3f}") "% trig "
-              ABLUE("{:.3f}") "% loop\n"
-              AORANGE("X") "mid: {}  "
-              AORANGE("X") "disc: {}  "
-              "In: {}   AABB efficiency: {}\n"
-              "{}\n" // bar
-              ,
-              splitcount,
-              VolumeString(volume, true),
-              rr,
-              full_volume_d, in_volume_d, volume_outscope,
-              counter_processed.Read(),
-              counter_completed.Read(),
-              counter_split.Read(),
-              q.size(),
-              ANSI::Time(time_each),
-              (trig_time * 100.0) / run_time,
-              (loop_time * 100.0) / run_time,
-              counter_bad_midpoint.Read(),
-              counter_degenerate_disc.Read(),
-              counter_inside.Read(),
-              eff_str,
-              progress);
-        });
+      MaybeStatus(volume);
 
       save_per.RunIf([&](){
+          MutexLock ml(&mu);
           status.Print("Saving to {}...\n", filename);
           hypercube->ToDisk(filename);
         });
@@ -2474,18 +2496,27 @@ struct Hypersolver {
       // data.
       get_stats_next = get_stats_next || (counter_processed.Read() % 64) == 0;
 
+      Timer process_timer;
       ProcessResult res = ProcessOne(volume, get_stats_next);
+      const double process_sec = process_timer.Seconds();
       counter_processed++;
 
+      {
+        MutexLock ml(&mu);
+        process_time += process_sec;
+      }
+
       if (get_stats_next && render_per.ShouldRun()) {
-        MakeSampleImage(volume, res, "any");
+        MakeSampleImage(&rc, volume, res, "any");
       }
 
       if (!res.inner.empty()) {
         // Got data to compute stats.
         get_stats_next = false;
         if (std::optional<double> efficiency =
-            ComputeEfficiency(volume, res, SampleShadows(volume, res))) {
+            ComputeEfficiency(volume, res,
+                              SampleShadows(&rc, volume, res))) {
+          MutexLock ml(&mu);
           efficiency_count++;
           efficiency_total += efficiency.value();
         }
@@ -2495,45 +2526,55 @@ struct Hypersolver {
         counter_inside++;
         // Sometimes also sample.
         sample_per.RunIf([&]() {
-            MakeSampleImage(volume, res, "inside");
+            MakeSampleImage(&rc, volume, res, "inside");
           });
       }
 
       if (Impossible *imp = std::get_if<Impossible>(&res.result)) {
         (void)imp;
 
-        // Then mark the node as a leaf that has been ruled out.
-        Hypercube::Leaf *leaf = std::get_if<Hypercube::Leaf>(node.get());
-        CHECK(leaf != nullptr) << "Bug: We only expand leaves!";
-        leaf->completed = time(nullptr);
-        leaf->reason = imp->reason;
+        bool maybe_save_image = false;
 
-        counter_completed++;
+        const double vol = Hypervolume(volume).ToDouble();
 
-        double v = Hypervolume(volume).ToDouble();
-        volume_done += v;
-        switch (imp->reason) {
-        case OUTSIDE_OUTER_PATCH:
-        case OUTSIDE_INNER_PATCH:
-        case OUTSIDE_OUTER_PATCH_BALL:
-        case OUTSIDE_INNER_PATCH_BALL:
-          volume_outscope += v;
-          break;
-        default:
-          volume_proved += v;
-          sample_proved_per.RunIf([&]() {
-              MakeSampleImage(volume, res, "proved");
-            });
-          break;
+        {
+          MutexLock ml(&mu);
+          // Then mark the node as a leaf that has been ruled out.
+          Hypercube::Leaf *leaf = std::get_if<Hypercube::Leaf>(node.get());
+          CHECK(leaf != nullptr) << "Bug: We only expand leaves!";
+          leaf->completed = time(nullptr);
+          leaf->reason = imp->reason;
+
+          counter_completed++;
+
+          volume_done += vol;
+          switch (imp->reason) {
+          case OUTSIDE_OUTER_PATCH:
+          case OUTSIDE_INNER_PATCH:
+          case OUTSIDE_OUTER_PATCH_BALL:
+          case OUTSIDE_INNER_PATCH_BALL:
+            volume_outscope += vol;
+            break;
+          default:
+            volume_proved += vol;
+            maybe_save_image = true;
+            break;
+          }
+
+          /*
+            status.Print(AGREEN("Success!") " Excluded cell (" ACYAN("{}") "). "
+            " Now {}.\n",
+            RejectionReasonString(imp->reason),
+            counter_completed.Read());
+          */
+          rejection_count[imp->reason]++;
         }
 
-        /*
-        status.Print(AGREEN("Success!") " Excluded cell (" ACYAN("{}") "). "
-                     " Now {}.\n",
-                     RejectionReasonString(imp->reason),
-                     counter_completed.Read());
-        */
-        rejection_count[imp->reason]++;
+        if (maybe_save_image) {
+          sample_proved_per.RunIf([&]() {
+              MakeSampleImage(&rc, volume, res, "proved");
+            });
+        }
 
       } else if (Split *split = std::get_if<Split>(&res.result)) {
         // Can't rule it out. So split. We use a random direction here (in
@@ -2544,7 +2585,6 @@ struct Hypersolver {
         int dim = BestParameterFromSet(*hypercube, volume, split->parameters);
         CHECK(dim >= 0 && dim < NUM_DIMENSIONS);
         // status.Print("Split dim {}, which is {}", dim, ParameterName(dim));
-        times_split[dim]++;
         Hypercube::Split split_node;
         split_node.axis = dim;
 
@@ -2563,11 +2603,16 @@ struct Hypersolver {
         split_node.right = std::make_shared<Hypercube::Node>(
             Hypercube::Leaf());
 
-        // Enqueue the leaves.
-        q.emplace_back(std::move(left), split_node.left);
-        q.emplace_back(std::move(right), split_node.right);
+        {
+          MutexLock ml(&mu);
+          times_split[dim]++;
 
-        *node = Hypercube::Node(std::move(split_node));
+          // Enqueue the leaves.
+          node_queue.emplace_back(std::move(left), split_node.left);
+          node_queue.emplace_back(std::move(right), split_node.right);
+
+          *node = Hypercube::Node(std::move(split_node));
+        }
 
         counter_split++;
 
@@ -2575,9 +2620,6 @@ struct Hypersolver {
         LOG(FATAL) << "Bad processresult";
       }
     }
-
-    hypercube->ToDisk(filename);
-    printf("Success " AGREEN(":)") "\n");
   }
 
   // Note we perform all the plane-side tests, even though only the
@@ -2652,9 +2694,37 @@ struct Hypersolver {
     return true;
   }
 
+  void Run() {
+
+    Init();
+
+    static constexpr int NUM_WORK_THREADS = 8;
+
+    std::vector<std::thread> workers;
+
+    {
+      MutexLock ml(&mu);
+      for (int i = 0; i < NUM_WORK_THREADS; i++) {
+        workers.emplace_back(&Hypersolver::WorkThread, this, i);
+      }
+    }
+
+    // wait on all threads to finish
+    for (std::thread &t : workers) {
+      t.join();
+    }
+
+    status.Print("All threads finished!");
+
+    hypercube->ToDisk(filename);
+    status.Print("Success " AGREEN(":)") "\n");
+  }
+
   Hypersolver() : scube(BigScube(SCUBE_DIGITS)),
-                  boundaries(scube), rc("hyper") {
+                  boundaries(scube) {
     patch_info = LoadPatchInfo("scube-patchinfo.txt");
+
+    ArcFour rc("hyper-init");
     // We don't want every volume's endpoints to involve some
     // subdivision of an extremely accurate pi, and we don't need them
     // to; we just need the starting interval to *cover* [0, π] (or
@@ -2722,6 +2792,9 @@ struct Hypersolver {
       status.Print("Continuing from {}", filename);
       hypercube->FromDisk(filename);
     }
+
+    full_volume = Hypervolume(hypercube->bounds);
+    full_volume_d = full_volume.ToDouble();
   }
 
   void CheckHullRepresentation(ArcFour *rc, uint64_t code, uint64_t mask,
@@ -2769,16 +2842,31 @@ struct Hypersolver {
   // The vector vb-va, with va,vb as in the previous.
   std::vector<BigVec3> outer_edge3d;
 
+  BigRat full_volume;
+  double full_volume_d = 0.0;
+
   // Members below protected by the mutex.
   std::mutex mu;
   std::unique_ptr<Hypercube> hypercube;
 
-  ArcFour rc;
+  // Work queue. (Could actually use work queue here!)
+  std::deque<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> node_queue;
+
+  Timer run_timer;
+  Periodically status_per = Periodically(1);
+  Periodically save_per = Periodically(15 * 60);
+  Periodically sample_per = Periodically(60 * 10);
+  Periodically sample_proved_per = Periodically(60 * 9.1);
+  Periodically render_per = Periodically(60 * 10.1);
+
   std::unordered_map<RejectionReason, int64_t> rejection_count;
   int64_t times_split[NUM_DIMENSIONS] = {};
 
+  // Stats counters.
   double efficiency_total = 0.0;
   int64_t efficiency_count = 0;
+
+  double trig_time = 0.0, loop_time = 0.0, process_time = 0.0;
 
   // The hypervolume now done (this includes regions that we
   // determined are out of scope). Compare against the full volume.
@@ -2795,7 +2883,7 @@ int main(int argc, char **argv) {
   ANSI::Init();
 
   Hypersolver solver;
-  solver.Expand();
+  solver.Run();
 
   return 0;
 }
