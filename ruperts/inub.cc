@@ -392,7 +392,10 @@ struct Hypercube {
   // a queue containing all of the unexplored leaves. Extract
   // those.
   std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> GetLeaves(
-      double *volume_done) {
+      double *volume_outscope, double *volume_proved) {
+    *volume_outscope = 0.0;
+    *volume_proved = 0.0;
+
     std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> leaves;
 
     std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> stack = {
@@ -411,7 +414,17 @@ struct Hypercube {
         if (leaf->completed == 0) {
           leaves.emplace_back(std::move(volume), node);
         } else {
-          *volume_done += Hypervolume(volume).ToDouble();
+          const double dvol = Hypervolume(volume).ToDouble();
+          switch (leaf->reason) {
+          case OUTSIDE_OUTER_PATCH:
+          case OUTSIDE_INNER_PATCH:
+          case OUTSIDE_OUTER_PATCH_BALL:
+          case OUTSIDE_INNER_PATCH_BALL:
+            *volume_outscope += dvol;
+            break;
+          default:
+            *volume_proved += dvol;
+          }
         }
       } else {
         Split *split = std::get_if<Split>(node.get());
@@ -607,7 +620,10 @@ struct ViewBoundsTrig {
                      Bigival::Cos(angle.UB(), inv_epsilon));
   }
 
-  // TODO: Can efficiently compute azimuth.Cos() etc.
+  // TODO: Can efficiently compute azimuth.Cos() etc. We have
+  // the endpoints and just need to tend to the possibility
+  // that there may be a peak or trough in between, like
+  // Bigivall::Cos does.
 
   Bigival azimuth;
   Bigival angle;
@@ -716,17 +732,6 @@ struct Discival {
                  ToString(),
                  std::sqrt(radius_sq.ToDouble())
                  );
-    */
-
-    /*
-    status.Print("Input AABB: {} " AGREY("(Width: {} Height: {}  ≅  {}x{})")
-                 ". Output Disc: {}",
-                 v.ToString(),
-                 v.x.Width().ToString(),
-                 v.y.Width().ToString(),
-                 v.x.Width().ToDouble(),
-                 v.y.Width().ToDouble(),
-                 ToString());
     */
   }
 
@@ -1097,8 +1102,6 @@ static Discival RotateDiscInnerBias(
   // and then compute a radius that definitely includes the sweep
   // for the chosen point.
 
-
-
   BigRat mid_angle = angle.Midpoint();
   Bigival sin_ma = Bigival::Sin(mid_angle, inv_epsilon);
   Bigival cos_ma = Bigival::Cos(mid_angle, inv_epsilon);
@@ -1420,6 +1423,8 @@ struct Hypersolver {
     std::vector<Discival> discs;
   };
 
+  double trig_time = 0.0;
+
   // Process one volume, either proving it impossible or requesting
   // a split. If get_stats is true, it computes some additional data
   // for visualization or estimating AABB efficiency (more expensive).
@@ -1483,8 +1488,10 @@ struct Hypersolver {
     // smaller.
     BigInt inv_epsilon = min_width.Denominator() * 1024 * 1024;
 
+    Timer trig_timer;
     ViewBoundsTrig outer_trig(outer_azimuth, outer_angle, inv_epsilon);
     ViewBoundsTrig inner_trig(inner_azimuth, inner_angle, inv_epsilon);
+    trig_time += trig_timer.Seconds();
 
     // This is enough to test whether we're in the outer patch;
     // we'd like to exclude large regions ASAP (without e.g. forcing
@@ -1825,31 +1832,15 @@ struct Hypersolver {
     return res;
   }
 
-  std::mutex mu;
-  ArcFour rc;
-  std::unordered_map<RejectionReason, int64_t> rejection_count;
-  int64_t times_split[NUM_DIMENSIONS] = {};
-
-  // The hypervolume now done (this includes regions that we
-  // determined are out of scope). Compare against the full volume.
-  double volume_done = 0.0;
-  // The volume that is excluded for being out of scope. Compare
-  // against the full volume.
-  double volume_outscope = 0.0;
-  // The hypervolume where we definitively ruled out a solution.
-  // Can compare this against (full - volume_outscope).
-  double volume_proved = 0.0;
-
-  int RandomParameterFromSet(ParameterSet params) {
+  static int RandomParameterFromSet(ArcFour *rc, ParameterSet params) {
     CHECK(!params.Empty()) << "No dimensions to split on?";
     const int num = params.Size();
-    MutexLock ml(&mu);
-    int idx = RandTo(&rc, num);
+    int idx = RandTo(rc, num);
     return params[idx];
   }
 
   // Choose the parameter that has the largest absolute width.
-  int BestParameterFromSet(const Volume &volume, ParameterSet params) {
+  static int BestParameterFromSet(const Volume &volume, ParameterSet params) {
     CHECK(!params.Empty());
     if (params.Size() == 1) return params[0];
 
@@ -1868,9 +1859,8 @@ struct Hypersolver {
     return best_d;
   }
 
-  std::array<double, NUM_DIMENSIONS> SampleFromVolume(const Volume &volume) {
-    // Access random
-    MutexLock ml(&mu);
+  static std::array<double, NUM_DIMENSIONS>
+  SampleFromVolume(ArcFour *rc, const Volume &volume) {
     std::array<double, NUM_DIMENSIONS> sample;
     for (int d = 0; d < NUM_DIMENSIONS; d++) {
       double w = volume[d].Width().ToDouble();
@@ -1880,12 +1870,11 @@ struct Hypersolver {
         sample[d] = volume[d].LB().ToDouble();
       } else {
         sample[d] = volume[d].LB().ToDouble() +
-          w * RandDouble(&rc);
+          w * RandDouble(rc);
       }
     }
     return sample;
   }
-
 
   // Corner of the hypervolume indicated by bitmask.
   static std::array<double, NUM_DIMENSIONS> VolumeCorner(const Volume &volume,
@@ -1917,6 +1906,7 @@ struct Hypersolver {
     bool corner = false;
   };
 
+  // Used for visualization and efficiency estimate.
   static constexpr int N_SAMPLES = 512;
   std::vector<Shadows> SampleShadows(const Volume &volume,
                                      const ProcessResult &pr) {
@@ -1959,7 +1949,7 @@ struct Hypersolver {
       if (corner) {
         sample = VolumeCorner(volume, s);
       } else {
-        sample = SampleFromVolume(volume);
+        sample = SampleFromVolume(&rc, volume);
       }
 
       vec3 oview = ViewFromSpherical(
@@ -2285,15 +2275,17 @@ struct Hypersolver {
     return true;
   }
 
-  double efficiency_total = 0.0;
-  int64_t efficiency_count = 0;
-
   void Expand() {
     // Get all the unsolved leaves.
     std::deque<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> q;
 
-    for (auto &p : hypercube->GetLeaves(&volume_done)) {
-      q.emplace_back(std::move(p));
+    {
+      auto leaves = hypercube->GetLeaves(&volume_outscope, &volume_proved);
+
+      for (auto &p : leaves)
+        q.emplace_back(std::move(p));
+
+      volume_done = volume_outscope + volume_proved;
     }
 
     status.Print("Start Expand. Remaining leaves: {}\n", q.size());
@@ -2335,8 +2327,10 @@ struct Hypersolver {
             AppendFormat(&splitcount, "{} ", times_split[d]);
           }
 
+          double run_time = run_timer.Seconds();
+
           double time_each =
-            run_timer.Seconds() / counter_processed.Read();
+            run_time / counter_processed.Read();
 
           double done_pct = (volume_done * 100.0) /
             full_volume_d;
@@ -2382,7 +2376,7 @@ struct Hypersolver {
               "{} processed, "
               "{} " AGREEN("✔") ", "
               "{} " AORANGE("⊹") ". "
-              "{} queued, {} ea.\n"
+              "{} queued, {} ea. " ABLUE("{:.3f}") "% trig\n"
               AORANGE("X") "mid: {}  "
               AORANGE("X") "disc: {}  "
               "In: {}   AABB efficiency: {}\n"
@@ -2397,6 +2391,7 @@ struct Hypersolver {
               counter_split.Read(),
               q.size(),
               ANSI::Time(time_each),
+              (trig_time * 100.0) / run_time,
               counter_bad_midpoint.Read(),
               counter_degenerate_disc.Read(),
               counter_inside.Read(),
@@ -2479,7 +2474,7 @@ struct Hypersolver {
         // accordance with the split's mask) but we should consider being
         // systematic about it (e.g. split the longest dimension)?
 
-        // int dim = RandomParameterFromSet(split->parameters);
+        // int dim = RandomParameterFromSet(&rc, split->parameters);
         int dim = BestParameterFromSet(volume, split->parameters);
         CHECK(dim >= 0 && dim < NUM_DIMENSIONS);
         times_split[dim]++;
@@ -2548,7 +2543,7 @@ struct Hypersolver {
   // of an AABB.
   bool MightHaveCodeWithBall(
       uint64_t code, uint64_t mask,
-      const Ballival &ball) {
+      const Ballival &ball) const {
 
     for (int i = 0; i < boundaries.big_planes.size(); i++) {
       const uint64_t pos = uint64_t{1} << i;
@@ -2590,8 +2585,8 @@ struct Hypersolver {
     return true;
   }
 
-  Hypersolver() : rc("hyper"), scube(BigScube(SCUBE_DIGITS)),
-    boundaries(scube) {
+  Hypersolver() : scube(BigScube(SCUBE_DIGITS)),
+                  boundaries(scube), rc("hyper") {
     patch_info = LoadPatchInfo("scube-patchinfo.txt");
     // We don't want every volume's endpoints to involve some
     // subdivision of an extremely accurate pi, and we don't need them
@@ -2640,8 +2635,8 @@ struct Hypersolver {
     // This program assumes the hulls have screen-clockwise (cartesian
     // ccw) winding order when viewed from within the patch, and that
     // they contain the origin.
-    CheckHullRepresentation(outer_code, outer_mask, outer_hull);
-    CheckHullRepresentation(inner_code, inner_mask, inner_hull);
+    CheckHullRepresentation(&rc, outer_code, outer_mask, outer_hull);
+    CheckHullRepresentation(&rc, inner_code, inner_mask, inner_hull);
 
     outer_cx3d.reserve(outer_hull.size());
     outer_edge3d.reserve(outer_hull.size());
@@ -2662,9 +2657,9 @@ struct Hypersolver {
     }
   }
 
-  void CheckHullRepresentation(uint64_t code, uint64_t mask,
-                               const std::vector<int> &hull) {
-    vec3 view = GetVec3InPatch(&rc, boundaries, code, mask);
+  void CheckHullRepresentation(ArcFour *rc, uint64_t code, uint64_t mask,
+                               const std::vector<int> &hull) const {
+    vec3 view = GetVec3InPatch(rc, boundaries, code, mask);
     frame3 view_frame = FrameFromViewPos(view);
     Mesh2D mesh = RotateAndProject(view_frame, small_scube);
 
@@ -2683,11 +2678,12 @@ struct Hypersolver {
     }
   }
 
+  // These members are safe to execute from multiple threads.
+  // They should not be modified after initialization.
   Polyhedron small_scube;
   BigPoly scube;
   Boundaries boundaries;
   PatchInfo patch_info;
-  std::unique_ptr<Hypercube> hypercube;
   std::string filename;
   uint64_t outer_code = 0, outer_mask = 0;
   uint64_t inner_code = 0, inner_mask = 0;
@@ -2705,6 +2701,27 @@ struct Hypersolver {
 
   // The vector vb-va, with va,vb as in the previous.
   std::vector<BigVec3> outer_edge3d;
+
+  // Members below protected by the mutex.
+  std::mutex mu;
+  std::unique_ptr<Hypercube> hypercube;
+
+  ArcFour rc;
+  std::unordered_map<RejectionReason, int64_t> rejection_count;
+  int64_t times_split[NUM_DIMENSIONS] = {};
+
+  double efficiency_total = 0.0;
+  int64_t efficiency_count = 0;
+
+  // The hypervolume now done (this includes regions that we
+  // determined are out of scope). Compare against the full volume.
+  double volume_done = 0.0;
+  // The volume that is excluded for being out of scope. Compare
+  // against the full volume.
+  double volume_outscope = 0.0;
+  // The hypervolume where we definitively ruled out a solution.
+  // Can compare this against (full - volume_outscope).
+  double volume_proved = 0.0;
 };
 
 int main(int argc, char **argv) {
