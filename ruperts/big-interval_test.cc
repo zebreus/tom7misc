@@ -273,6 +273,38 @@ static void IntervalOps() {
     CHECK(i.IncludesLB());
     CHECK(!i.IncludesUB());
   }
+
+
+  {
+    Bigival a(1, 4, false, false);
+    Bigival b(3, 10, true, true);
+    Bigival u = Bigival::Union(a, b);
+    CHECK(u.LB() == 1);
+    CHECK(u.UB() == 10);
+    CHECK(!u.IncludesLB());
+    CHECK(u.IncludesUB());
+  }
+
+  {
+    Bigival a(1, 4, false, true);
+    Bigival b(1, 4, true, false);
+    Bigival u = Bigival::Union(a, b);
+    CHECK(u.LB() == 1);
+    CHECK(u.UB() == 4);
+    CHECK(u.IncludesLB());
+    CHECK(u.IncludesUB());
+  }
+
+  {
+    Bigival a(-1, 1, false, true);
+    Bigival b(5, 6, true, false);
+    Bigival u = Bigival::Union(a, b);
+    CHECK(u.LB() == -1);
+    CHECK(u.UB() == 6);
+    CHECK(!u.IncludesLB());
+    CHECK(!u.IncludesUB());
+  }
+
 }
 
 static void Comparisons() {

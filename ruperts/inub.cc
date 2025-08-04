@@ -181,6 +181,21 @@ struct ParameterSet {
   uint32_t bits = 0;
 };
 
+enum RejectionReason : uint8_t {
+  REJECTION_UNKNOWN = 0,
+  OUTSIDE_OUTER_PATCH = 1,
+  OUTSIDE_INNER_PATCH = 2,
+  OUTSIDE_OUTER_PATCH_BALL = 3,
+  OUTSIDE_INNER_PATCH_BALL = 4,
+  POINT_OUTSIDE1 = 5,
+  POINT_OUTSIDE2 = 6,
+  POINT_OUTSIDE3 = 7,
+  POINT_OUTSIDE4 = 8,
+  POINT_OUTSIDE5 = 9,
+
+  NUM_REJECTION_REASONS,
+};
+
 // Represents a (hyper)rectangular volume within the search space.
 using Volume = std::vector<Bigival>;
 
@@ -205,7 +220,9 @@ struct Hypercube {
   void FromDisk(const std::string &filename) {
     // The file format is line based. Each line is a node;
     // either:
-    // L completed
+    // L reason completed   (completed leaf)
+    // or
+    // E                    (empty leaf)
     // or
     // S axis split
     //
@@ -224,12 +241,23 @@ struct Hypercube {
 
           char cmd = line[0];
           line.remove_prefix(2);
-          if (cmd == 'L') {
+          if (cmd == 'E') {
+            auto leaf =
+              std::make_shared<Hypercube::Node>(Leaf{
+                  .completed = 0,
+                  .reason = REJECTION_UNKNOWN,
+                });
+            stack.push_back(std::move(leaf));
+
+          } if (cmd == 'L') {
+            int64_t r = Util::ParseInt64(Util::Chop(&line), -1);
+            CHECK(r > 0 && r < NUM_REJECTION_REASONS) << line;
             int64_t comp = Util::ParseInt64(Util::Chop(&line), -1);
             CHECK(comp >= 0) << line;
             auto leaf =
               std::make_shared<Hypercube::Node>(Leaf{
                   .completed = comp,
+                  .reason = (RejectionReason)r,
                 });
             stack.push_back(std::move(leaf));
           } else if (cmd == 'S') {
@@ -290,8 +318,15 @@ struct Hypercube {
         CHECK(node.get() != nullptr);
 
         if (Leaf *leaf = std::get_if<Leaf>(node.get())) {
-          std::string line = std::format("L {}\n", leaf->completed);
-          fprintf(f, "%s", line.c_str());
+          if (leaf->completed) {
+            std::string line =
+              std::format("L {} {}\n",
+                          (int64_t)leaf->reason,
+                          leaf->completed);
+            fprintf(f, "%s", line.c_str());
+          } else {
+            fprintf(f, "E\n");
+          }
         } else {
           Split *split = std::get_if<Split>(node.get());
           CHECK(split != nullptr) << "Must be leaf or split.";
@@ -315,10 +350,12 @@ struct Hypercube {
   using Node = std::variant<Split, Leaf>;
 
   struct Leaf {
-    // If 0, no info yet. Otherwise, the timestamp when it was completed.
+    // If 0, no info yet. Otherwise, the timestamp when it was completed
+    // and the RejectionReason.
     // Completed means we've determined that this cell cannot contain
     // a solution.
     int64_t completed = 0;
+    RejectionReason reason = REJECTION_UNKNOWN;
   };
 
   // Internal node, which is a binary split along one of the parameter
@@ -578,10 +615,11 @@ static Ballival SphericalPatchBall(const Bigival &azimuth,
   // chosen center. The furthest of these will determine the
   // radius.
   for (const BigRat &az_c : {azimuth.LB(), azimuth.UB()}) {
+    // The location of the corner.
+    Bigival c_sinz = Bigival::Sin(az_c, inv_epsilon);
+    Bigival c_cosz = Bigival::Cos(az_c, inv_epsilon);
+
     for (const BigRat &an_c : {angle.LB(), angle.UB()}) {
-      // The location of the corner.
-      Bigival c_sinz = Bigival::Sin(az_c, inv_epsilon);
-      Bigival c_cosz = Bigival::Cos(az_c, inv_epsilon);
       Bigival c_sina = Bigival::Sin(an_c, inv_epsilon);
       Bigival c_cosa = Bigival::Cos(an_c, inv_epsilon);
       Vec3ival corner(c_sina * c_cosz, c_sina * c_sinz, c_cosa);
@@ -726,6 +764,7 @@ inline static Vec2ival operator -(const Vec2ival &a,
 
 // This can certainly work on Vec3ival, but our input data at this point
 // is a single point and this is in inner loops.
+[[maybe_unused]]
 static Vec2ival TransformPointTo2D(const Frame3ival &frame,
                                    const BigVec3 &v) {
   // PERF don't even compute z component!
@@ -783,6 +822,49 @@ Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
     .z = std::move(zt),
     .o = Vec3ival{0, 0, 0},
   };
+}
+
+// Like TransformPointTo2D(
+//    FrameFromViewPos(ViewFromSpherical(azimuth, angle)), v)
+// but producing a tighter AABB. The azimuth and angle must be
+// less than 3 to avoid hemisphere-spanning patches.
+static Vec2ival TransformVec(const Bigival &azimuth, const Bigival &angle,
+                             const BigVec3 &v, const BigInt &inv_epsilon) {
+
+  // Preconditions.
+  CHECK(angle.Width() < BigRat(3));
+  CHECK(azimuth.Width() < BigRat(3));
+
+  std::optional<Vec2ival> aabb;
+
+  for (const BigRat &az : {azimuth.LB(), azimuth.UB()}) {
+    Bigival sin_az = Bigival::Sin(az, inv_epsilon);
+    Bigival cos_az = Bigival::Cos(az, inv_epsilon);
+
+    // x = dot(v, view_frame_x_axis)
+    // view_frame_x_axis = (-sin(az), cos(az), 0)
+    Bigival px = -v.x * sin_az + v.y * cos_az;
+
+    for (const BigRat &an : {angle.LB(), angle.UB()}) {
+      Bigival sin_an = Bigival::Sin(an, inv_epsilon);
+      Bigival cos_an = Bigival::Cos(an, inv_epsilon);
+
+      // y = dot(v, view_frame_y_axis)
+      // view_frame_y_axis = (-cos(an)cos(az), -cos(an)sin(az), sin(an))
+      Bigival py = -cos_an * (v.x * cos_az + v.y * sin_az) + v.z * sin_an;
+
+      Vec2ival corner_aabb(px, std::move(py));
+
+      if (aabb.has_value()) {
+        aabb.value().x = Bigival::Union(aabb.value().x, corner_aabb.x);
+        aabb.value().y = Bigival::Union(aabb.value().y, corner_aabb.y);
+      } else {
+        aabb = {std::move(corner_aabb)};
+      }
+    }
+  }
+
+  return aabb.value();
 }
 
 static std::string FormatNum(const BigInt &b) {
@@ -1004,13 +1086,6 @@ static Discival RotateDiscInnerBias(
   TryCorners(center_lb);
   TryCorners(center_ub);
 
-  /*
-  Vec2ival delta_lb = center_lb - bounding_center;
-  Vec2ival delta_ub = center_ub - bounding_center;
-  BigRat max_arc_dist_sq = BigRat::Max(MaxSqLength(delta_lb),
-                                       MaxSqLength(delta_ub));
-  */
-
   BigRat center_r = BigRat::SqrtBounds(max_arc_dist_sq, inv_epsilon).second;
   // The radius is bounded by the sum of the distance to the arc and the
   // distance from the arc to the arc's circumference (input disc's radius),
@@ -1134,23 +1209,11 @@ static Discival TranslateDisc(
 }
 
 struct Hypersolver {
-  enum RejectionReason {
-    UNKNOWN = 0,
-    OUTSIDE_OUTER_PATCH = 1,
-    OUTSIDE_INNER_PATCH = 2,
-    OUTSIDE_OUTER_PATCH_BALL = 3,
-    OUTSIDE_INNER_PATCH_BALL = 4,
-    POINT_OUTSIDE1 = 5,
-    POINT_OUTSIDE2 = 6,
-    POINT_OUTSIDE3 = 7,
-    POINT_OUTSIDE4 = 8,
-    POINT_OUTSIDE5 = 9,
-  };
 
   std::string_view RejectionReasonString(RejectionReason r) {
     switch (r) {
     default:
-    case UNKNOWN:
+    case REJECTION_UNKNOWN:
       return ARED("MISSING?");
     case OUTSIDE_OUTER_PATCH:
       return "OUT_PATCH";
@@ -1185,8 +1248,8 @@ struct Hypersolver {
   };
 
   struct Impossible {
-    RejectionReason reason = UNKNOWN;
-    Impossible(RejectionReason r = UNKNOWN) : reason(r) {}
+    RejectionReason reason = REJECTION_UNKNOWN;
+    Impossible(RejectionReason r = REJECTION_UNKNOWN) : reason(r) {}
     // For POINT_OUTSIDE, maybe could also record the point and
     // edge?
   };
@@ -1268,6 +1331,11 @@ struct Hypersolver {
     // The bounds for the inner points. We only have these if we
     // make it to a certain point in the test.
     std::vector<Vec2ival> inner;
+
+    // AABBs for the outer hull points. We don't even use these
+    // directly, but they can be useful for debugging.
+    std::vector<Vec2ival> outer;
+
     // Experimental: Bounding complexes for the rotated inner points.
     // A bounding complex is a union of some AABBs.
     // For this problem, this should be interpreted as "if all of
@@ -1369,7 +1437,7 @@ struct Hypersolver {
     }
 
     // TODO: if it's not the case that we're entirely within the outer
-    // patch, prioritize splitting outer angle/azimuth, unless the
+    // patch, prioritize splitting outer azimuth/angle, unless the
     // cells are tiny. We could maybe get into a situation where we
     // are unable to make progress because we are not actually in the
     // patch, and the hull is no longer even close to an attainable
@@ -1442,16 +1510,22 @@ struct Hypersolver {
     // the outer hull, whose vertices we call va, vb, etc.
 
     // The raw rotated vertices of the hull; va.
-    // We don't actually use these now!
-#if 0
-    std::vector<Vec2ival> outer_shadow;
-    outer_shadow.reserve(outer_hull.size());
-    for (int vidx : outer_hull) {
-      const BigVec3 &pa = scube.vertices[vidx];
-      outer_shadow.push_back(
-          TransformPointTo2D(outer_frame, pa));
+    // We don't actually use these now. We only compute them for
+    // debug data if that is enabled.
+    std::vector<Vec2ival> outer_aabb;
+    if (get_stats) {
+      outer_aabb.reserve(outer_hull.size());
+      for (int vidx : outer_hull) {
+        const BigVec3 &pa = scube.vertices[vidx];
+        /*
+        outer_aabb.push_back(
+            TransformPointTo2D(outer_frame, pa));
+        */
+
+        outer_aabb.push_back(
+            TransformVec(outer_azimuth, outer_angle, pa, inv_epsilon));
+      }
     }
-#endif
 
     // The hull edge vb-va, rotated by the outer frame.
     // We already precomputed the exact 3D vectors, so we
@@ -1460,7 +1534,10 @@ struct Hypersolver {
     outer_edge.reserve(outer_hull.size());
     for (int idx = 0; idx < outer_hull.size(); idx++) {
       const BigVec3 &edge_3d = outer_edge3d[idx];
-      outer_edge.push_back(TransformPointTo2D(outer_frame, edge_3d));
+      // outer_edge.push_back(TransformPointTo2D(outer_frame, edge_3d));
+
+      outer_edge.push_back(
+          TransformVec(outer_azimuth, outer_angle, edge_3d, inv_epsilon));
     }
 
     // The cross product va × vb.
@@ -1494,7 +1571,10 @@ struct Hypersolver {
     std::optional<RejectionReason> proved = std::nullopt;
     for (int idx : inner_hull) {
       const BigVec3 &original_v = scube.vertices[idx];
-      Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
+      // Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
+
+      Vec2ival proj_v = TransformVec(inner_azimuth, inner_angle,
+                                     original_v, inv_epsilon);
 
       // The simpler thing here would be to compute bounds on the point
       // v as a Vec2ival. These are axis-aligned bounding boxes. But
@@ -1638,6 +1718,7 @@ struct Hypersolver {
     res.inner = std::move(inner);
     res.complexes = std::move(complexes);
     res.discs = std::move(discs);
+    res.outer = std::move(outer_aabb);
 
     if (proved.has_value()) {
       res.result = Impossible(proved.value());
@@ -1712,8 +1793,8 @@ struct Hypersolver {
 
 
   // Corner of the hypervolume indicated by bitmask.
-  std::array<double, NUM_DIMENSIONS> VolumeCorner(const Volume &volume,
-                                                  uint32_t corner) {
+  static std::array<double, NUM_DIMENSIONS> VolumeCorner(const Volume &volume,
+                                                         uint32_t corner) {
     std::array<double, NUM_DIMENSIONS> sample;
     for (int d = 0; d < NUM_DIMENSIONS; d++) {
       if (corner & (1 << d)) {
@@ -1725,7 +1806,7 @@ struct Hypersolver {
     return sample;
   }
 
-  vec3 ViewFromSpherical(double angle, double azimuth) {
+  static vec3 ViewFromSpherical(double azimuth, double angle) {
     double sina = std::sin(angle);
     vec3 view(
         sina * std::cos(azimuth),
@@ -1787,16 +1868,16 @@ struct Hypersolver {
       }
 
       vec3 oview = ViewFromSpherical(
-          sample[OUTER_ANGLE],
-          sample[OUTER_AZIMUTH]);
+          sample[OUTER_AZIMUTH],
+          sample[OUTER_ANGLE]);
       frame3 oviewpos = FrameFromViewPos(oview);
-      const bool opatch = boundaries.GetCode(oview) == outer_code;
+      const bool opatch = boundaries.GetCodeSloppy(oview) == outer_code;
 
       vec3 iview = ViewFromSpherical(
-          sample[INNER_ANGLE],
-          sample[INNER_AZIMUTH]);
+          sample[INNER_AZIMUTH],
+          sample[INNER_ANGLE]);
       frame3 iviewpos = FrameFromViewPos(iview);
-      const bool ipatch = boundaries.GetCode(iview) == inner_code;
+      const bool ipatch = boundaries.GetCodeSloppy(iview) == inner_code;
 
       // Plot hulls.
       std::vector<vec2> outer_shadow =
@@ -1981,22 +2062,15 @@ struct Hypersolver {
 
         double sr = scaler.ScaleX(disc.center.x.ToDouble() + r) - sx;
 
-        /*
-        // XXX can go back to std::sqrt(rsq.todouble)
-        const auto &[slb, sub] =
-          BigRat::SqrtBounds(disc.radius_sq,
-                             BigInt(1024 * 1024 * 1024) * 1024 * 1024);
-        double r1 = scaler.ScaleX(slb.ToDouble());
-        double r2 = scaler.ScaleY(slb.ToDouble());
-        img.BlendCircle32(sx, sy, r1, color);
-        img.BlendCircle32(sx, sy, r2, color | 0xFF000000);
-        */
-
         img.BlendCircle32(sx, sy, sr, color);
       };
 
     for (const Vec2ival &v : pr.inner) {
       DrawAABB(v, 0x33FF3366);
+    }
+
+    for (const Vec2ival &v : pr.outer) {
+      DrawAABB(v, 0xFF333366);
     }
 
     // And the complexes.
@@ -2083,12 +2157,12 @@ struct Hypersolver {
 
     uint64_t all_code = 0;
     for (int b = 0; b < 0b11; b++) {
-      double angle = (b & 0b01) ? angle_ival.LB().ToDouble() :
-        angle_ival.UB().ToDouble();
       double azimuth = (b & 0b10) ? azimuth_ival.LB().ToDouble() :
         azimuth_ival.UB().ToDouble();
+      double angle = (b & 0b01) ? angle_ival.LB().ToDouble() :
+        angle_ival.UB().ToDouble();
 
-      vec3 view = ViewFromSpherical(angle, azimuth);
+      vec3 view = ViewFromSpherical(azimuth, angle);
       uint64_t code = boundaries.GetCodeSloppy(view);
       if (b == 0 || code == all_code) {
         all_code = code;
@@ -2132,8 +2206,8 @@ struct Hypersolver {
     Periodically status_per(1);
     Periodically save_per(15 * 60);
     Periodically sample_per(60 * 10);
-    Periodically sample_proved_per(60 * 1);
-    Periodically render_per(60 * 1.1); // 0.1);
+    Periodically sample_proved_per(60 * 9.1);
+    Periodically render_per(60 * 10.1);
 
     BigRat full_volume = Hypervolume(hypercube->bounds);
     double full_volume_d = full_volume.ToDouble();
@@ -2275,6 +2349,7 @@ struct Hypersolver {
         Hypercube::Leaf *leaf = std::get_if<Hypercube::Leaf>(node.get());
         CHECK(leaf != nullptr) << "Bug: We only expand leaves!";
         leaf->completed = time(nullptr);
+        leaf->reason = imp->reason;
 
         counter_completed++;
 

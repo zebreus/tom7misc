@@ -444,6 +444,11 @@ struct Bigival {
     }
   }
 
+  // Return the smallest interval that contains both intervals.
+  static Bigival Union(const Bigival &a, const Bigival &b) {
+    return Bigival(Min(a.lb, b.lb), Max(a.ub, b.ub));
+  }
+
   // True if the interval contains just one number; the number
   // is then equal to the LB (and UB).
   bool Singular() const {
