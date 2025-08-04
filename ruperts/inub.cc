@@ -237,10 +237,12 @@ struct Hypercube {
           std::string line_string = Util::NormalizeWhitespace(raw_line);
           std::string_view line(line_string);
           if (line.empty()) return;
-          CHECK(line.size() > 2);
 
           char cmd = line[0];
-          line.remove_prefix(2);
+          line.remove_prefix(1);
+          if (!line.empty() && line[0] == ' ')
+            line.remove_prefix(1);
+
           if (cmd == 'E') {
             auto leaf =
               std::make_shared<Hypercube::Node>(Leaf{
@@ -249,9 +251,9 @@ struct Hypercube {
                 });
             stack.push_back(std::move(leaf));
 
-          } if (cmd == 'L') {
+          } else if (cmd == 'L') {
             int64_t r = Util::ParseInt64(Util::Chop(&line), -1);
-            CHECK(r > 0 && r < NUM_REJECTION_REASONS) << line;
+            CHECK(r > 0 && r < NUM_REJECTION_REASONS) << raw_line;
             int64_t comp = Util::ParseInt64(Util::Chop(&line), -1);
             CHECK(comp >= 0) << line;
             auto leaf =
@@ -262,7 +264,7 @@ struct Hypercube {
             stack.push_back(std::move(leaf));
           } else if (cmd == 'S') {
             int axis = Util::ParseInt64(Util::Chop(&line), -1);
-            CHECK(axis >= 0 && axis < NUM_DIMENSIONS) << line;
+            CHECK(axis >= 0 && axis < NUM_DIMENSIONS) << raw_line;
             BigRat split_pt(Util::Chop(&line));
 
             CHECK(stack.size() >= 2) << "Saw split node, so there "
@@ -281,7 +283,7 @@ struct Hypercube {
             stack.push_back(std::move(split));
 
           } else {
-            LOG(FATAL) << "Bad line in cube file: " << line;
+            LOG(FATAL) << "Bad line in cube file: " << raw_line;
           }
         });
 
@@ -570,12 +572,59 @@ struct Ballival {
   }
 };
 
+// We work with spherical coordinates (azimuth/angle intervals) to
+// represent the bounds on the outer and inner view positions.
+// Various operations will use the intervals for the corners of
+// this AABB (since this bounds the values as long as the
+// intervals are not hemisphere-sized) and will want to compute
+// the sine and cosine of these (expensive). Compute that up front.
+struct ViewBoundsTrig {
+
+  ViewBoundsTrig(Bigival azimuth_in, Bigival angle_in,
+                 BigInt inv_epsilon_in) :
+    azimuth(std::move(azimuth_in)), angle(std::move(angle_in)),
+    inv_epsilon(inv_epsilon_in) {
+
+    CHECK(azimuth.Width() < BigRat(3) &&
+          angle.Width() < BigRat(3)) << "Precondition!";
+
+    // PERF: Since we use these a lot of times, we might want
+    // to spend time up front to compute higher-quality bounds
+    // (simpler rationals). We can still stay within the
+    // inv_epsilon target.
+    sin_cos_az[0] =
+      std::make_pair(Bigival::Sin(azimuth.LB(), inv_epsilon),
+                     Bigival::Cos(azimuth.LB(), inv_epsilon));
+    sin_cos_az[1] =
+      std::make_pair(Bigival::Sin(azimuth.UB(), inv_epsilon),
+                     Bigival::Cos(azimuth.UB(), inv_epsilon));
+
+    sin_cos_an[0] =
+      std::make_pair(Bigival::Sin(angle.LB(), inv_epsilon),
+                     Bigival::Cos(angle.LB(), inv_epsilon));
+    sin_cos_an[1] =
+      std::make_pair(Bigival::Sin(angle.UB(), inv_epsilon),
+                     Bigival::Cos(angle.UB(), inv_epsilon));
+  }
+
+  // TODO: Can efficiently compute azimuth.Cos() etc.
+
+  Bigival azimuth;
+  Bigival angle;
+
+  BigInt inv_epsilon;
+
+  // These are ordered as lb, ub.
+  std::array<std::pair<Bigival, Bigival>, 2> sin_cos_az;
+
+  std::array<std::pair<Bigival, Bigival>, 2> sin_cos_an;
+};
+
 // Compute a bounding ball for the patch on the unit sphere
 // given by the azimuth and angle (this is the view position).
 // The patch must be smaller than a hemisphere or you will
 // get a degenerate (but correct) result.
-static Ballival SphericalPatchBall(const Bigival &azimuth,
-                                   const Bigival &angle,
+static Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
                                    const BigInt &inv_epsilon) {
 
   // We need the chosen center to be in the convex hull of the patch.
@@ -583,14 +632,14 @@ static Ballival SphericalPatchBall(const Bigival &azimuth,
   // is a whole hemisphere we'd need to start checking other points.
   // Just return a conservative but degenerate ball (full unit ball)
   // if the intervals are too wide.
-  if (azimuth.Width() > BigRat(3) || angle.Width() > BigRat(3)) {
+  if (trig.azimuth.Width() > BigRat(3) || trig.angle.Width() > BigRat(3)) {
     return Ballival(BigVec3(BigRat(0), BigRat(0), BigRat(0)),
                     BigRat(1));
   }
 
   // Compute a good center.
-  BigRat mid_azimuth = azimuth.Midpoint();
-  BigRat mid_angle = angle.Midpoint();
+  BigRat mid_azimuth = trig.azimuth.Midpoint();
+  BigRat mid_angle = trig.angle.Midpoint();
 
   Bigival mid_sinz = Bigival::Sin(mid_azimuth, inv_epsilon);
   Bigival mid_cosz = Bigival::Cos(mid_azimuth, inv_epsilon);
@@ -614,14 +663,9 @@ static Ballival SphericalPatchBall(const Bigival &azimuth,
   // The corners of the patch are the furthest away from the
   // chosen center. The furthest of these will determine the
   // radius.
-  for (const BigRat &az_c : {azimuth.LB(), azimuth.UB()}) {
-    // The location of the corner.
-    Bigival c_sinz = Bigival::Sin(az_c, inv_epsilon);
-    Bigival c_cosz = Bigival::Cos(az_c, inv_epsilon);
-
-    for (const BigRat &an_c : {angle.LB(), angle.UB()}) {
-      Bigival c_sina = Bigival::Sin(an_c, inv_epsilon);
-      Bigival c_cosa = Bigival::Cos(an_c, inv_epsilon);
+  for (const auto &[c_sinz, c_cosz] : trig.sin_cos_az) {
+    for (const auto &[c_sina, c_cosa] : trig.sin_cos_an) {
+      // The location of the corner.
       Vec3ival corner(c_sina * c_cosz, c_sina * c_sinz, c_cosa);
 
       // Distance to the actual center.
@@ -828,26 +872,21 @@ Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
 //    FrameFromViewPos(ViewFromSpherical(azimuth, angle)), v)
 // but producing a tighter AABB. The azimuth and angle must be
 // less than 3 to avoid hemisphere-spanning patches.
-static Vec2ival TransformVec(const Bigival &azimuth, const Bigival &angle,
+static Vec2ival TransformVec(const ViewBoundsTrig &trig,
                              const BigVec3 &v, const BigInt &inv_epsilon) {
 
   // Preconditions.
-  CHECK(angle.Width() < BigRat(3));
-  CHECK(azimuth.Width() < BigRat(3));
+  CHECK(trig.angle.Width() < BigRat(3));
+  CHECK(trig.azimuth.Width() < BigRat(3));
 
   std::optional<Vec2ival> aabb;
 
-  for (const BigRat &az : {azimuth.LB(), azimuth.UB()}) {
-    Bigival sin_az = Bigival::Sin(az, inv_epsilon);
-    Bigival cos_az = Bigival::Cos(az, inv_epsilon);
-
+  for (const auto &[sin_az, cos_az] : trig.sin_cos_az) {
     // x = dot(v, view_frame_x_axis)
     // view_frame_x_axis = (-sin(az), cos(az), 0)
     Bigival px = -v.x * sin_az + v.y * cos_az;
 
-    for (const BigRat &an : {angle.LB(), angle.UB()}) {
-      Bigival sin_an = Bigival::Sin(an, inv_epsilon);
-      Bigival cos_an = Bigival::Cos(an, inv_epsilon);
+    for (const auto &[sin_an, cos_an] : trig.sin_cos_an) {
 
       // y = dot(v, view_frame_y_axis)
       // view_frame_y_axis = (-cos(an)cos(az), -cos(an)sin(az), sin(an))
@@ -872,10 +911,10 @@ static Vec2ival TransformVec(const Bigival &azimuth, const Bigival &angle,
 // tighter bounds. As above, the angle intervals must both
 // be less than 3 radians.
 static Bigival BoundDotProductWithView(
-    const Bigival &azimuth, const Bigival &angle,
+    const ViewBoundsTrig &trig,
     const BigVec3 &v, const BigInt &inv_epsilon) {
-  CHECK(azimuth.Width() < BigRat(3));
-  CHECK(angle.Width() < BigRat(3));
+  CHECK(trig.azimuth.Width() < BigRat(3));
+  CHECK(trig.angle.Width() < BigRat(3));
 
   std::optional<Bigival> aabb;
 
@@ -884,16 +923,10 @@ static Bigival BoundDotProductWithView(
   //   factor out w = (v.x*cos(az) + v.y*sin(az)),
   //   since this only depends on the azimuth.
 
-  for (const BigRat &az : {azimuth.LB(), azimuth.UB()}) {
-    Bigival sin_az = Bigival::Sin(az, inv_epsilon);
-    Bigival cos_az = Bigival::Cos(az, inv_epsilon);
-
+  for (const auto &[sin_az, cos_az] : trig.sin_cos_az) {
     Bigival w = v.x * cos_az + v.y * sin_az;
 
-    for (const BigRat &an : {angle.LB(), angle.UB()}) {
-      Bigival sin_an = Bigival::Sin(an, inv_epsilon);
-      Bigival cos_an = Bigival::Cos(an, inv_epsilon);
-
+    for (const auto &[sin_an, cos_an] : trig.sin_cos_an) {
       Bigival dot_at_corner = sin_an * w + v.z * cos_an;
 
       if (aabb.has_value()) {
@@ -1387,7 +1420,10 @@ struct Hypersolver {
     std::vector<Discival> discs;
   };
 
-
+  // Process one volume, either proving it impossible or requesting
+  // a split. If get_stats is true, it computes some additional data
+  // for visualization or estimating AABB efficiency (more expensive).
+  // This is where all the work happens. Thread safe and lock-free.
   ProcessResult ProcessOne(const Volume &volume, bool get_stats) {
     const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
     const Bigival &outer_angle = volume[OUTER_ANGLE];
@@ -1435,10 +1471,9 @@ struct Hypersolver {
       }
     }
 
-    // This is enough to test whether we're in the outer patch;
-    // we'd like to exclude large regions ASAP (without e.g. forcing
-    // splits on the inner parameters), so compute and test that
-    // now.
+    // We'll use the sin and cos of the azimuth/angle bounds
+    // many times, and the trig functions are expensive. Compute
+    // those once up front.
 
     // TODO: Should have some principled derivation of epsilon here.
     // There's no correctness problem, but I just pulled
@@ -1448,8 +1483,16 @@ struct Hypersolver {
     // smaller.
     BigInt inv_epsilon = min_width.Denominator() * 1024 * 1024;
 
+    ViewBoundsTrig outer_trig(outer_azimuth, outer_angle, inv_epsilon);
+    ViewBoundsTrig inner_trig(inner_azimuth, inner_angle, inv_epsilon);
+
+    // This is enough to test whether we're in the outer patch;
+    // we'd like to exclude large regions ASAP (without e.g. forcing
+    // splits on the inner parameters), so compute and test that
+    // now.
     Bigival osina = outer_angle.Sin(inv_epsilon);
     Vec3ival oviewpos = Vec3ival(
+        // PERF from ViewBoundsTrig
         osina * outer_azimuth.Cos(inv_epsilon),
         osina * outer_azimuth.Sin(inv_epsilon),
         outer_angle.Cos(inv_epsilon));
@@ -1459,8 +1502,7 @@ struct Hypersolver {
     }
 
     {
-      Ballival oviewposball = SphericalPatchBall(outer_azimuth,
-                                                 outer_angle,
+      Ballival oviewposball = SphericalPatchBall(outer_trig,
                                                  inv_epsilon);
       if (!MightHaveCodeWithBall(outer_code, outer_mask, oviewposball)) {
         return ProcessResult{.result = Impossible(OUTSIDE_OUTER_PATCH_BALL)};
@@ -1477,14 +1519,6 @@ struct Hypersolver {
       return ProcessResult{.result = Split({OUTER_AZIMUTH, OUTER_ANGLE})};
     }
 
-    // TODO: if it's not the case that we're entirely within the outer
-    // patch, prioritize splitting outer azimuth/angle, unless the
-    // cells are tiny. We could maybe get into a situation where we
-    // are unable to make progress because we are not actually in the
-    // patch, and the hull is no longer even close to an attainable
-    // shape. In that case, there may be actual solutions, and we
-    // might keep trying to bisect to rule them out (but can't).
-
     // Now the same idea for the inner patch.
 
     {
@@ -1497,6 +1531,7 @@ struct Hypersolver {
       }
     }
 
+    // PERF get from trig
     Bigival isina = inner_angle.Sin(inv_epsilon);
     Vec3ival iviewpos = Vec3ival(
         isina * inner_azimuth.Cos(inv_epsilon),
@@ -1508,8 +1543,7 @@ struct Hypersolver {
     }
 
     {
-      Ballival iviewposball = SphericalPatchBall(inner_azimuth,
-                                                 inner_angle,
+      Ballival iviewposball = SphericalPatchBall(inner_trig,
                                                  inv_epsilon);
       if (!MightHaveCodeWithBall(inner_code, inner_mask, iviewposball)) {
         return ProcessResult{.result = Impossible(OUTSIDE_INNER_PATCH_BALL)};
@@ -1523,10 +1557,15 @@ struct Hypersolver {
     }
 
 
-    // Now, our interval overlaps the patches. But further
+    // Heuristic: Now, our interval overlaps the patches. But further
     // subdivide unless it is entirely within the patch, or
-    // is small. (Heuristic)
+    // is small. The idea behind this is that the problem might actually
+    // have (spurious) solutions when we are viewing the hulls from
+    // outside the patch, and if this is true then we would endlessly
+    // subdivide trying to rule them out. So when we are on an edge,
+    // insist that we at least have reasonably fine starting cell sizes.
     if (!VolumeInsidePatches(volume)) {
+      // TODO: Tune this?
       // About one degree.
       // BigRat MIN_SMALL_ANGLE(3, 172);
       // About two degrees.
@@ -1566,7 +1605,7 @@ struct Hypersolver {
         */
 
         outer_aabb.push_back(
-            TransformVec(outer_azimuth, outer_angle, pa, inv_epsilon));
+            TransformVec(outer_trig, pa, inv_epsilon));
       }
     }
 
@@ -1580,7 +1619,7 @@ struct Hypersolver {
       // outer_edge.push_back(TransformPointTo2D(outer_frame, edge_3d));
 
       outer_edge.push_back(
-          TransformVec(outer_azimuth, outer_angle, edge_3d, inv_epsilon));
+          TransformVec(outer_trig, edge_3d, inv_epsilon));
     }
 
     // The cross product va × vb.
@@ -1592,7 +1631,7 @@ struct Hypersolver {
       const BigVec3 &edge_cross = outer_cx3d[idx];
 
       outer_cross_va_vb.push_back(
-          BoundDotProductWithView(outer_azimuth, outer_angle,
+          BoundDotProductWithView(outer_trig,
                                   edge_cross,
                                   inv_epsilon));
 
@@ -1622,7 +1661,7 @@ struct Hypersolver {
       const BigVec3 &original_v = scube.vertices[idx];
       // Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
 
-      Vec2ival proj_v = TransformVec(inner_azimuth, inner_angle,
+      Vec2ival proj_v = TransformVec(inner_trig,
                                      original_v, inv_epsilon);
 
       // The simpler thing here would be to compute bounds on the point
