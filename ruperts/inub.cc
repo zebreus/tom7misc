@@ -864,6 +864,47 @@ static Vec2ival TransformVec(const Bigival &azimuth, const Bigival &angle,
     }
   }
 
+  CHECK(aabb.has_value());
+  return aabb.value();
+}
+
+// Like Dot(ViewFromSpherical(azimuth, angle), v) but gives
+// tighter bounds. As above, the angle intervals must both
+// be less than 3 radians.
+static Bigival BoundDotProductWithView(
+    const Bigival &azimuth, const Bigival &angle,
+    const BigVec3 &v, const BigInt &inv_epsilon) {
+  CHECK(azimuth.Width() < BigRat(3));
+  CHECK(angle.Width() < BigRat(3));
+
+  std::optional<Bigival> aabb;
+
+  // viewpos = (sin(an)cos(az), sin(an)sin(az), cos(an))
+  // dot(viewpos, v) = sin(an) * (v.x*cos(az) + v.y*sin(az)) + v.z*cos(an)
+  //   factor out w = (v.x*cos(az) + v.y*sin(az)),
+  //   since this only depends on the azimuth.
+
+  for (const BigRat &az : {azimuth.LB(), azimuth.UB()}) {
+    Bigival sin_az = Bigival::Sin(az, inv_epsilon);
+    Bigival cos_az = Bigival::Cos(az, inv_epsilon);
+
+    Bigival w = v.x * cos_az + v.y * sin_az;
+
+    for (const BigRat &an : {angle.LB(), angle.UB()}) {
+      Bigival sin_an = Bigival::Sin(an, inv_epsilon);
+      Bigival cos_an = Bigival::Cos(an, inv_epsilon);
+
+      Bigival dot_at_corner = sin_an * w + v.z * cos_an;
+
+      if (aabb.has_value()) {
+        aabb = Bigival::Union(aabb.value(), dot_at_corner);
+      } else {
+        aabb = std::move(dot_at_corner);
+      }
+    }
+  }
+
+  CHECK(aabb.has_value());
   return aabb.value();
 }
 
@@ -1487,7 +1528,9 @@ struct Hypersolver {
     // is small. (Heuristic)
     if (!VolumeInsidePatches(volume)) {
       // About one degree.
-      BigRat MIN_SMALL_ANGLE(3, 172);
+      // BigRat MIN_SMALL_ANGLE(3, 172);
+      // About two degrees.
+      BigRat MIN_SMALL_ANGLE(6, 172);
 
       ParameterSet must_split;
       if (oz_width > MIN_SMALL_ANGLE) must_split.Add(OUTER_AZIMUTH);
@@ -1547,7 +1590,13 @@ struct Hypersolver {
       // Can derive this from the original 3D edge, and we've
       // precomputed its 3D cross product.
       const BigVec3 &edge_cross = outer_cx3d[idx];
-      outer_cross_va_vb.push_back(Dot(oviewpos, edge_cross));
+
+      outer_cross_va_vb.push_back(
+          BoundDotProductWithView(outer_azimuth, outer_angle,
+                                  edge_cross,
+                                  inv_epsilon));
+
+      // outer_cross_va_vb.push_back(Dot(oviewpos, edge_cross));
     }
 
     std::vector<Vec2ival> inner;
@@ -1590,7 +1639,14 @@ struct Hypersolver {
       std::vector<Vec2ival> complex =
         GetBoundingComplex(proj_v, inner_rot, inv_epsilon, inner_x, inner_y);
 
-      // XXX bias: BigRat(11, 10)
+      // TODO: Tune bias. We can even try more than one, or choose
+      // randomly.
+      //
+      // TODO: Another option here would be to represent the sausage
+      // itself (endpoints, original disc radius). If both end discs
+      // are outside the edge, then we are likely in a rejection
+      // scenario and we could do something like search for a bias
+      // parameter.
       Discival disc_in(proj_v);
       Discival rot_disc = RotateDiscInnerBias(
           disc_in, inner_rot, BigRat(3, 2), inv_epsilon);
@@ -2149,7 +2205,7 @@ struct Hypersolver {
   }
 
   std::optional<uint64_t> GetCornerCode(const Volume &volume,
-                                        int angle, int azimuth) {
+                                        int angle, int azimuth) const {
     CHECK(angle >= 0 && angle < NUM_DIMENSIONS);
     CHECK(azimuth >= 0 && azimuth < NUM_DIMENSIONS);
     const Bigival &angle_ival = volume[angle];
@@ -2175,7 +2231,8 @@ struct Hypersolver {
   }
 
   // Assumes double precision works, but is otherwise exact.
-  bool VolumeInsidePatches(const Volume &volume) {
+  // Only used for heuristics.
+  bool VolumeInsidePatches(const Volume &volume) const {
     std::optional<uint64_t> oc =
       GetCornerCode(volume, OUTER_ANGLE, OUTER_AZIMUTH);
     if (!oc.has_value() || oc.value() != outer_code)
