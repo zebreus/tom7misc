@@ -206,7 +206,46 @@ struct BigInt {
  private:
   friend struct BigRat;
 #ifdef BIG_USE_GMP
+
+  #if 0
+  // mpz does not have a good representation for small integers;
+  // it performs an allocation even to store zero! We pierce
+  // the veil a little bit here. When the limbs pointer is null,
+  // then we are storing our own integer.
+
+  // In progress and experimental!
+
+  static_assert(offsetof(MP_INT, _mp_d) >= 8,
+                "Need space for an int64_t at the beginning of "
+                "the union.");
+  struct Rep {
+    union {
+      MP_INT mpz[1];
+      int64_t small_int;
+    } u;
+
+    Rep() {
+      // zero initialized represents zero; small_int is 0
+      // and _mp_d is null, indicating IsSmall.
+      memset(u.mpz, 0, sizeof (MP_INT));
+    }
+
+    bool IsSmall() const {
+      return u.mpz._mp_d == nullptr;
+    }
+
+    void Promote() {
+      if (IsSmall()) {
+        const int64_t small = u.small_int;
+        mpz_init(u.mpz);
+        // XXX
+      }
+    }
+  };
+  #endif
   using Rep = mpz_t;
+
+
   void SetU64(uint64_t u) {
     // Need to be able to set 4 bytes at a time.
     static_assert(sizeof (unsigned long int) >= 4);
@@ -215,6 +254,19 @@ struct BigInt {
     mpz_set_ui(rep, hi);
     mpz_mul_2exp(rep, rep, 32);
     mpz_add_ui(rep, rep, lo);
+  }
+
+  void SetI64(int64_t i) {
+    if (i < 0) {
+      // Note: Most negative value cannot be negated!
+      uint64_t u = std::bit_cast<uint64_t>(i);
+      // Manual two's complement negation.
+      u = ~u + 1;
+      SetU64(u);
+      mpz_neg(rep, rep);
+    } else {
+      SetU64((uint64_t)i);
+    }
   }
 
   // XXX figure out how to hide this stuff away.
@@ -443,12 +495,7 @@ BigInt::BigInt(std::integral auto ni) {
     static_assert(sizeof (T) <= sizeof (int64_t));
     const int64_t n = ni;
     mpz_init(rep);
-    if (n < 0) {
-      SetU64((uint64_t)-n);
-      mpz_neg(rep, rep);
-    } else {
-      SetU64((uint64_t)n);
-    }
+    SetI64(n);
   } else {
     static_assert(std::unsigned_integral<T>);
     static_assert(sizeof (T) <= sizeof (uint64_t));
@@ -548,9 +595,8 @@ int BigInt::Sign(const BigInt &a) {
 
 std::optional<int64_t> BigInt::ToInt() const {
   // Get the number of bits, ignoring sign.
-  if (mpz_sizeinbase(rep, 2) > 63) {
-    return std::nullopt;
-  } else {
+  size_t num_bits = mpz_sizeinbase(rep, 2);
+  if (num_bits <= 63) {
     // "buffer" where result is written
     uint64_t digit = 0;
     size_t count = 0;
@@ -571,6 +617,20 @@ std::optional<int64_t> BigInt::ToInt() const {
       return {-(int64_t)digit};
     }
     return {(int64_t)digit};
+  } else if (num_bits == 64) {
+
+    // There is one 64-bit number where we could succeed, which is
+    //  std::numeric_limits<int64_t>::lowest().
+    if (mpz_sgn(rep) == -1 &&
+        mpz_getlimbn(rep, 0) == uint64_t{0x8000000000000000}) [[unlikely]] {
+      // Since we know it's exactly 64 bits, we've uniquely identified
+      // the value.
+      return std::numeric_limits<int64_t>::lowest();
+    }
+
+    return std::nullopt;
+  } else {
+    return std::nullopt;
   }
 }
 

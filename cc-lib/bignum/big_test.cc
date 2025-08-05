@@ -60,6 +60,12 @@ static void TestToString() {
     // can inadvertently leave nul bytes.
     for (char c : s) CHECK(c != 0) << i;
   }
+
+  std::string max_neg =
+    BigInt(std::numeric_limits<int64_t>::lowest()).ToString();
+  fprintf(stderr, "%s\n", max_neg.c_str());
+
+  CHECK_SEQ(max_neg, "-9223372036854775808");
 }
 
 static void TestSign() {
@@ -67,6 +73,8 @@ static void TestSign() {
   CHECK(BigInt::Sign(BigInt(0)) == 0);
   CHECK(BigInt::Sign(BigInt("19823749283749817")) == 1);
   CHECK(BigInt::Sign(BigInt("-999999999999999999999")) == -1);
+
+  CHECK(BigInt::Sign(BigInt(std::numeric_limits<int64_t>::lowest())) == -1);
 }
 
 static void CopyAndAssign() {
@@ -119,6 +127,10 @@ static void TestToU64() {
     CHECK(uo.has_value() && uo.value() == (uint64_t)-1);
   }
 
+  {
+    BigInt bi = BigInt(std::numeric_limits<int64_t>::lowest());
+    CHECK(!bi.ToU64().has_value());
+  }
 }
 
 static void HashCode() {
@@ -618,6 +630,11 @@ static void TestToInt() {
   ROUNDTRIP(0x80000000LL);
   ROUNDTRIP(0x7FFFFFFFFFFFFFFELL);
   ROUNDTRIP(0x7FFFFFFFFFFFFFFFLL);
+  ROUNDTRIP(std::numeric_limits<int64_t>::lowest());
+
+  CHECK(BigInt::Minus(
+            BigInt::Negate(BigInt(int64_t{0x7FFFFFFFFFFFFFFF})),
+            BigInt(1)).ToInt().has_value());
 
 # define NOROUNDTRIP(bi) do {                                     \
     std::optional<int64_t> io = (bi).ToInt();                     \
@@ -626,11 +643,12 @@ static void TestToInt() {
   } while (false)
   NOROUNDTRIP(BigInt::Plus(BigInt(int64_t{0x7FFFFFFFFFFFFFFF}),
                            BigInt(1)));
-  NOROUNDTRIP(BigInt::Minus(
-                  BigInt::Negate(BigInt(int64_t{0x7FFFFFFFFFFFFFFF})),
-                  BigInt(1)));
   NOROUNDTRIP(BigInt::Times(BigInt(int64_t{0x7FFFFFFFFFFFFFFF}),
                             BigInt(10000)));
+
+  NOROUNDTRIP(BigInt::Minus(
+                  BigInt(std::numeric_limits<int64_t>::lowest()),
+                  1));
 
 # undef ROUNDTRIP
 # undef NOROUNDTRIP

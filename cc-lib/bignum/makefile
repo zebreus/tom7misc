@@ -57,6 +57,8 @@ big-numbers_test.exe : big-numbers_test.o big.o big-numbers.o $(CCLIB_TEST_OBJEC
 polynomial_test.exe : polynomial_test.o polynomial.o big.o big-numbers.o $(CCLIB_TEST_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
+big_bench.exe : big_bench.o big.o $(CCLIB_TEST_OBJECTS)
+	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
 # Without GMP
 
