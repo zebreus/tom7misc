@@ -92,12 +92,12 @@ static int DoSomeMath(ArcFour *rc) {
 
 struct BenchDef {
   int (*fn)(ArcFour *);
-  int num_samples = 100;
+  int num_samples = 1000;
   const char *name;
 };
 
 static std::initializer_list<BenchDef> BENCHES = {
-  {.fn = &DoSomeMath, .num_samples = 100, .name = "some_math"},
+  {.fn = &DoSomeMath, .num_samples = 1000, .name = "some_math"},
 };
 
 static void RunBench() {
