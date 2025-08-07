@@ -31,8 +31,8 @@ else
   # I turned off format string warnings on linux, since it complains about
   # %lld and I can't figure out any way to disable just that warning. :(
   # PLATFORM_CFLAGS=-fsanitize=undefined -fsanitize=address -Wno-format
-  # For profiling
-  PLATFORM_CFLAGS=-pg -Wno-format -DRUN_LOOP=1
+  # For profiling: -pg
+  PLATFORM_CFLAGS= -Wno-format -DRUN_LOOP=1
   GMP_LFLAGS=-lgmp
   GMP_CFLAGS=-DBIG_USE_GMP
 endif
@@ -41,7 +41,7 @@ CC_LIB=../cc-lib
 SOS=../sos
 
 # Add this to see dead code: -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--print-gc-sections
-CXXFLAGS=-std=c++20 -I $(SOS) -I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -Wall $(PLATFORM_CFLAGS)
+CXXFLAGS=-std=c++20 -I $(SOS) -I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -mtune=native -Wall $(PLATFORM_CFLAGS)
 LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)
 
 HEADERS=quadmodll64.h quad64.h $(CC_LIB)/montgomery64.h $(CC_LIB)/numbers.h
@@ -54,7 +54,7 @@ SOS_OBJECTS=$(SOS)/sos-util.o
 
 ALPERTRON_OBJECTS=quad64.o quadmodll64.o
 
-quad.exe:  main.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
+quad.exe : main.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
@@ -79,7 +79,7 @@ test.exe : test.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 clean:
-	rm -f *.o $(TEST_CC_LIB_OBJECTS) coverage.out *.exe
+	rm -f *.o $(SOS_OBJECTS) $(CC_LIB_OBJECTS) $(TEST_CC_LIB_OBJECTS) coverage.out *.exe
 
 
 # This file is part of Alpertron Calculators.

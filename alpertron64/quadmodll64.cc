@@ -19,15 +19,14 @@
 #include "quadmodll64.h"
 
 #include <bit>
+#include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <format>
+#include <math.h>
+#include <memory>
 #include <optional>
 #include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <cassert>
-#include <memory>
-#include <cstdio>
 #include <utility>
 #include <vector>
 

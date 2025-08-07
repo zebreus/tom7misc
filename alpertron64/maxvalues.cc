@@ -19,7 +19,6 @@
 #include "atomic-util.h"
 #include "auto-histo.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "crypt/lfsr.h"
@@ -109,7 +108,7 @@ static void RunGrid() {
                             uint64_t x, uint64_t y) {
               uint64_t r = x * x + y * y;
               if (r != f) {
-                std::string problem = StringPrintf("%lld", f);
+                std::string problem = std::format("{}", f);
 
                 printf("\n\n\n\n\n"
                        "Invalid solution on problem: %s\n\n\n",
@@ -141,7 +140,7 @@ static void RunGrid() {
 
           if (sols.interesting_coverage) {
             count_interesting++;
-            std::string problem = StringPrintf("%lld", f);
+            std::string problem = std::format("{}", f);
             printf("\n\n" APURPLE("Coverage!") " %s\n\n",
                    problem.c_str());
             MutexLock ml(&file_mutex);
@@ -181,17 +180,17 @@ static void RunGrid() {
             double sec = start_time.Seconds();
             double qps = done / sec;
             double spq = sec / done;
-            std::string timing = StringPrintf(AWHITE("%.3f")
-                                              " solved/sec (%s ea.) "
-                                              AGREY(" Seed: [%s]"),
-                                              qps,
-                                              ANSI::Time(spq).c_str(),
-                                              seed.c_str());
+            std::string timing = std::format(AWHITE("{:.3f}")
+                                             " solved/sec ({} ea.) "
+                                             AGREY(" Seed: [{}]"),
+                                             qps,
+                                             ANSI::Time(spq),
+                                             seed);
             std::string counters = CounterString();
             std::string bar =
               ANSI::ProgressBar(
                   done, RANGE,
-                  StringPrintf("%lld ", START_NUM + batch_idx * BATCH_SIZE),
+                  std::format("{} ", START_NUM + batch_idx * BATCH_SIZE),
                   sec);
 
             static constexpr int STATUS_LINES = 3;
