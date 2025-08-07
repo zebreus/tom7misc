@@ -1,18 +1,22 @@
 
-#include <utility>
-#include <vector>
+#include <algorithm>
+#include <cstdio>
+#include <format>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include "base/stringprintf.h"
-#include "base/logging.h"
 #include "ansi.h"
-#include "timer.h"
-#include "periodically.h"
 #include "arcfour.h"
-#include "randutil.h"
+#include "base/logging.h"
+#include "base/stringprintf.h"
 #include "factorization.h"
+#include "periodically.h"
+#include "randutil.h"
+#include "timer.h"
 #include "util.h"
 
 using namespace std;
@@ -310,7 +314,7 @@ static void RejectionStats(
   Periodically bar_per(1.0);
   int64_t num_rejected = 0;
 
-  ArcFour rc(StringPrintf("residue.0"));
+  ArcFour rc("residue.0");
   for (int64_t i = 0; i < SAMPLES; i++) {
     // numbers in the low trillions, at most
     const uint64_t sum = Rand64(&rc) & 0xFFFFFFFFFF;
@@ -324,7 +328,7 @@ static void RejectionStats(
              ANSI_BEGINNING_OF_LINE "%s\n",
              ANSI::ProgressBar(i,
                                SAMPLES,
-                               StringPrintf("rejected %lld", num_rejected),
+                               std::format("rejected {}", num_rejected),
                                run_timer.Seconds()).c_str());
     }
   }
@@ -462,7 +466,7 @@ static std::vector<std::pair<int, std::vector<int>>> MakeGoodResidues(
              ANSI_BEGINNING_OF_LINE "%s\n",
              ANSI::ProgressBar(p,
                                max_b,
-                               StringPrintf("good: %d", (int)ret.size()),
+                               std::format("good: {}", (int)ret.size()),
                                timer.Seconds()).c_str());
     }
   }

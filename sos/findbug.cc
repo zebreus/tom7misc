@@ -1,13 +1,15 @@
 
-#include <vector>
 #include <cstdint>
+#include <cstdio>
+#include <mutex>
 #include <tuple>
-
-#include "sos-util.h"
-#include "threadutil.h"
-#include "sos-quad.h"
+#include <utility>
+#include <vector>
 
 #include "factorization.h"
+#include "sos-quad.h"
+#include "sos-util.h"
+#include "threadutil.h"
 
 int main(int argc, char **argv) {
   // int64_t start = 23'358'400'000'000LL;

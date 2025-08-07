@@ -1,14 +1,17 @@
 
 #include "bhaskara-util.h"
 
+#include <cmath>
+#include <cstdio>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
-#include <cstdio>
 
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "bignum/big.h"
 #include "bounds.h"
 #include "image.h"
 
@@ -157,7 +160,7 @@ void MakeImages(int64_t iters,
     Bounds::Scaler scaler = bounds.Stretch(WIDTH, HEIGHT).FlipY();
 
     BigInt max_a{0}, max_b{0}, max_k{0};
-    std::optional<BigInt> best_k = nullopt;
+    std::optional<BigInt> best_k = std::nullopt;
 
     for (int x = 0; x < history.size(); x++) {
       auto Plot = [x, &img, &scaler](

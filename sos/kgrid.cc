@@ -1,19 +1,24 @@
 
 
-#include <vector>
-#include <string>
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "atomic-util.h"
-#include "image.h"
-#include "threadutil.h"
-#include "periodically.h"
 #include "ansi.h"
-#include "timer.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
+#include "atomic-util.h"
 #include "bhaskara-util.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
 #include "color-util.h"
+#include "image.h"
+#include "periodically.h"
+#include "threadutil.h"
+#include "timer.h"
 
 using namespace std;
 

@@ -1,5 +1,9 @@
 
+#include <CL/cl.h>
+#include <algorithm>
+#include <cstdio>
 #include <mutex>
+#include <optional>
 #include <vector>
 #include <string>
 #include <tuple>

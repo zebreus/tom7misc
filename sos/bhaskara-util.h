@@ -2,21 +2,20 @@
 #ifndef _SOS_BHASKARA_UTIL_H
 #define _SOS_BHASKARA_UTIL_H
 
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <string>
-#include <vector>
-#include <utility>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
-#include "hashing.h"
 #include "base/logging.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "hashing.h"
 
 struct Triple {
   Triple() : Triple(0, 0, 0) {}

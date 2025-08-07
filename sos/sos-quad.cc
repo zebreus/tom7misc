@@ -1,5 +1,8 @@
 #include "sos-quad.h"
 
+#include <utility>
+#include <vector>
+
 #include "quad64.h"
 #include "base/logging.h"
 

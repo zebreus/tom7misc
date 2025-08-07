@@ -5,6 +5,10 @@
 #ifndef _SOS_SOS_GPU_V1_H
 #define _SOS_SOS_GPU_V1_H
 
+#include <CL/cl.h>
+#include <algorithm>
+#include <cstdio>
+#include <tuple>
 #include <utility>
 #include <mutex>
 #include <vector>
@@ -13,12 +17,11 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "numbers.h"
 #include "opencl/clutil.h"
 #include "threadutil.h"
 #include "timer.h"
 #include "util.h"
-
-#include "sos-util.h"
 
 // Runs many in batch. Even though there's a lot of paralellism for
 // a single number, it does not even come close to beating the CPU

@@ -2,6 +2,7 @@
 // Prints stats about mod.exe's progress.
 
 #include <cstdint>
+#include <cstdio>
 #include <optional>
 
 #include "base/logging.h"

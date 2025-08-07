@@ -5,17 +5,21 @@
 // for small m,n. This program finds (m, n) that have
 // no solutions by solving the equations mod p.
 
-#include <cstdint>
 #include <array>
+#include <cstdint>
+#include <cstdio>
+#include <format>
 #include <memory>
+#include <mutex>
 #include <optional>
-
-#include "base/logging.h"
-#include "base/stringprintf.h"
+#include <thread>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "ansi.h"
 #include "atomic-util.h"
-#include "auto-histo.h"
+#include "base/logging.h"
 #include "factorization.h"
 #include "hashing.h"
 #include "opencl/clutil.h"
@@ -41,6 +45,7 @@ static CL *cl = nullptr;
 
 // Slow.
 #if DEPTH_HISTO
+#include "auto-histo.h"
 static std::mutex histo_mutex;
 static AutoHisto *depth_histo = nullptr;
 #endif
@@ -212,7 +217,7 @@ struct Mod {
 
           auto LargeCount = [](uint64_t c) {
               if (c < 100000000ULL) return Util::UnsignedWithCommas(c);
-              else return StringPrintf("%.1fB", c / 1000000000.0);
+              else return std::format("{:.1f}B", c / 1000000000.0);
             };
 
           printf(ABLUE("%s") "+" AORANGE("%s") " ("
@@ -546,7 +551,7 @@ static Diamond ColdStart() {
                ANSI::ProgressBar(
                    modulus,
                    COLD_START_TO,
-                   StringPrintf("Cold start elim %lld", cold_elim),
+                   std::format("Cold start elim {}", cold_elim),
                    timer.Seconds()).c_str());
       });
 

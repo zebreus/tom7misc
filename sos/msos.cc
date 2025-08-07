@@ -1,9 +1,9 @@
 #include <CL/cl.h>
+#include <bit>
 #include <cstdint>
 #include <cstdio>
-#include <vector>
 #include <string>
-#include <bit>
+#include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"

@@ -3,9 +3,13 @@
 #define _SOS_DATABASE_H
 
 #include <array>
+#include <map>
+#include <optional>
 #include <string>
 #include <cstdint>
 #include <functional>
+#include <utility>
+#include <vector>
 
 #include "interval-cover.h"
 

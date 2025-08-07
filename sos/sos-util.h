@@ -2,6 +2,7 @@
 #ifndef _SOS_SOS_UTIL_H
 #define _SOS_SOS_UTIL_H
 
+#include <algorithm>
 #include <string>
 #include <cstdint>
 #include <optional>
@@ -15,7 +16,7 @@
 // Bitmask of numbers we're around where we're currently searching.
 // Used for benchmarking / tuning. This is up to 34 trillion.
 // static constexpr uint64_t MASK_CURRENT_RANGE = 0x0FFF'FFFF'FFFFULL;
-static constexpr uint64_t MASK_CURRENT_RANGE = 0x1FFF'FFFF'FFFFULL;
+inline constexpr uint64_t MASK_CURRENT_RANGE = 0x1FFF'FFFF'FFFFULL;
 
 struct TryMe {
   // PERF: We don't actually use this

@@ -2,20 +2,28 @@
 // Use a chakravala-like method to try to solve two pell-like
 // equations at once. No idea if this will work!
 
-#include <string>
-#include <vector>
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <initializer_list>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "ansi.h"
-#include "timer.h"
-#include "periodically.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
+#include "arcfour.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
 #include "opt/opt.h"
-#include "arcfour.h"
+#include "periodically.h"
 #include "randutil.h"
+#include "timer.h"
 
 #include "bhaskara-util.h"
 

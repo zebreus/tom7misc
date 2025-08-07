@@ -1,13 +1,16 @@
 // Little standalone tool for manipulating some polynomials used
 // in orbit.cc.
 
+#include <cstdio>
 #include <functional>
 #include <string>
+#include <utility>
 
 #include "ansi.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bhaskara-util.h"
+#include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "bignum/polynomial.h"
 

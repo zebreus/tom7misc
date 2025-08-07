@@ -1,25 +1,30 @@
 
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <utility>
 #include <vector>
 #include <string>
 #include <set>
 #include <map>
 
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-#include "util.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
-#include "threadutil.h"
+#include "base/logging.h"
 #include "bhaskara-util.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "threadutil.h"
+#include "util.h"
 
 using namespace std;
 
+namespace {
 struct Entry {
   // TODO: Could add metadata
   std::string name;
   std::array<BigInt, 9> square;
 };
+}
 
 // Find the square s nearest to aa and return
 // the signed difference.

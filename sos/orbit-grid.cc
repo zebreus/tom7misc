@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <functional>
 #include <initializer_list>
@@ -12,25 +13,24 @@
 #include <optional>
 #include <string>
 #include <tuple>
+#include <unordered_set>
 #include <utility>
 #include <vector>
-#include <cstdint>
-#include <unordered_set>
 
 #include "ansi.h"
-#include "timer.h"
-#include "periodically.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
+#include "arcfour.h"
+#include "atomic-util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "color-util.h"
 #include "hashing.h"
 #include "image.h"
-#include "arcfour.h"
+#include "periodically.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "color-util.h"
-#include "atomic-util.h"
+#include "timer.h"
 
 using namespace std;
 

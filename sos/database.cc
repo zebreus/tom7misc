@@ -1,9 +1,18 @@
 
 #include "database.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <functional>
+#include <iterator>
+#include <limits>
+#include <optional>
 #include <string>
 #include <cstdint>
 #include <array>
+#include <utility>
 #include <vector>
 
 #include "base/logging.h"

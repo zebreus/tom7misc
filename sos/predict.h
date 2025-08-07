@@ -9,6 +9,7 @@
 #ifndef _SOS_PREDICT_H
 #define _SOS_PREDICT_H
 
+#include <utility>
 #include <vector>
 #include <cstdint>
 

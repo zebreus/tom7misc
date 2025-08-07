@@ -1,24 +1,24 @@
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
-#include <string>
-#include <cstdint>
 
+#include "ansi.h"
 #include "atomic-util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "image.h"
-#include "bounds.h"
-#include "threadutil.h"
-#include "periodically.h"
-#include "ansi.h"
-#include "timer.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
 #include "bhaskara-util.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "bounds.h"
+#include "image.h"
+#include "periodically.h"
+#include "threadutil.h"
+#include "timer.h"
 #include "util.h"
 
 using namespace std;

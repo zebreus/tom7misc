@@ -1,11 +1,13 @@
 
 #include "mod-gpu.h"
 
+#include <CL/cl.h>
 #include <vector>
 #include <utility>
 #include <cstdint>
 
 #include "base/logging.h"
+#include "opencl/clutil.h"
 #include "threadutil.h"
 
 std::vector<ModQuickPassGPU::FullRun>

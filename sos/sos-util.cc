@@ -1,17 +1,21 @@
 
 #include "sos-util.h"
 
-#include <vector>
-#include <utility>
-#include <cstdint>
-#include <bit>
-#include <tuple>
-#include <optional>
 #include <algorithm>
+#include <bit>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
-#include "factorization.h"
-#include "base/stringprintf.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
+#include "factorization.h"
+#include "numbers.h"
 #include "util.h"
 
 using namespace std;

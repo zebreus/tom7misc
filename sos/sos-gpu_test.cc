@@ -1,14 +1,11 @@
 
-#include "base/stringprintf.h"
-#include "util.h"
-#include "sos-util.h"
 #include "sos-gpu.h"
-#include "opencl/clutil.h"
 
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <format>
 #include <map>
 #include <mutex>
 #include <tuple>
@@ -22,11 +19,14 @@
 #include "atomic-util.h"
 #include "base/logging.h"
 #include "factorization.h"
+#include "opencl/clutil.h"
 #include "opt/opt.h"
 #include "periodically.h"
 #include "randutil.h"
+#include "sos-util.h"
 #include "threadutil.h"
 #include "timer.h"
+#include "util.h"
 
 using namespace std;
 
@@ -119,7 +119,7 @@ double OptimizeMe(double h) {
 // Maybe better to just sample the 1D interval?
 template<class GPUMethod>
 static void Optimize() {
-  rc = new ArcFour(StringPrintf("gpu.%lld", time(nullptr)));
+  rc = new ArcFour(std::format("gpu.{}", time(nullptr)));
   printf("Make batch...\n");
   MakeBatch<GPUMethod>();
   printf("... done.\n");
@@ -282,9 +282,9 @@ static void TestWays(const char * method) {
              ANSI_BEGINNING_OF_LINE "%s\n",
              ANSI::ProgressBar(batch_idx,
                                NUM_BATCHES,
-                               StringPrintf(
-                                   "TestWays benchmark/test. batch size %d",
-                                   GPU_HEIGHT).c_str(),
+                               std::format(
+                                   "TestWays benchmark/test. batch size {}",
+                                   GPU_HEIGHT),
                                run_timer.Seconds()).c_str());
     }
   }

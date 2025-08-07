@@ -6,17 +6,19 @@
 // if it is to have a rational solution that's close to zero, it would
 // be a rational close to one of these.
 
-#include <string>
 #include <cstdint>
+#include <cstdio>
+#include <string>
+#include <utility>
 
+#include "ansi.h"
 #include "atomic-util.h"
 #include "base/logging.h"
-#include "periodically.h"
-#include "ansi.h"
-#include "timer.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
 #include "bhaskara-util.h"
+#include "bignum/big-overloads.h"
+#include "bignum/big.h"
+#include "periodically.h"
+#include "timer.h"
 
 using namespace std;
 

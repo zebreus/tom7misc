@@ -1,13 +1,10 @@
 
-#include "base/stringprintf.h"
-#include "sos-util.h"
-#include "sos-gpu.h"
-
 #include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <format>
 #include <optional>
 #include <string>
 #include <tuple>
@@ -18,9 +15,12 @@
 #include "arcfour.h"
 #include "atomic-util.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "opencl/clutil.h"
 #include "opt/optimizer.h"
 #include "randutil.h"
+#include "sos-gpu.h"
+#include "sos-util.h"
 #include "timer.h"
 #include "util.h"
 
@@ -78,23 +78,23 @@ static std::string ArgString(const FactorizeOpt::arg_type &arg) {
       }
     }();
 
-  return StringPrintf(AWHITE("%d") AGREY(".")
-                      APURPLE("%s") AGREY(".")
-                      "%s" AGREY(".")
-                      "%s" AGREY(".")
-                      "%s" AGREY(".")
-                      "%s" AGREY(".")
-                      "%s" AGREY(".")
-                      "%s" AGREY(".")
-                      ABLUE("%d"),
-                      height, routine,
-                      sub128 ? ACYAN("S") : "_",
-                      geq128 ? AYELLOW("G") : "_",
-                      mul128 ? AORANGE("M") : "_",
-                      fused_try ? AGREEN("F") : "_",
-                      binv_table ? AFGCOLOR(120, 220, 255, "T") : "_",
-                      dumas ? AFGCOLOR(255, 40, 150, "D") : "_",
-                      next_prime);
+  return std::format(AWHITE("{}") AGREY(".")
+                     APURPLE("{}") AGREY(".")
+                     "{}" AGREY(".")
+                     "{}" AGREY(".")
+                     "{}" AGREY(".")
+                     "{}" AGREY(".")
+                     "{}" AGREY(".")
+                     "{}" AGREY(".")
+                     ABLUE("{}"),
+                     height, routine,
+                     sub128 ? ACYAN("S") : "_",
+                     geq128 ? AYELLOW("G") : "_",
+                     mul128 ? AORANGE("M") : "_",
+                     fused_try ? AGREEN("F") : "_",
+                     binv_table ? AFGCOLOR(120, 220, 255, "T") : "_",
+                     dumas ? AFGCOLOR(255, 40, 150, "D") : "_",
+                     next_prime);
 }
 
 FactorizeOpt::return_type OptimizeMe(const FactorizeOpt::arg_type &arg) {
@@ -178,7 +178,7 @@ FactorizeOpt::return_type OptimizeMe(const FactorizeOpt::arg_type &arg) {
 }
 
 static void Optimize() {
-  rc = new ArcFour(StringPrintf("gpu.%lld", time(nullptr)));
+  rc = new ArcFour(std::format("gpu.{}", time(nullptr)));
 
   // reset best
   best_sec_per = 999999.0;
@@ -241,11 +241,11 @@ static void Optimize() {
 
   string report;
   for (const auto &[arg, sec_per, failure] : opt.GetAll()) {
-    StringAppendF(&report,
-                  "%s,%.6f,%.6f\n",
-                  ANSI::StripCodes(ArgString(arg)).c_str(),
-                  sec_per * 1000000.0,
-                  failure.value_or(999.0) * 100.0);
+    AppendFormat(&report,
+                 "{},{:.6f},{:.6f}\n",
+                 ANSI::StripCodes(ArgString(arg)).c_str(),
+                 sec_per * 1000000.0,
+                 failure.value_or(999.0) * 100.0);
   }
   Util::WriteFile("tune-report.txt", report);
   printf("Wrote results to tune-report.txt\n");

@@ -6,17 +6,18 @@
 #include <cstdio>
 #include <cstdint>
 #include <mutex>
+#include <utility>
+#include <vector>
 
 #include "ansi.h"
-#include "threadutil.h"
-#include "periodically.h"
-#include "timer.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
 #include "arcfour.h"
+#include "base/logging.h"
+#include "factorization.h"
+#include "periodically.h"
 #include "randutil.h"
 #include "sos-quad.h"
-#include "factorization.h"
+#include "threadutil.h"
+#include "timer.h"
 
 using namespace std;
 
@@ -391,7 +392,7 @@ static void MaybeSumOfSquaresRecall() {
        &total](uint64_t batch) {
         int64_t local_no_ways = 0, local_detected = 0,
           local_detected2 = 0, local_total = 0;
-        ArcFour rc(StringPrintf("mss.%llu", batch));
+        ArcFour rc(std::format("mss.{}", batch));
         for (int i = 0; i < 10000; i++) {
           // check numbers in the current range
           const uint64_t num = Rand64(&rc) & MASK_CURRENT_RANGE;
@@ -458,7 +459,7 @@ static void TestMaybe() {
   ParallelComp(
       BATCHES,
       [&bar, &timer](uint64_t batch) {
-        ArcFour rc(StringPrintf("testmaybe.%llu", batch));
+        ArcFour rc(std::format("testmaybe.{}", batch));
         for (int i = 0; i < 10000; i++) {
           // check numbers in the current range
           const uint64_t num = Rand64(&rc) & MASK_CURRENT_RANGE;

@@ -1,11 +1,19 @@
 
 #include "ansi.h"
 
+#include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <initializer_list>
 #include <mutex>
 #include <set>
+#include <string>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "ansi.h"
 #include "atomic-util.h"

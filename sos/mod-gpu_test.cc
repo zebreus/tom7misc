@@ -1,8 +1,10 @@
 
 #include "mod-gpu.h"
 
+#include <cstdio>
 #include <optional>
 #include <tuple>
+#include <utility>
 #include <vector>
 #include <cstdint>
 

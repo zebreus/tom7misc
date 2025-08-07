@@ -1,16 +1,17 @@
 
-#include <vector>
-#include <string>
+#include <CL/cl.h>
+#include <cstdio>
 #include <optional>
+#include <string>
+#include <vector>
 
-#include "opencl/clutil.h"
-#include "util.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "timer.h"
 #include "ansi.h"
 #include "arcfour.h"
+#include "base/logging.h"
+#include "opencl/clutil.h"
 #include "randutil.h"
+#include "timer.h"
+#include "util.h"
 
 static CL *cl = nullptr;
 
