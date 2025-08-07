@@ -16,6 +16,15 @@
 #include <utility>
 #include <vector>
 
+#ifdef BIG_USE_GMP
+# include <gmp.h>
+# include "bignum/wrap-gmp.h"
+#else
+# include "bignum/bigz.h"
+# include "bignum/bign.h"
+# include "bignum/bigq.h"
+#endif
+
 using namespace std;
 
 static constexpr bool VERBOSE = false;
@@ -1168,7 +1177,8 @@ void BigInt::InsertFactorMPZ(std::vector<std::pair<BigInt, int>> *factors,
                              mpz_t prime,
                              unsigned int exponent) {
   BigInt b;
-  mpz_set(b.rep, prime);
+  b.rep.Promote();
+  mpz_set(b.rep.Mpz(), prime);
   InsertFactor(factors, b, exponent);
 }
 
@@ -1251,8 +1261,9 @@ bool BigInt::MpzIsPrime(const mpz_t n) {
      number composite.  */
   for (int r = 1; r < (int)PRIMES.size(); r++) {
     is_prime = true;
-    for (const auto &[factor, exponent_] : factors) {
-      mpz_divexact(tmp, nm1, factor.rep);
+    for (auto &[factor, exponent_] : factors) {
+      factor.rep.Promote();
+      mpz_divexact(tmp, nm1, factor.rep.Mpz());
       mpz_powm(tmp, a, tmp, n);
       is_prime = mpz_cmp_ui(tmp, 1) != 0;
       if (!is_prime) break;
@@ -1431,9 +1442,11 @@ BigInt::PrimeFactorizationInternal(mpz_t x) {
 
 std::vector<std::pair<BigInt, int>>
 BigInt::PrimeFactorization(const BigInt &x, int64_t max_factor_ignored) {
+  GmpRep::Lease x_tmp(x.rep);
+
   mpz_t tmp;
   mpz_init(tmp);
-  mpz_set(tmp, x.rep);
+  mpz_set(tmp, x_tmp.ConstMpz());
   auto ret = PrimeFactorizationInternal(tmp);
   mpz_clear(tmp);
   return ret;
@@ -1452,7 +1465,8 @@ bool BigInt::IsPrime(const BigInt &x) {
     }
 
     #if BIG_USE_GMP
-    return MpzIsPrime(x.rep);
+    GmpRep::Lease x_tmp(x.rep);
+    return MpzIsPrime(x_tmp.ConstMpz());
     #else
     return IsPrimeInternal(x);
     #endif

@@ -27,7 +27,7 @@ else
   CC=gcc
   GMP_LFLAGS=-lgmp
   GMP_CFLAGS=-DBIG_USE_GMP
-  # PLATFORM_CXXFLAGS=-fsanitize=address -fsanitize=undefined
+  PLATFORM_CXXFLAGS=-fsanitize=address -fsanitize=undefined
   LFLAGS=-flto=auto
 endif
 endif
@@ -41,6 +41,9 @@ CCLIB_TEST_OBJECTS=../base/logging.o ../base/stringprintf.o ../util.o ../arcfour
 
 %.o : %.cc *.h makefile
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $< -o $@ -c
+
+wrap-gmp_test.exe : wrap-gmp_test.o $(CCLIB_TEST_OBJECTS)
+	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
 # with GMP; don't need bigz.o bign.o bigq.o
 big_test.exe : big.o big_test.o $(CCLIB_TEST_OBJECTS)

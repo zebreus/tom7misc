@@ -4,11 +4,9 @@
 #ifndef _CC_LIB_BIGNUM_BIG_H
 #define _CC_LIB_BIGNUM_BIG_H
 
-#include <tuple>
-#include <vector>
 #ifdef BIG_USE_GMP
 # include <gmp.h>
-# include <type_traits>
+# include "bignum/wrap-gmp.h"
 #else
 # include "bignum/bigz.h"
 # include "bignum/bign.h"
@@ -16,17 +14,28 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cassert>
+#include <charconv>
 #include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <tuple>
+#include <type_traits>
 #include <utility>
+#include <vector>
+
+#include "base/logging.h"
 
 struct BigInt {
   static_assert(std::integral<size_t>);
@@ -38,9 +47,9 @@ struct BigInt {
 
   // Value semantics with linear-time copies (like std::vector).
   inline BigInt(const BigInt &other);
-  inline BigInt(BigInt &&other);
+  inline BigInt(BigInt &&other) noexcept;
   inline BigInt &operator =(const BigInt &other);
-  inline BigInt &operator =(BigInt &&other);
+  inline BigInt &operator =(BigInt &&other) noexcept;
 
   inline ~BigInt();
 
@@ -63,7 +72,9 @@ struct BigInt {
   inline static BigInt Negate(const BigInt &a);
   inline static BigInt Negate(BigInt &&a);
   inline static BigInt Abs(const BigInt &a);
+  inline static BigInt Abs(BigInt &&a);
   inline static int Compare(const BigInt &a, const BigInt &b);
+  inline static int Compare(const BigInt &a, int64_t b);
   inline static bool Less(const BigInt &a, const BigInt &b);
   inline static bool Less(const BigInt &a, int64_t b);
   inline static bool LessEq(const BigInt &a, const BigInt &b);
@@ -207,66 +218,16 @@ struct BigInt {
   friend struct BigRat;
 #ifdef BIG_USE_GMP
 
-  #if 0
-  // mpz does not have a good representation for small integers;
-  // it performs an allocation even to store zero! We pierce
-  // the veil a little bit here. When the limbs pointer is null,
-  // then we are storing our own integer.
+  using Rep = GmpRep;
 
-  // In progress and experimental!
-
-  static_assert(offsetof(MP_INT, _mp_d) >= 8,
-                "Need space for an int64_t at the beginning of "
-                "the union.");
-  struct Rep {
-    union {
-      MP_INT mpz[1];
-      int64_t small_int;
-    } u;
-
-    Rep() {
-      // zero initialized represents zero; small_int is 0
-      // and _mp_d is null, indicating IsSmall.
-      memset(u.mpz, 0, sizeof (MP_INT));
-    }
-
-    bool IsSmall() const {
-      return u.mpz._mp_d == nullptr;
-    }
-
-    void Promote() {
-      if (IsSmall()) {
-        const int64_t small = u.small_int;
-        mpz_init(u.mpz);
-        // XXX
-      }
-    }
-  };
-  #endif
-  using Rep = mpz_t;
-
-
-  void SetU64(uint64_t u) {
+  static void MpzSetU64(MP_INT *mpz, uint64_t u) {
     // Need to be able to set 4 bytes at a time.
     static_assert(sizeof (unsigned long int) >= 4);
     const uint32_t hi = 0xFFFFFFFF & (u >> 32);
     const uint32_t lo = 0xFFFFFFFF & u;
-    mpz_set_ui(rep, hi);
-    mpz_mul_2exp(rep, rep, 32);
-    mpz_add_ui(rep, rep, lo);
-  }
-
-  void SetI64(int64_t i) {
-    if (i < 0) {
-      // Note: Most negative value cannot be negated!
-      uint64_t u = std::bit_cast<uint64_t>(i);
-      // Manual two's complement negation.
-      u = ~u + 1;
-      SetU64(u);
-      mpz_neg(rep, rep);
-    } else {
-      SetU64((uint64_t)i);
-    }
+    mpz_set_ui(mpz, hi);
+    mpz_mul_2exp(mpz, mpz, 32);
+    mpz_add_ui(mpz, mpz, lo);
   }
 
   // XXX figure out how to hide this stuff away.
@@ -297,6 +258,9 @@ struct BigInt {
   // Not recommended! And inherently not portable between
   // representations. But for example you can use this to efficiently
   // create BigInts from arrays of words using mpz_import.
+  // (Speaking of which: Rep changed from mpz_t to GmpRep, which
+  // you need to call GmpRep::MPZ() in order to access the underlying
+  // words.)
   Rep &GetRep() { return rep; }
   const Rep &GetRep() const { return rep; }
 
@@ -317,9 +281,9 @@ struct BigRat {
   // PERF: Could have versions that move numerator/denominator?
 
   inline BigRat(const BigRat &other);
-  inline BigRat(BigRat &&other);
+  inline BigRat(BigRat &&other) noexcept;
   inline BigRat &operator =(const BigRat &other);
-  inline BigRat &operator =(BigRat &&other);
+  inline BigRat &operator =(BigRat &&other) noexcept;
 
   // Must be of the form [-]digits[.digits]; no exponential notation.
   // The finite decimal expansion is represented exactly.
@@ -440,6 +404,21 @@ struct BigRat {
 
   #ifdef BIG_USE_GMP
   using Rep = mpq_t;
+
+  // TODO: Wrap like with GmpRep! It should handle tricks like this:
+  void Destroy() {
+    if (mpq_numref(rep)->_mp_d != nullptr) {
+      // Either both numerator and denominator have been
+      // allocated, or neither has. Currently, the null/null
+      // state is only reached when we move from a BigRat.
+      // CHECK(mpq_denref(rep)->_mp_d != nullptr);
+      mpq_clear(rep);
+
+      mpq_numref(rep)->_mp_d = nullptr;
+      mpq_denref(rep)->_mp_d = nullptr;
+    }
+  }
+
   #else
   // TODO: This is a pointer to a struct with two BigZs (pointers),
   // so it would probably be much better to just unpack it here.
@@ -483,214 +462,242 @@ inline bool FitsLongInt(int64_t x) {
 }
 
 BigInt::BigInt(std::integral auto ni) {
-  // PERF: Set 32-bit quantities too.
-  /*
-  // Need to be able to set 4 bytes at a time.
-  static_assert(sizeof (unsigned long int) >= 4);
-  mpz_set_ui(rep, u);
-  */
 
   using T = decltype(ni);
   if constexpr (std::signed_integral<T>) {
     static_assert(sizeof (T) <= sizeof (int64_t));
-    const int64_t n = ni;
-    mpz_init(rep);
-    SetI64(n);
+    rep = GmpRep(static_cast<int64_t>(ni));
   } else {
     static_assert(std::unsigned_integral<T>);
     static_assert(sizeof (T) <= sizeof (uint64_t));
-    uint64_t u = ni;
-    SetU64(u);
+    const uint64_t u = ni;
+    // If it fits in a signed 64-bit integer, we can use
+    // the small int representation.
+    if (u <= (uint64_t)std::numeric_limits<int64_t>::max()) {
+      rep = GmpRep((int64_t)u);
+    } else {
+      uint64_t u = ni;
+      MpzSetU64(rep.Mpz(), u);
+    }
   }
 }
 
-BigInt::BigInt(const BigInt &other) {
-  mpz_init(rep);
-  mpz_set(rep, other.rep);
-}
-
-BigInt::BigInt(BigInt &&other) {
-  mpz_init(rep);
-  // We don't care how we leave other, but it needs to be valid (e.g. for
-  // the destructor). Swap is a good way to do this.
-  mpz_swap(rep, other.rep);
-}
-
-BigInt &BigInt::operator =(const BigInt &other) {
-  // Self-assignment does nothing.
-  if (this == &other) return *this;
-  mpz_set(rep, other.rep);
-  return *this;
-}
-BigInt &BigInt::operator =(BigInt &&other) {
-  // We don't care how we leave other, but it needs to be valid (e.g. for
-  // the destructor). Swap is a good way to do this.
-  mpz_swap(rep, other.rep);
-  return *this;
-}
+BigInt::BigInt(const BigInt &other) = default;
+BigInt::BigInt(BigInt &&other) noexcept = default;
+BigInt &BigInt::operator =(const BigInt &other) = default;
+BigInt &BigInt::operator =(BigInt &&other) noexcept = default;
 
 BigInt::BigInt(std::string_view digits) {
-  mpz_init(rep);
+  // PERF: Detect small ints.
+  rep.Promote();
+
   // PERF: It would be nice if we could convert without copying,
   // but mpz_set_str wants zero-termination.
-  int res = mpz_set_str(rep, std::string(digits).c_str(), 10);
+  int res = mpz_set_str(rep.Mpz(), std::string(digits).c_str(), 10);
   if (0 != res) {
     printf("Invalid number [%s]\n", std::string(digits).c_str());
     assert(false);
   }
 }
 
-BigInt::~BigInt() {
-  mpz_clear(rep);
-}
+BigInt::~BigInt() = default;
 
 void BigInt::Swap(BigInt *other) {
-  mpz_swap(rep, other->rep);
+  rep.Swap(&other->rep);
 }
 
 uint64_t BigInt::HashCode(const BigInt &a) {
-  // TODO: Include sign?
-  // Zero is represented with no limbs.
-  size_t limbs = mpz_size(a.rep);
-  if (limbs == 0) return 0;
-  // limb 0 is the least significant.
-  // XXX if mp_limb_t is not 64 bits, we could get more
-  // limbs here.
-  return mpz_getlimbn(a.rep, 0);
+  if (a.rep.IsSmall()) {
+    return (uint64_t)a.rep.GetSmall();
+  } else {
+    // TODO: Include sign?
+    // Zero is represented with no limbs.
+    size_t limbs = mpz_size(a.rep.ConstMpz());
+    if (limbs == 0) return 0;
+    // limb 0 is the least significant.
+    // XXX if mp_limb_t is not 64 bits, we could get more
+    // limbs here.
+    return mpz_getlimbn(a.rep.ConstMpz(), 0);
+  }
 }
 
 std::string BigInt::ToString(int base) const {
-  std::string s;
-  // We allocate the space directly in the string to avoid
-  // copying.
-  // May need space for a minus sign. This function also writes
-  // a nul terminating byte, but we don't want that for std::string.
-  size_t min_size = mpz_sizeinbase(rep, base);
-  s.resize(min_size + 2);
-  mpz_get_str(s.data(), base, rep);
+  if (rep.IsSmall()) {
+    // Worst case would be base 2.
+    std::array<char, 65> buffer;
+    auto result =
+      std::to_chars(buffer.data(), buffer.data() + buffer.size(),
+                    rep.GetSmall(), base);
 
-  // Now we have a nul-terminated string in the buffer, which is at
-  // least one byte too large. We could just use strlen here but
-  // we know it's at least min_size - 1 (because mpz_sizeinbase
-  // can return a number 1 too large). min_size is always at least
-  // 1, so starting at min_size - 1 is safe.
-  for (size_t sz = min_size - 1; sz < s.size(); sz++) {
-    if (s[sz] == 0) {
-      s.resize(sz);
-      return s;
+    // Should always succeed.
+    assert(result.ec == std::errc());
+    return std::string(buffer.data(), result.ptr);
+
+  } else {
+    std::string s;
+    // We allocate the space directly in the string to avoid
+    // copying.
+    // May need space for a minus sign. This function also writes
+    // a nul terminating byte, but we don't want that for std::string.
+    size_t min_size = mpz_sizeinbase(rep.ConstMpz(), base);
+    s.resize(min_size + 2);
+    mpz_get_str(s.data(), base, rep.ConstMpz());
+
+    // Now we have a nul-terminated string in the buffer, which is at
+    // least one byte too large. We could just use strlen here but
+    // we know it's at least min_size - 1 (because mpz_sizeinbase
+    // can return a number 1 too large). min_size is always at least
+    // 1, so starting at min_size - 1 is safe.
+    for (size_t sz = min_size - 1; sz < s.size(); sz++) {
+      if (s[sz] == 0) {
+        s.resize(sz);
+        return s;
+      }
     }
+    // This would mean that mpz_get_str didn't nul-terminate the string.
+    assert(false);
+    return s;
   }
-  // This would mean that mpz_get_str didn't nul-terminate the string.
-  assert(false);
-  return s;
 }
 
 double BigInt::ToDouble() const {
-  return mpz_get_d(rep);
+  if (rep.IsSmall()) {
+    return (double)rep.GetSmall();
+  } else {
+    return mpz_get_d(rep.ConstMpz());
+  }
 }
 
 int BigInt::Sign(const BigInt &a) {
-  return mpz_sgn(a.rep);
+  if (a.rep.IsSmall()) {
+    int64_t x = a.rep.GetSmall();
+    return (x > 0) - (x < 0);
+  } else {
+    return mpz_sgn(a.rep.ConstMpz());
+  }
 }
 
 std::optional<int64_t> BigInt::ToInt() const {
-  // Get the number of bits, ignoring sign.
-  size_t num_bits = mpz_sizeinbase(rep, 2);
-  if (num_bits <= 63) {
-    // "buffer" where result is written
-    uint64_t digit = 0;
-    size_t count = 0;
-    mpz_export(&digit, &count,
-               // order doesn't matter, because there is just one word
-               1,
-               // 8 bytes
-               8,
-               // native endianness
-               0,
-               // 0 "nails" (leading bits to skip)
-               0,
-               rep);
-
-    assert(count <= 1);
-    assert(!(digit & 0x8000000000000000ULL));
-    if (mpz_sgn(rep) == -1) {
-      return {-(int64_t)digit};
-    }
-    return {(int64_t)digit};
-  } else if (num_bits == 64) {
-
-    // There is one 64-bit number where we could succeed, which is
-    //  std::numeric_limits<int64_t>::lowest().
-    if (mpz_sgn(rep) == -1 &&
-        mpz_getlimbn(rep, 0) == uint64_t{0x8000000000000000}) [[unlikely]] {
-      // Since we know it's exactly 64 bits, we've uniquely identified
-      // the value.
-      return std::numeric_limits<int64_t>::lowest();
-    }
-
-    return std::nullopt;
+  if (rep.IsSmall()) {
+    return rep.GetSmall();
   } else {
-    return std::nullopt;
+    // Get the number of bits, ignoring sign.
+    size_t num_bits = mpz_sizeinbase(rep.ConstMpz(), 2);
+    if (num_bits <= 63) {
+      // "buffer" where result is written
+      uint64_t digit = 0;
+      size_t count = 0;
+      mpz_export(&digit, &count,
+                 // order doesn't matter, because there is just one word
+                 1,
+                 // 8 bytes
+                 8,
+                 // native endianness
+                 0,
+                 // 0 "nails" (leading bits to skip)
+                 0,
+                 rep.ConstMpz());
+
+      assert(count <= 1);
+      assert(!(digit & 0x8000000000000000ULL));
+      if (mpz_sgn(rep.ConstMpz()) == -1) {
+        return {-(int64_t)digit};
+      }
+      return {(int64_t)digit};
+    } else if (num_bits == 64) {
+
+      // There is one 64-bit number where we could succeed, which is
+      //  std::numeric_limits<int64_t>::lowest().
+      if (mpz_sgn(rep.ConstMpz()) == -1 &&
+          mpz_getlimbn(rep.ConstMpz(), 0) ==
+          uint64_t{0x8000000000000000}) [[unlikely]] {
+        // Since we know it's exactly 64 bits, we've uniquely identified
+        // the value.
+        return std::numeric_limits<int64_t>::lowest();
+      }
+
+      return std::nullopt;
+    } else {
+      return std::nullopt;
+    }
   }
 }
 
 std::optional<uint64_t> BigInt::ToU64() const {
-  // No negative numbers.
-  if (mpz_sgn(rep) == -1)
-    return std::nullopt;
-
-  // Get the number of bits, ignoring sign.
-  if (mpz_sizeinbase(rep, 2) > 64) {
-    return std::nullopt;
+  if (rep.IsSmall()) {
+    int64_t x = rep.GetSmall();
+    if (x < 0) return std::nullopt;
+    return {(uint64_t)x};
   } else {
-    // "buffer" where result is written
-    uint64_t digit = 0;
-    size_t count = 0;
-    mpz_export(&digit, &count,
-               // order doesn't matter, because there is just one word
-               1,
-               // 8 bytes
-               8,
-               // native endianness
-               0,
-               // 0 "nails" (leading bits to skip)
-               0,
-               rep);
 
-    assert(count <= 1);
-    return {digit};
+    // No negative numbers.
+    if (mpz_sgn(rep.ConstMpz()) == -1)
+      return std::nullopt;
+
+    // Get the number of bits, ignoring sign.
+    if (mpz_sizeinbase(rep.ConstMpz(), 2) > 64) {
+      return std::nullopt;
+    } else {
+      // "buffer" where result is written
+      uint64_t digit = 0;
+      size_t count = 0;
+      mpz_export(&digit, &count,
+                 // order doesn't matter, because there is just one word
+                 1,
+                 // 8 bytes
+                 8,
+                 // native endianness
+                 0,
+                 // 0 "nails" (leading bits to skip)
+                 0,
+                 rep.ConstMpz());
+
+      assert(count <= 1);
+      return {digit};
+    }
   }
 }
 
 double BigInt::NaturalLog(const BigInt &a) {
+  GmpRep::Lease tmp(a.rep);
+
   // d is the magnitude, with absolute value in [0.5,1].
   //   a = di * 2^exponent
   // taking the log of both sides,
   //   log(a) = log(di) + log(2) * exponent
   signed long int exponent = 0;
-  const double di = mpz_get_d_2exp(&exponent, a.rep);
+  const double di = mpz_get_d_2exp(&exponent, tmp.ConstMpz());
   return std::log(di) + std::log(2.0) * (double)exponent;
 }
 
 double BigInt::LogBase2(const BigInt &a) {
+  GmpRep::Lease tmp(a.rep);
+
   // d is the magnitude, with absolute value in [0.5,1].
   //   a = di * 2^exponent
   // taking the log of both sides,
   //   lg(a) = lg(di) + lg(2) * exponent
   //   lg(a) = log(di)/log(2) + 1 * exponent
   signed long int exponent = 0;
-  const double di = mpz_get_d_2exp(&exponent, a.rep);
+  const double di = mpz_get_d_2exp(&exponent, tmp.ConstMpz());
   return std::log(di)/std::log(2.0) + (double)exponent;
 }
 
 int BigInt::Jacobi(const BigInt &a, const BigInt &b) {
-  return mpz_jacobi(a.rep, b.rep);
+  // PERF: We have an implementation in ../numbers.h.
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+  return mpz_jacobi(a_tmp.ConstMpz(), b_tmp.ConstMpz());
 }
 
 std::optional<BigInt> BigInt::ModInverse(
     const BigInt &a, const BigInt &b) {
+  // PERF: We have an implementation in ../numbers.h.
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
   BigInt ret;
-  if (mpz_invert(ret.rep, a.rep, b.rep)) {
+  if (mpz_invert(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz())) {
     return {ret};
   } else {
     return std::nullopt;
@@ -699,158 +706,365 @@ std::optional<BigInt> BigInt::ModInverse(
 
 
 BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
+  if (a.rep.IsSmall() && b.rep.IsSmall()) {
+    return BigInt(a.rep.GetSmall() & b.rep.GetSmall());
+  } else if (a.rep.IsSmall() && !b.rep.IsSmall()) {
+    // When one argument is small and non-negative, the result is always small.
+    // AND means two's complement, so we can just
+    // convert the signed integer to unsigned bits.
+    if (a.rep.GetSmall() >= 0) {
+      return BigInt(BitwiseAnd(b, std::bit_cast<uint64_t>(a.rep.GetSmall())));
+    }
+  } else if (!a.rep.IsSmall() && b.rep.IsSmall()) {
+    if (b.rep.GetSmall() >= 0) {
+      return BigInt(BitwiseAnd(a, std::bit_cast<uint64_t>(b.rep.GetSmall())));
+    }
+  }
+
+  // Large or negative.
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
   BigInt ret;
-  mpz_and(ret.rep, a.rep, b.rep);
+  mpz_and(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
   return ret;
 }
 
 uint64_t BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
-  // Zero is represented without limbs.
-  if (mpz_size(a.rep) == 0) return 0;
-  static_assert(sizeof (mp_limb_t) == 8,
-                "This code assumes 64-bit limbs, although we "
-                "could easily add branches for 32-bit.");
-  // Extract the low word and AND natively.
-  uint64_t aa = mpz_getlimbn(a.rep, 0);
-  return aa & b;
+  if (a.rep.IsSmall()) {
+    return std::bit_cast<uint64_t>(a.rep.GetSmall()) & b;
+  } else {
+    // Zero is represented without limbs.
+    if (mpz_size(a.rep.ConstMpz()) == 0) return 0;
+    static_assert(sizeof (mp_limb_t) == 8,
+                  "This code assumes 64-bit limbs, although we "
+                  "could easily add branches for 32-bit.");
+    // Extract the low word and AND natively.
+    uint64_t aa = mpz_getlimbn(a.rep.ConstMpz(), 0);
+    return aa & b;
+  }
 }
 
 BigInt BigInt::BitwiseXor(const BigInt &a, const BigInt &b) {
-  BigInt ret;
-  mpz_xor(ret.rep, a.rep, b.rep);
-  return ret;
+  if (a.rep.IsSmall() && b.rep.IsSmall()) {
+    return BigInt(std::bit_cast<uint64_t>(a.rep.GetSmall()) ^
+                  std::bit_cast<uint64_t>(b.rep.GetSmall()));
+  } else {
+    GmpRep::Lease a_tmp(a.rep);
+    GmpRep::Lease b_tmp(b.rep);
+
+    BigInt ret;
+    mpz_xor(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
+    return ret;
+  }
 }
 
 BigInt BigInt::BitwiseOr(const BigInt &a, const BigInt &b) {
-  BigInt ret;
-  // "inclusive or"
-  mpz_ior(ret.rep, a.rep, b.rep);
-  return ret;
+  if (a.rep.IsSmall() && b.rep.IsSmall()) {
+    return BigInt(std::bit_cast<uint64_t>(a.rep.GetSmall()) |
+                  std::bit_cast<uint64_t>(b.rep.GetSmall()));
+  } else {
+    GmpRep::Lease a_tmp(a.rep);
+    GmpRep::Lease b_tmp(b.rep);
+
+    BigInt ret;
+    // "inclusive or"
+    mpz_ior(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
+    return ret;
+  }
 }
 
 uint64_t BigInt::BitwiseCtz(const BigInt &a) {
-  if (mpz_sgn(a.rep) == 0) return 0;
-  mp_bitcnt_t zeroes = mpz_scan1(a.rep, 0);
-  return zeroes;
+  if (a.rep.IsSmall()) {
+    const int64_t x = a.rep.GetSmall();
+    if (x == 0) return 0;
+    return std::countr_zero<uint64_t>(
+        std::bit_cast<uint64_t>(x));
+
+  } else {
+    if (mpz_sgn(a.rep.ConstMpz()) == 0) return 0;
+    mp_bitcnt_t zeroes = mpz_scan1(a.rep.ConstMpz(), 0);
+    return zeroes;
+  }
 }
 
 bool BigInt::IsEven() const {
-  return mpz_even_p(rep);
+  if (rep.IsSmall()) {
+    return (rep.GetSmall() & 0b1) == 0b0;
+  } else {
+    return mpz_even_p(rep.ConstMpz());
+  }
 }
 bool BigInt::IsOdd() const {
-  return mpz_odd_p(rep);
+  if (rep.IsSmall()) {
+    return (rep.GetSmall() & 0b1) == 0b1;
+  } else {
+    return mpz_odd_p(rep.ConstMpz());
+  }
 }
 
 BigInt BigInt::Negate(const BigInt &a) {
-  BigInt ret;
-  mpz_neg(ret.rep, a.rep);
-  return ret;
+  // We need to copy, but then we can just use the rvalue
+  // reference version.
+  return Negate(BigInt(a));
 }
 BigInt BigInt::Negate(BigInt &&a) {
-  mpz_neg(a.rep, a.rep);
-  return a;
+  if (a.rep.IsSmall()) {
+    int64_t x = a.rep.GetSmall();
+    if (x == std::numeric_limits<int64_t>::lowest())
+      [[unlikely]] {
+      a.rep.Promote();
+      mpz_neg(a.rep.Mpz(), a.rep.Mpz());
+      return a;
+    } else {
+      return BigInt(-x);
+    }
+  } else {
+    mpz_neg(a.rep.Mpz(), a.rep.Mpz());
+    return a;
+  }
 }
 
 BigInt BigInt::Abs(const BigInt &a) {
-  BigInt ret;
-  mpz_abs(ret.rep, a.rep);
-  return ret;
+  return Abs(BigInt(a));
 }
+BigInt BigInt::Abs(BigInt &&a) {
+  if (a.rep.IsSmall()) {
+    int64_t x = a.rep.GetSmall();
+    if (x < 0) {
+      if (x == std::numeric_limits<int64_t>::lowest())
+        [[unlikely]] {
+        a.rep.Promote();
+        mpz_neg(a.rep.Mpz(), a.rep.Mpz());
+        return a;
+      } else {
+        return BigInt(-x);
+      }
+    } else {
+      return a;
+    }
+  } else {
+    mpz_abs(a.rep.Mpz(), a.rep.Mpz());
+    return a;
+  }
+}
+
+
 int BigInt::Compare(const BigInt &a, const BigInt &b) {
-  int r = mpz_cmp(a.rep, b.rep);
-  if (r < 0) return -1;
-  else if (r > 0) return 1;
-  else return 0;
+  if (a.rep.IsSmall() && b.rep.IsSmall()) {
+    int64_t aa = a.rep.GetSmall();
+    int64_t bb = b.rep.GetSmall();
+    if (aa < bb) return -1;
+    else if (aa > bb) return 1;
+    else return 0;
+  } else if (a.rep.IsSmall() && !b.rep.IsSmall()) {
+    int64_t aa = a.rep.GetSmall();
+
+    // Yuck: We can't be sure that GMP will be able to
+    // fit int64_t in "long int", and we also can't
+    // be sure that an integer is actually large just
+    // because it has an alloc (it might have just been
+    // promoted). So we need to test further cases.
+    if (internal::FitsLongInt(aa)) {
+      int r = mpz_cmp_si(b.rep.ConstMpz(), aa);
+      // Note: Sense is reversed here.
+      if (r < 0) return +1;
+      else if (r > 0) return -1;
+      else return 0;
+    } else {
+      GmpRep::Lease aaa(a.rep);
+      int r = mpz_cmp(aaa.ConstMpz(), b.rep.ConstMpz());
+      if (r < 0) return -1;
+      else if (r > 0) return +1;
+      else return 0;
+    }
+
+  } else if (!a.rep.IsSmall() && b.rep.IsSmall()) {
+    // As above.
+    int64_t bb = b.rep.GetSmall();
+
+    if (internal::FitsLongInt(bb)) {
+      int r = mpz_cmp_si(a.rep.ConstMpz(), bb);
+      if (r < 0) return -1;
+      else if (r > 0) return +1;
+      else return 0;
+    } else {
+      GmpRep::Lease bbb(b.rep);
+      int r = mpz_cmp(a.rep.ConstMpz(), bbb.ConstMpz());
+      if (r < 0) return -1;
+      else if (r > 0) return +1;
+      else return 0;
+    }
+
+  } else {
+    // Both have alloc.
+    int r = mpz_cmp(a.rep.ConstMpz(), b.rep.ConstMpz());
+    if (r < 0) return -1;
+    else if (r > 0) return 1;
+    else return 0;
+  }
+}
+
+int BigInt::Compare(const BigInt &a, int64_t b) {
+  // As above.
+
+  if (a.rep.IsSmall()) {
+    const int64_t aa = a.rep.GetSmall();
+    if (aa < b) return -1;
+    else if (aa > b) return +1;
+    else return 0;
+
+  } else {
+
+    if (internal::FitsLongInt(b)) {
+      int r = mpz_cmp_si(a.rep.ConstMpz(), b);
+      if (r < 0) return -1;
+      else if (r > 0) return +1;
+      else return 0;
+    } else {
+      GmpRep bbb(b);
+      bbb.Promote();
+      int r = mpz_cmp(a.rep.ConstMpz(), bbb.ConstMpz());
+      if (r < 0) return -1;
+      else if (r > 0) return +1;
+      else return 0;
+    }
+  }
 }
 
 bool BigInt::Less(const BigInt &a, const BigInt &b) {
-  return mpz_cmp(a.rep, b.rep) < 0;
+  return Compare(a, b) < 0;
 }
 bool BigInt::Less(const BigInt &a, int64_t b) {
-  if (internal::FitsLongInt(b)) {
-    signed long int sb = b;
-    return mpz_cmp_si(a.rep, sb) < 0;
-  } else {
-    return Less(a, BigInt(b));
-  }
+  return Compare(a, b) < 0;
 }
 
 bool BigInt::LessEq(const BigInt &a, const BigInt &b) {
-  return mpz_cmp(a.rep, b.rep) <= 0;
+  return Compare(a, b) <= 0;
 }
 bool BigInt::LessEq(const BigInt &a, int64_t b) {
-  if (internal::FitsLongInt(b)) {
-    signed long int sb = b;
-    return mpz_cmp_si(a.rep, sb) <= 0;
-  } else {
-    return LessEq(a, BigInt(b));
-  }
+  return Compare(a, b) <= 0;
 }
 
 bool BigInt::Eq(const BigInt &a, const BigInt &b) {
-  return mpz_cmp(a.rep, b.rep) == 0;
+  return Compare(a, b) == 0;
 }
 bool BigInt::Eq(const BigInt &a, int64_t b) {
-  if (internal::FitsLongInt(b)) {
-    signed long int sb = b;
-    return mpz_cmp_si(a.rep, sb) == 0;
-  } else {
-    return Eq(a, BigInt(b));
-  }
+  return Compare(a, b) == 0;
 }
 
 
 bool BigInt::Greater(const BigInt &a, const BigInt &b) {
-  return mpz_cmp(a.rep, b.rep) > 0;
+  return Compare(a, b) > 0;
 }
 bool BigInt::Greater(const BigInt &a, int64_t b) {
-  if (internal::FitsLongInt(b)) {
-    signed long int sb = b;
-    return mpz_cmp_si(a.rep, sb) > 0;
-  } else {
-    return Greater(a, BigInt(b));
-  }
+  return Compare(a, b) > 0;
 }
 
 
 bool BigInt::GreaterEq(const BigInt &a, const BigInt &b) {
-  return mpz_cmp(a.rep, b.rep) >= 0;
+  return Compare(a, b) >= 0;
 }
 bool BigInt::GreaterEq(const BigInt &a, int64_t b) {
-  if (internal::FitsLongInt(b)) {
-    signed long int sb = b;
-    return mpz_cmp_si(a.rep, sb) >= 0;
-  } else {
-    return GreaterEq(a, BigInt(b));
-  }
+  return Compare(a, b) >= 0;
 }
+
 
 BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
-  BigInt ret;
-  mpz_add(ret.rep, a.rep, b.rep);
-  return ret;
-}
+  if (a.rep.IsSmall() && b.rep.IsSmall()) {
+    int64_t res;
+    // We could have replacements for functions like this when
+    // not using clang/gcc, but there's also the simple fallback
+    // of not using the GMP codepath.
+    if (!__builtin_add_overflow(a.rep.GetSmall(), b.rep.GetSmall(), &res)) {
+      return BigInt(res);
+    }
 
-BigInt BigInt::Plus(const BigInt &a, int64_t b) {
+    // Note fallthrough to general case on overflow.
+  }
+
+  // TODO PERF: Detect add_si cases.
+  /*
   // PERF could also support negative b. but GMP only has
   // _ui version.
   if (b >= 0 && internal::FitsLongInt(b)) {
     signed long int sb = b;
     BigInt ret;
-    mpz_add_ui(ret.rep, a.rep, sb);
+    mpz_add_ui(ret.rep.Mpz(), a.rep., sb);
     return ret;
   } else {
     return Plus(a, BigInt(b));
   }
+  */
+
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
+  BigInt ret;
+  mpz_add(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
+  return ret;
+}
+
+// XXX remove these
+BigInt BigInt::Plus(const BigInt &a, int64_t b) {
+  return Plus(a, BigInt(b));
 }
 
 BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
+
+  if (a.rep.IsSmall() && b.rep.IsSmall()) {
+    int64_t res;
+    if (!__builtin_sub_overflow(a.rep.GetSmall(), b.rep.GetSmall(), &res)) {
+      return BigInt(res);
+    }
+
+    // Note fallthrough to general case on overflow.
+  }
+
+  // TODO PERF: Detect sub_si cases.
+
+  /*
+      // PERF could also support negative b. but GMP only has
+  // _ui version.
+  if (b >= 0 && internal::FitsLongInt(b)) {
+    signed long int sb = b;
+    BigInt ret;
+    mpz_sub_ui(ret.rep, a.rep, sb);
+    return ret;
+  } else {
+    return Minus(a, BigInt(b));
+  }
+  */
+
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
   BigInt ret;
-  mpz_sub(ret.rep, a.rep, b.rep);
+  mpz_sub(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
   return ret;
 }
 
 BigInt BigInt::Minus(const BigInt &a, int64_t b) {
+  return Minus(a, BigInt(b));
+}
+
+BigInt BigInt::Minus(int64_t a, const BigInt &b) {
+  return Minus(BigInt(a), b);
+}
+
+BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
+
+  if (a.rep.IsSmall() && b.rep.IsSmall()) {
+    int64_t res;
+    if (!__builtin_mul_overflow(a.rep.GetSmall(), b.rep.GetSmall(), &res)) {
+      return BigInt(res);
+    }
+
+    // Note fallthrough to general case on overflow.
+  }
+
+  // TODO PERF: Detect mul_si cases.
+
+  /*
   // PERF could also support negative b. but GMP only has
   // _ui version.
   if (b >= 0 && internal::FitsLongInt(b)) {
@@ -861,47 +1075,25 @@ BigInt BigInt::Minus(const BigInt &a, int64_t b) {
   } else {
     return Minus(a, BigInt(b));
   }
-}
+  */
 
-BigInt BigInt::Minus(int64_t a, const BigInt &b) {
-  // PERF could also support negative b. but GMP only has
-  // _ui version.
-  if (a >= 0 && internal::FitsLongInt(a)) {
-    signed long int sa = a;
-    BigInt ret;
-    mpz_ui_sub(ret.rep, sa, b.rep);
-    return ret;
-  } else {
-    return Minus(BigInt(a), b);
-  }
-}
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
 
-BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
   BigInt ret;
-  mpz_mul(ret.rep, a.rep, b.rep);
+  mpz_mul(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
   return ret;
 }
 
 BigInt BigInt::Times(const BigInt &a, int64_t b) {
-  if (internal::FitsLongInt(b)) {
-    signed long int sb = b;
-    BigInt ret;
-    mpz_mul_si(ret.rep, a.rep, sb);
-    return ret;
-  } else {
-    return Times(a, BigInt(b));
-  }
+  return Times(a, BigInt(b));
 }
 
 BigInt BigInt::Div(const BigInt &a, const BigInt &b) {
-  // truncate (round towards zero) like C
-  BigInt ret;
-  mpz_tdiv_q(ret.rep, a.rep, b.rep);
-  return ret;
-}
+  // PERF: Handle small case, integer versions.
 
-BigInt BigInt::Div(const BigInt &a, int64_t b) {
-  if (internal::FitsLongInt(b)) {
+  /*
+      if (internal::FitsLongInt(b)) {
     // alas there is no _si version, so branch on
     // the sign.
     if (b >= 0) {
@@ -919,12 +1111,30 @@ BigInt BigInt::Div(const BigInt &a, int64_t b) {
   } else {
     return Div(a, BigInt(b));
   }
+  */
+
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
+  // truncate (round towards zero) like C
+  BigInt ret;
+  mpz_tdiv_q(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
+  return ret;
+}
+
+BigInt BigInt::Div(const BigInt &a, int64_t b) {
+  return Div(a, BigInt(b));
 }
 
 BigInt BigInt::DivFloor(const BigInt &a, const BigInt &b) {
   // truncate (round towards zero) like C
+
+  // PERF: Handle small case, integer versions.
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
   BigInt ret;
-  mpz_fdiv_q(ret.rep, a.rep, b.rep);
+  mpz_fdiv_q(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
   return ret;
 }
 
@@ -937,28 +1147,33 @@ BigInt BigInt::DivFloor(const BigInt &a, int64_t b) {
 
 
 bool BigInt::DivisibleBy(const BigInt &num, const BigInt &den) {
-  // (Note that GMP accepts 0 % 0, but I consider that an instance
-  // of undefined behavior in this library.)
-  return mpz_divisible_p(num.rep, den.rep);
-}
+  GmpRep::Lease num_tmp(num.rep);
+  GmpRep::Lease den_tmp(den.rep);
 
-bool BigInt::DivisibleBy(const BigInt &num, int64_t den) {
-  if (internal::FitsLongInt(den)) {
+  /* PERF
+      if (internal::FitsLongInt(den)) {
     unsigned long int uden = std::abs(den);
     return mpz_divisible_ui_p(num.rep, uden);
   } else {
     return DivisibleBy(num, BigInt(den));
   }
+  */
+
+  // (Note that GMP accepts 0 % 0, but I consider that an instance
+  // of undefined behavior in this library.)
+  return mpz_divisible_p(num_tmp.ConstMpz(), den_tmp.ConstMpz());
 }
 
-BigInt BigInt::DivExact(const BigInt &a, const BigInt &b) {
-  BigInt ret;
-  mpz_divexact(ret.rep, a.rep, b.rep);
-  return ret;
+bool BigInt::DivisibleBy(const BigInt &num, int64_t den) {
+  return DivisibleBy(num, BigInt(den));
 }
 
-BigInt BigInt::DivExact(const BigInt &a, int64_t b) {
-  if (internal::FitsLongInt(b)) {
+BigInt BigInt::DivExact(const BigInt &num, const BigInt &den) {
+  GmpRep::Lease num_tmp(num.rep);
+  GmpRep::Lease den_tmp(den.rep);
+
+  /*
+      if (internal::FitsLongInt(b)) {
     if (b >= 0) {
       BigInt ret;
       unsigned long int ub = b;
@@ -974,29 +1189,54 @@ BigInt BigInt::DivExact(const BigInt &a, int64_t b) {
   } else {
     return DivExact(a, BigInt(b));
   }
+  */
+
+  BigInt ret;
+  mpz_divexact(ret.rep.Mpz(), num_tmp.ConstMpz(), den_tmp.ConstMpz());
+  return ret;
+}
+
+BigInt BigInt::DivExact(const BigInt &a, int64_t b) {
+  return DivExact(a, BigInt(b));
 }
 
 BigInt BigInt::Mod(const BigInt &a, const BigInt &b) {
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
   BigInt ret;
-  mpz_mod(ret.rep, a.rep, b.rep);
+  mpz_mod(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
   return ret;
 }
 
 BigInt BigInt::CMod(const BigInt &a, const BigInt &b) {
+  if (a.rep.IsSmall() && b.rep.IsSmall()) {
+    // Can use %, but need to check for b == limits::lowest
+  }
+
+  /*
+    PERF: Should still use _ui version here when possible
+   */
+
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
   BigInt r;
-  mpz_tdiv_r(r.rep, a.rep, b.rep);
+  mpz_tdiv_r(r.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
   return r;
 }
 
 int64_t BigInt::CMod(const BigInt &a, int64_t b) {
   if (internal::FitsLongInt(b)) {
     if (b >= 0) {
-      BigInt ret;
+      // PERF: Could check for a small.
+      GmpRep::Lease a_tmp(a.rep);
       unsigned long int ub = b;
       // PERF: Should be possible to do this without
       // allocating a rep? The return value is the
       // absolute value of the remainder.
-      (void)mpz_tdiv_r_ui(ret.rep, a.rep, ub);
+      BigInt ret;
+      (void)mpz_tdiv_r_ui(ret.rep.Mpz(), a_tmp.ConstMpz(), ub);
       auto ro = ret.ToInt();
       assert(ro.has_value());
       return ro.value();
@@ -1004,6 +1244,7 @@ int64_t BigInt::CMod(const BigInt &a, int64_t b) {
       // TODO: Can still use tdiv_r_ui.
     }
   }
+
   auto ro = CMod(a, BigInt(b)).ToInt();
   assert(ro.has_value());
   return ro.value();
@@ -1012,22 +1253,31 @@ int64_t BigInt::CMod(const BigInt &a, int64_t b) {
 // Returns Q (a div b), R (a mod b) such that a = b * q + r
 std::pair<BigInt, BigInt> BigInt::QuotRem(const BigInt &a,
                                           const BigInt &b) {
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
   BigInt q, r;
-  mpz_tdiv_qr(q.rep, r.rep, a.rep, b.rep);
-  return std::make_pair(q, r);
+  mpz_tdiv_qr(q.rep.Mpz(), r.rep.Mpz(),
+              a_tmp.ConstMpz(), b_tmp.ConstMpz());
+  return std::make_pair(std::move(q), std::move(r));
 }
 
 BigInt BigInt::Pow(const BigInt &a, uint64_t exponent) {
+  GmpRep::Lease a_tmp(a.rep);
+
   BigInt ret;
-  mpz_pow_ui(ret.rep, a.rep, exponent);
+  mpz_pow_ui(ret.rep.Mpz(), a_tmp.ConstMpz(), exponent);
   return ret;
 }
 
 BigInt BigInt::LeftShift(const BigInt &a, uint64_t shift) {
+  // PERF: Easy when small
+
   if (internal::FitsLongInt(shift)) {
+    GmpRep::Lease a_tmp(a.rep);
     mp_bitcnt_t sh = shift;
     BigInt ret;
-    mpz_mul_2exp(ret.rep, a.rep, sh);
+    mpz_mul_2exp(ret.rep.Mpz(), a_tmp.ConstMpz(), sh);
     return ret;
   } else {
     return Times(a, Pow(BigInt{2}, shift));
@@ -1035,10 +1285,12 @@ BigInt BigInt::LeftShift(const BigInt &a, uint64_t shift) {
 }
 
 BigInt BigInt::RightShift(const BigInt &a, uint64_t shift) {
+  // PERF: Even easier when small, since it can't overflow
   if (internal::FitsLongInt(shift)) {
+    GmpRep::Lease a_tmp(a.rep);
     mp_bitcnt_t sh = shift;
     BigInt ret;
-    mpz_fdiv_q_2exp(ret.rep, a.rep, sh);
+    mpz_fdiv_q_2exp(ret.rep.Mpz(), a_tmp.ConstMpz(), sh);
     return ret;
   } else {
     return Div(a, Pow(BigInt{2}, shift));
@@ -1047,72 +1299,109 @@ BigInt BigInt::RightShift(const BigInt &a, uint64_t shift) {
 
 
 BigInt BigInt::GCD(const BigInt &a, const BigInt &b) {
+  // PERF: We have this for 64 bits in ../numbers.h.
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
   BigInt ret;
-  mpz_gcd(ret.rep, a.rep, b.rep);
+  mpz_gcd(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
   return ret;
 }
 
 std::tuple<BigInt, BigInt, BigInt>
 BigInt::ExtendedGCD(const BigInt &a, const BigInt &b) {
+  // PERF: We have this for 64 bits in ../numbers.h.
+  GmpRep::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
   BigInt g, s, t;
-  mpz_gcdext(g.rep, s.rep, t.rep, a.rep, b.rep);
-  return std::make_tuple(g, s, t);
+  mpz_gcdext(g.rep.Mpz(), s.rep.Mpz(), t.rep.Mpz(),
+             a_tmp.ConstMpz(), b_tmp.ConstMpz());
+  return std::make_tuple(std::move(g), std::move(s), std::move(t));
 }
 
-BigInt BigInt::Sqrt(const BigInt &a) {
+BigInt BigInt::Sqrt(const BigInt &aa) {
+  // PERF: We have this for 64 bits in ../numbers.h.
+  GmpRep::Lease aa_tmp(aa.rep);
+
   BigInt ret;
-  mpz_sqrt(ret.rep, a.rep);
+  mpz_sqrt(ret.rep.Mpz(), aa_tmp.ConstMpz());
   return ret;
 }
 
 std::pair<BigInt, BigInt> BigInt::SqrtRem(const BigInt &aa) {
+  GmpRep::Lease aa_tmp(aa.rep);
+
   BigInt ret, rem;
-  mpz_sqrtrem(ret.rep, rem.rep, aa.rep);
-  return std::make_pair(ret, rem);
+  mpz_sqrtrem(ret.rep.Mpz(), rem.rep.Mpz(), aa_tmp.ConstMpz());
+  return std::make_pair(std::move(ret), std::move(rem));
 }
+
+// GMP Rationals.
 
 BigRat::BigRat(int64_t numer, int64_t denom) :
   BigRat(BigInt{numer}, BigInt{denom}) {}
 
 BigRat::BigRat(int64_t numer) : BigRat(BigInt{numer}) {}
 
-BigRat::BigRat(BigRat &&other) {
-  // PERF: This is correct, but is there a way to move from other
-  // without initializing at all?
-  mpq_init(rep);
-  Swap(&other);
-}
-
-BigRat::BigRat(const BigInt &numer, const BigInt &denom) {
-  mpq_init(rep);
-  mpq_set_z(rep, numer.rep);
-
-  Rep tmp;
-  mpq_init(tmp);
-  mpq_set_z(tmp, denom.rep);
-  mpq_div(rep, rep, tmp);
-  mpq_clear(tmp);
-}
-
-BigRat::BigRat(const BigInt &numer) {
-  BigInt n{numer};
-  mpq_init(rep);
-  mpq_set_z(rep, numer.rep);
-}
-
 BigRat::BigRat(const BigRat &other) {
   mpq_init(rep);
   mpq_set(rep, other.rep);
 }
+BigRat::BigRat(BigRat &&other) noexcept {
+  // Consume other's representation.
+  memcpy(rep, other.rep, sizeof(Rep));
+  // But make sure it doesn't try to free it.
+  mpq_numref(other.rep)->_mp_d = nullptr;
+  mpq_denref(other.rep)->_mp_d = nullptr;
+}
+
 BigRat &BigRat::operator =(const BigRat &other) {
   // Self-assignment does nothing.
   if (this == &other) return *this;
+
+  // If overwriting an object that has no allocation,
+  // we need to create one before calling mpq_set.
+  if (mpq_numref(rep)->_mp_d == nullptr) {
+    mpq_init(rep);
+  }
+
   mpq_set(rep, other.rep);
   return *this;
 }
-BigRat &BigRat::operator =(BigRat &&other) {
-  Swap(&other);
+BigRat &BigRat::operator =(BigRat &&other) noexcept {
+  if (this == &other) return *this;
+
+  // Prepare to overwrite data.
+  Destroy();
+
+  // Consume other's representation.
+  memcpy(rep, other.rep, sizeof(Rep));
+
+  // Leave it in a valid state, but without allocation.
+  // Only destroying the object or assigning over it are
+  // allowed.
+  mpq_numref(other.rep)->_mp_d = nullptr;
+  mpq_denref(other.rep)->_mp_d = nullptr;
+
   return *this;
+}
+
+BigRat::BigRat(const BigInt &numer, const BigInt &denom) {
+  mpq_init(rep);
+  // PERF: Small int case!
+  GmpRep::Lease numer_tmp(numer.rep);
+  GmpRep::Lease denom_tmp(denom.rep);
+  mpz_set(mpq_numref(rep), numer_tmp.ConstMpz());
+  mpz_set(mpq_denref(rep), denom_tmp.ConstMpz());
+  mpq_canonicalize(rep);
+}
+
+BigRat::BigRat(const BigInt &numer) {
+  // PERF: Small int case!
+  GmpRep::Lease numer_tmp(numer.rep);
+  mpq_init(rep);
+  mpq_set_z(rep, numer_tmp.ConstMpz());
 }
 
 void BigRat::Swap(BigRat *other) {
@@ -1120,7 +1409,7 @@ void BigRat::Swap(BigRat *other) {
 }
 
 BigRat::~BigRat() {
-  mpq_clear(rep);
+  Destroy();
 }
 
 int BigRat::Compare(const BigRat &a, const BigRat &b) {
@@ -1143,7 +1432,8 @@ bool BigRat::Eq(const BigRat &a, int64_t b) {
     return mpz_cmp_si(mpq_numref(a.rep), sb) == 0;
   } else {
     BigInt rhs(b);
-    return mpz_cmp(mpq_numref(a.rep), rhs.rep) == 0;
+    rhs.rep.Promote();
+    return mpz_cmp(mpq_numref(a.rep), rhs.rep.ConstMpz()) == 0;
   }
 }
 
@@ -1192,31 +1482,35 @@ BigRat BigRat::Minus(const BigRat &a, const BigRat &b) {
 std::string BigRat::ToString() const {
   const auto &[numer, denom] = Parts();
   std::string ns = numer.ToString();
-  if (mpz_cmp_ui(denom.rep, 1) == 0) {
+  if (BigInt::Eq(denom, BigInt(1))) {
     // for n/1
     return ns;
   } else {
     std::string ds = denom.ToString();
-    return ns + "/" + ds;
+    return std::move(ns) + "/" + ds;
   }
 }
 
 std::pair<BigInt, BigInt> BigRat::Parts() const {
   BigInt numer, denom;
-  mpz_set(numer.rep, mpq_numref(rep));
-  mpz_set(denom.rep, mpq_denref(rep));
-  return std::make_pair(numer, denom);
+  numer.rep.Promote();
+  denom.rep.Promote();
+  mpz_set(numer.rep.Mpz(), mpq_numref(rep));
+  mpz_set(denom.rep.Mpz(), mpq_denref(rep));
+  return std::make_pair(std::move(numer), std::move(denom));
 }
 
 BigInt BigRat::Numerator() const {
   BigInt numer;
-  mpz_set(numer.rep, mpq_numref(rep));
+  numer.rep.Promote();
+  mpz_set(numer.rep.Mpz(), mpq_numref(rep));
   return numer;
 }
 
 BigInt BigRat::Denominator() const {
   BigInt denom;
-  mpz_set(denom.rep, mpq_denref(rep));
+  denom.rep.Promote();
+  mpz_set(denom.rep.Mpz(), mpq_denref(rep));
   return denom;
 }
 
@@ -1291,7 +1585,7 @@ BigInt::BigInt(std::integral auto ni) {
 }
 
 BigInt::BigInt(const BigInt &other) : rep(BzCopy(other.rep)) { }
-BigInt::BigInt(BigInt &&other) : rep(other.rep) {
+BigInt::BigInt(BigInt &&other) noexcept : rep(other.rep) {
   // Take ownership. Only valid thing to do with other is
   // destroy it.
   other.rep = nullptr;
@@ -1304,7 +1598,7 @@ BigInt &BigInt::operator =(const BigInt &other) {
   rep = BzCopy(other.rep);
   return *this;
 }
-BigInt &BigInt::operator =(BigInt &&other) {
+BigInt &BigInt::operator =(BigInt &&other) noexcept {
   // We don't care how we leave other, but it needs to be valid (e.g. for
   // the destructor). Swap is a good way to do this.
   Swap(&other);
@@ -1727,12 +2021,12 @@ BigRat &BigRat::operator =(const BigRat &other) {
                  BqGetDenominator(other.rep));
   return *this;
 }
-BigRat &BigRat::operator =(BigRat &&other) {
+BigRat &BigRat::operator =(BigRat &&other) noexcept {
   Swap(&other);
   return *this;
 }
 
-BigRat::BigRat(BigRat &&other) : BigRat() {
+BigRat::BigRat(BigRat &&other) noexcept : BigRat() {
   // PERF: Should not actually need to create the rep only
   // to swap/free it.
   Swap(&other);

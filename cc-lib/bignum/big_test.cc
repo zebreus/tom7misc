@@ -967,17 +967,75 @@ static void TestRatSwap() {
 }
 
 static void TestRatMove() {
-  BigRat a(BigInt("11111111111111111117"), BigInt("555555555555555555555"));
-  BigRat b(BigInt("11111111111111111111"), BigInt("259259259259259259259"));
+  {
+    BigRat a(BigInt("11111111111111111117"), BigInt("555555555555555555555"));
+    BigRat b(BigInt("11111111111111111111"), BigInt("259259259259259259259"));
 
-  BigRat c{std::move(a)};
-  CHECK(c.ToString() == "11111111111111111117/555555555555555555555");
+    BigRat c{std::move(a)};
+    CHECK(c.ToString() == "11111111111111111117/555555555555555555555");
 
-  a = std::move(b);
-  CHECK(a.ToString() == "11111111111111111111/259259259259259259259");
+    a = std::move(b);
+    CHECK(a.ToString() == "11111111111111111111/259259259259259259259");
 
-  b = BigRat(7);
-  CHECK(b.ToString() == "7");
+    b = BigRat(7);
+    CHECK(b.ToString() == "7");
+    CHECK(a.ToString() == "11111111111111111111/259259259259259259259");
+  }
+
+  const BigRat val1("123/456");
+  const BigRat val2("-987/654");
+  const BigRat val3("111111111111111111111111111111111111111111/"
+                    "222222222222222222222222222222222222222222");
+
+
+  {
+    BigRat a = val1;
+    BigRat b(std::move(a));
+    CHECK(BigRat::Eq(b, val1));
+  }
+
+  // Move assignment into a valid object.
+  {
+    BigRat a = val1;
+    BigRat b = val2;
+    b = std::move(a);
+    CHECK(BigRat::Eq(b, val1));
+  }
+
+  // Test copy- and move-assignment to a moved-from object.
+  {
+    BigRat a = val1;
+    BigRat dummy(std::move(a));
+
+    a = val2;
+    CHECK(BigRat::Eq(a, val2));
+
+    BigRat d = val3;
+    a = std::move(d);
+    CHECK(BigRat::Eq(a, val3));
+
+    CHECK(BigRat::Eq(dummy, val1));
+  }
+
+  // Test self-assignment.
+  {
+    BigRat a = val1;
+    BigRat &a_ref = a;
+    a = a_ref;
+    CHECK(BigRat::Eq(a, val1));
+    CHECK(BigRat::Eq(a, a_ref));
+
+    a = std::move(a_ref);
+    // The self-assignment guard should leave 'a' unmodified.
+    CHECK(BigRat::Eq(a, val1));
+  }
+
+  {
+    BigRat a = val3;
+    BigRat b = std::move(a);
+    BigRat c = std::move(b);
+    CHECK(BigRat::Eq(c, val3));
+  }
 }
 
 static void TestRatSqrt() {
@@ -1414,7 +1472,7 @@ static void TestRatElementaryBounds() {
 }
 
 static void TestSimplifyInterval() {
-
+  // TODO
 }
 
 static void TestRatNegate() {
@@ -1430,6 +1488,9 @@ static void TestCtz() {
   CHECK(BigInt::BitwiseCtz(BigInt(1)) == 0);
   CHECK(BigInt::BitwiseCtz(BigInt(2)) == 1);
   CHECK(BigInt::BitwiseCtz(BigInt(-2)) == 1);
+  CHECK(BigInt::BitwiseCtz(BigInt(1024)) == 10);
+
+  CHECK(BigInt::BitwiseCtz(BigInt("350488137400481480704")) == 16 * 4);
 
   CHECK(BigInt::BitwiseCtz(
             BigInt::Times(BigInt::Pow(BigInt{2}, 389), 33)) == 389);
@@ -1602,6 +1663,175 @@ static void TestRatFloorCeil() {
 
 }
 
+static void TestSmallAndLarge() {
+  // int64_t boundaries and promotion for uint64_t.
+  {
+    BigInt max_i64(std::numeric_limits<int64_t>::max());
+    CHECK(max_i64.ToString() == "9223372036854775807");
+
+    max_i64 = BigInt::Plus(std::move(max_i64), 1);
+    CHECK(max_i64.ToString() == "9223372036854775808");
+
+    BigInt min_i64(std::numeric_limits<int64_t>::lowest());
+    CHECK(min_i64.ToString() == "-9223372036854775808");
+
+    min_i64 = BigInt::Minus(std::move(min_i64), 1);
+    CHECK(min_i64.ToString() == "-9223372036854775809");
+
+    // Too big to store as an int64_t.
+    BigInt max_u64(std::numeric_limits<uint64_t>::max());
+    CHECK(max_u64.ToString() == "18446744073709551615");
+  }
+
+  // Promotion to large.
+  {
+    BigInt half_max = BigInt(std::numeric_limits<int64_t>::max() / 2);
+    // This should still be a small int.
+    BigInt almost_max = BigInt::Plus(half_max, half_max);
+    CHECK_IEQ(almost_max, BigInt(int64_t{9223372036854775806}));
+    // This addition should cause an overflow and promotion.
+    BigInt overflowed = BigInt::Plus(almost_max, 100);
+    CHECK_IEQ(overflowed, BigInt("9223372036854775906"));
+    BigInt overflowed2 = BigInt::Plus(almost_max, BigInt(100));
+    CHECK_IEQ(overflowed, BigInt("9223372036854775906"));
+  }
+
+  // Mix of small and large arithmetic.
+  {
+    BigInt small_pos(123);
+    BigInt large_pos("10000000000000000000000");
+    BigInt large_neg("-10000000000000000000000");
+
+    // small + large
+    CHECK_IEQ(BigInt::Plus(small_pos, large_pos),
+              BigInt("10000000000000000000123"));
+    CHECK_IEQ(BigInt::Plus(large_pos, small_pos),
+              BigInt("10000000000000000000123"));
+
+    // large - small
+    CHECK_IEQ(BigInt::Minus(large_neg, small_pos),
+              BigInt("-10000000000000000000123"));
+    CHECK_IEQ(BigInt::Minus(small_pos, large_pos),
+              BigInt("-9999999999999999999877"));
+
+    // large * small
+    CHECK_IEQ(BigInt::Times(large_pos, small_pos),
+              BigInt("1230000000000000000000000"));
+    CHECK_IEQ(BigInt::Times(small_pos, large_pos),
+              BigInt("1230000000000000000000000"));
+
+    // large / small
+    CHECK_IEQ(BigInt::Div(large_pos, small_pos),
+              BigInt("81300813008130081300"));
+    CHECK_IEQ(BigInt::DivFloor(large_pos, small_pos),
+              BigInt("81300813008130081300"));
+    CHECK(!BigInt::DivisibleBy(large_pos, small_pos));
+    CHECK(!BigInt::DivisibleBy(large_neg, small_pos));
+    CHECK(BigInt::DivisibleBy(large_neg, large_pos));
+    CHECK(BigInt::DivisibleBy(large_pos, large_neg));
+    CHECK(BigInt::DivisibleBy(small_pos, small_pos));
+    CHECK(BigInt::DivisibleBy(small_pos, BigInt(1)));
+    CHECK(BigInt::DivisibleBy(large_pos, BigInt(1)));
+    CHECK(BigInt::DivisibleBy(large_neg, BigInt(1)));
+
+    CHECK_IEQ(BigInt::Div(small_pos, large_pos),
+              BigInt(0));
+    CHECK_IEQ(BigInt::Div(small_pos, large_neg),
+              BigInt(0));
+
+    CHECK_IEQ(BigInt::Min(small_pos, large_pos), small_pos);
+    CHECK_IEQ(BigInt::Min(small_pos, large_neg), large_neg);
+    CHECK_IEQ(BigInt::Min(large_pos, large_neg), large_neg);
+    CHECK_IEQ(BigInt::Min(large_pos, small_pos), small_pos);
+    CHECK_IEQ(BigInt::Min(large_neg, small_pos), large_neg);
+    CHECK_IEQ(BigInt::Min(large_neg, large_pos), large_neg);
+
+    CHECK_IEQ(BigInt::Max(small_pos, large_pos), large_pos);
+    CHECK_IEQ(BigInt::Max(small_pos, large_neg), small_pos);
+    CHECK_IEQ(BigInt::Max(large_pos, large_neg), large_pos);
+    CHECK_IEQ(BigInt::Max(large_pos, small_pos), large_pos);
+    CHECK_IEQ(BigInt::Max(large_neg, small_pos), small_pos);
+    CHECK_IEQ(BigInt::Max(large_neg, large_pos), large_pos);
+
+  }
+
+  {
+    BigInt small_neg(-123);
+    CHECK(BigInt::Sign(small_neg) == -1);
+    CHECK(!BigInt::IsZero(small_neg));
+    CHECK_IEQ(BigInt::Abs(small_neg), BigInt(123));
+    CHECK_IEQ(BigInt::Negate(small_neg), BigInt(123));
+    CHECK_IEQ(BigInt::Abs(std::move(small_neg)), BigInt(123));
+  }
+
+  // Most negative number is an annoying special case.
+  {
+    BigInt min_int64(std::numeric_limits<int64_t>::lowest());
+    BigInt expected_abs("9223372036854775808");
+    CHECK_IEQ(BigInt::Abs(min_int64), expected_abs);
+    CHECK_IEQ(BigInt::Negate(min_int64), expected_abs);
+    CHECK_IEQ(BigInt::Times(min_int64, -1), expected_abs);
+    CHECK_IEQ(BigInt::Div(min_int64, -1), expected_abs);
+  }
+
+  // Mix of small and large bitwise.
+  {
+    BigInt large("123456789012345678901234567890345678901");
+    BigInt small_minus_one(-1);
+    BigInt small_mask(0xFFFFFFFF);
+
+    // -1 is the identity for bitwise and.
+    CHECK_IEQ(BigInt::BitwiseAnd(large, small_minus_one), large);
+
+    // Should mask the low bits.
+    CHECK_IEQ(BigInt::BitwiseAnd(large, small_mask), BigInt(0xbb785835));
+
+    BigInt large_base("1000000000000000000000000000000000001");
+    BigInt small_val(12345);
+
+    CHECK_IEQ(BigInt::BitwiseOr(large_base, small_val),
+              "1000000000000000000000000000000012345");
+
+    CHECK_IEQ(BigInt::BitwiseXor(large_base, small_val),
+              "1000000000000000000000000000000012344");
+  }
+
+  // Mix of small and large comparisons.
+  {
+    BigInt small(999);
+    BigInt large("9999999999999999999999");
+    CHECK(BigInt::Less(small, large));
+    CHECK(BigInt::Greater(large, small));
+    CHECK(!BigInt::Eq(small, large));
+    CHECK(!BigInt::Greater(small, small));
+    CHECK(!BigInt::Greater(large, large));
+    CHECK(!BigInt::Less(small, small));
+    CHECK(!BigInt::Less(large, large));
+    CHECK(BigInt::GreaterEq(small, small));
+    CHECK(BigInt::GreaterEq(large, large));
+    CHECK(BigInt::LessEq(small, small));
+    CHECK(BigInt::LessEq(large, large));
+
+    // Test the int64 overloads.
+    CHECK(BigInt::Less(small, 1000LL));
+    CHECK(!BigInt::Less(small, 999LL));
+    CHECK(BigInt::LessEq(small, 999LL));
+    CHECK(BigInt::Greater(small, 998LL));
+    CHECK(!BigInt::Greater(small, 999LL));
+    CHECK(BigInt::GreaterEq(small, 999LL));
+    CHECK(BigInt::Eq(small, 999LL));
+    CHECK(!BigInt::Eq(small, 998LL));
+    CHECK(!BigInt::Eq(small, 1000LL));
+    CHECK(!BigInt::Eq(large, 1000LL));
+
+    // Also compare a large number to an int64.
+    CHECK(BigInt::Greater(large, 1000LL));
+    CHECK(BigInt::GreaterEq(large, 1000LL));
+    CHECK(!BigInt::Less(large, 1000LL));
+    CHECK(!BigInt::LessEq(large, 1000LL));
+  }
+}
+
 int main(int argc, char **argv) {
   constexpr bool SLOW = true;
 
@@ -1613,6 +1843,8 @@ int main(int argc, char **argv) {
   TestToString();
   TestSign();
   TestToU64();
+
+  TestSmallAndLarge();
 
   TestCompare();
   TestRatCompare();
