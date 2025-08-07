@@ -2,9 +2,11 @@
 #include "bigconv.h"
 
 #include <cstring>
+#include <gmp.h>
 
-#include "bignum/big.h"
 #include "bignbr.h"
+#include "bignum/big.h"
+#include "bignum/wrap-gmp.h"
 
 using namespace std;
 
@@ -14,7 +16,7 @@ using namespace std;
 
 BigInt LimbsToBigInt(const limb *limbs, int num_limbs) {
   BigInt out;
-  mpz_import(out.GetRep(), num_limbs,
+  mpz_import(out.GetRep().Mpz(), num_limbs,
              // words are little-endian
              -1,
              // word size
@@ -30,8 +32,10 @@ BigInt LimbsToBigInt(const limb *limbs, int num_limbs) {
 int BigIntNumLimbs(const BigInt &b) {
   static constexpr int bits_per_limb = 31;
 
+  GmpRep::Lease tmp(b.GetRep());
+
   // Number of bits in b.
-  const size_t num_bits = mpz_sizeinbase(b.GetRep(), 2);
+  const size_t num_bits = mpz_sizeinbase(tmp.ConstMpz(), 2);
 
   // Round up if needed.
   return (num_bits + bits_per_limb - 1) / bits_per_limb;
@@ -39,6 +43,7 @@ int BigIntNumLimbs(const BigInt &b) {
 
 int BigIntToLimbs(const BigInt &b, limb *limbs) {
   size_t count = 0;
+  GmpRep::Lease tmp(b.GetRep());
   mpz_export(limbs, &count,
              // words are little endian.
              -1,
@@ -48,7 +53,7 @@ int BigIntToLimbs(const BigInt &b, limb *limbs) {
              0,
              // 31 bits per word
              1,
-             b.GetRep());
+             tmp.ConstMpz());
   if (count == 0) {
     // BigInteger wants one limb always.
     limbs[0].x = 0;
@@ -59,6 +64,7 @@ int BigIntToLimbs(const BigInt &b, limb *limbs) {
 
 void BigIntToFixedLimbs(const BigInt &b, size_t num_limbs, limb *limbs) {
   size_t count = 0;
+  GmpRep::Lease tmp(b.GetRep());
   mpz_export(limbs, &count,
              // words are little endian.
              -1,
@@ -68,7 +74,7 @@ void BigIntToFixedLimbs(const BigInt &b, size_t num_limbs, limb *limbs) {
              0,
              // 31 bits per word
              1,
-             b.GetRep());
+             tmp.ConstMpz());
 
   // This also handles the case where there were no limbs.
   while (count < num_limbs) {

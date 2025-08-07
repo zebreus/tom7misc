@@ -20,8 +20,6 @@
 #include <string>
 
 #include "bignum/big.h"
-#include "bignbr.h"
-#include "bigconv.h"
 #include "quad.h"
 
 int main(int argc, char* argv[]) {

@@ -53,7 +53,7 @@ void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
 void SubtractBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pDiff,
                     int nbrLen);
 
-static inline int UintToInt(unsigned int value) {
+inline int UintToInt(unsigned int value) {
   return (int)value;
 }
 

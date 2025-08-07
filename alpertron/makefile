@@ -40,7 +40,7 @@ CC_LIB=../cc-lib
 # PERF: gotta reduce this stack usage!
 # XXX: Opt flags, -g
 # Add this to see dead code: -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--print-gc-sections
-CXXFLAGS=-std=c++20 -I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -Wall $(PLATFORM_CFLAGS)
+CXXFLAGS=-std=c++20 -I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -mtune=native -Wall $(PLATFORM_CFLAGS)
 LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)
 
 HEADERS=bignbr.h modmult.h quadmodll.h bigconv.h quad.h
@@ -51,11 +51,11 @@ TEST_CC_LIB_OBJECTS=$(CC_LIB_OBJECTS) $(CC_LIB)/ansi.o $(CC_LIB)/util.o $(CC_LIB
 
 ALPERTRON_OBJECTS=modmult.o quad.o quadmodll.o bignbr.o bigconv.o
 
-quad.exe:  main.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
+quad.exe : main.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
-afactor.exe:  afactor.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
+afactor.exe : afactor.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 

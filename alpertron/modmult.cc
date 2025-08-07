@@ -33,6 +33,10 @@
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 
+// This code uses variable-length arrays, which are a clang extension.
+// Don't warn about it.
+#pragma clang diagnostic ignored "-Wvla-cxx-extension"
+
 static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 

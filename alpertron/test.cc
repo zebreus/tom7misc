@@ -11,9 +11,15 @@
 #include "modmult.h"
 #include "bigconv.h"
 #include <cstdio>
+#include <format>
 #include <memory>
 #include <string>
 #include <vector>
+
+// This code uses variable-length arrays, which are a clang extension.
+// Don't warn about it.
+#pragma clang diagnostic ignored "-Wvla-cxx-extension"
+
 
 static void TestNumLimbs() {
   for (const std::string bs : {"0", "1", "2", "3", "4", "5",
@@ -111,7 +117,7 @@ static std::string BigBytes(const BigInt &X) {
   std::string ret;
   for (int i = 0; i < num_limbs; i++) {
     if (i != 0) ret.push_back(':');
-    StringAppendF(&ret, "%08x", x[i].x);
+    AppendFormat(&ret, "{:08x}", x[i].x);
   }
   return ret;
 }
@@ -122,10 +128,10 @@ static void WrapModMult(const BigInt &A,
                         const BigInt &Expected) {
 
   auto ProblemIn = [&]() {
-      return StringPrintf("%s * %s mod %s\n",
-                          A.ToString().c_str(),
-                          B.ToString().c_str(),
-                          Modulus.ToString().c_str());
+      return std::format("{} * {} mod {}\n",
+                         A.ToString(),
+                         B.ToString(),
+                         Modulus.ToString());
     };
 
   const std::unique_ptr<MontgomeryParams> params =
@@ -157,11 +163,11 @@ static void WrapModMult(const BigInt &A,
   CHECK(Q < Modulus);
 
   auto Problem = [&]() {
-      return StringPrintf("%s * %s mod %s = %s\n",
-                          A.ToString().c_str(),
-                          B.ToString().c_str(),
-                          Modulus.ToString().c_str(),
-                          Q.ToString().c_str());
+      return std::format("{} * {} mod {} = {}\n",
+                         A.ToString(),
+                         B.ToString(),
+                         Modulus.ToString(),
+                         Q.ToString());
     };
 
   CHECK(Q == Expected) << Problem() <<
@@ -255,10 +261,10 @@ static void WrapDivide(const BigInt &Num,
   if (NMod < 0) NMod += Modulus;
 
   auto Problem = [&]() {
-      return StringPrintf("(%s / %s) mod %s\n",
-                          Num.ToString().c_str(),
-                          Den.ToString().c_str(),
-                          Modulus.ToString().c_str());
+      return std::format("({} / {}) mod {}\n",
+                         Num.ToString(),
+                         Den.ToString(),
+                         Modulus.ToString());
     };
 
   {

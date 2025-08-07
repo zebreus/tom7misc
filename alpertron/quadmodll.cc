@@ -34,6 +34,10 @@
 #include "bignum/big.h"
 #include "modmult.h"
 
+// This code uses variable-length arrays, which are a clang extension.
+// Don't warn about it.
+#pragma clang diagnostic ignored "-Wvla-cxx-extension"
+
 static constexpr bool VERBOSE = false;
 
 // How does this differ from MultiplyLimbs?
