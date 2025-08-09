@@ -587,6 +587,47 @@ static void TimesRat() {
   printf("TimesRat ok.\n");
 }
 
+static void MathFuncs() {
+  BigInt inv_epsilon(1000000);
+  BigRat epsilon(BigInt(1), inv_epsilon);
+
+  {
+    Bigival pi = Bigival::Pi(inv_epsilon);
+    // std::numbers::pi is the double value closest to the actual
+    // value of pi. This means that the doubles immediately and
+    // before this one must bracket the true value.
+    Bigival double_pi(BigRat::FromDouble(
+                          std::nextafter(std::numbers::pi, -100.0)),
+                      BigRat::FromDouble(
+                          std::nextafter(std::numbers::pi, +100.0)),
+                      false, false);
+
+    auto isect = Bigival::MaybeIntersection(pi, double_pi);
+    CHECK(isect.has_value());
+
+    CHECK(pi.Width() <= epsilon);
+    // Expect open endpoints, since pi is irrational. (But it is not
+    // formally wrong for these to be true).
+    CHECK(!pi.IncludesLB() && !pi.IncludesUB());
+  }
+
+  {
+    Bigival nine(9);
+    Bigival sqrt9 = Bigival::Sqrt(nine, inv_epsilon);
+    CHECK_CONTAINS(sqrt9, BigRat(3));
+    CHECK(sqrt9.Width() <= epsilon);
+  }
+
+  {
+    // Non-singular interval, both ends closed.
+    Bigival range(4, 9, true, true);
+    Bigival sqrt_range = Bigival::Sqrt(range, inv_epsilon);
+
+    CHECK_CONTAINS(sqrt_range, BigRat(2));
+    CHECK_CONTAINS(sqrt_range, BigRat(3));
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -598,6 +639,7 @@ int main(int argc, char **argv) {
   TimesRat();
 
   Transcendental();
+  MathFuncs();
 
   printf("OK\n");
   return 0;

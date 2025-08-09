@@ -623,6 +623,73 @@ struct Bigival {
   Point lb, ub;
 };
 
+// More expensive than Bigival::Sin, but produces higher quality
+// intervals.
+inline Bigival NiceSin(const BigRat &r, const BigInt &inv_epsilon) {
+  // PERF Can avoid recomputing this over and over.
+  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
+
+  Bigival fine_sin = Bigival::Sin(r, fine_epsilon);
+
+  // We use the whole interval even if there's a simple fraction
+  // in the middle. It's not easy to test which side the true value
+  // falls into. So this can return an interval with width up to
+  // 1/2*inv_epsilon. We pass in inv_epsilon/2 so that the target
+  // error is still inv_epsilon.
+  // Note potential round-off error; we don't actually have any
+  // formal requirement on the intervals except that they are small
+  // and get smaller as we subdivide. So this doesn't affect correctness.
+  auto tpl = BigRat::SimplifyInterval(fine_sin.LB(), fine_sin.UB(),
+                                      inv_epsilon >> 1);
+
+  // Sin can never be outside [-1, 1] and SimplifyInterval doesn't
+  // really guarantee that it wouldn't expand past these points
+  // (though you would expect it to choose the intervals!), so enforce
+  // that bound here.
+  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
+                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
+                 true, true);
+}
+
+// As above, but cosine.
+inline Bigival NiceCos(const BigRat &r, const BigInt &inv_epsilon) {
+  // PERF Can avoid recomputing this over and over.
+  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
+
+  Bigival fine_cos = Bigival::Cos(r, fine_epsilon);
+
+  auto tpl = BigRat::SimplifyInterval(fine_cos.LB(), fine_cos.UB(),
+                                      inv_epsilon >> 1);
+
+  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
+                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
+                 true, true);
+}
+
+// Same idea, but when the input is an interval.
+inline Bigival NiceSin(const Bigival &r, const BigInt &inv_epsilon) {
+  // PERF Can avoid recomputing this over and over.
+  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
+  Bigival fine_sin = r.Sin(fine_epsilon);
+  auto tpl = BigRat::SimplifyInterval(fine_sin.LB(), fine_sin.UB(),
+                                      inv_epsilon >> 1);
+  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
+                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
+                 true, true);
+}
+
+inline Bigival NiceCos(const Bigival &r, const BigInt &inv_epsilon) {
+  // PERF Can avoid recomputing this over and over.
+  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
+  Bigival fine_cos = r.Cos(fine_epsilon);
+  auto tpl = BigRat::SimplifyInterval(fine_cos.LB(), fine_cos.UB(),
+                                      inv_epsilon >> 1);
+  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
+                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
+                 true, true);
+}
+
+
 inline Bigival operator+(const Bigival &a, const Bigival &b) {
   return a.Plus(b);
 }
@@ -668,3 +735,5 @@ inline Bigival::MaybeBool operator >=(const Bigival &a, const Bigival &b) {
 }
 
 #endif
+
+

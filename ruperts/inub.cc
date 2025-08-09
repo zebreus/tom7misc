@@ -649,82 +649,12 @@ Bigival PolygonArea(const std::vector<Vec2ival> &vs) {
 }
 #endif
 
-// More expensive than Bigival::Sin, but produces higher quality
-// intervals.
-static Bigival NiceSin(const BigRat &r, const BigInt &inv_epsilon) {
-  // PERF Can avoid recomputing this over and over.
-  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
-
-  Bigival fine_sin = Bigival::Sin(r, fine_epsilon);
-
-  // We use the whole interval even if there's a simple fraction
-  // in the middle. It's not easy to test which side the true value
-  // falls into. So this can return an interval with width up to
-  // 1/2*inv_epsilon. We pass in inv_epsilon/2 so that the target
-  // error is still inv_epsilon.
-  // Note potential round-off error; we don't actually have any
-  // formal requirement on the intervals except that they are small
-  // and get smaller as we subdivide. So this doesn't affect correctness.
-  auto tpl = BigRat::SimplifyInterval(fine_sin.LB(), fine_sin.UB(),
-                                      inv_epsilon >> 1);
-
-  // Sin can never be outside [-1, 1] and SimplifyInterval doesn't
-  // really guarantee that it wouldn't expand past these points
-  // (though you would expect it to choose the intervals!), so enforce
-  // that bound here.
-  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
-                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
-                 true, true);
-}
-
-// As above, but cosine.
-static Bigival NiceCos(const BigRat &r, const BigInt &inv_epsilon) {
-  // PERF Can avoid recomputing this over and over.
-  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
-
-  Bigival fine_cos = Bigival::Cos(r, fine_epsilon);
-
-  auto tpl = BigRat::SimplifyInterval(fine_cos.LB(), fine_cos.UB(),
-                                      inv_epsilon >> 1);
-
-  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
-                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
-                 true, true);
-}
-
-// Same idea, but when the input is an interval.
-static Bigival NiceSin(const Bigival &r, const BigInt &inv_epsilon) {
-  // PERF Can avoid recomputing this over and over.
-  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
-  Bigival fine_sin = r.Sin(fine_epsilon);
-  auto tpl = BigRat::SimplifyInterval(fine_sin.LB(), fine_sin.UB(),
-                                      inv_epsilon >> 1);
-  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
-                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
-                 true, true);
-}
-
-static Bigival NiceCos(const Bigival &r, const BigInt &inv_epsilon) {
-  // PERF Can avoid recomputing this over and over.
-  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
-  Bigival fine_cos = r.Cos(fine_epsilon);
-  auto tpl = BigRat::SimplifyInterval(fine_cos.LB(), fine_cos.UB(),
-                                      inv_epsilon >> 1);
-  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
-                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
-                 true, true);
-}
-
 
 // We work with spherical coordinates (azimuth/angle intervals) to
-// represent the bounds on the outer and inner view positions. Various
-// operations will use the intervals for the corners of this AABB
-// (since this bounds the values as long as the intervals are not
-// hemisphere-sized) and will want to compute the sine and cosine of
-// these (expensive). Compute that up front. Note that if the
-// azimuth/angle intervals are too big (enough to span a hemisphere),
-// we just return the full interval [-1, 1] for the trig functions.
-// This is correct but then will usually require subdivision.
+// represent the bounds on the outer and inner view positions.
+// Various operations will want to have Sin/Cos of these angles,
+// so we compute those up front. We can spend some more time getting
+// high quality approximations since we will reuse them.
 struct ViewBoundsTrig {
 
   ViewBoundsTrig(Bigival azimuth_in, Bigival angle_in,
@@ -732,55 +662,23 @@ struct ViewBoundsTrig {
     azimuth(std::move(azimuth_in)), angle(std::move(angle_in)),
     inv_epsilon(std::move(inv_epsilon_in)) {
 
-    if (azimuth.Width() < BigRat(3)) {
-      // Since we use these a lot of times, we spend extra time up front
-      // to compute higher quality bounds (simpler rationals). We can
-      // still stay approximately within the inv_epsilon target.
-      sin_cos_az[0] =
-        std::make_pair(NiceSin(azimuth.LB(), inv_epsilon),
-                       NiceCos(azimuth.LB(), inv_epsilon));
-      sin_cos_az[1] =
-        std::make_pair(NiceSin(azimuth.UB(), inv_epsilon),
-                       NiceCos(azimuth.UB(), inv_epsilon));
-    } else {
-      sin_cos_az[0] =
-        std::make_pair(Bigival(-1, 1, true, true),
-                       Bigival(-1, 1, true, true));
-      sin_cos_az[1] =
-        std::make_pair(Bigival(-1, 1, true, true),
-                       Bigival(-1, 1, true, true));
-    }
+    // Since we use these a lot of times, we spend extra time up front
+    // to compute higher quality bounds (simpler rationals). We can
+    // still stay approximately within the inv_epsilon target.
+    sin_az = NiceSin(azimuth, inv_epsilon);
+    cos_az = NiceCos(azimuth, inv_epsilon);
 
-    if (angle.Width() < BigRat(3)) {
-      sin_cos_an[0] =
-        std::make_pair(NiceSin(angle.LB(), inv_epsilon),
-                       NiceCos(angle.LB(), inv_epsilon));
-      sin_cos_an[1] =
-        std::make_pair(NiceSin(angle.UB(), inv_epsilon),
-                       NiceCos(angle.UB(), inv_epsilon));
-    } else {
-      sin_cos_an[0] =
-        std::make_pair(Bigival(-1, 1, true, true),
-                       Bigival(-1, 1, true, true));
-      sin_cos_an[1] =
-        std::make_pair(Bigival(-1, 1, true, true),
-                       Bigival(-1, 1, true, true));
-    }
+    sin_an = NiceSin(angle, inv_epsilon);
+    cos_an = NiceCos(angle, inv_epsilon);
   }
-
-  // TODO: Can efficiently compute azimuth.Cos() etc. We have
-  // the endpoints and just need to tend to the possibility
-  // that there may be a peak or trough in between, like
-  // Bigivall::Cos does.
 
   Bigival azimuth;
   Bigival angle;
 
   BigInt inv_epsilon;
 
-  // These are ordered as lb, ub.
-  std::array<std::pair<Bigival, Bigival>, 2> sin_cos_az;
-  std::array<std::pair<Bigival, Bigival>, 2> sin_cos_an;
+  Bigival sin_az, cos_az;
+  Bigival sin_an, cos_an;
 };
 
 // Same idea, for the 2D rotation of the inner hull.
@@ -797,6 +695,8 @@ struct RotTrig {
     // times.
     cos_a = NiceCos(angle, inv_epsilon);
     sin_a = NiceSin(angle, inv_epsilon);
+
+    // TODO: Midpoint.
   }
 
   Bigival angle;
@@ -816,7 +716,7 @@ static Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
   // is a whole hemisphere we'd need to start checking other points.
   // Just return a conservative but degenerate ball (full unit ball)
   // if the intervals are too wide.
-  if (trig.azimuth.Width() > BigRat(3) || trig.angle.Width() > BigRat(3)) {
+  if (trig.azimuth.Width() > BigRat(1) || trig.angle.Width() > BigRat(1)) {
     return Ballival(BigVec3(BigRat(0), BigRat(0), BigRat(0)),
                     BigRat(1));
   }
@@ -836,6 +736,13 @@ static Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
   // we just use the midpoint of this tiny interval.
   // Uncertainty essentially gets transferred into the
   // radius.
+  //
+  // Informally, this point is on the unit sphere, and then we
+  // are guaranteed that the ball contains the entire patch
+  // (because it is not hemispherical).
+  // This will also be true if we are reasonably close to the
+  // sphere (which this will be) but there's a proof obligation
+  // to revisit here.
   BigVec3 center = BigVec3(
       (mid_sina * mid_cosz).Midpoint(),
       (mid_sina * mid_sinz).Midpoint(),
@@ -844,11 +751,30 @@ static Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
   // Find a squared radius that will include all the corners.
   BigRat max_sqdist(0);
 
+  // Compute corners for the patch. These are tight bounds
+  // on the sine and cosine of each corner, ordered as lb, ub.
+  std::array<std::pair<Bigival, Bigival>, 2> sin_cos_az;
+  std::array<std::pair<Bigival, Bigival>, 2> sin_cos_an;
+
+  sin_cos_az[0] =
+    std::make_pair(Bigival::Sin(trig.azimuth.LB(), inv_epsilon),
+                   Bigival::Cos(trig.azimuth.LB(), inv_epsilon));
+  sin_cos_az[1] =
+    std::make_pair(Bigival::Sin(trig.azimuth.UB(), inv_epsilon),
+                   Bigival::Cos(trig.azimuth.UB(), inv_epsilon));
+
+  sin_cos_an[0] =
+    std::make_pair(Bigival::Sin(trig.angle.LB(), inv_epsilon),
+                   Bigival::Cos(trig.angle.LB(), inv_epsilon));
+  sin_cos_an[1] =
+    std::make_pair(Bigival::Sin(trig.angle.UB(), inv_epsilon),
+                   Bigival::Cos(trig.angle.UB(), inv_epsilon));
+
   // The corners of the patch are the furthest away from the
   // chosen center. The furthest of these will determine the
   // radius.
-  for (const auto &[c_sinz, c_cosz] : trig.sin_cos_az) {
-    for (const auto &[c_sina, c_cosa] : trig.sin_cos_an) {
+  for (const auto &[c_sinz, c_cosz] : sin_cos_az) {
+    for (const auto &[c_sina, c_cosa] : sin_cos_an) {
       // The location of the corner.
       Vec3ival corner(c_sina * c_cosz, c_sina * c_sinz, c_cosa);
 
@@ -1074,41 +1000,19 @@ Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
 
 // Like TransformPointTo2D(
 //    FrameFromViewPos(ViewFromSpherical(azimuth, angle)), v)
-// but producing a tighter AABB. The azimuth and angle must be
-// less than 3 to avoid hemisphere-spanning patches.
+// but producing a tighter AABB.
 static Vec2ival TransformVec(const ViewBoundsTrig &trig,
-                             const BigVec3 &v, const BigInt &inv_epsilon) {
+                             const BigVec3 &v) {
+  // x = dot(v, view_frame_x_axis)
+  // view_frame_x_axis = (-sin(az), cos(az), 0)
+  Bigival px = -v.x * trig.sin_az + v.y * trig.cos_az;
 
-  // Preconditions.
-  CHECK(trig.angle.Width() < BigRat(3));
-  CHECK(trig.azimuth.Width() < BigRat(3));
+  // y = dot(v, view_frame_y_axis)
+  // view_frame_y_axis = (-cos(an)cos(az), -cos(an)sin(az), sin(an))
+  Bigival py = -trig.cos_an * (v.x * trig.cos_az + v.y * trig.sin_az) +
+    v.z * trig.sin_an;
 
-  std::optional<Vec2ival> aabb;
-
-  for (const auto &[sin_az, cos_az] : trig.sin_cos_az) {
-    // x = dot(v, view_frame_x_axis)
-    // view_frame_x_axis = (-sin(az), cos(az), 0)
-    Bigival px = -v.x * sin_az + v.y * cos_az;
-
-    for (const auto &[sin_an, cos_an] : trig.sin_cos_an) {
-
-      // y = dot(v, view_frame_y_axis)
-      // view_frame_y_axis = (-cos(an)cos(az), -cos(an)sin(az), sin(an))
-      Bigival py = -cos_an * (v.x * cos_az + v.y * sin_az) + v.z * sin_an;
-
-      Vec2ival corner_aabb(px, std::move(py));
-
-      if (aabb.has_value()) {
-        aabb.value().x = Bigival::Union(aabb.value().x, corner_aabb.x);
-        aabb.value().y = Bigival::Union(aabb.value().y, corner_aabb.y);
-      } else {
-        aabb = {std::move(corner_aabb)};
-      }
-    }
-  }
-
-  CHECK(aabb.has_value());
-  return aabb.value();
+  return Vec2ival(std::move(px), std::move(py));
 }
 
 // Like Dot(ViewFromSpherical(azimuth, angle), v) but gives
@@ -1116,33 +1020,15 @@ static Vec2ival TransformVec(const ViewBoundsTrig &trig,
 // be less than 3 radians.
 static Bigival BoundDotProductWithView(
     const ViewBoundsTrig &trig,
-    const BigVec3 &v, const BigInt &inv_epsilon) {
+    const BigVec3 &v) {
   CHECK(trig.azimuth.Width() < BigRat(3));
   CHECK(trig.angle.Width() < BigRat(3));
 
-  std::optional<Bigival> aabb;
-
   // viewpos = (sin(an)cos(az), sin(an)sin(az), cos(an))
   // dot(viewpos, v) = sin(an) * (v.x*cos(az) + v.y*sin(az)) + v.z*cos(an)
-  //   factor out w = (v.x*cos(az) + v.y*sin(az)),
-  //   since this only depends on the azimuth.
 
-  for (const auto &[sin_az, cos_az] : trig.sin_cos_az) {
-    Bigival w = v.x * cos_az + v.y * sin_az;
-
-    for (const auto &[sin_an, cos_an] : trig.sin_cos_an) {
-      Bigival dot_at_corner = sin_an * w + v.z * cos_an;
-
-      if (aabb.has_value()) {
-        aabb = Bigival::Union(aabb.value(), dot_at_corner);
-      } else {
-        aabb = std::move(dot_at_corner);
-      }
-    }
-  }
-
-  CHECK(aabb.has_value());
-  return aabb.value();
+  return trig.sin_an * (v.x * trig.cos_az + v.y * trig.sin_az) +
+    v.z * trig.cos_an;
 }
 
 static std::string FormatNum(const BigInt &b) {
@@ -1230,6 +1116,7 @@ std::string VolumeString(const Volume &volume, bool multiline = false) {
 // This is also one of the very last things we do, so it's plausible
 // that we could just do some geometric reasoning about the actual
 // rotated rectangle at this point.
+[[maybe_unused]]
 static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
                          const BigInt &inv_epsilon) {
   Bigival sin_a = angle.Sin(inv_epsilon);
@@ -1802,6 +1689,7 @@ struct Hypersolver {
 
 
     // Get outer and inner frame.
+    // PERF not used!
     Frame3ival outer_frame = FrameFromViewPos(oviewpos, inv_epsilon);
     Frame3ival inner_frame = FrameFromViewPos(iviewpos, inv_epsilon);
 
@@ -1817,8 +1705,7 @@ struct Hypersolver {
       outer_aabb.reserve(outer_hull.size());
       for (int vidx : outer_hull) {
         const BigVec3 &pa = scube.vertices[vidx];
-        outer_aabb.push_back(
-            TransformVec(outer_trig, pa, inv_epsilon));
+        outer_aabb.push_back(TransformVec(outer_trig, pa));
       }
     }
 
@@ -1831,8 +1718,7 @@ struct Hypersolver {
       const BigVec3 &edge_3d = outer_edge3d[idx];
       // outer_edge.push_back(TransformPointTo2D(outer_frame, edge_3d));
 
-      outer_edge.push_back(
-          TransformVec(outer_trig, edge_3d, inv_epsilon));
+      outer_edge.push_back(TransformVec(outer_trig, edge_3d));
     }
 
     // The cross product va × vb.
@@ -1845,8 +1731,7 @@ struct Hypersolver {
 
       outer_cross_va_vb.push_back(
           BoundDotProductWithView(outer_trig,
-                                  edge_cross,
-                                  inv_epsilon));
+                                  edge_cross));
 
       // outer_cross_va_vb.push_back(Dot(oviewpos, edge_cross));
     }
@@ -1879,8 +1764,7 @@ struct Hypersolver {
         scube.vertices[inner_hull[inner_hull_idx]];
       // Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
 
-      Vec2ival proj_v = TransformVec(inner_trig,
-                                     original_v, inv_epsilon);
+      Vec2ival proj_v = TransformVec(inner_trig, original_v);
 
       // Bounds on the inner point's location. This is an AABB. Note
       // that since it is axis-aligned, rotating (especially by e.g.
