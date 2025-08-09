@@ -42,6 +42,14 @@
 #include "util.h"
 #include "yocto_matht.h"
 
+// TODO:
+//  - area test
+//  - air gapped work queue
+//  - stats for rational size
+//  - more timing stats
+//  - note plane for out patch
+//  - try NiceSin/NiceCos for outer loops
+
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
                  counter_bad_midpoint, counter_inside,
                  counter_degenerate_disc);
@@ -611,21 +619,6 @@ struct Mat3ival {
   }
 };
 
-// A bounding sphere (not ball), represented as an center (usually
-// very accurate) and an interval on its radius (could be wide). To be
-// clear, this is the shell; it does not generally contain the origin
-// for example.
-#if 0
-struct Sphereival {
-  Vec3ival center;
-  Bigival radius;
-  Sphereival(Vec3ival c, Bigival r) : center(std::move(c)),
-                                      radius(std::move(r)) {
-    CHECK(!r.MightBeNegative()) << r.ToString();
-  }
-};
-#endif
-
 // Bounding ball.
 struct Ballival {
   // An exact center.
@@ -646,6 +639,15 @@ struct Ballival {
     return BigRat::SqrtBounds(radius_sq, inv_epsilon).second;
   }
 };
+
+#if 0
+// Underlying polygon must contain the origin.
+// The area will be positive if the vertices are in
+// screen clockwise (cartesian CCW) order.
+Bigival PolygonArea(const std::vector<Vec2ival> &vs) {
+  // sum triangles...
+}
+#endif
 
 // More expensive than Bigival::Sin, but produces higher quality
 // intervals.
@@ -827,9 +829,23 @@ struct Discival {
   BigVec2 center;
   // Upper bound on the squared radius.
   BigRat radius_sq;
+  // Upper bound on the radius. We sometimes have this anyway,
+  // in which case we can save the trouble of iteratively
+  // approximating the square root. Note that this does not
+  // need to be the eact sxquare root of radius_sq, but both
+  // need to be upper bounds on the interval represented.
+  std::optional<BigRat> radius;
   Discival(BigVec2 c, BigRat r_sq) : center(std::move(c)),
                                      radius_sq(std::move(r_sq)) {
     CHECK(BigRat::Sign(radius_sq) != -1) << radius_sq.ToString();
+  }
+
+  Discival(BigVec2 c, BigRat r_sq, BigRat r) :
+    center(std::move(c)),
+    radius_sq(std::move(r_sq)),
+    radius(std::make_optional(std::move(r))) {
+    CHECK(BigRat::Sign(radius_sq) != -1) << radius_sq.ToString();
+    CHECK(BigRat::Sign(radius.value()) != -1);
   }
 
   Discival(const Vec2ival &v) : center(v.x.Midpoint(),
@@ -857,9 +873,26 @@ struct Discival {
     */
   }
 
-  // Upper bound on the radius.
-  BigRat Radius(const BigInt &inv_epsilon) const {
-    return BigRat::SqrtBounds(radius_sq, inv_epsilon).second;
+  // Upper bound on the radius. Prefer this one, as it computes
+  // and saves the radius, and also avoids copying it.
+  // Note that inv_epsilon might be ignored if we already have a
+  // value for the square root. But it will always be a correct
+  // upper bound.
+  const BigRat &Radius(const BigInt &inv_epsilon) {
+    if (!radius.has_value()) {
+      radius =
+        std::make_optional(BigRat::SqrtBounds(radius_sq, inv_epsilon).second);
+    }
+    return radius.value();
+  }
+
+  // As above, but for a const object. Copies and does not cache.
+  BigRat ConstRadius(const BigInt &inv_epsilon) const {
+    if (radius.has_value()) {
+      return radius.value();
+    } else {
+      return BigRat::SqrtBounds(radius_sq, inv_epsilon).second;
+    }
   }
 
   std::string ToString() const {
@@ -1188,7 +1221,8 @@ static BigRat MaxSqLength(const Vec2ival &v) {
 // To simplify the math, the angle interval's width must be reasonable (less
 // than 3) or the resulting disc will be very conservative.
 static Discival RotateDiscInnerBias(
-    const Discival &disc,
+    // Mutable because we might calculate and cache radius.
+    Discival *disc,
     const Bigival &angle,
     // A factor > 1 pushes the center away from the origin
     // to create a tighter inner bound. 1.0 is unbiased.
@@ -1205,13 +1239,15 @@ static Discival RotateDiscInnerBias(
     // disc centered at the origin, whose radius is as though
     // we sweep the input disc over the entire circle.
     counter_degenerate_disc++;
-    BigRat center_dist = BigRat::SqrtBounds(dot(disc.center, disc.center),
+    BigRat center_dist = BigRat::SqrtBounds(dot(disc->center, disc->center),
                                             inv_epsilon).second;
-    BigRat radius = BigRat::SqrtBounds(disc.radius_sq, inv_epsilon).second;
+    BigRat radius = disc->Radius(inv_epsilon);
 
     BigRat bounding_radius = center_dist + radius;
+    BigRat radius_sq = bounding_radius * bounding_radius;
     return Discival(BigVec2(BigRat(0), BigRat(0)),
-                    bounding_radius * bounding_radius);
+                    std::move(radius_sq),
+                    std::move(bounding_radius));
   }
 
 
@@ -1228,8 +1264,8 @@ static Discival RotateDiscInnerBias(
   Bigival sin_ma = Bigival::Sin(mid_angle, inv_epsilon);
   Bigival cos_ma = Bigival::Cos(mid_angle, inv_epsilon);
   Vec2ival arc_center_ival(
-      disc.center.x * cos_ma - disc.center.y * sin_ma,
-      disc.center.x * sin_ma + disc.center.y * cos_ma);
+      disc->center.x * cos_ma - disc->center.y * sin_ma,
+      disc->center.x * sin_ma + disc->center.y * cos_ma);
   BigVec2 arc_center = {arc_center_ival.x.Midpoint(),
                         arc_center_ival.y.Midpoint()};
 
@@ -1242,7 +1278,7 @@ static Discival RotateDiscInnerBias(
   // endpoint discs. We use the triangle inequality:
 
   // Upper bound on the input disc's actual radius.
-  BigRat in_r = BigRat::SqrtBounds(disc.radius_sq, inv_epsilon).second;
+  const BigRat &in_r = disc->Radius(inv_epsilon);
 
   // The AABBs for the disc's center rotated to the angle's endpoints.
   // PERF: These should be very tight intervals, but we could probably
@@ -1257,8 +1293,8 @@ static Discival RotateDiscInnerBias(
 
   // Very tight AABBs bounding the centers of the rotated disc at
   // the angle lower bound and upper bound.
-  Vec2ival center_lb = RotatePt(angle.LB(), disc.center);
-  Vec2ival center_ub = RotatePt(angle.UB(), disc.center);
+  Vec2ival center_lb = RotatePt(angle.LB(), disc->center);
+  Vec2ival center_ub = RotatePt(angle.UB(), disc->center);
 
   // Now find the maximum squared distance to the two rotated endpoints.
   // These should be almost the same except for the small amount of error
@@ -1268,11 +1304,13 @@ static Discival RotateDiscInnerBias(
 
   BigRat max_arc_dist_sq(0);
   auto TryCorners = [&](const Vec2ival &c) {
-      for (const BigRat &x : {c.x.LB(), c.x.UB()}) {
-        BigRat dx = x - bounding_center.x;
+      // Note pointers so that we avoid copying LB and UB to form the
+      // initializer list.
+      for (const BigRat *x : {&c.x.LB(), &c.x.UB()}) {
+        BigRat dx = *x - bounding_center.x;
         BigRat dxx = dx * dx;
-        for (const BigRat &y : {c.y.LB(), c.y.UB()}) {
-          BigRat dy = y - bounding_center.y;
+        for (const BigRat *y : {&c.y.LB(), &c.y.UB()}) {
+          BigRat dy = *y - bounding_center.y;
           BigRat dyy = dy * dy;
 
           BigRat dist_sq = dxx + dyy;
@@ -1291,8 +1329,11 @@ static Discival RotateDiscInnerBias(
   // because of the triangle inequality.
   BigRat bounding_radius = center_r + in_r;
 
+  BigRat radius_sq = bounding_radius * bounding_radius;
+
   return Discival(std::move(bounding_center),
-                  bounding_radius * bounding_radius);
+                  std::move(radius_sq),
+                  std::move(bounding_radius));
 }
 
 // Check if a disc is guaranteed to be strictly on the "outside" of an
@@ -1377,7 +1418,7 @@ static BigRat SplitInterval(const Bigival &ival) {
 // Translates a disc by an interval (tx, ty), producing a new, larger disc
 // that bounds the entire resulting shape (a roundrect).
 static Discival TranslateDisc(
-    const Discival &disc,
+    Discival *disc,
     const Bigival &tx,
     const Bigival &ty,
     const BigInt &inv_epsilon) {
@@ -1385,8 +1426,8 @@ static Discival TranslateDisc(
   // Exact center for the bounding disc. We have our choice here, but
   // the midpoint is the best option and is easy to compute.
   BigVec2 bound_center(
-      (disc.center.x + tx).Midpoint(),
-      (disc.center.y + ty).Midpoint());
+      (disc->center.x + tx).Midpoint(),
+      (disc->center.y + ty).Midpoint());
 
   // Now compute a radius that's sufficient to contain the entire
   // roundrect. Using the triangle inequality, the max distance to a
@@ -1397,14 +1438,16 @@ static Discival TranslateDisc(
   BigRat corner_dist =
     BigRat::SqrtBounds(half_w * half_w + half_h * half_h, inv_epsilon).second;
 
-  BigRat original_radius =
-    BigRat::SqrtBounds(disc.radius_sq, inv_epsilon).second;
+  const BigRat &original_radius = disc->Radius(inv_epsilon);
 
   // And the original radius.
   BigRat bound_radius = corner_dist + original_radius;
 
+  BigRat radius_sq = bound_radius * bound_radius;
+
   return Discival(std::move(bound_center),
-                  bound_radius * bound_radius);
+                  std::move(radius_sq),
+                  std::move(bound_radius));
 }
 
 struct Hypersolver {
@@ -1494,8 +1537,8 @@ struct Hypersolver {
                      const BigInt &inv_epsilon,
                      const Bigival &tx, const Bigival &ty) {
 
-    auto Translate = [&](const Vec2ival &v) {
-        return Vec2ival(v.x + tx, v.y + ty);
+    auto Translate = [&](Vec2ival &&v) {
+        return Vec2ival(std::move(v.x) + tx, std::move(v.y) + ty);
       };
 
     Bigival sin_a = angle.Sin(inv_epsilon);
@@ -1503,8 +1546,9 @@ struct Hypersolver {
     Vec2ival loose_box(Bigival(v_in.x) * cos_a - Bigival(v_in.y) * sin_a,
                        Bigival(v_in.x) * sin_a + Bigival(v_in.y) * cos_a);
 
-    return {Translate(loose_box)};
+    return {Translate(std::move(loose_box))};
 
+    #if 0
     // The idea is to compute a bounding volume for the shape swept by
     // rotating the AABB containing v_in by the angle (and then translate
     // it by tx, ty). The volume is represented by a set of AABBs.
@@ -1547,6 +1591,7 @@ struct Hypersolver {
 
       return {Translate(loose_box)};
     }
+    #endif
   }
 
   struct ProcessResult {
@@ -1774,11 +1819,6 @@ struct Hypersolver {
       outer_aabb.reserve(outer_hull.size());
       for (int vidx : outer_hull) {
         const BigVec3 &pa = scube.vertices[vidx];
-        /*
-        outer_aabb.push_back(
-            TransformPointTo2D(outer_frame, pa));
-        */
-
         outer_aabb.push_back(
             TransformVec(outer_trig, pa, inv_epsilon));
       }
@@ -1869,8 +1909,8 @@ struct Hypersolver {
       Timer disc_timer;
       Discival disc_in(proj_v);
       Discival rot_disc = RotateDiscInnerBias(
-          disc_in, inner_rot, BigRat(3, 2), inv_epsilon);
-      Discival disc = TranslateDisc(rot_disc, inner_x, inner_y, inv_epsilon);
+          &disc_in, inner_rot, BigRat(3, 2), inv_epsilon);
+      Discival disc = TranslateDisc(&rot_disc, inner_x, inner_y, inv_epsilon);
       disc_time_here = disc_timer.Seconds();
 
       if (get_stats) {
@@ -2629,10 +2669,10 @@ struct Hypersolver {
 
           // Perhaps select at random?
           if (node_queue.size() > 8192) {
-            std::tie(volume, node) = node_queue.back();
+            std::tie(volume, node) = std::move(node_queue.back());
             node_queue.pop_back();
           } else {
-            std::tie(volume, node) = node_queue.front();
+            std::tie(volume, node) = std::move(node_queue.front());
             node_queue.pop_front();
           }
         }
