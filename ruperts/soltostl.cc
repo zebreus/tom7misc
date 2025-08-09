@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "ansi.h"
-#include "base/stringprintf.h"
 #include "big-csg.h"
 #include "mesh.h"
 #include "polyhedra.h"
@@ -98,10 +97,17 @@ static void RenderAny(std::string_view name) {
   TriangularMesh3D residue = BigMakeHole(outer, polygon);
   OrientMesh(&residue);
 
+  TriangularMesh3D outer_mesh = PolyToTriangularMesh(outer);
+  OrientMesh(&outer_mesh);
+  TriangularMesh3D inner_mesh = PolyToTriangularMesh(inner);
+  OrientMesh(&inner_mesh);
+
   std::string outer_filename = std::format("{}-outer.stl", name);
   std::string inner_filename = std::format("{}-inner.stl", name);
   std::string residue_filename = std::format("{}-residue.stl", name);
 
+  SaveAsSTL(outer_mesh, outer_filename);
+  SaveAsSTL(inner_mesh, inner_filename);
   SaveAsSTL(residue, residue_filename);
   printf(
       "%s\n",

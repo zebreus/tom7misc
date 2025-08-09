@@ -632,11 +632,14 @@ static Bigival NiceCos(const BigRat &r, const BigInt &inv_epsilon) {
 
 
 // We work with spherical coordinates (azimuth/angle intervals) to
-// represent the bounds on the outer and inner view positions.
-// Various operations will use the intervals for the corners of
-// this AABB (since this bounds the values as long as the
-// intervals are not hemisphere-sized) and will want to compute
-// the sine and cosine of these (expensive). Compute that up front.
+// represent the bounds on the outer and inner view positions. Various
+// operations will use the intervals for the corners of this AABB
+// (since this bounds the values as long as the intervals are not
+// hemisphere-sized) and will want to compute the sine and cosine of
+// these (expensive). Compute that up front. Note that if the
+// azimuth/angle intervals are too big (enough to span a hemisphere),
+// we just return the full interval [-1, 1] for the trig functions.
+// This is correct but then will usually require subdivision.
 struct ViewBoundsTrig {
 
   ViewBoundsTrig(Bigival azimuth_in, Bigival angle_in,
@@ -644,25 +647,40 @@ struct ViewBoundsTrig {
     azimuth(std::move(azimuth_in)), angle(std::move(angle_in)),
     inv_epsilon(inv_epsilon_in) {
 
-    CHECK(azimuth.Width() < BigRat(3) &&
-          angle.Width() < BigRat(3)) << "Precondition!";
+    if (azimuth.Width() < BigRat(3)) {
+      // Since we use these a lot of times, we spend extra time up front
+      // to compute higher quality bounds (simpler rationals). We can
+      // still stay approximately within the inv_epsilon target.
+      sin_cos_az[0] =
+        std::make_pair(NiceSin(azimuth.LB(), inv_epsilon),
+                       NiceCos(azimuth.LB(), inv_epsilon));
+      sin_cos_az[1] =
+        std::make_pair(NiceSin(azimuth.UB(), inv_epsilon),
+                       NiceCos(azimuth.UB(), inv_epsilon));
+    } else {
+      sin_cos_az[0] =
+        std::make_pair(Bigival(-1, 1, true, true),
+                       Bigival(-1, 1, true, true));
+      sin_cos_az[1] =
+        std::make_pair(Bigival(-1, 1, true, true),
+                       Bigival(-1, 1, true, true));
+    }
 
-    // Since we use these a lot of times, we spend extra time up front
-    // to compute higher quality bounds (simpler rationals). We can
-    // still stay approximately within the inv_epsilon target.
-    sin_cos_az[0] =
-      std::make_pair(NiceSin(azimuth.LB(), inv_epsilon),
-                     NiceCos(azimuth.LB(), inv_epsilon));
-    sin_cos_az[1] =
-      std::make_pair(NiceSin(azimuth.UB(), inv_epsilon),
-                     NiceCos(azimuth.UB(), inv_epsilon));
-
-    sin_cos_an[0] =
-      std::make_pair(NiceSin(angle.LB(), inv_epsilon),
-                     NiceCos(angle.LB(), inv_epsilon));
-    sin_cos_an[1] =
-      std::make_pair(NiceSin(angle.UB(), inv_epsilon),
-                     NiceCos(angle.UB(), inv_epsilon));
+    if (angle.Width() < BigRat(3)) {
+      sin_cos_an[0] =
+        std::make_pair(NiceSin(angle.LB(), inv_epsilon),
+                       NiceCos(angle.LB(), inv_epsilon));
+      sin_cos_an[1] =
+        std::make_pair(NiceSin(angle.UB(), inv_epsilon),
+                       NiceCos(angle.UB(), inv_epsilon));
+    } else {
+      sin_cos_an[0] =
+        std::make_pair(Bigival(-1, 1, true, true),
+                       Bigival(-1, 1, true, true));
+      sin_cos_an[1] =
+        std::make_pair(Bigival(-1, 1, true, true),
+                       Bigival(-1, 1, true, true));
+    }
   }
 
   // TODO: Can efficiently compute azimuth.Cos() etc. We have
@@ -677,7 +695,6 @@ struct ViewBoundsTrig {
 
   // These are ordered as lb, ub.
   std::array<std::pair<Bigival, Bigival>, 2> sin_cos_az;
-
   std::array<std::pair<Bigival, Bigival>, 2> sin_cos_an;
 };
 
@@ -1125,7 +1142,7 @@ static Discival RotateDiscInnerBias(
   if (angle.Width() > BigRat(3)) {
     // We can't get a good disc with this method. Just return
     // something correct. A really simple choice is just a
-    // disc centered at the origin, whose radius is though
+    // disc centered at the origin, whose radius is as though
     // we sweep the input disc over the entire circle.
     counter_degenerate_disc++;
     BigRat center_dist = BigRat::SqrtBounds(dot(disc.center, disc.center),
@@ -1534,6 +1551,11 @@ struct Hypersolver {
 
     Timer trig_timer;
     ViewBoundsTrig outer_trig(outer_azimuth, outer_angle, inv_epsilon);
+    // Note: this is computed eagerly for timing stats purposes, but
+    // we kinda assume that the trig object is only meaningful when
+    // the az/an intervals are small (not hemisphere). So for maximum
+    // cleanliness, we should move this past the point where we have
+    // checked. We don't use it until then
     ViewBoundsTrig inner_trig(inner_azimuth, inner_angle, inv_epsilon);
     {
       MutexLock ml(&mu);
@@ -2105,7 +2127,8 @@ struct Hypersolver {
   void MakeSampleImage(ArcFour *rc,
                        const Volume &volume, const ProcessResult &pr,
                        std::string_view msg) const {
-    std::string filename = std::format("inubs/sample-{}-{}.png",
+    std::string filename = std::format("{}/sample-{}-{}.png",
+                                       inubdir,
                                        time(nullptr), msg);
     status.Print("Sample volume:\n{}\n",
                  VolumeString(volume, true));
@@ -2402,6 +2425,8 @@ struct Hypersolver {
                       efficiency_count) :
           ARED("??");
 
+        // TODO: Add (recent?) vol/sec
+
         status.Status(
             AWHITE("—————————————————————————————————————————") "\n"
             // "Put volume information here!\n"
@@ -2464,12 +2489,28 @@ struct Hypersolver {
       {
         mu.lock();
         if (node_queue.empty()) {
-          // TODO: Need to detect true completion!
+          const int outstanding = num_in_progress;
+          if (outstanding == 0) {
+            // The queue is empty and won't get any more, so we are done.
+            mu.unlock();
+            status.Print("Thread " AGREEN("{}") " finished!", thread_idx);
+            return;
+          }
+
+          // Otherwise, there's no work for us, but there might be
+          // work in the future if an outstanding cell has to subdivide.
+          // We are probably very nearly done, though, so throttle.
           mu.unlock();
-          status.Print("Thread " ARED("{}") " idle!", thread_idx);
-          std::this_thread::sleep_for(std::chrono::seconds(1));
+          CHECK(outstanding > 0) << "Bug if the count goes negative!";
+
+          status.Print("Thread " ARED("{}") " idle! "
+                       AGREY("({} outstanding)"),
+                       thread_idx, outstanding);
+          std::this_thread::sleep_for(std::chrono::seconds(5));
           continue;
         } else {
+          num_in_progress++;
+
           // Perhaps select at random?
           if (node_queue.size() > 8192) {
             std::tie(volume, node) = node_queue.back();
@@ -2492,8 +2533,8 @@ struct Hypersolver {
           hypercube->ToDisk(filename);
         });
 
-      // Periodically turn on stats gathering until we get some
-      // data.
+      // Periodically turn on stats gathering for this thread until we
+      // get some data.
       get_stats_next = get_stats_next || (counter_processed.Read() % 64) == 0;
 
       Timer process_timer;
@@ -2530,6 +2571,7 @@ struct Hypersolver {
           });
       }
 
+      // Use the result to update the hypercube and queue.
       if (Impossible *imp = std::get_if<Impossible>(&res.result)) {
         (void)imp;
 
@@ -2619,6 +2661,13 @@ struct Hypersolver {
       } else {
         LOG(FATAL) << "Bad processresult";
       }
+
+      // Note that we have finished this work item, so it won't result
+      // in the queue growing at this point.
+      {
+        MutexLock ml(&mu);
+        num_in_progress--;
+      }
     }
   }
 
@@ -2698,7 +2747,7 @@ struct Hypersolver {
 
     Init();
 
-    static constexpr int NUM_WORK_THREADS = 8;
+    static constexpr int NUM_WORK_THREADS = 12;
 
     std::vector<std::thread> workers;
 
@@ -2716,6 +2765,7 @@ struct Hypersolver {
 
     status.Print("All threads finished!");
 
+    status.Print("Writing complete cube: {}", filename);
     hypercube->ToDisk(filename);
     status.Print("Success " AGREEN(":)") "\n");
   }
@@ -2756,8 +2806,8 @@ struct Hypersolver {
               });
     CHECK(canonical.size() >= 2);
 
-    const PatchInfo::CanonicalPatch &outer = canonical[0].second;
-    const PatchInfo::CanonicalPatch &inner = canonical[1].second;
+    const PatchInfo::CanonicalPatch &outer = canonical[1].second;
+    const PatchInfo::CanonicalPatch &inner = canonical[0].second;
 
     small_scube = SmallPoly(scube);
 
@@ -2786,8 +2836,10 @@ struct Hypersolver {
       outer_edge3d.push_back(vb - va);
     }
 
-    filename = std::format("hc-{}-{}.cube", outer_code, inner_code);
+    inubdir = std::format("inubs-{}-{}", outer_code, inner_code);
+    (void)Util::MakeDir(inubdir);
 
+    filename = std::format("hc-{}-{}.cube", outer_code, inner_code);
     if (Util::ExistsFile(filename)) {
       status.Print("Continuing from {}", filename);
       hypercube->FromDisk(filename);
@@ -2824,7 +2876,7 @@ struct Hypersolver {
   BigPoly scube;
   Boundaries boundaries;
   PatchInfo patch_info;
-  std::string filename;
+  std::string filename, inubdir;
   uint64_t outer_code = 0, outer_mask = 0;
   uint64_t inner_code = 0, inner_mask = 0;
 
@@ -2851,6 +2903,11 @@ struct Hypersolver {
 
   // Work queue. (Could actually use work queue here!)
   std::deque<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> node_queue;
+  // Need to keep track of the number that are currently being
+  // processed by threads, since processing a node may or may
+  // not insert new nodes into the queue. The node queue is only
+  // truly "empty" when this is zero.
+  int num_in_progress = 0;
 
   Timer run_timer;
   Periodically status_per = Periodically(1);

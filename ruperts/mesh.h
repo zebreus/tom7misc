@@ -3,13 +3,12 @@
 
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <tuple>
 
 #include "hashing.h"
-#include "image.h"
 #include "yocto_matht.h"
 
 // A 3D triangle mesh; not necessarily convex. Some code expects that
