@@ -52,7 +52,7 @@ static constexpr int SCUBE_DIGITS = 24;
 
 using vec2 = yocto::vec<double, 2>;
 
-StatusBar status = StatusBar(14);
+StatusBar status = StatusBar(15);
 
 // Adaptation of Jason's idea.
 // Take a pair of patches, one for outer and one for inner.
@@ -194,9 +194,65 @@ enum RejectionReason : uint8_t {
   POINT_OUTSIDE3 = 7,
   POINT_OUTSIDE4 = 8,
   POINT_OUTSIDE5 = 9,
-
-  NUM_REJECTION_REASONS,
 };
+inline constexpr int NUM_REJECTION_REASONS = 10;
+
+struct Rejection {
+  RejectionReason reason = REJECTION_UNKNOWN;
+  // When the rejection reason is PT4 or PT5, then we found a point
+  // that is definitely on the wrong side of some edge.
+  // This is the index of that edge (start endpoint) and point inside
+  // the outer and inner hulls, respectively. (NOT a vertex index.)
+  std::optional<std::pair<int8_t, int8_t>> edge_point;
+};
+
+static std::string SerializeRejection(const Rejection &rej) {
+  std::string ret = std::format("{}", (uint8_t)rej.reason);
+  if (rej.edge_point.has_value()) {
+    AppendFormat(&ret, " {} {}",
+                 rej.edge_point.value().first,
+                 rej.edge_point.value().second);
+  }
+  return ret;
+}
+
+// Must be a proper rejection (not UNKNOWN).
+// Doesn't check the case that point/edge indices are too large.
+static std::optional<Rejection> ParseRejection(std::string_view s) {
+  // Format is
+  //   reason_number additional_data
+  Rejection ret;
+  int64_t r = Util::ParseInt64(Util::Chop(&s), -1);
+  if (r <= 0 || r >= NUM_REJECTION_REASONS) return std::nullopt;
+  ret.reason = (RejectionReason)r;
+
+  switch (ret.reason) {
+  case REJECTION_UNKNOWN:
+    LOG(FATAL) << "Checked above";
+    break;
+  case OUTSIDE_OUTER_PATCH:
+  case OUTSIDE_INNER_PATCH:
+  case OUTSIDE_OUTER_PATCH_BALL:
+  case OUTSIDE_INNER_PATCH_BALL:
+    // No metadata. Could keep the code?
+    break;
+
+  case POINT_OUTSIDE1:
+  case POINT_OUTSIDE2:
+  case POINT_OUTSIDE3:
+  case POINT_OUTSIDE4:
+  case POINT_OUTSIDE5: {
+    int64_t eidx = Util::ParseInt64(Util::Chop(&s), -1);
+    int64_t pidx = Util::ParseInt64(Util::Chop(&s), -1);
+    if (eidx < 0 || pidx < 0) return std::nullopt;
+    ret.edge_point = std::make_optional(
+        std::make_pair((int8_t)eidx, (int8_t)pidx));
+    break;
+  }
+  }
+
+  return ret;
+}
 
 // Represents a (hyper)rectangular volume within the search space.
 using Volume = std::vector<Bigival>;
@@ -220,6 +276,7 @@ struct Hypercube {
   }
 
   void FromDisk(const std::string &filename) {
+
     // The file format is line based. Each line is a node;
     // either:
     // L reason completed   (completed leaf)
@@ -249,21 +306,24 @@ struct Hypercube {
             auto leaf =
               std::make_shared<Hypercube::Node>(Leaf{
                   .completed = 0,
-                  .reason = REJECTION_UNKNOWN,
+                  .rejection = {.reason = REJECTION_UNKNOWN},
                 });
             stack.push_back(std::move(leaf));
 
           } else if (cmd == 'L') {
-            int64_t r = Util::ParseInt64(Util::Chop(&line), -1);
-            CHECK(r > 0 && r < NUM_REJECTION_REASONS) << raw_line;
             int64_t comp = Util::ParseInt64(Util::Chop(&line), -1);
             CHECK(comp >= 0) << line;
+
+            std::optional<Rejection> rej = ParseRejection(line);
+            CHECK(rej.has_value()) << raw_line;
+
             auto leaf =
               std::make_shared<Hypercube::Node>(Leaf{
                   .completed = comp,
-                  .reason = (RejectionReason)r,
+                  .rejection = rej.value(),
                 });
             stack.push_back(std::move(leaf));
+
           } else if (cmd == 'S') {
             int axis = Util::ParseInt64(Util::Chop(&line), -1);
             CHECK(axis >= 0 && axis < NUM_DIMENSIONS) << raw_line;
@@ -325,8 +385,8 @@ struct Hypercube {
           if (leaf->completed) {
             std::string line =
               std::format("L {} {}\n",
-                          (int64_t)leaf->reason,
-                          leaf->completed);
+                          leaf->completed,
+                          SerializeRejection(leaf->rejection));
             fprintf(f, "%s", line.c_str());
           } else {
             fprintf(f, "E\n");
@@ -359,7 +419,7 @@ struct Hypercube {
     // Completed means we've determined that this cell cannot contain
     // a solution.
     int64_t completed = 0;
-    RejectionReason reason = REJECTION_UNKNOWN;
+    Rejection rejection;
   };
 
   // Internal node, which is a binary split along one of the parameter
@@ -417,7 +477,7 @@ struct Hypercube {
           leaves.emplace_back(std::move(volume), node);
         } else {
           const double dvol = Hypervolume(volume).ToDouble();
-          switch (leaf->reason) {
+          switch (leaf->rejection.reason) {
           case OUTSIDE_OUTER_PATCH:
           case OUTSIDE_INNER_PATCH:
           case OUTSIDE_OUTER_PATCH_BALL:
@@ -1372,7 +1432,36 @@ struct Hypersolver {
       return "PT4";
     case POINT_OUTSIDE5:
       return "PT5";
-    };
+    }
+  }
+
+  static std::string ColorRejection(const Rejection &rej) {
+    switch (rej.reason) {
+    default:
+    case REJECTION_UNKNOWN:
+      return ARED("MISSING?");
+    case POINT_OUTSIDE1:
+    case POINT_OUTSIDE2:
+    case POINT_OUTSIDE3:
+      return ARED("DEPRECATED");
+
+    case OUTSIDE_OUTER_PATCH:
+    case OUTSIDE_INNER_PATCH:
+    case OUTSIDE_OUTER_PATCH_BALL:
+    case OUTSIDE_INNER_PATCH_BALL:
+      return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
+
+    case POINT_OUTSIDE4:
+    case POINT_OUTSIDE5:
+      if (!rej.edge_point.has_value()) return ARED("MISSING METADATA");
+      return std::format(ACYAN("{}")
+                         AGREY("(")
+                         ARED("{}") AGREY(", ")
+                         AGREEN("{}") AGREY(")"),
+                         RejectionReasonString(rej.reason),
+                         rej.edge_point.value().first,
+                         rej.edge_point.value().second);
+    }
   }
 
   struct Split {
@@ -1387,10 +1476,8 @@ struct Hypersolver {
   };
 
   struct Impossible {
-    RejectionReason reason = REJECTION_UNKNOWN;
-    Impossible(RejectionReason r = REJECTION_UNKNOWN) : reason(r) {}
-    // For POINT_OUTSIDE, maybe could also record the point and
-    // edge?
+    Rejection rejection;
+    explicit Impossible(Rejection r) : rejection(r) {}
   };
 
   // Rotate the point v_in by rot and translate it by tx,ty.
@@ -1582,14 +1669,16 @@ struct Hypersolver {
         outer_angle.Cos(inv_epsilon));
 
     if (!MightHaveCode(outer_code, outer_mask, oviewpos)) {
-      return ProcessResult{.result = Impossible(OUTSIDE_OUTER_PATCH)};
+      return ProcessResult{
+        .result = Impossible(Rejection(OUTSIDE_OUTER_PATCH))};
     }
 
     {
       Ballival oviewposball = SphericalPatchBall(outer_trig,
                                                  inv_epsilon);
       if (!MightHaveCodeWithBall(outer_code, outer_mask, oviewposball)) {
-        return ProcessResult{.result = Impossible(OUTSIDE_OUTER_PATCH_BALL)};
+        return ProcessResult{
+          .result = Impossible(Rejection(OUTSIDE_OUTER_PATCH_BALL))};
       }
     }
 
@@ -1600,7 +1689,8 @@ struct Hypersolver {
     // encountering this after splitting other params.
     if (oviewpos.x.ContainsOrApproachesZero() &&
         oviewpos.y.ContainsOrApproachesZero()) {
-      return ProcessResult{.result = Split({OUTER_AZIMUTH, OUTER_ANGLE})};
+      return ProcessResult{
+        .result = Split({OUTER_AZIMUTH, OUTER_ANGLE})};
     }
 
     // Now the same idea for the inner patch.
@@ -1623,14 +1713,15 @@ struct Hypersolver {
         inner_angle.Cos(inv_epsilon));
 
     if (!MightHaveCode(inner_code, inner_mask, iviewpos)) {
-      return {Impossible(OUTSIDE_INNER_PATCH)};
+      return {Impossible(Rejection(OUTSIDE_INNER_PATCH))};
     }
 
     {
       Ballival iviewposball = SphericalPatchBall(inner_trig,
                                                  inv_epsilon);
       if (!MightHaveCodeWithBall(inner_code, inner_mask, iviewposball)) {
-        return ProcessResult{.result = Impossible(OUTSIDE_INNER_PATCH_BALL)};
+        return ProcessResult{.result =
+          Impossible(Rejection(OUTSIDE_INNER_PATCH_BALL))};
       }
     }
 
@@ -1737,13 +1828,17 @@ struct Hypersolver {
       discs.reserve(inner_hull.size());
     }
 
+    double disc_time_here = 0.0;
     Timer loop_timer;
     // Compute the inner hull point-by-point, which we call v. We can
     // exit early if any of these points are definitely outside the
     // outer hull.
-    std::optional<RejectionReason> proved = std::nullopt;
-    for (int idx : inner_hull) {
-      const BigVec3 &original_v = scube.vertices[idx];
+    std::optional<Rejection> proved = std::nullopt;
+    for (int inner_hull_idx = 0;
+         inner_hull_idx < inner_hull.size();
+         inner_hull_idx++) {
+      const BigVec3 &original_v =
+        scube.vertices[inner_hull[inner_hull_idx]];
       // Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
 
       Vec2ival proj_v = TransformVec(inner_trig,
@@ -1771,10 +1866,12 @@ struct Hypersolver {
       // are outside the edge, then we are likely in a rejection
       // scenario and we could do something like search for a bias
       // parameter.
+      Timer disc_timer;
       Discival disc_in(proj_v);
       Discival rot_disc = RotateDiscInnerBias(
           disc_in, inner_rot, BigRat(3, 2), inv_epsilon);
       Discival disc = TranslateDisc(rot_disc, inner_x, inner_y, inv_epsilon);
+      disc_time_here = disc_timer.Seconds();
 
       if (get_stats) {
         // PERF copying!
@@ -1877,7 +1974,11 @@ struct Hypersolver {
         }
 
         if (entire_complex_definitely_outside) {
-          proved = {POINT_OUTSIDE4};
+          Rejection pt4;
+          pt4.reason = POINT_OUTSIDE4;
+          pt4.edge_point = std::make_optional(
+              std::make_pair(start, inner_hull_idx));
+          proved = {pt4};
           // We only need to finish all the points if we are getting
           // stats!
           if (!get_stats) break;
@@ -1885,7 +1986,12 @@ struct Hypersolver {
 
         // Or is the disc outside?
         if (IsDiscOutsideEdge(disc, edge, cross_va_vb)) {
-          proved = {POINT_OUTSIDE5};
+          Rejection pt5;
+          pt5.reason = POINT_OUTSIDE5;
+          pt5.edge_point = std::make_optional(
+              std::make_pair(start, inner_hull_idx));
+          proved = {pt5};
+
           if (!get_stats) break;
         }
       }
@@ -1910,6 +2016,7 @@ struct Hypersolver {
     {
       MutexLock ml(&mu);
       loop_time += loop_timer.Seconds();
+      disc_time += disc_time_here;
     }
 
     return res;
@@ -2311,8 +2418,8 @@ struct Hypersolver {
     yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
     if (const Impossible *imp = std::get_if<Impossible>(&pr.result)) {
       img.BlendText32(8, yy, 0xFFFF33FF,
-                      std::format("Result: Impossible! " ACYAN("{}"),
-                                  RejectionReasonString(imp->reason)));
+                      std::format("Result: Impossible! {}",
+                                  ColorRejection(imp->rejection)));
     } else if (const Split *split = std::get_if<Split>(&pr.result)) {
       std::string par;
       for (int p = 0; p < NUM_DIMENSIONS; p++) {
@@ -2431,19 +2538,27 @@ struct Hypersolver {
             AWHITE("—————————————————————————————————————————") "\n"
             // "Put volume information here!\n"
             "Split count: {}\n"
+            // Recent interval
             "{}\n"
+            // Rejection reason histo
             "{}\n"
+            // Volume-based progress
             "Full vol: {:.5f}  in vol: {:.5f}  out vol: {:.5f}\n"
+            // Basic counts
             "{} processed, "
             "{} " AGREEN("✔") ", "
             "{} " ARED("⊹") ". "
-            "{} " AORANGE("q") ", {} ea. " ABLUE("{:.3f}") "% trig "
+            "{} " AORANGE("q") "\n"
+            // Timing
+            "{} ea. "
+            ABLUE("{:.3f}") "% trig "
+            ABLUE("{:.3f}") "% disc "
             ABLUE("{:.3f}") "% loop\n"
-            AORANGE("X") "mid: {}  "
-            AORANGE("X") "disc: {}  "
+            // Quality stats
+            AORANGE("⊗") "mid: {}  "
+            AORANGE("⊗") "disc: {}  "
             "In: {}   AABB efficiency: {}\n"
-            "{}\n" // bar
-            ,
+            "{}\n", // bar
             splitcount,
             VolumeString(volume, true),
             rr,
@@ -2454,6 +2569,7 @@ struct Hypersolver {
             node_queue.size(),
             ANSI::Time(time_each),
             (trig_time * 100.0) / process_time,
+            (disc_time * 100.0) / process_time,
             (loop_time * 100.0) / process_time,
             counter_bad_midpoint.Read(),
             counter_degenerate_disc.Read(),
@@ -2585,12 +2701,12 @@ struct Hypersolver {
           Hypercube::Leaf *leaf = std::get_if<Hypercube::Leaf>(node.get());
           CHECK(leaf != nullptr) << "Bug: We only expand leaves!";
           leaf->completed = time(nullptr);
-          leaf->reason = imp->reason;
+          leaf->rejection = imp->rejection;
 
           counter_completed++;
 
           volume_done += vol;
-          switch (imp->reason) {
+          switch (imp->rejection.reason) {
           case OUTSIDE_OUTER_PATCH:
           case OUTSIDE_INNER_PATCH:
           case OUTSIDE_OUTER_PATCH_BALL:
@@ -2609,7 +2725,7 @@ struct Hypersolver {
             RejectionReasonString(imp->reason),
             counter_completed.Read());
           */
-          rejection_count[imp->reason]++;
+          rejection_count[imp->rejection.reason]++;
         }
 
         if (maybe_save_image) {
@@ -2911,10 +3027,10 @@ struct Hypersolver {
 
   Timer run_timer;
   Periodically status_per = Periodically(1);
-  Periodically save_per = Periodically(15 * 60);
-  Periodically sample_per = Periodically(60 * 10);
+  Periodically save_per = Periodically(10 * 60);
+  Periodically sample_per = Periodically(60 * 14.9);
   Periodically sample_proved_per = Periodically(60 * 9.1);
-  Periodically render_per = Periodically(60 * 10.1);
+  Periodically render_per = Periodically(60 * 15.1);
 
   std::unordered_map<RejectionReason, int64_t> rejection_count;
   int64_t times_split[NUM_DIMENSIONS] = {};
@@ -2924,6 +3040,7 @@ struct Hypersolver {
   int64_t efficiency_count = 0;
 
   double trig_time = 0.0, loop_time = 0.0, process_time = 0.0;
+  double disc_time = 0.0;
 
   // The hypervolume now done (this includes regions that we
   // determined are out of scope). Compare against the full volume.
