@@ -50,6 +50,14 @@ static constexpr bool RUN_BENCHMARKS = false;
       aa.ToString() << "\n" << bb.ToString() << "\n";                   \
   } while (false)
 
+#define CHECK_REQ(a, b) do {                                            \
+    BigRat aa = (a);                                                    \
+    BigRat bb = (b);                                                    \
+    CHECK(BigRat::Eq(aa, bb)) << "Expected equal BigRats:\n" <<         \
+      #a << "\n" << #b << "\nWhich had values:\n" <<                    \
+      aa.ToString() << "\n" << bb.ToString() << "\n";                   \
+  } while (false)
+
 static void TestToString() {
   for (int i = -100000; i < 100000; i++) {
     BigInt bi(i);
@@ -104,7 +112,7 @@ static void CopyAndAssign() {
   BigInt e{8888};
   d = std::move(e);
   CHECK(d.ToString() == "8888");
-  e = BigInt::Plus(d, 1);
+  e = BigInt::Plus(d, BigInt{1});
   CHECK(e.ToString() == "8889");
   BigInt f(std::move(e));
   CHECK(f.ToString() == "8889");
@@ -123,7 +131,7 @@ static void TestToU64() {
     auto uo =
       BigInt::Minus(
           BigInt::LeftShift(BigInt(1), 64),
-          1).ToU64();
+          BigInt{1}).ToU64();
     CHECK(uo.has_value() && uo.value() == (uint64_t)-1);
   }
 
@@ -313,9 +321,8 @@ static void TestPow() {
 
   BigRat qqq = BigRat::Times(q, BigRat::Times(q, q));
   BigRat qcubed = BigRat::Pow(q, 3);
-  printf("%s vs %s\n", qqq.ToString().c_str(),
-         qcubed.ToString().c_str());
-  CHECK(BigRat::Eq(qqq, qcubed));
+  CHECK(BigRat::Eq(qqq, qcubed)) <<
+    std::format("{} vs {}", qqq.ToString(), qcubed.ToString());
 }
 
 // Sloooow
@@ -488,7 +495,7 @@ static void TestPrimeFactors() {
       if (!BigInt::IsPrime(BigInt(n)))
         continue;
 
-      prim = BigInt::Times(prim, n);
+      prim = BigInt::Times(prim, BigInt{n});
 
       std::vector<std::pair<BigInt, int>> factors =
         BigInt::PrimeFactorization(prim);
@@ -648,7 +655,7 @@ static void TestToInt() {
 
   NOROUNDTRIP(BigInt::Minus(
                   BigInt(std::numeric_limits<int64_t>::lowest()),
-                  1));
+                  BigInt{1}));
 
 # undef ROUNDTRIP
 # undef NOROUNDTRIP
@@ -908,7 +915,8 @@ static void TestInvert() {
     if (BigInt::Less(modulus, BigInt(100000)) &&
         BigInt::IsPrime(modulus)) {
 
-      for (BigInt a(1); BigInt::Less(a, modulus); a = BigInt::Plus(a, 1)) {
+      for (BigInt a(1); BigInt::Less(a, modulus);
+           a = BigInt::Plus(a, BigInt{1})) {
         auto ao = BigInt::ModInverse(a, modulus);
         CHECK(ao.has_value()) << "Every nonzero value has an inverse "
           "mod a prime p: " << a.ToString() << "^-1 mod " <<
@@ -948,22 +956,64 @@ static void TestInvert() {
 }
 
 static void TestSwap() {
-  BigInt a("11223344556677889900");
-  BigInt b("55555555555555555555");
+  {
+    BigInt a("11223344556677889900");
+    BigInt b("55555555555555555555");
 
-  std::swap(a, b);
-  CHECK(a.ToString() == "55555555555555555555");
-  CHECK(b.ToString() == "11223344556677889900");
+    std::swap(a, b);
+    CHECK(a.ToString() == "55555555555555555555");
+    CHECK(b.ToString() == "11223344556677889900");
+  }
+
+  {
+    BigInt a("11223344556677889900");
+    BigInt b("55555555555555555555");
+
+    a.Swap(&b);
+    CHECK(a.ToString() == "55555555555555555555");
+    CHECK(b.ToString() == "11223344556677889900");
+  }
+
 }
 
 
 static void TestRatSwap() {
-  BigRat a(BigInt("11111111111111111117"), BigInt("555555555555555555555"));
-  BigRat b(BigInt("11111111111111111111"), BigInt("259259259259259259259"));
+  {
+    BigRat a(BigInt("11111111111111111117"), BigInt("555555555555555555555"));
+    BigRat b(BigInt("11111111111111111111"), BigInt("259259259259259259259"));
 
-  std::swap(a, b);
-  CHECK(a.ToString() == "11111111111111111111/259259259259259259259");
-  CHECK(b.ToString() == "11111111111111111117/555555555555555555555");
+    std::swap(a, b);
+    CHECK(a.ToString() == "11111111111111111111/259259259259259259259");
+    CHECK(b.ToString() == "11111111111111111117/555555555555555555555");
+  }
+
+  {
+    BigRat a(BigInt("11111111111111111117"), BigInt("555555555555555555555"));
+    BigRat b(BigInt("11111111111111111111"), BigInt("259259259259259259259"));
+
+    a.Swap(&b);
+    CHECK(a.ToString() == "11111111111111111111/259259259259259259259");
+    CHECK(b.ToString() == "11111111111111111117/555555555555555555555");
+  }
+
+  {
+    BigRat zero;
+    BigRat b(BigInt("11111111111111111111"), BigInt("259259259259259259259"));
+
+    std::swap(zero, b);
+    CHECK_SEQ(b.ToString(), "0");
+    CHECK_SEQ(zero.ToString(), "11111111111111111111/259259259259259259259");
+  }
+
+  {
+    BigRat zero;
+    BigRat b(BigInt("11111111111111111111"), BigInt("259259259259259259259"));
+
+    zero.Swap(&b);
+    CHECK_SEQ(b.ToString(), "0");
+    CHECK_SEQ(zero.ToString(), "11111111111111111111/259259259259259259259");
+  }
+
 }
 
 static void TestRatMove() {
@@ -1035,6 +1085,17 @@ static void TestRatMove() {
     BigRat b = std::move(a);
     BigRat c = std::move(b);
     CHECK(BigRat::Eq(c, val3));
+  }
+
+  {
+    BigRat a = BigRat(41, 31337);
+    BigRat b(std::move(a));
+
+    BigRat c = BigRat(7, 27);
+    a = std::move(c);
+
+    CHECK_SEQ(b.ToString(), "41/31337");
+    CHECK(BigRat::Eq(a, BigRat(7, 27)));
   }
 }
 
@@ -1493,7 +1554,7 @@ static void TestCtz() {
   CHECK(BigInt::BitwiseCtz(BigInt("350488137400481480704")) == 16 * 4);
 
   CHECK(BigInt::BitwiseCtz(
-            BigInt::Times(BigInt::Pow(BigInt{2}, 389), 33)) == 389);
+            BigInt::Times(BigInt::Pow(BigInt{2}, 389), BigInt{33})) == 389);
 }
 
 static void TestDivisibleBy() {
@@ -1669,13 +1730,13 @@ static void TestSmallAndLarge() {
     BigInt max_i64(std::numeric_limits<int64_t>::max());
     CHECK(max_i64.ToString() == "9223372036854775807");
 
-    max_i64 = BigInt::Plus(std::move(max_i64), 1);
+    max_i64 = BigInt::Plus(std::move(max_i64), BigInt{1});
     CHECK(max_i64.ToString() == "9223372036854775808");
 
     BigInt min_i64(std::numeric_limits<int64_t>::lowest());
     CHECK(min_i64.ToString() == "-9223372036854775808");
 
-    min_i64 = BigInt::Minus(std::move(min_i64), 1);
+    min_i64 = BigInt::Minus(std::move(min_i64), BigInt{1});
     CHECK(min_i64.ToString() == "-9223372036854775809");
 
     // Too big to store as an int64_t.
@@ -1690,7 +1751,7 @@ static void TestSmallAndLarge() {
     BigInt almost_max = BigInt::Plus(half_max, half_max);
     CHECK_IEQ(almost_max, BigInt(int64_t{9223372036854775806}));
     // This addition should cause an overflow and promotion.
-    BigInt overflowed = BigInt::Plus(almost_max, 100);
+    BigInt overflowed = BigInt::Plus(almost_max, BigInt{100});
     CHECK_IEQ(overflowed, BigInt("9223372036854775906"));
     BigInt overflowed2 = BigInt::Plus(almost_max, BigInt(100));
     CHECK_IEQ(overflowed, BigInt("9223372036854775906"));
@@ -1770,8 +1831,8 @@ static void TestSmallAndLarge() {
     BigInt expected_abs("9223372036854775808");
     CHECK_IEQ(BigInt::Abs(min_int64), expected_abs);
     CHECK_IEQ(BigInt::Negate(min_int64), expected_abs);
-    CHECK_IEQ(BigInt::Times(min_int64, -1), expected_abs);
-    CHECK_IEQ(BigInt::Div(min_int64, -1), expected_abs);
+    CHECK_IEQ(BigInt::Times(min_int64, BigInt{-1}), expected_abs);
+    CHECK_IEQ(BigInt::Div(min_int64, BigInt{-1}), expected_abs);
   }
 
   // Mix of small and large bitwise.
@@ -1832,6 +1893,118 @@ static void TestSmallAndLarge() {
   }
 }
 
+static void TestRatSmallAndLarge() {
+  // Simple construction and canonicalization.
+  CHECK_REQ(BigRat(31337), BigRat(31337, 1));
+  CHECK_REQ(BigRat(), BigRat(0, 5));
+  CHECK_REQ(BigRat(4, 8), BigRat(1, 2));
+  CHECK_REQ(BigRat(-10, 2), BigRat(-5));
+  CHECK_REQ(BigRat(-10, -20), BigRat(1, 2));
+
+  const BigRat small_pos(17, 19);
+  const BigRat small_neg(-2, 3);
+  const BigRat small_int(5);
+
+  const BigRat large_pos(BigInt("1234567890123456789012345"),
+                         BigInt("9876543210987654321098765"));
+  const BigRat large_neg = BigRat::Negate(large_pos);
+
+  // Test mixing small and large operands.
+  {
+    // small + large
+    CHECK_REQ(BigRat::Plus(small_pos, large_pos),
+              BigRat(BigInt("38271604899827160489982712"),
+                     BigInt("37530864201753086420175307")));
+    CHECK_REQ(BigRat::Plus(large_pos, small_pos),
+              BigRat(BigInt("38271604899827160489982712"),
+                     BigInt("37530864201753086420175307")));
+
+    // small * large
+    CHECK_REQ(BigRat::Times(small_int, large_neg),
+              BigRat(BigInt("-1234567890123456789012345"),
+                     BigInt("1975308642197530864219753")));
+    CHECK_REQ(BigRat::Times(large_neg, small_int),
+              BigRat(BigInt("-1234567890123456789012345"),
+                     BigInt("1975308642197530864219753")));
+
+    // large / small
+    CHECK_REQ(
+        BigRat::Div(large_pos, small_pos),
+        BigRat(
+            BigInt("4691357982469135798246911"),
+            BigInt("33580246917358024691735801")));
+
+    CHECK_REQ(
+        BigRat::Div(small_pos, large_pos),
+        BigRat(
+            BigInt("33580246917358024691735801"),
+            BigInt("4691357982469135798246911")));
+  }
+
+  // Comparisons.
+  {
+    CHECK(BigRat::Less(small_neg, small_pos));
+    CHECK(BigRat::Less(large_neg, small_pos));
+    // Even though it is "large", the value of the rational
+    // is not as big as the value of small_pos.
+    CHECK(BigRat::Less(large_pos, small_pos));
+    CHECK(BigRat::LessEq(large_pos, small_pos));
+    CHECK(!BigRat::Greater(large_pos, small_pos));
+    CHECK(BigRat::Less(small_neg, BigInt(0)));
+    CHECK(BigRat::Greater(small_pos, BigInt(0)));
+    CHECK(BigRat::Eq(small_int, 5LL));
+    CHECK(BigRat::Eq(large_pos, large_pos));
+  }
+
+
+  // Assignment between small and large values.
+  {
+    BigRat a = small_pos;
+    BigRat b = large_pos;
+
+    // Promotion
+    a = b;
+    CHECK_REQ(a, large_pos);
+
+    // Demotion
+    b = small_neg;
+    CHECK_REQ(b, small_neg);
+  }
+
+  // Move assignment.
+  {
+    BigRat a = small_pos;
+    BigRat b = large_pos;
+    BigRat c = small_neg;
+    BigRat d = large_neg;
+
+    a = std::move(b);
+    CHECK_REQ(a, large_pos);
+    c = std::move(d);
+    CHECK_REQ(c, large_neg);
+
+    a = small_pos;
+    CHECK_REQ(a, small_pos);
+    b = small_pos;
+    CHECK_REQ(b, small_pos);
+    c = small_pos;
+    CHECK_REQ(c, small_pos);
+    d = small_pos;
+    CHECK_REQ(d, small_pos);
+  }
+
+  // Move construction.
+  {
+    BigRat a_s = small_pos;
+    BigRat b_s(std::move(a_s));
+    CHECK_REQ(b_s, small_pos);
+
+    BigRat a_l = large_pos;
+    BigRat b_l(std::move(a_l));
+    CHECK_REQ(b_l, large_pos);
+  }
+}
+
 int main(int argc, char **argv) {
   constexpr bool SLOW = true;
 
@@ -1845,6 +2018,7 @@ int main(int argc, char **argv) {
   TestToU64();
 
   TestSmallAndLarge();
+  TestRatSmallAndLarge();
 
   TestCompare();
   TestRatCompare();

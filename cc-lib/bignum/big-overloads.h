@@ -29,11 +29,11 @@ inline BigInt operator *(const BigInt &a, const BigInt &b) {
 }
 
 inline BigInt operator *(const BigInt &a, int64_t b) {
-  return BigInt::Times(a, b);
+  return BigInt::Times(a, BigInt{b});
 }
 
 inline BigInt operator *(int64_t a, const BigInt &b) {
-  return BigInt::Times(b, a);
+  return BigInt::Times(BigInt{a}, b);
 }
 
 inline BigInt operator +(const BigInt &a, const BigInt &b) {
@@ -41,11 +41,11 @@ inline BigInt operator +(const BigInt &a, const BigInt &b) {
 }
 
 inline BigInt operator +(const BigInt &a, int64_t b) {
-  return BigInt::Plus(a, b);
+  return BigInt::Plus(a, BigInt{b});
 }
 
 inline BigInt operator +(int64_t a, const BigInt &b) {
-  return BigInt::Plus(b, a);
+  return BigInt::Plus(BigInt{a}, b);
 }
 
 inline BigInt operator /(const BigInt &a, const BigInt &b) {
@@ -83,11 +83,11 @@ inline BigInt operator -(const BigInt &a, const BigInt &b) {
 }
 
 inline BigInt operator -(const BigInt &a, int64_t b) {
-  return BigInt::Minus(a, b);
+  return BigInt::Minus(a, BigInt{b});
 }
 
 inline BigInt operator -(int64_t a, const BigInt &b) {
-  return BigInt::Minus(a, b);
+  return BigInt::Minus(BigInt{a}, b);
 }
 
 inline BigInt operator -(const BigInt &a) {

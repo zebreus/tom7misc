@@ -23,6 +23,10 @@ struct StatusBar {
   // Must be greater than zero.
   explicit StatusBar(int num_lines);
 
+  // TODO: Also allow specifying the max width of the status region.
+  // A very common problem is that a line is too long, messing
+  // everything up.
+
   // Each of these immediately outputs to the screen.
 
   // Prints lines above the status bar. Adds trailing newline if not present.
@@ -62,7 +66,8 @@ struct StatusBar {
   // in [0, num_lines). Immediately outputs the entire status bar, so
   // you should prefer one of the above routines if you are building the
   // entire bar.
-  void LineStatusf(int idx, const char *format, ...) PRINTF_ATTRIBUTE_MEMBER(2, 3);
+  void LineStatusf(int idx,
+                   const char *format, ...) PRINTF_ATTRIBUTE_MEMBER(2, 3);
   template<typename... Args>
   void LineStatus(int idx, std::format_string<Args...> fmt, Args&&... args);
 

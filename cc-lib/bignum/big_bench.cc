@@ -2,6 +2,7 @@
 #include "big.h"
 #include "big-overloads.h"
 
+#include <format>
 #include <initializer_list>
 #include <utility>
 #include <vector>
@@ -39,10 +40,11 @@ static std::pair<BigRat, BigRat> Cos(
     if (decreasing) {
       const BigRat error_bound = BigRat::Abs(current_term);
       if (error_bound <= epsilon) {
+        BigRat next = sum + std::move(current_term);
         if (BigRat::Sign(current_term) > 0) {
-          return std::make_pair(sum, sum + current_term);
+          return std::make_pair(std::move(sum), std::move(next));
         } else {
-          return std::make_pair(sum + current_term, sum);
+          return std::make_pair(std::move(next), std::move(sum));
         }
       }
     }
@@ -60,6 +62,27 @@ static std::pair<BigRat, BigRat> Cos(
   }
 }
 
+// Cosine. Ensure numbers are big by asking for 250 digits.
+static int OnlyCos(ArcFour *rc) {
+  const int d = 100 + RandTo(rc, 200);
+  BigRat a(RandTo(rc, 100) - 50, d);
+  BigInt inv_epsilon = BigInt::Pow(BigInt(10), 250);
+  const auto &[cosa_lb, cosa_ub] = Cos(a, inv_epsilon);
+  CHECK(cosa_lb <= cosa_ub);
+  DoNotOptimize(cosa_lb);
+  return d;
+}
+
+static int OnlySqrtBounds(ArcFour *rc) {
+  const int d = 100 + RandTo(rc, 200);
+  // Must be non-negative.
+  BigRat a(RandTo(rc, 100) + 1, d);
+  BigInt inv_epsilon = BigInt::Pow(BigInt(10), 250);
+  const auto &[lb, ub] = BigRat::SqrtBounds(a, inv_epsilon);
+  CHECK(lb <= ub);
+  DoNotOptimize(ub);
+  return d;
+}
 
 static int DoSomeMath(ArcFour *rc) {
   BigRat a(RandTo(rc, 100) - 50, 100 + RandTo(rc, 200));
@@ -97,22 +120,28 @@ struct BenchDef {
 };
 
 static std::initializer_list<BenchDef> BENCHES = {
+  {.fn = &OnlyCos, .num_samples = 50000, .name = "only_cos"},
+  {.fn = &OnlySqrtBounds, .num_samples = 10000, .name = "only_sqrt_bounds"},
   {.fn = &DoSomeMath, .num_samples = 1000, .name = "some_math"},
 };
 
 static void RunBench() {
   StatusBar status(1);
 
-  ArcFour rc("bench");
   Periodically status_per(1);
   for (const BenchDef &def : BENCHES) {
+    // Some stuff might depend on the specific numbers chosen,
+    // so use a deterministic sequence that does not depend
+    // on other benchmarks!
+    ArcFour rc(std::format("bench.{}", def.name));
+
     Timer all_time;
     status.Print("Running {}...\n", def.name);
     std::vector<double> samples;
     samples.reserve(def.num_samples);
     for (int iter = 0; iter < def.num_samples; iter++) {
       Timer timer;
-      int res = DoSomeMath(&rc);
+      int res = (*def.fn)(&rc);
       DoNotOptimize(res);
       samples.push_back(timer.Seconds());
 

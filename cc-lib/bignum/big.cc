@@ -1011,7 +1011,7 @@ static bool IsPrimeInternal(const BigInt &n) {
   }
 
   // Pre-computation for both tests.
-  BigInt nm1 = BigInt::Minus(n, 1);
+  BigInt nm1 = BigInt::Minus(n, BigInt{1});
 
   // Quick Miller-Rabin check with base 2. This filters out most
   // composites very quickly.
@@ -1093,7 +1093,7 @@ static void FactorPollardRhoInner(
 
   auto F = [&](const BigInt &val) {
     BigInt v2 = BigInt::Times(val, val);
-    BigInt v2pc = BigInt::Plus(v2, a);
+    BigInt v2pc = BigInt::Plus(v2, BigInt{a});
     return BigInt::CMod(v2pc, n);
   };
 
@@ -1541,7 +1541,7 @@ BigRat BigRat::FromDecimal(std::string_view num) {
 }
 
 
-// TODO: Since SimpleBounds is a bit expensive, we might consider
+// TODO: Since ElementaryBounds is a bit expensive, we might consider
 // offering functions like these:
 //   // Lower quality, faster approximations.
 //   //
@@ -1754,8 +1754,7 @@ BigRat::SqrtBounds(const BigRat &xx, const BigInt &inv_epsilon) {
   // (to satisfy the precondition of SimplifyInterval). This interval
   // needs to be 1/(d^2). Fortunately this is just like one or two
   // more steps of the algorithm.
-  const BigInt sq_inv_epsilon = BigInt::Times(inv_epsilon, inv_epsilon);
-  const BigRat epsilon{BigInt(1), sq_inv_epsilon};
+  const BigRat epsilon{BigInt(1), BigInt::Times(inv_epsilon, inv_epsilon)};
 
   // "Heron's Method".
   // This approach converges quickly (approximately doubling the number of
@@ -1786,6 +1785,7 @@ BigRat::SqrtBounds(const BigRat &xx, const BigInt &inv_epsilon) {
                x.ToString().c_str(), y.ToString().c_str());
       }
 
+      // Simplify using the original epsilon.
       auto [lb, s, ub] = SimplifyInterval(x, y, inv_epsilon);
       if (s.has_value()) {
         // This happens when the interval bracketed a very simple
@@ -1808,7 +1808,7 @@ BigRat::SqrtBounds(const BigRat &xx, const BigInt &inv_epsilon) {
       // have an elementary interval.
       return std::make_pair(std::move(lb), std::move(ub));
     }
-    x = BigRat::Div(BigRat::Plus(x, y), two);
+    x = BigRat::Div(BigRat::Plus(std::move(x), std::move(y)), two);
   }
 }
 

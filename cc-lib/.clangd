@@ -12,4 +12,4 @@ InlayHints:
   Enabled: No
 
 CompileFlags:
-  Add: [-xc++, -Wall, --std=c++23, -I.]
+  Add: [-xc++, -Wall, --std=c++23, -I., -DBIG_USE_GMP]

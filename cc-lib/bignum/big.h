@@ -85,13 +85,10 @@ struct BigInt {
   inline static bool Greater(const BigInt &a, int64_t b);
   inline static bool GreaterEq(const BigInt &a, const BigInt &b);
   inline static bool GreaterEq(const BigInt &a, int64_t b);
+
   inline static BigInt Plus(const BigInt &a, const BigInt &b);
-  inline static BigInt Plus(const BigInt &a, int64_t b);
   inline static BigInt Minus(const BigInt &a, const BigInt &b);
-  inline static BigInt Minus(const BigInt &a, int64_t b);
-  inline static BigInt Minus(int64_t a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, const BigInt &b);
-  inline static BigInt Times(const BigInt &a, int64_t b);
 
   inline static BigInt Min(const BigInt &a, const BigInt &b);
   inline static BigInt Max(const BigInt &a, const BigInt &b);
@@ -118,7 +115,7 @@ struct BigInt {
   // Ignores sign of b. Result is always in [0, |b|).
   // For the C % operator, use CMod.
   inline static BigInt Mod(const BigInt &a, const BigInt &b);
-  // TODO: Could offer uint64_t Mod.
+  // TODO: Could offer uint64_t Mod, returning uint64_t.
 
   // Modulus with C99/C++11 semantics: Division truncates towards
   // zero; modulus has the same sign as a.
@@ -1004,11 +1001,6 @@ BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
   return ret;
 }
 
-// XXX remove these
-BigInt BigInt::Plus(const BigInt &a, int64_t b) {
-  return Plus(a, BigInt(b));
-}
-
 BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
 
   if (a.rep.IsSmall() && b.rep.IsSmall()) {
@@ -1043,14 +1035,6 @@ BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
   return ret;
 }
 
-BigInt BigInt::Minus(const BigInt &a, int64_t b) {
-  return Minus(a, BigInt(b));
-}
-
-BigInt BigInt::Minus(int64_t a, const BigInt &b) {
-  return Minus(BigInt(a), b);
-}
-
 BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
 
   if (a.rep.IsSmall() && b.rep.IsSmall()) {
@@ -1083,10 +1067,6 @@ BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
   BigInt ret;
   mpz_mul(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
   return ret;
-}
-
-BigInt BigInt::Times(const BigInt &a, int64_t b) {
-  return Times(a, BigInt(b));
 }
 
 BigInt BigInt::Div(const BigInt &a, const BigInt &b) {
@@ -1273,13 +1253,16 @@ BigInt BigInt::Pow(const BigInt &a, uint64_t exponent) {
 BigInt BigInt::LeftShift(const BigInt &a, uint64_t shift) {
   // PERF: Easy when small
 
-  if (internal::FitsLongInt(shift)) {
+  if (internal::FitsLongInt(shift)) [[likely]] {
     GmpRep::Lease a_tmp(a.rep);
     mp_bitcnt_t sh = shift;
     BigInt ret;
     mpz_mul_2exp(ret.rep.Mpz(), a_tmp.ConstMpz(), sh);
     return ret;
   } else {
+    // If the shift amount is too big to fit in long int, then this
+    // will probably only be possible if is -1, 0, or 1. But we
+    // can at least do as the programmer asked...
     return Times(a, Pow(BigInt{2}, shift));
   }
 }
@@ -1360,6 +1343,11 @@ BigRat &BigRat::operator =(const BigRat &other) {
   // Self-assignment does nothing.
   if (this == &other) return *this;
 
+  // FIXME: If other is small, we can't use other.rep as
+  // the source (and don't want to!). Need a case for
+  // initializing from small.
+
+
   // If overwriting an object that has no allocation,
   // we need to create one before calling mpq_set.
   if (mpq_numref(rep)->_mp_d == nullptr) {
@@ -1375,7 +1363,7 @@ BigRat &BigRat::operator =(BigRat &&other) noexcept {
   // Prepare to overwrite data.
   Destroy();
 
-  // Consume other's representation.
+  // Consume other's representation, whether allocated or small.
   memcpy(rep, other.rep, sizeof(Rep));
 
   // Leave it in a valid state, but without allocation.
@@ -1697,6 +1685,8 @@ bool BigInt::IsOdd() const { return BzIsOdd(rep); }
 int BigInt::Jacobi(const BigInt &a_input,
                    const BigInt &n_input) {
   // FIXME: Buggy! Test segfaults.
+  // (I think I did fix it and this comment is stale, but
+  // I should verify!)
 
   // Preconditions.
   assert(Greater(n_input, 0));
@@ -1742,7 +1732,7 @@ BigInt::ExtendedGCD(const BigInt &a, const BigInt &b) {
   BigInt r = b, old_r = a;
 
   while (!BigInt::IsZero(r)) {
-    const auto [quotient, rem] = BigInt::QuotRem(old_r, r);
+    auto [quotient, rem] = BigInt::QuotRem(old_r, r);
 
     old_r = std::move(r);
     r = std::move(rem);
@@ -1809,6 +1799,11 @@ BigInt BigInt::Negate(BigInt &&a) {
 BigInt BigInt::Abs(const BigInt &a) {
   return BigInt{BzAbs(a.rep), nullptr};
 }
+BigInt BigInt::Abs(BigInt &&a) {
+  // PERF abs in place?
+  return BigInt{BzAbs(a.rep), nullptr};
+}
+
 int BigInt::Compare(const BigInt &a, const BigInt &b) {
   switch (BzCompare(a.rep, b.rep)) {
   case BZ_LT: return -1;
@@ -1859,24 +1854,12 @@ bool BigInt::GreaterEq(const BigInt &a, int64_t b) {
 BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
   return BigInt{BzAdd(a.rep, b.rep), nullptr};
 }
-BigInt BigInt::Plus(const BigInt &a, int64_t b) {
-  return BigInt{BzAdd(a.rep, BigInt{b}.rep), nullptr};
-}
 BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
   return BigInt{BzSubtract(a.rep, b.rep), nullptr};
-}
-BigInt BigInt::Minus(const BigInt &a, int64_t b) {
-  return BigInt{BzSubtract(a.rep, BigInt{b}.rep), nullptr};
-}
-BigInt BigInt::Minus(int64_t a, const BigInt &b) {
-  return BigInt{BzSubtract(BigInt{a}.rep, b.rep), nullptr};
 }
 
 BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
   return BigInt{BzMultiply(a.rep, b.rep), nullptr};
-}
-BigInt BigInt::Times(const BigInt &a, int64_t b) {
-  return BigInt{BzMultiply(a.rep, BigInt{b}.rep), nullptr};
 }
 
 BigInt BigInt::Div(const BigInt &a, const BigInt &b) {

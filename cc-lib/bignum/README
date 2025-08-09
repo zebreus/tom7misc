@@ -29,3 +29,8 @@ some operator overloads. I don't recommend the custom literals if
 you care about performance, because it is easy to accidentally
 write code that repeatedly parses!
 
+
+
+TODO: Note that there is mini-gmp, which is a two-file portable
+version with the same interface! Maybe it would be preferred over
+bigz.h.
