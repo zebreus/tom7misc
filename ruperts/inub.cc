@@ -1528,14 +1528,14 @@ struct Hypersolver {
   // shape here is a rectangle swept along a circular arc. We
   // will call this the "swept shape."
   //
-  // Since the precision of the result's representation is important
-  // for efficiency in the search, we allow the result to be a
-  // union of a set of AABBs. (However, it currently always returns
-  // one AABB.)
-  std::vector<Vec2ival>
-  GetBoundingComplex(const Vec2ival &v_in, const Bigival &angle,
-                     const BigInt &inv_epsilon,
-                     const Bigival &tx, const Bigival &ty) {
+  // This always returns a single AABB, though we previously tried
+  // producing a "bounding complex" of multiple AABBs that cover
+  // the swept shape. That eventually became the disc approach, but
+  // it might make sense to reconsider non-rectangular bounding
+  // regions here again.
+  Vec2ival GetBoundingAABB(const Vec2ival &v_in, const Bigival &angle,
+                           const BigInt &inv_epsilon,
+                           const Bigival &tx, const Bigival &ty) {
 
     auto Translate = [&](Vec2ival &&v) {
         return Vec2ival(std::move(v.x) + tx, std::move(v.y) + ty);
@@ -1543,55 +1543,10 @@ struct Hypersolver {
 
     Bigival sin_a = angle.Sin(inv_epsilon);
     Bigival cos_a = angle.Cos(inv_epsilon);
-    Vec2ival loose_box(Bigival(v_in.x) * cos_a - Bigival(v_in.y) * sin_a,
-                       Bigival(v_in.x) * sin_a + Bigival(v_in.y) * cos_a);
+    Vec2ival loose_box(v_in.x * cos_a - v_in.y * sin_a,
+                       v_in.x * sin_a + v_in.y * cos_a);
 
     return {Translate(std::move(loose_box))};
-
-    #if 0
-    // The idea is to compute a bounding volume for the shape swept by
-    // rotating the AABB containing v_in by the angle (and then translate
-    // it by tx, ty). The volume is represented by a set of AABBs.
-    //
-    // If the sweep might cross an axis, it gets complicated because
-    // this is where sin/cos change direction. As an extreme example,
-    // if angle can take on all values [0, 2π] then computing the
-    // endpoints of the swept shape is degenerate (they are the same)
-    // but obviously the sweep covers the whole circular region. So if
-    // the loose bounds cross an axis, we just use those loose bounds.
-    // The calling code might need to subdivide. (But also note that
-    // near the axes is where AABBs are more likely to be tight
-    // bounds, so it may also not matter!)
-
-    if (loose_box.x.ContainsOrApproachesZero() ||
-        loose_box.y.ContainsOrApproachesZero()) {
-      return {Translate(loose_box)};
-    } else {
-      // Otherwise, we can compute some tighter bounds.
-
-      // HERE: Ways to compute a complex of AABBs that more tightly
-      // bounds the swept AABB. Currently we just do the same as above,
-      // which is pointless!
-
-
-      // PERF: We can do much better than to use a union of AABBs
-      // here! The key thing is that when the angle is near 45°, the
-      // shape of the sweep is more like a diagonal line. So AABBs are
-      // inefficient in the worst way for our problem (the inner
-      // corner of the AABB is unoccupied, and appears to intersect
-      // the similarly-angled edge that we test against).
-      //
-      // Note: Currently we document the meaning of the return value
-      // here as "every point in the swept shape is in the union of
-      // the AABBs," which is nice and simple. But when we actually
-      // test this against the outer hull below, we only use a weaker
-      // implication: "If every AABB is certainly on the wrong side of
-      // the line, then all the points in the swept shape are on the
-      // wrong side of the line."
-
-      return {Translate(loose_box)};
-    }
-    #endif
   }
 
   struct ProcessResult {
@@ -1607,13 +1562,7 @@ struct Hypersolver {
     // directly, but they can be useful for debugging.
     std::vector<Vec2ival> outer;
 
-    // Experimental: Bounding complexes for the rotated inner points.
-    // A bounding complex is a union of some AABBs.
-    // For this problem, this should be interpreted as "if all of
-    // these AABBs are outside an edge, then the point is definitely
-    // outside the edge."
-    std::vector<std::vector<Vec2ival>> complexes;
-
+    // Disc bounds for the inner points.
     std::vector<Discival> discs;
   };
 
@@ -1858,17 +1807,13 @@ struct Hypersolver {
       inner.reserve(inner_hull.size());
     }
 
-    std::vector<std::vector<Vec2ival>> complexes;
-    if (get_stats) {
-      complexes.reserve(inner_hull.size());
-    }
-
     std::vector<Discival> discs;
     if (get_stats) {
       discs.reserve(inner_hull.size());
     }
 
     double disc_time_here = 0.0;
+    double disc_outside_time_here = 0.0;
     Timer loop_timer;
     // Compute the inner hull point-by-point, which we call v. We can
     // exit early if any of these points are definitely outside the
@@ -1884,19 +1829,16 @@ struct Hypersolver {
       Vec2ival proj_v = TransformVec(inner_trig,
                                      original_v, inv_epsilon);
 
-      // The simpler thing here would be to compute bounds on the point
-      // v as a Vec2ival. These are axis-aligned bounding boxes. But
-      // since they are axis-aligned, rotating (especially by e.g. 45°)
-      // and creating a new AABB will lose information. This is especially
-      // pernicious for these line-side tests, since it's easy to have a
-      // situation where the corner of the AABB intersects an edge, but
-      // none of the bounded points would have.
-      //
-      // Instead we allow the possibility of a union of multiple AABBs
-      // to represent the possible locations of the point. We call
-      // this a "complex."
-      std::vector<Vec2ival> complex =
-        GetBoundingComplex(proj_v, inner_rot, inv_epsilon, inner_x, inner_y);
+      // Bounds on the inner point's location. This is an AABB. Note
+      // that since it is axis-aligned, rotating (especially by e.g.
+      // 45°) loses some information. This is especially pernicious
+      // for these line-side tests, since it's easy to have a
+      // situation where the corner of the AABB intersects an edge,
+      // but none of the bounded points would have. The disc approach
+      // is a good complement for this case, but we could consider
+      // trying other non-rectangular representations here.
+      Vec2ival v_aabb =
+        GetBoundingAABB(proj_v, inner_rot, inv_epsilon, inner_x, inner_y);
 
       // TODO: Tune bias. We can even try more than one, or choose
       // randomly.
@@ -1914,9 +1856,7 @@ struct Hypersolver {
       disc_time_here = disc_timer.Seconds();
 
       if (get_stats) {
-        // PERF copying!
-        complexes.push_back(complex);
-
+        // PERF Shouldn't we be using TransformVec?
         // Also rotate and translate it.
         Vec2ival rot_v = Rotate2D(proj_v, inner_rot, inv_epsilon);
         Vec2ival v(rot_v.x + inner_x, rot_v.y + inner_y);
@@ -1998,22 +1938,11 @@ struct Hypersolver {
         //     dependency problem.
         const Vec2ival &edge = outer_edge[start];
 
+        // Now test the inner point AABB.
+        Bigival cross_product4 =
+          edge.x * v_aabb.y - edge.y * v_aabb.x + cross_va_vb;
 
-        // Now we test every AABB in the complex.
-        bool entire_complex_definitely_outside = true;
-        for (const Vec2ival &aabb : complex) {
-          Bigival cross_product4 =
-            edge.x * aabb.y - edge.y * aabb.x + cross_va_vb;
-
-          if (!cross_product4.MightBePositive()) {
-            // ok
-          } else {
-            entire_complex_definitely_outside = false;
-            break;
-          }
-        }
-
-        if (entire_complex_definitely_outside) {
+        if (!cross_product4.MightBePositive()) {
           Rejection pt4;
           pt4.reason = POINT_OUTSIDE4;
           pt4.edge_point = std::make_optional(
@@ -2025,7 +1954,11 @@ struct Hypersolver {
         }
 
         // Or is the disc outside?
-        if (IsDiscOutsideEdge(disc, edge, cross_va_vb)) {
+        Timer disc_outside_timer;
+        const bool is_disc_outside =
+          IsDiscOutsideEdge(disc, edge, cross_va_vb);
+        disc_outside_time_here += disc_outside_timer.Seconds();
+        if (is_disc_outside) {
           Rejection pt5;
           pt5.reason = POINT_OUTSIDE5;
           pt5.edge_point = std::make_optional(
@@ -2042,7 +1975,6 @@ struct Hypersolver {
     ProcessResult res;
     // Always include these if we have them.
     res.inner = std::move(inner);
-    res.complexes = std::move(complexes);
     res.discs = std::move(discs);
     res.outer = std::move(outer_aabb);
 
@@ -2057,6 +1989,7 @@ struct Hypersolver {
       MutexLock ml(&mu);
       loop_time += loop_timer.Seconds();
       disc_time += disc_time_here;
+      disc_outside_time += disc_outside_time_here;
     }
 
     return res;
@@ -2402,13 +2335,6 @@ struct Hypersolver {
       DrawAABB(v, 0xFF333366);
     }
 
-    // And the complexes.
-    for (const std::vector<Vec2ival> &complex : pr.complexes) {
-      for (const Vec2ival &v : complex) {
-        DrawAABB(v, 0xAAFF3366);
-      }
-    }
-
     for (const Discival &disc : pr.discs) {
       DrawCircle(disc, 0xCCFF3366);
     }
@@ -2593,6 +2519,7 @@ struct Hypersolver {
             "{} ea. "
             ABLUE("{:.3f}") "% trig "
             ABLUE("{:.3f}") "% disc "
+            ABLUE("{:.3f}") "% disco "
             ABLUE("{:.3f}") "% loop\n"
             // Quality stats
             AORANGE("⊗") "mid: {}  "
@@ -2610,6 +2537,7 @@ struct Hypersolver {
             ANSI::Time(time_each),
             (trig_time * 100.0) / process_time,
             (disc_time * 100.0) / process_time,
+            (disc_outside_time * 100.0) / process_time,
             (loop_time * 100.0) / process_time,
             counter_bad_midpoint.Read(),
             counter_degenerate_disc.Read(),
@@ -3080,7 +3008,7 @@ struct Hypersolver {
   int64_t efficiency_count = 0;
 
   double trig_time = 0.0, loop_time = 0.0, process_time = 0.0;
-  double disc_time = 0.0;
+  double disc_time = 0.0, disc_outside_time = 0.0;
 
   // The hypervolume now done (this includes regions that we
   // determined are out of scope). Compare against the full volume.
