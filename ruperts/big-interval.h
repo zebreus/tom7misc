@@ -74,8 +74,16 @@ struct Bigival {
 
   // When we know that one argument is exact, we can save some steps.
   Bigival Times(const BigRat &b) const {
-    // PERF do so!
-    return Times(Bigival(b));
+    switch (BigRat::Sign(b)) {
+    default:
+    case 0:
+      return Bigival(0);
+    case -1:
+      // Endpoint order is swapped when negated.
+      return Bigival(UB() * b, LB() * b, IncludesUB(), IncludesLB());
+    case 1:
+      return Bigival(LB() * b, UB() * b, IncludesLB(), IncludesUB());
+    }
   }
 
   Bigival Div(const Bigival &b) const {

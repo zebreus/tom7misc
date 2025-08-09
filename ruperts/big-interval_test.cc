@@ -377,9 +377,11 @@ static void Transcendental() {
                              BigRat::FromDouble(std::nextafter(s, +2)),
                              false, false);
 
-    printf("sin(%f) = %s\n"
-           "Want: %s\n", x, sinx.ToString().c_str(),
-           actual.ToString().c_str());
+    if (VERBOSE) {
+      printf("sin(%f) = %s\n"
+             "Want: %s\n", x, sinx.ToString().c_str(),
+             actual.ToString().c_str());
+    }
 
     CHECK(Bigival::MaybeIntersection(sinx, actual).has_value()) << x;
     // Moreover, the interval must be small enough.
@@ -394,10 +396,12 @@ static void Transcendental() {
                              BigRat::FromDouble(std::nextafter(c, +2)),
                              false, false);
 
-    printf("cos(%.17g) = %s = %.17g\n"
-           "Want: %s\n",
-           x, cosx.ToString().c_str(), c,
-           actual.ToString().c_str());
+    if (VERBOSE) {
+      printf("cos(%.17g) = %s = %.17g\n"
+             "Want: %s\n",
+             x, cosx.ToString().c_str(), c,
+             actual.ToString().c_str());
+    }
 
     CHECK(Bigival::MaybeIntersection(cosx, actual).has_value()) << x;
     CHECK(cosx.Width() <= epsilon);
@@ -537,6 +541,52 @@ static void ContainsInteger() {
   CHECK(Bigival(BigRat(3, 4), BigRat(5, 4), false, false).ContainsInteger());
 }
 
+static void TimesRat() {
+  {
+    Bigival a(2, 5, true, false);
+    Bigival p = a * BigRat(3);
+    CHECK(p.LB() == 6);
+    CHECK(p.UB() == 15);
+    CHECK(p.IncludesLB());
+    CHECK(!p.IncludesUB());
+  }
+
+  {
+    Bigival a(2, 5, true, false);
+    Bigival p = a * BigRat(0);
+    CHECK(p.Singular());
+    CHECK(p.LB() == 0);
+  }
+
+  {
+    Bigival a(2, 5, true, false);
+    Bigival p = a * BigRat(-3);
+    CHECK(p.LB() == -15);
+    CHECK(p.UB() == -6);
+    CHECK(!p.IncludesLB());
+    CHECK(p.IncludesUB());
+  }
+
+  {
+    Bigival a(-5, -2, false, true);
+    Bigival p = a * BigRat(-3);
+    CHECK(p.LB() == 6);
+    CHECK(p.UB() == 15);
+    CHECK(p.IncludesLB());
+    CHECK(!p.IncludesUB());
+  }
+
+  {
+    Bigival a(-2, 5, true, true);
+    Bigival p = a * BigRat(-3);
+    CHECK(p.LB() == -15);
+    CHECK(p.UB() == 6);
+    CHECK(p.IncludesLB());
+    CHECK(p.IncludesUB());
+  }
+  printf("TimesRat ok.\n");
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -545,6 +595,7 @@ int main(int argc, char **argv) {
   IntervalOps();
   Comparisons();
   ContainsInteger();
+  TimesRat();
 
   Transcendental();
 
