@@ -653,7 +653,7 @@ Bigival PolygonArea(const std::vector<Vec2ival> &vs) {
 // intervals.
 static Bigival NiceSin(const BigRat &r, const BigInt &inv_epsilon) {
   // PERF Can avoid recomputing this over and over.
-  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) * 4;
+  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
 
   Bigival fine_sin = Bigival::Sin(r, fine_epsilon);
 
@@ -663,8 +663,8 @@ static Bigival NiceSin(const BigRat &r, const BigInt &inv_epsilon) {
   // 1/2*inv_epsilon. We pass in inv_epsilon/2 so that the target
   // error is still inv_epsilon.
   // Note potential round-off error; we don't actually have any
-  // real requirement on the intervals except that they are small
-  // and get smaller. So this doesn't affect correctness.
+  // formal requirement on the intervals except that they are small
+  // and get smaller as we subdivide. So this doesn't affect correctness.
   auto tpl = BigRat::SimplifyInterval(fine_sin.LB(), fine_sin.UB(),
                                       inv_epsilon >> 1);
 
@@ -680,13 +680,36 @@ static Bigival NiceSin(const BigRat &r, const BigInt &inv_epsilon) {
 // As above, but cosine.
 static Bigival NiceCos(const BigRat &r, const BigInt &inv_epsilon) {
   // PERF Can avoid recomputing this over and over.
-  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) * 4;
+  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
 
   Bigival fine_cos = Bigival::Cos(r, fine_epsilon);
 
   auto tpl = BigRat::SimplifyInterval(fine_cos.LB(), fine_cos.UB(),
                                       inv_epsilon >> 1);
 
+  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
+                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
+                 true, true);
+}
+
+// Same idea, but when the input is an interval.
+static Bigival NiceSin(const Bigival &r, const BigInt &inv_epsilon) {
+  // PERF Can avoid recomputing this over and over.
+  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
+  Bigival fine_sin = r.Sin(fine_epsilon);
+  auto tpl = BigRat::SimplifyInterval(fine_sin.LB(), fine_sin.UB(),
+                                      inv_epsilon >> 1);
+  return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
+                 BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
+                 true, true);
+}
+
+static Bigival NiceCos(const Bigival &r, const BigInt &inv_epsilon) {
+  // PERF Can avoid recomputing this over and over.
+  BigInt fine_epsilon = (inv_epsilon * inv_epsilon) << 2;
+  Bigival fine_cos = r.Cos(fine_epsilon);
+  auto tpl = BigRat::SimplifyInterval(fine_cos.LB(), fine_cos.UB(),
+                                      inv_epsilon >> 1);
   return Bigival(BigRat::Max(std::move(std::get<0>(tpl)), BigRat(-1)),
                  BigRat::Min(std::move(std::get<2>(tpl)), BigRat(1)),
                  true, true);
@@ -707,7 +730,7 @@ struct ViewBoundsTrig {
   ViewBoundsTrig(Bigival azimuth_in, Bigival angle_in,
                  BigInt inv_epsilon_in) :
     azimuth(std::move(azimuth_in)), angle(std::move(angle_in)),
-    inv_epsilon(inv_epsilon_in) {
+    inv_epsilon(std::move(inv_epsilon_in)) {
 
     if (azimuth.Width() < BigRat(3)) {
       // Since we use these a lot of times, we spend extra time up front
@@ -758,6 +781,27 @@ struct ViewBoundsTrig {
   // These are ordered as lb, ub.
   std::array<std::pair<Bigival, Bigival>, 2> sin_cos_az;
   std::array<std::pair<Bigival, Bigival>, 2> sin_cos_an;
+};
+
+// Same idea, for the 2D rotation of the inner hull.
+// Sin and Cos of the angle interval are used multiple times, as
+// is the Sin and Cos of the angle's midpoint.
+struct RotTrig {
+
+  RotTrig(Bigival angle_in,
+          BigInt inv_epsilon_in) :
+    angle(std::move(angle_in)),
+    inv_epsilon(std::move(inv_epsilon_in)) {
+
+    // Get high quality intervals since these are used many
+    // times.
+    cos_a = NiceCos(angle, inv_epsilon);
+    sin_a = NiceSin(angle, inv_epsilon);
+  }
+
+  Bigival angle;
+  Bigival cos_a, sin_a;
+  BigInt inv_epsilon;
 };
 
 // Compute a bounding ball for the patch on the unit sphere
@@ -1223,7 +1267,7 @@ static BigRat MaxSqLength(const Vec2ival &v) {
 static Discival RotateDiscInnerBias(
     // Mutable because we might calculate and cache radius.
     Discival *disc,
-    const Bigival &angle,
+    const RotTrig &rot_trig,
     // A factor > 1 pushes the center away from the origin
     // to create a tighter inner bound. 1.0 is unbiased.
     const BigRat &bias,
@@ -1233,7 +1277,7 @@ static Discival RotateDiscInnerBias(
   // BigInt inv_epsilon = inv_epsilon_orig * inv_epsilon_orig;
   const BigInt &inv_epsilon = inv_epsilon_orig;
 
-  if (angle.Width() > BigRat(3)) {
+  if (rot_trig.angle.Width() > BigRat(3)) {
     // We can't get a good disc with this method. Just return
     // something correct. A really simple choice is just a
     // disc centered at the origin, whose radius is as though
@@ -1260,7 +1304,8 @@ static Discival RotateDiscInnerBias(
   // and then compute a radius that definitely includes the sweep
   // for the chosen point.
 
-  BigRat mid_angle = angle.Midpoint();
+  // PERF precompute it!
+  BigRat mid_angle = rot_trig.angle.Midpoint();
   Bigival sin_ma = Bigival::Sin(mid_angle, inv_epsilon);
   Bigival cos_ma = Bigival::Cos(mid_angle, inv_epsilon);
   Vec2ival arc_center_ival(
@@ -1284,6 +1329,9 @@ static Discival RotateDiscInnerBias(
   // PERF: These should be very tight intervals, but we could probably
   // do better here with a routine that computes a disc for a rotated
   // point.
+  // PERF: This is not the same as bounds on the sin and cos of
+  // the angle interval, but we could still precompute it (and it
+  // can share some computations).
   auto RotatePt = [&](const BigRat &angle, const BigVec2 &p) {
       Bigival sina = Bigival::Sin(angle, inv_epsilon);
       Bigival cosa = Bigival::Cos(angle, inv_epsilon);
@@ -1293,8 +1341,8 @@ static Discival RotateDiscInnerBias(
 
   // Very tight AABBs bounding the centers of the rotated disc at
   // the angle lower bound and upper bound.
-  Vec2ival center_lb = RotatePt(angle.LB(), disc->center);
-  Vec2ival center_ub = RotatePt(angle.UB(), disc->center);
+  Vec2ival center_lb = RotatePt(rot_trig.angle.LB(), disc->center);
+  Vec2ival center_ub = RotatePt(rot_trig.angle.UB(), disc->center);
 
   // Now find the maximum squared distance to the two rotated endpoints.
   // These should be almost the same except for the small amount of error
@@ -1533,7 +1581,8 @@ struct Hypersolver {
   // the swept shape. That eventually became the disc approach, but
   // it might make sense to reconsider non-rectangular bounding
   // regions here again.
-  Vec2ival GetBoundingAABB(const Vec2ival &v_in, const Bigival &angle,
+  Vec2ival GetBoundingAABB(const Vec2ival &v_in,
+                           const RotTrig &rot_trig,
                            const BigInt &inv_epsilon,
                            const Bigival &tx, const Bigival &ty) {
 
@@ -1541,10 +1590,10 @@ struct Hypersolver {
         return Vec2ival(std::move(v.x) + tx, std::move(v.y) + ty);
       };
 
-    Bigival sin_a = angle.Sin(inv_epsilon);
-    Bigival cos_a = angle.Cos(inv_epsilon);
-    Vec2ival loose_box(v_in.x * cos_a - v_in.y * sin_a,
-                       v_in.x * sin_a + v_in.y * cos_a);
+    // Bigival sin_a = angle.Sin(inv_epsilon);
+    // Bigival cos_a = angle.Cos(inv_epsilon);
+    Vec2ival loose_box(v_in.x * rot_trig.cos_a - v_in.y * rot_trig.sin_a,
+                       v_in.x * rot_trig.sin_a + v_in.y * rot_trig.cos_a);
 
     return {Translate(std::move(loose_box))};
   }
@@ -1812,6 +1861,10 @@ struct Hypersolver {
       discs.reserve(inner_hull.size());
     }
 
+    const BigRat BIAS = BigRat(3, 2);
+
+    RotTrig rot_trig(inner_rot, inv_epsilon);
+
     double disc_time_here = 0.0;
     double disc_outside_time_here = 0.0;
     Timer loop_timer;
@@ -1838,7 +1891,7 @@ struct Hypersolver {
       // is a good complement for this case, but we could consider
       // trying other non-rectangular representations here.
       Vec2ival v_aabb =
-        GetBoundingAABB(proj_v, inner_rot, inv_epsilon, inner_x, inner_y);
+        GetBoundingAABB(proj_v, rot_trig, inv_epsilon, inner_x, inner_y);
 
       // TODO: Tune bias. We can even try more than one, or choose
       // randomly.
@@ -1851,16 +1904,12 @@ struct Hypersolver {
       Timer disc_timer;
       Discival disc_in(proj_v);
       Discival rot_disc = RotateDiscInnerBias(
-          &disc_in, inner_rot, BigRat(3, 2), inv_epsilon);
+          &disc_in, rot_trig, BIAS, inv_epsilon);
       Discival disc = TranslateDisc(&rot_disc, inner_x, inner_y, inv_epsilon);
       disc_time_here = disc_timer.Seconds();
 
       if (get_stats) {
-        // PERF Shouldn't we be using TransformVec?
-        // Also rotate and translate it.
-        Vec2ival rot_v = Rotate2D(proj_v, inner_rot, inv_epsilon);
-        Vec2ival v(rot_v.x + inner_x, rot_v.y + inner_y);
-        inner.push_back(v);
+        inner.push_back(v_aabb);
         discs.push_back(disc);
       }
 
