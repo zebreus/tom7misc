@@ -575,10 +575,10 @@ Bigival Dot(const Vec3ival &a, const BigVec3 &b) {
 // PERF: I think we only need Rot3 for this task; the origin is always
 // zero. Can save ourselves some pointless addition and copying.
 struct Frame3ival {
-  Vec3ival x = {BigRat(1), BigRat(0), BigRat(0)};
-  Vec3ival y = {BigRat(0), BigRat(1), BigRat(0)};
-  Vec3ival z = {BigRat(0), BigRat(0), BigRat(1)};
-  Vec3ival o = {BigRat(0), BigRat(0), BigRat(0)};
+  Vec3ival x = {Bigival(1), Bigival(0), Bigival(0)};
+  Vec3ival y = {Bigival(0), Bigival(1), Bigival(0)};
+  Vec3ival z = {Bigival(0), Bigival(0), Bigival(1)};
+  Vec3ival o = {Bigival(0), Bigival(0), Bigival(0)};
 
   Vec3ival& operator[](int i) {
     switch (i) {
@@ -631,11 +631,11 @@ struct Vec2ival {
 // Small Fixed-size matrices stored in column major format.
 struct Mat3ival {
   // left column
-  Vec3ival x = {BigRat(1), BigRat(0), BigRat(0)};
+  Vec3ival x = {Bigival(1), Bigival(0), Bigival(0)};
   // middle column
-  Vec3ival y = {BigRat(0), BigRat(1), BigRat(0)};
+  Vec3ival y = {Bigival(0), Bigival(1), Bigival(0)};
   // right column
-  Vec3ival z = {BigRat(0), BigRat(0), BigRat(1)};
+  Vec3ival z = {Bigival(0), Bigival(0), Bigival(1)};
 
   Vec3ival &operator[](int i) {
     switch (i) {
@@ -710,10 +710,36 @@ struct ViewBoundsTrig {
   Bigival sin_an, cos_an;
 };
 
+struct SinCos {
+  Bigival sine;
+  Bigival cosine;
+};
+
 // Same idea, for the 2D rotation of the inner hull.
 // Sin and Cos of the angle interval are used multiple times, as
-// is the Sin and Cos of the angle's midpoint.
+// is the Sin and Cos of the angle's midpoint and endpoints.
 struct RotTrig {
+
+  Bigival PrecomputeCosI(const Bigival &a, const BigInt &inv_epsilon) {
+    // return NiceCos(a, inv_epsilon);
+    return a.Cos(inv_epsilon);
+  }
+
+  Bigival PrecomputeSinI(const Bigival &a, const BigInt &inv_epsilon) {
+    // return NiceSin(a, inv_epsilon);
+    return a.Sin(inv_epsilon);
+  }
+
+
+  Bigival PrecomputeCos(const BigRat &a, const BigInt &inv_epsilon) {
+    // return NiceCos(a, inv_epsilon);
+    return Bigival::Cos(a, inv_epsilon);
+  }
+
+  Bigival PrecomputeSin(const BigRat &a, const BigInt &inv_epsilon) {
+    // return NiceSin(a, inv_epsilon);
+    return Bigival::Sin(a, inv_epsilon);
+  }
 
   RotTrig(Bigival angle_in,
           BigInt inv_epsilon_in) :
@@ -722,14 +748,32 @@ struct RotTrig {
 
     // Get high quality intervals since these are used many
     // times.
-    cos_a = NiceCos(angle, inv_epsilon);
-    sin_a = NiceSin(angle, inv_epsilon);
+    cos_a = PrecomputeCosI(angle, inv_epsilon);
+    sin_a = PrecomputeSinI(angle, inv_epsilon);
 
-    // TODO: Midpoint.
+    // We use the middle of the angle for our disc
+    // centers, so precompute that too.
+    mid_angle = angle.Midpoint();
+    mid.cosine = PrecomputeCos(mid_angle, inv_epsilon);
+    mid.sine = PrecomputeSin(mid_angle, inv_epsilon);
+
+    lower.cosine = PrecomputeCos(angle.LB(), inv_epsilon);
+    lower.sine = PrecomputeSin(angle.LB(), inv_epsilon);
+
+    upper.cosine = PrecomputeCos(angle.UB(), inv_epsilon);
+    upper.sine = PrecomputeSin(angle.UB(), inv_epsilon);
   }
 
   Bigival angle;
   Bigival cos_a, sin_a;
+
+  BigRat mid_angle;
+  SinCos mid;
+
+  // Point estimates for the sin/cos of the lower and upper bounds,
+  // respectively.
+  SinCos lower, upper;
+
   BigInt inv_epsilon;
 };
 
@@ -775,7 +819,7 @@ static Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
   BigVec3 center = BigVec3(
       (mid_sina * mid_cosz).Midpoint(),
       (mid_sina * mid_sinz).Midpoint(),
-      (mid_cosa).Midpoint());
+      mid_cosa.Midpoint());
 
   // Find a squared radius that will include all the corners.
   BigRat max_sqdist(0);
@@ -1003,11 +1047,11 @@ Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   // (The purpose of rearranging this is to avoid dependency
   // problems between the vector components.)
 
-  Bigival len = Bigival::Sqrt(1 - frame_z.z.Squared(), inv_epsilon);
+  Bigival len = Bigival::Sqrt(Bigival(1) - frame_z.z.Squared(), inv_epsilon);
   if (SELF_CHECK) {
     CHECK(!len.ContainsOrApproachesZero()) << len.ToString();
   }
-  Vec3ival frame_x = Vec3ival(-frame_z.y / len, frame_z.x / len, 0);
+  Vec3ival frame_x = Vec3ival(-frame_z.y / len, frame_z.x / len, Bigival(0));
   // Since frame_z and frame_x are orthogonal unit vectors, their
   // cross product is a unit vector.
   Vec3ival frame_y = Cross(frame_z, frame_x);
@@ -1026,7 +1070,7 @@ Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
     .x = std::move(xt),
     .y = std::move(yt),
     .z = std::move(zt),
-    .o = Vec3ival{0, 0, 0},
+    .o = Vec3ival{Bigival(0), Bigival(0), Bigival(0)},
   };
 }
 
@@ -1037,12 +1081,12 @@ static Vec2ival TransformVec(const ViewBoundsTrig &trig,
                              const BigVec3 &v) {
   // x = dot(v, view_frame_x_axis)
   // view_frame_x_axis = (-sin(az), cos(az), 0)
-  Bigival px = -v.x * trig.sin_az + v.y * trig.cos_az;
+  Bigival px = trig.sin_az * -v.x + trig.cos_az * v.y;
 
   // y = dot(v, view_frame_y_axis)
   // view_frame_y_axis = (-cos(an)cos(az), -cos(an)sin(az), sin(an))
-  Bigival py = -trig.cos_an * (v.x * trig.cos_az + v.y * trig.sin_az) +
-    v.z * trig.sin_an;
+  Bigival py = -trig.cos_an * (trig.cos_az * v.x + trig.sin_az * v.y) +
+    trig.sin_an * v.z;
 
   return Vec2ival(std::move(px), std::move(py));
 }
@@ -1059,8 +1103,8 @@ static Bigival BoundDotProductWithView(
   // viewpos = (sin(an)cos(az), sin(an)sin(az), cos(an))
   // dot(viewpos, v) = sin(an) * (v.x*cos(az) + v.y*sin(az)) + v.z*cos(an)
 
-  return trig.sin_an * (v.x * trig.cos_az + v.y * trig.sin_az) +
-    v.z * trig.cos_an;
+  return trig.sin_an * (trig.cos_az * v.x + trig.sin_az * v.y) +
+    trig.cos_an * v.z;
 }
 
 static std::string FormatNum(const BigInt &b) {
@@ -1199,13 +1243,12 @@ static Discival RotateDiscInnerBias(
   // and then compute a radius that definitely includes the sweep
   // for the chosen point.
 
-  // PERF precompute it!
-  BigRat mid_angle = rot_trig.angle.Midpoint();
-  Bigival sin_ma = Bigival::Sin(mid_angle, inv_epsilon);
-  Bigival cos_ma = Bigival::Cos(mid_angle, inv_epsilon);
+  // Use precomputed midpoint.
   Vec2ival arc_center_ival(
-      disc->center.x * cos_ma - disc->center.y * sin_ma,
-      disc->center.x * sin_ma + disc->center.y * cos_ma);
+      disc->center.x * rot_trig.mid.cosine -
+      disc->center.y * rot_trig.mid.sine,
+      disc->center.x * rot_trig.mid.sine +
+      disc->center.y * rot_trig.mid.cosine);
   BigVec2 arc_center = {arc_center_ival.x.Midpoint(),
                         arc_center_ival.y.Midpoint()};
 
@@ -1224,20 +1267,15 @@ static Discival RotateDiscInnerBias(
   // PERF: These should be very tight intervals, but we could probably
   // do better here with a routine that computes a disc for a rotated
   // point.
-  // PERF: This is not the same as bounds on the sin and cos of
-  // the angle interval, but we could still precompute it (and it
-  // can share some computations).
-  auto RotatePt = [&](const BigRat &angle, const BigVec2 &p) {
-      Bigival sina = Bigival::Sin(angle, inv_epsilon);
-      Bigival cosa = Bigival::Cos(angle, inv_epsilon);
-      return Vec2ival(p.x * cosa - p.y * sina,
-                      p.x * sina + p.y * cosa);
+  auto RotatePt = [&](const SinCos &endpoint, const BigVec2 &p) {
+      return Vec2ival(p.x * endpoint.cosine - p.y * endpoint.sine,
+                      p.x * endpoint.sine + p.y * endpoint.cosine);
     };
 
   // Very tight AABBs bounding the centers of the rotated disc at
   // the angle lower bound and upper bound.
-  Vec2ival center_lb = RotatePt(rot_trig.angle.LB(), disc->center);
-  Vec2ival center_ub = RotatePt(rot_trig.angle.UB(), disc->center);
+  Vec2ival center_lb = RotatePt(rot_trig.lower, disc->center);
+  Vec2ival center_ub = RotatePt(rot_trig.upper, disc->center);
 
   // Now find the maximum squared distance to the two rotated endpoints.
   // These should be almost the same except for the small amount of error

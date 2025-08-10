@@ -38,9 +38,9 @@ struct Bigival {
   static constexpr bool SELF_CHECK = true;
 
   Bigival() : Bigival(0) {}
-  Bigival(const BigRat &pt) : Bigival(pt, pt, true, true) {}
-  Bigival(const BigInt &pt) : Bigival(BigRat(pt)) {}
-  Bigival(int64_t i) : Bigival(BigRat(i)) {}
+  explicit Bigival(const BigRat &pt) : Bigival(pt, pt, true, true) {}
+  explicit Bigival(const BigInt &pt) : Bigival(BigRat(pt)) {}
+  explicit Bigival(int64_t i) : Bigival(BigRat(i)) {}
 
   Bigival(BigRat lb_in, BigRat ub_in, bool include_lb, bool include_ub) :
     Bigival(Point(std::move(lb_in), include_lb),
@@ -58,8 +58,16 @@ struct Bigival {
     return Bigival(lb + b.lb, ub + b.ub);
   }
 
+  Bigival Plus(const BigRat &b) const {
+    return Bigival(LB() + b, UB() + b, IncludesLB(), IncludesUB());
+  }
+
   Bigival Minus(const Bigival &b) const {
     return Bigival(lb - b.ub, ub - b.lb);
+  }
+
+  Bigival Minus(const BigRat &b) const {
+    return Bigival(LB() + b, UB() + b, IncludesLB(), IncludesUB());
   }
 
   Bigival Times(const Bigival &b) const {
@@ -366,9 +374,9 @@ struct Bigival {
     // p = π * (2k + 0.5)
     // p/π - 0.5 = 2k
     // (p/π - 0.5)/2 = k
-    Bigival kpeak = Div(pi).Minus(BigRat(1, 2)).Div(2);
+    Bigival kpeak = Div(pi).Minus(BigRat(1, 2)).Div(Bigival(2));
     // And similar for troughs.
-    Bigival ktrough = Div(pi).Plus(BigRat(1, 2)).Div(2);
+    Bigival ktrough = Div(pi).Plus(BigRat(1, 2)).Div(Bigival(2));
     if (kpeak.ContainsInteger()) {
       // printf(AYELLOW("Interval %s had integer") ".\n", kpeak.ToString().c_str());
       upper = Point(BigRat(1), true);
@@ -400,10 +408,10 @@ struct Bigival {
     }
 
     // Peaks of cos(x) = 1 occur at x = 2kπ.
-    Bigival kpeak = Div(pi.Times(2));
+    Bigival kpeak = Div(pi.Times(BigRat(2)));
     // Troughs of cos(x) = -1 occur at x = (2k+1)π.
     // Solving for k: k = (x/π - 1) / 2.
-    Bigival ktrough = Div(pi).Minus(BigRat(1)).Div(2);
+    Bigival ktrough = Div(pi).Minus(BigRat(1)).Div(Bigival(2));
     if (kpeak.ContainsInteger()) {
       upper = Point(BigRat(1), true);
     }
@@ -694,7 +702,19 @@ inline Bigival operator+(const Bigival &a, const Bigival &b) {
   return a.Plus(b);
 }
 
+inline Bigival operator+(const Bigival &a, const BigRat &b) {
+  return a.Plus(b);
+}
+
+inline Bigival operator+(const BigRat &a, const Bigival &b) {
+  return b.Plus(a);
+}
+
 inline Bigival operator-(const Bigival &a, const Bigival &b) {
+  return a.Minus(b);
+}
+
+inline Bigival operator-(const Bigival &a, const BigRat &b) {
   return a.Minus(b);
 }
 
@@ -708,6 +728,10 @@ inline Bigival operator*(const Bigival &a, const Bigival &b) {
 
 inline Bigival operator*(const Bigival &a, const BigRat &b) {
   return a.Times(b);
+}
+
+inline Bigival operator*(const BigRat &a, const Bigival &b) {
+  return b.Times(a);
 }
 
 inline Bigival operator/(const Bigival &a, const Bigival &b) {
