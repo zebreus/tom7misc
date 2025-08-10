@@ -901,6 +901,7 @@ static Vec3ival Normalize(const Vec3ival &v, const BigInt &inv_epsilon) {
       v.z / len);
 }
 
+[[maybe_unused]]
 inline static Vec3ival operator +(const Vec3ival &a,
                                   const Vec3ival &b) {
   return Vec3ival(a.x + b.x, a.y + b.y, a.z + b.z);
@@ -918,6 +919,7 @@ inline static Vec3ival operator *(const Vec3ival &a,
   return Vec3ival(a.x * b.x, a.y * b.y, a.z * b.z);
 }
 
+[[maybe_unused]]
 inline static Vec3ival operator *(const Vec3ival &a,
                                   const BigRat &s) {
   return Vec3ival(a.x * s, a.y * s, a.z * s);
@@ -949,6 +951,7 @@ static Vec2ival TransformPointTo2D(const Frame3ival &frame,
 // is not already small.
 //
 // This also requires that the z-axis is not included in the view interval.
+[[maybe_unused]]
 Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   const Vec3ival &frame_z = view;
 
@@ -1662,18 +1665,6 @@ struct Hypersolver {
       }
     }
 
-
-    // Get outer and inner frame.
-    // PERF not used!
-    Timer frame_timer;
-    Frame3ival outer_frame = FrameFromViewPos(oviewpos, inv_epsilon);
-    Frame3ival inner_frame = FrameFromViewPos(iviewpos, inv_epsilon);
-    double frame_time_here = frame_timer.Seconds();
-    {
-      MutexLock ml(&mu);
-      frame_time += frame_time_here;
-    }
-
     // Area test. If the inner shadow's area is definitely bigger than
     // the outer's, then it cannot fit (regardless of angle / translation).
     // This is a very cheap test.
@@ -1752,6 +1743,7 @@ struct Hypersolver {
 
     double disc_time_here = 0.0;
     double disc_outside_time_here = 0.0;
+    double pt4_time_here = 0.0;
     Timer loop_timer;
     // Compute the inner hull point-by-point, which we call v. We can
     // exit early if any of these points are definitely outside the
@@ -1872,11 +1864,14 @@ struct Hypersolver {
         //     dependency problem.
         const Vec2ival &edge = outer_edge[start];
 
+        Timer pt4_timer;
         // Now test the inner point AABB.
         Bigival cross_product4 =
           edge.x * v_aabb.y - edge.y * v_aabb.x + cross_va_vb;
 
-        if (!cross_product4.MightBePositive()) {
+        const bool is_aabb_outside = !cross_product4.MightBePositive();
+        pt4_time_here += pt4_timer.Seconds();
+        if (is_aabb_outside) {
           Rejection pt4;
           pt4.reason = POINT_OUTSIDE4;
           pt4.edge_point = std::make_optional(
@@ -1924,6 +1919,7 @@ struct Hypersolver {
       loop_time += loop_timer.Seconds();
       disc_time += disc_time_here;
       disc_outside_time += disc_outside_time_here;
+      pt4_time += pt4_time_here;
     }
 
     return res;
@@ -2449,6 +2445,27 @@ struct Hypersolver {
           ARED("??");
 
         // TODO: Add (recent?) vol/sec
+        auto ColorPct = [](double d) -> std::string {
+            if (std::isnan(d)) return AORANGE("?");
+            if (d > 1.0 || d < 0.0)
+              return std::format(ARED("bad pct: {}"), d);
+            // Compact is important here!
+            std::string s = std::format("{:.3f}", d * 100.0);
+            auto dot = s.find('.');
+            if (dot == std::string::npos) return ARED("??????");
+            std::string ipart = s.substr(0, dot);
+            std::string fpart = s.substr(dot + 1, std::string::npos);
+            // TODO: Can use heatmap color scale
+            if (ipart == "0") ipart = "";
+            // Three total digits are allowed, plus the dot.
+            if (ipart == "100") return ABLUE("100") AGREY("%");
+            int fdigits = 3 - ipart.size();
+            CHECK(fdigits >= 0);
+            if (fpart.size() > fdigits) fpart.resize(fdigits);
+            return std::format(ABLUE("{}") AWHITE(".") ABLUE("{}")
+                               AGREY("%"),
+                               ipart, fpart);
+          };
 
         status.Status(
             AWHITE("—————————————————————————————————————————") "\n"
@@ -2467,12 +2484,12 @@ struct Hypersolver {
             "{} " AORANGE("q") "\n"
             // Timing
             "{} ea. "
-            ABLUE("{:.3f}") "% trig "
-            ABLUE("{:.3f}") "% area "
-            ABLUE("{:.3f}") "% f "
-            ABLUE("{:.3f}") "% disc "
-            ABLUE("{:.3f}") "% disco "
-            ABLUE("{:.3f}") "% loop\n"
+            "{} trig "
+            "{} area "
+            "{} pt4 "
+            "{} disc "
+            "{} disco "
+            "{} loop\n"
             // Quality stats
             AORANGE("⊗") "mid: {}  "
             AORANGE("⊗") "disc: {}  "
@@ -2487,12 +2504,12 @@ struct Hypersolver {
             counter_split.Read(),
             node_queue.size(),
             ANSI::Time(time_each),
-            (trig_time * 100.0) / process_time,
-            (area_time * 100.0) / process_time,
-            (frame_time * 100.0) / process_time,
-            (disc_time * 100.0) / process_time,
-            (disc_outside_time * 100.0) / process_time,
-            (loop_time * 100.0) / process_time,
+            ColorPct(trig_time / process_time),
+            ColorPct(area_time / process_time),
+            ColorPct(pt4_time / process_time),
+            ColorPct(disc_time / process_time),
+            ColorPct(disc_outside_time / process_time),
+            ColorPct(loop_time / process_time),
             counter_bad_midpoint.Read(),
             counter_degenerate_disc.Read(),
             counter_inside.Read(),
@@ -2997,7 +3014,7 @@ struct Hypersolver {
   double trig_time = 0.0, loop_time = 0.0, process_time = 0.0;
   double disc_time = 0.0, disc_outside_time = 0.0;
   double area_time = 0.0;
-  double frame_time = 0.0;
+  double pt4_time = 0.0;
 
   // The hypervolume now done (this includes regions that we
   // determined are out of scope). Compare against the full volume.
