@@ -43,7 +43,6 @@
 #include "yocto_matht.h"
 
 // TODO:
-//  - area test
 //  - air gapped work queue
 //  - stats for rational size
 //  - more timing stats
@@ -203,7 +202,6 @@ enum RejectionReason : uint8_t {
   POINT_OUTSIDE4 = 8,
   POINT_OUTSIDE5 = 9,
   POLY_AREA = 10,
-  POLY_AREA2 = 11,
 };
 inline constexpr int NUM_REJECTION_REASONS = 12;
 
@@ -248,7 +246,6 @@ static std::optional<Rejection> ParseRejection(std::string_view s) {
     break;
 
   case POLY_AREA:
-  case POLY_AREA2:
     // No metadata.
     break;
 
@@ -1028,50 +1025,6 @@ static Bigival BoundDotProductWithView(
     v.z * trig.cos_an;
 }
 
-
-// Underlying polygon must contain the origin.
-// The area will be positive if the vertices are in
-// screen clockwise (cartesian CCW) order.
-// Divide by two to get the positive area, but our use is to
-// compare two of these, so we just leave them double.
-Bigival TwicePolygonArea(const std::vector<Vec2ival> &vs) {
-  CHECK(!vs.empty());
-
-  Bigival twice_area(0);
-  // (Sum of triangles using the origin).
-  for (int i = 0; i < vs.size(); i++) {
-    const Vec2ival &va = vs[i];
-    const Vec2ival &vb = vs[(i + 1) % vs.size()];
-
-    Bigival term = va.x * vb.y - va.y * vb.x;
-    twice_area = std::move(twice_area) + term;
-  }
-
-  return twice_area;
-}
-
-Bigival TwicePolygonAreaFromView(const std::vector<int> &hull_indices,
-                                 const BigPoly &poly,
-                                 const ViewBoundsTrig &trig) {
-  CHECK(hull_indices.size() >= 3);
-
-  // Compute the 3D cross products first (exact) and then compute the
-  // area as the sum of dot products with the view vector.
-
-  // PERF: Can precompute this sum, as it only depends on the
-  // 3d poly and hull!
-  BigVec3 sum_3d(BigRat(0), BigRat(0), BigRat(0));
-  for (size_t i = 0; i < hull_indices.size(); i++) {
-    const BigVec3 &pa = poly.vertices[hull_indices[i]];
-    const BigVec3 &pb =
-      poly.vertices[hull_indices[(i + 1) % hull_indices.size()]];
-
-    sum_3d = std::move(sum_3d) + cross(pa, pb);
-  }
-
-  return BoundDotProductWithView(trig, sum_3d);
-}
-
 static std::string FormatNum(const BigInt &b) {
   if (BigInt::Abs(b) >= 1'000'000'000) {
     return std::format("{} digits", b.ToString().size());
@@ -1101,8 +1054,8 @@ static std::string FormatNum(const BigInt &b) {
   }
 }
 
-
-std::string VolumeString(const Volume &volume, bool multiline = false) {
+// Produces 7-line string.
+std::string VolumeString(const Volume &volume) {
   auto DimString = [](const Bigival &bi) {
       BigRat w = bi.Width();
       double lb = bi.LB().ToDouble();
@@ -1117,36 +1070,26 @@ std::string VolumeString(const Volume &volume, bool multiline = false) {
       }
 
       // TODO: Use dynamic precision here.
+      // TODO: Consider showing fractions when simple.
       return std::format(AGREY("[") "{:.8g}" AGREY(",") " {:.8g}" AGREY("]")
                          "   {}",
                          lb, ub, wstr);
     };
 
-  if (multiline) {
-    return std::format("O φ:{}\n"
-                       "O θ:{}\n"
-                       "I φ:{}\n"
-                       "I θ:{}\n"
-                       "I α:{}\n"
-                       "I x:{}\n"
-                       "I y:{}",
-                       DimString(volume[OUTER_AZIMUTH]),
-                       DimString(volume[OUTER_ANGLE]),
-                       DimString(volume[INNER_AZIMUTH]),
-                       DimString(volume[INNER_ANGLE]),
-                       DimString(volume[INNER_ROT]),
-                       DimString(volume[INNER_X]),
-                       DimString(volume[INNER_Y]));
-  } else {
-    return std::format("O φ:{} θ:{}, I φ:{} θ:{} α:{}, x:{}, y:{}",
-                       DimString(volume[OUTER_AZIMUTH]),
-                       DimString(volume[OUTER_ANGLE]),
-                       DimString(volume[INNER_AZIMUTH]),
-                       DimString(volume[INNER_ANGLE]),
-                       DimString(volume[INNER_ROT]),
-                       DimString(volume[INNER_X]),
-                       DimString(volume[INNER_Y]));
-  }
+  return std::format("O φ:{}\n"
+                     "O θ:{}\n"
+                     "I φ:{}\n"
+                     "I θ:{}\n"
+                     "I α:{}\n"
+                     "I x:{}\n"
+                     "I y:{}",
+                     DimString(volume[OUTER_AZIMUTH]),
+                     DimString(volume[OUTER_ANGLE]),
+                     DimString(volume[INNER_AZIMUTH]),
+                     DimString(volume[INNER_ANGLE]),
+                     DimString(volume[INNER_ROT]),
+                     DimString(volume[INNER_X]),
+                     DimString(volume[INNER_Y]));
 }
 
 // Note: Here we have the dependency problem. This one might be
@@ -1165,20 +1108,6 @@ static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
 
   return Vec2ival(v.x * cos_a - v.y * sin_a,
                   v.x * sin_a + v.y * cos_a);
-}
-
-
-// Given an AABB, find the squared magnitude of the point within it
-// that is furthest from the origin. This is the same as the maximum
-// squared length of the vector described by the interval.
-[[maybe_unused]]
-static BigRat MaxSqLength(const Vec2ival &v) {
-  auto MaxAbs = [](const Bigival &i) {
-    return BigRat::Max(BigRat::Abs(i.LB()), BigRat::Abs(i.UB()));
-  };
-  BigRat x = MaxAbs(v.x);
-  BigRat y = MaxAbs(v.y);
-  return x * x + y * y;
 }
 
 // Rotates a disc by an angle interval, producing a new, larger disc that
@@ -1453,8 +1382,6 @@ struct Hypersolver {
       return "PT5";
     case POLY_AREA:
       return "AREA";
-    case POLY_AREA2:
-      return "AREA2";
     }
   }
 
@@ -1475,7 +1402,6 @@ struct Hypersolver {
       return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
 
     case POLY_AREA:
-    case POLY_AREA2:
       return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
 
     case POINT_OUTSIDE4:
@@ -1739,54 +1665,24 @@ struct Hypersolver {
 
     // Get outer and inner frame.
     // PERF not used!
+    Timer frame_timer;
     Frame3ival outer_frame = FrameFromViewPos(oviewpos, inv_epsilon);
     Frame3ival inner_frame = FrameFromViewPos(iviewpos, inv_epsilon);
-
-    // Compute the hulls. Because we're using interval arithmetic,
-    // the specifics of the algebra can be quite important. First,
-    // the outer hull, whose vertices we call va, vb, etc.
-
-    // The raw rotated vertices of the hull; va.
-    // We don't actually use these now. We only compute them for
-    // debug data if that is enabled.
-
-    #if 0
-    Bigival outer_area = TwicePolygonArea(outer_aabb);
-    Bigival inner_area = TwicePolygonArea(inner_aabb);
-    if (outer_area.Less(inner_area) == Bigival::MaybeBool::True) {
-      ProcessResult res;
-      res.result = Impossible(Rejection(POLY_AREA));
-      // Always include these if we have them.
-      res.inner = std::move(inner_aabb);
-      res.outer = std::move(outer_aabb);
-      return res;
+    double frame_time_here = frame_timer.Seconds();
+    {
+      MutexLock ml(&mu);
+      frame_time += frame_time_here;
     }
-    #endif
 
+    // Area test. If the inner shadow's area is definitely bigger than
+    // the outer's, then it cannot fit (regardless of angle / translation).
+    // This is a very cheap test.
     Timer area_timer;
-    /*
-    Bigival outer_area2 =
-      TwicePolygonAreaFromView(outer_hull, scube, outer_trig);
-    Bigival inner_area2 =
-      TwicePolygonAreaFromView(inner_hull, scube, inner_trig);
-    */
     // Area of the shadow is just the dot product of the view with the
     // 3d area vector.
     Bigival outer_area2 = BoundDotProductWithView(outer_trig, outer_area_3d);
     Bigival inner_area2 = BoundDotProductWithView(inner_trig, inner_area_3d);
 
-    /*
-    status.Print("out1: {} (Width {})\n"
-                 "out2: {} (Width {})\n"
-                 "method1: {} < {}?\n"
-                 "method2: {} < {}?\n",
-                 outer_area.ToString(), outer_area.Width().ToDouble(),
-                 outer_area2.ToString(), outer_area2.Width().ToDouble(),
-                 outer_area.UB().ToDouble(),
-                 inner_area.LB().ToDouble(),
-                 outer_area2.UB().ToDouble(),
-                 inner_area2.LB().ToDouble());
-    */
     const bool impossible_area =
       outer_area2.Less(inner_area2) == Bigival::MaybeBool::True;
     const double area_time_here = area_timer.Seconds();
@@ -1797,15 +1693,19 @@ struct Hypersolver {
 
     if (impossible_area) {
       ProcessResult res;
-      res.result = Impossible(Rejection(POLY_AREA2));
+      res.result = Impossible(Rejection(POLY_AREA));
       return res;
     }
 
-    // PERF: Was computing this for area, but there's no need to with
-    // the 3d cross product formulation. OTOH computing the inner aabb
-    // in a loop rather incrementally seems like it may have sped
-    // things up (vectorization?)
-    std::vector<Vec2ival> outer_aabb;
+
+    // Compute the hulls. Because we're using interval arithmetic,
+    // the specifics of the algebra can be quite important. First,
+    // the outer hull, whose vertices we call va, vb, etc.
+
+    // The raw rotated vertices of the hull; va.
+    // We don't actually use these now. We only compute them for
+    // debug data if that is enabled.
+        std::vector<Vec2ival> outer_aabb;
     if (get_stats) {
       outer_aabb.reserve(outer_hull.size());
       for (int vidx : outer_hull) {
@@ -1821,8 +1721,6 @@ struct Hypersolver {
     outer_edge.reserve(outer_hull.size());
     for (int idx = 0; idx < outer_hull.size(); idx++) {
       const BigVec3 &edge_3d = outer_edge3d[idx];
-      // outer_edge.push_back(TransformPointTo2D(outer_frame, edge_3d));
-
       outer_edge.push_back(TransformVec(outer_trig, edge_3d));
     }
 
@@ -1835,10 +1733,7 @@ struct Hypersolver {
       const BigVec3 &edge_cross = outer_cx3d[idx];
 
       outer_cross_va_vb.push_back(
-          BoundDotProductWithView(outer_trig,
-                                  edge_cross));
-
-      // outer_cross_va_vb.push_back(Dot(oviewpos, edge_cross));
+          BoundDotProductWithView(outer_trig, edge_cross));
     }
 
     std::vector<Vec2ival> inner;
@@ -1927,15 +1822,15 @@ struct Hypersolver {
         // point v's interval is definitely completely on the other
         // side of the edge.
 
-        // There are multiple ways to test this, and they could have
-        // different types of over-conservativity (from dependency problem)
-        // in different situations. So we perform multiple tests to
-        // try to reject the cell.
-        // (Many of these are redundant and the first few are pretty
-        // insensitive because of many reuses of dependent terms. Should
-        // clean this up!)
-
-        // The naive test would be a simple cross product.
+        // There are multiple ways to test this. Even algebraically
+        // equivalent ways can have different levels of over-conservativity
+        // due to the dependency problem! It might make sense to test
+        // in a few different ways, but the current approach does a lot
+        // of precomptutation with exact rationals and so it dominated
+        // the others that I tried in both performance and accuracy.
+        //
+        // The naive test would be to check the sign of a simple
+        // cross product.
         // Note dependency problem: va.x and va.y both appear twice.
         // vb and va depend on one another because they are the result
         // of a 2D rotation (and of course they both depend on the
@@ -2266,7 +2161,7 @@ struct Hypersolver {
                                        inubdir,
                                        time(nullptr), msg);
     status.Print("Sample volume:\n{}\n",
-                 VolumeString(volume, true));
+                 VolumeString(volume));
 
 
     const int WIDTH = 1024, HEIGHT = 1024;
@@ -2395,7 +2290,7 @@ struct Hypersolver {
     }
 
     std::vector<std::string> vs =
-      Util::SplitToLines(VolumeString(volume, true));
+      Util::SplitToLines(VolumeString(volume));
     int yy = 8;
     for (const std::string &v : vs) {
       img.BlendText32(8, yy, 0xAAAAAAFF, v);
@@ -2574,6 +2469,7 @@ struct Hypersolver {
             "{} ea. "
             ABLUE("{:.3f}") "% trig "
             ABLUE("{:.3f}") "% area "
+            ABLUE("{:.3f}") "% f "
             ABLUE("{:.3f}") "% disc "
             ABLUE("{:.3f}") "% disco "
             ABLUE("{:.3f}") "% loop\n"
@@ -2583,7 +2479,7 @@ struct Hypersolver {
             "In: {}   AABB efficiency: {}\n"
             "{}\n", // bar
             splitcount,
-            VolumeString(volume, true),
+            VolumeString(volume),
             rr,
             full_volume_d, in_volume_d, volume_outscope,
             counter_processed.Read(),
@@ -2593,6 +2489,7 @@ struct Hypersolver {
             ANSI::Time(time_each),
             (trig_time * 100.0) / process_time,
             (area_time * 100.0) / process_time,
+            (frame_time * 100.0) / process_time,
             (disc_time * 100.0) / process_time,
             (disc_outside_time * 100.0) / process_time,
             (loop_time * 100.0) / process_time,
@@ -3100,6 +2997,7 @@ struct Hypersolver {
   double trig_time = 0.0, loop_time = 0.0, process_time = 0.0;
   double disc_time = 0.0, disc_outside_time = 0.0;
   double area_time = 0.0;
+  double frame_time = 0.0;
 
   // The hypervolume now done (this includes regions that we
   // determined are out of scope). Compare against the full volume.
