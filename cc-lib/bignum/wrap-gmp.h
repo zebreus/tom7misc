@@ -5,6 +5,7 @@
 #ifndef _CC_LIB_BIGNUM_WRAP_GMP_H
 #define _CC_LIB_BIGNUM_WRAP_GMP_H
 
+#include <limits>
 #ifdef BIG_USE_GMP
 
 #include <gmp.h>
@@ -18,10 +19,12 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <numeric>
 #include <optional>
 #include <stdlib.h>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 
 // mpz does not have a good representation for small integers;
@@ -38,7 +41,7 @@
 static_assert(offsetof(MP_INT, _mp_d) >= 8,
               "Need space for an int64_t at the beginning of "
               "the union.");
-static_assert(sizeof(int64_t) == 8);
+static_assert(sizeof (int64_t) == 8);
 
 struct GmpRep {
   union {
@@ -93,6 +96,8 @@ struct GmpRep {
   }
 
   GmpRep &operator =(GmpRep &&other) noexcept {
+    if (this == &other) return *this;
+
     if (!IsSmall()) {
       Demote();
     }
@@ -191,7 +196,7 @@ struct GmpRep {
 
     Lease(Lease &&other) noexcept {
       // Take ownership of the allocation, if any.
-      memcpy(mpz, other.mpz, sizeof(mpz_t));
+      memcpy(mpz, other.mpz, sizeof (mpz_t));
 
       // But, tricky: If the pointer was internal,
       // we need it to now point to our data.
@@ -204,7 +209,7 @@ struct GmpRep {
 
       // Makes sure other does not deallocate.
       other.ptr = nullptr;
-      memset(other.mpz, 0, sizeof(mpz_t));
+      memset(other.mpz, 0, sizeof (mpz_t));
     }
 
     Lease &operator=(Lease &&other) noexcept {
@@ -215,7 +220,7 @@ struct GmpRep {
         mpz->_mp_d = nullptr;
       }
 
-      memcpy(mpz, other.mpz, sizeof(mpz_t));
+      memcpy(mpz, other.mpz, sizeof (mpz_t));
 
       if (other.ptr == other.mpz) {
         ptr = mpz;
@@ -224,7 +229,7 @@ struct GmpRep {
       }
 
       other.ptr = nullptr;
-      memset(other.mpz, 0, sizeof(mpz_t));
+      memset(other.mpz, 0, sizeof (mpz_t));
 
       return *this;
     }
@@ -294,16 +299,12 @@ struct GmpRep {
 
 
 // Same idea, but for mpq (rationals).
-// static_assert(offsetof(MP_RAT, _mp_d) >= 8,
-//               "Need space for an int64_t at the beginning of "
-//               "the union.");
-
 struct GmpRepRat {
  private:
-  // Same layout as the union in bigint, but we access the
-  // fields through the mpq in the union below. This union
-  // is just to make sure we have the same alignment as the
-  // numerator and denominator in MP_RAT.
+  // Same approach to layout as the union in bigint, but we access the
+  // fields through the mpq in the union below. This union is just to
+  // make sure we have the same alignment as the numerator and
+  // denominator in MP_RAT.
   union Component {
     unsigned char padding[sizeof (MP_INT)];
     int64_t small_int;
@@ -311,45 +312,84 @@ struct GmpRepRat {
 
   static_assert(sizeof (Component) == sizeof (MP_INT));
 
-  union {
+  // We use the numerator's mp_d pointer to indicate whether
+  // there is an allocation. If it is non-null, then both
+  // numerator and denominator are allocated. If it is null,
+  // then this is the small representation, and the denominator's
+  // mp_d pointer is meaningless (note that it might be a
+  // dangling non-null pointer in that case).
+  //
+  // Like GMP, we keep numer/denom in canonical form. If the numerator
+  // is zero, then the denominator is ignored. Otherwise, the denominator
+  // is positive. The two numbers are relatively prime (reduced fraction).
+  union U {
     MP_RAT mpq[1];
-    struct {
+    struct S {
       Component numer;
       Component denom;
-    };
+    } s;
   } u;
  public:
 
   GmpRepRat() {
+    // note: 0/0 is valid representation for zero.
     memset(u.mpq, 0, sizeof (MP_RAT));
   }
 
-  #if 0
-  GmpRep(const GmpRep &other) {
+  GmpRepRat(const GmpRepRat &other) {
     if (other.IsSmall()) {
-      memset(u.mpz, 0, sizeof (MP_INT));
-      u.small_int = other.u.small_int;
+      memset(u.mpq, 0, sizeof (MP_RAT));
+      u.s.numer.small_int = other.u.s.numer.small_int;
+      u.s.denom.small_int = other.u.s.denom.small_int;
     } else {
-      mpz_init(u.mpz);
-      mpz_set(u.mpz, other.u.mpz);
+      mpq_init(u.mpq);
+      mpq_set(u.mpq, other.u.mpq);
     }
   }
-  #endif
 
   GmpRepRat(int64_t small) {
     memset(u.mpq, 0, sizeof (MP_RAT));
-    u.numer.small_int = small;
-    u.denom.small_int = 1;
+    u.s.numer.small_int = small;
+    u.s.denom.small_int = 1;
   }
 
   GmpRepRat(int64_t n, int64_t d) {
     memset(u.mpq, 0, sizeof (MP_RAT));
-    u.numer.small_int = n;
-    u.denom.small_int = d;
-    // XXX PERF canonicalize instead of just promoting!!
-    // (including getting the sign into the numerator.
-    // have to deal with limits::lowest, ugh)
-    Promote();
+
+    assert(d != 0);
+
+    // Can't handle the most negative number, since it has no
+    // negation. (Even calling std::gcd on it is undefined behavior.)
+    // Just eagerly promote if we're in this case.
+    if (d == std::numeric_limits<int64_t>::lowest() ||
+        n == std::numeric_limits<int64_t>::lowest()) [[unlikely]] {
+
+      u.s.numer.small_int = n;
+      u.s.denom.small_int = d;
+
+      Promote();
+      return;
+    }
+
+    if (d < 0) {
+      n = -n;
+      d = -d;
+    }
+
+    // Now the sign is in the numerator. Put in canonical
+    // form (no common factors).
+
+    const int64_t gcd = std::gcd(n, d);
+
+    // Need to check for zero anyway, so we can also avoid the
+    // division if they are already relatively prime.
+    if (gcd > 1) {
+      n /= gcd;
+      d /= gcd;
+    }
+
+    u.s.numer.small_int = n;
+    u.s.denom.small_int = d;
   }
 
   GmpRepRat(GmpRepRat &&other) noexcept {
@@ -367,8 +407,8 @@ struct GmpRepRat {
       // TODO PERF: Since we already have an allocation,
       // it could make sense to keep it?
       Demote();
-      u.numer.small_int = other.u.numer.small_int;
-      u.denom.small_int = other.u.denom.small_int;
+      u.s.numer.small_int = other.u.s.numer.small_int;
+      u.s.denom.small_int = other.u.s.denom.small_int;
     } else {
       if (IsSmall()) {
         mpq_init(u.mpq);
@@ -379,6 +419,8 @@ struct GmpRepRat {
   }
 
   GmpRepRat &operator =(GmpRepRat &&other) noexcept {
+    if (this == &other) return *this;
+
     if (!IsSmall()) {
       Demote();
     }
@@ -407,22 +449,27 @@ struct GmpRepRat {
 
   // Precondition: IsSmall()
   int64_t SmallNumer() const {
-    return u.numer.small_int;
+    return u.s.numer.small_int;
   }
 
   // Precondition: IsSmall()
   int64_t SmallDenom() const {
-    return u.denom.small_int;
+    return u.s.denom.small_int;
   }
 
   void Promote() {
     if (IsSmall()) {
-      const int64_t n = u.numer.small_int;
-      const int64_t d = u.denom.small_int;
+      // PERF: If we guarantee keeping these in canonical form,
+      // then we can set without canonicalizing.
+      const int64_t n = u.s.numer.small_int;
+      const int64_t d = u.s.denom.small_int;
       mpq_init(u.mpq);
-      MpzSetI64(&u.mpq[0]._mp_num, n);
-      MpzSetI64(&u.mpq[0]._mp_den, d);
-      mpq_canonicalize(u.mpq);
+      // It begins zeroed. We don't set if numerator is zero,
+      // because if the denominator is also zero, then it incurs
+      // a divide by zero trap.
+      if (n) {
+        MpqSetI64s(u.mpq, n, d);
+      }
     }
   }
 
@@ -443,81 +490,76 @@ struct GmpRepRat {
     Demote();
   }
 
-  #if 0
-  // Lease to a const mpq object.
-  // This is used when we need an mpz to run a native GMP function,
-  // but we only have a const GmpRep, which might be small. If it is
-  // small, we allocate a temporary mpz and it is owned by this object
-  // (and cleaned up by its destructor). Otherwise, it just wraps
-  // a pointer to the existing allocation.
+  // Lease to a const mpq object, just like in GmpRep.
   struct Lease {
-    explicit Lease(const GmpRep &rep) {
+    explicit Lease(const GmpRepRat &rep) {
       if (rep.IsSmall()) {
-        mpz_init(mpz);
-        MpzSetI64(mpz, rep.GetSmall());
-        ptr = mpz;
+        mpq_init(mpq);
+        MpqSetI64s(mpq, rep.SmallNumer(), rep.SmallDenom());
+        ptr = mpq;
       } else {
-        ptr = rep.ConstMpz();
-        memset(mpz, 0, sizeof (MP_INT));
+        ptr = rep.ConstMpq();
+        memset(mpq, 0, sizeof (MP_RAT));
       }
     }
 
     // (We could implement a move constructor, which might
     // make sense for regularity in some cases?)
 
-    const MP_INT *ConstMpz() const {
+    const MP_RAT *ConstMpq() const {
       return ptr;
     }
 
     ~Lease() {
-      if (mpz->_mp_d != nullptr) {
-        mpz_clear(mpz);
+      if (mpq->_mp_num._mp_d != nullptr) {
+        mpq_clear(mpq);
       }
-      mpz->_mp_d = nullptr;
+      mpq->_mp_num._mp_d = nullptr;
     }
 
     Lease(Lease &&other) noexcept {
       // Take ownership of the allocation, if any.
-      memcpy(mpz, other.mpz, sizeof(mpz_t));
+      memcpy(mpq, other.mpq, sizeof (mpq_t));
 
       // But, tricky: If the pointer was internal,
       // we need it to now point to our data.
-      if (other.ptr == other.mpz) {
+      if (other.ptr == other.mpq) {
         // Point to *my* copy.
-        ptr = mpz;
+        ptr = mpq;
       } else {
         ptr = other.ptr;
       }
 
       // Makes sure other does not deallocate.
       other.ptr = nullptr;
-      memset(other.mpz, 0, sizeof(mpz_t));
+      memset(other.mpq, 0, sizeof (mpq_t));
     }
 
     Lease &operator=(Lease &&other) noexcept {
       if (this == &other) return *this;
 
-      if (mpz->_mp_d != nullptr) {
-        mpz_clear(mpz);
-        mpz->_mp_d = nullptr;
+      // If overwriting an allocation, clear it.
+      if (mpq->_mp_num._mp_d != nullptr) {
+        mpq_clear(mpq);
+        mpq->_mp_num._mp_d = nullptr;
       }
 
-      memcpy(mpz, other.mpz, sizeof(mpz_t));
+      memcpy(mpq, other.mpq, sizeof (mpq_t));
 
-      if (other.ptr == other.mpz) {
-        ptr = mpz;
+      if (other.ptr == other.mpq) {
+        ptr = mpq;
       } else {
         ptr = other.ptr;
       }
 
       other.ptr = nullptr;
-      memset(other.mpz, 0, sizeof(mpz_t));
+      memset(other.mpq, 0, sizeof (mpq_t));
 
       return *this;
     }
 
    private:
-    friend struct GmpRep;
+    friend struct GmpRepRat;
     // Move-only!
     Lease() = delete;
     Lease(const Lease &other) = delete;
@@ -525,16 +567,15 @@ struct GmpRepRat {
 
     // Might be a pointer into exiting object, or might
     // be a pointer to the next field.
-    const MP_INT *ptr = nullptr;
+    const MP_RAT *ptr = nullptr;
     // Only initialized if necessary.
-    // If uninitialized, its _mp_d field will be null.
-    mpz_t mpz;
+    // If uninitialized, its numerator's _mp_d field will be null.
+    mpq_t mpq;
   };
 
   Lease GetLease() const {
     return Lease(*this);
   }
-  #endif
 
  private:
   friend struct GmpRat_Internal_Assert;
@@ -551,8 +592,16 @@ struct GmpRepRat {
   // Release ownership of the allocation (if any) without freeing.
   // Note that when this is called, there is typically another
   // copy of the object (which is taking ownership of the alloc).
+  // Makes the object "small" with an arbitrary value.
   void Release() {
     u.mpq[0]._mp_num._mp_d = nullptr;
+  }
+
+  // TODO PERF: Version that assumes we're already canonicalized.
+  static void MpqSetI64s(MP_RAT *mpq, int64_t n, int64_t d) {
+    MpzSetI64(&mpq->_mp_num, n);
+    MpzSetI64(&mpq->_mp_den, d);
+    mpq_canonicalize(mpq);
   }
 
   static void MpzSetI64(MP_INT *mpz, int64_t i) {
@@ -577,7 +626,6 @@ struct GmpRepRat {
     mpz_mul_2exp(mpz, mpz, 32);
     mpz_add_ui(mpz, mpz, lo);
   }
-
 };
 
 // Need access to private members to do these assertions, and
@@ -587,10 +635,15 @@ struct GmpRat_Internal_Assert {
  private:
   GmpRat_Internal_Assert() = delete;
   static_assert(offsetof(GmpRepRat, u.mpq[0]._mp_num) ==
-                offsetof(GmpRepRat, u.numer));
+                offsetof(GmpRepRat, u.s.numer));
   static_assert(offsetof(GmpRepRat, u.mpq[0]._mp_den) ==
-                offsetof(GmpRepRat, u.denom), "Sorry, this requires "
+                offsetof(GmpRepRat, u.s.denom), "Sorry, this requires "
                 "matching the representation of MP_RAT!");
+  static_assert(alignof (GmpRepRat) == alignof (MP_RAT),
+                "Alignment mismatch!");
+
+  // Not found??
+  // static_assert(std::is_layout_compatible<GmpRat::U::S, MP_RAT>::value);
 };
 
 #else

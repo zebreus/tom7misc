@@ -32,8 +32,9 @@ else
 endif
 endif
 
-
-CXXFLAGS= $(PLATFORM_CXXFLAGS) -march=native -mtune=native -Wall -I.. --std=c++20 -g -O3
+# OPT=-O3
+OPT=-O
+CXXFLAGS= $(PLATFORM_CXXFLAGS) -march=native -mtune=native -Wall -I.. --std=c++20 -g $(OPT)
 
 # Just used for testing; bignum itself should not depend on cc-lib.
 # This assumes that cc-lib doesn't depend on GMP flags.

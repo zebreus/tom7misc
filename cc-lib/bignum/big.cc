@@ -1726,7 +1726,9 @@ BigRat::SimplifyInterval(const BigRat &lower, const BigRat &upper,
   if (BigRat::GreaterEq(lower, upper_lb)) {
     // Check if the lower bound is inside the upper interval, then
     // just use that one.
-    return std::make_tuple(std::move(upper_lb), std::nullopt, std::move(upper_ub));
+    return std::make_tuple(std::move(upper_lb),
+                           std::nullopt,
+                           std::move(upper_ub));
   } else {
     // Otherwise we must be straddling a simple fraction.
     // We'll need the other bound too.

@@ -23,12 +23,13 @@
 
 #include "ansi.h"
 #include "arcfour.h"
+#include "base/do-not-optimize.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "randutil.h"
-#include "timer.h"
-#include "status-bar.h"
 #include "periodically.h"
+#include "randutil.h"
+#include "status-bar.h"
+#include "timer.h"
 
 using int64 = int64_t;
 using namespace std;
@@ -1071,10 +1072,12 @@ static void TestRatMove() {
   {
     BigRat a = val1;
     BigRat &a_ref = a;
+    DoNotOptimize(a_ref);
     a = a_ref;
     CHECK(BigRat::Eq(a, val1));
     CHECK(BigRat::Eq(a, a_ref));
 
+    DoNotOptimize(a_ref);
     a = std::move(a_ref);
     // The self-assignment guard should leave 'a' unmodified.
     CHECK(BigRat::Eq(a, val1));

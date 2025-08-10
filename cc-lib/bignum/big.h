@@ -90,6 +90,7 @@ struct BigInt {
   inline static BigInt Minus(const BigInt &a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, const BigInt &b);
 
+  // PERF: Great place to support && args
   inline static BigInt Min(const BigInt &a, const BigInt &b);
   inline static BigInt Max(const BigInt &a, const BigInt &b);
 
