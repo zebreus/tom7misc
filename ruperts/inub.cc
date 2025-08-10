@@ -202,8 +202,10 @@ enum RejectionReason : uint8_t {
   POINT_OUTSIDE3 = 7,
   POINT_OUTSIDE4 = 8,
   POINT_OUTSIDE5 = 9,
+  POLY_AREA = 10,
+  POLY_AREA2 = 11,
 };
-inline constexpr int NUM_REJECTION_REASONS = 10;
+inline constexpr int NUM_REJECTION_REASONS = 12;
 
 struct Rejection {
   RejectionReason reason = REJECTION_UNKNOWN;
@@ -243,6 +245,11 @@ static std::optional<Rejection> ParseRejection(std::string_view s) {
   case OUTSIDE_OUTER_PATCH_BALL:
   case OUTSIDE_INNER_PATCH_BALL:
     // No metadata. Could keep the code?
+    break;
+
+  case POLY_AREA:
+  case POLY_AREA2:
+    // No metadata.
     break;
 
   case POINT_OUTSIDE1:
@@ -640,16 +647,6 @@ struct Ballival {
   }
 };
 
-#if 0
-// Underlying polygon must contain the origin.
-// The area will be positive if the vertices are in
-// screen clockwise (cartesian CCW) order.
-Bigival PolygonArea(const std::vector<Vec2ival> &vs) {
-  // sum triangles...
-}
-#endif
-
-
 // We work with spherical coordinates (azimuth/angle intervals) to
 // represent the bounds on the outer and inner view positions.
 // Various operations will want to have Sin/Cos of these angles,
@@ -1031,6 +1028,51 @@ static Bigival BoundDotProductWithView(
     v.z * trig.cos_an;
 }
 
+
+// Underlying polygon must contain the origin.
+// The area will be positive if the vertices are in
+// screen clockwise (cartesian CCW) order.
+// Divide by two to get the positive area, but our use is to
+// compare two of these, so we just leave them double.
+Bigival TwicePolygonArea(const std::vector<Vec2ival> &vs) {
+  CHECK(!vs.empty());
+
+  Bigival twice_area(0);
+  // (Sum of triangles using the origin).
+  for (int i = 0; i < vs.size(); i++) {
+    const Vec2ival &va = vs[i];
+    const Vec2ival &vb = vs[(i + 1) % vs.size()];
+
+    Bigival term = va.x * vb.y - va.y * vb.x;
+    twice_area = std::move(twice_area) + term;
+  }
+
+  return twice_area;
+}
+
+Bigival TwicePolygonAreaFromView(const std::vector<int> &hull_indices,
+                                 const BigPoly &poly,
+                                 const ViewBoundsTrig &trig) {
+  CHECK(hull_indices.size() >= 3);
+
+  // Compute the 3D cross products first (exact) and then compute the
+  // area as the sum of dot products with the view vector.
+
+  // PERF: Can precompute this sum, as it only depends on the
+  // 3d poly and hull!
+  BigVec3 sum_3d(BigRat(0), BigRat(0), BigRat(0));
+  for (size_t i = 0; i < hull_indices.size(); i++) {
+    const BigVec3 &pa = poly.vertices[hull_indices[i]];
+    const BigVec3 &pb =
+      poly.vertices[hull_indices[(i + 1) % hull_indices.size()]];
+
+    sum_3d = std::move(sum_3d) + cross(pa, pb);
+  }
+
+  return BoundDotProductWithView(trig, sum_3d);
+}
+
+
 static std::string FormatNum(const BigInt &b) {
   if (BigInt::Abs(b) >= 1'000'000'000) {
     return std::format("{} digits", b.ToString().size());
@@ -1410,6 +1452,10 @@ struct Hypersolver {
       return "PT4";
     case POINT_OUTSIDE5:
       return "PT5";
+    case POLY_AREA:
+      return "AREA";
+    case POLY_AREA2:
+      return "AREA2";
     }
   }
 
@@ -1427,6 +1473,10 @@ struct Hypersolver {
     case OUTSIDE_INNER_PATCH:
     case OUTSIDE_OUTER_PATCH_BALL:
     case OUTSIDE_INNER_PATCH_BALL:
+      return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
+
+    case POLY_AREA:
+    case POLY_AREA2:
       return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
 
     case POINT_OUTSIDE4:
@@ -1700,6 +1750,49 @@ struct Hypersolver {
     // The raw rotated vertices of the hull; va.
     // We don't actually use these now. We only compute them for
     // debug data if that is enabled.
+
+    #if 0
+    Bigival outer_area = TwicePolygonArea(outer_aabb);
+    Bigival inner_area = TwicePolygonArea(inner_aabb);
+    if (outer_area.Less(inner_area) == Bigival::MaybeBool::True) {
+      ProcessResult res;
+      res.result = Impossible(Rejection(POLY_AREA));
+      // Always include these if we have them.
+      res.inner = std::move(inner_aabb);
+      res.outer = std::move(outer_aabb);
+      return res;
+    }
+    #endif
+
+    Bigival outer_area2 =
+      TwicePolygonAreaFromView(outer_hull, scube, outer_trig);
+    Bigival inner_area2 =
+      TwicePolygonAreaFromView(inner_hull, scube, inner_trig);
+
+
+    /*
+    status.Print("out1: {} (Width {})\n"
+                 "out2: {} (Width {})\n"
+                 "method1: {} < {}?\n"
+                 "method2: {} < {}?\n",
+                 outer_area.ToString(), outer_area.Width().ToDouble(),
+                 outer_area2.ToString(), outer_area2.Width().ToDouble(),
+                 outer_area.UB().ToDouble(),
+                 inner_area.LB().ToDouble(),
+                 outer_area2.UB().ToDouble(),
+                 inner_area2.LB().ToDouble());
+    */
+
+    if (outer_area2.Less(inner_area2) == Bigival::MaybeBool::True) {
+      ProcessResult res;
+      res.result = Impossible(Rejection(POLY_AREA2));
+      return res;
+    }
+
+    // PERF: Was computing this for area, but there's no need to with
+    // the 3d cross product formulation. OTOH computing the inner aabb
+    // in a loop rather incrementally seems like it may have sped
+    // things up (vectorization?)
     std::vector<Vec2ival> outer_aabb;
     if (get_stats) {
       outer_aabb.reserve(outer_hull.size());
@@ -1760,6 +1853,7 @@ struct Hypersolver {
     for (int inner_hull_idx = 0;
          inner_hull_idx < inner_hull.size();
          inner_hull_idx++) {
+      [[maybe_unused]]
       const BigVec3 &original_v =
         scube.vertices[inner_hull[inner_hull_idx]];
       // Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
@@ -2046,7 +2140,7 @@ struct Hypersolver {
       };
 
     std::vector<Shadows> shadows;
-
+    shadows.reserve(N_SAMPLES);
     // PERF: Could compute the double-based intervals once
     for (int s = 0; s < N_SAMPLES; s++) {
       std::array<double, NUM_DIMENSIONS> sample;
@@ -2085,8 +2179,8 @@ struct Hypersolver {
 
 
       shadows.push_back(Shadows{
-          .outer = outer_shadow,
-          .inner = inner_shadow,
+          .outer = std::move(outer_shadow),
+          .inner = std::move(inner_shadow),
           .opatch = opatch,
           .ipatch = ipatch,
           .corner = corner});
@@ -2103,17 +2197,35 @@ struct Hypersolver {
       const Volume &volume,
       const ProcessResult &pr,
       const std::vector<Shadows> &shadows) const {
+    if (pr.inner.empty()) return std::nullopt;
+
     double efficiency_numer = 0.0;
     int efficiency_denom = 0;
     for (int p = 0; p < pr.inner.size(); p++) {
       // We have an AABB to measure against.
-      // Get all the sampled points for this vertex.
+      const Vec2ival &aabb = pr.inner[p];
 
+      // Get all the sampled points for this vertex.
       std::vector<vec2> sampled_points;
       sampled_points.reserve(N_SAMPLES);
       for (const auto &s : shadows) {
         CHECK(p < s.inner.size());
         sampled_points.push_back(s.inner[p]);
+      }
+
+      if (SELF_CHECK) {
+        for (const vec2 &sample_v : sampled_points) {
+          // Technically the double could be just outside the interval
+          // due to floating point inaccuracy.
+          CHECK(aabb.x.Contains(BigRat::FromDouble(sample_v.x)) &&
+                aabb.y.Contains(BigRat::FromDouble(sample_v.y)))
+            << aabb.ToString() << "\nwhich is:\n"
+            << "x: [" << aabb.x.LB().ToDouble() << ", " <<
+            aabb.x.UB().ToDouble() << "]\n"
+            << "y: [" << aabb.y.LB().ToDouble() << ", " <<
+            aabb.y.UB().ToDouble() << "]\n"
+            "Sample: " << VecString(sample_v);
+        }
       }
 
       // This is an estimate of how much area the actual
@@ -2124,8 +2236,6 @@ struct Hypersolver {
       // of the shape.)
       std::vector<int> sample_hull = QuickHull(sampled_points);
       double hull_area = AreaOfHull(sampled_points, sample_hull);
-
-      const Vec2ival &aabb = pr.inner[p];
 
       double efficiency = hull_area / aabb.Area().ToDouble();
       efficiency_numer += efficiency;
