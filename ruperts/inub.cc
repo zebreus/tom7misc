@@ -43,9 +43,11 @@
 #include "yocto_matht.h"
 
 // TODO:
+//  - serialize bias
 //  - air gapped work queue
 //  - stats for rational size
 //  - more timing stats
+//  - split out core to library for verifier
 //  - note plane for out patch
 //  - try NiceSin/NiceCos for outer loops
 
@@ -205,21 +207,38 @@ enum RejectionReason : uint8_t {
 };
 inline constexpr int NUM_REJECTION_REASONS = 12;
 
-struct Rejection {
-  RejectionReason reason = REJECTION_UNKNOWN;
+struct Pt4Data {
   // When the rejection reason is PT4 or PT5, then we found a point
   // that is definitely on the wrong side of some edge.
   // This is the index of that edge (start endpoint) and point inside
   // the outer and inner hulls, respectively. (NOT a vertex index.)
-  std::optional<std::pair<int8_t, int8_t>> edge_point;
+  int8_t edge = -1;
+  int8_t point = -1;
+};
+
+struct Pt5Data {
+  int8_t edge = -1;
+  int8_t point = -1;
+  // For a pt5 rejection, the bias we used for the disc.
+  BigRat bias;
+};
+
+struct Rejection {
+  RejectionReason reason = REJECTION_UNKNOWN;
+  std::variant<std::monostate, Pt4Data, Pt5Data> data;
 };
 
 static std::string SerializeRejection(const Rejection &rej) {
   std::string ret = std::format("{}", (uint8_t)rej.reason);
-  if (rej.edge_point.has_value()) {
-    AppendFormat(&ret, " {} {}",
-                 rej.edge_point.value().first,
-                 rej.edge_point.value().second);
+  if (const Pt4Data *p = std::get_if<Pt4Data>(&rej.data)) {
+    AppendFormat(&ret, " {} {}", p->edge, p->point);
+  } else if (const Pt5Data *p = std::get_if<Pt5Data>(&rej.data)) {
+    AppendFormat(&ret, " {} {} {}", p->edge, p->point,
+                 p->bias.ToString());
+  } else {
+    // Nothing.
+    CHECK(std::holds_alternative<std::monostate>(rej.data)) << "Must "
+      "be missing a variant?";
   }
   return ret;
 }
@@ -252,13 +271,29 @@ static std::optional<Rejection> ParseRejection(std::string_view s) {
   case POINT_OUTSIDE1:
   case POINT_OUTSIDE2:
   case POINT_OUTSIDE3:
-  case POINT_OUTSIDE4:
-  case POINT_OUTSIDE5: {
+    // Abort if we see these old dead ones?
+    break;
+
+  case POINT_OUTSIDE4: {
     int64_t eidx = Util::ParseInt64(Util::Chop(&s), -1);
     int64_t pidx = Util::ParseInt64(Util::Chop(&s), -1);
     if (eidx < 0 || pidx < 0) return std::nullopt;
-    ret.edge_point = std::make_optional(
-        std::make_pair((int8_t)eidx, (int8_t)pidx));
+    ret.data = Pt4Data({.edge = (int8_t)eidx, .point = (int8_t)pidx});
+    break;
+  }
+
+  case POINT_OUTSIDE5: {
+    int64_t eidx = Util::ParseInt64(Util::Chop(&s), -1);
+    int64_t pidx = Util::ParseInt64(Util::Chop(&s), -1);
+    BigRat b(Util::NormalizeWhitespace(Util::Chop(&s)));
+    if (eidx < 0 || pidx < 0) return std::nullopt;
+    // Bias cannot be zero; it's probably missing.
+    if (b == 0) return std::nullopt;
+    ret.data = Pt5Data({
+        .edge = (int8_t)eidx,
+        .point = (int8_t)pidx,
+        .bias = std::move(b),
+      });
     break;
   }
   }
@@ -1407,16 +1442,27 @@ struct Hypersolver {
     case POLY_AREA:
       return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
 
-    case POINT_OUTSIDE4:
-    case POINT_OUTSIDE5:
-      if (!rej.edge_point.has_value()) return ARED("MISSING METADATA");
-      return std::format(ACYAN("{}")
+    case POINT_OUTSIDE4: {
+      const Pt4Data *data = std::get_if<Pt4Data>(&rej.data);
+      if (data == nullptr) return ARED("MISSING METADATA");
+      return std::format(ACYAN("PT4")
                          AGREY("(")
                          ARED("{}") AGREY(", ")
                          AGREEN("{}") AGREY(")"),
-                         RejectionReasonString(rej.reason),
-                         rej.edge_point.value().first,
-                         rej.edge_point.value().second);
+                         data->edge, data->point);
+    }
+
+    case POINT_OUTSIDE5: {
+      const Pt5Data *data = std::get_if<Pt5Data>(&rej.data);
+      if (data == nullptr) return ARED("MISSING METADATA");
+      return std::format(ACYAN("PT5")
+                         AGREY("(")
+                         ARED("{}") AGREY(", ")
+                         AGREEN("{}") AGREY(", ")
+                         AYELLOW("{}") AGREY(")"),
+                         data->edge, data->point,
+                         data->bias.ToString());
+    }
     }
   }
 
@@ -1744,6 +1790,7 @@ struct Hypersolver {
     double disc_time_here = 0.0;
     double disc_outside_time_here = 0.0;
     double pt4_time_here = 0.0;
+    double v_time_here = 0.0;
     Timer loop_timer;
     // Compute the inner hull point-by-point, which we call v. We can
     // exit early if any of these points are definitely outside the
@@ -1757,6 +1804,7 @@ struct Hypersolver {
         scube.vertices[inner_hull[inner_hull_idx]];
       // Vec2ival proj_v = TransformPointTo2D(inner_frame, original_v);
 
+      Timer v_timer;
       Vec2ival proj_v = TransformVec(inner_trig, original_v);
 
       // Bounds on the inner point's location. This is an AABB. Note
@@ -1769,6 +1817,7 @@ struct Hypersolver {
       // trying other non-rectangular representations here.
       Vec2ival v_aabb =
         GetBoundingAABB(proj_v, rot_trig, inv_epsilon, inner_x, inner_y);
+      v_time_here += v_timer.Seconds();
 
       // TODO: Tune bias. We can even try more than one, or choose
       // randomly.
@@ -1783,7 +1832,7 @@ struct Hypersolver {
       Discival rot_disc = RotateDiscInnerBias(
           &disc_in, rot_trig, BIAS, inv_epsilon);
       Discival disc = TranslateDisc(&rot_disc, inner_x, inner_y, inv_epsilon);
-      disc_time_here = disc_timer.Seconds();
+      disc_time_here += disc_timer.Seconds();
 
       if (get_stats) {
         inner.push_back(v_aabb);
@@ -1874,8 +1923,10 @@ struct Hypersolver {
         if (is_aabb_outside) {
           Rejection pt4;
           pt4.reason = POINT_OUTSIDE4;
-          pt4.edge_point = std::make_optional(
-              std::make_pair(start, inner_hull_idx));
+          pt4.data = {Pt4Data({
+                .edge = (int8_t)start,
+                .point = (int8_t)inner_hull_idx
+              })};
           proved = {pt4};
           // We only need to finish all the points if we are getting
           // stats!
@@ -1890,9 +1941,12 @@ struct Hypersolver {
         if (is_disc_outside) {
           Rejection pt5;
           pt5.reason = POINT_OUTSIDE5;
-          pt5.edge_point = std::make_optional(
-              std::make_pair(start, inner_hull_idx));
-          proved = {pt5};
+          pt5.data = {Pt5Data({
+                .edge = (int8_t)start,
+                .point = (int8_t)inner_hull_idx,
+                .bias = BIAS,
+              })};
+          proved = {std::move(pt5)};
 
           if (!get_stats) break;
         }
@@ -1917,6 +1971,7 @@ struct Hypersolver {
     {
       MutexLock ml(&mu);
       loop_time += loop_timer.Seconds();
+      v_time += v_time_here;
       disc_time += disc_time_here;
       disc_outside_time += disc_outside_time_here;
       pt4_time += pt4_time_here;
@@ -2486,9 +2541,10 @@ struct Hypersolver {
             "{} ea. "
             "{} trig "
             "{} area "
+            "{} v "
             "{} pt4 "
             "{} disc "
-            "{} disco "
+            "{} pt5 "
             "{} loop\n"
             // Quality stats
             AORANGE("⊗") "mid: {}  "
@@ -2506,6 +2562,7 @@ struct Hypersolver {
             ANSI::Time(time_each),
             ColorPct(trig_time / process_time),
             ColorPct(area_time / process_time),
+            ColorPct(v_time / process_time),
             ColorPct(pt4_time / process_time),
             ColorPct(disc_time / process_time),
             ColorPct(disc_outside_time / process_time),
@@ -2999,7 +3056,7 @@ struct Hypersolver {
 
   Timer run_timer;
   Periodically status_per = Periodically(1);
-  Periodically save_per = Periodically(10 * 60);
+  Periodically save_per = Periodically(10 * 60, false);
   Periodically sample_per = Periodically(60 * 14.9);
   Periodically sample_proved_per = Periodically(60 * 9.1);
   Periodically render_per = Periodically(60 * 15.1);
@@ -3013,7 +3070,7 @@ struct Hypersolver {
 
   double trig_time = 0.0, loop_time = 0.0, process_time = 0.0;
   double disc_time = 0.0, disc_outside_time = 0.0;
-  double area_time = 0.0;
+  double area_time = 0.0, v_time = 0.0;
   double pt4_time = 0.0;
 
   // The hypervolume now done (this includes regions that we
