@@ -1072,7 +1072,6 @@ Bigival TwicePolygonAreaFromView(const std::vector<int> &hull_indices,
   return BoundDotProductWithView(trig, sum_3d);
 }
 
-
 static std::string FormatNum(const BigInt &b) {
   if (BigInt::Abs(b) >= 1'000'000'000) {
     return std::format("{} digits", b.ToString().size());
@@ -1764,11 +1763,17 @@ struct Hypersolver {
     }
     #endif
 
+    Timer area_timer;
+    /*
     Bigival outer_area2 =
       TwicePolygonAreaFromView(outer_hull, scube, outer_trig);
     Bigival inner_area2 =
       TwicePolygonAreaFromView(inner_hull, scube, inner_trig);
-
+    */
+    // Area of the shadow is just the dot product of the view with the
+    // 3d area vector.
+    Bigival outer_area2 = BoundDotProductWithView(outer_trig, outer_area_3d);
+    Bigival inner_area2 = BoundDotProductWithView(inner_trig, inner_area_3d);
 
     /*
     status.Print("out1: {} (Width {})\n"
@@ -1782,8 +1787,15 @@ struct Hypersolver {
                  outer_area2.UB().ToDouble(),
                  inner_area2.LB().ToDouble());
     */
+    const bool impossible_area =
+      outer_area2.Less(inner_area2) == Bigival::MaybeBool::True;
+    const double area_time_here = area_timer.Seconds();
+    {
+      MutexLock ml(&mu);
+      area_time += area_time_here;
+    }
 
-    if (outer_area2.Less(inner_area2) == Bigival::MaybeBool::True) {
+    if (impossible_area) {
       ProcessResult res;
       res.result = Impossible(Rejection(POLY_AREA2));
       return res;
@@ -2561,6 +2573,7 @@ struct Hypersolver {
             // Timing
             "{} ea. "
             ABLUE("{:.3f}") "% trig "
+            ABLUE("{:.3f}") "% area "
             ABLUE("{:.3f}") "% disc "
             ABLUE("{:.3f}") "% disco "
             ABLUE("{:.3f}") "% loop\n"
@@ -2579,6 +2592,7 @@ struct Hypersolver {
             node_queue.size(),
             ANSI::Time(time_each),
             (trig_time * 100.0) / process_time,
+            (area_time * 100.0) / process_time,
             (disc_time * 100.0) / process_time,
             (disc_outside_time * 100.0) / process_time,
             (loop_time * 100.0) / process_time,
@@ -2952,6 +2966,10 @@ struct Hypersolver {
     CheckHullRepresentation(&rc, outer_code, outer_mask, outer_hull);
     CheckHullRepresentation(&rc, inner_code, inner_mask, inner_hull);
 
+    // Precomputation for areas of shadows.
+    outer_area_3d = GetArea3D(outer_hull, scube, outer.example);
+    inner_area_3d = GetArea3D(inner_hull, scube, inner.example);
+
     outer_cx3d.reserve(outer_hull.size());
     outer_edge3d.reserve(outer_hull.size());
     for (int n = 0; n < outer_hull.size(); n++) {
@@ -2997,6 +3015,28 @@ struct Hypersolver {
     }
   }
 
+  // For each triangle in the triangle fan (using the vertices at
+  // the hull points with the origin), compute the 3d cross product.
+  // Return the sum.
+  static BigVec3 GetArea3D(const std::vector<int> &hull_indices,
+                           const BigPoly &poly,
+                           const BigVec3 &example_view) {
+    CHECK(hull_indices.size() >= 3);
+
+    BigVec3 sum_3d(BigRat(0), BigRat(0), BigRat(0));
+    for (size_t i = 0; i < hull_indices.size(); i++) {
+      const BigVec3 &pa = poly.vertices[hull_indices[i]];
+      const BigVec3 &pb =
+        poly.vertices[hull_indices[(i + 1) % hull_indices.size()]];
+
+      sum_3d = std::move(sum_3d) + cross(pa, pb);
+    }
+
+    // Check that areas are positive, as expected.
+    CHECK(BigRat::Sign(dot(sum_3d, example_view)) > 0);
+    return sum_3d;
+  }
+
   // These members are safe to execute from multiple threads.
   // They should not be modified after initialization.
   Polyhedron small_scube;
@@ -3020,6 +3060,13 @@ struct Hypersolver {
 
   // The vector vb-va, with va,vb as in the previous.
   std::vector<BigVec3> outer_edge3d;
+
+  // This is the sum of the 3d cross products for the triangle fan
+  // that makes up the outer (resp. inner) hull, using the origin
+  // as the shared point. Exact. The dot product of a view vector
+  // with this vector gives the area of the shadow!
+  BigVec3 outer_area_3d;
+  BigVec3 inner_area_3d;
 
   BigRat full_volume;
   double full_volume_d = 0.0;
@@ -3052,6 +3099,7 @@ struct Hypersolver {
 
   double trig_time = 0.0, loop_time = 0.0, process_time = 0.0;
   double disc_time = 0.0, disc_outside_time = 0.0;
+  double area_time = 0.0;
 
   // The hypervolume now done (this includes regions that we
   // determined are out of scope). Compare against the full volume.
