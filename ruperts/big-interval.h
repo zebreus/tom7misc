@@ -98,6 +98,11 @@ struct Bigival {
     return Times(b.Reciprocal());
   }
 
+  Bigival Div(const BigRat &b) const {
+    CHECK(!BigRat::IsZero(b)) << "Division by zero is not defined.";
+    return Times(BigRat::Inverse(b));
+  }
+
   // Width of the interval, ignoring the open/closedness of endpoints.
   BigRat Width() const {
     return UB() - LB();
@@ -735,6 +740,10 @@ inline Bigival operator*(const BigRat &a, const Bigival &b) {
 }
 
 inline Bigival operator/(const Bigival &a, const Bigival &b) {
+  return a.Div(b);
+}
+
+inline Bigival operator/(const Bigival &a, const BigRat &b) {
   return a.Div(b);
 }
 

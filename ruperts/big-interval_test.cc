@@ -153,7 +153,19 @@ static void Simple() {
           });
       }
 
-      // With rational arg
+      // Only when defined and supported.
+      if (!b.ContainsOrApproachesZero() &&
+          b.LB() != 0 &&
+          b.UB() != 0) {
+        Bigival quotient = a / b;
+        Sample(a, [&](const BigRat &sa) {
+            Sample(b, [&](const BigRat &sb) {
+                CHECK_CONTAINS(quotient, sa / sb);
+              });
+          });
+      }
+
+      // With rational arg when we have the overload.
       {
         Bigival sum1 = a + b.UB();
         Sample(a, [&](const BigRat &sa) {
@@ -183,18 +195,12 @@ static void Simple() {
           });
       }
 
-      // Only when defined and supported.
-      if (!b.ContainsOrApproachesZero() &&
-          b.LB() != 0 &&
-          b.UB() != 0) {
-        Bigival quotient = a / b;
+      if (!BigRat::IsZero(b.UB())) {
+        Bigival quot1 = a / b.UB();
         Sample(a, [&](const BigRat &sa) {
-            Sample(b, [&](const BigRat &sb) {
-                CHECK_CONTAINS(quotient, sa / sb);
-              });
+            CHECK_CONTAINS(quot1, sa / b.UB());
           });
       }
-
     }
   }
 
