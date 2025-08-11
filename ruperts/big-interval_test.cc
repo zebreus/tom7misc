@@ -126,26 +126,62 @@ static void Simple() {
                a.ToString().c_str(), b.ToString().c_str());
       }
 
-      Bigival sum = a + b;
-      Sample(a, [&](const BigRat &sa) {
-          Sample(b, [&](const BigRat &sb) {
-              CHECK_CONTAINS(sum, sa + sb);
-            });
-        });
+      {
+        Bigival sum = a + b;
+        Sample(a, [&](const BigRat &sa) {
+            Sample(b, [&](const BigRat &sb) {
+                CHECK_CONTAINS(sum, sa + sb);
+              });
+          });
+      }
 
-      Bigival difference = a - b;
-      Sample(a, [&](const BigRat &sa) {
-          Sample(b, [&](const BigRat &sb) {
-              CHECK_CONTAINS(difference, sa - sb);
-            });
-        });
+      {
+        Bigival difference = a - b;
+        Sample(a, [&](const BigRat &sa) {
+            Sample(b, [&](const BigRat &sb) {
+                CHECK_CONTAINS(difference, sa - sb);
+              });
+          });
+      }
 
-      Bigival product = a * b;
-      Sample(a, [&](const BigRat &sa) {
-          Sample(b, [&](const BigRat &sb) {
-              CHECK_CONTAINS(product, sa * sb);
-            });
-        });
+      {
+        Bigival product = a * b;
+        Sample(a, [&](const BigRat &sa) {
+            Sample(b, [&](const BigRat &sb) {
+                CHECK_CONTAINS(product, sa * sb);
+              });
+          });
+      }
+
+      // With rational arg
+      {
+        Bigival sum1 = a + b.UB();
+        Sample(a, [&](const BigRat &sa) {
+            CHECK_CONTAINS(sum1, sa + b.UB());
+          });
+        Bigival sum2 = b.UB() + a;
+        Sample(a, [&](const BigRat &sa) {
+            CHECK_CONTAINS(sum2, sa + b.UB());
+          });
+      }
+
+      {
+        Bigival diff1 = a - b.UB();
+        Sample(a, [&](const BigRat &sa) {
+            CHECK_CONTAINS(diff1, sa - b.UB());
+          });
+      }
+
+      {
+        Bigival product1 = a * b.UB();
+        Sample(a, [&](const BigRat &sa) {
+            CHECK_CONTAINS(product1, sa * b.UB());
+          });
+        Bigival product2 = b.UB() * a;
+        Sample(a, [&](const BigRat &sa) {
+            CHECK_CONTAINS(product1, sa * b.UB());
+          });
+      }
 
       // Only when defined and supported.
       if (!b.ContainsOrApproachesZero() &&

@@ -67,7 +67,7 @@ struct Bigival {
   }
 
   Bigival Minus(const BigRat &b) const {
-    return Bigival(LB() + b, UB() + b, IncludesLB(), IncludesUB());
+    return Bigival(LB() - b, UB() - b, IncludesLB(), IncludesUB());
   }
 
   Bigival Times(const Bigival &b) const {
