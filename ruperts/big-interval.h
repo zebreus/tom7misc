@@ -24,6 +24,8 @@
 #ifndef _RUPERTS_BIG_INTERVAL_H
 #define _RUPERTS_BIG_INTERVAL_H
 
+#include <algorithm>
+#include <cmath>
 #include <format>
 #include <optional>
 #include <string>
@@ -232,19 +234,105 @@ struct Bigival {
                    false, false);
   }
 
-  static Bigival Sqrt(const Bigival &a, const BigInt &inv_epsilon) {
-    if (a.Singular()) {
-      auto [lb, ub] = BigRat::SqrtBounds(a.LB(), inv_epsilon);
+  // Computes the square root of the interval; the interval width
+  // will be about 2/inv_epsilon.
+  static Bigival Sqrt(const Bigival &xx, const BigInt &inv_epsilon) {
+    if (xx.Singular()) {
+      auto [lb, ub] = BigRat::SqrtBounds(xx.LB(), inv_epsilon);
       return Bigival(std::move(lb), std::move(ub), true, true);
     } else {
-      auto [lba, uba] = BigRat::SqrtBounds(a.LB(), inv_epsilon);
-      auto [lbb, ubb] = BigRat::SqrtBounds(a.UB(), inv_epsilon);
+      auto [lba, uba] = BigRat::SqrtBounds(xx.LB(), inv_epsilon);
+      auto [lbb, ubb] = BigRat::SqrtBounds(xx.UB(), inv_epsilon);
 
-      return Bigival(BigRat::Min(lba, lbb),
-                     BigRat::Max(uba, ubb),
-                     true, true);
+      if (SELF_CHECK) {
+        // Because it is not singular, and both arguments are
+        // non-negative, and sqrt is monotonic.
+        CHECK(lba < lbb);
+        CHECK(ubb > uba);
+      }
+
+      return Bigival(std::move(lba), std::move(ubb), true, true);
     }
   }
+
+  // Faster square root approximation. sqrt(n/d) = sqrt(n)/sqrt(d),
+  // so we separately compute integer square roots for n and d.
+  // The resulting rationals thus have complexity related to the
+  // input complexity (and in fact, significantly smaller).
+  //
+  // This is good when the interval represents a tiny error term with
+  // a big denominator and you don't want the expression to blow up.
+  static Bigival CoarseIntSqrt(const BigRat &xx) {
+    int sign = BigRat::Sign(xx);
+    CHECK(sign >= 0) << "Precondition";
+    if (sign == 0) return Bigival(0);
+
+    // PERF: Would be nice to avoid copying :/
+    auto [nn, dd] = xx.Parts();
+
+    // We could also check for perfect squares (SqrtRem), but
+    // these are the most common ones we care about, since we
+    // have lots of 1/d and integers.
+    bool n_is_one = nn == 1;
+    bool d_is_one = dd == 1;
+    if (n_is_one && d_is_one) {
+      return Bigival(1);
+    } else if (n_is_one) {
+      BigInt d = BigInt::Sqrt(dd);
+      return Bigival(BigRat(BigInt(1), d + 1), BigRat(BigInt(1), d),
+                     false, true);
+
+    } else if (d_is_one) {
+      BigInt n = BigInt::Sqrt(nn);
+      return Bigival(BigRat(n), BigRat(n + 1),
+                     true, false);
+    }
+
+    // Otherwise, the general case.
+
+    // Floors of the square roots.
+    // So then we have n/(d + 1) < sqrt(nn)/sqrt(dd) < (n+1)/d
+    BigInt n = BigInt::Sqrt(nn);
+    BigInt d = BigInt::Sqrt(dd);
+
+    return Bigival(BigRat(n, d + 1), BigRat(n + 1, d), false, false);
+  }
+
+  // Like the previous, but with an error target. This works by
+  // multiplying the numerator and denominator by a power of two,
+  // so it's like operating on a fixed-point representation with
+  // that many bits. Bounds will be correct, but does not guarantee
+  // that the width is less than 1/inv_epsilon.
+  static Bigival CoarseIntSqrt(const BigRat &xx, const BigInt &inv_epsilon) {
+    int sign = BigRat::Sign(xx);
+    CHECK(sign >= 0) << "Precondition";
+    if (sign == 0) return Bigival(0);
+
+    // PERF: Would be nice to avoid copying :/
+    auto [nn, dd] = xx.Parts();
+
+    int64_t shift =
+      std::max((int64_t)std::ceil((BigInt::LogBase2(BigRat::Ceil(xx)) +
+                                   BigInt::LogBase2(inv_epsilon)) * 2.0 -
+                                  BigInt::LogBase2(dd)),
+               int64_t(0));
+    // Not strictly necessary, but it is better if we are multiplying
+    // by a square power of two.
+    if (shift & 1) shift++;
+
+    if (shift > 0) {
+      nn <<= shift;
+      dd <<= shift;
+    }
+
+    // Floors of the square roots.
+    // So then we have n/(d + 1) < sqrt(nn)/sqrt(dd) < (n+1)/d
+    BigInt n = BigInt::Sqrt(nn);
+    BigInt d = BigInt::Sqrt(dd);
+
+    return Bigival(BigRat(n, d + 1), BigRat(n + 1, d), false, false);
+  }
+
 
   // Compute sin(x) as a Bigival with a width of no more than 1/inv_epsilon.
   // This is only appropriate for x with small magnitude.
@@ -533,10 +621,14 @@ struct Bigival {
   }
 
   std::string ToString() const {
+    auto Render = [](const BigRat &r) {
+        return std::format("{} ≅ {}",
+                           r.ToString(), r.ToDouble());
+      };
     return std::format("{}{}, {}{}",
                        IncludesLB() ? "[" : "(",
-                       LB().ToString(),
-                       UB().ToString(),
+                       Render(LB()),
+                       Render(UB()),
                        IncludesUB() ? "]" : ")");
   }
 
@@ -546,7 +638,8 @@ struct Bigival {
     BigRat r;
     bool included = false;
     std::string ToString() const {
-      return std::format("{}{}", included ? "⏺" : "∘", r.ToString());
+      return std::format("{}{} ≅ {}", included ? "⏺" : "∘",
+                         r.ToString(), r.ToDouble());
     }
   };
 
@@ -768,5 +861,3 @@ inline Bigival::MaybeBool operator >=(const Bigival &a, const Bigival &b) {
 }
 
 #endif
-
-

@@ -670,6 +670,79 @@ static void MathFuncs() {
   }
 }
 
+// Note: The function doesn't guarantee specifically that we
+// return (n/(d+1), (n+1)/d), but this test does expect that.
+static void CoarseSqrt() {
+  // A high-precision epsilon for getting an accurate value of sqrt(r).
+  const BigInt inv_epsilon(1000000);
+
+  // Tests both the plain integer version and the version with an epsilon
+  // target.
+  #define CHECK_COARSE_SQRT(r) do {                                     \
+      Bigival coarse = Bigival::CoarseIntSqrt(r);                       \
+      if (VERBOSE) printf("Coarse Sqrt %s: %s\n", r.ToString().c_str(), \
+        coarse.ToString().c_str());                                     \
+      Bigival coarse2 = Bigival::CoarseIntSqrt(r, inv_epsilon);         \
+      Bigival fine = Bigival::Sqrt(Bigival(r), inv_epsilon);            \
+      if (VERBOSE) printf("Fine Sqrt %s: %s\n", r.ToString().c_str(),   \
+        fine.ToString().c_str());                                       \
+      CHECK(coarse.Eq(fine) != Bigival::MaybeBool::False);              \
+      CHECK(coarse2.Eq(fine) != Bigival::MaybeBool::False);             \
+  } while (0)
+
+  {
+    Bigival s = Bigival::CoarseIntSqrt(BigRat(0));
+    CHECK(s.Singular() && s.LB() == 0);
+  }
+
+  {
+    Bigival s = Bigival::CoarseIntSqrt(BigRat(1));
+    CHECK(s.Singular() && s.LB() == 1);
+  }
+
+  {
+    Bigival s = Bigival::CoarseIntSqrt(BigRat(0), inv_epsilon);
+    CHECK(s.Singular() && s.LB() == 0);
+  }
+
+  // Integer inputs.
+  CHECK_COARSE_SQRT(BigRat(1));
+  CHECK_COARSE_SQRT(BigRat(2));
+  CHECK_COARSE_SQRT(BigRat(3));
+  CHECK_COARSE_SQRT(BigRat(100));
+  CHECK_COARSE_SQRT(BigRat("100000000000000000000"));
+
+  {
+    Bigival s = Bigival::CoarseIntSqrt(BigRat(4));
+    CHECK_CONTAINS(s, BigRat(2));
+    CHECK(s.LB() == 2 && s.UB() == 3);
+  }
+
+  // 1/d inputs.
+  CHECK_COARSE_SQRT(BigRat(1, 2));
+  CHECK_COARSE_SQRT(BigRat(1, 3));
+  CHECK_COARSE_SQRT(BigRat(1, 100));
+  CHECK_COARSE_SQRT(BigRat(BigInt(1), BigInt("100000000000000000000")));
+
+  {
+    Bigival s = Bigival::CoarseIntSqrt(BigRat(1, 4));
+    CHECK_CONTAINS(s, BigRat(1, 2));
+    CHECK(s.LB() == BigRat(1, 3) && s.UB() == BigRat(1, 2));
+  }
+
+  CHECK_COARSE_SQRT(BigRat(2, 3));
+  CHECK_COARSE_SQRT(BigRat(8, 9));
+  CHECK_COARSE_SQRT(BigRat(9, 8));
+  CHECK_COARSE_SQRT(BigRat(355, 113));
+
+  {
+    Bigival s = Bigival::CoarseIntSqrt(BigRat(25, 9));
+    CHECK_CONTAINS(s, BigRat(5, 3));
+    CHECK(s.LB() == BigRat(5, 4) && s.UB() == BigRat(2));
+    CHECK(!s.IncludesLB() && !s.IncludesUB());
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -682,6 +755,8 @@ int main(int argc, char **argv) {
 
   Transcendental();
   MathFuncs();
+
+  CoarseSqrt();
 
   printf("OK\n");
   return 0;
