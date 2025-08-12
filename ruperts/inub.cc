@@ -32,6 +32,7 @@
 #include "bignum/big.h"
 #include "bounds.h"
 #include "image.h"
+#include "intervals.h"
 #include "lastn-buffer.h"
 #include "patches.h"
 #include "periodically.h"
@@ -559,130 +560,8 @@ struct Hypercube {
   std::shared_ptr<Node> root;
 };
 
-// Vec3 where each component is an interval.
-struct Vec3ival {
-  Bigival x, y, z;
-  Vec3ival(Bigival xx, Bigival yy, Bigival zz) :
-    x(std::move(xx)), y(std::move(yy)), z(std::move(zz)) {}
-  Vec3ival() : x(0), y(0), z(0) {}
-
-  std::string ToString() const {
-    return std::format("x: {}, y: {}, z: {}",
-                       x.ToString(), y.ToString(), z.ToString());
-  }
-};
-
-Bigival Dot(const Vec3ival &a, const BigVec3 &b) {
-  return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-// PERF: I think we only need Rot3 for this task; the origin is always
-// zero. Can save ourselves some pointless addition and copying.
-struct Frame3ival {
-  Vec3ival x = {Bigival(1), Bigival(0), Bigival(0)};
-  Vec3ival y = {Bigival(0), Bigival(1), Bigival(0)};
-  Vec3ival z = {Bigival(0), Bigival(0), Bigival(1)};
-  Vec3ival o = {Bigival(0), Bigival(0), Bigival(0)};
-
-  Vec3ival& operator[](int i) {
-    switch (i) {
-    case 0: return x;
-    case 1: return y;
-    case 2: return z;
-    case 3: return o;
-    default:
-      LOG(FATAL) << "Bad";
-      return x;
-    }
-  }
-
-  const Vec3ival &operator[](int i) const {
-    switch (i) {
-    case 0: return x;
-    case 1: return y;
-    case 2: return z;
-    case 3: return o;
-    default:
-      LOG(FATAL) << "Bad";
-      return x;
-    }
-  }
-};
-
-// Vec2 where each component is an interval.
-// This is an axis-aligned bounding box (AABB).
-struct Vec2ival {
-  Bigival x, y;
-  Vec2ival(Bigival xx, Bigival yy) :
-    x(std::move(xx)), y(std::move(yy)) {}
-  Vec2ival() : x(0), y(0) {}
-
-  // The exact area of the AABB.
-  BigRat Area() const {
-    return x.Width() * y.Width();
-  }
-
-  std::string ToString() const {
-    return std::format("(⏹ x: {}, y: {})",
-                       x.ToString(), y.ToString());
-  }
-
-  bool Contains(const BigVec2 &v) const {
-    return x.Contains(v.x) && y.Contains(v.y);
-  }
-};
-
-// Small Fixed-size matrices stored in column major format.
-struct Mat3ival {
-  // left column
-  Vec3ival x = {Bigival(1), Bigival(0), Bigival(0)};
-  // middle column
-  Vec3ival y = {Bigival(0), Bigival(1), Bigival(0)};
-  // right column
-  Vec3ival z = {Bigival(0), Bigival(0), Bigival(1)};
-
-  Vec3ival &operator[](int i) {
-    switch (i) {
-    case 0: return x;
-    case 1: return y;
-    case 2: return z;
-    default:
-      LOG(FATAL) << "Index out of bounds.";
-    }
-  }
-
-  const Vec3ival &operator[](int i) const {
-    switch (i) {
-    case 0: return x;
-    case 1: return y;
-    case 2: return z;
-    default:
-      LOG(FATAL) << "Index out of bounds.";
-    }
-  }
-};
-
-// Bounding ball.
-struct Ballival {
-  // An exact center.
-  BigVec3 center;
-  // Upper bound on the *squared* radius.
-  BigRat radius_sq;
-  // TODO: We could probably have a constructor that took
-  // Vec3ival center and/or Bigival radius, and computed a
-  // bounding sphere from those. But we aren't using that
-  // today.
-  Ballival(BigVec3 c, BigRat rsq) : center(std::move(c)),
-                                    radius_sq(std::move(rsq)) {
-    CHECK(BigRat::Sign(radius_sq) != -1) << radius_sq.ToString();
-  }
-
-  // Upper bound on the radius.
-  BigRat Radius(const BigInt &inv_epsilon) const {
-    return BigRat::SqrtBounds(radius_sq, inv_epsilon).second;
-  }
-};
-
+// Probably to intervals.h?
+//
 // We work with spherical coordinates (azimuth/angle intervals) to
 // represent the bounds on the outer and inner view positions.
 // Various operations will want to have Sin/Cos of these angles,
@@ -895,204 +774,6 @@ static Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
   return Ballival(std::move(center), std::move(max_sqdist));
 }
 
-// Bounding disc.
-struct Discival {
-  // An exact center.
-  BigVec2 center;
-  // Upper bound on the squared radius.
-  BigRat radius_sq;
-  // Upper bound on the radius. We sometimes have this anyway,
-  // in which case we can save the trouble of iteratively
-  // approximating the square root. Note that this does not
-  // need to be the eact sxquare root of radius_sq, but both
-  // need to be upper bounds on the interval represented.
-  std::optional<BigRat> radius;
-  Discival(BigVec2 c, BigRat r_sq) : center(std::move(c)),
-                                     radius_sq(std::move(r_sq)) {
-    CHECK(BigRat::Sign(radius_sq) != -1) << radius_sq.ToString();
-  }
-
-  Discival(BigVec2 c, BigRat r_sq, BigRat r) :
-    center(std::move(c)),
-    radius_sq(std::move(r_sq)),
-    radius(std::make_optional(std::move(r))) {
-    CHECK(BigRat::Sign(radius_sq) != -1) << radius_sq.ToString();
-    CHECK(BigRat::Sign(radius.value()) != -1);
-  }
-
-  Discival() : center(BigRat(0), BigRat(0)), radius_sq(1) {}
-
-  Discival(const Vec2ival &v) : center(v.x.Midpoint(),
-                                       v.y.Midpoint()) {
-    // All corners are the same distance from the exact
-    // center.
-    BigRat dx = v.x.Width() / 2;
-    BigRat dy = v.y.Width() / 2;
-    radius_sq = dx * dx + dy * dy;
-
-    if (SELF_CHECK) {
-      CHECK(v.Contains(center));
-    }
-  }
-
-  // Upper bound on the radius. Prefer this one, as it computes
-  // and saves the radius, and also avoids copying it.
-  // Note that inv_epsilon might be ignored if we already have a
-  // value for the square root. But it will always be a correct
-  // upper bound.
-  const BigRat &Radius(const BigInt &inv_epsilon) {
-    if (!radius.has_value()) {
-      radius =
-        std::make_optional(BigRat::SqrtBounds(radius_sq, inv_epsilon).second);
-    }
-    return radius.value();
-  }
-
-  // As above, but for a const object. Copies and does not cache.
-  BigRat ConstRadius(const BigInt &inv_epsilon) const {
-    if (radius.has_value()) {
-      return radius.value();
-    } else {
-      return BigRat::SqrtBounds(radius_sq, inv_epsilon).second;
-    }
-  }
-
-  std::string ToString() const {
-    return std::format("(⏺ c: {}, r²: {} " ABLUE("≅ {}") ")",
-                       VecString(center), radius_sq.ToString(),
-                       radius_sq.ToDouble()
-                       );
-  }
-};
-
-[[maybe_unused]]
-static Bigival Cross(const Vec2ival &a, const Vec2ival &b) {
-  return a.x * b.y - a.y * b.x;
-}
-
-static Vec3ival Cross(const Vec3ival &a, const Vec3ival &b) {
-  return Vec3ival(
-    a.y * b.z - a.z * b.y,
-    a.z * b.x - a.x * b.z,
-    a.x * b.y - a.y * b.x);
-}
-
-static Bigival Length(const Vec3ival &v, const BigInt &inv_epsilon) {
-  return Bigival::Sqrt(v.x.Squared() + v.y.Squared() + v.z.Squared(),
-                       inv_epsilon);
-}
-
-[[maybe_unused]]
-static Bigival Length(const Vec2ival &v, const BigInt &inv_epsilon) {
-  return Bigival::Sqrt(v.x.Squared() + v.y.Squared(),
-                       inv_epsilon);
-}
-
-[[maybe_unused]]
-static Vec3ival Normalize(const Vec3ival &v, const BigInt &inv_epsilon) {
-  Bigival len = Length(v, inv_epsilon);
-  CHECK(!len.ContainsZero()) << "Can't normalize if the length might be "
-    "zero. v was: " << v.ToString();
-  return Vec3ival(
-      v.x / len,
-      v.y / len,
-      v.z / len);
-}
-
-[[maybe_unused]]
-inline static Vec3ival operator +(const Vec3ival &a,
-                                  const Vec3ival &b) {
-  return Vec3ival(a.x + b.x, a.y + b.y, a.z + b.z);
-}
-
-[[maybe_unused]]
-inline static Vec3ival operator *(const Vec3ival &a,
-                                  const Vec3ival &b) {
-  return Vec3ival(a.x * b.x, a.y * b.y, a.z * b.z);
-}
-
-[[maybe_unused]]
-inline static Vec3ival operator *(const Vec3ival &a,
-                                  const BigVec3 &b) {
-  return Vec3ival(a.x * b.x, a.y * b.y, a.z * b.z);
-}
-
-[[maybe_unused]]
-inline static Vec3ival operator *(const Vec3ival &a,
-                                  const BigRat &s) {
-  return Vec3ival(a.x * s, a.y * s, a.z * s);
-}
-
-[[maybe_unused]]
-inline static Vec2ival operator -(const Vec2ival &a,
-                                  const BigVec2 &b) {
-  return Vec2ival(a.x - b.x, a.y - b.y);
-}
-
-
-// This can certainly work on Vec3ival, but our input data at this point
-// is a single point and this is in inner loops.
-[[maybe_unused]]
-static Vec2ival TransformPointTo2D(const Frame3ival &frame,
-                                   const BigVec3 &v) {
-  // PERF don't even compute z component!
-  Vec3ival v3 = frame.x * v.x + frame.y * v.y + frame.z * v.z + frame.o;
-  return Vec2ival(std::move(v3.x), std::move(v3.y));
-}
-
-
-// view pos must be unit length, and moreover, the origin can't be
-// included (or approached) in the interval. The view positions are
-// naturally unit length, but their interval approximations (AABBs)
-// can easily include the origin if the angles subtended are more than
-// a hemisphere, for example. So below we eagerly split if the angle
-// is not already small.
-//
-// This also requires that the z-axis is not included in the view interval.
-[[maybe_unused]]
-Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
-  const Vec3ival &frame_z = view;
-
-  // Vec3ival up_z = {BigRat(0), BigRat(0), BigRat(1)};
-  // We want frame_x = Normalize(Cross(up_z, frame_z)).
-  // cross(a, b) is a2b3 - a3b2,  a3b1 - a1b3,  a1b2 - a2b1
-  // cross(up_z, b) is 0*b3 - 1*b2,  1*b1 - 0*b3,  0*b2 - 0*b1
-  //                so -b.y, b.x, 0
-  // So we have c = (-frame_z.y, frame_z.x, 0).
-  // |c| is sqrt(frame_z.y² + frame_z.x²).
-  // But since frame_z is unit length, we have
-  //   1 = frame_z.x² + frame_z.y² + frame_z.z²
-  // And so |c| = sqrt(1 - frame_z.z²).
-  // (The purpose of rearranging this is to avoid dependency
-  // problems between the vector components.)
-
-  Bigival len = Bigival::Sqrt(Bigival(1) - frame_z.z.Squared(), inv_epsilon);
-  if (SELF_CHECK) {
-    CHECK(!len.ContainsOrApproachesZero()) << len.ToString();
-  }
-  Vec3ival frame_x = Vec3ival(-frame_z.y / len, frame_z.x / len, Bigival(0));
-  // Since frame_z and frame_x are orthogonal unit vectors, their
-  // cross product is a unit vector.
-  Vec3ival frame_y = Cross(frame_z, frame_x);
-
-  // Following patches.cc, the convention was opposite of what
-  // ViewPosFromNonUnitQuat did, so invert this frame. Since
-  // the origin is zero, the inverse is just the transpose.
-  Vec3ival xt = Vec3ival(std::move(frame_x.x),
-                         std::move(frame_y.x), frame_z.x);
-  Vec3ival yt = Vec3ival(std::move(frame_x.y),
-                         std::move(frame_y.y), frame_z.y);
-  Vec3ival zt = Vec3ival(std::move(frame_x.z),
-                         std::move(frame_y.z), frame_z.z);
-
-  return Frame3ival{
-    .x = std::move(xt),
-    .y = std::move(yt),
-    .z = std::move(zt),
-    .o = Vec3ival{Bigival(0), Bigival(0), Bigival(0)},
-  };
-}
-
 // Like TransformPointTo2D(
 //    FrameFromViewPos(ViewFromSpherical(azimuth, angle)), v)
 // but producing a tighter AABB.
@@ -1209,77 +890,6 @@ static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
 
   return Vec2ival(v.x * cos_a - v.y * sin_a,
                   v.x * sin_a + v.y * cos_a);
-}
-
-// Returns true if the disc and axis-aligned bounding box may overlap.
-// This is guaranteed to be true if they do overlap. It can have false
-// positives if the intervals are wide.
-[[maybe_unused]]
-static bool MightOverlap(const Discival &disc, const Vec2ival &aabb) {
-  // We check for overlap by finding the minimum possible squared distance
-  // between the disc's center and any point in the AABB. If this distance
-  // is less than or equal to the disc's squared radius, they overlap.
-
-  // The closest point in the AABB to the disc's center can be found
-  // by considering each axis independently.
-  Bigival dx = aabb.x - disc.center.x;
-  Bigival dy = aabb.y - disc.center.y;
-
-  // Find the minimum squared distance along each axis. If the interval
-  // of differences [aabb.x.LB() - center.x, aabb.x.UB() - center.x]
-  // contains zero, it means the center's coordinate is within the AABB's
-  // range for that axis, so the minimum distance contribution is zero.
-  // Otherwise, the minimum distance is to one of the endpoints.
-  BigRat min_dx_sq = dx.ContainsZero() ?
-    BigRat(0) :
-    BigRat::Min(dx.LB() * dx.LB(), dx.UB() * dx.UB());
-
-  BigRat min_dy_sq = dy.ContainsZero() ?
-    BigRat(0) :
-    BigRat::Min(dy.LB() * dy.LB(), dy.UB() * dy.UB());
-
-  // The total minimum squared distance is the sum of the components.
-  const BigRat min_dist_sq = std::move(min_dx_sq) + min_dy_sq;
-
-  return min_dist_sq <= disc.radius_sq;
-}
-
-// We commonly have a squared radius for a disc, and want to expand it
-// by some error term (i.e. another radius) to account for something
-// like trigonometric approximation. The error term is very small
-// compared to the radius.
-// We can compute (sqrt(radius^2) + error_term)^2 to get a new
-// squared radius, but this involves an expensive square root.
-//
-// Here we use a different bound, which is good when the error term
-// is very small. This is only correct when the radius is in a
-// certain range, which the function tests (and uses the Euclidean
-// approach if not). Roughly, the radius should be less than 1/2.
-// This is typical for our problems.
-static BigRat ExpandSquaredRadius(const BigRat &radius_sq,
-                                  const BigRat &error_term,
-                                  const BigInt &inv_epsilon) {
-  CHECK(BigRat::Sign(error_term) != -1) << "Precondition.";
-
-  // The simple upper bound is correct when:
-  //   r^2 + e >= (r + e)^2
-  //   r^2 + e >= r^2 + e^2 + 2re
-  //   e >= e^2 + 2re
-  // e is non-negative, so we can divide:
-  //   1 >= e + 2r
-  //   1 - e >= 2r
-  //   2r <= 1 - e
-  // and then square both sides, since we have r^2 (assumes 1-e is nonnegative)
-  //   4r^2 <= (1 - e)^2
-  BigRat ome = BigRat(1) - error_term;
-  if (BigRat::Sign(ome) != -1 && radius_sq * BigRat(4) <= ome * ome) {
-    // When the error term approaches zero, this bound is
-    // safe for a radius less than 1/2.
-    return radius_sq + error_term;
-  } else {
-    BigRat r = BigRat::SqrtBounds(radius_sq, inv_epsilon).second + error_term;
-    return r * r;
-  }
 }
 
 // Experimental; incomplete.
@@ -1985,7 +1595,7 @@ struct Hypersolver {
     // much smaller (or larger?).
     // It does need to at least get smaller as the intervals get
     // smaller.
-    BigInt inv_epsilon = min_width.Denominator() * 1024 * 1024;
+    BigInt inv_epsilon = min_width.Denominator() * (1024 * 1024);
 
     Timer otrig_timer;
     ViewBoundsTrig outer_trig(outer_azimuth, outer_angle, inv_epsilon);
@@ -1994,14 +1604,6 @@ struct Hypersolver {
       MutexLock ml(&mu);
       trig_time += otrig_time;
     }
-
-    /*
-    status.Print("osin: {} (w: {}) ocos: {} (w: {})\n",
-                 outer_trig.sin_cos_az[0].first.ToString(),
-                 outer_trig.sin_cos_az[0].first.Width().ToDouble(),
-                 outer_trig.sin_cos_az[0].second.ToString(),
-                 outer_trig.sin_cos_az[0].second.Width().ToDouble());
-    */
 
     // This is enough to test whether we're in the outer patch;
     // we'd like to exclude large regions ASAP (without e.g. forcing
