@@ -408,9 +408,10 @@ static void Transcendental() {
   BigInt inv_epsilon{1000000};
   BigRat epsilon{BigInt(1), inv_epsilon};
 
-  for (double x : { -2.999999997, -1.0, 0.0,
+  for (double x : { -2.999999997, -1.0, 0.0, 3.141592652, 3.141592654,
       1.1e-16, 1.0, 1.1, 1.2, 2.9, 3.0, 400.0 }) {
-    Bigival sinx = Bigival::Sin(BigRat::FromDouble(x), inv_epsilon);
+    BigRat rx = BigRat::FromDouble(x);
+    Bigival sinx = Bigival::Sin(rx, inv_epsilon);
 
     // std::sin also rounds, so the true value must be somewhere
     // in (nextafter(s, -1), nextafter(s, +1)).
@@ -428,11 +429,21 @@ static void Transcendental() {
     CHECK(Bigival::MaybeIntersection(sinx, actual).has_value()) << x;
     // Moreover, the interval must be small enough.
     CHECK(sinx.Width() <= epsilon);
+
+    // Also NiceSin.
+    Bigival nicesinx = Bigival::NiceSin(rx, inv_epsilon);
+    CHECK(Bigival::MaybeIntersection(nicesinx, actual).has_value()) << x;
+    // TODO: Sometimes we are not as tight as expected.
+    CHECK(nicesinx.Width() <= epsilon * 2) <<
+      "On: " << x << "\n"
+      "Width: " << nicesinx.Width().ToString() << " which is about " <<
+      nicesinx.Width().ToDouble();
   }
 
-  for (double x : { -2.999999997, -1.0, 0.0,
+  for (double x : { -2.999999997, -1.0, 0.0, 3.1415926452, 3.141592654,
       1.1e-16, 1.0, 1.1, 1.2, 2.9, 3.0, 400.0 }) {
-    Bigival cosx = Bigival::Cos(BigRat::FromDouble(x), inv_epsilon);
+    BigRat rx = BigRat::FromDouble(x);
+    Bigival cosx = Bigival::Cos(rx, inv_epsilon);
     double c = std::cos(x);
     Bigival actual = Bigival(BigRat::FromDouble(std::nextafter(c, -2)),
                              BigRat::FromDouble(std::nextafter(c, +2)),
@@ -447,6 +458,15 @@ static void Transcendental() {
 
     CHECK(Bigival::MaybeIntersection(cosx, actual).has_value()) << x;
     CHECK(cosx.Width() <= epsilon);
+
+    // Also NiceCos.
+    Bigival nicecosx = Bigival::NiceCos(rx, inv_epsilon);
+    CHECK(Bigival::MaybeIntersection(nicecosx, actual).has_value()) << x;
+    // TODO: Sometimes we are not as tight as expected.
+    CHECK(nicecosx.Width() <= epsilon * 2) <<
+      "On: " << x << "\n"
+      "Width: " << nicecosx.Width().ToString() << " which is about " <<
+      nicecosx.Width().ToDouble();
   }
 
   // Sin of intervals.
@@ -477,7 +497,6 @@ static void Transcendental() {
   }
 
   {
-    printf("----------------------------------\n");
     // Very small interval after (and not including) 26.5π, which is a peak.
     Bigival a = Bigival(BigRat::FromDouble(26.5 * std::numbers::pi + 1.0e-6),
                         BigRat::FromDouble(26.5 * std::numbers::pi + 2.0e-6),
@@ -536,7 +555,6 @@ static void Transcendental() {
   }
 
   {
-    printf("----------------------------------\n");
     // Very small interval after (and not including) 26π, which is a peak.
     Bigival a = Bigival(BigRat::FromDouble(26 * std::numbers::pi + 1.0e-6),
                         BigRat::FromDouble(26 * std::numbers::pi + 2.0e-6),
@@ -745,6 +763,7 @@ static void CoarseSqrt() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+  printf("\n");
 
   Simple();
   Special();

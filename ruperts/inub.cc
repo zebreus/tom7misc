@@ -698,11 +698,11 @@ struct ViewBoundsTrig {
     // Since we use these a lot of times, we spend extra time up front
     // to compute higher quality bounds (simpler rationals). We can
     // still stay approximately within the inv_epsilon target.
-    sin_az = NiceSin(azimuth, inv_epsilon);
-    cos_az = NiceCos(azimuth, inv_epsilon);
+    sin_az = azimuth.NiceSin(inv_epsilon);
+    cos_az = azimuth.NiceCos(inv_epsilon);
 
-    sin_an = NiceSin(angle, inv_epsilon);
-    cos_an = NiceCos(angle, inv_epsilon);
+    sin_an = angle.NiceSin(inv_epsilon);
+    cos_an = angle.NiceCos(inv_epsilon);
 
     // We use these for the calculation of the patch's bounding ball.
     mid_azimuth = azimuth.Midpoint();
@@ -747,7 +747,7 @@ struct RotTrig {
 
   Bigival PrecomputeCosI(const Bigival &a, const BigInt &inv_epsilon) {
     if constexpr (USE_NICE) {
-      return NiceCos(a, inv_epsilon);
+      return a.NiceCos(inv_epsilon);
     } else {
       return a.Cos(inv_epsilon);
     }
@@ -755,7 +755,7 @@ struct RotTrig {
 
   Bigival PrecomputeSinI(const Bigival &a, const BigInt &inv_epsilon) {
     if constexpr (USE_NICE) {
-      return NiceSin(a, inv_epsilon);
+      return a.NiceSin(inv_epsilon);
     } else {
       return a.Sin(inv_epsilon);
     }
@@ -764,7 +764,7 @@ struct RotTrig {
 
   Bigival PrecomputeCos(const BigRat &a, const BigInt &inv_epsilon) {
     if constexpr (USE_NICE) {
-      return NiceCos(a, inv_epsilon);
+      return Bigival::NiceCos(a, inv_epsilon);
     } else {
       return Bigival::Cos(a, inv_epsilon);
     }
@@ -772,7 +772,7 @@ struct RotTrig {
 
   Bigival PrecomputeSin(const BigRat &a, const BigInt &inv_epsilon) {
     if constexpr (USE_NICE) {
-      return NiceSin(a, inv_epsilon);
+      return Bigival::NiceSin(a, inv_epsilon);
     } else {
       return Bigival::Sin(a, inv_epsilon);
     }
@@ -1282,6 +1282,8 @@ static BigRat ExpandSquaredRadius(const BigRat &radius_sq,
   }
 }
 
+// Experimental; incomplete.
+//
 // Computes a bounding disc for an original exact 3D point (v), when
 // viewed from anywhere in view position (trig; given by the
 // azimuth/angle intervals) and projected to 2D along the z-axis.
@@ -1289,6 +1291,7 @@ static BigRat ExpandSquaredRadius(const BigRat &radius_sq,
 // This uses the precomputed squared smear radius, which does not
 // depend on the vertex. It's the squared radius of a ball centered
 // on the unit sphere that encloses the entire azimuth/angle patch.
+[[maybe_unused]]
 static Discival GetInitialDisc(const BigVec3 &v,
                                const ViewBoundsTrig &trig,
                                const BigRat &smear_radius_sq,
@@ -1732,6 +1735,8 @@ static Discival TranslateDisc(
   #endif
 }
 
+// Experimental; incomplete.
+//
 // Consider an abstract point on the unit sphere. When we rotate that
 // sphere to view it from the view position (which is some unit vector
 // in the angle/azimuth patch), the point can move within some radius.
@@ -1742,6 +1747,7 @@ static Discival TranslateDisc(
 //
 // This is based on the patch bounding ball for the view position. This
 // ball contains every vector in the angle/azimuth patch, but
+[[maybe_unused]]
 static BigRat SmearRadiusSq(const Ballival &patch_ball,
                             const BigInt &inv_epsilon) {
   // We can almost just use patch_ball.radius_sq, but its center is not
@@ -2954,7 +2960,7 @@ struct Hypersolver {
 
         std::string splitcount;
         for (int d = 0; d < NUM_DIMENSIONS; d++) {
-          AppendFormat(&splitcount, "{} ", times_split[d]);
+          AppendFormat(&splitcount, "{} ", FormatNum(times_split[d]));
         }
 
         double run_time = run_timer.Seconds();
@@ -3080,9 +3086,9 @@ struct Hypersolver {
             rr,
             self_check_warning,
             full_volume_d, in_volume_d, volume_outscope, ppm,
-            counter_processed.Read(),
-            counter_completed.Read(),
-            counter_split.Read(),
+            FormatNum(counter_processed.Read()),
+            FormatNum(counter_completed.Read()),
+            FormatNum(counter_split.Read()),
             node_queue.size(),
             ANSI::Time(time_each),
             ColorPct(trig_time / process_time),
@@ -3093,9 +3099,9 @@ struct Hypersolver {
             ColorPct(disc_rot_time / process_time),
             ColorPct(disc_outside_time / process_time),
             ColorPct(loop_time / process_time),
-            counter_bad_midpoint.Read(),
-            counter_degenerate_disc.Read(),
-            counter_inside.Read(),
+            FormatNum(counter_bad_midpoint.Read()),
+            FormatNum(counter_degenerate_disc.Read()),
+            FormatNum(counter_inside.Read()),
             eff_str, dd_str,
             progress);
       });
@@ -3420,8 +3426,9 @@ struct Hypersolver {
     status.Print("Success " AGREEN(":)") "\n");
   }
 
-  Hypersolver() : scube(BigScube(SCUBE_DIGITS)),
-                  boundaries(scube) {
+  Hypersolver(int outer_idx, int inner_idx) :
+    scube(BigScube(SCUBE_DIGITS)),
+    boundaries(scube) {
     patch_info = LoadPatchInfo("scube-patchinfo.txt");
 
     ArcFour rc("hyper-init");
@@ -3456,8 +3463,8 @@ struct Hypersolver {
               });
     CHECK(canonical.size() >= 2);
 
-    const PatchInfo::CanonicalPatch &outer = canonical[1].second;
-    const PatchInfo::CanonicalPatch &inner = canonical[0].second;
+    const PatchInfo::CanonicalPatch &outer = canonical[outer_idx].second;
+    const PatchInfo::CanonicalPatch &inner = canonical[inner_idx].second;
 
     small_scube = SmallPoly(scube);
 
@@ -3635,10 +3642,23 @@ struct Hypersolver {
   double volume_proved = 0.0;
 };
 
+static std::string Usage() {
+  return "./inub.exe outer_idx inner_idx\n"
+    "Each idx is a canonical patch index (when ordered by code).\n";
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  Hypersolver solver;
+  CHECK(argc == 3) << Usage();
+
+  std::optional<int> outer_idx = Util::ParseInt64Opt(argv[1]);
+  std::optional<int> inner_idx = Util::ParseInt64Opt(argv[2]);
+
+  CHECK(outer_idx.has_value() &&
+        inner_idx.has_value()) << Usage();
+
+  Hypersolver solver(outer_idx.value(), inner_idx.value());
   solver.Run();
 
   return 0;
