@@ -43,7 +43,7 @@
 #include "yocto_matht.h"
 
 // TODO:
-//  - serialize bias
+//  - try initial_disc method again
 //  - air gapped work queue
 //  - stats for rational size
 //  - more timing stats
@@ -55,9 +55,12 @@ DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
                  counter_bad_midpoint, counter_inside,
                  counter_degenerate_disc);
 
-static constexpr bool SELF_CHECK = false; // true;
+static constexpr bool SELF_CHECK = false;
 
+// Don't change this!
 static constexpr int SCUBE_DIGITS = 24;
+
+static constexpr int NUM_WORK_THREADS = 14;
 
 using vec2 = yocto::vec<double, 2>;
 
@@ -699,6 +702,16 @@ struct ViewBoundsTrig {
 
     sin_an = NiceSin(angle, inv_epsilon);
     cos_an = NiceCos(angle, inv_epsilon);
+
+    // We use these for the calculation of the patch's bounding ball.
+    mid_azimuth = azimuth.Midpoint();
+    mid_angle = angle.Midpoint();
+
+    // Consider NiceSin/NiceCos here. But we just use this once.
+    mid_sin_az = Bigival::Sin(mid_azimuth, inv_epsilon);
+    mid_cos_az = Bigival::Cos(mid_azimuth, inv_epsilon);
+    mid_sin_an = Bigival::Sin(mid_angle, inv_epsilon);
+    mid_cos_an = Bigival::Cos(mid_angle, inv_epsilon);
   }
 
   Bigival azimuth;
@@ -708,6 +721,15 @@ struct ViewBoundsTrig {
 
   Bigival sin_az, cos_az;
   Bigival sin_an, cos_an;
+
+  // Middle of the interval.
+  BigRat mid_azimuth;
+  BigRat mid_angle;
+
+  Bigival mid_sin_az = Bigival::Sin(mid_azimuth, inv_epsilon);
+  Bigival mid_cos_az = Bigival::Cos(mid_azimuth, inv_epsilon);
+  Bigival mid_sin_an = Bigival::Sin(mid_angle, inv_epsilon);
+  Bigival mid_cos_an = Bigival::Cos(mid_angle, inv_epsilon);
 };
 
 struct SinCos {
@@ -720,25 +742,39 @@ struct SinCos {
 // is the Sin and Cos of the angle's midpoint and endpoints.
 struct RotTrig {
 
+  static constexpr bool USE_NICE = true;
+
   Bigival PrecomputeCosI(const Bigival &a, const BigInt &inv_epsilon) {
-    // return NiceCos(a, inv_epsilon);
-    return a.Cos(inv_epsilon);
+    if constexpr (USE_NICE) {
+      return NiceCos(a, inv_epsilon);
+    } else {
+      return a.Cos(inv_epsilon);
+    }
   }
 
   Bigival PrecomputeSinI(const Bigival &a, const BigInt &inv_epsilon) {
-    // return NiceSin(a, inv_epsilon);
-    return a.Sin(inv_epsilon);
+    if constexpr (USE_NICE) {
+      return NiceSin(a, inv_epsilon);
+    } else {
+      return a.Sin(inv_epsilon);
+    }
   }
 
 
   Bigival PrecomputeCos(const BigRat &a, const BigInt &inv_epsilon) {
-    // return NiceCos(a, inv_epsilon);
-    return Bigival::Cos(a, inv_epsilon);
+    if constexpr (USE_NICE) {
+      return NiceCos(a, inv_epsilon);
+    } else {
+      return Bigival::Cos(a, inv_epsilon);
+    }
   }
 
   Bigival PrecomputeSin(const BigRat &a, const BigInt &inv_epsilon) {
-    // return NiceSin(a, inv_epsilon);
-    return Bigival::Sin(a, inv_epsilon);
+    if constexpr (USE_NICE) {
+      return NiceSin(a, inv_epsilon);
+    } else {
+      return Bigival::Sin(a, inv_epsilon);
+    }
   }
 
   RotTrig(Bigival angle_in,
@@ -794,15 +830,6 @@ static Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
                     BigRat(1));
   }
 
-  // Compute a good center.
-  BigRat mid_azimuth = trig.azimuth.Midpoint();
-  BigRat mid_angle = trig.angle.Midpoint();
-
-  Bigival mid_sinz = Bigival::Sin(mid_azimuth, inv_epsilon);
-  Bigival mid_cosz = Bigival::Cos(mid_azimuth, inv_epsilon);
-  Bigival mid_sina = Bigival::Sin(mid_angle, inv_epsilon);
-  Bigival mid_cosa = Bigival::Cos(mid_angle, inv_epsilon);
-
   // We have an approximate center (AABB) because of the
   // transcendental functions. We have our choice of center
   // for the bounding ball that we create, though! So
@@ -817,15 +844,16 @@ static Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
   // sphere (which this will be) but there's a proof obligation
   // to revisit here.
   BigVec3 center = BigVec3(
-      (mid_sina * mid_cosz).Midpoint(),
-      (mid_sina * mid_sinz).Midpoint(),
-      mid_cosa.Midpoint());
+      (trig.mid_sin_an * trig.mid_cos_az).Midpoint(),
+      (trig.mid_sin_an * trig.mid_sin_az).Midpoint(),
+      trig.mid_cos_an.Midpoint());
 
   // Find a squared radius that will include all the corners.
   BigRat max_sqdist(0);
 
   // Compute corners for the patch. These are tight bounds
   // on the sine and cosine of each corner, ordered as lb, ub.
+  // TODO: Use SinCos here.
   std::array<std::pair<Bigival, Bigival>, 2> sin_cos_az;
   std::array<std::pair<Bigival, Bigival>, 2> sin_cos_an;
 
@@ -891,6 +919,8 @@ struct Discival {
     CHECK(BigRat::Sign(radius.value()) != -1);
   }
 
+  Discival() : center(BigRat(0), BigRat(0)), radius_sq(1) {}
+
   Discival(const Vec2ival &v) : center(v.x.Midpoint(),
                                        v.y.Midpoint()) {
     // All corners are the same distance from the exact
@@ -902,18 +932,6 @@ struct Discival {
     if (SELF_CHECK) {
       CHECK(v.Contains(center));
     }
-
-    /*
-    status.Print("Input AABB: {:.5f},{:.5f} to {:.5f},{:.5f}. "
-                 "Output disc: {} rad: {}",
-                 v.x.LB().ToDouble(),
-                 v.y.LB().ToDouble(),
-                 v.x.UB().ToDouble(),
-                 v.y.UB().ToDouble(),
-                 ToString(),
-                 std::sqrt(radius_sq.ToDouble())
-                 );
-    */
   }
 
   // Upper bound on the radius. Prefer this one, as it computes
@@ -1192,6 +1210,237 @@ static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
                   v.x * sin_a + v.y * cos_a);
 }
 
+// Returns true if the disc and axis-aligned bounding box may overlap.
+// This is guaranteed to be true if they do overlap. It can have false
+// positives if the intervals are wide.
+[[maybe_unused]]
+static bool MightOverlap(const Discival &disc, const Vec2ival &aabb) {
+  // We check for overlap by finding the minimum possible squared distance
+  // between the disc's center and any point in the AABB. If this distance
+  // is less than or equal to the disc's squared radius, they overlap.
+
+  // The closest point in the AABB to the disc's center can be found
+  // by considering each axis independently.
+  Bigival dx = aabb.x - disc.center.x;
+  Bigival dy = aabb.y - disc.center.y;
+
+  // Find the minimum squared distance along each axis. If the interval
+  // of differences [aabb.x.LB() - center.x, aabb.x.UB() - center.x]
+  // contains zero, it means the center's coordinate is within the AABB's
+  // range for that axis, so the minimum distance contribution is zero.
+  // Otherwise, the minimum distance is to one of the endpoints.
+  BigRat min_dx_sq = dx.ContainsZero() ?
+    BigRat(0) :
+    BigRat::Min(dx.LB() * dx.LB(), dx.UB() * dx.UB());
+
+  BigRat min_dy_sq = dy.ContainsZero() ?
+    BigRat(0) :
+    BigRat::Min(dy.LB() * dy.LB(), dy.UB() * dy.UB());
+
+  // The total minimum squared distance is the sum of the components.
+  const BigRat min_dist_sq = std::move(min_dx_sq) + min_dy_sq;
+
+  return min_dist_sq <= disc.radius_sq;
+}
+
+// We commonly have a squared radius for a disc, and want to expand it
+// by some error term (i.e. another radius) to account for something
+// like trigonometric approximation. The error term is very small
+// compared to the radius.
+// We can compute (sqrt(radius^2) + error_term)^2 to get a new
+// squared radius, but this involves an expensive square root.
+//
+// Here we use a different bound, which is good when the error term
+// is very small. This is only correct when the radius is in a
+// certain range, which the function tests (and uses the Euclidean
+// approach if not). Roughly, the radius should be less than 1/2.
+// This is typical for our problems.
+static BigRat ExpandSquaredRadius(const BigRat &radius_sq,
+                                  const BigRat &error_term,
+                                  const BigInt &inv_epsilon) {
+  CHECK(BigRat::Sign(error_term) != -1) << "Precondition.";
+
+  // The simple upper bound is correct when:
+  //   r^2 + e >= (r + e)^2
+  //   r^2 + e >= r^2 + e^2 + 2re
+  //   e >= e^2 + 2re
+  // e is non-negative, so we can divide:
+  //   1 >= e + 2r
+  //   1 - e >= 2r
+  //   2r <= 1 - e
+  // and then square both sides, since we have r^2 (assumes 1-e is nonnegative)
+  //   4r^2 <= (1 - e)^2
+  BigRat ome = BigRat(1) - error_term;
+  if (BigRat::Sign(ome) != -1 && radius_sq * BigRat(4) <= ome * ome) {
+    // When the error term approaches zero, this bound is
+    // safe for a radius less than 1/2.
+    return radius_sq + error_term;
+  } else {
+    BigRat r = BigRat::SqrtBounds(radius_sq, inv_epsilon).second + error_term;
+    return r * r;
+  }
+}
+
+// Computes a bounding disc for an original exact 3D point (v), when
+// viewed from anywhere in view position (trig; given by the
+// azimuth/angle intervals) and projected to 2D along the z-axis.
+//
+// This uses the precomputed squared smear radius, which does not
+// depend on the vertex. It's the squared radius of a ball centered
+// on the unit sphere that encloses the entire azimuth/angle patch.
+static Discival GetInitialDisc(const BigVec3 &v,
+                               const ViewBoundsTrig &trig,
+                               const BigRat &smear_radius_sq,
+                               const BigInt &inv_epsilon) {
+  // The center will be the center of the az/an patch, which we already
+  // computed in trig.
+  //
+  // The radius of the disc is the sum of two components (by triangle inequality):
+  //  1. The radius of the AABB for the center (center uncertainty).
+  //  2. The smear radius from the patch, scaled by the vertex's magnitude.
+
+  // AABB for the projection of the vertex from the central view direction.
+  const Vec2ival center_aabb(
+      trig.mid_sin_az * -v.x + trig.mid_cos_az * v.y,
+      -trig.mid_cos_an * (trig.mid_cos_az * v.x + trig.mid_sin_az * v.y) +
+      trig.mid_sin_an * v.z);
+
+  // Choose a center that is close to the center of the patch.
+  BigVec2 chosen_center(center_aabb.x.Midpoint(),
+                        center_aabb.y.Midpoint());
+
+  status.Print("Center: {}", VecString(chosen_center));
+
+
+  // Now the radius is approximately the smear_radius, but we need to
+  // account for the error from the trigonometric approximations (we have
+  // not computed the exact center).
+
+  // Radius component from patch smear. We scale the smear radius by the
+  // vector's distance from the origin.
+  //
+  // PERF: This squaring is not expensive, but we could precompute it
+  // since it only depends on the original vector.
+  const BigRat v_length_sq = dot(v, v);
+  // PERF: Might be better to do two smaller square roots, then multiply?
+  // We also can precompute the unsquared smear radius.
+  const BigRat smear_radius_scaled_sq = v_length_sq * smear_radius_sq;
+
+  enum class Method {
+    EUCLIDEAN,
+    MANHATTAN,
+    OPTIMISTIC,
+  };
+
+  static constexpr Method method = Method::OPTIMISTIC;
+
+  Discival disc;
+
+  if constexpr (method == Method::EUCLIDEAN) {
+    // Straightforward Euclidean calculation with triangle inequality.
+    // This is way too slow because of the square roots.
+
+    // Radius component from center uncertainty. Should be tiny.
+    const BigRat half_w = center_aabb.x.Width() / 2;
+    const BigRat half_h = center_aabb.y.Width() / 2;
+    // status.Print("half_w: {} half_h: {}\n", half_w.ToDouble(), half_h.ToDouble());
+    const BigRat center_uncertainty_r_sq = half_w * half_w + half_h * half_h;
+    // status.Print("center_uncertainty_r^2 digits: {}",
+    // center_uncertainty_r_sq.Denominator().ToString().size());
+    const BigRat center_uncertainty_r =
+      BigRat::SqrtBounds(center_uncertainty_r_sq, inv_epsilon).second;
+
+    const BigRat smear_scaled_r =
+      BigRat::SqrtBounds(smear_radius_scaled_sq, inv_epsilon).second;
+
+    BigRat radius = center_uncertainty_r + smear_scaled_r;
+    BigRat radius_sq = radius * radius;
+
+    disc = Discival(std::move(chosen_center),
+                    std::move(radius_sq),
+                    std::move(radius));
+
+  } else if constexpr (method == Method::MANHATTAN) {
+
+    // Best would be Sqrt(half_w^2 + half_h^2), but these intervals are tiny
+    // so the sqrt is extremely expensive (denominator has like 280 digits).
+    // Manhattan distance to the corner is also an upper bound, and numerically
+    // much simpler.
+    BigRat center_uncertainty_r =
+      (center_aabb.x.Width() + center_aabb.y.Width()) / 2;
+
+    // status.Print("center_uncertainty_r: {}", center_uncertainty_r.ToString());
+
+    const BigRat smear_scaled_r =
+      BigRat::SqrtBounds(smear_radius_scaled_sq, inv_epsilon).second;
+
+    // Total radius is sum of the two radii.
+    // TODO: Compare (c + r)^2 decomposition.
+    BigRat radius = center_uncertainty_r + smear_scaled_r;
+    BigRat radius_sq = radius * radius;
+
+    disc = Discival(std::move(chosen_center),
+                    std::move(radius_sq),
+                    std::move(radius));
+  } else {
+    CHECK(method == Method::OPTIMISTIC);
+
+    // Here we have a small error term coming from the trig.
+    // We use the Manhattan distance to a corner.
+    BigRat center_uncertainty_r =
+      (center_aabb.x.Width() + center_aabb.y.Width()) / 2;
+
+    BigRat radius_sq =
+      ExpandSquaredRadius(smear_radius_scaled_sq,
+                          center_uncertainty_r,
+                          inv_epsilon);
+    status.Print("optimistic radius: {} ({} digits)",
+                 radius_sq.ToDouble(),
+                 radius_sq.Denominator().ToString().size());
+
+    disc = Discival(std::move(chosen_center),
+                    std::move(radius_sq));
+  }
+
+
+  if (SELF_CHECK) {
+    // Each of the four corners of the az/an intervals is a valid pair of
+    // parameters, so produce the location of the projected vertex for those
+    // parameters. The result is a small AABB (due to sin/cos inaccuracy).
+    // This AABB must overlap the disc we computed, since the disc is
+    // supposed to contain all points.
+    for (int i = 0; i < 4; i++) {
+      const BigRat &az =
+        (i & 0b01) ? trig.azimuth.LB() : trig.azimuth.UB();
+      const BigRat &an =
+        (i & 0b10) ? trig.angle.LB() : trig.angle.UB();
+
+      Bigival sin_az = Bigival::Sin(az, inv_epsilon);
+      Bigival cos_az = Bigival::Cos(az, inv_epsilon);
+      Bigival sin_an = Bigival::Sin(an, inv_epsilon);
+      Bigival cos_an = Bigival::Cos(an, inv_epsilon);
+
+      // AABB for the projection of the vertex from this corner view.
+      const Vec2ival corner_aabb(
+          cos_az * v.y - sin_az * v.x,
+          -cos_an * (cos_az * v.x + sin_az * v.y) + sin_an * v.z);
+
+      CHECK(MightOverlap(disc, corner_aabb)) <<
+        "Corner " << i << " does not overlap the disc!\n"
+        "Input:\n"
+        "  v: " << VecString(v) << "\n"
+        "  azimuth: " << trig.azimuth.ToString() << "\n"
+        "  angle: " << trig.angle.ToString() << "\n"
+        "  smear_radius_sq ≅ " << smear_radius_sq.ToDouble() << "\n"
+        "Got:\n"
+        "  disc: " << disc.ToString() << "\n"
+        "  corner aabb: " << corner_aabb.ToString();
+    }
+  }
+
+  return disc;
+}
+
 // Rotates a disc by an angle interval, producing a new, larger disc that
 // bounds the entire swept shape. There are many choices of bounding disc;
 // this code uses one that is biased away from the origin, because in the
@@ -1266,7 +1515,8 @@ static Discival RotateDiscInnerBias(
   // The AABBs for the disc's center rotated to the angle's endpoints.
   // PERF: These should be very tight intervals, but we could probably
   // do better here with a routine that computes a disc for a rotated
-  // point.
+  // point. It'd also make TryCorners test cheaper, since there is
+  // just one radius.
   auto RotatePt = [&](const SinCos &endpoint, const BigVec2 &p) {
       return Vec2ival(p.x * endpoint.cosine - p.y * endpoint.sine,
                       p.x * endpoint.sine + p.y * endpoint.cosine);
@@ -1304,17 +1554,51 @@ static Discival RotateDiscInnerBias(
   TryCorners(center_lb);
   TryCorners(center_ub);
 
-  BigRat center_r = BigRat::SqrtBounds(max_arc_dist_sq, inv_epsilon).second;
-  // The radius is bounded by the sum of the distance to the arc and the
-  // distance from the arc to the arc's circumference (input disc's radius),
-  // because of the triangle inequality.
-  BigRat bounding_radius = center_r + in_r;
+  // Use the triangle inequality to compute a good radius for the
+  // disc. We use the sum of the radius from the center to the
+  // most distant corner (c) plus the input disc's radius (r).
+  // We need a squared radius, which is
+  //   (c + r)^2 = c^2 + r^2 + 2cr
+  // We already have c^2 and r^2, and cr = sqrt(cr * cr) = sqrt(c^2 * r^2).
 
-  BigRat radius_sq = bounding_radius * bounding_radius;
+  // We have a few different ways to compute an upper bound here.
+  enum class Method {
+    EUCLIDEAN,
+    EXPANDED,
+    EXPANDED_ALT,
+  };
 
-  return Discival(std::move(bounding_center),
-                  std::move(radius_sq),
-                  std::move(bounding_radius));
+  constexpr Method method = Method::EXPANDED_ALT;
+
+  if constexpr (method == Method::EUCLIDEAN) {
+    // Simple, but with several square roots.
+    BigRat center_r = BigRat::SqrtBounds(max_arc_dist_sq, inv_epsilon).second;
+    // The radius is bounded by the sum of the distance to the arc and the
+    // distance from the arc to the arc's circumference (input disc's radius),
+    // because of the triangle inequality.
+    BigRat bounding_radius = center_r + in_r;
+
+    BigRat radius_sq = bounding_radius * bounding_radius;
+
+    return Discival(std::move(bounding_center),
+                    std::move(radius_sq),
+                    std::move(bounding_radius));
+
+  } else if constexpr (method == Method::EXPANDED) {
+    // This turns out to be bad, because Sqrt(c^2 * r^2) is expensive.
+    BigRat radius_sq = max_arc_dist_sq + disc->radius_sq +
+      BigRat::SqrtBounds(max_arc_dist_sq * disc->radius_sq,
+                         inv_epsilon).second * 2;
+    return Discival(std::move(bounding_center), std::move(radius_sq));
+
+  } else {
+    CHECK(method == Method::EXPANDED_ALT);
+    // Better to take the square root of just the max_arc_dist_sq.
+    BigRat radius_sq =
+      max_arc_dist_sq + disc->radius_sq +
+      BigRat::SqrtBounds(max_arc_dist_sq, inv_epsilon).second * in_r * 2;
+    return Discival(std::move(bounding_center), std::move(radius_sq));
+  }
 }
 
 // Check if a disc is guaranteed to be strictly on the "outside" of an
@@ -1412,14 +1696,20 @@ static Discival TranslateDisc(
 
   // Now compute a radius that's sufficient to contain the entire
   // roundrect. Using the triangle inequality, the max distance to a
-  // corner plus the original radius is an upper bound. All the
-  // corners are the same distance from the center:
-  BigRat half_w = tx.Width() / 2;
-  BigRat half_h = ty.Width() / 2;
-  BigRat corner_dist =
-    BigRat::SqrtBounds(half_w * half_w + half_h * half_h, inv_epsilon).second;
+  // corner plus the original radius is an upper bound.
 
   const BigRat &original_radius = disc->Radius(inv_epsilon);
+
+  // All the corners are the same distance from the center:
+  BigRat half_w = tx.Width() / 2;
+  BigRat half_h = ty.Width() / 2;
+
+  // We can just sum the square roots of the squared radii and then
+  // square that, or (c + r)^2 = c^2 + r^2 + 2cr.
+  // The latter seems to produce much larger denominators.
+  #if 1
+  BigRat corner_dist =
+    BigRat::SqrtBounds(half_w * half_w + half_h * half_h, inv_epsilon).second;
 
   // And the original radius.
   BigRat bound_radius = corner_dist + original_radius;
@@ -1429,6 +1719,68 @@ static Discival TranslateDisc(
   return Discival(std::move(bound_center),
                   std::move(radius_sq),
                   std::move(bound_radius));
+  #else
+
+  BigRat corner_dist_sq = half_w * half_w + half_h * half_h;
+  BigRat radius_sq = corner_dist_sq + disc->radius_sq +
+    BigRat::SqrtBounds(corner_dist_sq, inv_epsilon).second *
+    original_radius * 2;
+  return Discival(std::move(bound_center),
+                  std::move(radius_sq));
+
+  #endif
+}
+
+// Consider an abstract point on the unit sphere. When we rotate that
+// sphere to view it from the view position (which is some unit vector
+// in the angle/azimuth patch), the point can move within some radius.
+// Compute an upper bound on this radius (squared). This radius is
+// the same for any vertex (on the unit sphere) and is invariant under
+// rotation and orthographic projection, which is what we do in the
+// main loop.
+//
+// This is based on the patch bounding ball for the view position. This
+// ball contains every vector in the angle/azimuth patch, but
+static BigRat SmearRadiusSq(const Ballival &patch_ball,
+                            const BigInt &inv_epsilon) {
+  // We can almost just use patch_ball.radius_sq, but its center is not
+  // actually on the unit sphere because of trig inaccuracy. Consider the
+  // point u that is the normalized patch_ball.center. Using the triangle
+  // inequality, we know that the radius of a ball centered at u would
+  // be no more than the distance from the center to u, and the radius
+  // of the patch ball.
+
+  // The center will be very close to u. We know that they are parallel
+  // and u has length 1, so the distance is easy to compute as the
+  // difference in their lengths.
+
+  // s is the squared length of the center vector. The squared length
+  // of u is 1.
+  BigRat s = dot(patch_ball.center, patch_ball.center);
+
+  // The actual error e = |sqrt(s)^2 - 1^1|
+  // (a^2 - b^2) = (a - b)(a + b)
+  // |sqrt(s)^2 - 1^1| = |(sqrt(s) - 1)(sqrt(s) + 1)|
+  // |s - 1| = (sqrt(s) - 1)(sqrt(s) + 1)      (s is positive)
+  // |(s - 1)/(sqrt(s) + 1)| = |sqrt(s) - 1|
+  // |(s - 1)|/(sqrt(s) + 1) = |sqrt(s) - 1|  (sqrt(s) is non-negative)
+
+  // So we have e = |sqrt(s) - 1| = |(s - 1)|/(sqrt(s) + 1).
+
+  // The smallest the denominator could be is if sqrt(s) = 0. Then
+  // we are just dividing by 1.
+  //
+  // So we have e <= |(s - 1)| as a reasonable bound.
+  // Since we know sqrt(s) is close to 1, the true value for e is
+  // more like |(s - 1)|/(1 + 1), which means we are off by a factor
+  // of 2. This is a small price to pay for avoiding the square
+  // root, however!
+  BigRat e = BigRat::Abs(s - BigRat(1));
+
+  status.Print("Smear: {} + {}\n",
+               patch_ball.radius_sq.ToDouble(),
+               s.ToDouble());
+  return ExpandSquaredRadius(patch_ball.radius_sq, e, inv_epsilon);
 }
 
 struct Hypersolver {
@@ -1628,17 +1980,12 @@ struct Hypersolver {
     // smaller.
     BigInt inv_epsilon = min_width.Denominator() * 1024 * 1024;
 
-    Timer trig_timer;
+    Timer otrig_timer;
     ViewBoundsTrig outer_trig(outer_azimuth, outer_angle, inv_epsilon);
-    // Note: this is computed eagerly for timing stats purposes, but
-    // we kinda assume that the trig object is only meaningful when
-    // the az/an intervals are small (not hemisphere). So for maximum
-    // cleanliness, we should move this past the point where we have
-    // checked. We don't use it until then
-    ViewBoundsTrig inner_trig(inner_azimuth, inner_angle, inv_epsilon);
+    const double otrig_time = otrig_timer.Seconds();
     {
       MutexLock ml(&mu);
-      trig_time += trig_timer.Seconds();
+      trig_time += otrig_time;
     }
 
     /*
@@ -1653,12 +2000,10 @@ struct Hypersolver {
     // we'd like to exclude large regions ASAP (without e.g. forcing
     // splits on the inner parameters), so compute and test that
     // now.
-    Bigival osina = outer_angle.Sin(inv_epsilon);
     Vec3ival oviewpos = Vec3ival(
-        // PERF from ViewBoundsTrig
-        osina * outer_azimuth.Cos(inv_epsilon),
-        osina * outer_azimuth.Sin(inv_epsilon),
-        outer_angle.Cos(inv_epsilon));
+        outer_trig.sin_an * outer_trig.cos_az,
+        outer_trig.sin_an * outer_trig.sin_az,
+        outer_trig.cos_an);
 
     if (!MightHaveCode(outer_code, outer_mask, oviewpos)) {
       return ProcessResult{
@@ -1697,24 +2042,31 @@ struct Hypersolver {
       }
     }
 
-    // PERF get from trig
-    Bigival isina = inner_angle.Sin(inv_epsilon);
+    Timer itrig_timer;
+    ViewBoundsTrig inner_trig(inner_azimuth, inner_angle, inv_epsilon);
+    const double itrig_time = itrig_timer.Seconds();
+    {
+      MutexLock ml(&mu);
+      trig_time += itrig_time;
+    }
+
     Vec3ival iviewpos = Vec3ival(
-        isina * inner_azimuth.Cos(inv_epsilon),
-        isina * inner_azimuth.Sin(inv_epsilon),
-        inner_angle.Cos(inv_epsilon));
+        inner_trig.sin_an * inner_trig.cos_az,
+        inner_trig.sin_an * inner_trig.sin_az,
+        inner_trig.cos_an);
 
     if (!MightHaveCode(inner_code, inner_mask, iviewpos)) {
       return {Impossible(Rejection(OUTSIDE_INNER_PATCH))};
     }
 
-    {
-      Ballival iviewposball = SphericalPatchBall(inner_trig,
-                                                 inv_epsilon);
-      if (!MightHaveCodeWithBall(inner_code, inner_mask, iviewposball)) {
-        return ProcessResult{.result =
-          Impossible(Rejection(OUTSIDE_INNER_PATCH_BALL))};
-      }
+
+    // Unlike the oviewposball, we use this again to compute
+    // the smear radius.
+    Ballival iviewposball = SphericalPatchBall(inner_trig,
+                                               inv_epsilon);
+    if (!MightHaveCodeWithBall(inner_code, inner_mask, iviewposball)) {
+      return ProcessResult{.result =
+        Impossible(Rejection(OUTSIDE_INNER_PATCH_BALL))};
     }
 
     // As above: Can't contain the z axis.
@@ -1773,6 +2125,31 @@ struct Hypersolver {
     }
 
 
+    // Now we are going to enter the full loop and do point-edge tests.
+
+    // When we are working with balls or discs, many operations preserve
+    // the radius (rotation, translation, orthographic projection). One
+    // nice thing about this is that we can compute the radius of the 3D
+    // ball that arises from the azimuth/angle intervals up front; this
+    // is independent of the vertex position (just its distance from
+    // the origin, which just results in a scale).
+    //
+    // We can't just compute this from the az/an interval widths. Note
+    // that an arcsecond of azimuth (east-west direction) has a much
+    // larger effect on the bounding ball near the equator than it does
+    // near the poles.
+    //
+    // But the good news is that we already almost have a good bounding
+    // ball, which is the ballival that contains the inner patch for
+    // the view position. See the called function for more details.
+
+    // Smear radius for a point on the unit sphere, based on the azimuth
+    // and angle intervals.
+    /*
+    const BigRat smear_radius_sq =
+      SmearRadiusSq(iviewposball, inv_epsilon);
+    */
+
     // Compute the hulls. Because we're using interval arithmetic,
     // the specifics of the algebra can be quite important. First,
     // the outer hull, whose vertices we call va, vb, etc.
@@ -1780,7 +2157,7 @@ struct Hypersolver {
     // The raw rotated vertices of the hull; va.
     // We don't actually use these now. We only compute them for
     // debug data if that is enabled.
-        std::vector<Vec2ival> outer_aabb;
+    std::vector<Vec2ival> outer_aabb;
     if (get_stats) {
       outer_aabb.reserve(outer_hull.size());
       for (int vidx : outer_hull) {
@@ -1826,6 +2203,7 @@ struct Hypersolver {
     RotTrig rot_trig(inner_rot, inv_epsilon);
 
     double disc_time_here = 0.0;
+    double disc_rot_time_here = 0.0;
     double disc_outside_time_here = 0.0;
     double pt4_time_here = 0.0;
     double v_time_here = 0.0;
@@ -1857,6 +2235,8 @@ struct Hypersolver {
         GetBoundingAABB(proj_v, rot_trig, inv_epsilon, inner_x, inner_y);
       v_time_here += v_timer.Seconds();
 
+      // status.Print("proj_v: {}", proj_v.ToString());
+
       // TODO: Tune bias. We can even try more than one, or choose
       // randomly.
       //
@@ -1867,8 +2247,25 @@ struct Hypersolver {
       // parameter.
       Timer disc_timer;
       Discival disc_in(proj_v);
+      (void)disc_in.Radius(inv_epsilon);
+      // (Experimental: We are not using this yet!)
+      /*
+      Discival disc_in_new = GetInitialDisc(original_v, inner_trig,
+                                            smear_radius_sq, inv_epsilon);
+      {
+        std::string color = disc_in_new.radius_sq < disc_in.radius_sq ?
+          ANSI_GREEN : ANSI_RED;
+        status.Print("{}orig radius_sq: {}. new radius_sq: {}" ANSI_RESET,
+                     color,
+                     disc_in.radius_sq.ToDouble(),
+                     disc_in_new.radius_sq.ToDouble());
+      }
+      */
+
+      double disc_in_time = disc_timer.Seconds();
       Discival rot_disc = RotateDiscInnerBias(
           &disc_in, rot_trig, BIAS, inv_epsilon);
+      disc_rot_time_here += (disc_timer.Seconds() - disc_in_time);
       Discival disc = TranslateDisc(&rot_disc, inner_x, inner_y, inv_epsilon);
       disc_time_here += disc_timer.Seconds();
 
@@ -2006,13 +2403,22 @@ struct Hypersolver {
       res.result = Split();
     }
 
+
+    const int64_t ie_digits =
+      get_stats ? inv_epsilon.ToString().size() : 0;
+
     {
       MutexLock ml(&mu);
       loop_time += loop_timer.Seconds();
       v_time += v_time_here;
       disc_time += disc_time_here;
+      disc_rot_time += disc_rot_time_here;
       disc_outside_time += disc_outside_time_here;
       pt4_time += pt4_time_here;
+      if (ie_digits > 0) {
+        inv_epsilon_dig_total += ie_digits;
+        inv_epsilon_dig_count++;
+      }
     }
 
     return res;
@@ -2185,6 +2591,26 @@ struct Hypersolver {
     return shadows;
   }
 
+  static std::optional<double> ComputeDiscDigits(const ProcessResult &pr) {
+    int64_t numer = 0;
+    int64_t denom = 0;
+    for (const Discival &d : pr.discs) {
+      BigInt max_denom(1);
+      max_denom = BigInt::Max(std::move(max_denom), d.radius_sq.Denominator());
+      max_denom = BigInt::Max(std::move(max_denom), d.center.x.Denominator());
+      max_denom = BigInt::Max(std::move(max_denom), d.center.y.Denominator());
+
+      // In base 10.
+      numer += max_denom.ToString().size();
+      denom++;
+    }
+
+    if (denom > 0) {
+      return {numer / double(denom)};
+    } else {
+      return std::nullopt;
+    }
+  }
 
   // Get the average efficiency of intervals (this just looks at
   // the inner intervals right now) if possible. Stats must have been
@@ -2273,6 +2699,22 @@ struct Hypersolver {
     std::optional<double> efficiency =
       ComputeEfficiency(volume, pr, shadows);
 
+    std::optional<double> disc_mag =
+      ComputeDiscDigits(pr);
+
+    int highlight_edge = -1;
+    int highlight_point = -1;
+    if (const Impossible *imp = std::get_if<Impossible>(&pr.result)) {
+      if (const Pt4Data *pt4 = std::get_if<Pt4Data>(&imp->rejection.data)) {
+        highlight_edge = pt4->edge;
+        highlight_point = pt4->point;
+      } else if (const Pt5Data *pt5 =
+                 std::get_if<Pt5Data>(&imp->rejection.data)) {
+        highlight_edge = pt5->edge;
+        highlight_point = pt5->point;
+      }
+    }
+
     // Stats on patch containment.
     int num_corners = 0;
     // Random samples
@@ -2306,7 +2748,11 @@ struct Hypersolver {
           int b = (a + 1) % s.outer.size();
           const auto &[ax, ay] = scaler.Scale(s.outer[a].x, s.outer[a].y);
           const auto &[bx, by] = scaler.Scale(s.outer[b].x, s.outer[b].y);
-          img.BlendLine32(ax, ay, bx, by, 0xFF333388);
+          if (a == highlight_edge) {
+            img.BlendThickLine32(ax, ay, bx, by, 2, 0xFF6666AA);
+          } else {
+            img.BlendLine32(ax, ay, bx, by, 0xFF333388);
+          }
         }
       }
       for (const vec2 &v : s.outer) {
@@ -2331,12 +2777,15 @@ struct Hypersolver {
         }
       }
 
-      for (const vec2 &v : s.inner) {
+      for (int idx = 0; idx < s.inner.size(); idx++) {
+        const vec2 &v = s.inner[idx];
         const auto &[sx, sy] = scaler.Scale(v.x, v.y);
+        const uint32_t color =
+          (idx == highlight_point) ? 0x99FF77BB : 0x33FF3399;
         if (s.ipatch) {
-          img.BlendFilledCircleAA32(sx, sy, 2, 0x33FF3399);
+          img.BlendFilledCircleAA32(sx, sy, 2, color);
         } else {
-          img.BlendThickCircleAA32(sx, sy, 3.0, 1.0, 0x33FF3399);
+          img.BlendThickCircleAA32(sx, sy, 3.0, 1.0, color);
         }
       }
     }
@@ -2416,8 +2865,16 @@ struct Hypersolver {
       yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
       img.BlendText32(
           8, yy, 0x33CCFFFF,
-          std::format("inner AABB efficiency: " AWHITE("{:.2f}") "%",
+          std::format("inner AABB eff.: " AWHITE("{:.2f}") "%",
                       efficiency.value() * 100.0));
+    }
+
+    if (disc_mag.has_value()) {
+      yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
+      img.BlendText32(
+          8, yy, 0x33CCFFFF,
+          std::format("disc digits: " AWHITE("{:.2f}"),
+                      disc_mag.value()));
     }
 
     yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
@@ -2486,6 +2943,7 @@ struct Hypersolver {
 
   void MaybeStatus(const Volume &volume) {
     status_per.RunIf([&]() {
+
         MutexLock ml(&mu);
         std::string rr;
         for (const auto &[reason, count] : rejection_count) {
@@ -2537,6 +2995,18 @@ struct Hypersolver {
                       efficiency_count) :
           ARED("??");
 
+        std::string dd_str =
+          disc_dig_count > 0 ?
+          std::format(AWHITE("{:.1f}") AGREY("/") ACYAN("{}") " "
+                      AGREY("({})"),
+                      disc_dig_total / disc_dig_count,
+                      inv_epsilon_dig_total / inv_epsilon_dig_count,
+                      disc_dig_count) :
+          ARED("??");
+
+        std::string self_check_warning =
+          SELF_CHECK ? ABGCOLOR(180, 0, 0, AWHITE("SELF CHECK ON")) " " : "";
+
         // TODO: Add (recent?) vol/sec
         auto ColorPct = [](double d) -> std::string {
             if (std::isnan(d)) return AORANGE("?");
@@ -2569,7 +3039,7 @@ struct Hypersolver {
             // Rejection reason histo
             "{}\n"
             // Volume-based progress
-            "Full vol: {:.5f}  in vol: {:.5f}  out vol: {:.5f}\n"
+            "{}Full vol: {:.5f}  in vol: {:.5f}  out vol: {:.5f}\n"
             // Basic counts
             "{} processed, "
             "{} " AGREEN("✔") ", "
@@ -2582,16 +3052,18 @@ struct Hypersolver {
             "{} v "
             "{} pt4 "
             "{} disc "
+            "{} d(r) "
             "{} pt5 "
             "{} loop\n"
             // Quality stats
             AORANGE("⊗") "mid: {}  "
             AORANGE("⊗") "disc: {}  "
-            "In: {}   AABB efficiency: {}\n"
+            "In: {}   AABB eff.: {}  dd: {}\n"
             "{}\n", // bar
             splitcount,
             VolumeString(volume),
             rr,
+            self_check_warning,
             full_volume_d, in_volume_d, volume_outscope,
             counter_processed.Read(),
             counter_completed.Read(),
@@ -2603,12 +3075,13 @@ struct Hypersolver {
             ColorPct(v_time / process_time),
             ColorPct(pt4_time / process_time),
             ColorPct(disc_time / process_time),
+            ColorPct(disc_rot_time / process_time),
             ColorPct(disc_outside_time / process_time),
             ColorPct(loop_time / process_time),
             counter_bad_midpoint.Read(),
             counter_degenerate_disc.Read(),
             counter_inside.Read(),
-            eff_str,
+            eff_str, dd_str,
             progress);
       });
   }
@@ -2710,6 +3183,13 @@ struct Hypersolver {
           MutexLock ml(&mu);
           efficiency_count++;
           efficiency_total += efficiency.value();
+        }
+
+        if (std::optional<double> disc_dig =
+            ComputeDiscDigits(res)) {
+          MutexLock ml(&mu);
+          disc_dig_count++;
+          disc_dig_total += disc_dig.value();
         }
       }
 
@@ -2896,8 +3376,6 @@ struct Hypersolver {
   void Run() {
 
     Init();
-
-    static constexpr int NUM_WORK_THREADS = 12;
 
     std::vector<std::thread> workers;
 
@@ -3106,8 +3584,14 @@ struct Hypersolver {
   double efficiency_total = 0.0;
   int64_t efficiency_count = 0;
 
+  double disc_dig_total = 0.0;
+  int64_t disc_dig_count = 0;
+  int64_t inv_epsilon_dig_total = 0;
+  int64_t inv_epsilon_dig_count = 0;
+
+
   double trig_time = 0.0, loop_time = 0.0, process_time = 0.0;
-  double disc_time = 0.0, disc_outside_time = 0.0;
+  double disc_time = 0.0, disc_rot_time = 0.0, disc_outside_time = 0.0;
   double area_time = 0.0, v_time = 0.0;
   double pt4_time = 0.0;
 
