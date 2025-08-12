@@ -1751,17 +1751,20 @@ BigRat::SqrtBounds(const BigRat &xx, const BigInt &inv_epsilon) {
     return {BigRat(0), BigRat(0)};
   }
 
+  const BigInt inv_epsilon_sq = BigInt::Times(inv_epsilon, inv_epsilon);
+  const BigInt four_inv_epsilon_sq = BigInt::LeftShift(inv_epsilon_sq, 2);
+
   // We need an accurate enough interval for the square root such that
   // we can guarantee the final interval is no more than 1/inv_epsilon
   // (to satisfy the precondition of SimplifyInterval). This interval
   // needs to be 1/(d^2). Fortunately this is just like one or two
   // more steps of the algorithm.
-  const BigRat epsilon{BigInt(1), BigInt::Times(inv_epsilon, inv_epsilon)};
+  const BigRat epsilon{BigInt(1), inv_epsilon_sq};
 
   // "Heron's Method".
   // This approach converges quickly (approximately doubling the number of
-  // correct digits with each step) without producing excessively large
-  // intermediate denominators. So we only perform truncation at the end.
+  // correct digits with each step) and the denominators are reasonable,
+  // but we still need to truncate sometimes.
   BigRat x = BigInt(1);
   for (;;) {
     // So we have xx = x * y.
@@ -1811,6 +1814,12 @@ BigRat::SqrtBounds(const BigRat &xx, const BigInt &inv_epsilon) {
       return std::make_pair(std::move(lb), std::move(ub));
     }
     x = BigRat::Div(BigRat::Plus(std::move(x), std::move(y)), two);
+
+    // PERF nice to do without copying :/
+    BigInt d = x.Parts().second;
+    if (BigInt::Greater(d, four_inv_epsilon_sq)) {
+      x = Truncate(std::move(x), four_inv_epsilon_sq);
+    }
   }
 }
 
@@ -1831,6 +1840,7 @@ BigRat BigRat::Sqrt(const BigRat &xx, const BigInt &inv_epsilon) {
       return BigRat::Truncate(y, inv_epsilon);
     }
     x = BigRat::Div(BigRat::Plus(x, y), two);
+    // TODO: This probably needs to truncate sometimes, too.
   }
 }
 

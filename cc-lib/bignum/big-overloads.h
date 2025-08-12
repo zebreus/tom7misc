@@ -125,32 +125,32 @@ inline BigInt &operator --(BigInt &a) {
 // PERF: Versions with int64_t rhs.
 
 inline BigInt &operator<<=(BigInt &a, uint64_t bits) {
-  a = a << bits;
+  a = std::move(a) << bits;
   return a;
 }
 
 inline BigInt &operator>>=(BigInt &a, uint64_t bits) {
-  a = a >> bits;
+  a = std::move(a) >> bits;
   return a;
 }
 
 inline BigInt &operator+=(BigInt &a, const BigInt &b) {
-  a = a + b;
+  a = std::move(a) + b;
   return a;
 }
 
 inline BigInt &operator+=(BigInt &a, int64_t b) {
-  a = a + b;
+  a = std::move(a) + b;
   return a;
 }
 
 inline BigInt &operator-=(BigInt &a, const BigInt &b) {
-  a = a - b;
+  a = std::move(a) - b;
   return a;
 }
 
 inline BigInt &operator-=(BigInt &a, int64_t b) {
-  a = a - b;
+  a = std::move(a) - b;
   return a;
 }
 

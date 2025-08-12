@@ -697,6 +697,9 @@ static void TestSqrt() {
     BigInt back = BigInt::Plus(BigInt::Times(vsb, vsb), vrem);
     CHECK(BigInt::Eq(back, ub));
   }
+
+  BigInt u = BigInt::Sqrt(BigInt("100000000000000000000"));
+  CHECK(BigInt::Eq(u, int64_t{10000000000})) << u.ToString();
 }
 
 static void TestGCD() {
@@ -1262,6 +1265,9 @@ static void TestRatSqrtBounds() {
 
     {.inv_epsilon = BigInt{1}, .xx = BigRat(64)},
     {.inv_epsilon = BigInt{123}, .xx = BigRat(64)},
+
+    {.inv_epsilon = BigInt{1000000},
+     .xx = BigRat(BigInt("100000000000000000000"))},
 
     // Irrational.
     {.inv_epsilon = BigInt{1000}, .xx = BigRat(3, 4)},
