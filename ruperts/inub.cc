@@ -32,6 +32,7 @@
 #include "bignum/big.h"
 #include "bounds.h"
 #include "image.h"
+#include "lastn-buffer.h"
 #include "patches.h"
 #include "periodically.h"
 #include "polyhedra.h"
@@ -1137,16 +1138,16 @@ static std::string FormatNum(const BigInt &b) {
   if (n > 1'000'000) {
     double m = n / 1'000'000.0;
     if (m >= 1'000'000.0) {
-      return std::format("{:.1f}T", m / 1'000'000.0);
+      return std::format("{:.1f}" AWHITE("T"), m / 1'000'000.0);
     } else if (m >= 1000.0) {
-      return std::format("{:.1f}B", m / 1000.0);
+      return std::format("{:.1f}" AWHITE("B"), m / 1000.0);
     } else if (m >= 100.0) {
-      return std::format("{}M", (int)std::round(m));
+      return std::format("{}" AWHITE("M"), (int)std::round(m));
     } else if (m > 10.0) {
-      return std::format("{:.1f}M", m);
+      return std::format("{:.1f}" AWHITE("M"), m);
     } else {
       // TODO: Integer division. color decimal place and suffix.
-      return std::format("{:.2f}M", m);
+      return std::format("{:.2f}" AWHITE("M"), m);
     }
 
   } else {
@@ -1791,13 +1792,13 @@ struct Hypersolver {
     case REJECTION_UNKNOWN:
       return ARED("MISSING?");
     case OUTSIDE_OUTER_PATCH:
-      return "OUT_PATCH";
+      return "OUTP";
     case OUTSIDE_INNER_PATCH:
-      return "IN_PATCH";
+      return "INP";
     case OUTSIDE_OUTER_PATCH_BALL:
-      return "OUT_PATCH_B";
+      return "OUTP_B";
     case OUTSIDE_INNER_PATCH_BALL:
-      return "IN_PATCH_B";
+      return "INP_B";
     case POINT_OUTSIDE1:
       return "PT1";
     case POINT_OUTSIDE2:
@@ -2781,7 +2782,7 @@ struct Hypersolver {
         const vec2 &v = s.inner[idx];
         const auto &[sx, sy] = scaler.Scale(v.x, v.y);
         const uint32_t color =
-          (idx == highlight_point) ? 0x99FF77BB : 0x33FF3399;
+          (idx == highlight_point) ? 0xCCFF99CC : 0x33BB3388;
         if (s.ipatch) {
           img.BlendFilledCircleAA32(sx, sy, 2, color);
         } else {
@@ -2943,12 +2944,12 @@ struct Hypersolver {
 
   void MaybeStatus(const Volume &volume) {
     status_per.RunIf([&]() {
-
         MutexLock ml(&mu);
         std::string rr;
         for (const auto &[reason, count] : rejection_count) {
           AppendFormat(&rr, ACYAN("{}") ": {}  ",
-                       RejectionReasonString(reason), count);
+                       RejectionReasonString(reason),
+                       FormatNum(count));
         }
 
         std::string splitcount;
@@ -2971,9 +2972,23 @@ struct Hypersolver {
         double proved_pct = (volume_proved * 100.0) /
           in_volume_d;
 
+        // Get proof/sec.
+        // The number of seconds since the first retained tick.
+        double recent_time = run_timer.Seconds() - volume_progress[0].first;
+        // The volume proved since the first retained tick.
+        double recent_proved = 0.0;
+        for (const auto &[timestamp_, vol] : volume_progress) {
+          recent_proved += vol;
+        }
+        double recent_pps = recent_proved / recent_time;
+        std::string ppm = std::format("{:.8g}", recent_pps * 60.0);
+
         // Progress bar wants integer fraction.
         const uint64_t denom = int64_t{1'000'000'000'000};
         const uint64_t numer = (proved_pct / 100.0) * denom;
+
+        const double prove_volume_left = in_volume_d - volume_proved;
+        double eta_sec = prove_volume_left / recent_pps;
 
         ANSI::ProgressBarOptions opt;
         opt.include_frac = false;
@@ -2982,9 +2997,9 @@ struct Hypersolver {
           ANSI::ProgressBar(
               numer, denom,
               std::format(
-                  "Done: {:.8g} {:.2f}% Proved: {:.8g} {:.6f}%",
+                  "Done: {:.8g} {:.2f}% Proved: {:.8g} {:.6f}%  {}",
                   volume_done, done_pct,
-                  volume_proved, proved_pct),
+                  volume_proved, proved_pct, ANSI::Time(eta_sec)),
               run_timer.Seconds(),
               opt);
 
@@ -3039,7 +3054,7 @@ struct Hypersolver {
             // Rejection reason histo
             "{}\n"
             // Volume-based progress
-            "{}Full vol: {:.5f}  in vol: {:.5f}  out vol: {:.5f}\n"
+            "{}Full vol: {:.5f}  in vol: {:.5f}  out vol: {:.5f}  ppm: {}\n"
             // Basic counts
             "{} processed, "
             "{} " AGREEN("✔") ", "
@@ -3064,7 +3079,7 @@ struct Hypersolver {
             VolumeString(volume),
             rr,
             self_check_warning,
-            full_volume_d, in_volume_d, volume_outscope,
+            full_volume_d, in_volume_d, volume_outscope, ppm,
             counter_processed.Read(),
             counter_completed.Read(),
             counter_split.Read(),
@@ -3156,6 +3171,11 @@ struct Hypersolver {
           hypercube->ToDisk(filename);
         });
 
+      recent_shift_per.RunIf([&](){
+          MutexLock ml(&mu);
+          volume_progress.push_back(std::make_pair(run_timer.Seconds(), 0.0));
+        });
+
       // Periodically turn on stats gathering for this thread until we
       // get some data.
       get_stats_next = get_stats_next || (counter_processed.Read() % 64) == 0;
@@ -3229,6 +3249,8 @@ struct Hypersolver {
             break;
           default:
             volume_proved += vol;
+            // Accumulate in place, since we get many small ticks.
+            volume_progress.back().second += vol;
             maybe_save_image = true;
             break;
           }
@@ -3576,9 +3598,16 @@ struct Hypersolver {
   Periodically sample_per = Periodically(60 * 14.9);
   Periodically sample_proved_per = Periodically(60 * 9.1);
   Periodically render_per = Periodically(60 * 15.1);
+  Periodically recent_shift_per = Periodically(1);
 
   std::unordered_map<RejectionReason, int64_t> rejection_count;
   int64_t times_split[NUM_DIMENSIONS] = {};
+
+  // Pair of (volume proved, timestamp) for recent ticks.
+  // Timestamp is from run_timer.
+  // Volume proved may be zero.
+  LastNBuffer<std::pair<double, double>> volume_progress =
+    LastNBuffer<std::pair<double, double>>(256, std::make_pair(0.0, 0.0));
 
   // Stats counters.
   double efficiency_total = 0.0;
