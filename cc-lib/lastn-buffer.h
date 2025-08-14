@@ -43,6 +43,10 @@ struct LastNBuffer {
     return data[Wrap(zero + i)];
   }
 
+  T &front() { return (*this)[0]; }
+  const T &front() const { return (*this)[0]; }
+  T &back() { return (*this)[size() - 1]; }
+  const T &back() const { return (*this)[size() - 1]; }
 
   template<class F>
   void App(F f) const {

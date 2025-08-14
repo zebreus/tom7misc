@@ -231,6 +231,9 @@ zip:
   My simple C++ wrapper for compressed streams, using miniz.
 byte-set:
   Fast and/or compact sets of 8-bit bytes for model checking applications.
+small-int-set:
+  Efficiently store sets of integers in 0..63, using bitmask. Supports
+  fast iteration, unlike std::bitset.
 parser-combinators:
   Utilities for writing recursive-descent parsers using combinators,
   like if you were using a functional programming language.

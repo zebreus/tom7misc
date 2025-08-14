@@ -1,7 +1,6 @@
 
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -41,6 +40,7 @@
 #include "periodically.h"
 #include "polyhedra.h"
 #include "randutil.h"
+#include "small-int-set.h"
 #include "status-bar.h"
 #include "threadutil.h"
 #include "timer.h"
@@ -55,7 +55,6 @@
 //  - split out core to library for verifier
 //  - note plane for out patch
 //  - try NiceSin/NiceCos for outer loops
-//  - prefilter by sampling
 
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
                  counter_bad_midpoint, counter_inside,
@@ -144,63 +143,7 @@ const char *ParameterName(int param) {
 }
 
 // A set of those 7 parameters. Value semantics.
-struct ParameterSet {
-  // Default empty.
-  ParameterSet() : bits(0) {}
-  static ParameterSet All() {
-    return ParameterSet((1 << NUM_DIMENSIONS) - 1);
-  }
-
-  bool Empty() const { return !bits; }
-
-  // With a list of dimensions to allow.
-  explicit ParameterSet(const std::initializer_list<int> &dimensions) {
-    bits = 0;
-    for (int x : dimensions) {
-      CHECK(x >= 0 && x < NUM_DIMENSIONS);
-      bits |= (1 << x);
-    }
-  }
-
-  bool Contains(int d) const {
-    return !!(bits & (1 << d));
-  }
-
-  void Add(int d) {
-    CHECK(d >= 0 && d < NUM_DIMENSIONS);
-    bits |= (1 << d);
-  }
-
-  int Size() const {
-    return std::popcount<uint32_t>(bits);
-  }
-
-  int operator[](int idx) const {
-    uint32_t shift = bits;
-    int dim = 0;
-    for (;;) {
-      CHECK(shift != 0);
-      if (!(shift & 1)) {
-        int skip = std::countr_zero<uint32_t>(shift);
-        dim += skip;
-        shift >>= skip;
-      }
-
-      CHECK(shift & 1);
-      if (idx == 0) {
-        return dim;
-      }
-      idx--;
-      shift >>= 1;
-      dim++;
-    }
-  }
-
-
- private:
-  ParameterSet(uint32_t b) : bits(b) {}
-  uint32_t bits = 0;
-};
+using ParameterSet = SmallIntSet<NUM_DIMENSIONS>;
 
 enum RejectionReason : uint8_t {
   REJECTION_UNKNOWN = 0,
@@ -1480,7 +1423,7 @@ struct Hypersolver {
 
   struct Split {
     ParameterSet parameters;
-    Split() : parameters(ParameterSet::All()) {}
+    Split() : parameters(ParameterSet::Top()) {}
     explicit Split(ParameterSet params) : parameters(params) {}
     // With a list of dimensions to allow.
     explicit Split(const std::initializer_list<int> &dimensions) :
@@ -1528,6 +1471,7 @@ struct Hypersolver {
     return std::clamp(lb + RandDouble(rc) * width, lb, ub);
   }
 
+  // PERF: Small integer sets.
   struct EdgePointMask {
     // As hull indices.
     std::unordered_set<int> edges;
@@ -1536,6 +1480,8 @@ struct Hypersolver {
                        Hashing<std::pair<int, int>>> edgepoints;
   };
 
+  // PERF: This is super fast, so we could probably increase the
+  // filter effectiveness by sampling a few corners.
   EdgePointMask GetEdgePointMask(ArcFour *rc, const Volume &volume) {
     const double outer_azimuth = SampleInterval(rc, volume[OUTER_AZIMUTH]);
     const double outer_angle = SampleInterval(rc, volume[OUTER_ANGLE]);

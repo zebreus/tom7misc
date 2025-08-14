@@ -120,6 +120,7 @@ struct ProgressBarOptions {
   uint32_t bar_empty  = 0x00031aFF;
   bool include_percent = true;
   bool include_frac = true;
+  bool include_eta = true;
 };
 }
 

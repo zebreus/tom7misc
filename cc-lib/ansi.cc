@@ -232,10 +232,13 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
 
   double spe = numer > 0 ? seconds / numer : 1.0;
   double remaining_sec = (denom - numer) * spe;
-  string eta =
+
+  string eta;
+  if (options.include_eta) {
     (numer > 0 && std::isfinite(remaining_sec) && remaining_sec >= 0.0) ?
-    Time(remaining_sec) : std::string("∞");
-  int eta_len = StringWidth(eta);
+      Time(remaining_sec) : std::string("∞");
+  }
+  const int eta_len = StringWidth(eta);
 
   int bar_width = options.full_width - 2 - 1 - eta_len;
   // Number of characters that get background color.
