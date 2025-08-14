@@ -17,6 +17,7 @@
 #include <thread>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -31,9 +32,11 @@
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "bounds.h"
+#include "hashing.h"
 #include "image.h"
 #include "intervals.h"
 #include "lastn-buffer.h"
+#include "nice.h"
 #include "patches.h"
 #include "periodically.h"
 #include "polyhedra.h"
@@ -52,10 +55,12 @@
 //  - split out core to library for verifier
 //  - note plane for out patch
 //  - try NiceSin/NiceCos for outer loops
+//  - prefilter by sampling
 
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
                  counter_bad_midpoint, counter_inside,
-                 counter_degenerate_disc);
+                 counter_degenerate_disc, counter_skip_point,
+                 counter_skip_edge);
 
 static constexpr bool SELF_CHECK = false;
 
@@ -1516,6 +1521,94 @@ struct Hypersolver {
     return {Translate(std::move(loose_box))};
   }
 
+  double SampleInterval(ArcFour *rc, const Bigival &ival) {
+    double lb = ival.LB().ToDouble();
+    double ub = ival.UB().ToDouble();
+    double width = ub - lb;
+    return std::clamp(lb + RandDouble(rc) * width, lb, ub);
+  }
+
+  struct EdgePointMask {
+    // As hull indices.
+    std::unordered_set<int> edges;
+    std::unordered_set<int> points;
+    std::unordered_set<std::pair<int, int>,
+                       Hashing<std::pair<int, int>>> edgepoints;
+  };
+
+  EdgePointMask GetEdgePointMask(ArcFour *rc, const Volume &volume) {
+    const double outer_azimuth = SampleInterval(rc, volume[OUTER_AZIMUTH]);
+    const double outer_angle = SampleInterval(rc, volume[OUTER_ANGLE]);
+    const double inner_azimuth = SampleInterval(rc, volume[INNER_AZIMUTH]);
+    const double inner_angle = SampleInterval(rc, volume[INNER_ANGLE]);
+    const double inner_rot = SampleInterval(rc, volume[INNER_ROT]);
+    const double inner_x = SampleInterval(rc, volume[INNER_X]);
+    const double inner_y = SampleInterval(rc, volume[INNER_Y]);
+
+    const vec3 oviewpos = ViewFromSpherical(outer_azimuth, outer_angle);
+    const vec3 iviewpos = ViewFromSpherical(inner_azimuth, inner_angle);
+
+    const frame3 outer_frame = FrameFromViewPos(oviewpos);
+    const frame3 inner_frame = FrameFromViewPos(iviewpos);
+
+    // Plot hulls.
+    std::vector<vec2> outer_shadow =
+      TransformHull(outer_hull, outer_frame);
+
+    std::vector<vec2> inner_shadow =
+      TransformHull(inner_hull, inner_frame);
+
+    // And rotate.
+    RotateAndTranslate(inner_rot, inner_x, inner_y,
+                       &inner_shadow);
+
+    // Now check each outer edge against each sampled inner hull point.
+
+    EdgePointMask mask;
+    for (int start = 0; start < outer_shadow.size(); start++) {
+      const vec2 &va = outer_shadow[start];
+      const vec2 &vb = outer_shadow[(start + 1) % outer_shadow.size()];
+
+      // Normalize the edge so that epsilon below does not depend on
+      vec2 edge = vb - va;
+      const double edge_len = length(edge);
+
+      // For tiny edges, always run the high-precision routine.
+      if (edge_len < 1.0e-6) [[unlikely]] {
+        mask.edges.insert(start);
+        for (int idx = 0; idx < inner_shadow.size(); idx++) {
+          mask.edgepoints.insert({start, idx});
+          mask.points.insert(idx);
+        }
+      } else {
+
+        edge /= edge_len;
+
+        for (int idx = 0; idx < inner_shadow.size(); idx++) {
+          const vec2 &v = inner_shadow[idx];
+
+          // Signed distance to edge.
+          const double dist = cross(edge, v - va);
+
+          // For our CCW hulls, a negative cross product means the
+          // point is on the "outside" of the edge, and so we should
+          // try to run the full test on that specific edge/point pair
+          // to prove this volume is impossible. We also include
+          // points that are close to the edge but appear (with
+          // floating point inaccuracy) on the inside.
+          if (dist <= 1.0e-9) {
+            mask.edgepoints.insert({start, idx});
+            mask.edges.insert(start);
+            mask.points.insert(idx);
+          }
+        }
+      }
+    }
+
+    return mask;
+  }
+
+
   struct ProcessResult {
     std::variant<Split, Impossible> result;
 
@@ -1538,7 +1631,7 @@ struct Hypersolver {
   // for visualization or estimating AABB efficiency (more expensive).
   // This is where all the work happens. Thread safe and only takes
   // locks for really fast stuff (accumulating stats).
-  ProcessResult ProcessOne(const Volume &volume, bool get_stats) {
+  ProcessResult ProcessOne(ArcFour *rc, const Volume &volume, bool get_stats) {
     const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
     const Bigival &outer_angle = volume[OUTER_ANGLE];
     const Bigival &inner_azimuth = volume[INNER_AZIMUTH];
@@ -1759,6 +1852,24 @@ struct Hypersolver {
       SmearRadiusSq(iviewposball, inv_epsilon);
     */
 
+    // The tests below are expensive because we're working with
+    // intervals on arbitrary-precision rationals. We save ourselves
+    // some time by first checking (heuristically) whether we should
+    // bother with a given edge/point pair, by sampling from the
+    // corresponding parameter space and seeing whether our sample
+    // would pass the test. (Of course we won't be able to prove that
+    // the parameterized point is outside the parameterized edge if
+    // we have a concrete instantiation of each that fails the test.)
+    // We use double-precision for speed; neither false negatives
+    // nor false positives are a serious issue for this test. The
+    // main risk is that we get to a subdivision so fine that
+    // we are unable to accurately do the test with doubles. So
+    // we allow a little slop.
+
+    Timer filter_timer;
+    EdgePointMask mask = GetEdgePointMask(rc, volume);
+    const double filter_time_here = filter_timer.Seconds();
+
     // Compute the hulls. Because we're using interval arithmetic,
     // the specifics of the algebra can be quite important. First,
     // the outer hull, whose vertices we call va, vb, etc.
@@ -1824,6 +1935,12 @@ struct Hypersolver {
     for (int inner_hull_idx = 0;
          inner_hull_idx < inner_hull.size();
          inner_hull_idx++) {
+
+      if (!mask.points.contains(inner_hull_idx)) {
+        counter_skip_point++;
+        continue;
+      }
+
       [[maybe_unused]]
       const BigVec3 &original_v =
         scube.vertices[inner_hull[inner_hull_idx]];
@@ -1900,7 +2017,13 @@ struct Hypersolver {
       CHECK(outer_hull.size() == outer_edge.size());
       CHECK(outer_hull.size() == outer_cross_va_vb.size());
       for (int start = 0; start < outer_hull.size(); start++) {
-        [[maybe_unused]] int end = (start + 1) % outer_hull.size();
+        // Skip points where we already found a possibility in our
+        // sample.
+        if (!mask.edges.contains(start) ||
+            !mask.edgepoints.contains(std::make_pair(start, inner_hull_idx))) {
+          counter_skip_edge++;
+          continue;
+        }
 
         // Do line-side test. Specifically, we can assume the origin
         // is screen-clockwise from the edge va->vb. Then we want to ask if
@@ -2024,6 +2147,7 @@ struct Hypersolver {
       disc_rot_time += disc_rot_time_here;
       disc_outside_time += disc_outside_time_here;
       pt4_time += pt4_time_here;
+      filter_time += filter_time_here;
       if (ie_digits > 0) {
         inv_epsilon_dig_total += ie_digits;
         inv_epsilon_dig_count++;
@@ -2117,38 +2241,37 @@ struct Hypersolver {
     bool corner = false;
   };
 
+  std::vector<vec2> TransformHull(const std::vector<int> &hull,
+                                  const frame3 &f) const {
+    std::vector<vec2> shadow;
+    for (int idx : hull) {
+      const vec3 &pt = small_scube.vertices[idx];
+      vec3 v = transform_point(f, pt);
+      shadow.push_back(vec2(v.x, v.y));
+    }
+    return shadow;
+  }
+
+  static void RotateAndTranslate(double alpha, double tx, double ty,
+                                 std::vector<vec2> *shadow) {
+    double sina = std::sin(alpha);
+    double cosa = std::cos(alpha);
+
+    for (int i = 0; i < shadow->size(); i++) {
+      vec2 v = (*shadow)[i];
+      vec2 r(v.x * cosa - v.y * sina,
+             v.x * sina + v.y * cosa);
+      r.x += tx;
+      r.y += ty;
+      (*shadow)[i] = r;
+    }
+  }
+
   // Used for visualization and efficiency estimate.
   static constexpr int N_SAMPLES = 512;
   std::vector<Shadows> SampleShadows(ArcFour *rc,
                                      const Volume &volume,
                                      const ProcessResult &pr) const {
-
-    auto TransformHull = [this](const std::vector<int> &hull,
-                                const frame3 &f) -> std::vector<vec2> {
-        std::vector<vec2> shadow;
-        for (int idx : hull) {
-          const vec3 &pt = small_scube.vertices[idx];
-          vec3 v = transform_point(f, pt);
-          shadow.push_back(vec2(v.x, v.y));
-        }
-        return shadow;
-      };
-
-    auto RotateAndTranslate = [](double alpha, double tx, double ty,
-                                 std::vector<vec2> *shadow) {
-
-        double sina = std::sin(alpha);
-        double cosa = std::cos(alpha);
-
-        for (int i = 0; i < shadow->size(); i++) {
-          vec2 v = (*shadow)[i];
-          vec2 r(v.x * cosa - v.y * sina,
-                 v.x * sina + v.y * cosa);
-          r.x += tx;
-          r.y += ty;
-          (*shadow)[i] = r;
-        }
-      };
 
     std::vector<Shadows> shadows;
     shadows.reserve(N_SAMPLES);
@@ -2667,11 +2790,14 @@ struct Hypersolver {
             "{} processed, "
             "{} " AGREEN("✔") ", "
             "{} " ARED("⊹") ". "
-            "{} " AORANGE("q") "\n"
+            "{} " AORANGE("q") "  "
+            "{} " AWHITE("*") " "
+            "{} " AWHITE("/") "\n"
             // Timing
             "{} ea. "
             "{} trig "
-            "{} area "
+            "{} filt "
+            // "{} area "
             "{} v "
             "{} pt4 "
             "{} disc "
@@ -2692,9 +2818,12 @@ struct Hypersolver {
             FormatNum(counter_completed.Read()),
             FormatNum(counter_split.Read()),
             node_queue.size(),
+            FormatNum(counter_skip_point.Read()),
+            FormatNum(counter_skip_edge.Read()),
             ANSI::Time(time_each),
             ColorPct(trig_time / process_time),
-            ColorPct(area_time / process_time),
+            ColorPct(filter_time / process_time),
+            // ColorPct(area_time / process_time),
             ColorPct(v_time / process_time),
             ColorPct(pt4_time / process_time),
             ColorPct(disc_time / process_time),
@@ -2789,7 +2918,7 @@ struct Hypersolver {
       get_stats_next = get_stats_next || (counter_processed.Read() % 64) == 0;
 
       Timer process_timer;
-      ProcessResult res = ProcessOne(volume, get_stats_next);
+      ProcessResult res = ProcessOne(&rc, volume, get_stats_next);
       const double process_sec = process_timer.Seconds();
       counter_processed++;
 
@@ -3110,6 +3239,9 @@ struct Hypersolver {
 
     full_volume = Hypervolume(hypercube->bounds);
     full_volume_d = full_volume.ToDouble();
+
+    // Don't count hypercube loading towards "runtime".
+    run_timer.Reset();
   }
 
   void CheckHullRepresentation(ArcFour *rc, uint64_t code, uint64_t mask,
@@ -3229,6 +3361,7 @@ struct Hypersolver {
 
 
   double trig_time = 0.0, loop_time = 0.0, process_time = 0.0;
+  double filter_time = 0.0;
   double disc_time = 0.0, disc_rot_time = 0.0, disc_outside_time = 0.0;
   double area_time = 0.0, v_time = 0.0;
   double pt4_time = 0.0;
@@ -3251,6 +3384,7 @@ static std::string Usage() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+  Nice::SetLowPriority();
 
   CHECK(argc == 3) << Usage();
 
