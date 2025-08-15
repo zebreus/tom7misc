@@ -16,7 +16,6 @@
 #include <thread>
 #include <tuple>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -31,7 +30,6 @@
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "bounds.h"
-#include "hashing.h"
 #include "image.h"
 #include "intervals.h"
 #include "lastn-buffer.h"
@@ -58,8 +56,7 @@
 
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
                  counter_bad_midpoint, counter_inside,
-                 counter_degenerate_disc, counter_skip_point,
-                 counter_skip_edge);
+                 counter_degenerate_disc, counter_no_edges);
 
 static constexpr bool SELF_CHECK = false;
 
@@ -1471,87 +1468,114 @@ struct Hypersolver {
     return std::clamp(lb + RandDouble(rc) * width, lb, ub);
   }
 
-  // PERF: Small integer sets.
   struct EdgePointMask {
-    // As hull indices.
-    std::unordered_set<int> edges;
-    std::unordered_set<int> points;
-    std::unordered_set<std::pair<int, int>,
-                       Hashing<std::pair<int, int>>> edgepoints;
+    // Vector is size of inner hull (points to test).
+    // Each set contains the edges to test for that point (often empty).
+    std::vector<SmallIntSet<64>> point_edges;
   };
 
   // PERF: This is super fast, so we could probably increase the
   // filter effectiveness by sampling a few corners.
   EdgePointMask GetEdgePointMask(ArcFour *rc, const Volume &volume) {
-    const double outer_azimuth = SampleInterval(rc, volume[OUTER_AZIMUTH]);
-    const double outer_angle = SampleInterval(rc, volume[OUTER_ANGLE]);
-    const double inner_azimuth = SampleInterval(rc, volume[INNER_AZIMUTH]);
-    const double inner_angle = SampleInterval(rc, volume[INNER_ANGLE]);
-    const double inner_rot = SampleInterval(rc, volume[INNER_ROT]);
-    const double inner_x = SampleInterval(rc, volume[INNER_X]);
-    const double inner_y = SampleInterval(rc, volume[INNER_Y]);
+    // n.b. we run this test in the opposite direction (outer loop is edges)
+    // than the data structure wee're generating.
+    //
+    // Start with universal set and remove ones that we can rule out.
+    SmallIntSet<64> all_points;
+    for (int i = 0; i < inner_hull.size(); i++)
+      all_points.Add(i);
+    std::vector<SmallIntSet<64>> edge_points;
+    edge_points.reserve(outer_hull.size());
+    for (int i = 0; i < outer_hull.size(); i++)
+      edge_points.push_back(all_points);
 
-    const vec3 oviewpos = ViewFromSpherical(outer_azimuth, outer_angle);
-    const vec3 iviewpos = ViewFromSpherical(inner_azimuth, inner_angle);
+    // XXX use corners of volume, since they are more likely to be
+    // extremes.
+    static constexpr int NUM_MASK_SAMPLES = 6;
+    for (int s = 0; s < NUM_MASK_SAMPLES; s++) {
+      // PERF: Detect if we have eliminated everything?
 
-    const frame3 outer_frame = FrameFromViewPos(oviewpos);
-    const frame3 inner_frame = FrameFromViewPos(iviewpos);
+      const double outer_azimuth = SampleInterval(rc, volume[OUTER_AZIMUTH]);
+      const double outer_angle = SampleInterval(rc, volume[OUTER_ANGLE]);
+      const double inner_azimuth = SampleInterval(rc, volume[INNER_AZIMUTH]);
+      const double inner_angle = SampleInterval(rc, volume[INNER_ANGLE]);
+      const double inner_rot = SampleInterval(rc, volume[INNER_ROT]);
+      const double inner_x = SampleInterval(rc, volume[INNER_X]);
+      const double inner_y = SampleInterval(rc, volume[INNER_Y]);
 
-    // Plot hulls.
-    std::vector<vec2> outer_shadow =
-      TransformHull(outer_hull, outer_frame);
+      const vec3 oviewpos = ViewFromSpherical(outer_azimuth, outer_angle);
+      const vec3 iviewpos = ViewFromSpherical(inner_azimuth, inner_angle);
 
-    std::vector<vec2> inner_shadow =
-      TransformHull(inner_hull, inner_frame);
+      const frame3 outer_frame = FrameFromViewPos(oviewpos);
+      const frame3 inner_frame = FrameFromViewPos(iviewpos);
 
-    // And rotate.
-    RotateAndTranslate(inner_rot, inner_x, inner_y,
-                       &inner_shadow);
+      // Plot hulls.
+      std::vector<vec2> outer_shadow =
+        TransformHull(outer_hull, outer_frame);
 
-    // Now check each outer edge against each sampled inner hull point.
+      std::vector<vec2> inner_shadow =
+        TransformHull(inner_hull, inner_frame);
 
-    EdgePointMask mask;
-    for (int start = 0; start < outer_shadow.size(); start++) {
-      const vec2 &va = outer_shadow[start];
-      const vec2 &vb = outer_shadow[(start + 1) % outer_shadow.size()];
+      // And rotate.
+      RotateAndTranslate(inner_rot, inner_x, inner_y,
+                         &inner_shadow);
 
-      // Normalize the edge so that epsilon below does not depend on
-      vec2 edge = vb - va;
-      const double edge_len = length(edge);
+      // Now check each remaining outer edge against each remaining
+      // sampled inner hull point.
+      for (int start = 0; start < edge_points.size(); start++) {
+        if (edge_points[start].Empty()) continue;
 
-      // For tiny edges, always run the high-precision routine.
-      if (edge_len < 1.0e-6) [[unlikely]] {
-        mask.edges.insert(start);
-        for (int idx = 0; idx < inner_shadow.size(); idx++) {
-          mask.edgepoints.insert({start, idx});
-          mask.points.insert(idx);
-        }
-      } else {
+        const vec2 &va = outer_shadow[start];
+        const vec2 &vb = outer_shadow[(start + 1) % outer_shadow.size()];
 
-        edge /= edge_len;
+        // Normalize the edge so that epsilon below does not depend on
+        // the edge's length.
+        vec2 edge = vb - va;
+        const double edge_len = length(edge);
 
-        for (int idx = 0; idx < inner_shadow.size(); idx++) {
-          const vec2 &v = inner_shadow[idx];
+        // For tiny edges, always run the high-precision routine.
+        if (edge_len < 1.0e-6) [[unlikely]] {
+          // (nothing is ruled out)
 
-          // Signed distance to edge.
-          const double dist = cross(edge, v - va);
+        } else {
 
-          // For our CCW hulls, a negative cross product means the
-          // point is on the "outside" of the edge, and so we should
-          // try to run the full test on that specific edge/point pair
-          // to prove this volume is impossible. We also include
-          // points that are close to the edge but appear (with
-          // floating point inaccuracy) on the inside.
-          if (dist <= 1.0e-9) {
-            mask.edgepoints.insert({start, idx});
-            mask.edges.insert(start);
-            mask.points.insert(idx);
+          edge /= edge_len;
+
+          for (int idx : edge_points[start]) {
+            const vec2 &v = inner_shadow[idx];
+
+            // Signed distance to edge.
+            const double dist = cross(edge, v - va);
+
+            // For our CCW hulls, a negative cross product means the
+            // point is on the "outside" of the edge, and so we should
+            // try to run the full test on that specific edge/point pair
+            // to prove this volume is impossible. We also include
+            // points that are close to the edge but appear (with
+            // floating point inaccuracy) on the inside.
+            if (dist <= 1.0e-9) {
+              // ok. Keep it.
+            } else {
+              edge_points[start].Remove(idx);
+            }
           }
         }
       }
     }
 
-    return mask;
+    // Now transpose.
+    EdgePointMask ret;
+    ret.point_edges.resize(inner_hull.size());
+    for (int idx = 0; idx < inner_hull.size(); idx++) {
+      for (int edge = 0; edge < outer_hull.size(); edge++) {
+        if (edge_points[edge].Contains(idx)) {
+          CHECK(idx < ret.point_edges.size());
+          ret.point_edges[idx].Add(edge);
+        }
+      }
+    }
+
+    return ret;
   }
 
 
@@ -1878,12 +1902,13 @@ struct Hypersolver {
     // exit early if any of these points are definitely outside the
     // outer hull.
     std::optional<Rejection> proved = std::nullopt;
+    CHECK(mask.point_edges.size() == inner_hull.size());
     for (int inner_hull_idx = 0;
-         inner_hull_idx < inner_hull.size();
+         inner_hull_idx < mask.point_edges.size();
          inner_hull_idx++) {
-
-      if (!mask.points.contains(inner_hull_idx)) {
-        counter_skip_point++;
+      const SmallIntSet<64> edge_indices = mask.point_edges[inner_hull_idx];
+      if (edge_indices.Empty()) {
+        counter_no_edges++;
         continue;
       }
 
@@ -1962,14 +1987,8 @@ struct Hypersolver {
       // CHECK(outer_hull.size() == outer_shadow.size());
       CHECK(outer_hull.size() == outer_edge.size());
       CHECK(outer_hull.size() == outer_cross_va_vb.size());
-      for (int start = 0; start < outer_hull.size(); start++) {
-        // Skip points where we already found a possibility in our
-        // sample.
-        if (!mask.edges.contains(start) ||
-            !mask.edgepoints.contains(std::make_pair(start, inner_hull_idx))) {
-          counter_skip_edge++;
-          continue;
-        }
+      CHECK(!edge_indices.Empty()) << "Should not do the work to prep then.";
+      for (int start : edge_indices) {
 
         // Do line-side test. Specifically, we can assume the origin
         // is screen-clockwise from the edge va->vb. Then we want to ask if
@@ -2737,8 +2756,7 @@ struct Hypersolver {
             "{} " AGREEN("✔") ", "
             "{} " ARED("⊹") ". "
             "{} " AORANGE("q") "  "
-            "{} " AWHITE("*") " "
-            "{} " AWHITE("/") "\n"
+            "{} " AWHITE(" no/") "\n"
             // Timing
             "{} ea. "
             "{} trig "
@@ -2763,9 +2781,8 @@ struct Hypersolver {
             FormatNum(counter_processed.Read()),
             FormatNum(counter_completed.Read()),
             FormatNum(counter_split.Read()),
-            node_queue.size(),
-            FormatNum(counter_skip_point.Read()),
-            FormatNum(counter_skip_edge.Read()),
+            FormatNum(node_queue.size()),
+            FormatNum(counter_no_edges.Read()),
             ANSI::Time(time_each),
             ColorPct(trig_time / process_time),
             ColorPct(filter_time / process_time),
@@ -3192,6 +3209,10 @@ struct Hypersolver {
 
   void CheckHullRepresentation(ArcFour *rc, uint64_t code, uint64_t mask,
                                const std::vector<int> &hull) const {
+    CHECK(hull.size() <= 64) << "Want to represent these with SmallIntSet, "
+      "so we have a hard requirement on hull size. But this would be "
+      "easy to increase if we needed.";
+
     vec3 view = GetVec3InPatch(rc, boundaries, code, mask);
     frame3 view_frame = FrameFromViewPos(view);
     Mesh2D mesh = RotateAndProject(view_frame, small_scube);
