@@ -30,6 +30,7 @@
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "bounds.h"
+#include "hypercube.h"
 #include "image.h"
 #include "intervals.h"
 #include "lastn-buffer.h"
@@ -81,7 +82,7 @@ StatusBar status = StatusBar(15);
 
 // This is 7 parameters.
 
-// We have a 7-hypercube for those parameters.
+// We have a 7-hypercube for those parameters (hypercube.h).
 // Azimuths are in [0, 2π].
 // Polar angles (inclination) are in [0, π].
 // Theta is in [0, 2π],
@@ -116,394 +117,9 @@ StatusBar status = StatusBar(15);
 // clockwise." The hulls tested here are in screen clockwise (which is
 // cartesian counter-clockwise) winding order.
 
-inline constexpr int OUTER_AZIMUTH = 0;
-inline constexpr int OUTER_ANGLE = 1;
-inline constexpr int INNER_AZIMUTH = 2;
-inline constexpr int INNER_ANGLE = 3;
-inline constexpr int INNER_ROT = 4;
-inline constexpr int INNER_X = 5;
-inline constexpr int INNER_Y = 6;
-
-inline constexpr int NUM_DIMENSIONS = 7;
-
-const char *ParameterName(int param) {
-  switch (param) {
-  case OUTER_AZIMUTH: return "O_AZ";
-  case OUTER_ANGLE: return "O_AN";
-  case INNER_AZIMUTH: return "I_AZ";
-  case INNER_ANGLE: return "I_AN";
-  case INNER_ROT: return "I_R";
-  case INNER_X: return "I_X";
-  case INNER_Y: return "I_Y";
-  default: return "??";
-  }
-}
-
 // A set of those 7 parameters. Value semantics.
 using ParameterSet = SmallIntSet<NUM_DIMENSIONS>;
 
-enum RejectionReason : uint8_t {
-  REJECTION_UNKNOWN = 0,
-  OUTSIDE_OUTER_PATCH = 1,
-  OUTSIDE_INNER_PATCH = 2,
-  OUTSIDE_OUTER_PATCH_BALL = 3,
-  OUTSIDE_INNER_PATCH_BALL = 4,
-  POINT_OUTSIDE1 = 5,
-  POINT_OUTSIDE2 = 6,
-  POINT_OUTSIDE3 = 7,
-  POINT_OUTSIDE4 = 8,
-  POINT_OUTSIDE5 = 9,
-  POLY_AREA = 10,
-};
-inline constexpr int NUM_REJECTION_REASONS = 12;
-
-struct Pt4Data {
-  // When the rejection reason is PT4 or PT5, then we found a point
-  // that is definitely on the wrong side of some edge.
-  // This is the index of that edge (start endpoint) and point inside
-  // the outer and inner hulls, respectively. (NOT a vertex index.)
-  int8_t edge = -1;
-  int8_t point = -1;
-};
-
-struct Pt5Data {
-  int8_t edge = -1;
-  int8_t point = -1;
-  // For a pt5 rejection, the bias we used for the disc.
-  BigRat bias;
-};
-
-struct Rejection {
-  RejectionReason reason = REJECTION_UNKNOWN;
-  std::variant<std::monostate, Pt4Data, Pt5Data> data;
-};
-
-static std::string SerializeRejection(const Rejection &rej) {
-  std::string ret = std::format("{}", (uint8_t)rej.reason);
-  if (const Pt4Data *p = std::get_if<Pt4Data>(&rej.data)) {
-    AppendFormat(&ret, " {} {}", p->edge, p->point);
-  } else if (const Pt5Data *p = std::get_if<Pt5Data>(&rej.data)) {
-    AppendFormat(&ret, " {} {} {}", p->edge, p->point,
-                 p->bias.ToString());
-  } else {
-    // Nothing.
-    CHECK(std::holds_alternative<std::monostate>(rej.data)) << "Must "
-      "be missing a variant?";
-  }
-  return ret;
-}
-
-// Must be a proper rejection (not UNKNOWN).
-// Doesn't check the case that point/edge indices are too large.
-static std::optional<Rejection> ParseRejection(std::string_view s) {
-  // Format is
-  //   reason_number additional_data
-  Rejection ret;
-  int64_t r = Util::ParseInt64(Util::Chop(&s), -1);
-  if (r <= 0 || r >= NUM_REJECTION_REASONS) return std::nullopt;
-  ret.reason = (RejectionReason)r;
-
-  switch (ret.reason) {
-  case REJECTION_UNKNOWN:
-    LOG(FATAL) << "Checked above";
-    break;
-  case OUTSIDE_OUTER_PATCH:
-  case OUTSIDE_INNER_PATCH:
-  case OUTSIDE_OUTER_PATCH_BALL:
-  case OUTSIDE_INNER_PATCH_BALL:
-    // No metadata. Could keep the code?
-    break;
-
-  case POLY_AREA:
-    // No metadata.
-    break;
-
-  case POINT_OUTSIDE1:
-  case POINT_OUTSIDE2:
-  case POINT_OUTSIDE3:
-    // Abort if we see these old dead ones?
-    break;
-
-  case POINT_OUTSIDE4: {
-    int64_t eidx = Util::ParseInt64(Util::Chop(&s), -1);
-    int64_t pidx = Util::ParseInt64(Util::Chop(&s), -1);
-    if (eidx < 0 || pidx < 0) return std::nullopt;
-    ret.data = Pt4Data({.edge = (int8_t)eidx, .point = (int8_t)pidx});
-    break;
-  }
-
-  case POINT_OUTSIDE5: {
-    int64_t eidx = Util::ParseInt64(Util::Chop(&s), -1);
-    int64_t pidx = Util::ParseInt64(Util::Chop(&s), -1);
-    BigRat b(Util::NormalizeWhitespace(Util::Chop(&s)));
-    if (eidx < 0 || pidx < 0) return std::nullopt;
-    // Bias cannot be zero; it's probably missing.
-    if (b == 0) return std::nullopt;
-    ret.data = Pt5Data({
-        .edge = (int8_t)eidx,
-        .point = (int8_t)pidx,
-        .bias = std::move(b),
-      });
-    break;
-  }
-  }
-
-  return ret;
-}
-
-// Represents a (hyper)rectangular volume within the search space.
-using Volume = std::vector<Bigival>;
-
-// The n-dimensional hypervolume of the cell.
-static BigRat Hypervolume(const Volume &vol) {
-  BigRat product(1);
-  for (int d = 0; d < NUM_DIMENSIONS; d++) {
-    product *= vol[d].Width();
-  }
-  return product;
-}
-
-// Hypercube using big rationals. (It's actually a hyperrectangle
-// because the sides are not all the same length...)
-struct Hypercube {
-
-  Hypercube(const Volume &bounds) :
-    bounds(std::move(bounds)) {
-    root.reset(new Node(Leaf{.completed = 0}));
-  }
-
-  void FromDisk(const std::string &filename) {
-
-    // The file format is line based. Each line is a node;
-    // either:
-    // L reason completed   (completed leaf)
-    // or
-    // E                    (empty leaf)
-    // or
-    // S axis split
-    //
-    // The nodes are in post order, so we process them with
-    // a stack:
-
-    std::vector<std::shared_ptr<Hypercube::Node>> stack;
-
-    Util::ForEachLine(
-        filename,
-        [&](const std::string &raw_line) {
-          std::string line_string = Util::NormalizeWhitespace(raw_line);
-          std::string_view line(line_string);
-          if (line.empty()) return;
-
-          char cmd = line[0];
-          line.remove_prefix(1);
-          if (!line.empty() && line[0] == ' ')
-            line.remove_prefix(1);
-
-          if (cmd == 'E') {
-            auto leaf =
-              std::make_shared<Hypercube::Node>(Leaf{
-                  .completed = 0,
-                  .rejection = {.reason = REJECTION_UNKNOWN},
-                });
-            stack.push_back(std::move(leaf));
-
-          } else if (cmd == 'L') {
-            int64_t comp = Util::ParseInt64(Util::Chop(&line), -1);
-            CHECK(comp >= 0) << line;
-
-            std::optional<Rejection> rej = ParseRejection(line);
-            CHECK(rej.has_value()) << raw_line;
-
-            auto leaf =
-              std::make_shared<Hypercube::Node>(Leaf{
-                  .completed = comp,
-                  .rejection = rej.value(),
-                });
-            stack.push_back(std::move(leaf));
-
-          } else if (cmd == 'S') {
-            int axis = Util::ParseInt64(Util::Chop(&line), -1);
-            CHECK(axis >= 0 && axis < NUM_DIMENSIONS) << raw_line;
-            BigRat split_pt(Util::Chop(&line));
-
-            CHECK(stack.size() >= 2) << "Saw split node, so there "
-              "should be two children in the stack!";
-
-            auto split =
-              std::make_shared<Hypercube::Node>(Split{
-                  .axis = axis,
-                  .split = std::move(split_pt),
-                  .left = std::move(stack[stack.size() - 2]),
-                  .right = std::move(stack[stack.size() - 1]),
-                });
-
-            stack.pop_back();
-            stack.pop_back();
-            stack.push_back(std::move(split));
-
-          } else {
-            LOG(FATAL) << "Bad line in cube file: " << raw_line;
-          }
-        });
-
-    CHECK(stack.size() == 1) << "Expected a single root node to "
-      "result.";
-    root = std::move(stack[0]);
-    stack.clear();
-  }
-
-  void ToDisk(const std::string &filename) {
-    FILE *f = fopen(filename.c_str(), "wb");
-    CHECK(f != nullptr);
-
-    using StackElt = std::variant<
-      std::string,
-      std::shared_ptr<Hypercube::Node>
-      >;
-
-
-    std::vector<StackElt> stack = {StackElt(root)};
-
-    while (!stack.empty()) {
-      StackElt &elt = stack.back();
-      if (std::string *s = std::get_if<std::string>(&elt)) {
-        fprintf(f, "%s", s->c_str());
-        stack.pop_back();
-
-      } else {
-        auto *p = std::get_if<std::shared_ptr<Hypercube::Node>>(&elt);
-        CHECK(p != nullptr);
-        std::shared_ptr<Hypercube::Node> node = std::move(*p);
-        stack.pop_back();
-
-        CHECK(node.get() != nullptr);
-
-        if (Leaf *leaf = std::get_if<Leaf>(node.get())) {
-          if (leaf->completed) {
-            std::string line =
-              std::format("L {} {}\n",
-                          leaf->completed,
-                          SerializeRejection(leaf->rejection));
-            fprintf(f, "%s", line.c_str());
-          } else {
-            fprintf(f, "E\n");
-          }
-        } else {
-          Split *split = std::get_if<Split>(node.get());
-          CHECK(split != nullptr) << "Must be leaf or split.";
-
-          std::string line = std::format("S {} {}\n",
-                                         split->axis,
-                                         split->split.ToString());
-          stack.emplace_back(line);
-          stack.emplace_back(split->right);
-          stack.emplace_back(split->left);
-        }
-      }
-    }
-
-    fclose(f);
-  }
-
-
-  struct Split;
-  struct Leaf;
-  using Node = std::variant<Split, Leaf>;
-
-  struct Leaf {
-    // If 0, no info yet. Otherwise, the timestamp when it was completed
-    // and the RejectionReason.
-    // Completed means we've determined that this cell cannot contain
-    // a solution.
-    int64_t completed = 0;
-    Rejection rejection;
-  };
-
-  // Internal node, which is a binary split along one of the parameter
-  // axes.
-  struct Split {
-    // Which axis?
-    int axis = 0;
-    // left side is <, right side is >=.
-    BigRat split;
-    std::shared_ptr<Node> left, right;
-  };
-
-  // Compute the "left" and "right" volumes that result from splitting
-  // the parameter at the split point.
-  static std::pair<Volume, Volume>
-  SplitVolume(const Volume &volume, int axis, const BigRat &split) {
-    CHECK(axis >= 0 && axis < NUM_DIMENSIONS);
-    if (SELF_CHECK) {
-      CHECK(split > volume[axis].LB());
-      CHECK(split < volume[axis].UB());
-    }
-    Volume left = volume;
-    Volume right = volume;
-    left[axis] = Bigival(left[axis].LB(), split,
-                         left[axis].IncludesLB(), false);
-    right[axis] = Bigival(split, right[axis].UB(),
-                          true, right[axis].IncludesUB());
-    return std::make_pair(left, right);
-  }
-
-  // Though we store the state as a tree, we mostly work with
-  // a queue containing all of the unexplored leaves. Extract
-  // those.
-  std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> GetLeaves(
-      double *volume_outscope, double *volume_proved) {
-    *volume_outscope = 0.0;
-    *volume_proved = 0.0;
-
-    std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> leaves;
-
-    std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> stack = {
-      {bounds, root}
-    };
-
-    while (!stack.empty()) {
-      Volume volume;
-      std::shared_ptr<Hypercube::Node> node;
-      std::tie(volume, node) = std::move(stack.back());
-      stack.pop_back();
-
-      CHECK(node.get() != nullptr);
-
-      if (Leaf *leaf = std::get_if<Leaf>(node.get())) {
-        if (leaf->completed == 0) {
-          leaves.emplace_back(std::move(volume), node);
-        } else {
-          const double dvol = Hypervolume(volume).ToDouble();
-          switch (leaf->rejection.reason) {
-          case OUTSIDE_OUTER_PATCH:
-          case OUTSIDE_INNER_PATCH:
-          case OUTSIDE_OUTER_PATCH_BALL:
-          case OUTSIDE_INNER_PATCH_BALL:
-            *volume_outscope += dvol;
-            break;
-          default:
-            *volume_proved += dvol;
-          }
-        }
-      } else {
-        Split *split = std::get_if<Split>(node.get());
-        CHECK(split != nullptr) << "Must be leaf or split.";
-
-        std::pair<Volume, Volume> vols =
-          SplitVolume(volume, split->axis, split->split);
-
-        stack.emplace_back(std::move(vols.first), split->left);
-        stack.emplace_back(std::move(vols.second), split->right);
-      }
-    }
-
-    return leaves;
-  }
-
-  // Full bounds of the search space.
-  Volume bounds;
-  std::shared_ptr<Node> root;
-};
 
 // Probably to intervals.h?
 //
@@ -750,73 +366,6 @@ static Bigival BoundDotProductWithView(
 
   return trig.sin_an * (trig.cos_az * v.x + trig.sin_az * v.y) +
     trig.cos_an * v.z;
-}
-
-static std::string FormatNum(const BigInt &b) {
-  if (BigInt::Abs(b) >= 1'000'000'000) {
-    return std::format("{} digits", b.ToString().size());
-  }
-
-  std::optional<int64_t> i = b.ToInt();
-  if (!i.has_value()) return ARED("???");
-  int64_t n = i.value();
-
-  if (n > 1'000'000) {
-    double m = n / 1'000'000.0;
-    if (m >= 1'000'000.0) {
-      return std::format("{:.1f}" AWHITE("T"), m / 1'000'000.0);
-    } else if (m >= 1000.0) {
-      return std::format("{:.1f}" AWHITE("B"), m / 1000.0);
-    } else if (m >= 100.0) {
-      return std::format("{}" AWHITE("M"), (int)std::round(m));
-    } else if (m > 10.0) {
-      return std::format("{:.1f}" AWHITE("M"), m);
-    } else {
-      // TODO: Integer division. color decimal place and suffix.
-      return std::format("{:.2f}" AWHITE("M"), m);
-    }
-
-  } else {
-    return Util::UnsignedWithCommas(n);
-  }
-}
-
-// Produces 7-line string.
-std::string VolumeString(const Volume &volume) {
-  auto DimString = [](const Bigival &bi) {
-      BigRat w = bi.Width();
-      double lb = bi.LB().ToDouble();
-      double ub = bi.UB().ToDouble();
-
-      std::string wstr;
-      if (w > BigRat(1, int64_t{1024} * 1024 * 1024)) {
-        wstr = std::format(ABLUE("width ") "{:.8f}", w.ToDouble());
-      } else {
-        const auto &[n, d] = w.Parts();
-        wstr = std::format(AORANGE("tiny ") " denom {}", FormatNum(d));
-      }
-
-      // TODO: Use dynamic precision here.
-      // TODO: Consider showing fractions when simple.
-      return std::format(AGREY("[") "{:.8g}" AGREY(",") " {:.8g}" AGREY("]")
-                         "   {}",
-                         lb, ub, wstr);
-    };
-
-  return std::format("O φ:{}\n"
-                     "O θ:{}\n"
-                     "I φ:{}\n"
-                     "I θ:{}\n"
-                     "I α:{}\n"
-                     "I x:{}\n"
-                     "I y:{}",
-                     DimString(volume[OUTER_AZIMUTH]),
-                     DimString(volume[OUTER_ANGLE]),
-                     DimString(volume[INNER_AZIMUTH]),
-                     DimString(volume[INNER_ANGLE]),
-                     DimString(volume[INNER_ROT]),
-                     DimString(volume[INNER_X]),
-                     DimString(volume[INNER_Y]));
 }
 
 // Note: Here we have the dependency problem. This one might be
@@ -2373,7 +1922,7 @@ struct Hypersolver {
                                        inubdir,
                                        time(nullptr), msg);
     status.Print("Sample volume:\n{}\n",
-                 VolumeString(volume));
+                 Hypercube::VolumeString(volume));
 
 
     const int WIDTH = 1024, HEIGHT = 1024;
@@ -2525,7 +2074,7 @@ struct Hypersolver {
     }
 
     std::vector<std::string> vs =
-      Util::SplitToLines(VolumeString(volume));
+      Util::SplitToLines(Hypercube::VolumeString(volume));
     int yy = 8;
     for (const std::string &v : vs) {
       img.BlendText32(8, yy, 0xAAAAAAFF, v);
@@ -2774,7 +2323,7 @@ struct Hypersolver {
             "In: {}   AABB eff.: {}  dd: {}\n"
             "{}\n", // bar
             splitcount,
-            VolumeString(volume),
+            Hypercube::VolumeString(volume),
             rr,
             self_check_warning,
             full_volume_d, in_volume_d, volume_outscope, ppm,

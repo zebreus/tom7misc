@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -110,6 +111,36 @@ std::string PlainQuatString(const BigQuat &q) {
       q.z.ToString(), q.z.ToDouble(),
       q.w.ToString(), q.w.ToDouble());
 }
+
+std::string FormatNum(const BigInt &b) {
+  if (BigInt::Abs(b) >= 1'000'000'000) {
+    return std::format("{} digits", b.ToString().size());
+  }
+
+  std::optional<int64_t> i = b.ToInt();
+  if (!i.has_value()) return ARED("???");
+  int64_t n = i.value();
+
+  if (n > 1'000'000) {
+    double m = n / 1'000'000.0;
+    if (m >= 1'000'000.0) {
+      return std::format("{:.1f}" AWHITE("T"), m / 1'000'000.0);
+    } else if (m >= 1000.0) {
+      return std::format("{:.1f}" AWHITE("B"), m / 1000.0);
+    } else if (m >= 100.0) {
+      return std::format("{}" AWHITE("M"), (int)std::round(m));
+    } else if (m > 10.0) {
+      return std::format("{:.1f}" AWHITE("M"), m);
+    } else {
+      // TODO: Integer division. color decimal place and suffix.
+      return std::format("{:.2f}" AWHITE("M"), m);
+    }
+
+  } else {
+    return Util::UnsignedWithCommas(n);
+  }
+}
+
 
 BigQuat MakeBigQuat(const quat4 &smallquat) {
   return BigQuat(BigRat::FromDouble(smallquat.x),

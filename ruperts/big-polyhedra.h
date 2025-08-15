@@ -200,6 +200,8 @@ std::string PlainQuatString(const BigQuat &q);
 
 std::string FrameString(const BigFrame &f);
 
+std::string FormatNum(const BigInt &b);
+
 BigQuat Normalize(const BigQuat &q, int digits);
 
 inline BigQuat Conjugate(const BigQuat &q) {
