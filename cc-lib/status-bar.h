@@ -23,10 +23,6 @@ struct StatusBar {
   // Must be greater than zero.
   explicit StatusBar(int num_lines);
 
-  // TODO: Also allow specifying the max width of the status region.
-  // A very common problem is that a line is too long, messing
-  // everything up.
-
   // Each of these immediately outputs to the screen.
 
   // Prints lines above the status bar. Adds trailing newline if not present.
@@ -76,6 +72,14 @@ struct StatusBar {
   // Set every status line empty; keeps any lines above.
   void Clear();
 
+  // Advanced: By default, the status bar tries to figure out the
+  // width of the terminal (or assumes 80) and then truncates status
+  // lines to fit. (If status lines wrap, then it will usually mess up
+  // the display.)
+  void DisableTruncation();
+  // The default.
+  void EnableTruncation();
+
  private:
   void MoveUp();
 
@@ -84,10 +88,11 @@ struct StatusBar {
 
   std::mutex m;
   int num_lines = 0;
-  bool first = true;
   // Always num_lines in length.
   std::vector<std::string> prev_status_lines;
   Timer timer;
+  bool first = true;
+  bool truncating = true;
 };
 
 

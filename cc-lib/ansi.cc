@@ -3,12 +3,14 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <format>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -18,13 +20,19 @@
 
 #ifdef __MINGW32__
 #include <windows.h>
-#include <winnt.h>
-#include <processenv.h>
-#include <consoleapi2.h>
-#include <consoleapi.h>
 #include <minwindef.h>
+#include <consoleapi.h>
+#include <consoleapi2.h>
+#include <handleapi.h>
+#include <processenv.h>
 #include <winnls.h>
+#include <winnt.h>
 #undef ARRAYSIZE
+#endif
+
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+#include <sys/ioctl.h>
+#include <unistd.h>
 #endif
 
 #include "utf8.h"
@@ -213,7 +221,7 @@ std::string ANSI::StripCodes(std::string_view s) {
 
 int ANSI::StringWidth(std::string_view s) {
   // PERF could do this without copying.
-  return StripCodes(s).size();
+  return UTF8::Length(StripCodes(s));
 }
 
 
@@ -384,21 +392,22 @@ std::string ANSI::Composite(
   return out + ANSI_RESET;
 }
 
-std::tuple<std::string,
-           std::vector<uint32_t>,
-           std::vector<uint32_t>>
-ANSI::Decompose(const std::string &text_with_codes,
-                uint32_t default_fg,
-                uint32_t default_bg) {
-  if (VERBOSE) printf("[%s]\n", text_with_codes.c_str());
 
-  std::vector<uint32_t> codepoints = UTF8::Codepoints(text_with_codes);
+static std::tuple<std::vector<uint32_t>,
+                  std::vector<uint32_t>,
+                  std::vector<uint32_t>>
+DecomposeInternal(std::string_view text_with_codes,
+                  uint32_t default_fg,
+                  uint32_t default_bg) {
+  if (VERBOSE) printf("[%s]\n", std::string(text_with_codes).c_str());
 
-  const int length = (int)codepoints.size();
-  std::string out;
+  std::vector<uint32_t> cps_with_codes = UTF8::Codepoints(text_with_codes);
+
+  const int length = (int)cps_with_codes.size();
+  // Might not be this long because of control codes!
+  std::vector<uint32_t> cps;
+  cps.reserve(length);
   std::vector<uint32_t> fgs, bgs;
-  // n.b. Might not be this long because of color codes.
-  out.reserve(length);
   fgs.reserve(length);
   bgs.reserve(length);
 
@@ -406,7 +415,7 @@ ANSI::Decompose(const std::string &text_with_codes,
   uint32_t bg = default_bg;
   bool is_bright = false;
 
-  std::span<uint32_t> s(codepoints.data(), codepoints.size());
+  std::span<uint32_t> s(cps_with_codes.data(), cps_with_codes.size());
 
   while (!s.empty()) {
     // Parse control codes. We just accept the grammar
@@ -531,12 +540,93 @@ ANSI::Decompose(const std::string &text_with_codes,
 
     } else {
       // Encode back as UTF-8.
-      out += UTF8::Encode(s[0]);
+      cps.push_back(s[0]);
       fgs.push_back(fg);
       bgs.push_back(bg);
       s = s.subspan(1);
     }
   }
 
-  return std::make_tuple(std::move(out), std::move(fgs), std::move(bgs));
+  return std::make_tuple(std::move(cps),
+                         std::move(fgs), std::move(bgs));
+}
+
+std::tuple<std::string,
+           std::vector<uint32_t>,
+           std::vector<uint32_t>>
+ANSI::Decompose(std::string_view text_with_codes,
+                uint32_t default_fg,
+                uint32_t default_bg) {
+  auto [cps, fgs, bgs] =
+    DecomposeInternal(text_with_codes, default_fg, default_bg);
+
+  std::string rs;
+  rs.reserve(cps.size());
+  for (uint32_t codepoint : cps) {
+    rs += UTF8::Encode(codepoint);
+  }
+
+  return std::make_tuple(std::move(rs), std::move(fgs), std::move(bgs));
+}
+
+std::string ANSI::ColorSubstring(std::string_view s,
+                                 size_t start,
+                                 size_t len) {
+  auto [codepoints, in_fgs, in_bgs] =
+    DecomposeInternal(s, 0xBFBFBFFF, 0x000000FF);
+
+  // This special value means "until the end of the string"
+  if (len == std::string_view::npos)
+    len = codepoints.size() - start;
+
+  assert(start + len <= codepoints.size());
+
+  std::string out;
+  out.reserve(len);
+  // If composite took spans, we could do this without copying.
+  std::vector<uint32_t> fgs;
+  fgs.reserve(len);
+  std::vector<uint32_t> bgs;
+  bgs.reserve(len);
+
+  for (size_t i = start; i < start + len; i++) {
+    out += UTF8::Encode(codepoints[i]);
+    fgs.push_back(in_fgs[i]);
+    bgs.push_back(in_bgs[i]);
+  }
+
+  return Composite(out, fgs, bgs);
+}
+
+
+std::optional<int> ANSI::TerminalWidth() {
+#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
+
+  struct winsize size;
+  // TIOCGWINSZ is "Get WINdow SiZe".
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &size) == 0) {
+    if (size.ws_col > 0) {
+      return {size.ws_col};
+    }
+  }
+
+  // This can fail if output is redirected to a file, etc.
+  return std::nullopt;
+
+#elif defined(__MINGW32__)
+
+  CONSOLE_SCREEN_BUFFER_INFO csbi;
+  HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+  if (h == INVALID_HANDLE_VALUE) {
+    return std::nullopt;
+  }
+
+  if (GetConsoleScreenBufferInfo(h, &csbi)) {
+    return {csbi.srWindow.Right - csbi.srWindow.Left + 1};
+  }
+  return std::nullopt;
+
+#else
+  return std::nullopt;
+#endif
 }

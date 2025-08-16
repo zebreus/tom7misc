@@ -5,6 +5,7 @@
 #define _CC_LIB_ANSI_H
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -141,9 +142,17 @@ struct ANSI {
   // codes that would be treated incorrectly here.
   static std::string StripCodes(std::string_view s);
 
-  // Return the number of characters after stripping ANSI codes. Same
-  // caveats as above.
+  // Return the number of UTF-8 codepoints after stripping ANSI codes.
+  // Same caveats as above.
   static int StringWidth(std::string_view s);
+
+  // Indices are measured in visible output codepoints. Reconstructs
+  // the colors for the substring. If you want to specify your own
+  // default foreground and background, use Decompose and Composite
+  // below.
+  static std::string ColorSubstring(std::string_view s,
+                                    size_t start,
+                                    size_t len = std::string_view::npos);
 
   // Return an ansi-colored representation of the duration, with arbitrary
   // but Tom 7-approved choices of color and significant figures.
@@ -198,9 +207,15 @@ struct ANSI {
   static std::tuple<std::string,
                     std::vector<uint32_t>,
                     std::vector<uint32_t>>
-  Decompose(const std::string &text_with_codes,
+  Decompose(std::string_view text_with_codes,
             uint32_t default_fg = 0xBFBFBFFF,
             uint32_t default_bg = 0x000000FF);
+
+  // Tries to get the current terminal width using OS calls. Returns
+  // nullopt if unavailable (e.g. not supported on this platform, or
+  // output is not a terminal). Try TerminalWidth().value_or(80).
+  static std::optional<int> TerminalWidth();
+
 };
 
 #endif

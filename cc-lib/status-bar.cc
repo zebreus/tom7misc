@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -14,6 +15,8 @@
 #include "base/stringprintf.h"
 #include "timer.h"
 #include "util.h"
+
+
 
 using namespace std;
 
@@ -100,12 +103,32 @@ void StatusBar::MoveUp() {
   first = false;
 }
 
+void StatusBar::DisableTruncation() {
+  std::unique_lock<std::mutex> ml(m);
+  truncating = false;
+}
+
+void StatusBar::EnableTruncation() {
+  std::unique_lock<std::mutex> ml(m);
+  truncating = true;
+}
+
 void StatusBar::EmitStatusLinesWithLock(const std::vector<std::string> &lines) {
-  if ((int)lines.size() != num_lines) {
-    printf(ARED("...wrong number of lines (have %d want %d)...") "\n",
-           (int)lines.size(), num_lines);
+  std::vector<std::string> trunc_lines = lines;
+  if (truncating) {
+    const int width = ANSI::TerminalWidth().value_or(80);
+    for (std::string &line : trunc_lines) {
+      if (ANSI::StringWidth(line) > width) {
+        line = ANSI::ColorSubstring(line, 0, width);
+      }
+    }
   }
-  for (const string &line : lines) {
+
+  if ((int)trunc_lines.size() != num_lines) {
+    printf(ARED("...wrong number of lines (have %d want %d)...") "\n",
+           (int)trunc_lines.size(), num_lines);
+  }
+  for (const string &line : trunc_lines) {
     printf("%s\n", line.c_str());
   }
 }
