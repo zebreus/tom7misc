@@ -54,6 +54,8 @@
 //  - split out core to library for verifier
 //  - note plane for out patch
 //  - try NiceSin/NiceCos for outer loops
+//  - try multiple bias parameters, or optimize
+//  - max chord method
 
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
                  counter_bad_midpoint, counter_inside,
@@ -68,7 +70,12 @@ static constexpr int NUM_WORK_THREADS = 14;
 
 using vec2 = yocto::vec<double, 2>;
 
-StatusBar status = StatusBar(15);
+static StatusBar status = StatusBar(15);
+
+using Volume = Hypercube::Volume;
+using Pt4Data = Hypercube::Pt4Data;
+using Pt5Data = Hypercube::Pt5Data;
+using Rejection = Hypercube::Rejection;
 
 // Adaptation of Jason's idea.
 // Take a pair of patches, one for outer and one for inner.
@@ -850,7 +857,8 @@ static Discival TranslateDisc(
 // main loop.
 //
 // This is based on the patch bounding ball for the view position. This
-// ball contains every vector in the angle/azimuth patch, but
+// ball contains every vector in the angle/azimuth patch, but its center
+// is not quite on the unit sphere, so we need to patch that up.
 [[maybe_unused]]
 static BigRat SmearRadiusSq(const Ballival &patch_ball,
                             const BigInt &inv_epsilon) {
@@ -1127,6 +1135,137 @@ struct Hypersolver {
     return ret;
   }
 
+  // The vector between distinct hull points (in 3D). Order is
+  // arbitrary here, but each pair only appears once.
+  struct Chord3D {
+    // Indices into hull.
+    int start = 0, end = 0;
+    BigVec3 vec;
+    BigRat length_sq;
+  };
+
+  // Compute an upper bound on the (squared) diameter of the shadow
+  // using the precomputed 3D chords. This should give tighter bounds
+  // than simply computing distance from projected AABBs, since the
+  // points move in tandem.
+  static BigRat MaxSquaredDiameterFromChords(
+      const std::vector<Chord3D> &outer_chords,
+      const ViewBoundsTrig &outer_trig) {
+
+    CHECK(!outer_chords.empty());
+
+    BigRat max_diam_sq(0);
+
+    for (const Chord3D &chord : outer_chords) {
+      Bigival dot_sq =
+        BoundDotProductWithView(outer_trig, chord.vec).Squared();
+
+      // Note that the dot product is maximized when it is parallel
+      // to the view direction. But the projected chord is longest when
+      // it is perpendicular. This is why we subtract from the original
+      // squared length (using Pythagorean theorem).
+      // We just subtract the lower bound here since we are trying
+      // to find the max chord.
+      BigRat max_proj_len_sq = chord.length_sq - dot_sq.LB();
+
+      max_diam_sq = BigRat::Max(max_diam_sq, max_proj_len_sq);
+    }
+
+    return max_diam_sq;
+  }
+
+  struct Edge3D {
+    // Indices into hull.
+    int start = 0, end = 0;
+    // vb - va
+    BigVec3 vec;
+    BigRat length_sq;
+    // Cross product with each vertex in the inner hull, in hull
+    // order.
+    std::vector<BigVec3> v_cx3d;
+  };
+
+  // Return a lower bound on the inner polygon's minimum width. If the
+  // polygon's minimum width wouldn't even fit in the outer polygon's
+  // maximum diameter, then we can rule this configuration out (for
+  // any angle/translation). Might return 0 (a valid but useless bound)
+  // if the intervals include non-convex polygons.
+  BigRat MinSquaredWidth(const ViewBoundsTrig &trig) {
+
+    std::optional<BigRat> min_width_sq;
+
+    // Intuitive but non-obvious fact: The minimum width is realized
+    // between an edge and a vertex. (Theorem 2.1, Houle & Toussaint
+    // "Computing the width of a set," 1988.) Moreover, the edge and
+    // vertex must be antipodal.
+
+    // Here we are using the edges as candidate directions for the
+    // parallel lines of support. We then compute the separation
+    // between the furthest away vertex (in the positive direction)
+    // and this edge (which is the furthest away vertex in the
+    // negative direction; but is just 0 because of convexity).
+
+    for (const Edge3D &edge : inner_edges) {
+
+      // Project the edge using the view.
+      // Bigival dot_prod_edge_view = Dot(viewpos, edge.vec);
+      Bigival dot_prod_edge_view = BoundDotProductWithView(trig, edge.vec);
+      BigRat max_proj_edge_len_sq =
+        edge.length_sq - dot_prod_edge_view.Squared().LB();
+
+      CHECK(BigRat::Sign(max_proj_edge_len_sq) != -1) << "Negative would "
+        "imply a bug in the math since this is a squared length. Zero "
+        "would be possible for a singular view position that is exactly "
+        "parallel to the edge, but the view position is not singular. " <<
+        trig.azimuth.ToString() << "\n" << trig.angle.ToString() <<
+        "\n" << edge.start;
+
+      // Project the 3d cross products (vec, edge) using the view.
+      // This is computing cross(proj(vec, view), proj(edge, view)),
+      // which the cross product of the projected vectors (area of 2d
+      // parallelogram), by instead doing the cross product in 3D and
+      // then projecting. (This avoids some substantial dependency
+      // problems and also allows us to precompute.)
+      std::vector<BigRat> area_lbs;
+      area_lbs.reserve(inner_hull.size());
+      for (const BigVec3 &cx3d : edge.v_cx3d) {
+        BigRat area = BoundDotProductWithView(trig, cx3d).LB();
+        area_lbs.push_back(std::move(area));
+      }
+
+      // The distance between the parallel lines of separation is
+      // the distance between this edge (one parallel line) and a
+      // most distant vertex (no other vertex can be antipodal).
+      // The height's numerator will be the area, so find the
+      // maximum area.
+      CHECK(!area_lbs.empty());
+      BigRat max_lb = area_lbs[0];
+      for (int k = 1; k < area_lbs.size(); k++) {
+        max_lb = BigRat::Max(std::move(max_lb), area_lbs[k]);
+      }
+
+      if (BigRat::Sign(max_lb) != 1) {
+        // This cannot happen for convex polygons, but if we have
+        // enough uncertainty on the vertex positions that it includes
+        // non-convex polygons, we won't be able to compute a valid
+        // bound on the width. So just return a trivial lower bound.
+        return BigRat(0);
+      }
+
+      // In this direction, we have the minimum squared separation.
+      BigRat h_sq = (max_lb * max_lb) / max_proj_edge_len_sq;
+      if (!min_width_sq.has_value() ||
+          h_sq < min_width_sq.value()) {
+        min_width_sq = std::move(h_sq);
+      }
+    }
+
+    if (min_width_sq.has_value()) {
+      return std::move(min_width_sq.value());
+    } else {
+      return BigRat(0);
+    }
+  }
 
   struct ProcessResult {
     std::variant<Split, Impossible> result;
@@ -2476,7 +2615,7 @@ struct Hypersolver {
 
         bool maybe_save_image = false;
 
-        const double vol = Hypervolume(volume).ToDouble();
+        const double vol = Hypercube::Hypervolume(volume).ToDouble();
 
         {
           MutexLock ml(&mu);
@@ -2504,12 +2643,6 @@ struct Hypersolver {
             break;
           }
 
-          /*
-            status.Print(AGREEN("Success!") " Excluded cell (" ACYAN("{}") "). "
-            " Now {}.\n",
-            RejectionReasonString(imp->reason),
-            counter_completed.Read());
-          */
           rejection_count[imp->rejection.reason]++;
         }
 
@@ -2675,26 +2808,11 @@ struct Hypersolver {
     patch_info = LoadPatchInfo("scube-patchinfo.txt");
 
     ArcFour rc("hyper-init");
-    // We don't want every volume's endpoints to involve some
-    // subdivision of an extremely accurate pi, and we don't need them
-    // to; we just need the starting interval to *cover* [0, π] (or
-    // 2π). So we use a simple rational upper bound to π.
-    // Slightly larger than π. Accurate to 16 digits.
-    // (Actually this is 3.1416...!)
-    BigRat big_pi(165707065, 52746197);
-    Volume bounds;
-    bounds.resize(7);
-    bounds[OUTER_AZIMUTH] = Bigival(BigRat(0), big_pi * 2, true, true);
-    bounds[OUTER_ANGLE] = Bigival(BigRat(0), big_pi, true, true);
-    bounds[INNER_AZIMUTH] = Bigival(BigRat(0), big_pi * 2, true, true);
-    bounds[INNER_ANGLE] = Bigival(BigRat(0), big_pi, true, true);
-    bounds[INNER_ROT] = Bigival(BigRat(0), big_pi * 2, true, true);
-    bounds[INNER_X] = Bigival(BigRat(-4), BigRat(4), true, true);
-    bounds[INNER_Y] = Bigival(BigRat(-4), BigRat(4), true, true);
 
-    hypercube.reset(new Hypercube(bounds));
+    hypercube.reset(new Hypercube);
 
-    // Test this out with a single pair to start.
+    // Order the canonical patches by their codes, so that we can
+    // select them by index from the command line.
     std::vector<std::pair<uint64_t, PatchInfo::CanonicalPatch>> canonical;
     for (const auto &[cc, p] : patch_info.canonical) {
       canonical.emplace_back(cc, p);
@@ -2740,16 +2858,37 @@ struct Hypersolver {
       outer_edge3d.push_back(vb - va);
     }
 
+    // Precomputation for the inner polygon's width calculation.
+    inner_edges.reserve(inner_hull.size());
+    for (int start = 0; start < inner_hull.size(); start++) {
+      Edge3D edge;
+      edge.start = start;
+      edge.end = (start + 1) % inner_hull.size();
+      const BigVec3 &va = scube.vertices[inner_hull[start]];
+      const BigVec3 &vb = scube.vertices[inner_hull[edge.end]];
+      edge.vec = vb - va;
+      edge.v_cx3d.reserve(inner_hull.size());
+      for (int vidx = 0; vidx < inner_hull.size(); vidx++) {
+        const BigVec3 &v = scube.vertices[inner_hull[vidx]];
+        edge.v_cx3d.push_back(cross(v, vb - va));
+      }
+      inner_edges.push_back(std::move(edge));
+    }
+
+
+    outer_chords = ComputeChords(scube, outer_hull);
+    inner_chords = ComputeChords(scube, inner_hull);
+
     inubdir = std::format("inubs-{}-{}", outer_code, inner_code);
     (void)Util::MakeDir(inubdir);
 
-    filename = std::format("hc-{}-{}.cube", outer_code, inner_code);
+    filename = Hypercube::StandardFilename(outer_code, inner_code);
     if (Util::ExistsFile(filename)) {
       status.Print("Continuing from {}", filename);
       hypercube->FromDisk(filename);
     }
 
-    full_volume = Hypervolume(hypercube->bounds);
+    full_volume = Hypercube::Hypervolume(hypercube->bounds);
     full_volume_d = full_volume.ToDouble();
 
     // Don't count hypercube loading towards "runtime".
@@ -2827,6 +2966,16 @@ struct Hypersolver {
   // The vector vb-va, with va,vb as in the previous.
   std::vector<BigVec3> outer_edge3d;
 
+  // Parallel to inner_hull (index = start). Precomputation for
+  // minimum width calculation. For each edge, we precompute its 3D
+  // cross product with every vertex of the hull. This allows us to
+  // efficiently calculate projected 2D areas later via a dot product.
+  std::vector<Edge3D> inner_edges;
+
+
+  std::vector<Chord3D> outer_chords;
+  std::vector<Chord3D> inner_chords;
+
   // This is the sum of the 3d cross products for the triangle fan
   // that makes up the outer (resp. inner) hull, using the origin
   // as the shared point. Exact. The dot product of a view vector
@@ -2891,6 +3040,27 @@ struct Hypersolver {
   // The hypervolume where we definitively ruled out a solution.
   // Can compare this against (full - volume_outscope).
   double volume_proved = 0.0;
+
+ private:
+    static std::vector<Chord3D> ComputeChords(const BigPoly &poly,
+                                            const std::vector<int> &hull) {
+    std::vector<Chord3D> ret;
+    ret.reserve((hull.size() * (hull.size() - 1)) / 2);
+    for (int i = 0; i < hull.size(); i++) {
+      for (int j = i + 1; j < hull.size(); j++) {
+        BigVec3 v = poly.vertices[hull[j]] - poly.vertices[hull[i]];
+        BigRat len_sq = dot(v, v);
+        ret.push_back(Chord3D{
+              .start = i,
+              .end = j,
+              .vec = std::move(v),
+              .length_sq = std::move(len_sq),
+            });
+      }
+    }
+
+    return ret;
+  }
 };
 
 static std::string Usage() {

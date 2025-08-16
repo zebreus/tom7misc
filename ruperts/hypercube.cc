@@ -22,6 +22,10 @@
 
 static constexpr bool SELF_CHECK = false;
 
+using Pt4Data = Hypercube::Pt4Data;
+using Pt5Data = Hypercube::Pt5Data;
+using Rejection = Hypercube::Rejection;
+
 const char *ParameterName(int param) {
   switch (param) {
   case OUTER_AZIMUTH: return "O_AZ";
@@ -35,6 +39,13 @@ const char *ParameterName(int param) {
   }
 }
 
+BigRat Hypercube::Hypervolume(const Volume &vol) {
+  BigRat product(1);
+  for (int d = 0; d < NUM_DIMENSIONS; d++) {
+    product *= vol[d].Width();
+  }
+  return product;
+}
 
 std::string Hypercube::VolumeString(const Volume &volume) {
   auto DimString = [](const Bigival &bi) {
@@ -73,7 +84,7 @@ std::string Hypercube::VolumeString(const Volume &volume) {
                      DimString(volume[INNER_Y]));
 }
 
-std::string SerializeRejection(const Rejection &rej) {
+static std::string SerializeRejection(const Rejection &rej) {
   std::string ret = std::format("{}", (uint8_t)rej.reason);
   if (const Pt4Data *p = std::get_if<Pt4Data>(&rej.data)) {
     AppendFormat(&ret, " {} {}", p->edge, p->point);
@@ -88,7 +99,7 @@ std::string SerializeRejection(const Rejection &rej) {
   return ret;
 }
 
-std::optional<Rejection> ParseRejection(std::string_view s) {
+static std::optional<Rejection> ParseRejection(std::string_view s) {
   // Format is
   //   reason_number additional_data
   Rejection ret;
@@ -142,6 +153,11 @@ std::optional<Rejection> ParseRejection(std::string_view s) {
   }
 
   return ret;
+}
+
+std::string Hypercube::StandardFilename(
+    uint64_t outer_code, uint64_t inner_code) {
+  return std::format("hc-{}-{}.cube", outer_code, inner_code);
 }
 
 void Hypercube::FromDisk(const std::string &filename) {
@@ -278,7 +294,7 @@ void Hypercube::ToDisk(const std::string &filename) const {
   fclose(f);
 }
 
-std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>>
+std::vector<std::pair<Hypercube::Volume, std::shared_ptr<Hypercube::Node>>>
 Hypercube::GetLeaves(double *volume_outscope, double *volume_proved) const {
   *volume_outscope = 0.0;
   *volume_proved = 0.0;
@@ -329,7 +345,7 @@ Hypercube::GetLeaves(double *volume_outscope, double *volume_proved) const {
 }
 
 
-std::pair<Volume, Volume>
+std::pair<Hypercube::Volume, Hypercube::Volume>
 Hypercube::SplitVolume(const Volume &volume, int axis, const BigRat &split) {
   CHECK(axis >= 0 && axis < NUM_DIMENSIONS);
   if (SELF_CHECK) {
@@ -343,4 +359,24 @@ Hypercube::SplitVolume(const Volume &volume, int axis, const BigRat &split) {
   right[axis] = Bigival(split, right[axis].UB(),
                         true, right[axis].IncludesUB());
   return std::make_pair(left, right);
+}
+
+Hypercube::Volume Hypercube::MakeStandardBounds() {
+  // We don't want every volume's endpoints to involve some
+  // subdivision of an extremely accurate pi, and we don't need them
+  // to; we just need the starting interval to *cover* [0, π] (or
+  // 2π). So we use a simple rational upper bound to π.
+  // Slightly larger than π. Accurate to 16 digits.
+  // (Actually this is 3.1416...!)
+  BigRat big_pi(165707065, 52746197);
+  Volume bounds;
+  bounds.resize(7);
+  bounds[OUTER_AZIMUTH] = Bigival(BigRat(0), big_pi * 2, true, true);
+  bounds[OUTER_ANGLE] = Bigival(BigRat(0), big_pi, true, true);
+  bounds[INNER_AZIMUTH] = Bigival(BigRat(0), big_pi * 2, true, true);
+  bounds[INNER_ANGLE] = Bigival(BigRat(0), big_pi, true, true);
+  bounds[INNER_ROT] = Bigival(BigRat(0), big_pi * 2, true, true);
+  bounds[INNER_X] = Bigival(BigRat(-4), BigRat(4), true, true);
+  bounds[INNER_Y] = Bigival(BigRat(-4), BigRat(4), true, true);
+  return bounds;
 }

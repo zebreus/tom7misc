@@ -4,6 +4,7 @@
 #include <format>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "ansi.h"
 #include "big-interval.h"
@@ -128,4 +129,26 @@ BigRat ExpandSquaredRadius(const BigRat &radius_sq,
     BigRat r = BigRat::SqrtBounds(radius_sq, inv_epsilon).second + error_term;
     return r * r;
   }
+}
+
+BigRat MaxSquaredDiameter(const std::vector<Vec2ival> &vs) {
+  CHECK(vs.size() >= 2) << "Precondition";
+
+  BigRat max_sq_dist(0);
+
+  for (size_t i = 0; i < vs.size(); ++i) {
+    const Vec2ival &va = vs[i];
+    for (size_t j = i + 1; j < vs.size(); ++j) {
+      const Vec2ival &vb = vs[j];
+
+      BigRat current_max_sq =
+        (va.x - vb.x).Squared().UB() +
+        (va.y - vb.y).Squared().UB();
+
+      max_sq_dist = BigRat::Max(std::move(max_sq_dist),
+                                std::move(current_max_sq));
+    }
+  }
+
+  return max_sq_dist;
 }

@@ -4,9 +4,7 @@
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,12 +24,16 @@ inline constexpr int NUM_DIMENSIONS = 7;
 
 const char *ParameterName(int param);
 
+// Rejection means we've proved some cell is impossible (can't
+// contain a solution). This is all the different reasons that
+// we use to do that.
 enum RejectionReason : uint8_t {
   REJECTION_UNKNOWN = 0,
   OUTSIDE_OUTER_PATCH = 1,
   OUTSIDE_INNER_PATCH = 2,
   OUTSIDE_OUTER_PATCH_BALL = 3,
   OUTSIDE_INNER_PATCH_BALL = 4,
+  // POINT_OUTSIDE1...3 are all deprecated and shouln't appear.
   POINT_OUTSIDE1 = 5,
   POINT_OUTSIDE2 = 6,
   POINT_OUTSIDE3 = 7,
@@ -41,53 +43,41 @@ enum RejectionReason : uint8_t {
 };
 inline constexpr int NUM_REJECTION_REASONS = 12;
 
-struct Pt4Data {
-  // When the rejection reason is PT4 or PT5, then we found a point
-  // that is definitely on the wrong side of some edge.
-  // This is the index of that edge (start endpoint) and point inside
-  // the outer and inner hulls, respectively. (NOT a vertex index.)
-  int8_t edge = -1;
-  int8_t point = -1;
-};
-
-struct Pt5Data {
-  int8_t edge = -1;
-  int8_t point = -1;
-  // For a pt5 rejection, the bias we used for the disc.
-  BigRat bias;
-};
-
-struct Rejection {
-  RejectionReason reason = REJECTION_UNKNOWN;
-  std::variant<std::monostate, Pt4Data, Pt5Data> data;
-};
-
-std::string SerializeRejection(const Rejection &rej);
-
-// Must be a proper rejection (not UNKNOWN).
-// Doesn't check the case that point/edge indices are too large.
-std::optional<Rejection> ParseRejection(std::string_view s);
-
-// Represents a (hyper)rectangular volume within the search space.
-using Volume = std::vector<Bigival>;
-
-// The n-dimensional hypervolume of the cell.
-inline BigRat Hypervolume(const Volume &vol) {
-  BigRat product(1);
-  for (int d = 0; d < NUM_DIMENSIONS; d++) {
-    product *= vol[d].Width();
-  }
-  return product;
-}
-
 // Hypercube using big rationals. (It's actually a hyperrectangle
 // because the sides are not all the same length...)
 struct Hypercube {
 
-  Hypercube(const Volume &bounds) :
-    bounds(std::move(bounds)) {
+  struct Pt4Data {
+    // When the rejection reason is PT4 or PT5, then we found a point
+    // that is definitely on the wrong side of some edge.
+    // This is the index of that edge (start endpoint) and point inside
+    // the outer and inner hulls, respectively. (NOT a vertex index.)
+    int8_t edge = -1;
+    int8_t point = -1;
+  };
+
+  struct Pt5Data {
+    int8_t edge = -1;
+    int8_t point = -1;
+    // For a pt5 rejection, the bias we used for the disc.
+    BigRat bias;
+  };
+
+  struct Rejection {
+    RejectionReason reason = REJECTION_UNKNOWN;
+    std::variant<std::monostate, Pt4Data, Pt5Data> data;
+  };
+
+  // Represents a (hyper)rectangular volume within the search space.
+  using Volume = std::vector<Bigival>;
+
+  Hypercube() :
+    bounds(MakeStandardBounds()) {
     root.reset(new Node(Leaf{.completed = 0}));
   }
+
+  static std::string StandardFilename(
+      uint64_t outer_code, uint64_t inner_code);
 
   // Replaces the entire hypercube.
   void FromDisk(const std::string &filename);
@@ -128,8 +118,13 @@ struct Hypercube {
   std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>>
   GetLeaves(double *volume_outscope, double *volume_proved) const;
 
+  // The n-dimensional hypervolume of the cell.
+  static BigRat Hypervolume(const Volume &vol);
+
   // Produces 7-line string with ANSI color.
   static std::string VolumeString(const Volume &volume);
+
+  static Volume MakeStandardBounds();
 
   // Full bounds of the search space.
   Volume bounds;

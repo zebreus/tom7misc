@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "big-interval.h"
@@ -295,5 +296,10 @@ Frame3ival FrameFromViewPos(const Vec3ival &view,
 BigRat ExpandSquaredRadius(const BigRat &radius_sq,
                            const BigRat &error_term,
                            const BigInt &inv_epsilon);
+
+// Compute an upper bound for the squared diameter of a polygon.
+// If the polygon is not convex, this is really computing the diameter
+// of its convex hull (it's just the max distance between vertices).
+BigRat MaxSquaredDiameter(const std::vector<Vec2ival> &vs);
 
 #endif
