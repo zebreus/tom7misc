@@ -39,12 +39,19 @@ void Sample(const Bigival &v, const F &f) {
     return;
   }
 
+  BigRat epsilon = v.Width() / 1024;
+  CHECK(BigRat::Sign(epsilon) == 1);
+
   if (v.IncludesLB()) {
     f(v.LB());
+  } else {
+    f(v.LB() + epsilon);
   }
 
   if (v.IncludesUB()) {
     f(v.UB());
+  } else {
+    f(v.UB() - epsilon);
   }
 
   BigRat zero(0);
@@ -201,6 +208,25 @@ static void Simple() {
             CHECK_CONTAINS(quot1, sa / b.UB());
           });
       }
+
+      {
+        Bigival mn = Bigival::Min(a, b);
+        Sample(a, [&](const BigRat &sa) {
+            Sample(b, [&](const BigRat &sb) {
+                CHECK_CONTAINS(mn, BigRat::Min(sa, sb));
+              });
+          });
+      }
+
+      {
+        Bigival mx = Bigival::Max(a, b);
+        Sample(a, [&](const BigRat &sa) {
+            Sample(b, [&](const BigRat &sb) {
+                CHECK_CONTAINS(mx, BigRat::Max(sa, sb));
+              });
+          });
+      }
+
     }
   }
 

@@ -86,8 +86,8 @@ struct Bigival {
     Point z = ub * b.lb;
     Point w = ub * b.ub;
 
-    return Bigival(Min(Min(x, y), Min(z, w)),
-                   Max(Max(x, y), Max(z, w)));
+    return Bigival(MinOr(MinOr(x, y), MinOr(z, w)),
+                   MaxOr(MaxOr(x, y), MaxOr(z, w)));
   }
 
   // When we know that one argument is exact, we can save some steps.
@@ -141,7 +141,7 @@ struct Bigival {
     // I think abs requires case analysis. It is not monotone.
     if (ContainsZero()) {
       return Bigival(Point(BigRat(0), true),
-                     Max(alb, aub));
+                     MaxOr(alb, aub));
     }
 
     if (SELF_CHECK) {
@@ -162,7 +162,7 @@ struct Bigival {
     }
 
     // PERF: Can avoid comparing twice, copying...
-    return Bigival(Min(alb, aub), Max(alb, aub));
+    return Bigival(MinOr(alb, aub), MaxOr(alb, aub));
   }
 
   Bigival Squared() const {
@@ -287,7 +287,17 @@ struct Bigival {
 
   // Return the smallest interval that contains both intervals.
   static Bigival Union(const Bigival &a, const Bigival &b) {
-    return Bigival(Min(a.lb, b.lb), Max(a.ub, b.ub));
+    return Bigival(MinOr(a.lb, b.lb), MaxOr(a.ub, b.ub));
+  }
+
+  // The max() function on the underlying values.
+  static Bigival Max(const Bigival &a, const Bigival &b) {
+    return Bigival(MaxAnd(a.lb, b.lb), MaxOr(a.ub, b.ub));
+  }
+
+  // The min() function on the underlying values.
+  static Bigival Min(const Bigival &a, const Bigival &b) {
+    return Bigival(MinOr(a.lb, b.lb), MinAnd(a.ub, b.ub));
   }
 
   // True if the interval contains just one number; the number
@@ -370,7 +380,11 @@ struct Bigival {
     return Point(BigRat::Inverse(a.r), a.included);
   }
 
-  static Point Min(const Point &a, const Point &b) {
+  // Careful: There are two notions of Min, depending on how
+  // it will be used. They differ on whether the result is
+  // included if the two points have the same value. Here
+  // the point is inclusive if eithe argument is inclusive.
+  static Point MinOr(const Point &a, const Point &b) {
     if (a.r == b.r) {
       // this is a.included || b.included, but with the
       // hopes that the compiler will not copy.
@@ -380,7 +394,7 @@ struct Bigival {
     }
   }
 
-  static Point Max(const Point &a, const Point &b) {
+  static Point MaxOr(const Point &a, const Point &b) {
     if (a.r == b.r) {
       return a.included ? a : b;
     } else {
@@ -388,6 +402,7 @@ struct Bigival {
     }
   }
 
+  // Endpoints must both be included for the result to be included.
   static Point MinAnd(const Point &a, const Point &b) {
     if (a.r == b.r) {
       if (a.included && b.included) return a;
@@ -397,6 +412,7 @@ struct Bigival {
     }
   }
 
+  // Endpoints must both be included for the result to be included.
   static Point MaxAnd(const Point &a, const Point &b) {
     if (a.r == b.r) {
       if (a.included && b.included) return a;

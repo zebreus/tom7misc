@@ -291,8 +291,8 @@ Bigival Bigival::Sin(const BigInt &inv_epsilon) const {
   const BigInt double_inv_epsilon = inv_epsilon * 2;
   Bigival a = Sin(lb.r, double_inv_epsilon);
   Bigival b = Sin(ub.r, double_inv_epsilon);
-  Point lower = Min(a.lb, b.lb);
-  Point upper = Max(a.ub, b.ub);
+  Point lower = MinOr(a.lb, b.lb);
+  Point upper = MaxOr(a.ub, b.ub);
 
   // The tricky part is that we might have a peak or trough
   // of the sine function inside that interval, so the endpoints
@@ -340,8 +340,8 @@ Bigival Bigival::Cos(const BigInt &inv_epsilon) const {
   const BigInt double_inv_epsilon = inv_epsilon * 2;
   Bigival a = Cos(lb.r, double_inv_epsilon);
   Bigival b = Cos(ub.r, double_inv_epsilon);
-  Point lower = Min(a.lb, b.lb);
-  Point upper = Max(a.ub, b.ub);
+  Point lower = MinOr(a.lb, b.lb);
+  Point upper = MaxOr(a.ub, b.ub);
 
   Bigival pi = Pi(width.Denominator() * 1024);
   if (width >= pi.UB() * 2) {
