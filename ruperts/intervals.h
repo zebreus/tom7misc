@@ -261,6 +261,59 @@ struct SinCos {
   Bigival cosine;
 };
 
+// Probably to intervals.h?
+//
+// We work with spherical coordinates (azimuth/angle intervals) to
+// represent the bounds on the outer and inner view positions.
+// Various operations will want to have Sin/Cos of these angles,
+// so we compute those up front. We can spend some more time getting
+// high quality approximations since we will reuse them.
+struct ViewBoundsTrig {
+
+  ViewBoundsTrig(Bigival azimuth_in, Bigival angle_in,
+                 BigInt inv_epsilon_in) :
+    azimuth(std::move(azimuth_in)), angle(std::move(angle_in)),
+    inv_epsilon(std::move(inv_epsilon_in)) {
+
+    // Since we use these a lot of times, we spend extra time up front
+    // to compute higher quality bounds (simpler rationals). We can
+    // still stay approximately within the inv_epsilon target.
+    az.sine = azimuth.NiceSin(inv_epsilon);
+    az.cosine = azimuth.NiceCos(inv_epsilon);
+
+    an.sine = angle.NiceSin(inv_epsilon);
+    an.cosine = angle.NiceCos(inv_epsilon);
+
+    // We use these for the calculation of the patch's bounding ball.
+    mid_azimuth = azimuth.Midpoint();
+    mid_angle = angle.Midpoint();
+
+    // Consider NiceSin/NiceCos here. But we just use this once.
+    mid_sin_az = Bigival::Sin(mid_azimuth, inv_epsilon);
+    mid_cos_az = Bigival::Cos(mid_azimuth, inv_epsilon);
+    mid_sin_an = Bigival::Sin(mid_angle, inv_epsilon);
+    mid_cos_an = Bigival::Cos(mid_angle, inv_epsilon);
+  }
+
+  Bigival azimuth;
+  Bigival angle;
+
+  BigInt inv_epsilon;
+
+  SinCos az;
+  SinCos an;
+
+  // Middle of the interval.
+  BigRat mid_azimuth;
+  BigRat mid_angle;
+
+  // XXX SinCos
+  Bigival mid_sin_az = Bigival::Sin(mid_azimuth, inv_epsilon);
+  Bigival mid_cos_az = Bigival::Cos(mid_azimuth, inv_epsilon);
+  Bigival mid_sin_an = Bigival::Sin(mid_angle, inv_epsilon);
+  Bigival mid_cos_an = Bigival::Cos(mid_angle, inv_epsilon);
+};
+
 // Precomputed trigonometry for the 2D rotation of the inner hull.
 // Includes the sin and cosine of the endpoints and midpoint.
 struct RotTrig {
@@ -336,6 +389,15 @@ struct RotTrig {
   BigInt inv_epsilon;
 };
 
+// Compute the view vector from azimuth/angle. If you are going
+// to take a dot product, use DotProductWithView.
+Vec3ival ViewFromSpherical(const ViewBoundsTrig &trig);
+
+// Like Dot(ViewFromSpherical(azimuth, angle), v) but gives
+// tighter bounds. Precondition: The angle intervals must both
+// be less than 3 radians.
+Bigival DotProductWithView(const ViewBoundsTrig &trig,
+                           const BigVec3 &v);
 
 // Rotate the point v_in by rot and translate it by tx,ty.
 // Since v_in is an AABB and rot is an interval, the resulting
@@ -346,7 +408,6 @@ Vec2ival GetBoundingAABB(const Vec2ival &v_in,
                          const RotTrig &rot_trig,
                          const BigInt &inv_epsilon,
                          const Bigival &tx, const Bigival &ty);
-
 
 // Returns true if the disc and axis-aligned bounding box may overlap.
 // This is guaranteed to be true if they do overlap. It can have false
@@ -393,5 +454,54 @@ BigRat ExpandSquaredRadius(const BigRat &radius_sq,
 // If the polygon is not convex, this is really computing the diameter
 // of its convex hull (it's just the max distance between vertices).
 BigRat MaxSquaredDiameter(const std::vector<Vec2ival> &vs);
+
+
+// Experimental; incomplete.
+//
+// Computes a bounding disc for an original exact 3D point (v), when
+// viewed from anywhere in view position (trig; given by the
+// azimuth/angle intervals) and projected to 2D along the z-axis.
+//
+// This uses the precomputed squared smear radius, which does not
+// depend on the vertex. It's the squared radius of a ball centered
+// on the unit sphere that encloses the entire azimuth/angle patch.
+Discival GetInitialDisc(const BigVec3 &v,
+                        const ViewBoundsTrig &trig,
+                        const BigRat &smear_radius_sq,
+                        const BigInt &inv_epsilon);
+
+// Experimental; incomplete.
+//
+// Consider an abstract point on the unit sphere. When we rotate that
+// sphere to view it from the view position (which is some unit vector
+// in the angle/azimuth patch), the point can move within some radius.
+// Compute an upper bound on this radius (squared). This radius is
+// the same for any vertex (on the unit sphere) and is invariant under
+// rotation and orthographic projection, which is what we do in the
+// main loop.
+//
+// This is based on the patch bounding ball for the view position. This
+// ball contains every vector in the angle/azimuth patch, but its center
+// is not quite on the unit sphere, so we need to patch that up.
+BigRat SmearRadiusSq(const Ballival &patch_ball,
+                     const BigInt &inv_epsilon);
+
+// The vector between distinct hull points (in 3D). Order is
+// arbitrary here, but each pair only appears once.
+struct Chord3D {
+  // Indices into hull.
+  int start = 0, end = 0;
+  // va - vb
+  BigVec3 vec;
+  BigRat length_sq;
+};
+
+// Compute bounds on the (squared) diameter of the shadow using
+// the precomputed 3D chords. This is the maximum distance between
+// any two vertices. This should give tighter bounds than simply
+// computing distance from projected AABBs, since the points move in
+// tandem.
+Bigival SquaredDiameterFromChords(const std::vector<Chord3D> &chords,
+                                  const ViewBoundsTrig &trig);
 
 #endif

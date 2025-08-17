@@ -71,6 +71,105 @@ static void Sample(const Vec2ival &v, const F &f) {
   });
 }
 
+static void TestDotProductWithView() {
+  BigInt inv_epsilon(1000000);
+  BigInt inv_epsilon_high("1000000000000000000000");
+
+  auto Check = [&](const Bigival &azimuth, const Bigival &angle,
+                   const BigVec3 &v) {
+    ViewBoundsTrig trig(azimuth, angle, inv_epsilon);
+
+    Bigival result = DotProductWithView(trig, v);
+
+    Vec3ival viewpos_ival = ViewFromSpherical(trig);
+    Bigival naive_result = Dot(viewpos_ival, v);
+
+    // The optimized result should be a sub-interval of the naive one.
+    // (Or else we could be intersecting them for better bounds.)
+    CHECK(result.LB() >= naive_result.LB())
+      << "Optimized LB " << result.LB().ToString()
+      << " should be >= naive LB " << naive_result.LB().ToString();
+    CHECK(result.UB() <= naive_result.UB())
+      << "Optimized UB " << result.UB().ToString()
+      << " should be <= naive UB " << naive_result.UB().ToString();
+
+    // For non-singular angle intervals, it should be strictly tighter because
+    // of the dependency on sin(angle) in the naive version.
+    if (!angle.Singular()) {
+      CHECK(result.Width() < naive_result.Width())
+        << "Optimized width " << result.Width().ToString()
+        << " should be < naive width " << naive_result.Width().ToString();
+    }
+
+    Sample(azimuth, [&](const BigRat &az_sample) {
+      Sample(angle, [&](const BigRat &an_sample) {
+          Bigival sin_az_ival = Bigival::Sin(az_sample, inv_epsilon_high);
+          Bigival cos_az_ival = Bigival::Cos(az_sample, inv_epsilon_high);
+          Bigival sin_an_ival = Bigival::Sin(an_sample, inv_epsilon_high);
+          Bigival cos_an_ival = Bigival::Cos(an_sample, inv_epsilon_high);
+
+          // This is a tight interval around the exact dot product
+          // for the sample point.
+          Bigival dot_sample_ival =
+            sin_an_ival * (cos_az_ival * v.x + sin_az_ival * v.y) +
+            cos_an_ival * v.z;
+
+          // The computed interval must contain the sample's interval.
+          CHECK(result.Contains(dot_sample_ival.Midpoint()))
+            << "Optimized result " << result.ToString()
+            << " does not contain sample point "
+            << dot_sample_ival.Midpoint().ToDouble();
+          CHECK(naive_result.Contains(dot_sample_ival.Midpoint()))
+            << "Naive result " << naive_result.ToString()
+            << " does not contain sample point "
+            << dot_sample_ival.Midpoint().ToDouble();
+        });
+    });
+  };
+
+  // A typical small interval.
+  {
+    Bigival azimuth(BigRat(1, 10), BigRat(2, 10), true, true);
+    Bigival angle(BigRat(3, 10), BigRat(4, 10), true, true);
+    BigVec3 v(BigRat(-1), BigRat(2), BigRat(3));
+    Check(azimuth, angle, v);
+  }
+
+  // Intervals crossing zero.
+  {
+    Bigival azimuth(BigRat(-1, 10), BigRat(1, 10), true, true);
+    Bigival angle(BigRat(-2, 10), BigRat(2, 10), true, true);
+    BigVec3 v(BigRat(-5), BigRat(8), BigRat(-1));
+    Check(azimuth, angle, v);
+  }
+
+  // Singular angle.
+  {
+    Bigival azimuth(BigRat(1, 10), BigRat(2, 10), true, true);
+    Bigival angle(BigRat(3, 10));
+    BigVec3 v(BigRat(1), BigRat(2), BigRat(3));
+
+    ViewBoundsTrig trig(azimuth, angle, inv_epsilon);
+    Bigival result = DotProductWithView(trig, v);
+    Bigival naive_result = Dot(ViewFromSpherical(trig), v);
+    // Results should be very close for singular inputs, because
+    // the dependency problem should not really arise.
+    CHECK(BigRat::Abs(result.Width() - naive_result.Width()) <
+          BigRat(BigInt(10), inv_epsilon));
+  }
+
+  // Singular azimuth. Still has dependency on angle.
+  {
+    Bigival azimuth(BigRat(1, 10));
+    Bigival angle(BigRat(3, 10), BigRat(4, 10), true, true);
+    BigVec3 v(BigRat(1), BigRat(2), BigRat(3));
+    Check(azimuth, angle, v);
+  }
+
+  printf("DotProductWithView OK\n");
+}
+
+
 static void TestGetBoundingAABB() {
   BigInt inv_epsilon(100000);
   BigInt inv_epsilon_high("1000000000000000000000");
@@ -175,8 +274,8 @@ static void TestGetBoundingAABB() {
 
   // Large rotation.
   {
-    Bigival pi = Bigival::Pi(inv_epsilon) * BigRat(15, 16);
-    Bigival angle(BigRat(0), pi.Midpoint() / 2, true, true);
+    Bigival almost_two_pi = Bigival::Pi(inv_epsilon) * BigRat(31, 16);
+    Bigival angle(BigRat(0), almost_two_pi.Midpoint(), true, true);
     Vec2ival v_in(Bigival(-1, 1, true, true), Bigival(0, 2, true, true));
     Bigival tx(-1, 1, true, true), ty(-1, 0, true, true);
     CheckAllSamples(v_in, angle, tx, ty);
@@ -194,12 +293,70 @@ static void TestGetBoundingAABB() {
   printf("GetBoundingAABB OK\n");
 }
 
+static void TestExpandSquaredRadius() {
+  const BigInt inv_epsilon(1000000);
+
+  auto GetExpected = [&](const BigRat &r_sq, const BigRat &e) {
+    BigRat r = BigRat::SqrtBounds(r_sq, inv_epsilon).second;
+    BigRat total_r = r + e;
+    return total_r * total_r;
+  };
+
+  // Small radius and error, where the linear approximation is a safe
+  // upper bound. 4*r^2 <= (1-e)^2. Here 4*(1/100) <= (1-1/1000)^2.
+  {
+    BigRat r_sq(1 / 100);
+    BigRat e(1 / 1000);
+    BigRat result = ExpandSquaredRadius(r_sq, e, inv_epsilon);
+    BigRat expected = GetExpected(r_sq, e);
+    CHECK(result >= expected);
+    // Also check it used the fast path.
+    CHECK(result == r_sq + e);
+  }
+
+  // Large radius, where the fast path condition fails.
+  // 4*1 > (1-1/1000)^2.
+  {
+    BigRat r_sq(1);
+    BigRat e(1, 1000);
+    BigRat result = ExpandSquaredRadius(r_sq, e, inv_epsilon);
+    BigRat expected = GetExpected(r_sq, e);
+    // Slow path should be very close to the oracle.
+    CHECK(result >= expected);
+    CHECK(BigRat::Abs(result - expected) < BigRat(1, 100000));
+  }
+
+  // Zero radius.
+  {
+    BigRat r_sq(0);
+    BigRat e(1, 10);
+    BigRat result = ExpandSquaredRadius(r_sq, e, inv_epsilon);
+    BigRat expected = GetExpected(r_sq, e);
+    CHECK(result >= expected);
+    CHECK(result == r_sq + e);
+  }
+
+  // Zero error term.
+  {
+    BigRat r_sq("1/25");
+    BigRat e(0);
+    BigRat result = ExpandSquaredRadius(r_sq, e, inv_epsilon);
+    BigRat expected = GetExpected(r_sq, e);
+    // Should be exact.
+    CHECK(result == expected);
+    CHECK(result == r_sq);
+  }
+
+  printf("ExpandSquaredRadius OK\n");
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
 
+  TestDotProductWithView();
   TestGetBoundingAABB();
+  TestExpandSquaredRadius();
 
   printf("OK\n");
   return 0;

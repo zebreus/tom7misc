@@ -33,7 +33,7 @@ enum RejectionReason : uint8_t {
   OUTSIDE_INNER_PATCH = 2,
   OUTSIDE_OUTER_PATCH_BALL = 3,
   OUTSIDE_INNER_PATCH_BALL = 4,
-  // POINT_OUTSIDE1...3 are all deprecated and shouln't appear.
+  // POINT_OUTSIDE1...3 are all deprecated and shouldn't appear.
   POINT_OUTSIDE1 = 5,
   POINT_OUTSIDE2 = 6,
   POINT_OUTSIDE3 = 7,
