@@ -1,6 +1,7 @@
 // Copy characters from a 1x font to 2x font, if they aren't already
 // present there.
 
+#include <cstdio>
 #include <string>
 #include <vector>
 

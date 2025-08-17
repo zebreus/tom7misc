@@ -20,11 +20,22 @@ using namespace std;
 
 static constexpr bool VERBOSE = true;
 
+// No stability guarantees for these codepoints. We should
+// consider not even outputting them in the TTFs. The purpose
+// is to allow for some utility-style glyph pieces in the
+// font images that are not deleted by normalization.
+enum PrivateUse : uint32_t {
+  PUA_START = 0xF7000,
+  PUA_LC_SLASH1,
+  PUA_SLASH_STEEP,
+  PUA_SLASH,
+};
+
 // TODO: Need to add page for "old" DFX fonts.
 
 Page Config::ParsePage(const std::string &p) {
   if (p == "bit7-classic") return Page::BIT7_CLASSIC;
-  if (p == "bit7-latinab") return Page::BIT7_LATINAB;
+  if (p == "bit7-latinabc") return Page::BIT7_LATINABC;
   if (p == "bit7-extended") return Page::BIT7_EXTENDED;
   if (p == "bit7-extended2") return Page::BIT7_EXTENDED2;
   if (p == "bit7-cyrillic") return Page::BIT7_CYRILLIC;
@@ -36,8 +47,8 @@ const char *Config::PageString(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC:
     return "bit7-classic";
-  case Page::BIT7_LATINAB:
-    return "bit7-latinab";
+  case Page::BIT7_LATINABC:
+    return "bit7-latinabc";
   case Page::BIT7_EXTENDED:
     return "bit7-extended";
   case Page::BIT7_EXTENDED2:
@@ -159,21 +170,16 @@ const std::vector<int> &PageBit7Classic() {
     0x265E,
     0x265F,
 
-    // Three free before replacement char
-    -1,
-    -1,
-    -1,
-    // <?> replacement char
-    0xFFFD,
+    // Four free after chess
+    -1, -1, -1, -1,
 
-    // Black circle, black square
-    0x25CF,
-    0x25A0,
-    // geometric shapes and bullets, unclaimed
-    -1,
-    0x203B, // reference mark
-    // cont'd
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // Blank line
+    // "Black" (filled) suits (Spade, Heart, Club, Diamond)
+    0x2660, 0x2663, 0x2665, 0x2666,
+    // White (outlined) suits (Spade, Heart, Club, Diamond)
+    0x2664, 0x2661, 0x2667, 0x2662,
+    // (die faces?)
+    -1, -1, -1, -1, -1, -1, -1, -1,
 
     // Unicode Latin-1 Supplement, mapped to itself.
     // See https://en.wikibooks.org/wiki/Unicode/Character_reference/0000-0FFF
@@ -207,8 +213,16 @@ const std::vector<int> &PageBit7Classic() {
 
     // This was once some basic math symbols, but I moved them
     // to the proper unicode page.
-    -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1,
+    // Black circle, black square
+    0x25CF,
+    0x25A0,
+    // geometric shapes and bullets, unclaimed
+    -1,
+    0x203B, // reference mark
+    // cont'd
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // <?> replacement char
+    0xFFFD,
 
     // Block Elements, in unicode order
     0x2580, 0x2581, 0x2582, 0x2583, 0x2584, 0x2585, 0x2586, 0x2587,
@@ -217,11 +231,12 @@ const std::vector<int> &PageBit7Classic() {
     0x2598, 0x2599, 0x259A, 0x259B, 0x259C, 0x259D, 0x259E, 0x259F,
   };
 
+  CHECK(CODEPOINTS.size() == 16 * 24);
   return CODEPOINTS;
 }
 
 // Standard size is: 16x24
-const std::vector<int> &PageBit7LatinAB() {
+const std::vector<int> &PageBit7LatinABC() {
   static const std::vector<int> CODEPOINTS = {
     // U+0100 through U+017F: Latin Extended-A
     0x0100,  // (Ā) Latin Capital letter A with macron
@@ -579,10 +594,48 @@ const std::vector<int> &PageBit7LatinAB() {
     0x024E,  // (Ɏ) Latin Capital Letter Y with Stroke
     0x024F,  // (ɏ) Latin Small Letter Y with Stroke
 
-    // 48 unused slots
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    // Latin Extended-C
+    0x2C60,  // (Ⱡ) LATIN CAPITAL LETTER L WITH DOUBLE BAR
+    0x2C61,  // (ⱡ) LATIN SMALL LETTER L WITH DOUBLE BAR
+    0x2C62,  // (Ɫ) LATIN CAPITAL LETTER L WITH MIDDLE TILDE
+    0x2C63,  // (Ᵽ) LATIN CAPITAL LETTER P WITH STROKE
+    0x2C64,  // (Ɽ) LATIN CAPITAL LETTER R WITH TAIL
+    0x2C65,  // (ⱥ) LATIN SMALL LETTER A WITH STROKE
+    0x2C66,  // (ⱦ) LATIN SMALL LETTER T WITH DIAGONAL
+    0x2C67,  // (Ⱨ) LATIN CAPITAL LETTER H WITH DESCENDER
+    0x2C68,  // (ⱨ) LATIN SMALL LETTER H WITH DESCENDER
+    0x2C69,  // (Ⱪ) LATIN CAPITAL LETTER K WITH DESCENDER
+    0x2C6A,  // (ⱪ) LATIN SMALL LETTER K WITH DESCENDER
+    0x2C6B,  // (Ⱬ) LATIN CAPITAL LETTER Z WITH DESCENDER
+    0x2C6C,  // (ⱬ) LATIN SMALL LETTER Z WITH DESCENDER
+    0x2C6D,  // (Ɑ) LATIN CAPITAL LETTER ALPHA
+    0x2C6E,  // (Ɱ) LATIN CAPITAL LETTER M WITH HOOK
+    0x2C6F,  // (Ɐ) LATIN CAPITAL LETTER TURNED A
+
+    0x2C70,  // (Ɒ) LATIN CAPITAL LETTER TURNED ALPHA
+    0x2C71,  // (ⱱ) LATIN SMALL LETTER V WITH RIGHT HOOK
+    0x2C72,  // (Ⱳ) LATIN CAPITAL LETTER W WITH HOOK
+    0x2C73,  // (ⱳ) LATIN SMALL LETTER W WITH HOOK
+    0x2C74,  // (ⱴ) LATIN SMALL LETTER V WITH CURL
+    0x2C75,  // (Ⱶ) LATIN CAPITAL LETTER HALF H
+    0x2C76,  // (ⱶ) LATIN SMALL LETTER HALF H
+    0x2C77,  // (ⱷ) LATIN SMALL LETTER TAILLESS PHI
+    0x2C78,  // (ⱸ) LATIN SMALL LETTER E WITH NOTCH
+    0x2C79,  // (ⱹ) LATIN SMALL LETTER TURNED R WITH TAIL
+    0x2C7A,  // (ⱺ) LATIN SMALL LETTER O WITH LOW RING INSIDE
+    0x2C7B,  // (ⱻ) LATIN LETTER SMALL CAPITAL TURNED E
+    0x2C7C,  // (ⱼ) LATIN SUBSCRIPT SMALL LETTER J
+    0x2C7D,  // (ⱽ) MODIFIER LETTER CAPITAL V
+    0x2C7E,  // (Ȿ) LATIN CAPITAL LETTER S WITH SWASH TAIL
+    0x2C7F,  // (Ɀ) LATIN CAPITAL LETTER Z WITH SWASH TAIL
+
+    // Private area for utility glyph pieces (slashes)
+    PUA_LC_SLASH1,
+    PUA_SLASH_STEEP,
+    PUA_SLASH,
+
+    // 16 unused slots
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   };
 
   CHECK(CODEPOINTS.size() == 16 * 24) << CODEPOINTS.size();
@@ -1719,7 +1772,7 @@ const std::vector<int> &PageBit7Math() {
 static const std::vector<int> &GetCodepointsForPage(Page p) {
   switch (p) {
   case Page::BIT7_CLASSIC: return PageBit7Classic();
-  case Page::BIT7_LATINAB: return PageBit7LatinAB();
+  case Page::BIT7_LATINABC: return PageBit7LatinABC();
   case Page::BIT7_EXTENDED: return PageBit7Extended();
   case Page::BIT7_EXTENDED2: return PageBit7Extended2();
   case Page::BIT7_CYRILLIC: return PageBit7Cyrillic();
@@ -1856,6 +1909,11 @@ REUSE_FOR = {
 
   {0x04E0, 0x01B7}, // Cyrillic Capital Abkhasian Dze -> Ezh
   {0x04E1, 0x0292}, // Lowercase dze -> ezh
+
+  // Cyrillic to Extended C
+  {0x04A2, 0x2C67}, // H with descender
+  // Unicode docs suggest this, but I think Ka and K look different
+  // {0x049A, 0x2C69}, // K with descender
 
   // Math black star to Symbol star
   {0x22c6, 0x2605},

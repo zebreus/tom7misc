@@ -2,6 +2,7 @@
 // font image/config. Might do this if the image has something wrong
 // with it (stray pixels, etc.).
 
+#include <cstdio>
 #include <string>
 
 #include "base/logging.h"
