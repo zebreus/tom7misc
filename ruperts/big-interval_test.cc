@@ -31,7 +31,7 @@ static constexpr bool VERBOSE = false;
 
 // Sample some points in the interval. Call f on them.
 template<class F>
-void Sample(const Bigival &v, const F &f) {
+static void Sample(const Bigival &v, const F &f) {
   // Completely specified; just one point to test.
   if (v.LB() == v.UB()) {
     CHECK(v.IncludesLB() && v.IncludesUB());

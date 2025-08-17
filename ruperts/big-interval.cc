@@ -57,12 +57,12 @@ Bigival::MaybeBool Bigival::Eq(const Bigival &r) const {
 }
 
 Bigival::MaybeBool Bigival::Less(const Bigival &r) const {
-  // This interval entirely less than the other
+  // This interval entirely less than the other.
   if (ub.r < r.lb.r) return MaybeBool::True;
   if (ub.r == r.lb.r && (!IncludesUB() || !r.IncludesLB()))
     return MaybeBool::True;
 
-  // Other interval entirely less than this
+  // Other interval entirely less than this.
   if (r.ub.r < lb.r) return MaybeBool::False;
   if (r.ub.r == lb.r && (!r.IncludesUB() || !IncludesLB()))
     return MaybeBool::False;

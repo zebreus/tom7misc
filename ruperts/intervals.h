@@ -256,6 +256,98 @@ inline Vec2ival operator -(const Vec2ival &a,
   return Vec2ival(a.x - b.x, a.y - b.y);
 }
 
+struct SinCos {
+  Bigival sine;
+  Bigival cosine;
+};
+
+// Precomputed trigonometry for the 2D rotation of the inner hull.
+// Includes the sin and cosine of the endpoints and midpoint.
+struct RotTrig {
+  // If true, then we use the "Nice" versions of sine and cosine.
+  static constexpr bool USE_NICE = true;
+
+  Bigival PrecomputeCosI(const Bigival &a, const BigInt &inv_epsilon) {
+    if constexpr (USE_NICE) {
+      return a.NiceCos(inv_epsilon);
+    } else {
+      return a.Cos(inv_epsilon);
+    }
+  }
+
+  Bigival PrecomputeSinI(const Bigival &a, const BigInt &inv_epsilon) {
+    if constexpr (USE_NICE) {
+      return a.NiceSin(inv_epsilon);
+    } else {
+      return a.Sin(inv_epsilon);
+    }
+  }
+
+
+  Bigival PrecomputeCos(const BigRat &a, const BigInt &inv_epsilon) {
+    if constexpr (USE_NICE) {
+      return Bigival::NiceCos(a, inv_epsilon);
+    } else {
+      return Bigival::Cos(a, inv_epsilon);
+    }
+  }
+
+  Bigival PrecomputeSin(const BigRat &a, const BigInt &inv_epsilon) {
+    if constexpr (USE_NICE) {
+      return Bigival::NiceSin(a, inv_epsilon);
+    } else {
+      return Bigival::Sin(a, inv_epsilon);
+    }
+  }
+
+  RotTrig(Bigival angle_in,
+          BigInt inv_epsilon_in) :
+    angle(std::move(angle_in)),
+    inv_epsilon(std::move(inv_epsilon_in)) {
+
+    // Get high quality intervals since these are used many
+    // times.
+    cos_a = PrecomputeCosI(angle, inv_epsilon);
+    sin_a = PrecomputeSinI(angle, inv_epsilon);
+
+    // We use the middle of the angle for our disc
+    // centers, so precompute that too.
+    mid_angle = angle.Midpoint();
+    mid.cosine = PrecomputeCos(mid_angle, inv_epsilon);
+    mid.sine = PrecomputeSin(mid_angle, inv_epsilon);
+
+    lower.cosine = PrecomputeCos(angle.LB(), inv_epsilon);
+    lower.sine = PrecomputeSin(angle.LB(), inv_epsilon);
+
+    upper.cosine = PrecomputeCos(angle.UB(), inv_epsilon);
+    upper.sine = PrecomputeSin(angle.UB(), inv_epsilon);
+  }
+
+  Bigival angle;
+  Bigival cos_a, sin_a;
+
+  BigRat mid_angle;
+  SinCos mid;
+
+  // Point estimates for the sin/cos of the lower and upper bounds,
+  // respectively.
+  SinCos lower, upper;
+
+  BigInt inv_epsilon;
+};
+
+
+// Rotate the point v_in by rot and translate it by tx,ty.
+// Since v_in is an AABB and rot is an interval, the resulting
+// shape here is a rectangle swept along a circular arc. We
+// will call this the "swept shape." This returns an AABB for
+// the swept shape.
+Vec2ival GetBoundingAABB(const Vec2ival &v_in,
+                         const RotTrig &rot_trig,
+                         const BigInt &inv_epsilon,
+                         const Bigival &tx, const Bigival &ty);
+
+
 // Returns true if the disc and axis-aligned bounding box may overlap.
 // This is guaranteed to be true if they do overlap. It can have false
 // positives if the intervals are wide.

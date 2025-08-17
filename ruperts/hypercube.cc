@@ -119,6 +119,7 @@ static std::optional<Rejection> ParseRejection(std::string_view s) {
     break;
 
   case POLY_AREA:
+  case DIAMETER:
     // No metadata.
     break;
 
@@ -367,8 +368,10 @@ Hypercube::Volume Hypercube::MakeStandardBounds() {
   // to; we just need the starting interval to *cover* [0, π] (or
   // 2π). So we use a simple rational upper bound to π.
   // Slightly larger than π. Accurate to 16 digits.
-  // (Actually this is 3.1416...!)
+  // pi is:        3.14159265358979323...
+  // here we have: 3.14159265358979340...
   BigRat big_pi(165707065, 52746197);
+
   Volume bounds;
   bounds.resize(7);
   bounds[OUTER_AZIMUTH] = Bigival(BigRat(0), big_pi * 2, true, true);

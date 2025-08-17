@@ -40,6 +40,7 @@ enum RejectionReason : uint8_t {
   POINT_OUTSIDE4 = 8,
   POINT_OUTSIDE5 = 9,
   POLY_AREA = 10,
+  DIAMETER = 11,
 };
 inline constexpr int NUM_REJECTION_REASONS = 12;
 

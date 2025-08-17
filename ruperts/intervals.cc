@@ -74,6 +74,29 @@ Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   };
 }
 
+// This always returns a single AABB, though we previously tried
+// producing a "bounding complex" of multiple AABBs that cover
+// the swept shape. That eventually became the disc approach, but
+// it might make sense to reconsider non-rectangular bounding
+// regions here again.
+Vec2ival GetBoundingAABB(const Vec2ival &v_in,
+                         const RotTrig &rot_trig,
+                         const BigInt &inv_epsilon,
+                         const Bigival &tx, const Bigival &ty) {
+
+  auto Translate = [&](Vec2ival &&v) {
+      return Vec2ival(std::move(v.x) + tx, std::move(v.y) + ty);
+    };
+
+  // Bigival sin_a = angle.Sin(inv_epsilon);
+  // Bigival cos_a = angle.Cos(inv_epsilon);
+  Vec2ival loose_box(v_in.x * rot_trig.cos_a - v_in.y * rot_trig.sin_a,
+                     v_in.x * rot_trig.sin_a + v_in.y * rot_trig.cos_a);
+
+  return {Translate(std::move(loose_box))};
+}
+
+
 bool MightOverlap(const Discival &disc, const Vec2ival &aabb) {
   // We check for overlap by finding the minimum possible squared distance
   // between the disc's center and any point in the AABB. If this distance

@@ -459,6 +459,10 @@ inline Bigival operator-(const Bigival &a, const BigRat &b) {
   return a.Minus(b);
 }
 
+inline Bigival operator-(const BigRat &a, const Bigival &b) {
+  return b.Plus(BigRat::Negate(a));
+}
+
 inline Bigival operator-(const Bigival &a) {
   return a.Negate();
 }

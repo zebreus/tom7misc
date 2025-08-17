@@ -180,87 +180,6 @@ struct ViewBoundsTrig {
   Bigival mid_cos_an = Bigival::Cos(mid_angle, inv_epsilon);
 };
 
-struct SinCos {
-  Bigival sine;
-  Bigival cosine;
-};
-
-// Same idea, for the 2D rotation of the inner hull.
-// Sin and Cos of the angle interval are used multiple times, as
-// is the Sin and Cos of the angle's midpoint and endpoints.
-struct RotTrig {
-
-  static constexpr bool USE_NICE = true;
-
-  Bigival PrecomputeCosI(const Bigival &a, const BigInt &inv_epsilon) {
-    if constexpr (USE_NICE) {
-      return a.NiceCos(inv_epsilon);
-    } else {
-      return a.Cos(inv_epsilon);
-    }
-  }
-
-  Bigival PrecomputeSinI(const Bigival &a, const BigInt &inv_epsilon) {
-    if constexpr (USE_NICE) {
-      return a.NiceSin(inv_epsilon);
-    } else {
-      return a.Sin(inv_epsilon);
-    }
-  }
-
-
-  Bigival PrecomputeCos(const BigRat &a, const BigInt &inv_epsilon) {
-    if constexpr (USE_NICE) {
-      return Bigival::NiceCos(a, inv_epsilon);
-    } else {
-      return Bigival::Cos(a, inv_epsilon);
-    }
-  }
-
-  Bigival PrecomputeSin(const BigRat &a, const BigInt &inv_epsilon) {
-    if constexpr (USE_NICE) {
-      return Bigival::NiceSin(a, inv_epsilon);
-    } else {
-      return Bigival::Sin(a, inv_epsilon);
-    }
-  }
-
-  RotTrig(Bigival angle_in,
-          BigInt inv_epsilon_in) :
-    angle(std::move(angle_in)),
-    inv_epsilon(std::move(inv_epsilon_in)) {
-
-    // Get high quality intervals since these are used many
-    // times.
-    cos_a = PrecomputeCosI(angle, inv_epsilon);
-    sin_a = PrecomputeSinI(angle, inv_epsilon);
-
-    // We use the middle of the angle for our disc
-    // centers, so precompute that too.
-    mid_angle = angle.Midpoint();
-    mid.cosine = PrecomputeCos(mid_angle, inv_epsilon);
-    mid.sine = PrecomputeSin(mid_angle, inv_epsilon);
-
-    lower.cosine = PrecomputeCos(angle.LB(), inv_epsilon);
-    lower.sine = PrecomputeSin(angle.LB(), inv_epsilon);
-
-    upper.cosine = PrecomputeCos(angle.UB(), inv_epsilon);
-    upper.sine = PrecomputeSin(angle.UB(), inv_epsilon);
-  }
-
-  Bigival angle;
-  Bigival cos_a, sin_a;
-
-  BigRat mid_angle;
-  SinCos mid;
-
-  // Point estimates for the sin/cos of the lower and upper bounds,
-  // respectively.
-  SinCos lower, upper;
-
-  BigInt inv_epsilon;
-};
-
 // Compute a bounding ball for the patch on the unit sphere
 // given by the azimuth and angle (this is the view position).
 // The patch must be smaller than a hemisphere or you will
@@ -929,6 +848,8 @@ struct Hypersolver {
       return "PT5";
     case POLY_AREA:
       return "AREA";
+    case DIAMETER:
+      return "DIA";
     }
   }
 
@@ -949,6 +870,9 @@ struct Hypersolver {
       return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
 
     case POLY_AREA:
+      return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
+
+    case DIAMETER:
       return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
 
     case POINT_OUTSIDE4: {
@@ -991,33 +915,6 @@ struct Hypersolver {
     explicit Impossible(Rejection r) : rejection(r) {}
   };
 
-  // Rotate the point v_in by rot and translate it by tx,ty.
-  // Since v_in is an AABB and rot is an interval, the resulting
-  // shape here is a rectangle swept along a circular arc. We
-  // will call this the "swept shape."
-  //
-  // This always returns a single AABB, though we previously tried
-  // producing a "bounding complex" of multiple AABBs that cover
-  // the swept shape. That eventually became the disc approach, but
-  // it might make sense to reconsider non-rectangular bounding
-  // regions here again.
-  Vec2ival GetBoundingAABB(const Vec2ival &v_in,
-                           const RotTrig &rot_trig,
-                           const BigInt &inv_epsilon,
-                           const Bigival &tx, const Bigival &ty) {
-
-    auto Translate = [&](Vec2ival &&v) {
-        return Vec2ival(std::move(v.x) + tx, std::move(v.y) + ty);
-      };
-
-    // Bigival sin_a = angle.Sin(inv_epsilon);
-    // Bigival cos_a = angle.Cos(inv_epsilon);
-    Vec2ival loose_box(v_in.x * rot_trig.cos_a - v_in.y * rot_trig.sin_a,
-                       v_in.x * rot_trig.sin_a + v_in.y * rot_trig.cos_a);
-
-    return {Translate(std::move(loose_box))};
-  }
-
   double SampleInterval(ArcFour *rc, const Bigival &ival) {
     double lb = ival.LB().ToDouble();
     double ub = ival.UB().ToDouble();
@@ -1031,8 +928,6 @@ struct Hypersolver {
     std::vector<SmallIntSet<64>> point_edges;
   };
 
-  // PERF: This is super fast, so we could probably increase the
-  // filter effectiveness by sampling a few corners.
   EdgePointMask GetEdgePointMask(ArcFour *rc, const Volume &volume) {
     // n.b. we run this test in the opposite direction (outer loop is edges)
     // than the data structure wee're generating.
@@ -1046,7 +941,7 @@ struct Hypersolver {
     for (int i = 0; i < outer_hull.size(); i++)
       edge_points.push_back(all_points);
 
-    // XXX use corners of volume, since they are more likely to be
+    // PERF: use corners of volume, since they are more likely to be
     // extremes.
     static constexpr int NUM_MASK_SAMPLES = 6;
     for (int s = 0; s < NUM_MASK_SAMPLES; s++) {
@@ -1144,31 +1039,30 @@ struct Hypersolver {
     BigRat length_sq;
   };
 
-  // Compute an upper bound on the (squared) diameter of the shadow
-  // using the precomputed 3D chords. This should give tighter bounds
-  // than simply computing distance from projected AABBs, since the
-  // points move in tandem.
-  static BigRat MaxSquaredDiameterFromChords(
-      const std::vector<Chord3D> &outer_chords,
-      const ViewBoundsTrig &outer_trig) {
+  // Compute a bounds on the (squared) diameter of the shadow using
+  // the precomputed 3D chords. This is the maximum distance between
+  // any two vertices. This should give tighter bounds than simply
+  // computing distance from projected AABBs, since the points move in
+  // tandem.
+  static Bigival SquaredDiameterFromChords(
+      const std::vector<Chord3D> &chords,
+      const ViewBoundsTrig &trig) {
 
-    CHECK(!outer_chords.empty());
+    CHECK(!chords.empty());
 
-    BigRat max_diam_sq(0);
+    Bigival max_diam_sq(0);
 
-    for (const Chord3D &chord : outer_chords) {
+    for (const Chord3D &chord : chords) {
       Bigival dot_sq =
-        BoundDotProductWithView(outer_trig, chord.vec).Squared();
+        BoundDotProductWithView(trig, chord.vec).Squared();
 
       // Note that the dot product is maximized when it is parallel
       // to the view direction. But the projected chord is longest when
       // it is perpendicular. This is why we subtract from the original
       // squared length (using Pythagorean theorem).
-      // We just subtract the lower bound here since we are trying
-      // to find the max chord.
-      BigRat max_proj_len_sq = chord.length_sq - dot_sq.LB();
+      Bigival max_proj_len_sq = chord.length_sq - dot_sq;
 
-      max_diam_sq = BigRat::Max(max_diam_sq, max_proj_len_sq);
+      max_diam_sq = Bigival::Max(std::move(max_diam_sq), max_proj_len_sq);
     }
 
     return max_diam_sq;
@@ -1190,6 +1084,9 @@ struct Hypersolver {
   // maximum diameter, then we can rule this configuration out (for
   // any angle/translation). Might return 0 (a valid but useless bound)
   // if the intervals include non-convex polygons.
+  //
+  // TODO: Need to compute the interval for the minimum (squared) width,
+  // so that we can do the symmetric test with diameter.
   BigRat MinSquaredWidth(const ViewBoundsTrig &trig) {
 
     std::optional<BigRat> min_width_sq;
@@ -1461,29 +1358,54 @@ struct Hypersolver {
       }
     }
 
-    // Area test. If the inner shadow's area is definitely bigger than
-    // the outer's, then it cannot fit (regardless of angle / translation).
-    // This is a very cheap test.
-    Timer area_timer;
-    // Area of the shadow is just the dot product of the view with the
-    // 3d area vector.
-    Bigival outer_area2 = BoundDotProductWithView(outer_trig, outer_area_3d);
-    Bigival inner_area2 = BoundDotProductWithView(inner_trig, inner_area_3d);
-
-    const bool impossible_area =
-      outer_area2.Less(inner_area2) == Bigival::MaybeBool::True;
-    const double area_time_here = area_timer.Seconds();
     {
-      MutexLock ml(&mu);
-      area_time += area_time_here;
+      // Area test. If the inner shadow's area is definitely bigger than
+      // the outer's, then it cannot fit (regardless of angle / translation).
+      // This is a very cheap test.
+      Timer area_timer;
+      // Area of the shadow is just the dot product of the view with the
+      // 3d area vector.
+      Bigival outer_area2 = BoundDotProductWithView(outer_trig, outer_area_3d);
+      Bigival inner_area2 = BoundDotProductWithView(inner_trig, inner_area_3d);
+
+      const bool impossible_area =
+        outer_area2.Less(inner_area2) == Bigival::MaybeBool::True;
+      const double area_time_here = area_timer.Seconds();
+      {
+        MutexLock ml(&mu);
+        area_time += area_time_here;
+      }
+
+      if (impossible_area) {
+        ProcessResult res;
+        res.result = Impossible(Rejection(POLY_AREA));
+        return res;
+      }
     }
 
-    if (impossible_area) {
-      ProcessResult res;
-      res.result = Impossible(Rejection(POLY_AREA));
-      return res;
+    // PERF: Don't check this (and area!) unless we have split on one
+    // of the parameters it depends on.
+
+    {
+      // Another way that we can prove the inner cannot fit in the outer
+      // (regardless of angle and translation) is to show that the
+      // diameter of the inner poly is bigger than the diameter of the
+      // outer poly. If that's true, then the inner diameter cannot fit
+      // anywhere in the outer shape, since the diameter is its maximum.
+      Bigival inner_dia = SquaredDiameterFromChords(inner_chords, inner_trig);
+      Bigival outer_dia = SquaredDiameterFromChords(outer_chords, outer_trig);
+
+      // Greater-or-equal is correct here because the inner poly must be
+      // strictly contained.
+      if (inner_dia >= outer_dia == Bigival::MaybeBool::True) {
+        // Cannot fit.
+        ProcessResult res;
+        res.result = Impossible(Rejection(DIAMETER));
+        return res;
+      }
     }
 
+    // TODO: Also test min widths.
 
     // Now we are going to enter the full loop and do point-edge tests.
 
@@ -2444,7 +2366,7 @@ struct Hypersolver {
             "{} " AGREEN("✔") ", "
             "{} " ARED("⊹") ". "
             "{} " AORANGE("q") "  "
-            "{} " AWHITE(" no/") "\n"
+            "{} " AWHITE("no/") "\n"
             // Timing
             "{} ea. "
             "{} trig "
