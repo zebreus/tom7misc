@@ -85,6 +85,12 @@ struct Vec2ival {
   bool Contains(const BigVec2 &v) const {
     return x.Contains(v.x) && y.Contains(v.y);
   }
+
+  static Vec2ival Union(const Vec2ival &a,
+                        const Vec2ival &b) {
+    return Vec2ival(Bigival::Union(a.x, b.x),
+                    Bigival::Union(a.y, b.y));
+  }
 };
 
 // Small Fixed-size matrices stored in column major format.
@@ -408,6 +414,12 @@ Vec2ival GetBoundingAABB(const Vec2ival &v_in,
                          const RotTrig &rot_trig,
                          const BigInt &inv_epsilon,
                          const Bigival &tx, const Bigival &ty);
+
+// Experimental.
+Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
+                          const RotTrig &rot_trig,
+                          const BigInt &inv_epsilon,
+                          const Bigival &tx, const Bigival &ty);
 
 // Returns true if the disc and axis-aligned bounding box may overlap.
 // This is guaranteed to be true if they do overlap. It can have false

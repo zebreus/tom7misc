@@ -1164,6 +1164,27 @@ Polyhedron Recenter(const Polyhedron &p) {
   return copy;
 }
 
+double PlanarityError(const std::vector<vec3> &vs) {
+  if (vs.size() <= 3) return 0;
+
+  double error = 0.0;
+  // The first three vertices define a plane.
+  const vec3 &v0 = vs[0];
+  const vec3 &v1 = vs[1];
+  const vec3 &v2 = vs[2];
+
+  vec3 normal = yocto::normalize(yocto::cross(v1 - v0, v2 - v0));
+
+  // Check error against this plane.
+  for (int i = 3; i < vs.size(); i++) {
+    vec3 v = vs[i];
+    double err = std::abs(yocto::dot(v - v0, normal));
+    error += err;
+  }
+  return error;
+}
+
+
 double PlanarityError(const Polyhedron &p) {
   double error = 0.0;
   for (const std::vector<int> &face : p.faces->v) {

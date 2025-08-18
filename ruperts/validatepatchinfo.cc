@@ -40,12 +40,23 @@ static void ValidatePatchInfo() {
   StatusBar status(1);
   ArcFour rc("validate");
   int64_t codes_ok = 0, ok = 0, bad_area = 0, bad_conv = 0,
-    bad_conv_cw = 0;
+    bad_conv_cw = 0, planar = 0;
   for (int c = 0; c < canonical.size(); c++) {
     bool code_ok = true;
     const auto &[code, can] = canonical[c];
+    std::string cs = std::format("{:b}", code);
     std::vector<int> hull = ComputeHullForPatch(
         boundaries, code, can.mask, {"validate"});
+
+
+    std::vector<vec3> pts3d;
+    pts3d.reserve(hull.size());
+    for (int idx : hull) pts3d.push_back(small_poly.vertices[idx]);
+    double planarity_error = PlanarityError(pts3d);
+    status.Print(ACYAN("{}") " planarity error: {:.5f}\n",
+                 cs, planarity_error);
+    if (planarity_error < 1.0e-6) planar++;
+
     for (int i = 0; i < 1000; i++) {
       vec3 view = GetVec3InPatch(&rc,
                                  boundaries,
@@ -66,7 +77,6 @@ static void ValidatePatchInfo() {
 
       if (!IsPolyConvex(outer_poly)) {
         if (code_ok) {
-          std::string cs = std::format("{:b}", code);
           status.Print(ARED("{}") " not convex\n", cs);
           Polyhedron rpoly = Rotate(small_poly, frame);
           Rendering rendering(small_poly, 1920, 1080);
@@ -100,8 +110,10 @@ static void ValidatePatchInfo() {
   printf("Codes ok: %lld. Total ok: %lld\n"
          "Bad (Non-positive area): %lld\n"
          "Bad (Not convex): %lld\n"
-         "Bad (Not convex or not clockwise): %lld\n",
-         codes_ok, ok, bad_area, bad_conv, bad_conv_cw);
+         "Bad (Not convex or not clockwise): %lld\n"
+         "Notable (Planar): %lld\n",
+         codes_ok, ok, bad_area, bad_conv, bad_conv_cw,
+         planar);
 }
 
 int main(int argc, char **argv) {

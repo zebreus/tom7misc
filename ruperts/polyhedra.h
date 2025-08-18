@@ -402,6 +402,11 @@ struct HullInscribedCircle {
 // to floating point imprecision.
 double PlanarityError(const Polyhedron &p);
 
+// Same idea, but for a single 3D point set. This number
+// depends on the order of vertices, but it is zero for
+// planar sets.
+double PlanarityError(const std::vector<vec3> &pts);
+
 inline quat4 RandomQuaternion(ArcFour *rc) {
   const auto &[x, y, z, w] = RandomUnit4D(rc);
   return quat4{.x = x, .y = y, .z = z, .w = w};
