@@ -632,19 +632,19 @@ struct Shrinkwrap {
   // Must hold lock.
   void MaybeStatus() {
     status_per.RunIf([&]() {
-        status.LineStatusf(
+        status.LineStatus(
             NUM_THREADS,
-            "%lld it, %s att.  "
-            "Invalid: " AORANGE("%lld") " [%s]",
-            iters.Read(), FormatNum(attempts.Read()).c_str(),
+            "{} it, {} att.  "
+            "Invalid: " AORANGE("{}") " [{}]",
+            iters.Read(), FormatNum(attempts.Read()),
             invalid.Read(),
-            ANSI::Time(run_timer.Seconds()).c_str());
-        status.LineStatusf(
+            ANSI::Time(run_timer.Seconds()));
+        status.LineStatus(
             NUM_THREADS + 1,
-            "Best: %.14g "
-            " %s ago. Best manual: %.14g",
+            "Best: {:.14g} "
+            " {} ago. Best manual: {:.14g}",
             best_error,
-            ANSI::Time(writer.SecondsSinceImprovement()).c_str(),
+            ANSI::Time(writer.SecondsSinceImprovement()),
             best_manual);
         writer.Tick();
       });
@@ -750,7 +750,7 @@ struct Shrinkwrap {
       if (method == ShrinklutionDB::METHOD_RANDOM) {
 
         if (VERBOSE)
-          status.LineStatusf(thread_idx, "random %d", num_this_thread);
+          status.LineStatus(thread_idx, "random {}", num_this_thread);
 
         const bool can_reuse = [&]{
             MutexLock ml(&mu);
@@ -814,8 +814,8 @@ struct Shrinkwrap {
         if (USE_LARGE_OPTIMIZER) {
           using LOpt = LargeOptimizer<false>;
 
-          status.LineStatusf(thread_idx, "Thread %d lopt [#%d]",
-                             thread_idx, num_this_thread);
+          status.LineStatus(thread_idx, "Thread {} lopt [#{}]",
+                            thread_idx, num_this_thread);
 
           LargeOptimizer lopt([&](const std::vector<double> &vargs) {
               std::array<double, NUM_ARGS> aargs;
@@ -936,10 +936,10 @@ struct Shrinkwrap {
             passes++;
             auto best = lopt.GetBest();
             CHECK(best.has_value());
-            status.LineStatusf(
+            status.LineStatus(
                 thread_idx,
-                "% 3d" ABLUE("×") " %s best %.6g, "
-                "%s + %s + %s + %s / %s\n",
+                "{: 3d}" ABLUE("×") " {} best {:.6g}, "
+                "{} + {} + {} + {} / {}\n",
                 passes,
                 did_reuse ? APURPLE("∞") : " ",
                 best.value().second,
@@ -972,11 +972,11 @@ struct Shrinkwrap {
           auto params = plain_tuner.GetParams();
 
           if (VERBOSE)
-            status.LineStatusf(thread_idx, "opt #%d with: i %d d %d a %d",
-                               num_this_thread,
-                               params.iters,
-                               params.depth,
-                               params.attempts);
+            status.LineStatus(thread_idx, "opt #{} with: i {} d {} a {}",
+                              num_this_thread,
+                              params.iters,
+                              params.depth,
+                              params.attempts);
 
           std::tie(args, error) =
             Opt::Minimize<NUM_ARGS>(
@@ -987,22 +987,22 @@ struct Shrinkwrap {
           plain_tuner.Tune(opt_sec);
 
           my_status_per.RunIf([&]() {
-              status.LineStatusf(
+              status.LineStatus(
                   thread_idx,
                   AGREY(" opt")
                   "   "
-                  "last %.6g, "
-                  "%s ea. %s\n",
+                  "last {:.6g}, "
+                  "{} ea. {}\n",
                   error,
-                  ANSI::Time(opt_sec).c_str(),
-                  tuner_info.c_str());
+                  ANSI::Time(opt_sec),
+                  tuner_info);
             });
         }
 
       } else if (method == ShrinklutionDB::METHOD_SAME_ANGLE) {
 
         if (VERBOSE)
-          status.LineStatusf(thread_idx, "same angle");
+          status.LineStatus(thread_idx, "same angle");
 
         // Optimize all positions (but one), and only one angle
         // shared by all.
@@ -1098,21 +1098,21 @@ struct Shrinkwrap {
         error = err;
 
         my_status_per.RunIf([&]() {
-            status.LineStatusf(
+            status.LineStatus(
                 thread_idx,
                 AGREY("sa ") APURPLE("∢")
                 "   "
-                "last %.6g, "
-                "%s ea. %s\n",
+                "last {:.6g}, "
+                "{} ea. {}\n",
                 error,
-                ANSI::Time(opt_sec).c_str(),
-                tuner_info.c_str());
+                ANSI::Time(opt_sec),
+                tuner_info);
           });
 
       }
 
       if (VERBOSE)
-        status.LineStatusf(thread_idx, "observe");
+        status.LineStatus(thread_idx, "observe");
       ObserveSolution(initial_rot, args, error, method);
     }
   }

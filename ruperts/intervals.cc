@@ -151,14 +151,14 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
   // First, get the AABB of all four corners rotated to the
   // start and end of the angle interval. These points are
   // certainly contained in the final AABB.
-  for (const auto &c : corners) {
+  for (const BigVec2 &c : corners) {
     UnionAABB(RotatePoint(c, rot_trig.lower));
     UnionAABB(RotatePoint(c, rot_trig.upper));
   }
 
   // Now, for each corner, check if its swept arc could cross the
   // x or y axes, which would create an intermediate extremum.
-  for (const auto &c : corners) {
+  for (const BigVec2 &c : corners) {
     BigRat r_sq = dot(c, c);
     // Skip point at origin.
     if (BigRat::Sign(r_sq) == 0)
@@ -186,6 +186,8 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
 
     // The x-coordinate of the rotated point is extremal when the
     // y-coordinate is zero. Check if this is possible.
+    // PERF: Exactly the same as something we already computed at
+    // an endpoint?
     Bigival y_prime = c.y * rot_trig.cos_a + c.x * rot_trig.sin_a;
     if (y_prime.ContainsZero()) {
       // x_prime = r when cos(a)=c.x/r, sin(a)=-c.y/r
@@ -198,6 +200,8 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
         (BigRat::Sign(-c.x) == cos_sign || cos_sign == 0) &&
         (BigRat::Sign(c.y) == sin_sign || sin_sign == 0);
 
+      // PERF: Shouldn't need to do a length calculation here.
+      // The maximum extent is reached on an axis, right?
       if (can_be_pos_r) {
         x_bounds = Bigival::Union(*x_bounds, GetR());
       }
@@ -218,6 +222,7 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
         (BigRat::Sign(-c.y) == cos_sign || cos_sign == 0) &&
         (BigRat::Sign(-c.x) == sin_sign || sin_sign == 0);
 
+      // PERF: Same as above.
       if (can_be_pos_r) {
         y_bounds = Bigival::Union(*y_bounds, GetR());
       }
@@ -228,6 +233,7 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
   }
 
   CHECK(x_bounds.has_value());
+  CHECK(y_bounds.has_value());
 
   return Vec2ival(*x_bounds + tx, *y_bounds + ty);
 }

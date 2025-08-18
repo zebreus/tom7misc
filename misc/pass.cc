@@ -703,6 +703,10 @@ static string RandomEZOld() {
       ".-_");
 }
 
+#ifdef __cplusplus
+extern "C" {}
+#endif
+
 int main(int argc, char **argv) {
   CHECK(argc >= 2) << "Must have command-line arguments.";
 

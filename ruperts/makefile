@@ -31,6 +31,8 @@ CC_LIB=../cc-lib
 CODEC=../codec
 SQLITE=../sqlite
 
+# This is available on msys2 and linux. But you can safely leave it off.
+# apt install libmimalloc-dev
 MALLOC_LFLAGS=-lmimalloc
 
 # OPT=-O -g

@@ -2,18 +2,18 @@
 #include "database.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <string>
+#include <format>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
-#include <optional>
-#include <cstdint>
 
 #include "sqlite3.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 using Row = Database::Row;
 using Query = Database::Query;
@@ -328,16 +328,16 @@ struct DatabaseImpl : public Database {
       for (int i = 0; i < (int)types.size(); i++) {
         switch (types[i]) {
         case ColType::INT:
-          rs.push_back(StringPrintf("%lld", row->GetInt(i)));
+          rs.push_back(std::format("{}", row->GetInt(i)));
           break;
         case ColType::STRING:
-          rs.push_back(StringPrintf("\"%s\"", row->GetString(i).c_str()));
+          rs.push_back(std::format("\"{}\"", row->GetString(i)));
           break;
         case ColType::SQL_NULL:
           rs.push_back("NULL");
           break;
         case ColType::FLOAT:
-          rs.push_back(StringPrintf("%.11g", row->GetFloat(i)));
+          rs.push_back(std::format("{:.11g}", row->GetFloat(i)));
           break;
         case ColType::BLOB:
           rs.push_back("(blob)");

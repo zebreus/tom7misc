@@ -464,7 +464,7 @@ DecomposeInternal(std::string_view text_with_codes,
 
         std::vector<int> pleft = params;
         // Empty parameter list is equivalent to "0" (reset).
-        if (pleft.empty()) pleft = {0};
+        if (pleft.empty()) pleft.push_back(0);
 
         for (int pidx = 0; pidx < (int)pleft.size(); pidx++) {
           const int p = pleft[pidx];

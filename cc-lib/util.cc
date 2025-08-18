@@ -965,21 +965,16 @@ string Util::NormalizeWhitespace(std::string_view s) {
 string Util::tempfile(const string &suffix) {
   static int tries = 0;
 
-  size_t size = suffix.length() + 128;
-  char *fname = new char[size];
+  std::string fname;
 
   do {
-    snprintf(fname,
-             size - 2,
-             "%d_%d_%d%s",
-             tries, getpid(), random(),
-             suffix.c_str());
+    fname = std::format("{}_{}_{}{}",
+                        tries, getpid(), random(),
+                        suffix);
     tries++;
   } while (ExistsFile(fname));
 
-  string ret = fname;
-  delete[] fname;
-  return ret;
+  return fname;
 }
 
 /* break up the strings into tokens. A token is either
@@ -1112,25 +1107,23 @@ int Util::library_compare(const string &l, const string &r) {
     else idxr += 4;
   }
 
-  return natural_compare (l.substr(idxl, l.length() - idxl),
-                          r.substr(idxr, r.length() - idxr));
+  return natural_compare(l.substr(idxl, l.length() - idxl),
+                         r.substr(idxr, r.length() - idxr));
 }
 
 string Util::UnsignedWithCommas(uint64_t u) {
   // PERF: too much copying!
   if (u == 0) return "0";
   string out;
-  char buf[64];
   while (u) {
     int triple = u % 1000;
     u /= 1000;
     if (u) {
-      snprintf(buf, 62, ",%03d%s", triple, out.c_str());
+      out = std::format(",{:03d}{}", triple, out);
     } else {
       // no zero-padding, no comma
-      snprintf(buf, 62, "%d%s", triple, out.c_str());
+      out = std::format("{}{}", triple, out);
     }
-    out = buf;
   }
   return out;
 }
