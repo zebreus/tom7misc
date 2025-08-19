@@ -124,54 +124,62 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
                           const BigInt &inv_epsilon,
                           const Bigival &tx, const Bigival &ty) {
 
-  auto RotatePoint = [](const BigVec2 &p, const SinCos &sc) {
-    return Vec2ival(p.x * sc.cosine - p.y * sc.sine,
-                    p.x * sc.sine + p.y * sc.cosine);
+  // Compute the AABB of the four corners of v_in when
+  // rotated by a specific angle (represented by its sin/cos).
+  auto GetAABBAtAngle = [&](const SinCos &sc) {
+    // Each edge is used twice.
+    Bigival left_cos = v_in.x.LB() * sc.cosine;
+    Bigival right_cos = v_in.x.UB() * sc.cosine;
+    Bigival left_sin = v_in.x.LB() * sc.sine;
+    Bigival right_sin = v_in.x.UB() * sc.sine;
+
+    Bigival bottom_cos = v_in.y.LB() * sc.cosine;
+    Bigival top_cos = v_in.y.UB() * sc.cosine;
+    Bigival bottom_sin = v_in.y.LB() * sc.sine;
+    Bigival top_sin = v_in.y.UB() * sc.sine;
+
+    // bl = bottom-left, etc.
+    Bigival x_bl = left_cos - bottom_sin;
+    Bigival x_tl = left_cos - top_sin;
+    Bigival x_br = right_cos - bottom_sin;
+    Bigival x_tr = right_cos - top_sin;
+
+    Bigival y_bl = left_sin + bottom_cos;
+    Bigival y_tl = left_sin + top_cos;
+    Bigival y_br = right_sin + bottom_cos;
+    Bigival y_tr = right_sin + top_cos;
+
+    // Compute the union of the four rotated corners.
+    return Vec2ival(
+        Bigival::Union(Bigival::Union(std::move(x_bl), std::move(x_tl)),
+                       Bigival::Union(std::move(x_br), std::move(x_tr))),
+        Bigival::Union(Bigival::Union(std::move(y_bl), std::move(y_tl)),
+                       Bigival::Union(std::move(y_br), std::move(y_tr))));
   };
 
-  // The four corners of the input AABB.
-  std::array<BigVec2, 4> corners = {
-    BigVec2(v_in.x.LB(), v_in.y.LB()),
-    BigVec2(v_in.x.LB(), v_in.y.UB()),
-    BigVec2(v_in.x.UB(), v_in.y.LB()),
-    BigVec2(v_in.x.UB(), v_in.y.UB()),
-  };
+  // Get the AABB of all four corners rotated to the start and end angles.
+  Vec2ival lower_aabb = GetAABBAtAngle(rot_trig.lower);
+  Vec2ival upper_aabb = GetAABBAtAngle(rot_trig.upper);
+  std::optional<Bigival> x_bounds =
+    Bigival::Union(lower_aabb.x, upper_aabb.x);
+  std::optional<Bigival> y_bounds =
+    Bigival::Union(lower_aabb.y, upper_aabb.y);
 
-  std::optional<Bigival> x_bounds, y_bounds;
-  auto UnionAABB = [&](const Vec2ival& v) {
-    if (!x_bounds.has_value()) {
-      x_bounds = v.x;
-      y_bounds = v.y;
-    } else {
-      x_bounds = Bigival::Union(*x_bounds, v.x);
-      y_bounds = Bigival::Union(*y_bounds, v.y);
-    }
-  };
+  // Are we maybe crossing an axis?
+  bool possible_x_extremum =
+    (v_in.x * rot_trig.sin_a + v_in.y * rot_trig.cos_a).ContainsZero();
+  bool possible_y_extremum =
+    (v_in.x * rot_trig.cos_a - v_in.y * rot_trig.sin_a).ContainsZero();
 
-  // First, get the AABB of all four corners rotated to the
-  // start and end of the angle interval. These points are
-  // certainly contained in the final AABB.
-  for (const BigVec2 &c : corners) {
-    UnionAABB(RotatePoint(c, rot_trig.lower));
-    UnionAABB(RotatePoint(c, rot_trig.upper));
-  }
+  if (possible_x_extremum || possible_y_extremum) {
 
-  // Now, for each corner, check if its swept arc could cross the
-  // x or y axes, which would create an intermediate extremum.
-  for (const BigVec2 &c : corners) {
-    BigRat r_sq = dot(c, c);
-    // Skip point at origin.
-    if (BigRat::Sign(r_sq) == 0)
-      continue;
-
-    // Only compute square root if we need it.
-    std::optional<Bigival> r;
-    auto GetR = [&]() -> const Bigival & {
-        if (!r.has_value()) {
-          r = {Bigival::Sqrt(Bigival(r_sq), inv_epsilon)};
-        }
-        return r.value();
-      };
+    // PERF: Avoid copying
+    std::array<BigVec2, 4> corners = {
+      BigVec2(v_in.x.LB(), v_in.y.LB()),
+      BigVec2(v_in.x.LB(), v_in.y.UB()),
+      BigVec2(v_in.x.UB(), v_in.y.LB()),
+      BigVec2(v_in.x.UB(), v_in.y.UB()),
+    };
 
     // Determine the sign of cos and sin over the angle interval.
     // 0 means mixed, 1 positive, -1 negative.
@@ -183,59 +191,77 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
     if (BigRat::Sign(rot_trig.sin_a.LB()) == 1) sin_sign = 1;
     else if (BigRat::Sign(rot_trig.sin_a.UB()) == -1) sin_sign = -1;
 
+    // There are four possible axis crossings (+/- x, +/- y). Whenever
+    // we might cross one, we save the max squared radius of the point,
+    // which we can then use to extend the bounding box in that direction.
+    // The goal is to delay sqrts.
 
-    // The x-coordinate of the rotated point is extremal when the
-    // y-coordinate is zero. Check if this is possible.
-    // PERF: Exactly the same as something we already computed at
-    // an endpoint?
-    Bigival y_prime = c.y * rot_trig.cos_a + c.x * rot_trig.sin_a;
-    if (y_prime.ContainsZero()) {
-      // x_prime = r when cos(a)=c.x/r, sin(a)=-c.y/r
-      // x_prime = -r when cos(a)=-c.x/r, sin(a)=c.y/r
-      // Check which of these are compatible with the angle's quadrant.
-      const bool can_be_pos_r =
-        (BigRat::Sign(c.x) == cos_sign || cos_sign == 0) &&
-        (BigRat::Sign(-c.y) == sin_sign || sin_sign == 0);
-      const bool can_be_neg_r =
-        (BigRat::Sign(-c.x) == cos_sign || cos_sign == 0) &&
-        (BigRat::Sign(c.y) == sin_sign || sin_sign == 0);
+    if (possible_y_extremum) {
+      BigRat max_r_sq_pos_x(0), max_r_sq_neg_x(0);
+      for (const BigVec2 &c : corners) {
+        BigRat r_sq = dot(c, c);
+        if (BigRat::Sign(r_sq) == 0) continue;
 
-      // PERF: Shouldn't need to do a length calculation here.
-      // The maximum extent is reached on an axis, right?
-      if (can_be_pos_r) {
-        x_bounds = Bigival::Union(*x_bounds, GetR());
+        // The x-coordinate is extremal when the y-coordinate is zero.
+        Bigival y_prime = c.y * rot_trig.cos_a + c.x * rot_trig.sin_a;
+        if (y_prime.ContainsZero()) {
+          if ((BigRat::Sign(c.x) == cos_sign || cos_sign == 0) &&
+              (BigRat::Sign(-c.y) == sin_sign || sin_sign == 0)) {
+            max_r_sq_pos_x = BigRat::Max(std::move(max_r_sq_pos_x), r_sq);
+          }
+          if ((BigRat::Sign(-c.x) == cos_sign || cos_sign == 0) &&
+              (BigRat::Sign(c.y) == sin_sign || sin_sign == 0)) {
+            max_r_sq_neg_x = BigRat::Max(std::move(max_r_sq_neg_x), r_sq);
+          }
+        }
       }
-      if (can_be_neg_r) {
-        x_bounds = Bigival::Union(*x_bounds, -GetR());
+
+      CHECK(x_bounds.has_value());
+      // After checking all corners, compute sqrt for the largest radii found.
+      if (BigRat::Sign(max_r_sq_pos_x) == 1) {
+        BigRat r = BigRat::SqrtBounds(max_r_sq_pos_x, inv_epsilon).second;
+        x_bounds.value().Accumulate(r);
+      }
+      if (BigRat::Sign(max_r_sq_neg_x) == 1) {
+        BigRat r = BigRat::SqrtBounds(max_r_sq_neg_x, inv_epsilon).second;
+        x_bounds.value().Accumulate(-r);
       }
     }
 
-    // The y-coordinate is extremal when the x-coordinate is zero.
-    Bigival x_prime = c.x * rot_trig.cos_a - c.y * rot_trig.sin_a;
-    if (x_prime.ContainsZero()) {
-      // y_prime = r when cos(a)=c.y/r, sin(a)=c.x/r
-      // y_prime = -r when cos(a)=-c.y/r, sin(a)=-c.x/r
-      const bool can_be_pos_r =
-        (BigRat::Sign(c.y) == cos_sign || cos_sign == 0) &&
-        (BigRat::Sign(c.x) == sin_sign || sin_sign == 0);
-      const bool can_be_neg_r =
-        (BigRat::Sign(-c.y) == cos_sign || cos_sign == 0) &&
-        (BigRat::Sign(-c.x) == sin_sign || sin_sign == 0);
+    if (possible_x_extremum) {
+      // The y-coordinate is extremal when the x-coordinate is zero.
+      BigRat max_r_sq_pos_y(0), max_r_sq_neg_y(0);
+      for (const BigVec2 &c : corners) {
+        BigRat r_sq = dot(c, c);
+        if (BigRat::Sign(r_sq) == 0) continue;
 
-      // PERF: Same as above.
-      if (can_be_pos_r) {
-        y_bounds = Bigival::Union(*y_bounds, GetR());
+        Bigival x_prime = c.x * rot_trig.cos_a - c.y * rot_trig.sin_a;
+        if (x_prime.ContainsZero()) {
+          if ((BigRat::Sign(c.y) == cos_sign || cos_sign == 0) &&
+              (BigRat::Sign(c.x) == sin_sign || sin_sign == 0)) {
+            max_r_sq_pos_y = BigRat::Max(std::move(max_r_sq_pos_y), r_sq);
+          }
+          if ((BigRat::Sign(-c.y) == cos_sign || cos_sign == 0) &&
+              (BigRat::Sign(-c.x) == sin_sign || sin_sign == 0)) {
+            max_r_sq_neg_y = BigRat::Max(std::move(max_r_sq_neg_y), r_sq);
+          }
+        }
       }
-      if (can_be_neg_r) {
-        y_bounds = Bigival::Union(*y_bounds, -GetR());
+
+      CHECK(y_bounds.has_value());
+      if (BigRat::Sign(max_r_sq_pos_y) == 1) {
+        BigRat r = BigRat::SqrtBounds(max_r_sq_pos_y, inv_epsilon).second;
+        y_bounds.value().Accumulate(r);
+      }
+      if (BigRat::Sign(max_r_sq_neg_y) == 1) {
+        BigRat r = BigRat::SqrtBounds(max_r_sq_neg_y, inv_epsilon).second;
+        y_bounds.value().Accumulate(-r);
       }
     }
   }
 
-  CHECK(x_bounds.has_value());
-  CHECK(y_bounds.has_value());
-
-  return Vec2ival(*x_bounds + tx, *y_bounds + ty);
+  return Vec2ival(std::move(x_bounds.value()) + tx,
+                  std::move(y_bounds.value()) + ty);
 }
 
 bool MightOverlap(const Discival &disc, const Vec2ival &aabb) {
@@ -316,6 +342,45 @@ BigRat MaxSquaredDiameter(const std::vector<Vec2ival> &vs) {
 
   return max_sq_dist;
 }
+
+bool IsDiscOutsideEdge(const Discival &disc,
+                       const Vec2ival &outer_edge,
+                       const Bigival &outer_cross_va_vb) {
+  // We want to test if for all points p in the disc, the line-side test
+  //   L(p) = edge.x * p.y - edge.y * p.x + cross_va_vb
+  // is strictly negative.
+
+  // The value of the test at the disc's exact center is:
+  Bigival l_at_center =
+    outer_edge.x * disc.center.y -
+    outer_edge.y * disc.center.x +
+    outer_cross_va_vb;
+
+  // If the center might be on the inside, then we defintiely aren't
+  // going to prove the whole thing is outside!
+  if (l_at_center.MightBePositive()) {
+    return false;
+  }
+
+  // The center is outside. So the whole disc is outside if the distance
+  // from the center to the line is more than the disc's radius.
+  //   distance² > radius²
+  //   L(center)² / |edge|² > R²
+  //   L(center)² > R² * |edge|²
+
+  // To prove this we want to compute the smallest L(center)² and
+  // the largest R² * |edge|².
+  // l_at_center is not positive, so the smallest value of
+  // L(center)² is l_at_center.UB()² (value closer to zero).
+  // Just compute that rather than the whole interval.
+  BigRat min_l_at_center_sq = l_at_center.UB() * l_at_center.UB();
+  Bigival edge_len_sq = outer_edge.x.Squared() + outer_edge.y.Squared();
+  Bigival margin_sq = edge_len_sq * disc.radius_sq;
+
+  // Now, check whether the inequality can hold.
+  return min_l_at_center_sq > margin_sq.UB();
+}
+
 
 Discival GetInitialDisc(const BigVec3 &v,
                         const ViewBoundsTrig &trig,

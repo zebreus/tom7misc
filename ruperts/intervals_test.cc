@@ -331,6 +331,23 @@ static void TestGetBoundingAABB(std::string_view name,
     CheckAllSamples(v_in, angle, tx, ty);
   }
 
+  // Non-square AABB to test max radius logic.
+  {
+    Bigival angle(BigRat(0), pi.Midpoint() / 2, true, true);
+    // Tall, narrow box. The corner (2, 10) has the largest radius.
+    Vec2ival v_in(Bigival(1, 2, true, true), Bigival(1, 10, true, true));
+    Bigival tx(0), ty(0);
+    CheckAllSamples(v_in, angle, tx, ty);
+  }
+
+  // Rotation entirely within the second quadrant.
+  {
+    Bigival angle(pi.Midpoint() / 2, pi.Midpoint(), true, true);
+    Vec2ival v_in(Bigival(1, 2, true, true), Bigival(1, 2, true, true));
+    Bigival tx(0), ty(0);
+    CheckAllSamples(v_in, angle, tx, ty);
+  }
+
   printf("BoundingAABB tests (%s) OK\n", std::string(name).c_str());
 }
 
@@ -349,7 +366,9 @@ static void BenchAABB(const F1 &f1,
   const BigInt inv_epsilon(100000);
   const BigInt inv_epsilon_high("1000000000000000000000");
 
+
   // Samples points from the swept shape.
+  // TODO: Would improve accuracy to sample corners here.
   auto SampleSweptShape = [&](
       const Vec2ival &v_in, const Bigival &angle,
       const Bigival &tx, const Bigival &ty,
@@ -440,7 +459,7 @@ static void BenchAABB(const F1 &f1,
     };
 
   // Benchmark on deterministically random intervals.
-  static constexpr int NUM_BENCH = 16384;
+  static constexpr int NUM_BENCH = 1024;
   StatusBar status(1);
   Periodically status_per(1.0);
 
@@ -624,6 +643,67 @@ static void TestExpandSquaredRadius() {
   printf("ExpandSquaredRadius OK\n");
 }
 
+static void TestIsDiscOutsideEdge() {
+  #define CHECK_DISC(d_in, va_in, vb_in, expected) do {         \
+      const auto d_ = (d_in);                                   \
+      const auto va_ = (va_in);                                 \
+      const auto vb_ = (vb_in);                                 \
+      Vec2ival edge(vb_.x - va_.x, vb_.y - va_.y);              \
+      Bigival cross = Cross(va_, vb_);                          \
+      CHECK(IsDiscOutsideEdge(d_, edge, cross) == expected)     \
+        << "disc: " << d_.ToString() << "\n"                    \
+        << "va: " << va_.ToString() << "\n"                     \
+        << "vb: " << vb_.ToString() << "\n"                     \
+        << "edge: " << edge.ToString() << "\n"                  \
+        << "cross: " << cross.ToString() << "\n";               \
+    } while (0)
+
+  Discival disc(BigVec2(BigRat(5), BigRat(4)), BigRat(1));
+
+  auto V2 = [](int x, int y) {
+      return Vec2ival(BigVec2(BigRat(x), BigRat(y)));
+    };
+
+  // Vertical edge; disc is way outside.
+  CHECK_DISC(disc, V2(3, 0), V2(3, 1), true);
+
+  // Disc slightly overlaps a vertical edge.
+  CHECK_DISC(disc,
+             Vec2ival(Bigival(BigRat(9, 2)),
+                      Bigival(BigRat(0))),
+             Vec2ival(Bigival(BigRat(9, 2)),
+                      Bigival(BigRat(1))), false);
+
+  // Disc is exactly tangent to the edge, so it is not strictly
+  // outside.
+  CHECK_DISC(disc, V2(4, 0), V2(4, 1), false);
+
+  // Disc center on inside.
+  CHECK_DISC(disc, V2(6, 0), V2(6, 1), false);
+
+  // Disc is way outside a diagonal edge.
+  CHECK_DISC(disc, V2(4, 0), V2(0, 4), true);
+
+  // Wide intervals.
+  {
+    // Remember the vector should point up for Cartesian CCW winding
+    // and the disc to the right.
+    Vec2ival va = Vec2ival(Bigival(BigRat(32, 10), BigRat(4), false, false),
+                           Bigival(BigRat(13, 10), BigRat(13, 10), true, true));
+    Vec2ival vb = Vec2ival(Bigival(BigRat(3), BigRat(42, 10), false, false),
+                           Bigival(BigRat(6), BigRat(7), false, true));
+
+    // Original disc is overlapping the uncertain region.
+    CHECK_DISC(disc, va, vb, false);
+
+    Discival far_disc(BigVec2(BigRat(85, 10), BigRat(4)), BigRat(3, 2));
+    CHECK_DISC(far_disc, va, vb, true);
+  }
+
+  // Intervals are wide, but the disc is far enough away to pass.
+  printf("IsDiscOutsideEdge tests OK\n");
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
@@ -632,6 +712,7 @@ int main(int argc, char **argv) {
   TestGetBoundingAABB("GetBoundingAABB", &GetBoundingAABB);
   TestGetBoundingAABB("GetBoundingAABB2", &GetBoundingAABB2);
   TestExpandSquaredRadius();
+  TestIsDiscOutsideEdge();
 
   BenchAABB(&GetBoundingAABB, &GetBoundingAABB2);
 

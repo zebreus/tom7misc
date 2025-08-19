@@ -242,6 +242,185 @@ static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
                   v.x * sin_a + v.y * cos_a);
 }
 
+// Tom's Sausage Roll.
+// A swept disc creates a sausage shape. We try rejecting these
+// as outside by creating another bounding disc that includes
+// the entire sausage. But we only try this if both endpoint
+// discs are outside the edge, since computing the disc is
+// somewhat expensive. This also allows us to try a few different
+// bias parameters.
+struct Sausage {
+  Discival *disc = nullptr;
+
+  // The start and end-point discs. They have the same radius
+  // as the original disc.
+  Vec2ival center_lb, center_ub;
+};
+
+// Experimental; incomplete.
+std::optional<Sausage> GetSausage(
+    Discival *disc,
+    const RotTrig &rot_trig,
+    const BigInt &inv_epsilon) {
+
+  if (rot_trig.angle.Width() > BigRat(3)) {
+    return std::nullopt;
+  }
+
+  // The AABBs for the disc's center rotated to the angle's endpoints.
+  // PERF: These should be very tight intervals, but we could probably
+  // do better here with a routine that computes a disc for a rotated
+  // point. It'd also make TryCorners test cheaper, since there is
+  // just one radius.
+  auto RotatePt = [&](const SinCos &endpoint, const BigVec2 &p) {
+      return Vec2ival(p.x * endpoint.cosine - p.y * endpoint.sine,
+                      p.x * endpoint.sine + p.y * endpoint.cosine);
+    };
+
+  Sausage sausage;
+  // Very tight AABBs bounding the centers of the rotated disc at
+  // the angle lower bound and upper bound.
+  sausage.center_lb = RotatePt(rot_trig.lower, disc->center);
+  sausage.center_ub = RotatePt(rot_trig.upper, disc->center);
+  sausage.disc = disc;
+
+  return std::make_optional(std::move(sausage));
+}
+
+// Experimental; incomplete.
+// Make a bounding disc from a sausage, given the bias.
+static Discival SausageDisc(
+    const Sausage &sausage,
+    const RotTrig &rot_trig,
+    // A factor > 1 pushes the center away from the origin
+    // to create a tighter inner bound. 1.0 is unbiased.
+    const BigRat &bias,
+    const BigInt &inv_epsilon) {
+
+  CHECK(rot_trig.angle.Width() <= BigRat(3)) << "We could return "
+    "a degenerate disc here, but you should only call this with "
+    "a proper sausage!";
+
+  // The center of the disc will be on the same vector as the center
+  // of the arc, just further out (according to the bias parameter).
+  // Using the exact center would be nice here (the distance to the
+  // arc endpoints is equal on the perpendicular bisector) but we
+  // can't compute it precisely since we have the transcendentals.
+  // We'll just commit to a point decently close to the geometric center,
+  // and then compute a radius that definitely includes the sweep
+  // for the chosen point.
+
+  // TODO: Could be cached in sausage, making multiple bias tests
+  // cheaper.
+  // Use precomputed midpoint.
+  Vec2ival arc_center_ival(
+      sausage.disc->center.x * rot_trig.mid.cosine -
+      sausage.disc->center.y * rot_trig.mid.sine,
+      sausage.disc->center.x * rot_trig.mid.sine +
+      sausage.disc->center.y * rot_trig.mid.cosine);
+  BigVec2 arc_center = {arc_center_ival.x.Midpoint(),
+                        arc_center_ival.y.Midpoint()};
+
+  // Push this center away from the origin by the bias.
+  BigVec2 bounding_center = arc_center * bias;
+
+  // Radius for the bounding disc.
+  // The radius must be large enough to contain the furthest point on
+  // the swept shape, which will be on the circumference of one of the
+  // endpoint discs. We use the triangle inequality: The distance
+  // from the bounding center to the most distant endpoint's most
+  // distant corner, plus the radius of the swept disc.
+
+  // First find the maximum squared distance to the two rotated
+  // endpoints (centers). These should be almost the same except for
+  // the small amount of error from estimating Sin and Cos. But we
+  // need to get a result that is correct, so we need to incorporate
+  // the error in the radius. This requires picking the corner of the
+  // AABB that is furthest.
+
+  // PERF: A cheaper approximation here would be to take the distance to
+  // the center of the center AABB, and then use manhattan distance
+  // to a corner (they are all the same distance). This is an upper
+  // bound, but pretty tight because the center AABBs only have
+  // uncertainty from approximating the trig functions. Aside from
+  // skipping the loop, we would have a radius (bound) instead of
+  // a squared radius.
+  BigRat max_arc_dist_sq(0);
+  auto TryCorners = [&](const Vec2ival &c) {
+      // Note pointers so that we avoid copying LB and UB to form the
+      // initializer list.
+      for (const BigRat *x : {&c.x.LB(), &c.x.UB()}) {
+        BigRat dx = *x - bounding_center.x;
+        BigRat dxx = dx * dx;
+        for (const BigRat *y : {&c.y.LB(), &c.y.UB()}) {
+          BigRat dy = *y - bounding_center.y;
+          BigRat dyy = dy * dy;
+
+          BigRat dist_sq = dxx + dyy;
+          if (dist_sq > max_arc_dist_sq)
+            max_arc_dist_sq = std::move(dist_sq);
+        }
+      }
+    };
+
+  TryCorners(sausage.center_lb);
+  TryCorners(sausage.center_ub);
+
+  // Use the triangle inequality to compute a good radius for the
+  // disc. We use the sum of the radius from the center to the
+  // most distant corner (c) plus the input disc's radius (r).
+  // We need a squared radius, which is
+  //   (c + r)^2 = c^2 + r^2 + 2cr
+  // We already have c^2 and r^2, and cr = sqrt(cr * cr) = sqrt(c^2 * r^2).
+
+  // We have a few different ways to compute an upper bound here.
+  enum class Method {
+    EUCLIDEAN,
+    EXPANDED,
+    EXPANDED_ALT,
+  };
+
+  constexpr Method method = Method::EXPANDED_ALT;
+
+  if constexpr (method == Method::EUCLIDEAN) {
+    // Simple, but with several square roots.
+
+    // Upper bound on the input disc's actual radius.
+    const BigRat &in_r = sausage.disc->Radius(inv_epsilon);
+
+    BigRat center_r = BigRat::SqrtBounds(max_arc_dist_sq, inv_epsilon).second;
+    // The radius is bounded by the sum of the distance to the arc and the
+    // distance from the arc to the arc's circumference (input disc's radius),
+    // because of the triangle inequality.
+    BigRat bounding_radius = center_r + in_r;
+
+    BigRat radius_sq = bounding_radius * bounding_radius;
+
+    return Discival(std::move(bounding_center),
+                    std::move(radius_sq),
+                    std::move(bounding_radius));
+
+  } else if constexpr (method == Method::EXPANDED) {
+    // This turns out to be bad, because Sqrt(c^2 * r^2) is expensive.
+    BigRat radius_sq = max_arc_dist_sq + sausage.disc->radius_sq +
+      BigRat::SqrtBounds(max_arc_dist_sq * sausage.disc->radius_sq,
+                         inv_epsilon).second * 2;
+    return Discival(std::move(bounding_center), std::move(radius_sq));
+
+  } else {
+    CHECK(method == Method::EXPANDED_ALT);
+    // Upper bound on the input disc's actual radius.
+    const BigRat &in_r = sausage.disc->Radius(inv_epsilon);
+
+    // Better to take the square root of just the max_arc_dist_sq.
+    BigRat radius_sq =
+      max_arc_dist_sq + sausage.disc->radius_sq +
+      BigRat::SqrtBounds(max_arc_dist_sq, inv_epsilon).second * in_r * 2;
+    return Discival(std::move(bounding_center), std::move(radius_sq));
+  }
+}
+
+
 // Rotates a disc by an angle interval, producing a new, larger disc that
 // bounds the entire swept shape. There are many choices of bounding disc;
 // this code uses one that is biased away from the origin, because in the
@@ -260,11 +439,7 @@ static Discival RotateDiscInnerBias(
     // A factor > 1 pushes the center away from the origin
     // to create a tighter inner bound. 1.0 is unbiased.
     const BigRat &bias,
-    const BigInt &inv_epsilon_orig) {
-
-  // Use a much smaller epsilon to assess the hypothesis.
-  // BigInt inv_epsilon = inv_epsilon_orig * inv_epsilon_orig;
-  const BigInt &inv_epsilon = inv_epsilon_orig;
+    const BigInt &inv_epsilon) {
 
   if (rot_trig.angle.Width() > BigRat(3)) {
     // We can't get a good disc with this method. Just return
@@ -400,47 +575,6 @@ static Discival RotateDiscInnerBias(
       BigRat::SqrtBounds(max_arc_dist_sq, inv_epsilon).second * in_r * 2;
     return Discival(std::move(bounding_center), std::move(radius_sq));
   }
-}
-
-// Check if a disc is guaranteed to be strictly on the "outside" of an
-// edge. "Outside" means the side of the line that doesn't contain the
-// origin.
-static bool IsDiscOutsideEdge(const Discival &disc,
-                              const Vec2ival &outer_edge,
-                              const Bigival &outer_cross_va_vb) {
-  // We want to test if for all points p in the disc, the line-side test
-  //   L(p) = edge.x * p.y - edge.y * p.x + cross_va_vb
-  // is strictly negative.
-
-  // The value of the test at the disc's exact center is:
-  Bigival l_at_center =
-    outer_edge.x * disc.center.y -
-    outer_edge.y * disc.center.x +
-    outer_cross_va_vb;
-
-  // If the center might be on the inside, then we defintiely aren't
-  // going to prove the whole thing is outside!
-  if (l_at_center.MightBePositive()) {
-    return false;
-  }
-
-  // The center is outside. So the whole disc is outside if the distance
-  // from the center to the line is more than the disc's radius.
-  //   distance² > radius²
-  //   L(center)² / |edge|² > R²
-  //   L(center)² > R² * |edge|²
-
-  // To prove this we want to compute the smallest L(center)² and
-  // the largest R² * |edge|².
-  // l_at_center is not positive, so the smallest value of
-  // L(center)² is l_at_center.UB()² (value closer to zero).
-  // Just compute that rather than the whole interval.
-  BigRat min_l_at_center_sq = l_at_center.UB() * l_at_center.UB();
-  Bigival edge_len_sq = outer_edge.x.Squared() + outer_edge.y.Squared();
-  Bigival margin_sq = edge_len_sq * disc.radius_sq;
-
-  // Now, check whether the inequality can hold.
-  return min_l_at_center_sq > margin_sq.UB();
 }
 
 // Bisect an interval. We choose a split point that's close to half
@@ -1082,6 +1216,7 @@ struct Hypersolver {
 
     // Now we are going to enter the full loop and do point-edge tests.
 
+    // Experimental:
     // When we are working with balls or discs, many operations preserve
     // the radius (rotation, translation, orthographic projection). One
     // nice thing about this is that we can compute the radius of the 3D
@@ -1212,7 +1347,7 @@ struct Hypersolver {
       // is a good complement for this case, but we could consider
       // trying other non-rectangular representations here.
       Vec2ival v_aabb =
-        GetBoundingAABB(proj_v, rot_trig, inv_epsilon, inner_x, inner_y);
+        GetBoundingAABB2(proj_v, rot_trig, inv_epsilon, inner_x, inner_y);
       v_time_here += v_timer.Seconds();
 
       // status.Print("proj_v: {}", proj_v.ToString());
@@ -2025,7 +2160,9 @@ struct Hypersolver {
           };
 
         status.Status(
-            AWHITE("—————————————————————————————————————————") "\n"
+            AWHITE("——————————[")
+            ACYAN("{} {})")
+            AWHITE("]——————————————————————") "\n"
             // "Put volume information here!\n"
             "Split count: {}\n"
             // Recent interval
@@ -2056,6 +2193,7 @@ struct Hypersolver {
             AORANGE("⊗") "disc: {}  "
             "In: {}   AABB eff.: {}  dd: {}\n"
             "{}\n", // bar
+            outer_index, inner_index,
             splitcount,
             Hypercube::VolumeString(volume),
             rr,
@@ -2084,7 +2222,25 @@ struct Hypersolver {
       });
   }
 
-  void Init() {
+  bool Init() {
+    filename = Hypercube::StandardFilename(outer_code, inner_code);
+
+    if (Util::ExistsFile(filename)) {
+      Timer load_timer;
+      std::string contents = Util::ReadFile(filename);
+      if (Hypercube::IsComplete(contents)) {
+        status.Print(AWHITE("{}") " is already complete!", filename);
+        return false;
+      }
+
+      status.Print("Continuing from incomplete {}", filename);
+      hypercube->FromString(contents);
+    }
+
+    full_volume = Hypercube::Hypervolume(hypercube->bounds);
+    full_volume_d = full_volume.ToDouble();
+
+
     // Initialize queue.
     {
       auto leaves = hypercube->GetLeaves(&volume_outscope, &volume_proved);
@@ -2096,6 +2252,10 @@ struct Hypersolver {
     }
 
     status.Print("Initialized. Remaining leaves: {}\n", node_queue.size());
+
+    // Don't count hypercube loading or GetLeaves towards "runtime".
+    run_timer.Reset();
+    return true;
   }
 
   void WorkThread(int thread_idx) {
@@ -2150,8 +2310,12 @@ struct Hypersolver {
 
       save_per.RunIf([&](){
           MutexLock ml(&mu);
-          status.Print("Saving to {}...\n", filename);
-          hypercube->ToDisk(filename);
+          if (hypercube->Empty()) {
+            status.Print("Not writing empty cube.\n");
+          } else {
+            status.Print("Saving to {}...\n", filename);
+            hypercube->ToDisk(filename);
+          }
         });
 
       recent_shift_per.RunIf([&](){
@@ -2374,7 +2538,8 @@ struct Hypersolver {
 
   void Run() {
 
-    Init();
+    if (!Init())
+      return;
 
     std::vector<std::thread> workers;
 
@@ -2392,9 +2557,14 @@ struct Hypersolver {
 
     status.Print("All threads finished!");
 
-    status.Print("Writing complete cube: {}", filename);
-    hypercube->ToDisk(filename);
-    status.Print("Success " AGREEN(":)") "\n");
+
+    if (hypercube->Empty()) {
+      status.Print("Not writing empty cube!", filename);
+    } else {
+      status.Print("Writing complete cube: {}", filename);
+      hypercube->ToDisk(filename);
+      status.Print("Success " AGREEN(":)") "\n");
+    }
   }
 
   Hypersolver(int outer_idx, int inner_idx) :
@@ -2421,6 +2591,9 @@ struct Hypersolver {
 
     const PatchInfo::CanonicalPatch &outer = canonical[outer_idx].second;
     const PatchInfo::CanonicalPatch &inner = canonical[inner_idx].second;
+
+    outer_index = outer_idx;
+    inner_index = inner_idx;
 
     small_scube = SmallPoly(scube);
 
@@ -2476,18 +2649,6 @@ struct Hypersolver {
 
     inubdir = std::format("inubs-{}-{}", outer_code, inner_code);
     (void)Util::MakeDir(inubdir);
-
-    filename = Hypercube::StandardFilename(outer_code, inner_code);
-    if (Util::ExistsFile(filename)) {
-      status.Print("Continuing from {}", filename);
-      hypercube->FromDisk(filename);
-    }
-
-    full_volume = Hypercube::Hypervolume(hypercube->bounds);
-    full_volume_d = full_volume.ToDouble();
-
-    // Don't count hypercube loading towards "runtime".
-    run_timer.Reset();
   }
 
   void CheckHullRepresentation(ArcFour *rc, uint64_t code, uint64_t mask,
@@ -2544,6 +2705,8 @@ struct Hypersolver {
   Boundaries boundaries;
   PatchInfo patch_info;
   std::string filename, inubdir;
+
+  int outer_index = 0, inner_index = 0;
   uint64_t outer_code = 0, outer_mask = 0;
   uint64_t inner_code = 0, inner_mask = 0;
 
@@ -2637,7 +2800,7 @@ struct Hypersolver {
   double volume_proved = 0.0;
 
  private:
-    static std::vector<Chord3D> ComputeChords(const BigPoly &poly,
+  static std::vector<Chord3D> ComputeChords(const BigPoly &poly,
                                             const std::vector<int> &hull) {
     std::vector<Chord3D> ret;
     ret.reserve((hull.size() * (hull.size() - 1)) / 2);

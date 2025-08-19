@@ -23,6 +23,8 @@ static StatusBar status(37);
 
 static constexpr int NUM_PATCHES = 36;
 
+#define ABLOOD(s) AFGCOLOR(148, 0, 0, s)
+
 namespace {
 struct Scoreboard {
   struct Score {
@@ -64,7 +66,11 @@ std::string ScoreboardString(const Scoreboard &scoreboard) {
         if (vol_done > 0.0) {
           out.append(AYELLOW("░"));
         } else {
-          out.append(AGREY("∙"));
+          if (x == y) {
+            out.append(ABLOOD("∙"));
+          } else {
+            out.append(AGREY("∙"));
+          }
         }
       }
     }
@@ -112,35 +118,47 @@ static void IBoard() {
         continue;
 
       Timer load_timer;
-      status.Print("Loading " AWHITE("{}") "...", filename);
-      hypercube->FromDisk(filename);
-      status.Print("Loaded {} in {}.", filename,
-                   ANSI::Time(load_timer.Seconds()));
+      std::string contents = Util::ReadFile(filename);
+      if (Hypercube::IsComplete(contents)) {
+        double complete_time = load_timer.Seconds();
+        Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
+        score.done = true;
+        done++;
+        status.Print("Noted {} is done in {}.", filename,
+                     ANSI::Time(complete_time));
 
-      // XXX HERE: Report stats, verify, etc.
+      } else {
 
-      // PERF: Don't need to actually get the leaves in order
-      // to compute these.
-      Timer leaf_timer;
-      double vol_outscope = 0.0, vol_proved = 0.0;
-      auto leaves = hypercube->GetLeaves(&vol_outscope, &vol_proved);
-      double vol_done = vol_outscope + vol_proved;
-      double vol_inscope = total_volume - vol_outscope;
-      status.Print(
-          "{} leaves. {:.6f} ({:.3f}%) done, {:.6f} ({:.3f}%) proved. ({})",
-          leaves.size(),
-          vol_done,
-          (vol_done * 100.0) / total_volume,
-          vol_proved,
-          (vol_proved * 100.0) / vol_inscope,
-          ANSI::Time(leaf_timer.Seconds()));
+        status.Print("Loading " AWHITE("{}") "...", filename);
+        hypercube->FromString(contents);
+        status.Print("Loaded {} in {}.", filename,
+                     ANSI::Time(load_timer.Seconds()));
 
-      Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
-      score.done = leaves.empty();
-      score.vol_inscope = vol_inscope;
-      score.vol_outscope = vol_outscope;
-      score.vol_proved = vol_proved;
-      if (score.done) done++;
+        // XXX HERE: Report stats, verify, etc.
+
+        // PERF: Don't need to actually get the leaves in order
+        // to compute these.
+        Timer leaf_timer;
+        double vol_outscope = 0.0, vol_proved = 0.0;
+        auto leaves = hypercube->GetLeaves(&vol_outscope, &vol_proved);
+        double vol_done = vol_outscope + vol_proved;
+        double vol_inscope = total_volume - vol_outscope;
+        status.Print(
+            "{} leaves. {:.6f} ({:.3f}%) done, {:.6f} ({:.3f}%) proved. ({})",
+            leaves.size(),
+            vol_done,
+            (vol_done * 100.0) / total_volume,
+            vol_proved,
+            (vol_proved * 100.0) / vol_inscope,
+            ANSI::Time(leaf_timer.Seconds()));
+
+        Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
+        score.done = leaves.empty();
+        score.vol_inscope = vol_inscope;
+        score.vol_outscope = vol_outscope;
+        score.vol_proved = vol_proved;
+        if (score.done) done++;
+      }
 
       status_per.RunIf([&]() {
           status.EmitStatus(

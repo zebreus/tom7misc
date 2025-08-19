@@ -235,6 +235,19 @@ struct Bigival {
     return IncludesLB() ? i >= LB() : i > LB();
   }
 
+  // Make sure the interval contains the point.
+  void Accumulate(const BigRat &x) {
+    if (x >= UB()) {
+      ub.r = x;
+      ub.included = true;
+    }
+
+    if (x <= LB()) {
+      lb.r = x;
+      lb.included = true;
+    }
+  }
+
   static Bigival Pi(const BigInt &inv_epsilon) {
     BigRat half_epsilon = BigRat(BigInt(1), inv_epsilon * 2);
     BigRat approx_pi = BigNumbers::Pi(half_epsilon);

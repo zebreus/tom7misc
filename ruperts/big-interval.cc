@@ -87,8 +87,13 @@ Bigival::MaybeBool Bigival::LessEq(const Bigival &r) const {
 
 std::string Bigival::ToString() const {
   auto Render = [](const BigRat &r) {
-      return std::format("{} ≅ {}",
-                         r.ToString(), r.ToDouble());
+      std::string rs = r.ToString();
+      std::string ds = std::format("{:.6g}", r.ToDouble());
+      if (rs == ds) {
+        return rs;
+      } else {
+        return std::format("{} ≅ {}", rs, ds);
+      }
     };
   return std::format("{}{}, {}{}",
                      IncludesLB() ? "[" : "(",
@@ -427,6 +432,11 @@ Bigival Bigival::NiceCos(const BigInt &inv_epsilon) const {
 }
 
 std::string Bigival::Point::ToString() const {
-  return std::format("{}{} ≅ {}", included ? "⏺" : "∘",
-                     r.ToString(), r.ToDouble());
+  std::string rs = r.ToString();
+  std::string ds = std::format("{:.6g}", r.ToDouble());
+  if (rs == ds) {
+    return std::format("{}{}", included ? "⏺" : "∘", rs);
+  } else {
+    return std::format("{}{} ≅ {}", included ? "⏺" : "∘", rs, ds);
+  }
 }

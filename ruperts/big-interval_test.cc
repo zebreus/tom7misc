@@ -104,6 +104,28 @@ static void Simple() {
     CHECK(b.ContainsOrApproachesZero());
   }
 
+  {
+    Bigival a(BigRat(-1), BigRat(1), false, false);
+    a.Add(BigRat(1));
+    CHECK(a.UB() == BigRat(1));
+    CHECK(a.IncludesUB());
+    CHECK(!a.IncludesLB());
+    a.Add(BigRat(-1));
+    CHECK(a.LB() == BigRat(-1));
+    CHECK(a.IncludesLB());
+  }
+
+  {
+    Bigival a(BigRat(2), BigRat(2), true, true);
+    a.Add(BigRat(2));
+    CHECK(a.LB() == BigRat(2));
+    CHECK(a.UB() == BigRat(2));
+    a.Add(BigRat(3));
+    CHECK(a.LB() == BigRat(2));
+    CHECK(a.UB() == BigRat(3));
+    CHECK(a.IncludesUB());
+  }
+
   for (Bigival a : {
       Bigival(BigRat(-1), BigRat(2), true, true),
       Bigival(BigRat(1), BigRat(6, 5), false, true),

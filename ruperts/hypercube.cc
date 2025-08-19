@@ -39,6 +39,14 @@ const char *ParameterName(int param) {
   }
 }
 
+bool Hypercube::Empty() const {
+  // Must be an incomplete leaf to be empty.
+  if (const Leaf *leaf = std::get_if<Leaf>(root.get())) {
+    return leaf->completed == 0;
+  }
+  return false;
+}
+
 BigRat Hypercube::Hypervolume(const Volume &vol) {
   BigRat product(1);
   for (int d = 0; d < NUM_DIMENSIONS; d++) {
@@ -161,8 +169,20 @@ std::string Hypercube::StandardFilename(
   return std::format("hc-{}-{}.cube", outer_code, inner_code);
 }
 
-void Hypercube::FromDisk(const std::string &filename) {
+// This is a hack; would be better to at least loop over lines!
+bool Hypercube::IsComplete(std::string_view contents) {
+  return !contents.empty() &&
+    contents[0] != 'E' &&
+    contents.find("\nE\n") == std::string_view::npos;
+}
 
+
+void Hypercube::FromDisk(std::string_view filename) {
+  return FromString(Util::ReadFile(filename));
+}
+
+
+void Hypercube::FromString(std::string_view contents) {
   // The file format is line based. Each line is a node;
   // either:
   // L reason completed   (completed leaf)
@@ -176,9 +196,10 @@ void Hypercube::FromDisk(const std::string &filename) {
 
   std::vector<std::shared_ptr<Hypercube::Node>> stack;
 
-  Util::ForEachLine(
-      filename,
-      [&](const std::string &raw_line) {
+  Util::ForEachLineInString(
+      contents,
+      [&](std::string_view raw_line) {
+
         std::string line_string = Util::NormalizeWhitespace(raw_line);
         std::string_view line(line_string);
         if (line.empty()) return;
@@ -242,8 +263,8 @@ void Hypercube::FromDisk(const std::string &filename) {
 }
 
 
-void Hypercube::ToDisk(const std::string &filename) const {
-  FILE *f = fopen(filename.c_str(), "wb");
+void Hypercube::ToDisk(std::string_view filename) const {
+  FILE *f = fopen(std::string(filename).c_str(), "wb");
   CHECK(f != nullptr);
 
   using StackElt = std::variant<

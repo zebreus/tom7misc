@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -81,9 +82,16 @@ struct Hypercube {
       uint64_t outer_code, uint64_t inner_code);
 
   // Replaces the entire hypercube.
-  void FromDisk(const std::string &filename);
+  void FromDisk(std::string_view filename);
+  void FromString(std::string_view contents);
 
-  void ToDisk(const std::string &filename) const;
+  // Test if the contents represents a completed hypercube (no empty
+  // leaves).
+  static bool IsComplete(std::string_view contents);
+
+  bool Empty() const;
+
+  void ToDisk(std::string_view filename) const;
 
   struct Split;
   struct Leaf;

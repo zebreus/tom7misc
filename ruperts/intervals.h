@@ -73,6 +73,7 @@ struct Vec2ival {
   Bigival x, y;
   Vec2ival(Bigival xx, Bigival yy) :
     x(std::move(xx)), y(std::move(yy)) {}
+  Vec2ival(BigVec2 v) : x(std::move(v.x)), y(std::move(v.y)) {}
   Vec2ival() : x(0), y(0) {}
 
   // The exact area of the AABB.
@@ -415,7 +416,10 @@ Vec2ival GetBoundingAABB(const Vec2ival &v_in,
                          const BigInt &inv_epsilon,
                          const Bigival &tx, const Bigival &ty);
 
-// Experimental.
+// More accurate (and more complicated) version of the above.
+// This one reduces dependency problems and has a few percentage
+// points better AABB efficiency. On the other hand, it takes
+// about 3x as long.
 Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
                           const RotTrig &rot_trig,
                           const BigInt &inv_epsilon,
@@ -467,6 +471,12 @@ BigRat ExpandSquaredRadius(const BigRat &radius_sq,
 // of its convex hull (it's just the max distance between vertices).
 BigRat MaxSquaredDiameter(const std::vector<Vec2ival> &vs);
 
+// Check if a disc is guaranteed to be strictly on the "outside" of an
+// edge. "Outside" means the side of the line that doesn't contain the
+// origin. Edge must be ordered (Cartesian) CCW.
+bool IsDiscOutsideEdge(const Discival &disc,
+                       const Vec2ival &outer_edge,
+                       const Bigival &outer_cross_va_vb);
 
 // Experimental; incomplete.
 //
