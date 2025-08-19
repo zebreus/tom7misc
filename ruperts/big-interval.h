@@ -473,7 +473,7 @@ inline Bigival operator-(const Bigival &a, const BigRat &b) {
 }
 
 inline Bigival operator-(const BigRat &a, const Bigival &b) {
-  return b.Plus(BigRat::Negate(a));
+  return b.Negate().Plus(a);
 }
 
 inline Bigival operator-(const Bigival &a) {

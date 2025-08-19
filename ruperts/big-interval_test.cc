@@ -106,21 +106,21 @@ static void Simple() {
 
   {
     Bigival a(BigRat(-1), BigRat(1), false, false);
-    a.Add(BigRat(1));
+    a.Accumulate(BigRat(1));
     CHECK(a.UB() == BigRat(1));
     CHECK(a.IncludesUB());
     CHECK(!a.IncludesLB());
-    a.Add(BigRat(-1));
+    a.Accumulate(BigRat(-1));
     CHECK(a.LB() == BigRat(-1));
     CHECK(a.IncludesLB());
   }
 
   {
     Bigival a(BigRat(2), BigRat(2), true, true);
-    a.Add(BigRat(2));
+    a.Accumulate(BigRat(2));
     CHECK(a.LB() == BigRat(2));
     CHECK(a.UB() == BigRat(2));
-    a.Add(BigRat(3));
+    a.Accumulate(BigRat(3));
     CHECK(a.LB() == BigRat(2));
     CHECK(a.UB() == BigRat(3));
     CHECK(a.IncludesUB());
@@ -172,6 +172,21 @@ static void Simple() {
               });
           });
       }
+
+      {
+        Bigival difference = a.LB() - b;
+        Sample(b, [&](const BigRat &sb) {
+            CHECK_CONTAINS(difference, a.LB() - sb);
+          });
+      }
+
+      {
+        Bigival difference = a - b.LB();
+        Sample(a, [&](const BigRat &sa) {
+            CHECK_CONTAINS(difference, sa - b.LB());
+          });
+      }
+
 
       {
         Bigival product = a * b;
