@@ -40,24 +40,27 @@ enum RejectionReason : uint8_t {
   POINT_OUTSIDE3 = 7,
   POINT_OUTSIDE4 = 8,
   POINT_OUTSIDE5 = 9,
+  POINT_OUTSIDE6 = 12,
   POLY_AREA = 10,
   DIAMETER = 11,
 };
-inline constexpr int NUM_REJECTION_REASONS = 12;
+inline constexpr int NUM_REJECTION_REASONS = 13;
 
 // Hypercube using big rationals. (It's actually a hyperrectangle
 // because the sides are not all the same length...)
 struct Hypercube {
 
+  // When the rejection reason is PT4, PT5, PT6, then we found a point
+  // that is definitely on the wrong side of some edge.
   struct Pt4Data {
-    // When the rejection reason is PT4 or PT5, then we found a point
-    // that is definitely on the wrong side of some edge.
     // This is the index of that edge (start endpoint) and point inside
     // the outer and inner hulls, respectively. (NOT a vertex index.)
     int8_t edge = -1;
     int8_t point = -1;
   };
 
+  // Also for Pt6. Maybe should merge these when pt6 it is not
+  // experimental.
   struct Pt5Data {
     int8_t edge = -1;
     int8_t point = -1;

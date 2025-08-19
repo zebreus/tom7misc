@@ -343,18 +343,207 @@ BigRat MaxSquaredDiameter(const std::vector<Vec2ival> &vs) {
   return max_sq_dist;
 }
 
-bool IsDiscOutsideEdge(const Discival &disc,
-                       const Vec2ival &outer_edge,
-                       const Bigival &outer_cross_va_vb) {
-  // We want to test if for all points p in the disc, the line-side test
-  //   L(p) = edge.x * p.y - edge.y * p.x + cross_va_vb
-  // is strictly negative.
+Discival RotateDiscInnerBias(
+    // Mutable because we might calculate and cache radius.
+    Discival *disc,
+    const RotTrig &rot_trig,
+    // A factor > 1 pushes the center away from the origin
+    // to create a tighter inner bound. 1.0 is unbiased.
+    const BigRat &bias,
+    const BigInt &inv_epsilon) {
 
-  // The value of the test at the disc's exact center is:
-  Bigival l_at_center =
-    outer_edge.x * disc.center.y -
-    outer_edge.y * disc.center.x +
-    outer_cross_va_vb;
+  if (rot_trig.angle.Width() > BigRat(3)) {
+    // We can't get a good disc with this method. Just return
+    // something correct. A really simple choice is just a
+    // disc centered at the origin, whose radius is as though
+    // we sweep the input disc over the entire circle.
+    BigRat center_dist = BigRat::SqrtBounds(dot(disc->center, disc->center),
+                                            inv_epsilon).second;
+    BigRat radius = disc->Radius(inv_epsilon);
+
+    BigRat bounding_radius = center_dist + radius;
+    BigRat radius_sq = bounding_radius * bounding_radius;
+    return Discival(BigVec2(BigRat(0), BigRat(0)),
+                    std::move(radius_sq),
+                    std::move(bounding_radius));
+  }
+
+
+  // The center of the disc will be on the same vector as the center
+  // of the arc, just further out (according to the bias parameter).
+  // Using the exact center would be nice here (the distance to the
+  // arc endpoints is equal on the perpendicular bisector) but we
+  // can't compute it precisely since we have the transcendentals.
+  // We'll just commit to a point decently close to the geometric center,
+  // and then compute a radius that definitely includes the sweep
+  // for the chosen point.
+
+  // Use precomputed midpoint.
+  Vec2ival arc_center_ival(
+      disc->center.x * rot_trig.mid.cosine -
+      disc->center.y * rot_trig.mid.sine,
+      disc->center.x * rot_trig.mid.sine +
+      disc->center.y * rot_trig.mid.cosine);
+  BigVec2 arc_center = {arc_center_ival.x.Midpoint(),
+                        arc_center_ival.y.Midpoint()};
+
+  // Push this center away from the origin by the bias.
+  BigVec2 bounding_center = arc_center * bias;
+
+  // Radius for the bounding disc.
+  // The radius must be large enough to contain the furthest point on
+  // the swept shape, which will be on the circumference of one of the
+  // endpoint discs. We use the triangle inequality:
+
+  // Upper bound on the input disc's actual radius.
+  const BigRat &in_r = disc->Radius(inv_epsilon);
+
+  // The AABBs for the disc's center rotated to the angle's endpoints.
+  // PERF: These should be very tight intervals, but we could probably
+  // do better here with a routine that computes a disc for a rotated
+  // point. It'd also make TryCorners test cheaper, since there is
+  // just one radius.
+  auto RotatePt = [&](const SinCos &endpoint, const BigVec2 &p) {
+      return Vec2ival(p.x * endpoint.cosine - p.y * endpoint.sine,
+                      p.x * endpoint.sine + p.y * endpoint.cosine);
+    };
+
+  // Very tight AABBs bounding the centers of the rotated disc at
+  // the angle lower bound and upper bound.
+  Vec2ival center_lb = RotatePt(rot_trig.lower, disc->center);
+  Vec2ival center_ub = RotatePt(rot_trig.upper, disc->center);
+
+  // Now find the maximum squared distance to the two rotated endpoints.
+  // These should be almost the same except for the small amount of error
+  // from estimating Sin and Cos. But we need to get a result that is
+  // correct, so we need to incorporate the error in the radius.
+  // This requires picking the corner of the AABB that is furthest.
+
+  BigRat max_arc_dist_sq(0);
+  auto TryCorners = [&](const Vec2ival &c) {
+      // Note pointers so that we avoid copying LB and UB to form the
+      // initializer list.
+      for (const BigRat *x : {&c.x.LB(), &c.x.UB()}) {
+        BigRat dx = *x - bounding_center.x;
+        BigRat dxx = dx * dx;
+        for (const BigRat *y : {&c.y.LB(), &c.y.UB()}) {
+          BigRat dy = *y - bounding_center.y;
+          BigRat dyy = dy * dy;
+
+          BigRat dist_sq = dxx + dyy;
+          if (dist_sq > max_arc_dist_sq)
+            max_arc_dist_sq = std::move(dist_sq);
+        }
+      }
+    };
+
+  TryCorners(center_lb);
+  TryCorners(center_ub);
+
+  // Use the triangle inequality to compute a good radius for the
+  // disc. We use the sum of the radius from the center to the
+  // most distant corner (c) plus the input disc's radius (r).
+  // We need a squared radius, which is
+  //   (c + r)^2 = c^2 + r^2 + 2cr
+  // We already have c^2 and r^2, and cr = sqrt(cr * cr) = sqrt(c^2 * r^2).
+
+  // We have a few different ways to compute an upper bound here.
+  enum class Method {
+    EUCLIDEAN,
+    EXPANDED,
+    EXPANDED_ALT,
+  };
+
+  constexpr Method method = Method::EXPANDED_ALT;
+
+  if constexpr (method == Method::EUCLIDEAN) {
+    // Simple, but with several square roots.
+    BigRat center_r = BigRat::SqrtBounds(max_arc_dist_sq, inv_epsilon).second;
+    // The radius is bounded by the sum of the distance to the arc and the
+    // distance from the arc to the arc's circumference (input disc's radius),
+    // because of the triangle inequality.
+    BigRat bounding_radius = center_r + in_r;
+
+    BigRat radius_sq = bounding_radius * bounding_radius;
+
+    return Discival(std::move(bounding_center),
+                    std::move(radius_sq),
+                    std::move(bounding_radius));
+
+  } else if constexpr (method == Method::EXPANDED) {
+    // This turns out to be bad, because Sqrt(c^2 * r^2) is expensive.
+    BigRat radius_sq = max_arc_dist_sq + disc->radius_sq +
+      BigRat::SqrtBounds(max_arc_dist_sq * disc->radius_sq,
+                         inv_epsilon).second * 2;
+    return Discival(std::move(bounding_center), std::move(radius_sq));
+
+  } else {
+    CHECK(method == Method::EXPANDED_ALT);
+    // Better to take the square root of just the max_arc_dist_sq.
+    BigRat radius_sq =
+      max_arc_dist_sq + disc->radius_sq +
+      BigRat::SqrtBounds(max_arc_dist_sq, inv_epsilon).second * in_r * 2;
+    return Discival(std::move(bounding_center), std::move(radius_sq));
+  }
+}
+
+Discival TranslateDisc(Discival *disc,
+                       const Bigival &tx,
+                       const Bigival &ty,
+                       const BigInt &inv_epsilon) {
+
+  // Exact center for the bounding disc. We have our choice here, but
+  // the midpoint is the best option and is easy to compute.
+  BigVec2 bound_center(
+      (disc->center.x + tx).Midpoint(),
+      (disc->center.y + ty).Midpoint());
+
+  // Now compute a radius that's sufficient to contain the entire
+  // roundrect. Using the triangle inequality, the max distance to a
+  // corner plus the original radius is an upper bound.
+
+  const BigRat &original_radius = disc->Radius(inv_epsilon);
+
+  // All the corners are the same distance from the center:
+  BigRat half_w = tx.Width() / 2;
+  BigRat half_h = ty.Width() / 2;
+
+  // We can just sum the square roots of the squared radii and then
+  // square that, or (c + r)^2 = c^2 + r^2 + 2cr.
+  // The latter seems to produce much larger denominators.
+  #if 1
+  BigRat corner_dist =
+    BigRat::SqrtBounds(half_w * half_w + half_h * half_h, inv_epsilon).second;
+
+  // And the original radius.
+  BigRat bound_radius = corner_dist + original_radius;
+
+  BigRat radius_sq = bound_radius * bound_radius;
+
+  return Discival(std::move(bound_center),
+                  std::move(radius_sq),
+                  std::move(bound_radius));
+  #else
+
+  BigRat corner_dist_sq = half_w * half_w + half_h * half_h;
+  BigRat radius_sq = corner_dist_sq + disc->radius_sq +
+    BigRat::SqrtBounds(corner_dist_sq, inv_epsilon).second *
+    original_radius * 2;
+  return Discival(std::move(bound_center),
+                  std::move(radius_sq));
+
+  #endif
+}
+
+// Helper for the two functions below.
+// We want to test if for all points p in the disc, the line-side test
+//   L(p) = edge.x * p.y - edge.y * p.x + cross_va_vb
+// is strictly negative.
+static bool IsDiscOutsideEdgeInternal(
+    // The value of L at the disc's center.
+    const Bigival &l_at_center,
+    const BigRat &disc_radius_sq,
+    const Vec2ival &outer_edge) {
 
   // If the center might be on the inside, then we defintiely aren't
   // going to prove the whole thing is outside!
@@ -375,10 +564,36 @@ bool IsDiscOutsideEdge(const Discival &disc,
   // Just compute that rather than the whole interval.
   BigRat min_l_at_center_sq = l_at_center.UB() * l_at_center.UB();
   Bigival edge_len_sq = outer_edge.x.Squared() + outer_edge.y.Squared();
-  Bigival margin_sq = edge_len_sq * disc.radius_sq;
+  Bigival margin_sq = edge_len_sq * disc_radius_sq;
 
   // Now, check whether the inequality can hold.
   return min_l_at_center_sq > margin_sq.UB();
+}
+
+bool IsDiscOutsideEdge(const Discival &disc,
+                       const Vec2ival &outer_edge,
+                       const Bigival &outer_cross_va_vb) {
+  // It's easy to just make a singular interval for the disc
+  // center, but this is used in inner loops. So specialize
+  // to a BigRat center.
+  return IsDiscOutsideEdgeInternal(
+      outer_edge.x * disc.center.y -
+      outer_edge.y * disc.center.x +
+      outer_cross_va_vb,
+      disc.radius_sq,
+      outer_edge);
+}
+
+bool IsDiscOutsideEdge(const Vec2ival &disc_center,
+                       const BigRat &disc_radius_sq,
+                       const Vec2ival &outer_edge,
+                       const Bigival &outer_cross_va_vb) {
+  return IsDiscOutsideEdgeInternal(
+      outer_edge.x * disc_center.y -
+      outer_edge.y * disc_center.x +
+      outer_cross_va_vb,
+      disc_radius_sq,
+      outer_edge);
 }
 
 
@@ -603,3 +818,4 @@ Bigival SquaredDiameterFromChords(
 
   return max_diam_sq;
 }
+

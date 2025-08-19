@@ -258,6 +258,11 @@ inline Vec3ival operator *(const Vec3ival &a,
   return Vec3ival(a.x * s, a.y * s, a.z * s);
 }
 
+inline Vec2ival operator +(const Vec2ival &a,
+                           const Vec2ival &b) {
+  return Vec2ival(a.x + b.x, a.y + b.y);
+}
+
 inline Vec2ival operator -(const Vec2ival &a,
                            const BigVec2 &b) {
   return Vec2ival(a.x - b.x, a.y - b.y);
@@ -315,10 +320,10 @@ struct ViewBoundsTrig {
   BigRat mid_angle;
 
   // XXX SinCos
-  Bigival mid_sin_az = Bigival::Sin(mid_azimuth, inv_epsilon);
-  Bigival mid_cos_az = Bigival::Cos(mid_azimuth, inv_epsilon);
-  Bigival mid_sin_an = Bigival::Sin(mid_angle, inv_epsilon);
-  Bigival mid_cos_an = Bigival::Cos(mid_angle, inv_epsilon);
+  Bigival mid_sin_az;
+  Bigival mid_cos_az;
+  Bigival mid_sin_an;
+  Bigival mid_cos_an;
 };
 
 // Precomputed trigonometry for the 2D rotation of the inner hull.
@@ -471,12 +476,47 @@ BigRat ExpandSquaredRadius(const BigRat &radius_sq,
 // of its convex hull (it's just the max distance between vertices).
 BigRat MaxSquaredDiameter(const std::vector<Vec2ival> &vs);
 
+// Rotates a disc by an angle interval, producing a new, larger disc that
+// bounds the entire swept shape. There are many choices of bounding disc;
+// this code uses one that is biased away from the origin, and this
+// usually produces a disc that is much bigger than it needs to be.
+// But for the purpose of proving the parameterized point is on the outside of
+// the edge, we want to minimize the error on the *inside* and don't really
+// care about the outside. (If the disc gets *too* big then it might
+// intersect the edge somewhere else, so we don't go crazy here.)
+// See rotate-disc-inner-bias.png.
+//
+// To simplify the math, the angle interval's width must be reasonable (less
+// than 3) or the resulting disc will be very conservative.
+Discival RotateDiscInnerBias(
+    // Mutable because we might calculate and cache radius.
+    Discival *disc,
+    const RotTrig &rot_trig,
+    // A factor > 1 pushes the center away from the origin
+    // to create a tighter inner bound. 1.0 is unbiased.
+    const BigRat &bias,
+    const BigInt &inv_epsilon);
+
+// Translates a disc by an interval (tx, ty), producing a new, larger disc
+// that bounds the entire resulting shape (a roundrect).
+Discival TranslateDisc(Discival *disc,
+                       const Bigival &tx,
+                       const Bigival &ty,
+                       const BigInt &inv_epsilon);
+
 // Check if a disc is guaranteed to be strictly on the "outside" of an
 // edge. "Outside" means the side of the line that doesn't contain the
 // origin. Edge must be ordered (Cartesian) CCW.
 bool IsDiscOutsideEdge(const Discival &disc,
                        const Vec2ival &outer_edge,
                        const Bigival &outer_cross_va_vb);
+
+// Same, but with the disc center expresed as an AABB.
+bool IsDiscOutsideEdge(const Vec2ival &disc_center,
+                       const BigRat &disc_radius_sq,
+                       const Vec2ival &outer_edge,
+                       const Bigival &outer_cross_va_vb);
+
 
 // Experimental; incomplete.
 //

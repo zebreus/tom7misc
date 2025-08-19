@@ -704,6 +704,113 @@ static void TestIsDiscOutsideEdge() {
   printf("IsDiscOutsideEdge tests OK\n");
 }
 
+static void TestTranslateDisc() {
+  BigInt inv_epsilon(100000);
+
+  // We'll divide by this, so we want an upper bound.
+  BigRat sqrt2_ub = BigRat::SqrtBounds(BigRat(2), inv_epsilon).second;
+
+  auto CheckAllSamples = [&](Discival disc_in,
+                             const Bigival &tx, const Bigival &ty) {
+
+      Discival result = TranslateDisc(&disc_in, tx, ty, inv_epsilon);
+
+      // Sample points from the input disc to test against.
+      const BigRat &radius = disc_in.Radius(inv_epsilon);
+      BigVec2 dx = BigVec2(radius, BigRat(0));
+      BigVec2 dy = BigVec2(BigRat(0), radius);
+
+      std::vector<BigVec2> points_in_disc = {
+        disc_in.center,
+        disc_in.center + dx,
+        disc_in.center - dx,
+        disc_in.center + dy,
+        disc_in.center - dy,
+      };
+
+      // And 4 diagonal points near the boundary.
+      BigRat r_over_sqrt2 = radius / sqrt2_ub;
+      points_in_disc.push_back(disc_in.center +
+                               BigVec2(r_over_sqrt2, r_over_sqrt2));
+      points_in_disc.push_back(disc_in.center +
+                               BigVec2(r_over_sqrt2, -r_over_sqrt2));
+      points_in_disc.push_back(disc_in.center +
+                               BigVec2(-r_over_sqrt2, r_over_sqrt2));
+      points_in_disc.push_back(disc_in.center +
+                               BigVec2(-r_over_sqrt2, -r_over_sqrt2));
+
+      Sample(tx, [&](const BigRat &trans_x){
+          Sample(ty, [&](const BigRat &trans_y){
+              const BigVec2 translation(trans_x, trans_y);
+              for (const BigVec2 &p_in : points_in_disc) {
+                BigVec2 p_out = p_in + translation;
+                // Check p_out is in result disc.
+                BigVec2 delta = p_out - result.center;
+                BigRat dist_sq = dot(delta, delta);
+                CHECK(dist_sq <= result.radius_sq)
+                  << "Sample point " << VecString(p_out)
+                  << " is outside the resulting disc " << result.ToString()
+                  << "\n  dist_sq: " << dist_sq.ToString()
+                  << "\n  radius_sq: " << result.radius_sq.ToString()
+                  << "\n  p_in: " << VecString(p_in)
+                  << "\n  translation: " << VecString(translation)
+                  << "\n  disc_in: " << disc_in.ToString();
+              }
+            });
+        });
+    };
+
+  // Zero translation.
+  {
+    Discival disc_in(BigVec2(BigRat(1), BigRat(2)), BigRat(9));
+    Bigival tx(0), ty(0);
+    CheckAllSamples(disc_in, tx, ty);
+    Discival result = TranslateDisc(&disc_in, tx, ty, inv_epsilon);
+    // Center should be identical.
+    CHECK(result.center == disc_in.center);
+    // Radius should be very close.
+    BigRat r_in = disc_in.Radius(inv_epsilon);
+    CHECK(BigRat::Abs(result.Radius(inv_epsilon) - r_in) <
+          BigRat(1, 10000));
+  }
+
+  // Point translation.
+  {
+    Discival disc_in(BigVec2(BigRat(1, 2), BigRat(-3, 4)), BigRat(1, 16));
+    Bigival tx(10), ty(-20);
+    CheckAllSamples(disc_in, tx, ty);
+    Discival result = TranslateDisc(&disc_in, tx, ty, inv_epsilon);
+    // Center should be close to the singular point.
+
+    BigRat dx = result.center.x - (tx.LB() + disc_in.center.x);
+    BigRat dy = result.center.y - (ty.LB() + disc_in.center.y);
+    CHECK(dx * dx + dy * dy < BigRat(1, 10000));
+  }
+
+  // Rectangular translation.
+  {
+    Discival disc_in(BigVec2(BigRat(0), BigRat(-1, 3)), BigRat(1, 4));
+    Bigival tx(10, 12, true, true), ty(-2, -1, true, true);
+    CheckAllSamples(disc_in, tx, ty);
+  }
+
+  // Translation includes origin.
+  {
+    Discival disc_in(BigVec2(BigRat(5), BigRat(5)), BigRat(4));
+    Bigival tx(-1, 1, true, true), ty(-1, 1, true, true);
+    CheckAllSamples(disc_in, tx, ty);
+  }
+
+  // Open intervals.
+  {
+    Discival disc_in(BigVec2(BigRat(0), BigRat(0)), BigRat(2, 3));
+    Bigival tx(0, 1, false, true), ty(2, 3, true, false);
+    CheckAllSamples(disc_in, tx, ty);
+  }
+
+  printf("TranslateDisc OK\n");
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
@@ -713,6 +820,7 @@ int main(int argc, char **argv) {
   TestGetBoundingAABB("GetBoundingAABB2", &GetBoundingAABB2);
   TestExpandSquaredRadius();
   TestIsDiscOutsideEdge();
+  TestTranslateDisc();
 
   BenchAABB(&GetBoundingAABB, &GetBoundingAABB2);
 

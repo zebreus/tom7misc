@@ -145,6 +145,7 @@ static std::optional<Rejection> ParseRejection(std::string_view s) {
     break;
   }
 
+  case POINT_OUTSIDE6:
   case POINT_OUTSIDE5: {
     int64_t eidx = Util::ParseInt64(Util::Chop(&s), -1);
     int64_t pidx = Util::ParseInt64(Util::Chop(&s), -1);
