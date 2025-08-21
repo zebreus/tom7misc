@@ -11,6 +11,10 @@ struct Factorization {
   // Output is pairs of [prime, exponent] in sorted order (by prime).
   static std::vector<std::pair<uint64_t, int>> Factorize(uint64_t n);
 
+  // Simple version for small ints. The product of the elements is n.
+  // n must be positive.
+  static std::vector<int> SimpleFactorize(int n);
+
   // Writes to parallel arrays bases,exponents. Returns the number of
   // elements written. There is always at least one factor, and the
   // largest number of factors is 15 (because primorial(16), the product

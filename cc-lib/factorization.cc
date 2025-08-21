@@ -3,13 +3,14 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdint>
-#include <vector>
-#include <utility>
-#include <cmath>
-#include <cassert>
-#include <tuple>
 #include <bit>
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 
@@ -21,59 +22,13 @@ static uint64_t Sqrt64(uint64_t n) {
   return r - (r * r - 1 >= n);
 }
 
-// Note that gaps between primes are <= 250 all the
-// way up to 387096383. So we could have a lot more here. But
-// I saw worse results from trial division when increasing this
-// list beyond about 32 elements.
-//
-// XXX coreutils has 5000 primes, and might depend on that for the
-// correctness of the Lucas primality test?
-//
-// XXX we only need 12 in the new version, which could just be
-// inlined.
-static constexpr std::array<uint8_t, 999> PRIME_DELTAS = {
-1,2,2,4,2,4,2,4,6,2,6,4,2,4,6,6,2,6,4,2,6,4,6,8,4,2,4,2,4,
-14,4,6,2,10,2,6,6,4,6,6,2,10,2,4,2,12,12,4,2,4,6,2,10,6,6,6,2,6,
-4,2,10,14,4,2,4,14,6,10,2,4,6,8,6,6,4,6,8,4,8,10,2,10,2,6,4,6,8,
-4,2,4,12,8,4,8,4,6,12,2,18,6,10,6,6,2,6,10,6,6,2,6,6,4,2,12,10,2,
-4,6,6,2,12,4,6,8,10,8,10,8,6,6,4,8,6,4,8,4,14,10,12,2,10,2,4,2,10,
-14,4,2,4,14,4,2,4,20,4,8,10,8,4,6,6,14,4,6,6,8,6,12,4,6,2,10,2,6,
-10,2,10,2,6,18,4,2,4,6,6,8,6,6,22,2,10,8,10,6,6,8,12,4,6,6,2,6,12,
-10,18,2,4,6,2,6,4,2,4,12,2,6,34,6,6,8,18,10,14,4,2,4,6,8,4,2,6,12,
-10,2,4,2,4,6,12,12,8,12,6,4,6,8,4,8,4,14,4,6,2,4,6,2,6,10,20,6,4,
-2,24,4,2,10,12,2,10,8,6,6,6,18,6,4,2,12,10,12,8,16,14,6,4,2,4,2,10,12,
-6,6,18,2,16,2,22,6,8,6,4,2,4,8,6,10,2,10,14,10,6,12,2,4,2,10,12,2,16,
-2,6,4,2,10,8,18,24,4,6,8,16,2,4,8,16,2,4,8,6,6,4,12,2,22,6,2,6,4,
-6,14,6,4,2,6,4,6,12,6,6,14,4,6,12,8,6,4,26,18,10,8,4,6,2,6,22,12,2,
-16,8,4,12,14,10,2,4,8,6,6,4,2,4,6,8,4,2,6,10,2,10,8,4,14,10,12,2,6,
-4,2,16,14,4,6,8,6,4,18,8,10,6,6,8,10,12,14,4,6,6,2,28,2,10,8,4,14,4,
-8,12,6,12,4,6,20,10,2,16,26,4,2,12,6,4,12,6,8,4,8,22,2,4,2,12,28,2,6,
-6,6,4,6,2,12,4,12,2,10,2,16,2,16,6,20,16,8,4,2,4,2,22,8,12,6,10,2,4,
-6,2,6,10,2,12,10,2,10,14,6,4,6,8,6,6,16,12,2,4,14,6,4,8,10,8,6,6,22,
-6,2,10,14,4,6,18,2,10,14,4,2,10,14,4,8,18,4,6,2,4,6,2,12,4,20,22,12,2,
-4,6,6,2,6,22,2,6,16,6,12,2,6,12,16,2,4,6,14,4,2,18,24,10,6,2,10,2,10,
-2,10,6,2,10,2,10,6,8,30,10,2,10,8,6,10,18,6,12,12,2,18,6,4,6,6,18,2,10,
-14,6,4,2,4,24,2,12,6,16,8,6,6,18,16,2,4,6,2,6,6,10,6,12,12,18,2,6,4,
-18,8,24,4,2,4,6,2,12,4,14,30,10,6,12,14,6,10,12,2,4,6,8,6,10,2,4,14,6,
-6,4,6,2,10,2,16,12,8,18,4,6,12,2,6,6,6,28,6,14,4,8,10,8,12,18,4,2,4,
-24,12,6,2,16,6,6,14,10,14,4,30,6,6,6,8,6,4,2,12,6,4,2,6,22,6,2,4,18,
-2,4,12,2,6,4,26,6,6,4,8,10,32,16,2,6,4,2,4,2,10,14,6,4,8,10,6,20,4,
-2,6,30,4,8,10,6,6,8,6,12,4,6,2,6,4,6,2,10,2,16,6,20,4,12,14,28,6,20,
-4,18,8,6,4,6,14,6,6,10,2,10,12,8,10,2,10,8,12,10,24,2,4,8,6,4,8,18,10,
-6,6,2,6,10,12,2,10,6,6,6,8,6,10,6,2,6,6,6,10,8,24,6,22,2,18,4,8,10,
-30,8,18,4,2,10,6,2,6,4,18,8,12,18,16,6,2,12,6,10,2,10,2,6,10,14,4,24,2,
-16,2,10,2,10,20,4,2,4,8,16,6,6,2,12,16,8,4,6,30,2,10,2,6,4,6,6,8,6,
-4,12,6,8,12,4,14,12,10,24,6,12,6,2,22,8,18,10,6,14,4,2,6,10,8,6,4,6,30,
-14,10,2,12,10,2,16,2,18,24,18,6,16,18,6,2,18,4,6,2,10,8,10,6,6,8,4,6,2,
-10,2,12,4,6,6,2,12,4,14,18,4,6,20,4,8,6,4,8,4,14,6,4,14,12,4,2,30,4,
-24,6,6,12,12,14,6,4,2,4,18,6,12,
-};
-
+namespace {
 struct Factors {
   int num;
   uint64_t *b;
   uint8_t *e;
 };
+}
 
 static void FactorUsingPollardRho(
     uint64_t n, unsigned long int a,
@@ -227,7 +182,8 @@ int Factorization::FactorizePredivided(
 }
 
 uint64_t Factorization::NextPrime(uint64_t n) {
-  CHECK(n < 18446744073709551557ULL) << "There are no larger representable primes.";
+  CHECK(n < 18446744073709551557ULL) <<
+    "There are no larger representable primes.";
 
   if (n < 2) return 2;
   if (n == 2) return 3;
@@ -590,6 +546,13 @@ static bool IsPrimeInternal(uint64_t n) {
   int a = 2;
 
   // Just need to check the first 12 prime bases for 64-bit ints.
+  // These are deltas because the original code used to check
+  // 1000 of them, but wanted to store them in a dense uint8 array.
+  // We can probably just loop over the actual values?
+  static constexpr std::array<uint8_t, 12> PRIME_DELTAS = {
+    1, 2, 2, 4, 2, 4, 2, 4, 6, 2, 6, 4,
+  };
+
   for (int i = 0; i < 12; i++) {
     if (DefinitelyComposite(n, ni, a_prim, q, k, one))
       return false;
@@ -822,4 +785,24 @@ Factorization::ReferenceFactorize(uint64_t x) {
 
   NormalizeFactors(&factors);
   return factors;
+}
+
+// Simple version for small ints. The product of the elements is n.
+// n must be positive. Aborts on overflow, etc.
+std::vector<int> Factorization::SimpleFactorize(int n) {
+  CHECK(n >= 0);
+  if (n == 1) return {};
+
+  std::vector<int> ret;
+  std::vector<std::pair<uint64_t, int>> fs = Factorize(n);
+  for (const auto &[b, e] : fs) {
+    // Since b is a factor of n, it must fit in int.
+    DCHECK(std::cmp_less_equal(b, std::numeric_limits<int>::max()));
+
+    for (int i = 0; i < e; i++) {
+      ret.push_back(b);
+    }
+  }
+
+  return ret;
 }

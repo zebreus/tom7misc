@@ -67,7 +67,7 @@ struct Util {
 
   // As above, but treat the first token on each line as a map key,
   // and strips leading whitespace from the rest. Ignores empty lines.
-  static std::map<string, string> ReadFileToMap(const string &f);
+  static std::map<string, string> ReadFileToMap(std::string_view filename);
 
   static std::vector<uint8_t> ReadFileBytes(std::string_view filename);
   static bool WriteFileBytes(std::string_view filename,
@@ -353,7 +353,7 @@ struct Util {
   // Convert each byte of the input into two lowercase hex digits.
   // If non-null, each byte is prefixed by the prefix, and each pair of
   // bytes is separated by the separator.
-  static std::string HexString(const std::string &s,
+  static std::string HexString(std::string_view s,
                                const char *sep = nullptr,
                                const char *prefix = nullptr);
 

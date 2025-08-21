@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -630,6 +631,16 @@ static void TestNextPrime() {
   CHECK(Factorization::NextPrime(31333) == 31337);
 }
 
+static void TestSimpleFactorize() {
+  for (int value : {123456789, 1, 31337,
+      std::numeric_limits<int>::max()}) {
+    std::vector<int> factors = Factorization::SimpleFactorize(value);
+    int product = 1;
+    for (int f : factors) product *= f;
+    CHECK(product == value) << value;
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("Test factorization...\n");
@@ -652,6 +663,7 @@ int main(int argc, char **argv) {
 
   TestFactorials();
   TestPrimorials();
+  TestSimpleFactorize();
 
   // ProfileFactorize();
 

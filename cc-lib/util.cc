@@ -126,7 +126,7 @@ char Util::HexDigit(int v) {
   return "0123456789abcdef"[v & 0xF];
 }
 
-std::string Util::HexString(const std::string &s,
+std::string Util::HexString(std::string_view s,
                             const char *sep_ptr,
                             const char *prefix_ptr) {
   string sep = sep_ptr ? (string)sep_ptr : "";
@@ -416,9 +416,9 @@ vector<string> Util::SplitToLines(string_view s) {
   return v;
 }
 
-std::map<string, string> Util::ReadFileToMap(const string &f) {
+std::map<string, string> Util::ReadFileToMap(string_view filename) {
   std::map<string, string> m;
-  vector<string> lines = ReadFileToLines(f);
+  vector<string> lines = ReadFileToLines(filename);
   for (int i = 0; i < (int)lines.size(); i++) {
     string rest = lines[i];
     string tok = chop(rest);
