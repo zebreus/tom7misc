@@ -507,7 +507,9 @@ struct Hypersolver {
     case POLY_AREA:
       return "AREA";
     case DIAMETER:
-      return "DIA";
+      return "DIAM";
+    case CLOSE_TO_DIAGONAL:
+      return "DIAG";
     }
   }
 
@@ -525,6 +527,9 @@ struct Hypersolver {
     case OUTSIDE_INNER_PATCH:
     case OUTSIDE_OUTER_PATCH_BALL:
     case OUTSIDE_INNER_PATCH_BALL:
+      return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
+
+    case CLOSE_TO_DIAGONAL:
       return std::format(ACYAN("{}"), RejectionReasonString(rej.reason));
 
     case POLY_AREA:
@@ -981,6 +986,47 @@ struct Hypersolver {
       }
     }
 
+    // The diagonal: When the two view positions are equal and the
+    // translation and rotation are zero, it is not a solution (no
+    // *strict* containment). We call this the "diagonal."
+    // The interval arithmetic approach will not be able to rule
+    // it out, though, because all of the volumes are nonzero size.
+    // So we will use a different approach to prove impossibility
+    // when close to the diagonal.
+    //
+    // (TODO: We should extend this to include symmetry since we also
+    // need to deal with it near boundaries shared by two patches, but
+    // they might only be "adjacent" because of the symmetry
+    // operations.)
+
+    if ((outer_azimuth - inner_azimuth).Abs() <= DIAG_THRESHOLD_AZ ==
+        Bigival::MaybeBool::True &&
+        (outer_angle - inner_angle).Abs() <= DIAG_THRESHOLD_AN ==
+        Bigival::MaybeBool::True) {
+
+      // Note that we actually only test that the view positions are
+      // close. That's because when the view positions are close,
+      // translating by a larger amount certainly isn't going to help.
+      // We also think that rotating around z (more than epsilon) will
+      // not help.
+      static constexpr bool LOOSER_CONDITION = true;
+
+      if (LOOSER_CONDITION ||
+          (inner_x.Abs() <= DIAG_THRESHOLD_T == Bigival::MaybeBool::True &&
+           inner_y.Abs() <= DIAG_THRESHOLD_T == Bigival::MaybeBool::True &&
+           // Any multiple of 2pi, but our interval only includes 0..2pi+e.
+           // So we just check these two points.
+           // Note if we have radially symmetric hulls, we would need to
+           // handle some other divisors here.
+           (inner_rot.Abs() <= DIAG_THRESHOLD_R == Bigival::MaybeBool::True ||
+            (inner_rot - TWO_PI).Abs() <= DIAG_THRESHOLD_R ==
+            Bigival::MaybeBool::True))) {
+        ProcessResult res;
+        res.result = Impossible(Rejection(CLOSE_TO_DIAGONAL));
+        return res;
+      }
+    }
+
     {
       // Area test. If the inner shadow's area is definitely bigger than
       // the outer's, then it cannot fit (regardless of angle / translation).
@@ -1129,8 +1175,8 @@ struct Hypersolver {
     RotTrig rot_trig(inner_rot, inv_epsilon);
 
     double disc_time_here = 0.0;
-    double disc_sausage_time_here = 0.0;
-    double disc_outside_time_here = 0.0;
+    double sausage_full_time_here = 0.0;
+    double sausage_endpoint_time_here = 0.0;
     double pt4_time_here = 0.0;
     double v_time_here = 0.0;
     Timer loop_timer;
@@ -1331,7 +1377,7 @@ struct Hypersolver {
         // Sausage style
         if (sausage.has_value()) {
           const Sausage &s = sausage.value();
-          Timer disc_outside_timer;
+          Timer sausage_endpoint_timer;
 
           // First, check this necessary condition that is a very
           // good filter. Both endpoints of the sausage need to be
@@ -1341,20 +1387,20 @@ struct Hypersolver {
                               edge, cross_va_vb) &&
             IsDiscOutsideEdge(s.tcenter_ub, s.disc->radius_sq,
                               edge, cross_va_vb);
-          disc_outside_time_here += disc_outside_timer.Seconds();
+          sausage_endpoint_time_here += sausage_endpoint_timer.Seconds();
 
 
           if (endpoints_outside) {
             // Compute full sausage disc.
 
             // XXX try multiple bias values!
-            Timer disc_sausage_timer;
+            Timer sausage_full_timer;
             Discival disc = SausageDisc(
                 s, rot_trig, BIAS, inv_epsilon);
 
             const bool is_disc_outside =
               IsDiscOutsideEdge(disc, edge, cross_va_vb);
-            disc_sausage_time_here += disc_sausage_timer.Seconds();
+            sausage_full_time_here += sausage_full_timer.Seconds();
 
             if (is_disc_outside) {
               Rejection pt6;
@@ -1406,8 +1452,8 @@ struct Hypersolver {
       loop_time += loop_timer.Seconds();
       v_time += v_time_here;
       disc_time += disc_time_here;
-      disc_sausage_time += disc_sausage_time_here;
-      disc_outside_time += disc_outside_time_here;
+      sausage_full_time += sausage_full_time_here;
+      sausage_endpoint_time += sausage_endpoint_time_here;
       pt4_time += pt4_time_here;
       filter_time += filter_time_here;
       if (ie_digits > 0) {
@@ -1822,12 +1868,15 @@ struct Hypersolver {
       DrawCircle(disc, 0xCCFF3366);
     }
 
-    std::vector<std::string> vs =
-      Util::SplitToLines(Hypercube::VolumeString(volume));
     int yy = 8;
-    for (const std::string &v : vs) {
-      img.BlendText32(8, yy, 0xAAAAAAFF, v);
-      yy += ImageRGBA::TEXT_HEIGHT + 2;
+    auto WriteLine = [&img, &yy](uint32_t color, std::string_view line) {
+        img.BlendText32(8, yy, color, line);
+        yy += ImageRGBA::TEXT_HEIGHT + 2;
+      };
+
+    for (const std::string &d :
+           Util::SplitToLines(Hypercube::VolumeString(volume))) {
+      WriteLine(0xAAAAAAFF, d);
     }
 
     auto PctString = [](std::string_view label, int n, int d){
@@ -1839,44 +1888,56 @@ struct Hypersolver {
                       (100.0 * n) / d);
       };
 
-    yy += ImageRGBA::TEXT_HEIGHT + 2;
-    img.BlendText32(
-        8, yy, 0xFFCCCCFF,
+    {
+      const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
+      const Bigival &outer_angle = volume[OUTER_ANGLE];
+      const Bigival &inner_azimuth = volume[INNER_AZIMUTH];
+      const Bigival &inner_angle = volume[INNER_ANGLE];
+
+      Bigival daz = (outer_azimuth - inner_azimuth).Abs();
+      Bigival dan = (outer_angle - inner_angle).Abs();
+
+      bool diag_daz = (daz <= DIAG_THRESHOLD_AZ) == Bigival::MaybeBool::True;
+      bool diag_dan = (dan <= DIAG_THRESHOLD_AN) == Bigival::MaybeBool::True;
+
+    }
+
+
+    WriteLine(0, "");
+
+    WriteLine(
+        0xFFCCCCFF,
         PctString("outer corners", num_corners_in_outer, num_corners));
-    yy += ImageRGBA::TEXT_HEIGHT + 2;
-    img.BlendText32(
-        8, yy, 0xFFCCCCFF,
+    WriteLine(
+        0xFFCCCCFF,
         PctString("outer sample", num_samples_in_outer, num_samples));
-    yy += ImageRGBA::TEXT_HEIGHT + 2;
-    img.BlendText32(
-        8, yy, 0xCCFFCCFF,
+    WriteLine(
+        0xCCFFCCFF,
         PctString("inner corners", num_corners_in_inner, num_corners));
-    yy += ImageRGBA::TEXT_HEIGHT + 2;
-    img.BlendText32(
-        8, yy, 0xCCFFCCFF,
+    WriteLine(
+        0xCCFFCCFF,
         PctString("inner sample", num_samples_in_inner, num_samples));
 
     if (efficiency.has_value()) {
-      yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
-      img.BlendText32(
-          8, yy, 0x33CCFFFF,
-          std::format("inner AABB eff.: " AWHITE("{:.2f}") "%",
-                      efficiency.value() * 100.0));
+      WriteLine(0, "");
+      WriteLine(0x33CCFFFF,
+                std::format("inner AABB eff.: " AWHITE("{:.2f}") "%",
+                            efficiency.value() * 100.0));
     }
 
     if (disc_mag.has_value()) {
-      yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
-      img.BlendText32(
-          8, yy, 0x33CCFFFF,
+      WriteLine(0, "");
+      WriteLine(
+          0x33CCFFFF,
           std::format("disc digits: " AWHITE("{:.2f}"),
                       disc_mag.value()));
     }
 
-    yy += 2 * (ImageRGBA::TEXT_HEIGHT + 2);
+    WriteLine(0, "");
     if (const Impossible *imp = std::get_if<Impossible>(&pr.result)) {
-      img.BlendText32(8, yy, 0xFFFF33FF,
-                      std::format("Result: Impossible! {}",
-                                  ColorRejection(imp->rejection)));
+      WriteLine(0xFFFF33FF,
+                std::format("Result: Impossible! {}",
+                            ColorRejection(imp->rejection)));
     } else if (const Split *split = std::get_if<Split>(&pr.result)) {
       std::string par;
       for (int p = 0; p < NUM_DIMENSIONS; p++) {
@@ -1885,10 +1946,9 @@ struct Hypersolver {
           par += ParameterName(p);
         }
       }
-      img.BlendText32(8, yy, 0x33FFFFFF,
-                      std::format("Result: Split ({})", par));
+      WriteLine(0x33FFFFFF,
+                std::format("Result: Split ({})", par));
     }
-
 
     img.Save(filename);
     status.Print("Wrote " AGREEN("{}"), filename);
@@ -1918,6 +1978,57 @@ struct Hypersolver {
     }
 
     return {all_code};
+  }
+
+  // Split on the chosen dimension.
+  BigRat SplitOn(const Volume &volume, int dim) const {
+    const Bigival &oldival = volume[dim];
+
+    // TODO:
+    // Heuristic: When the volume contains the "diagonal," we have small
+    // volumes all over the place that are treated differently. We would
+    // like to split on the boundaries of this for efficiency. Alas,
+    // they are not rectangular boundaries (defined by a-b). But if the
+    // volume contains the diagonal, we can choose a split such that one
+    // side will not contain any diagonal (and in fact is exactly
+    // DIAG_THRESH away from it).
+
+    // Only if we are splitting on one of the involved parameters:
+    switch (dim) {
+    case OUTER_AZIMUTH:
+    case OUTER_ANGLE:
+    case INNER_AZIMUTH:
+    case INNER_ANGLE:
+      // Handled below.
+      break;
+    default:
+      return SplitInterval(oldival);
+    }
+
+    #if 0
+    const Bigival &outer_azimuth = volume[OUTER_AZIMUTH];
+    const Bigival &outer_angle = volume[OUTER_ANGLE];
+    const Bigival &inner_azimuth = volume[INNER_AZIMUTH];
+    const Bigival &inner_angle = volume[INNER_ANGLE];
+
+    // We could consider only applying this heuristic when
+    // the translation and rotation are small? We are sacrificing
+    // some divide-and-conquer efficiency by splitting away from
+    // the middle, but we also find ourselves back here after
+    // splitting those other dimensions.
+
+    // If the current volume contains the diagonal, ...
+
+    if ((outer_azimuth - inner_azimuth).Abs() <= DIAG_THRESHOLD_AZ ==
+        Bigival::MaybeBool::True &&
+        (outer_angle - inner_angle).Abs() <= DIAG_THRESHOLD_AN ==
+        Bigival::MaybeBool::True) {
+
+    }
+    #endif
+
+    BigRat mid = SplitInterval(oldival);
+    return mid;
   }
 
   // Assumes double precision works, but is otherwise exact.
@@ -2064,8 +2175,8 @@ struct Hypersolver {
             // "{} area "
             "{} v "
             "{} pt4 "
-            "{} disc "
-            "{} saus "
+            "{} ∫: "
+            "{} ∫f "
             "{} pt6 "
             "{} loop\n"
             // Quality stats
@@ -2091,8 +2202,8 @@ struct Hypersolver {
             ColorPct(v_time / process_time),
             ColorPct(pt4_time / process_time),
             ColorPct(disc_time / process_time),
-            ColorPct(disc_sausage_time / process_time),
-            ColorPct(disc_outside_time / process_time),
+            ColorPct(sausage_endpoint_time / process_time),
+            ColorPct(sausage_full_time / process_time),
             ColorPct(loop_time / process_time),
             FormatNum(counter_bad_midpoint.Read()),
             FormatNum(counter_inside.Read()),
@@ -2291,20 +2402,23 @@ struct Hypersolver {
         }
 
       } else if (Split *split = std::get_if<Split>(&res.result)) {
-        // Can't rule it out. So split. We use a random direction here (in
-        // accordance with the split's mask) but we should consider being
-        // systematic about it (e.g. split the longest dimension)?
+        // Can't rule it out. So split.
+
+        // Normally we split along the longest dimension (in the split
+        // mask), and near its center, but we can apply heuristics here.
 
         // int dim = RandomParameterFromSet(&rc, split->parameters);
         int dim = BestParameterFromSet(*hypercube, volume, split->parameters);
         CHECK(dim >= 0 && dim < NUM_DIMENSIONS);
+
+        BigRat mid = SplitOn(volume, dim);
+
         // status.Print("Split dim {}, which is {}", dim, ParameterName(dim));
         Hypercube::Split split_node;
         split_node.axis = dim;
 
         const Bigival &oldival = volume[dim];
         Volume left = volume, right = volume;
-        BigRat mid = SplitInterval(oldival);
 
         // left side is <, right side is >=.
         left[dim] = Bigival(oldival.LB(), mid, oldival.IncludesLB(), false);
@@ -2613,6 +2727,14 @@ struct Hypersolver {
   std::vector<Chord3D> outer_chords;
   std::vector<Chord3D> inner_chords;
 
+  // 1/512 radians is a little more than 0.1 degrees.
+  // 1/56 radians is a little more than 1 degree.
+  const BigRat DIAG_THRESHOLD_AZ = BigRat(1, 56);
+  const BigRat DIAG_THRESHOLD_AN = BigRat(1, 56);
+  const BigRat DIAG_THRESHOLD_R = BigRat(1, 56);
+  const BigRat DIAG_THRESHOLD_T = BigRat(1, 56);
+  const Bigival TWO_PI = Bigival::Pi(BigInt(10000000)) * BigRat(2);
+
   // This is the sum of the 3d cross products for the triangle fan
   // that makes up the outer (resp. inner) hull, using the origin
   // as the shared point. Exact. The dot product of a view vector
@@ -2664,7 +2786,7 @@ struct Hypersolver {
 
   double trig_time = 0.0, loop_time = 0.0, process_time = 0.0;
   double filter_time = 0.0;
-  double disc_time = 0.0, disc_sausage_time = 0.0, disc_outside_time = 0.0;
+  double disc_time = 0.0, sausage_full_time = 0.0, sausage_endpoint_time = 0.0;
   double area_time = 0.0, v_time = 0.0;
   double pt4_time = 0.0;
 

@@ -126,6 +126,10 @@ static std::optional<Rejection> ParseRejection(std::string_view s) {
     // No metadata. Could keep the code?
     break;
 
+  case CLOSE_TO_DIAGONAL:
+    // No metadata.
+    break;
+
   case POLY_AREA:
   case DIAMETER:
     // No metadata.

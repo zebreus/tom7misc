@@ -520,4 +520,14 @@ inline Bigival::MaybeBool operator >=(const Bigival &a, const Bigival &b) {
   return b.LessEq(a);
 }
 
+// PERF: Specialize to rat rhs.
+inline Bigival::MaybeBool operator <(const Bigival &a, const BigRat &b) {
+  return a.Less(Bigival(b));
+}
+
+inline Bigival::MaybeBool operator <=(const Bigival &a, const BigRat &b) {
+  return a.LessEq(Bigival(b));
+}
+
+
 #endif

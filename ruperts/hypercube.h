@@ -34,6 +34,8 @@ enum RejectionReason : uint8_t {
   OUTSIDE_INNER_PATCH = 2,
   OUTSIDE_OUTER_PATCH_BALL = 3,
   OUTSIDE_INNER_PATCH_BALL = 4,
+  CLOSE_TO_DIAGONAL = 13,
+
   // POINT_OUTSIDE1...3 are all deprecated and shouldn't appear.
   POINT_OUTSIDE1 = 5,
   POINT_OUTSIDE2 = 6,
@@ -44,7 +46,7 @@ enum RejectionReason : uint8_t {
   POLY_AREA = 10,
   DIAMETER = 11,
 };
-inline constexpr int NUM_REJECTION_REASONS = 13;
+inline constexpr int NUM_REJECTION_REASONS = 14;
 
 // Hypercube using big rationals. (It's actually a hyperrectangle
 // because the sides are not all the same length...)
