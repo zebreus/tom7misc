@@ -7,7 +7,7 @@
   "Keymap for select-buffers-mode.")
 
 (defvar select-buffers-priority-buffers
-  '("style-guide.txt")
+  '("style-guide.txt" "project.txt")
   "A list of buffer names that should be ordered first.")
 
 (define-minor-mode select-buffers-mode
@@ -97,7 +97,7 @@
          (orig-sorted-buffer-names (select-buffers-topological-sort dependency-map))
          ;; Only consider the ones that we will output, or else it can interfere with
          ;; reordering here.
-         (filtered-buffer-names (remove-if-not
+         (filtered-buffer-names (cl-remove-if-not
                                  (lambda (name)
                                    (member (get-buffer name) select-buffers-selected-buffers))
                                  orig-sorted-buffer-names))
@@ -173,7 +173,7 @@
       (if (string-equal file (concat current-base-name ".cc"))
           ;; Found. Is it safe to move up?
           (let ((source-deps (gethash file dependency-map)))
-            (if (some (lambda (dep) (member dep will-skip)) source-deps)
+            (if (cl-some (lambda (dep) (member dep will-skip)) source-deps)
                 (progn
                   (message "    Skipping reordering %s after %s due to dependency"
                            file current-base-name)
@@ -202,7 +202,7 @@
         (push name remaining-buffers)))
     (setq buffer-names (append (reverse priority-buffers) (reverse remaining-buffers)))
     ;; now reorder based on dependency heuristics.
-    (labels ((reorder-recursive (input-list output-list)
+    (cl-labels ((reorder-recursive (input-list output-list)
                (cond
                 ((null input-list)
                  (message "  Input list is nil, returning: %s" (reverse output-list))
@@ -231,7 +231,7 @@
         (stack nil)
         (sorted-list nil)
         (cycle-detected nil))
-    (labels ((visit (node)
+    (cl-labels ((visit (node)
                (cond
                 ((gethash node visited)
                  (when (eq (gethash node visited) 'visiting)

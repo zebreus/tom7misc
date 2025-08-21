@@ -333,7 +333,7 @@ static KeyPair GetKeys(const string &passphrase,
 }
 
 static bool IsBase64String(const string &s) {
-  for (int i = 0; i < s.size(); i++)
+  for (size_t i = 0; i < s.size(); i++)
     if (!Base64::IsBase64Char(s[i]))
       return false;
   return true;

@@ -68,15 +68,16 @@
 #include <shared_mutex>
 #include <windows.h>
 
-#include "base/stringprintf.h"
-#include "base/logging.h"
 #include "arcfour.h"
-#include "util.h"
-#include "threadutil.h"
-#include "randutil.h"
+#include "base/logging.h"
 #include "base/macros.h"
+#include "base/stringprintf.h"
+#include "factorization.h"
 #include "image.h"
+#include "randutil.h"
 #include "rolling-average.h"
+#include "threadutil.h"
+#include "util.h"
 
 #include "loadfonts.h"
 #include "network.h"
@@ -2156,7 +2157,7 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
         height.push_back(1);
       } else {
         // Try to make a rectangle that's squareish.
-        vector<int> factors = Util::Factorize(w);
+        vector<int> factors = Factorization::SimpleFactorize(w);
 
         CHECK(!factors.empty()) << w << " has no factors??";
 

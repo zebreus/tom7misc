@@ -7,6 +7,7 @@
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "factorization.h"
 #include "font-problem.h"
 #include "fonts/ttf.h"
 #include "geom/marching.h"
@@ -77,7 +78,7 @@ int main(int argc, char **argv) {
   constexpr int MAX_WIDTH = 1920 / TILE; // XXX slop
 
   const int num = (int)cycle.size();
-  std::vector<int> factors = Util::Factorize(num);
+  std::vector<int> factors = Factorization::SimpleFactorize(num);
   int width = 1;
   int height = num;
   while (!factors.empty() && width < MAX_WIDTH && width < height) {

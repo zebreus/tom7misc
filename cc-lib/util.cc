@@ -1490,40 +1490,6 @@ string Util::Replace(std::string_view src_view,
   return src;
 }
 
-vector<int> Util::Factorize(int n) {
-  // Bad input.
-  if (n <= 1) return {};
-
-  vector<int> out;
-
-  // Reduce twos. Because the input is positive, we'll
-  // eventually get a one bit.
-  while (0 == (n & 1)) {
-    out.push_back(2);
-    n >>= 1;
-  }
-
-  // Factor to try. Once we eliminate a factor there's no
-  // reason to ever try it again, so this only ever increases,
-  // and the output will be sorted in nondecreasing order.
-  int f = 3;
-
-  while (f * f <= n) {
-    while (n % f == 0) {
-      out.push_back(f);
-      n /= f;
-    }
-
-    f += 2;
-  }
-
-  // Last factor is prime.
-  if (n != 1) out.push_back(n);
-
-  std::sort(out.begin(), out.end());
-  return out;
-}
-
 #if 0
 // localtime is not thread safe, and the _r and _s versions
 // have portability issues. It's almost like they don't want

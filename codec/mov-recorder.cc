@@ -1,5 +1,6 @@
 #include "mov-recorder.h"
 
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <deque>
@@ -7,15 +8,14 @@
 #include <mutex>
 #include <string_view>
 #include <thread>
-#include <condition_variable>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "base/logging.h"
-#include "mov.h"
-#include "image.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "image.h"
+#include "mov.h"
 
 static constexpr int VERBOSE = 0;
 
@@ -91,7 +91,8 @@ void MovRecorder::WriteThread() {
     cv.wait(ml, [this]() {
         if (done && frame_queue.empty()) return true;
         if (frame_queue.empty()) return false;
-        return std::holds_alternative<std::vector<uint8_t>>(frame_queue.front());
+        return std::holds_alternative<std::vector<uint8_t>>(
+            frame_queue.front());
       });
 
     // If we've signaled the end, then exit. But only if
@@ -119,7 +120,8 @@ void MovRecorder::WriteThread() {
 
 
 void MovRecorder::EncodeThread(int idx) {
-  if (VERBOSE > 0) printf(AWHITE("MovRecorder encode thread %d") " started\n", idx);
+  if (VERBOSE > 0)
+    printf(AWHITE("MovRecorder encode thread %d") " started\n", idx);
   for (;;) {
     std::unique_lock ml(m);
     cv.wait(ml, [this, idx]() {
@@ -129,7 +131,8 @@ void MovRecorder::EncodeThread(int idx) {
     // Use idx to determine whether we should retire.
     if (idx >= max_encoding_threads) {
       if (VERBOSE > 0) {
-        printf(AWHITE("MovRecorder thread %d") " exit (too many threads; want %d)\n",
+        printf(AWHITE("MovRecorder thread %d")
+               " exit (too many threads; want %d)\n",
                idx, max_encoding_threads);
       }
       return;

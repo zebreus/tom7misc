@@ -363,10 +363,7 @@ struct Util {
 
   // See utf8.h for UTF utilities that used to be here.
 
-  // TODO: Migrate everyone to factorize.h, which is faster.
-  // Prime factorization with trial division (not fast). Input must be > 1.
-  // Output in sorted order.
-  static std::vector<int> Factorize(int n);
+  // See factorization.h for factoring that used to be here.
 
   // Uses format strings from strftime.
   // Good: %H:%M:%S (24h)

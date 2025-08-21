@@ -14,7 +14,7 @@
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "util.h"
+#include "factorization.h"
 
 #include "network.h"
 
@@ -83,7 +83,7 @@ struct EZLayer {
   void MakeWidthHeight() {
     CHECK(channels == 1);
     int num_nodes = nodes.size();
-    std::vector<int> factors = Util::Factorize(num_nodes);
+    std::vector<int> factors = Factorization::SimpleFactorize(num_nodes);
     CHECK(!factors.empty()) << num_nodes << " has no factors??";
 
     // XXX Does this greedy approach produce good results?

@@ -1,19 +1,17 @@
 
-#include "rapidjson/document.h"
+#include <cstdint>
+#include <cstdio>
+#include <string>
+#include <vector>
+
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "util.h"
 #include "citation-util.h"
 #include "nice.h"
-
-#include <vector>
-#include <string>
-#include <map>
-#include <unordered_map>
-#include <unordered_set>
+#include "rapidjson/document.h"
 
 using namespace rapidjson;
 using namespace std;
+using int64 = int64_t;
 
 int main(int argc, char **argv) {
   Nice::SetLowPriority();

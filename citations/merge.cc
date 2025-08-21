@@ -1,18 +1,15 @@
 
+#include <cstdint>
+#include <cstdio>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "citation-util.h"
 #include "nice.h"
 #include "re2/re2.h"
 #include "threadutil.h"
-#include "util.h"
-
-#include <cstdint>
-#include <cstdio>
-#include <vector>
-#include <string>
-#include <map>
-#include <unordered_map>
 
 using namespace std;
 using int64 = int64_t;

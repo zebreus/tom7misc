@@ -47,6 +47,12 @@ static std::vector<uint8_t> MinizEncodeAsPNG(const ImageRGBA &img) {
   return ZIP::EncodeAsPNG(img.Width(), img.Height(), img.ToBuffer8());
 }
 
+static inline uint32_t ToFixed32(uint32_t v) {
+  CHECK(v < 65536) << "Can't represent " << v << " (width/height?) as "
+    "a 32-bit fixed-point number.";
+  return v << 16;
+}
+
 namespace internal {
 struct Buf {
   Buf() {}
@@ -65,6 +71,10 @@ struct Buf {
     bytes.push_back((uint8_t)s.size());
     for (int i = 0; i < (int)s.size(); i++)
       bytes.push_back((uint8_t)s[i]);
+  }
+
+  void W8X(uint8_t b, int n) {
+    for (int i = 0; i < n; i++) W8(b);
   }
 
   void W8(uint8_t b) {
@@ -273,6 +283,10 @@ void MOV::Out::WriteHeader() {
   mvhd.W32(FIXED32_ONE);
   mvhd.W16(FIXED16_ONE);
 
+  // Ten reserved bytes. Note Apple's documentation is a bit
+  // inconsistent on this, but ffmpeg's mov.c does skip it.
+  mvhd.W8X(0, 10);
+
   // Transformation matrix.
   for (int i = 0; i < 9; i++) mvhd.W32(IDENTITY_MATRIX[i]);
 
@@ -332,8 +346,8 @@ void MOV::Out::WriteHeader() {
 
     for (int i = 0; i < 9; i++) tkhd.W32(IDENTITY_MATRIX[i]);
 
-    tkhd.W32(width);
-    tkhd.W32(height);
+    tkhd.W32(ToFixed32(width));
+    tkhd.W32(ToFixed32(height));
 
     trak.AddChunk(tkhd);
   }
@@ -452,9 +466,11 @@ void MOV::Out::WriteHeader() {
         dref.W32(1);
 
         // The entry:
-        // XXX ffmpeg claims "Unknown dref type 0x206c7275 size 12"
-        // (but does it matter?)
-        Chunk url("url ");
+        // Old standard wanted a "URL" here, but ffmpeg thinks it
+        // is weird. Better seems to be an "alias" for a self-contained
+        // file.
+        // Chunk url("url ");
+        Chunk url("alis");
         // Version
         url.W8(0);
         // Flags
@@ -608,9 +624,9 @@ void MOV::Out::WriteHeader() {
     trak.AddChunk(mdia);
   }
 
+  moov.AddChunk(mvhd);
   moov.AddChunk(trak);
 
-  moov.AddChunk(mvhd);
   moov.WriteSizeTo(0);
   WriteChunk(moov);
 }

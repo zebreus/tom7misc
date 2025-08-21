@@ -3,10 +3,10 @@
 
 #include <cmath>
 #include <cstdint>
+#include <format>
 #include <string>
 #include <utility>
 #include <vector>
-#include <format>
 
 using namespace std;
 
@@ -48,7 +48,7 @@ struct CiteStats {
   int64_t citations = 0;
 };
 
-inline static string LightNormalization(string w) {
+inline string LightNormalization(string w) {
   for (char &c : w) {
     switch (c) {
     case '\n':
@@ -73,14 +73,14 @@ inline static string LightNormalization(string w) {
   return w;
 }
 
-inline static bool IsAllAscii(const string &w) {
+inline bool IsAllAscii(const string &w) {
   for (char c : w)
     if (c < ' ' || c > '~')
       return false;
   return true;
 }
 
-inline static string Normalize(string w) {
+inline  string Normalize(string w) {
   // Lowercase ASCII letters.
   for (char &c : w) {
     if (c >= 'A' && c <= 'Z') c |= 32;
@@ -95,9 +95,9 @@ inline static string Normalize(string w) {
       case '\r':
       case '\t':
       case '\0':
-  break;
+        break;
       default:
-  other += c;
+        other += c;
       }
     }
     other.swap(w);
@@ -124,10 +124,10 @@ inline static string Normalize(string w) {
       case '\"':
       case ')':
       case ']':
-  w.resize(w.size() - 1);
-  break;
+        w.resize(w.size() - 1);
+        break;
       default:
-  return;
+        return;
       }
     }
   }();
@@ -140,9 +140,9 @@ inline static string Normalize(string w) {
       case '\'':
       case '\"':
       case '[':
-  break;
+        break;
       default:
-  return w.substr(i, string::npos);
+        return w.substr(i, string::npos);
       }
     }
     return "";
@@ -175,10 +175,10 @@ static bool Dictionaryize(string author, string *dict) {
     dict->clear();
     for (const string &tok : tokens) {
       if (dict->empty()) {
-  *dict = tok;
+        *dict = tok;
       } else {
-  *dict += " ";
-  *dict += tok;
+        *dict += " ";
+        *dict += tok;
       }
     }
     return true;

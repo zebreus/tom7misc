@@ -389,21 +389,6 @@ static void TestParseDouble() {
   CHECK(Util::ParseDouble("asdf33", 2.0) == 2.0);
 }
 
-static void TestFactorize() {
-  CHECK((vector<int>{2, 2, 2, 3}) == Util::Factorize(2 * 2 * 2 * 3));
-  CHECK((vector<int>{2, 2}) == Util::Factorize(4));
-  CHECK((vector<int>{2}) == Util::Factorize(2));
-  CHECK((vector<int>{5, 5}) == Util::Factorize(5 * 5));
-  CHECK((vector<int>{31337}) == Util::Factorize(31337));
-  CHECK((vector<int>{3, 5, 11, 13}) == Util::Factorize(3 * 5 * 11 * 13));
-  CHECK((vector<int>{3, 5, 5, 11, 13}) ==
-        Util::Factorize(3 * 5 * 5 * 11 * 13));
-  CHECK((vector<int>{3, 5, 5, 11, 11, 11}) ==
-        Util::Factorize(3 * 5 * 5 * 11 * 11 * 11));
-  CHECK((vector<int>{3, 5, 5, 11, 13, 31337}) ==
-        Util::Factorize(3 * 5 * 5 * 11 * 13 * 31337));
-}
-
 static void TestItos() {
   CHECK_EQ(Util::itos(1234), "1234");
   CHECK_EQ(Util::itos(-1234), "-1234");
@@ -809,7 +794,6 @@ int main(int argc, char **argv) {
   TestPrefixSuffix();
   TestParseInt64();
   TestParseDouble();
-  TestFactorize();
   TestMatchSpec();
   TestMatchesWildcard();
   TestHex();

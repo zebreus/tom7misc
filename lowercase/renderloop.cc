@@ -1,20 +1,20 @@
 
-#include <cstdio>
-#include <optional>
-#include <vector>
-#include <string>
-#include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <format>
 #include <memory>
-
-#include "timer.h"
-#include "font-problem.h"
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "base/stringprintf.h"
+#include "factorization.h"
+#include "font-problem.h"
 #include "fonts/ttf.h"
 #include "geom/marching.h"
 #include "image.h"
 #include "network.h"
+#include "timer.h"
 #include "util.h"
 
 using namespace std;
@@ -137,7 +137,7 @@ int main(int argc, char **argv) {
   constexpr int MAX_WIDTH = 1920 / TILE; // XXX slop
 
   const int num = (int)cycle.size();
-  std::vector<int> factors = Util::Factorize(num);
+  std::vector<int> factors = Factorization::SimpleFactorize(num);
   int width = 1;
   int height = num;
   while (!factors.empty() && width < MAX_WIDTH && width < height) {
@@ -193,13 +193,13 @@ int main(int argc, char **argv) {
     */
   }
 
-  string filename_bits = StringPrintf("%c-x%.1f-%d-%d",
-                                      (LOWER ? 'l' : 'u'),
-                                      SCALE, CYCLE_START, CYCLE_END);
+  string filename_bits = std::format("{}-x{:.1f}-{}-{}",
+                                     (LOWER ? "l" : "u"),
+                                     SCALE, CYCLE_START, CYCLE_END);
 
-  string thresh_filename = StringPrintf("cycle-%s.png", filename_bits.c_str());
-  string sdf_filename = StringPrintf("cycle-%s-sdf.png",
-                                     filename_bits.c_str());
+  string thresh_filename = std::format("cycle-{}.png", filename_bits);
+  string sdf_filename = std::format("cycle-{}-sdf.png",
+                                    filename_bits);
 
   thresh_out.Save(thresh_filename);
   sdf_out.Save(sdf_filename);

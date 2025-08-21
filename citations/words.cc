@@ -1,20 +1,17 @@
 
 #include <cstdint>
-
-#include "rapidjson/document.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "util.h"
-#include "citation-util.h"
-#include "nice.h"
-
 #include <cstdio>
-#include <utility>
-#include <vector>
 #include <string>
-#include <map>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include "base/logging.h"
+#include "citation-util.h"
+#include "nice.h"
+#include "rapidjson/document.h"
+#include "util.h"
 
 using namespace rapidjson;
 using namespace std;

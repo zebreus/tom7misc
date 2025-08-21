@@ -2,6 +2,7 @@
 #define _BIT7_FONT_IMAGE_H
 
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <cstdint>
 #include <memory>
@@ -58,9 +59,9 @@ struct Config {
 
   char vendor[4] = {'f', 'o', 'n', 't'};
 
-  static Page ParsePage(const std::string &p);
+  static Page ParsePage(std::string_view p);
   static const char *PageString(Page p);
-  static Config ParseConfig(const std::string &cfgfile);
+  static Config ParseConfig(std::string_view cfgfile);
 };
 
 struct FontImage {
@@ -86,7 +87,7 @@ struct FontImage {
   // It's OK for the config to be modified; this just uses the
   // already-loaded glyphs. If there's no glyph in a space implied
   // by the config, it'll just be blank.
-  void SaveImage(const std::string &filename);
+  void SaveImage(std::string_view filename);
 
   // Render just one page. Uses the config for the charbox sizes, etc.
   ImageRGBA ImagePage(Page p);
@@ -110,12 +111,12 @@ struct FontImage {
 
 // For drawing to ImageRGBA.
 struct BitmapFont {
-  static std::unique_ptr<BitmapFont> Load(const std::string &configfile);
+  static std::unique_ptr<BitmapFont> Load(std::string_view configfile);
   BitmapFont(FontImage font);
 
   void DrawText(ImageRGBA *img, int x, int y,
                 uint32_t color,
-                const std::string &s) const;
+                std::string_view s) const;
 
   int Height() const;
   int Width(int codepoint = 'm') const;

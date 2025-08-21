@@ -1,4 +1,13 @@
 
+See
+"SIGBOVIK’75 Technical Note: Conditional Move For Shell Script Acceleration"
+By Dr. Jim McCann and Dr. Tom Murphy VII
+SIGBOVIK 2020, p.56
+
+before installing this kernel module.
+
+--------------------------------------------------
+
 To install /proc/flags:
 
 make

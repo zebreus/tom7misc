@@ -1,14 +1,12 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <string>
-#include <map>
-#include <unordered_map>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "citation-util.h"
 #include "nice.h"
 #include "rapidjson/document.h"

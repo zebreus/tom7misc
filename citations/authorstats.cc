@@ -1,11 +1,9 @@
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <utility>
 #include <vector>
 #include <string>
-#include <map>
 #include <unordered_map>
 
 #include "base/logging.h"
@@ -14,7 +12,6 @@
 #include "nice.h"
 #include "re2/re2.h"
 #include "textsvg.h"
-#include "threadutil.h"
 #include "util.h"
 
 using namespace std;

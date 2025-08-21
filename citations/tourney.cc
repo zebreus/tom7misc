@@ -1,24 +1,18 @@
 
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "citation-util.h"
 #include "nice.h"
 #include "randutil.h"
 #include "re2/re2.h"
-#include "textsvg.h"
-#include "threadutil.h"
-#include "util.h"
-
-#include <algorithm>
-#include <cmath>
-#include <cstdint>
-#include <cstdio>
-#include <utility>
-#include <vector>
-#include <string>
-#include <map>
-#include <unordered_map>
 
 using namespace std;
 using int64 = int64_t;
@@ -56,10 +50,10 @@ int main(int argc, char **argv) {
   });
 
   printf("Got stats for %lld keys, "
-   "with %lld rejected (%lld articles rejected)\n"
-   "Total kept articles: %lld  and citations: %lld\n",
-   (int64)cite_stats.size(), authors_bad, articles_bad,
-   articles_kept, citations_kept);
+         "with %lld rejected (%lld articles rejected)\n"
+         "Total kept articles: %lld  and citations: %lld\n",
+         (int64)cite_stats.size(), authors_bad, articles_bad,
+         articles_kept, citations_kept);
 
   vector<std::pair<string, CiteStats>> rows;
   rows.reserve(cite_stats.size());

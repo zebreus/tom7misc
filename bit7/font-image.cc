@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -33,7 +34,7 @@ enum PrivateUse : uint32_t {
 
 // TODO: Need to add page for "old" DFX fonts.
 
-Page Config::ParsePage(const std::string &p) {
+Page Config::ParsePage(std::string_view p) {
   if (p == "bit7-classic") return Page::BIT7_CLASSIC;
   if (p == "bit7-latinabc") return Page::BIT7_LATINABC;
   if (p == "bit7-extended") return Page::BIT7_EXTENDED;
@@ -1951,7 +1952,7 @@ REUSE_FOR = {
   {' ', 0x3000},  // Ideographic space
 };
 
-Config Config::ParseConfig(const string &cfgfile) {
+Config Config::ParseConfig(std::string_view cfgfile) {
   Config config;
   std::map<string, string> m = Util::ReadFileToMap(cfgfile);
   CHECK(!m.empty()) << "Couldn't read config file " << cfgfile;
@@ -2282,7 +2283,7 @@ ImageRGBA FontImage::ImagePage(Page p) {
   return out;
 }
 
-void FontImage::SaveImage(const std::string &filename) {
+void FontImage::SaveImage(std::string_view filename) {
   const int pages_across = (int)config.pages.size();
   const int page_width = config.chars_across * config.charbox_width;
   const int page_height = config.chars_down * config.charbox_height;
@@ -2326,7 +2327,7 @@ int BitmapFont::Width(int cp) const {
 
 void BitmapFont::DrawText(ImageRGBA *img, int x, int y,
                            uint32_t color,
-                           const std::string &s) const {
+                          std::string_view s) const {
   std::vector<uint32_t> cps = UTF8::Codepoints(s);
   for (uint32_t cp : cps) {
     const auto it = font.unicode_to_glyph.find(cp);
@@ -2353,7 +2354,7 @@ void BitmapFont::DrawText(ImageRGBA *img, int x, int y,
   }
 }
 
-std::unique_ptr<BitmapFont> BitmapFont::Load(const std::string &configfile) {
+std::unique_ptr<BitmapFont> BitmapFont::Load(std::string_view configfile) {
   // XXX interpret png in config relative to config path so that
   // this can load from other directories.
   Config cfg = Config::ParseConfig(configfile);

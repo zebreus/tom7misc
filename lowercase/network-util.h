@@ -5,13 +5,12 @@
 #ifndef _LOWERCASE_NETWORK_UTIL_H
 #define _LOWERCASE_NETWORK_UTIL_H
 
-#include <string>
+#include <algorithm>
 #include <vector>
 #include <cstdint>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
-#include "util.h"
+#include "factorization.h"
 
 #include "network.h"
 
@@ -22,7 +21,7 @@ struct EZLayer {
   int width = 0;
   int height = 0;
   int ipn = 0;
-  
+
   // The indices are hard to work with in their flat representation;
   // make a vector of weighted indices per node.
   struct OneIndex {
@@ -48,7 +47,7 @@ struct EZLayer {
     height = net.height[layer_idx + 1];
     CHECK(net.channels[layer_idx + 1]) << "Flatten channels first";
     CHECK(width * height == num_nodes);
-    
+
     CHECK(layer->indices.size() == layer->weights.size());
     CHECK(layer->indices.size() == ipn * num_nodes);
     nodes.resize(num_nodes);
@@ -72,7 +71,7 @@ struct EZLayer {
   // aspect ratio.
   void MakeWidthHeight() {
     int num_nodes = nodes.size();
-    std::vector<int> factors = Util::Factorize(num_nodes);
+    std::vector<int> factors = Factorization::SimpleFactorize(num_nodes);
     CHECK(!factors.empty()) << num_nodes << " has no factors??";
 
     // XXX Does this greedy approach produce good results?
@@ -90,7 +89,7 @@ struct EZLayer {
     width = ww;
     height = hh;
   }
-  
+
   // Packs inputs and biases back into the layer. Requires that the
   // width/height match the number of nodes (maybe call
   // MakeWidthHeight). Does not update the inverted indices!
@@ -103,13 +102,13 @@ struct EZLayer {
     net->height[layer_idx + 1] = height;
     net->num_nodes[layer_idx + 1] = num_nodes;
     layer->indices_per_node = ipn;
-    
+
     if (ipn == net->num_nodes[layer_idx]) {
       layer->type = LAYER_DENSE;
     } else {
       layer->type = LAYER_SPARSE;
     }
-    
+
     // Sort all index lists, and check that they're the right
     // size.
     auto CompareByIndex =

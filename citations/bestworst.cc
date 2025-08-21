@@ -1,21 +1,16 @@
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <string>
-#include <map>
-#include <unordered_map>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "citation-util.h"
 #include "nice.h"
 #include "re2/re2.h"
-#include "threadutil.h"
-#include "util.h"
 
 using namespace std;
 using int64 = int64_t;
