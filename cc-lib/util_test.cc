@@ -770,6 +770,26 @@ static void TestFileOf() {
   CHECK_SEQ(Util::FileOf("/asdf/"), "");
 }
 
+static void TestForEachLineInString() {
+  std::vector<std::string> lines;
+
+  Util::ForEachLineInString(
+      "this is the first\r\n"
+      "this is the second\n"
+      // blank
+      "\n"
+      "no trailing newline",
+      [&](std::string_view line) {
+        lines.push_back(std::string(line));
+      });
+
+  CHECK_EQ(lines.size(), 4);
+  CHECK_SEQ("this is the first", lines[0]);
+  CHECK_SEQ("this is the second", lines[1]);
+  CHECK_SEQ("", lines[2]);
+  CHECK_SEQ("no trailing newline", lines[3]);
+}
+
 int main(int argc, char **argv) {
   TestItos();
   TestStoi();
@@ -810,6 +830,7 @@ int main(int argc, char **argv) {
   TestParseBinary();
   TestPathOf();
   TestFileOf();
+  TestForEachLineInString();
 
   printf("OK\n");
   return 0;

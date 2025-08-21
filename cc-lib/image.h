@@ -115,8 +115,8 @@ struct ImageRGBA {
   // XXX: Only these two routines work with ANSI today.
   void BlendText(int x, int y,
                  uint8 r, uint8 g, uint8 b, uint8 a,
-                 const std::string &s);
-  void BlendText32(int x, int y, uint32 color, const std::string &s);
+                 std::string_view s);
+  void BlendText32(int x, int y, uint32 color, std::string_view s);
 
   // Draws an outline by first drawing on the 9-connected neighbors
   // in the background color. The foreground color is composited on
@@ -129,18 +129,19 @@ struct ImageRGBA {
   // x specifies the left edge, whether up or down. y specifies the
   // bottom if up, or top if down.
   void BlendTextVert32(int x, int y, bool up,
-                       uint32 color, const std::string &s);
+                       uint32 color, std::string_view s);
 
   // Same font, but scaled to (crisp) 2x2 pixels.
   static constexpr int TEXT2X_WIDTH  = TEXT_WIDTH * 2;
   static constexpr int TEXT2X_HEIGHT = TEXT_HEIGHT * 2;
   void BlendText2x(int x, int y,
                    uint8 r, uint8 g, uint8 b, uint8 a,
-                   const std::string &s);
-  void BlendText2x32(int x, int y, uint32 color, const std::string &s);
+                   std::string_view s);
+  void BlendText2x32(int x, int y, uint32 color,
+                     std::string_view s);
 
   void BlendTextVert2x32(int x, int y, bool up,
-                         uint32 color, const std::string &s);
+                         uint32 color, std::string_view s);
 
   // Clipped. Alpha blending.
   // This draws a crisp pixel line using Bresenham's algorithm.
@@ -333,7 +334,7 @@ struct ImageA {
   Image1 Threshold(uint8_t min_one = 1) const;
 
   // Only increases values.
-  void BlendText(int x, int y, uint8 v, const std::string &s);
+  void BlendText(int x, int y, uint8 v, std::string_view s);
 
   void Clear(uint8 value);
 
@@ -382,7 +383,7 @@ struct ImageF {
   ImageA Make8Bit() const;
 
   // Only increases values.
-  void BlendText(int x, int y, float v, const std::string &s);
+  void BlendText(int x, int y, float v, std::string_view s);
 
   void Clear(float value);
 

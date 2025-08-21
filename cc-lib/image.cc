@@ -679,7 +679,7 @@ ParseANSI(std::string_view &s,
 // PERF: For many of these where we call blendpixel in a loop,
 // we could probably benefit by doing premultiplied alpha.
 
-void ImageRGBA::BlendText32(int x, int y, uint32 color, const string &s) {
+void ImageRGBA::BlendText32(int x, int y, uint32 color, std::string_view s) {
   // SetPixel will clip, but exit early if we are totally off-screen.
   if (y >= height || y < -EmbeddedFont::HEIGHT) return;
 
@@ -732,12 +732,12 @@ void ImageRGBA::BlendTextOutline32(int x, int y,
 
 void ImageRGBA::BlendText(int x, int y,
                           uint8 r, uint8 g, uint8 b, uint8 a,
-                          const string &s) {
+                          std::string_view s) {
   BlendText32(x, y, Pack32(r, g, b, a), s);
 }
 
 void ImageRGBA::BlendTextVert32(int x, int y, bool up,
-                                uint32 color, const string &s) {
+                                uint32 color, std::string_view s) {
   const int startx = up ? x : x + EmbeddedFont::HEIGHT;
   const int starty = y; // up ? y + EmbeddedFont::WIDTH * s.size() : y;
   auto SetPixelUp = [this, color, startx, starty](int xx, int yy) {
@@ -758,7 +758,8 @@ void ImageRGBA::BlendTextVert32(int x, int y, bool up,
   }
 }
 
-void ImageRGBA::BlendText2x32(int x, int y, uint32 color, const string &s) {
+void ImageRGBA::BlendText2x32(int x, int y, uint32 color,
+                              std::string_view s) {
   for (int i = 0; i < (int)s.size(); i++) {
     // Here we draw to "0,0", and then this function scales and translates.
     auto SetPixel = [x, y, i, this, color](int px, int py) {
@@ -777,12 +778,12 @@ void ImageRGBA::BlendText2x32(int x, int y, uint32 color, const string &s) {
 
 void ImageRGBA::BlendText2x(int x, int y,
                             uint8 r, uint8 g, uint8 b, uint8 a,
-                            const string &s) {
+                            std::string_view s) {
   BlendText2x32(x, y, Pack32(r, g, b, a), s);
 }
 
 void ImageRGBA::BlendTextVert2x32(int x, int y, bool up,
-                                  uint32 color, const string &s) {
+                                  uint32 color, std::string_view s) {
   const int startx = up ? x : x + EmbeddedFont::HEIGHT * 2;
   const int starty = y;
   auto SetPixelUp = [this, color, startx, starty](int xx, int yy) {
@@ -1711,7 +1712,7 @@ ImageA ImageA::ResizeNearest(int nwidth, int nheight) const {
   return ret;
 }
 
-void ImageA::BlendText(int x, int y, uint8 v, const string &s) {
+void ImageA::BlendText(int x, int y, uint8 v, std::string_view s) {
   auto SetPixel = [this, v](int xx, int yy) {
       this->BlendPixel(xx, yy, v);
     };
@@ -1928,7 +1929,7 @@ ImageF ImageF::ResizeBilinear(int nwidth, int nheight) const {
   return ret;
 }
 
-void ImageF::BlendText(int x, int y, float v, const string &s) {
+void ImageF::BlendText(int x, int y, float v, std::string_view s) {
   auto SetPixel = [this, v](int xx, int yy) {
       this->BlendPixel(xx, yy, v);
     };

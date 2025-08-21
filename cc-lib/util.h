@@ -54,13 +54,16 @@ struct Util {
   // Split the string to lines. Blank lines are preserved.
   // If the file doesn't end with a newline, and the last line is
   // not empty (i.e., the file is not empty), then that line is also
-  // returned.
+  // returned. Ignores carriage returns.
   static std::vector<string> SplitToLines(string_view s);
 
   // Calls f on each line (without the newline), streamed from
   // the file. Ignores \r. Suitable for very large files.
   template<class F>
-  static void ForEachLine(std::string_view filename, F f);
+  static void ForEachLineInFile(std::string_view filename, F f);
+
+  template<class F>
+  static void ForEachLineInString(std::string_view contents, F f);
 
   // As above, but treat the first token on each line as a map key,
   // and strips leading whitespace from the rest. Ignores empty lines.
@@ -380,8 +383,8 @@ struct Util {
 // Template implementations follow.
 
 template<class F>
-void Util::ForEachLine(std::string_view sv, F f) {
-  std::string s{sv};
+void Util::ForEachLineInFile(std::string_view filename, F f) {
+  std::string s{filename};
   FILE *file = fopen(s.c_str(), "rb");
   if (!file) return;
   int c;
@@ -398,6 +401,13 @@ void Util::ForEachLine(std::string_view sv, F f) {
   // Don't require trailing newline.
   if (!line.empty()) f(line);
   fclose(file);
+}
+
+template<class F>
+void Util::ForEachLineInString(std::string_view sv, F f) {
+  // PERF: Do this in place instead of copying.
+  std::vector<std::string> lines = SplitToLines(sv);
+  for (const std::string &line : lines) f(line);
 }
 
 template<class F>
