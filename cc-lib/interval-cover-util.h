@@ -48,8 +48,8 @@ inline std::string IntervalCoverUtil::Serialize(
   std::string out;
   for (uint64_t p = 0; !IntervalCover<T>::IsAfterLast(p); p = ic.Next(p)) {
     typename IntervalCover<T>::Span s = ic.GetPoint(p);
-    StringAppendF(&out, "%llu %llu %s\n",
-                  s.start, s.end, ttos(s.data).c_str());
+    AppendFormat(&out, "{} {} {}\n",
+                 s.start, s.end, ttos(s.data));
   }
 
   return out;

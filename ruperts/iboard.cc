@@ -16,6 +16,7 @@
 #include "status-bar.h"
 #include "timer.h"
 #include "util.h"
+#include "threadutil.h"
 
 using Volume = Hypercube::Volume;
 
@@ -105,74 +106,76 @@ static void IBoard() {
 
   int done = 0;
   Periodically status_per(2);
-  for (int outer_idx = 0; outer_idx < canonical.size(); outer_idx++) {
-    const PatchInfo::CanonicalPatch &outer = canonical[outer_idx].second;
-    for (int inner_idx = 0; inner_idx < canonical.size(); inner_idx++) {
-      const PatchInfo::CanonicalPatch &inner = canonical[inner_idx].second;
+  // Careful running everything in parallel because these can take gigabytes
+  // of RAM.
+  ParallelComp2D(
+      canonical.size(), canonical.size(),
+      [&](int outer_idx, int inner_idx) {
+        const PatchInfo::CanonicalPatch &outer = canonical[outer_idx].second;
+        const PatchInfo::CanonicalPatch &inner = canonical[inner_idx].second;
+        std::unique_ptr<Hypercube> hypercube(new Hypercube);
 
-      std::unique_ptr<Hypercube> hypercube(new Hypercube);
+        std::string filename = Hypercube::StandardFilename(
+            outer.code, inner.code);
+        if (!Util::ExistsFile(filename))
+          return;
 
-      std::string filename = Hypercube::StandardFilename(
-          outer.code, inner.code);
-      if (!Util::ExistsFile(filename))
-        continue;
+        Timer load_timer;
+        std::string contents = Util::ReadFile(filename);
+        if (Hypercube::IsComplete(contents)) {
+          double complete_time = load_timer.Seconds();
+          Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
+          score.done = true;
+          done++;
+          status.Print("Noted {} is done in {}.", filename,
+                       ANSI::Time(complete_time));
 
-      Timer load_timer;
-      std::string contents = Util::ReadFile(filename);
-      if (Hypercube::IsComplete(contents)) {
-        double complete_time = load_timer.Seconds();
-        Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
-        score.done = true;
-        done++;
-        status.Print("Noted {} is done in {}.", filename,
-                     ANSI::Time(complete_time));
+        } else {
 
-      } else {
+          status.Print("Loading " AWHITE("{}") "...", filename);
+          hypercube->FromString(contents);
+          status.Print("Loaded {} in {}.", filename,
+                       ANSI::Time(load_timer.Seconds()));
 
-        status.Print("Loading " AWHITE("{}") "...", filename);
-        hypercube->FromString(contents);
-        status.Print("Loaded {} in {}.", filename,
-                     ANSI::Time(load_timer.Seconds()));
+          // XXX HERE: Report stats, verify, etc.
 
-        // XXX HERE: Report stats, verify, etc.
+          // PERF: Don't need to actually get the leaves in order
+          // to compute these.
+          Timer leaf_timer;
+          double vol_outscope = 0.0, vol_proved = 0.0;
+          auto leaves = hypercube->GetLeaves(&vol_outscope, &vol_proved);
+          double vol_done = vol_outscope + vol_proved;
+          double vol_inscope = total_volume - vol_outscope;
+          status.Print(
+              "{} leaves. {:.6f} ({:.3f}%) done, {:.6f} ({:.3f}%) proved. ({})",
+              leaves.size(),
+              vol_done,
+              (vol_done * 100.0) / total_volume,
+              vol_proved,
+              (vol_proved * 100.0) / vol_inscope,
+              ANSI::Time(leaf_timer.Seconds()));
 
-        // PERF: Don't need to actually get the leaves in order
-        // to compute these.
-        Timer leaf_timer;
-        double vol_outscope = 0.0, vol_proved = 0.0;
-        auto leaves = hypercube->GetLeaves(&vol_outscope, &vol_proved);
-        double vol_done = vol_outscope + vol_proved;
-        double vol_inscope = total_volume - vol_outscope;
-        status.Print(
-            "{} leaves. {:.6f} ({:.3f}%) done, {:.6f} ({:.3f}%) proved. ({})",
-            leaves.size(),
-            vol_done,
-            (vol_done * 100.0) / total_volume,
-            vol_proved,
-            (vol_proved * 100.0) / vol_inscope,
-            ANSI::Time(leaf_timer.Seconds()));
+          Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
+          score.done = leaves.empty();
+          score.vol_inscope = vol_inscope;
+          score.vol_outscope = vol_outscope;
+          score.vol_proved = vol_proved;
+          if (score.done) done++;
+        }
 
-        Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
-        score.done = leaves.empty();
-        score.vol_inscope = vol_inscope;
-        score.vol_outscope = vol_outscope;
-        score.vol_proved = vol_proved;
-        if (score.done) done++;
-      }
-
-      status_per.RunIf([&]() {
-          status.EmitStatus(
-              std::format(
-                  "{}"
-                  "{}/{} processed. {} ({:.3f}%) all done.\n",
-                  ScoreboardString(scoreboard),
-                  outer_idx * NUM_PATCHES + inner_idx,
-                  NUM_PATCHES * NUM_PATCHES,
-                  done,
-                  (done * 100.0) / (NUM_PATCHES * NUM_PATCHES)));
-        });
-    }
-  }
+        status_per.RunIf([&]() {
+            status.EmitStatus(
+                std::format(
+                    "{}"
+                    "{}/{} processed. {} ({:.3f}%) all done.\n",
+                    ScoreboardString(scoreboard),
+                    outer_idx * NUM_PATCHES + inner_idx,
+                    NUM_PATCHES * NUM_PATCHES,
+                    done,
+                    (done * 100.0) / (NUM_PATCHES * NUM_PATCHES)));
+          });
+      },
+      4);
 
   printf("Scoreboard:\n%s\n",
          ScoreboardString(scoreboard).c_str());

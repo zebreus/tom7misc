@@ -1691,7 +1691,7 @@ void DebugPointCloudAsSTL(const std::vector<vec3> &vertices,
     }
   }
 
-  StringAppendF(&contents, "endsolid debug\n");
+  AppendFormat(&contents, "endsolid debug\n");
 
   std::string f = (std::string)filename;
   Util::WriteFile(f, contents);
@@ -1703,7 +1703,7 @@ void DebugPointCloudAsSTL(const std::vector<vec3> &vertices,
 void SaveAsJSON(const Polyhedron &poly, std::string_view filename) {
   std::string contents = "{\n";
   AppendFormat(&contents, " \"name\": \"{}\",\n", poly.name);
-  StringAppendF(&contents, " \"verts\": [\n");
+  AppendFormat(&contents, " \"verts\": [\n");
   const auto &verts = poly.vertices;
   for (int ii = 0; ii < verts.size(); ++ ii) {
     const auto &v = verts[ii];
@@ -1732,7 +1732,7 @@ void SaveAsJSON(const Polyhedron &poly, std::string_view filename) {
   }
   AppendFormat(&contents, "]");
 
-  StringAppendF(&contents, "\n}\n");
+  contents.append("\n}\n");
 
   std::string f = (std::string)filename;
   Util::WriteFile(f, contents);
@@ -1759,7 +1759,7 @@ void SaveAsJSON(const frame3 &outer_frame,
       inner_frame.y.x, inner_frame.y.y, inner_frame.y.z,
       inner_frame.z.x, inner_frame.z.y, inner_frame.z.z,
       inner_frame.o.x, inner_frame.o.y, inner_frame.o.z);
-  StringAppendF(&contents, "\n}\n");
+  contents.append("\n}\n");
 
   std::string f = (std::string)filename;
   Util::WriteFile(f, contents);
