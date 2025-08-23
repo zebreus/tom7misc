@@ -402,21 +402,7 @@ struct BigRat {
   // BigRat(T, U) = delete;
 
   #ifdef BIG_USE_GMP
-  using Rep = mpq_t;
-
-  // TODO: Wrap like with GmpRep! It should handle tricks like this:
-  void Destroy() {
-    if (mpq_numref(rep)->_mp_d != nullptr) {
-      // Either both numerator and denominator have been
-      // allocated, or neither has. Currently, the null/null
-      // state is only reached when we move from a BigRat.
-      // CHECK(mpq_denref(rep)->_mp_d != nullptr);
-      mpq_clear(rep);
-
-      mpq_numref(rep)->_mp_d = nullptr;
-      mpq_denref(rep)->_mp_d = nullptr;
-    }
-  }
+  using Rep = GmpRepRat;
 
   #else
   // TODO: This is a pointer to a struct with two BigZs (pointers),
@@ -1378,143 +1364,140 @@ BigRat::BigRat(int64_t numer, int64_t denom) :
 
 BigRat::BigRat(int64_t numer) : BigRat(BigInt{numer}) {}
 
-BigRat::BigRat(const BigRat &other) {
-  mpq_init(rep);
-  mpq_set(rep, other.rep);
-}
-BigRat::BigRat(BigRat &&other) noexcept {
-  // Consume other's representation.
-  memcpy(rep, other.rep, sizeof(Rep));
-  // But make sure it doesn't try to free it.
-  mpq_numref(other.rep)->_mp_d = nullptr;
-  mpq_denref(other.rep)->_mp_d = nullptr;
-}
+BigRat::BigRat(const BigRat &other) = default;
+BigRat::BigRat(BigRat &&other) noexcept = default;
 
-BigRat &BigRat::operator =(const BigRat &other) {
-  // Self-assignment does nothing.
-  if (this == &other) return *this;
-
-  // FIXME: If other is small, we can't use other.rep as
-  // the source (and don't want to!). Need a case for
-  // initializing from small.
-
-
-  // If overwriting an object that has no allocation,
-  // we need to create one before calling mpq_set.
-  if (mpq_numref(rep)->_mp_d == nullptr) {
-    mpq_init(rep);
-  }
-
-  mpq_set(rep, other.rep);
-  return *this;
-}
-BigRat &BigRat::operator =(BigRat &&other) noexcept {
-  if (this == &other) return *this;
-
-  // Prepare to overwrite data.
-  Destroy();
-
-  // Consume other's representation, whether allocated or small.
-  memcpy(rep, other.rep, sizeof(Rep));
-
-  // Leave it in a valid state, but without allocation.
-  // Only destroying the object or assigning over it are
-  // allowed.
-  mpq_numref(other.rep)->_mp_d = nullptr;
-  mpq_denref(other.rep)->_mp_d = nullptr;
-
-  return *this;
-}
+BigRat &BigRat::operator =(const BigRat &other) = default;
+BigRat &BigRat::operator =(BigRat &&other) noexcept = default;
 
 BigRat::BigRat(const BigInt &numer, const BigInt &denom) {
-  mpq_init(rep);
-  // PERF: Small int case!
-  GmpRep::Lease numer_tmp(numer.rep);
-  GmpRep::Lease denom_tmp(denom.rep);
-  mpz_set(mpq_numref(rep), numer_tmp.ConstMpz());
-  mpz_set(mpq_denref(rep), denom_tmp.ConstMpz());
-  mpq_canonicalize(rep);
+  if (numer.rep.IsSmall() && denom.rep.IsSmall()) {
+    // This canonicalizes.
+    rep = GmpRepRat(numer.rep.GetSmall(), denom.rep.GetSmall());
+
+  } else {
+    // PERF: Promoting initializes with zeroes only to overwrite.
+    rep.Promote();
+
+    GmpRep::Lease numer_tmp(numer.rep);
+    GmpRep::Lease denom_tmp(denom.rep);
+
+    mpz_set(mpq_numref(rep.Mpq()), numer_tmp.ConstMpz());
+    mpz_set(mpq_denref(rep.Mpq()), denom_tmp.ConstMpz());
+    mpq_canonicalize(rep.Mpq());
+  }
 }
 
 BigRat::BigRat(const BigInt &numer) {
-  // PERF: Small int case!
-  GmpRep::Lease numer_tmp(numer.rep);
-  mpq_init(rep);
-  mpq_set_z(rep, numer_tmp.ConstMpz());
+  if (numer.rep.IsSmall()) {
+    // This canonicalizes.
+    rep = GmpRepRat(numer.rep.GetSmall());
+
+  } else {
+    // PERF: Promoting initializes with zeroes only to overwrite.
+    rep.Promote();
+
+    GmpRep::Lease numer_tmp(numer.rep);
+    mpq_set_z(rep.Mpq(), numer_tmp.ConstMpz());
+  }
 }
 
 void BigRat::Swap(BigRat *other) {
-  mpq_swap(rep, other->rep);
+  rep.Swap(&other->rep);
 }
 
-BigRat::~BigRat() {
-  Destroy();
-}
+BigRat::~BigRat() = default;
 
 int BigRat::Compare(const BigRat &a, const BigRat &b) {
-  const int r = mpq_cmp(a.rep, b.rep);
+  // PERF: Small case is definitely important here, and then
+  // we can remove the int64 overloads!
+
+  GmpRepRat::Lease a_tmp(a.rep);
+  GmpRepRat::Lease b_tmp(b.rep);
+
+  const int r = mpq_cmp(a_tmp.ConstMpq(), b_tmp.ConstMpq());
   if (r < 0) return -1;
   else if (r > 0) return 1;
   else return 0;
 }
 
 bool BigRat::Eq(const BigRat &a, const BigRat &b) {
-  return mpq_cmp(a.rep, b.rep) == 0;
+  return Compare(a, b) == 0;
 }
 bool BigRat::Eq(const BigRat &a, int64_t b) {
-  // To be equal to an integer, the denominator must be 1.
-  if (mpz_cmp_si(mpq_denref(a.rep), 1) != 0)
-    return false;
-
-  if (internal::FitsSignedLong(b)) {
-    signed long int sb = b;
-    return mpz_cmp_si(mpq_numref(a.rep), sb) == 0;
+  // XXX this is probably wrong due to 0/d
+  if (a.rep.IsSmall()) {
+    return a.rep.SmallDenom() == 1 && a.rep.SmallNumer() == b;
   } else {
-    BigInt rhs(b);
-    rhs.rep.Promote();
-    return mpz_cmp(mpq_numref(a.rep), rhs.rep.ConstMpz()) == 0;
+    // To be equal to an integer, the denominator must be 1.
+    if (mpz_cmp_si(mpq_denref(a.rep.ConstMpq()), 1) != 0)
+      return false;
+
+    if (internal::FitsSignedLong(b)) {
+      signed long int sb = b;
+      return mpz_cmp_si(mpq_numref(a.rep.ConstMpq()), sb) == 0;
+    } else {
+      BigInt rhs(b);
+      rhs.rep.Promote();
+      return mpz_cmp(mpq_numref(a.rep.ConstMpq()),
+                     rhs.rep.ConstMpz()) == 0;
+    }
   }
 }
 
 BigRat BigRat::Abs(const BigRat &a) {
   BigRat ret;
-  mpq_abs(ret.rep, a.rep);
+  GmpRepRat::Lease a_tmp(a.rep);
+  mpq_abs(ret.rep.Mpq(), a_tmp.ConstMpq());
   return ret;
 }
+
 BigRat BigRat::Div(const BigRat &a, const BigRat &b) {
   BigRat ret;
-  mpq_div(ret.rep, a.rep, b.rep);
+  GmpRepRat::Lease a_tmp(a.rep);
+  GmpRepRat::Lease b_tmp(b.rep);
+  mpq_div(ret.rep.Mpq(), a_tmp.ConstMpq(), b_tmp.ConstMpq());
   return ret;
 }
+
 BigRat BigRat::Inverse(const BigRat &a) {
   BigRat ret;
-  mpq_inv(ret.rep, a.rep);
+  GmpRepRat::Lease a_tmp(a.rep);
+  mpq_inv(ret.rep.Mpq(), a_tmp.ConstMpq());
   return ret;
 }
 BigRat BigRat::Times(const BigRat &a, const BigRat &b) {
   BigRat ret;
-  mpq_mul(ret.rep, a.rep, b.rep);
+  GmpRepRat::Lease a_tmp(a.rep);
+  GmpRepRat::Lease b_tmp(b.rep);
+  mpq_mul(ret.rep.Mpq(), a_tmp.ConstMpq(), b_tmp.ConstMpq());
   return ret;
 }
 
 BigRat BigRat::Negate(const BigRat &a) {
   BigRat ret;
-  mpq_neg(ret.rep, a.rep);
+  GmpRepRat::Lease a_tmp(a.rep);
+  mpq_neg(ret.rep.Mpq(), a_tmp.ConstMpq());
   return ret;
 }
 BigRat BigRat::Negate(BigRat &&a) {
-  mpq_neg(a.rep, a.rep);
-  return a;
+  mpq_neg(a.rep.Mpq(), a.rep.Mpq());
+  return std::move(a);
 }
 
 BigRat BigRat::Plus(const BigRat &a, const BigRat &b) {
   BigRat ret;
-  mpq_add(ret.rep, a.rep, b.rep);
+  GmpRepRat::Lease a_tmp(a.rep);
+  GmpRepRat::Lease b_tmp(b.rep);
+  mpq_add(ret.rep.Mpq(), a_tmp.ConstMpq(), b_tmp.ConstMpq());
   return ret;
 }
+
 BigRat BigRat::Minus(const BigRat &a, const BigRat &b) {
   BigRat ret;
-  mpq_sub(ret.rep, a.rep, b.rep);
+  GmpRepRat::Lease a_tmp(a.rep);
+  GmpRepRat::Lease b_tmp(b.rep);
+  mpq_sub(ret.rep.Mpq(), a_tmp.ConstMpq(), b_tmp.ConstMpq());
   return ret;
 }
 
@@ -1531,49 +1514,85 @@ std::string BigRat::ToString() const {
 }
 
 std::pair<BigInt, BigInt> BigRat::Parts() const {
-  BigInt numer, denom;
-  numer.rep.Promote();
-  denom.rep.Promote();
-  mpz_set(numer.rep.Mpz(), mpq_numref(rep));
-  mpz_set(denom.rep.Mpz(), mpq_denref(rep));
-  return std::make_pair(std::move(numer), std::move(denom));
+  if (rep.IsSmall()) {
+    return std::make_pair(BigInt(rep.SmallNumer()),
+                          BigInt(rep.SmallDenom()));
+  } else {
+    BigInt numer;
+    mpz_set(numer.rep.Mpz(), mpq_numref(rep.ConstMpq()));
+    if (BigInt::Sign(numer) == 0) {
+      // Ensure we don't get 0/d for d!=1.
+      return std::make_pair(std::move(numer), BigInt(1));
+    } else {
+      BigInt denom;
+      mpz_set(denom.rep.Mpz(), mpq_denref(rep.ConstMpq()));
+      return std::make_pair(std::move(numer), std::move(denom));
+    }
+  }
 }
 
 BigInt BigRat::Numerator() const {
-  BigInt numer;
-  numer.rep.Promote();
-  mpz_set(numer.rep.Mpz(), mpq_numref(rep));
-  return numer;
+  if (rep.IsSmall()) {
+    return BigInt(rep.SmallNumer());
+  } else {
+    BigInt numer;
+    mpz_set(numer.rep.Mpz(), mpq_numref(rep.ConstMpq()));
+    return numer;
+  }
 }
 
 BigInt BigRat::Denominator() const {
-  BigInt denom;
-  denom.rep.Promote();
-  mpz_set(denom.rep.Mpz(), mpq_denref(rep));
-  return denom;
+  if (rep.IsSmall()) {
+    if (rep.SmallNumer() == 0) {
+      // Ensure we return a denominator of 1 for 0/d.
+      return BigInt(1);
+    }
+
+    return BigInt(rep.SmallDenom());
+  } else {
+    if (mpz_sgn(mpq_numref(rep.ConstMpq())) == 0) {
+      // Ensure we return a denominator of 1 for 0/d.
+      return BigInt(1);
+    } else {
+      BigInt denom;
+      mpz_set(denom.rep.Mpz(), mpq_denref(rep.ConstMpq()));
+      return denom;
+    }
+  }
 }
 
 BigRat BigRat::FromDouble(double num) {
+  // PERF: Could detect small integers pretty easily.
   BigRat ret;
-  mpq_set_d(ret.rep, num);
+  mpq_set_d(ret.rep.Mpq(), num);
   return ret;
 }
 
 BigRat BigRat::ApproxDouble(double num, int64_t max_denom) {
   // XXX implement max_denom somehow?
   BigRat ret;
-  mpq_set_d(ret.rep, num);
+  mpq_set_d(ret.rep.Mpq(), num);
   return ret;
 }
 
 double BigRat::ToDouble() const {
-  return mpq_get_d(rep);
+  if (rep.IsSmall()) {
+    return rep.SmallNumer() / (double)rep.SmallDenom();
+  } else {
+    return mpq_get_d(rep.ConstMpq());
+  }
 }
 
 uint64_t BigRat::HashCode(const BigRat &a) {
-  const auto &nrep = mpq_numref(a.rep);
+  // PERF: Probably should avoid copying when hashing small
+  // numbers. But we need the hash code to be the same for a
+  // given number whether the representation is small or large.
+  // Might be good to do this as a mathematical function, then?
+  GmpRepRat::Lease a_tmp(a.rep);
+
+  const auto &nrep = mpq_numref(a.rep.ConstMpq());
   const size_t nlimbs = mpz_size(nrep);
-  const auto &drep = mpq_denref(a.rep);
+  const auto &drep = mpq_denref(a.rep.ConstMpq());
   const size_t dlimbs = mpz_size(drep);
 
   uint64_t h = 0xC0FFEE'777'1234567;
@@ -1595,7 +1614,12 @@ uint64_t BigRat::HashCode(const BigRat &a) {
 }
 
 int BigRat::Sign(const BigRat &a) {
-  return mpz_sgn(mpq_numref(a.rep));
+  if (a.rep.IsSmall()) {
+    int64_t x = a.rep.SmallNumer();
+    return (x > 0) - (x < 0);
+  } else {
+    return mpz_sgn(mpq_numref(a.rep.ConstMpq()));
+  }
 }
 
 #else

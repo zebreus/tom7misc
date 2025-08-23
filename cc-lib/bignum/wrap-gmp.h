@@ -334,6 +334,7 @@ struct GmpRepRat {
       Component denom;
     } s;
   } u;
+
  public:
 
   GmpRepRat() {

@@ -1232,6 +1232,15 @@ static void TestRatParts() {
     CHECK(BigInt::Eq(n, r.Numerator()));
     CHECK(BigInt::Eq(d, r.Denominator()));
   }
+
+  {
+    BigRat r("0/4");
+    CHECK(r.Numerator().ToString() == "0");
+    CHECK(r.Denominator().ToString() == "1");
+    const auto &[n, d] = r.Parts();
+    CHECK(BigInt::Eq(n, r.Numerator()));
+    CHECK(BigInt::Eq(d, r.Denominator()));
+  }
 }
 
 static void TestRatSqrtBounds() {
@@ -1647,6 +1656,14 @@ static void TestRatCompare() {
   CHECK(BigRat::Compare(BigRat(BigInt(9007199254739967),
                                BigInt(18014398509481984)),
                         BigRat(1, 2)) == -1);
+
+  // Have to be a little careful since 0 can have any denominator
+  // in its canonical form.
+  CHECK(!BigRat::Eq(BigRat(0), 1));
+  CHECK(!BigRat::Eq(BigRat(0, 4), 1));
+  CHECK(BigRat::Eq(BigRat(0), 0));
+  CHECK(BigRat::Eq(BigRat(0, 4), 0));
+  CHECK(BigRat::Eq(BigRat(0, -4), 0));
 }
 
 static void TestRatHashCode() {
