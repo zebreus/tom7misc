@@ -40,8 +40,28 @@ inline BigInt operator +(const BigInt &a, const BigInt &b) {
   return BigInt::Plus(a, b);
 }
 
+inline BigInt operator +(BigInt &&a, const BigInt &b) {
+  BigInt::PlusEq(a, b);
+  return std::move(a);
+}
+
+inline BigInt operator +(const BigInt &a, BigInt &&b) {
+  BigInt::PlusEq(b, a);
+  return std::move(b);
+}
+
 inline BigInt operator +(const BigInt &a, int64_t b) {
   return BigInt::Plus(a, BigInt{b});
+}
+
+inline BigInt operator +(BigInt &&a, int64_t b) {
+  BigInt::PlusEq(a, BigInt{b});
+  return std::move(a);
+}
+
+inline BigInt operator +(int64_t a, BigInt &&b) {
+  BigInt::PlusEq(b, BigInt{a});
+  return std::move(b);
 }
 
 inline BigInt operator +(int64_t a, const BigInt &b) {
@@ -112,7 +132,7 @@ inline BigInt operator >>(const BigInt &a, uint64_t bits) {
 
 // prefix increment
 inline BigInt &operator ++(BigInt &a) {
-  a = std::move(a) + 1;
+  BigInt::PlusEq(a, BigInt{1});
   return a;
 }
 
@@ -135,12 +155,12 @@ inline BigInt &operator>>=(BigInt &a, uint64_t bits) {
 }
 
 inline BigInt &operator+=(BigInt &a, const BigInt &b) {
-  a = std::move(a) + b;
+  BigInt::PlusEq(a, b);
   return a;
 }
 
 inline BigInt &operator+=(BigInt &a, int64_t b) {
-  a = std::move(a) + b;
+  BigInt::PlusEq(a, BigInt{b});
   return a;
 }
 

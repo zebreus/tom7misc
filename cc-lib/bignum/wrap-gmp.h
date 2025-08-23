@@ -125,6 +125,11 @@ struct GmpRep {
     return u.small_int;
   }
 
+  // Precondition: IsSmall.
+  void UpdateSmall(int64_t v) {
+    u.small_int = v;
+  }
+
   void Promote() {
     if (IsSmall()) {
       const int64_t small = u.small_int;

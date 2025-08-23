@@ -87,6 +87,7 @@ struct BigInt {
   inline static bool GreaterEq(const BigInt &a, int64_t b);
 
   inline static BigInt Plus(const BigInt &a, const BigInt &b);
+  inline static void PlusEq(BigInt &a, const BigInt &b);
   inline static BigInt Minus(const BigInt &a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, const BigInt &b);
 
@@ -453,10 +454,24 @@ inline BigInt BigInt::Min(const BigInt &a, const BigInt &b) {
 #if BIG_USE_GMP
 
 namespace internal {
-inline bool FitsLongInt(int64_t x) {
-  return (std::numeric_limits<long int>::min() <= x &&
-          x <= std::numeric_limits<long int>::max());
+inline constexpr bool FitsSignedLong(int64_t x) {
+  return std::in_range<signed long int>(x);
 }
+inline constexpr bool FitsUnsignedLong(int64_t x) {
+  return std::in_range<unsigned long int>(x);
+}
+inline constexpr bool U64FitsSignedLong(uint64_t x) {
+  return std::in_range<signed long int>(x);
+}
+
+// Don't allow calling these functions with implicit
+// conversions.
+template<typename T>
+void FitsSignedLong(T x) = delete;
+template<typename T>
+void FitsUnsignedSignedLong(T x) = delete;
+template<typename T>
+void U64FitsSignedLong(T x) = delete;
 }
 
 BigInt::BigInt(std::integral auto ni) {
@@ -812,13 +827,13 @@ BigInt BigInt::Negate(BigInt &&a) {
       [[unlikely]] {
       a.rep.Promote();
       mpz_neg(a.rep.Mpz(), a.rep.Mpz());
-      return a;
+      return std::move(a);
     } else {
       return BigInt(-x);
     }
   } else {
     mpz_neg(a.rep.Mpz(), a.rep.Mpz());
-    return a;
+    return std::move(a);
   }
 }
 
@@ -833,16 +848,16 @@ BigInt BigInt::Abs(BigInt &&a) {
         [[unlikely]] {
         a.rep.Promote();
         mpz_neg(a.rep.Mpz(), a.rep.Mpz());
-        return a;
+        return std::move(a);
       } else {
         return BigInt(-x);
       }
     } else {
-      return a;
+      return std::move(a);
     }
   } else {
     mpz_abs(a.rep.Mpz(), a.rep.Mpz());
-    return a;
+    return std::move(a);
   }
 }
 
@@ -862,7 +877,7 @@ int BigInt::Compare(const BigInt &a, const BigInt &b) {
     // be sure that an integer is actually large just
     // because it has an alloc (it might have just been
     // promoted). So we need to test further cases.
-    if (internal::FitsLongInt(aa)) {
+    if (internal::FitsSignedLong(aa)) {
       int r = mpz_cmp_si(b.rep.ConstMpz(), aa);
       // Note: Sense is reversed here.
       if (r < 0) return +1;
@@ -880,7 +895,7 @@ int BigInt::Compare(const BigInt &a, const BigInt &b) {
     // As above.
     int64_t bb = b.rep.GetSmall();
 
-    if (internal::FitsLongInt(bb)) {
+    if (internal::FitsSignedLong(bb)) {
       int r = mpz_cmp_si(a.rep.ConstMpz(), bb);
       if (r < 0) return -1;
       else if (r > 0) return +1;
@@ -913,7 +928,7 @@ int BigInt::Compare(const BigInt &a, int64_t b) {
 
   } else {
 
-    if (internal::FitsLongInt(b)) {
+    if (internal::FitsSignedLong(b)) {
       int r = mpz_cmp_si(a.rep.ConstMpz(), b);
       if (r < 0) return -1;
       else if (r > 0) return +1;
@@ -966,6 +981,32 @@ bool BigInt::GreaterEq(const BigInt &a, int64_t b) {
   return Compare(a, b) >= 0;
 }
 
+void BigInt::PlusEq(BigInt &a, const BigInt &b) {
+  if (a.rep.IsSmall() && b.rep.IsSmall()) {
+    int64_t res;
+    // We could have replacements for functions like this when
+    // not using clang/gcc, but there's also the simple fallback
+    // of not using the GMP codepath.
+    if (!__builtin_add_overflow(a.rep.GetSmall(), b.rep.GetSmall(), &res)) {
+      a.rep.UpdateSmall(res);
+      return;
+    }
+    // Note fallthrough to general case on overflow.
+
+  } else if (b.rep.IsSmall()) {
+    int64_t bb = b.rep.GetSmall();
+    if (bb >= 0 && internal::FitsUnsignedLong(bb)) {
+      unsigned long int sb = bb;
+      mpz_add_ui(a.rep.Mpz(), a.rep.Mpz(), sb);
+      return;
+    }
+    // Fall through if it doesn't fit in signed long.
+
+  }
+
+  GmpRep::Lease b_tmp(b.rep);
+  mpz_add(a.rep.Mpz(), a.rep.Mpz(), b_tmp.ConstMpz());
+}
 
 BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
   if (a.rep.IsSmall() && b.rep.IsSmall()) {
@@ -976,23 +1017,31 @@ BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
     if (!__builtin_add_overflow(a.rep.GetSmall(), b.rep.GetSmall(), &res)) {
       return BigInt(res);
     }
-
     // Note fallthrough to general case on overflow.
-  }
 
-  // TODO PERF: Detect add_si cases.
-  /*
-  // PERF could also support negative b. but GMP only has
-  // _ui version.
-  if (b >= 0 && internal::FitsLongInt(b)) {
-    signed long int sb = b;
-    BigInt ret;
-    mpz_add_ui(ret.rep.Mpz(), a.rep., sb);
-    return ret;
-  } else {
-    return Plus(a, BigInt(b));
+  } else if (b.rep.IsSmall()) {
+    int64_t bb = b.rep.GetSmall();
+    if (bb >= 0 && internal::FitsUnsignedLong(bb)) {
+      unsigned long int sb = bb;
+      BigInt ret;
+      GmpRep::Lease a_tmp(a.rep);
+      mpz_add_ui(ret.rep.Mpz(), a_tmp.ConstMpz(), sb);
+      return ret;
+    }
+    // Fall through if it doesn't fit in signed long.
+
+  } else if (a.rep.IsSmall()) {
+    int64_t aa = a.rep.GetSmall();
+    if (aa >= 0 && internal::FitsUnsignedLong(aa)) {
+      unsigned long int sa = aa;
+      BigInt ret;
+      GmpRep::Lease b_tmp(b.rep);
+      mpz_add_ui(ret.rep.Mpz(), b_tmp.ConstMpz(), sa);
+      return ret;
+    }
+    // Fall through if it doesn't fit in signed long.
+
   }
-  */
 
   GmpRep::Lease a_tmp(a.rep);
   GmpRep::Lease b_tmp(b.rep);
@@ -1001,6 +1050,7 @@ BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
   mpz_add(ret.rep.Mpz(), a_tmp.ConstMpz(), b_tmp.ConstMpz());
   return ret;
 }
+
 
 BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
 
@@ -1208,7 +1258,7 @@ BigInt BigInt::CMod(const BigInt &a, const BigInt &b) {
 }
 
 int64_t BigInt::CMod(const BigInt &a, int64_t b) {
-  if (internal::FitsLongInt(b)) {
+  if (internal::FitsSignedLong(b)) {
     if (b >= 0) {
       // PERF: Could check for a small.
       GmpRep::Lease a_tmp(a.rep);
@@ -1254,7 +1304,7 @@ BigInt BigInt::Pow(const BigInt &a, uint64_t exponent) {
 BigInt BigInt::LeftShift(const BigInt &a, uint64_t shift) {
   // PERF: Easy when small
 
-  if (internal::FitsLongInt(shift)) [[likely]] {
+  if (internal::U64FitsSignedLong(shift)) [[likely]] {
     GmpRep::Lease a_tmp(a.rep);
     mp_bitcnt_t sh = shift;
     BigInt ret;
@@ -1270,7 +1320,7 @@ BigInt BigInt::LeftShift(const BigInt &a, uint64_t shift) {
 
 BigInt BigInt::RightShift(const BigInt &a, uint64_t shift) {
   // PERF: Even easier when small, since it can't overflow
-  if (internal::FitsLongInt(shift)) {
+  if (internal::U64FitsSignedLong(shift)) {
     GmpRep::Lease a_tmp(a.rep);
     mp_bitcnt_t sh = shift;
     BigInt ret;
@@ -1416,7 +1466,7 @@ bool BigRat::Eq(const BigRat &a, int64_t b) {
   if (mpz_cmp_si(mpq_denref(a.rep), 1) != 0)
     return false;
 
-  if (internal::FitsLongInt(b)) {
+  if (internal::FitsSignedLong(b)) {
     signed long int sb = b;
     return mpz_cmp_si(mpq_numref(a.rep), sb) == 0;
   } else {

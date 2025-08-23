@@ -17,6 +17,40 @@
 #include "status-bar.h"
 #include "timer.h"
 
+
+namespace {
+struct BigVec2i {
+  BigVec2i(BigInt x, BigInt y) :
+    x(std::move(x)), y(std::move(y)) {}
+  BigVec2i() {}
+  BigInt x = BigInt(0), y = BigInt(0);
+};
+}  // namespace
+
+inline BigVec2i operator +(const BigVec2i &a, const BigVec2i &b) {
+  return BigVec2i(a.x + b.x, a.y + b.y);
+}
+
+
+// Add two BigVec2, but the x coordinate is unused.
+// I currently don't know a way to get it to discard the unused addition!
+static int BigVec2Unused(ArcFour *rc) {
+  BigVec2i v1{
+    BigInt("12345678901234567890713894719087234711"),
+    BigInt("78239741987239847198273491827349827341"),
+  };
+
+  BigVec2i v2{
+    BigInt("917823847198273498179485719387459183751"),
+    BigInt("1279038479182739487192837981739075401278341"),
+  };
+
+  BigVec2i vc = v1 + v2;
+  int s = vc.y.IsEven() ? 3 : 0;
+  DoNotOptimize(s);
+  return s;
+}
+
 // TODO: When I graduate big-interval into cc-lib, just use
 // that.
 static std::pair<BigRat, BigRat> Cos(
@@ -36,7 +70,7 @@ static std::pair<BigRat, BigRat> Cos(
   BigRat current_term(1);
 
   bool decreasing = false;
-  for (BigInt k(1); true; ++k) {
+  for (BigInt two_k(2); true; two_k += 2) {
     if (decreasing) {
       const BigRat error_bound = BigRat::Abs(current_term);
       if (error_bound <= epsilon) {
@@ -51,7 +85,7 @@ static std::pair<BigRat, BigRat> Cos(
 
     sum += current_term;
 
-    BigInt two_k = k << 1;
+    // BigInt two_k = k << 1;
 
     BigRat next_factor = x_squared / (two_k * (two_k - 1));
     if (!decreasing && next_factor < BigRat(1)) {
@@ -113,16 +147,53 @@ static int DoSomeMath(ArcFour *rc) {
   return (int)z.ToString().size();
 }
 
+static int SmallMath(ArcFour *rc) {
+  BigInt b;
+  for (BigInt a(1); a < 31337; ++a) {
+    b += a;
+  }
+
+  DoNotOptimize(b);
+  return b.IsEven();
+}
+
+static int PlusEq(ArcFour *rc) {
+  BigInt b("198273498172390487102938741098723419027834");
+  for (BigInt a(1); a < 31337; ++a) {
+    b += a;
+  }
+
+  DoNotOptimize(b);
+  return b.IsEven();
+}
+
+static int BigIntAbs(ArcFour *rc) {
+  BigInt b("-198273498172390487102938741098723419027834");
+  for (BigInt a(1); a < 31337; ++a) {
+    b = BigInt::Abs(std::move(b));
+  }
+
+  DoNotOptimize(b);
+  return b.IsEven();
+}
+
+
+namespace {
 struct BenchDef {
   int (*fn)(ArcFour *);
   int num_samples = 1000;
   const char *name;
 };
+}
 
 static std::initializer_list<BenchDef> BENCHES = {
   {.fn = &OnlyCos, .num_samples = 50000, .name = "only_cos"},
   {.fn = &OnlySqrtBounds, .num_samples = 10000, .name = "only_sqrt_bounds"},
   {.fn = &DoSomeMath, .num_samples = 1000, .name = "some_math"},
+  {.fn = &BigVec2Unused, .num_samples = 5000000, .name = "bigvec2_unused"},
+  {.fn = &SmallMath, .num_samples = 10000, .name = "small_math"},
+  {.fn = &PlusEq, .num_samples = 10000, .name = "plus_eq"},
+  {.fn = &BigIntAbs, .num_samples = 10000, .name = "bigint_abs"},
 };
 
 static void RunBench() {

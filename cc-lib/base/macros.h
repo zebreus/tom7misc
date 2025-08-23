@@ -26,6 +26,12 @@
   #endif
 #endif
 
+// TODO: [[pure]] may be available in like c++26.
+#if defined(__clang__) || defined(__GNUC__)
+#define PURE_FN __attribute__((pure))
+#else
+#define PURE_FN
+#endif
 
 // Legacy macro for compile-time assertions, before this was
 // standardized. TODO: Just inline static_assert where this
