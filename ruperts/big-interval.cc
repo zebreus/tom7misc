@@ -206,7 +206,7 @@ Bigival Bigival::Sin(const BigRat &x, const BigInt &inv_epsilon) {
   const BigRat epsilon{BigInt(1), inv_epsilon};
 
   bool decreasing = false;
-  for (BigInt k(1); true; ++k) {
+  for (BigInt two_k(2); true; two_k += 2) {
     // For an alternating series, the next term is also a bound
     // on the absolute error. We also know that the current term is
     // an upper (or lower) bound on the true value. But in order
@@ -230,14 +230,12 @@ Bigival Bigival::Sin(const BigRat &x, const BigInt &inv_epsilon) {
     // numerator, and a factor of 1 / ((2k + 1) * 2k) for the
     // denominator.
 
-    BigInt two_k = k << 1;
-
     BigRat next_factor = x_squared / (two_k * (two_k + 1));
     if (!decreasing && next_factor < BigRat(1)) {
       decreasing = true;
     }
 
-    current_term =  BigRat::Negate(std::move(current_term)) * next_factor;
+    current_term = BigRat::Negate(std::move(current_term)) * next_factor;
   }
 }
 
@@ -260,7 +258,7 @@ Bigival Bigival::Cos(const BigRat &x, const BigInt &inv_epsilon) {
   BigRat current_term(1);
 
   bool decreasing = false;
-  for (BigInt k(1); true; ++k) {
+  for (BigInt two_k(2); true; two_k += 2) {
     if (decreasing) {
       const BigRat error_bound = BigRat::Abs(current_term);
       if (error_bound <= epsilon) {
@@ -273,8 +271,6 @@ Bigival Bigival::Cos(const BigRat &x, const BigInt &inv_epsilon) {
     }
 
     sum += current_term;
-
-    BigInt two_k = k << 1;
 
     BigRat next_factor = x_squared / (two_k * (two_k - 1));
     if (!decreasing && next_factor < BigRat(1)) {

@@ -1900,6 +1900,7 @@ struct Hypersolver {
       bool diag_daz = (daz <= DIAG_THRESHOLD_AZ) == Bigival::MaybeBool::True;
       bool diag_dan = (dan <= DIAG_THRESHOLD_AN) == Bigival::MaybeBool::True;
 
+      // TODO: Output in image!
     }
 
 
@@ -2219,7 +2220,10 @@ struct Hypersolver {
       Timer load_timer;
       std::string contents = Util::ReadFile(filename);
       if (Hypercube::IsComplete(contents)) {
-        status.Print(AWHITE("{}") " is already complete!", filename);
+        status.Print("(" ACYAN("{}-{}") ")" " "
+                     AWHITE("{}") " is already complete!",
+                     outer_index, inner_index,
+                     filename);
         return false;
       }
 
@@ -2662,11 +2666,13 @@ struct Hypersolver {
     // Must contain the origin.
     CHECK(PointInPolygon(vec2{0, 0}, mesh.vertices, hull));
 
+    /*
     printf("Hull:\n");
     for (int p : hull) {
       vec2 v = mesh.vertices[p];
       printf("  (%.4f, %.4f),\n", v.x, v.y);
     }
+    */
   }
 
   // For each triangle in the triangle fan (using the vertices at
