@@ -1533,15 +1533,6 @@ struct Hypersolver {
     return sample;
   }
 
-  static vec3 ViewFromSpherical(double azimuth, double angle) {
-    double sina = std::sin(angle);
-    vec3 view(
-        sina * std::cos(azimuth),
-        sina * std::sin(azimuth),
-        std::cos(angle));
-    return view;
-  }
-
   struct Shadows {
     std::vector<vec2> outer;
     std::vector<vec2> inner;

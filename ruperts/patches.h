@@ -186,6 +186,12 @@ BigVec3 GetBigVec3InPatch(const Boundaries &boundaries,
 BigQuat GetBigQuatInPatch(const Boundaries &boundaries,
                           uint64_t code, uint64_t mask = ~uint64_t{0});
 
+// Unit view position from spherical coordinates.
+vec3 ViewFromSpherical(double azimuth, double angle);
+// Returns azimuth, angle. View must be a unit vector. View cannot be
+// on the z axis, and results may be unstable near the axis.
+std::pair<double, double> SphericalFromView(const vec3 &view);
+
 // Compute the hulls for the canonical patches (using the below).
 // Should be no need to call this unless you are recomputing patches,
 // as they are saved in the patchinfo file.

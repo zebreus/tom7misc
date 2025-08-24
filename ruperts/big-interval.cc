@@ -216,9 +216,11 @@ Bigival Bigival::Sin(const BigRat &x, const BigInt &inv_epsilon) {
       const BigRat error_bound = BigRat::Abs(current_term);
       if (error_bound <= epsilon) {
         if (BigRat::Sign(current_term) > 0) {
-          return Bigival(sum, sum + current_term, false, false);
+          BigRat next = std::move(current_term) + sum;
+          return Bigival(sum, next, false, false);
         } else {
-          return Bigival(sum + current_term, sum, false, false);
+          BigRat next = std::move(current_term) + sum;
+          return Bigival(next, sum, false, false);
         }
       }
     }
@@ -230,6 +232,7 @@ Bigival Bigival::Sin(const BigRat &x, const BigInt &inv_epsilon) {
     // numerator, and a factor of 1 / ((2k + 1) * 2k) for the
     // denominator.
 
+    // PERF: Strength reduce here too.
     BigRat next_factor = x_squared / (two_k * (two_k + 1));
     if (!decreasing && next_factor < BigRat(1)) {
       decreasing = true;
@@ -239,12 +242,10 @@ Bigival Bigival::Sin(const BigRat &x, const BigInt &inv_epsilon) {
   }
 }
 
-
-Bigival Bigival::Cos(const BigRat &x, const BigInt &inv_epsilon) {
+Bigival Bigival::Cos(
+    const BigRat &x, const BigInt &inv_epsilon) {
   CHECK(BigRat::Sign(inv_epsilon) == 1);
   // This is the one case where we can have an exact rational result.
-  // We return open intervals below, so this test is also required
-  // for correctness.
   if (BigRat::Sign(x) == 0) return Bigival(1);
 
   const BigRat epsilon{BigInt(1), inv_epsilon};
@@ -258,24 +259,46 @@ Bigival Bigival::Cos(const BigRat &x, const BigInt &inv_epsilon) {
   BigRat current_term(1);
 
   bool decreasing = false;
-  for (BigInt two_k(2); true; two_k += 2) {
+
+  // This is 2k * (2k - 1), which we compute incrementally
+  // (strength reduction).
+  //
+  // Denominator should be 2k * (2k - 1) = 4k^2 - 2k.
+  // So the difference between consecutive terms is
+  //     4(k+1)^2 - 2(k+1)  -  (4k^2 - 2k)
+  //  =  4k^2 + 6k + 2      -  4k^2 + 2k
+  //  =  8k + 2
+  //
+  // So each time the factor increases by 8k + 2. But we
+  // can strength-reduce THAT, to see that the increment
+  // increases by 8 each time.
+  BigInt factor_denom(2);
+  // Post-increment will save us one addition.
+  BigInt increment(10);
+
+  for (;;) {
     if (decreasing) {
       const BigRat error_bound = BigRat::Abs(current_term);
       if (error_bound <= epsilon) {
         if (BigRat::Sign(current_term) > 0) {
-          return Bigival(sum, sum + current_term, false, false);
+          BigRat next = std::move(current_term) + sum;
+          return Bigival(std::move(sum), std::move(next), false, false);
         } else {
-          return Bigival(sum + current_term, sum, false, false);
+          BigRat next = std::move(current_term) + sum;
+          return Bigival(std::move(next), std::move(sum), false, false);
         }
       }
     }
 
     sum += current_term;
 
-    BigRat next_factor = x_squared / (two_k * (two_k - 1));
+    BigRat next_factor = x_squared / factor_denom;
     if (!decreasing && next_factor < BigRat(1)) {
       decreasing = true;
     }
+
+    factor_denom += increment;
+    increment += 8;
 
     current_term = BigRat::Negate(std::move(current_term)) * next_factor;
   }

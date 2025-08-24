@@ -3,6 +3,7 @@
 
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -977,6 +978,21 @@ void AddHulls(const Boundaries &boundaries,
                                      canon.code, canon.mask,
                                      std::nullopt);
   }
+}
+
+vec3 ViewFromSpherical(double azimuth, double angle) {
+  double sina = std::sin(angle);
+  vec3 view(
+      sina * std::cos(azimuth),
+      sina * std::sin(azimuth),
+      std::cos(angle));
+  return view;
+}
+
+std::pair<double, double> SphericalFromView(const vec3 &view) {
+  double angle = std::acos(view.z);
+  double azimuth = std::atan2(view.y, view.x);
+  return std::make_pair(azimuth, angle);
 }
 
 PatchInfo EnumeratePatches(const BigPoly &poly) {
