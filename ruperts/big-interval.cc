@@ -113,8 +113,15 @@ Bigival Bigival::Sqrt(const Bigival &xx, const BigInt &inv_epsilon) {
     if (SELF_CHECK) {
       // Because it is not singular, and both arguments are
       // non-negative, and sqrt is monotonic.
-      CHECK(lba < lbb);
-      CHECK(ubb > uba);
+      //
+      // However, SqrtBounds does simplify fractions as it runs. So
+      // it can result in endpoints that are equal. We could even
+      // get spurious failures of this, since nothing about SqrtBounds
+      // actually requires the bounds to be ordered like this. Maybe
+      // should just disable this?
+      CHECK(lba <= lbb);
+      CHECK(ubb >= uba) << "Sqrt(" << xx.ToString() << ") resulted in: "
+                        << ubb.ToString() << " <= " << uba.ToString();
     }
 
     return Bigival(std::move(lba), std::move(ubb), true, true);

@@ -29,6 +29,15 @@ static constexpr bool VERBOSE = false;
   return opt.value();                                   \
   }()
 
+// 1D overlap.
+#define CHECK_OVERLAP(a_exp, b_exp) do {                          \
+  Bigival a = (a_exp);                                            \
+  Bigival b = (b_exp);                                            \
+  CHECK(Bigival::MaybeIntersection(a, b).has_value())             \
+    << "Expected the intervals to overlap:\n" #a_exp ": "         \
+    << a.ToString() << "\n" #b_exp ": " << b.ToString();          \
+ } while (0)
+
 // Sample some points in the interval. Call f on them.
 template<class F>
 static void Sample(const Bigival &v, const F &f) {
@@ -749,6 +758,21 @@ static void MathFuncs() {
     CHECK_CONTAINS(sqrt_range, BigRat(2));
     CHECK_CONTAINS(sqrt_range, BigRat(3));
   }
+
+  {
+    Bigival almost_one(BigRat(1042440, 1042441), BigRat(1), false, true);
+    Bigival sqrt_almost_one = Bigival::Sqrt(almost_one, inv_epsilon);
+
+    Sample(almost_one, [&](const BigRat &xx) {
+        double xd = std::sqrt(xx.ToDouble());
+
+        Bigival x(BigRat::FromDouble(std::nextafter(xd, -100.0)),
+                  BigRat::FromDouble(std::nextafter(xd, +100.0)),
+                  false, false);
+        CHECK_OVERLAP(sqrt_almost_one, x);
+      });
+  }
+
 }
 
 // Note: The function doesn't guarantee specifically that we
