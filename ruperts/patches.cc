@@ -493,9 +493,9 @@ static bool CanBeAllPositive(const Boundaries &boundaries,
   Z3Vec3 v = NewVec3(&out, "pt");
   AppendFormat(&out,
                ";; is there a point with all positive coordinates?\n"
-               "(assert (> {} 0.0)))\n"
-               "(assert (> {} 0.0)))\n"
-               "(assert (> {} 0.0)))\n",
+               "(assert (> {} 0.0))\n"
+               "(assert (> {} 0.0))\n"
+               "(assert (> {} 0.0))\n",
                v.x.s, v.y.s, v.z.s);
 
   AppendFormat(&out,

@@ -33,6 +33,20 @@ std::string Discival::ToString() const {
 }
 
 
+std::string Frame3ival::ToString() const {
+  return std::format(
+      "frame3{{\n"
+      "  .x = {}\n"
+      "  .y = {}\n"
+      "  .z = {}\n"
+      "  .o = {}\n"
+      "}}",
+      x.ToString(),
+      y.ToString(),
+      z.ToString(),
+      o.ToString());
+}
+
 Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   const Vec3ival &frame_z = view;
 
@@ -49,6 +63,17 @@ Frame3ival FrameFromViewPos(const Vec3ival &view, const BigInt &inv_epsilon) {
   // (The purpose of rearranging this is to avoid dependency
   // problems between the vector components.)
 
+  // Conceptually we are operating on the unit vectors within the view
+  // AABB. Note that since the view position is an AABB, there will be
+  // many points inside that are not actually unit-length. The
+  // derivation above assumes unit length, so superficially there is a
+  // problem here. This optimization is correct due to the inclusion
+  // property of interval arithmetic. All we need is that frame_z.z is
+  // a superset of all the z components of vectors (the unit-length
+  // ones) that we care about. The worst that can happen is that the
+  // resulting interval is too loose. (But this formulation actually
+  // improves tightness because of the elimination of dependency
+  // problems.)
   Bigival len = Bigival::Sqrt(Bigival(1) - frame_z.z.Squared(), inv_epsilon);
   if (SELF_CHECK) {
     CHECK(!len.ContainsOrApproachesZero()) << len.ToString();
@@ -95,6 +120,85 @@ Bigival DotProductWithView(const ViewBoundsTrig &trig,
 
   return trig.an.sine * (trig.az.cosine * v.x + trig.az.sine * v.y) +
     trig.an.cosine * v.z;
+}
+
+// Compute a bounding ball for the patch on the unit sphere
+// given by the azimuth and angle (this is the view position).
+// The patch must be smaller than a hemisphere or you will
+// get a degenerate (but correct) result.
+Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
+                            const BigInt &inv_epsilon) {
+
+  // We need the chosen center to be in the convex hull of the patch.
+  // This is easy for small patches, but like elsewhere if the patch
+  // is a whole hemisphere we'd need to start checking other points.
+  // Just return a conservative but degenerate ball (full unit ball)
+  // if the intervals are too wide.
+  if (trig.azimuth.Width() > BigRat(1) || trig.angle.Width() > BigRat(1)) {
+    return Ballival(BigVec3(BigRat(0), BigRat(0), BigRat(0)),
+                    BigRat(1));
+  }
+
+  // We have an approximate center (AABB) because of the
+  // transcendental functions. We have our choice of center for the
+  // bounding ball that we create, though! So we just use the midpoint
+  // of this tiny interval. Uncertainty essentially gets transferred
+  // into the radius.
+  //
+  // Informally, this point is on the unit sphere, and then we
+  // are guaranteed that the ball contains the entire patch
+  // (because it is not hemispherical).
+  // This will also be true if we are reasonably close to the
+  // sphere (which this will be) but there's a proof obligation
+  // to revisit here.
+  BigVec3 center = BigVec3(
+      (trig.mid_sin_an * trig.mid_cos_az).Midpoint(),
+      (trig.mid_sin_an * trig.mid_sin_az).Midpoint(),
+      trig.mid_cos_an.Midpoint());
+
+  // Find a squared radius that will include all the corners.
+  BigRat max_sqdist(0);
+
+  // Compute corners for the patch. These are tight bounds
+  // on the sine and cosine of each corner, ordered as lb, ub.
+  std::array<SinCos, 2> sin_cos_az;
+  std::array<SinCos, 2> sin_cos_an;
+
+  sin_cos_az[0] =
+    SinCos(Bigival::Sin(trig.azimuth.LB(), inv_epsilon),
+           Bigival::Cos(trig.azimuth.LB(), inv_epsilon));
+  sin_cos_az[1] =
+    SinCos(Bigival::Sin(trig.azimuth.UB(), inv_epsilon),
+           Bigival::Cos(trig.azimuth.UB(), inv_epsilon));
+
+  sin_cos_an[0] =
+    SinCos(Bigival::Sin(trig.angle.LB(), inv_epsilon),
+           Bigival::Cos(trig.angle.LB(), inv_epsilon));
+  sin_cos_an[1] =
+    SinCos(Bigival::Sin(trig.angle.UB(), inv_epsilon),
+           Bigival::Cos(trig.angle.UB(), inv_epsilon));
+
+  // The corners of the patch are the furthest away from the
+  // chosen center. The furthest of these will determine the
+  // radius.
+  for (const SinCos &az : sin_cos_az) {
+    for (const SinCos &an : sin_cos_an) {
+      // The location of the corner.
+      Vec3ival corner(an.sine * az.cosine, an.sine * az.sine, an.cosine);
+
+      // Distance to the actual center.
+      // PERF: We could do a bit less computation here because we are
+      // only using the upper bound.
+      Bigival dx = corner.x - center.x;
+      Bigival dy = corner.y - center.y;
+      Bigival dz = corner.z - center.z;
+      Bigival sqdist = dx.Squared() + dy.Squared() + dz.Squared();
+
+      max_sqdist = BigRat::Max(max_sqdist, sqdist.UB());
+    }
+  }
+
+  return Ballival(std::move(center), std::move(max_sqdist));
 }
 
 // This always returns a single AABB, though we previously tried

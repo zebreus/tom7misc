@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <format>
+#include <initializer_list>
 #include <numbers>
 #include <string>
 #include <string_view>
@@ -15,9 +16,11 @@
 #include "arcfour.h"
 #include "auto-histo.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "big-interval.h"
 #include "big-polyhedra.h"
 #include "bignum/big.h"
+#include "patches.h"
 #include "periodically.h"
 #include "polyhedra.h"
 #include "randutil.h"
@@ -28,6 +31,15 @@
 
 using vec2 = yocto::vec<double, 2>;
 
+// In this code we often sample a value and verify that it is
+// within the interval (or bounding box or ball) that a function
+// computes. The sample is often not exact (because of e.g.
+// trigonometric functions that aren't rational) and so our samples
+// are tight intervals. All we know is that the true value is
+// somewhere in this interval, so we usually check over *overlap*
+// between the tight sample interval and the function under test's
+// result.
+
 #define CHECK_CONTAINS_VEC2(aabb_exp, v_exp) do {               \
   auto aabb = (aabb_exp);                                       \
   auto v = (v_exp);                                             \
@@ -37,16 +49,43 @@ using vec2 = yocto::vec<double, 2>;
     VecString(v);                                               \
  } while (0)
 
-#define CHECK_OVERLAPS_AABB(a_exp, b_exp) do {                    \
-  auto a = (a_exp);                                               \
-  auto b = (b_exp);                                               \
+// 1D overlap.
+#define CHECK_OVERLAP(a_exp, b_exp) do {                          \
+  Bigival a = (a_exp);                                            \
+  Bigival b = (b_exp);                                            \
+  CHECK(Bigival::MaybeIntersection(a, b).has_value())             \
+    << "Expected the intervals to overlap:\n" #a_exp ": "         \
+    << a.ToString() << "\n" #b_exp ": " << b.ToString();          \
+ } while (0)
+
+// 2D overlap.
+#define CHECK_OVERLAP_2D(a_exp, b_exp) do {                       \
+  Vec2ival a = (a_exp);                                           \
+  Vec2ival b = (b_exp);                                           \
+  const bool x_overlap =                                          \
+    Bigival::MaybeIntersection(a.x, b.x).has_value();             \
+  const bool y_overlap =                                          \
+    Bigival::MaybeIntersection(a.y, b.y).has_value();             \
+  CHECK(x_overlap && y_overlap)                                   \
+    << "Expected the AABBs to overlap:\n" #a_exp ": "             \
+    << a.ToString() << "\n" #b_exp ": " << b.ToString()           \
+    << "\nx overlap: " << (x_overlap ? "true" : "false")          \
+    << "\ny overlap: " << (y_overlap ? "true" : "false");         \
+  } while (0)
+
+// 3D overlap.
+#define CHECK_OVERLAP_3D(a_exp, b_exp) do {                       \
+  Vec3ival a = (a_exp);                                           \
+  Vec3ival b = (b_exp);                                           \
   CHECK(Bigival::MaybeIntersection(a.x, b.x).has_value() &&       \
-        Bigival::MaybeIntersection(a.y, b.y).has_value())         \
+        Bigival::MaybeIntersection(a.y, b.y).has_value() &&       \
+        Bigival::MaybeIntersection(a.z, b.z).has_value())         \
     << "Expected the AABBs to overlap:\n" #a_exp ": "             \
     << a.ToString() << "\n" #b_exp ": " << b.ToString();          \
  } while (0)
 
 // Helper to sample a random BigRat from an interval.
+[[maybe_unused]]
 static BigRat RandomBigRat(ArcFour *rc, const Bigival &ival) {
   if (ival.Singular()) return ival.LB();
   // Maybe should be more careful about endpoints.
@@ -127,9 +166,10 @@ static void TestDotProductWithView() {
 
 
     Sample(azimuth, [&](const BigRat &az_sample) {
-      Sample(angle, [&](const BigRat &an_sample) {
-          Bigival sin_az_ival = Bigival::Sin(az_sample, inv_epsilon_high);
-          Bigival cos_az_ival = Bigival::Cos(az_sample, inv_epsilon_high);
+        Bigival sin_az_ival = Bigival::Sin(az_sample, inv_epsilon_high);
+        Bigival cos_az_ival = Bigival::Cos(az_sample, inv_epsilon_high);
+
+        Sample(angle, [&](const BigRat &an_sample) {
           Bigival sin_an_ival = Bigival::Sin(an_sample, inv_epsilon_high);
           Bigival cos_an_ival = Bigival::Cos(an_sample, inv_epsilon_high);
 
@@ -139,15 +179,11 @@ static void TestDotProductWithView() {
             sin_an_ival * (cos_az_ival * v.x + sin_az_ival * v.y) +
             cos_an_ival * v.z;
 
-          // The computed interval must contain the sample's interval.
-          CHECK(result.Contains(dot_sample_ival.Midpoint()))
-            << "Optimized result " << result.ToString()
-            << " does not contain sample point "
-            << dot_sample_ival.Midpoint().ToDouble();
-          CHECK(naive_result.Contains(dot_sample_ival.Midpoint()))
-            << "Naive result " << naive_result.ToString()
-            << " does not contain sample point "
-            << dot_sample_ival.Midpoint().ToDouble();
+          // The true value must be in both intervals, so they must
+          // overlap (probably the tiny sample interval is entirely
+          // inside the result).
+          CHECK_OVERLAP(result, dot_sample_ival);
+          CHECK_OVERLAP(naive_result, dot_sample_ival);
         });
     });
   };
@@ -160,11 +196,20 @@ static void TestDotProductWithView() {
     Check(azimuth, angle, v);
   }
 
-  // Intervals crossing zero.
+  // A patch that crosses zero.
   {
     Bigival azimuth(BigRat(-1, 10), BigRat(1, 10), true, true);
     Bigival angle(BigRat(-2, 10), BigRat(2, 10), true, true);
-    BigVec3 v(BigRat(-5), BigRat(8), BigRat(-1));
+    BigVec3 v(BigRat(5), BigRat(-8), BigRat(1));
+    Check(azimuth, angle, v);
+  }
+
+  // A patch that crosses the prime meridian near the equator.
+  {
+    Bigival azimuth(BigRat(-1, 10), BigRat(1, 10), true, true);
+    // Shifted angle away from the pole (z-axis).
+    Bigival angle(BigRat(14, 10), BigRat(16, 10), true, true);
+    BigVec3 v(BigRat(5), BigRat(-8), BigRat(1));
     Check(azimuth, angle, v);
   }
 
@@ -204,7 +249,9 @@ static void TestGetBoundingAABB(std::string_view name,
 
   // Computes the transformation for concrete points in the
   // intervals, using high precision rationals. The test AABB
-  // must overlap these tight sampled AABBs.
+  // must overlap these tight sampled AABBs. (We do not check
+  // for *containment* because the tight sampled AABBs have
+  // their own uncertainty from bounding the trig functions.)
   auto CheckAllSamples = [&](
       const Vec2ival &v_in, const Bigival &angle,
       const Bigival &tx, const Bigival &ty) {
@@ -225,7 +272,7 @@ static void TestGetBoundingAABB(std::string_view name,
                         p_in.x * c - p_in.y * s + trans_x,
                         p_in.x * s + p_in.y * c + trans_y);
 
-                    CHECK_OVERLAPS_AABB(result, pt);
+                    CHECK_OVERLAP_2D(result, pt);
                   });
               });
           });
@@ -811,6 +858,257 @@ static void TestTranslateDisc() {
   printf("TranslateDisc OK\n");
 }
 
+static void TestSphericalPatchBall() {
+  BigInt inv_epsilon(1000000);
+  BigInt inv_epsilon_high("1000000000000000000000");
+
+  auto Check = [&](const Bigival &azimuth, const Bigival &angle) {
+    ViewBoundsTrig trig(azimuth, angle, inv_epsilon);
+    Ballival result = SphericalPatchBall(trig, inv_epsilon);
+
+    // This is not a required property, but we always return a
+    // center that is either exactly the origin or close to the
+    // surface of the sphere.
+    BigRat center_len_sq = dot(result.center, result.center);
+    if (center_len_sq != BigRat(0)) {
+      CHECK(BigRat::Abs(center_len_sq - BigRat(1)) < BigRat(1, 100000));
+    }
+
+    // Check that points sampled from the patch are inside the ball.
+    // This includes endpoints and special points.
+    Sample(azimuth, [&](const BigRat &az_sample) {
+        Bigival sin_az = Bigival::Sin(az_sample, inv_epsilon_high);
+        Bigival cos_az = Bigival::Cos(az_sample, inv_epsilon_high);
+
+        Sample(angle, [&](const BigRat &an_sample) {
+            Bigival sin_an = Bigival::Sin(an_sample, inv_epsilon_high);
+            Bigival cos_an = Bigival::Cos(an_sample, inv_epsilon_high);
+
+            Vec3ival sample(sin_an * cos_az, sin_an * sin_az, cos_an);
+
+            Bigival dx = sample.x - result.center.x;
+            Bigival dy = sample.y - result.center.y;
+            Bigival dz = sample.z - result.center.z;
+
+            Bigival dist_sq =
+              dx.Squared() +
+              dy.Squared() +
+              dz.Squared();
+
+            // The intervals must overlap, which means that the lower
+            // bound must be in the ball's radius.
+            CHECK(dist_sq.LB() <= result.radius_sq)
+              << "Corner of patch is outside the computed bounding ball.\n"
+              << " az: " << az_sample.ToString() << "\n"
+              << " an: " << an_sample.ToString() << "\n"
+              << " Ball: c=" << VecString(result.center)
+              << " r_sq=" << result.radius_sq.ToString() << "\n"
+              << " Sample AABB: " << sample.ToString() << "\n"
+              << " dist_sq: " << dist_sq.ToString();
+          });
+      });
+    };
+
+  // A typical small patch.
+  {
+    Bigival azimuth(BigRat(1, 10), BigRat(2, 10), true, true);
+    Bigival angle(BigRat(3, 10), BigRat(4, 10), true, true);
+    Check(azimuth, angle);
+  }
+
+  // A patch that crosses zero.
+  {
+    Bigival azimuth(BigRat(-1, 20), BigRat(1, 20), true, true);
+    Bigival angle(BigRat(-1, 20), BigRat(1, 20), true, true);
+    Check(azimuth, angle);
+  }
+
+  // A single point.
+  {
+    Bigival azimuth(BigRat(1, 7));
+    Bigival angle(BigRat(2, 7));
+    ViewBoundsTrig trig(azimuth, angle, inv_epsilon);
+    Ballival result = SphericalPatchBall(trig, inv_epsilon);
+    // Radius should be tiny (but maybe not zero due to trig approximations).
+    CHECK(result.radius_sq < BigRat(BigInt(1), inv_epsilon));
+  }
+
+  // Degenerate case with a wide angle interval.
+  {
+    Bigival azimuth(BigRat(1, 10), BigRat(2, 10), true, true);
+    Bigival angle(BigRat(0), BigRat(2), true, true);
+    Check(azimuth, angle);
+  }
+
+  // 5. A patch near the north pole.
+  {
+    Bigival azimuth(BigRat(1, 5), BigRat(2, 5), true, true);
+    Bigival angle(BigRat(1, 100), BigRat(2, 100), true, true);
+    Check(azimuth, angle);
+  }
+
+  printf("SphericalPatchBall OK\n");
+}
+
+static Vec3ival FromVec3(const vec3 &v) {
+  return Vec3ival{
+    Bigival(BigRat::FromDouble(v.x)),
+    Bigival(BigRat::FromDouble(v.y)),
+    Bigival(BigRat::FromDouble(v.z)),
+  };
+}
+
+static void TestFrameFromViewPos() {
+  static constexpr bool VERBOSE = false;
+  BigInt inv_epsilon(1000000);
+
+  auto CheckSpecificView = [&](const vec3 &v) {
+      vec3 view = normalize(v);
+
+      frame3 frame_patches_dbl = FrameFromViewPos(view);
+      Frame3ival frame_patches = Frame3ival{
+        .x = FromVec3(frame_patches_dbl.x),
+        .y = FromVec3(frame_patches_dbl.y),
+        .z = FromVec3(frame_patches_dbl.z),
+      };
+
+      Vec3ival view_ival = FromVec3(view);
+      Frame3ival frame_intervals =
+        FrameFromViewPos(view_ival, inv_epsilon);
+
+      CHECK_OVERLAP_3D(frame_intervals.x, frame_patches.x);
+      CHECK_OVERLAP_3D(frame_intervals.y, frame_patches.y);
+      CHECK_OVERLAP_3D(frame_intervals.z, frame_patches.z);
+    };
+
+  CheckSpecificView(vec3{1.0, 2.0, 3.0});
+  CheckSpecificView(vec3{-1.0, 2.0, 3.0});
+  CheckSpecificView(vec3{1.0, -2.0, 3.0});
+  CheckSpecificView(vec3{1.0, -2.0, -3.0});
+  CheckSpecificView(vec3{1.0, 0.0, 0.0});
+
+  // A view position must be on the unit sphere (and not the z
+  // axis), so the input must intersect the unit sphere (and not
+  // the z axis).
+  auto CheckInterval = [&](const Vec3ival &view_ival_any) {
+      // Must be a unit vector.
+      // Vec3ival view_ival = Normalize(view_ival_any, inv_epsilon);
+      const Vec3ival &view_ival = view_ival_any;
+      auto InView = [&view_ival](const vec3 &v) {
+          return view_ival.x.Contains(BigRat::FromDouble(v.x)) &&
+            view_ival.y.Contains(BigRat::FromDouble(v.y)) &&
+            view_ival.z.Contains(BigRat::FromDouble(v.z));
+        };
+      CHECK(!InView(vec3(0, 0, 0))) << "Interval cannot contain origin.";
+
+      vec3 midpoint{
+        view_ival.x.Midpoint().ToDouble(),
+        view_ival.y.Midpoint().ToDouble(),
+        view_ival.z.Midpoint().ToDouble(),
+      };
+      CHECK(InView(midpoint));
+
+      Frame3ival frame = FrameFromViewPos(view_ival, inv_epsilon);
+
+      if (VERBOSE)
+        Print("Interval frame:\n{}\n", frame.ToString());
+
+      // Sample concrete views.
+      Sample(view_ival.x, [&](const BigRat &vx) {
+          Sample(view_ival.y, [&](const BigRat &vy) {
+              Sample(view_ival.z, [&](const BigRat &vz) {
+
+                  if (vx == 0 && vy == 0 && vz == 0)
+                    return;
+
+                  // Subtle: Now we need a sample that is a unit vector
+                  // and in the input AABB. We picked a point
+                  // (vx, vy, vz) in the AABB, but we cannot simply
+                  // normalize it because it might end up *outside*
+                  // the AABB!
+
+                  // Move towards the center until we are in
+                  // the AABB. This assumes that the normalized center
+                  // is in the AABB!
+                  vec3 view_sample{
+                    vx.ToDouble(), vy.ToDouble(), vz.ToDouble(),
+                  };
+                  for (int attempts = 0; true; attempts++) {
+                    CHECK(attempts < 100) << "This test assumes that "
+                      "the AABB's center, when normalized, is still "
+                      "in the AABB. You might have a 'spherical zone' "
+                      "of the view sphere that is missing its cap.";
+                    view_sample = normalize(view_sample);
+                    if (InView(view_sample)) break;
+
+                    view_sample = view_sample + midpoint;
+                  }
+
+                  if (VERBOSE) {
+                    Print("Sampled view: {:.17g} {:.17g} {:.17g}\n",
+                          view_sample.x, view_sample.y, view_sample.z);
+                  }
+                  // Get the sampled frame using patches.h conventions.
+                  frame3 frame_patches = FrameFromViewPos(view_sample);
+
+                  if (VERBOSE) {
+                    Print("Sampled frame:\n{}\n", FrameString(frame_patches));
+                  }
+
+                  // Now see that for some points, we get consistent
+                  // 2D projections of them.
+                  // Just need a few 3D points.
+                  for (const vec3 &v : std::initializer_list<vec3>{
+                      vec3{1.0, 2.0, 3.0},
+                      vec3{0.0, -1.0, 0.0},
+                      vec3{1.0, 0.0, 0.0},
+                      vec3{0.0, 0.0, -0.5},
+                      vec3{-3.5, 1.25, -2},
+                    }) {
+
+                    if (VERBOSE) {
+                      Print("For v = {}...\n", VecString(v));
+                    }
+
+                    const BigVec3 bv{
+                      BigRat::FromDouble(v.x),
+                      BigRat::FromDouble(v.y),
+                      BigRat::FromDouble(v.z),
+                    };
+
+                    Vec2ival p1 = TransformPointTo2D(frame, bv);
+
+                    vec3 p2d = transform_point(frame_patches, v);
+
+                    // The floating point results are not exact, so allow
+                    // a small epsilon around them. We are looking for
+                    // gross inconsistency here.
+                    Vec2ival p2{
+                      Bigival(BigRat::FromDouble(p2d.x - 1e-6),
+                              BigRat::FromDouble(p2d.x + 1e-6), false, false),
+                      Bigival(BigRat::FromDouble(p2d.y - 1e-6),
+                              BigRat::FromDouble(p2d.y + 1e-6), false, false),
+                    };
+
+                    CHECK_OVERLAP_2D(p1, p2);
+                  }
+                });
+            });
+        });
+    };
+
+
+  CheckInterval(
+      Vec3ival{
+        Bigival(BigRat(99, 100), BigRat(101, 100), false, false),
+        Bigival(BigRat(-1, 1024), BigRat(1, 1025), false, false),
+        Bigival(BigRat(-1, 1023), BigRat(1, 1021), false, false),
+      });
+
+  printf("FrameFromViewPos OK.\n");
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("\n");
@@ -821,8 +1119,10 @@ int main(int argc, char **argv) {
   TestExpandSquaredRadius();
   TestIsDiscOutsideEdge();
   TestTranslateDisc();
+  TestSphericalPatchBall();
+  TestFrameFromViewPos();
 
-  BenchAABB(&GetBoundingAABB, &GetBoundingAABB2);
+  // BenchAABB(&GetBoundingAABB, &GetBoundingAABB2);
 
   printf("OK\n");
   return 0;

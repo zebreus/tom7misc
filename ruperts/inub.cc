@@ -23,6 +23,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "atomic-util.h"
+#include "auto-histo.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "big-interval.h"
@@ -59,7 +60,7 @@
 
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
                  counter_bad_midpoint, counter_inside,
-                 counter_no_edges);
+                 counter_no_edges, counter_sausage_negative);
 
 static constexpr bool SELF_CHECK = false;
 
@@ -70,7 +71,7 @@ static constexpr int NUM_WORK_THREADS = 14;
 
 using vec2 = yocto::vec<double, 2>;
 
-static StatusBar status = StatusBar(15);
+static StatusBar status = StatusBar(16);
 
 using Volume = Hypercube::Volume;
 using Pt4Data = Hypercube::Pt4Data;
@@ -126,103 +127,6 @@ using Rejection = Hypercube::Rejection;
 
 // A set of those 7 parameters. Value semantics.
 using ParameterSet = SmallIntSet<NUM_DIMENSIONS>;
-
-// Compute a bounding ball for the patch on the unit sphere
-// given by the azimuth and angle (this is the view position).
-// The patch must be smaller than a hemisphere or you will
-// get a degenerate (but correct) result.
-static Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
-                                   const BigInt &inv_epsilon) {
-
-  // We need the chosen center to be in the convex hull of the patch.
-  // This is easy for small patches, but like elsewhere if the patch
-  // is a whole hemisphere we'd need to start checking other points.
-  // Just return a conservative but degenerate ball (full unit ball)
-  // if the intervals are too wide.
-  if (trig.azimuth.Width() > BigRat(1) || trig.angle.Width() > BigRat(1)) {
-    return Ballival(BigVec3(BigRat(0), BigRat(0), BigRat(0)),
-                    BigRat(1));
-  }
-
-  // We have an approximate center (AABB) because of the
-  // transcendental functions. We have our choice of center
-  // for the bounding ball that we create, though! So
-  // we just use the midpoint of this tiny interval.
-  // Uncertainty essentially gets transferred into the
-  // radius.
-  //
-  // Informally, this point is on the unit sphere, and then we
-  // are guaranteed that the ball contains the entire patch
-  // (because it is not hemispherical).
-  // This will also be true if we are reasonably close to the
-  // sphere (which this will be) but there's a proof obligation
-  // to revisit here.
-  BigVec3 center = BigVec3(
-      (trig.mid_sin_an * trig.mid_cos_az).Midpoint(),
-      (trig.mid_sin_an * trig.mid_sin_az).Midpoint(),
-      trig.mid_cos_an.Midpoint());
-
-  // Find a squared radius that will include all the corners.
-  BigRat max_sqdist(0);
-
-  // Compute corners for the patch. These are tight bounds
-  // on the sine and cosine of each corner, ordered as lb, ub.
-  std::array<SinCos, 2> sin_cos_az;
-  std::array<SinCos, 2> sin_cos_an;
-
-  sin_cos_az[0] =
-    SinCos(Bigival::Sin(trig.azimuth.LB(), inv_epsilon),
-           Bigival::Cos(trig.azimuth.LB(), inv_epsilon));
-  sin_cos_az[1] =
-    SinCos(Bigival::Sin(trig.azimuth.UB(), inv_epsilon),
-           Bigival::Cos(trig.azimuth.UB(), inv_epsilon));
-
-  sin_cos_an[0] =
-    SinCos(Bigival::Sin(trig.angle.LB(), inv_epsilon),
-           Bigival::Cos(trig.angle.LB(), inv_epsilon));
-  sin_cos_an[1] =
-    SinCos(Bigival::Sin(trig.angle.UB(), inv_epsilon),
-           Bigival::Cos(trig.angle.UB(), inv_epsilon));
-
-  // The corners of the patch are the furthest away from the
-  // chosen center. The furthest of these will determine the
-  // radius.
-  for (const SinCos &az : sin_cos_az) {
-    for (const SinCos &an : sin_cos_an) {
-      // The location of the corner.
-      Vec3ival corner(an.sine * az.cosine, an.sine * az.sine, an.cosine);
-
-      // Distance to the actual center.
-      // PERF: We could do a bit less computation here because we are
-      // only using the upper bound.
-      Bigival dx = corner.x - center.x;
-      Bigival dy = corner.y - center.y;
-      Bigival dz = corner.z - center.z;
-      Bigival sqdist = dx.Squared() + dy.Squared() + dz.Squared();
-
-      max_sqdist = BigRat::Max(max_sqdist, sqdist.UB());
-    }
-  }
-
-  return Ballival(std::move(center), std::move(max_sqdist));
-}
-
-// Like TransformPointTo2D(
-//    FrameFromViewPos(ViewFromSpherical(azimuth, angle)), v)
-// but producing a tighter AABB.
-static Vec2ival TransformVec(const ViewBoundsTrig &trig,
-                             const BigVec3 &v) {
-  // x = dot(v, view_frame_x_axis)
-  // view_frame_x_axis = (-sin(az), cos(az), 0)
-  Bigival px = trig.az.sine * -v.x + trig.az.cosine * v.y;
-
-  // y = dot(v, view_frame_y_axis)
-  // view_frame_y_axis = (-cos(an)cos(az), -cos(an)sin(az), sin(an))
-  Bigival py = -trig.an.cosine * (trig.az.cosine * v.x + trig.az.sine * v.y) +
-    trig.an.sine * v.z;
-
-  return Vec2ival(std::move(px), std::move(py));
-}
 
 // Note: Here we have the dependency problem. This one might be
 // solvable with somewhat straightforward analysis. I think what we
@@ -1170,8 +1074,6 @@ struct Hypersolver {
       discs.reserve(inner_hull.size());
     }
 
-    const BigRat BIAS = BigRat(3, 2);
-
     RotTrig rot_trig(inner_rot, inv_epsilon);
 
     double disc_time_here = 0.0;
@@ -1353,28 +1255,7 @@ struct Hypersolver {
           if (!get_stats) break;
         }
 
-        // Or is the disc outside?
-        #if 0
-        Timer disc_outside_timer;
-        const bool is_disc_outside =
-          IsDiscOutsideEdge(disc, edge, cross_va_vb);
-        disc_outside_time_here += disc_outside_timer.Seconds();
-        if (is_disc_outside) {
-          Rejection pt5;
-          pt5.reason = POINT_OUTSIDE5;
-          pt5.data = {Pt5Data({
-                .edge = (int8_t)start,
-                .point = (int8_t)inner_hull_idx,
-                .bias = BIAS,
-              })};
-          proved = {std::move(pt5)};
-
-          if (!get_stats) break;
-        }
-
-        #else
-
-        // Sausage style
+        // Or can we find a disc that's outside?
         if (sausage.has_value()) {
           const Sausage &s = sausage.value();
           Timer sausage_endpoint_timer;
@@ -1392,6 +1273,8 @@ struct Hypersolver {
 
           if (endpoints_outside) {
             // Compute full sausage disc.
+
+            const BigRat BIAS = BigRat(3, 2);
 
             // XXX try multiple bias values!
             Timer sausage_full_timer;
@@ -1414,6 +1297,10 @@ struct Hypersolver {
               proved = {std::move(pt6)};
 
               if (!get_stats) break;
+            } else {
+              // Failed to find a bias despite the endpoints being
+              // outside!
+              counter_sausage_negative++;
             }
 
             if (get_stats) {
@@ -1421,10 +1308,10 @@ struct Hypersolver {
               discs.emplace_back(inner_hull_idx, std::move(disc));
             }
 
+
           }
         }
 
-        #endif
       }
 
       if (proved.has_value() && !get_stats) break;
@@ -2142,6 +2029,15 @@ struct Hypersolver {
                                ipart, fpart);
           };
 
+
+        std::string bias_histo = [&]{
+            AutoHisto::Histo h = bias_count.GetHisto(12);
+            return std::format("{}|{}|{}",
+                               h.min,
+                               bias_count.UnlabeledHoriz(12),
+                               h.max);
+          }();
+
         status.Status(
             AWHITE("——————————[")
             ACYAN("{} {}")
@@ -2152,6 +2048,8 @@ struct Hypersolver {
             "{}\n"
             // Rejection reason histo
             "{}\n"
+            // Bias histo
+            "Bias: {}\n"
             // Volume-based progress
             "{}Full vol: {:.5f}  in vol: {:.5f}  out vol: {:.5f}  ppm: {}\n"
             // Basic counts
@@ -2173,13 +2071,14 @@ struct Hypersolver {
             "{} loop\n"
             // Quality stats
             AORANGE("⊗") "mid: {}  "
-            // AORANGE("⊗") "disc: {}  "
+            AORANGE("⊗") "∫: {}  "
             "In: {}   AABB eff.: {}  dd: {}\n"
             "{}\n", // bar
             outer_index, inner_index,
             splitcount,
             Hypercube::VolumeString(volume),
             rr,
+            bias_histo,
             self_check_warning,
             full_volume_d, in_volume_d, volume_outscope, ppm,
             FormatNum(counter_processed.Read()),
@@ -2198,6 +2097,7 @@ struct Hypersolver {
             ColorPct(sausage_full_time / process_time),
             ColorPct(loop_time / process_time),
             FormatNum(counter_bad_midpoint.Read()),
+            FormatNum(counter_sausage_negative.Read()),
             FormatNum(counter_inside.Read()),
             eff_str, dd_str,
             progress);
@@ -2379,6 +2279,15 @@ struct Hypersolver {
           case OUTSIDE_INNER_PATCH_BALL:
             volume_outscope += vol;
             break;
+
+          case POINT_OUTSIDE5:
+          case POINT_OUTSIDE6:
+            if (const Pt5Data *pt5 =
+                std::get_if<Pt5Data>(&imp->rejection.data)) {
+              bias_count.Observe(pt5->bias.ToDouble());
+            }
+            break;
+
           default:
             volume_proved += vol;
             // Accumulate in place, since we get many small ticks.
@@ -2656,14 +2565,6 @@ struct Hypersolver {
     CHECK(IsHullConvex(mesh.vertices, hull));
     // Must contain the origin.
     CHECK(PointInPolygon(vec2{0, 0}, mesh.vertices, hull));
-
-    /*
-    printf("Hull:\n");
-    for (int p : hull) {
-      vec2 v = mesh.vertices[p];
-      printf("  (%.4f, %.4f),\n", v.x, v.y);
-    }
-    */
   }
 
   // For each triangle in the triangle fan (using the vertices at
@@ -2764,6 +2665,8 @@ struct Hypersolver {
 
   std::unordered_map<RejectionReason, int64_t> rejection_count;
   int64_t times_split[NUM_DIMENSIONS] = {};
+
+  AutoHisto bias_count = AutoHisto(10000);
 
   // Pair of (volume proved, timestamp) for recent ticks.
   // Timestamp is from run_timer.

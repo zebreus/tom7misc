@@ -65,6 +65,8 @@ struct Frame3ival {
       return x;
     }
   }
+
+  std::string ToString() const;
 };
 
 // Vec2 where each component is an interval.
@@ -94,7 +96,7 @@ struct Vec2ival {
   }
 };
 
-// Small Fixed-size matrices stored in column major format.
+// Small fixed-size matrices stored in column major format.
 struct Mat3ival {
   // left column
   Vec3ival x = {Bigival(1), Bigival(0), Bigival(0)};
@@ -273,8 +275,6 @@ struct SinCos {
   Bigival cosine;
 };
 
-// Probably to intervals.h?
-//
 // We work with spherical coordinates (azimuth/angle intervals) to
 // represent the bounds on the outer and inner view positions.
 // Various operations will want to have Sin/Cos of these angles,
@@ -411,6 +411,13 @@ Vec3ival ViewFromSpherical(const ViewBoundsTrig &trig);
 Bigival DotProductWithView(const ViewBoundsTrig &trig,
                            const BigVec3 &v);
 
+// Compute a bounding ball for the patch on the unit sphere
+// given by the azimuth and angle (this is the view position).
+// The patch must be smaller than a hemisphere or you will
+// get a degenerate (but correct) result.
+Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
+                            const BigInt &inv_epsilon);
+
 // Rotate the point v_in by rot and translate it by tx,ty.
 // Since v_in is an AABB and rot is an interval, the resulting
 // shape here is a rectangle swept along a circular arc. We
@@ -444,12 +451,28 @@ inline Vec2ival TransformPointTo2D(const Frame3ival &frame,
   return Vec2ival(std::move(v3.x), std::move(v3.y));
 }
 
+// Like TransformPointTo2D(
+//    FrameFromViewPos(ViewFromSpherical(azimuth, angle)), v)
+// but producing a tighter AABB.
+inline Vec2ival TransformVec(const ViewBoundsTrig &trig,
+                             const BigVec3 &v) {
+  // x = dot(v, view_frame_x_axis)
+  // view_frame_x_axis = (-sin(az), cos(az), 0)
+  Bigival px = trig.az.sine * -v.x + trig.az.cosine * v.y;
+
+  // y = dot(v, view_frame_y_axis)
+  // view_frame_y_axis = (-cos(an)cos(az), -cos(an)sin(az), sin(an))
+  Bigival py = -trig.an.cosine * (trig.az.cosine * v.x + trig.az.sine * v.y) +
+    trig.an.sine * v.z;
+
+  return Vec2ival(std::move(px), std::move(py));
+}
+
 // view pos must be unit length, and moreover, the origin can't be
-// included (or approached) in the interval. The view positions are
-// naturally unit length, but their interval approximations (AABBs)
-// can easily include the origin if the angles subtended are more than
-// a hemisphere, for example. So below we eagerly split if the angle
-// is not already small.
+// included (or approached) in the interval. Careful: The view
+// positions are naturally unit length, but their interval
+// approximations (AABBs) can easily include the origin if the angles
+// subtended are more than a hemisphere, for example.
 //
 // This also requires that the z-axis is not included in the view interval.
 Frame3ival FrameFromViewPos(const Vec3ival &view,
