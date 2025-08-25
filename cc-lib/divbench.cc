@@ -6,12 +6,12 @@
 #include <vector>
 #include <utility>
 #include <cstdint>
-#include <cstdio>
 #include <bit>
 
-#include "timer.h"
 #include "ansi.h"
+#include "base/print.h"
 #include "crypt/lfsr.h"
+#include "timer.h"
 
 auto PushFactor = [](std::vector<std::pair<uint64_t, int>> *factors,
                      uint64_t b) {
@@ -126,15 +126,15 @@ static double Bench() {
     for (const auto &[x, y] : factors) sum += x + y;
   }
   double sec = timer.Seconds();
-  printf("%llu %s\n",
-         sum,
-         ANSI::Time(sec).c_str());
+  Print("{} {}\n",
+        sum,
+        ANSI::Time(sec));
   return sec;
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
-  printf("Begin.\n");
+  Print("Begin.\n");
   Bench();
 
   return 0;

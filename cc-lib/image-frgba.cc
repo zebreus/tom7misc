@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "color-util.h"
 #include "image.h"
 #include "tinyexr.h"
@@ -22,12 +23,11 @@ ImageFRGBA::ImageFRGBA(const std::vector<float> &rgbaf,
 ImageFRGBA::ImageFRGBA(const float *rgbaf,
                        int64 width, int64 height) :
   width(width), height(height) {
-  printf("%lld x %lld x 4 = %lld\n", width, height, width * height * 4);
+  // printf("%lld x %lld x 4 = %lld\n", width, height, width * height * 4);
   rgba.resize(width * height * 4);
   for (int64 idx = 0; idx < width * height * 4; idx++) {
     rgba[idx] = rgbaf[idx];
   }
-  printf("hi\n");
 }
 
 ImageFRGBA::ImageFRGBA(int64 width, int64 height) :
@@ -90,21 +90,19 @@ ImageFRGBA *ImageFRGBA::LoadFromMemory(const unsigned char *data, size_t size) {
 
   if (LoadEXRWithLayerFromMemory(
           &out_rgba, &width, &height, data, size, nullptr, &err) < 0) {
-    if (err != nullptr) printf("Err: %s\n", err);
+    if (err != nullptr) Print("Err: {}\n", err);
     return nullptr;
   }
 
-  printf("%d x %d\n", width, height);
+  // Print("{} x {}\n", width, height);
 
   if (width <= 0 || height <= 0) {
-    if (err != nullptr) printf("Err: %s\n", err);
+    if (err != nullptr) Print("Err: {}\n", err);
     return nullptr;
   }
 
   ImageFRGBA *ret = new ImageFRGBA(out_rgba, width, height);
-  printf("ok?\n");
   free(out_rgba);
-  printf("freeed\n");
 
   return ret;
 }

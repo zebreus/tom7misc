@@ -1,5 +1,6 @@
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 
 #include <cstdio>
@@ -20,10 +21,15 @@ static void TestFormat() {
   #endif
 }
 
+static void TestPrint() {
+  Print("You should see 42: {}\n", 42);
+}
+
 int main(int argc, char **argv) {
 
   TestPrintf();
   TestFormat();
+  TestPrint();
 
   printf("OK\n");
   return 0;

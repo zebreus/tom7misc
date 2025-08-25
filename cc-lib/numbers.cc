@@ -4,13 +4,13 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <optional>
 #include <tuple>
 #include <utility>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "montgomery64.h"
 
 static constexpr bool VERBOSE = false;
@@ -35,7 +35,7 @@ ReferenceExtendedGCD64(int64_t a, int64_t b) {
 std::tuple<int64_t, int64_t, int64_t>
 OldExtendedGCD64Internal(int64_t a, int64_t b) {
   if (VERBOSE)
-    printf("gcd(%lld, %lld)\n", a, b);
+    Print("gcd({}, {})\n", a, b);
 
   a = abs(a);
   b = abs(b);
@@ -53,14 +53,14 @@ OldExtendedGCD64Internal(int64_t a, int64_t b) {
   int64_t beta = b;
 
   if (VERBOSE) {
-    printf("Alpha: %lld, Beta: %lld\n", alpha, beta);
+    Print("Alpha: {}, Beta: {}\n", alpha, beta);
   }
 
   int64_t u = 1, v = 0, s = 0, t = 1;
 
   if (VERBOSE) {
-    printf("2Loop %lld = %lld alpha + %lld beta | "
-           "%lld = %lld alpha + %lld beta\n",
+    Print("2Loop {} = {} alpha + {} beta | "
+           "{} = {} alpha + {} beta\n",
            a, u, v, b, s, t);
   }
 
@@ -73,7 +73,7 @@ OldExtendedGCD64Internal(int64_t a, int64_t b) {
   }
 
   int azero = std::countr_zero<uint64_t>(a);
-  printf("azero: %d\n", azero);
+  Print("azero: {}\n", azero);
   if (azero > 0) {
 
     int uvzero = std::countr_zero<uint64_t>(u | v);
@@ -87,8 +87,8 @@ OldExtendedGCD64Internal(int64_t a, int64_t b) {
 
     int rzero = azero - all_zero;
     if (VERBOSE)
-      printf("azero %d uvzero %d all_zero %d rzero %d\n",
-             azero, uvzero, all_zero, rzero);
+      Print("azero {} uvzero {} all_zero {} rzero {}\n",
+            azero, uvzero, all_zero, rzero);
 
     for (int i = 0; i < rzero; i++) {
       // PERF: The first time through, we know we will
@@ -105,9 +105,9 @@ OldExtendedGCD64Internal(int64_t a, int64_t b) {
 
   while (a != b) {
     if (VERBOSE) {
-      printf("Loop %lld = %lld alpha + %lld beta | "
-             "%lld = %lld alpha + %lld beta\n",
-             a, u, v, b, s, t);
+      Print("Loop {} = {} alpha + {} beta | "
+            "{} = {} alpha + {} beta\n",
+            a, u, v, b, s, t);
     }
 
     if (SELF_CHECK) {
@@ -148,7 +148,7 @@ OldExtendedGCD64Internal(int64_t a, int64_t b) {
 
     // two:
     if (b < a) {
-      // printf("Swap.\n");
+      // Print("Swap.\n");
       std::swap(a, b);
       std::swap(s, u);
       std::swap(t, v);
@@ -386,7 +386,7 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
   static constexpr bool SELF_CHECK = false;
 
   if (VERBOSE) {
-    printf("Sqrt(%llu) mod %llu\n", base, prime);
+    Print("Sqrt({}) mod {}\n", base, prime);
   }
 
   if (prime == 2) {
@@ -400,13 +400,13 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
 
   // Compute Euler criteria. a^(p-1) / 2 must be 1.
   if (VERBOSE) {
-    printf("%llu^%llu mod %llu\n", base, (prime - 1) >> 1, prime);
+    Print("{}^{} mod {}\n", base, (prime - 1) >> 1, prime);
   }
   Montgomery64 rm = rep.Pow(basem, (prime - 1) >> 1);
   uint64_t r = rep.ToInt(rm);
   if (r != 1) {
     if (VERBOSE) {
-      printf("Euler criteria is %llu\n", r);
+      Print("Euler criteria is {}\n", r);
     }
     // But as a special case, the sqrt(0) is always 0.
     if (base == 0) return {0};
@@ -419,7 +419,7 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
     // subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
 
     if (VERBOSE) {
-      printf("Prime & 3 == 3\n");
+      Print("Prime & 3 == 3\n");
     }
     // Empirically, this branch isn't entered. It must fail
     // the residue test or something?
@@ -441,13 +441,13 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
     }
 
     if (VERBOSE)
-      printf("aux5 %llu = aux6 %llu\n",
-             base,
-             rep.ToInt(aux6));
+      Print("aux5 {} = aux6 {}\n",
+            base,
+            rep.ToInt(aux6));
 
     if ((prime & 7) == 5) {
       if (VERBOSE)
-        printf("prime & 7 == 5.\n");
+        Print("prime & 7 == 5.\n");
 
       // prime mod 8 = 5: use Atkin's method for modular square roots.
       // Step 1. v <- (2u)^((p-5)/8) mod p
@@ -459,7 +459,7 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
       uint64_t q = (prime - 5) >> 3;
 
       if (VERBOSE)
-        printf("q: %llu\n", q);
+        Print("q: {}\n", q);
 
       // 2u
       const Montgomery64 aux7 = rep.Add(aux6, aux6);
@@ -467,8 +467,8 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
       // At this moment aux7 is v in Montgomery notation.
 
       if (VERBOSE)
-        printf("before step2: aux7 %llu aux8 %llu\n",
-               rep.ToInt(aux7), rep.ToInt(aux8));
+        Print("before step2: aux7 {} aux8 {}\n",
+              rep.ToInt(aux7), rep.ToInt(aux8));
 
       // Step 2.
       // v^2
@@ -478,7 +478,7 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
       aux9 = rep.Mult(aux7, aux9);
 
       if (VERBOSE)
-        printf("aux9 before step3: %llu\n", rep.ToInt(aux9));
+        Print("aux9 before step3: {}\n", rep.ToInt(aux9));
 
       // Step 3.
       // i-1
@@ -491,7 +491,7 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
     } else {
 
       if (VERBOSE)
-        printf("prime & 7 == %llu\n", prime & 7);
+        Print("prime & 7 == {}\n", prime & 7);
 
       // prime = 1 (mod 8). Use Shanks' method for modular square roots.
       // Step 1. Select e >= 3, q odd such that p = 2^e * q + 1.
@@ -521,7 +521,7 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
       } while (Jacobi64(x, prime) >= 0);
 
       if (VERBOSE)
-        printf("  x: %d  qq: %llu\n", x, qq);
+        Print("  x: {}  qq: {}\n", x, qq);
 
       // Step 3.
       // Get z <- x^q (mod p) in Montgomery notation.
@@ -543,18 +543,18 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
       Montgomery64 aux9 = rep.Mult(aux8, aux7);
 
       if (VERBOSE)
-        printf("  Z %llu aux7 %llu aux8 %llu aux9 %llu\n",
-               rep.ToInt(aux5),
-               rep.ToInt(aux7),
-               rep.ToInt(aux8),
-               rep.ToInt(aux9));
+        Print("  Z {} aux7 {} aux8 {} aux9 {}\n",
+              rep.ToInt(aux5),
+              rep.ToInt(aux7),
+              rep.ToInt(aux8),
+              rep.ToInt(aux9));
 
       // Step 5
       while (!rep.Eq(aux9, rep.One())) {
         // memcmp(aux9, params->R1.data(), NumberLengthBytes) != 0
 
         if (VERBOSE)
-          printf("  Start loop aux9=%llu\n", rep.ToInt(aux9));
+          Print("  Start loop aux9={}\n", rep.ToInt(aux9));
 
         // Step 6
         int k = 0;
@@ -567,9 +567,8 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
         // memcmp(aux10, params->R1.data(), NumberLengthBytes) != 0)
 
         if (VERBOSE)
-          printf(
-              "    r %d k %d aux5 %llu aux10 %llu\n",
-              r, k, rep.ToInt(aux5), rep.ToInt(aux10));
+          Print("    r {} k {} aux5 {} aux10 {}\n",
+                r, k, rep.ToInt(aux5), rep.ToInt(aux10));
 
         // Step 7
         // d
@@ -579,7 +578,7 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
           aux10 = rep.Mult(aux10, aux10);
         }
         if (VERBOSE)
-          printf("    aux10 %llu\n", rep.ToInt(aux10));
+          Print("    aux10 {}\n", rep.ToInt(aux10));
 
         // y
         aux5 = rep.Mult(aux10, aux10);
@@ -590,10 +589,9 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
         aux9 = rep.Mult(aux9, aux5);
 
         if (VERBOSE)
-        printf(
-            "    aux5 %llu aux8 %llu aux9 %llu aux10 %llu\n",
-            rep.ToInt(aux5), rep.ToInt(aux8),
-            rep.ToInt(aux9), rep.ToInt(aux10));
+        Print("    aux5 {} aux8 {} aux9 {} aux10 {}\n",
+              rep.ToInt(aux5), rep.ToInt(aux8),
+              rep.ToInt(aux9), rep.ToInt(aux10));
       }
       to_convert = aux8;
     }
@@ -606,7 +604,7 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
     // get the call to Reduce. We skip the multiplication.
     uint64_t res = rep.ToInt(to_convert);
     if (VERBOSE)
-      printf("  returning %llu\n", res);
+      Print("  returning {}\n", res);
     return {res};
   }
 }
@@ -616,7 +614,7 @@ bool IsSquareModP(uint64_t base, uint64_t prime) {
   static constexpr bool SELF_CHECK = false;
 
   if (VERBOSE) {
-    printf("IsSquare(%llu) mod %llu\n", base, prime);
+    Print("IsSquare({}) mod {}\n", base, prime);
   }
 
   if (SELF_CHECK) {

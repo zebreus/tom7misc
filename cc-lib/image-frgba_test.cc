@@ -5,6 +5,7 @@
 #include <cmath>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "image.h"
 
 #define CHECK_FEQ(f1, f2) do {                  \
@@ -37,7 +38,7 @@ static void Trivial() {
 // in (they're huge) -- we should generate them with tinyexr
 // on the fly instead
 static void TestLoad() {
-  printf("test-load\n");
+  Print("test-load\n");
   const char *FILENAME = "sample.exr";
   ImageFRGBA *fimg = ImageFRGBA::Load(FILENAME);
   CHECK(fimg != nullptr) << FILENAME << " (it's not checked in "
@@ -45,16 +46,16 @@ static void TestLoad() {
   ImageRGBA img = fimg->ToRGBA();
   img.Save("image-frgba-test-sample.png");
   delete fimg;
-  printf("done test-load\n");
+  Print("done test-load\n");
 }
 
 static void TestLoadHuge() {
-  printf("load-huge\n");
+  Print("load-huge\n");
   const char *FILENAME = "starmap_2020_64k.exr";
   ImageFRGBA *fimg = ImageFRGBA::Load(FILENAME);
   CHECK(fimg != nullptr) << FILENAME << " (it's not checked in "
     "so you need to find it somewhere).";
-  printf("Loaded %lld x %lld\n", fimg->Width(), fimg->Height());
+  Print("Loaded {} x {}\n", fimg->Width(), fimg->Height());
   delete fimg;
 }
 
@@ -67,6 +68,6 @@ int main(int argc, char **argv) {
 
   // XXX test something!
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

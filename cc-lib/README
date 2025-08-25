@@ -83,7 +83,9 @@ COPYING.
 
 Descriptions of some of the libraries, some of which are more-or-less
 verbatim imports:
-base/        Google "base" library, and parts of abseil. APACHE20 license.
+base/        Google "base" library, parts of abseil, and some other
+             stuff that I thought would be OK to depend on from
+             pretty much anywhere. APACHE20 license.
 sdl/         Utilities for my habits in SDL. Includes bitmap font rendering.
 jdksmidi/    Baroque but thorough MIDI library, GPL.
 city/        The excellent CityHash hash algorithm.

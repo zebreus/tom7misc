@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "re2/re2.h"
 #include "util.h"
 #include "zip.h"
@@ -126,7 +127,7 @@ struct BufferedFile {
 
     // Noticing we are at EOF for the first time?
     if (feof(f)) {
-      printf("EOF after %lld bytes\n", out_bytes);
+      Print("EOF after {} bytes\n", out_bytes);
       if constexpr (COMPRESSED) {
         CHECK(db->OutputSize() == 0);
       }
@@ -518,17 +519,16 @@ struct WikipediaImpl : public Wikipedia {
     RE2::GlobalReplace(body, "(?:\u2014)", "--");
     // Fancy single quotes
     RE2::GlobalReplace(body, "(?:\u2018|\u2019)", "\'");
-
   }
 
   void PrintStats() override {
-    printf("Total articles %lld\n"
-           "No title: %lld\n"
-           "No body: %lld\n",
-           total_articles,
-           no_title,
-           no_body);
-    printf("File decompressed bytes: %lld\n", file.OutBytes());
+    Print("Total articles {}\n"
+          "No title: {}\n"
+          "No body: {}\n",
+          total_articles,
+          no_title,
+          no_body);
+    Print("File decompressed bytes: {}\n", file.OutBytes());
   }
 
   BufferedFile<COMPRESSED> file;

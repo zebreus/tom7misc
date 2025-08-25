@@ -4,9 +4,7 @@
 // with -march=native                Decoded 512 times in 20 sec = 25.6000 images/sec
 // with -march=native -O3 -flto      Decoded 512 times in 18 sec = 28.4444 images/sec
 
-#include <cinttypes>
 #include <cstdint>
-#include <cstdio>
 #include <ctime>
 #include <format>
 #include <tuple>
@@ -15,6 +13,7 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "image.h"
 #include "randutil.h"
 #include "stb_image.h"
@@ -41,7 +40,7 @@ std::tuple<int, int, int, int> RandBox(ArcFour *rc) {
 
 static void BenchmarkPNG() {
   // Prepare a test image.
-  printf("Prep image...\n");
+  Print("Prep image...\n");
   ImageRGBA image(WIDTH, HEIGHT);
   ArcFour rc("benchmark");
 
@@ -53,7 +52,7 @@ static void BenchmarkPNG() {
     uint8 a = rc.Byte();
     const auto [x0, y0, x1, y1] = RandBox(&rc);
     if (0)
-      printf("Box %d, #%02x%02x%02x%02x %d,%d -> %d,%d\n",
+      Print("Box {}, #{:02x}{:02x}{:02x}{:02x} {},{} -> {},{}\n",
              i, r, g, b, a, x0, y0, x1, y1);
     for (int y = y0; y < y1; y++) {
       for (int x = x0; x < x1; x++) {
@@ -82,7 +81,7 @@ static void BenchmarkPNG() {
   const std::vector<uint8> imgbytes = image.SaveToVec();
   // CHECK(image.Save("deleteme.png"));
   // CHECK(image.SaveJPG("deleteme.jpg"));
-  printf("Image ready!\n");
+  Print("Image ready!\n");
 
   // Now decode a buncha times.
   const int64 start = time(nullptr);
@@ -95,10 +94,10 @@ static void BenchmarkPNG() {
     CHECK(h == HEIGHT);
     CHECK(comp == STBI_rgb_alpha);
     stbi_image_free(rgba);
-    if (i % 10 == 0) printf(".");
+    if (i % 10 == 0) Print(".");
   }
   const int64 took = time(nullptr) - start;
-  printf("Decoded %d times in %" PRIi64 " sec = %.4f images/sec\n",
+  Print("Decoded {} times in {} sec = {:.4f} images/sec\n",
          TIMES, took, (double)TIMES / took);
 }
 

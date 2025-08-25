@@ -86,6 +86,11 @@ See web_test.cc for example.
   #include <winsock2.h>
   #include <ws2tcpip.h>
   #include <windows.h>
+  #include <winerror.h>
+  #include <errhandlingapi.h>
+  #include <minwindef.h>
+  #include <inaddr.h>
+  #include <ws2ipdef.h>
 
   using ssize_t = int64_t;
   using sockettype = SOCKET;

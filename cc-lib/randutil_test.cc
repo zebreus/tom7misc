@@ -12,6 +12,7 @@
 
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 
 using namespace std;
 
@@ -67,13 +68,13 @@ static void TestShuffle(int n, double absolute_error) {
   double correct_prob = 1.0 / factorial(n);
   for (const auto &p : counts) {
     double observed_prob = p.second / (double)ITERS;
-    printf("%s: %" PRIi64 " (p = %.8f)\n", p.first.c_str(),
-           p.second, p.second / (double)ITERS);
+    Print("{}: {} (p = {:.8f})\n", p.first,
+          p.second, p.second / (double)ITERS);
     if (fabs(observed_prob - correct_prob) >
         absolute_error) {
-      printf(" (but wanted %.8f.) "
-             "... this is outside the allowed error "
-             "of %.8f.\n", correct_prob, absolute_error);
+      Print(" (but wanted {:.8f}.) "
+            "... this is outside the allowed error "
+            "of {:.8f}.\n", correct_prob, absolute_error);
       exit(-1);
     }
   }
@@ -86,5 +87,5 @@ int main(int argc, char **argv) {
   TestShuffle(4, 0.0005);
   TestShuffleArray();
 
-  printf("\nOK\n");
+  Print("\nOK\n");
 }

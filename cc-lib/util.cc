@@ -29,6 +29,8 @@
 #include <utility>
 #include <vector>
 
+#include "base/print.h"
+
 // Note: It is a design goal for this to only depend on the standard
 // library (not even base/*)!
 
@@ -221,12 +223,12 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
   }
 
   #if READFILE_DEBUG
-  printf("size_t is %d bytes, signed: %s\n",
-         sizeof (size_t), std::is_signed<size_t>::value ? "yes" : "no");
-  printf("stat %d:\n"
-         "  st_size: %llu\n (off_t is %d bytes, signed: %s)\n",
-         fd, (uint64)st.st_size, sizeof (st.st_size),
-         std::is_signed<decltype (st.st_size)>::value ? "yes" : "no");
+  Print("size_t is {} bytes, signed: {}\n",
+        sizeof (size_t), std::is_signed<size_t>::value ? "yes" : "no");
+  Print("stat {}:\n"
+        "  st_size: {}\n (off_t is {} bytes, signed: {})\n",
+        fd, (uint64)st.st_size, sizeof (st.st_size),
+        std::is_signed<decltype (st.st_size)>::value ? "yes" : "no");
   #endif
 
   T ret;
@@ -246,8 +248,8 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
   size_guess++;
 
   #if READFILE_DEBUG
-  printf("next_pos is %lld; size_guess is %lld.\n",
-         next_pos, size_guess);
+  Print("next_pos is {}; size_guess is {}.\n",
+        next_pos, size_guess);
   #endif
 
   // In optimistic cases where the size_guess is correct,
@@ -262,20 +264,20 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
       size_guess = next_pos + 16;
     }
     #if READFILE_DEBUG
-    printf("Resize buffer to %lld\n", size_guess);
+    Print("Resize buffer to {}\n", size_guess);
     #endif
 
     // Keep the buffer large enough to store what we think the actual
     // size is, so that we don't have to keep resizing it.
     if ((int64)ret.size() < size_guess) {
       #if READFILE_DEBUG
-      printf("Resize buffer %lld -> %lld\n", (int64)ret.size(), size_guess);
+      Print("Resize buffer {} -> {}\n", (int64)ret.size(), size_guess);
       #endif
       ret.resize(size_guess);
     } else {
       #if READFILE_DEBUG
-      printf("Buffer sized %lld; already big enough for guess %lld\n",
-             (int64)ret.size(), size_guess);
+      Print("Buffer sized {}; already big enough for guess {}\n",
+            (int64)ret.size(), size_guess);
       #endif
     }
 
@@ -292,7 +294,7 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
     const int64 read_size =
       std::min(size_guess - next_pos, MAX_READ_SIZE);
     #if READFILE_DEBUG
-    printf("Attempt to read %lld bytes\n", read_size);
+    Print("Attempt to read {} bytes\n", read_size);
     #endif
 
     // Bytes are required to be contiguous from C++11;
@@ -302,18 +304,18 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
     const size_t bytes_read =
       fread(&ret.front() + next_pos, 1, read_size, f);
     #if READFILE_DEBUG
-    printf("%lld bytes were read\n", (int64)bytes_read);
+    Print("{} bytes were read\n", (int64)bytes_read);
     #endif
 
     // We read exactly this many bytes.
     next_pos += bytes_read;
     #if READFILE_DEBUG
-    printf("Now next_pos is %lld\n", next_pos);
+    Print("Now next_pos is {}\n", next_pos);
     #endif
     if (feof(f)) {
       #if READFILE_DEBUG
-      printf("EOF. current ret size is %lld; resizing to %lld\n",
-             (int64)ret.size(), next_pos);
+      Print("EOF. current ret size is {}; resizing to {}\n",
+            (int64)ret.size(), next_pos);
       #endif
       // Should be no-op when we guessed correctly.
       ret.resize(next_pos);
@@ -326,7 +328,7 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
     // that the loop makes progress.
     if (bytes_read == 0) {
       #if READFILE_DEBUG
-      printf("No bytes read but not EOF?\n");
+      Print("No bytes read but not EOF?\n");
       #endif
       fclose(f);
       return {};
@@ -840,12 +842,6 @@ optional<double> Util::ParseDoubleOpt(std::string_view s) {
   string ss = NormalizeWhitespace(s);
   char *endptr = nullptr;
   double d = strtod(ss.c_str(), &endptr);
-#if 0
-  printf("[%s] %p + %zu = %p vs %p\n",
-         ss.c_str(),
-         ss.c_str(), ss.size(), ss.c_str() + ss.size(),
-         endptr);
-#endif
   if (endptr == ss.c_str() + ss.size()) {
     return make_optional(d);
   } else {
@@ -1181,8 +1177,6 @@ bool Util::MatchesWildcard(string_view wildcard_, string_view s) {
     }
   }
 
-  // printf("Normalized: %s\n", wildcard.c_str());
-
   // We think of the wildcard as a finite state machine; this gives
   // the set of states (as indices into the wildcard) that we
   // might be at.
@@ -1226,11 +1220,6 @@ bool Util::MatchesWildcard(string_view wildcard_, string_view s) {
     }
 
     pos = std::move(new_pos);
-    #if 0
-    printf("sc %c pos:", sc);
-    for (size_t x : pos) printf(" %d", (int)x);
-    printf("\n");
-    #endif
   }
 
   // Need to consume the entire wildcard, unless it
@@ -1314,7 +1303,7 @@ std::string Util::BackupFile(std::string_view src) {
     ctr *= 0xDECADE;
     ctr = std::rotr<uint64_t>(ctr, 11);
     newfile = std::string(src) + itos(ctr & 0x7FFFFFFF) + ".old";
-    printf("Try %s\n", newfile.c_str());
+    Print("Try {}\n", newfile);
   } while (Util::ExistsFile(newfile));
 
   if (!Util::RelocateFile(src, newfile))
@@ -1326,12 +1315,10 @@ bool Util::CopyFileBytes(std::string_view src, std::string_view dst) {
   std::string fsrc{src}, fdst{dst};
   FILE *s = fopen(fsrc.c_str(), "rb");
   if (!s) {
-    // fprintf(stderr, "Couldn't open %s for reading\n", src.c_str());
     return false;
   }
   FILE *d = fopen(fdst.c_str(), "wb");
   if (!d) {
-    // fprintf(stderr, "Couldn't open %s for writing\n", dst.c_str());
     fclose(s);
     return false;
   }

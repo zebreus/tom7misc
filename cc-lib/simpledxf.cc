@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -108,14 +109,11 @@ vector<SimpleDXF::Field> SimpleDXF::GetFields(const string &contents) {
 }
 
 string SimpleDXF::ValueString(const Value &value) {
-  char buf[64] = {};
   switch (value.type) {
   case ValueType::INT:
-    sprintf(buf, "%lld", value.i);
-    return buf;
+    return std::format("{}", value.i);
   case ValueType::FLOAT:
-    sprintf(buf, "%.17g", value.d);
-    return buf;
+    return std::format("{:.17g}", value.d);
   case ValueType::STRING:
     return value.s;
   default:

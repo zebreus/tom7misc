@@ -14,6 +14,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "crypt/lfsr.h"
 #include "randutil.h"
@@ -24,7 +25,7 @@ using namespace std;
 string FTOS(const std::vector<std::pair<uint64_t, int>> &fs) {
   string s;
   for (const auto &[b, i] : fs) {
-    StringAppendF(&s, "%llu^%d ", b, i);
+    AppendFormat(&s, "{}^{} ", b, i);
   }
   return s;
 }
@@ -48,12 +49,12 @@ static void OptimizeLimit() {
       }
     }
     double sec = timer.Seconds();
-    printf("%d: %s%s\n", limit,
-           ANSI::Time(sec).c_str(), sec < best_sec ? APURPLE(" *") : "");
+    Print("{}: {}{}\n", limit,
+          ANSI::Time(sec), sec < best_sec ? APURPLE(" *") : "");
     if (sec < best_sec) best_sec = sec;
   }
 
-  printf("%llu\n", sum);
+  Print("{}\n", sum);
 }
 #endif
 
@@ -311,7 +312,7 @@ static void TestPrimeFactors() {
     }
   }
   double lfsr_sec = lfsr_timer.Seconds();
-  printf("500k via LFSR OK (%s)\n", ANSI::Time(lfsr_sec).c_str());
+  Print("500k via LFSR OK ({})\n", ANSI::Time(lfsr_sec));
 
   // Carmichael numbers > 100k.
   for (uint64_t n : {
@@ -400,7 +401,7 @@ static void TestPrimeFactors() {
   }
 #endif
 
-  printf("TestPrimeFactors " AGREEN("OK") "\n");
+  Print("TestPrimeFactors " AGREEN("OK") "\n");
 }
 
 static void BenchSqrt() {
@@ -418,9 +419,9 @@ static void BenchSqrt() {
     }
   }
   double seconds = timer.Seconds();
-  printf("Result %llx\n", result);
-  printf("Sqrts %.3f seconds.\n", seconds);
-  printf("-------------------\n");
+  Print("Result {:x}\n", result);
+  Print("Sqrts {:.3f} seconds.\n", seconds);
+  Print("-------------------\n");
 }
 
 static void BenchFactorize() {
@@ -433,7 +434,7 @@ static void BenchFactorize() {
       for (const auto &[p, e] : factors) result += p * e;
     }
   }
-  printf("Factored 100k one hundred times, %.3fs\n", timer.Seconds());
+  Print("Factored 100k one hundred times, {:.3f}s\n", timer.Seconds());
 
   // Now some larger ones.
   for (uint64_t num :
@@ -459,12 +460,12 @@ static void BenchFactorize() {
            29387401978, 2374287337, 9391919, 4474741071,
            18374, 1927340972, 29292922, 131072, 7182818}) {
     auto factors = Factorization::Factorize(num);
-    printf("%llu: %s\n", num, FTOS(factors).c_str());
+    Print("{}: {}\n", num, FTOS(factors));
     for (const auto &[p, e] : factors) result += p * e;
   }
   double seconds = timer.Seconds();
-  printf("Result %llx\n", result);
-  printf("Factored the list in %.3f seconds.\n", seconds);
+  Print("Result {:x}\n", result);
+  Print("Factored the list in {:.3f} seconds.\n", seconds);
 }
 
 static constexpr array<uint32_t, 1000> PRIMES = {
@@ -587,7 +588,7 @@ static void TestIsPrime() {
     }
   }
 
-  printf("TestIsPrime " AGREEN("OK") "\n");
+  Print("TestIsPrime " AGREEN("OK") "\n");
 }
 
 template<size_t N>
@@ -597,8 +598,8 @@ static void PrintGaps(const std::array<uint32_t, N> &primes) {
   for (int i = 1; i < N; i++) {
     int gap = primes[i] - primes[i - 1];
     CHECK(gap > 0 && gap < 256);
-    printf("%d,", gap);
-    if (i % 29 == 0) printf("\n");
+    Print("{},", gap);
+    if (i % 29 == 0) Print("\n");
   }
 }
 
@@ -616,8 +617,8 @@ static void ProfileFactorize() {
     for (const auto &[p, e] : factors) result += p * e;
   }
 
-  printf("[%llx], Factored %d numbers, %.3fs\n",
-         result, TIMES, timer.Seconds());
+  Print("[{:x}], Factored {} numbers, {:.3f}s\n",
+        result, TIMES, timer.Seconds());
 }
 
 static void TestNextPrime() {
@@ -643,7 +644,7 @@ static void TestSimpleFactorize() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
-  printf("Test factorization...\n");
+  Print("Test factorization...\n");
 
   // PrintGaps(PRIMES);
   // return 0;
@@ -667,5 +668,5 @@ int main(int argc, char **argv) {
 
   // ProfileFactorize();
 
-  printf("OK\n");
+  Print("OK\n");
 }

@@ -27,8 +27,9 @@
 
 #include <cstdio>
 #include <cstring>
-#include <cinttypes>
 #include <ctime>
+
+#include "base/print.h"
 
 static constexpr bool DEBUG_MINIZ = false;
 
@@ -2443,15 +2444,17 @@ tinfl_status tinfl_decompress(tinfl_decompressor *r, const mz_uint8 *pIn_buf_nex
     if (((out_buf_size_mask + 1) & out_buf_size_mask) || (pOut_buf_next < pOut_buf_start))
     {
       if (DEBUG_MINIZ) {
-        printf("%p - %p + %zu - 1\n",
-               pOut_buf_next, pOut_buf_start, (size_t)*pOut_buf_size);
-        printf("%zu + %" PRIi64 " - 1\n", (size_t)(pOut_buf_next - pOut_buf_start),
-               (int64_t)*pOut_buf_size);
-        printf("%zu, %p < %p\n",
-               (size_t)out_buf_size_mask, pOut_buf_next, pOut_buf_start);
+        Print("{} - {} + {} - 1\n",
+              (void*)pOut_buf_next,
+              (void*)pOut_buf_start, (size_t)*pOut_buf_size);
+        Print("{} + {} - 1\n", (size_t)(pOut_buf_next - pOut_buf_start),
+              (int64_t)*pOut_buf_size);
+        Print("{}, {} < {}\n",
+              (size_t)out_buf_size_mask,
+              (void*)pOut_buf_next, (void*)pOut_buf_start);
       }
-        *pIn_buf_size = *pOut_buf_size = 0;
-        return TINFL_STATUS_BAD_PARAM;
+      *pIn_buf_size = *pOut_buf_size = 0;
+      return TINFL_STATUS_BAD_PARAM;
     }
 
     pTrees[0] = r->m_tree_0;
@@ -2786,15 +2789,17 @@ tinfl_status tinfl_decompress(tinfl_decompressor *r, const mz_uint8 *pIn_buf_nex
                         }
 
                         if (DEBUG_MINIZ) {
-                        printf(
-                            "buf_start: %p  buf_end: %p\n"
-                            "Write %p <- (%d - %d) & %d = %p\n",
-                            pOut_buf_start, pOut_buf_end,
-                            pOut_buf_cur,
+                        Print(
+                            "buf_start: {}  buf_end: {}\n"
+                            "Write {} <- ({} - {}) & {} = {}\n",
+                            (void*)pOut_buf_start, (void*)pOut_buf_end,
+                            (void*)pOut_buf_cur,
                             (int)dist_from_out_buf_start,
                             dist,
                             (int)out_buf_size_mask,
-                            &pOut_buf_start[(dist_from_out_buf_start - dist) & out_buf_size_mask]);
+                            (void*)&pOut_buf_start[
+                                (dist_from_out_buf_start - dist) &
+                                out_buf_size_mask]);
                         }
 
                         *pOut_buf_cur++ = pOut_buf_start[(dist_from_out_buf_start++ - dist) & out_buf_size_mask];
@@ -2893,8 +2898,8 @@ common_exit:
     r->m_counter = counter;
     r->m_num_extra = num_extra;
     if (DEBUG_MINIZ) {
-      printf("Saving dist_from_out_buf_start = %d\n",
-             (int)dist_from_out_buf_start);
+      Print("Saving dist_from_out_buf_start = {}\n",
+            (int)dist_from_out_buf_start);
     }
     r->m_dist_from_out_buf_start = dist_from_out_buf_start;
     *pIn_buf_size = pIn_buf_cur - pIn_buf_next;

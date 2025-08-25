@@ -1,10 +1,12 @@
 #include "arcfour.h"
 
-#include "base/logging.h"
 #include <stdio.h>
 #include <cstdint>
 #include <string>
 
+#include "base/do-not-optimize.h"
+#include "base/logging.h"
+#include "base/print.h"
 #include "timer.h"
 
 using namespace std;
@@ -25,11 +27,12 @@ static void BenchConstruct() {
     result += rc.Byte();
   }
   double seconds = timer.Seconds();
-  printf("Result: %llx\n", result);
+  Print("Result: {:x}\n", result);
+  DoNotOptimize(result);
   CHECK(result == 0xd36b15846cc1c15bULL);
-  printf("Construct %lld in %.3fs\n"
-         "%.3f kc/sec\n", NUM_CONSTRUCT, seconds,
-         NUM_CONSTRUCT / (seconds * 1000.0));
+  Print("Construct {} in {:.3f}s\n"
+        "{:.3f} kc/sec\n", NUM_CONSTRUCT, seconds,
+        NUM_CONSTRUCT / (seconds * 1000.0));
 }
 
 static uint64_t Rand64(ArcFour *rc) {
@@ -56,17 +59,18 @@ static void Bench64() {
     result ^= Rand64(&rc);
   }
   double seconds = timer.Seconds();
-  printf("Result: %llx\n", result);
+  DoNotOptimize(result);
+  Print("Result: {:x}\n", result);
   // CHECK(result == 0xd36b15846cc1c15bULL);
-  printf("Sample %lld in %.3fs\n"
-         "%.3f Msamples/sec\n", NUM_SAMPLES, seconds,
-         NUM_SAMPLES / (seconds * 1000000.0));
+  Print("Sample {} in {:.3f}s\n"
+        "{:.3f} Msamples/sec\n", NUM_SAMPLES, seconds,
+        NUM_SAMPLES / (seconds * 1000000.0));
 }
 
 int main(int argc, char **argv) {
   BenchConstruct();
   Bench64();
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }
 

@@ -425,7 +425,6 @@ template<class F>
 void UnParallelComp2D(int64_t num1, int64_t num2,
                       const F &f,
                       int max_concurrency_) {
-  printf("%lld x %lld\n", num1, num2);
   for (int64_t y = 0; y < num2; y++) {
     for (int64_t x = 0; x < num1; x++) {
       (void)f(x, y);

@@ -4,7 +4,6 @@
 
 #include "util.h"
 
-#include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -16,6 +15,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 
 using namespace std;
 
@@ -65,10 +65,6 @@ static constexpr char NONEXISTENT_FILE[] =
 // This test uses its source code as test data, so don't
 // mess with the lines that tell you to keep them, duh.
 static void TestReadFiles(const char *argv0) {
-  /*
-  printf("argv[0] = [%s]. BinaryDir: %s\n",
-         argv0, Util::BinaryDir(argv0).c_str());
-  */
   std::string self = Util::DirPlus(Util::BinaryDir(argv0), "util_test.cc");
 
   const string reference = SlowReadFile(self);
@@ -213,10 +209,6 @@ static void TestSplitToLines() {
 
 static void TestTokens() {
   auto IsSpace = [](char c) { return c == ' ' || c == '\n'; };
-  /*
-  for (const string s : Util::Tokens(" \n hello  world\n\n", IsSpace))
-    printf("[%s]\n", s.c_str());
-  */
   CHECK_EQ((vector<string>{"hello", "world"}),
            Util::Tokens(" \n hello  world\n\n", IsSpace));
   CHECK_EQ((vector<string>{}),
@@ -717,10 +709,10 @@ static void TestFormatTime() {
   // TODO: Check something about it.
   // We can't just test for a particular string, though;
   // we don't want the test to depend on the current time zone!
-  printf("The current time: %" PRIi64 " = [%s]\n",
-         tt,
-         Util::FormatTime("%Y-%m-%d, %H:%M:%S",
-                          tt).c_str());
+  Print("The current time: {} = [{}]\n",
+        tt,
+        Util::FormatTime("%Y-%m-%d, %H:%M:%S",
+                         tt).c_str());
 }
 
 static void TestParseBinary() {
@@ -816,7 +808,7 @@ int main(int argc, char **argv) {
   TestFileOf();
   TestForEachLineInString();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }
 

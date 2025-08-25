@@ -5,8 +5,9 @@
 #include <cstdio>
 
 #include "base/logging.h"
-#include "timer.h"
+#include "base/print.h"
 #include "crypt/lfsr.h"
+#include "timer.h"
 
 using int64 = int64_t;
 
@@ -40,14 +41,14 @@ static void BenchBlendPixel() {
   }
   double sec = timer.Seconds();
 
-  printf("BlendPixel: %lld pixels in %.3f sec =\n"
-         "%.3f Mp/sec\n", NUM_PIXELS, sec,
-         NUM_PIXELS / (sec * 1000000.0));
+  Print("BlendPixel: {} pixels in {:.3f} sec =\n"
+        "{:.3f} Mp/sec\n", NUM_PIXELS, sec,
+        NUM_PIXELS / (sec * 1000000.0));
 
   image.Save("bench.png");
   uint64_t result = ImageHash(image);
   CHECK(result == 0x5cf6c52db1b2bd29ULL);
-  printf("Result: %llx\n", result);
+  Print("Result: {:x}\n", result);
 }
 
 static void BenchClear32() {
@@ -62,15 +63,15 @@ static void BenchClear32() {
   }
 
   double sec = timer.Seconds();
-  printf("Clear32: %lld clears in %.3f sec =\n"
-         "%.3f Kc/sec\n", NUM_CLEARS, sec,
-         NUM_CLEARS / (sec * 1000.0));
+  Print("Clear32: {} clears in {:.3f} sec =\n"
+        "{:.3f} Kc/sec\n", NUM_CLEARS, sec,
+        NUM_CLEARS / (sec * 1000.0));
 }
 
 int main(int argc, char **argv) {
   BenchBlendPixel();
   BenchClear32();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

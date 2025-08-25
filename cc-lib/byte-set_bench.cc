@@ -6,6 +6,7 @@
 #include "timer.h"
 
 #include "base/do-not-optimize.h"
+#include "base/print.h"
 #include "byte-set.h"
 
 static constexpr int OUTER = 10000;
@@ -29,8 +30,8 @@ static void BenchSizeSIMD() {
     total_sec += timer.Seconds();
   }
 
-  printf("Total time (SIMD): %s\n",
-         ANSI::Time(total_sec).c_str());
+  Print("Total time (SIMD): {}\n",
+        ANSI::Time(total_sec));
 }
 
 [[maybe_unused]] [[deprecated]]
@@ -51,8 +52,8 @@ static void BenchSizeASM() {
     total_sec += timer.Seconds();
   }
 
-  printf("Total time (ASM): %s\n",
-         ANSI::Time(total_sec).c_str());
+  Print("Total time (ASM): {}\n",
+        ANSI::Time(total_sec));
 }
 
 template<class BS>
@@ -91,16 +92,16 @@ static void BenchByteSet(const char *which) {
   }
 
   const double total_sec = timer.Seconds();
-  printf("Total time (%s): %s\n",
-         which,
-         ANSI::Time(total_sec).c_str());
+  Print("Total time ({}): {}\n",
+        which,
+        ANSI::Time(total_sec));
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   #if 0
-  printf("\nBenchmarking %lld Size calls:\n",
+  Print("\nBenchmarking {} Size calls:\n",
          int64_t(OUTER) * int64_t(INNER));
   BenchSizeSIMD();
   BenchSizeASM();
