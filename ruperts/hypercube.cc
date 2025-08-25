@@ -1,9 +1,9 @@
 
 #include "hypercube.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <format>
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -18,6 +18,7 @@
 #include "big-interval.h"
 #include "big-polyhedra.h"
 #include "bignum/big.h"
+#include "threadutil.h"
 #include "util.h"
 
 static constexpr bool SELF_CHECK = false;
@@ -39,9 +40,15 @@ const char *ParameterName(int param) {
   }
 }
 
-bool Hypercube::Empty() const {
+Hypercube::Hypercube() : bounds(MakeStandardBounds()), root(0),
+                         nodes({Node(Leaf{.completed = 0})}) {
+}
+
+bool Hypercube::Empty() {
+  MutexLock ml(&mu);
+  if (nodes.size() > 1) return false;
   // Must be an incomplete leaf to be empty.
-  if (const Leaf *leaf = std::get_if<Leaf>(root.get())) {
+  if (const Leaf *leaf = std::get_if<Leaf>(&nodes[0])) {
     return leaf->completed == 0;
   }
   return false;
@@ -199,7 +206,10 @@ void Hypercube::FromString(std::string_view contents) {
   // The nodes are in post order, so we process them with
   // a stack:
 
-  std::vector<std::shared_ptr<Hypercube::Node>> stack;
+  std::vector<Hypercube::Node> new_nodes;
+  new_nodes.reserve(std::count(contents.begin(), contents.end(), '\n'));
+
+  std::vector<int64_t> stack;
 
   Util::ForEachLineInString(
       contents,
@@ -215,12 +225,12 @@ void Hypercube::FromString(std::string_view contents) {
           line.remove_prefix(1);
 
         if (cmd == 'E') {
-          auto leaf =
-            std::make_shared<Hypercube::Node>(Leaf{
-                .completed = 0,
-                .rejection = {.reason = REJECTION_UNKNOWN},
-              });
-          stack.push_back(std::move(leaf));
+          const int64_t idx = new_nodes.size();
+          new_nodes.emplace_back(Leaf{
+              .completed = 0,
+              .rejection = {.reason = REJECTION_UNKNOWN},
+            });
+          stack.push_back(idx);
 
         } else if (cmd == 'L') {
           int64_t comp = Util::ParseInt64(Util::Chop(&line), -1);
@@ -229,12 +239,12 @@ void Hypercube::FromString(std::string_view contents) {
           std::optional<Rejection> rej = ParseRejection(line);
           CHECK(rej.has_value()) << raw_line;
 
-          auto leaf =
-            std::make_shared<Hypercube::Node>(Leaf{
-                .completed = comp,
-                .rejection = rej.value(),
-              });
-          stack.push_back(std::move(leaf));
+          const int64_t idx = new_nodes.size();
+          new_nodes.emplace_back(Leaf{
+              .completed = comp,
+              .rejection = rej.value(),
+            });
+          stack.push_back(idx);
 
         } else if (cmd == 'S') {
           int axis = Util::ParseInt64(Util::Chop(&line), -1);
@@ -244,17 +254,17 @@ void Hypercube::FromString(std::string_view contents) {
           CHECK(stack.size() >= 2) << "Saw split node, so there "
             "should be two children in the stack!";
 
-          auto split =
-            std::make_shared<Hypercube::Node>(Split{
-                .axis = axis,
-                .split = std::move(split_pt),
-                .left = std::move(stack[stack.size() - 2]),
-                .right = std::move(stack[stack.size() - 1]),
-              });
+          const int64_t idx = new_nodes.size();
+          new_nodes.emplace_back(Internal{
+              .axis = axis,
+              .split = std::move(split_pt),
+              .left = std::move(stack[stack.size() - 2]),
+              .right = std::move(stack[stack.size() - 1]),
+            });
 
           stack.pop_back();
           stack.pop_back();
-          stack.push_back(std::move(split));
+          stack.push_back(idx);
 
         } else {
           LOG(FATAL) << "Bad line in cube file: " << raw_line;
@@ -264,48 +274,43 @@ void Hypercube::FromString(std::string_view contents) {
   CHECK(stack.size() == 1) << "Expected a single root node to "
     "result.";
   root = std::move(stack[0]);
+  nodes = std::move(new_nodes);
   stack.clear();
 }
 
 
-void Hypercube::ToDisk(std::string_view filename) const {
+void Hypercube::ToDisk(std::string_view filename) {
+  MutexLock ml(&mu);
   FILE *f = fopen(std::string(filename).c_str(), "wb");
   CHECK(f != nullptr);
 
-  using StackElt = std::variant<
-    std::string,
-    std::shared_ptr<Hypercube::Node>
-    >;
+  using StackElt = std::variant<std::string, int64_t>;
 
-
-  std::vector<StackElt> stack = {StackElt(root)};
+  std::vector<StackElt> stack = {StackElt(0)};
 
   while (!stack.empty()) {
     StackElt &elt = stack.back();
     if (std::string *s = std::get_if<std::string>(&elt)) {
-      fprintf(f, "%s", s->c_str());
+      fwrite(s->data(), 1, s->size(), f);
       stack.pop_back();
 
     } else {
-      auto *p = std::get_if<std::shared_ptr<Hypercube::Node>>(&elt);
-      CHECK(p != nullptr);
-      std::shared_ptr<Hypercube::Node> node = std::move(*p);
+      const int64_t idx = std::get<int64_t>(elt);
       stack.pop_back();
+      const Hypercube::Node &node = nodes[idx];
 
-      CHECK(node.get() != nullptr);
-
-      if (Leaf *leaf = std::get_if<Leaf>(node.get())) {
+      if (const Leaf *leaf = std::get_if<Leaf>(&node)) {
         if (leaf->completed) {
           std::string line =
             std::format("L {} {}\n",
                         leaf->completed,
                         SerializeRejection(leaf->rejection));
-          fprintf(f, "%s", line.c_str());
+          fwrite(line.data(), 1, line.size(), f);
         } else {
           fprintf(f, "E\n");
         }
       } else {
-        Split *split = std::get_if<Split>(node.get());
+        const Internal *split = std::get_if<Internal>(&node);
         CHECK(split != nullptr) << "Must be leaf or split.";
 
         std::string line = std::format("S {} {}\n",
@@ -321,28 +326,30 @@ void Hypercube::ToDisk(std::string_view filename) const {
   fclose(f);
 }
 
-std::vector<std::pair<Hypercube::Volume, std::shared_ptr<Hypercube::Node>>>
-Hypercube::GetLeaves(double *volume_outscope, double *volume_proved) const {
+std::vector<std::pair<Hypercube::Volume, int64_t>>
+Hypercube::GetLeaves(double *volume_outscope, double *volume_proved) {
+  MutexLock ml(&mu);
   *volume_outscope = 0.0;
   *volume_proved = 0.0;
 
-  std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> leaves;
+  std::vector<std::pair<Volume, int64_t>> leaves;
 
-  std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> stack = {
+  std::vector<std::pair<Volume, int64_t>> stack = {
     {bounds, root}
   };
 
   while (!stack.empty()) {
     Volume volume;
-    std::shared_ptr<Hypercube::Node> node;
-    std::tie(volume, node) = std::move(stack.back());
+    int64_t node_idx = 0;
+    std::tie(volume, node_idx) = std::move(stack.back());
     stack.pop_back();
 
-    CHECK(node.get() != nullptr);
+    CHECK(node_idx >= 0 && node_idx < nodes.size());
+    const Node &node = nodes[node_idx];
 
-    if (Leaf *leaf = std::get_if<Leaf>(node.get())) {
+    if (const Leaf *leaf = std::get_if<Leaf>(&node)) {
       if (leaf->completed == 0) {
-        leaves.emplace_back(std::move(volume), node);
+        leaves.emplace_back(std::move(volume), node_idx);
       } else {
         const double dvol = Hypervolume(volume).ToDouble();
         switch (leaf->rejection.reason) {
@@ -357,7 +364,7 @@ Hypercube::GetLeaves(double *volume_outscope, double *volume_proved) const {
         }
       }
     } else {
-      Split *split = std::get_if<Split>(node.get());
+      const Internal *split = std::get_if<Internal>(&node);
       CHECK(split != nullptr) << "Must be leaf or split.";
 
       std::pair<Volume, Volume> vols =

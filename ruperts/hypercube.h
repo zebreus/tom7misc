@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -12,6 +13,7 @@
 
 #include "big-interval.h"
 #include "bignum/big.h"
+#include "threadutil.h"
 
 inline constexpr int OUTER_AZIMUTH = 0;
 inline constexpr int OUTER_ANGLE = 1;
@@ -51,6 +53,7 @@ inline constexpr int NUM_REJECTION_REASONS = 14;
 // Hypercube using big rationals. (It's actually a hyperrectangle
 // because the sides are not all the same length...)
 struct Hypercube {
+  Hypercube();
 
   // When the rejection reason is PT4, PT5, PT6, then we found a point
   // that is definitely on the wrong side of some edge.
@@ -61,7 +64,7 @@ struct Hypercube {
     int8_t point = -1;
   };
 
-  // Also for Pt6. Maybe should merge these when pt6 it is not
+  // Also for Pt6. Maybe should merge these when pt6 is not
   // experimental.
   struct Pt5Data {
     int8_t edge = -1;
@@ -78,11 +81,6 @@ struct Hypercube {
   // Represents a (hyper)rectangular volume within the search space.
   using Volume = std::vector<Bigival>;
 
-  Hypercube() :
-    bounds(MakeStandardBounds()) {
-    root.reset(new Node(Leaf{.completed = 0}));
-  }
-
   static std::string StandardFilename(
       uint64_t outer_code, uint64_t inner_code);
 
@@ -94,13 +92,13 @@ struct Hypercube {
   // leaves).
   static bool IsComplete(std::string_view contents);
 
-  bool Empty() const;
+  bool Empty();
 
-  void ToDisk(std::string_view filename) const;
+  void ToDisk(std::string_view filename);
 
-  struct Split;
+  struct Internal;
   struct Leaf;
-  using Node = std::variant<Split, Leaf>;
+  using Node = std::variant<Internal, Leaf>;
 
   struct Leaf {
     // If 0, no info yet. Otherwise, the timestamp when it was completed
@@ -113,12 +111,13 @@ struct Hypercube {
 
   // Internal node, which is a binary split along one of the parameter
   // axes.
-  struct Split {
+  struct Internal {
     // Which axis?
     int axis = 0;
     // left side is <, right side is >=.
     BigRat split;
-    std::shared_ptr<Node> left, right;
+    // Indices into the nodes vector.
+    int64_t left, right;
   };
 
   // Compute the "left" and "right" volumes that result from splitting
@@ -128,9 +127,9 @@ struct Hypercube {
 
   // Though we store the state as a tree, we mostly work with
   // a queue containing all of the unexplored leaves. Extract
-  // those.
-  std::vector<std::pair<Volume, std::shared_ptr<Hypercube::Node>>>
-  GetLeaves(double *volume_outscope, double *volume_proved) const;
+  // those as indices into the nodes vector.
+  std::vector<std::pair<Volume, int64_t>>
+  GetLeaves(double *volume_outscope, double *volume_proved);
 
   // The n-dimensional hypervolume of the cell.
   static BigRat Hypervolume(const Volume &vol);
@@ -140,9 +139,37 @@ struct Hypercube {
 
   static Volume MakeStandardBounds();
 
+  const Volume &Bounds() const { return bounds; }
+
+  // Copies.
+  Node GetNode(int64_t idx) {
+    MutexLock ml(&mu);
+    CHECK(idx >= 0 && idx < nodes.size());
+    return nodes[idx];
+  }
+
+  void SetNode(int64_t idx, Node node) {
+    MutexLock ml(&mu);
+    CHECK(idx >= 0 && idx < nodes.size());
+    nodes[idx] = std::move(node);
+  }
+
+  int64_t AddNode(Node node) {
+    MutexLock ml(&mu);
+    const int64_t idx = nodes.size();
+    nodes.push_back(std::move(node));
+    return idx;
+  }
+
+ private:
   // Full bounds of the search space.
   Volume bounds;
-  std::shared_ptr<Node> root;
+
+  // The nodes vector is protected by the mutex.
+  std::mutex mu;
+  int64_t root = 0;
+  // A flat representation.
+  std::vector<Node> nodes;
 };
 
 #endif

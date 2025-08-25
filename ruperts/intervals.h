@@ -36,6 +36,7 @@ inline Bigival Dot(const Vec3ival &a, const BigVec3 &b) {
 
 // PERF: I think we only need Rot3 for this task; the origin is always
 // zero. Can save ourselves some pointless addition and copying.
+// (But also this is no longer used in the main solver.)
 struct Frame3ival {
   Vec3ival x = {Bigival(1), Bigival(0), Bigival(0)};
   Vec3ival y = {Bigival(0), Bigival(1), Bigival(0)};
@@ -93,36 +94,6 @@ struct Vec2ival {
                         const Vec2ival &b) {
     return Vec2ival(Bigival::Union(a.x, b.x),
                     Bigival::Union(a.y, b.y));
-  }
-};
-
-// Small fixed-size matrices stored in column major format.
-struct Mat3ival {
-  // left column
-  Vec3ival x = {Bigival(1), Bigival(0), Bigival(0)};
-  // middle column
-  Vec3ival y = {Bigival(0), Bigival(1), Bigival(0)};
-  // right column
-  Vec3ival z = {Bigival(0), Bigival(0), Bigival(1)};
-
-  Vec3ival &operator[](int i) {
-    switch (i) {
-    case 0: return x;
-    case 1: return y;
-    case 2: return z;
-    default:
-      LOG(FATAL) << "Index out of bounds.";
-    }
-  }
-
-  const Vec3ival &operator[](int i) const {
-    switch (i) {
-    case 0: return x;
-    case 1: return y;
-    case 2: return z;
-    default:
-      LOG(FATAL) << "Index out of bounds.";
-    }
   }
 };
 
@@ -441,6 +412,11 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
 // This is guaranteed to be true if they do overlap. It can have false
 // positives if the intervals are wide.
 bool MightOverlap(const Discival &disc, const Vec2ival &aabb);
+
+// Dependency problems with this one. It's not used in the main
+// solver, though.
+Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
+                  const BigInt &inv_epsilon);
 
 // This can certainly work on Vec3ival, but our input data at this point
 // is a single point and this is in inner loops.

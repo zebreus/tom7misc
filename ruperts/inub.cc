@@ -55,8 +55,9 @@
 //  - split out core to library for verifier
 //  - note plane for out patch
 //  - try NiceSin/NiceCos for outer loops
-//  - try multiple bias parameters, or optimize
 //  - max chord method
+//  - better representation for hypercube (faster loading)
+//  - in filter, use corners
 
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
                  counter_bad_midpoint, counter_inside,
@@ -128,24 +129,6 @@ using Rejection = Hypercube::Rejection;
 // A set of those 7 parameters. Value semantics.
 using ParameterSet = SmallIntSet<NUM_DIMENSIONS>;
 
-// Note: Here we have the dependency problem. This one might be
-// solvable with somewhat straightforward analysis. I think what we
-// want to do is think of this as rotating an axis-aligned rectangle
-// (the 2D bounds) and then getting the axis-aligned rectangle that
-// contains that.
-// This is also one of the very last things we do, so it's plausible
-// that we could just do some geometric reasoning about the actual
-// rotated rectangle at this point.
-[[maybe_unused]]
-static Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
-                         const BigInt &inv_epsilon) {
-  Bigival sin_a = angle.Sin(inv_epsilon);
-  Bigival cos_a = angle.Cos(inv_epsilon);
-
-  return Vec2ival(v.x * cos_a - v.y * sin_a,
-                  v.x * sin_a + v.y * cos_a);
-}
-
 // Tom's Sausage Roll.
 // A swept disc creates a sausage shape. We try rejecting these
 // as outside by creating another bounding disc that includes
@@ -169,7 +152,6 @@ struct Sausage {
   Vec2ival tcenter_lb, tcenter_ub;
 };
 
-// Experimental; incomplete.
 std::optional<Sausage> GetSausage(
     Discival *disc,
     const RotTrig &rot_trig,
@@ -203,7 +185,6 @@ std::optional<Sausage> GetSausage(
   return std::make_optional(std::move(sausage));
 }
 
-// Experimental; incomplete.
 // Make a bounding disc from a sausage, given the bias.
 static Discival SausageDisc(
     const Sausage &sausage,
@@ -1274,25 +1255,23 @@ struct Hypersolver {
           if (endpoints_outside) {
             // Compute full sausage disc.
 
-            const BigRat BIAS = BigRat(3, 2);
-
-            // XXX try multiple bias values!
             Timer sausage_full_timer;
-            Discival disc = SausageDisc(
-                s, rot_trig, BIAS, inv_epsilon);
-
-            const bool is_disc_outside =
-              IsDiscOutsideEdge(disc, edge, cross_va_vb);
+            Discival debug_disc;
+            std::optional<BigRat> so =
+              GetBiasedSausage(s, rot_trig,
+                               edge, cross_va_vb,
+                               inv_epsilon,
+                               &debug_disc);
             sausage_full_time_here += sausage_full_timer.Seconds();
 
-            if (is_disc_outside) {
+            if (so.has_value()) {
               Rejection pt6;
               pt6.reason = POINT_OUTSIDE6;
               // Note: This reuses pt5 payload for now; it is the same.
               pt6.data = {Pt5Data({
                     .edge = (int8_t)start,
                     .point = (int8_t)inner_hull_idx,
-                    .bias = BIAS,
+                    .bias = std::move(so.value()),
                   })};
               proved = {std::move(pt6)};
 
@@ -1305,9 +1284,8 @@ struct Hypersolver {
 
             if (get_stats) {
               // Do this last so we can consume the disc.
-              discs.emplace_back(inner_hull_idx, std::move(disc));
+              discs.emplace_back(inner_hull_idx, std::move(debug_disc));
             }
-
 
           }
         }
@@ -1352,6 +1330,41 @@ struct Hypersolver {
     return res;
   }
 
+  std::optional<BigRat> GetBiasedSausage(
+      const Sausage &sausage,
+      const RotTrig &rot_trig,
+      const Vec2ival &outer_edge,
+      const Bigival &outer_cross_va_vb,
+      const BigInt &inv_epsilon,
+      Discival *debug_disc) {
+
+    Discival disc;
+    // Try multiple bias values. We could try optimizing the
+    // order here globally, or doing a move-to-front thing?
+    for (int numer : {6, 4, 8, 5}) {
+      BigRat bias = BigRat(numer, 4);
+
+      disc = SausageDisc(sausage, rot_trig, bias, inv_epsilon);
+
+      bool outside =
+        IsDiscOutsideEdge(disc, outer_edge, outer_cross_va_vb);
+
+      if (outside) {
+        if (debug_disc != nullptr) {
+          *debug_disc = std::move(disc);
+        }
+        return {bias};
+      }
+    }
+
+    // Save the last one we tried.
+    if (debug_disc != nullptr) {
+      *debug_disc = std::move(disc);
+    }
+
+    return std::nullopt;
+  }
+
   static int RandomParameterFromSet(ArcFour *rc, ParameterSet params) {
     CHECK(!params.Empty()) << "No dimensions to split on?";
     const int num = params.Size();
@@ -1367,7 +1380,7 @@ struct Hypersolver {
     if (params.Size() == 1) return params[0];
 
     auto InitialWidth = [&cube](int d) {
-        return cube.bounds[d].Width();
+        return cube.Bounds()[d].Width();
       };
 
     // Only consider dimensions actually in the set. Initialize
@@ -2122,7 +2135,7 @@ struct Hypersolver {
       hypercube->FromString(contents);
     }
 
-    full_volume = Hypercube::Hypervolume(hypercube->bounds);
+    full_volume = Hypercube::Hypervolume(hypercube->Bounds());
     full_volume_d = full_volume.ToDouble();
 
 
@@ -2150,7 +2163,7 @@ struct Hypersolver {
 
     for (;;) {
       Volume volume;
-      std::shared_ptr<Hypercube::Node> node;
+      int64_t node_idx = -1;
 
       {
         mu.lock();
@@ -2179,17 +2192,24 @@ struct Hypersolver {
 
           // Perhaps select at random?
           if (node_queue.size() > 8192) {
-            std::tie(volume, node) = std::move(node_queue.back());
+            std::tie(volume, node_idx) = std::move(node_queue.back());
             node_queue.pop_back();
           } else {
-            std::tie(volume, node) = std::move(node_queue.front());
+            std::tie(volume, node_idx) = std::move(node_queue.front());
             node_queue.pop_front();
           }
         }
         mu.unlock();
       }
 
-      CHECK(node.get() != nullptr);
+      // XXX we won't even use this, right? It's just a zero.
+      const Hypercube::Leaf leaf = [&]{
+          Hypercube::Node node = hypercube->GetNode(node_idx);
+          Hypercube::Leaf *leaf = std::get_if<Hypercube::Leaf>(&node);
+          CHECK(leaf != nullptr && leaf->completed == 0) << "Everything "
+            "in the queue should be an incomplete leaf.";
+          return std::move(*leaf);
+        }();
 
       MaybeStatus(volume);
 
@@ -2255,20 +2275,20 @@ struct Hypersolver {
 
       // Use the result to update the hypercube and queue.
       if (Impossible *imp = std::get_if<Impossible>(&res.result)) {
-        (void)imp;
-
         bool maybe_save_image = false;
 
         const double vol = Hypercube::Hypervolume(volume).ToDouble();
 
+        // Then mark the node as a leaf that has been ruled out.
+        hypercube->SetNode(
+            node_idx,
+            Hypercube::Node(Hypercube::Leaf{
+                .completed = time(nullptr),
+                .rejection = imp->rejection,
+              }));
+
         {
           MutexLock ml(&mu);
-          // Then mark the node as a leaf that has been ruled out.
-          Hypercube::Leaf *leaf = std::get_if<Hypercube::Leaf>(node.get());
-          CHECK(leaf != nullptr) << "Bug: We only expand leaves!";
-          leaf->completed = time(nullptr);
-          leaf->rejection = imp->rejection;
-
           counter_completed++;
 
           volume_done += vol;
@@ -2317,33 +2337,35 @@ struct Hypersolver {
 
         BigRat mid = SplitOn(volume, dim);
 
-        // status.Print("Split dim {}, which is {}", dim, ParameterName(dim));
-        Hypercube::Split split_node;
-        split_node.axis = dim;
-
         const Bigival &oldival = volume[dim];
         Volume left = volume, right = volume;
 
         // left side is <, right side is >=.
         left[dim] = Bigival(oldival.LB(), mid, oldival.IncludesLB(), false);
         right[dim] = Bigival(mid, oldival.UB(), true, oldival.IncludesUB());
-        split_node.split = std::move(mid);
 
         // Pending leaves.
-        split_node.left = std::make_shared<Hypercube::Node>(
-            Hypercube::Leaf());
-        split_node.right = std::make_shared<Hypercube::Node>(
-            Hypercube::Leaf());
+        const int64_t left_idx =
+          hypercube->AddNode(Hypercube::Node(Hypercube::Leaf()));
+        const int64_t right_idx =
+          hypercube->AddNode(Hypercube::Node(Hypercube::Leaf()));
+
+        hypercube->SetNode(node_idx,
+                           Hypercube::Node(
+                               Hypercube::Internal{
+                                 .axis = dim,
+                                 .split = std::move(mid),
+                                 .left = left_idx,
+                                 .right = right_idx,
+                               }));
 
         {
           MutexLock ml(&mu);
           times_split[dim]++;
 
           // Enqueue the leaves.
-          node_queue.emplace_back(std::move(left), split_node.left);
-          node_queue.emplace_back(std::move(right), split_node.right);
-
-          *node = Hypercube::Node(std::move(split_node));
+          node_queue.emplace_back(std::move(left), left_idx);
+          node_queue.emplace_back(std::move(right), right_idx);
         }
 
         counter_split++;
@@ -2648,7 +2670,8 @@ struct Hypersolver {
   std::unique_ptr<Hypercube> hypercube;
 
   // Work queue. (Could actually use work queue here!)
-  std::deque<std::pair<Volume, std::shared_ptr<Hypercube::Node>>> node_queue;
+  // Each element is an incomplete leaf with the given volume and index.
+  std::deque<std::pair<Volume, int64_t>> node_queue;
   // Need to keep track of the number that are currently being
   // processed by threads, since processing a node may or may
   // not insert new nodes into the queue. The node queue is only

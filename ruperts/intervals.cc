@@ -397,6 +397,15 @@ bool MightOverlap(const Discival &disc, const Vec2ival &aabb) {
   return min_dist_sq <= disc.radius_sq;
 }
 
+Vec2ival Rotate2D(const Vec2ival &v, const Bigival &angle,
+                  const BigInt &inv_epsilon) {
+  Bigival sin_a = angle.Sin(inv_epsilon);
+  Bigival cos_a = angle.Cos(inv_epsilon);
+
+  return Vec2ival(v.x * cos_a - v.y * sin_a,
+                  v.x * sin_a + v.y * cos_a);
+}
+
 BigRat ExpandSquaredRadius(const BigRat &radius_sq,
                            const BigRat &error_term,
                            const BigInt &inv_epsilon) {
