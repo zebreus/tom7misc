@@ -50,6 +50,13 @@ inline BigInt operator +(const BigInt &a, BigInt &&b) {
   return std::move(b);
 }
 
+// Need to cover the ambiguous case of tmp + tmp, even though
+// either one of the above would work.
+inline BigInt operator +(BigInt &&a, BigInt &&b) {
+  BigInt::PlusEq(a, b);
+  return std::move(a);
+}
+
 inline BigInt operator +(const BigInt &a, int64_t b) {
   return BigInt::Plus(a, BigInt{b});
 }

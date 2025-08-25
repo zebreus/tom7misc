@@ -3,6 +3,7 @@
 #include "bignum/big-overloads.h"
 
 #include <cstdio>
+#include <utility>
 
 #include "timer.h"
 #include "ansi.h"
@@ -84,6 +85,12 @@ static void TestBinaryOps() {
     CHECK(x % 2 == 1);
   }
 
+  {
+    // Check that we can add two temporaries (no ambiguity).
+    BigInt c = BigInt("123456789012384712304871978") +
+      BigInt("1038947598127349857171711710");
+    CHECK(c.ToString() == "1162404387139734569476583688");
+  }
 }
 
 static void TestCompareRat() {
