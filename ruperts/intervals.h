@@ -454,6 +454,8 @@ inline Vec2ival TransformPointTo2D(const Frame3ival &frame,
 // Like TransformPointTo2D(
 //    FrameFromViewPos(ViewFromSpherical(azimuth, angle)), v)
 // but producing a tighter AABB.
+//
+// As usual, the view cannot include the z axis.
 inline Vec2ival TransformVec(const ViewBoundsTrig &trig,
                              const BigVec3 &v) {
   // x = dot(v, view_frame_x_axis)

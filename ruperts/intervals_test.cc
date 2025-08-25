@@ -1108,6 +1108,133 @@ static void TestFrameFromViewPos() {
   printf("FrameFromViewPos OK.\n");
 }
 
+static void TestTransformVec() {
+  static constexpr bool VERBOSE = false;
+  BigInt inv_epsilon(1000000);
+  BigInt inv_epsilon_high("1000000000000000000000");
+
+  auto Check = [&](const Bigival &azimuth, const Bigival &angle,
+                   const BigVec3 &v) {
+      if (VERBOSE) {
+        Print("-------------------\n"
+              "Azimuth: {}\n"
+              "Angle: {}\n"
+              "v: {}\n",
+              azimuth.ToString(),
+              angle.ToString(),
+              VecString(v));
+      }
+
+      ViewBoundsTrig trig(azimuth, angle, inv_epsilon);
+
+      // Optimized version
+      Vec2ival result = TransformVec(trig, v);
+
+      // Naive version for comparison, but only if it's safe to run.
+      // It's unsafe if the angle interval contains a multiple of pi,
+      // which causes division by zero in FrameFromViewPos.
+      Bigival pi = Bigival::Pi(inv_epsilon);
+      CHECK(!(angle / pi).ContainsInteger());
+
+      Vec3ival viewpos_ival = ViewFromSpherical(trig);
+      Frame3ival frame_ival = FrameFromViewPos(viewpos_ival, inv_epsilon);
+      Vec2ival naive_result = TransformPointTo2D(frame_ival, v);
+
+      // The optimized result should be a sub-interval of the naive one,
+      // or else we should be getting a better bound by intersecting
+      // both approaches!
+      CHECK(result.x.LB() >= naive_result.x.LB() &&
+            result.x.UB() <= naive_result.x.UB())
+        << "Optimized x " << result.x.ToString()
+        << " is not a sub-interval of naive x "
+        << naive_result.x.ToString();
+      CHECK(result.y.LB() >= naive_result.y.LB() &&
+            result.y.UB() <= naive_result.y.UB())
+        << "Optimized y " << result.y.ToString()
+        << " is not a sub-interval of naive y "
+        << naive_result.y.ToString();
+
+      // Verify correctness by sampling. The result AABB must overlap with
+      // the high-precision AABB of any sample point.
+      Bigival pi_high = Bigival::Pi(inv_epsilon_high);
+      Sample(azimuth, [&](const BigRat &az_sample) {
+          Sample(angle, [&](BigRat an_sample) {
+
+              // Cannot compute this at the north/south poles.
+              CHECK(an_sample != 0);
+
+              if (VERBOSE) {
+                Print("az_sample: {}\n"
+                      "an_sample: {}\n",
+                      az_sample.ToString(),
+                      an_sample.ToString());
+              }
+
+              ViewBoundsTrig sample_trig(
+                  Bigival(az_sample), Bigival(an_sample), inv_epsilon_high);
+              Vec3ival viewpos_ival = ViewFromSpherical(sample_trig);
+
+              if (VERBOSE) {
+                Print("viewpos_ival: {}\n",
+                      viewpos_ival.ToString());
+              }
+
+              Frame3ival frame_ival =
+                FrameFromViewPos(viewpos_ival, inv_epsilon_high);
+              Vec2ival sample_point = TransformPointTo2D(frame_ival, v);
+
+              CHECK_OVERLAP_2D(result, sample_point);
+            });
+      });
+  };
+
+  // A typical small patch.
+  {
+    Bigival azimuth(BigRat(1, 10), BigRat(2, 10), true, true);
+    Bigival angle(BigRat(3, 10), BigRat(4, 10), true, true);
+    Check(azimuth, angle, BigVec3(BigRat(-1), BigRat(2), BigRat(3)));
+    Check(azimuth, angle, BigVec3(BigRat(1), BigRat(2), BigRat(3)));
+    Check(azimuth, angle, BigVec3(BigRat(2), BigRat(0), BigRat(0)));
+    Check(azimuth, angle, BigVec3(BigRat(0), BigRat(-1, 2), BigRat(0)));
+    Check(azimuth, angle, BigVec3(BigRat(0), BigRat(0), BigRat(1)));
+    Check(azimuth, angle, BigVec3(BigRat(0), BigRat(0), BigRat(0)));
+  }
+
+  // A patch that crosses the prime meridian near the equator.
+  {
+    Bigival azimuth(BigRat(-1, 10), BigRat(1, 10), true, true);
+    // Shifted angle away from the pole (z-axis).
+    Bigival angle(BigRat(14, 10), BigRat(16, 10), true, true);
+    Check(azimuth, angle, BigVec3(BigRat(5), BigRat(-8), BigRat(1)));
+    Check(azimuth, angle, BigVec3(BigRat(1, 2), BigRat(0), BigRat(0)));
+    Check(azimuth, angle, BigVec3(BigRat(3, 5), BigRat(1, 2), BigRat(-2)));
+  }
+
+  // A single point.
+  {
+    Bigival azimuth(BigRat(1, 7));
+    Bigival angle(BigRat(2, 7));
+    BigVec3 v(BigRat(1), BigRat(2), BigRat(3));
+    ViewBoundsTrig trig(azimuth, angle, inv_epsilon);
+
+    Vec2ival result = TransformVec(trig, v);
+    // For a singular point, the AABB should be very small,
+    // only reflecting the uncertainty in the trig functions.
+    CHECK(result.x.Width() < BigRat(BigInt(1), inv_epsilon));
+    CHECK(result.y.Width() < BigRat(BigInt(1), inv_epsilon));
+  }
+
+  // Open intervals.
+  {
+    Bigival azimuth(BigRat(1, 10), BigRat(2, 10), false, true);
+    Bigival angle(BigRat(3, 10), BigRat(4, 10), true, false);
+    Check(azimuth, angle, BigVec3(BigRat(1), BigRat(1), BigRat(1)));
+    Check(azimuth, angle, BigVec3(BigRat(0), BigRat(1), BigRat(0)));
+    Check(azimuth, angle, BigVec3(BigRat(0), BigRat(0), BigRat(-2)));
+  }
+
+  printf("TransformVec OK\n");
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -1121,6 +1248,7 @@ int main(int argc, char **argv) {
   TestTranslateDisc();
   TestSphericalPatchBall();
   TestFrameFromViewPos();
+  TestTransformVec();
 
   // BenchAABB(&GetBoundingAABB, &GetBoundingAABB2);
 
