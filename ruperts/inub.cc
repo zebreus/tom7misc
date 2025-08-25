@@ -56,7 +56,6 @@
 //  - note plane for out patch
 //  - try NiceSin/NiceCos for outer loops
 //  - max chord method
-//  - better representation for hypercube (faster loading)
 //  - in filter, use corners
 
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
@@ -491,6 +490,74 @@ struct Hypersolver {
     for (int i = 0; i < outer_hull.size(); i++)
       edge_points.push_back(all_points);
 
+    auto TryOneSample = [&](double outer_azimuth,
+                            double outer_angle,
+                            double inner_azimuth,
+                            double inner_angle,
+                            double inner_rot,
+                            double inner_x,
+                            double inner_y) {
+
+        const vec3 oviewpos = ViewFromSpherical(outer_azimuth, outer_angle);
+        const vec3 iviewpos = ViewFromSpherical(inner_azimuth, inner_angle);
+
+        const frame3 outer_frame = FrameFromViewPos(oviewpos);
+        const frame3 inner_frame = FrameFromViewPos(iviewpos);
+
+        // Plot hulls.
+        std::vector<vec2> outer_shadow =
+          TransformHull(outer_hull, outer_frame);
+
+        std::vector<vec2> inner_shadow =
+          TransformHull(inner_hull, inner_frame);
+
+        // And rotate.
+        RotateAndTranslate(inner_rot, inner_x, inner_y,
+                           &inner_shadow);
+
+        // Now check each remaining outer edge against each remaining
+        // sampled inner hull point.
+        for (int start = 0; start < edge_points.size(); start++) {
+          if (edge_points[start].Empty()) continue;
+
+          const vec2 &va = outer_shadow[start];
+          const vec2 &vb = outer_shadow[(start + 1) % outer_shadow.size()];
+
+          // Normalize the edge so that epsilon below does not depend on
+          // the edge's length.
+          vec2 edge = vb - va;
+          const double edge_len = length(edge);
+
+          // For tiny edges, always run the high-precision routine.
+          if (edge_len < 1.0e-6) [[unlikely]] {
+            // (nothing is ruled out)
+
+          } else {
+
+            edge /= edge_len;
+
+            for (int idx : edge_points[start]) {
+              const vec2 &v = inner_shadow[idx];
+
+              // Signed distance to edge.
+              const double dist = cross(edge, v - va);
+
+              // For our CCW hulls, a negative cross product means the
+              // point is on the "outside" of the edge, and so we should
+              // try to run the full test on that specific edge/point pair
+              // to prove this volume is impossible. We also include
+              // points that are close to the edge but appear (with
+              // floating point inaccuracy) on the inside.
+              if (dist <= 1.0e-9) {
+                // ok. Keep it.
+              } else {
+                edge_points[start].Remove(idx);
+              }
+            }
+          }
+        }
+      };
+
     // PERF: use corners of volume, since they are more likely to be
     // extremes.
     static constexpr int NUM_MASK_SAMPLES = 6;
@@ -505,64 +572,10 @@ struct Hypersolver {
       const double inner_x = SampleInterval(rc, volume[INNER_X]);
       const double inner_y = SampleInterval(rc, volume[INNER_Y]);
 
-      const vec3 oviewpos = ViewFromSpherical(outer_azimuth, outer_angle);
-      const vec3 iviewpos = ViewFromSpherical(inner_azimuth, inner_angle);
-
-      const frame3 outer_frame = FrameFromViewPos(oviewpos);
-      const frame3 inner_frame = FrameFromViewPos(iviewpos);
-
-      // Plot hulls.
-      std::vector<vec2> outer_shadow =
-        TransformHull(outer_hull, outer_frame);
-
-      std::vector<vec2> inner_shadow =
-        TransformHull(inner_hull, inner_frame);
-
-      // And rotate.
-      RotateAndTranslate(inner_rot, inner_x, inner_y,
-                         &inner_shadow);
-
-      // Now check each remaining outer edge against each remaining
-      // sampled inner hull point.
-      for (int start = 0; start < edge_points.size(); start++) {
-        if (edge_points[start].Empty()) continue;
-
-        const vec2 &va = outer_shadow[start];
-        const vec2 &vb = outer_shadow[(start + 1) % outer_shadow.size()];
-
-        // Normalize the edge so that epsilon below does not depend on
-        // the edge's length.
-        vec2 edge = vb - va;
-        const double edge_len = length(edge);
-
-        // For tiny edges, always run the high-precision routine.
-        if (edge_len < 1.0e-6) [[unlikely]] {
-          // (nothing is ruled out)
-
-        } else {
-
-          edge /= edge_len;
-
-          for (int idx : edge_points[start]) {
-            const vec2 &v = inner_shadow[idx];
-
-            // Signed distance to edge.
-            const double dist = cross(edge, v - va);
-
-            // For our CCW hulls, a negative cross product means the
-            // point is on the "outside" of the edge, and so we should
-            // try to run the full test on that specific edge/point pair
-            // to prove this volume is impossible. We also include
-            // points that are close to the edge but appear (with
-            // floating point inaccuracy) on the inside.
-            if (dist <= 1.0e-9) {
-              // ok. Keep it.
-            } else {
-              edge_points[start].Remove(idx);
-            }
-          }
-        }
-      }
+      TryOneSample(outer_azimuth, outer_angle,
+                   inner_azimuth, inner_angle,
+                   inner_rot,
+                   inner_x, inner_y);
     }
 
     // Now transpose.
