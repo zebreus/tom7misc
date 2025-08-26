@@ -77,12 +77,12 @@ struct SmallIntSet {
   inline int operator[](int idx) const;
 
   static SmallIntSet Intersection(const SmallIntSet &a,
-                                    const SmallIntSet &b) {
+                                  const SmallIntSet &b) {
     return SmallIntSet(a.bits & b.bits);
   }
 
   static SmallIntSet Union(const SmallIntSet &a,
-                             const SmallIntSet &b) {
+                           const SmallIntSet &b) {
     return SmallIntSet(a.bits | b.bits);
   }
 

@@ -11,7 +11,6 @@
 // parallel layers, but there also exists one with 7 layers and
 // 31 CASes.
 //
-//
 // Call FixedSort<N>(&arr).
 //
 // TODO: Especially when the argument is a tuple, it is useful
@@ -22,6 +21,7 @@
 // if there ways to coax the compiler.
 
 #include <cstddef>
+#include <tuple>
 #include <utility>
 
 #define CAS(a, b) do {                              \
@@ -30,30 +30,19 @@
   } while (0)
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  std::get<1>(*c);
-}
+requires (std::tuple_size_v<Cont> == 2)
 inline void FixedSort2(Cont *c, const Cmp &cmp) {
   CAS(0, 1);
 }
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<2>(*c);
-}
+requires (std::tuple_size_v<Cont> == 3)
 inline void FixedSort3(Cont *c, const Cmp &cmp) {
   CAS(0, 2); CAS(0, 1); CAS(1, 2);
 }
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<3>(*c);
-}
+requires (std::tuple_size_v<Cont> == 4)
 inline void FixedSort4(Cont *c, const Cmp &cmp) {
   CAS(0,2); CAS(1,3);
   // --
@@ -63,11 +52,7 @@ inline void FixedSort4(Cont *c, const Cmp &cmp) {
 }
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<4>(*c);
-}
+requires (std::tuple_size_v<Cont> == 5)
 inline void FixedSort5(Cont *c, const Cmp &cmp) {
   CAS(0,3); CAS(1,4);
   // --
@@ -81,11 +66,7 @@ inline void FixedSort5(Cont *c, const Cmp &cmp) {
 }
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<5>(*c);
-}
+requires (std::tuple_size_v<Cont> == 6)
 inline void FixedSort6(Cont *c, const Cmp &cmp) {
   CAS(0,5); CAS(1,3); CAS(2,4);
   // --
@@ -99,11 +80,7 @@ inline void FixedSort6(Cont *c, const Cmp &cmp) {
 }
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<6>(*c);
-}
+requires (std::tuple_size_v<Cont> == 7)
 inline void FixedSort7(Cont *c, const Cmp &cmp) {
   CAS(0,6); CAS(2,3); CAS(4,5);
   // --
@@ -119,11 +96,7 @@ inline void FixedSort7(Cont *c, const Cmp &cmp) {
 }
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<7>(*c);
-}
+requires (std::tuple_size_v<Cont> == 8)
 inline void FixedSort8(Cont *c, const Cmp &cmp) {
   CAS(0,2); CAS(1,3); CAS(4,6); CAS(5,7);
   // --
@@ -139,11 +112,7 @@ inline void FixedSort8(Cont *c, const Cmp &cmp) {
 }
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<8>(*c);
-}
+requires (std::tuple_size_v<Cont> == 9)
 inline void FixedSort9(Cont *c, const Cmp &cmp) {
   CAS(0,3); CAS(1,7); CAS(2,5); CAS(4,8);
   // --
@@ -161,11 +130,7 @@ inline void FixedSort9(Cont *c, const Cmp &cmp) {
 }
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<9>(*c);
-}
+requires (std::tuple_size_v<Cont> == 10)
 inline void FixedSort10(Cont *c, const Cmp &cmp) {
   CAS(0,8); CAS(1,9); CAS(2,7); CAS(3,5); CAS(4,6);
   // --
@@ -185,11 +150,7 @@ inline void FixedSort10(Cont *c, const Cmp &cmp) {
 }
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<10>(*c);
-}
+requires (std::tuple_size_v<Cont> == 11)
 inline void FixedSort11(Cont *c, const Cmp &cmp) {
   CAS(0,9); CAS(1,6); CAS(2,4); CAS(3,7); CAS(5,8);
   // --
@@ -211,11 +172,7 @@ inline void FixedSort11(Cont *c, const Cmp &cmp) {
 // With 39 CAS, 9 layers.
 // There also exists one with 40 CAS, 8 layers.
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<11>(*c);
-}
+requires (std::tuple_size_v<Cont> == 12)
 inline void FixedSort12(Cont *c, const Cmp &cmp) {
   CAS(0,8); CAS(1,7); CAS(2,6); CAS(3,11); CAS(4,10); CAS(5,9);
   // --
@@ -239,11 +196,7 @@ inline void FixedSort12(Cont *c, const Cmp &cmp) {
 // 45 CAS, 10 layers.
 // There also exists 46 CAS, 9 layers.
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<12>(*c);
-}
+requires (std::tuple_size_v<Cont> == 13)
 inline void FixedSort13(Cont *c, const Cmp &cmp) {
   CAS(0,12); CAS(1,10); CAS(2,9); CAS(3,7); CAS(5,11); CAS(6,8);
   // --
@@ -269,11 +222,7 @@ inline void FixedSort13(Cont *c, const Cmp &cmp) {
 // 51 CAS, 10 layers.
 // Also have 52 CAS, 9 layers.
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<13>(*c);
-}
+requires (std::tuple_size_v<Cont> == 14)
 inline void FixedSort14(Cont *c, const Cmp &cmp) {
   CAS(0,1); CAS(2,3); CAS(4,5); CAS(6,7); CAS(8,9); CAS(10,11); CAS(12,13);
   // --
@@ -299,11 +248,7 @@ inline void FixedSort14(Cont *c, const Cmp &cmp) {
 // 56 CAS, 10 layers.
 // Also exists: 57 CAS, 9 layers.
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<14>(*c);
-}
+requires (std::tuple_size_v<Cont> == 15)
 inline void FixedSort15(Cont *c, const Cmp &cmp) {
   CAS(1,2); CAS(3,10); CAS(4,14); CAS(5,8); CAS(6,13); CAS(7,12); CAS(9,11);
   // --
@@ -327,11 +272,7 @@ inline void FixedSort15(Cont *c, const Cmp &cmp) {
 }
 
 template<class Cont, class Cmp>
-requires requires (Cont *c) {
-  std::get<0>(*c);
-  // ...
-  std::get<15>(*c);
-}
+requires (std::tuple_size_v<Cont> == 16)
 inline void FixedSort16(Cont *c, const Cmp &cmp) {
   CAS(0,13); CAS(1,12); CAS(2,15); CAS(3,14); CAS(4,8); CAS(5,6);
   CAS(7,11); CAS(9,10);
@@ -364,6 +305,7 @@ inline void FixedSort16(Cont *c, const Cmp &cmp) {
 #undef CAS
 
 template<size_t N, class Cont, class Cmp>
+requires (std::tuple_size_v<Cont> == N)
 void FixedSort(Cont *c, const Cmp &cmp) {
   if constexpr (N <= 1) { return; }
   else if constexpr (N == 2) { FixedSort2(c, cmp); }
@@ -387,6 +329,7 @@ void FixedSort(Cont *c, const Cmp &cmp) {
 }
 
 template<size_t N, class Cont>
+requires (std::tuple_size_v<Cont> == N)
 void FixedSort(Cont *c) {
   using T = decltype(std::get<0>(*c));
   auto F = [](const T &a, const T &b) {

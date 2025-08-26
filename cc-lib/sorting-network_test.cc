@@ -1,15 +1,16 @@
 
 #include "sorting-network.h"
 
-#include <cstddef>
 #include <array>
+#include <cstddef>
 #include <cstdio>
-#include <tuple>
 #include <format>
+#include <tuple>
 
 #include "ansi.h"
-#include "base/logging.h"
 #include "arcfour.h"
+#include "base/logging.h"
+#include "base/print.h"
 #include "randutil.h"
 
 static void TestArray() {
@@ -68,13 +69,13 @@ struct TestN {
 
       for (int j = 1; j < (int)N; j++) {
         if (!(a[j - 1] <= a[j])) {
-          printf("Input:\n");
+          Print("Input:\n");
           for (int m = 0; m < (int)N; m++) {
-            printf("  %d\n", a_in[m]);
+            Print("  {}\n", a_in[m]);
           }
-          printf("Output:\n");
+          Print("Output:\n");
           for (int m = 0; m < (int)N; m++) {
-            printf("  %d\n", a[m]);
+            Print("  {}\n", a[m]);
           }
           LOG(FATAL) << "Not Sorted.\nSize " << N << " iter " << i;
         }
@@ -102,6 +103,6 @@ int main(int argc, char **argv) {
 
   CountDown<MAX_FIXED_SORT_SUPPORTED, TestN>();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }
