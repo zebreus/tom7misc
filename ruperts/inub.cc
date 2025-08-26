@@ -56,11 +56,12 @@
 //  - note plane for out patch
 //  - try NiceSin/NiceCos for outer loops
 //  - max chord method
-//  - in filter, use corners
+//  - generalize angle over arc center
 
 DECLARE_COUNTERS(counter_processed, counter_completed, counter_split,
                  counter_bad_midpoint, counter_inside,
-                 counter_no_edges, counter_sausage_negative);
+                 counter_no_edges, counter_sausage_negative,
+                 counter_everything_filtered);
 
 static constexpr bool SELF_CHECK = false;
 
@@ -464,17 +465,24 @@ struct Hypersolver {
     explicit Impossible(Rejection r) : rejection(r) {}
   };
 
-  double SampleInterval(ArcFour *rc, const Bigival &ival) {
-    double lb = ival.LB().ToDouble();
-    double ub = ival.UB().ToDouble();
+  static double SampleInterval(ArcFour *rc,
+                               const std::pair<double, double> &ival) {
+    const auto &[lb, ub] = ival;
     double width = ub - lb;
     return std::clamp(lb + RandDouble(rc) * width, lb, ub);
+  }
+
+  static double IntervalBits(const std::pair<double, double> &ival,
+                             int bit) {
+    return bit ? ival.first : ival.second;
   }
 
   struct EdgePointMask {
     // Vector is size of inner hull (points to test).
     // Each set contains the edges to test for that point (often empty).
     std::vector<SmallIntSet<64>> point_edges;
+    // The union of all the sets above.
+    SmallIntSet<64> all_edges;
   };
 
   EdgePointMask GetEdgePointMask(ArcFour *rc, const Volume &volume) {
@@ -489,6 +497,12 @@ struct Hypersolver {
     edge_points.reserve(outer_hull.size());
     for (int i = 0; i < outer_hull.size(); i++)
       edge_points.push_back(all_points);
+
+    std::array<std::pair<double, double>, NUM_DIMENSIONS> dvolume;
+    for (int i = 0; i < NUM_DIMENSIONS; i++) {
+      dvolume[i].first = volume[i].LB().ToDouble();
+      dvolume[i].second = volume[i].UB().ToDouble();
+    }
 
     auto TryOneSample = [&](double outer_azimuth,
                             double outer_angle,
@@ -558,19 +572,31 @@ struct Hypersolver {
         }
       };
 
-    // PERF: use corners of volume, since they are more likely to be
+    // Use corners of the volume, since they are more likely to produce
     // extremes.
+    for (int s = 0; s < 128; s++) {
+      TryOneSample(IntervalBits(dvolume[OUTER_AZIMUTH], s & (1 << 0)),
+                   IntervalBits(dvolume[OUTER_ANGLE], s & (1 << 1)),
+                   IntervalBits(dvolume[INNER_AZIMUTH], s & (1 << 2)),
+                   IntervalBits(dvolume[INNER_ANGLE], s & (1 << 3)),
+                   IntervalBits(dvolume[INNER_ROT], s & (1 << 4)),
+                   IntervalBits(dvolume[INNER_X], s & (1 << 5)),
+                   IntervalBits(dvolume[INNER_Y], s & (1 << 6)));
+    }
+
+    // PERF: Detect if we have eliminated everything?
+
+    // Should we even bother with the random samples?
     static constexpr int NUM_MASK_SAMPLES = 6;
     for (int s = 0; s < NUM_MASK_SAMPLES; s++) {
-      // PERF: Detect if we have eliminated everything?
 
-      const double outer_azimuth = SampleInterval(rc, volume[OUTER_AZIMUTH]);
-      const double outer_angle = SampleInterval(rc, volume[OUTER_ANGLE]);
-      const double inner_azimuth = SampleInterval(rc, volume[INNER_AZIMUTH]);
-      const double inner_angle = SampleInterval(rc, volume[INNER_ANGLE]);
-      const double inner_rot = SampleInterval(rc, volume[INNER_ROT]);
-      const double inner_x = SampleInterval(rc, volume[INNER_X]);
-      const double inner_y = SampleInterval(rc, volume[INNER_Y]);
+      const double outer_azimuth = SampleInterval(rc, dvolume[OUTER_AZIMUTH]);
+      const double outer_angle = SampleInterval(rc, dvolume[OUTER_ANGLE]);
+      const double inner_azimuth = SampleInterval(rc, dvolume[INNER_AZIMUTH]);
+      const double inner_angle = SampleInterval(rc, dvolume[INNER_ANGLE]);
+      const double inner_rot = SampleInterval(rc, dvolume[INNER_ROT]);
+      const double inner_x = SampleInterval(rc, dvolume[INNER_X]);
+      const double inner_y = SampleInterval(rc, dvolume[INNER_Y]);
 
       TryOneSample(outer_azimuth, outer_angle,
                    inner_azimuth, inner_angle,
@@ -588,6 +614,10 @@ struct Hypersolver {
           ret.point_edges[idx].Add(edge);
         }
       }
+    }
+
+    for (const SmallIntSet<64> &edges : ret.point_edges) {
+      ret.all_edges = SmallIntSet<64>::Union(ret.all_edges, edges);
     }
 
     return ret;
@@ -1018,6 +1048,18 @@ struct Hypersolver {
     EdgePointMask mask = GetEdgePointMask(rc, volume);
     const double filter_time_here = filter_timer.Seconds();
 
+    // If everything was filtered out, the loop won't find anything,
+    // so just bail now.
+    if (mask.all_edges.Empty()) {
+      counter_everything_filtered++;
+
+      // No stats were computed.
+      ProcessResult res;
+      res.result = Split();
+
+      return res;
+    }
+
     // Compute the hulls. Because we're using interval arithmetic,
     // the specifics of the algebra can be quite important. First,
     // the outer hull, whose vertices we call va, vb, etc.
@@ -1354,7 +1396,7 @@ struct Hypersolver {
     Discival disc;
     // Try multiple bias values. We could try optimizing the
     // order here globally, or doing a move-to-front thing?
-    for (int numer : {6, 4, 8, 5}) {
+    for (int numer : {6, 4, 8, 10, 5, 3}) {
       BigRat bias = BigRat(numer, 4);
 
       disc = SausageDisc(sausage, rot_trig, bias, inv_epsilon);
@@ -2083,6 +2125,7 @@ struct Hypersolver {
             "{} " AGREEN("✔") ", "
             "{} " ARED("⊹") ". "
             "{} " AORANGE("q") "  "
+            "{} " AWHITE("all") "  "
             "{} " AWHITE("no/") "\n"
             // Timing
             "{} ea. "
@@ -2111,6 +2154,7 @@ struct Hypersolver {
             FormatNum(counter_completed.Read()),
             FormatNum(counter_split.Read()),
             FormatNum(node_queue.size()),
+            FormatNum(counter_everything_filtered.Read()),
             FormatNum(counter_no_edges.Read()),
             ANSI::Time(time_each),
             ColorPct(trig_time / process_time),

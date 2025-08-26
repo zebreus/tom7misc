@@ -220,12 +220,13 @@ Bigival Bigival::Sin(const BigRat &x, const BigInt &inv_epsilon) {
     // to use this fact, we must be in the phase of the sequence
     // where the terms are decreasing.
     if (decreasing) {
-      const BigRat error_bound = BigRat::Abs(current_term);
-      if (error_bound <= epsilon) {
-        if (BigRat::Sign(current_term) > 0) {
+      if (BigRat::Sign(current_term) > 0) {
+        if (current_term <= epsilon) {
           BigRat next = std::move(current_term) + sum;
           return Bigival(sum, next, false, false);
-        } else {
+        }
+      } else {
+        if (epsilon <= current_term) {
           BigRat next = std::move(current_term) + sum;
           return Bigival(next, sum, false, false);
         }
@@ -241,7 +242,7 @@ Bigival Bigival::Sin(const BigRat &x, const BigInt &inv_epsilon) {
 
     // PERF: Strength reduce here too.
     BigRat next_factor = x_squared / (two_k * (two_k + 1));
-    if (!decreasing && next_factor < BigRat(1)) {
+    if (!decreasing && next_factor < BigInt(1)) {
       decreasing = true;
     }
 
@@ -285,12 +286,13 @@ Bigival Bigival::Cos(
 
   for (;;) {
     if (decreasing) {
-      const BigRat error_bound = BigRat::Abs(current_term);
-      if (error_bound <= epsilon) {
-        if (BigRat::Sign(current_term) > 0) {
+      if (BigRat::Sign(current_term) > 0) {
+        if (current_term <= epsilon) {
           BigRat next = std::move(current_term) + sum;
           return Bigival(std::move(sum), std::move(next), false, false);
-        } else {
+        }
+      } else {
+        if (epsilon <= current_term) {
           BigRat next = std::move(current_term) + sum;
           return Bigival(std::move(next), std::move(sum), false, false);
         }
@@ -300,7 +302,7 @@ Bigival Bigival::Cos(
     sum += current_term;
 
     BigRat next_factor = x_squared / factor_denom;
-    if (!decreasing && next_factor < BigRat(1)) {
+    if (!decreasing && next_factor < BigInt(1)) {
       decreasing = true;
     }
 

@@ -30,6 +30,7 @@ namespace {
 struct Scoreboard {
   struct Score {
     bool done = false;
+    bool has_something = false;
     double vol_outscope = 0.0;
     double vol_inscope = 0.0;
     double vol_proved = 0.0;
@@ -64,7 +65,7 @@ std::string ScoreboardString(const Scoreboard &scoreboard) {
       if (score.done) {
         out.append(AGREEN("▉"));
       } else {
-        if (vol_done > 0.0) {
+        if (score.has_something || vol_done > 0.0) {
           out.append(AYELLOW("░"));
         } else {
           if (x == y) {
@@ -80,13 +81,12 @@ std::string ScoreboardString(const Scoreboard &scoreboard) {
   return out;
 }
 
-static void IBoard() {
+static void IBoard(bool full) {
   PatchInfo patch_info = LoadPatchInfo("scube-patchinfo.txt");
 
   BigRat big_pi(165707065, 52746197);
   Volume bounds;
 
-  // Test this out with a single pair to start.
   std::vector<std::pair<uint64_t, PatchInfo::CanonicalPatch>> canonical;
   for (const auto &[cc, p] : patch_info.canonical) {
     canonical.emplace_back(cc, p);
@@ -126,6 +126,7 @@ static void IBoard() {
           double complete_time = load_timer.Seconds();
           Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
           score.done = true;
+          score.has_something = true;
           done++;
           status.Print("Noted {} is done in {}.", filename,
                        ANSI::Time(complete_time));
@@ -137,30 +138,37 @@ static void IBoard() {
           status.Print("Loaded {} in {}.", filename,
                        ANSI::Time(load_timer.Seconds()));
 
-          // XXX HERE: Report stats, verify, etc.
+          if (full) {
+            // XXX HERE: Report stats, verify, etc.
+            // PERF: Don't need to actually get the leaves in order
+            // to compute these.
+            Timer leaf_timer;
+            double vol_outscope = 0.0, vol_proved = 0.0;
+            auto leaves = hypercube->GetLeaves(&vol_outscope, &vol_proved);
+            double vol_done = vol_outscope + vol_proved;
+            double vol_inscope = total_volume - vol_outscope;
+            status.Print(
+                "{} leaves. {:.6f} ({:.3f}%) done, "
+                "{:.6f} ({:.3f}%) proved. ({})",
+                leaves.size(),
+                vol_done,
+                (vol_done * 100.0) / total_volume,
+                vol_proved,
+                (vol_proved * 100.0) / vol_inscope,
+                ANSI::Time(leaf_timer.Seconds()));
 
-          // PERF: Don't need to actually get the leaves in order
-          // to compute these.
-          Timer leaf_timer;
-          double vol_outscope = 0.0, vol_proved = 0.0;
-          auto leaves = hypercube->GetLeaves(&vol_outscope, &vol_proved);
-          double vol_done = vol_outscope + vol_proved;
-          double vol_inscope = total_volume - vol_outscope;
-          status.Print(
-              "{} leaves. {:.6f} ({:.3f}%) done, {:.6f} ({:.3f}%) proved. ({})",
-              leaves.size(),
-              vol_done,
-              (vol_done * 100.0) / total_volume,
-              vol_proved,
-              (vol_proved * 100.0) / vol_inscope,
-              ANSI::Time(leaf_timer.Seconds()));
-
-          Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
-          score.done = leaves.empty();
-          score.vol_inscope = vol_inscope;
-          score.vol_outscope = vol_outscope;
-          score.vol_proved = vol_proved;
-          if (score.done) done++;
+            Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
+            score.done = leaves.empty();
+            score.has_something = true;
+            score.vol_inscope = vol_inscope;
+            score.vol_outscope = vol_outscope;
+            score.vol_proved = vol_proved;
+            if (score.done) done++;
+          } else {
+            Scoreboard::Score &score = scoreboard.At(outer_idx, inner_idx);
+            score.done = false;
+            score.has_something = true;
+          }
         }
 
         status_per.RunIf([&]() {
@@ -185,7 +193,14 @@ static void IBoard() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  IBoard();
+  bool full = false;
+  if (argc > 2) {
+    std::string arg2 = argv[1];
+    CHECK(arg2 == "-full");
+    full = true;
+  }
+
+  IBoard(full);
 
   return 0;
 }
