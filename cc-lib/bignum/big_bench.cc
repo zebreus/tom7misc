@@ -51,9 +51,7 @@ static int BigVec2Unused(ArcFour *rc) {
   return s;
 }
 
-// TODO: When I graduate big-interval into cc-lib, just use
-// that.
-static std::pair<BigRat, BigRat> Cos(
+static std::pair<BigRat, BigRat> CosCtrl(
     const BigRat &x, const BigInt &inv_epsilon) {
   CHECK(BigRat::Sign(inv_epsilon) == 1);
   // This is the one case where we can have an exact rational result.
@@ -102,6 +100,8 @@ static std::pair<BigRat, BigRat> Cos(
 
     sum += current_term;
 
+    // Testing (x^2 / next_factor) < 1. Since x^2 is non-negative,
+    // x^2 < next_factor...
     BigRat next_factor = x_squared / factor_denom;
     if (!decreasing && next_factor < BigRat(1)) {
       decreasing = true;
@@ -114,12 +114,89 @@ static std::pair<BigRat, BigRat> Cos(
   }
 }
 
+// TODO: When I graduate big-interval into cc-lib, just use
+// that.
+static std::pair<BigRat, BigRat> CosTest(
+    const BigRat &x, const BigInt &inv_epsilon) {
+  CHECK(BigRat::Sign(inv_epsilon) == 1);
+  // This is the one case where we can have an exact rational result.
+  if (BigRat::Sign(x) == 0) return std::make_pair(BigRat(1), BigRat(1));
+
+  const BigRat epsilon{BigInt(1), inv_epsilon};
+
+  BigRat sum(0);
+
+  const BigRat x_squared = x * x;
+
+  // Taylor series is x^0/0! -  x^2/2! + x^4/4! - ...
+  //                  term_0    term_1   term_2
+  BigRat current_term(1);
+
+  bool decreasing = false;
+
+  // This is 2k * (2k - 1), which we compute incrementally
+  // (strength reduction).
+  //
+  // Denominator should be 2k * (2k - 1) = 4k^2 - 2k.
+  // So the difference between consecutive terms is
+  //     4(k+1)^2 - 2(k+1)  -  (4k^2 - 2k)
+  //  =  4k^2 + 6k + 2      -  4k^2 + 2k
+  //  =  8k + 2
+  //
+  // So each time the factor increases by 8k + 2. But we
+  // can strength-reduce THAT, to see that the increment
+  // increases by 8 each time.
+  BigInt factor_denom(2);
+  // Post-increment will save us one addition.
+  BigInt increment(10);
+  for (;;) {
+    if (decreasing) {
+      // const BigRat error_bound = BigRat::Abs(current_term);
+      // if (error_bound <= epsilon) ...
+      if (BigRat::Sign(current_term) > 0) {
+        if (current_term <= epsilon) {
+          BigRat next = std::move(current_term) + sum;
+          return std::make_pair(std::move(sum), std::move(next));
+        }
+      } else {
+        if (epsilon <= current_term) {
+          BigRat next = std::move(current_term) + sum;
+          return std::make_pair(std::move(next), std::move(sum));
+        }
+      }
+    }
+
+    sum += current_term;
+
+    BigRat next_factor = x_squared / factor_denom;
+    if (!decreasing && next_factor < BigInt(1)) {
+      decreasing = true;
+    }
+
+    factor_denom += increment;
+    increment += 8;
+
+    current_term = BigRat::Negate(std::move(current_term)) * next_factor;
+  }
+}
+
 // Cosine. Ensure numbers are big by asking for 250 digits.
-static int OnlyCos(ArcFour *rc) {
+static int OnlyCosCtrl(ArcFour *rc) {
   const int d = 100 + RandTo(rc, 200);
   BigRat a(RandTo(rc, 100) - 50, d);
   BigInt inv_epsilon = BigInt::Pow(BigInt(10), 250);
-  const auto &[cosa_lb, cosa_ub] = Cos(a, inv_epsilon);
+  const auto &[cosa_lb, cosa_ub] = CosCtrl(a, inv_epsilon);
+  CHECK(cosa_lb <= cosa_ub);
+  DoNotOptimize(cosa_lb);
+  return d;
+}
+
+// Cosine. Ensure numbers are big by asking for 250 digits.
+static int OnlyCosTest(ArcFour *rc) {
+  const int d = 100 + RandTo(rc, 200);
+  BigRat a(RandTo(rc, 100) - 50, d);
+  BigInt inv_epsilon = BigInt::Pow(BigInt(10), 250);
+  const auto &[cosa_lb, cosa_ub] = CosTest(a, inv_epsilon);
   CHECK(cosa_lb <= cosa_ub);
   DoNotOptimize(cosa_lb);
   return d;
@@ -139,7 +216,7 @@ static int OnlySqrtBounds(ArcFour *rc) {
 static int DoSomeMath(ArcFour *rc) {
   BigRat a(RandTo(rc, 100) - 50, 100 + RandTo(rc, 200));
 
-  const auto &[cosa_lb, cosa_ub] = Cos(a, BigInt(131072));
+  const auto &[cosa_lb, cosa_ub] = CosCtrl(a, BigInt(131072));
 
   CHECK(cosa_lb <= cosa_ub);
 
@@ -205,7 +282,8 @@ struct BenchDef {
 }
 
 static std::initializer_list<BenchDef> BENCHES = {
-  {.fn = &OnlyCos, .num_samples = 50000, .name = "only_cos"},
+  {.fn = &OnlyCosCtrl, .num_samples = 50000, .name = "only_cos_ctrl"},
+  {.fn = &OnlyCosTest, .num_samples = 50000, .name = "only_cos_test"},
   {.fn = &OnlySqrtBounds, .num_samples = 10000, .name = "only_sqrt_bounds"},
   {.fn = &DoSomeMath, .num_samples = 1000, .name = "some_math"},
   {.fn = &BigVec2Unused, .num_samples = 5000000, .name = "bigvec2_unused"},
@@ -220,9 +298,9 @@ static void RunBench() {
   Periodically status_per(1);
   for (const BenchDef &def : BENCHES) {
     // Some stuff might depend on the specific numbers chosen,
-    // so use a deterministic sequence that does not depend
-    // on other benchmarks!
-    ArcFour rc(std::format("bench.{}", def.name));
+    // so use a deterministic sequence. This also makes it
+    // possible to compare a before/after version of a function.
+    ArcFour rc("bench");
 
     Timer all_time;
     status.Print("Running {}...\n", def.name);

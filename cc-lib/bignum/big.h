@@ -4,6 +4,7 @@
 #ifndef _CC_LIB_BIGNUM_BIG_H
 #define _CC_LIB_BIGNUM_BIG_H
 
+#include <stdlib.h>
 #ifdef BIG_USE_GMP
 # include <gmp.h>
 # include "bignum/wrap-gmp.h"
@@ -317,7 +318,9 @@ struct BigRat {
   inline static bool IsZero(const BigRat &a);
 
   // Returns -1, 0, or 1.
+  // Note that if you just want to check equality, Eq is faster.
   inline static int Compare(const BigRat &a, const BigRat &b);
+  inline static int Compare(const BigRat &a, const BigInt &b);
   inline static bool Eq(const BigRat &a, const BigRat &b);
   inline static bool Eq(const BigRat &a, int64_t b);
   inline static bool Less(const BigRat &a, const BigRat &b);
@@ -1341,12 +1344,22 @@ BigInt::ExtendedGCD(const BigInt &a, const BigInt &b) {
 }
 
 BigInt BigInt::Sqrt(const BigInt &aa) {
-  // PERF: We have this for 64 bits in ../numbers.h.
-  GmpRep::Lease aa_tmp(aa.rep);
+  if (aa.rep.IsSmall()) {
+    int64_t n = aa.rep.GetSmall();
+    if (n < 0) [[unlikely]] {
+      abort();
+    }
 
-  BigInt ret;
-  mpz_sqrt(ret.rep.Mpz(), aa_tmp.ConstMpz());
-  return ret;
+    if (n == 0) return BigInt(0);
+
+    uint64_t r = std::sqrt((double)n);
+    return BigInt(r - (r * r - 1 >= n));
+
+  } else {
+    BigInt ret;
+    mpz_sqrt(ret.rep.Mpz(), aa.rep.ConstMpz());
+    return ret;
+  }
 }
 
 std::pair<BigInt, BigInt> BigInt::SqrtRem(const BigInt &aa) {
@@ -1421,11 +1434,44 @@ int BigRat::Compare(const BigRat &a, const BigRat &b) {
   else return 0;
 }
 
-bool BigRat::Eq(const BigRat &a, const BigRat &b) {
-  return Compare(a, b) == 0;
+int BigRat::Compare(const BigRat &a, const BigInt &b) {
+  // PERF: Small case.
+
+  GmpRepRat::Lease a_tmp(a.rep);
+  GmpRep::Lease b_tmp(b.rep);
+
+  const int r = mpq_cmp_z(a_tmp.ConstMpq(), b_tmp.ConstMpz());
+  if (r < 0) return -1;
+  else if (r > 0) return 1;
+  else return 0;
 }
+
+bool BigRat::Eq(const BigRat &a, const BigRat &b) {
+  if (a.rep.IsSmall() && b.rep.IsSmall()) {
+    int64_t an = a.rep.SmallNumer();
+    int64_t ad = a.rep.SmallDenom();
+
+    int64_t bn = b.rep.SmallNumer();
+    int64_t bd = b.rep.SmallDenom();
+
+    if (an != bn) return false;
+
+    // If numerator is zero, any denominator is allowed.
+    if (an == 0) return true;
+    return ad == bd;
+  } else {
+    GmpRepRat::Lease a_tmp(a.rep);
+    GmpRepRat::Lease b_tmp(b.rep);
+    const int r = mpq_equal(a_tmp.ConstMpq(), b_tmp.ConstMpq());
+    return r != 0;
+  }
+}
+
 bool BigRat::Eq(const BigRat &a, int64_t b) {
-  // XXX this is probably wrong due to 0/d
+  if (b == 0) {
+    return BigRat::Sign(a) == 0;
+  }
+
   if (a.rep.IsSmall()) {
     return a.rep.SmallDenom() == 1 && a.rep.SmallNumer() == b;
   } else {

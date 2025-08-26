@@ -290,7 +290,7 @@ inline std::strong_ordering operator<=>(const BigRat &a, const BigRat &b) {
 }
 
 inline bool operator==(const BigRat &a, const BigRat &b) {
-  return (a <=> b) == std::strong_ordering::equal;
+  return BigRat::Eq(a, b);
 }
 
 inline bool operator==(const BigRat &a, int64_t b) {

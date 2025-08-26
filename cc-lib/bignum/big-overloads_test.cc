@@ -93,7 +93,7 @@ static void TestBinaryOps() {
   }
 }
 
-static void TestCompareRat() {
+static void TestCompareSmallRat() {
   BigRat a(1, 5);
   BigRat b(10, 3);
   BigRat c(-3, 777);
@@ -125,6 +125,51 @@ static void TestCompareRat() {
   CHECK(-11 != d);
 }
 
+static void TestCompareLargeRat() {
+  BigRat a(BigInt("1111111111111111111111111111"),
+           BigInt("5555555555555555555555555555"));
+  BigRat b = a * 1198273419;
+  BigRat c = -(a * 5719783131);
+
+  BigInt d = BigInt("92837491872348971293874109283740198273");
+
+  CHECK(a < b);
+  CHECK(a <= b);
+  CHECK(!(a == b));
+  CHECK(!(a > b));
+  CHECK(!(a >= b));
+
+  CHECK(a == a);
+  CHECK(a <= a);
+  CHECK(a >= a);
+  CHECK(!(a != a));
+
+  CHECK(c < b);
+  CHECK(c <= b);
+  CHECK(b > c);
+  CHECK(b >= c);
+  CHECK(!(b == c));
+  CHECK(b != c);
+
+  CHECK(d != 11);
+  CHECK(11 != d);
+
+  CHECK((a * 0) == 0);
+  CHECK((b * 0) == 0);
+  CHECK((c * 0) == 0);
+  CHECK(0 == (a - a));
+  CHECK(0 == (b - b));
+  CHECK(0 == (c - c));
+  CHECK((a * 0) == (b - b));
+  CHECK((b * 0) == (c - c));
+  CHECK((c * 0) == (a - a));
+
+  CHECK(d == BigRat(d, BigInt(1)));
+  CHECK(d <= BigRat(d, BigInt(1)));
+  CHECK(d >= BigRat(d, BigInt(1)));
+  CHECK(!(d > BigRat(d, BigInt(1))));
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("Start.\n");
@@ -136,7 +181,8 @@ int main(int argc, char **argv) {
   TestAssigningOps();
   TestBinaryOps();
 
-  TestCompareRat();
+  TestCompareSmallRat();
+  TestCompareLargeRat();
 
   printf("OK\n");
   return 0;
