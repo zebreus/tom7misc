@@ -184,7 +184,7 @@ const Exp *Parsing::Parse(AstPool *pool,
           for (int i = 2; i < (int)s.size(); i++) {
             char c = s[i];
             b = BigInt::LeftShift(std::move(b), 4);
-            b = BigInt::Plus(std::move(b), Util::HexDigitValue(c));
+            BigInt::PlusEq(b, BigInt(Util::HexDigitValue(c)));
           }
           return b;
 
@@ -195,7 +195,7 @@ const Exp *Parsing::Parse(AstPool *pool,
             char c = s[i];
             b = BigInt::LeftShift(std::move(b), 1);
             if (c == '1') {
-              b = BigInt::Plus(std::move(b), 1);
+              BigInt::PlusEq(b, BigInt(1));
             }
           }
           return b;
@@ -206,7 +206,7 @@ const Exp *Parsing::Parse(AstPool *pool,
           for (int i = 2; i < (int)s.size(); i++) {
             char c = s[i];
             b = BigInt::LeftShift(std::move(b), 3);
-            b = BigInt::Plus(std::move(b), Util::HexDigitValue(c));
+            BigInt::PlusEq(b, BigInt(Util::HexDigitValue(c)));
           }
           return b;
 

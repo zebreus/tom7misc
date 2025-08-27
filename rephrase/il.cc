@@ -2,6 +2,7 @@
 #include "il.h"
 
 #include <cstdio>
+#include <format>
 #include <optional>
 #include <string>
 #include <utility>
@@ -9,6 +10,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "pp.h"
 #include "primop.h"
@@ -98,9 +100,9 @@ std::string AstPool::NewVar(const std::string &hint_in) {
   next_var++;
   std::string hint = BaseVar(hint_in);
   if (hint.empty()) {
-    return StringPrintf("x$%d", next_var);
+    return std::format("x${}", next_var);
   } else {
-    return StringPrintf("%s$%d", hint.c_str(), next_var);
+    return std::format("{}${}", hint, next_var);
   }
 }
 
@@ -113,7 +115,7 @@ const Type *AstPool::Product(const std::vector<const Type *> &v,
   std::vector<std::pair<std::string, const Type *>> record_type;
   record_type.reserve(v.size());
   for (int i = 0; i < (int)v.size(); i++) {
-    record_type.emplace_back(StringPrintf("%d", i + 1), v[i]);
+    record_type.emplace_back(std::format("{}", i + 1), v[i]);
   }
   return RecordType(record_type, guess);
 }
@@ -124,11 +126,8 @@ std::string TypeString(const Type *t) {
       std::string ret;
       for (int i = 0; i < (int)v.size(); i++) {
         const auto &[lab, child] = v[i];
-        if (i != 0)
-          StringAppendF(&ret, ", ");
-        StringAppendF(&ret, "%s: %s",
-                      lab.c_str(),
-                      TypeString(child).c_str());
+        if (i != 0) ret.append(", ");
+        AppendFormat(&ret, "{}: {}", lab, TypeString(child));
       }
       return ret;
     };
@@ -141,7 +140,7 @@ std::string TypeString(const Type *t) {
     // after "1".
     for (int i = 0; i < (int)v.size(); i++) {
       const std::string &lab = v[i].first;
-      if (lab != StringPrintf("%d", i + 1)) {
+      if (lab != std::format("{}", i + 1)) {
         return std::nullopt;
       }
     }
@@ -153,7 +152,7 @@ std::string TypeString(const Type *t) {
       parts.push_back(TypeString(t));
     }
 
-    return StringPrintf("(%s)", Util::Join(parts, " * ").c_str());
+    return std::format("({})", Util::Join(parts, " * "));
   };
 
   switch (t->type) {
@@ -163,25 +162,25 @@ std::string TypeString(const Type *t) {
     case 0:
       return var;
     case 1:
-      return StringPrintf("%s %s",
-                          TypeString(args[0]).c_str(),
-                          var.c_str());
+      return std::format("{} {}",
+                         TypeString(args[0]),
+                         var);
     default: {
       std::string sargs;
       for (int i = 0; i < (int)args.size(); i++) {
-        if (i != 0) StringAppendF(&sargs, ", ");
-        StringAppendF(&sargs, "%s", TypeString(args[i]).c_str());
+        if (i != 0) sargs.append(", ");
+        sargs.append(TypeString(args[i]));
       }
-      return StringPrintf("(%s) %s", sargs.c_str(), var.c_str());
+      return std::format("({}) {}", sargs, var);
     }
     }
   }
 
   case TypeType::ARROW: {
     const auto &[dom, cod] = t->Arrow();
-    return StringPrintf("(%s → %s)",
-                        TypeString(dom).c_str(),
-                        TypeString(cod).c_str());
+    return std::format("({} → {})",
+                       TypeString(dom),
+                       TypeString(cod));
   }
 
   case TypeType::RECORD: {
@@ -191,43 +190,43 @@ std::string TypeString(const Type *t) {
     if (fields.empty()) return "unit";
     std::optional<std::string> to = GetTupleString(fields);
     if (to.has_value()) return to.value();
-    return StringPrintf("{%s}", RecordOrSumBody(fields).c_str());
+    return std::format("{{" "{}" "}}", RecordOrSumBody(fields));
   }
 
   case TypeType::SUM:
     // Might want to special case void?
-    return StringPrintf("[%s]", RecordOrSumBody(t->Sum()).c_str());
+    return std::format("[{}]", RecordOrSumBody(t->Sum()));
 
   case TypeType::MU: {
     const auto &[idx, bundle] = t->Mu();
     CHECK(!bundle.empty());
     if (bundle.size() == 1) {
-      return StringPrintf("(μ %s. %s)",
-                          bundle[0].first.c_str(),
-                          TypeString(bundle[0].second).c_str());
+      return std::format("(μ {}. {})",
+                         bundle[0].first,
+                         TypeString(bundle[0].second));
     } else {
-      std::string ret = StringPrintf("#%d(μ", idx);
+      std::string ret = std::format("#{}(μ", idx);
       for (int i = 0; i < (int)bundle.size(); i++) {
-        if (i != 0) StringAppendF(&ret, ";");
+        if (i != 0) ret.append(";");
         const auto &[v, c] = bundle[i];
-        StringAppendF(&ret,
-                      " %d=%s. %s", i, v.c_str(), TypeString(c).c_str());
+        AppendFormat(&ret,
+                     " {}={}. {}", i, v, TypeString(c));
       }
-      ret += ")";
+      ret.append(")");
       return ret;
     }
   }
 
   case TypeType::EXISTS: {
     const auto &[alpha, body] = t->Exists();
-    return StringPrintf("∃ %s.%s\n", alpha.c_str(),
-                        TypeString(body).c_str());
+    return std::format("∃ {}.{}\n", alpha,
+                       TypeString(body));
   }
 
   case TypeType::FORALL: {
     const auto &[alpha, body] = t->Forall();
-    return StringPrintf("∀ %s.%s\n", alpha.c_str(),
-                        TypeString(body).c_str());
+    return std::format("∀ {}.{}\n", alpha,
+                       TypeString(body));
   }
 
   case TypeType::EVAR: {
@@ -242,10 +241,10 @@ std::string TypeString(const Type *t) {
   }
 
   case TypeType::REF:
-    return StringPrintf("(%s ref)", TypeString(t->Ref()).c_str());
+    return std::format("({} ref)", TypeString(t->Ref()));
 
   case TypeType::VEC:
-    return StringPrintf("(%s vec)", TypeString(t->Vec()).c_str());
+    return std::format("(%s vec)", TypeString(t->Vec()));
 
   case TypeType::STRING:
     return "string";
@@ -269,8 +268,8 @@ std::string TypeString(const Type *t) {
     return "layout";
 
   default:
-    return StringPrintf("unknown typetype %s??",
-                        TypeTypeString(t->type));
+    return std::format("unknown typetype {}??",
+                       TypeTypeString(t->type));
   }
 }
 
@@ -279,7 +278,7 @@ std::string ExpString(const Exp *e) {
   switch (e->type) {
   case ExpType::STRING:
     // XXX escaping
-    return StringPrintf("\"%s\"", e->String().c_str());
+    return std::format("\"{}\"", e->String());
 
   case ExpType::VAR: {
     const auto &[types, x] = e->Var();
@@ -288,57 +287,57 @@ std::string ExpString(const Exp *e) {
     } else {
       std::string args;
       for (int i = 0; i < (int)types.size(); i++) {
-        if (i != 0) StringAppendF(&args, ", ");
-        StringAppendF(&args, "%s", TypeString(types[i]).c_str());
+        if (i != 0) args.append(", ");
+        args.append(TypeString(types[i]));
       }
-      return StringPrintf("%s<%s>", x.c_str(), args.c_str());
+      return std::format("{}<{}>", x, args);
     }
   }
 
   case ExpType::GLOBAL_SYM: {
     const auto &[types, sym] = e->GlobalSym();
-    std::string x = StringPrintf("global.%s", sym.c_str());
+    std::string x = std::format("global.{}", sym);
     if (types.empty()) {
       return x;
     } else {
       std::string args;
       for (int i = 0; i < (int)types.size(); i++) {
-        if (i != 0) StringAppendF(&args, ", ");
-        StringAppendF(&args, "%s", TypeString(types[i]).c_str());
+        if (i != 0) args.append(", ");
+        args.append(TypeString(types[i]));
       }
-      return StringPrintf("%s<%s>", x.c_str(), args.c_str());
+      return std::format("{}<{}>", x, args);
     }
   }
 
   case ExpType::FN: {
     const auto &[self, x, t, body] = e->Fn();
     const std::string as =
-      self.empty() ? "" : StringPrintf(" as %s", self.c_str());
-    return StringPrintf("(fn%s %s : (%s) => %s)",
-                        as.c_str(), x.c_str(),
-                        TypeString(t).c_str(),
-                        ExpString(body).c_str());
+      self.empty() ? "" : std::format(" as {}", self);
+    return std::format("(fn{} {} : ({}) => {})",
+                        as, x,
+                        TypeString(t),
+                        ExpString(body));
   }
 
   case ExpType::INT:
     return e->Int().ToString();
 
   case ExpType::WORD:
-    return StringPrintf("(word %lld)", e->Word());
+    return std::format("(word {})", e->Word());
 
   case ExpType::BOOL:
     return e->Bool() ? "true" : "false";
 
   case ExpType::FLOAT:
-    return StringPrintf("%.17g", e->Float());
+    return std::format("{:.17g}", e->Float());
 
   case ExpType::RECORD: {
     const auto &fields = e->Record();
     std::string ret = "{";
     for (int i = 0; i < (int)fields.size(); i++) {
-      if (i != 0) StringAppendF(&ret, ", ");
+      if (i != 0) ret.append(", ");
       const auto &[l, v] = fields[i];
-      StringAppendF(&ret, "%s = %s", l.c_str(), ExpString(v).c_str());
+      AppendFormat(&ret, "{} = {}", l, ExpString(v));
     }
     ret += "}";
     return ret;
@@ -348,11 +347,11 @@ std::string ExpString(const Exp *e) {
     const auto &fields = e->Object();
     std::string ret = "{() ";
     for (int i = 0; i < (int)fields.size(); i++) {
-      if (i != 0) StringAppendF(&ret, ", ");
+      if (i != 0) ret.append(", ");
       const auto &[l, oft, v] = fields[i];
-      StringAppendF(&ret, "%s[%s] = %s", l.c_str(),
-                    ObjFieldTypeString(oft),
-                    ExpString(v).c_str());
+      AppendFormat(&ret, "{}[{}] = {}", l,
+                   ObjFieldTypeString(oft),
+                   ExpString(v));
     }
     ret += "}";
     return ret;
@@ -360,55 +359,54 @@ std::string ExpString(const Exp *e) {
 
   case ExpType::WITH: {
     const auto &[obj, field, oft, rhs] = e->With();
-    return StringPrintf("(%s with %s:%s = %s)",
-                        ExpString(obj).c_str(),
-                        field.c_str(),
-                        ObjFieldTypeString(oft),
-                        ExpString(rhs).c_str());
+    return std::format("({} with {}:{} = {})",
+                       ExpString(obj),
+                       field,
+                       ObjFieldTypeString(oft),
+                       ExpString(rhs));
   }
 
   case ExpType::WITHOUT: {
     const auto &[obj, field, oft] = e->Without();
-    return StringPrintf("(%s without %s:%s)",
-                        ExpString(obj).c_str(),
-                        field.c_str(),
-                        ObjFieldTypeString(oft));
+    return std::format("({} without {}:{})",
+                       ExpString(obj),
+                       field,
+                       ObjFieldTypeString(oft));
   }
 
   case ExpType::PROJECT: {
     const auto &[lab, t, r] = e->Project();
-    return StringPrintf("#%s/%s(%s)",
-                        lab.c_str(),
-                        TypeString(t).c_str(), ExpString(r).c_str());
+    return std::format("#{}/{}({})",
+                       lab, TypeString(t), ExpString(r));
   }
 
   case ExpType::INJECT: {
     const auto &[lab, t, r] = e->Inject();
-    return StringPrintf("([%s = %s] : %s)",
-                        lab.c_str(), ExpString(r).c_str(),
-                        TypeString(t).c_str());
+    return std::format("([{} = {}] : {})",
+                        lab, ExpString(r),
+                        TypeString(t));
   }
 
   case ExpType::ROLL: {
     const auto &[t, child] = e->Roll();
-    return StringPrintf("roll<%s>(%s)",
-                        TypeString(t).c_str(),
-                        ExpString(child).c_str());
+    return std::format("roll<{}>({})",
+                       TypeString(t),
+                       ExpString(child));
   }
 
   case ExpType::UNROLL: {
     const auto &[child, t] = e->Unroll();
-    return StringPrintf("unroll<%s>(%s)",
-                        TypeString(t).c_str(),
-                        ExpString(child).c_str());
+    return std::format("unroll<{}>({})",
+                       TypeString(t),
+                       ExpString(child));
   }
 
   case ExpType::NODE: {
     const auto &[attrs, children] = e->Node();
-    std::string ret = StringPrintf("[%s| ", ExpString(attrs).c_str());
+    std::string ret = std::format("[{}| ", ExpString(attrs));
     for (int i = 0; i < (int)children.size(); i++) {
-      if (i != 0) StringAppendF(&ret, ", ");
-      ret += ExpString(children[i]);
+      if (i != 0) ret.append(", ");
+      ret.append(ExpString(children[i]));
     }
     ret += "]";
     return ret;
@@ -420,28 +418,28 @@ std::string ExpString(const Exp *e) {
     if (!tvs.empty()) {
       tyvars = "(" + Util::Join(tvs, ",") + ") ";
     }
-    return StringPrintf("let val %s%s = %s\n"
-                        "in %s\n"
-                        "end",
-                        tyvars.c_str(),
-                        x.c_str(),
-                        ExpString(rhs).c_str(),
-                        ExpString(body).c_str());
+    return std::format("let val {}{} = {}\n"
+                       "in {}\n"
+                       "end",
+                       tyvars,
+                       x,
+                       ExpString(rhs),
+                       ExpString(body));
   }
 
   case ExpType::IF: {
     const auto &[cond, t, f] = e->If();
-    return StringPrintf("(if %s then %s else %s)",
-                        ExpString(cond).c_str(),
-                        ExpString(t).c_str(),
-                        ExpString(f).c_str());
+    return std::format("(if {} then {} else {})",
+                       ExpString(cond),
+                       ExpString(t),
+                       ExpString(f));
   }
 
   case ExpType::APP: {
     const auto &[f, x] = e->App();
-    return StringPrintf("(%s %s)",
-                        ExpString(f).c_str(),
-                        ExpString(x).c_str());
+    return std::format("({} {})",
+                       ExpString(f),
+                       ExpString(x));
   }
 
   case ExpType::PRIMAPP: {
@@ -449,29 +447,24 @@ std::string ExpString(const Exp *e) {
 
     std::string targs;
     for (int i = 0; i < (int)types.size(); i++) {
-      if (i != 0)
-        StringAppendF(&targs, ", ");
-      StringAppendF(&targs, "%s", TypeString(types[i]).c_str());
+      if (i != 0) targs.append(", ");
+      targs.append(TypeString(types[i]));
     }
-    if (!types.empty()) targs = StringPrintf("<%s>", targs.c_str());
+    if (!types.empty()) targs = std::format("<{}>", targs);
 
     std::string args;
     for (int i = 0; i < (int)children.size(); i++) {
-      if (i != 0)
-        StringAppendF(&args, ", ");
-      StringAppendF(&args, "%s", ExpString(children[i]).c_str());
+      if (i != 0) args.append(", ");
+      args.append(ExpString(children[i]));
     }
-    return StringPrintf("%s%s(%s)",
-                        PrimopString(po),
-                        targs.c_str(),
-                        args.c_str());
+    return std::format("{}{}({})", PrimopString(po), targs, args);
   }
 
   case ExpType::FAIL: {
     const auto &[msg, t] = e->Fail();
-    return StringPrintf("fail<%s> %s",
-                        TypeString(t).c_str(),
-                        ExpString(msg).c_str());
+    return std::format("fail<{}> {}",
+                       TypeString(t),
+                       ExpString(msg));
   }
 
   case ExpType::SEQ: {
@@ -480,8 +473,8 @@ std::string ExpString(const Exp *e) {
 
     std::string ret = "seq(\n";
     for (const Exp *c : es)
-      StringAppendF(&ret, "  %s;\n", ExpString(c).c_str());
-    StringAppendF(&ret, "  %s)", ExpString(body).c_str());
+      AppendFormat(&ret, "  {};\n", ExpString(c));
+    AppendFormat(&ret, "  {})", ExpString(body));
     return ret;
   }
 
@@ -489,110 +482,109 @@ std::string ExpString(const Exp *e) {
     const auto &[obj, arms, def] = e->IntCase();
     std::vector<std::string> sarms;
     for (const auto &[bi, arm] : arms)
-      sarms.push_back(StringPrintf("%s => %s",
-                                   bi.ToString().c_str(),
-                                   ExpString(arm).c_str()));
-    return StringPrintf("intcase %s of\n"
-                        "   %s\n"
-                        " | _ => %s",
-                        ExpString(obj).c_str(),
-                        Util::Join(sarms, "\n | ").c_str(),
-                        ExpString(def).c_str());
+      sarms.push_back(std::format("{} => {}",
+                                  bi.ToString(),
+                                  ExpString(arm)));
+    return std::format("intcase {} of\n"
+                       "   {}\n"
+                       " | _ => {}",
+                       ExpString(obj),
+                       Util::Join(sarms, "\n | "),
+                       ExpString(def));
   }
 
   case ExpType::WORDCASE: {
     const auto &[obj, arms, def] = e->WordCase();
     std::vector<std::string> sarms;
     for (const auto &[w, arm] : arms)
-      sarms.push_back(StringPrintf("%lld => %s",
-                                   w,
-                                   ExpString(arm).c_str()));
-    return StringPrintf("wordcase %s of\n"
-                        "   %s\n"
-                        " | _ => %s",
-                        ExpString(obj).c_str(),
-                        Util::Join(sarms, "\n | ").c_str(),
-                        ExpString(def).c_str());
+      sarms.push_back(std::format("{} => {}",
+                                  w,
+                                  ExpString(arm)));
+    return std::format("wordcase {} of\n"
+                       "   {}\n"
+                       " | _ => {}",
+                       ExpString(obj),
+                       Util::Join(sarms, "\n | "),
+                       ExpString(def));
   }
 
   case ExpType::STRINGCASE: {
     const auto &[obj, arms, def] = e->StringCase();
     std::vector<std::string> sarms;
     for (const auto &[s, arm] : arms)
-      sarms.push_back(StringPrintf("\"%s\" => %s",
-                                   EscapeString(s).c_str(),
-                                   ExpString(arm).c_str()));
-    return StringPrintf("stringcase %s of\n"
-                        "   %s\n"
-                        " | _ => %s",
-                        ExpString(obj).c_str(),
-                        Util::Join(sarms, "\n | ").c_str(),
-                        ExpString(def).c_str());
+      sarms.push_back(std::format("\"{}\" => {}",
+                                   EscapeString(s),
+                                   ExpString(arm)));
+    return std::format("stringcase {} of\n"
+                       "   {}\n"
+                       " | _ => {}",
+                       ExpString(obj),
+                       Util::Join(sarms, "\n | "),
+                       ExpString(def));
   }
 
   case ExpType::SUMCASE: {
     const auto &[obj, arms, def] = e->SumCase();
     std::vector<std::string> sarms;
     for (const auto &[s, x, arm] : arms)
-      sarms.push_back(StringPrintf("%s (%s) => %s",
-                                   s.c_str(),
-                                   x.c_str(),
-                                   ExpString(arm).c_str()));
-    return StringPrintf("sumcase %s of\n"
-                        "   %s\n"
-                        " | _ => %s",
-                        ExpString(obj).c_str(),
-                        Util::Join(sarms, "\n | ").c_str(),
-                        ExpString(def).c_str());
+      sarms.push_back(std::format("{} ({}) => {}",
+                                  s, x,
+                                  ExpString(arm)));
+    return std::format("sumcase {} of\n"
+                       "   {}\n"
+                       " | _ => {}",
+                       ExpString(obj),
+                       Util::Join(sarms, "\n | "),
+                       ExpString(def));
   }
 
   case ExpType::PACK: {
     const auto &[t_hidden, alpha, t_packed, exp] = e->Pack();
-    return StringPrintf("pack %s as %s.%s\n"
-                        "of %s end",
-                        TypeString(t_hidden).c_str(),
-                        alpha.c_str(),
-                        TypeString(t_packed).c_str(),
-                        ExpString(exp).c_str());
+    return std::format("pack {} as {}.{}\n"
+                       "of {} end",
+                       TypeString(t_hidden),
+                       alpha,
+                       TypeString(t_packed),
+                       ExpString(exp));
   }
 
   case ExpType::UNPACK: {
     const auto &[alpha, x, rhs, body] = e->Unpack();
     // unpack α,x = rhs
     // in body
-    return StringPrintf("unpack %s,%s = %s\n"
-                        "in %s end",
-                        alpha.c_str(), x.c_str(),
-                        ExpString(rhs).c_str(),
-                        ExpString(body).c_str());
+    return std::format("unpack {},{} = {}\n"
+                       "in {} end",
+                       alpha, x,
+                       ExpString(rhs),
+                       ExpString(body));
   }
 
   case ExpType::TYPEFN: {
     const auto &[alpha, exp] = e->TypeFn();
-    return StringPrintf("typefn %s => %s",
-                        alpha.c_str(), ExpString(exp).c_str());
+    return std::format("typefn {} => {}",
+                       alpha, ExpString(exp));
   }
 
   case ExpType::TYPEAPP: {
     const auto &[exp, t] = e->TypeApp();
-    return StringPrintf("%s<%s>",
-                        ExpString(exp).c_str(), TypeString(t).c_str());
+    return std::format("{}<{}>",
+                       ExpString(exp), TypeString(t));
   }
 
   case ExpType::HAS: {
     const auto &[obj, field, oft] = e->Has();
-    return StringPrintf("(has %s.%s : %s)",
-                        ExpString(obj).c_str(),
-                        field.c_str(),
-                        ObjFieldTypeString(oft));
+    return std::format("(has {}.{} : {})",
+                       ExpString(obj),
+                       field,
+                       ObjFieldTypeString(oft));
   }
 
   case ExpType::GET: {
     const auto &[obj, field, oft] = e->Get();
-    return StringPrintf("(get %s.%s : %s)",
-                        ExpString(obj).c_str(),
-                        field.c_str(),
-                        ObjFieldTypeString(oft));
+    return std::format("(get {}.{} : {})",
+                       ExpString(obj),
+                       field,
+                       ObjFieldTypeString(oft));
   }
 
   default:
@@ -630,7 +622,7 @@ AstPool::AlphaVaryType(const std::string &x, const Type *t) {
 
 const Type *AstPool::UnrollType(const Type *mu) {
   if (VERBOSE) {
-    printf(AORANGE("Unroll") " %s\n", TypeString(mu).c_str());
+    Print(AORANGE("Unroll") " {}\n", TypeString(mu));
   }
   CHECK(mu->type == TypeType::MU);
   const auto &[idx, bundles] = mu->Mu();
@@ -821,18 +813,18 @@ std::string ProgramString(const Program &pgm) {
   for (const Global &glob : pgm.globals) {
     std::string tyvars;
     if (!glob.tyvars.empty()) {
-      tyvars = StringPrintf("(%s) ", Util::Join(glob.tyvars, ",").c_str());
+      tyvars = std::format("({}) ", Util::Join(glob.tyvars, ","));
     }
-    StringAppendF(&ret, "  global %s%s : %s = %s\n",
-                  tyvars.c_str(),
-                  glob.sym.c_str(),
-                  TypeString(glob.type).c_str(),
-                  ExpString(glob.exp).c_str());
+    AppendFormat(&ret, "  global {}{} : {} = {}\n",
+                  tyvars,
+                  glob.sym,
+                  TypeString(glob.type),
+                  ExpString(glob.exp));
   }
-  StringAppendF(&ret,
-                "in\n"
-                "  %s\n"
-                "end\n", ExpString(pgm.body).c_str());
+  AppendFormat(&ret,
+               "in\n"
+               "  {}\n"
+               "end\n", ExpString(pgm.body));
   return ret;
 }
 
