@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <format>
 #include <map>
 #include <memory>
 #include <string>
@@ -12,6 +13,7 @@
 #include <vector>
 
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "ansi.h"
 #include "timer.h"
@@ -32,9 +34,9 @@ static constexpr bool GENERATE_IMAGES = false;
 static void PrintGreyParity(const std::string &tok) {
   static bool odd = 0;
   if (odd) {
-    printf(AFGCOLOR(125, 125, 140, "%s"), tok.c_str());
+    Print(AFGCOLOR(125, 125, 140, "{}"), tok);
   } else {
-    printf(AFGCOLOR(190, 190, 225, "%s"), tok.c_str());
+    Print(AFGCOLOR(190, 190, 225, "{}"), tok);
   }
   odd = !odd;
 }
@@ -65,10 +67,10 @@ struct MonoFile {
     llm->Reset();
 
     std::string shared_prompt = PromptShared();
-    printf(AGREY("Shared prompt: [%s]") "\n", shared_prompt.c_str());
+    Print(AGREY("Shared prompt: [{}]") "\n", shared_prompt);
 
     llm->DoPrompt(shared_prompt);
-    printf("(finished the shared prompt)\n");
+    Print("(finished the shared prompt)\n");
     shared_state = llm->SaveState();
   }
 
@@ -92,24 +94,24 @@ struct MonoFile {
       // get the wrong idea about stuff like double spaces after
       // periods.
       para = Util::NormalizeWhitespace(para);
-      StringAppendF(&prev_paras, "<P>%s</P>\n", para.c_str());
+      AppendFormat(&prev_paras, "<P>{}</P>\n", para);
     }
 
     std::string task_prompt = prev_paras;
 
     // Also the original paragraph!
-    StringAppendF(&task_prompt, "<P>%s</P>\n",
-                  Util::NormalizeWhitespace(original).c_str());
+    AppendFormat(&task_prompt, "<P>{}</P>\n",
+                 Util::NormalizeWhitespace(original));
 
-    StringAppendF(&task_prompt,
-                  "\n\n"
-                  "Rephrased paragraphs:\n");
+    AppendFormat(&task_prompt,
+                 "\n\n"
+                 "Rephrased paragraphs:\n");
 
     task_prompt += prev_paras;
-    StringAppendF(&task_prompt,
-                  "<P>");
+    AppendFormat(&task_prompt,
+                 "<P>");
 
-    printf("Adding task prompt:\n" AGREY("%s") "\n", task_prompt.c_str());
+    Print("Adding task prompt:\n" AGREY("{}") "\n", task_prompt);
 
     // Now monospace this one paragraph.
     llm->InsertString(task_prompt, true);
@@ -134,28 +136,28 @@ struct MonoFile {
       for (;;) {
 
         for (const std::string &line : lines) {
-          printf(AFGCOLOR(200, 250, 200, "%s") "\n", line.c_str());
+          Print(AFGCOLOR(200, 250, 200, "{}") "\n", line);
         }
 
         for (const auto &[line, times] : failures) {
-          printf(AFGCOLOR(190, 50, 50, "%s") "%s\n",
-                 line.c_str(),
-                 times > 1 ?
-                 StringPrintf(" x " AYELLOW("%d"), times).c_str() : "");
+          Print(AFGCOLOR(190, 50, 50, "{}") "{}\n",
+                line.c_str(),
+                times > 1 ?
+                std::format(" x " AYELLOW("{}"), times) : "");
         }
 
-        printf("%s\n", LengthIndicator(line_width).c_str());
+        Print("{}\n", LengthIndicator(line_width));
 
         std::string line = lrep.RephraseOnce(
             line_width,
             [this](const std::string &s) {
-              printf(ANSI_RESTART_LINE "%s", s.c_str());
+              Print(ANSI_RESTART_LINE "{}", s);
               return (int)s.size() >= line_width ||
                 Util::EndsWith(s, "</P>");
             });
 
-        printf(ANSI_RESTART_LINE AYELLOW("Got:") "\n"
-               AWHITE("%s") "\n", line.c_str());
+        Print(ANSI_RESTART_LINE AYELLOW("Got:") "\n"
+              AWHITE("{}") "\n", line);
 
         std::string_view last_line = line;
         // We might be done if the line now ends with
@@ -168,7 +170,7 @@ struct MonoFile {
           return lines;
         }
 
-        printf("\n(Length: %d)\n", (int)line.size());
+        Print("\n(Length: {})\n", line.size());
         len_histo->Observe(line.size());
 
 
@@ -182,15 +184,15 @@ struct MonoFile {
           // and continue with the next line.
           break;
         } else {
-          printf(ARED("Failed:") "\n"
-                 "%s\n%s\n",
-                 LengthIndicator(line_width).c_str(),
-                 // std::string(WIDTH, '-').c_str(),
-                 line.c_str());
+          Print(ARED("Failed:") "\n"
+                "{}\n{}\n",
+                LengthIndicator(line_width),
+                // std::string(WIDTH, '-'),
+                line);
 
-          printf("Histo:\n"
-                 "%s\n",
-                 len_histo->SimpleHorizANSI(11).c_str());
+          Print("Histo:\n"
+                "{}\n",
+                len_histo->SimpleHorizANSI(11));
           failures[line]++;
           // Otherwise, try again.
           llm->LoadState(line_beginning);
@@ -267,14 +269,14 @@ struct MonoFile {
         AddParagraph(rp);
       }
 
-      printf("\n%s\n", ANSI::ProgressBar(i + 1, paras.size(),
-                                         "Paragraphs",
-                                         run_timer.Seconds()).c_str());
+      Print("\n{}\n", ANSI::ProgressBar(i + 1, paras.size(),
+                                        "Paragraphs",
+                                        run_timer.Seconds()));
     }
 
     fclose(outfile);
-    printf("Wrote %s in %s\n", out_filename.c_str(),
-           ANSI::Time(run_timer.Seconds()).c_str());
+    Print("Wrote {} in {}\n", out_filename,
+          ANSI::Time(run_timer.Seconds()));
   }
 
 
@@ -311,8 +313,8 @@ int main(int argc, char ** argv) {
   sparams.type = SampleType::GREEDY;
 
   LLM llm(cparams, sparams);
-  printf(AGREEN("Loaded model") " in %s.\n",
-         ANSI::Time(model_timer.Seconds()).c_str());
+  Print(AGREEN("Loaded model") " in {}.\n",
+        ANSI::Time(model_timer.Seconds()));
 
   MonoFile mono_file(line_width, &llm);
 

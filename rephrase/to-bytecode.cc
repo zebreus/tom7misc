@@ -3,6 +3,7 @@
 
 #include <cctype>
 #include <cstddef>
+#include <format>
 #include <string>
 #include <tuple>
 #include <unordered_set>
@@ -13,7 +14,6 @@
 
 #include "bignum/big.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "bc.h"
 #include "functional-map.h"
 #include "il.h"
@@ -47,7 +47,7 @@ struct Converter {
   // illegal to begin a user field name and reminiscent of the type.
   static std::string ObjFieldName(const std::string &f, il::ObjFieldType oft) {
     const char c = ObjectFieldTypeTag(ILOftToBC(oft));
-    return StringPrintf("%c%s", c, f.c_str());
+    return std::format("{:c}{}", c, f);
   };
 
   // We actually keep code, data, and local symbols disjoint (even
@@ -64,7 +64,7 @@ struct Converter {
       // look nicer.
       return base;
     } else {
-      return StringPrintf("%s$%d", base.c_str(), counter);
+      return std::format("{}${}", base, counter);
     }
   }
 
@@ -459,7 +459,7 @@ struct Converter {
         int child_idx = 0;
         for (const il::Exp *child : children) {
           const std::string local =
-            ConvertExp(G, StringPrintf("c%d", child_idx), child,
+            ConvertExp(G, std::format("c{}", child_idx), child,
                        blocks, current_block);
           // Several possibilities:
           // 1. A text node. If the previous node was text, we replace the

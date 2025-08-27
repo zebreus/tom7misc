@@ -1,9 +1,9 @@
-#include <cstdio>
 #include <string>
 #include <string_view>
 #include <vector>
 #include <cstddef>
 
+#include "base/print.h"
 #include "inclusion.h"
 #include "util.h"
 #include "base/logging.h"
@@ -40,5 +40,5 @@ int main(int argc, char **argv) {
   const auto &[source, tokens, source_map] =
     Inclusion::Process(includepaths, filename);
 
-  printf("%s\n", source.c_str());
+  Print("%s\n", source);
 }

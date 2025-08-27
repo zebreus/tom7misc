@@ -18,7 +18,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
 #include "context.h"
@@ -52,7 +52,7 @@ void Simplification::SetVerbose(int v) {
 static std::string ExpStringShort(const Exp *e) {
   switch (e->type) {
   default:
-    return StringPrintf(ABLUE("%s"), ExpTypeString(e->type));
+    return std::format(ABLUE("{}"), ExpTypeString(e->type));
   }
 }
 
@@ -945,10 +945,9 @@ struct PeepholePass : public il::Pass<> {
       Simplified("inlined single-use binding");
       if (VERBOSE) {
         std::string ts = tyvars.empty() ? "" :
-          StringPrintf(", tyvars (" ABLUE("%s") ")",
-                       Util::Join(tyvars, ",").c_str());
-        printf("  Inlined var is " APURPLE("%s") "%s\n",
-               x.c_str(), ts.c_str());
+          std::format(", tyvars (" ABLUE("{}") ")",
+                      Util::Join(tyvars, ","));
+        Print("  Inlined var is " APURPLE("{}") "{}\n", x, ts);
       }
       return ILUtil::SubstPolyExp(pool, tyvars, DoExp(rhs), x, DoExp(body));
     }
@@ -959,8 +958,8 @@ struct PeepholePass : public il::Pass<> {
       Simplified("inlined small value");
       const Exp *value = DoExp(rhs);
       if (VERBOSE) {
-        printf("  Inlined var is " APURPLE("%s") " = %s\n",
-               x.c_str(), ExpStringShort(value).c_str());
+        Print("  Inlined var is " APURPLE("{}") " = {}\n",
+              x, ExpStringShort(value));
       }
       return ILUtil::SubstExp(pool, value, x, DoExp(body));
     }

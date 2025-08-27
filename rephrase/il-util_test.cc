@@ -3,15 +3,16 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <format>
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
 #include <vector>
 
-#include "il.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "il.h"
 #include "util.h"
 
 static std::string StringSetString(
@@ -20,7 +21,7 @@ static std::string StringSetString(
   sv.reserve(ss.size());
   for (const std::string &s : ss) sv.push_back(s);
   std::sort(sv.begin(), sv.end());
-  return StringPrintf("{%s}", Util::Join(sv, ", ").c_str());
+  return std::format("{{" "{}" "}}", Util::Join(sv, ", "));
 }
 
 namespace il {
@@ -194,6 +195,6 @@ int main(int argc, char **argv) {
   il::TestSubstExp();
   il::TestFreeTypeVars();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

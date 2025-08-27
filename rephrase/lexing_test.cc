@@ -1,22 +1,22 @@
 
 #include "lexing.h"
 
-#include <cstdio>
 #include <optional>
 #include <string>
 #include <vector>
 
-#include "base/logging.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
 
 namespace el {
 
 static void PrintTokens(const std::string &input,
                         const std::vector<Token> &tokens) {
   const auto &[source, ctokens] = Lexing::ColorTokens(input, tokens);
-  printf("Got:\n"
-         "%s\n%s\n",
-         source.c_str(), ctokens.c_str());
+  Print("Got:\n"
+        "{}\n{}\n",
+        source, ctokens);
 }
 
 #define CHECK_LEX(str, ...)                                    \
@@ -54,7 +54,7 @@ static void TestLex() {
     CHECK(tokens.has_value());
     const auto &[source, ctokens] =
       Lexing::ColorTokens(input, tokens.value());
-    printf("%s\n%s\n", source.c_str(), ctokens.c_str());
+    Print("{}\n{}\n", source, ctokens);
   }
 
   CHECK_LEX("15232", DIGITS);
@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
   ANSI::Init();
   el::TestLex();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }
 

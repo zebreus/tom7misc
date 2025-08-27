@@ -17,6 +17,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "color-util.h"
 #include "image.h"
 #include "pdf.h"
@@ -263,8 +264,8 @@ void PDFPage::DrawText(const Font *font_in,
 
   CHECK(font->pdf_font != nullptr);
   pdf->SetFont(font->pdf_font);
-  // printf("Add text [%s] (%s)\n", text.c_str(),
-  //        Util::HexString(text).c_str());
+  // Print("Add text [{}] ({})\n", text,
+  //        Util::HexString(text));
   pdf->AddText(text, size,
                // We flip the y coordinate, but also then need to
                // measure from the top of the text, not its baseline.
@@ -285,8 +286,8 @@ void PDFPage::DrawImage(double x, double y,
   rgb.Clear32(0xFFFFFFFF);
   rgb.BlendImage(0, 0, image);
 
-  printf("Add image at %.11g %.11g dims %.11gx%.11g\n",
-         x, y, width, height);
+  Print("Add image at {:.11g} {:.11g} dims {:.11g}x{:.11g}\n",
+        x, y, width, height);
   CHECK(pdf->AddImageRGB(
             // Images are also measured from their baselines.
             x, FlipPageCoordinate(y + height),
@@ -318,7 +319,7 @@ void PDFPage::DrawLine(double x0, double y0,
                        double x1, double y1,
                        double line_width,
                        uint32_t stroke_color) {
-  printf("Line %.2f,%.2f %.2f,%.2f\n", x0, y0, x1, y1);
+  Print("Line {:.2f},{:.2f} {:.2f},{:.2f}\n", x0, y0, x1, y1);
 
   CHECK(pdf_page != nullptr);
   pdf->AddLine(x0, FlipPageCoordinate(y0),
@@ -376,7 +377,7 @@ void PDFDocument::GeneratePDF(
   }
 
   pdf->Save(filename);
-  printf("Wrote %d page%s to " AGREEN("%s") ".\n",
-         num_pages, num_pages != 1 ? "s" : "",
-         filename.c_str());
+  Print("Wrote {} page{} to " AGREEN("{}") ".\n",
+        num_pages, num_pages != 1 ? "s" : "",
+        filename);
 }

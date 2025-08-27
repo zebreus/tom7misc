@@ -4,14 +4,14 @@
 
 #include "animation.h"
 
-#include <cstdio>
+#include <format>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "image.h"
 #include "threadutil.h"
 #include "timer.h"
@@ -37,14 +37,14 @@ int main(int argc, char **argv) {
 
   ParallelComp(frames.size(),
                [&file_base_out, &frames](int frame_num) {
-                 std::string frame_file = StringPrintf("%s-%d.png",
-                                                       file_base_out.c_str(),
-                                                       frame_num);
+                 std::string frame_file = std::format("{}-{}.png",
+                                                      file_base_out,
+                                                      frame_num);
                  frames[frame_num].Save(frame_file);
                },
                16);
 
-  printf("Total time: %s\n", ANSI::Time(total_timer.Seconds()).c_str());
+  Print("Total time: {}\n", ANSI::Time(total_timer.Seconds()));
 
   return 0;
 }

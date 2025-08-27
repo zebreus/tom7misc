@@ -15,7 +15,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "bignum/big.h"
 #include "el.h"
 #include "inclusion.h"
@@ -128,8 +128,7 @@ const Exp *Parsing::Parse(AstPool *pool,
   // Given as a range of token indices.
   auto ErrorAtIndex = [&ErrorAtToken, &tokens](size_t start, size_t length) {
       if (start >= tokens.size()) {
-        return StringPrintf(ARED("token pos %d out of range!"),
-                            (int)start);
+        return std::format(ARED("token pos {} out of range!"), start);
       } else {
         return ErrorAtToken(tokens[start]);
       }
@@ -150,7 +149,7 @@ const Exp *Parsing::Parse(AstPool *pool,
   const auto Int = IsToken<DIGITS>() >[&](Token t) {
       std::string s = TokenStr(t);
       int64_t i = std::stoll(s);
-      CHECK(StringPrintf("%lld", i) == s) << ErrorAtToken(t) <<
+      CHECK(std::format("{}", i) == s) << ErrorAtToken(t) <<
         "Invalid integer literal " << s;
       return i;
     };
@@ -903,7 +902,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         "empty fun clauses!";
       const std::string &fname =
         std::get<0>(std::get<0>(std::get<0>(clauses[0])));
-      // printf("OneFunDec: %s\n", fname.c_str());
+      // Print("OneFunDec: {}\n", fname);
       FunDec ret;
       ret.name = fname;
       for (const auto &ppte : clauses) {
@@ -950,8 +949,9 @@ const Exp *Parsing::Parse(AstPool *pool,
             const auto &[p, token_start, token_len] = p_start_len;
             const FunDec &f = p.first;
             const std::vector<FunDec> &fs = p.second;
-            if (VERBOSE) { printf("Fundec %s + %d\n", f.name.c_str(),
-                                  (int)fs.size()); }
+            if (VERBOSE) {
+              Print("Fundec {} + {}\n", f.name, fs.size());
+            }
             std::vector<FunDec> funs = {f};
             for (const FunDec &d : fs) funs.push_back(d);
             return pool->FunDec(std::move(funs), BytePos(token_start));
@@ -1070,7 +1070,7 @@ const Exp *Parsing::Parse(AstPool *pool,
         const auto &[tok, start, length] = err;
         LOG(FATAL) << ErrorAtIndex(start, length) <<
           "Expected declaration, but got " <<
-          StringPrintf(AORANGE("%s"), TokenTypeString(tok.type)) <<
+          std::format(AORANGE("{}"), TokenTypeString(tok.type)) <<
           "\nAt: " << start << " for " << length;
         return nullptr;
       };

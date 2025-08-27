@@ -234,7 +234,7 @@ std::string TypeString(const Type *t) {
     if (const Type *u = evar.GetBound()) {
       // We treat bound evars transparently, although for some
       // uses it might be good to be able to see it?
-      return TypeString(u).c_str();
+      return TypeString(u);
     } else {
       return evar.ToString();
     }

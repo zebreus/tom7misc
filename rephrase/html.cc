@@ -1,7 +1,7 @@
 
 #include "html.h"
 
-#include <cstdio>
+#include <format>
 #include <functional>
 #include <string>
 #include <unordered_map>
@@ -9,11 +9,11 @@
 #include <vector>
 #include <utility>
 
+#include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
 #include "re2/re2.h"
 #include "util.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "ansi.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -37,7 +37,7 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
   static const RE2 no_more_attrs_re(" */?");
 
   if (VERBOSE) {
-    printf("\n\nParse: %s\n", input.c_str());
+    Print("\n\nParse: {}\n", input);
   }
 
   // Nodes in progress. There's always one element in this stack,
@@ -69,12 +69,12 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
       break;
 
     if (VERBOSE)
-      printf("Looking at: [%s]\n", std::string(in).c_str());
+      Print("Looking at: [{}]\n", std::string(in));
 
     std::string tag, attrs;
     if (RE2::Consume(&in, start_tag_re, &tag, &attrs)) {
       if (VERBOSE)
-        printf("Matched tag_re [%s]\n", tag.c_str());
+        Print("Matched tag_re [{}]\n", tag);
       // Enter new tag.
       tag = Util::lcase(tag);
       HTMLNode node;
@@ -85,7 +85,7 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
       std::string attr, value;
       while (RE2::Consume(&a, attr_re, &attr, &value)) {
         if (VERBOSE) {
-          printf("Attr: %s\n", attr.c_str());
+          Print("Attr: {}\n", attr);
         }
         // TODO: unescape attribute
         attr = Util::lcase(attr);
@@ -96,8 +96,8 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
       if (!a.empty()) {
         if (parse_error != nullptr) {
           *parse_error =
-            StringPrintf("Something weird after attrs: [%s]",
-                         std::string(a).c_str());
+            std::format("Something weird after attrs: [{}]",
+                        std::string(a));
         }
         return {};
       }
@@ -138,7 +138,7 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
   }
 
   if (VERBOSE) {
-    printf("Ended with tag stack %d\n", (int)tag_stack.size());
+    Print("Ended with tag stack {}\n", tag_stack.size());
   }
 
   if (tag_stack.size() != 1) {
@@ -149,8 +149,8 @@ std::vector<HTMLNode> HTML::Parse(const std::string &input,
   }
 
   if (VERBOSE)
-    printf("Returning %d children.\n",
-           (int)tag_stack.back().children.size());
+    Print("Returning {} children.\n",
+          tag_stack.back().children.size());
   return std::move(tag_stack.back().children);
 }
 
@@ -159,17 +159,17 @@ void HTML::DebugPrint(const std::vector<HTMLNode> &nodes) {
     [&Rec](const HTMLNode &node, int depth) {
       std::string pad(depth * 2, ' ');
       if (node.is_tag) {
-        printf("%s" ABLUE("<") "%s attrs..." ABLUE(">") "\n",
-               pad.c_str(), node.str.c_str());
+        Print("{}" ABLUE("<") "{} attrs..." ABLUE(">") "\n",
+              pad, node.str);
         for (const HTMLNode &child : node.children) {
           Rec(child, depth + 1);
         }
-        printf("%s" ABLUE("</") "%s" ABLUE(">") "\n",
-               pad.c_str(), node.str.c_str());
+        Print("{}" ABLUE("</") "{}" ABLUE(">") "\n",
+              pad, node.str);
       } else {
-        printf("%s%s\n", pad.c_str(), node.str.c_str());
+        Print("{}{}\n", pad, node.str);
         if (!node.attrs.empty() && !node.children.empty()) {
-          printf("%s" ARED("(with illegal children)") "\n", pad.c_str());
+          Print("{}" ARED("(with illegal children)") "\n", pad);
         }
       }
     };

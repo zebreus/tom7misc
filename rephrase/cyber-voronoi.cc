@@ -3,13 +3,13 @@
 
 #include <algorithm>
 #include <cmath>
-#include <vector>
+#include <format>
 #include <utility>
+#include <vector>
 
 #include "arcfour.h"
-#include "randutil.h"
-#include "base/stringprintf.h"
 #include "image.h"
+#include "randutil.h"
 #include "threadutil.h"
 
 struct Ball {
@@ -77,7 +77,7 @@ static void MakeFrames() {
     async.Run([&Normalize, df = std::move(df), i]() mutable {
         Normalize(&df);
         df.Make8Bit().GreyscaleRGBA().Save(
-            StringPrintf("voronoi%05d.png", i));
+            std::format("voronoi{:05d}.png", i));
       });
 
     // Simulate.

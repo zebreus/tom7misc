@@ -14,6 +14,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "document.h"
 #include "image-document.h"
 #include "image.h"
@@ -144,8 +145,8 @@ void MovieDocument::GenerateOutput(
   status.Status("Finalize {}...", mov_filename);
   recorder.reset();
 
-  printf("Wrote %d frame%s to " AGREEN("%s") " in %s.\n",
-         (int)frames.size(), frames.size() != 1 ? "s" : "",
-         mov_filename.c_str(),
-         ANSI::Time(sec).c_str());
+  Print("Wrote {} frame{} to " AGREEN("{}") " in {}.\n",
+        frames.size(), frames.size() != 1 ? "s" : "",
+        mov_filename,
+        ANSI::Time(sec));
 }

@@ -5,9 +5,10 @@
 #include <utility>
 #include <vector>
 
-#include "util.h"
-#include "base/logging.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "util.h"
 
 enum Color { GREY, YELLOW, GREEN, };
 
@@ -64,10 +65,10 @@ void PrintColor(const std::vector<Color> &colors,
   }
 }
 
-void Print(const std::string &secret, const std::string &guess) {
+void PrintOut(const std::string &secret, const std::string &guess) {
   auto colors = Color1(secret, guess);
   PrintColor(colors, guess);
-  printf("\n");
+  Print("\n");
 }
 
 std::vector<std::string> Filter(
@@ -110,7 +111,7 @@ static void ShowPuzzle(const std::vector<std::string> &words,
     Filter(words, board);
 
   for (const auto &s : remain) {
-    printf("%s\n", s.c_str());
+    Print("{}\n", s);
   }
 }
 
@@ -134,12 +135,12 @@ int main(int argc, char **argv) {
       Filter(words, board);
 
     if (remain.empty()) {
-      printf("No words.\n");
+      Print("No words.\n");
     }
     for (const auto &s : remain) {
-      printf("%s\n", s.c_str());
+      Print("{}\n", s);
     }
-    printf("\n------\n");
+    Print("\n------\n");
   }
 
   {
@@ -160,14 +161,14 @@ int main(int argc, char **argv) {
         Filter(words, board);
 
       if (remain.empty()) {
-        printf("No words.\n");
+        Print("No words.\n");
       }
       for (const auto &s : remain) {
-        printf("%s\n", s.c_str());
+        Print("{}\n", s);
       }
     }
 
-    printf("\n-------\n");
+    Print("\n-------\n");
 
   }
 

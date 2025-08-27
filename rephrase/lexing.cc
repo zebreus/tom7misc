@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <cstddef>
+#include <format>
 #include <utility>
 #include <optional>
 #include <cstdint>
@@ -12,9 +13,10 @@
 #include <unordered_map>
 
 #include "ansi.h"
-#include "re2/re2.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
+#include "re2/re2.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -115,9 +117,9 @@ std::pair<std::string, std::string> Lexing::ColorTokens(
     const Token &tok = tokens[t];
 
     if (VERBOSE) {
-      printf("in_pos %zu. tok %d %s from %zu for %zu\n", input_pos,
-             t, TokenTypeString(tok.type),
-             tok.start, tok.length);
+      Print("in_pos {}. tok {} {} from {} for {}\n", input_pos,
+            t, TokenTypeString(tok.type),
+            tok.start, tok.length);
     }
 
     CHECK(input_pos <= tok.start);
@@ -127,7 +129,7 @@ std::pair<std::string, std::string> Lexing::ColorTokens(
     // If there is whitespace to skip, emit it with black bg.
     if (input_pos < tok.start) {
       source += ANSI::BackgroundRGB(0x22, 0x22, 0x22);
-      // StringAppendF(&source, "%d", tok.start - input_pos);
+      // AppendFormat(&source, "{}", tok.start - input_pos);
       while (input_pos < tok.start) {
         source.push_back(input_string[input_pos]);
         input_pos++;
@@ -143,9 +145,9 @@ std::pair<std::string, std::string> Lexing::ColorTokens(
     std::string bc = ANSI::BackgroundRGB32(c);
     std::string fc = ANSI::ForegroundRGB32(c | 0x808080FF);
     std::string in = input_string.substr(tok.start, tok.length);
-    StringAppendF(&source, "%s%s", bc.c_str(), in.c_str());
-    StringAppendF(&ctokens, "%s%s" ANSI_RESET " ",
-                  fc.c_str(), TokenTypeString(tok.type));
+    AppendFormat(&source, "{}{}", bc, in);
+    AppendFormat(&ctokens, "{}{}" ANSI_RESET " ",
+                 fc, TokenTypeString(tok.type));
     input_pos += tok.length;
   }
   source += ANSI_RESET;
@@ -319,7 +321,7 @@ std::optional<std::vector<Token>> Lexing::Lex(
     std::string match;
     if (RE2::Consume(&input, whitespace)) {
       // No tokens.
-      // printf("Saw whitespace at %zu for %zu\n", start, Pos() - start);
+      // Print("Saw whitespace at {} for {}\n", start, Pos() - start);
     } else if (RE2::Consume(&input, start_comment)) {
       // No tokens.
       int depth = 1;
@@ -409,9 +411,9 @@ std::optional<std::vector<Token>> Lexing::Lex(
         if (comment_len == re2::StringPiece::npos) {
           if (error != nullptr) {
             *error =
-              StringPrintf("Unterminated [* layout comment *] "
-                           "at offset %zu",
-                           comment_start);
+              std::format("Unterminated [* layout comment *] "
+                          "at offset {}",
+                          comment_start);
           }
           return std::nullopt;
         }
@@ -474,10 +476,10 @@ std::optional<std::vector<Token>> Lexing::Lex(
             input_string.substr(snippet_start, 40) :
             input_string.substr(snippet_start, std::string::npos);
           *error =
-            StringPrintf("%s '%c' (0x%02x) at offset %zu:\n"
-                         "%s\n",
-                         msg, c, c, start,
-                         snippet.c_str());
+            std::format("{} '{:c}' (0x{:02x}) at offset {}:\n"
+                        "{}\n",
+                        msg, c, c, start,
+                        snippet);
         }
         return std::nullopt;
       }
@@ -506,7 +508,7 @@ std::string Lexing::UnescapeStrLit(const std::string &s) {
       default:
         // TODO: Implement \x and \u{1234} stuff.
         CHECK(false) << "Unimplemented or illegal escape "
-                     << StringPrintf("\\%c", d)
+                     << std::format("\\{:c}", d)
                      << " in string literal.";
       }
     } else {

@@ -4,16 +4,17 @@
 #include <cstdint>
 #include <cstdio>
 #include <optional>
-#include <utility>
-#include <vector>
 #include <string>
 #include <tuple>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
+#include "ansi.h"
+#include "base/print.h"
 #include "interval-cover.h"
 #include "lexing.h"
 #include "util.h"
-#include "ansi.h"
 
 using Token = el::Token;
 using Lexing = el::Lexing;
@@ -36,10 +37,10 @@ struct InclusionImpl {
       std::string f = Util::DirPlus(ipath, filename);
       if (Util::ExistsFile(f)) return f;
     }
-    printf("File " ARED("%s") " not found in any include path:\n",
-           filename.c_str());
+    Print("File " ARED("{}") " not found in any include path:\n",
+          filename);
     for (const std::string &ipath : includepaths) {
-      printf("  " AGREY("%s") "\n", ipath.c_str());
+      Print("  " AGREY("{}") "\n", ipath);
     }
     LOG(FATAL) << "Could not include " << filename;
     return "";
@@ -53,7 +54,7 @@ struct InclusionImpl {
     int current_line = 1;
 
     if (VERBOSE) {
-      printf("Append %s\n", filename.c_str());
+      Print("Append {}\n", filename);
     }
 
     size_t this_file_pos = source.size();
@@ -149,19 +150,19 @@ struct InclusionImpl {
         // shift due to the inserted text from the included file, and
         // also the text deleted from the include statement.
         if (VERBOSE) {
-          printf("before %d, after %d.\n"
-                 "deleted %d bytes\n"
-                 "this_file was %d\n",
-                 (int)size_before, (int)size_after,
-                 (int)bytes_deleted,
-                 (int)this_file_pos);
+          Print("before {}, after {}.\n"
+                "deleted {} bytes\n"
+                "this_file was {}\n",
+                size_before, size_after,
+                bytes_deleted,
+                this_file_pos);
         }
         this_file_pos += (size_after - size_before);
         CHECK(this_file_pos >= bytes_deleted);
         this_file_pos -= bytes_deleted;
         if (VERBOSE) {
-          printf("Now input_pos %d, this_file %d\n",
-                 (int)input_pos, (int)this_file_pos);
+          Print("Now input_pos {}, this_file {}\n",
+                input_pos, this_file_pos);
         }
       } else {
         // Normal tokens.

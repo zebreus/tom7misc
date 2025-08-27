@@ -7,18 +7,19 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <format>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "base/logging.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "color-util.h"
+#include "gtl/top_n.h"
 #include "timer.h"
 #include "util.h"
-#include "gtl/top_n.h"
-#include "color-util.h"
 
 #include "llm.h"
 
@@ -62,9 +63,9 @@ static string ColorProb(float prob) {
     ColorUtil::Unpack32(
         ColorUtil::LinearGradient32(ColorUtil::HEATED_TEXT, prob));
 
-  return StringPrintf("%s%.4f%%" ANSI_RESET,
-                      ANSI::ForegroundRGB(r, g, b).c_str(),
-                      prob * 100.0);
+  return std::format("{}{:.4f}%" ANSI_RESET,
+                     ANSI::ForegroundRGB(r, g, b),
+                     prob * 100.0);
 }
 
 struct Rephrasing {
@@ -76,27 +77,26 @@ struct Rephrasing {
   Rephrasing(LLM *llm, const string &prompt, const string &original) :
     llm(llm), top(10), prompt(prompt), original(original) {
 
-    printf("Loaded prompt of %d chars\n", (int)prompt.size());
+    Print("Loaded prompt of {} chars\n", prompt.size());
 
     Timer startup_timer;
     llm->Reset();
 
     // Prompt is instructions + original text + header:
     std::string full_prompt =
-      StringPrintf("%s\n"
-                   "\n"
-                   "Original text:\n\n"
-                   "%s\n"
-                   "\n"
-                   "Rephrased text:\n\n",
-                   prompt.c_str(), original.c_str());
+      std::format("{}\n"
+                  "\n"
+                  "Original text:\n\n"
+                  "{}\n"
+                  "\n"
+                  "Rephrased text:\n\n",
+                  prompt, original);
 
-    printf(AGREY("Full prompt: [%s]") "\n", full_prompt.c_str());
+    Print(AGREY("Full prompt: [{}]") "\n", full_prompt);
 
     llm->DoPrompt(full_prompt);
-    printf("(finished the prompt)\n");
-    printf("Startup: %s\n", ANSI::Time(startup_timer.Seconds()).c_str());
-
+    Print("(finished the prompt)\n");
+    Print("Startup: {}\n", ANSI::Time(startup_timer.Seconds()));
   };
 
   struct Result {
@@ -121,7 +121,7 @@ struct Rephrasing {
   void Rephrase() {
     Timer all_time;
     // First, run a greedy pass to initialize.
-    printf(AYELLOW("Greedy pass...") "\n");
+    Print(AYELLOW("Greedy pass...") "\n");
     std::unique_ptr<std::vector<Alt>> alts = Complete("", 0.0, 0);
 
     // Now run all the top alternatives.
@@ -129,12 +129,12 @@ struct Rephrasing {
     // we should obviously be merging these!
     for (int i = 0; i < (int)alts->size(); i++) {
       const Alt &alt = (*alts)[i];
-      printf(AWHITE("[%d/%d]") " "
-             AGREEN("Continuing") " "
-             AGREY("%s") " " APURPLE("%s") "..." "\n",
-             i + 1, (int)alts->size(),
-             TruncTo(50, alt.prefix).c_str(),
-             alt.other.c_str());
+      Print(AWHITE("[{}/{}]") " "
+            AGREEN("Continuing") " "
+            AGREY("{}") " " APURPLE("{}") "..." "\n",
+            i + 1, alts->size(),
+            TruncTo(50, alt.prefix),
+            alt.other);
       // Restore and take the alternate token.
       llm->LoadState(alt.state);
       std::string text = alt.prefix + alt.other;
@@ -144,8 +144,8 @@ struct Rephrasing {
                      alt.pnum + 1);
     }
 
-    printf("Finished %d+1 in %s\n", (int)alts->size(),
-           ANSI::Time(all_time.Seconds()).c_str());
+    Print("Finished {}+1 in {}\n", alts->size(),
+          ANSI::Time(all_time.Seconds()));
   }
 
   // With the llm in some partially-predicted state (starting with text,
@@ -199,9 +199,9 @@ struct Rephrasing {
       }
 
       constexpr int MAX_PREFIX = 60;
-      printf("%s" ABLUE("%s") "\n",
-             TruncTo(MAX_PREFIX, text).c_str(),
-             top_tok.c_str());
+      Print("{}" ABLUE("{}") "\n",
+            TruncTo(MAX_PREFIX, text),
+            top_tok);
 
       text += top_tok;
 
@@ -211,16 +211,16 @@ struct Rephrasing {
       llm->TakeTokenBatch({top_id});
       if (top_id == llm->context.EOSToken() ||
           top_id == llm->context.NewlineToken()) {
-        printf("Done.");
+        Print("Done.");
         break;
       }
     }
 
     const double sec = complete_timer.Seconds();
-    printf("\n%s\n", text.c_str());
-    printf("pnum %d, psum %.3f, avg %s. Took %s\n",
-           pnum, psum, ColorProb(psum / pnum).c_str(),
-           ANSI::Time(sec).c_str());
+    Print("\n{}\n", text);
+    Print("pnum {}, psum {:.3f}, avg {}. Took {}\n",
+          pnum, psum, ColorProb(psum / pnum),
+          ANSI::Time(sec));
 
     Result result;
     result.text = text;
@@ -231,17 +231,17 @@ struct Rephrasing {
     results.push_back(std::move(result));
 
 
-    printf("Top alternatives:\n");
+    Print("Top alternatives:\n");
     std::unique_ptr<std::vector<Alt>> v(top.Extract());
     // Leave it in a valid state.
     top.Reset();
 
     for (const Alt &alt : *v) {
-      printf(AGREY("%s") "\n", TruncTo(50, alt.prefix).c_str());
-      printf("  " ABLUE("%s") " (%s) "
-             "or " APURPLE("%s") " (%s)\n",
-             alt.chosen.c_str(), ColorProb(alt.chosen_p).c_str(),
-             alt.other.c_str(), ColorProb(alt.other_p).c_str());
+      Print(AGREY("{}") "\n", TruncTo(50, alt.prefix));
+      Print("  " ABLUE("{}") " ({}) "
+            "or " APURPLE("{}") " ({})\n",
+            alt.chosen, ColorProb(alt.chosen_p),
+            alt.other, ColorProb(alt.other_p));
     }
 
     return v;
@@ -289,7 +289,7 @@ int main(int argc, char ** argv) {
   sparams.regex = ".*";
 
   LLM llm(cparams, sparams);
-  printf(AGREEN("Loaded model") ".\n");
+  Print(AGREEN("Loaded model") ".\n");
 
   Rephrasing rephrasing(&llm, prompt, original);
   rephrasing.Rephrase();

@@ -1,7 +1,7 @@
 
 #include "execution.h"
 
-#include <cstdio>
+#include <format>
 #include <string>
 #include <optional>
 #include <utility>
@@ -9,7 +9,8 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
+
 #include "bc.h"
 #include "compiler.h"
 
@@ -144,15 +145,15 @@ static std::string RunToString(const std::string &source,
   } else {
 
     if (execution.Failed()) {
-      printf(ARED("FAILED") "\n");
+      Print(ARED("FAILED") "\n");
       if (execution.fail_message.has_value()) {
-        printf(AWHITE("message") ": %s\n",
-               execution.fail_message.value().c_str());
+        Print(AWHITE("message") ": {}\n",
+              execution.fail_message.value());
       } else {
-        printf(AWHITE("(no message?)") "\n");
+        Print(AWHITE("(no message?)") "\n");
       }
-      printf(AWHITE("output") ":\n" "%s\n",
-             execution.console_output.c_str());
+      Print(AWHITE("output") ":\n" "{}\n",
+            execution.console_output);
       LOG(FATAL) << "Unexpectedly failed";
     } else {
       return std::move(execution.console_output);
@@ -835,11 +836,11 @@ static void TestOps() {
   for (bool simplify : { true, false }) {
     CHECK_EQ(RunToString(R"(
         print (int-to-string (0b100101 shl 3))
-       )", false, simplify), StringPrintf("%d", 0b100101000));
+       )", false, simplify), std::format("{}", 0b100101000));
 
     CHECK_EQ(RunToString(R"(
         print (int-to-string (0b100101 shr 2))
-       )", false, simplify), StringPrintf("%d", 0b1001));
+       )", false, simplify), std::format("{}", 0b1001));
 
   }
 }
@@ -887,6 +888,6 @@ int main(int argc, char **argv) {
   bc::TestVectors();
   bc::TestOps();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

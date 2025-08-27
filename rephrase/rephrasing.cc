@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <functional>
 #include <memory>
 #include <set>
@@ -13,17 +14,18 @@
 #include <vector>
 #include <utility>
 
-#include "util.h"
-#include "html.h"
-#include "color-util.h"
-
-#include "document.h"
-#include "base/logging.h"
-#include "base/stringprintf.h"
-#include "crypt/sha256.h"
-#include "timer.h"
 #include "ansi.h"
+#include "base/logging.h"
+#include "base/print.h"
+#include "base/stringprintf.h"
+#include "color-util.h"
+#include "crypt/sha256.h"
 #include "re2/re2.h"
+#include "timer.h"
+#include "util.h"
+
+#include "html.h"
+#include "document.h"
 
 #if ENABLE_LLM
 #include "llama.h"
@@ -60,7 +62,7 @@ static std::string ColorProbString(const std::string &s, float prob) {
 }
 
 static std::string ColorProb(float prob) {
-  return ColorProbString(StringPrintf("%.2f%%", prob * 100.0), prob);
+  return ColorProbString(std::format("{:.2f}%", prob * 100.0), prob);
 }
 
 // We store quantized (16-bit) probabilities in paths, mostly so that they
@@ -68,7 +70,7 @@ static std::string ColorProb(float prob) {
 // are actually in [0, 1].
 struct QProb {
   std::string ToString() const {
-    return StringPrintf("%04x", word);
+    return std::format("{:04x}", word);
   }
   QProb() {}
   explicit QProb(const std::string &s) {
@@ -223,11 +225,11 @@ struct Database {
   static std::string PathString(const Path &path) {
     std::string out;
     for (const Node &node : path) {
-      StringAppendF(&out, "%d %d %s %s %s ",
-                    node.token, node.depth,
-                    node.p_skipped.ToString().c_str(),
-                    node.p.ToString().c_str(),
-                    node.p_next.ToString().c_str());
+      AppendFormat(&out, "{} {} {} {} {} ",
+                   node.token, node.depth,
+                   node.p_skipped.ToString(),
+                   node.p.ToString(),
+                   node.p_next.ToString());
     }
     return out;
   }
@@ -287,19 +289,18 @@ struct Database {
 
       // Key and number of rows.
       // They are ASCII SHA-256.
-      StringAppendF(&out, "%s %d\n", key->c_str(),
-                    (int)rows_in->size());
+      AppendFormat(&out, "{} {}\n", *key, rows_in->size());
 
       for (const DatabaseRow *row : rows) {
         std::string path_string = PathString(row->path);
         // The text sometimes starts with space, so we use | to
         // make sure we can just strip off leading whitespace.
-        StringAppendF(&out, "  |%s\n", Escape(row->text).c_str());
-        StringAppendF(&out, "    %s\n", path_string.c_str());
-        StringAppendF(&out, "    %c %.17g %.17g\n",
-                      row->valid ? 'V' : 'X',
-                      row->skipped_loss,
-                      row->other_loss);
+        AppendFormat(&out, "  |{}\n", Escape(row->text));
+        AppendFormat(&out, "    {}\n", path_string);
+        AppendFormat(&out, "    {:c} {:.17g} {:.17g}\n",
+                     row->valid ? 'V' : 'X',
+                     row->skipped_loss,
+                     row->other_loss);
       }
     }
 
@@ -308,10 +309,10 @@ struct Database {
 
   void ReadFromFile(const std::string &file) {
     auto Error = [&file](const std::string &msg) {
-        return StringPrintf(ARED("Bad rephrase database file") " %s:\n"
-                            ABLUE("%s") "\n"
-                            "You should probably just delete it?\n",
-                            file.c_str(), msg.c_str());
+        return std::format(ARED("Bad rephrase database file") " {}:\n"
+                           ABLUE("{}") "\n"
+                           "You should probably just delete it?\n",
+                           file, msg);
       };
 
     static const RE2 key_re("([A-Za-z0-9]+) +([0-9]+) *");
@@ -360,8 +361,8 @@ struct Database {
 
       if (VERBOSE > 0) {
         std::string kt = key.size() > 20 ? key.substr(0, 17) + "..." : key;
-        printf(AGREY("%s") ": Read " ACYAN("%d") " rows (%d valid)\n",
-               kt.c_str(), (int)rows.size(), num_valid);
+        Print(AGREY("{}") ": Read " ACYAN("{}") " rows ({} valid)\n",
+              kt, rows.size(), num_valid);
       }
 
       entries[key] = std::move(rows);
@@ -369,8 +370,8 @@ struct Database {
     }
 
     if (VERBOSE > 0) {
-      printf("Read " ACYAN("%d") " entries from " AWHITE("%s") "\n",
-             (int)entries.size(), file.c_str());
+      Print("Read " ACYAN("{}") " entries from " AWHITE("{}") "\n",
+            entries.size(), file);
     }
 
   }
@@ -424,7 +425,7 @@ struct RephrasingImpl : public Rephrasing {
       const Path &path = row.path;
 
       if (VERBOSE > 2) {
-        printf("For each node:\n");
+        Print("For each node:\n");
       }
 
       double total_p = (LAPLACE_NUMER * LAPLACE_DENOM);
@@ -447,12 +448,12 @@ struct RephrasingImpl : public Rephrasing {
         double score = (avg_p * node.p_next) * path_penalty;
 
         if (VERBOSE > 2) {
-          printf(AGREY("%s") " " ACYAN("%.3f") " * " ABLUE("%.3f")
-                 " = %s ",
-                 llm->TokenString(node.token).c_str(),
-                 avg_p,
-                 (double)node.p_next,
-                 ColorProb(score).c_str());
+          Print(AGREY("{}") " " ACYAN("{:.3f}") " * " ABLUE("{:.3f}")
+                 " = {} ",
+                llm->TokenString(node.token),
+                avg_p,
+                (double)node.p_next,
+                ColorProb(score));
         }
 
         if (score > best_score) {
@@ -468,12 +469,12 @@ struct RephrasingImpl : public Rephrasing {
             best_row = row_idx;
             best_score = score;
             if (VERBOSE > 2) {
-              printf(AGREEN("♥"));
+              Print(AGREEN("♥"));
             }
 
           } else {
             if (VERBOSE > 2) {
-              printf(ARED("💣"));
+              Print(ARED("💣"));
             }
           }
 
@@ -481,27 +482,27 @@ struct RephrasingImpl : public Rephrasing {
       }
 
       if (VERBOSE > 2) {
-        printf("\n");
+        Print("\n");
       }
     }
 
     if (VERBOSE > 2) {
       if (best_row >= 0) {
-        printf(ABLUE("Best existing text") ":\n"
-               "%s\n"
-               AWHITE("With score") ": %.11g\n"
-               "Path length " APURPLE("%d")
-               ", Next depth " APURPLE("%d") "\n",
-               rows[best_row].text.c_str(),
-               best_score, (int)best_path.size(), best_next_depth);
+        Print(ABLUE("Best existing text") ":\n"
+              "{}\n"
+              AWHITE("With score") ": {:.11g}\n"
+              "Path length " APURPLE("{}")
+              ", Next depth " APURPLE("{}") "\n",
+              rows[best_row].text,
+              best_score, best_path.size(), best_next_depth);
         for (const Node &node : best_path) {
-          printf("%s " AGREY("d%d") " ",
-                 llm->TokenString(node.token).c_str(),
-                 node.depth);
+          Print("{} " AGREY("d{}") " ",
+                llm->TokenString(node.token),
+                node.depth);
         }
-        printf("\n");
+        Print("\n");
       } else {
-        printf("Best to start fresh.\n");
+        Print("Best to start fresh.\n");
       }
     }
 
@@ -510,7 +511,7 @@ struct RephrasingImpl : public Rephrasing {
         best_next_depth++;
       }
       if (VERBOSE > 1) {
-        printf("Start from root, depth " APURPLE("%d") "\n", best_next_depth);
+        Print("Start from root, depth " APURPLE("{}") "\n", best_next_depth);
       }
     }
 
@@ -545,9 +546,9 @@ struct RephrasingImpl : public Rephrasing {
 
     Timer load_timer;
     llm.reset(new LLM(cparams, sparams));
-    printf("Loaded " AWHITE("%s") " in %s.\n",
-           model_key.c_str(),
-           ANSI::Time(load_timer.Seconds()).c_str());
+    Print("Loaded " AWHITE("{}") " in {}.\n",
+          model_key,
+          ANSI::Time(load_timer.Seconds()));
 
     // Database keys also depend on the prompt for highest reproducibility.
     prompt_key = SHA256::Ascii(
@@ -580,9 +581,9 @@ struct RephrasingImpl : public Rephrasing {
     // Make sure the context and text can't get mixed up, no matter what
     // they contain.
     SHA256::UpdateString(
-        &hash, StringPrintf(".%d.%d.",
-                            (int)rephrasable.context.size(),
-                            (int)rephrasable.text.size()));
+        &hash, std::format(".{}.{}.",
+                           (int)rephrasable.context.size(),
+                           (int)rephrasable.text.size()));
     SHA256::UpdateString(&hash, rephrasable.context);
     SHA256::UpdateString(&hash, rephrasable.text);
     return SHA256::Ascii(SHA256::FinalVector(&hash));
@@ -614,14 +615,14 @@ struct RephrasingImpl : public Rephrasing {
 
     // Prompt already contains instructions and "Original text:\n\n<P>"
     std::string input =
-      StringPrintf("%s</P>\n"
-                   "\n"
-                   "Rephrased text:\n\n"
-                   "<P>",
-                   rephrasable.text.c_str());
+      std::format("{}</P>\n"
+                  "\n"
+                  "Rephrased text:\n\n"
+                  "<P>",
+                  rephrasable.text);
 
     if (VERBOSE > 2) {
-      printf(AGREY("Completed prompt: [%s]") "\n", input.c_str());
+      Print(AGREY("Completed prompt: [{}]") "\n", input);
     }
 
     // This is not a prompt; we're continuing the prompt.
@@ -632,7 +633,7 @@ struct RephrasingImpl : public Rephrasing {
 
     const double prep_sec = prep_timer.Seconds();
     if (VERBOSE > 2) {
-      printf("[finished prep in %s]\n", ANSI::Time(prep_sec).c_str());
+      Print("[finished prep in {}]\n", ANSI::Time(prep_sec));
     }
 
     const std::string key = DatabaseKey(rephrasable);
@@ -660,11 +661,11 @@ struct RephrasingImpl : public Rephrasing {
     }
     const double replay_sec = replay_timer.Seconds();
     if (VERBOSE > 2) {
-      printf("Replayed path in %s\n", ANSI::Time(replay_sec).c_str());
+      Print("Replayed path in {}\n", ANSI::Time(replay_sec));
     }
 
     if (VERBOSE > 1) {
-      // printf(AGREY("%s"), text.c_str());
+      // Print(AGREY("{}"), text);
       double total_p = LAPLACE_NUMER;
       for (int i = 0; i < (int)path.size(); i++) {
         const Node &node = path[i];
@@ -676,9 +677,9 @@ struct RephrasingImpl : public Rephrasing {
         double score = avg_p * node.p_next;
 
         std::string tok = llm->context.TokenString(node.token);
-        printf("%s", ColorProbString(tok, score).c_str());
+        Print("{}", ColorProbString(tok, score));
         if (node.depth > 0) {
-          printf(AORANGE("↓"));
+          Print(AORANGE("↓"));
         }
       }
     }
@@ -724,7 +725,7 @@ struct RephrasingImpl : public Rephrasing {
       if (id == llm->context.EOSToken())
         break;
       if (VERBOSE > 1) {
-        printf("%s", tok.c_str());
+        Print("%s", tok);
       }
       if (llm->sampler.Accepting() || llm->sampler.Stuck()) {
         normal_termination = llm->sampler.Accepting();
@@ -738,10 +739,10 @@ struct RephrasingImpl : public Rephrasing {
     (void)Util::TryStripSuffix("</P>", &text);
 
     if (VERBOSE > 1) {
-      printf("\n");
+      Print("\n");
     }
     if (VERBOSE > 2) {
-      printf("Final text: " AYELLOW("%s") "\n", text.c_str());
+      Print("Final text: " AYELLOW("{}") "\n", text);
     }
 
     // Check validity.
@@ -752,14 +753,14 @@ struct RephrasingImpl : public Rephrasing {
       Rejoin(rephrasable, text, &doc, &error);
     if (valid) {
       if (VERBOSE > 1) {
-        printf(AGREEN("Valid") ".\n");
+        Print(AGREEN("Valid") ".\n");
         if (VERBOSE > 2) {
           DebugPrintDocTree(doc);
         }
       }
     } else {
       if (VERBOSE > 1) {
-        printf(ARED("Not valid") ": %s\n", error.c_str());
+        Print(ARED("Not valid") ": {}\n", error);
       }
     }
 
@@ -809,8 +810,8 @@ struct RephrasingImpl : public Rephrasing {
             // Still valid.
           } else {
             if (VERBOSE > 0) {
-              printf(AORANGE("Invalidated") " [%s] because " ARED("%s") "\n",
-                     old.text.c_str(), error.c_str());
+              Print(AORANGE("Invalidated") " [{}] because " ARED("{}") "\n",
+                    old.text, error);
             }
             dirty = true;
             old.valid = false;
@@ -844,8 +845,8 @@ struct RephrasingImpl : public Rephrasing {
   void Save() override {
     db.SaveToFile(db_filename);
     if (VERBOSE > 0) {
-      printf("Saved rephrasing database to " AWHITE("%s") "\n",
-             db_filename.c_str());
+      Print("Saved rephrasing database to " AWHITE("{}") "\n",
+            db_filename);
     }
     dirty = false;
   }
@@ -945,7 +946,7 @@ bool Rephrasing::Rejoin(
   std::string html_error;
   std::vector<HTMLNode> nodes = HTML::Parse(std::string(text), &html_error);
   if (!html_error.empty()) {
-    printf(ARED("Couldn't parse as HTML") ": %s\n", html_error.c_str());
+    Print(ARED("Couldn't parse as HTML") ": {}\n", html_error);
     if (error != nullptr) *error = html_error;
     return false;
   }
@@ -979,8 +980,8 @@ bool Rephrasing::Rejoin(
           } else {
             failed = true;
             if (error != nullptr)
-              *error = StringPrintf("class not the right format: [%s]",
-                                    it->second.c_str());
+              *error = std::format("class not the right format: [{}]",
+                                   it->second);
             return DocTree();
           }
 
@@ -1068,8 +1069,8 @@ Rephrasable Rephrasing::GetTextToRephrase(const DocTree &doc) {
 
       } else {
         auto AsImg = [&rephrasable](const DocTree &doc) {
-            StringAppendF(&rephrasable.text, "<img src=\"img%d.png\">",
-                          (int)rephrasable.images.size());
+            AppendFormat(&rephrasable.text, "<img src=\"img{}.png\">",
+                         rephrasable.images.size());
             rephrasable.images.push_back(std::make_shared<DocTree>(doc));
             return;
           };
@@ -1107,13 +1108,13 @@ Rephrasable Rephrasing::GetTextToRephrase(const DocTree &doc) {
                 }
               } else {
                 // Otherwise we need to bracket the styled text.
-                StringAppendF(&rephrasable.text, "<span class=\"c%d\">",
-                              (int)rephrasable.classes.size());
+                AppendFormat(&rephrasable.text, "<span class=\"c{}\">",
+                             rephrasable.classes.size());
                 rephrasable.classes.push_back(doc.attrs);
                 for (const std::shared_ptr<DocTree> &child : doc.children) {
                   Rec(*child, false);
                 }
-                StringAppendF(&rephrasable.text, "</span>");
+                AppendFormat(&rephrasable.text, "</span>");
               }
               return;
             }

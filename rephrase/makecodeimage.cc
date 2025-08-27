@@ -1,15 +1,15 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
-#include <vector>
 #include <string>
+#include <vector>
 
-#include "util.h"
-#include "image.h"
-#include "color-util.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "color-util.h"
+#include "image.h"
+#include "util.h"
 
 static bool INCLUDE_TESTS = true;
 static constexpr bool BREAK_NEWLINE = true;
@@ -75,8 +75,8 @@ int main(int argc, char **argv) {
   int xpos = 0, ypos = 0;
   for (const std::string &filename : source) {
     bool self = filename == "makecodeimage.cc";
-    printf("[%s]%s\n", filename.c_str(),
-           self ? " *****" : "");
+    Print("[{}]{}\n", filename,
+          self ? " *****" : "");
     std::vector<uint8_t> bytes = Util::ReadFileBytes(filename);
     for (uint8_t byte : bytes) {
       if (BREAK_NEWLINE && byte == '\n') {
@@ -110,7 +110,7 @@ int main(int argc, char **argv) {
   }
 
   int w = xcol * (80 + GAP) + xpos;
-  printf("final pos %d,%d (%.3f%%)\n", w, ypos, (width * 100.0) / w);
+  Print("final pos {},{} ({:.3f}%)\n", w, ypos, (width * 100.0) / w);
 
   img.Save(filename);
   img_self.Save(filename_self);

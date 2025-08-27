@@ -5,26 +5,25 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <format>
 #include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <utility>
 #include <variant>
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "bignum/big.h"
+#include "document.h"
 #include "fonts/ttf.h"
 #include "image-resize.h"
 #include "image.h"
 #include "stb_truetype.h"
 #include "util.h"
-
-#include "document.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -38,7 +37,7 @@ ImageFont::ImageFont(const std::string &name,
   fprintf(stderr, "Trying to load " AWHITE("%s") "\n", filename.c_str());
   ttf.reset(new TTF(filename));
   if (VERBOSE) {
-    printf("** %s **\n", filename.c_str());
+    Print("** {} **\n", filename);
     stbtt__print_tables(ttf->FontInfo());
   }
 }
@@ -52,11 +51,11 @@ const Font *ImageDocument::GetDefaultFont() {
 }
 
 std::string ImageDocument::LoadFontFile(const std::string &filename) {
-  std::string name = StringPrintf("font%d", next_font_id);
+  std::string name = std::format("font{}", next_font_id);
   next_font_id++;
   fonts[name] = std::make_unique<ImageFont>(name, filename);
-  printf("Loaded " ACYAN("%s") " as " APURPLE("%s") "\n",
-         filename.c_str(), name.c_str());
+  Print("Loaded " ACYAN("{}") " as " APURPLE("{}") "\n",
+        filename, name);
   return name;
 }
 
@@ -78,7 +77,7 @@ ImageFont::GetKerning(int codepoint1, int codepoint2) const {
   // or cache it?
   const int k =
     stbtt_GetCodepointKernAdvance(ttf->FontInfo(), codepoint1, codepoint2);
-  // printf("Kern for %d to %d is %d\n", codepoint1, codepoint2, k);
+  // Print("Kern for {} to {} is {}\n", codepoint1, codepoint2, k);
   if (k == 0) return std::nullopt;
   const double scale = stbtt_ScaleForPixelHeight(ttf->FontInfo(), 1.0);
   return {scale * k};
@@ -149,9 +148,9 @@ void ImagePage::DrawImage(double x, double y,
                          const ImageRGBA &sticker) {
   CHECK(image.get() != nullptr);
   if (VERBOSE > 1) {
-    printf("Add %dx%d image at %.11g %.11g.\n",
-           sticker.Width(), sticker.Height(),
-           x, y);
+    Print("Add {}x{} image at {:.11g} {:.11g}.\n",
+          sticker.Width(), sticker.Height(),
+          x, y);
   }
 
   const int ww = std::round(width);

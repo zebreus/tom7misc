@@ -1,12 +1,12 @@
 
 #include "html.h"
 
-#include <cstdio>
 #include <vector>
 #include <string>
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 
 static constexpr bool VERBOSE = false;
 
@@ -23,9 +23,9 @@ static void FailParse(const std::string &s) {
   std::string err;
   std::vector<HTMLNode> nodes = HTML::Parse(s, &err);
   if (err.empty()) {
-    printf(AWHITE("Expected failure, but parsed (input)") ":\n");
-    printf("%s\n", s.c_str());
-    printf(AWHITE("To") ":\n");
+    Print(AWHITE("Expected failure, but parsed (input)") ":\n");
+    Print("{}\n", s);
+    Print(AWHITE("To") ":\n");
     HTML::DebugPrint(nodes);
     LOG(FATAL) << "Unexpected success.";
   }

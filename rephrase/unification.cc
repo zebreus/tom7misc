@@ -1,6 +1,7 @@
 
 #include "unification.h"
 
+#include <format>
 #include <set>
 #include <vector>
 #include <memory>
@@ -8,11 +9,9 @@
 #include <utility>
 #include <mutex>
 #include <cstdint>
-#include <cinttypes>
 #include <functional>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "il.h"
 #include "ansi.h"
 
@@ -32,7 +31,7 @@ EVar::EVar() : cell(std::make_shared<EVarCell>(NextEVarCounter())) {
 
 // TODO: Should probably distinguish bound/free?
 std::string EVar::ToString() const {
-  return StringPrintf("_EVAR_%" PRIi64 "_", GetCell()->id);
+  return std::format("_EVAR_{}_", GetCell()->id);
 }
 
 
@@ -271,10 +270,10 @@ static void UnifyEx(const std::function<std::string()> &error_context,
                     const VMap &vmap,
                     const Type *t1, const Type *t2) {
   auto Error = [&error_context]() {
-      return StringPrintf(
+      return std::format(
           ARED("Unification error") ":\n"
-          "In: %s\n\n",
-          error_context().c_str());
+          "In: {}\n\n",
+          error_context());
     };
 
   // First, handle existential variables.

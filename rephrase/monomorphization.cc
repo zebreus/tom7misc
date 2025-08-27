@@ -4,16 +4,6 @@
 
 #include "monomorphization.h"
 
-#include <string>
-#include <memory>
-#include <cstdint>
-#include <vector>
-#include <set>
-
-#include "il.h"
-
-#include "functional-map.h"
-
 namespace il {
 
 // Monomorphization eliminates type abstractions (and thus type variables)
@@ -119,73 +109,10 @@ namespace il {
 // conversion and for a similar purpose when elaborating mutually
 // recursive functions. So if we're able to bypass those, we really just
 // have to worry about let and defunctionalization.
-namespace {
-
-struct MInfo {
-  // Number of type arguments.
-  int arity = 0;
-  std::set<std::vector<const Type *>, TypeVecCmp> uses;
-};
-
-using MCtx =
-  FunctionalMap<std::string, std::shared_ptr<MInfo>>;
 
 
-struct MonomorphizeLet : public TypedPass<> {
+// I never actually implemented this!
 
-  //
-  // let (a) f1 x =
-  //   let (b) f2 y = f1 y
-  //   in f1 0; f2 "hi"; f2 7
-  //   end
-  // in f1 true; f1 1.0
-  // end
-  //
-  //
-
-  std::pair<const Exp *, const Type *>
-  DoLet(Context G,
-        const std::vector<std::string> &tyvars,
-        const std::string &x,
-        const Exp *rhs,
-        const Exp *body,
-        const Exp *guess,
-        Args... args) override {
-    Context GG = G;
-    for (const std::string &alpha : tyvars) GG = GG.InsertType(alpha);
-    const auto &[ee, tt] = DoExp(GG, rhs, args...);
-    Context GGG = G.Insert(x, {tyvars, tt});
-    // This is wrong.
-    if (TYPED_PASS_VERBOSE) {
-      printf("Inserting " ABLUE("%s") " with type %s\n",
-             x.c_str(),
-             TypeString(tt).c_str());
-    }
-    const auto &[ebody, tbody] = DoExp(GGG, body, args...);
-    return {pool->Let(tyvars, x, ee, ebody, guess), tbody};
-  }
-
-};
-
-}  // namespace
-
-
-Monomorphization::Monomorphization(AstPool *pool) :
-  pool(pool) {}
-
-void Monomorphization::SetVerbose(int v) {
-  verbose = v;
 }
-
-Program Monomorphization::Monomorphize(const Program &program_in) {
-  MonomorphizeLet mlet(pool);
-
-  Context G;
-  Program p = mlet.DoProgram(p);
-
-  return p;
-}
-
-}  // il
 
 #endif

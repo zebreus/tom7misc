@@ -1,12 +1,12 @@
 
 #include "il.h"
 
-#include <cstdio>
 #include <string>
 #include <unordered_set>
 
 #include "ansi.h"
 #include "base/logging.h"
+#include "base/print.h"
 
 #include "il-util.h"
 
@@ -42,7 +42,7 @@ static void TestTypeSubst() {
 
     const Type *res = pool.SubstType(pool.IntType(), "y", arrow);
     if (VERBOSE) {
-      printf("res type: %s\n", TypeString(res).c_str());
+      Print("res type: {}\n", TypeString(res));
     }
 
     const auto &[dom, cod] = res->Arrow();
@@ -109,6 +109,6 @@ int main(int argc, char **argv) {
   il::TestUnroll();
   il::TestCompare();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

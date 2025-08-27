@@ -9,6 +9,7 @@
 #include "image.h"
 #include "fonts/ttf.h"
 #include "base/logging.h"
+#include "base/print.h"
 
 #include "ansi.h"
 
@@ -24,12 +25,12 @@ static void ShowChar() {
       if (c > 200) ch = '@';
       else if (c > 100) ch = ':';
       else if (c > 50) ch = '.';
-      printf("%c", ch);
+      Print("{:c}", ch);
       */
-      printf("%s@" ANSI_RESET,
-             ANSI::ForegroundRGB(c, c, c).c_str());
+      Print("{}@" ANSI_RESET,
+            ANSI::ForegroundRGB(c, c, c));
     }
-    printf("\n");
+    Print("\n");
   }
 }
 
