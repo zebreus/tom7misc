@@ -23,8 +23,10 @@
 #include <utility>
 #include <vector>
 
+#include "ansi.h"
 #include "auto-histo.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "bounds.h"
 #include "color-util.h"
 #include "geom/tree-nd.h"
@@ -274,7 +276,7 @@ template<size_t N>
 NDSolutions<N>::NDSolutions(std::string_view filename, bool verbose) : filename(filename) {
   // Note that these will easily exceed 32-bit byte indices.
   std::vector<uint8_t> bytes = Util::ReadFileBytes(filename);
-  if (verbose) { printf("Read %zu bytes.\n", bytes.size()); }
+  if (verbose) { Print("Read {} bytes.\n", bytes.size()); }
   if (!bytes.empty()) {
     CHECK(bytes.size() >= 4 &&
           0 == memcmp(bytes.data(), MAGIC, 4))
@@ -284,9 +286,9 @@ NDSolutions<N>::NDSolutions(std::string_view filename, bool verbose) : filename(
     size_t extra = (bytes.size() - 4) % (8 * ROW_SIZE);
     bytes.resize(bytes.size() - extra);
     if (extra > 0) {
-      printf(ARED("Warning") ": %s had %zu extra bytes,\n"
-             "probably from an incomplete write. Ignored.\n",
-             std::string(filename).c_str(), extra);
+      Print(ARED("Warning") ": {} had {} extra bytes,\n"
+            "probably from an incomplete write. Ignored.\n",
+            filename, extra);
     }
 
     for (int64_t idx = 4; idx < bytes.size(); idx += (8 * ROW_SIZE)) {
@@ -295,10 +297,9 @@ NDSolutions<N>::NDSolutions(std::string_view filename, bool verbose) : filename(
         row[c] = ReadDouble(&bytes[idx + c * 8]);
       }
       data.push_back(std::move(row));
-      // if (verbose && (idx % 1000 == 0)) printf("idx %lld\n", idx);
     }
   }
-  if (verbose) printf("Read %zu bytes OK\n", bytes.size());
+  if (verbose) Print("Read {} bytes OK\n", bytes.size());
 
   // Index is created on demand.
 }
@@ -361,8 +362,8 @@ void NDSolutions<N>::Plot1D(int dim,
   }
   bounds.AddTwoMarginsFrac(0.02, 0.0);
 
-  printf("Axis %d:\n%s\n",
-         dim, histo.SimpleANSI(40).c_str());
+  Print("Axis {}:\n{}\n",
+        dim, histo.SimpleANSI(40));
 
   constexpr float PX = 2.0f;
   constexpr float CIRCLE = 3.0f * PX;
@@ -446,8 +447,8 @@ void NDSolutions<N>::Plot1DColor2(int xdim, int cdim1, int cdim2,
   }
   bounds.AddTwoMarginsFrac(0.02, 0.0);
 
-  printf("Axis %d:\n%s\n",
-         xdim, histo.SimpleANSI(40).c_str());
+  Print("Axis {}:\n{}\n",
+        xdim, histo.SimpleANSI(40));
 
   constexpr float PX = 2.0f;
   constexpr float CIRCLE = 3.0f * PX;
@@ -546,28 +547,28 @@ void NDSolutions<N>::Plot2D(int xdim, int ydim,
   }
   bounds.AddTwoMarginsFrac(0.02, 0.0);
 
-  printf("Axis %d:\n%s\n",
-         xdim, histo.SimpleANSI(40).c_str());
+  Print("Axis {}:\n{}\n",
+         xdim, histo.SimpleANSI(40));
 
   double min_clearance = clearance_bounds.MinY();
   double max_clearance = clearance_bounds.MaxY();
   double clearance_span = max_clearance - min_clearance;
 
-  printf("Rows: %lld\n", (int64_t)data.size());
-  printf("Unsolved: %lld\n", unsolved);
-  printf("xdim %d, ydim %d\n"
-         "x range: [%.17g,%.17g]\n"
-         "y range: [%.17g,%.17g]\n",
-         xdim, ydim,
-         bounds.MinX(), bounds.MaxX(),
-         bounds.MinY(), bounds.MaxY());
+  Print("Rows: {}\n", data.size());
+  Print("Unsolved: {}\n", unsolved);
+  Print("xdim {}, ydim {}\n"
+        "x range: [{:.17g},{:.17g}]\n"
+        "y range: [{:.17g},{:.17g}]\n",
+        xdim, ydim,
+        bounds.MinX(), bounds.MaxX(),
+        bounds.MinY(), bounds.MaxY());
 
-  printf("Min clearance: %.17g\n"
-         "Max clearance: %.17g\n"
-         "Spanning: %.17g\n",
-         min_clearance,
-         max_clearance,
-         clearance_span);
+  Print("Min clearance: {:.17g}\n"
+        "Max clearance: {:.17g}\n"
+        "Spanning: {:.17g}\n",
+        min_clearance,
+        max_clearance,
+        clearance_span);
 
   ImageRGBA image(image_width, image_height);
   image.Clear32(0x000000FF);

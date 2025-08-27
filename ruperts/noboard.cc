@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "ansi.h"
+#include "base/print.h"
 #include "polyhedra.h"
 #include "solutions.h"
 #include "util.h"
@@ -33,7 +34,7 @@ static void PrintAll() {
   for (const Solution &sol : solutions) {
     std::string_view poly = sol.polyhedron;
     CHECK(Util::TryStripPrefix("nopert_", &poly)) << sol.polyhedron;
-    // printf("%s\n", std::string(poly).c_str());
+    // Print("{}\n", std::string(poly));
     solved[atoi(std::string(poly).c_str())]++;
   }
 
@@ -68,14 +69,14 @@ static void PrintAll() {
                           (int)poly.value().faces->v.size());
     }
 
-    printf(AGREY("% 3d.") " " AWHITE("%4d") AGREY("v")
-           " %s"
-           " via " ACYAN("%s") " (%s)",
+    Print(AGREY("{: 3d}.") " " AWHITE("{:4d}") AGREY("v")
+           " {}"
+           " via " ACYAN("{}") " ({})",
            nopert.id,
            (int)nopert.vertices.size(),
-           faces.c_str(),
-           method.c_str(),
-           Util::FormatTime("%Y-%m-%d %H:%M", nopert.createdate).c_str());
+           faces,
+           method,
+           Util::FormatTime("%Y-%m-%d %H:%M", nopert.createdate));
 
     std::string name = SolutionDB::NopertName(nopert.id);
 
@@ -84,27 +85,27 @@ static void PrintAll() {
 
     int nsol = solved[nopert.id];
     if (nsol > 0) {
-      printf("  " ARED("✘") " solved");
+      Print("  " ARED("✘") " solved");
       if (a > 0) {
-        printf(" " AGREY("(%s)"), FormatNum(a).c_str());
+        Print(" " AGREY("({})"), FormatNum(a));
       }
     } else {
 
       if (a > 0) {
-        printf("  " AYELLOW("⚡") "%s", FormatNum(a).c_str());
+        Print("  " AYELLOW("⚡") "{}", FormatNum(a));
       }
 
       ok++;
       smallest = std::min(smallest, (int)nopert.vertices.size());
     }
 
-    printf("\n");
+    Print("\n");
   }
 
-  printf("\n" ABLUE("%d") " noperts; " AGREEN("%d") " not rejected.\n"
-         "Smallest: " AWHITE("%d") " verts.\n",
-         (int)noperts.size(), ok,
-         smallest);
+  Print("\n" ABLUE("{}") " noperts; " AGREEN("{}") " not rejected.\n"
+        "Smallest: " AWHITE("{}") " verts.\n",
+        noperts.size(), ok,
+        smallest);
 }
 
 static void PrintAttempts() {
@@ -116,40 +117,40 @@ static void PrintAttempts() {
   int64_t attempts_all = 0;
   std::vector<NopertAttempt> atts = db.GetAllNopertAttempts();
   for (const NopertAttempt &att : atts) {
-    printf(AGREY("% 3d.") " " AWHITE("%d") AGREY("v") " via "
-           ACYAN("%s") " " AYELLOW("%lld") " attempts\n",
-           att.id,
-           att.points,
-           SolutionDB::NopertMethodName(att.method),
-           att.attempts);
+    Print(AGREY("{: 3d}.") " " AWHITE("{}") AGREY("v") " via "
+          ACYAN("{}") " " AYELLOW("{}") " attempts\n",
+          att.id,
+          att.points,
+          SolutionDB::NopertMethodName(att.method),
+          att.attempts);
     attempts_by_method[att.method] += att.attempts;
     attempts_by_points[att.points] += att.attempts;
     attempts_all += att.attempts;
   }
 
-  printf("\n" AWHITE("By method") ":\n");
+  Print("\n" AWHITE("By method") ":\n");
   for (const auto &[method, num] : attempts_by_method) {
-    printf("  " ACYAN("%s") ": " AYELLOW("%lld") "\n",
-           SolutionDB::NopertMethodName(method), num);
+    Print("  " ACYAN("{}") ": " AYELLOW("{}") "\n",
+          SolutionDB::NopertMethodName(method), num);
   }
 
-  printf("\n" AWHITE("By points") ":\n");
+  Print("\n" AWHITE("By points") ":\n");
   for (const auto &[pts, num] : attempts_by_points) {
-    printf("  " AWHITE("%d") ": " AYELLOW("%lld") "\n",
-           pts, num);
+    Print("  " AWHITE("{}") ": " AYELLOW("{}") "\n",
+          pts, num);
   }
 
-  printf("\n" AWHITE("Total") ": %lld\n", attempts_all);
+  Print("\n" AWHITE("Total") ": {}\n", attempts_all);
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
   if (argc >= 2 && (std::string)argv[1] == "--attempts") {
-    printf(AWHITE("Nopert attempts:") "\n");
+    Print(AWHITE("Nopert attempts:") "\n");
     PrintAttempts();
   } else {
-    printf(AWHITE("Noperts:") "\n");
+    Print(AWHITE("Noperts:") "\n");
     PrintAll();
   }
 

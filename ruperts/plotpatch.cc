@@ -105,10 +105,10 @@ static void PlotPatch(const Boundaries &boundaries,
     #endif
 
     status_per.RunIf([&]() {
-        status.Progressf(samples.size(), NUM_SAMPLES,
-                         ACYAN("%s") " (%.3f%% eff)",
-                         code_string.c_str(),
-                         (hits * 100.0) / attempts);
+        status.Progress(samples.size(), NUM_SAMPLES,
+                        ACYAN("{}") " ({:.3f}% eff)",
+                        code_string,
+                        (hits * 100.0) / attempts);
       });
   }
 

@@ -1,7 +1,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <limits>
 #include <map>
@@ -13,6 +12,7 @@
 #include <vector>
 
 #include "ansi.h"
+#include "base/print.h"
 #include "polyhedra.h"
 #include "solutions.h"
 #include "util.h"
@@ -78,9 +78,9 @@ static void PrintAll(bool noperts,
 
     if (filter.empty() || filter.contains(name)) {
       if (Wishlist().contains(name)) {
-        printf(AYELLOW("⋆") " ");
+        Print(AYELLOW("⋆") " ");
       }
-      printf(AWHITE("%s") ":\n", name.c_str());
+      Print(AWHITE("{}") ":\n", name.c_str());
 
       const std::vector<Attempt> &atts = attmap[name];
 
@@ -90,12 +90,12 @@ static void PrintAll(bool noperts,
 
       if (full) {
         for (const Attempt &att : atts) {
-          printf("  " AGREY("%d.")
-                 " %lld iters of %s, best " AORANGE("%.11g") "\n",
-                 att.id,
-                 att.iters,
-                 FullMethodName(ANSI_RED, att.method, att.source).c_str(),
-                 att.best_error);
+          Print("  " AGREY("{}.")
+                " {} iters of {}, best " AORANGE("{:.11g}") "\n",
+                att.id,
+                att.iters,
+                FullMethodName(ANSI_RED, att.method, att.source),
+                att.best_error);
         }
       } else {
         // Collate attempts by method.
@@ -113,31 +113,30 @@ static void PrintAll(bool noperts,
         }
 
         for (const auto &[m, att] : attms) {
-          printf("  " AGREY("%d×")
-                 " %s iters of " ARED("%s")
-                 ", best " AORANGE("%.11g") "\n",
-                 att.count,
-                 FormatNum(att.total_iters).c_str(),
-                 SolutionDB::MethodName(m),
-                 att.best_error);
+          Print("  " AGREY("{}×")
+                " {} iters of " ARED("{}")
+                ", best " AORANGE("{:.11g}") "\n",
+                att.count,
+                FormatNum(att.total_iters),
+                SolutionDB::MethodName(m),
+                att.best_error);
         }
       }
 
       const std::vector<Solution> &sols = solmap[name];
       if (full) {
         for (const Solution &sol : sols) {
-          printf("  " AGREY("%d.")
-                 " %s solved @" APURPLE("%.11g")
-                 " " ABLUE("%.11g") "\n",
-                 sol.id,
-                 FullMethodName(
-                     ANSI_GREEN, sol.method, sol.source).c_str(),
-                 sol.ratio,
-                 sol.clearance);
+          Print("  " AGREY("{}.")
+                " {} solved @" APURPLE("{:.11g}")
+                " " ABLUE("{:.11g}") "\n",
+                sol.id,
+                FullMethodName(ANSI_GREEN, sol.method, sol.source),
+                sol.ratio,
+                sol.clearance);
         }
       } else {
         if (sols.empty()) {
-          printf("  No solutions.\n");
+          Print("  No solutions.\n");
         } else {
           // Get the best ratio and best clearance.
           Solution best_ratio = sols[0];
@@ -148,26 +147,25 @@ static void PrintAll(bool noperts,
             if (s.clearance > best_ratio.clearance) best_clearance = s;
           }
 
-          auto Print = [](const Solution &sol, double d,
-                          const char *color,
-                          const char *what) {
-              printf("  " AGREY("%d.")
-                     " %s best %s: %s%.17g" ANSI_RESET "\n",
-                     sol.id,
-                     FullMethodName(
-                         ANSI_GREEN, sol.method, sol.source).c_str(),
-                     what, color, d);
+          auto PrintOut = [](const Solution &sol, double d,
+                             const char *color,
+                             const char *what) {
+              Print("  " AGREY("{}.")
+                    " {} best {}: {}{:.17g}" ANSI_RESET "\n",
+                    sol.id,
+                    FullMethodName(ANSI_GREEN, sol.method, sol.source),
+                    what, color, d);
             };
 
-          Print(best_ratio, best_ratio.ratio, ANSI_PURPLE, "ratio");
-          Print(best_clearance, best_clearance.clearance,
+          PrintOut(best_ratio, best_ratio.ratio, ANSI_PURPLE, "ratio");
+          PrintOut(best_clearance, best_clearance.clearance,
                 ANSI_BLUE, "clearance");
         }
       }
     }
   }
 
-  printf("Total iters: %lld\n", all_iters);
+  Print("Total iters: {}\n", all_iters);
 }
 
 int main(int argc, char **argv) {

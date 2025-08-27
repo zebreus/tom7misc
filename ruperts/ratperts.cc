@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <format>
@@ -30,6 +29,7 @@
 #include "arcfour.h"
 #include "atomic-util.h"
 #include "auto-histo.h"
+#include "base/print.h"
 #include "big-polyhedra.h"
 #include "bignum/big-overloads.h"
 #include "bignum/big.h"
@@ -240,12 +240,12 @@ struct BigSolver {
                       total_time);
 
                 status->EmitLine(NUM_OUTER_THREADS, bar.c_str());
-                status->LineStatusf(
+                status->LineStatus(
                     NUM_OUTER_THREADS + 1,
-                    "%s iters, %s attempts; best: #%d, %.7f"
-                    " [" ACYAN("%.3f") "/s]\n",
-                    FormatNum(it).c_str(),
-                    FormatNum(attempts.Read()).c_str(),
+                    "{} iters, {} attempts; best: #{}, {:.7f}"
+                    " [" ACYAN("{:.3f}") "/s]\n",
+                    FormatNum(it),
+                    FormatNum(attempts.Read()),
                     best_errors,
                     best_error, ips);
               });
@@ -401,21 +401,17 @@ struct BigSolver {
         histo.Observe(errors);
         if (status_per.ShouldRun()) {
           double d = loss.ToDouble();
-          status->LineStatusf(
+          status->LineStatus(
               thread_idx,
-              AFGCOLOR(200, 200, 140, "%s") " " AWHITE("%s")
-              " %d" ACYAN("×")
-              ", err #%d (#%d" ABLUE("↓") "), "
-              "%.8g"
-              // " in %s\n"
-              ,
-              histo.UnlabeledHoriz(32).c_str(),
-              what.c_str(),
+              AFGCOLOR(200, 200, 140, "{}") " " AWHITE("{}")
+              " {}" ACYAN("×")
+              ", err #{} (#{}" ABLUE("↓") "), "
+              "{:.8g}",
+              histo.UnlabeledHoriz(32),
+              what,
               calls,
               errors, local_best_errors,
-              d
-              // , ANSI::Time(timer.Seconds()).c_str()
-                              );
+              d);
         }
         if (errors == 0) {
           Solved(orot, irot, itrans);
@@ -471,7 +467,7 @@ static void Ratpert() {
   if (true) {
     BigPoly tetra(BigTetra(100));
     for (const BigVec3 &v : tetra.vertices) {
-      printf("  %s\n", VecString(v).c_str());
+      Print("  {}\n", VecString(v));
     }
     BigSolver solver(tetra, &status, {60.0 * 60.0});
     solver.Run();
@@ -481,9 +477,9 @@ static void Ratpert() {
   if (false) {
     // Solved
     BigPoly triac(BigTriac(100));
-    printf("Made triac.\n");
+    Print("Made triac.\n");
     for (const BigVec3 &v : triac.vertices) {
-      printf("  %s\n", VecString(v).c_str());
+      Print("  {}\n", VecString(v));
     }
     BigSolver solver(triac, &status, {60.0 * 60.0});
     solver.Run();

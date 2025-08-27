@@ -31,7 +31,7 @@
 
 #include "ansi.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "image.h"
 #include "lines.h"
 #include "periodically.h"
@@ -154,9 +154,9 @@ struct Scene {
     // Now make sure it has positive volume.
     {
       double vol = MeshVolume(original_mesh);
-      printf("Volume: %.11g\n", vol);
+      Print("Volume: {:.11g}\n", vol);
       if (MeshVolume(original_mesh) < 0.0) {
-        printf("Flipping normals.\n");
+        Print("Flipping normals.\n");
         FlipNormals(&original_mesh);
       }
     }
@@ -706,14 +706,10 @@ void UI::Draw() {
   scene.Draw(drawing.get());
 
   drawing->BlendText32(5, 5, 0xFFFF00AA,
-                       StringPrintf("Frames: %lld", frames_drawn));
+                       std::format("Frames: {}", frames_drawn));
   sdlutil::CopyRGBAToScreen(*drawing, screen);
 
-  /*
-  font->draw(30, 30, StringPrintf("%.5f, %.5f, %.5f",
-                                  vel.x, vel.y, vel.z));
-  */
-  font->draw(30, 30, StringPrintf("fov: %.5f", scene.fov));
+  font->draw(30, 30, std::format("fov: {:.5f}", scene.fov));
 
   if (mov.get()) {
     // TODO: Enqueue this.
@@ -721,7 +717,7 @@ void UI::Draw() {
   }
 
   frames_drawn++;
-  if (TRACE) printf("Drew %lld.\n", frames_drawn);
+  if (TRACE) Print("Drew {}.\n", frames_drawn);
 }
 
 static void InitializeSDL() {

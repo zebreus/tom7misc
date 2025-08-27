@@ -2,16 +2,13 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <format>
 #include <initializer_list>
 #include <limits>
 #include <optional>
-#include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -19,14 +16,13 @@
 #include "arcfour.h"
 #include "atomic-util.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "mesh.h"
 #include "opt/opt.h"
 #include "periodically.h"
-#include "randutil.h"
+#include "polyhedra.h"
 #include "timer.h"
 #include "yocto_matht.h"
-#include "polyhedra.h"
 
 DECLARE_COUNTERS(iters, attempts);
 
@@ -312,12 +308,12 @@ static void Optimize() {
     best = std::min(error, best);
 
     if (error <= 0.0) {
-      printf("Solved!\n");
+      Print("Solved!\n");
       std::array<frame3, NUM_CUBES> cubes;
       SetCubes(args, &cubes);
 
       for (int i = 0; i < NUM_CUBES; i++) {
-        printf("Cube %d:\n%s\n", i, FrameString(cubes[i]).c_str());
+        Print("Cube {}:\n{}\n", i, FrameString(cubes[i]));
       }
 
       CubesToSTL(cubes, "dyson.stl");
@@ -326,8 +322,8 @@ static void Optimize() {
     }
 
     status_per.RunIf([&]() {
-        printf("%lld iters, %lld attempts. Best: %.17g\n",
-               iters.Read(), attempts.Read(), best);
+        Print("{} iters, {} attempts. Best: {:.17g}\n",
+              iters.Read(), attempts.Read(), best);
       });
   }
 }

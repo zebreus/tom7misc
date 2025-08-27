@@ -23,6 +23,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
 #include "bignum/big.h"
@@ -206,14 +207,13 @@ Boundaries::Boundaries(const BigPoly &poly) : big_poly(poly) {
     const BigVec3 &b = poly.vertices[face[1]];
     const BigVec3 &c = poly.vertices[face[2]];
     BigVec3 normal = ScaleToMakeIntegral(cross(c - a, b - a));
-    // printf("Normal: %s\n", VecString(normal).c_str());
     if (!AlreadyHave(normal)) {
       big_planes.push_back(normal);
     }
   }
 
-  printf("There are %d distinct planes.\n",
-         (int)big_planes.size());
+  Print("There are {} distinct planes.\n",
+        big_planes.size());
 
   // You can switch to a larger word size for more complex
   // polyhedra.
@@ -383,8 +383,7 @@ uint64_t GetCodeMask(const Boundaries &boundaries,
   for (int test_bit = 0; test_bit < num_bits; test_bit++) {
     if (verbose) {
       status_per.RunIf([&]() {
-          status.Progressf(test_bit, num_bits, "%s",
-                           std::format("Mask: {:b}", mask).c_str());
+          status.Progress(test_bit, num_bits, "Mask: {:b}", mask);
         });
     }
 
@@ -425,15 +424,15 @@ uint64_t GetCodeMask(const Boundaries &boundaries,
       break;
     case Z3Result::UNKNOWN:
       // If we don't know, we have to keep it.
-      printf(ARED("Z3 at its limits??") " Code %llu "
-             "mask %llu\n", code, mask);
+      Print(ARED("Z3 at its limits??") " Code {} "
+            "mask {}\n", code, mask);
       break;
     }
   }
 
   if (verbose) {
-    printf("Reduced mask from %d to %d bits.\n",
-           (int)num_bits, std::popcount<uint64_t>(mask));
+    Print("Reduced mask from {} to {} bits.\n",
+          num_bits, std::popcount<uint64_t>(mask));
   }
   return mask;
 }
@@ -477,7 +476,7 @@ static bool CanCodeContainZ(const Boundaries &boundaries,
   case Z3Result::UNKNOWN:
     // Could consider this as having the z axis conservatively,
     // but we also expect Z3 to be able to succeed at these.
-    printf(ARED("Z3 at its limits??") " Code %llu ", code);
+    Print(ARED("Z3 at its limits??") " Code {} ", code);
     LOG(FATAL) << out;
     return true;
   }
@@ -518,7 +517,7 @@ static bool CanBeAllPositive(const Boundaries &boundaries,
   case Z3Result::UNSAT:
     return false;
   case Z3Result::UNKNOWN:
-    printf(ARED("Z3 at its limits??") " Code %llu ", code);
+    Print(ARED("Z3 at its limits??") " Code {} ", code);
     LOG(FATAL) << out;
     return false;
   }
@@ -550,14 +549,14 @@ std::vector<int> ComputeHullForPatch(
 
   BigRat area = SignedAreaOfHull(full_shadow, hull);
   if (render_hull_filebase.has_value()) {
-    printf("Area for example hull: %.17g\n", area.ToDouble());
+    Print("Area for example hull: {:.17g}\n", area.ToDouble());
   }
 
   if (BigRat::Sign(area) == -1) {
     VectorReverse(&hull);
     area = SignedAreaOfHull(full_shadow, hull);
     if (render_hull_filebase.has_value()) {
-      printf("Reversed hull to get area: %.17g\n", area.ToDouble());
+      Print("Reversed hull to get area: {:.17g}\n", area.ToDouble());
     }
   }
 
@@ -702,7 +701,7 @@ namespace {
 struct PatchEnumerator {
   PatchEnumerator(const Boundaries &boundaries) :
     boundaries(boundaries), status(1) {
-    status.Statusf("Setup.");
+    status.Status("Setup.");
     // Find patches that are non-empty.
     // Naively there are 2^31 of them, but the vast majority
     // are completely empty. Z3 is a good way to prove this.
@@ -728,7 +727,7 @@ struct PatchEnumerator {
                    Dot(v, normal).s);
     }
     setup = std::move(out);
-    status.Statusf("Setup done.");
+    status.Status("Setup done.");
   }
 
   std::string PartialCodeString(int depth, uint64_t code) {
@@ -756,9 +755,9 @@ struct PatchEnumerator {
     AppendFormat(&out, "(check-sat)\n");
 
     z3calls++;
-    status.Statusf("Z3: %s", std::format("{:b}", code).c_str());
+    status.Status("Z3: {:b}", code);
     Z3Result z3result = RunZ3(out);
-    status.Statusf("%lld Z3 calls. Depth %d\n", z3calls, depth);
+    status.Status("{} Z3 calls. Depth {}\n", z3calls, depth);
     CHECK(z3result != Z3Result::UNKNOWN) << "Expecting a definitive "
       "answer here";
 
@@ -823,8 +822,8 @@ static void WriteMaskAndExampleFile(const Boundaries &boundaries) {
                           << ": " << line;
     all.push_back(bo.value());
   }
-  printf("Computed/loaded " ACYAN("%d") " patches.\n",
-         (int)all.size());
+  Print("Computed/loaded " ACYAN("{}") " patches.\n",
+        all.size());
 
   // Find an example vector for each patch.
   StatusBar status(1);
@@ -859,9 +858,9 @@ static void WriteMaskAndExampleFile(const Boundaries &boundaries) {
                        for (int o : outstanding) {
                          AppendFormat(&s, " {}", o);
                        }
-                       status.Progressf(idx, all.size(),
-                                        "Get mask. Outstanding: %s",
-                                        s.c_str());
+                       status.Progress(idx, all.size(),
+                                       "Get mask. Outstanding: {}",
+                                       s);
                      });
 
                    return mask;
@@ -894,9 +893,9 @@ static void WriteMaskAndExampleFile(const Boundaries &boundaries) {
         if (thread_idx == 0) {
           status_per.RunIf([&]() {
               int num = WithLock(&mu, [&]() { return examples.size(); });
-              status.Progressf(i, NUM_SHOTGUN,
-                               "Shotgun: %d/%d examples",
-                               num, (int)all.size());
+              status.Progress(i, NUM_SHOTGUN,
+                              "Shotgun: {}/{} examples",
+                              num, (int)all.size());
             });
         }
       }
@@ -939,9 +938,9 @@ static void WriteMaskAndExampleFile(const Boundaries &boundaries) {
 
           status_per.RunIf([&]() {
               int num = WithLock(&mu, [&]() { return examples.size(); });
-              status.Progressf(i, NUM_SHOTGUN,
-                               "Hard: %d/%d examples",
-                               num, (int)all.size());
+              status.Progress(i, NUM_SHOTGUN,
+                              "Hard: {}/{} examples",
+                              num, all.size());
             });
         }
 
@@ -1039,7 +1038,7 @@ PatchInfo EnumeratePatches(const BigPoly &poly) {
 
   CHECK(all.size() == 848);
 
-  printf("(re)loaded patches.\n");
+  Print("(re)loaded patches.\n");
 
   std::unordered_map<uint64_t, int> idx_from_code;
   for (int i = 0; i < all.size(); i++) idx_from_code[all[i].code] = i;
@@ -1066,12 +1065,12 @@ PatchInfo EnumeratePatches(const BigPoly &poly) {
     patch.can_be_canonical = !can_contain_z;
     patch.can_be_positive = CanBeAllPositive(boundaries, patch.code);
     if (can_contain_z) {
-      printf("Patch %s can contain z axis.\n",
-             PatchString(patch).c_str());
+      Print("Patch {} can contain z axis.\n",
+            PatchString(patch));
     }
 
     status_per.RunIf([&]() {
-        status.Progressf(idx, all.size(), "Compute properties");
+        status.Progress(idx, all.size(), "Compute properties");
       });
   }
 
@@ -1089,8 +1088,8 @@ PatchInfo EnumeratePatches(const BigPoly &poly) {
       uf.Union(idx, IdxFromCode(code));
     }
   }
-  printf("Equivalence classes in %s\n",
-         ANSI::Time(eq_timer.Seconds()).c_str());
+  Print("Equivalence classes in {}\n",
+        ANSI::Time(eq_timer.Seconds()));
 
   // Get the equivalence classes in the vectors.
   // The representative here is chosen by Union-Find; it's
@@ -1101,13 +1100,13 @@ PatchInfo EnumeratePatches(const BigPoly &poly) {
     eq_classes[uf.Find(idx)].push_back(idx);
   }
 
-  printf("There are %d equivalence classes.\n",
-         (int)eq_classes.size());
+  Print("There are {} equivalence classes.\n",
+        eq_classes.size());
   for (const auto &[_, values] : eq_classes) {
     for (int idx : values) {
-      printf(" %d", idx);
+      Print(" {}", idx);
     }
-    printf("\n");
+    Print("\n");
   }
 
   // Choose a canonical one. All we require is that it
@@ -1172,13 +1171,13 @@ PatchInfo EnumeratePatches(const BigPoly &poly) {
 
     // Now for every one (including itself), add it and the
     // rotation needed to reach the canonical.
-    printf("%s Canonical: %d (size %d)\n",
-           canonical_patch.can_be_positive ? "[" ACYAN("+") "]" : "[-]",
-           canonical_idx, (int)values.size());
+    Print("{} Canonical: {} (size {})\n",
+          canonical_patch.can_be_positive ? "[" ACYAN("+") "]" : "[-]",
+          canonical_idx, values.size());
   }
 
-  printf("Computed patch info in %s\n",
-         ANSI::Time(run_timer.Seconds()).c_str());
+  Print("Computed patch info in {}\n",
+         ANSI::Time(run_timer.Seconds()));
 
   AddHulls(boundaries, &info);
 

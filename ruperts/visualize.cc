@@ -66,7 +66,7 @@ static void AnimateHull(std::string_view filename) {
   Periodically status_per(1.0);
   for (int i = 0; i < FRAMES; i++) {
     if (status_per.ShouldRun()) {
-      status.Progressf(i, FRAMES, "hull");
+      status.Progress(i, FRAMES, "hull");
     }
 
     ImageRGBA img(WIDTH, HEIGHT);

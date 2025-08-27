@@ -61,7 +61,7 @@ static void TestRandom() {
 
     if (i % 1024 == 0) {
       status_per.RunIf([&]() {
-          status.Progressf(i, LIMIT, "Testing random point clouds");
+          status.Progress(i, LIMIT, "Testing random point clouds");
         });
     }
   }
@@ -102,7 +102,7 @@ static void TestRandom3() {
     }
 
     status_per.RunIf([&]() {
-        status.Progressf(i, LIMIT, "Random3");
+        status.Progress(i, LIMIT, "Random3");
       });
   }
 
@@ -171,7 +171,7 @@ static void TestRandomCubes() {
 
     if (i % 1024 == 0) {
       status_per.RunIf([&]() {
-          status.Progressf(i, LIMIT, "cubes");
+          status.Progress(i, LIMIT, "cubes");
         });
     }
   }

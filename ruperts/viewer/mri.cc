@@ -3,24 +3,14 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <format>
 #include <initializer_list>
-#include <limits>
 #include <memory>
-#include <mutex>
-#include <numbers>
-#include <optional>
 #include <string>
-#include <thread>
-#include <tuple>
-#include <unordered_set>
-#include <utility>
-#include <vector>
-#include <cstdint>
 #include <unistd.h>
 
 #include "SDL.h"
@@ -33,30 +23,22 @@
 #include "SDL_mouse.h"
 #include "SDL_timer.h"
 #include "SDL_video.h"
-#include "sdl/sdlutil.h"
-#include "sdl/font.h"
-#include "sdl/cursor.h"
+#include "base/print.h"
 #include "sdl/chars.h"
+#include "sdl/cursor.h"
+#include "sdl/font.h"
+#include "sdl/sdlutil.h"
 
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "color-util.h"
-#include "dyson.h"
 #include "image.h"
-#include "lines.h"
-#include "mesh.h"
 #include "mov-recorder.h"
 #include "mov.h"
 #include "periodically.h"
 #include "polyhedra.h"
-#include "randutil.h"
-#include "re2/re2.h"
-#include "smallest-sphere.h"
 #include "threadutil.h"
-#include "timer.h"
-#include "util.h"
 #include "yocto_matht.h"
 
 using namespace std;
@@ -291,7 +273,7 @@ UI::EventResult UI::HandleEvents() {
       }
 
       if (TRACE) {
-        printf("%02x.%02x.%02x = %d\n",
+        Print("{:02x}.{:02x}.{:02x} = {}\n",
                j->type, j->which, j->axis,
                (int)j->value);
       }
@@ -301,7 +283,7 @@ UI::EventResult UI::HandleEvents() {
     case SDL_KEYDOWN: {
       switch (event.key.keysym.sym) {
       case SDLK_ESCAPE:
-        printf("ESCAPE.\n");
+        Print("ESCAPE.\n");
         return EventResult::EXIT;
 
       case SDLK_r: {
@@ -373,7 +355,7 @@ UI::EventResult UI::HandleEvents() {
           // think is desirable. But we could make that also be
           // asynchronous.
           mov.reset();
-          printf("Stopped recording.\n");
+          Print("Stopped recording.\n");
         } else {
           std::string filename = std::format("rec-{}.mov", time(nullptr));
           mov.reset(
@@ -417,7 +399,7 @@ UI::EventResult UI::HandleEvents() {
         break;
 
       default:
-        printf("Button %d unmapped.\n", event.jbutton.button);
+        Print("Button {} unmapped.\n", event.jbutton.button);
       }
       break;
 
@@ -432,7 +414,7 @@ UI::EventResult UI::HandleEvents() {
       case 0: current_gamepad &= ~INPUT_B; break;
       case 1: current_gamepad &= ~INPUT_A; break;
       default:
-        printf("Button %d unmapped.\n", event.jbutton.button);
+        Print("Button {} unmapped.\n", event.jbutton.button);
       }
       break;
 
@@ -443,7 +425,7 @@ UI::EventResult UI::HandleEvents() {
       //
       //    4
       if (TRACE)
-        printf("Hat %d moved to %d.\n", event.jhat.hat, event.jhat.value);
+        Print("Hat {} moved to {}.\n", event.jhat.hat, event.jhat.value);
 
       static constexpr uint8_t JHAT_UP = 1;
       static constexpr uint8_t JHAT_DOWN = 4;
@@ -477,7 +459,7 @@ void UI::Loop() {
   bool ui_dirty = true;
   for (;;) {
 
-    if (TRACE) printf("Handle events.\n");
+    if (TRACE) Print("Handle events.\n");
 
     switch (HandleEvents()) {
     case EventResult::EXIT: return;
@@ -498,7 +480,7 @@ void UI::Loop() {
 }
 
 void UI::Draw() {
-  if (TRACE) printf("Draw.\n");
+  if (TRACE) Print("Draw.\n");
 
   CHECK(font != nullptr);
   CHECK(drawing != nullptr);
@@ -507,13 +489,13 @@ void UI::Draw() {
   scene.Draw(drawing.get());
 
   drawing->BlendText32(5, 5, 0xFFFF00AA,
-                       StringPrintf("Frames: %lld", frames_drawn));
+                       std::format("Frames: {}", frames_drawn));
   sdlutil::CopyRGBAToScreen(*drawing, screen);
 
-  font->draw(30, 30, StringPrintf("%.5f, %.5f, %.5f",
-                                  velo.x, velo.y, velo.z));
-  font->draw(30, 50, StringPrintf("%.5f, %.5f, %.5f",
-                                  veli.x, veli.y, veli.z));
+  font->draw(30, 30, std::format("{:.5f}, {:.5f}, {:.5f}",
+                                 velo.x, velo.y, velo.z));
+  font->draw(30, 50, std::format("{:.5f}, {:.5f}, {:.5f}",
+                                 veli.x, veli.y, veli.z));
 
   if (mov.get()) {
     // TODO: Enqueue this.
@@ -521,7 +503,7 @@ void UI::Draw() {
   }
 
   frames_drawn++;
-  if (TRACE) printf("Drew %lld.\n", frames_drawn);
+  if (TRACE) Print("Drew {}.\n", frames_drawn);
 }
 
 static void InitializeSDL() {

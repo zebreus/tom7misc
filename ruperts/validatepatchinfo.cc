@@ -7,6 +7,7 @@
 
 #include "ansi.h"
 #include "arcfour.h"
+#include "base/print.h"
 #include "big-polyhedra.h"
 #include "map-util.h"
 #include "patches.h"
@@ -102,18 +103,17 @@ static void ValidatePatchInfo() {
     }
     if (code_ok) codes_ok++;
 
-    status.Progressf(c, canonical.size(),
-                     "%s",
-                     std::format("{:b} {} ok", code, codes_ok).c_str());
+    status.Progress(c, canonical.size(),
+                    "{:b} {} ok", code, codes_ok);
   }
 
-  printf("Codes ok: %lld. Total ok: %lld\n"
-         "Bad (Non-positive area): %lld\n"
-         "Bad (Not convex): %lld\n"
-         "Bad (Not convex or not clockwise): %lld\n"
-         "Notable (Planar): %lld\n",
-         codes_ok, ok, bad_area, bad_conv, bad_conv_cw,
-         planar);
+  Print("Codes ok: {}. Total ok: {}\n"
+        "Bad (Non-positive area): {}\n"
+        "Bad (Not convex): {}\n"
+        "Bad (Not convex or not clockwise): {}\n"
+        "Notable (Planar): {}\n",
+        codes_ok, ok, bad_area, bad_conv, bad_conv_cw,
+        planar);
 }
 
 int main(int argc, char **argv) {

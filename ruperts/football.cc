@@ -22,6 +22,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "atomic-util.h"
+#include "base/print.h"
 #include "big-csg.h"
 #include "big-polyhedra.h"
 #include "bignum/big.h"
@@ -510,7 +511,7 @@ static void DoFootball() {
 static void Plot() {
   NDSolutions<3> sols("football.nds");
 
-  printf("Number of rows: %lld\n", sols.Size());
+  Print("Number of rows: {}\n", sols.Size());
 
   #if 0
   for (int axis = 0; axis < 3; axis++) {
@@ -576,15 +577,15 @@ static void GetSol() {
             }
 
             findbest_per.RunIf([&]() {
-                status.Progressf(idx, size, "Finding best. "
-                                  ARED("%lld") "+" AGREEN("%lld"),
-                                  invalid, valid);
+                status.Progress(idx, size, "Finding best. "
+                                ARED("{}") "+" AGREEN("{}"),
+                                invalid, valid);
               });
           }
         }
       }, 8);
 
-  status.Statusf("Done.\n");
+  status.Status("Done.\n");
 
   CHECK(valid > 0);
   status.Print("Took {}. Saw " ARED("{}") " invalid solutions\n"

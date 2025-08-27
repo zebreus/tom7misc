@@ -24,6 +24,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "atomic-util.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
 #include "hashing.h"
@@ -435,7 +436,7 @@ static void Info() {
     MapToSortedVec(patchinfo.canonical);
   for (int idx = 0; idx < cc.size(); idx++) {
     const auto &[code, _] = cc[idx];
-    printf("%d: %llx\n", idx, code);
+    Print("{}: {:x}\n", idx, code);
   }
 }
 
@@ -480,14 +481,14 @@ static void UpdateStatus() {
       }
     }
     matrix += "\n";
-    status.Progressf(outer, cc.size(), "Checking solutions...");
+    status.Progress(outer, cc.size(), "Checking solutions...");
   }
 
   Util::WriteFile(PATCH_STATUS_FILE, out);
-  printf("All done. %d/%d done, %d partial\n",
-         done, TOTAL_PAIRS, partial);
+  Print("All done. {}/{} done, {} partial\n",
+        done, TOTAL_PAIRS, partial);
 
-  printf("%s\n", matrix.c_str());
+  Print("{}\n", matrix);
 }
 
 static void RunWork(StatusBar *status, int start_outer, int start_inner) {
@@ -590,11 +591,11 @@ int main(int argc, char **argv) {
     }
   }
 
-  printf("Args:");
+  Print("Args:");
   for (const std::string &arg : args) {
-    printf(" [" AWHITE("%s") "]", arg.c_str());
+    Print(" [" AWHITE("{}") "]", arg);
   }
-  printf("\n");
+  Print("\n");
 
   if (args.size() == 1 && args[0] == "info") {
     Info();

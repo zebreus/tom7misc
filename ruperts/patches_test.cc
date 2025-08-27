@@ -1,16 +1,15 @@
-
-#include "arcfour.h"
 #include "patches.h"
 
-#include <set>
 #include <cstdint>
-#include <cstdio>
+#include <set>
 #include <tuple>
 #include <unordered_set>
 
 #include "ansi.h"
+#include "arcfour.h"
 #include "base/do-not-optimize.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "big-polyhedra.h"
 #include "randutil.h"
 #include "timer.h"
@@ -91,11 +90,11 @@ static void BenchGetCode() {
   }
   double sec = timer.Seconds();
 
-  printf("Out: " ACYAN("%llx") "\n", out);
-  printf("Ran %d in %s (%s ea.)\n",
-         ITERS,
-         ANSI::Time(sec).c_str(),
-         ANSI::Time(sec / ITERS).c_str());
+  Print("Out: " ACYAN("{:x}") "\n", out);
+  Print("Ran {} in {} ({} ea.)\n",
+        ITERS,
+        ANSI::Time(sec),
+        ANSI::Time(sec / ITERS));
 }
 
 int main(int argc, char **argv) {
@@ -104,6 +103,6 @@ int main(int argc, char **argv) {
   TestSignedPerms();
   BenchGetCode();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

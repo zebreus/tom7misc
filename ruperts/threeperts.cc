@@ -362,13 +362,13 @@ struct Threeperts {
                           poly.name, "THREEPERTS"),
               total_time);
 
-        status.EmitLine(NUM_THREADS + 0, bar.c_str());
-        status.LineStatusf(
+        status.EmitLine(NUM_THREADS + 0, bar);
+        status.LineStatus(
             NUM_THREADS + 0,
-            "%s iters, %s attempts; "
-            " [" ACYAN("%.3f") "/s]\n",
-            FormatNum(it).c_str(),
-            FormatNum(attempts.Read()).c_str(),
+            "{} iters, {} attempts; "
+            " [" ACYAN("{:.3f}") "/s]\n",
+            FormatNum(it),
+            FormatNum(attempts.Read()),
             ips);
       });
   }

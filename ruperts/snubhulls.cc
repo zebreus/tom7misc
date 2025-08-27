@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <ctime>
 #include <format>
-#include <limits>
 #include <mutex>
 #include <string>
 #include <tuple>
@@ -16,6 +15,7 @@
 #include "arcfour.h"
 #include "atomic-util.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
 #include "big-polyhedra.h"
 #include "bignum/big.h"
@@ -23,7 +23,6 @@
 #include "color-util.h"
 #include "geom/tree-3d.h"
 #include "hashing.h"
-#include "hull3d.h"
 #include "image.h"
 #include "patches.h"
 #include "periodically.h"
@@ -163,10 +162,10 @@ static void PlotPatch(const Boundaries &boundaries,
     }
 
     status_per.RunIf([&]() {
-        status.Progressf(samples.size(), NUM_SAMPLES,
-                         ACYAN("%s") " (%.3f%% eff)",
-                         code_string.c_str(),
-                         (hits * 100.0) / attempts);
+        status.Progress(samples.size(), NUM_SAMPLES,
+                        ACYAN("{}") " ({:.3f}% eff)",
+                        code_string,
+                        (hits * 100.0) / attempts);
       });
   }
 
@@ -257,8 +256,8 @@ static void PlotPatch(const Boundaries &boundaries,
 
   std::string filename = std::format("patch-{:b}.png", code);
   img.Save(filename);
-  printf("Wrote %s in %s\n", filename.c_str(),
-         ANSI::Time(timer.Seconds()).c_str());
+  Print("Wrote {} in {}\n", filename,
+        ANSI::Time(timer.Seconds()));
 }
 
 #if 0
@@ -377,9 +376,9 @@ static void BigSnubHulls() {
             }
           }
           status_per.RunIf([&]{
-              status.Progressf(work_idx, ITERS,
-                               "%lld/%lld",
-                               work_idx, ITERS);
+              status.Progress(work_idx, ITERS,
+                              "{}/{}",
+                              work_idx, ITERS);
             });
         }
       });
@@ -403,15 +402,15 @@ static void BigSnubHulls() {
     }
   }
 
-  printf("\n\n\n");
+  Print("\n\n\n");
 
-  printf("There are %lld distinct codes in this sample.\n",
-         (int64_t)colored_codes.size());
+  Print("There are {} distinct codes in this sample.\n",
+        colored_codes.size());
 
   for (const auto &[code, color] : colored_codes) {
-    printf("%s▉" ANSI_RESET ": %s\n",
-           ANSI::ForegroundRGB32(color).c_str(),
-           std::format("{:b}", code).c_str());
+    Print("{}▉" ANSI_RESET ": {:b}\n",
+          ANSI::ForegroundRGB32(color),
+          code);
 
     CHECK(examples.contains(code));
     const BigVec3 &ex = examples[code];
@@ -453,9 +452,9 @@ static void BigSnubHulls() {
 
     std::string filename = "bigsnubcloud.ply";
     Util::WriteFile(filename, outply);
-    printf("Wrote %zu bytes to %s.\n",
-           outply.size(),
-           filename.c_str());
+    Print("Wrote {} bytes to {}.\n",
+          outply.size(),
+          filename);
   }
 }
 
@@ -544,10 +543,10 @@ static void SnubHulls() {
             }
           }
           status_per.RunIf([&]{
-              status.Progressf(work_idx, ITERS,
-                               "%lld/%lld  %lld" ARED("≈"),
-                               work_idx, ITERS,
-                               too_close.Read());
+              status.Progress(work_idx, ITERS,
+                              "{}/{}  {}" ARED("≈"),
+                              work_idx, ITERS,
+                              too_close.Read());
             });
         }
       });
@@ -558,8 +557,8 @@ static void SnubHulls() {
 
   CHECK(ids.size() == samples.size());
 
-  printf("There are %lld distinct hulls in this sample.\n",
-         (int64_t)hulls.Num());
+  Print("There are {} distinct hulls in this sample.\n",
+        hulls.Num());
 
   ArcFour rc("color");
   std::vector<uint32_t> colors;
@@ -582,13 +581,13 @@ static void SnubHulls() {
   if (colors.size() > hulls.Num()) colors.resize(hulls.Num());
 
   for (int i = 0; i < hulls.Num(); i++) {
-    printf("%d. (%s▉" ANSI_RESET "):",
-           i, ANSI::ForegroundRGB32(colors[i]).c_str());
+    Print("{}. ({}▉" ANSI_RESET "):",
+          i, ANSI::ForegroundRGB32(colors[i]));
     for (int vidx : hulls.canonical[i]) {
       CHECK(vidx >= 0 && vidx < cube.vertices.size());
-      printf(" %d", vidx);
+      Print(" {}", vidx);
     }
-    printf("\n");
+    Print("\n");
   }
 
   // As point cloud.
@@ -622,9 +621,9 @@ static void SnubHulls() {
 
     std::string filename = "snubcloud.ply";
     Util::WriteFile(filename, outply);
-    printf("Wrote %zu bytes to %s.\n",
-           outply.size(),
-           filename.c_str());
+    Print("Wrote {} bytes to {}.\n",
+          outply.size(),
+          filename);
   }
 }
 

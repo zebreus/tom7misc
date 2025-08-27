@@ -289,8 +289,8 @@ static void TestGetBoundingAABB(std::string_view name,
     RotTrig rot_trig(angle, inv_epsilon);
     Vec2ival result = BoundingAABB(v_in, rot_trig, inv_epsilon, tx, ty);
     // For a singular angle of 0, sin and cos are exact.
-    CHECK(rot_trig.cos_a.Singular() && rot_trig.cos_a.LB() == 1);
-    CHECK(rot_trig.sin_a.Singular() && rot_trig.sin_a.LB() == 0);
+    CHECK(rot_trig.a.cosine.Singular() && rot_trig.a.cosine.LB() == 1);
+    CHECK(rot_trig.a.sine.Singular() && rot_trig.a.sine.LB() == 0);
     // So result should be exactly v_in.
     CHECK(result.x.LB() == v_in.x.LB() && result.x.UB() == v_in.x.UB());
     CHECK(result.y.LB() == v_in.y.LB() && result.y.UB() == v_in.y.UB());

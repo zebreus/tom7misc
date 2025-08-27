@@ -23,6 +23,7 @@
 #include "arcfour.h"
 #include "array-util.h"
 #include "atomic-util.h"
+#include "base/print.h"
 #include "big-polyhedra.h"
 #include "bounds.h"
 #include "color-util.h"
@@ -606,8 +607,8 @@ static TexturedMesh TextureSphere(SphereMap *sphere_map) {
       });
   }
 
-  printf("Done. %lld outside\n",
-         outside_triangle.Read());
+  Print("Done. {} outside\n",
+        outside_triangle.Read());
 
   // ...
   return ret;
@@ -620,7 +621,7 @@ static void Generate() {
   // std::unique_ptr<SphereMap> sphere_map(new SphereMap);
   TexturedMesh tmesh = TextureSphere(sphere_map.get());
   SaveAsOBJ(tmesh, "snubcube");
-  printf("Took %s\n", ANSI::Time(timer.Seconds()).c_str());
+  Print("Took {}\n", ANSI::Time(timer.Seconds()));
 }
 
 

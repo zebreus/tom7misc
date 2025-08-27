@@ -460,6 +460,9 @@ struct Hypersolver {
     }
   };
 
+  struct Failed {
+  };
+
   struct Impossible {
     Rejection rejection;
     explicit Impossible(Rejection r) : rejection(r) {}
@@ -720,7 +723,7 @@ struct Hypersolver {
   }
 
   struct ProcessResult {
-    std::variant<Split, Impossible> result;
+    std::variant<Split, Impossible, Failed> result;
 
     // Debug info / stats when requested.
 
@@ -778,6 +781,10 @@ struct Hypersolver {
           BigRat::Min(
               inner_rot.Width(),
               BigRat::Min(iz_width, ia_width)));
+
+    if (min_width < BigRat(int64_t{1}, int64_t{1024 * 1024} * 1024 * 1024)) {
+      return ProcessResult{.result = Failed()};
+    }
 
     {
       ParameterSet must_split;
@@ -1396,8 +1403,11 @@ struct Hypersolver {
     Discival disc;
     // Try multiple bias values. We could try optimizing the
     // order here globally, or doing a move-to-front thing?
-    for (int numer : {6, 4, 8, 10, 5, 3}) {
-      BigRat bias = BigRat(numer, 4);
+    //
+    // I didn't see bias < 1 ever succeed.
+    // 20/8, 11/8 added very little coverage (near the end)
+    for (int numer : {12, 8, 16, 9, 15}) {
+      BigRat bias = BigRat(numer, 8);
 
       disc = SausageDisc(sausage, rot_trig, bias, inv_epsilon);
 
@@ -2224,6 +2234,11 @@ struct Hypersolver {
 
       {
         mu.lock();
+        if (failed) {
+          mu.unlock();
+          return;
+        }
+
         if (node_queue.empty()) {
           const int outstanding = num_in_progress;
           if (outstanding == 0) {
@@ -2297,6 +2312,12 @@ struct Hypersolver {
       {
         MutexLock ml(&mu);
         process_time += process_sec;
+      }
+
+      if (std::holds_alternative<Failed>(res.result)) {
+        MutexLock ml(&mu);
+        failed = true;
+        return;
       }
 
       if (get_stats_next && render_per.ShouldRun()) {
@@ -2533,6 +2554,9 @@ struct Hypersolver {
 
     status.Print("All threads finished!");
 
+    if (failed) {
+      status.Print("But we " ARED("failed") "!");
+    }
 
     if (hypercube->Empty()) {
       status.Print("Not writing empty cube!", filename);
@@ -2729,6 +2753,8 @@ struct Hypersolver {
   // Work queue. (Could actually use work queue here!)
   // Each element is an incomplete leaf with the given volume and index.
   std::deque<std::pair<Volume, int64_t>> node_queue;
+  bool failed = false;
+
   // Need to keep track of the number that are currently being
   // processed by threads, since processing a node may or may
   // not insert new nodes into the queue. The node queue is only

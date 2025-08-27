@@ -2,19 +2,18 @@
 #include <bit>
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <vector>
 
 #include "ansi.h"
 #include "arcfour.h"
+#include "auto-histo.h"
 #include "base/do-not-optimize.h"
+#include "base/print.h"
 #include "periodically.h"
 #include "randutil.h"
 #include "stats.h"
 #include "status-bar.h"
-#include "timer.h"
-#include "auto-histo.h"
 
 // Simple wrapper around std::chrono::steady_clock.
 // Starts timing when constructed. TODO: Pause() etc.
@@ -110,7 +109,7 @@ static void RandomInterleave() {
     }
 
     status_per.RunIf([&]() {
-        status.Progressf(i, NUM_LOOPS, "benchmarking");
+        status.Progress(i, NUM_LOOPS, "benchmarking");
       });
   }
 
@@ -119,18 +118,18 @@ static void RandomInterleave() {
       double lo = g.mean - g.PlusMinus95();
       double hi = g.mean + g.PlusMinus95();
 
-      printf("Method: %s\n"
-             "Mean time: [%s, %s]\n",
-             what,
-             ANSI::Time(lo).c_str(),
-             ANSI::Time(hi).c_str());
+      Print("Method: {}\n"
+            "Mean time: [{}, {}]\n",
+            what,
+            ANSI::Time(lo),
+            ANSI::Time(hi));
 
       AutoHisto histo;
       for (double d : samples) {
         histo.Observe(d);
       }
 
-      printf("%s\n", histo.UnlabeledHoriz(70).c_str());
+      Print("{}\n", histo.UnlabeledHoriz(70));
 
       /*
       return std::format("[" AYELLOW("{:.12g}") ", "

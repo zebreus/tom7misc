@@ -152,9 +152,9 @@ Ballival SphericalPatchBall(const ViewBoundsTrig &trig,
   // sphere (which this will be) but there's a proof obligation
   // to revisit here.
   BigVec3 center = BigVec3(
-      (trig.mid_sin_an * trig.mid_cos_az).Midpoint(),
-      (trig.mid_sin_an * trig.mid_sin_az).Midpoint(),
-      trig.mid_cos_an.Midpoint());
+      (trig.mid_an.sine * trig.mid_az.cosine).Midpoint(),
+      (trig.mid_an.sine * trig.mid_az.sine).Midpoint(),
+      trig.mid_an.cosine.Midpoint());
 
   // Find a squared radius that will include all the corners.
   BigRat max_sqdist(0);
@@ -217,8 +217,8 @@ Vec2ival GetBoundingAABB(const Vec2ival &v_in,
 
   // Bigival sin_a = angle.Sin(inv_epsilon);
   // Bigival cos_a = angle.Cos(inv_epsilon);
-  Vec2ival loose_box(v_in.x * rot_trig.cos_a - v_in.y * rot_trig.sin_a,
-                     v_in.x * rot_trig.sin_a + v_in.y * rot_trig.cos_a);
+  Vec2ival loose_box(v_in.x * rot_trig.a.cosine - v_in.y * rot_trig.a.sine,
+                     v_in.x * rot_trig.a.sine + v_in.y * rot_trig.a.cosine);
 
   return {Translate(std::move(loose_box))};
 }
@@ -271,9 +271,9 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
 
   // Are we maybe crossing an axis?
   bool possible_x_extremum =
-    (v_in.x * rot_trig.sin_a + v_in.y * rot_trig.cos_a).ContainsZero();
+    (v_in.x * rot_trig.a.sine + v_in.y * rot_trig.a.cosine).ContainsZero();
   bool possible_y_extremum =
-    (v_in.x * rot_trig.cos_a - v_in.y * rot_trig.sin_a).ContainsZero();
+    (v_in.x * rot_trig.a.cosine - v_in.y * rot_trig.a.sine).ContainsZero();
 
   if (possible_x_extremum || possible_y_extremum) {
 
@@ -288,12 +288,12 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
     // Determine the sign of cos and sin over the angle interval.
     // 0 means mixed, 1 positive, -1 negative.
     int cos_sign = 0;
-    if (BigRat::Sign(rot_trig.cos_a.LB()) == 1) cos_sign = 1;
-    else if (BigRat::Sign(rot_trig.cos_a.UB()) == -1) cos_sign = -1;
+    if (BigRat::Sign(rot_trig.a.cosine.LB()) == 1) cos_sign = 1;
+    else if (BigRat::Sign(rot_trig.a.cosine.UB()) == -1) cos_sign = -1;
 
     int sin_sign = 0;
-    if (BigRat::Sign(rot_trig.sin_a.LB()) == 1) sin_sign = 1;
-    else if (BigRat::Sign(rot_trig.sin_a.UB()) == -1) sin_sign = -1;
+    if (BigRat::Sign(rot_trig.a.sine.LB()) == 1) sin_sign = 1;
+    else if (BigRat::Sign(rot_trig.a.sine.UB()) == -1) sin_sign = -1;
 
     // There are four possible axis crossings (+/- x, +/- y). Whenever
     // we might cross one, we save the max squared radius of the point,
@@ -307,7 +307,7 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
         if (BigRat::Sign(r_sq) == 0) continue;
 
         // The x-coordinate is extremal when the y-coordinate is zero.
-        Bigival y_prime = c.y * rot_trig.cos_a + c.x * rot_trig.sin_a;
+        Bigival y_prime = c.y * rot_trig.a.cosine + c.x * rot_trig.a.sine;
         if (y_prime.ContainsZero()) {
           if ((BigRat::Sign(c.x) == cos_sign || cos_sign == 0) &&
               (BigRat::Sign(-c.y) == sin_sign || sin_sign == 0)) {
@@ -339,7 +339,7 @@ Vec2ival GetBoundingAABB2(const Vec2ival &v_in,
         BigRat r_sq = dot(c, c);
         if (BigRat::Sign(r_sq) == 0) continue;
 
-        Bigival x_prime = c.x * rot_trig.cos_a - c.y * rot_trig.sin_a;
+        Bigival x_prime = c.x * rot_trig.a.cosine - c.y * rot_trig.a.sine;
         if (x_prime.ContainsZero()) {
           if ((BigRat::Sign(c.y) == cos_sign || cos_sign == 0) &&
               (BigRat::Sign(c.x) == sin_sign || sin_sign == 0)) {
@@ -724,9 +724,10 @@ Discival GetInitialDisc(const BigVec3 &v,
 
   // AABB for the projection of the vertex from the central view direction.
   const Vec2ival center_aabb(
-      trig.mid_sin_az * -v.x + trig.mid_cos_az * v.y,
-      -trig.mid_cos_an * (trig.mid_cos_az * v.x + trig.mid_sin_az * v.y) +
-      trig.mid_sin_an * v.z);
+      trig.mid_az.sine * -v.x + trig.mid_az.cosine * v.y,
+      -trig.mid_an.cosine * (trig.mid_az.cosine * v.x +
+                             trig.mid_az.sine * v.y) +
+      trig.mid_an.sine * v.z);
 
   // Choose a center that is close to the center of the patch.
   BigVec2 chosen_center(center_aabb.x.Midpoint(),

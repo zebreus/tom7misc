@@ -272,10 +272,10 @@ struct ViewBoundsTrig {
     mid_angle = angle.Midpoint();
 
     // Consider NiceSin/NiceCos here. But we just use this once.
-    mid_sin_az = Bigival::Sin(mid_azimuth, inv_epsilon);
-    mid_cos_az = Bigival::Cos(mid_azimuth, inv_epsilon);
-    mid_sin_an = Bigival::Sin(mid_angle, inv_epsilon);
-    mid_cos_an = Bigival::Cos(mid_angle, inv_epsilon);
+    mid_az.sine = Bigival::Sin(mid_azimuth, inv_epsilon);
+    mid_az.cosine = Bigival::Cos(mid_azimuth, inv_epsilon);
+    mid_an.sine = Bigival::Sin(mid_angle, inv_epsilon);
+    mid_an.cosine = Bigival::Cos(mid_angle, inv_epsilon);
   }
 
   Bigival azimuth;
@@ -290,11 +290,8 @@ struct ViewBoundsTrig {
   BigRat mid_azimuth;
   BigRat mid_angle;
 
-  // XXX SinCos
-  Bigival mid_sin_az;
-  Bigival mid_cos_az;
-  Bigival mid_sin_an;
-  Bigival mid_cos_an;
+  SinCos mid_az;
+  SinCos mid_an;
 };
 
 // Precomputed trigonometry for the 2D rotation of the inner hull.
@@ -343,8 +340,8 @@ struct RotTrig {
 
     // Get high quality intervals since these are used many
     // times.
-    cos_a = PrecomputeCosI(angle, inv_epsilon);
-    sin_a = PrecomputeSinI(angle, inv_epsilon);
+    a.cosine = PrecomputeCosI(angle, inv_epsilon);
+    a.sine = PrecomputeSinI(angle, inv_epsilon);
 
     // We use the middle of the angle for our disc
     // centers, so precompute that too.
@@ -360,7 +357,8 @@ struct RotTrig {
   }
 
   Bigival angle;
-  Bigival cos_a, sin_a;
+  SinCos a;
+  // Bigival cos_a, sin_a;
 
   BigRat mid_angle;
   SinCos mid;

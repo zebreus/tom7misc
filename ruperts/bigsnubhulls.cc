@@ -4,7 +4,6 @@
 #include <cstdio>
 #include <ctime>
 #include <format>
-#include <limits>
 #include <mutex>
 #include <string>
 #include <tuple>
@@ -16,10 +15,8 @@
 #include "arcfour.h"
 #include "atomic-util.h"
 #include "base/logging.h"
+#include "base/print.h"
 #include "base/stringprintf.h"
-#include "big-polyhedra.h"
-#include "bignum/big-overloads.h"
-#include "bignum/big.h"
 #include "color-util.h"
 #include "geom/tree-3d.h"
 #include "hashing.h"
@@ -30,8 +27,8 @@
 #include "status-bar.h"
 #include "threadutil.h"
 #include "util.h"
-#include "yocto_matht.h"
 #include "vector-util.h"
+#include "yocto_matht.h"
 
 using vec3 = yocto::vec<double, 3>;
 
@@ -190,10 +187,10 @@ static void SnubHulls() {
             samples.push_back(sphere_point);
           }
           status_per.RunIf([&]{
-              status.Progressf(work_idx, ITERS,
-                               "%lld/%lld  %lld" ARED("≈"),
-                               work_idx, ITERS,
-                               too_close.Read());
+              status.Progress(work_idx, ITERS,
+                              "{}/{}  {}" ARED("≈"),
+                              work_idx, ITERS,
+                              too_close.Read());
             });
         }
       });
@@ -204,8 +201,8 @@ static void SnubHulls() {
 
   CHECK(ids.size() == samples.size());
 
-  printf("There are %lld distinct hulls in this sample.\n",
-         (int64_t)hulls.Num());
+  Print("There are {} distinct hulls in this sample.\n",
+        hulls.Num());
 
   ArcFour rc("color");
   std::vector<uint32_t> colors;
@@ -228,13 +225,13 @@ static void SnubHulls() {
   if (colors.size() > hulls.Num()) colors.resize(hulls.Num());
 
   for (int i = 0; i < hulls.Num(); i++) {
-    printf("%d. (%s▉" ANSI_RESET "):",
-           i, ANSI::ForegroundRGB32(colors[i]).c_str());
+    Print("{}. ({}▉" ANSI_RESET "):",
+          i, ANSI::ForegroundRGB32(colors[i]).c_str());
     for (int vidx : hulls.canonical[i]) {
       CHECK(vidx >= 0 && vidx < cube.vertices.size());
-      printf(" %d", vidx);
+      Print(" {}", vidx);
     }
-    printf("\n");
+    Print("\n");
   }
 
   // As point cloud.
@@ -277,19 +274,19 @@ static void SnubHulls() {
 
     std::string filename = "snubcloud.ply";
     Util::WriteFile(filename, outply);
-    printf("Wrote %lld bytes to %s.\n",
-           outply.size(),
-           filename.c_str());
+    Print("Wrote {} bytes to {}.\n",
+          outply.size(),
+          filename);
   }
 
   if (false) {
     // Get the convex hull. We expect every point to be on the convex
     // hull (since they are all on the unit sphere) but we want the
     // connectivity of the faces.
-    printf("Compute hull from %lld samples:\n", (int64_t)samples.size());
+    Print("Compute hull from {} samples:\n", samples.size());
     std::vector<std::tuple<int, int, int>> faces =
       Hull3D::HullFaces(samples);
-    printf("%lld triangles in hull.\n", (int64_t)faces.size());
+    Print("{} triangles in hull.\n", faces.size());
 
     std::string outply =
       std::format(
@@ -345,9 +342,9 @@ static void SnubHulls() {
 
     std::string filename = "snubhulls.ply";
     Util::WriteFile(filename, outply);
-    printf("Wrote %lld bytes to %s.\n",
-           outply.size(),
-           filename.c_str());
+    Print("Wrote {} bytes to {}.\n",
+          outply.size(),
+          filename);
   }
 }
 

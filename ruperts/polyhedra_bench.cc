@@ -1,8 +1,6 @@
 
-#include "periodically.h"
 #include "polyhedra.h"
 
-#include <cstdio>
 #include <limits>
 #include <optional>
 #include <vector>
@@ -11,6 +9,8 @@
 #include "arcfour.h"
 #include "base/do-not-optimize.h"
 #include "base/logging.h"
+#include "base/print.h"
+#include "periodically.h"
 #include "status-bar.h"
 #include "timer.h"
 #include "yocto_matht.h"
@@ -87,7 +87,7 @@ static void BenchSample() {
   Polyhedron poly = SnubCube();
 
   ArcFour rc("deterministic");
-  printf("Benchmark Samples:\n");
+  Print("Benchmark Samples:\n");
   Timer timer;
   constexpr int ITERS = 1'000'000;
   for (int i = 0; i < ITERS; i++) {
@@ -95,15 +95,15 @@ static void BenchSample() {
   }
   const double total_sec = timer.Seconds();
 
-  printf("Did " AWHITE("%d") " iters in %s (%.2f ips)\n",
-         ITERS, ANSI::Time(total_sec).c_str(),
+  Print("Did " AWHITE("{}") " iters in {} ({:.2f} ips)\n",
+         ITERS, ANSI::Time(total_sec),
          ITERS / total_sec);
 
   delete poly.faces;
 }
 
 static std::vector<vec2> GetPoly(const std::vector<vec2> &vertices,
-                                      const std::vector<int> &hull) {
+                                 const std::vector<int> &hull) {
   std::vector<vec2> poly;
   poly.reserve(hull.size());
   for (int idx : hull) poly.push_back(vertices[idx]);
@@ -115,7 +115,7 @@ static void BenchPolyTester() {
 
 
   ArcFour rc("deterministic");
-  printf("Benchmark Samples:\n");
+  Print("Benchmark Samples:\n");
   constexpr int OUTER_ITERS = 10'000;
   constexpr int INNER_ITERS = 10'000;
   double total_query_sec = 0.0;
@@ -151,16 +151,16 @@ static void BenchPolyTester() {
     DoNotOptimize(err);
     total_query_sec += inner_timer.Seconds();
     status_per.RunIf([&]() {
-        status.Progressf(o, OUTER_ITERS, "Benchmarking...");
+        status.Progress(o, OUTER_ITERS, "Benchmarking...");
       });
   }
 
-  printf("Total time: %s\n"
-         "Total query time: %s\n"
-         "Time per query: %s\n",
-         ANSI::Time(all_timer.Seconds()).c_str(),
-         ANSI::Time(total_query_sec).c_str(),
-         ANSI::Time(total_query_sec / (OUTER_ITERS * INNER_ITERS)).c_str());
+  Print("Total time: {}\n"
+        "Total query time: {}\n"
+        "Time per query: {}\n",
+        ANSI::Time(all_timer.Seconds()),
+        ANSI::Time(total_query_sec),
+        ANSI::Time(total_query_sec / (OUTER_ITERS * INNER_ITERS)));
 }
 
 int main(int argc, char **argv) {

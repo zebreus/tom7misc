@@ -2,23 +2,16 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
-#include <deque>
 #include <format>
-#include <functional>
 #include <initializer_list>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <numbers>
 #include <optional>
 #include <string>
-#include <thread>
-#include <tuple>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <cstdint>
@@ -42,16 +35,13 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "dyson.h"
 #include "image.h"
 #include "lines.h"
 #include "periodically.h"
-#include "randutil.h"
 #include "re2/re2.h"
 #include "smallest-sphere.h"
-#include "threadutil.h"
-#include "timer.h"
 #include "util.h"
 
 #include "mesh.h"
@@ -683,7 +673,7 @@ void UI::Loop() {
 }
 
 void UI::Draw() {
-  if (TRACE) printf("Draw.\n");
+  if (TRACE) Print("Draw.\n");
 
   CHECK(font != nullptr);
   CHECK(drawing != nullptr);
@@ -697,11 +687,11 @@ void UI::Draw() {
   scene.Draw(drawing.get());
 
   drawing->BlendText32(5, 5, 0xFFFF00AA,
-                       StringPrintf("Frames: %lld", frames_drawn));
+                       std::format("Frames: {}", frames_drawn));
   sdlutil::CopyRGBAToScreen(*drawing, screen);
 
-  font->draw(30, 30, StringPrintf("%.5f, %.5f, %.5f",
-                                  vel.x, vel.y, vel.z));
+  font->draw(30, 30, std::format("{:.5f}, {:.5f}, {:.5f}",
+                                 vel.x, vel.y, vel.z));
 
   if (mov.get()) {
     // TODO: Enqueue this.
@@ -709,7 +699,7 @@ void UI::Draw() {
   }
 
   frames_drawn++;
-  if (TRACE) printf("Drew %lld.\n", frames_drawn);
+  if (TRACE) Print("Drew {}.\n", frames_drawn);
 }
 
 static void InitializeSDL() {
