@@ -150,7 +150,9 @@ static void HashCode() {
   CHECK(BigInt::HashCode(a) != BigInt::HashCode(b));
   CHECK(BigInt::HashCode(a) == BigInt::HashCode(a));
 
-  string s = "190237849028374901872390876190872349817230948719023874190827349817239048712903847190283740918273490817230948798767676767676738347482712341";
+  string s = "19023784902837490187239087619087234981723094871902387"
+    "41908273498172390487129038471902837409182734908172309487987676"
+    "76767676738347482712341";
   BigInt big(s);
   CHECK(BigInt::HashCode(a) != BigInt::HashCode(big));
   CHECK(BigInt::HashCode(big) == BigInt::HashCode(big));
@@ -638,16 +640,19 @@ static void TestToInt() {
   ROUNDTRIP(0x80000000LL);
   ROUNDTRIP(0x7FFFFFFFFFFFFFFELL);
   ROUNDTRIP(0x7FFFFFFFFFFFFFFFLL);
-  ROUNDTRIP(std::numeric_limits<int64_t>::lowest());
 
+  // The Bz wrapper does not support the most negative number.
+  #ifdef BIG_USE_GMP
+  ROUNDTRIP(std::numeric_limits<int64_t>::lowest());
   CHECK(BigInt::Minus(
             BigInt::Negate(BigInt(int64_t{0x7FFFFFFFFFFFFFFF})),
             BigInt(1)).ToInt().has_value());
+  #endif
 
 # define NOROUNDTRIP(bi) do {                                     \
     std::optional<int64_t> io = (bi).ToInt();                     \
-    CHECK(!io.has_value()) << #bi << " =\n" << \
-      bi.ToString() << " " << io.value();     \
+    CHECK(!io.has_value()) << #bi << " =\n" <<                    \
+      bi.ToString() << " " << io.value();                         \
   } while (false)
   NOROUNDTRIP(BigInt::Plus(BigInt(int64_t{0x7FFFFFFFFFFFFFFF}),
                            BigInt(1)));
@@ -676,6 +681,24 @@ static uint64_t Sqrt64Nuprl(uint64_t xx) {
 static void TestSqrt() {
   for (const uint64_t u : std::initializer_list<uint64_t>{
         1234567, 0x7FFFFFFFFFFFFFFFULL, 121,
+        0x0ffff,
+        0x10000,
+        0x10001,
+        0x0ffffff,
+        0x1000000,
+        0x1000001,
+        0x0ffffffff,
+        0x100000000,
+        0x100000001,
+        0x0ffffffffff,
+        0x10000000000,
+        0x10000000001,
+        0x0ffffffffffff,
+        0x1000000000000,
+        0x1000000000001,
+        0x0ffffffffffffff,
+        0x100000000000000,
+        0x100000000000001,
         0, 1, 2, 3, 4, 5, 6, 9999999999999ULL, 31337 * 31337ULL}) {
     BigInt ub(u);
 

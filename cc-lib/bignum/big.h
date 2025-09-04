@@ -1352,8 +1352,12 @@ BigInt BigInt::Sqrt(const BigInt &aa) {
 
     if (n == 0) return BigInt(0);
 
-    uint64_t r = std::sqrt((double)n);
-    return BigInt(r - (r * r - 1 >= n));
+    // Not obvious that using double precision floating point is
+    // correct for all 64-bit integers, but it does work. At most
+    // we will be off by 1, so we subtract that off.
+    int64_t r = std::sqrt((double)n);
+    int64_t overage = r * r - 1 >= n;
+    return BigInt(r - overage);
 
   } else {
     BigInt ret;
@@ -1975,6 +1979,10 @@ bool BigInt::GreaterEq(const BigInt &a, int64_t b) {
 BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
   return BigInt{BzAdd(a.rep, b.rep), nullptr};
 }
+void BigInt::PlusEq(BigInt &a, const BigInt &b) {
+  a = BigInt{BzAdd(a.rep, b.rep), nullptr};
+}
+
 BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
   return BigInt{BzSubtract(a.rep, b.rep), nullptr};
 }
