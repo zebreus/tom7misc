@@ -6,7 +6,6 @@
 
 #include "interval-cover.h"
 
-#include <cinttypes>
 #include <cstdio>
 #include <format>
 #include <memory>
@@ -17,7 +16,7 @@
 #include "ansi.h"
 #include "arcfour.h"
 #include "base/logging.h"
-#include "base/stringprintf.h"
+#include "base/print.h"
 #include "randutil.h"
 
 using namespace std;
@@ -271,7 +270,7 @@ static void SplitStress() {
     int z = 0;
     for (uint64_t pt : pts) {
       z++;
-      string data = StringPrintf("%d", z);
+      string data = std::format("{}", z);
       cover.SplitRight(pt, data);
       cover.CheckInvariants();
       CHECK_EQ(data, cover.GetPoint(pt).data);
@@ -289,7 +288,7 @@ static void SplitStress() {
 
     OKPOINT(0, MAX64, "BACK", cover.GetPoint(0LL));
   }
-  printf("SplitStress " AGREEN("OK") "\n");
+  Print("SplitStress " AGREEN("OK") "\n");
 }
 
 static void SetSpan() {
@@ -333,14 +332,14 @@ static void SetSpan() {
 
 static void SetSpan2() {
   IntervalCover<bool> ic(false);
-  auto Print = [&ic]() {
-      printf("-----\n");
+  auto PrintOut = [&ic]() {
+      Print("-----\n");
       for (uint64_t pt = ic.First();
            !ic.IsAfterLast(pt);
            pt = ic.Next(pt)) {
         auto span = ic.GetPoint(pt);
-        printf("%" PRIu64 "-%" PRIu64 " %s\n", span.start, span.end,
-               span.data ? "true" : "false");
+        Print("{}-{} {}\n", span.start, span.end,
+              span.data ? "true" : "false");
       }
     };
 
@@ -348,7 +347,7 @@ static void SetSpan2() {
   ic.SetSpan(100, 200, true);
   ic.SetSpan(1000, 1100, true);
   ic.SetSpan(600, 700, true);
-  Print();
+  PrintOut();
 
   CHECK(ic.GetPoint(1005).data);
 
@@ -363,7 +362,7 @@ static void SetSpan2() {
   ic.SetSpan(0, 100000, false);
   CHECK(!ic.GetPoint(999).data);
 
-  Print();
+  PrintOut();
 }
 
 int main(int argc, char **argv) {
@@ -378,6 +377,6 @@ int main(int argc, char **argv) {
   SetSpan();
   SetSpan2();
 
-  printf("OK\n");
+  Print("OK\n");
   return 0;
 }

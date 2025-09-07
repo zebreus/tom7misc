@@ -243,7 +243,8 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
 
   string eta;
   if (options.include_eta) {
-    (numer > 0 && std::isfinite(remaining_sec) && remaining_sec >= 0.0) ?
+    eta = (numer > 0 &&
+           std::isfinite(remaining_sec) && remaining_sec >= 0.0) ?
       Time(remaining_sec) : std::string("∞");
   }
   const int eta_len = StringWidth(eta);

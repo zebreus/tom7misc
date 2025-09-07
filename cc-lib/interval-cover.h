@@ -25,13 +25,13 @@
 #define _CC_LIB_INTERVAL_COVER_H
 
 #include <cstdint>
-#include <cstdio>
 #include <map>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "base/logging.h"
+#include "base/print.h"
 
 // Data must have value semantics and is copied willy-nilly. It must
 // also have an equivalence relation ==. If it's some simple data like
@@ -269,7 +269,7 @@ auto IntervalCover<D>::operator [](size_t idx) const -> const Data & {
 
 template<class D>
 void IntervalCover<D>::SetSpan(uint64_t start, uint64_t end, D new_data) {
-  // printf("SetSpan %llu %llu ...\n", start, end);
+  // Print("SetSpan {} {} ...\n", start, end);
 
   // Interval must be legal.
   CHECK(start <= end);
@@ -301,8 +301,8 @@ void IntervalCover<D>::SetSpan(uint64_t start, uint64_t end, D new_data) {
     CHECK(span.start >= start);
     if (span.end <= end) {
       /*
-      printf("Set fully-contained interval [%llu,%llu).\n",
-             span.start, span.end);
+      Print("Set fully-contained interval [{},{}).\n",
+            span.start, span.end);
       */
       SplitRight(span.start, new_data);
     }
@@ -345,7 +345,7 @@ IntervalCover<D>::SplitAt(uint64_t pt) {
 // XXX maybe can use SplitAt for this?
 template<class D>
 void IntervalCover<D>::SplitRight(uint64_t pt, D rhs) {
-  // printf("Splitright %llu\n", pt);
+  // Print("Splitright {}\n", pt);
   // Find the interval in which pt lies.
   auto it = GetInterval(pt);
 
@@ -357,13 +357,13 @@ void IntervalCover<D>::SplitRight(uint64_t pt, D rhs) {
   // And if we're asking to split the interval exactly on
   // its start point, just replace the data.
   if (it->first == pt) {
-    // printf("it's update\n");
+    // Print("it's update\n");
     // But do we need to merge left?
     if (it != spans.begin()) {
 
       auto prev = std::prev(it);
       if (prev->second == rhs) {
-        // printf("merge left\n");
+        // Print("merge left\n");
         // If merging left, we delete this interval, but then
         // 'it' becomes the merged interval so we can continue
         // merging right below.
@@ -392,10 +392,10 @@ void IntervalCover<D>::SplitRight(uint64_t pt, D rhs) {
 
     auto next = std::next(it);
     // if (next != spans.end())
-    // printf("Next is %llu\n", next->first);
+    // Print("Next is {}\n", next->first);
     while (next != spans.end() && next->second == rhs) {
       auto nextnext = std::next(next);
-      // printf("Delete %llu.\n", next->first);
+      // Print("Delete {}.\n", next->first);
       // Then just delete the next one, making it part of
       // this one.
       (void)spans.erase(next);
@@ -407,7 +407,7 @@ void IntervalCover<D>::SplitRight(uint64_t pt, D rhs) {
     return;
   }
 
-  // printf("(not update\n");
+  // Print("(not update\n");
   // If there's a next interval and the new data is the same
   // as the next, then another simplification:
   auto next = std::next(it);
@@ -446,11 +446,11 @@ void IntervalCover<bool>::DebugPrint() const;
 
 template<class D>
 void IntervalCover<D>::DebugPrint() const {
-  printf("------\n");
+  Print("------\n");
   for (const auto &p : spans) {
-    printf("%llu: ?\n", p.first);
+    Print("%{}: ?\n", p.first);
   }
-  printf("------\n");
+  Print("------\n");
 }
 
 template<class D>
